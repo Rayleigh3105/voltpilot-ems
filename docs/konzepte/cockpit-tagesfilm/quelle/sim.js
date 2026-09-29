@@ -35,20 +35,24 @@ var SIM = (function () {
       pv: [{ id: 'sued', name: 'Dach Süd', kwp: 6.4, shift: 0 }, { id: 'carport', name: 'Carport', kwp: 3.0, shift: 0.9 }],
       batt: { name: 'Batteriespeicher', kwh: 15, maxKw: 3.2, min: 8, start: 18 },
       cons: [
-        { id: 'wp', name: 'Wärmepumpe', short: 'Wärme\u00adpumpe', icon: 'heatpump' },
-        { id: 'wb', name: 'Wallbox Garage', short: 'Wallbox', icon: 'car' },
-        { id: 'rest', name: 'übriger Haushalt', short: 'übriger Haushalt', icon: 'house', rest: true }
+        { id: 'wp', name: 'Wärmepumpe', short: 'Wärme\u00adpumpe', icon: 'heatpump', gruppe: 'Wärme' },
+        { id: 'wb', name: 'Wallbox Garage', short: 'Wallbox', icon: 'car', gruppe: 'Laden' },
+        { id: 'hs', name: 'Heizstab Warmwasser', short: 'Heizstab', icon: 'thermo', gruppe: 'Wärme' },
+        { id: 'wm', name: 'Waschmaschine', short: 'Waschmaschine', icon: 'plug', gruppe: 'Haushalt' },
+        { id: 'rest', name: 'übriger Haushalt', short: 'übriger Haushalt', icon: 'house', rest: true, gruppe: 'Haushalt' }
       ],
       cons_fn: function (h, q, pv, n) {
-        var rest = 0.28 + (inR(h, 6.5, 8) ? 0.85 : 0) + (inR(h, 9.5, 10.5) ? 1.1 : 0) + (inR(h, 10.5, 11.25) ? 0.9 : 0) + (inR(h, 12, 12.75) ? 1.45 : 0) + (inR(h, 17.5, 22.5) ? 0.75 : 0) + (inR(h, 19, 20) ? 0.4 : 0) + 0.18 * n[0][q];
+        var wm = inR(h, 9.5, 10.5) ? 0.9 + 0.5 * n[2][q] : (inR(h, 10.5, 11) ? 0.35 : 0);
+        var rest = 0.28 + (inR(h, 6.5, 8) ? 0.85 : 0) + (inR(h, 10.5, 11.25) ? 0.9 : 0) + (inR(h, 12, 12.75) ? 1.45 : 0) + (inR(h, 17.5, 22.5) ? 0.75 : 0) + (inR(h, 19, 20) ? 0.4 : 0) + 0.18 * n[0][q];
+        var hs = inR(h, 12.75, 13.25) ? 1.2 : 0;
         var wp = 0.04;
         if (inR(h, 6, 7.75)) wp = 1.55 + 0.25 * n[1][q];
         else if (inR(h, 9, 10.5)) wp = 1.45 + 0.15 * n[1][q];
         else if (inR(h, 11.5, 15)) wp = 1.22 + 0.15 * n[1][q];
         else if (inR(h, 17.5, 21.5)) wp = (Math.floor(h * 3) % 3 === 0) ? 1.05 + 0.1 * n[1][q] : 0.04;
         var wb = 0;
-        if (inR(h, 11.25, 15.25)) { var sur = pv - rest - wp - 1.9; wb = sur >= 1.4 ? Math.min(3.7, sur) : 0; }
-        return [wp, wb, rest];
+        if (inR(h, 11.25, 15.25)) { var sur = pv - rest - wp - hs - wm - 1.9; wb = sur >= 1.4 ? Math.min(3.7, sur) : 0; }
+        return [wp, wb, hs, wm, rest];
       },
       strat: 'eigen', devices: 5
     },
@@ -58,10 +62,10 @@ var SIM = (function () {
       pv: [{ id: 'halle', name: 'Dach Werkhalle', kwp: 92, shift: 0 }, { id: 'carport', name: 'Carport Parkplatz', kwp: 38, shift: -0.6 }],
       batt: { name: 'Batteriespeicher', kwh: 500, maxKw: 250, min: 5, start: 9 },
       cons: [
-        { id: 'werk', name: 'Werkstatt', short: 'Werkstatt', icon: 'factory' },
-        { id: 'buero', name: 'Büro', short: 'Büro', icon: 'building' },
-        { id: 'kuehl', name: 'Kühlhaus', short: 'Kühlhaus', icon: 'snow' },
-        { id: 'rest', name: 'übriger Verbrauch', short: 'übriger Verbrauch', icon: 'plug', rest: true }
+        { id: 'werk', name: 'Werkstatt', short: 'Werkstatt', icon: 'factory', gruppe: 'Betrieb' },
+        { id: 'buero', name: 'Büro', short: 'Büro', icon: 'building', gruppe: 'Gebäude' },
+        { id: 'kuehl', name: 'Kühlhaus', short: 'Kühlhaus', icon: 'snow', gruppe: 'Betrieb' },
+        { id: 'rest', name: 'übriger Verbrauch', short: 'übriger Verbrauch', icon: 'plug', rest: true, gruppe: 'Sonstiges' }
       ],
       cons_fn: function (h, q, pv, n) {
         var werk = inR(h, 7, 17) ? 19 + 6 * n[0][q] : 1.6;
@@ -86,18 +90,27 @@ var SIM = (function () {
       batt: { name: 'Batteriespeicher', kwh: 400, maxKw: 200, min: 5, start: 74, reserve: 40 },
       ziel: 300,
       cons: [
-        { id: 'spritz', name: 'Spritzguss', short: 'Spritzguss', icon: 'factory' },
-        { id: 'luft', name: 'Druckluft', short: 'Druckluft', icon: 'wind' },
-        { id: 'kuehl', name: 'Kühlung', short: 'Kühlung', icon: 'snow', staleFromQ: 54, staleTime: '13:31' },
-        { id: 'rest', name: 'übriger Verbrauch', short: 'übriger Verbrauch', icon: 'plug', rest: true }
+        { id: 'sg1', name: 'Spritzguss Linie 1', short: 'Spritzguss 1', icon: 'factory', gruppe: 'Maschinen' },
+        { id: 'sg2', name: 'Spritzguss Linie 2', short: 'Spritzguss 2', icon: 'factory', gruppe: 'Maschinen' },
+        { id: 'luft', name: 'Druckluft', short: 'Druckluft', icon: 'wind', gruppe: 'Maschinen' },
+        { id: 'kuehl', name: 'Kühlung', short: 'Kühlung', icon: 'snow', gruppe: 'Gebäude', staleFromQ: 54, staleTime: '13:31' },
+        { id: 'lueft', name: 'Hallenlüftung', short: 'Lüftung', icon: 'wind', gruppe: 'Gebäude' },
+        { id: 'licht', name: 'Beleuchtung', short: 'Beleuchtung', icon: 'bulb', gruppe: 'Gebäude' },
+        { id: 'stapler', name: 'Ladepunkte Stapler', short: 'Stapler laden', icon: 'plug', gruppe: 'Laden' },
+        { id: 'buero', name: 'Büro und Kantine', short: 'Büro', icon: 'building', gruppe: 'Gebäude' },
+        { id: 'rest', name: 'übriger Verbrauch', short: 'übriger Verbrauch', icon: 'plug', rest: true, gruppe: 'Sonstiges' }
       ],
       cons_fn: function (h, q, pv, n) {
         var sh = inR(h, 6, 22);
         var spritz = sh ? 132 + 22 * n[0][q] + (inR(h, 6, 6.75) ? 64 : 0) + (inR(h, 13.5, 14.5) ? 58 : 0) : 18;
         var luft = sh ? 64 + (Math.floor(h * 3) % 2 ? 24 : 0) + 6 * n[1][q] : 11;
         var kuehl = 38 + 9 * n[2][q];
-        var rest = (inR(h, 6, 18) ? 44 : 16) + 5 * n[3][q];
-        return [spritz, luft, kuehl, rest];
+        var lueft = inR(h, 5.5, 22) ? 11 + 2 * n[3][q] : 4;
+        var licht = inR(h, 6, 22) ? (inR(h, 9, 16) ? 6 : 10) : 1.5;
+        var stapler = inR(h, 12, 13) ? 9 : (inR(h, 22, 24) || inR(h, 0, 5) ? 12 : 0);
+        var buero = inR(h, 7, 17) ? 9 + 2 * n[0][(q + 7) % 96] : 1.8;
+        var rest = (inR(h, 6, 18) ? 9 : 4) + 3 * n[3][(q + 11) % 96];
+        return [spritz * 0.58, spritz * 0.42, luft, kuehl, lueft, licht, stapler, buero, rest];
       },
       strat: 'spitze', devices: 9
     }

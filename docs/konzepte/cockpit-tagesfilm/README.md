@@ -4,11 +4,13 @@
 
 ## Zweck
 
-Das Cockpit ist die erste Seite nach der Anmeldung. Heute zeigt es Kreise um einen Knoten und darunter viele Karten. Wer wissen will, womit die Wallbox lädt oder warum der Speicher mittags aus dem Netz lädt, sucht an mehreren Stellen. Das Konzept beantwortet beides in einem Bild. Der Strom fließt sichtbar von Sonne, Speicher und Netz bis zu jedem Gerät, jetzt und für jede Viertelstunde des Tages. Darunter folgen Kacheln, die zum Betriebsmodell passen. Zuerst ist das Konzept fürs Telefon gebaut, danach für den Rechner.
+Das Cockpit ist die erste Seite nach der Anmeldung. Heute zeigt es Kreise um einen Knoten und darunter viele Karten. Wer wissen will, womit die Wallbox lädt oder warum der Speicher mittags aus dem Netz lädt, sucht an mehreren Stellen. Das Konzept beantwortet beides in einer Energiebilanz: woher der Strom kommt, wohin er fließt und welche Geräte ihn gerade verbrauchen. Das gilt jetzt und für jede Viertelstunde des Tages. Darunter folgen Kacheln, die zum Betriebsmodell passen. Zuerst ist das Konzept fürs Telefon gebaut, danach für den Rechner.
 
 Vorgaben aus der Abstimmung am 29.09.2026:
 
-- Der Energiefluss darf ungewöhnlich sein und soll beeindrucken.
+- Der Energiefluss soll ruhig und seriös wirken. Eine erste Fassung mit fließenden Teilchen war zu unruhig und wurde verworfen.
+- Die Umschaltung „Jetzt · kW / Heute · kWh“ bleibt.
+- Es muss mit beliebig vielen Verbrauchern funktionieren.
 - Das Cockpit bleibt reine Anzeige. Eingriffe laufen über Steuerung und Fahrplan.
 - Kachel-Vorschläge erscheinen nur im Dialog „Cockpit anpassen“.
 - Beim ersten Besuch gibt es keine Einführung. Das Cockpit muss sich selbst erklären.
@@ -17,51 +19,59 @@ Vorgaben aus der Abstimmung am 29.09.2026:
 
 ```mermaid
 flowchart TB
-  S1["PV-Fläche 1"] --> PV["Erzeugung"]
-  S2["PV-Fläche 2"] --> PV
-  PV --> H(("Hausanschluss"))
-  B["Speicher"] <--> H
-  N["Netz"] <--> H
-  H --> V["Verbrauch"]
-  V --> G1["Gerät 1"]
-  V --> G2["Gerät 2"]
-  V --> R["übriger Verbrauch (berechnet)"]
+  subgraph W["Woher kommt der Strom?"]
+    PV["Sonne"]
+    BA["Speicher entlädt"]
+    NB["Netzbezug"]
+  end
+  subgraph Z["Wohin fließt er?"]
+    V["Verbrauch"]
+    BL["Speicher lädt"]
+    NE["Einspeisung"]
+  end
+  PV --> V
+  PV --> BL
+  PV --> NE
+  BA --> V
+  NB --> V
+  NB --> BL
+  V --> L["Geräte als Liste: die größten zuerst, Rest als „n weitere“"]
 ```
 
-- **Oben Erzeugung, unten Verbrauch.** Speicher und Netz liegen links und rechts, weil ihr Strom in beide Richtungen fließt. Am Telefon und am Rechner gilt dieselbe Anordnung.
-- **Farbe heißt Herkunft.** Teilchen tragen die Farbe ihrer Quelle: Sonne, Speicher oder Netz. Bänder, die aus mehreren Quellen gespeist werden, zeigen je Quelle eine eigene Farbspur. Mischfarben gibt es nicht.
-- **Bewegung heißt „jetzt“.** Teilchen gibt es nur für Leistung in kW. Die Ansicht „Heute · kWh“ zeigt Energie und steht still; Pfeile zeigen dort die Richtung.
-- **Gestrichelt heißt Plan.** Rechts von „Jetzt“ zeigt die Bühne Plan und Prognose: gestrichelte Bänder und Knoten, hohle Teilchen, das Wort „Plan“. Für den Plan gibt es keine Aufteilung je Gerät; die Bühne zeigt dann nur „PV-Prognose“ und „Verbrauch“.
-- **Ziehen erklärt die Automatik.** Die Tagesleiste unter dem Fluss springt zu jeder Viertelstunde. Die Bühne zeigt dann die Messung und die Tätigkeit des Plans an dieser Stelle.
-- **Antippen zeigt die Zusammensetzung.** Jede Quelle und jedes Gerät öffnet am Telefon ein Blatt (`BottomSheet`), am Rechner das zentrierte `Modal`. Darin stehen Leistung, Energie heute und Herkunft.
+- **Woher und wohin.** Oben steht ein Balken für die Quellen, unten einer für die Ziele. Beide sind gleich lang, denn was ankommt, fließt ab. Bänder dazwischen zeigen, welcher Strom wohin geht (Sankey).
+- **Farbe heißt Herkunft.** Jedes Band trägt die Farbe seiner Quelle: kräftig an der Quelle, heller zum Ziel hin, mit feinen Lücken zwischen den Strömen. Mischfarben gibt es nicht.
+- **Jetzt und Heute.** „Jetzt“ zeigt Leistung in kW, „Heute“ die Energie seit Mitternacht in kWh, im selben Bild. In „Heute“ stehen Speicher und Netz oben und unten, weil sie in beide Richtungen geflossen sind.
+- **Beliebig viele Geräte.** Unter der Bilanz stehen die Geräte als Liste, sortiert nach Leistung (bzw. Energie heute). Am Telefon sind es höchstens vier Zeilen (sonst drei und „n weitere“), am Rechner sechs (sonst fünf). Das ganze Verzeichnis öffnet sich im Blatt, nach Art gruppiert (Laden, Wärme, Maschinen, Gebäude, Sonstiges) und mit Gruppensummen. Mit mehr als einer PV-Fläche gibt es dieselbe Liste für die Erzeugung.
+- **Schraffiert heißt Plan.** Die Tagesleiste springt zu jeder Viertelstunde. Rechts von „Jetzt“ sind die Balken schraffiert und die Bänder gestrichelt. Für den Plan gibt es keine Aufteilung je Gerät; die Liste zeigt dann nur „Verbrauchsprognose“ und „PV-Prognose“.
+- **Ruhig statt bewegt.** Nichts läuft endlos. Werte gleiten in 200 ms, wenn sie sich ändern, etwa beim Ziehen. Mit `prefers-reduced-motion` springen sie sofort.
+- **Antippen zeigt Einzelheiten.** Jeder Balkenteil und jede Zeile öffnet am Telefon ein Blatt (`BottomSheet`), am Rechner das zentrierte `Modal`.
 
 ## Aufbau
 
-**Telefon:** Kopf mit Anlage, Datenstand und Betriebsmodell. Darunter die Bühne mit Uhrzeit, Umschalter „Jetzt · kW / Heute · kWh“, einem Satz zum Moment, dem Fluss, der Tagesleiste und „Zahlen als Liste“. Am Fuß der Bühne steht die Steuerzeile. Danach folgen das Kachelraster (zwei Spalten, „klein“ oder „breit“), die leise Zustandszeile und „Cockpit anpassen“. Unten sitzt die vorhandene Leiste mit den fünf Bereichen.
+**Telefon:** Kopf mit Anlage, Datenstand und Betriebsmodell. Darunter die Bühne mit Uhrzeit, Umschalter „Jetzt · kW / Heute · kWh“, einem Satz zum Moment, der Bilanz, einer Statuszeile (Ladestand, Netz, Ziel oder Börsenpreis), „Verbrauch im Detail“, „Erzeugung im Detail“, der Tagesleiste und „Zahlen als Liste“. Am Fuß der Bühne steht die Steuerzeile. Danach folgen das Kachelraster (zwei Spalten, „klein“ oder „breit“), die leise Zustandszeile und „Cockpit anpassen“. Unten sitzt die vorhandene Leiste mit den fünf Bereichen.
 
-**Rechner:** Die Bühne steht zweispaltig. Links sind Fluss und Tagesleiste. Rechts steht „Dieser Moment“ mit vier Werten, darunter die Leitkachel. Das Kachelraster hat vier Spalten.
+**Rechner:** Die Bühne steht zweispaltig. Links sind Bilanz, die beiden Listen nebeneinander und die Tagesleiste. Rechts steht „Dieser Moment“ mit vier Werten, darunter die Leitkachel. Das Kachelraster hat vier Spalten.
 
-## Energiefluss: Regeln der Bühne
+## Energiebilanz: Regeln der Bühne
 
 | Thema | Regel |
 |---|---|
 | Datenquellen | `/topology` (Rollen, Mitglieder, `value_kw`), `/sources` (PV je Wechselrichter), `/consumers` und `/consumer-status`, `/chargers`. Das Portal fragt heute alle 10 s ab (`LIVE_POLL_MS`). |
 | Herkunft | Bilanziell mit Vorrang: Sonne zuerst in den Verbrauch, dann in den Speicher, dann ins Netz. Speicherentladung zuerst in den Verbrauch. Netzbezug zuerst in den Verbrauch, dann in den Speicher. Das Blatt nennt diese Regel. Offen ist, ob stattdessen anteilig verteilt wird. |
-| Breite | Bandbreite nach Leistung, mit festem Maßstab über den ganzen Tag. So wachsen und schrumpfen die Bänder beim Ziehen sichtbar. |
-| Totband | Unter 0,05 kW gibt es weder Band noch Teilchen, wie heute (`flowTempo`). |
-| Veraltet | Außerhalb des 5-Minuten-Fensters steht eine Uhrzeit („Stand: 13:31 Uhr“), keine Dauer. Veraltete Teile bekommen keine Teilchen. |
-| Fehlend | „—“ mit Grund. Fehlt ein Teil der Rest-Rechnung, wird kein Rest gebildet; die Bühne zeigt den Rest zusammen als „nicht aufgeteilt“ (siehe `verbrauchKomposition.ts`). |
+| Maßstab | Beide Balken füllen die Breite und zeigen Anteile; die Summe steht als Zahl daneben. Wie groß die Werte über den Tag sind, zeigt die Tagesleiste. |
+| Beschriftung | Im Balkenteil stehen Symbol, Name und Wert, wenn sie passen, sonst nur Wert oder Symbol. Was nicht passt, steht als kleine Legende direkt am Balken. |
+| Totband | Unter 0,05 kW gibt es keinen Balkenteil und kein Band, wie heute. |
+| Veraltet | Außerhalb des 5-Minuten-Fensters steht eine Uhrzeit („Stand: 13:31 Uhr“), keine Dauer. |
+| Fehlend | „—“ mit Grund. Fehlt ein Teil der Rest-Rechnung, wird kein Rest gebildet; die Liste zeigt den Rest zusammen als „nicht aufgeteilt“ (siehe `verbrauchKomposition.ts`). |
 | Gemessene Null | Neben erzeugenden Flächen: „liefert gerade keine Erzeugung“. Nachts wird nichts gekennzeichnet. |
-| Richtung | Als Wort (lädt, entlädt, Bezug, Einspeisung), nie als Minuszeichen. |
-| Ziel und Grenze | Lastspitzenkappung: Eine Klammer an der Netzleitung ist so breit, wie der Netzbezug am Ziel wäre. Eine § 14a-Grenze würde genauso gezeigt. |
-| Sonne | Ein Sonnenbogen über der Erzeugung zeigt den Stand der Sonne und die Sonnenstärke (`/weather`, `ghiWM2`). Kundenwort ist „Sonnenstärke“. |
-| Bewegung | Mit `prefers-reduced-motion` gibt es keine Teilchen, sondern Pfeile. Die neue Endlosschleife gehört in den zentralen Block am Ende von `src/index.css`. |
+| Richtung | Aus der Anordnung (oben woher, unten wohin) und als Wort (lädt, entlädt, Netzbezug, Einspeisung), nie als Minuszeichen. |
+| Ziel und Grenze | Lastspitzenkappung und § 14a: Das Ziel steht in der Statuszeile unter der Bilanz; die Tiefe liefert die Kachel „Lastspitze“. |
 
 ### Farben der Rollen
 
 Die heutige Flusspalette fällt bei der Farbprüfung (Methode des Dataviz-Validators, OKLab) durch. Netz `#0ea5a3` und Speicher `#16a34a` liegen auch bei normalem Farbsehen nur ΔE 12,2 auseinander; die Grenze ist 15. PV `#f59e0b` hat auf Weiß 2,15 : 1. Aus vorhandenen Tokens besteht diese Zuordnung alle Prüfungen:
 
-| Rolle | Linie und Teilchen | Token |
+| Rolle | Bänder, Linien, Symbole | Token |
 |---|---|---|
 | PV | `#e65100` | `--vp-chart-pv-line` / `--vp-c-chart-pv` |
 | Speicher | `#166534` | `--vp-flow-batt-ink` / `--vp-c-chart-soc` |
@@ -85,7 +95,7 @@ Links von „Jetzt“ stammen die Werte aus `/history?range=day` (Viertelstunden
 | | Eigenverbrauchs-Fahrplan (privat) | Marktoptimierung | Lastspitzenkappung | Ladepark-Lastmanagement | Anlage beobachten |
 |---|---|---|---|---|---|
 | Leitkachel (Stern) | Unterm Strich | Börsenpreis | Lastspitze | Ladebudget | keine |
-| Kacheln zu Beginn | Autarkie, Eigenverbrauch, Speicher, Wärmepumpe, Sonne, Laden, Fahrplan | Börsenpreis, Sonne, Speicher, Handel, Unterm Strich, Netz heute | Lastspitze, Lastspitzen-Reserve, Sonne, Größte Verbraucher, Unterm Strich | Ladebudget, Laden, Netz heute | Sonne, Netz heute, Autarkie |
+| Kacheln zu Beginn | Autarkie, Eigenverbrauch, Speicher, Wärmepumpe, Sonne, Laden, Fahrplan | Börsenpreis, Sonne, Speicher, Handel, Unterm Strich, Netz heute | Lastspitze, Lastspitzen-Reserve, Sonne, Unterm Strich, Netz heute | Ladebudget, Laden, Netz heute | Sonne, Netz heute, Autarkie |
 | Geld | eine Zahl, Ton „sparen“ | eine Zahl, Ton „verdienen“ | eine Zahl, Ton „verdienen“ | kein Geld | kein Geld (reine Messanlage) |
 
 Neu gegenüber heute: Bei Marktoptimierung führt der Börsenpreis statt des Geldes. Das folgt dem Wunsch, dass unter dem Fluss zuerst Börsenpreis, Sonne und Speicher stehen. Die heutige Reihenfolge der Leitblöcke steht in `leadSlot.ts` (Lastspitze, dann Geld, dann Fluss). Atypische Netznutzung bekommt weiterhin keinen Baustein.
@@ -105,7 +115,6 @@ Jede Kachel ist gleich aufgebaut. Oben steht der Kopf mit Symbol, Name und Ziel.
 | Handel | Lade- und Verkaufsfenster mit Ø-Preis, Vollzyklen | `/schedule`, `/history` | Marktoptimierung |
 | Lastspitze | Viertelstundenmittel, Ziel, Monatsspitze, Wert ohne Speicher | `/telemetry`, `/schedule` (`peakTargetKw`), `/earnings` (`peakShaving`) | Lastspitzenkappung |
 | Lastspitzen-Reserve | Ladestand gegen Reserve | `/topology`, Einstellung „Lastspitzen-Reserve“ | Lastspitzenkappung |
-| Größte Verbraucher | Unterzähler nach Leistung, mit Datenstand | `/topology` (Mitglieder) | mindestens zwei gemessene Verbraucher |
 | Laden | Ladepunkt, Steuerart, Energie heute | `/chargers` | Ladepunkt |
 | Wärmepumpe | Freigabe „Anlaufempfehlung“ (SG-Ready), Leistung, wenn gemessen | `/consumers`, `/consumer-status` | Wärmepumpe |
 | Fahrplan (Tagesuhr) | Tätigkeiten des Plans über 24 Stunden | `/schedule` (`slotRole`) | Speicher |
@@ -126,7 +135,7 @@ Die Steuerzeile am Fuß der Bühne trennt Auftrag, Geräteantwort und gemessene 
 
 ## Ehrlichkeitsregeln im Bild
 
-- Messung, Plan und Prognose haben verschiedene Formen: durchgezogen, gestrichelt, hohl.
+- Messung und Plan haben verschiedene Formen: gefüllt gegen schraffiert, durchgezogen gegen gestrichelt.
 - kW gilt für „jetzt“, kWh für „heute“. Die Einheit steht am Umschalter und an jedem Wert.
 - Pro Schirm steht eine Geldzahl („Unterm Strich“).
 - Sätze beschreiben, was gemessen wurde. Eine Ursache nennen sie nur mit Plan-Angabe („Plan: Günstig aus dem Netz laden“).
@@ -137,7 +146,7 @@ Die Steuerzeile am Fuß der Bühne trennt Auftrag, Geräteantwort und gemessene 
 
 | heute | im Konzept |
 |---|---|
-| Verbraucher stehen an bis zu fünf Stellen: Flussknoten, Komponenten-Zeilen, Aufklapper, steuerbare Verbraucher, Laden. | einmal im Fluss, Einzelheiten im Blatt, Tabelle unter „Zahlen als Liste“ |
+| Verbraucher stehen an bis zu fünf Stellen: Flussknoten, Komponenten-Zeilen, Aufklapper, steuerbare Verbraucher, Laden. Mit jedem Gerät wird das Bild voller. | einmal in der Liste unter der Bilanz, das ganze Verzeichnis im Blatt; eine eigene Kachel „Größte Verbraucher“ braucht es nicht |
 | Der Plan steht am Rechner bis zu viermal: Bühne, Börsenpreis-Streifen, Fahrplan-Band, Handel. | eine Kachel (Tagesuhr bzw. Börsenpreis), dazu das Plan-Wort in der Tagesleiste |
 | Der Stern ändert kaum etwas (nur `.is-lead` an einer Kachel). | Die Leitkachel steht am Rechner neben dem Fluss, am Telefon zuerst. |
 | Die Flusspalette fällt bei der Farbprüfung durch (siehe oben). | Linienstufen aus vorhandenen Tokens |
@@ -148,7 +157,7 @@ Die Steuerzeile am Fuß der Bühne trennt Auftrag, Geräteantwort und gemessene 
 ## Umsetzung in Schritten
 
 1. Palette und Symbole: Linienstufen der Rollen, Strommast und Wärmepumpe in `designsystem/components/core/Icon.jsx`. Kein Backend.
-2. Bühne „Jetzt“: Fluss, Teilchen und Aufschlüsselung aus vorhandenen Endpunkten, Blätter über `BottomSheet` und `Modal`. Kein Backend.
+2. Bühne „Jetzt“: Bilanz und Gerätelisten aus vorhandenen Endpunkten, Blätter über `BottomSheet` und `Modal`. Die Gruppe eines Geräts (Laden, Wärme, Maschinen, Gebäude) kommt aus seiner Art. Kein Backend.
 3. Tagesleiste: `/history?range=day` und `/schedule`. Für die Vergangenheit je Gerät braucht es einen Verlaufsabruf je Komponente; die Last ist zu prüfen.
 4. Katalog und Größen: `anwendungen/catalog.json` (beide Kopien), `cockpitLayout.ts`, Layout-Dokument additiv um die Größe erweitern.
 5. Voreinstellung je Betriebsmodell statt nur „privat“ und „gewerbe“.
@@ -156,8 +165,8 @@ Die Steuerzeile am Fuß der Bühne trennt Auftrag, Geräteantwort und gemessene 
 
 ## Offene Entscheidungen
 
-- Herkunftsregel der Teilchenfarben: Vorrang wie oben oder anteilig?
-- Obergrenze für Teilchen auf älteren Telefonen und im Stromsparmodus.
+- Herkunftsregel der Bänder: Vorrang wie oben oder anteilig?
+- Wie viele Geräte die Liste zeigt, bevor „weitere“ greift, und ob Kunden Geräte anheften dürfen, die immer oben stehen.
 - Trendleistung bis zum Ende der Viertelstunde für die Lastspitze: eine neue Ableitung aus `/telemetry`.
 - Reichen zwei Kachelgrößen?
 - Kundenname der Funktion: „Tagesleiste“ oder „Tagesfilm“.

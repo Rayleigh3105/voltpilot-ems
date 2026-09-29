@@ -75,7 +75,8 @@
     clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
     trend: '<path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/>',
     up: '<path d="M12 19V5M5 12l7-7 7 7"/>', down: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
-    thermo: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>'
+    thermo: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>',
+    bulb: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6M10 22h4"/>'
   };
   function ic(n, s, cls) {
     s = s || 20;
@@ -130,10 +131,10 @@
     if (m.fut) return [{ id: 'prog', name: 'Verbrauch', full: 'Verbrauchsprognose', kw: m.load, icon: 'house', ghost: true }];
     var stale = null;
     v.cons.forEach(function (c) { if (c.staleFromQ != null && m.q >= c.staleFromQ) stale = c; });
-    if (!stale) return v.cons.map(function (c, j) { return { id: c.id, name: c.short, full: c.name, kw: m.cons[j], icon: c.icon, rest: !!c.rest }; });
+    if (!stale) return v.cons.map(function (c, j) { return { id: c.id, name: c.short, full: c.name, kw: m.cons[j], icon: c.icon, rest: !!c.rest, gruppe: c.gruppe }; });
     var out = [], known = 0;
     v.cons.forEach(function (c, j) {
-      if (c !== stale && !c.rest) { out.push({ id: c.id, name: c.short, full: c.name, kw: m.cons[j], icon: c.icon }); known += m.cons[j]; }
+      if (c !== stale && !c.rest) { out.push({ id: c.id, name: c.short, full: c.name, kw: m.cons[j], icon: c.icon, gruppe: c.gruppe }); known += m.cons[j]; }
     });
     var sj = v.cons.indexOf(stale);
     out.push({ id: 'merged', name: stale.short + ' + übriger', full: stale.name + ' und übriger Verbrauch', kw: Math.max(0, m.load - known), icon: 'plug', merged: true, stale: stale, lastKw: v.day.cons[stale.staleFromQ - 1][sj] });
@@ -179,191 +180,74 @@
     return p2 + 'Das Netz deckt den Verbrauch.';
   }
 
-  /* ---------- Pfad-Helfer ---------- */
-  function pt(x, y, k) { return { x: x, y: y, k: k }; }
-  function sLine(a, b, k, out) { var L = Math.hypot(b.x - a.x, b.y - a.y), n = Math.max(2, Math.ceil(L / 4)); for (var i = 0; i <= n; i++) { var t = i / n; out.push(pt(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, k)); } }
-  function sQuad(a, c, b, k, out) { var n = 14; for (var i = 0; i <= n; i++) { var t = i / n, u = 1 - t; out.push(pt(u * u * a.x + 2 * u * t * c.x + t * t * b.x, u * u * a.y + 2 * u * t * c.y + t * t * b.y, k)); } }
-  function sCubic(a, c1, c2, b, k, out) { var n = 28; for (var i = 0; i <= n; i++) { var t = i / n, u = 1 - t; out.push(pt(u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * b.x, u * u * u * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.y, k)); } }
-  function finalize(pts) { var L = [0]; for (var i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)); return { p: pts, L: L, len: L[L.length - 1] }; }
-  function cub(a, b, bend) { var k = (b.y - a.y) * bend; return [a, { x: a.x, y: a.y + k }, { x: b.x, y: b.y - k }, b]; }
-  function cubicD(c) { return 'M' + c[0].x + ',' + c[0].y + ' C' + c[1].x + ',' + c[1].y + ' ' + c[2].x + ',' + c[2].y + ' ' + c[3].x + ',' + c[3].y; }
-  function cubicAt(c, t) { var u = 1 - t; return { x: u * u * u * c[0].x + 3 * u * u * t * c[1].x + 3 * u * t * t * c[2].x + t * t * t * c[3].x, y: u * u * u * c[0].y + 3 * u * u * t * c[1].y + 3 * u * t * t * c[2].y + t * t * t * c[3].y }; }
+  /* ---------- SVG-Helfer ---------- */
   var SVGNS = 'http://www.w3.org/2000/svg';
   function svgEl(tag, attrs, parent) { var e = document.createElementNS(SVGNS, tag); for (var a in attrs) e.setAttribute(a, attrs[a]); if (parent) parent.appendChild(e); return e; }
 
-  /* ================= Die Bühne: Fluss + Tagesleiste ================= */
+  /* ================= Die Bühne: Energiebilanz + Tagesleiste =================
+     Oben „Woher kommt der Strom?“, unten „Wohin fließt er?“, dazwischen ruhige Bänder
+     in der Farbe der Herkunft. Beide Balken sind gleich lang: Was ankommt, fließt ab.
+     Die Geräte stehen darunter als sortierte Liste, damit beliebig viele Platz haben. */
+  var ROLES = {
+    pv: { name: 'Sonne', icon: 'sun', col: 'var(--pv)', soft: 'var(--pv-soft)' },
+    batt: { name: 'Speicher', icon: 'battery', col: 'var(--batt)', soft: 'var(--batt-soft)' },
+    grid: { name: 'Netz', icon: 'pole', col: 'var(--grid)', soft: 'var(--grid-soft)' },
+    load: { name: 'Verbrauch', icon: 'house', col: 'var(--load)', soft: 'var(--load-soft)' }
+  };
+  var SRC_ORDER = ['pv', 'batt', 'grid'], DST_ORDER = ['load', 'batt', 'grid'];
+  var PAIRS = ['pv>load', 'pv>batt', 'pv>grid', 'batt>load', 'batt>grid', 'grid>load', 'grid>batt'];
+
   function Flow(root, v, opts) {
     this.root = root; this.v = v; this.opts = opts || {};
-    this.el = $('.flow', root); this.strip = $('.strip', root);
-    this.mode = 'jetzt'; this.q = v.nowQ; this.playing = false; this.parts = []; this.acc = {};
-    this.cur = {}; this.tgt = {}; this.sig = ''; this.routes = {}; this.visible = true; this.alive = true; this.tLast = 0;
-    this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d');
+    this.el = $('.flow', root); this.det = $('.det', root); this.strip = $('.strip', root);
+    this.mode = 'jetzt'; this.q = v.nowQ; this.playing = false; this.alive = true;
+    this.cur = null; this.tgt = null;
+    this.build();
     this.bind();
-    this.layout();
+    this.buildStrip();
     this.setQ(v.nowQ);
     var self = this;
-    this.ro = new ResizeObserver(function () { self.layout(); self.apply(true); });
+    this.ro = new ResizeObserver(function () { self.buildStrip(); self.updateStrip(); self.labels(); });
     this.ro.observe(this.el);
-    if ('IntersectionObserver' in window) {
-      this.io = new IntersectionObserver(function (es) { self.visible = es[0].isIntersecting; }, { threshold: 0 });
-      this.io.observe(this.el);
-    }
-    this.raf = requestAnimationFrame(function (t) { self.tick(t); });
   }
   Flow.prototype.destroy = function () {
     this.alive = false; cancelAnimationFrame(this.raf); clearInterval(this.playT);
-    if (this.ro) this.ro.disconnect(); if (this.io) this.io.disconnect();
+    if (this.ro) this.ro.disconnect();
   };
-  Flow.prototype.geom = function () {
-    var w = Math.max(280, this.el.clientWidth), c = w < 560, cx = Math.round(w / 2);
-    var g = c
-      ? { skyBase: 56, skyApex: 8, skyPad: 16, srcIconY: 118, srcR: 14, pvY: 186, pvR: 24, hubY: 256, battX: 34, battW: 30, battH: 48, gridX: w - 34, gridR: 21, loadY: 366, loadR: 24, conIconY: 436, conR: 14, h: 518, maxW: 26, R: 14, pr: 2.1 }
-      : { skyBase: 68, skyApex: 10, skyPad: 40, srcIconY: 146, srcR: 16, pvY: 226, pvR: 30, hubY: 308, battX: Math.round(w * 0.14), battW: 36, battH: 58, gridX: Math.round(w * 0.86), gridR: 27, loadY: 396, loadR: 30, conIconY: 478, conR: 16, h: 566, maxW: 40, R: 18, pr: 2.6 };
-    g.w = w; g.c = c; g.cx = cx;
-    return g;
-  };
-  Flow.prototype.colXs = function (n) {
-    var g = this.g, avail = g.w - (g.c ? 20 : 90), gap = Math.min(g.c ? 116 : 176, avail / Math.max(n, 1));
-    var xs = []; for (var i = 0; i < n; i++) xs.push(Math.round(g.cx + (i - (n - 1) / 2) * gap));
-    return { xs: xs, gap: gap };
-  };
-  Flow.prototype.layout = function () {
-    this.g = this.geom();
-    var dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.el.style.height = this.g.h + 'px';
-    this.canvas.width = Math.round(this.g.w * dpr); this.canvas.height = Math.round(this.g.h * dpr);
-    this.canvas.style.width = this.g.w + 'px'; this.canvas.style.height = this.g.h + 'px';
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.sig = ''; // Neuaufbau erzwingen
-    this.buildStrip();
-  };
-
-  /* Aufbau der Knoten und Bänder, wenn sich die Struktur ändert */
-  Flow.prototype.build = function (m) {
-    var g = this.g, v = this.v, el = this.el, self = this;
-    el.innerHTML = '';
-    var svg = svgEl('svg', { viewBox: '0 0 ' + g.w + ' ' + g.h, width: g.w, height: g.h, 'aria-hidden': 'true' });
-    el.appendChild(svg); el.appendChild(this.canvas);
-    this.svg = svg;
-    // Himmel mit Sonnenbogen (Sonnenstärke aus der Wettervorhersage, Stand der Sonne aus der Uhrzeit)
-    var defs = svgEl('defs', {}, svg);
-    var lg = svgEl('linearGradient', { id: 'sky-' + v.key, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
-    this.skyStop1 = svgEl('stop', { offset: '0%', 'stop-color': C.sky, 'stop-opacity': 0.5 }, lg);
-    svgEl('stop', { offset: '100%', 'stop-color': C.sky, 'stop-opacity': 0 }, lg);
-    var x0 = g.skyPad, x1 = g.w - g.skyPad, cy = 2 * g.skyApex - g.skyBase;
-    this.sky = { x0: x0, x1: x1, cy: cy };
-    svgEl('path', { d: 'M' + x0 + ',' + g.skyBase + ' Q' + g.cx + ',' + cy + ' ' + x1 + ',' + g.skyBase + ' Z', fill: 'url(#sky-' + v.key + ')' }, svg);
-    svgEl('path', { d: 'M' + x0 + ',' + g.skyBase + ' Q' + g.cx + ',' + cy + ' ' + x1 + ',' + g.skyBase, fill: 'none', stroke: C.border, 'stroke-width': 1.5 }, svg);
-    svgEl('text', { x: x0, y: g.skyBase + 15, 'text-anchor': 'start', class: 'sky-lbl' }, svg).textContent = '07:18';
-    svgEl('text', { x: x1, y: g.skyBase + 15, 'text-anchor': 'end', class: 'sky-lbl' }, svg).textContent = '19:08';
-    this.sunGlow = svgEl('circle', { r: 16, fill: C.pvFill, opacity: 0.2 }, svg);
-    this.sun = svgEl('circle', { r: g.c ? 7 : 8, fill: C.pvFill, stroke: C.card, 'stroke-width': 2 }, svg);
-    this.sunLbl = svgEl('text', { class: 'sky-lbl' }, svg);
-
-    var src = m.src, con = m.con;
-    var sx = this.colXs(src.length), cxs = this.colXs(con.length);
-    this.sx = sx; this.cxs = cxs;
-    // Geometrie der Bänder
-    var pvTop = { x: g.cx, y: g.pvY - g.pvR }, pvBot = { x: g.cx, y: g.pvY + g.pvR };
-    var hub = { x: g.cx, y: g.hubY };
-    var battR = { x: g.battX + g.battW / 2 + 2, y: g.hubY }, gridL = { x: g.gridX - g.gridR - 2, y: g.hubY };
-    var loadTop = { x: g.cx, y: g.loadY - g.loadR }, loadBot = { x: g.cx, y: g.loadY + g.loadR };
-    this.E = {};
-    var E = this.E;
-    src.forEach(function (s, i) { E['src' + i] = { c: cub({ x: sx.xs[i], y: g.srcIconY + g.srcR }, pvTop, 0.5) }; });
-    E.pv = { a: pvBot, b: { x: g.cx, y: g.hubY - 8 } };
-    E.batt = { a: battR, b: { x: g.cx - 8, y: g.hubY } };
-    E.grid = { a: { x: g.cx + 8, y: g.hubY }, b: gridL };
-    E.load = { a: { x: g.cx, y: g.hubY + 8 }, b: loadTop };
-    con.forEach(function (c, j) { E['con' + j] = { c: cub(loadBot, { x: cxs.xs[j], y: g.conIconY - g.conR }, 0.5) }; });
-    // Leitungen (immer sichtbar) und Bänder
-    var gBase = svgEl('g', {}, svg), gRib = svgEl('g', {}, svg);
-    this.gArrows = svgEl('g', {}, svg);
-    Object.keys(E).forEach(function (k) {
-      var e = E[k], d = e.c ? cubicD(e.c) : 'M' + e.a.x + ',' + e.a.y + ' L' + e.b.x + ',' + e.b.y;
-      e.d = d;
-      svgEl('path', { d: d, fill: 'none', stroke: C.base, 'stroke-width': 2, 'stroke-linecap': 'round' }, gBase);
-      e.lanes = [];
-      e.axis = (k === 'batt' || k === 'grid') ? 'y' : 'x';
-      var nL = (k === 'batt' || k === 'grid') ? 2 : 1;
-      for (var l = 0; l < nL; l++) {
-        e.lanes.push({
-          parts: [0, 1, 2].map(function () { return svgEl('path', { d: d, class: 'rib', stroke: C.base, 'stroke-width': 0, opacity: 0 }, gRib); }),
-          core: svgEl('path', { d: d, class: 'rib', stroke: C.base, 'stroke-width': 1.4, opacity: 0 }, gRib)
-        });
-      }
-    });
-    // Ziel-Klammer (Lastspitzenkappung): so breit, wie der Netzbezug am Ziel wäre
-    if (v.ziel) {
-      this.ziel = svgEl('g', {}, svg);
-      var zx = gridL.x - 10;
-      this.zielPath = svgEl('path', { fill: 'none', stroke: C.plan, 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, this.ziel);
-      this.zielTxt = svgEl('text', { x: zx - 2, 'text-anchor': 'middle', class: 'ziel-lbl' }, this.ziel);
-      this.zielTxt.textContent = 'Ziel';
-      this.zielX = zx;
-    }
-    // Knoten (HTML, liegen über den Teilchen)
-    var html = '';
-    html += '<button type="button" class="fnode" data-node="pv" style="--hue:var(--pv);left:' + g.cx + 'px;top:' + g.pvY + 'px;width:' + 2 * g.pvR + 'px;height:' + 2 * g.pvR + 'px" aria-label="Erzeugung">' + ic('sun', g.c ? 22 : 26) + '</button>';
-    html += '<div class="flab r" data-l="pv" style="left:' + (g.cx + g.pvR + 10) + 'px;top:' + (g.pvY - 18) + 'px"></div>';
-    html += '<span class="fnode hub" style="left:' + g.cx + 'px;top:' + g.hubY + 'px" aria-hidden="true"></span>';
-    html += '<button type="button" class="fbatt" data-node="batt" style="left:' + g.battX + 'px;top:' + g.hubY + 'px;width:' + g.battW + 'px;height:' + g.battH + 'px" aria-label="Speicher"><span class="lvl"></span>' + (v.batt.reserve ? '<span class="res" style="bottom:' + (3 + (g.battH - 10) * v.batt.reserve / 100) + 'px"></span>' : '') + '</button>';
-    html += '<div class="flab" data-l="batt" style="left:' + Math.max(2, g.battX - g.battW / 2 - 4) + 'px;top:' + (g.hubY + g.battH / 2 + 8) + 'px"></div>';
-    html += '<button type="button" class="fnode" data-node="grid" style="--hue:var(--grid);left:' + g.gridX + 'px;top:' + g.hubY + 'px;width:' + 2 * g.gridR + 'px;height:' + 2 * g.gridR + 'px" aria-label="Netz">' + ic('pole', g.c ? 20 : 24) + '</button>';
-    html += '<div class="flab" data-l="grid" style="right:' + Math.max(2, g.w - g.gridX - g.gridR - 4) + 'px;top:' + (g.hubY + g.gridR + 8) + 'px;text-align:right"></div>';
-    html += '<button type="button" class="fnode" data-node="load" style="--hue:var(--load);left:' + g.cx + 'px;top:' + g.loadY + 'px;width:' + 2 * g.loadR + 'px;height:' + 2 * g.loadR + 'px" aria-label="Verbrauch">' + ic('house', g.c ? 22 : 26) + '</button>';
-    html += '<div class="flab r" data-l="load" style="left:' + (g.cx + g.loadR + 10) + 'px;top:' + (g.loadY - 18) + 'px"></div>';
-    src.forEach(function (s, i) {
-      var x = sx.xs[i];
-      html += '<button type="button" class="fcol-ico' + (s.ghost ? ' ghost' : '') + '" data-node="src" data-i="' + i + '" style="--hue:var(--pv);left:' + x + 'px;top:' + g.srcIconY + 'px;width:' + 2 * g.srcR + 'px;height:' + 2 * g.srcR + 'px" aria-label="' + s.name + '">' + ic(s.icon, g.c ? 15 : 17) + '</button>';
-      html += '<div class="fcap top" data-l="src' + i + '" style="left:' + x + 'px;top:' + (g.srcIconY - g.srcR - 4) + 'px;--cw:' + Math.round(sx.gap - 6) + 'px"></div>';
-    });
-    con.forEach(function (c, j) {
-      var x = cxs.xs[j];
-      html += '<button type="button" class="fcol-ico' + (c.ghost ? ' ghost' : '') + (c.merged ? ' stale' : '') + '" data-node="con" data-i="' + j + '" style="--hue:var(--load);left:' + x + 'px;top:' + g.conIconY + 'px;width:' + 2 * g.conR + 'px;height:' + 2 * g.conR + 'px" aria-label="' + (c.full || c.name) + '">' + ic(c.icon, g.c ? 15 : 17) + '</button>';
-      html += '<div class="fcap" data-l="con' + j + '" style="left:' + x + 'px;top:' + (g.conIconY + g.conR + 5) + 'px;--cw:' + Math.round(cxs.gap - 6) + 'px"></div>';
-    });
-    el.insertAdjacentHTML('beforeend', html);
-    this.lab = {};
-    $$('[data-l]', el).forEach(function (n) { self.lab[n.getAttribute('data-l')] = n; });
-    this.battBtn = $('.fbatt', el);
-    $$('[data-node]', el).forEach(function (b) {
-      b.addEventListener('click', function () { self.opts.onNode && self.opts.onNode(b.getAttribute('data-node'), +b.getAttribute('data-i'), self.m, b); });
-    });
-    this.routes = {}; this.parts = [];
-    this.buildRoutes(src, con);
-  };
-
-  /* Teilchen-Wege: Quelle → Hausanschluss → Ziel, mit weicher Kurve am Knoten */
-  Flow.prototype.buildRoutes = function (src, con) {
-    var g = this.g, E = this.E, R = g.R, cx = g.cx, hy = g.hubY, self = this;
-    var inb = {
-      pv: function (i, out) { var c = E['src' + i].c; sCubic({ x: c[0].x, y: g.srcIconY }, c[1], c[2], c[3], 'src' + i, out); sLine(c[3], { x: cx, y: g.pvY + g.pvR }, 'pv', out); sLine({ x: cx, y: g.pvY + g.pvR }, { x: cx, y: hy - R }, 'pv', out); return { x: cx, y: hy - R }; },
-      batt: function (i, out) { sLine({ x: g.battX, y: hy }, { x: cx - R, y: hy }, 'batt', out); return { x: cx - R, y: hy }; },
-      grid: function (i, out) { sLine({ x: g.gridX, y: hy }, { x: cx + R, y: hy }, 'grid', out); return { x: cx + R, y: hy }; }
+  Flow.prototype.build = function () {
+    var self = this;
+    var seg = function (side, r) {
+      return '<button type="button" class="seg-b ' + side + '" data-role="' + r + '" style="--hue:' + ROLES[r].col + ';--soft:' + ROLES[r].soft + '"><span class="seg-in">' + ic(ROLES[r].icon, 16) + '<span class="seg-t"></span></span></button>';
     };
-    var outb = {
-      load: function (j, out) { sLine({ x: cx, y: hy + R }, { x: cx, y: g.loadY + g.loadR }, 'load', out); var c = E['con' + j].c; sCubic(c[0], c[1], c[2], { x: c[3].x, y: g.conIconY }, 'con' + j, out); },
-      batt: function (j, out) { sLine({ x: cx - R, y: hy }, { x: g.battX, y: hy }, 'batt', out); },
-      grid: function (j, out) { sLine({ x: cx + R, y: hy }, { x: g.gridX, y: hy }, 'grid', out); }
-    };
-    var start = { load: { x: cx, y: hy + R }, batt: { x: cx - R, y: hy }, grid: { x: cx + R, y: hy } };
-    this.route = function (S, K, i, j) {
-      var key = S + '>' + K + '|' + i + '|' + j;
-      if (self.routes[key]) return self.routes[key];
-      var pts = [];
-      var e = inb[S](i, pts);
-      sQuad(e, { x: cx, y: hy }, start[K], 'hub', pts);
-      outb[K](j, pts);
-      return (self.routes[key] = finalize(pts));
-    };
+    this.el.innerHTML =
+      '<div class="bal-h"><span>Woher kommt der Strom?</span><b data-tot="src"></b></div>' +
+      '<p class="bal-more" data-more="src" hidden></p>' +
+      '<div class="bal-bar src">' + SRC_ORDER.map(function (r) { return seg('src', r); }).join('') + '</div>' +
+      '<svg class="bal-links" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true"><defs>' +
+      SRC_ORDER.map(function (r) { return '<linearGradient id="lg-' + r + '-' + self.v.key + '" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="' + SRC_COL[r] + '" stop-opacity="1"/><stop offset="1" stop-color="' + SRC_COL[r] + '" stop-opacity=".45"/></linearGradient>'; }).join('') +
+      '</defs>' + PAIRS.map(function (p) { return '<path data-pair="' + p + '"/>'; }).join('') + '</svg>' +
+      '<div class="bal-bar dst">' + DST_ORDER.map(function (r) { return seg('dst', r); }).join('') + '</div>' +
+      '<p class="bal-more" data-more="dst" hidden></p>' +
+      '<div class="bal-h"><span>Wohin fließt er?</span><b data-tot="dst"></b></div>' +
+      '<p class="bal-status"></p>';
+    this.segs = { src: {}, dst: {} };
+    $$('.seg-b', this.el).forEach(function (b) {
+      self.segs[b.classList.contains('src') ? 'src' : 'dst'][b.getAttribute('data-role')] = b;
+      b.addEventListener('click', function () { self.opts.onNode && self.opts.onNode(b.getAttribute('data-role'), 0, self.m, b); });
+    });
+    this.paths = {};
+    $$('.bal-links path', this.el).forEach(function (p) {
+      var k = p.getAttribute('data-pair');
+      self.paths[k] = p; p.setAttribute('fill', 'url(#lg-' + k.split('>')[0] + '-' + self.v.key + ')'); p.setAttribute('stroke', SRC_COL[k.split('>')[0]]);
+    });
+    this.det.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-node]'); if (!b || !self.det.contains(b)) return;
+      self.opts.onNode && self.opts.onNode(b.getAttribute('data-node'), +(b.getAttribute('data-i') || 0), self.m, b);
+    });
   };
-
   Flow.prototype.setMode = function (mode) {
     this.mode = mode;
     if (mode === 'heute' && this.q > this.v.nowQ) this.q = this.v.nowQ;
-    this.parts = [];
     this.buildStrip();
     this.setQ(this.q);
   };
@@ -373,234 +257,138 @@
     this.q = q;
     var m = momentAt(v, q, this.mode);
     this.m = m;
-    var sig = this.mode + '|' + m.src.map(function (s) { return s.id; }).join(',') + '|' + m.con.map(function (c) { return c.id; }).join(',') + '|' + this.g.w;
-    if (sig !== this.sig) { this.sig = sig; this.build(m); }
-    this.apply(false);
+    this.el.classList.toggle('plan', m.fut);
+    this.el.classList.toggle('heute', m.heute);
+    this.animateTo(this.layout(m));
+    this.labels();
+    this.details();
     this.updateStrip();
     if (this.opts.onMoment) this.opts.onMoment(m, this);
   };
 
-  /* Werte in Knoten, Beschriftung und Zielbreiten der Bänder übertragen */
-  Flow.prototype.apply = function (instant) {
-    var m = this.m, v = this.v, g = this.g, L = this.lab, P = m.pairs, E = this.E, self = this;
-    if (!m || !E) return;
-    var heute = m.heute, scale = heute ? v.kMax : v.fMax, fmt = heute ? kwh : kw;
-    var W = function (x) { return x > (heute ? 0.05 : DB) ? Math.max(2.5, g.maxW * x / scale) : 0; };
-    // Himmel
-    var f = (m.hour - v.rise) / (v.set - v.rise);
-    var day = !heute && f > 0 && f < 1;
-    if (heute) f = clamp(f, 0, 1);
-    var sx = this.sky.x0 + (this.sky.x1 - this.sky.x0) * clamp(f, 0, 1);
-    var ft = clamp(f, 0, 1), u = 1 - ft;
-    var sy = u * u * g.skyBase + 2 * u * ft * this.sky.cy + ft * ft * g.skyBase;
-    var showSun = heute || day;
-    this.sun.setAttribute('cx', sx); this.sun.setAttribute('cy', sy);
-    this.sunGlow.setAttribute('cx', sx); this.sunGlow.setAttribute('cy', sy);
-    this.sunGlow.setAttribute('r', (g.c ? 9 : 11) + 16 * clamp(m.irr / 860, 0, 1));
-    this.sun.style.display = showSun ? '' : 'none'; this.sunGlow.style.display = showSun && !heute ? '' : 'none';
-    this.skyStop1.setAttribute('stop-color', day || heute ? C.sky : C.navy);
-    this.skyStop1.setAttribute('stop-opacity', day || heute ? 0.5 : 0.14);
-    var lbl = this.sunLbl;
-    if (heute) { lbl.textContent = ''; }
-    else if (day) {
-      lbl.textContent = NF0.format(m.irr) + ' W/m²' + (m.fut ? ' erwartet' : '');
-      var right = f < 0.5;
-      lbl.setAttribute('x', sx + (right ? 14 : -14)); lbl.setAttribute('y', sy + 4);
-      lbl.setAttribute('text-anchor', right ? 'start' : 'end');
-    } else { lbl.textContent = 'Sonne unter dem Horizont'; lbl.setAttribute('x', g.cx); lbl.setAttribute('y', g.skyBase - 14); lbl.setAttribute('text-anchor', 'middle'); }
-
-    // Beschriftung
-    L.pv.innerHTML = '<b>' + fmt(m.pv) + '</b>' + (heute ? 'erzeugt' : m.fut ? 'Erzeugung erwartet' : 'Erzeugung');
-    L.load.innerHTML = '<b>' + fmt(m.load) + '</b>' + (heute ? 'verbraucht' : m.fut ? 'Verbrauch erwartet' : 'Verbrauch');
-    var bstate;
-    if (heute) bstate = 'geladen ' + kwh(m.chg) + '<br>abgegeben ' + kwh(m.dis);
-    else bstate = m.chg > DB ? 'lädt ' + kw(m.chg) : m.dis > DB ? 'entlädt ' + kw(m.dis) : 'ruht';
-    L.batt.innerHTML = '<b>' + pct(m.soc) + '</b>' + bstate + (m.fut ? ' · Plan' : '');
-    var gstate;
-    if (heute) gstate = 'Bezug ' + kwh(m.imp) + '<br>Einspeisung ' + kwh(m.exp);
-    else gstate = (m.imp > DB ? 'Bezug' : m.exp > DB ? 'Einspeisung' : 'ausgeglichen') + (m.fut ? ' · Plan' : '');
-    L.grid.innerHTML = (heute ? '<b>Netz</b>' : '<b>' + kw(m.imp > DB ? m.imp : m.exp) + '</b>') + gstate + (!heute && m.price != null ? '<br><span class="w">' + ct(m.price) + '</span>' : '') + (!heute && v.ziel ? '<br><span class="w">Ziel ' + kw(v.ziel) + '</span>' : '');
-    m.src.forEach(function (s, i) {
-      var n = L['src' + i]; if (!n) return;
-      n.innerHTML = '<span class="cap">' + s.name + '</span><span class="val' + (s.zero ? ' muted' : '') + '">' + (s.zero ? 'keine Erzeugung' : fmt(s.kw)) + '</span>';
-    });
-    m.con.forEach(function (c, j) {
-      var n = L['con' + j]; if (!n) return;
-      var val = fmt(c.kw), extra = '';
-      if (c.merged) extra = '<span class="cap">nicht aufgeteilt</span>';
-      else if (c.rest && !heute) extra = '<span class="cap">berechnet</span>';
-      if (!heute && !c.merged && c.kw <= DB) val = 'aus';
-      n.innerHTML = '<span class="val' + (c.kw <= DB && !heute ? ' muted' : '') + '">' + val + '</span><span class="cap">' + c.name + '</span>' + extra;
-    });
-    this.battBtn.querySelector('.lvl').style.height = Math.max(3, (g.battH - 10) * m.soc / 100) + 'px';
-    this.battBtn.classList.toggle('charging', !heute && m.chg > DB);
-    $$('.fnode:not(.hub), .fcol-ico, .fbatt', this.el).forEach(function (n) { n.classList.toggle('ghostly', m.fut); });
-
-    // Bänder: Breite nach Leistung (bzw. Energie); Farbspuren nebeneinander, je Herkunft eine
-    var norm = function (list) { var t = 0; list.forEach(function (x) { t += Math.max(0, x[1]); }); return list.map(function (x) { return [x[0], t > 0 ? Math.max(0, x[1]) / t : 0]; }); };
-    var T = {};
-    var one = function (src) { return [[src, 1]]; };
-    m.src.forEach(function (s, i) { T['src' + i] = [{ w: W(s.kw), parts: one('pv'), dir: 1 }]; });
-    T.pv = [{ w: W(m.pv), parts: one('pv'), dir: 1 }];
-    var chgP = norm([['pv', P['pv>batt']], ['grid', P['grid>batt']]]);
-    var expP = norm([['pv', P['pv>grid']], ['batt', P['batt>grid']]]);
-    var none = { w: 0, parts: [], dir: 1 };
-    if (heute) {
-      T.batt = [{ w: W(m.chg), parts: chgP, dir: -1 }, { w: W(m.dis), parts: one('batt'), dir: 1 }];
-      T.grid = [{ w: W(m.exp), parts: expP, dir: 1 }, { w: W(m.imp), parts: one('grid'), dir: -1 }];
-    } else {
-      T.batt = [m.chg > DB ? { w: W(m.chg), parts: chgP, dir: -1 } : { w: W(m.dis), parts: one('batt'), dir: 1 }, none];
-      T.grid = [m.exp > DB ? { w: W(m.exp), parts: expP, dir: 1 } : { w: W(m.imp), parts: one('grid'), dir: -1 }, none];
-    }
-    var loadP = norm([['batt', P['batt>load']], ['pv', P['pv>load']], ['grid', P['grid>load']]]);
-    T.load = [{ w: W(m.load), parts: loadP, dir: 1 }];
-    m.con.forEach(function (c, j) { T['con' + j] = [{ w: W(c.kw), parts: loadP, dir: 1 }]; });
-    // Lage der Farbspuren quer zum Band, damit Teilchen in ihrer Spur fließen
-    var iv = function (list) { var o = {}, a = 0; list.forEach(function (x) { o[x[0]] = [a, a + x[1]]; a += x[1]; }); return o; };
-    this.lanesU = { load: iv(loadP), batt: iv(chgP), grid: iv(expP) };
-    this.tgt = T;
-    var washOp = m.fut ? 0.13 : heute ? 0.36 : 0.26;
-    Object.keys(T).forEach(function (k) {
-      if (!self.cur[k] || self.cur[k].length !== T[k].length || instant) self.cur[k] = T[k].map(function (x) { return { w: x.w }; });
-      T[k].forEach(function (x, l) {
-        var lane = E[k] && E[k].lanes[l]; if (!lane) return;
-        var multi = x.parts.filter(function (p) { return p[1] > 0.001; }).length > 1;
-        var dom = x.parts.slice().sort(function (a, b) { return b[1] - a[1]; })[0];
-        lane.parts.forEach(function (path, pi) {
-          var part = x.parts[pi];
-          path.setAttribute('stroke', part ? SRC_COL[part[0]] : C.base);
-          path.style.opacity = part && part[1] > 0 && x.w > 0 ? washOp : 0;
-        });
-        lane.core.setAttribute('stroke', dom ? SRC_COL[dom[0]] : C.base);
-        lane.core.setAttribute('stroke-dasharray', m.fut ? '3 5' : 'none');
-        lane.core.style.opacity = x.w > 0 && (!multi || m.fut) ? (m.fut ? 0.8 : heute ? 0.55 : 0.5) : 0;
-      });
-    });
-    if (RM.matches || instant) Object.keys(T).forEach(function (k) { T[k].forEach(function (x, l) { self.cur[k][l].w = x.w; }); });
-    this.paintRibbons();
-    // Zielklammer
-    if (this.ziel) {
-      var zw = heute ? 0 : Math.max(2.5, g.maxW * v.ziel / v.fMax);
-      this.ziel.style.display = heute ? 'none' : '';
-      var y = g.hubY, hw = zw / 2 + 2, x = this.zielX;
-      this.zielPath.setAttribute('d', 'M' + (x - 5) + ',' + (y - hw) + ' H' + x + ' V' + (y + hw) + ' H' + (x - 5));
-      this.zielTxt.setAttribute('y', y - hw - 5);
-    }
-    this.paintArrows();
+  /* Lage der Segmente und Bänder in einem Raster von 0 bis 1000 */
+  Flow.prototype.layout = function (m) {
+    var P = m.pairs, W = 1000;
+    var sv = { pv: P['pv>load'] + P['pv>batt'] + P['pv>grid'], batt: P['batt>load'] + P['batt>grid'], grid: P['grid>load'] + P['grid>batt'] };
+    var dv = { load: P['pv>load'] + P['batt>load'] + P['grid>load'], batt: P['pv>batt'] + P['grid>batt'], grid: P['pv>grid'] + P['batt>grid'] };
+    var tot = sv.pv + sv.batt + sv.grid, L = { tot: tot, src: {}, dst: {}, links: {} };
+    var sc = function (x) { return tot > 0 ? W * x / tot : 0; };
+    var x = 0; SRC_ORDER.forEach(function (r) { L.src[r] = [x, sc(sv[r]), sv[r]]; x += sc(sv[r]); });
+    x = 0; DST_ORDER.forEach(function (r) { L.dst[r] = [x, sc(dv[r]), dv[r]]; x += sc(dv[r]); });
+    var so = {}, di = {};
+    SRC_ORDER.forEach(function (r) { so[r] = L.src[r][0]; });
+    DST_ORDER.forEach(function (r) { di[r] = L.dst[r][0]; });
+    SRC_ORDER.forEach(function (s) { DST_ORDER.forEach(function (d) { var k = s + '>' + d; if (!(k in P)) return; var w = sc(P[k]); L.links[k] = { a0: so[s], a1: so[s] + w }; so[s] += w; }); });
+    DST_ORDER.forEach(function (d) { SRC_ORDER.forEach(function (s) { var k = s + '>' + d; if (!(k in P)) return; var w = sc(P[k]); L.links[k].b0 = di[d]; L.links[k].b1 = di[d] + w; di[d] += w; }); });
+    return L;
   };
-  Flow.prototype.paintRibbons = function () {
-    var E = this.E, cur = this.cur, T = this.tgt;
-    Object.keys(cur).forEach(function (k) {
-      var e = E[k]; if (!e || !T[k]) return;
-      var lanes = cur[k];
-      var w0 = lanes[0].w, w1 = lanes[1] ? lanes[1].w : 0, both = lanes.length === 2 && w0 > 0 && w1 > 0;
-      lanes.forEach(function (ln, l) {
-        var tl = T[k][l]; if (!tl) return;
-        var w = ln.w, off = both ? (l === 0 ? -(w1 / 2 + 1) : (w0 / 2 + 1)) : 0;
-        var live = tl.parts.filter(function (p) { return p[1] > 0.001; }).length, pos = -w / 2;
-        var tr = function (o) { return e.axis === 'x' ? 'translate(' + o.toFixed(2) + ',0)' : 'translate(0,' + o.toFixed(2) + ')'; };
-        e.lanes[l].parts.forEach(function (path, pi) {
-          var part = tl.parts[pi];
-          if (!part || !(part[1] > 0.001) || w <= 0) { path.setAttribute('stroke-width', 0); return; }
-          var pw = w * part[1], c = pos + pw / 2; pos += pw;
-          path.setAttribute('stroke-width', Math.max(0.8, pw - (live > 1 ? 1 : 0)).toFixed(2));
-          path.setAttribute('transform', tr(off + c));
-        });
-        e.lanes[l].core.setAttribute('transform', tr(off));
-        e.lanes[l].core.setAttribute('stroke-width', w > 0 ? Math.min(1.6, w) : 0);
-      });
-    });
-  };
-  /* Pfeile: bei reduzierter Bewegung und in der stillen Ansicht „Heute“ zeigen sie die Richtung */
-  Flow.prototype.paintArrows = function () {
-    var g = this.gArrows; if (!g) return;
-    g.innerHTML = '';
-    var show = RM.matches || this.m.heute;
-    if (!show) return;
-    var E = this.E, T = this.tgt;
-    Object.keys(T).forEach(function (k) {
-      T[k].forEach(function (x, l) {
-        if (!(x.w > 0)) return;
-        var e = E[k], p, ang;
-        if (e.c) { p = cubicAt(e.c, 0.5); var p2 = cubicAt(e.c, 0.52); ang = Math.atan2(p2.y - p.y, p2.x - p.x); }
-        else { p = { x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 }; ang = Math.atan2(e.b.y - e.a.y, e.b.x - e.a.x); }
-        if (x.dir < 0) ang += Math.PI;
-        var off = 0;
-        if (T[k].length === 2) { var w0 = T[k][0].w, w1 = T[k][1].w; if (w0 > 0 && w1 > 0) off = l === 0 ? -(w1 / 2 + 1) : (w0 / 2 + 1); }
-        var s = 4;
-        svgEl('path', { d: 'M' + (-s) + ',' + (-s) + ' L0,0 L' + (-s) + ',' + s, fill: 'none', stroke: C.fg, 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.7, transform: 'translate(' + p.x.toFixed(1) + ',' + (p.y + off).toFixed(1) + ') rotate(' + (ang * 180 / Math.PI).toFixed(1) + ')' }, g);
-      });
-    });
-  };
-
-  /* Animation: Bänder weich nachführen, Teilchen erzeugen, bewegen, zeichnen */
-  Flow.prototype.tick = function (t) {
-    var self = this;
-    if (!this.alive) return;
-    this.raf = requestAnimationFrame(function (tt) { self.tick(tt); });
-    var dt = this.tLast ? Math.min(0.05, (t - this.tLast) / 1000) : 0.016; this.tLast = t;
-    if (!this.visible || document.hidden) return;
-    // Bänder
-    var k0 = 1 - Math.exp(-dt / 0.14), moved = false, cur = this.cur, T = this.tgt;
-    Object.keys(T).forEach(function (k) { T[k].forEach(function (x, l) { if (!cur[k][l]) return; var d = x.w - cur[k][l].w; if (Math.abs(d) > 0.03) { cur[k][l].w += d * k0; moved = true; } else cur[k][l].w = x.w; }); });
-    if (moved) this.paintRibbons();
-    var ctx = this.ctx, g = this.g;
-    ctx.clearRect(0, 0, g.w, g.h);
-    var m = this.m;
-    if (!m || m.heute || RM.matches) { this.parts.length = 0; return; }
-    // Teilchen erzeugen (nur für gemessene bzw. geplante Leistung; veraltete Teile bekommen keine)
-    var P = m.pairs, v = this.v, fMax = v.fMax, rateK = g.c ? 30 : 40, acc = this.acc;
-    var srcW = m.src.map(function (s) { return Math.max(0, s.kw); });
-    var conW = m.con.map(function (c) { return Math.max(0, c.kw); });
-    Object.keys(P).forEach(function (pk) {
-      var f = P[pk]; if (!(f > DB)) { acc[pk] = 0; return; }
-      var rate = 2.2 + rateK * f / fMax;
-      acc[pk] = (acc[pk] || Math.random()) + rate * dt;
-      while (acc[pk] >= 1 && self.parts.length < 260) {
-        acc[pk] -= 1;
-        var sk = pk.split('>'), Sx = sk[0], Kx = sk[1];
-        var i = Sx === 'pv' ? pick(srcW) : 0, j = Kx === 'load' ? pick(conW) : 0;
-        if (i < 0 || j < 0) continue;
-        var r = self.route(Sx, Kx, i, j);
-        var lu = self.lanesU && self.lanesU[Kx] && self.lanesU[Kx][Sx];
-        var ax = lu ? lu[0] + (0.12 + Math.random() * 0.76) * (lu[1] - lu[0]) - 0.5 : (Math.random() - 0.5) * 0.8;
-        self.parts.push({ r: r, s: 0, idx: 0, sp: (g.c ? 46 : 58) + (g.c ? 70 : 90) * Math.sqrt(f / fMax), u: Kx === 'grid' ? ax : -ax, col: SRC_COL[Sx], ghost: m.fut });
-      }
-    });
-    // bewegen und zeichnen
-    var cw = this.cur, pr = g.pr, parts = this.parts, keep = [];
-    for (var n = 0; n < parts.length; n++) {
-      var p = parts[n];
-      p.s += p.sp * dt;
-      if (p.s >= p.r.len) continue;
-      var Lr = p.r.L, pts = p.r.p;
-      while (p.idx < Lr.length - 2 && Lr[p.idx + 1] < p.s) p.idx++;
-      var a = pts[p.idx], b = pts[p.idx + 1], seg = Lr[p.idx + 1] - Lr[p.idx] || 1, tt = (p.s - Lr[p.idx]) / seg;
-      var x = a.x + (b.x - a.x) * tt, y = a.y + (b.y - a.y) * tt;
-      var nx = -(b.y - a.y) / seg, ny = (b.x - a.x) / seg;
-      var lane = cw[a.k === 'hub' ? 'load' : a.k === 'pvn' ? 'pv' : a.k];
-      var wd = lane ? (lane.length === 2 ? Math.max(lane[0].w, lane[1].w) : lane[0].w) : 4;
-      var uu = clamp(p.u, -0.46, 0.46); x += nx * uu * wd; y += ny * uu * wd;
-      var fade = Math.min(1, p.s / 14, (p.r.len - p.s) / 14);
-      ctx.globalAlpha = fade * (p.ghost ? 0.9 : 1);
-      if (p.ghost) {
-        ctx.beginPath(); ctx.arc(x, y, pr + 0.4, 0, 6.283); ctx.strokeStyle = p.col; ctx.lineWidth = 1.2; ctx.stroke();
-      } else {
-        ctx.globalAlpha = fade * 0.2; ctx.beginPath(); ctx.arc(x, y, pr + 2.4, 0, 6.283); ctx.fillStyle = p.col; ctx.fill();
-        ctx.globalAlpha = fade; ctx.beginPath(); ctx.arc(x, y, pr, 0, 6.283); ctx.fill();
-      }
-      keep.push(p);
-    }
-    ctx.globalAlpha = 1;
-    this.parts = keep;
-  };
-  function pick(ws) {
-    var t = 0, i; for (i = 0; i < ws.length; i++) t += ws[i];
-    if (t <= 0) return -1;
-    var r = Math.random() * t;
-    for (i = 0; i < ws.length; i++) { r -= ws[i]; if (r <= 0) return i; }
-    return ws.length - 1;
+  function lerpLayout(A, B, e) {
+    var o = { tot: B.tot, src: {}, dst: {}, links: {} };
+    ['src', 'dst'].forEach(function (s) { Object.keys(B[s]).forEach(function (r) { var a = A[s][r] || B[s][r], b = B[s][r]; o[s][r] = [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, b[2]]; }); });
+    Object.keys(B.links).forEach(function (k) { var a = A.links[k] || B.links[k], b = B.links[k]; o.links[k] = { a0: a.a0 + (b.a0 - a.a0) * e, a1: a.a1 + (b.a1 - a.a1) * e, b0: a.b0 + (b.b0 - a.b0) * e, b1: a.b1 + (b.b1 - a.b1) * e }; });
+    return o;
   }
+  /* Werte gleiten nur beim Wechsel (200 ms), sonst steht das Bild still */
+  Flow.prototype.animateTo = function (L) {
+    var self = this, from = this.cur;
+    this.tgt = L;
+    cancelAnimationFrame(this.raf);
+    if (!from || RM.matches) { this.cur = L; this.paint(L); return; }
+    var t0 = performance.now(), D = 200;
+    var step = function (t) {
+      var k = Math.min(1, (t - t0) / D), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      self.cur = lerpLayout(from, L, e); self.paint(self.cur);
+      if (k < 1 && self.alive) self.raf = requestAnimationFrame(step);
+    };
+    this.raf = requestAnimationFrame(step);
+  };
+  Flow.prototype.paint = function (L) {
+    var self = this;
+    ['src', 'dst'].forEach(function (side) {
+      Object.keys(L[side]).forEach(function (r) {
+        var b = self.segs[side][r], s = L[side][r], vis = s[1] > 0.5;
+        b.style.left = 'calc(' + (s[0] / 10).toFixed(3) + '% + 1px)';
+        b.style.width = vis ? 'calc(' + (s[1] / 10).toFixed(3) + '% - 2px)' : '0px';
+        b.style.visibility = vis ? 'visible' : 'hidden';
+      });
+    });
+    Object.keys(this.paths).forEach(function (k) {
+      var l = L.links[k], p = self.paths[k];
+      if (!l || l.a1 - l.a0 < 0.4) { p.setAttribute('d', ''); return; }
+      var f = function (x) { return x.toFixed(1); }, g = Math.min(3, (l.a1 - l.a0) / 4);
+      l = { a0: l.a0 + g, a1: l.a1 - g, b0: l.b0 + g, b1: l.b1 - g };
+      p.setAttribute('d', 'M' + f(l.a0) + ',0 C' + f(l.a0) + ',55 ' + f(l.b0) + ',45 ' + f(l.b0) + ',100 L' + f(l.b1) + ',100 C' + f(l.b1) + ',45 ' + f(l.a1) + ',55 ' + f(l.a1) + ',0 Z');
+    });
+  };
+  function segName(r, side) { return r === 'grid' ? (side === 'src' ? 'Netz' : 'ins Netz') : r === 'batt' ? (side === 'src' ? 'Speicher' : 'in den Speicher') : ROLES[r].name; }
+  Flow.prototype.labels = function () {
+    var m = this.m, L = this.tgt, v = this.v, self = this; if (!m || !L) return;
+    var f = m.heute ? kwh : kw, Wpx = this.el.clientWidth || 320, more = { src: [], dst: [] };
+    var need = function (txt) { return 16 + 16 + 5 + txt.length * 7.3; };
+    ['src', 'dst'].forEach(function (side) {
+      Object.keys(L[side]).forEach(function (r) {
+        var b = self.segs[side][r], s = L[side][r], px = s[1] / 1000 * Wpx - 2, name = segName(r, side), val = f(s[2]);
+        var t = $('.seg-t', b);
+        b.classList.remove('no-ico', 'tiny');
+        b.setAttribute('aria-label', name + ' ' + val);
+        if (s[1] <= 0.5) { t.textContent = ''; return; }
+        if (px >= need(name + ' ' + val)) t.innerHTML = '<span class="seg-n">' + name + '</span> ' + val;
+        else if (px >= need(val)) t.textContent = val;
+        else if (px >= need(val) - 21) { t.textContent = val; b.classList.add('no-ico'); }
+        else {
+          t.textContent = ''; more[side].push([r, name, s[2]]);
+          if (px < 30) b.classList.add('no-ico', 'tiny');
+        }
+      });
+    });
+    ['src', 'dst'].forEach(function (side) {
+      var p = $('[data-more="' + side + '"]', self.el);
+      p.innerHTML = more[side].map(function (x) { return '<span><i style="background:' + ROLES[x[0]].col + '"></i>' + x[1] + ' ' + f(x[2]) + '</span>'; }).join('');
+      p.hidden = !more[side].length;
+    });
+    $('[data-tot="src"]', this.el).textContent = f(L.tot);
+    $('[data-tot="dst"]', this.el).textContent = f(L.tot);
+    var st = [];
+    st.push(ic('battery', 15) + 'Speicher ' + pct(m.soc) + (m.heute ? '' : m.chg > DB ? ', lädt' : m.dis > DB ? ', entlädt' : ', ruht'));
+    st.push(ic('pole', 15) + (m.heute ? 'Netzbezug ' + kwh(m.imp) + ', Einspeisung ' + kwh(m.exp) : m.imp > DB ? 'Netzbezug' : m.exp > DB ? 'Einspeisung ins Netz' : 'Netz ausgeglichen'));
+    if (v.ziel && !m.heute) st.push(ic('gauge', 15) + 'Ziel ' + kw(v.ziel));
+    if (m.price != null && !m.heute) st.push(ic('euro', 15) + 'Börsenpreis ' + ct(m.price));
+    $('.bal-status', this.el).innerHTML = st.map(function (x) { return '<span>' + x + '</span>'; }).join('');
+  };
+
+  /* Geräte als sortierte Liste: am Telefon bis zu vier Zeilen, am Rechner bis zu sechs,
+     der Rest als „n weitere“. Das volle Verzeichnis steht im Blatt. */
+  Flow.prototype.details = function () {
+    var m = this.m, v = this.v, f = m.heute ? kwh : kw, max = state.view === 'desktop' ? 6 : 4;
+    function rows(items, total, kind, hue, noun) {
+      items = items.slice().sort(function (a, b) { return b.val - a.val; });
+      var shown = items.length <= max ? items : items.slice(0, max - 1), rest = items.slice(shown.length);
+      var h = shown.map(function (it) {
+        var share = total > 0 ? clamp(it.val / total, 0, 1) : 0;
+        return '<li><button type="button" class="drow' + (it.cls ? ' ' + it.cls : '') + '" data-node="' + kind + '" data-i="' + it.i + '" style="--hue:' + hue + '"><span class="dico">' + ic(it.icon, 15) + '</span><span class="dnm">' + it.name + (it.sub ? ' <small>' + it.sub + '</small>' : '') + '</span><span class="dv">' + it.txt + '</span><span class="trk"><i style="width:' + (100 * share).toFixed(1) + '%"></i></span></button></li>';
+      }).join('');
+      if (rest.length) {
+        var sum = rest.reduce(function (a, b) { return a + b.val; }, 0);
+        h += '<li><button type="button" class="drow more" data-node="' + (kind === 'con' ? 'more' : 'pv') + '" style="--hue:' + hue + '"><span class="dico">' + ic('plus', 15) + '</span><span class="dnm">' + rest.length + ' weitere ' + noun + '</span><span class="dv">' + f(sum) + '</span></button></li>';
+      }
+      return h;
+    }
+    var cons = m.con.map(function (c, j) {
+      var sub = '', cls = '';
+      if (c.ghost) { sub = 'ohne Aufteilung je Gerät'; cls = 'plan'; }
+      else if (c.merged) { sub = 'nicht aufgeteilt, Stand ' + c.stale.staleTime + ' Uhr'; cls = 'stale'; }
+      else if (c.rest) { sub = 'berechnet'; cls = 'rest'; }
+      else if (!m.heute && c.kw <= DB) { sub = 'aus'; cls = 'off'; }
+      return { i: j, name: c.ghost ? 'Verbrauchsprognose' : c.merged ? c.name : (c.full || c.name), sub: sub, cls: cls, icon: c.icon, val: c.kw, txt: f(c.kw) };
+    });
+    var srcs = m.src.map(function (s, i) {
+      return { i: i, name: s.name, sub: s.ghost ? 'für die ganze Anlage' : s.zero ? 'liefert gerade keine Erzeugung' : '', cls: s.ghost ? 'plan' : s.zero ? 'off' : '', icon: s.icon, val: s.kw, txt: s.zero ? '0 kW' : f(s.kw) };
+    });
+    var head = function (t, val) { return '<div class="dl-h"><span>' + t + '</span><b>' + f(val) + '</b></div>'; };
+    var h = '<section class="dl" aria-label="Verbrauch im Detail">' + head('Verbrauch im Detail', m.load) + '<ul class="drows">' + rows(cons, m.load, 'con', 'var(--load)', 'Verbraucher') + '</ul></section>';
+    if (m.src.length > 1 || m.fut) h += '<section class="dl" aria-label="Erzeugung im Detail">' + head('Erzeugung im Detail', m.pv) + '<ul class="drows">' + rows(srcs, m.pv, 'src', 'var(--pv)', 'Quellen') + '</ul></section>';
+    this.det.innerHTML = h;
+  };
 
   /* ---------- Tagesleiste ---------- */
   Flow.prototype.buildStrip = function () {
@@ -952,25 +740,6 @@
           '<span class="prov ' + (ok ? 'ok' : 'warn') + '">' + (ok ? 'bereit für die nächste Spitze' : 'unter der Reserve') + '</span>';
       }
     },
-    verbraucher: {
-      name: 'Größte Verbraucher', icon: 'factory', hue: 'var(--load)', soft: 'var(--load-soft)', target: 'Verlauf › Messwerte', sizes: ['w2'],
-      purpose: 'Welche gemessenen Verbraucher gerade am meisten ziehen, mit Datenstand.',
-      avail: function (v) { return v.cons.filter(function (c) { return !c.rest; }).length >= 2 ? { ok: true } : { ok: false, need: 'Braucht mindestens zwei gemessene Verbraucher.' }; },
-      body: function (v) {
-        var d = v.day, n = v.nowQ, t = todayUntilNow(v), rows = [], max = 0;
-        v.cons.forEach(function (c, j) { if (!c.rest) max = Math.max(max, d.cons[n][j]); });
-        v.cons.forEach(function (c, j) {
-          var stale = c.staleFromQ != null && n >= c.staleFromQ;
-          if (c.rest) {
-            var anyStale = v.cons.some(function (x) { return x.staleFromQ != null && n >= x.staleFromQ; });
-            rows.push({ n: c.name + (anyStale ? '' : ' (berechnet)'), v: anyStale ? 'nicht bestimmbar' : kw(d.cons[n][j]), x: anyStale ? 0 : d.cons[n][j], col: 'var(--load)', op: 0.5 });
-          } else if (stale) rows.push({ n: c.name + ' · Stand: ' + c.staleTime + ' Uhr', v: kw(d.cons[c.staleFromQ - 1][j]), x: d.cons[c.staleFromQ - 1][j], col: 'var(--text-gray)', op: 0.5 });
-          else rows.push({ n: c.name + ' · heute ' + kwh(t.cons[j]), v: kw(d.cons[n][j]), x: d.cons[n][j] });
-        });
-        rows.sort(function (a, b) { return b.x - a.x; });
-        return miniBars(rows, max) + '<div class="vsub">Balken: Leistung jetzt. Grau: Wert nicht aktuell.</div>';
-      }
-    },
     laden: {
       name: 'Laden', icon: 'car', hue: 'var(--load)', soft: 'var(--load-soft)', target: 'Ladevorgänge', sizes: ['w1', 'w2'],
       purpose: 'Was an Ihren Ladepunkten passiert, mit Steuerart und Energie heute.',
@@ -1042,13 +811,13 @@
   var DEFAULTS = {
     privat: [['geld', 'w2'], ['autarkie', 'w1'], ['eigenverbrauch', 'w1'], ['speicher', 'w1'], ['waermepumpe', 'w1'], ['sonne', 'w2'], ['laden', 'w2'], ['fahrplan', 'w2']],
     markt: [['preis', 'w2'], ['sonne', 'w1'], ['speicher', 'w1'], ['handel', 'w2'], ['geld', 'w2'], ['netz', 'w1'], ['wetter', 'w1']],
-    spitze: [['lastspitze', 'g2'], ['reserve', 'w1'], ['sonne', 'w1'], ['verbraucher', 'w2'], ['geld', 'w2']]
+    spitze: [['lastspitze', 'g2'], ['reserve', 'w1'], ['sonne', 'w1'], ['geld', 'w2'], ['netz', 'w1']]
   };
   var LEAD0 = { privat: 'geld', markt: 'preis', spitze: 'lastspitze' };
   var WHY = {
-    privat: { netz: 'Ihre Anlage misst Bezug und Einspeisung am <b>Netzanschluss</b>.', verbraucher: '<b>Wärmepumpe und Wallbox</b> werden einzeln gemessen.', wetter: 'Für Ihren Standort liegt eine <b>Wettervorhersage</b> vor.' },
-    markt: { fahrplan: 'Ihr Speicher folgt heute <b>vier Handelsfenstern</b>.', verbraucher: '<b>Vier Unterzähler</b> liefern Werte.', eigenverbrauch: 'Ihre <b>PV-Anlage</b> speist auch ohne Handel ein.' },
-    spitze: { fahrplan: 'Der Plan hält <b>Reserve für die nächste Spitze</b>.', netz: 'Ihr <b>Netzanschluss</b> wird gemessen.', speicher: 'Ihr <b>Batteriespeicher</b> liefert Ladestand und Leistung.' }
+    privat: { netz: 'Ihre Anlage misst Bezug und Einspeisung am <b>Netzanschluss</b>.', wetter: 'Für Ihren Standort liegt eine <b>Wettervorhersage</b> vor.' },
+    markt: { fahrplan: 'Ihr Speicher folgt heute <b>vier Handelsfenstern</b>.', eigenverbrauch: 'Ihre <b>PV-Anlage</b> speist auch ohne Handel ein.' },
+    spitze: { fahrplan: 'Der Plan hält <b>Reserve für die nächste Spitze</b>.', speicher: 'Ihr <b>Batteriespeicher</b> liefert Ladestand und Leistung.', wetter: 'Für Ihren Standort liegt eine <b>Wettervorhersage</b> vor.' }
   };
   function layoutOf(k) {
     if (!state.layout[k]) state.layout[k] = DEFAULTS[k].map(function (x) { return { id: x[0], size: x[1], hidden: false }; });
@@ -1077,7 +846,7 @@
       '<main class="ck-main"><div class="ck-head"><h1>' + v.site + '</h1><span class="pill live"><i class="d"></i>Stand vor 8 Sek.</span><span class="pill">' + v.tag + '</span><div class="sp"></div><button type="button" class="ibtn" data-act="anpassen" aria-label="Cockpit anpassen">' + ic('sliders', 18) + '</button></div>' +
       '<section class="hero" aria-label="Energiefluss"><div class="hero-main">' +
       '<div class="mom"><span class="mom-time"></span><span class="pill mom-badge"></span><span class="pill plan mom-plan"></span><span class="sp"></span><div class="mode" role="group" aria-label="Anzeige"><button type="button" data-mode="jetzt" aria-pressed="true">Jetzt · kW</button><button type="button" data-mode="heute" aria-pressed="false">Heute · kWh</button></div></div>' +
-      '<p class="satz" aria-live="polite"></p><div class="flow"></div>' +
+      '<p class="satz" aria-live="polite"></p><div class="flow"></div><div class="det"></div>' +
       '<div class="scrub"><div class="strip" role="slider" tabindex="0" aria-label="Tageszeit" aria-valuemin="0" aria-valuemax="95"></div>' +
       '<div class="scrub-ctl"><button type="button" class="pbtn solid" data-act="play">' + ic('play', 16) + '<span>Tag abspielen</span></button><span class="sp"></span><button type="button" class="pbtn" data-act="live" hidden>' + ic('clock', 16) + 'Zurück zu Jetzt</button></div>' +
       '<p class="hint">Ziehen Sie über die Tagesleiste. Links von „Jetzt“ sehen Sie Messwerte, rechts den Plan.</p></div>' +
@@ -1252,16 +1021,26 @@
       openSheet('Erzeugung', '<div class="sh-body">' + body + '</div>', '', btn);
       return;
     }
-    if (kind === 'load' || kind === 'con') {
-      var P = m.pairs, lm = loadMix(P), tot = m.load;
-      body = '<div class="sh-kpis">' + kpi('Verbrauch ' + when, f(m.load)) + kpi('Heute bis ' + v.nowTime, kwh(t.load)) + '</div>' +
-        '<p style="margin:0;font-weight:700">Herkunft ' + (m.heute ? 'heute' : when) + '</p>' + mixBar(lm, tot) + '<div class="sh-rows">' +
-        m.con.map(function (c) {
-          var jj = v.cons.map(function (x) { return x.id; }).indexOf(c.id);
-          if (c.merged) return row('var(--text-gray)', 'plug', c.full, c.stale.name + ' meldet sich nicht (Stand: ' + c.stale.staleTime + ' Uhr, zuletzt ' + kw(c.lastKw) + '). Deshalb lässt sich der Rest nicht aufteilen.', f(c.kw), 'zusammen', 'stale');
-          if (c.ghost) return row('var(--load)', 'house', 'Verbrauchsprognose', 'Für den Plan gibt es keine Aufteilung je Gerät.', f(c.kw), '');
-          return row('var(--load)', c.icon, c.full || c.name, c.rest ? 'berechnet: Hausverbrauch minus gemessene Geräte' : (c.kw > DB ? 'läuft' : 'aus'), f(c.kw), jj >= 0 ? 'heute ' + kwh(t.cons[jj]) : '');
-        }).join('') + '</div><p class="note">Die Herkunft ist eine bilanzielle Zuordnung: Sonnenstrom zählt zuerst für den Verbrauch, dann für den Speicher, dann für das Netz. Sie beschreibt keine einzelnen Elektronen.</p>';
+    if (kind === 'load' || kind === 'con' || kind === 'more') {
+      var P = m.pairs, lm = loadMix(P), tot = m.load, groups = {}, gsum = {};
+      m.con.forEach(function (c) {
+        var g = c.merged ? 'Nicht aufgeteilt' : c.ghost ? 'Prognose' : (c.gruppe || 'Sonstiges');
+        (groups[g] = groups[g] || []).push(c); gsum[g] = (gsum[g] || 0) + c.kw;
+      });
+      var gl = Object.keys(groups).sort(function (a, b) { return gsum[b] - gsum[a]; });
+      var cRow = function (c) {
+        var jj = v.cons.map(function (x) { return x.id; }).indexOf(c.id);
+        if (c.merged) return row('var(--text-gray)', 'plug', c.full, c.stale.name + ' meldet sich nicht (Stand: ' + c.stale.staleTime + ' Uhr, zuletzt ' + kw(c.lastKw) + '). Deshalb lässt sich der Rest nicht aufteilen.', f(c.kw), 'zusammen', 'stale');
+        if (c.ghost) return row('var(--load)', 'house', 'Verbrauchsprognose', 'Für den Plan gibt es keine Aufteilung je Gerät.', f(c.kw), '');
+        return row('var(--load)', c.icon, c.full || c.name, c.rest ? 'berechnet: Hausverbrauch minus gemessene Geräte' : (m.heute ? '' : c.kw > DB ? 'läuft' : 'aus'), f(c.kw), !m.heute && jj >= 0 && !m.fut ? 'heute ' + kwh(t.cons[jj]) : '');
+      };
+      body = '<div class="sh-kpis">' + kpi('Verbrauch ' + when, f(m.load)) + kpi('Geräte', m.fut ? '—' : String(v.cons.length)) + '</div>' +
+        '<p style="margin:0;font-weight:700">Herkunft ' + (m.heute ? 'heute' : when) + '</p>' + mixBar(lm, tot) + '<div style="height:6px"></div>' +
+        gl.map(function (g) {
+          var items = groups[g].slice().sort(function (a, b) { return b.kw - a.kw; });
+          return '<p class="sh-grp"><span>' + g + '</span><b>' + f(gsum[g]) + '</b></p><div class="sh-rows">' + items.map(cRow).join('') + '</div>';
+        }).join('') +
+        '<p class="note">Sortiert nach ' + (m.heute ? 'Energie heute' : 'Leistung') + ', gruppiert nach Art. So bleibt die Liste auch mit sehr vielen Geräten übersichtlich. Die Herkunft ist eine bilanzielle Zuordnung: Sonnenstrom zählt zuerst für den Verbrauch, dann für den Speicher, dann für das Netz.</p>';
       openSheet('Verbrauch', '<div class="sh-body">' + body + '</div>', '', btn);
       return;
     }
@@ -1360,19 +1139,19 @@
   function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('on'); }, 2600); }
 
   var ASIDE = {
-    privat: { h: 'Privathaus mit Eigenverbrauchs-Fahrplan', p: 'Sonnenhof: PV auf Dach und Carport, 15-kWh-Speicher, Wallbox und Wärmepumpe (SG-Ready).', li: [
-      '<b>Farbe heißt Herkunft.</b> Orange Teilchen sind Sonnenstrom. Wallbox, Wärmepumpe und Speicher laden gerade nur mit Sonne.',
-      '<b>Tippen Sie auf „Verbrauch“</b> oder auf ein Gerät. Das Blatt zeigt Leistung, Energie heute und die Herkunft.',
-      '<b>Ziehen Sie die Tagesleiste auf 07:00.</b> Das Netz deckt den Morgen. Rechts von „Jetzt“ ist alles gestrichelt, denn das ist der Plan.',
-      '<b>„Heute · kWh“</b> zeigt, wie sich der Tag zusammensetzt. Es bewegt sich nichts, weil es Energie ist und keine Leistung.'] },
+    privat: { h: 'Privathaus mit Eigenverbrauchs-Fahrplan', p: 'Sonnenhof: PV auf Dach und Carport, 15-kWh-Speicher, Wallbox, Wärmepumpe (SG-Ready), Heizstab und eine Waschmaschine am Zwischenstecker.', li: [
+      '<b>Oben woher, unten wohin.</b> Die Sonne liefert alles, der Strom fließt in den Verbrauch und in den Speicher. Beide Balken sind gleich lang: Was ankommt, fließt ab.',
+      '<b>Verbrauch im Detail</b> zeigt die größten Geräte zuerst, darunter „2 weitere“. So bleibt es bei beliebig vielen Geräten ruhig. Antippen öffnet die ganze Liste, nach Art gruppiert.',
+      '<b>Ziehen Sie die Tagesleiste auf 07:00.</b> Dann kommt alles aus dem Netz. Rechts von „Jetzt“ sind die Balken schraffiert, denn das ist der Plan.',
+      '<b>„Heute · kWh“</b> zeigt die Tagesbilanz. Speicher und Netz stehen dann oben und unten, weil sie heute in beide Richtungen geflossen sind.'] },
     markt: { h: 'Gewerbe mit Marktoptimierung', p: 'Gewerbehof Lindenau: Speicher mit 250 kW und 500 kWh, PV auf Werkhalle und Carport, Börsenpreise für heute und morgen.', li: [
-      '<b>Mittags lädt der Speicher aus Netz und Sonne.</b> Petrol und orange Teilchen fließen gemeinsam hinein.',
-      '<b>Die Tagesleiste zeigt oben den Börsenpreis.</b> Grün lädt der Plan, rot verkauft er. Ziehen Sie auf 19:00.',
-      'Unter dem Fluss folgen <b>Börsenpreis, Sonne und Speicher</b>, genau in dieser Reihenfolge.'] },
-    spitze: { h: 'Werk mit Lastspitzenkappung', p: 'Werk Ahrenberg, Halle 1: vier Unterzähler, PV auf zwei Hallen, Speicher mit 200 kW, Ziel 300 kW Netzbezug.', li: [
-      '<b>Die Klammer an der Netzleitung ist das Ziel.</b> Erreicht der Bezug sie, gibt der Speicher ab, und grüne Teilchen fließen zu den Maschinen.',
-      '<b>Die Kühlung meldet sich seit 13:31 Uhr nicht.</b> Das Cockpit erfindet keinen Rest, sondern zeigt „nicht aufgeteilt“.',
-      '<b>Ziehen Sie auf 06:15.</b> Beim Anlauf der Frühschicht liegt die höchste Spitze des Tages, und der Speicher kappt sie.'] }
+      '<b>Das petrolfarbene Band vom Netz in den Speicher</b> zeigt: Der Speicher lädt gerade günstig aus dem Netz, dazu mit Sonnenstrom.',
+      '<b>Ziehen Sie auf 19:00.</b> Dann fließt der Speicher ins Netz, der Plan sagt „Verkaufen“. Oben in der Tagesleiste steht der Börsenpreis.',
+      'Unter der Bilanz folgen <b>Börsenpreis, Sonne und Speicher</b>, genau in dieser Reihenfolge.'] },
+    spitze: { h: 'Werk mit Lastspitzenkappung', p: 'Werk Ahrenberg, Halle 1: neun Verbraucher, PV auf zwei Hallen, Speicher mit 200 kW, Ziel 300 kW Netzbezug.', li: [
+      '<b>Neun Verbraucher, drei Zeilen.</b> Die Liste zeigt die größten, der Rest steht unter „weitere“. Das funktioniert genauso mit 50 Geräten.',
+      '<b>Die Kühlung meldet sich seit 13:31 Uhr nicht.</b> Ihr Anteil steht mit dem Rest als „nicht aufgeteilt“. Das Cockpit erfindet keine Aufteilung.',
+      '<b>Ziehen Sie auf 06:15.</b> Beim Anlauf der Frühschicht gibt der Speicher ab, und das Netz bleibt beim Ziel.'] }
   };
   function renderAside(v) {
     var a = ASIDE[v.key];
@@ -1407,6 +1186,6 @@
       closeSheet(true); mount();
     });
   });
-  RM.addEventListener && RM.addEventListener('change', function () { if (cur.flow) cur.flow.apply(true); });
+  RM.addEventListener && RM.addEventListener('change', function () { if (cur.flow) cur.flow.setQ(cur.flow.q); });
   mount();
 })();
