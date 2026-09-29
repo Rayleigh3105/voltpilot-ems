@@ -98,7 +98,7 @@ Gültigkeitsintervallen sind Exklusions-Constraints.
 | `PORTAL/pages/AnlageTechnik.tsx:508`, `:1207` | Feld „Standort“ (Koordinaten) | **bleibt** | Behält seinen Namen: beide Bedeutungen bleiben, die Unterscheidung leistet der Kontext der Fläche — heute schon „Standort auf der Karte“ (AP-00 E9 = B; IP-5 entfällt). |
 | `PORTAL/copy.test.ts:77-80`, `:103-113`, `PORTAL/glossar.ts` | Kundensprache | **bleibt** (dieser PR) | Die neuen Kundenwörter (Unternehmen, Standort, Gebäude, Bereich, Netzanschluss, Messstelle; „Datenquelle“ nur auf Einrichtungsflächen) und die verbotenen internen Wörter kommen in AP-00 **IP-4** dazu — nicht hier. Diese Karte ändert keine Sprachregel. |
 | `PORTAL/komponenten.ts:754-766`, `:865-877`, `:306-307` | Zustandswörter | **bleibt** | „Liefert Daten / Meldet sich gerade nicht / Wartet auf die ersten Daten“, „Verbunden“ und „Wird von VoltPilot gesteuert“ bleiben die Kundenwörter des gemeinsamen Zustandsvokabulars ([`zustaende.md`](zustaende.md)). Die harte 5-Minuten-Ableitung wird erst mit AP-00 IP-3 durch die zeitgültige Kadenz ersetzt (AP-07 E9). |
-| `PORTAL/betriebsmodelle.ts:110-137`, `PORTAL/components/Betriebsmodelle.tsx:85` | Betriebsmodell | **bleibt** | Radiogruppe und „läuft seit …“ bleiben; „Marktoptimierung“ bleibt das Kundenwort, nicht „Arbitrage“ (AP-01 E11). |
+| `PORTAL/betriebsmodelle.ts:110-137`, `PORTAL/steuerung/Blaetter.tsx:796` | Betriebsmodell | **bleibt** | Die Wahl (seit „Steuerung neu“ im Blatt des Speichers) und „läuft seit …“ bleiben; „Marktoptimierung“ bleibt das Kundenwort, nicht „Arbitrage“ (AP-01 E11). |
 
 ## Verträge und Dienste
 

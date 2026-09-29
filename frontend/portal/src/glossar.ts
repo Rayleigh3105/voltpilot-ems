@@ -148,6 +148,18 @@ export const FAHRPLAN_TAETIGKEIT = {
 } as const;
 
 /**
+ * Die SZENEN der Steuerung (Konzept „Steuerung neu", E6; Glossar-Nachtrag
+ * „Szene"): ein Tipp pausiert mehrere Geräte, bis der Kunde die Szene beendet.
+ * Das Vokabular ist geschlossen - dieselben Schlüssel hält der Server
+ * (`Szenen.java`, DB-CHECK von `site_scene`).
+ */
+export const STEUERUNG_SZENE = {
+  urlaub: 'Urlaub',
+  unterwegs: 'Unterwegs',
+  sparen: 'Sparen',
+} as const;
+
+/**
  * Die zwei Zustandsfamilien (AP-01 E8, `docs/fachmodell/zustaende.md`): der
  * LEBENSZYKLUS, den der Kunde setzt, und die BEOBACHTUNG, die nie jemand von
  * Hand setzt. Die Wörter bedeuten bei JEDEM Objekt dasselbe.

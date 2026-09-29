@@ -637,7 +637,7 @@
         }
       ],
       "blocked_reason_immer": null,
-      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Regeln“ auf dieser Seite eine Regel an, die ein Gerät bei Überschuss laufen lässt.",
+      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Stellen Sie unter Steuerung → Geräte ein Gerät auf „Mit Sonnenstrom“ oder legen Sie unter „Regeln“ eine Regel an.",
       "bausteine": {
         "cockpit": ["geraete-automatik"],
         "ansichten": ["flow-editor"],
@@ -679,7 +679,7 @@
         }
       ],
       "blocked_reason_immer": null,
-      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Regeln“ auf dieser Seite fest, wann Ihr Gerät laufen soll.",
+      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter Steuerung → Regeln fest, wann Ihr Gerät laufen soll.",
       "bausteine": {
         "cockpit": ["geraete-automatik"],
         "ansichten": ["flow-editor"],

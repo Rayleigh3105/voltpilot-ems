@@ -12,7 +12,7 @@ export type HelpArticleId =
   | 'voltpilot' | 'energiefluesse' | 'beispieltag'
   | 'orientierung' | 'anlage-anlegen' | 'box-verbinden'
   | 'summenwerte' | 'cockpit' | 'fahrplan' | 'messwerte' | 'erloese' | 'marktpreise' | 'prognosen' | 'portfolio'
-  | 'betriebsmodelle' | 'regeln' | 'speicher' | 'lastspitzen' | 'ladepark' | 'ladevorgaenge'
+  | 'geraete-steuern' | 'betriebsmodelle' | 'regeln' | 'speicher' | 'lastspitzen' | 'ladepark' | 'ladevorgaenge'
   | 'anlagenmodell' | 'geraete' | 'einstellungen'
   | 'probleme' | 'glossar' | 'kontakt';
 

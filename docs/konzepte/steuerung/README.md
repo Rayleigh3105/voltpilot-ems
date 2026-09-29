@@ -1,6 +1,6 @@
 # Steuerung neu gedacht (Konzeptentwurf)
 
-**Status: Entwurf vom 29.09.2026, Fassung 1, noch nicht abgenommen.** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei funktioniert im Browser ohne Server. Alle Zahlen darin sind erfunden. Die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures.
+**Status: Entschieden am 29.09.2026 (E1–E9 = A), im Portal umgesetzt – siehe [Umsetzung](#umsetzung).** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei funktioniert im Browser ohne Server. Alle Zahlen darin sind erfunden. Die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures.
 
 Zur Besprechung mit Lavish: `npx -y lavish-axi docs/konzepte/steuerung/prototyp.html`. Die offenen Entscheidungen am Ende lassen sich dort als Rückmeldung abschicken; ohne Lavish werden sie in die Zwischenablage kopiert.
 
@@ -342,9 +342,26 @@ Risiken:
 - **Ein Steuerer je Gerät (V-5):** bleibt gewahrt, weil alle Bedingungen im einen Auftrag des Geräts landen.
 - **Datenbank und Vertrag:** Neue Felder brauchen neue Flyway-Versionen (nie alte ändern), neue Signale eine additive Vertragsversion mit Vektoren.
 
-## Offene Entscheidungen
+## Umsetzung
 
-Der Prototyp zeigt jeweils Option A.
+Stand 29.09.2026. Die Seite liegt unter `frontend/portal/src/steuerung/`; Aufbau und Regeln stehen in [Steuerung neu: drei Reiter](../../agents/portal/steuerung-neu-drei-reiter.md).
+
+**Umgesetzt wie im Prototyp:** die Reiter Geräte · Laden · Regeln; Jetzt-Kopf mit „Wohin geht der Sonnenstrom?“; Tagesbild über heute und morgen; die Geräte als Reihenfolge mit „Ändern“; je Gerät Aus · Smart · Ein mit Ende und Folgen; „Neu in Ihrer Anlage“ mit Vorschlag, anders einstellen oder dauerhaft nur messen; „Was immer gilt“ mit Speicher und Betriebsmodell, Vorrang, Netzanschluss, § 14a und Negativpreis; Laden mit Netzanschluss-Band, „Womit laden“, Ladeziel in kWh bis Uhrzeit, Speicher-Vorrang und Fahrzeugen; Regeln als Satzbaukasten mit Probelauf und Folgen, Vorlagen, „Heute passiert“; Szenen Urlaub · Unterwegs · Sparen.
+
+**Neu im Backend:** Szenen (`site_scene`, `/sites/{id}/scene`) pausieren die gewählten Verbraucher über den bestehenden Pausenweg und setzen beim Beenden genau diese fort. „Nur messen“ ist eine Haltung ohne Frist (`suggestion-states`, `nur_messen`). Migration `V20260929120000`.
+
+**Noch nicht, weil Box oder Vertrag fehlen** – die Oberfläche sagt es an Ort und Stelle („kommt noch“) statt still zu fehlen:
+
+- Szenen enden nur von Hand, nicht zu einem Datum, und stellen keine Temperatur oder Ladeart um („Warmwasser nur 45 °C“ fehlt).
+- „Nie wenn …“ / „bleibt aus“ und die Bedingungen Außentemperatur, günstigste Stunden, anderes Gerät und Auto angesteckt.
+- „Speicher zuerst bis x %“; heute wählt der Kunde zwischen „Speicher zuerst“ und „Autos zuerst“.
+- Mehrere Ausgänge je Gerät (E9) und Gerätevorlagen beim Anlegen (E8).
+- Regeln bleiben technisch eigene Regeln der Box (geführte Flows); das Gerät zeigt sie in seinem Blatt (E3 teilweise).
+- Geräte ohne Leistungsmessung haben keine Vergangenheit im Tagesbild – es wird nichts geschätzt.
+
+## Entscheidungen
+
+Entschieden am 29.09.2026: jeweils Option A.
 
 - **E1 · Bedienung eines Geräts.** A: Aus · Smart · Ein je Gerät. B: Steuerart-Karten wie heute, Eingriffe im Menü.
 - **E2 · Reichweite der Reihenfolge.** A: alle Geräte und Speicher; die Box verteilt an alle. B: nur Ladepunkte und Speicher wie heute.

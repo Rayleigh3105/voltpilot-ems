@@ -14,6 +14,7 @@
  * Rein und getestet (`szenen.test.ts`).
  */
 import type { SiteScene, SzeneKey } from '../api';
+import { STEUERUNG_SZENE } from '../glossar';
 import type { GeraetBild } from './bild';
 import type { IcName } from './Ic';
 
@@ -37,9 +38,9 @@ const ANWESEND = new Set(['snow', 'heater', 'fan']);
 const OHNE_PREIS = new Set(['sofort', 'feste_zeiten']);
 
 export const SZENEN: SzeneDef[] = [
-  { id: 'urlaub', name: 'Urlaub', icon: 'plane', kurz: 'Pool, Klima und Haushalt aus', passt: (g) => KOMFORT.has(g.symbol) || HAUSHALT.has(g.symbol) },
-  { id: 'unterwegs', name: 'Unterwegs', icon: 'door', kurz: 'Tagsüber niemand da', passt: (g) => ANWESEND.has(g.symbol) },
-  { id: 'sparen', name: 'Sparen', icon: 'leaf', kurz: 'Nur Sonne und günstig', passt: (g) => OHNE_PREIS.has(g.steuerart?.quelle ?? '') },
+  { id: 'urlaub', name: STEUERUNG_SZENE.urlaub, icon: 'plane', kurz: 'Pool, Klima und Haushalt aus', passt: (g) => KOMFORT.has(g.symbol) || HAUSHALT.has(g.symbol) },
+  { id: 'unterwegs', name: STEUERUNG_SZENE.unterwegs, icon: 'door', kurz: 'Tagsüber niemand da', passt: (g) => ANWESEND.has(g.symbol) },
+  { id: 'sparen', name: STEUERUNG_SZENE.sparen, icon: 'leaf', kurz: 'Nur Sonne und günstig', passt: (g) => OHNE_PREIS.has(g.steuerart?.quelle ?? '') },
 ];
 
 export const szeneDef = (id: string | null | undefined): SzeneDef | null => SZENEN.find((s) => s.id === id) ?? null;

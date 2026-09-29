@@ -5,7 +5,7 @@ export const HELP_FOR_SUB: Record<AnlagenSub, HelpArticleId> = {
   fahrplan: 'fahrplan', messwerte: 'messwerte', erloese: 'erloese', einzelwerte: 'messwerte',
   marktpreise: 'marktpreise',
   prognose: 'prognosen', wetter: 'prognosen', technik: 'einstellungen', modell: 'anlagenmodell',
-  steuerung: 'betriebsmodelle', laden: 'ladepark', regeln: 'regeln', lastspitzen: 'lastspitzen', ladevorgaenge: 'ladevorgaenge',
+  steuerung: 'geraete-steuern', laden: 'ladepark', regeln: 'regeln', lastspitzen: 'lastspitzen', ladevorgaenge: 'ladevorgaenge',
   befehle: 'geraete', geraet: 'geraete', box: 'geraete',
 };
 

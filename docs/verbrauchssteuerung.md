@@ -49,6 +49,8 @@ Die **technisch verbindlichen** Klassen, Quellberechtigungen und TTLs stehen unt
 
 Bei fehlgeschlagener Kompilierung bleibt der bisher aktive Stand maßgeblich. Speicherung einer Policy oder MQTT-Zustellung allein beweist noch keine laufende Geräteausführung. Deaktivieren/Pausieren muss ausgerollte Artefakte auch bei abgeschalteten Aktivierungsflags zurückziehen.
 
+Eine **Szene** (Steuerung neu, E6; `SzenenService`, `/sites/{id}/scene`) ist kein eigener Schaltweg: sie pausiert die gewählten Verbraucher über denselben Pausenweg und merkt sich, welche sie selbst pausiert hat. Beim Beenden setzt sie genau diese fort; ein vorher pausiertes oder zwischendurch von Hand fortgesetztes Gerät bleibt unberührt. Weil Fortsetzen das Steuerungs-Flag braucht, verweigert der Server das Einschalten einer Szene ohne `voltpilot.consumer-control.enabled`. Was beim Beenden nicht fortgesetzt werden kann, bleibt in der Szene und wird benannt.
+
 ## Offline-Verhalten
 
 | Situation | Verhalten |
