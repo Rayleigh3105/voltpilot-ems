@@ -246,7 +246,17 @@ public class AnwendungKatalog {
      * deshalb ein eigenes Feld und keine Position in {@code order}.
      */
     public record LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
-            String lead, List<CustomBaustein> custom, List<String> seen) {
+            String lead, List<CustomBaustein> custom, List<String> seen,
+            Map<String, String> groessen) {
+
+        /**
+         * Die Form der Stufe 8 - ohne die Kachelgrößen des Cockpit-Konzepts
+         * „Tagesfilm“ ({@code groessen}: Kachel-Id → {@code klein}|{@code breit}).
+         */
+        public LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
+                String lead, List<CustomBaustein> custom, List<String> seen) {
+            this(order, hidden, shown, lead, custom, seen, Map.of());
+        }
 
         /**
          * Ein Dokument OHNE eigene Auswertungen — die Form jedes Aufrufers vor
@@ -267,7 +277,8 @@ public class AnwendungKatalog {
 
         /** Das leere Dokument — es sagt über nichts etwas aus. */
         public static LayoutDoc leer() {
-            return new LayoutDoc(List.of(), List.of(), List.of(), null, List.of(), List.of());
+            return new LayoutDoc(List.of(), List.of(), List.of(), null, List.of(), List.of(),
+                    Map.of());
         }
 
         /**
@@ -285,7 +296,7 @@ public class AnwendungKatalog {
          */
         public boolean istLeer() {
             return order.isEmpty() && hidden.isEmpty() && shown.isEmpty() && lead == null
-                    && custom.isEmpty();
+                    && custom.isEmpty() && groessen.isEmpty();
         }
     }
 
@@ -370,6 +381,7 @@ public class AnwendungKatalog {
     private final Map<String, LayoutDoc> presetLayoutById = new LinkedHashMap<>();
     private final Map<String, Baustein> bausteinById = new LinkedHashMap<>();
     private final List<BausteinVorlage> vorlagen = new ArrayList<>();
+    private final Map<String, Kachel> kachelById = new LinkedHashMap<>();
 
     public AnwendungKatalog(ObjectMapper mapper) {
         try (InputStream in = getClass().getResourceAsStream("/anwendungen/catalog.json")) {
@@ -416,6 +428,17 @@ public class AnwendungKatalog {
                     text(b, "aggregation_regel"));
             if (bausteinById.put(baustein.id(), baustein) != null) {
                 throw new IllegalStateException("duplicate baustein id: " + baustein.id());
+            }
+        }
+        for (JsonNode k : raw.path("kacheln")) {
+            Kachel kachel = new Kachel(k.path("id").asText(), k.path("label").asText(),
+                    strings(k.path("groessen")), text(k, "standard"));
+            if (kachel.groessen().isEmpty()
+                    || !kachel.groessen().contains(kachel.standard())) {
+                throw new IllegalStateException("kachel without valid sizes: " + kachel.id());
+            }
+            if (kachelById.put(kachel.id(), kachel) != null) {
+                throw new IllegalStateException("duplicate kachel id: " + kachel.id());
             }
         }
         for (JsonNode v : raw.path("baustein_vorlagen")) {
@@ -617,6 +640,19 @@ public class AnwendungKatalog {
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Eine Kachel des Cockpits mit den Größen, die sie tragen kann (Konzept
+     * „Cockpit als Tagesfilm“: {@code klein} = eine Spalte, {@code breit} =
+     * zwei). Ihre Anordnung bleibt Sache des Bausteins {@code kacheln}; das
+     * Layout-Dokument merkt sich nur die gewählte Größe.
+     */
+    public record Kachel(String id, String label, List<String> groessen, String standard) {}
+
+    /** Die Kachel mit dieser Id, oder null. */
+    public Kachel kachel(String id) {
+        return id == null ? null : kachelById.get(id);
     }
 
     /** Der Baustein mit dieser Id, oder null (auch für ein unbekanntes Wort). */

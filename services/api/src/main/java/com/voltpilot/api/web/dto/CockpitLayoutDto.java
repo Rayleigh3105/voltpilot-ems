@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Die Layout-Antwort einer Fläche (Anwendungs-Programm Stufe 3).
@@ -45,7 +46,8 @@ public record CockpitLayoutDto(String surface, String profil, LayoutDocumentDto 
      *                zusätzlich in {@code order}/{@code hidden}.
      */
     public record LayoutDocumentDto(int version, List<String> order, List<String> hidden,
-            List<String> shown, String lead, List<CustomBausteinDto> custom, List<String> seen) {}
+            List<String> shown, String lead, List<CustomBausteinDto> custom, List<String> seen,
+            Map<String, String> groessen) {}
 
     /**
      * Eine eigene Auswertung: Titel, Darstellung und die QUELLE (Komponente ×

@@ -78,7 +78,7 @@ import { liveState, type LiveState } from '../adaptiveLive';
 import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
 import { leadBlock } from '../leadSlot';
 import { useCockpitLayout } from '../useCockpitLayout';
-import { ortsHinweis, type BausteinId } from '../cockpitLayout';
+import { betriebAus, canonicalFuer, ortsHinweis, type BausteinId } from '../cockpitLayout';
 import {
   LEER_SATZ as EIGEN_LEER_SATZ,
   deckelSatz as eigenDeckelSatz,
@@ -1552,6 +1552,8 @@ export function AnlageSeite({
     verfuegbar,
     blocks,
     isPhone,
+    // Die Voreinstellung je Betriebsmodell (Konzept „Cockpit als Tagesfilm“).
+    canonical: canonicalFuer(isPhone, betriebAus(blocks)),
   });
 
   // --- Anwendungs-Programm Stufe 5 · die EIGENEN Auswertungen ---------------
@@ -1712,11 +1714,7 @@ export function AnlageSeite({
     () => (dayHistoryEffective || plan ? tagAus(dayHistoryEffective, plan, now) : null),
     [dayHistoryEffective, plan, now],
   );
-  const buehneBetrieb: Betrieb = hasBlock(blocks, 'peak-band')
-    ? 'spitze'
-    : hasBlock(blocks, 'handel')
-      ? 'markt'
-      : 'eigenverbrauch';
+  const buehneBetrieb: Betrieb = betriebAus(blocks);
   // „Verbrauch im Detail“: dieselbe Ableitung wie die Aufschlüsselung der
   // Komponenten - eine Zahl, eine Herkunft.
   const buehneVerbrauch = useMemo(
@@ -1844,7 +1842,14 @@ export function AnlageSeite({
     laden: ladenView ? <LadenKachel view={ladenView} /> : null,
     /* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
        Ziel der Kachel - kein Modal mehr. */
-    kacheln: <WidgetGrid widgets={widgetsMitLead} onSelect={jumpToWidget} />,
+    kacheln: (
+      <WidgetGrid
+        widgets={widgetsMitLead}
+        onSelect={jumpToWidget}
+        groessen={layout.resolved.groessen}
+        onGroesse={layout.anpassen ? layout.setGroesse : null}
+      />
+    ),
     /* Merge Option A · Stratum 3: Komponenten im Detail — das Board
        (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
        Abrufe starten erst nahe dem Viewport (lazy-mount). */

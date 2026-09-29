@@ -78,4 +78,26 @@ describe('WidgetGrid', () => {
     );
     expect(container.querySelector('.vp-widget-jump')).toBeNull();
   });
+
+  it('Größen: breit belegt zwei Spalten, im Anpassen-Modus wählbar', () => {
+    const onGroesse = vi.fn();
+    const { container, getByRole } = render(
+      <WidgetGrid
+        widgets={[widget({ id: 'wetter', label: 'Wetter' })]}
+        onSelect={() => {}}
+        groessen={{ wetter: 'breit' }}
+        onGroesse={onGroesse}
+      />,
+    );
+    expect(container.querySelector('.vp-widget-platz.is-breit')).not.toBeNull();
+    const klein = getByRole('group', { name: 'Größe von Wetter' }).querySelector('button');
+    fireEvent.click(klein!);
+    expect(onGroesse).toHaveBeenCalledWith('wetter', 'klein');
+  });
+
+  it('ohne Anpassen-Modus gibt es keine Größen-Knöpfe', () => {
+    const { container } = render(<WidgetGrid widgets={[widget()]} onSelect={() => {}} />);
+    expect(container.querySelector('.vp-widget-groesse')).toBeNull();
+    expect(container.querySelector('.vp-widget-platz.is-klein')).not.toBeNull();
+  });
 });

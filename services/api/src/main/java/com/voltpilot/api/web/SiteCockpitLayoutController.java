@@ -6,6 +6,7 @@ import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
 import com.voltpilot.api.web.dto.CockpitLayoutDto;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -55,7 +56,8 @@ public class SiteCockpitLayoutController {
 
     /** Der Rumpf eines Schreibvorgangs — NUR Absicht, nie die gerenderte Fläche. */
     public record LayoutRequest(List<String> order, List<String> hidden, List<String> shown,
-            String lead, List<CustomRequest> custom, List<String> seen) {}
+            String lead, List<CustomRequest> custom, List<String> seen,
+            Map<String, String> groessen) {}
 
     /**
      * Eine EIGENE Auswertung im Rumpf (Anwendungs-Programm Stufe 5). Bewusst
@@ -123,7 +125,22 @@ public class SiteCockpitLayoutController {
             return LayoutDoc.leer();
         }
         return new LayoutDoc(list(request.order()), list(request.hidden()), list(request.shown()),
-                blankToNull(request.lead()), custom(request.custom()), list(request.seen()));
+                blankToNull(request.lead()), custom(request.custom()), list(request.seen()),
+                groessen(request.groessen()));
+    }
+
+    /** Die Kachelgrößen des Rumpfs — Reihenfolge erhalten, Leeres verworfen. */
+    private static Map<String, String> groessen(Map<String, String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        raw.forEach((k, v) -> {
+            if (k != null && v != null) {
+                out.put(k.trim(), v.trim());
+            }
+        });
+        return java.util.Collections.unmodifiableMap(out);
     }
 
     /** Die eigenen Auswertungen des Rumpfs — Trimmen, sonst unverändert. */

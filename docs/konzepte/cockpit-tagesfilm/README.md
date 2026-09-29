@@ -1,6 +1,6 @@
 # Cockpit als Tagesfilm (Konzeptentwurf)
 
-**Status: Entwurf vom 29.09.2026. Nichts davon ist umgesetzt.** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei im Browser öffnen; sie funktioniert ohne Server. Alle Zahlen darin sind erfunden. Die Anlagennamen „Sonnenhof“ und „Werk Ahrenberg“ stammen aus den fiktiven Test-Fixtures.
+**Status: abgenommen am 29.09.2026, im Portal umgesetzt** (Bühne mit Leitungsplan, Listen, Jetzt/Heute, Tagesleiste, Kachelgrößen, Voreinstellung je Betriebsmodell; Details und bewusste Abweichungen: [Die Bühne des Cockpits](../../agents/portal/die-buehne-des-cockpits-leitungsplan-tagesleiste.md)). Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei im Browser öffnen; sie funktioniert ohne Server. Alle Zahlen darin sind erfunden. Die Anlagennamen „Sonnenhof“ und „Werk Ahrenberg“ stammen aus den fiktiven Test-Fixtures.
 
 ## Zweck
 

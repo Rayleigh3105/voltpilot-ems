@@ -90,4 +90,9 @@ rendert Zeichen für Zeichen wie vorher**, und das ist zweifach festgenagelt (re
   scope-generisch sind) · eigene Kacheln aus Messwerten (Stufe 5, seither GEBAUT — sie leben in
   `document.custom`, siehe „Eigene Auswertung") ·
   eine Admin-Sperre einzelner Bausteine (E2: ausdrücklich nicht in V1; additiv nachrüstbar).
-
+- **Nachtrag Kachelgrößen (Konzept „Cockpit als Tagesfilm“):** das Dokument trägt additiv `groessen`
+  (Kachel-Id → `klein`|`breit`). Erlaubte Kacheln und Größen stehen im Katalog unter `kacheln`;
+  `validateGroessen` lehnt unbekannte Kacheln, fremde Größen und Größen auf dem Portfolio mit deutschem
+  Grund ab, eine gerade nicht gezeigte Kachel aber NICHT. Keine Migration (JSONB). Unit-Beweis:
+  `CockpitLayoutServiceTest` (+5); der Testcontainers-Weg `CockpitLayoutApiTest` wurde ohne Docker nicht
+  ausgeführt.

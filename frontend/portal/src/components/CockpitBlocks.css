@@ -524,6 +524,29 @@
   .vp-widgets {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* Konzept „Cockpit als Tagesfilm“: eine breite Kachel belegt zwei Spalten. */
+  .vp-widget-platz.is-breit {
+    grid-column: span 2;
+  }
+}
+
+/* Der Platz einer Kachel: sie selbst plus, im Anpassen-Modus, ihre Größe. */
+.vp-widget-platz {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-widget-platz > .vp-widget {
+  flex: 1;
+}
+.vp-widget-groesse {
+  align-self: flex-start;
+}
+.vp-widget-groesse-fest {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vp-c-muted-fg, #475569);
 }
 
 @media (min-width: 1100px) {
