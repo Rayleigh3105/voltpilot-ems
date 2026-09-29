@@ -45,20 +45,21 @@ const ueberlauf = (page: Page) =>
 
 test('Cockpit: Energiefluss-Symbole bleiben Symbole, nichts ragt über den Rand', async ({ page }) => {
   await oeffnen(page, COCKPIT);
-  const flussSvg = page.locator('.vp-flow-adaptive > svg').first();
-  await expect(flussSvg).toBeVisible();
+  // Der Leitungsplan der Bühne (Konzept „Cockpit als Tagesfilm“): Knoten
+  // sind Knöpfe mit Symbol, die Spuren eine SVG-Fläche darunter.
+  const fluss = page.locator('.vp-hero-flow .vp-lp').first();
+  await expect(fluss).toBeVisible();
 
-  const mass = await flussSvg.evaluate((svg) => {
-    const wrap = svg.parentElement!.getBoundingClientRect();
-    const r = svg.getBoundingClientRect();
-    // Die Symbole der Kreise sind verschachtelte <svg> (`Icon`).
-    const symbole = [...svg.querySelectorAll('svg')].map((s) => {
+  const mass = await fluss.evaluate((el) => {
+    const wrap = el.parentElement!.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const symbole = [...el.querySelectorAll('.vp-lp-knoten svg')].map((s) => {
       const b = s.getBoundingClientRect();
       return { w: Math.round(b.width), h: Math.round(b.height) };
     });
-    // Unterkante des tatsächlich Gezeichneten: Kreise und Beschriftungen.
+    // Unterkante des tatsächlich Gezeichneten: Knoten und Beschriftungen.
     const inhaltUnten = Math.max(
-      ...[...svg.querySelectorAll('circle, text')].map((el) => el.getBoundingClientRect().bottom),
+      ...[...el.querySelectorAll('.vp-lp-knoten, .vp-lp-batt, .vp-lp-lab')].map((e) => e.getBoundingClientRect().bottom),
     );
     return {
       symbole,

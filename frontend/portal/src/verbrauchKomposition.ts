@@ -266,6 +266,17 @@ function hausMitglied(
   return null;
 }
 
+/**
+ * Die Hausleistung (kW) der Anlage: das `house-load`-Mitglied, nicht der
+ * doppelt zählende Knoten-Wert. `null`, wenn es kein Haus-Mitglied oder keinen
+ * Wert gibt. Der Leitungsplan des Cockpits liest den Verbrauch hierüber.
+ */
+export function hausLeistungKw(topology: SiteTopology | null | undefined): number | null {
+  if (!topology) return null;
+  const haus = hausMitglied(topology);
+  return haus?.member.value_kw == null ? null : round3(haus.member.value_kw);
+}
+
 // ---------------------------------------------------------------------------
 // Die Ableitung
 // ---------------------------------------------------------------------------

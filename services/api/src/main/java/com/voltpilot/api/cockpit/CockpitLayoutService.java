@@ -222,6 +222,32 @@ public class CockpitLayoutService {
                 throw bad("„" + id + "“ steht mehrfach in der Reihenfolge.");
             }
         }
+        validateGroessen(document, flaeche);
+    }
+
+    /**
+     * Die Kachelgrößen (Cockpit-Konzept „Tagesfilm“): nur auf dem Cockpit einer
+     * Anlage, nur für Kacheln des Katalogs und nur in einer Größe, die die
+     * Kachel tragen kann. Eine Kachel, die die Anlage gerade nicht zeigt, wird
+     * wie ein fehlender Baustein NICHT abgelehnt - die Wahl überlebt so ein
+     * Ab- und Wiedereinschalten.
+     */
+    private void validateGroessen(LayoutDoc document, String flaeche) {
+        if (document.groessen().isEmpty()) {
+            return;
+        }
+        if (!AnwendungKatalog.FLAECHE_COCKPIT.equals(flaeche)) {
+            throw bad("Kachelgrößen gibt es nur auf dem Cockpit einer Anlage.");
+        }
+        for (var e : document.groessen().entrySet()) {
+            AnwendungKatalog.Kachel k = anwendungen.kachel(e.getKey());
+            if (k == null) {
+                throw bad("„" + e.getKey() + "“ ist keine Kachel des Cockpits.");
+            }
+            if (!k.groessen().contains(e.getValue())) {
+                throw bad("„" + k.label() + "“ gibt es nicht in der Größe „" + e.getValue() + "“.");
+            }
+        }
     }
 
     /**
@@ -394,7 +420,7 @@ public class CockpitLayoutService {
                     b.channel(), b.aggregat()));
         }
         return new LayoutDocumentDto(1, doc.order(), doc.hidden(), doc.shown(), doc.lead(),
-                List.copyOf(custom), doc.seen());
+                List.copyOf(custom), doc.seen(), doc.groessen());
     }
 
     private void requireSite(UUID siteId) {

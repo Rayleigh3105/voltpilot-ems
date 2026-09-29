@@ -2,6 +2,12 @@ import * as React from 'react';
 
 export type IconName =
   | 'dashboard'
+  | 'pole'
+  | 'heatpump'
+  | 'car'
+  | 'plug'
+  | 'thermometer'
+  | 'panel'
   | 'map-pin'
   | 'zap'
   | 'euro'

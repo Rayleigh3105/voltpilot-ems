@@ -38,9 +38,13 @@ import {
   type AnlagenSub,
   type GeraetTarget,
   type Route,
+  komponenteHash,
 } from '../nav';
 import { useStaffel, mitStaffel } from '../staffel';
 import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
+import { tagAus } from '../tagesleiste';
+import type { Betrieb } from '../leitungsplan';
+import { verbrauchKomposition } from '../verbrauchKomposition';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE für alles Gemessene (Cockpit, Steuerung, Viertelstunden-Band), LIST für
 // die Zeitraum-Aggregate der Historie.
@@ -70,7 +74,6 @@ import { useAnlegeArt } from '../useAnlegeArt';
 import { AUFBAU_REITER, resolveAnlage } from '../ebenenNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
-import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
 import { ladeFlussKnoten, ladenKachel } from '../ladenKachel';
 import { LadenKachel } from '../components/LadenKachel';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
@@ -80,7 +83,7 @@ import { liveState, type LiveState } from '../adaptiveLive';
 import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
 import { leadBlock } from '../leadSlot';
 import { useCockpitLayout } from '../useCockpitLayout';
-import { ortsHinweis, type BausteinId } from '../cockpitLayout';
+import { betriebAus, canonicalFuer, ortsHinweis, type BausteinId } from '../cockpitLayout';
 import {
   LEER_SATZ as EIGEN_LEER_SATZ,
   deckelSatz as eigenDeckelSatz,
@@ -793,6 +796,8 @@ export function AnlageSeite({
   // PV-Nutzung); since v3 M2 they ALSO feed the cockpit hero's rings and the
   // Haus/Netz widgets, so the projection path fetches them once for all of it.
   const [dayTotals, setDayTotals] = useState<HistoryTotals | null>(null);
+  // Der ganze Tagesverlauf (Viertelstunden) für die Tagesleiste der Bühne.
+  const [dayHistory, setDayHistory] = useState<History | null>(null);
   // v3.2 M1: the hero rings (Autarkie / Eigenverbrauch) follow the SELECTED
   // period tab, so they read range-scoped Historie totals (day/month/year) -
   // distinct from `dayTotals`, which stays "today" for the widget grid. The
@@ -809,7 +814,6 @@ export function AnlageSeite({
   // Der Cockpit-Verbraucherstreifen (§14.10): steuerbare Verbraucher + ihr
   // Live-Zustand, fail-soft geladen. Ohne Verbraucher / auf einem älteren
   // Backend bleibt es null und das Cockpit ist byte-identisch zu vorher.
-  const [consumersView, setConsumersView] = useState<ConsumerStripView | null>(null);
   // Der ROHE Zustand steuerbarer Verbraucher: der Streifen verdichtet ihn zu
   // seiner eigenen Sicht, die Verbrauchs-Aufschlüsselung braucht ihn je Gerät
   // (ein Gerät ohne Messung hat NUR diesen Zustand).
@@ -956,23 +960,11 @@ export function AnlageSeite({
   // and the strip renders nothing (cockpit byte-identical to before).
   useEffect(() => {
     let active = true;
-    Promise.all([
-      consumersApi.list(site.id).catch(() => []),
-      consumersApi.status(site.id).catch(() => []),
-    ]).then(([list, statuses]) => {
+    // Der Zustand je Verbraucher fließt in „Verbrauch im Detail“ der Bühne
+    // (Konzept „Cockpit als Tagesfilm“: ein Gerät steht an EINER Stelle).
+    consumersApi.status(site.id).catch(() => []).then((statuses) => {
       if (!active) return;
       setConsumerStatus(statuses ?? null);
-      setConsumersView(
-        consumerStrip(
-          (list ?? []).map((c) => ({
-            id: c.id,
-            name: c.name,
-            ratedPowerKw: Number(c.ratedPowerKw),
-            connection: c.connection,
-          })),
-          statuses ?? [],
-        ),
-      );
     });
     return () => {
       active = false;
@@ -1196,13 +1188,18 @@ export function AnlageSeite({
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
     const id = site.id;
     api.history(id, 'day', today).then(
-      (h) => id === siteIdRef.current && setDayTotals(h.totals),
+      (h) => {
+        if (id !== siteIdRef.current) return;
+        setDayTotals(h.totals);
+        setDayHistory(h);
+      },
       () => {},
     );
   };
   useEffect(() => {
     if (!fetchStack || dayIsRange) {
       setDayTotals(null);
+      setDayHistory(null);
       return;
     }
     dayTotalsLoadRef.current();
@@ -1604,6 +1601,8 @@ export function AnlageSeite({
     verfuegbar,
     blocks,
     isPhone,
+    // Die Voreinstellung je Betriebsmodell (Konzept „Cockpit als Tagesfilm“).
+    canonical: canonicalFuer(isPhone, betriebAus(blocks)),
   });
 
   // --- Anwendungs-Programm Stufe 5 · die EIGENEN Auswertungen ---------------
@@ -1756,6 +1755,32 @@ export function AnlageSeite({
   // danach aus der AUFGELÖSTEN Reihenfolge, nicht mehr aus einer hart
   // codierten Folge von JSX-Zeilen. Ohne gespeicherte Zeile kommt Zeichen für
   // Zeichen dieselbe Folge heraus (`migration.test.ts` / `AnlagenPage`-Tests).
+  // --- Die Bühne (Konzept „Cockpit als Tagesfilm“) --------------------------
+  // Der Tag aus Verlauf (bis jetzt) und Fahrplan (danach); ist der gewählte
+  // Zeitraum genau „heute“, ist es dieselbe Antwort wie `rangeHistory`.
+  const dayHistoryEffective = dayIsRange ? rangeHistory : dayHistory;
+  const buehneTag = useMemo(
+    () => (dayHistoryEffective || plan ? tagAus(dayHistoryEffective, plan, now) : null),
+    [dayHistoryEffective, plan, now],
+  );
+  const buehneBetrieb: Betrieb = betriebAus(blocks);
+  // „Verbrauch im Detail“: dieselbe Ableitung wie die Aufschlüsselung der
+  // Komponenten - eine Zahl, eine Herkunft.
+  const buehneVerbrauch = useMemo(
+    () =>
+      verbrauchKomposition({
+        topology: adaptiveLive.adaptive ? adaptiveLive.topology : null,
+        chargers: charging?.chargers ?? null,
+        consumerStatus,
+        hausTodayKwh: dayTotalsEffective?.consumptionKwh ?? null,
+        links: {
+          charger: (id) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
+          komponente: (entityId) => komponenteHash(site.id, entityId),
+        },
+      }),
+    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id],
+  );
+
   const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {
     energiefluss:
       ovSite == null ? (
@@ -1772,9 +1797,16 @@ export function AnlageSeite({
           pvRollen={pvRollen}
           verbrauchRollen={verbrauchRollen}
           netzRollen={netzRollen}
-          consumers={consumersView}
-          onOpenConsumers={() => onOpenSub('steuerung')}
           onOpenSub={onOpenSub}
+          buehne={{
+            betrieb: buehneBetrieb,
+            tag: buehneTag,
+            zielKw: plan?.peakTargetKw ?? null,
+            verbrauch: buehneVerbrauch,
+            planKind,
+            isPhone,
+            now,
+          }}
           /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
              Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle
              Seitenzeile für vier Knöpfe. Ohne Geld-Modus gibt es keinen
@@ -1859,7 +1891,14 @@ export function AnlageSeite({
     laden: ladenView ? <LadenKachel view={ladenView} /> : null,
     /* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
        Ziel der Kachel - kein Modal mehr. */
-    kacheln: <WidgetGrid widgets={widgetsMitLead} onSelect={jumpToWidget} />,
+    kacheln: (
+      <WidgetGrid
+        widgets={widgetsMitLead}
+        onSelect={jumpToWidget}
+        groessen={layout.resolved.groessen}
+        onGroesse={layout.anpassen ? layout.setGroesse : null}
+      />
+    ),
     /* Merge Option A · Stratum 3: Komponenten im Detail — das Board
        (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
        Abrufe starten erst nahe dem Viewport (lazy-mount). */

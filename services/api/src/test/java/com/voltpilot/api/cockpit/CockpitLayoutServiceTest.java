@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.profile.AnwendungKatalog;
 import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -237,5 +238,47 @@ class CockpitLayoutServiceTest {
         assertThatCode(() -> service.validate(
                 doc(List.of("status", "kacheln"), List.of(), List.of(), null), "cockpit",
                 java.util.UUID.randomUUID())).doesNotThrowAnyException();
+    }
+
+    // -- Kachelgrößen (Cockpit-Konzept „Tagesfilm“) --------------------------
+
+    private static LayoutDoc mitGroessen(Map<String, String> groessen) {
+        return new LayoutDoc(List.of(), List.of(), List.of(), null, List.of(), List.of(), groessen);
+    }
+
+    @Test
+    void eineErlaubteKachelgroesseGehtDurch() {
+        assertThatCode(() -> service.validate(mitGroessen(Map.of("wetter", "breit", "automatik", "klein")),
+                "cockpit", null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void eineUnbekannteKachelIstEineBenannteAblehnung() {
+        assertThatThrownBy(() -> service.validate(mitGroessen(Map.of("gibtsnicht", "klein")),
+                "cockpit", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("keine Kachel");
+    }
+
+    @Test
+    void eineGroesseDieDieKachelNichtTraegtWirdAbgelehnt() {
+        assertThatThrownBy(() -> service.validate(mitGroessen(Map.of("lastspitze", "riesig")),
+                "cockpit", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Größe");
+    }
+
+    @Test
+    void kachelgroessenGibtEsNurAufDemAnlagenCockpit() {
+        assertThatThrownBy(() -> service.validate(mitGroessen(Map.of("wetter", "klein")),
+                "portfolio", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("nur auf dem Cockpit");
+    }
+
+    @Test
+    void eineGroesseIstEineAussageUndDasDokumentDamitNichtLeer() {
+        assertThat(mitGroessen(Map.of("wetter", "klein")).istLeer()).isFalse();
+        assertThat(LayoutDoc.leer().groessen()).isEmpty();
     }
 }

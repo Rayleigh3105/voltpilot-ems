@@ -98,6 +98,42 @@ export interface LayoutDocument {
    * des Betreibers.
    */
   seen?: string[];
+  /**
+   * Die gewählten Kachelgrößen (Konzept „Cockpit als Tagesfilm“): Kachel-Id →
+   * `klein` (eine Spalte) oder `breit` (zwei). Fehlt eine Kachel, gilt ihr
+   * Katalog-Standard. Additiv: ein Dokument ohne das Feld ist gültig.
+   */
+  groessen?: Record<string, KachelGroesse>;
+}
+
+/** Die zwei Größen einer Kachel. */
+export type KachelGroesse = 'klein' | 'breit';
+
+/** Eine Kachel des Katalogs mit den Größen, die sie tragen kann. */
+export interface KachelDef {
+  id: string;
+  label: string;
+  groessen: KachelGroesse[];
+  standard: KachelGroesse;
+}
+
+/** Die Kacheln des Katalogs (`kacheln`), in Katalog-Reihenfolge. */
+export const KACHELN: KachelDef[] = (CATALOG as { kacheln?: KachelDef[] }).kacheln ?? [];
+const KACHEL_BY_ID = new Map<string, KachelDef>(KACHELN.map((k) => [k.id, k]));
+
+export function kachelDef(id: string): KachelDef | null {
+  return KACHEL_BY_ID.get(id) ?? null;
+}
+
+/**
+ * Die wirksame Größe einer Kachel: die gewählte, wenn die Kachel sie tragen
+ * kann, sonst ihr Standard. Eine Kachel ohne Katalog-Eintrag ist `klein`.
+ */
+export function kachelGroesse(id: string, groessen?: Record<string, KachelGroesse> | null): KachelGroesse {
+  const def = kachelDef(id);
+  const wahl = groessen?.[id];
+  if (def && wahl && def.groessen.includes(wahl)) return wahl;
+  return def?.standard ?? 'klein';
 }
 
 /** Ein Baustein, wie der Katalog ihn beschreibt. */
@@ -207,6 +243,64 @@ export const CANONICAL_PHONE: BausteinId[] = [
   'komponenten',
   'zustand',
 ];
+
+/** Das Betriebsmodell, wie das Cockpit es aus seinen Blöcken erkennt. */
+export type CockpitBetrieb = 'eigenverbrauch' | 'markt' | 'spitze';
+
+/**
+ * Welches Betriebsmodell die Blöcke der Projektion tragen: ein Peak-Band heißt
+ * Lastspitzenkappung, ein Handels-Block Marktoptimierung, sonst Eigenverbrauch.
+ * Abgeleitet aus dem tatsächlichen Zustand, nie aus einer Behauptung.
+ */
+export function betriebAus(blocks: readonly CockpitBlock[] | null | undefined): CockpitBetrieb {
+  const ids = new Set((blocks ?? []).map((b) => b.id));
+  if (ids.has('peak-band')) return 'spitze';
+  if (ids.has('handel')) return 'markt';
+  return 'eigenverbrauch';
+}
+
+/** Rückt `id` direkt hinter `nach` (sonst unverändert). */
+function hinter(liste: readonly BausteinId[], id: BausteinId, nach: BausteinId): BausteinId[] {
+  const ohne = liste.filter((x) => x !== id);
+  const i = ohne.indexOf(nach);
+  if (i < 0 || !liste.includes(id)) return [...liste];
+  return [...ohne.slice(0, i + 1), id, ...ohne.slice(i + 1)];
+}
+
+/**
+ * **Die Voreinstellung je Betriebsmodell** (Konzept „Cockpit als Tagesfilm“):
+ * dieselben Bausteine, eine andere kanonische Reihenfolge. Bei der
+ * Marktoptimierung folgt der Börsenpreis direkt der Bühne, bei der
+ * Lastspitzenkappung die Kacheln mit der Lastspitze. Eigenverbrauch bleibt
+ * Zeichen für Zeichen die bisherige Reihenfolge (`migration.test.ts`).
+ * Gespeicherte Schichten (Vorgabe, eigen) liegen darüber und gewinnen.
+ */
+function kanonischFuer(basis: readonly BausteinId[], betrieb: CockpitBetrieb): BausteinId[] {
+  // Die unbeweglichen Bausteine der Bühne (Geld, Steuerung) bleiben, wo sie
+  // sind; eingereiht wird hinter dem letzten von ihnen, der vorn steht.
+  const buehne = basis.indexOf('steuerung') < basis.indexOf('laden') ? 'steuerung' : 'geld';
+  if (betrieb === 'markt') return hinter(basis, 'strompreis', buehne);
+  if (betrieb === 'spitze') return hinter(basis, 'kacheln', buehne);
+  return [...basis];
+}
+
+const KANONISCH: Record<'rechner' | 'telefon', Record<CockpitBetrieb, BausteinId[]>> = {
+  rechner: {
+    eigenverbrauch: CANONICAL_DESKTOP,
+    markt: kanonischFuer(CANONICAL_DESKTOP, 'markt'),
+    spitze: kanonischFuer(CANONICAL_DESKTOP, 'spitze'),
+  },
+  telefon: {
+    eigenverbrauch: CANONICAL_PHONE,
+    markt: kanonischFuer(CANONICAL_PHONE, 'markt'),
+    spitze: kanonischFuer(CANONICAL_PHONE, 'spitze'),
+  },
+};
+
+/** Die kanonische Reihenfolge für Bildschirm und Betriebsmodell (stabile Referenz). */
+export function canonicalFuer(isPhone: boolean, betrieb: CockpitBetrieb): readonly BausteinId[] {
+  return KANONISCH[isPhone ? 'telefon' : 'rechner'][betrieb];
+}
 
 // ---------------------------------------------------------------------------
 // Die Server-Antwort (`GET /api/v1/sites/{id}/cockpit-layout`)
@@ -383,6 +477,8 @@ export interface ResolvedLayout<T extends string = BausteinId> {
   lead: CockpitBlockId | null;
   /** Die oberste Schicht, die wirklich etwas gesagt hat. */
   quelle: LayoutQuelle;
+  /** Die gewählten Kachelgrößen über alle Schichten (höhere gewinnt). */
+  groessen: Record<string, KachelGroesse>;
 }
 
 /** Ein Dokument, das gar nichts aussagt, zählt als keine Schicht. */
@@ -396,7 +492,9 @@ function saysSomething(doc: LayoutDocument | null | undefined): doc is LayoutDoc
     // ⚠ Eine eigene Auswertung IST eine Aussage, auch ohne jede Reihenfolge —
     // ein Dokument, das nur Kacheln definiert, darf nicht als „keine Schicht"
     // durchfallen, sonst verschwänden sie beim Auflösen.
-    (doc.custom?.length ?? 0) > 0
+    (doc.custom?.length ?? 0) > 0 ||
+    // Eine gewählte Kachelgröße ist eine Aussage über die Anordnung.
+    Object.keys(doc.groessen ?? {}).length > 0
   );
 }
 
@@ -480,6 +578,7 @@ export function layoutResolve<T extends string = BausteinId>(
   const hidden = new Set<T>();
   let lead: string | null = null;
   let quelle: LayoutQuelle = 'katalog';
+  const groessen: Record<string, KachelGroesse> = {};
 
   const layers: Array<[LayoutQuelle, LayoutDocument | null | undefined]> = [
     ['preset', presetLayout(input.profil, input.flaeche ?? 'cockpit')],
@@ -498,6 +597,7 @@ export function layoutResolve<T extends string = BausteinId>(
     // nicht dasselbe wie „steht nicht in hidden".
     for (const id of doc.shown) hidden.delete(id as T);
     if (doc.lead != null) lead = doc.lead;
+    Object.assign(groessen, doc.groessen ?? {});
   }
 
   // Pflicht-Bausteine ignorieren JEDES hidden (E2) — Katalog-Eigenschaft.
@@ -519,6 +619,7 @@ export function layoutResolve<T extends string = BausteinId>(
     hidden: [...hidden],
     lead: wantedLead,
     quelle,
+    groessen,
   };
 }
 
@@ -631,6 +732,8 @@ export function anpassenDokument<T extends string = BausteinId>(input: {
   geerbtVersteckt?: readonly T[];
   /** Die eigenen Auswertungen dieser Schicht (Stufe 5). */
   eigene?: readonly EigeneAuswertungDef[] | null;
+  /** Die gewählten Kachelgrößen (Konzept „Cockpit als Tagesfilm“). */
+  groessen?: Record<string, KachelGroesse> | null;
 }): LayoutDocument {
   const hidden = input.hidden.filter((id) => !baustein(id)?.pflicht);
   const shown = (input.geerbtVersteckt ?? []).filter((id) => !hidden.includes(id));
@@ -649,6 +752,8 @@ export function anpassenDokument<T extends string = BausteinId>(input: {
   // Ein Dokument ohne eigene Auswertungen bleibt Zeichen für Zeichen das von
   // vor Stufe 5 — das Feld erscheint gar nicht erst.
   if (eigene.length > 0) doc.custom = [...eigene];
+  // Ebenso die Größen: ohne Wahl erscheint das Feld nicht.
+  if (input.groessen && Object.keys(input.groessen).length > 0) doc.groessen = { ...input.groessen };
   return doc;
 }
 

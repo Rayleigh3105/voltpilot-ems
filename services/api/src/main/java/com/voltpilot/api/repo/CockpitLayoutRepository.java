@@ -7,6 +7,8 @@ import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -112,7 +114,8 @@ public class CockpitLayoutRepository {
             return new LayoutDoc(strings(node.path("order")), strings(node.path("hidden")),
                     strings(node.path("shown")),
                     node.hasNonNull("lead") ? node.get("lead").asText() : null,
-                    custom(node.path("custom")), strings(node.path("seen")));
+                    custom(node.path("custom")), strings(node.path("seen")),
+                    groessen(node.path("groessen")));
         } catch (Exception e) {
             // Ein unlesbares Dokument ist kein Fehler der Anlage: die Fläche
             // fällt auf den deterministischen Standard zurück.
@@ -145,6 +148,20 @@ public class CockpitLayoutRepository {
                     n.path("aggregat").asText("")));
         }
         return List.copyOf(out);
+    }
+
+    /** Die Kachelgrößen eines Dokuments; nur Text-Werte, sonst übersprungen. */
+    private static Map<String, String> groessen(JsonNode obj) {
+        if (obj == null || !obj.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        obj.fields().forEachRemaining(e -> {
+            if (e.getValue() != null && e.getValue().isTextual()) {
+                out.put(e.getKey(), e.getValue().asText());
+            }
+        });
+        return java.util.Collections.unmodifiableMap(out);
     }
 
     private static List<String> strings(JsonNode array) {
@@ -184,6 +201,11 @@ public class CockpitLayoutRepository {
             // einer Spalte, die es seit Stufe 3 ohne auskommt.
             if (!doc.seen().isEmpty()) {
                 node.set("seen", mapper.valueToTree(doc.seen()));
+            }
+            // Cockpit-Konzept „Tagesfilm“: die gewählten Kachelgrößen - auch
+            // sie nur, wenn es welche gibt.
+            if (!doc.groessen().isEmpty()) {
+                node.set("groessen", mapper.valueToTree(doc.groessen()));
             }
             return mapper.writeValueAsString(node);
         } catch (Exception e) {

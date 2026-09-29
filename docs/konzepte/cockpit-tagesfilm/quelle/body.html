@@ -1,0 +1,197 @@
+<div class="pg" lang="de">
+  <header class="pagebar">
+    <div class="pagebar-t">
+      <p class="eyebrow">VoltPilot · Konzept Cockpit <span class="chip-ex">Alle Zahlen sind Beispiele</span></p>
+      <h1>Das Cockpit als Tagesfilm</h1>
+      <p class="lede">Ein neues Cockpit, zuerst fürs Telefon gedacht. Der Energiefluss zeigt auf einen Blick, woher der Strom kommt und wohin er fließt, bis zum einzelnen Gerät und bei beliebig vielen Geräten. Ziehen Sie durch den Tag: bis „Jetzt“ sehen Sie Messwerte, danach den Plan.</p>
+    </div>
+    <div class="ctrls">
+      <div class="ctrl"><span id="lbl-v">Beispielanlage</span>
+        <div class="seg" role="group" aria-labelledby="lbl-v" id="seg-v">
+          <button type="button" data-v="privat" aria-pressed="true">Eigen&shy;verbrauch</button>
+          <button type="button" data-v="markt" aria-pressed="false">Markt&shy;optimierung</button>
+          <button type="button" data-v="spitze" aria-pressed="false">Last&shy;spitzen&shy;kappung</button>
+        </div>
+      </div>
+      <div class="ctrl"><span id="lbl-d">Ansicht</span>
+        <div class="seg" role="group" aria-labelledby="lbl-d" id="seg-d">
+          <button type="button" data-d="phone" aria-pressed="true">Telefon</button>
+          <button type="button" data-d="desktop" aria-pressed="false">Rechner</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="stagewrap v-phone" id="stagewrap">
+    <div class="phone" id="phone"><div class="notch" aria-hidden="true"></div><div class="screen" id="screen"></div></div>
+    <aside class="aside" id="aside" aria-live="polite"></aside>
+  </div>
+  <div class="deskwrap" id="deskwrap" hidden>
+    <div class="desk-outer" id="deskOuter"><div class="desk" id="desk"></div></div>
+    <p class="desk-note" id="deskNote">Die Rechner-Fassung in 1280 px Breite, passend verkleinert. Sie ist voll bedienbar.</p>
+  </div>
+
+  <main class="notes" id="konzept">
+    <section>
+      <p class="kicker">Die Idee</p>
+      <h2>Woher kommt der Strom, wohin fließt er? Ein Leitungsplan mit vier festen Plätzen</h2>
+      <p>Heute zeigt das Cockpit Kreise um einen Knoten, darunter viele Karten. Wer wissen will, womit die Wallbox lädt oder warum der Speicher mittags aus dem Netz lädt, muss an mehreren Stellen suchen. Das neue Cockpit beantwortet beides in einem Bild: Sonne oben, Haus unten, Speicher links, Netz rechts. Jede Verbindung ist eine eigene Spur, so breit wie ihre Leistung, und läuft über den Hausanschluss in der Mitte. Darunter stehen die Geräte als Liste, die größten zuerst. Das trägt auch fünfzig Geräte.</p>
+      <ul class="princ">
+        <li><span class="sw"><i style="background:var(--pv)"></i><i style="background:var(--load)"></i></span><b>Vier feste Plätze</b><span>Sonne oben, Haus unten, Speicher links, Netz rechts. Die Plätze wechseln nie, das Auge findet sie sofort wieder. Eine breite Spur heißt viel Leistung.</span></li>
+        <li><span class="sw"><i style="background:var(--pv)"></i><i style="background:var(--batt)"></i><i style="background:var(--grid)"></i></span><b>Farbe heißt Herkunft</b><span>Jede Spur trägt die Farbe ihrer Quelle. Damit ist auch die Richtung klar: Eine grüne Spur kommt immer aus dem Speicher, eine petrolfarbene immer aus dem Netz.</span></li>
+        <li><b>Jetzt und Heute</b><span>„Jetzt“ zeigt Leistung in kW, „Heute“ die Energie seit Mitternacht in kWh, im selben Bild. Dann stehen alle Wege des Tages nebeneinander, am Speicher und am Netz auch beide Richtungen.</span></li>
+        <li><b>Beliebig viele Geräte</b><span>Die Liste zeigt die größten Geräte zuerst: am Telefon drei Zeilen und „n weitere“, am Rechner fünf. Das ganze Verzeichnis öffnet sich im Blatt, nach Art gruppiert.</span></li>
+        <li><b>Schraffiert heißt Plan</b><span>Die Tagesleiste springt zu jeder Viertelstunde. Rechts von „Jetzt“ sind die Spuren schraffiert und die Knoten gestrichelt, und für den Plan gibt es keine Aufteilung je Gerät.</span></li>
+        <li><b>Bewegung heißt live</b><span>Nur im Jetzt wandern kleine Punkte langsam die Spuren entlang. Zurückgezogen, im Plan und bei „Heute“ steht das Bild still, ebenso bei reduzierter Bewegung. Das Cockpit bleibt reine Anzeige, ohne Schaltknöpfe.</span></li>
+      </ul>
+    </section>
+
+    <section>
+      <p class="kicker">Warum so</p>
+      <h2>Was andere Energie-Apps gelernt haben</h2>
+      <div class="cols2">
+        <div>
+          <ul class="checks">
+            <li><span>Der Live-Fluss gehört auf die Startseite. Laut sonnen-App-Blog wollten ihn alle Tester; eine Kachel-Startseite ohne Fluss bewertete niemand am besten <a href="#q1">[1]</a>.</span></li>
+            <li><span>„Jetzt“ in kW und „Zeitraum“ in kWh werden überall getrennt. Für die Aufteilung sind Balken mit Bändern (Sankey) üblich, etwa bei Home Assistant und evcc <a href="#q4">[4]</a> <a href="#q5">[5]</a>.</span></li>
+            <li><span>Bei Marktoptimierung zeigen Victron und Tibber den Preisverlauf zusammen mit den geplanten Lade- und Entladefenstern <a href="#q2">[2]</a> <a href="#q6">[6]</a>.</span></li>
+            <li><span>Bei Lastspitzen zählt das Viertelstundenmittel gegen die Grenze, dazu die bisher höchste Spitze der Abrechnungsperiode <a href="#q7">[7]</a> <a href="#q8">[8]</a> <a href="#q9">[9]</a>.</span></li>
+          </ul>
+        </div>
+        <div>
+          <p><b>Die häufigsten Beschwerden</b> in Foren und Bewertungen: Pfeile und farbige Kreise falsch gelesen, kW mit kWh verwechselt, alte Daten sahen aktuell aus, und niemand verstand, warum die Automatik Strom aus dem Netz zog <a href="#q1">[1]</a> <a href="#q3">[3]</a> <a href="#q11">[11]</a>.</p>
+          <p>Der Leitungsplan antwortet auf genau diese Punkte. Die Richtung ergibt sich aus der Farbe der Herkunft statt aus Pfeilen. Die Einheit steht fest am Umschalter, der Datenstand ist eine Uhrzeit, und der Plan jeder Viertelstunde ist einen Fingerzug entfernt.</p><p>Zwei frühere Fassungen wurden verworfen: fließende Teilchen waren zu unruhig, eine Bilanz aus zwei Balken war zu trocken. Der Leitungsplan verbindet die festen Plätze und Symbole der ersten mit den ruhigen Spuren der zweiten.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="kicker">Anpassung je Betrieb</p>
+      <h2>Ein Cockpit, fünf Gesichter</h2>
+      <p>Welche Kacheln zu Beginn erscheinen, folgt dem Betriebsmodell und der Ausstattung der Anlage. Kundenwörter bleiben die des Produkts: „Marktoptimierung“ statt „Arbitrage“, „Lastspitzenkappung“ statt „Peak Shaving“.</p>
+      <div class="dtbl-wrap"><table class="dtbl">
+        <thead><tr><th scope="col"></th><th scope="col">Eigenverbrauchs-Fahrplan (privat)</th><th scope="col">Marktoptimierung</th><th scope="col">Lastspitzenkappung</th><th scope="col">Ladepark-Lastmanagement</th><th scope="col">Anlage beobachten</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Tagesleiste zeigt</th><td>PV und Verbrauch</td><td>Börsenpreis und Speicher</td><td>Netzbezug, Ziel, gekappte Spitzen</td><td>Ladeleistung und Ladebudget</td><td>PV und Verbrauch</td></tr>
+          <tr><th scope="row">Leitkachel (Stern)</th><td>Unterm Strich</td><td>Börsenpreis</td><td>Lastspitze</td><td>Ladebudget</td><td>keine</td></tr>
+          <tr><th scope="row">Kacheln zu Beginn</th><td>Autarkie, Eigenverbrauch, Speicher, Wärmepumpe, Sonne, Laden, Fahrplan</td><td>Börsenpreis, Sonne, Speicher, Handel, Unterm Strich, Netz heute</td><td>Lastspitze, Reserve, Sonne, Unterm Strich, Netz heute</td><td>Ladebudget, Laden, Netz heute</td><td>Sonne, Netz heute, Autarkie</td></tr>
+          <tr><th scope="row">Besonderheit im Fluss</th><td>Herkunft je Spur, Geräte als Liste</td><td>Spur vom Netz in den Speicher, Börsenpreis am Netz</td><td>Skala zum Ziel am Netz, viele Unterzähler als Liste</td><td>Ladepunkte als Liste, Anschlussgrenze am Netz</td><td>ohne Speicher</td></tr>
+          <tr><th scope="row">Geld</th><td>eine Zahl, Ton „sparen“</td><td>eine Zahl, Ton „verdienen“</td><td>eine Zahl, Ton „verdienen“</td><td>kein Geld (Betriebsdaten)</td><td>kein Geld (reine Messanlage)</td></tr>
+        </tbody>
+      </table></div>
+      <p class="src">Atypische Netznutzung hat weiterhin keinen Cockpit-Baustein, weil VoltPilot dafür noch nichts berechnet. § 14a ist kein Betriebsmodell. Wenn der Netzbetreiber begrenzt, steht die Grenze wie das Lastspitzen-Ziel am Netz.</p>
+    </section>
+
+    <section>
+      <p class="kicker">Kachelkatalog</p>
+      <h2>Jede Kachel mit Aufgabe, Datenquelle und Voraussetzung</h2>
+      <p>Alle Kacheln haben denselben Aufbau: ein Kopf mit Symbol, Name und Ziel, darunter eine Zahl mit Einheit und eine kleine Grafik aus echten Werten. Eine Marke unten sagt, ob der Wert gemessen, geplant oder erwartet ist. Die Datenquellen sind vorhandene Endpunkte. Neu ist nur die Größe „klein“ oder „breit“.</p>
+      <div class="dtbl-wrap"><table class="dtbl">
+        <thead><tr><th scope="col">Kachel</th><th scope="col">zeigt</th><th scope="col">Daten</th><th scope="col">verfügbar, wenn</th><th scope="col">Größen</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Energiefluss (Bühne)</th><td>Leitungsplan mit vier Knoten, jetzt und heute; Geräte als Liste; Tagesleiste; Blätter je Quelle und Gerät</td><td><code>/topology</code> <code>/sources</code> <code>/consumers</code> <code>/chargers</code> <code>/history?range=day</code> <code>/schedule</code></td><td>immer</td><td>fest oben</td></tr>
+          <tr><th scope="row">Unterm Strich</th><td>eine Geldzahl, netto, für Heute, Monat, Jahr</td><td><code>/earnings</code></td><td>Anlage mit Erzeuger oder Speicher</td><td>breit</td></tr>
+          <tr><th scope="row">Autarkie</th><td>Anteil des Verbrauchs aus eigener Erzeugung und Speicher</td><td><code>/history</code> (autarkiePct)</td><td>Verbrauch gemessen</td><td>klein</td></tr>
+          <tr><th scope="row">Eigenverbrauch</th><td>Anteil der Erzeugung, der selbst genutzt wurde</td><td><code>/history</code> (eigenverbrauchPct)</td><td>PV gemessen</td><td>klein</td></tr>
+          <tr><th scope="row">Speicher</th><td>Ladestand, Leistung, Tätigkeit laut Plan, „voll gegen“</td><td><code>/topology</code> <code>/schedule</code></td><td>Speicher vorhanden</td><td>klein, breit</td></tr>
+          <tr><th scope="row">Sonne</th><td>Sonnenstärke, PV heute gemessen und erwartet, morgen</td><td><code>/weather</code> (ghiWM2) <code>/schedule</code> (pvKw)</td><td>PV vorhanden</td><td>breit</td></tr>
+          <tr><th scope="row">Börsenpreis</th><td>Preis jetzt mit Urteil, Tageskurve, Plan-Fenster, morgen</td><td><code>/prices</code> <code>/schedule</code></td><td>Marktoptimierung oder dynamischer Tarif</td><td>breit</td></tr>
+          <tr><th scope="row">Handel</th><td>Lade- und Verkaufsfenster mit Ø-Preis, Vollzyklen</td><td><code>/schedule</code> <code>/history</code></td><td>Marktoptimierung</td><td>breit</td></tr>
+          <tr><th scope="row">Lastspitze</th><td>Viertelstundenmittel, Ziel, Monatsspitze, Wert ohne Speicher</td><td><code>/telemetry</code> <code>/schedule</code> (peakTargetKw) <code>/earnings</code> (peakShaving)</td><td>Lastspitzenkappung</td><td>breit, hoch</td></tr>
+          <tr><th scope="row">Lastspitzen-Reserve</th><td>Ladestand gegen eingestellte Reserve</td><td><code>/topology</code>, Einstellung „Lastspitzen-Reserve“</td><td>Lastspitzenkappung</td><td>klein</td></tr>
+          <tr><th scope="row">Laden</th><td>Ladepunkt, Steuerart, Energie heute</td><td><code>/chargers</code></td><td>Ladepunkt vorhanden</td><td>klein, breit</td></tr>
+          <tr><th scope="row">Wärmepumpe</th><td>Freigabe (SG-Ready), Leistung, wenn gemessen</td><td><code>/consumers</code> <code>/consumer-status</code></td><td>Wärmepumpe angelegt</td><td>klein</td></tr>
+          <tr><th scope="row">Fahrplan (Tagesuhr)</th><td>Tätigkeiten des Plans über 24 Stunden</td><td><code>/schedule</code> (slotRole)</td><td>Speicher vorhanden</td><td>breit</td></tr>
+          <tr><th scope="row">Netz heute</th><td>Bezug und Einspeisung in kWh</td><td><code>/history</code></td><td>Netzmessung</td><td>klein</td></tr>
+          <tr><th scope="row">Wetter</th><td>Temperatur und Bewölkung am Standort</td><td><code>/weather</code></td><td>Standort bekannt</td><td>klein</td></tr>
+          <tr><th scope="row">Eigene Kachel</th><td>ein Messwert mit Einheit und Zeitbezug</td><td><code>/eigene-auswertung</code></td><td>immer</td><td>klein, breit</td></tr>
+          <tr><th scope="row">Zustand</th><td>leise, wenn alles läuft, sonst Befund mit Weg</td><td>Gesundheitsprüfung</td><td>immer (Pflicht)</td><td>fest unten</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="cols2">
+      <div>
+        <p class="kicker">Anpassen</p>
+        <h2>Vorschläge nur dort, wo man sie sucht</h2>
+        <ul class="checks">
+          <li><span>Vorschläge stehen nur im Dialog „Cockpit anpassen“. Das Cockpit selbst zeigt nie ungefragt neue Kacheln.</span></li>
+          <li><span>Jeder Vorschlag nennt seinen Grund aus der Anlage, etwa „Ihre Anlage hat eine Wärmepumpe“.</span></li>
+          <li><span>Kacheln ohne Datenquelle lassen sich nicht anordnen. Sie stehen unter „Noch nicht möglich“ mit der fehlenden Voraussetzung.</span></li>
+          <li><span>Ordnen geht mit ▲ ▼ statt nur durch Ziehen, Ausblenden mit dem Auge, die Leitkachel mit dem Stern. Neu ist die Größe „klein“ oder „breit“.</span></li>
+          <li><span>„Zurücksetzen“ sagt, worauf es zurückfällt. Gespeichert wird nur die Absicht, serverseitig wie heute.</span></li>
+        </ul>
+      </div>
+      <div>
+        <p class="kicker">Ehrlichkeit, die man sieht</p>
+        <h2>Die Regeln des Hauses, in Form übersetzt</h2>
+        <ul class="checks">
+          <li><span>Fehlend ist keine Null: „—“ und ein Grund, zum Beispiel „nicht aufgeteilt“ oder „ohne Leistungsmessung“.</span></li>
+          <li><span>Veraltet zeigt eine Uhrzeit („Stand: 13:31 Uhr“), keine Dauer. Fehlt ein Gerät, steht der Rest als „nicht aufgeteilt“ da, statt eine Aufteilung zu erfinden.</span></li>
+          <li><span>Messung und Plan haben verschiedene Formen: gefüllt gegen schraffiert, durchgezogen gegen gestrichelt.</span></li>
+          <li><span>Die Richtung steht als Wort da (lädt, entlädt, Bezug, Einspeisung), nie als Minuszeichen.</span></li>
+          <li><span>Die Steuerzeile trennt Auftrag, Geräteantwort und gemessene Wirkung.</span></li>
+          <li><span>Eine Geldzahl je Schirm. Sätze beschreiben, was gemessen wurde; eine Ursache nennen sie nur mit Plan-Angabe („Plan: Günstig aus dem Netz laden“).</span></li>
+          <li><span>Die Herkunftsfarben sind eine bilanzielle Zuordnung (Sonne zuerst ins Haus). Das Blatt sagt das dazu.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <p class="kicker">Was sich gegenüber heute ändert</p>
+      <h2>Befunde aus dem heutigen Cockpit</h2>
+      <div class="befund"><div><p class="was">Heute</p>Verbraucher stehen an bis zu fünf Stellen: Flussknoten, Komponenten-Zeilen, Aufklapper, steuerbare Verbraucher und Laden.</div><div><p class="was">Neu</p>Einmal in der Liste unter dem Fluss, das ganze Verzeichnis im Blatt. Die Zahlen als Tabelle stehen unter „Zahlen als Liste“.</div></div>
+      <div class="befund"><div><p class="was">Heute</p>Der Plan erscheint am Rechner bis zu viermal: Bühne, Börsenpreis-Streifen, Fahrplan-Band und Handel.</div><div><p class="was">Neu</p>Eine Kachel trägt den Plan: Tagesuhr beim Eigenverbrauch, Börsenpreis bei Marktoptimierung. Die Tagesleiste zeigt ihn als Wort je Viertelstunde.</div></div>
+      <div class="befund"><div><p class="was">Heute</p>Der Stern für die Leitkachel ändert fast nichts; nur ein Kachelgrund wird grau.</div><div><p class="was">Neu</p>Die Leitkachel steht am Rechner neben dem Fluss, am Telefon als erste Kachel.</div></div>
+      <div class="befund"><div><p class="was">Heute</p>Netz (#0ea5a3) und Speicher (#16a34a) liegen auch bei normalem Farbsehen nur ΔE 12,2 auseinander; die Prüfgrenze ist 15. PV-Orange hat auf Weiß 2,15 : 1.</div><div><p class="was">Neu</p>Linienstufen aus vorhandenen Tokens bestehen alle Prüfungen (Farbenblind-Abstand 7,9, Beschriftung bleibt Pflicht):
+        <div class="pal"><span><i style="background:var(--pv)"></i>PV #e65100</span><span><i style="background:var(--batt)"></i>Speicher #166534</span><span><i style="background:var(--grid)"></i>Netz #0ea5a3</span><span><i style="background:var(--load)"></i>Verbrauch #8b5cf6</span></div></div></div>
+      <div class="befund"><div><p class="was">Heute</p>Das Netz hat zwei Symbole (Blitz im Fluss, Kurve bei den Komponenten), die Wärmepumpe keines. Der Knoten „Hausverbrauch“ bekommt mit jedem Gerät weitere Kreise und wird bei vielen Geräten unlesbar.</div><div><p class="was">Neu</p>Ein Strommast für das Netz, ein eigenes Symbol für die Wärmepumpe, ein Blitz nur noch für Steuerung. Geräte stehen in einer Liste statt im Bild.</div></div>
+      <div class="befund"><div><p class="was">Heute</p>Alle Kacheln sind gleich groß; zwei Kacheln werden nie erzeugt (Eigenverbrauch, Erlöse).</div><div><p class="was">Neu</p>Größen „klein“ und „breit“; tote Kacheln und Exporte werden entfernt.</div></div>
+    </section>
+
+    <section class="cols2">
+      <div>
+        <p class="kicker">Umsetzung</p>
+        <h2>In sechs Schritten, die ersten drei ohne Backend</h2>
+        <ol class="steps">
+          <li><span><b>Palette und Symbole.</b> Linienstufen für die Rollen, Strommast, Wärmepumpe, in <code>Icon.jsx</code> und den Tokens.</span></li>
+          <li><span><b>Bühne „Jetzt“.</b> Fluss und Gerätelisten aus <code>/topology</code>, <code>/sources</code>, <code>/consumers</code>, <code>/chargers</code>; Blätter über das vorhandene <code>BottomSheet</code> und <code>Modal</code>.</span></li>
+          <li><span><b>Tagesleiste.</b> Vergangenheit aus <code>/history?range=day</code>, Plan aus <code>/schedule</code>. Für die Aufschlüsselung der Vergangenheit je Gerät braucht es einen Verlaufsabruf je Komponente; die Last ist zu prüfen.</span></li>
+          <li><span><b>Katalog und Größen.</b> <code>catalog.json</code> (beide Kopien), <code>cockpitLayout.ts</code>, Layout-Dokument additiv um die Größe erweitern.</span></li>
+          <li><span><b>Voreinstellung je Betriebsmodell</b> statt nur „privat“ und „gewerbe“.</span></li>
+          <li><span><b>Rechner-Bühne</b> mit Moment-Spalte; Browserprüfung bei 375 und 1440 px, reduzierte Bewegung, Tastatur.</span></li>
+        </ol>
+      </div>
+      <div>
+        <p class="kicker">Offen</p>
+        <h2>Entscheidungen, die noch fallen müssen</h2>
+        <ul class="checks">
+          <li><span>Herkunftsregel für die Spuren: Vorrang „Sonne zuerst ins Haus“ wie hier, oder anteilig?</span></li>
+          <li><span>Wie viele Geräte die Liste zeigt, bevor „weitere“ greift (hier drei am Telefon, fünf am Rechner), und ob die Reihenfolge nach Leistung oder fest sein soll.</span></li>
+          <li><span>Trendleistung bis zum Ende der Viertelstunde: neue Ableitung aus <code>/telemetry</code> im Portal.</span></li>
+          <li><span>Reichen zwei Kachelgrößen, oder braucht es eine dritte?</span></li>
+          <li><span>Name der Funktion für Kunden: „Tagesleiste“, „Tagesfilm“ oder nur „Zeit ziehen“.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <p class="kicker">Quellen der Marktrecherche</p>
+      <ol class="src">
+        <li id="q1">sonnen App-Blog, „Die Evolution der sonnen App“, 14.02.2024: <a href="https://sonnen-app-blog.medium.com/die-evolution-der-sonnen-app-warum-der-live-energiefluss-zur%C3%BCck-auf-der-startseite-ist-a87c0bec2492">sonnen-app-blog.medium.com</a></li>
+        <li id="q2">Victron, Dynamic ESS: <a href="https://www.victronenergy.com/live/drafts:dynamic_ess">victronenergy.com/live/drafts:dynamic_ess</a></li>
+        <li id="q3">Victron Community, Dynamic ESS on VRM: <a href="https://community.victronenergy.com/articles/270649/dynamic-ess-on-vrm.html">community.victronenergy.com</a></li>
+        <li id="q4">Home Assistant, Energy dashboard: <a href="https://www.home-assistant.io/dashboards/energy/">home-assistant.io/dashboards/energy</a></li>
+        <li id="q5">evcc, Energy UI (Pull Request 33989): <a href="https://github.com/evcc-io/evcc/pull/33989">github.com/evcc-io/evcc/pull/33989</a></li>
+        <li id="q6">Tibber, Strompreise in der App: <a href="https://support.tibber.com/de/articles/4895076-strompreise-in-der-tibber-app">support.tibber.com</a></li>
+        <li id="q7">gridX, Peak shaving: <a href="https://www.gridx.ai/knowledge/peak-shaving">gridx.ai/knowledge/peak-shaving</a></li>
+        <li id="q8">TESVOLT, Peak Shaving: <a href="https://www.tesvolt.com/en/applications/peak-shaving.html">tesvolt.com</a></li>
+        <li id="q9">Berg GmbH, Trendleistung: <a href="https://berg-energie.de/blog/was-ist-der-unterschied-zwischen-lastmanagement-und-energiemanagement/">berg-energie.de</a></li>
+        <li id="q10">Solar Manager, Geräte-Autarkie: <a href="https://www.solarmanager.ch/neues-feature-geraete-autarkie/">solarmanager.ch</a></li>
+        <li id="q11">Ofgem, Smart metering consumer research (2010): <a href="https://www.ofgem.gov.uk/ofgem-publications/63554/smart-metering-consumer-fds-report.pdf">ofgem.gov.uk</a></li>
+      </ol>
+      <p class="foot">Alle Zahlen im Prototyp sind erfundene Beispiele. Die Anlagennamen „Sonnenhof“ und „Werk Ahrenberg“ stammen aus den fiktiven Test-Fixtures des Repos. Schriften, Farben und Wortmarke kommen aus <code>frontend/portal/designsystem</code> und <code>src/index.css</code>.</p>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>

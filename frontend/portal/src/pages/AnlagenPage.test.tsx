@@ -531,9 +531,10 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
 
     // Der M3-Kartenstapel (die frühere Zwischenform) ist abgelöst.
     expect(container.querySelector('.vp-stack')).toBeNull();
-    // Das Diagramm ist das WIEDERVERWENDETE `EnergyFlow`/`AdaptiveEnergyFlow`
-    // (kein neues "Energie-Rad") - erkennbar an seinem Wrapper.
-    expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
+    // Das Diagramm ist der Leitungsplan der Bühne (Konzept „Cockpit als
+    // Tagesfilm“, abgenommen 29.09.2026) - erkennbar an seinem Wrapper. Die
+    // Bühne ist ein nachgeladenes Stück, deshalb wird auf sie gewartet.
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
   });
 
   it('zeigt Autarkie und Eigenverbrauch als Ringe, die dem Zeitraum folgen', async () => {
@@ -834,7 +835,7 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     // V13: statt eines Höhensprungs steht dort der ehrliche Satz.
     expect(container.querySelector('.vp-c-note')?.textContent).toContain('Monat oder Jahr');
     expect(container.textContent).not.toContain('0 %');
-    expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
+    expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy();
   });
 
   it('lässt das Energiefluss-Diagramm über alle Tabs unverändert live', async () => {
@@ -843,15 +844,15 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy());
-    const flowBefore = container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML;
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
+    const flowBefore = container.querySelector('.vp-hero-flow .vp-lp')?.innerHTML;
     for (const label of ['Monat', 'Jahr', 'Gesamt', 'Heute']) {
       fireEvent.click(tab(container, label));
       await waitFor(() =>
-        expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy(),
+        expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy(),
       );
     }
-    expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML).toBe(flowBefore);
+    expect(container.querySelector('.vp-hero-flow .vp-lp')?.innerHTML).toBe(flowBefore);
   });
 });
 
@@ -935,10 +936,8 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
     // Verzahnung: die Bestätigung ist AM Diagramm ablesbar.
     await waitFor(() => expect(container.querySelector('.vp-flow-confirm')).toBeTruthy());
-    const storageTitle = [...container.querySelectorAll('.vp-hero-flow title')].map(
-      (t) => t.textContent,
-    );
-    expect(storageTitle.some((t) => t?.includes('Sollwert bestätigt'))).toBe(true);
+    // Der Speicher-Knoten nennt die Bestätigung auch im Titel (Vorlesen, Hover).
+    expect(container.querySelector('.vp-hero-flow .vp-lp-batt')?.getAttribute('title')).toContain('Sollwert bestätigt');
   });
 
   it('setzt KEINEN Haken, solange der Wechselrichter nichts bestätigt hat', async () => {

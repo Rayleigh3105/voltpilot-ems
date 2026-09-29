@@ -548,6 +548,38 @@
       "aggregation_regel": "Eine Zeile bzw. Karte je Anlage; jede Zahl gehört genau EINER Anlage. Prozentwerte (Autarkie, Eigenverbrauchsquote) bleiben deshalb hier und werden nie zu einem Flotten-Mittel."
     }
   ],
+  "kacheln": [
+    {
+      "id": "lastspitze",
+      "label": "Lastspitze",
+      "groessen": ["klein", "breit"],
+      "standard": "klein"
+    },
+    {
+      "id": "handel",
+      "label": "Handel",
+      "groessen": ["klein", "breit"],
+      "standard": "klein"
+    },
+    {
+      "id": "eigenverbrauch",
+      "label": "Eigenverbrauch",
+      "groessen": ["klein", "breit"],
+      "standard": "klein"
+    },
+    {
+      "id": "automatik",
+      "label": "Geräte-Automatik",
+      "groessen": ["klein", "breit"],
+      "standard": "klein"
+    },
+    {
+      "id": "wetter",
+      "label": "Wetter",
+      "groessen": ["klein", "breit"],
+      "standard": "klein"
+    }
+  ],
   "presets": [
     {
       "id": "privat",

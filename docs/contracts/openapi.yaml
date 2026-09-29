@@ -26224,6 +26224,19 @@ components:
             lives in `cockpit/EigeneAuswertung` and is pinned against the portal
             twin by `docs/contracts/v2/eigene-auswertung-vectors.json`.
           items: { $ref: "#/components/schemas/EigeneAuswertungDefinition" }
+        groessen:
+          type: object
+          description: >
+            Tile sizes of the plant cockpit (concept "Cockpit als Tagesfilm",
+            additive): tile id → `klein` (one column) or `breit` (two). Keys
+            and allowed sizes come from the catalog's `kacheln` list; an unknown
+            tile or a size the tile cannot carry is a 400 with a German reason.
+            Only the `cockpit` surface of ONE plant may carry sizes. A tile the
+            plant does not show right now is NOT rejected (the choice survives
+            switching a module off and on). Omitted = the catalog default.
+          additionalProperties:
+            type: string
+            enum: [klein, breit]
     EigeneAuswertungDefinition:
       type: object
       required: [id, titel, darstellung, entityId, channel, aggregat]

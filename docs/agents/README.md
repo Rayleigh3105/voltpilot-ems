@@ -197,6 +197,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Build & test](portal/build-test/README.md) *(Sammlung, 95 Punkte)*
 - [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
+- [Die Bühne des Cockpits: Leitungsplan, Jetzt/Heute, Tagesleiste (Konzept „Cockpit als Tagesfilm“)](portal/die-buehne-des-cockpits-leitungsplan-tagesleiste.md)
 - [Cockpit anpassen: die Fläche des Layout-Speichers (Anwendungs-Programm Stufe 3)](portal/cockpit-anpassen-die-flaeche-des-layout.md)
 - [Cockpit Phase 1: die Ladepunkt-kW kommen ueber die ENTITAET, und ein alter Messwert liest nie als aktuell](portal/cockpit-phase-1-die-ladepunkt-kw-kommen.md)
 - [Das PORTFOLIO-COCKPIT: die Flotten-Fläche (Stufe 4, **Revision 2**)](portal/das-portfolio-cockpit-die-flotten-flaech.md)

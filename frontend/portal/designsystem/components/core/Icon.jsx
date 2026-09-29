@@ -323,6 +323,55 @@ const PATHS = {
       <path d="M12 18h.01" />
     </>
   ),
+  // Cockpit-Konzept „Tagesfilm“: EIN Symbol für das Netz (Strommast, Lucide
+  // "utility-pole"); der Blitz bleibt der Steuerung vorbehalten.
+  pole: (
+    <>
+      <path d="M12 2v20" />
+      <path d="M2 5h20" />
+      <path d="M3 3v2" />
+      <path d="M7 3v2" />
+      <path d="M17 3v2" />
+      <path d="M21 3v2" />
+      <path d="m19 5-7 7-7-7" />
+    </>
+  ),
+  // Cockpit-Konzept: die Wärmepumpe bekommt ein eigenes Symbol (Gehäuse mit
+  // Ventilator), statt sich den Blitz oder das Haus zu leihen.
+  heatpump: (
+    <>
+      <rect width="19" height="14" x="2.5" y="5" rx="2" />
+      <circle cx="10" cy="12" r="4" />
+      <path d="M10 8v8M6 12h8M17 9h2M17 12h2M17 15h2" />
+    </>
+  ),
+  // Cockpit-Konzept: Ladepunkt/Fahrzeug in der Verbraucherliste (Lucide "car").
+  car: (
+    <>
+      <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" />
+      <circle cx="7" cy="17" r="2" />
+      <path d="M9 17h6" />
+      <circle cx="17" cy="17" r="2" />
+    </>
+  ),
+  // Cockpit-Konzept: generischer Verbraucher am Stecker (Lucide "plug").
+  plug: (
+    <>
+      <path d="M12 22v-5" />
+      <path d="M9 8V2" />
+      <path d="M15 8V2" />
+      <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+    </>
+  ),
+  // Cockpit-Konzept: Heizstab/Warmwasser (Lucide "thermometer").
+  thermometer: <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />,
+  // Cockpit-Konzept: PV-Fläche in der Erzeugungsliste (Solarmodul).
+  panel: (
+    <>
+      <path d="M4 4h16l-2 11H6z" />
+      <path d="M5 9.5h14M9.5 4l-1 11M14.5 4l1 11M12 15v5M8 20h8" />
+    </>
+  ),
   // Portal v3 M5: the code node in the flow palette (Lucide "code").
   code: (
     <>

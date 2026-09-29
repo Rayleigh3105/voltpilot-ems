@@ -17,6 +17,7 @@ import {
   type Flaeche,
   type LayoutDocument,
   type ResolvedLayout,
+  type KachelGroesse,
 } from './cockpitLayout';
 import { neuerSchluessel, type EigeneAuswertungDef } from './eigeneAuswertung';
 import type { CockpitBlock, CockpitBlockId } from './surface';
@@ -61,6 +62,8 @@ export interface CockpitLayoutState<T extends string = BausteinId> {
   verschieben: (id: T, richtung: 'hoch' | 'runter') => void;
   setSichtbar: (id: T, sichtbar: boolean) => void;
   setLead: (block: CockpitBlockId) => void;
+  /** Setzt die Größe einer Kachel im Entwurf (Konzept „Cockpit als Tagesfilm“). */
+  setGroesse: (kachel: string, groesse: KachelGroesse) => void;
   /**
    * Die eigenen Auswertungen (Stufe 5) — im Anpassen-Modus der ENTWURF, sonst
    * das Gespeicherte. Die Fläche rendert daraus ihre Kacheln.
@@ -130,6 +133,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
     hidden: T[];
     lead: CockpitBlockId | null;
     eigene: EigeneAuswertungDef[];
+    groessen: Record<string, KachelGroesse>;
   } | null>(null);
   const [alsVorgabe, setAlsVorgabe] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -248,6 +252,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
       hidden: entwurf.arrangement.filter((id) => hidden.has(id)),
       lead: entwurf.lead,
       quelle: gespeichert.quelle,
+      groessen: entwurf.groessen,
     };
   }, [anpassen, entwurf, gespeichert]);
 
@@ -257,6 +262,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
       hidden: [...gespeichert.hidden],
       lead: gespeichert.lead,
       eigene: [...gespeicherteEigene],
+      groessen: { ...gespeichert.groessen },
     });
     setAlsVorgabe(layers?.darfVorgabe === true);
     setFehler(null);
@@ -289,6 +295,11 @@ export function useCockpitLayout<T extends string = BausteinId>(
    */
   const setLead = useCallback((block: CockpitBlockId) => {
     setEntwurf((e) => (e ? { ...e, lead: e.lead === block ? null : block } : e));
+  }, []);
+
+  /** Die Größe einer Kachel („klein“ oder „breit“) im Entwurf setzen. */
+  const setGroesse = useCallback((kachel: string, groesse: KachelGroesse) => {
+    setEntwurf((e) => (e ? { ...e, groessen: { ...e.groessen, [kachel]: groesse } } : e));
   }, []);
 
   /**
@@ -380,6 +391,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
         // ⚠ ALLE, nicht nur die sichtbaren: ein Speichern bei abgeschalteter
         // Anwendung darf die Definitionen nicht verlieren.
         eigene: entwurf.eigene,
+        groessen: entwurf.groessen,
       }),
     );
   }, [entwurf, geerbtVersteckt, speichern]);
@@ -394,7 +406,8 @@ export function useCockpitLayout<T extends string = BausteinId>(
       entwurf.arrangement.join('|') !== gespeichert.arrangement.join('|') ||
       [...entwurf.hidden].sort().join('|') !== [...gespeichert.hidden].sort().join('|') ||
       entwurf.lead !== gespeichert.lead ||
-      JSON.stringify(entwurf.eigene) !== JSON.stringify(gespeicherteEigene)
+      JSON.stringify(entwurf.eigene) !== JSON.stringify(gespeicherteEigene) ||
+      JSON.stringify(entwurf.groessen) !== JSON.stringify(gespeichert.groessen)
     );
   }, [entwurf, gespeichert, gespeicherteEigene]);
 
@@ -423,6 +436,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
     verschieben,
     setSichtbar,
     setLead,
+    setGroesse,
     eigene,
     setzeEigene,
     entferneEigene,
