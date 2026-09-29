@@ -165,24 +165,20 @@ public class HistoryRepository {
     }
 
     /**
-     * Die ZWEI geplanten Ersparnis-Zahlen eines Fensters, aus derselben
-     * Slot-Menge gelesen.
+     * Die ZWEI geplanten Ersparnis-Zahlen eines Fensters.
      *
      * <p>{@code batteryEur} ist die alte, unveraenderte Zahl: was der Plan
-     * gegenueber einer Anlage OHNE Speicher erwirtschaftet. {@code steuerungEur}
-     * ist die MESSLATTE, die der Captain am 04.09.2026 verlangt hat ("du musst
-     * Anlage immer mit Speicher berechnen, einer halt ohne smart Steuerung"):
-     * was der Plan gegenueber DEMSELBEN Speicher OHNE smarte Steuerung
-     * erwirtschaftet - das geplante Gegenstueck zu {@code savedSteuerungEur}
-     * der gemessenen Seite.
-     *
-     * <p><b>{@code steuerungEur} ist null, sobald auch nur EIN abgedeckter
-     * Slot des Fensters keine Messlatte traegt</b> (ein Lauf vor Migration
-     * V20260867000000, oder eine Anlage ohne Batterie-Stammdaten, fuer die der
-     * Optimierer gar nicht plant): eine Teil-Summe waere eine Aussage ueber ein
-     * Fenster, das so nie gerechnet wurde - die Flaeche zeigt die Zeile dann
-     * nicht, statt eine zu kleine Zahl zu behaupten. {@code batteryEur} bleibt
-     * davon unberuehrt.
+     * gegenueber einer Anlage OHNE Speicher erwirtschaftet ({@link #savings}).
+     * {@code steuerungEur} ist die MESSLATTE, die der Captain am 04.09.2026
+     * verlangt hat ("du musst Anlage immer mit Speicher berechnen, einer halt
+     * ohne smart Steuerung"): was der Plan gegenueber DEMSELBEN Speicher OHNE
+     * smarte Steuerung erwirtschaftet - das geplante Gegenstueck zu
+     * {@code savedSteuerungEur}. Seit M2 (29.09.2026) rechnet sie
+     * {@link EarningsRepository#steuerungGeplantForSite} gegen denselben
+     * durchlaufenden Vergleichsspeicher wie die gemessene Zahl
+     * ({@link PlanMesslatte}); null, sobald ein gezaehlter Slot keine
+     * Messlatte traegt - nie eine Teil-Summe. {@code batteryEur} bleibt davon
+     * unberuehrt.
      */
     public record PlannedSavings(BigDecimal batteryEur, BigDecimal steuerungEur) {
     }
@@ -194,61 +190,16 @@ public class HistoryRepository {
      * Returns null when no plan slot covers the window ("where plans exist").
      */
     public BigDecimal savings(UUID siteId, Instant from, Instant to) {
-        return plannedSavings(siteId, from, to).batteryEur();
-    }
-
-    /** Both planned figures in ONE pass over the window's plan slots. */
-    public PlannedSavings plannedSavings(UUID siteId, Instant from, Instant to) {
-        List<PlannedSavings> result = jdbc.query(
-                "SELECT sum(baseline_cost_eur - cost_eur) AS savings,"
-                        // count(stur_cost_eur) counts only the NON-NULL ones, so
-                        // the two counts differ exactly when a covered slot is
-                        // missing its Messlatte - then the steering sum stays
-                        // null instead of summing a partial window.
-                        + " CASE WHEN count(*) = count(stur_cost_eur)"
-                        + "      THEN sum(stur_cost_eur - cost_eur) END AS steuerung"
+        List<BigDecimal> result = jdbc.query(
+                "SELECT sum(baseline_cost_eur - cost_eur) AS savings"
                         + " FROM ("
-                        + "  SELECT DISTINCT ON (time) baseline_cost_eur, cost_eur,"
-                        + "    stur_cost_eur"
+                        + "  SELECT DISTINCT ON (time) baseline_cost_eur, cost_eur"
                         + "  FROM schedule WHERE site_id = ? AND time >= ? AND time < ?"
                         + "  ORDER BY time, generated_at DESC) s "
                         + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL",
-                (rs, i) -> new PlannedSavings(
-                        rs.getBigDecimal("savings"), rs.getBigDecimal("steuerung")),
+                (rs, i) -> rs.getBigDecimal("savings"),
                 siteId, Timestamp.from(from), Timestamp.from(to));
-        return result.isEmpty()
-                ? new PlannedSavings(null, null) : result.get(0);
-    }
-
-    /**
-     * {@link PlannedSavings#steuerungEur} JE ANLAGE in einer Abfrage - der
-     * Flotten-Pfad der Tages-Einordnung ({@code steuerungGruende} auf
-     * {@code /api/v1/earnings?range=day}). Dieselbe Slot-Menge
-     * ({@code DISTINCT ON … generated_at DESC}) und dieselbe Null-Regel wie
-     * {@link #plannedSavings}, nur je {@code site_id} gruppiert; RLS zäunt den
-     * Mandanten. Anlagen ohne vollständige Messlatte fehlen.
-     */
-    public Map<UUID, BigDecimal> plannedSteuerungPerSite(Instant from, Instant to) {
-        Map<UUID, BigDecimal> result = new HashMap<>();
-        jdbc.query(
-                "SELECT site_id,"
-                        + " CASE WHEN count(*) = count(stur_cost_eur)"
-                        + "      THEN sum(stur_cost_eur - cost_eur) END AS steuerung"
-                        + " FROM ("
-                        + "  SELECT DISTINCT ON (site_id, time) site_id, baseline_cost_eur,"
-                        + "    cost_eur, stur_cost_eur"
-                        + "  FROM schedule WHERE time >= ? AND time < ?"
-                        + "  ORDER BY site_id, time, generated_at DESC) s "
-                        + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL "
-                        + "GROUP BY site_id",
-                rs -> {
-                    BigDecimal steuerung = rs.getBigDecimal("steuerung");
-                    if (steuerung != null) {
-                        result.put(rs.getObject("site_id", UUID.class), steuerung);
-                    }
-                },
-                Timestamp.from(from), Timestamp.from(to));
-        return result;
+        return result.isEmpty() ? null : result.get(0);
     }
 
     /**

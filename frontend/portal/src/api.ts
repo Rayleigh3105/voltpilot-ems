@@ -696,8 +696,10 @@ export interface HistoryTotals {
    * legitimately differ by a large factor; a surface must never substitute one
    * for the other.
    *
-   * OPTIONAL because the optimizer only starts persisting it with its own
-   * increment: `undefined`/`null` = no plan figure on this yardstick, and the
+   * Since M2 (29.09.2026) the api computes it against the SAME running
+   * Vergleichsspeicher as the measured `savedSteuerungEur` (carry-over across
+   * midnight included), so plan and measurement are comparable.
+   * `undefined`/`null` = no complete plan on this yardstick, and the
    * customer-facing plan line stays ABSENT rather than showing the old one.
    */
   steuerungPlannedEur?: number | null;
@@ -3813,9 +3815,11 @@ export interface CockpitMoney {
    *   ausdrücklich KEIN Summand; nur die Anlagen-Antwort trägt ihn.
    * - `steuerungVortagEur`, `steuerungMonatBisherEur`: Vortag bzw. Σ vom
    *   Monatsersten bis einschließlich dieses Tages (= `range=month`).
-   * - `steuerungPlannedEur`: der Fahrplan-Planwert des Tages (ex ante).
+   * - `steuerungPlannedEur`: der Fahrplan-Planwert des Tages (ex ante), seit
+   *   M2 gegen denselben durchlaufenden Vergleichsspeicher.
    * - `steuerungGruende`: höchstens zwei Kennungen der geschlossenen Liste
-   *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Grund; `null` = nicht
+   *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Minus (ein Minus trägt
+   *   seit A1 immer mindestens den Rückfall `anders_geladen`); `null` = nicht
    *   berechnet.
    */
   vergleichSocStartKwh?: number | null;
