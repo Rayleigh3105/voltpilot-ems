@@ -18,6 +18,7 @@ import {
 import { einordnen, type Einordnung } from './neu';
 import { bezugAus, greift, regelKarten } from './regeln';
 import type { SteuerungDaten } from './useSteuerungDaten';
+import { szenenStand, type SzenenStand } from './szenen';
 import { raster, type Raster } from './zeit';
 
 export interface SeitenBild {
@@ -37,6 +38,8 @@ export interface SeitenBild {
   /** Das laufende Betriebsmodell des Speichers (Name), sonst Eigenverbrauch. */
   betriebsmodell: string;
   ladepunkte: GeraetBild[];
+  /** Die laufende Szene (E6), sonst `null`. */
+  szene: SzenenStand | null;
 }
 
 /** Das Betriebsmodell, das den Speicher gerade fährt (die exklusive Gruppe). */
@@ -54,6 +57,7 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     if (!k.an || !k.entwurf) continue;
     if (greift(k.entwurf, rhJetzt, r.jetzt, r.jetzt + 1)[0]) regelJetzt[k.entwurf.dann.g] = k.name;
   }
+  const szene = szenenStand(d.szene);
   const gs = geraete({
     raster: r,
     reihen: rh,
@@ -66,6 +70,7 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     consumerPlan: d.consumerPlan,
     gemessen: d.gemessen,
     regelJetzt,
+    szene: szene ? { name: szene.def.name, ids: szene.ids } : null,
   });
   const reihenfolge = reihenfolgeAus(d.verbraucher?.rangliste);
   const batterie = liste(d.assets).find((a) => a.type === 'battery') ?? null;
@@ -100,6 +105,7 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     speicherEingriff: iv ? { art: iv.kind === 'speicher_laden' ? 'an' : 'aus', bisMs: Date.parse(iv.endsAt) } : null,
     betriebsmodell: modell?.label ?? 'Eigenverbrauch',
     ladepunkte: gs.filter((g) => g.eintrag.ladepunkt),
+    szene,
   };
 }
 
@@ -116,4 +122,5 @@ export type BlattZustand =
   | { art: 'rahmen' }
   | { art: 'ziel'; id: string }
   | { art: 'fahrzeug'; tagRef: string }
-  | { art: 'regel'; flowId?: string; geraet?: string; vorlage?: string };
+  | { art: 'regel'; flowId?: string; geraet?: string; vorlage?: string }
+  | { art: 'szene'; id: string };

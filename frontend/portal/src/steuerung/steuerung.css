@@ -94,6 +94,9 @@
 
 .stn-main { padding: 14px 0 28px; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 .stn-main > * { min-width: 0; }
+/* Hinweisbänder (Pause, Szene) stehen VOR dem Raster - sonst verdrängt ein
+   Band über die volle Breite die rechte Spalte, die in Zeile 1 beginnt. */
+.stn-baender { display: grid; gap: 8px; padding-top: 14px; }
 .stn-band { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--st-hand-soft); font: 600 13.5px/1.4 var(--font); color: #4c1d95; }
 .stn-band svg { width: 18px; height: 18px; color: var(--st-hand); }
 .stn-band .lnk { min-height: 28px; }

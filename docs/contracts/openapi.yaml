@@ -2472,14 +2472,18 @@ paths:
                         key:
                           type: string
                           description: Der ABGELEITETE Vorschlags-Schlüssel (Art + Komponente).
-                        state: { type: string, enum: [spaeter, abgelehnt] }
-                        mutedUntil: { type: string, format: date-time }
+                        state: { type: string, enum: [spaeter, abgelehnt, nur_messen] }
+                        mutedUntil:
+                          type: string
+                          format: date-time
+                          nullable: true
+                          description: Bis wann die Haltung gilt; `null` bei `nur_messen` (ohne Frist).
                         updatedAt: { type: string, format: date-time }
         "404": { description: Anlage nicht gefunden. }
   /api/v1/sites/{siteId}/suggestion-states/{key}:
     put:
       tags: [sites]
-      summary: „Später" (ein Tag) oder „Ablehnen" (sieben Tage).
+      summary: „Später" (ein Tag), „Ablehnen" (sieben Tage) oder „nur messen" (ohne Frist).
       description: >
         Die FRIST rechnet der Server - eine vom Client gewählte Dauer wäre ein
         Weg, einen Vorschlag für immer verstummen zu lassen, ohne ihn je
@@ -2497,10 +2501,83 @@ paths:
               type: object
               required: [state]
               properties:
-                state: { type: string, enum: [spaeter, abgelehnt] }
+                state: { type: string, enum: [spaeter, abgelehnt, nur_messen] }
       responses:
-        "200": { description: Die Haltung ist gemerkt; `mutedUntil` sagt bis wann. }
+        "200": { description: Die Haltung ist gemerkt; `mutedUntil` sagt bis wann (`null` = ohne Frist). }
         "400": { description: Unbekannte Auswahl oder ungültiger Schlüssel. }
+        "404": { description: Anlage nicht gefunden. }
+    delete:
+      tags: [sites]
+      summary: Eine Haltung zurücknehmen (etwa „nur messen", wenn das Gerät doch gesteuert wird).
+      description: Idempotent - eine fehlende Haltung ist kein Fehler.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Zurückgenommen. }
+        "400": { description: Ungültiger Schlüssel. }
+        "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/scene:
+    get:
+      tags: [consumer]
+      summary: Die laufende Szene der Anlage (Steuerung neu, E6).
+      description: >
+        Eine Szene („Urlaub", „Unterwegs", „Sparen") pausiert die Geräte, die
+        der Kunde beim Einschalten wählt, über den bestehenden Pausenweg der
+        Verbraucher (Regel zurückgezogen, Failsafe des Geräts), bis er sie
+        beendet. `pausedEntityIds` nennt genau die Geräte, die DIESE Szene
+        pausiert hat; ein vorher schon pausiertes Gerät gehört nicht dazu.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: "Die Szene oder `scene` = `null`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteScene" }
+        "404": { description: Anlage nicht gefunden. }
+    put:
+      tags: [consumer]
+      summary: Eine Szene einschalten (eine laufende wird vorher beendet).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, entityIds]
+              properties:
+                key: { type: string, enum: [urlaub, unterwegs, sparen] }
+                entityIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Die Szene ist an; `message` sagt ehrlich, was pausiert wurde.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteScene" }
+        "400": { description: Unbekannte Szene oder leere Auswahl. }
+        "404": { description: Anlage oder Gerät nicht gefunden. }
+        "409": { description: Gerät ohne Auftrag, Verbrauchersteuerung nicht aktiviert oder laufende Szene nicht beendbar. }
+    delete:
+      tags: [consumer]
+      summary: Die Szene beenden - genau die Geräte fortsetzen, die sie pausiert hat.
+      description: >
+        Idempotent. Was nicht fortgesetzt werden kann, bleibt in der Szene
+        (`scene` ist dann nicht `null`) und steht mit Grund in `offen`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Beendet oder mit benanntem Rest.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteScene" }
         "404": { description: Anlage nicht gefunden. }
   /api/v1/sites/{siteId}/verbraucher:
     get:
@@ -9120,6 +9197,23 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    SiteScene:
+      type: object
+      properties:
+        scene:
+          type: object
+          nullable: true
+          properties:
+            key: { type: string, enum: [urlaub, unterwegs, sparen] }
+            since: { type: string, format: date-time }
+            pausedEntityIds:
+              type: array
+              items: { type: string, format: uuid }
+        offen:
+          type: array
+          items: { type: string }
+          description: "Geräte, die nicht wie gewünscht folgten - je Name und Grund."
+        message: { type: string, nullable: true }
     OcppConnectorState:
       type: object
       properties:

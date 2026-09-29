@@ -136,3 +136,26 @@ test('Regeln: Satzbaukasten mit Probelauf, Folgen und Aktivieren', async ({ page
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
   expect(fehler).toEqual([]);
 });
+
+test('Regeln: eine Szene pausiert die gewählten Geräte und endet mit einem Tipp', async ({ page }) => {
+  const fehler = await oeffnen(page, REGELN);
+  const szenen = page.getByRole('region', { name: 'Szenen' });
+  await szenen.getByRole('button', { name: /Urlaub/ }).click();
+  const blatt = page.getByRole('dialog', { name: /Szene Urlaub/ });
+  await expect(blatt).toContainText('Das passiert');
+  await expect(blatt.getByRole('switch', { name: 'Poolpumpe in der Szene' })).toHaveAttribute('aria-checked', 'true');
+  await expect(blatt.getByRole('switch', { name: /Heizstab Warmwasser in der Szene/ })).toHaveAttribute('aria-checked', 'false');
+  const box = await blatt.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 0.5);
+  await blatt.getByRole('button', { name: /Szene einschalten/ }).click();
+  await expect(page.getByText('Szene „Urlaub“ ist an.')).toBeVisible();
+  await expect(szenen.getByRole('button', { name: /Urlaub/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  // Auf dem Reiter Geräte steht der Grund am Gerät.
+  await page.getByRole('tablist', { name: 'Reiter der Steuerung' }).getByRole('tab', { name: /Geräte/ }).click();
+  await expect(page.locator('#dev-e-pool')).toContainText('Szene „Urlaub“: aus');
+  await page.getByRole('button', { name: 'Beenden' }).click();
+  await expect(page.getByRole('status')).toContainText('Szene beendet');
+  await expect(page.getByText('Szene „Urlaub“ ist an.')).toBeHidden();
+  expect(fehler).toEqual([]);
+});

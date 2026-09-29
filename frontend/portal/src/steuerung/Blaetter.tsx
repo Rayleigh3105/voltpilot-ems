@@ -25,6 +25,7 @@ import { Ic } from './Ic';
 import type { BlattZustand, SeitenBild } from './seite';
 import { Zeitband } from './Zeitband';
 import { regelSatzAusFlow } from './regeln';
+import { szeneDef, szenenGeraete, szenenWirkung } from './szenen';
 import {
   N,
   TAG,
@@ -50,6 +51,7 @@ export interface Aktionen {
   pause: (minuten: number) => Promise<void>;
   betriebsmodell: (neu: string | null) => Promise<boolean>;
   nurMessen: (g: GeraetBild) => Promise<void>;
+  szeneAn: (id: string, geraete: string[]) => Promise<boolean>;
   oeffne: (b: BlattZustand) => void;
   zuReiter: (sub: 'steuerung' | 'laden' | 'regeln') => void;
   reihenfolgeAendern: (id: string) => void;
@@ -924,6 +926,91 @@ export function AnbindenBlatt({ k }: { k: BlattKontext }) {
         ))}
       </ol>
       <div className="warum">Die Steuerung legt keine Geräte an. So gibt es jedes Gerät nur einmal, und was angeschlossen ist, steht an einem Ort. Die Steuerung entscheidet nur, was es tut.</div>
+    </Blatt>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Szene: ein Tipp, mehrere Geräte (E6)
+// ---------------------------------------------------------------------------
+
+export function SzeneBlatt({ k, id }: { k: BlattKontext; id: string }) {
+  const def = szeneDef(id);
+  const zeilen = useMemo(() => (def ? szenenGeraete(def, k.bild.geraete) : []), [def, k.bild.geraete]);
+  const [wahl, setWahl] = useState<Set<string>>(() => new Set(zeilen.filter((z) => z.vorgeschlagen).map((z) => z.g.id)));
+  if (!def) return null;
+  const r = k.bild.raster;
+  const busy = k.busy === 'szene';
+  /** Was bis morgen Abend wegfällt: Plan und Erwartung des Geräts ab jetzt. */
+  const weg = (g: GeraetBild) => {
+    let kwh = 0;
+    for (let t = r.jetzt + 1; t < g.kw.length; t++) kwh += (g.kw[t] ?? 0) / 4;
+    return kwh;
+  };
+  const schalte = (gid: string) => setWahl((w) => {
+    const n = new Set(w);
+    if (n.has(gid)) n.delete(gid);
+    else n.add(gid);
+    return n;
+  });
+  const andere = k.bild.szene && k.bild.szene.def.id !== def.id ? k.bild.szene.def.name : null;
+  return (
+    <Blatt
+      symbol={def.icon}
+      titel={`Szene ${def.name}`}
+      unter={def.kurz}
+      onClose={k.zu}
+      fuss={
+        <>
+          <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || wahl.size === 0}
+            onClick={async () => {
+              if (await k.a.szeneAn(def.id, zeilen.filter((z) => wahl.has(z.g.id)).map((z) => z.g.id))) k.zu();
+            }}
+          >
+            <Ic n="check" s={18} />
+            {busy ? 'Schalte …' : 'Szene einschalten'}
+          </button>
+        </>
+      }
+    >
+      <div className="blk">
+        <h3>Das passiert</h3>
+        {zeilen.length ? (
+          <div className="bed">
+            {zeilen.map(({ g }) => {
+              const an = wahl.has(g.id);
+              const kwh = weg(g);
+              return (
+                <div className="bed-r" key={g.id}>
+                  <span className="k" style={{ background: 'var(--c-muted)', color: 'var(--navy)' }}><Ic n={g.symbol} s={15} /></span>
+                  <span>
+                    {g.name}: <b>{an ? szenenWirkung(g) : 'bleibt wie es ist'}</b>
+                    {an && kwh > 0.05 && g.consumer?.controlActivation !== 'paused' && <span className="leise"> (−{fKwh(kwh)} bis morgen)</span>}
+                  </span>
+                  <button type="button" className="sw" role="switch" aria-checked={an} aria-label={`${g.name} in der Szene`} onClick={() => schalte(g.id)} />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="leise">Keines Ihrer Geräte hat einen eigenen Auftrag. Eine Szene pausiert nur gesteuerte Geräte.</p>
+        )}
+      </div>
+      <div className="blk">
+        <h3>Wie lange?</h3>
+        <div className="chips">
+          <button type="button" aria-pressed="true">bis ich sie beende</button>
+          <button type="button" disabled title="Ende als Datum kommt noch">bis Datum … (kommt noch)</button>
+        </div>
+      </div>
+      <div className="warum">
+        {andere ? `Die Szene „${andere}“ endet dabei. ` : ''}
+        Alles andere bleibt. Pausiert heißt: VoltPilot schaltet das Gerät nicht, es gilt sein sicherer Zustand. Beenden wirkt sofort und fragt nicht nach.
+      </div>
     </Blatt>
   );
 }

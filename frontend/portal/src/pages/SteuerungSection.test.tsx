@@ -113,6 +113,7 @@ beforeEach(() => {
   vi.spyOn(api, 'siteRuleEvents').mockResolvedValue({ recordingSince: null, countsToday: true, accuracySeconds: 15, rules: [], events: [] });
   vi.spyOn(api, 'siteEntities').mockResolvedValue({ registry: null, entities: [], localSetup: [], staleOnDevice: [] });
   vi.spyOn(api, 'suggestionStates').mockResolvedValue({ states: [] });
+  vi.spyOn(api, 'scene').mockResolvedValue({ scene: null, offen: [], message: null });
   vi.spyOn(api, 'entityHistory').mockRejectedValue(new Error('nicht da'));
   cList.mockResolvedValue([
     { id: 'e-hs', type: 'heating-rod', typeLabel: 'Heizstab', name: 'Heizstab Warmwasser', controlKind: 'on_off', ratedPowerKw: 3, minPowerKw: null, levelsKw: null, resolutionKw: null, powerRangesKw: null, storageRelation: 'storage_first', defaultGridEnergyPolicy: 'avoid', allowStorageDischarge: false, failsafe: 'off', enabled: true, version: 4, connection: 'connected', edgeSourceId: 's', controlActivation: 'active', hasDraftPolicy: false, draftPolicyVersion: null, confirmationChannel: 'power_kw' },
@@ -196,12 +197,12 @@ describe('Steuerung · Reiter Geräte', () => {
     await waitFor(() => expect(setze).toHaveBeenCalledWith('s-1', 'e-spuel', { quelle: 'ueberschuss', schwelleKw: 2 }));
   });
 
-  it('merkt sich „nur messen" als abgelehnten Vorschlag', async () => {
-    const merke = vi.spyOn(api, 'setSuggestionState').mockResolvedValue({ key: 'k', state: 'abgelehnt', mutedUntil: '', updatedAt: '' });
+  it('merkt sich „nur messen" dauerhaft, ohne Frist', async () => {
+    const merke = vi.spyOn(api, 'setSuggestionState').mockResolvedValue({ key: 'k', state: 'nur_messen', mutedUntil: null, updatedAt: '' });
     zeige();
     const karte = await screen.findByRole('region', { name: 'Neu in Ihrer Anlage: Spülmaschine' });
     fireEvent.click(within(karte).getByRole('button', { name: 'Nicht steuern, nur messen' }));
-    await waitFor(() => expect(merke).toHaveBeenCalledWith('s-1', 'steuerung-nur-messen:e-spuel', 'abgelehnt'));
+    await waitFor(() => expect(merke).toHaveBeenCalledWith('s-1', 'steuerung-nur-messen:e-spuel', 'nur_messen'));
   });
 
   it('speichert eine geänderte Reihenfolge flach und übernimmt die Antwort', async () => {
@@ -270,6 +271,33 @@ describe('Steuerung · Reiter Regeln', () => {
     fireEvent.click(within(folgen).getByRole('button', { name: /Regel aktivieren/ }));
     await waitFor(() => expect(BOUND.create).toHaveBeenCalledTimes(1));
     expect(BOUND.activate).toHaveBeenCalledWith('f-2', 1);
+  });
+
+  it('schaltet eine Szene mit gewählten Geräten ein und beendet sie ohne Rückfrage', async () => {
+    const laeuft = { scene: { key: 'urlaub' as const, since: JETZT.toISOString(), pausedEntityIds: ['e-hs'] }, offen: [], message: 'Szene ist an. 1 Gerät pausiert.' };
+    const an = vi.spyOn(api, 'startScene').mockImplementation(async () => {
+      vi.mocked(api.scene).mockResolvedValue(laeuft);
+      return laeuft;
+    });
+    const aus = vi.spyOn(api, 'endScene').mockImplementation(async () => {
+      vi.mocked(api.scene).mockResolvedValue({ scene: null, offen: [], message: null });
+      return { scene: null, offen: [], message: 'Szene beendet. Alles wieder wie vorher.' };
+    });
+    zeige('regeln');
+    const szenen = await screen.findByRole('region', { name: 'Szenen' });
+    fireEvent.click(within(szenen).getByRole('button', { name: /Urlaub/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Szene Urlaub/ });
+    // Der Heizstab passt nicht zum Urlaub - er steht zur Wahl, ist aber aus.
+    const einschalten = within(blatt).getByRole('button', { name: /Szene einschalten/ });
+    expect(einschalten).toBeDisabled();
+    fireEvent.click(within(blatt).getByRole('switch', { name: 'Heizstab Warmwasser in der Szene' }));
+    fireEvent.click(einschalten);
+    await waitFor(() => expect(an).toHaveBeenCalledWith('s-1', 'urlaub', ['e-hs']));
+    await screen.findByText('Szene „Urlaub“ ist an.');
+    expect(within(szenen).getByRole('button', { name: /Urlaub/ })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(szenen).getByRole('button', { name: /Urlaub/ }));
+    await waitFor(() => expect(aus).toHaveBeenCalledWith('s-1'));
+    await waitFor(() => expect(screen.queryByText('Szene „Urlaub“ ist an.')).not.toBeInTheDocument());
   });
 
   it('öffnet ein altes ?verbraucher=-Lesezeichen im Baukasten und räumt die Adresse auf', async () => {

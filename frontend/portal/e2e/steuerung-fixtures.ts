@@ -144,7 +144,7 @@ export function installSteuerungFixtures() {
       resolutionKw: null, powerRangesKw: null, storageRelation: 'storage_first', defaultGridEnergyPolicy: 'avoid',
       allowStorageDischarge: d.hilft ?? false, failsafe: 'off', enabled: true, version: 1,
       connection: d.id === 'sauna' ? 'disconnected' : 'connected', edgeSourceId: `src-${d.id}`,
-      controlActivation: 'active', hasDraftPolicy: false, draftPolicyVersion: null,
+      controlActivation: ['spuel', 'lueft', 'sauna'].includes(d.id) ? 'not_activated' : 'active', hasDraftPolicy: false, draftPolicyVersion: null,
       confirmationChannel: d.gemessen ? 'power_kw' : 'relay_state',
       ioEntityId: d.id === 'hs' || d.id === 'wp' ? 'e-io' : null, ioChannel: d.id === 'hs' ? 1 : d.id === 'wp' ? 4 : null,
     }));
@@ -202,6 +202,8 @@ export function installSteuerungFixtures() {
       { id: 1, ruleKind: 'flow', ruleRef: 'f-neg', entityId: eid('hs'), kind: 'gestartet', state: null, previousState: null, reasonCode: 'price_below_threshold', actualKw: 3, detail: null, occurredAt: ts(52) },
     ] };
 
+  let szene: { key: string; since: string; pausedEntityIds: string[] } | null = null;
+  const vorSzene = new Map<string, (typeof status)[number]>();
   Object.assign(api, {
     schedule: result(plan),
     history: result(verlauf),
@@ -238,7 +240,24 @@ export function installSteuerungFixtures() {
         channels: reihe ? { power_kw: Array.from({ length: J }, (_, i) => ({ start: ts(i), avg: reihe[i], min: reihe[i], max: reihe[i], last: reihe[i], n: 15 })) } : {} };
     },
     setzeSteuerart: async (_s: string, entityId: string, w: Record<string, unknown>) => ({ steuerart: { ...w, herkunft: 'policy' }, aktiv: true, entityId }),
-    setSuggestionState: async (_s: string, key: string, state: string) => ({ key, state, mutedUntil: '2099-01-01T00:00:00Z', updatedAt: JETZT }),
+    setSuggestionState: async (_s: string, key: string, state: string) => ({ key, state, mutedUntil: state === 'nur_messen' ? null : '2099-01-01T00:00:00Z', updatedAt: JETZT }),
+    clearSuggestionState: async () => undefined,
+    // Die Szene (E6): pausiert die gewählten Geräte, bis sie endet - wie `SzenenService`.
+    scene: async () => ({ scene: szene, offen: [], message: null }),
+    startScene: async (_s: string, key: string, ids: string[]) => {
+      for (const c of consumers) if (ids.includes(c.id)) { c.controlActivation = 'paused'; c.enabled = false; }
+      // Die Box meldet ein pausiertes Gerät im sicheren Zustand: aus.
+      for (const st of status) if (ids.includes(st.entityId)) { vorSzene.set(st.entityId, { ...st }); Object.assign(st, { state: 'ready', reasonCode: null, actualKw: st.actualKw == null ? null : 0 }); }
+      szene = { key, since: JETZT, pausedEntityIds: ids };
+      return { scene: szene, offen: [], message: `Szene ist an. ${ids.length} Geräte pausiert; der sichere Zustand des Geräts gilt.` };
+    },
+    endScene: async () => {
+      for (const c of consumers) if (szene?.pausedEntityIds.includes(c.id)) { c.controlActivation = 'active'; c.enabled = true; }
+      for (const st of status) { const vor = vorSzene.get(st.entityId); if (vor) Object.assign(st, vor); }
+      vorSzene.clear();
+      szene = null;
+      return { scene: null, offen: [], message: 'Szene beendet. Alles wieder wie vorher.' };
+    },
     chargingBoost: async () => ({ chargePointId: 'CP-WERKSTATT', connectorId: 1, active: true, note: 'ok' }),
     pauseAutomation: async () => ({ applied: true, pushed: true, kind: 'pause', endsAt: null, effectivePowerKw: null, ttlRenewed: false, message: 'ok' }),
     startBatteryOverride: async () => ({ applied: true, pushed: true, kind: 'speicher_laden', endsAt: null, effectivePowerKw: 5, ttlRenewed: false, message: 'ok' }),

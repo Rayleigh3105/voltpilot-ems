@@ -22,6 +22,7 @@ import {
   type SiteAsset,
   type SiteEntities,
   type SiteInterventions,
+  type SiteScene,
   type SuggestionStates,
   type TelemetryPoint,
   type WeatherForecast,
@@ -63,6 +64,8 @@ export interface SteuerungDaten {
   ruleEvents: RuleEvents | null;
   entities: SiteEntities | null;
   vorschlaege: SuggestionStates | null;
+  /** Die laufende Szene (E6); `null` = unbekannt, `scene: null` = keine. */
+  szene: SiteScene | null;
   /** Gemessene Leistung je Gerät heute (kW je Viertelstunde). */
   gemessen: Record<string, (number | null)[]>;
 }
@@ -72,7 +75,7 @@ const LEER: SteuerungDaten = {
   chargingConfig: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
   preise: null, wetter: null, live: null, assets: null, profiles: null, fahrzeuge: null,
   flows: null, editorEntities: null, ruleEvents: null, entities: null, vorschlaege: null,
-  gemessen: {},
+  szene: null, gemessen: {},
 };
 
 const heuteIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
@@ -138,6 +141,7 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
       hole('ruleEvents', api.siteRuleEvents(id)),
       hole('entities', api.siteEntities(id)),
       hole('vorschlaege', api.suggestionStates(id)),
+      hole('szene', api.scene(id)),
     ]);
   }, [site.id, hole]);
 

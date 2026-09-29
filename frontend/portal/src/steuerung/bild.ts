@@ -405,6 +405,8 @@ export interface GeraeteInput {
   gemessen?: Record<string, (number | null)[]> | null;
   /** Welche aktive Regel gerade für ein Gerät greift (Name je Komponente). */
   regelJetzt?: Record<string, string> | null;
+  /** Die laufende Szene: ihr Name und die Geräte, die SIE pausiert hat. */
+  szene?: { name: string; ids: string[] } | null;
 }
 
 /** Der Ladepunkt eines Eintrags und sein (erster) Stecker. */
@@ -458,6 +460,10 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
         ? c.confirmationChannel === 'power_kw'
         : st?.actualKw != null;
     const eingriff = eingriffVon(e.entityId, i.overrides, i.interventions, nowMs, lp);
+    // Pausiert (Gesamtschalter aus): durch eine Szene oder von Hand. Dann
+    // gibt es keine erwarteten Läufe - der Plan kennt das Gerät nicht mehr.
+    const geraetAus = !lp && c?.controlActivation === 'paused';
+    const durchSzene = geraetAus && i.szene?.ids.includes(e.entityId) ? i.szene.name : null;
 
     // --- Viertelstunden: gemessen bis jetzt, danach Plan oder Erwartung.
     const kw = leer<number>();
@@ -468,7 +474,8 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
         if (mess[t] != null) { kw[t] = mess[t]; herkunft[t] = 'gemessen'; }
       }
     }
-    const plan = liste(i.consumerPlan?.entities).find((x) => x.entityId === e.entityId);
+    // Pausiert: kein Plan, keine Erwartung - VoltPilot schaltet das Gerät nicht.
+    const plan = geraetAus ? null : liste(i.consumerPlan?.entities).find((x) => x.entityId === e.entityId);
     if (plan) {
       for (const p of plan.slots) {
         const t = slotVon(r, p.time);
@@ -476,7 +483,7 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
         kw[t] = num(p.targetValue);
         herkunft[t] = 'plan';
       }
-    } else {
+    } else if (!geraetAus) {
       const nenn = nennLeistung(c, e);
       const erwartung = erwarteteLaeufe(s, { form, nennKw: nenn, ladepunkt: e.ladepunkt }, i.reihen, r.jetzt + 1);
       for (let t = r.jetzt + 1; t < N; t++) {
@@ -498,9 +505,14 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
     else if (an === true && !gemessen) { kw[r.jetzt] = nennLeistung(c, e); herkunft[r.jetzt] = 'gemessen'; }
 
     let zustand = zustandVon({ e, form, st, lp, eingriff, pausiert, gemessen, r, an });
+    if (!eingriff && !pausiert && geraetAus) {
+      zustand = durchSzene
+        ? { pill: ['lock', 'gesperrt'], kurz: `Szene „${durchSzene}“: aus`, lang: `Die Szene „${durchSzene}“ hat das Gerät pausiert; es gilt sein sicherer Zustand, bis Sie die Szene beenden.` }
+        : { pill: ['lock', 'pausiert'], kurz: 'Pausiert', lang: 'Das Gerät ist pausiert; es gilt sein sicherer Zustand.' };
+    }
     const sonnig = !!s && QUELLE_SONNIG.has(s.quelle);
     const regelJetzt = i.regelJetzt?.[e.entityId] ?? null;
-    if (!eingriff && !pausiert && !lp && st) {
+    if (!eingriff && !pausiert && !geraetAus && !lp && st) {
       const laeuft = zustand.pill[0] === 'on';
       if (regelJetzt && laeuft) {
         zustand = { ...zustand, kurz: `Regel „${regelJetzt}“ greift`, lang: `Die Regel „${regelJetzt}“ schaltet das Gerät gerade ein.` };

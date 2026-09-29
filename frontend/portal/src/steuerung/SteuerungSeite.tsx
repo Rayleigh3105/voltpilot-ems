@@ -12,7 +12,7 @@
  */
 import { liste } from './liste';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, type Site } from '../api';
+import { api, ApiError, type Site, type SzeneKey } from '../api';
 import type { BereichTab } from '../anlageNav';
 import type { AnlagenSub } from '../nav';
 import { consumersApi } from '../consumers/consumersApi';
@@ -30,6 +30,7 @@ import {
   P14aBlatt,
   PauseBlatt,
   SpeicherBlatt,
+  SzeneBlatt,
   VorrangBlatt,
   dreiWorte,
   type Aktionen,
@@ -162,6 +163,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         if (res.aktiv === false && res.nachricht) meldung(res.nachricht, true);
         else meldung(`${g.name}: ${res.steuerart ? 'übernommen' : 'gespeichert'}. Gilt ab jetzt; Gemessenes bleibt.`);
         ok = true;
+        // „Nur messen“ ist damit zurückgenommen (bestmöglich; die Karte folgt dem Auftrag).
+        if (liste(daten.vorschlaege?.states).some((x) => x.key === nurMessenKey(g.id))) {
+          void api.clearSuggestionState(site.id, nurMessenKey(g.id)).then(
+            () => api.suggestionStates(site.id).then((v) => setze('vorschlaege', v)),
+            () => {},
+          );
+        }
         const v = await api.siteVerbraucher(site.id).catch(() => null);
         if (v) setze('verbraucher', v);
       } catch (e) {
@@ -171,7 +179,37 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     return ok;
   };
 
+  const szeneAn: Aktionen['szeneAn'] = async (id, geraete) => {
+    let ok = false;
+    await lauf('szene', async () => {
+      try {
+        const res = await api.startScene(site.id, id as SzeneKey, geraete);
+        setze('szene', res);
+        meldung(res.message ?? 'Szene ist an.');
+        ok = true;
+        neuLaden();
+      } catch (e) {
+        meldung(fehlerText(e, 'Die Szene konnte nicht eingeschaltet werden.'), true);
+      }
+    });
+    return ok;
+  };
+
+  const szeneAus = async () => {
+    await lauf('szene', async () => {
+      try {
+        const res = await api.endScene(site.id);
+        setze('szene', res);
+        meldung(res.message ?? 'Szene beendet.', res.offen.length > 0);
+        neuLaden();
+      } catch (e) {
+        meldung(fehlerText(e, 'Die Szene konnte nicht beendet werden.'), true);
+      }
+    });
+  };
+
   const aktionen: Aktionen = {
+    szeneAn,
     eingriff,
     speicherEingriff,
     steuerart,
@@ -217,7 +255,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     nurMessen: async (g) => {
       await lauf(g.id, async () => {
         try {
-          await api.setSuggestionState(site.id, nurMessenKey(g.id), 'abgelehnt');
+          await api.setSuggestionState(site.id, nurMessenKey(g.id), 'nur_messen');
           const s = await api.suggestionStates(site.id).catch(() => null);
           if (s) setze('vorschlaege', s);
           meldung(`${g.name} wird nur gemessen. Unter „noch nicht gesteuert“ lässt sich das jederzeit ändern.`);
@@ -430,6 +468,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         oeffne={setBlatt}
         onSchalter={regelSchalter}
         onBefehle={() => onOpenSub('befehle')}
+        onSzeneBeenden={() => void szeneAus()}
       />
     );
   } else {
@@ -473,16 +512,29 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           </button>
         ))}
       </div>
+      {(pausiert || bild.szene) && (
+        <div className="stn-baender">
+          {pausiert && (
+            <div className="stn-band">
+              <Ic n="pause" s={18} />
+              <span>
+                <b>Automatik pausiert bis {uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}.</b> Geräte sind im sicheren Zustand; Schutzgrenzen gelten weiter.{' '}
+                <button type="button" className="lnk" onClick={() => void automatik()}>Fortsetzen</button>
+              </span>
+            </div>
+          )}
+          {bild.szene && (
+            <div className="stn-band">
+              <Ic n={bild.szene.def.icon} s={18} />
+              <span>
+                <b>Szene „{bild.szene.def.name}“ ist an.</b> {bild.szene.def.kurz}.{' '}
+                <button type="button" className="lnk" disabled={busy === 'szene'} onClick={() => void szeneAus()}>Beenden</button>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       <main className={`stn-main ${reiter}`}>
-        {pausiert && (
-          <div className="stn-band voll">
-            <Ic n="pause" s={18} />
-            <span>
-              <b>Automatik pausiert bis {uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}.</b> Geräte sind im sicheren Zustand; Schutzgrenzen gelten weiter.{' '}
-              <button type="button" className="lnk" onClick={() => void automatik()}>Fortsetzen</button>
-            </span>
-          </div>
-        )}
         {inhalt}
       </main>
       {blatt && <BlattWahl blatt={blatt} k={k} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw) => {
@@ -555,6 +607,8 @@ function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onL
       return <AnbindenBlatt k={k} />;
     case 'neu':
       return <NeuBlatt k={k} id={blatt.id} />;
+    case 'szene':
+      return <SzeneBlatt k={k} id={blatt.id} />;
     case 'rahmen':
       return <RahmenBlatt k={k} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
     case 'ziel':

@@ -32,6 +32,7 @@ import {
   type VarId,
 } from './regeln';
 import type { BlattZustand, SeitenBild } from './seite';
+import { SZENEN, szenenfaehig } from './szenen';
 import { Zeitband, type Band } from './Zeitband';
 import { N, TAG, dauer, fCt, fEur, fKwh, spannen, spannenText, uhr, uhrMin, uhrTag, uhrVon, zahl1 } from './zeit';
 
@@ -45,6 +46,8 @@ export interface RegelnReiterProps {
   oeffne: (b: BlattZustand) => void;
   onSchalter: (k: RegelKarte) => void;
   onBefehle: () => void;
+  /** Tippen auf die laufende Szene beendet sie (ohne Nachfrage). */
+  onSzeneBeenden: () => void;
 }
 
 const FARBE: Record<string, [string, string]> = {
@@ -74,6 +77,10 @@ export function RegelnReiter(p: RegelnReiterProps) {
     if (!g.eingriff) continue;
     log.push({ t: r.nowMs, text: <>Ihr Eingriff: <b>{g.name}</b> {g.eingriff.art}{g.eingriff.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ''}</> });
   }
+  const sz = bild.szene;
+  if (sz?.seitMs != null && sz.seitMs >= heuteStart && sz.seitMs <= r.nowMs) {
+    log.push({ t: sz.seitMs, text: <>Szene <b>„{sz.def.name}“</b> eingeschaltet: {sz.ids.length} {sz.ids.length === 1 ? 'Gerät' : 'Geräte'} pausiert</> });
+  }
   log.sort((a, b) => b.t - a.t);
   return (
     <>
@@ -102,6 +109,30 @@ export function RegelnReiter(p: RegelnReiterProps) {
                   <span className="ico" style={{ background: bg, color: fg }}><Ic n={v.icon} s={19} /></span>
                   <b>{v.titel}</b>
                   <small>{g ? v.satz.replace(/: .*$/, `: ${g.name} einschalten`) : v.satz}</small>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {bild.geraete.some(szenenfaehig) && (
+        <section aria-label="Szenen" className="voll">
+          <div className="grp-h"><h3>Szenen</h3><span>ein Tipp, mehrere Geräte</span></div>
+          <div className="szenen">
+            {SZENEN.map((sz) => {
+              const an = bild.szene?.def.id === sz.id;
+              return (
+                <button
+                  type="button"
+                  className="sz"
+                  key={sz.id}
+                  aria-pressed={an}
+                  disabled={p.busy === 'szene'}
+                  onClick={() => (an ? p.onSzeneBeenden() : p.oeffne({ art: 'szene', id: sz.id }))}
+                >
+                  <Ic n={sz.icon} s={20} />
+                  <b>{sz.name}</b>
+                  <small>{an ? 'an · tippen zum Beenden' : sz.kurz}</small>
                 </button>
               );
             })}

@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,7 +45,7 @@ public class SiteSuggestionController {
     /** Was der Kunde geklickt hat. Die FRIST rechnet der Server. */
     public record SuggestionStateRequest(String state) {}
 
-    /** Eine geltende Haltung. */
+    /** Eine geltende Haltung; {@code mutedUntil} ist {@code null} bei „nur messen". */
     public record SuggestionStateDto(String key, String state, Instant mutedUntil,
             Instant updatedAt) {}
 
@@ -73,9 +74,9 @@ public class SiteSuggestionController {
     }
 
     /**
-     * „Später" (1 Tag) oder „Ablehnen" (7 Tage). Der Schlüssel ist der
-     * ABGELEITETE Vorschlags-Schlüssel des Portals; seine Form wird geprüft,
-     * nie zurechtgebogen.
+     * „Später" (1 Tag), „Ablehnen" (7 Tage) oder „nur messen" (ohne Frist).
+     * Der Schlüssel ist der ABGELEITETE Vorschlags-Schlüssel des Portals; seine
+     * Form wird geprüft, nie zurechtgebogen.
      */
     @PutMapping("/suggestion-states/{key}")
     public SuggestionStateDto put(@PathVariable UUID siteId, @PathVariable String key,
@@ -84,21 +85,34 @@ public class SiteSuggestionController {
         requireSite(siteId);
         String state = request == null ? null : request.state();
         if (!Vorschlaege.bekannt(state)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unbekannte Auswahl - erlaubt sind „später\" und „abgelehnt\".");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, Vorschlaege.UNBEKANNT);
         }
-        String schluessel;
-        try {
-            schluessel = Vorschlaege.pruefeSchluessel(key);
-        } catch (Vorschlaege.Abgelehnt e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+        String schluessel = schluessel(key);
         Instant now = Instant.now();
         Instant bis = Vorschlaege.stummBis(state, now);
         store.upsert(siteId, schluessel, state, bis, jwt == null ? null : jwt.getSubject());
         // Opportunistisch aufräumen: die abgelaufenen Zeilen DIESER Anlage.
         store.pruneExpired(siteId, now);
         return new SuggestionStateDto(schluessel, state, bis, now);
+    }
+
+    /**
+     * Eine Haltung zurücknehmen - etwa „nur messen", wenn der Kunde das Gerät
+     * doch steuern will. Idempotent: eine fehlende Haltung ist kein Fehler.
+     */
+    @DeleteMapping("/suggestion-states/{key}")
+    public ResponseEntity<Void> delete(@PathVariable UUID siteId, @PathVariable String key) {
+        requireSite(siteId);
+        store.delete(siteId, schluessel(key));
+        return ResponseEntity.noContent().build();
+    }
+
+    private static String schluessel(String key) {
+        try {
+            return Vorschlaege.pruefeSchluessel(key);
+        } catch (Vorschlaege.Abgelehnt e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     private void requireSite(UUID siteId) {

@@ -7,7 +7,8 @@
  * hier auf eine von drei Arten:
  *  - **neu**: noch kein Auftrag (Server: Herkunft `ohne`) → Karte mit Vorschlag,
  *  - **nur messen**: der Kunde hat „Nicht steuern, nur messen“ gewählt - gemerkt
- *    als abgelehnter Vorschlag (`suggestion-states`), nie als neue Tabelle,
+ *    als Haltung `nur_messen` ohne Frist (`suggestion-states`), bis er sie mit
+ *    „Steuern“ zurücknimmt,
  *  - **noch nicht steuerbar**: der Server sagt `schreibbar: false` und nennt den
  *    Grund; der Weg dorthin, wo er sich lösen lässt, ist die Anlage.
  *
@@ -30,7 +31,7 @@ export interface Einordnung {
 export function einordnen(alle: GeraetBild[], vorschlaege: SuggestionStates | null | undefined, nowMs: number): Einordnung {
   const stumm = new Set(
     liste(vorschlaege?.states)
-      .filter((s) => s.state === 'abgelehnt' || Date.parse(s.mutedUntil) > nowMs)
+      .filter((s) => s.state === 'nur_messen' || (s.mutedUntil != null && Date.parse(s.mutedUntil) > nowMs))
       .map((s) => s.key),
   );
   const out: Einordnung = { neu: [], nurMessen: [], nichtSteuerbar: [] };

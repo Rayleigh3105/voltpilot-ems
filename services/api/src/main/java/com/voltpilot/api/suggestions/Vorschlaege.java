@@ -30,6 +30,14 @@ public final class Vorschlaege {
     public static final String ABGELEHNT = "abgelehnt";
 
     /**
+     * „Nicht steuern, nur messen" (Steuerung neu, E2): die Entscheidung des
+     * Kunden über SEIN Gerät. Sie hat KEINE Frist - sie gilt, bis er sie
+     * zurücknimmt (DELETE); Migration V20260929120000 erlaubt nur ihr
+     * {@code muted_until IS NULL}.
+     */
+    public static final String NUR_MESSEN = "nur_messen";
+
+    /**
      * Wie lange „Später" verstummt. Bewusst KURZ: ein Vorschlag hängt an einem
      * Fenster von HEUTE (Überschuss am Mittag, günstige Stunden heute Nacht) -
      * morgen ist es ein anderes Fenster und damit eine andere Frage.
@@ -46,6 +54,10 @@ public final class Vorschlaege {
      */
     private static final String KEY_FORM = "^[a-z0-9][a-z0-9:._-]{0,127}$";
 
+    /** Der Grund für ein unbekanntes Wort - derselbe Satz in Klasse und Route. */
+    public static final String UNBEKANNT =
+            "Unbekannte Auswahl - erlaubt sind „später\", „abgelehnt\" und „nur messen\".";
+
     private Vorschlaege() {
     }
 
@@ -58,21 +70,24 @@ public final class Vorschlaege {
 
     /** Kennt dieses Haus die Haltung? */
     public static boolean bekannt(String state) {
-        return SPAETER.equals(state) || ABGELEHNT.equals(state);
+        return SPAETER.equals(state) || ABGELEHNT.equals(state) || NUR_MESSEN.equals(state);
     }
 
     /**
      * Bis wann dieser Zustand verstummt. Der EINE Ort, an dem aus dem Wort eine
-     * Frist wird.
+     * Frist wird. {@code null} heißt: ohne Frist (nur {@link #NUR_MESSEN}).
      */
     public static Instant stummBis(String state, Instant now) {
+        if (NUR_MESSEN.equals(state)) {
+            return null;
+        }
         if (SPAETER.equals(state)) {
             return now.plus(SPAETER_DAUER);
         }
         if (ABGELEHNT.equals(state)) {
             return now.plus(ABGELEHNT_DAUER);
         }
-        throw new Abgelehnt("Unbekannte Auswahl - erlaubt sind „später\" und „abgelehnt\".");
+        throw new Abgelehnt(UNBEKANNT);
     }
 
     /**
@@ -95,5 +110,10 @@ public final class Vorschlaege {
      */
     public static boolean gilt(Instant mutedUntil, Instant now) {
         return mutedUntil != null && mutedUntil.isAfter(now);
+    }
+
+    /** Wie {@link #gilt(Instant, Instant)}; „nur messen" gilt ohne Frist. */
+    public static boolean gilt(String state, Instant mutedUntil, Instant now) {
+        return NUR_MESSEN.equals(state) || gilt(mutedUntil, now);
     }
 }

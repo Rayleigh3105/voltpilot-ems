@@ -1258,6 +1258,21 @@ class ConsumerApiTest {
             put(token, base + "/suggestion-states/guenstig:c3", Map.of("state", "spaeter"));
             assertThat(countStates()).isEqualTo(2);
 
+            // „Nur messen" (Steuerung neu, E2) hat KEINE Frist: es gilt, bis der
+            // Kunde es zurücknimmt - auch über das Aufräumen hinweg.
+            ResponseEntity<Map<String, Object>> nm = put(token,
+                    base + "/suggestion-states/steuerung-nur-messen:c4",
+                    Map.of("state", "nur_messen"));
+            assertThat(nm.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(nm.getBody()).containsEntry("mutedUntil", null);
+            put(token, base + "/suggestion-states/guenstig:c5", Map.of("state", "spaeter"));
+            assertThat(states(token)).contains("steuerung-nur-messen:c4");
+            assertThat(rest.exchange(url(base + "/suggestion-states/steuerung-nur-messen:c4"),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(token)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+            assertThat(states(token)).doesNotContain("steuerung-nur-messen:c4");
+            jdbcAsSuperuser("DELETE FROM site_suggestion_state WHERE suggestion_key = 'guenstig:c5'");
+
             // Der Mandanten-Zaun: 404 in BEIDE Richtungen, nie 403.
             String fremd = token("demo2", "demo2");
             assertThat(rest.exchange(url(base + "/suggestion-states"), HttpMethod.GET,
@@ -1271,6 +1286,44 @@ class ConsumerApiTest {
             assertThat(countStates()).isEqualTo(2);
         } finally {
             jdbcAsSuperuser("DELETE FROM site_suggestion_state");
+        }
+    }
+
+    /**
+     * STEUERUNG NEU (E6): die Szene einer Anlage. Mit ausgeschalteter
+     * Verbrauchersteuerung (Vorgabe dieses Tests) pausiert keine Szene - sie
+     * könnte die Geräte danach nicht fortsetzen. Beenden ohne Szene ist kein
+     * Fehler, und der Mandanten-Zaun ist 404.
+     */
+    @Test
+    void sceneRefusesHonestlyWithoutControlAndIsTenantScoped() {
+        String token = token("demo", "demo");
+        String base = "/api/v1/sites/" + BERLIN_SITE;
+        try {
+            assertThat(getMap(base + "/scene", token).get("scene")).isNull();
+            ResponseEntity<Map<String, Object>> an = rest.exchange(url(base + "/scene"),
+                    HttpMethod.PUT, new HttpEntity<>(Map.of("key", "urlaub",
+                            "entityIds", List.of(UUID.randomUUID().toString())), bearer(token)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(an.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat((String) an.getBody().get("message")).contains("nicht aktiviert");
+            ResponseEntity<Map<String, Object>> falsch = rest.exchange(url(base + "/scene"),
+                    HttpMethod.PUT, new HttpEntity<>(Map.of("key", "party",
+                            "entityIds", List.of(UUID.randomUUID().toString())), bearer(token)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            ResponseEntity<Map<String, Object>> aus = rest.exchange(url(base + "/scene"),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(token)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(aus.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(aus.getBody().get("scene")).isNull();
+
+            String fremd = token("demo2", "demo2");
+            assertThat(rest.exchange(url(base + "/scene"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(fremd)), String.class).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            jdbcAsSuperuser("DELETE FROM site_scene");
         }
     }
 
