@@ -56,6 +56,35 @@ function dualControllerAwareness(certified, controlEnabled, registerCount, allMa
   return out;
 }
 
+// The native EVIDENCE Layer 1 -> core (K3/K4b/K5, docs/contracts/v2/
+// plan-execution-ownership.md "Lokaler Bus"): each block is checked field by
+// field and forwarded only with the types the core parses (agent.go
+// onControlReadback) - a wrongly typed field would make the core skip the WHOLE
+// readback. Absent stays absent: `native_capabilities` missing means "not
+// reported", which the core treats differently from "reported: nothing".
+function nativeBlock(v) {
+  if (v == null || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const out = {};
+  if (typeof v.grid_charge_blocked === 'boolean') out.grid_charge_blocked = v.grid_charge_blocked;
+  if (typeof v.intent === 'string') out.intent = v.intent;
+  if (typeof v.curtails_own_pv === 'boolean') out.curtails_own_pv = v.curtails_own_pv;
+  if (typeof v.candidate === 'string') out.candidate = v.candidate;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function nativePrecondition(v) {
+  if (v == null || typeof v !== 'object' || typeof v.grid_charge_blocked !== 'boolean') return undefined;
+  return { grid_charge_blocked: v.grid_charge_blocked };
+}
+
+// The capability report is one statement: all three fields or none of it.
+function nativeCapabilities(v) {
+  if (v == null || typeof v !== 'object' || !Array.isArray(v.intents)) return undefined;
+  if (!v.intents.every((i) => typeof i === 'string')) return undefined;
+  if (typeof v.window !== 'boolean' || typeof v.persistent !== 'boolean') return undefined;
+  return { intents: v.intents.slice(), window: v.window, persistent: v.persistent };
+}
+
 // shape() is exported for unit tests: validate + normalize the readback payload,
 // or null when it is not a usable readback (never published - stays quiet).
 //
@@ -70,6 +99,13 @@ function dualControllerAwareness(certified, controlEnabled, registerCount, allMa
 // "Abregelung noch nicht freigegeben" (observed live on the pilot, 2026-07-30
 // 09:35:48Z, between two healthy remote-mode cycles - one of the three causes of
 // the flapping warning).
+//
+// The primary family stays a FIXED LIST - an unknown field is dropped, not
+// forwarded. That list is a contract with the core: until 2026-09-29 it lacked
+// the native evidence (mode "native", `wrote`, `native*`), so the core never saw
+// a hand-over it had asked for (Herzogau F11). The keys this function can emit
+// are pinned in docs/contracts/v2/control-readback-vectors.json, and the core's
+// test checks every JSON name it reads against them.
 function shape(payload) {
   if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) return null;
   if (!Array.isArray(payload.registers)) return null;
@@ -110,14 +146,16 @@ function shape(payload) {
     all_match = true;
     verify = 'held';
   }
-  return {
+  const out = {
     ts: typeof payload.ts === 'string' ? payload.ts : new Date().toISOString(),
     family: typeof payload.family === 'string' ? payload.family : '',
     source: typeof payload.source === 'string' ? payload.source : '',
     slot_start: typeof payload.slot_start === 'string' ? payload.slot_start : undefined,
     control_enabled,
     certified,
-    mode: payload.mode === 'release' ? 'release' : 'normal',
+    // 'native' = the executor handed the device its own regulation and read that
+    // mode back - the core's proof of a native hand-over (agent/native.go).
+    mode: payload.mode === 'release' || payload.mode === 'native' ? payload.mode : 'normal',
     // WHICH Deye control path drove this write - 'remote' (the Tier-2 register
     // block 1100-1121) or 'tou' (the legacy Time-of-Use synthesis). Additive, so an
     // adapter that does not set it stays byte-compatible. The operator must always
@@ -147,6 +185,16 @@ function shape(payload) {
     // Additive "only-controller" awareness surfaced on the readback path.
     dual_controller: dualControllerAwareness(certified, control_enabled, registers.length, all_match, mismatch_roles),
   };
+  // The native evidence, only where Layer 1 stated it (see nativeBlock above).
+  if (typeof payload.wrote === 'boolean') out.wrote = payload.wrote;
+  const native = nativeBlock(payload.native);
+  if (native) out.native = native;
+  const precondition = nativePrecondition(payload.native_precondition);
+  if (precondition) out.native_precondition = precondition;
+  if (typeof payload.native_refusal === 'string') out.native_refusal = payload.native_refusal;
+  const capabilities = nativeCapabilities(payload.native_capabilities);
+  if (capabilities) out.native_capabilities = capabilities;
+  return out;
 }
 
 module.exports = function (RED) {

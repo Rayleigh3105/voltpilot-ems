@@ -46,6 +46,14 @@ clobbered the battery control card (measured live at 09:35:48Z between two healt
 remote cycles). When adding a field to either family, ask the AGENTS.md question
 first: observation or gate?
 
+The PRIMARY family stays a fixed list, so a new Layer 1 → core field must also be
+added to `shape()` with its type; otherwise it is dropped silently. The native proof
+(`mode: native`, `wrote`, `native*`) was lost this way from #531 until 2026-09-29
+(Herzogau F11). Regenerate `docs/contracts/v2/control-readback-vectors.json` with
+`VP_VEKTOREN_SCHREIBEN=1 node --test deye-control.e2e.test.js`. The core test
+`TestControlReadbackReadsOnlyWhatThePaletteForwards` checks every JSON name the core
+reads against that file.
+
 **Write cadence on the remote path is scoped, not blanket.** `always: true` (every
 ~10 s tick) belongs to the three ops where the re-write IS the mechanism - watchdog
 kick 1101, the setpoint 1109, the enable 1100. The configuration registers
