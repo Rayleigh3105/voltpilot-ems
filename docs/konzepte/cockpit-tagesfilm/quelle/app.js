@@ -263,10 +263,10 @@
   Flow.prototype.geom = function () {
     var raw = this.el.clientWidth || 320, w = Math.max(220, raw), c = w < 560, tight = w < 300, cx = Math.round(w / 2);
     var g = !c
-      ? { R: 32, bw: 36, bh: 56, sunY: 48, hubY: 180, hausY: 318, h: 364, battX: Math.round(w * 0.17), gridX: Math.round(w * 0.83), maxW: 34, gap: 3, rad: 22, lo: 12 }
+      ? { R: 32, bw: 36, bh: 56, sunY: 48, hubY: 180, hausY: 318, h: 364, battX: Math.round(w * 0.17), gridX: Math.round(w * 0.83), maxW: 16, gap: 3, rad: 22, lo: 12 }
       : tight
-        ? { R: 22, bw: 26, bh: 40, sunY: 34, hubY: 138, hausY: 280, h: 312, battX: 24, gridX: w - 24, maxW: 20, gap: 2, rad: 12, lo: 8 }
-        : { R: 26, bw: 30, bh: 46, sunY: 40, hubY: 150, hausY: 272, h: 306, battX: 34, gridX: w - 34, maxW: 24, gap: 2, rad: 16, lo: 12 };
+        ? { R: 22, bw: 26, bh: 40, sunY: 34, hubY: 138, hausY: 280, h: 312, battX: 24, gridX: w - 24, maxW: 10, gap: 2, rad: 12, lo: 8 }
+        : { R: 26, bw: 30, bh: 46, sunY: 40, hubY: 150, hausY: 272, h: 306, battX: 34, gridX: w - 34, maxW: 12, gap: 2, rad: 16, lo: 12 };
     g.w = w; g.w0 = raw; g.c = c; g.cx = cx;
     this.g = g;
     this.el.style.height = g.h + 'px';
@@ -375,8 +375,8 @@
       o.g.style.display = '';
       o.lane.setAttribute('d', D[k]); o.lane.setAttribute('stroke-width', r1(wk));
       // Punkte nur auf Spuren, die breit genug sind; auf dünnen sähen sie wie eine gestrichelte Planlinie aus
-      o.dot.style.display = wk < 3 ? 'none' : '';
-      o.dot.setAttribute('d', D[k]); o.dot.setAttribute('stroke-width', r1(clamp(wk * 0.42, 1.4, 4.2)));
+      o.dot.style.display = wk < 2.5 ? 'none' : '';
+      o.dot.setAttribute('d', D[k]); o.dot.setAttribute('stroke-width', r1(clamp(wk * 0.4, 1.2, 3)));
     });
     // Kreuzung: die senkrechte Spur bekommt einen hellen Rand, damit sie über der waagrechten liegt
     if (wpl && M) {

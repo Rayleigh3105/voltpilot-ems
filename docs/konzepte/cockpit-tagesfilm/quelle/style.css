@@ -130,11 +130,11 @@ button{font:inherit;color:inherit}
 .flow{position:relative;width:100%;margin-top:10px}
 .flow .fx{position:absolute;left:0;top:0;display:block;overflow:visible}
 .flow .rails path{fill:none;stroke:var(--flow-base);stroke-width:2;stroke-linecap:round}
-.flow .lane{fill:none;stroke-linecap:butt;stroke-linejoin:round;pointer-events:stroke}
+.flow .lane{fill:none;stroke-linecap:butt;stroke-linejoin:round;pointer-events:stroke;opacity:.85}
 .flow .casing{fill:none;stroke:var(--c-card)}
-.flow .dot{fill:none;stroke:var(--c-card);stroke-linecap:round;stroke-dasharray:0 22;opacity:.9;display:none;pointer-events:none}
-.flow.live .dot{display:inline;animation:fl 1.4s linear infinite}
-@keyframes fl{to{stroke-dashoffset:-22}}
+.flow .dot{fill:none;stroke:var(--c-card);stroke-linecap:round;stroke-dasharray:0 18;opacity:.9;display:none;pointer-events:none}
+.flow.live .dot{display:inline;animation:fl 1.15s linear infinite}
+@keyframes fl{to{stroke-dashoffset:-18}}
 @media (prefers-reduced-motion:reduce){.flow.live .dot{display:none;animation:none}}
 .flow.plan .lane{opacity:.8}
 .fnode{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;padding:0;border-radius:50%;background:var(--c-card);border:2px solid var(--hue);color:var(--hue);cursor:pointer;z-index:2;transition:box-shadow var(--m-fast) var(--ease-inout),border-color var(--m-base) var(--ease-inout),color var(--m-base) var(--ease-inout)}

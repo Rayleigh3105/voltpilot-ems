@@ -32,7 +32,7 @@ flowchart TB
 - **Jetzt und Heute.** „Jetzt“ zeigt Leistung in kW, „Heute“ die Energie seit Mitternacht in kWh, im selben Bild. In „Heute“ stehen alle Wege des Tages nebeneinander, am Speicher und am Netz auch beide Richtungen.
 - **Beliebig viele Geräte.** Unter dem Fluss stehen die Geräte als Liste, sortiert nach Leistung (bzw. Energie heute). Am Telefon sind es höchstens vier Zeilen (sonst drei und „n weitere“), am Rechner sechs (sonst fünf). Das ganze Verzeichnis öffnet sich im Blatt, nach Art gruppiert (Laden, Wärme, Maschinen, Gebäude, Sonstiges) und mit Gruppensummen. Mit mehr als einer PV-Fläche gibt es dieselbe Liste für die Erzeugung.
 - **Schraffiert heißt Plan.** Die Tagesleiste springt zu jeder Viertelstunde. Rechts von „Jetzt“ sind die Spuren schraffiert und die Knoten gestrichelt. Für den Plan gibt es keine Aufteilung je Gerät; die Liste zeigt dann nur „Verbrauchsprognose“ und „PV-Prognose“.
-- **Bewegung heißt live.** Nur im Jetzt wandern kleine helle Punkte langsam (etwa 16 px pro Sekunde) die Spuren entlang, von der Quelle zum Ziel. Auf Spuren unter 3 px entfallen sie, damit nichts wie eine gestrichelte Planlinie aussieht. Zurückgezogen, im Plan und bei „Heute“ steht das Bild still. Werte gleiten beim Wechsel in 200 ms; mit `prefers-reduced-motion` springen sie sofort, und die Punkte entfallen.
+- **Bewegung heißt live.** Nur im Jetzt wandern kleine helle Punkte langsam (etwa 16 px pro Sekunde) die Spuren entlang, von der Quelle zum Ziel. Auf Spuren unter 2,5 px entfallen sie, damit nichts wie eine gestrichelte Planlinie aussieht. Zurückgezogen, im Plan und bei „Heute“ steht das Bild still. Werte gleiten beim Wechsel in 200 ms; mit `prefers-reduced-motion` springen sie sofort, und die Punkte entfallen.
 - **Antippen zeigt Einzelheiten.** Jeder Knoten und jede Zeile öffnet am Telefon ein Blatt (`BottomSheet`), am Rechner das zentrierte `Modal`. Am Rechner nennt jede Spur beim Überfahren Weg und Wert.
 
 ## Aufbau
@@ -47,7 +47,7 @@ flowchart TB
 |---|---|
 | Datenquellen | `/topology` (Rollen, Mitglieder, `value_kw`), `/sources` (PV je Wechselrichter), `/consumers` und `/consumer-status`, `/chargers`. Das Portal fragt heute alle 10 s ab (`LIVE_POLL_MS`). |
 | Herkunft | Bilanziell mit Vorrang: Sonne zuerst in den Verbrauch, dann in den Speicher, dann ins Netz. Speicherentladung zuerst in den Verbrauch. Netzbezug zuerst in den Verbrauch, dann in den Speicher. Das Blatt nennt diese Regel. Offen ist, ob stattdessen anteilig verteilt wird. |
-| Maßstab | Die Breite einer Spur folgt der Leistung, bezogen auf die größte Leistung des Tages (bei „Heute“ auf den größten Tageswert). So bleiben Spuren über den Tag vergleichbar. Höchstens 24 px am Telefon und 34 px am Rechner, kleinste sichtbare Spur 1,5 px. |
+| Maßstab | Die Breite einer Spur folgt der Leistung, bezogen auf die größte Leistung des Tages (bei „Heute“ auf den größten Tageswert). So bleiben Spuren über den Tag vergleichbar. Höchstens 12 px am Telefon und 16 px am Rechner, damit das Bild leicht bleibt, kleinste sichtbare Spur 1,5 px. |
 | Beschriftung | An jedem Knoten: Wert fett, darunter der Zustand in Worten. Sonne und Haus rechts daneben, Speicher und Netz darunter. Die Spuren tragen keine Zahlen. |
 | Totband | Unter 0,05 kW gibt es keine Spur, wie heute. |
 | Veraltet | Außerhalb des 5-Minuten-Fensters steht eine Uhrzeit („Stand: 13:31 Uhr“), keine Dauer. |
