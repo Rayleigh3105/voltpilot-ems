@@ -19,7 +19,7 @@ import {
 } from '../../admin/adminApi';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
-import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
+import { EmptyState, ErrorState, TableSkeleton, TextSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import { EditUserDrawer, ResetPasswordDrawer } from './UserDrawers';
@@ -37,10 +37,17 @@ export function MandantenPage({
   tenants,
   onReloadTenants,
   onJumpToTenant,
+  tenantsLoaded = true,
 }: {
   tenants: Tenant[];
   onReloadTenants: (selectId?: string) => void;
   onJumpToTenant: (tenantId: string, page: PageId) => void;
+  /**
+   * false = die Mandantenliste ist noch nicht geladen. „Fehlend ist keine
+   * Null": der Leer-Zustand „Noch keine Mandanten" erscheint erst NACH einer
+   * erfolgreichen Antwort, davor steht ein Tabellen-Skelett.
+   */
+  tenantsLoaded?: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [detail, setDetail] = useState<Tenant | null>(null);
@@ -61,7 +68,11 @@ export function MandantenPage({
         actions={addButton}
       />
 
-      {tenants.length === 0 ? (
+      {!tenantsLoaded && tenants.length === 0 ? (
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <TableSkeleton rows={4} cols={3} />
+        </Card>
+      ) : tenants.length === 0 ? (
         <Card padding="lg" radius="lg">
           <EmptyState
             icon="building"

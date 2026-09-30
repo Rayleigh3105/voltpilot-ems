@@ -58,6 +58,9 @@ import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
+import { LOADER_HINT_SLOW, LOADER_TEXT, VpLoaderScreen } from './components/VpLoader';
+import { ReportFirstPaint } from './bootReady';
+import { useAusblenden } from '../designsystem/components/shell/ausblenden';
 import { PortfolioTabs } from './components/PortfolioTabs';
 import { helpForRoute } from './help/context';
 const HelpPage = lazy(PAGE_CHUNK.hilfe);
@@ -489,6 +492,9 @@ function UnifiedPortal() {
     isAdmin ? sessionStorage.getItem('vp-tenant-override') : null,
   );
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  // Ob die Mandantenliste eines Admins schon einmal geantwortet hat - trennt
+  // "noch nicht geladen" von "geladen, leer" (siehe `MandantenPage`).
+  const [tenantsLoaded, setTenantsLoaded] = useState(false);
 
   const [sites, setSites] = useState<Site[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -508,6 +514,14 @@ function UnifiedPortal() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   // The shell's "＋ Anlage hinzufügen" one-flow drawer (single-Anlage customers).
   const [addAnlageOpen, setAddAnlageOpen] = useState(false);
+  // Der EINE Marken-Lade-Moment des ersten Starts (Boot-Cover). Er hält, bis die
+  // Startseite ihr erstes ECHTES Bild gemeldet hat (`ReportFirstPaint`) - EIN
+  // Übergang Lader → Inhalt, keine Kette Lader → Skelett → Inhalt
+  // (Feedback-1 Punkt 6). Einmal gehoben, kehrt er nicht zurück: spätere
+  // Seitenwechsel und stückweises Nachladen tragen wieder ihre Skelette.
+  const [landingReady, setLandingReady] = useState(false);
+  const [coverSlow, setCoverSlow] = useState(false);
+  const markLandingReady = useCallback(() => setLandingReady(true), []);
   // Deploy-Erkennung (deployWatch.ts): ein tagelang offener Tab erfuhr sonst
   // NIE von einem Deploy und zeigte die UI seines Boot-Stands weiter (die
   // APIs sind additiv, die alte App läuft klaglos - Scout vp-stale-view-w2).
@@ -615,6 +629,9 @@ function UnifiedPortal() {
         .then(({ adminApi }) => adminApi.listTenants())
         .then((t) => {
           setTenants(t);
+          // „Fehlend ist keine Null": erst NACH der Antwort darf die
+          // Mandanten-Seite ihren Leer-Zustand zeigen (davor ein Skelett).
+          setTenantsLoaded(true);
           if (selectId) setTenantId(selectId);
         })
         .catch((e) =>
@@ -932,7 +949,55 @@ function UnifiedPortal() {
     void reload();
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // DER BOOT-COVER (erster Start): der Marken-Lade-Moment über der
+  // montierenden App, bis die Startseite ihr erstes echtes Bild hat.
+  //
+  // Er gilt NUR den mandantengebundenen Startseiten (Anlage/Flotte). Die
+  // Plattform-Seiten des Admins bringen ihre eigenen Skelette mit; die
+  // Hilfe, die Mandanten-Auswahl und der Ladefehler haben eigene Flächen.
+  // Während der Shell-Boot läuft (`!loaded`), rendert der Seitenbaum NICHT
+  // (er bräuchte `sites`) - der Cover trägt die Zeit; danach steht er noch
+  // über der schon fetchenden Startseite, bis sie meldet.
+  const isPlatform = isPlatformPage(page);
+  const asyncLanding =
+    loaded && !error && !loadFailed && !needsTenantPick && !showOnboarding && sites.length > 0;
+  const coverActive =
+    !landingReady &&
+    page !== 'hilfe' &&
+    !isPlatform &&
+    !needsTenantPick &&
+    !loadFailed &&
+    error == null &&
+    (!loaded || asyncLanding);
+  // Sicherheitsgrenze: nach dem Eintreffen der Anlagenliste bekommt die
+  // Startseite ~3 s, ihr erstes Bild zu zeichnen. Danach hebt der Lader ab und
+  // die Seite zeigt ihren Rahmen mit Skeletten für die noch fehlenden Teile -
+  // der Lader steht nie endlos.
+  useEffect(() => {
+    if (landingReady || !asyncLanding) return;
+    const cap = window.setTimeout(() => setLandingReady(true), 3000);
+    return () => window.clearTimeout(cap);
+  }, [asyncLanding, landingReady]);
+  // Bei ungewöhnlich langer Ladezeit ein ruhiger Hinweis (kein endloses Kreisen).
+  useEffect(() => {
+    if (!coverActive) {
+      setCoverSlow(false);
+      return;
+    }
+    const t = window.setTimeout(() => setCoverSlow(true), 2200);
+    return () => window.clearTimeout(t);
+  }, [coverActive]);
+  // Überblenden Lader → Inhalt über die Bewegungs-Tokens (P6-Muster): der Cover
+  // bleibt montiert, solange seine Ausblendung läuft.
+  const cover = useAusblenden(coverActive);
+  // Der Seitenbaum der mandantengebundenen Seiten rendert erst, wenn die
+  // Anlagenliste da ist (`loaded`) - so entsteht vor der ersten Antwort KEIN
+  // Leer-Zustand ("Noch keine Anlage"). Plattform-Seiten laden selbst.
+  const showPageTree = isPlatform || loaded;
+
   return (
+    <ReportFirstPaint.Provider value={markLandingReady}>
     <AppShell
       page={page}
       onNavigate={navigate}
@@ -1001,6 +1066,12 @@ function UnifiedPortal() {
         <LazyBoundary fallback={null}>
           <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
         </LazyBoundary>
+      ) : !showPageTree ? (
+        // Shell-Boot läuft (`!loaded`) und es ist eine mandantengebundene
+        // Seite: NICHTS rendern - der Boot-Cover trägt die Zeit, und der
+        // Seitenbaum bräuchte `sites`, die noch nicht da sind. So entsteht
+        // kein Leer-Zustand vor der ersten Antwort.
+        null
       ) : (
         <>
           {(page === 'uebersicht' || page === 'anlagen') &&
@@ -1074,6 +1145,7 @@ function UnifiedPortal() {
           {page === 'mandanten' && isAdmin && (
             <MandantenPage
               tenants={tenants}
+              tenantsLoaded={tenantsLoaded}
               onReloadTenants={reloadTenants}
               onJumpToTenant={jumpToTenant}
             />
@@ -1103,6 +1175,17 @@ function UnifiedPortal() {
         }}
       />
     </AppShell>
+    {/* Der EINE VoltPilot-Lade-Moment des ersten Starts über der montierenden
+        App - hält bis zum ersten echten Bild der Startseite, blendet dann zum
+        Inhalt aus. */}
+    {cover.sichtbar && (
+      <VpLoaderScreen
+        text={LOADER_TEXT.sites}
+        hint={coverSlow ? LOADER_HINT_SLOW : undefined}
+        leaving={cover.schliessend}
+      />
+    )}
+    </ReportFirstPaint.Provider>
   );
 }
 

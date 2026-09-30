@@ -1200,22 +1200,113 @@ svg [tabindex]:focus-visible {
   }
 }
 
-/* Boot splash spinner (rendered synchronously while initAuth() runs). */
-.vp-boot-spinner {
-  width: 28px;
-  height: 28px;
-  margin: 0 auto var(--vp-space-4);
-  border-radius: 50%;
-  border: 3px solid var(--vp-border);
-  border-top-color: var(--vp-action);
-  animation: vp-boot-spin 0.9s linear infinite;
+/* ============================================================
+   DER VOLTPILOT-LADE-MOMENT (`VpLoader` / `VpLoaderScreen`) - „Der Puls".
+   EINE Loop `vp-loader-pulse`: weiche Ringe strahlen in gleichmässigem
+   Rhythmus aus der ruhigen Marke aus (klar als „lädt" lesbar). Die Ringe
+   beginnen AUSSERHALB der Marke - Luft zum Kopf, keine Kollision. Nur
+   `transform`/`opacity` (GPU), KEIN JS-Timer, CLS 0. Der Halt unter
+   reduzierter Bewegung steht im EINEN `prefers-reduced-motion`-Block am
+   Dateiende (dort namentlich). Optisch identisch zum Inline-Lader in
+   `index.html` - der Übergang Inline → React → Inhalt ist EIN Moment.
+   ============================================================ */
+.vp-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vp-space-4);
+  text-align: center;
 }
-@keyframes vp-boot-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.vp-loader-mark {
+  display: block;
 }
-/* Reduzierte Bewegung: der Spinner und die Laufpunkte des Motivs stehen still. */
+.vp-loader-boot .vp-loader-mark { width: 104px; height: 104px; }
+.vp-loader-page .vp-loader-mark { width: 76px; height: 76px; }
+.vp-loader-section .vp-loader-mark { width: 48px; height: 48px; }
+/* Die ausstrahlenden Ringe: scale + fade, drei um je 1/3 der Periode versetzt
+   (gleichmässiger, sichtbarer Rhythmus). Der Reset liegt bei Deckkraft 0 -
+   nahtlose Periode. */
+.vp-loader-ring {
+  fill: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: vp-loader-pulse 1.8s var(--vp-ease-out) infinite;
+}
+.vp-loader-ring.r2 { animation-delay: -0.6s; }
+.vp-loader-ring.r3 { animation-delay: -1.2s; }
+@keyframes vp-loader-pulse {
+  0% { transform: scale(1); opacity: 0; }
+  15% { opacity: 0.5; }
+  70% { opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+.vp-loader-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+  max-width: 26ch;
+  text-wrap: balance;
+}
+.vp-loader-boot .vp-loader-text,
+.vp-loader-page .vp-loader-text { font-size: 1rem; }
+/* ⚠ Die Statuszeile RESERVIERT zwei Zeilen Höhe (`min-height`) und zentriert
+   ihren Text darin. So bleibt die Blockhöhe - und damit die Position von Marke
+   und Wortmarke - über ALLE Phasen gleich (ein 1-zeiliger Text „Wird geladen …"
+   und ein 2-zeiliger „Ihre Anlagen werden geladen …" am Telefon verschieben
+   nichts). Deckungsgleich mit `#vp-boot-skeleton .vp-bs-text` in index.html. */
+.vp-loader-boot .vp-loader-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.8em;
+  line-height: 1.4;
+}
+.vp-loader-hint {
+  font-size: 0.82rem;
+  color: var(--vp-text-muted);
+  opacity: 0.85;
+}
+
+/* Vollbild-Marken-Bühne: Boot-Splash UND der Shell-Cover des ersten Starts.
+   `position: fixed`-Overlay über der (montierenden) App - kann keinen
+   Layout-Sprung auslösen, blendet zum Inhalt aus (`is-leaving`). */
+.vp-loader-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482000;
+  display: flex;
+  flex-direction: column;
+  background: var(--vp-surface);
+}
+.vp-loader-screen.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--vp-motion-exit) var(--vp-ease-in);
+}
+.vp-loader-strip {
+  height: 3px;
+  flex: none;
+  background: var(--vp-grad-hero);
+}
+.vp-loader-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vp-space-6);
+  padding: 24px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+/* Die echte Wortmarke (PNG) - DECKUNGSGLEICH zum Inline-Lader
+   `#vp-boot-skeleton .vp-bs-word` (index.html, dort als Data-URI): gleiche
+   Höhe, gleiche Position. Wer die Höhe ändert, ändert sie DORT mit. */
+.vp-loader-word {
+  height: 40px;
+  width: auto;
+  display: block;
+}
+
 /* States */
 .vp-muted {
   color: var(--vp-text-muted);
@@ -5963,7 +6054,7 @@ span.vp-swap-out {
       Sie sind die vollständige Liste der `infinite`-Animationen des Portals
       (`grep -n infinite src/index.css`):
         · `.vp-flow-on/.vp-flow-rev`  — der Energiefluss
-        · `.vp-boot-spinner`, `.vp-spinner`, `.vp-auth-flow .spoke` — lädt/Bühne
+        · `.vp-loader-ring`, `.vp-spinner`, `.vp-auth-flow .spoke` — lädt/Bühne
         · `.vp-fleet-dot`             — Flotten-Puls
         · `.vp-flowport.accepts`      — Ablege-Ziel
         · `.vp-ustate-busy .vp-ustate-dot` — „hier bewegt sich etwas ohne Sie"
@@ -6005,12 +6096,22 @@ span.vp-swap-out {
 
   .vp-flow-on,
   .vp-flow-rev,
-  .vp-boot-spinner,
   .vp-spinner,
   .vp-auth-flow .spoke,
   .vp-flowport.accepts,
   .vp-ustate-busy .vp-ustate-dot {
     animation: none;
+  }
+
+  /* Der Marken-Lader ruht: die Puls-Ringe stehen still (die Marke bleibt, die
+     Aussage „lädt" trägt dann der Text). */
+  .vp-loader-ring {
+    animation: none;
+    opacity: 0;
+  }
+  /* Ein einziger ruhiger Ring als Halo, damit die Marke nicht nackt steht. */
+  .vp-loader-ring.r1 {
+    opacity: 0.35;
   }
 
   /* ⚠ EINE Aussage, die durch das Anhalten VERLOREN GINGE, muss ersetzt
