@@ -5,7 +5,7 @@ import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
-import { AuthScreen, TrustRow } from './components/AuthScreen';
+import { ANMELDE_TEXT, AuthScreen, TrustRow } from './components/AuthScreen';
 import { currentRoles, isPlatformAdmin, login, loginWithCredentials } from './auth';
 import { PASSWORT_MIN_ZEICHEN, passwortFehler } from './passwortRegel';
 import {
@@ -355,7 +355,7 @@ function LoginScreen({
       {view === 'login' ? (
         <>
           <h1>Willkommen zurück</h1>
-          <p className="vp-auth-hint">Melden Sie sich an Ihrer Anlage an.</p>
+          <p className="vp-auth-hint">{ANMELDE_TEXT.vpLoginHint}</p>
           {authError ? (
             // Keycloak is unreachable: sending the user to keycloak.login()
             // would just redirect to the same dead host, OUTSIDE the SPA, with
