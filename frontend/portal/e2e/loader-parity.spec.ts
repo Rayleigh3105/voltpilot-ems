@@ -54,6 +54,20 @@ test('Inline-Lader und React-Lader sind deckungsgleich (kein Sprung beim Überga
     mark: await box(p2, '.vp-loader-mark'),
     text: await box(p2, '.vp-loader-text'),
   };
+  // ⚠ Review SOLLTE-1: die React-Wortmarke darf NICHT über `?inline` (Vite-6,
+  // auf Vite 5.4 wirkungslos) laufen - dann wäre `src` ein Netz-Asset mit
+  // `?inline`-Query statt ein Data-URI, und die Marke tauchte spät auf. Hier (Dev)
+  // ist der `src` eine gebündelte URL ohne `?inline`; dass sie im BUILD wirklich
+  // ein Data-URI (kein Request) ist, prüft `test:bundle`. Zusätzlich: das Bild
+  // ist dekodiert (kein leeres Marken-Feld).
+  const img = await p2.locator('.vp-loader-word').evaluate((el) => ({
+    src: (el as HTMLImageElement).currentSrc || (el as HTMLImageElement).src,
+    naturalWidth: (el as HTMLImageElement).naturalWidth,
+  }));
+  expect(img.src, 'Wortmarke darf keine `?inline`-Query tragen (Vite-6-Falle)').not.toContain(
+    '?inline',
+  );
+  expect(img.naturalWidth, 'Wortmarke ist nicht dekodiert (leeres Marken-Feld)').toBeGreaterThan(0);
   await p2.close();
 
   const near = (a: number, b: number, tol: number, label: string) =>

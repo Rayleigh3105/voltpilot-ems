@@ -77,19 +77,25 @@
       alte Ansicht. Dieser Lader zeichnet, sobald das Stylesheet da ist, also
       lange bevor die App laeuft.
 
-      Es ist die INLINE-Fassung des VoltPilot-Lade-Moments (`VpLoaderScreen`):
-      der Marken-Blitz fuellt sich sichtbar von unten nach oben und setzt weich
-      zurueck. React fuehrt beim Mount GENAU DIESE Animation weiter (`VpLoader`,
-      dieselbe Loop `vp-loader-fill`), also blendet das Inline-Bild nur aus -
-      der Blitz startet weder neu noch springt er (belegt am Produktions-Build).
+      Es ist die INLINE-Fassung des VoltPilot-Lade-Moments (`VpLoaderScreen`),
+      Konzept „Der Puls": die Marke steht ruhig (Kopf-Punkt frei ueber dem
+      Blitz im Marken-Verlauf), weiche Ringe strahlen im gleichen Rhythmus aus.
+      React fuehrt beim Mount GENAU DIESE Ringe weiter (`VpLoader`, dieselbe
+      Loop `vp-loader-pulse`, hier `vp-bs-pulse` mit identischem Inhalt) und
+      uebernimmt sogar deren PHASE (`bootHandoff.ts` liest `getAnimations()`),
+      also blendet das Inline-Bild nur aus - die Ringe starten weder neu noch
+      springen sie (belegt am Produktions-Build, e2e/loader-parity.spec.ts).
 
       Regeln (bitte einhalten):
       - Kein zusaetzlicher REQUEST: kein externes Asset, keine Schrift-Datei.
         Die ECHTE Wortmarke (designsystem/assets/voltpilot-wordmark.png, 9,2 kB,
         byte-genau) steht hier als DATA-URI - inline, also KEIN Request, damit
         index.html no-cache-tauglich bleibt und keinen Hash braucht. Der
-        React-Lader zeigt byte-genau DASSELBE Bild (`?inline`-Import), damit der
-        Uebergang deckungsgleich ist (kein Ersatz-Logo, kein spaetes Auftauchen).
+        React-Lader zeigt byte-genau DASSELBE Bild (Vite baeckt es ueber
+        `build.assetsInlineLimit` als Data-URI ins Buendel - NICHT `?inline`,
+        das ist ein Vite-6-Feature und liesse die Marke auf Vite 5.4 als
+        Netz-Asset stehen), damit der Uebergang deckungsgleich ist (kein
+        Ersatz-Logo, kein spaetes Auftauchen).
       - Kein `url(...)` und kein <img> auf ein EXTERNES Asset. Erlaubt sind nur
         lokale SVG-Fragment-Refs (`url(#vplFill-bs)`, eigenes `-bs`-Praefix gegen
         Kollision mit den `useId`-IDs des React-Laders) und Data-URIs (kein

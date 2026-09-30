@@ -38,6 +38,7 @@ export function MandantenPage({
   onReloadTenants,
   onJumpToTenant,
   tenantsLoaded = true,
+  tenantsError = false,
 }: {
   tenants: Tenant[];
   onReloadTenants: (selectId?: string) => void;
@@ -48,6 +49,12 @@ export function MandantenPage({
    * erfolgreichen Antwort, davor steht ein Tabellen-Skelett.
    */
   tenantsLoaded?: boolean;
+  /**
+   * true = der letzte Mandanten-Abruf ist gescheitert. Dann KEIN Endlos-Skelett,
+   * sondern ein ehrlicher Fehler-Zustand mit „Erneut laden", das den
+   * Mandanten-Abruf WIRKLICH wiederholt (Review SOLLTE-3).
+   */
+  tenantsError?: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [detail, setDetail] = useState<Tenant | null>(null);
@@ -68,7 +75,14 @@ export function MandantenPage({
         actions={addButton}
       />
 
-      {!tenantsLoaded && tenants.length === 0 ? (
+      {tenantsError && tenants.length === 0 ? (
+        <Card padding="lg" radius="lg">
+          <ErrorState
+            message="Die Mandantenliste ließ sich gerade nicht laden. Bitte versuchen Sie es erneut."
+            onRetry={() => onReloadTenants()}
+          />
+        </Card>
+      ) : !tenantsLoaded && tenants.length === 0 ? (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <TableSkeleton rows={4} cols={3} />
         </Card>

@@ -1,9 +1,13 @@
-import { useId, type ReactNode } from 'react';
-// ⚠ `?inline`: Vite bäckt das Wortmarken-PNG als Data-URI INS Bündel - es ist
-// beim Mount sofort da (kein Nachladen, kein spätes Auftauchen) und ist
-// byte-genau DASSELBE Bild wie der Inline-Lader in `index.html`. So sind beide
-// Fassungen pixelgleich (Beweis: `e2e/loader-parity.spec.ts` + Differenzbild).
-import wordmarkUrl from '../../designsystem/assets/voltpilot-wordmark.png?inline';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
+import { readBootPulsePhase } from '../bootHandoff';
+// ⚠ Das Wortmarken-PNG wird über `build.assetsInlineLimit` (vite.config.ts) IMMER
+// als Data-URI ins Bündel gebacken - beim Mount sofort da (kein Netz-Request,
+// kein spätes Auftauchen) und byte-genau DASSELBE Bild wie der Inline-Lader in
+// `index.html`. So sind beide Fassungen pixelgleich (Beweis:
+// `e2e/loader-parity.spec.ts` + Differenzbild + `test:bundle`). KEIN `?inline`:
+// das ist ein Vite-6-Feature und liesse die Marke auf Vite 5.4 als Netz-Asset
+// stehen (Review SOLLTE-1).
+import wordmarkUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 
 /**
  * DER VOLTPILOT-LADE-MOMENT (`VpLoader`) - Konzept „Der Puls" (Captain-Entscheid
@@ -135,8 +139,20 @@ export function VpLoaderScreen({
   hint?: ReactNode;
   leaving?: boolean;
 }) {
+  // ⚠ PHASEN-ÜBERGABE (Review NICE-2): einmal beim Mount die laufende Phase des
+  // Inline-Laders lesen und als `--vp-loader-phase` weiterreichen, damit die
+  // React-Ringe rhythmus-nahtlos anknüpfen (siehe `src/bootHandoff.ts`). Beim
+  // Boot steht der Inline-Lader noch im Dokument (er wird erst NACH diesem ersten
+  // Bild entfernt); bei späteren Ladern liefert `readBootPulsePhase` `null` und
+  // die Ringe starten wie bisher bei Phase 0. Lazy-Init = genau EINE Messung.
+  const [phase] = useState(readBootPulsePhase);
+  const style = phase ? ({ ['--vp-loader-phase']: phase } as CSSProperties) : undefined;
   return (
-    <div className={`vp-loader-screen${leaving ? ' is-leaving' : ''}`} aria-hidden={leaving}>
+    <div
+      className={`vp-loader-screen${leaving ? ' is-leaving' : ''}`}
+      aria-hidden={leaving}
+      style={style}
+    >
       <div className="vp-loader-strip" />
       <div className="vp-loader-stage">
         <VpLoaderWordmark />

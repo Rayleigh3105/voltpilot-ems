@@ -1231,9 +1231,15 @@ svg [tabindex]:focus-visible {
   transform-box: fill-box;
   transform-origin: center;
   animation: vp-loader-pulse 1.8s var(--vp-ease-out) infinite;
+  /* ⚠ PHASEN-ÜBERGABE (`src/bootHandoff.ts`, Review NICE-2): der Boot-Cover
+     (`VpLoaderScreen`) setzt `--vp-loader-phase` auf die laufende Phase des
+     Inline-Laders (negativer Delay), sonst bleibt der Rückfall `0s`. So knüpfen
+     die React-Ringe rhythmus-nahtlos an, statt bei Phase 0 neu zu starten - der
+     Übergang Inline → React springt nicht (nicht nur formgleich, auch phasengleich). */
+  animation-delay: var(--vp-loader-phase, 0s);
 }
-.vp-loader-ring.r2 { animation-delay: -0.6s; }
-.vp-loader-ring.r3 { animation-delay: -1.2s; }
+.vp-loader-ring.r2 { animation-delay: calc(var(--vp-loader-phase, 0s) - 0.6s); }
+.vp-loader-ring.r3 { animation-delay: calc(var(--vp-loader-phase, 0s) - 1.2s); }
 @keyframes vp-loader-pulse {
   0% { transform: scale(1); opacity: 0; }
   15% { opacity: 0.5; }

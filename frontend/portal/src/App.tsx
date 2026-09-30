@@ -495,6 +495,9 @@ function UnifiedPortal() {
   // Ob die Mandantenliste eines Admins schon einmal geantwortet hat - trennt
   // "noch nicht geladen" von "geladen, leer" (siehe `MandantenPage`).
   const [tenantsLoaded, setTenantsLoaded] = useState(false);
+  // Ob der letzte Mandanten-Abruf FEHLGESCHLAGEN ist - trennt „leer" von
+  // „Fehler" (siehe `MandantenPage`: kein Endlos-Skelett bei Fehler).
+  const [tenantsError, setTenantsError] = useState(false);
 
   const [sites, setSites] = useState<Site[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -625,6 +628,7 @@ function UnifiedPortal() {
   const reloadTenants = useCallback(
     (selectId?: string) => {
       if (!isAdmin) return;
+      setTenantsError(false);
       import('./admin/adminApi')
         .then(({ adminApi }) => adminApi.listTenants())
         .then((t) => {
@@ -632,11 +636,18 @@ function UnifiedPortal() {
           // „Fehlend ist keine Null": erst NACH der Antwort darf die
           // Mandanten-Seite ihren Leer-Zustand zeigen (davor ein Skelett).
           setTenantsLoaded(true);
+          setTenantsError(false);
           if (selectId) setTenantId(selectId);
         })
-        .catch((e) =>
-          setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler'),
-        );
+        .catch((e) => {
+          // ⚠ Kein ENDLOS-Skelett bei Fehler (Review SOLLTE-3): `tenantsLoaded`
+          // wird true (Skelett endet), `tenantsError` schaltet den ehrlichen
+          // Fehler-Zustand der Mandanten-Seite mit „Erneut laden", das WIRKLICH
+          // den Mandanten-Abruf wiederholt (nicht nur den Anlagen-/Geräte-Abruf).
+          setTenantsLoaded(true);
+          setTenantsError(true);
+          setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+        });
     },
     [isAdmin],
   );
@@ -960,8 +971,23 @@ function UnifiedPortal() {
   // (er bräuchte `sites`) - der Cover trägt die Zeit; danach steht er noch
   // über der schon fetchenden Startseite, bis sie meldet.
   const isPlatform = isPlatformPage(page);
+  // ⚠ Nach `loaded` HÄLT der Cover nur über den echten LANDESEITEN, die ihr
+  // erstes Bild melden (`useReportFirstPaint`): Übersicht/Portfolio (→
+  // PortfolioCockpit), Anlagen (→ AnlageSeite/AnlagenListe). Flotten-Unterreiter
+  // wie `portfolio/messwerte`/`portfolio/erloese` (und jede künftige Unterseite)
+  // melden NICHT und würden sonst bis zur 3-s-Grenze unter fertigem Inhalt
+  // hängen (Review SOLLTE-2). Für sie hebt der Cover ab, sobald `loaded` steht -
+  // die Seite trägt dann ihre eigenen Skelette. Wer eine neue meldende
+  // Landeseite baut, trägt sie hier ein.
+  const isReportingLanding = page === 'uebersicht' || page === 'portfolio' || page === 'anlagen';
   const asyncLanding =
-    loaded && !error && !loadFailed && !needsTenantPick && !showOnboarding && sites.length > 0;
+    loaded &&
+    !error &&
+    !loadFailed &&
+    !needsTenantPick &&
+    !showOnboarding &&
+    sites.length > 0 &&
+    isReportingLanding;
   const coverActive =
     !landingReady &&
     page !== 'hilfe' &&
@@ -1067,11 +1093,13 @@ function UnifiedPortal() {
           <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
         </LazyBoundary>
       ) : !showPageTree ? (
-        // Shell-Boot läuft (`!loaded`) und es ist eine mandantengebundene
-        // Seite: NICHTS rendern - der Boot-Cover trägt die Zeit, und der
-        // Seitenbaum bräuchte `sites`, die noch nicht da sind. So entsteht
-        // kein Leer-Zustand vor der ersten Antwort.
-        null
+        // Shell-Boot läuft (`!loaded`) und es ist eine mandantengebundene Seite:
+        // der Seitenbaum bräuchte `sites`, die noch nicht da sind. Im Normalfall
+        // trägt der Boot-Cover die Zeit (dann ist dieses `null` verdeckt). ⚠ Nur
+        // wenn schon ein FEHLER steht (z. B. Mandanten-Fetch scheiterte vor den
+        // Sites), ist der Cover aus - dann NIE leer unter der Schale (Review
+        // NICE-5), sondern die ehrliche Fehlerkarte.
+        error != null ? <LoadErrorNotice onRetry={() => void reload()} /> : null
       ) : (
         <>
           {(page === 'uebersicht' || page === 'anlagen') &&
@@ -1146,6 +1174,7 @@ function UnifiedPortal() {
             <MandantenPage
               tenants={tenants}
               tenantsLoaded={tenantsLoaded}
+              tenantsError={tenantsError}
               onReloadTenants={reloadTenants}
               onJumpToTenant={jumpToTenant}
             />

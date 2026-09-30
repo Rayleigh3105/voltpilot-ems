@@ -121,7 +121,7 @@ Skelett→Inhalt) — sie sind dort entstanden, weil sie dieselben Bausteine wie
   (Marke + Text, Grössen `boot`/`page`/`section`) und `VpLoaderScreen` (Vollbild-Bühne:
   Marken-Streifen + Wortmarke + zentrierter Lader). Die Marke steht ruhig (Kopf + Blitz im
   Marken-Verlauf), weiche Ringe strahlen im gleichmässigen Rhythmus aus - klar als „lädt"
-  lesbar, kein generischer Kreisel. Die Ringe beginnen AUSSERHALB der Marke (r=18 >
+  lesbar, kein generischer Kreisel. Die Ringe beginnen AUSSERHALB der Marke (r=19 >
   Marken-Radius) - Luft zum Kopf, keine Kollision.
 - **EINE Loop `vp-loader-pulse`** in `src/index.css` (`.vp-loader-ring`, drei um je 1/3 der
   Periode versetzt). Nur `transform`/`opacity` (GPU), KEIN JS-Timer, CLS 0. Sie steht in
@@ -130,8 +130,11 @@ Skelett→Inhalt) — sie sind dort entstanden, weil sie dieselben Bausteine wie
 - **⚠ Nahtlos vom ersten Bild an.** `index.html` trägt die INLINE-Fassung desselben Laders
   (`.vp-bs-ring`/`@keyframes vp-bs-pulse`, eigener Keyframe-Name, `-bs`-ID-Präfix). React
   führt beim Mount GENAU DIESE Bewegung als `VpLoader`/`VpLoaderScreen` weiter (`BootSplash`),
-  das Inline-Bild blendet nur aus (`removeBootSkeleton`, P4). Der Blitz startet weder neu noch
-  springt er. **⚠ Eindeutige SVG-IDs je Instanz** (`useId`, Inline `-bs`): Inline- und
+  das Inline-Bild blendet nur aus (`removeBootSkeleton`, P4). Die Ringe starten weder neu noch
+  springen sie: `src/bootHandoff.ts` liest beim Mount die `currentTime` der laufenden
+  Inline-Ringe (`getAnimations()`) und setzt den React-Lader per negativem `animation-delay`
+  (CSS-Variable `--vp-loader-phase`) auf DIESELBE Phase - so ist die Übergabe rhythmus-nahtlos,
+  nicht nur formgleich. **⚠ Eindeutige SVG-IDs je Instanz** (`useId`, Inline `-bs`): Inline- und
   React-Lader stehen bei der Übergabe gleichzeitig im Dokument, dazu eingebettete Lader in
   mehreren Karten - doppelte IDs wären ungültig und `url(#id)` löste aufs ERSTE Element (auch
   in `display:none`). `VpLoader.test.tsx` rendert zwei Instanzen dagegen. Der
@@ -139,7 +142,9 @@ Skelett→Inhalt) — sie sind dort entstanden, weil sie dieselben Bausteine wie
   Request), verbietet externes `url(...)`/`<img src>` weiter.
 - **⚠ Inline- und React-Lader sind PIXELGLEICH** (kein Sprung beim Übergang). Beide tragen die
   ECHTE Wortmarke (`voltpilot-wordmark.png`, byte-genau) - inline als Data-URI in `index.html`,
-  React über `?inline` (ins Bündel gebacken, kein Nachladen); gleiche Höhe (40), gleiche
+  React über `build.assetsInlineLimit` (`vite.config.ts`) als Data-URI ins Bündel gebacken (kein
+  Nachladen; NICHT `?inline` - das ist Vite 6 und liesse die Marke auf Vite 5.4 als Netz-Asset
+  stehen, Wächter `test:bundle`); gleiche Höhe (40), gleiche
   stage/loader-Gaps (32/16 = `--vp-space-6`/`-4`), gleiche Statuszeile mit reservierten zwei
   Zeilen (die Marke springt über keine Phase). Wer eine Zahl in `.vp-loader-*` (src/index.css)
   ändert, zieht `#vp-boot-skeleton .vp-bs-*` (index.html) mit - `e2e/loader-parity.spec.ts`
