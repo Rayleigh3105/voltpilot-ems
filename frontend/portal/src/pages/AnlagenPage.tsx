@@ -2,6 +2,7 @@ import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from '
 import type { ReactNode } from 'react';
 import { SUB_CHUNK } from '../pageChunks';
 import { useVerlaufVorladen } from '../verlaufVorladen';
+import { useReportFirstPaint } from '../bootReady';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -411,6 +412,10 @@ function AnlagenListe({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [drawer, setDrawer] = useState(false);
+
+  // Boot-Cover: die Flottenliste hat ihr erstes echtes Bild, sobald die
+  // Übersicht steht (oder der Fehlerzustand greift).
+  useReportFirstPaint(overview != null || failed);
 
   useEffect(() => {
     let active = true;
@@ -1109,6 +1114,12 @@ export function AnlageSeite({
     adaptive: adaptiveLive.adaptive,
   });
   const decided = decision === 'stack' || decision === 'unassigned';
+
+  // Boot-Cover (erster Start): sobald die Anlage einen terminalen Zustand hat
+  // (nicht mehr `pending`), ist ihr erstes ECHTES Bild da - der Marken-Lader
+  // der Schale blendet dann aus. `ReportFirstPaint` ist ausserhalb der Schale
+  // ein No-op.
+  useReportFirstPaint(decision !== 'pending');
 
   // M5 (#533): die Ausprägung "Neu / leer" — das Cockpit IST der
   // Einrichtungspfad. Die Weiche ist bewusst eng (siehe `setupPath.ts`): eine
