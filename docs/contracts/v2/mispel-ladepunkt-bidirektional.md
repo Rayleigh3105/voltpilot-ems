@@ -17,8 +17,10 @@ misst und was der Optimierer über das Fahrzeug am Ladepunkt weiß. Er steuert n
 | `…/mispel/LadepunktRegelnTest.java` · `…/mispel/LadepunktBidirektionalApiTest.java` · `…/uems/LadepunktBidirektionalMigrationTest.java` | Regeln rein · Routen gegen die Datenbank · Migration auf befüllter Datenbank |
 
 > **Wer anruft (Stand MP-32):** die vier Routen und der Monatslauf der Abgrenzung in A2–A4 (MP-32 liest
-> `LadepunktService.anlage` für die Stand-Gründe, [Vertrag](./mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8)); kein
-> Optimierer (MP-33), keine Fläche (MP-41). Kein TS-Zwilling — er entsteht mit der Fläche.
+> `LadepunktService.anlage` für die Stand-Gründe, [Vertrag](./mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8)); der
+> Optimierer (MP-33) liest Fähigkeit, Fenster und Anwesenheit direkt (`inputs.load_fahrzeugspeicher`, Python-Zwilling
+> der Einordnung in `fahrzeugspeicher.einordnung`; [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md#fahrzeug-als-speicher-mp-33));
+> keine Fläche (MP-41). Kein TS-Zwilling — er entsteht mit der Fläche.
 
 ## 1. Der Ladepunkt und seine Identität
 

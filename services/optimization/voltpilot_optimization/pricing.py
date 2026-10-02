@@ -683,8 +683,10 @@ FOERDERWEGE = frozenset(
 #: (1)¼–(22) samt Foerderseite (23)¼–(33) (A1 S. 33–39; A5 und A5-Variante
 #: uebernehmen die Saldierung unveraendert, A1 S. 45, S. 52). A10/A11 haben
 #: keine Foerderseite (A1 S. 94–102) und gehoeren nicht zur Abgrenzungsoption
-#: einer marktpraemien-gefoerderten Anlage.
-MISCHBETRIEB_FORMELSAETZE = frozenset({"A1", "A5", "A5-Variante"})
+#: einer marktpraemien-gefoerderten Anlage. A3 und A4 (Stromspeicher und
+#: Ladepunkt hinter Z2, A1 S. 30–32) seit MP-33 mit (14) = 0,85 (A1 S. 35); A2
+#: hat keinen Stromspeicher, den der Speicher-Optimierer planen koennte.
+MISCHBETRIEB_FORMELSAETZE = frozenset({"A1", "A3", "A4", "A5", "A5-Variante"})
 
 
 def foerderweg_aus_bestand(netzladen_erlaubt: bool, plant_kind: str) -> str:

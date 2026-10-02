@@ -46,6 +46,7 @@ from voltpilot_optimization.config import (
     PEAK_SPIKE_FACTOR,
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
+    mispel_fahrzeug_site_ids,
     mispel_strenge_site_ids,
     pv_anchor_decay_slots,
     pv_anchor_enabled,
@@ -90,6 +91,8 @@ from voltpilot_optimization.pv_nowcast import apply_pv_nowcast, window_mean
 from voltpilot_optimization.marktwertbasis import load_marktwertbasis
 from voltpilot_optimization import mispel_jahresstand, mispel_pauschal
 from voltpilot_optimization.mispel_monatsstand import Bisher, monatsstaende, saldo
+from voltpilot_optimization import fahrzeugspeicher as fz_regeln
+from voltpilot_optimization.domain import WIRKUNGSGRAD_LADEPUNKT, Fahrzeugspeicher
 from voltpilot_optimization.pricing import (
     FOERDERWEG_PAUSCHAL,
     MISCHBETRIEB_FORMELSAETZE,
@@ -667,6 +670,127 @@ def load_mispel_bisher(dsn: str, site_id: UUID, jetzt: datetime) -> Bisher | Non
     return bisher
 
 
+#: Wie alt die Messung am Stecker hoechstens sein darf, damit ihr Ladestand der
+#: Start des Fahrzeugs ist (MP-33) - ein Herzschlag-Takt mit Reserve.
+FAHRZEUG_MESSUNG_MAX_ALTER = timedelta(minutes=15)
+
+
+def load_fahrzeugspeicher(
+    dsn: str, site: "BatterySite", jetzt: datetime, slot_starts: list[datetime]
+) -> Fahrzeugspeicher | None:
+    """Das Fahrzeug am bidirektionalen Ladepunkt als Speicher (MiSpeL MP-33).
+
+    Liest aus dem Datenmodell MP-31 (Vertrag ``mispel-ladepunkt-bidirektional.md``)
+    die am Berliner Tag wirksame Faehigkeit, das Fahrzeugfenster samt
+    Anwesenheiten und die frische Messung am Stecker (``device_charge_connector``
+    ueber ``device_charge_point.entity_id``); die Regeln rechnet
+    :mod:`voltpilot_optimization.fahrzeugspeicher`. ``None`` = kein Fahrzeug im
+    Modell, der Lauf plant byte-gleich wie vorher: ohne Tabellen (vor der
+    api-Migration ``V20261002214500``), ohne bidirektionalen Ladepunkt, in einem
+    Foerderweg, der ihn nicht zulaesst, oder ohne vollstaendige Angaben (Log
+    ``fahrzeugspeicher.nicht_geplant`` mit Grund). Bei mehreren Ladepunkten
+    plant der Lauf den ersten (nach Komponente) - Mehr-Fahrzeug ist offen.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    tag = jetzt.astimezone(GRENZ_ZONE).date()
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (komponente_id) komponente_id, nutzbarkeit, v2h, v2g,
+                       rueckspeisung_bei_einspeisung_unterbunden, rueckspeiseleistung_kw
+                FROM ladepunkt_faehigkeit
+                WHERE site_id = %(site_id)s AND aufgehoben_am IS NULL AND gueltig_ab <= %(tag)s
+                ORDER BY komponente_id, gueltig_ab DESC
+                """,
+                {"site_id": str(site.site_id), "tag": tag},
+            )
+            faehigkeiten = cur.fetchall()
+            cur.execute(
+                """
+                SELECT f.komponente_id, f.mindest_soc_pct, f.kapazitaet_kwh,
+                       a.wochentag, a.ankunft, a.abfahrt, a.abfahrt_soc_pct
+                FROM ladepunkt_fahrzeugfenster f
+                LEFT JOIN ladepunkt_anwesenheit a ON a.komponente_id = f.komponente_id
+                WHERE f.site_id = %(site_id)s
+                ORDER BY f.komponente_id, a.wochentag, a.ankunft
+                """,
+                {"site_id": str(site.site_id)},
+            )
+            fenster_zeilen = cur.fetchall()
+            cur.execute(
+                """
+                SELECT DISTINCT ON (cp.entity_id) cp.entity_id, c.status, c.soc_pct, c.reported_at
+                FROM device_charge_connector c
+                JOIN device_charge_point cp
+                  ON cp.device_id = c.device_id AND cp.charge_point_id = c.charge_point_id
+                WHERE c.site_id = %(site_id)s AND cp.entity_id IS NOT NULL
+                ORDER BY cp.entity_id, c.reported_at DESC
+                """,
+                {"site_id": str(site.site_id)},
+            )
+            messungen = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("fahrzeugspeicher.table_missing")
+        return None
+    fenster: dict[str, list] = {}
+    for kid, mindest, kap, wt, an, ab, ziel in fenster_zeilen:
+        eintrag = fenster.setdefault(str(kid), [mindest, kap, []])
+        if wt is not None:
+            eintrag[2].append(
+                fz_regeln.Anwesenheit(
+                    int(wt), an, ab, float(ziel) if ziel is not None else None
+                )
+            )
+    gemessen = {}
+    for kid, status, soc, reported_at in messungen:
+        if reported_at is None or jetzt - reported_at > FAHRZEUG_MESSUNG_MAX_ALTER:
+            continue  # veraltete Telemetrie ist nicht aktuell
+        angesteckt = (
+            True if status in fz_regeln.STECKER_BELEGT
+            else False if status in fz_regeln.STECKER_FREI
+            else None
+        )
+        gemessen[str(kid)] = fz_regeln.Messung(
+            angesteckt, float(soc) if soc is not None else None
+        )
+    for kid, nutzbarkeit, v2h, v2g, unterbunden, leistung in faehigkeiten:
+        kid = str(kid)
+        f = fz_regeln.Faehigkeit(
+            str(nutzbarkeit), bool(v2h), bool(v2g), bool(unterbunden),
+            float(leistung) if leistung is not None else None,
+        )
+        einordnung = fz_regeln.einordnung(f)
+        grund = fz_regeln.zulaessig(
+            einordnung, site.foerderweg, site.formelsatz, site.netzladen_erlaubt
+        )
+        fahrzeug = None
+        if grund is None:
+            mindest, kap, anwesenheit = fenster.get(kid, (None, None, []))
+            fahrzeug, grund = fz_regeln.fahrzeugspeicher(
+                kid,
+                f,
+                fz_regeln.Fenster(
+                    float(mindest) if mindest is not None else None,
+                    float(kap) if kap is not None else None,
+                    tuple(anwesenheit),
+                ) if kid in fenster else None,
+                gemessen.get(kid),
+                slot_starts,
+                _slot_minutes(slot_starts),
+                GRENZ_ZONE,
+            )
+        if fahrzeug is not None:
+            return fahrzeug
+        if einordnung != fz_regeln.SONSTIGER_VERBRAUCH:
+            logger.info(
+                "fahrzeugspeicher.nicht_geplant",
+                extra={"context": {"site_id": str(site.site_id), "komponente": kid, "grund": grund}},
+            )
+    return None
+
+
 def load_mispel_pauschal_bisher(
     dsn: str, site_id: UUID, jetzt: datetime
 ) -> mispel_jahresstand.Bisher | None:
@@ -1158,7 +1282,10 @@ def gather_inputs(
                 bisher,
                 slot_starts,
                 _slot_minutes(slot_starts) / 60.0,
-                site.battery.roundtrip_efficiency,
+                # MP-33: (14)A2,A3,A4 = 0,85 (A1 S. 35), sonst der Plan-Wirkungsgrad.
+                WIRKUNGSGRAD_LADEPUNKT
+                if site.formelsatz in fz_regeln.LADEPUNKT_FORMELSAETZE
+                else site.battery.roundtrip_efficiency,
             )
     elif pauschal_bisher is not None:
         # MiSpeL MP-26: Export zum blanken Spot, den Jahresstand bewertet der
@@ -1266,6 +1393,15 @@ def gather_inputs(
         mispel_monatsstand=mispel_monatsstand,
         # MiSpeL MP-26: der Jahreszustand der Pauschaloption.
         mispel_jahresstand=pauschal_jahresstand,
+        # MiSpeL MP-32/MP-33: der Formelsatz ((14), (19) mit Ladepunkt) und das
+        # Fahrzeug am bidirektionalen Ladepunkt - nur mit dem Betreiber-Schalter
+        # VOLTPILOT_MISPEL_FAHRZEUG_SITES (Vorgabe leer = None, byte-gleich).
+        mispel_formelsatz=site.formelsatz if site.mischbetrieb else None,
+        fahrzeug=(
+            load_fahrzeugspeicher(dsn, site, now, slot_starts)
+            if site.site_id in mispel_fahrzeug_site_ids()
+            else None
+        ),
     )
 
 

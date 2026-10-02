@@ -1129,3 +1129,41 @@ def mispel_strenge_site_ids(env=None) -> frozenset:
                 f"got {part!r}"
             ) from exc
     return frozenset(ids)
+
+
+# ---------------------------------------------------------------------------
+# MiSpeL MP-33: Fahrzeug am bidirektionalen Ladepunkt als Speicher
+# ---------------------------------------------------------------------------
+# Der Optimierer plant das Fahrzeug erst, wenn die Box es auch fahren kann (V2H
+# ueber eine Pilot-Wallbox MP-40, OCPP 2.1 MP-35ff., E3 = D). Bis dahin ein
+# BETREIBER-Schalter je Anlage wie VOLTPILOT_MISPEL_STRENGE_SITES: Vorgabe leer
+# = kein Fahrzeug im Modell und byte-gleiche Plaene; ein Plan mit Rueckspeisung,
+# die niemand ausfuehrt, wuerde den Speicherplan verbiegen.
+# ---------------------------------------------------------------------------
+
+MISPEL_FAHRZEUG_SITES_ENV = "VOLTPILOT_MISPEL_FAHRZEUG_SITES"
+
+
+def mispel_fahrzeug_site_ids(env=None) -> frozenset:
+    """Site-UUIDs, deren bidirektionaler Ladepunkt als Speicher geplant wird
+    (kommagetrennt in ``VOLTPILOT_MISPEL_FAHRZEUG_SITES``; leer/ungesetzt =
+    keine). Ein fehlerhafter Eintrag bricht laut ab."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    raw = env.get(MISPEL_FAHRZEUG_SITES_ENV)
+    if raw is None or raw.strip() == "":
+        return frozenset()
+    ids = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.add(UUID(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"{MISPEL_FAHRZEUG_SITES_ENV} must be comma-separated site UUIDs, "
+                f"got {part!r}"
+            ) from exc
+    return frozenset(ids)

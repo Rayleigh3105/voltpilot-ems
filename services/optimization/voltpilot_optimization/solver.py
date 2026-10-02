@@ -327,10 +327,14 @@ from voltpilot_optimization.config import (
 )
 from voltpilot_optimization.domain import (
     VIERTELSTUNDE_H,
+    WIRKUNGSGRAD_LADEPUNKT,
+    FahrzeugPlan,
+    FahrzeugSlot,
     OptimizationInput,
     PlanSlot,
     SchedulePlan,
 )
+from voltpilot_optimization.fahrzeugspeicher import LADEPUNKT_FORMELSAETZE
 from voltpilot_optimization.night_reserve import (
     NightReserveTerms,
     held_level,
@@ -533,11 +537,17 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # PV), export <= pv + discharge. The max(-x, 0) terms only guard against
     # pathological negative forecasts ever making the big-M cut into the
     # feasible region.
+    # MiSpeL MP-33: das Fahrzeug am bidirektionalen Ladepunkt zieht bzw.
+    # liefert zusaetzlich - ohne Fahrzeug bleiben beide Schranken wie sie waren.
+    fz = inp.fahrzeug
+
     def _m_import(t: int) -> float:
-        return max(inp.load_kw[t], 0.0) + p.max_charge_kw + max(-inp.pv_kw[t], 0.0)
+        m_imp = max(inp.load_kw[t], 0.0) + p.max_charge_kw + max(-inp.pv_kw[t], 0.0)
+        return m_imp + fz.laden_kw if fz is not None else m_imp
 
     def _m_export(t: int) -> float:
-        return max(inp.pv_kw[t], 0.0) + p.max_discharge_kw + max(-inp.load_kw[t], 0.0)
+        m_exp = max(inp.pv_kw[t], 0.0) + p.max_discharge_kw + max(-inp.load_kw[t], 0.0)
+        return m_exp + fz.rueckspeisen_kw if fz is not None else m_exp
 
     m.grid_import = Var(
         m.T, domain=NonNegativeReals, bounds=lambda model, t: (0.0, _m_import(t))
@@ -546,17 +556,24 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.T, domain=NonNegativeReals, bounds=lambda model, t: (0.0, _m_export(t))
     )
     m.is_importing = Var(m.T, domain=Binary)
+    # MiSpeL MP-33: das Fahrzeug als zweiter Speicher (siehe _add_fahrzeug).
+    # Ohne Fahrzeug kommt nichts ins Modell - jeder Lauf byte-gleich.
+    fahrzeug_term = _add_fahrzeug(m, inp) if fz is not None else None
 
     # The grid balance ties the split import/export to the physical flows.
-    m.grid_balance = Constraint(
-        m.T,
-        rule=lambda model, t: model.grid_import[t] - model.grid_export[t]
-        == inp.load_kw[t]
-        - inp.pv_kw[t]
-        + model.curtail[t]
-        + model.charge[t]
-        - model.discharge[t],
-    )
+    def _grid_balance(model, t):
+        fluss = (
+            inp.load_kw[t]
+            - inp.pv_kw[t]
+            + model.curtail[t]
+            + model.charge[t]
+            - model.discharge[t]
+        )
+        if fz is not None:
+            fluss = fluss + model.fz_laden[t] - model.fz_rueck[t]
+        return model.grid_import[t] - model.grid_export[t] == fluss
+
+    m.grid_balance = Constraint(m.T, rule=_grid_balance)
     # Mutually exclusive import/export (see module docstring: with
     # export_value > import_price this is load-bearing, not just a tie-break).
     m.import_gate = Constraint(
@@ -762,8 +779,132 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.total_cost.expr = m.total_cost.expr + mischbetrieb_term
     if jahreszustand_term is not None:
         m.total_cost.expr = m.total_cost.expr + jahreszustand_term
+    if fahrzeug_term is not None:
+        m.total_cost.expr = m.total_cost.expr + fahrzeug_term
     _add_night_reserve(m, inp, soc_floor)
     return m
+
+
+def _z2v(m: ConcreteModel, t):
+    """Z2V¼ als Leistung: Verbrauch im Stromspeicher und/oder Ladepunkt (A1 S. 33).
+    Mit Fahrzeug (A3/A4) misst Z2 beide (A1 S. 30–32); ohne ist es die Ladung."""
+    return m.charge[t] + m.fz_laden[t] if hasattr(m, "fz_laden") else m.charge[t]
+
+
+def _z2e(m: ConcreteModel, t):
+    """Z2E¼ als Leistung: Erzeugung im Stromspeicher und/oder Ladepunkt (A1 S. 34)."""
+    return m.discharge[t] + m.fz_rueck[t] if hasattr(m, "fz_rueck") else m.discharge[t]
+
+
+def _z2_max_kw(inp: OptimizationInput) -> tuple[float, float]:
+    p = inp.battery
+    if inp.fahrzeug is None:
+        return p.max_charge_kw, p.max_discharge_kw
+    return (
+        p.max_charge_kw + inp.fahrzeug.laden_kw,
+        p.max_discharge_kw + inp.fahrzeug.rueckspeisen_kw,
+    )
+
+
+def _wirkungsgrad_14(inp: OptimizationInput) -> float:
+    """(14): „(14)A2,A3,A4 = 0,85“ sobald ein Ladepunkt eingebunden ist (A1 S. 35);
+    sonst der Wirkungsgrad des Plans statt (14)A1 = (6)/(5) (MP-10/MP-11)."""
+    if inp.mispel_formelsatz in LADEPUNKT_FORMELSAETZE:
+        return WIRKUNGSGRAD_LADEPUNKT
+    return inp.battery.roundtrip_efficiency
+
+
+def _gutschrift_eur_mwh(inp: OptimizationInput) -> float:
+    """Was eine saldierfaehige kWh (16) entlastet: (16) + (19). In A2 und A3 ist
+    „(19)A2,A3 = 0“ - keine privilegierungsfaehigen Speicherverluste (A1 S. 37);
+    in A1 und A4 ist (19) = (18) * (17) (A1 S. 36–37), im Plan (16) / Wirkungsgrad
+    des Stromspeichers (A4: Naeherung, Z3 misst nur ihn)."""
+    if inp.mispel_formelsatz in ("A2", "A3"):
+        return inp.saldierte_bestandteile_eur_mwh
+    return inp.saldierte_bestandteile_eur_mwh / inp.battery.roundtrip_efficiency
+
+
+def _add_fahrzeug(m: ConcreteModel, inp: OptimizationInput):
+    """Das Fahrzeug am bidirektionalen Ladepunkt als Speicher (MiSpeL MP-33).
+
+    Regeln und Lesarten stehen in :mod:`voltpilot_optimization.fahrzeugspeicher`;
+    im Modell je Slot ``t``, in dem es angesteckt ist:
+
+    - ``fahrzeug_soc``: ``fz_soc[t+1] = fz_soc[t] + (e * fz_laden - fz_rueck / e) * dt``
+      mit ``e = sqrt(0,85)`` (A1 S. 35). Ausserhalb der Fenster ist es weg -
+      Laden und Rueckspeisen sind 0, was es verfaehrt, ist Fahrstrom (sonstiger
+      Verbrauch, A1 S. 25 Fn. 19), und an der Ankunft steht der feste Stand.
+    - **Abfahrtsziel immer erreicht:** ``fz_soc[s] >= untergrenze[s]`` ist eine
+      SCHRANKE der Variablen - der Mindest-Ladestand bzw. was das naechste Ziel
+      mit voller Ladeleistung erreichbar haelt, an der Abfahrt das Ziel selbst.
+    - ``fahrzeug_laden_gate``/``fahrzeug_rueck_gate``: nie zugleich laden und
+      rueckspeisen (Ganzzahl ``fz_laedt``), nur mit Rueckspeisung im Modell.
+    - ``fahrzeug_nur_haus`` (V2H ohne V2G, E3 = D): ein rueckspeisender Slot
+      speist nicht ins Netz ein (``is_importing``) - die Rueckspeisung bleibt im
+      Haus; zugleich die technische Sperre der Alternative (A1 S. 27 Fn. 22).
+    - ``fahrzeug_zyklenbudget``: rueckgespeiste kWh je Berliner Kalendertag
+      hoechstens ``vollzyklen_je_tag`` * Kapazitaet.
+
+    Gibt den Verschleiss je rueckgespeister kWh plus den Gleichstand-Brecher
+    „frueh laden“ zurueck (bei gleichem Preis frueher am Ziel).
+    """
+    fz = inp.fahrzeug
+    n = inp.slots
+    dt = inp.slot_hours
+    e = fz.einweg
+    da = [t for t in range(n) if fz.angesteckt[t]]
+    m.fz_laden = Var(
+        m.T,
+        domain=NonNegativeReals,
+        bounds=lambda model, t: (0.0, fz.laden_kw if fz.angesteckt[t] else 0.0),
+    )
+    m.fz_rueck = Var(
+        m.T,
+        domain=NonNegativeReals,
+        bounds=lambda model, t: (0.0, fz.rueckspeisen_kw if fz.angesteckt[t] else 0.0),
+    )
+    m.fz_soc = Var(
+        m.S, bounds=lambda model, s: (fz.untergrenze_kwh[s], fz.kapazitaet_kwh)
+    )
+    for s, kwh in enumerate(fz.stand_kwh):
+        if kwh is not None:
+            m.fz_soc[s].fix(kwh)
+    m.fahrzeug_soc = Constraint(
+        da,
+        rule=lambda model, t: model.fz_soc[t + 1]
+        == model.fz_soc[t] + (e * model.fz_laden[t] - model.fz_rueck[t] / e) * dt,
+    )
+    if fz.rueckspeisen_kw > 0.0:
+        m.fz_laedt = Var(da, domain=Binary)
+        m.fahrzeug_laden_gate = Constraint(
+            da, rule=lambda model, t: model.fz_laden[t] <= fz.laden_kw * model.fz_laedt[t]
+        )
+        m.fahrzeug_rueck_gate = Constraint(
+            da,
+            rule=lambda model, t: model.fz_rueck[t]
+            <= fz.rueckspeisen_kw * (1 - model.fz_laedt[t]),
+        )
+        if not fz.v2g:
+            m.fahrzeug_nur_haus = Constraint(
+                da,
+                rule=lambda model, t: model.fz_rueck[t]
+                <= fz.rueckspeisen_kw * model.is_importing[t],
+            )
+        tage = sorted({fz.tag_je_slot[t] for t in da})
+        budget_kwh = fz.vollzyklen_je_tag * fz.kapazitaet_kwh
+        m.fahrzeug_zyklenbudget = Constraint(
+            tage,
+            rule=lambda model, tag: sum(
+                model.fz_rueck[t] * dt for t in da if fz.tag_je_slot[t] == tag
+            )
+            <= budget_kwh,
+        )
+    verschleiss_eur_kwh = fz.verschleiss_ct_je_kwh / 100.0
+    return sum(
+        verschleiss_eur_kwh * m.fz_rueck[t] * dt
+        + EARLY_CHARGE_TIEBREAK_EUR_PER_KW * (t / max(n - 1, 1)) * m.fz_laden[t]
+        for t in da
+    )
 
 
 def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
@@ -811,30 +952,31 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
     p = inp.battery
     n = inp.slots
     dt = inp.slot_hours
-    eta_rt = p.roundtrip_efficiency
+    eta_rt = _wirkungsgrad_14(inp)
     praemie = inp.mispel_praemie_eur_mwh or [0.0] * n
-    gutschrift_eur_mwh = inp.saldierte_bestandteile_eur_mwh / eta_rt
+    gutschrift_eur_mwh = _gutschrift_eur_mwh(inp)
     rot_lohnt = any(praemie[t] < gutschrift_eur_mwh for t in range(n))
     ueberschuss = [max(inp.pv_kw[t] - inp.load_kw[t], 0.0) for t in range(n)]
+    z2v_max, z2e_max = _z2_max_kw(inp)
 
-    m.netz_laden = Var(m.T, domain=NonNegativeReals, bounds=(0.0, p.max_charge_kw))
+    m.netz_laden = Var(m.T, domain=NonNegativeReals, bounds=(0.0, z2v_max))
     m.speicher_einspeisung = Var(
-        m.T, domain=NonNegativeReals, bounds=(0.0, p.max_discharge_kw)
+        m.T, domain=NonNegativeReals, bounds=(0.0, z2e_max)
     )
     m.rot_einspeisung = Var(
-        m.T, domain=NonNegativeReals, bounds=(0.0, p.max_discharge_kw)
+        m.T, domain=NonNegativeReals, bounds=(0.0, z2e_max)
     )
     m.mischbetrieb_netzladen = Constraint(
         m.T,
         ["bezug", "laden"],
         rule=lambda model, t, glied: model.netz_laden[t]
-        <= (model.grid_import[t] if glied == "bezug" else model.charge[t]),
+        <= (model.grid_import[t] if glied == "bezug" else _z2v(model, t)),
     )
     m.mischbetrieb_einspeisung = Constraint(
         m.T,
         ["export", "entladen"],
         rule=lambda model, t, glied: model.speicher_einspeisung[t]
-        <= (model.grid_export[t] if glied == "export" else model.discharge[t]),
+        <= (model.grid_export[t] if glied == "export" else _z2e(model, t)),
     )
     # Planungsgrenze: die Abregelung bleibt im PV-Ueberschuss ueber der Last.
     # Dann deckt die PV nach Abregelung die Last immer ganz, und die
@@ -847,7 +989,7 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
         ["laden", "einspeisen"],
         rule=lambda model, t, glied: (
             model.netz_laden[t]
-            >= model.charge[t] - ueberschuss[t] + model.curtail[t]
+            >= _z2v(model, t) - ueberschuss[t] + model.curtail[t]
         )
         if glied == "laden"
         else (
@@ -870,13 +1012,13 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
         start_gelb = 0.0
     einspeisung_kwh = sum(m.speicher_einspeisung[t] * dt for t in m.T)
     gelb_kwh = start_gelb + eta_rt * sum(
-        (m.charge[t] - m.netz_laden[t]) * dt for t in m.T
+        (_z2v(m, t) - m.netz_laden[t]) * dt for t in m.T
     )
     rot_kwh = sum(m.rot_einspeisung[t] * dt for t in m.T)
     m.mischbetrieb_saldierung = ConstraintList()
     m.mischbetrieb_saldierung.add(rot_kwh >= einspeisung_kwh - gelb_kwh)
     if rot_lohnt:
-        big_m = start_gelb + n * dt * (eta_rt * p.max_charge_kw + p.max_discharge_kw)
+        big_m = start_gelb + n * dt * (eta_rt * z2v_max + z2e_max)
         m.saldierung_aktiv = Var(domain=Binary)
         m.mischbetrieb_saldierung.add(
             rot_kwh <= einspeisung_kwh - gelb_kwh + big_m * (1 - m.saldierung_aktiv)
@@ -924,9 +1066,9 @@ def _add_monatszustand(m: ConcreteModel, inp: OptimizationInput, praemie, gutsch
     Wirkungsgrad der Batterie statt (14)A1 = (6) / (5) des Monats (A1 S. 35) -
     der Quotient ist erst am Monatsende bestimmt.
     """
-    p = inp.battery
     dt = inp.slot_hours
-    eta_rt = p.roundtrip_efficiency
+    eta_rt = _wirkungsgrad_14(inp)
+    z2v_max, z2e_max = _z2_max_kw(inp)
     perioden = [
         (stand, [t for t in range(inp.slots) if stand.enthaelt(inp.slot_starts[t])])
         for stand in inp.mispel_monatsstand
@@ -947,13 +1089,13 @@ def _add_monatszustand(m: ConcreteModel, inp: OptimizationInput, praemie, gutsch
     for k, (stand, ts) in enumerate(perioden):
         d = stand.saldo_kwh
         einspeisung_kwh = sum(m.speicher_einspeisung[t] * dt for t in ts)
-        gelb_kwh = eta_rt * sum((m.charge[t] - m.netz_laden[t]) * dt for t in ts)
+        gelb_kwh = eta_rt * sum((_z2v(m, t) - m.netz_laden[t]) * dt for t in ts)
         rot_kwh = sum(m.rot_einspeisung[t] * dt for t in ts)
         saldierung = max(d, 0.0) + rot_kwh - m.mispel_entrot[k]
         linear = d + einspeisung_kwh - gelb_kwh
         m.mischbetrieb_monat_saldierung.add(saldierung >= linear)
-        gelb_max = eta_rt * p.max_charge_kw * dt * len(ts)
-        rot_max = p.max_discharge_kw * dt * len(ts)
+        gelb_max = eta_rt * z2v_max * dt * len(ts)
+        rot_max = z2e_max * dt * len(ts)
         if any(praemie[t] < gutschrift_eur_mwh for t in ts):
             if d - gelb_max >= 0.0:
                 m.mischbetrieb_monat_max.add(saldierung <= linear)
@@ -1797,6 +1939,9 @@ def _extract_plan(
         # the is_importing binary, so max(grid, 0)/max(-grid, 0) recovers it
         # without solver noise).
         grid_kw = inp.load_kw[t] - inp.pv_kw[t] + curtail_kw + battery_kw
+        if inp.fahrzeug is not None:
+            # MiSpeL MP-33: der Ladepunkt zieht bzw. liefert am selben Netzpunkt.
+            grid_kw += float(value(model.fz_laden[t])) - float(value(model.fz_rueck[t]))
         price = inp.prices_eur_mwh[t]
         slots.append(
             PlanSlot(
@@ -1874,4 +2019,29 @@ def _extract_plan(
         # er zugleich der GRUND des Ruhe-Plans - persistiert je Slot-Zeile, so
         # dass die Fahrplan-Seite ihn aussprechen kann.
         soc_source=inp.soc_source,
+        fahrzeug=_fahrzeug_plan(model, inp) if inp.fahrzeug is not None else None,
+    )
+
+
+def _fahrzeug_plan(model: ConcreteModel, inp: OptimizationInput) -> FahrzeugPlan:
+    """Der Fahrzeugteil des Plans (MP-33): je Slot Laden, Rueckspeisen und
+    Ladestand am Slot-Ende (``None`` = nicht angesteckt), je Abfahrt Ziel und
+    geplanter Stand."""
+    fz = inp.fahrzeug
+    slots = []
+    for t in range(inp.slots):
+        da = fz.angesteckt[t]
+        slots.append(
+            FahrzeugSlot(
+                laden_kw=round(max(float(value(model.fz_laden[t])), 0.0), 4),
+                rueckspeisen_kw=round(max(float(value(model.fz_rueck[t])), 0.0), 4),
+                soc_kwh=round(float(value(model.fz_soc[t + 1])), 4) if da else None,
+            )
+        )
+    return FahrzeugPlan(
+        komponente_id=fz.komponente_id,
+        slots=tuple(slots),
+        abfahrten=tuple(
+            (s, ziel, round(float(value(model.fz_soc[s])), 4)) for s, ziel in fz.abfahrten
+        ),
     )

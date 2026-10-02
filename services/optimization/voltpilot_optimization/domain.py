@@ -332,6 +332,99 @@ class MispelJahresstand:
         return self.von <= at < self.bis
 
 
+#: MiSpeL MP-33: „(14)A2,A3,A4 = 0,85“ (A1 S. 35) - mangels geeigneter
+#: Messwerte der Wirkungsgrad der Stromspeicherung im Ladepunkt. Der Plan
+#: nimmt ihn zugleich als Hin-und-zurueck-Wirkungsgrad des Fahrzeugs (je Weg
+#: die Wurzel, wie beim Speicher).
+WIRKUNGSGRAD_LADEPUNKT = 0.85
+#: Verschleiss des Fahrzeugakkus je rueckgespeister kWh in ct (Konzept § 3 d1:
+#: 5–2 ct, Mitte 3 ct; Schaetzung, keine Festlegung).
+FAHRZEUG_VERSCHLEISS_CT_JE_KWH = 3.0
+#: Zyklenbudget: Rueckspeisung je Berliner Kalendertag hoechstens so viele
+#: Vollzyklen der Kapazitaet (Vorgabe, bis MP-41 sie einstellbar macht).
+FAHRZEUG_VOLLZYKLEN_JE_TAG = 1.0
+
+
+@dataclass(frozen=True)
+class Fahrzeugspeicher:
+    """MiSpeL MP-33: das Fahrzeug am bidirektionalen Ladepunkt als Speicher.
+
+    Laden ist Verbrauch, Rueckspeisen Erzeugung **im Ladepunkt**, gleich
+    welches Fahrzeug angesteckt ist (A1 S. 26–27, Abschn. 3.2.5). Gebaut von
+    :func:`voltpilot_optimization.fahrzeugspeicher.fahrzeugspeicher` aus dem
+    Datenmodell MP-31 (Vertrag ``mispel-ladepunkt-bidirektional.md`` § 2, § 5);
+    alle Reihen sind am Horizont ausgerichtet (``n`` Slots, ``n + 1`` Grenzen).
+
+    - ``angesteckt[t]``: das Fahrzeug steht im Slot am Ladepunkt (Messung fuer
+      den Start, sonst das Anwesenheitsfenster). Ausserhalb ist Laden und
+      Rueckspeisen 0; was es unterwegs verbraucht, ist **Fahrstrom** -
+      energiewirtschaftlich sonstiger Verbrauch (A1 S. 25 Fn. 19), im Plan
+      nie Rueckspeisung.
+    - ``stand_kwh[s]``: der feste Ladestand an Grenze ``s`` - der gemessene
+      Start und je Ankunft die Planannahme (Mindest-Ladestand), sonst ``None``.
+    - ``untergrenze_kwh[s]``: der Mindest-Ladestand bzw. was das naechste
+      Abfahrtsziel mit voller Ladeleistung noch erreichbar haelt - an der
+      Abfahrt selbst also das Ziel (harte Grenze, auch ueber den Horizont).
+    - ``rueckspeisen_kw = 0``: kein Rueckspeisen (kein Mindest-Ladestand gesagt).
+    - ``v2g``: Rueckspeisung ins Netz; ohne nur ins Haus (V2H, kein Export im
+      selben Slot - E3 = D, A1 S. 27 Fn. 22).
+    """
+
+    komponente_id: str
+    kapazitaet_kwh: float
+    laden_kw: float
+    rueckspeisen_kw: float
+    v2g: bool
+    angesteckt: tuple[bool, ...]
+    stand_kwh: tuple[float | None, ...]
+    untergrenze_kwh: tuple[float, ...]
+    #: ``(Grenze, Ziel in kWh)`` je Abfahrt im Horizont (fuer Bericht und Test).
+    abfahrten: tuple[tuple[int, float], ...] = ()
+    #: Berliner Kalendertag je Slot (``JJJJ-MM-TT``) fuer das Zyklenbudget.
+    tag_je_slot: tuple[str, ...] = ()
+    wirkungsgrad: float = WIRKUNGSGRAD_LADEPUNKT
+    verschleiss_ct_je_kwh: float = FAHRZEUG_VERSCHLEISS_CT_JE_KWH
+    vollzyklen_je_tag: float = FAHRZEUG_VOLLZYKLEN_JE_TAG
+
+    def __post_init__(self) -> None:
+        n = len(self.angesteckt)
+        if len(self.stand_kwh) != n + 1 or len(self.untergrenze_kwh) != n + 1:
+            raise ValueError("Fahrzeugspeicher needs n + 1 boundary values")
+        if self.tag_je_slot and len(self.tag_je_slot) != n:
+            raise ValueError("Fahrzeugspeicher.tag_je_slot needs one day per slot")
+        if not (self.kapazitaet_kwh > 0 and self.laden_kw > 0 and self.rueckspeisen_kw >= 0):
+            raise ValueError("Fahrzeugspeicher needs kapazitaet, laden_kw > 0")
+        if not 0.0 < self.wirkungsgrad <= 1.0:
+            raise ValueError("Fahrzeugspeicher.wirkungsgrad must be in (0, 1]")
+
+    @property
+    def einweg(self) -> float:
+        """Wirkungsgrad je Weg (Laden bzw. Rueckspeisen)."""
+        return math.sqrt(self.wirkungsgrad)
+
+
+@dataclass(frozen=True)
+class FahrzeugSlot:
+    """Was der Plan je Slot mit dem Fahrzeug vorhat (MP-33)."""
+
+    laden_kw: float
+    rueckspeisen_kw: float
+    #: Ladestand am Slot-Ende; ``None`` = nicht angesteckt.
+    soc_kwh: float | None
+
+
+@dataclass(frozen=True)
+class FahrzeugPlan:
+    """Der Fahrzeugteil eines Plans (MP-33). Die Box steuert ihn noch nicht
+    (OCPP ist MP-35/36); er steht neben dem Speicherplan, und ``grid_kw`` der
+    Slots enthaelt ihn."""
+
+    komponente_id: str
+    slots: tuple[FahrzeugSlot, ...]
+    #: ``(Grenze, Ziel, geplanter Ladestand)`` je Abfahrt im Horizont.
+    abfahrten: tuple[tuple[int, float, float], ...] = ()
+
+
 @dataclass(frozen=True)
 class TerminalValue:
     """The terminal energy value AND the facts that produced it.
@@ -770,9 +863,19 @@ class OptimizationInput:
     #: Jahres-Netzbezug (P10). ``export_value_eur_mwh`` ist dann der blanke
     #: Spot. ``None`` (die Vorgabe) = KEIN Term und ein byte-gleicher Plan.
     mispel_jahresstand: tuple[MispelJahresstand, ...] | None = None
+    #: MiSpeL MP-32/MP-33: der Formelsatz der Abgrenzung (``A1`` ... ``A11``)
+    #: oder ``None``. Mit Ladepunkt (A2, A3, A4) bucht der Mischbetrieb (14) =
+    #: 0,85 (A1 S. 35) und (19)A2,A3 = 0 (A1 S. 37); sonst wie MP-10.
+    mispel_formelsatz: str | None = None
+    #: MiSpeL MP-33: das Fahrzeug am bidirektionalen Ladepunkt als zweiter
+    #: Speicher (:class:`Fahrzeugspeicher`). ``None`` (die Vorgabe, jeder
+    #: unidirektionale Ladepunkt) = KEIN Term und ein byte-gleicher Plan.
+    fahrzeug: Fahrzeugspeicher | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
+        if self.fahrzeug is not None and len(self.fahrzeug.angesteckt) != n:
+            raise ValueError(f"fahrzeug.angesteckt must have one entry per slot ({n})")
         if n == 0:
             raise ValueError("horizon must contain at least one slot")
         for name in ("prices_eur_mwh", "load_kw", "pv_kw"):
@@ -1222,6 +1325,9 @@ class SchedulePlan:
     # ausgewiesen - die Fahrplan-Seite sagt dann „ohne Ladestand keine
     # Speicherplanung", statt eine Zahl zu erfinden oder zu schweigen.
     soc_source: str = SOC_SOURCE_GEMESSEN
+    # MiSpeL MP-33: der Fahrzeugteil des Plans (``None`` = kein Fahrzeug im
+    # Modell). Nur gelesen, noch nicht veroeffentlicht oder gespeichert.
+    fahrzeug: FahrzeugPlan | None = None
 
     @property
     def cost_eur(self) -> float:

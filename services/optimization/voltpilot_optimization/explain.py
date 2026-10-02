@@ -112,6 +112,15 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         "pauschal_foerderfaehig_einspeisung",
         "pauschal_foerdergrenze",
         "pauschal_saldierung",
+        # MiSpeL MP-33: das Fahrzeug am bidirektionalen Ladepunkt - seine
+        # SoC-Bahn, die Lade-/Rueckspeise-Sperre, V2H ohne Export und das
+        # Zyklenbudget. Sie binden am Fahrzeug, nicht am Speicher; der Text
+        # liest den Speicherplan, wie er ist.
+        "fahrzeug_soc",
+        "fahrzeug_laden_gate",
+        "fahrzeug_rueck_gate",
+        "fahrzeug_nur_haus",
+        "fahrzeug_zyklenbudget",
         "mispel_spitzenschutz",
         "grid_import_cap",
         "grid_export_cap",
@@ -369,6 +378,9 @@ def resolve_lp_duals(model: ConcreteModel):
     # MiSpeL MP-26: die Ganzzahl je Zeitraum, der (P4) im Lauf erreicht.
     if hasattr(model, "saldierung_jahr_aktiv"):
         binaries += list(model.saldierung_jahr_aktiv.values())
+    # MiSpeL MP-33: laden oder rueckspeisen je Slot am Fahrzeug.
+    if hasattr(model, "fz_laedt"):
+        binaries += list(model.fz_laedt.values())
     for var in binaries:
         var.fix(round(value(var)))
         var.domain = Reals

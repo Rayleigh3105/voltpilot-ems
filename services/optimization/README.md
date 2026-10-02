@@ -42,6 +42,7 @@ flowchart TD
 | MiSpeL-Mischbetrieb: zwei Ladewege, Farben, Spitzenschutz (MP-10) | `solver._add_mischbetrieb`, `pricing.mispel_marktpraemie`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
 | MiSpeL-Monatszustand: (16) je Saldierungsperiode, Schattenpreis (MP-11) | `solver._add_monatszustand`, `mispel_monatsstand.py`, `inputs.load_mispel_bisher`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
 | MiSpeL-Jahreszustand der Pauschaloption: (P15)/(P10) je (Rumpf-)Jahr, Wert der nächsten Einspeise-kWh (MP-26) | `solver._add_jahreszustand`, `mispel_jahresstand.py`, `inputs.load_mispel_pauschal_bisher`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md#pauschaloption-jahreszustand-mp-26) |
+| MiSpeL-Fahrzeug als Speicher am bidirektionalen Ladepunkt: Fenster, Abfahrtsziel, 0,85, V2H vor V2G, Zyklenbudget (MP-33) | `solver._add_fahrzeug`, `fahrzeugspeicher.py`, `inputs.load_fahrzeugspeicher`, Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md#fahrzeug-als-speicher-mp-33) |
 | MiSpeL-Check: dieselbe Anlage heute gegen mit MiSpeL über ein Preisjahr, Preise ohne Datenbank (MP-13) | `simulation/mispel_check.py`, `simulation/data.price_rows_from_json`; [Wegweiser](../../docs/agents/root/mispel-check-simulation.md) |
 | Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
 | Laufzeit / CLI | `cli.py`, `runtime.py` |
