@@ -53,6 +53,17 @@ public final class MispelMengen {
     public record Aenderung(int vorherFassung, String vorherWertequelle, List<String> vorherGruende,
             BigDecimal vorherSummeEur, BigDecimal differenzEur) {}
 
+    /** Eine Farbe vorher (Vorschau, Gerätewerte) und nachher (endgültig) — Wirkung der Abweichungsampel (MP-15). */
+    public record FarbeWirkung(String farbe, String formel, String begriff, BigDecimal vorherKwh,
+            BigDecimal nachherKwh) {}
+
+    /**
+     * Die Wirkung des Endgültig-Werdens auf einen Zeitraum: die Farben der Netzeinspeisung vorher → nachher und die
+     * Saldierung (vermiedene Umlagen und Netzentgelt auf (20)) vorher → nachher in €; {@code null} = offen.
+     */
+    public record Wirkung(String schluessel, int vorherFassung, String vorherWertequelle, List<FarbeWirkung> farben,
+            BigDecimal saldierungVorherEur, BigDecimal saldierungNachherEur, BigDecimal differenzEur) {}
+
     /** Ein Lauf: ein Kalendermonat oder ein Rumpfmonat (A1 S. 102). */
     public record Teil(String schluessel, LocalDate ersterTag, LocalDate letzterTag, String formelsatz,
             String formelsatzBezeichnung, int fassung, String stand, List<String> standGruende, String wertequelle,
@@ -117,6 +128,24 @@ public final class MispelMengen {
 
     /** Die vorige vorläufige Fassung desselben Zeitraums, wenn ihre Zahlen anders waren. */
     private static Aenderung aenderung(MispelNachweis.Lauf l, List<Zeile> alle, Preise preise) {
+        MispelNachweis.Lauf v = vorher(l, alle);
+        if (v == null) {
+            return null;
+        }
+        Zeile vorher = v.zeile();
+        List<String> gruende = new ArrayList<>();
+        v.nachweis().path("stand_gruende").forEach(g -> gruende.add(g.asText()));
+        BigDecimal jetzt = wert(List.of(teil(l, null)), preise, null).summeOhneMarktpraemieEur();
+        BigDecimal davor = wert(List.of(teil(v, null)), preise, null).summeOhneMarktpraemieEur();
+        return new Aenderung(vorher.fassung(), vorher.wertequelle(), List.copyOf(gruende), davor,
+                jetzt == null || davor == null ? null : jetzt.subtract(davor));
+    }
+
+    /**
+     * Die vorige vorläufige Fassung desselben Zeitraums mit anderen Zahlen — die Vorschau, die ein endgültiger Lauf
+     * ablöst ({@code null} ohne sie). Für die Wirkung der Abweichungsampel (MP-15).
+     */
+    static MispelNachweis.Lauf vorher(MispelNachweis.Lauf l, List<Zeile> alle) {
         Zeile vorher = alle.stream()
                 .filter(z -> z.zeitraumVon().equals(l.zeile().zeitraumVon()) && z.fassung() < l.zeile().fassung()
                         && MispelNachweis.VORLAEUFIG.equals(z.stand()))
@@ -125,15 +154,22 @@ public final class MispelMengen {
             return null;
         }
         MispelNachweis.Lauf v = MispelNachweis.lesen(vorher);
-        if (werte(v).equals(werte(l))) {
-            return null;
+        return werte(v).equals(werte(l)) ? null : v;
+    }
+
+    /** Die Wirkung eines endgültigen Laufs gegen seine Vorschau {@code v} (MP-15); nur aus den beiden Läufen. */
+    static Wirkung wirkung(MispelNachweis.Lauf v, MispelNachweis.Lauf l, Preise preise) {
+        Teil vorher = teil(v, null);
+        Teil nachher = teil(l, null);
+        List<FarbeWirkung> farben = new ArrayList<>();
+        for (Farbe n : nachher.farben()) {
+            Farbe a = vorher.farben().stream().filter(f -> f.farbe().equals(n.farbe())).findFirst().orElse(null);
+            farben.add(new FarbeWirkung(n.farbe(), n.formel(), n.begriff(), a == null ? null : a.kwh(), n.kwh()));
         }
-        List<String> gruende = new ArrayList<>();
-        v.nachweis().path("stand_gruende").forEach(g -> gruende.add(g.asText()));
-        BigDecimal jetzt = wert(List.of(teil(l, null)), preise, null).summeOhneMarktpraemieEur();
-        BigDecimal davor = wert(List.of(teil(v, null)), preise, null).summeOhneMarktpraemieEur();
-        return new Aenderung(vorher.fassung(), vorher.wertequelle(), List.copyOf(gruende), davor,
-                jetzt == null || davor == null ? null : jetzt.subtract(davor));
+        BigDecimal davor = wert(List.of(vorher), preise, null).summeOhneMarktpraemieEur();
+        BigDecimal jetzt = wert(List.of(nachher), preise, null).summeOhneMarktpraemieEur();
+        return new Wirkung(nachher.schluessel(), v.zeile().fassung(), v.zeile().wertequelle(), List.copyOf(farben),
+                davor, jetzt, jetzt == null || davor == null ? null : jetzt.subtract(davor));
     }
 
     // ------------------------------------------------------------------ Wert

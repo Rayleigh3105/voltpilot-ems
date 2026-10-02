@@ -124,6 +124,12 @@ class MispelAbgrenzungMonatslaufTest {
             super(null);
         }
 
+        /** Der Ersatz liefert aus der angegebenen Wertequelle — wie nach einem Import der MSB-Werte (MP-15). */
+        @Override
+        public Gelesen lesen(com.voltpilot.api.uems.ZaehlerrolleRegeln.Knoten zaehler, Instant von, Instant bis) {
+            return new Gelesen(lesen(zaehler.kennzeichen(), von, bis), zaehler.angaben().wertequelle());
+        }
+
         @Override
         public Map<Instant, Menge> lesen(String kennzeichen, Instant von, Instant bis) {
             Map<Instant, Menge> out = new LinkedHashMap<>();
@@ -238,6 +244,12 @@ class MispelAbgrenzungMonatslaufTest {
                 messstelleJeEingang.forEach((eingang, kz) -> werte.computeIfAbsent(kz, k -> new HashMap<>())
                         .put(t, q.get(eingang).decimalValue()));
             }
+        }
+
+        /** Der Ersatz liefert aus der angegebenen Wertequelle — wie nach einem Import der MSB-Werte (MP-15). */
+        @Override
+        public Gelesen lesen(com.voltpilot.api.uems.ZaehlerrolleRegeln.Knoten zaehler, Instant von, Instant bis) {
+            return new Gelesen(lesen(zaehler.kennzeichen(), von, bis), zaehler.angaben().wertequelle());
         }
 
         @Override

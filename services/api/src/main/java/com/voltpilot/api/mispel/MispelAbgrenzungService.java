@@ -243,8 +243,11 @@ public class MispelAbgrenzungService {
 
         List<Zaehler> zaehler = zaehler(siteId, fs, vonTag, bisTag.minusDays(1));
         Map<String, Map<Instant, MispelZaehlerLeser.Menge>> mengen = new LinkedHashMap<>();
+        Map<String, String> quellen = new LinkedHashMap<>();
         for (Zaehler z : zaehler) {
-            mengen.put(z.eingang(), leser.lesen(z.knoten().kennzeichen(), von, bis));
+            MispelZaehlerLeser.Gelesen g = leser.lesen(z.knoten(), von, bis);
+            mengen.put(z.eingang(), g.mengen());
+            quellen.put(z.eingang(), g.quelle());
         }
         Map<String, String> awRegeln = awRegeln(v);
         Map<String, Map<Instant, AwViertelstunde>> aw = new LinkedHashMap<>();
@@ -307,8 +310,9 @@ public class MispelAbgrenzungService {
             throw new MispelAbgrenzungAbgelehnt("vorgaben_ungueltig", ex.getMessage());
         }
 
-        String wertequelle = zaehler.stream().allMatch(z -> MSB.equals(z.knoten().angaben().wertequelle()))
-                ? MSB : GERAET;
+        // Die Wertequelle ist die, aus der gelesen wurde (MP-15): „Messstellenbetreiber“ nur, wenn jeder Zähler
+        // eingelesene Werte des Messstellenbetreibers liest — eine angegebene Wertequelle allein reicht nicht.
+        String wertequelle = zaehler.stream().allMatch(z -> MSB.equals(quellen.get(z.eingang()))) ? MSB : GERAET;
         List<String> gruende = new ArrayList<>();
         if (!luecken.isEmpty()) {
             gruende.add("luecken");
@@ -316,6 +320,9 @@ public class MispelAbgrenzungService {
         if (GERAET.equals(wertequelle)) {
             gruende.add("wertequelle_geraet");
         }
+        zaehler.stream().filter(z -> MSB.equals(z.knoten().angaben().wertequelle())
+                        && !MSB.equals(quellen.get(z.eingang())))
+                .forEach(z -> gruende.add("msb_werte_fehlen:" + z.knoten().kennzeichen()));
         zaehler.stream().filter(z -> !"tauglich".equals(z.urteil()))
                 .forEach(z -> gruende.add("zaehler_" + z.urteil() + ":" + z.knoten().kennzeichen()));
         if (!alleEndgueltig) {

@@ -468,6 +468,9 @@ public class TenantRepository {
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",
                         "data_source_kennzeichen_seq",
+                        // The MSB values (MiSpeL MP-15, V20261003015500) hold their import, the import
+                        // holds the Messstelle (RESTRICT).
+                        "mispel_msb_wert", "mispel_msb_import",
                         // The Zählerrolle (MiSpeL MP-6, V20261002121500) holds the Messstelle (RESTRICT).
                         "messstelle_zaehlerrolle",
                         // The Abgrenzung runs (MiSpeL MP-8, V20261002153700) hold the tenant (RESTRICT).

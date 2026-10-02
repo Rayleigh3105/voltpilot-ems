@@ -95,6 +95,25 @@ public class MispelMengenService {
                 alle.isEmpty() ? null : MispelMengen.wert(alle, preise, mw), LocalDate.of(jahr + 1, 5, 31));
     }
 
+    /**
+     * Die Wirkung der Werte des Messstellenbetreibers auf den Monat (MP-15): der erste geltende endgültige Lauf gegen
+     * seine vorige vorläufige Fassung — {@code null}, solange es beides nicht gibt oder die Zahlen gleich sind.
+     */
+    public MispelMengen.Wirkung wirkung(UUID siteId, YearMonth monat) {
+        MispelMengen.Preise preise = preise(siteId);
+        List<Zeile> zeilen = preise == null ? List.of() : laeufe.desMonats(siteId, monat.atDay(1));
+        if (zeilen.isEmpty()) {
+            return null;
+        }
+        for (MispelNachweis.Lauf l : MispelNachweis.monat(siteId, monat, zeilen).laeufe()) {
+            MispelNachweis.Lauf v = l.endgueltig() ? MispelMengen.vorher(l, zeilen) : null;
+            if (v != null) {
+                return MispelMengen.wirkung(v, l, preise);
+            }
+        }
+        return null;
+    }
+
     private Monat monat(UUID siteId, YearMonth monat, MispelMengen.Preise preise, MispelMengen.Marktwert mw) {
         FoerderwegService.Ansicht am = wege.ansicht(siteId, monat.atDay(1));
         Foerderweg weg = am == null || am.angaben() == null ? null : am.angaben().foerderweg();

@@ -67,6 +67,7 @@ import {
 import { SoVerdientInhalt } from '../components/SoVerdient';
 import { SpeicherKarte } from '../components/erloese/SpeicherKarte';
 import { MispelJahrKarte, MispelMonatKarte } from '../components/erloese/MispelKarte';
+import { MsbAbgleichSatz } from '../components/erloese/MsbAbgleich';
 import { useMispelMengen } from '../useMispelMengen';
 import { arbitrageAusweisErlaubt } from '../mispelMengen';
 import '../components/erloese/ErgebnisKarte.css';
@@ -449,7 +450,7 @@ export function ErloeseSection({
             </Kennzahlen>
 
             {range === 'month' && mispel.monat?.abgrenzung && (
-              <MispelMonatKarte siteId={site.id} daten={mispel.monat} />
+              <MispelMonatKarte siteId={site.id} daten={mispel.monat} ampel={<MsbAbgleichSatz siteId={site.id} monat={mispel.monat.monat} />} />
             )}
             {range === 'year' && mispel.jahr?.abgrenzung && (
               <MispelJahrKarte

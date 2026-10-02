@@ -3,6 +3,7 @@ import { clearWerteCache } from '../uemsWerteCache';
 import { Ablesungen } from '../components/Ablesungen';
 import { RechteStandort } from '../rollen';
 import { Recht } from '../components/Recht';
+import { MsbAbgleichKarte } from '../components/erloese/MsbAbgleich';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -438,6 +439,9 @@ function MessstelleSeiteMitId({
           </div>
         )}
       </section>
+
+      {/* MiSpeL MP-15 (BK-15 A): Abgleich Gerät ↔ Messstellenbetreiber je Monat, nur an Messstellen mit Zählerrolle. */}
+      <MsbAbgleichKarte messstelleId={m.id} />
 
       {quellen && m.art === 'gemessen' && haupt?.wertart === 'Zählerstand' && !quellen.quellen.some(q => q.rolle === 'fuehrend') && <Ablesungen onWirksam={() => { clearWerteCache(); setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} kennzeichen={m.kennzeichen} einheit={haupt.einheit} zone={standorte?.standorte.find(s => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone} archiviert={m.lebenszyklus === 'archiviert'} />}
       {quelleKarten.length > 0 && (

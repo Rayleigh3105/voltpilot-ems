@@ -102,7 +102,9 @@ Quelle), lehnt jener Weg nicht ab — der Befund zeigt es beim Lesen, und das Re
   ihren Formelsätzen; das Vokabular wird dann per neuer Migration erweitert.
 - **Ein-Zähler-Sonderfälle A8, A10, A11** brauchen nur Z1 und keine getrennte Messung (A1 S. 25 Fn. 18); welche
   Fallkonstellation eine Anlage hat, wählt der Förderweg/Formelsatz-Assistent (MP-5/MP-17), nicht dieser Vertrag.
-- **MSB-Werte** (Import, Abweichungsampel) sind MP-15; die Wertequelle sagt nur, woher die maßgeblichen Werte kommen.
+- **MSB-Werte** (Import, Abweichungsampel) regelt [MP-15](./mispel-abgrenzung.md#werte-des-messstellenbetreibers-und-abgleich-mp-15):
+  sie gehören zum Zählpunkt und zur Richtung, nicht zur Messstelle; mit Wertequelle „Messstellenbetreiber“ liest der
+  Monatslauf nur sie, solange welche eingelesen sind.
 - Die Schreibwege von Stellung und Quelle prüfen die Trennung nicht.
 
 ## Prüfen

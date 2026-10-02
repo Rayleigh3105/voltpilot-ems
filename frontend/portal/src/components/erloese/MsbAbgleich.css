@@ -1,0 +1,202 @@
+/* Abgleich Gerät ↔ Messstellenbetreiber (MiSpeL MP-15, BK-15 A). Farben der Ampel wie die Monatskarte (MP-18). */
+.vp-ab-satz,
+.vp-ab-blatt,
+.vp-ab-karte {
+  --ab-gruen: #16a34a;
+  --ab-gelb: #eab308;
+  --ab-rot: #dc2626;
+  --ab-grau: #94a3b8;
+  --ab-gelb-bg: #fef9c3;
+  --ab-rot-bg: #fee2e2;
+  --ab-ok-bg: #dcfce7;
+}
+
+.vp-ab-satz {
+  flex-basis: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: var(--vp-c-radius-md, 10px);
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-ab-satz p {
+  margin: 0;
+  min-width: 0;
+}
+.vp-ab-satz.ab-gelb {
+  background: var(--ab-gelb-bg);
+}
+.vp-ab-satz.ab-rot {
+  background: var(--ab-rot-bg);
+}
+.vp-ab-satz.ab-gruen {
+  background: var(--ab-ok-bg);
+}
+.vp-ab-punkt {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--ab-grau);
+}
+.ab-gruen > .vp-ab-punkt {
+  background: var(--ab-gruen);
+}
+.ab-gelb > .vp-ab-punkt {
+  background: var(--ab-gelb);
+}
+.ab-rot > .vp-ab-punkt {
+  background: var(--ab-rot);
+}
+.vp-ab-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--vp-c-link, #1e40af);
+  font: inherit;
+  font-weight: var(--vp-c-fw-700);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.vp-ab-ampel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-ab-ampel i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ab-grau);
+}
+.vp-ab-ampel.ab-gruen i {
+  background: var(--ab-gruen);
+}
+.vp-ab-ampel.ab-gelb i {
+  background: var(--ab-gelb);
+}
+.vp-ab-ampel.ab-rot i {
+  background: var(--ab-rot);
+}
+
+.vp-ab-hinweis,
+.vp-ab-klein {
+  margin: 0 0 6px;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-fg-muted, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ab-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vp-ab-zeilen li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ab-zahl {
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-ab-label {
+  margin: 14px 0 4px;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  text-transform: none;
+}
+.vp-ab-kv {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-ab-kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vp-ab-kv dd {
+  margin: 0;
+  text-align: right;
+}
+.vp-ab-schwellen {
+  margin: 10px 0 0;
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-fg-muted, #475569);
+}
+
+.vp-ab-karte h2 {
+  margin: 0 0 6px;
+}
+.vp-ab-tabelle {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.vp-ab-tabelle table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-ab-tabelle th,
+.vp-ab-tabelle td {
+  padding: 8px 10px 8px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  text-align: left;
+  vertical-align: top;
+}
+.vp-ab-tabelle th {
+  border-top: 0;
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-fg-muted, #475569);
+  white-space: nowrap;
+}
+.vp-ab-tabelle .n {
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-ab-import {
+  margin-top: 12px;
+}
+.vp-ab-datei {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.vp-ab-import .vp-ab-klein {
+  margin-top: 6px;
+}
+.vp-ab-meldung {
+  margin: 6px 0 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-ab-meldung.ab-fehler {
+  color: var(--ab-rot);
+}
+.vp-ab-karte {
+  min-width: 0;
+  max-width: 100%;
+}
+.vp-ab-import .vp-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: 40px;
+  white-space: normal;
+  text-align: left;
+}

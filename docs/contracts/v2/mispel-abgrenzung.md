@@ -224,7 +224,8 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
 - **Eingänge:** die Zähler aus `ZaehlerrolleService.anlage` ([Zählerrolle](./mispel-zaehlerrolle.md)) am ersten
   und letzten Tag — sie müssen gleich sein, sonst `bestimmungsrelevante_aenderung` (Zähler fällt weg) bzw.
   `zaehlerwechsel_im_zeitraum` (andere Messstelle oder Angaben, kein Rumpfmonat; abschnittsweises Lesen offen); ihre Viertelstundenmengen über
-  die Messstelle (`MispelZaehlerLeser`, in kWh); AW¼ > 0 aus `MispelMarktdatenRepository.awZeiten` mit der
+  die Messstelle (`MispelZaehlerLeser`, in kWh) — mit Wertequelle „Messstellenbetreiber“ und eingelesenen Werten für
+  Zählpunkt und Richtung im Zeitraum NUR diese ([MP-15](#werte-des-messstellenbetreibers-und-abgleich-mp-15)); AW¼ > 0 aus `MispelMarktdatenRepository.awZeiten` mit der
   AW-Regel der Anlage. Formelsatz, AW-Regel und Painst/Pbinst gibt heute der Aufrufer vor (später der Förderweg).
 - **Lücke:** fehlt einer Viertelstunde ein Zählerwert oder AW¼, bleibt sie aus den Summen draußen und steht im
   Nachweis (Anzahl und Beginn je fehlendem Eingang) — nie als Null; ohne eine vollständige Viertelstunde `keine_werte`.
@@ -234,7 +235,8 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
   `viertelstunden_vorlaeufig`, `aw_rueckfall`, `zeitraum_offen`; in A2–A4 aus den Ladepunkten am ersten Tag
   ([MP-31](./mispel-ladepunkt-bidirektional.md), `LadepunktService.anlage`) `kein_ladepunkt_der_festlegung` (A1 S. 26
   Fn. 21, S. 29–31) und `ladepunkt_<befund>:<MS>` je Fehler-Befund, z. B. `unidirektional_hinter_z2` (A1 S. 25)). `wertequelle` des Laufs ist `geraet`, sobald ein
-  Zähler vom Gerät liest. Die Datenbank hält endgültig = Messstellenbetreiber + lückenlos selbst (CHECK).
+  Zähler vom Gerät liest — auch mit Wertequelle „Messstellenbetreiber“, solange für ihn keine Werte eingelesen sind
+  (dann zusätzlich `msb_werte_fehlen:<MS>`, MP-15). Die Datenbank hält endgültig = Messstellenbetreiber + lückenlos selbst (CHECK).
 - **Nachweis:** `mispel_abgrenzung_monat` (`V20261002153700`, RLS + FORCE, App nur SELECT/INSERT) je Lauf als
   Fassung: kanonischer JSON-**Text** (Festlegung, Vertrag + Fassung, Rechenwerk-Version, Zähler mit Zählpunkt,
   MSB, Eichstatus, Wertequelle und Urteil, AW-Regeln, Lücken, je Viertelstunde Eingänge und Zwischenwerte,
@@ -325,11 +327,63 @@ Mengen nach Anlage 1“ unter der Kennzahlleiste, kein neuer Reiter.
 - **Portal:** `components/erloese/MispelKarte.tsx` (Monat, Jahr, Nachweis-Blatt am Telefon) über `mispelMengen.ts`
   (nur Formatierung). Der Nachweis geht über die Routen von MP-16; vorläufige Zeiträume nur als „Vorschau (PDF)“ mit
   Wasserzeichen. Für Anlagen mit `mispel = true` nennt der Preise-Fuß der Erlöse kein „davon durch Netzladen“ (W5).
-  Platz für die Abweichungsampel (MP-15): Prop `ampel` neben dem Stand.
+  Im Prop `ampel` neben dem Stand steht der Satz der Abweichungsampel ([MP-15](#werte-des-messstellenbetreibers-und-abgleich-mp-15)).
 
 Prüfnachweis: `(cd services/api && ./mvnw test -Dtest=MispelMengenApiTest)` (Docker; Simulator-Anlage durch den echten
 Monatslauf; hält `frontend/portal/e2e/mispel-mengen-fixtures.json` gleich der Antwort der Route, neu schreiben mit
 `-Dmispel.fixtures.schreiben=true`) und `npx playwright test e2e/mispel-mengen.spec.ts` (375 und 1440 px).
+
+## Werte des Messstellenbetreibers und Abgleich (MP-15)
+
+Maßgeblich für Nachweis und Abrechnung sind die Werte des Messstellenbetreibers: „alle anderen umlage- und
+förderrelevanten Strommengen [sind] viertelstundengenau mit mess- und eichrechtskonformen Messeinrichtungen zu
+erfassen“ (Tenor S. 28, Abschn. 3.2.3.2.1; § 21 Abs. 4 S. 2 EnFG, § 85d S. 1 Nr. 1 EEG); nicht mess- und
+eichrechtskonform erfasste Messwerte „scheidet [...] aus“ (ebd.). Bedienkonzept BK-15 Variante A (abgestimmt 02.10.2026).
+
+- **Einlesen** an der Messstelle: `POST /api/v1/messstellen/{id}/msb-werte` (multipart `datei`, Recht
+  `messstelle.bearbeiten`, `web/MessstelleMsbAbgleichController`) → `{importDatei, neu, zaehlpunkte, richtungen}`.
+  Jede Zeile muss einen Zählpunkt nennen, den die Messstelle in einer Fassung ihrer [Zählerrolle](./mispel-zaehlerrolle.md)
+  trägt (auch vor einem Zählerwechsel); beide Richtungen sind erlaubt (Z1 = zwei Messstellen, ein Zählpunkt).
+  Ablehnungen `{code, message, …}`: `datei_ungueltig` (400, `grund` + `zeile`), `kein_zaehlpunkt` (422),
+  `zaehlpunkt_fremd` (422, `zaehlpunkt`); fremde Messstelle 404. Dieselbe Datei (SHA-256) ist derselbe Import (`neu = false`).
+- **Format heute: CSV** (`mispel/MsbWerteCsv`, rein): Kopfzeile `zeitstempel;zaehlpunkt;richtung;kwh` (Reihenfolge frei,
+  `;` mit Dezimalkomma oder `,` mit Dezimalpunkt, `#`-Zeilen übersprungen); `zeitstempel` = Beginn der Viertelstunde mit
+  Versatz (ISO 8601); `richtung` = `bezug`/`abgabe` oder OBIS `1-1:1.29.0`/`1-1:2.29.0`; `kwh` ≥ 0 je Viertelstunde.
+  Nichts wird ergänzt: eine fehlende Viertelstunde bleibt fehlend. **MSCONS (EDIFACT) ist ein Folgepaket** — die
+  Umsetzung in der Marktkommunikation ist „nicht Regelungsgegenstand dieser Festlegung“ (Tenor S. 28), das Format
+  wählt VoltPilot.
+- **Speicher** (`V20261003015500`, RLS + FORCE): `mispel_msb_import` (Datei, Messstelle, Prüfsumme, Zeitraum) und
+  `mispel_msb_wert` je Zählpunkt, Richtung und Viertelstunde (Schlüssel) — nicht je Messstelle: ein Zählerwechsel bringt
+  einen neuen Zählpunkt, die Werte des alten bleiben. Ein späterer Import ersetzt den Wert derselben Viertelstunde
+  (`ersetzt` zählt sie); App nur SELECT/INSERT und UPDATE `(kwh, import_id)`.
+- **Monatslauf:** liest für einen Zähler mit Wertequelle „Messstellenbetreiber“ die eingelesenen Werte seines
+  Zählpunkts und seiner Richtung (Bezug/Laden = `bezug`, Abgabe/Entladen/Erzeugung = `abgabe`); liegt im Zeitraum keiner
+  vor, liest er vom Gerät (Vorschau, `wertequelle_geraet` + `msb_werte_fehlen:<MS>`). Eine Viertelstunde ohne Wert des
+  Messstellenbetreibers ist eine Lücke — nie mit Gerätewerten aufgefüllt. Werte des Messstellenbetreibers gelten als
+  endgültige Viertelstunden.
+- **Ampel** je Zähler, Richtung und Monat (`mispel/MsbAbgleichRegeln`, rein): Abweichung = (Gerät − Messstellenbetreiber)
+  ÷ Messstellenbetreiber; |Abweichung| ≤ 2 % `gruen`, ≤ 5 % `gelb`, sonst `rot`; `grau` „nicht vergleichbar“ mit Grund
+  `keine_msb_werte`, `keine_geraetewerte`, `zaehlerwechsel` (mehr als ein Zählpunkt bzw. andere Messstelle im Monat) oder
+  `luecke` (eine Seite hat weniger Viertelstunden als der Monat) — `null` statt 0 für alles nicht Bestimmbare. **Die
+  Festlegung nennt keine Schwellen:** 2 % / 5 % sind ein Vorschlag, einstellbar über
+  `voltpilot.mispel.abgleich.gruen-bis-prozent` / `gelb-bis-prozent` (keine Oberfläche), im Pilot MP-47 zu bestätigen.
+- **Wirkung** (`MispelMengenService.wirkung`, nur aus den Läufen): der erste geltende endgültige Lauf gegen seine vorige
+  vorläufige Fassung — Farben (26)/(31)/(16)/grau vorher → nachher und Saldierung (vermiedene Umlagen + Netzentgelt auf
+  (20), wie MP-18) vorher → nachher in €.
+- **Routen zum Lesen:** `GET /api/v1/messstellen/{id}/msb-abgleich` (Recht `messstelle.ansehen`; je Monat ab 10/2026,
+  neuester zuerst, höchstens 24: Gerät, Messstellenbetreiber, Unterschied, Ampel, Wirkung; Importe; Schwellen) und
+  `GET /api/v1/sites/{siteId}/mispel/abgrenzung/monate/{JJJJ-MM}/abgleich` (Leseweg der Anlage, fremd 404,
+  `zeitraum_ungueltig` 400; die Zählrichtungen Z1NB, Z1NE, Z2V, Z2E (Z3V, Z3E) am Monatsersten, `groessteAbweichung`,
+  `wirkung`, `schwellen`).
+- **Portal:** `components/erloese/MsbAbgleich.tsx` über `mispelAbgleich.ts` (nur Formatierung): in der Monatskarte
+  (MP-18) ein Satz mit der größten Abweichung und ihrer Wirkung, „Abgleich ansehen ›“ öffnet das Blatt „Abgleich“ mit
+  den Zählrichtungen; an der Messstelle die Tabelle je Monat und „Werte des Messstellenbetreibers einlesen“. Kein neuer
+  Reiter. Ohne Werte des Messstellenbetreibers im Monat schweigt die Karte.
+
+Prüfnachweis: `(cd services/api && ./mvnw test -Dtest='MsbAbgleichRegelnTest,MsbAbgleichApiTest')` (Docker; ein
+realistischer Monat im Format des Messstellenbetreibers — Dezember 2026, 2 976 Viertelstunden je Richtung, mit Lücke und
+Zählerwechsel — und ein November mit bekannten Abweichungen) und `npx playwright test e2e/msb-abgleich.spec.ts`
+(375 und 1440 px). **Offen bis zum Pilot (MP-47):** der Import eines echten MSB-Monats und die Bestätigung der Schwellen.
 
 ## Was die Leser prüfen (L1–L10)
 
