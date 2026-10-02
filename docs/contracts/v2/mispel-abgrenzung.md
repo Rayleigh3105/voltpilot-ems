@@ -11,9 +11,11 @@ Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-4 de
 - **Leser im Gleichlauf** (beide per Pfad, beide prüfen L1–L8 unten):
   Java `services/api/src/test/java/com/voltpilot/api/mispel/MispelAbgrenzungVectorsTest.java`,
   Python `services/optimization/tests/test_mispel_abgrenzung_vectors.py`.
-- **Noch rechnet niemand.** Das Rechenwerk bauen MP-8 (Java, Monatslauf mit Nachweis) und MP-9 (Python,
-  Optimierer und Simulation) gegen genau diese Fälle. Dieses Paket ändert kein Verhalten: keine Migration,
-  keine Route, keine Oberfläche.
+- **Rechenwerke im Gleichlauf** (beide rechnen jeden Fall exakt nach, ungerundet):
+  Python `services/optimization/voltpilot_optimization/mispel_abgrenzung.py` (MP-9, für Optimierer und
+  Simulation; exakte Brüche, Stufen Viertelstunde → ∑M → Monat → ∑J, Monat auch aus laufenden Summen),
+  Test `services/optimization/tests/test_mispel_abgrenzung_rechenwerk.py`; Java folgt mit MP-8 (Monatslauf
+  mit Nachweis). Eingebaut ist noch keins: Optimierer MP-10/MP-11, Simulation MP-13.
 
 Zitierweise: „A1 S. 35“ = Anlage 1, Seite 35; „T S. 38“ = Tenor mit Begründung, Seite 38. Die Festlegung
 hat keine Randnummern.
@@ -171,7 +173,7 @@ Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Feh
 
 Prüfnachweis (ohne Docker):
 `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungVectorsTest)` (JDK 21) und
-`(cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest --with jsonschema python -m pytest tests/test_mispel_abgrenzung_vectors.py -q)`.
+`(cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest --with jsonschema python -m pytest tests/test_mispel_abgrenzung_vectors.py tests/test_mispel_abgrenzung_rechenwerk.py -q)`.
 
 ## Beim Ändern
 
