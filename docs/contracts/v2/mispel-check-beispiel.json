@@ -1,0 +1,280 @@
+{
+ "vertrag": "docs/contracts/v2/mispel-check.md § 6 (MP-13b)",
+ "herkunft": "erzeugt mit services/optimization/voltpilot_optimization/simulation/mispel_check_lauf.py über das Drei-Tage-Fenster 30.05.–01.06.2026 von tests/test_mispel_check_lauf_db.py (echte Preise, sonniges Testwetter); Beträge daher klein und nur Form, kein Jahresergebnis",
+ "zeilen": [
+  {
+   "name": "Bestandsanlage ohne Messreihe (angenommen)",
+   "stand": "fertig",
+   "formelsatz": "A1",
+   "fenster_von": "2026-05-30",
+   "fenster_bis": "2026-06-01",
+   "differenz_niedrig_eur": -1100.0,
+   "differenz_mittel_eur": -600.0,
+   "differenz_hoch_eur": -199.91,
+   "posten": [
+    {
+     "art": "handel_saldierung",
+     "niedrig_eur": 0.0,
+     "mittel_eur": 0.0,
+     "hoch_eur": 0.09,
+     "herkunft": "Simulation: Betrieb heute − mit MiSpeL ohne Marktwert-Effekt × Realisierung"
+    },
+    {
+     "art": "jahresmarktwert",
+     "niedrig_eur": 0.0,
+     "mittel_eur": 0.0,
+     "hoch_eur": 0.0,
+     "herkunft": "Rechenwerk (32) × (Prämie auf den Jahres- − auf den Monatsmarktwert)"
+    },
+    {
+     "art": "zaehler_z2",
+     "niedrig_eur": -800.0,
+     "mittel_eur": -450.0,
+     "hoch_eur": -200.0,
+     "herkunft": "Konzept § 3 a2 (Schätzung)"
+    },
+    {
+     "art": "bilanzkreis",
+     "niedrig_eur": -300.0,
+     "mittel_eur": -150.0,
+     "hoch_eur": 0.0,
+     "herkunft": "Konzept § 3 a2 (Schätzung)"
+    }
+   ],
+   "datenbasis": [
+    {
+     "angabe": "Förderweg",
+     "wert": "marktpraemie_ausschliesslichkeit",
+     "einheit": null,
+     "herkunft": "stammdaten",
+     "quelle": "site_foerderweg, sonst Bestand"
+    },
+    {
+     "angabe": "Speicher",
+     "wert": 10.0,
+     "einheit": "kWh",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Speicherleistung",
+     "wert": 5.0,
+     "einheit": "kW",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Formelsatz",
+     "wert": "A1",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "Basisfall A1 für Erzeugungsanlage mit Speicher; Z2 fehlt noch, seine Kosten stehen im Posten „Zweiter Zähler Z2“ (A1 S. 32–33)"
+    },
+    {
+     "angabe": "Jahresverbrauch",
+     "wert": 60000,
+     "einheit": "kWh",
+     "herkunft": "angenommen",
+     "quelle": "Konzept § 3 a2 (Gewerbe)"
+    },
+    {
+     "angabe": "Lastgang",
+     "wert": "Gewerbe",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "Gewerbeprofil der Simulation (Konzept § 3)"
+    },
+    {
+     "angabe": "PV-Leistung",
+     "wert": 9.9,
+     "einheit": "kWp",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Anzulegender Wert",
+     "wert": 8.2,
+     "einheit": "ct/kWh",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Erzeugung im Jahr",
+     "wert": null,
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "aus PV-Leistung und Wetter des Fensters, Ausrichtung Süd 30°"
+    },
+    {
+     "angabe": "Standort",
+     "wert": "48.6° N, 12.5° O",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "Standard der Simulation, kein Standort hinterlegt"
+    },
+    {
+     "angabe": "Netzentgelt-Arbeitspreis",
+     "wert": 4.0,
+     "einheit": "ct/kWh",
+     "herkunft": "angenommen",
+     "quelle": "Konzept § 3 (Gewerbe)"
+    },
+    {
+     "angabe": "Umlagen",
+     "wert": 2.946,
+     "einheit": "ct/kWh",
+     "herkunft": "angenommen",
+     "quelle": "R3 § 2.2"
+    },
+    {
+     "angabe": "Konzessionsabgabe",
+     "wert": 0.11,
+     "einheit": "ct/kWh",
+     "herkunft": "angenommen",
+     "quelle": "KAV Sondervertrag"
+    },
+    {
+     "angabe": "Umsatzsteuer",
+     "wert": 0.0,
+     "einheit": "%",
+     "herkunft": "angenommen",
+     "quelle": "Gewerbe mit Vorsteuerabzug"
+    }
+   ],
+   "hinweis": null
+  },
+  {
+   "name": "Anlage mit Z1, Z2 und Z3 (A4)",
+   "stand": "nicht_unterstuetzt",
+   "formelsatz": "A4",
+   "fenster_von": null,
+   "fenster_bis": null,
+   "differenz_niedrig_eur": null,
+   "differenz_mittel_eur": null,
+   "differenz_hoch_eur": null,
+   "posten": [],
+   "datenbasis": [
+    {
+     "angabe": "Förderweg",
+     "wert": "marktpraemie_ausschliesslichkeit",
+     "einheit": null,
+     "herkunft": "stammdaten",
+     "quelle": "site_foerderweg, sonst Bestand"
+    },
+    {
+     "angabe": "Speicher",
+     "wert": 65.0,
+     "einheit": "kWh",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Speicherleistung",
+     "wert": 30.0,
+     "einheit": "kW",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Jahresverbrauch",
+     "wert": 5760,
+     "einheit": "kWh",
+     "herkunft": "gemessen",
+     "quelle": "Verlauf 30.05.2026–01.06.2026, 3 von 3 Tagen"
+    },
+    {
+     "angabe": "Formelsatz",
+     "wert": "A4",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "Zähler Z1, Z2 und Z3: Basisfall A4 (Gebot der Bestnutzung, A1 S. 24)"
+    }
+   ],
+   "hinweis": "Formelsatz A4: noch nicht unterstützt. Der Check rechnet A1, A10, A11."
+  },
+  {
+   "name": "Netzspeicher, Lauf gescheitert",
+   "stand": "fehlgeschlagen",
+   "formelsatz": "A11",
+   "fenster_von": null,
+   "fenster_bis": null,
+   "differenz_niedrig_eur": null,
+   "differenz_mittel_eur": null,
+   "differenz_hoch_eur": null,
+   "posten": [],
+   "datenbasis": [
+    {
+     "angabe": "Förderweg",
+     "wert": "ungefoerdert",
+     "einheit": null,
+     "herkunft": "stammdaten",
+     "quelle": "site_foerderweg, sonst Bestand"
+    },
+    {
+     "angabe": "Speicher",
+     "wert": 100.0,
+     "einheit": "kWh",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Speicherleistung",
+     "wert": 50.0,
+     "einheit": "kW",
+     "herkunft": "stammdaten",
+     "quelle": null
+    },
+    {
+     "angabe": "Formelsatz",
+     "wert": "A11",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "Speicher ohne sonstige Erzeugung, mit sonstigem Verbrauch: Sonderfall A11 (A1 Abschn. 10.3.1)"
+    },
+    {
+     "angabe": "Jahresverbrauch",
+     "wert": 60000,
+     "einheit": "kWh",
+     "herkunft": "angenommen",
+     "quelle": "Konzept § 3 a2 (Gewerbe)"
+    },
+    {
+     "angabe": "Lastgang",
+     "wert": "Gewerbe",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "Gewerbeprofil der Simulation (Konzept § 3)"
+    },
+    {
+     "angabe": "Netzentgelt-Arbeitspreis",
+     "wert": 4.0,
+     "einheit": "ct/kWh",
+     "herkunft": "angenommen",
+     "quelle": "Konzept § 3 (Gewerbe)"
+    },
+    {
+     "angabe": "Umlagen",
+     "wert": 2.946,
+     "einheit": "ct/kWh",
+     "herkunft": "angenommen",
+     "quelle": "R3 § 2.2"
+    },
+    {
+     "angabe": "Konzessionsabgabe",
+     "wert": 0.11,
+     "einheit": "ct/kWh",
+     "herkunft": "angenommen",
+     "quelle": "KAV Sondervertrag"
+    },
+    {
+     "angabe": "Umsatzsteuer",
+     "wert": 0.0,
+     "einheit": "%",
+     "herkunft": "angenommen",
+     "quelle": "Gewerbe mit Vorsteuerabzug"
+    }
+   ],
+   "hinweis": "Der Check konnte für diese Anlage nicht gerechnet werden: keine Preise im Fenster"
+  }
+ ]
+}

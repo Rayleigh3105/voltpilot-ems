@@ -188,6 +188,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="output JSON path ('-' = stdout); point SIM_BDEW_H25_JSON at it",
     )
     convert.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
+
+    check = sub.add_parser(
+        "mispel-check",
+        help="MiSpeL-Check je Anlage rechnen und in site_mispel_check ablegen (MP-13b; "
+        "ein Lauf, z. B. als nächtlicher Job - nie im simulate-serve-Prozess)",
+    )
+    check.add_argument("--site", help="nur diese Anlage (UUID)")
+    check.add_argument(
+        "--max-anlagen",
+        type=int,
+        default=int(os.environ.get("MISPEL_CHECK_MAX_ANLAGEN", "4")),
+        help="höchstens so viele Anlagen je Lauf (default MISPEL_CHECK_MAX_ANLAGEN, sonst 4)",
+    )
+    check.add_argument(
+        "--workers",
+        type=int,
+        default=int(os.environ.get("MISPEL_CHECK_WORKERS", "2")),
+        help="Solver-Prozesse, höchstens 2 (default MISPEL_CHECK_WORKERS, sonst 2)",
+    )
+    check.add_argument("--neu", action="store_true",
+                       help="auch Anlagen mit aktuellem Ergebnis neu rechnen")
+    check.add_argument("--eingang", action="store_true",
+                       help="nur die Eingabe je Anlage als JSON ausgeben (für --anlage der "
+                       "MP-13-Kommandozeile); nichts rechnen, nichts ablegen")
+    check.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
     return parser
 
 
@@ -393,6 +418,45 @@ def _simulate_serve(args, env: dict[str, str]) -> int:
     return 0
 
 
+def _mispel_check(args, env: dict[str, str]) -> int:
+    """Ein Lauf des MiSpeL-Checks je Anlage (MP-13b): rechnet die Anlagen ohne
+    aktuelles Ergebnis und legt sie ab; ein Bericht je Anlage als JSON-Zeile."""
+    import json
+    from dataclasses import asdict
+    from uuid import UUID
+
+    from voltpilot_optimization.simulation import mispel_check_lauf as lauf
+
+    dsn = _dsn_from_env(env)
+    site_id = UUID(args.site) if args.site else None
+    if args.eingang:
+        jetzt = datetime.now(timezone.utc)
+        heute = jetzt.astimezone(lauf.BERLIN).date()
+        f = lauf.fenster(heute)
+        for st in lauf.lade_stammdaten(dsn, f, heute, site_id):
+            e = lauf.eingang(st, f)
+            print(json.dumps({
+                "site_id": str(st.site_id),
+                "fenster": {"beginn": "%04d-%02d" % f.beginn, "monate": f.monate},
+                "anlage": asdict(e.anlage) if e.anlage else None,
+                "stand": e.stand, "hinweis": e.hinweis,
+            }, ensure_ascii=False))
+        return 0
+    berichte = lauf.lauf(
+        dsn, lauf.check_deps(dsn, args.workers), site_id=site_id,
+        max_anlagen=args.max_anlagen, neu=args.neu,
+    )
+    if berichte is None:
+        print(json.dumps({"lauf": "belegt"}))
+        return 0
+    for b in berichte:
+        print(json.dumps({
+            "site_id": str(b.site_id), "grund": b.grund, "stand": b.stand,
+            "sekunden": round(b.sekunden, 1), "spanne": b.spanne, "hinweis": b.hinweis,
+        }, ensure_ascii=False))
+    return 0 if all(b.stand != lauf.STAND_FEHLGESCHLAGEN for b in berichte) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -417,6 +481,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "simulate-serve":
         return _simulate_serve(args, env)
+
+    if args.command == "mispel-check":
+        return _mispel_check(args, env)
 
     if args.command == "serve":
         # Container runtime contract (docs/k8s-readiness.md): SIGTERM-aware so

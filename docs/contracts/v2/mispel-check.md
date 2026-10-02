@@ -18,6 +18,8 @@ Ablageort und die nur lesende Route. **Wer ihn je Anlage rechnet und hier ablegt
 | `services/api/.../web/SiteMispelCheckController.java` | `GET /api/v1/sites/{siteId}/mispel-check` |
 | `frontend/portal/src/mispelCheck.ts` · `components/MispelCheckKarte.tsx` | Typen, Satz und Karte in Schritt 1 des Dialogs „Förderweg ändern“ |
 | `…/mispel/MispelCheckApiTest.java` · `src/mispelCheck.test.ts` · `e2e/foerderweg.spec.ts` | Route + Tabelle · Satz und Karte · Fläche bei 375/1440 px |
+| `services/optimization/voltpilot_optimization/simulation/mispel_check_lauf.py` | der Schreiber (MP-13b, § 6): rechnet je Anlage und legt ab |
+| `docs/contracts/v2/mispel-check-beispiel.json` | Zeilen, wie der Schreiber sie ablegt — gelesen von `MispelCheckApiTest`, Form geprüft von `test_mispel_check_lauf_db.py` |
 
 ## 1. Stand
 
@@ -91,3 +93,55 @@ Die App-Rolle darf `INSERT`/`UPDATE` im eigenen Mandanten (RLS), die Admin-Rolle
 Schreiber braucht keine weitere Migration. Er setzt vor dem Lauf `wird_gerechnet` (Beträge leer), danach `fertig`
 mit allen Beträgen oder `fehlgeschlagen`/`nicht_unterstuetzt` mit `hinweis`; immer mit neuem `stand_seit`.
 Gelöscht wird die Zeile mit der Anlage (`ON DELETE CASCADE`) oder im Offboarding.
+
+**Der Schreiber** ist ein eigener Lauf des Optimierers, kein Dienst: `python -m voltpilot_optimization mispel-check
+[--site <uuid>] [--max-anlagen 4] [--workers 2] [--neu] [--eingang]` (Rolle wie `plan`: das vertraute
+Backend-Konto `POSTGRES_USER`). Er läuft **nie** im Prozess von `simulate-serve` — der Simulations-JobStore (ein
+Auftrag zur Zeit) bleibt frei — und rechnet mit höchstens **zwei** Solver-Prozessen. Ein Postgres-Advisory-Lock
+lässt nie zwei Läufe zugleich rechnen; ein zweiter Lauf endet sofort mit `{"lauf": "belegt"}`.
+
+**Wann gerechnet wird** — je Lauf höchstens `--max-anlagen` Anlagen mit Speicher, zuerst die ohne Zeile:
+
+| Grund | Bedingung |
+|---|---|
+| noch nie gerechnet | keine Zeile |
+| verwaist | Zeile in `wird_gerechnet` (der Lauf hält den Lock — ein anderer rechnet nicht) |
+| Datenbasis geändert | `formelsatz` oder `datenbasis` weicht von der neu ermittelten ab (Stammdaten, Zähler, Verlauf) |
+| neues Preisfenster | `fertig` mit `fenster_bis` vor dem Ende des letzten vollen Monats |
+| neuer Versuch | `fehlgeschlagen` seit mindestens 20 Stunden |
+
+**Fenster:** die letzten zwölf vollen Kalendermonate (am 02.10.2026: 01.10.2025–30.09.2026).
+
+**Datenbasis je Anlage** (`angabe`, in dieser Reihenfolge): `Förderweg`, `Speicher` (kWh), `Speicherleistung`
+(kW, das Kleinere aus Lade- und Entladeleistung) aus den Stammdaten des Optimierers; `Jahresverbrauch` und
+`Erzeugung im Jahr` **gemessen** aus `telemetry_rollup_1d`, wenn der Verlauf mindestens 90 % der Tage des Fensters
+deckt (aufs Fenster hochgerechnet, `quelle` nennt die Tage), sonst `angenommen` (Verbrauch 60 000 kWh, Konzept
+§ 3 a2; Erzeugung aus PV-Leistung und Wetter des Fensters). Die gemessene Erzeugung skaliert die simulierte PV-Reihe
+(Form aus Wetter, Menge aus dem Verlauf). Ohne Preisblatt der Anlage sind `Netzentgelt-Arbeitspreis`, `Umlagen`,
+`Konzessionsabgabe`, `Umsatzsteuer` die Gewerbe-Annahmen von MP-13 (`angenommen`); ohne Standort die Lage der
+Simulation.
+
+**Formelsatz:** der gewählte (`site_foerderweg`, `stammdaten`) — sonst aus den Zählerrollen der Messstellen, die
+heute an der Anlage stehen, nach dem Gebot der Bestnutzung (Anlage 1 Abschn. 3.2.3, S. 24; wie der Vorschlag aus
+MP-17), `angenommen` mit Satz in `quelle`:
+
+| Anlage | Zähler | Formelsatz |
+|---|---|---|
+| mit Erzeugungsanlage | Z1, Z2, Z3 | A4 → `nicht_unterstuetzt` |
+| mit Erzeugungsanlage | Z1 und Z2 — oder noch keine (Z2-Kosten stehen im Posten `zaehler_z2`) | A1 |
+| ohne Erzeugungsanlage | Z1 und Z2 | A1 → `nicht_unterstuetzt` (A10/A11 ausgeschlossen, A1 rechnet nur mit Erzeugung) |
+| ohne Erzeugungsanlage, mit sonstigem Verbrauch (oder ohne Messreihe) | nur Z1 | A11 (Anlage 1 Abschn. 10.3.1, S. 98) |
+| ohne Erzeugungsanlage, ohne sonstigen Verbrauch (gemessen) | nur Z1 | A10 (Anlage 1 Abschn. 10.2.1, S. 95) |
+
+`nicht_unterstuetzt` außerdem für jeden Formelsatz außer A1/A10/A11 und für A1 ohne anzulegenden Wert;
+`fehlgeschlagen` mit Satz für widersprüchliche Stammdaten (A10/A11 mit PV-Anlage, A10 mit gemessenem Verbrauch)
+und für jeden gescheiterten Lauf („Der Check konnte für diese Anlage nicht gerechnet werden: …“).
+
+**Dieselbe Eingabe, derselbe Betrag:** `mispel-check --eingang` gibt je Anlage die Eingabe aus; die MP-13-
+Kommandozeile rechnet sie mit `--anlage <datei> --beginn <JJJJ-MM> --monate 12` nach. Grenze: im Mischbetrieb (A1)
+fällt ein Lösungslauf nach `MISCHBETRIEB_ZEITGRENZE_S` (20 s, `solver.py`) auf „ohne Gutschrift“ zurück — unter
+Last können zwei Läufe derselben Eingabe darum um einige Euro abweichen (Solver-Laufzeit: MP-33b).
+
+**Betrieb:** der Lauf braucht einen Cluster-Job (z. B. nächtlich, `concurrencyPolicy: Forbid`) mit dem Image und
+den Datenbank-Variablen des Optimierers und Zugang zu `archive-api.open-meteo.com` — angelegt im gitops-Repo vom
+Betreiber, nicht hier.

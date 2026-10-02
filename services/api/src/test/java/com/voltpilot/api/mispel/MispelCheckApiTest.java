@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeAll;
@@ -65,6 +66,9 @@ class MispelCheckApiTest {
             + "{\"art\":\"bilanzkreis\",\"niedrig_eur\":-300,\"mittel_eur\":-150,\"hoch_eur\":0,\"herkunft\":\"Schätzung\"}]";
     static final String DATENBASIS = "[{\"angabe\":\"Jahresverbrauch\",\"wert\":60000,\"einheit\":\"kWh\","
             + "\"herkunft\":\"angenommen\",\"quelle\":\"Konzept § 3 a2\"}]";
+
+    /** MP-13b: die Zeilen des Schreibers aus seinem Testlauf (Vertrag § 6). */
+    static final Path SCHREIBER_BEISPIEL = Path.of("../../docs/contracts/v2/mispel-check-beispiel.json");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -207,7 +211,49 @@ class MispelCheckApiTest {
         }
     }
 
+    /**
+     * MP-13b: die Zeilen, wie der Schreiber ({@code services/optimization/.../simulation/mispel_check_lauf.py}) sie
+     * ablegt — dieselbe Spaltenliste, Posten und Datenbasis aus seinem Testlauf
+     * ({@code docs/contracts/v2/mispel-check-beispiel.json}, Form geprüft von {@code test_mispel_check_lauf_db.py}).
+     */
+    @Test
+    void derSchreiberMp13bWirdGelesen() throws Exception {
+        JsonNode beispiel = MAPPER.readTree(SCHREIBER_BEISPIEL.toFile());
+        for (JsonNode z : beispiel.path("zeilen")) {
+            Anlage a = anlage();
+            root.update("INSERT INTO site_mispel_check (site_id, tenant_id, stand, stand_seit, formelsatz, fenster_von, "
+                    + "fenster_bis, differenz_niedrig_eur, differenz_mittel_eur, differenz_hoch_eur, posten, datenbasis, "
+                    + "hinweis) VALUES (?, ?, ?, now(), ?, ?::date, ?::date, ?, ?, ?, ?::jsonb, ?::jsonb, ?)",
+                    a.id(), a.mandant(), z.path("stand").asText(), text(z, "formelsatz"), text(z, "fenster_von"),
+                    text(z, "fenster_bis"), zahl(z, "differenz_niedrig_eur"), zahl(z, "differenz_mittel_eur"),
+                    zahl(z, "differenz_hoch_eur"), z.path("posten").toString(), z.path("datenbasis").toString(),
+                    text(z, "hinweis"));
+            Antwort r = ruf(a);
+            assertThat(r.status()).isEqualTo(200);
+            assertThat(r.body().path("stand").asText()).isEqualTo(z.path("stand").asText());
+            assertThat(r.body().path("formelsatz").asText()).isEqualTo(z.path("formelsatz").asText());
+            if ("fertig".equals(z.path("stand").asText())) {
+                assertThat(r.body().path("differenz").path("mittel_eur").decimalValue())
+                        .isEqualByComparingTo(z.path("differenz_mittel_eur").decimalValue());
+                assertThat(r.body().path("fenster_bis").asText()).isEqualTo(z.path("fenster_bis").asText());
+            } else {
+                assertThat(r.body().path("differenz").isNull()).isTrue();
+                assertThat(r.body().path("hinweis").asText()).isEqualTo(z.path("hinweis").asText());
+            }
+            assertThat(r.body().path("posten")).isEqualTo(z.path("posten"));
+            assertThat(r.body().path("datenbasis")).isEqualTo(z.path("datenbasis"));
+        }
+    }
+
     // ------------------------------------------------------------------ Hilfen
+
+    private static String text(JsonNode z, String feld) {
+        return z.path(feld).isNull() || z.path(feld).isMissingNode() ? null : z.path(feld).asText();
+    }
+
+    private static java.math.BigDecimal zahl(JsonNode z, String feld) {
+        return z.path(feld).isNumber() ? z.path(feld).decimalValue() : null;
+    }
 
     private Anlage anlage() {
         int nr = NR.incrementAndGet();

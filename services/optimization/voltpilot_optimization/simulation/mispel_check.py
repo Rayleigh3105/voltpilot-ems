@@ -144,6 +144,10 @@ class CheckAnlage:
     jahresverbrauch_kwh: float = 0.0  # 0 = kein sonstiger Verbrauch
     profil: str = "gewerbe"
     anzulegender_wert_ct: float | None = None  # A1: Marktprämien-Anlage
+    #: MP-13b: die GEMESSENE Erzeugung im Jahr (kWh) - die simulierte PV-Reihe
+    #: wird auf sie skaliert (Form aus Wetter und kWp, Menge aus dem Verlauf);
+    #: ``None`` = die Reihe bleibt, wie Wetter und kWp sie ergeben.
+    pv_jahreserzeugung_kwh: float | None = None
     netzentgelt_arbeitspreis_ct: float = 4.0
     umlagen_ct: float = 2.946
     konzessionsabgabe_ct: float = 0.11
@@ -218,6 +222,26 @@ def _pv_reihe(anlage: CheckAnlage, deps: CheckDeps, slots: list[datetime]) -> li
         ),
     )
     return forecaster.power_series(config, slots)
+
+
+def _skaliert(pv_kw: list[float], jahres_kwh: float | None, monate: int) -> list[float]:
+    """Die PV-Reihe auf die gemessene Erzeugung im Jahr (anteilig je Monat des
+    Fensters wie der Jahresverbrauch) - ohne Messung unverändert."""
+    roh = sum(pv_kw) * SLOT_HOURS
+    if jahres_kwh is None or roh <= 0:
+        return pv_kw
+    faktor = jahres_kwh * monate / 12 / roh
+    return [w * faktor for w in pv_kw]
+
+
+def anlage_aus_json(doc: dict) -> CheckAnlage:
+    """Eine :class:`CheckAnlage` aus JSON (Feldnamen wie im Datentyp) - die
+    Eingabe, die der Schreiber je Anlage rechnet (MP-13b, ``--eingang``)."""
+    felder = set(CheckAnlage.__dataclass_fields__)
+    fremd = sorted(set(doc) - felder)
+    if fremd:
+        raise ValueError(f"unbekannte Angaben der Anlage: {', '.join(fremd)}")
+    return CheckAnlage(**doc)
 
 
 def marktwerte_naeherung(
@@ -518,7 +542,7 @@ def mispel_check(
         load_kw = business_series_kw(slots, kwh)
     else:
         load_kw = load_series_kw(anlage.profil, slots, kwh)
-    pv_kw = _pv_reihe(anlage, deps, slots)
+    pv_kw = _skaliert(_pv_reihe(anlage, deps, slots), anlage.pv_jahreserzeugung_kwh, monate)
 
     monatsmw, jahresmw = dict(deps.monatsmarktwerte_ct), dict(deps.jahresmarktwerte_ct)
     naeherung_m, naeherung_j = marktwerte_naeherung(slots, spot, pv_kw)
@@ -563,6 +587,7 @@ def mispel_check(
             "jahresverbrauchKwh": anlage.jahresverbrauch_kwh,
             "profil": anlage.profil if anlage.jahresverbrauch_kwh > 0 else None,
             "anzulegenderWertCt": anlage.anzulegender_wert_ct,
+            "pvJahreserzeugungKwh": anlage.pv_jahreserzeugung_kwh,
         },
         "marktwerteSolarCt": {
             "monat": {m.isoformat()[:7]: round(v, 3) for m, v in sorted(monatsmw.items())},
@@ -637,6 +662,8 @@ def main(argv: list[str] | None = None) -> int:
         description="MiSpeL-Check: dieselbe Anlage heute gegen mit MiSpeL, als JSON.",
     )
     parser.add_argument("--kundentyp", choices=sorted(KUNDENTYPEN), default="a")
+    parser.add_argument("--anlage", help="Anlage als JSON (statt --kundentyp), z. B. die "
+                        "Eingabe des Schreibers MP-13b: mispel-check --eingang")
     parser.add_argument("--preise", nargs="+", required=True,
                         help="Preis-JSON (energy-charts oder kompakt), ohne Datenbank")
     parser.add_argument("--wetter", nargs="*", default=[],
@@ -664,8 +691,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     jahr, monat = (int(x) for x in args.beginn.split("-"))
     faelle = {name: STANDARD_FAELLE[name] for name in args.fall}
+    if args.anlage:
+        with open(args.anlage, encoding="utf-8") as fh:
+            anlage = anlage_aus_json(json.load(fh))
+    else:
+        anlage = KUNDENTYPEN[args.kundentyp]
     result = mispel_check(
-        KUNDENTYPEN[args.kundentyp], deps, (jahr, monat), args.monate, faelle,
+        anlage, deps, (jahr, monat), args.monate, faelle,
         heute_streng=args.heute_streng,
     )
     json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
