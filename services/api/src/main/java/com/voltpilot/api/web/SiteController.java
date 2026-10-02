@@ -7,6 +7,8 @@ import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
+import com.voltpilot.api.mispel.FoerderwegAbgelehnt;
+import com.voltpilot.api.mispel.FoerderwegService;
 import com.voltpilot.api.optimizer.SchedulePricingService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
@@ -113,6 +115,14 @@ public class SiteController {
     private final MessreihenBelege belege;
     private final NetzanschlussService netzanschluesse;
     private final BerichtsBelege berichtsBelege;
+    /** Der Förderweg (MiSpeL MP-5): mit Fassung bestimmt er den alten Netzlade-Schalter; als Setter, damit
+     * Ausschnitt-Kontexte ohne ihn weiter starten. */
+    private FoerderwegService foerderwege;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void foerderwegeSetzen(FoerderwegService foerderwege) {
+        this.foerderwege = foerderwege;
+    }
 
     public SiteController(
             SiteRepository sites,
@@ -226,6 +236,16 @@ public class SiteController {
         return OrtAbgelehntHandler.antwort(e);
     }
 
+    /** Der alte Netzlade-Schalter gegen den Förderweg (MiSpeL MP-5): {@code {code, message, …Fakten}}. */
+    @ExceptionHandler(FoerderwegAbgelehnt.class)
+    public ResponseEntity<Map<String, Object>> foerderwegAbgelehnt(FoerderwegAbgelehnt e) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("code", e.code());
+        body.put("message", e.getMessage());
+        body.putAll(e.fakten());
+        return ResponseEntity.status(e.status()).body(body);
+    }
+
     /**
      * Update a site's editable fields (name/bidding zone/coordinates) -
      * validation mirrors create. RLS makes a foreign site invisible (404) and
@@ -236,9 +256,13 @@ public class SiteController {
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     public SiteDto updateSite(@PathVariable UUID siteId,
             @Valid @RequestBody UpdateSiteRequest request) {
+        // Mit eingetragenem Förderweg (MiSpeL MP-5) ist Netzladen, wo er es ausschließt, 409, und plant_kind
+        // folgt ihm; ohne Fassung bleibt der Schalter, was er war (docs/contracts/v2/mispel-foerderweg.md § 6).
+        String plantKind = foerderwege == null ? request.plantKindOrDefault()
+                : foerderwege.alterSchalter(siteId, request.netzladenErlaubt(), request.plantKindOrDefault());
         SiteDto updated = sites.update(siteId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
-                request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
+                plantKind, request.anzulegenderWertCtKwh(),
                 request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt(),
                 request.maxFeedInKw());
         if (updated == null) {

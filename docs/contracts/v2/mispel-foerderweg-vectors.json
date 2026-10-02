@@ -1,0 +1,711 @@
+{
+  "$comment": "MiSpeL MP-5: Förderweg je Einspeisestelle. Wahrheit für FoerderwegRegeln (Java) und später den Optimierer (MP-10). Vertrag: mispel-foerderweg.md.",
+  "schema_version": "1.0",
+  "quelle": "BNetzA-Festlegung MiSpeL, Az. 618-25-02, Beschluss 01.10.2026 — Tenor, Anlage 1; EEG §§ 19, 21a, 21b",
+  "werte": [
+    {
+      "wert": "einspeiseverguetung",
+      "begriff": "Einspeisevergütung",
+      "netzladen_moeglich": false,
+      "plant_kind": "eigenverbrauch"
+    },
+    {
+      "wert": "marktpraemie_ausschliesslichkeit",
+      "begriff": "Marktprämie mit Ausschließlichkeitsoption",
+      "netzladen_moeglich": false,
+      "plant_kind": "direktvermarktung"
+    },
+    {
+      "wert": "marktpraemie_abgrenzung",
+      "begriff": "Marktprämie mit Abgrenzungsoption",
+      "netzladen_moeglich": true,
+      "plant_kind": "direktvermarktung"
+    },
+    {
+      "wert": "marktpraemie_pauschal",
+      "begriff": "Marktprämie mit Pauschaloption",
+      "netzladen_moeglich": true,
+      "plant_kind": "direktvermarktung"
+    },
+    {
+      "wert": "ungefoerdert",
+      "begriff": "ungeförderte Direktvermarktung",
+      "netzladen_moeglich": true,
+      "plant_kind": null
+    }
+  ],
+  "formelsaetze": [
+    "A1",
+    "A5",
+    "A5-Variante",
+    "A10",
+    "A11"
+  ],
+  "vereinfacht_statt": {
+    "A5-Variante": "A5",
+    "A10": "A1",
+    "A11": "A1"
+  },
+  "bestand": [
+    {
+      "netzladen_erlaubt": false,
+      "plant_kind": "eigenverbrauch",
+      "foerderweg": "einspeiseverguetung"
+    },
+    {
+      "netzladen_erlaubt": false,
+      "plant_kind": "direktvermarktung",
+      "foerderweg": "marktpraemie_ausschliesslichkeit"
+    },
+    {
+      "netzladen_erlaubt": true,
+      "plant_kind": "eigenverbrauch",
+      "foerderweg": "ungefoerdert"
+    },
+    {
+      "netzladen_erlaubt": true,
+      "plant_kind": "direktvermarktung",
+      "foerderweg": "ungefoerdert"
+    }
+  ],
+  "netzladen_nachher": [
+    {
+      "foerderweg": "einspeiseverguetung",
+      "angabe": null,
+      "bisher": true,
+      "nachher": false
+    },
+    {
+      "foerderweg": "marktpraemie_ausschliesslichkeit",
+      "angabe": null,
+      "bisher": false,
+      "nachher": false
+    },
+    {
+      "foerderweg": "marktpraemie_abgrenzung",
+      "angabe": null,
+      "bisher": false,
+      "nachher": false
+    },
+    {
+      "foerderweg": "marktpraemie_abgrenzung",
+      "angabe": true,
+      "bisher": false,
+      "nachher": true
+    },
+    {
+      "foerderweg": "ungefoerdert",
+      "angabe": null,
+      "bisher": true,
+      "nachher": true
+    },
+    {
+      "foerderweg": "marktpraemie_pauschal",
+      "angabe": false,
+      "bisher": true,
+      "nachher": false
+    }
+  ],
+  "faelle": [
+    {
+      "name": "bestand-bestaetigen",
+      "zeigt": "Den Bestand als erste Fassung eintragen ist kein Wechsel und geht an jedem Tag",
+      "vorher": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-10-15",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-10-20",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "§ 21b Abs. 1 S. 2 EEG (nur der Wechsel ist gebunden)"
+    },
+    {
+      "name": "wechsel-mitten-im-monat",
+      "zeigt": "Ein Wechsel des Förderwegs gilt nur ab dem ersten Kalendertag eines Monats",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-15",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "wechsel_nur_zum_monatsersten",
+      "fundstelle": "§ 21b Abs. 1 S. 2 EEG; A1 S. 103, Fn. 56"
+    },
+    {
+      "name": "wechsel-zum-monatsersten",
+      "zeigt": "Derselbe Wechsel zum Monatsersten",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 103"
+    },
+    {
+      "name": "bestand-wechsel-mitten-im-monat",
+      "zeigt": "Auch der Bestand wechselt nur zum Monatsersten",
+      "vorher": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-10-15",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-10-20",
+      "pauschaloption_ab": null,
+      "erwartet": "wechsel_nur_zum_monatsersten",
+      "fundstelle": "§ 21b Abs. 1 S. 2 EEG"
+    },
+    {
+      "name": "erstmalige-zuordnung",
+      "zeigt": "Die erstmalige Zuordnung neuer Anlagen geht an jedem Tag (Rumpfmonat, MP-21)",
+      "vorher": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-17",
+        "netzladen": null,
+        "erstmalige_zuordnung": true,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 103"
+    },
+    {
+      "name": "erstmalige-zuordnung-vorbei",
+      "zeigt": "Mit eingetragener Fassung ist jede weitere ein Wechsel",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-17",
+        "netzladen": null,
+        "erstmalige_zuordnung": true,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "erstmalige_zuordnung_vorbei",
+      "fundstelle": "A1 S. 103"
+    },
+    {
+      "name": "formelsatz-gebunden",
+      "zeigt": "A10 statt A1 ist eine Wahl, verbindlich bis zum Ende des Kalenderjahres",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A10",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-03-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-03-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_gebunden",
+      "fundstelle": "A1 S. 24, Abschn. 3.2.3"
+    },
+    {
+      "name": "formelsatz-zum-jahreswechsel",
+      "zeigt": "Die Wahl ist mit Wirkung für ein folgendes Kalenderjahr änderbar",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A10",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-01-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-01-05",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 24"
+    },
+    {
+      "name": "formelsatz-messkonzept-geaendert",
+      "zeigt": "Ein zusätzlicher Zähler erlaubt den genaueren Formelsatz sofort (Rumpfmonat)",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A10",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-03-15",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": true
+      },
+      "heute": "2027-03-16",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 103, Fn. 55"
+    },
+    {
+      "name": "a5-variante-gebunden",
+      "zeigt": "Die A5-Variante statt A5 ist dieselbe Wahl",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A5",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A5-Variante",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-06-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-06-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_gebunden",
+      "fundstelle": "A1 S. 24, Abschn. 3.2.3"
+    },
+    {
+      "name": "fallkonstellation-aendert-sich",
+      "zeigt": "A1 → A5 (zweite EE-Anlage) ist keine Wahl, sondern eine bestimmungsrelevante Änderung",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A5",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-03-15",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-03-16",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 102"
+    },
+    {
+      "name": "a10-zu-a11",
+      "zeigt": "A10 und A11 sind keine Wahl untereinander, beide treten an die Stelle von A1",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A10",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A11",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-03-15",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-03-16",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 24"
+    },
+    {
+      "name": "abgrenzung-ohne-formelsatz",
+      "zeigt": "Die Abgrenzungsoption braucht einen Formelsatz",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": null,
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_fehlt",
+      "fundstelle": "Tenor Ziff. 3"
+    },
+    {
+      "name": "formelsatz-bei-ausschliesslichkeit",
+      "zeigt": "Ein Formelsatz gehört nicht zur Ausschließlichkeitsoption",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_passt_nicht",
+      "fundstelle": "Tenor Ziff. 1 S. 2, Ziff. 3"
+    },
+    {
+      "name": "formelsatz-unbekannt",
+      "zeigt": "A2–A4, A6–A9 kommen später (E5 = B)",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A4",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_ungueltig",
+      "fundstelle": "Bauplan § 8.5"
+    },
+    {
+      "name": "ungefoerdert-mit-a10",
+      "zeigt": "Umlageprivilegien ohne marktprämiengeförderte EE-Anlage nach Anlage 1 (Kundentyp b)",
+      "vorher": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": "A10",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "Tenor Ziff. 1 S. 2"
+    },
+    {
+      "name": "ungefoerdert-mit-a10-ohne-einverstaendnis",
+      "zeigt": "Bis 30.09.2027 nur im Einverständnis mit Netz- und Messstellenbetreiber",
+      "vorher": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": "A10",
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "einverstaendnis_fehlt",
+      "fundstelle": "Tenor S. 3 Ziff. 9a"
+    },
+    {
+      "name": "abgrenzung-nach-der-uebergangszeit",
+      "zeigt": "Ab 01.10.2027 braucht es kein Einverständnis mehr",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": false,
+        "gueltig_ab": "2027-10-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-10-05",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "Tenor S. 3 Ziff. 9a"
+    },
+    {
+      "name": "pauschal-vor-der-genehmigung",
+      "zeigt": "Die Pauschaloption wartet auf die beihilferechtliche Genehmigung",
+      "vorher": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_pauschal",
+        "formelsatz": null,
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "pauschaloption_noch_nicht_anwendbar",
+      "fundstelle": "Tenor S. 3 Ziff. 9b"
+    },
+    {
+      "name": "pauschal-nach-der-genehmigung",
+      "zeigt": "Ab dem Monatsersten nach der Genehmigung",
+      "vorher": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_pauschal",
+        "formelsatz": null,
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-05-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-05-02",
+      "pauschaloption_ab": "2027-04-01",
+      "erwartet": null,
+      "fundstelle": "Tenor S. 3 Ziff. 9b"
+    },
+    {
+      "name": "netzladen-bei-einspeiseverguetung",
+      "zeigt": "Wer Einspeisevergütung bezieht, lädt nicht aus dem Netz",
+      "vorher": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": true,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "netzladen_ausgeschlossen",
+      "fundstelle": "§ 19 Abs. 3a EEG; A1 S. 11"
+    },
+    {
+      "name": "in-der-zukunft",
+      "zeigt": "Ein Förderweg wird eingetragen, wenn er gilt",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-12-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "gueltig_ab_in_zukunft",
+      "fundstelle": "Vertrag § 5"
+    },
+    {
+      "name": "vor-der-letzten-fassung",
+      "zeigt": "Vor eine spätere Fassung wird nichts eingeschoben",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-10-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "foerderweg_rueckwirkend",
+      "fundstelle": "Vertrag § 3"
+    },
+    {
+      "name": "vor-der-festlegung",
+      "zeigt": "Die Festlegung wirkt erst mit der Bekanntgabe",
+      "vorher": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-09-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-10-02",
+      "pauschaloption_ab": null,
+      "erwartet": "vor_der_festlegung",
+      "fundstelle": "Tenor Ziff. 8"
+    },
+    {
+      "name": "unveraendert",
+      "zeigt": "Dieselbe Fassung noch einmal ist kein Eintrag",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-12-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-12-02",
+      "pauschaloption_ab": null,
+      "erwartet": "foerderweg_unveraendert",
+      "fundstelle": "Vertrag § 3"
+    }
+  ]
+}

@@ -24,6 +24,7 @@ flowchart LR
 | Energiemanagement: Überprüfung, Wiedervorlage, Verzeichnis-Zeile (UEMS AP-19) | [Regeln](v2/energiemanagement.md), [Regel-Vektoren](v2/energiemanagement-vectors.json), [Schema](v2/energiemanagement.schema.json); Managementbewertung als [Vorlage Nr. 7](v2/bericht-vorlagen.json) im [Berichtsvertrag](v2/bericht.md), Rolle „Einsicht“ in der [Rechte-Matrix](v2/rechte-matrix.json), Herkunft der Maßnahme in [verbesserung.md](v2/verbesserung.md) |
 | MiSpeL-Abgrenzungsoption: Formeln (1)–(33) der Formelsätze A1, A5, A10, A11 (MiSpeL MP-4) | [Regeln](v2/mispel-abgrenzung.md), [Vektoren](v2/mispel-abgrenzung-vectors.json), [Schema](v2/mispel-abgrenzung.schema.json) |
 | MiSpeL-Zählerrolle Z1/Z2/Z3 am Messstellen-Register: Zählpunkt, Messstellenbetreiber, Eichstatus, Wertequelle, Trennung hinter Z2/Z3 (MiSpeL MP-6) | [Regeln und Schnittstelle](v2/mispel-zaehlerrolle.md) |
+| MiSpeL-Förderweg je Einspeisestelle: fünf Werte nach EEG und Festlegung, Formelsatz mit Bindung bis Jahresende, Wechsel zum Monatsersten, Bestand aus `netzladen_erlaubt`/`plant_kind` (MiSpeL MP-5) | [Regeln und Schnittstelle](v2/mispel-foerderweg.md) |
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
 | OTA | [Manifest](ota-release-manifest.schema.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |

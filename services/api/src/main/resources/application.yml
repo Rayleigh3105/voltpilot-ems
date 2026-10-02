@@ -407,6 +407,13 @@ voltpilot:
   # Zuordnung ab site.created_at, einer mit mehreren je Anlage einen Vorschlag.
   # Idempotent; ändert keine Anlage, keinen Push, kein Kommando. `enabled` ist
   # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
+  # MiSpeL MP-5 (docs/contracts/v2/mispel-foerderweg.md § 3): die Pauschaloption
+  # gilt erst ab dem Monatsersten nach der beihilferechtlichen Genehmigung der
+  # EU-Kommission (Tenor S. 3 Ziff. 9b). Leer = noch keine Genehmigung = jeder
+  # Förderweg „marktpraemie_pauschal“ wird abgelehnt. Erst nach der Genehmigung
+  # den Tag (JJJJ-MM-01) setzen.
+  mispel:
+    pauschaloption-ab: ${VOLTPILOT_MISPEL_PAUSCHALOPTION_AB:}
   uems:
     # AP-14 IP-18 (Kasten E11): interne UUID des Kundenbereichs "VoltPilot
     # Dauerlaeufer (intern)" - zwei simulierte Boxen, die dauerhaft den Weg

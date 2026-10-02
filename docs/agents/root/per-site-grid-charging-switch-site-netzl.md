@@ -2,6 +2,8 @@
 
 Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 67).
 
+> **Seit MiSpeL MP-5 (02.10.2026, E2 = B):** der Förderweg je Einspeisestelle ist die Wahrheit hinter diesem Schalter ([Vertrag](../../contracts/v2/mispel-foerderweg.md)). Ohne eingetragene Fassung bedeutet der Schalter weiter genau das unten Beschriebene (Bestand: true = ungefördert, false = EEG-Modus nach `plant_kind`); mit Fassung ist `netzladen_erlaubt` ein Spiegel, den `FoerderwegService` schreibt, und `PUT /sites/{id}` lehnt Netzladen bei Einspeisevergütung/Ausschließlichkeitsoption mit 409 ab.
+
 
 Captain decisions 2026-07-07 (binding: firstmate `vp-grid-charging-modes`): EEG-funded plants must never charge their battery from the grid (Ausschliesslichkeitsprinzip), so grid arbitrage is an ADMIN-gated opt-in per site.
 One api migration **`V20260707000000`** adds `site.netzladen_erlaubt BOOLEAN NOT NULL DEFAULT FALSE` - every existing plant stays compliant until explicitly switched.
