@@ -124,7 +124,9 @@ public class OptimizerDiagnosticsService {
         Map<LocalDate, MarketValue> marketValues = rows.isEmpty() ? Map.of()
                 : marketValuesFor(site, rows.get(0).time(), rows.get(rows.size() - 1).time());
         SlotEconomics economics = new SlotEconomics(siteEconomics(site), eegRates, marketValues,
-                properties.defaultSupplyComponents());
+                properties.defaultSupplyComponents())
+                .mitMarktwertbasis(rows.isEmpty() ? null
+                        : marktwertbasisFor(site, rows.get(0).time(), rows.get(rows.size() - 1).time()));
 
         List<Double> importCt = new ArrayList<>(rows.size());
         List<Double> exportCt = new ArrayList<>(rows.size());
@@ -322,6 +324,18 @@ public class OptimizerDiagnosticsService {
     }
 
     /**
+     * Die Marktwertbasis aus dem Förderweg (MiSpeL MP-12) - unter derselben Bedingung wie
+     * {@link #marketValuesFor}: nur wo die Prämie überhaupt wirken kann.
+     */
+    SlotEconomics.Marktwertbasis marktwertbasisFor(SiteContext site, Instant first, Instant last) {
+        boolean needed = !site.netzladenErlaubt()
+                && "direktvermarktung".equals(site.plantKind())
+                && site.anzulegenderWertCtKwh() != null;
+        return needed ? repo.marktwertbasis(site.siteId(), first, last)
+                : SlotEconomics.Marktwertbasis.KEINE;
+    }
+
+    /**
      * The site's {@link SlotEconomics}, or {@code null} when RLS hides the site
      * (the caller then leaves its slots un-priced instead of guessing). The ONE
      * recomposition both the admin diagnostics and the customer Fahrplan read -
@@ -333,7 +347,8 @@ public class OptimizerDiagnosticsService {
             return null;
         }
         return new SlotEconomics(siteEconomics(site), eegRates,
-                marketValuesFor(site, first, last), properties.defaultSupplyComponents());
+                marketValuesFor(site, first, last), properties.defaultSupplyComponents())
+                .mitMarktwertbasis(marktwertbasisFor(site, first, last));
     }
 
     private static Double toDouble(BigDecimal v) {

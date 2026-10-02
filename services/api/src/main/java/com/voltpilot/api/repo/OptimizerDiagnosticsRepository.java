@@ -1,12 +1,15 @@
 package com.voltpilot.api.repo;
 
 import com.voltpilot.api.optimizer.SlotEconomics.MarketValue;
+import com.voltpilot.api.optimizer.SlotEconomics.Marktwertbasis;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -265,6 +268,42 @@ public class OptimizerDiagnosticsRepository {
                 },
                 fromMonth, toMonth);
         return result;
+    }
+
+    /**
+     * Die Marktwertbasis aus dem Förderweg für die Viertelstunden {@code [first, last]} (MiSpeL
+     * MP-12, Twin von pricing.py {@code load_marktwertbasis}): die MiSpeL-Tage aus den wirksamen
+     * Fassungen in {@code site_foerderweg} (RLS - die Anlage des Mandanten) und der Jahresmarktwert
+     * Solar der berührten Jahre. Ohne AW-Differenzierung (noch kein Stammdatum) keine ÜNB-Liste:
+     * jede MiSpeL-Viertelstunde läuft über den W4-Rückfall. Kein MiSpeL-Tag: {@link
+     * Marktwertbasis#KEINE} ohne weitere Abfrage.
+     */
+    public Marktwertbasis marktwertbasis(UUID siteId, Instant first, Instant last) {
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        LocalDate von = first.atZone(berlin).toLocalDate();
+        LocalDate bis = last.atZone(berlin).toLocalDate();
+        List<Map.Entry<LocalDate, String>> fassungen = jdbc.query(
+                "SELECT gueltig_ab, foerderweg FROM site_foerderweg"
+                        + " WHERE site_id = ? AND aufgehoben_am IS NULL AND gueltig_ab <= ?"
+                        + " ORDER BY gueltig_ab",
+                (rs, i) -> new AbstractMap.SimpleImmutableEntry<>(
+                        rs.getObject("gueltig_ab", LocalDate.class), rs.getString("foerderweg")),
+                siteId, bis);
+        var tage = Marktwertbasis.mispelTage(fassungen, von, bis);
+        if (tage.isEmpty()) {
+            return Marktwertbasis.KEINE;
+        }
+        Map<Integer, MarketValue> jahresmarktwerte = new HashMap<>();
+        jdbc.query(
+                "SELECT year, value_ct_kwh, provisional FROM annual_market_value"
+                        + " WHERE technology = 'solar' AND year >= ? AND year <= ?",
+                rs -> {
+                    jahresmarktwerte.put(rs.getInt("year"),
+                            new MarketValue(rs.getBigDecimal("value_ct_kwh").doubleValue(),
+                                    rs.getBoolean("provisional")));
+                },
+                von.getYear(), bis.getYear());
+        return new Marktwertbasis(tage, Map.copyOf(jahresmarktwerte), Map.of(), null);
     }
 
     private static SiteContext mapContext(ResultSet rs, int rowNum) throws SQLException {

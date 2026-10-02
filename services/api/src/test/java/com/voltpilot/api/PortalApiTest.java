@@ -6146,11 +6146,59 @@ class PortalApiTest {
                 .exportValueCtKwh(100.0, slot)).isCloseTo(10.0, eps);
         assertThat(evalExportValueSql("direktvermarktung", true, 8.11, 5.0, null, null, 100.0, slot))
                 .isCloseTo(13.11, eps);
+
+        // MiSpeL MP-12: the Marktwertbasis aus dem Förderweg, vector for vector -
+        // Jahresmarktwert instead of the Monatsmarktwert (5.0) on a MiSpeL day,
+        // the ÜNB AW>0 list winning over the spot sign, the W4 fallback without a
+        // list entry, no premium without a Jahresmarktwert (never the MW).
+        record MispelVec(boolean mispel, Double jwCt, Boolean awListe, Double spot) {
+        }
+        for (MispelVec v : java.util.List.of(
+                new MispelVec(true, 7.0, null, 100.0),
+                new MispelVec(true, 7.0, null, -40.0),
+                new MispelVec(true, 7.0, false, 100.0),
+                new MispelVec(true, 7.0, true, -40.0),
+                new MispelVec(true, null, null, 100.0),
+                new MispelVec(true, 12.0, null, 100.0),
+                new MispelVec(true, 7.0, null, null),
+                new MispelVec(false, 7.0, null, 100.0),
+                new MispelVec(false, 7.0, true, -40.0))) {
+            var dv = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
+                    "direktvermarktung", false, "ohne", null, 8.11, null, null, null, null, null);
+            var basis = new com.voltpilot.api.optimizer.SlotEconomics.Marktwertbasis(
+                    v.mispel() ? java.util.Set.of(LocalDate.of(2026, 6, 15)) : java.util.Set.of(),
+                    v.jwCt() == null ? Map.of()
+                            : Map.of(2026, new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(
+                                    v.jwCt(), false)),
+                    v.mispel() && v.awListe() != null ? Map.of(slot, v.awListe()) : Map.of(), null);
+            Double expected = new com.voltpilot.api.optimizer.SlotEconomics(dv,
+                    com.voltpilot.api.optimizer.EegRates.defaults(),
+                    Map.of(com.voltpilot.api.optimizer.SlotEconomics.berlinMonth(slot),
+                            new com.voltpilot.api.optimizer.SlotEconomics.MarketValue(5.0, false)))
+                    .mitMarktwertbasis(basis)
+                    .exportValueCtKwh(v.spot(), slot);
+            Double actual = evalExportValueSql("direktvermarktung", false, 8.11, 5.0, null, null,
+                    v.spot(), slot, v.mispel(), v.jwCt(), v.awListe());
+            if (expected == null) {
+                assertThat(actual).as(v.toString()).isNull();
+            } else {
+                assertThat(actual).as(v.toString()).isNotNull().isCloseTo(expected, eps);
+            }
+        }
     }
 
     /** Evaluates the generated export-value SQL over one bound vector row. */
     private static Double evalExportValueSql(String plantKind, boolean netzladen, Double aw,
             Double mvCt, LocalDate commissioned, Double kwp, Double spot, Instant slot) {
+        // No Förderweg Fassung = the LEFT JOINs' all-NULL side (fw, jw, aw).
+        return evalExportValueSql(plantKind, netzladen, aw, mvCt, commissioned, kwp, spot, slot,
+                null, null, null);
+    }
+
+    /** ... with the Marktwertbasis aliases of SlotEconomics.marktwertbasisJoinSql bound. */
+    private static Double evalExportValueSql(String plantKind, boolean netzladen, Double aw,
+            Double mvCt, LocalDate commissioned, Double kwp, Double spot, Instant slot,
+            Boolean mispel, Double jwCt, Boolean awListe) {
         String sql = "SELECT "
                 + com.voltpilot.api.optimizer.SlotEconomics.exportValueCtSql(
                         "p.price_eur_mwh", "r.bucket",
@@ -6158,6 +6206,9 @@ class PortalApiTest {
                 + " AS ct FROM (VALUES (?::text, ?::boolean, ?::numeric))"
                 + " AS s(plant_kind, netzladen_erlaubt, anzulegender_wert_ct_kwh)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS mv(value_ct_kwh)"
+                + " CROSS JOIN (VALUES (?::boolean)) AS fw(mispel)"
+                + " CROSS JOIN (VALUES (?::numeric, FALSE)) AS jw(value_ct_kwh, provisional)"
+                + " CROSS JOIN (VALUES (?::boolean)) AS aw(aw_groesser_null)"
                 + " CROSS JOIN (VALUES (?::date, ?::numeric)) AS pv(commissioned_on, pv_capacity_kwp)"
                 + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)"
                 + " CROSS JOIN (VALUES (?::timestamptz)) AS r(bucket)";
@@ -6170,10 +6221,13 @@ class PortalApiTest {
             // A missing monthly_market_value / pv-asset row = the LEFT JOIN's
             // all-NULL side - bind it exactly like that.
             ps.setObject(4, mvCt);
-            ps.setObject(5, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
-            ps.setObject(6, kwp);
-            ps.setObject(7, spot);
-            ps.setObject(8, java.sql.Timestamp.from(slot));
+            ps.setObject(5, mispel);
+            ps.setObject(6, jwCt);
+            ps.setObject(7, awListe);
+            ps.setObject(8, commissioned == null ? null : java.sql.Date.valueOf(commissioned));
+            ps.setObject(9, kwp);
+            ps.setObject(10, spot);
+            ps.setObject(11, java.sql.Timestamp.from(slot));
             try (java.sql.ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 java.math.BigDecimal ct = rs.getBigDecimal("ct");

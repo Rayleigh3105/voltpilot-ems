@@ -85,6 +85,7 @@ from voltpilot_optimization.load_nowcast import (
     ewma_residual,
 )
 from voltpilot_optimization.pv_nowcast import apply_pv_nowcast, window_mean
+from voltpilot_optimization.marktwertbasis import load_marktwertbasis
 from voltpilot_optimization.pricing import (
     SiteTariff,
     SupplyPriceComponents,
@@ -905,10 +906,14 @@ def gather_inputs(
     # to bare spot inside the pricing layer - never a skipped site).
     spot = [prices[s] for s in slot_starts]
     market_values: dict = {}
+    marktwert = None
     if needs_market_values(site.tariff, site.netzladen_erlaubt):
         market_values = _load_market_values(
             dsn, sorted({berlin_month(s) for s in slot_starts})
         )
+        # MiSpeL MP-12: Jahresmarktwert + AW>0 for days in a MiSpeL option
+        # (Förderweg je Tag); no AW-Differenzierung stored yet -> W4 fallback.
+        marktwert = load_marktwertbasis(dsn, site.site_id, slot_starts)
     import_series = import_prices(site.tariff, spot, site_id=site.site_id)
     export_series = export_values(
         site.tariff,
@@ -917,6 +922,7 @@ def gather_inputs(
         slot_starts,
         market_values,
         site_id=site.site_id,
+        marktwert=marktwert,
     )
 
     # PS-1: the billing period's measured import peak anchors the

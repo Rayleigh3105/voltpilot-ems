@@ -107,6 +107,15 @@ import org.springframework.stereotype.Repository;
  *   (both only when the slot price >= 0; months are Europe/Berlin calendar months)
  * </pre>
  *
+ * <p><b>MiSpeL option (MP-12, W3/W4).</b> On a Berlin day whose Förderweg
+ * ({@code site_foerderweg}) is the Abgrenzungs- or Pauschaloption, the premium
+ * uses the Jahresmarktwert Solar of the slot's year instead of the
+ * Monatsmarktwert (Anlage 1 S. 21 Vor. 5, Anlage 2 S. 20 of the BNetzA
+ * MiSpeL-Festlegung) and is paid only in AW&gt;0 quarter hours - Formel (24)¼
+ * from the ÜNB list, the negative-price rule below only as fallback (then
+ * {@code marktpraemieVorlaeufig}). Same fragments as the optimizer twin:
+ * {@link SlotEconomics#marktwertbasisJoinSql}.
+ *
  * <p>Negative-price slots keep the simplified §51-EEG rule: the law suspends
  * the premium over negative 4h/1h WINDOWS (rules changed for new plants in
  * 2023/2026); we apply it per 15-min spot slot. Crediting the baseline too
@@ -178,29 +187,47 @@ public class EarningsRepository {
      * Joins a slot's German calendar month to its Monatsmarktwert Solar (the
      * table is market-wide - no tenant, no RLS - and tiny: twelve rows per
      * technology per year). Absent month = NULL = no premium for that slot.
+     * Plus the Marktwertbasis aus dem Förderweg (MiSpeL MP-12,
+     * {@link SlotEconomics#marktwertbasisJoinSql}): on a Berlin day in a MiSpeL
+     * option the premium uses the Jahresmarktwert and the AW&gt;0 list instead.
+     * The benchmark {@code market_value_ct} keeps reading {@code mv} - it is
+     * the "Monatsdurchschnitt Solar" the display names, not the premium basis.
      */
     private static final String MARKET_VALUE_JOIN =
             "LEFT JOIN monthly_market_value mv ON mv.technology = 'solar'"
-                    + " AND mv.month = date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')::date ";
+                    + " AND mv.month = date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')::date "
+                    + SlotEconomics.marktwertbasisJoinSql("s.id", "r.bucket");
 
     /**
      * When a slot earns the Marktprämie: the site markets directly AND has an
-     * anzulegender Wert configured AND the month's Monatsmarktwert is known AND
-     * the slot's price is non-negative (the simplified §51-EEG rule - see the
-     * class Javadoc). NULL anzulegender Wert => never eligible => both premium
-     * terms are exactly 0 and the pure-spot numbers are unchanged.
+     * anzulegender Wert configured AND the slot's premium Marktwert is known
+     * AND the slot is a premium quarter hour - the price non-negative (the
+     * simplified §51-EEG rule - see the class Javadoc), on a MiSpeL day the
+     * ÜNB AW&gt;0 list with that rule only as fallback (MP-12, W4). NULL
+     * anzulegender Wert => never eligible => both premium terms are exactly 0
+     * and the pure-spot numbers are unchanged.
      */
     private static final String PREMIUM_ELIGIBLE =
             "s.plant_kind = 'direktvermarktung' AND s.anzulegender_wert_ct_kwh IS NOT NULL"
-                    + " AND mv.value_ct_kwh IS NOT NULL AND p.price_eur_mwh >= 0";
+                    + " AND " + SlotEconomics.PRAEMIEN_MARKTWERT_CT_SQL + " IS NOT NULL"
+                    + " AND " + SlotEconomics.praemienViertelstundeSql("p.price_eur_mwh");
 
     /**
-     * The month's dynamic premium in ct/kWh: anzulegender Wert minus
-     * Monatsmarktwert Solar, floored at 0 (a market value above the reference
-     * rate means no premium, never a negative one).
+     * The slot's dynamic premium in ct/kWh: anzulegender Wert minus the
+     * premium Marktwert (Monatsmarktwert Solar; Jahresmarktwert Solar on a
+     * MiSpeL day, W3), floored at 0 (a market value above the reference rate
+     * means no premium, never a negative one).
      */
     private static final String PREMIUM_RATE_CT =
-            "GREATEST(s.anzulegender_wert_ct_kwh - mv.value_ct_kwh, 0)";
+            "GREATEST(s.anzulegender_wert_ct_kwh - " + SlotEconomics.PRAEMIEN_MARKTWERT_CT_SQL + ", 0)";
+
+    /**
+     * The slots whose premium follows the MiSpeL basis: a premium-capable site
+     * (direct marketing with an anzulegender Wert) on a Berlin day in a MiSpeL
+     * option - the population {@code marktpraemie_vorlaeufig} speaks about.
+     */
+    private static final String MISPEL_PREMIUM_SLOT =
+            "s.plant_kind = 'direktvermarktung' AND s.anzulegender_wert_ct_kwh IS NOT NULL AND fw.mispel";
 
     /**
      * Premium EUR earned by the slot's METERED export (the actual side) - the
@@ -392,6 +419,14 @@ public class EarningsRepository {
      * new price model), and the Marktprämie already contained in
      * {@code einspeiseErloesEur} (the {@code ACTUAL_PREMIUM_EUR} term). No new
      * money math - the same expressions, summed separately.
+     *
+     * <p>{@code marktpraemieVorlaeufig} (MiSpeL MP-12): {@code null} when no
+     * covered slot of the window lies on a MiSpeL day of a premium-capable
+     * site; {@code true} when any of them took its AW¼ from the W4 fallback
+     * (no ÜNB list entry - always, until the AW-Differenzierung is a master
+     * datum) or has no / a provisional Jahresmarktwert; {@code false} when all
+     * of them stand on the list and a published Jahresmarktwert. The portal
+     * does not show it yet (MP-18).
      */
     public record SiteAggregate(
             long bucketCount,
@@ -410,7 +445,8 @@ public class EarningsRepository {
             BigDecimal batterieBewegtKwh,
             BigDecimal stromkostenEur,
             BigDecimal bezogenKwh,
-            BigDecimal marktpraemieEur) {
+            BigDecimal marktpraemieEur,
+            Boolean marktpraemieVorlaeufig) {
     }
 
     /**
@@ -575,7 +611,10 @@ public class EarningsRepository {
                         // eligible but earned nothing keeps its measured 0.
                         + " sum(" + ACTUAL_PREMIUM_EUR + ")"
                         + "   FILTER (WHERE " + COVERED + " AND " + PREMIUM_ELIGIBLE + ")"
-                        + "   AS marktpraemie_eur "
+                        + "   AS marktpraemie_eur,"
+                        + " bool_or(" + SlotEconomics.PRAEMIE_VORLAEUFIG_SQL + ")"
+                        + "   FILTER (WHERE " + COVERED + " AND " + MISPEL_PREMIUM_SLOT + ")"
+                        + "   AS marktpraemie_vorlaeufig "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
@@ -606,7 +645,8 @@ public class EarningsRepository {
                             rs.getBigDecimal("batterie_bewegt_kwh"),
                             rs.getBigDecimal("stromkosten_eur"),
                             rs.getBigDecimal("bezogen_kwh"),
-                            rs.getBigDecimal("marktpraemie_eur")));
+                            rs.getBigDecimal("marktpraemie_eur"),
+                            (Boolean) rs.getObject("marktpraemie_vorlaeufig")));
                 },
                 args(from, to, site));
         return result;

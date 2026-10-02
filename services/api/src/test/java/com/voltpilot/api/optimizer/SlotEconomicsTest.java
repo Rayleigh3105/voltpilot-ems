@@ -249,6 +249,60 @@ class SlotEconomicsTest {
         assertThat(e.exportValueCtKwh(100.0, SLOT)).isEqualTo(10.0);
     }
 
+    // ---- export value: MiSpeL-Marktwertbasis (MP-12, W3/W4) --------------------
+
+    // 01.10.2026 00:00 Berlin = 30.09.2026 22:00 UTC: der Tag der MiSpeL-Fassung.
+    private static final Instant ERSTE_OKTOBER = Instant.parse("2026-09-30T22:00:00Z");
+    private static final Instant LETZTE_SEPTEMBER = Instant.parse("2026-09-30T21:45:00Z");
+    private static final Map<LocalDate, MarketValue> MONATE = Map.of(
+            LocalDate.of(2026, 9, 1), new MarketValue(5.0, false),
+            LocalDate.of(2026, 10, 1), new MarketValue(5.0, false));
+
+    private static SlotEconomics.Marktwertbasis mispelAb1Oktober(Map<Instant, Boolean> aw) {
+        return new SlotEconomics.Marktwertbasis(
+                java.util.Set.of(LocalDate.of(2026, 10, 1)),
+                Map.of(2026, new MarketValue(7.0, false)), aw, null);
+    }
+
+    @Test
+    void mispelTagRechnetMitDemJahresmarktwertDerTagDavorMitDemMonatsmarktwert() {
+        SlotEconomics e = dv(10.0, MONATE).mitMarktwertbasis(mispelAb1Oktober(Map.of()));
+        assertThat(e.exportValueCtKwh(80.0, LETZTE_SEPTEMBER)).isCloseTo(8.0 + 5.0, within(1e-9));
+        assertThat(e.exportValueCtKwh(80.0, ERSTE_OKTOBER)).isCloseTo(8.0 + 3.0, within(1e-9));
+        // Ohne Basis: bitgenau die Monatsregel.
+        assertThat(dv(10.0, MONATE).exportValueCtKwh(80.0, ERSTE_OKTOBER))
+                .isCloseTo(8.0 + 5.0, within(1e-9));
+    }
+
+    @Test
+    void awListeGewinntOhneEintragGiltDerRueckfall() {
+        Instant t1 = ERSTE_OKTOBER.plusSeconds(900);
+        Instant t2 = ERSTE_OKTOBER.plusSeconds(1800);
+        SlotEconomics e = dv(10.0, MONATE)
+                .mitMarktwertbasis(mispelAb1Oktober(Map.of(ERSTE_OKTOBER, false, t1, true)));
+        assertThat(e.exportValueCtKwh(40.0, ERSTE_OKTOBER)).isCloseTo(4.0, within(1e-9));
+        assertThat(e.exportValueCtKwh(-30.0, t1)).isCloseTo(-3.0 + 3.0, within(1e-9));
+        assertThat(e.exportValueCtKwh(-30.0, t2)).isCloseTo(-3.0, within(1e-9));
+    }
+
+    @Test
+    void fehlenderJahresmarktwertHeisstKeinePraemieNieDerMonatswert() {
+        var ohneJahr = new SlotEconomics.Marktwertbasis(
+                java.util.Set.of(LocalDate.of(2026, 10, 1)), Map.of(), Map.of(), null);
+        assertThat(dv(10.0, MONATE).mitMarktwertbasis(ohneJahr).exportValueCtKwh(80.0, ERSTE_OKTOBER))
+                .isEqualTo(8.0);
+    }
+
+    @Test
+    void mispelTageFolgenDerSpaetestenFassungJeTag() {
+        var fassungen = List.<Map.Entry<LocalDate, String>>of(
+                Map.entry(LocalDate.of(2026, 10, 1), "marktpraemie_pauschal"),
+                Map.entry(LocalDate.of(2026, 10, 3), "marktpraemie_ausschliesslichkeit"));
+        assertThat(SlotEconomics.Marktwertbasis.mispelTage(fassungen,
+                LocalDate.of(2026, 9, 30), LocalDate.of(2026, 10, 4)))
+                .containsExactlyInAnyOrder(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 2));
+    }
+
     // ---- export value: Eigenverbrauch (feste Vergütung) -----------------------
 
     @Test

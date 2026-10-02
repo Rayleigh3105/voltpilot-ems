@@ -506,6 +506,8 @@ class _FakeCursor:
             self._rows = [(ts, "PT15M", 100.0) for ts in self.slot_starts]
         elif "FROM monthly_market_value" in sql:
             self._rows = [(JULY, 5.0)]
+        elif "FROM site_foerderweg" in sql:
+            self._rows = []  # no Fassung = Bestand = never a MiSpeL option
         elif "FROM forecast" in sql:
             self._rows = [(ts, 1.0) for ts in self.slot_starts]
         elif "FROM telemetry" in sql and "LIMIT 1" in sql:

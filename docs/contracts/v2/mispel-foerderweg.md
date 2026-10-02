@@ -120,7 +120,10 @@ messkonzept_geaendert}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage 
   (Europe/Berlin) aus `site_foerderweg`, ohne Fassung den Bestand nach § 2 — dieselbe Regel, dieselben
   Vektoren (`bestand`, `werte`). Bis dahin fährt er eine Anlage in Abgrenzung/Pauschal über die Spiegel:
   Netzladen eingestellt = Händler-Modus (Export zu blankem Spot, keine Prämie im Ziel), sonst EEG-Modus.
-  Marktwertbasis Jahr für MiSpeL-Wege (W3) ist MP-12.
+  **Marktwertbasis (MP-12, gebaut):** Optimierer (`marktwertbasis.py`) und Erlöse (`SlotEconomics.marktwertbasisJoinSql`)
+  lesen je Berliner Tag die späteste wirksame Fassung; an Tagen in `marktpraemie_abgrenzung`/`marktpraemie_pauschal`
+  gilt der Jahresmarktwert Solar und Formel (24)¼ bzw. (P12)¼ (AW>0-Liste der ÜNB, ohne AW-Differenzierung der
+  W4-Rückfall „keine Prämie bei SP¼ < 0“, Stand vorläufig); ohne Fassung der Bestand, also der Monatsmarktwert.
 - **Box (MP-14):** bekommt den Förderweg über den Plan; bis dahin wie heute `grid_charge_allowed` aus dem
   Spiegel.
 - **Rechenwerk (MP-8):** `MispelAbgrenzungService.Vorgaben.formelsatz` kommt heute vom Aufrufer; der

@@ -17,7 +17,9 @@ objective consumes (:mod:`voltpilot_optimization.solver`):
   remuneration (``site.plant_kind``): ``direktvermarktung`` = spot + the
   dynamic Marktprämie (``GREATEST(anzulegender_wert - monatsmarktwert, 0)``,
   suspended in negative-price slots - byte-for-byte the EarningsRepository
-  rule); ``eigenverbrauch`` = the feste EEG-Einspeisevergütung derived from
+  rule; a site in a MiSpeL option uses the Jahresmarktwert and the AW>0 list
+  instead, :mod:`voltpilot_optimization.marktwertbasis`, MiSpeL MP-12);
+  ``eigenverbrauch`` = the feste EEG-Einspeisevergütung derived from
   the PV asset's MaStR commissioning date + kWp (the schedule in
   :mod:`voltpilot_optimization.config`); anything unknown/unconfigured = spot.
 
@@ -57,6 +59,11 @@ from voltpilot_optimization.config import (
     SOLARSPITZENGESETZ_CUTOFF,
     default_supply_components_enabled,
     eeg_rate_schedule,
+)
+from voltpilot_optimization.marktwertbasis import (
+    MarktwertBasis,
+    berlin_year,
+    praemien_viertelstunde,
 )
 
 logger = logging.getLogger("voltpilot.optimization.pricing")
@@ -317,20 +324,25 @@ def export_values(
     market_value_ct_by_month: dict[date, float],
     schedule: tuple[EegRateBand, ...] | None = None,
     site_id=None,
+    marktwert: MarktwertBasis | None = None,
 ) -> list[float]:
     """The per-slot value of one exported kWh (EUR/MWh).
 
     ``market_value_ct_by_month`` maps the first day of a German (Europe/Berlin)
     calendar month to that month's Monatsmarktwert Solar in ct/kWh (the
     ``monthly_market_value`` table); an absent month means no premium for its
-    slots, mirroring EarningsRepository. ``schedule`` overrides the feste-
-    Vergütung table (tests); the default is env-resolved per call.
+    slots, mirroring EarningsRepository. ``marktwert`` is the site's
+    Marktwertbasis from its Förderweg (MiSpeL MP-12, :func:`marktpraemie_eur_mwh`);
+    ``None`` = no MiSpeL day = today's rule byte-identically. ``schedule``
+    overrides the feste-Vergütung table (tests); the default is env-resolved
+    per call.
     """
     ctx = {"site_id": str(site_id)} if site_id is not None else {}
     if not netzladen_erlaubt:
         if tariff.plant_kind == PLANT_KIND_DIREKTVERMARKTUNG:
             return _direktvermarktung_values(
-                tariff, spot_eur_mwh, slot_starts, market_value_ct_by_month, ctx
+                tariff, spot_eur_mwh, slot_starts, market_value_ct_by_month, ctx,
+                marktwert,
             )
         if tariff.plant_kind == PLANT_KIND_EIGENVERBRAUCH:
             return _feste_verguetung_values(
@@ -388,25 +400,73 @@ def _direktvermarktung_values(
     slot_starts: list[datetime],
     market_value_ct_by_month: dict[date, float],
     ctx: dict,
+    marktwert: MarktwertBasis | None = None,
 ) -> list[float]:
-    """spot + Marktprämie in non-negative-price slots (the EarningsRepository
-    rule: premium = GREATEST(anzulegender_wert - monatsmarktwert, 0), only when
-    the month's Monatsmarktwert is known, suspended when spot < 0 - the
-    simplified §51 rule)."""
+    """spot + Marktprämie (:func:`marktpraemie_eur_mwh`)."""
+    if tariff.anzulegender_wert_ct_kwh is None:
+        return list(spot)
+    premiums = marktpraemie_eur_mwh(
+        tariff, spot, slot_starts, market_value_ct_by_month, marktwert, ctx
+    )
+    return [price + premium for price, premium in zip(spot, premiums)]
+
+
+def marktpraemie_eur_mwh(
+    tariff: SiteTariff,
+    spot: list[float],
+    slot_starts: list[datetime],
+    market_value_ct_by_month: dict[date, float],
+    marktwert: MarktwertBasis | None = None,
+    ctx: dict | None = None,
+) -> list[float]:
+    """The Marktprämie one exported kWh earns per slot (EUR/MWh, 0 = none) -
+    the price series a mode that credits the premium on part of the export
+    reads (MiSpeL MP-10: the green/yellow export value is spot + this).
+
+    premium = GREATEST(anzulegender_wert - marktwert, 0), where the Marktwert
+    comes from the Förderweg of the slot's Berlin day (MiSpeL MP-12, W3):
+
+    - **MiSpeL option** (Abgrenzung/Pauschal, ``marktwert.ist_mispel``): the
+      Jahresmarktwert Solar of the slot's Berlin year (Anlage 1 S. 21 Vor. 5,
+      Anlage 2 S. 20), and only in AW>0 quarter hours - Formel (24)¼ from the
+      ÜNB list, without a list entry the W4 fallback "no premium at spot < 0"
+      (Anlage 1 S. 17 Fn. 8; :func:`praemien_viertelstunde`);
+    - **every other site and day:** the Monatsmarktwert Solar of the slot's
+      Berlin month, suspended when spot < 0 (the simplified §51 rule) - the
+      EarningsRepository rule, unchanged.
+
+    An absent market value (month or year) means no premium for its slots,
+    never an invented one; the missing keys are logged once per call.
+    """
+    ctx = ctx or {}
     aw = tariff.anzulegender_wert_ct_kwh
     if aw is None:
-        return list(spot)
-    values = []
+        return [0.0] * len(spot)
+    premiums = []
     missing_months: set[date] = set()
+    missing_years: set[int] = set()
+    rueckfall_slots = 0
     for price, start in zip(spot, slot_starts):
-        month = berlin_month(start)
-        mv = market_value_ct_by_month.get(month)
-        if mv is None:
-            missing_months.add(month)
-            values.append(price)
-            continue
-        premium_eur_mwh = max(aw - mv, 0.0) * CT_PER_KWH_TO_EUR_PER_MWH
-        values.append(price + premium_eur_mwh if price >= 0 else price)
+        if marktwert is not None and marktwert.ist_mispel(start):
+            year = berlin_year(start)
+            mv = marktwert.jahresmarktwert_ct.get(year)
+            if mv is None:
+                missing_years.add(year)
+                premiums.append(0.0)
+                continue
+            eligible, vorlaeufig = praemien_viertelstunde(marktwert, start, price)
+            rueckfall_slots += vorlaeufig
+        else:
+            month = berlin_month(start)
+            mv = market_value_ct_by_month.get(month)
+            if mv is None:
+                missing_months.add(month)
+                premiums.append(0.0)
+                continue
+            eligible = price >= 0
+        premiums.append(
+            max(aw - mv, 0.0) * CT_PER_KWH_TO_EUR_PER_MWH if eligible else 0.0
+        )
     if missing_months:
         logger.warning(
             "pricing.market_value_missing",
@@ -421,7 +481,37 @@ def _direktvermarktung_values(
                 }
             },
         )
-    return values
+    if missing_years:
+        logger.warning(
+            "pricing.jahresmarktwert_missing",
+            extra={
+                "context": {
+                    **ctx,
+                    "years": sorted(missing_years),
+                    "reason": (
+                        "MiSpeL option without a Jahresmarktwert Solar for "
+                        "these years (published after the year ends) - their "
+                        "slots earn no premium in the plan"
+                    ),
+                }
+            },
+        )
+    if rueckfall_slots:
+        logger.info(
+            "pricing.aw_rueckfall",
+            extra={
+                "context": {
+                    **ctx,
+                    "slots": rueckfall_slots,
+                    "aw_regel": marktwert.aw_regel if marktwert else None,
+                    "reason": (
+                        "no UeNB AW>0 list entry for these MiSpeL slots - "
+                        "W4 fallback 'no premium at spot < 0', vorlaeufig"
+                    ),
+                }
+            },
+        )
+    return premiums
 
 
 def _feste_verguetung_values(

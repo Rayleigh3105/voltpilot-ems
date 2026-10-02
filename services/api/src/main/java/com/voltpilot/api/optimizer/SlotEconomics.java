@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Pure per-slot economics of a persisted optimizer plan - the read-side twin
@@ -39,6 +40,112 @@ public final class SlotEconomics {
     /** One month's Monatsmarktwert Solar (the monthly_market_value row). */
     public record MarketValue(double ctKwh, boolean provisional) {
     }
+
+    /**
+     * MiSpeL MP-12: die Marktwertbasis aus dem Förderweg (W3, W4) - der Twin von
+     * pricing.py {@code MarktwertBasis}. An den {@code mispelTage}n (Europe/Berlin, Förderweg
+     * Abgrenzungs- oder Pauschaloption laut {@code site_foerderweg}) rechnet die Marktprämie mit
+     * dem Jahresmarktwert Solar des Kalenderjahres ({@code jahresmarktwerte}, Anlage 1 S. 21 Vor. 5,
+     * Anlage 2 S. 20) und nur in AW&gt;0-Viertelstunden: Formel (24)¼ aus der ÜNB-Liste
+     * ({@code awGroesserNull} je Viertelstundenbeginn, Anlage 1 S. 17 Fn. 8), ohne Eintrag der
+     * W4-Rückfall "keine Prämie bei SP¼ &lt; 0". {@code awRegel} = die Differenzierung der Liste
+     * ({@code MispelMarktdatenRepository.REGELN}); {@code null}, solange es das Stammdatum nicht
+     * gibt. {@link #KEINE} = kein MiSpeL-Tag = die Monatsmarktwert-Regel bitgenau.
+     */
+    public record Marktwertbasis(Set<LocalDate> mispelTage, Map<Integer, MarketValue> jahresmarktwerte,
+            Map<Instant, Boolean> awGroesserNull, String awRegel) {
+
+        public static final Marktwertbasis KEINE = new Marktwertbasis(Set.of(), Map.of(), Map.of(), null);
+
+        /** Die beiden MiSpeL-Optionen des Förderwegs (MP-5): § 19 Abs. 3b und 3c EEG. */
+        public static final Set<String> MISPEL_FOERDERWEGE =
+                Set.of("marktpraemie_abgrenzung", "marktpraemie_pauschal");
+
+        public boolean istMispel(Instant slotStart) {
+            return mispelTage.contains(slotStart.atZone(BERLIN).toLocalDate());
+        }
+
+        /**
+         * Der Förderweg je Tag aus den wirksamen Fassungen (aufsteigend nach {@code gueltig_ab}):
+         * die späteste mit {@code gueltig_ab <= Tag}; ohne Fassung gilt der Bestand, und der ist nie
+         * eine MiSpeL-Option (docs/contracts/v2/mispel-foerderweg.md § 2).
+         */
+        public static Set<LocalDate> mispelTage(List<Map.Entry<LocalDate, String>> fassungen,
+                LocalDate von, LocalDate bis) {
+            java.util.HashSet<LocalDate> tage = new java.util.HashSet<>();
+            for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
+                String am = null;
+                for (Map.Entry<LocalDate, String> f : fassungen) {
+                    if (f.getKey().isAfter(tag)) {
+                        break;
+                    }
+                    am = f.getValue();
+                }
+                if (am != null && MISPEL_FOERDERWEGE.contains(am)) {
+                    tage.add(tag);
+                }
+            }
+            return Set.copyOf(tage);
+        }
+    }
+
+    /**
+     * Der Regel-Eingang der AW¼-Liste in SQL (MiSpeL MP-12): die AW-Differenzierung der Anlage
+     * (viertelstunde, viertelstunde_2ct, stunden_1 … stunden_6; Anlage 1 S. 17 Fn. 8). Bis das
+     * Stammdatum am Förderweg existiert, ist sie unbekannt - die Liste trifft nie, jede
+     * MiSpeL-Viertelstunde läuft über den W4-Rückfall und ist vorläufig. Das Folgepaket ersetzt
+     * genau diesen Ausdruck durch die Spalte der Fassung ({@code fw.<spalte>}).
+     */
+    static final String AW_REGEL_SQL = "CAST(NULL AS text)";
+
+    /**
+     * Die Joins der Marktwertbasis für einen Viertelstunden-Abfrage (Twin von
+     * {@link Marktwertbasis}): {@code fw.mispel} = der Förderweg des Berliner Tages ist eine
+     * MiSpeL-Option (NULL = keine Fassung = Bestand), {@code jw} = Jahresmarktwert Solar des
+     * Berliner Jahres ({@code annual_market_value}), {@code aw.aw_groesser_null} = Formel (24)¼ aus
+     * der ÜNB-Liste ({@code eeg_aw_zeit}, Stundenzeilen gelten für ihre vier Viertelstunden, die
+     * feinere Auflösung gewinnt). {@code site_foerderweg} ist mandanteneigen und RLS-geschützt.
+     */
+    public static String marktwertbasisJoinSql(String siteIdExpr, String slotStartExpr) {
+        String tag = "(" + slotStartExpr + " AT TIME ZONE 'Europe/Berlin')::date";
+        return "LEFT JOIN LATERAL (SELECT f.foerderweg IN ('marktpraemie_abgrenzung', 'marktpraemie_pauschal')"
+                + " AS mispel FROM site_foerderweg f WHERE f.site_id = " + siteIdExpr
+                + " AND f.aufgehoben_am IS NULL AND f.gueltig_ab <= " + tag
+                + " ORDER BY f.gueltig_ab DESC LIMIT 1) fw ON TRUE "
+                + "LEFT JOIN annual_market_value jw ON jw.technology = 'solar'"
+                + " AND jw.year = EXTRACT(YEAR FROM " + slotStartExpr + " AT TIME ZONE 'Europe/Berlin')::int "
+                + "LEFT JOIN LATERAL (SELECT z.aw_groesser_null FROM eeg_aw_zeit z"
+                + " WHERE fw.mispel AND z.regel = " + AW_REGEL_SQL
+                + " AND z.ts <= " + slotStartExpr + " AND z.ts > " + slotStartExpr + " - INTERVAL '60 minutes'"
+                + " AND " + slotStartExpr + " < z.ts + CASE WHEN z.aufloesung = 'PT60M'"
+                + " THEN INTERVAL '60 minutes' ELSE INTERVAL '15 minutes' END"
+                + " ORDER BY z.aufloesung = 'PT60M' LIMIT 1) aw ON TRUE ";
+    }
+
+    /**
+     * Der Marktwert, aus dem die Prämie der Viertelstunde folgt (W3): am MiSpeL-Tag der
+     * Jahresmarktwert, sonst der Monatsmarktwert ({@code mv}) - über die Aliase von
+     * {@link #marktwertbasisJoinSql}.
+     */
+    public static final String PRAEMIEN_MARKTWERT_CT_SQL =
+            "(CASE WHEN fw.mispel THEN jw.value_ct_kwh ELSE mv.value_ct_kwh END)";
+
+    /**
+     * Ob die Viertelstunde eine Prämien-Viertelstunde ist (W4): am MiSpeL-Tag Formel (24)¼ aus der
+     * ÜNB-Liste, ohne Eintrag der Rückfall SP¼ &ge; 0; sonst die vereinfachte §-51-Regel SP¼ &ge; 0.
+     */
+    public static String praemienViertelstundeSql(String spotEurMwhExpr) {
+        return "(CASE WHEN fw.mispel THEN COALESCE(aw.aw_groesser_null, " + spotEurMwhExpr + " >= 0)"
+                + " ELSE " + spotEurMwhExpr + " >= 0 END)";
+    }
+
+    /**
+     * Eine MiSpeL-Viertelstunde ist vorläufig, solange ihre AW¼ aus dem Rückfall stammt oder der
+     * Jahresmarktwert fehlt bzw. vorläufig ist (MispelMarktdatenRepository.AwZeitraum.vorlaeufig).
+     * Nur an MiSpeL-Tagen aussagekräftig ({@code fw.mispel}).
+     */
+    public static final String PRAEMIE_VORLAEUFIG_SQL =
+            "(aw.aw_groesser_null IS NULL OR jw.value_ct_kwh IS NULL OR jw.provisional)";
 
     /**
      * One site's structured supply-price sheet (the {@code site_supply_price}
@@ -116,6 +223,7 @@ public final class SlotEconomics {
     private final EegRates eegRates;
     private final Map<LocalDate, MarketValue> marketValuesByMonth;
     private final boolean defaultSupplyComponents;
+    private final Marktwertbasis marktwertbasis;
 
     public SlotEconomics(SiteEconomics site, EegRates eegRates,
             Map<LocalDate, MarketValue> marketValuesByMonth) {
@@ -132,10 +240,23 @@ public final class SlotEconomics {
     public SlotEconomics(SiteEconomics site, EegRates eegRates,
             Map<LocalDate, MarketValue> marketValuesByMonth,
             boolean defaultSupplyComponents) {
+        this(site, eegRates, marketValuesByMonth, defaultSupplyComponents, Marktwertbasis.KEINE);
+    }
+
+    private SlotEconomics(SiteEconomics site, EegRates eegRates,
+            Map<LocalDate, MarketValue> marketValuesByMonth,
+            boolean defaultSupplyComponents, Marktwertbasis marktwertbasis) {
         this.site = site;
         this.eegRates = eegRates;
         this.marketValuesByMonth = marketValuesByMonth;
         this.defaultSupplyComponents = defaultSupplyComponents;
+        this.marktwertbasis = marktwertbasis;
+    }
+
+    /** Dieselbe Anlage mit ihrer Marktwertbasis aus dem Förderweg (MiSpeL MP-12). */
+    public SlotEconomics mitMarktwertbasis(Marktwertbasis basis) {
+        return new SlotEconomics(site, eegRates, marketValuesByMonth, defaultSupplyComponents,
+                basis == null ? Marktwertbasis.KEINE : basis);
     }
 
     /**
@@ -291,7 +412,9 @@ public final class SlotEconomics {
      * What one exported kWh really earns in this slot (ct/kWh), per the
      * plant's remuneration: Direktvermarktung = spot + dynamic Marktprämie
      * ({@code max(anzulegender Wert - Monatsmarktwert, 0)}, suspended at
-     * negative spot, only when the month's value is known); Eigenverbrauch =
+     * negative spot, only when the month's value is known; on a MiSpeL day the
+     * Jahresmarktwert and the AW&gt;0 list instead - {@link Marktwertbasis},
+     * MiSpeL MP-12); Eigenverbrauch =
      * the feste Vergütung (flat; §51a zeroes it at negative spot for plants
      * commissioned on/after 2025-02-25; expired/unknown commissioning = bare
      * spot); merchant mode ({@code netzladen_erlaubt}) = bare spot regardless
@@ -305,8 +428,14 @@ public final class SlotEconomics {
             if (site.anzulegenderWertCtKwh() == null || spotEurMwh == null) {
                 return spotCt(spotEurMwh);
             }
-            MarketValue mv = marketValuesByMonth.get(berlinMonth(slotStart));
-            if (mv == null || spotEurMwh < 0) {
+            boolean mispel = marktwertbasis.istMispel(slotStart);
+            MarketValue mv = mispel
+                    ? marktwertbasis.jahresmarktwerte().get(slotStart.atZone(BERLIN).getYear())
+                    : marketValuesByMonth.get(berlinMonth(slotStart));
+            boolean praemienViertelstunde = mispel
+                    ? marktwertbasis.awGroesserNull().getOrDefault(slotStart, spotEurMwh >= 0)
+                    : spotEurMwh >= 0;
+            if (mv == null || !praemienViertelstunde) {
                 return spotEurMwh / 10.0;
             }
             return spotEurMwh / 10.0 + Math.max(site.anzulegenderWertCtKwh() - mv.ctKwh(), 0.0);
@@ -333,8 +462,9 @@ public final class SlotEconomics {
      * expression over a query that aliases the site row as {@code s}
      * ({@code plant_kind}, {@code netzladen_erlaubt},
      * {@code anzulegender_wert_ct_kwh}), the slot's Monatsmarktwert row as
-     * {@code mv} ({@code mv.value_ct_kwh}, joined for the slot's Berlin month)
-     * and the site's PRIMARY pv asset as {@code pv}
+     * {@code mv} ({@code mv.value_ct_kwh}, joined for the slot's Berlin month),
+     * the Marktwertbasis of {@link #marktwertbasisJoinSql} ({@code fw}, {@code jw},
+     * {@code aw} - MiSpeL MP-12) and the site's PRIMARY pv asset as {@code pv}
      * ({@code LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND
      * pv.is_primary} - the MaStR columns {@code commissioned_on}/
      * {@code pv_capacity_kwp}). {@code spotEurMwhExpr} is the slot's day-ahead
@@ -364,13 +494,15 @@ public final class SlotEconomics {
         String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
         String rate = eegRates.festeVerguetungCtSql("pv.commissioned_on", "pv.pv_capacity_kwp");
         // The DV premium exactly as the earnings' PREMIUM_ELIGIBLE /
-        // PREMIUM_RATE_CT pair applies it (incl. the per-slot §51 suspension);
-        // 0 for every other plant kind, NULL-spot propagates to NULL via the
-        // spot term next to it.
+        // PREMIUM_RATE_CT pair applies it (incl. the per-slot §51 suspension,
+        // and on a MiSpeL day the Jahresmarktwert + AW>0 list, MP-12); 0 for
+        // every other plant kind, NULL-spot propagates to NULL via the spot
+        // term next to it.
         String premiumCt = "(CASE WHEN s.plant_kind = 'direktvermarktung'"
                 + " AND s.anzulegender_wert_ct_kwh IS NOT NULL"
-                + " AND mv.value_ct_kwh IS NOT NULL AND " + spotEurMwhExpr + " >= 0"
-                + " THEN GREATEST(s.anzulegender_wert_ct_kwh - mv.value_ct_kwh, 0)"
+                + " AND " + PRAEMIEN_MARKTWERT_CT_SQL + " IS NOT NULL"
+                + " AND " + praemienViertelstundeSql(spotEurMwhExpr)
+                + " THEN GREATEST(s.anzulegender_wert_ct_kwh - " + PRAEMIEN_MARKTWERT_CT_SQL + ", 0)"
                 + " ELSE 0 END)";
         // §51a needs the spot SIGN: with a NULL spot both comparisons are
         // unknown and the CASE yields NULL - the Java twin's "unknowable".
