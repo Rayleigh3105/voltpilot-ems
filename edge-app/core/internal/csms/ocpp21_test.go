@@ -407,7 +407,7 @@ func TestOCPP21DischargeSetpointOnlyBehindTheSwitch(t *testing.T) {
 	}
 	p := req.ChargingProfile
 	if req.EvseID != 1 || p.ID != csms.TxProfileID(1) || p.ChargingProfilePurpose != "TxProfile" || p.TransactionID != "tx-21" ||
-		len(p.ChargingSchedule) != 1 || p.ChargingSchedule[0].Duration != 120 || p.ChargingSchedule[0].ChargingRateUnit != "W" ||
+		len(p.ChargingSchedule) != 1 || p.ChargingSchedule[0].Duration != int(csms.V2XDischargeFuse/time.Second) || p.ChargingSchedule[0].ChargingRateUnit != "W" ||
 		len(p.ChargingSchedule[0].ChargingSchedulePeriod) != 1 {
 		t.Fatalf("profile shape: %s", sent[0])
 	}

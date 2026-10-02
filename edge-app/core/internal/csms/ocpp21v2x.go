@@ -421,19 +421,27 @@ var _ ocpp.Request = setChargingProfile21{}
 // (OCPP 2.1 OperationModeEnumType).
 const operationModeCentralSetpoint = "CentralSetpoint"
 
+// V2XDischargeFuse is the duration of a DISCHARGE profile (negative
+// setpoint): when the box loses the station or stops renewing, the station
+// falls back to its charge-only TxDefaultProfile after this time instead of
+// TxProfileDuration (MiSpeL MP-39 - abort on communication loss; the guard
+// renews every entladeschutz.Erneuern). Charging setpoints keep the 120-s fuse
+// of the live allocation.
+const V2XDischargeFuse = 30 * time.Second
+
 // SetV2XSetpoint21 sends one V2X TxProfile to a connector of an OCPP 2.1
 // station: operationMode CentralSetpoint, setpoint in W with the 2.1 sign
 // (negative = discharge), bounded by limit = max(setpoint, 0) and
 // dischargeLimit = min(setpoint, 0). It takes the place of the live TxProfile
-// (same id, same 120-s fuse, bound to the station's transactionId): when the
-// box stops renewing it, the station falls back to the TxDefaultProfile,
-// which only charges.
+// (same id, bound to the station's transactionId; 120-s fuse, a discharge
+// setpoint V2XDischargeFuse): when the box stops renewing it, the station
+// falls back to the TxDefaultProfile, which only charges.
 //
-// ⚠ Nothing in the box's regulation calls this (MiSpeL MP-37). Discharging
-// with protection limits - export limit, § 14a, minimum SoC, the driver's
-// consent, abort on unplugging - is MP-39; until then the switch
-// Options.V2XDischarge stays off and the call is refused before anything is
-// sent.
+// The only caller in the box's regulation is the discharge guard
+// (internal/entladeschutz, MiSpeL MP-39: export limit, § 14a, reserve,
+// departure target, the driver's consent, abort on unplugging). While the
+// switch Options.V2XDischarge is off (default) the call is refused before
+// anything is sent.
 func (s *Server) SetV2XSetpoint21(ctx context.Context, chargerID string, connector int, setpointKw float64) (V2XSetpoint, error) {
 	if !s.opts.V2XDischarge {
 		return V2XSetpoint{}, ErrV2XDischargeOff
@@ -441,6 +449,10 @@ func (s *Server) SetV2XSetpoint21(ctx context.Context, chargerID string, connect
 	if math.IsNaN(setpointKw) || math.IsInf(setpointKw, 0) || connector <= 0 {
 		return V2XSetpoint{}, errors.New("V2X-Sollwert ungültig")
 	}
+	// One profile writer at a time: the live allocation (ApplyLimit) writes
+	// the same profile id.
+	s.profileMu.Lock()
+	defer s.profileMu.Unlock()
 	t, version, err := s.liveStation(chargerID)
 	if err != nil {
 		return V2XSetpoint{}, err
@@ -463,12 +475,16 @@ func (s *Server) SetV2XSetpoint21(ctx context.Context, chargerID string, connect
 	}
 	w := setpointKw * 1000
 	profileID := TxProfileID(connector)
+	fuse := TxProfileDuration
+	if setpointKw < 0 {
+		fuse = V2XDischargeFuse
+	}
 	req := setChargingProfile21{EvseID: connector, ChargingProfile: chargingProfile21{
 		ID: profileID, StackLevel: 0, ChargingProfilePurpose: PurposeTx,
 		ChargingProfileKind: "Absolute", TransactionID: stationTx,
 		ChargingSchedule: []chargingSchedule21{{
 			ID: profileID, StartSchedule: now.UTC().Format(time.RFC3339),
-			Duration: int(TxProfileDuration / time.Second), ChargingRateUnit: "W",
+			Duration: int(fuse / time.Second), ChargingRateUnit: "W",
 			ChargingSchedulePeriod: []chargingSchedulePeriod21{{
 				StartPeriod: 0, Setpoint: w, Limit: math.Max(w, 0), DischargeLimit: math.Min(w, 0),
 				OperationMode: operationModeCentralSetpoint,

@@ -50,6 +50,26 @@ Regeln P1, P2, Auflösung W8 ([Steuerungsverbund](steuerungsverbund.md)). Beide 
 - Die planbezogene Speicherreserve begrenzt gewöhnliche Fallback-Entladung; Peak-Verteidigung darf bis zum technischen SoC-Minimum gehen.
 - Pläne werden dauerhaft gespeichert, damit ein Neustart ohne Netz nicht alle Planinformationen verliert.
 
+## Fahrzeug an bidirektionalen Ladepunkten (MiSpeL MP-39)
+
+Wahlfrei und additiv: der Block `entities[].fahrzeug` am Eintrag eines bidirektionalen Ladepunkts. Eine Box vor MP-39
+überliest ihn; der Optimierer sendet ihn noch nicht (MP-33 hält `SchedulePlan.fahrzeug` intern, die Freigabe stellt der
+Kunde mit MP-41 ein).
+
+| Feld | Regel |
+|---|---|
+| `rueckspeisen` (Pflicht im Block) | Freigabe des Fahrers: `aus` · `v2h` nur ins Haus · `v2g` Haus und Netz. Nie über der Fähigkeit des Ladepunkts ([MP-31 § 2](mispel-ladepunkt-bidirektional.md#2-die-fähigkeit-fassungen-ab-einem-tag)). |
+| `mindest_soc_pct` | Reserve; fehlt sie, speist die Box nicht zurück |
+| `abfahrt`, `abfahrt_soc_pct` | nächste Abfahrt (UTC) und Ziel; die Box hält es erreichbar |
+| `kapazitaet_kwh`, `rueckspeiseleistung_kw` | wie [MP-31 § 5 / § 2](mispel-ladepunkt-bidirektional.md#5-das-fahrzeugfenster-planungsangabe-kein-gegenstand-der-festlegung) |
+
+Mit dem Block ist ein **negativer** `setpoint_kw` in einem Slot dieses Eintrags der Rückspeisewunsch („Erzeugung im
+Ladepunkt“, Anlage 1 S. 27); ohne Block bleibt er, was er für Verbraucher immer war: ungültig (der Schiedsrichter lehnt
+ihn ab). Fehlt der Block oder steht `rueckspeisen` auf `aus`, **speist die Box nie zurück**. Was die Box daraus macht –
+Exportgrenze, § 14a-Hülle, Reserve, Abfahrtsziel, Abbruch beim Abstecken und bei Verbindungsverlust –:
+[Entladen mit Schutzgrenzen](../../edge-ocpp21.md#entladen-mit-schutzgrenzen-mp-39). Beispiele:
+`examples/mqtt-schedule-2.0.valid.fahrzeug-v2h.json`, `examples/mqtt-schedule-2.0.invalid.fahrzeug-rueckspeisen.json`.
+
 ## Netzladen
 
 `charge_from_grid_allowed` erlaubt Netzladen ausschließlich bei **explizitem `true`**. Sonst gilt die Solar-only-Begrenzung auf gemessene verfügbare PV; unbekannte PV blockiert dieses Laden. Entladen wird durch diesen Schalter nicht freigegeben oder gesperrt.

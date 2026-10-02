@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entladeschutz"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -122,6 +123,9 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 		Port:    a.Cfg.OcppPort,
 		DataDir: a.Cfg.DataDir,
 		Log:     slog.Default().WithGroup("ocpp"),
+		// MiSpeL MP-39: V2X setpoints leave the box only behind this switch
+		// (default off) and only from the discharge guard.
+		V2XDischarge: a.Cfg.V2XEntladen,
 		OnSampledValues: func(samples []csms.SampledReading, observedAt time.Time) {
 			raw, marshalErr := json.Marshal(struct {
 				ObservedAt time.Time             `json:"observed_at"`
@@ -173,8 +177,18 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 		a.publishOcppState()
 		return nil
 	}
+	// The discharge guard exists BEFORE the executor starts: ocppApply reads
+	// its reservations (a construction field, never reassigned).
+	if a.Cfg.V2XEntladen {
+		a.v2x = entladeschutz.NewWaechter()
+		a.v2x.Freigegeben = rt.v2xWake
+	}
 	a.done.Add(1)
 	go a.ocppLoop(ctx)
+	if a.v2x != nil {
+		a.done.Add(1)
+		go a.v2xLoop(ctx)
+	}
 	a.publishOcppState()
 	return nil
 }
@@ -591,6 +605,9 @@ func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[str
 			continue
 		}
 		seen[alloc.Key] = claim.connectorID
+		if a.v2xReserviert(claim.chargerID, claim.connectorID) {
+			continue // the discharge guard owns this profile (MiSpeL MP-39)
+		}
 		cctx, cancel := context.WithTimeout(ctx, ocppCallTimeout)
 		err := rt.srv.ApplyLimit(cctx, claim.chargerID, claim.connectorID, claim.transactionID, alloc.Kw)
 		cancel()
@@ -618,6 +635,9 @@ func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[str
 		chargerID := key
 		if i := strings.LastIndex(key, "#"); i > 0 {
 			chargerID = key[:i]
+		}
+		if a.v2xReserviert(chargerID, connector) {
+			continue
 		}
 		cctx, cancel := context.WithTimeout(ctx, ocppCallTimeout)
 		if err := rt.srv.ClearLimit(cctx, chargerID, connector); err != nil {

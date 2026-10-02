@@ -209,4 +209,5 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
   (A1 Abschn. 3.2.5, S. 26–27). Das Datenmodell steht (MP-31); es fehlen Rechenwerk A2–A4 mit Fremdtankstrom (MP-32),
   Optimierer (MP-33), Box (MP-36ff.; der Simulator steht, MP-34,
   [Wegweiser](../agents/root/mispel-simulator-fahrzeug.md); OCPP 2.0.1 mit beiden Registern Z2V/Z2E misst seit
-  MP-35, [Umfang](../edge-ocpp201.md)) und die Fläche nach BK-41 (MP-41).
+  MP-35, [Umfang](../edge-ocpp201.md); Entladen mit Schutzgrenzen hinter dem Schalter seit MP-39,
+  [Umfang](../edge-ocpp21.md#entladen-mit-schutzgrenzen-mp-39)) und die Fläche nach BK-41 (MP-41).

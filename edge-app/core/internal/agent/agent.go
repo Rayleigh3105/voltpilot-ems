@@ -36,6 +36,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ebyte"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entladeschutz"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goe"
@@ -286,6 +287,9 @@ type Agent struct {
 	// which is the default - the box then behaves byte-for-byte as it did
 	// before the feature existed.
 	ocpp *ocppRuntime
+	// v2x is the discharge guard (MiSpeL MP-39, v2x_entladen.go); nil while
+	// Config.V2XEntladen is off.
+	v2x *entladeschutz.Waechter
 	// purgeOcpp is a narrow failure-injection seam for the all-recordings purge
 	// tests. nil means the real OCPP runtime (or no OCPP feature at all).
 	purgeOcpp func(time.Time) error

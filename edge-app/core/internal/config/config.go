@@ -140,6 +140,13 @@ type Config struct {
 	// site's netzladen_erlaubt flag; kept off by default on-device.
 	GridChargeAllowed bool `json:"grid_charge_allowed"`
 
+	// V2XEntladen is the global switch for feeding back from bidirectional
+	// vehicles (MiSpeL MP-39: csms.Options.V2XDischarge plus the discharge
+	// guard internal/entladeschutz). Default FALSE and deliberately WITHOUT an
+	// environment variable: a live release needs the hardware test bench
+	// (MP-42) and the captain's box release, not a configuration change.
+	V2XEntladen bool `json:"-"`
+
 	// CalibrationMaxKw is the HARD magnitude cap for the First-Light calibration
 	// step (the very first real write to a live customer battery, done BEFORE the
 	// family is certified): a calibration test setpoint is capped to

@@ -235,3 +235,42 @@ func TestGemeinsameSteuerungJeBoxEinDokumentEinePlanID(t *testing.T) {
 		t.Fatalf("empty document must be rejected keine_entitaeten, got %v", err)
 	}
 }
+
+// MiSpeL MP-39: the vehicle block is additive. Absent = nil (the box never
+// feeds back); values outside their range are not said (nil), never clamped
+// into a number the driver did not give.
+func TestFahrzeugBlockAdditiv(t *testing.T) {
+	doc := func(fahrzeug string) []byte {
+		return []byte(`{"schema_version":"2.0","tenant_id":"00000000-0000-0000-0000-000000000001",
+		"site_id":"00000000-0000-0000-0000-000000000002","device_id":"00000000-0000-0000-0000-000000000003",
+		"plan_id":"00000000-0000-0000-0000-000000000004","generated_at":"2026-10-01T17:00:00Z","slot_minutes":15,
+		"entities":[{"entity_id":"wb-1","kind":"ev-charger"` + fahrzeug + `,
+		"slots":[{"start":"2026-10-01T17:00:00Z","commands":{"setpoint_kw":-6}}]}]}`)
+	}
+	now := time.Date(2026, 10, 1, 17, 0, 0, 0, time.UTC)
+	p, err := Parse(doc(""), now)
+	if err != nil || p.Entity("wb-1").Fahrzeug != nil {
+		t.Fatalf("ohne Block: %v %+v", err, p.Entity("wb-1"))
+	}
+	p, err = Parse(doc(`,"fahrzeug":{"rueckspeisen":"v2g","mindest_soc_pct":30,"abfahrt":"2026-10-02T05:00:00Z",
+		"abfahrt_soc_pct":80,"kapazitaet_kwh":60,"rueckspeiseleistung_kw":10}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fz := p.Entity("wb-1").Fahrzeug
+	if fz == nil || fz.Rueckspeisen != "v2g" || *fz.MindestSocPct != 30 || *fz.AbfahrtSocPct != 80 ||
+		*fz.KapazitaetKwh != 60 || *fz.RueckspeiseleistungKw != 10 ||
+		!fz.AbfahrtAt.Equal(time.Date(2026, 10, 2, 5, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Block: %+v", fz)
+	}
+	p, err = Parse(doc(`,"fahrzeug":{"rueckspeisen":"v2h","mindest_soc_pct":120,"abfahrt":"morgen",
+		"abfahrt_soc_pct":-1,"kapazitaet_kwh":0,"rueckspeiseleistung_kw":-3}`), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fz = p.Entity("wb-1").Fahrzeug
+	if fz.Rueckspeisen != "v2h" || fz.MindestSocPct != nil || fz.AbfahrtAt != nil || fz.AbfahrtSocPct != nil ||
+		fz.KapazitaetKwh != nil || fz.RueckspeiseleistungKw != nil {
+		t.Fatalf("außerhalb: %+v", fz)
+	}
+}

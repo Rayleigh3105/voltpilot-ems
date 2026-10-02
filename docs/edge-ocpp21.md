@@ -88,21 +88,70 @@ MP-37.
 | `limit` / `dischargeLimit` | `max(Sollwert, 0)` / `min(Sollwert, 0)` – Überschwingen bleibt beim Sollwert |
 | Profil | Id `10 + Stecker`, Zweck TxProfile, Dauer 120 s, `transactionId` der Säule – **dasselbe** Profil wie die Live-Zuteilung |
 
-- **Schalter:** `csms.Options.V2XDischarge`, Vorgabe `false`. Aus → `ErrV2XDischargeOff`, **nichts** wird gesendet. In
-  der Box setzt ihn niemand, es gibt keine Umgebungsvariable und **keinen Aufrufer in der Regelung**: Entladen mit
-  Schutzgrenzen (Exportgrenze, § 14a, Mindest-Ladestand, Freigabe des Fahrers, Abbruch beim Abstecken) ist MP-39.
+- **Schalter:** `csms.Options.V2XDischarge`, Vorgabe `false`. Aus → `ErrV2XDischargeOff`, **nichts** wird gesendet. Die
+  Box setzt ihn aus `Config.V2XEntladen` (Vorgabe aus, **keine Umgebungsvariable**); einziger Aufrufer in der Regelung
+  ist der Entladewächter (MP-39, [unten](#entladen-mit-schutzgrenzen-mp-39)).
 - Nur über 2.1 (`ErrNotOCPP21` sonst), nur mit offener Sitzung und Transaktionskennung der Säule.
-- Die 120-s-Sicherung gilt auch hier: erneuert die Box den Sollwert nicht, fällt die Säule auf das TxDefaultProfile
-  zurück – und das lädt nur.
+- Die Sicherung gilt auch hier: erneuert die Box den Sollwert nicht, fällt die Säule auf das TxDefaultProfile
+  zurück – und das lädt nur. Ladende Sollwerte tragen 120 s, **Entlade-Sollwerte 30 s** (`csms.V2XDischargeFuse`,
+  MP-39): verliert die Box die Säule, endet die Rückspeisung spätestens nach 30 s.
+- `SetV2XSetpoint21` schreibt unter derselben Sperre wie `ApplyLimit` (`profileMu`) – ein Profilschreiber je Box.
 - `Connector.V2X` (`v2x_setpoint`) hält Sollwert, Antwort der Säule und Sendezeit. Plan, angenommener Auftrag und
   gemessene Wirkung bleiben getrennt: ob das Fahrzeug zurückspeist, zeigt nur das Exportregister (Z2E).
 - Die Nachricht läuft durch die Warteschlange der Bibliothek (OCPP-J: ein offener CALL je Verbindung), als eigener
   2.1-Anfragetyp unter dem Namen `SetChargingProfile`.
 
+## Entladen mit Schutzgrenzen (MP-39)
+
+Die Cloud plant, die Box entscheidet: `internal/entladeschutz` (`Entscheiden` rein, `Waechter` sendet), verdrahtet in
+`internal/agent/v2x_entladen.go`. Der Wächter läuft **nur bei `Config.V2XEntladen`** in einem eigenen 2-s-Takt neben
+dem Lastmanagement und fragt je Stecker: darf das Fahrzeug jetzt zurückspeisen, und wie viel?
+
+**Woher die Wünsche kommen.** Der Plan (`…/v2/plan`, [Fahrplan 2.0](contracts/v2/mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39))
+trägt am Ladepunkt-Eintrag den Block `fahrzeug` (Freigabe `rueckspeisen` aus/v2h/v2g, Reserve, Abfahrt, Ziel,
+Kapazität, Rückspeiseleistung); ein **negativer** `setpoint_kw` dieses Eintrags ist der Rückspeisewunsch. Der Agent
+hält ihn vom Schiedsrichter fern (der würde einen Sollwert am Ladepunkt ablehnen) – nur der Wächter liest ihn.
+**Fehlt der Block oder steht `rueckspeisen` auf `aus`, speist die Box nie zurück.**
+
+**Die Grenzen** – jede einzeln getestet (`entladeschutz_test.go`); was unbekannt oder veraltet ist, ergibt 0 kW
+(„im Zweifel laden statt entladen“):
+
+| Grenze | Regel | Grund |
+|---|---|---|
+| Schalter | `Config.V2XEntladen` aus → nichts | `schalter_aus` |
+| Freigabe des Fahrers | fehlt/`aus`/unbekanntes Wort → nichts | `freigabe_aus` |
+| nur ins Haus (V2H) | Rückspeisung ≤ Bezug am Netzzähler ohne Ladepunkt − 0,2 kW: keine „Erzeugung im Ladepunkt“, „während es gleichzeitig eine Netzeinspeisung gibt“ (Anlage 1 S. 11, Abschn. 2.1.3; S. 26 Fn. 21; S. 27 Fn. 22) | `nur_haus` |
+| Exportgrenze (V2G) | Einspeisung danach ≤ Exportgrenze des Netzanschlusses − 0,2 kW (`grid_export_limit_kw`, dieselbe Grenze wie der Einspeisewächter); ohne Grenze speist V2G nichts ein | `exportgrenze` |
+| § 14a EnWG | die beobachtete § 14a-Hülle (Bezugsgrenze am Netzpunkt) ist die Ladeleistung, mit der das Abfahrtsziel erreichbar bleiben muss | `abfahrtsziel` |
+| Mindest-Ladestand | Ladestand ≤ Reserve + 1 %-Punkt → nichts; Reserve nicht gesagt → nichts (wie der Optimierer, MP-33); Fahrzeug meldet Energie unter seinem V2X-Bereich → nichts | `mindest_soc`, `mindest_soc_unbekannt`, `unter_v2x_bereich` |
+| Abfahrtsziel | das höhere Ziel (Plan/Fahrzeug) bis zur früheren Abfahrt − 15 min mit der kleinsten bekannten Ladeleistung (Säule, Fahrzeug, § 14a) und √0,85 je Weg ((14)A2,A3,A4 = 0,85, A1 S. 35) immer erreichbar | `abfahrtsziel`, `abfahrt_unbekannt` |
+| Abstecken | Stecker frei/keine Sitzung → sofort nichts, Reservierung im selben Takt aufgehoben | `abgesteckt` |
+| Verbindungsverlust | Säule getrennt oder > 90 s still; Cloud getrennt; Plan veraltet; Netzzähler > 30 s; Ladestand > 5 min | `verbindung_verloren`, `cloud_getrennt`, `plan_veraltet`, `netz_unbekannt`, `ladestand_unbekannt` |
+| Leistung | min(Wunsch, Rückspeiseleistung, Fahrzeug, Säule); unter 0,5 kW oder unter der Mindestleistung des Fahrzeugs → nichts | `leistungsgrenze`, `fahrzeug_mindestleistung` |
+
+**Senden.** Rückspeisung erlaubt → `SetV2XSetpoint21` mit negativem Sollwert; jede Senkung sofort, sonst alle 10 s
+erneuert. Der Stecker ist ab dem ersten Senden **reserviert**: `ocppApply` schreibt dort weder Ladegrenze noch
+`ClearLimit` (gleiche Profil-Id). Endet die Erlaubnis, sendet der Wächter sofort Sollwert 0 (wenn Säule und Fahrzeug
+noch da sind), hebt die Reservierung auf und weckt das Lastmanagement – das Fahrzeug bekommt sein Ladeprofil zurück.
+Lehnt die Säule ab, wartet der Wächter 10 s bis zum nächsten Versuch.
+
+**Beweis im Simulator** (`szenario_test.go`, Wallbox aus MP-34, technisch V2H **und** V2G): V2H-Abend mit dem Wächter
+als Regler – Z1NE 0,000 kWh, Z2E 10,52 kWh, die Rückspeisung endet bei 40,98 % (Reserve 40 %), Abfahrt 07:00 mit 80 %;
+V2G bleibt unter der Exportgrenze 7 kW, ohne Grenze speist es nichts ein; Freigabe aus → Z2E 0; Abstecken 20:00 →
+kein Befehl danach.
+
 ## Bewusst nicht enthalten
 
-- **Entladebefehl aus der Regelung mit Schutzgrenzen**: MP-39. **Fläche** (Freigabe, Abfahrt, „Rückspeisen ja/nein“):
-  MP-41 nach dem abgestimmten Bedienkonzept BK-41.
+- **Live-Freigabe:** Prüfstand mit echter V2X-Wallbox und echtem Fahrzeug (MP-42, Partner) ist Voraussetzung jeder
+  Live-Freigabe; erst danach entscheidet der Captain über Box-Release und eine Umgebungsvariable für
+  `Config.V2XEntladen` (sie muss dann bis Beispiel-Env, Compose und Installations-Compose reichen). Die Regelung im
+  2-s-Takt ist ein Software-Nachweis; ob sie „technisch sichergestellt“ im Sinne von A1 S. 11 ist, misst der Prüfstand.
+- **Plan aus der Cloud:** der Optimierer veröffentlicht den Block `fahrzeug` und den negativen Sollwert noch nicht
+  (`SchedulePlan.fahrzeug` bleibt intern, MP-33); die Freigabe stellt der Kunde erst mit MP-41 ein. **Fläche**
+  (Freigabe, Abfahrt, „Rückspeisen ja/nein“): MP-41 nach dem abgestimmten Bedienkonzept BK-41.
+- Mehrere angesteckte Fahrzeuge an einer Säule: der Plan kennt einen Wunsch je Eintrag; ihn bekommt der erste
+  angesteckte Stecker, die übrigen speisen nicht zurück (ein bidirektionaler Ladepunkt je Anlage, wie MP-33). Eine
+  Aufteilung je Stecker braucht Plan und Vertrag je Stecker.
 - **Prüfung mit einer realen V2X-Wallbox** (ISO 15118-20 bidirektional): offen, braucht Hersteller und Testgerät
   (MP-37 Prüfnachweis, Prüfstand MP-42). Simulatorbelege ersetzen keinen Hardware-Prüfstand.
 - Ein **ISO-15118-Ladeplan** aus den Fahrzeugdaten (Antwort `Accepted` + Plan je Fahrzeug), `ChargingProfileKind`
@@ -121,6 +170,7 @@ MP-37.
 cd edge-app/core
 go test -race ./internal/csms/ -run 'OCPP21|OCPP201|OneEndpoint|OCPP16Bestand'
 go test -race ./internal/csms/ ./internal/agent/ ./internal/ocppsim/ ./internal/ladepunktsim/
+go test -race ./internal/entladeschutz/ ./internal/plan2/          # MP-39: Grenzen, Wächter, Simulator-Szenarien
 ```
 
 `TestOCPP21NegotiatesAndReportsISO15118Data` (Aushandlung in fünf Angeboten; roher OCPP-2.1-Testclient mit dem

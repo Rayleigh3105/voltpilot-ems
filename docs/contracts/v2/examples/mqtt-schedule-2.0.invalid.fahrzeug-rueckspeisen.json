@@ -1,0 +1,19 @@
+{
+  "schema_version": "2.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "6c9e2f7a-3b4d-4e6f-9a01-23456789abce",
+  "generated_at": "2026-10-01T16:00:02Z",
+  "slot_minutes": 15,
+  "entities": [
+    {
+      "entity_id": "wb-carport",
+      "kind": "ev-charger",
+      "fahrzeug": { "rueckspeisen": "ja", "mindest_soc_pct": 40 },
+      "slots": [
+        { "start": "2026-10-01T16:00:00Z", "commands": { "setpoint_kw": -10.0 } }
+      ]
+    }
+  ]
+}

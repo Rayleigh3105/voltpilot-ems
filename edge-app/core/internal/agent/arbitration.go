@@ -31,6 +31,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entladeschutz"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
@@ -361,6 +362,15 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			cmds, slotStart, ok := v2.ActiveCommands(pe.ID, now)
 			if !ok {
 				continue
+			}
+			if entladeschutz.WunschAusPlan(&pe, cmds.SetpointKw) {
+				// MiSpeL MP-39: a negative setpoint at a vehicle entity is the
+				// feed-back wish - the discharge guard reads it from the plan;
+				// the arbiter would refuse a setpoint on a charge point.
+				cmds.SetpointKw = nil
+				if cmds.Empty() {
+					continue
+				}
 			}
 			ttl := v2.ReceivedAt.Add(plan2.StaleAfter).Sub(now)
 			if ttl < time.Second {

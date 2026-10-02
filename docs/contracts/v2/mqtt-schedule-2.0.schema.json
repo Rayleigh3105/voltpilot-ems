@@ -98,6 +98,24 @@
             "maximum": 100,
             "description": "Storage entities only, OPTIONAL: the SoC floor reserved for peak defense (PS-2 semantics per entity instead of per site - multi-battery ready). Ordinary fallback discharge stops at this floor; peak DEFENSE alone may go below it down to the technical SoC floor. Survives plan staleness. Restrict-only: it can only ever raise a floor."
           },
+          "fahrzeug": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rueckspeisen"],
+            "description": "OPTIONAL vehicle block of a bidirectional charge-point entity (MiSpeL MP-39, additive; boxes before MP-39 ignore it). It carries the driver's consent and the vehicle window the box keeps reachable (mispel-ladepunkt-bidirektional.md § 5). With this block, a NEGATIVE setpoint_kw in a slot of this entity is the feed-back wish ('Erzeugung im Ladepunkt', MiSpeL A1 S. 27; storage sign: - = discharge); the box executes it only inside its protection limits (export limit, § 14a envelope, reserve, departure target, consent, abort on unplugging - edge-app internal/entladeschutz) and NEVER without the block or with rueckspeisen 'aus'. The cloud never sends a stage above the charge point's capability (MP-31 § 2: v2h/v2g).",
+            "properties": {
+              "rueckspeisen": {
+                "type": "string",
+                "enum": ["aus", "v2h", "v2g"],
+                "description": "The driver's consent (set in the portal, MP-41): 'aus' = never feed back; 'v2h' = only into the house - no Erzeugung im Ladepunkt while the site feeds into the grid (MiSpeL A1 S. 11, Abschn. 2.1.3; S. 26 Fn. 21); 'v2g' = house and grid up to the export limit of the grid connection."
+              },
+              "mindest_soc_pct": { "type": "number", "minimum": 0, "maximum": 100, "description": "Reserve: never feed back below this state of charge. Absent = not said = the box does not feed back." },
+              "abfahrt": { "type": "string", "format": "date-time", "description": "Next expected departure (RFC 3339, UTC) from the vehicle window. The box also honors an earlier departure the vehicle reports (ISO 15118-20)." },
+              "abfahrt_soc_pct": { "type": "number", "minimum": 0, "maximum": 100, "description": "State of charge wanted at departure; the box keeps it reachable with the charging power it can count on (including the observed § 14a envelope)." },
+              "kapazitaet_kwh": { "type": "number", "exclusiveMinimum": 0, "maximum": 500, "description": "Usable capacity of the vehicle that usually stands here (MP-31 § 5)." },
+              "rueckspeiseleistung_kw": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000, "description": "Highest feed-back power of the wallbox (MP-31 § 2)." }
+            }
+          },
           "slots": {
             "type": "array",
             "minItems": 1,
@@ -114,7 +132,7 @@
                 },
                 "commands": {
                   "type": "object",
-                  "description": "Target values for the slot, keyed by the generic command vocabulary (shared with edge-desired.schema.json). A slot may set several channels of one entity (e.g. a hybrid inverter entity: setpoint_kw for its storage + limit_kw for its generation). Absent key = no command for that channel this slot; specifically an absent limit_kw/limit_pct means NO limit and MUST clear any previously applied limit (the 1.0 pv_limit_kw clearing rule). All values are ADVISORY - guards clamp. Sign conventions per capability: storage setpoint_kw + = charge / - = discharge; consumer setpoint_kw + = consume; generation is only ever capped (limit_*), never commanded to produce.",
+                  "description": "Target values for the slot, keyed by the generic command vocabulary (shared with edge-desired.schema.json). A slot may set several channels of one entity (e.g. a hybrid inverter entity: setpoint_kw for its storage + limit_kw for its generation). Absent key = no command for that channel this slot; specifically an absent limit_kw/limit_pct means NO limit and MUST clear any previously applied limit (the 1.0 pv_limit_kw clearing rule). All values are ADVISORY - guards clamp. Sign conventions per capability: storage setpoint_kw + = charge / - = discharge; consumer setpoint_kw + = consume - except a charge-point entity WITH a 'fahrzeug' block, where a negative setpoint_kw is the feed-back wish (MiSpeL MP-39); generation is only ever capped (limit_*), never commanded to produce.",
                   "additionalProperties": false,
                   "minProperties": 1,
                   "properties": {

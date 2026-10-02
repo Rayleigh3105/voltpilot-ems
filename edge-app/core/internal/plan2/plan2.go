@@ -102,7 +102,30 @@ type Entity struct {
 	ChargeFromGridAllowed bool
 	// ReserveSocPct is the per-entity peak reserve (survives staleness).
 	ReserveSocPct *float64
-	Slots         []Slot
+	// Fahrzeug is the vehicle block of a bidirectional charge point (MiSpeL
+	// MP-39); nil = absent = the box never feeds back from this entity.
+	Fahrzeug *Fahrzeug
+	Slots    []Slot
+}
+
+// Fahrzeug is the plan's vehicle block at a charge-point entity (MiSpeL
+// MP-39, mqtt-schedule-2.0 `entities[].fahrzeug`): the driver's consent and
+// the vehicle window the box keeps reachable. Pointers: nil = not said,
+// never 0. A negative setpoint_kw in a slot of this entity is the feed-back
+// wish („Erzeugung im Ladepunkt“, A1 S. 27); the box executes it only inside
+// its protection limits (internal/entladeschutz).
+type Fahrzeug struct {
+	// Rueckspeisen is the driver's consent verbatim: "aus", "v2h" (nur ins
+	// Haus), "v2g" (Haus und Netz). Anything else reads as aus.
+	Rueckspeisen string
+	// MindestSocPct is the reserve, AbfahrtAt/AbfahrtSocPct the next departure
+	// and its target, KapazitaetKwh the usable capacity (MP-31 § 5), and
+	// RueckspeiseleistungKw the wallbox's feed-back power (MP-31 § 2).
+	MindestSocPct         *float64
+	AbfahrtAt             *time.Time
+	AbfahrtSocPct         *float64
+	KapazitaetKwh         *float64
+	RueckspeiseleistungKw *float64
 }
 
 // Plan is a parsed, validated 2.0 plan.
@@ -135,7 +158,15 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 			Kind                  string   `json:"kind"`
 			ChargeFromGridAllowed *bool    `json:"charge_from_grid_allowed"`
 			ReserveSocPct         *float64 `json:"reserve_soc_pct"`
-			Slots                 []struct {
+			Fahrzeug              *struct {
+				Rueckspeisen          string   `json:"rueckspeisen"`
+				MindestSocPct         *float64 `json:"mindest_soc_pct"`
+				Abfahrt               string   `json:"abfahrt"`
+				AbfahrtSocPct         *float64 `json:"abfahrt_soc_pct"`
+				KapazitaetKwh         *float64 `json:"kapazitaet_kwh"`
+				RueckspeiseleistungKw *float64 `json:"rueckspeiseleistung_kw"`
+			} `json:"fahrzeug"`
+			Slots []struct {
 				Start    string `json:"start"`
 				Commands struct {
 					SetpointKw *float64 `json:"setpoint_kw"`
@@ -197,6 +228,17 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 			v := *e.ReserveSocPct
 			ent.ReserveSocPct = &v
 		}
+		if f := e.Fahrzeug; f != nil {
+			fz := &Fahrzeug{Rueckspeisen: f.Rueckspeisen,
+				MindestSocPct: bereich(f.MindestSocPct, 0, 100), AbfahrtSocPct: bereich(f.AbfahrtSocPct, 0, 100),
+				KapazitaetKwh:         positiv(f.KapazitaetKwh),
+				RueckspeiseleistungKw: positiv(f.RueckspeiseleistungKw)}
+			if t, err := time.Parse(time.RFC3339Nano, f.Abfahrt); err == nil {
+				t = t.UTC()
+				fz.AbfahrtAt = &t
+			}
+			ent.Fahrzeug = fz
+		}
 		for _, s := range e.Slots {
 			start, err := time.Parse(time.RFC3339Nano, s.Start)
 			if err != nil {
@@ -223,6 +265,22 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		return nil, reject(GrundKeineEntitaeten, errors.New("plan carries no usable entity slots"))
 	}
 	return p, nil
+}
+
+// bereich keeps a value inside [lo, hi]; outside it is not said (nil).
+func bereich(v *float64, lo, hi float64) *float64 {
+	if v = cleanNum(v); v == nil || *v < lo || *v > hi {
+		return nil
+	}
+	return v
+}
+
+// positiv keeps a value above 0; anything else is not said (nil).
+func positiv(v *float64) *float64 {
+	if v = cleanNum(v); v == nil || *v <= 0 {
+		return nil
+	}
+	return v
 }
 
 func cleanNum(v *float64) *float64 {
