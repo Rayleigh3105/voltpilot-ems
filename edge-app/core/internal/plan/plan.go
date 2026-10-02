@@ -161,17 +161,29 @@ type Plan struct {
 	// a wallbox being unplugged. nil = no limit configured - byte-for-byte
 	// pre-feature behavior; a limit is NEVER invented.
 	GridExportLimitKw *float64 `json:"grid_export_limit_kw,omitempty"`
+	// Foerderweg is the OPTIONAL MiSpeL MP-14 field: the funding route of the
+	// feed-in point the cloud planned with (site_foerderweg, MP-5; one of the
+	// five values in foerderweg.go). It decides whether grid_charge_allowed
+	// may release the EEG clamp at all (NetzladenZulaessig). "" = field
+	// absent (old cloud, old retained or persisted plan): the clamp holds.
+	Foerderweg string `json:"foerderweg,omitempty"`
 }
 
 // SolarOnlyCharge reports whether the plan demands the EEG solar-only-charge
-// clamp. Fail-safe: only an EXPLICIT grid_charge_allowed=true releases the
-// clamp; an absent field - or no plan at all - keeps the most restrictive
-// posture (see GridChargeAllowed). The clamp composes into the
-// self-consumption fallback as a no-op (pv - load never exceeds pv for a
-// non-negative load), so a nil/legacy plan on a merchant site costs nothing
-// on the fallback path.
+// clamp. Since MiSpeL MP-14 the Förderweg decides: only a route that leaves
+// grid charging to the customer (Abgrenzungs-, Pauschaloption, ungefördert)
+// AND an EXPLICIT grid_charge_allowed=true - the customer's setting - release
+// the clamp. Einspeisevergütung and Ausschließlichkeitsoption clamp whatever
+// grid_charge_allowed says; an absent or unknown Förderweg, an absent
+// grid_charge_allowed or no plan at all keep the most restrictive posture
+// (see GridChargeAllowed). The clamp composes into the self-consumption
+// fallback as a no-op (pv - load never exceeds pv for a non-negative load),
+// so a nil/legacy plan on a merchant site costs nothing on the fallback path.
 func (p *Plan) SolarOnlyCharge() bool {
-	return p == nil || p.GridChargeAllowed == nil || !*p.GridChargeAllowed
+	if p == nil || !NetzladenZulaessig(p.Foerderweg) {
+		return true
+	}
+	return p.GridChargeAllowed == nil || !*p.GridChargeAllowed
 }
 
 // StrictExclusivityCharge reports whether the plan demands the STRICT EEG
@@ -263,6 +275,7 @@ type wire struct {
 	PeakReserveSocPct    *float64 `json:"peak_reserve_soc_pct"`
 	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct"`
 	GridExportLimitKw    *float64 `json:"grid_export_limit_kw"`
+	Foerderweg           string   `json:"foerderweg"`
 	Slots                []struct {
 		Start                  string   `json:"start"`
 		BatterySetpointKw      float64  `json:"battery_setpoint_kw"`
@@ -296,6 +309,9 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		PlanID:      w.PlanID,
 		SlotMinutes: w.SlotMinutes,
 		ReceivedAt:  receivedAt,
+		// MiSpeL MP-14: kept as carried; an unknown value releases nothing
+		// (NetzladenZulaessig) and the local page names it as unknown.
+		Foerderweg: w.Foerderweg,
 	}
 	if w.GridChargeAllowed != nil {
 		v := *w.GridChargeAllowed
@@ -570,6 +586,8 @@ type View struct {
 	Fresh             bool       `json:"fresh"`
 	ActiveIndex       int        `json:"active_index"` // -1 when no slot is active
 	Slots             []SlotView `json:"slots"`
+	// Foerderweg is the row "Förderweg" of the plan card (MiSpeL MP-14).
+	Foerderweg FoerderwegView `json:"foerderweg"`
 }
 
 // BuildView projects the plan for the local web app at "now": it marks the
@@ -586,6 +604,7 @@ func (p *Plan) BuildView(now time.Time) View {
 		StaleAfterSeconds: int(StaleAfter / time.Second),
 		Fresh:             fresh,
 		ActiveIndex:       -1,
+		Foerderweg:        p.FoerderwegView(),
 	}
 	width := time.Duration(p.SlotMinutes) * time.Minute
 	v.Slots = make([]SlotView, 0, len(p.Slots))

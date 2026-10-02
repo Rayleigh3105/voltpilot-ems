@@ -65,6 +65,7 @@ func nativeAgent(t *testing.T) (*Agent, string) {
 		ReceivedAt:           nativeSlotStart,
 		GeneratedAt:          nativeSlotStart,
 		GridChargeAllowed:    &yes,
+		Foerderweg:           plan.FoerderwegUngefoerdert,
 		EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start:                nativeSlotStart,

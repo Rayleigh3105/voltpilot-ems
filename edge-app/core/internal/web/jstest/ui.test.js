@@ -3126,3 +3126,77 @@ test("Rollen: die Rollen-Liste deckt das Vokabular der Go-Topologie ab", () => {
     assert.ok(R.ROLE_NODE_LABEL[wort], "Rolle " + wort + " hat kein Kunden-Wort");
   }
 });
+
+/* ======== Förderweg row of the plan card (MiSpeL MP-14, BK-14 Variante A) ======== */
+
+function fw(plan) {
+  return load(["foerderweg.js"]).VPFoerderweg.derive(plan);
+}
+function planMit(foerderweg) {
+  return { generated_at: "2026-10-02T11:15:00Z", received_at: "2026-10-02T11:16:00Z", foerderweg: foerderweg };
+}
+
+test("förderweg: Abgrenzungsoption mit Netzladen nennt Begriff und 'erlaubt — Ihre Einstellung im Portal'", () => {
+  const d = fw(planMit({ foerderweg: "marktpraemie_abgrenzung", bekannt: true, solar_only: false, grid_charge_allowed: true }));
+  assert.strictEqual(d.title, "Marktprämie mit Abgrenzungsoption");
+  assert.strictEqual(d.text, "Laden aus dem Netz: erlaubt — Ihre Einstellung im Portal.");
+  assert.strictEqual(d.streng, false);
+  const klemme = d.tech.filter((r) => r[0] === "Solarlade-Klemme")[0];
+  assert.match(klemme[1], /^aus/);
+});
+
+test("förderweg: ungeförderte Direktvermarktung und Pauschaloption lassen das Netzladen dem Kunden", () => {
+  for (const [weg, begriff] of [["ungefoerdert", "Ungeförderte Direktvermarktung"], ["marktpraemie_pauschal", "Marktprämie mit Pauschaloption"]]) {
+    const d = fw(planMit({ foerderweg: weg, bekannt: true, solar_only: false, grid_charge_allowed: true }));
+    assert.strictEqual(d.title, begriff);
+    assert.strictEqual(d.text, "Laden aus dem Netz: erlaubt — Ihre Einstellung im Portal.");
+  }
+});
+
+test("förderweg: Netzladen im Portal aus sagt 'aus', nie 'erlaubt'", () => {
+  const d = fw(planMit({ foerderweg: "marktpraemie_abgrenzung", bekannt: true, solar_only: true, grid_charge_allowed: false }));
+  assert.strictEqual(d.text, "Laden aus dem Netz: aus — Ihre Einstellung im Portal.");
+});
+
+test("förderweg: Ausschließlichkeitsoption und Einspeisevergütung laden nur mit Sonnenstrom", () => {
+  for (const [weg, begriff] of [["marktpraemie_ausschliesslichkeit", "Marktprämie mit Ausschließlichkeitsoption"], ["einspeiseverguetung", "Einspeisevergütung"]]) {
+    const d = fw(planMit({ foerderweg: weg, bekannt: true, solar_only: true, grid_charge_allowed: false }));
+    assert.strictEqual(d.title, begriff);
+    assert.match(d.text, /^Laden nur mit Sonnenstrom/);
+    assert.strictEqual(d.streng, false);
+  }
+});
+
+test("förderweg: die strenge Lesart ist gelb und sagt, wer sie eingeschaltet hat", () => {
+  const d = fw(planMit({ foerderweg: "marktpraemie_ausschliesslichkeit", bekannt: true, solar_only: true,
+    grid_charge_allowed: false, strict_exclusivity: true, strict_exclusivity_tolerance_kwh: 0 }));
+  assert.strictEqual(d.streng, true);
+  assert.strictEqual(d.lead, "Strenge Lesart, von VoltPilot eingeschaltet:");
+  assert.match(d.text, /Anlage 1 S\. 11/);
+  const tech = Object.fromEntries(JSON.parse(JSON.stringify(d.tech)));
+  assert.strictEqual(tech.strict_exclusivity, "true");
+  assert.strictEqual(tech.strict_exclusivity_tolerance_kwh, "0");
+});
+
+test("förderweg: ohne Plan, ohne Feld oder mit unbekanntem Wert lädt die Box sicherheitshalber nur mit Sonnenstrom", () => {
+  const ohnePlan = fw(null);
+  assert.strictEqual(ohnePlan.title, "Noch nicht bekannt");
+  assert.strictEqual(ohnePlan.text, "Die Box lädt sicherheitshalber nur mit Sonnenstrom.");
+  assert.strictEqual(ohnePlan.tech.length, 0);
+  const ohneFeld = fw(planMit({ bekannt: false, solar_only: true, grid_charge_allowed: true }));
+  assert.strictEqual(ohneFeld.title, "Unbekannt");
+  assert.strictEqual(ohneFeld.text, "Die Box lädt sicherheitshalber nur mit Sonnenstrom.");
+  const fremd = fw(planMit({ foerderweg: "marktpraemie_neu", bekannt: false, solar_only: true }));
+  assert.strictEqual(fremd.title, "Unbekannt");
+  const tech = Object.fromEntries(JSON.parse(JSON.stringify(fremd.tech)));
+  assert.strictEqual(tech.foerderweg, "marktpraemie_neu");
+});
+
+test("förderweg: der Technikmodus nennt Planzeit und alle Plan-Felder", () => {
+  const d = fw(planMit({ foerderweg: "marktpraemie_abgrenzung", bekannt: true, solar_only: false, grid_charge_allowed: true, grid_export_limit_kw: 30 }));
+  const keys = JSON.parse(JSON.stringify(d.tech)).map((r) => r[0]);
+  assert.deepStrictEqual(keys, ["Planzeit", "foerderweg", "grid_charge_allowed", "strict_exclusivity",
+    "strict_exclusivity_tolerance_kwh", "grid_export_limit_kw", "Solarlade-Klemme"]);
+  assert.match(d.tech[0][1], /^Fahrplan von \d\d:\d\d · empfangen \d\d:\d\d$/);
+  assert.strictEqual(d.tech[5][1], "30");
+});

@@ -102,7 +102,7 @@ func runK6(t *testing.T, s k6Scenario) k6Result {
 	}
 	allowed, floor := true, nwFloorPct
 	p := &plan.Plan{SlotMinutes: 15, ReceivedAt: nwStart, GeneratedAt: nwStart,
-		GridChargeAllowed: &allowed, EffectiveFloorSocPct: &floor, GridExportLimitKw: s.exportLimitKw}
+		GridChargeAllowed: &allowed, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor, GridExportLimitKw: s.exportLimitKw}
 	for i := 0; i*900 <= s.seconds; i++ {
 		sl := nwFlagsSlot(nwStart.Add(time.Duration(i)*15*time.Minute), nwSlot{flags: s.flags})
 		sl.PvLimitKw = s.planPvLimitKw

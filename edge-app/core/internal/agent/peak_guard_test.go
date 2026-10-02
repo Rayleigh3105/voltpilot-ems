@@ -156,7 +156,7 @@ func TestScheduleSetpointIsShavedAgainstTheQuarterMean(t *testing.T) {
 	a.currentPlan = &plan.Plan{
 		SlotMinutes:       15,
 		ReceivedAt:        now,
-		GridChargeAllowed: &allowed, // merchant plan: the charge is visible
+		GridChargeAllowed: &allowed, Foerderweg: plan.FoerderwegUngefoerdert, // merchant plan: the charge is visible
 		GridImportLimitKw: &target,
 		PeakReserveSocPct: &reserve,
 		Slots:             []plan.Slot{{Start: now.Add(-1 * time.Minute), BatterySetpointKw: 20}},

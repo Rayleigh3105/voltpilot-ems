@@ -560,6 +560,7 @@ func TestFullLoopEnrollExecuteBufferReplay(t *testing.T) {
 		// fail-safes into the EEG solar-only clamp (charge <= measured pv,
 		// FK3 PV-bus), which would mask the rated-band clamp this step asserts.
 		"grid_charge_allowed": true,
+		"foerderweg":          "ungefoerdert",
 		"slots": []map[string]any{
 			{"start": slotStart.Format(time.RFC3339), "battery_setpoint_kw": 999.0},
 			{"start": slotStart.Add(15 * time.Minute).Format(time.RFC3339), "battery_setpoint_kw": 999.0},

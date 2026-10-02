@@ -85,7 +85,7 @@ func TestOwnerClaimedNeutralCommandBlocksUnplannedIdleFollower(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 0, UnplannedLoadDischarge: true,
 		}},
@@ -197,7 +197,7 @@ func setRetainedLegacyCoverScenario(a *Agent, now time.Time) {
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 0, CoverLoadFromBattery: true,
 		}},

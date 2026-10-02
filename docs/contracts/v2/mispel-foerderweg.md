@@ -27,7 +27,8 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 
 > **Wer anruft (Stand MP-17):** die Routen, `PUT /api/v1/sites/{id}` (alter Schalter, § 6), der
 > Optimierer (`inputs.load_foerderwege`, § 5) und das Portal: Anlage › Einstellungen, Zeile „Förderweg“ mit dem
-> Dialog „Förderweg ändern“ (MP-17 nach dem abgestimmten Bedienkonzept BK-17, Variante A). Noch ohne Box (MP-14).
+> Dialog „Förderweg ändern“ (MP-17 nach dem abgestimmten Bedienkonzept BK-17, Variante A). Die Box bekommt
+> den Förderweg seit MP-14 über den Plan (Feld `foerderweg`, § 5).
 
 ## 1. Die fünf Werte (Begriffe aus EEG und Festlegung)
 
@@ -165,8 +166,11 @@ Ein VoltPilot-Partner ist noch nicht wählbar (E8 = D: erst nach der Wahl aus de
   Fassung, § 7; ohne Regel der W4-Rückfall „keine Prämie bei SP¼ < 0“, Stand vorläufig); ohne Fassung der Bestand,
   also der Monatsmarktwert. Der Mischbetrieb liest seine Prämie für grün/gelb aus derselben Reihe
   (`pricing.marktpraemie_eur_mwh`) — mit eingetragener `aw_regel` also nach der Liste.
-- **Box (MP-14):** bekommt den Förderweg über den Plan; bis dahin wie heute `grid_charge_allowed` aus dem
-  Spiegel.
+- **Box (MP-14, gebaut):** bekommt den Förderweg des Plantags über den Plan (optionales Feld `foerderweg` in
+  `mqtt-schedule.schema.json`, additiv). Die EEG-Klemme löst sich nur, wo die Spalte „Netzladen“ aus § 1 „Einstellung
+  des Kunden“ sagt, und nur mit `grid_charge_allowed=true` (dem Spiegel `netzladen_erlaubt`). Einspeisevergütung und
+  Ausschließlichkeitsoption klemmen auch bei einem noch nicht umgelegten Spiegel. Fehlt das Feld (alte Cloud), lädt
+  die Box nur mit Sonnenstrom ([Wegweiser](../../agents/root/mispel-box-foerderweg.md)).
 - **Rechenwerk (MP-8):** `MispelAbgrenzungService.Vorgaben.formelsatz` kommt heute vom Aufrufer; der
   Monatslauf soll ihn aus `FoerderwegService.ansicht(site, tag)` lesen (Formelsatz und Förderweg je Tag des
   Monats; ein Wechsel im Monat ist ein Rumpfmonat, MP-21). Ein Lauf ohne Abgrenzung oder ohne Formelsatz an

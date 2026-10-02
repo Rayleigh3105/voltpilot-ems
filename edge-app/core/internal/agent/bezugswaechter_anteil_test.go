@@ -11,6 +11,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -29,6 +30,7 @@ func TestV3FuehrendeBoxLaedtOhneBekannteGrenzeNichtAusDemNetz(t *testing.T) {
 		p := exportPlan(now, 50, nil, nil)
 		netz := true // the plan allows charging from the grid (no EEG clamp)
 		p.GridChargeAllowed = &netz
+		p.Foerderweg = plan.FoerderwegUngefoerdert
 		a.currentPlan = p
 		a.lastReading = guards.Reading{SocPct: 50, PvKw: 12, LoadKw: 30, GridLimitKw: guards.Unknown()}
 		a.lastReadingAt = now

@@ -51,7 +51,7 @@ func pilstingNightPlan(now time.Time, coverLoad bool) *plan.Plan {
 		SlotMinutes:       15,
 		ReceivedAt:        now.Add(-time.Minute),
 		GeneratedAt:       now.Add(-time.Minute),
-		GridChargeAllowed: &yes,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert,
 		Slots: []plan.Slot{{
 			Start:                now.Add(-5 * time.Minute),
 			BatterySetpointKw:    -4.332,
@@ -74,7 +74,7 @@ func TestAuthorizedIdleSlotCoversScreenshotAThenReportsScreenshotBNeutral(t *tes
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 0, UnplannedLoadDischarge: true}},
 	}
 	a.lastReading = guards.Reading{SocPct: 95, PvKw: 22.1, LoadKw: 36.8, GridLimitKw: guards.Unknown()}
@@ -137,7 +137,7 @@ func TestIdleFahrplanSlotCoversTheMeasuredDeficitAtAnySocAboveTheReserve(t *test
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 0,
 			// The cloud said nothing: its forecast saw the slot exporting.
@@ -205,7 +205,7 @@ func TestTheLocalDeficitRuleNeverCutsBackAPlannedSale(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{Start: now, BatterySetpointKw: -27}},
 	}
 	a.lastReading = guards.Reading{
@@ -238,7 +238,7 @@ func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 5}},
 	}
 	// The plan buys for the battery on purpose: house 2.7, PV 1.3, charge 5.
@@ -552,8 +552,8 @@ func TestALegacyPlanWithoutTheCoverFlagBehavesExactlyAsBefore(t *testing.T) {
 	a.currentPlan = &plan.Plan{
 		SlotMinutes:       15,
 		ReceivedAt:        now.Add(-time.Minute),
-		GridChargeAllowed: &yes,
-		Slots:             []plan.Slot{{Start: now.Add(-5 * time.Minute), BatterySetpointKw: -4.332}},
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert,
+		Slots: []plan.Slot{{Start: now.Add(-5 * time.Minute), BatterySetpointKw: -4.332}},
 	}
 	a.lastReading = pilstingNightReading()
 	a.mu.Unlock()

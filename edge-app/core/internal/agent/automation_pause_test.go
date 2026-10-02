@@ -87,7 +87,7 @@ func TestManualBatteryAndPlantRestOutrankIdleFollowerAndOptimizer(t *testing.T) 
 	a.mu.Lock()
 	a.currentPlan = &plan.Plan{
 		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor,
 		GridImportLimitKw: &peak,
 		Slots: []plan.Slot{{
 			Start: now, BatterySetpointKw: 0,

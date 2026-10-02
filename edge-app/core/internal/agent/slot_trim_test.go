@@ -42,7 +42,7 @@ func pilstingPlan(now time.Time, surplusOnly bool) *plan.Plan {
 		SlotMinutes:       15,
 		ReceivedAt:        now.Add(-time.Minute),
 		GeneratedAt:       now.Add(-time.Minute),
-		GridChargeAllowed: &yes, // merchant: the FK3 clamp is not what we are testing
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, // merchant: the FK3 clamp is not what we are testing
 		Slots: []plan.Slot{{
 			Start:                 now.Add(-5 * time.Minute),
 			BatterySetpointKw:     10.8,
@@ -113,8 +113,8 @@ func TestALegacyPlanWithoutTheFlagBehavesExactlyAsBefore(t *testing.T) {
 	a.currentPlan = &plan.Plan{
 		SlotMinutes:       15,
 		ReceivedAt:        now.Add(-time.Minute),
-		GridChargeAllowed: &yes,
-		Slots:             []plan.Slot{{Start: now.Add(-5 * time.Minute), BatterySetpointKw: 10.8}},
+		GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert,
+		Slots: []plan.Slot{{Start: now.Add(-5 * time.Minute), BatterySetpointKw: 10.8}},
 	}
 	a.lastReading = pilstingReading()
 	a.mu.Unlock()

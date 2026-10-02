@@ -167,6 +167,7 @@ func TestSurplusStorageLeavesEveryOtherIntentUntouched(t *testing.T) {
 		patch: func(p *plan.Plan, r *guards.Reading) {
 			yes := true
 			p.GridChargeAllowed = &yes
+			p.Foerderweg = plan.FoerderwegUngefoerdert
 			r.PvKw = guards.Unknown()
 		},
 	}, {

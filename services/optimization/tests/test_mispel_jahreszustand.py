@@ -465,7 +465,9 @@ def test_ohne_jahreslauf_plant_die_pauschal_anlage_wie_vorher(jahreslauf):
     inp = gather_inputs("postgresql://fake", _pauschal_site(), test_freshness.NOW, test_freshness.SLOTS)
     assert inp.mispel_jahresstand is None
     vorher = gather_inputs("postgresql://fake", test_freshness._site(), test_freshness.NOW, test_freshness.SLOTS)
-    assert inp == vorher
+    # MiSpeL MP-14: nur der Foerderweg, den der Plan zur Box traegt, ist ein anderer.
+    assert inp.foerderweg == "marktpraemie_pauschal"
+    assert replace(inp, foerderweg=vorher.foerderweg) == vorher
 
 
 def test_anlage_ohne_pauschaloption_liest_keinen_jahreslauf(jahreslauf):

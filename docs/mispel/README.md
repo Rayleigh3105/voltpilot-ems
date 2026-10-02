@@ -70,6 +70,11 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   will, nutzt den Mischbetrieb: dort bekommt die EE-Speichererzeugung (gelb) die Marktprämie und rot die Saldierung,
   während der Händler-Modus alles zu blankem Spot exportiert.
 - **`dv_konform` ist entfernt (W8, MP-10):** seine Bedeutung trägt der Förderweg `marktpraemie_ausschliesslichkeit`.
+- **Box (MP-14, BK-14 Variante A):** Der Förderweg reist im Plan zur Box (`foerderweg`). Die EEG-Klemme gilt nur noch für
+  Einspeisevergütung und Ausschließlichkeitsoption, streng über MP-45. Abgrenzung, Pauschal und ungefördert laden aus
+  dem Netz nach der Einstellung des Kunden, innerhalb der Export-, § 14a- und Negativpreis-Wächter. Ohne Feld lädt die Box
+  nur mit Sonnenstrom. Die Box zeigt den Förderweg als erste Zeile im „Lade- & Entladeplan“
+  ([Wegweiser](../agents/root/mispel-box-foerderweg.md)).
 - **Einrichtung im Portal (MP-17, BK-17 Variante A):** Anlage › Einstellungen, Zeile „Förderweg“ (statt
   „Veräußerungsform“) mit dem Dialog „Förderweg ändern“ — Förderweg · Zähler · Formelsatz · Partner · Prüfen, Kurzweg
   für Einspeisevergütung, Ausschließlichkeitsoption und ungefördert. Ein Wechsel wird zum nächsten Monatsersten
@@ -185,11 +190,9 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
   `site_mispel_check` ablegt, fehlt (MP-13b) — bis dahin zeigt das Portal „wird gerechnet“.
 - **Rechenwerk:** der Optimierer plant A2–A4 noch nicht im Mischbetrieb (Fahrzeug als Speicher: MP-33); Rumpfjahre
   der Pauschaloption gibt der Aufrufer noch vor (Erkennung aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
-- **Box:** Förderweg über den Plan statt `grid_charge_allowed` (MP-14).
 - **Messwerte des Messstellenbetreibers:** Import und Abgleich gegen Gerätewerte (MP-15) — bis dahin bleibt jeder
   Monat „vorläufig“.
-- **Oberflächen** — jede beginnt erst nach einem mit dem Captain abgestimmten Bedienkonzept (BK-…): Box-Oberfläche
-  mit dem Förderweg (MP-14), Einrichtung des Förderwegs mit Formelsatz-Vorschlag und Gebot der Bestnutzung (MP-17;
+- **Oberflächen** — jede beginnt erst nach einem mit dem Captain abgestimmten Bedienkonzept (BK-…): Einrichtung des Förderwegs mit Formelsatz-Vorschlag und Gebot der Bestnutzung (MP-17;
   ersetzt auch den Portaltext zum Netzladen, W2, und bringt den Hinweis auf die Abgrenzungsoption an einer EEG-Anlage
   im Händler-Modus, W6), Kundenansicht Mengen und Ertrag mit Nachweis-Abruf (MP-18, W5), Abweichungsampel (MP-15).
 - **Partner:** Einverständnis-Paket für die Übergangszeit (MP-19), Direktvermarkter-Schnittstelle (MP-20).

@@ -1655,6 +1655,60 @@ func TestPlanEndpointReturnsCachedPlan(t *testing.T) {
 	}
 }
 
+// MiSpeL MP-14: the plan endpoint carries the core's own Förderweg verdict
+// (plan.FoerderwegView), so the row "Förderweg" only words it; the page loads
+// foerderweg.js before plan.js and the card names the row in its markup.
+func TestPlanEndpointCarriesFoerderweg(t *testing.T) {
+	payload := `{
+	  "schema_version": "1.0", "slot_minutes": 15, "generated_at": "2026-10-02T11:15:00Z",
+	  "grid_charge_allowed": true, "foerderweg": "marktpraemie_abgrenzung",
+	  "slots": [ { "start": "2026-10-02T11:15:00Z", "battery_setpoint_kw": 12.5 } ]
+	}`
+	p, err := plan.Parse([]byte(payload), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := p.BuildView(time.Now().UTC())
+	srv := serveHandler(t, &fakePlan{view: &view})
+	resp, err := http.Get(srv.URL + "/api/plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Plan struct {
+			Foerderweg map[string]any `json:"foerderweg"`
+		} `json:"plan"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	fw := body.Plan.Foerderweg
+	if fw["foerderweg"] != "marktpraemie_abgrenzung" || fw["bekannt"] != true || fw["solar_only"] != false ||
+		fw["grid_charge_allowed"] != true || fw["strict_exclusivity"] != false {
+		t.Fatalf("Förderweg verdict not carried: %v", fw)
+	}
+
+	page, err := http.Get(srv.URL + "/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Body.Close()
+	raw, err := io.ReadAll(page.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(raw)
+	for _, want := range []string{`id="planFw"`, `id="planFwTech"`, `<script src="foerderweg.js"></script>`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("index.html misses %s", want)
+		}
+	}
+	if strings.Index(html, `src="foerderweg.js"`) > strings.Index(html, `src="plan.js"`) {
+		t.Error("foerderweg.js must load before plan.js")
+	}
+}
+
 // With no plan cached, the endpoint reports has_plan=false (and omits "plan"),
 // so the UI shows the honest empty state.
 func TestPlanEndpointNoPlan(t *testing.T) {

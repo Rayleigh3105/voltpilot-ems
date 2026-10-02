@@ -197,6 +197,19 @@
         <span class="plan-fresh" id="planFresh"><span class="ss-dot"></span><span id="planFreshText">–</span></span>
       </div>
 
+      <!-- MiSpeL MP-14 (BK-14, Variante A): the Förderweg and what it means for
+           charging from the grid - first row, with or without a plan. Read-only:
+           the Förderweg comes with the plan from the portal (foerderweg.js). -->
+      <div class="plan-fw" id="planFw">
+        <span class="plan-fw-l">Förderweg</span>
+        <span class="plan-fw-v"><span id="planFwTitle">Noch nicht bekannt</span><small id="planFwText">Die Box lädt sicherheitshalber nur mit Sonnenstrom.</small></span>
+      </div>
+      <!-- ◆ Technik: the plan fields behind the row and the plan time. -->
+      <div class="tech-block tech-only" id="planFwTech" hidden>
+        <p class="tech-h">Förderweg · Plan-Felder</p>
+        <dl class="plan-fw-tech" id="planFwTechRows"></dl>
+      </div>
+
       <div id="planBody" hidden>
         <div class="plan-now" id="planNow" hidden>
           <div class="plan-now-main">
@@ -416,6 +429,7 @@
   <script src="technik.js"></script>
   <script src="status.js"></script>
   <script src="charts.js"></script>
+  <script src="foerderweg.js"></script>
   <script src="plan.js"></script>
   <script src="control.js"></script>
   <script src="active-control.js"></script>

@@ -1388,6 +1388,9 @@ def gather_inputs(
         strenge_ausschliesslichkeit=site.site_id in mispel_strenge_site_ids(),
         # MiSpeL MP-10: die dritte Betriebsart aus dem Foerderweg (E2 = B).
         mischbetrieb=site.mischbetrieb,
+        # MiSpeL MP-14: der Foerderweg des Plantags (Fassung oder Bestand)
+        # reist im Plan zur Box (Feld foerderweg).
+        foerderweg=site.foerderweg,
         mispel_praemie_eur_mwh=mispel_praemie,
         saldierte_bestandteile_eur_mwh=saldierte_bestandteile,
         mispel_monatsstand=mispel_monatsstand,

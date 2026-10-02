@@ -114,7 +114,7 @@ func runNativeWindow(t *testing.T, s nwScenario) nwResult {
 	declareMeterAtGridPoint(a)
 	allowed, floor := !s.eeg, nwFloorPct
 	p := &plan.Plan{SlotMinutes: 15, ReceivedAt: nwStart, GeneratedAt: nwStart,
-		GridChargeAllowed: &allowed, EffectiveFloorSocPct: &floor}
+		GridChargeAllowed: &allowed, Foerderweg: plan.FoerderwegUngefoerdert, EffectiveFloorSocPct: &floor}
 	for i, sl := range s.slots {
 		p.Slots = append(p.Slots, nwFlagsSlot(nwStart.Add(time.Duration(i)*15*time.Minute), sl))
 	}

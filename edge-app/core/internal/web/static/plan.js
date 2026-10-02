@@ -300,6 +300,7 @@
     var hasPlan = !!(plan && plan.has_plan && plan.plan && plan.plan.slots && plan.plan.slots.length);
     $("planEmpty").hidden = hasPlan;
     $("planBody").hidden = !hasPlan;
+    renderFoerderweg(hasPlan ? plan.plan : null);
     if (!hasPlan) { chart.setSlots([], 15); renderFresh(false); return; }
 
     var slots = buildSlots();
@@ -343,6 +344,38 @@
       badge.className = "plan-now-badge idle";
       sub.textContent = "Noch keine Messwerte - es wird kein Sollwert vorgegeben.";
     }
+  }
+
+  // MiSpeL MP-14: the row "Förderweg" and its technical detail. The wording
+  // lives in foerderweg.js (pure, unit-tested); this only paints it.
+  var lastFw = null;        // last painted Förderweg row (render ticks every second)
+  function renderFoerderweg(p) {
+    if (!global.VPFoerderweg) return;
+    var d = global.VPFoerderweg.derive(p);
+    var key = JSON.stringify(d);
+    if (key === lastFw) return;
+    lastFw = key;
+    $("planFw").className = "plan-fw" + (d.streng ? " streng" : "");
+    $("planFwTitle").textContent = d.title;
+    var text = $("planFwText");
+    text.textContent = "";
+    if (d.lead) {
+      var b = document.createElement("b");
+      b.textContent = d.lead;
+      text.appendChild(b);
+      text.appendChild(document.createTextNode(" "));
+    }
+    text.appendChild(document.createTextNode(d.text));
+    var rows = $("planFwTechRows");
+    rows.textContent = "";
+    d.tech.forEach(function (r) {
+      var dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = r[0];
+      dd.textContent = r[1];
+      rows.appendChild(dt);
+      rows.appendChild(dd);
+    });
+    $("planFwTech").hidden = d.tech.length === 0;
   }
 
   // Plan freshness: green when recent, amber as it approaches the 20-min

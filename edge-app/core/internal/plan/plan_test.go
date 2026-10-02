@@ -108,7 +108,9 @@ func TestParseGridChargeAllowed(t *testing.T) {
 		t.Errorf("grid_charge_allowed=false must demand the solar-only clamp: %+v", eeg.GridChargeAllowed)
 	}
 
-	merchant, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"grid_charge_allowed":true,"slots":[`+slot+`]}`), time.Now())
+	// Since MiSpeL MP-14 the release needs a Förderweg that leaves grid
+	// charging to the customer (foerderweg_test.go covers all five).
+	merchant, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"grid_charge_allowed":true,"foerderweg":"ungefoerdert","slots":[`+slot+`]}`), time.Now())
 	if err != nil {
 		t.Fatalf("Parse merchant: %v", err)
 	}

@@ -262,6 +262,7 @@ func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 	eegTrue := true
 	p = freshPlan(now, 20, nil)
 	p.GridChargeAllowed = &eegTrue
+	p.Foerderweg = plan.FoerderwegUngefoerdert
 	a.mu.Lock()
 	a.currentPlan = p
 	a.mu.Unlock()

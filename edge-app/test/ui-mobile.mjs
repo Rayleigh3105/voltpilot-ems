@@ -64,6 +64,13 @@ try {
         }
       }
       await page.setViewportSize({ width: 375, height: 812 });
+      // MiSpeL MP-14: without a plan the first row of the plan card names the
+      // Förderweg as unknown and the safe consequence (BK-14, Variante A).
+      await page.goto(base + '/index.html');
+      await expect(page.locator('#planFw')).toContainText('Förderweg');
+      await expect(page.locator('#planFwText')).toHaveText('Die Box lädt sicherheitshalber nur mit Sonnenstrom.');
+      const fwRow = await page.locator('#planFw').boundingBox();
+      assert(fwRow && fwRow.x >= 0 && fwRow.x + fwRow.width <= 375, 'Förderweg row fits the phone width');
       await page.goto(base + '/einrichten.html#quellen');
       const trigger = page.locator('#erzAdd');
       await trigger.click();

@@ -840,6 +840,13 @@ class OptimizationInput:
     #: Vorgabe) = KEIN Term und ein byte-gleicher Plan; ``netzladen_erlaubt``
     #: behaelt seine Bedeutung (aus = FK3-Klemme wie heute).
     mischbetrieb: bool = False
+    #: MiSpeL MP-14: der am Plantag wirksame Foerderweg der Anlage
+    #: (``inputs.BatterySite.foerderweg``: die Fassung aus ``site_foerderweg``
+    #: oder der Bestand nach ``mispel-foerderweg.md`` § 2). Der Solver liest ihn
+    #: nicht; er reist als das OPTIONALE Plan-Feld ``foerderweg`` zur Box, die
+    #: daraus entscheidet, ob ``grid_charge_allowed`` die EEG-Klemme loesen
+    #: darf. ``None`` = Feld fehlt, die Box laedt dann nur mit Sonnenstrom.
+    foerderweg: str | None = None
     #: Je Slot die Marktpraemie einer gruenen/gelben kWh in EUR/MWh (AW>0 laut
     #: ÜNB-Liste, Jahresmarktwert; :func:`pricing.mispel_marktpraemie`).
     #: ``None`` = keine Praemie.
@@ -1249,6 +1256,13 @@ class SchedulePlan:
     # Box dieselbe Regel gegen den GEMESSENEN Ueberschuss klemmt. None = aus
     # (FK3) - beide Felder fehlen, die Nutzlast bleibt byte-gleich.
     strict_exclusivity_tolerance_kwh: float | None = None
+    # MiSpeL MP-14: der Foerderweg, mit dem geplant wurde
+    # (OptimizationInput.foerderweg); veroeffentlicht als das OPTIONALE Feld
+    # foerderweg. Die Box loest die EEG-Klemme nur bei Abgrenzungs-,
+    # Pauschaloption und ungefoerderter Direktvermarktung und nur mit
+    # grid_charge_allowed=true (der Einstellung des Kunden). None = Feld
+    # fehlt (die Box bleibt bei Laden nur mit Sonnenstrom).
+    foerderweg: str | None = None
     # The terminal energy value the run's objective credited per stored kWh at
     # the horizon end (P3; :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh`).
     # Only the solver knows the derived value, so it is stamped here and

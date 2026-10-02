@@ -1992,6 +1992,9 @@ def _extract_plan(
         strict_exclusivity_tolerance_kwh=(
             inp.strenge_toleranz_kwh if inp.strenge_aktiv else None
         ),
+        # MiSpeL MP-14: der Foerderweg zur Box - er entscheidet dort, ob
+        # grid_charge_allowed die EEG-Klemme loesen darf.
+        foerderweg=inp.foerderweg,
         # FK2: what the objective actually credited per stored kWh - persisted
         # so the portal can show the banked value on bank days.
         terminal_value_eur_per_kwh=round(

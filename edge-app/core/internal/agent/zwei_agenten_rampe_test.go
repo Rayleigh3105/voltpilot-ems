@@ -28,7 +28,7 @@ func zaPlanLadenDannEntladen(exportLimit *float64) func(time.Time) *plan.Plan {
 	return func(now time.Time) *plan.Plan {
 		yes := true
 		p := &plan.Plan{SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-			GridChargeAllowed: &yes, GridExportLimitKw: exportLimit}
+			GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert, GridExportLimitKw: exportLimit}
 		q := now.Truncate(15 * time.Minute)
 		for i := 0; i < 16; i++ {
 			start := q.Add(time.Duration(i) * 15 * time.Minute)

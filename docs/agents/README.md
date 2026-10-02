@@ -109,6 +109,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [MiSpeL-Marktdaten: AW>0-Zeiten der ÜNB, SP¼, Jahresmarktwert (MP-7)](root/mispel-marktdaten-aw-sp-jahresmarktwert.md)
 - [MiSpeL-Ausschließlichkeits-Prüfer: Netzstrom im Speicher je Anlage und Monat (MP-2)](root/mispel-ausschliesslichkeits-pruefer.md)
 - [MiSpeL: strenge Ausschließlichkeit schaltbar, Optimierer + Box (MP-45)](root/mispel-strenge-ausschliesslichkeit.md)
+- [MiSpeL: Box liest den Förderweg statt des Netzlade-Bits, Zeile „Förderweg“ im Lade- & Entladeplan (MP-14)](root/mispel-box-foerderweg.md)
 - [MiSpeL: Optimierer Mischbetrieb I – zwei Ladewege, Farben, Spitzenschutz (MP-10); II – Monatszustand (MP-11); Pauschaloption – Jahreszustand (MP-26); Fahrzeug als Speicher (MP-33)](root/mispel-optimierer-mischbetrieb.md)
 - [MiSpeL-Check in der Simulation: dieselbe Anlage heute gegen mit MiSpeL, Preise ohne Datenbank (MP-13)](root/mispel-check-simulation.md)
 - [Mess-Selektion JE KOMPONENTE (Geräteseite Stufe 3b, Server)](root/mess-selektion-je-komponente-geraeteseit.md)

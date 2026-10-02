@@ -74,7 +74,7 @@ func TestRuheBisZumStartSuppressesSetpointsWhileTheGuardsKeepRunning(t *testing.
 		yes := true
 		a.mu.Lock()
 		a.currentPlan = &plan.Plan{
-			SlotMinutes: 15, ReceivedAt: at, GeneratedAt: at, GridChargeAllowed: &yes,
+			SlotMinutes: 15, ReceivedAt: at, GeneratedAt: at, GridChargeAllowed: &yes, Foerderweg: plan.FoerderwegUngefoerdert,
 			Slots: []plan.Slot{{Start: at, BatterySetpointKw: kw}},
 		}
 		a.mu.Unlock()

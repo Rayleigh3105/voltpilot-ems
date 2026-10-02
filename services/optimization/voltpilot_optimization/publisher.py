@@ -83,6 +83,13 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
         payload["strict_exclusivity_tolerance_kwh"] = round(
             plan.strict_exclusivity_tolerance_kwh, 4
         )
+    # OPTIONAL per the contract (MiSpeL MP-14, additive - schema_version stays
+    # 1.0): the site's Foerderweg on the plan day. A new edge releases the EEG
+    # clamp only for a route that leaves grid charging to the customer AND
+    # grid_charge_allowed=true; an old edge ignores the field and keeps
+    # reading grid_charge_allowed alone.
+    if plan.foerderweg is not None:
+        payload["foerderweg"] = plan.foerderweg
     # OPTIONAL per the contract (PS-1/PS-2, additive - schema_version stays
     # 1.0): present only when the site's peak-shaving module is active
     # (site.leistungspreis_eur_kw set), so every other payload stays
