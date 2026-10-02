@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/mispel-abgrenzung.schema.json",
+  "title": "MiSpeL-Abgrenzungsoption: Formelsätze A1, A5, A5-Variante, A10, A11 mit Vektoren",
+  "description": "Schema der Datei mispel-abgrenzung-vectors.json. Bleibt in der Teilmenge, die der Java-Läufer UemsSchemaLaeufer prüft (type, required, properties, additionalProperties, items, enum, const, pattern, minItems, minLength, minimum, anyOf, $ref); alles darüber hinaus prüfen die Leser selbst (Regeln L2–L8 in mispel-abgrenzung.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "quelle", "einheiten", "regeln", "abweichungen", "formelsaetze", "formeln", "nicht_im_umfang", "faelle"],
+  "properties": {
+    "$comment": { "type": "string" },
+    "schema_version": { "const": "1.0" },
+    "quelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["festlegung", "aktenzeichen", "beschluss", "anlage", "zitierweise"],
+      "properties": {
+        "festlegung": { "type": "string", "minLength": 1 },
+        "aktenzeichen": { "type": "string", "minLength": 1 },
+        "beschluss": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "anlage": { "type": "string", "minLength": 1 },
+        "zitierweise": { "type": "string", "minLength": 1 }
+      }
+    },
+    "einheiten": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+    "regeln": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zeit", "nenner_null", "viertelstunden_ohne_fluss", "vergleich"],
+      "properties": {
+        "zeit": { "$ref": "#/$defs/regel" },
+        "nenner_null": { "$ref": "#/$defs/regel" },
+        "viertelstunden_ohne_fluss": { "$ref": "#/$defs/regel" },
+        "vergleich": { "$ref": "#/$defs/regel" }
+      }
+    },
+    "abweichungen": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["thema", "festlegung", "vertrag", "grund", "fundstelle"],
+        "properties": {
+          "thema": { "type": "string", "minLength": 1 },
+          "festlegung": { "type": "string", "minLength": 1 },
+          "vertrag": { "type": "string", "minLength": 1 },
+          "grund": { "type": "string", "minLength": 1 },
+          "fundstelle": { "$ref": "#/$defs/fundstelle" }
+        }
+      }
+    },
+    "formelsaetze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A1", "A5", "A5-Variante", "A10", "A11"],
+      "properties": {
+        "A1": { "$ref": "#/$defs/formelsatz" },
+        "A5": { "$ref": "#/$defs/formelsatz" },
+        "A5-Variante": { "$ref": "#/$defs/formelsatz" },
+        "A10": { "$ref": "#/$defs/formelsatz" },
+        "A11": { "$ref": "#/$defs/formelsatz" }
+      }
+    },
+    "formeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/formel" } },
+    "nicht_im_umfang": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["nr", "begriff", "rechenweg", "fundstelle", "grund"],
+        "properties": {
+          "nr": { "$ref": "#/$defs/nr" },
+          "begriff": { "type": "string", "minLength": 1 },
+          "rechenweg": { "type": "string", "minLength": 1 },
+          "fundstelle": { "$ref": "#/$defs/fundstelle" },
+          "grund": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "faelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
+  },
+  "$defs": {
+    "fundstelle": {
+      "description": "Beginnt mit „A1 S. <Seite>“ oder „T S. <Seite>“ (Zitierweise in quelle.zitierweise).",
+      "type": "string",
+      "pattern": "^(A1|T) S\\. [0-9]"
+    },
+    "nr": {
+      "description": "Formelnummer wörtlich wie in Anlage 1, z. B. (1)¼, (14)A1, (19)A1,A4, (23a)¼ A5, (32a)A5-Variante, (ZFa).",
+      "type": "string",
+      "pattern": "^\\(([0-9]+[ab]?|ZF[ab])\\)(¼)?( ?(A5-Variante|A[0-9]+(,A[0-9]+)*))?$"
+    },
+    "formelsatz_name": { "enum": ["A1", "A5", "A5-Variante", "A10", "A11"] },
+    "eingang": { "enum": ["Z1NB¼", "Z1NE¼", "Z2V¼", "Z2E¼", "AW¼", "AWa¼", "AWb¼"] },
+    "regel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regel", "fundstelle"],
+      "properties": {
+        "regel": { "type": "string", "minLength": 1 },
+        "fundstelle": { "type": "string", "minLength": 1 }
+      }
+    },
+    "formelsatz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bezeichnung", "fundstelle", "zaehler", "eingaenge", "stammdaten", "formeln"],
+      "properties": {
+        "bezeichnung": { "type": "string", "minLength": 1 },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "zaehler": { "type": "array", "minItems": 1, "items": { "enum": ["Z1", "Z2"] } },
+        "eingaenge": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/eingang" } },
+        "stammdaten": { "type": "array", "items": { "enum": ["Painst", "Pbinst"] } },
+        "formeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nr" } }
+      }
+    },
+    "formel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nr", "begriff", "rechenweg", "ebene", "formelsaetze", "fundstelle"],
+      "properties": {
+        "nr": { "$ref": "#/$defs/nr" },
+        "begriff": { "type": "string", "minLength": 1 },
+        "rechenweg": { "type": "string", "minLength": 1 },
+        "ebene": { "enum": ["viertelstunde", "monat", "jahr"] },
+        "formelsaetze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/formelsatz_name" } },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "summe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ueber", "von"],
+          "properties": {
+            "ueber": { "enum": ["M", "J"] },
+            "von": { "anyOf": [{ "$ref": "#/$defs/nr" }, { "$ref": "#/$defs/eingang" }] }
+          }
+        },
+        "quotient": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zaehler", "nenner"],
+          "properties": {
+            "zaehler": { "$ref": "#/$defs/nr" },
+            "nenner": { "$ref": "#/$defs/nr" }
+          }
+        }
+      }
+    },
+    "zeitpunkt": {
+      "description": "Beginn einer Viertelstunde mit Versatz zur UTC (nie „Z“), damit die gesetzliche Zeit sichtbar bleibt.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "kwh": { "type": "number", "minimum": 0 },
+    "stammdaten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Painst", "Pbinst"],
+      "properties": {
+        "Painst": { "type": "number", "minimum": 0 },
+        "Pbinst": { "type": "number", "minimum": 0 }
+      }
+    },
+    "viertelstunde": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beginn", "Z1NB¼", "Z1NE¼"],
+      "properties": {
+        "beginn": { "$ref": "#/$defs/zeitpunkt" },
+        "Z1NB¼": { "$ref": "#/$defs/kwh" },
+        "Z1NE¼": { "$ref": "#/$defs/kwh" },
+        "Z2V¼": { "$ref": "#/$defs/kwh" },
+        "Z2E¼": { "$ref": "#/$defs/kwh" },
+        "AW¼": { "type": "number", "minimum": 0 },
+        "AWa¼": { "type": "number", "minimum": 0 },
+        "AWb¼": { "type": "number", "minimum": 0 }
+      }
+    },
+    "wert": { "anyOf": [{ "type": "number" }, { "type": "null" }] },
+    "werte": { "type": "object", "additionalProperties": { "$ref": "#/$defs/wert" } },
+    "zeitraum": {
+      "description": "Rumpfmonat nach A1 Abschn. 11: tritt an die Stelle des Kalendermonats; von einschließlich, bis ausschließlich.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schluessel", "von", "bis"],
+      "properties": {
+        "schluessel": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}/[0-9]+$" },
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt" },
+        "stammdaten": { "$ref": "#/$defs/stammdaten" }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "formelsatz", "fundstelle", "warum", "viertelstunden", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "formelsatz": { "$ref": "#/$defs/formelsatz_name" },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "warum": { "type": "string", "minLength": 1 },
+        "stammdaten": { "$ref": "#/$defs/stammdaten" },
+        "zeitraeume": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/zeitraum" } },
+        "viertelstunden": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/viertelstunde" } },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["monate", "jahre"],
+          "properties": {
+            "viertelstunden": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["beginn"],
+                "properties": { "beginn": { "$ref": "#/$defs/zeitpunkt" } },
+                "additionalProperties": { "type": "number" }
+              }
+            },
+            "monate": { "type": "object", "additionalProperties": { "$ref": "#/$defs/werte" } },
+            "jahre": { "type": "object", "additionalProperties": { "$ref": "#/$defs/werte" } }
+          }
+        }
+      }
+    }
+  }
+}
