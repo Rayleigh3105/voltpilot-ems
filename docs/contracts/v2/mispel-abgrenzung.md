@@ -17,8 +17,9 @@ Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-4 de
   Test `services/optimization/tests/test_mispel_abgrenzung_rechenwerk.py`; Java
   `services/api/src/main/java/com/voltpilot/api/mispel/MispelAbgrenzungRechenwerk.java` (MP-8, dieselben Stufen
   mit exakten Brüchen `Bruch`), Test `…/mispel/MispelAbgrenzungRechenwerkTest.java`. Der Java-Zwilling nimmt AW¼
-  als „AW¼ > 0“ an — mehr wertet (24)¼ nicht aus. Eingebaut: der Monatslauf (MP-8, unten); Optimierer
-  MP-10/MP-11 und Simulation MP-13 noch nicht.
+  als „AW¼ > 0“ an — mehr wertet (24)¼ nicht aus. Eingebaut: der Monatslauf (MP-8, unten); der Optimierer
+  liest seit MP-11 die Monatswerte des jüngsten Laufs als Monatszustand (`inputs.load_mispel_bisher`); Simulation
+  MP-13 noch nicht.
 
 Zitierweise: „A1 S. 35“ = Anlage 1, Seite 35; „T S. 38“ = Tenor mit Begründung, Seite 38. Die Festlegung
 hat keine Randnummern.
@@ -137,7 +138,8 @@ umlagebelastet ((21) = 50) und im Oktober gilt die Erzeugung über dem Verbrauch
 Umlage (Fall `a10-monatsgrenze-speicherinhalt`). Über einen vollen Zyklus im Monat stimmen A1 und A10
 überein, wie Anlage 1 es sagt (S. 94; Fälle `a10-voller-zyklus` und `a1-netzspeicher-voller-zyklus`). Das
 ist die wörtliche Anwendung, kein Rechenfehler — der Optimierer (MP-11) muss netzgeladene Energie vor dem
-Monatsende ausspeisen, wenn er sie saldieren will.
+Monatsende ausspeisen, wenn er sie saldieren will. Stand MP-11: der Plan bucht jeden Monat für sich, rechnet (12)
+aber nur aus den bisherigen Summen (für den Lauf 0, Normalbetrieb mit (5) ≥ (6)); diesen Grenzfall sieht er nicht.
 
 ## Fälle
 

@@ -39,6 +39,7 @@ flowchart TD
 | Planzeitkorrektur | `nowcast.py` |
 | MiSpeL-Abgrenzung: Formeln (1)–(33), Zwilling der Vektoren | `mispel_abgrenzung.py`; [Vertrag](../../docs/contracts/v2/mispel-abgrenzung.md) |
 | MiSpeL-Mischbetrieb: zwei Ladewege, Farben, Spitzenschutz (MP-10) | `solver._add_mischbetrieb`, `pricing.mispel_marktpraemie`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
+| MiSpeL-Monatszustand: (16) je Saldierungsperiode, Schattenpreis (MP-11) | `solver._add_monatszustand`, `mispel_monatsstand.py`, `inputs.load_mispel_bisher`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
 | Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
 | Laufzeit / CLI | `cli.py`, `runtime.py` |
 

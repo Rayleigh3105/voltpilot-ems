@@ -103,6 +103,10 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         "mischbetrieb_vorrang",
         "mischbetrieb_rot_aus_speicher",
         "mischbetrieb_saldierung",
+        # MiSpeL MP-11: (16) je Saldierungsperiode mit dem Monatszustand -
+        # ebenfalls Mengen, keine Grenzen.
+        "mischbetrieb_monat_saldierung",
+        "mischbetrieb_monat_max",
         "mispel_spitzenschutz",
         "grid_import_cap",
         "grid_export_cap",
@@ -354,6 +358,9 @@ def resolve_lp_duals(model: ConcreteModel):
     # Modell, wenn Rot in einem Slot mehr bringt als Gelb.
     if hasattr(model, "saldierung_aktiv"):
         binaries.append(model.saldierung_aktiv)
+    # MiSpeL MP-11: dieselbe Ganzzahl je Saldierungsperiode (Monatszustand).
+    if hasattr(model, "saldierung_monat_aktiv"):
+        binaries += list(model.saldierung_monat_aktiv.values())
     for var in binaries:
         var.fix(round(value(var)))
         var.domain = Reals

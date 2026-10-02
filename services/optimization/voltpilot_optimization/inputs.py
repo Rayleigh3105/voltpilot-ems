@@ -32,6 +32,7 @@ collector); psycopg is a lazy import behind the optional ``db`` extra.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -86,7 +87,9 @@ from voltpilot_optimization.load_nowcast import (
 )
 from voltpilot_optimization.pv_nowcast import apply_pv_nowcast, window_mean
 from voltpilot_optimization.marktwertbasis import load_marktwertbasis
+from voltpilot_optimization.mispel_monatsstand import Bisher, monatsstaende, saldo
 from voltpilot_optimization.pricing import (
+    MISCHBETRIEB_FORMELSAETZE,
     SiteTariff,
     SupplyPriceComponents,
     berlin_month,
@@ -606,6 +609,61 @@ def load_foerderwege(
     }
 
 
+def load_mispel_bisher(dsn: str, site_id: UUID, jetzt: datetime) -> Bisher | None:
+    """Die bisherigen Monatsmengen der Abgrenzung (MiSpeL MP-11): der juengste
+    Lauf (hoechste Fassung) des Monatslaufs MP-8 in ``mispel_abgrenzung_monat``,
+    dessen Zeitraum - Kalender- oder Rumpfmonat - ``jetzt`` enthaelt.
+
+    Aus dem Nachweis (Vertrag ``mispel-abgrenzung.md``, kanonischer JSON-Text)
+    kommen die Monatswerte seines Schluessels und die Zahl der gerechneten
+    Viertelstunden. ``None`` = kein Monatsstand, der Lauf plant wie MP-10:
+    ohne Tabelle (vor der api-Migration ``V20261002153700``), ohne Lauf fuer
+    die laufende Periode, mit einem Formelsatz ohne Saldierung nach (16) (A10,
+    A11) oder ohne bestimmbare Summe - unbekannt ist keine Null.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    monat = jetzt.astimezone(GRENZ_ZONE).date().replace(day=1)
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT zeitraum_von, zeitraum_bis, formelsatz, nachweis
+                FROM mispel_abgrenzung_monat
+                WHERE site_id = %(site_id)s AND monat = %(monat)s
+                  AND zeitraum_von <= %(jetzt)s AND %(jetzt)s < zeitraum_bis
+                ORDER BY zeitraum_von DESC, fassung DESC
+                LIMIT 1
+                """,
+                {"site_id": str(site_id), "monat": monat, "jetzt": jetzt},
+            )
+            row = cur.fetchone()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("mispel_monatsstand.table_missing")
+        return None
+    if row is None:
+        return None
+    von, bis, formelsatz, nachweis = row
+    if formelsatz not in MISCHBETRIEB_FORMELSAETZE:
+        return None
+    try:
+        n = json.loads(nachweis)
+        bisher = Bisher(
+            von=von,
+            bis=bis,
+            monatswerte=n["monatswerte"][n["schluessel"]],
+            viertelstunden=int(n["viertelstunden"]["gerechnet"]),
+        )
+        saldo(bisher.monatswerte, 1.0)
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning(
+            "mispel_monatsstand.nachweis_unlesbar",
+            extra={"context": {"site_id": str(site_id), "monat": str(monat), "error": str(exc)}},
+        )
+        return None
+    return bisher
+
+
 def _grenz_tag(jetzt: datetime, zeitzone: str | None) -> date:
     """The Grenzblatt day in the Standort timezone; Berlin only when absent."""
     zone = ZoneInfo(zeitzone) if zeitzone else GRENZ_ZONE
@@ -971,6 +1029,7 @@ def gather_inputs(
     import_series = import_prices(site.tariff, spot, site_id=site.site_id)
     mispel_praemie = None
     saldierte_bestandteile = 0.0
+    mispel_monatsstand = None
     if site.mischbetrieb:
         # MiSpeL MP-10: Export zum blanken Spot, die Farben bewertet der Solver
         # - gruen/gelb mit der Praemie der Marktwertbasis aus MP-12
@@ -989,6 +1048,22 @@ def gather_inputs(
         saldierte_bestandteile = saldierte_bestandteile_eur_mwh(
             site.tariff, site_id=site.site_id
         )
+        # MiSpeL MP-11: der Monatszustand - die bisherigen Monatsmengen aus
+        # dem Monatslauf (MP-8) und der geschaetzte Monatsrest je
+        # Saldierungsperiode des Horizonts. Ohne Lauf plant er wie MP-10.
+        bisher = load_mispel_bisher(dsn, site.site_id, now)
+        if bisher is None:
+            logger.info(
+                "mispel_monatsstand.fehlt",
+                extra={"context": {"site_id": str(site.site_id)}},
+            )
+        else:
+            mispel_monatsstand = monatsstaende(
+                bisher,
+                slot_starts,
+                _slot_minutes(slot_starts) / 60.0,
+                site.battery.roundtrip_efficiency,
+            )
     else:
         market_values: dict = {}
         marktwert = None
@@ -1072,6 +1147,7 @@ def gather_inputs(
         mischbetrieb=site.mischbetrieb,
         mispel_praemie_eur_mwh=mispel_praemie,
         saldierte_bestandteile_eur_mwh=saldierte_bestandteile,
+        mispel_monatsstand=mispel_monatsstand,
     )
 
 

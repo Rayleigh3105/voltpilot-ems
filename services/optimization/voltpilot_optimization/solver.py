@@ -314,6 +314,7 @@ from pyomo.environ import (
     ConstraintList,
     NonNegativeReals,
     Objective,
+    Param,
     RangeSet,
     Var,
     minimize,
@@ -773,8 +774,9 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
       MAX [ (13) - (15) ; 0 ] (A1 S. 36) ueber den Lauf: die
       Speicher-Einspeisung ueber der EE-Speichererzeugung (15) = (14) * (10) -
       gelb zuerst (gesicherte Zuordnung, T S. 38-39). (13) = (11) ohne
-      Fremdtankstrom; der Start-Ladestand zaehlt als EE-Speichererzeugung (den
-      Monatsstand bringt MP-11).
+      Fremdtankstrom; der Start-Ladestand zaehlt als EE-Speichererzeugung.
+      Mit Monatsstand (MP-11) rechnet :func:`_add_monatszustand` (16) je
+      Saldierungsperiode statt ueber den Lauf.
 
     Beide MIN und das MAX sind EXAKT, nicht nur Schranken - der Solver darf
     weder Netzstrom im Speicher noch Speicher-Einspeisung kleinrechnen
@@ -851,6 +853,8 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
         rule=lambda model, t: model.rot_einspeisung[t]
         <= model.speicher_einspeisung[t],
     )
+    if inp.mispel_monatsstand is not None:
+        return _add_monatszustand(m, inp, praemie, gutschrift_eur_mwh)
 
     # (16) = MAX [ (13) - (15) ; 0 ] ueber den Lauf, in kWh.
     soc0 = p.clamp_soc_kwh(inp.initial_soc_kwh)
@@ -876,6 +880,96 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
         praemie[t] * (m.grid_export[t] - m.rot_einspeisung[t]) * dt / 1000.0
         for t in m.T
     ) - gutschrift_eur_mwh / 1000.0 * rot_kwh
+
+
+def _add_monatszustand(m: ConcreteModel, inp: OptimizationInput, praemie, gutschrift_eur_mwh):
+    """Mischbetrieb II (MiSpeL MP-11): (16) je Saldierungsperiode mit dem
+    Monatszustand.
+
+    Die Saldierung rechnet je Kalendermonat (A1 S. 33-36) bzw. Rumpfmonat (A1
+    S. 102). Je Periode k des Horizonts bringt ``inp.mispel_monatsstand`` den
+    Saldo D = (13) - (15) der bisherigen Mengen plus des geschaetzten
+    Monatsrests (:class:`~voltpilot_optimization.domain.MispelMonatsstand`);
+    der Lauf fuegt E = (13) (Speicher-Einspeisung) und G = (15) =
+    (14) * (10) (PV-Ladeweg) seiner Slots in k hinzu:
+
+        (16)_k = MAX [ D + E - G ; 0 ]                       (A1 S. 36)
+
+    Daraus folgt der Schattenpreis der gesicherten Zuordnung (T S. 38-39):
+    liegt die Periode im Roten (D + E - G > 0), ist jede weitere rote kWh
+    saldiert (Gutschrift) und jede PV-geladene kWh mindert (16) um (14) - die
+    EE-Speichererzeugung wird zuerst der Netzeinspeisung zugeordnet; liegt sie
+    im Gelben, ist eine weitere rote kWh nichts wert. „Mittags ins Netz
+    entladen, mit PV nachfuellen“ aendert (16) darum nie (E und G wachsen
+    gleich) und kostet nur die Verluste.
+
+    Buchung: (16)_k = MAX [ D ; 0 ] + Σ ``rot_einspeisung`` - ``mispel_entrot``
+    - rot ist der Teil der Speicher-Einspeisung des Laufs, der (16) erhoeht;
+    ``mispel_entrot`` <= MAX [ D ; 0 ] die rote Menge ausserhalb des Horizonts,
+    die die EE-Speichererzeugung des Laufs gelb macht (sie traegt die
+    mittlere Praemie der Periode im Horizont statt der Gutschrift). Das MAX
+    ist exakt: die Untergrenze immer; die Obergrenze, wenn Rot in einem Slot
+    der Periode mehr bringt als Gelb - als Gleichung, wenn der Lauf das
+    Vorzeichen von D + E - G nicht drehen kann, sonst mit einer Ganzzahl je
+    Periode (``saldierung_monat_aktiv``).
+
+    Abweichung (im Plan, nicht im Nachweis): (14) ist wie in MP-10 der
+    Wirkungsgrad der Batterie statt (14)A1 = (6) / (5) des Monats (A1 S. 35) -
+    der Quotient ist erst am Monatsende bestimmt.
+    """
+    p = inp.battery
+    dt = inp.slot_hours
+    eta_rt = p.roundtrip_efficiency
+    perioden = [
+        (stand, [t for t in range(inp.slots) if stand.enthaelt(inp.slot_starts[t])])
+        for stand in inp.mispel_monatsstand
+    ]
+    perioden = [(stand, ts) for stand, ts in perioden if ts]
+    m.MP = RangeSet(0, len(perioden) - 1)
+    # Mutable: der Rueckfall nach der Zeitgrenze plant ohne Gutschrift.
+    m.mispel_gutschrift = Param(initialize=gutschrift_eur_mwh, mutable=True)
+    m.mispel_entrot = Var(
+        m.MP,
+        domain=NonNegativeReals,
+        bounds=lambda model, k: (0.0, max(perioden[k][0].saldo_kwh, 0.0)),
+    )
+    m.mischbetrieb_monat_saldierung = ConstraintList()
+    m.mischbetrieb_monat_max = ConstraintList()
+    binaer = []
+    term = 0.0
+    for k, (stand, ts) in enumerate(perioden):
+        d = stand.saldo_kwh
+        einspeisung_kwh = sum(m.speicher_einspeisung[t] * dt for t in ts)
+        gelb_kwh = eta_rt * sum((m.charge[t] - m.netz_laden[t]) * dt for t in ts)
+        rot_kwh = sum(m.rot_einspeisung[t] * dt for t in ts)
+        saldierung = max(d, 0.0) + rot_kwh - m.mispel_entrot[k]
+        linear = d + einspeisung_kwh - gelb_kwh
+        m.mischbetrieb_monat_saldierung.add(saldierung >= linear)
+        gelb_max = eta_rt * p.max_charge_kw * dt * len(ts)
+        rot_max = p.max_discharge_kw * dt * len(ts)
+        if any(praemie[t] < gutschrift_eur_mwh for t in ts):
+            if d - gelb_max >= 0.0:
+                m.mischbetrieb_monat_max.add(saldierung <= linear)
+            elif d + rot_max <= 0.0:
+                m.mischbetrieb_monat_max.add(saldierung <= 0.0)
+            else:
+                binaer.append((k, abs(d) + gelb_max + rot_max, saldierung, linear))
+        praemie_mittel = sum(praemie[t] for t in ts) / len(ts)
+        term = term - (
+            m.mispel_gutschrift * (rot_kwh - m.mispel_entrot[k])
+            + praemie_mittel * m.mispel_entrot[k]
+        ) / 1000.0
+    if binaer:
+        m.saldierung_monat_aktiv = Var([k for k, *_ in binaer], domain=Binary)
+        for k, big_m, saldierung, linear in binaer:
+            b = m.saldierung_monat_aktiv[k]
+            m.mischbetrieb_monat_max.add(saldierung <= linear + big_m * (1 - b))
+            m.mischbetrieb_monat_max.add(saldierung <= big_m * b)
+
+    return term - sum(
+        praemie[t] * (m.grid_export[t] - m.rot_einspeisung[t]) * dt / 1000.0
+        for t in m.T
+    )
 
 
 def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool):
@@ -1416,6 +1510,9 @@ class _Zeitgrenze(RuntimeError):
 def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
     """Loest das Plan-Modell; im Mischbetrieb mit dem Rueckfall ohne Gutschrift
     (siehe :data:`MISCHBETRIEB_ZEITGRENZE_S`). Jedes andere Modell: wie immer."""
+    if hasattr(model, "saldierung_monat_aktiv"):
+        _solve_plan_monatszustand(model, inp)
+        return
     if not hasattr(model, "saldierung_aktiv"):
         _solve(model)
         return
@@ -1436,6 +1533,36 @@ def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
             },
         )
         model.saldierung_aktiv.fix(0)
+        _solve(model)
+
+
+def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> None:
+    """Der Rueckfall mit Monatszustand (MP-11): ohne Gutschrift, ohne Ganzzahl.
+
+    ``saldierung_aktiv = 0`` aus MP-10 waere hier unzulaessig, sobald die
+    Periode schon rot ist (D > 0 verlangt (16) > 0). Stattdessen faellt die
+    Gutschrift weg, und mit ihr die Obergrenze des MAX: ohne Gutschrift
+    belohnt nichts eine grosse rote Menge, die Minimierung haelt (16) von
+    selbst am MAX. Wie in MP-10 ueberschaetzt der Lauf keinen Wert."""
+    try:
+        _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
+    except _Zeitgrenze:
+        logger.warning(
+            "mischbetrieb.saldierung_zeitgrenze",
+            extra={
+                "context": {
+                    "site_id": str(inp.site_id),
+                    "zeitgrenze_s": MISCHBETRIEB_ZEITGRENZE_S,
+                    "reason": (
+                        "Mischbetrieb mit Monatszustand nicht in der Zeitgrenze "
+                        "geloest - dieser Lauf plant ohne Gutschrift"
+                    ),
+                }
+            },
+        )
+        model.mispel_gutschrift.set_value(0.0)
+        model.mischbetrieb_monat_max.deactivate()
+        model.saldierung_monat_aktiv.fix(0)
         _solve(model)
 
 

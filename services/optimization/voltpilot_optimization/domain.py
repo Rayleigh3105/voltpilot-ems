@@ -240,6 +240,50 @@ SOC_SOURCES = frozenset(
 
 
 @dataclass(frozen=True)
+class MispelMonatsstand:
+    """MiSpeL MP-11: der Stand einer Saldierungsperiode der Abgrenzungsoption.
+
+    Die Periode ist der Kalendermonat ``[von, bis)`` (A1 S. 33-36: „Werte fuer
+    jeden Kalendermonat“) oder ein Rumpfmonat, der an seine Stelle tritt (A1
+    S. 102, Abschn. 11). Beide Mengen sind ``(13) - (15)`` in kWh, mit
+    Vorzeichen - VOR dem MAX von (16), damit ein Vorsprung der
+    EE-Speichererzeugung erhalten bleibt (gesicherte Zuordnung, T S. 38-39):
+
+    - ``bisher_kwh`` aus den bisherigen Monatsmengen (Monatslauf MP-8,
+      :func:`voltpilot_optimization.mispel_monatsstand.saldo`); 0 fuer eine
+      Periode ohne bisherige Menge.
+    - ``rest_kwh`` der geschaetzte Beitrag der Zeit der Periode, die weder in
+      den bisherigen Mengen noch im Horizont liegt (Monatsrest,
+      :func:`voltpilot_optimization.mispel_monatsstand.monatsstaende`).
+
+    Der Solver rechnet (16) der Periode = MAX [ ``saldo_kwh`` + (13) - (15) des
+    Laufs ; 0 ] - daraus folgt der Schattenpreis, ob eine weitere rote kWh in
+    dieser Periode noch saldiert wird.
+    """
+
+    von: datetime
+    bis: datetime
+    bisher_kwh: float = 0.0
+    rest_kwh: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.von.tzinfo is None or self.bis.tzinfo is None:
+            raise ValueError("MispelMonatsstand needs timezone-aware bounds")
+        if not self.von < self.bis:
+            raise ValueError("MispelMonatsstand needs von < bis")
+        if not (math.isfinite(self.bisher_kwh) and math.isfinite(self.rest_kwh)):
+            raise ValueError("MispelMonatsstand quantities must be finite")
+
+    @property
+    def saldo_kwh(self) -> float:
+        """``(13) - (15)`` der Periode ausserhalb des Horizonts."""
+        return self.bisher_kwh + self.rest_kwh
+
+    def enthaelt(self, at: datetime) -> bool:
+        return self.von <= at < self.bis
+
+
+@dataclass(frozen=True)
 class TerminalValue:
     """The terminal energy value AND the facts that produced it.
 
@@ -661,6 +705,13 @@ class OptimizationInput:
     #: Was eine saldierte Netzentnahme an Umlagen und Netzentgelt spart, in
     #: EUR/MWh brutto (:func:`pricing.saldierte_bestandteile_eur_mwh`).
     saldierte_bestandteile_eur_mwh: float = 0.0
+    #: MiSpeL MP-11: der Monatszustand der Abgrenzung - je Saldierungsperiode
+    #: des Horizonts ein :class:`MispelMonatsstand` (jeder Slot liegt in genau
+    #: einer). Dann rechnet der Solver (16) je Periode statt ueber den Lauf,
+    #: und der Start-Ladestand zaehlt nicht mehr als EE-Speichererzeugung
+    #: (er steckt in den bisherigen Mengen). ``None`` = kein Monatsstand, der
+    #: Lauf plant wie MP-10.
+    mispel_monatsstand: tuple[MispelMonatsstand, ...] | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -735,6 +786,14 @@ class OptimizationInput:
             and self.saldierte_bestandteile_eur_mwh >= 0.0
         ):
             raise ValueError("saldierte_bestandteile_eur_mwh must be finite and >= 0")
+        if self.mispel_monatsstand is not None:
+            if not self.mischbetrieb:
+                raise ValueError("mispel_monatsstand needs mischbetrieb")
+            for s in self.slot_starts:
+                if sum(p.enthaelt(s) for p in self.mispel_monatsstand) != 1:
+                    raise ValueError(
+                        f"mispel_monatsstand must cover slot {s.isoformat()} exactly once"
+                    )
         if self.pv_anchor_ratio is not None and not (
             math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
         ):
