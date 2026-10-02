@@ -139,7 +139,7 @@ func (s *Server) startReady(id string) bool {
 // Station-side caches must not circumvent the box's offline card decision.
 // "Offline" here means no cloud: the local CSMS still authorizes. With no
 // CSMS connection the station must not start an unverified new transaction.
-func (s *Server) configureAuthorization(ctx context.Context, t *transport, id string) error {
+func (s *Server) configureAuthorization(ctx context.Context, t profileLane, id string) error {
 	policy := s.ControlPolicy()
 	if policy.Authorization.Mode != "allowlist" && len(policy.PhaseLimitsA) == 0 {
 		return nil

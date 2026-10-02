@@ -565,29 +565,37 @@ func (t *transport) getCompositeSchedule(ctx context.Context, id string, connect
 	// staircase, and reading a later step as "the current limit" would be a
 	// claim about the future.
 	if sch := conf.ChargingSchedule; sch != nil && len(sch.ChargingSchedulePeriod) > 0 {
-		limit := sch.ChargingSchedulePeriod[0].Limit
-		switch sch.ChargingRateUnit {
-		case types.ChargingRateUnitWatts:
-			kw := limit / 1000
-			out.LimitKw = &kw
-		case types.ChargingRateUnitAmperes:
-			wiring, known := t.srv.ControlPolicy().Wiring(id, connectorID)
-			phases := 3
-			if n := sch.ChargingSchedulePeriod[0].NumberPhases; n != nil {
-				phases = *n
-			}
-			if known && phases == len(wiring.Phases) && limit >= 0 {
-				kw := limit * wiring.VoltageV * float64(phases) / 1000
-				out.LimitKw = &kw
-			}
-		default:
-			// An answer in amperes cannot be converted without voltage and
-			// phase count - see Capabilities.Usable. Reporting it as kW would
-			// be exactly the guess this feature refuses to make, so the
-			// readback stays honestly unknown.
-		}
+		first := sch.ChargingSchedulePeriod[0]
+		out.LimitKw = t.srv.compositeLimitKw(id, connectorID, string(sch.ChargingRateUnit), first.Limit, first.NumberPhases)
 	}
 	return out, nil
+}
+
+// compositeLimitKw converts the first period of a composite schedule into kW
+// - the one rule for both protocol lanes (OCPP 1.6 and 2.0.1 share the units
+// "W" and "A"). nil = not convertible.
+func (s *Server) compositeLimitKw(id string, connectorID int, unit string, limit float64, numberPhases *int) *float64 {
+	switch unit {
+	case string(types.ChargingRateUnitWatts):
+		kw := limit / 1000
+		return &kw
+	case string(types.ChargingRateUnitAmperes):
+		wiring, known := s.ControlPolicy().Wiring(id, connectorID)
+		phases := 3
+		if numberPhases != nil {
+			phases = *numberPhases
+		}
+		if known && phases == len(wiring.Phases) && limit >= 0 {
+			kw := limit * wiring.VoltageV * float64(phases) / 1000
+			return &kw
+		}
+	default:
+		// An answer in amperes cannot be converted without voltage and
+		// phase count - see Capabilities.Usable. Reporting it as kW would
+		// be exactly the guess this feature refuses to make, so the
+		// readback stays honestly unknown.
+	}
+	return nil
 }
 
 func (t *transport) getConfiguration(ctx context.Context, id string, keys []string) (map[string]string, []string, error) {

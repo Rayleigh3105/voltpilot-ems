@@ -21,10 +21,11 @@ var ErrNotConnected = errors.New("die Ladesäule ist zurzeit nicht verbunden")
 // ErrDisabled is returned when the feature flag is off.
 var ErrDisabled = errors.New("die Ladepunkt-Anbindung ist nicht eingeschaltet")
 
-// ErrOCPP201Profiles refuses every 1.6 command (profiles, configuration,
-// commissioning) to a station on the OCPP 2.0.1 lane. Its charging profiles
-// arrive with MiSpeL MP-36; until then such a station is measured, not steered.
-var ErrOCPP201Profiles = errors.New("die Ladesäule spricht OCPP 2.0.1 - Ladeprofile dafür folgen (MiSpeL MP-36)")
+// ErrNotOCPP16 refuses a command that only exists in OCPP 1.6 vocabulary (the
+// cloud's measurement configuration keys) to a station on the 2.0.1 lane.
+// Charging profiles are not such a command: since MiSpeL MP-36 they reach
+// both lanes through liveLane.
+var ErrNotOCPP16 = errors.New("die Ladesäule ist nicht über OCPP 1.6 verbunden")
 
 // Commission prepares a station for load management, in the order that makes
 // each step safe:
@@ -50,7 +51,7 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 		return errors.New("Ungültige Sicherheitsgrenzen")
 	}
 	defaultKw = math.Min(defaultKw, maxKw)
-	t, err := s.liveTransport(chargerID)
+	t, err := s.liveLane(chargerID)
 	if err != nil {
 		s.recordCommission(chargerID, nil, nil, err)
 		return err
@@ -190,7 +191,7 @@ func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, e
 func (s *Server) ApplyLimit(ctx context.Context, chargerID string, connectorID, transactionID int, limitKw float64) error {
 	s.profileMu.Lock()
 	defer s.profileMu.Unlock()
-	t, err := s.liveTransport(chargerID)
+	t, err := s.liveLane(chargerID)
 	if err != nil {
 		s.recordCommand(chargerID, connectorID, nil, err.Error())
 		return err
@@ -257,7 +258,7 @@ func (s *Server) recordCommand(chargerID string, connectorID int, kw *float64, s
 // ladder's middle rung and the reason the Deye lesson does not repeat here:
 // an accepted command is not a command in force.
 func (s *Server) ReadBack(ctx context.Context, chargerID string, connectorID int) (CompositeSchedule, string, error) {
-	t, err := s.liveTransport(chargerID)
+	t, err := s.liveLane(chargerID)
 	if err != nil {
 		return CompositeSchedule{}, ReadbackUnknown, err
 	}
@@ -302,12 +303,42 @@ func (s *Server) recordReadback(chargerID string, connectorID int, cs CompositeS
 	con.ReadbackAt = s.opts.Now()
 }
 
-// liveTransport returns the transport when the feature is on, the server is
-// running and the station is connected — the three preconditions any command
-// has, each with its own error so a surface can say which one is missing.
+// liveLane returns the protocol lane of a station when the feature is on,
+// the server is running and the station is connected - the three
+// preconditions any command has, each with its own error so a surface can say
+// which one is missing. A station on OCPP 2.0.1 gets the 2.0.1 lane
+// (ocpp201profiles.go, MiSpeL MP-36), every other the 1.6 transport: one
+// orchestration, the same limits, the same guards for both.
+func (s *Server) liveLane(chargerID string) (profileLane, error) {
+	t, speaks201, err := s.liveStation(chargerID)
+	if err != nil {
+		return nil, err
+	}
+	if speaks201 {
+		if t.v201 == nil {
+			return nil, ErrDisabled
+		}
+		return t.v201, nil
+	}
+	return t, nil
+}
+
+// liveTransport is liveLane for the paths that speak 1.6 vocabulary verbatim
+// (measurement configuration keys from the cloud).
 func (s *Server) liveTransport(chargerID string) (*transport, error) {
+	t, speaks201, err := s.liveStation(chargerID)
+	if err != nil {
+		return nil, err
+	}
+	if speaks201 {
+		return nil, ErrNotOCPP16
+	}
+	return t, nil
+}
+
+func (s *Server) liveStation(chargerID string) (*transport, bool, error) {
 	if !s.opts.Enabled {
-		return nil, ErrDisabled
+		return nil, false, ErrDisabled
 	}
 	s.mu.Lock()
 	t := s.transport
@@ -316,18 +347,15 @@ func (s *Server) liveTransport(chargerID string) (*transport, error) {
 	speaks201 := known && c.OCPPVersion == OCPPVersion201
 	s.mu.Unlock()
 	if t == nil {
-		return nil, ErrDisabled
+		return nil, false, ErrDisabled
 	}
 	if !known {
-		return nil, ErrNotFound
+		return nil, false, ErrNotFound
 	}
 	if !connected {
-		return nil, ErrNotConnected
+		return nil, false, ErrNotConnected
 	}
-	if speaks201 {
-		return nil, ErrOCPP201Profiles
-	}
-	return t, nil
+	return t, speaks201, nil
 }
 
 // ClearLimit removes the live TxProfile of one connector.
@@ -338,7 +366,7 @@ func (s *Server) liveTransport(chargerID string) (*transport, error) {
 // silently inherit the previous one's limit. Clearing costs one message and
 // removes a whole class of "why is this car slow" from the field.
 func (s *Server) ClearLimit(ctx context.Context, chargerID string, connectorID int) error {
-	t, err := s.liveTransport(chargerID)
+	t, err := s.liveLane(chargerID)
 	if err != nil {
 		return err
 	}

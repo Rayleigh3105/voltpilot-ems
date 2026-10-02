@@ -121,6 +121,7 @@ func connect201(t *testing.T, endpoint, id string, st *station201) (ocpp2.Chargi
 	cs := ocpp2.NewChargingStation(id, nil, nil)
 	st.cs = cs
 	cs.SetProvisioningHandler(st)
+	cs.SetSmartChargingHandler(st)
 	if err := cs.Start(endpoint); err != nil {
 		t.Fatalf("2.0.1 station %s could not connect to %s: %v", id, endpoint, err)
 	}
@@ -266,9 +267,10 @@ func TestOCPP201StationBootsChargesReconnectsAndEnds(t *testing.T) {
 		t.Fatalf("status = %q", connector1(s, id).Status)
 	}
 
-	// A 1.6 command to a 2.0.1 station is refused by name (profiles: MP-36).
-	if err := s.ClearLimit(context.Background(), id, 1); !errors.Is(err, csms.ErrOCPP201Profiles) {
-		t.Fatalf("ClearLimit on 2.0.1 station: %v, want ErrOCPP201Profiles", err)
+	// Since MP-36 the profile commands reach a 2.0.1 station over its own
+	// lane: nothing to clear is the station's "Unknown", not an error.
+	if err := s.ClearLimit(context.Background(), id, 1); err != nil {
+		t.Fatalf("ClearLimit on 2.0.1 station: %v", err)
 	}
 
 	// The MP-34 simulator plays the vehicle: 40 % of 60 kWh, charging 11 kW.

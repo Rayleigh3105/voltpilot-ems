@@ -9,10 +9,9 @@ package csms
 // 2.0.1 Edition 3, Part 2 (Specification). The table of what maps to what is
 // docs/edge-ocpp201.md.
 //
-// Not here (MiSpeL Bauplan § 8): charging profiles (MP-36), V2X/ISO 15118-20
-// (MP-37), discharge commands with protection limits (MP-39). A 2.0.1 station
-// is measured, never steered, until those land - liveTransport refuses every
-// 1.6 command to it with ErrOCPP201Profiles.
+// Charging profiles (MP-36) ride the same lane: ocpp201profiles.go. Not here
+// (MiSpeL Bauplan § 8): V2X/ISO 15118-20 (MP-37), discharge commands with
+// protection limits (MP-39).
 
 import (
 	"context"
@@ -116,14 +115,20 @@ type transport201 struct {
 	deviceModel   map[string]map[string]string
 	metering      map[string]Metering201
 	nextRequestID int
+	// composite is the final-schema schedule of the last GetCompositeSchedule
+	// answer per station (scheduleTap201); reports collects K09 answers.
+	composite map[string]compositeSchedule201
+	reports   map[string]*profileReport201
 }
 
 func newTransport201(s *Server, lane *protocolLane, stopping func() bool) *transport201 {
-	cs := ocpp2.NewCSMS(nil, lane)
-	t := &transport201{srv: s, cs: cs, lane: lane, stopping: stopping, done: make(chan struct{}),
+	t := &transport201{srv: s, lane: lane, stopping: stopping, done: make(chan struct{}),
 		evses: map[string]map[int]*evse201{}, pending: map[string]pendingTx201{},
 		needsMetering: map[string]bool{}, deviceModel: map[string]map[string]string{},
-		metering: map[string]Metering201{}}
+		metering: map[string]Metering201{}, composite: map[string]compositeSchedule201{},
+		reports: map[string]*profileReport201{}}
+	cs := ocpp2.NewCSMS(nil, &scheduleTap201{protocolLane: lane, t: t})
+	t.cs = cs
 	// The same admission as 1.6 (ocppmap.go): only allowlisted ids, nothing
 	// while the box shuts down.
 	cs.SetNewChargingStationValidationHandler(func(id string, _ *http.Request) bool {
@@ -145,6 +150,7 @@ func newTransport201(s *Server, lane *protocolLane, stopping func() bool) *trans
 	cs.SetAuthorizationHandler(h)
 	cs.SetTransactionsHandler(h)
 	cs.SetMeterHandler(h)
+	cs.SetSmartChargingHandler(&smartHandler201{t: t})
 	return t
 }
 
@@ -518,6 +524,10 @@ func (s *Server) RequestBaseReport201(ctx context.Context, id, reportBase string
 	if err != nil {
 		return 0, "", err
 	}
+	return t.baseReport(ctx, id, reportBase)
+}
+
+func (t *transport201) baseReport(ctx context.Context, id, reportBase string) (int, string, error) {
 	t.mu.Lock()
 	t.nextRequestID++
 	requestID := t.nextRequestID
