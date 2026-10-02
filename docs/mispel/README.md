@@ -93,8 +93,10 @@ Ein Vertrag, eine Vektor-Datei, zwei Rechenwerke im Gleichlauf (exakte Brüche, 
 - **Java** `services/api/.../mispel/MispelAbgrenzungRechenwerk.java` (MP-8, für Monatslauf und Nachweis).
 - **Formelsätze** (E5 = B): A1, A5, A5-Variante, A10, A11. A2–A4 kommen mit Stufe B (MP-32), A6–A9 erst, wenn ein Kunde
   sie braucht (Basisfälle A1–A4 und Sonderfälle A5–A9: A1 S. 8–9, Übersicht 1; A10, A11 ohne marktprämiengeförderte
-  EE-Anlage: A1 S. 94–102). Die Pauschaloption (Anlage 2, Formeln (P1)–(P15))
-  ist MP-24.
+  EE-Anlage: A1 S. 94–102). Die Pauschaloption (Anlage 2) hat einen eigenen Vertrag (MP-24):
+  [Regeln](../contracts/v2/mispel-pauschal.md), [Vektoren](../contracts/v2/mispel-pauschal-vectors.json),
+  [Schema](../contracts/v2/mispel-pauschal.schema.json) — Formeln (P1)–(P22)R der Formelsätze P1–P5 mit Rumpfjahr und
+  Tabelle 1; Rechenwerk folgt mit MP-25, anwendbar erst ab dem Monatsersten nach der EU-Genehmigung (T S. 3 Ziff. 9b).
 - **Bindung:** der vereinfachte Formelsatz (A10/A11 statt A1, A5-Variante statt A5) bindet bis zum Jahresende
   (A1 S. 24, Abschn. 3.2.3); geprüft beim Eintragen des Förderwegs.
 

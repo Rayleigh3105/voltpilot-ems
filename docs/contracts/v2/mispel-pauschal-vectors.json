@@ -1,0 +1,3631 @@
+{
+  "$comment": "MiSpeL-Pauschaloption: die Formeln (P1)–(P22)R der Formelsätze P1, P2, P3, P4 (mit P4-Variante) und P5 als Vertrag mit gemeinsamen Vektoren. Nummern, Begriffe und Rechenwege stehen WÖRTLICH wie in Anlage 2 der Festlegung vom 01.10.2026; jede Formel, jeder Fall und jede Tabellenzeile trägt ihre Fundstelle. Die Pauschaloption ist erst ab dem Ersten des Kalendermonats anwendbar, der auf die beihilferechtliche Genehmigung der EU-Kommission zu § 19 Abs. 3c EEG folgt (T S. 3, Tenorziffer 9 b). Leser: MispelPauschalVectorsTest (Java) und test_mispel_pauschal_vectors.py (Python); Rechenwerk folgt mit MP-25. Regeln in mispel-pauschal.md.",
+  "schema_version": "1.0",
+  "quelle": {
+    "festlegung": "Festlegung zur Marktintegration von Speichern und Ladepunkten (MiSpeL)",
+    "aktenzeichen": "618-25-02",
+    "beschluss": "2026-10-01",
+    "anlage": "Anlage 2 – Pauschaloption",
+    "zitierweise": "„A2 S. 30“ = Anlage 2, Seite 30 (Seitenzahl im Kopf der Seite); „T S. 67“ = Tenor mit Begründung, Seite 67; „A1 S. 98“ = Anlage 1, Seite 98. Die Festlegung hat keine Randnummern.",
+    "anwendbar_ab": "Tenorziffern 2 und 4 (Pauschaloption) frühestens für Netzeinspeisung ab dem ersten Kalendertag des Kalendermonats, der auf die beihilferechtliche Genehmigung der Europäischen Kommission zu § 19 Abs. 3c EEG folgt (T S. 3, Tenorziffer 9 b; A2 S. 20, Voraussetzung 10; § 101 Abs. 1 EEG). Termin offen."
+  },
+  "einheiten": {
+    "Z1NB¼": "kWh je Viertelstunde (Strommenge, keine Leistung)",
+    "Z1NE¼": "kWh je Viertelstunde",
+    "ZWNE¼": "kWh je Viertelstunde (nur P5: Netzeinspeisung am Zähler ZW)",
+    "AW¼": "ct/kWh; ausgewertet wird nur, ob der Wert größer null ist ((P12)¼)",
+    "AWa¼": "ct/kWh",
+    "AWb¼": "ct/kWh",
+    "SP¼": "ct/kWh, Spotmarktpreis nach § 3 Nr. 42a EEG; darf negativ sein, ausgewertet wird nur, ob er nicht negativ ist ((P5)¼)",
+    "Pinst": "kWp, installierte Leistung aller Solaranlagen hinter der Einspeisestelle einschließlich ungeförderter und Steckersolargeräte",
+    "SKinst": "kWh, installierte Kapazität aller Stromspeicher hinter der Einspeise- bzw. Entnahmestelle (ohne Ladepunkte)",
+    "Painst": "kWp, installierte Leistung der Solaranlage a nach § 24 Abs. 3 S. 2 Halbsatz 2 EEG",
+    "Pbinst": "kWp",
+    "Formelwerte": "kWh je Kalenderjahr bzw. Rumpfjahr; ohne Einheit sind die Rechengrößen (P2)P1, (P2)P2, (P2)P3, die Faktoren (ZFa), (ZFb) und die 0/1-Werte (P5)¼, (P12)¼, (P12a)¼, (P12b)¼; (P17), (P19)R, (P20), (P22)R sind Tage; (P18) und (P21) kWh je Tag"
+  },
+  "regeln": {
+    "zeit": {
+      "regel": "Eine Viertelstunde gehört zu dem Kalendertag und Kalenderjahr, an dem sie nach gesetzlicher Zeit (MEZ/MESZ, Europe/Berlin) beginnt. „beginn“ trägt immer den Versatz zur UTC, nie „Z“.",
+      "fundstelle": "A2 S. 28, Abschn. 4.2.1 (∑J); A2 S. 53, Abschn. 9.1 (Kalendertage TK, TS, TR)"
+    },
+    "kalenderjahr": {
+      "regel": "Bezugszeitraum ist das Kalenderjahr (oder ein Rumpfjahr an seiner Stelle). Es gibt keine monatliche Bestimmung, keinen Übertrag zwischen Jahren und keine Verlustprivilegierung.",
+      "fundstelle": "A2 S. 9–10, Abschn. 2.1.4; T S. 63; A2 S. 8, Fn. 5"
+    },
+    "rumpfjahre": {
+      "regel": "Bei einer bestimmungsrelevanten Änderung im Kalenderjahr tritt das Rumpfjahr an die Stelle des Kalenderjahres. Der Tag der Änderung zählt zum Rumpfjahr davor; Rumpfjahre sind ganze Kalendertage, „von“ und „bis“ einschließlich. Je Rumpfjahr gelten seine Stammdaten: (P1) bis (P4) werden damit für das ganze Kalenderjahr bestimmt und nur über (P18) und (P21) verwendet; in (P8) tritt (P4)R an die Stelle von (P4), in (P15), (P15a), (P15b) tritt (P1)R an die Stelle von (P1); ∑J ist die Summe über die Viertelstunden des Rumpfjahres.",
+      "fundstelle": "A2 S. 51–55, Abschn. 9–9.2; T S. 88–89"
+    },
+    "ungefoerdert": {
+      "regel": "Für eine ungeförderte Solaranlage gibt es keinen anzulegenden Wert: ihr AW-Eingang entfällt (Feld „ungefoerdert“ des Falls), die zugehörige (P12)¼, (P12a)¼ bzw. (P12b)¼ ist in jeder Viertelstunde 1. Eine so bestimmte Netzeinspeisung hat keinen Förderanspruch.",
+      "fundstelle": "A2 S. 40, Abschn. 5.4.1; A2 S. 50, Abschn. 8.1"
+    },
+    "abwandlungen": {
+      "regel": "P4, P4-Variante und P5 stellt Anlage 2 in Abwandlung zum Basisfall P1 dar; mit Ladepunkt gelten sie in Abwandlung zu P2 oder P3 mit deren Rechengröße (P2)P2 bzw. (P2)P3. Die Formelsätze und Fälle dieses Vertrags tragen die dargestellte P1-Abwandlung.",
+      "fundstelle": "A2 S. 34 (Abb. 8); A2 S. 43 (Abb. 9); A2 S. 49 (Übersicht 2, Fußnote *)"
+    },
+    "viertelstunden_ohne_fluss": {
+      "regel": "Die Fälle führen nur Viertelstunden mit Stromfluss; jede weggelassene Viertelstunde trägt in jedem Zähler 0 kWh. Das ist eine Kürzung der Vektor-Datei, keine Lückenregel: im Rechenwerk ist eine fehlende Viertelstunde eine Lücke und nie eine Null (MP-25).",
+      "fundstelle": "T S. 15 (Viertelstundenwerte auch in der Pauschaloption); Bauplan § 8"
+    },
+    "viertelstunden_buendeln": {
+      "regel": "Die Fälle bündeln Jahresmengen in wenige Viertelstunden; eine Viertelstunde trägt so mehr, als eine Anlage dieser Größe physikalisch liefern kann. Die Formeln kennen keine Leistungsgrenze; die Bündelung ändert kein Ergebnis.",
+      "fundstelle": "A2 S. 30–31 (alle Jahreswerte sind Summen von Viertelstundenwerten)"
+    },
+    "vergleich": {
+      "regel": "Alle Vektor-Zahlen sind exakt: eine Dezimalzahl, wo der Wert ein endlicher Dezimalbruch ist, sonst ein gekürzter Bruch als Text „Zähler/Nenner“ (etwa (ZFa) = „10/11“, (P18) = „4000/183“). Leser vergleichen exakt (Java Bruch, Python Fraction). Das Rechenwerk rechnet ungerundet; gerundet wird nur für die Anzeige.",
+      "fundstelle": "Anlage 2 regelt keine Rundung; A2 S. 12 und S. 56 runden nur „zur vereinfachten Darstellung“"
+    }
+  },
+  "abweichungen": [
+    {
+      "thema": "Rechengrößen (P2)P1 und (P2)P2 im Formelsatz P3",
+      "festlegung": "„Mit den Indizes P1, P2 oder P3 gekennzeichnete Formeln gelten ausschließlich in der jeweiligen Fallkonstellation“ (S. 28); (P2)P3 ist aber „der niedrigere der beiden Werte, die als Rechengröße (P2)P1 im Basisfall P1 … und als Rechengröße (P2)P2 im Basisfall P2 … anzuwenden wären“ (S. 29).",
+      "vertrag": "Der Formelsatz P3 führt (P2)P1 und (P2)P2 mit, als Vergleichswerte für (P2)P3; in (P3) geht nur (P2)P3 ein.",
+      "grund": "Ohne die beiden Werte ist (P2)P3 nicht nachvollziehbar; der Nachweis zeigt, warum der niedrigere gilt.",
+      "fundstelle": "A2 S. 28–29, Abschn. 4.2.1–4.2.2"
+    },
+    {
+      "thema": "AW¼ in der P4-Variante",
+      "festlegung": "Die P4-Variante verwendet (P15) und damit (P12)¼ = WENN [ AW¼ > 0 ; 1 ; 0 ]; sie setzt „jederzeit übereinstimmende AW>0-Zeiten“ voraus, nennt aber nicht, welcher der beiden anzulegenden Werte AW¼ ist.",
+      "vertrag": "Die P4-Variante liest AWa¼ und AWb¼; die Leser prüfen, dass beide in jeder Viertelstunde gleichzeitig größer null sind; (P12)¼ wertet AWa¼ aus.",
+      "grund": "Bei übereinstimmenden AW>0-Zeiten ist die Wahl gleichgültig; die Prüfung macht die Voraussetzung der Variante sichtbar, statt sie zu unterstellen.",
+      "fundstelle": "A2 S. 41, Abschn. 5.4.2"
+    },
+    {
+      "thema": "Pinst in P4 und P4-Variante",
+      "festlegung": "(P1) „bezieht sich im hier relevanten Sonderfall P4 mit mehreren Solaranlagen a und b auf die Summe der installierten Leistung dieser Solaranlagen“.",
+      "vertrag": "Die Fälle tragen Pinst, Painst und Pbinst; die Leser prüfen Pinst = Painst + Pbinst.",
+      "grund": "Pinst bleibt der eine Eingang von (P1) und (P2)P1 wie in den Basisfällen; die Summe ist eine Prüfung, kein zweiter Rechenweg.",
+      "fundstelle": "A2 S. 36, Abschn. 5.2.2"
+    },
+    {
+      "thema": "Kalendertage in gesetzlicher Zeit",
+      "festlegung": "Rumpfjahre zählen Kalendertage (TK, TS, TR); der Tag der Änderung zählt zum Rumpfjahr davor. Eine Zeitzone nennt Anlage 2 nicht.",
+      "vertrag": "Eine Viertelstunde gehört zu dem Kalendertag, an dem sie in gesetzlicher Zeit (Europe/Berlin) beginnt.",
+      "grund": "Kalendertage und ∑J folgen der gesetzlichen Zeit wie in Anlage 1; in UTC fiele die erste Stunde des Folgetages in den Änderungstag.",
+      "fundstelle": "A2 S. 53, Abschn. 9.1"
+    },
+    {
+      "thema": "Rundung der BNetzA-Zahlen",
+      "festlegung": "Tabelle 1, Tabelle 2 und die Rumpfjahr-Beispiele sind „zur vereinfachten Darstellung gerundet“; eine Rundungsregel nennt Anlage 2 nicht.",
+      "vertrag": "Die Vektoren tragen exakte Werte; jede BNetzA-Zahl ist der kaufmännisch (halbe Einheit aufwärts) auf die gedruckten Stellen gerundete exakte Wert.",
+      "grund": "Die gedruckten Werte bestätigen kaufmännisches Runden: 15 kWp mit 4 kWh ergibt exakt 10 312,5 kWh/a, gedruckt „10.313“.",
+      "fundstelle": "A2 S. 12, Tabelle 1 und 2; A2 S. 56, Abschn. 9.3"
+    },
+    {
+      "thema": "Bezeichnung (P1)R",
+      "festlegung": "S. 54 nennt (P1)R „Pauschalgrenze der Förderfähigkeit des Rumpfjahrs“, S. 56 „… des Rumpfjahres“.",
+      "vertrag": "Der Katalog folgt der Formel auf S. 54.",
+      "grund": "Begriffe stehen wörtlich wie an der Formel.",
+      "fundstelle": "A2 S. 54, Abschn. 9.2"
+    }
+  ],
+  "formelsaetze": {
+    "P1": {
+      "bezeichnung": "Basisfall P1: „Stromspeicher“",
+      "fundstelle": "A2 S. 25–26, Abschn. 4.1.1; S. 27–33, Abschn. 4.2–4.4",
+      "zaehler": [
+        "Z1"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "AW¼",
+        "SP¼"
+      ],
+      "stammdaten": [
+        "Pinst",
+        "SKinst"
+      ],
+      "formeln": [
+        "(P1)",
+        "(P2)P1",
+        "(P3)",
+        "(P4)",
+        "(P5)¼",
+        "(P6)¼",
+        "(P7)",
+        "(P8)",
+        "(P9)",
+        "(P10)",
+        "(P11)",
+        "(P12)¼",
+        "(P13)¼",
+        "(P14)",
+        "(P15)",
+        "(P17)",
+        "(P18)",
+        "(P19)R",
+        "(P1)R",
+        "(P20)",
+        "(P21)",
+        "(P22)R",
+        "(P3)R",
+        "(P4)R"
+      ]
+    },
+    "P2": {
+      "bezeichnung": "Basisfall P2: „Ladepunkt“",
+      "fundstelle": "A2 S. 26, Abschn. 4.1.2; S. 27–33, Abschn. 4.2–4.4",
+      "zaehler": [
+        "Z1"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "AW¼",
+        "SP¼"
+      ],
+      "stammdaten": [
+        "Pinst"
+      ],
+      "formeln": [
+        "(P1)",
+        "(P2)P2",
+        "(P3)",
+        "(P4)",
+        "(P5)¼",
+        "(P6)¼",
+        "(P7)",
+        "(P8)",
+        "(P9)",
+        "(P10)",
+        "(P11)",
+        "(P12)¼",
+        "(P13)¼",
+        "(P14)",
+        "(P15)",
+        "(P17)",
+        "(P18)",
+        "(P19)R",
+        "(P1)R",
+        "(P20)",
+        "(P21)",
+        "(P22)R",
+        "(P3)R",
+        "(P4)R"
+      ]
+    },
+    "P3": {
+      "bezeichnung": "Basisfall P3: „Stromspeicher und Ladepunkt“",
+      "fundstelle": "A2 S. 26–27, Abschn. 4.1.3; S. 27–33, Abschn. 4.2–4.4",
+      "zaehler": [
+        "Z1"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "AW¼",
+        "SP¼"
+      ],
+      "stammdaten": [
+        "Pinst",
+        "SKinst"
+      ],
+      "formeln": [
+        "(P1)",
+        "(P2)P1",
+        "(P2)P2",
+        "(P2)P3",
+        "(P3)",
+        "(P4)",
+        "(P5)¼",
+        "(P6)¼",
+        "(P7)",
+        "(P8)",
+        "(P9)",
+        "(P10)",
+        "(P11)",
+        "(P12)¼",
+        "(P13)¼",
+        "(P14)",
+        "(P15)",
+        "(P17)",
+        "(P18)",
+        "(P19)R",
+        "(P1)R",
+        "(P20)",
+        "(P21)",
+        "(P22)R",
+        "(P3)R",
+        "(P4)R"
+      ]
+    },
+    "P4": {
+      "bezeichnung": "Sonderfall P4: Mehrere Solaranlagen (hier: in Abwandlung zum Basisfall P1 „Stromspeicher“)",
+      "fundstelle": "A2 S. 34–35, Abschn. 5.1; S. 35–40, Abschn. 5.2–5.4.1",
+      "zaehler": [
+        "Z1"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "AWa¼",
+        "AWb¼",
+        "SP¼"
+      ],
+      "stammdaten": [
+        "Pinst",
+        "SKinst",
+        "Painst",
+        "Pbinst"
+      ],
+      "formeln": [
+        "(P1)",
+        "(P2)P1",
+        "(P3)",
+        "(P4)",
+        "(P5)¼",
+        "(P6)¼",
+        "(P7)",
+        "(P8)",
+        "(P9)",
+        "(P10)",
+        "(P11)",
+        "(ZFa)",
+        "(ZFb)",
+        "(P12a)¼",
+        "(P12b)¼",
+        "(P13a)¼",
+        "(P13b)¼",
+        "(P14a)",
+        "(P14b)",
+        "(P15a)",
+        "(P15b)",
+        "(P16a)",
+        "(P16b)",
+        "(P17)",
+        "(P18)",
+        "(P19)R",
+        "(P1)R",
+        "(P20)",
+        "(P21)",
+        "(P22)R",
+        "(P3)R",
+        "(P4)R"
+      ]
+    },
+    "P4-Variante": {
+      "bezeichnung": "P4-Variante: Vereinfachtes Vorgehen bei mehreren Solaranlagen mit jederzeit übereinstimmenden AW>0-Zeiten",
+      "fundstelle": "A2 S. 41–42, Abschn. 5.4.2",
+      "zaehler": [
+        "Z1"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "AWa¼",
+        "AWb¼",
+        "SP¼"
+      ],
+      "stammdaten": [
+        "Pinst",
+        "SKinst",
+        "Painst",
+        "Pbinst"
+      ],
+      "formeln": [
+        "(P1)",
+        "(P2)P1",
+        "(P3)",
+        "(P4)",
+        "(P5)¼",
+        "(P6)¼",
+        "(P7)",
+        "(P8)",
+        "(P9)",
+        "(P10)",
+        "(P11)",
+        "(P12)¼",
+        "(P13)¼",
+        "(P14)",
+        "(P15)",
+        "(ZFa)",
+        "(ZFb)",
+        "(P16a)P4-Variante",
+        "(P16b)P4-Variante",
+        "(P17)",
+        "(P18)",
+        "(P19)R",
+        "(P1)R",
+        "(P20)",
+        "(P21)",
+        "(P22)R",
+        "(P3)R",
+        "(P4)R"
+      ]
+    },
+    "P5": {
+      "bezeichnung": "Sonderfall P5: Pauschaloption bei separater Stromlieferung für eine Wärmepumpe (hier: in Abwandlung zum Basisfall P1 „Stromspeicher“)",
+      "fundstelle": "A2 S. 42–45, Abschn. 6.1–6.2; S. 46, Abschn. 6.3",
+      "zaehler": [
+        "Z1",
+        "ZW"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "ZWNE¼",
+        "AW¼",
+        "SP¼"
+      ],
+      "stammdaten": [
+        "Pinst",
+        "SKinst"
+      ],
+      "formeln": [
+        "(P1)",
+        "(P2)P1",
+        "(P3)",
+        "(P4)",
+        "(P5)¼",
+        "(P6)¼ P5",
+        "(P7)",
+        "(P8)",
+        "(P9)",
+        "(P10)",
+        "(P11)",
+        "(P12)¼",
+        "(P13)¼ P5",
+        "(P14)",
+        "(P15)",
+        "(P17)",
+        "(P18)",
+        "(P19)R",
+        "(P1)R",
+        "(P20)",
+        "(P21)",
+        "(P22)R",
+        "(P3)R",
+        "(P4)R"
+      ]
+    }
+  },
+  "formeln": [
+    {
+      "nr": "(P1)",
+      "begriff": "Pauschalgrenze der Förderfähigkeit im Kalenderjahr",
+      "rechenweg": "Pinst • 500 kWh/kW",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 28, Abschn. 4.2.2; in P4 und P4-Variante bezogen auf die Summe der Solaranlagen: S. 36"
+    },
+    {
+      "nr": "(P2)P1",
+      "begriff": "Rechengröße zum Größenverhältnis zwischen Solarleistung und Speicherkapazität in der Fallkonstellation P1 (Stromspeicher)",
+      "rechenweg": "0,1 kWh/kW • Pinst / SKinst",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 28–29, Abschn. 4.2.2"
+    },
+    {
+      "nr": "(P2)P2",
+      "begriff": "Rechengröße in der Fallkonstellation P2 (Ladepunkt)",
+      "rechenweg": "0,2",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P2",
+        "P3"
+      ],
+      "fundstelle": "A2 S. 29, Abschn. 4.2.2"
+    },
+    {
+      "nr": "(P2)P3",
+      "begriff": "Rechengröße in der Fallkonstellation P3 (Stromspeicher und Ladepunkt)",
+      "rechenweg": "MIN [ (P2)P1 ; (P2)P2 ]",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P3"
+      ],
+      "fundstelle": "A2 S. 29, Abschn. 4.2.2"
+    },
+    {
+      "nr": "(P3)",
+      "begriff": "Indifferenzbereich im Kalenderjahr",
+      "rechenweg": "(P2) • (P1)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 30, Abschn. 4.2.2"
+    },
+    {
+      "nr": "(P4)",
+      "begriff": "Pauschalgrenze der Saldierungsfähigkeit im Kalenderjahr",
+      "rechenweg": "(P1) + (P3)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 30, Abschn. 4.2.2"
+    },
+    {
+      "nr": "(P5)¼",
+      "begriff": "SP≥0-Zeiten",
+      "rechenweg": "WENN [ SP¼ ≥ 0 ; 1 ; 0 ]",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 30, Abschn. 4.2.3"
+    },
+    {
+      "nr": "(P6)¼",
+      "begriff": "Viertelstundenwert der Netzeinspeisung in SP≥0-Zeiten",
+      "rechenweg": "(P5)¼ • Z1NE¼",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 30, Abschn. 4.2.3"
+    },
+    {
+      "nr": "(P6)¼ P5",
+      "begriff": "Viertelstundenwert der Netzeinspeisung in SP≥0-Zeiten",
+      "rechenweg": "(P5)¼ • ZWNE¼",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P5"
+      ],
+      "fundstelle": "A2 S. 46, Abschn. 6.3",
+      "ersetzt": "(P6)¼"
+    },
+    {
+      "nr": "(P7)",
+      "begriff": "Netzeinspeisung in SP≥0-Zeiten im Kalenderjahr",
+      "rechenweg": "∑J (P6)¼",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 30, Abschn. 4.2.3",
+      "summe": {
+        "ueber": "J",
+        "von": "(P6)¼"
+      }
+    },
+    {
+      "nr": "(P8)",
+      "begriff": "Grundsätzlich saldierungsfähige Netzeinspeisung in SP≥0-Zeiten im Kalenderjahr",
+      "rechenweg": "MAX [ (P7) – (P4) ; 0 ]",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 30, Abschn. 4.2.3"
+    },
+    {
+      "nr": "(P9)",
+      "begriff": "Gesamter Netzbezug im Kalenderjahr",
+      "rechenweg": "∑J Z1NB¼",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 31, Abschn. 4.2.3",
+      "summe": {
+        "ueber": "J",
+        "von": "Z1NB¼"
+      }
+    },
+    {
+      "nr": "(P10)",
+      "begriff": "Saldierungsfähige Netzeinspeisung im Kalenderjahr",
+      "rechenweg": "MIN [ (P8) ; (P9) ]",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 31, Abschn. 4.2.3; S. 32, Abschn. 4.3.1"
+    },
+    {
+      "nr": "(P11)",
+      "begriff": "Umlagebelasteter Netzbezug im Kalenderjahr",
+      "rechenweg": "(P9) – (P10)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 31, Abschn. 4.2.4; S. 32, Abschn. 4.3.2"
+    },
+    {
+      "nr": "(P12)¼",
+      "begriff": "AW>0-Zeiten",
+      "rechenweg": "WENN [ AW¼ > 0 ; 1 ; 0 ]",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P5",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 31, Abschn. 4.2.5"
+    },
+    {
+      "nr": "(P13)¼",
+      "begriff": "Viertelstundenwert der Netzeinspeisung in AW>0-Zeiten",
+      "rechenweg": "(P12)¼ • Z1NE¼",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 31, Abschn. 4.2.5"
+    },
+    {
+      "nr": "(P13)¼ P5",
+      "begriff": "Viertelstundenwert der Netzeinspeisung in AW>0-Zeiten",
+      "rechenweg": "(P12)¼ • ZWNE¼",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P5"
+      ],
+      "fundstelle": "A2 S. 46, Abschn. 6.3",
+      "ersetzt": "(P13)¼"
+    },
+    {
+      "nr": "(P14)",
+      "begriff": "Netzeinspeisung in AW>0-Zeiten im Kalenderjahr",
+      "rechenweg": "∑J (P13)¼",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P5",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 31, Abschn. 4.2.5",
+      "summe": {
+        "ueber": "J",
+        "von": "(P13)¼"
+      }
+    },
+    {
+      "nr": "(P15)",
+      "begriff": "Förderfähige Netzeinspeisung im Kalenderjahr",
+      "rechenweg": "MIN [ (P14) ; (P1) ]",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P5",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 32, Abschn. 4.2.5; S. 33, Abschn. 4.4; in der P4-Variante bezogen auf die Summe der Solaranlagen: S. 41"
+    },
+    {
+      "nr": "(ZFa)",
+      "begriff": "Zuordnungs-Faktor der Solaranlage a",
+      "rechenweg": "Painst / (Painst + Pbinst)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 36–37, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(ZFb)",
+      "begriff": "Zuordnungs-Faktor der Solaranlage b",
+      "rechenweg": "Pbinst / (Painst + Pbinst)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4",
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P12a)¼",
+      "begriff": "AWa>0-Zeiten",
+      "rechenweg": "WENN [ AWa¼ > 0 ; 1 ; 0 ]",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P12b)¼",
+      "begriff": "AWb>0-Zeiten",
+      "rechenweg": "WENN [ AWb¼ > 0 ; 1 ; 0 ]",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P13a)¼",
+      "begriff": "Viertelstundenwert der Netzeinspeisung in AWa>0-Zeiten",
+      "rechenweg": "(P12a)¼ • Z1NE¼",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P13b)¼",
+      "begriff": "Viertelstundenwert der Netzeinspeisung in AWb>0-Zeiten",
+      "rechenweg": "(P12b)¼ • Z1NE¼",
+      "ebene": "viertelstunde",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P14a)",
+      "begriff": "Netzeinspeisung in AWa>0-Zeiten im Kalenderjahr",
+      "rechenweg": "∑J (P13a)¼",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2",
+      "summe": {
+        "ueber": "J",
+        "von": "(P13a)¼"
+      }
+    },
+    {
+      "nr": "(P14b)",
+      "begriff": "Netzeinspeisung in AWb>0-Zeiten im Kalenderjahr",
+      "rechenweg": "∑J (P13b)¼",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37, Abschn. 5.2.2",
+      "summe": {
+        "ueber": "J",
+        "von": "(P13b)¼"
+      }
+    },
+    {
+      "nr": "(P15a)",
+      "begriff": "Grundsätzlich förderfähige Netzeinspeisung in AWa>0-Zeiten im Kalenderjahr",
+      "rechenweg": "MIN [ (P14a) ; (P1) ]",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 37–38, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P15b)",
+      "begriff": "Grundsätzlich förderfähige Netzeinspeisung in AWb>0-Zeiten im Kalenderjahr",
+      "rechenweg": "MIN [ (P14b) ; (P1) ]",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 38, Abschn. 5.2.2"
+    },
+    {
+      "nr": "(P16a)",
+      "begriff": "Förderfähige Netzeinspeisung in Bezug auf Solaranlage a in AWa>0-Zeiten im Kalenderjahr",
+      "rechenweg": "(ZFa) • (P15a)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 38, Abschn. 5.2.2; S. 39, Abschn. 5.4.1"
+    },
+    {
+      "nr": "(P16b)",
+      "begriff": "Förderfähige Netzeinspeisung in Bezug auf Solaranlage b in AWb>0-Zeiten im Kalenderjahr",
+      "rechenweg": "(ZFb) • (P15b)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4"
+      ],
+      "fundstelle": "A2 S. 38, Abschn. 5.2.2; S. 39, Abschn. 5.4.1"
+    },
+    {
+      "nr": "(P16a)P4-Variante",
+      "begriff": "Förderfähige Netzeinspeisung in Bezug auf Solaranlage a in AWa>0-Zeiten im Sonderfall der P4-Variante im Kalenderjahr",
+      "rechenweg": "(ZFa) • (P15)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 41, Abschn. 5.4.2"
+    },
+    {
+      "nr": "(P16b)P4-Variante",
+      "begriff": "Förderfähige Netzeinspeisung in Bezug auf Solaranlage b in AWb>0-Zeiten im Sonderfall der P4-Variante im Kalenderjahr",
+      "rechenweg": "(ZFb) • (P15)",
+      "ebene": "jahr",
+      "formelsaetze": [
+        "P4-Variante"
+      ],
+      "fundstelle": "A2 S. 41–42, Abschn. 5.4.2"
+    },
+    {
+      "nr": "(P17)",
+      "begriff": "Anzahl der Tage der Sommerperiode",
+      "rechenweg": "ANZAHL [ TS ] = 183",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 54, Abschn. 9.2"
+    },
+    {
+      "nr": "(P18)",
+      "begriff": "Tagesproportionale Teilmenge der Pauschalgrenze der Förderfähigkeit je Tag der Sommerperiode",
+      "rechenweg": "(P1) / (P17)",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 54, Abschn. 9.2",
+      "quotient": {
+        "zaehler": "(P1)",
+        "nenner": "(P17)"
+      }
+    },
+    {
+      "nr": "(P19)R",
+      "begriff": "Anzahl der Tage des Rumpfjahres in der Sommerperiode",
+      "rechenweg": "ANZAHL [ TRS ]",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 54, Abschn. 9.2"
+    },
+    {
+      "nr": "(P1)R",
+      "begriff": "Pauschalgrenze der Förderfähigkeit des Rumpfjahrs",
+      "rechenweg": "(P19)R • (P18)",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 54, Abschn. 9.2"
+    },
+    {
+      "nr": "(P20)",
+      "begriff": "Anzahl der Tage des Kalenderjahres",
+      "rechenweg": "ANZAHL [ TK ]",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 54, Abschn. 9.2"
+    },
+    {
+      "nr": "(P21)",
+      "begriff": "Tagesproportionale Teilmenge des Indifferenzbereichs je Tag des Kalenderjahres",
+      "rechenweg": "(P3) / (P20)",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 55, Abschn. 9.2",
+      "quotient": {
+        "zaehler": "(P3)",
+        "nenner": "(P20)"
+      }
+    },
+    {
+      "nr": "(P22)R",
+      "begriff": "Anzahl der Tage des Rumpfjahres",
+      "rechenweg": "ANZAHL [ TR ]",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 55, Abschn. 9.2"
+    },
+    {
+      "nr": "(P3)R",
+      "begriff": "Indifferenzbereich des Rumpfjahres",
+      "rechenweg": "(P22)R • (P21)",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 55, Abschn. 9.2"
+    },
+    {
+      "nr": "(P4)R",
+      "begriff": "Pauschalgrenze der Saldierungsfähigkeit des Rumpfjahres",
+      "rechenweg": "(P1)R + (P3)R",
+      "ebene": "rumpfjahr",
+      "formelsaetze": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P4-Variante",
+        "P5"
+      ],
+      "fundstelle": "A2 S. 55, Abschn. 9.2"
+    }
+  ],
+  "nicht_im_umfang": [
+    {
+      "thema": "Unterschiedlich umlagepflichtige Netzbezugsmengen (Umlagewerte UWαJ, UWβJ)",
+      "fundstelle": "A2 S. 46–47, Abschn. 7",
+      "grund": "Anlage 2 hat dafür keine eigenen Formeln, sondern verweist auf Anlage 1 Abschn. 9 (Anrechnung mit dem niedrigsten Umlagewert im Kalenderjahr UWαJ); kommt mit dem Rechenwerk, wenn ein Kunde es braucht."
+    },
+    {
+      "thema": "Wärmepumpen-Netzbezug ∑J [ZWNB¼ – Z1NB¼] (§ 22 EnFG)",
+      "fundstelle": "A2 S. 45, Fn. 33",
+      "grund": "Keine Formel der Festlegung, sondern eine Fußnote zum Wärmepumpen-Privileg; ZWNB¼ ist darum kein Eingang von P5."
+    },
+    {
+      "thema": "P4, P4-Variante und P5 in Abwandlung zu P2 oder P3",
+      "fundstelle": "A2 S. 34; A2 S. 43; A2 S. 49",
+      "grund": "Anlage 2 zeigt nur die P1-Abwandlung; die Rechengröße des zugrunde liegenden Basisfalls nimmt das Rechenwerk (MP-25, Regel abwandlungen)."
+    },
+    {
+      "thema": "Voraussetzungen der Pauschaloption (≤ 30 kWp ohne Steckersolar, nur Solar, ein Betreiber, nur Direktvermarktung, Jahresmarktwert)",
+      "fundstelle": "A2 S. 18–21, Abschn. 3.1",
+      "grund": "Voraussetzungen sind keine Formeln; sie prüfen Förderweg (MP-5), Einrichtung (MP-27) und Rechenwerk (MP-25). Messwerte für einen A-Formelsatz schließen die Pauschaloption aus (A2 S. 22, Abschn. 3.2.3)."
+    }
+  ],
+  "faelle": [
+    {
+      "name": "bnetza-beispielrechnung-1-geringe-einspeisung",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 13, Abschn. 2.1.6, Beispielsfall und Beispielrechnung 1 (Abb. 2); Formeln (P1) bis (P15): A2 S. 28–32",
+      "warum": "BNetzA-Beispielsfall 8 kWp mit 10 kWh: Pauschalgrenze der Förderfähigkeit (P1) = 4 000 kWh/a, Indifferenzbereich (P3) = 320 kWh/a, Pauschalgrenze der Saldierungsfähigkeit (P4) = 4 320 kWh/a. Beispielrechnung 1: 3 000 kWh Netzeinspeisung im Kalenderjahr liegen unter (P1) und sind vollständig förderfähig; „In diesem Fall verbleibt kein Raum für eine Umlagesaldierung“ – (P10) = 0. Wie die BNetzA angenommen: alle Einspeisung in SP≥0- und AW>0-Zeiten. Den Netzbezug (1 200 kWh) nennt die BNetzA für diese Variante nicht; er ist hier gesetzt und bleibt voll umlagebelastet ((P11) = (P9)). Die Jahresmengen sind in wenige Viertelstunden gebündelt (Regel viertelstunden_buendeln).",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 10
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-03-14T03:00:00+01:00",
+          "Z1NB¼": 400,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 9.12
+        },
+        {
+          "beginn": "2027-06-15T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1000,
+          "AW¼": 7.5,
+          "SP¼": 4.31
+        },
+        {
+          "beginn": "2027-07-20T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1000,
+          "AW¼": 7.5,
+          "SP¼": 2.05
+        },
+        {
+          "beginn": "2027-08-10T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1000,
+          "AW¼": 7.5,
+          "SP¼": 0.88
+        },
+        {
+          "beginn": "2027-11-03T18:00:00+01:00",
+          "Z1NB¼": 800,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 14.6
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-03-14T03:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-06-15T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1000,
+            "(P12)¼": 1,
+            "(P13)¼": 1000
+          },
+          {
+            "beginn": "2027-07-20T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1000,
+            "(P12)¼": 1,
+            "(P13)¼": 1000
+          },
+          {
+            "beginn": "2027-08-10T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1000,
+            "(P12)¼": 1,
+            "(P13)¼": 1000
+          },
+          {
+            "beginn": "2027-11-03T18:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 4000,
+            "(P2)P1": 0.08,
+            "(P3)": 320,
+            "(P4)": 4320,
+            "(P7)": 3000,
+            "(P8)": 0,
+            "(P9)": 1200,
+            "(P10)": 0,
+            "(P11)": 1200,
+            "(P14)": 3000,
+            "(P15)": 3000
+          }
+        }
+      },
+      "bnetza": {
+        "2027": {
+          "(P1)": 4000,
+          "(P3)": 320,
+          "(P4)": 4320,
+          "(P15)": 3000,
+          "(P10)": 0
+        }
+      }
+    },
+    {
+      "name": "bnetza-beispielrechnung-2-hohe-einspeisung",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 14, Abschn. 2.1.6, Beispielrechnung 2 (Abb. 3); Beispielsfall A2 S. 13; Formeln (P1) bis (P15): A2 S. 28–32",
+      "warum": "Beispielrechnung 2 der BNetzA: 6 000 kWh Netzeinspeisung und 1 500 kWh Netzbezug im Kalenderjahr bei 8 kWp mit 10 kWh. 4 000 kWh sind grundsätzlich förderfähig (P15), 320 kWh indifferent, 1 680 kWh grundsätzlich saldierungsfähig (P8); saldiert werden 1 500 kWh (P10) – „die Umlage reduziert sich im Beispielsfall somit für den gesamten Netzbezug auf null“: (P11) = 0. Alle Einspeisung in SP≥0- und AW>0-Zeiten wie bei der BNetzA.",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 10
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-01-20T02:00:00+01:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 6.4
+        },
+        {
+          "beginn": "2027-05-12T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 3.3
+        },
+        {
+          "beginn": "2027-06-15T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 4.31
+        },
+        {
+          "beginn": "2027-07-20T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 2.05
+        },
+        {
+          "beginn": "2027-08-10T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 0.88
+        },
+        {
+          "beginn": "2027-10-08T21:00:00+02:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 11.7
+        },
+        {
+          "beginn": "2027-12-01T19:00:00+01:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 15.2
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-01-20T02:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-05-12T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-06-15T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-07-20T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-08-10T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-10-08T21:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-12-01T19:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 4000,
+            "(P2)P1": 0.08,
+            "(P3)": 320,
+            "(P4)": 4320,
+            "(P7)": 6000,
+            "(P8)": 1680,
+            "(P9)": 1500,
+            "(P10)": 1500,
+            "(P11)": 0,
+            "(P14)": 6000,
+            "(P15)": 4000
+          }
+        }
+      },
+      "bnetza": {
+        "2027": {
+          "(P1)": 4000,
+          "(P3)": 320,
+          "(P4)": 4320,
+          "(P8)": 1680,
+          "(P9)": 1500,
+          "(P10)": 1500,
+          "(P11)": 0,
+          "(P15)": 4000
+        }
+      }
+    },
+    {
+      "name": "p1-sp-und-aw-zeiten",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 14–15, Abschn. 2.1.7 und 2.1.8; Formeln (P5)¼ bis (P8) und (P12)¼ bis (P15): A2 S. 30–32",
+      "warum": "10 kWp mit 10 kWh ((P4) = 5 500). Einspeisung in vier Lagen: SP¼ > 0 und AW¼ > 0; SP¼ = 0 (zählt als SP≥0, (P5)¼ = 1); SP¼ < 0 bei noch positivem AW¼ (Anlage, deren anzulegender Wert sich erst nach mehreren negativen Viertelstunden verringert, § 51 EEG); SP¼ < 0 mit AW¼ = 0. Saldierungsfähig ist nur die Einspeisung in SP≥0-Zeiten ((P7) = 6 000 von 7 000), förderfähig nur die in AW>0-Zeiten ((P14) = 6 400). (P10) ist hier durch (P8) begrenzt, nicht durch den Netzbezug.",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-02-03T04:00:00+01:00",
+          "Z1NB¼": 1500,
+          "Z1NE¼": 0,
+          "AW¼": 8.1,
+          "SP¼": 7.7
+        },
+        {
+          "beginn": "2027-04-18T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AW¼": 8.1,
+          "SP¼": 3.2
+        },
+        {
+          "beginn": "2027-05-01T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1000,
+          "AW¼": 8.1,
+          "SP¼": 0
+        },
+        {
+          "beginn": "2027-05-23T13:30:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 400,
+          "AW¼": 8.1,
+          "SP¼": -0.4
+        },
+        {
+          "beginn": "2027-06-06T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 600,
+          "AW¼": 0,
+          "SP¼": -2.5
+        },
+        {
+          "beginn": "2027-07-11T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AW¼": 8.1,
+          "SP¼": 1.1
+        },
+        {
+          "beginn": "2027-11-24T18:00:00+01:00",
+          "Z1NB¼": 1500,
+          "Z1NE¼": 0,
+          "AW¼": 8.1,
+          "SP¼": 16.3
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-02-03T04:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-04-18T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12)¼": 1,
+            "(P13)¼": 2500
+          },
+          {
+            "beginn": "2027-05-01T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1000,
+            "(P12)¼": 1,
+            "(P13)¼": 1000
+          },
+          {
+            "beginn": "2027-05-23T13:30:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 400
+          },
+          {
+            "beginn": "2027-06-06T13:00:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12)¼": 0,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-07-11T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12)¼": 1,
+            "(P13)¼": 2500
+          },
+          {
+            "beginn": "2027-11-24T18:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 6000,
+            "(P8)": 500,
+            "(P9)": 3000,
+            "(P10)": 500,
+            "(P11)": 2500,
+            "(P14)": 6400,
+            "(P15)": 5000
+          }
+        }
+      }
+    },
+    {
+      "name": "p2-ladepunkt-rechengroesse-0-2",
+      "formelsatz": "P2",
+      "fundstelle": "A2 S. 29, Abschn. 4.2.2, Formel (P2)P2; T S. 67 (Absenkung von 0,5 im Arbeitsstand vom 05.08.2026 auf 0,2)",
+      "warum": "Basisfall P2: 8 kWp mit bidirektional nutzbarem Ladepunkt ohne Stromspeicher. Die Rechengröße ist pauschal (P2)P2 = 0,2, der Indifferenzbereich also (P3) = 800 statt 320 kWh wie mit 10-kWh-Speicher. Dieselben Jahresmengen wie in Beispielrechnung 2 (6 000 kWh Einspeisung, 1 500 kWh Netzbezug) ergeben (P8) = 1 200 und (P10) = 1 200: 300 kWh Netzbezug bleiben umlagebelastet. Fremdtankstrom ist mit einem Zähler nicht erkennbar und wird nicht abgezogen (A2 S. 11, Fn. 10).",
+      "stammdaten": {
+        "Pinst": 8
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-01-20T02:00:00+01:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 6.4
+        },
+        {
+          "beginn": "2027-05-12T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 3.3
+        },
+        {
+          "beginn": "2027-06-15T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 4.31
+        },
+        {
+          "beginn": "2027-07-20T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 2.05
+        },
+        {
+          "beginn": "2027-08-10T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 0.88
+        },
+        {
+          "beginn": "2027-10-08T21:00:00+02:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 11.7
+        },
+        {
+          "beginn": "2027-12-01T19:00:00+01:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 15.2
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-01-20T02:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-05-12T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-06-15T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-07-20T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-08-10T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-10-08T21:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-12-01T19:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 4000,
+            "(P2)P2": 0.2,
+            "(P3)": 800,
+            "(P4)": 4800,
+            "(P7)": 6000,
+            "(P8)": 1200,
+            "(P9)": 1500,
+            "(P10)": 1200,
+            "(P11)": 300,
+            "(P14)": 6000,
+            "(P15)": 4000
+          }
+        }
+      },
+      "bnetza": {
+        "2027": {
+          "(P2)P2": 0.2
+        }
+      }
+    },
+    {
+      "name": "p3-speicher-und-ladepunkt-guenstigere-rechengroesse",
+      "formelsatz": "P3",
+      "fundstelle": "A2 S. 29, Abschn. 4.2.2, Formel (P2)P3; A2 S. 12 („der niedrigere Wert der Basisfälle P1 und P2“)",
+      "warum": "Basisfall P3 mit großer Solaranlage und kleinem Speicher: 30 kWp, 4 kWh, dazu ein Ladepunkt. Nach P1 wäre (P2)P1 = 0,75 (Tabelle 1: 26 250 kWh/a), nach P2 wäre (P2)P2 = 0,2; P3 nimmt das kleinere, (P2)P3 = 0,2, und damit (P4) = 18 000 statt 26 250. Bei 20 000 kWh Einspeisung werden 2 000 kWh saldiert statt keiner.",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 4
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-01-12T03:00:00+01:00",
+          "Z1NB¼": 2500,
+          "Z1NE¼": 0,
+          "AW¼": 6.9,
+          "SP¼": 8.8
+        },
+        {
+          "beginn": "2027-04-22T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 5000,
+          "AW¼": 6.9,
+          "SP¼": 2.9
+        },
+        {
+          "beginn": "2027-05-28T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 5000,
+          "AW¼": 6.9,
+          "SP¼": 1.6
+        },
+        {
+          "beginn": "2027-07-02T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 5000,
+          "AW¼": 6.9,
+          "SP¼": 0.7
+        },
+        {
+          "beginn": "2027-08-19T12:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 5000,
+          "AW¼": 6.9,
+          "SP¼": 3.4
+        },
+        {
+          "beginn": "2027-11-09T20:00:00+01:00",
+          "Z1NB¼": 2500,
+          "Z1NE¼": 0,
+          "AW¼": 6.9,
+          "SP¼": 13.9
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-01-12T03:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-04-22T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 5000,
+            "(P12)¼": 1,
+            "(P13)¼": 5000
+          },
+          {
+            "beginn": "2027-05-28T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 5000,
+            "(P12)¼": 1,
+            "(P13)¼": 5000
+          },
+          {
+            "beginn": "2027-07-02T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 5000,
+            "(P12)¼": 1,
+            "(P13)¼": 5000
+          },
+          {
+            "beginn": "2027-08-19T12:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 5000,
+            "(P12)¼": 1,
+            "(P13)¼": 5000
+          },
+          {
+            "beginn": "2027-11-09T20:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 15000,
+            "(P2)P1": 0.75,
+            "(P2)P2": 0.2,
+            "(P2)P3": 0.2,
+            "(P3)": 3000,
+            "(P4)": 18000,
+            "(P7)": 20000,
+            "(P8)": 2000,
+            "(P9)": 5000,
+            "(P10)": 2000,
+            "(P11)": 3000,
+            "(P14)": 20000,
+            "(P15)": 15000
+          }
+        }
+      }
+    },
+    {
+      "name": "p4-zwei-solaranlagen-unterschiedliche-aw",
+      "formelsatz": "P4",
+      "fundstelle": "A2 S. 34–40, Abschn. 5.1–5.4.1, Formeln (ZFa) bis (P16b)",
+      "warum": "Zwei Solaranlagen hinter einem Zähler: a = 8 kWp (älter, anzulegender Wert sinkt erst nach mehreren negativen Viertelstunden auf null), b = 2 kWp (neuer, AWb¼ = 0 in jeder negativen Viertelstunde), 10 kWh Speicher. (P1) bezieht sich auf die Summe 10 kWp. In der negativen Viertelstunde ist AWa¼ > 0 und AWb¼ = 0: (P14a) = 4 600, (P14b) = 4 000. Je Anlage: (P16a) = 0,8 • 4 600 = 3 680, (P16b) = 0,2 • 4 000 = 800. Die SP<0-Einspeisung ist nicht saldierungsfähig: (P7) = 4 000 < (P4), (P10) = 0.",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10,
+        "Painst": 8,
+        "Pbinst": 2
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-03-09T05:00:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 9.9
+        },
+        {
+          "beginn": "2027-05-16T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2000,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 2.2
+        },
+        {
+          "beginn": "2027-06-13T13:30:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 600,
+          "AWa¼": 8.2,
+          "AWb¼": 0,
+          "SP¼": -1.3
+        },
+        {
+          "beginn": "2027-07-25T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2000,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 1.8
+        },
+        {
+          "beginn": "2027-12-07T17:30:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 18.0
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-03-09T05:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          },
+          {
+            "beginn": "2027-05-16T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2000,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 2000,
+            "(P13b)¼": 2000
+          },
+          {
+            "beginn": "2027-06-13T13:30:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 0,
+            "(P13a)¼": 600,
+            "(P13b)¼": 0
+          },
+          {
+            "beginn": "2027-07-25T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2000,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 2000,
+            "(P13b)¼": 2000
+          },
+          {
+            "beginn": "2027-12-07T17:30:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 4000,
+            "(P8)": 0,
+            "(P9)": 2000,
+            "(P10)": 0,
+            "(P11)": 2000,
+            "(ZFa)": 0.8,
+            "(ZFb)": 0.2,
+            "(P14a)": 4600,
+            "(P14b)": 4000,
+            "(P15a)": 4600,
+            "(P15b)": 4000,
+            "(P16a)": 3680,
+            "(P16b)": 800
+          }
+        }
+      }
+    },
+    {
+      "name": "p4-uebereinstimmende-aw",
+      "formelsatz": "P4",
+      "fundstelle": "A2 S. 38–39, Abschn. 5.4 („weder zu einer Besser- noch zu einer Schlechterstellung“); Formeln (P12a)¼ bis (P16b): A2 S. 37–38",
+      "warum": "Dieselben zwei Anlagen (8 + 2 kWp, 10 kWh) mit jederzeit übereinstimmenden AW>0-Zeiten nach dem grundsätzlichen Vorgehen P4: (P15a) = (P15b) = 5 000 (gekappt auf (P1)), (P16a) = 4 000, (P16b) = 1 000 – genau wie die P4-Variante im Nachbarfall.",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10,
+        "Painst": 8,
+        "Pbinst": 2
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-03-09T05:00:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 9.9
+        },
+        {
+          "beginn": "2027-05-16T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 2.2
+        },
+        {
+          "beginn": "2027-06-13T13:30:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 700,
+          "AWa¼": 0,
+          "AWb¼": 0,
+          "SP¼": -1.3
+        },
+        {
+          "beginn": "2027-07-25T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 1.8
+        },
+        {
+          "beginn": "2027-12-07T17:30:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 18.0
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-03-09T05:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          },
+          {
+            "beginn": "2027-05-16T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 2500,
+            "(P13b)¼": 2500
+          },
+          {
+            "beginn": "2027-06-13T13:30:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12a)¼": 0,
+            "(P12b)¼": 0,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          },
+          {
+            "beginn": "2027-07-25T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 2500,
+            "(P13b)¼": 2500
+          },
+          {
+            "beginn": "2027-12-07T17:30:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 5000,
+            "(P8)": 0,
+            "(P9)": 2000,
+            "(P10)": 0,
+            "(P11)": 2000,
+            "(ZFa)": 0.8,
+            "(ZFb)": 0.2,
+            "(P14a)": 5000,
+            "(P14b)": 5000,
+            "(P15a)": 5000,
+            "(P15b)": 5000,
+            "(P16a)": 4000,
+            "(P16b)": 1000
+          }
+        }
+      }
+    },
+    {
+      "name": "p4-variante-uebereinstimmende-aw",
+      "formelsatz": "P4-Variante",
+      "fundstelle": "A2 S. 41–42, Abschn. 5.4.2, Formeln (P16a)P4-Variante und (P16b)P4-Variante",
+      "warum": "Dieselben Eingänge nach der vereinfachten P4-Variante: erst (P15) für beide Anlagen gemeinsam, dann nach (ZFa)/(ZFb) aufgeteilt: (P16a)P4-Variante = 0,8 • 5 000 = 4 000, (P16b)P4-Variante = 1 000. Gleich wie P4, wie Anlage 2 es sagt.",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10,
+        "Painst": 8,
+        "Pbinst": 2
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-03-09T05:00:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 9.9
+        },
+        {
+          "beginn": "2027-05-16T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 2.2
+        },
+        {
+          "beginn": "2027-06-13T13:30:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 700,
+          "AWa¼": 0,
+          "AWb¼": 0,
+          "SP¼": -1.3
+        },
+        {
+          "beginn": "2027-07-25T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 1.8
+        },
+        {
+          "beginn": "2027-12-07T17:30:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "AWa¼": 8.2,
+          "AWb¼": 6.4,
+          "SP¼": 18.0
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-03-09T05:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-05-16T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12)¼": 1,
+            "(P13)¼": 2500
+          },
+          {
+            "beginn": "2027-06-13T13:30:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12)¼": 0,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-07-25T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12)¼": 1,
+            "(P13)¼": 2500
+          },
+          {
+            "beginn": "2027-12-07T17:30:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 5000,
+            "(P8)": 0,
+            "(P9)": 2000,
+            "(P10)": 0,
+            "(P11)": 2000,
+            "(P14)": 5000,
+            "(P15)": 5000,
+            "(ZFa)": 0.8,
+            "(ZFb)": 0.2,
+            "(P16a)P4-Variante": 4000,
+            "(P16b)P4-Variante": 1000
+          }
+        }
+      }
+    },
+    {
+      "name": "p4-steckersolar-ungefoerdert",
+      "formelsatz": "P4",
+      "fundstelle": "A2 S. 40, Abschn. 5.4.1 (ungeförderte Solaranlage b: (P12b)¼ in allen Viertelstunden 1); A2 S. 27 (Pinst einschließlich Steckersolargeräten); A2 S. 19 und S. 35 (Steckersolar zählt nicht für die 30-kWp-Schwelle)",
+      "warum": "Haushalt mit Hausdach a = 8 kWp per Marktprämie in der Pauschaloption und einem Steckersolargerät b = 0,8 kWp in der ungeförderten Direktvermarktung, 10 kWh Speicher. Pinst = 8,8 kWp zählt das Steckersolargerät mit ((P1) = 4 400). Für b gibt es keinen anzulegenden Wert: AWb¼ entfällt, (P12b)¼ = 1 in jeder Viertelstunde. (ZFa) = 10/11 ist kein endlicher Dezimalbruch und steht als Bruch (Regel vergleich). (P16b) = 400 ist rechnerisch bestimmt, hat aber keinen Förderanspruch (A2 S. 40).",
+      "stammdaten": {
+        "Pinst": 8.8,
+        "SKinst": 10,
+        "Painst": 8,
+        "Pbinst": 0.8
+      },
+      "ungefoerdert": [
+        "AWb¼"
+      ],
+      "viertelstunden": [
+        {
+          "beginn": "2027-02-16T06:00:00+01:00",
+          "Z1NB¼": 900,
+          "Z1NE¼": 0,
+          "AWa¼": 8.6,
+          "SP¼": 10.4
+        },
+        {
+          "beginn": "2027-05-30T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2000,
+          "AWa¼": 8.6,
+          "SP¼": 1.9
+        },
+        {
+          "beginn": "2027-06-20T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 500,
+          "AWa¼": 0,
+          "SP¼": -3.1
+        },
+        {
+          "beginn": "2027-08-01T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2000,
+          "AWa¼": 8.6,
+          "SP¼": 2.7
+        },
+        {
+          "beginn": "2027-10-27T19:00:00+01:00",
+          "Z1NB¼": 900,
+          "Z1NE¼": 0,
+          "AWa¼": 8.6,
+          "SP¼": 12.5
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-02-16T06:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          },
+          {
+            "beginn": "2027-05-30T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2000,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 2000,
+            "(P13b)¼": 2000
+          },
+          {
+            "beginn": "2027-06-20T13:00:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12a)¼": 0,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 500
+          },
+          {
+            "beginn": "2027-08-01T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2000,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 2000,
+            "(P13b)¼": 2000
+          },
+          {
+            "beginn": "2027-10-27T19:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12a)¼": 1,
+            "(P12b)¼": 1,
+            "(P13a)¼": 0,
+            "(P13b)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 4400,
+            "(P2)P1": 0.088,
+            "(P3)": 387.2,
+            "(P4)": 4787.2,
+            "(P7)": 4000,
+            "(P8)": 0,
+            "(P9)": 1800,
+            "(P10)": 0,
+            "(P11)": 1800,
+            "(ZFa)": "10/11",
+            "(ZFb)": "1/11",
+            "(P14a)": 4000,
+            "(P14b)": 4500,
+            "(P15a)": 4000,
+            "(P15b)": 4400,
+            "(P16a)": "40000/11",
+            "(P16b)": 400
+          }
+        }
+      }
+    },
+    {
+      "name": "p5-waermepumpe-separat",
+      "formelsatz": "P5",
+      "fundstelle": "A2 S. 42–46, Abschn. 6.1–6.3, Formeln (P6)¼ P5 und (P13)¼ P5",
+      "warum": "Sonderfall P5: Wärmepumpe mit eigenem Liefervertrag an der Entnahmestelle des Zählers ZW. Netzeinspeisung wird an ZW gemessen (ZWNE¼), der saldierungsrelevante Netzbezug an Z1 (Z1NB¼); nur (P6)¼ und (P13)¼ werden ersetzt. 10 kWp, 10 kWh: (P7) = 5 800, (P8) = 300, (P10) = 300, (P11) = 700, (P15) = 5 000. Der Wärmepumpen-Netzbezug ∑J [ZWNB¼ – Z1NB¼] (§ 22 EnFG) ist kein Gegenstand der Formeln.",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-01-25T06:00:00+01:00",
+          "Z1NB¼": 500,
+          "ZWNE¼": 0,
+          "AW¼": 7.9,
+          "SP¼": 12.0
+        },
+        {
+          "beginn": "2027-05-09T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "ZWNE¼": 2900,
+          "AW¼": 7.9,
+          "SP¼": 0.9
+        },
+        {
+          "beginn": "2027-06-27T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "ZWNE¼": 200,
+          "AW¼": 0,
+          "SP¼": -4.4
+        },
+        {
+          "beginn": "2027-07-18T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "ZWNE¼": 2900,
+          "AW¼": 7.9,
+          "SP¼": 1.4
+        },
+        {
+          "beginn": "2027-12-14T17:00:00+01:00",
+          "Z1NB¼": 500,
+          "ZWNE¼": 0,
+          "AW¼": 7.9,
+          "SP¼": 17.1
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-01-25T06:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼ P5": 0,
+            "(P12)¼": 1,
+            "(P13)¼ P5": 0
+          },
+          {
+            "beginn": "2027-05-09T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼ P5": 2900,
+            "(P12)¼": 1,
+            "(P13)¼ P5": 2900
+          },
+          {
+            "beginn": "2027-06-27T13:00:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼ P5": 0,
+            "(P12)¼": 0,
+            "(P13)¼ P5": 0
+          },
+          {
+            "beginn": "2027-07-18T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼ P5": 2900,
+            "(P12)¼": 1,
+            "(P13)¼ P5": 2900
+          },
+          {
+            "beginn": "2027-12-14T17:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼ P5": 0,
+            "(P12)¼": 1,
+            "(P13)¼ P5": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 5800,
+            "(P8)": 300,
+            "(P9)": 1000,
+            "(P10)": 300,
+            "(P11)": 700,
+            "(P14)": 5800,
+            "(P15)": 5000
+          }
+        }
+      }
+    },
+    {
+      "name": "p1-ausschliesslich-ungefoerdert",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 48–51, Abschn. 8 (entsprechende Anwendung; „Keine AW>0-Zeiten bei ungeförderten Solaranlagen“, S. 50)",
+      "warum": "Speicher mit ausschließlich ungeförderter Solaranlage in der ungeförderten Direktvermarktung: nur das Umlageprivileg nach § 21 Abs. 4a EnFG. AW¼ entfällt, (P12)¼ = 1 in allen Viertelstunden. (P10) = 500 senkt die Umlage; (P15) = 5 000 ergibt sich rechnerisch, „bleiben diese Strommengen insofern für die Zwecke dieser Festlegung unberücksichtigt“ (S. 50) – kein Förderanspruch.",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10
+      },
+      "ungefoerdert": [
+        "AW¼"
+      ],
+      "viertelstunden": [
+        {
+          "beginn": "2027-02-10T05:00:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "SP¼": 8.4
+        },
+        {
+          "beginn": "2027-05-20T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 3000,
+          "SP¼": 1.5
+        },
+        {
+          "beginn": "2027-06-06T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 500,
+          "SP¼": -2.5
+        },
+        {
+          "beginn": "2027-07-29T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 3000,
+          "SP¼": 2.2
+        },
+        {
+          "beginn": "2027-11-30T18:00:00+01:00",
+          "Z1NB¼": 1000,
+          "Z1NE¼": 0,
+          "SP¼": 15.8
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-02-10T05:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-05-20T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 3000,
+            "(P12)¼": 1,
+            "(P13)¼": 3000
+          },
+          {
+            "beginn": "2027-06-06T13:00:00+02:00",
+            "(P5)¼": 0,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 500
+          },
+          {
+            "beginn": "2027-07-29T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 3000,
+            "(P12)¼": 1,
+            "(P13)¼": 3000
+          },
+          {
+            "beginn": "2027-11-30T18:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 6000,
+            "(P8)": 500,
+            "(P9)": 2000,
+            "(P10)": 500,
+            "(P11)": 1500,
+            "(P14)": 6500,
+            "(P15)": 5000
+          }
+        }
+      }
+    },
+    {
+      "name": "bnetza-rumpfjahre-zweiter-speicher-am-16-mai",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 55–56, Abschn. 9.3, Beispielrechnungen zu beiden Rumpfjahren; Formeln (P17) bis (P4)R: A2 S. 54–55; T S. 88–89",
+      "warum": "Beispielsfall der BNetzA: 8 kWp mit 10 kWh, am 16. Mai eines gewöhnlichen Kalenderjahres kommt ein zweiter Speicher mit 5 kWh hinzu. Der Änderungstag zählt zum Rumpfjahr davor: 1. Januar bis 16. Mai (136 Tage, davon 46 in der Sommerperiode) und 17. Mai bis 31. Dezember (229 Tage, 137 in der Sommerperiode). BNetzA gerundet: (P1)R = 1 005 / 2 995, (P3)R = 119 / 134, (P4)R = 1 125 / 3 128 kWh. Die Viertelstunden zeigen die Tagesgrenze in gesetzlicher Zeit: 16.05. 23:45 MESZ gehört zum ersten, 17.05. 00:00 MESZ (16.05. 22:00 UTC) zum zweiten Rumpfjahr. Im Rumpfjahr treten (P1)R und (P4)R in (P15) und (P8) an die Stelle von (P1) und (P4) (Regel rumpfjahre).",
+      "rumpfjahre": [
+        {
+          "schluessel": "2027-01-01/2027-05-16",
+          "von": "2027-01-01",
+          "bis": "2027-05-16",
+          "stammdaten": {
+            "Pinst": 8,
+            "SKinst": 10
+          }
+        },
+        {
+          "schluessel": "2027-05-17/2027-12-31",
+          "von": "2027-05-17",
+          "bis": "2027-12-31",
+          "stammdaten": {
+            "Pinst": 8,
+            "SKinst": 15
+          },
+          "aenderung": "Inbetriebnahme eines weiteren Stromspeichers (5 kWh) am 2027-05-16"
+        }
+      ],
+      "viertelstunden": [
+        {
+          "beginn": "2027-02-08T04:00:00+01:00",
+          "Z1NB¼": 500,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 8.3
+        },
+        {
+          "beginn": "2027-04-25T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1000,
+          "AW¼": 7.5,
+          "SP¼": 2.4
+        },
+        {
+          "beginn": "2027-05-16T23:45:00+02:00",
+          "Z1NB¼": 300,
+          "Z1NE¼": 500,
+          "AW¼": 7.5,
+          "SP¼": 3.6
+        },
+        {
+          "beginn": "2027-05-17T00:00:00+02:00",
+          "Z1NB¼": 100,
+          "Z1NE¼": 500,
+          "AW¼": 7.5,
+          "SP¼": 3.5
+        },
+        {
+          "beginn": "2027-06-30T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 1.7
+        },
+        {
+          "beginn": "2027-08-22T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 7.5,
+          "SP¼": 2.6
+        },
+        {
+          "beginn": "2027-12-20T18:00:00+01:00",
+          "Z1NB¼": 200,
+          "Z1NE¼": 0,
+          "AW¼": 7.5,
+          "SP¼": 16.9
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-02-08T04:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2027-04-25T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1000,
+            "(P12)¼": 1,
+            "(P13)¼": 1000
+          },
+          {
+            "beginn": "2027-05-16T23:45:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 500,
+            "(P12)¼": 1,
+            "(P13)¼": 500
+          },
+          {
+            "beginn": "2027-05-17T00:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 500,
+            "(P12)¼": 1,
+            "(P13)¼": 500
+          },
+          {
+            "beginn": "2027-06-30T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-08-22T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          },
+          {
+            "beginn": "2027-12-20T18:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2027-01-01/2027-05-16": {
+            "(P1)": 4000,
+            "(P2)P1": 0.08,
+            "(P3)": 320,
+            "(P4)": 4320,
+            "(P7)": 1500,
+            "(P8)": "5013668/13359",
+            "(P9)": 800,
+            "(P10)": "5013668/13359",
+            "(P11)": "5673532/13359",
+            "(P14)": 1500,
+            "(P15)": "184000/183",
+            "(P17)": 183,
+            "(P18)": "4000/183",
+            "(P19)R": 46,
+            "(P1)R": "184000/183",
+            "(P20)": 365,
+            "(P21)": "64/73",
+            "(P22)R": 136,
+            "(P3)R": "8704/73",
+            "(P4)R": "15024832/13359"
+          },
+          "2027-05-17/2027-12-31": {
+            "(P1)": 4000,
+            "(P2)P1": "4/75",
+            "(P3)": "640/3",
+            "(P4)": "12640/3",
+            "(P7)": 3500,
+            "(P8)": "4964468/13359",
+            "(P9)": 300,
+            "(P10)": 300,
+            "(P11)": 0,
+            "(P14)": 3500,
+            "(P15)": "548000/183",
+            "(P17)": 183,
+            "(P18)": "4000/183",
+            "(P19)R": 137,
+            "(P1)R": "548000/183",
+            "(P20)": 365,
+            "(P21)": "128/219",
+            "(P22)R": 229,
+            "(P3)R": "29312/219",
+            "(P4)R": "41792032/13359"
+          }
+        }
+      },
+      "bnetza": {
+        "2027-01-01/2027-05-16": {
+          "(P1)": 4000,
+          "(P3)": 320,
+          "(P4)": 4320,
+          "(P17)": 183,
+          "(P19)R": 46,
+          "(P22)R": 136,
+          "(P1)R": 1005,
+          "(P3)R": 119,
+          "(P4)R": 1125
+        },
+        "2027-05-17/2027-12-31": {
+          "(P17)": 183,
+          "(P19)R": 137,
+          "(P22)R": 229,
+          "(P1)R": 2995,
+          "(P3)R": 134,
+          "(P4)R": 3128
+        }
+      }
+    },
+    {
+      "name": "p1-jahresgrenze-in-ortszeit",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 28, Abschn. 4.2.1 (∑J: „Summe über alle Viertelstunden eines Kalenderjahres“); T S. 63 (keine monatliche Betrachtung)",
+      "warum": "Jedes Kalenderjahr steht für sich, die Pauschalgrenzen gelten je Jahr neu, nichts wird übertragen. 2027 liegt die Einspeisung über (P4), 2028 darunter. Die Viertelstunde 01.01.2028 00:00 MEZ (31.12.2027 23:00 UTC) gehört zu 2028, die um 31.12.2027 23:45 MEZ zu 2027.",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 4
+      },
+      "viertelstunden": [
+        {
+          "beginn": "2027-06-10T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2000,
+          "AW¼": 8.0,
+          "SP¼": 2.0
+        },
+        {
+          "beginn": "2027-07-10T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1000,
+          "AW¼": 8.0,
+          "SP¼": 2.4
+        },
+        {
+          "beginn": "2027-12-31T23:45:00+01:00",
+          "Z1NB¼": 600,
+          "Z1NE¼": 0,
+          "AW¼": 8.0,
+          "SP¼": 9.6
+        },
+        {
+          "beginn": "2028-01-01T00:00:00+01:00",
+          "Z1NB¼": 400,
+          "Z1NE¼": 0,
+          "AW¼": 8.0,
+          "SP¼": 9.1
+        },
+        {
+          "beginn": "2028-06-12T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 1500,
+          "AW¼": 8.0,
+          "SP¼": 1.9
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2027-06-10T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2000,
+            "(P12)¼": 1,
+            "(P13)¼": 2000
+          },
+          {
+            "beginn": "2027-07-10T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1000,
+            "(P12)¼": 1,
+            "(P13)¼": 1000
+          },
+          {
+            "beginn": "2027-12-31T23:45:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2028-01-01T00:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2028-06-12T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 1500,
+            "(P12)¼": 1,
+            "(P13)¼": 1500
+          }
+        ],
+        "jahre": {
+          "2027": {
+            "(P1)": 2000,
+            "(P2)P1": 0.1,
+            "(P3)": 200,
+            "(P4)": 2200,
+            "(P7)": 3000,
+            "(P8)": 800,
+            "(P9)": 600,
+            "(P10)": 600,
+            "(P11)": 0,
+            "(P14)": 3000,
+            "(P15)": 2000
+          },
+          "2028": {
+            "(P1)": 2000,
+            "(P2)P1": 0.1,
+            "(P3)": 200,
+            "(P4)": 2200,
+            "(P7)": 1500,
+            "(P8)": 0,
+            "(P9)": 400,
+            "(P10)": 0,
+            "(P11)": 400,
+            "(P14)": 1500,
+            "(P15)": 1500
+          }
+        }
+      }
+    }
+  ],
+  "pauschalgrenzen": [
+    {
+      "name": "tabelle-1-1-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": "1/450",
+        "(P3)": "10/9",
+        "(P4)": "4510/9"
+      },
+      "bnetza": {
+        "(P4)": 501
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 501
+      }
+    },
+    {
+      "name": "tabelle-1-1-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": "1/300",
+        "(P3)": "5/3",
+        "(P4)": "1505/3"
+      },
+      "bnetza": {
+        "(P4)": 502
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 502
+      }
+    },
+    {
+      "name": "tabelle-1-1-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": "1/150",
+        "(P3)": "10/3",
+        "(P4)": "1510/3"
+      },
+      "bnetza": {
+        "(P4)": 503
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 503
+      }
+    },
+    {
+      "name": "tabelle-1-1-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": 0.01,
+        "(P3)": 5,
+        "(P4)": 505
+      },
+      "bnetza": {
+        "(P4)": 505
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 505
+      }
+    },
+    {
+      "name": "tabelle-1-1-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": 0.0125,
+        "(P3)": 6.25,
+        "(P4)": 506.25
+      },
+      "bnetza": {
+        "(P4)": 506
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 506
+      }
+    },
+    {
+      "name": "tabelle-1-1-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": "1/60",
+        "(P3)": "25/3",
+        "(P4)": "1525/3"
+      },
+      "bnetza": {
+        "(P4)": 508
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 508
+      }
+    },
+    {
+      "name": "tabelle-1-1-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 1 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 1,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 500,
+        "(P2)P1": 0.025,
+        "(P3)": 12.5,
+        "(P4)": 512.5
+      },
+      "bnetza": {
+        "(P4)": 513
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 513
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": "2/225",
+        "(P3)": "160/9",
+        "(P4)": "18160/9"
+      },
+      "bnetza": {
+        "(P4)": 2018
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 504
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": "1/75",
+        "(P3)": "80/3",
+        "(P4)": "6080/3"
+      },
+      "bnetza": {
+        "(P4)": 2027
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 507
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": "2/75",
+        "(P3)": "160/3",
+        "(P4)": "6160/3"
+      },
+      "bnetza": {
+        "(P4)": 2053
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 513
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": 0.04,
+        "(P3)": 80,
+        "(P4)": 2080
+      },
+      "bnetza": {
+        "(P4)": 2080
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 520
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": 0.05,
+        "(P3)": 100,
+        "(P4)": 2100
+      },
+      "bnetza": {
+        "(P4)": 2100
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 525
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": "1/15",
+        "(P3)": "400/3",
+        "(P4)": "6400/3"
+      },
+      "bnetza": {
+        "(P4)": 2133
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 533
+      }
+    },
+    {
+      "name": "tabelle-1-4-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 4 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 4,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 2000,
+        "(P2)P1": 0.1,
+        "(P3)": 200,
+        "(P4)": 2200
+      },
+      "bnetza": {
+        "(P4)": 2200
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 550
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": "1/75",
+        "(P3)": 40,
+        "(P4)": 3040
+      },
+      "bnetza": {
+        "(P4)": 3040
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 507
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": 0.02,
+        "(P3)": 60,
+        "(P4)": 3060
+      },
+      "bnetza": {
+        "(P4)": 3060
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 510
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": 0.04,
+        "(P3)": 120,
+        "(P4)": 3120
+      },
+      "bnetza": {
+        "(P4)": 3120
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 520
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": 0.06,
+        "(P3)": 180,
+        "(P4)": 3180
+      },
+      "bnetza": {
+        "(P4)": 3180
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 530
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": 0.075,
+        "(P3)": 225,
+        "(P4)": 3225
+      },
+      "bnetza": {
+        "(P4)": 3225
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 538
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": 0.1,
+        "(P3)": 300,
+        "(P4)": 3300
+      },
+      "bnetza": {
+        "(P4)": 3300
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 550
+      }
+    },
+    {
+      "name": "tabelle-1-6-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 6 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 6,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 3000,
+        "(P2)P1": 0.15,
+        "(P3)": 450,
+        "(P4)": 3450
+      },
+      "bnetza": {
+        "(P4)": 3450
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 575
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": "4/225",
+        "(P3)": "640/9",
+        "(P4)": "36640/9"
+      },
+      "bnetza": {
+        "(P4)": 4071
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 509
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": "2/75",
+        "(P3)": "320/3",
+        "(P4)": "12320/3"
+      },
+      "bnetza": {
+        "(P4)": 4107
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 513
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": "4/75",
+        "(P3)": "640/3",
+        "(P4)": "12640/3"
+      },
+      "bnetza": {
+        "(P4)": 4213
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 527
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": 0.08,
+        "(P3)": 320,
+        "(P4)": 4320
+      },
+      "bnetza": {
+        "(P4)": 4320
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 540
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": 0.1,
+        "(P3)": 400,
+        "(P4)": 4400
+      },
+      "bnetza": {
+        "(P4)": 4400
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 550
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": "2/15",
+        "(P3)": "1600/3",
+        "(P4)": "13600/3"
+      },
+      "bnetza": {
+        "(P4)": 4533
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 567
+      }
+    },
+    {
+      "name": "tabelle-1-8-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 8 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 8,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 4000,
+        "(P2)P1": 0.2,
+        "(P3)": 800,
+        "(P4)": 4800
+      },
+      "bnetza": {
+        "(P4)": 4800
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 600
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": "1/45",
+        "(P3)": "1000/9",
+        "(P4)": "46000/9"
+      },
+      "bnetza": {
+        "(P4)": 5111
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 511
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": "1/30",
+        "(P3)": "500/3",
+        "(P4)": "15500/3"
+      },
+      "bnetza": {
+        "(P4)": 5167
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 517
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": "1/15",
+        "(P3)": "1000/3",
+        "(P4)": "16000/3"
+      },
+      "bnetza": {
+        "(P4)": 5333
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 533
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": 0.1,
+        "(P3)": 500,
+        "(P4)": 5500
+      },
+      "bnetza": {
+        "(P4)": 5500
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 550
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": 0.125,
+        "(P3)": 625,
+        "(P4)": 5625
+      },
+      "bnetza": {
+        "(P4)": 5625
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 563
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": "1/6",
+        "(P3)": "2500/3",
+        "(P4)": "17500/3"
+      },
+      "bnetza": {
+        "(P4)": 5833
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 583
+      }
+    },
+    {
+      "name": "tabelle-1-10-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 10 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 10,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 5000,
+        "(P2)P1": 0.25,
+        "(P3)": 1250,
+        "(P4)": 6250
+      },
+      "bnetza": {
+        "(P4)": 6250
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 625
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": "1/30",
+        "(P3)": 250,
+        "(P4)": 7750
+      },
+      "bnetza": {
+        "(P4)": 7750
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 517
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": 0.05,
+        "(P3)": 375,
+        "(P4)": 7875
+      },
+      "bnetza": {
+        "(P4)": 7875
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 525
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": 0.1,
+        "(P3)": 750,
+        "(P4)": 8250
+      },
+      "bnetza": {
+        "(P4)": 8250
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 550
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": 0.15,
+        "(P3)": 1125,
+        "(P4)": 8625
+      },
+      "bnetza": {
+        "(P4)": 8625
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 575
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": 0.1875,
+        "(P3)": 1406.25,
+        "(P4)": 8906.25
+      },
+      "bnetza": {
+        "(P4)": 8906
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 594
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": 0.25,
+        "(P3)": 1875,
+        "(P4)": 9375
+      },
+      "bnetza": {
+        "(P4)": 9375
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 625
+      }
+    },
+    {
+      "name": "tabelle-1-15-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 15 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 15,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 7500,
+        "(P2)P1": 0.375,
+        "(P3)": 2812.5,
+        "(P4)": 10312.5
+      },
+      "bnetza": {
+        "(P4)": 10313
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 688
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-45-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 45 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 45
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": "1/15",
+        "(P3)": 1000,
+        "(P4)": 16000
+      },
+      "bnetza": {
+        "(P4)": 16000
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 533
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-30-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 30 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 30
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": 0.1,
+        "(P3)": 1500,
+        "(P4)": 16500
+      },
+      "bnetza": {
+        "(P4)": 16500
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 550
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-15-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 15 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 15
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": 0.2,
+        "(P3)": 3000,
+        "(P4)": 18000
+      },
+      "bnetza": {
+        "(P4)": 18000
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 600
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-10-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 10 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 10
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": 0.3,
+        "(P3)": 4500,
+        "(P4)": 19500
+      },
+      "bnetza": {
+        "(P4)": 19500
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 650
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-8-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 8 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 8
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": 0.375,
+        "(P3)": 5625,
+        "(P4)": 20625
+      },
+      "bnetza": {
+        "(P4)": 20625
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 688
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-6-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 6 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 6
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": 0.5,
+        "(P3)": 7500,
+        "(P4)": 22500
+      },
+      "bnetza": {
+        "(P4)": 22500
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 750
+      }
+    },
+    {
+      "name": "tabelle-1-30-kwp-4-kwh",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 12, Abschn. 2.1.5, Tabelle 1 und Tabelle 2, Zeile 30 kWp, Spalte 4 kWh; Formeln (P1), (P2)P1, (P3), (P4): A2 S. 28–30",
+      "stammdaten": {
+        "Pinst": 30,
+        "SKinst": 4
+      },
+      "erwartet": {
+        "(P1)": 15000,
+        "(P2)P1": 0.75,
+        "(P3)": 11250,
+        "(P4)": 26250
+      },
+      "bnetza": {
+        "(P4)": 26250
+      },
+      "bnetza_je_kwp": {
+        "(P4)": 875
+      }
+    }
+  ]
+}

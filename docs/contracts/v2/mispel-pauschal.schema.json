@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/mispel-pauschal.schema.json",
+  "title": "MiSpeL-Pauschaloption: Formelsätze P1, P2, P3, P4, P4-Variante, P5 mit Vektoren",
+  "description": "Schema der Datei mispel-pauschal-vectors.json. Bleibt in der Teilmenge, die der Java-Läufer UemsSchemaLaeufer prüft (type, required, properties, additionalProperties, items, enum, const, pattern, minItems, minLength, minimum, anyOf, $ref); alles darüber hinaus prüfen die Leser selbst (Regeln L2–L10 in mispel-pauschal.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "quelle", "einheiten", "regeln", "abweichungen", "formelsaetze", "formeln", "nicht_im_umfang", "faelle", "pauschalgrenzen"],
+  "properties": {
+    "$comment": { "type": "string" },
+    "schema_version": { "const": "1.0" },
+    "quelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["festlegung", "aktenzeichen", "beschluss", "anlage", "zitierweise", "anwendbar_ab"],
+      "properties": {
+        "festlegung": { "type": "string", "minLength": 1 },
+        "aktenzeichen": { "type": "string", "minLength": 1 },
+        "beschluss": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "anlage": { "type": "string", "minLength": 1 },
+        "zitierweise": { "type": "string", "minLength": 1 },
+        "anwendbar_ab": { "type": "string", "minLength": 1 }
+      }
+    },
+    "einheiten": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+    "regeln": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zeit", "kalenderjahr", "rumpfjahre", "ungefoerdert", "abwandlungen", "viertelstunden_ohne_fluss", "viertelstunden_buendeln", "vergleich"],
+      "properties": {
+        "zeit": { "$ref": "#/$defs/regel" },
+        "kalenderjahr": { "$ref": "#/$defs/regel" },
+        "rumpfjahre": { "$ref": "#/$defs/regel" },
+        "ungefoerdert": { "$ref": "#/$defs/regel" },
+        "abwandlungen": { "$ref": "#/$defs/regel" },
+        "viertelstunden_ohne_fluss": { "$ref": "#/$defs/regel" },
+        "viertelstunden_buendeln": { "$ref": "#/$defs/regel" },
+        "vergleich": { "$ref": "#/$defs/regel" }
+      }
+    },
+    "abweichungen": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["thema", "festlegung", "vertrag", "grund", "fundstelle"],
+        "properties": {
+          "thema": { "type": "string", "minLength": 1 },
+          "festlegung": { "type": "string", "minLength": 1 },
+          "vertrag": { "type": "string", "minLength": 1 },
+          "grund": { "type": "string", "minLength": 1 },
+          "fundstelle": { "$ref": "#/$defs/fundstelle" }
+        }
+      }
+    },
+    "formelsaetze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["P1", "P2", "P3", "P4", "P4-Variante", "P5"],
+      "properties": {
+        "P1": { "$ref": "#/$defs/formelsatz" },
+        "P2": { "$ref": "#/$defs/formelsatz" },
+        "P3": { "$ref": "#/$defs/formelsatz" },
+        "P4": { "$ref": "#/$defs/formelsatz" },
+        "P4-Variante": { "$ref": "#/$defs/formelsatz" },
+        "P5": { "$ref": "#/$defs/formelsatz" }
+      }
+    },
+    "formeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/formel" } },
+    "nicht_im_umfang": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["thema", "fundstelle", "grund"],
+        "properties": {
+          "thema": { "type": "string", "minLength": 1 },
+          "fundstelle": { "$ref": "#/$defs/fundstelle" },
+          "grund": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "faelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } },
+    "pauschalgrenzen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pauschalgrenze" } }
+  },
+  "$defs": {
+    "fundstelle": {
+      "description": "Beginnt mit „A2 S. <Seite>“, „A1 S. <Seite>“ oder „T S. <Seite>“ (Zitierweise in quelle.zitierweise).",
+      "type": "string",
+      "pattern": "^(A2|A1|T) S\\. [0-9]"
+    },
+    "nr": {
+      "description": "Formelnummer wörtlich wie in Anlage 2, z. B. (P1), (P2)P3, (P5)¼, (P6)¼ P5, (P12a)¼, (P16a)P4-Variante, (ZFa), (P19)R.",
+      "type": "string",
+      "pattern": "^\\((P[0-9]+[ab]?|ZF[ab])\\)(¼)?( ?(P4-Variante|P[1-5]|R))?$"
+    },
+    "formelsatz_name": { "enum": ["P1", "P2", "P3", "P4", "P4-Variante", "P5"] },
+    "eingang": { "enum": ["Z1NB¼", "Z1NE¼", "ZWNE¼", "AW¼", "AWa¼", "AWb¼", "SP¼"] },
+    "aw_eingang": { "enum": ["AW¼", "AWa¼", "AWb¼"] },
+    "stammdatum": { "enum": ["Pinst", "SKinst", "Painst", "Pbinst"] },
+    "regel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regel", "fundstelle"],
+      "properties": {
+        "regel": { "type": "string", "minLength": 1 },
+        "fundstelle": { "type": "string", "minLength": 1 }
+      }
+    },
+    "formelsatz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bezeichnung", "fundstelle", "zaehler", "eingaenge", "stammdaten", "formeln"],
+      "properties": {
+        "bezeichnung": { "type": "string", "minLength": 1 },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "zaehler": { "type": "array", "minItems": 1, "items": { "enum": ["Z1", "ZW"] } },
+        "eingaenge": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/eingang" } },
+        "stammdaten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stammdatum" } },
+        "formeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nr" } }
+      }
+    },
+    "formel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nr", "begriff", "rechenweg", "ebene", "formelsaetze", "fundstelle"],
+      "properties": {
+        "nr": { "$ref": "#/$defs/nr" },
+        "begriff": { "type": "string", "minLength": 1 },
+        "rechenweg": { "type": "string", "minLength": 1 },
+        "ebene": { "enum": ["viertelstunde", "jahr", "rumpfjahr"] },
+        "formelsaetze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/formelsatz_name" } },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "ersetzt": { "$ref": "#/$defs/nr" },
+        "summe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ueber", "von"],
+          "properties": {
+            "ueber": { "const": "J" },
+            "von": { "anyOf": [{ "$ref": "#/$defs/nr" }, { "$ref": "#/$defs/eingang" }] }
+          }
+        },
+        "quotient": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zaehler", "nenner"],
+          "properties": {
+            "zaehler": { "$ref": "#/$defs/nr" },
+            "nenner": { "$ref": "#/$defs/nr" }
+          }
+        }
+      }
+    },
+    "zeitpunkt": {
+      "description": "Beginn einer Viertelstunde mit Versatz zur UTC (nie „Z“), damit die gesetzliche Zeit sichtbar bleibt.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "kwh": { "type": "number", "minimum": 0 },
+    "bruch": {
+      "description": "Gekürzter Bruch „Zähler/Nenner“ für einen Wert, der kein endlicher Dezimalbruch ist (Regel vergleich).",
+      "type": "string",
+      "pattern": "^[1-9][0-9]*/[1-9][0-9]*$"
+    },
+    "wert": { "anyOf": [{ "type": "number", "minimum": 0 }, { "$ref": "#/$defs/bruch" }] },
+    "werte": { "type": "object", "additionalProperties": { "$ref": "#/$defs/wert" } },
+    "gerundet": {
+      "description": "Zahl, wie die BNetzA sie druckt (gerundet); Schlüssel ist eine Formelnummer.",
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 0 }
+    },
+    "stammdaten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Pinst"],
+      "properties": {
+        "Pinst": { "type": "number", "minimum": 0 },
+        "SKinst": { "type": "number", "minimum": 0 },
+        "Painst": { "type": "number", "minimum": 0 },
+        "Pbinst": { "type": "number", "minimum": 0 }
+      }
+    },
+    "viertelstunde": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beginn", "Z1NB¼", "SP¼"],
+      "properties": {
+        "beginn": { "$ref": "#/$defs/zeitpunkt" },
+        "Z1NB¼": { "$ref": "#/$defs/kwh" },
+        "Z1NE¼": { "$ref": "#/$defs/kwh" },
+        "ZWNE¼": { "$ref": "#/$defs/kwh" },
+        "AW¼": { "type": "number", "minimum": 0 },
+        "AWa¼": { "type": "number", "minimum": 0 },
+        "AWb¼": { "type": "number", "minimum": 0 },
+        "SP¼": { "type": "number" }
+      }
+    },
+    "rumpfjahr": {
+      "description": "Rumpfjahr nach A2 Abschn. 9: tritt an die Stelle des Kalenderjahres; ganze Kalendertage, von und bis einschließlich; Schlüssel „von/bis“.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schluessel", "von", "bis", "stammdaten"],
+      "properties": {
+        "schluessel": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "von": { "$ref": "#/$defs/tag" },
+        "bis": { "$ref": "#/$defs/tag" },
+        "aenderung": { "type": "string", "minLength": 1 },
+        "stammdaten": { "$ref": "#/$defs/stammdaten" }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "formelsatz", "fundstelle", "warum", "viertelstunden", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "formelsatz": { "$ref": "#/$defs/formelsatz_name" },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "warum": { "type": "string", "minLength": 1 },
+        "stammdaten": { "$ref": "#/$defs/stammdaten" },
+        "ungefoerdert": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/aw_eingang" } },
+        "rumpfjahre": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/rumpfjahr" } },
+        "viertelstunden": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/viertelstunde" } },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["viertelstunden", "jahre"],
+          "properties": {
+            "viertelstunden": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["beginn"],
+                "properties": { "beginn": { "$ref": "#/$defs/zeitpunkt" } },
+                "additionalProperties": { "$ref": "#/$defs/wert" }
+              }
+            },
+            "jahre": { "type": "object", "additionalProperties": { "$ref": "#/$defs/werte" } }
+          }
+        },
+        "bnetza": { "type": "object", "additionalProperties": { "$ref": "#/$defs/gerundet" } }
+      }
+    },
+    "pauschalgrenze": {
+      "description": "Zelle der Tabellen 1 und 2 (A2 S. 12): Pauschalgrenzen aus den Stammdaten allein, exakt, mit dem gedruckten Wert.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "formelsatz", "fundstelle", "stammdaten", "erwartet", "bnetza", "bnetza_je_kwp"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "formelsatz": { "$ref": "#/$defs/formelsatz_name" },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "stammdaten": { "$ref": "#/$defs/stammdaten" },
+        "erwartet": { "$ref": "#/$defs/werte" },
+        "bnetza": { "$ref": "#/$defs/gerundet" },
+        "bnetza_je_kwp": { "$ref": "#/$defs/gerundet" }
+      }
+    }
+  }
+}
