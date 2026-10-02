@@ -420,6 +420,13 @@ voltpilot:
     # Minute 0:30 Europe/Berlin und idempotent. Vorgabe AN, im Testlauf AUS (surefire).
     foerderweg-spiegel:
       enabled: ${VOLTPILOT_MISPEL_FOERDERWEG_SPIEGEL_ENABLED:true}
+    # MiSpeL MP-8b (mispel-abgrenzung.md): der Monatslauf der Abgrenzungsoption
+    # je Anlage - nach Ablauf des Kalendermonats vorläufig, mit den Werten des
+    # Messstellenbetreibers endgültig (Anlage 1 S. 14, Abschn. 2.1.4), Formelsatz
+    # und AW-Regel aus dem Förderweg des Monats. Täglich 05:17 Europe/Berlin,
+    # idempotent. Vorgabe AN, im Testlauf AUS (surefire).
+    monatslauf:
+      enabled: ${VOLTPILOT_MISPEL_MONATSLAUF_ENABLED:true}
   uems:
     # AP-14 IP-18 (Kasten E11): interne UUID des Kundenbereichs "VoltPilot
     # Dauerlaeufer (intern)" - zwei simulierte Boxen, die dauerhaft den Weg

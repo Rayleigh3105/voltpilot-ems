@@ -226,7 +226,8 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
   `zaehlerwechsel_im_zeitraum` (andere Messstelle oder Angaben, kein Rumpfmonat; abschnittsweises Lesen offen); ihre Viertelstundenmengen über
   die Messstelle (`MispelZaehlerLeser`, in kWh) — mit Wertequelle „Messstellenbetreiber“ und eingelesenen Werten für
   Zählpunkt und Richtung im Zeitraum NUR diese ([MP-15](#werte-des-messstellenbetreibers-und-abgleich-mp-15)); AW¼ > 0 aus `MispelMarktdatenRepository.awZeiten` mit der
-  AW-Regel der Anlage. Formelsatz, AW-Regel und Painst/Pbinst gibt heute der Aufrufer vor (später der Förderweg).
+  AW-Regel der Anlage. Formelsatz, AW-Regel und Painst/Pbinst gibt der Aufrufer vor; der Läufer (MP-8b, unten) nimmt
+  Formelsatz und AW-Regel aus dem Förderweg.
 - **Lücke:** fehlt einer Viertelstunde ein Zählerwert oder AW¼, bleibt sie aus den Summen draußen und steht im
   Nachweis (Anzahl und Beginn je fehlendem Eingang) — nie als Null; ohne eine vollständige Viertelstunde `keine_werte`.
 - **Stand (E4 = C):** `endgueltig` nur ohne Lücke, mit Wertequelle „Messstellenbetreiber“ und Urteil „tauglich“ an
@@ -246,6 +247,34 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
 
 Prüfnachweis mit Docker: `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungMonatslaufTest)`.
 
+### Der Läufer (MP-8b)
+
+`mispel/MispelMonatslaufLaeufer` stößt `monatslaeufe` je Anlage mit einer Fassung `marktpraemie_abgrenzung` selbst an
+(`voltpilot.mispel.monatslauf.enabled`, täglich 05:17 Europe/Berlin, Katalog `mispel_monatslauf` in
+[Betriebsüberwachung](../../agents/root/uems-betriebsueberwachung.md)). „Sobald die erforderlichen viertelstündlich
+erfassten Messwerte zum abgelaufenen Kalendermonat feststehen, lassen sich die relevanten Werte für den jeweiligen
+Kalendermonat nach dem Formelsatz zu der jeweiligen Fallkonstellation bestimmen“ (A1 S. 14, Abschn. 2.1.4):
+
+- **Wann:** ein Monat erst nach seinem Ablauf (Berliner Tag); auf Gerätewerten `vorlaeufig`. Ein vorläufiger Monat
+  wird in jedem Takt neu gerechnet und wird `endgueltig`, sobald die Werte des Messstellenbetreibers eingelesen sind
+  (MP-15) und die übrigen Bedingungen oben stimmen. Ein endgültiger Monat rechnet nur neu, wenn danach ein Import des
+  Messstellenbetreibers seinen Zeitraum an einer Messstelle der Anlage überdeckt oder eine Fassung des Förderwegs
+  eingetragen bzw. aufgehoben wurde. Gleiche Prüfsumme = keine neue Fassung.
+- **Welche Monate:** ab Oktober 2026 (Festlegung) die des laufenden Kalenderjahres und bis zum 31.05. auch die des
+  Vorjahres — die Monatswerte gehen in die Endabrechnung des Kalenderjahres (A1 S. 14), mitgeteilt bis 31.05. des
+  Folgejahres (§ 21 Abs. 7 EnFG). Danach bleibt ein Monat, wie er gespeichert ist.
+- **Vorgaben:** je wirksame Fassung des [Förderwegs](./mispel-foerderweg.md) ein Fallstand ab `gueltig_ab` — in der
+  Abgrenzungsoption mit `formelsatz` und `aw_regel` dieser Fassung, sonst ohne (keine Bestimmung nach Anlage 1). Eine
+  zum Monatsersten vorgemerkte Fassung gilt so ab ihrem Monat. Anlass beim Wechsel des Förderwegs:
+  `erstmalige_zuordnung`, wenn vorher keine Fassung stand und der Tag kein Monatserster ist, sonst
+  `wechsel_zuordnung` (A1 S. 103) — mitten im Monat lehnt `teilen` ihn ab.
+- **Nicht bestimmbar, übersprungen:** A5/A5-Variante (Painst/Pbinst und AW-Regel der Anlage b, A1 S. 46, trägt der
+  Förderweg nicht) und A1–A4 ohne `aw_regel` (ohne sie keine Liste der ÜNB, A1 S. 17 Fn. 8). Lehnt das Rechenwerk
+  ab (`MispelAbgrenzungAbgelehnt`), bleibt der Monat ohne Lauf; ein anderer Fehler zählt beim Melder. Keiner hält eine
+  andere Anlage oder einen anderen Monat auf.
+
+Prüfnachweis mit Docker: `(cd services/api && ./mvnw test -Dtest=MispelMonatslaufLaeuferTest)`.
+
 ## Rumpfmonate erkennen (MP-21)
 
 Anlage 1 Abschn. 11 (S. 102–104): eine **bestimmungsrelevante Änderung** innerhalb eines Kalendermonats teilt ihn
@@ -264,7 +293,7 @@ bestimmt. Reine Regel `mispel/MispelRumpfmonate.teilen` ⟷ Python `mispel_abgre
   S. 102). `wechsel_zuordnung` mitten im Monat wird abgelehnt (`wechsel_nur_zum_monatsersten`, S. 103; § 21b Abs. 1
   S. 2 EEG). Schlüssel `JJJJ-MM` bzw. `JJJJ-MM/T`.
 - **Dienst:** `MispelAbgrenzungService.teilung(anlage, monat, fallstaende)` nimmt die Fallkonstellation aus den
-  Fallständen des Aufrufers (später Förderweg MP-5/MP-17) und das Messkonzept je Tag aus dem Änderungsprotokoll der
+  Fallständen des Aufrufers (im Läufer MP-8b: aus dem Förderweg) und das Messkonzept je Tag aus dem Änderungsprotokoll der
   Zähler — Fassungen der Zählerrolle und Stellungen der Messstellen (`ZaehlerrolleService.anlage`, MP-6);
   `monatslaeufe(…)` rechnet jeden Teil mit dem Monatslauf. Prüfnachweis mit Docker:
   `MispelAbgrenzungMonatslaufTest#rumpfmonateAusDemAenderungsprotokollErkannt`.

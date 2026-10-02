@@ -1,7 +1,8 @@
 package com.voltpilot.api.mispel;
 
-import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
+import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -33,6 +34,14 @@ public class FoerderwegSpiegelLaeufer {
     private final FoerderwegRepository wege;
     private final FoerderwegService dienst;
 
+    /** Der Betriebs-Melder (Läufer {@code mispel_foerderweg_spiegel}, MP-8b); ohne Spring der stumme. */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
     private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
 
@@ -52,10 +61,12 @@ public class FoerderwegSpiegelLaeufer {
     public void takt() {
         try {
             int n = lauf();
+            melder.gelaufen(UemsLaeuferMelder.MISPEL_FOERDERWEG_SPIEGEL);
             if (n > 0) {
                 log.info("Förderweg-Spiegel: {} Anlage(n) auf die heute geltende Fassung umgelegt", n);
             }
         } catch (RuntimeException e) {
+            melder.fehler(UemsLaeuferMelder.MISPEL_FOERDERWEG_SPIEGEL);
             log.warn("Förderweg-Spiegel übersprungen: {}", e.toString());
         }
     }
@@ -74,10 +85,12 @@ public class FoerderwegSpiegelLaeufer {
                             umgelegt++;
                         }
                     } catch (RuntimeException e) {
+                        melder.fehler(UemsLaeuferMelder.MISPEL_FOERDERWEG_SPIEGEL);
                         log.warn("Förderweg-Spiegel für Anlage {} gescheitert: {}", anlage, e.toString());
                     }
                 }
             } catch (RuntimeException e) {
+                melder.fehler(UemsLaeuferMelder.MISPEL_FOERDERWEG_SPIEGEL);
                 log.warn("Förderweg-Spiegel für Kundenbereich {} gescheitert: {}", tenant, e.toString());
             } finally {
                 TenantContext.clear();

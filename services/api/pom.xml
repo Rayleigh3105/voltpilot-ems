@@ -383,6 +383,9 @@
                              LadeparkGrenzeLaeufer.lauf() selbst. -->
                         <voltpilot.uems.ladepark-grenze.enabled>false</voltpilot.uems.ladepark-grenze.enabled>
                         <voltpilot.mispel.foerderweg-spiegel.enabled>false</voltpilot.mispel.foerderweg-spiegel.enabled>
+                        <!-- Der MiSpeL-Monatslauf (MP-8b): im Testlauf aus, in PRODUKTION an.
+                             Wer ihn prueft, ruft MispelMonatslaufLaeufer.lauf() selbst. -->
+                        <voltpilot.mispel.monatslauf.enabled>false</voltpilot.mispel.monatslauf.enabled>
                         <!-- Die Rechte-Bestandsuebernahme (AP-03 IP-2): dieselbe Falle wie
                              die Bestandsuebernahme der Standorte - im Testlauf aus,
                              in PRODUKTION an. Wer sie prueft, ruft

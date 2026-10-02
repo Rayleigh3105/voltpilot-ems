@@ -50,8 +50,8 @@ import org.springframework.stereotype.Service;
  * vorläufige Zahl ist keine Mengenbestimmung im Sinn der Festlegung. Eine fehlende Viertelstunde ist eine Lücke:
  * sie geht nicht als Null in die Summen ein, sondern bleibt draußen und steht im Nachweis.
  *
- * <p>Formelsatz, AW-Regel und Stammdaten kommen heute vom Aufrufer ({@link Vorgaben}); später aus dem Förderweg
- * (MP-5/MP-17). Einen Rumpfmonat gibt {@link #monatslauf} als Zeitraum vor; {@link #teilung} und
+ * <p>Formelsatz, AW-Regel und Stammdaten kommen vom Aufrufer ({@link Vorgaben}); der {@link MispelMonatslaufLaeufer}
+ * (MP-8b) nimmt Formelsatz und AW-Regel aus dem Förderweg des Monats (MP-5/MP-17). Einen Rumpfmonat gibt {@link #monatslauf} als Zeitraum vor; {@link #teilung} und
  * {@link #monatslaeufe} erkennen ihn aus Fallständen und dem Änderungsprotokoll der Zähler (MP-21, A1 S. 102 Abschn. 11).
  * Ändert sich die Zuordnung der Zähler innerhalb des Zeitraums, rechnet der Lauf nicht
  * ({@code bestimmungsrelevante_aenderung} bzw. {@code zaehlerwechsel_im_zeitraum}).
@@ -126,8 +126,8 @@ public class MispelAbgrenzungService {
 
     /**
      * Die Fallkonstellation ab einem Tag (MP-21): Basisfall (A1–A4) und Vorgaben des Formelsatzes, {@code vorgaben}
-     * {@code null} = keine Bestimmung nach Anlage 1; {@code anlass} aus {@link MispelRumpfmonate#ANLAESSE}. Heute vom
-     * Aufrufer, später aus dem Förderweg (MP-5/MP-17).
+     * {@code null} = keine Bestimmung nach Anlage 1; {@code anlass} aus {@link MispelRumpfmonate#ANLAESSE}. Vom
+     * Aufrufer; der {@link MispelMonatslaufLaeufer} bildet sie aus den Fassungen des Förderwegs (MP-5/MP-17).
      */
     public record Fallstand(LocalDate ab, String anlass, String basisfall, Vorgaben vorgaben) {}
 

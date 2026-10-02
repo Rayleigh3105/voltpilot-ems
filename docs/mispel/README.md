@@ -128,7 +128,10 @@ Ein Vertrag, eine Vektor-Datei, zwei Rechenwerke im Gleichlauf (exakte Brüche, 
 
 - **Monatslauf** (MP-8): je Anlage und Kalendermonat aus Zählerwerten und AW>0-Zeiten; gespeichert als Fassung mit
   kanonischem Nachweis-Text und SHA-256 (`mispel_abgrenzung_monat`). Lücken bleiben Lücken, nie Null.
-  [Vertrag, Abschnitt Monatslauf](../contracts/v2/mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8).
+  [Vertrag, Abschnitt Monatslauf](../contracts/v2/mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8). Der Läufer
+  (MP-8b, `MispelMonatslaufLaeufer`, täglich) rechnet je Anlage in der Abgrenzungsoption nach Monatsende vorläufig und
+  mit den Werten des Messstellenbetreibers endgültig, Formelsatz und AW-Regel aus dem Förderweg des Monats
+  ([Der Läufer](../contracts/v2/mispel-abgrenzung.md#der-läufer-mp-8b)).
 - **Jahreslauf der Pauschaloption** (MP-25): je Anlage und Kalender- oder Rumpfjahr (tagesscharfe Sommerperiode,
   A2 S. 53–55), nur an Tagen mit Förderweg Pauschaloption, ein Zähler Z1 genügt; gespeichert in `mispel_pauschal_jahr`
   wie der Monatslauf. Vor der EU-Genehmigung bleibt jeder Lauf vorläufig (`eu_genehmigung_ausstehend`).
@@ -189,7 +192,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
   MiSpeL-Check in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige steht im Förderweg-Dialog (MP-48); wer ihn je Anlage rechnet und in
   `site_mispel_check` ablegt, fehlt (MP-13b) — bis dahin zeigt das Portal „wird gerechnet“.
 - **Rechenwerk:** der Optimierer plant A2–A4 noch nicht im Mischbetrieb (Fahrzeug als Speicher: MP-33); Rumpfjahre
-  der Pauschaloption gibt der Aufrufer noch vor (Erkennung aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
+  der Pauschaloption gibt der Aufrufer noch vor (Erkennung aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Läufer des Monatslaufs (MP-8b) überspringt A5/A5-Variante (Painst/Pbinst und
+  AW-Regel der Anlage b trägt der Förderweg nicht) und A1–A4 ohne eingetragene AW-Regel.
 - **Messwerte des Messstellenbetreibers:** Import (CSV) und Abgleich gegen Gerätewerte stehen (MP-15,
   [Vertrag](../contracts/v2/mispel-abgrenzung.md#werte-des-messstellenbetreibers-und-abgleich-mp-15)); offen sind
   MSCONS (EDIFACT), die Partner-Schnittstelle, ein echter MSB-Monat und die Schwellen 2 % / 5 % (Pilot MP-47).

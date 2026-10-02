@@ -37,7 +37,9 @@ class UemsMetrikenWiringTest {
             Path.of("src/main/java/com/voltpilot/api/unterstuetzung"),
             Path.of("src/main/java/com/voltpilot/api/zugriff"),
             // AP-15 IP-3: der Grenzblatt-Anstoß lebt beim Ladepark.
-            Path.of("src/main/java/com/voltpilot/api/chargers"));
+            Path.of("src/main/java/com/voltpilot/api/chargers"),
+            // MiSpeL MP-8b: Förderweg-Spiegel (MP-17) und Monatslauf der Abgrenzungsoption.
+            Path.of("src/main/java/com/voltpilot/api/mispel"));
 
     /** Jede Bean am gemeinsamen UEMS-Metrikschalter — neue Beans müssen bewusst in diese Klammer. */
     private static final Set<String> METRIK_BEANS = Set.of(

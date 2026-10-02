@@ -101,6 +101,10 @@ public class UemsLaeuferMelder {
     public static final String BOX_TAUSCH = "box_tausch";
     /** {@code AblaufLaeufer} der Unterstützung. */
     public static final String UNTERSTUETZUNG = "unterstuetzung";
+    /** {@code FoerderwegSpiegelLaeufer} (MiSpeL MP-17) — legt die Spiegel am Tag einer vorgemerkten Fassung um. */
+    public static final String MISPEL_FOERDERWEG_SPIEGEL = "mispel_foerderweg_spiegel";
+    /** {@code MispelMonatslaufLaeufer} (MiSpeL MP-8b) — der Monatslauf der Abgrenzungsoption je Anlage. */
+    public static final String MISPEL_MONATSLAUF = "mispel_monatslauf";
     /** {@code BestandsuebernahmeLaeufer} — Start-Läufer der Standorte. */
     public static final String BESTAND_STANDORT = "bestand_standort";
     /** {@code FunktionBestandLaeufer} — Start-Läufer der Funktionen. */
@@ -129,7 +133,7 @@ public class UemsLaeuferMelder {
     public record Eintrag(String label, String klasse, List<String> schalter, String takt) {}
 
     /**
-     * ALLE geplanten UEMS-Läufer — zwanzig, in der Reihenfolge der Verarbeitungskette, danach die
+     * ALLE geplanten UEMS-Läufer — zweiundzwanzig mit den beiden MiSpeL-Läufern, in der Reihenfolge der Verarbeitungskette, danach die
      * vier Start-Läufer. Wer einen Läufer ergänzt, ergänzt ihn hier; sonst ist er unbeobachtet.
      */
     public static final List<Eintrag> KATALOG = List.of(
@@ -167,6 +171,10 @@ public class UemsLaeuferMelder {
                     List.of("voltpilot.uems.uebergabe.enabled"), "15 s"),
             new Eintrag(UNTERSTUETZUNG, "AblaufLaeufer",
                     List.of("voltpilot.uems.unterstuetzung.enabled"), "1 min"),
+            new Eintrag(MISPEL_FOERDERWEG_SPIEGEL, "FoerderwegSpiegelLaeufer",
+                    List.of("voltpilot.mispel.foerderweg-spiegel.enabled"), "1 h (Minute 0:30 Europe/Berlin)"),
+            new Eintrag(MISPEL_MONATSLAUF, "MispelMonatslaufLaeufer",
+                    List.of("voltpilot.mispel.monatslauf.enabled"), "taeglich 05:17 Europe/Berlin"),
             new Eintrag(BESTAND_STANDORT, "BestandsuebernahmeLaeufer",
                     List.of("voltpilot.uems.bestandsuebernahme.enabled"), "Start"),
             new Eintrag(BESTAND_FUNKTION, "FunktionBestandLaeufer",

@@ -171,10 +171,11 @@ Ein VoltPilot-Partner ist noch nicht wählbar (E8 = D: erst nach der Wahl aus de
   des Kunden“ sagt, und nur mit `grid_charge_allowed=true` (dem Spiegel `netzladen_erlaubt`). Einspeisevergütung und
   Ausschließlichkeitsoption klemmen auch bei einem noch nicht umgelegten Spiegel. Fehlt das Feld (alte Cloud), lädt
   die Box nur mit Sonnenstrom ([Wegweiser](../../agents/root/mispel-box-foerderweg.md)).
-- **Rechenwerk (MP-8):** `MispelAbgrenzungService.Vorgaben.formelsatz` kommt heute vom Aufrufer; der
-  Monatslauf soll ihn aus `FoerderwegService.ansicht(site, tag)` lesen (Formelsatz und Förderweg je Tag des
-  Monats; ein Wechsel im Monat ist ein Rumpfmonat, MP-21). Ein Lauf ohne Abgrenzung oder ohne Formelsatz an
-  einem Tag ist dann keine Mengenbestimmung nach Anlage 1.
+- **Rechenwerk (MP-8, Läufer MP-8b):** der `MispelMonatslaufLaeufer` liest je Anlage die wirksamen Fassungen
+  (`FoerderwegRepository.derAnlage`) und gibt `monatslaeufe` je Fassung einen Fallstand ab `gueltig_ab` — Formelsatz
+  und `aw_regel` der Fassung in der Abgrenzungsoption, sonst keine Bestimmung nach Anlage 1; eine Änderung im Monat
+  ist ein Rumpfmonat (MP-21). Ohne `aw_regel` (A1–A4) und für A5/A5-Variante überspringt er den Monat
+  ([Vertrag Abgrenzung, Der Läufer](./mispel-abgrenzung.md#der-läufer-mp-8b)).
 - **Gebot der Bestnutzung** (vereinfacht verboten, wenn die Zähler den genaueren Formelsatz tragen,
   A1 S. 24) prüft der Formelsatz-Vorschlag der Einrichtung (MP-17) gegen die Zählerrollen (MP-6).
 - **Rumpfmonate** rechnet MP-21; **Pauschal-Umlageprivilegien für ungeförderte Solaranlagen**
@@ -219,7 +220,7 @@ dasselbe Vokabular wie `eeg_aw_zeit.regel` (MP-7, Vektoren `aw_regeln`):
   A2 S. 5 Fn. 1; § 24 Abs. 1 EEG). **Offen:** A5/A5-Variante mit zwei geförderten Anlagen a und b und
   „ggf. unterschiedlichen AW>0-Zeiten“ (A1 S. 46, Formeln (24a)/(24b); S. 51) — `aw_regel` ist dort die Regel
   der Anlage a (AWa¼); AWb¼ übergibt der Aufrufer des Rechenwerks weiter selbst (`Vorgaben.awRegelB`), bis der
-  Monatslauf den Förderweg liest (§ 5, Rechenwerk).
+  Förderweg sie trägt (der Läufer überspringt A5/A5-Variante, § 5, Rechenwerk).
 - **Fassungen wie jede andere Angabe** (§ 3): die Regel nachzutragen oder zu berichtigen ist kein Wechsel des
   Förderwegs und darum an keinen Monatsersten gebunden; dieselbe Regel noch einmal ist 409
   `foerderweg_unveraendert`. Soll sie schon ab dem Tag der Fassung gelten, wird dieselbe Fassung mit Regel und

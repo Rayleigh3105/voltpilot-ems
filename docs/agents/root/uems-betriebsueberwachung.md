@@ -96,10 +96,10 @@ Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
 
-## Die zwanzig Läufer
+## Die zweiundzwanzig Läufer
 
 Der Katalog steht in `UemsLaeuferMelder.KATALOG` und ist VOLLSTÄNDIG: `UemsMetrikenWiringTest` liest
-die Quelltexte von `uems`, `unterstuetzung`, `zugriff` und `chargers` und verlangt für jede Klasse mit
+die Quelltexte von `uems`, `unterstuetzung`, `zugriff`, `chargers` und `mispel` und verlangt für jede Klasse mit
 `@Scheduled` oder `ApplicationReadyEvent` einen Eintrag. Wer einen Läufer ergänzt und den Katalog
 vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Ausnahme mit Grund:
 `PlanResultListener` (AP-15 IP-10) — sein `@Scheduled` hält nur die Broker-Verbindung
@@ -123,6 +123,8 @@ vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Au
 | `uebergabe` | `UebergabeLaeufer` | `voltpilot.uems.uebergabe.enabled` | 1 s |
 | `box_tausch` | `BoxTauschZustellung` | `voltpilot.uems.uebergabe.enabled` | 15 s |
 | `unterstuetzung` | `AblaufLaeufer` | `voltpilot.uems.unterstuetzung.enabled` | 1 min |
+| `mispel_foerderweg_spiegel` | `mispel/FoerderwegSpiegelLaeufer` (legt die Spiegel am Tag einer vorgemerkten Förderweg-Fassung um, MiSpeL MP-17) | `voltpilot.mispel.foerderweg-spiegel.enabled` | 1 h (Minute 0:30 Europe/Berlin) |
+| `mispel_monatslauf` | `mispel/MispelMonatslaufLaeufer` (Monatslauf der Abgrenzungsoption je Anlage: nach Monatsende vorläufig, mit MSB-Werten endgültig, Vorgaben aus dem Förderweg des Monats, MiSpeL MP-8b) | `voltpilot.mispel.monatslauf.enabled` | täglich 05:17 Europe/Berlin |
 | `bestand_standort` | `BestandsuebernahmeLaeufer` | `voltpilot.uems.bestandsuebernahme.enabled` | Start |
 | `bestand_funktion` | `FunktionBestandLaeufer` | `voltpilot.uems.funktion-bestand.enabled` | Start |
 | `bestand_rechte` | `ZugriffBestandLaeufer` | `voltpilot.uems.zugriff-bestand.enabled` | Start |
@@ -177,7 +179,7 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   rechnet, ist Arithmetik auf dem zuletzt gesammelten Zeitpunkt — darum wachsen die Alter zwischen
   zwei Sammel-Läufen weiter, und ein ausgefallener SAMMLER wird an denselben Regeln sichtbar, ohne
   eigene Metrik.
-- **Kardinalität**: drei Arbeitslisten, zwanzig Läufer, ein Wert je Messkunden-Kundenbereich. Keine
+- **Kardinalität**: drei Arbeitslisten, zweiundzwanzig Läufer, ein Wert je Messkunden-Kundenbereich. Keine
   Anlage, keine Box, keine Messstelle als Label (Ausnahme mit Absicht: die Box-Sicht unten, nur für
   Boxen mit Bezug) — und `tenant` trägt die INTERNE Kennung, nie einen Namen.
 
