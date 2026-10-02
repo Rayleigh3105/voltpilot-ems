@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 import random
 import sys
+import time as uhr
 from dataclasses import replace
 from datetime import datetime, time, timedelta, timezone
 from types import SimpleNamespace
@@ -25,7 +26,15 @@ from voltpilot_optimization import fahrzeugspeicher as fz_regeln
 from voltpilot_optimization.config import mispel_fahrzeug_site_ids
 from voltpilot_optimization.domain import WIRKUNGSGRAD_LADEPUNKT
 from voltpilot_optimization.fahrzeugspeicher import Anwesenheit, Faehigkeit, Fenster, Messung
-from voltpilot_optimization.solver import _gutschrift_eur_mwh, _solve, _wirkungsgrad_14, build_model, optimize
+from voltpilot_optimization import pricing, solver
+from voltpilot_optimization.solver import (
+    _gutschrift_eur_mwh,
+    _solve,
+    _solve_plan,
+    _wirkungsgrad_14,
+    build_model,
+    optimize,
+)
 
 from test_solver import T0, make_input, needs_highs
 
@@ -276,13 +285,120 @@ def test_mischbetrieb_a3_bucht_das_fahrzeug_in_z2():
                   mispel_praemie_eur_mwh=[30.0] * n, saldierte_bestandteile_eur_mwh=150.0,
                   export_value_eur_mwh=None)
     m = build_model(inp)
-    _solve(m, time_limit=60.0)
+    _solve_plan(m, inp)  # MP-33b: Planweg statt freier Ganzzahl (die brauchte hier bis 60 s)
     for t in range(n):
         z2v = value(m.charge[t]) + value(m.fz_laden[t])
         # ohne PV ist (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] die ganze Ladung von Speicher und Fahrzeug (A1 S. 33)
         assert value(m.netz_laden[t]) == pytest.approx(min(value(m.grid_import[t]), z2v), abs=1e-5)
     plan = optimize(inp, uuid4(), T0)
     assert all(geplant >= ziel - 1e-6 for _, ziel, geplant in plan.fahrzeug.abfahrten)
+
+
+# --- MP-33b: Laufzeit im Mischbetrieb A3/A4 mit Fahrzeug -------------------
+
+
+def _real(n, satz, pv=0.0):
+    """Bezugspreis und Gutschrift aus DENSELBEN Bestandteilen (Recherche-Vorgabe,
+    `pricing`): Bezug = (Spot + Bestandteile) * 1,19, Gutschrift = (Umlagen +
+    Netzentgelt-AP) * 1,19 - wie `inputs` sie fuer eine Anlage bildet."""
+    fz = _fahrzeug(V2G, soc_pct=50.0, n=n)
+    spot = _abend_preise(n)
+    tarif = pricing.SiteTariff(tarif_art="ohne", supply_price=pricing.DEFAULT_SUPPLY_COMPONENTS)
+    return replace(
+        _input(fz, prices=spot, pv=[pv] * n), mischbetrieb=True, mispel_formelsatz=satz,
+        mispel_praemie_eur_mwh=[30.0] * n,
+        saldierte_bestandteile_eur_mwh=pricing.saldierte_bestandteile_eur_mwh(tarif),
+        import_price_eur_mwh=pricing.structured_import_prices(pricing.DEFAULT_SUPPLY_COMPONENTS, spot),
+        export_value_eur_mwh=None,
+    )
+
+
+@needs_highs
+@pytest.mark.parametrize(("satz", "pv"), [("A3", 0.0), ("A3", 3.0), ("A4", 0.0), ("A4", 3.0)])
+def test_192_slots_mit_fahrzeug_bewiesen_optimal_in_der_zeitgrenze(satz, pv, caplog):
+    # Vorher: freie Lauf-Ganzzahl, HiGHS haengt an der Wurzel (mit PV 60 s,
+    # Luecke 63 %; ohne PV 20 s = MISCHBETRIEB_ZEITGRENZE_S, dann Rueckfall ohne
+    # Gutschrift). Jetzt: zwei Teilprobleme, beide bewiesen optimal.
+    inp = _real(192, satz, pv=pv)
+    m = build_model(inp)
+    start = uhr.perf_counter()
+    _solve_plan(m, inp)
+    dauer = uhr.perf_counter() - start
+    print(f"MP-33b {satz} pv={pv}: {dauer:.1f} s, Ziel {value(m.total_cost):.6f}")
+    assert "mischbetrieb.fahrzeug_saldierung_zeitgrenze" not in caplog.text
+    assert dauer < solver.MISCHBETRIEB_ZEITGRENZE_S
+    # das bessere Teilproblem gewinnt: mit PV ohne Saldierung, ohne PV mit
+    assert value(m.saldierung_aktiv) == (0 if pv else 1)
+
+
+@needs_highs
+@pytest.mark.parametrize("satz", ["A3", "A4"])
+def test_aufzaehlung_gleich_dem_ganzen_modell(satz):
+    # gleiches Ergebnis wie die freie Ganzzahl innerhalb der MIP-Toleranz
+    inp = _real(32, satz)
+    ganz, teile = build_model(inp), build_model(inp)
+    _solve(ganz)
+    _solve_plan(teile, inp)
+    assert value(teile.total_cost) == pytest.approx(value(ganz.total_cost), abs=1e-6)
+    assert round(value(teile.saldierung_aktiv)) == round(value(ganz.saldierung_aktiv))
+
+
+@needs_highs
+def test_mp33_testfall_in_der_zeitgrenze_mit_gutschrift():
+    # Der MP-33-Fall: Bezug = blanker Spot, Gutschrift 150 EUR/MWh - nur im Test
+    # moeglich (in `inputs` kommen beide aus demselben Blatt). Gleichzeitiger
+    # Bezug und Einspeisung lohnt dann in der Relaxation; der Beweis der letzten
+    # Luecke dauert. Der Plan nimmt den besten zulaessigen mit Gutschrift.
+    n = 32
+    inp = replace(_input(_fahrzeug(V2G, soc_pct=50.0, n=n), pv=[0.0] * n), mischbetrieb=True,
+                  mispel_formelsatz="A3", mispel_praemie_eur_mwh=[30.0] * n,
+                  saldierte_bestandteile_eur_mwh=150.0, export_value_eur_mwh=None)
+    ohne = build_model(inp)
+    ohne.saldierung_aktiv.fix(0)
+    _solve(ohne)
+    m = build_model(inp)
+    start = uhr.perf_counter()
+    _solve_plan(m, inp)
+    dauer = uhr.perf_counter() - start
+    print(f"MP-33b Testfall MP-33: {dauer:.1f} s, Ziel {value(m.total_cost):.6f}")
+    assert dauer < solver.MISCHBETRIEB_ZEITGRENZE_S
+    assert value(m.saldierung_aktiv) == 1 and value(m.total_cost) < value(ohne.total_cost) - 1.0
+
+
+@needs_highs
+def test_zeitgrenze_mit_fahrzeug_faellt_sauber_zurueck(monkeypatch, caplog):
+    # Ohne Plan im zweiten Teilproblem gilt der Plan ohne Gutschrift - mit
+    # seinen eigenen Werten, nicht dem Rest des abgebrochenen Laufs.
+    monkeypatch.setattr(solver, "FAHRZEUG_SALDIERUNG_ZEITGRENZE_S", 1e-4)
+    inp = _real(32, "A3")
+    ohne = build_model(inp)
+    ohne.saldierung_aktiv.fix(0)
+    _solve(ohne)
+    m = build_model(inp)
+    _solve_plan(m, inp)
+    assert "mischbetrieb.fahrzeug_saldierung_zeitgrenze" in caplog.text
+    assert m.saldierung_aktiv.fixed and value(m.saldierung_aktiv) == 0
+    assert value(m.total_cost) == pytest.approx(value(ohne.total_cost), abs=1e-9)
+    assert sum(value(m.rot_einspeisung[t]) for t in m.T) == pytest.approx(0.0, abs=1e-9)
+    plan = optimize(inp, uuid4(), T0)
+    assert all(geplant >= ziel - 1e-6 for _, ziel, geplant in plan.fahrzeug.abfahrten)
+
+
+def test_ohne_fahrzeug_bleibt_der_mp10_weg(monkeypatch):
+    # Bestandsschutz: die Aufzaehlung greift nur mit Fahrzeug; Mischbetrieb ohne
+    # Fahrzeug loest wie bisher (MP-10, eine freie Ganzzahl).
+    def _nie(model, inp):
+        raise AssertionError("Aufzaehlung ohne Fahrzeug")
+
+    monkeypatch.setattr(solver, "_solve_plan_fahrzeug", _nie)
+    gesehen = []
+    monkeypatch.setattr(solver, "_solve", lambda model, time_limit=None: gesehen.append(time_limit))
+    inp = replace(make_input(_abend_preise(n=8), pv=[0.0] * 8), mischbetrieb=True,
+                  mispel_praemie_eur_mwh=[30.0] * 8, saldierte_bestandteile_eur_mwh=150.0)
+    m = build_model(inp)
+    assert hasattr(m, "saldierung_aktiv") and not hasattr(m, "fz_laden")
+    _solve_plan(m, inp)
+    assert gesehen == [solver.MISCHBETRIEB_ZEITGRENZE_S]
 
 
 # --- Bestandsschutz: ohne bidirektionalen Ladepunkt byte-gleich ---------------

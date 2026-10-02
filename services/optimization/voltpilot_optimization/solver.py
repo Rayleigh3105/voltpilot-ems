@@ -303,6 +303,7 @@ extra so the package imports (and non-solver tests run) without the wheel.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
@@ -1780,6 +1781,9 @@ def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
     if not hasattr(model, "saldierung_aktiv"):
         _solve(model)
         return
+    if hasattr(model, "fz_laden"):
+        _solve_plan_fahrzeug(model, inp)
+        return
     try:
         _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
     except _Zeitgrenze:
@@ -1798,6 +1802,97 @@ def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
         )
         model.saldierung_aktiv.fix(0)
         _solve(model)
+
+
+#: MiSpeL MP-33b: Zeitgrenze des Teilproblems „mit Saldierung“ im Mischbetrieb
+#: A3/A4 mit Fahrzeug, in Sekunden (siehe :func:`_solve_plan_fahrzeug`).
+FAHRZEUG_SALDIERUNG_ZEITGRENZE_S = 8.0
+
+#: MiSpeL MP-33b: HiGHS-Optionen nur fuer die beiden Teilprobleme mit Fahrzeug.
+#: Gemessen an 192 Slots (A3/A4, mit und ohne PV, Lauf-Ganzzahl fest): 5-8 s je
+#: Teilproblem statt 8-15 s mit der Vorgabe 0,05 - die Wurzelschranke ist dort
+#: schon die Loesung, die Zeit geht in die Suche nach ihr.
+FAHRZEUG_HIGHS_OPTIONEN = {"mip_heuristic_effort": 0.3}
+
+
+def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> None:
+    """Mischbetrieb A3/A4 mit Fahrzeug (MP-33b): die Lauf-Ganzzahl
+    ``saldierung_aktiv`` wird aufgezaehlt statt verzweigt.
+
+    Gemessen (Bauplan MP-33b): mit freier Ganzzahl bleibt HiGHS bei 192 Slots
+    60 s an der Wurzel haengen (Schranke -9,44 gegen das Optimum -6,84) - das
+    MAX von (16) mit Big-M ueber den ganzen Lauf traegt in der
+    Relaxation fast nichts. Mit fester Ganzzahl ist die Wurzelschranke der
+    Teilprobleme (fast) die Loesung. Darum: erst ``saldierung_aktiv = 0`` (der
+    Plan ohne Gutschrift, immer zulaessig - derselbe Rueckfall wie in MP-10),
+    dann ``= 1`` mit :data:`FAHRZEUG_SALDIERUNG_ZEITGRENZE_S`. Das bessere
+    Ergebnis gewinnt; bei Gleichstand der Plan ohne Gutschrift. Beide optimal
+    = genau die Loesung des ganzen Modells (Minimum ueber beide Werte).
+
+    Erreicht das zweite Teilproblem die Zeitgrenze, zaehlt sein bester
+    zulaessiger Plan, wenn er besser ist als der ohne Gutschrift (Log
+    ``mischbetrieb.fahrzeug_saldierung_zeitgrenze`` mit Luecke). Er ist ein
+    zulaessiger Plan des ganzen Modells - (16) exakt gebucht -, also
+    ueberschaetzt er keinen Wert; er ist nur nicht bewiesen optimal.
+    """
+    model.saldierung_aktiv.fix(0)
+    ohne, _ = _solve_teil(model)
+    stand_ohne = [
+        (var, var.value) for var in model.component_data_objects(Var) if not var.fixed
+    ]
+    model.saldierung_aktiv.fix(1)
+    try:
+        mit, luecke = _solve_teil(model, time_limit=FAHRZEUG_SALDIERUNG_ZEITGRENZE_S)
+    except InfeasiblePlanError:
+        mit, luecke = None, None
+    if luecke is not None:
+        logger.warning(
+            "mischbetrieb.fahrzeug_saldierung_zeitgrenze",
+            extra={
+                "context": {
+                    "site_id": str(inp.site_id),
+                    "zeitgrenze_s": FAHRZEUG_SALDIERUNG_ZEITGRENZE_S,
+                    "luecke": luecke,
+                    "uebernommen": mit is not None and mit < ohne,
+                    "reason": (
+                        "Mischbetrieb mit Fahrzeug: Teilproblem mit Saldierung "
+                        "nicht in der Zeitgrenze bewiesen - bester zulaessiger "
+                        "Plan, wenn besser als ohne Gutschrift"
+                    ),
+                }
+            },
+        )
+    if mit is not None and mit < ohne:
+        return
+    model.saldierung_aktiv.fix(0)
+    for var, wert in stand_ohne:
+        var.set_value(wert, skip_validation=True)
+
+
+def _solve_teil(
+    model: ConcreteModel, time_limit: float | None = None
+) -> tuple[float | None, float | None]:
+    """Ein Teilproblem von :func:`_solve_plan_fahrzeug`: ``(Zielwert, Luecke)``.
+    Luecke ist ``None``, wenn bewiesen optimal; an der Zeitgrenze der beste
+    zulaessige Plan (Zielwert ``None``, wenn es keinen gibt)."""
+    from pyomo.contrib.appsi.base import TerminationCondition
+
+    results = _highs(model, time_limit, FAHRZEUG_HIGHS_OPTIONEN)
+    if results.termination_condition == TerminationCondition.optimal:
+        results.solution_loader.load_vars()
+        return results.best_feasible_objective, None
+    if (
+        time_limit is not None
+        and results.termination_condition == TerminationCondition.maxTimeLimit
+    ):
+        ziel, schranke = results.best_feasible_objective, results.best_objective_bound
+        if ziel is None or not math.isfinite(ziel):
+            return None, math.inf
+        results.solution_loader.load_vars()
+        return ziel, abs(ziel - schranke) / max(abs(ziel), 1e-9)
+    raise InfeasiblePlanError(
+        f"dispatch MILP not solved to optimality: {results.termination_condition}"
+    )
 
 
 def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> None:
@@ -1860,6 +1955,21 @@ def _solve(model: ConcreteModel, time_limit: float | None = None) -> None:
     # Lazy import so this module (and the model-building tests) never hard-fail
     # where the HiGHS wheel is unavailable.
     from pyomo.contrib.appsi.base import TerminationCondition
+
+    results = _highs(model, time_limit)
+    if (
+        time_limit is not None
+        and results.termination_condition == TerminationCondition.maxTimeLimit
+    ):
+        raise _Zeitgrenze(f"time limit {time_limit} s reached")
+    if results.termination_condition != TerminationCondition.optimal:
+        raise InfeasiblePlanError(
+            f"dispatch MILP not solved to optimality: {results.termination_condition}"
+        )
+    results.solution_loader.load_vars()
+
+
+def _highs(model: ConcreteModel, time_limit: float | None = None, optionen=None):
     from pyomo.contrib.appsi.solvers.highs import Highs
 
     solver = Highs()
@@ -1880,20 +1990,11 @@ def _solve(model: ConcreteModel, time_limit: float | None = None) -> None:
         "mip_rel_gap": MIP_REL_GAP,
         "mip_abs_gap": MIP_ABS_GAP,
         "mip_feasibility_tolerance": 1e-9,
+        **(optionen or {}),
     }
     if time_limit is not None:
         solver.config.time_limit = time_limit
-    results = solver.solve(model)
-    if (
-        time_limit is not None
-        and results.termination_condition == TerminationCondition.maxTimeLimit
-    ):
-        raise _Zeitgrenze(f"time limit {time_limit} s reached")
-    if results.termination_condition != TerminationCondition.optimal:
-        raise InfeasiblePlanError(
-            f"dispatch MILP not solved to optimality: {results.termination_condition}"
-        )
-    results.solution_loader.load_vars()
+    return solver.solve(model)
 
 
 def _extract_plan(
