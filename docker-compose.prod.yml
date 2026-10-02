@@ -871,6 +871,12 @@ services:
       # unset/remove a site to roll back (seconds, no image change). See
       # docs/migration-v1-to-v2.md.
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      # MiSpeL MP-45 (Kasten W1 = D): comma-separated site UUIDs planned with
+      # the STRICT Ausschliesslichkeit (no charging in a quarter hour with grid
+      # import, Festlegung Anlage 1 S. 11) - EEG sites only. Default EMPTY =
+      # FK3 for every site, byte-identical plans. Switched only on the
+      # captain's word after the legal answer; remove a site to roll back.
+      VOLTPILOT_MISPEL_STRENGE_SITES: ${VOLTPILOT_MISPEL_STRENGE_SITES:-}
       # Verbrauchssteuerung §19 Inkrement 5: master gate for co-optimizing
       # steuerbare Verbraucher. OFF (default) = consumer-less v2 shadow, turned
       # on per docs/verbrauchssteuerung-betrieb.md after the pilot.

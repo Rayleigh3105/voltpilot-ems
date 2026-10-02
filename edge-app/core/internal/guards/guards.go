@@ -34,6 +34,24 @@ type Limits struct {
 	// Discharge is never affected.
 	SolarOnlyCharge bool
 
+	// StrictExclusivity is the STRICT reading of the EEG Ausschliesslichkeit
+	// (MiSpeL MP-45, Kasten W1 = D: Option B held ready, operator switch per
+	// site, default off): „kein Verbrauch im Stromspeicher ..., waehrend es
+	// gleichzeitig einen Netzbezug gibt“ (Festlegung MiSpeL, Anlage 1 S. 11).
+	// Commanded CHARGE is clamped to the MEASURED surplus at the connection
+	// point, max(pv - load + StrictToleranceKw, 0), so the battery never
+	// charges while the site imports - the on-device twin of the solver's
+	// strenge_ausschliesslichkeit constraint. It composes with SolarOnlyCharge
+	// (FK3), most restrictive wins. Unknown pv or load clamps charge to 0 (a
+	// compliance guard never charges blind). Set from the plan's
+	// strict_exclusivity=true. Zero value (false) = no extra clamp.
+	StrictExclusivity bool
+	// StrictToleranceKw is the instantaneous import the strict clamp leaves
+	// while charging: the plan's tolerance per quarter hour (kWh) / 0.25 h.
+	// The Festlegung knows no tolerance, so the cloud default is 0. Only read
+	// with StrictExclusivity; a negative or non-finite value counts as 0.
+	StrictToleranceKw float64
+
 	// Bms is what the battery's own protection currently ALLOWS (P5c,
 	// Konzept vp-deye-diybms-luecke-l5 §3.2b/§3.3): a HARD upper bound on
 	// top of everything else in this struct. nil = the pack said nothing,
@@ -150,6 +168,10 @@ const (
 	StagePeakShave       = "guard:peak_shave"
 	StageLimitReduceOnly = "guard:limit_reduce_only"
 	StageBmsLimit        = "guard:bms_limit"
+
+	// StageStrictExclusivity names the MiSpeL MP-45 strict clamp (charge only
+	// from the measured surplus, never while importing).
+	StageStrictExclusivity = "guard:strict_exclusivity"
 )
 
 // ClampStage records one guard stage that actually CHANGED the value while
@@ -175,6 +197,11 @@ type ClampStage struct {
 //     must not charge blind (unlike the advisory guards, which skip on
 //     missing data). The later §14a export correction can only ever raise
 //     charge to pv - load - limit <= pv, so it never re-violates this clamp,
+//     4b. strict Ausschliesslichkeit (when Limits.StrictExclusivity, MiSpeL
+//     MP-45): charge <= max(measured pv - measured load + tolerance, 0) - no
+//     charging while the connection point imports. Unknown pv or load clamps
+//     charge to 0. The §14a export correction raises charge at most to
+//     pv - load - limit < pv - load, so it never re-violates this clamp either,
 //  5. observed §14a envelope: predicted grid power (load + battery - pv,
 //     + = import) must stay within [-gridLimit, +gridLimit],
 //  6. re-apply the rated band AND the BMS envelope LAST - the §14a correction
@@ -245,6 +272,22 @@ func ClampTraced(commandKw float64, l Limits, r Reading) (float64, []ClampStage)
 			produced = math.Max(r.PvKw, 0)
 		}
 		kw = note(StageSolarOnlyCharge, kw, math.Min(kw, produced))
+	}
+
+	// 4b) strict Ausschliesslichkeit (MiSpeL MP-45): never charge beyond the
+	// MEASURED surplus pv - load (plus the tolerance), so the battery takes no
+	// energy while the site draws from the grid. Blind (pv or load unknown)
+	// clamps to 0, exactly like the FK3 clamp above.
+	if l.StrictExclusivity && kw > 0 {
+		surplus := 0.0
+		if known(r.PvKw) && known(r.LoadKw) {
+			tolerance := l.StrictToleranceKw
+			if !(tolerance > 0) || math.IsInf(tolerance, 0) {
+				tolerance = 0
+			}
+			surplus = math.Max(r.PvKw-r.LoadKw+tolerance, 0)
+		}
+		kw = note(StageStrictExclusivity, kw, math.Min(kw, surplus))
 	}
 
 	// 5) observed §14a envelope, both directions. predictedGrid > 0 = import.

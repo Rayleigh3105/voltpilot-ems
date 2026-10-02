@@ -38,6 +38,22 @@ SLOT_MINUTES = 15
 #: exempts from the real-forecast truncation.
 SLOTS_24H = 96
 
+#: MiSpeL MP-45 (W1 = D): die Toleranz der strengen Ausschliesslichkeit je
+#: Viertelstunde, in kWh - die hoechste zulaessige Menge (1)¼ = MIN [ Z1NB¼ ;
+#: Z2V¼ ] (Festlegung MiSpeL, Anlage 1 S. 33; dieselbe Groesse, die der
+#: Pruefer MP-2 ``AusschliesslichkeitsPruefer`` misst). Die Festlegung kennt
+#: KEINE Toleranz (Anlage 1 S. 11: „kein Verbrauch im Stromspeicher ...,
+#: waehrend es gleichzeitig einen Netzbezug gibt“), darum ist die Vorgabe 0 -
+#: die strenge Lesart woertlich. Ob ein Netzbetreiber eine Schwelle duldet,
+#: ist Teil der offenen Rechtsfrage (Kasten W1); die Staffel des Pruefers
+#: (0,01 / 0,1 / 1 kWh) zeigt, was eine Schwelle aendern wuerde. Der Wert
+#: reist mit dem Plan zur Box (``strict_exclusivity_tolerance_kwh``), damit
+#: Optimierer und Klemme dieselbe Zahl benutzen.
+STRENGE_TOLERANZ_KWH_JE_VIERTELSTUNDE = 0.0
+#: Die Viertelstunde der Festlegung in Stunden („Zeitgleichheit“: die Zuordnung
+#: innerhalb des jeweiligen 15-Minuten-Intervalls, Anlage 1 S. 7 Abschn. 1).
+VIERTELSTUNDE_H = 0.25
+
 # Usable SoC window as fractions of nameplate capacity. The asset master data
 # carries capacity/power/efficiency; the reserve band is a platform default
 # (protects battery life, keeps headroom for the edge's self-consumption
@@ -614,6 +630,19 @@ class OptimizationInput:
     #: builds its own inputs (What-if, Ersparnis-Simulation, Golden-Suite) is
     #: byte-identical to before.
     grid_charge_hurdle_ct_kwh: float = 0.0
+    #: MiSpeL MP-45 (W1 = D, Option B bereithalten): der Betreiber-Schalter der
+    #: STRENGEN Ausschliesslichkeit (``config.mispel_strenge_site_ids``). An
+    #: und im EEG-Modus (``netzladen_erlaubt`` False) laedt der Speicher nur in
+    #: Viertelstunden OHNE Netzbezug: kein Verbrauch im Stromspeicher, waehrend
+    #: es gleichzeitig einen Netzbezug gibt (Anlage 1 S. 11; Speichervorrang
+    #: je Viertelstunde, § 21 Abs. 4 S. 3 EnFG, Anlage 1 S. 14-15). FK3 laesst
+    #: das Haus dagegen parallel beziehen. Im Haendlermodus bleibt der Schalter
+    #: wirkungslos - die Ausschliesslichkeitsoption gibt es nur im EEG-Modus.
+    #: ``False`` (die Vorgabe) = FK3, KEIN Term und ein byte-gleicher Plan.
+    strenge_ausschliesslichkeit: bool = False
+    #: Die Toleranz je Viertelstunde in kWh (siehe
+    #: :data:`STRENGE_TOLERANZ_KWH_JE_VIERTELSTUNDE`, Vorgabe 0).
+    strenge_toleranz_kwh: float = STRENGE_TOLERANZ_KWH_JE_VIERTELSTUNDE
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -656,6 +685,20 @@ class OptimizationInput:
             and self.grid_charge_hurdle_ct_kwh >= 0.0
         ):
             raise ValueError("grid_charge_hurdle_ct_kwh must be finite and >= 0")
+        if not (
+            math.isfinite(self.strenge_toleranz_kwh)
+            and self.strenge_toleranz_kwh >= 0.0
+        ):
+            raise ValueError("strenge_toleranz_kwh must be finite and >= 0")
+        # Die strenge Lesart gilt je Viertelstunde (Anlage 1 S. 7). Ein Slot,
+        # der ein Vielfaches davon ist, faehrt in jeder seiner Viertelstunden
+        # dieselbe Leistung - die Bedingung je Slot IST dann die je
+        # Viertelstunde. Ein kuerzerer Slot koennte in derselben Viertelstunde
+        # erst laden und dann beziehen; das deckt die Bedingung je Slot nicht.
+        if self.strenge_ausschliesslichkeit and self.slot_minutes % 15 != 0:
+            raise ValueError(
+                "strenge_ausschliesslichkeit needs slots of whole quarter hours"
+            )
         if self.pv_anchor_ratio is not None and not (
             math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
         ):
@@ -679,6 +722,15 @@ class OptimizationInput:
         nur mit schwaecherer Herkunft, und aendert hier gar nichts.
         """
         return self.soc_source == SOC_SOURCE_UNBEKANNT
+
+    @property
+    def strenge_aktiv(self) -> bool:
+        """Plant DIESER Lauf nach der strengen Ausschliesslichkeit (MP-45)?
+
+        Nur im EEG-Modus: der Schalter einer Haendler-Anlage
+        (``netzladen_erlaubt`` True) aendert nichts.
+        """
+        return self.strenge_ausschliesslichkeit and not self.netzladen_erlaubt
 
     @property
     def slots(self) -> int:
@@ -921,6 +973,13 @@ class SchedulePlan:
     # solar-only-charge rule against MEASURED pv/load. None = omit the field
     # (legacy payload shape, edge behaves exactly as before).
     grid_charge_allowed: bool | None = None
+    # MiSpeL MP-45: die Toleranz je Viertelstunde (kWh) der STRENGEN
+    # Ausschliesslichkeit, wenn sie fuer diesen Lauf gilt
+    # (OptimizationInput.strenge_aktiv); veroeffentlicht als die OPTIONALEN
+    # Felder strict_exclusivity / strict_exclusivity_tolerance_kwh, damit die
+    # Box dieselbe Regel gegen den GEMESSENEN Ueberschuss klemmt. None = aus
+    # (FK3) - beide Felder fehlen, die Nutzlast bleibt byte-gleich.
+    strict_exclusivity_tolerance_kwh: float | None = None
     # The terminal energy value the run's objective credited per stored kWh at
     # the horizon end (P3; :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh`).
     # Only the solver knows the derived value, so it is stamped here and

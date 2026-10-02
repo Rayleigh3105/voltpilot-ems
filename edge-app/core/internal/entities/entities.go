@@ -695,6 +695,21 @@ func consumerCap(v float64, capMax, rated *float64) float64 {
 	return math.Round(v*1000) / 1000
 }
 
+// strictTolerance is the tolerance of the composed strict clamp: the smaller
+// one when both sides are strict, the strict side's own otherwise (a non-strict
+// side carries no tolerance worth keeping).
+func strictTolerance(a, b guards.Limits) float64 {
+	switch {
+	case a.StrictExclusivity && b.StrictExclusivity:
+		return math.Min(a.StrictToleranceKw, b.StrictToleranceKw)
+	case a.StrictExclusivity:
+		return a.StrictToleranceKw
+	case b.StrictExclusivity:
+		return b.StrictToleranceKw
+	}
+	return 0
+}
+
 // tightenLimits composes two limit sets, most restrictive wins: the narrower
 // band, the tighter SoC window, solar-only if either demands it. This is how
 // the v1 device config (env-derived guards.Limits) and the registry guard
@@ -706,6 +721,10 @@ func tightenLimits(a, b guards.Limits) guards.Limits {
 		SocMinPct:       math.Max(a.SocMinPct, b.SocMinPct),
 		SocMaxPct:       math.Min(a.SocMaxPct, b.SocMaxPct),
 		SolarOnlyCharge: a.SolarOnlyCharge || b.SolarOnlyCharge,
+		// MiSpeL MP-45: strict if either side demands it, with the smaller
+		// tolerance of the strict sides (most restrictive wins).
+		StrictExclusivity: a.StrictExclusivity || b.StrictExclusivity,
+		StrictToleranceKw: strictTolerance(a, b),
 		// The BMS envelope (P5c) rides through the tightening like every
 		// other bound. The registry side never carries one - it is a LIVE
 		// statement of the pack, not stored configuration - so in practice

@@ -737,6 +737,12 @@ services:
       # separated site UUIDs to ALSO publish a v2 shadow plan for. Empty (the
       # default) = nothing flagged = byte-identical v1.
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      # MiSpeL MP-45 (Kasten W1 = D): comma-separated site UUIDs planned with
+      # the STRICT Ausschliesslichkeit (no charging in a quarter hour with grid
+      # import, Festlegung Anlage 1 S. 11) - EEG sites only. Default EMPTY =
+      # FK3 for every site, byte-identical plans. Switched only on the
+      # captain's word after the legal answer; remove a site to roll back.
+      VOLTPILOT_MISPEL_STRENGE_SITES: ${VOLTPILOT_MISPEL_STRENGE_SITES:-}
       # Verbrauchssteuerung §19 Inkrement 5: the master gate for co-optimizing
       # steuerbare Verbraucher. OFF (default) = a flagged site's v2 plan stays
       # consumer-less, byte-identical to the pre-Inkrement-2 shadow. Turned on

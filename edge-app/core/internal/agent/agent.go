@@ -2659,6 +2659,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// The self-consumption fallback follows pv - load and never grid-charges,
 	// so the clamp composing into it is a no-op there.
 	solarOnly := p.SolarOnlyCharge()
+	// MiSpeL MP-45: the STRICT reading on top of FK3 - charge only from the
+	// MEASURED surplus, never while the site imports. Only an explicit
+	// strict_exclusivity=true from the cloud switches it on (operator switch
+	// per site, default off), so every other plan is clamped exactly as before.
+	strict := p.StrictExclusivityCharge()
 
 	// PS-3 peak shaving: the LAST plan-carried target/reserve, deliberately
 	// surviving plan staleness (the billing peak is a 15-min mean only the edge
@@ -2685,11 +2690,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 	}
 
 	limits := guards.Limits{
-		MaxChargeKw:     a.Cfg.MaxChargeKw,
-		MaxDischargeKw:  a.Cfg.MaxDischargeKw,
-		SocMinPct:       a.Cfg.SocMinPct,
-		SocMaxPct:       a.Cfg.SocMaxPct,
-		SolarOnlyCharge: solarOnly,
+		MaxChargeKw:       a.Cfg.MaxChargeKw,
+		MaxDischargeKw:    a.Cfg.MaxDischargeKw,
+		SocMinPct:         a.Cfg.SocMinPct,
+		SocMaxPct:         a.Cfg.SocMaxPct,
+		SolarOnlyCharge:   solarOnly,
+		StrictExclusivity: strict,
+		StrictToleranceKw: p.StrictToleranceKw(),
 		// What the battery's own protection block allows (P5c) caps this path
 		// too, and it MUST: on a v1-controlled plant - the shadow phase, which
 		// is exactly where the DIYBMS customer lives - this is the path that

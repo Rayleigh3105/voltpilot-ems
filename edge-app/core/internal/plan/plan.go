@@ -123,6 +123,19 @@ type Plan struct {
 	// true and is unaffected), so only legacy/hand-crafted payloads change
 	// behavior, and an EEG site behind such a payload must never grid-charge.
 	GridChargeAllowed *bool `json:"grid_charge_allowed,omitempty"`
+	// StrictExclusivity is the OPTIONAL MiSpeL MP-45 field (Kasten W1 = D,
+	// Option B held ready): the STRICT reading of the EEG
+	// Ausschliesslichkeit - no charging while the connection point imports
+	// (Festlegung MiSpeL, Anlage 1 S. 11). The cloud publishes it (always
+	// true) only while the operator switch is on for an EEG site; then the
+	// setpoint executor clamps charge to the MEASURED surplus
+	// (guards.Limits.StrictExclusivity) on top of the FK3 clamp. nil = off,
+	// FK3 exactly as before - the default for every site.
+	StrictExclusivity *bool `json:"strict_exclusivity,omitempty"`
+	// StrictExclusivityToleranceKwh is the tolerance per quarter hour (kWh)
+	// that travels with StrictExclusivity, so cloud and clamp use the same
+	// number. The Festlegung knows none, the cloud default is 0. nil = 0.
+	StrictExclusivityToleranceKwh *float64 `json:"strict_exclusivity_tolerance_kwh,omitempty"`
 	// GridImportLimitKw is the OPTIONAL run-level billing-period peak target
 	// (PS-1/PS-3, kW >= 0): the highest 15-min mean grid IMPORT the optimizer
 	// planned for. nil = the site's peak-shaving module is off - byte-for-byte
@@ -159,6 +172,28 @@ type Plan struct {
 // on the fallback path.
 func (p *Plan) SolarOnlyCharge() bool {
 	return p == nil || p.GridChargeAllowed == nil || !*p.GridChargeAllowed
+}
+
+// StrictExclusivityCharge reports whether the plan demands the STRICT EEG
+// clamp (MiSpeL MP-45): charge only from the measured surplus, never while the
+// connection point imports. Only an explicit strict_exclusivity=true switches
+// it on - absent field or no plan = off, because off IS the default (FK3) and
+// the switch is the operator's, never inferred. Like the FK3 posture it does
+// not depend on Fresh(): the stale-plan self-consumption fallback follows
+// pv - load and never charges while importing, so the clamp is a no-op there.
+func (p *Plan) StrictExclusivityCharge() bool {
+	return p != nil && p.StrictExclusivity != nil && *p.StrictExclusivity
+}
+
+// StrictToleranceKw turns the plan's tolerance per quarter hour (kWh) into the
+// instantaneous import the strict clamp may leave while charging: kWh / 0.25 h.
+// 0 when the strict clamp is off, the field is absent, or the value is not a
+// finite non-negative number (Parse already drops those).
+func (p *Plan) StrictToleranceKw() float64 {
+	if !p.StrictExclusivityCharge() || p.StrictExclusivityToleranceKwh == nil {
+		return 0
+	}
+	return *p.StrictExclusivityToleranceKwh / 0.25
 }
 
 // PeakImportLimit returns the plan-carried billing-period peak target (kW), or
@@ -222,6 +257,8 @@ type wire struct {
 	GeneratedAt          string   `json:"generated_at"`
 	SlotMinutes          int      `json:"slot_minutes"`
 	GridChargeAllowed    *bool    `json:"grid_charge_allowed"`
+	StrictExclusivity    *bool    `json:"strict_exclusivity"`
+	StrictToleranceKwh   *float64 `json:"strict_exclusivity_tolerance_kwh"`
 	GridImportLimitKw    *float64 `json:"grid_import_limit_kw"`
 	PeakReserveSocPct    *float64 `json:"peak_reserve_soc_pct"`
 	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct"`
@@ -263,6 +300,17 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 	if w.GridChargeAllowed != nil {
 		v := *w.GridChargeAllowed
 		p.GridChargeAllowed = &v
+	}
+	// MiSpeL MP-45: the strict reading and its tolerance. A tolerance that is
+	// not a finite non-negative number is dropped, which reads as 0 - the
+	// strictest value, never a wider one.
+	if w.StrictExclusivity != nil {
+		v := *w.StrictExclusivity
+		p.StrictExclusivity = &v
+		if t := w.StrictToleranceKwh; t != nil && !math.IsNaN(*t) && !math.IsInf(*t, 0) && *t >= 0 {
+			tv := *t
+			p.StrictExclusivityToleranceKwh = &tv
+		}
 	}
 	// Peak-shaving fields (PS-3): keep only a valid, finite, non-negative
 	// target; the reserve is accepted only ALONGSIDE a valid target (the

@@ -36,7 +36,7 @@ Quellen: `agent.onLocalTelemetry`, `sources.BalanceSettings`, `inverter.FamilyHa
 
 ## Schutzgrenzen
 
-Die konkrete Kette steht unter `internal/guards`. Sie berücksichtigt Nennleistung, SoC, Netzgrenzen sowie aktivierte Betriebsregeln. Solar-only-Laden wird an der **gemessenen PV-Leistung** begrenzt; fehlende PV erlaubt dabei keine Ladung. Die Hauslast darf im PV-Bus-Modell gleichzeitig aus dem Netz versorgt werden.
+Die konkrete Kette steht unter `internal/guards`. Sie berücksichtigt Nennleistung, SoC, Netzgrenzen sowie aktivierte Betriebsregeln. Solar-only-Laden wird an der **gemessenen PV-Leistung** begrenzt; fehlende PV erlaubt dabei keine Ladung. Die Hauslast darf im PV-Bus-Modell gleichzeitig aus dem Netz versorgt werden. Trägt der Plan `strict_exclusivity` (MiSpeL MP-45, Betreiber-Schalter je Anlage, Standard aus), lädt der Speicher zusätzlich nur aus dem **gemessenen Überschuss** PV − Last; fehlt PV oder Last, wird nicht geladen ([Details](agents/root/mispel-strenge-ausschliesslichkeit.md)).
 
 Weitere lokale Funktionen sind Lastnachführung, PV-Überschussaufnahme, Einspeisebegrenzung, Zyklenschutz, oberer PV-Puffer und native Selbstregelung. Ihre Wirkung ist nicht pauschal „nur weniger Sollwert“: einzelne Funktionen dürfen innerhalb der Schutzgrenzen einen Bedarf erhöhen. Sie brauchen ihre eigenen Voraussetzungen und Tests.
 

@@ -1086,3 +1086,46 @@ def v2_plan_site_ids(env=None) -> frozenset:
                 f"got {part!r}"
             ) from exc
     return frozenset(ids)
+
+
+# ---------------------------------------------------------------------------
+# MiSpeL MP-45 (W1 = D, Option B bereithalten): strenge Ausschliesslichkeit.
+#
+# Welche Anlagen im EEG-Modus nach der strengen Lesart der BNetzA geplant
+# werden: kein Verbrauch im Stromspeicher, waehrend es gleichzeitig einen
+# Netzbezug gibt (Festlegung MiSpeL, Anlage 1 S. 11; zeitgleich = dieselbe
+# Viertelstunde, Anlage 1 S. 7 Abschn. 1). Ein BETREIBER-Schalter je Anlage
+# (Site-UUID), kein Kundenschalter und keine Oberflaeche - darum ein
+# ENV-Schalter wie VOLTPILOT_V2_PLAN_SITES: keine Migration, Vorgabe leer =
+# keine Anlage geschaltet = FK3 unveraendert und byte-gleiche Plaene, und
+# Zurueckschalten heisst die Variable leeren. Geschaltet wird nur auf
+# Captain-Wort nach der Rechtsantwort (Kasten W1).
+# ---------------------------------------------------------------------------
+
+MISPEL_STRENGE_SITES_ENV = "VOLTPILOT_MISPEL_STRENGE_SITES"
+
+
+def mispel_strenge_site_ids(env=None) -> frozenset:
+    """Site-UUIDs mit strenger Ausschliesslichkeit (kommagetrennt in
+    ``VOLTPILOT_MISPEL_STRENGE_SITES``; leer/ungesetzt = keine). Ein
+    fehlerhafter Eintrag bricht laut ab - ein Tippfehler darf eine Anlage nie
+    still aus der strengen Lesart nehmen."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    raw = env.get(MISPEL_STRENGE_SITES_ENV)
+    if raw is None or raw.strip() == "":
+        return frozenset()
+    ids = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.add(UUID(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"{MISPEL_STRENGE_SITES_ENV} must be comma-separated site UUIDs, "
+                f"got {part!r}"
+            ) from exc
+    return frozenset(ids)

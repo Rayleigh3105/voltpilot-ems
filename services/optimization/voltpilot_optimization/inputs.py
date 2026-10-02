@@ -44,6 +44,7 @@ from voltpilot_optimization.config import (
     PEAK_SPIKE_FACTOR,
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
+    mispel_strenge_site_ids,
     pv_anchor_decay_slots,
     pv_anchor_enabled,
     pv_anchor_lookback,
@@ -972,6 +973,10 @@ def gather_inputs(
         # E6 A: die ehrliche Marge fuer Netzanteil beim Laden - nur am
         # Festpreis-Tarif, Spot-Anlagen bleiben bei 0 (kein Term).
         grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
+        # MiSpeL MP-45: der Betreiber-Schalter der strengen
+        # Ausschliesslichkeit (VOLTPILOT_MISPEL_STRENGE_SITES, Vorgabe leer =
+        # FK3). Wirkt nur im EEG-Modus, siehe OptimizationInput.strenge_aktiv.
+        strenge_ausschliesslichkeit=site.site_id in mispel_strenge_site_ids(),
     )
 
 

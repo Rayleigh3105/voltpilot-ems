@@ -74,6 +74,15 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
     # forecast space). None keeps the legacy payload shape byte-identical.
     if plan.grid_charge_allowed is not None:
         payload["grid_charge_allowed"] = plan.grid_charge_allowed
+    # OPTIONAL per the contract (MiSpeL MP-45, additive - schema_version stays
+    # 1.0): the strict reading of the EEG Ausschliesslichkeit, present only
+    # while the operator switch is on for this EEG site, so every other
+    # payload stays byte-identical (FK3).
+    if plan.strict_exclusivity_tolerance_kwh is not None:
+        payload["strict_exclusivity"] = True
+        payload["strict_exclusivity_tolerance_kwh"] = round(
+            plan.strict_exclusivity_tolerance_kwh, 4
+        )
     # OPTIONAL per the contract (PS-1/PS-2, additive - schema_version stays
     # 1.0): present only when the site's peak-shaving module is active
     # (site.leistungspreis_eur_kw set), so every other payload stays

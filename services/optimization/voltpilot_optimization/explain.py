@@ -88,6 +88,11 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         "charge_gate",
         "discharge_gate",
         "solar_only_charge",
+        # MiSpeL MP-45: the strict reading (no charging in a quarter hour with
+        # grid import), only with the operator switch on. Like the hurdle it
+        # carries no flag of its own: where it binds the slot simply does not
+        # charge, and the texts read the plan as it is.
+        "strenge_ausschliesslichkeit",
         "grid_import_cap",
         "grid_export_cap",
         "feed_in_cap",

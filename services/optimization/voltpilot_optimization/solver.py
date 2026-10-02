@@ -29,6 +29,10 @@ Formulation (per slot t, dt = 0.25 h):
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t, 0) - curtail_t                (charge from produced PV only,
                                                                     PV-bus Bilanzierung - FK3)
+    and, ONLY when strenge_aktiv (MiSpeL MP-45 operator switch, EEG mode, see below):
+               import_t <= tol / 0.25 h + M_imp_t * (1 - is_charging_t)  (no charging in a
+                                                                    quarter hour with grid
+                                                                    import - strict reading)
     and, ONLY when leistungspreis_eur_kw is set (peak shaving, PS-1, see below):
                peak >= grid_import_t,  peak >= peak_so_far         (epigraph over the billing
                peak_below >= grid_import_t                          period's import peak)
@@ -220,6 +224,27 @@ Design decisions, deliberately:
   LOAD remains a legitimate (and EEG-clean) negative-price play; a fully
   curtailed slot simply cannot charge.
 
+- **Strenge Ausschliesslichkeit (MiSpeL MP-45, Kasten W1 = D: Option B
+  schaltbar bereithalten).** The BNetzA describes the Ausschliesslichkeits-
+  option more strictly than FK3: „kein Verbrauch im Stromspeicher ..., waehrend
+  es gleichzeitig einen Netzbezug gibt“ (Festlegung MiSpeL, Anlage 1 S. 11;
+  gleichzeitig = within the same 15-minute interval, Anlage 1 S. 7 Abschn. 1
+  „Zeitgleichheit“; Speichervorrang je Viertelstunde, § 21 Abs. 4 S. 3 EnFG,
+  Anlage 1 S. 14-15). With the operator switch on for an EEG site
+  (``config.mispel_strenge_site_ids``), ``strenge_ausschliesslichkeit``
+  forbids grid import in every charging slot beyond the tolerance:
+  ``import_t <= tol / 0.25 h + M_imp_t * (1 - is_charging_t)``. It reuses the
+  charge/discharge binary, so it adds no integer variable: a slot that
+  charges at all (``is_charging_t = 1``) imports at most the tolerance, a slot
+  that does not is unrestricted. With the default tolerance 0 this is exactly
+  the quantity the MP-2 Pruefer measures, (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] = 0
+  (Anlage 1 S. 33); with a tolerance > 0 it is conservative (it caps the
+  import, not the MIN). Off (the default) builds no constraint at all, so
+  every plan is byte-identical to FK3; a merchant site ignores the switch.
+  Present in BOTH builds like ``solar_only_charge`` - the infeasible-§14a
+  fallback must stay just as strict. Charging zero always satisfies it, so it
+  never makes a plan infeasible on its own.
+
 - **Ehrliche Marge on grid-sourced charge (Captain-Entscheid E6 A,
   24.09.2026; K0 vp-wr-k0-plandaten).** FK3 is a LEGAL statement (the PV bus
   may feed the battery while the house imports), not an economic one:
@@ -299,6 +324,7 @@ from voltpilot_optimization.config import (
     peak_ratchet_eur_per_kw,
 )
 from voltpilot_optimization.domain import (
+    VIERTELSTUNDE_H,
     OptimizationInput,
     PlanSlot,
     SchedulePlan,
@@ -574,6 +600,18 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             m.T,
             rule=lambda model, t: model.charge[t]
             <= max(inp.pv_kw[t], 0.0) - model.curtail[t],
+        )
+    if inp.strenge_aktiv:
+        # MiSpeL MP-45 (W1 = D, Option B): the strict reading - no charging in
+        # a quarter hour with grid import (Anlage 1 S. 11). FK3 above keeps
+        # binding; this one tightens it: a charging slot imports at most the
+        # tolerance per quarter hour (default 0 kWh, domain constant). Built
+        # only with the operator switch on, so every other model is unchanged.
+        toleranz_kw = inp.strenge_toleranz_kwh / VIERTELSTUNDE_H
+        m.strenge_ausschliesslichkeit = Constraint(
+            m.T,
+            rule=lambda model, t: model.grid_import[t]
+            <= toleranz_kw + _m_import(t) * (1 - model.is_charging[t]),
         )
     # Ehrliche Marge (Captain-Entscheid E6 A, K0 vp-wr-k0-plandaten): at a
     # fixed-tariff site the grid-sourced part of a charge must earn the hurdle
@@ -1336,6 +1374,11 @@ def _extract_plan(
         # P5: hand the site's EEG posture to the edge so the solar-only-charge
         # rule is also enforced against MEASURED values, not just the forecast.
         grid_charge_allowed=inp.netzladen_erlaubt,
+        # MiSpeL MP-45: die strenge Ausschliesslichkeit samt Toleranz zur Box,
+        # damit die Klemme dieselbe Regel gegen MESSWERTE haelt. None = aus.
+        strict_exclusivity_tolerance_kwh=(
+            inp.strenge_toleranz_kwh if inp.strenge_aktiv else None
+        ),
         # FK2: what the objective actually credited per stored kWh - persisted
         # so the portal can show the banked value on bank days.
         terminal_value_eur_per_kwh=round(

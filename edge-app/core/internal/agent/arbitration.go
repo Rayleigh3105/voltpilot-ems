@@ -49,11 +49,19 @@ func (a *Agent) newArbiter() *desired.Arbiter {
 		Reading:     a.entityGuardReading,
 		BmsEnvelope: a.bmsEnvelope,
 		EnvLimits: func() *guards.Limits {
+			// MiSpeL MP-45: the v1 plan's strict posture composes into every
+			// storage clamp exactly like ExtraSolarOnly below - only while a
+			// v1 plan exists, and only an explicit strict_exclusivity=true.
+			a.mu.Lock()
+			p := a.currentPlan
+			a.mu.Unlock()
 			return &guards.Limits{
-				MaxChargeKw:    a.Cfg.MaxChargeKw,
-				MaxDischargeKw: a.Cfg.MaxDischargeKw,
-				SocMinPct:      a.Cfg.SocMinPct,
-				SocMaxPct:      a.Cfg.SocMaxPct,
+				MaxChargeKw:       a.Cfg.MaxChargeKw,
+				MaxDischargeKw:    a.Cfg.MaxDischargeKw,
+				SocMinPct:         a.Cfg.SocMinPct,
+				SocMaxPct:         a.Cfg.SocMaxPct,
+				StrictExclusivity: p.StrictExclusivityCharge(),
+				StrictToleranceKw: p.StrictToleranceKw(),
 			}
 		},
 		ExtraSolarOnly: func() bool {
