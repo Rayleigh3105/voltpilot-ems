@@ -117,7 +117,7 @@ class FoerderwegMigrationTest {
                     + "gueltig_ab) VALUES (?, ?, 'marktpraemie_abgrenzung', '2026-11-01')", t1, eigene))
                     .as("Abgrenzung ohne Formelsatz").rootCause().hasMessageContaining("site_foerderweg_formelsatz_passt_chk");
             assertThatThrownBy(() -> app.update("INSERT INTO site_foerderweg (tenant_id, site_id, foerderweg, "
-                    + "formelsatz, gueltig_ab) VALUES (?, ?, 'marktpraemie_abgrenzung', 'A2', '2026-11-01')", t1,
+                    + "formelsatz, gueltig_ab) VALUES (?, ?, 'marktpraemie_abgrenzung', 'A6', '2026-11-01')", t1,
                     eigene)).rootCause().hasMessageContaining("site_foerderweg_formelsatz_chk");
         } finally {
             TenantContext.clear();

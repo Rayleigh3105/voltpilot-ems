@@ -4,7 +4,8 @@ Rechnet jeden Fall aus ``docs/contracts/v2/mispel-abgrenzung-vectors.json`` (per
 wie der Leser ``test_mispel_abgrenzung_vectors.py`` und das Java-Rechenwerk MP-8) und vergleicht JEDEN
 Viertelstunden-, Monats- und Jahreswert exakt — ``null`` gegen ``None``, Zahlen als Bruch. Dazu der
 Katalog im Code gegen den Katalog der Datei, die Aussagen von Anlage 1 über gleiche Ergebnisse
-(A5 ≡ A5-Variante S. 50, A1 ≡ A10 S. 94), die ungeförderte Anlage in A5 (S. 52) und die Eingangsprüfungen.
+(A5 ≡ A5-Variante S. 50, A1 ≡ A10 S. 94), über A3 gegen A4 (S. 30) und den Fremdtankstrom (S. 16, S. 35;
+MP-32), die ungeförderte Anlage in A5 (S. 52) und die Eingangsprüfungen.
 """
 import json
 from decimal import Decimal
@@ -32,8 +33,8 @@ def rechne(fall, formelsatz=None):
     return mw.rechne(formelsatz or fall['formelsatz'], fall['viertelstunden'], **args)
 
 
-def test_fuenfzehn_faelle():
-    assert len(FAELLE) == 15
+def test_einundzwanzig_faelle():
+    assert len(FAELLE) == 21
 
 
 def test_katalog_wie_vektoren():
@@ -75,6 +76,8 @@ def test_monat_aus_laufenden_summen():
            for q, e in zip(fall['viertelstunden'], ist.viertelstunden)]
     assert mw.monat('A1', mw.summen('A1', qhs)) == ist.monate['2027-04']
     assert set(mw.SUMMEN['A1']) == {'(3)', '(4)', '(5)', '(6)', '(9)', '(11)', '(26)', '(29)'}
+    assert set(mw.SUMMEN['A4']) == set(mw.SUMMEN['A1']) | {'(7)A4', '(8)A4'}
+    assert mw.SUMMEN['A2'] == mw.SUMMEN['A3'] == mw.SUMMEN['A1']
 
 
 def test_a5_und_a5_variante_gleich():
@@ -148,7 +151,35 @@ def test_viertelstunden_streng_aufsteigend():
 
 def test_unbekannter_formelsatz():
     with pytest.raises(ValueError, match='nicht im Umfang'):
-        mw.rechne('A2', [])
+        mw.rechne('A6', [])
+
+
+def test_fremdtankstrom_pruefnachweis():
+    """MP-32: 20 kWh geladen, 30 kWh zurückgespeist → 10 kWh Fremdtankstrom (A1 S. 16, Formeln (12)/(13) S. 35)."""
+    m = rechne(FAELLE['a2-fremdtankstrom-20-geladen-30-rueckgespeist']).monate['2027-04']
+    assert (m['(5)'], m['(6)'], m['(12)']) == (20, 30, 10)
+    assert m['(13)'] == m['(11)'] - m['(12)'] == 20
+    # ohne den Abzug wäre (16) um die 10 kWh größer: der Fremdtankstrom wird nicht saldiert
+    assert m['(16)'] == max(m['(13)'] - m['(15)'], 0) == Fraction(23, 2)
+    assert (m['(14)A2,A3,A4'], m['(19)A2,A3']) == (Fraction(85, 100), 0)
+
+
+def test_a3_ergibt_hoechstens_die_umlagereduzierende_menge_von_a4():
+    """A1 S. 30: A3 ergibt eine geringere umlagereduzierende Strommenge als A4, weil keine Verluste privilegiert sind."""
+    a4 = FAELLE['a4-gesonderte-messung-speicherverluste']
+    ohne_z3 = [{k: v for k, v in q.items() if not k.startswith('Z3')} for q in a4['viertelstunden']]
+    a3 = mw.rechne('A3', ohne_z3)
+    assert a3.monate == rechne(FAELLE['a3-speicher-und-ladepunkt-ohne-verlustprivileg']).monate
+    m3, m4 = a3.monate['2027-06'], rechne(a4).monate['2027-06']
+    assert m4['(20)'] - m3['(20)'] == m4['(19)A1,A4'] > 0
+
+
+def test_a4_braucht_z3():
+    q = {k: v for k, v in FAELLE['a4-fremdtankstrom-mindestens']['viertelstunden'][0].items() if k != 'Z3E¼'}
+    with pytest.raises(ValueError, match='Z3E¼: kein Wert'):
+        mw.rechne('A4', [q])
+    with pytest.raises(ValueError, match='kennt die Eingänge'):
+        mw.rechne('A2', FAELLE['a4-fremdtankstrom-mindestens']['viertelstunden'])
 
 
 def test_a5_variante_braucht_gleiche_aw_zeiten():

@@ -16,7 +16,8 @@ misst und was der Optimierer über das Fahrzeug am Ladepunkt weiß. Er steuert n
 | `services/api/.../web/SiteLadepunktBidirektionalController.java` | `GET`/`PUT /api/v1/sites/{siteId}/ladepunkte/…` |
 | `…/mispel/LadepunktRegelnTest.java` · `…/mispel/LadepunktBidirektionalApiTest.java` · `…/uems/LadepunktBidirektionalMigrationTest.java` | Regeln rein · Routen gegen die Datenbank · Migration auf befüllter Datenbank |
 
-> **Wer anruft (Stand MP-31):** die vier Routen. Noch kein Rechenwerk (MP-32 liest `LadepunktService.anlage`), kein
+> **Wer anruft (Stand MP-32):** die vier Routen und der Monatslauf der Abgrenzung in A2–A4 (MP-32 liest
+> `LadepunktService.anlage` für die Stand-Gründe, [Vertrag](./mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8)); kein
 > Optimierer (MP-33), keine Fläche (MP-41). Kein TS-Zwilling — er entsteht mit der Fläche.
 
 ## 1. Der Ladepunkt und seine Identität
@@ -82,7 +83,8 @@ Werte zu nutzen, „scheidet … aus“.
 
 > **Bekannte Lücke (Folgepunkt):** das Urteil der Zählerrolle selbst (MP-6) zählt die Topologie-Rolle `charging`
 > hinter Z2 noch als erlaubt, ohne die Nutzbarkeit zu kennen. Den Fehler zeigt bis dahin nur dieser Befund
-> `unidirektional_hinter_z2`; das Rechenwerk (MP-32) soll beide lesen.
+> `unidirektional_hinter_z2`; der Monatslauf (MP-32) liest beide: das Urteil als `zaehler_<urteil>:<MS>`, den Befund
+> als `ladepunkt_unidirektional_hinter_z2:<MS>` — beide halten den Lauf vorläufig.
 
 ## 5. Das Fahrzeugfenster (Planungsangabe, kein Gegenstand der Festlegung)
 

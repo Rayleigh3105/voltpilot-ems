@@ -94,15 +94,17 @@ public class MispelAbgrenzungService {
     private final ZaehlerrolleService zaehlerrollen;
     private final MispelMarktdatenRepository marktdaten;
     private final MispelAbgrenzungRepository laeufe;
+    private final LadepunktService ladepunkte;
     private MispelZaehlerLeser leser;
     private Clock uhr = Clock.systemUTC();
 
     public MispelAbgrenzungService(ZaehlerrolleService zaehlerrollen, MispelMarktdatenRepository marktdaten,
-            MispelAbgrenzungRepository laeufe, MispelZaehlerLeser leser) {
+            MispelAbgrenzungRepository laeufe, MispelZaehlerLeser leser, LadepunktService ladepunkte) {
         this.zaehlerrollen = zaehlerrollen;
         this.marktdaten = marktdaten;
         this.laeufe = laeufe;
         this.leser = leser;
+        this.ladepunkte = ladepunkte;
     }
 
     /** Nur für Tests: die Uhr, an der „Zeitraum vorbei“ gemessen wird. */
@@ -325,6 +327,9 @@ public class MispelAbgrenzungService {
         if (uhr.instant().isBefore(bis)) {
             gruende.add("zeitraum_offen");
         }
+        if (MispelAbgrenzungRechenwerk.MIT_LADEPUNKT.contains(fs)) {
+            gruende.addAll(ladepunktGruende(siteId, vonTag));
+        }
         String stand = gruende.isEmpty() ? ENDGUELTIG : VORLAEUFIG;
 
         String nachweis = nachweis(siteId, monat, schluessel, von, bis, v, awRegeln, zaehler, stand, gruende,
@@ -343,6 +348,24 @@ public class MispelAbgrenzungService {
                 z.formelsatz(), z.stand(), z.wertequelle(), z.viertelstundenErwartet(), z.viertelstundenGerechnet(),
                 z.rechenwerkVersion(), z.vertragVersion(), z.nachweis(), z.pruefsumme(), z.gerechnetAm()), true, e,
                 List.copyOf(gruende));
+    }
+
+    /**
+     * A2–A4 brauchen einen Ladepunkt der Festlegung (A1 S. 29–31; bidirektional nach A1 S. 26 Fn. 21), und hinter Z2
+     * hängen nur Stromspeicher und solche Ladepunkte (A1 S. 25–26). Die Ladepunkte am ersten Tag liest MP-31
+     * ({@link LadepunktService#anlage}); fehlt einer oder trägt einer einen Fehler-Befund, bleibt der Lauf vorläufig —
+     * gerechnet wird trotzdem, die Mengen sind die gemessenen.
+     */
+    private List<String> ladepunktGruende(UUID siteId, LocalDate tag) {
+        List<LadepunktService.Ansicht> alle = ladepunkte.anlage(siteId, tag);
+        List<String> out = new ArrayList<>();
+        if (alle.stream().noneMatch(a -> LadepunktRegeln.LADEPUNKT_DER_FESTLEGUNG.equals(a.einordnung()))) {
+            out.add("kein_ladepunkt_der_festlegung");
+        }
+        alle.stream().flatMap(a -> a.befunde().stream()).filter(b -> LadepunktRegeln.FEHLER.equals(b.schwere()))
+                .map(b -> "ladepunkt_" + b.code() + (b.messstelle() == null ? "" : ":" + b.messstelle()))
+                .distinct().forEach(out::add);
+        return out;
     }
 
     /** Die Zähler des Formelsatzes am ersten und letzten Tag; sie müssen an beiden dieselben Messstellen sein. */

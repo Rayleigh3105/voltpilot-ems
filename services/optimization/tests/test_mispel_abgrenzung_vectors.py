@@ -1,6 +1,6 @@
 """MiSpeL MP-4: Leser der Vektor-Datei ``docs/contracts/v2/mispel-abgrenzung-vectors.json``.
 
-Prüft die Datei gegen ihr Schema und die Regeln L1–L8 aus ``mispel-abgrenzung.md`` — im
+Prüft die Datei gegen ihr Schema und die Regeln L1–L8 und L10 aus ``mispel-abgrenzung.md`` — im
 Gleichlauf mit dem Java-Leser ``MispelAbgrenzungVectorsTest`` (services/api). Kein Rechenwerk:
 die Formeln (1)–(33) rechnet erst MP-9 (Python) bzw. MP-8 (Java) gegen dieselben Fälle; hier
 wird nur festgehalten, dass jeder Fall vollständig, zeitlich richtig zugeordnet und in seinen
@@ -24,8 +24,10 @@ SCHEMA = json.loads((V2 / 'mispel-abgrenzung.schema.json').read_text())
 BERLIN = ZoneInfo('Europe/Berlin')
 FORMELN = {f['nr']: f for f in DOC['formeln']}
 SAETZE = DOC['formelsaetze']
-# Anlage 1 S. 33–39: A1 trägt jede Formelnummer (1) bis (33) außer (7)A4 und (8)A4.
+# Anlage 1 S. 33–39: A1 trägt jede Formelnummer (1) bis (33) außer (7)A4 und (8)A4, A4 jede; A2 und A3
+# tragen aus Abschn. 4.2.3 nur (19)A2,A3, nicht (17) und (18) (S. 36–37, Lesart in „abweichungen“).
 A1_NUMMERN = set(range(1, 34)) - {7, 8}
+NUMMERN = {'A1': A1_NUMMERN, 'A2': A1_NUMMERN - {17, 18}, 'A3': A1_NUMMERN - {17, 18}, 'A4': set(range(1, 34))}
 
 
 def nummer(nr):
@@ -64,7 +66,8 @@ def test_l1_schema():
 
 def test_l2_katalog():
     assert len(FORMELN) == len(DOC['formeln']), 'Formelnummer doppelt'
-    assert {nummer(nr) for nr in SAETZE['A1']['formeln']} == A1_NUMMERN
+    for satz, nummern in NUMMERN.items():
+        assert {nummer(nr) for nr in SAETZE[satz]['formeln']} == nummern, satz
     alle = {nummer(f['nr']) for f in DOC['formeln'] + DOC['nicht_im_umfang']}
     assert set(range(1, 34)) <= alle
     for name, satz in SAETZE.items():
@@ -160,3 +163,12 @@ def test_l8_nenner_null(fall):
             assert (wert is None) == nenner_null, f'{m} {nr}'
     for werte in [*erw['jahre'].values(), *erw.get('viertelstunden', [])]:
         assert None not in werte.values()
+
+
+@pytest.mark.parametrize('fall', DOC['faelle'], ids=lambda f: f['name'])
+def test_l10_konstanten(fall):
+    """L10: eine Formel mit festem Wert ((14)A2,A3,A4 = 0,85, (19)A2,A3 = 0; A1 S. 35, S. 37) trägt ihn in jedem Monat."""
+    for m, werte in fall['erwartet']['monate'].items():
+        for nr, wert in werte.items():
+            if 'konstante' in FORMELN[nr]:
+                assert wert == FORMELN[nr]['konstante'], f'{m} {nr}'

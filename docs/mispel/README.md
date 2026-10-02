@@ -94,7 +94,9 @@ Ein Vertrag, eine Vektor-Datei, zwei Rechenwerke im Gleichlauf (exakte Brüche, 
   [Schema](../contracts/v2/mispel-abgrenzung.schema.json) — Formelnummer, Begriff und Rechenweg **wörtlich** aus Anlage 1, Fundstelle je Formel.
 - **Python** `services/optimization/voltpilot_optimization/mispel_abgrenzung.py` (MP-9, für Optimierer und Simulation).
 - **Java** `services/api/.../mispel/MispelAbgrenzungRechenwerk.java` (MP-8, für Monatslauf und Nachweis).
-- **Formelsätze** (E5 = B): A1, A5, A5-Variante, A10, A11. A2–A4 kommen mit Stufe B (MP-32), A6–A9 erst, wenn ein Kunde
+- **Formelsätze** (E5 = B): A1, A5, A5-Variante, A10, A11; seit MP-32 auch A2–A4 für Ladepunkte (Wirkungsgrad 0,85,
+  Fremdtankstrom (12)/(13), Verluste nur am Stromspeicher in A4 privilegiert; A11 auch für Ladepunkte, A10 nicht,
+  [Vertrag](../contracts/v2/mispel-abgrenzung.md#ladepunkte-a2-a3-a4-mp-32)). A6–A9 erst, wenn ein Kunde
   sie braucht (Basisfälle A1–A4 und Sonderfälle A5–A9: A1 S. 8–9, Übersicht 1; A10, A11 ohne marktprämiengeförderte
   EE-Anlage: A1 S. 94–102). Die Pauschaloption (Anlage 2) hat einen eigenen Vertrag (MP-24):
   [Regeln](../contracts/v2/mispel-pauschal.md), [Vektoren](../contracts/v2/mispel-pauschal-vectors.json),
@@ -153,7 +155,7 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 
 | Wo | Festlegung | Produkt | Warum |
 |---|---|---|---|
-| Formelsätze | Fallkonstellationen A1–A9 (A1 S. 8–9, Übersicht 1) und A10, A11 (A1 S. 94–102) | A1, A5, A5-Variante, A10, A11 | deckt die Gewerbe-Kundentypen; andere Fälle bekommen „noch nicht unterstützt“ statt einer Näherung |
+| Formelsätze | Fallkonstellationen A1–A9 (A1 S. 8–9, Übersicht 1) und A10, A11 (A1 S. 94–102) | A1, A5, A5-Variante, A10, A11; A2–A4 für Ladepunkte (MP-32) | deckt die Gewerbe-Kundentypen und bidirektionale Ladepunkte; andere Fälle bekommen „noch nicht unterstützt“ statt einer Näherung |
 | Ausschließlichkeitsoption | kein Speicherverbrauch bei gleichzeitigem Netzbezug (A1 S. 11) | FK3 bleibt Standard, strenge Variante schaltbar (MP-45), Ausmaß misst MP-2 | die Festlegung regelt diese Option nicht neu; die Rechtsfolge klärt die Anfrage im [Katalog](rechtsfragen.md) |
 | Vorläufige Mengen | nur eichrechtskonforme Viertelstundenwerte (T S. 28) | Vorschau auf Gerätewerten, Stand „vorläufig“; Nachweis nur endgültig | Steuerung braucht Werte vor Monatsende; die vorläufige Zahl ist keine Mengenbestimmung |
 | Datenformate | Marktkommunikation nicht geregelt (T S. 28, S. 90, S. 92) | CSV und PDF mit denselben Werten | vor EDI@Energy gibt es kein amtliches Format |
@@ -165,8 +167,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 
 - **Optimierer:** Jahreszustand der Pauschaloption für die Sonderfälle P4, P4-Variante und P5 (MP-26 baut P1–P3). Der
   MiSpeL-Check in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige fehlt (MP-48).
-- **Rechenwerk:** A2–A4 für Ladepunkte (MP-32); Rumpfjahre der Pauschaloption gibt der Aufrufer noch vor (Erkennung
-  aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
+- **Rechenwerk:** der Optimierer plant A2–A4 noch nicht im Mischbetrieb (Fahrzeug als Speicher: MP-33); Rumpfjahre
+  der Pauschaloption gibt der Aufrufer noch vor (Erkennung aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
 - **Box:** Förderweg über den Plan statt `grid_charge_allowed` (MP-14).
 - **Messwerte des Messstellenbetreibers:** Import und Abgleich gegen Gerätewerte (MP-15) — bis dahin bleibt jeder
   Monat „vorläufig“.

@@ -18,8 +18,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -225,6 +227,60 @@ class MispelAbgrenzungMonatslaufTest {
         assertThat(dienst.laeufe(w.anlage(), MAERZ)).hasSize(2);
     }
 
+    /** Ersatz-Leser aus einem Vektorfall: jede Viertelstunde 0 kWh, außer denen des Falls (Eingang → Messstelle). */
+    private static final class VektorLeser extends MispelZaehlerLeser {
+        private final Map<String, Map<Instant, BigDecimal>> werte = new HashMap<>();
+
+        VektorLeser(JsonNode fall, Map<String, String> messstelleJeEingang) {
+            super(null);
+            for (JsonNode q : fall.get("viertelstunden")) {
+                Instant t = OffsetDateTime.parse(q.get("beginn").asText()).toInstant();
+                messstelleJeEingang.forEach((eingang, kz) -> werte.computeIfAbsent(kz, k -> new HashMap<>())
+                        .put(t, q.get(eingang).decimalValue()));
+            }
+        }
+
+        @Override
+        public Map<Instant, Menge> lesen(String kennzeichen, Instant von, Instant bis) {
+            Map<Instant, Menge> out = new LinkedHashMap<>();
+            for (Instant t = von; t.isBefore(bis); t = t.plus(Duration.ofMinutes(15))) {
+                out.put(t, new Menge(werte.getOrDefault(kennzeichen, Map.of()).getOrDefault(t, BigDecimal.ZERO), true));
+            }
+            return out;
+        }
+    }
+
+    /**
+     * MP-32: Basisfall A4 — Z2 vor Stromspeicher und Ladepunkt, Z3 am Stromspeicher allein (A1 S. 31–32). Der Lauf
+     * liest sechs Zähler, rechnet wie der Vektorfall und speichert den Formelsatz A4 (V20261002224700).
+     */
+    @Test
+    void monatslaufA4MitZ3AmSpeicher() throws Exception {
+        Welt w = weltA4();
+        JsonNode fall = vektorFall("a4-gesonderte-messung-speicherverluste");
+        dienst.leserSetzen(new VektorLeser(fall, Map.of("Z1NB¼", "MS-01", "Z1NE¼", "MS-02", "Z2V¼", "MS-03",
+                "Z2E¼", "MS-04", "Z3V¼", "MS-05", "Z3E¼", "MS-06")));
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2027-07-10T08:00:00Z"), ZoneOffset.UTC));
+        TenantContext.set(w.mandant());
+
+        Lauf a = dienst.monatslauf(w.anlage(), YearMonth.of(2027, 6), Vorgaben.von("A4", "viertelstunde"));
+        assertThat(a.zeile().formelsatz()).isEqualTo("A4");
+        assertThat(a.zeile().viertelstundenGerechnet()).isEqualTo(30 * 96);
+        JsonNode soll = fall.get("erwartet").get("monate").get("2027-06");
+        Map<String, Bruch> ist = a.ergebnis().monate().get("2027-06");
+        assertThat(ist.keySet()).containsExactlyElementsOf(() -> soll.fieldNames());
+        ist.forEach((nr, b) -> assertThat(b.compareTo(Bruch.von(soll.get(nr).decimalValue()))).as(nr + " = " + b).isZero());
+        assertThat(root.queryForObject("SELECT formelsatz FROM mispel_abgrenzung_monat WHERE tenant_id = ?",
+                String.class, w.mandant())).isEqualTo("A4");
+        JsonNode n = new ObjectMapper().readTree((String) root.queryForObject(
+                "SELECT nachweis FROM mispel_abgrenzung_monat WHERE tenant_id = ?", String.class, w.mandant()));
+        assertThat(n.path("zaehler").size()).isEqualTo(6);
+        // Die Komponente hinter Z2 ist kein Ladepunkt der Festlegung (MP-31 kennt nur ev-charger/wallbox mit
+        // Fähigkeit): gerechnet wird, aber der Lauf bleibt vorläufig (A1 S. 26 Fn. 21, S. 29–31).
+        assertThat(a.gruende()).contains("kein_ladepunkt_der_festlegung");
+        assertThat(a.zeile().stand()).isEqualTo("vorlaeufig");
+    }
+
     /** MP-21: der Speicher kommt am 15. hinzu — erkannt aus den Zählerrollen-Fassungen, gerechnet je Rumpfmonat. */
     @Test
     void rumpfmonateAusDemAenderungsprotokollErkannt() {
@@ -300,6 +356,48 @@ class MispelAbgrenzungMonatslaufTest {
     }
 
     // ------------------------------------------------------------------ die Welt
+
+    private static JsonNode vektorFall(String name) throws Exception {
+        JsonNode doc = new ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                .readTree(Files.readString(MispelAbgrenzungVectorsTest.VECTORS));
+        for (JsonNode f : doc.get("faelle")) {
+            if (f.get("name").asText().equals(name)) {
+                return f;
+            }
+        }
+        throw new IllegalStateException("Vektorfall fehlt: " + name);
+    }
+
+    /**
+     * MP-32, Basisfall A4: Netzzähler MS-01/MS-02 (Z1), Zähler vor Stromspeicher und Ladepunkt MS-03/MS-04 (Z2), am
+     * Stromspeicher allein MS-05/MS-06 (Z3), alle ab 01.01.2027; AW-Liste für Juni 2027.
+     */
+    private static Welt weltA4() {
+        int nr = NR.incrementAndGet();
+        UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
+                "MiSpeL Monatslauf A4 #" + nr);
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) VALUES (?, 'Halle L', "
+                + "'2026-12-01') RETURNING id", UUID.class, t);
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, status) VALUES (?, ?, ?, "
+                + "'claimed') RETURNING id", UUID.class, t, anlage, "VP-BOX-MP32-" + nr);
+        UUID netz = komponente(t, anlage, box, "grid-meter", "power_kw");
+        UUID ladepunkt = komponente(t, anlage, box, "charging", "charger_power_kw");
+        UUID speicher = komponente(t, anlage, box, "battery-hybrid", "battery_power_kw");
+        String[][] zaehler = {{"MS-01", "Bezug", "Hauptzähler", "Z1", "1"}, {"MS-02", "Abgabe", "Hauptzähler", "Z1", "1"},
+                {"MS-03", "Laden", "Speicher", "Z2", "2"}, {"MS-04", "Entladen", "Speicher", "Z2", "2"},
+                {"MS-05", "Laden", "Speicher", "Z3", "3"}, {"MS-06", "Entladen", "Speicher", "Z3", "3"}};
+        for (String[] z : zaehler) {
+            UUID ms = messstelle(t, z[0], z[1]);
+            stellung(t, anlage, ms, z[2], "2027-01-01");
+            UUID komponente = z[3].equals("Z1") ? netz : z[3].equals("Z2") ? ladepunkt : speicher;
+            quelle(t, box, ms, z[1], komponente, z[3].toLowerCase() + "." + z[1].toLowerCase() + "-energy");
+            rolle(t, ms, z[3], "DE000123456789000000000000000000" + z[4], "messstellenbetreiber", "2027-01-01");
+        }
+        root.update("INSERT INTO eeg_aw_zeit (regel, ts, aufloesung, aw_groesser_null) SELECT 'viertelstunde', g, "
+                + "'PT15M', true FROM generate_series('2027-05-31T22:00Z'::timestamptz, '2027-06-30T21:45Z', "
+                + "INTERVAL '15 minutes') g ON CONFLICT DO NOTHING");
+        return new Welt(t, anlage);
+    }
 
     private static JsonNode vektorMonat() throws Exception {
         JsonNode doc = new ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)

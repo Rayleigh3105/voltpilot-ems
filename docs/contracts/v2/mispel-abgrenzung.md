@@ -1,14 +1,15 @@
-# MiSpeL-Abgrenzungsoption: Formelsätze A1, A5, A10, A11
+# MiSpeL-Abgrenzungsoption: Formelsätze A1, A2, A3, A4, A5, A10, A11
 
 Vertrag zu Anlage 1 („Abgrenzungsoption“) der Festlegung zur Marktintegration von Speichern und
-Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-4 der Stufe 1.
+Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-4 der Stufe 1; die Basisfälle mit
+Ladepunkt A2, A3, A4 kamen mit MP-32 (Stufe B, [unten](#ladepunkte-a2-a3-a4-mp-32)).
 
 - **[`mispel-abgrenzung-vectors.json`](./mispel-abgrenzung-vectors.json)** — die Wahrheit: Formelkatalog
   (Nummer, Begriff und Rechenweg **wörtlich** aus Anlage 1, Fundstelle je Formel), die fünf Formelsätze,
-  Regeln, Lesarten, 15 Rechenfälle und 9 Erkennungsfälle für Rumpfmonate (MP-21), jeder mit Fundstelle. Wo dieser Text und die Datei sich widersprechen, gilt die
+  Regeln, Lesarten, 21 Rechenfälle und 9 Erkennungsfälle für Rumpfmonate (MP-21), jeder mit Fundstelle. Wo dieser Text und die Datei sich widersprechen, gilt die
   Datei — und dann ist einer von beiden falsch.
 - **[`mispel-abgrenzung.schema.json`](./mispel-abgrenzung.schema.json)** — Schema der Datei.
-- **Leser im Gleichlauf** (beide per Pfad, beide prüfen L1–L9 unten; L9 in den Rechenwerk-Tests):
+- **Leser im Gleichlauf** (beide per Pfad, beide prüfen L1–L10 unten; L9 in den Rechenwerk-Tests):
   Java `services/api/src/test/java/com/voltpilot/api/mispel/MispelAbgrenzungVectorsTest.java`,
   Python `services/optimization/tests/test_mispel_abgrenzung_vectors.py`.
 - **Rechenwerke im Gleichlauf** (beide rechnen jeden Fall exakt nach, ungerundet):
@@ -29,14 +30,16 @@ hat keine Randnummern.
 | Formelsatz | Fallkonstellation (Anlage 1) | Zähler | Eingänge je Viertelstunde | Fundstelle |
 |---|---|---|---|---|
 | A1 | Basisfall A1: „Stromspeicher“ | Z1, Z2 | Z1NB¼, Z1NE¼, Z2V¼, Z2E¼, AW¼ | S. 29, S. 32–39 |
+| A2 | Basisfall A2: „Ladepunkt“ | Z1, Z2 | wie A1 | S. 29–30, S. 32–39 |
+| A3 | Basisfall A3: „Stromspeicher und Ladepunkt“ (vereinfachte Alternative zu A4) | Z1, Z2 | wie A1 | S. 30–31, S. 32–39 |
+| A4 | Basisfall A4: „Stromspeicher und Ladepunkt mit gesonderter Messung für die Speicherverluste“ | Z1, Z2, Z3 | wie A1 und Z3V¼, Z3E¼ | S. 31–39 |
 | A5 | Sonderfall A5: Mehrere gleichartige EE-Anlagen (Abwandlung zu A1) | Z1, Z2 | wie A1, aber AWa¼, AWb¼; Stammdaten Painst, Pbinst | S. 43–51 |
 | A5-Variante | vereinfachtes Vorgehen bei jederzeit übereinstimmenden AW>0-Zeiten | Z1, Z2 | wie A5 | S. 52–54 |
 | A10 | Sonderfall A10: rein netzgekoppelter Stromspeicher | Z1 | Z1NB¼, Z1NE¼ | S. 94–97 |
 | A11 | Sonderfall A11: Stromspeicher und/oder Ladepunkt ohne sonstige Erzeugung | Z1 | Z1NB¼, Z1NE¼ | S. 98–102 |
 
-**Nicht in diesem Vertrag** (Bauplan § 8.5, E5 = B): A2–A4 mit den Formeln (7)A4, (8)A4, (14)A2,A3,A4,
-(17)A4, (19)A2,A3 — sie stehen mit Fundstelle unter `nicht_im_umfang` und kommen mit Stufe B (MP-32);
-A6–A9 erst, wenn ein Kunde sie braucht; die Pauschaloption (Anlage 2) in MP-24. Ein Wechsel des
+**Nicht in diesem Vertrag** (Bauplan § 8.5, E5 = B): A6–A9 erst, wenn ein Kunde sie braucht (`nicht_im_umfang`
+ist seit MP-32 leer, der Katalog trägt (1)–(33) vollständig); die Pauschaloption (Anlage 2) in MP-24. Ein Wechsel des
 Formelsatzes innerhalb eines Monats und das Erkennen von Rumpfmonaten aus den Änderungsprotokollen sind
 MP-21 ([unten](#rumpfmonate-erkennen-mp-21)); die Rechenfälle führen Rumpfmonate als vorgegebenen Zeitraum.
 
@@ -44,7 +47,8 @@ MP-21 ([unten](#rumpfmonate-erkennen-mp-21)); die Rechenfälle führen Rumpfmona
 
 Alle Zählerwerte sind **Strommengen je Viertelstunde in kWh** (keine Leistung) und nie negativ: der
 Zweirichtungszähler Z1 trennt Netzbezug Z1NB¼ und Netzeinspeisung Z1NE¼, Z2 trennt Verbrauch Z2V¼ (Laden)
-und Erzeugung Z2E¼ (Entladen) im Stromspeicher und/oder Ladepunkt (A1 S. 32). AW¼ ist der anzulegende Wert
+und Erzeugung Z2E¼ (Entladen) im Stromspeicher und/oder Ladepunkt (A1 S. 32), Z3 in A4 Verbrauch Z3V¼ und Erzeugung
+Z3E¼ im Stromspeicher allein (A1 S. 32). AW¼ ist der anzulegende Wert
 in ct/kWh; die Formeln werten nur aus, ob er größer null ist ((24)¼, A1 S. 38, Abschn. 2.1.7). Painst und
 Pbinst sind installierte Leistungen in kW nach § 24 Abs. 3 S. 2 EEG (A1 S. 45). Formelwerte sind kWh, nur
 die Faktoren und Anteile (14)A1, (18), (30), (30a), (30b), (ZFa), (ZFb) sind ohne Einheit.
@@ -103,6 +107,51 @@ Förderseite — sie gelten nach Abschn. 10 für Fallkonstellationen ohne marktp
 (26); gelb = EE-Strom im Speicher und förderfähige EE-Speichererzeugung (10), (15), (31); rot = Netzbezug im
 Speicher und saldierungsfähige Netzeinspeisung (9), (16).
 
+## Ladepunkte: A2, A3, A4 (MP-32)
+
+Ein bidirektional nutzbarer Ladepunkt ist in der Abgrenzungsoption einem Stromspeicher gleichgestellt (A1 S. 12;
+§ 19 Abs. 3 S. 5 EEG, § 21 Abs. 3 EnFG): Laden ist Verbrauch **im Ladepunkt**, Rückspeisen Erzeugung **im
+Ladepunkt**, gleich welches Elektromobil angesteckt ist (A1 S. 7, Begriff „Ladepunkt“). A2, A3 und A4 rechnen die
+Formeln von A1 mit drei Fallunterscheidungen (A1 S. 34–37):
+
+| Nr. | Rechenweg | Begriff | Formelsätze | Seite |
+|---|---|---|---|---|
+| (7)A4 | `∑M Z3V¼` | Verbrauch im Stromspeicher in der Fallkonstellation A4 im Kalendermonat | A4 | S. 34 |
+| (8)A4 | `∑M Z3E¼` | Erzeugung im Stromspeicher in der Fallkonstellation A4 im Kalendermonat | A4 | S. 34 |
+| (14)A2,A3,A4 | `0,85` | Wirkungsgrad der Stromspeicherung in den Fallkonstellationen A2, A3 und A4 | A2, A3, A4 | S. 35 |
+| (17)A4 | `MAX [ (7)A4 – (8)A4 ; 0 ]` | Verluste im Stromspeicher in der Fallkonstellation A4 im Kalendermonat | A4 | S. 36 |
+| (19)A2,A3 | `0` | Keine privilegierungsfähigen Stromspeicherverluste in den Fallkonstellationen A2 und A3 im Kalendermonat | A2, A3 | S. 37 |
+
+- **Fremdtankstrom** — (12) = MAX [ (6) – (5) ; 0 ] und (13) = MAX [ (11) – (12) ; 0 ] gelten unverändert (S. 35):
+  übersteigt die Erzeugung im Stromspeicher und/oder Ladepunkt im Kalendermonat die an Z2 gemessenen Verbräuche, ist
+  der Überschuss anderswo geladener, „mitgebrachter“ Strom; er wird weder saldiert noch gefördert (S. 16, Abschn.
+  2.1.6). Prüfnachweis: 20 kWh geladen, 30 kWh zurückgespeist → (12) = 10 kWh (Fall
+  `a2-fremdtankstrom-20-geladen-30-rueckgespeist`). Der erkannte Wert ist eine **Mindestmenge**: Verluste eines
+  Stromspeichers hinter demselben Z2 verdecken einen Teil (S. 16; Fall `a4-fremdtankstrom-mindestens`).
+- **Wirkungsgrad 0,85** statt (6) / (5), „mangels geeigneter Messwerte“ (S. 35) — auch wenn Z2 einen anderen zeigt
+  (Fall `a2-wirkungsgrad-0-85-ohne-verlustprivileg`). (14)A2,A3,A4 und (19)A2,A3 tragen ihren festen Wert als
+  `konstante` im Katalog (Regel L10).
+- **Kein Verlustprivileg für Ladepunkte** — (19)A2,A3 = 0; die Speicherverluste der Elektromobile sind ein nicht
+  abgrenzbarer Teil ihres umlagepflichtigen Fahrstroms (S. 12). A2 und A3 führen (17) und (18) nicht (Lesart unter
+  `abweichungen`, S. 36–37). In A4 sind nur die an Z3 gemessenen Verluste des Stromspeichers anteilig
+  privilegierungsfähig; mit denselben Zählern Z1 und Z2 ergibt A3 darum eine um (19)A1,A4 geringere
+  umlagereduzierende Strommenge (S. 30; Fälle `a3-speicher-und-ladepunkt-ohne-verlustprivileg` und
+  `a4-gesonderte-messung-speicherverluste`).
+- **A11 für Ladepunkte** — A11 tritt an die Stelle der Basisfälle A1 bis A4 (S. 24), mit Ladepunkt als Abwandlung zu
+  A2 oder A3; als Abwandlung zu A4 scheidet A11 aus (S. 99). Mit Ladepunkt gilt A11 mit **und** ohne sonstigen
+  Verbrauch (S. 99; Fall `a11-ladepunkt-ohne-sonstigen-verbrauch`) und mindert die umlagereduzierende Strommenge
+  gegenüber A2 und A3 nicht (S. 98). Mit nur Z1 ist Fremdtankstrom nicht erkennbar und wird nicht abgezogen (S. 16);
+  die MIN-Funktion in (20)A11 begrenzt auf den Netzbezug (3). **A10** ist für Ladepunkte nicht anwendbar (S. 95).
+- **Pauschaloption** — die Ladepunkt-Rechengröße (P2)P2 = 0,2 und (P2)P3 = MIN [ (P2)P1 ; (P2)P2 ] stehen seit
+  MP-24/MP-25 im Vertrag [MiSpeL-Pauschal](./mispel-pauschal.md) (A2 S. 29; Fälle `p2-ladepunkt-rechengroesse-0-2`,
+  `p3-speicher-und-ladepunkt-guenstigere-rechengroesse`); auch dort ist Fremdtankstrom nicht erkennbar (A1 S. 16).
+- **Förderweg und Monatslauf** — A2–A4 sind als Formelsatz wählbar ([Förderweg](./mispel-foerderweg.md)); die Wahl
+  A3 statt A4 und A11 statt A1 bis A4 bindet bis zum Ende des Kalenderjahres (S. 24). `V20261002224700` erweitert
+  die Formelsatz-CHECKs von `site_foerderweg` und `mispel_abgrenzung_monat`; der Monatslauf liest in A4 sechs Zähler
+  (Prüfnachweis mit Docker: `MispelAbgrenzungMonatslaufTest#monatslaufA4MitZ3AmSpeicher`). Der Optimierer plant
+  A2–A4 noch nicht im Mischbetrieb (`pricing.MISCHBETRIEB_FORMELSAETZE` bleibt A1, A5, A5-Variante): das Fahrzeug
+  als Speicher ist MP-33.
+
 ## Regeln, die Anlage 1 offenlässt
 
 Jede steht mit Grund und Fundstelle in `regeln` bzw. `abweichungen` der Vektor-Datei.
@@ -159,6 +208,12 @@ aber nur aus den bisherigen Summen (für den Lauf 0, Normalbetrieb mit (5) ≥ (
 | `a5-uebereinstimmende-aw` | A5 | gleiche AW>0-Zeiten nach A5: (32a) = 63, (32b) = 21 | A1 S. 50, Abschn. 5.4 („weder zu einer Besser- noch zu einer Schlechterstellung“) |
 | `a5-variante-uebereinstimmende-aw` | A5-Variante | dieselben Eingänge nach A5-Variante: (32a)A5-Variante = 63, (32b)A5-Variante = 21 | A1 S. 52–54, Abschn. 5.4.2, Formeln (32a)A5-Variante bis (33b)A5-Variante |
 | `a11-rumpfmonate-speicher-kommt-zum-ladepunkt` | A11 | Speicher kommt am 15.06. zum Ladepunkt (Basisfall A2 → A3): zwei Rumpfmonate, (21)A11 = 50 statt 20 im ganzen Monat | A1 S. 102, Abschn. 11; S. 100–101 |
+| `a2-fremdtankstrom-20-geladen-30-rueckgespeist` | A2 | Prüfnachweis MP-32: (5) = 20, (6) = 30 → (12) = 10 kWh Fremdtankstrom; (16) = 11,5 statt 21,5 | A1 S. 16, Abschn. 2.1.6; Formeln (12), (13), (14)A2,A3,A4: S. 35; (19)A2,A3: S. 37 |
+| `a2-wirkungsgrad-0-85-ohne-verlustprivileg` | A2 | gemessen 72,5 / 80, gerechnet 0,85; (19)A2,A3 = 0 trotz (5) > (6); Rückspeisung bei AW¼ = 0 | A1 S. 35, S. 37; S. 12, Abschn. 2.1.3 |
+| `a3-speicher-und-ladepunkt-ohne-verlustprivileg` | A3 | Speicher und Ladepunkt hinter Z2: (20) = 33 | A1 S. 30, Abschn. 4.1.3; S. 35, S. 37 |
+| `a4-gesonderte-messung-speicherverluste` | A4 | dieselben Z1/Z2 mit Z3: (17)A4 = 10, (19)A1,A4 = 5,5, (20) = 38,5 statt 33 | A1 S. 30–32, Abschn. 4.1.3–4.1.4; S. 34, S. 36–37 |
+| `a4-fremdtankstrom-mindestens` | A4 | 32 kWh mitgebracht, (12) = 28 erkannt: Speicherverluste verdecken den Rest | A1 S. 16, Abschn. 2.1.6 („mindestens“); S. 35–36 |
+| `a11-ladepunkt-ohne-sonstigen-verbrauch` | A11 | Ladepunkt ohne Erzeugung und ohne sonstigen Verbrauch: 20 geladen, 30 zurück → (20)A11 = (3) = 20 | A1 S. 99, Abschn. 10.3.1; S. 98; S. 16 |
 | `a5-rumpfmonate-leistungsaenderung` | A5 | Anlage b ab 15.05. 30 statt 10 kW: zwei Rumpfmonate mit eigenem (ZFa)/(ZFb) | A1 S. 102–103, Abschn. 11 (bestimmungsrelevante Änderung: „für Zuordnungsfaktoren relevante Leistungsänderungen von bereits eingebundenen gleichartigen EE-Anlagen“) |
 
 ## Monatslauf und Nachweis (MP-8)
@@ -176,7 +231,9 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
 - **Stand (E4 = C):** `endgueltig` nur ohne Lücke, mit Wertequelle „Messstellenbetreiber“ und Urteil „tauglich“ an
   jedem Zähler (Tenor S. 28; § 21 Abs. 4 S. 2 EnFG), endgültigen Viertelstunden, AW¼ aus der ÜNB-Liste und nach
   Ende des Zeitraums; sonst `vorlaeufig` mit Gründen (`luecken`, `wertequelle_geraet`, `zaehler_<urteil>:<MS>`,
-  `viertelstunden_vorlaeufig`, `aw_rueckfall`, `zeitraum_offen`). `wertequelle` des Laufs ist `geraet`, sobald ein
+  `viertelstunden_vorlaeufig`, `aw_rueckfall`, `zeitraum_offen`; in A2–A4 aus den Ladepunkten am ersten Tag
+  ([MP-31](./mispel-ladepunkt-bidirektional.md), `LadepunktService.anlage`) `kein_ladepunkt_der_festlegung` (A1 S. 26
+  Fn. 21, S. 29–31) und `ladepunkt_<befund>:<MS>` je Fehler-Befund, z. B. `unidirektional_hinter_z2` (A1 S. 25)). `wertequelle` des Laufs ist `geraet`, sobald ein
   Zähler vom Gerät liest. Die Datenbank hält endgültig = Messstellenbetreiber + lückenlos selbst (CHECK).
 - **Nachweis:** `mispel_abgrenzung_monat` (`V20261002153700`, RLS + FORCE, App nur SELECT/INSERT) je Lauf als
   Fassung: kanonischer JSON-**Text** (Festlegung, Vertrag + Fassung, Rechenwerk-Version, Zähler mit Zählpunkt,
@@ -242,13 +299,13 @@ Jahresnachweis für die Mitteilung des Lieferanten bis 31.05. des Folgejahres (�
 Prüfnachweis: `(cd services/api && ./mvnw test -Dtest='MispelNachweisTest,MispelNachweisApiTest')` (der zweite mit
 Docker). Ein Download-Knopf im Portal kommt erst mit dem abgestimmten Bedienkonzept (BK-18/MP-18).
 
-## Was die Leser prüfen (L1–L9)
+## Was die Leser prüfen (L1–L10)
 
 Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Fehler im anderen.
 
 1. **L1 Schema** — Java über `uems/UemsSchemaLaeufer`, Python über `jsonschema` (Draft 2020-12).
-2. **L2 Katalog** — jede Formelnummer einmal; A1 trägt (1) bis (33) außer (7)A4/(8)A4; zusammen mit
-   `nicht_im_umfang` ist (1)–(33) vollständig; Formelsatz und Formel nennen einander in beide Richtungen;
+2. **L2 Katalog** — jede Formelnummer einmal; A1 trägt (1) bis (33) außer (7)A4/(8)A4, A4 jede, A2 und A3 alle
+   außer (7), (8), (17), (18); zusammen mit `nicht_im_umfang` ist (1)–(33) vollständig; Formelsatz und Formel nennen einander in beide Richtungen;
    `summe.von` und `quotient` zeigen auf bekannte Formeln oder Eingänge.
 3. **L3 Eingänge** — Namen eindeutig; jede Viertelstunde trägt genau die Eingänge ihres Formelsatzes;
    Stammdaten genau bei A5/A5-Variante; in der A5-Variante stimmen die AW>0-Zeiten von a und b überein.
@@ -264,6 +321,8 @@ Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Feh
 9. **L9 Rumpfmonate** — jeder Erkennungsfall ergibt in beiden Zwillingen genau die erwarteten Rumpfmonate und
    Änderungen (oder die Ablehnung); nennt er einen `rechenfall`, sind seine Rumpfmonate genau dessen `zeitraeume`.
    Java `MispelRumpfmonateTest`, Python `test_mispel_abgrenzung_rechenwerk.py::test_l9_rumpfmonate_wie_vektoren`.
+10. **L10 Konstanten** — eine Formel mit `konstante` ((14)A2,A3,A4 = 0,85, (19)A2,A3 = 0; A1 S. 35, S. 37) trägt
+   genau diesen Wert in jedem Monat.
 
 Prüfnachweis (ohne Docker):
 `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungVectorsTest)` (JDK 21) und

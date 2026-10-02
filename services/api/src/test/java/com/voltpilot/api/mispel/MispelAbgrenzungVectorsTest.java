@@ -29,7 +29,7 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * MiSpeL MP-4: Leser der Vektor-Datei {@code docs/contracts/v2/mispel-abgrenzung-vectors.json}.
  *
- * <p>Prüft die Datei gegen ihr Schema und die Regeln L1–L8 aus {@code mispel-abgrenzung.md} — im
+ * <p>Prüft die Datei gegen ihr Schema und die Regeln L1–L8 und L10 aus {@code mispel-abgrenzung.md} — im
  * Gleichlauf mit dem Python-Leser {@code services/optimization/tests/test_mispel_abgrenzung_vectors.py}.
  * Kein Rechenwerk: die Formeln (1)–(33) rechnet erst MP-8 (Java) bzw. MP-9 (Python) gegen dieselben
  * Fälle; hier wird nur festgehalten, dass jeder Fall vollständig, zeitlich richtig zugeordnet und in
@@ -43,9 +43,14 @@ class MispelAbgrenzungVectorsTest {
     private static final Path SCHEMA = V2.resolve("mispel-abgrenzung.schema.json");
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
     private static final DateTimeFormatter MONAT = DateTimeFormatter.ofPattern("yyyy-MM");
-    // Anlage 1 S. 33–39: A1 trägt jede Formelnummer (1) bis (33) außer (7)A4 und (8)A4.
+    // Anlage 1 S. 33–39: A1 trägt jede Formelnummer (1) bis (33) außer (7)A4 und (8)A4, A4 jede; A2 und A3 tragen
+    // aus Abschn. 4.2.3 nur (19)A2,A3, nicht (17) und (18) (S. 36–37, Lesart in „abweichungen“).
     private static final Set<Integer> A1_NUMMERN = Set.copyOf(
             IntStream.rangeClosed(1, 33).filter(n -> n != 7 && n != 8).boxed().toList());
+    private static final Set<Integer> A2_A3_NUMMERN = Set.copyOf(
+            IntStream.rangeClosed(1, 33).filter(n -> n != 7 && n != 8 && n != 17 && n != 18).boxed().toList());
+    private static final Map<String, Set<Integer>> NUMMERN = Map.of("A1", A1_NUMMERN, "A2", A2_A3_NUMMERN,
+            "A3", A2_A3_NUMMERN, "A4", Set.copyOf(IntStream.rangeClosed(1, 33).boxed().toList()));
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
@@ -134,9 +139,11 @@ class MispelAbgrenzungVectorsTest {
     @Test
     void l2Katalog() {
         assertThat(FORMELN).as("Formelnummer doppelt").hasSize(DOC.get("formeln").size());
-        Set<Integer> a1 = new HashSet<>();
-        texte(SAETZE.get("A1").get("formeln")).forEach(nr -> a1.add(nummer(nr)));
-        assertThat(a1).isEqualTo(A1_NUMMERN);
+        NUMMERN.forEach((satz, nummern) -> {
+            Set<Integer> hier = new HashSet<>();
+            texte(SAETZE.get(satz).get("formeln")).forEach(nr -> hier.add(nummer(nr)));
+            assertThat(hier).as(satz).isEqualTo(nummern);
+        });
         Set<Integer> alle = new HashSet<>();
         FORMELN.keySet().forEach(nr -> alle.add(nummer(nr)));
         DOC.get("nicht_im_umfang").forEach(f -> alle.add(nummer(f.get("nr").asText())));
@@ -181,6 +188,7 @@ class MispelAbgrenzungVectorsTest {
             tests.add(DynamicTest.dynamicTest(name + " L6 vollständig", () -> l6Vollstaendig(fall)));
             tests.add(DynamicTest.dynamicTest(name + " L7 Summen", () -> l7Summen(fall)));
             tests.add(DynamicTest.dynamicTest(name + " L8 Nenner null", () -> l8NennerNull(fall)));
+            tests.add(DynamicTest.dynamicTest(name + " L10 Konstanten", () -> l10Konstanten(fall)));
         }
         return tests.stream();
     }
@@ -312,5 +320,15 @@ class MispelAbgrenzungVectorsTest {
         for (JsonNode werte : ohneNull) {
             werte.forEach(w -> assertThat(w.isNull()).isFalse());
         }
+    }
+
+    /** L10: eine Formel mit festem Wert ((14)A2,A3,A4 = 0,85, (19)A2,A3 = 0; A1 S. 35, S. 37) trägt ihn in jedem Monat. */
+    private static void l10Konstanten(JsonNode fall) {
+        fall.get("erwartet").get("monate").fields().forEachRemaining(m -> m.getValue().fields().forEachRemaining(w -> {
+            JsonNode k = FORMELN.get(w.getKey()).get("konstante");
+            if (k != null) {
+                assertThat(zahl(w.getValue())).as("%s %s", m.getKey(), w.getKey()).isEqualByComparingTo(zahl(k));
+            }
+        }));
     }
 }

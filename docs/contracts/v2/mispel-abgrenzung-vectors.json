@@ -1,5 +1,5 @@
 {
-  "$comment": "MiSpeL-Abgrenzungsoption: die Formeln (1)–(33) der Formelsätze A1, A5 (mit A5-Variante), A10 und A11 als Vertrag mit gemeinsamen Vektoren. Nummern, Begriffe und Rechenwege stehen WÖRTLICH wie in Anlage 1 der Festlegung; jede Lesart, die die Festlegung offenlässt, steht in „abweichungen“ mit Grund und Fundstelle. Prosa: mispel-abgrenzung.md; Schema: mispel-abgrenzung.schema.json. Leser per Pfad: MispelAbgrenzungVectorsTest (Java, services/api) und test_mispel_abgrenzung_vectors.py (Python, services/optimization) prüfen dieselben Regeln L1–L8 im Gleichlauf; das Rechenwerk bauen MP-8 (Java) und MP-9 (Python) gegen genau diese Fälle. Wo Text und Datei sich widersprechen, gilt die Datei - und dann ist einer von beiden falsch.",
+  "$comment": "MiSpeL-Abgrenzungsoption: die Formeln (1)–(33) der Formelsätze A1, A2, A3, A4 (MP-32), A5 (mit A5-Variante), A10 und A11 als Vertrag mit gemeinsamen Vektoren. Nummern, Begriffe und Rechenwege stehen WÖRTLICH wie in Anlage 1 der Festlegung; jede Lesart, die die Festlegung offenlässt, steht in „abweichungen“ mit Grund und Fundstelle. Prosa: mispel-abgrenzung.md; Schema: mispel-abgrenzung.schema.json. Leser per Pfad: MispelAbgrenzungVectorsTest (Java, services/api) und test_mispel_abgrenzung_vectors.py (Python, services/optimization) prüfen dieselben Regeln L1–L8 im Gleichlauf; das Rechenwerk bauen MP-8 (Java) und MP-9 (Python) gegen genau diese Fälle. Wo Text und Datei sich widersprechen, gilt die Datei - und dann ist einer von beiden falsch.",
   "schema_version": "1.1",
   "quelle": {
     "festlegung": "Festlegung zur Marktintegration von Speichern und Ladepunkten (MiSpeL)",
@@ -84,6 +84,13 @@
       "vertrag": "Der Vertrag führt „(28a)A5“ und „(28b)A5“ wie auf S. 48.",
       "grund": "Das Viertelstunden-Zeichen in S. 49 widerspricht der Definition auf S. 48; (28) ist ein Monatswert (MIN [ (13) ; (15) ]).",
       "fundstelle": "A1 S. 48–49, Abschn. 5.2.2"
+    },
+    {
+      "thema": "(17) und (18) in A2 und A3",
+      "festlegung": "„Für die Bestimmung und den Nachweis der anteilig privilegierungsfähigen Stromspeicherverluste in den beiden dafür relevanten Fallkonstellationen A1 und A4 gelten die folgenden Formeln. In den Fallkonstellationen A2 und A3 können hingegen keine privilegierungsfähigen Speicherverluste geltend gemacht werden.“ (19)A2,A3 = 0.",
+      "vertrag": "A2 und A3 tragen aus Abschn. 4.2.3 nur (19)A2,A3; (17)A1, (17)A4 und (18) führen sie nicht.",
+      "grund": "(17) gibt es nur als (17)A1 und (17)A4, (18) geht allein in (19)A1,A4 ein; in A2 und A3 hätten beide keinen Verwender. Die Formelnummern bleiben wörtlich.",
+      "fundstelle": "A1 S. 36–37, Abschn. 4.2.3"
     }
   ],
   "formelsaetze": {
@@ -118,6 +125,154 @@
         "(15)",
         "(16)",
         "(17)A1",
+        "(18)",
+        "(19)A1,A4",
+        "(20)",
+        "(21)",
+        "(22)",
+        "(23)¼",
+        "(24)¼",
+        "(25)¼",
+        "(26)",
+        "(27)¼",
+        "(28)",
+        "(29)",
+        "(30)",
+        "(31)",
+        "(32)",
+        "(33)"
+      ]
+    },
+    "A2": {
+      "bezeichnung": "Basisfall A2: „Ladepunkt“",
+      "fundstelle": "A1 S. 29–30, Abschn. 4.1.2; S. 32–39, Abschn. 4.2",
+      "zaehler": [
+        "Z1",
+        "Z2"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "Z2V¼",
+        "Z2E¼",
+        "AW¼"
+      ],
+      "stammdaten": [],
+      "formeln": [
+        "(1)¼",
+        "(2)¼",
+        "(3)",
+        "(4)",
+        "(5)",
+        "(6)",
+        "(9)",
+        "(10)",
+        "(11)",
+        "(12)",
+        "(13)",
+        "(14)A2,A3,A4",
+        "(15)",
+        "(16)",
+        "(19)A2,A3",
+        "(20)",
+        "(21)",
+        "(22)",
+        "(23)¼",
+        "(24)¼",
+        "(25)¼",
+        "(26)",
+        "(27)¼",
+        "(28)",
+        "(29)",
+        "(30)",
+        "(31)",
+        "(32)",
+        "(33)"
+      ]
+    },
+    "A3": {
+      "bezeichnung": "Basisfall A3: „Stromspeicher und Ladepunkt“ (vereinfachte Alternative zu A4)",
+      "fundstelle": "A1 S. 30–31, Abschn. 4.1.3; S. 32–39, Abschn. 4.2",
+      "zaehler": [
+        "Z1",
+        "Z2"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "Z2V¼",
+        "Z2E¼",
+        "AW¼"
+      ],
+      "stammdaten": [],
+      "formeln": [
+        "(1)¼",
+        "(2)¼",
+        "(3)",
+        "(4)",
+        "(5)",
+        "(6)",
+        "(9)",
+        "(10)",
+        "(11)",
+        "(12)",
+        "(13)",
+        "(14)A2,A3,A4",
+        "(15)",
+        "(16)",
+        "(19)A2,A3",
+        "(20)",
+        "(21)",
+        "(22)",
+        "(23)¼",
+        "(24)¼",
+        "(25)¼",
+        "(26)",
+        "(27)¼",
+        "(28)",
+        "(29)",
+        "(30)",
+        "(31)",
+        "(32)",
+        "(33)"
+      ]
+    },
+    "A4": {
+      "bezeichnung": "Basisfall A4: „Stromspeicher und Ladepunkt mit gesonderter Messung für die Speicherverluste“",
+      "fundstelle": "A1 S. 31–32, Abschn. 4.1.4; S. 32–39, Abschn. 4.2",
+      "zaehler": [
+        "Z1",
+        "Z2",
+        "Z3"
+      ],
+      "eingaenge": [
+        "Z1NB¼",
+        "Z1NE¼",
+        "Z2V¼",
+        "Z2E¼",
+        "Z3V¼",
+        "Z3E¼",
+        "AW¼"
+      ],
+      "stammdaten": [],
+      "formeln": [
+        "(1)¼",
+        "(2)¼",
+        "(3)",
+        "(4)",
+        "(5)",
+        "(6)",
+        "(7)A4",
+        "(8)A4",
+        "(9)",
+        "(10)",
+        "(11)",
+        "(12)",
+        "(13)",
+        "(14)A2,A3,A4",
+        "(15)",
+        "(16)",
+        "(17)A4",
         "(18)",
         "(19)A1,A4",
         "(20)",
@@ -310,6 +465,9 @@
       "ebene": "viertelstunde",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -322,6 +480,9 @@
       "ebene": "viertelstunde",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -334,6 +495,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante",
         "A10",
@@ -352,6 +516,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante",
         "A11"
@@ -369,6 +536,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -385,6 +555,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -395,12 +568,43 @@
       }
     },
     {
+      "nr": "(7)A4",
+      "begriff": "Verbrauch im Stromspeicher in der Fallkonstellation A4 im Kalendermonat",
+      "rechenweg": "∑M Z3V¼",
+      "ebene": "monat",
+      "formelsaetze": [
+        "A4"
+      ],
+      "fundstelle": "A1 S. 34, Abschn. 4.2.2",
+      "summe": {
+        "ueber": "M",
+        "von": "Z3V¼"
+      }
+    },
+    {
+      "nr": "(8)A4",
+      "begriff": "Erzeugung im Stromspeicher in der Fallkonstellation A4 im Kalendermonat",
+      "rechenweg": "∑M Z3E¼",
+      "ebene": "monat",
+      "formelsaetze": [
+        "A4"
+      ],
+      "fundstelle": "A1 S. 34, Abschn. 4.2.2",
+      "summe": {
+        "ueber": "M",
+        "von": "Z3E¼"
+      }
+    },
+    {
       "nr": "(9)",
       "begriff": "Zeitgleicher Netzstromverbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
       "rechenweg": "∑M (1)¼",
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -417,6 +621,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -429,6 +636,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -445,6 +655,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -457,6 +670,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -479,12 +695,28 @@
       }
     },
     {
+      "nr": "(14)A2,A3,A4",
+      "begriff": "Wirkungsgrad der Stromspeicherung in den Fallkonstellationen A2, A3 und A4",
+      "rechenweg": "0,85",
+      "ebene": "monat",
+      "formelsaetze": [
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "fundstelle": "A1 S. 35, Abschn. 4.2.2",
+      "konstante": 0.85
+    },
+    {
       "nr": "(15)",
       "begriff": "EE-Speichererzeugung im Kalendermonat",
       "rechenweg": "(14) • (10)",
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -497,6 +729,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -515,12 +750,23 @@
       "fundstelle": "A1 S. 36, Abschn. 4.2.3"
     },
     {
+      "nr": "(17)A4",
+      "begriff": "Verluste im Stromspeicher in der Fallkonstellation A4 im Kalendermonat",
+      "rechenweg": "MAX [ (7)A4 – (8)A4 ; 0 ]",
+      "ebene": "monat",
+      "formelsaetze": [
+        "A4"
+      ],
+      "fundstelle": "A1 S. 36, Abschn. 4.2.3"
+    },
+    {
       "nr": "(18)",
       "begriff": "Anteil der saldierungsfähigen Netzeinspeisung an der Erzeugung im Stromspeicher und/oder Ladepunkt im Kalendermonat",
       "rechenweg": "(16) / (6)",
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -537,10 +783,23 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A4",
         "A5",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 37, Abschn. 4.2.3"
+    },
+    {
+      "nr": "(19)A2,A3",
+      "begriff": "Keine privilegierungsfähigen Stromspeicherverluste in den Fallkonstellationen A2 und A3 im Kalendermonat",
+      "rechenweg": "0",
+      "ebene": "monat",
+      "formelsaetze": [
+        "A2",
+        "A3"
+      ],
+      "fundstelle": "A1 S. 37, Abschn. 4.2.3",
+      "konstante": 0
     },
     {
       "nr": "(20)",
@@ -549,6 +808,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -561,6 +823,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -573,6 +838,9 @@
       "ebene": "jahr",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -589,6 +857,9 @@
       "ebene": "viertelstunde",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -601,6 +872,9 @@
       "ebene": "viertelstunde",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 38, Abschn. 4.2.5"
@@ -612,6 +886,9 @@
       "ebene": "viertelstunde",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 38, Abschn. 4.2.5"
@@ -623,6 +900,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 38, Abschn. 4.2.5",
@@ -638,6 +918,9 @@
       "ebene": "viertelstunde",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 38, Abschn. 4.2.5"
@@ -649,6 +932,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5",
         "A5-Variante"
       ],
@@ -661,6 +947,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 39, Abschn. 4.2.5",
@@ -676,6 +965,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 39, Abschn. 4.2.5",
@@ -691,6 +983,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 39, Abschn. 4.2.5"
@@ -702,6 +997,9 @@
       "ebene": "monat",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 39, Abschn. 4.2.5"
@@ -713,6 +1011,9 @@
       "ebene": "jahr",
       "formelsaetze": [
         "A1",
+        "A2",
+        "A3",
+        "A4",
         "A5-Variante"
       ],
       "fundstelle": "A1 S. 39, Abschn. 4.2.5",
@@ -1122,43 +1423,7 @@
       }
     }
   ],
-  "nicht_im_umfang": [
-    {
-      "nr": "(7)A4",
-      "begriff": "Verbrauch im Stromspeicher in der Fallkonstellation A4 im Kalendermonat",
-      "rechenweg": "∑M Z3V¼",
-      "fundstelle": "A1 S. 34, Abschn. 4.2.2",
-      "grund": "Formel der Basisfälle A2 bis A4; die Stufe 1 baut A1, A5, A10 und A11 (E5 = B), A2 bis A4 kommen mit Stufe B (MP-32)"
-    },
-    {
-      "nr": "(8)A4",
-      "begriff": "Erzeugung im Stromspeicher in der Fallkonstellation A4 im Kalendermonat",
-      "rechenweg": "∑M Z3E¼",
-      "fundstelle": "A1 S. 34, Abschn. 4.2.2",
-      "grund": "Formel der Basisfälle A2 bis A4; die Stufe 1 baut A1, A5, A10 und A11 (E5 = B), A2 bis A4 kommen mit Stufe B (MP-32)"
-    },
-    {
-      "nr": "(14)A2,A3,A4",
-      "begriff": "Wirkungsgrad der Stromspeicherung in den Fallkonstellationen A2, A3 und A4",
-      "rechenweg": "0,85",
-      "fundstelle": "A1 S. 35, Abschn. 4.2.2",
-      "grund": "Formel der Basisfälle A2 bis A4; die Stufe 1 baut A1, A5, A10 und A11 (E5 = B), A2 bis A4 kommen mit Stufe B (MP-32)"
-    },
-    {
-      "nr": "(17)A4",
-      "begriff": "Verluste im Stromspeicher in der Fallkonstellation A4 im Kalendermonat",
-      "rechenweg": "MAX [ (7)A4 – (8)A4 ; 0 ]",
-      "fundstelle": "A1 S. 36, Abschn. 4.2.3",
-      "grund": "Formel der Basisfälle A2 bis A4; die Stufe 1 baut A1, A5, A10 und A11 (E5 = B), A2 bis A4 kommen mit Stufe B (MP-32)"
-    },
-    {
-      "nr": "(19)A2,A3",
-      "begriff": "Keine privilegierungsfähigen Stromspeicherverluste in den Fallkonstellationen A2 und A3 im Kalendermonat",
-      "rechenweg": "0",
-      "fundstelle": "A1 S. 37, Abschn. 4.2.3",
-      "grund": "Formel der Basisfälle A2 bis A4; die Stufe 1 baut A1, A5, A10 und A11 (E5 = B), A2 bis A4 kommen mit Stufe B (MP-32)"
-    }
-  ],
+  "nicht_im_umfang": [],
   "faelle": [
     {
       "name": "bnetza-beispielrechnungen-speichervorrang",
@@ -1943,6 +2208,285 @@
         },
         "jahre": {
           "2027": {"(22)A11": 50}
+        }
+      }
+    },
+    {
+      "name": "a2-fremdtankstrom-20-geladen-30-rueckgespeist",
+      "formelsatz": "A2",
+      "fundstelle": "A1 S. 16, Abschn. 2.1.6 (Berücksichtigung von „Fremdtankstrom“ bei Ladepunkten); Formeln (12), (13): A1 S. 35; (14)A2,A3,A4: A1 S. 35; (19)A2,A3: A1 S. 37",
+      "warum": "Prüfnachweis MP-32. Das Elektromobil lädt im Kalendermonat am Ladepunkt 20 kWh (10 kWh aus dem Netz, 10 kWh aus der Solaranlage) und speist 30 kWh zurück: (12) = MAX [ (6) – (5) ; 0 ] = 30 – 20 = 10 kWh Fremdtankstrom, anderswo geladen und hier „mitgebracht“. (13) zieht ihn vom Basiswert (11) = 30 ab; saldierungsfähig ist nur (16) = 20 – 0,85 • 10 = 11,5 statt 21,5 ohne den Abzug - der Fremdtankstrom wird weder saldiert noch gefördert. Laden und Rückspeisen gelten im Ladepunkt verbraucht und erzeugt, gleich welches Elektromobil (A1 S. 7, Begriff Ladepunkt).",
+      "viertelstunden": [
+        {"beginn": "2027-04-06T01:00:00+02:00", "Z1NB¼": 50, "Z1NE¼": 0, "Z2V¼": 10, "Z2E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-04-06T12:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 5, "Z2V¼": 10, "Z2E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-04-06T19:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 30, "Z2V¼": 0, "Z2E¼": 30, "AW¼": 7.5}
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {"beginn": "2027-04-06T01:00:00+02:00", "(1)¼": 10, "(2)¼": 0, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 0},
+          {"beginn": "2027-04-06T12:00:00+02:00", "(1)¼": 0, "(2)¼": 0, "(23)¼": 5, "(24)¼": 1, "(25)¼": 5, "(27)¼": 0},
+          {"beginn": "2027-04-06T19:00:00+02:00", "(1)¼": 0, "(2)¼": 30, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 30}
+        ],
+        "monate": {
+          "2027-04": {
+            "(3)": 50,
+            "(4)": 35,
+            "(5)": 20,
+            "(6)": 30,
+            "(9)": 10,
+            "(10)": 10,
+            "(11)": 30,
+            "(12)": 10,
+            "(13)": 20,
+            "(14)A2,A3,A4": 0.85,
+            "(15)": 8.5,
+            "(16)": 11.5,
+            "(19)A2,A3": 0,
+            "(20)": 11.5,
+            "(21)": 38.5,
+            "(26)": 5,
+            "(28)": 8.5,
+            "(29)": 30,
+            "(30)": 1,
+            "(31)": 8.5,
+            "(32)": 13.5
+          }
+        },
+        "jahre": {
+          "2027": {
+            "(22)": 38.5,
+            "(33)": 13.5
+          }
+        }
+      }
+    },
+    {
+      "name": "a2-wirkungsgrad-0-85-ohne-verlustprivileg",
+      "formelsatz": "A2",
+      "fundstelle": "A1 S. 35, Formel (14)A2,A3,A4; A1 S. 37, Formel (19)A2,A3; A1 S. 12, Abschn. 2.1.3 (Verlustprivileg bleibt Stromspeichern vorbehalten, Verluste der Elektromobile sind Teil des Fahrstroms); Förderseite A1 S. 38–39",
+      "warum": "Ladepunkt mit Solarladen, Netzladen, Rückspeisung in AW>0- und AW=0-Zeiten. Gemessen ist (6) / (5) = 72,5 / 80; gerechnet wird trotzdem mit (14)A2,A3,A4 = 0,85, weil es für den Ladepunkt keine geeigneten Messwerte gibt: (15) = 0,85 • 40 = 34. Die 7,5 kWh Differenz zwischen Verbrauch und Erzeugung sind keine privilegierungsfähigen Verluste, (19)A2,A3 = 0 - Fahrstrom und Verluste im Elektromobil tragen die Umlagen voll. Die Rückspeisung bei AW¼ = 0 zählt zur Saldierung, nicht zur Förderung: (30) = 50 / 62,5 = 0,8.",
+      "viertelstunden": [
+        {"beginn": "2027-05-04T12:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 10, "Z2V¼": 40, "Z2E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-05-04T23:00:00+02:00", "Z1NB¼": 45, "Z1NE¼": 0, "Z2V¼": 40, "Z2E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-05-05T19:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 50, "Z2V¼": 0, "Z2E¼": 60, "AW¼": 7.5},
+        {"beginn": "2027-05-09T13:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 18.5, "Z2V¼": 0, "Z2E¼": 12.5, "AW¼": 0}
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {"beginn": "2027-05-04T12:00:00+02:00", "(1)¼": 0, "(2)¼": 0, "(23)¼": 10, "(24)¼": 1, "(25)¼": 10, "(27)¼": 0},
+          {"beginn": "2027-05-04T23:00:00+02:00", "(1)¼": 40, "(2)¼": 0, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 0},
+          {"beginn": "2027-05-05T19:00:00+02:00", "(1)¼": 0, "(2)¼": 50, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 50},
+          {"beginn": "2027-05-09T13:00:00+02:00", "(1)¼": 0, "(2)¼": 12.5, "(23)¼": 6, "(24)¼": 0, "(25)¼": 0, "(27)¼": 0}
+        ],
+        "monate": {
+          "2027-05": {
+            "(3)": 45,
+            "(4)": 78.5,
+            "(5)": 80,
+            "(6)": 72.5,
+            "(9)": 40,
+            "(10)": 40,
+            "(11)": 62.5,
+            "(12)": 0,
+            "(13)": 62.5,
+            "(14)A2,A3,A4": 0.85,
+            "(15)": 34,
+            "(16)": 28.5,
+            "(19)A2,A3": 0,
+            "(20)": 28.5,
+            "(21)": 16.5,
+            "(26)": 10,
+            "(28)": 34,
+            "(29)": 50,
+            "(30)": 0.8,
+            "(31)": 27.2,
+            "(32)": 37.2
+          }
+        },
+        "jahre": {
+          "2027": {
+            "(22)": 16.5,
+            "(33)": 37.2
+          }
+        }
+      }
+    },
+    {
+      "name": "a3-speicher-und-ladepunkt-ohne-verlustprivileg",
+      "formelsatz": "A3",
+      "fundstelle": "A1 S. 30, Abschn. 4.1.3 (A3 ergibt eine geringere umlagereduzierende Strommenge als A4); Formeln (14)A2,A3,A4: A1 S. 35, (19)A2,A3: A1 S. 37",
+      "warum": "Stromspeicher und Ladepunkt hinter einem gemeinsamen Zähler Z2 (vereinfachtes Messkonzept A3). Nachts laden Speicher und Elektromobil 60 kWh aus dem Netz, mittags der Speicher 20 kWh aus der Solaranlage, abends speisen beide 60 kWh zurück. (16) = 50 – 0,85 • 20 = 33; Verluste sind nicht privilegierungsfähig, (20) = 33. Dieselben Zählerwerte mit Z3 nach A4: Fall a4-gesonderte-messung-speicherverluste.",
+      "viertelstunden": [
+        {"beginn": "2027-06-07T02:00:00+02:00", "Z1NB¼": 65, "Z1NE¼": 0, "Z2V¼": 60, "Z2E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-06-07T12:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 30, "Z2V¼": 20, "Z2E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-06-07T20:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 50, "Z2V¼": 0, "Z2E¼": 60, "AW¼": 7.5}
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {"beginn": "2027-06-07T02:00:00+02:00", "(1)¼": 60, "(2)¼": 0, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 0},
+          {"beginn": "2027-06-07T12:00:00+02:00", "(1)¼": 0, "(2)¼": 0, "(23)¼": 30, "(24)¼": 1, "(25)¼": 30, "(27)¼": 0},
+          {"beginn": "2027-06-07T20:00:00+02:00", "(1)¼": 0, "(2)¼": 50, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 50}
+        ],
+        "monate": {
+          "2027-06": {
+            "(3)": 65,
+            "(4)": 80,
+            "(5)": 80,
+            "(6)": 60,
+            "(9)": 60,
+            "(10)": 20,
+            "(11)": 50,
+            "(12)": 0,
+            "(13)": 50,
+            "(14)A2,A3,A4": 0.85,
+            "(15)": 17,
+            "(16)": 33,
+            "(19)A2,A3": 0,
+            "(20)": 33,
+            "(21)": 32,
+            "(26)": 30,
+            "(28)": 17,
+            "(29)": 50,
+            "(30)": 1,
+            "(31)": 17,
+            "(32)": 47
+          }
+        },
+        "jahre": {
+          "2027": {
+            "(22)": 32,
+            "(33)": 47
+          }
+        }
+      }
+    },
+    {
+      "name": "a4-gesonderte-messung-speicherverluste",
+      "formelsatz": "A4",
+      "fundstelle": "A1 S. 30–32, Abschn. 4.1.3–4.1.4; Formeln (7)A4, (8)A4: A1 S. 34, (17)A4: A1 S. 36, (19)A1,A4: A1 S. 37",
+      "warum": "Dieselben Zählerwerte Z1 und Z2 wie im Fall a3-speicher-und-ladepunkt-ohne-verlustprivileg, dazu Z3 am Stromspeicher allein: 60 kWh geladen, 50 kWh erzeugt. (17)A4 = MAX [ (7)A4 – (8)A4 ; 0 ] = 10 kWh Verluste allein im Stromspeicher, davon privilegierungsfähig (18) • (17)A4 = 33 / 60 • 10 = 5,5. (20) = 38,5 statt 33 nach A3 - so wie Anlage 1 es für die vereinfachte Alternative A3 sagt.",
+      "viertelstunden": [
+        {"beginn": "2027-06-07T02:00:00+02:00", "Z1NB¼": 65, "Z1NE¼": 0, "Z2V¼": 60, "Z2E¼": 0, "Z3V¼": 40, "Z3E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-06-07T12:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 30, "Z2V¼": 20, "Z2E¼": 0, "Z3V¼": 20, "Z3E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-06-07T20:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 50, "Z2V¼": 0, "Z2E¼": 60, "Z3V¼": 0, "Z3E¼": 50, "AW¼": 7.5}
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {"beginn": "2027-06-07T02:00:00+02:00", "(1)¼": 60, "(2)¼": 0, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 0},
+          {"beginn": "2027-06-07T12:00:00+02:00", "(1)¼": 0, "(2)¼": 0, "(23)¼": 30, "(24)¼": 1, "(25)¼": 30, "(27)¼": 0},
+          {"beginn": "2027-06-07T20:00:00+02:00", "(1)¼": 0, "(2)¼": 50, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 50}
+        ],
+        "monate": {
+          "2027-06": {
+            "(3)": 65,
+            "(4)": 80,
+            "(5)": 80,
+            "(6)": 60,
+            "(7)A4": 60,
+            "(8)A4": 50,
+            "(9)": 60,
+            "(10)": 20,
+            "(11)": 50,
+            "(12)": 0,
+            "(13)": 50,
+            "(14)A2,A3,A4": 0.85,
+            "(15)": 17,
+            "(16)": 33,
+            "(17)A4": 10,
+            "(18)": 0.55,
+            "(19)A1,A4": 5.5,
+            "(20)": 38.5,
+            "(21)": 26.5,
+            "(26)": 30,
+            "(28)": 17,
+            "(29)": 50,
+            "(30)": 1,
+            "(31)": 17,
+            "(32)": 47
+          }
+        },
+        "jahre": {
+          "2027": {
+            "(22)": 26.5,
+            "(33)": 47
+          }
+        }
+      }
+    },
+    {
+      "name": "a4-fremdtankstrom-mindestens",
+      "formelsatz": "A4",
+      "fundstelle": "A1 S. 16, Abschn. 2.1.6 („entspricht in diesem Fall mindestens der als Fremdtankstrom identifizierten Strommenge“); Formeln (12), (13): A1 S. 35; (17)A4: A1 S. 36",
+      "warum": "Der Stromspeicher lädt 40 kWh aus dem Netz und erzeugt 36 kWh; das Elektromobil lädt im Monat am Ladepunkt nichts und speist 32 kWh zurück. Z2 sieht (5) = 40 und (6) = 68: (12) = 28 kWh Fremdtankstrom - mitgebracht waren 32 kWh, die 4 kWh Speicherverluste verdecken den Rest. Anlage 1 nennt den identifizierten Fremdtankstrom darum eine Mindestmenge. (17)A4 = 4 aus Z3 bleibt anteilig privilegierungsfähig: (19)A1,A4 = 34 / 68 • 4 = 2.",
+      "viertelstunden": [
+        {"beginn": "2027-07-12T03:00:00+02:00", "Z1NB¼": 45, "Z1NE¼": 0, "Z2V¼": 40, "Z2E¼": 0, "Z3V¼": 40, "Z3E¼": 0, "AW¼": 7.5},
+        {"beginn": "2027-07-12T19:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 62, "Z2V¼": 0, "Z2E¼": 68, "Z3V¼": 0, "Z3E¼": 36, "AW¼": 7.5}
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {"beginn": "2027-07-12T03:00:00+02:00", "(1)¼": 40, "(2)¼": 0, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 0},
+          {"beginn": "2027-07-12T19:00:00+02:00", "(1)¼": 0, "(2)¼": 62, "(23)¼": 0, "(24)¼": 1, "(25)¼": 0, "(27)¼": 62}
+        ],
+        "monate": {
+          "2027-07": {
+            "(3)": 45,
+            "(4)": 62,
+            "(5)": 40,
+            "(6)": 68,
+            "(7)A4": 40,
+            "(8)A4": 36,
+            "(9)": 40,
+            "(10)": 0,
+            "(11)": 62,
+            "(12)": 28,
+            "(13)": 34,
+            "(14)A2,A3,A4": 0.85,
+            "(15)": 0,
+            "(16)": 34,
+            "(17)A4": 4,
+            "(18)": 0.5,
+            "(19)A1,A4": 2,
+            "(20)": 36,
+            "(21)": 9,
+            "(26)": 0,
+            "(28)": 0,
+            "(29)": 62,
+            "(30)": 1,
+            "(31)": 0,
+            "(32)": 0
+          }
+        },
+        "jahre": {
+          "2027": {
+            "(22)": 9,
+            "(33)": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "a11-ladepunkt-ohne-sonstigen-verbrauch",
+      "formelsatz": "A11",
+      "fundstelle": "A1 S. 99, Abschn. 10.3.1 (A11 mit Ladepunkt „in beiden Varianten anwendbar: mit und ohne sonstigen Verbrauch“); A1 S. 16, Abschn. 2.1.6; A1 S. 98 (gegenüber A2 und A3 keine Verminderung); Formeln (16)A11 bis (22)A11: A1 S. 100–101",
+      "warum": "Ladepunkt ohne Erzeugungsanlage und ohne sonstigen Verbrauch (A11 als Abwandlung zu A2; ein reiner Stromspeicher wäre hier A10, für Ladepunkte ist A10 nicht anwendbar, A1 S. 95). Dieselben Mengen wie im Prüfnachweis: 20 kWh geladen, 30 kWh zurückgespeist. Mit nur Z1 ist der Fremdtankstrom nicht erkennbar, (16)A11 = (4) = 30; die MIN-Funktion in (20)A11 begrenzt auf den Netzbezug (3) = 20.",
+      "viertelstunden": [
+        {"beginn": "2027-08-16T01:00:00+02:00", "Z1NB¼": 20, "Z1NE¼": 0},
+        {"beginn": "2027-08-16T19:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 30}
+      ],
+      "erwartet": {
+        "monate": {
+          "2027-08": {
+            "(3)": 20,
+            "(4)": 30,
+            "(16)A11": 30,
+            "(20)A11": 20,
+            "(21)A11": 0
+          }
+        },
+        "jahre": {
+          "2027": {
+            "(22)A11": 0
+          }
         }
       }
     }

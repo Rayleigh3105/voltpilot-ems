@@ -36,15 +36,30 @@
   ],
   "formelsaetze": [
     "A1",
+    "A2",
+    "A3",
+    "A4",
     "A5",
     "A5-Variante",
     "A10",
     "A11"
   ],
   "vereinfacht_statt": {
-    "A5-Variante": "A5",
-    "A10": "A1",
-    "A11": "A1"
+    "A3": [
+      "A4"
+    ],
+    "A5-Variante": [
+      "A5"
+    ],
+    "A10": [
+      "A1"
+    ],
+    "A11": [
+      "A1",
+      "A2",
+      "A3",
+      "A4"
+    ]
   },
   "aw_regeln": [
     {
@@ -385,6 +400,78 @@
       "fundstelle": "A1 S. 24, Abschn. 3.2.3"
     },
     {
+      "name": "a3-statt-a4-gebunden",
+      "zeigt": "A3 statt A4 (Stromspeicher und Ladepunkt) ist dieselbe Wahl zwischen vereinfacht und umfangreich",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A4",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A3",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-06-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-06-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_gebunden",
+      "fundstelle": "A1 S. 24, Abschn. 3.2.3"
+    },
+    {
+      "name": "a11-statt-a2-ladepunkt-gebunden",
+      "zeigt": "A11 statt A2 (Ladepunkt ohne sonstige Erzeugung) ist eine Wahl, verbindlich bis zum Ende des Kalenderjahres",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A2",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A11",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-06-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-06-02",
+      "pauschaloption_ab": null,
+      "erwartet": "formelsatz_gebunden",
+      "fundstelle": "A1 S. 24, Abschn. 3.2.3; S. 98–99, Abschn. 10.3"
+    },
+    {
+      "name": "a2-zu-a3-andere-fallkonstellation",
+      "zeigt": "Kommt der Speicher zum Ladepunkt, ist A2 → A3 keine Wahl, sondern eine andere Fallkonstellation",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A2",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A3",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-06-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2027-06-02",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 102, Abschn. 11 (bestimmungsrelevante Änderung); S. 24 (Wahl nur zwischen vereinfacht und umfangreich)"
+    },
+    {
       "name": "fallkonstellation-aendert-sich",
       "zeigt": "A1 → A5 (zweite EE-Anlage) ist keine Wahl, sondern eine bestimmungsrelevante Änderung",
       "vorher": {
@@ -482,7 +569,7 @@
     },
     {
       "name": "formelsatz-unbekannt",
-      "zeigt": "A2–A4, A6–A9 kommen später (E5 = B)",
+      "zeigt": "A6–A9 kommen erst, wenn ein Kunde sie braucht (E5 = B; A2–A4 seit MP-32)",
       "vorher": {
         "foerderweg": "marktpraemie_ausschliesslichkeit",
         "formelsatz": null,
@@ -492,7 +579,7 @@
       },
       "antrag": {
         "foerderweg": "marktpraemie_abgrenzung",
-        "formelsatz": "A4",
+        "formelsatz": "A6",
         "einverstaendnis": true,
         "gueltig_ab": "2026-11-01",
         "netzladen": null,

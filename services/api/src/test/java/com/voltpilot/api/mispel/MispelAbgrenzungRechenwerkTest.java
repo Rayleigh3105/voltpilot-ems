@@ -154,10 +154,34 @@ class MispelAbgrenzungRechenwerkTest {
     }
 
     @Test
-    void alleFuenfzehnFaelleLaufen() {
-        assertThat(faelle().count()).isEqualTo(15);
+    void alleEinundzwanzigFaelleLaufen() {
+        assertThat(faelle().count()).isEqualTo(21);
         assertThat(faelle().map(n -> fall(n).get("formelsatz").asText()).distinct())
                 .containsExactlyInAnyOrderElementsOf(MispelAbgrenzungRechenwerk.FORMELSAETZE);
+    }
+
+    /** MP-32: 20 kWh geladen, 30 kWh zurückgespeist → 10 kWh Fremdtankstrom (A1 S. 16, Formeln (12)/(13) S. 35). */
+    @Test
+    void fremdtankstromPruefnachweis() {
+        Map<String, Bruch> m = rechne(fall("a2-fremdtankstrom-20-geladen-30-rueckgespeist")).monate().get("2027-04");
+        assertThat(m.get("(5)")).isEqualTo(Bruch.von(20));
+        assertThat(m.get("(6)")).isEqualTo(Bruch.von(30));
+        assertThat(m.get("(12)")).isEqualTo(Bruch.von(10));
+        assertThat(m.get("(13)")).isEqualTo(m.get("(11)").minus(m.get("(12)")));
+        assertThat(m.get("(14)A2,A3,A4")).isEqualTo(Bruch.von(new BigDecimal("0.85")));
+        assertThat(m.get("(19)A2,A3")).isEqualTo(Bruch.NULL);
+        assertThat(m).doesNotContainKeys("(14)A1", "(17)A1", "(18)", "(19)A1,A4");
+    }
+
+    /** A1 S. 30: A3 ergibt eine geringere umlagereduzierende Strommenge als A4 — genau um (19)A1,A4. */
+    @Test
+    void a3HoechstensSovielWieA4() {
+        Map<String, Bruch> a3 = rechne(fall("a3-speicher-und-ladepunkt-ohne-verlustprivileg")).monate().get("2027-06");
+        Map<String, Bruch> a4 = rechne(fall("a4-gesonderte-messung-speicherverluste")).monate().get("2027-06");
+        assertThat(a4.get("(20)").minus(a3.get("(20)"))).isEqualTo(a4.get("(19)A1,A4"));
+        assertThat(a4.get("(19)A1,A4").signum()).isPositive();
+        assertThat(MispelAbgrenzungRechenwerk.zaehlerEingaenge("A4")).contains("Z3V¼", "Z3E¼");
+        assertThat(MispelAbgrenzungRechenwerk.summen("A4")).contains("(7)A4", "(8)A4");
     }
 
     @Test

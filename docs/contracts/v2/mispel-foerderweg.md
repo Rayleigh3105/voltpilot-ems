@@ -35,8 +35,8 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 | `ungefoerdert` | ungeförderte Direktvermarktung | § 21a EEG; Tenor Ziff. 1 S. 2, Ziff. 2 S. 2 | Einstellung des Kunden | bleibt |
 
 „Förderweg“ ist das Produktwort für Veräußerungsform und Option zusammen (Bauplan § 8.5); jede Antwort
-trägt daneben `begriff` und `rechtsgrundlage`. **Formelsatz** (`A1`, `A5`, `A5-Variante`, `A10`, `A11` —
-die des Vertrags [MP-4](./mispel-abgrenzung.md), E5 = B): Pflicht in der Abgrenzungsoption; wahlfrei in der
+trägt daneben `begriff` und `rechtsgrundlage`. **Formelsatz** (`A1`, `A2`, `A3`, `A4`, `A5`, `A5-Variante`, `A10`, `A11` —
+die des Vertrags [MP-4](./mispel-abgrenzung.md), E5 = B; A2–A4 für Ladepunkte seit MP-32): Pflicht in der Abgrenzungsoption; wahlfrei in der
 ungeförderten Direktvermarktung, weil die Umlageprivilegien ohne marktprämiengeförderte EE-Anlage ebenfalls
 nach Anlage 1 bestimmt werden (Tenor Ziff. 1 S. 2, z. B. reiner Speicher mit A10/A11); sonst leer. Die
 Pauschaloption trägt keinen Formelsatz der Anlage 1 (ihre P-Formelsätze kommen mit MP-24).
@@ -74,12 +74,14 @@ erste Fassung einer Anlage misst sich am Bestand. Geprüft in dieser Reihenfolge
    Monats (§ 21b Abs. 1 S. 2 EEG; A1 S. 103 mit Fn. 56; Tenor Ziff. 5 S. 2). Ausnahme: die **erstmalige
    Zuordnung** neu in Betrieb genommener Anlagen (`erstmalige_zuordnung: true`, nur solange die Anlage keine
    Fassung hat) — sie ist eine bestimmungsrelevante Änderung im Monat (Rumpfmonat, A1 S. 103; MP-21).
-7. **Bindung des Formelsatzes:** die Wahl zwischen vereinfachtem und umfangreicherem Formelsatz (A10 oder A11
-   statt A1, A5-Variante statt A5) ist verbindlich und erst mit Wirkung für ein folgendes Kalenderjahr
+7. **Bindung des Formelsatzes:** die Wahl zwischen vereinfachtem und umfangreicherem Formelsatz (A3 statt A4,
+   A5-Variante statt A5, A10 statt A1, A11 statt A1 bis A4 — `vereinfacht_statt` der Vektoren) ist verbindlich und erst mit Wirkung für ein folgendes Kalenderjahr
    änderbar (A1 S. 24, Abschn. 3.2.3) — also nur mit `gueltig_ab` = 01.01. Ausnahme: eine Änderung des
    Messkonzepts, die einen anderen Formelsatz erzwingt oder erst ermöglicht (`messkonzept_geaendert: true`,
-   A1 S. 103 mit Fn. 55). Andere Wechsel (A1 → A5, A10 → A11) sind keine Wahl, sondern eine andere
-   Fallkonstellation (A1 S. 102). `formelsatz_gebunden_bis` in der Antwort = 31.12. des Jahres von `am`.
+   A1 S. 103 mit Fn. 55). Andere Wechsel (A1 → A5, A10 → A11, A2 → A3 wenn der Speicher zum Ladepunkt kommt)
+   sind keine Wahl, sondern eine andere Fallkonstellation (A1 S. 102). A10 ist für Ladepunkte nicht anwendbar
+   (A1 S. 95), A11 als Abwandlung zu A4 scheidet aus (A1 S. 99) — beides prüft die Regel noch nicht gegen die
+   Zählerrollen (wie das Gebot der Bestnutzung, unten). `formelsatz_gebunden_bis` in der Antwort = 31.12. des Jahres von `am`.
 8. **Unverändert:** dieselbe Fassung noch einmal ist 409.
 
 Nach dem Eintrag hält der Schreibweg die **Spiegel** an der Anlage nach: `netzladen_erlaubt` = aus, wo der

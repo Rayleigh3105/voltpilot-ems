@@ -19,9 +19,9 @@ import java.util.TreeSet;
 /**
  * MiSpeL MP-8: Rechenwerk der Abgrenzungsoption — reine Rechnung, ohne Uhr, Datenbank oder Schreibweg.
  *
- * <p>Die Formeln (1)–(33) der Formelsätze A1, A5, A5-Variante, A10 und A11 aus Anlage 1 der Festlegung zur
- * Marktintegration von Speichern und Ladepunkten (BNetzA, Az. 618-25-02, Beschluss vom 01.10.2026). Nummern,
- * Begriffe und Rechenwege wörtlich wie im Vertrag {@code docs/contracts/v2/mispel-abgrenzung.md}; Zitierweise
+ * <p>Die Formeln (1)–(33) der Formelsätze A1, A2, A3, A4 (MP-32), A5, A5-Variante, A10 und A11 aus Anlage 1 der
+ * Festlegung zur Marktintegration von Speichern und Ladepunkten (BNetzA, Az. 618-25-02, Beschluss vom 01.10.2026).
+ * Nummern, Begriffe und Rechenwege wörtlich wie im Vertrag {@code docs/contracts/v2/mispel-abgrenzung.md}; Zitierweise
  * „A1 S. 35“ = Anlage 1, Seite 35. Zwilling des Python-Rechenwerks
  * {@code services/optimization/voltpilot_optimization/mispel_abgrenzung.py} (MP-9): beide rechnen
  * {@code mispel-abgrenzung-vectors.json} exakt nach, Stufe für Stufe gleich (Viertelstunde → ∑M → Monat → ∑J).
@@ -43,26 +43,40 @@ public final class MispelAbgrenzungRechenwerk {
     private static final DateTimeFormatter MONAT = DateTimeFormatter.ofPattern("yyyy-MM");
 
     public static final String A1 = "A1";
+    public static final String A2 = "A2";
+    public static final String A3 = "A3";
+    public static final String A4 = "A4";
     public static final String A5 = "A5";
     public static final String A5_VARIANTE = "A5-Variante";
     public static final String A10 = "A10";
     public static final String A11 = "A11";
-    public static final List<String> FORMELSAETZE = List.of(A1, A5, A5_VARIANTE, A10, A11);
+    public static final List<String> FORMELSAETZE = List.of(A1, A2, A3, A4, A5, A5_VARIANTE, A10, A11);
+
+    /** Die Basisfälle mit Ladepunkt (A1 S. 29–31): Wirkungsgrad 0,85 statt (6) / (5), Formel (14)A2,A3,A4. */
+    public static final List<String> MIT_LADEPUNKT = List.of(A2, A3, A4);
+
+    /** (14)A2,A3,A4 = 0,85: Wirkungsgrad, sobald ein Ladepunkt eingebunden ist, mangels geeigneter Messwerte (A1 S. 35). */
+    private static final Bruch WIRKUNGSGRAD_A2_A3_A4 = Bruch.von(new BigDecimal("0.85"));
 
     private static final List<String> Z1 = List.of("Z1NB¼", "Z1NE¼");
     private static final List<String> Z1_Z2 = List.of("Z1NB¼", "Z1NE¼", "Z2V¼", "Z2E¼");
+    private static final List<String> Z1_Z2_Z3 = List.of("Z1NB¼", "Z1NE¼", "Z2V¼", "Z2E¼", "Z3V¼", "Z3E¼");
 
-    /** Zählerwerte je Viertelstunde und Formelsatz (Vertrag, Tabelle „Umfang“). */
+    /** Zählerwerte je Viertelstunde und Formelsatz (Vertrag, Tabelle „Umfang“); Z3 nur in A4 (A1 S. 32). */
     public static List<String> zaehlerEingaenge(String formelsatz) {
         pruefeFormelsatz(formelsatz);
-        return A10.equals(formelsatz) || A11.equals(formelsatz) ? Z1 : Z1_Z2;
+        return switch (formelsatz) {
+            case A10, A11 -> Z1;
+            case A4 -> Z1_Z2_Z3;
+            default -> Z1_Z2;
+        };
     }
 
-    /** Die AW-Eingänge je Viertelstunde: {@code AW¼} in A1, {@code AWa¼}/{@code AWb¼} in A5, keine in A10/A11. */
+    /** Die AW-Eingänge je Viertelstunde: {@code AW¼} in A1–A4, {@code AWa¼}/{@code AWb¼} in A5, keine in A10/A11. */
     public static List<String> awEingaenge(String formelsatz) {
         pruefeFormelsatz(formelsatz);
         return switch (formelsatz) {
-            case A1 -> List.of("AW¼");
+            case A1, A2, A3, A4 -> List.of("AW¼");
             case A5, A5_VARIANTE -> List.of("AWa¼", "AWb¼");
             default -> List.of();
         };
@@ -77,6 +91,12 @@ public final class MispelAbgrenzungRechenwerk {
     private static final List<String> A1_SALDIERUNG = List.of("(3)", "(4)", "(5)", "(6)", "(9)", "(10)", "(11)",
             "(12)", "(13)", "(14)A1", "(15)", "(16)", "(17)A1", "(18)", "(19)A1,A4", "(20)", "(21)");
     private static final List<String> A1_FOERDERUNG = List.of("(26)", "(28)", "(29)", "(30)", "(31)", "(32)");
+    /** A2 und A3 tragen aus Abschn. 4.2.3 nur (19)A2,A3 = 0; (17) und (18) gelten für A1 und A4 (A1 S. 36–37). */
+    private static final List<String> A2_A3_SALDIERUNG = List.of("(3)", "(4)", "(5)", "(6)", "(9)", "(10)", "(11)",
+            "(12)", "(13)", "(14)A2,A3,A4", "(15)", "(16)", "(19)A2,A3", "(20)", "(21)");
+    /** A4 misst den Stromspeicher an Z3 gesondert: (7)A4, (8)A4 und (17)A4 (A1 S. 34, S. 36). */
+    private static final List<String> A4_SALDIERUNG = List.of("(3)", "(4)", "(5)", "(6)", "(7)A4", "(8)A4", "(9)",
+            "(10)", "(11)", "(12)", "(13)", "(14)A2,A3,A4", "(15)", "(16)", "(17)A4", "(18)", "(19)A1,A4", "(20)", "(21)");
 
     private static List<String> a5JeAnlage(String x) {
         return List.of("(23" + x + ")¼ A5", "(24" + x + ")¼", "(25" + x + ")¼", "(27" + x + ")¼");
@@ -103,6 +123,16 @@ public final class MispelAbgrenzungRechenwerk {
             case A1 -> switch (ebene) {
                 case "viertelstunde" -> A1_VIERTELSTUNDE;
                 case "monat" -> folge(A1_SALDIERUNG, A1_FOERDERUNG);
+                default -> List.of("(22)", "(33)");
+            };
+            case A2, A3 -> switch (ebene) {
+                case "viertelstunde" -> A1_VIERTELSTUNDE;
+                case "monat" -> folge(A2_A3_SALDIERUNG, A1_FOERDERUNG);
+                default -> List.of("(22)", "(33)");
+            };
+            case A4 -> switch (ebene) {
+                case "viertelstunde" -> A1_VIERTELSTUNDE;
+                case "monat" -> folge(A4_SALDIERUNG, A1_FOERDERUNG);
                 default -> List.of("(22)", "(33)");
             };
             case A5 -> switch (ebene) {
@@ -133,6 +163,7 @@ public final class MispelAbgrenzungRechenwerk {
     /** ∑M: Monatsformel → summierter Eingang bzw. Viertelstundenwert (A1 S. 34–39, S. 47–48). */
     private static final Map<String, String> SUMME_M = Map.ofEntries(
             Map.entry("(3)", "Z1NB¼"), Map.entry("(4)", "Z1NE¼"), Map.entry("(5)", "Z2V¼"), Map.entry("(6)", "Z2E¼"),
+            Map.entry("(7)A4", "Z3V¼"), Map.entry("(8)A4", "Z3E¼"),
             Map.entry("(9)", "(1)¼"), Map.entry("(11)", "(2)¼"), Map.entry("(26)", "(25)¼"), Map.entry("(29)", "(27)¼"),
             Map.entry("(26a)", "(25a)¼"), Map.entry("(29a)", "(27a)¼"), Map.entry("(26b)", "(25b)¼"),
             Map.entry("(29b)", "(27b)¼"));
@@ -328,15 +359,30 @@ public final class MispelAbgrenzungRechenwerk {
         }
         // A1 S. 34–37: Saldierung; in A5 und A5-Variante unverändert (A1 S. 45, S. 52).
         m.put("(10)", m.get("(5)").minus(m.get("(9)")));
+        // (12) Fremdtankstrom: was die Erzeugung über den Verbrauch an Z2 hinaus „mitbringt“ (A1 S. 16, S. 35).
         m.put("(12)", Bruch.max(m.get("(6)").minus(m.get("(5)")), Bruch.NULL));
         m.put("(13)", Bruch.max(m.get("(11)").minus(m.get("(12)")), Bruch.NULL));
-        m.put("(14)A1", quotient(m.get("(6)"), m.get("(5)")));
-        m.put("(15)", produkt(m.get("(14)A1"), m.get("(10)")));
+        if (MIT_LADEPUNKT.contains(formelsatz)) { // A1 S. 35: (14)A2,A3,A4 = 0,85
+            m.put("(14)A2,A3,A4", WIRKUNGSGRAD_A2_A3_A4);
+            m.put("(15)", m.get("(14)A2,A3,A4").mal(m.get("(10)")));
+        } else {
+            m.put("(14)A1", quotient(m.get("(6)"), m.get("(5)")));
+            m.put("(15)", produkt(m.get("(14)A1"), m.get("(10)")));
+        }
         m.put("(16)", Bruch.max(m.get("(13)").minus(m.get("(15)")), Bruch.NULL));
-        m.put("(17)A1", Bruch.max(m.get("(5)").minus(m.get("(6)")), Bruch.NULL));
-        m.put("(18)", quotient(m.get("(16)"), m.get("(6)")));
-        m.put("(19)A1,A4", produkt(m.get("(18)"), m.get("(17)A1")));
-        m.put("(20)", Bruch.min(m.get("(16)").plus(m.get("(19)A1,A4")), m.get("(3)")));
+        if (A2.equals(formelsatz) || A3.equals(formelsatz)) { // A1 S. 37: keine privilegierungsfähigen Verluste
+            m.put("(19)A2,A3", Bruch.NULL);
+            m.put("(20)", Bruch.min(m.get("(16)").plus(m.get("(19)A2,A3")), m.get("(3)")));
+        } else {
+            if (A4.equals(formelsatz)) { // A1 S. 36: Verluste allein des Stromspeichers, gesondert an Z3 gemessen
+                m.put("(17)A4", Bruch.max(m.get("(7)A4").minus(m.get("(8)A4")), Bruch.NULL));
+            } else {
+                m.put("(17)A1", Bruch.max(m.get("(5)").minus(m.get("(6)")), Bruch.NULL));
+            }
+            m.put("(18)", quotient(m.get("(16)"), m.get("(6)")));
+            m.put("(19)A1,A4", produkt(m.get("(18)"), m.get(A4.equals(formelsatz) ? "(17)A4" : "(17)A1")));
+            m.put("(20)", Bruch.min(m.get("(16)").plus(m.get("(19)A1,A4")), m.get("(3)")));
+        }
         m.put("(21)", m.get("(3)").minus(m.get("(20)")));
         m.put("(28)", Bruch.min(m.get("(13)"), m.get("(15)"))); // A1 S. 38–39; in A5 für die Summe (S. 45)
         if (A5.equals(formelsatz)) { // A1 S. 46–49

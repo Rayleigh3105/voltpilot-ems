@@ -1,6 +1,6 @@
 """MiSpeL MP-9: Rechenwerk der Abgrenzungsoption — reine Rechnung, ohne Uhr, Datenbank oder Schreibweg.
 
-Die Formeln (1)–(33) der Formelsätze A1, A5, A5-Variante, A10 und A11 aus Anlage 1 der Festlegung
+Die Formeln (1)–(33) der Formelsätze A1, A2, A3, A4 (MP-32), A5, A5-Variante, A10 und A11 aus Anlage 1 der Festlegung
 zur Marktintegration von Speichern und Ladepunkten (BNetzA, Az. 618-25-02, Beschluss vom 01.10.2026)
 für Optimierer (MP-10, MP-11) und Simulation (MP-13). Nummern, Begriffe und Rechenwege wörtlich wie
 im Vertrag ``docs/contracts/v2/mispel-abgrenzung.md``; Zitierweise „A1 S. 35“ = Anlage 1, Seite 35.
@@ -33,22 +33,36 @@ NULL = Fraction(0)
 
 _Z1 = ("Z1NB¼", "Z1NE¼")
 _Z1_Z2 = ("Z1NB¼", "Z1NE¼", "Z2V¼", "Z2E¼")
+_Z3 = ("Z3V¼", "Z3E¼")
 
 # Eingänge je Viertelstunde und Stammdaten je Formelsatz (Vertrag, Tabelle „Umfang“).
 EINGAENGE = {
     "A1": _Z1_Z2 + ("AW¼",),
+    "A2": _Z1_Z2 + ("AW¼",),
+    "A3": _Z1_Z2 + ("AW¼",),
+    "A4": _Z1_Z2 + _Z3 + ("AW¼",),
     "A5": _Z1_Z2 + ("AWa¼", "AWb¼"),
     "A5-Variante": _Z1_Z2 + ("AWa¼", "AWb¼"),
     "A10": _Z1,
     "A11": _Z1,
 }
-STAMMDATEN = {"A1": (), "A5": ("Painst", "Pbinst"), "A5-Variante": ("Painst", "Pbinst"), "A10": (), "A11": ()}
+STAMMDATEN = {"A1": (), "A2": (), "A3": (), "A4": (), "A5": ("Painst", "Pbinst"), "A5-Variante": ("Painst", "Pbinst"),
+              "A10": (), "A11": ()}
+
+# A1 S. 35: „(14)A2,A3,A4 = 0,85“ — Wirkungsgrad, sobald ein Ladepunkt eingebunden ist, mangels geeigneter Messwerte.
+WIRKUNGSGRAD_A2_A3_A4 = Fraction(85, 100)
 
 # Formeln je Formelsatz und Ebene, in der Reihenfolge des Formelkatalogs der Vektor-Datei.
 _A1_VIERTELSTUNDE = ("(1)¼", "(2)¼", "(23)¼", "(24)¼", "(25)¼", "(27)¼")
 _A1_SALDIERUNG = ("(3)", "(4)", "(5)", "(6)", "(9)", "(10)", "(11)", "(12)", "(13)", "(14)A1", "(15)",
                   "(16)", "(17)A1", "(18)", "(19)A1,A4", "(20)", "(21)")
 _A1_FOERDERUNG = ("(26)", "(28)", "(29)", "(30)", "(31)", "(32)")
+# A2 und A3 tragen aus Abschn. 4.2.3 nur (19)A2,A3 = 0; (17) und (18) gelten für A1 und A4 (A1 S. 36–37).
+_A2_A3_SALDIERUNG = ("(3)", "(4)", "(5)", "(6)", "(9)", "(10)", "(11)", "(12)", "(13)", "(14)A2,A3,A4", "(15)",
+                     "(16)", "(19)A2,A3", "(20)", "(21)")
+# A4 misst den Stromspeicher an Z3 gesondert: (7)A4, (8)A4 und (17)A4 (A1 S. 34, S. 36).
+_A4_SALDIERUNG = ("(3)", "(4)", "(5)", "(6)", "(7)A4", "(8)A4", "(9)", "(10)", "(11)", "(12)", "(13)",
+                  "(14)A2,A3,A4", "(15)", "(16)", "(17)A4", "(18)", "(19)A1,A4", "(20)", "(21)")
 _A5_JE_ANLAGE = {
     x: (f"(23{x})¼ A5", f"(24{x})¼", f"(25{x})¼", f"(27{x})¼") for x in "ab"
 }
@@ -61,6 +75,9 @@ FORMELN = {
         "monat": _A1_SALDIERUNG + _A1_FOERDERUNG,
         "jahr": ("(22)", "(33)"),
     },
+    "A2": {"viertelstunde": _A1_VIERTELSTUNDE, "monat": _A2_A3_SALDIERUNG + _A1_FOERDERUNG, "jahr": ("(22)", "(33)")},
+    "A3": {"viertelstunde": _A1_VIERTELSTUNDE, "monat": _A2_A3_SALDIERUNG + _A1_FOERDERUNG, "jahr": ("(22)", "(33)")},
+    "A4": {"viertelstunde": _A1_VIERTELSTUNDE, "monat": _A4_SALDIERUNG + _A1_FOERDERUNG, "jahr": ("(22)", "(33)")},
     "A5": {
         "viertelstunde": ("(1)¼", "(2)¼", "(23)¼") + _A5_JE_ANLAGE["a"] + _A5_JE_ANLAGE["b"],
         "monat": _A1_SALDIERUNG + ("(28)", "(ZFa)", "(ZFb)") + _A5_MONAT_JE_ANLAGE["a"] + _A5_MONAT_JE_ANLAGE["b"],
@@ -78,7 +95,8 @@ FORMELSAETZE = tuple(FORMELN)
 
 # ∑M: Monatsformel → summierter Eingang bzw. Viertelstundenwert (A1 S. 34–39, S. 47–48).
 _SUMME_M = {
-    "(3)": "Z1NB¼", "(4)": "Z1NE¼", "(5)": "Z2V¼", "(6)": "Z2E¼", "(9)": "(1)¼", "(11)": "(2)¼",
+    "(3)": "Z1NB¼", "(4)": "Z1NE¼", "(5)": "Z2V¼", "(6)": "Z2E¼", "(7)A4": "Z3V¼", "(8)A4": "Z3E¼",
+    "(9)": "(1)¼", "(11)": "(2)¼",
     "(26)": "(25)¼", "(29)": "(27)¼",
     "(26a)": "(25a)¼", "(29a)": "(27a)¼", "(26b)": "(25b)¼", "(29b)": "(27b)¼",
 }
@@ -215,15 +233,27 @@ def monat(formelsatz, monatssummen, stammdaten=None):
         return _geordnet(formelsatz, "monat", m)
     # A1 S. 34–37: Saldierung; in A5 und A5-Variante unverändert (A1 S. 45, S. 52).
     m["(10)"] = m["(5)"] - m["(9)"]
+    # (12) Fremdtankstrom: was die Erzeugung über den Verbrauch an Z2 hinaus „mitbringt“ (A1 S. 16, S. 35).
     m["(12)"] = max(m["(6)"] - m["(5)"], NULL)
     m["(13)"] = max(m["(11)"] - m["(12)"], NULL)
-    m["(14)A1"] = _quotient(m["(6)"], m["(5)"])
-    m["(15)"] = _produkt(m["(14)A1"], m["(10)"])
+    if formelsatz in ("A2", "A3", "A4"):  # A1 S. 35: (14)A2,A3,A4 = 0,85
+        m["(14)A2,A3,A4"] = WIRKUNGSGRAD_A2_A3_A4
+        m["(15)"] = m["(14)A2,A3,A4"] * m["(10)"]
+    else:
+        m["(14)A1"] = _quotient(m["(6)"], m["(5)"])
+        m["(15)"] = _produkt(m["(14)A1"], m["(10)"])
     m["(16)"] = max(m["(13)"] - m["(15)"], NULL)
-    m["(17)A1"] = max(m["(5)"] - m["(6)"], NULL)
-    m["(18)"] = _quotient(m["(16)"], m["(6)"])
-    m["(19)A1,A4"] = _produkt(m["(18)"], m["(17)A1"])
-    m["(20)"] = min(m["(16)"] + m["(19)A1,A4"], m["(3)"])
+    if formelsatz in ("A2", "A3"):  # A1 S. 37: keine privilegierungsfähigen Stromspeicherverluste
+        m["(19)A2,A3"] = NULL
+        m["(20)"] = min(m["(16)"] + m["(19)A2,A3"], m["(3)"])
+    else:
+        if formelsatz == "A4":  # A1 S. 36: Verluste allein des Stromspeichers, gesondert an Z3 gemessen
+            m["(17)A4"] = max(m["(7)A4"] - m["(8)A4"], NULL)
+        else:
+            m["(17)A1"] = max(m["(5)"] - m["(6)"], NULL)
+        m["(18)"] = _quotient(m["(16)"], m["(6)"])
+        m["(19)A1,A4"] = _produkt(m["(18)"], m["(17)A4"] if formelsatz == "A4" else m["(17)A1"])
+        m["(20)"] = min(m["(16)"] + m["(19)A1,A4"], m["(3)"])
     m["(21)"] = m["(3)"] - m["(20)"]
     m["(28)"] = min(m["(13)"], m["(15)"])  # A1 S. 38–39; in A5 für die Summe der Anlagen (S. 45)
     if formelsatz == "A5":  # A1 S. 46–49

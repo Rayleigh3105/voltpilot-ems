@@ -84,15 +84,19 @@ public final class FoerderwegRegeln {
         }
     }
 
-    /** Die Formelsätze des Vertrags MP-4 ({@code mispel-abgrenzung-vectors.json} → {@code formelsaetze}, E5 = B). */
-    public static final List<String> FORMELSAETZE = List.of("A1", "A5", "A5-Variante", "A10", "A11");
+    /**
+     * Die Formelsätze des Vertrags MP-4 ({@code mispel-abgrenzung-vectors.json} → {@code formelsaetze}, E5 = B; A2–A4
+     * seit MP-32).
+     */
+    public static final List<String> FORMELSAETZE = List.of("A1", "A2", "A3", "A4", "A5", "A5-Variante", "A10", "A11");
 
     /**
-     * Vereinfachter Formelsatz → der umfangreichere, an dessen Stelle er tritt (A1 S. 24, Abschn. 3.2.3), soweit
-     * beide im Umfang sind: „der A5-Variante anstelle von A5“, „des Sonderfalls A10 anstelle des Basisfalls A1“,
-     * „des Sonderfalls A11 anstelle der Basisfälle A1 bis A4“.
+     * Vereinfachter Formelsatz → die umfangreicheren, an deren Stelle er tritt (A1 S. 24, Abschn. 3.2.3), soweit
+     * im Umfang: „des Basisfalls A3 anstelle von Basisfall A4“, „der A5-Variante anstelle von A5“, „des Sonderfalls
+     * A10 anstelle des Basisfalls A1“, „des Sonderfalls A11 anstelle der Basisfälle A1 bis A4“.
      */
-    public static final Map<String, String> VEREINFACHT_STATT = Map.of("A5-Variante", "A5", "A10", "A1", "A11", "A1");
+    public static final Map<String, List<String>> VEREINFACHT_STATT = Map.of("A3", List.of("A4"),
+            "A5-Variante", List.of("A5"), "A10", List.of("A1"), "A11", List.of("A1", "A2", "A3", "A4"));
 
     /**
      * Die AW-Differenzierungen (MP-12b): „In welchen Viertelstunden sich der anzulegende Wert nach den verschiedenen
@@ -139,7 +143,8 @@ public final class FoerderwegRegeln {
 
     /** Ob zwei Formelsätze die Wahl zwischen vereinfacht und umfangreich sind (A1 S. 24). */
     public static boolean wahlPaar(String a, String b) {
-        return a != null && b != null && (b.equals(VEREINFACHT_STATT.get(a)) || a.equals(VEREINFACHT_STATT.get(b)));
+        return a != null && b != null && (VEREINFACHT_STATT.getOrDefault(a, List.of()).contains(b)
+                || VEREINFACHT_STATT.getOrDefault(b, List.of()).contains(a));
     }
 
     /** Bis wann die Wahl des Formelsatzes am Tag {@code am} bindet: das Ende des Kalenderjahres (A1 S. 24). */

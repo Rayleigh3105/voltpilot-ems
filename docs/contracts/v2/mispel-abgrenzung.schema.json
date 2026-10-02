@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.local/contracts/v2/mispel-abgrenzung.schema.json",
-  "title": "MiSpeL-Abgrenzungsoption: Formelsätze A1, A5, A5-Variante, A10, A11 mit Vektoren",
+  "title": "MiSpeL-Abgrenzungsoption: Formelsätze A1, A2, A3, A4, A5, A5-Variante, A10, A11 mit Vektoren",
   "description": "Schema der Datei mispel-abgrenzung-vectors.json. Bleibt in der Teilmenge, die der Java-Läufer UemsSchemaLaeufer prüft (type, required, properties, additionalProperties, items, enum, const, pattern, minItems, minLength, minimum, anyOf, $ref); alles darüber hinaus prüfen die Leser selbst (Regeln L2–L8 in mispel-abgrenzung.md).",
   "type": "object",
   "additionalProperties": false,
@@ -52,9 +52,12 @@
     "formelsaetze": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["A1", "A5", "A5-Variante", "A10", "A11"],
+      "required": ["A1", "A2", "A3", "A4", "A5", "A5-Variante", "A10", "A11"],
       "properties": {
         "A1": { "$ref": "#/$defs/formelsatz" },
+        "A2": { "$ref": "#/$defs/formelsatz" },
+        "A3": { "$ref": "#/$defs/formelsatz" },
+        "A4": { "$ref": "#/$defs/formelsatz" },
         "A5": { "$ref": "#/$defs/formelsatz" },
         "A5-Variante": { "$ref": "#/$defs/formelsatz" },
         "A10": { "$ref": "#/$defs/formelsatz" },
@@ -91,8 +94,8 @@
       "type": "string",
       "pattern": "^\\(([0-9]+[ab]?|ZF[ab])\\)(¼)?( ?(A5-Variante|A[0-9]+(,A[0-9]+)*))?$"
     },
-    "formelsatz_name": { "enum": ["A1", "A5", "A5-Variante", "A10", "A11"] },
-    "eingang": { "enum": ["Z1NB¼", "Z1NE¼", "Z2V¼", "Z2E¼", "AW¼", "AWa¼", "AWb¼"] },
+    "formelsatz_name": { "enum": ["A1", "A2", "A3", "A4", "A5", "A5-Variante", "A10", "A11"] },
+    "eingang": { "enum": ["Z1NB¼", "Z1NE¼", "Z2V¼", "Z2E¼", "Z3V¼", "Z3E¼", "AW¼", "AWa¼", "AWb¼"] },
     "regel": {
       "type": "object",
       "additionalProperties": false,
@@ -109,7 +112,7 @@
       "properties": {
         "bezeichnung": { "type": "string", "minLength": 1 },
         "fundstelle": { "$ref": "#/$defs/fundstelle" },
-        "zaehler": { "type": "array", "minItems": 1, "items": { "enum": ["Z1", "Z2"] } },
+        "zaehler": { "type": "array", "minItems": 1, "items": { "enum": ["Z1", "Z2", "Z3"] } },
         "eingaenge": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/eingang" } },
         "stammdaten": { "type": "array", "items": { "enum": ["Painst", "Pbinst"] } },
         "formeln": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nr" } }
@@ -126,6 +129,7 @@
         "ebene": { "enum": ["viertelstunde", "monat", "jahr"] },
         "formelsaetze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/formelsatz_name" } },
         "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "konstante": { "description": "Fester Wert der Formel, wörtlich aus Anlage 1: (14)A2,A3,A4 = 0,85, (19)A2,A3 = 0 (Regel L10).", "type": "number" },
         "summe": {
           "type": "object",
           "additionalProperties": false,
@@ -171,6 +175,8 @@
         "Z1NE¼": { "$ref": "#/$defs/kwh" },
         "Z2V¼": { "$ref": "#/$defs/kwh" },
         "Z2E¼": { "$ref": "#/$defs/kwh" },
+        "Z3V¼": { "$ref": "#/$defs/kwh" },
+        "Z3E¼": { "$ref": "#/$defs/kwh" },
         "AW¼": { "type": "number", "minimum": 0 },
         "AWa¼": { "type": "number", "minimum": 0 },
         "AWb¼": { "type": "number", "minimum": 0 }

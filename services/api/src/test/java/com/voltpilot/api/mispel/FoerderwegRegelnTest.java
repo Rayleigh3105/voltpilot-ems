@@ -57,8 +57,12 @@ class FoerderwegRegelnTest {
         JSON.readTree(V2.resolve("mispel-abgrenzung-vectors.json").toFile()).get("formelsaetze").fieldNames()
                 .forEachRemaining(mp4::add);
         assertThat(FoerderwegRegeln.FORMELSAETZE).containsExactlyElementsOf(hier).containsExactlyInAnyOrderElementsOf(mp4);
-        Map<String, String> paare = new LinkedHashMap<>();
-        v.get("vereinfacht_statt").fields().forEachRemaining(e -> paare.put(e.getKey(), e.getValue().asText()));
+        Map<String, List<String>> paare = new LinkedHashMap<>();
+        v.get("vereinfacht_statt").fields().forEachRemaining(e -> {
+            List<String> statt = new ArrayList<>();
+            e.getValue().forEach(n -> statt.add(n.asText()));
+            paare.put(e.getKey(), statt);
+        });
         assertThat(FoerderwegRegeln.VEREINFACHT_STATT).isEqualTo(paare);
     }
 
@@ -102,6 +106,10 @@ class FoerderwegRegelnTest {
         assertThat(FoerderwegRegeln.wahlPaar("A1", "A11")).isTrue();
         assertThat(FoerderwegRegeln.wahlPaar("A10", "A11")).isFalse();
         assertThat(FoerderwegRegeln.wahlPaar("A1", "A5")).isFalse();
+        assertThat(FoerderwegRegeln.wahlPaar("A4", "A3")).isTrue();
+        assertThat(FoerderwegRegeln.wahlPaar("A2", "A11")).isTrue();
+        assertThat(FoerderwegRegeln.wahlPaar("A2", "A3")).isFalse();
+        assertThat(FoerderwegRegeln.wahlPaar("A2", "A10")).isFalse();
     }
 
     @TestFactory
