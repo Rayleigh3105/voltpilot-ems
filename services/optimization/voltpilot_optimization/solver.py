@@ -1438,6 +1438,18 @@ def optimize(
     return _with_explanation(plan, model, inp, fallback_14a=False)
 
 
+def optimize_mit_rueckfall(
+    inp: OptimizationInput, plan_id: UUID, generated_at: datetime
+) -> tuple[SchedulePlan, str | None]:
+    """MiSpeL MP-33c: :func:`optimize` ohne Erklaerung, dazu der Rueckfall des
+    Mischbetriebs - ``None``, ``"knotengrenze"`` oder ``"zeitgrenze"`` (siehe
+    :func:`_solve_plan`). Der MiSpeL-Check schreibt ihn in ``hinweis``, statt
+    still einen anderen Betrag zu liefern."""
+    model = build_model(inp)
+    rueckfall = _solve_plan(model, inp)
+    return _extract_plan(model, inp, plan_id, generated_at), rueckfall
+
+
 def optimize_ignoring_grid_limit(
     inp: OptimizationInput,
     plan_id: UUID,
@@ -1761,38 +1773,74 @@ def _charge_surplus_to_battery(inp: OptimizationInput, t: int, slot, why) -> boo
 #: ohnehin bezahlt geladen wird) minutenlang verzweigen. Dann plant der Lauf
 #: ohne Gutschrift (``saldierung_aktiv`` = 0, 0,3 s) - vorsichtig: er
 #: ueberschaetzt keinen Wert, er verschenkt hoechstens die Gutschrift dieses
-#: einen Laufs.
+#: einen Laufs. Eine WANDUHR: unter Last trifft sie andere Laeufe - richtig
+#: fuer die Live-Planung (ein Plan muss rechtzeitig stehen), falsch fuer den
+#: MiSpeL-Check (MP-33c, :data:`CHECK_KNOTENGRENZE`).
 MISCHBETRIEB_ZEITGRENZE_S = 20.0
+
+#: MiSpeL MP-33c: die Abbruchregel des naechtlichen MiSpeL-Checks
+#: (``OptimizationInput.wiederholbar``) - HiGHS ``mip_max_nodes`` statt der
+#: Wanduhr. HiGHS rechnet deterministisch: dieselbe Eingabe erreicht die
+#: Grenze in jedem Lauf am selben Knoten oder nie, unabhaengig von der Last.
+#: Gemessen (Kundentyp a, A1 mit Monatszustand, Preise 10/2025-09/2026, je
+#: Tag ein Loesungslauf): hoechstens 122 Knoten, Median 3; die Zeit geht in
+#: die Wurzel (bis 16 s bei wenigen Knoten), nicht in den Baum. Die Grenze
+#: liegt sechzehnfach darueber - sie faengt nur den Fall, der „minutenlang
+#: verzweigt“ (MP-10), und der rechnet dann ohne Gutschrift wie an der
+#: Wanduhr, nur in jedem Lauf gleich. Klein genug, dass sie auch unter Last
+#: vor der Notbremse :data:`CHECK_NOTBREMSE_S` greift.
+CHECK_KNOTENGRENZE = 2_000
+
+#: MiSpeL MP-33c: die Notbremse des Checks in Sekunden - nur gegen einen
+#: Haenger, nie die Regel. Erreicht ein Loesungslauf sie, ist das Ergebnis
+#: wieder lastabhaengig; der Check sagt es dann in ``hinweis``.
+CHECK_NOTBREMSE_S = 900.0
 
 
 class _Zeitgrenze(RuntimeError):
-    """Der Solver hat die Zeitgrenze erreicht (nur mit ``time_limit``)."""
+    """Der Solver hat die Zeit- oder (MP-33c) die Knotengrenze erreicht;
+    ``art`` ist ``"zeitgrenze"`` oder ``"knotengrenze"``."""
+
+    def __init__(self, art: str, message: str) -> None:
+        super().__init__(message)
+        self.art = art
 
 
-def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
+def _grenzen(inp: OptimizationInput, zeitgrenze_s: float) -> dict:
+    """MiSpeL MP-33c: die Grenzen eines Mischbetrieb-Loesungslaufs - live die
+    Wanduhr ``zeitgrenze_s``, im Check (``wiederholbar``) die Knotengrenze
+    und die Notbremse."""
+    if inp.wiederholbar:
+        return {"time_limit": CHECK_NOTBREMSE_S, "knoten": CHECK_KNOTENGRENZE}
+    return {"time_limit": zeitgrenze_s}
+
+
+def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> str | None:
     """Loest das Plan-Modell; im Mischbetrieb mit dem Rueckfall ohne Gutschrift
-    (siehe :data:`MISCHBETRIEB_ZEITGRENZE_S`). Jedes andere Modell: wie immer."""
+    (siehe :data:`MISCHBETRIEB_ZEITGRENZE_S`). Jedes andere Modell: wie immer.
+
+    MP-33c: gibt den Rueckfall zurueck - ``None``, ``"knotengrenze"`` (nur
+    mit ``wiederholbar``, in jedem Lauf gleich) oder ``"zeitgrenze"`` (die
+    Wanduhr, lastabhaengig)."""
     if hasattr(model, "saldierung_monat_aktiv"):
-        _solve_plan_monatszustand(model, inp)
-        return
+        return _solve_plan_monatszustand(model, inp)
     if hasattr(model, "saldierung_jahr_aktiv"):
-        _solve_plan_jahreszustand(model, inp)
-        return
+        return _solve_plan_jahreszustand(model, inp)
     if not hasattr(model, "saldierung_aktiv"):
         _solve(model)
-        return
+        return None
     if hasattr(model, "fz_laden"):
-        _solve_plan_fahrzeug(model, inp)
-        return
+        return _solve_plan_fahrzeug(model, inp)
     try:
-        _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
-    except _Zeitgrenze:
+        _solve(model, **_grenzen(inp, MISCHBETRIEB_ZEITGRENZE_S))
+    except _Zeitgrenze as grenze:
         logger.warning(
             "mischbetrieb.saldierung_zeitgrenze",
             extra={
                 "context": {
                     "site_id": str(inp.site_id),
                     "zeitgrenze_s": MISCHBETRIEB_ZEITGRENZE_S,
+                    "grenze": grenze.art,
                     "reason": (
                         "Mischbetrieb mit Saldierung nicht in der Zeitgrenze "
                         "geloest - dieser Lauf plant ohne Gutschrift (16) = 0"
@@ -1802,6 +1850,8 @@ def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
         )
         model.saldierung_aktiv.fix(0)
         _solve(model)
+        return grenze.art
+    return None
 
 
 #: MiSpeL MP-33b: Zeitgrenze des Teilproblems „mit Saldierung“ im Mischbetrieb
@@ -1815,7 +1865,7 @@ FAHRZEUG_SALDIERUNG_ZEITGRENZE_S = 8.0
 FAHRZEUG_HIGHS_OPTIONEN = {"mip_heuristic_effort": 0.3}
 
 
-def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> None:
+def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> str | None:
     """Mischbetrieb A3/A4 mit Fahrzeug (MP-33b): die Lauf-Ganzzahl
     ``saldierung_aktiv`` wird aufgezaehlt statt verzweigt.
 
@@ -1834,17 +1884,21 @@ def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> None:
     ``mischbetrieb.fahrzeug_saldierung_zeitgrenze`` mit Luecke). Er ist ein
     zulaessiger Plan des ganzen Modells - (16) exakt gebucht -, also
     ueberschaetzt er keinen Wert; er ist nur nicht bewiesen optimal.
+
+    MP-33c: mit ``wiederholbar`` die Knotengrenze statt der Wanduhr; der
+    Rueckweg meldet die erreichte Grenze (auch wenn ihr Plan uebernommen ist).
     """
     model.saldierung_aktiv.fix(0)
-    ohne, _ = _solve_teil(model)
+    ohne, _, _ = _solve_teil(model)
     stand_ohne = [
         (var, var.value) for var in model.component_data_objects(Var) if not var.fixed
     ]
     model.saldierung_aktiv.fix(1)
+    grenzen = _grenzen(inp, FAHRZEUG_SALDIERUNG_ZEITGRENZE_S)
     try:
-        mit, luecke = _solve_teil(model, time_limit=FAHRZEUG_SALDIERUNG_ZEITGRENZE_S)
+        mit, luecke, grenze = _solve_teil(model, **grenzen)
     except InfeasiblePlanError:
-        mit, luecke = None, None
+        mit, luecke, grenze = None, None, None
     if luecke is not None:
         logger.warning(
             "mischbetrieb.fahrzeug_saldierung_zeitgrenze",
@@ -1852,6 +1906,7 @@ def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> None:
                 "context": {
                     "site_id": str(inp.site_id),
                     "zeitgrenze_s": FAHRZEUG_SALDIERUNG_ZEITGRENZE_S,
+                    "grenze": grenze,
                     "luecke": luecke,
                     "uebernommen": mit is not None and mit < ohne,
                     "reason": (
@@ -1863,39 +1918,37 @@ def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> None:
             },
         )
     if mit is not None and mit < ohne:
-        return
+        return grenze
     model.saldierung_aktiv.fix(0)
     for var, wert in stand_ohne:
         var.set_value(wert, skip_validation=True)
+    return grenze
 
 
 def _solve_teil(
-    model: ConcreteModel, time_limit: float | None = None
-) -> tuple[float | None, float | None]:
-    """Ein Teilproblem von :func:`_solve_plan_fahrzeug`: ``(Zielwert, Luecke)``.
-    Luecke ist ``None``, wenn bewiesen optimal; an der Zeitgrenze der beste
-    zulaessige Plan (Zielwert ``None``, wenn es keinen gibt)."""
-    from pyomo.contrib.appsi.base import TerminationCondition
-
-    results = _highs(model, time_limit, FAHRZEUG_HIGHS_OPTIONEN)
-    if results.termination_condition == TerminationCondition.optimal:
+    model: ConcreteModel, time_limit: float | None = None, knoten: int | None = None
+) -> tuple[float | None, float | None, str | None]:
+    """Ein Teilproblem von :func:`_solve_plan_fahrzeug`: ``(Zielwert, Luecke,
+    Grenze)``. Luecke und Grenze sind ``None``, wenn bewiesen optimal; an der
+    Zeit- oder Knotengrenze der beste zulaessige Plan (Zielwert ``None``, wenn
+    es keinen gibt)."""
+    results = _highs(model, time_limit, FAHRZEUG_HIGHS_OPTIONEN, knoten)
+    if _ist_optimal(results):
         results.solution_loader.load_vars()
-        return results.best_feasible_objective, None
-    if (
-        time_limit is not None
-        and results.termination_condition == TerminationCondition.maxTimeLimit
-    ):
+        return results.best_feasible_objective, None, None
+    grenze = _erreichte_grenze(results, time_limit, knoten)
+    if grenze is not None:
         ziel, schranke = results.best_feasible_objective, results.best_objective_bound
         if ziel is None or not math.isfinite(ziel):
-            return None, math.inf
+            return None, math.inf, grenze
         results.solution_loader.load_vars()
-        return ziel, abs(ziel - schranke) / max(abs(ziel), 1e-9)
+        return ziel, abs(ziel - schranke) / max(abs(ziel), 1e-9), grenze
     raise InfeasiblePlanError(
         f"dispatch MILP not solved to optimality: {results.termination_condition}"
     )
 
 
-def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> None:
+def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> str | None:
     """Der Rueckfall mit Monatszustand (MP-11): ohne Gutschrift, ohne Ganzzahl.
 
     ``saldierung_aktiv = 0`` aus MP-10 waere hier unzulaessig, sobald die
@@ -1904,14 +1957,15 @@ def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> N
     belohnt nichts eine grosse rote Menge, die Minimierung haelt (16) von
     selbst am MAX. Wie in MP-10 ueberschaetzt der Lauf keinen Wert."""
     try:
-        _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
-    except _Zeitgrenze:
+        _solve(model, **_grenzen(inp, MISCHBETRIEB_ZEITGRENZE_S))
+    except _Zeitgrenze as grenze:
         logger.warning(
             "mischbetrieb.saldierung_zeitgrenze",
             extra={
                 "context": {
                     "site_id": str(inp.site_id),
                     "zeitgrenze_s": MISCHBETRIEB_ZEITGRENZE_S,
+                    "grenze": grenze.art,
                     "reason": (
                         "Mischbetrieb mit Monatszustand nicht in der Zeitgrenze "
                         "geloest - dieser Lauf plant ohne Gutschrift"
@@ -1923,22 +1977,25 @@ def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> N
         model.mischbetrieb_monat_max.deactivate()
         model.saldierung_monat_aktiv.fix(0)
         _solve(model)
+        return grenze.art
+    return None
 
 
-def _solve_plan_jahreszustand(model: ConcreteModel, inp: OptimizationInput) -> None:
+def _solve_plan_jahreszustand(model: ConcreteModel, inp: OptimizationInput) -> str | None:
     """Der Rueckfall mit Jahreszustand (MP-26): der Zeitraum, der (P4) erst im
     Lauf erreichen wuerde, bleibt ohne Saldierung (``saldierung_jahr_aktiv``
     = 0, dann (P10) des Laufs = 0). Immer zulaessig - die Saldierung ist nur
     ein Ertrag - und wie in MP-10 ueberschaetzt der Lauf keinen Wert."""
     try:
-        _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
-    except _Zeitgrenze:
+        _solve(model, **_grenzen(inp, MISCHBETRIEB_ZEITGRENZE_S))
+    except _Zeitgrenze as grenze:
         logger.warning(
             "jahreszustand.saldierung_zeitgrenze",
             extra={
                 "context": {
                     "site_id": str(inp.site_id),
                     "zeitgrenze_s": MISCHBETRIEB_ZEITGRENZE_S,
+                    "grenze": grenze.art,
                     "reason": (
                         "Pauschaloption mit Jahreszustand nicht in der "
                         "Zeitgrenze geloest - dieser Lauf plant ohne "
@@ -1949,27 +2006,51 @@ def _solve_plan_jahreszustand(model: ConcreteModel, inp: OptimizationInput) -> N
         )
         model.saldierung_jahr_aktiv.fix(0)
         _solve(model)
+        return grenze.art
+    return None
 
 
-def _solve(model: ConcreteModel, time_limit: float | None = None) -> None:
-    # Lazy import so this module (and the model-building tests) never hard-fail
-    # where the HiGHS wheel is unavailable.
-    from pyomo.contrib.appsi.base import TerminationCondition
-
-    results = _highs(model, time_limit)
-    if (
-        time_limit is not None
-        and results.termination_condition == TerminationCondition.maxTimeLimit
-    ):
-        raise _Zeitgrenze(f"time limit {time_limit} s reached")
-    if results.termination_condition != TerminationCondition.optimal:
+def _solve(
+    model: ConcreteModel, time_limit: float | None = None, knoten: int | None = None
+) -> None:
+    results = _highs(model, time_limit, knoten=knoten)
+    grenze = _erreichte_grenze(results, time_limit, knoten)
+    if grenze is not None:
+        raise _Zeitgrenze(grenze, f"{grenze} reached (time {time_limit} s, nodes {knoten})")
+    if not _ist_optimal(results):
         raise InfeasiblePlanError(
             f"dispatch MILP not solved to optimality: {results.termination_condition}"
         )
     results.solution_loader.load_vars()
 
 
-def _highs(model: ConcreteModel, time_limit: float | None = None, optionen=None):
+def _ist_optimal(results) -> bool:
+    # Lazy import so this module (and the model-building tests) never hard-fail
+    # where the HiGHS wheel is unavailable.
+    from pyomo.contrib.appsi.base import TerminationCondition
+
+    return results.termination_condition == TerminationCondition.optimal
+
+
+def _erreichte_grenze(results, time_limit: float | None, knoten: int | None) -> str | None:
+    """``"zeitgrenze"`` / ``"knotengrenze"`` (MP-33c), wenn HiGHS an einer
+    GESETZTEN Grenze stehen blieb, sonst ``None``. appsi meldet ``mip_max_nodes``
+    als ``maxIterations`` (HiGHS ``kSolutionLimit``)."""
+    from pyomo.contrib.appsi.base import TerminationCondition
+
+    if time_limit is not None and results.termination_condition == TerminationCondition.maxTimeLimit:
+        return "zeitgrenze"
+    if knoten is not None and results.termination_condition == TerminationCondition.maxIterations:
+        return "knotengrenze"
+    return None
+
+
+def _highs(
+    model: ConcreteModel,
+    time_limit: float | None = None,
+    optionen=None,
+    knoten: int | None = None,
+):
     from pyomo.contrib.appsi.solvers.highs import Highs
 
     solver = Highs()
@@ -1992,6 +2073,8 @@ def _highs(model: ConcreteModel, time_limit: float | None = None, optionen=None)
         "mip_feasibility_tolerance": 1e-9,
         **(optionen or {}),
     }
+    if knoten is not None:
+        solver.highs_options["mip_max_nodes"] = knoten
     if time_limit is not None:
         solver.config.time_limit = time_limit
     return solver.solve(model)

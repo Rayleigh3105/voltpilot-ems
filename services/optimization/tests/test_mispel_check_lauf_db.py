@@ -29,7 +29,6 @@ import pytest
 
 psycopg = pytest.importorskip("psycopg")
 
-from voltpilot_optimization import solver as solver_modul  # noqa: E402
 from voltpilot_optimization.simulation import mispel_check as mc  # noqa: E402
 from voltpilot_optimization.simulation import mispel_check_lauf as lauf  # noqa: E402
 from voltpilot_optimization.simulation.data import BERLIN, price_rows_from_json  # noqa: E402
@@ -209,10 +208,8 @@ def test_der_lauf_fuellt_die_tabelle_wie_die_kommandozeile(dsn, monkeypatch, tmp
     wetter = tmp_path / "wetter.json"
     wetter.write_text(_wetter_body())
     assert lauf.check_deps(dsn, 5).max_workers == lauf.MAX_WORKERS  # nie mehr als zwei Solver-Prozesse
-    # Gleichheit braucht dieselbe Lösung: im Mischbetrieb fällt ein Lösungslauf nach
-    # MISCHBETRIEB_ZEITGRENZE_S (20 s) lastabhängig auf „ohne Gutschrift“ zurück - im Test
-    # darum in diesem Prozess und ohne diese Wanduhr-Grenze.
-    monkeypatch.setattr(solver_modul, "MISCHBETRIEB_ZEITGRENZE_S", 600.0)
+    # Gleichheit ohne Krücke (MP-33c): der Check endet an der Knotengrenze, nicht an der
+    # Wanduhr - dieselbe Eingabe, dieselben Beträge, auch unter Last.
     deps = lauf.check_deps(dsn, 1)
     deps.weather = mc.ArchivDateiWetter([wetter.read_text()])
 

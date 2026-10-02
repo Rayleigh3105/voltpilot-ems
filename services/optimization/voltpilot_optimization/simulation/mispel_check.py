@@ -379,9 +379,11 @@ def rechne_fall(
     )
     stur = scenario_b_dispatch(heute_data, battery)
     out_stur = evaluate(heute_data, stur, battery)
+    # wiederholbar (MP-33c): die Knotengrenze statt der Wanduhr - dieselbe
+    # Eingabe ergibt unter jeder Last dieselben Beträge.
     heute = run_milp_year(
         heute_data, battery, netzladen=not a1, max_workers=max_workers,
-        export_eur_mwh=exp_heute, strenge=a1 and heute_streng,
+        export_eur_mwh=exp_heute, strenge=a1 and heute_streng, wiederholbar=True,
     )
     out_heute = evaluate(heute_data, heute, battery)
 
@@ -404,7 +406,7 @@ def rechne_fall(
     misch_data = replace(heute_data, import_eur_mwh=imp_misch, export_eur_mwh=exp_misch)
     mit = run_milp_year(
         misch_data, battery, netzladen=True, max_workers=max_workers,
-        export_eur_mwh=exp_misch, mischbetrieb=misch,
+        export_eur_mwh=exp_misch, mischbetrieb=misch, wiederholbar=True,
     )
 
     # Bewertung mit dem Rechenwerk: Bezug voll, Einspeisung Spot, Gutschrift
@@ -498,7 +500,32 @@ def rechne_fall(
             for name, eur, herkunft in posten
         ],
         "differenzEur": round(differenz, 2),
+        "rueckfaelle": [
+            {"variante": variante, "tag": tag, "grenze": grenze}
+            for variante, dispatch in (("heute", heute), ("mitMispel", mit))
+            for tag, grenze in dispatch.rueckfaelle
+        ],
     }
+
+
+def rueckfall_hinweis(ergebnisse: dict[str, dict]) -> str | None:
+    """MP-33c: der Satz für ``hinweis``, wenn ein Lösungslauf eines Falls auf
+    „ohne Gutschrift“ zurückfiel - nie still ein anderer Betrag. ``None`` =
+    jeder Lauf bewiesen optimal."""
+    tage = sorted({r["tag"] for f in ergebnisse.values() for r in f["rueckfaelle"]})
+    if not tage:
+        return None
+    grenzen = {r["grenze"] for f in ergebnisse.values() for r in f["rueckfaelle"]}
+    liste = ", ".join(date.fromisoformat(t).strftime("%d.%m.%Y") for t in tage[:5])
+    liste += " …" if len(tage) > 5 else ""
+    satz = (
+        f"An {len(tage)} {'Tag' if len(tage) == 1 else 'Tagen'} ({liste}) hat der "
+        "Solver die Planung mit MiSpeL nicht bis zum Optimum gelöst; dort rechnet "
+        "der Check ohne Gutschrift – der Vorteil ist eher zu niedrig geschätzt."
+    )
+    if "zeitgrenze" in grenzen:
+        return satz + " Ein Lauf hat die Zeitgrenze erreicht: ein neuer Lauf kann abweichen."
+    return satz + " Jeder Lauf mit derselben Eingabe rechnet dasselbe."
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +624,7 @@ def mispel_check(
         "faelle": ergebnisse,
         "spanne": {name: ergebnisse[name]["differenzEur"] for name in faelle},
         "annahmen": _annahmen(anlage, faelle, heute_streng),
+        "hinweis": rueckfall_hinweis(ergebnisse),
     }
 
 

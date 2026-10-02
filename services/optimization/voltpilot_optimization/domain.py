@@ -878,6 +878,13 @@ class OptimizationInput:
     #: Speicher (:class:`Fahrzeugspeicher`). ``None`` (die Vorgabe, jeder
     #: unidirektionale Ladepunkt) = KEIN Term und ein byte-gleicher Plan.
     fahrzeug: Fahrzeugspeicher | None = None
+    #: MiSpeL MP-33c: die Abbruchregel des Mischbetriebs OHNE Wanduhr - die
+    #: Ganzzahl-Suche endet nach :data:`solver.CHECK_KNOTENGRENZE` Knoten statt
+    #: nach :data:`solver.MISCHBETRIEB_ZEITGRENZE_S`, dieselbe Eingabe ergibt
+    #: also unter jeder Maschinenlast denselben Plan (der naechtliche
+    #: MiSpeL-Check). ``False`` (die Vorgabe, die Live-Planung) = die Wanduhr
+    #: wie bisher: ein Plan muss rechtzeitig stehen.
+    wiederholbar: bool = False
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)

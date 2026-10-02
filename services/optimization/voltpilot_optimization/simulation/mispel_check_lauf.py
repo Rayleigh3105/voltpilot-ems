@@ -573,8 +573,12 @@ def _eine_anlage(conn, st: Stammdaten, e: Eingang, f: Fenster, deps: mc.CheckDep
             "site_id": str(st.site_id), "error": str(exc)}})
         ablegen(conn, st, e, STAND_FEHLGESCHLAGEN, hinweis=satz[:500])
         return Bericht(st.site_id, warum, STAND_FEHLGESCHLAGEN, time.monotonic() - start, satz, eingang=eingabe)
-    ablegen(conn, st, e, STAND_FERTIG, ergebnis=zeile)
+    # MP-33c: ein Rückfall auf „ohne Gutschrift“ steht im Hinweis, nie still im Betrag.
+    hinweis = result.get("hinweis")
+    ablegen(conn, st, e, STAND_FERTIG, ergebnis=zeile, hinweis=hinweis)
     sekunden = time.monotonic() - start
     logger.info("mispel_check.anlage_fertig", extra={"context": {
-        "site_id": str(st.site_id), "sekunden": round(sekunden, 1), "spanne": zeile["differenz"]}})
-    return Bericht(st.site_id, warum, STAND_FERTIG, sekunden, spanne=zeile["differenz"], eingang=eingabe)
+        "site_id": str(st.site_id), "sekunden": round(sekunden, 1), "spanne": zeile["differenz"],
+        "hinweis": hinweis}})
+    return Bericht(st.site_id, warum, STAND_FERTIG, sekunden, hinweis, spanne=zeile["differenz"],
+                   eingang=eingabe)

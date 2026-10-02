@@ -98,6 +98,10 @@ class Dispatch:
     soc_kwh: list[float]
     curtail_kw: list[float]
     wear_eur: list[float]  # per slot, as the dispatch spent it
+    #: MiSpeL MP-33c: ``(Tag, Grenze)`` je Loesungslauf, der im Mischbetrieb
+    #: auf „ohne Gutschrift“ zurueckfiel (``solver.optimize_mit_rueckfall``),
+    #: sortiert; Tage der Vorlaufphase eingeschlossen - sie tragen den Ladestand.
+    rueckfaelle: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -268,8 +272,9 @@ def solve_chunk(payload: dict) -> dict:
     commit_days = payload["commit_days"]
     misch = payload.get("mischbetrieb")
     strenge = payload.get("strenge", False)
+    wiederholbar = payload.get("wiederholbar", False)
 
-    from voltpilot_optimization.solver import optimize
+    from voltpilot_optimization.solver import optimize_mit_rueckfall
 
     soc = battery.soc_floor_kwh(battery.soc_max_kwh)
     monat = _MonatsBuchung()
@@ -278,6 +283,7 @@ def solve_chunk(payload: dict) -> dict:
     out_soc: list[float] = []
     out_curtail: list[float] = []
     out_wear: list[float] = []
+    rueckfaelle: list[tuple[str, str]] = []
     total_days = warmup_days + commit_days
     for day in range(total_days):
         i0 = day * SLOTS_PER_DAY
@@ -298,6 +304,8 @@ def solve_chunk(payload: dict) -> dict:
         )
         if strenge:
             inp = replace(inp, strenge_ausschliesslichkeit=True)
+        if wiederholbar:
+            inp = replace(inp, wiederholbar=True)
         if misch is not None:
             inp = replace(
                 inp,
@@ -308,10 +316,12 @@ def solve_chunk(payload: dict) -> dict:
                     starts[i0], starts[window], battery.roundtrip_efficiency
                 ),
             )
-        # explain_plan=False: the simulation discards every presentation
+        # Without explanation: the simulation discards every presentation
         # field, and the Fahrplan-Warum LP re-solve (~30 ms/solve) would add
         # real wall-clock over a 365-day chain for nothing.
-        plan = optimize(inp, uuid4(), starts[i0], explain_plan=False)
+        plan, rueckfall = optimize_mit_rueckfall(inp, uuid4(), starts[i0])
+        if rueckfall is not None:
+            rueckfaelle.append((starts[i0].astimezone(BERLIN).date().isoformat(), rueckfall))
         commit = plan.slots[:SLOTS_PER_DAY]
         soc = commit[-1].soc_kwh
         if misch is not None:
@@ -330,6 +340,7 @@ def solve_chunk(payload: dict) -> dict:
         "soc_kwh": out_soc,
         "curtail_kw": out_curtail,
         "wear_eur": out_wear,
+        "rueckfaelle": rueckfaelle,
     }
 
 
@@ -359,13 +370,16 @@ def chunk_payloads(
     export_eur_mwh: list[float] | None = None,
     mischbetrieb: dict | None = None,
     strenge: bool = False,
+    wiederholbar: bool = False,
 ) -> list[dict]:
     """Build the per-chunk solve payloads (pickle-friendly plain dicts).
 
     ``mischbetrieb`` (MiSpeL-Check, MP-13): ``{"praemie": [EUR/MWh je Slot],
     "saldiert": EUR/MWh}`` switches every solve to the MP-10 Mischbetrieb
     with the MP-11 Monatszustand; ``export_eur_mwh`` must then be bare spot.
-    ``strenge`` plans the EEG mode with the strict Ausschliesslichkeit (MP-45)."""
+    ``strenge`` plans the EEG mode with the strict Ausschliesslichkeit (MP-45).
+    ``wiederholbar`` (MP-33c) ends the Mischbetrieb search at the node limit
+    instead of the wall clock: the same input, the same dispatch under any load."""
     exp = export_eur_mwh if export_eur_mwh is not None else data.export_eur_mwh
     ext_praemie = (
         _extended(mischbetrieb["praemie"]) if mischbetrieb is not None else None
@@ -415,6 +429,8 @@ def chunk_payloads(
         )
         if strenge:
             payloads[-1]["strenge"] = True
+        if wiederholbar:
+            payloads[-1]["wiederholbar"] = True
         if mischbetrieb is not None:
             payloads[-1]["mischbetrieb"] = {
                 "praemie": ext_praemie[lo:hi],
@@ -449,6 +465,7 @@ def run_milp_year(
     on_chunk: Callable[[int, int, "Dispatch | None"], None] | None = None,
     mischbetrieb: dict | None = None,
     strenge: bool = False,
+    wiederholbar: bool = False,
 ) -> Dispatch:
     """Scenario (c) over the whole year: chained 48h/24h chunks.
 
@@ -457,7 +474,7 @@ def run_milp_year(
     chunk slots hold 0.0) so callers can publish progressive monthly rows.
     """
     payloads = chunk_payloads(
-        data, battery, netzladen, export_eur_mwh, mischbetrieb, strenge
+        data, battery, netzladen, export_eur_mwh, mischbetrieb, strenge, wiederholbar
     )
     n = len(data.slot_starts)
     dispatch = Dispatch(
@@ -478,6 +495,9 @@ def run_milp_year(
             dispatch.soc_kwh[i] = result["soc_kwh"][offset]
             dispatch.curtail_kw[i] = result["curtail_kw"][offset]
             dispatch.wear_eur[i] = result["wear_eur"][offset]
+        dispatch.rueckfaelle = sorted(
+            set(dispatch.rueckfaelle) | {tuple(r) for r in result["rueckfaelle"]}
+        )
 
     done = 0
     workers = effective_workers(max_workers, len(payloads))

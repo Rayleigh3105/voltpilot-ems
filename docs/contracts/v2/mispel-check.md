@@ -91,7 +91,8 @@ ist `differenz` immer `null`.
 
 Die App-Rolle darf `INSERT`/`UPDATE` im eigenen Mandanten (RLS), die Admin-Rolle mandantenübergreifend — der
 Schreiber braucht keine weitere Migration. Er setzt vor dem Lauf `wird_gerechnet` (Beträge leer), danach `fertig`
-mit allen Beträgen oder `fehlgeschlagen`/`nicht_unterstuetzt` mit `hinweis`; immer mit neuem `stand_seit`.
+mit allen Beträgen oder `fehlgeschlagen`/`nicht_unterstuetzt` mit `hinweis`; immer mit neuem `stand_seit`. Bei
+`fertig` ist `hinweis` leer — außer ein Lösungslauf fiel auf „ohne Gutschrift“ zurück (MP-33c, siehe unten).
 Gelöscht wird die Zeile mit der Anlage (`ON DELETE CASCADE`) oder im Offboarding.
 
 **Der Schreiber** ist ein eigener Lauf des Optimierers, kein Dienst: `python -m voltpilot_optimization mispel-check
@@ -138,9 +139,13 @@ MP-17), `angenommen` mit Satz in `quelle`:
 und für jeden gescheiterten Lauf („Der Check konnte für diese Anlage nicht gerechnet werden: …“).
 
 **Dieselbe Eingabe, derselbe Betrag:** `mispel-check --eingang` gibt je Anlage die Eingabe aus; die MP-13-
-Kommandozeile rechnet sie mit `--anlage <datei> --beginn <JJJJ-MM> --monate 12` nach. Grenze: im Mischbetrieb (A1)
-fällt ein Lösungslauf nach `MISCHBETRIEB_ZEITGRENZE_S` (20 s, `solver.py`) auf „ohne Gutschrift“ zurück — unter
-Last können zwei Läufe derselben Eingabe darum um einige Euro abweichen (Solver-Laufzeit: MP-33b).
+Kommandozeile rechnet sie mit `--anlage <datei> --beginn <JJJJ-MM> --monate 12` nach — **centgenau, unter jeder
+Maschinenlast** (MP-33c): der Check plant mit `OptimizationInput.wiederholbar`, die Ganzzahl-Suche des Mischbetriebs
+endet an der Knotengrenze `CHECK_KNOTENGRENZE` (HiGHS `mip_max_nodes`, deterministisch) statt an der Wanduhr
+`MISCHBETRIEB_ZEITGRENZE_S` der Live-Planung (20 s, sie bleibt dort). Erreicht ein Lösungslauf die Knotengrenze,
+rechnet er ohne Gutschrift — in jedem Lauf gleich — und `hinweis` nennt die Tage („… der Vorteil ist eher zu niedrig
+geschätzt“). Nur die Notbremse `CHECK_NOTBREMSE_S` (900 s, gegen einen Hänger) ist wieder lastabhängig; dann sagt
+`hinweis` „ein neuer Lauf kann abweichen“. Gemessen: höchstens 122 Knoten je Lösungslauf (Grenze 2 000).
 
 **Betrieb:** der Lauf braucht einen Cluster-Job (z. B. nächtlich, `concurrencyPolicy: Forbid`) mit dem Image und
 den Datenbank-Variablen des Optimierers und Zugang zu `archive-api.open-meteo.com` — angelegt im gitops-Repo vom
