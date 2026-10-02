@@ -92,3 +92,31 @@ CREATE TABLE IF NOT EXISTS monthly_market_value (
     fetched_at    TIMESTAMPTZ    NOT NULL DEFAULT now(),
     PRIMARY KEY (technology, month)
 );
+
+-- --- MiSpeL-Marktdaten: eeg_aw_zeit + annual_market_value ---------------------
+-- Mirrors services/market-data/db/migration/V20261002110000 (canonical); the
+-- api's V20261002110000 applies the same DDL idempotently and grants SELECT to
+-- the app role. Market-wide data: no tenant_id, no RLS. eeg_aw_zeit = AW>0-
+-- Zeiten der UeNB je Regel (MiSpeL A1 S. 17 Fn. 8), annual_market_value = der
+-- Jahresmarktwert (A1 S. 21 Vor. 5), Upsert "veroeffentlicht schlaegt vorlaeufig".
+CREATE TABLE IF NOT EXISTS eeg_aw_zeit (
+    regel             TEXT         NOT NULL CHECK (regel IN (
+                          'viertelstunde', 'viertelstunde_2ct',
+                          'stunden_1', 'stunden_2', 'stunden_3', 'stunden_4', 'stunden_6')),
+    ts                TIMESTAMPTZ  NOT NULL,  -- Beginn der (Viertel-)Stunde
+    aufloesung        TEXT         NOT NULL CHECK (aufloesung IN ('PT15M', 'PT60M')),
+    aw_groesser_null  BOOLEAN      NOT NULL,  -- "Ja" = TRUE, "Nein" = FALSE
+    source            TEXT         NOT NULL DEFAULT 'netztransparenz',
+    fetched_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (regel, ts)
+);
+
+CREATE TABLE IF NOT EXISTS annual_market_value (
+    year          INTEGER        NOT NULL CHECK (year BETWEEN 2000 AND 2100),
+    technology    TEXT           NOT NULL,  -- 'solar', 'wind_an_land', 'wind_auf_see', 'allgemein'
+    value_ct_kwh  NUMERIC(8, 3)  NOT NULL,  -- the TSOs' native unit
+    provisional   BOOLEAN        NOT NULL DEFAULT FALSE,
+    source        TEXT           NOT NULL DEFAULT 'netztransparenz',
+    fetched_at    TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    PRIMARY KEY (technology, year)
+);

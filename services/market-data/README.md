@@ -31,6 +31,7 @@ pytest
 | Vollständigkeit und Wiederholung | `refresh.py`, `resilience.py` |
 | Liefertag, Zeitzone und Speicherung | `service.py`, `persistence.py` |
 | Marktwerte und Solarerzeugung | `market_value_service.py`, `netztransparenz*.py`, `solar_generation.py` |
+| MiSpeL: AW>0-Zeiten der ÜNB, Jahresmarktwert (`mispel-marktdaten`) | `netztransparenz_aw.py`, `netztransparenz_jahresmarktwert.py`; [Wegweiser](../../docs/agents/root/mispel-marktdaten-aw-sp-jahresmarktwert.md) |
 
 Die Dateinamen beziehen sich auf `voltpilot_market_data/`. Liefertage und Sommerzeit nicht mit pauschal 24 Stunden gleichsetzen. API/Flyway, Service-Migrationen und Bootstrap müssen kompatibel bleiben.
 

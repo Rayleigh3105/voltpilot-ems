@@ -105,6 +105,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Maintaining this file](root/maintaining-this-file.md)
 - [Market data (ENTSO-E day-ahead prices)](root/market-data-entso-e-day-ahead-prices.md)
 - [MaStR integration ("Anlage verknüpfen": registry-fed asset master data)](root/mastr-integration-anlage-verknuepfen-reg.md)
+- [MiSpeL-Marktdaten: AW>0-Zeiten der ÜNB, SP¼, Jahresmarktwert (MP-7)](root/mispel-marktdaten-aw-sp-jahresmarktwert.md)
 - [Mess-Selektion JE KOMPONENTE (Geräteseite Stufe 3b, Server)](root/mess-selektion-je-komponente-geraeteseit.md)
 - [Money-centric "Meine Anlage" v2 (`GET /api/v1/earnings` money-view fields + `site.tarif_art`/`tarif_param_ct_kwh`)](root/money-centric-meine-anlage-v2-get-api-v1.md)
 - [Multi-source Anlage (Phase 1): N Erzeuger per site, aggregated ON THE EDGE](root/multi-source-anlage-phase-1-n-erzeuger-p.md)

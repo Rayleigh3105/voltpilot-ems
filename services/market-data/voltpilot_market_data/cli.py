@@ -32,6 +32,7 @@ from voltpilot_market_data.energy_charts import (
     EnergyChartsSolarGenerationSource,
 )
 from voltpilot_market_data.entsoe import EntsoeConfig, EntsoeDayAheadPriceSource
+from voltpilot_market_data.market_value import MarketValueSourceError
 from voltpilot_market_data.market_value_persistence import (
     TimescaleMarketValueRepository,
 )
@@ -39,6 +40,18 @@ from voltpilot_market_data.market_value_service import refresh_market_values
 from voltpilot_market_data.netztransparenz import (
     NetztransparenzConfig,
     NetztransparenzMarketValueSource,
+)
+from voltpilot_market_data.netztransparenz_aw import (
+    NetztransparenzAwConfig,
+    NetztransparenzAwSource,
+    TimescaleAwZeitRepository,
+    monate_zum_abruf,
+    refresh_aw_zeiten,
+)
+from voltpilot_market_data.netztransparenz_jahresmarktwert import (
+    NetztransparenzJahresmarktwertConfig,
+    NetztransparenzJahresmarktwertSource,
+    TimescaleAnnualMarketValueRepository,
 )
 from voltpilot_market_data.netztransparenz_generation import (
     NetztransparenzGenerationConfig,
@@ -207,7 +220,68 @@ def _build_parser() -> argparse.ArgumentParser:
     market_values.add_argument(
         "--log-level", default="INFO", help="logging level (default INFO)"
     )
+    mispel = sub.add_parser(
+        "mispel-marktdaten",
+        help="refresh the MiSpeL market data (netztransparenz.de, keyless): the "
+        "UeNB AW>0-Zeiten of every rule and the newest Jahresmarktwert - one-shot",
+    )
+    mispel.add_argument(
+        "--persist",
+        action="store_true",
+        help="write into eeg_aw_zeit / annual_market_value",
+    )
+    mispel.add_argument(
+        "--monat",
+        action="append",
+        help="German calendar month YYYY-MM to import (repeatable); default: "
+        "the running month and the two before it",
+    )
+    mispel.add_argument(
+        "--log-level", default="INFO", help="logging level (default INFO)"
+    )
     return parser
+
+
+def _refresh_mispel_marktdaten_once(
+    env: dict[str, str], persist: bool, monate: list[str] | None = None
+) -> str:
+    """AW>0-Zeiten (all rules) + newest Jahresmarktwert; persist when asked.
+
+    A failing rule/month or a failing Jahresmarktwert page is reported in the
+    summary and does not stop the rest (MiSpeL MP-7).
+    """
+    dsn = _dsn_from_env(env) if persist else None
+    gewaehlt = (
+        tuple(date.fromisoformat(f"{m}-01") for m in monate)
+        if monate
+        else monate_zum_abruf(_today_utc())
+    )
+    aw = refresh_aw_zeiten(
+        NetztransparenzAwSource(NetztransparenzAwConfig.from_env(env)),
+        TimescaleAwZeitRepository(dsn) if dsn else None,
+        gewaehlt,
+    )
+    teile = [
+        f"{m.regel} {m.monat:%Y-%m}="
+        + (f"{len(m.zeiten)}{'' if m.vollstaendig else ' unvollstaendig'}" if m.veroeffentlicht else "-")
+        for m in aw.monate
+    ]
+    jw_text = "-"
+    try:
+        jw = NetztransparenzJahresmarktwertSource(
+            NetztransparenzJahresmarktwertConfig.from_env(env)
+        ).fetch_neuestes_jahr()
+        if dsn:
+            TimescaleAnnualMarketValueRepository(dsn).upsert_values(jw)
+        jw_text = f"{jw[0].year}: " + ", ".join(f"{v.technology}={v.value_ct_kwh:.3f}" for v in jw)
+    except MarketValueSourceError as exc:
+        jw_text = f"fehler: {exc}"
+    return (
+        "voltpilot-market-data: MiSpeL AW>0-Zeiten "
+        f"rows_written={aw.rows_written} [{'; '.join(teile)}]"
+        + (f" fehler={len(aw.fehler)}" if aw.fehler else "")
+        + f"; Jahresmarktwert {jw_text}"
+    )
 
 
 def _configure_logging(level: str) -> None:
@@ -337,6 +411,10 @@ def main(argv: list[str] | None = None) -> int:
         print(_refresh_market_values_once(env, args.persist))
         return 0
 
+    if args.command == "mispel-marktdaten":
+        print(_refresh_mispel_marktdaten_once(env, args.persist, args.monat))
+        return 0
+
     if args.command == "serve":
         source = _build_source(env, args.source)
         repository = _repository_for(env, args.persist)
@@ -363,6 +441,7 @@ def main(argv: list[str] | None = None) -> int:
             }},
         )
         cycle = 0
+        mispel_refreshed_on: date | None = None
         while not runtime.stopping:
             today = _today_utc()
             tomorrow = today + timedelta(days=1)
@@ -395,6 +474,18 @@ def main(argv: list[str] | None = None) -> int:
                         "serve.market_values_failed",
                         extra={"context": {"error": str(exc)}},
                     )
+                # MiSpeL-Marktdaten (MP-7): published "monatsweise rueckwirkend"
+                # and once a year - one refresh per UTC day is plenty and keeps
+                # the fast-poll cycles around the day-ahead auction cheap.
+                if mispel_refreshed_on != today:
+                    try:
+                        print(_refresh_mispel_marktdaten_once(env, True))
+                        mispel_refreshed_on = today
+                    except Exception as exc:  # keep the loop alive
+                        logging.getLogger("voltpilot.market_data").warning(
+                            "serve.mispel_marktdaten_failed",
+                            extra={"context": {"error": str(exc)}},
+                        )
             # A cycle counts as failed only when NEITHER day could be fetched
             # (upstream/DB down) - that is the cold-start case the back-off is
             # for; a single bad delivery day keeps the baseline cadence.
