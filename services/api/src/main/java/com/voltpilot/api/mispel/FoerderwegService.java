@@ -51,7 +51,7 @@ public class FoerderwegService {
 
     /** Ein Antrag, wie er aus der Route kommt (snake_case im JSON). */
     public record Aendern(String foerderweg, String formelsatz, Boolean einverstaendnis, LocalDate gueltigAb,
-            Boolean netzladen, Boolean erstmaligeZuordnung, Boolean messkonzeptGeaendert) {}
+            Boolean netzladen, Boolean erstmaligeZuordnung, Boolean messkonzeptGeaendert, String awRegel) {}
 
     public record FassungAnsicht(Fassung fassung, LocalDate gueltigBis) {}
 
@@ -158,7 +158,7 @@ public class FoerderwegService {
         if (a.gueltigAb() == null) {
             throw FoerderwegAbgelehnt.anfrage("gueltig_ab", "„gültig ab“ fehlt (ein Tag, JJJJ-MM-TT).");
         }
-        return new Antrag(new Angaben(weg, a.formelsatz(), Boolean.TRUE.equals(a.einverstaendnis())),
+        return new Antrag(new Angaben(weg, a.formelsatz(), Boolean.TRUE.equals(a.einverstaendnis()), a.awRegel()),
                 a.gueltigAb(), a.netzladen(), Boolean.TRUE.equals(a.erstmaligeZuordnung()),
                 Boolean.TRUE.equals(a.messkonzeptGeaendert()));
     }

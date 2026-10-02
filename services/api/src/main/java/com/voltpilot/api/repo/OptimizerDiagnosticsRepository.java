@@ -6,10 +6,12 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -274,20 +276,25 @@ public class OptimizerDiagnosticsRepository {
      * Die Marktwertbasis aus dem Förderweg für die Viertelstunden {@code [first, last]} (MiSpeL
      * MP-12, Twin von pricing.py {@code load_marktwertbasis}): die MiSpeL-Tage aus den wirksamen
      * Fassungen in {@code site_foerderweg} (RLS - die Anlage des Mandanten) und der Jahresmarktwert
-     * Solar der berührten Jahre. Ohne AW-Differenzierung (noch kein Stammdatum) keine ÜNB-Liste:
-     * jede MiSpeL-Viertelstunde läuft über den W4-Rückfall. Kein MiSpeL-Tag: {@link
-     * Marktwertbasis#KEINE} ohne weitere Abfrage.
+     * Solar der berührten Jahre und - für die MiSpeL-Tage, deren Fassung eine AW-Differenzierung
+     * trägt (MP-12b) - die ÜNB-Liste dieser Regel; ohne Eintrag läuft die Viertelstunde über den
+     * W4-Rückfall. Kein MiSpeL-Tag: {@link Marktwertbasis#KEINE} ohne weitere Abfrage.
      */
     public Marktwertbasis marktwertbasis(UUID siteId, Instant first, Instant last) {
         ZoneId berlin = ZoneId.of("Europe/Berlin");
         LocalDate von = first.atZone(berlin).toLocalDate();
         LocalDate bis = last.atZone(berlin).toLocalDate();
-        List<Map.Entry<LocalDate, String>> fassungen = jdbc.query(
-                "SELECT gueltig_ab, foerderweg FROM site_foerderweg"
+        List<Map.Entry<LocalDate, String>> fassungen = new ArrayList<>();
+        List<Map.Entry<LocalDate, String>> awJeFassung = new ArrayList<>();
+        jdbc.query(
+                "SELECT gueltig_ab, foerderweg, aw_regel FROM site_foerderweg"
                         + " WHERE site_id = ? AND aufgehoben_am IS NULL AND gueltig_ab <= ?"
                         + " ORDER BY gueltig_ab",
-                (rs, i) -> new AbstractMap.SimpleImmutableEntry<>(
-                        rs.getObject("gueltig_ab", LocalDate.class), rs.getString("foerderweg")),
+                rs -> {
+                    LocalDate ab = rs.getObject("gueltig_ab", LocalDate.class);
+                    fassungen.add(new AbstractMap.SimpleImmutableEntry<>(ab, rs.getString("foerderweg")));
+                    awJeFassung.add(new AbstractMap.SimpleImmutableEntry<>(ab, rs.getString("aw_regel")));
+                },
                 siteId, bis);
         var tage = Marktwertbasis.mispelTage(fassungen, von, bis);
         if (tage.isEmpty()) {
@@ -303,7 +310,52 @@ public class OptimizerDiagnosticsRepository {
                                     rs.getBoolean("provisional")));
                 },
                 von.getYear(), bis.getYear());
-        return new Marktwertbasis(tage, Map.copyOf(jahresmarktwerte), Map.of(), null);
+        Map<LocalDate, String> awRegeln = Marktwertbasis.awRegeln(awJeFassung, tage);
+        return new Marktwertbasis(tage, Map.copyOf(jahresmarktwerte),
+                awListe(awRegeln, first, last.plus(Duration.ofMinutes(15)), berlin), awRegeln);
+    }
+
+    /**
+     * Formel (24)¼ aus der ÜNB-Liste ({@code eeg_aw_zeit}) für die Viertelstunden {@code [von, bis)},
+     * je Viertelstunde nach der Regel ihres Berliner Tages; Stundenzeilen gelten für ihre vier
+     * Viertelstunden, die feinere Auflösung gewinnt (wie {@code SlotEconomics.marktwertbasisJoinSql}
+     * und pricing.py {@code _aw_je_viertelstunde}). Keine Zeile = kein Eintrag (Rückfall).
+     */
+    private Map<Instant, Boolean> awListe(Map<LocalDate, String> awRegeln, Instant von, Instant bis,
+            ZoneId berlin) {
+        if (awRegeln.isEmpty()) {
+            return Map.of();
+        }
+        List<String> regeln = awRegeln.values().stream().distinct().sorted().toList();
+        Map<Instant, Boolean> out = new HashMap<>();
+        java.util.Set<Instant> fein = new java.util.HashSet<>();
+        List<Object> args = new ArrayList<>(regeln);
+        args.add(Timestamp.from(von));
+        args.add(Timestamp.from(bis));
+        jdbc.query("SELECT regel, ts, aufloesung, aw_groesser_null FROM eeg_aw_zeit WHERE regel IN ("
+                        + String.join(", ", java.util.Collections.nCopies(regeln.size(), "?"))
+                        + ") AND ts > ?::timestamptz - INTERVAL '60 minutes' AND ts < ?",
+                rs -> {
+                    String regel = rs.getString("regel");
+                    Instant beginn = rs.getTimestamp("ts").toInstant();
+                    boolean stunde = "PT60M".equals(rs.getString("aufloesung"));
+                    boolean wert = rs.getBoolean("aw_groesser_null");
+                    for (int q = 0; q < (stunde ? 4 : 1); q++) {
+                        Instant t = beginn.plus(Duration.ofMinutes(15L * q));
+                        if (t.isBefore(von) || !t.isBefore(bis)
+                                || !regel.equals(awRegeln.get(t.atZone(berlin).toLocalDate()))) {
+                            continue;
+                        }
+                        if (!stunde) {
+                            out.put(t, wert);
+                            fein.add(t);
+                        } else if (!fein.contains(t)) {
+                            out.put(t, wert);
+                        }
+                    }
+                },
+                args.toArray());
+        return Map.copyOf(out);
     }
 
     private static SiteContext mapContext(ResultSet rs, int rowNum) throws SQLException {

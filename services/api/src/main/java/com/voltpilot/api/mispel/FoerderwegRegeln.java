@@ -94,8 +94,26 @@ public final class FoerderwegRegeln {
      */
     public static final Map<String, String> VEREINFACHT_STATT = Map.of("A5-Variante", "A5", "A10", "A1", "A11", "A1");
 
-    /** Eine Fassung, wie die Regeln sie sehen; {@code formelsatz} nur in Abgrenzung (Pflicht) und ungefördert (wahlfrei). */
-    public record Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis) {}
+    /**
+     * Die AW-Differenzierungen (MP-12b): „In welchen Viertelstunden sich der anzulegende Wert nach den verschiedenen
+     * gesetzlichen Differenzierungen aufgrund von negativen (bzw. schwach positiven) Spotmarktpreisen auf null
+     * verringert, veröffentlichen die Übertragungsnetzbetreiber“ (A1 S. 17 Fn. 8) — je Veröffentlichung ein Wert,
+     * dasselbe Vokabular wie {@code eeg_aw_zeit.regel} (MP-7). Die Regel trägt der Betreiber ein; VoltPilot leitet sie
+     * nicht ab.
+     */
+    public static final List<String> AW_REGELN = List.of("viertelstunde", "viertelstunde_2ct", "stunden_1",
+            "stunden_2", "stunden_3", "stunden_4", "stunden_6");
+
+    /**
+     * Eine Fassung, wie die Regeln sie sehen; {@code formelsatz} nur in Abgrenzung (Pflicht) und ungefördert
+     * (wahlfrei); {@code awRegel} nur in Abgrenzung und Pauschal (wahlfrei, {@code null} = W4-Rückfall, vorläufig).
+     */
+    public record Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis, String awRegel) {
+
+        public Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis) {
+            this(foerderweg, formelsatz, einverstaendnis, null);
+        }
+    }
 
     /** Ein Antrag auf eine neue Fassung. */
     public record Antrag(Angaben angaben, LocalDate gueltigAb, Boolean netzladen, boolean erstmaligeZuordnung,
@@ -155,6 +173,16 @@ public final class FoerderwegRegeln {
             return ab("formelsatz_passt_nicht", 422, "Ein Formelsatz der Anlage 1 gehört nur zur Abgrenzungsoption oder "
                     + "zur ungeförderten Direktvermarktung.", "foerderweg", n.foerderweg().wert(),
                     "Tenor Ziff. 1 S. 2, Ziff. 3");
+        }
+        String aw = n.awRegel();
+        if (aw != null && !AW_REGELN.contains(aw)) {
+            return ab("aw_regel_ungueltig", 422, "„" + aw + "“ ist keine AW-Differenzierung der Übertragungsnetzbetreiber ("
+                    + String.join(", ", AW_REGELN) + ").", "aw_regel", aw, "A1 S. 17 Fn. 8");
+        }
+        if (aw != null && !n.foerderweg().mispel()) {
+            return ab("aw_regel_passt_nicht", 422, "Die AW-Differenzierung bestimmt die AW>0-Zeiten der Abgrenzungs- "
+                    + "und der Pauschaloption; " + n.foerderweg().begriff() + " rechnet nicht danach.", "foerderweg",
+                    n.foerderweg().wert(), "A1 S. 17 und S. 38, Formel (24); A2 S. 31, Formel (P12)");
         }
         if (Boolean.TRUE.equals(a.netzladen()) && !n.foerderweg().netzladenMoeglich()) {
             return ab("netzladen_ausgeschlossen", 422, n.foerderweg().begriff() + ": der Speicher darf nicht aus dem "

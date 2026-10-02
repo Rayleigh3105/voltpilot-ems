@@ -1,8 +1,9 @@
 # MiSpeL-Förderweg je Einspeisestelle (MP-5)
 
-Stand 02.10.2026 · Vertrag 1.0 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und
-Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Tenor, Anlage 1; EEG §§ 19, 21a, 21b.
-Konzept: MiSpeL-Fundament § 5.1, Entscheid E2 = B, Bauplan § 8 Zeile MP-5.
+Stand 02.10.2026 · Vertrag 1.1 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und
+Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Tenor, Anlage 1, Anlage 2; EEG §§ 19, 21a, 21b,
+51, 51b. Konzept: MiSpeL-Fundament § 5.1, Entscheid E2 = B, Bauplan § 8 Zeile MP-5; Fassung 1.1 = MP-12b
+(AW-Differenzierung, § 7), additiv: jedes Feld von 1.0 bleibt, wie es war.
 
 Der Förderweg ist **ein Stammdatum je Einspeisestelle**, aus dem Netzladen, Exportwert, Marktwertbasis,
 Box-Klemme und Portaltexte folgen. Er ersetzt die Bedeutung des Schalters `site.netzladen_erlaubt`
@@ -13,6 +14,7 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 |---|---|
 | [`mispel-foerderweg-vectors.json`](./mispel-foerderweg-vectors.json) | die Wahrheit: Werte, Bestands-Übernahme, Netzladen danach, 25 Fälle mit Fundstelle |
 | `services/api/src/main/resources/db/migration/V20261002141500__mispel_site_foerderweg.sql` | Tabelle `site_foerderweg` (Fassungen, RLS + FORCE), beginnt leer |
+| `services/api/src/main/resources/db/migration/V20261002173500__mispel_foerderweg_aw_regel.sql` | Spalte `aw_regel` (1.1, § 7), leer für jede vorhandene Fassung |
 | `services/api/.../mispel/FoerderwegRegeln.java` | die reinen Regeln (ohne Spring, Datenbank, Uhr) |
 | `services/api/.../mispel/FoerderwegService.java` | lesen am Tag, setzen als Fassung, Spiegel, alter Schalter |
 | `services/api/.../web/SiteFoerderwegController.java` | `GET`/`PUT /api/v1/sites/{siteId}/foerderweg` |
@@ -88,19 +90,20 @@ Weg Netzladen ausschließt, sonst die Angabe `netzladen` (ohne sie die bisherige
 
 `GET /api/v1/sites/{siteId}/foerderweg[?am=JJJJ-MM-TT]` (Leseweg der Anlage) →
 `{site_id, am, quelle, foerderweg, begriff, rechtsgrundlage, formelsatz, formelsatz_gebunden_bis,
-einverstaendnis, gueltig_ab, netzladen: {moeglich, heute}, fassungen[]}`. `quelle` ∈ `fassung` · `bestand` ·
+einverstaendnis, gueltig_ab, netzladen: {moeglich, heute}, fassungen[], aw_regel}` (`aw_regel` auch je Fassung, 1.1). `quelle` ∈ `fassung` · `bestand` ·
 `unbekannt` (ein Tag vor der ersten Fassung einer Anlage, die schon eine hat — die Schalter sind dann
 Spiegel und sagen über die Zeit davor nichts). `netzladen.heute` ist `site.netzladen_erlaubt` heute.
 
 `PUT /api/v1/sites/{siteId}/foerderweg` (Recht `anlage.verwalten`, wie der alte Schalter) mit
 `{foerderweg, formelsatz, einverstaendnis, gueltig_ab, netzladen, erstmalige_zuordnung,
-messkonzept_geaendert}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage ist 404, nie 403.
+messkonzept_geaendert, aw_regel}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage ist 404, nie 403.
 
 | Code | Status | Fakten (immer mit `fundstelle`) |
 |---|---|---|
 | `anfrage_ungueltig` | 400 | `feld` |
 | `foerderweg_ungueltig` | 400 | `foerderweg` |
 | `formelsatz_ungueltig` · `formelsatz_fehlt` · `formelsatz_passt_nicht` | 422 | `formelsatz` bzw. `foerderweg` |
+| `aw_regel_ungueltig` · `aw_regel_passt_nicht` (1.1, § 7) | 422 | `aw_regel` bzw. `foerderweg` |
 | `netzladen_ausgeschlossen` | 422 (Route) · 409 (alter Schalter) | `foerderweg` |
 | `gueltig_ab_in_zukunft` | 422 | `heute` |
 | `foerderweg_rueckwirkend` | 409 | `letzte_fassung_ab` |
@@ -126,9 +129,10 @@ messkonzept_geaendert}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage 
   Spiegel: Netzladen eingestellt = Händler-Modus (Export zu blankem Spot), sonst EEG-Modus.
   **Marktwertbasis (MP-12, gebaut):** Optimierer (`marktwertbasis.py`) und Erlöse (`SlotEconomics.marktwertbasisJoinSql`)
   lesen je Berliner Tag die späteste wirksame Fassung; an Tagen in `marktpraemie_abgrenzung`/`marktpraemie_pauschal`
-  gilt der Jahresmarktwert Solar und Formel (24)¼ bzw. (P12)¼ (AW>0-Liste der ÜNB, ohne AW-Differenzierung der
-  W4-Rückfall „keine Prämie bei SP¼ < 0“, Stand vorläufig); ohne Fassung der Bestand, also der Monatsmarktwert.
-  Der Mischbetrieb liest seine Prämie für grün/gelb aus derselben Reihe (`pricing.marktpraemie_eur_mwh`).
+  gilt der Jahresmarktwert Solar und Formel (24)¼ bzw. (P12)¼ (AW>0-Liste der ÜNB nach der `aw_regel` dieser
+  Fassung, § 7; ohne Regel der W4-Rückfall „keine Prämie bei SP¼ < 0“, Stand vorläufig); ohne Fassung der Bestand,
+  also der Monatsmarktwert. Der Mischbetrieb liest seine Prämie für grün/gelb aus derselben Reihe
+  (`pricing.marktpraemie_eur_mwh`) — mit eingetragener `aw_regel` also nach der Liste.
 - **Box (MP-14):** bekommt den Förderweg über den Plan; bis dahin wie heute `grid_charge_allowed` aus dem
   Spiegel.
 - **Rechenwerk (MP-8):** `MispelAbgrenzungService.Vorgaben.formelsatz` kommt heute vom Aufrufer; der
@@ -151,9 +155,48 @@ Förderweg: `netzladenErlaubt: true` bei Einspeisevergütung oder Ausschließlic
 Einstellung des Kunden; `plantKind` folgt dem Förderweg (eine abweichende Angabe wird durch den Wert aus
 § 1 ersetzt).
 
+## 7. Die AW-Differenzierung (Fassung 1.1, MP-12b)
+
+Die Marktprämie der Abgrenzungs- und der Pauschaloption gibt es nur für die Netzeinspeisung in AW>0-Zeiten:
+Formel (24)¼ = WENN [ AW¼ > 0 ; 1 ; 0 ] (A1 S. 17, Abschn. 2.1.7, und S. 38; (P12)¼ A2 S. 14–15 und S. 31). „In
+welchen Viertelstunden sich der anzulegende Wert nach den verschiedenen gesetzlichen Differenzierungen aufgrund
+von negativen (bzw. schwach positiven) Spotmarktpreisen auf null verringert, veröffentlichen die
+Übertragungsnetzbetreiber“ (A1 S. 17 Fn. 8). `aw_regel` sagt, welche dieser Veröffentlichungen für die Anlage gilt —
+dasselbe Vokabular wie `eeg_aw_zeit.regel` (MP-7, Vektoren `aw_regeln`):
+
+| `aw_regel` | Veröffentlichung der ÜNB | Rechtsgrundlage |
+|---|---|---|
+| `viertelstunde` | „1 Viertelstunde“ | § 51 EEG |
+| `viertelstunde_2ct` | „2ct Logik“ | § 51b EEG (bestimmte Biogasanlagen, A1 S. 17 Fn. 7) |
+| `stunden_1` · `stunden_2` · `stunden_3` · `stunden_4` · `stunden_6` | „1/2/3/4/6 Stunde(n)“ | § 51 EEG |
+
+- **Der Betreiber trägt sie ein.** VoltPilot leitet sie nicht aus Inbetriebnahme, Leistung oder Energieträger ab;
+  welche Fassung des § 51 EEG für eine Anlage gilt, folgt aus ihren Übergangsbestimmungen, nicht aus einer Formel.
+- **Wahlfrei, nur an einer MiSpeL-Option** (`marktpraemie_abgrenzung`, `marktpraemie_pauschal`). Ohne Regel
+  (`null`) rechnen Optimierer und Erlöse den W4-Rückfall „AW¼ = 0 bei SP¼ < 0“, und die Marktprämie ist
+  vorläufig (`SiteAggregate.marktpraemieVorlaeufig`). An einem anderen Förderweg ist sie 422
+  `aw_regel_passt_nicht` — dort rechnet keine Formel (24)/(P12).
+- **Eine Regel je Einspeisestelle.** Mehrere Anlagen hinter derselben Einspeisestelle gelten für die
+  Förderzahlung als eine Anlage „mit einem anzulegenden Wert und einheitlichen AW>0-Zeiten“ (A1 S. 7 Fn. 1;
+  A2 S. 5 Fn. 1; § 24 Abs. 1 EEG). **Offen:** A5/A5-Variante mit zwei geförderten Anlagen a und b und
+  „ggf. unterschiedlichen AW>0-Zeiten“ (A1 S. 46, Formeln (24a)/(24b); S. 51) — `aw_regel` ist dort die Regel
+  der Anlage a (AWa¼); AWb¼ übergibt der Aufrufer des Rechenwerks weiter selbst (`Vorgaben.awRegelB`), bis der
+  Monatslauf den Förderweg liest (§ 5, Rechenwerk).
+- **Fassungen wie jede andere Angabe** (§ 3): die Regel nachzutragen oder zu berichtigen ist kein Wechsel des
+  Förderwegs und darum an keinen Monatsersten gebunden; dieselbe Regel noch einmal ist 409
+  `foerderweg_unveraendert`. Soll sie schon ab dem Tag der Fassung gelten, wird dieselbe Fassung mit Regel und
+  demselben `gueltig_ab` noch einmal eingetragen (Korrektur desselben Tages, § 3).
+- **Bestand:** die Spalte beginnt leer; jede Fassung von 1.0 behält `null` und rechnet bitgenau wie vorher.
+- **Leser:** Optimierer `marktwertbasis.load_marktwertbasis` (die Regel je MiSpeL-Tag, `MarktwertBasis.aw_regeln`),
+  Erlös-SQL `SlotEconomics.AW_REGEL_SQL = fw.aw_regel`, Fahrplan-Twin `OptimizerDiagnosticsRepository.marktwertbasis`.
+  Jede Viertelstunde nimmt die Liste der Regel ihres Berliner Tages; Stundenzeilen gelten für ihre vier
+  Viertelstunden, die feinere Auflösung gewinnt.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='FoerderwegRegelnTest')                         # rein, kein Docker
 (cd services/api && ./mvnw test -Dtest='FoerderwegApiTest,FoerderwegMigrationTest')    # Testcontainers
+(cd services/api && ./mvnw test -Dtest='MarktwertbasisErloeseTest')                    # Prüfnachweis MP-12/MP-12b
+(cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest python -m pytest tests/test_marktwertbasis.py)
 ```

@@ -9,6 +9,7 @@ import com.voltpilot.api.mispel.FoerderwegRegeln.Angaben;
 import com.voltpilot.api.mispel.FoerderwegRegeln.Antrag;
 import com.voltpilot.api.mispel.FoerderwegRegeln.Foerderweg;
 import com.voltpilot.api.mispel.FoerderwegRegeln.Vorher;
+import com.voltpilot.api.repo.MispelMarktdatenRepository;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -62,11 +63,20 @@ class FoerderwegRegelnTest {
     }
 
     @Test
+    void dieAwRegelnSindDieDerUenbVeroeffentlichungen() throws Exception {
+        List<String> hier = new ArrayList<>();
+        vektoren().get("aw_regeln").forEach(n -> hier.add(n.get("wert").asText()));
+        assertThat(FoerderwegRegeln.AW_REGELN).containsExactlyElementsOf(hier)
+                .containsExactlyInAnyOrderElementsOf(MispelMarktdatenRepository.REGELN);
+    }
+
+    @Test
     void derBestandFolgtDenHeutigenSchaltern() throws Exception {
         for (JsonNode b : vektoren().get("bestand")) {
             Angaben a = FoerderwegRegeln.ausBestand(b.get("netzladen_erlaubt").asBoolean(), b.get("plant_kind").asText());
             assertThat(a.foerderweg().wert()).as(b.toString()).isEqualTo(b.get("foerderweg").asText());
             assertThat(a.formelsatz()).isNull();
+            assertThat(a.awRegel()).isNull();
             // Bitgenau: der Spiegel des Bestands-Förderwegs ist der Schalter, der ihn ergab.
             assertThat(FoerderwegRegeln.netzladenNachher(a.foerderweg(), null, b.get("netzladen_erlaubt").asBoolean()))
                     .isEqualTo(b.get("netzladen_erlaubt").asBoolean());
@@ -101,9 +111,10 @@ class FoerderwegRegelnTest {
             tests.add(DynamicTest.dynamicTest(f.get("name").asText(), () -> {
                 JsonNode v = f.get("vorher");
                 JsonNode a = f.get("antrag");
-                Vorher vorher = new Vorher(new Angaben(weg(v), text(v, "formelsatz"), v.get("einverstaendnis").asBoolean()),
-                        v.get("bestand").asBoolean(), tag(v, "letzte_fassung_ab"));
-                Antrag antrag = new Antrag(new Angaben(weg(a), text(a, "formelsatz"), a.get("einverstaendnis").asBoolean()),
+                Vorher vorher = new Vorher(new Angaben(weg(v), text(v, "formelsatz"), v.get("einverstaendnis").asBoolean(),
+                        text(v, "aw_regel")), v.get("bestand").asBoolean(), tag(v, "letzte_fassung_ab"));
+                Antrag antrag = new Antrag(new Angaben(weg(a), text(a, "formelsatz"), a.get("einverstaendnis").asBoolean(),
+                        text(a, "aw_regel")),
                         tag(a, "gueltig_ab"), a.get("netzladen").isNull() ? null : a.get("netzladen").asBoolean(),
                         a.get("erstmalige_zuordnung").asBoolean(), a.get("messkonzept_geaendert").asBoolean());
                 Ablehnung urteil = FoerderwegRegeln.pruefen(antrag, vorher, tag(f, "heute"), tag(f, "pauschaloption_ab"));

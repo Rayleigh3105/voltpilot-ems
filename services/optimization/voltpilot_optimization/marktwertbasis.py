@@ -28,12 +28,14 @@ ohne Fassung gilt der Bestand, und der kennt keine MiSpeL-Option
 (docs/contracts/v2/mispel-foerderweg.md § 2, § 5). Alle anderen Anlagen und
 Tage rechnen unverändert mit dem Monatsmarktwert.
 
-**Regel-Eingang.** Die AW-Differenzierung einer Anlage (``AW_REGELN``) ist ein
-Stammdatum, das es noch nicht gibt (Folgepaket "AW-Differenzierung als
-Stammdatum am Förderweg"). Bis dahin ruft jeder Leser mit ``aw_regel=None`` auf:
-keine Liste, W4-Rückfall, Stand vorläufig. Für Planfenster ist die Liste ohnehin
-leer - die ÜNB veröffentlichen sie monatsweise rückwirkend (MP-7) -, sie wirkt
-also in Rückrechnungen über gespeicherte Monate (Simulation, MP-13).
+**Regel-Eingang (MP-12b).** Die AW-Differenzierung einer Anlage (``AW_REGELN``)
+ist ein Stammdatum der Förderweg-Fassung: ``site_foerderweg.aw_regel``, vom
+Betreiber eingetragen, nie aus Inbetriebnahme oder Leistung abgeleitet
+(docs/contracts/v2/mispel-foerderweg.md § 7). Je MiSpeL-Tag gilt die Regel der
+wirksamen Fassung; ohne Eintrag keine Liste, W4-Rückfall, Stand vorläufig. Für
+Planfenster ist die Liste meist leer - die ÜNB veröffentlichen sie monatsweise
+rückwirkend (MP-7) -, sie wirkt also vor allem in Rückrechnungen über
+gespeicherte Monate (Simulation, MP-13).
 
 Dieselbe Grundlage rechnen die Erlöse (``SlotEconomics.exportValueCtSql``
 in services/api) - eine Preiswahrheit für Plan und Anzeige.
@@ -86,14 +88,15 @@ class MarktwertBasis:
     Kalenderjahr in ct/kWh (``annual_market_value``); ein fehlendes Jahr heißt
     keine Prämie, nie eine erfundene. ``aw_groesser_null``: Formel (24)¼ aus
     der ÜNB-Liste je Viertelstundenbeginn (UTC); fehlt eine Viertelstunde,
-    greift der W4-Rückfall. ``aw_regel``: die Differenzierung, aus der die
-    Liste stammt - ``None`` = noch kein Stammdatum.
+    greift der W4-Rückfall. ``aw_regeln``: je MiSpeL-Tag die Differenzierung
+    der wirksamen Fassung (``site_foerderweg.aw_regel``), aus der die Liste
+    stammt - ein Tag ohne Eintrag hat kein Stammdatum.
     """
 
     mispel_tage: frozenset[date] = frozenset()
     jahresmarktwert_ct: Mapping[int, float] = field(default_factory=dict)
     aw_groesser_null: Mapping[datetime, bool] = field(default_factory=dict)
-    aw_regel: str | None = None
+    aw_regeln: Mapping[date, str] = field(default_factory=dict)
 
     def ist_mispel(self, slot_start: datetime) -> bool:
         return berlin_day(slot_start) in self.mispel_tage
@@ -123,37 +126,37 @@ def load_marktwertbasis(
     dsn: str,
     site_id,
     slot_starts: list[datetime],
-    aw_regel: str | None = None,
 ) -> MarktwertBasis:
     """Die Marktwertbasis einer Anlage für die Viertelstunden eines Laufs.
 
-    Liest den Förderweg je Tag (``site_foerderweg``, die vertrauenswürdige
-    Backend-Rolle wie bei ``site_supply_price``), den Jahresmarktwert Solar der
-    berührten Jahre und - nur mit ``aw_regel`` - die ÜNB-Liste. Keine
-    MiSpeL-Fassung im Fenster: eine leere Basis ohne weitere Abfrage.
+    Liest den Förderweg und die AW-Differenzierung je Tag (``site_foerderweg``,
+    die vertrauenswürdige Backend-Rolle wie bei ``site_supply_price``), den
+    Jahresmarktwert Solar der berührten Jahre und - nur für MiSpeL-Tage mit
+    eingetragener Regel - die ÜNB-Liste dieser Regel. Keine MiSpeL-Fassung im
+    Fenster: eine leere Basis ohne weitere Abfrage.
     """
     if not slot_starts:
-        return MarktwertBasis(aw_regel=aw_regel)
-    if aw_regel is not None and aw_regel not in AW_REGELN:
-        raise ValueError(f"unbekannte AW-Regel: {aw_regel}")
+        return MarktwertBasis()
     import psycopg  # lazy: optional [db] extra
 
     tage = sorted({berlin_day(s) for s in slot_starts})
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT gueltig_ab, foerderweg FROM site_foerderweg
+            SELECT gueltig_ab, foerderweg, aw_regel FROM site_foerderweg
             WHERE site_id = %s AND aufgehoben_am IS NULL AND gueltig_ab <= %s
             ORDER BY gueltig_ab
             """,
             (site_id, tage[-1]),
         )
         fassungen = cur.fetchall()
+        wege = [(ab, weg) for ab, weg, _ in fassungen]
         mispel_tage = frozenset(
-            tag for tag in tage if _foerderweg_am(fassungen, tag) in MISPEL_FOERDERWEGE
+            tag for tag in tage if _foerderweg_am(wege, tag) in MISPEL_FOERDERWEGE
         )
         if not mispel_tage:
-            return MarktwertBasis(aw_regel=aw_regel)
+            return MarktwertBasis()
+        aw_regeln = _aw_regeln_je_tag(fassungen, mispel_tage)
         jahre = sorted({tag.year for tag in mispel_tage})
         cur.execute(
             """
@@ -164,23 +167,54 @@ def load_marktwertbasis(
         )
         jahresmarktwert = {int(j): float(v) for j, v in cur.fetchall()}
         aw: dict[datetime, bool] = {}
-        if aw_regel is not None:
+        if aw_regeln:
             von = min(slot_starts)
             bis = max(slot_starts) + _VIERTELSTUNDE
             cur.execute(
                 """
-                SELECT ts, aufloesung, aw_groesser_null FROM eeg_aw_zeit
-                WHERE regel = %s AND ts > %s - INTERVAL '60 minutes' AND ts < %s
+                SELECT regel, ts, aufloesung, aw_groesser_null FROM eeg_aw_zeit
+                WHERE regel = ANY(%s) AND ts > %s - INTERVAL '60 minutes' AND ts < %s
                 """,
-                (aw_regel, von, bis),
+                (sorted(set(aw_regeln.values())), von, bis),
             )
-            aw = _aw_je_viertelstunde(cur.fetchall())
+            aw = _aw_je_tag(cur.fetchall(), aw_regeln)
     return MarktwertBasis(
         mispel_tage=mispel_tage,
         jahresmarktwert_ct=jahresmarktwert,
         aw_groesser_null=aw,
-        aw_regel=aw_regel,
+        aw_regeln=aw_regeln,
     )
+
+
+def _aw_regeln_je_tag(fassungen, mispel_tage) -> dict[date, str]:
+    """Je MiSpeL-Tag die AW-Differenzierung der spätesten Fassung mit
+    ``gueltig_ab <= tag`` (Zeilen ``(gueltig_ab, foerderweg, aw_regel)``
+    aufsteigend); Tage, deren Fassung keine Regel trägt, fehlen."""
+    regeln = [(ab, regel) for ab, _, regel in fassungen]
+    out: dict[date, str] = {}
+    for tag in mispel_tage:
+        regel = _foerderweg_am(regeln, tag)
+        if regel is None:
+            continue
+        if regel not in AW_REGELN:
+            raise ValueError(f"unbekannte AW-Regel: {regel}")
+        out[tag] = regel
+    return out
+
+
+def _aw_je_tag(rows, aw_regeln: Mapping[date, str]) -> dict[datetime, bool]:
+    """Die ÜNB-Liste je Viertelstunde nach der Regel ihres Berliner Tages
+    (Zeilen ``(regel, ts, aufloesung, aw_groesser_null)``): eine Viertelstunde
+    nimmt nur den Eintrag der Regel, die an ihrem Tag gilt."""
+    je_regel: dict[str, list] = {}
+    for regel, ts, aufloesung, wert in rows:
+        je_regel.setdefault(regel, []).append((ts, aufloesung, wert))
+    out: dict[datetime, bool] = {}
+    for regel, zeilen in je_regel.items():
+        for t, wert in _aw_je_viertelstunde(zeilen).items():
+            if aw_regeln.get(berlin_day(t)) == regel:
+                out[t] = wert
+    return out
 
 
 def _foerderweg_am(fassungen: list[tuple[date, str]], tag: date) -> str | None:

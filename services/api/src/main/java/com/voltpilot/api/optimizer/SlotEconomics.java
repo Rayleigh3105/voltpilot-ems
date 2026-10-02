@@ -48,14 +48,20 @@ public final class SlotEconomics {
      * dem Jahresmarktwert Solar des Kalenderjahres ({@code jahresmarktwerte}, Anlage 1 S. 21 Vor. 5,
      * Anlage 2 S. 20) und nur in AW&gt;0-Viertelstunden: Formel (24)¼ aus der ÜNB-Liste
      * ({@code awGroesserNull} je Viertelstundenbeginn, Anlage 1 S. 17 Fn. 8), ohne Eintrag der
-     * W4-Rückfall "keine Prämie bei SP¼ &lt; 0". {@code awRegel} = die Differenzierung der Liste
-     * ({@code MispelMarktdatenRepository.REGELN}); {@code null}, solange es das Stammdatum nicht
-     * gibt. {@link #KEINE} = kein MiSpeL-Tag = die Monatsmarktwert-Regel bitgenau.
+     * W4-Rückfall "keine Prämie bei SP¼ &lt; 0". {@code awRegeln} = je MiSpeL-Tag die
+     * AW-Differenzierung der wirksamen Fassung ({@code site_foerderweg.aw_regel}, MP-12b;
+     * {@code MispelMarktdatenRepository.REGELN}), aus der {@code awGroesserNull} stammt; ein Tag
+     * ohne Eintrag hat kein Stammdatum und rechnet den Rückfall. {@link #KEINE} = kein MiSpeL-Tag =
+     * die Monatsmarktwert-Regel bitgenau.
      */
     public record Marktwertbasis(Set<LocalDate> mispelTage, Map<Integer, MarketValue> jahresmarktwerte,
-            Map<Instant, Boolean> awGroesserNull, String awRegel) {
+            Map<Instant, Boolean> awGroesserNull, Map<LocalDate, String> awRegeln) {
 
-        public static final Marktwertbasis KEINE = new Marktwertbasis(Set.of(), Map.of(), Map.of(), null);
+        public static final Marktwertbasis KEINE = new Marktwertbasis(Set.of(), Map.of(), Map.of(), Map.of());
+
+        public Marktwertbasis {
+            awRegeln = awRegeln == null ? Map.of() : Map.copyOf(awRegeln);
+        }
 
         /** Die beiden MiSpeL-Optionen des Förderwegs (MP-5): § 19 Abs. 3b und 3c EEG. */
         public static final Set<String> MISPEL_FOERDERWEGE =
@@ -74,29 +80,51 @@ public final class SlotEconomics {
                 LocalDate von, LocalDate bis) {
             java.util.HashSet<LocalDate> tage = new java.util.HashSet<>();
             for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
-                String am = null;
-                for (Map.Entry<LocalDate, String> f : fassungen) {
-                    if (f.getKey().isAfter(tag)) {
-                        break;
-                    }
-                    am = f.getValue();
-                }
+                String am = amTag(fassungen, tag);
                 if (am != null && MISPEL_FOERDERWEGE.contains(am)) {
                     tage.add(tag);
                 }
             }
             return Set.copyOf(tage);
         }
+
+        /**
+         * Die AW-Differenzierung je MiSpeL-Tag (MP-12b) aus denselben Fassungen, hier als
+         * {@code gueltig_ab -> aw_regel} (aufsteigend, {@code null} = keine eingetragen): die Regel
+         * der spätesten Fassung mit {@code gueltig_ab <= Tag}. Tage ohne Regel fehlen.
+         */
+        public static Map<LocalDate, String> awRegeln(List<Map.Entry<LocalDate, String>> awJeFassung,
+                Set<LocalDate> mispelTage) {
+            Map<LocalDate, String> out = new java.util.HashMap<>();
+            for (LocalDate tag : mispelTage) {
+                String regel = amTag(awJeFassung, tag);
+                if (regel != null) {
+                    out.put(tag, regel);
+                }
+            }
+            return Map.copyOf(out);
+        }
+
+        private static String amTag(List<Map.Entry<LocalDate, String>> fassungen, LocalDate tag) {
+            String am = null;
+            for (Map.Entry<LocalDate, String> f : fassungen) {
+                if (f.getKey().isAfter(tag)) {
+                    break;
+                }
+                am = f.getValue();
+            }
+            return am;
+        }
     }
 
     /**
-     * Der Regel-Eingang der AW¼-Liste in SQL (MiSpeL MP-12): die AW-Differenzierung der Anlage
-     * (viertelstunde, viertelstunde_2ct, stunden_1 … stunden_6; Anlage 1 S. 17 Fn. 8). Bis das
-     * Stammdatum am Förderweg existiert, ist sie unbekannt - die Liste trifft nie, jede
-     * MiSpeL-Viertelstunde läuft über den W4-Rückfall und ist vorläufig. Das Folgepaket ersetzt
-     * genau diesen Ausdruck durch die Spalte der Fassung ({@code fw.<spalte>}).
+     * Der Regel-Eingang der AW¼-Liste in SQL (MiSpeL MP-12, Stammdatum seit MP-12b): die
+     * AW-Differenzierung der Fassung des Berliner Tages ({@code site_foerderweg.aw_regel}:
+     * viertelstunde, viertelstunde_2ct, stunden_1 … stunden_6; Anlage 1 S. 17 Fn. 8). Ohne Eintrag
+     * NULL - die Liste trifft nie, die MiSpeL-Viertelstunde läuft über den W4-Rückfall und ist
+     * vorläufig.
      */
-    static final String AW_REGEL_SQL = "CAST(NULL AS text)";
+    static final String AW_REGEL_SQL = "fw.aw_regel";
 
     /**
      * Die Joins der Marktwertbasis für einen Viertelstunden-Abfrage (Twin von
@@ -109,7 +137,7 @@ public final class SlotEconomics {
     public static String marktwertbasisJoinSql(String siteIdExpr, String slotStartExpr) {
         String tag = "(" + slotStartExpr + " AT TIME ZONE 'Europe/Berlin')::date";
         return "LEFT JOIN LATERAL (SELECT f.foerderweg IN ('marktpraemie_abgrenzung', 'marktpraemie_pauschal')"
-                + " AS mispel FROM site_foerderweg f WHERE f.site_id = " + siteIdExpr
+                + " AS mispel, f.aw_regel FROM site_foerderweg f WHERE f.site_id = " + siteIdExpr
                 + " AND f.aufgehoben_am IS NULL AND f.gueltig_ab <= " + tag
                 + " ORDER BY f.gueltig_ab DESC LIMIT 1) fw ON TRUE "
                 + "LEFT JOIN annual_market_value jw ON jw.technology = 'solar'"

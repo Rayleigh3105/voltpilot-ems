@@ -974,7 +974,8 @@ def gather_inputs(
     if site.mischbetrieb:
         # MiSpeL MP-10: Export zum blanken Spot, die Farben bewertet der Solver
         # - gruen/gelb mit der Praemie der Marktwertbasis aus MP-12
-        # (Jahresmarktwert, AW>0; dieselbe Reihe wie die Erloese), rot mit der
+        # (Jahresmarktwert, AW>0 nach der aw_regel der Fassung, MP-12b;
+        # dieselbe Reihe wie die Erloese), rot mit der
         # Gutschrift der saldierten Bestandteile.
         export_series = list(spot)
         mispel_praemie = marktpraemie_eur_mwh(
@@ -996,7 +997,8 @@ def gather_inputs(
                 dsn, sorted({berlin_month(s) for s in slot_starts})
             )
             # MiSpeL MP-12: Jahresmarktwert + AW>0 for days in a MiSpeL option
-            # (Förderweg je Tag); no AW-Differenzierung stored yet -> W4 fallback.
+            # (Förderweg je Tag); the AW>0 list follows the Fassung's aw_regel
+            # (MP-12b), without one the W4 fallback.
             marktwert = load_marktwertbasis(dsn, site.site_id, slot_starts)
         export_series = export_values(
             site.tariff,

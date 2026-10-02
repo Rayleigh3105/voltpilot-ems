@@ -12,6 +12,7 @@ import com.voltpilot.api.flows.FlowDeploymentPublisher;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -236,6 +237,44 @@ class FoerderwegApiTest {
         assertThat(einv.status()).isEqualTo(422);
         assertThat(einv.body().path("code").asText()).isEqualTo("einverstaendnis_fehlt");
         assertThat(fassungen(a)).isZero();
+    }
+
+    @Test
+    void awDifferenzierungAmFoerderweg() throws Exception {
+        heute("2026-11-20");
+        Anlage a = anlage(false, "direktvermarktung");
+        // Ohne Regel ist die Abgrenzung gültig (W4-Rückfall); die Antwort sagt null, nie eine abgeleitete Regel.
+        Antwort ohne = ruf(a, HttpMethod.PUT, "/foerderweg", antrag("marktpraemie_abgrenzung", "A1", "2026-11-01"));
+        assertThat(ohne.status()).isEqualTo(200);
+        assertThat(ohne.body().path("aw_regel").isNull()).isTrue();
+        assertThat(ohne.body().path("fassungen").get(0).path("aw_regel").isNull()).isTrue();
+
+        // Nachtragen mitten im Monat: kein Wechsel des Förderwegs, also an keinen Monatsersten gebunden.
+        Map<String, Object> mit = antrag("marktpraemie_abgrenzung", "A1", "2026-11-17");
+        mit.put("aw_regel", "stunden_4");
+        Antwort r = ruf(a, HttpMethod.PUT, "/foerderweg", mit);
+        assertThat(r.status()).isEqualTo(200);
+        assertThat(r.body().path("aw_regel").asText()).isEqualTo("stunden_4");
+        assertThat(root.queryForObject("SELECT aw_regel FROM site_foerderweg WHERE site_id = ? AND gueltig_ab = ?",
+                String.class, a.id(), LocalDate.of(2026, 11, 17))).isEqualTo("stunden_4");
+        Antwort vorher = ruf(a, HttpMethod.GET, "/foerderweg?am=2026-11-16", null);
+        assertThat(vorher.body().path("aw_regel").isNull()).isTrue();
+
+        Map<String, Object> fuenf = antrag("marktpraemie_abgrenzung", "A1", "2026-11-18");
+        fuenf.put("aw_regel", "stunden_5");
+        Antwort ungueltig = ruf(a, HttpMethod.PUT, "/foerderweg", fuenf);
+        assertThat(ungueltig.status()).isEqualTo(422);
+        assertThat(ungueltig.body().path("code").asText()).isEqualTo("aw_regel_ungueltig");
+        assertThat(ungueltig.body().path("fundstelle").asText()).isEqualTo("A1 S. 17 Fn. 8");
+
+        Anlage b = anlage(false, "direktvermarktung");
+        Map<String, Object> eeg = antrag("marktpraemie_ausschliesslichkeit", null, "2026-11-01");
+        eeg.put("aw_regel", "viertelstunde");
+        Antwort passt = ruf(b, HttpMethod.PUT, "/foerderweg", eeg);
+        assertThat(passt.status()).isEqualTo(422);
+        assertThat(passt.body().path("code").asText()).isEqualTo("aw_regel_passt_nicht");
+        assertThat(fassungen(a)).isEqualTo(2);
+        assertThat(fassungen(b)).isZero();
     }
 
     @Test

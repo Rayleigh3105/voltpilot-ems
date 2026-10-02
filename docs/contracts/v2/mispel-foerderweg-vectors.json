@@ -1,7 +1,7 @@
 {
-  "$comment": "MiSpeL MP-5: Förderweg je Einspeisestelle. Wahrheit für FoerderwegRegeln (Java) und später den Optimierer (MP-10). Vertrag: mispel-foerderweg.md.",
-  "schema_version": "1.0",
-  "quelle": "BNetzA-Festlegung MiSpeL, Az. 618-25-02, Beschluss 01.10.2026 — Tenor, Anlage 1; EEG §§ 19, 21a, 21b",
+  "$comment": "MiSpeL MP-5: Förderweg je Einspeisestelle. Wahrheit für FoerderwegRegeln (Java) und später den Optimierer (MP-10). Fassung 1.1 (MP-12b): AW-Differenzierung je Fassung (aw_regeln, Fälle aw-regel-*); ein fehlendes Feld aw_regel heißt null. Vertrag: mispel-foerderweg.md.",
+  "schema_version": "1.1",
+  "quelle": "BNetzA-Festlegung MiSpeL, Az. 618-25-02, Beschluss 01.10.2026 — Tenor, Anlage 1, Anlage 2; EEG §§ 19, 21a, 21b, 51, 51b",
   "werte": [
     {
       "wert": "einspeiseverguetung",
@@ -46,6 +46,43 @@
     "A10": "A1",
     "A11": "A1"
   },
+  "aw_regeln": [
+    {
+      "wert": "viertelstunde",
+      "veroeffentlichung": "1 Viertelstunde",
+      "rechtsgrundlage": "§ 51 EEG"
+    },
+    {
+      "wert": "viertelstunde_2ct",
+      "veroeffentlichung": "2ct Logik",
+      "rechtsgrundlage": "§ 51b EEG (bestimmte Biogasanlagen; A1 S. 17 Fn. 7)"
+    },
+    {
+      "wert": "stunden_1",
+      "veroeffentlichung": "1 Stunde",
+      "rechtsgrundlage": "§ 51 EEG"
+    },
+    {
+      "wert": "stunden_2",
+      "veroeffentlichung": "2 Stunden",
+      "rechtsgrundlage": "§ 51 EEG"
+    },
+    {
+      "wert": "stunden_3",
+      "veroeffentlichung": "3 Stunden",
+      "rechtsgrundlage": "§ 51 EEG"
+    },
+    {
+      "wert": "stunden_4",
+      "veroeffentlichung": "4 Stunden",
+      "rechtsgrundlage": "§ 51 EEG"
+    },
+    {
+      "wert": "stunden_6",
+      "veroeffentlichung": "6 Stunden",
+      "rechtsgrundlage": "§ 51 EEG"
+    }
+  ],
   "bestand": [
     {
       "netzladen_erlaubt": false,
@@ -701,6 +738,214 @@
         "netzladen": null,
         "erstmalige_zuordnung": false,
         "messkonzept_geaendert": false
+      },
+      "heute": "2026-12-02",
+      "pauschaloption_ab": null,
+      "erwartet": "foerderweg_unveraendert",
+      "fundstelle": "Vertrag § 3"
+    },
+    {
+      "name": "aw-regel-abgrenzung-stunden-4",
+      "zeigt": "Die Abgrenzungsoption trägt die AW-Differenzierung, die der Betreiber einträgt",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "aw_regel": null,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "stunden_4"
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "A1 S. 17 mit Fn. 8; A1 S. 38, Formel (24)"
+    },
+    {
+      "name": "aw-regel-pauschal-viertelstunde",
+      "zeigt": "Die Pauschaloption trägt sie ebenso (AW>0-Zeiten der Formel (P12))",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "aw_regel": null,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_pauschal",
+        "formelsatz": null,
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-03-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "viertelstunde"
+      },
+      "heute": "2027-03-01",
+      "pauschaloption_ab": "2027-02-01",
+      "erwartet": null,
+      "fundstelle": "A2 S. 14–15 (Abschn. 2.1.7); A2 S. 31, Formel (P12)"
+    },
+    {
+      "name": "aw-regel-wahlfrei",
+      "zeigt": "Ohne AW-Differenzierung ist die Fassung gültig — die Prämie rechnet dann den W4-Rückfall und bleibt vorläufig",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "aw_regel": null,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": null
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "Bauplan § 8.5 W4 (Rückfall); A1 S. 17 Fn. 8"
+    },
+    {
+      "name": "aw-regel-ungueltig",
+      "zeigt": "Nur die Veröffentlichungen der Übertragungsnetzbetreiber — 5 Stunden gibt es nicht",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "aw_regel": null,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "stunden_5"
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "aw_regel_ungueltig",
+      "fundstelle": "A1 S. 17 Fn. 8"
+    },
+    {
+      "name": "aw-regel-passt-nicht-ausschliesslichkeit",
+      "zeigt": "Die Ausschließlichkeitsoption rechnet nicht nach Formel (24) — keine AW-Differenzierung am Förderweg",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "aw_regel": null,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "stunden_4"
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "aw_regel_passt_nicht",
+      "fundstelle": "A1 S. 17 und S. 38, Formel (24); A2 S. 31, Formel (P12)"
+    },
+    {
+      "name": "aw-regel-passt-nicht-ungefoerdert",
+      "zeigt": "Ungefördert gibt es keine Marktprämie und also keine AW>0-Zeiten",
+      "vorher": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "aw_regel": null,
+        "bestand": true,
+        "letzte_fassung_ab": null
+      },
+      "antrag": {
+        "foerderweg": "ungefoerdert",
+        "formelsatz": "A10",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "viertelstunde"
+      },
+      "heute": "2026-11-02",
+      "pauschaloption_ab": null,
+      "erwartet": "aw_regel_passt_nicht",
+      "fundstelle": "A1 S. 17 (Abschn. 2.1.7, 2.1.8)"
+    },
+    {
+      "name": "aw-regel-nachtragen-mitten-im-monat",
+      "zeigt": "Die Regel nachzutragen ist kein Wechsel des Förderwegs und darum an keinen Monatsersten gebunden",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "aw_regel": null,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-17",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "stunden_4"
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "§ 21b Abs. 1 S. 2 EEG bindet nur den Wechsel; A1 S. 103"
+    },
+    {
+      "name": "aw-regel-unveraendert",
+      "zeigt": "Dieselbe Regel noch einmal ist kein Eintrag",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "aw_regel": "stunden_4",
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-12-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "aw_regel": "stunden_4"
       },
       "heute": "2026-12-02",
       "pauschaloption_ab": null,

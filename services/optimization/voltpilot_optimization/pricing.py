@@ -511,7 +511,7 @@ def marktpraemie_eur_mwh(
                 "context": {
                     **ctx,
                     "slots": rueckfall_slots,
-                    "aw_regel": marktwert.aw_regel if marktwert else None,
+                    "aw_regeln": sorted(set(marktwert.aw_regeln.values())) if marktwert else [],
                     "reason": (
                         "no UeNB AW>0 list entry for these MiSpeL slots - "
                         "W4 fallback 'no premium at spot < 0', vorlaeufig"

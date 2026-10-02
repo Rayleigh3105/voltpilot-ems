@@ -423,8 +423,8 @@ public class EarningsRepository {
      * <p>{@code marktpraemieVorlaeufig} (MiSpeL MP-12): {@code null} when no
      * covered slot of the window lies on a MiSpeL day of a premium-capable
      * site; {@code true} when any of them took its AW¼ from the W4 fallback
-     * (no ÜNB list entry - always, until the AW-Differenzierung is a master
-     * datum) or has no / a provisional Jahresmarktwert; {@code false} when all
+     * (no ÜNB list entry - always while the Fassung carries no aw_regel,
+     * MP-12b) or has no / a provisional Jahresmarktwert; {@code false} when all
      * of them stand on the list and a published Jahresmarktwert. The portal
      * does not show it yet (MP-18).
      */

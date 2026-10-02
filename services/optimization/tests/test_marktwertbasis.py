@@ -11,9 +11,11 @@ fake-psycopg-Muster.
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -82,7 +84,7 @@ def test_aw_liste_gewinnt_gegen_das_vorzeichen_des_spotpreises():
     t1, t2 = t0 + timedelta(minutes=15), t0 + timedelta(minutes=30)
     # t0: Liste "Nein" bei positivem Spot; t1: Liste "Ja" bei negativem Spot
     # (Stunden-Differenzierung); t2: kein Eintrag -> Rückfall SP¼ < 0.
-    basis = _mispel(aw_groesser_null={t0: False, t1: True}, aw_regel="stunden_4")
+    basis = _mispel(aw_groesser_null={t0: False, t1: True}, aw_regeln={OKTOBER: "stunden_4"})
     werte = export_values(DV, False, [40.0, -3.0, -3.0], [t0, t1, t2], MONATE, marktwert=basis)
     assert werte == [40.0, -3.0 + 30.0, -3.0]
     assert praemien_viertelstunde(basis, t0, 40.0) == (False, False)
@@ -154,10 +156,18 @@ def test_regeln_sind_die_sieben_veroeffentlichungen():
 SITE = UUID("00000000-0000-0000-0000-000000000012")
 
 
+# Was die Fake-Datenbank liefert: die Fassungen (gueltig_ab, foerderweg,
+# aw_regel) und die ÜNB-Liste (regel, ts, aufloesung, aw_groesser_null).
+FASSUNGEN = [(date(2026, 10, 1), "marktpraemie_pauschal", None)]
+LISTE = [("viertelstunde", ERSTE_OKTOBER, "PT15M", False)]
+
+
 class _Cursor:
-    def __init__(self, log: list) -> None:
+    def __init__(self, log: list, fassungen=None, liste=None) -> None:
         self.log = log
         self._rows: list = []
+        self.fassungen = FASSUNGEN if fassungen is None else fassungen
+        self.liste = LISTE if liste is None else liste
 
     def __enter__(self):
         return self
@@ -169,11 +179,11 @@ class _Cursor:
         sql = " ".join(sql.split())
         self.log.append((sql, params))
         if "FROM site_foerderweg" in sql:
-            self._rows = [(date(2026, 10, 1), "marktpraemie_pauschal")]
+            self._rows = self.fassungen
         elif "FROM annual_market_value" in sql:
             self._rows = [(2026, 7.0)]
         elif "FROM eeg_aw_zeit" in sql:
-            self._rows = [(ERSTE_OKTOBER, "PT15M", False)]
+            self._rows = [r for r in self.liste if r[0] in params[0]]
         else:  # pragma: no cover
             raise AssertionError(f"unhandled query: {sql}")
 
@@ -181,8 +191,7 @@ class _Cursor:
         return self._rows
 
 
-@pytest.fixture()
-def fake_db(monkeypatch):
+def _fake(monkeypatch, fassungen=None, liste=None) -> list:
     log: list = []
 
     class _Conn:
@@ -193,25 +202,100 @@ def fake_db(monkeypatch):
             return False
 
         def cursor(self):
-            return _Cursor(log)
+            return _Cursor(log, fassungen, liste)
 
     monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn()))
     return log
 
 
+@pytest.fixture()
+def fake_db(monkeypatch):
+    return _fake(monkeypatch)
+
+
 def test_lader_ohne_regel_liest_keine_liste(fake_db):
+    # Fassung ohne AW-Differenzierung (wie jede Fassung vor MP-12b): die Liste
+    # wird nicht gelesen, jede MiSpeL-Viertelstunde läuft über den Rückfall.
     basis = load_marktwertbasis("postgresql://fake", SITE, [LETZTE_SEPTEMBER, ERSTE_OKTOBER])
     assert basis.mispel_tage == {OKTOBER}
     assert basis.jahresmarktwert_ct == {2026: 7.0}
-    assert basis.aw_groesser_null == {} and basis.aw_regel is None
+    assert basis.aw_groesser_null == {} and basis.aw_regeln == {}
     assert not any("eeg_aw_zeit" in sql for sql, _ in fake_db)
+    assert praemien_viertelstunde(basis, ERSTE_OKTOBER, -1.0) == (False, True)
 
 
-def test_lader_mit_regel_liest_die_liste_der_regel(fake_db):
-    basis = load_marktwertbasis("postgresql://fake", SITE, [ERSTE_OKTOBER], aw_regel="viertelstunde")
-    assert basis.aw_groesser_null == {ERSTE_OKTOBER: False}
-    [(_, params)] = [(sql, p) for sql, p in fake_db if "eeg_aw_zeit" in sql]
-    assert params[0] == "viertelstunde"
+def test_lader_mit_regel_stunden_4_rechnet_nach_der_liste(monkeypatch):
+    # MP-12b, der Prüfnachweis im Optimierer: die Fassung trägt stunden_4; die
+    # Stundenzeile "Ja" gilt für alle vier Viertelstunden - auch für die mit
+    # negativem Spot - und kein Ergebnis ist vorläufig. Die Liste einer anderen
+    # Regel ("viertelstunde": "Nein") trifft nicht.
+    log = _fake(
+        monkeypatch,
+        fassungen=[(date(2026, 10, 1), "marktpraemie_abgrenzung", "stunden_4")],
+        liste=[
+            ("stunden_4", ERSTE_OKTOBER, "PT60M", True),
+            ("viertelstunde", ERSTE_OKTOBER, "PT15M", False),
+        ],
+    )
+    slots = [ERSTE_OKTOBER + timedelta(minutes=15 * q) for q in range(4)]
+    basis = load_marktwertbasis("postgresql://fake", SITE, slots)
+    assert basis.aw_regeln == {OKTOBER: "stunden_4"}
+    assert basis.aw_groesser_null == {t: True for t in slots}
+    [(_, params)] = [(sql, p) for sql, p in log if "eeg_aw_zeit" in sql]
+    assert params[0] == ["stunden_4"]
+    assert praemien_viertelstunde(basis, slots[1], -3.0) == (True, False)
+    werte = export_values(DV, False, [40.0, -3.0], slots[:2], MONATE, marktwert=basis)
+    assert werte == [40.0 + 30.0, -3.0 + 30.0]
+
+
+def test_mischbetrieb_liest_die_praemie_nach_der_aw_regel(monkeypatch):
+    # MiSpeL MP-10 baut seine Prämie für grün/gelb genau so (inputs.py, Zweig
+    # site.mischbetrieb: ohne Monatsmarktwerte, Basis aus load_marktwertbasis):
+    # mit stunden_4 und Stundenzeile "Ja" trägt auch die negative Viertelstunde
+    # die Prämie; ohne Regel fällt sie dort weg (W4-Rückfall).
+    slots = [ERSTE_OKTOBER + timedelta(minutes=15 * q) for q in range(2)]
+    mit_regel = [(date(2026, 10, 1), "marktpraemie_abgrenzung", "stunden_4")]
+    liste = [("stunden_4", ERSTE_OKTOBER, "PT60M", True)]
+    _fake(monkeypatch, fassungen=mit_regel, liste=liste)
+    praemie = marktpraemie_eur_mwh(
+        DV, [40.0, -3.0], slots, {}, load_marktwertbasis("postgresql://fake", SITE, slots)
+    )
+    assert praemie == [30.0, 30.0]
+    ohne_regel = [(date(2026, 10, 1), "marktpraemie_abgrenzung", None)]
+    _fake(monkeypatch, fassungen=ohne_regel, liste=liste)
+    praemie = marktpraemie_eur_mwh(
+        DV, [40.0, -3.0], slots, {}, load_marktwertbasis("postgresql://fake", SITE, slots)
+    )
+    assert praemie == [30.0, 0.0]
+
+
+def test_lader_nimmt_je_tag_die_regel_der_fassung(monkeypatch):
+    # Eine Korrektur der Regel am 02.10. (gleicher Förderweg): der 01.10. liest
+    # die Liste von stunden_4, der 02.10. die von viertelstunde.
+    zweite = ERSTE_OKTOBER + timedelta(days=1)
+    _fake(
+        monkeypatch,
+        fassungen=[
+            (date(2026, 10, 1), "marktpraemie_abgrenzung", "stunden_4"),
+            (date(2026, 10, 2), "marktpraemie_abgrenzung", "viertelstunde"),
+        ],
+        liste=[
+            ("stunden_4", ERSTE_OKTOBER, "PT60M", False),
+            ("stunden_4", zweite, "PT60M", False),
+            ("viertelstunde", ERSTE_OKTOBER, "PT15M", True),
+            ("viertelstunde", zweite, "PT15M", True),
+        ],
+    )
+    basis = load_marktwertbasis("postgresql://fake", SITE, [ERSTE_OKTOBER, zweite])
+    assert basis.aw_regeln == {OKTOBER: "stunden_4", date(2026, 10, 2): "viertelstunde"}
+    assert basis.aw_amtlich(ERSTE_OKTOBER) is False
+    assert basis.aw_amtlich(zweite) is True
+
+
+def test_aw_regeln_sind_die_des_vertrags_und_der_marktdaten():
+    v2 = Path(__file__).resolve().parents[3] / "docs" / "contracts" / "v2"
+    vektoren = json.loads((v2 / "mispel-foerderweg-vectors.json").read_text(encoding="utf-8"))
+    assert AW_REGELN == {r["wert"] for r in vektoren["aw_regeln"]}
 
 
 def test_lader_ohne_mispel_tag_fragt_keinen_marktwert(monkeypatch):
@@ -237,6 +321,9 @@ def test_lader_ohne_mispel_tag_fragt_keinen_marktwert(monkeypatch):
     assert len(log) == 1
 
 
-def test_unbekannte_regel_bricht_laut_ab():
+def test_unbekannte_regel_bricht_laut_ab(monkeypatch):
+    # Die Datenbank lässt sie nicht zu (CHECK site_foerderweg_aw_regel_chk) -
+    # kommt sie trotzdem, rechnet der Lader nicht still weiter.
+    _fake(monkeypatch, fassungen=[(date(2026, 10, 1), "marktpraemie_abgrenzung", "stunden_5")])
     with pytest.raises(ValueError):
-        load_marktwertbasis("postgresql://fake", SITE, [ERSTE_OKTOBER], aw_regel="stunden_5")
+        load_marktwertbasis("postgresql://fake", SITE, [ERSTE_OKTOBER])

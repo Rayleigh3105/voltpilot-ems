@@ -61,7 +61,8 @@ public class SiteFoerderwegController {
 
     /**
      * Recht: {@code messwerte.ansehen} (Leseweg der Anlage). Der Förderweg am Tag {@code am} (fehlend = heute) mit
-     * dem Begriff aus EEG und Festlegung, dem Formelsatz und seiner Bindung, Netzladen und allen Fassungen.
+     * dem Begriff aus EEG und Festlegung, dem Formelsatz und seiner Bindung, der AW-Differenzierung (MP-12b), Netzladen
+     * und allen Fassungen.
      */
     @GetMapping
     public FoerderwegDto.Ansicht ansehen(@PathVariable UUID siteId,

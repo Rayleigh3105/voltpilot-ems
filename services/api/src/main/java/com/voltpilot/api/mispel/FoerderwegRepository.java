@@ -21,8 +21,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class FoerderwegRepository {
 
-    private static final String SELECT = "SELECT id, site_id, foerderweg, formelsatz, einverstaendnis, gueltig_ab, "
-            + "aufgehoben_am, created_at, created_by FROM site_foerderweg ";
+    private static final String SELECT = "SELECT id, site_id, foerderweg, formelsatz, einverstaendnis, aw_regel, "
+            + "gueltig_ab, aufgehoben_am, created_at, created_by FROM site_foerderweg ";
 
     private final JdbcTemplate jdbc;
 
@@ -62,8 +62,9 @@ public class FoerderwegRepository {
 
     public UUID eintragen(UUID tenantId, UUID siteId, Angaben a, LocalDate gueltigAb, String von) {
         return jdbc.queryForObject("INSERT INTO site_foerderweg (tenant_id, site_id, foerderweg, formelsatz, "
-                + "einverstaendnis, gueltig_ab, created_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id", UUID.class,
-                tenantId, siteId, a.foerderweg().wert(), a.formelsatz(), a.einverstaendnis(), gueltigAb, von);
+                + "einverstaendnis, aw_regel, gueltig_ab, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                UUID.class, tenantId, siteId, a.foerderweg().wert(), a.formelsatz(), a.einverstaendnis(), a.awRegel(),
+                gueltigAb, von);
     }
 
     public boolean aufheben(UUID id, Instant am) {
@@ -81,7 +82,7 @@ public class FoerderwegRepository {
         Timestamp auf = rs.getTimestamp("aufgehoben_am");
         Foerderweg weg = Foerderweg.von(rs.getString("foerderweg")).orElseThrow();
         return new Fassung(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class),
-                new Angaben(weg, rs.getString("formelsatz"), rs.getBoolean("einverstaendnis")),
+                new Angaben(weg, rs.getString("formelsatz"), rs.getBoolean("einverstaendnis"), rs.getString("aw_regel")),
                 rs.getDate("gueltig_ab").toLocalDate(), auf == null ? null : auf.toInstant(),
                 rs.getTimestamp("created_at").toInstant(), rs.getString("created_by"));
     }
