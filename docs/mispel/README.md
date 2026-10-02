@@ -194,9 +194,10 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 - **Rechenwerk:** der Optimierer plant A2–A4 noch nicht im Mischbetrieb (Fahrzeug als Speicher: MP-33); Rumpfjahre
   der Pauschaloption gibt der Aufrufer noch vor (Erkennung aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Läufer des Monatslaufs (MP-8b) überspringt A5/A5-Variante (Painst/Pbinst und
   AW-Regel der Anlage b trägt der Förderweg nicht) und A1–A4 ohne eingetragene AW-Regel.
-- **Messwerte des Messstellenbetreibers:** Import (CSV) und Abgleich gegen Gerätewerte stehen (MP-15,
-  [Vertrag](../contracts/v2/mispel-abgrenzung.md#werte-des-messstellenbetreibers-und-abgleich-mp-15)); offen sind
-  MSCONS (EDIFACT), die Partner-Schnittstelle, ein echter MSB-Monat und die Schwellen 2 % / 5 % (Pilot MP-47).
+- **Messwerte des Messstellenbetreibers:** Import (CSV und MSCONS 2.5/2.4c, MP-15b) und Abgleich gegen Gerätewerte
+  stehen (MP-15, [Vertrag](../contracts/v2/mispel-abgrenzung.md#werte-des-messstellenbetreibers-und-abgleich-mp-15));
+  offen sind die Partner-Schnittstelle, ein echter MSB-Monat, Ersatzwerte (`QTY+67`, heute Lücke) und die Schwellen
+  2 % / 5 % (Pilot MP-47).
 - **Oberflächen** — jede beginnt erst nach einem mit dem Captain abgestimmten Bedienkonzept (BK-…): Einrichtung des Förderwegs mit Formelsatz-Vorschlag und Gebot der Bestnutzung (MP-17;
   ersetzt auch den Portaltext zum Netzladen, W2, und bringt den Hinweis auf die Abgrenzungsoption an einer EEG-Anlage
   im Händler-Modus, W6), Kundenansicht Mengen und Ertrag mit Nachweis-Abruf (MP-18, W5).

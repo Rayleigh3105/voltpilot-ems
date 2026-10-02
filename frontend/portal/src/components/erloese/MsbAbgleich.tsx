@@ -208,7 +208,7 @@ export function MsbAbgleichKarte({ messstelleId }: { messstelleId: string }) {
           <input
             ref={datei}
             type="file"
-            accept=".csv,text/csv,text/plain"
+            accept=".csv,.edi,.txt,.mscons,text/csv,text/plain,application/edifact"
             className="vp-ab-datei"
             id={`vp-ab-datei-${messstelleId}`}
             aria-label="Datei mit Werten des Messstellenbetreibers"
@@ -222,8 +222,9 @@ export function MsbAbgleichKarte({ messstelleId }: { messstelleId: string }) {
             {laeuft ? 'Wird eingelesen …' : 'Werte des Messstellenbetreibers einlesen'}
           </Button>
           <p className="vp-ab-klein">
-            CSV je Viertelstunde mit den Spalten zeitstempel;zaehlpunkt;richtung;kwh — Beginn der Viertelstunde mit
-            Versatz, Richtung bezug/abgabe oder OBIS 1-1:1.29.0/1-1:2.29.0.
+            CSV oder MSCONS je Viertelstunde: die MSCONS wie vom Messstellenbetreiber geliefert, die CSV mit den Spalten
+            zeitstempel;zaehlpunkt;richtung;kwh — Beginn der Viertelstunde mit Versatz, Richtung bezug/abgabe oder OBIS
+            1-1:1.29.0/1-1:2.29.0.
             {daten.importe[0] ? ` Zuletzt: ${daten.importe[0].dateiname ?? 'Datei'}, ${daten.importe[0].viertelstunden.toLocaleString('de-DE')} Viertelstunden.` : ''}
           </p>
           {meldung && (

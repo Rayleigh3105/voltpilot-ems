@@ -1,5 +1,7 @@
 package com.voltpilot.api.mispel;
 
+import static com.voltpilot.api.mispel.MsbBeispiel.csv;
+import static com.voltpilot.api.mispel.MsbBeispiel.mscons;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -19,10 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,7 +68,6 @@ class MsbAbgleichApiTest {
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final AtomicInteger NR = new AtomicInteger();
-    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
     private static final String ZP1 = "DE0001234567890000000000000000001";
     private static final String ZP2 = "DE0001234567890000000000000000002";
     private static final String ZP2_NEU = "DE0001234567890000000000000000003";
@@ -247,6 +245,88 @@ class MsbAbgleichApiTest {
     }
 
     @Test
+    void msconsDesMessstellenbetreibersGibtDieselbeAmpelWieDieCsv() throws Exception {
+        YearMonth nov = YearMonth.of(2026, 11);
+        Welt ausCsv = welt();
+        einlesen(ausCsv, "MS-01", "msb-nov-z1.csv", csv(nov, List.of(ZP1), "bezug", 1.000, "abgabe", 0.500, null,
+                null), 200);
+        einlesen(ausCsv, "MS-04", "msb-nov-z2.csv", csv(nov, List.of(ZP2), "bezug", 0.300, "abgabe", 0.200, null,
+                null), 200);
+        Welt ausMscons = welt();
+        JsonNode e = einlesen(ausMscons, "MS-01", "MSCONS_TL_9900000000003_9900000000010_20261202_MSB4711.edi",
+                mscons(nov, List.of(ZP1), "bezug", 1.000, "abgabe", 0.500, null, null), 200);
+        assertThat(e.get("importDatei").get("format").asText()).isEqualTo("mscons");
+        assertThat(e.get("importDatei").get("viertelstunden").asInt()).isEqualTo(2 * 2880);
+        assertThat(e.get("uebergangen").asInt()).isZero();
+        einlesen(ausMscons, "MS-04", "msb-nov-z2.txt", mscons(nov, List.of(ZP2), "bezug", 0.300, "abgabe", 0.200,
+                null, null), 200);
+
+        // Dieselben Werte → dieselbe Ampel je Zählrichtung, Zahl für Zahl.
+        String monat = "/mispel/abgrenzung/monate/2026-11/abgleich";
+        Map<String, JsonNode> c = jeGroesse(ruf(ausCsv, "/api/v1/sites/" + ausCsv.anlage() + monat));
+        Map<String, JsonNode> m = jeGroesse(ruf(ausMscons, "/api/v1/sites/" + ausMscons.anlage() + monat));
+        assertThat(m.keySet()).containsExactly("Z1NB", "Z1NE", "Z2V", "Z2E");
+        for (String g : c.keySet()) {
+            assertThat(m.get(g).get("abgleich")).as(g).isEqualTo(c.get(g).get("abgleich"));
+        }
+        assertThat(ampel(m, "Z1NB")).isEqualTo("gruen 1.5");
+        assertThat(ampel(m, "Z1NE")).isEqualTo("gruen 0.0");
+        assertThat(ampel(m, "Z2V")).isEqualTo("rot 10.0");
+        assertThat(ampel(m, "Z2E")).isEqualTo("gelb 3.4");
+        JsonNode ms4 = ruf(ausMscons, "/api/v1/messstellen/" + ausMscons.ms().get("MS-04") + "/msb-abgleich");
+        assertThat(ms4.get("importe").get(0).get("format").asText()).isEqualTo("mscons");
+        assertThat(ms4.get("monate").get(2).get("abgleich").get("ampel").asText()).isEqualTo("gelb");
+
+        // Der Monatslauf rechnet mit den Werten aus der MSCONS: endgültig.
+        wertequelle(ausMscons, "messstellenbetreiber");
+        Lauf fertig = lauf(ausMscons, nov);
+        assertThat(fertig.zeile().stand()).isEqualTo("endgueltig");
+        assertThat(fertig.zeile().wertequelle()).isEqualTo("messstellenbetreiber");
+    }
+
+    @Test
+    void einRealistischerMsconsMonatMitLueckeErsatzwertenUndZaehlerwechsel() throws Exception {
+        Welt w = welt();
+        rolle(w.mandant(), w.ms().get("MS-03"), "Z2", ZP2_NEU, "2026-12-15");
+        rolle(w.mandant(), w.ms().get("MS-04"), "Z2", ZP2_NEU, "2026-12-15");
+        YearMonth dez = YearMonth.of(2026, 12);
+
+        // Z1: 2 976 Viertelstunden je Richtung; Abgabe am 03.12. 10–11 Uhr ohne Menge, 11–12 Uhr Ersatzwerte.
+        String z1 = mscons(dez, List.of(ZP1), "1-1:1.29.0", 1.000, "1-1:2.29.0", 0.500, LocalDate.of(2026, 12, 15),
+                LocalDate.of(2026, 12, 3));
+        JsonNode e = einlesen(w, "MS-01", "msb-dez-z1.edi", z1, 200);
+        assertThat(e.get("neu").asBoolean()).isTrue();
+        assertThat(e.get("importDatei").get("format").asText()).isEqualTo("mscons");
+        assertThat(e.get("importDatei").get("viertelstunden").asInt()).isEqualTo(2 * 2976 - 8);
+        assertThat(e.get("uebergangen").asInt()).isEqualTo(4);
+        assertThat(e.get("richtungen").toString()).isEqualTo("[\"bezug\",\"abgabe\"]");
+        assertThat(einlesen(w, "MS-01", "msb-dez-z1.edi", z1, 200).get("neu").asBoolean()).isFalse();
+
+        // Z2: alter Zählpunkt bis 14.12., neuer ab 15.12. — zwei Messlokationen (LOC+172) in einer Nachricht.
+        String z2 = mscons(dez, List.of(ZP2, ZP2_NEU), "bezug", 0.300, "abgabe", 0.200, LocalDate.of(2026, 12, 15),
+                null);
+        assertThat(einlesen(w, "MS-03", "msb-dez-z2.edi", z2, 200).get("importDatei").get("viertelstunden").asInt())
+                .isEqualTo(2 * 2976);
+        assertThat(einlesen(w, "MS-01", "falsch.edi", z2, 422).get("code").asText()).isEqualTo("zaehlpunkt_fremd");
+        // Eine abgeschnittene Nachricht nennt Grund und Segment.
+        JsonNode kaputt = einlesen(w, "MS-01", "kaputt.edi", z1.replaceFirst("UNT\\+\\d+", "UNT+12"), 400);
+        assertThat(kaputt.get("code").asText()).isEqualTo("datei_ungueltig");
+        assertThat(kaputt.get("grund").asText()).isEqualTo("unvollstaendig");
+        assertThat(kaputt.get("format").asText()).isEqualTo("mscons");
+        assertThat(kaputt.get("segment").asInt()).isGreaterThan(12_000);
+        assertThat(kaputt.get("message").asText()).contains("UNT nennt 12 Segmente");
+
+        JsonNode monat = ruf(w, "/api/v1/sites/" + w.anlage() + "/mispel/abgrenzung/monate/2026-12/abgleich");
+        Map<String, JsonNode> je = jeGroesse(monat);
+        assertThat(ampel(je, "Z1NB")).isEqualTo("gruen 1.5");
+        assertThat(je.get("Z1NE").get("abgleich").get("grund").asText()).isEqualTo("luecke");
+        assertThat(je.get("Z2V").get("abgleich").get("grund").asText()).isEqualTo("zaehlerwechsel");
+        assertThat(je.get("Z2E").get("abgleich").get("grund").asText()).isEqualTo("zaehlerwechsel");
+        assertThat(ruf(w, "/api/v1/messstellen/" + w.ms().get("MS-04") + "/msb-abgleich").get("monate").get(1)
+                .get("abgleich").get("msbKwh").decimalValue()).isEqualByComparingTo(new BigDecimal("595.200"));
+    }
+
+    @Test
     void fremdeMessstellenUndAnlagenBleibenUnsichtbar() throws Exception {
         Welt w = welt();
         Welt fremd = welt();
@@ -278,31 +358,6 @@ class MsbAbgleichApiTest {
         return out;
     }
 
-    /**
-     * Eine Datei im MSB-Format: je Viertelstunde des Monats eine Zeile je Richtung. Der erste Zählpunkt gilt bis zum
-     * Tag vor {@code wechsel}, der zweite ab dann; am Tag {@code luecke} fehlt die zweite Richtung 10–12 Uhr.
-     */
-    private static String csv(YearMonth m, List<String> zps, String r1, double kwh1, String r2, double kwh2,
-            LocalDate wechsel, LocalDate luecke) {
-        StringBuilder s = new StringBuilder("# Lastgang des Messstellenbetreibers, Beginn der Viertelstunde\n"
-                + "zeitstempel;zaehlpunkt;richtung;kwh\n");
-        DateTimeFormatter f = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
-        for (ZonedDateTime t = m.atDay(1).atStartOfDay(BERLIN);
-                t.isBefore(m.plusMonths(1).atDay(1).atStartOfDay(BERLIN)); t = t.plusMinutes(15)) {
-            String zp = wechsel != null && !t.toLocalDate().isBefore(wechsel) && zps.size() > 1 ? zps.get(1)
-                    : zps.get(0);
-            String ts = t.toOffsetDateTime().format(f);
-            s.append(ts).append(';').append(zp).append(';').append(r1).append(';')
-                    .append(String.format(java.util.Locale.GERMANY, "%.3f", kwh1)).append('\n');
-            boolean fehlt = luecke != null && t.toLocalDate().equals(luecke) && t.getHour() >= 10 && t.getHour() < 12;
-            if (!fehlt) {
-                s.append(ts).append(';').append(zp).append(';').append(r2).append(';')
-                        .append(String.format(java.util.Locale.GERMANY, "%.3f", kwh2)).append('\n');
-            }
-        }
-        return s.toString();
-    }
-
     private Lauf lauf(Welt w, YearMonth monat) {
         dienst.leserSetzen(new Geraete(msb));
         dienst.uhrStellen(Clock.fixed(Instant.parse("2027-01-10T12:00:00Z"), ZoneOffset.UTC));
@@ -315,8 +370,9 @@ class MsbAbgleichApiTest {
     }
 
     private JsonNode einlesen(Welt w, String ms, String name, String inhalt, int status) throws Exception {
+        String art = name.endsWith(".csv") ? "text/csv" : "application/edifact";
         MockHttpServletResponse r = antwort(w, multipart("/api/v1/messstellen/" + w.ms().get(ms) + "/msb-werte")
-                .file(new MockMultipartFile("datei", name, "text/csv", inhalt.getBytes(StandardCharsets.UTF_8))));
+                .file(new MockMultipartFile("datei", name, art, inhalt.getBytes(StandardCharsets.UTF_8))));
         assertThat(r.getStatus()).as(r.getContentAsString()).isEqualTo(status);
         return r.getContentAsByteArray().length == 0 ? null : MAPPER.readTree(r.getContentAsByteArray());
     }

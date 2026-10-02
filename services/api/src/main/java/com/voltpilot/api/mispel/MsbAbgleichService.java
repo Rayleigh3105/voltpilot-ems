@@ -41,10 +41,16 @@ public class MsbAbgleichService {
     static final List<String> GROESSEN = List.of("Z1NB", "Z1NE", "Z2V", "Z2E", "Z3V", "Z3E");
     /** Höchstens so viele Monate je Messstelle (zwei Jahre). */
     static final int HOECHSTENS_MONATE = 24;
+    /** Die Formate einer Datei des Messstellenbetreibers ({@code mispel_msb_import.format}). */
+    public static final String CSV = "csv";
+    public static final String MSCONS = "mscons";
 
-    /** Ergebnis eines Imports; {@code neu = false}, wenn dieselbe Datei schon eingelesen war. */
+    /**
+     * Ergebnis eines Imports; {@code neu = false}, wenn dieselbe Datei schon eingelesen war. {@code uebergangen}: Mengen
+     * ohne wahren Wert (MSCONS: Ersatz-, Vorschlags-, Prognose- und nicht verwendbare Werte), die eine Lücke bleiben.
+     */
     public record Eingelesen(MsbWerteRepository.Import importDatei, boolean neu, List<String> zaehlpunkte,
-            List<String> richtungen) {}
+            List<String> richtungen, int uebergangen) {}
 
     /** Ein Monat an einer Messstelle: der Abgleich und die Wirkung des Endgültig-Werdens auf die Anlage. */
     public record MonatZeile(String monat, String zaehlpunkt, MsbAbgleichRegeln.Ergebnis abgleich,
@@ -96,7 +102,8 @@ public class MsbAbgleichService {
     // ---------------------------------------------------------------- einlesen
 
     /**
-     * Liest eine CSV an der Messstelle ein. Jede Zeile muss einen Zählpunkt nennen, den die Messstelle in einer
+     * Liest eine Datei an der Messstelle ein: MSCONS ({@link MsbWerteMscons}, erkannt an {@code UNA}/{@code UNB} am
+     * Anfang) oder CSV ({@link MsbWerteCsv}). Jeder Wert muss einen Zählpunkt nennen, den die Messstelle in einer
      * Fassung ihrer Zählerrolle trägt (auch vor einem Zählerwechsel); beide Richtungen des Zählpunkts sind erlaubt
      * (Z1 sind zwei Messstellen mit demselben Zählpunkt, Vertrag {@code mispel-zaehlerrolle.md} § 1).
      */
@@ -113,12 +120,23 @@ public class MsbAbgleichService {
             throw new MsbAbgleichAbgelehnt("kein_zaehlpunkt", 422, "Diese Messstelle hat noch keinen Zählpunkt der "
                     + "Festlegung — erst die Zählerrolle mit Zählpunkt eintragen (Anlage 1 S. 23).");
         }
+        String format = MsbWerteMscons.istEdifact(datei) ? MSCONS : CSV;
         List<MsbWerteCsv.Wert> werte;
+        int uebergangen = 0;
         try {
-            werte = MsbWerteCsv.lesen(new String(datei, StandardCharsets.UTF_8));
+            if (format.equals(MSCONS)) {
+                // Zeichensatz UNOC (ISO 8859-1); gelesen werden nur Ziffern, Kennungen und Trennzeichen.
+                MsbWerteMscons.Gelesen g = MsbWerteMscons.lesen(new String(datei, StandardCharsets.ISO_8859_1));
+                werte = g.werte();
+                uebergangen = g.uebergangen();
+            } else {
+                werte = MsbWerteCsv.lesen(new String(datei, StandardCharsets.UTF_8));
+            }
         } catch (MsbWerteCsv.Ungueltig e) {
+            // CSV: die Zeile; MSCONS: die Nummer des Segments (0 = die ganze Datei).
             throw new MsbAbgleichAbgelehnt("datei_ungueltig", 400, e.getMessage())
-                    .mit("grund", e.grund()).mit("zeile", e.zeile());
+                    .mit("grund", e.grund()).mit("format", format).mit(format.equals(MSCONS) ? "segment" : "zeile",
+                            e.zeile());
         }
         Set<String> zps = new LinkedHashSet<>();
         Set<String> richtungen = new LinkedHashSet<>();
@@ -134,13 +152,13 @@ public class MsbAbgleichService {
         String sha = sha256(datei);
         var vorhanden = msb.mitPruefsumme(sha);
         if (vorhanden.isPresent()) {
-            return new Eingelesen(vorhanden.get(), false, List.copyOf(zps), List.copyOf(richtungen));
+            return new Eingelesen(vorhanden.get(), false, List.copyOf(zps), List.copyOf(richtungen), uebergangen);
         }
         String von = wer == null ? null : wer.name() != null ? wer.name() : wer.sub();
         String name = dateiname == null || dateiname.isBlank() ? null
                 : dateiname.length() > 200 ? dateiname.substring(0, 200) : dateiname;
-        return new Eingelesen(msb.anlegen(TenantContext.get(), messstelleId, name, sha, werte, von), true,
-                List.copyOf(zps), List.copyOf(richtungen));
+        return new Eingelesen(msb.anlegen(TenantContext.get(), messstelleId, format, name, sha, werte, von), true,
+                List.copyOf(zps), List.copyOf(richtungen), uebergangen);
     }
 
     // ---------------------------------------------------------------- Messstelle

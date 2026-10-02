@@ -55,7 +55,10 @@ public class MessstelleMsbAbgleichController {
         return abgleich.messstelle(id);
     }
 
-    /** Recht: {@code messstelle.bearbeiten}. Eine CSV mit Viertelstundenwerten des Messstellenbetreibers. */
+    /**
+     * Recht: {@code messstelle.bearbeiten}. Eine Datei mit Viertelstundenwerten des Messstellenbetreibers: CSV oder
+     * MSCONS (EDIFACT), erkannt an der Datei.
+     */
     @PostMapping(value = "/msb-werte", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MsbAbgleichService.Eingelesen einlesen(@PathVariable UUID id, @RequestPart("datei") MultipartFile datei,

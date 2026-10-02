@@ -15,7 +15,8 @@ import org.springframework.stereotype.Repository;
 
 /**
  * Die Werte des Messstellenbetreibers ({@code mispel_msb_wert}) und ihre Importe ({@code mispel_msb_import}),
- * V20261003015500. RLS + FORCE: jede Abfrage sieht nur den Mandanten der Anfrage. MiSpeL MP-15.
+ * V20261003015500 (Format {@code mscons} ab V20261003051500). RLS + FORCE: jede Abfrage sieht nur den Mandanten der
+ * Anfrage. MiSpeL MP-15, MP-15b.
  */
 @Repository
 public class MsbWerteRepository {
@@ -39,8 +40,17 @@ public class MsbWerteRepository {
                 messstelleId);
     }
 
-    /** Legt den Import an und schreibt seine Werte; ein vorhandener Wert derselben Viertelstunde wird ersetzt. */
+    /** Legt einen CSV-Import an ({@link #anlegen(UUID, UUID, String, String, String, List, String)}). */
     public Import anlegen(UUID tenantId, UUID messstelleId, String dateiname, String sha256,
+            List<MsbWerteCsv.Wert> werte, String von) {
+        return anlegen(tenantId, messstelleId, MsbAbgleichService.CSV, dateiname, sha256, werte, von);
+    }
+
+    /**
+     * Legt den Import im {@code format} ({@code csv}, {@code mscons}) an und schreibt seine Werte; ein vorhandener
+     * Wert derselben Viertelstunde wird ersetzt.
+     */
+    public Import anlegen(UUID tenantId, UUID messstelleId, String format, String dateiname, String sha256,
             List<MsbWerteCsv.Wert> werte, String von) {
         Instant a = werte.stream().map(MsbWerteCsv.Wert::beginn).min(Instant::compareTo).orElseThrow();
         Instant b = werte.stream().map(MsbWerteCsv.Wert::beginn).max(Instant::compareTo).orElseThrow()
@@ -55,8 +65,8 @@ public class MsbWerteRepository {
             ersetzt += (int) l.stream().filter(w -> da.contains(w.beginn())).count();
         }
         UUID id = jdbc.queryForObject("INSERT INTO mispel_msb_import (tenant_id, messstelle_id, format, dateiname, "
-                + "sha256, viertelstunden, ersetzt, von, bis, importiert_von) VALUES (?, ?, 'csv', ?, ?, ?, ?, ?, ?, ?) "
-                + "RETURNING id", UUID.class, tenantId, messstelleId, dateiname, sha256, werte.size(), ersetzt,
+                + "sha256, viertelstunden, ersetzt, von, bis, importiert_von) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "RETURNING id", UUID.class, tenantId, messstelleId, format, dateiname, sha256, werte.size(), ersetzt,
                 Timestamp.from(a), Timestamp.from(b), von);
         List<Object[]> zeilen = new ArrayList<>(werte.size());
         for (MsbWerteCsv.Wert w : werte) {

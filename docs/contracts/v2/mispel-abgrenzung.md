@@ -373,15 +373,30 @@ eichrechtskonform erfasste Messwerte „scheidet [...] aus“ (ebd.). Bedienkonz
   `messstelle.bearbeiten`, `web/MessstelleMsbAbgleichController`) → `{importDatei, neu, zaehlpunkte, richtungen}`.
   Jede Zeile muss einen Zählpunkt nennen, den die Messstelle in einer Fassung ihrer [Zählerrolle](./mispel-zaehlerrolle.md)
   trägt (auch vor einem Zählerwechsel); beide Richtungen sind erlaubt (Z1 = zwei Messstellen, ein Zählpunkt).
-  Ablehnungen `{code, message, …}`: `datei_ungueltig` (400, `grund` + `zeile`), `kein_zaehlpunkt` (422),
-  `zaehlpunkt_fremd` (422, `zaehlpunkt`); fremde Messstelle 404. Dieselbe Datei (SHA-256) ist derselbe Import (`neu = false`).
+  Ablehnungen `{code, message, …}`: `datei_ungueltig` (400, `grund`, `format` und `zeile` bei CSV bzw. `segment` bei
+  MSCONS — 0 = die ganze Datei), `kein_zaehlpunkt` (422), `zaehlpunkt_fremd` (422, `zaehlpunkt`); fremde Messstelle 404.
+  Dieselbe Datei (SHA-256) ist derselbe Import (`neu = false`). Das Format erkennt der Import an der Datei: beginnt sie
+  (nach BOM und Leerraum) mit `UNA` oder `UNB`, ist sie MSCONS, sonst CSV; `importDatei.format` = `csv` | `mscons`.
+  `uebergangen` zählt Mengen ohne wahren Wert (nur MSCONS, sonst 0).
 - **Format heute: CSV** (`mispel/MsbWerteCsv`, rein): Kopfzeile `zeitstempel;zaehlpunkt;richtung;kwh` (Reihenfolge frei,
   `;` mit Dezimalkomma oder `,` mit Dezimalpunkt, `#`-Zeilen übersprungen); `zeitstempel` = Beginn der Viertelstunde mit
   Versatz (ISO 8601); `richtung` = `bezug`/`abgabe` oder OBIS `1-1:1.29.0`/`1-1:2.29.0`; `kwh` ≥ 0 je Viertelstunde.
-  Nichts wird ergänzt: eine fehlende Viertelstunde bleibt fehlend. **MSCONS (EDIFACT) ist ein Folgepaket** — die
-  Umsetzung in der Marktkommunikation ist „nicht Regelungsgegenstand dieser Festlegung“ (Tenor S. 28), das Format
-  wählt VoltPilot.
-- **Speicher** (`V20261003015500`, RLS + FORCE): `mispel_msb_import` (Datei, Messstelle, Prüfsumme, Zeitraum) und
+  Nichts wird ergänzt: eine fehlende Viertelstunde bleibt fehlend.
+- **Format MSCONS (MP-15b)** (`mispel/MsbWerteMscons`, rein): EDIFACT-Lastgang des Messstellenbetreibers nach EDI@Energy
+  MSCONS MIG 2.5 / AHB 3.2 (verbindlich ab 01.10.2026, BNetzA BK6 Mitteilung Nr. 56 vom 01.04.2026) oder der Vorfassung
+  2.4c (`UNH+…+MSCONS:D:04B:UN:2.5`); andere Nachrichtentypen und Versionen werden abgelehnt. Gelesen werden je
+  `LOC+172` (Zählpunkt der Messlokation, 33 Zeichen; eine Marktlokations-ID wird abgelehnt) die Lastgänge `PIA+5`
+  `1-1:1.29.0` (Bezug) und `1-1:2.29.0` (Abgabe); andere OBIS-Kennzahlen (z. B. Blindarbeit) werden übergangen. Je
+  `QTY` die Menge in kWh (Einheit `KWH` oder keine; jede andere wird abgelehnt, nichts wird umgerechnet) mit `DTM+163`
+  (Beginn) und `DTM+164` (Ende = Beginn + 15 min, sonst abgelehnt), Format 303 mit Versatz (BDEW: UTC, `?+00`) — die
+  Tage der Zeitumstellung haben so 92 bzw. 100 Viertelstunden ohne Mehrdeutigkeit. **Nur der wahre Wert (`QTY+220`)**
+  wird übernommen; Ersatz-, Vorschlags-, Prognose- und nicht verwendbare Werte bleiben eine Lücke (`uebergangen`), weil
+  nur der gemessene Wert „mit mess- und eichrechtskonformen Messeinrichtungen“ erfasst ist (Tenor S. 28); ein späterer
+  Import mit wahren Werten ersetzt die Lücke. `UNT`-Segmentzahl, `UNT`/`UNZ`-Referenzen und das abschließende `UNZ`
+  werden geprüft (abgeschnittene Datei). Trennzeichen aus `UNA`, Freigabezeichen `?`, Zeichensatz UNOC.
+  Die Umsetzung in der Marktkommunikation ist „nicht Regelungsgegenstand dieser Festlegung“ (Tenor S. 28; MaKo-Rahmen
+  durch die BK6, S. 92) — CSV und MSCONS wählt VoltPilot; beide landen in derselben Ablage mit derselben Ampel.
+- **Speicher** (`V20261003015500`, RLS + FORCE; `format` `csv` | `mscons` seit `V20261003051500`): `mispel_msb_import` (Datei, Messstelle, Prüfsumme, Zeitraum) und
   `mispel_msb_wert` je Zählpunkt, Richtung und Viertelstunde (Schlüssel) — nicht je Messstelle: ein Zählerwechsel bringt
   einen neuen Zählpunkt, die Werte des alten bleiben. Ein späterer Import ersetzt den Wert derselben Viertelstunde
   (`ersetzt` zählt sie); App nur SELECT/INSERT und UPDATE `(kwh, import_id)`.
@@ -409,10 +424,13 @@ eichrechtskonform erfasste Messwerte „scheidet [...] aus“ (ebd.). Bedienkonz
   den Zählrichtungen; an der Messstelle die Tabelle je Monat und „Werte des Messstellenbetreibers einlesen“. Kein neuer
   Reiter. Ohne Werte des Messstellenbetreibers im Monat schweigt die Karte.
 
-Prüfnachweis: `(cd services/api && ./mvnw test -Dtest='MsbAbgleichRegelnTest,MsbAbgleichApiTest')` (Docker; ein
-realistischer Monat im Format des Messstellenbetreibers — Dezember 2026, 2 976 Viertelstunden je Richtung, mit Lücke und
-Zählerwechsel — und ein November mit bekannten Abweichungen) und `npx playwright test e2e/msb-abgleich.spec.ts`
-(375 und 1440 px). **Offen bis zum Pilot (MP-47):** der Import eines echten MSB-Monats und die Bestätigung der Schwellen.
+Prüfnachweis: `(cd services/api && ./mvnw test -Dtest='MsbAbgleichRegelnTest,MsbWerteMsconsTest,MsbAbgleichApiTest')`
+(Docker; ein realistischer Monat im Format des Messstellenbetreibers — Dezember 2026, 2 976 Viertelstunden je Richtung,
+mit Lücke und Zählerwechsel, als CSV und als MSCONS mit Ersatzwerten —, ein November mit bekannten Abweichungen, der aus
+CSV und MSCONS dieselbe Ampel ergibt, und die Tage der Zeitumstellung 25.10.2026 mit 100 und 28.03.2027 mit 92
+Viertelstunden, in UTC und in Ortszeit) und `npx playwright test e2e/msb-abgleich.spec.ts` (375 und 1440 px). **Offen
+bis zum Pilot (MP-47):** der Import eines echten MSB-Monats (CSV oder MSCONS), ob Ersatzwerte (`QTY+67`) als Werte des
+Messstellenbetreibers gelten dürfen, und die Bestätigung der Schwellen.
 
 ## Was die Leser prüfen (L1–L10)
 
