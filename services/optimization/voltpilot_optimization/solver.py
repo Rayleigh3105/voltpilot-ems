@@ -311,6 +311,7 @@ from pyomo.environ import (
     Binary,
     ConcreteModel,
     Constraint,
+    ConstraintList,
     NonNegativeReals,
     Objective,
     RangeSet,
@@ -684,6 +685,29 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # UEMS AP-15 IP-14 (P4): die Anteile der mitsteuernden Boxen. Ohne Verbund
     # (jede Ein-Box-Anlage) kommt nichts ins Modell - byte-identisch.
     verbund_cost = _add_verbund(m, inp, enforce_grid_limit) if inp.verbund else None
+    # MiSpeL MP-10: die dritte Betriebsart (siehe _add_mischbetrieb). Ohne
+    # Mischbetrieb kommt nichts ins Modell - jede andere Anlage byte-gleich.
+    mischbetrieb_term = (
+        _add_mischbetrieb(m, inp) if inp.mischbetrieb else None
+    )
+    if inp.mischbetrieb and inp.leistungspreis_eur_kw is not None:
+        # Leistungspreis-Schutz (Bauplan MP-10, Konzept § 5.2): ob § 118 Abs. 6
+        # EnWG auch den Leistungspreis entlastet, ist offen (MP-3) - bis dahin
+        # laedt der Speicher nie ueber die bestehende Bezugsspitze. Der
+        # Netzstrom im Speicher (1)¼ bleibt im Spielraum zwischen der Spitze
+        # bisher und dem Bezug, den das Haus ohne Speicher ohnehin zieht. Exakt
+        # als Obergrenze, weil der Mischbetrieb nie unter die Last abregelt
+        # (``mischbetrieb_abregelung``): im Ladeslot ist der Bezug dann
+        # MAX [ Last - PV ; 0 ] + (1)¼. Vom Handeingriff „jetzt laden“
+        # (forced) ausgenommen - der ist eine ausdrueckliche Anweisung und
+        # darf das Modell nie unloesbar machen.
+        def _spitzenschutz(model, t):
+            if t < forced_n:
+                return Constraint.Skip
+            haus = max(inp.load_kw[t] - inp.pv_kw[t], 0.0)
+            return model.netz_laden[t] <= max(inp.peak_so_far_kw - haus, 0.0)
+
+        m.mispel_spitzenschutz = Constraint(m.T, rule=_spitzenschutz)
     # Real degradation cost per AC-side kWh in each direction (see module
     # docstring); the epsilon tie-break below stays for the c_wear = 0 case.
     wear_eur_per_kwh = p.wear_cost_eur_per_kwh_each_way
@@ -728,8 +752,130 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     )
     if verbund_cost is not None:
         m.total_cost.expr = m.total_cost.expr + verbund_cost
+    if mischbetrieb_term is not None:
+        m.total_cost.expr = m.total_cost.expr + mischbetrieb_term
     _add_night_reserve(m, inp, soc_floor)
     return m
+
+
+def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
+    """Mischbetrieb (MiSpeL MP-10): zwei Ladewege, Speichervorrang, Farben.
+
+    Die Buchung der Festlegung (Anlage 1, Formelsatz A1; A5 und A5-Variante
+    rechnen die Saldierung gleich, A1 S. 45, S. 52) als Teil des Modells, in kW
+    je Slot (Menge = Leistung * dt):
+
+    - ``netz_laden`` = (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] (A1 S. 33): der Netzstrom im
+      Speicher. Der Rest der Ladung ist der PV-Ladeweg (10) = (5) - (9).
+    - ``speicher_einspeisung`` = (2)¼ = MIN [ Z1NE¼ ; Z2E¼ ] (A1 S. 34); die
+      gruene Einspeisung ist (23)¼ = Z1NE¼ - (2)¼ (A1 S. 38).
+    - ``rot_einspeisung`` traegt die saldierungsfaehige Netzeinspeisung (16) =
+      MAX [ (13) - (15) ; 0 ] (A1 S. 36) ueber den Lauf: die
+      Speicher-Einspeisung ueber der EE-Speichererzeugung (15) = (14) * (10) -
+      gelb zuerst (gesicherte Zuordnung, T S. 38-39). (13) = (11) ohne
+      Fremdtankstrom; der Start-Ladestand zaehlt als EE-Speichererzeugung (den
+      Monatsstand bringt MP-11).
+
+    Beide MIN und das MAX sind EXAKT, nicht nur Schranken - der Solver darf
+    weder Netzstrom im Speicher noch Speicher-Einspeisung kleinrechnen
+    (Praemie auf Netzstrom, Speicherstrom als gruen), noch (16) gross rechnen:
+
+    - MIN: die Obergrenzen (MIN <= jedes Glied) plus die Planungsgrenze
+      ``mischbetrieb_abregelung`` - abgeregelt wird hoechstens bis auf die
+      Last, die PV deckt die Last zuerst (Speichervorrang). Mit dem
+      Ueberschuss U = MAX [ pv - Last ; 0 ] sind dann (1)¼ >= Ladung - U +
+      Abregelung und (2)¼ >= Einspeisung - U + Abregelung exakt, ohne
+      Ganzzahl. Was die Grenze kostet, ist allein das Beziehen der LAST zum
+      negativen Bezugspreis; Laden aus dem Netz bleibt dort moeglich. (Frei
+      unter die Last abzuregeln - mit oder ohne Ganzzahl je Slot - machte das
+      Modell an Tagen mit negativem Bezugspreis minutenlang.)
+    - MAX: bringt Rot in einem Slot mehr als Gelb (Gutschrift / eta >
+      Praemie), moechte der Solver (16) gross rechnen - dann bekommt das MAX
+      eine Ganzzahl je Lauf (``saldierung_aktiv``); sonst reicht die
+      Untergrenze.
+
+    Zielfunktion: gruen und gelb tragen die Praemie (``mispel_praemie``), rot
+    nicht; rot entlastet die Netzentnahme um (16) + (19) = (16) / (14)
+    (privilegierungsfaehige Verluste, A1 S. 36-37) zu den saldierten
+    Bestandteilen. Gibt diesen Term (EUR, negativ = Ertrag) zurueck.
+    """
+    p = inp.battery
+    n = inp.slots
+    dt = inp.slot_hours
+    eta_rt = p.roundtrip_efficiency
+    praemie = inp.mispel_praemie_eur_mwh or [0.0] * n
+    gutschrift_eur_mwh = inp.saldierte_bestandteile_eur_mwh / eta_rt
+    rot_lohnt = any(praemie[t] < gutschrift_eur_mwh for t in range(n))
+    ueberschuss = [max(inp.pv_kw[t] - inp.load_kw[t], 0.0) for t in range(n)]
+
+    m.netz_laden = Var(m.T, domain=NonNegativeReals, bounds=(0.0, p.max_charge_kw))
+    m.speicher_einspeisung = Var(
+        m.T, domain=NonNegativeReals, bounds=(0.0, p.max_discharge_kw)
+    )
+    m.rot_einspeisung = Var(
+        m.T, domain=NonNegativeReals, bounds=(0.0, p.max_discharge_kw)
+    )
+    m.mischbetrieb_netzladen = Constraint(
+        m.T,
+        ["bezug", "laden"],
+        rule=lambda model, t, glied: model.netz_laden[t]
+        <= (model.grid_import[t] if glied == "bezug" else model.charge[t]),
+    )
+    m.mischbetrieb_einspeisung = Constraint(
+        m.T,
+        ["export", "entladen"],
+        rule=lambda model, t, glied: model.speicher_einspeisung[t]
+        <= (model.grid_export[t] if glied == "export" else model.discharge[t]),
+    )
+    # Planungsgrenze: die Abregelung bleibt im PV-Ueberschuss ueber der Last.
+    # Dann deckt die PV nach Abregelung die Last immer ganz, und die
+    # Untergrenzen der beiden MIN sind linear und exakt.
+    m.mischbetrieb_abregelung = Constraint(
+        m.T, rule=lambda model, t: model.curtail[t] <= ueberschuss[t]
+    )
+    m.mischbetrieb_vorrang = Constraint(
+        m.T,
+        ["laden", "einspeisen"],
+        rule=lambda model, t, glied: (
+            model.netz_laden[t]
+            >= model.charge[t] - ueberschuss[t] + model.curtail[t]
+        )
+        if glied == "laden"
+        else (
+            model.speicher_einspeisung[t]
+            >= model.grid_export[t] - ueberschuss[t] + model.curtail[t]
+        ),
+    )
+    m.mischbetrieb_rot_aus_speicher = Constraint(
+        m.T,
+        rule=lambda model, t: model.rot_einspeisung[t]
+        <= model.speicher_einspeisung[t],
+    )
+
+    # (16) = MAX [ (13) - (15) ; 0 ] ueber den Lauf, in kWh.
+    soc0 = p.clamp_soc_kwh(inp.initial_soc_kwh)
+    start_gelb = p.one_way_efficiency * max(soc0 - p.soc_floor_kwh(soc0), 0.0)
+    if inp.battery_held or inp.soc_unbekannt:
+        start_gelb = 0.0
+    einspeisung_kwh = sum(m.speicher_einspeisung[t] * dt for t in m.T)
+    gelb_kwh = start_gelb + eta_rt * sum(
+        (m.charge[t] - m.netz_laden[t]) * dt for t in m.T
+    )
+    rot_kwh = sum(m.rot_einspeisung[t] * dt for t in m.T)
+    m.mischbetrieb_saldierung = ConstraintList()
+    m.mischbetrieb_saldierung.add(rot_kwh >= einspeisung_kwh - gelb_kwh)
+    if rot_lohnt:
+        big_m = start_gelb + n * dt * (eta_rt * p.max_charge_kw + p.max_discharge_kw)
+        m.saldierung_aktiv = Var(domain=Binary)
+        m.mischbetrieb_saldierung.add(
+            rot_kwh <= einspeisung_kwh - gelb_kwh + big_m * (1 - m.saldierung_aktiv)
+        )
+        m.mischbetrieb_saldierung.add(rot_kwh <= big_m * m.saldierung_aktiv)
+
+    return -sum(
+        praemie[t] * (m.grid_export[t] - m.rot_einspeisung[t]) * dt / 1000.0
+        for t in m.T
+    ) - gutschrift_eur_mwh / 1000.0 * rot_kwh
 
 
 def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool):
@@ -929,7 +1075,7 @@ def optimize(
     presentation fields (the Ersparnis-Simulation's year chains) pass False.
     """
     model = build_model(inp)
-    _solve(model)
+    _solve_plan(model, inp)
     plan = _extract_plan(model, inp, plan_id, generated_at)
     if not explain_plan:
         return plan
@@ -944,7 +1090,7 @@ def optimize_ignoring_grid_limit(
 ) -> SchedulePlan:
     """Fallback solve with the §14a cap dropped (see :func:`optimize`)."""
     model = build_model(inp, enforce_grid_limit=False)
-    _solve(model)
+    _solve_plan(model, inp)
     plan = _extract_plan(model, inp, plan_id, generated_at)
     if not explain_plan:
         return plan
@@ -1253,7 +1399,47 @@ def _charge_surplus_to_battery(inp: OptimizationInput, t: int, slot, why) -> boo
     )
 
 
-def _solve(model: ConcreteModel) -> None:
+#: MiSpeL MP-10: die Zeitgrenze des Mischbetriebs mit Saldierungs-Ganzzahl in
+#: Sekunden. Gemessen: 0,3-0,5 s an normalen Tagen; an Tagen mit NEGATIVEM
+#: Bezugspreis kann der Zweig „(16) > 0“ (Gutschrift auf Netzstrom, der dort
+#: ohnehin bezahlt geladen wird) minutenlang verzweigen. Dann plant der Lauf
+#: ohne Gutschrift (``saldierung_aktiv`` = 0, 0,3 s) - vorsichtig: er
+#: ueberschaetzt keinen Wert, er verschenkt hoechstens die Gutschrift dieses
+#: einen Laufs.
+MISCHBETRIEB_ZEITGRENZE_S = 20.0
+
+
+class _Zeitgrenze(RuntimeError):
+    """Der Solver hat die Zeitgrenze erreicht (nur mit ``time_limit``)."""
+
+
+def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
+    """Loest das Plan-Modell; im Mischbetrieb mit dem Rueckfall ohne Gutschrift
+    (siehe :data:`MISCHBETRIEB_ZEITGRENZE_S`). Jedes andere Modell: wie immer."""
+    if not hasattr(model, "saldierung_aktiv"):
+        _solve(model)
+        return
+    try:
+        _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
+    except _Zeitgrenze:
+        logger.warning(
+            "mischbetrieb.saldierung_zeitgrenze",
+            extra={
+                "context": {
+                    "site_id": str(inp.site_id),
+                    "zeitgrenze_s": MISCHBETRIEB_ZEITGRENZE_S,
+                    "reason": (
+                        "Mischbetrieb mit Saldierung nicht in der Zeitgrenze "
+                        "geloest - dieser Lauf plant ohne Gutschrift (16) = 0"
+                    ),
+                }
+            },
+        )
+        model.saldierung_aktiv.fix(0)
+        _solve(model)
+
+
+def _solve(model: ConcreteModel, time_limit: float | None = None) -> None:
     # Lazy import so this module (and the model-building tests) never hard-fail
     # where the HiGHS wheel is unavailable.
     from pyomo.contrib.appsi.base import TerminationCondition
@@ -1278,7 +1464,14 @@ def _solve(model: ConcreteModel) -> None:
         "mip_abs_gap": MIP_ABS_GAP,
         "mip_feasibility_tolerance": 1e-9,
     }
+    if time_limit is not None:
+        solver.config.time_limit = time_limit
     results = solver.solve(model)
+    if (
+        time_limit is not None
+        and results.termination_condition == TerminationCondition.maxTimeLimit
+    ):
+        raise _Zeitgrenze(f"time limit {time_limit} s reached")
     if results.termination_condition != TerminationCondition.optimal:
         raise InfeasiblePlanError(
             f"dispatch MILP not solved to optimality: {results.termination_condition}"

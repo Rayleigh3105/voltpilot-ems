@@ -81,8 +81,8 @@ class SolarOnlyChargeModule(SolverModule):
     ``sum(charge_e) <= sum(max(pv_p, 0) - curtail_p)`` per slot. For one EEG
     storage and one producer this is byte-identical to v1's
     ``charge <= max(pv, 0) - curtail``. Selected whenever at least one storage
-    lacks the effective permission (per-entity flag AND'd with the site's
-    DV-konform mode); present in BOTH builds - the §14a fallback must stay
+    lacks the effective permission (its per-entity flag); present in BOTH
+    builds - the §14a fallback must stay
     EEG-clean. Storages WITH permission are unconstrained by it (a mixed site
     arbitrages with the merchant battery while the EEG battery stays solar)."""
 

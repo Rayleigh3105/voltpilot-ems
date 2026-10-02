@@ -22,6 +22,8 @@ guard and config parsing always run.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import importlib.util
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -134,6 +136,12 @@ def test_every_model_variant_is_covered_by_the_explain_mapping():
             grid_limit_kw=30.0,
             max_feed_in_kw=8.0,
             leistungspreis_eur_kw=120.0,
+        ),
+        replace(  # MiSpeL MP-10: Mischbetrieb mit Saldierung und Spitzenschutz
+            make_input(arbitrage_prices(), leistungspreis_eur_kw=120.0),
+            mischbetrieb=True,
+            mispel_praemie_eur_mwh=[20.0] * 96,
+            saldierte_bestandteile_eur_mwh=100.0,
         ),
     ]
     for inp in variants:

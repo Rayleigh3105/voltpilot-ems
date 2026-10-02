@@ -38,6 +38,12 @@ losses). A merchant site therefore exports at bare spot; a site configured
 with both grid charging AND an EEG remuneration is flagged in the logs as an
 inconsistency to fix in master data.
 
+**MiSpeL Mischbetrieb (MP-10)** is the third mode, chosen by the Förderweg
+(Abgrenzungsoption) instead of the switch: export stays bare spot here, and
+the solver books the colours itself - the Marktprämie of the MP-12
+Marktwertbasis (:func:`marktpraemie_eur_mwh`) on green/yellow, the credit of
+the saldierte Bestandteile (:func:`saldierte_bestandteile_eur_mwh`) on red.
+
 Every unknown degrades to bare spot (today's symmetric model), never to an
 invented price - so the worst rollout case is "no regression", and the log
 line names what was missing (target report §4 Stage 1 rollout rule).
@@ -61,6 +67,8 @@ from voltpilot_optimization.config import (
     eeg_rate_schedule,
 )
 from voltpilot_optimization.marktwertbasis import (
+    FOERDERWEG_ABGRENZUNG,
+    FOERDERWEG_PAUSCHAL,
     MarktwertBasis,
     berlin_year,
     praemien_viertelstunde,
@@ -649,3 +657,100 @@ def grid_charge_hurdle_ct_kwh(tariff: SiteTariff) -> float:
     if tariff.tarif_art == TARIF_FEST:
         return FEST_GRID_CHARGE_HURDLE_CT_PER_KWH
     return 0.0
+
+
+# --- MiSpeL MP-10: Mischbetrieb (Abgrenzungsoption, Anlage 1) ------------------
+#
+# Festlegung zur Marktintegration von Speichern und Ladepunkten (BNetzA,
+# Az. 618-25-02, Beschluss 01.10.2026); Zitierweise „A1 S. 38“ = Anlage 1,
+# Seite 38. Die Mengen rechnet der Solver (``solver._add_mischbetrieb``); hier
+# stehen nur die zwei Preise je Viertelstunde, die er dafuer braucht.
+
+#: Die Foerderwege des Vertrags ``docs/contracts/v2/mispel-foerderweg.md`` § 1.
+FOERDERWEG_EINSPEISEVERGUETUNG = "einspeiseverguetung"
+FOERDERWEG_AUSSCHLIESSLICHKEIT = "marktpraemie_ausschliesslichkeit"
+FOERDERWEG_UNGEFOERDERT = "ungefoerdert"
+FOERDERWEGE = frozenset(
+    {
+        FOERDERWEG_EINSPEISEVERGUETUNG,
+        FOERDERWEG_AUSSCHLIESSLICHKEIT,
+        FOERDERWEG_ABGRENZUNG,
+        FOERDERWEG_PAUSCHAL,
+        FOERDERWEG_UNGEFOERDERT,
+    }
+)
+#: Die Formelsaetze mit Speichervorrang je Viertelstunde und Saldierung
+#: (1)¼–(22) samt Foerderseite (23)¼–(33) (A1 S. 33–39; A5 und A5-Variante
+#: uebernehmen die Saldierung unveraendert, A1 S. 45, S. 52). A10/A11 haben
+#: keine Foerderseite (A1 S. 94–102) und gehoeren nicht zur Abgrenzungsoption
+#: einer marktpraemien-gefoerderten Anlage.
+MISCHBETRIEB_FORMELSAETZE = frozenset({"A1", "A5", "A5-Variante"})
+
+
+def foerderweg_aus_bestand(netzladen_erlaubt: bool, plant_kind: str) -> str:
+    """Der Foerderweg einer Anlage ohne Fassung (Vertrag § 2, Vektoren
+    ``bestand``; Zwilling von ``FoerderwegRegeln.ausBestand``)."""
+    if netzladen_erlaubt:
+        return FOERDERWEG_UNGEFOERDERT
+    if plant_kind == PLANT_KIND_DIREKTVERMARKTUNG:
+        return FOERDERWEG_AUSSCHLIESSLICHKEIT
+    return FOERDERWEG_EINSPEISEVERGUETUNG
+
+
+def ist_mischbetrieb(foerderweg: str | None, formelsatz: str | None) -> bool:
+    """Plant diese Anlage im Mischbetrieb (dritte Betriebsart, E2 = B)?
+
+    Nur die Abgrenzungsoption (§ 19 Abs. 3b EEG, Tenor Ziff. 3) mit einem
+    Formelsatz der Anlage 1, der Speichervorrang, Saldierung und Foerderseite
+    traegt. Jeder andere Weg plant wie heute (Bestandsschutz)."""
+    return (
+        foerderweg == FOERDERWEG_ABGRENZUNG
+        and formelsatz in MISCHBETRIEB_FORMELSAETZE
+    )
+
+
+def saldierte_bestandteile_eur_mwh(tariff: SiteTariff, site_id=None) -> float:
+    """Was eine saldierte Netzentnahme an Bezugspreis-Bestandteilen spart
+    (EUR/MWh, brutto wie der Bezugspreis): Umlagen (§ 21 Abs. 1 EnFG) und der
+    Netzentgelt-Arbeitspreis (§ 118 Abs. 6 S. 3 EnWG: „§ 21 des
+    Energiefinanzierungsgesetzes gilt entsprechend“, A1 S. 17–18).
+
+    Stromsteuer und Konzessionsabgabe zaehlen nicht: sie sind nicht Teil der
+    Festlegung (A1 S. 18 Fn. 10), die Rechtsfrage liegt bei MP-3 (Bauplan
+    § 8.5) - bis zur Antwort rechnet der Optimierer vorsichtig. Der
+    Leistungspreis bleibt bepreist.
+
+    Quelle ist das gepflegte Bezugspreis-Blatt; ohne Blatt die
+    Recherche-Vorgabe, wenn auch der Bezugspreis aus ihr gebildet wird
+    (dieselbe Grundlage auf beiden Seiten). Sonst kennt niemand die
+    Bestandteile: 0, und der Plan laedt nie fuer eine Gutschrift aus dem Netz."""
+    supply = tariff.supply_price
+    if supply is not None and supply.has_components():
+        quelle = supply
+    elif (
+        tariff.tarif_art in (TARIF_DYNAMISCH, TARIF_OHNE)
+        and not (
+            tariff.tarif_art == TARIF_DYNAMISCH
+            and tariff.tarif_param_ct_kwh is not None
+        )
+        and default_supply_components_enabled()
+    ):
+        quelle = DEFAULT_SUPPLY_COMPONENTS
+    else:
+        ctx = {"site_id": str(site_id)} if site_id is not None else {}
+        logger.warning(
+            "pricing.saldierte_bestandteile_unbekannt",
+            extra={
+                "context": {
+                    **ctx,
+                    "reason": (
+                        "Mischbetrieb ohne Bezugspreis-Blatt - Umlagen und "
+                        "Netzentgelt unbekannt, die rote Einspeisung bekommt "
+                        "im Plan keine Gutschrift"
+                    ),
+                }
+            },
+        )
+        return 0.0
+    ct = (quelle.umlagen_ct or 0.0) + (quelle.netzentgelt_arbeitspreis_ct or 0.0)
+    return ct * CT_PER_KWH_TO_EUR_PER_MWH * (1.0 + quelle.ust_pct / 100.0)

@@ -253,6 +253,10 @@ class _SitesCursor:
             # AP-15 Folgepunkt (load_fuehrende_boxen): keine Mehr-Box-Anlage.
             self._rows = []
             return
+        if "FROM site_foerderweg" in sql:
+            # MiSpeL MP-10 (load_foerderwege): keine Fassung, es gilt der Bestand.
+            self._rows = []
+            return
         assert "FROM asset" in sql
         assert "a.wear_cost_ct_per_kwh" in sql
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too

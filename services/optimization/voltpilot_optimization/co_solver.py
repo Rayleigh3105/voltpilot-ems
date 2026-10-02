@@ -41,7 +41,7 @@ Multi-entity semantics worth naming:
   and their §14a/feed-in/peak caps stay SITE-level (the mqtt-schedule-2.0
   contract's table: the billing peak is a property of the connection point).
 - **Solar-only charging is a SUBSET constraint.** The storages without
-  effective grid-charge permission (per-entity flag AND site DV-konform mode)
+  effective grid-charge permission (the per-entity flag)
   jointly charge at most the site's uncurtailed production; permitted storages
   arbitrage freely alongside.
 - **Per-producer curtailment.** Each curtailable producer owns its reduction

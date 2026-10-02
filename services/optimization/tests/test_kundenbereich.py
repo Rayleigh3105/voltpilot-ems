@@ -124,6 +124,7 @@ def test_the_battery_site_list_filters_ended_areas(fake_db, monkeypatch):
     conn = fake_db(live=True)
     monkeypatch.setattr(inputs, "load_grenzblaetter", lambda *a, **k: {})
     monkeypatch.setattr(inputs, "load_fuehrende_boxen", lambda *a, **k: {})
+    monkeypatch.setattr(inputs, "load_foerderwege", lambda *a, **k: {})
     monkeypatch.setattr(verbund, "load_verbund", lambda *a, **k: {})
     assert inputs.load_battery_sites("dsn") == []
     (sql,) = conn.statements

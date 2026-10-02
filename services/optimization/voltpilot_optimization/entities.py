@@ -17,13 +17,12 @@ Entity ids are MQTT-topic-safe strings (the mqtt-schedule-2.0 contract's
 uses the deterministic well-known ids ``storage-main``/``pv-main``; registry
 wiring replaces those when it lands.
 
-**DV-konformer Modus** (plan-draft §2.7 "DV-konformer Modus"; geförderte
-Direktvermarktung: the battery must never charge from the grid): the site-level
-``dv_konform`` flag hard-disables grid-charge arbitrage for EVERY storage
-entity - most-restrictive-wins over any per-entity
-``charge_from_grid_allowed`` - while consumption-side strategies (self-
-consumption routing, peak shaving, curtailment, reserves) stay fully active.
-Mapping to the existing machinery, documented here once:
+**Grid-charge permission per storage** - mapping onto the v1 machinery,
+documented here once. (The former site-level ``dv_konform`` flag is gone,
+MiSpeL W8: its meaning "geförderte Direktvermarktung, never charge from the
+grid" is the Förderweg ``marktpraemie_ausschliesslichkeit`` of
+``docs/contracts/v2/mispel-foerderweg.md``, which reaches the plan through
+``netzladen_erlaubt``; the flag was never filled anywhere.)
 
 ===========================  ==================================================
 v1 (single battery)          v2 (co-optimizer)
@@ -32,12 +31,8 @@ v1 (single battery)          v2 (co-optimizer)
 (EEG mode)                   is False -> the SAME solar-only-charge constraint
                              (``charge <= pv - curtail``, PV-bus Bilanzierung
                              per FK3) selected by the SolarOnlyCharge module
-``netzladen_erlaubt=True``   per-entity ``charge_from_grid_allowed=True`` AND
-(merchant mode)              ``dv_konform=False``
-DV-konformer Modus           ``dv_konform=True``: forces effective permission
-(new, per-site)              False for ALL storages regardless of per-entity
-                             config - byte-identical constraint machinery to
-                             EEG mode, selected per entity subset
+``netzladen_erlaubt=True``   per-entity ``charge_from_grid_allowed=True``
+(merchant mode)
 ===========================  ==================================================
 
 The v2 publisher emits the EFFECTIVE per-entity permission explicitly (the
@@ -407,8 +402,6 @@ class CoOptimizationInput:
     ``base_load_kw`` is the UNCONTROLLABLE site load forecast (v1's
     ``load_kw``); controllable consumers are separate entities.
 
-    ``dv_konform`` is the per-site DV-konformer Modus (see the module
-    docstring for the mapping onto the netzladen_erlaubt machinery).
     """
 
     tenant_id: UUID
@@ -428,7 +421,6 @@ class CoOptimizationInput:
     terminal_value_eur_per_kwh: float | None = None
     leistungspreis_eur_kw: float | None = None
     peak_so_far_kw: float = 0.0
-    dv_konform: bool = False
     #: Die Nacht-Fehlerverteilung dieser Anlage (P3) - die v1-Semantik
     #: verbatim (siehe
     #: :attr:`~voltpilot_optimization.domain.OptimizationInput.night_error_quantiles`);
@@ -524,11 +516,10 @@ class CoOptimizationInput:
         )
 
     def grid_charge_allowed(self, storage: StorageEntity) -> bool:
-        """The storage's EFFECTIVE grid-charge permission: its own
-        ``charge_from_grid_allowed`` AND'd with the site-level DV-konform mode
-        (most-restrictive-wins). This is the single decision point the solver
-        modules AND the v2 publisher read."""
-        return storage.charge_from_grid_allowed and not self.dv_konform
+        """The storage's EFFECTIVE grid-charge permission - its own
+        ``charge_from_grid_allowed``. This is the single decision point the
+        solver modules AND the v2 publisher read."""
+        return storage.charge_from_grid_allowed
 
     def total_pv_kw(self, t: int) -> float:
         """Total site generation forecast in slot ``t`` (all producers)."""

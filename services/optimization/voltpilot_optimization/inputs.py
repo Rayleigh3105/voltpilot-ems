@@ -91,9 +91,13 @@ from voltpilot_optimization.pricing import (
     SupplyPriceComponents,
     berlin_month,
     export_values,
+    foerderweg_aus_bestand,
     grid_charge_hurdle_ct_kwh,
     import_prices,
+    ist_mischbetrieb,
+    marktpraemie_eur_mwh,
     needs_market_values,
+    saldierte_bestandteile_eur_mwh,
 )
 
 logger = logging.getLogger("voltpilot.optimization.inputs")
@@ -362,6 +366,24 @@ class BatterySite:
     #: Ein-Box-Anlage und jede ohne bestimmte fuehrende Box: dann lesen die
     #: Leser Wort fuer Wort wie vorher.
     fuehrende_box: UUID | None = None
+    #: MiSpeL MP-10: die am Plantag wirksame Fassung aus ``site_foerderweg``
+    #: (:func:`load_foerderwege`) - ``None`` = keine Fassung, dann gilt der
+    #: Bestand aus ``netzladen_erlaubt``/``plant_kind`` (Vertrag
+    #: ``mispel-foerderweg.md`` § 2, :attr:`foerderweg`).
+    foerderweg_fassung: str | None = None
+    formelsatz: str | None = None
+
+    @property
+    def foerderweg(self) -> str:
+        """Der wirksame Foerderweg: die Fassung, ohne sie der Bestand."""
+        if self.foerderweg_fassung is not None:
+            return self.foerderweg_fassung
+        return foerderweg_aus_bestand(self.netzladen_erlaubt, self.tariff.plant_kind)
+
+    @property
+    def mischbetrieb(self) -> bool:
+        """Dritte Betriebsart (MP-10): Abgrenzungsoption mit Formelsatz."""
+        return ist_mischbetrieb(self.foerderweg, self.formelsatz)
 
 
 def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySite]:
@@ -391,6 +413,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     # `anteile_aktiv` (P4); jede andere Anlage fehlt und bleibt, wie sie war.
     verbuende = verbund.load_verbund(dsn, jetzt, site_id)
     fuehrende = load_fuehrende_boxen(dsn, site_id)
+    # MiSpeL MP-10: die wirksame Foerderweg-Fassung je Anlage am Berliner Tag.
+    foerderwege = load_foerderwege(dsn, jetzt.astimezone(GRENZ_ZONE).date(), site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -493,6 +517,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                     ),
                     verbund=verbuende.get(site_id),
                     fuehrende_box=fuehrende.get(site_id),
+                    foerderweg_fassung=foerderwege.get(site_id, (None, None))[0],
+                    formelsatz=foerderwege.get(site_id, (None, None))[1],
                     tariff=SiteTariff(
                         plant_kind=(
                             str(plant_kind) if plant_kind is not None
@@ -541,6 +567,43 @@ GRENZ_ZONE = ZoneInfo("Europe/Berlin")
 class GrenzblattStand:
     tag: date
     fassungen: list[grenze_aufloesung.Fassung]
+
+
+def load_foerderwege(
+    dsn: str, tag: date, site_id: UUID | None = None
+) -> dict[UUID, tuple[str, str | None]]:
+    """``{site_id: (foerderweg, formelsatz)}`` der am ``tag`` wirksamen Fassung
+    (MiSpeL MP-5, Vertrag ``mispel-foerderweg.md`` § 3/§ 5): die spaeteste nicht
+    aufgehobene Fassung mit ``gueltig_ab <= tag``. Eine Anlage ohne Fassung
+    fehlt - fuer sie gilt der Bestand (:attr:`BatterySite.foerderweg`).
+
+    Der Tag ist der Berliner Kalendertag des Laufs (gesetzliche Zeit, A1 S.
+    33). Er gilt fuer den ganzen Horizont: der Vertrag kennt kein Vormerken (§
+    5), eine Fassung fuer morgen gibt es also nie. Vor der api-Migration
+    ``V20261002141500`` fehlt die Tabelle - das ist genau „keine Fassung“.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (site_id) site_id, foerderweg, formelsatz
+                FROM site_foerderweg
+                WHERE aufgehoben_am IS NULL AND gueltig_ab <= %(tag)s
+                  AND (%(site_id)s::uuid IS NULL OR site_id = %(site_id)s::uuid)
+                ORDER BY site_id, gueltig_ab DESC
+                """,
+                {"tag": tag, "site_id": str(site_id) if site_id is not None else None},
+            )
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("foerderweg.table_missing")
+        return {}
+    return {
+        _uuid(sid): (str(weg), str(satz) if satz is not None else None)
+        for sid, weg, satz in rows
+    }
 
 
 def _grenz_tag(jetzt: datetime, zeitzone: str | None) -> date:
@@ -905,25 +968,45 @@ def gather_inputs(
     # site's tariff/remuneration master data (missing data degrades that side
     # to bare spot inside the pricing layer - never a skipped site).
     spot = [prices[s] for s in slot_starts]
-    market_values: dict = {}
-    marktwert = None
-    if needs_market_values(site.tariff, site.netzladen_erlaubt):
-        market_values = _load_market_values(
-            dsn, sorted({berlin_month(s) for s in slot_starts})
-        )
-        # MiSpeL MP-12: Jahresmarktwert + AW>0 for days in a MiSpeL option
-        # (Förderweg je Tag); no AW-Differenzierung stored yet -> W4 fallback.
-        marktwert = load_marktwertbasis(dsn, site.site_id, slot_starts)
     import_series = import_prices(site.tariff, spot, site_id=site.site_id)
-    export_series = export_values(
-        site.tariff,
-        site.netzladen_erlaubt,
-        spot,
-        slot_starts,
-        market_values,
-        site_id=site.site_id,
-        marktwert=marktwert,
-    )
+    mispel_praemie = None
+    saldierte_bestandteile = 0.0
+    if site.mischbetrieb:
+        # MiSpeL MP-10: Export zum blanken Spot, die Farben bewertet der Solver
+        # - gruen/gelb mit der Praemie der Marktwertbasis aus MP-12
+        # (Jahresmarktwert, AW>0; dieselbe Reihe wie die Erloese), rot mit der
+        # Gutschrift der saldierten Bestandteile.
+        export_series = list(spot)
+        mispel_praemie = marktpraemie_eur_mwh(
+            site.tariff,
+            spot,
+            slot_starts,
+            {},
+            load_marktwertbasis(dsn, site.site_id, slot_starts),
+            {"site_id": str(site.site_id)},
+        )
+        saldierte_bestandteile = saldierte_bestandteile_eur_mwh(
+            site.tariff, site_id=site.site_id
+        )
+    else:
+        market_values: dict = {}
+        marktwert = None
+        if needs_market_values(site.tariff, site.netzladen_erlaubt):
+            market_values = _load_market_values(
+                dsn, sorted({berlin_month(s) for s in slot_starts})
+            )
+            # MiSpeL MP-12: Jahresmarktwert + AW>0 for days in a MiSpeL option
+            # (Förderweg je Tag); no AW-Differenzierung stored yet -> W4 fallback.
+            marktwert = load_marktwertbasis(dsn, site.site_id, slot_starts)
+        export_series = export_values(
+            site.tariff,
+            site.netzladen_erlaubt,
+            spot,
+            slot_starts,
+            market_values,
+            site_id=site.site_id,
+            marktwert=marktwert,
+        )
 
     # PS-1: the billing period's measured import peak anchors the
     # Leistungspreis epigraph. Computed fresh per cycle (never a stored
@@ -983,6 +1066,10 @@ def gather_inputs(
         # Ausschliesslichkeit (VOLTPILOT_MISPEL_STRENGE_SITES, Vorgabe leer =
         # FK3). Wirkt nur im EEG-Modus, siehe OptimizationInput.strenge_aktiv.
         strenge_ausschliesslichkeit=site.site_id in mispel_strenge_site_ids(),
+        # MiSpeL MP-10: die dritte Betriebsart aus dem Foerderweg (E2 = B).
+        mischbetrieb=site.mischbetrieb,
+        mispel_praemie_eur_mwh=mispel_praemie,
+        saldierte_bestandteile_eur_mwh=saldierte_bestandteile,
     )
 
 

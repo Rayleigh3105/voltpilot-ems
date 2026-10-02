@@ -57,7 +57,6 @@ def make_input(
     storages: tuple[StorageEntity, ...],
     producers: tuple[ProducerEntity, ...] = (),
     load: float | list[float] = 5.0,
-    dv_konform: bool = False,
     **kwargs,
 ) -> CoOptimizationInput:
     n = len(prices)
@@ -70,7 +69,6 @@ def make_input(
         base_load_kw=[load] * n if isinstance(load, (int, float)) else load,
         storages=storages,
         producers=producers,
-        dv_konform=dv_konform,
         **kwargs,
     )
 
@@ -172,11 +170,12 @@ def test_curtailment_lands_on_the_curtailable_producer_only():
 
 
 # ---------------------------------------------------------------------------
-# Per-entity grid-charge permission + DV-konform mode
+# Per-entity grid-charge permission (the site-level dv_konform flag is gone,
+# MiSpeL W8 - its meaning is the Foerderweg marktpraemie_ausschliesslichkeit)
 # ---------------------------------------------------------------------------
 
 
-def eeg_mixed_input(dv_konform: bool = False) -> CoOptimizationInput:
+def eeg_mixed_input() -> CoOptimizationInput:
     """Cheap-night spread with NO PV at night: a merchant battery may grid-
     charge, an EEG battery must not."""
     n = 48
@@ -189,7 +188,6 @@ def eeg_mixed_input(dv_konform: bool = False) -> CoOptimizationInput:
         ),
         producers=(ProducerEntity("pv", [0.0] * n),),
         load=2.0,
-        dv_konform=dv_konform,
         terminal_value_eur_per_kwh=0.0,
     )
 
@@ -207,20 +205,8 @@ def test_mixed_site_only_the_permitted_storage_grid_charges():
 
 
 @needs_highs
-def test_dv_konform_mode_hard_disables_grid_charge_for_every_storage():
-    # The site-level DV-konformer Modus overrides the merchant battery's own
-    # permission (most-restrictive-wins): with no PV, NOTHING may charge -
-    # grid-charge arbitrage is off site-wide.
-    plan = solve(eeg_mixed_input(dv_konform=True))
-    for dispatch in plan.storages:
-        charged = sum(max(s.setpoint_kw, 0) for s in dispatch.slots)
-        assert charged == pytest.approx(0.0, abs=1e-6), dispatch.entity_id
-        assert dispatch.charge_from_grid_allowed is False
-
-
-@needs_highs
-def test_dv_konform_keeps_consumption_side_strategies_alive():
-    # DV-konform disables grid ARBITRAGE, not the battery: solar charging and
+def test_solar_only_storage_keeps_consumption_side_strategies_alive():
+    # No grid permission disables grid ARBITRAGE, not the battery: solar charging and
     # expensive-evening self-consumption keep working (and with a
     # Leistungspreis, so does peak shaving - consumption-side strategies).
     n = 48
@@ -228,10 +214,9 @@ def test_dv_konform_keeps_consumption_side_strategies_alive():
     pv = [8.0] * (n // 2) + [0.0] * (n // 2)  # sunny first half
     inp = make_input(
         prices,
-        storages=(storage("batt", soc0=0.5, grid_charge=True),),
+        storages=(storage("batt", soc0=0.5, grid_charge=False),),
         producers=(ProducerEntity("pv", pv),),
         load=3.0,
-        dv_konform=True,
         leistungspreis_eur_kw=120.0,
         peak_so_far_kw=2.0,
         terminal_value_eur_per_kwh=0.0,
@@ -240,7 +225,7 @@ def test_dv_konform_keeps_consumption_side_strategies_alive():
     (dispatch,) = plan.storages
     solar_charged = sum(max(s.setpoint_kw, 0) for s in dispatch.slots[: n // 2])
     discharged = sum(max(-s.setpoint_kw, 0) for s in dispatch.slots[n // 2 :])
-    assert solar_charged > 4.0  # charges from PV despite DV-konform
+    assert solar_charged > 4.0  # charges from PV without grid permission
     assert discharged > 4.0  # serves the expensive evening
     # Solar-only invariant: in every charging slot the charge is covered by
     # uncurtailed PV (never grid energy).
@@ -384,14 +369,12 @@ def test_storage_only_site_without_producers_solves():
 
 
 def test_module_selection_reflects_the_effective_permission():
-    # dv_konform selects the solar-only module even when every storage's own
-    # flag would allow grid charging - the documented netzladen mapping.
+    # A storage without grid permission selects the solar-only module - the
+    # documented netzladen mapping.
     base = make_input([50.0] * 4, storages=(storage(grid_charge=True),))
     assert "solar-only-charge" not in {m.name for m in select_modules(base)}
-    dv = make_input(
-        [50.0] * 4, storages=(storage(grid_charge=True),), dv_konform=True
-    )
-    assert "solar-only-charge" in {m.name for m in select_modules(dv)}
+    eeg = make_input([50.0] * 4, storages=(storage(grid_charge=False),))
+    assert "solar-only-charge" in {m.name for m in select_modules(eeg)}
 
 
 def test_v1_adapter_maps_the_site_switch_onto_the_single_storage():

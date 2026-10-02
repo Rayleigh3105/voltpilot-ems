@@ -38,6 +38,7 @@ flowchart TD
 | Solver | `solver.py`, `co_solver.py` |
 | Planzeitkorrektur | `nowcast.py` |
 | MiSpeL-Abgrenzung: Formeln (1)–(33), Zwilling der Vektoren | `mispel_abgrenzung.py`; [Vertrag](../../docs/contracts/v2/mispel-abgrenzung.md) |
+| MiSpeL-Mischbetrieb: zwei Ladewege, Farben, Spitzenschutz (MP-10) | `solver._add_mischbetrieb`, `pricing.mispel_marktpraemie`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
 | Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
 | Laufzeit / CLI | `cli.py`, `runtime.py` |
 

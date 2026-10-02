@@ -643,6 +643,24 @@ class OptimizationInput:
     #: Die Toleranz je Viertelstunde in kWh (siehe
     #: :data:`STRENGE_TOLERANZ_KWH_JE_VIERTELSTUNDE`, Vorgabe 0).
     strenge_toleranz_kwh: float = STRENGE_TOLERANZ_KWH_JE_VIERTELSTUNDE
+    #: MiSpeL MP-10: die dritte Betriebsart Mischbetrieb - Foerderweg
+    #: Abgrenzungsoption (§ 19 Abs. 3b EEG, Tenor Ziff. 3) mit einem Formelsatz
+    #: aus :data:`voltpilot_optimization.pricing.MISCHBETRIEB_FORMELSAETZE`.
+    #: Der Solver bucht dann zwei Ladewege nach dem Speichervorrang je
+    #: Viertelstunde (§ 21 Abs. 4 S. 3 EnFG, A1 S. 33–34) und bewertet die
+    #: Einspeisung nach Farbe (A1 S. 18): gruen/gelb mit
+    #: ``mispel_praemie_eur_mwh``, rot mit ``saldierte_bestandteile_eur_mwh``.
+    #: ``export_value_eur_mwh`` ist dann der blanke Spot. ``False`` (die
+    #: Vorgabe) = KEIN Term und ein byte-gleicher Plan; ``netzladen_erlaubt``
+    #: behaelt seine Bedeutung (aus = FK3-Klemme wie heute).
+    mischbetrieb: bool = False
+    #: Je Slot die Marktpraemie einer gruenen/gelben kWh in EUR/MWh (AW>0 laut
+    #: ÜNB-Liste, Jahresmarktwert; :func:`pricing.mispel_marktpraemie`).
+    #: ``None`` = keine Praemie.
+    mispel_praemie_eur_mwh: list[float] | None = None
+    #: Was eine saldierte Netzentnahme an Umlagen und Netzentgelt spart, in
+    #: EUR/MWh brutto (:func:`pricing.saldierte_bestandteile_eur_mwh`).
+    saldierte_bestandteile_eur_mwh: float = 0.0
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -699,6 +717,24 @@ class OptimizationInput:
             raise ValueError(
                 "strenge_ausschliesslichkeit needs slots of whole quarter hours"
             )
+        # Speichervorrang je Viertelstunde (A1 S. 33–34) - dieselbe Begruendung
+        # wie bei der strengen Lesart darueber.
+        if self.mischbetrieb and self.slot_minutes % 15 != 0:
+            raise ValueError("mischbetrieb needs slots of whole quarter hours")
+        if self.mispel_praemie_eur_mwh is not None:
+            if len(self.mispel_praemie_eur_mwh) != n:
+                raise ValueError(
+                    f"mispel_praemie_eur_mwh must have one entry per slot ({n})"
+                )
+            if not all(
+                math.isfinite(p) and p >= 0.0 for p in self.mispel_praemie_eur_mwh
+            ):
+                raise ValueError("mispel_praemie_eur_mwh must be finite and >= 0")
+        if not (
+            math.isfinite(self.saldierte_bestandteile_eur_mwh)
+            and self.saldierte_bestandteile_eur_mwh >= 0.0
+        ):
+            raise ValueError("saldierte_bestandteile_eur_mwh must be finite and >= 0")
         if self.pv_anchor_ratio is not None and not (
             math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
         ):

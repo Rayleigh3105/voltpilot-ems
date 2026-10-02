@@ -18,8 +18,9 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 | `services/api/.../web/SiteFoerderwegController.java` | `GET`/`PUT /api/v1/sites/{siteId}/foerderweg` |
 | `…/mispel/FoerderwegRegelnTest.java` · `…/mispel/FoerderwegApiTest.java` · `…/uems/FoerderwegMigrationTest.java` | Vektoren rein · Routen · Migration auf befüllter DB |
 
-> **Wer anruft (Stand MP-5):** die zwei Routen und `PUT /api/v1/sites/{id}` (alter Schalter, § 6). Noch
-> ohne Fläche (MP-17 nach abgestimmtem Bedienkonzept BK-17), ohne Optimierer (MP-10) und ohne Box (MP-14).
+> **Wer anruft (Stand MP-10):** die zwei Routen, `PUT /api/v1/sites/{id}` (alter Schalter, § 6) und der
+> Optimierer (`inputs.load_foerderwege`, § 5). Noch ohne Fläche (MP-17 nach abgestimmtem Bedienkonzept
+> BK-17) und ohne Box (MP-14).
 
 ## 1. Die fünf Werte (Begriffe aus EEG und Festlegung)
 
@@ -116,14 +117,18 @@ messkonzept_geaendert}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage 
 - **Kein Vormerken.** Ein Förderweg wird eingetragen, wenn er gilt. Optimierer und Box lesen bis MP-10/MP-14
   nur die Spiegel; eine Fassung für einen künftigen Monatsersten bräuchte einen Läufer, der die Spiegel um
   00:00 umlegt — das entfällt, sobald die Leser den Förderweg selbst lesen.
-- **Optimierer (MP-10, MP-12):** liest je Plantag die späteste wirksame Fassung mit `gueltig_ab <= Tag`
-  (Europe/Berlin) aus `site_foerderweg`, ohne Fassung den Bestand nach § 2 — dieselbe Regel, dieselben
-  Vektoren (`bestand`, `werte`). Bis dahin fährt er eine Anlage in Abgrenzung/Pauschal über die Spiegel:
-  Netzladen eingestellt = Händler-Modus (Export zu blankem Spot, keine Prämie im Ziel), sonst EEG-Modus.
+- **Optimierer (MP-10):** liest am Berliner Tag des Laufs die späteste wirksame Fassung mit
+  `gueltig_ab <= Tag` aus `site_foerderweg` (`inputs.load_foerderwege`; ohne Vormerken gilt sie für den
+  ganzen Horizont), ohne Fassung den Bestand nach § 2 — dieselbe Regel, dieselben Vektoren (`bestand`,
+  `werte`; `test_mispel_mischbetrieb.py`). Abgrenzung mit A1, A5 oder A5-Variante plant im **Mischbetrieb**
+  ([Wegweiser](../../agents/root/mispel-optimierer-mischbetrieb.md)); der Schalter `netzladen_erlaubt` bleibt
+  die Einstellung des Kunden. Pauschal (Jahreszustand MP-26) und jeder andere Weg fahren weiter über die
+  Spiegel: Netzladen eingestellt = Händler-Modus (Export zu blankem Spot), sonst EEG-Modus.
   **Marktwertbasis (MP-12, gebaut):** Optimierer (`marktwertbasis.py`) und Erlöse (`SlotEconomics.marktwertbasisJoinSql`)
   lesen je Berliner Tag die späteste wirksame Fassung; an Tagen in `marktpraemie_abgrenzung`/`marktpraemie_pauschal`
   gilt der Jahresmarktwert Solar und Formel (24)¼ bzw. (P12)¼ (AW>0-Liste der ÜNB, ohne AW-Differenzierung der
   W4-Rückfall „keine Prämie bei SP¼ < 0“, Stand vorläufig); ohne Fassung der Bestand, also der Monatsmarktwert.
+  Der Mischbetrieb liest seine Prämie für grün/gelb aus derselben Reihe (`pricing.marktpraemie_eur_mwh`).
 - **Box (MP-14):** bekommt den Förderweg über den Plan; bis dahin wie heute `grid_charge_allowed` aus dem
   Spiegel.
 - **Rechenwerk (MP-8):** `MispelAbgrenzungService.Vorgaben.formelsatz` kommt heute vom Aufrufer; der
@@ -134,7 +139,7 @@ messkonzept_geaendert}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage 
   A1 S. 24) prüft der Formelsatz-Vorschlag der Einrichtung (MP-17) gegen die Zählerrollen (MP-6).
 - **Rumpfmonate** rechnet MP-21; **Pauschal-Umlageprivilegien für ungeförderte Solaranlagen**
   (Tenor Ziff. 2 S. 2) kommen mit der Pauschaloption (MP-24).
-- `dv_konform` (W8) entfällt erst im Optimierer (MP-10).
+- `dv_konform` (W8) ist mit MP-10 aus dem Optimierer entfernt.
 
 ## 6. Der alte Netzlade-Schalter (bis MP-17, W2 = B)
 

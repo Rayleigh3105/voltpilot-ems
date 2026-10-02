@@ -93,6 +93,17 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         # carries no flag of its own: where it binds the slot simply does not
         # charge, and the texts read the plan as it is.
         "strenge_ausschliesslichkeit",
+        # MiSpeL MP-10 (Mischbetrieb): die Buchung nach Speichervorrang je
+        # Viertelstunde und die Saldierung (16) - Mengen, keine Grenzen; wo sie
+        # die Planung praegen, liest der Text den Plan, wie er ist. Der
+        # Spitzenschutz wirkt wie die Huerde: der Slot laedt dann nicht.
+        "mischbetrieb_netzladen",
+        "mischbetrieb_einspeisung",
+        "mischbetrieb_abregelung",
+        "mischbetrieb_vorrang",
+        "mischbetrieb_rot_aus_speicher",
+        "mischbetrieb_saldierung",
+        "mispel_spitzenschutz",
         "grid_import_cap",
         "grid_export_cap",
         "feed_in_cap",
@@ -337,10 +348,15 @@ def resolve_lp_duals(model: ConcreteModel):
     from pyomo.contrib.appsi.base import TerminationCondition
     from pyomo.contrib.appsi.solvers.highs import Highs
 
-    for t in model.T:
-        for var in (model.is_charging[t], model.is_importing[t]):
-            var.fix(round(value(var)))
-            var.domain = Reals
+    binaries = [model.is_charging[t] for t in model.T]
+    binaries += [model.is_importing[t] for t in model.T]
+    # MiSpeL MP-10 (Mischbetrieb): die Ganzzahl der Saldierung (16) - nur im
+    # Modell, wenn Rot in einem Slot mehr bringt als Gelb.
+    if hasattr(model, "saldierung_aktiv"):
+        binaries.append(model.saldierung_aktiv)
+    for var in binaries:
+        var.fix(round(value(var)))
+        var.domain = Reals
     solver = Highs()
     solver.config.load_solution = False
     results = solver.solve(model)
