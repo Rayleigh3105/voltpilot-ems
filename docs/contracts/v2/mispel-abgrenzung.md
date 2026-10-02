@@ -5,10 +5,10 @@ Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-4 de
 
 - **[`mispel-abgrenzung-vectors.json`](./mispel-abgrenzung-vectors.json)** — die Wahrheit: Formelkatalog
   (Nummer, Begriff und Rechenweg **wörtlich** aus Anlage 1, Fundstelle je Formel), die fünf Formelsätze,
-  Regeln, Lesarten und 14 Fälle mit Fundstelle. Wo dieser Text und die Datei sich widersprechen, gilt die
+  Regeln, Lesarten, 15 Rechenfälle und 9 Erkennungsfälle für Rumpfmonate (MP-21), jeder mit Fundstelle. Wo dieser Text und die Datei sich widersprechen, gilt die
   Datei — und dann ist einer von beiden falsch.
 - **[`mispel-abgrenzung.schema.json`](./mispel-abgrenzung.schema.json)** — Schema der Datei.
-- **Leser im Gleichlauf** (beide per Pfad, beide prüfen L1–L8 unten):
+- **Leser im Gleichlauf** (beide per Pfad, beide prüfen L1–L9 unten; L9 in den Rechenwerk-Tests):
   Java `services/api/src/test/java/com/voltpilot/api/mispel/MispelAbgrenzungVectorsTest.java`,
   Python `services/optimization/tests/test_mispel_abgrenzung_vectors.py`.
 - **Rechenwerke im Gleichlauf** (beide rechnen jeden Fall exakt nach, ungerundet):
@@ -37,7 +37,7 @@ hat keine Randnummern.
 (17)A4, (19)A2,A3 — sie stehen mit Fundstelle unter `nicht_im_umfang` und kommen mit Stufe B (MP-32);
 A6–A9 erst, wenn ein Kunde sie braucht; die Pauschaloption (Anlage 2) in MP-24. Ein Wechsel des
 Formelsatzes innerhalb eines Monats und das Erkennen von Rumpfmonaten aus den Änderungsprotokollen sind
-MP-21; hier stehen Rumpfmonate nur als vorgegebener Zeitraum.
+MP-21 ([unten](#rumpfmonate-erkennen-mp-21)); die Rechenfälle führen Rumpfmonate als vorgegebenen Zeitraum.
 
 ## Eingänge, Einheiten, Vorzeichen
 
@@ -120,6 +120,10 @@ Jede steht mit Grund und Fundstelle in `regeln` bzw. `abweichungen` der Vektor-D
   Viertelstunde eine Lücke und nie eine Null (MP-8, Stand „vorläufig“ nach E4).
 - **vergleich** — Vektor-Zahlen sind exakte Dezimalzahlen; die Leser lesen sie als BigDecimal bzw. Decimal.
   Gerechnet wird ungerundet; Rundung für Anzeige und Nachweis ist MP-16.
+- **rumpfmonate** — ein Monat wird an jedem Tag außer dem Monatsersten geteilt, an dem sich Fallkonstellation,
+  Messkonzept oder Werte zur Bestimmung ändern; Rumpfmonate nur für Teile, die nach Anlage 1 zu bestimmen sind
+  (A1 S. 102–104). Lesarten: Grenze tagesscharf, Zählerwechsel ohne neues Messkonzept teilt nicht, Schlüssel
+  `JJJJ-MM/T` (T = erster Tag) — je mit Grund unter `abweichungen`.
 - **Bezeichnung (28a)A5** — S. 49 schreibt in (31a)/(31b) „(28a)¼ A5“; die Formel heißt auf S. 48 „(28a)A5“
   und ist ein Monatswert. Der Vertrag folgt S. 48.
 
@@ -152,15 +156,17 @@ Monatsende ausspeisen, wenn er sie saldieren will.
 | `a5-zwei-anlagen-unterschiedliche-aw` | A5 | 30 kW + 10 kW, AWa¼ = 0 bei AWb¼ > 0: Förderung je Anlage | A1 S. 43–51, Abschn. 5.1–5.4.1, Formeln (ZFa) bis (33b) |
 | `a5-uebereinstimmende-aw` | A5 | gleiche AW>0-Zeiten nach A5: (32a) = 63, (32b) = 21 | A1 S. 50, Abschn. 5.4 („weder zu einer Besser- noch zu einer Schlechterstellung“) |
 | `a5-variante-uebereinstimmende-aw` | A5-Variante | dieselben Eingänge nach A5-Variante: (32a)A5-Variante = 63, (32b)A5-Variante = 21 | A1 S. 52–54, Abschn. 5.4.2, Formeln (32a)A5-Variante bis (33b)A5-Variante |
+| `a11-rumpfmonate-speicher-kommt-zum-ladepunkt` | A11 | Speicher kommt am 15.06. zum Ladepunkt (Basisfall A2 → A3): zwei Rumpfmonate, (21)A11 = 50 statt 20 im ganzen Monat | A1 S. 102, Abschn. 11; S. 100–101 |
 | `a5-rumpfmonate-leistungsaenderung` | A5 | Anlage b ab 15.05. 30 statt 10 kW: zwei Rumpfmonate mit eigenem (ZFa)/(ZFb) | A1 S. 102–103, Abschn. 11 (bestimmungsrelevante Änderung: „für Zuordnungsfaktoren relevante Leistungsänderungen von bereits eingebundenen gleichartigen EE-Anlagen“) |
 
 ## Monatslauf und Nachweis (MP-8)
 
 `mispel/MispelAbgrenzungService.monatslauf(anlage, monat, vorgaben)` rechnet je Anlage (Einspeisestelle) einen
-Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt wird er erst mit MP-21):
+Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt mit `monatslaeufe`, MP-21 unten):
 
 - **Eingänge:** die Zähler aus `ZaehlerrolleService.anlage` ([Zählerrolle](./mispel-zaehlerrolle.md)) am ersten
-  und letzten Tag — sie müssen gleich sein, sonst `bestimmungsrelevante_aenderung`; ihre Viertelstundenmengen über
+  und letzten Tag — sie müssen gleich sein, sonst `bestimmungsrelevante_aenderung` (Zähler fällt weg) bzw.
+  `zaehlerwechsel_im_zeitraum` (andere Messstelle oder Angaben, kein Rumpfmonat; abschnittsweises Lesen offen); ihre Viertelstundenmengen über
   die Messstelle (`MispelZaehlerLeser`, in kWh); AW¼ > 0 aus `MispelMarktdatenRepository.awZeiten` mit der
   AW-Regel der Anlage. Formelsatz, AW-Regel und Painst/Pbinst gibt heute der Aufrufer vor (später der Förderweg).
 - **Lücke:** fehlt einer Viertelstunde ein Zählerwert oder AW¼, bleibt sie aus den Summen draußen und steht im
@@ -178,7 +184,30 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
 
 Prüfnachweis mit Docker: `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungMonatslaufTest)`.
 
-## Was die Leser prüfen (L1–L8)
+## Rumpfmonate erkennen (MP-21)
+
+Anlage 1 Abschn. 11 (S. 102–104): eine **bestimmungsrelevante Änderung** innerhalb eines Kalendermonats teilt ihn
+in **Rumpfmonate**; jeder tritt an die Stelle des Kalendermonats und wird mit dem Formelsatz seiner Fallkonstellation
+bestimmt. Reine Regel `mispel/MispelRumpfmonate.teilen` ⟷ Python `mispel_abgrenzung.rumpfmonate`, Vektoren unter
+`rumpfmonate` (Regel L9).
+
+- **Stand** ab einem Tag: Fallkonstellation (Formelsatz, Basisfall A1–A4 dahinter; ohne Formelsatz keine Bestimmung
+  nach Anlage 1), Messkonzept (Z1/Z2/Z3 → Messstelle), Werte zur Bestimmung (Painst, Pbinst, AW-Regel). Anlass aus dem
+  geschlossenen Vokabular `speicher_ladepunkt · erzeugung · sonstiger_verbrauch · messkonzept · erstmalige_zuordnung ·
+  wechsel_zuordnung · zaehlerwechsel · netznutzer · direktvermarkter · personell` (S. 102–104).
+- **Wirkung** aus dem Vergleich zweier Stände: `fallkonstellation`, `messkonzept`, `werte` teilen; `zaehlerwechsel`
+  (dieselben Zähler, andere Messstelle) und eine Änderung ohne Wirkung (Netznutzer, Direktvermarkter, Personen) nicht.
+- **Teilung:** am Monatsersten kein Rumpfmonat (S. 103). Zwei Rumpfmonate nur, wenn vor UND nach der Änderung nach
+  Anlage 1 zu bestimmen ist — kommt der Speicher erst hinzu, gibt es nur den Rumpfmonat danach („vor und/oder nach“,
+  S. 102). `wechsel_zuordnung` mitten im Monat wird abgelehnt (`wechsel_nur_zum_monatsersten`, S. 103; § 21b Abs. 1
+  S. 2 EEG). Schlüssel `JJJJ-MM` bzw. `JJJJ-MM/T`.
+- **Dienst:** `MispelAbgrenzungService.teilung(anlage, monat, fallstaende)` nimmt die Fallkonstellation aus den
+  Fallständen des Aufrufers (später Förderweg MP-5/MP-17) und das Messkonzept je Tag aus dem Änderungsprotokoll der
+  Zähler — Fassungen der Zählerrolle und Stellungen der Messstellen (`ZaehlerrolleService.anlage`, MP-6);
+  `monatslaeufe(…)` rechnet jeden Teil mit dem Monatslauf. Prüfnachweis mit Docker:
+  `MispelAbgrenzungMonatslaufTest#rumpfmonateAusDemAenderungsprotokollErkannt`.
+
+## Was die Leser prüfen (L1–L9)
 
 Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Fehler im anderen.
 
@@ -197,6 +226,9 @@ Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Feh
    Monate und Rumpfmonate.
 8. **L8 Nenner null** — `null` steht genau dort, wo ein Quotient den Nenner 0 hat; nie in Jahren oder
    Viertelstunden.
+9. **L9 Rumpfmonate** — jeder Erkennungsfall ergibt in beiden Zwillingen genau die erwarteten Rumpfmonate und
+   Änderungen (oder die Ablehnung); nennt er einen `rechenfall`, sind seine Rumpfmonate genau dessen `zeitraeume`.
+   Java `MispelRumpfmonateTest`, Python `test_mispel_abgrenzung_rechenwerk.py::test_l9_rumpfmonate_wie_vektoren`.
 
 Prüfnachweis (ohne Docker):
 `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungVectorsTest)` (JDK 21) und

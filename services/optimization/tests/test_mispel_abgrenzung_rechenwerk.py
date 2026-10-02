@@ -32,8 +32,8 @@ def rechne(fall, formelsatz=None):
     return mw.rechne(formelsatz or fall['formelsatz'], fall['viertelstunden'], **args)
 
 
-def test_vierzehn_faelle():
-    assert len(FAELLE) == 14
+def test_fuenfzehn_faelle():
+    assert len(FAELLE) == 15
 
 
 def test_katalog_wie_vektoren():
@@ -175,3 +175,49 @@ def test_rumpfmonate_pruefen():
         mw.rechne('A5', [], zeitraeume=[erster, mw.Zeitraum('y', '2027-05-14T00:00:00+02:00', zweiter.bis)])
     with pytest.raises(ValueError, match='nicht beides'):
         mw.rechne('A5', [], zeitraeume=[erster], stammdaten=erster.stammdaten)
+
+
+# --------------------------------------------------------------------------- Rumpfmonate (MP-21, Regel L9)
+
+def _staende(fall):
+    from datetime import date
+    return [
+        mw.Stand(
+            ab=date.fromisoformat(s['ab']), anlass=s.get('anlass'), formelsatz=s.get('formelsatz'),
+            basisfall=s.get('basisfall'), zaehler=dict(s['zaehler']), werte=dict(s.get('werte', {})),
+        )
+        for s in fall['staende']
+    ]
+
+
+@pytest.mark.parametrize('fall', DOC['rumpfmonate'], ids=lambda f: f['name'])
+def test_l9_rumpfmonate_wie_vektoren(fall):
+    soll = fall['erwartet']
+    if 'ablehnung' in soll:
+        with pytest.raises(mw.RumpfmonatAbgelehnt) as fehler:
+            mw.rumpfmonate(fall['monat'], _staende(fall))
+        assert fehler.value.code == soll['ablehnung']
+        return
+    teile, aenderungen = mw.rumpfmonate(fall['monat'], _staende(fall))
+    assert [
+        {'schluessel': r.schluessel, 'von': r.von.isoformat(), 'bis': r.bis.isoformat(),
+         'formelsatz': r.stand.formelsatz, 'basisfall': r.stand.basisfall, 'werte': dict(r.stand.werte)}
+        for r in teile
+    ] == [{**r, 'werte': r.get('werte', {})} for r in soll['rumpfmonate']]
+    assert all(r.rumpf == ('/' in r.schluessel) for r in teile)
+    assert [{**a, 'tag': a['tag'].isoformat()} for a in aenderungen] == soll['aenderungen']
+    if 'rechenfall' in fall:
+        # Die erkannten Rumpfmonate sind genau die Zeiträume, mit denen der Rechenfall rechnet.
+        from datetime import datetime
+        zeitraeume = FAELLE[fall['rechenfall']]['zeitraeume']
+        assert [(z['schluessel'], datetime.fromisoformat(z['von']), datetime.fromisoformat(z['bis']))
+                for z in zeitraeume] == [
+            (r.schluessel, datetime(r.von.year, r.von.month, r.von.day, tzinfo=mw.BERLIN),
+             datetime(r.bis.year, r.bis.month, r.bis.day, tzinfo=mw.BERLIN))
+            for r in teile
+        ]
+
+
+def test_anlaesse_wie_schema():
+    schema = json.loads((V2 / 'mispel-abgrenzung.schema.json').read_text())
+    assert set(schema['$defs']['anlass']['enum']) == set(mw.ANLAESSE)

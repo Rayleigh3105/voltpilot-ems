@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
+import com.voltpilot.api.mispel.MispelAbgrenzungService.Fallstand;
 import com.voltpilot.api.mispel.MispelAbgrenzungService.Lauf;
 import com.voltpilot.api.mispel.MispelAbgrenzungService.Vorgaben;
 import com.voltpilot.api.tenant.TenantContext;
@@ -21,6 +22,7 @@ import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -42,7 +44,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * MiSpeL MP-8 gegen die Datenbank: der Monatslauf eines Monats mit Speicher-Rumpf.
+ * MiSpeL MP-8 und MP-21 gegen die Datenbank: der Monatslauf eines Monats mit Speicher-Rumpf und seine Erkennung.
  *
  * <p>Eine Anlage hat ab 01.01.2027 den Zweirichtungszähler Z1 (MS-01 Bezug, MS-02 Abgabe); der Speicher kommt am
  * 15.03.2027 hinzu (Z2: MS-03 Laden, MS-04 Entladen). Der März ist darum kein ganzer Monat A1: der Lauf über den
@@ -221,6 +223,51 @@ class MispelAbgrenzungMonatslaufTest {
         assertThat(dienst.laeufe(w.anlage(), MAERZ)).isEmpty();
         TenantContext.set(w.mandant());
         assertThat(dienst.laeufe(w.anlage(), MAERZ)).hasSize(2);
+    }
+
+    /** MP-21: der Speicher kommt am 15. hinzu — erkannt aus den Zählerrollen-Fassungen, gerechnet je Rumpfmonat. */
+    @Test
+    void rumpfmonateAusDemAenderungsprotokollErkannt() {
+        Welt w = welt("geraet");
+        dienst.leserSetzen(new Leser());
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2027-04-10T08:00:00Z"), ZoneOffset.UTC));
+        TenantContext.set(w.mandant());
+        Vorgaben a1 = Vorgaben.von("A1", "viertelstunde");
+
+        // Vorher nur die EE-Anlage (keine Bestimmung nach Anlage 1), ab dem 15. Speicher mit Z2 und AW-Regel der
+        // Förderseite: ein Rumpfmonat.
+        List<Fallstand> mitSpeicher = List.of(new Fallstand(LocalDate.of(2027, 1, 1), null, null, null),
+                new Fallstand(RUMPF, "speicher_ladepunkt", "A1", a1));
+        MispelRumpfmonate.Teilung t = dienst.teilung(w.anlage(), MAERZ, mitSpeicher);
+        assertThat(t.rumpfmonate()).extracting(MispelRumpfmonate.Rumpfmonat::schluessel).containsExactly("2027-03/15");
+        assertThat(t.rumpfmonate().get(0).bis()).isEqualTo(LocalDate.of(2027, 4, 1));
+        assertThat(t.aenderungen()).singleElement().satisfies(a -> {
+            assertThat(a.tag()).isEqualTo(RUMPF);
+            assertThat(a.wirkung()).containsExactly("fallkonstellation", "messkonzept", "werte");
+            assertThat(a.bestimmungsrelevant()).isTrue();
+        });
+        List<Lauf> laeufe = dienst.monatslaeufe(w.anlage(), MAERZ, mitSpeicher);
+        assertThat(laeufe).singleElement().satisfies(l -> {
+            assertThat(l.ergebnis().monate()).containsOnlyKeys("2027-03/15");
+            assertThat(l.ergebnis().monate().get("2027-03/15").get("(21)").text()).isEqualTo("50");
+            assertThat(l.zeile().viertelstundenErwartet()).isEqualTo(RUMPF_VIERTELSTUNDEN);
+        });
+        assertThat(zeilen(w)).isEqualTo(1);
+
+        // Behauptet der Aufrufer A1 für den ganzen Monat, zeigt das Protokoll der Zähler das neue Messkonzept am 15.:
+        // zwei Rumpfmonate, und der erste hat kein Z2 — abgelehnt, bevor etwas gespeichert wird.
+        List<Fallstand> ganzA1 = List.of(new Fallstand(LocalDate.of(2027, 1, 1), null, "A1", a1));
+        MispelRumpfmonate.Teilung t2 = dienst.teilung(w.anlage(), MAERZ, ganzA1);
+        assertThat(t2.rumpfmonate()).extracting(MispelRumpfmonate.Rumpfmonat::schluessel)
+                .containsExactly("2027-03/1", "2027-03/15");
+        assertThat(t2.aenderungen()).singleElement().satisfies(a -> {
+            assertThat(a.anlass()).isEqualTo("messkonzept");
+            assertThat(a.wirkung()).containsExactly("messkonzept");
+        });
+        assertThatThrownBy(() -> dienst.monatslaeufe(w.anlage(), MAERZ, ganzA1))
+                .isInstanceOfSatisfying(MispelAbgrenzungAbgelehnt.class,
+                        e -> assertThat(e.code()).isEqualTo("zaehler_fehlt"));
+        assertThat(zeilen(w)).isEqualTo(1);
     }
 
     @Test

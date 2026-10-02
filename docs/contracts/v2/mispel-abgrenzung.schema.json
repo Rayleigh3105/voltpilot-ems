@@ -5,10 +5,10 @@
   "description": "Schema der Datei mispel-abgrenzung-vectors.json. Bleibt in der Teilmenge, die der Java-Läufer UemsSchemaLaeufer prüft (type, required, properties, additionalProperties, items, enum, const, pattern, minItems, minLength, minimum, anyOf, $ref); alles darüber hinaus prüfen die Leser selbst (Regeln L2–L8 in mispel-abgrenzung.md).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "quelle", "einheiten", "regeln", "abweichungen", "formelsaetze", "formeln", "nicht_im_umfang", "faelle"],
+  "required": ["schema_version", "quelle", "einheiten", "regeln", "abweichungen", "formelsaetze", "formeln", "nicht_im_umfang", "faelle", "rumpfmonate"],
   "properties": {
     "$comment": { "type": "string" },
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "const": "1.1" },
     "quelle": {
       "type": "object",
       "additionalProperties": false,
@@ -28,6 +28,7 @@
       "required": ["zeit", "nenner_null", "viertelstunden_ohne_fluss", "vergleich"],
       "properties": {
         "zeit": { "$ref": "#/$defs/regel" },
+        "rumpfmonate": { "$ref": "#/$defs/regel" },
         "nenner_null": { "$ref": "#/$defs/regel" },
         "viertelstunden_ohne_fluss": { "$ref": "#/$defs/regel" },
         "vergleich": { "$ref": "#/$defs/regel" }
@@ -76,7 +77,8 @@
         }
       }
     },
-    "faelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
+    "faelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } },
+    "rumpfmonate": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/teilung" } }
   },
   "$defs": {
     "fundstelle": {
@@ -186,6 +188,94 @@
         "von": { "$ref": "#/$defs/zeitpunkt" },
         "bis": { "$ref": "#/$defs/zeitpunkt" },
         "stammdaten": { "$ref": "#/$defs/stammdaten" }
+      }
+    },
+    "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "texte": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+    "zaehler_der_festlegung": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "Z1": { "type": "string", "minLength": 1 },
+        "Z2": { "type": "string", "minLength": 1 },
+        "Z3": { "type": "string", "minLength": 1 }
+      }
+    },
+    "anlass": { "enum": ["speicher_ladepunkt", "erzeugung", "sonstiger_verbrauch", "messkonzept", "erstmalige_zuordnung", "wechsel_zuordnung", "zaehlerwechsel", "netznutzer", "direktvermarkter", "personell"] },
+    "basisfall": { "enum": ["A1", "A2", "A3", "A4"] },
+    "stand": {
+      "description": "Die Anlage ab einem Tag (MP-21): ohne formelsatz keine Bestimmung nach Anlage 1.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ab", "zaehler"],
+      "properties": {
+        "ab": { "$ref": "#/$defs/tag" },
+        "anlass": { "$ref": "#/$defs/anlass" },
+        "formelsatz": { "$ref": "#/$defs/formelsatz_name" },
+        "basisfall": { "$ref": "#/$defs/basisfall" },
+        "zaehler": { "$ref": "#/$defs/zaehler_der_festlegung" },
+        "werte": { "$ref": "#/$defs/texte" }
+      }
+    },
+    "teilung": {
+      "description": "Erkennungsfall MP-21: ein Kalendermonat, die Stände der Anlage und die erwarteten Rumpfmonate (A1 Abschn. 11).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fundstelle", "warum", "monat", "staende", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "fundstelle": { "$ref": "#/$defs/fundstelle" },
+        "warum": { "type": "string", "minLength": 1 },
+        "monat": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$" },
+        "rechenfall": { "type": "string", "minLength": 1 },
+        "staende": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stand" } },
+        "erwartet": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rumpfmonate", "aenderungen"],
+              "properties": {
+                "rumpfmonate": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["schluessel", "von", "bis", "formelsatz", "basisfall"],
+                    "properties": {
+                      "schluessel": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}(/[0-9]+)?$" },
+                      "von": { "$ref": "#/$defs/tag" },
+                      "bis": { "$ref": "#/$defs/tag" },
+                      "formelsatz": { "$ref": "#/$defs/formelsatz_name" },
+                      "basisfall": { "$ref": "#/$defs/basisfall" },
+                      "werte": { "$ref": "#/$defs/texte" }
+                    }
+                  }
+                },
+                "aenderungen": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["tag", "anlass", "wirkung", "bestimmungsrelevant"],
+                    "properties": {
+                      "tag": { "$ref": "#/$defs/tag" },
+                      "anlass": { "$ref": "#/$defs/anlass" },
+                      "wirkung": { "type": "array", "items": { "enum": ["fallkonstellation", "messkonzept", "zaehlerwechsel", "werte"] } },
+                      "bestimmungsrelevant": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ablehnung"],
+              "properties": { "ablehnung": { "enum": ["wechsel_nur_zum_monatsersten"] } }
+            }
+          ]
+        }
       }
     },
     "fall": {

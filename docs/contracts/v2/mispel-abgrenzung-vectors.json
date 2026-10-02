@@ -1,6 +1,6 @@
 {
   "$comment": "MiSpeL-Abgrenzungsoption: die Formeln (1)–(33) der Formelsätze A1, A5 (mit A5-Variante), A10 und A11 als Vertrag mit gemeinsamen Vektoren. Nummern, Begriffe und Rechenwege stehen WÖRTLICH wie in Anlage 1 der Festlegung; jede Lesart, die die Festlegung offenlässt, steht in „abweichungen“ mit Grund und Fundstelle. Prosa: mispel-abgrenzung.md; Schema: mispel-abgrenzung.schema.json. Leser per Pfad: MispelAbgrenzungVectorsTest (Java, services/api) und test_mispel_abgrenzung_vectors.py (Python, services/optimization) prüfen dieselben Regeln L1–L8 im Gleichlauf; das Rechenwerk bauen MP-8 (Java) und MP-9 (Python) gegen genau diese Fälle. Wo Text und Datei sich widersprechen, gilt die Datei - und dann ist einer von beiden falsch.",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "quelle": {
     "festlegung": "Festlegung zur Marktintegration von Speichern und Ladepunkten (MiSpeL)",
     "aktenzeichen": "618-25-02",
@@ -36,9 +36,34 @@
     "vergleich": {
       "regel": "Alle Vektor-Zahlen sind exakte Dezimalzahlen. Leser lesen sie als Dezimal (Java BigDecimal, Python Decimal); Summen werden exakt verglichen. Das Rechenwerk rechnet ungerundet; Rundung für Anzeige und Nachweis ist nicht Teil dieses Vertrags (MP-16).",
       "fundstelle": "Anlage 1 regelt keine Rundung"
+    },
+    "rumpfmonate": {
+      "regel": "Ein Kalendermonat wird an jedem Tag außer dem Monatsersten geteilt, an dem sich die Fallkonstellation (Formelsatz und zugrunde liegender Basisfall), das Messkonzept (die Zähler der Festlegung) oder die Werte zur Bestimmung (Painst, Pbinst, AW-Regel) ändern. Rumpfmonate entstehen nur für Teile, die nach Anlage 1 zu bestimmen sind – zwei nur, wenn vor UND nach der Änderung zu bestimmen ist. Ein Rumpfmonat tritt an die Stelle des Kalendermonats und zählt zum Kalenderjahr seines Beginns. Wechsel von Netznutzer, Direktvermarkter oder Personen und ein Zählerwechsel ohne neues Messkonzept teilen nicht; ein Wechsel der Zuordnung bereits zugeordneter Anlagen geht nur zum Monatsersten.",
+      "fundstelle": "A1 S. 102–104, Abschn. 11"
     }
   },
   "abweichungen": [
+    {
+      "thema": "Grenze eines Rumpfmonats",
+      "festlegung": "Rumpfmonate sind „anteilige Zeiträume des Kalendermonats vor und/oder nach dieser bestimmungsrelevanten Änderung“; eine Zeiteinheit für die Grenze nennt Anlage 1 nicht.",
+      "vertrag": "Die Grenze ist der Beginn des Tages (gesetzliche Zeit, Europe/Berlin), ab dem der neue Stand gilt; Rumpfmonate sind [von, bis) in ganzen Tagen.",
+      "grund": "Die Änderungsprotokolle, aus denen die Änderung erkannt wird, gelten ab einem Tag (Zählerrolle und Stellung der Messstelle, MP-6); die Pauschaloption teilt Rumpfjahre ebenfalls tagesscharf. Eine Viertelstunde gehört so immer genau einem Rumpfmonat.",
+      "fundstelle": "A1 S. 102, Abschn. 11; A2 S. 51–56, Abschn. 9 (Rumpfjahre)"
+    },
+    {
+      "thema": "Zählerwechsel ohne neues Messkonzept",
+      "festlegung": "Bestimmungsrelevant ist „eine Änderung des Messkonzepts, sofern diese Änderung Auswirkungen auf die anzuwendende Fallkonstellation hat“; ohne Auswirkung auf Formelsatz oder Werte ist eine gesonderte Bestimmung für Rumpfmonate „nicht erforderlich“. Den Tausch eines Zählers nennt Anlage 1 nicht.",
+      "vertrag": "Liest eine Zählerrolle ab einem Tag aus einer anderen Messstelle, bleibt aber die Menge der Zähler (Z1, Z2, Z3) gleich, ist das die Wirkung „zaehlerwechsel“: der Monat wird nicht geteilt.",
+      "grund": "Der Tausch ändert weder Fallkonstellation noch Formelsatz; die Viertelstundenwerte desselben Zählpunkts setzen sich fort. Der Monatslauf (MP-8) liest eine Zählerrolle noch nicht abschnittsweise aus zwei Messstellen und lehnt einen solchen Monat darum ab (zaehlerwechsel_im_zeitraum), statt ihn falsch zu teilen.",
+      "fundstelle": "A1 S. 103–104, Abschn. 11"
+    },
+    {
+      "thema": "Schlüssel der Rumpfmonate",
+      "festlegung": "Anlage 1 benennt Rumpfmonate nicht.",
+      "vertrag": "Ein ganzer Monat heißt JJJJ-MM, ein Rumpfmonat JJJJ-MM/T mit T = erster Tag des Rumpfmonats (z. B. 2027-06/15).",
+      "grund": "Eindeutig und stabil, auch wenn ein weiterer Rumpfmonat hinzukommt; derselbe Schlüssel steht im Nachweis des Monatslaufs (MP-8).",
+      "fundstelle": "A1 S. 102, Abschn. 11"
+    },
     {
       "thema": "Division durch null",
       "festlegung": "Die Quotienten (14)A1 = (6) / (5), (18) = (16) / (6), (30) = (29) / (11), (30a), (30b) stehen ohne Regel für einen Nenner von null.",
@@ -1796,7 +1821,7 @@
           }
         },
         {
-          "schluessel": "2027-05/2",
+          "schluessel": "2027-05/15",
           "von": "2027-05-15T00:00:00+02:00",
           "bis": "2027-06-01T00:00:00+02:00",
           "stammdaten": {
@@ -1853,7 +1878,7 @@
             "(31b)": 5,
             "(32b)": 25
           },
-          "2027-05/2": {
+          "2027-05/15": {
             "(3)": 0,
             "(4)": 96,
             "(5)": 40,
@@ -1895,6 +1920,197 @@
             "(33b)": 73
           }
         }
+      }
+    },
+    {
+      "name": "a11-rumpfmonate-speicher-kommt-zum-ladepunkt",
+      "formelsatz": "A11",
+      "fundstelle": "A1 S. 102, Abschn. 11 (bestimmungsrelevante Änderung: „Inbetriebnahme … eines Stromspeichers zum Ladepunkt“; „dann ergeben sich in diesem Kalendermonat zwei Rumpfmonate“); A1 S. 100–101, Formeln (16)A11 bis (22)A11",
+      "warum": "Ein Gewerbe mit bidirektionalem Ladepunkt ohne Erzeugungsanlage (A11 als vereinfachte Alternative zu A2) nimmt am 15.06.2027 einen Stromspeicher in Betrieb (A11 als vereinfachte Alternative zu A3). Vor und nach der Änderung ist nach Anlage 1 zu bestimmen: zwei Rumpfmonate, jeder an der Stelle des Kalendermonats. Die Teilung wirkt: im ersten Rumpfmonat bleibt der Netzbezug umlagebelastet ((21)A11 = 50), im zweiten begrenzt (3) die saldierte Einspeisung ((20)A11 = 100 statt 130). Über den ganzen Juni gerechnet wären es 20 statt 50 kWh – die Rumpfmonate sind die wörtliche Anwendung.",
+      "zeitraeume": [
+        {"schluessel": "2027-06/1", "von": "2027-06-01T00:00:00+02:00", "bis": "2027-06-15T00:00:00+02:00"},
+        {"schluessel": "2027-06/15", "von": "2027-06-15T00:00:00+02:00", "bis": "2027-07-01T00:00:00+02:00"}
+      ],
+      "viertelstunden": [
+        {"beginn": "2027-06-03T18:00:00+02:00", "Z1NB¼": 50, "Z1NE¼": 0},
+        {"beginn": "2027-06-20T03:00:00+02:00", "Z1NB¼": 100, "Z1NE¼": 0},
+        {"beginn": "2027-06-20T19:00:00+02:00", "Z1NB¼": 0, "Z1NE¼": 130}
+      ],
+      "erwartet": {
+        "monate": {
+          "2027-06/1": {"(3)": 50, "(4)": 0, "(16)A11": 0, "(20)A11": 0, "(21)A11": 50},
+          "2027-06/15": {"(3)": 100, "(4)": 130, "(16)A11": 130, "(20)A11": 100, "(21)A11": 0}
+        },
+        "jahre": {
+          "2027": {"(22)A11": 50}
+        }
+      }
+    }
+  ],
+  "rumpfmonate": [
+    {
+      "name": "speicher-kommt-am-15-zum-ladepunkt",
+      "fundstelle": "A1 S. 102, Abschn. 11 (Inbetriebnahme „eines Stromspeichers zum Ladepunkt“; „sowohl für den anteiligen Zeitraum vor der Änderung als auch für den anteiligen Zeitraum nach der Änderung … zwei Rumpfmonate“)",
+      "warum": "Prüfnachweis MP-21: der Speicher kommt am 15. hinzu, der Basisfall hinter A11 wechselt von A2 zu A3, vorher und nachher ist zu bestimmen – zwei Rumpfmonate. Gerechnet in a11-rumpfmonate-speicher-kommt-zum-ladepunkt.",
+      "monat": "2027-06",
+      "rechenfall": "a11-rumpfmonate-speicher-kommt-zum-ladepunkt",
+      "staende": [
+        {"ab": "2027-01-01", "formelsatz": "A11", "basisfall": "A2", "zaehler": {"Z1": "MS-01"}},
+        {"ab": "2027-06-15", "anlass": "speicher_ladepunkt", "formelsatz": "A11", "basisfall": "A3", "zaehler": {"Z1": "MS-01"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-06/1", "von": "2027-06-01", "bis": "2027-06-15", "formelsatz": "A11", "basisfall": "A2"},
+          {"schluessel": "2027-06/15", "von": "2027-06-15", "bis": "2027-07-01", "formelsatz": "A11", "basisfall": "A3"}
+        ],
+        "aenderungen": [
+          {"tag": "2027-06-15", "anlass": "speicher_ladepunkt", "wirkung": ["fallkonstellation"], "bestimmungsrelevant": true}
+        ]
+      }
+    },
+    {
+      "name": "speicher-kommt-am-15-zur-ee-anlage",
+      "fundstelle": "A1 S. 102, Abschn. 11 („für anteilige Zeiträume des Kalendermonats vor und/oder nach dieser bestimmungsrelevanten Änderung“)",
+      "warum": "Eine EE-Anlage ohne Speicher braucht keine Bestimmung nach Anlage 1. Kommt am 15.03.2027 ein Speicher mit Zähler Z2 hinzu (Basisfall A1), ist nur der Teil danach zu bestimmen: ein Rumpfmonat ab dem 15. – kein zweiter für die Tage davor.",
+      "monat": "2027-03",
+      "staende": [
+        {"ab": "2026-01-01", "zaehler": {"Z1": "MS-01"}},
+        {"ab": "2027-03-15", "anlass": "speicher_ladepunkt", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-03/15", "von": "2027-03-15", "bis": "2027-04-01", "formelsatz": "A1", "basisfall": "A1"}
+        ],
+        "aenderungen": [
+          {"tag": "2027-03-15", "anlass": "speicher_ladepunkt", "wirkung": ["fallkonstellation", "messkonzept"], "bestimmungsrelevant": true}
+        ]
+      }
+    },
+    {
+      "name": "speicher-faellt-am-21-weg",
+      "fundstelle": "A1 S. 102, Abschn. 11 („Außerbetriebnahme eines Stromspeichers“; „vor und/oder nach“)",
+      "warum": "Ein rein netzgekoppelter Speicher (A10) wird am 21.07.2027 außer Betrieb genommen; danach ist nichts mehr nach Anlage 1 zu bestimmen. Ein Rumpfmonat bis zum 20. einschließlich.",
+      "monat": "2027-07",
+      "staende": [
+        {"ab": "2027-01-01", "formelsatz": "A10", "basisfall": "A1", "zaehler": {"Z1": "MS-01"}},
+        {"ab": "2027-07-21", "anlass": "speicher_ladepunkt", "zaehler": {"Z1": "MS-01"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-07/1", "von": "2027-07-01", "bis": "2027-07-21", "formelsatz": "A10", "basisfall": "A1"}
+        ],
+        "aenderungen": [
+          {"tag": "2027-07-21", "anlass": "speicher_ladepunkt", "wirkung": ["fallkonstellation"], "bestimmungsrelevant": true}
+        ]
+      }
+    },
+    {
+      "name": "leistungsaenderung-gleichartiger-ee-anlage",
+      "fundstelle": "A1 S. 103, Abschn. 11 („für Zuordnungsfaktoren relevante Leistungsänderungen von bereits eingebundenen gleichartigen EE-Anlagen“)",
+      "warum": "Die Fallkonstellation bleibt A5, aber Pbinst steigt am 15.05.2027 von 10 auf 30 kW: die Werte zur Bestimmung ändern sich, zwei Rumpfmonate mit eigenem Zuordnungs-Faktor. Gerechnet in a5-rumpfmonate-leistungsaenderung.",
+      "monat": "2027-05",
+      "rechenfall": "a5-rumpfmonate-leistungsaenderung",
+      "staende": [
+        {"ab": "2027-01-01", "formelsatz": "A5", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}, "werte": {"Painst": "30", "Pbinst": "10"}},
+        {"ab": "2027-05-15", "anlass": "erzeugung", "formelsatz": "A5", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}, "werte": {"Painst": "30", "Pbinst": "30"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-05/1", "von": "2027-05-01", "bis": "2027-05-15", "formelsatz": "A5", "basisfall": "A1", "werte": {"Painst": "30", "Pbinst": "10"}},
+          {"schluessel": "2027-05/15", "von": "2027-05-15", "bis": "2027-06-01", "formelsatz": "A5", "basisfall": "A1", "werte": {"Painst": "30", "Pbinst": "30"}}
+        ],
+        "aenderungen": [
+          {"tag": "2027-05-15", "anlass": "erzeugung", "wirkung": ["werte"], "bestimmungsrelevant": true}
+        ]
+      }
+    },
+    {
+      "name": "zwei-aenderungen-drei-rumpfmonate",
+      "fundstelle": "A1 S. 102–103, Abschn. 11 (sonstiger Verbrauch: „Einbindung von Verbrauchsgeräten“; Stromspeicher und/oder Ladepunkte: „Inbetriebnahme … eines Ladepunktes zum Stromspeicher“)",
+      "warum": "Am 10.08.2027 wird hinter dem rein netzgekoppelten Speicher (A10) sonstiger Verbrauch eingebunden (A11 statt A10), am 20.08.2027 kommt ein Ladepunkt zum Speicher (Basisfall A3 statt A1). Jede Änderung teilt: drei Rumpfmonate.",
+      "monat": "2027-08",
+      "staende": [
+        {"ab": "2027-01-01", "formelsatz": "A10", "basisfall": "A1", "zaehler": {"Z1": "MS-01"}},
+        {"ab": "2027-08-10", "anlass": "sonstiger_verbrauch", "formelsatz": "A11", "basisfall": "A1", "zaehler": {"Z1": "MS-01"}},
+        {"ab": "2027-08-20", "anlass": "speicher_ladepunkt", "formelsatz": "A11", "basisfall": "A3", "zaehler": {"Z1": "MS-01"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-08/1", "von": "2027-08-01", "bis": "2027-08-10", "formelsatz": "A10", "basisfall": "A1"},
+          {"schluessel": "2027-08/10", "von": "2027-08-10", "bis": "2027-08-20", "formelsatz": "A11", "basisfall": "A1"},
+          {"schluessel": "2027-08/20", "von": "2027-08-20", "bis": "2027-09-01", "formelsatz": "A11", "basisfall": "A3"}
+        ],
+        "aenderungen": [
+          {"tag": "2027-08-10", "anlass": "sonstiger_verbrauch", "wirkung": ["fallkonstellation"], "bestimmungsrelevant": true},
+          {"tag": "2027-08-20", "anlass": "speicher_ladepunkt", "wirkung": ["fallkonstellation"], "bestimmungsrelevant": true}
+        ]
+      }
+    },
+    {
+      "name": "aenderung-zum-monatsersten",
+      "fundstelle": "A1 S. 103, Abschn. 11 („Da der Wechsel zum Monatsbeginn erfolgt, handelt es sich nicht um eine bestimmungsrelevante Änderung innerhalb des Kalendermonats“)",
+      "warum": "Der Speicher kommt am 01.09.2027: keine Änderung innerhalb des Kalendermonats, kein Rumpfmonat – der September ist ein ganzer Monat im neuen Stand.",
+      "monat": "2027-09",
+      "staende": [
+        {"ab": "2026-01-01", "zaehler": {"Z1": "MS-01"}},
+        {"ab": "2027-09-01", "anlass": "speicher_ladepunkt", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-09", "von": "2027-09-01", "bis": "2027-10-01", "formelsatz": "A1", "basisfall": "A1"}
+        ],
+        "aenderungen": []
+      }
+    },
+    {
+      "name": "direktvermarkter-und-lieferantenwechsel",
+      "fundstelle": "A1 S. 103–104, Abschn. 11 („Wechsel des Netznutzers durch den Abschluss eines neuen Stromliefervertrags, Wechsel des Direktvermarkters …“)",
+      "warum": "Neuer Direktvermarkter am 08.10.2027, neuer Stromlieferant am 20.10.2027: keine Auswirkung auf Formelsatz oder Werte, kein Rumpfmonat. Beide Änderungen stehen im Ergebnis, ohne zu teilen.",
+      "monat": "2027-10",
+      "staende": [
+        {"ab": "2027-01-01", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}},
+        {"ab": "2027-10-08", "anlass": "direktvermarkter", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}},
+        {"ab": "2027-10-20", "anlass": "netznutzer", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-10", "von": "2027-10-01", "bis": "2027-11-01", "formelsatz": "A1", "basisfall": "A1"}
+        ],
+        "aenderungen": [
+          {"tag": "2027-10-08", "anlass": "direktvermarkter", "wirkung": [], "bestimmungsrelevant": false},
+          {"tag": "2027-10-20", "anlass": "netznutzer", "wirkung": [], "bestimmungsrelevant": false}
+        ]
+      }
+    },
+    {
+      "name": "zaehlertausch-ohne-neues-messkonzept",
+      "fundstelle": "A1 S. 103, Abschn. 11 (Messkonzept nur, „sofern diese Änderung Auswirkungen auf die anzuwendende Fallkonstellation hat“); A1 S. 103–104",
+      "warum": "Der Messstellenbetreiber tauscht am 12.11.2027 den Zweirichtungszähler: Z1 liest danach aus MS-07, das Messkonzept (Z1, Z2) bleibt. Kein Rumpfmonat (Lesart in abweichungen).",
+      "monat": "2027-11",
+      "staende": [
+        {"ab": "2027-01-01", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}},
+        {"ab": "2027-11-12", "anlass": "zaehlerwechsel", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-07", "Z2": "MS-03"}}
+      ],
+      "erwartet": {
+        "rumpfmonate": [
+          {"schluessel": "2027-11", "von": "2027-11-01", "bis": "2027-12-01", "formelsatz": "A1", "basisfall": "A1"}
+        ],
+        "aenderungen": [
+          {"tag": "2027-11-12", "anlass": "zaehlerwechsel", "wirkung": ["zaehlerwechsel"], "bestimmungsrelevant": false}
+        ]
+      }
+    },
+    {
+      "name": "wechsel-der-zuordnung-mitten-im-monat",
+      "fundstelle": "A1 S. 103, Abschn. 11 („dann kann der Wechsel der Zuordnung … ausschließlich zum ersten Kalendertag eines Kalendermonats erfolgen (vgl. § 21b Abs. 1 S. 2 EEG …)“)",
+      "warum": "Bereits einer Veräußerungsform zugeordnete Anlagen wechseln am 10.12.2027 auf die Abgrenzungsoption: unzulässig, der Wechsel geht nur zum Monatsersten – keine Teilung, sondern Ablehnung.",
+      "monat": "2027-12",
+      "staende": [
+        {"ab": "2027-01-01", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}},
+        {"ab": "2027-12-10", "anlass": "wechsel_zuordnung", "formelsatz": "A1", "basisfall": "A1", "zaehler": {"Z1": "MS-01", "Z2": "MS-03"}}
+      ],
+      "erwartet": {
+        "ablehnung": "wechsel_nur_zum_monatsersten"
       }
     }
   ]

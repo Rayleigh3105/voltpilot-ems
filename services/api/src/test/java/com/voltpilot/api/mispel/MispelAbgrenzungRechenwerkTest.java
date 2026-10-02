@@ -154,8 +154,8 @@ class MispelAbgrenzungRechenwerkTest {
     }
 
     @Test
-    void alleVierzehnFaelleLaufen() {
-        assertThat(faelle().count()).isEqualTo(14);
+    void alleFuenfzehnFaelleLaufen() {
+        assertThat(faelle().count()).isEqualTo(15);
         assertThat(faelle().map(n -> fall(n).get("formelsatz").asText()).distinct())
                 .containsExactlyInAnyOrderElementsOf(MispelAbgrenzungRechenwerk.FORMELSAETZE);
     }

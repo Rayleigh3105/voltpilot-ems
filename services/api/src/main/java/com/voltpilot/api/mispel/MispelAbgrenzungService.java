@@ -51,9 +51,10 @@ import org.springframework.stereotype.Service;
  * sie geht nicht als Null in die Summen ein, sondern bleibt draußen und steht im Nachweis.
  *
  * <p>Formelsatz, AW-Regel und Stammdaten kommen heute vom Aufrufer ({@link Vorgaben}); später aus dem Förderweg
- * (MP-5/MP-17). Rumpfmonate gibt der Aufrufer als Zeitraum vor; erkannt werden sie mit MP-21. Ändert sich die
- * Zuordnung der Zähler innerhalb des Zeitraums, rechnet der Lauf nicht ({@code bestimmungsrelevante_aenderung},
- * A1 S. 102 Abschn. 11).
+ * (MP-5/MP-17). Einen Rumpfmonat gibt {@link #monatslauf} als Zeitraum vor; {@link #teilung} und
+ * {@link #monatslaeufe} erkennen ihn aus Fallständen und dem Änderungsprotokoll der Zähler (MP-21, A1 S. 102 Abschn. 11).
+ * Ändert sich die Zuordnung der Zähler innerhalb des Zeitraums, rechnet der Lauf nicht
+ * ({@code bestimmungsrelevante_aenderung} bzw. {@code zaehlerwechsel_im_zeitraum}).
  */
 @Service
 public class MispelAbgrenzungService {
@@ -62,7 +63,7 @@ public class MispelAbgrenzungService {
     public static final String RECHENWERK_VERSION = "MP-8/1";
     /** Der Vertrag und seine Fassung ({@code schema_version} der Vektor-Datei). */
     public static final String VERTRAG = "docs/contracts/v2/mispel-abgrenzung.md";
-    public static final String VERTRAG_VERSION = "1.0";
+    public static final String VERTRAG_VERSION = "1.1";
     public static final String VORLAEUFIG = "vorlaeufig";
     public static final String ENDGUELTIG = "endgueltig";
     public static final String MSB = "messstellenbetreiber";
@@ -117,6 +118,105 @@ public class MispelAbgrenzungService {
     /** Die gespeicherten Läufe eines Kalendermonats (für Nachweis und Export, MP-16). */
     public List<Zeile> laeufe(UUID siteId, YearMonth monat) {
         return laeufe.desMonats(siteId, monat.atDay(1));
+    }
+
+    // ------------------------------------------------------------------ Rumpfmonate (MP-21)
+
+    /**
+     * Die Fallkonstellation ab einem Tag (MP-21): Basisfall (A1–A4) und Vorgaben des Formelsatzes, {@code vorgaben}
+     * {@code null} = keine Bestimmung nach Anlage 1; {@code anlass} aus {@link MispelRumpfmonate#ANLAESSE}. Heute vom
+     * Aufrufer, später aus dem Förderweg (MP-5/MP-17).
+     */
+    public record Fallstand(LocalDate ab, String anlass, String basisfall, Vorgaben vorgaben) {}
+
+    /**
+     * MP-21: teilt den Monat an bestimmungsrelevanten Änderungen (A1 S. 102–104, Abschn. 11). Die Fallkonstellation
+     * kommt aus den Fallständen, das Messkonzept je Tag aus dem Änderungsprotokoll der Zähler — den Fassungen der
+     * Zählerrolle und den Stellungen der Messstellen ({@link ZaehlerrolleService#anlage}, MP-6).
+     */
+    public MispelRumpfmonate.Teilung teilung(UUID siteId, YearMonth monat, List<Fallstand> faelle) {
+        List<MispelRumpfmonate.Stand> staende = new ArrayList<>();
+        MispelRumpfmonate.Stand vorher = null;
+        for (LocalDate tag = monat.atDay(1); tag.isBefore(monat.plusMonths(1).atDay(1)); tag = tag.plusDays(1)) {
+            Fallstand f = fallstandAm(faelle, tag);
+            Vorgaben v = f == null ? null : f.vorgaben();
+            Map<String, String> zaehler = new TreeMap<>();
+            zaehlerrollen.anlage(siteId, tag).zaehler().forEach((groesse, k) -> zaehler.merge(
+                    groesse.substring(0, 2), groesse + "=" + k.kennzeichen(), (a, b) -> a + "," + b));
+            String anlass = f != null && f.ab().equals(tag) ? f.anlass() : null;
+            if (anlass == null && vorher != null && !vorher.zaehler().equals(zaehler)) {
+                anlass = vorher.zaehler().keySet().equals(zaehler.keySet()) ? "zaehlerwechsel" : "messkonzept";
+            }
+            MispelRumpfmonate.Stand s = new MispelRumpfmonate.Stand(tag, anlass, v == null ? null : v.formelsatz(),
+                    f == null ? null : f.basisfall(), zaehler, werte(v));
+            if (vorher == null || anlass != null || !gleich(vorher, s)) {
+                staende.add(s);
+            }
+            vorher = s;
+        }
+        return MispelRumpfmonate.teilen(monat, staende);
+    }
+
+    /**
+     * MP-21: rechnet jeden Teil des Monats, der nach Anlage 1 zu bestimmen ist, mit dem Monatslauf (MP-8) — einen
+     * Rumpfmonat als Zeitraum an der Stelle des Kalendermonats (A1 S. 102). Ein Zählerwechsel ohne neues Messkonzept
+     * teilt nicht (A1 S. 103–104); solange der Monatslauf eine Zählerrolle nicht abschnittsweise aus zwei Messstellen
+     * liest, lehnt er so einen Teil ab ({@code zaehlerwechsel_im_zeitraum}), bevor etwas gerechnet wird.
+     */
+    public List<Lauf> monatslaeufe(UUID siteId, YearMonth monat, List<Fallstand> faelle) {
+        MispelRumpfmonate.Teilung t = teilung(siteId, monat, faelle);
+        for (MispelRumpfmonate.Rumpfmonat r : t.rumpfmonate()) {
+            for (MispelRumpfmonate.Aenderung a : t.aenderungen()) {
+                if (a.wirkung().contains("zaehlerwechsel") && a.tag().isAfter(r.von()) && a.tag().isBefore(r.bis())) {
+                    throw new MispelAbgrenzungAbgelehnt("zaehlerwechsel_im_zeitraum", "Am " + a.tag() + " wechselt "
+                            + "ein Zähler ohne neues Messkonzept — kein Rumpfmonat (Anlage 1 S. 103–104), aber " + r.schluessel()
+                            + " liest eine Zählerrolle noch nicht aus zwei Messstellen.");
+                }
+            }
+        }
+        List<Lauf> out = new ArrayList<>();
+        for (MispelRumpfmonate.Rumpfmonat r : t.rumpfmonate()) {
+            Vorgaben v = fallstandAm(faelle, r.von()).vorgaben();
+            out.add(monatslauf(siteId, monat, r.rumpf() ? new Vorgaben(v.formelsatz(), v.awRegel(), v.awRegelB(),
+                    v.stammdaten(), v.ungefoerdert(), r.von(), r.bis()) : v));
+        }
+        return out;
+    }
+
+    private static Fallstand fallstandAm(List<Fallstand> faelle, LocalDate tag) {
+        Fallstand out = null;
+        for (Fallstand f : faelle) {
+            if (!f.ab().isAfter(tag) && (out == null || f.ab().isAfter(out.ab()))) {
+                out = f;
+            }
+        }
+        return out;
+    }
+
+    /** Die Werte zur Bestimmung als exakter Text: Painst/Pbinst, AW-Regeln, ungeförderte Anlage (A1 S. 102–103). */
+    private static Map<String, String> werte(Vorgaben v) {
+        Map<String, String> out = new TreeMap<>();
+        if (v == null) {
+            return out;
+        }
+        if (v.stammdaten() != null) {
+            v.stammdaten().forEach((k, w) -> out.put(k, w.stripTrailingZeros().toPlainString()));
+        }
+        if (v.awRegel() != null) {
+            out.put("aw_regel", v.awRegel());
+        }
+        if (v.awRegelB() != null) {
+            out.put("aw_regel_b", v.awRegelB());
+        }
+        if (v.ungefoerdert() != null && !v.ungefoerdert().isEmpty()) {
+            out.put("ungefoerdert", String.join(",", new TreeSet<>(v.ungefoerdert())));
+        }
+        return out;
+    }
+
+    private static boolean gleich(MispelRumpfmonate.Stand a, MispelRumpfmonate.Stand b) {
+        return Objects.equals(a.formelsatz(), b.formelsatz()) && Objects.equals(a.basisfall(), b.basisfall())
+                && a.zaehler().equals(b.zaehler()) && a.werte().equals(b.werte());
     }
 
     /** Ein Zähler des Laufs: Größe der Festlegung, Messstelle, Angaben der Zählerrolle und ihr Urteil am ersten Tag. */
@@ -259,10 +359,15 @@ public class MispelAbgrenzungService {
                 continue;
             }
             ZaehlerrolleRegeln.Knoten k2 = ende.zaehler().get(groesse);
-            if (k2 == null || !k2.id().equals(k.id()) || !Objects.equals(k2.angaben(), k.angaben())) {
+            if (k2 == null) {
                 throw new MispelAbgrenzungAbgelehnt("bestimmungsrelevante_aenderung", "Der Zähler " + groesse
-                        + " ändert sich zwischen " + erster + " und " + letzter + " — für die Teile gelten Rumpfmonate "
-                        + "(Anlage 1 S. 102, Abschn. 11).");
+                        + " fällt zwischen " + erster + " und " + letzter + " weg — für die Teile gelten Rumpfmonate "
+                        + "(Anlage 1 S. 102, Abschn. 11; MispelAbgrenzungService#monatslaeufe).");
+            }
+            if (!k2.id().equals(k.id()) || !Objects.equals(k2.angaben(), k.angaben())) {
+                throw new MispelAbgrenzungAbgelehnt("zaehlerwechsel_im_zeitraum", "Der Zähler " + groesse
+                        + " wechselt zwischen " + erster + " und " + letzter + " ohne neues Messkonzept — kein "
+                        + "Rumpfmonat (Anlage 1 S. 103–104), aber der Lauf liest ihn noch nicht abschnittsweise.");
             }
             String urteil = ZaehlerrolleRegeln.urteil(k.angaben().rolle(),
                     ZaehlerrolleRegeln.befundeZu(k.kennzeichen(), anfang.befunde()));

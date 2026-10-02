@@ -17,12 +17,12 @@ Regeln des Vertrags, die Anlage 1 offenlässt:
 Die Rechnung summiert genau die übergebenen Viertelstunden. Ob ein Monat vollständig ist, entscheidet
 der Aufrufer: eine fehlende Viertelstunde ist eine Lücke, nie eine Null (Vertrag, Regel
 ``viertelstunden_ohne_fluss``; Stand „vorläufig“ ist MP-8). Ebenso wählt der Aufrufer den Formelsatz
-und erkennt Rumpfmonate (MP-21); hier kommen sie als vorgegebener :class:`Zeitraum`.
+und gibt Rumpfmonate als vorgegebenen :class:`Zeitraum`; ihre Grenzen bestimmt :func:`rumpfmonate` (MP-21).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
 from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -357,3 +357,110 @@ def rechne(formelsatz, viertelstunden: Iterable[Mapping], *, stammdaten=None, ze
         monate=monate,
         jahre={j: jahr(formelsatz, ms) for j, ms in jahre.items()},
     )
+
+
+# --------------------------------------------------------------------------- Rumpfmonate (MP-21)
+
+#: Anlässe nach A1 S. 102–104; die Wirkung entscheidet der Vergleich der Stände, nicht das Wort.
+ANLAESSE = frozenset({
+    "speicher_ladepunkt", "erzeugung", "sonstiger_verbrauch", "messkonzept", "erstmalige_zuordnung",
+    "wechsel_zuordnung", "zaehlerwechsel", "netznutzer", "direktvermarkter", "personell",
+})
+#: Wirkungen, die einen Rumpfmonat begründen (A1 S. 102: Formelsatz/Fallkonstellation, Messkonzept, Werte).
+BESTIMMUNGSRELEVANT = frozenset({"fallkonstellation", "messkonzept", "werte"})
+
+
+class RumpfmonatAbgelehnt(ValueError):
+    """Eine Teilung, die die Festlegung nicht zulässt; ``code`` wie im Java-Zwilling."""
+
+    def __init__(self, code, satz):
+        super().__init__(satz)
+        self.code = code
+
+
+@dataclass(frozen=True)
+class Stand:
+    """Die Anlage ab Tag ``ab`` (``date``): Fallkonstellation (``formelsatz`` ``None`` = keine Bestimmung nach
+    Anlage 1, ``basisfall``), Messkonzept ``zaehler`` (Z1/Z2/Z3 → Messstelle) und ``werte`` zur Bestimmung
+    (Painst, Pbinst, AW-Regel … als exakter Text)."""
+
+    ab: date
+    anlass: str | None = None
+    formelsatz: str | None = None
+    basisfall: str | None = None
+    zaehler: Mapping = field(default_factory=dict)
+    werte: Mapping = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Rumpfmonat:
+    schluessel: str
+    von: date
+    bis: date
+    rumpf: bool
+    stand: Stand
+
+
+def _wirkung(vorher, nachher):
+    w = []
+    if (vorher.formelsatz, vorher.basisfall) != (nachher.formelsatz, nachher.basisfall):
+        w.append("fallkonstellation")
+    if set(vorher.zaehler) != set(nachher.zaehler):
+        w.append("messkonzept")
+    elif dict(vorher.zaehler) != dict(nachher.zaehler):
+        w.append("zaehlerwechsel")
+    if dict(vorher.werte) != dict(nachher.werte):
+        w.append("werte")
+    return w
+
+
+def rumpfmonate(jahr_monat, staende):
+    """Teilt den Kalendermonat ``jahr_monat`` (``"JJJJ-MM"``) an bestimmungsrelevanten Änderungen (A1 S. 102–104,
+    Abschn. 11); Zwilling von ``MispelRumpfmonate.teilen``. Gibt ``(rumpfmonate, aenderungen)`` zurück: die Teile
+    ``[von, bis)``, die nach Anlage 1 zu bestimmen sind (Schlüssel ``JJJJ-MM`` bzw. ``JJJJ-MM/T`` ab Tag T), und
+    je Änderung im Monat ``{tag, anlass, wirkung, bestimmungsrelevant}``. Am Monatsersten entsteht kein Rumpfmonat;
+    ein Wechsel der Zuordnung geht nur dort (A1 S. 103, § 21b Abs. 1 S. 2 EEG)."""
+    j, m = (int(x) for x in jahr_monat.split("-"))
+    erster = date(j, m, 1)
+    ende = date(j + 1, 1, 1) if m == 12 else date(j, m + 1, 1)
+    sortiert = sorted(staende, key=lambda s: s.ab)
+    for s in sortiert:
+        if s.anlass is not None and s.anlass not in ANLAESSE:
+            raise RumpfmonatAbgelehnt("vorgaben_ungueltig", f"Anlass {s.anlass!r} ist keiner aus A1 S. 102–104")
+    for a, b in zip(sortiert, sortiert[1:]):
+        if a.ab == b.ab:
+            raise RumpfmonatAbgelehnt("vorgaben_ungueltig", f"zwei Stände ab {b.ab}")
+    leer = Stand(ab=erster)
+    aktuell = None
+    im_monat = []
+    for s in sortiert:
+        if s.ab <= erster:
+            aktuell = s
+        elif s.ab < ende:
+            im_monat.append(s)
+    aenderungen, grenzen, teile = [], [erster], [aktuell]
+    for s in im_monat:
+        if s.anlass == "wechsel_zuordnung":
+            raise RumpfmonatAbgelehnt(
+                "wechsel_nur_zum_monatsersten",
+                f"Wechsel der Zuordnung nur zum ersten Kalendertag (A1 S. 103), nicht am {s.ab}",
+            )
+        wirkung = _wirkung(aktuell or leer, s)
+        relevant = any(w in BESTIMMUNGSRELEVANT for w in wirkung)
+        aenderungen.append({"tag": s.ab, "anlass": s.anlass, "wirkung": wirkung, "bestimmungsrelevant": relevant})
+        if relevant:
+            grenzen.append(s.ab)
+            teile.append(s)
+        else:
+            teile[-1] = s
+        aktuell = s
+    grenzen.append(ende)
+    geteilt = len(teile) > 1
+    out = []
+    for i, s in enumerate(teile):
+        if s is None or s.formelsatz is None:
+            continue
+        von = grenzen[i]
+        schluessel = f"{jahr_monat}/{von.day}" if geteilt else jahr_monat
+        out.append(Rumpfmonat(schluessel, von, grenzen[i + 1], geteilt, s))
+    return out, aenderungen
