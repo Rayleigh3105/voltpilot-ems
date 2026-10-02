@@ -63,7 +63,10 @@ public final class EegRates {
             new Band(LocalDate.of(2024, 8, 1), 8.03, 6.95, 5.68),
             new Band(LocalDate.of(2025, 2, 1), 7.94, 6.88, 5.62),
             new Band(LocalDate.of(2025, 8, 1), 7.86, 6.80, 5.56),
-            new Band(LocalDate.of(2026, 2, 1), 7.78, 6.73, 5.51));
+            // 2026-02 le100: 5.50 per BNetzA (5.4961 rounded); was 5.51 until MiSpeL MP-1.
+            new Band(LocalDate.of(2026, 2, 1), 7.78, 6.73, 5.50),
+            // BNetzA validity "01.08.2026 bis 31.12.2026" (VergSaetzeAug26bisDez26.xlsx).
+            new Band(LocalDate.of(2026, 8, 1), 7.70, 6.66, 5.44));
 
     private final List<Band> bands;
 
