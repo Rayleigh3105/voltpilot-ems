@@ -11,14 +11,16 @@ Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-24 d
 
 - **[`mispel-pauschal-vectors.json`](./mispel-pauschal-vectors.json)** — die Wahrheit: Formelkatalog (Nummer,
   Begriff und Rechenweg **wörtlich** aus Anlage 2, Fundstelle je Formel), die sechs Formelsätze, Regeln,
-  Lesarten, 13 Rechenfälle und die 49 Zellen der Tabellen 1 und 2, jeder Fall und jede Zelle mit Fundstelle.
+  Lesarten, 14 Rechenfälle und die 49 Zellen der Tabellen 1 und 2, jeder Fall und jede Zelle mit Fundstelle.
   Wo dieser Text und die Datei sich widersprechen, gilt die Datei — und dann ist einer von beiden falsch.
 - **[`mispel-pauschal.schema.json`](./mispel-pauschal.schema.json)** — Schema der Datei.
 - **Leser im Gleichlauf** (beide per Pfad, beide prüfen L1–L10 unten):
   Java `services/api/src/test/java/com/voltpilot/api/mispel/MispelPauschalVectorsTest.java`,
   Python `services/optimization/tests/test_mispel_pauschal_vectors.py`.
-- **Rechenwerk:** noch keins. MP-25 rechnet jeden Fall in Java und Python exakt nach (Jahreslauf, SP≥0 und
-  AW>0, Rumpfjahre); MP-26 (Optimierer-Jahreszustand) und MP-29 (Haushalts-Check) lesen es.
+- **Rechenwerk (MP-25):** Java `services/api/src/main/java/com/voltpilot/api/mispel/MispelPauschalRechenwerk.java`
+  und Python `services/optimization/voltpilot_optimization/mispel_pauschal.py` rechnen jeden Fall und jede Zelle
+  exakt nach; der Jahreslauf `MispelPauschalService.jahreslauf` speichert Ergebnis und Nachweis
+  ([unten](#rechenwerk-und-jahreslauf-mp-25)). MP-26 (Optimierer-Jahreszustand) und MP-29 (Haushalts-Check) lesen es.
 
 Zitierweise: „A2 S. 30“ = Anlage 2, Seite 30; „T S. 67“ = Tenor mit Begründung, Seite 67; „A1 S. 98“ = Anlage 1,
 Seite 98. Die Festlegung hat keine Randnummern.
@@ -189,10 +191,63 @@ Jede steht mit Grund und Fundstelle in `regeln` bzw. `abweichungen` der Vektor-D
 | `p1-ausschliesslich-ungefoerdert` | P1 | nur ungeförderte Solaranlage: (P12)¼ = 1, (P10) = 500; (P15) ohne Förderanspruch | A2 S. 48–51, Abschn. 8 |
 | `bnetza-rumpfjahre-zweiter-speicher-am-16-mai` | P1 | zweiter Speicher am 16. Mai: 136/46 und 229/137 Tage, (P1)R ≈ 1 005 / 2 995, (P3)R ≈ 119 / 134, (P4)R ≈ 1 125 / 3 128; Tagesgrenze in gesetzlicher Zeit | A2 S. 55–56, Abschn. 9.3 |
 | `p1-jahresgrenze-in-ortszeit` | P1 | Jahreswechsel in MEZ statt UTC; jedes Jahr für sich, kein Übertrag | A2 S. 28; T S. 63 |
+| `p1-rumpfjahre-sommerperiode-tagesscharf-schaltjahr` | P1 | MP-25: drei Rumpfjahre 2028 (Änderungen am 31.03. und 30.09.): 91/0, 183/183 und 92/0 Tage, (P20) = 366; (P1)R = 0 / 5 000 / 0 — Winter-Einspeisung in AW>0-Zeiten ist nicht förderfähig, (P3)R ≈ 124 / 167 / 251 je Rumpfjahr; Tagesgrenzen in MESZ | A2 S. 53–55, Abschn. 9.1–9.2; T S. 88–89 |
 
 **Tabelle 1 und 2** (A2 S. 12): `pauschalgrenzen` trägt alle 49 Zellen (Pinst 1/4/6/8/10/15/30 kWp × SKinst
 45/30/15/10/8/6/4 kWh) mit exaktem (P1), (P2)P1, (P3), (P4) und den gedruckten Werten — Tabelle 1 absolut (kWh/a),
 Tabelle 2 je kWp (kWh/kWp). Die Ladepunkt-Rechengröße 0,2 belegen die Fälle `p2-…` und `p3-…`.
+
+## Rechenwerk und Jahreslauf (MP-25)
+
+Zwei Rechenwerke im Gleichlauf, Stufe für Stufe gleich: Viertelstunde ((P5)¼, (P6)¼, (P12…)¼, (P13…)¼) → ∑J über
+das (Rumpf-)Jahr → Jahreswerte; ungerundet mit `Bruch` bzw. `Fraction`, Katalog-Reihenfolge wie die Vektor-Datei. Die
+Rechnung summiert genau die übergebenen Viertelstunden — ob ein Jahr vollständig ist, entscheidet der Jahreslauf.
+
+| Stelle | Java `MispelPauschalRechenwerk` | Python `mispel_pauschal` |
+|---|---|---|
+| Lauf | `rechne(formelsatz, viertelstunden, stammdaten, rumpfjahre, ungefoerdert[, basisfall])` | `rechne(formelsatz, viertelstunden, stammdaten=, rumpfjahre=, ungefoerdert=, basisfall=)` |
+| AW¼ | Wahrheitswert „AW¼ > 0“ (mehr liefert die ÜNB-Liste nicht) | Zahl, ausgewertet nur „> 0“ |
+| SP¼ | Preis in ct/kWh, ausgewertet nur „≥ 0“ | ebenso |
+| Rumpfjahr | `Rumpfjahr(von, bis, stammdaten)`, Tage einschließlich | `Rumpfjahr(von, bis, stammdaten)` |
+| Tage | `sommertage(von, bis)` = ANZAHL [ TRS ]; (P20) aus dem Kalenderjahr | `sommertage(von, bis)` |
+
+Beide lehnen ab, statt zu raten: fehlender Eingang (unbekannt ist keine Null), negativer Zählerwert, fremder Eingang,
+Viertelstunde außerhalb des Rasters, doppelt oder in keinem Rumpfjahr, überlappende oder jahresübergreifende
+Rumpfjahre, SKinst = 0, Pinst ≠ Painst + Pbinst (P4/P4-Variante), auseinanderlaufende AW>0-Zeiten in der P4-Variante
+(A2 S. 41). **Regel `abwandlungen`:** P4, P4-Variante und P5 rechnen mit `basisfall` P2 oder P3 deren Rechengröße
+((P2)P2 bzw. (P2)P1, (P2)P2, (P2)P3 statt (P2)P1; in Abwandlung zu P2 ohne SKinst, A2 S. 27) — Anlage 2 zeigt nur
+die P1-Abwandlung (A2 S. 34, S. 43, S. 49), darum ohne eigenen Vektorfall, geprüft gegen den Basisfall selbst.
+
+**Jahreslauf** `MispelPauschalService.jahreslauf(anlage, jahr, Vorgaben)` (Muster des Monatslaufs der
+[Abgrenzung](./mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8)) — je Lauf ein Kalenderjahr oder ein vorgegebenes
+Rumpfjahr `[rumpfVon, rumpfBis]`:
+
+- **Förderweg** ([MP-5](./mispel-foerderweg.md)) an jedem Tag „Marktprämie mit Pauschaloption“ (geprüft am ersten Tag
+  und an jedem Beginn einer Fassung), sonst `foerderweg_nicht_pauschal`; die AW-Regel der Fassung (MP-12b) gilt für
+  AW¼/AWa¼, AWb¼ gibt der Aufrufer vor. Ohne AW-Regel rechnet der Lauf mit dem Rückfall „AW¼ = 0 bei SP¼ < 0“ und
+  bleibt vorläufig (`aw_regel_fehlt`, `aw_rueckfall`; Bauplan W4). Wechselt die AW-Regel im Zeitraum:
+  `aw_regel_wechselt`.
+- **Zähler** Z1NB/Z1NE aus der Zählerrolle Z1 ([MP-6](./mispel-zaehlerrolle.md)) — ein Zähler genügt (A2 S. 27). Trägt
+  die Anlage am ersten oder letzten Tag Z2/Z3, lehnt der Lauf ab (`messkonzept_anlage_1`): „Keine vereinfachte
+  pauschale Bestimmung nach Anlage 2 bei Messwerten für die genauere Bestimmung nach Anlage 1“ (A2 S. 22, Abschn.
+  3.2.3). P5 braucht ZW (A2 S. 45–46); diese Rolle gibt es noch nicht (`zaehler_fehlt`).
+- **SP¼** DE-LU und **AW¼ > 0** nur über `MispelMarktdatenRepository` (MP-7); fehlt eins davon oder ein Zählerwert,
+  ist die Viertelstunde eine Lücke — sie bleibt draußen und steht im Nachweis.
+- **Stand** wie MP-8 (E4 = C): `endgueltig` nur mit Werten des Messstellenbetreibers, tauglichem Zähler, ohne Lücke,
+  endgültigen Viertelstunden, ÜNB-AW, vorbeigegangenem Zeitraum — und erst, wenn die Pauschaloption gilt
+  (`voltpilot.mispel.pauschaloption-ab` gesetzt und erreicht, T S. 3 Ziff. 9 b); sonst `vorlaeufig` mit
+  `eu_genehmigung_ausstehend` (Vorbau E7 = B: gerechnet wird trotzdem).
+- **Gespeichert** in `mispel_pauschal_jahr` (`V20261002191500`, RLS + FORCE, App-Rolle nur SELECT/INSERT): Fassungen
+  je Anlage und `tag_von`, Nachweis als kanonischer JSON-**Text** + SHA-256 (nie `jsonb`), gleiche Prüfsumme schreibt
+  nichts. Der Nachweis trägt je Viertelstunde eine Zeile in der Folge von `spalten` (Eingänge, „AW¼ > 0“, SP¼, ¼-Formeln)
+  — ein Jahr hat bis 35 136 Viertelstunden.
+
+**Lesart Rumpfjahr-Grenzen:** Formelsatz, Stammdaten und Rumpfjahr gibt heute der Aufrufer vor (die Förderweg-Fassung
+kennt nur A-Formelsätze). Bei einer Änderung innerhalb der Pauschaloption zählt der Änderungstag zum Rumpfjahr davor
+(A2 S. 53, TR). Wechselt die Zuordnung zur Pauschaloption „zum ersten Kalendertag eines Kalendermonats“ (A2 S. 52,
+Fn. 40; Tenorziffer 5), beginnt das Rumpfjahr der Pauschaloption an diesem Monatsersten — an diesem Tag gilt die neue
+Veräußerungsform bereits; der Lauf prüft genau das am Förderweg. Eine Erkennung der Rumpfjahre aus Fallständen (wie
+MP-21 für Rumpfmonate) folgt mit Einrichtung und Portal (MP-27).
 
 ## Was die Leser prüfen (L1–L10)
 
@@ -221,14 +276,16 @@ Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Feh
     kaufmännisch auf die gedruckten Stellen gerundete exakte Wert; Tabelle 1 hat alle 49 Zellen.
 
 Prüfnachweis (ohne Docker):
-`(cd services/api && ./mvnw test -Dtest=MispelPauschalVectorsTest)` (JDK 21) und
-`(cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest --with jsonschema python -m pytest tests/test_mispel_pauschal_vectors.py -q)`.
+`(cd services/api && ./mvnw test -Dtest='MispelPauschalVectorsTest,MispelPauschalRechenwerkTest')` (JDK 21) und
+`(cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest --with jsonschema python -m pytest tests/test_mispel_pauschal_vectors.py tests/test_mispel_pauschal_rechenwerk.py -q)`;
+mit Docker dazu `MispelPauschalJahreslaufTest`.
 
 ## Beim Ändern
 
 Eine geänderte Formel, ein neuer Fall oder eine neue Lesart ändert die Vektor-Datei, das Schema und beide Leser
 zusammen; jede Abweichung von Anlage 2 bekommt einen Eintrag in `abweichungen` mit Fundstelle. Alle Leser finden:
-`rg -l "mispel-pauschal" services frontend` — ab MP-25 gehören die Rechenwerk-Tests dazu. Erwartete Werte werden
+`rg -l "mispel-pauschal" services frontend` — dazu gehören die Rechenwerk-Tests `MispelPauschalRechenwerkTest`,
+`MispelPauschalJahreslaufTest` (Testcontainers) und `test_mispel_pauschal_rechenwerk.py`. Erwartete Werte werden
 gerechnet, nicht abgeschrieben (exakt, mit Brüchen); wer einen Fall von Hand ändert, rechnet ihn nach und lässt
 beide Leser laufen. Die Datei wird nicht ins Jar gepackt (anders als `mispel-abgrenzung-vectors.json` für MP-16); wer
 sie zur Laufzeit braucht, trägt sie in `services/api/pom.xml` und `services/api/Dockerfile` ein.

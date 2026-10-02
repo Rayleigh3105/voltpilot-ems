@@ -1,5 +1,5 @@
 {
-  "$comment": "MiSpeL-Pauschaloption: die Formeln (P1)–(P22)R der Formelsätze P1, P2, P3, P4 (mit P4-Variante) und P5 als Vertrag mit gemeinsamen Vektoren. Nummern, Begriffe und Rechenwege stehen WÖRTLICH wie in Anlage 2 der Festlegung vom 01.10.2026; jede Formel, jeder Fall und jede Tabellenzeile trägt ihre Fundstelle. Die Pauschaloption ist erst ab dem Ersten des Kalendermonats anwendbar, der auf die beihilferechtliche Genehmigung der EU-Kommission zu § 19 Abs. 3c EEG folgt (T S. 3, Tenorziffer 9 b). Leser: MispelPauschalVectorsTest (Java) und test_mispel_pauschal_vectors.py (Python); Rechenwerk folgt mit MP-25. Regeln in mispel-pauschal.md.",
+  "$comment": "MiSpeL-Pauschaloption: die Formeln (P1)–(P22)R der Formelsätze P1, P2, P3, P4 (mit P4-Variante) und P5 als Vertrag mit gemeinsamen Vektoren. Nummern, Begriffe und Rechenwege stehen WÖRTLICH wie in Anlage 2 der Festlegung vom 01.10.2026; jede Formel, jeder Fall und jede Tabellenzeile trägt ihre Fundstelle. Die Pauschaloption ist erst ab dem Ersten des Kalendermonats anwendbar, der auf die beihilferechtliche Genehmigung der EU-Kommission zu § 19 Abs. 3c EEG folgt (T S. 3, Tenorziffer 9 b). Leser: MispelPauschalVectorsTest (Java) und test_mispel_pauschal_vectors.py (Python); Rechenwerk MP-25: MispelPauschalRechenwerk (Java) und mispel_pauschal.py (Python). Regeln in mispel-pauschal.md.",
   "schema_version": "1.0",
   "quelle": {
     "festlegung": "Festlegung zur Marktintegration von Speichern und Ladepunkten (MiSpeL)",
@@ -2479,6 +2479,243 @@
           "(P1)R": 2995,
           "(P3)R": 134,
           "(P4)R": 3128
+        }
+      }
+    },
+    {
+      "name": "p1-rumpfjahre-sommerperiode-tagesscharf-schaltjahr",
+      "formelsatz": "P1",
+      "fundstelle": "A2 S. 53, Abschn. 9.1 (TK, TS: April bis September; TR: der Änderungstag zählt zum Rumpfjahr davor; TRS); A2 S. 54–55, Abschn. 9.2, Formeln (P17) bis (P4)R; T S. 88–89 (tagesscharfe Anteilsbildung, Sommer- und Winterperiode)",
+      "warum": "MP-25: drei Rumpfjahre in einem Schaltjahr, deren Grenzen genau auf den Rand der Sommerperiode fallen. 10 kWp; am 31.03.2028 kommt ein Speicher mit 5 kWh zu den vorhandenen 10 kWh, am 30.09.2028 geht der erste Speicher (10 kWh) außer Betrieb. Weil der Änderungstag zum Rumpfjahr davor zählt, liegt das erste Rumpfjahr ganz im Winter (01.01.–31.03., 91 Tage mit dem 29. Februar, (P19)R = 0), das zweite ist genau die Sommerperiode (01.04.–30.09., (P19)R = (P22)R = 183) und das dritte wieder im Winter (01.10.–31.12., 92 Tage, (P19)R = 0). Die Pauschalgrenze der Förderfähigkeit geht darum ganz an das Sommer-Rumpfjahr ((P1)R = (P1) = 5 000), in beiden Winter-Rumpfjahren ist (P1)R = 0 und (P15) = 0, obwohl dort in AW>0-Zeiten eingespeist wird; der Indifferenzbereich verteilt sich dagegen über alle (P20) = 366 Tage des Kalenderjahres, je Rumpfjahr mit dessen eigenem (P3). Im Winter-Rumpfjahr ist darum alles über (P3)R grundsätzlich saldierungsfähig. Die Viertelstunden an den Tagesgrenzen (31.03. 23:45 MESZ, 01.04. 00:00 MESZ, 30.09. 23:45 MESZ, 01.10. 00:00 MESZ) zeigen die Zuordnung nach gesetzlicher Zeit; die Sommerzeit endet am 29.10.2028.",
+      "rumpfjahre": [
+        {
+          "schluessel": "2028-01-01/2028-03-31",
+          "von": "2028-01-01",
+          "bis": "2028-03-31",
+          "stammdaten": {
+            "Pinst": 10,
+            "SKinst": 10
+          }
+        },
+        {
+          "schluessel": "2028-04-01/2028-09-30",
+          "von": "2028-04-01",
+          "bis": "2028-09-30",
+          "stammdaten": {
+            "Pinst": 10,
+            "SKinst": 15
+          },
+          "aenderung": "Inbetriebnahme eines weiteren Stromspeichers (5 kWh) am 2028-03-31"
+        },
+        {
+          "schluessel": "2028-10-01/2028-12-31",
+          "von": "2028-10-01",
+          "bis": "2028-12-31",
+          "stammdaten": {
+            "Pinst": 10,
+            "SKinst": 5
+          },
+          "aenderung": "Außerbetriebnahme des ersten Stromspeichers (10 kWh) am 2028-09-30"
+        }
+      ],
+      "viertelstunden": [
+        {
+          "beginn": "2028-02-29T12:00:00+01:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 200,
+          "AW¼": 7.1,
+          "SP¼": 6.0
+        },
+        {
+          "beginn": "2028-03-31T23:45:00+02:00",
+          "Z1NB¼": 100,
+          "Z1NE¼": 0,
+          "AW¼": 7.1,
+          "SP¼": 9.2
+        },
+        {
+          "beginn": "2028-04-01T00:00:00+02:00",
+          "Z1NB¼": 200,
+          "Z1NE¼": 0,
+          "AW¼": 7.1,
+          "SP¼": 8.4
+        },
+        {
+          "beginn": "2028-06-15T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 3000,
+          "AW¼": 7.1,
+          "SP¼": 2.0
+        },
+        {
+          "beginn": "2028-07-10T13:00:00+02:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 2500,
+          "AW¼": 7.1,
+          "SP¼": 1.5
+        },
+        {
+          "beginn": "2028-09-30T23:45:00+02:00",
+          "Z1NB¼": 100,
+          "Z1NE¼": 0,
+          "AW¼": 7.1,
+          "SP¼": 8.0
+        },
+        {
+          "beginn": "2028-10-01T00:00:00+02:00",
+          "Z1NB¼": 150,
+          "Z1NE¼": 0,
+          "AW¼": 7.1,
+          "SP¼": 7.7
+        },
+        {
+          "beginn": "2028-10-29T12:00:00+01:00",
+          "Z1NB¼": 0,
+          "Z1NE¼": 600,
+          "AW¼": 7.1,
+          "SP¼": 5.5
+        },
+        {
+          "beginn": "2028-12-31T23:45:00+01:00",
+          "Z1NB¼": 250,
+          "Z1NE¼": 0,
+          "AW¼": 7.1,
+          "SP¼": 9.9
+        }
+      ],
+      "erwartet": {
+        "viertelstunden": [
+          {
+            "beginn": "2028-02-29T12:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 200,
+            "(P12)¼": 1,
+            "(P13)¼": 200
+          },
+          {
+            "beginn": "2028-03-31T23:45:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2028-04-01T00:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2028-06-15T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 3000,
+            "(P12)¼": 1,
+            "(P13)¼": 3000
+          },
+          {
+            "beginn": "2028-07-10T13:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 2500,
+            "(P12)¼": 1,
+            "(P13)¼": 2500
+          },
+          {
+            "beginn": "2028-09-30T23:45:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2028-10-01T00:00:00+02:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          },
+          {
+            "beginn": "2028-10-29T12:00:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 600,
+            "(P12)¼": 1,
+            "(P13)¼": 600
+          },
+          {
+            "beginn": "2028-12-31T23:45:00+01:00",
+            "(P5)¼": 1,
+            "(P6)¼": 0,
+            "(P12)¼": 1,
+            "(P13)¼": 0
+          }
+        ],
+        "jahre": {
+          "2028-01-01/2028-03-31": {
+            "(P1)": 5000,
+            "(P2)P1": 0.1,
+            "(P3)": 500,
+            "(P4)": 5500,
+            "(P7)": 200,
+            "(P8)": "13850/183",
+            "(P9)": 100,
+            "(P10)": "13850/183",
+            "(P11)": "4450/183",
+            "(P14)": 200,
+            "(P15)": 0,
+            "(P17)": 183,
+            "(P18)": "5000/183",
+            "(P19)R": 0,
+            "(P1)R": 0,
+            "(P20)": 366,
+            "(P21)": "250/183",
+            "(P22)R": 91,
+            "(P3)R": "22750/183",
+            "(P4)R": "22750/183"
+          },
+          "2028-04-01/2028-09-30": {
+            "(P1)": 5000,
+            "(P2)P1": "1/15",
+            "(P3)": "1000/3",
+            "(P4)": "16000/3",
+            "(P7)": 5500,
+            "(P8)": "1000/3",
+            "(P9)": 300,
+            "(P10)": 300,
+            "(P11)": 0,
+            "(P14)": 5500,
+            "(P15)": 5000,
+            "(P17)": 183,
+            "(P18)": "5000/183",
+            "(P19)R": 183,
+            "(P1)R": 5000,
+            "(P20)": 366,
+            "(P21)": "500/549",
+            "(P22)R": 183,
+            "(P3)R": "500/3",
+            "(P4)R": "15500/3"
+          },
+          "2028-10-01/2028-12-31": {
+            "(P1)": 5000,
+            "(P2)P1": 0.2,
+            "(P3)": 1000,
+            "(P4)": 6000,
+            "(P7)": 600,
+            "(P8)": "63800/183",
+            "(P9)": 400,
+            "(P10)": "63800/183",
+            "(P11)": "9400/183",
+            "(P14)": 600,
+            "(P15)": 0,
+            "(P17)": 183,
+            "(P18)": "5000/183",
+            "(P19)R": 0,
+            "(P1)R": 0,
+            "(P20)": 366,
+            "(P21)": "500/183",
+            "(P22)R": 92,
+            "(P3)R": "46000/183",
+            "(P4)R": "46000/183"
+          }
         }
       }
     },

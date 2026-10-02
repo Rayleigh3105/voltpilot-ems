@@ -472,6 +472,8 @@ public class TenantRepository {
                         "messstelle_zaehlerrolle",
                         // The Abgrenzung runs (MiSpeL MP-8, V20261002153700) hold the tenant (RESTRICT).
                         "mispel_abgrenzung_monat",
+                        // The Pauschal runs (MiSpeL MP-25, V20261002191500) hold the tenant (RESTRICT).
+                        "mispel_pauschal_jahr",
                         // The Förderweg (MiSpeL MP-5, V20261002141500) holds the tenant (RESTRICT).
                         "site_foerderweg",
                         "messstelle_ort", "messstelle_stellung",

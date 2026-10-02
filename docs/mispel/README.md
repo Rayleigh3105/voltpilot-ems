@@ -96,7 +96,8 @@ Ein Vertrag, eine Vektor-Datei, zwei Rechenwerke im Gleichlauf (exakte Brüche, 
   EE-Anlage: A1 S. 94–102). Die Pauschaloption (Anlage 2) hat einen eigenen Vertrag (MP-24):
   [Regeln](../contracts/v2/mispel-pauschal.md), [Vektoren](../contracts/v2/mispel-pauschal-vectors.json),
   [Schema](../contracts/v2/mispel-pauschal.schema.json) — Formeln (P1)–(P22)R der Formelsätze P1–P5 mit Rumpfjahr und
-  Tabelle 1; Rechenwerk folgt mit MP-25, anwendbar erst ab dem Monatsersten nach der EU-Genehmigung (T S. 3 Ziff. 9b).
+  Tabelle 1; Rechenwerk MP-25 in Java (`mispel/MispelPauschalRechenwerk.java`) und Python
+  (`voltpilot_optimization/mispel_pauschal.py`), anwendbar erst ab dem Monatsersten nach der EU-Genehmigung (T S. 3 Ziff. 9b).
 - **Bindung:** der vereinfachte Formelsatz (A10/A11 statt A1, A5-Variante statt A5) bindet bis zum Jahresende
   (A1 S. 24, Abschn. 3.2.3); geprüft beim Eintragen des Förderwegs.
 
@@ -105,6 +106,10 @@ Ein Vertrag, eine Vektor-Datei, zwei Rechenwerke im Gleichlauf (exakte Brüche, 
 - **Monatslauf** (MP-8): je Anlage und Kalendermonat aus Zählerwerten und AW>0-Zeiten; gespeichert als Fassung mit
   kanonischem Nachweis-Text und SHA-256 (`mispel_abgrenzung_monat`). Lücken bleiben Lücken, nie Null.
   [Vertrag, Abschnitt Monatslauf](../contracts/v2/mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8).
+- **Jahreslauf der Pauschaloption** (MP-25): je Anlage und Kalender- oder Rumpfjahr (tagesscharfe Sommerperiode,
+  A2 S. 53–55), nur an Tagen mit Förderweg Pauschaloption, ein Zähler Z1 genügt; gespeichert in `mispel_pauschal_jahr`
+  wie der Monatslauf. Vor der EU-Genehmigung bleibt jeder Lauf vorläufig (`eu_genehmigung_ausstehend`).
+  [Vertrag, Abschnitt Jahreslauf](../contracts/v2/mispel-pauschal.md#rechenwerk-und-jahreslauf-mp-25).
 - **Stand vorläufig / endgültig** (E4 = C): endgültig nur auf Werten des Messstellenbetreibers, lückenlos, mit
   AW>0-Liste der ÜNB und nach Ende des Zeitraums (T S. 28; § 21 Abs. 4 S. 2 EnFG). Eine vorläufige Zahl heißt nie
   „Mengenbestimmung“.
@@ -157,8 +162,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 
 - **Optimierer:** Monatszustand der Abgrenzung (MP-11), Jahreszustand der Pauschaloption (MP-26); MiSpeL-Check in der
   Simulation, „heute gegen MiSpeL“ für eine Anlage (MP-13).
-- **Rechenwerk:** Pauschaloption — Vertrag und Vektoren (P1)–(P15) (MP-24), Rechenwerk mit Rumpfjahren (MP-25);
-  A2–A4 für Ladepunkte (MP-32). Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
+- **Rechenwerk:** A2–A4 für Ladepunkte (MP-32); Rumpfjahre der Pauschaloption gibt der Aufrufer noch vor (Erkennung
+  aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
 - **Box:** Förderweg über den Plan statt `grid_charge_allowed` (MP-14).
 - **Messwerte des Messstellenbetreibers:** Import und Abgleich gegen Gerätewerte (MP-15) — bis dahin bleibt jeder
   Monat „vorläufig“.
