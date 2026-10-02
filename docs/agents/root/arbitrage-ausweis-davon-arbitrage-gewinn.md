@@ -2,7 +2,7 @@
 
 Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 68).
 
-> **Seit MiSpeL (W5/W6, entschieden 02.10.2026):** dieser Zwei-Töpfe-Ausweis gilt nur noch im Förderweg `ungefoerdert` (Händler-Modus) und wird dort als VoltPilot-Schätzung beschriftet; Anlagen in Abgrenzungs- oder Pauschaloption zeigen nur die amtlichen Mengen grün/gelb/rot ([Fachdoku § 7](../../mispel/README.md), [Speicherherkunft](../../attribution-three-pot.md)). ⚠ **Noch nicht umgesetzt (MP-18 nach BK-18):** `arbitrageSplit` wählt die Anlagen weiter über `s.netzladen_erlaubt` — eine Anlage im Mischbetrieb mit eingeschaltetem Netzladen bekommt heute noch die Schätzung, ohne das Wort „Schätzung“. Wer das ändert, ändert eine sichtbare Fläche: erst das Bedienkonzept.
+> **Seit MiSpeL (W5/W6, entschieden 02.10.2026):** dieser Zwei-Töpfe-Ausweis gilt nur noch im Förderweg `ungefoerdert` (Händler-Modus) und wird dort als VoltPilot-Schätzung beschriftet; Anlagen in Abgrenzungs- oder Pauschaloption zeigen nur die amtlichen Mengen grün/gelb/rot ([Fachdoku § 7](../../mispel/README.md), [Speicherherkunft](../../attribution-three-pot.md)). ⚠ **Noch nicht umgesetzt:** Verlauf › Erlöse blendet „davon durch Netzladen“ für MiSpeL-Anlagen seit MP-18 aus (`speicherWert(…, arbitrageAusweis)`), aber `arbitrageSplit` wählt die Anlagen in der API weiter über `s.netzladen_erlaubt` — eine Anlage im Mischbetrieb mit eingeschaltetem Netzladen bekommt heute noch die Schätzung, ohne das Wort „Schätzung“. Wer das ändert, ändert eine sichtbare Fläche: erst das Bedienkonzept.
 
 
 Captain pick 2026-07-07 (review-session decision 5, task vp-arbitrage-ausweis): a grid-charging site's earnings hero shows what the netzladen permission concretely earned.

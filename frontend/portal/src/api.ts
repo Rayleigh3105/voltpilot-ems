@@ -3,6 +3,7 @@ import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUeb
 import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { VerbesserungUebersicht } from './verbesserungUebersicht';
 import type { Wiedervorlage } from './wiedervorlage';
+import type { MispelEmpfaenger, MispelJahr, MispelMonat } from './mispelMengen';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -7536,6 +7537,41 @@ export async function ladeGesamtabzug(): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
+/**
+ * MiSpeL MP-18: lädt den Nachweis (MP-16) als Datei — `…/monate/{JJJJ-MM}|jahre/{JJJJ}/nachweis.pdf|.csv?empfaenger=…`.
+ * Der Name kommt vom Server (vorläufige Zeiträume tragen „-vorlaeufig“ und im PDF das Wasserzeichen). Eine Ablehnung
+ * (403 ohne `export.standort`, 404 `kein_lauf`) kommt als {@link ApiError} mit dem Satz der API.
+ */
+export async function ladeMispelNachweis(
+  siteId: string,
+  zeitraum: string,
+  empfaenger: MispelEmpfaenger,
+  format: 'pdf' | 'csv',
+): Promise<void> {
+  const art = zeitraum.length === 4 ? 'jahre' : 'monate';
+  const token = await freshToken();
+  const res = await fetch(
+    `${API_BASE}/api/v1/sites/${siteId}/mispel/abgrenzung/${art}/${zeitraum}/nachweis.${format}?empfaenger=${empfaenger}`,
+    {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      },
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Der Nachweis konnte nicht geladen werden.', body);
+  }
+  const name = /filename="?([^";]+)"?/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? `mispel-nachweis.${format}`;
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;
@@ -9159,6 +9195,17 @@ export const api = {
     request<SiteEarnings>(
       `/api/v1/sites/${siteId}/earnings?range=${range}${at ? `&at=${at}` : ''}`,
     ),
+  /**
+   * MiSpeL MP-18: die Mengen nach Anlage 1 eines Monats bzw. Jahres — aus den gespeicherten Läufen des Rechenwerks
+   * (MP-8), mit Begriff, Formelnummer, Stand und „Was das wert ist“. `abgrenzung: false` = keine Karte.
+   */
+  mispelMonat: (siteId: string, monat: string) =>
+    request<MispelMonat>(`/api/v1/sites/${siteId}/mispel/abgrenzung/monate/${monat}`),
+  mispelJahr: (siteId: string, jahr: number) =>
+    request<MispelJahr>(`/api/v1/sites/${siteId}/mispel/abgrenzung/jahre/${jahr}`),
+  /** MiSpeL MP-16/MP-18: der Nachweis als Datei (`zeitraum` = JJJJ-MM oder JJJJ), über die Routen von MP-16. */
+  mispelNachweis: (siteId: string, zeitraum: string, empfaenger: MispelEmpfaenger, format: 'pdf' | 'csv') =>
+    ladeMispelNachweis(siteId, zeitraum, empfaenger, format),
   /**
    * The site's latest inverter-control confirmation (the calm "Steuerung"
    * strip). Resolves to null when no device has reported a readback yet

@@ -32,7 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p><b>Rechte</b> wie der Bestand-Geräte-Export: gelesen über den Leseweg der Anlage (außerhalb des Zugriffs 404), die
  * Datei mit {@code export.standort} (sonst 403). Die Routen haben kein {@code produces} — Ablehnungen kommen als JSON
- * {@code {code, message}}. Ein Download-Knopf im Portal folgt erst nach dem abgestimmten Bedienkonzept (BK-18).
+ * {@code {code, message}}. Den Download-Knopf trägt die Kundenansicht (MP-18, {@link SiteMispelMengenController}).
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/mispel/abgrenzung")

@@ -404,9 +404,14 @@ export const BEWERTUNG_WERT = 'heutige Tarif- und Vergütungsangaben — nicht I
  *   beim Hinweis: „nicht geladen" wäre eine Aussage über einen Zeitraum, für
  *   den der Endpunkt keine Zurechnung hat.
  */
-export function speicherWert(money: SiteEarnings, netzladenErlaubt: boolean | null | undefined): string | null {
+export function speicherWert(
+  money: SiteEarnings,
+  netzladenErlaubt: boolean | null | undefined,
+  /** MiSpeL (W5): für MiSpeL-Anlagen zählt nur die amtliche Formel — kein „davon durch Netzladen“. */
+  arbitrageAusweis = true,
+): string | null {
   if (netzladenErlaubt == null) return null;
-  const arb = num(money.arbitrageEur);
+  const arb = arbitrageAusweis ? num(money.arbitrageEur) : null;
   const handel =
     netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
       ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`

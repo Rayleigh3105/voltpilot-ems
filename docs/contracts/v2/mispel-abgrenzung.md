@@ -297,7 +297,39 @@ Jahresnachweis für die Mitteilung des Lieferanten bis 31.05. des Folgejahres (�
   Marktkommunikation regelt die Festlegung nicht (T S. 25, S. 28, S. 92); EDI@Energy folgt, sobald festgelegt.
 
 Prüfnachweis: `(cd services/api && ./mvnw test -Dtest='MispelNachweisTest,MispelNachweisApiTest')` (der zweite mit
-Docker). Ein Download-Knopf im Portal kommt erst mit dem abgestimmten Bedienkonzept (BK-18/MP-18).
+Docker). Der Download-Knopf steht in der Kundenansicht (MP-18, unten).
+
+## Kundenansicht Mengen und Ertrag (MP-18)
+
+Verlauf › Erlöse, Zeitraum Monat und Jahr (Bedienkonzept BK-18 Variante A, abgestimmt 02.10.2026): Karte „MiSpeL ·
+Mengen nach Anlage 1“ unter der Kennzahlleiste, kein neuer Reiter.
+
+- **Routen** (`web/SiteMispelMengenController`, Leseweg der Anlage, außerhalb 404):
+  `GET /api/v1/sites/{siteId}/mispel/abgrenzung/monate/{JJJJ-MM}` und `…/jahre/{JJJJ}`. Immer 200 für eine sichtbare
+  Anlage; `abgrenzung = false` = keine Bestimmung nach Anlage 1 im Zeitraum (keine Karte), `mispel` = Abgrenzungs- oder
+  Pauschaloption (für W5). Ablehnung `zeitraum_ungueltig` (400) wie der Nachweis.
+- **Nur aus den Läufen:** `mispel/MispelMengenService` wählt die geltenden Läufe wie der Nachweis (`MispelNachweis.monat`,
+  Prüfsumme) und liest ihre Monatswerte; `mispel/MispelMengen` (rein) beschriftet jede Menge mit Nummer, Begriff und
+  Fundstelle aus dem Katalog. Farben nach A1 S. 18: grün (26), gelb (31), rot (16) — in A5 (26a) + (26b), (31a) + (31b);
+  Netzbezug (3), umlagereduziert (20), umlagebelastet (21), förderfähig (32). Selbst gebildet wird nur **grau =
+  (4) − (26) − (31) − (16)** (weder förderfähig noch saldierungsfähig: AW ≤ 0, Fremdtankstrom); Anlage 1 benennt diese
+  Restgröße nicht, sie ist ≥ 0, weil (16) + (28) = (13) ≤ (11) und (31) ≤ (28).
+- **Was das wert ist:** vermiedene Umlagen und vermiedenes Netzentgelt = (20) × `umlagen_ct` bzw.
+  `netzentgelt_arbeitspreis_ct` des Preisblatts (`site_supply_price`) × (1 + USt), auf Cent gerundet; ohne Satz
+  `offen` (`preisblatt_fehlt`). Marktprämie = (32) × max(AW − Jahresmarktwert Solar, 0) (A1 S. 21 Vor. 5), `offen`
+  solange der Jahresmarktwert fehlt oder vorläufig ist (`jahresmarktwert_offen`), ohne AW (`anzulegender_wert_fehlt`) und in
+  A5 (`je_anlage_a5`) — nie 0 €. Ohne Lauf sind `stand` und `wert` `null`.
+- **Stand:** der des Nachweises (E4 = C). Ist ein Lauf endgültig und hatte sein Zeitraum vorher eine vorläufige Fassung
+  mit anderen Zahlen, trägt der Teil `aenderung` (vorige Fassung, ihre Gründe, Unterschied in €) — die Jahresansicht
+  nennt so den Grund neben dem Monat.
+- **Portal:** `components/erloese/MispelKarte.tsx` (Monat, Jahr, Nachweis-Blatt am Telefon) über `mispelMengen.ts`
+  (nur Formatierung). Der Nachweis geht über die Routen von MP-16; vorläufige Zeiträume nur als „Vorschau (PDF)“ mit
+  Wasserzeichen. Für Anlagen mit `mispel = true` nennt der Preise-Fuß der Erlöse kein „davon durch Netzladen“ (W5).
+  Platz für die Abweichungsampel (MP-15): Prop `ampel` neben dem Stand.
+
+Prüfnachweis: `(cd services/api && ./mvnw test -Dtest=MispelMengenApiTest)` (Docker; Simulator-Anlage durch den echten
+Monatslauf; hält `frontend/portal/e2e/mispel-mengen-fixtures.json` gleich der Antwort der Route, neu schreiben mit
+`-Dmispel.fixtures.schreiben=true`) und `npx playwright test e2e/mispel-mengen.spec.ts` (375 und 1440 px).
 
 ## Was die Leser prüfen (L1–L10)
 

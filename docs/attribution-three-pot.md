@@ -22,9 +22,9 @@ flowchart LR
 | `ungefoerdert` | Zwei-Töpfe-Ausweis „davon durch Netzladen verdient“, beschriftet als Schätzung | `EarningsRepository.arbitrageSplit`, [Wegweiser](agents/root/arbitrage-ausweis-davon-arbitrage-gewinn.md) |
 | `einspeiseverguetung`, `marktpraemie_ausschliesslichkeit` | keine — der Speicher lädt kein Netz | [Vertrag Förderweg](contracts/v2/mispel-foerderweg.md) |
 
-**Noch nicht umgesetzt (MP-18):** `arbitrageSplit` wählt die Anlagen heute über `netzladen_erlaubt`, nicht über den
-Förderweg, und der Ausweis trägt noch nicht das Wort „Schätzung“. Die Umstellung ist sichtbar und folgt dem
-abgestimmten Bedienkonzept BK-18.
+**Seit MP-18** zeigt Verlauf › Erlöse für MiSpeL-Anlagen die Mengen der Formel und keinen Netzlade-Anteil mehr.
+**Noch offen:** `arbitrageSplit` wählt die Anlagen in der API weiter über `netzladen_erlaubt`, nicht über den Förderweg
+(Cockpit-Kachel „davon Arbitrage“), und der Ausweis trägt noch nicht das Wort „Schätzung“.
 
 ## Was vom Entwurf bleibt
 

@@ -66,6 +66,9 @@ import {
 } from '../components/erloese/ErloeseKarten';
 import { SoVerdientInhalt } from '../components/SoVerdient';
 import { SpeicherKarte } from '../components/erloese/SpeicherKarte';
+import { MispelJahrKarte, MispelMonatKarte } from '../components/erloese/MispelKarte';
+import { useMispelMengen } from '../useMispelMengen';
+import { arbitrageAusweisErlaubt } from '../mispelMengen';
 import '../components/erloese/ErgebnisKarte.css';
 import { RechenZeilen, SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
 
@@ -154,6 +157,10 @@ export function ErloeseSection({
   // Die Historie trägt hier die Datenlage, den geplanten Steuerungs-Wert und
   // am Tag den Börsenpreis je Viertelstunde.
   const { history, stale: historyStale } = useHistoryPeriod(site.id, range, at);
+  // MiSpeL (MP-18, BK-18 A): die Mengen nach Anlage 1 unter der Kennzahlleiste; für MiSpeL-Anlagen
+  // entfällt der Arbitrage-Ausweis (W5) — dort zählt nur die amtliche Formel.
+  const mispel = useMispelMengen(site.id, range, anchor);
+  const mispelSicht = range === 'year' ? mispel.jahr : mispel.monat;
   const modus = normalisiereModus(modusWahl, anchor, range, history?.coverage);
   const vorher = useVergleichsErloese(
     site.id,
@@ -441,6 +448,22 @@ export function ErloeseSection({
               )}
             </Kennzahlen>
 
+            {range === 'month' && mispel.monat?.abgrenzung && (
+              <MispelMonatKarte siteId={site.id} daten={mispel.monat} />
+            )}
+            {range === 'year' && mispel.jahr?.abgrenzung && (
+              <MispelJahrKarte
+                siteId={site.id}
+                daten={mispel.jahr}
+                onMonat={(m) => {
+                  const a = new Date(`${m}-15T12:00:00`);
+                  setRange('month');
+                  setAnchor(a);
+                  schreibeAdresse('month', a, modusWahl);
+                }}
+              />
+            )}
+
             {!hatErgebnis && diagramm.leer ? (
               <VrKarte titel={TITEL[range]}>
                 <VerlaufLeer
@@ -534,7 +557,11 @@ export function ErloeseSection({
                     für die Einspeisung gegen den Markt. */}
                 <div className="vp-vr-row3">
                   <PreiseKarte
-                    preise={preisVergleich({ money, netzladenErlaubt: site.netzladenErlaubt ?? null })}
+                    preise={preisVergleich({
+                      money,
+                      netzladenErlaubt: site.netzladenErlaubt ?? null,
+                      arbitrageAusweis: arbitrageAusweisErlaubt(mispelSicht),
+                    })}
                     periode={label}
                     hrefFor={hrefFor}
                   />

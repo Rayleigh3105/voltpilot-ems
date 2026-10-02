@@ -1,0 +1,502 @@
+{
+  "$comment" : "Antworten der Routen …/mispel/abgrenzung/monate|jahre für die Simulator-Anlage aus MispelMengenApiTest (echter Monatslauf MP-8). Nicht von Hand ändern: neu schreiben mit -Dmispel.fixtures.schreiben=true.",
+  "monat-2026-10" : {
+    "monat" : "2026-10",
+    "foerderweg" : "marktpraemie_ausschliesslichkeit",
+    "foerderwegBegriff" : "Marktprämie mit Ausschließlichkeitsoption",
+    "mispel" : false,
+    "abgrenzung" : false,
+    "stand" : null,
+    "gruende" : [ ],
+    "giltAlsNachweis" : false,
+    "teile" : [ ],
+    "wert" : null
+  },
+  "monat-2026-11" : {
+    "monat" : "2026-11",
+    "foerderweg" : "marktpraemie_abgrenzung",
+    "foerderwegBegriff" : "Marktprämie mit Abgrenzungsoption",
+    "mispel" : true,
+    "abgrenzung" : true,
+    "stand" : "endgueltig",
+    "gruende" : [ ],
+    "giltAlsNachweis" : true,
+    "teile" : [ {
+      "schluessel" : "2026-11",
+      "ersterTag" : "2026-11-01",
+      "letzterTag" : "2026-11-30",
+      "formelsatz" : "A1",
+      "formelsatzBezeichnung" : "Basisfall A1: „Stromspeicher“",
+      "fassung" : 2,
+      "stand" : "endgueltig",
+      "standGruende" : [ ],
+      "wertequelle" : "messstellenbetreiber",
+      "gerechnetAm" : "2026-12-10T12:00:00Z",
+      "luecken" : 0,
+      "einspeisung" : {
+        "nr" : "(4)",
+        "begriff" : "Gesamte Netzeinspeisung im Kalendermonat",
+        "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+        "kwh" : 3552.0
+      },
+      "farben" : [ {
+        "farbe" : "gruen",
+        "formel" : "(26)",
+        "begriff" : "Förderfähige zeitgleiche Netzeinspeisung von EE-Strom in AW>0-Zeiten direkt aus der EE-Anlage im Kalendermonat",
+        "fundstelle" : "A1 S. 38, Abschn. 4.2.5",
+        "kwh" : 1388.8
+      }, {
+        "farbe" : "gelb",
+        "formel" : "(31)",
+        "begriff" : "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+        "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+        "kwh" : 1114.931
+      }, {
+        "farbe" : "rot",
+        "formel" : "(16)",
+        "begriff" : "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+        "fundstelle" : "A1 S. 36, Abschn. 4.2.2",
+        "kwh" : 805.069
+      }, {
+        "farbe" : "grau",
+        "formel" : "(4) − (26) − (31) − (16)",
+        "begriff" : "Netzeinspeisung, die weder förderfähig noch saldierungsfähig ist",
+        "fundstelle" : "A1 S. 34–39",
+        "kwh" : 243.2
+      } ],
+      "netzbezug" : {
+        "nr" : "(3)",
+        "begriff" : "Gesamter Netzbezug im Kalendermonat",
+        "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+        "kwh" : 3120.0
+      },
+      "umlagereduziert" : {
+        "nr" : "(20)",
+        "begriff" : "Umlagereduzierende Strommenge im Kalendermonat",
+        "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+        "kwh" : 883.826
+      },
+      "umlagebelastet" : {
+        "nr" : "(21)",
+        "begriff" : "Umlagebelasteter Netzbezug im Kalendermonat",
+        "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+        "kwh" : 2236.174
+      },
+      "foerderfaehig" : {
+        "nr" : "(32)",
+        "begriff" : "Insgesamt förderfähige Netzeinspeisung in AW>0-Zeiten im Kalendermonat",
+        "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+        "kwh" : 2503.731
+      },
+      "aenderung" : {
+        "vorherFassung" : 1,
+        "vorherWertequelle" : "geraet",
+        "vorherGruende" : [ "wertequelle_geraet", "viertelstunden_vorlaeufig", "zeitraum_offen" ],
+        "vorherSummeEur" : 113.97,
+        "differenzEur" : 2.41
+      }
+    } ],
+    "wert" : {
+      "vermiedeneUmlagen" : {
+        "stand" : "bestimmt",
+        "eur" : 30.98,
+        "mengeKwh" : 883.826,
+        "formel" : "(20)",
+        "satzCt" : 2.946,
+        "grund" : null
+      },
+      "vermiedenesNetzentgelt" : {
+        "stand" : "bestimmt",
+        "eur" : 85.4,
+        "mengeKwh" : 883.826,
+        "formel" : "(20)",
+        "satzCt" : 8.12,
+        "grund" : null
+      },
+      "marktpraemie" : {
+        "stand" : "offen",
+        "eur" : null,
+        "mengeKwh" : 2503.731,
+        "formel" : "(32)",
+        "satzCt" : null,
+        "grund" : "jahresmarktwert_offen"
+      },
+      "summeOhneMarktpraemieEur" : 116.38,
+      "ustPct" : 19.0
+    }
+  },
+  "monat-2026-12" : {
+    "monat" : "2026-12",
+    "foerderweg" : "marktpraemie_abgrenzung",
+    "foerderwegBegriff" : "Marktprämie mit Abgrenzungsoption",
+    "mispel" : true,
+    "abgrenzung" : true,
+    "stand" : "vorlaeufig",
+    "gruende" : [ "lauf_vorlaeufig:2026-12" ],
+    "giltAlsNachweis" : false,
+    "teile" : [ {
+      "schluessel" : "2026-12",
+      "ersterTag" : "2026-12-01",
+      "letzterTag" : "2026-12-31",
+      "formelsatz" : "A1",
+      "formelsatzBezeichnung" : "Basisfall A1: „Stromspeicher“",
+      "fassung" : 1,
+      "stand" : "vorlaeufig",
+      "standGruende" : [ "wertequelle_geraet", "viertelstunden_vorlaeufig", "zeitraum_offen" ],
+      "wertequelle" : "geraet",
+      "gerechnetAm" : "2026-12-10T12:00:00Z",
+      "luecken" : 0,
+      "einspeisung" : {
+        "nr" : "(4)",
+        "begriff" : "Gesamte Netzeinspeisung im Kalendermonat",
+        "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+        "kwh" : 3680.0
+      },
+      "farben" : [ {
+        "farbe" : "gruen",
+        "formel" : "(26)",
+        "begriff" : "Förderfähige zeitgleiche Netzeinspeisung von EE-Strom in AW>0-Zeiten direkt aus der EE-Anlage im Kalendermonat",
+        "fundstelle" : "A1 S. 38, Abschn. 4.2.5",
+        "kwh" : 1478.4
+      }, {
+        "farbe" : "gelb",
+        "formel" : "(31)",
+        "begriff" : "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+        "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+        "kwh" : 1172.609
+      }, {
+        "farbe" : "rot",
+        "formel" : "(16)",
+        "begriff" : "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+        "fundstelle" : "A1 S. 36, Abschn. 4.2.2",
+        "kwh" : 811.391
+      }, {
+        "farbe" : "grau",
+        "formel" : "(4) − (26) − (31) − (16)",
+        "begriff" : "Netzeinspeisung, die weder förderfähig noch saldierungsfähig ist",
+        "fundstelle" : "A1 S. 34–39",
+        "kwh" : 217.6
+      } ],
+      "netzbezug" : {
+        "nr" : "(3)",
+        "begriff" : "Gesamter Netzbezug im Kalendermonat",
+        "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+        "kwh" : 3224.0
+      },
+      "umlagereduziert" : {
+        "nr" : "(20)",
+        "begriff" : "Umlagereduzierende Strommenge im Kalendermonat",
+        "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+        "kwh" : 893.285
+      },
+      "umlagebelastet" : {
+        "nr" : "(21)",
+        "begriff" : "Umlagebelasteter Netzbezug im Kalendermonat",
+        "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+        "kwh" : 2330.715
+      },
+      "foerderfaehig" : {
+        "nr" : "(32)",
+        "begriff" : "Insgesamt förderfähige Netzeinspeisung in AW>0-Zeiten im Kalendermonat",
+        "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+        "kwh" : 2651.009
+      },
+      "aenderung" : null
+    } ],
+    "wert" : {
+      "vermiedeneUmlagen" : {
+        "stand" : "bestimmt",
+        "eur" : 31.32,
+        "mengeKwh" : 893.285,
+        "formel" : "(20)",
+        "satzCt" : 2.946,
+        "grund" : null
+      },
+      "vermiedenesNetzentgelt" : {
+        "stand" : "bestimmt",
+        "eur" : 86.32,
+        "mengeKwh" : 893.285,
+        "formel" : "(20)",
+        "satzCt" : 8.12,
+        "grund" : null
+      },
+      "marktpraemie" : {
+        "stand" : "offen",
+        "eur" : null,
+        "mengeKwh" : 2651.009,
+        "formel" : "(32)",
+        "satzCt" : null,
+        "grund" : "jahresmarktwert_offen"
+      },
+      "summeOhneMarktpraemieEur" : 117.64,
+      "ustPct" : 19.0
+    }
+  },
+  "jahr-2026" : {
+    "jahr" : 2026,
+    "mispel" : true,
+    "abgrenzung" : true,
+    "stand" : "vorlaeufig",
+    "gruende" : [ "lauf_vorlaeufig:2026-12" ],
+    "giltAlsNachweis" : false,
+    "monate" : [ {
+      "monat" : "2026-10",
+      "foerderweg" : "marktpraemie_ausschliesslichkeit",
+      "foerderwegBegriff" : "Marktprämie mit Ausschließlichkeitsoption",
+      "mispel" : false,
+      "abgrenzung" : false,
+      "stand" : null,
+      "gruende" : [ ],
+      "giltAlsNachweis" : false,
+      "teile" : [ ],
+      "wert" : null
+    }, {
+      "monat" : "2026-11",
+      "foerderweg" : "marktpraemie_abgrenzung",
+      "foerderwegBegriff" : "Marktprämie mit Abgrenzungsoption",
+      "mispel" : true,
+      "abgrenzung" : true,
+      "stand" : "endgueltig",
+      "gruende" : [ ],
+      "giltAlsNachweis" : true,
+      "teile" : [ {
+        "schluessel" : "2026-11",
+        "ersterTag" : "2026-11-01",
+        "letzterTag" : "2026-11-30",
+        "formelsatz" : "A1",
+        "formelsatzBezeichnung" : "Basisfall A1: „Stromspeicher“",
+        "fassung" : 2,
+        "stand" : "endgueltig",
+        "standGruende" : [ ],
+        "wertequelle" : "messstellenbetreiber",
+        "gerechnetAm" : "2026-12-10T12:00:00Z",
+        "luecken" : 0,
+        "einspeisung" : {
+          "nr" : "(4)",
+          "begriff" : "Gesamte Netzeinspeisung im Kalendermonat",
+          "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+          "kwh" : 3552.0
+        },
+        "farben" : [ {
+          "farbe" : "gruen",
+          "formel" : "(26)",
+          "begriff" : "Förderfähige zeitgleiche Netzeinspeisung von EE-Strom in AW>0-Zeiten direkt aus der EE-Anlage im Kalendermonat",
+          "fundstelle" : "A1 S. 38, Abschn. 4.2.5",
+          "kwh" : 1388.8
+        }, {
+          "farbe" : "gelb",
+          "formel" : "(31)",
+          "begriff" : "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+          "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+          "kwh" : 1114.931
+        }, {
+          "farbe" : "rot",
+          "formel" : "(16)",
+          "begriff" : "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+          "fundstelle" : "A1 S. 36, Abschn. 4.2.2",
+          "kwh" : 805.069
+        }, {
+          "farbe" : "grau",
+          "formel" : "(4) − (26) − (31) − (16)",
+          "begriff" : "Netzeinspeisung, die weder förderfähig noch saldierungsfähig ist",
+          "fundstelle" : "A1 S. 34–39",
+          "kwh" : 243.2
+        } ],
+        "netzbezug" : {
+          "nr" : "(3)",
+          "begriff" : "Gesamter Netzbezug im Kalendermonat",
+          "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+          "kwh" : 3120.0
+        },
+        "umlagereduziert" : {
+          "nr" : "(20)",
+          "begriff" : "Umlagereduzierende Strommenge im Kalendermonat",
+          "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+          "kwh" : 883.826
+        },
+        "umlagebelastet" : {
+          "nr" : "(21)",
+          "begriff" : "Umlagebelasteter Netzbezug im Kalendermonat",
+          "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+          "kwh" : 2236.174
+        },
+        "foerderfaehig" : {
+          "nr" : "(32)",
+          "begriff" : "Insgesamt förderfähige Netzeinspeisung in AW>0-Zeiten im Kalendermonat",
+          "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+          "kwh" : 2503.731
+        },
+        "aenderung" : {
+          "vorherFassung" : 1,
+          "vorherWertequelle" : "geraet",
+          "vorherGruende" : [ "wertequelle_geraet", "viertelstunden_vorlaeufig", "zeitraum_offen" ],
+          "vorherSummeEur" : 113.97,
+          "differenzEur" : 2.41
+        }
+      } ],
+      "wert" : {
+        "vermiedeneUmlagen" : {
+          "stand" : "bestimmt",
+          "eur" : 30.98,
+          "mengeKwh" : 883.826,
+          "formel" : "(20)",
+          "satzCt" : 2.946,
+          "grund" : null
+        },
+        "vermiedenesNetzentgelt" : {
+          "stand" : "bestimmt",
+          "eur" : 85.4,
+          "mengeKwh" : 883.826,
+          "formel" : "(20)",
+          "satzCt" : 8.12,
+          "grund" : null
+        },
+        "marktpraemie" : {
+          "stand" : "offen",
+          "eur" : null,
+          "mengeKwh" : 2503.731,
+          "formel" : "(32)",
+          "satzCt" : null,
+          "grund" : "jahresmarktwert_offen"
+        },
+        "summeOhneMarktpraemieEur" : 116.38,
+        "ustPct" : 19.0
+      }
+    }, {
+      "monat" : "2026-12",
+      "foerderweg" : "marktpraemie_abgrenzung",
+      "foerderwegBegriff" : "Marktprämie mit Abgrenzungsoption",
+      "mispel" : true,
+      "abgrenzung" : true,
+      "stand" : "vorlaeufig",
+      "gruende" : [ "lauf_vorlaeufig:2026-12" ],
+      "giltAlsNachweis" : false,
+      "teile" : [ {
+        "schluessel" : "2026-12",
+        "ersterTag" : "2026-12-01",
+        "letzterTag" : "2026-12-31",
+        "formelsatz" : "A1",
+        "formelsatzBezeichnung" : "Basisfall A1: „Stromspeicher“",
+        "fassung" : 1,
+        "stand" : "vorlaeufig",
+        "standGruende" : [ "wertequelle_geraet", "viertelstunden_vorlaeufig", "zeitraum_offen" ],
+        "wertequelle" : "geraet",
+        "gerechnetAm" : "2026-12-10T12:00:00Z",
+        "luecken" : 0,
+        "einspeisung" : {
+          "nr" : "(4)",
+          "begriff" : "Gesamte Netzeinspeisung im Kalendermonat",
+          "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+          "kwh" : 3680.0
+        },
+        "farben" : [ {
+          "farbe" : "gruen",
+          "formel" : "(26)",
+          "begriff" : "Förderfähige zeitgleiche Netzeinspeisung von EE-Strom in AW>0-Zeiten direkt aus der EE-Anlage im Kalendermonat",
+          "fundstelle" : "A1 S. 38, Abschn. 4.2.5",
+          "kwh" : 1478.4
+        }, {
+          "farbe" : "gelb",
+          "formel" : "(31)",
+          "begriff" : "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+          "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+          "kwh" : 1172.609
+        }, {
+          "farbe" : "rot",
+          "formel" : "(16)",
+          "begriff" : "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+          "fundstelle" : "A1 S. 36, Abschn. 4.2.2",
+          "kwh" : 811.391
+        }, {
+          "farbe" : "grau",
+          "formel" : "(4) − (26) − (31) − (16)",
+          "begriff" : "Netzeinspeisung, die weder förderfähig noch saldierungsfähig ist",
+          "fundstelle" : "A1 S. 34–39",
+          "kwh" : 217.6
+        } ],
+        "netzbezug" : {
+          "nr" : "(3)",
+          "begriff" : "Gesamter Netzbezug im Kalendermonat",
+          "fundstelle" : "A1 S. 34, Abschn. 4.2.2",
+          "kwh" : 3224.0
+        },
+        "umlagereduziert" : {
+          "nr" : "(20)",
+          "begriff" : "Umlagereduzierende Strommenge im Kalendermonat",
+          "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+          "kwh" : 893.285
+        },
+        "umlagebelastet" : {
+          "nr" : "(21)",
+          "begriff" : "Umlagebelasteter Netzbezug im Kalendermonat",
+          "fundstelle" : "A1 S. 37, Abschn. 4.2.4",
+          "kwh" : 2330.715
+        },
+        "foerderfaehig" : {
+          "nr" : "(32)",
+          "begriff" : "Insgesamt förderfähige Netzeinspeisung in AW>0-Zeiten im Kalendermonat",
+          "fundstelle" : "A1 S. 39, Abschn. 4.2.5",
+          "kwh" : 2651.009
+        },
+        "aenderung" : null
+      } ],
+      "wert" : {
+        "vermiedeneUmlagen" : {
+          "stand" : "bestimmt",
+          "eur" : 31.32,
+          "mengeKwh" : 893.285,
+          "formel" : "(20)",
+          "satzCt" : 2.946,
+          "grund" : null
+        },
+        "vermiedenesNetzentgelt" : {
+          "stand" : "bestimmt",
+          "eur" : 86.32,
+          "mengeKwh" : 893.285,
+          "formel" : "(20)",
+          "satzCt" : 8.12,
+          "grund" : null
+        },
+        "marktpraemie" : {
+          "stand" : "offen",
+          "eur" : null,
+          "mengeKwh" : 2651.009,
+          "formel" : "(32)",
+          "satzCt" : null,
+          "grund" : "jahresmarktwert_offen"
+        },
+        "summeOhneMarktpraemieEur" : 117.64,
+        "ustPct" : 19.0
+      }
+    } ],
+    "wert" : {
+      "vermiedeneUmlagen" : {
+        "stand" : "bestimmt",
+        "eur" : 62.3,
+        "mengeKwh" : 1777.111,
+        "formel" : "(20)",
+        "satzCt" : 2.946,
+        "grund" : null
+      },
+      "vermiedenesNetzentgelt" : {
+        "stand" : "bestimmt",
+        "eur" : 171.72,
+        "mengeKwh" : 1777.111,
+        "formel" : "(20)",
+        "satzCt" : 8.12,
+        "grund" : null
+      },
+      "marktpraemie" : {
+        "stand" : "offen",
+        "eur" : null,
+        "mengeKwh" : 5154.74,
+        "formel" : "(32)",
+        "satzCt" : null,
+        "grund" : "jahresmarktwert_offen"
+      },
+      "summeOhneMarktpraemieEur" : 234.02,
+      "ustPct" : 19.0
+    },
+    "mitteilungBis" : "2027-05-31"
+  }
+}

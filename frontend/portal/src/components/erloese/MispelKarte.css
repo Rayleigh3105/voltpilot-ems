@@ -1,0 +1,342 @@
+/*
+ * MiSpeL · Mengen nach Anlage 1 (MP-18, BK-18 Variante A). Die vier Farben sind die der Festlegung (A1 S. 18,
+ * Abschn. 2.3) — grün, gelb, rot — plus Grau für die Einspeisung ohne Prämie und ohne Saldierung. Sie stehen nie
+ * allein: jede trägt Wort und Formelnummer daneben.
+ */
+.vp-mi {
+  --mi-gruen: #16a34a;
+  --mi-gelb: #eab308;
+  --mi-rot: #dc2626;
+  --mi-grau: #cbd5e1;
+  --mi-ok-bg: #dcfce7;
+  --mi-ok-fg: #166534;
+  --mi-gelb-bg: #fef9c3;
+  --mi-gelb-fg: #854d0e;
+}
+
+.vp-mi-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.vp-mi-stand {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-fg);
+}
+.vp-mi-stand.is-ok {
+  background: var(--mi-ok-bg);
+  color: var(--mi-ok-fg);
+}
+.vp-mi-stand.is-gelb {
+  background: var(--mi-gelb-bg);
+  color: var(--mi-gelb-fg);
+}
+
+.vp-mi-satz {
+  margin: 8px 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mi-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+  margin-top: 14px;
+}
+@media (max-width: 900px) {
+  .vp-mi-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+.vp-mi-teil + .vp-mi-teil {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-mi-rumpf {
+  margin: 0 0 6px;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-mi-summe {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.vp-mi-nr {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-400);
+}
+
+.vp-mi-zahl-gross {
+  font-size: var(--vp-c-fs-20);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-mi-bar {
+  display: flex;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--vp-c-border);
+  margin: 10px 0;
+}
+.vp-mi-bar.is-schmal {
+  height: 12px;
+  margin: 0;
+}
+.vp-mi-bar i {
+  display: block;
+  height: 100%;
+}
+.vp-mi .is-gruen {
+  background: var(--mi-gruen);
+}
+.vp-mi .is-gelb:not(.vp-mi-stand) {
+  background: var(--mi-gelb);
+}
+.vp-mi .is-rot {
+  background: var(--mi-rot);
+}
+.vp-mi .is-grau {
+  background: var(--mi-grau);
+}
+
+.vp-mi-leg {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-mi-leg li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+}
+.vp-mi-q {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.vp-mi-z {
+  font-weight: var(--vp-c-fw-800);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-mi-f {
+  display: block;
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-400);
+  overflow-wrap: anywhere;
+}
+
+.vp-mi-kv,
+.vp-mi-ledger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  margin: 14px 0 0;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-mi-kv {
+  padding-top: 10px;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-mi-kv dt,
+.vp-mi-ledger dt {
+  margin: 0;
+}
+.vp-mi-kv dd,
+.vp-mi-ledger dd {
+  margin: 0;
+  text-align: right;
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-mi-ledger {
+  margin-top: 0;
+}
+.vp-mi-ledger dd.is-offen {
+  color: var(--vp-c-muted-fg);
+}
+.vp-mi-ledger .vp-mi-sum {
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-border);
+  font-weight: var(--vp-c-fw-800);
+}
+
+.vp-mi-label {
+  margin: 0 0 6px;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mi-nachweis {
+  margin-top: 14px;
+}
+.vp-mi-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.vp-mi-fuer {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-mi-klein {
+  margin: 8px 0 0;
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+}
+.vp-mi-fehler {
+  margin: 8px 0 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-destructive);
+}
+
+.vp-mi-wahl {
+  border: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.vp-mi-wahl legend {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+  margin-bottom: 4px;
+}
+.vp-mi-wahl label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 44px;
+  font-size: var(--vp-c-fs-16);
+}
+.vp-mi-wahl.is-zeile {
+  grid-auto-flow: column;
+  justify-content: start;
+  gap: 24px;
+}
+
+.vp-mi-jahr {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vp-mi-monat {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-mi-monat:first-child {
+  border-top: 0;
+}
+.vp-mi-m {
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-mi-e {
+  font-weight: var(--vp-c-fw-800);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-mi-st {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+.vp-mi-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--vp-c-primary);
+  text-decoration: underline;
+  cursor: pointer;
+  min-height: 24px;
+}
+.vp-mi-jahr-summe {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  margin: 4px -16px 0;
+  padding: 12px 16px;
+  background: var(--vp-c-muted);
+  border-radius: var(--vp-c-radius-sm);
+}
+.vp-mi-jahr-summe .vp-mi-klein {
+  margin: 0;
+}
+.vp-mi-jahr-summe .vp-mi-zahl-gross {
+  grid-column: 3;
+  text-align: right;
+}
+.vp-mi-hinweis {
+  margin-top: 14px;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-mi-hinweis p {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .vp-mi-monat,
+  .vp-mi-jahr-summe {
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+  .vp-mi-jahr-summe {
+    margin: 4px 0 0;
+  }
+  .vp-mi-st {
+    grid-column: 1 / 4;
+  }
+  .vp-mi-jahr-summe .vp-mi-klein {
+    grid-column: 1 / 4;
+    grid-row: 2;
+  }
+}

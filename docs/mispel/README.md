@@ -153,9 +153,11 @@ Für dieselbe Anlage darf es nur **einen** Netzstrom-Anteil geben. Entschieden a
   (`EarningsRepository.arbitrageSplit`), beschriftet als VoltPilot-Schätzung — [Wegweiser](../agents/root/arbitrage-ausweis-davon-arbitrage-gewinn.md).
 - Der Drei-Töpfe-Entwurf ist durch die Formel ersetzt: [Speicherherkunft](../attribution-three-pot.md).
 
-**Heute** (bis MP-18): `arbitrageSplit` wählt die Anlagen weiter über `netzladen_erlaubt`, nicht über den Förderweg —
-eine Anlage im Mischbetrieb mit eingeschaltetem Netzladen bekommt im Erlös-Hero noch die Schätzung. Die Umstellung
-hat sichtbare Folgen und kommt darum erst mit dem abgestimmten Bedienkonzept (BK-18 → MP-18).
+**Seit MP-18:** Verlauf › Erlöse zeigt für MiSpeL-Anlagen die Karte „MiSpeL · Mengen nach Anlage 1“
+([Vertrag § Kundenansicht](../contracts/v2/mispel-abgrenzung.md#kundenansicht-mengen-und-ertrag-mp-18)) und nennt im
+Preise-Fuß kein „davon durch Netzladen“ mehr. **Noch offen:** `arbitrageSplit` wählt die Anlagen in der API weiter über
+`netzladen_erlaubt` (die Cockpit-Kachel „davon Arbitrage“ zeigt die Schätzung darum noch), und im Förderweg
+`ungefoerdert` trägt der Ausweis noch nicht das Wort „Schätzung“.
 
 ## 8. Abweichungen von der Festlegung
 

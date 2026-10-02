@@ -68,6 +68,8 @@ export interface PreisVergleichInput {
   money: SiteEarnings;
   /** Ob der Speicher aus dem Netz laden darf (`site.netzladenErlaubt`). */
   netzladenErlaubt?: boolean | null;
+  /** MiSpeL MP-18 (W5): `false` für MiSpeL-Anlagen — der Fuß nennt dann kein „davon durch Netzladen“. */
+  arbitrageAusweis?: boolean;
 }
 
 function num(v: number | null | undefined): number | null {
@@ -199,7 +201,7 @@ export function preisVergleich(input: PreisVergleichInput): PreisVergleich {
   const einsp = durchschnittCt(num(m.einspeiseErloesEur), num(m.eingespeistKwh));
   const merksatz = eigen != null && einsp != null && eigen > einsp ? MERKSATZ : null;
 
-  const speicher = speicherWert(m, input.netzladenErlaubt);
+  const speicher = speicherWert(m, input.netzladenErlaubt, input.arbitrageAusweis ?? true);
   const fuss = [speicher ? `Speicher ${speicher}` : null, `Bewertung: ${BEWERTUNG_WERT}`]
     .filter(Boolean)
     .join(' · ');
