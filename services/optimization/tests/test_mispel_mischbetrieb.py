@@ -432,7 +432,7 @@ def test_anlage_mit_fassung_abgrenzung_plant_im_mischbetrieb():
     )
     assert site.foerderweg == "marktpraemie_abgrenzung"
     assert site.mischbetrieb
-    # Pauschaloption: Jahreszustand ist MP-26 - bis dahin wie heute.
+    # Pauschaloption ist kein Mischbetrieb: sie plant mit dem Jahreszustand (MP-26).
     pauschal = replace(site, foerderweg_fassung="marktpraemie_pauschal", formelsatz=None)
     assert not pauschal.mischbetrieb
 

@@ -62,8 +62,8 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
 |---|---|---|
 | `einspeiseverguetung` | EEG-Modus (Netzladen ausgeschlossen) | gebaut |
 | `marktpraemie_ausschliesslichkeit` | **EEG-Modus**: FK3-Klemme (Laden bis zur erzeugten PV); die **strenge Variante** „kein Speicherverbrauch bei gleichzeitigem Netzbezug“ (A1 S. 11) ist ein Betreiber-Schalter, Standard aus — [Wegweiser](../agents/root/mispel-strenge-ausschliesslichkeit.md) (MP-45) | gebaut, strenge Variante aus bis zur Rechtsantwort |
-| `marktpraemie_abgrenzung` (A1, A5, A5-Variante) | **Mischbetrieb**: zwei Ladewege, Buchung nach Speichervorrang, Exportwert je Farbe — [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md) (MP-10) | gebaut; Monatszustand MP-11 offen |
-| `marktpraemie_pauschal` | über die Spiegel wie heute (Netzladen eingestellt = Händler-Modus) | Jahreszustand MP-26 offen |
+| `marktpraemie_abgrenzung` (A1, A5, A5-Variante) | **Mischbetrieb**: zwei Ladewege, Buchung nach Speichervorrang, Exportwert je Farbe — [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md) (MP-10) | gebaut, mit Monatszustand (MP-11) |
+| `marktpraemie_pauschal` | **Jahreszustand**: Wert der nächsten Einspeise-kWh nach Jahresstand — unter (P1) Prämie, zwischen (P1) und (P4) nichts, darüber Saldierung bis zum Jahres-Netzbezug (nur SP≥0); ohne Jahreslauf über die Spiegel wie vorher — [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md#pauschaloption-jahreszustand-mp-26) (MP-26) | gebaut für P1–P3; P4, P4-Variante, P5 offen |
 | `ungefoerdert` | **Händler-Modus** (Export zu blankem Spot) | gebaut |
 
 - **Händler-Modus = Förderweg `ungefoerdert` (W6).** Eine EEG-Anlage in Direktvermarktung, die Netzstrom einspeichern
@@ -160,8 +160,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 
 ## 9. Was noch nicht gebaut ist
 
-- **Optimierer:** Monatszustand der Abgrenzung (MP-11), Jahreszustand der Pauschaloption (MP-26). Der MiSpeL-Check
-  in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige fehlt (MP-48).
+- **Optimierer:** Jahreszustand der Pauschaloption für die Sonderfälle P4, P4-Variante und P5 (MP-26 baut P1–P3). Der
+  MiSpeL-Check in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige fehlt (MP-48).
 - **Rechenwerk:** A2–A4 für Ladepunkte (MP-32); Rumpfjahre der Pauschaloption gibt der Aufrufer noch vor (Erkennung
   aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
 - **Box:** Förderweg über den Plan statt `grid_charge_allowed` (MP-14).

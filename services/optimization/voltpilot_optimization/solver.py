@@ -691,6 +691,11 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     mischbetrieb_term = (
         _add_mischbetrieb(m, inp) if inp.mischbetrieb else None
     )
+    # MiSpeL MP-26: der Jahreszustand der Pauschaloption (siehe
+    # _add_jahreszustand). Ohne Jahresstand kommt nichts ins Modell.
+    jahreszustand_term = (
+        _add_jahreszustand(m, inp) if inp.mispel_jahresstand is not None else None
+    )
     if inp.mischbetrieb and inp.leistungspreis_eur_kw is not None:
         # Leistungspreis-Schutz (Bauplan MP-10, Konzept § 5.2): ob § 118 Abs. 6
         # EnWG auch den Leistungspreis entlastet, ist offen (MP-3) - bis dahin
@@ -755,6 +760,8 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.total_cost.expr = m.total_cost.expr + verbund_cost
     if mischbetrieb_term is not None:
         m.total_cost.expr = m.total_cost.expr + mischbetrieb_term
+    if jahreszustand_term is not None:
+        m.total_cost.expr = m.total_cost.expr + jahreszustand_term
     _add_night_reserve(m, inp, soc_floor)
     return m
 
@@ -970,6 +977,118 @@ def _add_monatszustand(m: ConcreteModel, inp: OptimizationInput, praemie, gutsch
         praemie[t] * (m.grid_export[t] - m.rot_einspeisung[t]) * dt / 1000.0
         for t in m.T
     )
+
+
+def _add_jahreszustand(m: ConcreteModel, inp: OptimizationInput):
+    """Pauschaloption (MiSpeL MP-26): der Wert der naechsten eingespeisten
+    kWh je nach Jahresstand.
+
+    Die gesamte Netzeinspeisung eines Kalenderjahres bzw. Rumpfjahres wird
+    pauschal eingeordnet (A2 S. 9-10, Abb. 1): bis (P1) grundsaetzlich
+    foerderfaehig, zwischen (P1) und (P4) indifferent, darueber grundsaetzlich
+    saldierungsfaehig - saldiert nur in SP≥0-Zeiten und hoechstens bis zum
+    Jahres-Netzbezug. Je Zeitraum k des Horizonts bringt
+    ``inp.mispel_jahresstand`` die Grenzen und die ∑J-Summen ausserhalb des
+    Horizonts (:class:`~voltpilot_optimization.domain.MispelJahresstand`);
+    der Lauf fuegt seine Slots in k hinzu - Z1NE¼ = ``grid_export``, Z1NB¼ =
+    ``grid_import`` (ein Zaehler am Netzanschluss, A2 S. 27):
+
+        (P15) = MIN [ (P14) ; (P1) ]                          (A2 S. 32-33)
+        (P8)  = MAX [ (P7) - (P4) ; 0 ]                       (A2 S. 30)
+        (P10) = MIN [ (P8) ; (P9) ]                           (A2 S. 31)
+
+    mit (P14) = ∑J (P12)¼ • Z1NE¼ und (P7) = ∑J (P5)¼ • Z1NE¼. AW>0 liest der
+    Plan aus der Praemie der Marktwertbasis (MP-12: > 0 nur in AW>0-Zeiten,
+    Jahresmarktwert), SP≥0 aus dem Spot des Slots.
+
+    - **Foerderseite** - ``pauschal_foerderfaehig`` ist die Einspeisung eines
+      Slots, die die Praemie traegt; je Zeitraum hoechstens MAX [ (P1) -
+      (P14) ; 0 ] ausserhalb des Horizonts. Das MIN ist ohne Ganzzahl exakt:
+      die Praemie belohnt die Menge, die Grenze haelt sie. Innerhalb eines
+      Zeitraums ist die Praemie je kWh gleich (anzulegender Wert minus
+      Jahresmarktwert, A2 S. 20), also ist das die Praemie auf (P15).
+    - **Saldierungsseite** - ``pauschal_saldiert`` ist (P10) des Zeitraums
+      mit den Mengen des Laufs: <= (P9) und <= (P8). Das MAX in (P8) ist
+      exakt als Gleichung, wenn der Lauf die Seite von (P4) nicht wechseln
+      kann (schon darueber bzw. unerreichbar), sonst mit einer Ganzzahl je
+      Zeitraum (``saldierung_jahr_aktiv``). Ist (P8) > (P9), entlastet jede
+      weitere bezogene kWh (P11) = (P9) - (P10) - die Saldierung „bis zur
+      Jahres-Netzentnahme“ wirkt dann auf den Bezug.
+
+    Die Gutschrift ist ``saldierte_bestandteile_eur_mwh`` OHNE Wirkungsgrad:
+    die Pauschaloption kennt keine Privilegierung von Speicherverlusten (A2
+    S. 8 Fn. 5, § 21 Abs. 4a EnFG). Gibt den Term (EUR, negativ = Ertrag)
+    zurueck - nur der Zuwachs durch den Lauf, die Werte ohne ihn sind fest.
+    """
+    dt = inp.slot_hours
+    n = inp.slots
+    praemie = inp.mispel_praemie_eur_mwh or [0.0] * n
+    gutschrift_eur_mwh = inp.saldierte_bestandteile_eur_mwh
+    zeitraeume = [
+        (stand, [t for t in range(n) if stand.enthaelt(inp.slot_starts[t])])
+        for stand in inp.mispel_jahresstand
+    ]
+    zeitraeume = [(stand, ts) for stand, ts in zeitraeume if ts]
+    m.MJ = RangeSet(0, len(zeitraeume) - 1)
+    m.pauschal_foerderfaehig = Var(
+        m.T,
+        domain=NonNegativeReals,
+        bounds=lambda model, t: (0.0, model.grid_export[t].ub if praemie[t] > 0.0 else 0.0),
+    )
+    m.pauschal_foerderfaehig_einspeisung = Constraint(
+        m.T, rule=lambda model, t: model.pauschal_foerderfaehig[t] <= model.grid_export[t]
+    )
+    m.pauschal_foerdergrenze = Constraint(
+        m.MJ,
+        rule=lambda model, k: sum(model.pauschal_foerderfaehig[t] * dt for t in zeitraeume[k][1])
+        <= max(zeitraeume[k][0].p1_kwh - zeitraeume[k][0].p14_kwh, 0.0),
+    )
+    term = -sum(praemie[t] * m.pauschal_foerderfaehig[t] * dt / 1000.0 for t in m.T)
+    if gutschrift_eur_mwh <= 0.0:
+        return term
+
+    def _p8_max(ts):
+        return sum(m.grid_export[t].ub * dt for t in ts if inp.prices_eur_mwh[t] >= 0.0)
+
+    def _p9_max(ts):
+        return sum(m.grid_import[t].ub * dt for t in ts)
+
+    m.pauschal_saldiert = Var(
+        m.MJ,
+        domain=NonNegativeReals,
+        bounds=lambda model, k: (
+            0.0,
+            min(
+                zeitraeume[k][0].p9_kwh + _p9_max(zeitraeume[k][1]),
+                max(zeitraeume[k][0].p7_kwh + _p8_max(zeitraeume[k][1]) - zeitraeume[k][0].p4_kwh, 0.0),
+            ),
+        ),
+    )
+    m.pauschal_saldierung = ConstraintList()
+    binaer = []
+    for k, (stand, ts) in enumerate(zeitraeume):
+        s = m.pauschal_saldiert[k]
+        p7 = stand.p7_kwh + sum(
+            m.grid_export[t] * dt for t in ts if inp.prices_eur_mwh[t] >= 0.0
+        )
+        p9 = stand.p9_kwh + sum(m.grid_import[t] * dt for t in ts)
+        m.pauschal_saldierung.add(s <= p9)
+        if stand.p7_kwh >= stand.p4_kwh:
+            m.pauschal_saldierung.add(s <= p7 - stand.p4_kwh)
+        elif stand.p7_kwh + _p8_max(ts) <= stand.p4_kwh:
+            m.pauschal_saldierung.add(s <= 0.0)
+        else:
+            big_m = s.ub + stand.p4_kwh - stand.p7_kwh
+            binaer.append((k, big_m, s, p7 - stand.p4_kwh))
+        ohne_lauf = min(max(stand.p7_kwh - stand.p4_kwh, 0.0), stand.p9_kwh)
+        term = term - gutschrift_eur_mwh * (s - ohne_lauf) / 1000.0
+    if binaer:
+        m.saldierung_jahr_aktiv = Var([k for k, *_ in binaer], domain=Binary)
+        for k, big_m, s, p8 in binaer:
+            b = m.saldierung_jahr_aktiv[k]
+            m.pauschal_saldierung.add(s <= p8 + big_m * (1 - b))
+            m.pauschal_saldierung.add(s <= big_m * b)
+    return term
 
 
 def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool):
@@ -1513,6 +1632,9 @@ def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> None:
     if hasattr(model, "saldierung_monat_aktiv"):
         _solve_plan_monatszustand(model, inp)
         return
+    if hasattr(model, "saldierung_jahr_aktiv"):
+        _solve_plan_jahreszustand(model, inp)
+        return
     if not hasattr(model, "saldierung_aktiv"):
         _solve(model)
         return
@@ -1563,6 +1685,32 @@ def _solve_plan_monatszustand(model: ConcreteModel, inp: OptimizationInput) -> N
         model.mispel_gutschrift.set_value(0.0)
         model.mischbetrieb_monat_max.deactivate()
         model.saldierung_monat_aktiv.fix(0)
+        _solve(model)
+
+
+def _solve_plan_jahreszustand(model: ConcreteModel, inp: OptimizationInput) -> None:
+    """Der Rueckfall mit Jahreszustand (MP-26): der Zeitraum, der (P4) erst im
+    Lauf erreichen wuerde, bleibt ohne Saldierung (``saldierung_jahr_aktiv``
+    = 0, dann (P10) des Laufs = 0). Immer zulaessig - die Saldierung ist nur
+    ein Ertrag - und wie in MP-10 ueberschaetzt der Lauf keinen Wert."""
+    try:
+        _solve(model, time_limit=MISCHBETRIEB_ZEITGRENZE_S)
+    except _Zeitgrenze:
+        logger.warning(
+            "jahreszustand.saldierung_zeitgrenze",
+            extra={
+                "context": {
+                    "site_id": str(inp.site_id),
+                    "zeitgrenze_s": MISCHBETRIEB_ZEITGRENZE_S,
+                    "reason": (
+                        "Pauschaloption mit Jahreszustand nicht in der "
+                        "Zeitgrenze geloest - dieser Lauf plant ohne "
+                        "Saldierung in dem Zeitraum, der (P4) erst erreicht"
+                    ),
+                }
+            },
+        )
+        model.saldierung_jahr_aktiv.fix(0)
         _solve(model)
 
 

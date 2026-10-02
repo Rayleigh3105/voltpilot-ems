@@ -38,6 +38,7 @@ import math
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from fractions import Fraction
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -87,8 +88,10 @@ from voltpilot_optimization.load_nowcast import (
 )
 from voltpilot_optimization.pv_nowcast import apply_pv_nowcast, window_mean
 from voltpilot_optimization.marktwertbasis import load_marktwertbasis
+from voltpilot_optimization import mispel_jahresstand, mispel_pauschal
 from voltpilot_optimization.mispel_monatsstand import Bisher, monatsstaende, saldo
 from voltpilot_optimization.pricing import (
+    FOERDERWEG_PAUSCHAL,
     MISCHBETRIEB_FORMELSAETZE,
     SiteTariff,
     SupplyPriceComponents,
@@ -664,6 +667,87 @@ def load_mispel_bisher(dsn: str, site_id: UUID, jetzt: datetime) -> Bisher | Non
     return bisher
 
 
+def load_mispel_pauschal_bisher(
+    dsn: str, site_id: UUID, jetzt: datetime
+) -> mispel_jahresstand.Bisher | None:
+    """Der bisherige Jahresstand der Pauschaloption (MiSpeL MP-26): der
+    juengste Lauf (hoechste Fassung) des Jahreslaufs MP-25 in
+    ``mispel_pauschal_jahr``, dessen Zeitraum - Kalender- oder Rumpfjahr -
+    ``jetzt`` enthaelt.
+
+    Aus dem Nachweis (Vertrag ``mispel-pauschal.md``, kanonischer JSON-Text)
+    kommen Formelsatz, Basisfall, Stammdaten und die Jahreswerte seines
+    Schluessels. ``None`` = kein Jahresstand, die Anlage plant wie vor MP-26:
+    ohne Tabelle (vor der api-Migration ``V20261002191500``), ohne Lauf fuer
+    den laufenden Zeitraum, mit einem Sonderfall P4, P4-Variante oder P5
+    (:data:`mispel_jahresstand.FORMELSAETZE`) oder ohne bestimmbaren
+    Jahreswert - unbekannt ist keine Null.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tag_von, tag_bis, formelsatz, viertelstunden_gerechnet, nachweis
+                FROM mispel_pauschal_jahr
+                WHERE site_id = %(site_id)s AND jahr = %(jahr)s
+                  AND zeitraum_von <= %(jetzt)s AND %(jetzt)s < zeitraum_bis
+                ORDER BY zeitraum_von DESC, fassung DESC
+                LIMIT 1
+                """,
+                {
+                    "site_id": str(site_id),
+                    "jahr": jetzt.astimezone(GRENZ_ZONE).year,
+                    "jetzt": jetzt,
+                },
+            )
+            row = cur.fetchone()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("mispel_jahresstand.table_missing")
+        return None
+    if row is None:
+        return None
+    tag_von, tag_bis, formelsatz, gerechnet, nachweis = row
+    if formelsatz not in mispel_jahresstand.FORMELSAETZE:
+        logger.info(
+            "mispel_jahresstand.formelsatz_offen",
+            extra={"context": {"site_id": str(site_id), "formelsatz": formelsatz}},
+        )
+        return None
+    try:
+        n = json.loads(nachweis)
+        werte = n["jahreswerte"][n["schluessel"]]
+        rumpfjahr = "(P1)R" in werte
+        noetig = mispel_jahresstand.SUMMEN + (
+            ("(P1)R", "(P4)R") if rumpfjahr else ("(P1)", "(P4)")
+        )
+        jahreswerte = {}
+        for nr in noetig:
+            if werte.get(nr) is None:
+                raise ValueError(f"{nr}: kein Wert - unbekannt ist keine Null")
+            jahreswerte[nr] = Fraction(str(werte[nr]))
+        stammdaten = {k: Fraction(str(v)) for k, v in n["stammdaten"].items()}
+        bisher = mispel_jahresstand.Bisher(
+            von=tag_von,
+            bis=tag_bis,
+            rumpfjahr=rumpfjahr,
+            formelsatz=formelsatz,
+            basisfall=n.get("basisfall"),
+            stammdaten=stammdaten,
+            jahreswerte=jahreswerte,
+            viertelstunden=int(gerechnet),
+        )
+        mispel_pauschal.stammdaten_pruefen(formelsatz, stammdaten, bisher.basisfall)
+    except (KeyError, TypeError, ValueError, ZeroDivisionError) as exc:
+        logger.warning(
+            "mispel_jahresstand.nachweis_unlesbar",
+            extra={"context": {"site_id": str(site_id), "tag_von": str(tag_von), "error": str(exc)}},
+        )
+        return None
+    return bisher
+
+
 def _grenz_tag(jetzt: datetime, zeitzone: str | None) -> date:
     """The Grenzblatt day in the Standort timezone; Berlin only when absent."""
     zone = ZoneInfo(zeitzone) if zeitzone else GRENZ_ZONE
@@ -1030,6 +1114,18 @@ def gather_inputs(
     mispel_praemie = None
     saldierte_bestandteile = 0.0
     mispel_monatsstand = None
+    pauschal_jahresstand = None
+    # MiSpeL MP-26: der Jahresstand der Pauschaloption aus dem Jahreslauf
+    # (MP-25). Nur Anlagen in der Pauschaloption lesen ihn; ohne Lauf plant die
+    # Anlage wie vorher (Spiegel netzladen_erlaubt/plant_kind).
+    pauschal_bisher = None
+    if site.foerderweg == FOERDERWEG_PAUSCHAL:
+        pauschal_bisher = load_mispel_pauschal_bisher(dsn, site.site_id, now)
+        if pauschal_bisher is None:
+            logger.info(
+                "mispel_jahresstand.fehlt",
+                extra={"context": {"site_id": str(site.site_id)}},
+            )
     if site.mischbetrieb:
         # MiSpeL MP-10: Export zum blanken Spot, die Farben bewertet der Solver
         # - gruen/gelb mit der Praemie der Marktwertbasis aus MP-12
@@ -1064,6 +1160,26 @@ def gather_inputs(
                 _slot_minutes(slot_starts) / 60.0,
                 site.battery.roundtrip_efficiency,
             )
+    elif pauschal_bisher is not None:
+        # MiSpeL MP-26: Export zum blanken Spot, den Jahresstand bewertet der
+        # Solver - unter (P1) mit der Praemie der Marktwertbasis (MP-12,
+        # Jahresmarktwert, AW>0 nach der aw_regel der Fassung), ueber (P4) in
+        # SP≥0-Zeiten mit der Gutschrift der saldierten Bestandteile.
+        export_series = list(spot)
+        mispel_praemie = marktpraemie_eur_mwh(
+            site.tariff,
+            spot,
+            slot_starts,
+            {},
+            load_marktwertbasis(dsn, site.site_id, slot_starts),
+            {"site_id": str(site.site_id)},
+        )
+        saldierte_bestandteile = saldierte_bestandteile_eur_mwh(
+            site.tariff, site_id=site.site_id
+        )
+        pauschal_jahresstand = mispel_jahresstand.jahresstaende(
+            pauschal_bisher, slot_starts, _slot_minutes(slot_starts) / 60.0
+        )
     else:
         market_values: dict = {}
         marktwert = None
@@ -1148,6 +1264,8 @@ def gather_inputs(
         mispel_praemie_eur_mwh=mispel_praemie,
         saldierte_bestandteile_eur_mwh=saldierte_bestandteile,
         mispel_monatsstand=mispel_monatsstand,
+        # MiSpeL MP-26: der Jahreszustand der Pauschaloption.
+        mispel_jahresstand=pauschal_jahresstand,
     )
 
 

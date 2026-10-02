@@ -107,6 +107,11 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         # ebenfalls Mengen, keine Grenzen.
         "mischbetrieb_monat_saldierung",
         "mischbetrieb_monat_max",
+        # MiSpeL MP-26: der Jahreszustand der Pauschaloption - (P15) und
+        # (P10) je Zeitraum, ebenfalls Mengen, keine Grenzen.
+        "pauschal_foerderfaehig_einspeisung",
+        "pauschal_foerdergrenze",
+        "pauschal_saldierung",
         "mispel_spitzenschutz",
         "grid_import_cap",
         "grid_export_cap",
@@ -361,6 +366,9 @@ def resolve_lp_duals(model: ConcreteModel):
     # MiSpeL MP-11: dieselbe Ganzzahl je Saldierungsperiode (Monatszustand).
     if hasattr(model, "saldierung_monat_aktiv"):
         binaries += list(model.saldierung_monat_aktiv.values())
+    # MiSpeL MP-26: die Ganzzahl je Zeitraum, der (P4) im Lauf erreicht.
+    if hasattr(model, "saldierung_jahr_aktiv"):
+        binaries += list(model.saldierung_jahr_aktiv.values())
     for var in binaries:
         var.fix(round(value(var)))
         var.domain = Reals

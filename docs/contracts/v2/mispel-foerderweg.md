@@ -125,8 +125,9 @@ messkonzept_geaendert, aw_regel}` → die Ansicht am Tag `gueltig_ab`. Eine frem
   ganzen Horizont), ohne Fassung den Bestand nach § 2 — dieselbe Regel, dieselben Vektoren (`bestand`,
   `werte`; `test_mispel_mischbetrieb.py`). Abgrenzung mit A1, A5 oder A5-Variante plant im **Mischbetrieb**
   ([Wegweiser](../../agents/root/mispel-optimierer-mischbetrieb.md)); der Schalter `netzladen_erlaubt` bleibt
-  die Einstellung des Kunden. Pauschal (Jahreszustand MP-26) und jeder andere Weg fahren weiter über die
-  Spiegel: Netzladen eingestellt = Händler-Modus (Export zu blankem Spot), sonst EEG-Modus.
+  die Einstellung des Kunden. Pauschal mit Jahreslauf (MP-25) plant mit dem **Jahreszustand** (MP-26, Export zu
+  blankem Spot, Prämie und Gutschrift nach Jahresstand); Pauschal ohne Jahreslauf und jeder andere Weg fahren weiter
+  über die Spiegel: Netzladen eingestellt = Händler-Modus (Export zu blankem Spot), sonst EEG-Modus.
   **Marktwertbasis (MP-12, gebaut):** Optimierer (`marktwertbasis.py`) und Erlöse (`SlotEconomics.marktwertbasisJoinSql`)
   lesen je Berliner Tag die späteste wirksame Fassung; an Tagen in `marktpraemie_abgrenzung`/`marktpraemie_pauschal`
   gilt der Jahresmarktwert Solar und Formel (24)¼ bzw. (P12)¼ (AW>0-Liste der ÜNB nach der `aw_regel` dieser

@@ -138,7 +138,9 @@ Abb. 1): bis (P1) **grundsätzlich förderfähig**, zwischen (P1) und (P4) **ind
 saldiert), über (P4) **grundsätzlich saldierungsfähig** — saldiert aber nur Einspeisung in SP≥0-Zeiten und höchstens
 bis zum Jahres-Netzbezug (P10). Je kleiner der Speicher im Verhältnis zur Solarleistung, desto breiter der
 Indifferenzbereich (S. 11). Für den Optimierer (MP-26) heißt das: der Wert der nächsten eingespeisten kWh hängt am
-Jahresstand.
+Jahresstand — unter (P1) die Marktprämie, zwischen (P1) und (P4) nichts, darüber in SP≥0-Zeiten die Gutschrift bis
+zum Jahres-Netzbezug, ohne Verlustprivilegierung (S. 8 Fn. 5). Gebaut in `solver._add_jahreszustand` mit dem jüngsten
+Jahreslauf als Eingang ([Wegweiser](../../agents/root/mispel-optimierer-mischbetrieb.md#pauschaloption-jahreszustand-mp-26)).
 
 ## Regeln, die Anlage 2 offenlässt, und Lesarten
 

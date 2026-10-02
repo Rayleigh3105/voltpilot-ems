@@ -284,6 +284,55 @@ class MispelMonatsstand:
 
 
 @dataclass(frozen=True)
+class MispelJahresstand:
+    """MiSpeL MP-26: der Stand eines Bezugszeitraums der Pauschaloption.
+
+    Der Bezugszeitraum ist das Kalenderjahr ``[von, bis)`` (A2 S. 27-33) oder
+    ein Rumpfjahr, das an seine Stelle tritt (A2 S. 51-55, Abschn. 9). Die
+    Grenzen sind die Jahreswerte des Rechenwerks MP-25, die Mengen die
+    ∑J-Summen AUSSERHALB des Horizonts - die bisherigen aus dem Jahreslauf und
+    der geschaetzte Jahresrest
+    (:func:`voltpilot_optimization.mispel_jahresstand.jahresstaende`):
+
+    - ``p1_kwh`` - (P1) „Pauschalgrenze der Foerderfaehigkeit im
+      Kalenderjahr“ bzw. (P1)R im Rumpfjahr (A2 S. 28, S. 54);
+    - ``p4_kwh`` - (P4) „Pauschalgrenze der Saldierungsfaehigkeit im
+      Kalenderjahr“ bzw. (P4)R (A2 S. 30, S. 55);
+    - ``p14_kwh`` - (P14) „Netzeinspeisung in AW>0-Zeiten im Kalenderjahr“
+      (A2 S. 31);
+    - ``p7_kwh`` - (P7) „Netzeinspeisung in SP≥0-Zeiten im Kalenderjahr“
+      (A2 S. 30);
+    - ``p9_kwh`` - (P9) „Gesamter Netzbezug im Kalenderjahr“ (A2 S. 31).
+
+    Der Solver rechnet (P15) = MIN [ (P14) ; (P1) ] und (P10) = MIN [ MAX
+    [ (P7) - (P4) ; 0 ] ; (P9) ] des Zeitraums mit den Mengen des Laufs -
+    daraus folgt der Wert der naechsten eingespeisten kWh je nach Jahresstand.
+    """
+
+    von: datetime
+    bis: datetime
+    p1_kwh: float
+    p4_kwh: float
+    p14_kwh: float = 0.0
+    p7_kwh: float = 0.0
+    p9_kwh: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.von.tzinfo is None or self.bis.tzinfo is None:
+            raise ValueError("MispelJahresstand needs timezone-aware bounds")
+        if not self.von < self.bis:
+            raise ValueError("MispelJahresstand needs von < bis")
+        mengen = (self.p1_kwh, self.p4_kwh, self.p14_kwh, self.p7_kwh, self.p9_kwh)
+        if not all(math.isfinite(x) and x >= 0.0 for x in mengen):
+            raise ValueError("MispelJahresstand quantities must be finite and >= 0")
+        if self.p4_kwh < self.p1_kwh:
+            raise ValueError("MispelJahresstand needs (P4) >= (P1) - (P4) = (P1) + (P3)")
+
+    def enthaelt(self, at: datetime) -> bool:
+        return self.von <= at < self.bis
+
+
+@dataclass(frozen=True)
 class TerminalValue:
     """The terminal energy value AND the facts that produced it.
 
@@ -712,6 +761,15 @@ class OptimizationInput:
     #: (er steckt in den bisherigen Mengen). ``None`` = kein Monatsstand, der
     #: Lauf plant wie MP-10.
     mispel_monatsstand: tuple[MispelMonatsstand, ...] | None = None
+    #: MiSpeL MP-26: der Jahreszustand der Pauschaloption (§ 19 Abs. 3c EEG,
+    #: Tenor Ziff. 4, Anlage 2) - je Bezugszeitraum des Horizonts ein
+    #: :class:`MispelJahresstand` (jeder Slot liegt in genau einem). Dann
+    #: bewertet der Solver die Netzeinspeisung nach dem Jahresstand: unter
+    #: (P1) mit ``mispel_praemie_eur_mwh``, zwischen (P1) und (P4) mit nichts,
+    #: darueber in SP≥0-Zeiten mit ``saldierte_bestandteile_eur_mwh`` bis zum
+    #: Jahres-Netzbezug (P10). ``export_value_eur_mwh`` ist dann der blanke
+    #: Spot. ``None`` (die Vorgabe) = KEIN Term und ein byte-gleicher Plan.
+    mispel_jahresstand: tuple[MispelJahresstand, ...] | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -793,6 +851,19 @@ class OptimizationInput:
                 if sum(p.enthaelt(s) for p in self.mispel_monatsstand) != 1:
                     raise ValueError(
                         f"mispel_monatsstand must cover slot {s.isoformat()} exactly once"
+                    )
+        if self.mispel_jahresstand is not None:
+            # Abgrenzungs- und Pauschaloption schliessen einander aus (A2 S.
+            # 22, Abschn. 3.2.3; Tenor Ziff. 3/4).
+            if self.mischbetrieb:
+                raise ValueError("mispel_jahresstand excludes mischbetrieb")
+            # (P5)¼ und (P12)¼ gelten je Viertelstunde (A2 S. 30-31).
+            if self.slot_minutes % 15 != 0:
+                raise ValueError("mispel_jahresstand needs slots of whole quarter hours")
+            for s in self.slot_starts:
+                if sum(p.enthaelt(s) for p in self.mispel_jahresstand) != 1:
+                    raise ValueError(
+                        f"mispel_jahresstand must cover slot {s.isoformat()} exactly once"
                     )
         if self.pv_anchor_ratio is not None and not (
             math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
