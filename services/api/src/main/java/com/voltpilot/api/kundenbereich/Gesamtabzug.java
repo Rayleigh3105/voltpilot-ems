@@ -310,7 +310,7 @@ public class Gesamtabzug {
             return "nachweise";
         }
         if (tabelle.startsWith("messreihe_") || tabelle.startsWith("telemetry") || tabelle.startsWith("device_measurement_")
-                || tabelle.equals("ocpp_meter_sample")) {
+                || tabelle.equals("ocpp_meter_sample") || tabelle.equals("ladepunkt_signierter_messwert")) {
             return "messreihen";
         }
         return "bestand";

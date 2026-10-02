@@ -34,7 +34,9 @@ public class SeriesRepository {
             "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
             "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
             "ocpp_meter_sample", "ocpp_station_status_event", "ocpp_configuration_key",
-            "ocpp_configuration_unknown_key", "ocpp_station_capability"
+            "ocpp_configuration_unknown_key", "ocpp_station_capability",
+            // MiSpeL MP-38: aus den OCPP-Journal-Ereignissen abgeleitet, Gerät + OCPP-Kennung wie ocpp_meter_sample
+            "ladepunkt_signierter_messwert"
     };
 
     private final JdbcTemplate jdbc;

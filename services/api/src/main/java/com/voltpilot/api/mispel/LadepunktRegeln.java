@@ -255,4 +255,14 @@ public final class LadepunktRegeln {
     private static Ablehnung ungueltig(String code, String grund, String satz) {
         return new Ablehnung(code, 400, satz, Map.of("grund", grund));
     }
+
+    /**
+     * MiSpeL MP-38: der Eichstatus eines signierten Ladepunkt-Messwerts (Vokabular der Zählerrolle, MP-6). Nur eine
+     * gültige OCMF-Signatur macht den Wert {@code eichrechtskonform}; ungültig, nicht prüfbar oder fehlend bleibt er
+     * ein Gerätewert ohne Eichstatus ({@code null}) — „auch nicht mess- und eichrechtskonform erfasste Messwerte … zu
+     * verwenden … scheidet … aus“ (Tenor S. 28, Abschn. 3.2.3.2.1; A1 S. 23, Abschn. 3.2.1).
+     */
+    public static String eichstatusSigniert(String signaturstatus) {
+        return "gueltig".equals(signaturstatus) ? "eichrechtskonform" : null;
+    }
 }

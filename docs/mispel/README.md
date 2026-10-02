@@ -100,7 +100,9 @@ Fassung mit Zählpunkt, Messstellenbetreiber, Eichstatus und Wertequelle; Plausi
 [Vertrag Zählerrolle](../contracts/v2/mispel-zaehlerrolle.md) (MP-6). Am bidirektionalen Ladepunkt liest MP-31 Z2 aus
 diesen Rollen und stellt daneben die Fähigkeit V2H/V2G als Fassungen ab einem Tag (ohne Fassung gilt der Bestand als
 unidirektional, A1 S. 26) und das Fahrzeugfenster für den Optimierer:
-[Vertrag bidirektionaler Ladepunkt](../contracts/v2/mispel-ladepunkt-bidirektional.md) (MP-31).
+[Vertrag bidirektionaler Ladepunkt](../contracts/v2/mispel-ladepunkt-bidirektional.md) (MP-31). Signierte
+Ladepunkt-Messwerte (OCMF) prüft die Box; geprüft gültig führt die Cloud sie am Ladepunkt als `eichrechtskonform`,
+sonst als Gerätewert ohne Eichstatus — [Vertrag signierte Ladepunkt-Messwerte](../contracts/v2/mispel-ladepunkt-ocmf.md) (MP-38).
 
 ## 4. Rechenwerk der Abgrenzungsoption
 

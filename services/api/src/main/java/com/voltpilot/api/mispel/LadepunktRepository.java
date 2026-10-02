@@ -97,6 +97,30 @@ public class LadepunktRepository {
                 Timestamp.from(am), id) == 1;
     }
 
+    /**
+     * MiSpeL MP-38: die letzte signierte Ablesung (OCMF) des Ladepunkts vor {@code bis}, über die OCPP-Kennungen,
+     * die der Herzschlag dieser Komponente zuordnet ({@code device_charge_point.entity_id}). Leer = die Säule hat
+     * bis dahin keinen signierten Messwert geliefert.
+     */
+    public Optional<SignierterMesswert> signierterMesswert(UUID siteId, UUID komponenteId, Instant bis) {
+        return jdbc.query("SELECT s.gemessen_am, s.zeit, s.anlass, s.wert_text, s.einheit, s.obis, s.zaehlerkennung, "
+                + "s.signaturstatus, s.pruefgrund, s.schluessel_quelle, s.schluessel_sha256, s.charge_point_id "
+                + "FROM ladepunkt_signierter_messwert s JOIN device_charge_point cp "
+                + "ON cp.device_id = s.device_id AND cp.charge_point_id = s.charge_point_id "
+                + "WHERE s.site_id = ? AND cp.entity_id = ? AND s.gemessen_am < ? "
+                + "ORDER BY s.gemessen_am DESC, s.empfangen_am DESC, s.ablesung DESC LIMIT 1",
+                (rs, n) -> new SignierterMesswert(rs.getTimestamp("gemessen_am").toInstant(), rs.getString("zeit"),
+                        rs.getString("anlass"), rs.getString("wert_text"), rs.getString("einheit"), rs.getString("obis"),
+                        rs.getString("zaehlerkennung"), rs.getString("signaturstatus"), rs.getString("pruefgrund"),
+                        rs.getString("schluessel_quelle"), rs.getString("schluessel_sha256")),
+                siteId, komponenteId, Timestamp.from(bis)).stream().findFirst();
+    }
+
+    /** Eine signierte Ablesung; {@code wert} unverändert wie im Datensatz geschrieben. */
+    public record SignierterMesswert(Instant gemessenAm, String zeit, String anlass, String wert, String einheit,
+            String obis, String zaehlerkennung, String signaturstatus, String pruefgrund, String schluesselQuelle,
+            String schluesselSha256) {}
+
     /** Das Fahrzeugfenster eines Ladepunkts; leer = nie gesetzt. */
     public Optional<FensterStand> fahrzeugfenster(UUID komponenteId) {
         List<Fenster> anwesenheit = jdbc.query("SELECT wochentag, ankunft, abfahrt, abfahrt_soc_pct "

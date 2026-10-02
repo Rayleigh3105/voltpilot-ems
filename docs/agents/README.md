@@ -113,6 +113,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [MiSpeL: Optimierer Mischbetrieb I – zwei Ladewege, Farben, Spitzenschutz (MP-10); II – Monatszustand (MP-11); Pauschaloption – Jahreszustand (MP-26); Fahrzeug als Speicher (MP-33)](root/mispel-optimierer-mischbetrieb.md)
 - [MiSpeL: Simulator bidirektionales Fahrzeug – Wallbox mit Ladestand, Anstecken/Abstecken, Entladebefehl, Szenario V2H-Abend (MP-34)](root/mispel-simulator-fahrzeug.md)
 - [MiSpeL: OCPP 2.0.1 auf der Box – Subprotokoll-Weiche, TransactionEvent, Z2V/Z2E, Device Model, 1.6-Fingerabdruck (MP-35)](root/mispel-box-ocpp201.md)
+- [MiSpeL: signierte Ladepunkt-Messwerte – OCMF prüfen auf der Box, Ablage und Eichstatus in der Cloud (MP-38)](root/mispel-ladepunkt-ocmf.md)
 - [MiSpeL-Check in der Simulation: dieselbe Anlage heute gegen mit MiSpeL, Preise ohne Datenbank (MP-13, Pauschal P1 MP-29)](root/mispel-check-simulation.md)
 - [Mess-Selektion JE KOMPONENTE (Geräteseite Stufe 3b, Server)](root/mess-selektion-je-komponente-geraeteseit.md)
 - [Money-centric "Meine Anlage" v2 (`GET /api/v1/earnings` money-view fields + `site.tarif_art`/`tarif_param_ct_kwh`)](root/money-centric-meine-anlage-v2-get-api-v1.md)

@@ -99,6 +99,9 @@ class LadepunktBidirektionalApiTest {
     @Autowired
     LadepunktService ladepunkte;
 
+    @Autowired
+    com.voltpilot.api.ocpp.OcppRepository ocpp;
+
     private static JdbcTemplate root;
 
     @BeforeAll
@@ -121,6 +124,113 @@ class LadepunktBidirektionalApiTest {
     }
 
     private record Antwort(int status, JsonNode body) {}
+
+    // ------------------------------------------------------------------ MP-38: signierte Messwerte (OCMF)
+
+    /**
+     * Die Box meldet geprüfte OCMF-Datensätze als Journal-Ereignis „SignedMeterValue“; die Cloud legt sie je
+     * Ablesung unverändert ab und zeigt den letzten am Ladepunkt mit Eichstatus: gültig = eichrechtskonform,
+     * sonst Gerätewert ohne Eichstatus (A1 S. 23, Abschn. 3.2.1; Tenor S. 28). Datensätze: die öffentlichen
+     * KEBA-KC-P30-Beispiele der S.A.F.E.-Transparenzsoftware, dieselben wie im Box-Test.
+     */
+    @Test
+    void signierterMesswertDerSaeuleIstQuelleMitEichstatus() throws Exception {
+        Welt w = welt();
+        UUID box = root.queryForObject("SELECT device_id FROM device_charge_point WHERE entity_id = ?", UUID.class,
+                w.saeule());
+        JsonNode beispiele = MAPPER.readTree(java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../../edge-app/core/internal/ocmf/testdata/safe-transparenzsoftware.json"))).path("datensaetze");
+        String gueltig = null;
+        String manipuliert = null;
+        for (JsonNode b : beispiele) {
+            if (b.path("datei").asText().equals("test_ocmf_keba_kcp30.xml")) gueltig = b.path("ocmf").asText();
+            if (b.path("datei").asText().equals("test_ocmf_keba_kcp30_fail.xml")) manipuliert = b.path("ocmf").asText();
+        }
+        assertThat(gueltig).startsWith("OCMF|");
+        assertThat(manipuliert).startsWith("OCMF|");
+        // Vorher: keine signierte Ablesung, das Feld bleibt leer.
+        assertThat(ruf(w, HttpMethod.GET, "/" + w.saeule(), null).body().path("signierter_messwert").isNull()).isTrue();
+
+        String eins = "5a1b2c3d-0000-5000-8000-000000000001";
+        assertThat(ingest(w, box, eins, "2026-10-02T12:00:00Z", ereignis(gueltig, "gueltig", null))).isTrue();
+        // dieselbe Meldung noch einmal (anderer Zeitstempel im Umschlag): dieselbe Tatsache, keine zweite Zeile
+        ingest(w, box, eins, "2026-10-02T12:00:05Z", ereignis(gueltig, "gueltig", null));
+        assertThat(root.queryForObject("SELECT count(*) FROM ladepunkt_signierter_messwert WHERE event_id = ?::uuid",
+                Integer.class, eins)).isEqualTo(2);
+        assertThat(root.queryForList("SELECT DISTINCT ocmf FROM ladepunkt_signierter_messwert WHERE event_id = ?::uuid",
+                String.class, eins)).containsExactly(gueltig);
+
+        JsonNode s = ruf(w, HttpMethod.GET, "/" + w.saeule(), null).body().path("signierter_messwert");
+        assertThat(s.path("wert").asText()).isEqualTo("0.2597");
+        assertThat(s.path("einheit").asText()).isEqualTo("kWh");
+        assertThat(s.path("anlass").asText()).isEqualTo("E");
+        assertThat(s.path("gemessen_am").asText()).isEqualTo("2019-08-13T10:03:36Z");
+        assertThat(s.path("signaturstatus").asText()).isEqualTo("gueltig");
+        assertThat(s.path("schluessel_quelle").asText()).isEqualTo("saeule");
+        assertThat(s.path("eichstatus").asText()).isEqualTo("eichrechtskonform");
+        // die Wallbox hat keine OCPP-Kennung und damit keinen signierten Wert
+        assertThat(ruf(w, HttpMethod.GET, "/" + w.wallbox(), null).body().path("signierter_messwert").isNull()).isTrue();
+
+        // Danach der manipulierte Datensatz: die letzte Ablesung ist ein Gerätewert ohne Eichstatus.
+        assertThat(ingest(w, box, "5a1b2c3d-0000-5000-8000-000000000002", "2026-10-02T12:01:00Z",
+                ereignis(manipuliert, "ungueltig", "signatur_falsch"))).isTrue();
+        s = ruf(w, HttpMethod.GET, "/" + w.saeule(), null).body().path("signierter_messwert");
+        assertThat(s.path("signaturstatus").asText()).isEqualTo("ungueltig");
+        assertThat(s.path("pruefgrund").asText()).isEqualTo("signatur_falsch");
+        assertThat(s.path("eichstatus").isNull()).isTrue();
+
+        // Ein Ereignis außerhalb des Vokabulars bleibt nur im Protokoll stehen.
+        assertThat(ingest(w, box, "5a1b2c3d-0000-5000-8000-000000000003", "2026-10-02T12:02:00Z",
+                ereignis(gueltig, "geeicht", null))).isTrue();
+        assertThat(root.queryForObject("SELECT count(*) FROM ladepunkt_signierter_messwert WHERE event_id = "
+                + "'5a1b2c3d-0000-5000-8000-000000000003'::uuid", Integer.class)).isZero();
+        // Mandantenzaun: ohne Kontext sieht die App-Rolle keine Zeile.
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        assertThat(app.queryForObject("SELECT count(*) FROM ladepunkt_signierter_messwert", Integer.class)).isZero();
+    }
+
+    private boolean ingest(Welt w, UUID box, String eventId, String am, Map<String, Object> payload) {
+        Map<String, Object> umschlag = new LinkedHashMap<>();
+        umschlag.put("schema_version", "1.0");
+        umschlag.put("event_id", eventId);
+        umschlag.put("occurred_at", am);
+        umschlag.put("charge_point_id", "CP-GARAGE");
+        umschlag.put("direction", "internal");
+        umschlag.put("message_type", "Event");
+        umschlag.put("action", "SignedMeterValue");
+        umschlag.put("payload", payload);
+        com.voltpilot.api.tenant.TenantContext.set(w.mandant());
+        try {
+            return ocpp.ingest(w.mandant(), w.anlage(), box, MAPPER.valueToTree(umschlag));
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
+    }
+
+    /** Die Nutzlast, wie die Box sie für einen 2.0.1-Datensatz mit Schlüssel der Säule meldet (signed_meter.go). */
+    private static Map<String, Object> ereignis(String ocmf, String status, String grund) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("connector_id", 1);
+        p.put("transaction_id", 7);
+        p.put("ocpp", "2.0.1");
+        p.put("quelle", "TransactionEvent");
+        p.put("ocmf", ocmf);
+        p.put("signaturstatus", status);
+        if (grund != null) p.put("pruefgrund", grund);
+        p.put("signaturverfahren", "ECDSA-secp256r1-SHA256");
+        p.put("schluessel_sha256", "0".repeat(64));
+        p.put("schluessel_quelle", "saeule");
+        p.put("zaehlerkennung", "");
+        p.put("paginierung", "T32");
+        p.put("ablesungen", List.of(
+                Map.of("zeit", "2019-08-13T10:03:15,000+0000 I", "gemessen_am", "2019-08-13T10:03:15Z",
+                        "zeitstatus", "I", "anlass", "B", "wert", "0.2596", "obis", "1-b:1.8.0", "einheit", "kWh",
+                        "fehler", "", "zaehlerstatus", "G"),
+                Map.of("zeit", "2019-08-13T10:03:36,000+0000 R", "gemessen_am", "2019-08-13T10:03:36Z",
+                        "zeitstatus", "R", "anlass", "E", "wert", "0.2597", "obis", "1-b:1.8.0", "einheit", "kWh",
+                        "fehler", "", "zaehlerstatus", "G")));
+        return p;
+    }
 
     // ------------------------------------------------------------------ der Prüfnachweis
 

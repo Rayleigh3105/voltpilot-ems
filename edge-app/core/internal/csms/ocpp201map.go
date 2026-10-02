@@ -267,7 +267,7 @@ func (s *Server) sessionOf201(id, stationTx string) (connectorID, txID int, ok b
 // parser and the measurement runtime already take. 2.0.1 sends a number with
 // a power-of-ten multiplier (UnitOfMeasureType); the value is scaled here so
 // "unit" keeps meaning what it means for 1.6. Signed meter values (OCMF) are
-// MP-38 and pass through unread.
+// read beside this path (signedSamples201, MP-38).
 func mapSamples201(in []types.SampledValue) []SampledReading {
 	out := make([]SampledReading, 0, len(in))
 	for _, sv := range in {
@@ -736,6 +736,7 @@ func (h *handler201) OnTransactionEvent(id string, req *transactions.Transaction
 		txRef = &txID
 	}
 	h.t.foldMeterValues(id, evseID, req.MeterValue, txRef, now)
+	s.signedSamples201(id, evseID, req.MeterValue, txRef, "TransactionEvent", now)
 
 	if req.EventType == transactions.TransactionEventEnded {
 		h.t.mu.Lock()
@@ -772,6 +773,8 @@ func (h *handler201) OnTransactionEvent(id string, req *transactions.Transaction
 // the station's main meter, which - as connectorId 0 in 1.6 - reaches the
 // measurement runtime but no connector.
 func (h *handler201) OnMeterValues(id string, req *meter.MeterValuesRequest) (*meter.MeterValuesResponse, error) {
-	h.t.foldMeterValues(id, req.EvseID, req.MeterValue, nil, h.t.srv.opts.Now())
+	now := h.t.srv.opts.Now()
+	h.t.foldMeterValues(id, req.EvseID, req.MeterValue, nil, now)
+	h.t.srv.signedSamples201(id, req.EvseID, req.MeterValue, nil, "MeterValues", now)
 	return meter.NewMeterValuesResponse(), nil
 }

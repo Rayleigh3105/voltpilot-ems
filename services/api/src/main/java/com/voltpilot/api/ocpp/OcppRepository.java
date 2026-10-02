@@ -27,6 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
 /** Persistence and read model for the complete OCPP 1.6 event foundation. */
 @Repository
 public class OcppRepository {
+
+    /** Internes Box-Ereignis mit einem geprüften OCMF-Datensatz (MiSpeL MP-38). */
+    static final String SIGNED_METER_VALUE = "SignedMeterValue";
+    private static final Set<String> SIGNATUR_UNGEPRUEFT = Set.of("ungueltig", "nicht_pruefbar");
+    private static final Set<String> SIGNATUR_GRUENDE = Set.of("signatur_falsch", "schluessel_fremd",
+            "schluessel_fehlt", "schluessel_defekt", "verfahren_unbekannt", "signatur_defekt");
     private static final Set<String> STATUSES = Set.of("Available", "Preparing", "Charging",
             "SuspendedEVSE", "SuspendedEV", "Finishing", "Reserved", "Unavailable", "Faulted");
     private static final Set<String> ERRORS = Set.of("ConnectorLockFailure", "EVCommunicationError",
@@ -133,6 +139,9 @@ public class OcppRepository {
             touchStation(tenantId, siteId, deviceId, chargePointId, occurredAt);
         }
         if ("Event".equals(messageType)) {
+            if ("internal".equals(direction) && SIGNED_METER_VALUE.equals(action)) {
+                signedMeterValue(tenantId, siteId, deviceId, chargePointId, eventId, occurredAt, payload);
+            }
             connectionEvent(tenantId, siteId, deviceId, chargePointId, action, occurredAt);
             return true;
         }
@@ -385,6 +394,73 @@ public class OcppRepository {
                 si++;
             }
             mi++;
+        }
+    }
+
+    /**
+     * MiSpeL MP-38: ein von der Box geprüfter OCMF-Datensatz, je Ablesung eine Zeile in
+     * {@code ladepunkt_signierter_messwert} (Vertrag docs/contracts/v2/mispel-ladepunkt-ocmf.md). Der Datensatz
+     * wird unverändert als Text abgelegt. Ein Ereignis außerhalb des Vokabulars bleibt nur im Protokoll stehen:
+     * es soll den Listener nicht anhalten, und die Zeile wäre ohnehin nicht auswertbar.
+     */
+    private void signedMeterValue(UUID tenantId, UUID siteId, UUID deviceId, String cp, UUID eventId,
+            Instant receivedAt, JsonNode p) {
+        String ocmf = p.path("ocmf").asText("");
+        String status = p.path("signaturstatus").asText("");
+        String grund = nullableText(p, "pruefgrund");
+        String verfahren = nullableText(p, "signaturverfahren");
+        String sha = nullableText(p, "schluessel_sha256");
+        String schluesselQuelle = p.path("schluessel_quelle").asText("");
+        String ocpp = p.path("ocpp").asText("");
+        String quelle = p.path("quelle").asText("");
+        JsonNode ablesungen = p.path("ablesungen");
+        boolean statusPasst = "gueltig".equals(status) ? grund == null && sha != null
+                : SIGNATUR_UNGEPRUEFT.contains(status) && grund != null && SIGNATUR_GRUENDE.contains(grund);
+        if (!ocmf.startsWith("OCMF|") || !statusPasst || verfahren == null
+                || (sha != null && !sha.matches("[0-9a-f]{64}"))
+                || !Set.of("saeule", "keine").contains(schluesselQuelle) || !Set.of("1.6", "2.0.1").contains(ocpp)
+                || !Set.of("MeterValues", "TransactionData", "TransactionEvent").contains(quelle)
+                || !ablesungen.isArray() || p.path("connector_id").asInt(-1) < 0) {
+            return;
+        }
+        Integer tx = p.path("transaction_id").isInt() ? p.path("transaction_id").asInt() : null;
+        int i = 0;
+        for (JsonNode a : ablesungen) {
+            String zeit = a.path("zeit").asText("");
+            Instant gemessen = null;
+            String gemessenText = nullableText(a, "gemessen_am");
+            if (gemessenText != null) {
+                try {
+                    gemessen = Instant.parse(gemessenText);
+                } catch (DateTimeParseException ignored) {
+                    gemessen = null;
+                }
+            }
+            String wertText = nullableText(a, "wert");
+            java.math.BigDecimal wert = null;
+            if (wertText != null) {
+                try {
+                    wert = new java.math.BigDecimal(wertText);
+                } catch (NumberFormatException ignored) {
+                    wert = null;
+                }
+            }
+            jdbc.update("INSERT INTO ladepunkt_signierter_messwert (event_id, ablesung, tenant_id, site_id, device_id, "
+                            + "charge_point_id, connector_id, transaction_id, ocpp, quelle, ocmf, signaturstatus, "
+                            + "pruefgrund, signaturverfahren, schluessel, schluessel_sha256, schluessel_quelle, "
+                            + "zaehlerkennung, zaehlerhersteller, zaehlermodell, paginierung, zeit, gemessen_am, "
+                            + "zeitstatus, anlass, wert_text, wert, einheit, obis, stromart, fehler, zaehlerstatus, "
+                            + "empfangen_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                    eventId, i, tenantId, siteId, deviceId, cp, p.path("connector_id").asInt(), tx, ocpp, quelle,
+                    ocmf, status, grund, verfahren, nullableText(p, "schluessel"), sha, schluesselQuelle,
+                    nullableText(p, "zaehlerkennung"), nullableText(p, "zaehlerhersteller"),
+                    nullableText(p, "zaehlermodell"), nullableText(p, "paginierung"), zeit,
+                    gemessen == null ? null : Timestamp.from(gemessen), nullableText(a, "zeitstatus"),
+                    nullableText(a, "anlass"), wertText, wert, nullableText(a, "einheit"), nullableText(a, "obis"),
+                    nullableText(a, "stromart"), a.has("fehler") ? a.path("fehler").asText("") : null,
+                    nullableText(a, "zaehlerstatus"), Timestamp.from(receivedAt));
+            i++;
         }
     }
 

@@ -88,7 +88,7 @@ public class LadepunktService {
      */
     public record Ansicht(UUID anlage, Komponente komponente, LocalDate am, Fassung fassung, Faehigkeit faehigkeit,
             LocalDate gueltigBis, String einordnung, List<Z2> z2, List<Befund> befunde, FensterStand fahrzeugfenster,
-            List<FassungAnsicht> fassungen) {}
+            List<FassungAnsicht> fassungen, LadepunktRepository.SignierterMesswert signierterMesswert) {}
 
     // ------------------------------------------------------------------ lesen
 
@@ -206,7 +206,9 @@ public class LadepunktService {
             out.add(new Ansicht(siteId, k, tag, f, faehigkeit, f == null ? null : bis(wirksam, f),
                     LadepunktRegeln.einordnung(faehigkeit), zaehler,
                     LadepunktRegeln.befunde(faehigkeit, zaehler, foerderweg),
-                    ladepunkte.fahrzeugfenster(k.id()).orElse(null), List.copyOf(historie)));
+                    ladepunkte.fahrzeugfenster(k.id()).orElse(null), List.copyOf(historie),
+                    ladepunkte.signierterMesswert(siteId, k.id(), tag.plusDays(1).atStartOfDay(zone()).toInstant())
+                            .orElse(null)));
         }
         return out;
     }

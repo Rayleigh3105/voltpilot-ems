@@ -134,7 +134,8 @@ Mandant.
 - **Optimierer** (Fahrzeug als Speicher, Wirkungsgrad 0,85, Zyklenbudget, Freigabe) MP-33; **Box** MP-35ff.; der
   **Simulator** (Wallbox mit Fahrzeug, Z2V/Z2E als getrennte Register, Szenario V2H-Abend) steht in
   `edge-app/core/internal/ladepunktsim` (MP-34, [Wegweiser](../../agents/root/mispel-simulator-fahrzeug.md)).
-- **Signierte Ladepunkt-Messwerte** (OCMF) als Z2-Quelle mit Eichstatus: MP-38.
+- **Signierte Ladepunkt-Messwerte** (OCMF) als Z2-Quelle mit Eichstatus: [Vertrag](./mispel-ladepunkt-ocmf.md) (MP-38);
+  die Ansicht trägt dafür `signierter_messwert` mit `eichstatus`.
 - **Fläche** (Einstellungen am Ladepunkt): MP-41, erst nach dem abgestimmten Bedienkonzept BK-41.
 
 ## Prüfen

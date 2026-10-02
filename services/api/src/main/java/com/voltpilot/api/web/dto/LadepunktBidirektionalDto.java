@@ -52,7 +52,17 @@ public final class LadepunktBidirektionalDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Ansicht(UUID anlage, UUID komponente, String name, String typ, String chargePointId, LocalDate am,
             FaehigkeitDto faehigkeit, String einordnung, String einordnungFundstelle, List<Z2Dto> z2,
-            List<BefundDto> befunde, FahrzeugfensterDto fahrzeugfenster, List<FassungDto> fassungen) {}
+            List<BefundDto> befunde, FahrzeugfensterDto fahrzeugfenster, List<FassungDto> fassungen,
+            SignierterMesswertDto signierterMesswert) {}
+
+    /**
+     * MiSpeL MP-38: die letzte signierte Ablesung (OCMF) bis zum Ende des Tages; {@code eichstatus}
+     * {@code eichrechtskonform} nur bei gültiger Signatur, sonst {@code null} (Gerätewert ohne Eichstatus).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SignierterMesswertDto(java.time.Instant gemessenAm, String zeit, String anlass, String wert,
+            String einheit, String obis, String zaehlerkennung, String signaturstatus, String pruefgrund,
+            String schluesselQuelle, String schluesselSha256, String eichstatus) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(UUID anlage, LocalDate am, List<Ansicht> ladepunkte) {}
@@ -89,7 +99,14 @@ public final class LadepunktBidirektionalDto {
         LadepunktRepository.Komponente k = a.komponente();
         String name = k.label() != null ? k.label() : k.chargePointId();
         return new Ansicht(a.anlage(), k.id(), name, k.typ(), k.chargePointId(), a.am(), faehigkeit, a.einordnung(),
-                LadepunktRegeln.einordnungFundstelle(a.einordnung()), z2, befunde, fenster, fassungen);
+                LadepunktRegeln.einordnungFundstelle(a.einordnung()), z2, befunde, fenster, fassungen,
+                signiert(a.signierterMesswert()));
+    }
+
+    private static SignierterMesswertDto signiert(LadepunktRepository.SignierterMesswert s) {
+        return s == null ? null : new SignierterMesswertDto(s.gemessenAm(), s.zeit(), s.anlass(), s.wert(), s.einheit(),
+                s.obis(), s.zaehlerkennung(), s.signaturstatus(), s.pruefgrund(), s.schluesselQuelle(),
+                s.schluesselSha256(), LadepunktRegeln.eichstatusSigniert(s.signaturstatus()));
     }
 
     /** Uhrzeit wie in der Anfrage: {@code HH:MM}. */

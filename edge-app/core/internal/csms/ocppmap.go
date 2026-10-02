@@ -335,7 +335,9 @@ func (h *coreHandler) OnStopTransaction(id string, req *core.StopTransactionRequ
 	for _, mv := range req.TransactionData {
 		samples := mapSamples(mv.SampledValue)
 		h.srv.emitLiveSampledValues(samples, mv.Timestamp.Time, now)
-		h.srv.onMeterSample(id, connectorOfTransaction(h.srv, id, req.TransactionId), ParseMeterValues(samples), mv.Timestamp.Time, now, &req.TransactionId)
+		connectorID := connectorOfTransaction(h.srv, id, req.TransactionId)
+		h.srv.onMeterSample(id, connectorID, ParseMeterValues(samples), mv.Timestamp.Time, now, &req.TransactionId)
+		h.srv.signedSamples16(id, connectorID, &req.TransactionId, "TransactionData", mv.SampledValue, now)
 	}
 	if err := h.srv.onStopTransaction(id, req.TransactionId, now); err != nil {
 		return nil, err
@@ -355,6 +357,7 @@ func (h *coreHandler) OnMeterValues(id string, req *core.MeterValuesRequest) (*c
 				"charge_point_id", id, "connector", req.ConnectorId, "dropped", r.Dropped)
 		}
 		h.srv.onMeterSample(id, req.ConnectorId, r, mv.Timestamp.Time, now, req.TransactionId)
+		h.srv.signedSamples16(id, req.ConnectorId, req.TransactionId, "MeterValues", mv.SampledValue, now)
 	}
 	return core.NewMeterValuesConfirmation(), nil
 }

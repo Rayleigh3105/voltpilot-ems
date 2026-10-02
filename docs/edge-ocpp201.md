@@ -145,7 +145,7 @@ Vorgabewert, Phasen- und Ampere-Regeln aus `stationProfile`), dieselben Wächter
 ## Bewusst nicht enthalten
 
 - **V2X / ISO 15118-20**: MP-37. **Entladebefehl mit Schutzgrenzen**: MP-39. **Signierte Messwerte (OCMF)**: MP-38
-  (werden durchgereicht, nicht gelesen).
+  liest und prüft sie neben diesem Pfad ([Vertrag](contracts/v2/mispel-ladepunkt-ocmf.md)).
 - **Protokoll-Journal** (Slice 10, Ereignisse an die Cloud): zeichnet nur die 1.6-Spur auf; 2.0.1-Rahmen brauchen
   eine Vertragsfassung des Journals.
 - **Sicherheitsprofile 1–3** (Basic-Auth, TLS, Client-Zertifikat): heute für keine der beiden Spuren; ein Profil
