@@ -81,7 +81,10 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
 Die Abgrenzungsoption braucht Z1 am Netzanschluss und Z2 am Speicher bzw. Ladepunkt, hinter Z2 nichts anderes
 (A1 S. 23–25, S. 32–33; Z3 nur im Basisfall A4). Die Rolle hängt an der Messstelle des Messstellen-Registers, je
 Fassung mit Zählpunkt, Messstellenbetreiber, Eichstatus und Wertequelle; Plausibilitätsbefunde beim Lesen:
-[Vertrag Zählerrolle](../contracts/v2/mispel-zaehlerrolle.md) (MP-6).
+[Vertrag Zählerrolle](../contracts/v2/mispel-zaehlerrolle.md) (MP-6). Am bidirektionalen Ladepunkt liest MP-31 Z2 aus
+diesen Rollen und stellt daneben die Fähigkeit V2H/V2G als Fassungen ab einem Tag (ohne Fassung gilt der Bestand als
+unidirektional, A1 S. 26) und das Fahrzeugfenster für den Optimierer:
+[Vertrag bidirektionaler Ladepunkt](../contracts/v2/mispel-ladepunkt-bidirektional.md) (MP-31).
 
 ## 4. Rechenwerk der Abgrenzungsoption
 
@@ -174,4 +177,5 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
   Abweichungsampel (MP-15).
 - **Partner:** Einverständnis-Paket für die Übergangszeit (MP-19), Direktvermarkter-Schnittstelle (MP-20).
 - **Bidirektionale Ladepunkte** (Stufe B): ein bidirektionaler Ladepunkt wird wie ein Speicher behandelt
-  (A1 Abschn. 3.2.5, S. 26–27); Software ab Q1 2027.
+  (A1 Abschn. 3.2.5, S. 26–27). Das Datenmodell steht (MP-31); es fehlen Rechenwerk A2–A4 mit Fremdtankstrom (MP-32),
+  Optimierer (MP-33), Box und Simulator (MP-34ff.) und die Fläche nach BK-41 (MP-41).
