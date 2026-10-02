@@ -1,19 +1,22 @@
 # MiSpeL-Check je Anlage (MP-48)
 
-Stand 02.10.2026 · Vertrag 1.0 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und Ladepunkten
-(„MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Anlage 1 (Abgrenzungsoption), Tenor Ziff. 9a; EEG § 19 Abs. 3b,
-§ 20 S. 2, Anlage 1 Nr. 2 S. 2. Konzept: MiSpeL-Fundament § 3 (Kundentypen, Annahmen), Bauplan § 8 Zeilen MP-13
-und MP-48; Bedienkonzept BK-48 Variante A (abgestimmt 02.10.2026); Entscheid firstmate `mp48-datenweg` = A.
+Stand 03.10.2026 · Vertrag 1.1 (additiv: Pauschaloption, MP-29) · Quelle: BNetzA-Festlegung zur Marktintegration
+von Speichern und Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Anlage 1 (Abgrenzungsoption),
+Anlage 2 (Pauschaloption), Tenor Ziff. 9a/9b; EEG § 19 Abs. 3b/3c, § 20 S. 2, § 53, Anlage 1 Nr. 2 S. 2. Konzept:
+MiSpeL-Fundament § 3 (Kundentypen, Annahmen), Bauplan § 8 Zeilen MP-13, MP-29 und MP-48; Bedienkonzept BK-48
+Variante A (abgestimmt 02.10.2026); Entscheid firstmate `mp48-datenweg` = A.
 
-Der Check beantwortet vor dem Wechsel die Frage „lohnt sich die Abgrenzungsoption für **genau diese Anlage**?“.
-Er vergleicht dieselbe Anlage mit demselben Speicher und VoltPilot **heute** gegen **mit Abgrenzungsoption** über
-ein Ganzjahr echter Viertelstundenpreise — nie gegen „ohne Speicher“. Gerechnet wird er von MP-13
+Der Check beantwortet vor dem Wechsel die Frage „lohnt sich die Abgrenzungsoption für **genau diese Anlage**?“ —
+für Solaranlagen bis 30 kWp mit Speicher und einem Zähler die Frage nach der **Pauschaloption** (Basisfall P1,
+MP-29). Er vergleicht dieselbe Anlage mit demselben Speicher und VoltPilot **heute** gegen **mit Abgrenzungs- bzw.
+Pauschaloption** über ein Ganzjahr echter Viertelstundenpreise — nie gegen „ohne Speicher“. Gerechnet wird er von MP-13
 (`services/optimization/voltpilot_optimization/simulation/mispel_check.py`); dieser Vertrag ist nur der
 Ablageort und die nur lesende Route. **Wer ihn je Anlage rechnet und hier ablegt, ist das Folgepaket MP-13b.**
 
 | Datei | Rolle |
 |---|---|
 | `services/api/src/main/resources/db/migration/V20261002234100__mispel_check_ergebnis.sql` | Tabelle `site_mispel_check` (eine Zeile je Anlage, RLS + FORCE), beginnt leer |
+| `services/api/src/main/resources/db/migration/V20261003054500__mispel_check_pauschal.sql` | MP-29: `formelsatz` kennt auch P1–P5 der Anlage 2 (Vereinigung, keine Zeile ändert sich) |
 | `services/api/.../mispel/MispelCheckRepository.java` | liest die Zeile unter RLS |
 | `services/api/.../web/SiteMispelCheckController.java` | `GET /api/v1/sites/{siteId}/mispel-check` |
 | `frontend/portal/src/mispelCheck.ts` · `components/MispelCheckKarte.tsx` | Typen, Satz und Karte in Schritt 1 des Dialogs „Förderweg ändern“ |
@@ -29,20 +32,21 @@ Ablageort und die nur lesende Route. **Wer ihn je Anlage rechnet und hier ablegt
 | `wird_gerechnet` | ein Lauf ist angestoßen | leer (Pflicht) | „wird gerechnet“ |
 | `fertig` | Ergebnis liegt vor | alle drei gesetzt (Pflicht) | Urteil, Spanne, Posten |
 | `fehlgeschlagen` | der Lauf ist gescheitert | leer (Pflicht) | Satz aus `hinweis`, kein Betrag |
-| `nicht_unterstuetzt` | Formelsatz rechnet der Check nicht (MP-13: nur A1, A10, A11) | leer (Pflicht) | Satz aus `hinweis`, kein Betrag |
+| `nicht_unterstuetzt` | Formelsatz rechnet der Check nicht (A1, A10, A11 und P1) | leer (Pflicht) | Satz aus `hinweis`, kein Betrag |
 
-`stand_seit` ist der Zeitpunkt des Standes. **Nie ein Betrag von 0 € statt „wird gerechnet“:** die Datenbank
+`hinweis` steht außerdem in `fertig` beim Formelsatz P1, solange die Pauschaloption noch nicht anwendbar ist (vor der
+EU-Genehmigung, § 6) — der Betrag ist dann eine Information vor dem Wechsel. `stand_seit` ist der Zeitpunkt des Standes. **Nie ein Betrag von 0 € statt „wird gerechnet“:** die Datenbank
 verbietet Beträge außerhalb von `fertig` (`site_mispel_check_fertig_chk`), und ohne Zeile antwortet die Route
 mit `stand = wird_gerechnet` (nicht 404 — die Anlage gibt es).
 
 ## 2. Beträge
 
-`differenz_{niedrig,mittel,hoch}_eur` ist der **Unterschied im Jahr = mit Abgrenzungsoption − heute** in €/Jahr
+`differenz_{niedrig,mittel,hoch}_eur` ist der **Unterschied im Jahr = mit Abgrenzungs- bzw. Pauschaloption − heute** in €/Jahr
 netto, je Annahmen-Fall von MP-13 (`spanne`, `STANDARD_FAELLE`). Positiv = die Abgrenzungsoption bringt mehr.
 Das Portal zeigt `mittel` als Betrag („mittlere Schätzung“) und die Spanne **ungünstig = kleinster, günstig =
 größter** der drei Werte. `fenster_von`/`fenster_bis` ist das Preisfenster, tagesgenau, einschließlich des
-letzten Tages; `formelsatz` der Formelsatz der Anlage 1, mit dem gerechnet wurde (angenommen, solange die Anlage
-keinen gewählt hat — dann steht er in `datenbasis` als `angenommen`).
+letzten Tages; `formelsatz` der Formelsatz der Anlage 1 oder 2, mit dem gerechnet wurde (angenommen, solange die
+Anlage keinen gewählt hat — dann steht er in `datenbasis` als `angenommen`).
 
 ## 3. Posten
 
@@ -57,6 +61,11 @@ die Summe je Fall ist der Unterschied des Falls. Geschlossenes Vokabular `art`:
 | `zaehler_z2` | „Zweiter Zähler Z2“ (A1 S. 32–33) | Zweiter Zähler Z2 |
 | `bilanzkreis` | „Gesonderter Bilanzkreis“ (§ 20 S. 2 EEG) | Gesonderter Bilanzkreis |
 | `vermarktungsentgelt` | „Mehr Vermarktungsentgelt auf die zusätzliche Rückspeisung“ (A10/A11) | Mehr Vermarktungsentgelt |
+| `einspeisung_marktpraemie` | „Einspeisung mit Marktprämie statt Einspeisevergütung“ (P1: Fahrweise heute, einmal mit Vergütung, einmal mit Spot + Prämie auf (P15) bewertet; A2 S. 20, S. 32–33) | Einspeisung mit Marktprämie statt Einspeisevergütung |
+| `handel_pauschal` | „Netzladen-Handel mit der Pauschaloption“ (P1: neue Fahrweise ohne Gutschrift × Realisierung) | Netzladen-Handel mit der Pauschaloption |
+| `saldierung_pauschal` | „Saldierung oberhalb der Pauschalgrenze“ (P1: (P10) × saldierte Bestandteile, A2 S. 30–31) | Saldierung oberhalb der Pauschalgrenze |
+| `direktvermarktungsentgelt` | „Direktvermarktungsentgelt“ (P1, Konzept § 3 c1) | Direktvermarktungsentgelt |
+| `messstellenbetrieb` | „Mehrkosten Messstellenbetrieb“ (P1, Konzept § 3 c1; § 29 MsbG) | Mehrkosten Messstellenbetrieb |
 
 Eine unbekannte `art` zeigt das Portal mit ihrem Schlüssel und rechnet sie in die Summe — ein Posten fällt nie still
 heraus.
@@ -92,7 +101,8 @@ ist `differenz` immer `null`.
 Die App-Rolle darf `INSERT`/`UPDATE` im eigenen Mandanten (RLS), die Admin-Rolle mandantenübergreifend — der
 Schreiber braucht keine weitere Migration. Er setzt vor dem Lauf `wird_gerechnet` (Beträge leer), danach `fertig`
 mit allen Beträgen oder `fehlgeschlagen`/`nicht_unterstuetzt` mit `hinweis`; immer mit neuem `stand_seit`. Bei
-`fertig` ist `hinweis` leer — außer ein Lösungslauf fiel auf „ohne Gutschrift“ zurück (MP-33c, siehe unten).
+`fertig` ist `hinweis` leer — außer ein Lösungslauf fiel auf „ohne Gutschrift“ zurück (MP-33c, siehe unten) oder
+der Formelsatz P1 ist noch nicht anwendbar (MP-29, unten); gilt beides, stehen beide Sätze darin, der zu P1 zuerst.
 Gelöscht wird die Zeile mit der Anlage (`ON DELETE CASCADE`) oder im Offboarding.
 
 **Der Schreiber** ist ein eigener Lauf des Optimierers, kein Dienst: `python -m voltpilot_optimization mispel-check
@@ -134,7 +144,25 @@ MP-17), `angenommen` mit Satz in `quelle`:
 | ohne Erzeugungsanlage, mit sonstigem Verbrauch (oder ohne Messreihe) | nur Z1 | A11 (Anlage 1 Abschn. 10.3.1, S. 98) |
 | ohne Erzeugungsanlage, ohne sonstigen Verbrauch (gemessen) | nur Z1 | A10 (Anlage 1 Abschn. 10.2.1, S. 95) |
 
-`nicht_unterstuetzt` außerdem für jeden Formelsatz außer A1/A10/A11 und für A1 ohne anzulegenden Wert;
+**Pauschaloption (MP-29, Basisfall P1 „Stromspeicher“, A2 Abschn. 4.1.1 S. 25)** — vor der Tabelle oben:
+
+| Anlage | Formelsatz |
+|---|---|
+| Förderweg `marktpraemie_pauschal` (die Pauschaloption trägt keinen Formelsatz) | P1 (`stammdaten`) |
+| Förderweg `einspeiseverguetung`, Solaranlage bis 30 kWp, ohne Zähler Z2 (Konzept § 3 c1) | P1 (`angenommen`) |
+
+P1 rechnet heute mit fester Einspeisevergütung und Laden nur aus PV gegen die Pauschaloption mit Netzladen und dem
+Jahreszustand (MP-26). Datenbasis zusätzlich: `PV-Leistung`, `Anzulegender Wert` (Stammdaten, sonst
+Einspeisevergütung + 0,4 ct nach § 53 EEG, `angenommen`), `Einspeisevergütung` (EEG-Satz aus Inbetriebnahme und
+Leistung, sonst anzulegender Wert − 0,4 ct), ohne Messreihe `Jahresverbrauch` 4 500 kWh (Konzept § 3 c1),
+`Lastgang` Haushalt; ohne Preisblatt das Haushalts-Preisblatt des Optimierers (Netzentgelt 7,6 ct, Konzession
+1,59 ct, 19 % Umsatzsteuer). Über 30 kWp `fehlgeschlagen` (A2 Abschn. 2.1.3, S. 9), ohne Solaranlage oder ohne
+anzulegenden Wert und Vergütung `nicht_unterstuetzt`. **Anwendbar** ist die Pauschaloption erst ab dem Monatsersten
+nach der EU-Genehmigung (Tenor Ziff. 9 b): der Tag steht in `VOLTPILOT_MISPEL_PAUSCHALOPTION_AB` (wie
+`voltpilot.mispel.pauschaloption-ab` der API, leer = noch keine). Vorher legt der Schreiber trotzdem `fertig` ab,
+mit dem Satz „Information vor dem Wechsel: Die Pauschaloption ist … anwendbar …“ in `hinweis`.
+
+`nicht_unterstuetzt` außerdem für jeden Formelsatz außer A1/A10/A11/P1 und für A1 ohne anzulegenden Wert;
 `fehlgeschlagen` mit Satz für widersprüchliche Stammdaten (A10/A11 mit PV-Anlage, A10 mit gemessenem Verbrauch)
 und für jeden gescheiterten Lauf („Der Check konnte für diese Anlage nicht gerechnet werden: …“).
 

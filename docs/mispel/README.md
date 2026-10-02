@@ -188,7 +188,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 
 ## 9. Was noch nicht gebaut ist
 
-- **Optimierer:** Jahreszustand der Pauschaloption für die Sonderfälle P4, P4-Variante und P5 (MP-26 baut P1–P3). Der
+- **Optimierer:** Jahreszustand der Pauschaloption für die Sonderfälle P4, P4-Variante und P5 (MP-26 baut P1–P3);
+  der MiSpeL-Check rechnet von der Pauschaloption nur den Basisfall P1 (MP-29), P2–P5 bleiben `nicht_unterstuetzt`. Der
   MiSpeL-Check in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige steht im Förderweg-Dialog (MP-48); wer ihn je Anlage rechnet und in
   `site_mispel_check` ablegt, fehlt (MP-13b) — bis dahin zeigt das Portal „wird gerechnet“.
 - **Rechenwerk:** der Optimierer plant A2–A4 noch nicht im Mischbetrieb (Fahrzeug als Speicher: MP-33); Rumpfjahre

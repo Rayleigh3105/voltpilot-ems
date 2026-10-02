@@ -148,8 +148,16 @@ def test_posten_auf_das_geschlossene_vokabular_je_fall():
            ("Mehr Vermarktungsentgelt auf die zusätzliche Rückspeisung", -12.0)]
     arten = [p["art"] for p in lauf.ergebnis_zeile(_ergebnis(dict.fromkeys(mc.FAELLE, a10)))["posten"]]
     assert arten == ["handel_saldierung", "handel_heute", "vermarktungsentgelt"]
+    p1 = [("Einspeisung mit Marktprämie statt Einspeisevergütung", -20.0),
+          ("Netzladen-Handel mit der Pauschaloption", 95.0), ("Saldierung oberhalb der Pauschalgrenze", 10.0),
+          ("Direktvermarktungsentgelt", -60.0), ("Mehrkosten Messstellenbetrieb", -20.0)]
+    arten = [p["art"] for p in lauf.ergebnis_zeile(_ergebnis(dict.fromkeys(mc.FAELLE, p1)))["posten"]]
+    assert arten == ["einspeisung_marktpraemie", "handel_pauschal", "saldierung_pauschal",
+                     "direktvermarktungsentgelt", "messstellenbetrieb"]
     assert set(lauf.POSTEN_ART.values()) == {
-        "handel_saldierung", "handel_heute", "jahresmarktwert", "zaehler_z2", "bilanzkreis", "vermarktungsentgelt"}
+        "handel_saldierung", "handel_heute", "jahresmarktwert", "zaehler_z2", "bilanzkreis", "vermarktungsentgelt",
+        "einspeisung_marktpraemie", "handel_pauschal", "saldierung_pauschal", "direktvermarktungsentgelt",
+        "messstellenbetrieb"}
 
 
 def test_ein_unbekannter_posten_faellt_nie_still_heraus():
@@ -177,3 +185,47 @@ def test_neu_gerechnet_wird_nur_was_nicht_aktuell_ist():
     nicht = lauf.eingang(replace(SIMULATOR, zaehler=frozenset({"Z1", "Z2", "Z3"})), F)
     zeile = lauf.Zeile("nicht_unterstuetzt", JETZT - timedelta(days=40), "A4", None, nicht.datenbasis)
     assert lauf.grund(zeile, nicht, F, JETZT) is None
+
+
+# --------------------------------------------------------------------------- Pauschaloption P1 (MP-29)
+
+#: Ein Haushalt in der Einspeisevergütung: 9,9 kWp, 10 kWh, ein Zähler, EEG-Satz aus der Inbetriebnahme.
+HAUSHALT = replace(BESTAND, foerderweg="einspeiseverguetung", anzulegender_wert_ct=None, einspeiseverguetung_ct=7.78)
+
+
+def test_haushalt_in_der_einspeiseverguetung_rechnet_die_pauschaloption_p1():
+    e = lauf.eingang(HAUSHALT, F)
+    assert e.stand is None and e.formelsatz == "P1"
+    assert _angabe(e, "Formelsatz")["herkunft"] == "angenommen"
+    assert "Pauschaloption Basisfall P1" in _angabe(e, "Formelsatz")["quelle"]
+    a = e.anlage
+    assert (a.formelsatz, a.pv_kwp, a.speicher_kwh, a.profil) == ("P1", 9.9, 10.0, "haushalt")
+    assert a.einspeiseverguetung_ct == 7.78 and a.anzulegender_wert_ct == pytest.approx(8.18)
+    assert _angabe(e, "Anzulegender Wert")["quelle"] == "Einspeisevergütung + 0,4 ct (§ 53 EEG)"
+    assert _angabe(e, "Jahresverbrauch")["wert"] == 4500 and _angabe(e, "Jahresverbrauch")["herkunft"] == "angenommen"
+    # Ohne Preisblatt das Haushalts-Preisblatt des Optimierers, nicht die Gewerbe-Annahme.
+    assert (a.netzentgelt_arbeitspreis_ct, a.konzessionsabgabe_ct, a.ust_pct) == (7.6, 1.59, 19.0)
+
+
+def test_gewaehlte_pauschaloption_ist_stammdaten_und_bleibt_bis_30_kwp():
+    gewaehlt = replace(BESTAND, foerderweg="marktpraemie_pauschal")
+    e = lauf.eingang(gewaehlt, F)
+    assert e.formelsatz == "P1" and _angabe(e, "Formelsatz")["herkunft"] == "stammdaten"
+    assert e.anlage.anzulegender_wert_ct == 8.2 and e.anlage.einspeiseverguetung_ct == pytest.approx(7.8)
+    gross = lauf.eingang(replace(gewaehlt, pv_kwp=35.0), F)
+    assert gross.stand == "fehlgeschlagen" and gross.hinweis.endswith("diese Anlage hat 35,0 kWp.")
+    ohne_satz = lauf.eingang(replace(gewaehlt, anzulegender_wert_ct=None), F)
+    assert ohne_satz.stand == "nicht_unterstuetzt"
+    # Mit Z2 bleibt die Anlage in der Einspeisevergütung bei der Abgrenzung (A1); ohne Satz kein Betrag.
+    assert lauf.eingang(replace(HAUSHALT, zaehler=frozenset({"Z1", "Z2"})), F).formelsatz == "A1"
+    # Gewerbe über 30 kWp in der Einspeisevergütung: keine Pauschaloption.
+    assert lauf.eingang(replace(HAUSHALT, pv_kwp=31.0), F).formelsatz == "A1"
+
+
+def test_pauschaloption_vor_der_eu_genehmigung_ist_eine_information():
+    heute = date(2026, 10, 2)
+    assert "erst ab dem Monatsersten nach der EU-Genehmigung" in lauf.pauschal_hinweis(None, heute)
+    assert "ab 01.01.2027" in lauf.pauschal_hinweis(date(2027, 1, 1), heute)
+    assert lauf.pauschal_hinweis(date(2026, 10, 1), heute) is None
+    assert lauf.pauschaloption_ab({}) is None
+    assert lauf.pauschaloption_ab({lauf.ENV_PAUSCHALOPTION_AB: " 2027-01-01 "}) == date(2027, 1, 1)

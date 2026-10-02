@@ -29,7 +29,8 @@ import multiprocessing
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from fractions import Fraction
 from typing import Callable, Protocol
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -38,6 +39,7 @@ from voltpilot_forecast.domain import GeoLocation, PlantSpec, SiteForecastConfig
 from voltpilot_forecast.pv import PhysicalPvForecaster
 from voltpilot_forecast.weather import IrradianceSample
 
+from voltpilot_optimization import mispel_jahresstand, mispel_pauschal
 from voltpilot_optimization.domain import BatteryParams, OptimizationInput
 from voltpilot_optimization.mispel_monatsstand import (
     Bisher,
@@ -254,6 +256,56 @@ class _MonatsBuchung:
             self.viertelstunden += 1
 
 
+class _JahresBuchung:
+    """MiSpeL MP-29 in der Kette: der Jahresstand der Pauschaloption (MP-26)
+    aus den schon festgeschriebenen Tagen - (P14) = ∑J (P13)¼ (Einspeisung in
+    AW>0-Zeiten), (P7) = ∑J (P6)¼ (Einspeisung in SP≥0-Zeiten), (P9) = ∑J
+    Z1NB¼ (A2 S. 30-31). Jeder Tag plant mit dem Stand, den auch die
+    Produktion haette (:func:`mispel_jahresstand.jahresstaende`: bisher plus
+    der mit dem bisherigen Tempo geschaetzte Jahresrest); der Bezugszeitraum
+    ist das Kalenderjahr des Tages (A2 S. 9, Abschn. 2.1.4). Die Summen tragen
+    ueber die Monats-Chunks: ``run_milp_year`` rechnet sie dafuer der Reihe
+    nach in Kalenderfolge."""
+
+    def __init__(self, cfg: dict) -> None:
+        self.formelsatz = cfg["formelsatz"]
+        self.stammdaten = {k: Fraction(v) for k, v in cfg["stammdaten"].items()}
+        bisher = cfg.get("bisher") or {}
+        self.werte = {nr: float(bisher.get(nr, 0.0)) for nr in mispel_jahresstand.SUMMEN}
+        self.viertelstunden = int(bisher.get("viertelstunden", 0))
+        leer = {nr: mispel_pauschal.NULL for nr in mispel_jahresstand.SUMMEN}
+        grenzen = mispel_pauschal.jahr(self.formelsatz, leer, self.stammdaten)
+        self.grenzen = {nr: grenzen[nr] for nr in ("(P1)", "(P4)")}
+
+    def staende(self, tag_start: datetime, fenster: list[datetime]):
+        jahr = tag_start.astimezone(BERLIN).year
+        bisher = mispel_jahresstand.Bisher(
+            von=date(jahr, 1, 1),
+            bis=date(jahr, 12, 31),
+            rumpfjahr=False,
+            formelsatz=self.formelsatz,
+            basisfall=None,
+            stammdaten=self.stammdaten,
+            jahreswerte={**self.grenzen, **{nr: Fraction(v) for nr, v in self.werte.items()}},
+            viertelstunden=self.viertelstunden,
+        )
+        return mispel_jahresstand.jahresstaende(bisher, fenster, SLOT_HOURS)
+
+    def buche(self, slots, spot: list[float], aw_ct: list[float]) -> None:
+        for s, sp, aw in zip(slots, spot, aw_ct):
+            bezug = max(s.grid_kw, 0.0) * SLOT_HOURS
+            einspeisung = max(-s.grid_kw, 0.0) * SLOT_HOURS
+            self.werte["(P9)"] += bezug
+            if sp >= 0.0:  # (P5)¼ = WENN [ SP¼ ≥ 0 ; 1 ; 0 ]
+                self.werte["(P7)"] += einspeisung
+            if aw > 0.0:  # (P12)¼ = WENN [ AW¼ > 0 ; 1 ; 0 ]
+                self.werte["(P14)"] += einspeisung
+            self.viertelstunden += 1
+
+    def json(self) -> dict:
+        return {**self.werte, "viertelstunden": self.viertelstunden}
+
+
 def solve_chunk(payload: dict) -> dict:
     """Solve one chunk of consecutive days (module-level: process-pool safe).
 
@@ -273,11 +325,13 @@ def solve_chunk(payload: dict) -> dict:
     misch = payload.get("mischbetrieb")
     strenge = payload.get("strenge", False)
     wiederholbar = payload.get("wiederholbar", False)
+    pauschal = payload.get("pauschal")
 
     from voltpilot_optimization.solver import optimize_mit_rueckfall
 
     soc = battery.soc_floor_kwh(battery.soc_max_kwh)
     monat = _MonatsBuchung()
+    jahr = _JahresBuchung(pauschal) if pauschal is not None else None
     out_battery: list[float] = []
     out_grid: list[float] = []
     out_soc: list[float] = []
@@ -316,6 +370,13 @@ def solve_chunk(payload: dict) -> dict:
                     starts[i0], starts[window], battery.roundtrip_efficiency
                 ),
             )
+        if pauschal is not None:
+            inp = replace(
+                inp,
+                mispel_praemie_eur_mwh=pauschal["praemie"][window],
+                saldierte_bestandteile_eur_mwh=pauschal["saldiert"],
+                mispel_jahresstand=jahr.staende(starts[i0], starts[window]),
+            )
         # Without explanation: the simulation discards every presentation
         # field, and the Fahrplan-Warum LP re-solve (~30 ms/solve) would add
         # real wall-clock over a 365-day chain for nothing.
@@ -327,6 +388,10 @@ def solve_chunk(payload: dict) -> dict:
         if misch is not None:
             monat.buche(starts[i0], commit)
         if day >= warmup_days:
+            if jahr is not None:
+                jahr.buche(
+                    commit, spot[i0:i0 + SLOTS_PER_DAY], pauschal["aw"][i0:i0 + SLOTS_PER_DAY]
+                )
             for s in commit:
                 out_battery.append(s.battery_kw)
                 out_grid.append(s.grid_kw)
@@ -341,6 +406,7 @@ def solve_chunk(payload: dict) -> dict:
         "curtail_kw": out_curtail,
         "wear_eur": out_wear,
         "rueckfaelle": rueckfaelle,
+        "pauschal_bisher": jahr.json() if jahr is not None else None,
     }
 
 
@@ -371,6 +437,7 @@ def chunk_payloads(
     mischbetrieb: dict | None = None,
     strenge: bool = False,
     wiederholbar: bool = False,
+    pauschal: dict | None = None,
 ) -> list[dict]:
     """Build the per-chunk solve payloads (pickle-friendly plain dicts).
 
@@ -379,11 +446,18 @@ def chunk_payloads(
     with the MP-11 Monatszustand; ``export_eur_mwh`` must then be bare spot.
     ``strenge`` plans the EEG mode with the strict Ausschliesslichkeit (MP-45).
     ``wiederholbar`` (MP-33c) ends the Mischbetrieb search at the node limit
-    instead of the wall clock: the same input, the same dispatch under any load."""
+    instead of the wall clock: the same input, the same dispatch under any load.
+    ``pauschal`` (MiSpeL-Check, MP-29): ``{"praemie": [EUR/MWh je Slot],
+    "aw": [AW¼ ct/kWh je Slot], "saldiert": EUR/MWh, "formelsatz": "P1",
+    "stammdaten": {"Pinst": str, "SKinst": str}}`` plans every solve with the
+    MP-26 Jahreszustand of the Pauschaloption (:class:`_JahresBuchung`);
+    ``export_eur_mwh`` must then be bare spot."""
     exp = export_eur_mwh if export_eur_mwh is not None else data.export_eur_mwh
     ext_praemie = (
         _extended(mischbetrieb["praemie"]) if mischbetrieb is not None else None
     )
+    ext_pauschal_praemie = _extended(pauschal["praemie"]) if pauschal is not None else None
+    ext_aw = _extended(pauschal["aw"]) if pauschal is not None else None
     ext_spot = _extended(data.spot)
     ext_load = _extended(data.load_kw)
     ext_pv = _extended(data.pv_kw)
@@ -436,6 +510,14 @@ def chunk_payloads(
                 "praemie": ext_praemie[lo:hi],
                 "saldiert": mischbetrieb["saldiert"],
             }
+        if pauschal is not None:
+            payloads[-1]["pauschal"] = {
+                "praemie": ext_pauschal_praemie[lo:hi],
+                "aw": ext_aw[lo:hi],
+                "saldiert": pauschal["saldiert"],
+                "formelsatz": pauschal["formelsatz"],
+                "stammdaten": dict(pauschal["stammdaten"]),
+            }
     return payloads
 
 
@@ -466,6 +548,7 @@ def run_milp_year(
     mischbetrieb: dict | None = None,
     strenge: bool = False,
     wiederholbar: bool = False,
+    pauschal: dict | None = None,
 ) -> Dispatch:
     """Scenario (c) over the whole year: chained 48h/24h chunks.
 
@@ -474,7 +557,7 @@ def run_milp_year(
     chunk slots hold 0.0) so callers can publish progressive monthly rows.
     """
     payloads = chunk_payloads(
-        data, battery, netzladen, export_eur_mwh, mischbetrieb, strenge, wiederholbar
+        data, battery, netzladen, export_eur_mwh, mischbetrieb, strenge, wiederholbar, pauschal
     )
     n = len(data.slot_starts)
     dispatch = Dispatch(
@@ -500,6 +583,24 @@ def run_milp_year(
         )
 
     done = 0
+    if pauschal is not None:
+        # MiSpeL MP-29: der Jahresstand traegt ueber die Monats-Chunks, darum
+        # der Reihe nach in Kalenderfolge (Januar zuerst) - das Fenster
+        # vertritt EIN Kalenderjahr (A2 S. 9, Abschn. 2.1.4); bei 10/2025-
+        # 09/2026 stehen Januar-September fuer die Monate vor Oktober.
+        bisher = None
+        for payload in sorted(
+            payloads,
+            key=lambda p: data.slot_starts[p["day_start"] * SLOTS_PER_DAY].astimezone(BERLIN).month,
+        ):
+            payload["pauschal"]["bisher"] = bisher
+            result = solve_chunk(payload)
+            bisher = result["pauschal_bisher"]
+            _merge(result)
+            done += 1
+            if on_chunk:
+                on_chunk(done, len(payloads), dispatch)
+        return dispatch
     workers = effective_workers(max_workers, len(payloads))
     if workers <= 1:
         for payload in payloads:

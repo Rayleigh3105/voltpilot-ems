@@ -22,18 +22,29 @@ Formelsatz ist der gewählte (``site_foerderweg``) oder - solange keiner gewähl
 aus den Zählerrollen der Anlage nach dem Gebot der Bestnutzung (Anlage 1 Abschn. 3.2.3,
 S. 24; wie der Formelsatz-Vorschlag aus MP-17), dann ``angenommen``. Formelsätze, die
 MP-13 nicht rechnet, bekommen ``nicht_unterstuetzt`` mit Satz statt einer Näherung.
+
+**Pauschaloption (MP-29):** Anlagen im Förderweg Pauschal und Anlagen in der
+Einspeisevergütung mit Solaranlage bis 30 kWp, Speicher und ohne Zähler Z2 rechnen den
+Basisfall P1 „Stromspeicher“ (Anlage 2 Abschn. 4.1.1, S. 25; Konzept § 3 c1) - heute mit
+fester Einspeisevergütung gegen die Pauschaloption. Anwendbar ist sie erst ab dem
+Monatsersten nach der EU-Genehmigung (``VOLTPILOT_MISPEL_PAUSCHALOPTION_AB``, wie
+``voltpilot.mispel.pauschaloption-ab`` der API); gerechnet wird trotzdem schon, als
+Information vor dem Wechsel - dann mit einem Satz in ``hinweis``.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 from uuid import UUID
 
+from voltpilot_optimization.marktwertbasis import FOERDERWEG_PAUSCHAL
+from voltpilot_optimization.pricing import DEFAULT_SUPPLY_COMPONENTS, FOERDERWEG_EINSPEISEVERGUETUNG
 from voltpilot_optimization.simulation import mispel_check as mc
 from voltpilot_optimization.simulation.data import BERLIN
 
@@ -56,6 +67,12 @@ LOCK_SCHLUESSEL = 0x4D53504C13B  # "MSPL" 13b
 #: Annahmen ohne Messung oder Stammdaten (Konzept § 3, Gewerbe-Kundentypen a2/b).
 JAHRESVERBRAUCH_ANGENOMMEN_KWH = 60_000.0
 QUELLE_VERBRAUCH = "Konzept § 3 a2 (Gewerbe)"
+#: ... und für den Haushalt der Pauschaloption (Konzept § 3 c1, vp-sim-design-t6 § 1.3).
+JAHRESVERBRAUCH_HAUSHALT_KWH = 4_500.0
+QUELLE_VERBRAUCH_HAUSHALT = "Konzept § 3 c1 (Haushalt, vp-sim-design-t6)"
+#: Der erste Tag, an dem die Pauschaloption anwendbar ist (EU-Genehmigung, Tenor Ziff. 9 b) -
+#: dieselbe Angabe wie ``voltpilot.mispel.pauschaloption-ab`` der API; leer = noch keine.
+ENV_PAUSCHALOPTION_AB = "VOLTPILOT_MISPEL_PAUSCHALOPTION_AB"
 
 STAND_WIRD_GERECHNET = "wird_gerechnet"
 STAND_FERTIG = "fertig"
@@ -71,6 +88,12 @@ POSTEN_ART = {
     "Zweiter Zähler Z2": "zaehler_z2",
     "Gesonderter Bilanzkreis": "bilanzkreis",
     "Mehr Vermarktungsentgelt auf die zusätzliche Rückspeisung": "vermarktungsentgelt",
+    # Pauschaloption P1 (MP-29)
+    "Einspeisung mit Marktprämie statt Einspeisevergütung": "einspeisung_marktpraemie",
+    "Netzladen-Handel mit der Pauschaloption": "handel_pauschal",
+    "Saldierung oberhalb der Pauschalgrenze": "saldierung_pauschal",
+    "Direktvermarktungsentgelt": "direktvermarktungsentgelt",
+    "Mehrkosten Messstellenbetrieb": "messstellenbetrieb",
 }
 
 FEHLGESCHLAGEN_SATZ = "Der Check konnte für diese Anlage nicht gerechnet werden"
@@ -123,6 +146,8 @@ class Stammdaten:
     latitude: float | None = None
     longitude: float | None = None
     anzulegender_wert_ct: float | None = None
+    #: Die feste Einspeisevergütung (ct/kWh) aus Inbetriebnahme und Leistung - nur in der Einspeisevergütung.
+    einspeiseverguetung_ct: float | None = None
     zaehler: frozenset[str] = frozenset()
     netzentgelt_arbeitspreis_ct: float | None = None
     umlagen_ct: float | None = None
@@ -186,6 +211,39 @@ def formelsatz_angenommen(st: Stammdaten, mit_verbrauch: bool) -> tuple[str, str
     return "A10", "Rein netzgekoppelter Speicher ohne sonstigen Verbrauch: Sonderfall A10 (A1 Abschn. 10.2.1)"
 
 
+def pauschal_formelsatz(st: Stammdaten) -> tuple[str, str, str] | None:
+    """Der Basisfall P1 der Pauschaloption, wenn er für die Anlage gilt: (Formelsatz, Herkunft, Quelle).
+
+    Gewählt im Förderweg Pauschal - die Pauschaloption trägt dort keinen Formelsatz, der
+    Basisfall folgt aus „Speicher, kein Ladepunkt“ (A2 Abschn. 4.1.1, S. 25). Angenommen für
+    eine Anlage in der Einspeisevergütung mit Solaranlage bis 30 kWp und ohne Z2 (ein Zähler,
+    Konzept § 3 c1; A2 Abschn. 2.1.3, S. 9)."""
+    if st.formelsatz is not None:
+        return None
+    if st.foerderweg == FOERDERWEG_PAUSCHAL:
+        return "P1", "stammdaten", "Förderweg Pauschaloption: Basisfall P1 „Stromspeicher“ (A2 Abschn. 4.1.1, S. 25)"
+    if (st.foerderweg == FOERDERWEG_EINSPEISEVERGUETUNG and st.pv_kwp
+            and st.pv_kwp <= mc.PAUSCHAL_MAX_KWP and "Z2" not in st.zaehler):
+        return "P1", "angenommen", ("Einspeisevergütung, Solaranlage bis 30 kWp mit Speicher und einem Zähler: "
+                                    "Pauschaloption Basisfall P1 (A2 Abschn. 2.1.3, S. 9; Abschn. 4.1.1, S. 25)")
+    return None
+
+
+def pauschal_hinweis(ab: date | None, heute: date) -> str | None:
+    """Der Satz zum Ergebnis der Pauschaloption, solange sie noch nicht anwendbar ist (Tenor Ziff. 9 b)."""
+    if ab is not None and ab <= heute:
+        return None
+    wann = f"ab {_datum(ab)}" if ab is not None else "erst ab dem Monatsersten nach der EU-Genehmigung"
+    return (f"Information vor dem Wechsel: Die Pauschaloption ist {wann} anwendbar "
+            "(Festlegung, Tenor Ziff. 9 b); gerechnet ist, was sie dieser Anlage gebracht hätte.")
+
+
+def pauschaloption_ab(env: dict | None = None) -> date | None:
+    """Der Tag aus ``VOLTPILOT_MISPEL_PAUSCHALOPTION_AB`` (leer = noch keine Genehmigung)."""
+    wert = (env if env is not None else os.environ).get(ENV_PAUSCHALOPTION_AB, "").strip()
+    return date.fromisoformat(wert) if wert else None
+
+
 def eingang(st: Stammdaten, f: Fenster) -> Eingang:
     """Die Eingabe des Checks für eine Anlage und ihre Datenbasis (Vertrag § 4)."""
     basis = mc.CheckAnlage(formelsatz="A1", speicher_kwh=0.0, speicher_kw=0.0)
@@ -199,7 +257,11 @@ def eingang(st: Stammdaten, f: Fenster) -> Eingang:
     if verbrauch is not None:
         db.append(_angabe("Jahresverbrauch", verbrauch, "kWh", "gemessen", _messquelle(st.verbrauch_tage, f)))
 
-    if st.formelsatz is not None:
+    pauschal = pauschal_formelsatz(st)
+    if pauschal is not None:
+        formelsatz, herkunft, quelle = pauschal
+        db.append(_angabe("Formelsatz", formelsatz, None, herkunft, quelle))
+    elif st.formelsatz is not None:
         formelsatz = st.formelsatz
         db.append(_angabe("Formelsatz", formelsatz, None, "stammdaten", "gewählt im Förderweg"))
     else:
@@ -211,6 +273,9 @@ def eingang(st: Stammdaten, f: Fenster) -> Eingang:
         return Eingang(formelsatz, db, stand=STAND_NICHT_UNTERSTUETZT, hinweis=(
             f"Formelsatz {formelsatz}: {mc.NICHT_UNTERSTUETZT}. Der Check rechnet "
             f"{', '.join(mc.CHECK_FORMELSAETZE)}."))
+
+    if formelsatz in mc.PAUSCHAL_FORMELSAETZE:
+        return _eingang_pauschal(st, f, formelsatz, db, verbrauch)
 
     a1 = formelsatz == "A1"
     if a1 and not st.pv_kwp:
@@ -284,6 +349,96 @@ def eingang(st: Stammdaten, f: Fenster) -> Eingang:
         longitude=st.longitude if st.longitude is not None else basis.longitude,
         jahresverbrauch_kwh=jahresverbrauch,
         anzulegender_wert_ct=float(st.anzulegender_wert_ct) if a1 else None,
+        pv_jahreserzeugung_kwh=float(erzeugung) if erzeugung is not None else None,
+        zone=st.zone,
+        **werte,
+    )
+    return Eingang(formelsatz, db, anlage=anlage)
+
+
+def _pv_datenbasis(st: Stammdaten, f: Fenster, db: list[dict], basis: mc.CheckAnlage) -> float | None:
+    """Erzeugung im Jahr (gemessen oder aus Wetter) und Standort - wie bei A1."""
+    erzeugung = _gemessen(st.erzeugung_tage, st.erzeugung_kwh, f)
+    if erzeugung is not None:
+        db.append(_angabe("Erzeugung im Jahr", erzeugung, "kWh", "gemessen", _messquelle(st.erzeugung_tage, f)))
+    else:
+        db.append(_angabe("Erzeugung im Jahr", None, None, "angenommen",
+                          "aus PV-Leistung und Wetter des Fensters, Ausrichtung Süd 30°"))
+    if st.latitude is None or st.longitude is None:
+        db.append(_angabe("Standort", f"{basis.latitude}° N, {basis.longitude}° O", None, "angenommen",
+                          "Standard der Simulation, kein Standort hinterlegt"))
+    else:
+        db.append(_angabe("Standort", f"{st.latitude:.2f}° N, {st.longitude:.2f}° O", None, "stammdaten", None))
+    return erzeugung
+
+
+def _eingang_pauschal(st: Stammdaten, f: Fenster, formelsatz: str, db: list[dict],
+                      verbrauch: float | None) -> Eingang:
+    """Die Eingabe für den Basisfall P1: Haushalt bis 30 kWp, heute Einspeisevergütung (Konzept § 3 c1)."""
+    if not st.pv_kwp:
+        return Eingang(formelsatz, db, stand=STAND_NICHT_UNTERSTUETZT, hinweis=(
+            "Der Check rechnet die Pauschaloption im Basisfall P1 mit einer Solaranlage; diese Anlage hat keine."))
+    if st.pv_kwp > mc.PAUSCHAL_MAX_KWP:
+        return Eingang(formelsatz, db, stand=STAND_FEHLGESCHLAGEN, hinweis=(
+            "Die Pauschaloption gilt für Solaranlagen bis 30 kWp (A2 Abschn. 2.1.3, S. 9); "
+            f"diese Anlage hat {st.pv_kwp:.1f}".replace(".", ",") + " kWp."))
+    db.append(_angabe("PV-Leistung", round(float(st.pv_kwp), 1), "kWp", "stammdaten", None))
+    if st.anzulegender_wert_ct is not None:
+        aw = float(st.anzulegender_wert_ct)
+        db.append(_angabe("Anzulegender Wert", round(aw, 3), "ct/kWh", "stammdaten", None))
+    elif st.einspeiseverguetung_ct is not None:
+        aw = float(st.einspeiseverguetung_ct) + mc.EV_ABZUG_CT
+        db.append(_angabe("Anzulegender Wert", round(aw, 3), "ct/kWh", "angenommen",
+                          "Einspeisevergütung + 0,4 ct (§ 53 EEG)"))
+    else:
+        return Eingang(formelsatz, db, stand=STAND_NICHT_UNTERSTUETZT, hinweis=(
+            "Der Check rechnet die Pauschaloption mit der Marktprämie auf den anzulegenden Wert; für diese "
+            "Anlage ist weder ein anzulegender Wert noch eine Einspeisevergütung hinterlegt."))
+    if st.einspeiseverguetung_ct is not None:
+        ev = float(st.einspeiseverguetung_ct)
+        db.append(_angabe("Einspeisevergütung", round(ev, 3), "ct/kWh", "stammdaten",
+                          "EEG-Satz aus Inbetriebnahme und Leistung"))
+    else:
+        ev = aw - mc.EV_ABZUG_CT
+        db.append(_angabe("Einspeisevergütung", round(ev, 3), "ct/kWh", "angenommen",
+                          "anzulegender Wert − 0,4 ct (§ 53 EEG)"))
+    if verbrauch is not None:
+        jahresverbrauch = float(verbrauch)
+    else:
+        jahresverbrauch = JAHRESVERBRAUCH_HAUSHALT_KWH
+        db.append(_angabe("Jahresverbrauch", round(jahresverbrauch), "kWh", "angenommen",
+                          QUELLE_VERBRAUCH_HAUSHALT))
+    db.append(_angabe("Lastgang", "Haushalt", None, "angenommen",
+                      "Haushaltsprofil der Ersparnis-Simulation (vp-sim-design-t6)"))
+    basis = mc.KUNDENTYPEN["c1"]
+    erzeugung = _pv_datenbasis(st, f, db, basis)
+    preise = (
+        ("Netzentgelt-Arbeitspreis", "netzentgelt_arbeitspreis_ct", "ct/kWh"),
+        ("Umlagen", "umlagen_ct", "ct/kWh"),
+        ("Konzessionsabgabe", "konzessionsabgabe_ct", "ct/kWh"),
+        ("Umsatzsteuer", "ust_pct", "%"),
+    )
+    werte = {}
+    for angabe, feld, einheit in preise:
+        wert = getattr(st, feld)
+        if wert is None:
+            werte[feld] = getattr(DEFAULT_SUPPLY_COMPONENTS, feld)
+            db.append(_angabe(angabe, werte[feld], einheit, "angenommen",
+                              "Haushalt: Recherche vp-nacht-bezug-e7 (Vorgabe des Optimierers)"))
+        else:
+            werte[feld] = float(wert)
+            db.append(_angabe(angabe, werte[feld], einheit, "stammdaten", "Preisblatt der Anlage"))
+    anlage = replace(
+        basis,
+        formelsatz=formelsatz,
+        speicher_kwh=float(st.speicher_kwh),
+        speicher_kw=float(st.speicher_kw),
+        pv_kwp=float(st.pv_kwp),
+        latitude=st.latitude if st.latitude is not None else mc.CheckAnlage.latitude,
+        longitude=st.longitude if st.longitude is not None else mc.CheckAnlage.longitude,
+        jahresverbrauch_kwh=jahresverbrauch,
+        anzulegender_wert_ct=aw,
+        einspeiseverguetung_ct=ev,
         pv_jahreserzeugung_kwh=float(erzeugung) if erzeugung is not None else None,
         zone=st.zone,
         **werte,
@@ -393,6 +548,15 @@ def _verlauf(cur, site_id: UUID, f: Fenster) -> tuple[int, float, int, float]:
     return int(tv), float(sv), int(te), float(se)
 
 
+def _einspeiseverguetung(tariff) -> float | None:
+    """Der EEG-Satz der festen Vergütung (ct/kWh) aus Inbetriebnahme und Leistung - wie der Optimierer."""
+    from voltpilot_optimization.pricing import PLANT_KIND_EIGENVERBRAUCH, feste_verguetung_ct_per_kwh
+
+    if tariff.plant_kind != PLANT_KIND_EIGENVERBRAUCH or tariff.commissioned_on is None:
+        return None
+    return feste_verguetung_ct_per_kwh(tariff.commissioned_on, tariff.pv_capacity_kwp)
+
+
 def lade_stammdaten(dsn: str, f: Fenster, heute: date, site_id: UUID | None = None) -> list[Stammdaten]:
     """Je Anlage mit Speicher die Stammdaten (wie der Optimierer), Zählerrollen und Verlauf."""
     import psycopg  # lazy: optional [db] extra
@@ -417,6 +581,7 @@ def lade_stammdaten(dsn: str, f: Fenster, heute: date, site_id: UUID | None = No
                 latitude=s.latitude,
                 longitude=s.longitude,
                 anzulegender_wert_ct=s.tariff.anzulegender_wert_ct_kwh,
+                einspeiseverguetung_ct=_einspeiseverguetung(s.tariff),
                 zaehler=_zaehler(cur, s.site_id, heute),
                 netzentgelt_arbeitspreis_ct=sp.netzentgelt_arbeitspreis_ct if sp else None,
                 umlagen_ct=sp.umlagen_ct if sp else None,
@@ -516,15 +681,18 @@ def lauf(
     max_anlagen: int = 4,
     neu: bool = False,
     rechne: Callable[..., dict] = mc.mispel_check,
+    pauschal_ab: date | None = None,
 ) -> list[Bericht] | None:
     """Ein Lauf: die Anlagen ohne aktuelles Ergebnis rechnen und ablegen, höchstens
     ``max_anlagen``; ``None``, wenn schon ein anderer Lauf rechnet (Advisory-Lock).
-    ``neu`` rechnet die gewählten Anlagen auch mit aktuellem Ergebnis."""
+    ``neu`` rechnet die gewählten Anlagen auch mit aktuellem Ergebnis; ``pauschal_ab`` ist der
+    erste Tag der Pauschaloption (Vorgabe: :data:`ENV_PAUSCHALOPTION_AB`)."""
     import psycopg  # lazy: optional [db] extra
 
     jetzt = jetzt or datetime.now(timezone.utc)
     heute = jetzt.astimezone(BERLIN).date()
     f = fenster(heute)
+    hinweis_pauschal = pauschal_hinweis(pauschal_ab if pauschal_ab is not None else pauschaloption_ab(), heute)
     deps = replace(deps, max_workers=min(max(deps.max_workers, 1), MAX_WORKERS))
     with psycopg.connect(dsn, autocommit=True) as lock:
         if not lock.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_SCHLUESSEL,)).fetchone()[0]:
@@ -543,14 +711,16 @@ def lauf(
             berichte = []
             with psycopg.connect(dsn) as conn:
                 for _, st, e, warum in offen[:max(max_anlagen, 0)]:
-                    berichte.append(_eine_anlage(conn, st, e, f, deps, warum, rechne))
+                    berichte.append(_eine_anlage(conn, st, e, f, deps, warum, rechne,
+                                                 hinweis_pauschal if e.formelsatz in mc.PAUSCHAL_FORMELSAETZE
+                                                 else None))
             return berichte
         finally:
             lock.execute("SELECT pg_advisory_unlock(%s)", (LOCK_SCHLUESSEL,))
 
 
 def _eine_anlage(conn, st: Stammdaten, e: Eingang, f: Fenster, deps: mc.CheckDeps, warum: str,
-                 rechne: Callable[..., dict]) -> Bericht:
+                 rechne: Callable[..., dict], hinweis: str | None = None) -> Bericht:
     start = time.monotonic()
     eingabe = asdict(e.anlage) if e.anlage is not None else None
     if e.anlage is None:
@@ -573,8 +743,9 @@ def _eine_anlage(conn, st: Stammdaten, e: Eingang, f: Fenster, deps: mc.CheckDep
             "site_id": str(st.site_id), "error": str(exc)}})
         ablegen(conn, st, e, STAND_FEHLGESCHLAGEN, hinweis=satz[:500])
         return Bericht(st.site_id, warum, STAND_FEHLGESCHLAGEN, time.monotonic() - start, satz, eingang=eingabe)
-    # MP-33c: ein Rückfall auf „ohne Gutschrift“ steht im Hinweis, nie still im Betrag.
-    hinweis = result.get("hinweis")
+    # MP-33c: ein Rückfall auf „ohne Gutschrift“ steht im Hinweis, nie still im Betrag; MP-29: die
+    # Pauschaloption vor der EU-Genehmigung ebenso - beide Sätze, wenn beides gilt.
+    hinweis = " ".join(h for h in (hinweis, result.get("hinweis")) if h) or None
     ablegen(conn, st, e, STAND_FERTIG, ergebnis=zeile, hinweis=hinweis)
     sekunden = time.monotonic() - start
     logger.info("mispel_check.anlage_fertig", extra={"context": {

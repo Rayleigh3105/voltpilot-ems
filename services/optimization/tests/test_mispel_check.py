@@ -27,7 +27,7 @@ from voltpilot_optimization.simulation.data import (
     window_slot_starts,
 )
 from voltpilot_optimization.simulation.profiles import business_series_kw
-from voltpilot_optimization.simulation.runner import _MonatsBuchung
+from voltpilot_optimization.simulation.runner import _JahresBuchung, _MonatsBuchung
 
 FIXTURE = Path(__file__).parent / "fixtures" / "day-ahead-de-lu-2025-10-bis-2026-09.json"
 
@@ -327,3 +327,95 @@ def test_heute_streng_laedt_nie_bei_gleichzeitigem_netzbezug(mai_fenster, monkey
         assert not (b > 1e-3 and g > 1e-3)
     annahme = next(a for a in r["annahmen"] if a["name"] == "Ausschließlichkeitsoption heute")
     assert annahme["art"] == "Lesart"
+
+
+# --------------------------------------------------------------------------- Pauschaloption P1 (MP-29)
+
+
+def test_jahresbuchung_zaehlt_p14_p7_p9_wie_das_rechenwerk():
+    """(P14) nur in AW>0-, (P7) nur in SP≥0-Zeiten, (P9) jeder Bezug (A2 S. 30-31)."""
+    buchung = _JahresBuchung({"formelsatz": "P1", "stammdaten": {"Pinst": "10", "SKinst": "10"}})
+    assert buchung.grenzen == {"(P1)": 5000, "(P4)": 5500}  # (P1) = 10 × 500, (P3) = 0,1 × 5 000
+    slots = [_slot(0.0, -8.0), _slot(0.0, -8.0), _slot(0.0, 4.0)]
+    buchung.buche(slots, [50.0, -5.0, 80.0], [8.0, 0.0, 8.0])
+    assert buchung.json() == {"(P14)": 2.0, "(P7)": 2.0, "(P9)": 1.0, "viertelstunden": 3}
+
+
+def test_jahresbuchung_traegt_den_stand_ins_naechste_kalenderjahr_nicht_hinein():
+    """Bisher zählt für das Kalenderjahr des Tages; der Rest wird mit dem Tempo geschätzt."""
+    buchung = _JahresBuchung({"formelsatz": "P1", "stammdaten": {"Pinst": "10", "SKinst": "10"},
+                              "bisher": {"(P14)": 4000.0, "(P7)": 4200.0, "(P9)": 900.0,
+                                         "viertelstunden": 96 * 300}})
+    tag = datetime(2026, 10, 28, tzinfo=BERLIN).astimezone(timezone.utc)
+    fenster = [tag + timedelta(minutes=15 * i) for i in range(192)]
+    (stand,) = buchung.staende(tag, fenster)
+    assert stand.p1_kwh == 5000 and stand.p4_kwh == 5500
+    assert stand.von == datetime(2026, 1, 1, tzinfo=BERLIN)
+    # bisher + Tempo × (365 - 300 - 2 Tage im Horizont)
+    assert stand.p14_kwh == pytest.approx(4000.0 + 4000.0 / 300 * 63, rel=1e-3)
+
+
+def test_kette_rechnet_die_pauschaloption_in_kalenderfolge(monkeypatch):
+    """Der Jahresstand trägt über die Monats-Chunks: Januar zuerst, Oktober danach."""
+    from voltpilot_optimization.simulation import runner
+
+    start = datetime(2025, 12, 30, tzinfo=BERLIN).astimezone(timezone.utc)
+    slots = [start + timedelta(minutes=15 * i) for i in range(4 * 96)]
+    data = runner.YearData(request=None, slot_starts=slots, spot=[50.0] * len(slots),
+                           load_kw=[0.0] * len(slots), pv_kw=[0.0] * len(slots),
+                           import_eur_mwh=[300.0] * len(slots), export_eur_mwh=[50.0] * len(slots))
+    reihenfolge = []
+
+    def solve(payload):
+        reihenfolge.append((payload["day_start"], payload["pauschal"]["bisher"]))
+        n = payload["commit_days"] * 96
+        return {"chunk_index": payload["chunk_index"], "battery_kw": [0.0] * n, "grid_kw": [-1.0] * n,
+                "soc_kwh": [0.0] * n, "curtail_kw": [0.0] * n, "wear_eur": [0.0] * n, "rueckfaelle": [],
+                "pauschal_bisher": {"(P14)": 7.0, "(P7)": 7.0, "(P9)": 0.0, "viertelstunden": 9}}
+
+    monkeypatch.setattr(runner, "solve_chunk", solve)
+    battery = mc.BatteryParams(capacity_kwh=10.0, max_charge_kw=5.0, max_discharge_kw=5.0)
+    runner.run_milp_year(data, battery, netzladen=True, max_workers=4, pauschal={
+        "praemie": [10.0] * len(slots), "aw": [8.0] * len(slots), "saldiert": 120.0,
+        "formelsatz": "P1", "stammdaten": {"Pinst": "10", "SKinst": "10"}})
+    # Chunk ab Tag 2 (Januar) zuerst ohne Stand, dann Dezember mit dem Stand des Januars.
+    assert reihenfolge == [(2, None), (0, {"(P14)": 7.0, "(P7)": 7.0, "(P9)": 0.0, "viertelstunden": 9})]
+
+
+def test_pauschaloption_passt_zur_anlage():
+    with pytest.raises(ValueError, match="30 kWp"):
+        mc.mispel_check(replace(mc.KUNDENTYPEN["c1"], pv_kwp=30.5), _deps())
+    with pytest.raises(ValueError, match="anzulegendem Wert"):
+        mc.mispel_check(replace(mc.KUNDENTYPEN["c1"], anzulegender_wert_ct=None), _deps())
+    with pytest.raises(ValueError, match="Kalenderjahr"):
+        mc.mispel_check(mc.KUNDENTYPEN["c1"], _deps(), monate=13)
+    assert mc.einspeiseverguetung_ct(replace(mc.KUNDENTYPEN["c1"], einspeiseverguetung_ct=None)) \
+        == pytest.approx(7.78)  # § 53 EEG: 8,18 − 0,4
+
+
+@solver
+def test_haushalt_pauschaloption_p1_jahreszustand_und_rechenwerk(mai_fenster):
+    """Haushalt c1, im geschrumpften Fenster so viel Sonne, dass die Einspeisung über (P4)
+    geht: förderfähig ist höchstens (P1), saldiert höchstens der Netzbezug (P10)."""
+    anlage = replace(mc.KUNDENTYPEN["c1"], pv_kwp=1.0, pv_jahreserzeugung_kwh=1500.0,
+                     jahresverbrauch_kwh=120.0)
+    r = mc.mispel_check(anlage, _deps(), faelle={"mittel": mc.STANDARD_FAELLE["mittel"]})
+    f = r["faelle"]["mittel"]
+    jahr = f["mitMispel"]["rechenwerk"]["jahr"]
+    assert f["mitMispel"]["rechenwerk"]["formelsatz"] == "P1"
+    assert jahr["(P1)"] == 500.0 and jahr["(P4)"] == pytest.approx(505.0)  # Pinst 1, SKinst 10
+    assert jahr["(P15)"] == pytest.approx(min(jahr["(P14)"], jahr["(P1)"]), abs=1e-3)
+    assert jahr["(P10)"] == pytest.approx(min(jahr["(P8)"], jahr["(P9)"]), abs=1e-3)
+    assert jahr["(P7)"] > jahr["(P4)"] and jahr["(P10)"] > 0
+    namen = [p["posten"] for p in f["posten"]]
+    assert namen == ["Einspeisung mit Marktprämie statt Einspeisevergütung",
+                     "Netzladen-Handel mit der Pauschaloption", "Saldierung oberhalb der Pauschalgrenze",
+                     "Direktvermarktungsentgelt", "Mehrkosten Messstellenbetrieb"]
+    assert f["differenzEur"] == pytest.approx(sum(p["eur"] for p in f["posten"]), abs=0.02)
+    saldierung = f["posten"][2]["eur"]
+    assert saldierung == pytest.approx(f["mitMispel"]["gutschriftSaldierungEur"], abs=0.01) and saldierung > 0
+    # Heute: Vergütung, Laden nur aus PV - kein Netzbezug in den Speicher.
+    assert f["heute"]["einspeiseverguetungCt"] == pytest.approx(7.78)
+    assert r["anlage"]["einspeiseverguetungCt"] == pytest.approx(7.78)
+    namen_annahmen = {a["name"] for a in r["annahmen"]}
+    assert {"Pauschalgrenzen", "Bezugszeitraum", "Anwendbar", "Direktvermarktungsentgelt €/a"} <= namen_annahmen

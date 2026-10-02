@@ -137,6 +137,7 @@ def dsn():
             conn.execute(_API_ZUSATZ)
             conn.execute(_migration("V20261002141500"))
             conn.execute(_migration("V20261002234100"))
+            conn.execute(_migration("V20261003054500"))  # MP-29: Formelsätze der Pauschaloption
             rows = [r for r in price_rows_from_json(json.loads(PREISE.read_text()))
                     if START - timedelta(hours=2) <= r[0] <= SLOTS[-1] + timedelta(hours=2)]
             with conn.cursor() as cur:
@@ -324,3 +325,54 @@ def test_ein_fehlschlag_legt_einen_satz_ab_und_die_naechste_anlage_rechnet_weite
     assert z["hinweis"] == "Der Check konnte für diese Anlage nicht gerechnet werden: keine Preise im Fenster"
     # Vor Ablauf der Wartezeit kein neuer Versuch.
     assert lauf.lauf(dsn, mc.CheckDeps(load_prices=kaputt), jetzt=JETZT, site_id=site, rechne=kaputt) == []
+
+
+#: Die Posten der Pauschaloption (MP-29) - je Fall dieselben, Summe = Differenz.
+P1_POSTEN = (("Einspeisung mit Marktprämie statt Einspeisevergütung", -20.0),
+             ("Netzladen-Handel mit der Pauschaloption", 95.0), ("Saldierung oberhalb der Pauschalgrenze", 10.0),
+             ("Direktvermarktungsentgelt", -60.0), ("Mehrkosten Messstellenbetrieb", -20.0))
+
+
+def test_pauschal_anlage_legt_p1_mit_hinweis_vor_der_genehmigung_ab(dsn, monkeypatch):
+    """MP-29: eine Anlage im Förderweg Pauschal bekommt ein Ergebnis mit Formelsatz P1 statt
+    ``nicht_unterstuetzt`` - der CHECK der Tabelle kennt P1 (V20261003054500) -, und vor der
+    EU-Genehmigung steht der Satz dazu in ``hinweis``."""
+    monkeypatch.setattr(lauf, "fenster", lambda heute, monate=12: FENSTER)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        tenant = conn.execute("INSERT INTO tenant (name) VALUES ('MiSpeL-Haushalt') RETURNING id").fetchone()[0]
+        site = conn.execute(
+            "INSERT INTO site (tenant_id, name, plant_kind, anzulegender_wert_ct_kwh) "
+            "VALUES (%s, 'haushalt', 'direktvermarktung', 8.18) RETURNING id", (tenant,)).fetchone()[0]
+        conn.execute("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, max_discharge_kw) "
+                     "VALUES (%s, %s, 'battery', 10, 5, 5)", (tenant, site))
+        conn.execute("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES (%s, %s, 'pv', 9.9)",
+                     (tenant, site))
+        conn.execute("INSERT INTO site_foerderweg (tenant_id, site_id, foerderweg, gueltig_ab) "
+                     "VALUES (%s, %s, 'marktpraemie_pauschal', '2026-01-01')", (tenant, site))
+    eingaben = []
+
+    def rechne(anlage, d, beginn, monate):
+        eingaben.append(anlage)
+        posten = [{"posten": n, "eur": e, "herkunft": "h"} for n, e in P1_POSTEN]
+        return {"unterstuetzt": True, "faelle": {f: {"posten": posten} for f in mc.FAELLE},
+                "spanne": dict.fromkeys(mc.FAELLE, sum(e for _, e in P1_POSTEN)),
+                "fenster": {"von": "2026-05-30", "bis": "2026-06-01"},
+                "hinweis": "Rückfall an der Knotengrenze."}
+
+    berichte = lauf.lauf(dsn, mc.CheckDeps(load_prices=lambda *_: []), jetzt=JETZT, site_id=site,
+                         rechne=rechne, pauschal_ab=date(2027, 1, 1))
+    assert [b.stand for b in berichte] == ["fertig"]
+    assert eingaben[0].formelsatz == "P1" and eingaben[0].einspeiseverguetung_ct == pytest.approx(7.78)
+    z = _zeilen(dsn)[site]
+    assert z["stand"] == "fertig" and z["formelsatz"] == "P1"
+    assert float(z["differenz_mittel_eur"]) == pytest.approx(5.0)
+    # Beide Sätze: zuerst die Pauschaloption vor der Genehmigung (MP-29), dann der Rückfall (MP-33c).
+    assert z["hinweis"].startswith("Information vor dem Wechsel: Die Pauschaloption ist ab 01.01.2027 anwendbar")
+    assert z["hinweis"].endswith(" Rückfall an der Knotengrenze.")
+    assert [p["art"] for p in z["posten"]] == ["einspeisung_marktpraemie", "handel_pauschal", "saldierung_pauschal",
+                                               "direktvermarktungsentgelt", "messstellenbetrieb"]
+    db = {a["angabe"]: a for a in z["datenbasis"]}
+    assert db["Förderweg"]["wert"] == "marktpraemie_pauschal" and db["Formelsatz"]["herkunft"] == "stammdaten"
+    # Ein anderer Formelsatz als die der Anlagen 1 und 2 bleibt verboten.
+    with psycopg.connect(dsn, autocommit=True) as conn, pytest.raises(psycopg.errors.CheckViolation):
+        conn.execute("UPDATE site_mispel_check SET formelsatz = 'P6' WHERE site_id = %s", (site,))
