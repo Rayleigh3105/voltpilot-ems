@@ -470,6 +470,8 @@ public class TenantRepository {
                         "data_source_kennzeichen_seq",
                         // The Zählerrolle (MiSpeL MP-6, V20261002121500) holds the Messstelle (RESTRICT).
                         "messstelle_zaehlerrolle",
+                        // The Abgrenzung runs (MiSpeL MP-8, V20261002153700) hold the tenant (RESTRICT).
+                        "mispel_abgrenzung_monat",
                         "messstelle_ort", "messstelle_stellung",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",

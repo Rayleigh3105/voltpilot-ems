@@ -14,8 +14,11 @@ Ladepunkten (MiSpeL, Az. 618-25-02, Beschluss vom 01.10.2026). Bau-Paket MP-4 de
 - **Rechenwerke im Gleichlauf** (beide rechnen jeden Fall exakt nach, ungerundet):
   Python `services/optimization/voltpilot_optimization/mispel_abgrenzung.py` (MP-9, für Optimierer und
   Simulation; exakte Brüche, Stufen Viertelstunde → ∑M → Monat → ∑J, Monat auch aus laufenden Summen),
-  Test `services/optimization/tests/test_mispel_abgrenzung_rechenwerk.py`; Java folgt mit MP-8 (Monatslauf
-  mit Nachweis). Eingebaut ist noch keins: Optimierer MP-10/MP-11, Simulation MP-13.
+  Test `services/optimization/tests/test_mispel_abgrenzung_rechenwerk.py`; Java
+  `services/api/src/main/java/com/voltpilot/api/mispel/MispelAbgrenzungRechenwerk.java` (MP-8, dieselben Stufen
+  mit exakten Brüchen `Bruch`), Test `…/mispel/MispelAbgrenzungRechenwerkTest.java`. Der Java-Zwilling nimmt AW¼
+  als „AW¼ > 0“ an — mehr wertet (24)¼ nicht aus. Eingebaut: der Monatslauf (MP-8, unten); Optimierer
+  MP-10/MP-11 und Simulation MP-13 noch nicht.
 
 Zitierweise: „A1 S. 35“ = Anlage 1, Seite 35; „T S. 38“ = Tenor mit Begründung, Seite 38. Die Festlegung
 hat keine Randnummern.
@@ -150,6 +153,30 @@ Monatsende ausspeisen, wenn er sie saldieren will.
 | `a5-uebereinstimmende-aw` | A5 | gleiche AW>0-Zeiten nach A5: (32a) = 63, (32b) = 21 | A1 S. 50, Abschn. 5.4 („weder zu einer Besser- noch zu einer Schlechterstellung“) |
 | `a5-variante-uebereinstimmende-aw` | A5-Variante | dieselben Eingänge nach A5-Variante: (32a)A5-Variante = 63, (32b)A5-Variante = 21 | A1 S. 52–54, Abschn. 5.4.2, Formeln (32a)A5-Variante bis (33b)A5-Variante |
 | `a5-rumpfmonate-leistungsaenderung` | A5 | Anlage b ab 15.05. 30 statt 10 kW: zwei Rumpfmonate mit eigenem (ZFa)/(ZFb) | A1 S. 102–103, Abschn. 11 (bestimmungsrelevante Änderung: „für Zuordnungsfaktoren relevante Leistungsänderungen von bereits eingebundenen gleichartigen EE-Anlagen“) |
+
+## Monatslauf und Nachweis (MP-8)
+
+`mispel/MispelAbgrenzungService.monatslauf(anlage, monat, vorgaben)` rechnet je Anlage (Einspeisestelle) einen
+Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt wird er erst mit MP-21):
+
+- **Eingänge:** die Zähler aus `ZaehlerrolleService.anlage` ([Zählerrolle](./mispel-zaehlerrolle.md)) am ersten
+  und letzten Tag — sie müssen gleich sein, sonst `bestimmungsrelevante_aenderung`; ihre Viertelstundenmengen über
+  die Messstelle (`MispelZaehlerLeser`, in kWh); AW¼ > 0 aus `MispelMarktdatenRepository.awZeiten` mit der
+  AW-Regel der Anlage. Formelsatz, AW-Regel und Painst/Pbinst gibt heute der Aufrufer vor (später der Förderweg).
+- **Lücke:** fehlt einer Viertelstunde ein Zählerwert oder AW¼, bleibt sie aus den Summen draußen und steht im
+  Nachweis (Anzahl und Beginn je fehlendem Eingang) — nie als Null; ohne eine vollständige Viertelstunde `keine_werte`.
+- **Stand (E4 = C):** `endgueltig` nur ohne Lücke, mit Wertequelle „Messstellenbetreiber“ und Urteil „tauglich“ an
+  jedem Zähler (Tenor S. 28; § 21 Abs. 4 S. 2 EnFG), endgültigen Viertelstunden, AW¼ aus der ÜNB-Liste und nach
+  Ende des Zeitraums; sonst `vorlaeufig` mit Gründen (`luecken`, `wertequelle_geraet`, `zaehler_<urteil>:<MS>`,
+  `viertelstunden_vorlaeufig`, `aw_rueckfall`, `zeitraum_offen`). `wertequelle` des Laufs ist `geraet`, sobald ein
+  Zähler vom Gerät liest. Die Datenbank hält endgültig = Messstellenbetreiber + lückenlos selbst (CHECK).
+- **Nachweis:** `mispel_abgrenzung_monat` (`V20261002153700`, RLS + FORCE, App nur SELECT/INSERT) je Lauf als
+  Fassung: kanonischer JSON-**Text** (Festlegung, Vertrag + Fassung, Rechenwerk-Version, Zähler mit Zählpunkt,
+  MSB, Eichstatus, Wertequelle und Urteil, AW-Regeln, Lücken, je Viertelstunde Eingänge und Zwischenwerte,
+  Monatswerte) und SHA-256 über genau diese Bytes. Gleiche Prüfsumme = keine neue Fassung. Zahlen exakt (Dezimal
+  oder `z/n`), `null` = nicht bestimmbar. Export und Rundung: MP-16.
+
+Prüfnachweis mit Docker: `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungMonatslaufTest)`.
 
 ## Was die Leser prüfen (L1–L8)
 

@@ -16,7 +16,7 @@ Regeln das Register dabei hält. Er ändert den [Messstellen-Vertrag](./messstel
 | `…/uems/ZaehlerrolleRegelnTest.java` · `…/uems/ZaehlerrolleApiTest.java` | Regeln rein · Routen gegen die Datenbank |
 
 > **Wer anruft (Stand MP-6):** die zwei Routen. Noch ohne Fläche (MP-17 nach abgestimmtem Bedienkonzept)
-> und ohne Rechenwerk (MP-8 ruft `ZaehlerrolleService.anlage`). Kein TS-Zwilling — er entsteht mit der Fläche.
+> und das Rechenwerk (MP-8, `MispelAbgrenzungService` ruft `ZaehlerrolleService.anlage` am ersten und letzten Tag). Kein TS-Zwilling — er entsteht mit der Fläche.
 
 ## 1. Die Rollen (Anlage 1 S. 32–33, Abbildungen der Basisfälle)
 
