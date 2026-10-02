@@ -198,4 +198,5 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 - **Partner:** Einverständnis-Paket für die Übergangszeit (MP-19), Direktvermarkter-Schnittstelle (MP-20).
 - **Bidirektionale Ladepunkte** (Stufe B): ein bidirektionaler Ladepunkt wird wie ein Speicher behandelt
   (A1 Abschn. 3.2.5, S. 26–27). Das Datenmodell steht (MP-31); es fehlen Rechenwerk A2–A4 mit Fremdtankstrom (MP-32),
-  Optimierer (MP-33), Box und Simulator (MP-34ff.) und die Fläche nach BK-41 (MP-41).
+  Optimierer (MP-33), Box (MP-35ff.; der Simulator steht, MP-34,
+  [Wegweiser](../agents/root/mispel-simulator-fahrzeug.md)) und die Fläche nach BK-41 (MP-41).

@@ -131,7 +131,9 @@ Mandant.
 
 - **Rechenwerk** A2/A3/A4 mit Fremdtankstrom, A11 und P2 mit 0,2 für Ladepunkte (MP-32); der Rumpfmonat beim Umbau
   (Anlass `speicher_ladepunkt` in `MispelRumpfmonate`) wird dort aus den Fassungen gebildet.
-- **Optimierer** (Fahrzeug als Speicher, Wirkungsgrad 0,85, Zyklenbudget, Freigabe) MP-33; **Box/Simulator** MP-34ff.
+- **Optimierer** (Fahrzeug als Speicher, Wirkungsgrad 0,85, Zyklenbudget, Freigabe) MP-33; **Box** MP-35ff.; der
+  **Simulator** (Wallbox mit Fahrzeug, Z2V/Z2E als getrennte Register, Szenario V2H-Abend) steht in
+  `edge-app/core/internal/ladepunktsim` (MP-34, [Wegweiser](../../agents/root/mispel-simulator-fahrzeug.md)).
 - **Signierte Ladepunkt-Messwerte** (OCMF) als Z2-Quelle mit Eichstatus: MP-38.
 - **Fläche** (Einstellungen am Ladepunkt): MP-41, erst nach dem abgestimmten Bedienkonzept BK-41.
 
