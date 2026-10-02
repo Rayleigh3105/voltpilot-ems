@@ -160,8 +160,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 
 ## 9. Was noch nicht gebaut ist
 
-- **Optimierer:** Monatszustand der Abgrenzung (MP-11), Jahreszustand der Pauschaloption (MP-26); MiSpeL-Check in der
-  Simulation, „heute gegen MiSpeL“ für eine Anlage (MP-13).
+- **Optimierer:** Monatszustand der Abgrenzung (MP-11), Jahreszustand der Pauschaloption (MP-26). Der MiSpeL-Check
+  in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige fehlt (MP-48).
 - **Rechenwerk:** A2–A4 für Ladepunkte (MP-32); Rumpfjahre der Pauschaloption gibt der Aufrufer noch vor (Erkennung
   aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
 - **Box:** Förderweg über den Plan statt `grid_charge_allowed` (MP-14).

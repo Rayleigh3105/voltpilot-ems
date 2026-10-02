@@ -110,6 +110,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [MiSpeL-Ausschließlichkeits-Prüfer: Netzstrom im Speicher je Anlage und Monat (MP-2)](root/mispel-ausschliesslichkeits-pruefer.md)
 - [MiSpeL: strenge Ausschließlichkeit schaltbar, Optimierer + Box (MP-45)](root/mispel-strenge-ausschliesslichkeit.md)
 - [MiSpeL: Optimierer Mischbetrieb I – zwei Ladewege, Farben, Spitzenschutz (MP-10); II – Monatszustand (MP-11)](root/mispel-optimierer-mischbetrieb.md)
+- [MiSpeL-Check in der Simulation: dieselbe Anlage heute gegen mit MiSpeL, Preise ohne Datenbank (MP-13)](root/mispel-check-simulation.md)
 - [Mess-Selektion JE KOMPONENTE (Geräteseite Stufe 3b, Server)](root/mess-selektion-je-komponente-geraeteseit.md)
 - [Money-centric "Meine Anlage" v2 (`GET /api/v1/earnings` money-view fields + `site.tarif_art`/`tarif_param_ct_kwh`)](root/money-centric-meine-anlage-v2-get-api-v1.md)
 - [Multi-source Anlage (Phase 1): N Erzeuger per site, aggregated ON THE EDGE](root/multi-source-anlage-phase-1-n-erzeuger-p.md)

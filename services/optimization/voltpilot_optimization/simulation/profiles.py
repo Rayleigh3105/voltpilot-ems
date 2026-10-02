@@ -90,6 +90,33 @@ def household_weight(local: datetime) -> float:
     return (base + morning + midday + evening) * weekend_factor * season
 
 
+def business_series_kw(slot_starts: list[datetime], kwh: float) -> list[float]:
+    """The Gewerbe load series scaled so the slot energies sum to ``kwh``."""
+    weights = [business_weight(s.astimezone(BERLIN)) for s in slot_starts]
+    scale = kwh / (sum(weights) * SLOT_HOURS)
+    return [w * scale for w in weights]
+
+
+def business_weight(local: datetime) -> float:
+    """The synthetic Gewerbe shape - used ONLY by the MiSpeL-Check (MP-13,
+    :func:`business_series_kw`); the simulation request keeps offering the
+    household shapes (no Gewerbe choice without a product decision). A working-day
+    plateau 7-17 h with soft ramps over a 30 % base (cooling, IT, standby),
+    Saturday a short half day, Sunday base only - the plausible shape of a
+    single-shift business, NOT the BDEW G0 profile (same honesty rule as the
+    household shape: a shape, not a measurement)."""
+    hour = local.hour + local.minute / 60.0
+    day = local.weekday()
+    base = 0.3
+    if day == 6:
+        return base
+    start, end, level = (7.0, 17.0, 1.0) if day < 5 else (8.0, 12.0, 0.4)
+    ramp = 1.0 / (1.0 + math.exp(-(hour - start) * 3.0)) - 1.0 / (
+        1.0 + math.exp(-(hour - end) * 3.0)
+    )
+    return base + level * max(ramp, 0.0)
+
+
 def _gauss(x: float, center: float, width: float) -> float:
     return math.exp(-((x - center) ** 2) / (2.0 * width * width))
 

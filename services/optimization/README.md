@@ -41,6 +41,7 @@ flowchart TD
 | MiSpeL-Pauschal: Formeln (P1)–(P22)R mit Rumpfjahren, Zwilling der Vektoren (MP-25) | `mispel_pauschal.py`; [Vertrag](../../docs/contracts/v2/mispel-pauschal.md#rechenwerk-und-jahreslauf-mp-25) |
 | MiSpeL-Mischbetrieb: zwei Ladewege, Farben, Spitzenschutz (MP-10) | `solver._add_mischbetrieb`, `pricing.mispel_marktpraemie`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
 | MiSpeL-Monatszustand: (16) je Saldierungsperiode, Schattenpreis (MP-11) | `solver._add_monatszustand`, `mispel_monatsstand.py`, `inputs.load_mispel_bisher`; [Wegweiser](../../docs/agents/root/mispel-optimierer-mischbetrieb.md) |
+| MiSpeL-Check: dieselbe Anlage heute gegen mit MiSpeL über ein Preisjahr, Preise ohne Datenbank (MP-13) | `simulation/mispel_check.py`, `simulation/data.price_rows_from_json`; [Wegweiser](../../docs/agents/root/mispel-check-simulation.md) |
 | Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
 | Laufzeit / CLI | `cli.py`, `runtime.py` |
 

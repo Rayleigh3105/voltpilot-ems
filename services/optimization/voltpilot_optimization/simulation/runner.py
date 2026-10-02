@@ -28,7 +28,7 @@ import logging
 import multiprocessing
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Protocol
 from uuid import UUID, uuid4
@@ -39,6 +39,11 @@ from voltpilot_forecast.pv import PhysicalPvForecaster
 from voltpilot_forecast.weather import IrradianceSample
 
 from voltpilot_optimization.domain import BatteryParams, OptimizationInput
+from voltpilot_optimization.mispel_monatsstand import (
+    Bisher,
+    kalendermonat,
+    monatsstaende,
+)
 from voltpilot_optimization.pricing import (
     berlin_month,
     export_values,
@@ -203,6 +208,48 @@ def _extended(series: list[float]) -> list[float]:
     return series + series[:WINDOW_SLOTS]
 
 
+class _MonatsBuchung:
+    """MiSpeL MP-11 in der Kette: die bisherigen Mengen der laufenden
+    Saldierungsperiode (Berliner Kalendermonat, A1 S. 14) aus den schon
+    festgeschriebenen Tagen - (5) Z2V, (6) Z2E, (9) Σ(1)¼, (11) Σ(2)¼ mit dem
+    Speichervorrang je Viertelstunde (A1 S. 33-34). Ein Monats-Chunk beginnt
+    die Periode leer; das ist exakt, weil die Saldierungsperiode der
+    Kalendermonat ist (nur der Ladestand traegt ueber die Monatsgrenze)."""
+
+    def __init__(self) -> None:
+        self.von: datetime | None = None
+        self.werte = {"(5)": 0.0, "(6)": 0.0, "(9)": 0.0, "(11)": 0.0}
+        self.viertelstunden = 0
+
+    def _periode(self, tag_start: datetime) -> None:
+        von, bis = kalendermonat(tag_start)
+        if von != self.von:
+            self.von, self.bis = von, bis
+            self.werte = dict.fromkeys(self.werte, 0.0)
+            self.viertelstunden = 0
+
+    def staende(self, tag_start: datetime, fenster: list[datetime], eta: float):
+        self._periode(tag_start)
+        bisher = Bisher(
+            von=self.von,
+            bis=self.bis,
+            monatswerte=dict(self.werte),
+            viertelstunden=self.viertelstunden,
+        )
+        return monatsstaende(bisher, fenster, SLOT_HOURS, eta)
+
+    def buche(self, tag_start: datetime, slots) -> None:
+        self._periode(tag_start)
+        for s in slots:
+            laden = max(s.battery_kw, 0.0) * SLOT_HOURS
+            entladen = max(-s.battery_kw, 0.0) * SLOT_HOURS
+            self.werte["(5)"] += laden
+            self.werte["(6)"] += entladen
+            self.werte["(9)"] += min(max(s.grid_kw, 0.0) * SLOT_HOURS, laden)
+            self.werte["(11)"] += min(max(-s.grid_kw, 0.0) * SLOT_HOURS, entladen)
+            self.viertelstunden += 1
+
+
 def solve_chunk(payload: dict) -> dict:
     """Solve one chunk of consecutive days (module-level: process-pool safe).
 
@@ -219,10 +266,13 @@ def solve_chunk(payload: dict) -> dict:
     netzladen = payload["netzladen"]
     warmup_days = payload["warmup_days"]
     commit_days = payload["commit_days"]
+    misch = payload.get("mischbetrieb")
+    strenge = payload.get("strenge", False)
 
     from voltpilot_optimization.solver import optimize
 
     soc = battery.soc_floor_kwh(battery.soc_max_kwh)
+    monat = _MonatsBuchung()
     out_battery: list[float] = []
     out_grid: list[float] = []
     out_soc: list[float] = []
@@ -246,12 +296,26 @@ def solve_chunk(payload: dict) -> dict:
             import_price_eur_mwh=imp[window],
             export_value_eur_mwh=exp[window],
         )
+        if strenge:
+            inp = replace(inp, strenge_ausschliesslichkeit=True)
+        if misch is not None:
+            inp = replace(
+                inp,
+                mischbetrieb=True,
+                mispel_praemie_eur_mwh=misch["praemie"][window],
+                saldierte_bestandteile_eur_mwh=misch["saldiert"],
+                mispel_monatsstand=monat.staende(
+                    starts[i0], starts[window], battery.roundtrip_efficiency
+                ),
+            )
         # explain_plan=False: the simulation discards every presentation
         # field, and the Fahrplan-Warum LP re-solve (~30 ms/solve) would add
         # real wall-clock over a 365-day chain for nothing.
         plan = optimize(inp, uuid4(), starts[i0], explain_plan=False)
         commit = plan.slots[:SLOTS_PER_DAY]
         soc = commit[-1].soc_kwh
+        if misch is not None:
+            monat.buche(starts[i0], commit)
         if day >= warmup_days:
             for s in commit:
                 out_battery.append(s.battery_kw)
@@ -293,9 +357,19 @@ def chunk_payloads(
     battery: BatteryParams,
     netzladen: bool,
     export_eur_mwh: list[float] | None = None,
+    mischbetrieb: dict | None = None,
+    strenge: bool = False,
 ) -> list[dict]:
-    """Build the per-chunk solve payloads (pickle-friendly plain dicts)."""
+    """Build the per-chunk solve payloads (pickle-friendly plain dicts).
+
+    ``mischbetrieb`` (MiSpeL-Check, MP-13): ``{"praemie": [EUR/MWh je Slot],
+    "saldiert": EUR/MWh}`` switches every solve to the MP-10 Mischbetrieb
+    with the MP-11 Monatszustand; ``export_eur_mwh`` must then be bare spot.
+    ``strenge`` plans the EEG mode with the strict Ausschliesslichkeit (MP-45)."""
     exp = export_eur_mwh if export_eur_mwh is not None else data.export_eur_mwh
+    ext_praemie = (
+        _extended(mischbetrieb["praemie"]) if mischbetrieb is not None else None
+    )
     ext_spot = _extended(data.spot)
     ext_load = _extended(data.load_kw)
     ext_pv = _extended(data.pv_kw)
@@ -339,6 +413,13 @@ def chunk_payloads(
                 "exp": ext_exp[lo:hi],
             }
         )
+        if strenge:
+            payloads[-1]["strenge"] = True
+        if mischbetrieb is not None:
+            payloads[-1]["mischbetrieb"] = {
+                "praemie": ext_praemie[lo:hi],
+                "saldiert": mischbetrieb["saldiert"],
+            }
     return payloads
 
 
@@ -366,6 +447,8 @@ def run_milp_year(
     max_workers: int = 1,
     export_eur_mwh: list[float] | None = None,
     on_chunk: Callable[[int, int, "Dispatch | None"], None] | None = None,
+    mischbetrieb: dict | None = None,
+    strenge: bool = False,
 ) -> Dispatch:
     """Scenario (c) over the whole year: chained 48h/24h chunks.
 
@@ -373,7 +456,9 @@ def run_milp_year(
     ``partial`` carries the year-aligned dispatch filled so far (unfinished
     chunk slots hold 0.0) so callers can publish progressive monthly rows.
     """
-    payloads = chunk_payloads(data, battery, netzladen, export_eur_mwh)
+    payloads = chunk_payloads(
+        data, battery, netzladen, export_eur_mwh, mischbetrieb, strenge
+    )
     n = len(data.slot_starts)
     dispatch = Dispatch(
         battery_kw=[0.0] * n,

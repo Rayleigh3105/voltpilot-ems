@@ -45,6 +45,52 @@ def year_slot_starts(year: int) -> list[datetime]:
     return [first + i * timedelta(minutes=SLOT_MINUTES) for i in range(slots)]
 
 
+def window_slot_starts(year: int, month: int, months: int = 12) -> list[datetime]:
+    """The 15-min slot grid of ``months`` Berlin calendar months from the
+    first of ``year``/``month`` (MiSpeL-Check, MP-13: the price window need
+    not be a calendar year, e.g. 10/2025-09/2026)."""
+    start = datetime(year, month, 1, tzinfo=BERLIN)
+    end_year, end_month = divmod(month - 1 + months, 12)
+    end = datetime(year + end_year, end_month + 1, 1, tzinfo=BERLIN)
+    slots = int((end - start).total_seconds() // (SLOT_MINUTES * 60))
+    first = start.astimezone(ZoneInfo("UTC"))
+    return [first + i * timedelta(minutes=SLOT_MINUTES) for i in range(slots)]
+
+
+def price_rows_from_json(doc: dict) -> list[tuple[datetime, str, float]]:
+    """Day-ahead prices WITHOUT the database (MiSpeL-Check, MP-13) - two
+    formats, both EUR/MWh:
+
+    - the energy-charts download ``{"unix_seconds": [...], "price": [...]}``:
+      the step between two stamps is the row's resolution (hourly until the
+      15-min day-ahead switch on 01.10.2025, quarter-hourly after);
+    - the compact series ``{"beginn": ISO, "aufloesung_min": 15|60,
+      "preise": [...]}`` (``tests/fixtures/day-ahead-de-lu-*.json``).
+
+    Returns rows for :func:`expand_price_rows`, so gap filling and coverage
+    follow exactly the DB path. ``null`` prices are gaps, never zero."""
+    utc = ZoneInfo("UTC")
+    rows: list[tuple[datetime, str, float]] = []
+    if "unix_seconds" in doc:
+        stamps, prices = doc["unix_seconds"], doc["price"]
+        for i, (ts, price) in enumerate(zip(stamps, prices)):
+            if price is None:
+                continue
+            step = (stamps[i + 1] - ts) if i + 1 < len(stamps) else (ts - stamps[i - 1])
+            resolution = "PT60M" if step >= 3600 else "PT15M"
+            rows.append((datetime.fromtimestamp(ts, utc), resolution, float(price)))
+        return rows
+    start = datetime.fromisoformat(doc["beginn"]).astimezone(utc)
+    minutes = int(doc.get("aufloesung_min", SLOT_MINUTES))
+    if minutes not in (15, 60):
+        raise ValueError(f"aufloesung_min = {minutes}: erlaubt sind 15 und 60")
+    resolution = "PT60M" if minutes == 60 else "PT15M"
+    for i, price in enumerate(doc["preise"]):
+        if price is not None:
+            rows.append((start + i * timedelta(minutes=minutes), resolution, float(price)))
+    return rows
+
+
 def expand_price_rows(
     rows: list[tuple[datetime, str, float]], slot_starts: list[datetime]
 ) -> list[float]:
