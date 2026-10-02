@@ -971,7 +971,8 @@ public final class BerichtRegeln {
         return d == null ? null : d.toPlainString().replace(".", CSV_DEZIMAL);
     }
 
-    private static String csvZelle(String s) {
+    /** Eine CSV-Zelle (DA3): leer für {@code null}, in Anführungszeichen bei {@code ;}, {@code "} oder Zeilenumbruch. */
+    public static String csvZelle(String s) {
         if (s == null) {
             return "";
         }

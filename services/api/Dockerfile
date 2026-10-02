@@ -12,6 +12,8 @@ COPY docs/contracts/v2/rechte-matrix.json /app/docs/contracts/v2/rechte-matrix.j
 COPY docs/contracts/v2/bewertung-vectors.json /app/docs/contracts/v2/bewertung-vectors.json
 COPY docs/contracts/v2/edge-capabilities.json /app/docs/contracts/v2/edge-capabilities.json
 COPY docs/contracts/v2/measurement-budget-vectors.json /app/docs/contracts/v2/measurement-budget-vectors.json
+# Der Formelkatalog der MiSpeL-Abgrenzungsoption für Nachweis und Export (MP-16).
+COPY docs/contracts/v2/mispel-abgrenzung-vectors.json /app/docs/contracts/v2/mispel-abgrenzung-vectors.json
 RUN ./mvnw -B -q clean package -DskipTests
 
 # ---- run ----

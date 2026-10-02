@@ -40,4 +40,7 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **Abschnitte, Titel und Vorlagen-Namen stehen fest in `BerichtPdf`** (Fassung 1), nicht aus der heutigen Vorlagen-Datei —
   `dieAbschnitteFolgenDenVorlagen` pinnt sie gegen `bericht-vorlagen.json`. Der Abzug 1.2 trägt den Tagesverlauf; der
   PDF-Setzer bildet Tagesverlauf und Monatswerte weiterhin nicht ab.
+- **Der Setzer ist geteilt (seit MiSpeL MP-16):** `BerichtPdf.setzen(…)` gibt Schrift, Seiten, Wasserzeichen, Füße und die
+  feste `/ID` an `mispel/MispelNachweisPdf` weiter. Wer am `Setzer` etwas ändert, ändert beide PDFs — `MispelNachweisTest`
+  mitfahren.
 - **Die Route hat kein `produces`** — wie beim CSV kommen die Ablehnungen als JSON aus dem `@ExceptionHandler`.

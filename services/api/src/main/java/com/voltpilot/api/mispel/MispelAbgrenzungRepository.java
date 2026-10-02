@@ -46,6 +46,13 @@ public class MispelAbgrenzungRepository {
                 MispelAbgrenzungRepository::zeile, siteId, monat));
     }
 
+    /** Alle Läufe eines Kalenderjahres (Jahresnachweis, MP-16), in Zeit- und Fassungs-Reihenfolge. */
+    public List<Zeile> desJahres(UUID siteId, int jahr) {
+        return List.copyOf(jdbc.query(SELECT + "WHERE site_id = ? AND monat >= ? AND monat < ? "
+                + "ORDER BY zeitraum_von, fassung", MispelAbgrenzungRepository::zeile, siteId, LocalDate.of(jahr, 1, 1),
+                LocalDate.of(jahr + 1, 1, 1)));
+    }
+
     public UUID anhaengen(UUID tenantId, Zeile z) {
         return jdbc.queryForObject("INSERT INTO mispel_abgrenzung_monat (tenant_id, site_id, monat, zeitraum_von, "
                         + "zeitraum_bis, fassung, formelsatz, stand, wertequelle, viertelstunden_erwartet, "

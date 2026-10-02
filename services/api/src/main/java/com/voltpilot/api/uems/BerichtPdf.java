@@ -1208,6 +1208,46 @@ public final class BerichtPdf {
         doc.getDocument().getTrailer().setItem(COSName.ID, id);
     }
 
+    /** Was {@link #setzen} auf die Seiten schreibt — mit den Bausteinen des {@link Setzer}. */
+    @FunctionalInterface
+    public interface Inhalt {
+        void setze(Setzer s) throws IOException;
+    }
+
+    /**
+     * Ein PDF mit Schrift, Seiten, Wasserzeichen und Füßen dieses Setzers — für Nachweise außerhalb der Berichte (MiSpeL
+     * MP-16). Deterministisch wie {@link #datei}: {@code am} ist {@code CreationDate} = {@code ModDate}, die {@code /ID}
+     * (zwei Werte, je 16 Bytes SHA-256) kommt aus {@code kennung} — dieselben Eingänge geben dieselben Bytes.
+     */
+    public static byte[] setzen(String titel, String thema, Instant am, ZoneId zone, String kennung,
+            String wasserzeichen, List<String> fuesse, Inhalt inhalt) {
+        try (TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(SCHRIFT_DATEI));
+                PDDocument doc = new PDDocument()) {
+            Setzer s = new Setzer(doc, PDType0Font.load(doc, ttf, true), ttf.getUnicodeCmapLookup(), wasserzeichen);
+            s.seite();
+            inhalt.setze(s);
+            s.fuesse(fuesse);
+            PDDocumentInformation info = new PDDocumentInformation();
+            info.setTitle(titel);
+            info.setSubject(thema);
+            info.setCreator(ERZEUGER);
+            info.setProducer(ERZEUGER);
+            Calendar zeit = GregorianCalendar.from(am.atZone(zone));
+            info.setCreationDate(zeit);
+            info.setModificationDate(zeit);
+            doc.setDocumentInformation(info);
+            COSArray id = new COSArray();
+            id.add(new COSString(Arrays.copyOf(sha256(kennung), 16)));
+            id.add(new COSString(Arrays.copyOf(sha256(kennung + "|" + Objects.toString(wasserzeichen, "")), 16)));
+            doc.getDocument().getTrailer().setItem(COSName.ID, id);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.save(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException("PDF " + titel, e);
+        }
+    }
+
     private static byte[] sha256(String text) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
@@ -1237,10 +1277,10 @@ public final class BerichtPdf {
     }
 
     /** Eine Tabellenspalte; Breite 0 = der Rest der Zeile. */
-    private record Spalte(String titel, float breite, boolean rechts) {}
+    public record Spalte(String titel, float breite, boolean rechts) {}
 
     /** Setzt Text von oben nach unten auf A4-Seiten, bricht Zeilen und Seiten um und schreibt am Ende die Füße. */
-    private static final class Setzer {
+    public static final class Setzer {
 
         private final PDDocument doc;
         private final PDType0Font schrift;
@@ -1283,16 +1323,16 @@ public final class BerichtPdf {
             return false;
         }
 
-        void abstand(float punkte) {
+        public void abstand(float punkte) {
             y -= punkte;
         }
 
-        void titel(String t) throws IOException {
+        public void titel(String t) throws IOException {
             absatz(t, TITEL, SCHWARZ);
             abstand(2);
         }
 
-        void ueberschrift(String t) throws IOException {
+        public void ueberschrift(String t) throws IOException {
             platz(UEBERSCHRIFT * ZEILE + 14 + 3 * NORMAL * ZEILE);
             abstand(14);
             absatz(t, UEBERSCHRIFT, SCHWARZ);
@@ -1301,9 +1341,19 @@ public final class BerichtPdf {
             abstand(4);
         }
 
-        void zwischentitel(String t) throws IOException {
+        public void zwischentitel(String t) throws IOException {
             platz(NORMAL * ZEILE + 8 + 3 * NORMAL * ZEILE);
             abstand(8);
+            absatz(t, NORMAL, GRAU);
+        }
+
+        /** Ein Satz in Grundschrift, schwarz. */
+        public void satz(String t) throws IOException {
+            absatz(t, NORMAL, SCHWARZ);
+        }
+
+        /** Ein Hinweis in Grundschrift, grau. */
+        public void hinweis(String t) throws IOException {
             absatz(t, NORMAL, GRAU);
         }
 
@@ -1316,7 +1366,7 @@ public final class BerichtPdf {
         }
 
         /** Etikett links, Wert rechts daneben, umbrochen. */
-        void paare(List<String[]> paare) throws IOException {
+        public void paare(List<String[]> paare) throws IOException {
             float zeile = NORMAL * ZEILE;
             for (String[] p : paare) {
                 List<String> werte = umbrechen(sicher(p[1], zeichen), NORMAL, BREITE - ETIKETT);
@@ -1336,7 +1386,7 @@ public final class BerichtPdf {
         }
 
         /** Eine Tabelle: Kopfzeile (auf jeder neuen Seite wiederholt), je Zeile Zellen aus Teilen, jeder Teil umbrochen. */
-        void tabelle(List<Spalte> spalten, List<List<List<String>>> zeilen) throws IOException {
+        public void tabelle(List<Spalte> spalten, List<List<List<String>>> zeilen) throws IOException {
             float rest = BREITE;
             for (Spalte sp : spalten) {
                 rest -= sp.breite();

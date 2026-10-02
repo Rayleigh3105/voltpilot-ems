@@ -181,6 +181,15 @@
                     <include>measurement-budget-vectors.json</include>
                 </includes>
             </resource>
+            <!-- MiSpeL MP-16: der Formelkatalog der Abgrenzungsoption (Nummer, Begriff, Rechenweg und Fundstelle
+                 wörtlich aus Anlage 1) für Nachweis und Export - die Vertragsdatei selbst, keine Kopie. -->
+            <resource>
+                <directory>${project.basedir}/../../docs/contracts/v2</directory>
+                <targetPath>mispel</targetPath>
+                <includes>
+                    <include>mispel-abgrenzung-vectors.json</include>
+                </includes>
+            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the

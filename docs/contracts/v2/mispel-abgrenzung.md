@@ -119,7 +119,7 @@ Jede steht mit Grund und Fundstelle in `regeln` bzw. `abweichungen` der Vektor-D
   trägt 0 kWh. Das kürzt die Vektor-Datei und ist **keine Lückenregel**: im Rechenwerk ist eine fehlende
   Viertelstunde eine Lücke und nie eine Null (MP-8, Stand „vorläufig“ nach E4).
 - **vergleich** — Vektor-Zahlen sind exakte Dezimalzahlen; die Leser lesen sie als BigDecimal bzw. Decimal.
-  Gerechnet wird ungerundet; Rundung für Anzeige und Nachweis ist MP-16.
+  Gerechnet wird ungerundet; gerundet wird nur die Anzeigezahl im Nachweis ([MP-16](#nachweis-und-export-mp-16)).
 - **rumpfmonate** — ein Monat wird an jedem Tag außer dem Monatsersten geteilt, an dem sich Fallkonstellation,
   Messkonzept oder Werte zur Bestimmung ändern; Rumpfmonate nur für Teile, die nach Anlage 1 zu bestimmen sind
   (A1 S. 102–104). Lesarten: Grenze tagesscharf, Zählerwechsel ohne neues Messkonzept teilt nicht, Schlüssel
@@ -180,7 +180,8 @@ Kalendermonat oder einen vorgegebenen Rumpfmonat (A1 S. 102, Abschn. 11; erkannt
   Fassung: kanonischer JSON-**Text** (Festlegung, Vertrag + Fassung, Rechenwerk-Version, Zähler mit Zählpunkt,
   MSB, Eichstatus, Wertequelle und Urteil, AW-Regeln, Lücken, je Viertelstunde Eingänge und Zwischenwerte,
   Monatswerte) und SHA-256 über genau diese Bytes. Gleiche Prüfsumme = keine neue Fassung. Zahlen exakt (Dezimal
-  oder `z/n`), `null` = nicht bestimmbar. Export und Rundung: MP-16.
+  oder `z/n`), `null` = nicht bestimmbar. Export und Rundung: [MP-16](#nachweis-und-export-mp-16). Die Maps des
+  Texts sind geordnet (nie `Map.of`: dessen Reihenfolge wechselt je JVM und damit die Prüfsumme).
 
 Prüfnachweis mit Docker: `(cd services/api && ./mvnw test -Dtest=MispelAbgrenzungMonatslaufTest)`.
 
@@ -206,6 +207,38 @@ bestimmt. Reine Regel `mispel/MispelRumpfmonate.teilen` ⟷ Python `mispel_abgre
   Zähler — Fassungen der Zählerrolle und Stellungen der Messstellen (`ZaehlerrolleService.anlage`, MP-6);
   `monatslaeufe(…)` rechnet jeden Teil mit dem Monatslauf. Prüfnachweis mit Docker:
   `MispelAbgrenzungMonatslaufTest#rumpfmonateAusDemAenderungsprotokollErkannt`.
+
+## Nachweis und Export (MP-16)
+
+Aus den gespeicherten Läufen entsteht je Kalendermonat die monatliche Mengenbestimmung und je Kalenderjahr der
+Jahresnachweis für die Mitteilung des Lieferanten bis 31.05. des Folgejahres (§ 21 Abs. 7 EnFG), als CSV und PDF:
+
+- **Routen** (`web/SiteMispelNachweisController`, Recht `export.standort` + Leseweg der Anlage, kein `produces`):
+  `GET /api/v1/sites/{siteId}/mispel/abgrenzung/monate/{JJJJ-MM}/nachweis.csv|.pdf?empfaenger=…` und
+  `…/jahre/{JJJJ}/nachweis.csv|.pdf?empfaenger=…`. Ablehnungen `{code, message}`: `empfaenger_unbekannt`,
+  `zeitraum_ungueltig` (400, vor 2026-10), `kein_lauf` (404), `pruefsumme_abweichend` (409).
+- **Nur aus den Läufen:** `mispel/MispelNachweis` (rein) liest je Zeitraumbeginn die jüngste Fassung; überschneiden
+  sich Zeiträume, gilt der zuletzt gerechnete Lauf. Jeder Nachweis-Text wird vorher gegen seine Prüfsumme geprüft.
+  Selbst gebildet wird nur ∑J als Summe der Jahresbeiträge der Läufe ((22), (33), (33a)/(33b) …, A1 S. 37, S. 39).
+- **Empfänger** sind Rollen der Festlegung, nie Unternehmen (E8 = D): `lieferant` (3), (16), (19), (20), (21) / (22)
+  (A1 Abschn. 4.3); `direktvermarkter` (4), (26), (31), (32) / (33) mit a/b in A5 (Abschn. 4.4); `netzbetreiber`
+  beide. Alle bekommen denselben Formelsatz (Nummer, Rechenweg, Begriff, Fundstelle aus der Vektor-Datei, die
+  `pom.xml` ins Jar legt), dasselbe Messkonzept (Zähler aus MP-6) und dieselben Zwischenwerte; A10/A11 haben keine
+  Förderseite (Abschn. 10) — der Direktvermarkter bekommt dann den Satz statt einer Zahl.
+- **Stand (E4 = C):** endgültig nur, wenn jeder Lauf endgültig ist und zwischen den Läufen keine Lücke liegt; das Jahr
+  zusätzlich bis 31.12. (`nicht_bis_jahresende`). Vor dem ersten Lauf darf der Zeitraum offen sein — ein Rumpfmonat
+  steht „vor und/oder nach“ der Änderung (A1 S. 102); das Jahr nennt „Bestimmung nach Anlage 1 ab …“. Vorläufig heißt
+  nie „Mengenbestimmung“: CSV `gilt_als_nachweis=nein`, PDF mit Wasserzeichen „vorläufig – keine Mengenbestimmung“.
+- **Zahlen:** CSV `wert` kaufmännisch gerundet (kWh auf 3, Faktoren auf 6 Nachkommastellen) und `wert_exakt`
+  ungerundet (Dezimalzahl oder `z/n`); das PDF zeigt die gerundete Zahl. Anlage 1 regelt keine Rundung.
+- **Form:** CSV wie der Berichts-CSV (UTF-8 mit BOM, CRLF, `# schlüssel=wert`, `;`, Dezimalkomma, Abschnitte
+  `laeufe`, `abdeckung`, `ergebnis`, `messkonzept`, `angaben`, `formelsatz`, `luecken`, `viertelstunden`; im Jahr
+  `laeufe`, `abdeckung`, `ergebnis`, `monatswerte`). Das PDF setzt `uems/BerichtPdf.setzen` (PDFBox, Liberation
+  Sans); byte-gleich bei jeder Erzeugung, Datum = jüngste Rechenzeit, `/ID` aus den Prüfsummen. Das Format der
+  Marktkommunikation regelt die Festlegung nicht (T S. 25, S. 28, S. 92); EDI@Energy folgt, sobald festgelegt.
+
+Prüfnachweis: `(cd services/api && ./mvnw test -Dtest='MispelNachweisTest,MispelNachweisApiTest')` (der zweite mit
+Docker). Ein Download-Knopf im Portal kommt erst mit dem abgestimmten Bedienkonzept (BK-18/MP-18).
 
 ## Was die Leser prüfen (L1–L9)
 

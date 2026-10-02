@@ -413,7 +413,8 @@ public class MispelAbgrenzungService {
         n.put("anlage", siteId.toString());
         n.put("monat", monat.toString());
         n.put("schluessel", schluessel);
-        n.put("zeitraum", Map.of("von", OffsetDateTime.ofInstant(von, MispelAbgrenzungRechenwerk.BERLIN).toString(),
+        // Geordnete Maps, nie Map.of: dessen Reihenfolge wechselt von JVM zu JVM, und mit ihr Text und Prüfsumme (MP-16).
+        n.put("zeitraum", geordnet("von", OffsetDateTime.ofInstant(von, MispelAbgrenzungRechenwerk.BERLIN).toString(),
                 "bis", OffsetDateTime.ofInstant(bis, MispelAbgrenzungRechenwerk.BERLIN).toString()));
         n.put("zeitzone", MispelAbgrenzungRechenwerk.BERLIN.getId());
         n.put("formelsatz", v.formelsatz());
@@ -448,7 +449,7 @@ public class MispelAbgrenzungService {
         qh.put("gerechnet", eingaenge.size());
         qh.put("luecken", erwartet - eingaenge.size());
         Map<String, Object> lueckenNachweis = new LinkedHashMap<>();
-        luecken.forEach((fehlt, beginne) -> lueckenNachweis.put(fehlt, Map.of("anzahl", beginne.size(),
+        luecken.forEach((fehlt, beginne) -> lueckenNachweis.put(fehlt, geordnet("anzahl", beginne.size(),
                 "erste", beginne.subList(0, Math.min(LUECKEN_IM_NACHWEIS, beginne.size())))));
         qh.put("luecken_je_eingang", lueckenNachweis);
         n.put("viertelstunden", qh);
@@ -475,6 +476,13 @@ public class MispelAbgrenzungService {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    private static Map<String, Object> geordnet(String k1, Object v1, String k2, Object v2) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put(k1, v1);
+        m.put(k2, v2);
+        return m;
     }
 
     private static Map<String, Map<String, String>> texte(Map<String, Map<String, Bruch>> werte) {
