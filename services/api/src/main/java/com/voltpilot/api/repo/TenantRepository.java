@@ -468,6 +468,8 @@ public class TenantRepository {
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",
                         "data_source_kennzeichen_seq",
+                        // The Zählerrolle (MiSpeL MP-6, V20261002121500) holds the Messstelle (RESTRICT).
+                        "messstelle_zaehlerrolle",
                         "messstelle_ort", "messstelle_stellung",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
