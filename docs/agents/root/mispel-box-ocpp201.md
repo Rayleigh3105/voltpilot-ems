@@ -1,4 +1,4 @@
-# MiSpeL: OCPP 2.0.1 auf der Box (MP-35, MP-36)
+# MiSpeL: OCPP 2.0.1 und 2.1 auf der Box (MP-35, MP-36, MP-37)
 
 Zweite OCPP-Spur neben 1.6J im selben `csms.Server`, gleiche Adresse und Freigabeliste. Umfang, Abbildungstabellen und Grenzen: [OCPP 2.0.1 auf der Box](../../edge-ocpp201.md).
 
@@ -9,4 +9,5 @@ Zweite OCPP-Spur neben 1.6J im selben `csms.Server`, gleiche Adresse und Freigab
 - **Steuern (MP-36):** `Commission`/`ApplyLimit`/`ReadBack`/`ClearLimit` holen die Spur über `liveLane` (`profileLane`, `ocpp201profiles.go`) – eine Kette, gleiche Grenzen und Wächter. Die Schlüssel bleiben 1.6-Namen; `config201` übersetzt sie ins Device Model. Ein neuer Wächter-Schlüssel braucht dort einen Eintrag, sonst scheitert die Einrichtung jeder 2.0.1-Säule. TxProfile nur mit `StationTransactionID`.
 - **Falle Bibliothek:** ocpp-go modelliert `GetCompositeScheduleResponse.schedule` in einer Entwurfsform; die finale Form liest `scheduleTap201` aus dem Rohrahmen. Den Abgriff nicht entfernen, sonst bleibt jeder echte Readback „unbekannt“.
 - **1.6-only:** Cloud-Messabgleich (`reconcileMeasurementConfiguration`) und Cloud-Befehle überspringen 2.0.1 bzw. enden mit `ErrNotOCPP16`/`errWrongLane`.
-- **Prüfnachweis:** `cd edge-app/core && go test -race ./internal/csms/ -run 'OCPP201|OneEndpoint|OCPP16Bestand|FinalSchema|Every16Guard'` und `go test -race ./internal/agent/ -run TestA16AndA201StationShareOneBudget` (Simulator `ocppsim.Station201`).
+- **OCPP 2.1 (MP-37):** dritte Spur `ocpp2.1` = dieselbe `transport201` mit `version` `"2.1"` plus `v2xTap21` ([OCPP 2.1 V2X](../../edge-ocpp21.md)). Vorliebe 1.6 → 2.0.1 → 2.1 (Erzeugungsreihenfolge der Spuren); `protocolLane.AddSupportedSubprotocol` meldet den Namen der Spur, nicht den der Bibliothek. Wer auf `OCPPVersion` verzweigt, nimmt `isOCPP2x`/`lane2x`/`stateLane2x` – `== OCPPVersion201` übersieht 2.1-Säulen. ocpp-go kennt kein 2.1: NotifyEVChargingNeeds/-Schedule beantwortet der Abgriff selbst, 2.1-Auslöser bildet er auf 2.0.1 ab; der V2X-Sollwert (`SetV2XSetpoint21`, Schalter `Options.V2XDischarge`, Vorgabe aus, kein Aufrufer bis MP-39) läuft als eigener Anfragetyp durch die Warteschlange der Bibliothek.
+- **Prüfnachweis:** `cd edge-app/core && go test -race ./internal/csms/ -run 'OCPP201|OneEndpoint|OCPP16Bestand|FinalSchema|Every16Guard'` und `go test -race ./internal/agent/ -run TestA16AndA201StationShareOneBudget` (Simulator `ocppsim.Station201`). 2.1: `go test -race ./internal/csms/ -run OCPP21` (roher 2.1-Testclient in `ocpp21_test.go`).

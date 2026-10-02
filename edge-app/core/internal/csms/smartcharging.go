@@ -306,19 +306,20 @@ func (s *Server) recordReadback(chargerID string, connectorID int, cs CompositeS
 // liveLane returns the protocol lane of a station when the feature is on,
 // the server is running and the station is connected - the three
 // preconditions any command has, each with its own error so a surface can say
-// which one is missing. A station on OCPP 2.0.1 gets the 2.0.1 lane
+// which one is missing. A station on OCPP 2.0.1 or 2.1 gets its 2.x lane
 // (ocpp201profiles.go, MiSpeL MP-36), every other the 1.6 transport: one
 // orchestration, the same limits, the same guards for both.
 func (s *Server) liveLane(chargerID string) (profileLane, error) {
-	t, speaks201, err := s.liveStation(chargerID)
+	t, version, err := s.liveStation(chargerID)
 	if err != nil {
 		return nil, err
 	}
-	if speaks201 {
-		if t.v201 == nil {
+	if isOCPP2x(version) {
+		v2 := t.lane2x(version)
+		if v2 == nil {
 			return nil, ErrDisabled
 		}
-		return t.v201, nil
+		return v2, nil
 	}
 	return t, nil
 }
@@ -326,36 +327,39 @@ func (s *Server) liveLane(chargerID string) (profileLane, error) {
 // liveTransport is liveLane for the paths that speak 1.6 vocabulary verbatim
 // (measurement configuration keys from the cloud).
 func (s *Server) liveTransport(chargerID string) (*transport, error) {
-	t, speaks201, err := s.liveStation(chargerID)
+	t, version, err := s.liveStation(chargerID)
 	if err != nil {
 		return nil, err
 	}
-	if speaks201 {
+	if isOCPP2x(version) {
 		return nil, ErrNotOCPP16
 	}
 	return t, nil
 }
 
-func (s *Server) liveStation(chargerID string) (*transport, bool, error) {
+func (s *Server) liveStation(chargerID string) (*transport, string, error) {
 	if !s.opts.Enabled {
-		return nil, false, ErrDisabled
+		return nil, "", ErrDisabled
 	}
 	s.mu.Lock()
 	t := s.transport
 	c, known := s.chargers[chargerID]
 	connected := known && c.Connected
-	speaks201 := known && c.OCPPVersion == OCPPVersion201
+	version := ""
+	if known {
+		version = c.OCPPVersion
+	}
 	s.mu.Unlock()
 	if t == nil {
-		return nil, false, ErrDisabled
+		return nil, "", ErrDisabled
 	}
 	if !known {
-		return nil, false, ErrNotFound
+		return nil, "", ErrNotFound
 	}
 	if !connected {
-		return nil, false, ErrNotConnected
+		return nil, "", ErrNotConnected
 	}
-	return t, speaks201, nil
+	return t, version, nil
 }
 
 // ClearLimit removes the live TxProfile of one connector.

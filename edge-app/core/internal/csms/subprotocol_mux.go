@@ -25,6 +25,11 @@ import (
 const (
 	subprotocolOCPP16  = "ocpp1.6"
 	subprotocolOCPP201 = "ocpp2.0.1"
+	// subprotocolOCPP21 is the third lane (MiSpeL MP-37). It runs the 2.0.1
+	// transport (OCPP 2.1 keeps every 2.0.1 message the box uses) plus the
+	// V2X additions of ocpp21v2x.go; created last, it is the box's last
+	// preference.
+	subprotocolOCPP21 = "ocpp2.1"
 )
 
 var errWrongLane = errors.New("die Ladesäule spricht ein anderes OCPP-Protokoll")
@@ -236,8 +241,11 @@ func (l *protocolLane) Write(id string, data []byte) error {
 	return l.mux.upstream.Write(id, data)
 }
 
-func (l *protocolLane) AddSupportedSubprotocol(subProto string) {
-	l.mux.upstream.AddSupportedSubprotocol(subProto)
+// AddSupportedSubprotocol registers the lane's OWN subprotocol: the library
+// behind a lane names the one it implements (1.6, 2.0.1), and for the 2.1
+// lane, which runs the 2.0.1 library, that name would be wrong.
+func (l *protocolLane) AddSupportedSubprotocol(string) {
+	l.mux.upstream.AddSupportedSubprotocol(l.subprotocol)
 }
 
 // Authentication and origin policy are properties of the one endpoint, so a

@@ -9,8 +9,9 @@ package csms
 // 2.0.1 Edition 3, Part 2 (Specification). The table of what maps to what is
 // docs/edge-ocpp201.md.
 //
-// Charging profiles (MP-36) ride the same lane: ocpp201profiles.go. Not here
-// (MiSpeL Bauplan § 8): V2X/ISO 15118-20 (MP-37), discharge commands with
+// Charging profiles (MP-36) ride the same lane: ocpp201profiles.go. The OCPP
+// 2.1 lane (MP-37) runs this same transport plus ocpp21v2x.go (V2X, ISO
+// 15118-20 data). Not here (MiSpeL Bauplan § 8): discharge commands with
 // protection limits (MP-39).
 
 import (
@@ -30,6 +31,7 @@ import (
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/provisioning"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/transactions"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0.1/types"
+	"github.com/lorenzodonini/ocpp-go/ws"
 )
 
 // OCPPVersion201 is ChargerState.OCPPVersion of a station on the 2.0.1 lane.
@@ -107,6 +109,10 @@ type transport201 struct {
 	lane     *protocolLane
 	stopping func() bool
 	done     chan struct{}
+	// version is ChargerState.OCPPVersion of the stations on this lane:
+	// OCPPVersion201, or OCPPVersion21 for the 2.1 lane (ocpp21v2x.go), which
+	// runs this same transport.
+	version string
 
 	mu            sync.Mutex
 	evses         map[string]map[int]*evse201
@@ -122,12 +128,20 @@ type transport201 struct {
 }
 
 func newTransport201(s *Server, lane *protocolLane, stopping func() bool) *transport201 {
-	t := &transport201{srv: s, lane: lane, stopping: stopping, done: make(chan struct{}),
+	return newTransport2x(s, lane, stopping, OCPPVersion201, func(t *transport201) ws.Server {
+		return &scheduleTap201{protocolLane: lane, t: t}
+	})
+}
+
+// newTransport2x builds the 2.x transport on one lane; tap is the ws.Server
+// the library sees (the 2.0.1 schedule tap, or the 2.1 tap around it).
+func newTransport2x(s *Server, lane *protocolLane, stopping func() bool, version string, tap func(*transport201) ws.Server) *transport201 {
+	t := &transport201{srv: s, lane: lane, stopping: stopping, done: make(chan struct{}), version: version,
 		evses: map[string]map[int]*evse201{}, pending: map[string]pendingTx201{},
 		needsMetering: map[string]bool{}, deviceModel: map[string]map[string]string{},
 		metering: map[string]Metering201{}, composite: map[string]compositeSchedule201{},
 		reports: map[string]*profileReport201{}}
-	cs := ocpp2.NewCSMS(nil, &scheduleTap201{protocolLane: lane, t: t})
+	cs := ocpp2.NewCSMS(nil, tap(t))
 	t.cs = cs
 	// The same admission as 1.6 (ocppmap.go): only allowlisted ids, nothing
 	// while the box shuts down.
@@ -139,7 +153,7 @@ func newTransport201(s *Server, lane *protocolLane, stopping func() bool) *trans
 			return true
 		}
 		s.log.Warn("unbekannte Ladesäule abgewiesen — die Kennung steht nicht in der Freigabeliste",
-			"charge_point_id", id, "ocpp", OCPPVersion201)
+			"charge_point_id", id, "ocpp", t.version)
 		return false
 	})
 	cs.SetNewChargingStationHandler(func(cp ocpp2.ChargingStationConnection) { t.onConnect(cp.ID()) })
@@ -175,7 +189,7 @@ func (t *transport201) stop() {
 func (t *transport201) onConnect(id string) {
 	t.srv.mu.Lock()
 	if c, ok := t.srv.chargers[id]; ok {
-		c.OCPPVersion = OCPPVersion201
+		c.OCPPVersion = t.version
 	}
 	t.srv.mu.Unlock()
 	t.srv.onConnect(id)
@@ -482,7 +496,11 @@ func (s *Server) live201(id string) (*transport201, error) {
 	t := s.transport
 	c, known := s.chargers[id]
 	connected := known && c.Connected
-	speaks201 := known && c.OCPPVersion == OCPPVersion201
+	speaks2x := known && isOCPP2x(c.OCPPVersion)
+	var v2 *transport201
+	if speaks2x && t != nil {
+		v2 = t.lane2x(c.OCPPVersion)
+	}
 	s.mu.Unlock()
 	switch {
 	case t == nil || t.v201 == nil:
@@ -491,10 +509,12 @@ func (s *Server) live201(id string) (*transport201, error) {
 		return nil, ErrNotFound
 	case !connected:
 		return nil, ErrNotConnected
-	case !speaks201:
+	case !speaks2x:
 		return nil, ErrNotOCPP201
+	case v2 == nil:
+		return nil, ErrDisabled
 	}
-	return t.v201, nil
+	return v2, nil
 }
 
 // GetVariables201 reads Device Model variables of a 2.0.1 station (B06).
@@ -548,32 +568,48 @@ func (t *transport201) baseReport(ctx context.Context, id, reportBase string) (i
 // keyed "Component[@evse]/Variable[/Attribute]" (only the Actual attribute
 // carries no suffix).
 func (s *Server) DeviceModel201(id string) map[string]string {
-	s.mu.Lock()
-	t := s.transport
-	s.mu.Unlock()
-	if t == nil || t.v201 == nil {
+	v2 := s.stateLane2x(id)
+	if v2 == nil {
 		return nil
 	}
-	t.v201.mu.Lock()
-	defer t.v201.mu.Unlock()
-	out := make(map[string]string, len(t.v201.deviceModel[id]))
-	for k, v := range t.v201.deviceModel[id] {
+	v2.mu.Lock()
+	defer v2.mu.Unlock()
+	out := make(map[string]string, len(v2.deviceModel[id]))
+	for k, v := range v2.deviceModel[id] {
 		out[k] = v
 	}
 	return out
 }
 
-// Metering201 is the read-back sampled-data configuration of a 2.0.1 station.
-func (s *Server) Metering201(id string) (Metering201, bool) {
+// stateLane2x is the 2.x lane that holds a station's Device Model and
+// metering state: the 2.1 lane while it is connected over 2.1 (MiSpeL MP-37),
+// otherwise the 2.0.1 lane as before.
+func (s *Server) stateLane2x(id string) *transport201 {
 	s.mu.Lock()
 	t := s.transport
+	version := ""
+	if c, ok := s.chargers[id]; ok {
+		version = c.OCPPVersion
+	}
 	s.mu.Unlock()
-	if t == nil || t.v201 == nil {
+	if t == nil {
+		return nil
+	}
+	if version == OCPPVersion21 && t.v21 != nil {
+		return t.v21
+	}
+	return t.v201
+}
+
+// Metering201 is the read-back sampled-data configuration of a 2.0.1 station.
+func (s *Server) Metering201(id string) (Metering201, bool) {
+	v2 := s.stateLane2x(id)
+	if v2 == nil {
 		return Metering201{}, false
 	}
-	t.v201.mu.Lock()
-	defer t.v201.mu.Unlock()
-	m, ok := t.v201.metering[id]
+	v2.mu.Lock()
+	defer v2.mu.Unlock()
+	m, ok := v2.metering[id]
 	return m, ok
 }
 
@@ -654,6 +690,9 @@ func (h *handler201) OnStatusNotification(id string, req *availability.StatusNot
 	status := status16(e)
 	h.t.mu.Unlock()
 	h.t.srv.onStatus(id, req.EvseID, status, "", now)
+	if req.ConnectorStatus == availability.ConnectorStatusAvailable {
+		h.t.srv.clearEVNeeds(id, req.EvseID) // 2.1: the vehicle has left (ocpp21v2x.go)
+	}
 	h.t.configureMeteringOnce(id)
 	return availability.NewStatusNotificationResponse(), nil
 }

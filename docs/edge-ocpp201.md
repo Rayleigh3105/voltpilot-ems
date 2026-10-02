@@ -15,6 +15,7 @@ fordert der BDEW in seiner Stellungnahme (S. 4, Sekundärquelle) – darum ist 2
 | nur `ocpp1.6` | `ocpp1.6` | Bestand |
 | nur `ocpp2.0.1` | `ocpp2.0.1` | neue Spur |
 | beide, gleich in welcher Reihenfolge | `ocpp1.6` | Bestandsschutz: vor MP-35 bekam diese Säule 1.6. Seit MP-36 wird 2.0.1 gleichwertig gesteuert, die Vorliebe bleibt trotzdem – Protokoll-Journal, Cloud-Befehle und Cloud-Messabgleich sprechen nur 1.6, ein Wechsel nähme einer laufenden Säule genau das weg. Die Regel ist die des Handschlags selbst (gorilla `Upgrader`: erstes Protokoll der **Box**-Liste, das die Säule anbietet). |
+| nur `ocpp2.1` | `ocpp2.1` | dritte Spur seit MP-37; bietet die Säule auch 2.0.1 oder 1.6 an, gilt die Vorliebe 1.6 → 2.0.1 → 2.1 ([edge-ocpp21.md](edge-ocpp21.md)) |
 | keines davon | Upgrade, dann Schließen mit 1002 | wie bisher |
 
 - **Kein zusätzlicher Port**, gleiche Freigabeliste (nur registrierte Kennungen, sonst HTTP 401 vor dem Upgrade),
@@ -39,7 +40,7 @@ fordert der BDEW in seiner Stellungnahme (S. 4, Sekundärquelle) – darum ist 2
 | NotifyReport (B07) | Device-Model-Abbild je Säule (`DeviceModel201`) |
 | ReportChargingProfiles (K09) | Antwort auf `ChargingProfiles201` (Abschnitt Ladeprofile) |
 | NotifyChargingLimit, ClearedChargingLimit (K12, K13) | quittiert und protokolliert; eine fremde Grenze wirkt in der Säule und zeigt sich im Readback |
-| NotifyEVChargingNeeds (K15) | `Rejected`: einen ISO-15118-Ladeplan macht die Box erst mit MP-37 |
+| NotifyEVChargingNeeds (K15) | `Rejected` (unverändert); die ISO-15118-20-Daten liest die 2.1-Spur ([edge-ocpp21.md](edge-ocpp21.md), MP-37) |
 | NotifyEVChargingSchedule (K15) | `Accepted` (nur Kenntnisnahme) |
 | alles andere | `NotImplemented` (Bibliothek) |
 
@@ -144,8 +145,9 @@ Vorgabewert, Phasen- und Ampere-Regeln aus `stationProfile`), dieselben Wächter
 
 ## Bewusst nicht enthalten
 
-- **V2X / ISO 15118-20**: MP-37. **Entladebefehl mit Schutzgrenzen**: MP-39. **Signierte Messwerte (OCMF)**: MP-38
-  liest und prüft sie neben diesem Pfad ([Vertrag](contracts/v2/mispel-ladepunkt-ocmf.md)).
+- **V2X / ISO 15118-20**: über die eigene Spur `ocpp2.1` ([edge-ocpp21.md](edge-ocpp21.md), MP-37). **Entladebefehl mit
+  Schutzgrenzen**: MP-39. **Signierte Messwerte (OCMF)**: MP-38 liest und prüft sie neben diesem Pfad
+  ([Vertrag](contracts/v2/mispel-ladepunkt-ocmf.md)).
 - **Protokoll-Journal** (Slice 10, Ereignisse an die Cloud): zeichnet nur die 1.6-Spur auf; 2.0.1-Rahmen brauchen
   eine Vertragsfassung des Journals.
 - **Sicherheitsprofile 1–3** (Basic-Auth, TLS, Client-Zertifikat): heute für keine der beiden Spuren; ein Profil

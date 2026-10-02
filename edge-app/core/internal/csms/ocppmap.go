@@ -33,9 +33,11 @@ type transport struct {
 	srv  *Server
 	cs   ocpp16.CentralSystem
 	wsrv ws.Server
-	// mux puts the 1.6 lane (wsrv) and the 2.0.1 lane (v201) on one endpoint.
+	// mux puts the 1.6 lane (wsrv), the 2.0.1 lane (v201) and the 2.1 lane
+	// (v21, MiSpeL MP-37) on one endpoint.
 	mux  *subprotocolMux
 	v201 *transport201
+	v21  *transport201
 	port int
 	path string
 
@@ -63,7 +65,9 @@ func newTransport(s *Server, port int, path string) *transport {
 		drainTimeout: commandSocketWriteWait + time.Second,
 	}
 	t.v201 = newTransport201(s, mux.lane(subprotocolOCPP201), func() bool { return t.stopping.Load() })
+	t.v21 = newTransport21(s, mux.lane(subprotocolOCPP21), func() bool { return t.stopping.Load() })
 	t.stopServer = func() {
+		t.v21.stop()
 		t.v201.stop()
 		cs.Stop()
 	}
@@ -136,6 +140,7 @@ func (t *transport) start(ctx context.Context) error {
 	// The 2.0.1 lane registers its handlers before the shared socket opens,
 	// so a 2.0.1 station never meets a half-wired endpoint.
 	t.v201.start(t.port, t.path+"/{ws}")
+	t.v21.start(t.port, t.path+"/{ws}")
 	go func() {
 		defer close(t.done)
 		// The library takes a gorilla-mux pattern; the trailing segment is the

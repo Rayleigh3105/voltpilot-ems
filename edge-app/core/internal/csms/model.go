@@ -261,6 +261,14 @@ type Connector struct {
 	ReadbackKw   *float64  `json:"readback_kw,omitempty"`
 	ReadbackNote string    `json:"readback_note,omitempty"`
 	ReadbackAt   time.Time `json:"readback_at,omitzero"`
+
+	// --- OCPP 2.1 / ISO 15118-20 (MiSpeL MP-37, ocpp21v2x.go) ---
+
+	// EV is the plugged vehicle's report (NotifyEVChargingNeeds); nil = none
+	// (every 1.6 and 2.0.1 station), cleared when the connector is free.
+	EV *EVNeeds `json:"ev_needs,omitempty"`
+	// V2X is the last V2X setpoint sent and the station's answer; nil = never.
+	V2X *V2XSetpoint `json:"v2x_setpoint,omitempty"`
 }
 
 // ChargerState is the LIVE view of one charge point: its declared identity

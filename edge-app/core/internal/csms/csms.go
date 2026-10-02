@@ -61,6 +61,10 @@ type Options struct {
 	// read-back result. The Node-RED measurement plan must not acknowledge an
 	// OCPP selection merely because a local desired document was parsed.
 	OnMeasurementConfigurationResult func(MeasurementConfigurationResult)
+	// V2XDischarge is the switch for V2X setpoints over OCPP 2.1
+	// (SetV2XSetpoint21, MiSpeL MP-37). Default OFF: no caller in the box
+	// sets it; discharging with protection limits is MP-39.
+	V2XDischarge bool
 }
 
 func (o *Options) applyDefaults() {
