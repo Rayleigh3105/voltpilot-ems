@@ -22,7 +22,7 @@ public final class FoerderwegDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FassungDto(UUID id, String foerderweg, String formelsatz, boolean einverstaendnis,
             LocalDate gueltigAb, LocalDate gueltigBis, Instant aufgehobenAm, Instant eingetragenAm,
-            String eingetragenVon, String awRegel) {}
+            String eingetragenVon, String awRegel, String direktvermarkter, Boolean bilanzkreisGesondert) {}
 
     /**
      * {@code quelle} ∈ fassung · bestand · unbekannt (vor der ersten Fassung einer Anlage, die schon eine hat);
@@ -32,7 +32,17 @@ public final class FoerderwegDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Ansicht(UUID siteId, LocalDate am, String quelle, String foerderweg, String begriff,
             String rechtsgrundlage, String formelsatz, LocalDate formelsatzGebundenBis, Boolean einverstaendnis,
-            LocalDate gueltigAb, Netzladen netzladen, List<FassungDto> fassungen, String awRegel) {}
+            LocalDate gueltigAb, Netzladen netzladen, List<FassungDto> fassungen, String awRegel,
+            Vormerkung vormerkung, String direktvermarkter, Boolean bilanzkreisGesondert) {}
+
+    /**
+     * Die vorgemerkte Fassung (Vertrag 1.2, § 5): sie gilt ab {@code gueltigAb}, dem nächsten Monatsersten; {@code null}
+     * = keine. Immer relativ zu heute, gleich welcher Tag {@code am} gelesen wird.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vormerkung(UUID id, String foerderweg, String begriff, String rechtsgrundlage, String formelsatz,
+            boolean einverstaendnis, LocalDate gueltigAb, String awRegel, String direktvermarkter,
+            Boolean bilanzkreisGesondert) {}
 
     public static Ansicht aus(FoerderwegService.Ansicht a) {
         FoerderwegRegeln.Angaben g = a.angaben();
@@ -42,13 +52,25 @@ public final class FoerderwegDto {
             Fassung y = x.fassung();
             return new FassungDto(y.id(), y.angaben().foerderweg().wert(), y.angaben().formelsatz(),
                     y.angaben().einverstaendnis(), y.gueltigAb(), x.gueltigBis(), y.aufgehobenAm(),
-                    y.eingetragenAm(), y.eingetragenVon(), y.angaben().awRegel());
+                    y.eingetragenAm(), y.eingetragenVon(), y.angaben().awRegel(), y.angaben().direktvermarkter(),
+                    y.angaben().bilanzkreisGesondert());
         }).toList();
         return new Ansicht(a.siteId(), a.am(), quelle, g == null ? null : g.foerderweg().wert(),
                 g == null ? null : g.foerderweg().begriff(), g == null ? null : g.foerderweg().rechtsgrundlage(),
                 g == null ? null : g.formelsatz(), g == null ? null : a.formelsatzGebundenBis(),
                 f == null ? null : f.angaben().einverstaendnis(), f == null ? null : f.gueltigAb(),
                 new Netzladen(g == null ? null : g.foerderweg().netzladenMoeglich(), a.netzladenHeute()), fassungen,
-                g == null ? null : g.awRegel());
+                g == null ? null : g.awRegel(), vormerkung(a.vormerkung()), g == null ? null : g.direktvermarkter(),
+                g == null ? null : g.bilanzkreisGesondert());
+    }
+
+    private static Vormerkung vormerkung(Fassung v) {
+        if (v == null) {
+            return null;
+        }
+        FoerderwegRegeln.Angaben g = v.angaben();
+        return new Vormerkung(v.id(), g.foerderweg().wert(), g.foerderweg().begriff(), g.foerderweg().rechtsgrundlage(),
+                g.formelsatz(), g.einverstaendnis(), v.gueltigAb(), g.awRegel(), g.direktvermarkter(),
+                g.bilanzkreisGesondert());
     }
 }

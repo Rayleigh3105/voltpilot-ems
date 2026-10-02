@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -51,7 +52,8 @@ public class FoerderwegService {
 
     /** Ein Antrag, wie er aus der Route kommt (snake_case im JSON). */
     public record Aendern(String foerderweg, String formelsatz, Boolean einverstaendnis, LocalDate gueltigAb,
-            Boolean netzladen, Boolean erstmaligeZuordnung, Boolean messkonzeptGeaendert, String awRegel) {}
+            Boolean netzladen, Boolean erstmaligeZuordnung, Boolean messkonzeptGeaendert, String awRegel,
+            String direktvermarkter, Boolean bilanzkreisGesondert) {}
 
     public record FassungAnsicht(Fassung fassung, LocalDate gueltigBis) {}
 
@@ -60,7 +62,7 @@ public class FoerderwegService {
      * {@code netzladenHeute} ist die Einstellung an der Anlage heute ({@code site.netzladen_erlaubt}).
      */
     public record Ansicht(UUID siteId, LocalDate am, Angaben angaben, Fassung fassung, boolean netzladenHeute,
-            List<FassungAnsicht> fassungen) {
+            List<FassungAnsicht> fassungen, Fassung vormerkung) {
         public LocalDate formelsatzGebundenBis() {
             return FoerderwegRegeln.gebundenBis(angaben.formelsatz(), am);
         }
@@ -76,11 +78,13 @@ public class FoerderwegService {
         if (s == null) {
             return null;
         }
-        LocalDate tag = am == null ? heute() : am;
+        LocalDate heute = heute();
+        LocalDate tag = am == null ? heute : am;
         List<Fassung> alle = wege.derAnlage(siteId);
         List<Fassung> wirksam = wirksam(alle);
         Fassung f = amTag(wirksam, tag);
-        Angaben a = f != null ? f.angaben() : wirksam.isEmpty()
+        // Eine nur vorgemerkte Fassung (§ 5) hat die Schalter noch nicht umgelegt: bis zu ihrem Tag gilt der Bestand.
+        Angaben a = f != null ? f.angaben() : amTag(wirksam, heute) == null
                 ? FoerderwegRegeln.ausBestand(s.netzladenErlaubt(), s.plantKind()) : null;
         List<FassungAnsicht> liste = new ArrayList<>();
         for (Fassung x : alle) {
@@ -89,7 +93,8 @@ public class FoerderwegService {
                     .map(d -> d.minusDays(1)).orElse(null);
             liste.add(new FassungAnsicht(x, bis));
         }
-        return new Ansicht(siteId, tag, a, f, s.netzladenErlaubt(), List.copyOf(liste));
+        Fassung vormerkung = wirksam.stream().filter(x -> x.gueltigAb().isAfter(heute)).findFirst().orElse(null);
+        return new Ansicht(siteId, tag, a, f, s.netzladenErlaubt(), List.copyOf(liste), vormerkung);
     }
 
     /** Eine neue Fassung ab {@code gueltig_ab}; danach stimmen die Spiegel an der Anlage mit ihr überein. */
@@ -119,9 +124,55 @@ public class FoerderwegService {
             }
             Angaben neu = antrag.angaben();
             wege.eintragen(s.tenantId(), siteId, neu, ab, von);
-            wege.spiegeln(siteId, FoerderwegRegeln.netzladenNachher(neu.foerderweg(), antrag.netzladen(),
-                    s.netzladenErlaubt()), neu.foerderweg().plantKind());
+            if (!ab.isAfter(heute)) {
+                wege.spiegeln(siteId, FoerderwegRegeln.netzladenNachher(neu.foerderweg(), antrag.netzladen(),
+                        s.netzladenErlaubt()), neu.foerderweg().plantKind());
+            }
+            // Vorgemerkt (§ 5): die Spiegel legt am Tag gueltig_ab der FoerderwegSpiegelLaeufer um.
         });
+    }
+
+    /**
+     * Nimmt die Vormerkung zurück (Vertrag § 5): die Fassung mit {@code gueltig_ab} nach heute wird aufgehoben, wie eine
+     * Korrektur desselben Tages; sie bleibt lesbar. Ohne Vormerkung 404 {@code keine_vormerkung}.
+     */
+    public void vormerkungZuruecknehmen(UUID siteId) {
+        LocalDate heute = heute();
+        Instant jetzt = uhr.instant();
+        transaktion.executeWithoutResult(tx -> {
+            wege.schalterSperren(siteId).orElseThrow(() -> new FoerderwegAbgelehnt("anlage_unbekannt", 404,
+                    "Anlage nicht gefunden.", Map.of()));
+            Fassung v = wirksam(wege.derAnlage(siteId)).stream().filter(f -> f.gueltigAb().isAfter(heute))
+                    .findFirst().orElseThrow(() -> new FoerderwegAbgelehnt("keine_vormerkung", 404, "Für diese Anlage "
+                            + "ist kein Förderweg vorgemerkt.", Map.of("heute", heute.toString(),
+                                    "fundstelle", "Vertrag § 5")));
+            wege.aufheben(v.id(), jetzt);
+        });
+    }
+
+    /**
+     * Legt die Spiegel an der Anlage auf die Fassung um, die heute gilt — für eine vorgemerkte Fassung an ihrem ersten
+     * Tag (Vertrag § 5). Idempotent: Netzladen bleibt die Einstellung des Kunden und ist nur dort aus, wo der Förderweg es
+     * ausschließt; {@code plant_kind} folgt dem Förderweg. {@code true}, wenn sich ein Spiegel geändert hat.
+     */
+    public boolean spiegelNachziehen(UUID siteId) {
+        LocalDate heute = heute();
+        Boolean geaendert = transaktion.execute(tx -> {
+            Schalter s = wege.schalterSperren(siteId).orElse(null);
+            Fassung f = s == null ? null : amTag(wirksam(wege.derAnlage(siteId)), heute);
+            if (f == null) {
+                return false;
+            }
+            Foerderweg weg = f.angaben().foerderweg();
+            boolean netzladen = FoerderwegRegeln.netzladenNachher(weg, null, s.netzladenErlaubt());
+            String plantKind = weg.plantKind() != null ? weg.plantKind() : s.plantKind();
+            if (netzladen == s.netzladenErlaubt() && Objects.equals(plantKind, s.plantKind())) {
+                return false;
+            }
+            wege.spiegeln(siteId, netzladen, plantKind);
+            return true;
+        });
+        return Boolean.TRUE.equals(geaendert);
     }
 
     /**
@@ -158,7 +209,8 @@ public class FoerderwegService {
         if (a.gueltigAb() == null) {
             throw FoerderwegAbgelehnt.anfrage("gueltig_ab", "„gültig ab“ fehlt (ein Tag, JJJJ-MM-TT).");
         }
-        return new Antrag(new Angaben(weg, a.formelsatz(), Boolean.TRUE.equals(a.einverstaendnis()), a.awRegel()),
+        return new Antrag(new Angaben(weg, a.formelsatz(), Boolean.TRUE.equals(a.einverstaendnis()), a.awRegel(),
+                a.direktvermarkter(), a.bilanzkreisGesondert()),
                 a.gueltigAb(), a.netzladen(), Boolean.TRUE.equals(a.erstmaligeZuordnung()),
                 Boolean.TRUE.equals(a.messkonzeptGeaendert()));
     }

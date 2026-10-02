@@ -1,0 +1,298 @@
+/* „Förderweg ändern“ (MiSpeL MP-17, BK-17 Variante A). Die Schale ist der Anlege-Dialog; hier nur der Rumpf. */
+
+.vp-fw {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-fw-schritt {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-fw-frage,
+.vp-fw-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-wahlen {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-fw-wahl {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+}
+
+.vp-fw-wahl.is-gewaehlt {
+  border-color: var(--vp-c-primary);
+  box-shadow: 0 0 0 1px var(--vp-c-primary) inset;
+}
+
+.vp-fw-wahl.is-gesperrt {
+  cursor: not-allowed;
+  background: var(--vp-c-muted);
+}
+
+.vp-fw-wahl:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-fw-wahl > input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.vp-fw-wahl-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vp-fw-wahl-text b {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-wahl-text > span,
+.vp-fw-wahl-text small {
+  font-size: var(--vp-c-fs-12, 12px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-wahl-text > span {
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-fg);
+}
+
+.vp-fw-wahl.is-gesperrt .vp-fw-wahl-text > span,
+.vp-fw-wahl.is-gesperrt .vp-fw-wahl-text b {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-fw-heute {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12, 12px);
+  font-style: normal;
+  font-weight: var(--vp-c-fw-600, 600);
+}
+
+.vp-fw-zaehler {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 16px;
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-fw-zaehler legend {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0 4px;
+  font-size: var(--vp-c-fs-14, 14px);
+}
+
+.vp-fw-raster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+@media (max-width: 719px) {
+  .vp-fw-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vp-fw-urteil {
+  padding: 0 8px;
+  border-radius: var(--vp-radius-pill, 999px);
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600, 600);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-fw-urteil.is-tauglich {
+  color: var(--vp-ok-ink, #166534);
+}
+
+.vp-fw-urteil.is-nicht_pruefbar,
+.vp-fw-urteil.is-fehlt {
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-fw-urteil.is-nicht_tauglich {
+  color: var(--vp-c-destructive);
+}
+
+.vp-fw-befund {
+  margin: 0;
+  font-size: var(--vp-c-fs-12, 12px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-befund.is-fehler {
+  color: var(--vp-c-destructive);
+}
+
+.vp-fw-hinweis {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-hinweis.is-ok {
+  box-shadow: inset 3px 0 0 var(--vp-green, #16a34a);
+}
+
+.vp-fw-fehler {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-haken {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.vp-fw-haken > input {
+  flex: none;
+  margin-top: 3px;
+}
+
+.vp-fw-haken > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+}
+
+.vp-fw-haken small {
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-zwischen {
+  margin: 4px 0 0;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-fw-ab {
+  display: grid;
+  gap: 2px;
+}
+
+.vp-fw-ab span {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-fw-ab b {
+  font-size: 34px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-fw-kv {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-fw-kv > div {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 12px;
+  font-size: var(--vp-c-fs-14, 14px);
+}
+
+.vp-fw-kv dt {
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-kv dd {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600, 600);
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-folgen {
+  margin: 0;
+  padding-left: 20px;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+}
+
+/* Die Einstellungs-Zeile „Förderweg“: der Satz unter dem Begriff und die Vormerkung. */
+.vp-fw-zeile-vormerkung {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 0 16px 12px 64px;
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg);
+}
+
+@media (max-width: 719px) {
+  .vp-fw-zeile-vormerkung {
+    padding-left: 16px;
+  }
+}

@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -86,6 +87,18 @@ public class SiteFoerderwegController {
                 new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bitte melden Sie sich an."));
         wege.setzen(siteId, a, wer.name());
         return FoerderwegDto.aus(wege.ansicht(siteId, a.gueltigAb()));
+    }
+
+    /**
+     * Recht: {@code anlage.verwalten}. Nimmt die Vormerkung zum nächsten Monatsersten zurück (Vertrag § 5); die Fassung
+     * bleibt als aufgehobene lesbar. Antwort: die Ansicht heute.
+     */
+    @DeleteMapping("/vormerkung")
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+    public FoerderwegDto.Ansicht vormerkungZuruecknehmen(@PathVariable UUID siteId) {
+        imZugriff(siteId);
+        wege.vormerkungZuruecknehmen(siteId);
+        return FoerderwegDto.aus(wege.ansicht(siteId, null));
     }
 
     private void imZugriff(UUID siteId) {

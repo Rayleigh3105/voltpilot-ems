@@ -1,9 +1,11 @@
 # MiSpeL-Förderweg je Einspeisestelle (MP-5)
 
-Stand 02.10.2026 · Vertrag 1.1 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und
+Stand 02.10.2026 · Vertrag 1.2 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und
 Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Tenor, Anlage 1, Anlage 2; EEG §§ 19, 21a, 21b,
 51, 51b. Konzept: MiSpeL-Fundament § 5.1, Entscheid E2 = B, Bauplan § 8 Zeile MP-5; Fassung 1.1 = MP-12b
-(AW-Differenzierung, § 7), additiv: jedes Feld von 1.0 bleibt, wie es war.
+(AW-Differenzierung, § 7), additiv: jedes Feld von 1.0 bleibt, wie es war; Fassung 1.2 = MP-17 (Vormerken zum
+nächsten Monatsersten, § 5; Partner der Direktvermarktung, § 4), additiv: Felder `vormerkung`, `direktvermarkter`,
+`bilanzkreis_gesondert`, Route `DELETE …/foerderweg/vormerkung`.
 
 Der Förderweg ist **ein Stammdatum je Einspeisestelle**, aus dem Netzladen, Exportwert, Marktwertbasis,
 Box-Klemme und Portaltexte folgen. Er ersetzt die Bedeutung des Schalters `site.netzladen_erlaubt`
@@ -15,14 +17,17 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 | [`mispel-foerderweg-vectors.json`](./mispel-foerderweg-vectors.json) | die Wahrheit: Werte, Bestands-Übernahme, Netzladen danach, 25 Fälle mit Fundstelle |
 | `services/api/src/main/resources/db/migration/V20261002141500__mispel_site_foerderweg.sql` | Tabelle `site_foerderweg` (Fassungen, RLS + FORCE), beginnt leer |
 | `services/api/src/main/resources/db/migration/V20261002173500__mispel_foerderweg_aw_regel.sql` | Spalte `aw_regel` (1.1, § 7), leer für jede vorhandene Fassung |
+| `services/api/src/main/resources/db/migration/V20261002231500__mispel_foerderweg_partner.sql` | Spalten `direktvermarkter`, `bilanzkreis_gesondert` (1.2, § 4), leer für jede vorhandene Fassung |
 | `services/api/.../mispel/FoerderwegRegeln.java` | die reinen Regeln (ohne Spring, Datenbank, Uhr) |
 | `services/api/.../mispel/FoerderwegService.java` | lesen am Tag, setzen als Fassung, Spiegel, alter Schalter |
-| `services/api/.../web/SiteFoerderwegController.java` | `GET`/`PUT /api/v1/sites/{siteId}/foerderweg` |
+| `services/api/.../web/SiteFoerderwegController.java` | `GET`/`PUT /api/v1/sites/{siteId}/foerderweg`, `DELETE …/foerderweg/vormerkung` |
+| `services/api/.../mispel/FoerderwegSpiegelLaeufer.java` | legt die Spiegel am Tag einer vorgemerkten Fassung um (§ 5) |
+| `frontend/portal/src/mispelFoerderweg.ts` · `components/FoerderwegDialog.tsx` | die Fläche: Zeile „Förderweg“ und Dialog „Förderweg ändern“ (MP-17, BK-17 Variante A) |
 | `…/mispel/FoerderwegRegelnTest.java` · `…/mispel/FoerderwegApiTest.java` · `…/uems/FoerderwegMigrationTest.java` | Vektoren rein · Routen · Migration auf befüllter DB |
 
-> **Wer anruft (Stand MP-10):** die zwei Routen, `PUT /api/v1/sites/{id}` (alter Schalter, § 6) und der
-> Optimierer (`inputs.load_foerderwege`, § 5). Noch ohne Fläche (MP-17 nach abgestimmtem Bedienkonzept
-> BK-17) und ohne Box (MP-14).
+> **Wer anruft (Stand MP-17):** die Routen, `PUT /api/v1/sites/{id}` (alter Schalter, § 6), der
+> Optimierer (`inputs.load_foerderwege`, § 5) und das Portal: Anlage › Einstellungen, Zeile „Förderweg“ mit dem
+> Dialog „Förderweg ändern“ (MP-17 nach dem abgestimmten Bedienkonzept BK-17, Variante A). Noch ohne Box (MP-14).
 
 ## 1. Die fünf Werte (Begriffe aus EEG und Festlegung)
 
@@ -64,7 +69,8 @@ Anlage hat je Tag höchstens eine wirksame Fassung, eine Korrektur desselben Tag
 erste Fassung einer Anlage misst sich am Bestand. Geprüft in dieser Reihenfolge (Code § 4):
 
 1. **Form:** Formelsatz bekannt, Pflicht/verboten nach § 1; Netzladen nur, wo der Weg es zulässt.
-2. **Kein Vormerken:** `gueltig_ab` ≤ heute (§ 5).
+2. **Vormerken nur zum nächsten Monatsersten:** `gueltig_ab` ≤ heute oder genau der erste Tag des folgenden
+   Monats (§ 5, 1.2); an einer Vormerkung keine Angabe `netzladen` (`netzladen_bei_vormerkung`).
 3. **Wirkung der Festlegung:** Abgrenzung, Pauschal und jeder Formelsatz frühestens ab 01.10.2026 (Tenor Ziff. 8).
 4. **Pauschaloption** erst ab dem Monatsersten nach der EU-Genehmigung (Tenor S. 3 Ziff. 9b): der Tag steht
    in `voltpilot.mispel.pauschaloption-ab` (leer = noch keine Genehmigung = abgelehnt).
@@ -92,13 +98,26 @@ Weg Netzladen ausschließt, sonst die Angabe `netzladen` (ohne sie die bisherige
 
 `GET /api/v1/sites/{siteId}/foerderweg[?am=JJJJ-MM-TT]` (Leseweg der Anlage) →
 `{site_id, am, quelle, foerderweg, begriff, rechtsgrundlage, formelsatz, formelsatz_gebunden_bis,
-einverstaendnis, gueltig_ab, netzladen: {moeglich, heute}, fassungen[], aw_regel}` (`aw_regel` auch je Fassung, 1.1). `quelle` ∈ `fassung` · `bestand` ·
+einverstaendnis, gueltig_ab, netzladen: {moeglich, heute}, fassungen[], aw_regel, vormerkung}` (`aw_regel` auch je
+Fassung, 1.1; `vormerkung` = `{id, foerderweg, begriff, rechtsgrundlage, formelsatz, einverstaendnis, gueltig_ab,
+aw_regel}` oder `null`, immer bezogen auf heute, 1.2). `quelle` ∈ `fassung` · `bestand` ·
 `unbekannt` (ein Tag vor der ersten Fassung einer Anlage, die schon eine hat — die Schalter sind dann
-Spiegel und sagen über die Zeit davor nichts). `netzladen.heute` ist `site.netzladen_erlaubt` heute.
+Spiegel und sagen über die Zeit davor nichts; eine nur vorgemerkte Fassung zählt dafür nicht, bis zu ihrem Tag
+gilt der Bestand, 1.2). `netzladen.heute` ist `site.netzladen_erlaubt` heute.
 
 `PUT /api/v1/sites/{siteId}/foerderweg` (Recht `anlage.verwalten`, wie der alte Schalter) mit
 `{foerderweg, formelsatz, einverstaendnis, gueltig_ab, netzladen, erstmalige_zuordnung,
-messkonzept_geaendert, aw_regel}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage ist 404, nie 403.
+messkonzept_geaendert, aw_regel, direktvermarkter, bilanzkreis_gesondert}` → die Ansicht am Tag `gueltig_ab`. Eine fremde Anlage ist 404, nie 403.
+
+**Partner der Direktvermarktung (1.2, MP-17):** `direktvermarkter` (Name des eigenen Direktvermarkters, 1–200 Zeichen
+ohne Leerraum am Rand, sonst 400 `anfrage_ungueltig` mit `feld`) und `bilanzkreis_gesondert` (die ganze Einspeisung
+in einem gesonderten Bilanzkreis, § 20 S. 2 EEG — Angabe des Kunden). Beide wahlfrei (`null` = nicht erhoben), nur an
+einem Weg der Direktvermarktung (an der Einspeisevergütung 422 `partner_passt_nicht`), je Fassung gespeichert und in
+der Antwort (oben, je Fassung, in der Vormerkung). Nachtragen ist kein Wechsel des Förderwegs (kein Monatserster).
+Ein VoltPilot-Partner ist noch nicht wählbar (E8 = D: erst nach der Wahl aus den Angeboten, MP-43/MP-20).
+
+`DELETE /api/v1/sites/{siteId}/foerderweg/vormerkung` (Recht `anlage.verwalten`, 1.2) nimmt die Vormerkung zurück
+(`aufgehoben_am`, sie bleibt lesbar) → die Ansicht heute; ohne Vormerkung 404 `keine_vormerkung` mit `heute`.
 
 | Code | Status | Fakten (immer mit `fundstelle`) |
 |---|---|---|
@@ -107,7 +126,9 @@ messkonzept_geaendert, aw_regel}` → die Ansicht am Tag `gueltig_ab`. Eine frem
 | `formelsatz_ungueltig` · `formelsatz_fehlt` · `formelsatz_passt_nicht` | 422 | `formelsatz` bzw. `foerderweg` |
 | `aw_regel_ungueltig` · `aw_regel_passt_nicht` (1.1, § 7) | 422 | `aw_regel` bzw. `foerderweg` |
 | `netzladen_ausgeschlossen` | 422 (Route) · 409 (alter Schalter) | `foerderweg` |
-| `gueltig_ab_in_zukunft` | 422 | `heute` |
+| `gueltig_ab_in_zukunft` | 422 | `heute`, `naechster_monatserster` (1.2) |
+| `netzladen_bei_vormerkung` (1.2) | 422 | `gueltig_ab` |
+| `partner_passt_nicht` (1.2) | 422 | `foerderweg` |
 | `foerderweg_rueckwirkend` | 409 | `letzte_fassung_ab` |
 | `vor_der_festlegung` | 422 | `frueheste` |
 | `pauschaloption_noch_nicht_anwendbar` | 422 | `anwendbar_ab` |
@@ -119,12 +140,20 @@ messkonzept_geaendert, aw_regel}` → die Ansicht am Tag `gueltig_ab`. Eine frem
 
 ## 5. Was dieser Vertrag nicht regelt — und wie die Leser später lesen
 
-- **Kein Vormerken.** Ein Förderweg wird eingetragen, wenn er gilt. Optimierer und Box lesen bis MP-10/MP-14
-  nur die Spiegel; eine Fassung für einen künftigen Monatsersten bräuchte einen Läufer, der die Spiegel um
-  00:00 umlegt — das entfällt, sobald die Leser den Förderweg selbst lesen.
+- **Vormerken zum nächsten Monatsersten (1.2, MP-17).** Ein Wechsel gilt ab einem Monatsersten (§ 21b Abs. 1 S. 2
+  EEG); damit niemand am Ersten eintragen muss, lässt sich genau der nächste Monatserste vormerken — weiter
+  nicht (`gueltig_ab_in_zukunft`). Die Fassung wird sofort gespeichert, die Spiegel an der Anlage aber erst an ihrem
+  Tag umgelegt: Optimierer und Box lesen bis MP-14 die Spiegel, darum prüft der `FoerderwegSpiegelLaeufer`
+  (`voltpilot.mispel.foerderweg-spiegel.enabled`, stündlich zur Minute 0:30 Europe/Berlin, idempotent, holt nach)
+  je Anlage mit Fassung, ob Netzladen und `plant_kind` zur heute geltenden Fassung passen. Netzladen bleibt die
+  Einstellung des Kunden und wird nur dort ausgeschaltet, wo der neue Weg es ausschließt; eingeschaltet wird es nie
+  von selbst (darum keine Angabe `netzladen` an einer Vormerkung). Ein Plan, der vor 00:00 für die Zeit danach
+  gerechnet wurde, gilt bis zum nächsten Lauf des Optimierers. Solange eine Vormerkung steht, schiebt keine Fassung
+  davor ein (`foerderweg_rueckwirkend`); ändern = dieselbe Vormerkung noch einmal mit anderen Angaben (Korrektur
+  desselben Tages), zurücknehmen = `DELETE …/vormerkung`.
 - **Optimierer (MP-10):** liest am Berliner Tag des Laufs die späteste wirksame Fassung mit
-  `gueltig_ab <= Tag` aus `site_foerderweg` (`inputs.load_foerderwege`; ohne Vormerken gilt sie für den
-  ganzen Horizont), ohne Fassung den Bestand nach § 2 — dieselbe Regel, dieselben Vektoren (`bestand`,
+  `gueltig_ab <= Tag` aus `site_foerderweg` (`inputs.load_foerderwege`; sie gilt für den ganzen Horizont —
+  eine Vormerkung also erst ab dem ersten Lauf an ihrem Tag), ohne Fassung den Bestand nach § 2 — dieselbe Regel, dieselben Vektoren (`bestand`,
   `werte`; `test_mispel_mischbetrieb.py`). Abgrenzung mit A1, A5 oder A5-Variante plant im **Mischbetrieb**
   ([Wegweiser](../../agents/root/mispel-optimierer-mischbetrieb.md)); der Schalter `netzladen_erlaubt` bleibt
   die Einstellung des Kunden. Pauschal mit Jahreslauf (MP-25) plant mit dem **Jahreszustand** (MP-26, Export zu
@@ -150,7 +179,9 @@ messkonzept_geaendert, aw_regel}` → die Ansicht am Tag `gueltig_ab`. Eine frem
 
 ## 6. Der alte Netzlade-Schalter (bis MP-17, W2 = B)
 
-`PUT /api/v1/sites/{id}` nimmt `netzladenErlaubt` und `plantKind` weiter an. **Ohne Fassung** bleibt alles
+Das Portal bietet den Schalter seit MP-17 nur noch dort an, wo der Förderweg Netzladen zulässt; den Weg selbst
+ändert der Dialog „Förderweg ändern“ über die Route aus § 4. `PUT /api/v1/sites/{id}` nimmt `netzladenErlaubt` und
+`plantKind` weiter an. **Ohne Fassung** bleibt alles
 wie heute — die Schalter SIND der Bestand, ein Umschalten wirkt sofort und ändert den Bestands-Förderweg
 mit (keine Fassung, kein Monatserster: so verhält sich das heutige Portal). **Mit Fassung** bestimmt der
 Förderweg: `netzladenErlaubt: true` bei Einspeisevergütung oder Ausschließlichkeitsoption ist 409

@@ -1,6 +1,6 @@
 {
-  "$comment": "MiSpeL MP-5: Förderweg je Einspeisestelle. Wahrheit für FoerderwegRegeln (Java) und später den Optimierer (MP-10). Fassung 1.1 (MP-12b): AW-Differenzierung je Fassung (aw_regeln, Fälle aw-regel-*); ein fehlendes Feld aw_regel heißt null. Vertrag: mispel-foerderweg.md.",
-  "schema_version": "1.1",
+  "$comment": "MiSpeL MP-5: Förderweg je Einspeisestelle. Wahrheit für FoerderwegRegeln (Java) und später den Optimierer (MP-10). Fassung 1.1 (MP-12b): AW-Differenzierung je Fassung (aw_regeln, Fälle aw-regel-*); ein fehlendes Feld aw_regel heißt null. Fassung 1.2 (MP-17): Vormerken zum nächsten Monatsersten (Fälle vormerken-*, in-der-zukunft) und der Partner der Direktvermarktung (Fälle partner-*; fehlende Felder direktvermarkter/bilanzkreis_gesondert heißen null). Vertrag: mispel-foerderweg.md.",
+  "schema_version": "1.2",
   "quelle": "BNetzA-Festlegung MiSpeL, Az. 618-25-02, Beschluss 01.10.2026 — Tenor, Anlage 1, Anlage 2; EEG §§ 19, 21a, 21b, 51, 51b",
   "werte": [
     {
@@ -736,8 +736,8 @@
       "fundstelle": "§ 19 Abs. 3a EEG; A1 S. 11"
     },
     {
-      "name": "in-der-zukunft",
-      "zeigt": "Ein Förderweg wird eingetragen, wenn er gilt",
+      "name": "vormerken-naechster-monatserster",
+      "zeigt": "Ein Wechsel lässt sich zum nächsten Monatsersten vormerken; er gilt ab diesem Tag",
       "vorher": {
         "foerderweg": "marktpraemie_ausschliesslichkeit",
         "formelsatz": null,
@@ -756,8 +756,128 @@
       },
       "heute": "2026-11-20",
       "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "Vertrag § 5; § 21b Abs. 1 S. 2 EEG"
+    },
+    {
+      "name": "in-der-zukunft",
+      "zeigt": "Weiter als bis zum nächsten Monatsersten wird nichts vorgemerkt",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2027-01-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
       "erwartet": "gueltig_ab_in_zukunft",
       "fundstelle": "Vertrag § 5"
+    },
+    {
+      "name": "vormerken-kein-monatserster",
+      "zeigt": "Vorgemerkt wird nur ein Monatserster, kein anderer künftiger Tag",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-25",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "gueltig_ab_in_zukunft",
+      "fundstelle": "Vertrag § 5; § 21b Abs. 1 S. 2 EEG"
+    },
+    {
+      "name": "vormerken-am-letzten-tag",
+      "zeigt": "Am letzten Tag eines Monats ist der nächste Monatserste morgen",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-12-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-30",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "Vertrag § 5"
+    },
+    {
+      "name": "vormerken-mit-netzladen",
+      "zeigt": "Netzladen wird an einer Vormerkung nicht angegeben; einstellen lässt es sich ab dem Tag, an dem der Förderweg gilt",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-12-01",
+        "netzladen": true,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "netzladen_bei_vormerkung",
+      "fundstelle": "Vertrag § 5"
+    },
+    {
+      "name": "vormerken-ohne-einverstaendnis",
+      "zeigt": "Auch die Vormerkung braucht in der Übergangszeit das Einverständnis",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-12-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false
+      },
+      "heute": "2026-11-20",
+      "pauschaloption_ab": null,
+      "erwartet": "einverstaendnis_fehlt",
+      "fundstelle": "Tenor S. 3 Ziff. 9a"
     },
     {
       "name": "vor-der-letzten-fassung",
@@ -1037,6 +1157,108 @@
       "heute": "2026-12-02",
       "pauschaloption_ab": null,
       "erwartet": "foerderweg_unveraendert",
+      "fundstelle": "Vertrag § 3"
+    },
+    {
+      "name": "partner-abgrenzung",
+      "zeigt": "Eigener Direktvermarkter mit gesondertem Bilanzkreis gehört zur Abgrenzungsoption",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "direktvermarkter": "Nordstrom Direkt GmbH",
+        "bilanzkreis_gesondert": true
+      },
+      "heute": "2026-11-01",
+      "pauschaloption_ab": null,
+      "erwartet": null,
+      "fundstelle": "§ 20 S. 2 EEG"
+    },
+    {
+      "name": "partner-bei-einspeiseverguetung",
+      "zeigt": "Die Einspeisevergütung hat keinen Direktvermarkter",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "einspeiseverguetung",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "direktvermarkter": "Nordstrom Direkt GmbH"
+      },
+      "heute": "2026-11-01",
+      "pauschaloption_ab": null,
+      "erwartet": "partner_passt_nicht",
+      "fundstelle": "§ 21b Abs. 1 EEG; § 20 S. 2 EEG"
+    },
+    {
+      "name": "partner-name-leer",
+      "zeigt": "Ein leerer Name ist kein Direktvermarkter",
+      "vorher": {
+        "foerderweg": "marktpraemie_ausschliesslichkeit",
+        "formelsatz": null,
+        "einverstaendnis": false,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-10-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-01",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "direktvermarkter": " "
+      },
+      "heute": "2026-11-01",
+      "pauschaloption_ab": null,
+      "erwartet": "anfrage_ungueltig",
+      "fundstelle": "Vertrag § 4"
+    },
+    {
+      "name": "partner-nachtragen",
+      "zeigt": "Den Direktvermarkter nachzutragen ist kein Wechsel des Förderwegs und an keinen Monatsersten gebunden",
+      "vorher": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "bestand": false,
+        "letzte_fassung_ab": "2026-11-01"
+      },
+      "antrag": {
+        "foerderweg": "marktpraemie_abgrenzung",
+        "formelsatz": "A1",
+        "einverstaendnis": true,
+        "gueltig_ab": "2026-11-12",
+        "netzladen": null,
+        "erstmalige_zuordnung": false,
+        "messkonzept_geaendert": false,
+        "direktvermarkter": "Nordstrom Direkt GmbH",
+        "bilanzkreis_gesondert": true
+      },
+      "heute": "2026-11-12",
+      "pauschaloption_ab": null,
+      "erwartet": null,
       "fundstelle": "Vertrag § 3"
     }
   ]

@@ -59,9 +59,9 @@ describe('CreateSiteDrawer (netzladen switch, captain revision 2026-07-07)', () 
     expect(screen.getByLabelText('Netzladen des Speichers')).toBeInTheDocument();
     // The responsibility-carrying warning stays so nobody flips it uninformed.
     expect(screen.getByText(/Ausschließlichkeitsprinzip/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Nur aktivieren, wenn Ihre Anlage keine\s+EEG-Vergütung bezieht/),
-    ).toBeInTheDocument();
+    // MiSpeL MP-17 (W2): nicht mehr „EEG-geförderte Anlagen dürfen nicht“ — mit der Abgrenzungsoption dürfen sie.
+    expect(screen.getByText(/„Erlaubt“ heißt hier ungeförderte Direktvermarktung/)).toBeInTheDocument();
+    expect(screen.queryByText(/EEG-geförderte Anlagen dürfen ihren Speicher nicht/)).toBeNull();
   });
 
   it('sends the selected netzladenErlaubt value on create', async () => {

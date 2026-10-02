@@ -122,7 +122,7 @@ class FoerderwegRegelnTest {
                 Vorher vorher = new Vorher(new Angaben(weg(v), text(v, "formelsatz"), v.get("einverstaendnis").asBoolean(),
                         text(v, "aw_regel")), v.get("bestand").asBoolean(), tag(v, "letzte_fassung_ab"));
                 Antrag antrag = new Antrag(new Angaben(weg(a), text(a, "formelsatz"), a.get("einverstaendnis").asBoolean(),
-                        text(a, "aw_regel")),
+                        text(a, "aw_regel"), text(a, "direktvermarkter"), wahr(a, "bilanzkreis_gesondert")),
                         tag(a, "gueltig_ab"), a.get("netzladen").isNull() ? null : a.get("netzladen").asBoolean(),
                         a.get("erstmalige_zuordnung").asBoolean(), a.get("messkonzept_geaendert").asBoolean());
                 Ablehnung urteil = FoerderwegRegeln.pruefen(antrag, vorher, tag(f, "heute"), tag(f, "pauschaloption_ab"));
@@ -144,6 +144,10 @@ class FoerderwegRegelnTest {
 
     private static String text(JsonNode n, String feld) {
         return n.get(feld) == null || n.get(feld).isNull() ? null : n.get(feld).asText();
+    }
+
+    private static Boolean wahr(JsonNode n, String feld) {
+        return n.get(feld) == null || n.get(feld).isNull() ? null : n.get(feld).asBoolean();
     }
 
     private static LocalDate tag(JsonNode n, String feld) {

@@ -99,7 +99,7 @@ export const SETTING_HINT: Partial<Record<ModeSettingId, string>> = {
   'anzulegender-wert':
     'Ihr EEG-Referenzwert aus dem Direktvermarktungsvertrag - Grundlage Ihrer Marktprämie.',
   netzladen:
-    'Darf Ihr Speicher Strom aus dem Netz laden? EEG-geförderte Anlagen dürfen das nicht (Ausschließlichkeitsprinzip).',
+    'Darf Ihr Speicher Strom aus dem Netz laden? Das hängt vom Förderweg Ihrer Anlage ab (Anlage › Einstellungen › Förderweg).',
   speicherschonung:
     'Wie oft Ihr Speicher bewegt wird - schonend spart Ladezyklen, aggressiv holt mehr heraus.',
 };

@@ -414,6 +414,12 @@ voltpilot:
   # den Tag (JJJJ-MM-01) setzen.
   mispel:
     pauschaloption-ab: ${VOLTPILOT_MISPEL_PAUSCHALOPTION_AB:}
+    # MiSpeL MP-17 (mispel-foerderweg.md § 5): eine zum nächsten Monatsersten
+    # vorgemerkte Fassung legt der FoerderwegSpiegelLaeufer an ihrem Tag auf die
+    # Spiegel der Anlage um (netzladen_erlaubt, plant_kind), stündlich zur
+    # Minute 0:30 Europe/Berlin und idempotent. Vorgabe AN, im Testlauf AUS (surefire).
+    foerderweg-spiegel:
+      enabled: ${VOLTPILOT_MISPEL_FOERDERWEG_SPIEGEL_ENABLED:true}
   uems:
     # AP-14 IP-18 (Kasten E11): interne UUID des Kundenbereichs "VoltPilot
     # Dauerlaeufer (intern)" - zwei simulierte Boxen, die dauerhaft den Weg

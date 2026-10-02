@@ -22,7 +22,8 @@ import org.springframework.stereotype.Repository;
 public class FoerderwegRepository {
 
     private static final String SELECT = "SELECT id, site_id, foerderweg, formelsatz, einverstaendnis, aw_regel, "
-            + "gueltig_ab, aufgehoben_am, created_at, created_by FROM site_foerderweg ";
+            + "direktvermarkter, bilanzkreis_gesondert, gueltig_ab, aufgehoben_am, created_at, created_by "
+            + "FROM site_foerderweg ";
 
     private final JdbcTemplate jdbc;
 
@@ -47,6 +48,12 @@ public class FoerderwegRepository {
                 FoerderwegRepository::fassung, siteId));
     }
 
+    /** Die Anlagen des Kundenbereichs (RLS) mit mindestens einer wirksamen Fassung — die Kandidaten des Spiegel-Läufers. */
+    public List<UUID> anlagenMitFassung() {
+        return List.copyOf(jdbc.queryForList("SELECT DISTINCT site_id FROM site_foerderweg WHERE aufgehoben_am IS NULL "
+                + "ORDER BY site_id", UUID.class));
+    }
+
     public Optional<Schalter> schalter(UUID siteId) {
         return jdbc.query("SELECT tenant_id, netzladen_erlaubt, plant_kind FROM site WHERE id = ?",
                 (rs, n) -> new Schalter(rs.getObject("tenant_id", UUID.class), rs.getBoolean("netzladen_erlaubt"),
@@ -62,9 +69,10 @@ public class FoerderwegRepository {
 
     public UUID eintragen(UUID tenantId, UUID siteId, Angaben a, LocalDate gueltigAb, String von) {
         return jdbc.queryForObject("INSERT INTO site_foerderweg (tenant_id, site_id, foerderweg, formelsatz, "
-                + "einverstaendnis, aw_regel, gueltig_ab, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                + "einverstaendnis, aw_regel, direktvermarkter, bilanzkreis_gesondert, gueltig_ab, created_by) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
                 UUID.class, tenantId, siteId, a.foerderweg().wert(), a.formelsatz(), a.einverstaendnis(), a.awRegel(),
-                gueltigAb, von);
+                a.direktvermarkter(), a.bilanzkreisGesondert(), gueltigAb, von);
     }
 
     public boolean aufheben(UUID id, Instant am) {
@@ -82,7 +90,8 @@ public class FoerderwegRepository {
         Timestamp auf = rs.getTimestamp("aufgehoben_am");
         Foerderweg weg = Foerderweg.von(rs.getString("foerderweg")).orElseThrow();
         return new Fassung(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class),
-                new Angaben(weg, rs.getString("formelsatz"), rs.getBoolean("einverstaendnis"), rs.getString("aw_regel")),
+                new Angaben(weg, rs.getString("formelsatz"), rs.getBoolean("einverstaendnis"), rs.getString("aw_regel"),
+                        rs.getString("direktvermarkter"), (Boolean) rs.getObject("bilanzkreis_gesondert")),
                 rs.getDate("gueltig_ab").toLocalDate(), auf == null ? null : auf.toInstant(),
                 rs.getTimestamp("created_at").toInstant(), rs.getString("created_by"));
     }

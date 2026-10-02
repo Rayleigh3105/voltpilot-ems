@@ -70,8 +70,14 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   will, nutzt den Mischbetrieb: dort bekommt die EE-Speichererzeugung (gelb) die Marktprämie und rot die Saldierung,
   während der Händler-Modus alles zu blankem Spot exportiert.
 - **`dv_konform` ist entfernt (W8, MP-10):** seine Bedeutung trägt der Förderweg `marktpraemie_ausschliesslichkeit`.
-- **Der alte Schalter `netzladen_erlaubt`** bleibt bis MP-17 Eingang; ohne Fassung ist er der Bestand, mit Fassung
-  bestimmt der Förderweg ([Vertrag § 6](../contracts/v2/mispel-foerderweg.md#6-der-alte-netzlade-schalter-bis-mp-17-w2--b),
+- **Einrichtung im Portal (MP-17, BK-17 Variante A):** Anlage › Einstellungen, Zeile „Förderweg“ (statt
+  „Veräußerungsform“) mit dem Dialog „Förderweg ändern“ — Förderweg · Zähler · Formelsatz · Partner · Prüfen, Kurzweg
+  für Einspeisevergütung, Ausschließlichkeitsoption und ungefördert. Ein Wechsel wird zum nächsten Monatsersten
+  **vorgemerkt** (Vertrag 1.2 § 5, `FoerderwegSpiegelLaeufer` legt die Spiegel am Tag um); der Partner
+  (Direktvermarkter, gesonderter Bilanzkreis) ist Angabe der Fassung. Zwilling `frontend/portal/src/mispelFoerderweg.ts`,
+  Bühne `e2e/foerderweg.tsx`.
+- **Der alte Schalter `netzladen_erlaubt`** bietet das Portal seit MP-17 nur noch, wo der Förderweg Netzladen zulässt
+  (sonst gesperrt mit Grund); ohne Fassung ist er der Bestand, mit Fassung bestimmt der Förderweg ([Vertrag § 6](../contracts/v2/mispel-foerderweg.md#6-der-alte-netzlade-schalter-bis-mp-17-w2--b),
   [Wegweiser Netzladen-Schalter](../agents/root/per-site-grid-charging-switch-site-netzl.md)).
 - **Ausmaß der Ausschließlichkeit messen:** der [Ausschließlichkeits-Prüfer](../agents/root/mispel-ausschliesslichkeits-pruefer.md)
   (MP-2) zeigt dem Betreiber je Anlage und Monat (1)¼ auf Gerätewerten — keine Steuerung, keine Portalfläche.
@@ -104,7 +110,9 @@ Ein Vertrag, eine Vektor-Datei, zwei Rechenwerke im Gleichlauf (exakte Brüche, 
   Tabelle 1; Rechenwerk MP-25 in Java (`mispel/MispelPauschalRechenwerk.java`) und Python
   (`voltpilot_optimization/mispel_pauschal.py`), anwendbar erst ab dem Monatsersten nach der EU-Genehmigung (T S. 3 Ziff. 9b).
 - **Bindung:** der vereinfachte Formelsatz (A10/A11 statt A1, A5-Variante statt A5) bindet bis zum Jahresende
-  (A1 S. 24, Abschn. 3.2.3); geprüft beim Eintragen des Förderwegs.
+  (A1 S. 24, Abschn. 3.2.3); geprüft beim Eintragen des Förderwegs. Das **Gebot der Bestnutzung** (vereinfacht
+  verboten, wenn die Zähler den genaueren Formelsatz tragen) prüft der Formelsatz-Vorschlag der Einrichtung (MP-17)
+  gegen die Zählerrollen; der Server prüft es noch nicht.
 
 ## 5. Monatslauf, Rumpfmonate, Nachweis
 

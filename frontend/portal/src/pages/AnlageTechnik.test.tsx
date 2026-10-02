@@ -4,6 +4,8 @@ import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './Anl
 import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
+import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
+import type { FoerderwegWert } from '../mispelFoerderweg';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -268,14 +270,55 @@ function planWithPrice(over: Partial<Record<string, unknown>> = {}) {
 }
 
 /** Rendert die ganze Einstellungs-Seite einer gewöhnlichen PV+Speicher-Anlage. */
+/**
+ * MiSpeL MP-17: der Förderweg der Anlage (`GET …/foerderweg`). Ohne Angabe der Bestand aus den Schaltern
+ * (Vertrag mispel-foerderweg.md § 2); mit `weg` eine Fassung seit 01.10.2026.
+ */
+function foerderwegAntwort(s: Site, weg?: FoerderwegWert, over: Partial<FoerderwegAnsicht> = {}): FoerderwegAnsicht {
+  const bestand: FoerderwegWert = s.netzladenErlaubt
+    ? 'ungefoerdert'
+    : s.plantKind === 'direktvermarktung'
+      ? 'marktpraemie_ausschliesslichkeit'
+      : 'einspeiseverguetung';
+  const w = weg ?? bestand;
+  const begriffe: Record<FoerderwegWert, string> = {
+    einspeiseverguetung: 'Einspeisevergütung',
+    marktpraemie_ausschliesslichkeit: 'Marktprämie mit Ausschließlichkeitsoption',
+    marktpraemie_abgrenzung: 'Marktprämie mit Abgrenzungsoption',
+    marktpraemie_pauschal: 'Marktprämie mit Pauschaloption',
+    ungefoerdert: 'ungeförderte Direktvermarktung',
+  };
+  return {
+    site_id: s.id,
+    am: '2026-10-20',
+    quelle: weg ? 'fassung' : 'bestand',
+    foerderweg: w,
+    begriff: begriffe[w],
+    rechtsgrundlage: '§',
+    formelsatz: w === 'marktpraemie_abgrenzung' ? 'A1' : null,
+    formelsatz_gebunden_bis: null,
+    einverstaendnis: weg ? true : null,
+    gueltig_ab: weg ? '2026-10-01' : null,
+    netzladen: { moeglich: w !== 'einspeiseverguetung' && w !== 'marktpraemie_ausschliesslichkeit', heute: s.netzladenErlaubt },
+    fassungen: [],
+    aw_regel: null,
+    vormerkung: null,
+    direktvermarkter: null,
+    bilanzkreis_gesondert: null,
+    ...over,
+  };
+}
+
 async function renderEinstellungen(
   over: Partial<Site> = {},
   batteryOver: Partial<SiteAsset> | null = {},
   supplySheet: SupplyPrice | null = null,
   plan: unknown = null,
   devices: Device[] = [device({ id: 'd-1' })],
+  weg?: FoerderwegWert,
 ) {
   const s: Site = { ...eegSite, ...over };
+  const fw = vi.spyOn(mispelApi, 'foerderweg').mockResolvedValue(foerderwegAntwort(s, weg));
   const assets = vi
     .spyOn(api, 'siteAssets')
     .mockResolvedValue(batteryOver == null ? [] : [battery({ deviceId: 'd-1', ...batteryOver })]);
@@ -298,6 +341,7 @@ async function renderEinstellungen(
   );
   // Auf den Asset-Abruf warten, sonst steht die Speicher-Gruppe noch im Skeleton.
   await screen.findByText(batteryOver == null ? 'Speicher hinzufügen' : 'Kapazität');
+  await screen.findByText(foerderwegAntwort(s, weg).begriff as string);
   return {
     onSiteSaved,
     rerender: (next: Site) =>
@@ -311,13 +355,18 @@ async function renderEinstellungen(
           onSiteDeleted={() => {}}
         />,
       ),
-    restore: () => [assets, preview, supply, schedule].forEach((m) => m.mockRestore()),
+    restore: () => [assets, preview, supply, schedule, fw].forEach((m) => m.mockRestore()),
   };
 }
 
 /** Die Zeile mit diesem Namen - sie ist der Knopf, der ihr Blatt öffnet. */
 function zeile(name: string): HTMLElement {
   return screen.getByRole('button', { name: new RegExp(`^${name}`) });
+}
+
+/** Die Zeile „Förderweg“ (MiSpeL MP-17) — „Förderweg ändern“ an der Netzlade-Zeile heißt ähnlich. */
+function foerderwegZeile(): HTMLElement {
+  return within(document.getElementById('technik-foerderweg') as HTMLElement).getByRole('button');
 }
 
 async function blatt(name: string): Promise<HTMLElement> {
@@ -362,7 +411,9 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
   it('DER Befund bleibt geschlossen: eine Eigenverbrauchs-Anlage erreicht alle Werte', async () => {
     const { restore } = await renderEinstellungen();
     expect(zeile('Stromtarif')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Netzladen' })).toBeInTheDocument();
+    // MiSpeL MP-17 (BK-17 A): Netzladen ist eine eigene Zeile, mit der Einspeisevergütung gesperrt mit Grund.
+    expect(screen.getByTestId('netzladen-satz')).toHaveTextContent('Mit der Einspeisevergütung nicht möglich');
+    expect(foerderwegZeile()).toHaveTextContent('Einspeisevergütung');
     expect(screen.getByRole('radiogroup', { name: 'Umgang mit dem Speicher' })).toBeInTheDocument();
     // Die Sichtbarkeitsregel bleibt: der anzulegende Wert ist ein DV-Fakt.
     expect(screen.queryByText('Anzulegender Wert')).toBeNull();
@@ -378,14 +429,18 @@ describe('Einstellungen · die kurze Liste (E5)', () => {
     restore();
   });
 
-  it('D6: die Zeile heißt Veräußerungsform - die Frage dazu steht im Blatt', async () => {
+  it('MiSpeL MP-17 (BK-17 A): die Zeile „Förderweg“ in Strom & Geld ersetzt die Veräußerungsform', async () => {
     const { restore } = await renderEinstellungen();
     const anlage = document.getElementById('technik-anlage') as HTMLElement;
-    expect(within(anlage).getByText('Veräußerungsform')).toBeInTheDocument();
+    expect(within(anlage).queryByText('Veräußerungsform')).toBeNull();
     expect(within(anlage).queryByText('Anlagentyp')).toBeNull();
-    const b = await blatt('Veräußerungsform');
-    expect(b).toHaveAccessibleName('Anlage bearbeiten');
-    expect(within(b).getByText(/Wie wird Ihr Strom vergütet/)).toBeInTheDocument();
+    const geld = document.getElementById('technik-geld') as HTMLElement;
+    expect(geld).toContainElement(foerderwegZeile());
+    expect(foerderwegZeile()).toHaveTextContent('aus Ihren bisherigen Einstellungen');
+    fireEvent.click(foerderwegZeile());
+    const b = await screen.findByRole('dialog');
+    expect(b).toHaveAccessibleName('Förderweg ändern');
+    expect(within(b).getByText(/Wie wird die Einspeisung Ihrer Anlage gefördert/)).toBeInTheDocument();
     restore();
   });
 
@@ -581,11 +636,22 @@ describe('Einstellungen · Stromtarif im Blatt', () => {
 });
 
 describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängig"', () => {
-  it('Netzladen: die Bedingung steht VOR dem Umlegen an der Zeile', async () => {
-    const { restore } = await renderEinstellungen();
+  it('Netzladen: die Bedingung steht VOR dem Umlegen an der Zeile — der Satz des Förderwegs (W2)', async () => {
+    const { restore } = await renderEinstellungen({}, {}, null, null, undefined, 'marktpraemie_abgrenzung');
     const schalter = screen.getByRole('switch', { name: 'Netzladen' });
     expect(schalter).toHaveAttribute('aria-checked', 'false');
-    expect(schalter.closest('li')).toHaveTextContent('nur ohne EEG-Vergütung');
+    expect(schalter.closest('li')).toHaveTextContent('Ihre Einstellung — mit der Abgrenzungsoption erlaubt');
+    expect(document.body).not.toHaveTextContent('nur ohne EEG-Vergütung');
+    restore();
+  });
+
+  it('Netzladen: wo der Förderweg es ausschließt, gesperrt mit Grund und Weg zum Förderweg', async () => {
+    const { restore } = await renderEinstellungen({ plantKind: 'direktvermarktung' });
+    expect(screen.queryByRole('switch', { name: 'Netzladen' })).toBeNull();
+    const satz = screen.getByTestId('netzladen-satz');
+    expect(satz).toHaveTextContent('In der Ausschließlichkeitsoption nicht möglich — Förderweg ändern');
+    fireEvent.click(within(satz).getByRole('button', { name: 'Förderweg ändern' }));
+    expect(await screen.findByRole('dialog', { name: 'Förderweg ändern' })).toBeInTheDocument();
     restore();
   });
 
@@ -593,7 +659,8 @@ describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängi
     const updateSite = vi
       .spyOn(api, 'updateSite')
       .mockImplementation(async (_id, body) => ({ ...eegSite, ...(body as object) }) as Site);
-    const { onSiteSaved, rerender, restore } = await renderEinstellungen({ maxFeedInKw: 75 });
+    const { onSiteSaved, rerender, restore } = await renderEinstellungen(
+      { maxFeedInKw: 75 }, {}, null, null, undefined, 'marktpraemie_abgrenzung');
 
     fireEvent.click(screen.getByRole('switch', { name: 'Netzladen' }));
     await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
@@ -630,7 +697,7 @@ describe('Einstellungen · Schalter wirken direkt - mit Folge und „Rückgängi
 
   it('Netzladen: eine Ablehnung steht als Satz an der Zeile, nie als Stille', async () => {
     const updateSite = vi.spyOn(api, 'updateSite').mockRejectedValue(new Error('down'));
-    const { onSiteSaved, restore } = await renderEinstellungen();
+    const { onSiteSaved, restore } = await renderEinstellungen({}, {}, null, null, undefined, 'ungefoerdert');
     fireEvent.click(screen.getByRole('switch', { name: 'Netzladen' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('nicht gespeichert');
     expect(onSiteSaved).not.toHaveBeenCalled();

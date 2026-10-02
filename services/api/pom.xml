@@ -382,6 +382,7 @@
                              in PRODUKTION an. Wer ihn prueft, ruft
                              LadeparkGrenzeLaeufer.lauf() selbst. -->
                         <voltpilot.uems.ladepark-grenze.enabled>false</voltpilot.uems.ladepark-grenze.enabled>
+                        <voltpilot.mispel.foerderweg-spiegel.enabled>false</voltpilot.mispel.foerderweg-spiegel.enabled>
                         <!-- Die Rechte-Bestandsuebernahme (AP-03 IP-2): dieselbe Falle wie
                              die Bestandsuebernahme der Standorte - im Testlauf aus,
                              in PRODUKTION an. Wer sie prueft, ruft

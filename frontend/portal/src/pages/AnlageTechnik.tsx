@@ -10,14 +10,13 @@ import {
   api,
   ApiError,
   type Device,
-  type PlantKind,
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
 import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText, tarifArtLabel } from '../fleet';
 import { buildSitePayload } from '../anlage';
-import { fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
+import { fmtCoords, fmtNum, fmtRelative, zoneLabel } from '../format';
 import { settingsPageSettings, type ModeSettingDef } from '../modeSettings';
 import { parseSettingsAnchor, SETTING_HINT, settingsGroupFor, type TechnikAbschnitt } from '../settingsNav';
 import {
@@ -28,7 +27,6 @@ import {
   VOLTPILOT_ROW_NOTE,
   voltpilotRows,
 } from '../settingsSurface';
-import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL, VERAEUSSERUNGSFORM_TIP } from '../glossar';
 import { protectionItems } from '../steuerungArea';
 import { PROVENIENZ } from '../provenienz';
 import {
@@ -53,6 +51,10 @@ import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuer
 import type { VerlustVariante } from '../gemeinsameSteuerungFlaeche';
 import { showTechnicalLayer, useRollen } from '../rollen';
 import { FLAECHE } from '../uemsGemeinsameSteuerung';
+import { FoerderwegDialog } from '../components/FoerderwegDialog';
+import { foerderweg, netzladenZeile, tagText } from '../mispelFoerderweg';
+import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
+import '../components/FoerderwegDialog.css';
 import '../components/Profile.css';
 import './Einstellungen.css';
 
@@ -206,6 +208,11 @@ export function TechnikSection({
   const [folge, setFolge] = useState<Folge | null>(null);
   const [schaltBusy, setSchaltBusy] = useState<Folge['key'] | null>(null);
   const [schaltFehler, setSchaltFehler] = useState<{ key: Folge['key']; text: string } | null>(null);
+  // MiSpeL MP-17 (BK-17 A): der Förderweg der Einspeisestelle — er ersetzt die Zeile „Veräußerungsform“.
+  const [fw, setFw] = useState<FoerderwegAnsicht | null>(null);
+  const [fwFehler, setFwFehler] = useState(false);
+  const [fwOffen, setFwOffen] = useState(false);
+  const [fwFolge, setFwFolge] = useState<{ text: string; fehler: boolean } | null>(null);
 
   // Ein Rückgängig baut auf dem NEUESTEN Stand auf, nie auf dem des Klicks -
   // sonst setzte es eine inzwischen gespeicherte andere Änderung mit zurück.
@@ -233,6 +240,13 @@ export function TechnikSection({
       .then((a) => !cancelled && setAssets(a))
       // „Nicht geladen" ist nicht „keine": ein Fehler zeigt sich als Fehler.
       .catch(() => !cancelled && setAssetsError(true));
+    setFw(null);
+    setFwFehler(false);
+    setFwFolge(null);
+    mispelApi
+      .foerderweg(site.id)
+      .then((f) => !cancelled && setFw(f))
+      .catch(() => !cancelled && setFwFehler(true));
     api
       .siteDeletionPreview(site.id)
       .then((p) => !cancelled && setPreview(p))
@@ -387,6 +401,16 @@ export function TechnikSection({
   const batteryNeedsDevice = battery != null && battery.deviceId == null;
   const coords = fmtCoords(site.latitude, site.longitude);
   const vpGeld = voltpilotRows('geld', site);
+  const nlZeile = netzladenZeile(fw?.foerderweg ?? null);
+
+  async function vormerkungZuruecknehmen() {
+    try {
+      setFw(await mispelApi.vormerkungZuruecknehmen(site.id));
+      setFwFolge({ text: 'Die Vormerkung ist zurückgenommen; es bleibt beim heutigen Förderweg.', fehler: false });
+    } catch {
+      setFwFolge({ text: 'Die Vormerkung konnte nicht zurückgenommen werden. Bitte versuchen Sie es erneut.', fehler: true });
+    }
+  }
   const vpSpeicher = voltpilotRows('speicher', site);
 
   return (
@@ -395,14 +419,6 @@ export function TechnikSection({
         {/* ---------- Anlage ---------- */}
         <Gruppe id="anlage" titel="Anlage">
           <Zeile icon="home" kat="home" label="Name" wert={site.name} recht="anlage.verwalten" onClick={() => oeffne({ art: 'stammdaten' })} />
-          <Zeile
-            icon="euro"
-            kat="dynamic"
-            label={VERAEUSSERUNGSFORM_LABEL}
-            wert={plantKindLabel(site.plantKind)}
-            recht="anlage.verwalten"
-            onClick={() => oeffne({ art: 'stammdaten' })}
-          />
           <Zeile icon="users" kat="home" label="Profil" wert={profilLabel(site.profil)} recht="betriebsweise.aendern" onClick={() => setProfilOffen(true)} />
           <Zeile
             icon="trending-up"
@@ -458,16 +474,58 @@ export function TechnikSection({
               onClick={() => oeffne({ art: 'einstellung', setting: anzulegend })}
             />
           )}
+          <Zeile
+            id="technik-foerderweg"
+            icon="euro"
+            kat="dynamic"
+            label="Förderweg"
+            wert={fw ? (fw.begriff ?? 'unbekannt') : fwFehler ? 'konnte nicht geladen werden' : '…'}
+            sub={fw ? foerderwegSub(fw) : null}
+            warn={fwFehler}
+            recht="anlage.verwalten"
+            onClick={() => fw && setFwOffen(true)}
+          />
+          {(fw?.vormerkung || fwFolge) && (
+            <li className="vp-fw-zeile-vormerkung" data-testid="fw-vormerkung">
+              {fwFolge ? (
+                <span role={fwFolge.fehler ? 'alert' : 'status'}>{fwFolge.text}</span>
+              ) : null}
+              {fw?.vormerkung && (
+                <>
+                  <span>
+                    Ab {tagText(fw.vormerkung.gueltig_ab)}: {fw.vormerkung.begriff} (vorgemerkt)
+                  </span>
+                  <Recht aktion="anlage.verwalten">
+                    <button type="button" className="vp-linklike" onClick={() => void vormerkungZuruecknehmen()}>
+                      Vormerkung zurücknehmen
+                    </button>
+                  </Recht>
+                </>
+              )}
+            </li>
+          )}
           {netzladen && (
             <li id="technik-netzladen">
               <div className="vp-einst-zeile is-statisch">
                 <Kachel icon="battery-charging" kat="battery" />
                 <span className="vp-einst-lab">
                   <b id="einst-netzladen-l">Netzladen</b>
-                  <small>Speicher darf aus dem Netz laden – nur ohne EEG-Vergütung</small>
+                  <small data-testid="netzladen-satz">
+                    {fw ? nlZeile.satz : fwFehler ? 'Förderweg konnte nicht geladen werden' : '…'}
+                    {fw && !nlZeile.offen && (
+                      <>
+                        {' — '}
+                        <Recht aktion="anlage.verwalten">
+                          <button type="button" className="vp-linklike" onClick={() => setFwOffen(true)}>
+                            Förderweg ändern
+                          </button>
+                        </Recht>
+                      </>
+                    )}
+                  </small>
                 </span>
                 <span className="vp-einst-ende">
-                  {canEditSetting(netzladen, battery) ? (
+                  {canEditSetting(netzladen, battery) && fw != null && nlZeile.offen ? (
                     <Recht aktion="anlage.verwalten"><button
                       type="button"
                       role="switch"
@@ -480,7 +538,9 @@ export function TechnikSection({
                       <span className="vp-switch-knob" aria-hidden="true" />
                     </button></Recht>
                   ) : (
-                    <span className="vp-einst-wert">{site.netzladenErlaubt ? 'erlaubt' : 'nur Solarladen'}</span>
+                    <span className="vp-einst-wert">
+                      {fw != null && !nlZeile.offen ? 'gesperrt' : site.netzladenErlaubt ? 'erlaubt' : 'nur Solarladen'}
+                    </span>
                   )}
                 </span>
               </div>
@@ -711,8 +771,46 @@ export function TechnikSection({
 
       <ProfilDialog site={site} open={profilOffen} onClose={() => setProfilOffen(false)} onSaved={onSiteSaved} />
       <MastrDrawer site={site} open={mastrOpen} onClose={() => setMastrOpen(false)} onApplied={(a) => setAssets(a)} />
+      {fwOffen && fw && (
+        <FoerderwegDialog
+          siteId={site.id}
+          ansicht={fw}
+          onClose={() => setFwOffen(false)}
+          onGespeichert={(neu) => {
+            setFwOffen(false);
+            const ab = neu.am;
+            const vorgemerkt = ab > fw.am;
+            setFwFolge({
+              text: vorgemerkt
+                ? `Vorgemerkt: ab ${tagText(ab)} gilt ${neu.begriff ?? ''}. Bis dahin bleibt alles, wie es ist.`
+                : `Eingetragen: ab ${tagText(ab)} gilt ${neu.begriff ?? ''}.`,
+              fehler: false,
+            });
+            void mispelApi.foerderweg(site.id).then(setFw).catch(() => setFwFehler(true));
+            if (!vorgemerkt) onReload(site.id);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * Der Satz unter dem Förderweg (BK-17): woher er kommt, seit wann, Formelsatz und Direktvermarkter — Begriff und
+ * Rechtsgrundlage aus dem Vertrag.
+ */
+function foerderwegSub(f: FoerderwegAnsicht): string {
+  if (f.quelle === 'unbekannt' || !f.foerderweg) return 'nicht bekannt';
+  const teile: string[] = [];
+  if (f.quelle === 'bestand') {
+    teile.push('aus Ihren bisherigen Einstellungen', foerderweg(f.foerderweg).rechtsgrundlage);
+  } else {
+    if (f.formelsatz) teile.push(`Formelsatz ${f.formelsatz}`);
+    if (f.gueltig_ab) teile.push(`seit ${tagText(f.gueltig_ab)}`);
+    if (f.direktvermarkter) teile.push(`Direktvermarkter ${f.direktvermarkter}`);
+    if (teile.length === 0) teile.push(foerderweg(f.foerderweg).rechtsgrundlage);
+  }
+  return teile.join(' · ');
 }
 
 function blattTitel(b: BlattArt | null, battery: SiteAsset | null): string {
@@ -1077,7 +1175,8 @@ function ProfilDialog({
 
 /**
  * Das Formular der Grunddaten im Blatt „Anlage bearbeiten": Name, Gebotszone,
- * Veräußerungsform, Standort auf der Karte und die Einspeisegrenze. Es trägt die
+ * Standort auf der Karte und die Einspeisegrenze. Die Veräußerungsform steckt seit
+ * MiSpeL MP-17 im Förderweg (eigene Zeile und Dialog, BK-17 A). Es trägt die
  * WHOLE site unverändert mit (`buildSitePayload`, Voll-Repräsentation), damit
  * ein fokussierter Save nie ein Feld blankt, das eine andere Zeile besitzt.
  */
@@ -1092,7 +1191,6 @@ export function StammdatenEditForm({
 }) {
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
-  const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [maxFeedIn, setMaxFeedIn] = useState(premiumInputText(site.maxFeedInKw ?? null));
@@ -1116,7 +1214,6 @@ export function StammdatenEditForm({
           biddingZone,
           latitude: lat,
           longitude: lon,
-          plantKind,
           maxFeedInKw: maxFeedInValue,
         }),
       );
@@ -1152,24 +1249,6 @@ export function StammdatenEditForm({
           value={biddingZone}
           onChange={setBiddingZone}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <VpPicker
-            id="edit-site-plant-kind"
-            label={VERAEUSSERUNGSFORM_LABEL}
-            options={[
-              { value: 'eigenverbrauch', label: 'Eigenverbrauch (Haushalt/Gewerbe)' },
-              {
-                value: 'direktvermarktung',
-                label: 'Direktvermarktung (Einspeisung am Markt)',
-              },
-            ]}
-            value={plantKind}
-            onChange={(v) => setPlantKind(v as PlantKind)}
-          />
-          <p className="vp-note" style={{ margin: 0 }}>
-            {VERAEUSSERUNGSFORM_FRAGE} {VERAEUSSERUNGSFORM_TIP}
-          </p>
-        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap

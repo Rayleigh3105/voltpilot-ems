@@ -65,6 +65,8 @@ import {
 import { AnzulegenderWertField } from './AnzulegenderWertField';
 import { NetzladenBadge } from './NetzladenBadge';
 import { NetzladenField } from './NetzladenField';
+import { type FoerderwegWert } from '../mispelFoerderweg';
+import { mispelApi } from '../mispelFoerderwegApi';
 import { SpeicherschonungField } from './SpeicherschonungField';
 import { TariffFields } from './TariffFields';
 import './SettingEditors.css';
@@ -407,6 +409,18 @@ function NetzladenEditor({
   const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // MiSpeL MP-17 (W2): der Satz unter dem Feld folgt dem Förderweg; unbekannt bleibt er neutral.
+  const [weg, setWeg] = useState<FoerderwegWert | null>(null);
+  useEffect(() => {
+    let aus = false;
+    mispelApi
+      .foerderweg(site.id)
+      .then((f) => !aus && setWeg(f.foerderweg))
+      .catch(() => {});
+    return () => {
+      aus = true;
+    };
+  }, [site.id]);
 
   async function save() {
     setBusy(true);
@@ -427,7 +441,7 @@ function NetzladenEditor({
   return (
     <div className="vp-setting-editform">
       <div className="vp-form-stack">
-        <NetzladenField value={netzladen} onChange={setNetzladen} idPrefix="setting-netzladen" />
+        <NetzladenField value={netzladen} onChange={setNetzladen} idPrefix="setting-netzladen" foerderweg={weg} />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <EditActions busy={busy} onCancel={onCancel} onSave={save} />

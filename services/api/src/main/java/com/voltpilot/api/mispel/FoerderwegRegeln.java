@@ -111,13 +111,23 @@ public final class FoerderwegRegeln {
     /**
      * Eine Fassung, wie die Regeln sie sehen; {@code formelsatz} nur in Abgrenzung (Pflicht) und ungefördert
      * (wahlfrei); {@code awRegel} nur in Abgrenzung und Pauschal (wahlfrei, {@code null} = W4-Rückfall, vorläufig).
+     * {@code direktvermarkter} und {@code bilanzkreisGesondert} (1.2, MP-17): der Partner der Direktvermarktung — nur
+     * an einem Weg der Direktvermarktung, wahlfrei ({@code null} = nicht erhoben).
      */
-    public record Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis, String awRegel) {
+    public record Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis, String awRegel,
+            String direktvermarkter, Boolean bilanzkreisGesondert) {
+
+        public Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis, String awRegel) {
+            this(foerderweg, formelsatz, einverstaendnis, awRegel, null, null);
+        }
 
         public Angaben(Foerderweg foerderweg, String formelsatz, boolean einverstaendnis) {
             this(foerderweg, formelsatz, einverstaendnis, null);
         }
     }
+
+    /** Höchstlänge des Namens des Direktvermarkters (Vertrag § 4, 1.2). */
+    public static final int DIREKTVERMARKTER_MAX = 200;
 
     /** Ein Antrag auf eine neue Fassung. */
     public record Antrag(Angaben angaben, LocalDate gueltigAb, Boolean netzladen, boolean erstmaligeZuordnung,
@@ -156,6 +166,14 @@ public final class FoerderwegRegeln {
         return hatPaar ? LocalDate.of(am.getYear(), 12, 31) : null;
     }
 
+    /**
+     * Der Tag, zu dem sich eine Fassung vormerken lässt: der erste Kalendertag des folgenden Monats (§ 21b Abs. 1 S. 2
+     * EEG — ein anderer Förderweg gilt ab einem Monatsersten; Vertrag § 5).
+     */
+    public static LocalDate naechsterMonatserster(LocalDate heute) {
+        return heute.withDayOfMonth(1).plusMonths(1);
+    }
+
     /** Die Netzlade-Einstellung nach der neuen Fassung: ausgeschlossen = aus; sonst die Angabe, ohne sie die bisherige. */
     public static boolean netzladenNachher(Foerderweg neu, Boolean angabe, boolean bisher) {
         return neu.netzladenMoeglich() && (angabe != null ? angabe : bisher);
@@ -189,6 +207,16 @@ public final class FoerderwegRegeln {
                     + "und der Pauschaloption; " + n.foerderweg().begriff() + " rechnet nicht danach.", "foerderweg",
                     n.foerderweg().wert(), "A1 S. 17 und S. 38, Formel (24); A2 S. 31, Formel (P12)");
         }
+        String dv = n.direktvermarkter();
+        if (dv != null && (dv.isBlank() || dv.length() > DIREKTVERMARKTER_MAX || !dv.equals(dv.strip()))) {
+            return ab("anfrage_ungueltig", 400, "Der Name des Direktvermarkters hat 1 bis " + DIREKTVERMARKTER_MAX
+                    + " Zeichen ohne Leerraum am Rand.", "feld", "direktvermarkter", "Vertrag § 4");
+        }
+        if ((dv != null || n.bilanzkreisGesondert() != null) && n.foerderweg() == Foerderweg.EINSPEISEVERGUETUNG) {
+            return ab("partner_passt_nicht", 422, "Die Einspeisevergütung zahlt der Netzbetreiber; einen "
+                    + "Direktvermarkter und einen Bilanzkreis gibt es nur in der Direktvermarktung.", "foerderweg",
+                    n.foerderweg().wert(), "§ 21b Abs. 1 EEG; § 20 S. 2 EEG");
+        }
         if (Boolean.TRUE.equals(a.netzladen()) && !n.foerderweg().netzladenMoeglich()) {
             return ab("netzladen_ausgeschlossen", 422, n.foerderweg().begriff() + ": der Speicher darf nicht aus dem "
                     + "Netz laden, sonst entfällt die Förderung.", "foerderweg", n.foerderweg().wert(),
@@ -208,9 +236,19 @@ public final class FoerderwegRegeln {
         }
         Angaben n = a.angaben();
         LocalDate ab = a.gueltigAb();
-        if (ab.isAfter(heute)) {
-            return ab("gueltig_ab_in_zukunft", 422, "Ein Förderweg wird eingetragen, wenn er gilt — ab " + ab
-                    + " also frühestens an diesem Tag.", "heute", heute.toString(), "Vertrag § 5");
+        LocalDate vormerkbar = naechsterMonatserster(heute);
+        if (ab.isAfter(heute) && !ab.equals(vormerkbar)) {
+            Map<String, Object> f = new LinkedHashMap<>();
+            f.put("heute", heute.toString());
+            f.put("naechster_monatserster", vormerkbar.toString());
+            f.put("fundstelle", "Vertrag § 5; § 21b Abs. 1 S. 2 EEG");
+            return new Ablehnung("gueltig_ab_in_zukunft", 422, "Ein Förderweg wird eingetragen, wenn er gilt; "
+                    + "vormerken lässt sich nur der nächste Monatserste (" + vormerkbar + ").", f);
+        }
+        if (ab.isAfter(heute) && a.netzladen() != null) {
+            return ab("netzladen_bei_vormerkung", 422, "Die Einstellung „Netzladen“ ändert sich an dem Tag, an dem "
+                    + "ein vorgemerkter Förderweg gilt, nur dort, wo er sie ausschließt; einstellen lässt sie sich ab "
+                    + ab + ".", "gueltig_ab", ab.toString(), "Vertrag § 5");
         }
         if (v.letzteFassungAb() != null && ab.isBefore(v.letzteFassungAb())) {
             return ab("foerderweg_rueckwirkend", 409, "Seit " + v.letzteFassungAb() + " gilt eine spätere Fassung; "

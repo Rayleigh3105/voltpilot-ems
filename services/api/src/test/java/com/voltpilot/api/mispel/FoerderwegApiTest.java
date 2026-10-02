@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -91,6 +92,11 @@ class FoerderwegApiTest {
     MockMvc mvc;
     @Autowired
     FoerderwegService wege;
+    @Autowired
+    FoerderwegRepository fassungen;
+    @Autowired
+    @Qualifier("adminJdbcTemplate")
+    JdbcTemplate adminJdbc;
 
     private static JdbcTemplate root;
 
@@ -190,6 +196,83 @@ class FoerderwegApiTest {
         assertThat(zurueck.body().path("fassungen").get(1).path("aufgehoben_am").isNull()).isFalse();
         assertThat(root.queryForObject("SELECT netzladen_erlaubt FROM site WHERE id = ?", Boolean.class, a.id()))
                 .isFalse();
+    }
+
+    @Test
+    void vormerkenZumNaechstenMonatserstenUndDerSpiegelFolgtAmTag() throws Exception {
+        heute("2026-10-20");
+        Anlage a = anlage(true, "direktvermarktung"); // Bestand: ungefördert, Netzladen an
+        FoerderwegSpiegelLaeufer laeufer = new FoerderwegSpiegelLaeufer(adminJdbc, fassungen, wege);
+
+        Antwort weiter = ruf(a, HttpMethod.PUT, "/foerderweg", antrag("marktpraemie_ausschliesslichkeit", null,
+                "2026-12-01"));
+        assertThat(weiter.status()).isEqualTo(422);
+        assertThat(weiter.body().path("code").asText()).isEqualTo("gueltig_ab_in_zukunft");
+        assertThat(weiter.body().path("naechster_monatserster").asText()).isEqualTo("2026-11-01");
+
+        Map<String, Object> mitNetz = antrag("marktpraemie_ausschliesslichkeit", null, "2026-11-01");
+        mitNetz.put("netzladen", false);
+        assertThat(ruf(a, HttpMethod.PUT, "/foerderweg", mitNetz).body().path("code").asText())
+                .isEqualTo("netzladen_bei_vormerkung");
+
+        Antwort vorgemerkt = ruf(a, HttpMethod.PUT, "/foerderweg", antrag("marktpraemie_ausschliesslichkeit", null,
+                "2026-11-01"));
+        assertThat(vorgemerkt.status()).isEqualTo(200);
+        assertThat(vorgemerkt.body().path("am").asText()).isEqualTo("2026-11-01");
+        assertThat(vorgemerkt.body().path("foerderweg").asText()).isEqualTo("marktpraemie_ausschliesslichkeit");
+        assertThat(root.queryForObject("SELECT netzladen_erlaubt FROM site WHERE id = ?", Boolean.class, a.id()))
+                .as("vorgemerkt: der Spiegel bleibt bis zum Tag").isTrue();
+
+        Antwort heuteGelesen = ruf(a, HttpMethod.GET, "/foerderweg", null);
+        assertThat(heuteGelesen.body().path("quelle").asText()).as("bis zum Tag gilt der Bestand").isEqualTo("bestand");
+        assertThat(heuteGelesen.body().path("foerderweg").asText()).isEqualTo("ungefoerdert");
+        assertThat(heuteGelesen.body().path("vormerkung").path("foerderweg").asText())
+                .isEqualTo("marktpraemie_ausschliesslichkeit");
+        assertThat(heuteGelesen.body().path("vormerkung").path("gueltig_ab").asText()).isEqualTo("2026-11-01");
+
+        Antwort davor = ruf(a, HttpMethod.PUT, "/foerderweg", antrag("ungefoerdert", null, "2026-10-20"));
+        assertThat(davor.body().path("code").asText()).isEqualTo("foerderweg_rueckwirkend");
+
+        laeufer.lauf();
+        assertThat(root.queryForObject("SELECT netzladen_erlaubt FROM site WHERE id = ?", Boolean.class, a.id()))
+                .as("vor dem Tag legt der Läufer nichts um").isTrue();
+
+        heute("2026-11-01");
+        laeufer.lauf();
+        assertThat(root.queryForMap("SELECT netzladen_erlaubt, plant_kind FROM site WHERE id = ?", a.id()))
+                .as("am Tag: Netzladen aus, wo der Weg es ausschließt").containsEntry("netzladen_erlaubt", false)
+                .containsEntry("plant_kind", "direktvermarktung");
+        String zeile = zeile(a);
+        laeufer.lauf();
+        assertThat(zeile(a)).as("idempotent").isEqualTo(zeile);
+        Antwort amTag = ruf(a, HttpMethod.GET, "/foerderweg", null);
+        assertThat(amTag.body().path("quelle").asText()).isEqualTo("fassung");
+        assertThat(amTag.body().path("vormerkung").isNull()).isTrue();
+    }
+
+    @Test
+    void vormerkungZuruecknehmen() throws Exception {
+        heute("2026-10-20");
+        Anlage a = anlage(false, "direktvermarktung");
+        assertThat(ruf(a, HttpMethod.DELETE, "/foerderweg/vormerkung", null).body().path("code").asText())
+                .isEqualTo("keine_vormerkung");
+        assertThat(ruf(a, HttpMethod.PUT, "/foerderweg", antrag("marktpraemie_abgrenzung", "A1", "2026-11-01"))
+                .status()).isEqualTo(200);
+        Map<String, Object> partner = antrag("marktpraemie_abgrenzung", "A1", "2026-11-01");
+        partner.put("direktvermarkter", "Nordstrom Direkt GmbH");
+        partner.put("bilanzkreis_gesondert", true);
+        Antwort korrigiert = ruf(a, HttpMethod.PUT, "/foerderweg", partner);
+        assertThat(korrigiert.status()).as("Korrektur derselben Vormerkung").isEqualTo(200);
+        assertThat(korrigiert.body().path("direktvermarkter").asText()).isEqualTo("Nordstrom Direkt GmbH");
+        assertThat(korrigiert.body().path("bilanzkreis_gesondert").asBoolean()).isTrue();
+        assertThat(ruf(a, HttpMethod.GET, "/foerderweg", null).body().path("vormerkung").path("direktvermarkter")
+                .asText()).isEqualTo("Nordstrom Direkt GmbH");
+        Antwort zurueck = ruf(a, HttpMethod.DELETE, "/foerderweg/vormerkung", null);
+        assertThat(zurueck.status()).isEqualTo(200);
+        assertThat(zurueck.body().path("vormerkung").isNull()).isTrue();
+        assertThat(zurueck.body().path("quelle").asText()).isEqualTo("bestand");
+        assertThat(zurueck.body().path("fassungen").get(1).path("aufgehoben_am").isNull()).isFalse();
+        assertThat(ruf(a, HttpMethod.DELETE, "/foerderweg/vormerkung", null).status()).isEqualTo(404);
     }
 
     @Test
