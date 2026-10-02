@@ -105,6 +105,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Maintaining this file](root/maintaining-this-file.md)
 - [Market data (ENTSO-E day-ahead prices)](root/market-data-entso-e-day-ahead-prices.md)
 - [MaStR integration ("Anlage verknüpfen": registry-fed asset master data)](root/mastr-integration-anlage-verknuepfen-reg.md)
+- [MiSpeL – Einstieg: Fachdoku mit Förderweg, Zählerrollen, Rechenwerk, Monatslauf, Nachweis, Marktdaten](../mispel/README.md)
 - [MiSpeL-Marktdaten: AW>0-Zeiten der ÜNB, SP¼, Jahresmarktwert (MP-7)](root/mispel-marktdaten-aw-sp-jahresmarktwert.md)
 - [MiSpeL-Ausschließlichkeits-Prüfer: Netzstrom im Speicher je Anlage und Monat (MP-2)](root/mispel-ausschliesslichkeits-pruefer.md)
 - [MiSpeL: strenge Ausschließlichkeit schaltbar, Optimierer + Box (MP-45)](root/mispel-strenge-ausschliesslichkeit.md)

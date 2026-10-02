@@ -1,26 +1,41 @@
-# Speicherherkunft: aktueller Stand und offener Entwurf
+# Speicherherkunft: Formel statt Drei-Töpfe-Entwurf
 
-**Status: Der dritte Herkunftstopf ist nicht implementiert.** Die vorhandene Erlösberechnung führt Solar- und Netzherkunft in `EarningsRepository.arbitrageSplit`. Dieses Dokument hält ausschließlich die noch relevante Erweiterungsidee fest.
+**Status: Der Drei-Töpfe-Entwurf ist durch die MiSpeL-Formel ersetzt (Entscheid W5 vom 02.10.2026) und wird nicht
+gebaut.** Welcher Anteil des Speicherstroms aus dem Netz stammt, bestimmt für Anlagen in der Abgrenzungs- oder
+Pauschaloption die Festlegung der Bundesnetzagentur (MiSpeL, Az. 618-25-02, 01.10.2026). In der Abgrenzungsoption:
+Speichervorrang je Viertelstunde, (1)¼ = MIN [ Z1NB¼ ; Z2V¼ ] (§ 21 Abs. 4 S. 3 EnFG; Anlage 1 S. 33), Monatsbilanz
+und Abzug der EE-Speichererzeugung, (16) = MAX [ (13) – (15) ; 0 ] (Anlage 1 S. 36). In der Pauschaloption:
+Jahrespauschalen ab (P1) = Pinst • 500 kWh/kW (Anlage 2 S. 28–33). Beide Anlagen kennzeichnen die Mengen mit
+denselben Farben (Tenor S. 2 Ziff. 6). Zwei verschiedene Netzstrom-Anteile für
+dieselbe Anlage wären widersprüchlich; die amtliche Rechnung zählt.
 
 ```mermaid
 flowchart LR
-    Solar["PV-Ladung"] --> Gruen["Solarherkunft"]
-    Netz["Netzladung"] --> NetzTopf["Netzherkunft: heute gemeinsam"]
-    NetzTopf -. "Entwurf" .-> Bedarf["Verbrauchsbezogen: Reserve / Lastspitzen"]
-    NetzTopf -. "Entwurf" .-> Markt["Marktbezogen: Arbitrage"]
+    Foerderweg{"Förderweg der Anlage"} -->|"Abgrenzung / Pauschal"| Formel["amtliche Mengen grün / gelb / rot<br/>(Rechenwerk MiSpeL)"]
+    Foerderweg -->|"ungefördert (Händler-Modus)"| Schaetzung["Zwei-Töpfe-Ausweis<br/>als VoltPilot-Schätzung"]
+    Foerderweg -->|"Einspeisevergütung / Ausschließlichkeit"| Kein["kein Netzladen,<br/>kein Ausweis"]
 ```
 
-## Warum die Unterscheidung nützlich sein könnte
+| Förderweg | Herkunftsrechnung | Wo |
+|---|---|---|
+| `marktpraemie_abgrenzung`, `marktpraemie_pauschal` | nur die Formeln der Festlegung (grün, gelb, rot) | [MiSpeL-Fachdoku](mispel/README.md), [Vertrag Abgrenzung](contracts/v2/mispel-abgrenzung.md) |
+| `ungefoerdert` | Zwei-Töpfe-Ausweis „davon durch Netzladen verdient“, beschriftet als Schätzung | `EarningsRepository.arbitrageSplit`, [Wegweiser](agents/root/arbitrage-ausweis-davon-arbitrage-gewinn.md) |
+| `einspeiseverguetung`, `marktpraemie_ausschliesslichkeit` | keine — der Speicher lädt kein Netz | [Vertrag Förderweg](contracts/v2/mispel-foerderweg.md) |
 
-Netzstrom kann für verschiedene Zwecke gespeichert werden. Eine spätere Aufteilung könnte unterscheiden, welcher Anteil einer marktbezogenen Strategie und welcher einem Verbrauchszweck zuzurechnen ist. Dafür genügt die gemessene Energiemenge allein nicht: der tatsächlich zugrunde liegende Plan müsste einen belastbaren Zweck liefern.
+**Noch nicht umgesetzt (MP-18):** `arbitrageSplit` wählt die Anlagen heute über `netzladen_erlaubt`, nicht über den
+Förderweg, und der Ausweis trägt noch nicht das Wort „Schätzung“. Die Umstellung ist sichtbar und folgt dem
+abgestimmten Bedienkonzept BK-18.
 
-## Grenzen des heutigen Standes
+## Was vom Entwurf bleibt
 
-- Der vorhandene Rückblick ist keine Messung einzelner physischer Energiepakete.
+Der Entwurf wollte die Netzherkunft weiter in „verbrauchsbezogen“ (Reserve, Lastspitzen) und „marktbezogen“
+(Arbitrage) teilen. Für MiSpeL-Anlagen erübrigt sich das: die Festlegung unterscheidet nur förderfähig (gelb),
+saldierungsfähig (rot) und den Rest des Netzbezugs, der als im Betrieb verbraucht gilt. Für den Händler-Modus
+gelten die Grenzen der Schätzung unverändert:
+
+- Der Rückblick ist keine Messung einzelner physischer Energiepakete.
 - Fehlende Planabsicht darf keine abrechenbare Arbitrage erfinden.
-- Startbestand, Messlücken, Verluste und mehrere Speicher benötigen explizite Regeln.
-- Aus diesem Entwurf folgt weder eine implementierte Abrechnung noch eine rechtliche Herkunftszertifizierung.
+- Aus der Schätzung folgt weder eine Abrechnung noch eine rechtliche Herkunftszertifizierung.
 
-Vor einer Umsetzung wären Zweckzuordnung, Verlust-/Bestandsbewertung und Abrechnungsbasis fachlich zu entscheiden. Eine Migration oder ein neuer API-Vertrag ist hier nicht vorgesehen.
-
-Quelle: [EarningsRepository](../services/api/src/main/java/com/voltpilot/api/repo/EarningsRepository.java). [Optimierung](../services/optimization/README.md).
+Quelle: [EarningsRepository](../services/api/src/main/java/com/voltpilot/api/repo/EarningsRepository.java),
+[Optimierung](../services/optimization/README.md).

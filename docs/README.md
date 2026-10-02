@@ -12,6 +12,7 @@ Starten Sie mit der Frage, die Sie beantworten möchten. Jede Erklärung hat ein
 | Updates | [Edge-Updates bedienen](ota-autonomie.md), [Signaturkette und Schlüssel](ota-signing.md) |
 | Energie planen | [Optimierung](../services/optimization/README.md), [Prognose und Modellwahl](forecasting.md) |
 | Verbraucher | [Funktionsmodell](verbrauchssteuerung.md), [Betrieb und Fehlerdiagnose](verbrauchssteuerung-betrieb.md) |
+| Speicher im Mischbetrieb | [MiSpeL-Fachdoku](mispel/README.md), [Speicherherkunft](attribution-three-pot.md) |
 | Schnittstellen | [Vertragsübersicht](contracts/README.md), [v2-Verträge](contracts/v2/README.md), [v1/v2-Umstellung](migration-v1-to-v2.md) |
 | Gerätewissen | [Messpunktkatalog](../catalog/measurement-points/README.md), [Wechselrichter-Konfiguration](../edge-app/INVERTER-CONFIG.md), [Steuerungsprüfstand](../edge-app/nodered/CONTROL-BENCH.md) |
 | Gebäudeautomation | [Modbus-Datenspiegel](../edge-app/MODBUS-SPIEGEL.md), [Loxone-Zuordnung](loxone-voltpilot-map.md) |
@@ -30,7 +31,7 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 ## Gesonderte Unterlagen
 
-[Arbitrage-Partnermodell](../VoltPilot_Arbitrage-Partnermodell.pdf): Gesprächsunterlage vom 01.09.2026 zu einem möglichen Vertriebsmodell. Als Original erhalten; daraus folgt keine implementierte Vergütungs- oder Abrechnungsfunktion. [Drei-Töpfe-Zuordnung](attribution-three-pot.md) bleibt ausdrücklich ein fachlicher Entwurf.
+[Arbitrage-Partnermodell](../VoltPilot_Arbitrage-Partnermodell.pdf): Gesprächsunterlage vom 01.09.2026 zu einem möglichen Vertriebsmodell. Als Original erhalten; daraus folgt keine implementierte Vergütungs- oder Abrechnungsfunktion. Der frühere Drei-Töpfe-Entwurf ist durch die MiSpeL-Formel ersetzt ([Speicherherkunft](attribution-three-pot.md)).
 
 [Cockpit als Tagesfilm](konzepte/cockpit-tagesfilm/README.md): Konzept vom 29.09.2026 für das neue Anlagen-Cockpit mit klickbarem Prototyp; im Portal umgesetzt.
 

@@ -15,6 +15,7 @@ Mandantenfähiges EMS für PV, Speicher und Verbraucher. Einstieg: [Dokumentatio
 | `catalog/measurement-points` | Geprüfte Herstellerquellen und generierte Messpunkte |
 | `catalog/control-profiles` | Steuerprofile je Wechselrichter-Familie: Wissen mit Quellen, keine Freigabe; Adapter-Folgen per Test an den Code gebunden; [README](catalog/control-profiles/README.md) |
 | `edge/` | Lokaler Node-RED-/SunSpec-Testpfad |
+| `docs/mispel` | MiSpeL-Festlegung (Speicher/Ladepunkte im Mischbetrieb): Förderweg, Rechenwerk, Nachweis, Abweichungen mit Fundstelle; [Fachdoku](docs/mispel/README.md) |
 
 ## Arbeiten und prüfen
 
