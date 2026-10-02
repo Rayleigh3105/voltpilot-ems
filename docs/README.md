@@ -34,6 +34,8 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 [Cockpit als Tagesfilm](konzepte/cockpit-tagesfilm/README.md): Konzept vom 29.09.2026 für das neue Anlagen-Cockpit mit klickbarem Prototyp; im Portal umgesetzt.
 
+[MiSpeL-Rechtsfragen-Katalog](mispel/rechtsfragen.md): Entwurf vom 02.10.2026, nicht versandt. Acht Fragen zur MiSpeL-Festlegung mit Normzitat, Fundstelle, abhängigen Paketen, Adressat und der Regel, die bis zur Antwort gilt.
+
 ## Ergänzungen auf dem aktuellen Hauptzweig
 
 [Fachmodell und UEMS-Begriffe](fachmodell/README.md), [Backup und Wiederherstellung](backup-restore.md), [OCPP-Steuerung](ocpp-control.md), [Bewertung von VoltPilot: Nachweismatrix](bewertung/README.md) und [ergänzende Arbeitsregeln](agents/README.md) werden eigenständig gepflegt. Die folgenden Vertragsübersichten verlinken auch die neueren UEMS-Schnittstellen.
