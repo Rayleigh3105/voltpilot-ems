@@ -2834,6 +2834,43 @@ paths:
         "403": { description: Das Recht `grenze.eintragen` fehlt. }
         "404": { description: Anlage unbekannt oder außerhalb des Kundenbereichs. }
         "422": { description: Grenze über vereinbarter Leistung, fehlende Anschlussdaten oder kein verbleibendes Ladebudget; deutscher Grund im Körper. }
+  /api/v1/admin/mispel/ausschliesslichkeit:
+    get:
+      tags: [admin]
+      summary: Ausschließlichkeits-Prüfer der Flotte (MiSpeL MP-2, W1 = D).
+      description: >
+        Recht `plattform.betrieb` (nur Plattform-Rolle; ein Kundenkonto bekommt 403), lesend, über alle Mandanten. Je
+        Anlage mit Asset `battery` die Jahreswerte des Prüfers: Viertelstunden mit gleichzeitigem Netzbezug und
+        Speicherverbrauch (A1 S. 11), Netzstrom im Speicher nach Speichervorrang (9) = ∑M (1)¼, Netzeinspeisung aus dem
+        Speicher (11) = ∑M (2)¼ (A1 S. 14–16, S. 33–35), Lücken und Toleranzstaffel. Gerätewerte der Box
+        (`werte = geraetewerte_vorlaeufig`), keine Mengenbestimmung; offene Fragen stehen in `offene_fragen`.
+        Wegweiser `docs/agents/root/mispel-ausschliesslichkeits-pruefer.md`.
+      parameters:
+        - { name: jahr, in: query, required: false, schema: { type: integer }, description: "Kalenderjahr; fehlend = laufendes (gesetzliche Zeit)." }
+      responses:
+        "200": { description: "Je Anlage `anlage` und `ergebnis_jahr`." }
+        "400": { description: Jahr in der Zukunft oder vor 2020. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/mispel/ausschliesslichkeit/{siteId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [admin]
+      summary: Ausschließlichkeits-Prüfer einer Anlage je Monat (MiSpeL MP-2, W1 = D).
+      description: >
+        Recht `plattform.betrieb`, lesend. Kalenderjahr und jeder Kalendermonat (gesetzliche Zeit) bis jetzt, mit den
+        Formeln (3), (4), (5), (6), (9), (10), (11) unter ihrer Nummer aus Anlage 1, Soll-Viertelstunden, Viertelstunden
+        mit Werten und Lücken (fehlender Wert = Lücke, nie Null). `ergebnis_jahr.netzstrom_im_speicher` ist die strenge
+        Lesart ((9) im Jahr > 0).
+      parameters:
+        - { name: jahr, in: query, required: false, schema: { type: integer }, description: "Kalenderjahr; fehlend = laufendes (gesetzliche Zeit)." }
+      responses:
+        "200": { description: "`anlage`, `ergebnis_jahr`, `monate`, `lesart`, `offene_fragen`." }
+        "400": { description: Jahr in der Zukunft oder vor 2020. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Anlage unbekannt. }
   /api/v1/admin/sites/{siteId}/gemeinsame-steuerung:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
