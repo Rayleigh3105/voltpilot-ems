@@ -36,6 +36,8 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 [MiSpeL-Rechtsfragen-Katalog](mispel/rechtsfragen.md): Entwurf vom 02.10.2026, nicht versandt. Acht Fragen zur MiSpeL-Festlegung mit Normzitat, Fundstelle, abhängigen Paketen, Adressat und der Regel, die bis zur Antwort gilt.
 
+[MiSpeL-Anfrage-Paket Direktvermarkter](mispel/direktvermarkter-anfrage.md): Entwurf vom 02.10.2026, nicht versandt. Anforderungsliste D1–D9 mit Fundstellen, gleichlautende Anfrage an drei Kandidaten (Auswahl beim Captain), Vergleichsraster und Versandprotokoll.
+
 ## Ergänzungen auf dem aktuellen Hauptzweig
 
 [Fachmodell und UEMS-Begriffe](fachmodell/README.md), [Backup und Wiederherstellung](backup-restore.md), [OCPP-Steuerung](ocpp-control.md), [Bewertung von VoltPilot: Nachweismatrix](bewertung/README.md) und [ergänzende Arbeitsregeln](agents/README.md) werden eigenständig gepflegt. Die folgenden Vertragsübersichten verlinken auch die neueren UEMS-Schnittstellen.
