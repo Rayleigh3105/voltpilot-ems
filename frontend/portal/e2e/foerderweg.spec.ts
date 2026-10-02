@@ -79,7 +79,9 @@ for (const b of BREITEN) {
     await ohneUeberlauf(page, 'Schritt Förderweg');
     await foto(page, `${b.name}-abgrenzung-1-foerderweg`);
 
-    await d.getByRole('button', { name: 'Weiter: Zähler' }).click();
+    // Mit der Abgrenzungsoption steht der MiSpeL-Check in Schritt 1 (MP-48); der Weg weiter heißt dann so.
+    await expect(d.getByTestId('mispel-check')).toContainText('wird gerechnet');
+    await d.getByRole('button', { name: 'Weiter zur Einrichtung' }).click();
     await expect(d.getByText('Z1 · Zweirichtungszähler am Netzanschluss')).toBeVisible();
     await expect(d.getByText('Z2 · Zähler für die Stromspeicher und/oder Ladepunkte')).toBeVisible();
     await expect(d).toContainText('geeichte DC-Messung');

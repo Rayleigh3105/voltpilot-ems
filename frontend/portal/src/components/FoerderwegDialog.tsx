@@ -287,6 +287,9 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
       </p>
     ) : null;
 
+  // Der MiSpeL-Check (MP-48, BK-48 A) vergleicht heute gegen die Abgrenzungsoption — nur, wenn sie nicht schon gilt.
+  const mitCheck = weg === 'marktpraemie_abgrenzung' && heuteWeg !== 'marktpraemie_abgrenzung' && mispelCheck != null;
+
   // ---------------------------------------------------------------- Rümpfe
   let rumpf: ReactNode = null;
   if (schritt === 'foerderweg') {
@@ -327,7 +330,7 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
             </label>
           ))}
         </div>
-        {weg === 'marktpraemie_abgrenzung' && mispelCheck != null && <div className="vp-fw-check">{mispelCheck}</div>}
+        {mitCheck && <div className="vp-fw-check">{mispelCheck}</div>}
         {fehlerZeile('foerderweg')}
       </section>
     );
@@ -572,7 +575,14 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
   const formelsatzOk = !!(formelsatz || fv.vorschlag) &&
     !fv.optionen.find((o) => o.wert === (formelsatz || fv.vorschlag))?.gesperrt;
   let primaer: ReactNode;
-  if (schritt === 'foerderweg') {
+  if (schritt === 'foerderweg' && mitCheck) {
+    // BK-48 A: „Weiter zur Einrichtung“ und „Beim heutigen Förderweg bleiben“ gleich groß — informieren, nicht drängen.
+    primaer = (
+      <Button variant="primary" className="vp-fw-gleich" onClick={weiter}>
+        Weiter zur Einrichtung
+      </Button>
+    );
+  } else if (schritt === 'foerderweg') {
     primaer = (
       <Button variant="primary" onClick={weiter}>
         Weiter: {naechsterTitel}
@@ -619,7 +629,11 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
   }
   const fuss = (
     <>
-      {zurueck ? (
+      {schritt === 'foerderweg' && mitCheck ? (
+        <Button variant="outline" className="vp-fw-gleich" onClick={onClose}>
+          Beim heutigen Förderweg bleiben
+        </Button>
+      ) : zurueck ? (
         <Button variant="ghost" onClick={zurueck}>
           Zurück
         </Button>

@@ -1,0 +1,259 @@
+/* MiSpeL-Check in Schritt 1 des Förderweg-Dialogs (MiSpeL MP-48, BK-48 Variante A „Urteil zuerst“). */
+
+.vp-mc {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius, 16px);
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-mc.is-wird,
+.vp-mc.is-hinweis {
+  background: var(--vp-c-bg);
+}
+
+.vp-mc-urteil {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-mc-kopf,
+.vp-mc-label {
+  margin: 0;
+  font-size: var(--vp-c-fs-13, 13px);
+  font-weight: var(--vp-c-fw-700, 700);
+  letter-spacing: 0.02em;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-mc-betrag {
+  margin: 0;
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-24, 24px);
+  font-weight: var(--vp-c-fw-800, 800);
+  line-height: var(--vp-c-lh-title, 1.2);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg);
+}
+
+.vp-mc.is-plus .vp-mc-betrag {
+  color: var(--vp-ok-ink, #2e7d32);
+}
+
+.vp-mc.is-minus .vp-mc-betrag {
+  color: var(--vp-c-destructive);
+}
+
+.vp-mc-wird {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-fg);
+}
+
+.vp-mc-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-mc-klein {
+  margin: 0;
+  font-size: var(--vp-c-fs-13, 13px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+/* Die Spanne: Achse mit 0 €, Band ungünstig bis günstig, Strich der mittleren Schätzung. */
+.vp-mc-spanne {
+  position: relative;
+  height: 34px;
+  margin-top: 16px;
+  min-width: 0;
+}
+
+.vp-mc-spanne-linie {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--vp-c-border);
+}
+
+.vp-mc-spanne-band {
+  position: absolute;
+  top: calc(50% - 7px);
+  height: 14px;
+  border-radius: 7px;
+  background: var(--vp-c-muted);
+  box-shadow: 0 0 0 1px var(--vp-c-primary) inset;
+}
+
+.vp-mc-spanne-null {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--vp-c-muted-fg);
+}
+
+.vp-mc-spanne-null > span {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding-bottom: 2px;
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg);
+  white-space: nowrap;
+}
+
+.vp-mc-spanne-mitte {
+  position: absolute;
+  top: calc(50% - 11px);
+  width: 4px;
+  height: 22px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: var(--vp-c-fg);
+}
+
+.vp-mc.is-plus .vp-mc-spanne-mitte {
+  background: var(--vp-ok-ink, #2e7d32);
+}
+
+.vp-mc.is-minus .vp-mc-spanne-mitte {
+  background: var(--vp-c-destructive);
+}
+
+.vp-mc-spanne-lab {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2, 8px);
+  margin: 0;
+  font-size: var(--vp-c-fs-13, 13px);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mc-spanne-lab > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-mc-spanne-lab > span:last-child {
+  text-align: right;
+}
+
+.vp-mc-wie {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-600, 600);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.vp-mc-wie:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-mc-rechnung {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+  padding-top: var(--vp-c-space-2, 8px);
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-mc-posten {
+  display: grid;
+  margin: 0 0 var(--vp-c-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-mc-posten > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--vp-c-space-3, 12px);
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vp-c-border);
+}
+
+.vp-mc-posten dt {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-600, 600);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-mc-posten dt small {
+  font-size: var(--vp-c-fs-13, 13px);
+  font-weight: var(--vp-c-fw-400, 400);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mc-posten dd {
+  margin: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--vp-c-fg);
+}
+
+.vp-mc-posten dd.is-plus {
+  color: var(--vp-ok-ink, #2e7d32);
+}
+
+.vp-mc-posten dd.is-minus {
+  color: var(--vp-c-destructive);
+}
+
+.vp-mc-posten > .vp-mc-summe {
+  padding: 10px 8px;
+  border-bottom: 0;
+  border-radius: var(--vp-c-radius-sm, 10px);
+  background: var(--vp-c-muted);
+}
+
+.vp-mc-verlangt {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-fg);
+}
+
+.vp-mc-verlangt li {
+  overflow-wrap: anywhere;
+}
+
+.vp-mc-verlangt small {
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg);
+}

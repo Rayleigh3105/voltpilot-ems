@@ -76,6 +76,11 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   **vorgemerkt** (Vertrag 1.2 § 5, `FoerderwegSpiegelLaeufer` legt die Spiegel am Tag um); der Partner
   (Direktvermarkter, gesonderter Bilanzkreis) ist Angabe der Fassung. Zwilling `frontend/portal/src/mispelFoerderweg.ts`,
   Bühne `e2e/foerderweg.tsx`.
+- **MiSpeL-Check im Portal (MP-48, BK-48 Variante A):** in Schritt 1 des Dialogs „Förderweg ändern“, sobald die
+  Abgrenzungsoption gewählt ist (und heute nicht schon gilt): Betrag im Jahr mit Vorzeichen, ein Satz Grund, Spanne
+  ungünstig bis günstig; „Wie gerechnet?“ zeigt die Posten mit Vorzeichen und was die Abgrenzungsoption verlangt.
+  Daten nur lesend aus `site_mispel_check` (`GET /api/v1/sites/{siteId}/mispel-check`,
+  [Vertrag](../contracts/v2/mispel-check.md)); ohne Zeile „wird gerechnet“, nie 0 €.
 - **Der alte Schalter `netzladen_erlaubt`** bietet das Portal seit MP-17 nur noch, wo der Förderweg Netzladen zulässt
   (sonst gesperrt mit Grund); ohne Fassung ist er der Bestand, mit Fassung bestimmt der Förderweg ([Vertrag § 6](../contracts/v2/mispel-foerderweg.md#6-der-alte-netzlade-schalter-bis-mp-17-w2--b),
   [Wegweiser Netzladen-Schalter](../agents/root/per-site-grid-charging-switch-site-netzl.md)).
@@ -176,7 +181,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 ## 9. Was noch nicht gebaut ist
 
 - **Optimierer:** Jahreszustand der Pauschaloption für die Sonderfälle P4, P4-Variante und P5 (MP-26 baut P1–P3). Der
-  MiSpeL-Check in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige fehlt (MP-48).
+  MiSpeL-Check in der Simulation rechnet (MP-13, [Wegweiser](../agents/root/mispel-check-simulation.md)); seine Anzeige steht im Förderweg-Dialog (MP-48); wer ihn je Anlage rechnet und in
+  `site_mispel_check` ablegt, fehlt (MP-13b) — bis dahin zeigt das Portal „wird gerechnet“.
 - **Rechenwerk:** der Optimierer plant A2–A4 noch nicht im Mischbetrieb (Fahrzeug als Speicher: MP-33); Rumpfjahre
   der Pauschaloption gibt der Aufrufer noch vor (Erkennung aus Fallständen wie MP-21 fehlt), Zählerrolle ZW für P5 fehlt. Der Monatslauf liest Formelsatz und Fallstände noch vom Aufrufer statt aus dem Förderweg.
 - **Box:** Förderweg über den Plan statt `grid_charge_allowed` (MP-14).
@@ -185,8 +191,7 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 - **Oberflächen** — jede beginnt erst nach einem mit dem Captain abgestimmten Bedienkonzept (BK-…): Box-Oberfläche
   mit dem Förderweg (MP-14), Einrichtung des Förderwegs mit Formelsatz-Vorschlag und Gebot der Bestnutzung (MP-17;
   ersetzt auch den Portaltext zum Netzladen, W2, und bringt den Hinweis auf die Abgrenzungsoption an einer EEG-Anlage
-  im Händler-Modus, W6), Kundenansicht Mengen und Ertrag mit Nachweis-Abruf (MP-18, W5), MiSpeL-Check (MP-48),
-  Abweichungsampel (MP-15).
+  im Händler-Modus, W6), Kundenansicht Mengen und Ertrag mit Nachweis-Abruf (MP-18, W5), Abweichungsampel (MP-15).
 - **Partner:** Einverständnis-Paket für die Übergangszeit (MP-19), Direktvermarkter-Schnittstelle (MP-20).
 - **Bidirektionale Ladepunkte** (Stufe B): ein bidirektionaler Ladepunkt wird wie ein Speicher behandelt
   (A1 Abschn. 3.2.5, S. 26–27). Das Datenmodell steht (MP-31); es fehlen Rechenwerk A2–A4 mit Fremdtankstrom (MP-32),

@@ -52,6 +52,7 @@ import type { VerlustVariante } from '../gemeinsameSteuerungFlaeche';
 import { showTechnicalLayer, useRollen } from '../rollen';
 import { FLAECHE } from '../uemsGemeinsameSteuerung';
 import { FoerderwegDialog } from '../components/FoerderwegDialog';
+import { MispelCheckPlatz } from '../components/MispelCheckKarte';
 import { foerderweg, netzladenZeile, tagText } from '../mispelFoerderweg';
 import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
 import '../components/FoerderwegDialog.css';
@@ -775,6 +776,7 @@ export function TechnikSection({
         <FoerderwegDialog
           siteId={site.id}
           ansicht={fw}
+          mispelCheck={<MispelCheckPlatz siteId={site.id} anlageName={site.name} />}
           onClose={() => setFwOffen(false)}
           onGespeichert={(neu) => {
             setFwOffen(false);

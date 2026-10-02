@@ -476,6 +476,8 @@ public class TenantRepository {
                         "mispel_pauschal_jahr",
                         // The Förderweg (MiSpeL MP-5, V20261002141500) holds the tenant (RESTRICT).
                         "site_foerderweg",
+                        // The MiSpeL-Check result (MP-48, V20261002234100) holds the tenant (RESTRICT).
+                        "site_mispel_check",
                         "messstelle_ort", "messstelle_stellung",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",

@@ -6,6 +6,8 @@ import { keycloak } from '../src/auth';
 import { foerderweg, naechsterMonatserster, type FoerderwegWert } from '../src/mispelFoerderweg';
 import { mispelApi, type FoerderwegAendern, type FoerderwegAnsicht, type ZaehlerrolleAnsicht } from '../src/mispelFoerderwegApi';
 import { TechnikSection } from '../src/pages/AnlageTechnik';
+import { mispelCheckApi, type MispelCheckAnsicht } from '../src/mispelCheck';
+import checkFixtures from './mispel-check-fixtures.json';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -24,6 +26,8 @@ import '../src/index.css';
  * `mispel-foerderweg.md` 1.2 nachspielt, die die Fläche erreichen kann: Wechsel nur zum Monatsersten (vorgemerkt,
  * § 5), Einverständnis bis 30.09.2027, Formelsatz Pflicht in der Abgrenzung. Heute ist der 20.10.2026.
  * `?fall=` ist der Bestand der Anlage: `ausschliesslichkeit` (Vorgabe), `einspeiseverguetung`, `ungefoerdert`.
+ * `?check=` ist das Ergebnis des MiSpeL-Checks (MP-48, Vertrag `mispel-check.md`): `a4` (positiv, Werk Ahrenberg),
+ * `a2` (negativ, Autohaus Brenner) oder ohne Angabe noch keines („wird gerechnet“).
  */
 const HEUTE = '2026-10-20';
 const FAELLE: Record<string, FoerderwegWert> = {
@@ -32,10 +36,12 @@ const FAELLE: Record<string, FoerderwegWert> = {
   ungefoerdert: 'ungefoerdert',
 };
 const fall: FoerderwegWert = FAELLE[new URLSearchParams(window.location.search).get('fall') ?? 'ausschliesslichkeit'];
+const check = new URLSearchParams(window.location.search).get('check');
+const CHECKS = checkFixtures as unknown as Record<string, MispelCheckAnsicht>;
 
 const site: Site = {
   id: 's-ahrenberg',
-  name: 'Werk Ahrenberg',
+  name: check === 'a2' ? 'Autohaus Brenner' : 'Werk Ahrenberg',
   biddingZone: 'DE-LU',
   latitude: 48.2612,
   longitude: 11.4355,
@@ -159,6 +165,14 @@ Object.assign(mispelApi, {
   },
   zaehlerrolle: async (id: string) => rolle(id),
   zaehlerrolleSetzen: async (id: string) => rolle(id),
+});
+
+Object.assign(mispelCheckApi, {
+  lesen: async (siteId: string): Promise<MispelCheckAnsicht> =>
+    check && CHECKS[check]
+      ? { ...CHECKS[check], site_id: siteId }
+      : { site_id: siteId, stand: 'wird_gerechnet', stand_seit: null, formelsatz: null, fenster_von: null,
+          fenster_bis: null, differenz: null, posten: [], datenbasis: [], hinweis: null },
 });
 
 Object.assign(api, {

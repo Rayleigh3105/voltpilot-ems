@@ -296,3 +296,29 @@
     padding-left: 16px;
   }
 }
+
+/* MiSpeL-Check (MP-48, BK-48 A): „Bleiben“ und „Weiter zur Einrichtung“ sind gleich groß; am Telefon brechen
+   beide Wörter um, statt abgeschnitten zu werden. */
+.vp-anlegen-fuss > .vp-fw-gleich {
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: stretch;
+  height: auto;
+  min-height: 44px;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+}
+
+@media (min-width: 721px) {
+  .vp-anlegen-fuss > .vp-fw-gleich {
+    flex: 0 1 340px;
+  }
+}
+
+@media (max-width: 720px) {
+  .vp-anlegen-fuss > .vp-fw-gleich {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}

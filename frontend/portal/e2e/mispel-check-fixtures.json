@@ -1,0 +1,42 @@
+{
+  "_quelle": "MiSpeL-Check (MP-48) in der Form des Vertrags docs/contracts/v2/mispel-check.md; Beträge und Posten der Kundentypen a4 und a2 aus der Beispielrechnung (vp-mispel-fundament/beispielrechnungen.json, Konzept § 3), Fenster 10/2025–09/2026 wie MP-13. Fiktive Anlagen.",
+  "a4": {
+    "site_id": "s-ahrenberg",
+    "stand": "fertig",
+    "stand_seit": "2026-10-02T12:00:00Z",
+    "formelsatz": "A1",
+    "fenster_von": "2025-10-01",
+    "fenster_bis": "2026-09-30",
+    "differenz": { "niedrig_eur": 158, "mittel_eur": 1899, "hoch_eur": 8043 },
+    "posten": [
+      { "art": "handel_saldierung", "niedrig_eur": 1658, "mittel_eur": 2749, "hoch_eur": 8343, "herkunft": "Beispielrechnung a4, realisiert" },
+      { "art": "jahresmarktwert", "niedrig_eur": 0, "mittel_eur": 0, "hoch_eur": 0, "herkunft": "anzulegender Wert über allen Monatsmarktwerten" },
+      { "art": "zaehler_z2", "niedrig_eur": -1000, "mittel_eur": -600, "hoch_eur": -300, "herkunft": "Schätzung" },
+      { "art": "bilanzkreis", "niedrig_eur": -500, "mittel_eur": -250, "hoch_eur": 0, "herkunft": "Schätzung" }
+    ],
+    "datenbasis": [
+      { "angabe": "Speicher", "wert": 500, "einheit": "kWh", "herkunft": "stammdaten", "quelle": "Anlage" },
+      { "angabe": "Formelsatz", "wert": "A1", "einheit": null, "herkunft": "angenommen", "quelle": "noch nicht gewählt" }
+    ],
+    "hinweis": null
+  },
+  "a2": {
+    "site_id": "s-ahrenberg",
+    "stand": "fertig",
+    "stand_seit": "2026-10-02T12:00:00Z",
+    "formelsatz": "A1",
+    "fenster_von": "2025-10-01",
+    "fenster_bis": "2026-09-30",
+    "differenz": { "niedrig_eur": -1321, "mittel_eur": -555, "hoch_eur": 691 },
+    "posten": [
+      { "art": "handel_saldierung", "niedrig_eur": 199, "mittel_eur": 330, "hoch_eur": 1001, "herkunft": "Beispielrechnung a2, realisiert" },
+      { "art": "jahresmarktwert", "niedrig_eur": -420, "mittel_eur": -285, "hoch_eur": -110, "herkunft": "Beispielrechnung a2" },
+      { "art": "zaehler_z2", "niedrig_eur": -800, "mittel_eur": -450, "hoch_eur": -200, "herkunft": "Schätzung" },
+      { "art": "bilanzkreis", "niedrig_eur": -300, "mittel_eur": -150, "hoch_eur": 0, "herkunft": "Schätzung" }
+    ],
+    "datenbasis": [
+      { "angabe": "Jahresverbrauch", "wert": 60000, "einheit": "kWh", "herkunft": "angenommen", "quelle": "Konzept § 3 a2" }
+    ],
+    "hinweis": null
+  }
+}
