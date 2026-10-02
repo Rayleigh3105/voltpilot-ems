@@ -73,6 +73,9 @@ type storedSession struct {
 	StartedAt     time.Time `json:"started_at"`
 	MeterStartWh  int       `json:"meter_start_wh"`
 	TagRef        string    `json:"tag_ref,omitempty"`
+	// OCPP 2.0.1 only (MiSpeL MP-35); absent for every 1.6 session.
+	StationTransactionID string `json:"station_transaction_id,omitempty"`
+	MeterStartUnknown    bool   `json:"meter_start_unknown,omitempty"`
 }
 
 // Store persists the charge-point allowlist + the transaction-id counter.

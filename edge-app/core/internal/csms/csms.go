@@ -183,7 +183,8 @@ func New(opts Options) (*Server, error) {
 			s.startWatermarks[key] = startWatermark{At: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef}
 		}
 		c.connector(tx.ConnectorID).Session = &Session{TransactionID: tx.TransactionID,
-			StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef, Reconciling: true}
+			StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef, Reconciling: true,
+			StationTransactionID: tx.StationTransactionID, MeterStartUnknown: tx.MeterStartUnknown}
 		if s.nextTxID <= tx.TransactionID {
 			s.nextTxID = tx.TransactionID + 1
 		}
@@ -523,7 +524,8 @@ func (s *Server) persistLocked() error {
 		for _, con := range s.chargers[charger.ID].Connectors {
 			if tx := con.Session; tx != nil {
 				sessions = append(sessions, storedSession{ChargePointID: charger.ID, ConnectorID: con.ID,
-					TransactionID: tx.TransactionID, StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef})
+					TransactionID: tx.TransactionID, StartedAt: tx.StartedAt, MeterStartWh: tx.MeterStartWh, TagRef: tx.TagRef,
+					StationTransactionID: tx.StationTransactionID, MeterStartUnknown: tx.MeterStartUnknown})
 			}
 		}
 	}

@@ -1,10 +1,10 @@
 package csms
 
-// This file — together with csms.go's Options plumbing — is the ONLY place
-// `github.com/lorenzodonini/ocpp-go` (MIT) is imported in this repository.
-// Everything above it sees plain Go types, so an ocpp-go version bump, or the
-// later OCPP 2.0.1 adapter (Konzept E3: 1.6J first, 2.0.1 when a real station
-// demands it), is a change inside this package.
+// This file — together with csms.go's Options plumbing, the OCPP 2.0.1 lane
+// (ocpp201map.go, MiSpeL MP-35) and the subprotocol switch both share
+// (subprotocol_mux.go) — is the ONLY place `github.com/lorenzodonini/ocpp-go`
+// (MIT) is imported in this repository. Everything above it sees plain Go
+// types, so an ocpp-go version bump is a change inside this package.
 
 import (
 	"context"
@@ -33,6 +33,9 @@ type transport struct {
 	srv  *Server
 	cs   ocpp16.CentralSystem
 	wsrv ws.Server
+	// mux puts the 1.6 lane (wsrv) and the 2.0.1 lane (v201) on one endpoint.
+	mux  *subprotocolMux
+	v201 *transport201
 	port int
 	path string
 
@@ -50,11 +53,19 @@ func newTransport(s *Server, port int, path string) *transport {
 	timeouts := ws.NewServerTimeoutConfig()
 	timeouts.WriteWait = commandSocketWriteWait
 	upstream.SetTimeoutConfig(timeouts)
-	wsrv := &journalWsServer{Server: upstream, journal: s.journal}
+	// The 1.6 lane is created first and is therefore the mux's primary: it
+	// owns the shared server exactly as the bare upstream did before.
+	mux := newSubprotocolMux(upstream)
+	wsrv := &journalWsServer{Server: mux.lane(subprotocolOCPP16), journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
 	t := &transport{
-		srv: s, cs: cs, wsrv: wsrv, port: port, path: path, done: make(chan struct{}),
-		stopServer: cs.Stop, drainTimeout: commandSocketWriteWait + time.Second,
+		srv: s, cs: cs, wsrv: wsrv, mux: mux, port: port, path: path, done: make(chan struct{}),
+		drainTimeout: commandSocketWriteWait + time.Second,
+	}
+	t.v201 = newTransport201(s, mux.lane(subprotocolOCPP201), func() bool { return t.stopping.Load() })
+	t.stopServer = func() {
+		t.v201.stop()
+		cs.Stop()
 	}
 
 	// The allowlist gate. Returning false makes the library refuse the
@@ -122,6 +133,9 @@ func (t *transport) start(ctx context.Context) error {
 		}
 	}()
 
+	// The 2.0.1 lane registers its handlers before the shared socket opens,
+	// so a 2.0.1 station never meets a half-wired endpoint.
+	t.v201.start(t.port, t.path+"/{ws}")
 	go func() {
 		defer close(t.done)
 		// The library takes a gorilla-mux pattern; the trailing segment is the
@@ -172,10 +186,10 @@ func (t *transport) stop() {
 	go func() {
 		defer close(closeDone)
 		for _, id := range ids {
-			if _, ok := t.wsrv.GetChannel(id); !ok {
+			if _, ok := t.sockets().GetChannel(id); !ok {
 				continue
 			}
-			_ = t.wsrv.StopConnection(id, websocket.CloseError{
+			_ = t.sockets().StopConnection(id, websocket.CloseError{
 				Code: websocket.CloseNormalClosure,
 				Text: "Edge wird beendet",
 			})
@@ -191,7 +205,7 @@ drain:
 	for {
 		open := false
 		for _, id := range ids {
-			if _, ok := t.wsrv.GetChannel(id); ok {
+			if _, ok := t.sockets().GetChannel(id); ok {
 				open = true
 				break
 			}
@@ -225,9 +239,18 @@ drain:
 	}
 }
 
+// sockets is the view over EVERY station socket, whichever OCPP it speaks:
+// shutdown drains and a revoked registration kicks both protocols alike.
+func (t *transport) sockets() ws.Server {
+	if t.mux != nil {
+		return t.mux.upstream
+	}
+	return t.wsrv
+}
+
 // disconnect kicks a station off (used when its registration is revoked).
 func (t *transport) disconnect(id string) {
-	_ = t.wsrv.StopConnection(id, websocket.CloseError{
+	_ = t.sockets().StopConnection(id, websocket.CloseError{
 		Code: websocket.CloseNormalClosure,
 		Text: "Ladepunkt entfernt",
 	})

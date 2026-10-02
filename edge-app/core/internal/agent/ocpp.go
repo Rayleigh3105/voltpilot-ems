@@ -1025,7 +1025,7 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 				// here and nowhere else without a second data source (the
 				// cloud had to join the Slice-10 journal for it). Absent
 				// register = absent balance, never a fabricated 0.
-				if ocn.EnergyKwh != nil {
+				if ocn.EnergyKwh != nil && !con.Session.MeterStartUnknown {
 					kwh := *ocn.EnergyKwh - float64(con.Session.MeterStartWh)/1000
 					// A negative balance is a register that moved backwards
 					// (a reset, a swapped meter): we do not know what was

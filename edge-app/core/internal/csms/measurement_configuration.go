@@ -152,7 +152,9 @@ func (s *Server) reconcileMeasurementConfigurationLocked(ctx context.Context) er
 	desired := s.measurementDesired
 	connected := make([]string, 0, len(s.chargers))
 	for id, charger := range s.chargers {
-		if charger.Connected {
+		// ChangeConfiguration is 1.6 vocabulary; a 2.0.1 station's sampled
+		// data is configured over its Device Model (ocpp201map.go).
+		if charger.Connected && charger.OCPPVersion != OCPPVersion201 {
 			connected = append(connected, id)
 		}
 	}

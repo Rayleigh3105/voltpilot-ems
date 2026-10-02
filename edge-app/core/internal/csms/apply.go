@@ -147,6 +147,13 @@ func (s *Server) onStatus(id string, connectorID int, status, errorCode string, 
 // Ids are monotonic and PERSISTED, so a box reboot never re-issues an id a
 // station still holds for a running session.
 func (s *Server) onStartTransaction(id string, connectorID int, idTag string, meterStartWh int, now time.Time) int {
+	return s.openSession(id, connectorID, idTag, meterStartWh, now, nil)
+}
+
+// openSession is onStartTransaction with an optional mark that stamps the new
+// session before its first persist - the OCPP 2.0.1 lane records the
+// station's own transactionId there, so a box restart can still match it.
+func (s *Server) openSession(id string, connectorID int, idTag string, meterStartWh int, now time.Time, mark func(*Session)) int {
 	s.mu.Lock()
 	c, ok := s.chargers[id]
 	if !ok || connectorID < 1 || connectorID > maxConnectors {
@@ -190,6 +197,9 @@ func (s *Server) onStartTransaction(id string, connectorID int, idTag string, me
 		// session on this box shares, and a profile on it would steer charges
 		// that have nothing in common (the journal's own rule, `redactValue`).
 		TagRef: s.tagRefOf(idTag),
+	}
+	if mark != nil {
+		mark(con.Session)
 	}
 	c.LastSeen = s.opts.Now()
 	c.Connected = true

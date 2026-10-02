@@ -21,6 +21,11 @@ var ErrNotConnected = errors.New("die Ladesäule ist zurzeit nicht verbunden")
 // ErrDisabled is returned when the feature flag is off.
 var ErrDisabled = errors.New("die Ladepunkt-Anbindung ist nicht eingeschaltet")
 
+// ErrOCPP201Profiles refuses every 1.6 command (profiles, configuration,
+// commissioning) to a station on the OCPP 2.0.1 lane. Its charging profiles
+// arrive with MiSpeL MP-36; until then such a station is measured, not steered.
+var ErrOCPP201Profiles = errors.New("die Ladesäule spricht OCPP 2.0.1 - Ladeprofile dafür folgen (MiSpeL MP-36)")
+
 // Commission prepares a station for load management, in the order that makes
 // each step safe:
 //
@@ -308,6 +313,7 @@ func (s *Server) liveTransport(chargerID string) (*transport, error) {
 	t := s.transport
 	c, known := s.chargers[chargerID]
 	connected := known && c.Connected
+	speaks201 := known && c.OCPPVersion == OCPPVersion201
 	s.mu.Unlock()
 	if t == nil {
 		return nil, ErrDisabled
@@ -317,6 +323,9 @@ func (s *Server) liveTransport(chargerID string) (*transport, error) {
 	}
 	if !connected {
 		return nil, ErrNotConnected
+	}
+	if speaks201 {
+		return nil, ErrOCPP201Profiles
 	}
 	return t, nil
 }

@@ -86,7 +86,7 @@ Bei Cloud-Ausfall gelten Frische-/Fallbackregeln pro Plan und Entität. Eine gen
 
 ## OCPP und lokale Netze
 
-Die Box ist OCPP-Central-System auf `ws://<box>:8887/ocpp/<kennung>`. Nur registrierte Kennungen werden angenommen. `VP_OCPP_ENABLED` aktiviert den Server; die optimierte Verteilung benötigt zusätzlich `VP_CONTROL_ENABLED` und `VP_CONSUMER_CONTROL_ENABLED`.
+Die Box ist OCPP-Central-System auf `ws://<box>:8887/ocpp/<kennung>`, für OCPP 1.6J und – auf derselben Adresse, ausgehandelt über das WebSocket-Subprotokoll – OCPP 2.0.1 ([Umfang](edge-ocpp201.md)). Nur registrierte Kennungen werden angenommen. `VP_OCPP_ENABLED` aktiviert den Server; die optimierte Verteilung benötigt zusätzlich `VP_CONTROL_ENABLED` und `VP_CONSUMER_CONTROL_ENABLED`.
 
 Das Sicherheitsprofil der Säule bleibt bei Box-Ausfall wirksam. Protokollannahme und tatsächliches Laden werden separat erfasst; echte Modelle benötigen einen Prüfstandnachweis.
 

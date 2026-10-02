@@ -198,6 +198,16 @@ type Session struct {
 	// cloud re-HMACs everything it ingests with its own pepper, so the two
 	// pseudonym spaces are deliberately different values for the same card.
 	TagRef string `json:"tag_ref,omitempty"`
+	// StationTransactionID is the station's own transactionId - OCPP 2.0.1
+	// lets the STATION name the transaction (TransactionEventRequest,
+	// transactionInfo.transactionId, max. 36 characters), while TransactionID
+	// stays the box's own monotonic number every consumer already keys on.
+	// Empty for every 1.6 session, so the 1.6 wire and files stay unchanged.
+	StationTransactionID string `json:"station_transaction_id,omitempty"`
+	// MeterStartUnknown: the 2.0.1 station opened the transaction without an
+	// Energy.Active.Import.Register reading, so MeterStartWh is NOT a reading
+	// and the session's own delivered energy is unknown - never register - 0.
+	MeterStartUnknown bool `json:"meter_start_unknown,omitempty"`
 }
 
 // Connector is one plug ("Stecker") of a charge point. One connector = one
@@ -279,6 +289,10 @@ type ChargerState struct {
 	// "the charge point as a whole", so that notification is kept here rather
 	// than being minted as a phantom connector 0 in the list below.
 	Status string `json:"status,omitempty"`
+	// OCPPVersion is "2.0.1" while the station is connected over the OCPP
+	// 2.0.1 lane (MiSpeL MP-35) and empty for 1.6, whose snapshot therefore
+	// stays byte-identical.
+	OCPPVersion string `json:"ocpp_version,omitempty"`
 
 	Connectors []Connector `json:"connectors,omitempty"`
 

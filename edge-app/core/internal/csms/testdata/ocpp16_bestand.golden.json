@@ -1,0 +1,135 @@
+{
+  "subprotocol": "ocpp1.6",
+  "frames": [
+    [
+      3,
+      "b1",
+      {
+        "currentTime": "2026-10-01T12:00:00Z",
+        "interval": 300,
+        "status": "Accepted"
+      }
+    ],
+    [
+      3,
+      "b2",
+      {
+        "currentTime": "2026-10-01T12:00:00Z"
+      }
+    ],
+    [
+      3,
+      "b3",
+      {}
+    ],
+    [
+      3,
+      "b4",
+      {
+        "idTagInfo": {
+          "status": "Accepted"
+        }
+      }
+    ],
+    [
+      3,
+      "b5",
+      {
+        "idTagInfo": {
+          "status": "Accepted"
+        },
+        "transactionId": 1
+      }
+    ],
+    [
+      3,
+      "b6",
+      {}
+    ],
+    [
+      3,
+      "b7",
+      {}
+    ],
+    [
+      3,
+      "b8",
+      {}
+    ],
+    [
+      3,
+      "b9",
+      {}
+    ],
+    [
+      3,
+      "b10",
+      {
+        "status": "UnknownVendorId"
+      }
+    ],
+    [
+      4,
+      "b11",
+      "NotSupported",
+      "Unsupported feature Unbekannt",
+      {}
+    ]
+  ],
+  "chargers_json": {
+    "schema_version": "1.0",
+    "chargers": [
+      {
+        "id": "BESTAND-16",
+        "label": "BESTAND-16",
+        "added_at": "2026-10-01T12:00:00Z"
+      }
+    ],
+    "next_transaction_id": 2,
+    "start_watermarks": {
+      "BESTAND-16#1": {
+        "at": "2026-10-01T12:00:00Z",
+        "meter_start_wh": 1000,
+        "tag_ref": "tagref_<pseudonym>"
+      }
+    }
+  },
+  "snapshot": {
+    "enabled": true,
+    "listening": true,
+    "url_path": "/ocpp",
+    "chargers": [
+      {
+        "id": "BESTAND-16",
+        "label": "BESTAND-16",
+        "added_at": "2026-10-01T12:00:00Z",
+        "connected": true,
+        "connected_at": "2026-10-01T12:00:00Z",
+        "last_seen": "2026-10-01T12:00:00Z",
+        "booted_at": "2026-10-01T12:00:00Z",
+        "vendor": "Bestand",
+        "model": "WB-16",
+        "firmware": "1.0.0",
+        "serial": "S-16",
+        "connectors": [
+          {
+            "id": 1,
+            "status": "Available",
+            "error_code": "NoError",
+            "energy_kwh": 1.5,
+            "soc_pct": 55,
+            "metered_at": "2026-10-01T12:00:00Z",
+            "meter_received_at": "2026-10-01T12:00:00Z",
+            "energy_measured_at": "2026-10-01T12:00:00Z",
+            "soc_measured_at": "2026-10-01T12:00:00Z"
+          }
+        ],
+        "capabilities": {
+          "read": false,
+          "watts_allowed": false,
+          "amps_allowed": false
+        }
+      }
+    ]
+  }
+}
