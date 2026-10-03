@@ -11,6 +11,7 @@ Mandantenfähiges EMS für PV, Speicher und Verbraucher. Einstieg: [Dokumentatio
 | `services/forecast`, `services/market-data` | Prognosen und externe Daten |
 | `services/optimization` | Planung; [README](services/optimization/README.md) |
 | `edge-app` | Kunden-Box; [lokale Regeln](edge-app/AGENTS.md) |
+| `edge-light` | Box als ein Programm ohne Docker/Node-RED (OpenWrt/MIPS); Go-Code in `edge-app/core`; [README](edge-light/README.md), [Paritätsliste](edge-light/docs/paritaet.md) |
 | `frontend/portal` | React-Portal; [lokale Regeln](frontend/portal/AGENTS.md) |
 | `catalog/measurement-points` | Geprüfte Herstellerquellen und generierte Messpunkte |
 | `catalog/control-profiles` | Steuerprofile je Wechselrichter-Familie: Wissen mit Quellen, keine Freigabe; Adapter-Folgen per Test an den Code gebunden; [README](catalog/control-profiles/README.md) |
