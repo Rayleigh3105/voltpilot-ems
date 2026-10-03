@@ -72,9 +72,9 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 
 ### 3. Pilot mit Loader und Portal
 
-1. Entscheiden, wo das Programm per HTTPS liegt (eigener Server reicht): `<base_url>/latest/vp-edge-light-linux-mipsle` + `.sha256`.
-2. `edge-light/scripts/build.sh mipsle`, Dateien hochladen.
-3. `edge-light/openwrt/install.sh root@<mango-ip> <base_url>`, dann `/etc/init.d/vp-edge-light start`, `logread -f -e vp-edge-light`.
+1. Root-Passwort setzen und einen **RSA**-Schlüssel hinterlegen (Dropbear kennt kein Ed25519).
+2. `edge-light/scripts/build.sh mipsle`, dann `edge-light/openwrt/install.sh root@<mango-ip>` – legt die gepackte Kopie in den Flash; ein Download-Server ist nicht nötig (optional als zweites Argument `<base_url>`).
+3. `/etc/init.d/vp-edge-light restart`, `logread -f -e vp-edge-light`. Am Mango geprüft: Start, Absturz, Neustart, kein Schreiben in den Flash ([mango.md](mango.md#lokale-kopie-im-flash-gebaut-am-gerät-geprüft-03102026)).
 4. Auf `:8484` den Deye einrichten, die Box im Portal koppeln.
 5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen. **Vorher** DHCP-Reservierung für den Mango im Kundenrouter und Firewall-Regel für 8887 aus dem Kundennetz – beides fehlt in `install.sh` (am Gerät gefunden, siehe [mango.md](mango.md#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)). Die Verbindung selbst ist mit einer echten go-e belegt.
 6. 48 h beobachten (Pilotplan in [mango.md](mango.md)).
@@ -87,7 +87,7 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 - Vertrag `docs/contracts/ota-release-manifest.schema.json` additiv um Artefakt-Typ `binary` erweitern.
 - Release-Lauf baut, signiert und verteilt die drei Programme; Portal-Route zum Ausliefern.
 - Updates über die bestehende Zuweisung (`ems/…/v2/update`), Rückfall auf die zuletzt bestätigte Fassung.
-- **Notfall-Kopie im Flash** (4,4 MB gzip passt): startet die Box nach einem Stromausfall auch ohne Internet.
+- Die lokale Kopie im Flash ist gebaut (Stufe 1); Stufe 2 legt dort die zuletzt **bestätigte** Fassung ab und prüft sie wie den Download gegen die Signatur.
 - CI: MIPS-Build (`GOARCH=mipsle GOMIPS=softfloat go build ./cmd/vp-edge-light`) als Prüfschritt aufnehmen und einmal von Hand anstoßen.
 
 ### 5. Stufe 3: Monitoring + Überschussladen vollständig
@@ -98,7 +98,7 @@ go-e lesen, weitere Energiequellen (Deye, go-e, generisches Modbus), geräte-eig
 
 | Frage | Stand |
 |---|---|
-| HTTPS-Speicherort für Pilot und später | offen (Pilot: eigener Server; Stufe 2: Portal-Route vorgeschlagen) |
+| HTTPS-Speicherort für Pilot und später | Pilot: nicht nötig (lokale Kopie im Flash); Stufe 2: Portal-Route vorgeschlagen |
 | Kundenautomationen: Go-Laufzeit für den Flow-Katalog, Vertrag liefert dem Gerät dann den Flow-Graphen | Konzept nötig (Stufe 7) |
 | Code-Knoten `vp.logic.function` (Kunden-JavaScript): JS-Interpreter in Go oder ablösen | offen |
 | Node-RED-Editor als Servicezugang entfällt: Bestandsanlagen mit Handverdrahtung | vor dem Umstieg prüfen |

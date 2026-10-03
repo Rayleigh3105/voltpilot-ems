@@ -66,6 +66,17 @@ core_rel() {
   fi
 }
 
+# light_version - eine eigene Kennung, nie die eines Docker-Releases
+# (edge-JJJJ.MM.N): das Portal ordnet eine Version per Praefix einem Release zu
+# ("edge-2026.09.6-12-g..." gaelte als edge-2026.09.6).
 light_version() {
-  git -C "$REPO_ROOT" describe --tags --always --dirty 2>/dev/null || echo dev
+  local d
+  d="$(git -C "$REPO_ROOT" describe --tags --match 'edge-light-*' --always --dirty 2>/dev/null)" || {
+    echo edge-light-dev
+    return
+  }
+  case "$d" in
+    edge-light-*) echo "$d" ;;
+    *) echo "edge-light-g$d" ;;
+  esac
 }

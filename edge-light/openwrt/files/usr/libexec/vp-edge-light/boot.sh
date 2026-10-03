@@ -12,13 +12,21 @@
 # Was laufend geschrieben wird, liegt im RAM (NOR-Flash vertraegt Dauerschreiben
 # schlecht) - siehe HOT_DIRS und edge-light/docs/mango.md.
 #
+# Lokale Kopie (Notfall-Kopie): liegt das Programm gepackt im Flash
+# (local_dir, ~4,4 MB gzip), startet die Box auch ohne Download-Server und nach
+# einem Stromausfall ohne Internet. Reihenfolge: Download (wenn base_url
+# gesetzt) -> schon geladene Fassung im RAM -> lokale Kopie aus dem Flash.
+#
 # ⚠ STUFE 1 (Pilot): die Echtheit des Programms haengt an HTTPS zum
-# konfigurierten Server, die Pruefsumme schuetzt nur gegen unvollstaendige
-# Downloads. Die signierte Kette (Ed25519 gegen die eingebackene Wurzel, wie
-# beim OTA der Docker-Box) ist Stufe 2: edge-light/docs/boot-und-updates.md.
+# konfigurierten Server bzw. an der per SSH aufgespielten lokalen Kopie; die
+# Pruefsumme schuetzt nur gegen unvollstaendige Downloads und kaputten Flash.
+# Die signierte Kette (Ed25519 gegen die eingebackene Wurzel, wie beim OTA der
+# Docker-Box) ist Stufe 2: edge-light/docs/boot-und-updates.md.
 # NICHT ohne Stufe 2 auf eine Kundenflotte ausrollen.
 
-set -u
+# Kein "set -u": /lib/functions.sh (config_load & Co.) liest ungesetzte
+# Variablen wie IPKG_INSTROOT und bricht sonst ab (am Mango gefunden). Jede
+# eigene Variable bekommt ueber config_get eine Vorgabe.
 
 # shellcheck source=/dev/null # OpenWrt-Systembibliothek, nur auf dem Geraet vorhanden
 . /lib/functions.sh
@@ -37,18 +45,25 @@ config_get BUS_ADDR main bus_addr "127.0.0.1:1883"
 config_get MEMLIMIT main gomemlimit "48MiB"
 config_get MIN_FREE_KB main min_free_kb "40000"
 config_get_bool ALLOW_HTTP main allow_http 0
-
-[ -n "$BASE_URL" ] || { log "base_url fehlt (uci set vp-edge-light.main.base_url=https://...)"; exit 1; }
-case "$BASE_URL" in
-  https://*) ;;
-  http://*)
-    [ "$ALLOW_HTTP" = 1 ] || { log "base_url ohne HTTPS abgelehnt (nur fuer Entwicklung: allow_http=1)"; exit 1; }
-    ;;
-  *) log "base_url muss mit https:// beginnen: $BASE_URL"; exit 1 ;;
-esac
+config_get LOCAL_DIR main local_dir "/usr/share/vp-edge-light"
 
 BIN="$RAM_DIR/vp-edge-light"
 NAME="vp-edge-light-linux-$ARCH"
+LOCAL_GZ="$LOCAL_DIR/$NAME.gz"
+LOCAL_SUM="$LOCAL_DIR/$NAME.sha256"
+
+if [ -n "$BASE_URL" ]; then
+  case "$BASE_URL" in
+    https://*) ;;
+    http://*)
+      [ "$ALLOW_HTTP" = 1 ] || { log "base_url ohne HTTPS abgelehnt (nur fuer Entwicklung: allow_http=1)"; exit 1; }
+      ;;
+    *) log "base_url muss mit https:// beginnen: $BASE_URL"; exit 1 ;;
+  esac
+elif [ ! -f "$LOCAL_GZ" ]; then
+  log "weder base_url noch lokale Kopie ($LOCAL_GZ) - edge-light/openwrt/install.sh ausfuehren"
+  exit 1
+fi
 URL="$BASE_URL/$CHANNEL/$NAME"
 
 mkdir -p "$RAM_DIR" "$DATA_DIR" || exit 1
@@ -59,7 +74,11 @@ mkdir -p "$RAM_DIR" "$DATA_DIR" || exit 1
 # ocpp-journal       OCPP-Ereignisse vor dem Hochladen
 # Folge, bewusst: ein STROMAUSFALL verliert noch nicht hochgeladene Messwerte.
 # Bei einem Cloud-Ausfall puffert die Box weiter, solange sie laeuft.
-HOT_DIRS="buffer measurement-outbox ocpp-journal"
+# ota                der Core schreibt ota/core-signal.json alle 2 s. Stufe 1
+#                    haelt dort nichts Dauerhaftes (kein Trust-Set, kein
+#                    Updater); Stufe 2 muss Trust-Set und current.json in den
+#                    Flash legen und nur das Signal im RAM lassen.
+HOT_DIRS="buffer measurement-outbox ocpp-journal ota"
 for d in $HOT_DIRS; do
   mkdir -p "$RAM_DIR/$d"
   if [ -L "$DATA_DIR/$d" ]; then
@@ -96,18 +115,55 @@ fetch() {
   log "Programm geladen ($got)"
 }
 
-ok=0
-for wait in 0 5 15 30 60; do
-  [ "$wait" -gt 0 ] && sleep "$wait"
-  if fetch; then ok=1; break; fi
-done
-if [ "$ok" != 1 ]; then
+# unpack_local - die lokale Kopie aus dem Flash in den RAM entpacken und gegen
+# die Pruefsumme des UNGEPACKTEN Programms pruefen (kaputter Flash startet nie).
+unpack_local() {
+  [ -f "$LOCAL_GZ" ] || return 1
+  [ -f "$LOCAL_SUM" ] || { log "lokale Kopie ohne Pruefsumme ($LOCAL_SUM) - nicht gestartet"; return 1; }
+  want="$(awk '{print $1; exit}' "$LOCAL_SUM")"
+  # Neustart durch procd (Absturz, Update-Neustart): liegt GENAU diese Fassung
+  # schon im RAM, wird sie genommen. Sonst die alte Fassung zuerst freigeben -
+  # mit ihr im tmpfs reicht der freie Speicher nicht fuers Entpacken.
   if [ -x "$BIN" ]; then
+    if [ "$(sha256sum "$BIN" | awk '{print $1}')" = "$want" ]; then
+      log "Fassung im RAM entspricht der lokalen Kopie - wird wiederverwendet"
+      return 0
+    fi
+    rm -f "$BIN"
+  fi
+  rm -f "$BIN.part"
+  avail="$(free_kb)"
+  if [ -n "$avail" ] && [ "$avail" -lt "$MIN_FREE_KB" ]; then
+    log "zu wenig freier Speicher (${avail} kB < ${MIN_FREE_KB} kB) - lokale Kopie nicht entpackt"
+    return 1
+  fi
+  gunzip -c "$LOCAL_GZ" >"$BIN.part" || { log "lokale Kopie nicht entpackbar: $LOCAL_GZ"; rm -f "$BIN.part"; return 1; }
+  got="$(sha256sum "$BIN.part" | awk '{print $1}')"
+  if [ -z "$want" ] || [ "$want" != "$got" ]; then
+    log "lokale Kopie: Pruefsumme stimmt nicht (erwartet $want, erhalten $got) - verworfen"
+    rm -f "$BIN.part"
+    return 1
+  fi
+  chmod 0755 "$BIN.part" && mv -f "$BIN.part" "$BIN"
+  log "lokale Kopie entpackt ($got)"
+}
+
+ok=0
+if [ -n "$BASE_URL" ]; then
+  for wait in 0 5 15 30 60; do
+    [ "$wait" -gt 0 ] && sleep "$wait"
+    if fetch; then ok=1; break; fi
+  done
+fi
+if [ "$ok" != 1 ]; then
+  if [ -n "$BASE_URL" ] && [ -x "$BIN" ]; then
     # Ein Neustart des Dienstes ohne Netz: die schon geladene und damals
     # gepruefte Fassung weiterverwenden statt ohne Box dazustehen.
     log "Download fehlgeschlagen - starte die bereits geladene Fassung"
+  elif unpack_local; then
+    [ -n "$BASE_URL" ] && log "Download fehlgeschlagen - starte die lokale Kopie aus dem Flash"
   else
-    log "Download fehlgeschlagen und keine Fassung im RAM - neuer Versuch durch procd"
+    log "kein startbares Programm (Download/RAM/lokale Kopie) - neuer Versuch durch procd"
     exit 1
   fi
 fi

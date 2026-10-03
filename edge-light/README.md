@@ -37,16 +37,18 @@ VP_DATA_DIR=/tmp/vp VP_PORTAL_BASE_URL=http://127.0.0.1:9 \
 
 ## Auf einem OpenWrt-Router (Pilot)
 
-Das Programm wird bei **jedem Start in den RAM geladen** (`/tmp`), der Flash bleibt frei. Ablauf und Grenzen: [Mango-Notizen](docs/mango.md).
+Das Programm läuft bei **jedem Start aus dem RAM** (`/tmp`). Im Flash liegt nur eine gepackte Kopie (~4,4 MB gzip), die der Loader beim Start entpackt und gegen ihre Prüfsumme prüft – so startet die Box auch ohne Download-Server und nach einem Stromausfall ohne Internet. Mit `base_url` lädt der Loader zusätzlich die aktuelle Fassung per HTTPS. Ablauf und Grenzen: [Mango-Notizen](docs/mango.md).
 
 ```bash
 edge-light/scripts/build.sh mipsle
-# dist/ auf einen HTTPS-Server legen: <base_url>/latest/vp-edge-light-linux-mipsle(.sha256)
-edge-light/openwrt/install.sh root@<mango-ip> https://<server>/edge-light
-ssh root@<mango-ip> /etc/init.d/vp-edge-light start
+edge-light/openwrt/install.sh root@<mango-ip>                    # Kopie in den Flash, Dienst aktivieren
+# optional: edge-light/openwrt/install.sh root@<mango-ip> https://<server>/edge-light
+ssh root@<mango-ip> /etc/init.d/vp-edge-light restart
 ```
 
-> ⚠ **Stufe 1 ist ein Pilotstand.** Die Echtheit des geladenen Programms hängt an HTTPS zum konfigurierten Server; die signierte Kette folgt in Stufe 2. Nicht auf eine Kundenflotte ausrollen, bevor Stufe 2 steht.
+Der Dropbear des Mango-Images kennt nur **RSA**-Schlüssel (kein Ed25519) – für den SSH-Zugang einen RSA-Schlüssel hinterlegen.
+
+> ⚠ **Stufe 1 ist ein Pilotstand.** Die Echtheit des Programms hängt an HTTPS bzw. an der per SSH aufgespielten Kopie; die signierte Kette folgt in Stufe 2. Nicht auf eine Kundenflotte ausrollen, bevor Stufe 2 steht.
 
 ## Aufbau
 
@@ -77,4 +79,5 @@ edge-light/
 | `edge-app/core/internal/layer1` | die Go-Schicht 1 (ersetzt Node-RED Funktion für Funktion) |
 | `edge-app/core/internal/solarmanv5` | Solarman-V5-Protokoll (Zwilling von `nodered/deye/solarman-v5.js`) |
 | `edge-app/core/internal/deyedecode` | Deye-Registerkarten und Dekodierung (Zwilling von `nodered/deye/deye-decode.js`) |
+| `edge-app/core/internal/goeapi` | go-e HTTP-API v2 lesen (Zwilling von `nodered/goe/goe-api.js`) |
 | `edge-app/core/cmd/vp-solarman-sim` | simulierter Deye-Logger für Tests (nie beim Kunden) |

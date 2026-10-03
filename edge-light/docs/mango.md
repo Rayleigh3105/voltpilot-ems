@@ -20,6 +20,7 @@
 | Werkzeuge des Loaders | `uclient-fetch`, `sha256sum`, `gunzip` vorhanden; HTTPS-Download funktioniert (TLS + Zertifikatsbündel im Image) |
 | Root-Passwort | **keines gesetzt** – vor jedem Feldeinsatz `passwd` + SSH-Schlüssel |
 | BusyBox | 1.37.0; **kein `nohup`** und kein `timeout`, dafür `setsid` und `start-stop-daemon` |
+| SSH (Dropbear) | **nur RSA** (`server-sig-algs=rsa-sha2-256`): ein Ed25519-Schlüssel wird abgewiesen. Ohne Root-Passwort lässt Dropbear jede Anmeldung zu – ein Schlüsseltest ist dann nicht aussagekräftig |
 
 ## Labortest am Gerät (`mango-labtest.sh`, 03.10.2026, ohne Deye, ohne Portal)
 
@@ -84,9 +85,17 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
 Der Loader startet einen Download nur bei mindestens 40 MB freiem Speicher (`min_free_kb`).
 
-## Notfall-Kopie im Flash (Vorschlag, noch nicht gebaut)
+## Lokale Kopie im Flash (gebaut, am Gerät geprüft 03.10.2026)
 
-Mit 9,4 MB freiem Flash passt die komprimierte zuletzt bestätigte Fassung (4,4 MB gzip). Der Loader könnte sie entpacken, wenn beim Start kein Download gelingt (Stromausfall, Internet noch nicht zurück). Geschrieben würde sie nur nach einem bestätigten Update, also selten. Damit entfiele die Kehrseite des reinen RAM-Starts aus [boot-und-updates.md](boot-und-updates.md).
+`install.sh` legt das Programm gepackt nach `/usr/share/vp-edge-light/` (4,4 MB gzip + `.sha256` des ungepackten Programms, auf dem Gerät nachgeprüft). Der Loader nimmt: Download (nur mit `base_url`) → die schon geladene Fassung im RAM → die lokale Kopie. Geschrieben wird die Kopie nur bei einer Installation, also selten. Flash danach: 4,9 MB frei.
+
+| Test am Mango | Ergebnis |
+|---|---|
+| Start aus der Kopie | entpackt, Prüfsumme bestätigt, Web-App nach 11 s |
+| Absturz (`kill -9`) | procd startet nach 10 s neu, die Fassung im RAM wird wiederverwendet (kein erneutes Entpacken), wieder da nach 16 s |
+| Neustart des Mango | Dienst startet von selbst 123 s nach dem Kernel (procd selbst ist nach ~100 s fertig), dieselbe Geräte-ID |
+| Flash im Betrieb | 3 min ohne eine einzige geschriebene Datei (`find /overlay/upper -newer`) |
+| Fehler aus Stufe 1 | `boot.sh` lief mit `set -u` und brach in `/lib/functions.sh` ab (`IPKG_INSTROOT`) – behoben |
 
 ## Flash schonen
 
@@ -94,7 +103,8 @@ NOR-Flash verträgt Dauerschreiben schlecht. Deshalb liegen im RAM (`boot.sh`, `
 
 - `buffer` – Messwert-Puffer (wird alle paar Sekunden geschrieben),
 - `measurement-outbox` – Zusatzmesswerte vor dem Hochladen,
-- `ocpp-journal` – OCPP-Ereignisse vor dem Hochladen.
+- `ocpp-journal` – OCPP-Ereignisse vor dem Hochladen,
+- `ota` – der Core schreibt `ota/core-signal.json` **alle 2 s**; Stufe 1 hält dort nichts Dauerhaftes (Stufe 2 muss Trust-Set und `current.json` in den Flash legen).
 
 Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (alle 15 min) und das OCPP-Befehlsbuch (Sicherheit: höchstens einmal ausführen, auch über einen Neustart).
 
@@ -115,7 +125,7 @@ WireGuard bleibt unverändert der Servicezugang. Die Box selbst verbindet sich n
 
 1. Auf einer Anlage mit Deye: **Home Assistant für diesen Logger abschalten** – der Logger bedient nur einen Client.
 2. `df -h`, `free -m` notieren (Ausgangslage).
-3. `edge-light/openwrt/install.sh`, Dienst starten, `logread -f -e vp-edge-light`.
+3. `edge-light/openwrt/install.sh root@<mango-ip>`, Dienst starten, `logread -f -e vp-edge-light`.
 4. Auf `:8484` den Deye einrichten, „Verbindung testen", im Portal koppeln.
 5. 48 h laufen lassen und festhalten: Speicher (`free -m`, `/proc/<pid>/status` VmRSS), CPU (`top`), Ladezeit nach Neustart, Lücken im Verlauf, Vergleich mit den bisherigen Home-Assistant-Werten.
 6. Danach: go-e per OCPP an `ws://<mango>:8887/ocpp/<kennung>` anbinden, Kennung im Portal eintragen, Überschussladen beobachten. Vorher DHCP-Reservierung für den Mango und Firewall-Regel für 8887 aus dem Kundennetz (siehe [OCPP-Test](#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)).

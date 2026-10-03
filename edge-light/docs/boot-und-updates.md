@@ -17,9 +17,9 @@ sequenceDiagram
     Note over bin: endet das Programm, startet procd den Loader nach 10 s neu
 ```
 
-- **Im Flash** liegen nur der Loader (~4 KB), der Dienst und die Konfiguration, dazu der dauerhafte Zustand der Box (Identität, Zertifikat, Auswahl, Freigaben, OCPP-Befehlsbuch).
+- **Im Flash** liegen der Loader (~4 KB), der Dienst, die Konfiguration, die gepackte Kopie des Programms (~4,4 MB) und der dauerhafte Zustand der Box (Identität, Zertifikat, Auswahl, Freigaben, OCPP-Befehlsbuch).
 - **Im RAM** liegen das Programm (~14 MB) und die häufig geschriebenen Verzeichnisse.
-- Schlägt der Download fehl, versucht der Loader es mit Pausen (5 / 15 / 30 / 60 s). Liegt aus einem früheren Start noch eine Fassung im RAM (Neustart des Dienstes ohne Neustart des Geräts), wird sie weiterverwendet. Nach einem Neustart des Geräts ohne Internet startet die Box erst, wenn der Server wieder erreichbar ist. **Das ist die bewusste Kehrseite des RAM-Starts** und der Grund, warum der Download-Server hochverfügbar sein muss.
+- Schlägt der Download fehl, versucht der Loader es mit Pausen (5 / 15 / 30 / 60 s). Liegt aus einem früheren Start noch eine Fassung im RAM (Neustart des Dienstes ohne Neustart des Geräts), wird sie weiterverwendet. Danach – und ohne `base_url` immer – entpackt er die **lokale Kopie aus dem Flash** (`/usr/share/vp-edge-light/*.gz`, Prüfsumme des ungepackten Programms). So startet die Box auch nach einem Neustart ohne Internet; vorher war das die Kehrseite des RAM-Starts.
 - **Grenze von Stufe 1:** Die Prüfsumme kommt vom selben Server wie das Programm. Sie schützt gegen abgebrochene Downloads, nicht gegen einen kompromittierten Server. Die Echtheit hängt allein an HTTPS.
 
 ## Stufe 2: signierte Kette wie bei der Docker-Box
@@ -47,4 +47,4 @@ Bausteine:
 |---|---|
 | Wo liegen die Programme? | Portal-Route, unauthentifiziert, nur signierte Artefakte |
 | Kommt `vp-light-boot` per OTA? | Nein – wie das Trust-Set beim Einrichten (es ist die Vertrauenswurzel des Geräts) |
-| Was, wenn nach einem Stromausfall kein Internet da ist? | Die letzte bestätigte Fassung **komprimiert** im Flash halten: gemessen 4,4 MB (gzip) bei 9,4 MB freiem Flash auf Original-OpenWrt 25.12 – passt ([mango.md](mango.md)) |
+| Was, wenn nach einem Stromausfall kein Internet da ist? | Gebaut in Stufe 1: die gepackte Kopie im Flash (4,4 MB gzip, [mango.md](mango.md)). Stufe 2: dort die zuletzt **bestätigte** Fassung ablegen und vor dem Start gegen die Signatur prüfen |
