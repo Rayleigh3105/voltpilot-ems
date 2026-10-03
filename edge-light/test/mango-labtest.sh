@@ -46,7 +46,8 @@ remote() { ssh "${SSH_OPTS[@]}" "root@$MANGO" "$@"; }
 
 command -v curl >/dev/null 2>&1 || { echo "FEHLER: curl fehlt" >&2; exit 1; }
 
-if [ ! -x "$BIN" ]; then
+# -f statt -x: Git-Bash unter Windows haelt ein ELF-Programm nie fuer ausfuehrbar.
+if [ ! -f "$BIN" ]; then
   echo "--- baue Edge Light fuer mipsle"
   "$LIGHT_DIR/scripts/build.sh" mipsle
 fi
@@ -64,20 +65,26 @@ remote 'chmod 0755 /tmp/vp-edge-light.part && mv /tmp/vp-edge-light.part /tmp/vp
 
 echo "--- starte (Datenverzeichnis /tmp/vp-labtest, Portal unerreichbar)"
 start="$(date +%s)"
+# setsid statt nohup: die OpenWrt-BusyBox bringt kein nohup mit.
 remote 'mkdir -p /tmp/vp-labtest && cd /tmp && \
   VP_DATA_DIR=/tmp/vp-labtest VP_PORTAL_BASE_URL=http://127.0.0.1:9 \
   VP_HTTP_ADDR=:8484 VP_LOCAL_MQTT_ADDR=127.0.0.1:1883 GOMEMLIMIT=48MiB \
-  nohup /tmp/vp-edge-light >/tmp/vp-labtest.log 2>&1 </dev/null &'
+  setsid /tmp/vp-edge-light >/tmp/vp-labtest.log 2>&1 </dev/null &'
 
-for _ in $(seq 1 120); do
-  curl -fsS -m 2 "$WEB/health" >/dev/null 2>&1 && break
-  sleep 1
-done
-if ! curl -fsS -m 2 "$WEB/health" >/dev/null 2>&1; then
-  echo "FEHLER: $WEB/health antwortet nicht. Protokoll:" >&2
+fail_start() {
+  echo "FEHLER: $1. Protokoll:" >&2
   remote 'tail -30 /tmp/vp-labtest.log' >&2
   exit 1
-fi
+}
+for i in $(seq 1 120); do
+  curl -fsS -m 2 "$WEB/health" >/dev/null 2>&1 && break
+  # alle 10 s: ist der Prozess ueberhaupt noch da? Sonst nicht weiter warten.
+  if [ $((i % 10)) -eq 3 ] && ! remote 'pidof vp-edge-light >/dev/null'; then
+    fail_start "vp-edge-light laeuft nicht (mehr)"
+  fi
+  sleep 1
+done
+curl -fsS -m 2 "$WEB/health" >/dev/null 2>&1 || fail_start "$WEB/health antwortet nicht"
 echo "    Web-App antwortet nach $(($(date +%s) - start)) s"
 
 measure() {

@@ -29,14 +29,16 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 | Programm `vp-edge-light` | `edge-app/core/cmd/vp-edge-light` |
 | Gemeinsamer Programmrahmen mit `vp-edge-core` | `edge-app/core/internal/edgemain` (`vp-edge-core` ruft ihn jetzt auf, Verhalten unverändert) |
 | Go-Schicht 1: Deye lesen, „Verbindung testen", Verbindungsstatus, eine Spur je Logger | `edge-app/core/internal/layer1` |
+| go-e lesen (Stufe 3): Decoder | `edge-app/core/internal/goeapi` |
+| Energiequellen in Schicht 1: go-e als Verbraucher lesen, „Verbindung testen" für go-e, andere Anbindungen je Quelle benannt | `edge-app/core/internal/layer1/sources.go`, `goe.go` |
 | Solarman-V5-Protokoll | `edge-app/core/internal/solarmanv5` (+ Simulator `v5sim`) |
 | Deye-Registerkarten und Dekodierung | `edge-app/core/internal/deyedecode` |
-| Gemeinsame Vektoren (generiert) | `edge-app/nodered/deye/*-vectors.{gen.js,json,test.js}` |
+| Gemeinsame Vektoren (generiert) | `edge-app/nodered/deye/*-vectors.{gen.js,json,test.js}`, `edge-app/nodered/goe/goe-api-vectors.*` |
 | Logger-Simulator (nur Tests) | `edge-app/core/cmd/vp-solarman-sim` |
 | OpenWrt-Loader, procd-Dienst, UCI-Konfiguration, Installationsskript | `edge-light/openwrt/` |
 | Bauen, Testen, Smoke-Test, Labortest | `edge-light/scripts/`, `edge-light/test/` |
 
-**Belege:** gemeinsame Vektoren (23 Dekodier-, 50 Protokollfälle), fünf Mutationen erkannt, Integrationstest „unveränderter Core + Go-Schicht 1", MIPS-Programm unter qemu (Start 3 s, Messwerte korrekt, Verbindungstest ok), komplette Core-Suite grün (48 Pakete).
+**Belege:** gemeinsame Vektoren (23 Dekodier-, 50 Protokollfälle; go-e: 46 Fälle), fünf Mutationen erkannt (go-e: sieben), Integrationstest „Core liest go-e als Verbraucher", go-e am echten Mango gelesen ([mango.md](mango.md)), Integrationstest „unveränderter Core + Go-Schicht 1", MIPS-Programm unter qemu (Start 3 s, Messwerte korrekt, Verbindungstest ok), komplette Core-Suite grün (48 Pakete).
 
 ## Gemessen am echten Mango (Original-OpenWrt 25.12.5)
 
@@ -65,7 +67,8 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 
 - Vor dem Deye-Test **Home Assistant für diesen Logger abschalten** (der Logger bedient nur einen Client).
 - Die Modell-ID steht im Katalog (`GET http://<mango-ip>:8484/api/inverter`), z. B. `sun-12k-sg04lp3` (hybrid_3p LV) oder `sun-30k-sg01hp3` (hybrid_3p HV).
-- Das Skript ist **noch nicht gegen echte Hardware gelaufen**. Messwerte danach in [mango.md](mango.md) eintragen: Startzeit, VmRSS, freier RAM, CPU.
+- Ohne Deye ist das Skript am echten Mango gelaufen (03.10.2026, Messwerte in [mango.md](mango.md#labortest-am-gerät-mango-labtestsh-03102026-ohne-deye-ohne-portal)). Der Deye-Teil steht noch aus, weil der Logger beim Test offline war.
+- Unter Windows (Git-Bash) nur mit LF-Dateien, siehe `.gitattributes`. Ohne gcc fehlt dort der Race-Detector, `test.sh` bricht dann bei Schritt 2 ab.
 
 ### 3. Pilot mit Loader und Portal
 
@@ -73,7 +76,7 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 2. `edge-light/scripts/build.sh mipsle`, Dateien hochladen.
 3. `edge-light/openwrt/install.sh root@<mango-ip> <base_url>`, dann `/etc/init.d/vp-edge-light start`, `logread -f -e vp-edge-light`.
 4. Auf `:8484` den Deye einrichten, die Box im Portal koppeln.
-5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen.
+5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen. **Vorher** DHCP-Reservierung für den Mango im Kundenrouter und Firewall-Regel für 8887 aus dem Kundennetz – beides fehlt in `install.sh` (am Gerät gefunden, siehe [mango.md](mango.md#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)). Die Verbindung selbst ist mit einer echten go-e belegt.
 6. 48 h beobachten (Pilotplan in [mango.md](mango.md)).
 
 ⚠ Bis Stufe 2 nur auf Pilotanlagen: Die Echtheit des Programms hängt an HTTPS, nicht an einer Signatur.

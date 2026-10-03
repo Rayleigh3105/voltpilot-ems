@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/deyedecode"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goeapi"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/solarmanv5"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
@@ -65,6 +66,8 @@ func (r *Runtime) testRead(ctx context.Context, req *testReadRequest) testReadRe
 			return testReadResult{ErrorCode: testconn.ErrInvalidRequest, Message: why}
 		}
 		return r.testSolarman(ctx, p, req.Role)
+	case goeapi.Family:
+		return r.testGoe(ctx, &req.selection, req.Role)
 	}
 	return testReadResult{ErrorCode: testconn.ErrInvalidRequest,
 		Message: "Diese Anbindung („" + req.Communication + "“) wird von Edge Light noch nicht unterstützt."}

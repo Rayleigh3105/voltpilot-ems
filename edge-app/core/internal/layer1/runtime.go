@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -30,9 +31,15 @@ type Options struct {
 	// LaneWait bounds how long a one-shot (the connection test) waits for a
 	// running poll to release the logger.
 	LaneWait time.Duration
-	Dialer   solarmanv5.Dialer
-	Now      func() time.Time
-	Logger   *slog.Logger
+	// SourcesFirstPoll / SourcesPoll pace the additional sources (the
+	// "Energiequellen (automatisch)" tab: after 4 s, then every 5 s).
+	SourcesFirstPoll time.Duration
+	SourcesPoll      time.Duration
+	// HTTPTimeout bounds one HTTP read of a LAN device (go-e): 8 s like the flow.
+	HTTPTimeout time.Duration
+	Dialer      solarmanv5.Dialer
+	Now         func() time.Time
+	Logger      *slog.Logger
 }
 
 // Runtime is the Go Layer 1.
@@ -53,6 +60,14 @@ type Runtime struct {
 	lastErr  string
 	pollKick chan struct{}
 	ready    chan struct{}
+
+	// the additional sources (sources.go, goe.go)
+	http     *http.Client
+	srcMu    sync.Mutex
+	srcPlans []sourcePlan
+	srcRR    int
+	srcSig   string
+	srcTrace map[string]traceState
 }
 
 // Ready is closed once every bus subscription is confirmed.
@@ -78,6 +93,15 @@ func New(bus Bus, opts Options) *Runtime {
 	if opts.LaneWait <= 0 {
 		opts.LaneWait = 4 * time.Second
 	}
+	if opts.SourcesFirstPoll <= 0 {
+		opts.SourcesFirstPoll = DefaultSourcesFirstPoll
+	}
+	if opts.SourcesPoll <= 0 {
+		opts.SourcesPoll = DefaultSourcesPoll
+	}
+	if opts.HTTPTimeout <= 0 {
+		opts.HTTPTimeout = defaultIOTimeout
+	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -85,7 +109,8 @@ func New(bus Bus, opts Options) *Runtime {
 		opts.Logger = slog.Default().WithGroup("layer1")
 	}
 	return &Runtime{bus: bus, opts: opts, log: opts.Logger, lanes: newLanes(),
-		pollKick: make(chan struct{}, 1), ready: make(chan struct{})}
+		pollKick: make(chan struct{}, 1), ready: make(chan struct{}),
+		http: newHTTPClient(opts.HTTPTimeout), srcTrace: map[string]traceState{}}
 }
 
 // Run subscribes the bus topics and polls until ctx ends.
@@ -102,6 +127,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 		return err
 	}
 	close(r.ready)
+	go r.runSources(ctx)
 
 	timer := time.NewTimer(r.opts.FirstPoll)
 	defer timer.Stop()

@@ -8,7 +8,7 @@ Go-Core, Node-RED-I/O und OTA-Updater bilden die Kunden-Box. [Laufzeitregeln](..
 - `test/install-selfcheck.sh` und `test/update-selfcheck.sh` prüfen Installer/Updater. Die gemeinsame Compose-Vorlage, Installer und Updatepfad synchron halten.
 - Neue Env-Optionen müssen im Core, Beispiel-Env, Compose und erzeugten Installations-Compose ankommen.
 - Generierte Flows aus `build-flows.js` erzeugen; eingebettete Module nicht als unabhängige Kopien pflegen. `flows-sync.test.js` prüft die Übereinstimmung.
-- Edge Light (`../edge-light`) nutzt Go-Zwillinge von Node-RED-Modulen hinter denselben Bus-Topics. Nach Änderungen an `nodered/deye/solarman-v5.js` oder `deye-decode.js` die Vektoren mit `deye/*-vectors.gen.js` neu erzeugen; die Go-Tests in `core/internal/{solarmanv5,deyedecode}` zeigen, ob der Zwilling nachziehen muss. `vp-edge-core` und `vp-edge-light` teilen den Programmrahmen `core/internal/edgemain`.
+- Edge Light (`../edge-light`) nutzt Go-Zwillinge von Node-RED-Modulen hinter denselben Bus-Topics. Nach Änderungen an `nodered/deye/solarman-v5.js`, `deye-decode.js` oder `goe/goe-api.js` die Vektoren mit `deye/*-vectors.gen.js` bzw. `goe/goe-api-vectors.gen.js` neu erzeugen; die Go-Tests in `core/internal/{solarmanv5,deyedecode,goeapi}` zeigen, ob der Zwilling nachziehen muss. `vp-edge-core` und `vp-edge-light` teilen den Programmrahmen `core/internal/edgemain`.
 - Änderungen an `DefaultCatalog()` verlangen den vorgesehenen Vorlagenexport. Messpunkt-/Runtime-Artefakte mit den Katalogwerkzeugen erzeugen, nicht manuell editieren.
 - Cloud-Standard ist `https://portal.voltpilot.de`. Geänderte MQTT-Endpunkte bei Enrollment-Reconcile auch bei identischer Geräte-ID übernehmen; der MQTT-Client cached seinen Broker.
 

@@ -46,8 +46,9 @@ Jeder Go-Zwilling ist an **gemeinsame Testvektoren** gebunden, die aus dem JavaS
 |---|---|---|
 | `nodered/deye/solarman-v5-vectors.json` | `solarman-v5-vectors.gen.js` | JS: `solarman-v5-vectors.test.js` · Go: `internal/solarmanv5` |
 | `nodered/deye/deye-decode-vectors.json` | `deye-decode-vectors.gen.js` | JS: `deye-decode-vectors.test.js` · Go: `internal/deyedecode` |
+| `nodered/goe/goe-api-vectors.json` | `goe-api-vectors.gen.js` | JS: `goe-api-vectors.test.js` · Go: `internal/goeapi` |
 
-Wer das JS-Modul ändert, muss die Vektoren neu erzeugen (sonst ist der JS-Test rot) – und der Go-Test zeigt dann, ob der Zwilling nachziehen muss. Die Go-Seite rechnet dabei **JavaScript-treu**: gleiche Reihenfolge der Gleitkommaoperationen und `Math.round` („halb nach +∞") statt Gos `math.Round`. Sonst würde ein Grenzwert auf der Box anders gerundet als in Node-RED. Fünf eingebaute Abweichungen (falsche Skala, vertauschte Wortreihenfolge, fehlende Klemmung …) wurden von den Vektoren erkannt.
+Wer das JS-Modul ändert, muss die Vektoren neu erzeugen (sonst ist der JS-Test rot) – und der Go-Test zeigt dann, ob der Zwilling nachziehen muss. Die Go-Seite rechnet dabei **JavaScript-treu**: gleiche Reihenfolge der Gleitkommaoperationen und `Math.round` („halb nach +∞") statt Gos `math.Round`. Sonst würde ein Grenzwert auf der Box anders gerundet als in Node-RED. Fünf eingebaute Abweichungen beim Deye (falsche Skala, vertauschte Wortreihenfolge, fehlende Klemmung …) und sieben bei der go-e (Phase statt Summe, fehlende Klemmung, Text als Zahl, erfundene 0, v1-Skala, unbekannter Fahrzeugzustand, `1e400` verwirft die Antwort) wurden von den Vektoren erkannt. Die go-e-Seite liest JSON dafür wie `JSON.parse`: eine Zahl außerhalb von float64 wird „unendlich" und damit kein Messwert, statt die ganze Antwort zu verwerfen.
 
 ## Ein Logger, ein Client
 

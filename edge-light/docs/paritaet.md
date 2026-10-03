@@ -29,14 +29,14 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | **Deye über Solarman V5** (string, micro, hybrid_1p, hybrid_3p; HV/LV-Skala, BMS-Block, SoC-Regeln, Spannungsschätzung) | `deye/*.js`, Tab „Wechselrichter (automatisch)" | ✅ Stufe 1 |
 | **Verbindung testen: Deye** | `test-read.js` | ✅ Stufe 1 |
 | Deye: geräte-eigene Exportgrenze (Tageslesung `0x00E7`) | Router-Zusatzblock | ⬜ |
-| go-e lesen (Ladeleistung, Fahrzeugstatus) | `goe/goe-api.js` | ⬜ |
+| go-e lesen (Ladeleistung als Verbraucher; Fahrzeugstatus nur dekodiert, wie in Node-RED) | `goe/goe-api.js` | ✅ Stufe 3 (`internal/goeapi`, gemeinsame Vektoren; am echten go-e V4 geprüft) |
 | Fronius Solar API | `fronius/solar-api.js` | ⬜ |
 | SunSpec live (Fronius Eco, KACO-SunSpec; Modell-Erkennung) | `sunspec/*.js` | ⬜ |
 | KOSTAL PLENTICORE | `kostal/*.js` | ⬜ |
 | KACO HTTP, AISWEI NH3 | `kaco/*.js` | ⬜ |
 | Generisches Modbus TCP | `modbus-tcp.js` | ⬜ |
-| **Weitere Energiequellen** (Erzeuger, Netz-Zähler, Verbraucher – alle obigen Wege) | Tab „Energiequellen (automatisch)" | ⬜ (heute: Protokollhinweis) |
-| Verbindung testen für alle obigen, Suche nach weiteren Wechselrichtern (Unit-IDs) | `test-read.js` | ⬜ (heute: benannte Ablehnung) |
+| **Weitere Energiequellen** (Erzeuger, Netz-Zähler, Verbraucher – alle obigen Wege) | Tab „Energiequellen (automatisch)" | 🟡 go-e als Verbraucher; jede andere Anbindung wird je Quelle im Protokoll benannt |
+| Verbindung testen für alle obigen, Suche nach weiteren Wechselrichtern (Unit-IDs) | `test-read.js` | 🟡 go-e ✅; übrige: benannte Ablehnung |
 
 ## C. Steuern (Schicht 1) – nur mit Prüfstand
 
