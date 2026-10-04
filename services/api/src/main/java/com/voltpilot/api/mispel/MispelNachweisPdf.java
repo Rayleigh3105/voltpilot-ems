@@ -37,6 +37,24 @@ public final class MispelNachweisPdf {
     public static final String WASSERZEICHEN = "vorläufig – keine Mengenbestimmung";
     private static final DateTimeFormatter UHR = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
+    /**
+     * MP-16b: der längste Wert, den die Wertspalte ohne Umbruch tragen muss — zehn Vorkommastellen (bis knapp 10 TWh je
+     * Zeitraum), Vorzeichen, drei Nachkommastellen und Einheit. Faktoren haben eine Vorkommastelle, „nicht bestimmbar“
+     * ist kürzer.
+     */
+    static final String LAENGSTER_WERT = "-9999999999,999 kWh";
+    /** Freiraum zwischen einem rechtsbündigen Wert und dem Text der Nachbarspalte rechts daneben (pt). */
+    static final float RINNE = 6;
+    static final Spalte WERT = new Spalte("Wert", 100, true, RINNE);
+    static final List<Spalte> FORMELSATZ_SPALTEN = List.of(new Spalte("Nr.", 64, false),
+            new Spalte("Rechenweg", 110, false), new Spalte("Begriff", 0, false), WERT);
+    static final List<Spalte> JAHR_SPALTEN = List.of(new Spalte("Nr.", 64, false),
+            new Spalte("Begriff und Rechenweg", 0, false), WERT, new Spalte("Fundstelle", 96, false));
+    static final List<Spalte> ERGEBNIS_SPALTEN = List.of(new Spalte("Zeitraum", 52, false), new Spalte("Nr.", 54, false),
+            new Spalte("Begriff", 0, false), WERT, new Spalte("Fundstelle", 92, false));
+    static final List<Spalte> LUECKEN_SPALTEN = List.of(new Spalte("Zeitraum", 58, false),
+            new Spalte("fehlender Eingang", 96, false), new Spalte("Anzahl", 50, true, RINNE), new Spalte("erste", 0, false));
+
     private MispelNachweisPdf() {}
 
     public static byte[] datei(Monat m, Empfaenger e) {
@@ -71,8 +89,7 @@ public final class MispelNachweisPdf {
                             zeilen.add(List.of(List.of(w.nr()), List.of(fo.rechenweg()), List.of(fo.begriff()),
                                     List.of(wert(w))));
                         }
-                        s.tabelle(List.of(new Spalte("Nr.", 64, false), new Spalte("Rechenweg", 110, false),
-                                new Spalte("Begriff", 0, false), new Spalte("Wert", 94, true)), zeilen);
+                        s.tabelle(FORMELSATZ_SPALTEN, zeilen);
                     }
                     luecken(s, m.laeufe());
                     hinweise(s, "Die Viertelstundenwerte (Eingänge und Zwischenwerte je Viertelstunde) stehen im CSV "
@@ -108,8 +125,7 @@ public final class MispelNachweisPdf {
                     if (zeilen.isEmpty()) {
                         s.hinweis(ohneErgebnis(j.laeufe()));
                     } else {
-                        s.tabelle(List.of(new Spalte("Nr.", 64, false), new Spalte("Begriff und Rechenweg", 0, false),
-                                new Spalte("Wert", 94, true), new Spalte("Fundstelle", 96, false)), zeilen);
+                        s.tabelle(JAHR_SPALTEN, zeilen);
                     }
                     s.ueberschrift("Monatswerte (Summanden von ∑J)");
                     ergebnis(s, MispelNachweis.monatswerte(j, e), j.laeufe());
@@ -161,9 +177,7 @@ public final class MispelNachweisPdf {
             zeilen.add(List.of(List.of(w.schluessel()), List.of(w.nr()), List.of(f.begriff()), List.of(wert(w)),
                     List.of(f.fundstelle())));
         }
-        s.tabelle(List.of(new Spalte("Zeitraum", 52, false), new Spalte("Nr.", 54, false),
-                new Spalte("Begriff", 0, false), new Spalte("Wert", 94, true), new Spalte("Fundstelle", 92, false)),
-                zeilen);
+        s.tabelle(ERGEBNIS_SPALTEN, zeilen);
     }
 
     private static String ohneErgebnis(List<Lauf> laeufe) {
@@ -230,8 +244,7 @@ public final class MispelNachweisPdf {
             return;
         }
         s.ueberschrift("Lücken (nicht als Null gerechnet)");
-        s.tabelle(List.of(new Spalte("Zeitraum", 58, false), new Spalte("fehlender Eingang", 96, false),
-                new Spalte("Anzahl", 50, true), new Spalte("erste", 0, false)), zeilen);
+        s.tabelle(LUECKEN_SPALTEN, zeilen);
     }
 
     private static void hinweise(Setzer s, String zusatz) throws IOException {

@@ -10,6 +10,8 @@ import com.voltpilot.api.mispel.MispelAbgrenzungRechenwerk.Ergebnis;
 import com.voltpilot.api.mispel.MispelAbgrenzungRechenwerk.Viertelstunde;
 import com.voltpilot.api.mispel.MispelAbgrenzungRechenwerk.ViertelstundeWerte;
 import com.voltpilot.api.mispel.MispelAbgrenzungRepository.Zeile;
+import com.voltpilot.api.uems.BerichtPdf;
+import com.voltpilot.api.uems.BerichtPdf.Spalte;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,10 +24,12 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -250,6 +254,136 @@ class MispelNachweisTest {
                         assertThat(a.code()).isEqualTo("empfaenger_unbekannt"));
     }
 
+    // ------------------------------------------------------------------ MP-16b: Spalten kollidieren nicht
+
+    /** Abstand zwischen zwei Spalten ohne Rinne: je Zelle {@code POLSTER} 2,5 pt. */
+    private static final float SPALTENABSTAND = 5f;
+    /** Lücke zwischen einem Wert und dem Text rechts daneben: mehr als ein Geviert der Tabellenschrift (8,5 pt). */
+    private static final float ABSTAND_NACH_WERT = 10f;
+
+    @Test
+    void derLaengsteWertJederSpalteStoesstNieAnDieNachbarspalte() throws Exception {
+        String nr = laengster(MispelNachweis.KATALOG.values().stream().map(MispelNachweis.Formel::nr).toList());
+        String begriff = laengster(MispelNachweis.KATALOG.values().stream().map(MispelNachweis.Formel::begriff).toList());
+        String rechenweg = laengster(MispelNachweis.KATALOG.values().stream()
+                .map(MispelNachweis.Formel::rechenweg).toList());
+        String fundstelle = laengster(MispelNachweis.KATALOG.values().stream()
+                .map(MispelNachweis.Formel::fundstelle).toList());
+        String wert = MispelNachweisPdf.LAENGSTER_WERT;
+        Map<String, String> laengste = Map.of("Zeitraum", "2027-04", "Nr.", nr, "Begriff", begriff, "Rechenweg",
+                rechenweg, "Begriff und Rechenweg", begriff, "Wert", wert, "Fundstelle", fundstelle,
+                "fehlender Eingang", "Z1NB¼ Z1", "Anzahl", "35140", "erste", "2027-04-01T00:00:00Z, 2027-04-01T00:15:00Z");
+        for (List<Spalte> spalten : List.of(MispelNachweisPdf.FORMELSATZ_SPALTEN, MispelNachweisPdf.JAHR_SPALTEN,
+                MispelNachweisPdf.ERGEBNIS_SPALTEN, MispelNachweisPdf.LUECKEN_SPALTEN)) {
+            List<List<String>> zeile = spalten.stream().map(sp -> List.of(laengste.get(sp.titel()))).toList();
+            byte[] pdf = BerichtPdf.setzen("MP-16b", "Spalten", GERECHNET, MispelNachweis.ZONE, "mp-16b", null,
+                    List.of("Fuß"), s -> s.tabelle(spalten, List.of(zeile)));
+            String titel = spalten.stream().map(Spalte::titel).toList().toString();
+            List<List<Textlauf>> zeilen = textzeilen(pdf);
+            keineUeberlappung(titel, zeilen);
+            // Der längste Wert steht ungebrochen in einer Zeile, mit Abstand zu beiden Nachbarn.
+            String w = spalten == MispelNachweisPdf.LUECKEN_SPALTEN ? laengste.get("Anzahl") : wert;
+            Textlauf l = zeilen.stream().flatMap(List::stream).filter(x -> x.text().equals(w)).findFirst()
+                    .orElseThrow(() -> new AssertionError(titel + ": „" + w + "“ ist umbrochen oder fehlt: " + zeilen));
+            List<Textlauf> nachbarn = zeilen.stream().filter(z -> z.contains(l)).findFirst().orElseThrow();
+            int i = nachbarn.indexOf(l);
+            if (i > 0) {
+                assertThat(l.links() - nachbarn.get(i - 1).rechts()).as(titel + " links von " + w)
+                        .isGreaterThanOrEqualTo(SPALTENABSTAND - 0.05f);
+            }
+            if (i < nachbarn.size() - 1) {
+                assertThat(nachbarn.get(i + 1).links() - l.rechts()).as(titel + " rechts von " + w)
+                        .isGreaterThanOrEqualTo(ABSTAND_NACH_WERT);
+            }
+        }
+    }
+
+    @Test
+    void imEchtenNachweisStehtJederWertMitRinneVorDerFundstelle() throws Exception {
+        JsonNode fall = fall("a1-monat-alle-formeln");
+        MispelNachweis.Monat m = MispelNachweis.monat(ANLAGE, YearMonth.of(2027, 4),
+                laeufe(fall, MispelAbgrenzungRechenwerkTest.rechne(fall), "endgueltig"));
+        JsonNode jf = fall("a1-monatsgrenze-speicherinhalt-als-fremdtankstrom");
+        MispelNachweis.Jahr j = MispelNachweis.jahr(ANLAGE, 2027,
+                laeufe(jf, MispelAbgrenzungRechenwerkTest.rechne(jf), "endgueltig"));
+        for (String e : List.of("netzbetreiber", "lieferant", "direktvermarkter")) {
+            for (byte[] pdf : List.of(MispelNachweisPdf.datei(m, empfaenger(e)), MispelNachweisPdf.datei(j, empfaenger(e)))) {
+                List<List<Textlauf>> zeilen = textzeilen(pdf);
+                keineUeberlappung(e, zeilen);
+                int geprueft = 0;
+                for (List<Textlauf> z : zeilen) {
+                    for (int i = 0; i < z.size() - 1; i++) {
+                        if (z.get(i).text().endsWith(" kWh")) {
+                            assertThat(z.get(i + 1).links() - z.get(i).rechts()).as(e + ": " + z)
+                                    .isGreaterThanOrEqualTo(ABSTAND_NACH_WERT);
+                            geprueft++;
+                        }
+                    }
+                }
+                assertThat(geprueft).as(e + ": Werte vor einer Fundstelle").isPositive();
+            }
+        }
+    }
+
+    /** Ein zusammenhängender Text einer Zeile (Glyphen mit weniger Lücke als ein halber Spaltenabstand). */
+    record Textlauf(String text, float links, float rechts) {}
+
+    private static String laengster(List<String> texte) {
+        return texte.stream().max(java.util.Comparator.comparingInt(String::length)).orElseThrow();
+    }
+
+    private static void keineUeberlappung(String was, List<List<Textlauf>> zeilen) {
+        for (List<Textlauf> z : zeilen) {
+            for (int i = 0; i < z.size() - 1; i++) {
+                assertThat(z.get(i + 1).links()).as(was + ": überlappt " + z).isGreaterThanOrEqualTo(z.get(i).rechts());
+            }
+        }
+    }
+
+    /** Je Seite und Grundlinie die Textläufe von links nach rechts (ohne gedrehten Text). */
+    static List<List<Textlauf>> textzeilen(byte[] pdf) throws IOException {
+        List<List<Textlauf>> raus = new ArrayList<>();
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            for (int seite = 1; seite <= doc.getNumberOfPages(); seite++) {
+                Map<Float, List<TextPosition>> je = new TreeMap<>();
+                PDFTextStripper stripper = new PDFTextStripper() {
+                    @Override
+                    protected void processTextPosition(TextPosition t) {
+                        if (t.getDir() == 0) {
+                            je.computeIfAbsent(Math.round(t.getYDirAdj() * 2) / 2f, k -> new ArrayList<>()).add(t);
+                        }
+                    }
+                };
+                stripper.setStartPage(seite);
+                stripper.setEndPage(seite);
+                stripper.getText(doc);
+                for (List<TextPosition> glyphen : je.values()) {
+                    glyphen.sort(java.util.Comparator.comparing(TextPosition::getXDirAdj));
+                    List<Textlauf> z = new ArrayList<>();
+                    StringBuilder text = new StringBuilder();
+                    float links = 0;
+                    float rechts = 0;
+                    for (TextPosition g : glyphen) {
+                        if (text.length() > 0 && g.getXDirAdj() - rechts >= SPALTENABSTAND / 2) {
+                            z.add(new Textlauf(text.toString().strip(), links, rechts));
+                            text.setLength(0);
+                        }
+                        if (text.length() == 0) {
+                            links = g.getXDirAdj();
+                        } else if (g.getXDirAdj() - rechts > 1f) {
+                            text.append(' ');
+                        }
+                        text.append(g.getUnicode());
+                        rechts = g.getXDirAdj() + g.getWidthDirAdj();
+                    }
+                    z.add(new Textlauf(text.toString().strip(), links, rechts));
+                    raus.add(z);
+                }
+            }
+        }
+        return raus;
+    }
+
     // ------------------------------------------------------------------ Hilfen
 
     private static MispelNachweis.Empfaenger empfaenger(String e) {
@@ -274,7 +408,7 @@ class MispelNachweisTest {
     }
 
     /**
-     * Je (Rumpf-)Monat des Falls ein gespeicherter Lauf in der Form von {@link MispelAbgrenzungService}: Nachweis-Text
+     * Je (Rumpf-)Monat des Falls ein gespeicherter Textlauf in der Form von {@link MispelAbgrenzungService}: Nachweis-Text
      * mit Monatswerten, dem Jahresbeitrag dieses Laufs und Eingängen und Zwischenwerten je Viertelstunde.
      */
     private static List<Zeile> laeufe(JsonNode fall, Ergebnis e, String stand) {

@@ -1276,8 +1276,16 @@ public final class BerichtPdf {
         return Collections.unmodifiableMap(raus);
     }
 
-    /** Eine Tabellenspalte; Breite 0 = der Rest der Zeile. */
-    public record Spalte(String titel, float breite, boolean rechts) {}
+    /**
+     * Eine Tabellenspalte; Breite 0 = der Rest der Zeile. {@code rinne} ist zusätzlicher Freiraum rechts in der Zelle,
+     * damit ein rechtsbündiger Wert nicht an den Text der linksbündigen Nachbarspalte stößt (MiSpeL MP-16b).
+     */
+    public record Spalte(String titel, float breite, boolean rechts, float rinne) {
+
+        public Spalte(String titel, float breite, boolean rechts) {
+            this(titel, breite, rechts, 0);
+        }
+    }
 
     /** Setzt Text von oben nach unten auf A4-Seiten, bricht Zeilen und Seiten um und schreibt am Ende die Füße. */
     public static final class Setzer {
@@ -1404,7 +1412,8 @@ public final class BerichtPdf {
                 for (int i = 0; i < breiten.length; i++) {
                     List<String> l = new ArrayList<>();
                     for (String teil : z.get(i)) {
-                        l.addAll(umbrechen(sicher(teil, zeichen), NORMAL, breiten[i] - 2 * POLSTER));
+                        l.addAll(umbrechen(sicher(teil, zeichen), NORMAL,
+                                breiten[i] - 2 * POLSTER - spalten.get(i).rinne()));
                     }
                     zellen.add(l);
                     n = Math.max(n, l.size());
@@ -1418,7 +1427,8 @@ public final class BerichtPdf {
                     float oben = y - POLSTER;
                     for (String t : zellen.get(i)) {
                         oben -= zeile;
-                        float tx = spalten.get(i).rechts() ? x + breiten[i] - POLSTER - breite(t, NORMAL) : x + POLSTER;
+                        float tx = spalten.get(i).rechts()
+                                ? x + breiten[i] - POLSTER - spalten.get(i).rinne() - breite(t, NORMAL) : x + POLSTER;
                         text(tx, oben + NORMAL * (ZEILE - 1) / 2 + NORMAL * 0.22f, NORMAL, SCHWARZ, t);
                     }
                     x += breiten[i];
@@ -1433,7 +1443,8 @@ public final class BerichtPdf {
             float x = RAND;
             for (int i = 0; i < breiten.length; i++) {
                 String t = sicher(spalten.get(i).titel(), zeichen);
-                float tx = spalten.get(i).rechts() ? x + breiten[i] - POLSTER - breite(t, KLEIN) : x + POLSTER;
+                float tx = spalten.get(i).rechts()
+                        ? x + breiten[i] - POLSTER - spalten.get(i).rinne() - breite(t, KLEIN) : x + POLSTER;
                 text(tx, y - POLSTER - KLEIN * ZEILE + KLEIN * 0.3f, KLEIN, GRAU, t);
                 x += breiten[i];
             }
