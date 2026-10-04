@@ -82,7 +82,8 @@ WireGuard ins Service-VPN `vpn.voltpilot.de:1001` (`10.10.1.0/24`, verwaltet mit
 | Erreichbar aus dem Tunnel | nur SSH auf `10.10.1.25:2222` (zweite Dropbear-Instanz, `-s -g`: keine Passwort-Anmeldung) und Ping; `:8484`, `:8887`, Port 22 abgewiesen. Web-App per `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25` |
 | Neu verbinden | `persistent_keepalive 25`; cron: `wireguard_watchdog` jede Minute, Neustart der Schnittstelle ohne Handshake seit 10 min |
 | Schlüssel | Pilot: aus der WireGuard-UI-Datei übernommen (der VPN-Server kennt ihn); Flotte: auf der Box erzeugen (`service-tunnel.sh … key`) und nur den öffentlichen Schlüssel eintragen |
-| Belegt | Handshake, Ping zum VPN-Server 25 ms; Test von einem anderen VPN-Gerät steht noch aus |
+| Web-App im Tunnel | nur für benannte Techniker-Adressen: `service-tunnel.sh <ziel> web 10.10.1.5` (Pilot: Max Laptop) → `http://10.10.1.25:8484`; alle anderen VPN-Geräte bleiben draußen |
+| Belegt | Handshake, Ping zum VPN-Server 25 ms; von einem VPN-Gerät (10.10.1.5) aus: Hostschlüssel = der aus dem LAN, SSH 2222 nur mit Schlüssel, `:8484` ohne Freigabe gesperrt, mit Freigabe HTTP 200; Software-Update über den Tunnel eingespielt (04.10.2026) |
 
 Das Service-VPN ist ein gemeinsames Netz, in dem auch Kundensysteme hängen (HA-VMs, Router). Deshalb im Tunnel nur Schlüssel-SSH; serverseitig sollten Boxen und Kundensysteme einander nicht erreichen.
 

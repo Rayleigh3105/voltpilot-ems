@@ -15,13 +15,20 @@
 #   Schluessel und Preshared Key gehen per stdin in /etc/wireguard (0600),
 #   nie ueber eine Befehlszeile; DNS aus der Datei wird NICHT uebernommen
 #   (der Mango ist der Router, seine Namensaufloesung bleibt).
+#   3. Optional die Web-App :8484 im Tunnel fuer die Techniker-Geraete oeffnen
+#      (leer = wieder schliessen); aendert NUR diese eine Firewall-Regel:
+#        edge-light/openwrt/service-tunnel.sh root@10.10.1.25 web 10.10.1.5 [10.10.1.x ...]
+#      Verlaesslich, weil WireGuard die Absenderadresse an das Geraet bindet
+#      (der Server nimmt von jedem Peer nur seine eigene /32 an) - ein anderes
+#      Geraet im VPN kann sich nicht als Techniker ausgeben.
 #
 # Was eingerichtet wird (alles im Betriebssystem, kein Teil des Programms):
 #   - Schnittstelle wg_service, persistent_keepalive 25 (haelt NAT offen)
 #   - Firewall-Zone "service": eingehend NUR SSH auf Port 2222 und Ping; kein
 #     Weiterleiten ins Kundennetz. Die Web-App :8484 hat keine Anmeldung und
-#     bleibt deshalb ausserhalb des Tunnels - erreichbar per
-#     ssh -p 2222 -L 8484:127.0.0.1:8484 root@<tunnel-ip>
+#     bleibt deshalb ausserhalb des Tunnels (das VPN teilen sich auch
+#     Kundensysteme) - erreichbar per ssh -p 2222 -L 8484:127.0.0.1:8484
+#     root@<tunnel-ip>, oder fuer benannte Techniker-Adressen (Schritt 3)
 #   - eine zweite Dropbear-Instanz nur im Tunnel, nur mit Schluessel (RSA - der
 #     Dropbear des Mango kennt kein Ed25519); die bestehende SSH-Anmeldung im
 #     LAN bleibt unveraendert
@@ -32,7 +39,7 @@
 set -eu
 
 TARGET="${1:?Ziel fehlt, z. B. root@192.168.1.1}"
-WHAT="${2:?\"key\", \"import <datei>\" oder die Tunnel-Adresse fehlt, z. B. 10.10.1.23}"
+WHAT="${2:?\"key\", \"import <datei>\", \"web <ip ...>\" oder die Tunnel-Adresse fehlt, z. B. 10.10.1.23}"
 PORT="${3:-1001}"
 ENDPOINT="${VP_SERVICE_ENDPOINT:-vpn.voltpilot.de}"
 SERVER_PUB="${VP_SERVICE_PUBKEY:-LnLMuBG+dDEeaEKlQrdTlPifX2fk0hOaB/NFc/BudjE=}"
@@ -53,10 +60,45 @@ if [ "$WHAT" = key ]; then
   exit 0
 fi
 
+if [ "$WHAT" = web ]; then
+  shift 2
+  FROM="$*"
+  for ip in $FROM; do
+    case "$ip" in
+      *.*.*.*) ;;
+      *) echo "FEHLER: keine IPv4-Adresse: $ip" >&2; exit 1 ;;
+    esac
+  done
+  if [ -n "$FROM" ]; then
+    echo "--- Web-App :8484 im Tunnel oeffnen fuer: $FROM"
+  else
+    echo "--- Web-App :8484 im Tunnel wieder schliessen"
+  fi
+  # shellcheck disable=SC2029 # die Adressen kommen bewusst von hier
+  ssh "$TARGET" "FROM='$FROM' sh -s" <<'REMOTE'
+set -e
+uci -q delete firewall.vp_service_web || true
+if [ -n "$FROM" ]; then
+  uci set firewall.vp_service_web=rule
+  uci set firewall.vp_service_web.name='Allow-Service-Web-Techniker'
+  uci set firewall.vp_service_web.src='service'
+  uci set firewall.vp_service_web.proto='tcp'
+  uci set firewall.vp_service_web.dest_port='8484'
+  for ip in $FROM; do uci add_list firewall.vp_service_web.src_ip="$ip"; done
+  uci set firewall.vp_service_web.target='ACCEPT'
+fi
+uci commit firewall
+/etc/init.d/firewall reload >/dev/null 2>&1
+nft list chain inet fw4 input_service | grep -E 'dport (2222|8484)' | sed 's/^[[:space:]]*/    /'
+REMOTE
+  exit 0
+fi
+
 if [ "$WHAT" = import ]; then
   CONF="${3:?Client-Datei aus WireGuard UI fehlt}"
   # conf_val KEY - der Wert nach dem ERSTEN "=" (Base64-Schluessel enden auf "=")
-  conf_val() { tr -d '' <"$CONF" | sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" | head -1 | sed 's/[[:space:]]*$//'; }
+  conf_val() { tr -d '
+' <"$CONF" | sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" | head -1 | sed 's/[[:space:]]*$//'; }
   PRIV="$(conf_val PrivateKey)"
   PSK="$(conf_val PresharedKey)"
   ADDR="$(conf_val Address | cut -d, -f1 | cut -d/ -f1)"
