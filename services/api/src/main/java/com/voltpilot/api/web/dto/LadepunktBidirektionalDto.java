@@ -53,7 +53,25 @@ public final class LadepunktBidirektionalDto {
     public record Ansicht(UUID anlage, UUID komponente, String name, String typ, String chargePointId, LocalDate am,
             FaehigkeitDto faehigkeit, String einordnung, String einordnungFundstelle, List<Z2Dto> z2,
             List<BefundDto> befunde, FahrzeugfensterDto fahrzeugfenster, List<FassungDto> fassungen,
-            SignierterMesswertDto signierterMesswert) {}
+            SignierterMesswertDto signierterMesswert, FahrerEinstellungenDto fahrerEinstellungen) {}
+
+    /** MiSpeL MP-41a: eine Abfahrt für einen oder mehrere ISO-Wochentage (1 = Montag). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AbfahrtDto(List<Integer> wochentage, String abfahrt, BigDecimal abfahrtSocPct) {}
+
+    /** MiSpeL MP-41a: „nur die nächste Fahrt“, Ortszeit {@code JJJJ-MM-TTTHH:MM}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record NaechsteFahrtDto(String abfahrt, BigDecimal abfahrtSocPct) {}
+
+    /**
+     * MiSpeL MP-41a: die Einstellungen des Fahrers. {@code rueckspeisen} ∈ aus · v2h · v2g (der Wunsch),
+     * {@code rueckspeisen_wirksam} = nie über der Fähigkeit am Tag; {@code reserve_pct} = {@code mindest_soc_pct} des
+     * Fahrzeugfensters; {@code km_je_prozent} {@code null} ohne Kapazität.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record FahrerEinstellungenDto(boolean erfasst, String rueckspeisen, String rueckspeisenWirksam,
+            BigDecimal reservePct, BigDecimal vollzyklenJeTag, List<AbfahrtDto> abfahrten, NaechsteFahrtDto naechsteFahrt,
+            BigDecimal kmJeProzent, java.time.Instant geaendertAm, String geaendertVon) {}
 
     /**
      * MiSpeL MP-38: die letzte signierte Ablesung (OCMF) bis zum Ende des Tages; {@code eichstatus}
@@ -100,7 +118,20 @@ public final class LadepunktBidirektionalDto {
         String name = k.label() != null ? k.label() : k.chargePointId();
         return new Ansicht(a.anlage(), k.id(), name, k.typ(), k.chargePointId(), a.am(), faehigkeit, a.einordnung(),
                 LadepunktRegeln.einordnungFundstelle(a.einordnung()), z2, befunde, fenster, fassungen,
-                signiert(a.signierterMesswert()));
+                signiert(a.signierterMesswert()), fahrer(a.fahrer()));
+    }
+
+    private static FahrerEinstellungenDto fahrer(LadepunktService.FahrerAnsicht f) {
+        if (f == null) {
+            return null;
+        }
+        LadepunktRegeln.NaechsteFahrt n = f.naechsteFahrt();
+        return new FahrerEinstellungenDto(f.erfasst(), f.rueckspeisen(), f.rueckspeisenWirksam(), f.reservePct(),
+                f.vollzyklenJeTag(), f.abfahrten().stream()
+                        .map(x -> new AbfahrtDto(x.wochentage(), hhmm(x.abfahrt()), x.abfahrtSocPct())).toList(),
+                n == null ? null : new NaechsteFahrtDto(n.abfahrt().toLocalDate() + "T" + hhmm(n.abfahrt().toLocalTime()),
+                        n.abfahrtSocPct()),
+                f.kmJeProzent(), f.geaendertAm(), f.geaendertVon());
     }
 
     private static SignierterMesswertDto signiert(LadepunktRepository.SignierterMesswert s) {

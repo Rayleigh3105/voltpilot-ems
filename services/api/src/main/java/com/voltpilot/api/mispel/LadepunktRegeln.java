@@ -2,6 +2,7 @@ package com.voltpilot.api.mispel;
 
 import com.voltpilot.api.uems.ZaehlerrolleRegeln;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -164,6 +165,130 @@ public final class LadepunktRegeln {
                         "Zwei Anwesenheitsfenster überschneiden sich; ein Ladepunkt hat zu jeder Zeit höchstens "
                                 + "ein Fenster.");
             }
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------ Einstellungen des Fahrers (MP-41a)
+
+    /**
+     * Die Freigabe des Fahrers, das Vokabular von {@code entities[].fahrzeug.rueckspeisen} im Fahrplan 2.0 (MP-39):
+     * aus · nur ins Haus · Haus und Netz. Ein Wunsch, keine Fähigkeit: „aus“ macht den Ladepunkt nicht
+     * unidirektional (A1 S. 26).
+     */
+    public static final String RUECKSPEISEN_AUS = "aus";
+    public static final String RUECKSPEISEN_V2H = "v2h";
+    public static final String RUECKSPEISEN_V2G = "v2g";
+    public static final List<String> RUECKSPEISEN = List.of(RUECKSPEISEN_AUS, RUECKSPEISEN_V2H, RUECKSPEISEN_V2G);
+    /** „Akku schonen“ (BK-41 A): ½, 1 oder 2 volle Ladungen am Tag; der Optimierer rechnet ohne Angabe mit 1. */
+    public static final List<BigDecimal> VOLLZYKLEN_JE_TAG = List.of(new BigDecimal("0.5"), BigDecimal.ONE,
+            BigDecimal.valueOf(2));
+    /** „Nur die nächste Fahrt“ liegt höchstens so viele Tage voraus. */
+    public static final int NAECHSTE_FAHRT_TAGE = 7;
+
+    /** Eine Abfahrt für einen oder mehrere ISO-Wochentage (1 = Montag) mit dem Ladestand bei Abfahrt. */
+    public record Abfahrt(List<Integer> wochentage, LocalTime abfahrt, BigDecimal abfahrtSocPct) {}
+
+    /** „Nur die nächste Fahrt“: Ortszeit des Kundenbereichs. */
+    public record NaechsteFahrt(LocalDateTime abfahrt, BigDecimal abfahrtSocPct) {}
+
+    /**
+     * Die Einstellungen des Fahrers, ganz ersetzt bei jedem Setzen. {@code reservePct} ist der Mindest-Ladestand des
+     * Fahrzeugfensters (§ 5) — dasselbe Feld, kein zweites.
+     */
+    public record FahrerEinstellungen(String rueckspeisen, BigDecimal reservePct, BigDecimal vollzyklenJeTag,
+            List<Abfahrt> abfahrten, NaechsteFahrt naechsteFahrt) {
+        /** Ohne Zeile: Zurückspeisen aus (Vorgabe BK-41), sonst nichts gesagt. */
+        public static final FahrerEinstellungen VORGABE = new FahrerEinstellungen(RUECKSPEISEN_AUS, null, null,
+                List.of(), null);
+    }
+
+    /**
+     * Formfehler der Fahrer-Einstellungen: 400 {@code fahrer_einstellungen_ungueltig} mit Grund, sonst {@code null}.
+     *
+     * @param jetzt die Ortszeit des Kundenbereichs; „nur die nächste Fahrt“ liegt danach und höchstens
+     *              {@value #NAECHSTE_FAHRT_TAGE} Tage voraus
+     */
+    public static Ablehnung formPruefen(FahrerEinstellungen f, LocalDateTime jetzt) {
+        if (f.rueckspeisen() == null || !RUECKSPEISEN.contains(f.rueckspeisen())) {
+            return ungueltig(FAHRER_UNGUELTIG, "rueckspeisen", "Zurückspeisen ist aus, v2h (ins Haus) oder v2g "
+                    + "(Haus und Netz).");
+        }
+        if (ausserhalb(f.reservePct(), NULL, HUNDERT, true)) {
+            return ungueltig(FAHRER_UNGUELTIG, "reserve", "Die Reserve liegt zwischen 0 und 100 %.");
+        }
+        if (f.vollzyklenJeTag() != null
+                && VOLLZYKLEN_JE_TAG.stream().noneMatch(z -> z.compareTo(f.vollzyklenJeTag()) == 0)) {
+            return ungueltig(FAHRER_UNGUELTIG, "vollzyklen", "Akku schonen: höchstens ½, 1 oder 2 volle Ladungen am Tag.");
+        }
+        boolean[] belegt = new boolean[8];
+        for (Abfahrt a : f.abfahrten()) {
+            if (a == null || a.wochentage() == null || a.wochentage().isEmpty() || a.abfahrt() == null
+                    || a.abfahrt().getSecond() != 0 || a.abfahrt().getNano() != 0 || a.abfahrtSocPct() == null) {
+                return ungueltig(FAHRER_UNGUELTIG, "abfahrt", "Eine Abfahrt hat Wochentage (1 = Montag … 7 = Sonntag), "
+                        + "eine Uhrzeit (HH:MM) und den Ladestand bei Abfahrt.");
+            }
+            for (Integer tag : a.wochentage()) {
+                if (tag == null || tag < 1 || tag > 7) {
+                    return ungueltig(FAHRER_UNGUELTIG, "abfahrt", "Wochentage sind 1 = Montag … 7 = Sonntag.");
+                }
+                if (belegt[tag]) {
+                    return ungueltig(FAHRER_UNGUELTIG, "ueberschneidung", "Je Wochentag gibt es höchstens eine Abfahrt.");
+                }
+                belegt[tag] = true;
+            }
+            Ablehnung soc = abfahrtSoc(a.abfahrtSocPct(), f.reservePct());
+            if (soc != null) {
+                return soc;
+            }
+        }
+        NaechsteFahrt n = f.naechsteFahrt();
+        if (n != null) {
+            if (n.abfahrt() == null || n.abfahrtSocPct() == null || n.abfahrt().getSecond() != 0
+                    || n.abfahrt().getNano() != 0 || !n.abfahrt().isAfter(jetzt)
+                    || n.abfahrt().isAfter(jetzt.plusDays(NAECHSTE_FAHRT_TAGE))) {
+                return ungueltig(FAHRER_UNGUELTIG, "naechste_fahrt", "Die nächste Fahrt liegt in der Zukunft, höchstens "
+                        + NAECHSTE_FAHRT_TAGE + " Tage voraus (JJJJ-MM-TTTHH:MM), mit dem Ladestand bei Abfahrt.");
+            }
+            Ablehnung soc = abfahrtSoc(n.abfahrtSocPct(), f.reservePct());
+            if (soc != null) {
+                return soc;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Die wirksame Freigabe am Tag: der Wunsch des Fahrers, nie über der Fähigkeit des Ladepunkts (Fahrplan 2.0,
+     * MP-39). „Haus und Netz“ an einem Ladepunkt nur mit V2H wird „nur ins Haus“; ohne passende Betriebsweise „aus“.
+     */
+    public static String rueckspeisenWirksam(String wunsch, Faehigkeit f) {
+        if (RUECKSPEISEN_V2G.equals(wunsch) && f.v2g()) {
+            return RUECKSPEISEN_V2G;
+        }
+        if ((RUECKSPEISEN_V2G.equals(wunsch) || RUECKSPEISEN_V2H.equals(wunsch)) && f.v2h()) {
+            return RUECKSPEISEN_V2H;
+        }
+        return RUECKSPEISEN_AUS;
+    }
+
+    /** Ob die Fähigkeit den Wunsch trägt (ohne Herabstufung). */
+    public static boolean traegt(Faehigkeit f, String wunsch) {
+        return switch (wunsch) {
+            case RUECKSPEISEN_V2G -> f.v2g();
+            case RUECKSPEISEN_V2H -> f.v2h();
+            default -> true;
+        };
+    }
+
+    private static final String FAHRER_UNGUELTIG = "fahrer_einstellungen_ungueltig";
+
+    private static Ablehnung abfahrtSoc(BigDecimal soc, BigDecimal reserve) {
+        if (ausserhalb(soc, NULL, HUNDERT, true)) {
+            return ungueltig(FAHRER_UNGUELTIG, "abfahrt_soc", "Der Ladestand bei Abfahrt liegt zwischen 0 und 100 %.");
+        }
+        if (reserve != null && soc.compareTo(reserve) < 0) {
+            return ungueltig(FAHRER_UNGUELTIG, "abfahrt_soc", "Der Ladestand bei Abfahrt liegt nicht unter der Reserve.");
         }
         return null;
     }

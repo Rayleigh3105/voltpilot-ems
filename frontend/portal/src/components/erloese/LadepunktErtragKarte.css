@@ -1,0 +1,57 @@
+/*
+ * Ladepunkt · Erträge im Monat (MP-41a, BK-41). Baut auf der MiSpeL-Karte (MispelKarte.css) auf: dieselbe Legende,
+ * dasselbe Hauptbuch; gelb/rot sind die Farben der Festlegung (A1 S. 18), die Mengen am Ladepunkt eigene Töne.
+ */
+.vp-lpe {
+  --lpe-geladen: #2563eb;
+  --lpe-haus: #f97316;
+  --lpe-netz: #7c3aed;
+}
+.vp-lpe .vp-lpe-q.is-geladen {
+  background: var(--lpe-geladen);
+}
+.vp-lpe .vp-lpe-q.is-haus {
+  background: var(--lpe-haus);
+}
+.vp-lpe .vp-lpe-q.is-netz {
+  background: var(--lpe-netz);
+}
+.vp-lpe .vp-lpe-q.is-fremd {
+  background: var(--mi-grau);
+}
+.vp-lpe-satz {
+  margin: 0 0 12px;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-lpe .vp-lpe-zaehlt {
+  margin-top: 14px;
+}
+.vp-lpe-formel,
+.vp-lpe-notiz,
+.vp-lpe-fuss {
+  margin: 8px 0 0;
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-lpe-fuss {
+  margin-top: 14px;
+}
+.vp-lpe-vorbehalt {
+  display: inline-block;
+  margin: 0 6px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  background: var(--mi-gelb-bg);
+  color: var(--mi-gelb-fg);
+}
+.vp-lpe-notiz .vp-lpe-vorbehalt {
+  margin-left: 0;
+}
+.vp-lpe-ledger dd.vp-mi-sum.is-offen {
+  color: var(--vp-c-muted-fg);
+}

@@ -9230,6 +9230,20 @@ export const api = {
    */
   siteChargers: (siteId: string) =>
     request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
+  /**
+   * MiSpeL MP-31/MP-41a: die Ladepunkte der Anlage mit Fähigkeit (V2H/V2G als Fassungen ab einem Tag), Einordnung
+   * nach Anlage 1, Z2 und Befunden — und die Fähigkeit setzen (Recht `geraet.einrichten`).
+   */
+  ladepunkte: (siteId: string) =>
+    request<import('./ladepunktErtraege').LadepunktListe>(`/api/v1/sites/${siteId}/ladepunkte`),
+  ladepunktFaehigkeitSetzen: (siteId: string, komponente: string, anfrage: import('./ladepunktErtraege').FaehigkeitAnfrage) =>
+    request<import('./ladepunktErtraege').LadepunktAnsicht>(`/api/v1/sites/${siteId}/ladepunkte/${komponente}/faehigkeit`, {
+      method: 'PUT',
+      body: JSON.stringify(anfrage),
+    }),
+  /** MiSpeL MP-41a: die Erträge am Ladepunkt im Monat (JJJJ-MM), gerechnet vom Rechenwerk MP-32. */
+  ladepunktErtraege: (siteId: string, monat: string) =>
+    request<import('./ladepunktErtraege').LadepunktErtraege>(`/api/v1/sites/${siteId}/ladepunkte/ertraege/${monat}`),
   ocppControl: (siteId: string) => request<import('./ocppControl').OcppControlView>(`/api/v1/sites/${siteId}/ocpp/control`),
   saveOcppControl: (siteId: string, policy: import('./ocppControl').OcppControlPolicy) =>
     request<import('./ocppControl').OcppControlView>(`/api/v1/sites/${siteId}/ocpp/control`, { method: 'PUT', body: JSON.stringify(policy) }),

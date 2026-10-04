@@ -50,6 +50,8 @@ import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
 import { freigabeZustand } from '../schaltFreigabe';
 import { REGEL_BRUECKE_LABEL, bietetRegelBruecke, regelBrueckeHash } from '../selbstbauBruecke';
 import { UmbenennenDialog } from '../components/UmbenennenDialog';
+import { LadepunktFaehigkeitDialog } from '../components/LadepunktFaehigkeitDialog';
+import { faehigkeitZeile, type LadepunktAnsicht } from '../ladepunktErtraege';
 import { KomponenteLoeschenDialog, ZuordnungAendernDialog } from '../components/ZuordnungAendern';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
@@ -150,6 +152,9 @@ export function AufbauSection({
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
+  // MiSpeL MP-41a (BK-41): die Ladepunkte mit ihrer Fähigkeit V2H/V2G (MP-31); ohne Antwort keine Angabe.
+  const [ladepunkte, setLadepunkte] = useState<LadepunktAnsicht[] | null>(null);
+  const [faehigkeitFuer, setFaehigkeitFuer] = useState<LadepunktAnsicht | null>(null);
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [componentsDa, setComponentsDa] = useState(false);
   const [consumers, setConsumers] = useState<Consumer[]>([]);
@@ -221,6 +226,7 @@ export function AufbauSection({
     api.topology(site.id).then((t) => active && setTopology(t), () => active && setTopology(null));
     api.siteSources(site.id).then((s) => active && setSources(s), () => active && setSources(null));
     api.siteChargers(site.id).then((c) => active && setCharging(c), () => active && setCharging(null));
+    api.ladepunkte(site.id).then((l) => active && setLadepunkte(l.ladepunkte), () => active && setLadepunkte(null));
     setComponentsDa(false);
     api.siteComponents(site.id).then(
       (c) => { if (active) { setComponents(c); setComponentsDa(true); } },
@@ -745,6 +751,8 @@ export function AufbauSection({
             onRepin={(c) => ausKurzblick(() => setRepin(c))}
             onRemove={(c) => ausKurzblick(() => setRemove(c))}
             onUebernehmen={(q) => ausKurzblick(() => setAssign(q))}
+            ladepunktFor={(c) => (c.aspect === 'main' ? ladepunkte?.find((l) => l.komponente === c.entityId) ?? null : null)}
+            onFaehigkeit={(l) => ausKurzblick(() => setFaehigkeitFuer(l))}
             technik={
               showTechnical
                 ? {
@@ -769,6 +777,19 @@ export function AufbauSection({
         onConfirm={(m) => void runSofort(m)}
         onCancel={() => setSofort(null)}
       />
+
+      {faehigkeitFuer && (
+        <LadepunktFaehigkeitDialog
+          siteId={site.id}
+          ladepunkt={faehigkeitFuer}
+          heute={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
+          onClose={() => setFaehigkeitFuer(null)}
+          onGespeichert={() => {
+            setFaehigkeitFuer(null);
+            reload();
+          }}
+        />
+      )}
 
       {assign && (
         <ZuordnenDialog
@@ -985,6 +1006,8 @@ function Kurzblick({
   onRepin,
   onRemove,
   onUebernehmen,
+  ladepunktFor,
+  onFaehigkeit,
   technik,
 }: {
   siteId: string;
@@ -999,6 +1022,8 @@ function Kurzblick({
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
   onUebernehmen: (q: AdoptableSource) => void;
+  ladepunktFor: (c: PlantComponent) => LadepunktAnsicht | null;
+  onFaehigkeit: (l: LadepunktAnsicht) => void;
   technik: TechnikSicht | null;
 }) {
   const k = geraet.karte;
@@ -1045,6 +1070,8 @@ function Kurzblick({
               onFreigabe={onFreigabe}
               onRepin={onRepin}
               onRemove={onRemove}
+              ladepunkt={ladepunktFor(c)}
+              onFaehigkeit={onFaehigkeit}
               technik={technik}
             />
           ))}
@@ -1090,6 +1117,8 @@ function KomponenteZeile({
   onFreigabe,
   onRepin,
   onRemove,
+  ladepunkt,
+  onFaehigkeit,
   technik,
 }: {
   siteId: string;
@@ -1104,6 +1133,8 @@ function KomponenteZeile({
   onFreigabe: (c: PlantComponent) => void;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
+  ladepunkt: LadepunktAnsicht | null;
+  onFaehigkeit: (l: LadepunktAnsicht) => void;
   technik: TechnikSicht | null;
 }) {
   const entity = technik && c.entityId ? technik.entityFor(c.entityId) : null;
@@ -1120,6 +1151,7 @@ function KomponenteZeile({
     regelBruecke ||
     c.entityId != null ||
     (c.role === 'storage' && geraetHref != null) ||
+    ladepunkt != null ||
     (!c.orphaned && (actions.canRepin || actions.canDelete)) ||
     entity != null ||
     c.channels.length > 0;
@@ -1141,8 +1173,16 @@ function KomponenteZeile({
           {c.reading?.caption && <small>{c.reading.caption}</small>}
         </span>
       </div>
-      {(c.control || freigabeAnzeige || ohneMesswert || (c.measuredVia && c.reading == null)) && (
+      {(c.control || freigabeAnzeige || ohneMesswert || ladepunkt || (c.measuredVia && c.reading == null)) && (
         <div className="vp-auf-kb-marken">
+          {ladepunkt && (
+            <span
+              className={`vp-auf-marke${ladepunkt.faehigkeit.nutzbarkeit === 'bidirektional' ? ' is-ok' : ''}`}
+              data-ladepunkt-faehigkeit={ladepunkt.faehigkeit.nutzbarkeit}
+            >
+              <Icon name="zap" size={12} /> {faehigkeitZeile(ladepunkt.faehigkeit)}
+            </span>
+          )}
           {c.control && (
             <span className="vp-auf-marke is-ok">
               <Icon name="shield" size={12} /> {CONTROL_BADGE}
@@ -1213,6 +1253,11 @@ function KomponenteZeile({
               <a className="vp-auf-aktion" href={befehleHash(siteId, c.entityId)}>
                 <Icon name="shield" size={13} /> {BEFEHLE_LABEL}
               </a>
+            )}
+            {ladepunkt && (
+              <Recht aktion="geraet.einrichten"><button type="button" className="vp-auf-aktion" onClick={() => onFaehigkeit(ladepunkt)}>
+                <Icon name="zap" size={13} /> Laden und zurückspeisen
+              </button></Recht>
             )}
             {c.role === 'storage' && geraetHref && (
               <a className="vp-auf-aktion" href={abschnittHash(geraetHref, 'buehne', SPEICHER_KACHEL)}>

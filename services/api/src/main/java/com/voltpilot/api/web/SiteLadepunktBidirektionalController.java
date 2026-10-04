@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.mispel.LadepunktAbgelehnt;
+import com.voltpilot.api.mispel.LadepunktErtragService;
+import com.voltpilot.api.mispel.LadepunktErtraege;
 import com.voltpilot.api.mispel.LadepunktRegeln;
 import com.voltpilot.api.mispel.LadepunktService;
 import com.voltpilot.api.uems.ProtokollAkteur;
@@ -18,6 +20,7 @@ import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,11 +56,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class SiteLadepunktBidirektionalController {
 
     private final LadepunktService ladepunkte;
+    private final LadepunktErtragService ertraege;
     private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public SiteLadepunktBidirektionalController(LadepunktService ladepunkte, RechtPruefung rechte, ObjectMapper json) {
+    public SiteLadepunktBidirektionalController(LadepunktService ladepunkte, LadepunktErtragService ertraege,
+            RechtPruefung rechte, ObjectMapper json) {
         this.ladepunkte = ladepunkte;
+        this.ertraege = ertraege;
         this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -68,6 +74,14 @@ public class SiteLadepunktBidirektionalController {
             List<FensterAnfrage> anwesenheit) {}
 
     public record FensterAnfrage(Integer wochentag, LocalTime ankunft, LocalTime abfahrt, BigDecimal abfahrtSocPct) {}
+
+    /** MiSpeL MP-41a: die Einstellungen des Fahrers, ganz ersetzt; {@code abfahrten} fehlend = keine. */
+    public record FahrerAnfrage(String rueckspeisen, BigDecimal reservePct, BigDecimal vollzyklenJeTag,
+            List<AbfahrtAnfrage> abfahrten, NaechsteFahrtAnfrage naechsteFahrt) {}
+
+    public record AbfahrtAnfrage(List<Integer> wochentage, LocalTime abfahrt, BigDecimal abfahrtSocPct) {}
+
+    public record NaechsteFahrtAnfrage(java.time.LocalDateTime abfahrt, BigDecimal abfahrtSocPct) {}
 
     /**
      * Recht: {@code messwerte.ansehen} (Leseweg der Anlage). Alle Ladepunkte der Anlage am Tag {@code am} (fehlend =
@@ -117,6 +131,47 @@ public class SiteLadepunktBidirektionalController {
         ladepunkte.fahrzeugfensterSetzen(siteId, komponenteId,
                 new LadepunktRegeln.Fahrzeugfenster(a.mindestSocPct(), a.kapazitaetKwh(), fenster), wer(auth));
         return LadepunktBidirektionalDto.aus(ladepunkte.ansicht(siteId, komponenteId, null));
+    }
+
+    /**
+     * Recht: {@code ladepunkt.betrieb}. MiSpeL MP-41a: ersetzt die Einstellungen des Fahrers ganz (Zurückspeisen aus ·
+     * v2h · v2g, Reserve, Akku schonen, Abfahrten, nur die nächste Fahrt); Antwort: die Ansicht heute.
+     */
+    @PutMapping("/{komponenteId}/fahrer-einstellungen")
+    @Recht(value = "ladepunkt.betrieb", ziel = RechtZiel.ANLAGE)
+    public LadepunktBidirektionalDto.Ansicht fahrerEinstellungen(@PathVariable UUID siteId,
+            @PathVariable UUID komponenteId, @RequestBody(required = false) JsonNode body, Authentication auth) {
+        imZugriff(siteId);
+        FahrerAnfrage a = lies(body, FahrerAnfrage.class);
+        List<LadepunktRegeln.Abfahrt> abfahrten = a.abfahrten() == null ? List.of() : a.abfahrten().stream()
+                .map(x -> x == null ? null : new LadepunktRegeln.Abfahrt(x.wochentage(), x.abfahrt(), x.abfahrtSocPct()))
+                .toList();
+        LadepunktRegeln.NaechsteFahrt naechste = a.naechsteFahrt() == null ? null
+                : new LadepunktRegeln.NaechsteFahrt(a.naechsteFahrt().abfahrt(), a.naechsteFahrt().abfahrtSocPct());
+        ladepunkte.fahrerEinstellungenSetzen(siteId, komponenteId, new LadepunktRegeln.FahrerEinstellungen(
+                a.rueckspeisen(), a.reservePct(), a.vollzyklenJeTag(), abfahrten, naechste), wer(auth));
+        return LadepunktBidirektionalDto.aus(ladepunkte.ansicht(siteId, komponenteId, null));
+    }
+
+    /**
+     * Recht: {@code messwerte.ansehen} (Leseweg der Anlage). MiSpeL MP-41a: was der Ladepunkt im Kalendermonat
+     * gebracht hat — Mengen aus dem Monatslauf der Abgrenzung (A2–A4, MP-32), Posten und der Vergleich mit demselben
+     * Haus, in dem das Auto nur lädt.
+     */
+    @GetMapping("/ertraege/{monat}")
+    public LadepunktErtraege.Monat ertraege(@PathVariable UUID siteId, @PathVariable String monat) {
+        imZugriff(siteId);
+        YearMonth m;
+        try {
+            m = YearMonth.parse(monat);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw LadepunktAbgelehnt.anfrage("monat", "„monat“ hat die Form JJJJ-MM.");
+        }
+        LadepunktErtraege.Monat raus = ertraege.monat(siteId, m);
+        if (raus == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        return raus;
     }
 
     private void imZugriff(UUID siteId) {

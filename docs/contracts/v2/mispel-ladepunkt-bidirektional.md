@@ -1,6 +1,6 @@
 # MiSpeL — bidirektionaler Ladepunkt (MP-31)
 
-Stand 02.10.2026 · Vertrag 1.0 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und Ladepunkten
+Stand 04.10.2026 · Vertrag 1.1 (MP-41a additiv: § 5a, § 6a) · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und Ladepunkten
 („MiSpeL“, Beschluss 01.10.2026) — Anlage 1 (Abgrenzungsoption) und Tenor mit Begründung.
 Konzept: MiSpeL-Fundament §2.4 und §6, Bauplan §8 Zeile MP-31; Entscheid E3 = D (Software-Tiefe sofort, V2H vor V2G).
 
@@ -15,12 +15,16 @@ misst und was der Optimierer über das Fahrzeug am Ladepunkt weiß. Er steuert n
 | `services/api/.../mispel/LadepunktService.java` | Lesen mit Z2 und Befunden, Setzen als Fassung, `anlage(site, tag)` für MP-32/MP-33 |
 | `services/api/.../web/SiteLadepunktBidirektionalController.java` | `GET`/`PUT /api/v1/sites/{siteId}/ladepunkte/…` |
 | `…/mispel/LadepunktRegelnTest.java` · `…/mispel/LadepunktBidirektionalApiTest.java` · `…/uems/LadepunktBidirektionalMigrationTest.java` | Regeln rein · Routen gegen die Datenbank · Migration auf befüllter Datenbank |
+| `services/api/src/main/resources/db/migration/V20261004114700__mispel_ladepunkt_fahrer_einstellungen.sql` | MP-41a: `ladepunkt_fahrer_einstellung`, `ladepunkt_abfahrt` (RLS + FORCE) |
+| `services/api/.../mispel/LadepunktErtraege.java` · `…/LadepunktErtragService.java` | MP-41a: Erträge am Ladepunkt im Monat aus dem Monatslauf (A2–A4) |
+| `…/mispel/LadepunktErtraegeApiTest.java` | MP-41a: A2-Monatslauf mit Fremdtankstrom → Route `ertraege` |
 
 > **Wer anruft (Stand MP-32):** die vier Routen und der Monatslauf der Abgrenzung in A2–A4 (MP-32 liest
 > `LadepunktService.anlage` für die Stand-Gründe, [Vertrag](./mispel-abgrenzung.md#monatslauf-und-nachweis-mp-8)); der
 > Optimierer (MP-33) liest Fähigkeit, Fenster und Anwesenheit direkt (`inputs.load_fahrzeugspeicher`, Python-Zwilling
 > der Einordnung in `fahrzeugspeicher.einordnung`; [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md#fahrzeug-als-speicher-mp-33));
-> keine Fläche (MP-41). Kein TS-Zwilling — er entsteht mit der Fläche.
+> Fläche seit MP-41a: Fähigkeit in Anlage › Aufbau (Kurzblick des Ladepunkts, `LadepunktFaehigkeitDialog`) und die
+> Erträge in Verlauf › Erlöse (`LadepunktErtragKarte`); die Wallbox-Karte in Steuerung › Laden folgt mit MP-41b.
 
 ## 1. Der Ladepunkt und seine Identität
 
@@ -52,8 +56,8 @@ Fassungen ab einem Tag und kein Schalter.
 bidirektionales Laden). Die Ansicht sagt dazu `faehigkeit.erfasst: false`; die Migration schreibt keine Zeile.
 
 **Nicht hier:** „Rückspeisen ja/nein“ als Freigabe des Kunden und ein Zyklenbudget sind Wünsche, keine Fähigkeit —
-sie kommen mit Optimierer und Fläche (MP-33, MP-41). Eine abgeschaltete Rückspeisung macht einen Ladepunkt nach A1
-S. 26 nicht unidirektional.
+sie stehen seit MP-41a in [§ 5a](#5a-die-einstellungen-des-fahrers-mp-41a). Eine abgeschaltete Rückspeisung macht einen
+Ladepunkt nach A1 S. 26 nicht unidirektional.
 
 ## 3. Die Einordnung nach Anlage 1
 
@@ -102,6 +106,30 @@ bidirektional ist (sonst `422 ladepunkt_nicht_bidirektional`).
 Unbekannt ist keine Null: das gemessene Anstecken und der gemeldete Ladestand bleiben Telemetrie der Säule
 (`device_charge_connector`); das Fenster ist die Erwartung, nicht der Ist-Zustand.
 
+## 5a. Die Einstellungen des Fahrers (MP-41a)
+
+Bedienkonzept BK-41, Variante A (Captain 04.10.2026): „Zurückspeisen: Aus · Ins Haus · Haus + Netz“, „Abfahrt und
+Reserve“ in Prozent und Kilometern, eine Abfahrt für mehrere Wochentage, „nur die nächste Fahrt“, „Akku schonen“. Wie
+das Fahrzeugfenster ein **Wunsch** am Ladepunkt (nicht am Fahrzeug, A1 S. 27), der laufende Stand ohne Fassungen, ganz
+ersetzt bei jedem `PUT`; nur an einem Ladepunkt, der heute oder später bidirektional ist (`422 ladepunkt_nicht_bidirektional`).
+
+| Feld | Regel |
+|---|---|
+| `rueckspeisen` | Pflicht: `aus` · `v2h` (nur ins Haus) · `v2g` (Haus und Netz) — das Vokabular von `entities[].fahrzeug.rueckspeisen` im [Fahrplan 2.0](./mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39). Ohne Zeile gilt `aus` (`erfasst: false`). Nie über der Fähigkeit: trägt weder die Fassung von heute noch eine spätere den Wunsch, `422 rueckspeisen_ueber_faehigkeit` (A1 S. 26 Fn. 21). |
+| `reserve_pct` | Die Reserve ist **kein neues Feld**, sondern `mindest_soc_pct` des Fahrzeugfensters (§ 5): beide Wege schreiben dasselbe Feld; leer = nicht gesagt — dann speist die Box nicht zurück (MP-39). Nicht über dem Ladestand bei Abfahrt eines Anwesenheitsfensters. |
+| `vollzyklen_je_tag` | „Akku schonen“: `0.5` · `1` · `2` volle Ladungen am Tag; leer = nicht gesagt (der Optimierer rechnet heute fest mit 1, `domain.py` `FAHRZEUG_VOLLZYKLEN_JE_TAG`). |
+| `abfahrten[]` | `{wochentage[], abfahrt, abfahrt_soc_pct}`: eine Abfahrt (`HH:MM`, Ortszeit des Kundenbereichs) mit dem Ladestand bei Abfahrt für einen oder mehrere ISO-Wochentage (1 = Montag); je Wochentag höchstens eine; `abfahrt_soc_pct` 0–100 und nicht unter der Reserve. Gespeichert je Wochentag; gelesen wieder zusammengefasst (gleiche Uhrzeit und gleicher Ladestand = eine Abfahrt). |
+| `naechste_fahrt` | `{abfahrt: "JJJJ-MM-TTTHH:MM", abfahrt_soc_pct}` oder `null`: einmalig, in der Zukunft und höchstens 7 Tage voraus; danach gilt wieder der Wochenplan. Die Ansicht zeigt sie nur, solange sie bevorsteht (veraltet ist nicht aktuell). |
+
+Ansicht (`fahrer_einstellungen` in jeder Ladepunkt-Ansicht): `{erfasst, rueckspeisen, rueckspeisen_wirksam, reserve_pct,
+vollzyklen_je_tag, abfahrten[], naechste_fahrt, km_je_prozent, geaendert_am, geaendert_von}`. `rueckspeisen_wirksam` ist
+der Wunsch am Tag `am`, nie über der Fähigkeit dieses Tages (`v2g` ohne V2G → `v2h`, ohne V2H → `aus`).
+`km_je_prozent` = Kapazität × 6 km/kWh ÷ 100 (dieselbe Schätzung wie das Ladeziel im Portal), `null` ohne Kapazität —
+eine Anzeigehilfe, kein Messwert.
+
+**Wer liest:** heute nur die Ansicht. Der Optimierer (MP-33) liest Freigabe und Zyklenbudget noch nicht, und er sendet
+den Block `fahrzeug` im Fahrplan noch nicht — ohne Block speist die Box nie zurück (MP-39). Beides ist ein Folgepaket.
+
 ## 6. Die Schnittstelle
 
 | Route | Recht | Antwort |
@@ -110,22 +138,63 @@ Unbekannt ist keine Null: das gemessene Anstecken und der gemeldete Ladestand bl
 | `GET /api/v1/sites/{siteId}/ladepunkte/{komponenteId}[?am=…]` | `messwerte.ansehen` | die Ansicht |
 | `PUT /api/v1/sites/{siteId}/ladepunkte/{komponenteId}/faehigkeit` | `geraet.einrichten` | die Ansicht am Tag `gueltig_ab` |
 | `PUT /api/v1/sites/{siteId}/ladepunkte/{komponenteId}/fahrzeugfenster` | `ladepunkt.betrieb` | die Ansicht heute |
+| `PUT /api/v1/sites/{siteId}/ladepunkte/{komponenteId}/fahrer-einstellungen` | `ladepunkt.betrieb` | die Ansicht heute (MP-41a, § 5a) |
+| `GET /api/v1/sites/{siteId}/ladepunkte/ertraege/{JJJJ-MM}` | `messwerte.ansehen` | die Erträge im Monat (MP-41a, § 6a) |
 
 Ansicht: `{anlage, komponente, name, typ, charge_point_id, am, faehigkeit{erfasst, nutzbarkeit, v2h, v2g,
 rueckspeisung_bei_einspeisung_unterbunden, rueckspeiseleistung_kw, gueltig_ab, gueltig_bis}, einordnung,
-einordnung_fundstelle, z2[], befunde[], fahrzeugfenster, fassungen[]}`.
+einordnung_fundstelle, z2[], befunde[], fahrzeugfenster, fassungen[], signierter_messwert, fahrer_einstellungen}`.
 
 | Code | Status | Fakten |
 |---|---|---|
 | `anfrage_ungueltig` | 400 | `feld` (unbekanntes Feld, falsche Form, `gueltig_ab` fehlt) |
 | `faehigkeit_ungueltig` | 400 | `grund`: `nutzbarkeit` · `betriebsweise` · `angaben_ohne_rueckspeisung` · `unterbunden` · `rueckspeiseleistung` |
 | `fahrzeugfenster_ungueltig` | 400 | `grund`: `mindest_soc` · `kapazitaet` · `anwesenheit` · `abfahrt_soc` · `ueberschneidung` |
+| `fahrer_einstellungen_ungueltig` | 400 | `grund`: `rueckspeisen` · `reserve` · `vollzyklen` · `abfahrt` · `abfahrt_soc` · `ueberschneidung` · `naechste_fahrt` |
+| `zeitraum_ungueltig` | 400 | `feld` = `monat` (vor 2026-10, der Festlegung) |
+| `rueckspeisen_ueber_faehigkeit` | 422 | `am`, `rueckspeisen`, `fundstelle` |
 | `faehigkeit_unveraendert` | 409 | `am` |
 | `ladepunkt_nicht_bidirektional` | 422 | `am`, `fundstelle` |
 | `ladepunkt_unbekannt` · `anlage_unbekannt` | 404 | — |
 
 Löschen: die Komponente nimmt Fähigkeit, Fenster und Anwesenheit mit (`ON DELETE CASCADE`), über sie auch Anlage und
 Mandant.
+
+## 6a. Die Erträge am Ladepunkt im Monat (MP-41a)
+
+`GET …/ladepunkte/ertraege/{JJJJ-MM}` liest den **gespeicherten Monatslauf der Abgrenzung** (`mispel_abgrenzung_monat`,
+MP-8/MP-32) wie die MiSpeL-Karte von MP-18 und rechnet keine Menge neu. Nur Teile (Kalender- oder Rumpfmonat, A1 S. 102)
+mit Formelsatz A2, A3 oder A4 zählen; ohne sie sind `teile` und `posten` leer (keine Karte).
+
+`{anlage, monat, ladepunkte[{komponente, name, einordnung}], teile[], posten[], vergleich{stand, grund, summe_eur}, ust_pct}`
+(`ust_pct` = USt-Satz des Preisblatts, mit dem Umlagen und Netzentgelt brutto gerechnet sind; `null` ohne Preisblatt);
+ein Teil: `{schluessel, erster_tag, letzter_tag, formelsatz, formelsatz_bezeichnung, nur_ladepunkt, stand, wertequelle,
+mengen[{nr, begriff, fundstelle, kwh}], ins_haus}`.
+
+| Menge | Begriff (A1, wörtlich aus dem Formelkatalog) | Seite |
+|---|---|---|
+| (5), (9), (10) | Verbrauch im Stromspeicher und/oder Ladepunkt; davon zeitgleicher Netzstromverbrauch und zeitgleicher Verbrauch von Strom aus der EE-Anlage | S. 34 |
+| (6), (11) | Erzeugung im Stromspeicher und/oder Ladepunkt; Basiswert der zeitgleichen Netzeinspeisung daraus | S. 34–35 |
+| (12), (13) | **Fremdtankstrom** = MAX[(6) − (5); 0] — zählt nicht; berücksichtigungsfähige zeitgleiche Netzeinspeisung | S. 16, Abschn. 2.1.6; S. 35 |
+| (14) | Wirkungsgrad 0,85 in A2, A3, A4 (als `kwh`-Feld der Faktor) | S. 35 |
+| (15), (16), (20) | EE-Speichererzeugung; saldierungsfähige Netzeinspeisung; umlagereduzierende Strommenge | S. 36–37 |
+| (28), (31) | grundsätzlich förderfähige bzw. förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten | S. 38–39 |
+| `ins_haus` = (6) − (11) | Erzeugung, die nicht zeitgleich ins Netz ging — nach dem gewillkürten Speichervorrang im Haus verbraucht | S. 14–16, Abschn. 2.1.5 |
+
+`nur_ladepunkt` ist `true` in A2 (Z2 misst nur den Ladepunkt, A1 S. 29–30) und `false` in A3/A4: dort misst Z2
+Stromspeicher **und** Ladepunkt gemeinsam (S. 30–32); die Mengen sind die beider, und kein Posten aus dem Rechenwerk wird
+dem Auto allein zugeschrieben (`grund: speicher_und_ladepunkt`).
+
+**Posten** (immer alle sieben, in dieser Reihenfolge; `{schluessel, stand, eur, menge_kwh, formel, satz_ct, grund,
+vorbehalt}`, `eur` mit Vorzeichen): `weniger_gekauft`, `mehr_geladen`, `ins_netz_verkauft`, `vermiedene_umlagen` und
+`vermiedenes_netzentgelt` = (20) × Satz des Preisblatts × (1 + USt) wie MP-18 (Netzentgelt mit `vorbehalt: true`, W10),
+`akku_verschleiss`, `marktpraemie` = (31) × MAX[AW − Jahresmarktwert; 0], erst mit dem Jahresmarktwert bestimmt.
+
+**Vergleich** „dasselbe Haus, in dem das Auto nur lädt“: die Messlatte ohne Rückspeisen liefert der Optimierer (MP-33d).
+Solange sie fehlt, sind `weniger_gekauft`, `mehr_geladen`, `ins_netz_verkauft`, `akku_verschleiss` und
+`vergleich.summe_eur` offen (`grund: messlatte_fehlt`) — die Karte zeigt Mengen und Posten, aber keine Summe: ein Minus
+steht nie allein, unbekannt ist keine Null. `summe_eur` ist die Summe ohne Marktprämie. In der Pauschaloption gibt es keine
+eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S. 16) — dann keine Teile.
 
 ## 7. Was dieser Vertrag nicht regelt
 
@@ -136,11 +205,14 @@ Mandant.
   `edge-app/core/internal/ladepunktsim` (MP-34, [Wegweiser](../../agents/root/mispel-simulator-fahrzeug.md)).
 - **Signierte Ladepunkt-Messwerte** (OCMF) als Z2-Quelle mit Eichstatus: [Vertrag](./mispel-ladepunkt-ocmf.md) (MP-38);
   die Ansicht trägt dafür `signierter_messwert` mit `eichstatus`.
-- **Fläche** (Einstellungen am Ladepunkt): MP-41, erst nach dem abgestimmten Bedienkonzept BK-41.
+- **Fläche** der Einstellungen des Fahrers (Wallbox-Karte in Steuerung › Laden): MP-41b, wenn `mispel` die neue
+  Steuerung von `main` nachgezogen hat. Fähigkeit im Aufbau und Erträge: MP-41a.
+- **Anbindung an Optimierer und Box:** der Optimierer liest § 5a noch nicht und sendet den Fahrplan-Block `fahrzeug` noch
+  nicht; die Messlatte „nur laden“ für § 6a kommt mit MP-33d.
 
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='LadepunktRegelnTest')                                   # rein, kein Docker
-(cd services/api && ./mvnw test -Dtest='LadepunktBidirektionalApiTest,LadepunktBidirektionalMigrationTest')  # Testcontainers
+(cd services/api && ./mvnw test -Dtest='LadepunktBidirektionalApiTest,LadepunktErtraegeApiTest,LadepunktBidirektionalMigrationTest')  # Testcontainers
 ```

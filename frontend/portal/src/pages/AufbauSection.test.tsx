@@ -1197,3 +1197,59 @@ describe('AufbauSection · die technische Sicht', () => {
     expect(api.entityStrategies).not.toHaveBeenCalled();
   });
 });
+
+describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const WALLBOX = {
+    ...entities.entities.find((e) => e.id === 'fr1')!,
+    id: 'wb1',
+    entityType: 'wallbox',
+    typeLabel: 'Wallbox',
+    role: 'charging',
+    label: 'Wallbox Garage',
+    capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+    edgeSourceId: null,
+  };
+
+  function ladepunkt(faehigkeit: Record<string, unknown>) {
+    return {
+      anlage: site.id,
+      am: '2026-11-15',
+      ladepunkte: [
+        {
+          anlage: site.id, komponente: 'wb1', name: 'Wallbox Garage', typ: 'wallbox', charge_point_id: null, am: '2026-11-15',
+          faehigkeit: { erfasst: true, nutzbarkeit: 'bidirektional', v2h: true, v2g: true,
+            rueckspeisung_bei_einspeisung_unterbunden: false, rueckspeiseleistung_kw: 11, gueltig_ab: '2026-11-15',
+            gueltig_bis: null, ...faehigkeit },
+          einordnung: 'ladepunkt_der_festlegung', einordnung_fundstelle: 'Anlage 1 S. 26, Abschn. 3.2.5, Fn. 21',
+          z2: [], befunde: [], fahrzeugfenster: null, fassungen: [], signierter_messwert: null,
+        },
+      ],
+    };
+  }
+
+  it('nennt die Fähigkeit im Kurzblick und öffnet den Dialog — nur am Ladepunkt', async () => {
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({ ...entities, entities: [...entities.entities, WALLBOX] } as never);
+    vi.spyOn(api, 'ladepunkte').mockResolvedValue(ladepunkt({}) as never);
+    rendere();
+    const dialog = await kurzblick(zeileMit('Wallbox Garage'));
+    await within(dialog).findByText(/Laden und zurückspeisen · ins Haus \(V2H\) · ins Netz \(V2G\) · ab 15\.11\.2026/);
+    // Der Knopf (Recht geraet.einrichten) öffnet den Dialog mit der Fähigkeit dieses Ladepunkts.
+    fireEvent.click(within(dialog).getByRole('button', { name: /Laden und zurückspeisen/ }));
+    expect(await screen.findByText('Was kann dieser Ladepunkt?')).toBeInTheDocument();
+    expect(screen.getByText(/prüft die Wallbox beim Anstecken/)).toBeInTheDocument();
+  });
+
+  it('sagt „Nur laden“ für einen Ladepunkt ohne Rückspeisung — wie heute', async () => {
+    stub();
+    vi.mocked(api.siteEntities).mockResolvedValue({ ...entities, entities: [...entities.entities, WALLBOX] } as never);
+    vi.spyOn(api, 'ladepunkte').mockResolvedValue(
+      ladepunkt({ erfasst: false, nutzbarkeit: 'unidirektional', v2h: false, v2g: false, rueckspeiseleistung_kw: null, gueltig_ab: null }) as never,
+    );
+    rendere();
+    const dialog = await kurzblick(zeileMit('Wallbox Garage'));
+    expect(await within(dialog).findByText('Nur laden')).toBeInTheDocument();
+  });
+});

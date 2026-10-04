@@ -1,0 +1,81 @@
+/* Was kann dieser Ladepunkt? (MP-41a, BK-41) — Anlage › Aufbau. */
+.vp-lpf-label {
+  margin: 0 0 6px;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-dark);
+}
+.vp-lpf-seg {
+  display: flex;
+  max-width: 100%;
+}
+.vp-lpf-seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: normal;
+}
+.vp-lpf-wohin {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-lpf-check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  min-height: 44px;
+  cursor: pointer;
+}
+.vp-lpf-check input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+}
+.vp-lpf-check b {
+  display: block;
+  font-size: var(--vp-text-sm);
+}
+.vp-lpf-check small {
+  display: block;
+  color: var(--vp-text-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+.vp-lpf-check.is-aus {
+  opacity: 0.6;
+  cursor: default;
+}
+.vp-lpf-hinweis {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-bg-light);
+  font-size: var(--vp-text-sm);
+  overflow-wrap: anywhere;
+}
+.vp-lpf-hinweis.is-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+.vp-lpf-befunde {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--vp-text-sm);
+  display: grid;
+  gap: 4px;
+}
+.vp-lpf-befunde li.is-fehler {
+  color: #b91c1c;
+}
+.vp-lpf-befunde small {
+  color: var(--vp-text-muted);
+}

@@ -53,8 +53,8 @@ Regeln P1, P2, Auflösung W8 ([Steuerungsverbund](steuerungsverbund.md)). Beide 
 ## Fahrzeug an bidirektionalen Ladepunkten (MiSpeL MP-39)
 
 Wahlfrei und additiv: der Block `entities[].fahrzeug` am Eintrag eines bidirektionalen Ladepunkts. Eine Box vor MP-39
-überliest ihn; der Optimierer sendet ihn noch nicht (MP-33 hält `SchedulePlan.fahrzeug` intern, die Freigabe stellt der
-Kunde mit MP-41 ein).
+überliest ihn; der Optimierer sendet ihn noch nicht (MP-33 hält `SchedulePlan.fahrzeug` intern). Die Freigabe des
+Kunden steht seit MP-41a je Ladepunkt in der Cloud (`ladepunkt_fahrer_einstellung`, [MP-31 § 5a](mispel-ladepunkt-bidirektional.md#5a-die-einstellungen-des-fahrers-mp-41a)), dasselbe Vokabular.
 
 | Feld | Regel |
 |---|---|

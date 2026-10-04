@@ -1,15 +1,21 @@
 package com.voltpilot.api.mispel;
 
+import com.voltpilot.api.mispel.LadepunktRegeln.Abfahrt;
 import com.voltpilot.api.mispel.LadepunktRegeln.Faehigkeit;
 import com.voltpilot.api.mispel.LadepunktRegeln.Fahrzeugfenster;
 import com.voltpilot.api.mispel.LadepunktRegeln.Fenster;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -150,6 +156,67 @@ public class LadepunktRepository {
                     + "abfahrt_soc_pct) VALUES (?, ?, ?, ?, ?, ?)", komponenteId, tenantId, w.wochentag(),
                     Time.valueOf(w.ankunft()), Time.valueOf(w.abfahrt()), w.abfahrtSocPct());
         }
+    }
+
+    /**
+     * Die Einstellungen des Fahrers (MP-41a, V20261004114700), wie gespeichert; die Reserve steht im Fahrzeugfenster.
+     * Abfahrten mit derselben Uhrzeit und demselben Ladestand bilden wieder eine Abfahrt für mehrere Wochentage.
+     */
+    public record FahrerStand(String rueckspeisen, BigDecimal vollzyklenJeTag, List<Abfahrt> abfahrten,
+            Instant naechsteFahrt, BigDecimal naechsteFahrtSocPct, Instant geaendertAm, String geaendertVon) {}
+
+    /** Die Einstellungen des Fahrers; leer = nie gesetzt. */
+    public Optional<FahrerStand> fahrerEinstellungen(UUID komponenteId) {
+        Map<String, Abfahrt> gruppen = new LinkedHashMap<>();
+        jdbc.query("SELECT wochentag, abfahrt, abfahrt_soc_pct FROM ladepunkt_abfahrt WHERE komponente_id = ? "
+                + "ORDER BY wochentag", rs -> {
+                    LocalTime zeit = rs.getTime("abfahrt").toLocalTime();
+                    BigDecimal soc = rs.getBigDecimal("abfahrt_soc_pct");
+                    Abfahrt a = gruppen.computeIfAbsent(zeit + "|" + soc.stripTrailingZeros().toPlainString(),
+                            k -> new Abfahrt(new ArrayList<>(), zeit, soc));
+                    a.wochentage().add(rs.getInt("wochentag"));
+                }, komponenteId);
+        List<Abfahrt> abfahrten = gruppen.values().stream()
+                .map(a -> new Abfahrt(List.copyOf(a.wochentage()), a.abfahrt(), a.abfahrtSocPct())).toList();
+        return jdbc.query("SELECT rueckspeisen, vollzyklen_je_tag, naechste_fahrt_abfahrt, naechste_fahrt_soc_pct, "
+                + "geaendert_am, geaendert_von FROM ladepunkt_fahrer_einstellung WHERE komponente_id = ?",
+                (rs, n) -> {
+                    Timestamp naechste = rs.getTimestamp("naechste_fahrt_abfahrt");
+                    return new FahrerStand(rs.getString("rueckspeisen"), rs.getBigDecimal("vollzyklen_je_tag"),
+                            abfahrten, naechste == null ? null : naechste.toInstant(),
+                            rs.getBigDecimal("naechste_fahrt_soc_pct"), rs.getTimestamp("geaendert_am").toInstant(),
+                            rs.getString("geaendert_von"));
+                }, komponenteId).stream().findFirst();
+    }
+
+    /**
+     * Ersetzt die Einstellungen des Fahrers ganz und setzt die Reserve als Mindest-Ladestand des Fahrzeugfensters
+     * (Kapazität und Anwesenheit bleiben); der Aufrufer hält die Transaktion.
+     */
+    public void fahrerEinstellungenErsetzen(UUID tenantId, UUID siteId, UUID komponenteId,
+            LadepunktRegeln.FahrerEinstellungen f, Instant naechsteFahrt, Instant am, String von) {
+        jdbc.update("INSERT INTO ladepunkt_fahrer_einstellung (komponente_id, tenant_id, site_id, rueckspeisen, "
+                + "vollzyklen_je_tag, naechste_fahrt_abfahrt, naechste_fahrt_soc_pct, geaendert_am, geaendert_von) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (komponente_id) DO UPDATE SET "
+                + "rueckspeisen = EXCLUDED.rueckspeisen, vollzyklen_je_tag = EXCLUDED.vollzyklen_je_tag, "
+                + "naechste_fahrt_abfahrt = EXCLUDED.naechste_fahrt_abfahrt, "
+                + "naechste_fahrt_soc_pct = EXCLUDED.naechste_fahrt_soc_pct, geaendert_am = EXCLUDED.geaendert_am, "
+                + "geaendert_von = EXCLUDED.geaendert_von", komponenteId, tenantId, siteId, f.rueckspeisen(),
+                f.vollzyklenJeTag(), naechsteFahrt == null ? null : Timestamp.from(naechsteFahrt),
+                f.naechsteFahrt() == null ? null : f.naechsteFahrt().abfahrtSocPct(), Timestamp.from(am), von);
+        jdbc.update("DELETE FROM ladepunkt_abfahrt WHERE komponente_id = ?", komponenteId);
+        for (Abfahrt a : f.abfahrten()) {
+            for (Integer tag : a.wochentage()) {
+                jdbc.update("INSERT INTO ladepunkt_abfahrt (komponente_id, tenant_id, wochentag, abfahrt, "
+                        + "abfahrt_soc_pct) VALUES (?, ?, ?, ?, ?)", komponenteId, tenantId, tag,
+                        Time.valueOf(a.abfahrt()), a.abfahrtSocPct());
+            }
+        }
+        jdbc.update("INSERT INTO ladepunkt_fahrzeugfenster (komponente_id, tenant_id, site_id, mindest_soc_pct, "
+                + "geaendert_am, geaendert_von) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (komponente_id) DO UPDATE SET "
+                + "mindest_soc_pct = EXCLUDED.mindest_soc_pct, geaendert_am = EXCLUDED.geaendert_am, "
+                + "geaendert_von = EXCLUDED.geaendert_von", komponenteId, tenantId, siteId, f.reservePct(),
+                Timestamp.from(am), von);
     }
 
     private static Komponente komponente(ResultSet rs, int n) throws SQLException {

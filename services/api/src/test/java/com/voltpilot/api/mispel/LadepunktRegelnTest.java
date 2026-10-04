@@ -9,6 +9,7 @@ import com.voltpilot.api.mispel.LadepunktRegeln.Z2;
 import com.voltpilot.api.uems.ZaehlerrolleRegeln;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -113,6 +114,77 @@ class LadepunktRegelnTest {
 
     private static String grund(Fahrzeugfenster f) {
         return (String) LadepunktRegeln.formPruefen(f).fakten().get("grund");
+    }
+
+    // ------------------------------------------------------------------ MP-41a: Einstellungen des Fahrers
+
+    private static final LocalDateTime JETZT = LocalDateTime.of(2026, 10, 15, 12, 0);
+
+    private static LadepunktRegeln.FahrerEinstellungen fahrer(String rueckspeisen, String reserve, String zyklen,
+            List<LadepunktRegeln.Abfahrt> abfahrten, LadepunktRegeln.NaechsteFahrt naechste) {
+        return new LadepunktRegeln.FahrerEinstellungen(rueckspeisen, reserve == null ? null : new BigDecimal(reserve),
+                zyklen == null ? null : new BigDecimal(zyklen), abfahrten, naechste);
+    }
+
+    private static LadepunktRegeln.Abfahrt abfahrt(List<Integer> tage, String um, String soc) {
+        return new LadepunktRegeln.Abfahrt(tage, LocalTime.parse(um), new BigDecimal(soc));
+    }
+
+    private static String grundFahrer(LadepunktRegeln.FahrerEinstellungen f) {
+        LadepunktRegeln.Ablehnung a = LadepunktRegeln.formPruefen(f, JETZT);
+        assertThat(a).isNotNull();
+        assertThat(a.code()).isEqualTo("fahrer_einstellungen_ungueltig");
+        assertThat(a.status()).isEqualTo(400);
+        return (String) a.fakten().get("grund");
+    }
+
+    @Test
+    void formDerFahrerEinstellungen() {
+        var mofr = abfahrt(List.of(1, 2, 3, 4, 5), "07:15", "80");
+        var naechste = new LadepunktRegeln.NaechsteFahrt(LocalDateTime.of(2026, 10, 16, 5, 30), new BigDecimal("100"));
+        assertThat(LadepunktRegeln.formPruefen(fahrer("v2h", "40", "1", List.of(mofr), naechste), JETZT)).isNull();
+        assertThat(LadepunktRegeln.formPruefen(LadepunktRegeln.FahrerEinstellungen.VORGABE, JETZT)).isNull();
+        assertThat(LadepunktRegeln.formPruefen(fahrer("aus", null, "0.5", List.of(), null), JETZT)).isNull();
+        assertThat(grundFahrer(fahrer(null, null, null, List.of(), null))).isEqualTo("rueckspeisen");
+        assertThat(grundFahrer(fahrer("ja", null, null, List.of(), null))).isEqualTo("rueckspeisen");
+        assertThat(grundFahrer(fahrer("v2h", "101", null, List.of(), null))).isEqualTo("reserve");
+        assertThat(grundFahrer(fahrer("v2h", null, "3", List.of(), null))).isEqualTo("vollzyklen");
+        assertThat(grundFahrer(fahrer("v2h", null, "0", List.of(), null))).isEqualTo("vollzyklen");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(abfahrt(List.of(), "07:15", "80")), null)))
+                .isEqualTo("abfahrt");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(abfahrt(List.of(8), "07:15", "80")), null)))
+                .isEqualTo("abfahrt");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(abfahrt(List.of(1), "07:15:30", "80")), null)))
+                .isEqualTo("abfahrt");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(mofr, abfahrt(List.of(5, 6), "09:00", "60")), null)))
+                .isEqualTo("ueberschneidung");
+        assertThat(grundFahrer(fahrer("v2h", "90", null, List.of(mofr), null))).isEqualTo("abfahrt_soc");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(abfahrt(List.of(1), "07:15", "120")), null)))
+                .isEqualTo("abfahrt_soc");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(), new LadepunktRegeln.NaechsteFahrt(
+                JETZT.minusMinutes(1), BigDecimal.TEN)))).isEqualTo("naechste_fahrt");
+        assertThat(grundFahrer(fahrer("v2h", null, null, List.of(), new LadepunktRegeln.NaechsteFahrt(
+                JETZT.plusDays(8), BigDecimal.TEN)))).isEqualTo("naechste_fahrt");
+        assertThat(grundFahrer(fahrer("v2h", "50", null, List.of(), new LadepunktRegeln.NaechsteFahrt(
+                JETZT.plusDays(1), BigDecimal.TEN)))).isEqualTo("abfahrt_soc");
+    }
+
+    /** Der Wunsch des Fahrers nie über der Fähigkeit (Fahrplan 2.0, MP-39); „aus“ macht nicht unidirektional. */
+    @Test
+    void zurueckspeisenWirksamNieUeberDerFaehigkeit() {
+        Faehigkeit nurNetz = new Faehigkeit("bidirektional", false, true, false, null);
+        assertThat(LadepunktRegeln.rueckspeisenWirksam("v2g", V2G)).isEqualTo("v2g");
+        assertThat(LadepunktRegeln.rueckspeisenWirksam("v2g", V2H)).isEqualTo("v2h");
+        assertThat(LadepunktRegeln.rueckspeisenWirksam("v2h", V2G)).isEqualTo("v2h");
+        assertThat(LadepunktRegeln.rueckspeisenWirksam("v2h", nurNetz)).isEqualTo("aus");
+        assertThat(LadepunktRegeln.rueckspeisenWirksam("v2g", Faehigkeit.BESTAND)).isEqualTo("aus");
+        assertThat(LadepunktRegeln.rueckspeisenWirksam("aus", V2G)).isEqualTo("aus");
+        assertThat(LadepunktRegeln.traegt(V2H, "v2g")).isFalse();
+        assertThat(LadepunktRegeln.traegt(V2H, "v2h")).isTrue();
+        assertThat(LadepunktRegeln.traegt(Faehigkeit.BESTAND, "aus")).isTrue();
+        assertThat(LadepunktRegeln.einordnung(V2G)).isEqualTo(LadepunktRegeln.LADEPUNKT_DER_FESTLEGUNG);
+        // Das Vokabular ist das des Fahrplans 2.0 (mqtt-schedule-2.0.schema.json, entities[].fahrzeug.rueckspeisen).
+        assertThat(LadepunktRegeln.RUECKSPEISEN).containsExactly("aus", "v2h", "v2g");
     }
 
     private static List<String> codes(List<LadepunktRegeln.Befund> befunde) {

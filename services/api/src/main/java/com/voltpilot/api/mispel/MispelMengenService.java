@@ -150,7 +150,7 @@ public class MispelMengenService {
      * Das Preisblatt der Anlage ({@code site_supply_price}, ct/kWh netto, MP „Bezugspreis-Komponenten“); ohne Zeile
      * sind die Sätze {@code null} und die Beträge {@code offen}. {@code null} = die Anlage ist nicht sichtbar (RLS).
      */
-    private MispelMengen.Preise preise(UUID siteId) {
+    MispelMengen.Preise preise(UUID siteId) {
         return jdbc.query("SELECT ssp.umlagen_ct, ssp.netzentgelt_arbeitspreis_ct, ssp.ust_pct FROM site s "
                         + "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id WHERE s.id = ?",
                 rs -> rs.next() ? new MispelMengen.Preise(rs.getBigDecimal(1), rs.getBigDecimal(2),
@@ -159,7 +159,7 @@ public class MispelMengenService {
     }
 
     /** AW der Anlage ({@code site.anzulegender_wert_ct_kwh}) und der Jahresmarktwert Solar des Jahres. */
-    private MispelMengen.Marktwert marktwert(UUID siteId, int jahr) {
+    MispelMengen.Marktwert marktwert(UUID siteId, int jahr) {
         BigDecimal aw = jdbc.query("SELECT anzulegender_wert_ct_kwh FROM site WHERE id = ?",
                 rs -> rs.next() ? rs.getBigDecimal(1) : null, siteId);
         return markt.jahresmarktwert(jahr, TECHNOLOGIE)

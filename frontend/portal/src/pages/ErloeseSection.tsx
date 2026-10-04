@@ -69,6 +69,8 @@ import { SpeicherKarte } from '../components/erloese/SpeicherKarte';
 import { MispelJahrKarte, MispelMonatKarte } from '../components/erloese/MispelKarte';
 import { MsbAbgleichSatz } from '../components/erloese/MsbAbgleich';
 import { useMispelMengen } from '../useMispelMengen';
+import { LadepunktErtragKarte } from '../components/erloese/LadepunktErtragKarte';
+import { useLadepunktErtraege } from '../useLadepunktErtraege';
 import { arbitrageAusweisErlaubt } from '../mispelMengen';
 import '../components/erloese/ErgebnisKarte.css';
 import { RechenZeilen, SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
@@ -162,6 +164,8 @@ export function ErloeseSection({
   // entfällt der Arbitrage-Ausweis (W5) — dort zählt nur die amtliche Formel.
   const mispel = useMispelMengen(site.id, range, anchor);
   const mispelSicht = range === 'year' ? mispel.jahr : mispel.monat;
+  // MiSpeL MP-41a (BK-41): die Erträge am bidirektionalen Ladepunkt im Monat, unter der MiSpeL-Karte.
+  const ladepunktErtraege = useLadepunktErtraege(site.id, range, anchor);
   const modus = normalisiereModus(modusWahl, anchor, range, history?.coverage);
   const vorher = useVergleichsErloese(
     site.id,
@@ -451,6 +455,9 @@ export function ErloeseSection({
 
             {range === 'month' && mispel.monat?.abgrenzung && (
               <MispelMonatKarte siteId={site.id} daten={mispel.monat} ampel={<MsbAbgleichSatz siteId={site.id} monat={mispel.monat.monat} />} />
+            )}
+            {range === 'month' && mispel.monat?.abgrenzung && ladepunktErtraege && ladepunktErtraege.teile.length > 0 && (
+              <LadepunktErtragKarte daten={ladepunktErtraege} />
             )}
             {range === 'year' && mispel.jahr?.abgrenzung && (
               <MispelJahrKarte

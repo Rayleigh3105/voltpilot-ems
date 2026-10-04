@@ -1,0 +1,648 @@
+{
+  "_hinweis": "MiSpeL MP-41a: Antworten von GET /api/v1/sites/{id}/ladepunkte/ertraege/{monat} (Haus Albers aus BK-41, Formelsatz A2) und GET /ladepunkte (MP-31). „mit Messlatte“ ist ein Bühnenzustand: die Messlatte „nur laden“ liefert MP-33d.",
+  "ertrag-mit": {
+    "anlage": "simulator-anlage",
+    "monat": "2026-11",
+    "ladepunkte": [
+      {
+        "komponente": "6f1b6c2e-3a0d-4c55-9a51-0c1f2a3b4c5d",
+        "name": "Wallbox Garage",
+        "einordnung": "ladepunkt_der_festlegung"
+      }
+    ],
+    "teile": [
+      {
+        "schluessel": "2026-11",
+        "erster_tag": "2026-11-01",
+        "letzter_tag": "2026-11-30",
+        "formelsatz": "A2",
+        "formelsatz_bezeichnung": "Basisfall A2: „Ladepunkt“",
+        "nur_ladepunkt": true,
+        "stand": "endgueltig",
+        "wertequelle": "msb",
+        "mengen": [
+          {
+            "nr": "(5)",
+            "begriff": "Verbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 132.0
+          },
+          {
+            "nr": "(9)",
+            "begriff": "Zeitgleicher Netzstromverbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 120.0
+          },
+          {
+            "nr": "(10)",
+            "begriff": "Zeitgleicher Verbrauch von Strom aus der EE-Anlage im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 12.0
+          },
+          {
+            "nr": "(6)",
+            "begriff": "Erzeugung im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 142.0
+          },
+          {
+            "nr": "(11)",
+            "begriff": "Basiswert der zeitgleichen Netzeinspeisung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 34.0
+          },
+          {
+            "nr": "(12)",
+            "begriff": "Fremdtankstrom im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 10.0
+          },
+          {
+            "nr": "(13)",
+            "begriff": "Berücksichtigungsfähige zeitgleiche Netzeinspeisung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 24.0
+          },
+          {
+            "nr": "(14)",
+            "begriff": "Wirkungsgrad der Stromspeicherung in den Fallkonstellationen A2, A3 und A4",
+            "fundstelle": "A1 S. 35",
+            "kwh": 0.85
+          },
+          {
+            "nr": "(15)",
+            "begriff": "EE-Speichererzeugung im Kalendermonat",
+            "fundstelle": "A1 S. 36",
+            "kwh": 10.2
+          },
+          {
+            "nr": "(16)",
+            "begriff": "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+            "fundstelle": "A1 S. 36",
+            "kwh": 13.8
+          },
+          {
+            "nr": "(20)",
+            "begriff": "Umlagereduzierende Strommenge im Kalendermonat",
+            "fundstelle": "A1 S. 37",
+            "kwh": 13.8
+          },
+          {
+            "nr": "(28)",
+            "begriff": "Grundsätzlich förderfähige Netzeinspeisung von EE-Speichererzeugung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 38–39",
+            "kwh": 10.2
+          },
+          {
+            "nr": "(31)",
+            "begriff": "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 39",
+            "kwh": 10.2
+          }
+        ],
+        "ins_haus": {
+          "nr": "(6) − (11)",
+          "begriff": "Erzeugung im Ladepunkt, die nicht zeitgleich ins Netz ging",
+          "fundstelle": "A1 S. 15–16, S. 34–35",
+          "kwh": 108.0
+        }
+      }
+    ],
+    "posten": [
+      {
+        "schluessel": "weniger_gekauft",
+        "stand": "bestimmt",
+        "eur": 36.94,
+        "menge_kwh": 108.0,
+        "formel": null,
+        "satz_ct": 34.2,
+        "grund": null,
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "mehr_geladen",
+        "stand": "bestimmt",
+        "eur": -22.61,
+        "menge_kwh": 95.0,
+        "formel": null,
+        "satz_ct": 23.8,
+        "grund": null,
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "ins_netz_verkauft",
+        "stand": "bestimmt",
+        "eur": 3.54,
+        "menge_kwh": 34.0,
+        "formel": "(11)",
+        "satz_ct": 10.4,
+        "grund": null,
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "vermiedene_umlagen",
+        "stand": "bestimmt",
+        "eur": 0.48,
+        "menge_kwh": 13.8,
+        "formel": "(20)",
+        "satz_ct": 2.946,
+        "grund": null,
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "vermiedenes_netzentgelt",
+        "stand": "bestimmt",
+        "eur": 1.33,
+        "menge_kwh": 13.8,
+        "formel": "(20)",
+        "satz_ct": 8.12,
+        "grund": null,
+        "vorbehalt": true
+      },
+      {
+        "schluessel": "akku_verschleiss",
+        "stand": "bestimmt",
+        "eur": -4.26,
+        "menge_kwh": 142.0,
+        "formel": null,
+        "satz_ct": 3.0,
+        "grund": null,
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "marktpraemie",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": 10.2,
+        "formel": "(31)",
+        "satz_ct": null,
+        "grund": "jahresmarktwert_offen",
+        "vorbehalt": false
+      }
+    ],
+    "vergleich": {
+      "stand": "bestimmt",
+      "grund": null,
+      "summe_eur": 15.42
+    },
+    "ust_pct": 19
+  },
+  "ertrag-ohne": {
+    "anlage": "simulator-anlage",
+    "monat": "2026-11",
+    "ladepunkte": [
+      {
+        "komponente": "6f1b6c2e-3a0d-4c55-9a51-0c1f2a3b4c5d",
+        "name": "Wallbox Garage",
+        "einordnung": "ladepunkt_der_festlegung"
+      }
+    ],
+    "teile": [
+      {
+        "schluessel": "2026-11",
+        "erster_tag": "2026-11-01",
+        "letzter_tag": "2026-11-30",
+        "formelsatz": "A2",
+        "formelsatz_bezeichnung": "Basisfall A2: „Ladepunkt“",
+        "nur_ladepunkt": true,
+        "stand": "endgueltig",
+        "wertequelle": "msb",
+        "mengen": [
+          {
+            "nr": "(5)",
+            "begriff": "Verbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 132.0
+          },
+          {
+            "nr": "(9)",
+            "begriff": "Zeitgleicher Netzstromverbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 120.0
+          },
+          {
+            "nr": "(10)",
+            "begriff": "Zeitgleicher Verbrauch von Strom aus der EE-Anlage im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 12.0
+          },
+          {
+            "nr": "(6)",
+            "begriff": "Erzeugung im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 142.0
+          },
+          {
+            "nr": "(11)",
+            "begriff": "Basiswert der zeitgleichen Netzeinspeisung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 34.0
+          },
+          {
+            "nr": "(12)",
+            "begriff": "Fremdtankstrom im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 10.0
+          },
+          {
+            "nr": "(13)",
+            "begriff": "Berücksichtigungsfähige zeitgleiche Netzeinspeisung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 24.0
+          },
+          {
+            "nr": "(14)",
+            "begriff": "Wirkungsgrad der Stromspeicherung in den Fallkonstellationen A2, A3 und A4",
+            "fundstelle": "A1 S. 35",
+            "kwh": 0.85
+          },
+          {
+            "nr": "(15)",
+            "begriff": "EE-Speichererzeugung im Kalendermonat",
+            "fundstelle": "A1 S. 36",
+            "kwh": 10.2
+          },
+          {
+            "nr": "(16)",
+            "begriff": "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+            "fundstelle": "A1 S. 36",
+            "kwh": 13.8
+          },
+          {
+            "nr": "(20)",
+            "begriff": "Umlagereduzierende Strommenge im Kalendermonat",
+            "fundstelle": "A1 S. 37",
+            "kwh": 13.8
+          },
+          {
+            "nr": "(28)",
+            "begriff": "Grundsätzlich förderfähige Netzeinspeisung von EE-Speichererzeugung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 38–39",
+            "kwh": 10.2
+          },
+          {
+            "nr": "(31)",
+            "begriff": "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 39",
+            "kwh": 10.2
+          }
+        ],
+        "ins_haus": {
+          "nr": "(6) − (11)",
+          "begriff": "Erzeugung im Ladepunkt, die nicht zeitgleich ins Netz ging",
+          "fundstelle": "A1 S. 15–16, S. 34–35",
+          "kwh": 108.0
+        }
+      }
+    ],
+    "posten": [
+      {
+        "schluessel": "weniger_gekauft",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "mehr_geladen",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "ins_netz_verkauft",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "vermiedene_umlagen",
+        "stand": "bestimmt",
+        "eur": 0.48,
+        "menge_kwh": 13.8,
+        "formel": "(20)",
+        "satz_ct": 2.946,
+        "grund": null,
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "vermiedenes_netzentgelt",
+        "stand": "bestimmt",
+        "eur": 1.33,
+        "menge_kwh": 13.8,
+        "formel": "(20)",
+        "satz_ct": 8.12,
+        "grund": null,
+        "vorbehalt": true
+      },
+      {
+        "schluessel": "akku_verschleiss",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "marktpraemie",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": 10.2,
+        "formel": "(31)",
+        "satz_ct": null,
+        "grund": "jahresmarktwert_offen",
+        "vorbehalt": false
+      }
+    ],
+    "vergleich": {
+      "stand": "offen",
+      "grund": "messlatte_fehlt",
+      "summe_eur": null
+    },
+    "ust_pct": 19
+  },
+  "ertrag-a3": {
+    "anlage": "simulator-anlage",
+    "monat": "2026-11",
+    "ladepunkte": [
+      {
+        "komponente": "6f1b6c2e-3a0d-4c55-9a51-0c1f2a3b4c5d",
+        "name": "Wallbox Garage",
+        "einordnung": "ladepunkt_der_festlegung"
+      }
+    ],
+    "teile": [
+      {
+        "schluessel": "2026-11",
+        "erster_tag": "2026-11-01",
+        "letzter_tag": "2026-11-30",
+        "formelsatz": "A3",
+        "formelsatz_bezeichnung": "Basisfall A3: „Stromspeicher und Ladepunkt“",
+        "nur_ladepunkt": false,
+        "stand": "vorlaeufig",
+        "wertequelle": "geraet",
+        "mengen": [
+          {
+            "nr": "(5)",
+            "begriff": "Verbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 132.0
+          },
+          {
+            "nr": "(9)",
+            "begriff": "Zeitgleicher Netzstromverbrauch im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 120.0
+          },
+          {
+            "nr": "(10)",
+            "begriff": "Zeitgleicher Verbrauch von Strom aus der EE-Anlage im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 12.0
+          },
+          {
+            "nr": "(6)",
+            "begriff": "Erzeugung im Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 34",
+            "kwh": 142.0
+          },
+          {
+            "nr": "(11)",
+            "begriff": "Basiswert der zeitgleichen Netzeinspeisung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 34.0
+          },
+          {
+            "nr": "(12)",
+            "begriff": "Fremdtankstrom im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 10.0
+          },
+          {
+            "nr": "(13)",
+            "begriff": "Berücksichtigungsfähige zeitgleiche Netzeinspeisung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 35",
+            "kwh": 24.0
+          },
+          {
+            "nr": "(14)",
+            "begriff": "Wirkungsgrad der Stromspeicherung in den Fallkonstellationen A2, A3 und A4",
+            "fundstelle": "A1 S. 35",
+            "kwh": 0.85
+          },
+          {
+            "nr": "(15)",
+            "begriff": "EE-Speichererzeugung im Kalendermonat",
+            "fundstelle": "A1 S. 36",
+            "kwh": 10.2
+          },
+          {
+            "nr": "(16)",
+            "begriff": "Saldierungsfähige Netzeinspeisung im Kalendermonat",
+            "fundstelle": "A1 S. 36",
+            "kwh": 13.8
+          },
+          {
+            "nr": "(20)",
+            "begriff": "Umlagereduzierende Strommenge im Kalendermonat",
+            "fundstelle": "A1 S. 37",
+            "kwh": 13.8
+          },
+          {
+            "nr": "(28)",
+            "begriff": "Grundsätzlich förderfähige Netzeinspeisung von EE-Speichererzeugung aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 38–39",
+            "kwh": 10.2
+          },
+          {
+            "nr": "(31)",
+            "begriff": "Förderfähige Netzeinspeisung von EE-Speichererzeugung in AW>0-Zeiten aus dem Stromspeicher und/oder Ladepunkt im Kalendermonat",
+            "fundstelle": "A1 S. 39",
+            "kwh": 10.2
+          }
+        ],
+        "ins_haus": {
+          "nr": "(6) − (11)",
+          "begriff": "Erzeugung im Ladepunkt, die nicht zeitgleich ins Netz ging",
+          "fundstelle": "A1 S. 15–16, S. 34–35",
+          "kwh": 108.0
+        }
+      }
+    ],
+    "posten": [
+      {
+        "schluessel": "weniger_gekauft",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "mehr_geladen",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "ins_netz_verkauft",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "vermiedene_umlagen",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": 13.8,
+        "formel": "(20)",
+        "satz_ct": 2.946,
+        "grund": "speicher_und_ladepunkt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "vermiedenes_netzentgelt",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": 13.8,
+        "formel": "(20)",
+        "satz_ct": 8.12,
+        "grund": "speicher_und_ladepunkt",
+        "vorbehalt": true
+      },
+      {
+        "schluessel": "akku_verschleiss",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": null,
+        "formel": null,
+        "satz_ct": null,
+        "grund": "messlatte_fehlt",
+        "vorbehalt": false
+      },
+      {
+        "schluessel": "marktpraemie",
+        "stand": "offen",
+        "eur": null,
+        "menge_kwh": 10.2,
+        "formel": "(31)",
+        "satz_ct": null,
+        "grund": "jahresmarktwert_offen",
+        "vorbehalt": false
+      }
+    ],
+    "vergleich": {
+      "stand": "offen",
+      "grund": "messlatte_fehlt",
+      "summe_eur": null
+    },
+    "ust_pct": 19
+  },
+  "ertrag-leer": {
+    "anlage": "simulator-anlage",
+    "monat": "2026-11",
+    "ladepunkte": [],
+    "teile": [],
+    "posten": [],
+    "vergleich": {
+      "stand": "offen",
+      "grund": "messlatte_fehlt",
+      "summe_eur": null
+    },
+    "ust_pct": null
+  },
+  "ladepunkt-v2h-v2g": {
+    "anlage": "simulator-anlage",
+    "komponente": "6f1b6c2e-3a0d-4c55-9a51-0c1f2a3b4c5d",
+    "name": "Wallbox Garage",
+    "typ": "wallbox",
+    "charge_point_id": "CP-GARAGE",
+    "am": "2026-11-15",
+    "faehigkeit": {
+      "erfasst": true,
+      "nutzbarkeit": "bidirektional",
+      "v2h": true,
+      "v2g": true,
+      "rueckspeisung_bei_einspeisung_unterbunden": false,
+      "rueckspeiseleistung_kw": 11,
+      "gueltig_ab": "2026-11-01",
+      "gueltig_bis": null
+    },
+    "einordnung": "ladepunkt_der_festlegung",
+    "einordnung_fundstelle": "A1 S. 26, Abschn. 3.2.5, Fn. 21",
+    "z2": [
+      {
+        "groesse": "Z2V",
+        "messstelle": "Wallbox Garage",
+        "zaehlpunkt": null,
+        "messstellenbetreiber": null,
+        "eichstatus": "geeicht",
+        "eichfrist_bis": "2034-12-31",
+        "wertequelle": "geraet",
+        "urteil": "tauglich"
+      },
+      {
+        "groesse": "Z2E",
+        "messstelle": "Wallbox Garage",
+        "zaehlpunkt": null,
+        "messstellenbetreiber": null,
+        "eichstatus": "geeicht",
+        "eichfrist_bis": "2034-12-31",
+        "wertequelle": "geraet",
+        "urteil": "tauglich"
+      }
+    ],
+    "befunde": [],
+    "fahrzeugfenster": null,
+    "fassungen": [],
+    "signierter_messwert": null
+  },
+  "ladepunkt-nur-laden": {
+    "anlage": "simulator-anlage",
+    "komponente": "6f1b6c2e-3a0d-4c55-9a51-0c1f2a3b4c5d",
+    "name": "Wallbox Garage",
+    "typ": "wallbox",
+    "charge_point_id": "CP-GARAGE",
+    "am": "2026-11-15",
+    "faehigkeit": {
+      "erfasst": false,
+      "nutzbarkeit": "unidirektional",
+      "v2h": false,
+      "v2g": false,
+      "rueckspeisung_bei_einspeisung_unterbunden": false,
+      "rueckspeiseleistung_kw": null,
+      "gueltig_ab": null,
+      "gueltig_bis": null
+    },
+    "einordnung": "sonstiger_verbrauch",
+    "einordnung_fundstelle": "A1 S. 26, Abschn. 3.2.5, Fn. 21",
+    "z2": [],
+    "befunde": [],
+    "fahrzeugfenster": null,
+    "fassungen": [],
+    "signierter_messwert": null
+  }
+}

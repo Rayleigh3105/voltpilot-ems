@@ -18,7 +18,10 @@ import com.voltpilot.api.uems.ZaehlerrolleRegeln.Knoten;
 import com.voltpilot.api.uems.ZaehlerrolleService;
 import java.time.Clock;
 import java.time.Instant;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,6 +32,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -88,7 +92,21 @@ public class LadepunktService {
      */
     public record Ansicht(UUID anlage, Komponente komponente, LocalDate am, Fassung fassung, Faehigkeit faehigkeit,
             LocalDate gueltigBis, String einordnung, List<Z2> z2, List<Befund> befunde, FensterStand fahrzeugfenster,
-            List<FassungAnsicht> fassungen, LadepunktRepository.SignierterMesswert signierterMesswert) {}
+            List<FassungAnsicht> fassungen, LadepunktRepository.SignierterMesswert signierterMesswert,
+            FahrerAnsicht fahrer) {}
+
+    /**
+     * Die Einstellungen des Fahrers (MP-41a) am Tag: {@code erfasst} {@code false} = nie gesetzt (Zurückspeisen aus);
+     * {@code rueckspeisenWirksam} = der Wunsch, nie über der Fähigkeit am Tag; {@code naechsteFahrt} nur, solange sie
+     * bevorsteht (Ortszeit); {@code kmJeProzent} aus der Kapazität (≈ {@value #KM_JE_KWH} km je kWh), {@code null}
+     * ohne Kapazität.
+     */
+    public record FahrerAnsicht(boolean erfasst, String rueckspeisen, String rueckspeisenWirksam, BigDecimal reservePct,
+            BigDecimal vollzyklenJeTag, List<LadepunktRegeln.Abfahrt> abfahrten, LadepunktRegeln.NaechsteFahrt naechsteFahrt,
+            BigDecimal kmJeProzent, Instant geaendertAm, String geaendertVon) {}
+
+    /** Reichweite je kWh wie das Ladeziel im Portal („Etwa {kWh × 6} km“); eine Schätzung, kein Messwert. */
+    public static final int KM_JE_KWH = 6;
 
     // ------------------------------------------------------------------ lesen
 
@@ -176,6 +194,77 @@ public class LadepunktService {
         });
     }
 
+    /**
+     * Ersetzt die Einstellungen des Fahrers ganz (MP-41a): nur an einem Ladepunkt, der heute oder später
+     * bidirektional nutzbar ist, und nie über dem, was eine wirksame Fassung ab heute trägt.
+     */
+    public void fahrerEinstellungenSetzen(UUID siteId, UUID komponenteId, LadepunktRegeln.FahrerEinstellungen f,
+            String von) {
+        Komponente k = finde(siteId, komponenteId);
+        if (f == null) {
+            throw LadepunktAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");
+        }
+        ZoneId zone = zone();
+        Instant jetzt = uhr.instant();
+        LadepunktRegeln.Ablehnung form = LadepunktRegeln.formPruefen(f, LocalDateTime.ofInstant(jetzt, zone));
+        if (form != null) {
+            throw LadepunktAbgelehnt.aus(form);
+        }
+        LocalDate heute = heute();
+        UUID tenant = TenantContext.get();
+        transaktion.executeWithoutResult(tx -> {
+            List<Fassung> wirksam = wirksam(ladepunkte.fassungen(k.id()));
+            Fassung jetztGueltig = amTag(wirksam, heute);
+            List<Faehigkeit> abHeute = new ArrayList<>();
+            if (jetztGueltig != null) {
+                abHeute.add(jetztGueltig.faehigkeit());
+            }
+            wirksam.stream().filter(x -> x.gueltigAb().isAfter(heute)).forEach(x -> abHeute.add(x.faehigkeit()));
+            if (abHeute.stream().noneMatch(Faehigkeit::bidirektional)) {
+                throw new LadepunktAbgelehnt("ladepunkt_nicht_bidirektional", 422, "Dieser Ladepunkt ist weder heute "
+                        + "noch später bidirektional nutzbar; zurückspeisen kann hier kein Auto.",
+                        Map.of("am", heute.toString(), "fundstelle", LadepunktRegeln.A1_S7_S26));
+            }
+            if (abHeute.stream().noneMatch(x -> LadepunktRegeln.traegt(x, f.rueckspeisen()))) {
+                throw new LadepunktAbgelehnt("rueckspeisen_ueber_faehigkeit", 422, "So kann dieser Ladepunkt nicht "
+                        + "zurückspeisen; was er kann, trägt der Installateur im Aufbau ein.",
+                        Map.of("am", heute.toString(), "rueckspeisen", f.rueckspeisen(),
+                                "fundstelle", LadepunktRegeln.A1_S26_FN21));
+            }
+            List<LadepunktRegeln.Fenster> anwesenheit = ladepunkte.fahrzeugfenster(k.id())
+                    .map(s -> s.fenster().anwesenheit()).orElse(List.of());
+            for (LadepunktRegeln.Fenster w : anwesenheit) {
+                if (w.abfahrtSocPct() != null && f.reservePct() != null
+                        && w.abfahrtSocPct().compareTo(f.reservePct()) < 0) {
+                    throw new LadepunktAbgelehnt("fahrer_einstellungen_ungueltig", 400, "Die Reserve liegt über dem "
+                            + "Ladestand bei Abfahrt eines Anwesenheitsfensters.", Map.of("grund", "reserve"));
+                }
+            }
+            Instant naechste = f.naechsteFahrt() == null ? null : f.naechsteFahrt().abfahrt().atZone(zone).toInstant();
+            ladepunkte.fahrerEinstellungenErsetzen(tenant, siteId, k.id(), f, naechste, jetzt, von);
+        });
+    }
+
+    private FahrerAnsicht fahrer(UUID komponenteId, Faehigkeit faehigkeit) {
+        Optional<FensterStand> fenster = ladepunkte.fahrzeugfenster(komponenteId);
+        BigDecimal reserve = fenster.map(s -> s.fenster().mindestSocPct()).orElse(null);
+        BigDecimal kapazitaet = fenster.map(s -> s.fenster().kapazitaetKwh()).orElse(null);
+        BigDecimal kmJeProzent = kapazitaet == null ? null : kapazitaet.multiply(BigDecimal.valueOf(KM_JE_KWH))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        Optional<LadepunktRepository.FahrerStand> stand = ladepunkte.fahrerEinstellungen(komponenteId);
+        if (stand.isEmpty()) {
+            return new FahrerAnsicht(false, LadepunktRegeln.RUECKSPEISEN_AUS, LadepunktRegeln.RUECKSPEISEN_AUS, reserve,
+                    null, List.of(), null, kmJeProzent, null, null);
+        }
+        LadepunktRepository.FahrerStand s = stand.get();
+        LadepunktRegeln.NaechsteFahrt naechste = s.naechsteFahrt() == null || !s.naechsteFahrt().isAfter(uhr.instant())
+                ? null : new LadepunktRegeln.NaechsteFahrt(LocalDateTime.ofInstant(s.naechsteFahrt(), zone()),
+                        s.naechsteFahrtSocPct());
+        return new FahrerAnsicht(true, s.rueckspeisen(), LadepunktRegeln.rueckspeisenWirksam(s.rueckspeisen(),
+                faehigkeit), reserve, s.vollzyklenJeTag(), s.abfahrten(), naechste, kmJeProzent, s.geaendertAm(),
+                s.geaendertVon());
+    }
+
     // ---------------------------------------------------------------- Bausteine
 
     private Komponente finde(UUID siteId, UUID komponenteId) {
@@ -208,7 +297,7 @@ public class LadepunktService {
                     LadepunktRegeln.befunde(faehigkeit, zaehler, foerderweg),
                     ladepunkte.fahrzeugfenster(k.id()).orElse(null), List.copyOf(historie),
                     ladepunkte.signierterMesswert(siteId, k.id(), tag.plusDays(1).atStartOfDay(zone()).toInstant())
-                            .orElse(null)));
+                            .orElse(null), fahrer(k.id(), faehigkeit)));
         }
         return out;
     }

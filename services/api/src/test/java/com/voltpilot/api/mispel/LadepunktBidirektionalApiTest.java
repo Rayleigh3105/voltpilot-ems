@@ -416,6 +416,113 @@ class LadepunktBidirektionalApiTest {
         assertThat(ruf(w, HttpMethod.PUT, pfad, fenster).body().path("code").asText()).isEqualTo("anfrage_ungueltig");
     }
 
+    /**
+     * MiSpeL MP-41a (BK-41 A): die Einstellungen des Fahrers. Ohne Zeile „aus“; Zurückspeisen nie über der Fähigkeit;
+     * eine Abfahrt für mehrere Wochentage; die Reserve ist der Mindest-Ladestand des Fahrzeugfensters; „nur die
+     * nächste Fahrt“ verschwindet, sobald sie vorbei ist.
+     */
+    @Test
+    void fahrerEinstellungenAmBidirektionalenLadepunkt() throws Exception {
+        Welt w = welt();
+        String pfad = "/" + w.saeule() + "/fahrer-einstellungen";
+        Map<String, Object> e = new LinkedHashMap<>();
+        e.put("rueckspeisen", "v2g");
+        e.put("reserve_pct", 40);
+        e.put("vollzyklen_je_tag", 1);
+        e.put("abfahrten", List.of(Map.of("wochentage", List.of(1, 2, 3, 4, 5), "abfahrt", "07:15",
+                "abfahrt_soc_pct", 80)));
+        e.put("naechste_fahrt", Map.of("abfahrt", "2026-10-16T05:30", "abfahrt_soc_pct", 100));
+
+        // Bestand: nur laden — ohne Zeile „aus“, und setzen geht nicht.
+        JsonNode vorher = ruf(w, HttpMethod.GET, "/" + w.saeule(), null).body().path("fahrer_einstellungen");
+        assertThat(vorher.path("erfasst").asBoolean()).isFalse();
+        assertThat(vorher.path("rueckspeisen").asText()).isEqualTo("aus");
+        assertThat(vorher.path("rueckspeisen_wirksam").asText()).isEqualTo("aus");
+        Antwort bestand = ruf(w, HttpMethod.PUT, pfad, e);
+        assertThat(bestand.status()).isEqualTo(422);
+        assertThat(bestand.body().path("code").asText()).isEqualTo("ladepunkt_nicht_bidirektional");
+
+        // Nur V2H: „Haus + Netz“ geht über die Fähigkeit.
+        ruf(w, HttpMethod.PUT, "/" + w.saeule() + "/faehigkeit", faehigkeit("bidirektional", true, false, false,
+                "2026-10-15"));
+        Antwort ueber = ruf(w, HttpMethod.PUT, pfad, e);
+        assertThat(ueber.status()).isEqualTo(422);
+        assertThat(ueber.body().path("code").asText()).isEqualTo("rueckspeisen_ueber_faehigkeit");
+        assertThat(ueber.body().path("fundstelle").asText()).contains("Fn. 21");
+
+        e.put("rueckspeisen", "v2h");
+        Antwort ok = ruf(w, HttpMethod.PUT, pfad, e);
+        assertThat(ok.status()).isEqualTo(200);
+        JsonNode f = ok.body().path("fahrer_einstellungen");
+        assertThat(f.path("erfasst").asBoolean()).isTrue();
+        assertThat(f.path("rueckspeisen").asText()).isEqualTo("v2h");
+        assertThat(f.path("rueckspeisen_wirksam").asText()).isEqualTo("v2h");
+        assertThat(f.path("reserve_pct").decimalValue()).isEqualByComparingTo("40");
+        assertThat(f.path("vollzyklen_je_tag").decimalValue()).isEqualByComparingTo("1");
+        assertThat(f.path("abfahrten")).hasSize(1);
+        assertThat(f.path("abfahrten").get(0).path("wochentage").toString()).isEqualTo("[1,2,3,4,5]");
+        assertThat(f.path("abfahrten").get(0).path("abfahrt").asText()).isEqualTo("07:15");
+        assertThat(f.path("naechste_fahrt").path("abfahrt").asText()).isEqualTo("2026-10-16T05:30");
+        assertThat(f.path("km_je_prozent").isNull()).isTrue();
+        assertThat(f.path("geaendert_von").asText()).isEqualTo("Mara Test");
+        // Die Reserve IST der Mindest-Ladestand des Fahrzeugfensters — kein zweites Feld.
+        assertThat(ok.body().path("fahrzeugfenster").path("mindest_soc_pct").decimalValue()).isEqualByComparingTo("40");
+        assertThat(root.queryForObject("SELECT count(*) FROM ladepunkt_abfahrt WHERE komponente_id = ?",
+                Integer.class, w.saeule())).isEqualTo(5);
+
+        // Kapazität bekannt → Kilometer je Prozent (64 kWh × 6 km / 100).
+        Map<String, Object> fenster = new LinkedHashMap<>();
+        fenster.put("mindest_soc_pct", 40);
+        fenster.put("kapazitaet_kwh", 64);
+        ruf(w, HttpMethod.PUT, "/" + w.saeule() + "/fahrzeugfenster", fenster);
+        JsonNode km = ruf(w, HttpMethod.GET, "/" + w.saeule(), null).body().path("fahrer_einstellungen");
+        assertThat(km.path("km_je_prozent").decimalValue()).isEqualByComparingTo("3.84");
+
+        // Ab einem späteren Tag nur noch V2G: der Wunsch V2H gilt dann nicht mehr („aus“), die Fähigkeit führt.
+        ruf(w, HttpMethod.PUT, "/" + w.saeule() + "/faehigkeit", faehigkeit("bidirektional", false, true, false,
+                "2026-11-01"));
+        JsonNode spaeter = ruf(w, HttpMethod.GET, "/" + w.saeule() + "?am=2026-11-02", null).body()
+                .path("fahrer_einstellungen");
+        assertThat(spaeter.path("rueckspeisen").asText()).isEqualTo("v2h");
+        assertThat(spaeter.path("rueckspeisen_wirksam").asText()).isEqualTo("aus");
+
+        // „Nur die nächste Fahrt“ ist vorbei → nicht mehr aktuell.
+        ladepunkte.uhrStellen(Clock.fixed(Instant.parse("2026-10-16T04:00:00Z"), ZoneOffset.UTC));
+        assertThat(ruf(w, HttpMethod.GET, "/" + w.saeule(), null).body().path("fahrer_einstellungen")
+                .path("naechste_fahrt").isNull()).isTrue();
+        ladepunkte.uhrStellen(Clock.fixed(Instant.parse("2026-10-15T10:00:00Z"), ZoneOffset.UTC));
+
+        // Formfehler.
+        e.put("abfahrten", List.of(Map.of("wochentage", List.of(1, 2), "abfahrt", "07:15", "abfahrt_soc_pct", 80),
+                Map.of("wochentage", List.of(2), "abfahrt", "09:00", "abfahrt_soc_pct", 80)));
+        assertThat(ruf(w, HttpMethod.PUT, pfad, e).body().path("grund").asText()).isEqualTo("ueberschneidung");
+        e.put("abfahrten", List.of(Map.of("wochentage", List.of(1), "abfahrt", "07:15", "abfahrt_soc_pct", 30)));
+        assertThat(ruf(w, HttpMethod.PUT, pfad, e).body().path("grund").asText()).isEqualTo("abfahrt_soc");
+        e.put("abfahrten", List.of());
+        e.put("vollzyklen_je_tag", 3);
+        assertThat(ruf(w, HttpMethod.PUT, pfad, e).body().path("grund").asText()).isEqualTo("vollzyklen");
+        e.put("vollzyklen_je_tag", 0.5);
+        e.put("naechste_fahrt", Map.of("abfahrt", "2026-10-15T08:00", "abfahrt_soc_pct", 100));
+        Antwort vorbei = ruf(w, HttpMethod.PUT, pfad, e);
+        assertThat(vorbei.status()).isEqualTo(400);
+        assertThat(vorbei.body().path("code").asText()).isEqualTo("fahrer_einstellungen_ungueltig");
+        assertThat(vorbei.body().path("grund").asText()).isEqualTo("naechste_fahrt");
+        e.put("naechste_fahrt", null);
+        e.put("rueckspeisen", "ja");
+        assertThat(ruf(w, HttpMethod.PUT, pfad, e).body().path("grund").asText()).isEqualTo("rueckspeisen");
+        e.put("rueckspeisen", "aus");
+        e.put("schalter", true);
+        assertThat(ruf(w, HttpMethod.PUT, pfad, e).body().path("feld").asText()).isEqualTo("schalter");
+
+        // Ersetzen: „aus“ ohne Abfahrten.
+        e.remove("schalter");
+        assertThat(ruf(w, HttpMethod.PUT, pfad, e).status()).isEqualTo(200);
+        assertThat(root.queryForObject("SELECT count(*) FROM ladepunkt_abfahrt WHERE komponente_id = ?",
+                Integer.class, w.saeule())).isZero();
+        assertThat(root.queryForObject("SELECT rueckspeisen FROM ladepunkt_fahrer_einstellung WHERE komponente_id = ?",
+                String.class, w.saeule())).isEqualTo("aus");
+    }
+
     @Test
     void mandantenzaunUndNurLadepunkte() throws Exception {
         Welt w = welt();
@@ -427,6 +534,9 @@ class LadepunktBidirektionalApiTest {
         assertThat(ruf(w, HttpMethod.PUT, "/" + fremd.saeule() + "/faehigkeit", faehigkeit("bidirektional", true,
                 false, false, "2026-10-01")).status()).isEqualTo(404);
         assertThat(ruf(w, fremd.anlage(), HttpMethod.GET, "", null).status()).isEqualTo(404);
+        assertThat(ruf(w, HttpMethod.PUT, "/" + fremd.saeule() + "/fahrer-einstellungen",
+                Map.of("rueckspeisen", "aus")).status()).isEqualTo(404);
+        assertThat(ruf(w, fremd.anlage(), HttpMethod.GET, "/ertraege/2026-11", null).status()).isEqualTo(404);
         assertThat(root.queryForObject("SELECT count(*) FROM ladepunkt_faehigkeit WHERE tenant_id = ?", Integer.class,
                 fremd.mandant())).isZero();
     }

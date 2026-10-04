@@ -1,0 +1,11 @@
+# MiSpeL: Ladepunkt – Erträge, Fähigkeit im Aufbau, Fahrer-Einstellungen (MP-41a)
+
+Bedienkonzept BK-41 Variante A (Captain 04.10.2026), Teil 1 ohne die Wallbox-Karte in Steuerung › Laden (MP-41b). Vertrag: [bidirektionaler Ladepunkt § 5a und § 6a](../../contracts/v2/mispel-ladepunkt-bidirektional.md#5a-die-einstellungen-des-fahrers-mp-41a). Bauplan `vp-mispel-fundament` § 8 Zeile MP-41.
+
+- **Erträge** `GET …/ladepunkte/ertraege/{JJJJ-MM}` (`LadepunktErtragService`, rein `LadepunktErtraege`): liest den gespeicherten Monatslauf wie die MiSpeL-Karte (MP-18), nur Teile A2–A4, Begriffe und Fundstellen aus dem Formelkatalog. Portal: `components/erloese/LadepunktErtragKarte.tsx` unter der MiSpeL-Karte in `ErloeseSection`.
+- **Falle A3/A4:** Z2 misst Stromspeicher und Ladepunkt gemeinsam (A1 S. 30–32) — `nur_ladepunkt: false`, die Karte beschriftet „zusammen“, kein Rechenwerk-Posten wird dem Auto allein zugeschrieben.
+- **Messlatte offen:** der Vergleich „Auto lädt nur“ kommt mit MP-33d; bis dahin `vergleich.stand = offen` und vier Posten `messlatte_fehlt` — die Karte zeigt keine Summe (ein Minus steht nie allein).
+- **Fahrer-Einstellungen** `PUT …/fahrer-einstellungen` (`ladepunkt.betrieb`), Tabellen `ladepunkt_fahrer_einstellung` + `ladepunkt_abfahrt` (V20261004114700). Die Reserve ist `mindest_soc_pct` des Fahrzeugfensters, kein zweites Feld. Vokabular `aus · v2h · v2g` = Fahrplan 2.0 (`entities[].fahrzeug.rueckspeisen`).
+- **Noch niemand liest sie:** der Optimierer (`domain.py` `FAHRZEUG_VOLLZYKLEN_JE_TAG`, `inputs.load_fahrzeugspeicher`) und der Fahrplan-Block `fahrzeug` sind ein Folgepaket; ohne Block speist die Box nie zurück (MP-39).
+- **Fähigkeit im Aufbau:** Kurzblick eines Ladepunkts in Anlage › Aufbau, `LadepunktFaehigkeitDialog` → `PUT …/faehigkeit` (`geraet.einrichten`). ISO-15118-20-Daten (MP-37) bleiben auf der Box — darum „prüft die Wallbox beim Anstecken“, nie „nein“.
+- **Prüfnachweis:** `LadepunktRegelnTest` (rein), `LadepunktBidirektionalApiTest`, `LadepunktErtraegeApiTest`, `LadepunktFahrerEinstellungMigrationTest` (Testcontainers); Portal `LadepunktErtragKarte.test.tsx`, `LadepunktFaehigkeitDialog.test.tsx`, `e2e/ladepunkt-ertraege.spec.ts` (375/1440).
