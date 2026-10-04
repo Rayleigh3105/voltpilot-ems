@@ -137,20 +137,29 @@ func (s *Server) startReady(id string) bool {
 	return s.startReadyLocked(id)
 }
 
-// absentAuthorizationKeys are the OPTIONAL OCPP 1.6 keys whose ABSENCE already
-// is the safe state configureAuthorization wants: a station without an
-// authorization cache cannot answer from one, one without "offline
-// transactions for unknown ids" cannot start one, and MaxEnergyOnInvalidId only
-// matters while StopTransactionOnInvalidId is false - the list below sets it to
-// true. A station that answers NotSupported AND confirms the key as unknown on
-// GetConfiguration therefore needs nothing set. Found on a go-e Charger V4
-// (firmware 59.4: AuthorizationCacheEnabled NotSupported), which could not be
-// commissioned at all - and with phase limits not even start a charge. The
-// REQUIRED keys must still be Accepted and read back, and a key the station
-// does know must still hold the desired value.
+// absentAuthorizationKeys are the keys whose ABSENCE already is the safe state
+// configureAuthorization wants. A station without an authorization cache or a
+// local list has no local id store, so LocalPreAuthorize and
+// LocalAuthorizeOffline have nothing to authorize from; one without "offline
+// transactions for unknown ids" cannot start one. StopTransactionOnInvalidId
+// only chooses HOW a station reacts to a non-Accepted StartTransaction.conf -
+// end the transaction or just stop energy delivery (OCPP 1.6, StartTransaction) - and
+// MaxEnergyOnInvalidId is an allowance a station without the key does not
+// grant. The conclusion holds because commissioning succeeds only when EVERY
+// key of the list is safe: cache and local list are off or absent. A station
+// that answers NotSupported AND confirms the key as unknown on GetConfiguration
+// therefore needs nothing set. Found on a go-e Charger V4 (firmware 59.4, which
+// lacks all of the above but the local list), which could otherwise never be
+// commissioned - and with phase limits not even start a charge.
+// AuthorizeRemoteTxRequests is not here: a station must hold it true, and a key
+// the station does know must hold the desired value.
 var absentAuthorizationKeys = map[string]bool{
 	"AuthorizationCacheEnabled":  true,
 	"AllowOfflineTxForUnknownId": true,
+	"LocalPreAuthorize":          true,
+	"LocalAuthorizeOffline":      true,
+	"LocalAuthListEnabled":       true,
+	"StopTransactionOnInvalidId": true,
 	"MaxEnergyOnInvalidId":       true,
 }
 
@@ -164,21 +173,30 @@ func (s *Server) configureAuthorization(ctx context.Context, t *transport, id st
 	}
 	for _, setting := range [][2]string{{"AllowOfflineTxForUnknownId", "false"}, {"AuthorizationCacheEnabled", "false"}, {"LocalPreAuthorize", "false"}, {"LocalAuthorizeOffline", "false"}, {"LocalAuthListEnabled", "false"}, {"StopTransactionOnInvalidId", "true"}, {"MaxEnergyOnInvalidId", "0"}, {"AuthorizeRemoteTxRequests", "true"}} {
 		key, desired := setting[0], setting[1]
-		status, err := t.changeConfiguration(ctx, id, key, desired)
-		if status == "NotSupported" && absentAuthorizationKeys[key] {
-			values, unknown, gerr := t.getConfiguration(ctx, id, []string{key})
-			if _, known := values[key]; gerr == nil && !known && slices.Contains(unknown, key) {
-				continue // the feature does not exist on this station: already safe
+		status, _ := t.changeConfiguration(ctx, id, key, desired)
+		if status != "Accepted" && status != "Rejected" && status != "NotSupported" {
+			return fmt.Errorf("Kartenfreigabe nicht abgesichert: %s (%s)", key, status)
+		}
+		if status == "Accepted" {
+			values, _, err := t.getConfiguration(ctx, id, []string{key})
+			if err != nil || values[key] != desired {
+				return fmt.Errorf("Kartenfreigabe nicht zurückgelesen: %s", key)
 			}
-			return fmt.Errorf("Kartenfreigabe nicht abgesichert: %s (%s)", key, status)
+			continue
 		}
-		if err != nil || status != "Accepted" {
-			return fmt.Errorf("Kartenfreigabe nicht abgesichert: %s (%s)", key, status)
+		// Refused: what counts is the state the station is in, not the write.
+		values, unknown, err := t.getConfiguration(ctx, id, []string{key})
+		value, known := values[key]
+		if err == nil && known && value == desired {
+			continue // read-only, already safe
 		}
-		values, _, err := t.getConfiguration(ctx, id, []string{key})
-		if err != nil || values[key] != desired {
-			return fmt.Errorf("Kartenfreigabe nicht zurückgelesen: %s", key)
+		if err == nil && !known && slices.Contains(unknown, key) && absentAuthorizationKeys[key] {
+			continue // the feature does not exist on this station: already safe
 		}
+		if known {
+			return fmt.Errorf("Kartenfreigabe nicht abgesichert: %s (%s, steht auf %s)", key, status, value)
+		}
+		return fmt.Errorf("Kartenfreigabe nicht abgesichert: %s (%s)", key, status)
 	}
 	return nil
 }
