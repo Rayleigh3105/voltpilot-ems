@@ -690,6 +690,11 @@ def load_fahrzeugspeicher(
     Foerderweg, der ihn nicht zulaesst, oder ohne vollstaendige Angaben (Log
     ``fahrzeugspeicher.nicht_geplant`` mit Grund). Bei mehreren Ladepunkten
     plant der Lauf den ersten (nach Komponente) - Mehr-Fahrzeug ist offen.
+
+    MP-33f: dazu die Einstellungen des Fahrers (§ 5a,
+    :func:`load_fahrer_einstellungen`; ohne Zeile ``aus``) und die Box, an der
+    die Saeule haengt (``device_charge_point.device_id``, fuer den Block
+    ``fahrzeug`` im Fahrplan 2.0).
     """
     import psycopg  # lazy: optional [db] extra
 
@@ -731,9 +736,20 @@ def load_fahrzeugspeicher(
                 {"site_id": str(site.site_id)},
             )
             messungen = cur.fetchall()
+            cur.execute(
+                """
+                SELECT DISTINCT ON (entity_id) entity_id, device_id
+                FROM device_charge_point
+                WHERE site_id = %(site_id)s AND entity_id IS NOT NULL
+                ORDER BY entity_id, reported_at DESC
+                """,
+                {"site_id": str(site.site_id)},
+            )
+            boxen = {str(kid): str(dev) for kid, dev in cur.fetchall()}
     except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
         logger.warning("fahrzeugspeicher.table_missing")
         return None
+    einstellungen = load_fahrer_einstellungen(dsn, site.site_id)
     fenster: dict[str, list] = {}
     for kid, mindest, kap, wt, an, ab, ziel in fenster_zeilen:
         eintrag = fenster.setdefault(str(kid), [mindest, kap, []])
@@ -785,6 +801,8 @@ def load_fahrzeugspeicher(
                 slot_starts,
                 _slot_minutes(slot_starts),
                 GRENZ_ZONE,
+                einstellung=einstellungen.get(kid, fz_regeln.OHNE_EINSTELLUNG),
+                box_device_id=boxen.get(kid),
             )
         if fahrzeug is not None:
             return fahrzeug
@@ -794,6 +812,57 @@ def load_fahrzeugspeicher(
                 extra={"context": {"site_id": str(site.site_id), "komponente": kid, "grund": grund}},
             )
     return None
+
+
+def load_fahrer_einstellungen(dsn: str, site_id: UUID) -> dict[str, "fz_regeln.FahrerEinstellung"]:
+    """Die Einstellungen des Fahrers je Ladepunkt der Anlage (MiSpeL MP-33f,
+    Vertrag ``mispel-ladepunkt-bidirektional.md`` § 5a, Tabellen von MP-41a).
+
+    Eigene Verbindung: fehlen die Tabellen (api vor ``V20261004114700``), endet
+    nur dieser Teil - ohne Tabelle gibt es keine Freigabe, jeder Ladepunkt gilt
+    als ``aus`` (Log ``fahrzeugspeicher.fahrer_tabelle_fehlt``). Ein fehlender
+    Ladepunkt im Ergebnis heisst ebenso ``aus`` (§ 5a: ohne Zeile ``aus``).
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT komponente_id, rueckspeisen, vollzyklen_je_tag,
+                       naechste_fahrt_abfahrt, naechste_fahrt_soc_pct
+                FROM ladepunkt_fahrer_einstellung
+                WHERE site_id = %(site_id)s
+                """,
+                {"site_id": str(site_id)},
+            )
+            zeilen = cur.fetchall()
+            cur.execute(
+                """
+                SELECT a.komponente_id, a.wochentag, a.abfahrt, a.abfahrt_soc_pct
+                FROM ladepunkt_abfahrt a
+                JOIN ladepunkt_fahrer_einstellung e ON e.komponente_id = a.komponente_id
+                WHERE e.site_id = %(site_id)s
+                ORDER BY a.komponente_id, a.wochentag
+                """,
+                {"site_id": str(site_id)},
+            )
+            abfahrt_zeilen = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("fahrzeugspeicher.fahrer_tabelle_fehlt")
+        return {}
+    abfahrten: dict[str, list] = {}
+    for kid, wt, ab, ziel in abfahrt_zeilen:
+        abfahrten.setdefault(str(kid), []).append(fz_regeln.Abfahrt(int(wt), ab, float(ziel)))
+    out = {}
+    for kid, rueckspeisen, zyklen, naechste_ab, naechste_soc in zeilen:
+        out[str(kid)] = fz_regeln.FahrerEinstellung(
+            str(rueckspeisen),
+            float(zyklen) if zyklen is not None else None,
+            tuple(abfahrten.get(str(kid), ())),
+            (naechste_ab, float(naechste_soc)) if naechste_ab is not None and naechste_soc is not None else None,
+        )
+    return out
 
 
 def load_mispel_pauschal_bisher(

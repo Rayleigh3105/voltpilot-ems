@@ -147,8 +147,9 @@ kein Befehl danach.
   Live-Freigabe; erst danach entscheidet der Captain über Box-Release und eine Umgebungsvariable für
   `Config.V2XEntladen` (sie muss dann bis Beispiel-Env, Compose und Installations-Compose reichen). Die Regelung im
   2-s-Takt ist ein Software-Nachweis; ob sie „technisch sichergestellt“ im Sinne von A1 S. 11 ist, misst der Prüfstand.
-- **Plan aus der Cloud:** der Optimierer veröffentlicht den Block `fahrzeug` und den negativen Sollwert noch nicht
-  (`SchedulePlan.fahrzeug` bleibt intern, MP-33); die Freigabe stellt der Kunde erst mit MP-41 ein. **Fläche**
+- **Plan aus der Cloud:** seit MP-33f veröffentlicht der Optimierer den Block `fahrzeug` mit den negativen Sollwerten,
+  nur hinter dem Betreiber-Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES` (Vorgabe leer) und nur mit Freigabe des Fahrers
+  ([Fahrplan 2.0](contracts/v2/mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39)). **Fläche**
   (Freigabe, Abfahrt, „Rückspeisen ja/nein“): MP-41 nach dem abgestimmten Bedienkonzept BK-41.
 - Mehrere angesteckte Fahrzeuge an einer Säule: der Plan kennt einen Wunsch je Eintrag; ihn bekommt der erste
   angesteckte Stecker, die übrigen speisen nicht zurück (ein bidirektionaler Ladepunkt je Anlage, wie MP-33). Eine

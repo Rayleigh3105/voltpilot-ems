@@ -103,6 +103,13 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
         payload_load = _load_entity_payload(load)
         if payload_load["slots"]:
             entities.append(payload_load)
+    # MiSpeL MP-33f: der Ladepunkt-Eintrag mit dem Block ``fahrzeug`` - nur im
+    # Dokument der Box, an der die Saeule haengt, und nur mit mindestens einem
+    # Rueckspeisewunsch im veroeffentlichten Fenster (sonst fehlt er: fuer die
+    # Box dasselbe wie ``aus``, MP-39 „fehlt = nie entladen“).
+    payload_fz = _fahrzeug_entity_payload(plan)
+    if payload_fz is not None:
+        entities.append(payload_fz)
     if not entities:
         raise ValueError(
             "cannot build a v2 plan payload without any commanded entity"
@@ -292,6 +299,54 @@ def _load_entity_payload(load: LoadDispatch) -> dict:
     return {
         "entity_id": load.entity_id,
         "kind": "consumer",
+        "slots": slots,
+    }
+
+
+def _fahrzeug_entity_payload(plan: SitePlan) -> dict | None:
+    """Der Eintrag eines bidirektionalen Ladepunkts mit dem Block ``fahrzeug``
+    (Fahrplan 2.0, MP-39; MiSpeL MP-33f).
+
+    - Der Block traegt die Freigabe so, wie die Box sie erwartet: ``rueckspeisen``
+      ist die wirksame Stufe (nie ueber der Faehigkeit), ``mindest_soc_pct`` die
+      Reserve (fehlt = nicht gesagt = die Box speist nicht zurueck), ``abfahrt``/
+      ``abfahrt_soc_pct`` die naechste Abfahrt (UTC) mit Ziel, dazu Kapazitaet und
+      Rueckspeiseleistung. Nur was gesagt ist, steht im Block - unbekannt ist
+      keine Null.
+    - Slots: NUR die rueckspeisenden, mit negativem ``setpoint_kw`` („Erzeugung
+      im Ladepunkt“, A1 S. 27). Wo der Plan schweigt, laedt die Wallbox nach
+      ihrer eigenen Regelung (Aus · Smart · Schnell) - der Plan koppelt nichts an
+      die Lademodi (wie K2 bei Verbrauchern mit lokaler Quelle: ``plan2.
+      ActiveCommands`` ok=false = kein Wunsch).
+    - ``None`` (kein Eintrag): kein Fahrzeug im Plan, die Saeule an einer anderen
+      oder unbekannten Box, oder kein Rueckspeisewunsch im Fenster (auch bei
+      ``aus``).
+    """
+    fz = plan.fahrzeug
+    if fz is None or fz.device_id is None or fz.device_id != plan.device_id:
+        return None
+    if fz.rueckspeisen not in ("v2h", "v2g"):
+        return None  # „aus“ kennt keinen Rueckspeisewunsch - der Plan haette keinen
+    slots = []
+    for start, kw in list(zip(fz.slot_starts, fz.rueckspeisen_kw))[:EDGE_PLAN_SLOTS]:
+        sollwert = round(-kw, 3)
+        if sollwert < 0.0:
+            slots.append({"start": _rfc3339(start), "commands": {"setpoint_kw": sollwert}})
+    if not slots:
+        return None
+    block: dict = {"rueckspeisen": fz.rueckspeisen}
+    if fz.mindest_soc_pct is not None:
+        block["mindest_soc_pct"] = round(fz.mindest_soc_pct, 2)
+    if fz.abfahrt is not None:
+        block["abfahrt"] = _rfc3339(fz.abfahrt)
+    if fz.abfahrt_soc_pct is not None:
+        block["abfahrt_soc_pct"] = round(fz.abfahrt_soc_pct, 2)
+    block["kapazitaet_kwh"] = round(fz.kapazitaet_kwh, 3)
+    block["rueckspeiseleistung_kw"] = round(fz.rueckspeiseleistung_kw, 3)
+    return {
+        "entity_id": fz.entity_id,
+        "kind": "ev-charger",
+        "fahrzeug": block,
         "slots": slots,
     }
 

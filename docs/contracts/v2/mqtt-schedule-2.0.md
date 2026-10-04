@@ -53,8 +53,28 @@ Regeln P1, P2, Auflösung W8 ([Steuerungsverbund](steuerungsverbund.md)). Beide 
 ## Fahrzeug an bidirektionalen Ladepunkten (MiSpeL MP-39)
 
 Wahlfrei und additiv: der Block `entities[].fahrzeug` am Eintrag eines bidirektionalen Ladepunkts. Eine Box vor MP-39
-überliest ihn; der Optimierer sendet ihn noch nicht (MP-33 hält `SchedulePlan.fahrzeug` intern). Die Freigabe des
-Kunden steht seit MP-41a je Ladepunkt in der Cloud (`ladepunkt_fahrer_einstellung`, [MP-31 § 5a](mispel-ladepunkt-bidirektional.md#5a-die-einstellungen-des-fahrers-mp-41a)), dasselbe Vokabular.
+überliest ihn. Die Freigabe des Kunden steht seit MP-41a je Ladepunkt in der Cloud (`ladepunkt_fahrer_einstellung`,
+[MP-31 § 5a](mispel-ladepunkt-bidirektional.md#5a-die-einstellungen-des-fahrers-mp-41a)), dasselbe Vokabular.
+
+**Wer sendet (MP-33f):** der Optimierer, als eigener Eintrag `kind: "ev-charger"` mit `entity_id` = Komponente des
+Ladepunkts (= `device_charge_point.entity_id`, die Kennung in der Entitätsliste der Box). Die Werte stammen aus
+demselben Lauf, der Speicher und Fahrzeug gemeinsam plant (`SchedulePlan.fahrzeug`; der Co-Optimierer kennt das
+Fahrzeug noch nicht).
+
+- Nur an Anlagen im Betreiber-Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES` (Vorgabe leer), die ohnehin ein v2-Dokument
+  bekommen (`VOLTPILOT_V2_PLAN_SITES` oder scharfe Gemeinsame Steuerung) — der Schalter erweitert nicht, wer eines
+  bekommt. Nur im Dokument der Box, an der die Säule hängt (`device_charge_point.device_id`); Box unbekannt = kein Eintrag.
+- **Slots:** nur die rückspeisenden, mit negativem `setpoint_kw`. Wo der Plan schweigt, lädt die Wallbox nach ihrer
+  eigenen Regelung (Aus · Smart · Schnell) – der Plan koppelt nichts an die Lademodi; `ev-charger` kennt am
+  Schiedsrichter ohnehin nur `limit_kw` (wie K2 bei Verbrauchern mit lokaler Quelle: keine Abdeckung = kein Wunsch).
+- **Kein Eintrag** ohne Rückspeisewunsch im veröffentlichten Fenster – auch bei `aus`. Für die Box ist das dasselbe:
+  fehlt der Block, speist sie nie zurück.
+- Im Block steht nur, was gesagt ist: `rueckspeisen` = die wirksame Stufe (Wunsch des Fahrers, nie über der Fähigkeit
+  des Tages; ohne Zeile `aus`), `mindest_soc_pct` = Reserve, `abfahrt`/`abfahrt_soc_pct` = Ende der ersten Anwesenheit
+  im Horizont mit dem höheren Ziel aus Fenster und Abfahrten des Fahrers (§ 5a), dazu Kapazität und Rückspeiseleistung.
+- Ohne Fahrzeug, außerhalb des Schalters und ohne Rückspeisewunsch bleibt das Dokument Byte für Byte, wie es war.
+- Vektor: `examples/mqtt-schedule-2.0.valid.fahrzeug-aus-dem-optimierer.json` ist die Ausgabe des Senders
+  (`tests/test_mispel_fahrer_einstellungen.py`).
 
 | Feld | Regel |
 |---|---|

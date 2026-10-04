@@ -341,7 +341,8 @@ WIRKUNGSGRAD_LADEPUNKT = 0.85
 #: 5–2 ct, Mitte 3 ct; Schaetzung, keine Festlegung).
 FAHRZEUG_VERSCHLEISS_CT_JE_KWH = 3.0
 #: Zyklenbudget: Rueckspeisung je Berliner Kalendertag hoechstens so viele
-#: Vollzyklen der Kapazitaet (Vorgabe, bis MP-41 sie einstellbar macht).
+#: Vollzyklen der Kapazitaet - die Vorgabe, solange der Fahrer „Akku schonen“
+#: nicht gesagt hat (MP-33f liest ``vollzyklen_je_tag``, Vertrag MP-31 § 5a).
 FAHRZEUG_VOLLZYKLEN_JE_TAG = 1.0
 
 
@@ -365,9 +366,15 @@ class Fahrzeugspeicher:
     - ``untergrenze_kwh[s]``: der Mindest-Ladestand bzw. was das naechste
       Abfahrtsziel mit voller Ladeleistung noch erreichbar haelt - an der
       Abfahrt selbst also das Ziel (harte Grenze, auch ueber den Horizont).
-    - ``rueckspeisen_kw = 0``: kein Rueckspeisen (kein Mindest-Ladestand gesagt).
+    - ``rueckspeisen_kw = 0``: kein Rueckspeisen (kein Mindest-Ladestand gesagt
+      oder die Freigabe des Fahrers ist „aus“, MP-33f).
     - ``v2g``: Rueckspeisung ins Netz; ohne nur ins Haus (V2H, kein Export im
       selben Slot - E3 = D, A1 S. 27 Fn. 22).
+    - MP-33f, fuer den Block ``fahrzeug`` im Fahrplan 2.0: ``rueckspeisen`` ist
+      die wirksame Freigabe (``aus`` · ``v2h`` · ``v2g``; ``None`` = die
+      Einstellungen des Fahrers wurden nicht gelesen), ``mindest_soc_pct`` die
+      Reserve wie gesagt, ``naechste_abfahrt`` die naechste Abfahrt (UTC) mit
+      ihrem Ladestand und ``box_device_id`` die Box, an der die Saeule haengt.
     """
 
     komponente_id: str
@@ -385,6 +392,10 @@ class Fahrzeugspeicher:
     wirkungsgrad: float = WIRKUNGSGRAD_LADEPUNKT
     verschleiss_ct_je_kwh: float = FAHRZEUG_VERSCHLEISS_CT_JE_KWH
     vollzyklen_je_tag: float = FAHRZEUG_VOLLZYKLEN_JE_TAG
+    rueckspeisen: str | None = None
+    mindest_soc_pct: float | None = None
+    naechste_abfahrt: tuple[datetime, float | None] | None = None
+    box_device_id: str | None = None
 
     def __post_init__(self) -> None:
         n = len(self.angesteckt)

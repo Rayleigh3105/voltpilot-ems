@@ -22,11 +22,12 @@ from voltpilot_optimization.co_solver import (
 from voltpilot_optimization.config import (
     controllable_loads_enabled,
     horizon_slots as configured_horizon_slots,
+    mispel_fahrzeug_site_ids,
     v2_plan_site_ids,
 )
 from voltpilot_optimization.consumer_inputs import load_consumer_entities
-from voltpilot_optimization.domain import SchedulePlan
-from voltpilot_optimization.entities import from_v1_input
+from voltpilot_optimization.domain import FahrzeugPlan, SchedulePlan
+from voltpilot_optimization.entities import fahrzeug_dispatch, from_v1_input
 from voltpilot_optimization.persistence_v2 import SitePlanRepository
 from voltpilot_optimization.inputs import (
     BatterySite,
@@ -139,7 +140,8 @@ def plan_site(
                 "publish.no_device",
                 extra={"context": {"site_id": str(site.site_id)}},
             )
-    _shadow_publish_v2(dsn, site, inp, now, v2_publisher, v2_sites, v2_repository)
+    _shadow_publish_v2(dsn, site, inp, now, v2_publisher, v2_sites, v2_repository,
+                       fahrzeug_plan=plan.fahrzeug)
     return plan
 
 
@@ -151,6 +153,7 @@ def _shadow_publish_v2(
     v2_publisher: PlanV2Publisher | None,
     v2_sites: frozenset | None,
     v2_repository: SitePlanRepository | None = None,
+    fahrzeug_plan: FahrzeugPlan | None = None,
 ) -> None:
     """Co-optimize + persist + publish the v2 plan for a flagged site
     (best-effort).
@@ -173,6 +176,15 @@ def _shadow_publish_v2(
     (:func:`publisher_v2.plan_je_box`), same ``plan_id``, a run number, and
     "veröffentlicht" is noted per box. Every other site publishes the one
     document of before, byte for byte.
+
+    MiSpeL MP-33f: the vehicle at a bidirectional charge point joins the
+    document as its own entry with the block ``fahrzeug`` - taken from the
+    SAME v1 solve that planned it together with the storage
+    (``fahrzeug_plan``), because the co-optimizer does not model the vehicle
+    yet. Only for a site in the operator switch
+    ``VOLTPILOT_MISPEL_FAHRZEUG_SITES`` (empty by default) that gets a v2
+    document anyway; it never widens who gets one. Without a vehicle the
+    document stays byte-identical.
     """
     if v2_publisher is None or site.device_id is None:
         return
@@ -232,6 +244,7 @@ def _shadow_publish_v2(
             site_plan = co_optimize(co_inp, v2_plan_id, now)
         except InfeasiblePlanError:
             site_plan = co_optimize_ignoring_grid_limit(co_inp, v2_plan_id, now)
+        site_plan = _mit_fahrzeug(site_plan, site, inp, fahrzeug_plan)
         if v2_repository is not None:
             v2_repository.upsert_site_plan(site_plan)
         lauf_nr = _assign_run_number(v2_repository, site_plan)
@@ -267,6 +280,16 @@ def _shadow_publish_v2(
                         }
                     },
                 )
+
+
+def _mit_fahrzeug(site_plan, site, inp, fahrzeug_plan):
+    """MP-33f: der Ladepunkt-Eintrag am Plan - nur im Betreiber-Schalter und nur
+    mit einem Fahrzeug, das dieser Lauf geplant hat (sonst unveraendert)."""
+    fz = getattr(inp, "fahrzeug", None)
+    if fz is None or fahrzeug_plan is None or site.site_id not in mispel_fahrzeug_site_ids():
+        return site_plan
+    eintrag = fahrzeug_dispatch(fz, fahrzeug_plan, list(inp.slot_starts))
+    return site_plan if eintrag is None else replace(site_plan, fahrzeug=eintrag)
 
 
 def _assign_run_number(v2_repository, site_plan) -> int | None:

@@ -128,8 +128,20 @@ der Wunsch am Tag `am`, nie über der Fähigkeit dieses Tages (`v2g` ohne V2G �
 `km_je_prozent` = Kapazität × 6 km/kWh ÷ 100 (dieselbe Schätzung wie das Ladeziel im Portal), `null` ohne Kapazität —
 eine Anzeigehilfe, kein Messwert.
 
-**Wer liest:** heute nur die Ansicht und die Wallbox-Karte (MP-41b, schreibt über `PUT …/fahrer-einstellungen`). Der Optimierer (MP-33) liest Freigabe und Zyklenbudget noch nicht, und er sendet
-den Block `fahrzeug` im Fahrplan noch nicht — ohne Block speist die Box nie zurück (MP-39). Beides ist ein Folgepaket.
+**Wer liest:** die Ansicht, die Wallbox-Karte (MP-41b, schreibt über `PUT …/fahrer-einstellungen`) und seit MP-33f der
+Optimierer (`inputs.load_fahrer_einstellungen`, Regeln in `services/optimization/voltpilot_optimization/fahrzeugspeicher.py`),
+nur an Anlagen im Betreiber-Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES`:
+
+- `rueckspeisen` begrenzt den Plan auf die wirksame Stufe (wie `rueckspeisen_wirksam`); ohne Zeile `aus` = das
+  Fahrzeug wird nur geladen. `v2h` hält die Rückspeisung im Haus, auch an einer V2G-Säule (V2H vor V2G, E3 = D).
+- `reserve_pct` (= `mindest_soc_pct`) bleibt die Untergrenze jeder Rückspeisung.
+- `abfahrten[]` und `naechste_fahrt` sind harte Abfahrtsziele wie die des Fensters: eine Anwesenheit endet an der
+  ersten Abfahrt des Fahrers in ihr, mit dem höheren der beiden Ziele; steht das Auto gemessen am Stecker ohne Fenster,
+  steht es bis zur nächsten Abfahrt des Fahrers. „Nur die nächste Fahrt“ ersetzt den Wochenplan bis einschließlich zu
+  ihr; eine vergangene zählt nicht.
+- `vollzyklen_je_tag` ersetzt die feste 1 (leer = 1).
+
+Gesendet wird daraus der Block `fahrzeug` im [Fahrplan 2.0](./mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39).
 
 ## 5b. Das angesteckte Fahrzeug (Telemetrie der Box, MP-37b)
 
@@ -237,8 +249,11 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
   in die Cloud (§ 5b); das Portal liest beides wahlfrei am Stecker und nennt es ohne Meldung „prüft die Wallbox beim
   Anstecken“, nie „nein“. Den Ladestand beurteilt die Karte noch nach `meteredAt` statt nach `socMeasuredAt` — eine
   sichtbare Änderung, die erst ein abgestimmtes Bedienkonzept braucht.
-- **Anbindung an Optimierer und Box:** der Optimierer liest § 5a noch nicht und sendet den Fahrplan-Block `fahrzeug` noch
-  nicht; die Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e.
+- **Anbindung an Optimierer und Box:** der Optimierer liest § 5a und sendet den Fahrplan-Block `fahrzeug` (MP-33f); die
+  Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e. Offen: ob „Aus“, „Schnell“
+  oder eine Szene der Steuerung das Zurückspeisen anhalten (keine Kopplung; die Stelle ist `rueckspeisen_wirksam` im
+  Optimierer); die geplante Rückspeisung steht nicht in `entity_plan_slot`, die Wallbox-Karte sagt darum weiter
+  „plant VoltPilot noch nicht“.
 
 ## Prüfen
 

@@ -50,6 +50,8 @@ from uuid import UUID
 from voltpilot_optimization.domain import (
     ANCHOR_VORGABE,
     BatteryParams,
+    FahrzeugPlan,
+    Fahrzeugspeicher,
     OptimizationInput,
     SLOT_MINUTES,
     TerminalValue,
@@ -775,6 +777,58 @@ class LoadDispatch:
 
 
 @dataclass(frozen=True)
+class FahrzeugDispatch:
+    """MiSpeL MP-33f: der Ladepunkt-Eintrag mit dem Block ``fahrzeug`` im
+    Fahrplan 2.0 (``docs/contracts/v2/mqtt-schedule-2.0.md``, Abschnitt
+    „Fahrzeug an bidirektionalen Ladepunkten“), gebaut von
+    :func:`fahrzeug_dispatch`.
+
+    ``entity_id`` ist die Komponente des Ladepunkts (= ``device_charge_point.
+    entity_id``, die Kennung in der Entitaetsliste der Box), ``device_id`` die
+    Box, an der die Saeule haengt (``None`` = unbekannt). ``rueckspeisen_kw``
+    je Slot ist der Rueckspeisewunsch des Plans (>= 0, am Draht negativ);
+    geladen wird nach der Regelung der Wallbox, der Eintrag sagt dazu nichts.
+    """
+
+    entity_id: str
+    device_id: UUID | None
+    rueckspeisen: str
+    mindest_soc_pct: float | None
+    abfahrt: datetime | None
+    abfahrt_soc_pct: float | None
+    kapazitaet_kwh: float
+    rueckspeiseleistung_kw: float
+    slot_starts: tuple[datetime, ...]
+    rueckspeisen_kw: tuple[float, ...]
+
+
+def fahrzeug_dispatch(
+    fz: Fahrzeugspeicher, plan: FahrzeugPlan, slot_starts: list[datetime]
+) -> FahrzeugDispatch | None:
+    """Der Ladepunkt-Eintrag aus dem Fahrzeug des Laufs (MP-33f).
+
+    ``None``, wenn die Einstellungen des Fahrers nicht gelesen wurden
+    (``fz.rueckspeisen is None``) - dann kennt der Plan keine Freigabe und
+    sendet keinen Block (MP-39: fehlt = nie entladen).
+    """
+    if fz.rueckspeisen is None:
+        return None
+    abfahrt, abfahrt_soc = fz.naechste_abfahrt if fz.naechste_abfahrt else (None, None)
+    return FahrzeugDispatch(
+        entity_id=fz.komponente_id,
+        device_id=UUID(fz.box_device_id) if fz.box_device_id else None,
+        rueckspeisen=fz.rueckspeisen,
+        mindest_soc_pct=fz.mindest_soc_pct,
+        abfahrt=abfahrt,
+        abfahrt_soc_pct=abfahrt_soc,
+        kapazitaet_kwh=fz.kapazitaet_kwh,
+        rueckspeiseleistung_kw=fz.laden_kw,
+        slot_starts=tuple(slot_starts),
+        rueckspeisen_kw=tuple(s.rueckspeisen_kw for s in plan.slots),
+    )
+
+
+@dataclass(frozen=True)
 class SiteSlot:
     """Site-level flows and economics of one slot."""
 
@@ -806,6 +860,10 @@ class SitePlan:
     slot_minutes: int = SLOT_MINUTES
     peak_target_kw: float | None = None
     objective_eur: float = 0.0
+    # MiSpeL MP-33f: der Ladepunkt-Eintrag mit dem Block ``fahrzeug`` (nur an
+    # Anlagen im Betreiber-Schalter ``VOLTPILOT_MISPEL_FAHRZEUG_SITES`` mit
+    # geplantem Fahrzeug); ``None`` = kein Eintrag, das Dokument bleibt byte-gleich.
+    fahrzeug: FahrzeugDispatch | None = None
 
     @property
     def cost_eur(self) -> float:

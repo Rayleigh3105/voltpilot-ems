@@ -485,10 +485,16 @@ def test_lader_bidirektional_mit_frischer_messung(monkeypatch):
         "ladepunkt_fahrzeugfenster": [(kid, 20, 60, a.wochentag, a.ankunft, a.abfahrt, a.abfahrt_soc_pct)
                                       for a in PENDLER],
         "device_charge_connector": [(kid, "SuspendedEV", 40.0, T0 - timedelta(minutes=5))],
+        "ladepunkt_fahrer_einstellung": [(kid, "v2g", None, None, None)],
     }
     _lader(monkeypatch, tabellen)
     fz = load_fahrzeugspeicher("postgresql://fake", _site(netzladen_erlaubt=True), T0, slots)
     assert fz is not None and fz.stand_kwh[0] == pytest.approx(24.0) and fz.v2g
+    # MP-33f: ohne Zeile des Fahrers gilt „aus“ (§ 5a) - das Fahrzeug laedt nur
+    del tabellen["ladepunkt_fahrer_einstellung"]
+    fz = load_fahrzeugspeicher("postgresql://fake", _site(netzladen_erlaubt=True), T0, slots)
+    assert fz is not None and fz.rueckspeisen == "aus" and fz.rueckspeisen_kw == 0.0 and not fz.v2g
+    tabellen["ladepunkt_fahrer_einstellung"] = [(kid, "v2g", None, None, None)]
     # veraltete Messung ist nicht aktuell - ohne Ladestand kein Fahrzeug
     tabellen["device_charge_connector"] = [(kid, "SuspendedEV", 40.0, T0 - timedelta(hours=1))]
     assert load_fahrzeugspeicher("postgresql://fake", _site(netzladen_erlaubt=True), T0, slots) is None
