@@ -131,6 +131,28 @@ eine Anzeigehilfe, kein Messwert.
 **Wer liest:** heute nur die Ansicht und die Wallbox-Karte (MP-41b, schreibt über `PUT …/fahrer-einstellungen`). Der Optimierer (MP-33) liest Freigabe und Zyklenbudget noch nicht, und er sendet
 den Block `fahrzeug` im Fahrplan noch nicht — ohne Block speist die Box nie zurück (MP-39). Beides ist ein Folgepaket.
 
+## 5b. Das angesteckte Fahrzeug (Telemetrie der Box, MP-37b)
+
+Der **Ist-Stand** neben Fähigkeit (§ 2) und Wunsch (§ 5, § 5a): was das gerade angesteckte Fahrzeug der Wallbox
+meldet. Die Box reicht es je Stecker im Herzschlag-Block `chargers[].connectors[]` (`ems/{t}/{s}/{d}/status`, additiv,
+ohne eingefrorenes Schema, `schema_version` bleibt `1.0`) in die Cloud; sie legt es in `device_charge_connector` ab
+(V20261004203700) und zeigt es am Stecker der Ladepunkt-Sicht `GET /api/v1/sites/{id}/chargers` (`ChargeConnector`).
+
+| Herzschlag (Box) | Sicht (Cloud) | Regel |
+|---|---|---|
+| `bidirectional` | `bidirectional` | Das Fahrzeug fordert über ISO 15118-20 einen BPT-Modus an (`ev_needs.bidirectional`, OCPP 2.1, [OCPP 2.1 auf der Box](../../edge-ocpp21.md)). **Fehlt** ohne Fahrzeugmeldung (OCPP 1.6/2.0.1, vor der Aushandlung, freier Stecker, ältere Box) → `null` = unbekannt, nie `false`; nur ein gemeldeter Modus ohne BPT ist `false`. Nur ein JSON-Wahrheitswert wird übernommen. Gilt für das angesteckte Fahrzeug, bis der Stecker frei ist (dann löscht die Box `ev_needs`). |
+| `soc_pct` | `socPct` | Ladestand des Fahrzeugs in %: der jüngere aus Messwert `SoC` (MeterValues) und der Meldung des Fahrzeugs (`dcChargingParameters.stateOfCharge`, nur DC) — dieselbe Regel wie der Entladeschutz (MP-39). Höchstens drei Messintervalle alt (3 × 10 s), gleich aus welcher Quelle: ein Leser, der den Ladestand noch nach `metered_at` beurteilt, sieht ihn nie frischer, als er ist. Älter → fehlt. |
+| `soc_measured_at` | `socMeasuredAt` | Die **eigene Uhr** des Ladestands: Messzeit des Messwerts bzw. Empfangszeit der Fahrzeugmeldung — nicht unbedingt `metered_at` (die Uhr der Leistung). Fehlt genau dann, wenn `soc_pct` fehlt. |
+
+Beides ist Telemetrie, keine Fähigkeit und kein Wunsch. Bidirektional nutzbar ist ein Ladepunkt „nach den
+technischen Gegebenheiten“ (A1 S. 26, Abschnitt 3.2.5): ein bidirektional meldendes Fahrzeug macht einen nicht
+bidirektionalen Ladepunkt nicht bidirektional (§ 2), und der gemeldete Ladestand ersetzt weder Reserve noch Ladestand
+bei Abfahrt (§ 5, § 5a). Für die Mengen ist das Fahrzeug ohne Belang — Verbrauch und Erzeugung werden dem Ladepunkt
+zugerechnet, „ob stets das gleiche oder ob verschiedene Elektromobile an den Ladepunkt angeschlossen werden“
+(A1 S. 27); die Meldung dient Planung, Schutz (MP-39) und Anzeige, keiner Formel.
+Geteilte Vektoren: [`mispel-ladepunkt-fahrzeug-vectors.json`](./mispel-ladepunkt-fahrzeug-vectors.json) (Box: Go-Test
+`ocpp_heartbeat_fahrzeug_test.go`, Cloud: `ChargerApiTest`).
+
 ## 6. Die Schnittstelle
 
 | Route | Recht | Antwort |
@@ -211,9 +233,10 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
 - **Signierte Ladepunkt-Messwerte** (OCMF) als Z2-Quelle mit Eichstatus: [Vertrag](./mispel-ladepunkt-ocmf.md) (MP-38);
   die Ansicht trägt dafür `signierter_messwert` mit `eichstatus`.
 - **Fläche** der Einstellungen des Fahrers: Wallbox-Karte in Steuerung › Laden (MP-41b). Fähigkeit im Aufbau und
-  Erträge: MP-41a. Ob das angesteckte Fahrzeug bidirektional überträgt (`ev_needs.bidirectional` der Box, OCPP 2.1),
-  reicht die Telemetrie noch nicht in die Cloud; das Portal liest es wahlfrei am Stecker und nennt es ohne Meldung
-  „prüft die Wallbox beim Anstecken“, nie „nein“.
+  Erträge: MP-41a. Ob das angesteckte Fahrzeug bidirektional überträgt und seinen Ladestand reicht die Box seit MP-37b
+  in die Cloud (§ 5b); das Portal liest beides wahlfrei am Stecker und nennt es ohne Meldung „prüft die Wallbox beim
+  Anstecken“, nie „nein“. Den Ladestand beurteilt die Karte noch nach `meteredAt` statt nach `socMeasuredAt` — eine
+  sichtbare Änderung, die erst ein abgestimmtes Bedienkonzept braucht.
 - **Anbindung an Optimierer und Box:** der Optimierer liest § 5a noch nicht und sendet den Fahrplan-Block `fahrzeug` noch
   nicht; die Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e.
 
@@ -222,4 +245,6 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
 ```bash
 (cd services/api && ./mvnw test -Dtest='LadepunktRegelnTest')                                   # rein, kein Docker
 (cd services/api && ./mvnw test -Dtest='LadepunktBidirektionalApiTest,LadepunktErtraegeApiTest,LadepunktBidirektionalMigrationTest')  # Testcontainers
+(cd services/api && ./mvnw test -Dtest='ChargerApiTest')                                        # § 5b, Testcontainers
+(cd edge-app/core && go test -race ./internal/agent/ -run 'TheVehicleReport|BidirectionalVehicle')  # § 5b, Box
 ```

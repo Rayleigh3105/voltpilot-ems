@@ -1020,18 +1020,23 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 			oc.Note = "Diese Ladesäule hat sich noch nicht gemeldet."
 		}
 		for _, con := range c.Connectors {
+			soc, socAt := ocppVehicleSoc(con, now)
 			ocn := state.OcppConnector{
 				ID: con.ID, Status: con.Status,
 				Charging:      con.Session != nil && !con.Session.Reconciling && (con.Status == "" || csms.ChargingStatus(con.Status)),
 				PowerKw:       con.PowerKw,
 				EnergyKwh:     freshOcppValue(con.EnergyKwh, con.EnergyMeasuredAt, now),
-				SocPct:        freshOcppValue(con.SocPct, con.SocMeasuredAt, now),
+				SocPct:        soc,
 				CommandStatus: con.CommandStatus,
 				Readback:      con.Readback,
 				ReadbackNote:  con.ReadbackNote,
+				Bidirectional: ocppVehicleBidirectional(con),
 			}
 			if !con.MeteredAt.IsZero() {
 				ocn.MeteredAtMs = con.MeteredAt.UnixMilli()
+			}
+			if !socAt.IsZero() {
+				ocn.SocMeasuredAtMs = socAt.UnixMilli()
 			}
 			if con.Session != nil {
 				ocn.SessionSince = con.Session.StartedAt.UnixMilli()
@@ -1207,4 +1212,43 @@ func freshOcppValue(value *float64, sampled, now time.Time) *float64 {
 		return nil
 	}
 	return value
+}
+
+// ocppVehicleSoc is the plugged vehicle's state of charge as the box reports
+// it (MiSpeL MP-37b) together with its OWN clock: the newer of the station's
+// SoC meter value and the vehicle's ISO 15118-20 report (NotifyEVChargingNeeds,
+// DC only) - the rule the discharge guard reads it by
+// (entladeschutz/waechter.go). Both sources pass the legacy gate above: a
+// reader that still judges the SoC by metered_at must never see it fresher
+// than it is, so a report the vehicle sent once at plug-in is not current
+// three meter intervals later. nil / zero time = not reported, never 0.
+func ocppVehicleSoc(con csms.Connector, now time.Time) (*float64, time.Time) {
+	var at time.Time
+	soc := freshOcppValue(con.SocPct, con.SocMeasuredAt, now)
+	if soc != nil {
+		at = con.SocMeasuredAt
+	}
+	if ev := con.EV; ev != nil {
+		if evSoc := freshOcppValue(ev.SocPct, ev.ReportedAt, now); evSoc != nil && (soc == nil || ev.ReportedAt.After(at)) {
+			soc, at = evSoc, ev.ReportedAt
+		}
+	}
+	if soc == nil {
+		return nil, time.Time{}
+	}
+	v := *soc
+	return &v, at
+}
+
+// ocppVehicleBidirectional is whether the plugged vehicle transfers
+// bidirectionally: the BPT mode of its ISO 15118-20 report
+// (ev_needs.bidirectional, OCPP 2.1, MiSpeL MP-37b). nil = no report - every
+// 1.6 and 2.0.1 station, a 2.1 station before the negotiation, a free
+// connector - which is unknown, never false.
+func ocppVehicleBidirectional(con csms.Connector) *bool {
+	if con.EV == nil {
+		return nil
+	}
+	b := con.EV.Bidirectional
+	return &b
 }

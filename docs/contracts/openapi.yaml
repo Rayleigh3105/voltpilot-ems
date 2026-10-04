@@ -26252,13 +26252,15 @@ components:
         nextTurn: { type: string, format: date-time, nullable: true, description: "Geschätzter Termin des Wartenden; null = nichts behaupten." }
         powerKw: { type: number, nullable: true }
         energyKwh: { type: number, nullable: true }
-        socPct: { type: number, nullable: true, description: "Der Fahrzeug-Ladestand, wenn die Säule ihn meldet (DC meist, AC praktisch nie)." }
+        socPct: { type: number, nullable: true, description: "Der Fahrzeug-Ladestand, wenn die Säule ihn meldet (DC meist, AC praktisch nie): der jüngere aus Messwert SoC und der ISO-15118-20-Meldung des Fahrzeugs (MiSpeL MP-37b), höchstens drei Messintervalle alt; Uhr in socMeasuredAt." }
         commandStatus: { type: string, nullable: true, description: "Die Antwort der Säule auf die letzte Grenze." }
         readback: { type: string, nullable: true, enum: [ok, abweichend, unbekannt], description: "Ein angenommener Befehl ist kein Befehl in Kraft." }
         readbackNote: { type: string, nullable: true }
         sessionSince: { type: string, format: date-time, nullable: true }
         sessionKwh: { type: number, nullable: true, description: "Die Bilanz DIESES Ladevorgangs (Cockpit Phase 1 / E2). energyKwh daneben ist ein KUMULATIVES Register - was in der laufenden Sitzung geflossen ist, weiss nur die Box (nur sie kennt den Registerstand bei StartTransaction). null = kein Ladevorgang / kein Register / ein rueckwaerts gesprungenes Register, nie eine erfundene 0." }
         meteredAt: { type: string, format: date-time, nullable: true, description: "Wann die Saeule zuletzt MeterValues gemeldet hat - das ALTER von powerKw/energyKwh/socPct. null = nie gemessen bzw. ein aelterer Edge-Stand; die Flaeche darf die Werte dann NICHT als aktuell ausgeben." }
+        socMeasuredAt: { type: string, format: date-time, nullable: true, description: "Die eigene Uhr von socPct (MiSpeL MP-37b): Messzeit des Messwerts SoC oder Empfangszeit der Fahrzeugmeldung - nicht unbedingt meteredAt. null = kein Ladestand." }
+        bidirectional: { type: boolean, nullable: true, description: "Ob das angesteckte Fahrzeug bidirektional überträgt: der BPT-Modus seiner ISO-15118-20-Anforderung (ev_needs.bidirectional der Box, OCPP 2.1; MiSpeL MP-37b). null = keine Meldung (OCPP 1.6/2.0.1, vor der Aushandlung, ältere Box) - unbekannt, nie false." }
     SupplyPrice:
       type: object
       description: >

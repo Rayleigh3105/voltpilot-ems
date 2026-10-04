@@ -72,7 +72,15 @@ public class DeviceChargerStatusRepository {
              * tagRef = das PSEUDONYM der Ladekarte dieses Ladevorgangs (P7).
              * null = kein Ladevorgang, keine Karte, oder ein aelterer Box-Stand.
              */
-            String tagRef) {}
+            String tagRef,
+            /*
+             * MiSpeL MP-37b: socMeasuredAt = die EIGENE Uhr des Ladestands
+             * (Messwert SoC oder ISO-15118-20-Meldung des Fahrzeugs),
+             * bidirectional = das Fahrzeug fordert einen BPT-Modus an. null =
+             * nicht gemeldet (aeltere Box, OCPP 1.6/2.0.1, keine Meldung) -
+             * bidirectional dann UNBEKANNT, nie false.
+             */
+            Instant socMeasuredAt, Boolean bidirectional) {}
 
     /**
      * The row {@code s} was reported by a box that takes part in operation (UEMS AP-07 IP-11): not
@@ -158,15 +166,16 @@ public class DeviceChargerStatusRepository {
                                 + "allocated_kw, reason, reason_text, next_turn, power_kw, "
                                 + "energy_kwh, soc_pct, command_status, readback, readback_note, "
                                 + "session_since, session_kwh, metered_at, boost, tag_ref, "
-                                + "reported_at) "
+                                + "soc_measured_at, bidirectional, reported_at) "
                                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                                + "?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         deviceId, c.chargePointId(), con.connectorId(), tenantId, siteId,
                         con.status(), con.charging(), con.allocatedKw(), con.reason(),
                         con.reasonText(), ts(con.nextTurn()), con.powerKw(), con.energyKwh(),
                         con.socPct(), con.commandStatus(), con.readback(), con.readbackNote(),
                         ts(con.sessionSince()), con.sessionKwh(), ts(con.meteredAt()),
-                        con.boost(), con.tagRef(), Timestamp.from(reportedAt));
+                        con.boost(), con.tagRef(), ts(con.socMeasuredAt()), con.bidirectional(),
+                        Timestamp.from(reportedAt));
             }
         }
     }
@@ -241,7 +250,7 @@ public class DeviceChargerStatusRepository {
         jdbc.query("SELECT s.device_id, s.charge_point_id, s.connector_id, s.status, s.charging, "
                 + "s.allocated_kw, s.reason, s.reason_text, s.next_turn, s.power_kw, s.energy_kwh, s.soc_pct, "
                 + "s.command_status, s.readback, s.readback_note, s.session_since, s.session_kwh, "
-                + "s.metered_at, s.boost, s.tag_ref "
+                + "s.metered_at, s.boost, s.tag_ref, s.soc_measured_at, s.bidirectional "
                 + "FROM device_charge_connector s WHERE s.site_id = ? AND " + BOX_AKTIV
                 + " ORDER BY s.device_id, s.charge_point_id, s.connector_id", rs -> {
                     byPoint.computeIfAbsent(key(rs.getObject("device_id", UUID.class),
@@ -290,7 +299,8 @@ public class DeviceChargerStatusRepository {
                 rs.getString("command_status"), rs.getString("readback"),
                 rs.getString("readback_note"), instant(rs.getTimestamp("session_since")),
                 dbl(rs.getObject("session_kwh")), instant(rs.getTimestamp("metered_at")),
-                rs.getBoolean("boost"), rs.getString("tag_ref"));
+                rs.getBoolean("boost"), rs.getString("tag_ref"),
+                instant(rs.getTimestamp("soc_measured_at")), (Boolean) rs.getObject("bidirectional"));
     }
 
     private static ChargingBudgetDto mapBudget(ResultSet rs, int rowNum) throws SQLException {

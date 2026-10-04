@@ -73,9 +73,10 @@ löscht die Box den Eintrag: das nächste Fahrzeug ist ein anderes.
 | `minDischargePower`, `maxDischargePower` (Schema: ≥ 0) | `min_discharge_kw`, `max_discharge_kw` – **Beträge** | Grenzen beim Rückspeisen; Laden und Entladen teilen nie ein Vorzeichenfeld |
 
 Das **Fahrzeugfenster** des Vertrags (§ 5) bleibt die Planungsangabe des Kunden; `ev_needs` ist der Ist-Stand daneben.
-Optimierer (MP-33) und Rechenwerk (MP-32) lesen die Werte über den Ladepunkt-Zustand der Box; die Weitergabe an die
-Cloud (Telemetrie-Vertrag `device_charge_connector`) ist ein eigener Schritt mit Vertragsfassung und nicht Teil von
-MP-37.
+Optimierer (MP-33) und Rechenwerk (MP-32) lesen die Werte über den Ladepunkt-Zustand der Box. In die Cloud gehen
+seit MP-37b `bidirectional` und der Ladestand (der jüngere aus `soc_pct` hier und dem Messwert `SoC`, mit eigener Uhr
+`soc_measured_at`) je Stecker im Herzschlag ([Vertrag § 5b](contracts/v2/mispel-ladepunkt-bidirektional.md)); die
+übrigen Werte bleiben auf der Box.
 
 ## V2X-Sollwert (hinter dem Schalter, Vorgabe AUS)
 

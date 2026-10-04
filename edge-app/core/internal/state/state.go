@@ -947,6 +947,14 @@ type OcppConnector struct {
 	// It is the AGE of PowerKw/EnergyKwh/SocPct: a value without it could be
 	// minutes old and still read as current. 0 = never metered.
 	MeteredAtMs int64 `json:"metered_at_ms,omitempty"`
+	// SocMeasuredAtMs is the SoC's OWN clock (MiSpeL MP-37b): SocPct is the
+	// newer of the SoC meter value and the vehicle's ISO 15118-20 report, and
+	// the latter has no meter timestamp. 0 = no SoC.
+	SocMeasuredAtMs int64 `json:"soc_measured_at_ms,omitempty"`
+	// Bidirectional is whether the plugged vehicle transfers bidirectionally
+	// (ev_needs.bidirectional, OCPP 2.1, MiSpeL MP-37b). nil = not reported
+	// (1.6, 2.0.1, no vehicle report yet) - unknown, never false.
+	Bidirectional *bool `json:"bidirectional,omitempty"`
 	// TagRef is the PSEUDONYM of the card that started the running session
 	// (Verbrauchsmanagement v1 / P7). Empty = no session, or a station that
 	// authorised without a tag. It is the box's OWN pseudonym - the plaintext

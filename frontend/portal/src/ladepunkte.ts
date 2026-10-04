@@ -70,9 +70,9 @@ export interface ChargeConnector {
   boost?: boolean;
   /**
    * MiSpeL MP-41b: ob das angesteckte Fahrzeug bidirektional überträgt - der
-   * BPT-Modus aus `ev_needs.bidirectional` der Box (OCPP 2.1, docs/edge-ocpp21.md).
-   * Die Telemetrie reicht ihn noch nicht in die Cloud: fehlt er, ist es
-   * UNBEKANNT („prüft die Wallbox beim Anstecken“), nie „nein“.
+   * BPT-Modus aus `ev_needs.bidirectional` der Box (OCPP 2.1, docs/edge-ocpp21.md),
+   * seit MP-37b am Stecker gemeldet (Vertrag mispel-ladepunkt-bidirektional.md § 5b).
+   * Fehlt er, ist es UNBEKANNT („prüft die Wallbox beim Anstecken“), nie „nein“.
    */
   bidirectional?: boolean | null;
   /**

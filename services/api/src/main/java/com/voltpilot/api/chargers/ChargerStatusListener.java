@@ -434,7 +434,11 @@ public class ChargerStatusListener extends Rueckmeldeweg {
                     textOrNull(con, "command_status"), vocabulary(con, "readback", READBACK),
                     textOrNull(con, "readback_note"), optInstant(con, "session_since"),
                     optDouble(con, "session_kwh"), optInstant(con, "metered_at"),
-                    con.path("boost").asBoolean(false), tagRef(con)));
+                    con.path("boost").asBoolean(false), tagRef(con),
+                    // MiSpeL MP-37b: das angesteckte Fahrzeug. Nur ein echter
+                    // JSON-Wahrheitswert ist eine Aussage; alles andere bleibt
+                    // UNBEKANNT (null), nie false.
+                    optInstant(con, "soc_measured_at"), optBool(con, "bidirectional")));
         }
         return out;
     }

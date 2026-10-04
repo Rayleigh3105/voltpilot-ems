@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "_comment": [
+    "MiSpeL MP-37b: das angesteckte Fahrzeug am Stecker - ob es bidirektional uebertraegt und sein Ladestand -",
+    "von der Box bis in die Ladepunkt-Ansicht der Cloud. Vertrag: mispel-ladepunkt-bidirektional.md § 5b.",
+    "",
+    "Drei Formen derselben Zeile, je Fall:",
+    "  * `box` ist der Stecker-Zustand der Box (`csms.Connector`, JSON wie im Schnappschuss: `soc_pct` und",
+    "    `soc_measured_at` aus dem Messwert SoC, `ev_needs` aus NotifyEVChargingNeeds, OCPP 2.1).",
+    "    `null` = ein Fall, den nur die Cloud-Aufnahme kennt (eine Nutzlast, die keine Box so bildet).",
+    "  * `edge` ist, was der Herzschlag-Block `chargers[].connectors[]` davon traegt",
+    "    (`cloud.ChargerConnectorEntry`, snake_case). Ein Schluessel, der hier fehlt, MUSS im Herzschlag fehlen.",
+    "    Leser: edge-app/core/internal/agent/ocpp_heartbeat_fahrzeug_test.go.",
+    "  * `portal` ist dieselbe Zeile in `GET /api/v1/sites/{id}/chargers` (`ChargeConnector`, camelCase);",
+    "    `null` = nicht gemeldet. Leser: services/api/.../ChargerApiTest.java (echter Zuhoerer, echte Datenbank).",
+    "",
+    "`jetzt` ist die Uhr der Box beim Bilden des Herzschlags. Ein Ladestand ist hoechstens drei Messintervalle",
+    "alt (3 x 10 s, `ocppMeterMaxAge`), gleich aus welcher Quelle; der juengere aus Messwert und Fahrzeugmeldung",
+    "gewinnt (dieselbe Regel wie der Entladeschutz, entladeschutz/waechter.go). Unbekannt ist keine Null:",
+    "ohne Fahrzeugmeldung fehlt `bidirectional`, es ist nie `false`."
+  ],
+  "jetzt": "2026-10-04T18:00:00Z",
+  "faelle": [
+    {
+      "name": "nichts_gemeldet",
+      "beschreibung": "Eine Saeule mit OCPP 1.6 oder 2.0.1 ohne Messwert SoC: weder Ladestand noch Rueckspeise-Faehigkeit - die Ansicht sagt 'prueft die Wallbox beim Anstecken', nie 'nein'.",
+      "box": {},
+      "edge": {},
+      "portal": { "bidirectional": null, "socPct": null, "socMeasuredAt": null }
+    },
+    {
+      "name": "messwert_soc_ohne_fahrzeugmeldung",
+      "beschreibung": "AC- oder 1.6-Saeule mit Messwert SoC, ohne ISO-15118-20-Meldung: der Ladestand mit seiner eigenen Uhr, die Faehigkeit bleibt unbekannt.",
+      "box": { "soc_pct": 62, "soc_measured_at": "2026-10-04T17:59:50Z" },
+      "edge": { "soc_pct": 62, "soc_measured_at": "2026-10-04T17:59:50Z" },
+      "portal": { "bidirectional": null, "socPct": 62, "socMeasuredAt": "2026-10-04T17:59:50Z" }
+    },
+    {
+      "name": "bpt_mit_fahrzeug_soc",
+      "beschreibung": "OCPP 2.1, das Fahrzeug fordert DC_BPT an und meldet seinen Ladestand (dcChargingParameters.stateOfCharge) - die Werte des MP-34-Fahrzeugs: 40 % von 60 kWh.",
+      "box": { "ev_needs": { "reported_at": "2026-10-04T17:59:45Z", "energy_transfer": "DC_BPT", "bidirectional": true, "soc_pct": 40 } },
+      "edge": { "bidirectional": true, "soc_pct": 40, "soc_measured_at": "2026-10-04T17:59:45Z" },
+      "portal": { "bidirectional": true, "socPct": 40, "socMeasuredAt": "2026-10-04T17:59:45Z" }
+    },
+    {
+      "name": "kein_bpt_ist_nein",
+      "beschreibung": "OCPP 2.1, das Fahrzeug fordert nur Laden an (AC_three_phase): das ist eine Aussage - nein -, keine Luecke. Ohne Ladestand-Meldung kein Ladestand.",
+      "box": { "ev_needs": { "reported_at": "2026-10-04T17:59:40Z", "energy_transfer": "AC_three_phase", "bidirectional": false } },
+      "edge": { "bidirectional": false },
+      "portal": { "bidirectional": false, "socPct": null, "socMeasuredAt": null }
+    },
+    {
+      "name": "fahrzeugmeldung_juenger_als_messwert",
+      "beschreibung": "Beide Quellen frisch, die Fahrzeugmeldung ist die juengere: sie gewinnt, mit ihrer Empfangszeit als Uhr.",
+      "box": { "soc_pct": 50, "soc_measured_at": "2026-10-04T17:59:35Z", "ev_needs": { "reported_at": "2026-10-04T17:59:55Z", "energy_transfer": "DC_BPT", "bidirectional": true, "soc_pct": 52 } },
+      "edge": { "bidirectional": true, "soc_pct": 52, "soc_measured_at": "2026-10-04T17:59:55Z" },
+      "portal": { "bidirectional": true, "socPct": 52, "socMeasuredAt": "2026-10-04T17:59:55Z" }
+    },
+    {
+      "name": "messwert_juenger_als_fahrzeugmeldung",
+      "beschreibung": "Beide Quellen frisch, der Messwert SoC ist der juengere: er gewinnt.",
+      "box": { "soc_pct": 55, "soc_measured_at": "2026-10-04T17:59:58Z", "ev_needs": { "reported_at": "2026-10-04T17:59:40Z", "energy_transfer": "DC_BPT", "bidirectional": true, "soc_pct": 52 } },
+      "edge": { "bidirectional": true, "soc_pct": 55, "soc_measured_at": "2026-10-04T17:59:58Z" },
+      "portal": { "bidirectional": true, "socPct": 55, "socMeasuredAt": "2026-10-04T17:59:58Z" }
+    },
+    {
+      "name": "veralteter_ladestand_ist_nicht_aktuell",
+      "beschreibung": "Messwert fuenf, Fahrzeugmeldung zehn Minuten alt: kein Ladestand. Die Faehigkeit bleibt - sie gilt fuer das angesteckte Fahrzeug, bis der Stecker frei ist (dann loescht die Box ev_needs).",
+      "box": { "soc_pct": 60, "soc_measured_at": "2026-10-04T17:55:00Z", "ev_needs": { "reported_at": "2026-10-04T17:50:00Z", "energy_transfer": "DC_BPT", "bidirectional": true, "soc_pct": 58 } },
+      "edge": { "bidirectional": true },
+      "portal": { "bidirectional": true, "socPct": null, "socMeasuredAt": null }
+    },
+    {
+      "name": "kein_wahrheitswert_ist_unbekannt",
+      "beschreibung": "Nur die Cloud-Aufnahme: ein bidirectional, das kein JSON-Wahrheitswert ist, und ein unlesbarer Zeitstempel werden nicht geraten, sondern bleiben leer.",
+      "box": null,
+      "edge": { "bidirectional": "true", "soc_measured_at": "gestern" },
+      "portal": { "bidirectional": null, "socPct": null, "socMeasuredAt": null }
+    }
+  ]
+}

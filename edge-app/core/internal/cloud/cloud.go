@@ -861,6 +861,19 @@ type ChargerConnectorEntry struct {
 	// half an hour ago, and a surface that shows the latter as current is
 	// lying. Empty = never metered.
 	MeteredAt string `json:"metered_at,omitempty"`
+	// SocMeasuredAt is the SoC's OWN clock (RFC 3339, MiSpeL MP-37b, additive).
+	// SocPct is the plugged vehicle's state of charge: the newer of the SoC
+	// meter value and the vehicle's ISO 15118-20 report (NotifyEVChargingNeeds,
+	// DC), and the latter is no meter value - MeteredAt is the power's clock,
+	// not necessarily this one. Empty = no SoC (and then no soc_pct either).
+	SocMeasuredAt string `json:"soc_measured_at,omitempty"`
+	// Bidirectional is whether the plugged vehicle transfers bidirectionally:
+	// the BPT mode it requested over ISO 15118-20 (ev_needs.bidirectional,
+	// OCPP 2.1, docs/edge-ocpp21.md; MiSpeL MP-37b, additive). ABSENT = no
+	// vehicle report - every 1.6 and 2.0.1 station, a 2.1 station before the
+	// negotiation, a free plug, an older box - which is UNKNOWN, never false:
+	// only a reported non-BPT mode is false.
+	Bidirectional *bool `json:"bidirectional,omitempty"`
 	// TagRef is the PSEUDONYM of the card that started the running session
 	// (Verbrauchsmanagement v1 / P7): `tagref_` + HMAC-SHA256 with this box's
 	// own privacy key. It is what makes a vehicle profile addressable at all -

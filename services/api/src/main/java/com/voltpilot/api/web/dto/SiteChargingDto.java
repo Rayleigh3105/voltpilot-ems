@@ -120,5 +120,21 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
              * null = kein Ladevorgang, eine Saeule ohne Karte, oder ein
              * aelterer Box-Stand - nie eine erfundene Karte.
              */
-            String tagRef) {}
+            String tagRef,
+            /*
+             * MiSpeL MP-37b, das angesteckte Fahrzeug (Vertrag
+             * mispel-ladepunkt-bidirektional.md § 5b):
+             *
+             * socMeasuredAt = die EIGENE Uhr von socPct. socPct ist der
+             * juengere aus Messwert SoC und der ISO-15118-20-Meldung des
+             * Fahrzeugs (DC); die Meldung ist kein Messwert, meteredAt ist
+             * also nicht unbedingt ihre Uhr. null = kein Ladestand.
+             *
+             * bidirectional = das Fahrzeug fordert einen BPT-Modus an
+             * (ev_needs.bidirectional der Box, OCPP 2.1). null = keine Meldung
+             * (OCPP 1.6/2.0.1, vor der Aushandlung, aeltere Box) - UNBEKANNT,
+             * nie false; die Flaeche sagt dann „prueft die Wallbox beim
+             * Anstecken".
+             */
+            Instant socMeasuredAt, Boolean bidirectional) {}
 }

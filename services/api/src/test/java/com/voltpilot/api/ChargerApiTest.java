@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.chargers.ChargerStatusListener;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
@@ -276,6 +278,65 @@ class ChargerApiTest {
         }
     }
 
+    /**
+     * MiSpeL MP-37b: das angesteckte Fahrzeug am Stecker - ob es bidirektional
+     * überträgt und die eigene Uhr seines Ladestands - durch den ECHTEN Zuhörer
+     * und die echte Datenbank bis in die Ladepunkt-Sicht. Die Fälle teilt sich
+     * dieser Test mit der Box ({@code docs/contracts/v2/mispel-ladepunkt-fahrzeug-vectors.json}):
+     * {@code edge} ist der Stecker im Herzschlag, {@code portal} derselbe Stecker
+     * in der Sicht. Unbekannt bleibt null, nie false.
+     */
+    @Test
+    void theVehicleReportOfTheBoxReachesThePlugOfTheChargePointView() throws Exception {
+        JsonNode vectors = json.readTree(java.nio.file.Path.of("..", "..", "docs", "contracts", "v2",
+                "mispel-ladepunkt-fahrzeug-vectors.json").toFile());
+        List<JsonNode> faelle = new java.util.ArrayList<>();
+        vectors.get("faelle").forEach(faelle::add);
+        assertThat(faelle).hasSizeGreaterThanOrEqualTo(7);
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepunkt-Fahrzeug");
+        try {
+            UUID device = claim(customer, site, "edge-mp37b-1");
+            ObjectNode block = (ObjectNode) json.readTree(oneStation());
+            ArrayNode plugs = json.createArrayNode();
+            for (int i = 0; i < faelle.size(); i++) {
+                ObjectNode plug = json.createObjectNode();
+                plug.put("id", i + 1).put("status", "Charging").put("charging", true);
+                plug.setAll((ObjectNode) faelle.get(i).get("edge"));
+                plugs.add(plug);
+            }
+            ((ObjectNode) block.get("chargers").get(0)).set("connectors", plugs);
+            block.put("connector_count", faelle.size());
+            heartbeat(site, device, json.writeValueAsString(block));
+
+            JsonNode cons = getJson("/api/v1/sites/" + site + "/chargers", customer)
+                    .get("chargers").get(0).get("connectors");
+            assertThat(cons).hasSize(faelle.size());
+            for (int i = 0; i < faelle.size(); i++) {
+                String name = faelle.get(i).get("name").asText();
+                JsonNode want = faelle.get(i).get("portal");
+                JsonNode got = cons.get(i);
+                assertThat(got.get("connectorId").asInt()).as(name).isEqualTo(i + 1);
+                assertThat(got.get("bidirectional")).as(name + ": bidirectional")
+                        .isEqualTo(want.get("bidirectional"));
+                if (want.get("socPct").isNull()) {
+                    assertThat(got.get("socPct").isNull()).as(name + ": socPct").isTrue();
+                } else {
+                    assertThat(got.get("socPct").asDouble()).as(name + ": socPct")
+                            .isEqualTo(want.get("socPct").asDouble());
+                }
+                if (want.get("socMeasuredAt").isNull()) {
+                    assertThat(got.get("socMeasuredAt").isNull()).as(name + ": socMeasuredAt").isTrue();
+                } else {
+                    assertThat(java.time.Instant.parse(got.get("socMeasuredAt").asText()))
+                            .as(name + ": socMeasuredAt")
+                            .isEqualTo(java.time.Instant.parse(want.get("socMeasuredAt").asText()));
+                }
+            }
+        } finally {
+            deleteSite(site);
+        }
+    }
 
     /**
      * Die Anschlussgrenze wird im PORTAL gepflegt (Stufe 3, PR 12) - und der
