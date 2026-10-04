@@ -339,6 +339,8 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   mockSurface(MULTI);
   const view = renderSeite();
   await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+  // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter.
+  await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull());
   await bestandSnapshot('cockpit', view);
 });
 
