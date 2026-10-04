@@ -142,6 +142,8 @@
 :is(.stn, .stn-blatt) .btn.sek{background:var(--c-card);color:var(--action);box-shadow:inset 0 0 0 1.5px var(--action)}
 :is(.stn, .stn-blatt) .btn.sek:hover{background:color-mix(in srgb,var(--action) 6%,var(--c-card))}
 :is(.stn, .stn-blatt) .btn svg{width:18px;height:18px}
+:is(.stn, .stn-blatt) .btn:disabled{opacity:.5;cursor:default;background:var(--action)}
+:is(.stn, .stn-blatt) .btn.sek:disabled{background:var(--c-card)}
 
 :is(.stn, .stn-blatt) .auto{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px 0 10px;border-radius:999px;border:1px solid var(--c-border);background:var(--c-card);font:700 13px var(--font);color:var(--st-on);cursor:pointer;flex:none}
 :is(.stn, .stn-blatt) .auto i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 20%,transparent)}
@@ -330,6 +332,9 @@
 :is(.stn, .stn-blatt) .stp button{width:44px;height:42px;border:0;background:none;display:grid;place-items:center;color:var(--action);cursor:pointer}
 :is(.stn, .stn-blatt) .stp button svg{width:18px;height:18px}
 :is(.stn, .stn-blatt) .stp output{min-width:78px;text-align:center;font:800 15px var(--font);font-variant-numeric:tabular-nums}
+:is(.stn, .stn-blatt) .prow input.zahl{width:110px;min-height:44px;border-radius:12px;border:1px solid var(--field);background:var(--c-card);color:inherit;padding:0 12px;font:800 16px var(--font);font-variant-numeric:tabular-nums;text-align:right;flex:none}
+:is(.stn, .stn-blatt) .prow input.zahl[aria-invalid="true"]{border-color:var(--c-warn-fg, #9a3412)}
+:is(.stn, .stn-blatt) .pruefung{display:grid;gap:6px}
 :is(.stn, .stn-blatt) .chips{display:flex;flex-wrap:wrap;gap:6px}
 :is(.stn, .stn-blatt) .chips button{min-height:40px;padding:0 13px;border-radius:12px;border:1px solid var(--c-border);background:var(--c-card);font:700 14px var(--font);color:var(--c-fg);cursor:pointer;font-variant-numeric:tabular-nums}
 :is(.stn, .stn-blatt) .chips button[aria-pressed="true"]{background:var(--c-fg);border-color:var(--c-fg);color:#fff}

@@ -10,7 +10,7 @@
 import { api } from '../src/api';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { buildGuidedFlow } from '../src/flows/guidedBuilder';
-import { installHelpFixtures } from './help-fixtures';
+import { installHelpFixtures, site } from './help-fixtures';
 import D from './steuerung-daten.json';
 
 /** Die Uhr der Aufnahmen: 13:10 Uhr in Berlin. */
@@ -217,6 +217,9 @@ export function installSteuerungFixtures() {
     }),
     siteChargers: result(charging),
     chargingConfig: result({ gridLimitKw: 22, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 } }),
+    // Das Rahmen-Blatt prüft die Grenze gegen den heute gebundenen Netzanschluss (AP-01 IP-13); das Haus hat keinen Standort.
+    siteDetail: result({ ...site, standort: null }),
+    saveCustomerChargingFrame: async (_s: string, body: { gridLimitKw: number }) => ({ gridLimitKw: body.gridLimitKw, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 } }),
     consumerSchedule: result(consumerPlan),
     siteInterventions: result({ automationPaused: false, pausedUntil: null, interventions: [] }),
     siteAssets: result([{ id: 'st-batt', type: 'battery', deviceId: 'help-box', capacityKwh: 10, maxChargeKw: 5, maxDischargeKw: 5, roundtripEfficiencyPct: 92, speicherschonung: 'ausgewogen', pvCapacityKwp: null, moduleCount: null, azimuthDeg: null, tiltDeg: null, commissionedOn: null, registry: null, registryUnitId: null, registryFetchedAt: null }]),

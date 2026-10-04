@@ -4,17 +4,22 @@
  * Womit laden, Ladeziel, Ladeplan, Vorrang vor dem Speicher, Fahrzeuge.
  */
 import { liste } from './liste';
-import { useState } from 'react';
-import type { ChargingConfig } from '../api';
+import { useEffect, useId, useRef, useState } from 'react';
+import { api, type ChargingConfig } from '../api';
+import { Recht } from '../components/Recht';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
+import { parseDecimal } from '../zahl';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
 import { Ic } from './Ic';
-import { band, ladeQuelle, ladeWahl, ladeplan, naechsteUhrzeit, type LadeQuelle } from './laden';
+import {
+  band, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan, lokalesDatum,
+  naechsteUhrzeit, type AnschlussStand, type LadeQuelle,
+} from './laden';
 import type { BlattZustand, SeitenBild } from './seite';
 import { Zeitband } from './Zeitband';
 import { N, TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
@@ -404,18 +409,50 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
   );
 }
 
-export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
-  k: BlattKontext; rahmen: LadeparkRahmen | null; config: ChargingConfig | null; onGrenze: (kw: number) => Promise<boolean>;
+/**
+ * Das Rahmen-Blatt: die Anschlussgrenze gehört dem Kunden, der Rest ist von der
+ * Box vorgegeben. Die Grenze schreibt der Kunden-Schritt `PUT /charging-frame`
+ * (AP-01 IP-13): er prüft sie gegen den heute gebundenen Netzanschluss, die
+ * Grundlast der letzten 7 Tage und die Hausreserve und lehnt mit 422 ab. Das
+ * Blatt zeigt denselben Grund schon vorher und sperrt „Übernehmen“. Ohne
+ * Bindung gilt der Übergang: die vereinbarte Leistung kommt aus dem Blatt.
+ */
+export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
+  k: BlattKontext; siteId: string; rahmen: LadeparkRahmen | null; config: ChargingConfig | null;
+  onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
 }) {
   const start = config?.gridLimitKw ?? rahmen?.gepflegteGrenzeKw ?? rahmen?.netzanschlussKw ?? null;
   const [kw, setKw] = useState<number | null>(start);
+  const anschluss = useAnschluss(siteId);
+  const [uebergang, setUebergang] = useState('');
+  const [uebergangBeruehrt, setUebergangBeruehrt] = useState(false);
+  const uebergangRef = useRef<HTMLInputElement>(null);
+  const uebergangId = useId();
   const geaendert = kw != null && kw !== start;
+  const ungebunden = anschluss.zustand === 'ungebunden';
+  const uebergangKw = parseDecimal(uebergang);
+  const uebergangFehlt = ungebunden && (uebergangKw == null || uebergangKw <= 0);
+  const grundlastKw = config?.frame?.maxHouseLoadKw ?? null;
+  const reserveKw = config?.frame?.houseReserveKw ?? null;
+  const einwand = grenzePruefung(kw, anschluss, uebergangKw, grundlastKw, reserveKw);
+  const budgetKw = ladebudgetKw(kw, grundlastKw, reserveKw);
   const zeilen: [string, string][] = [];
   if (rahmen?.sicherheitsabstandPct != null) zeilen.push(['Sicherheitsabstand', fPct(rahmen.sicherheitsabstandPct)]);
   if (rahmen?.mindestleistungKw != null) zeilen.push(['Mindestleistung je Auto', fKw(rahmen.mindestleistungKw)]);
   if (config?.frame?.rotationMinutes != null) zeilen.push(['Wechsel bei knapper Leistung', `alle ${config.frame.rotationMinutes} Min`]);
   if (rahmen?.modus) zeilen.push(['Budget', rahmen.modus === 'measured' || rahmen.modus === 'metered' ? 'gemessen am Netzanschluss' : 'fest']);
   zeilen.push(['§ 14a EnWG', 'Grenze gilt dann für alle']);
+
+  async function uebernehmen() {
+    if (kw == null) return;
+    if (uebergangFehlt) {
+      setUebergangBeruehrt(true);
+      uebergangRef.current?.focus();
+      return;
+    }
+    if (await onGrenze(kw, ungebunden && uebergangKw != null ? uebergangKw : undefined)) k.zu();
+  }
+
   return (
     <Blatt
       symbol="gauge"
@@ -424,8 +461,8 @@ export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
       onClose={k.zu}
       fuss={geaendert ? (
         <>
-          <button type="button" className="btn sek" onClick={() => setKw(start)}>Abbrechen</button>
-          <button type="button" className="btn" disabled={k.busy === 'rahmen'} onClick={async () => { if (kw != null && (await onGrenze(kw))) k.zu(); }}>
+          <button type="button" className="btn sek" onClick={() => { setKw(start); setUebergangBeruehrt(false); }}>Abbrechen</button>
+          <button type="button" className="btn" disabled={k.busy === 'rahmen' || anschluss.zustand === 'laden' || einwand != null} onClick={() => void uebernehmen()}>
             <Ic n="check" s={18} />
             Übernehmen
           </button>
@@ -437,12 +474,50 @@ export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
         <div className="param">
           <div className="prow">
             <span>Ihr Netzanschluss<small>gehört Ihnen; VoltPilot hält ihn ein</small></span>
-            <span className="stp">
-              <button type="button" aria-label="weniger" onClick={() => setKw(Math.max(6, (kw ?? 22) - 1))}><Ic n="minus" s={18} /></button>
-              <output>{kw != null ? fKw(kw) : '—'}</output>
-              <button type="button" aria-label="mehr" onClick={() => setKw(Math.min(400, (kw ?? 21) + 1))}><Ic n="plus" s={18} /></button>
-            </span>
+            <Recht aktion="grenze.eintragen">
+              <span className="stp">
+                <button type="button" aria-label="weniger" onClick={() => setKw(Math.max(6, (kw ?? 22) - 1))}><Ic n="minus" s={18} /></button>
+                <output>{kw != null ? fKw(kw) : '—'}</output>
+                <button type="button" aria-label="mehr" onClick={() => setKw(Math.min(400, (kw ?? 21) + 1))}><Ic n="plus" s={18} /></button>
+              </span>
+            </Recht>
           </div>
+          {ungebunden && geaendert && (
+            <div className="prow">
+              <span><label htmlFor={uebergangId}>Vereinbarte Leistung (kW)</label></span>
+              <input
+                ref={uebergangRef}
+                id={uebergangId}
+                className="zahl"
+                inputMode="decimal"
+                value={uebergang}
+                onChange={(e) => { setUebergang(e.target.value); setUebergangBeruehrt(true); }}
+                aria-invalid={uebergangBeruehrt && uebergangFehlt ? true : undefined}
+              />
+            </div>
+          )}
+        </div>
+        <div className="pruefung" aria-label="Plausibilitätsprüfung der Anschlussgrenze">
+          {anschluss.zustand === 'laden' && <p className="leise">Netzanschluss wird geprüft …</p>}
+          {anschluss.zustand === 'fehler' && <p className="leise">Der Netzanschluss konnte nicht geladen werden.</p>}
+          {anschluss.zustand === 'gebunden' && (
+            <p className="leise">
+              {anschluss.vereinbartKw == null
+                ? `Netzanschluss ${anschluss.kennzeichen}: vereinbarte Leistung fehlt.`
+                : `Netzanschluss ${anschluss.kennzeichen}: ${kwVereinbart(anschluss.vereinbartKw)} vereinbart.`}
+            </p>
+          )}
+          {ungebunden && (
+            <p className="leise">Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.</p>
+          )}
+          {grundlastKw != null && reserveKw != null && (
+            <p className="leise">
+              Grundlast der letzten 7 Tage {kwVereinbart(grundlastKw)} · Hausreserve {kwVereinbart(reserveKw)}
+              {budgetKw != null && budgetKw > 0 ? ` · Ladebudget ${kwVereinbart(budgetKw)}` : ''}
+            </p>
+          )}
+          {uebergangBeruehrt && uebergangFehlt && geaendert && <p className="stn-fehler">Tragen Sie die vereinbarte Leistung ein.</p>}
+          {einwand && <p className="stn-fehler">{einwand}</p>}
         </div>
       </div>
       <div className="blk">
@@ -462,6 +537,27 @@ export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
       )}
     </Blatt>
   );
+}
+
+/** Der heute gebundene Netzanschluss der Anlage - gelesen, sobald das Rahmen-Blatt aufgeht. */
+function useAnschluss(siteId: string): AnschlussStand {
+  const [stand, setStand] = useState<AnschlussStand>({ zustand: 'laden' });
+  useEffect(() => {
+    let aktiv = true;
+    const heute = lokalesDatum(new Date());
+    api.siteDetail(siteId)
+      .then(async (detail): Promise<AnschlussStand> => {
+        if (!detail.standort) return { zustand: 'ungebunden' };
+        const liste = await api.netzanschluesse(detail.standort.id, heute);
+        return heutigerAnschluss(liste.netzanschluesse, siteId, heute);
+      })
+      .then(
+        (s) => { if (aktiv) setStand(s); },
+        () => { if (aktiv) setStand({ zustand: 'fehler' }); },
+      );
+    return () => { aktiv = false; };
+  }, [siteId]);
+  return stand;
 }
 
 export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {

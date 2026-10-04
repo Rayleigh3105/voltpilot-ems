@@ -537,11 +537,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       <main className={`stn-main ${reiter}`}>
         {inhalt}
       </main>
-      {blatt && <BlattWahl blatt={blatt} k={k} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw) => {
+      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw, vereinbartKw) => {
         let ok = false;
         await lauf('rahmen', async () => {
           try {
-            const c = await api.saveChargingConfig(site.id, { gridLimitKw: kw });
+            // Der Kunden-Schritt (AP-01 IP-13) prüft gegen den Netzanschluss und lehnt mit 422 und Grund ab;
+            // `/charging-config` speicherte die Grenze ungeprüft.
+            const c = await api.saveCustomerChargingFrame(site.id, { gridLimitKw: kw, ...(vereinbartKw != null ? { vereinbartKw } : {}) });
             setze('chargingConfig', c);
             meldung('Rahmen übernommen.');
             ok = true;
@@ -576,9 +578,10 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   );
 }
 
-function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
   blatt: BlattZustand;
   k: BlattKontext;
+  siteId: string;
   ziele: GeraetBild[];
   karten: RegelKarte[];
   bezug: ReturnType<typeof bezugAus>;
@@ -587,7 +590,7 @@ function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onL
   onRegel: (e: RegelEntwurf) => Promise<boolean>;
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
-  onGrenze: (kw: number) => Promise<boolean>;
+  onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
   onFahrzeug: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
 }) {
   switch (blatt.art) {
@@ -610,7 +613,7 @@ function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onL
     case 'szene':
       return <SzeneBlatt k={k} id={blatt.id} />;
     case 'rahmen':
-      return <RahmenBlatt k={k} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
+      return <RahmenBlatt k={k} siteId={siteId} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
     case 'ziel':
       return <ZielBlatt k={k} id={blatt.id} onSpeichern={onSteuerart} />;
     case 'fahrzeug':
