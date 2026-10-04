@@ -142,6 +142,59 @@ export interface LadepunktAnsicht {
   z2: LadepunktZ2[];
   befunde: LadepunktBefund[];
   fassungen: Array<{ id: string; gueltig_ab: string; gueltig_bis: string | null; aufgehoben_am: string | null }>;
+  /** MP-31 § 5: das Fahrzeugfenster; `null` = nie gesetzt. */
+  fahrzeugfenster?: LadepunktFahrzeugfenster | null;
+  /** MP-41a § 5a: die Einstellungen des Fahrers. */
+  fahrer_einstellungen?: FahrerEinstellungen | null;
+}
+
+// ---------------------------------------------------------------------------- Fahrzeugfenster und Fahrer (MP-31 § 5, MP-41a § 5a)
+
+export interface LadepunktFahrzeugfenster {
+  mindest_soc_pct: number | null;
+  kapazitaet_kwh: number | null;
+  anwesenheit: Array<{ wochentag: number; ankunft: string; abfahrt: string; abfahrt_soc_pct: number | null }>;
+}
+
+/** Zurückspeisen: `aus` · `v2h` (nur ins Haus) · `v2g` (Haus und Netz) - Vokabular des Fahrplans 2.0. */
+export type Rueckspeisen = 'aus' | 'v2h' | 'v2g';
+
+/** Eine Abfahrt für einen oder mehrere ISO-Wochentage (1 = Montag), `HH:MM` in der Ortszeit des Kundenbereichs. */
+export interface FahrerAbfahrt {
+  wochentage: number[];
+  abfahrt: string;
+  abfahrt_soc_pct: number;
+}
+
+/** „Nur die nächste Fahrt“: Ortszeit `JJJJ-MM-TTTHH:MM`, höchstens 7 Tage voraus. */
+export interface NaechsteFahrt {
+  abfahrt: string;
+  abfahrt_soc_pct: number;
+}
+
+export interface FahrerEinstellungen {
+  erfasst: boolean;
+  rueckspeisen: Rueckspeisen;
+  /** Der Wunsch am Tag, nie über der Fähigkeit dieses Tages. */
+  rueckspeisen_wirksam: Rueckspeisen;
+  /** = `mindest_soc_pct` des Fahrzeugfensters; `null` = nicht gesagt (dann speist die Box nicht zurück). */
+  reserve_pct: number | null;
+  vollzyklen_je_tag: number | null;
+  abfahrten: FahrerAbfahrt[];
+  naechste_fahrt: NaechsteFahrt | null;
+  /** Kapazität × 6 km/kWh ÷ 100; `null` ohne Kapazität - eine Anzeigehilfe, kein Messwert. */
+  km_je_prozent: number | null;
+  geaendert_am: string | null;
+  geaendert_von: string | null;
+}
+
+/** `PUT …/fahrer-einstellungen` ersetzt den Stand ganz. */
+export interface FahrerAnfrage {
+  rueckspeisen: Rueckspeisen;
+  reserve_pct: number | null;
+  vollzyklen_je_tag: number | null;
+  abfahrten: FahrerAbfahrt[];
+  naechste_fahrt: NaechsteFahrt | null;
 }
 
 export interface LadepunktListe {

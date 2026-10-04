@@ -39,7 +39,7 @@ import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
 import type { ChargePoint, ChargeConnector, SiteCharging } from '../ladepunkte';
-import { ladeZustand, aktuelleLeistung } from '../ladepunkte';
+import { ladeZustand, aktuelleLeistung, messwertAlter } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -242,6 +242,10 @@ export interface LadepunktBezug {
   sitzungKwh: number | null;
   karte: string | null;
   laedt: boolean;
+  /** MiSpeL MP-41b: der gemeldete Ladestand des Autos (%); `null` = nicht gemeldet oder veraltet - nie 0. */
+  ladestandPct: number | null;
+  /** MiSpeL MP-41b: überträgt das angesteckte Auto bidirektional? `null` = unbekannt (prüft die Wallbox beim Anstecken). */
+  fahrzeugBidirektional: boolean | null;
 }
 
 export interface GeraetBild {
@@ -557,6 +561,8 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
             sitzungKwh: num(lp.con?.sessionKwh),
             karte: lp.con?.tagRef ?? null,
             laedt: lp.con?.charging === true,
+            ladestandPct: lp.con && messwertAlter(lp.con, nowMs) !== 'veraltet' ? num(lp.con.socPct) : null,
+            fahrzeugBidirektional: typeof lp.con?.bidirectional === 'boolean' ? lp.con.bidirectional : null,
           }
         : null,
       gemessen,

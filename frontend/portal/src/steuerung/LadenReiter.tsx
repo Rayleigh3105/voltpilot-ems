@@ -7,7 +7,9 @@ import { liste } from './liste';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, type ChargingConfig } from '../api';
 import { Recht } from '../components/Recht';
+import { VpTimePicker } from '../components/VpTimePicker';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
+import type { FahrerAnfrage, LadepunktErtraege, LadepunktListe, Rueckspeisen } from '../ladepunktErtraege';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
@@ -17,8 +19,9 @@ import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
 import { Ic } from './Ic';
 import {
-  band, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan, lokalesDatum,
-  naechsteUhrzeit, type AnschlussStand, type LadeQuelle,
+  abfahrtSetzen, abfahrtZeile, band, ertragZeile, fahrerAnfrage, grenzePruefung, heutigerAnschluss, kmZu,
+  kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan, lokalesDatum, naechsteAbfahrt, naechsteUhrzeit, pctKm, plantZurueck,
+  rueckspeiseSatz, wallboxMispel, wochentageText, type AnschlussStand, type LadeQuelle, type WallboxMispel,
 } from './laden';
 import type { BlattZustand, SeitenBild } from './seite';
 import { Zeitband } from './Zeitband';
@@ -36,6 +39,11 @@ export interface LadenReiterProps {
   onVorrang: (speicherZuerst: boolean) => void;
   onLadevorgaenge: () => void;
   zuGeraete: () => void;
+  /** MiSpeL MP-41b: Ladepunkte mit Fähigkeit und Fahrer-Einstellungen; `null` = unbekannt → Karten wie heute. */
+  ladepunkte?: LadepunktListe | null;
+  ertraege?: LadepunktErtraege | null;
+  onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>;
+  zuErloesen?: () => void;
 }
 
 export function LadenReiter(p: LadenReiterProps) {
@@ -45,7 +53,8 @@ export function LadenReiter(p: LadenReiterProps) {
     <>
       <BudgetKarte bild={bild} rahmen={p.rahmen} oeffne={p.oeffne} />
       {lp.map((g) => (
-        <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} onQuelle={p.onQuelle} />
+        <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} onQuelle={p.onQuelle}
+          m={wallboxMispel(g, p.ladepunkte)} ertraege={p.ertraege ?? null} onFahrer={p.onFahrer} zuErloesen={p.zuErloesen} />
       ))}
       {!lp.length && (
         <section className="card">
@@ -53,7 +62,7 @@ export function LadenReiter(p: LadenReiterProps) {
         </section>
       )}
       {bild.speicher && <VorrangKarte config={p.config} busy={p.busy === 'vorrang'} onVorrang={p.onVorrang} zuGeraete={p.zuGeraete} />}
-      <FahrzeugKarte fahrzeuge={p.fahrzeuge} oeffne={p.oeffne} bild={bild} />
+      <FahrzeugKarte fahrzeuge={p.fahrzeuge} oeffne={p.oeffne} bild={bild} mispel={lp.some((g) => wallboxMispel(g, p.ladepunkte) != null)} />
       <section className="card immer">
         <button type="button" className="immer-r" onClick={p.onLadevorgaenge}>
           <span className="li"><Ic n="history" s={18} /></span>
@@ -102,10 +111,15 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
   );
 }
 
-function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
+function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ertraege, onFahrer, zuErloesen }: {
   g: GeraetBild; bild: SeitenBild; fahrzeuge: SiteFahrzeuge | null; busy: boolean;
   oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void; onQuelle: (g: GeraetBild, q: LadeQuelle) => void;
+  /** MiSpeL MP-41b; `null` = Bestand, die Karte bleibt wie vor MP-41b. */
+  m: WallboxMispel | null; ertraege: LadepunktErtraege | null;
+  onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>; zuErloesen?: () => void;
 }) {
+  // BK-41 A: für ein Auto mit gemeldetem Ladestand wird das Ladeziel zu „Abfahrt und Reserve“ - eine Quelle (MP-41a).
+  const abfahrtStatt = m?.fahrzeug === 'mit_ladestand';
   const r = bild.raster;
   const l = g.ladepunkt;
   const wahl = ladeWahl(g);
@@ -188,7 +202,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
       </div></Recht>
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>
-      {l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
+      {!abfahrtStatt && l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
         <div className="soc">
           <div className="soc-row">
             <span>Diese Ladung: {fKwh(l.sitzungKwh)}</span>
@@ -199,9 +213,10 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
           </div>
         </div>
       )}
+      {m && <WallboxTeil g={g} m={m} busy={busy} oeffne={oeffne} onFahrer={onFahrer} nowMs={r.nowMs} />}
       {wahl === 'smart' && (
         <>
-          <div className="blk">
+          {!abfahrtStatt && <div className="blk">
             <h3>Womit laden?</h3>
             <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Womit laden">
               {quellen.filter(([, , id]) => frei.has(id)).map(([k, label]) => (
@@ -210,8 +225,9 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
             </div></Recht>
             {q === 'guenstig' && !zielAn && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Börsenpreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
             {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
-          </div>
-          {zielMoeglich && (
+          </div>}
+          {abfahrtStatt && m && <AbfahrtZeile g={g} m={m} oeffne={oeffne} nowMs={r.nowMs} />}
+          {!abfahrtStatt && zielMoeglich && (
             <button type="button" className="lziel" onClick={() => oeffne({ art: 'ziel', id: g.id })}>
               <Ic n="flag" s={20} />
               <span>
@@ -237,6 +253,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
           />
         </>
       )}
+      {m && <ErtragZeile e={ertraege} komponente={g.id} zuErloesen={zuErloesen} />}
     </section>
   );
 }
@@ -269,7 +286,7 @@ function VorrangKarte({ config, busy, onVorrang, zuGeraete }: { config: Charging
   );
 }
 
-function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge | null; oeffne: (b: BlattZustand) => void; bild: SeitenBild }) {
+function FahrzeugKarte({ fahrzeuge, oeffne, bild, mispel = false }: { fahrzeuge: SiteFahrzeuge | null; oeffne: (b: BlattZustand) => void; bild: SeitenBild; mispel?: boolean }) {
   const namen = (cp: string) => bild.ladepunkte.find((g) => g.ladepunkt?.chargePointId === cp)?.name ?? null;
   const zeilen = fahrzeugZeilen(fahrzeuge, namen, bild.raster.nowMs);
   return (
@@ -291,8 +308,278 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge |
       ) : (
         <p className="leise">Noch hat keine Ladekarte hier geladen.</p>
       )}
-      <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.</p>
+      {mispel ? (
+        // MiSpeL MP-41b: Abfahrt und Reserve gehören dem Ladepunkt, nicht dem Fahrzeug (A1 S. 27, Abschn. 3.2.5).
+        <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. An einem Ladepunkt mit Zurückspeisen gelten Abfahrt und Reserve für jedes Auto, das seinen Ladestand meldet — nicht je Karte; für alle anderen ist ein Ziel eine Menge in kWh.</p>
+      ) : (
+        <p className="leise">Wer mit dieser Karte lädt, bekommt diese Einstellung. Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.</p>
+      )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MiSpeL MP-41b: Wallbox-Karte an einem bidirektionalen Ladepunkt (BK-41 A)
+// ---------------------------------------------------------------------------
+
+const STUFEN: [Rueckspeisen, 'x' | 'house' | 'pole', string][] = [['aus', 'x', 'Aus'], ['v2h', 'house', 'Ins Haus'], ['v2g', 'pole', 'Haus + Netz']];
+
+/**
+ * Ladestand mit Reserve- und Abfahrtsmarke, „Zurückspeisen: Aus · Ins Haus ·
+ * Haus + Netz“ und der Satz dazu. Die Stufen sind die Freigabe des Fahrers
+ * (MP-41a § 5a), nie über der Fähigkeit des Ladepunkts (A1 S. 26 Fn. 21);
+ * V2H vor V2G steht in der Reihenfolge.
+ */
+function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
+  g: GeraetBild; m: WallboxMispel; busy: boolean; oeffne: (b: BlattZustand) => void;
+  onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>; nowMs: number;
+}) {
+  const f = m.fahrer;
+  const km = f.km_je_prozent;
+  const ab = naechsteAbfahrt(f, nowMs);
+  const kannNicht = m.fahrzeug === 'ohne_rueckspeisen';
+  return (
+    <div className="wb-mispel" data-fahrzeug={m.fahrzeug}>
+      {m.ladestandPct != null && (
+        <div className="soc wb-soc" data-ladestand={m.ladestandPct}>
+          <div className="soc-row wb-soc-k">
+            <b>{zahl0(m.ladestandPct)} %</b>
+            <span>{[kmZu(m.ladestandPct, km), 'jetzt'].filter(Boolean).join(' · ')}</span>
+          </div>
+          <div className="soc-bar" role="img" aria-label={`Ladestand ${zahl0(m.ladestandPct)} %${f.reserve_pct != null ? `, Reserve ${zahl0(f.reserve_pct)} %` : ''}${ab ? `, Abfahrt ${zahl0(ab.socPct)} %` : ''}`}>
+            <span style={{ width: `${Math.min(100, Math.max(0, m.ladestandPct))}%` }} />
+            {f.reserve_pct != null && <i className="res" style={{ width: `${Math.min(100, f.reserve_pct)}%` }} />}
+            {ab && <u style={{ left: `${Math.min(100, ab.socPct)}%` }} />}
+          </div>
+          <div className="soc-row">
+            <span>{f.reserve_pct != null ? `Reserve ${zahl0(f.reserve_pct)} %` : 'Keine Reserve'}</span>
+            {ab && <span>Abfahrt {zahl0(ab.socPct)} %</span>}
+          </div>
+        </div>
+      )}
+      {kannNicht && (
+        <div className="lziel wb-hinweis" role="note">
+          <Ic n="info" s={20} />
+          <span>
+            <b>Dieses Auto kann nicht zurückspeisen</b>
+            <small>Es lädt wie gewohnt. Ihre Einstellungen gelten wieder, sobald ein Auto mit Rückspeise-Funktion ansteckt.</small>
+          </span>
+          <span />
+        </div>
+      )}
+      <div className="blk">
+        <h3>Zurückspeisen</h3>
+        <Recht aktion="ladepunkt.betrieb"><div className="lmodes wb-stufen" role="group" aria-label="Zurückspeisen" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
+          {STUFEN.map(([k, i, label]) => (
+            <button
+              type="button"
+              key={k}
+              data-r={k}
+              aria-pressed={f.rueckspeisen === k}
+              disabled={busy || kannNicht || !m.traegt[k] || !onFahrer}
+              title={!m.traegt[k] ? 'Das kann dieser Ladepunkt nicht; was er kann, trägt der Installateur im Aufbau ein.' : undefined}
+              onClick={() => { if (onFahrer && f.rueckspeisen !== k) void onFahrer(g, fahrerAnfrage(f, { rueckspeisen: k })); }}
+            >
+              <Ic n={i} s={20} />
+              {label}
+            </button>
+          ))}
+        </div></Recht>
+        <p className="wb-satz">{rueckspeiseSatz(m)}</p>
+        {f.rueckspeisen !== 'aus' && !kannNicht && !plantZurueck(g) && (
+          <p className="leise" data-hinweis="plant-noch-nicht">Zurückspeisen plant VoltPilot noch nicht; bis dahin lädt das Auto nur.</p>
+        )}
+        {m.fahrzeug === 'kein_auto' && <p className="leise">Ob ein Auto zurückspeisen kann, prüft die Wallbox beim Anstecken.</p>}
+      </div>
+      {(m.fahrzeug === 'kein_auto' || m.fahrzeug === 'ohne_ladestand') && (
+        <button type="button" className="lziel" data-zeile="abfahrt-reserve" onClick={() => oeffne({ art: 'abfahrt', id: g.id })}>
+          <Ic n="shield" s={20} />
+          <span>
+            <b>{f.reserve_pct != null ? `Abfahrt und Reserve · Reserve ${pctKm(f.reserve_pct, km)}` : 'Abfahrt und Reserve festlegen'}</b>
+            <small>Gilt, sobald ein Auto mit Rückspeise-Funktion seinen Ladestand meldet. Bis dahin gilt das Ladeziel unten.</small>
+          </span>
+          <Ic n="chevR" s={18} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Das Ladeziel eines Autos mit Ladestand: „Abfahrt und Reserve“ (BK-41 A). */
+function AbfahrtZeile({ g, m, oeffne, nowMs }: { g: GeraetBild; m: WallboxMispel; oeffne: (b: BlattZustand) => void; nowMs: number }) {
+  const z = abfahrtZeile(m.fahrer, nowMs);
+  return (
+    <button type="button" className="lziel" data-zeile="abfahrt" onClick={() => oeffne({ art: 'abfahrt', id: g.id })}>
+      <Ic n="flag" s={20} />
+      <span>
+        <b>{z.titel}</b>
+        <small>{z.unter}</small>
+      </span>
+      <Ic n="chevR" s={18} />
+    </button>
+  );
+}
+
+/** Der Monat am Ladepunkt und der Sprung in Verlauf › Erlöse (BK-41 A, die Karte dort ist MP-41a). */
+function ErtragZeile({ e, komponente, zuErloesen }: { e: LadepunktErtraege | null; komponente: string; zuErloesen?: () => void }) {
+  const z = ertragZeile(e, komponente);
+  if (!z) return null;
+  return (
+    <button type="button" className="lziel wb-ertrag" data-zeile="ertrag" onClick={() => zuErloesen?.()}>
+      <Ic n="euro" s={20} />
+      <span>
+        <b>{z.titel}</b>
+        <small>{z.unter}</small>
+      </span>
+      <Ic n="chevR" s={18} />
+    </button>
+  );
+}
+
+const WOCHE: [number, string][] = [[1, 'Mo'], [2, 'Di'], [3, 'Mi'], [4, 'Do'], [5, 'Fr'], [6, 'Sa'], [7, 'So']];
+
+/** `JJJJ-MM-TTTHH:MM` in der Zeitzone des Browsers. */
+function ortszeitIso(ms: number): string {
+  const d = new Date(ms);
+  return `${lokalesDatum(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Das Blatt „Abfahrt und Reserve“ (BK-41 A): eine Abfahrt für mehrere
+ * Wochentage, Ladestand bei Abfahrt und Reserve in Prozent und Kilometern,
+ * „Akku schonen“ in Ladungen am Tag und „nur die nächste Fahrt“. Schreibt
+ * die Einstellungen des Fahrers ganz (`PUT …/fahrer-einstellungen`, MP-41a).
+ */
+export function AbfahrtBlatt({ k, id, ladepunkte, onSpeichern }: {
+  k: BlattKontext; id: string; ladepunkte: LadepunktListe | null;
+  onSpeichern: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>;
+}) {
+  const g = k.bild.geraete.find((x) => x.id === id);
+  const m = g ? wallboxMispel(g, ladepunkte) : null;
+  const f = m?.fahrer;
+  const erste = f?.abfahrten?.[0] ?? null;
+  const [tage, setTage] = useState<number[]>(erste?.wochentage ?? [1, 2, 3, 4, 5]);
+  const [um, setUm] = useState<string>(erste?.abfahrt.slice(0, 5) ?? '07:00');
+  const [ziel, setZiel] = useState<number>(erste?.abfahrt_soc_pct ?? 80);
+  const [reserve, setReserve] = useState<number>(f?.reserve_pct ?? 30);
+  const [zyklen, setZyklen] = useState<number | null>(f?.vollzyklen_je_tag ?? null);
+  const [einmal, setEinmal] = useState<boolean>(f?.naechste_fahrt != null);
+  const [einmalAb, setEinmalAb] = useState<string>(f?.naechste_fahrt?.abfahrt.slice(0, 16) ?? ortszeitIso(k.bild.raster.nowMs + 18 * 3_600_000).slice(0, 11) + '06:00');
+  const [einmalZiel, setEinmalZiel] = useState<number>(f?.naechste_fahrt?.abfahrt_soc_pct ?? 100);
+  const zielId = useId();
+  const reserveId = useId();
+  const einmalId = useId();
+  if (!g || !m || !f) return null;
+  const km = f.km_je_prozent;
+  const busy = k.busy === g.id;
+  const nowMs = k.bild.raster.nowMs;
+  // Höchstens 7 Tage voraus (§ 5a): heute, morgen und die fünf Tage danach als Chips statt eines Datumsfelds.
+  const tageVoraus = Array.from({ length: 8 }, (_, i) => {
+    const d = new Date(nowMs + i * 24 * 3_600_000);
+    const iso = lokalesDatum(d);
+    return { iso, label: i === 0 ? 'heute' : i === 1 ? 'morgen' : `${WOCHE[(d.getDay() + 6) % 7][1]} ${iso.slice(8, 10)}.${iso.slice(5, 7)}.` };
+  });
+  const minEinmal = ortszeitIso(nowMs + 15 * 60_000);
+  const maxEinmal = ortszeitIso(nowMs + 7 * 24 * 3_600_000);
+  const grund = ziel < reserve ? 'Der Ladestand bei Abfahrt liegt unter der Reserve.'
+    : einmal && einmalZiel < reserve ? 'Die nächste Fahrt liegt unter der Reserve.'
+      : einmal && (einmalAb < minEinmal || einmalAb > maxEinmal) ? 'Die nächste Fahrt liegt in der Zukunft und höchstens 7 Tage voraus.'
+        : !/^\d{2}:\d{2}$/.test(um) ? 'Bitte eine Uhrzeit für die Abfahrt eintragen.' : null;
+  const kapazitaet = km != null ? (km * 100) / 6 : null;
+  const plan = g.kw.map((v, t) => (g.herkunft[t] === 'plan' && (v ?? 0) > 0.02 ? t : -1)).filter((t) => t >= 0);
+  const planSatz = plan.length
+    ? `VoltPilot plant das Laden ab ${uhrTag(plan[0])}${plantZurueck(g) ? ' und das Zurückgeben' : ''}.`
+    : 'Für dieses Auto liegt noch kein Plan vor.';
+  const uebernehmen = async () => {
+    const anfrage = fahrerAnfrage(f, {
+      reserve_pct: reserve,
+      vollzyklen_je_tag: zyklen,
+      abfahrten: abfahrtSetzen(f.abfahrten ?? [], { wochentage: tage, abfahrt: um, abfahrt_soc_pct: ziel }),
+      naechste_fahrt: einmal ? { abfahrt: einmalAb, abfahrt_soc_pct: einmalZiel } : null,
+    });
+    if (await onSpeichern(g, anfrage)) k.zu();
+  };
+  return (
+    <Blatt
+      symbol="flag"
+      titel="Abfahrt und Reserve"
+      unter={g.name}
+      voll
+      onClose={k.zu}
+      fuss={
+        <Recht aktion="ladepunkt.betrieb">
+          <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
+          <button type="button" className="btn" disabled={busy || grund != null} onClick={() => void uebernehmen()}>
+            <Ic n="check" s={18} />
+            {busy ? 'Speichere …' : 'Übernehmen'}
+          </button>
+        </Recht>
+      }
+    >
+      <div className="blk">
+        <h3>Abfahrt</h3>
+        <div className="chips" role="group" aria-label="Wochentage">
+          {WOCHE.map(([t, kurz]) => (
+            <button type="button" key={t} aria-pressed={tage.includes(t)} onClick={() => setTage((x) => (x.includes(t) ? x.filter((y) => y !== t) : [...x, t]))}>{kurz}</button>
+          ))}
+        </div>
+        <VpTimePicker label="losfahren um" ariaLabel="losfahren um" value={um} step={15} onChange={setUm} />
+        <p>{tage.length ? `${wochentageText(tage)} um ${um}.` : 'Kein Wochentag gewählt: dann gilt nur „Nur die nächste Fahrt“.'} Andere Tage oder eine Ausnahme: „Nur die nächste Fahrt“ unten.</p>
+      </div>
+      <div className="blk rng">
+        <h3><label htmlFor={zielId}>Ladestand bei Abfahrt</label><span className="meta">{pctKm(ziel, km)}</span></h3>
+        <input id={zielId} type="range" min={Math.min(50, ziel)} max={100} step={5} value={ziel} onChange={(e) => setZiel(Number(e.target.value))} />
+        <div className="skala"><span>{Math.min(50, ziel)} %</span><span>100 %</span></div>
+      </div>
+      <div className="blk rng">
+        <h3><label htmlFor={reserveId}>Reserve — nie darunter</label><span className="meta">{pctKm(reserve, km)}</span></h3>
+        <input id={reserveId} type="range" min={Math.min(10, reserve)} max={Math.max(80, reserve)} step={5} value={reserve} onChange={(e) => setReserve(Number(e.target.value))} />
+        <div className="skala"><span>{Math.min(10, reserve)} %</span><span>{Math.max(80, reserve)} %</span></div>
+        <p>Davon gibt das Auto nie etwas ab. Ohne Reserve speist es gar nicht zurück.{f.reserve_pct == null ? ' Noch ist keine Reserve gesagt; mit „Übernehmen“ gilt der Wert oben.' : ''}</p>
+      </div>
+      <div className="blk">
+        <h3>Akku schonen</h3>
+        <div className="chips" role="group" aria-label="Akku schonen">
+          {([[0.5, '½ Ladung'], [1, '1 Ladung'], [2, '2 Ladungen']] as const).map(([v, label]) => (
+            <button type="button" key={v} aria-pressed={zyklen === v} onClick={() => setZyklen(zyklen === v ? null : v)}>{label}</button>
+          ))}
+        </div>
+        <p>
+          höchstens so viel am Tag zurückgeben{kapazitaet != null ? ` (1 Ladung = ${zahl0(kapazitaet)} kWh)` : ''}. Verschleiß geschätzt 3 ct je kWh — VoltPilot gibt nur zurück, wenn es mehr bringt.
+          {zyklen == null ? ' Nicht gesagt: VoltPilot rechnet mit 1 Ladung.' : ''}
+        </p>
+      </div>
+      <div className="blk">
+        <h3>Plan</h3>
+        <div className="warum">{planSatz}{f.rueckspeisen !== 'aus' && !plantZurueck(g) ? ' Zurückspeisen plant VoltPilot noch nicht.' : ''}</div>
+      </div>
+      <div className="blk">
+        <h3>Nur die nächste Fahrt</h3>
+        <button type="button" className="lziel" aria-pressed={einmal} onClick={() => setEinmal((x) => !x)}>
+          <Ic n="clock" s={20} />
+          <span>
+            <b>{einmal ? `${einmalAb.slice(8, 10)}.${einmalAb.slice(5, 7)}. ${einmalAb.slice(11, 16)} mit ${pctKm(einmalZiel, km)}` : 'Nur die nächste Fahrt'}</b>
+            <small>{einmal ? 'Tippen zum Entfernen — danach gilt wieder der Plan oben' : 'z. B. „morgen 05:30 mit 100 %“ — danach gilt wieder der Plan oben'}</small>
+          </span>
+          <Ic n={einmal ? 'x' : 'plus'} s={18} />
+        </button>
+        {einmal && (
+          <>
+            <div className="chips" role="group" aria-label="Tag der nächsten Fahrt">
+              {tageVoraus.map((d) => (
+                <button type="button" key={d.iso} aria-pressed={einmalAb.slice(0, 10) === d.iso} onClick={() => setEinmalAb(`${d.iso}T${einmalAb.slice(11, 16)}`)}>{d.label}</button>
+              ))}
+            </div>
+            <VpTimePicker label="losfahren um" ariaLabel="nächste Fahrt um" value={einmalAb.slice(11, 16)} step={15} onChange={(z) => setEinmalAb(`${einmalAb.slice(0, 10)}T${z}`)} />
+            <div className="rng">
+              <h3 style={{ margin: 0 }}><label htmlFor={einmalId}>mit</label><span className="meta">{pctKm(einmalZiel, km)}</span></h3>
+              <input id={einmalId} type="range" min={Math.min(50, einmalZiel)} max={100} step={5} value={einmalZiel} onChange={(e) => setEinmalZiel(Number(e.target.value))} />
+            </div>
+          </>
+        )}
+      </div>
+      {grund && <div className="konflikt" role="alert"><Ic n="alert" s={18} /><span>{grund}</span></div>}
+    </Blatt>
   );
 }
 

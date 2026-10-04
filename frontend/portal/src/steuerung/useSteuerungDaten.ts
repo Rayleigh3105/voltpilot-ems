@@ -34,6 +34,7 @@ import type { Consumer } from '../consumers/types';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
 import type { SiteCharging } from '../ladepunkte';
+import type { LadepunktErtraege, LadepunktListe } from '../ladepunktErtraege';
 import type { SiteVerbraucher } from '../verbraucherZone';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import type { SiteProfiles } from '../profiles';
@@ -69,6 +70,10 @@ export interface SteuerungDaten {
   szene: SiteScene | null;
   /** „Steuern & Optimieren“ (UEMS `/funktionen`); `null` = unbekannt - die Seite behauptet dann nichts. */
   funktionen: Funktionen | null;
+  /** MiSpeL MP-41b: die Ladepunkte mit Fähigkeit und Fahrer-Einstellungen; `null` = unbekannt - die Karten bleiben wie heute. */
+  ladepunkte: LadepunktListe | null;
+  /** MiSpeL MP-41b: die Erträge am Ladepunkt im laufenden Monat; `null` = unbekannt. */
+  ladepunktErtraege: LadepunktErtraege | null;
   /** Gemessene Leistung je Gerät heute (kW je Viertelstunde). */
   gemessen: Record<string, (number | null)[]>;
 }
@@ -78,7 +83,7 @@ const LEER: SteuerungDaten = {
   chargingConfig: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
   preise: null, wetter: null, live: null, assets: null, profiles: null, fahrzeuge: null,
   flows: null, editorEntities: null, ruleEvents: null, entities: null, vorschlaege: null,
-  szene: null, funktionen: null, gemessen: {},
+  szene: null, funktionen: null, ladepunkte: null, ladepunktErtraege: null, gemessen: {},
 };
 
 const heuteIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
@@ -146,6 +151,13 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
       hole('vorschlaege', api.suggestionStates(id)),
       hole('szene', api.scene(id)),
       hole('funktionen', api.funktionen()),
+      // MiSpeL MP-41b: nur an einem bidirektionalen Ladepunkt auch die Erträge des Monats (Wallbox-Karte).
+      hole('ladepunkte', Promise.resolve().then(() => api.ladepunkte(id)).then((l) => {
+        if (liste(l?.ladepunkte).some((x) => x.faehigkeit?.nutzbarkeit === 'bidirektional')) {
+          void hole('ladepunktErtraege', api.ladepunktErtraege(id, heuteIso().slice(0, 7)));
+        }
+        return l;
+      })),
     ]);
   }, [site.id, hole]);
 

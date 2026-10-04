@@ -115,7 +115,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [MiSpeL: OCPP 2.0.1 und 2.1 auf der Box – Subprotokoll-Weiche, TransactionEvent, Z2V/Z2E, Device Model, 1.6-Fingerabdruck, V2X-Spur (MP-35, MP-37)](root/mispel-box-ocpp201.md)
 - [MiSpeL: Box-Entladewächter – Rückspeisen nur mit Freigabe des Fahrers, Exportgrenze, § 14a, Reserve, Abfahrtsziel, Abbruch beim Abstecken (MP-39)](root/mispel-box-entladeschutz.md)
 - [MiSpeL: signierte Ladepunkt-Messwerte – OCMF prüfen auf der Box, Ablage und Eichstatus in der Cloud (MP-38)](root/mispel-ladepunkt-ocmf.md)
-- [MiSpeL: Ladepunkt – Erträge in Verlauf › Erlöse, Fähigkeit im Aufbau, Fahrer-Einstellungen als Daten (MP-41a)](root/mispel-ladepunkt-ertraege.md)
+- [MiSpeL: Ladepunkt – Erträge in Verlauf › Erlöse, Fähigkeit im Aufbau, Fahrer-Einstellungen (MP-41a), Wallbox-Karte in Steuerung › Laden (MP-41b)](root/mispel-ladepunkt-ertraege.md)
 - [MiSpeL-Check in der Simulation: dieselbe Anlage heute gegen mit MiSpeL, Preise ohne Datenbank (MP-13, Pauschal P1 MP-29)](root/mispel-check-simulation.md)
 - [Mess-Selektion JE KOMPONENTE (Geräteseite Stufe 3b, Server)](root/mess-selektion-je-komponente-geraeteseit.md)
 - [Money-centric "Meine Anlage" v2 (`GET /api/v1/earnings` money-view fields + `site.tarif_art`/`tarif_param_ct_kwh`)](root/money-centric-meine-anlage-v2-get-api-v1.md)

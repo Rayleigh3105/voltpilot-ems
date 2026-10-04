@@ -132,6 +132,7 @@ export type BlattZustand =
   | { art: 'neu'; id: string }
   | { art: 'rahmen' }
   | { art: 'ziel'; id: string }
+  | { art: 'abfahrt'; id: string }
   | { art: 'fahrzeug'; tagRef: string }
   | { art: 'regel'; flowId?: string; geraet?: string; vorlage?: string }
   | { art: 'szene'; id: string };

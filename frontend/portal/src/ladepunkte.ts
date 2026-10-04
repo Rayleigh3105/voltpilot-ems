@@ -69,6 +69,13 @@ export interface ChargeConnector {
   /** An diesem Stecker läuft „Jetzt voll laden" (Stufe 4). */
   boost?: boolean;
   /**
+   * MiSpeL MP-41b: ob das angesteckte Fahrzeug bidirektional überträgt - der
+   * BPT-Modus aus `ev_needs.bidirectional` der Box (OCPP 2.1, docs/edge-ocpp21.md).
+   * Die Telemetrie reicht ihn noch nicht in die Cloud: fehlt er, ist es
+   * UNBEKANNT („prüft die Wallbox beim Anstecken“), nie „nein“.
+   */
+  bidirectional?: boolean | null;
+  /**
    * Das PSEUDONYM der Ladekarte dieses Ladevorgangs (P7) - der Wert, den die
    * BOX aus dem IdTag rechnet. Der Klartext verlässt sie nie.
    *

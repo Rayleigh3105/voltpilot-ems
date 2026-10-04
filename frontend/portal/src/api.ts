@@ -9261,6 +9261,12 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(anfrage),
     }),
+  /** MiSpeL MP-41a/b: die Einstellungen des Fahrers ganz ersetzen (Recht `ladepunkt.betrieb`); Antwort: die Ansicht heute. */
+  ladepunktFahrerSetzen: (siteId: string, komponente: string, anfrage: import('./ladepunktErtraege').FahrerAnfrage) =>
+    request<import('./ladepunktErtraege').LadepunktAnsicht>(`/api/v1/sites/${siteId}/ladepunkte/${komponente}/fahrer-einstellungen`, {
+      method: 'PUT',
+      body: JSON.stringify(anfrage),
+    }),
   /** MiSpeL MP-41a: die Erträge am Ladepunkt im Monat (JJJJ-MM), gerechnet vom Rechenwerk MP-32. */
   ladepunktErtraege: (siteId: string, monat: string) =>
     request<import('./ladepunktErtraege').LadepunktErtraege>(`/api/v1/sites/${siteId}/ladepunkte/ertraege/${monat}`),

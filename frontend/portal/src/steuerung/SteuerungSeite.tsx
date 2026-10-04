@@ -50,7 +50,9 @@ import {
 import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
-import { FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
+import { AbfahrtBlatt, FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
+import { ladepunktErsetzt, RUECKSPEISEN_WORT } from './laden';
+import type { FahrerAnfrage } from '../ladepunktErtraege';
 import type { LadeQuelle } from './laden';
 import { nurMessenKey, vorschlag } from './neu';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
@@ -173,6 +175,23 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         neuLaden();
       } catch (e) {
         meldung(fehlerText(e, 'Der Eingriff konnte nicht gesendet werden.'), true);
+      }
+    });
+    return ok;
+  };
+
+  // MiSpeL MP-41b: die Einstellungen des Fahrers ganz ersetzen (MP-41a § 5a); die Antwort ist die Ansicht heute.
+  const fahrer = async (g: GeraetBild, anfrage: FahrerAnfrage): Promise<boolean> => {
+    let ok = false;
+    await lauf(g.id, async () => {
+      try {
+        const a = await api.ladepunktFahrerSetzen(site.id, g.id, anfrage);
+        setze('ladepunkte', ladepunktErsetzt(daten.ladepunkte, a));
+        const w = a.fahrer_einstellungen?.rueckspeisen ?? anfrage.rueckspeisen;
+        meldung(`${g.name}: übernommen. Zurückspeisen: ${RUECKSPEISEN_WORT[w]}.`);
+        ok = true;
+      } catch (e) {
+        meldung(fehlerText(e, 'Die Einstellungen konnten nicht gespeichert werden.'), true);
       }
     });
     return ok;
@@ -478,6 +497,10 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           }
         })}
         onLadevorgaenge={() => onOpenSub('ladevorgaenge')}
+        ladepunkte={daten.ladepunkte}
+        ertraege={daten.ladepunktErtraege}
+        onFahrer={fahrer}
+        zuErloesen={() => onOpenSub('erloese')}
         zuGeraete={() => onOpenSub('steuerung')}
       />
     );
@@ -603,7 +626,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       <main className={`stn-main ${reiter}`}>
         {inhalt}
       </main>
-      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw, vereinbartKw) => {
+      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onFahrer={fahrer} onGrenze={async (kw, vereinbartKw) => {
         let ok = false;
         await lauf('rahmen', async () => {
           try {
@@ -654,7 +677,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   );
 }
 
-function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onFahrer, onGrenze, onFahrzeug }: {
   blatt: BlattZustand;
   k: BlattKontext;
   siteId: string;
@@ -666,6 +689,7 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
   onRegel: (e: RegelEntwurf) => Promise<boolean>;
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
+  onFahrer: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>;
   onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
   onFahrzeug: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
 }) {
@@ -692,6 +716,8 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
       return <RahmenBlatt k={k} siteId={siteId} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
     case 'ziel':
       return <ZielBlatt k={k} id={blatt.id} onSpeichern={onSteuerart} />;
+    case 'abfahrt':
+      return <AbfahrtBlatt k={k} id={blatt.id} ladepunkte={daten.ladepunkte} onSpeichern={onFahrer} />;
     case 'fahrzeug':
       return <FahrzeugBlatt k={k} tagRef={blatt.tagRef} fahrzeuge={daten.fahrzeuge} onSetzen={onFahrzeug} />;
     case 'regel': {

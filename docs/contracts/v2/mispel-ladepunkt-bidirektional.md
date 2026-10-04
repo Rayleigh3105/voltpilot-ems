@@ -24,7 +24,8 @@ misst und was der Optimierer über das Fahrzeug am Ladepunkt weiß. Er steuert n
 > Optimierer (MP-33) liest Fähigkeit, Fenster und Anwesenheit direkt (`inputs.load_fahrzeugspeicher`, Python-Zwilling
 > der Einordnung in `fahrzeugspeicher.einordnung`; [Wegweiser](../agents/root/mispel-optimierer-mischbetrieb.md#fahrzeug-als-speicher-mp-33));
 > Fläche seit MP-41a: Fähigkeit in Anlage › Aufbau (Kurzblick des Ladepunkts, `LadepunktFaehigkeitDialog`) und die
-> Erträge in Verlauf › Erlöse (`LadepunktErtragKarte`); die Wallbox-Karte in Steuerung › Laden folgt mit MP-41b.
+> Erträge in Verlauf › Erlöse (`LadepunktErtragKarte`); seit MP-41b die Wallbox-Karte in Steuerung › Laden
+> (`steuerung/LadenReiter.tsx`, Ableitungen in `steuerung/laden.ts`, [Wegweiser](../agents/root/mispel-ladepunkt-ertraege.md)).
 
 ## 1. Der Ladepunkt und seine Identität
 
@@ -127,7 +128,7 @@ der Wunsch am Tag `am`, nie über der Fähigkeit dieses Tages (`v2g` ohne V2G �
 `km_je_prozent` = Kapazität × 6 km/kWh ÷ 100 (dieselbe Schätzung wie das Ladeziel im Portal), `null` ohne Kapazität —
 eine Anzeigehilfe, kein Messwert.
 
-**Wer liest:** heute nur die Ansicht. Der Optimierer (MP-33) liest Freigabe und Zyklenbudget noch nicht, und er sendet
+**Wer liest:** heute nur die Ansicht und die Wallbox-Karte (MP-41b, schreibt über `PUT …/fahrer-einstellungen`). Der Optimierer (MP-33) liest Freigabe und Zyklenbudget noch nicht, und er sendet
 den Block `fahrzeug` im Fahrplan noch nicht — ohne Block speist die Box nie zurück (MP-39). Beides ist ein Folgepaket.
 
 ## 6. Die Schnittstelle
@@ -209,8 +210,10 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
   `edge-app/core/internal/ladepunktsim` (MP-34, [Wegweiser](../../agents/root/mispel-simulator-fahrzeug.md)).
 - **Signierte Ladepunkt-Messwerte** (OCMF) als Z2-Quelle mit Eichstatus: [Vertrag](./mispel-ladepunkt-ocmf.md) (MP-38);
   die Ansicht trägt dafür `signierter_messwert` mit `eichstatus`.
-- **Fläche** der Einstellungen des Fahrers (Wallbox-Karte in Steuerung › Laden): MP-41b, wenn `mispel` die neue
-  Steuerung von `main` nachgezogen hat. Fähigkeit im Aufbau und Erträge: MP-41a.
+- **Fläche** der Einstellungen des Fahrers: Wallbox-Karte in Steuerung › Laden (MP-41b). Fähigkeit im Aufbau und
+  Erträge: MP-41a. Ob das angesteckte Fahrzeug bidirektional überträgt (`ev_needs.bidirectional` der Box, OCPP 2.1),
+  reicht die Telemetrie noch nicht in die Cloud; das Portal liest es wahlfrei am Stecker und nennt es ohne Meldung
+  „prüft die Wallbox beim Anstecken“, nie „nein“.
 - **Anbindung an Optimierer und Box:** der Optimierer liest § 5a noch nicht und sendet den Fahrplan-Block `fahrzeug` noch
   nicht; die Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e.
 

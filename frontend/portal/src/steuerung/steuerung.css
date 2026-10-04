@@ -493,6 +493,19 @@
 :is(.stn, .stn-blatt) .soc-bar span{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--pv-fill)}
 :is(.stn, .stn-blatt) .soc-bar span.netz{background:var(--grid)}
 :is(.stn, .stn-blatt) .soc-row{display:flex;justify-content:space-between;font:600 12.5px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
+/* MiSpeL MP-41b: Wallbox-Karte an einem bidirektionalen Ladepunkt (BK-41 A) */
+:is(.stn, .stn-blatt) .wb-mispel{display:grid;gap:12px}
+:is(.stn, .stn-blatt) .wb-soc-k{align-items:baseline}
+:is(.stn, .stn-blatt) .wb-soc-k b{font:800 22px/1.1 var(--font);color:var(--c-fg)}
+:is(.stn, .stn-blatt) .wb-soc .soc-bar{height:16px;overflow:visible}
+:is(.stn, .stn-blatt) .wb-soc .soc-bar .res{position:absolute;inset:0 auto 0 0;border-radius:999px 0 0 999px;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--c-fg) 22%,transparent) 0 3px,transparent 3px 7px)}
+:is(.stn, .stn-blatt) .wb-soc .soc-bar u{position:absolute;top:-4px;bottom:-4px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--c-fg)}
+:is(.stn, .stn-blatt) .wb-satz{margin:0;font:600 14.5px/1.45 var(--font);color:var(--c-fg)}
+:is(.stn, .stn-blatt) .wb-stufen button[data-r="v2h"][aria-pressed="true"] svg{color:var(--pv)}
+:is(.stn, .stn-blatt) .wb-stufen button[data-r="v2g"][aria-pressed="true"] svg{color:var(--c-primary)}
+:is(.stn, .stn-blatt) .wb-hinweis{cursor:default;background:var(--st-wait-soft);border-color:transparent}
+:is(.stn, .stn-blatt) .wb-hinweis svg{color:var(--st-wait)}
+:is(.stn, .stn-blatt) .wb-ertrag svg:first-child{color:var(--c-primary)}
 :is(.stn, .stn-blatt) .fz{display:grid;gap:0}
 :is(.stn, .stn-blatt) .fz-r{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:8px 0}
 :is(.stn, .stn-blatt) .fz-r+.fz-r{border-top:1px solid var(--c-border)}
