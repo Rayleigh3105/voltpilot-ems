@@ -4,6 +4,15 @@ import react from '@vitejs/plugin-react';
 // Vitest runs the portal's unit + component tests (jsdom). Kept separate from
 // vite.config.ts so the production build is untouched; tests are excluded from
 // the `tsc` build (tsconfig) and typechecked by vitest's own transform instead.
+//
+// Node 25 turns Web Storage on by default: its global `localStorage` then hides
+// jsdom's and throws a SecurityError without `--localstorage-file`. The flag
+// restores the Node 22 behaviour (CI) for the test workers; Node versions that
+// do not know the flag get none.
+const ohneNodeWebStorage = process.allowedNodeEnvironmentFlags.has('--experimental-webstorage')
+  ? ['--no-experimental-webstorage']
+  : [];
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -11,5 +20,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    poolOptions: { forks: { execArgv: ohneNodeWebStorage } },
   },
 });
