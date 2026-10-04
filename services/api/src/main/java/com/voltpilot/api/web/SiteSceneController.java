@@ -1,11 +1,12 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.szenen.SzenenService;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -38,11 +39,11 @@ public class SiteSceneController {
     /** Die laufende Szene (oder {@code null}) samt ehrlicher Meldung. */
     public record SceneDto(SzenenService.SzeneDto scene, List<String> offen, String message) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final SzenenService szenen;
 
-    public SiteSceneController(SiteRepository sites, SzenenService szenen) {
-        this.sites = sites;
+    public SiteSceneController(Geltungsbereich geltungsbereich, SzenenService szenen) {
+        this.geltungsbereich = geltungsbereich;
         this.szenen = szenen;
     }
 
@@ -52,7 +53,9 @@ public class SiteSceneController {
         return new SceneDto(szenen.aktuell(siteId), List.of(), null);
     }
 
+    // Eine Szene nutzt den Pausenweg der Verbraucher (POST /consumers/{id}/pause trägt dasselbe Recht).
     @PutMapping("/scene")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SceneDto put(@PathVariable UUID siteId,
             @RequestBody(required = false) SceneRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -62,16 +65,16 @@ public class SiteSceneController {
     }
 
     @DeleteMapping("/scene")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SceneDto delete(@PathVariable UUID siteId, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
         SzenenService.Ergebnis e = szenen.beenden(siteId, jwt == null ? null : jwt.getSubject());
         return new SceneDto(e.szene(), e.offen(), e.message());
     }
 
+    /** Standort-Zaun (UEMS AP-03 IP-5): eine Anlage außerhalb des Zugriffs ist 404, nie 403. */
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": …}. */

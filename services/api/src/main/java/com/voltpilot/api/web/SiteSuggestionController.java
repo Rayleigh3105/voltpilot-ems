@@ -104,6 +104,7 @@ public class SiteSuggestionController {
      * doch steuern will. Idempotent: eine fehlende Haltung ist kein Fehler.
      */
     @DeleteMapping("/suggestion-states/{key}")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Void> delete(@PathVariable UUID siteId, @PathVariable String key) {
         requireSite(siteId);
         store.delete(siteId, schluessel(key));
