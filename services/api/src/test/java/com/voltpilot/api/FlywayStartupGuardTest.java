@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
+import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
+import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -91,20 +94,32 @@ class FlywayStartupGuardTest {
         Flyway old = synthetic().load();
         strategy.migrate(old);
         assertThat(old.info().applied()).hasSize(main.size());
+        MigrationVersion hoechsteMain = Arrays.stream(old.info().applied()).map(MigrationInfo::getVersion)
+                .max(Comparator.naturalOrder()).orElseThrow();
         Flyway full = core().load();
         int additions = full.info().pending().length;
         assertThat(additions).isGreaterThanOrEqualTo(67);
         strategy.migrate(full);
         assertThat(full.info().applied()).hasSize(main.size() + additions);
-        assertThat(Arrays.stream(old.info().all()).map(m -> m.getState()).toList())
-                .contains(MigrationState.MISSING_SUCCESS, MigrationState.FUTURE_SUCCESS);
+        // FUTURE entsteht nur, wenn UEMS eine Migration über der höchsten von main trägt. Seit dem Nachzug von main
+        // 308a5cc91 (V20260929120000 über jeder UEMS-Migration) sieht der alte Build alle UEMS-Migrationen als
+        // MISSING; die Sperre muss dann allein an MISSING greifen. FUTURE_SUCCESS prüfen die synthetischen Fälle unten.
+        boolean zukunft = Arrays.stream(full.info().applied()).anyMatch(m -> m.getVersion().compareTo(hoechsteMain) > 0);
+        List<MigrationState> zustaende = Arrays.stream(old.info().all()).map(m -> m.getState()).toList();
+        assertThat(zustaende).contains(MigrationState.MISSING_SUCCESS);
+        if (zukunft) {
+            assertThat(zustaende).contains(MigrationState.FUTURE_SUCCESS);
+        } else {
+            assertThat(zustaende).doesNotContain(MigrationState.FUTURE_SUCCESS);
+        }
         String before = historyFingerprint();
         Flyway oldStart = spy(synthetic().load());
         assertThatThrownBy(() -> strategy.migrate(oldStart))
                 .isInstanceOf(FlywayException.class)
                 .hasMessageContaining("neuer als dieser Build")
-                .hasMessageContaining("MISSING_SUCCESS").hasMessageContaining("FUTURE_SUCCESS")
-                .hasMessageContaining("20260918110000");
+                .hasMessageContaining("MISSING_SUCCESS")
+                .hasMessageContaining("20260918110000")
+                .satisfies(e -> assertThat(e.getMessage().contains("FUTURE_SUCCESS")).isEqualTo(zukunft));
         verify(oldStart, never()).migrate(); // Boot's initializer fails before readiness.
         verify(oldStart, never()).repair();
         assertThat(historyFingerprint()).isEqualTo(before);
