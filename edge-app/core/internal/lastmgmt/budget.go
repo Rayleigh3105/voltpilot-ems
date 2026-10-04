@@ -194,9 +194,9 @@ type BudgetTracker struct {
 	at         time.Time
 	gridKw     float64
 	chargingKw float64
-	// battKw is the power the site's battery was last MEASURED taking (>= 0;
-	// a discharge is 0 here). haveBatt distinguishes "never reported" from
-	// "reported as zero" - the guards.Reading footgun, one more time.
+	// battKw is the site battery's last MEASURED power, SIGNED: + charging,
+	// − discharging. haveBatt distinguishes "never reported" from "reported as
+	// zero" - the guards.Reading footgun, one more time.
 	battKw   float64
 	haveBatt bool
 	// incompleteAt is when a sample was last DISCARDED because a charging
@@ -247,11 +247,11 @@ func urgentDropKw(marginKw float64) float64 {
 type restSample struct {
 	at   time.Time
 	rest float64
-	// restNoBatt is `rest` with the battery's MEASURED charge taken back out,
-	// i.e. the site's net position without the charge points AND without the
-	// battery. It is what the Stufe-4 surplus lane divides (surplus.go); it
-	// equals `rest` on a site with no battery measurement, so a plant without
-	// one behaves exactly as before.
+	// restNoBatt is `rest` with the battery's MEASURED power (signed) taken
+	// back out, i.e. the site's net position without the charge points AND
+	// without the battery. It is what the Stufe-4 surplus lane divides
+	// (surplus.go); it equals `rest` on a site with no battery measurement, so a
+	// plant without one behaves exactly as before.
 	restNoBatt float64
 }
 
@@ -291,11 +291,19 @@ type Measurement struct {
 	GridKw float64
 	// ChargingKw is the power the charge points are MEASURED drawing.
 	ChargingKw float64
-	// BatteryChargeKw is the power the site's battery is MEASURED taking. It
-	// is only read when HaveBattery is true; a DISCHARGE belongs here as 0,
-	// never as a negative number (it is not a surplus the cars could claim).
-	BatteryChargeKw float64
-	HaveBattery     bool
+	// BatteryKw is the site battery's MEASURED power, SIGNED: + charging,
+	// − discharging. It is only read when HaveBattery is true.
+	//
+	// ⚠ A DISCHARGE MUST STAY NEGATIVE. A discharging battery that feeds the
+	// cars makes `rest = grid − charging` negative - the site LOOKS like it
+	// would export - although nothing would leave it without the cars. Floored
+	// to 0 (the earlier rule) that discharge became "surplus": at night, PV 0,
+	// the battery discharging 5.3 kW into a car read as 4.5 kW of sunshine and
+	// "Nur Sonnenstrom" kept the car on the house battery (Edge-Light-Pilot,
+	// 04.10.2026). Taken out signed, restNoBatt = rest − batt is exactly
+	// "house minus PV" and the surplus is 0.
+	BatteryKw   float64
+	HaveBattery bool
 	// Complete is false when a connector that currently claims budget reports
 	// no fresh measurement of its own.
 	Complete bool
@@ -309,12 +317,9 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 	}
 	batt := 0.0
 	haveBatt := false
-	if m.HaveBattery && budgetFinite(m.BatteryChargeKw) && m.BatteryChargeKw > 0 {
-		batt, haveBatt = m.BatteryChargeKw, true
-	} else if m.HaveBattery && budgetFinite(m.BatteryChargeKw) {
-		// A reported discharge (or a flat zero) IS a measurement - it says the
-		// battery is taking nothing, which the cars-first lane needs to know.
-		haveBatt = true
+	if m.HaveBattery && budgetFinite(m.BatteryKw) {
+		// Signed, discharge included (see Measurement.BatteryKw).
+		batt, haveBatt = m.BatteryKw, true
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
