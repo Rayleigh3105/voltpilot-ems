@@ -4,6 +4,7 @@ import com.voltpilot.api.web.dto.SiteChargingDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargeConnectorDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargePointDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargingBudgetDto;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -261,38 +262,40 @@ public class DeviceChargerStatusRepository {
         return deviceId + "#" + chargePointId;
     }
 
-    private static ChargeConnectorDto mapConnector(ResultSet rs) throws SQLException {
+    // Paketsichtbar für den Test: eine NUMERIC-Spalte (session_kwh) kommt als
+    // BigDecimal und darf die Ladepunkt-Sicht nicht mit HTTP 500 sprengen.
+    static ChargeConnectorDto mapConnector(ResultSet rs) throws SQLException {
         return new ChargeConnectorDto(rs.getInt("connector_id"), rs.getString("status"),
-                rs.getBoolean("charging"), (Double) rs.getObject("allocated_kw"),
+                rs.getBoolean("charging"), dbl(rs.getObject("allocated_kw")),
                 rs.getString("reason"), rs.getString("reason_text"),
-                instant(rs.getTimestamp("next_turn")), (Double) rs.getObject("power_kw"),
-                (Double) rs.getObject("energy_kwh"), (Double) rs.getObject("soc_pct"),
+                instant(rs.getTimestamp("next_turn")), dbl(rs.getObject("power_kw")),
+                dbl(rs.getObject("energy_kwh")), dbl(rs.getObject("soc_pct")),
                 rs.getString("command_status"), rs.getString("readback"),
                 rs.getString("readback_note"), instant(rs.getTimestamp("session_since")),
-                (Double) rs.getObject("session_kwh"), instant(rs.getTimestamp("metered_at")),
+                dbl(rs.getObject("session_kwh")), instant(rs.getTimestamp("metered_at")),
                 rs.getBoolean("boost"), rs.getString("tag_ref"));
     }
 
     private static ChargingBudgetDto mapBudget(ResultSet rs, int rowNum) throws SQLException {
         return new ChargingBudgetDto(rs.getObject("device_id", UUID.class),
                 rs.getBoolean("enabled"), rs.getBoolean("control_enabled"),
-                rs.getString("control_note"), (Double) rs.getObject("grid_limit_kw"),
-                (Double) rs.getObject("margin_pct"), (Double) rs.getObject("min_power_kw"),
-                (Double) rs.getObject("budget_kw"), (Double) rs.getObject("allocated_kw"),
-                (Double) rs.getObject("reserved_kw"), (Double) rs.getObject("measured_kw"),
-                (Double) rs.getObject("site_load_kw"), (Double) rs.getObject("site_grid_kw"),
+                rs.getString("control_note"), dbl(rs.getObject("grid_limit_kw")),
+                dbl(rs.getObject("margin_pct")), dbl(rs.getObject("min_power_kw")),
+                dbl(rs.getObject("budget_kw")), dbl(rs.getObject("allocated_kw")),
+                dbl(rs.getObject("reserved_kw")), dbl(rs.getObject("measured_kw")),
+                dbl(rs.getObject("site_load_kw")), dbl(rs.getObject("site_grid_kw")),
                 rs.getString("budget_mode"), rs.getString("budget_note"),
-                rs.getBoolean("budget_blind"), (Double) rs.getObject("eff_limit_kw"),
-                (Double) rs.getObject("safe_default_kw"), rs.getString("safe_default_note"),
+                rs.getBoolean("budget_blind"), dbl(rs.getObject("eff_limit_kw")),
+                dbl(rs.getObject("safe_default_kw")), rs.getString("safe_default_note"),
                 (Boolean) rs.getObject("safe_default_holds"),
-                (Double) rs.getObject("safe_worst_case_kw"),
-                (Double) rs.getObject("max_house_load_kw"), rs.getInt("connector_count"),
+                dbl(rs.getObject("safe_worst_case_kw")),
+                dbl(rs.getObject("max_house_load_kw")), rs.getInt("connector_count"),
                 rs.getString("surplus_policy"), rs.getString("storage_priority"),
-                rs.getBoolean("surplus_active"), (Double) rs.getObject("surplus_kw"),
+                rs.getBoolean("surplus_active"), dbl(rs.getObject("surplus_kw")),
                 rs.getString("surplus_mode"), rs.getString("surplus_note"),
-                rs.getBoolean("surplus_blind"), (Double) rs.getObject("surplus_total_kw"),
-                (Double) rs.getObject("surplus_battery_kw"),
-                (Double) rs.getObject("source_allocated_kw"),
+                rs.getBoolean("surplus_blind"), dbl(rs.getObject("surplus_total_kw")),
+                dbl(rs.getObject("surplus_battery_kw")),
+                dbl(rs.getObject("source_allocated_kw")),
                 (Integer) rs.getObject("ocpp_port"), rs.getString("ocpp_url_path"),
                 instant(rs.getTimestamp("reported_at")));
     }
@@ -303,5 +306,22 @@ public class DeviceChargerStatusRepository {
 
     private static Instant instant(Timestamp t) {
         return t == null ? null : t.toInstant();
+    }
+
+    /**
+     * Eine Zahl aus der Datenbank - egal ob DOUBLE PRECISION (Double) oder
+     * NUMERIC (BigDecimal, z. B. {@code session_kwh}). Ein blinder
+     * {@code (Double)}-Cast wirft bei NUMERIC eine ClassCastException und
+     * lässt die ganze Ladepunkt-Sicht (Steuerung, Ladevorgänge) mit HTTP 500
+     * scheitern, sobald ein Ladevorgang mit Zählerstand läuft.
+     */
+    static Double dbl(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof BigDecimal b) {
+            return b.doubleValue();
+        }
+        return ((Number) v).doubleValue();
     }
 }
