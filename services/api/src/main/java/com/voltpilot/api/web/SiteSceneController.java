@@ -33,7 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteSceneController {
 
-    /** Was der Kunde eingeschaltet hat: das Wort und seine Geräteauswahl. */
+    /** Was der Kunde einschaltet: das Wort und seine Geräteauswahl. */
     public record SceneRequest(String key, List<UUID> entityIds) {}
 
     /** Die laufende Szene (oder {@code null}) samt ehrlicher Meldung. */
