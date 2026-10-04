@@ -205,11 +205,18 @@ class ChargerApiTest {
             assertThat(charging.get("allocatedKw").asDouble()).isEqualTo(41.0);
             assertThat(charging.get("powerKw").asDouble()).isEqualTo(40.0);
             assertThat(charging.get("socPct").asDouble()).isEqualTo(62.0);
+            // Die Bilanz des laufenden Ladevorgangs liegt als NUMERIC in der
+            // Datenbank: sie wird gelesen, statt die Sicht mit 500 zu sprengen.
+            assertThat(charging.get("sessionKwh").asDouble()).isEqualTo(2.85);
             JsonNode waiting = first.get("connectors").get(1);
             assertThat(waiting.get("reasonText").asText())
                     .isEqualTo("wartet - Budget vergeben");
             // Ein Stecker ohne Messung trägt KEINE erfundene 0.
             assertThat(waiting.get("powerKw").isNull()).isTrue();
+
+            // Die Steuerung (Verbraucher-Liste) liest dieselben Stecker - auch
+            // sie muss während eines gemessenen Ladevorgangs antworten.
+            getJson("/api/v1/sites/" + site + "/verbraucher", customer);
 
             // 2 · Beide Säulen sind KOMPONENTEN - ohne einen Klick.
             JsonNode entities = getJson("/api/v1/sites/" + site + "/entities", customer);
@@ -994,7 +1001,7 @@ class ChargerApiTest {
                       {"id":1,"status":"Charging","charging":true,"allocated_kw":41,
                        "reason":"laedt","reason_text":"lädt","power_kw":40,"soc_pct":62,
                        "command_status":"Accepted","readback":"ok",
-                       "session_since":"2026-08-20T10:41:00Z"},
+                       "session_since":"2026-08-20T10:41:00Z","session_kwh":2.85},
                       {"id":2,"status":"Preparing","charging":false,"allocated_kw":0,
                        "reason":"wartet_budget","reason_text":"wartet - Budget vergeben",
                        "next_turn":"2026-08-20T11:26:00Z"}]},
