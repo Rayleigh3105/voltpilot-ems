@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
 /**
  * Der Boot-Ablauf der SCHALE (nach der Keycloak-Anmeldung): `/tenant-context`,
@@ -12,7 +12,12 @@ import { expect, test, type Page } from '@playwright/test';
  * erscheinen. Bis dahin trägt der Marken-Lade-Moment (`VpLoader`) die Zeit.
  */
 
-const EVID = '/Users/moritzv/IdeaProjects/firstmate/data/vp-ladeanimation-q4/nachweise';
+// Nachweis-Fotos: ohne `BOOT_FLOW_NACHWEISE` in den Ausgabeordner des Tests - ein fester Pfad
+// eines anderen Rechners liesse jeden Fall an `page.screenshot` scheitern.
+function nachweis(info: TestInfo, datei: string): string {
+  const ordner = process.env.BOOT_FLOW_NACHWEISE;
+  return ordner ? `${ordner}/nachher/${datei}` : info.outputPath(datei);
+}
 
 /** Eine plausible, vollständige Anlage - der Inhalt kommt aus diesem Mock. */
 const site = {
@@ -50,6 +55,8 @@ async function mockBoot(
     // Lässt den Sites-Abruf mit diesem HTTP-Status scheitern (z. B. 500/401) -
     // der initiale Ladefehler, der NICHT als leeres Konto durchgehen darf.
     failSites?: number;
+    // Plattform-Konto mit gewähltem Mandanten (UEMS-Selbstauskunft `konto: plattform`).
+    admin?: boolean;
   },
 ) {
   const wait = () => new Promise((r) => setTimeout(r, opts.delayMs));
@@ -67,6 +74,23 @@ async function mockBoot(
   await page.route('**/api/v1/admin/tenants', (route) =>
     route.fulfill({ json: opts.tenants ?? [{ id: 't-1', name: 'Demo GmbH' }] }),
   );
+  // UEMS: die Schale liest zuerst die Selbstauskunft (`/me`, AP-03) - ein Konto mit Unternehmenssicht, sonst
+  // stünde „Kein Standort zugewiesen“ statt der Landung. Ohne Ortsstruktur (`/standorte` 404 = älteres Backend)
+  // bleibt die Startansicht „wie heute“.
+  await page.route('**/api/v1/me', (route) => route.fulfill({ json: selbstauskunft(opts.admin === true) }));
+  await page.route('**/api/v1/standorte**', (route) => route.fulfill({ status: 404, json: { message: 'nicht da' } }));
+  // Die Funktionen (AP-01): niemand misst oder steuert schon - die Anlege-Wege bleiben wie bisher.
+  await page.route('**/api/v1/funktionen', (route) =>
+    route.fulfill({
+      json: {
+        unternehmen: {
+          messen: { laeuft_an: 0, standorte: 0, text: null },
+          steuern: { laeuft_an: 0, standorte: 0, text: null },
+        },
+        standorte: [],
+      },
+    }),
+  );
   await page.route('**/api/v1/tenant-context', async (route) => {
     await wait();
     await route.fulfill({ json: { tenantId: 't-1', name: 'Demo', segment: 'B2C', betriebsart: null } });
@@ -81,12 +105,27 @@ async function mockBoot(
       });
       return;
     }
-    await route.fulfill({ json: opts.sites });
+    await route.fulfill({ json: sichtbar(opts.sites) });
   });
   await page.route('**/api/v1/devices', async (route) => {
     await wait();
-    await route.fulfill({ json: opts.devices });
+    await route.fulfill({ json: sichtbar(opts.devices) });
   });
+}
+
+/** UEMS AP-03 IP-10: Anlagen- und Gerätelisten kommen als sichtbare Liste mit Teilansicht. */
+function sichtbar(eintraege: unknown[]) {
+  return { eintraege, teilansicht: { sichtbar: eintraege.length, gesamt: eintraege.length } };
+}
+
+/** Die Selbstauskunft eines Kontos, das das ganze Unternehmen sieht (keine Teilansicht). */
+function selbstauskunft(admin: boolean) {
+  return {
+    kennung: 'e2e', name: 'Alex Beispiel', konto: admin ? 'plattform' : 'benutzer', zustand: 'aktiv',
+    kundenbereich: { id: 't-1', name: 'Demo' }, zugang: admin ? 'umschalter' : 'konto', rollen: ['kundenadministrator'],
+    unternehmensweit: true, standorte: [], unternehmen_rechte: ['anlage.verwalten'], kuenftig: [], text: null,
+    teilansicht: null, unterstuetzungen: { eigene: [], gewaehrte: [] }, kundenadministratoren: [],
+  };
 }
 
 /** Der Marken-Lade-Moment ist als EIN Statusbereich ausgewiesen. */
@@ -105,7 +144,7 @@ test.describe('Boot-Ablauf · kein Leer-Zustand vor der ersten Antwort', () => {
     await expect(loader(page)).toBeVisible();
     // … und der Leer-Zustand darf zu KEINEM Zeitpunkt behauptet werden.
     await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
-    await page.screenshot({ path: `${EVID}/nachher/kunde-lader-${info.project.name}.png` });
+    await page.screenshot({ path: nachweis(info, `kunde-lader-${info.project.name}.png`) });
 
     // Nach der Antwort verschwindet der Lader und der echte Inhalt kommt -
     // der falsche Leertext ist nie erschienen.
@@ -116,13 +155,13 @@ test.describe('Boot-Ablauf · kein Leer-Zustand vor der ersten Antwort', () => {
   test('leeres Mandanten-Konto (Admin): Lader zuerst, Leer-Zustand ERST nach der Antwort', async ({
     page,
   }, info) => {
-    await mockBoot(page, { sites: [], devices: [], delayMs: 1500 });
+    await mockBoot(page, { sites: [], devices: [], delayMs: 1500, admin: true });
     await page.goto('/e2e/boot-flow.html?admin=1&tenant=t-1#/uebersicht');
 
     // Boot-Fenster: Lader sichtbar, Leer-Zustand NOCH NICHT.
     await expect(loader(page)).toBeVisible();
     await expect(page.getByText(/noch keine Anlage/i)).toHaveCount(0);
-    await page.screenshot({ path: `${EVID}/nachher/leer-lader-${info.project.name}.png` });
+    await page.screenshot({ path: nachweis(info, `leer-lader-${info.project.name}.png`) });
 
     // Nach der (erfolgreichen, leeren) Antwort: der ehrliche Leer-Zustand.
     await expect(
@@ -156,7 +195,7 @@ test.describe('Boot-Cover · Ränder', () => {
     await expect(page.locator('.vp-loader-screen')).toHaveCount(0);
     await expect(loader(page)).toHaveCount(0);
     await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
-    await page.screenshot({ path: `${EVID}/nachher/sites-500-fehlerkarte-${info.project.name}.png` });
+    await page.screenshot({ path: nachweis(info, `sites-500-fehlerkarte-${info.project.name}.png`) });
   });
 
   test('reduzierte Bewegung: Ringe ruhen, der Lader trägt die Zeit ehrlich, dann Inhalt', async ({
@@ -175,7 +214,7 @@ test.describe('Boot-Cover · Ränder', () => {
       .locator('.vp-loader-screen .vp-loader-ring.r1')
       .evaluate((el) => getComputedStyle(el).animationName);
     expect(ringAnim, 'die Ringe müssen unter reduzierter Bewegung ruhen').toBe('none');
-    await page.screenshot({ path: `${EVID}/nachher/reduced-motion-lader-${info.project.name}.png` });
+    await page.screenshot({ path: nachweis(info, `reduced-motion-lader-${info.project.name}.png`) });
 
     // Nach der Antwort kommt der Inhalt, der Lader hebt ab, kein falscher Leertext.
     await expect(loader(page)).toHaveCount(0, { timeout: 8000 });
@@ -189,9 +228,14 @@ test.describe('Boot-Cover · Ränder', () => {
     // (`useReportFirstPaint`). Ohne die `isReportingLanding`-Grenze hinge der
     // Cover bis zur 3-s-Sicherheitsgrenze unter fertigem Inhalt (Review SOLLTE-2);
     // mit ihr hebt er ab, sobald die Anlagenliste da ist (`loaded`).
-    await mockBoot(page, { sites: [site], devices: [device], delayMs: 400 });
-    const t0 = Date.now();
+    // ⚠ ZWEI Anlagen: mit nur einer lenkt `canonicalShellRoute` einen Admin von jeder Flottenseite auf die
+    // (meldende) Übersicht - dann mäße der Fall die Übersicht, nicht die Unterseite (Nachzug main → uems 1a).
+    const zweite = { ...site, id: '10000000-0000-0000-0000-000000000002', name: 'Waldblick' };
+    await mockBoot(page, { sites: [site, zweite], devices: [device], delayMs: 400, admin: true });
     await page.goto('/e2e/boot-flow.html?admin=1&tenant=t-1#/portfolio/messwerte');
+    // Die Uhr läuft ab dem geladenen Dokument: den Seitenaufbau des Dev-Servers (unter zwei Workern über 1 s für
+    // das UEMS-Bündel) misst der Fall nicht - die 3-s-Grenze zählt ohnehin erst ab der Anlagenliste.
+    const t0 = Date.now();
 
     // Der Cover erscheint im Boot-Fenster …
     await expect(page.locator('.vp-loader-screen')).toBeVisible();
@@ -199,6 +243,7 @@ test.describe('Boot-Cover · Ränder', () => {
     // nicht auf die Sicherheitsgrenze). Die Übergabe kostet die Ausblendzeit -
     // 2,5 s trennt sauber von 3 s + Latenz.
     await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
+    await expect(page).toHaveURL(/#\/portfolio\/messwerte$/);
     const dt = Date.now() - t0;
     expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
   });

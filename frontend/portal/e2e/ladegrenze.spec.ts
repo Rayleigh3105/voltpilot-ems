@@ -22,6 +22,13 @@ async function foto(page: Page, name: string) {
   }
 }
 
+// ⚠ Ausgesetzt seit dem Nachzug main → uems (1a, 04.10.2026): main hat `LadeparkRahmenKarte` gelöscht, der Rahmen
+// wohnt im Rahmen-Blatt von Steuerung › Laden (`steuerung/LadenReiter.tsx`). Paket 1c zieht Prüfung, Wortlaut und
+// diese Bühne dorthin um und nimmt das `fixme` zurück. Bis dahin lädt kein Fall die Bühne: ihr fehlender Import
+// liesse den Dev-Server sein Fehlerfenster über ALLE gleichzeitig offenen Seiten legen (im Gesamtlauf so rot:
+// kostenstellen, kennzahl-aendern).
+test.fixme(true, 'Paket 1c: Ladegrenze ins Rahmen-Blatt von Steuerung › Laden');
+
 for (const breite of [375, 1440]) {
   test(`gebundener Netzanschluss und Ladebudget ${breite}`, async ({ page }) => {
     await oeffne(page, breite, 'gebunden');
