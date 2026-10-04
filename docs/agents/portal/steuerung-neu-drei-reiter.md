@@ -8,7 +8,7 @@ die Server-Regeln, die sie nennen.
 ## Aufbau
 
 - **Routen:** `steuerung` (Reiter Geräte), `laden` (nur mit Ladepunkt), `regeln`. Alle drei gehören
-  zum Bereich Steuerung (`anlageNav.ts` `SUB_BEREICH`); `AnlagenPage` rendert für sie keinen
+  zum Bereich Steuerung (`ebenenNav.ts` `SUB_BEREICH`); `AnlagenPage` rendert für sie keinen
   Seitenkopf und keine Bereichsreiter, sondern `SteuerungSection` → `steuerung/SteuerungSeite.tsx`.
   Alte Lesezeichen `steuerung?vorlage|verbraucher|komponente=` leitet `canonicalAnlageHash` auf
   `regeln` um, der Query bleibt; die Seite öffnet daraus den Satzbaukasten und räumt die Adresse mit
