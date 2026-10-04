@@ -423,6 +423,88 @@ class FahrzeugPlan:
     slots: tuple[FahrzeugSlot, ...]
     #: ``(Grenze, Ziel, geplanter Ladestand)`` je Abfahrt im Horizont.
     abfahrten: tuple[tuple[int, float, float], ...] = ()
+    #: MiSpeL MP-33d: die Gegenrechnung „dasselbe Haus, das Auto laedt nur“
+    #: (:func:`voltpilot_optimization.solver.messlatte_nur_laden`). ``None`` =
+    #: ohne Rueckspeisung im Modell (dann ist der Plan selbst „nur laden“)
+    #: oder nicht rechenbar - unbekannt ist keine Null.
+    messlatte_nur_laden: MesslatteNurLaden | None = None
+
+
+@dataclass(frozen=True)
+class MesslattePosten:
+    """Die vier Posten der Messlatte „nur laden“, die der Vertrag
+    ``mispel-ladepunkt-bidirektional.md`` § 6a (MP-41a) aus ihr erwartet - in
+    EUR mit Vorzeichen (Ertrag positiv, Kosten negativ), Schluessel wie dort.
+
+    Je Slot aus dem Vergleich beider Plaene am Netzanschluss: weniger Bezug zum
+    Bezugspreis = ``weniger_gekauft``, mehr Bezug = ``mehr_geladen`` (das Haus
+    laedt fuer das Zurueckgeben nach), mehr Einspeisung zum Einspeisewert =
+    ``ins_netz_verkauft`` (negativ, wenn das Zurueckspeisen PV-Einspeisung
+    verdraengt); ``akku_verschleiss`` je rueckgespeister kWh. Die ersten drei
+    ergeben zusammen genau „Kosten nur laden - Kosten“."""
+
+    weniger_gekauft_eur: float
+    mehr_geladen_eur: float
+    ins_netz_verkauft_eur: float
+    akku_verschleiss_eur: float
+
+    @property
+    def summe_eur(self) -> float:
+        return (
+            self.weniger_gekauft_eur
+            + self.mehr_geladen_eur
+            + self.ins_netz_verkauft_eur
+            + self.akku_verschleiss_eur
+        )
+
+
+@dataclass(frozen=True)
+class MesslatteNurLaden:
+    """MiSpeL MP-33d: derselbe Haushalt, in dem das Auto nur laedt.
+
+    Dieselben Eingaben, dieselben Fenster, Abfahrtsziele und Mindest-Ladestaende,
+    nur ohne Rueckspeisung (``rueckspeisen_kw = 0``) - optimiert, nicht stur:
+    auch „nur laden“ laedt, wenn es billig ist. Liefert die Posten des
+    Vergleichs der Erloes-Karte (Bedienkonzept BK-41 A, Vertrag
+    ``mispel-ladepunkt-bidirektional.md`` § 6a, MP-41a; Felder:
+    ``docs/contracts/v2/mispel-messlatte-nur-laden.md``):
+
+    - ``posten`` (:class:`MesslattePosten`) ueber den Horizont, ``posten_je_slot``
+      je Slot - fuer eine Ablage je Viertelstunde, aus der eine Monatssumme wird.
+    - ``kosten_eur`` / ``kosten_nur_laden_eur``: Strom am Netzanschluss beider
+      Plaene (:meth:`OptimizationInput.cashflow_cost_eur`, im Mischbetrieb der
+      blanke Spot).
+    - ``gutschrift_eur`` / ``gutschrift_nur_laden_eur``: (16) des PLANS mal der
+      Gutschrift (mit Ladepunkt ohne (19) in A2/A3, A1 S. 36–37). § 6a nimmt
+      „vermiedene Umlagen/Netzentgelt“ aus (20) des gemessenen Monatslaufs;
+      dies ist der Planwert dazu.
+    - Die Marktpraemie auf (31) bleibt draussen: sie haengt am Jahresmarktwert
+      und steht erst nach Jahresende fest (A1 S. 39; BK-41 und § 6a: „offen“).
+    - Der Verschleiss des stationaeren Speichers (A3/A4) bleibt draussen.
+
+    ``gegenueber_nur_laden_eur`` = Posten + Gutschrift - Gutschrift nur laden
+    (positiv = das Zurueckspeisen bringt Geld). Ein PLAN-Wert, keine gemessene
+    Wirkung.
+    """
+
+    posten: MesslattePosten
+    kosten_eur: float
+    kosten_nur_laden_eur: float
+    gutschrift_eur: float
+    gutschrift_nur_laden_eur: float
+    geladen_kwh: float
+    geladen_nur_laden_kwh: float
+    rueckgespeist_kwh: float
+    posten_je_slot: tuple[MesslattePosten, ...] = ()
+
+    @property
+    def mehr_geladen_kwh(self) -> float:
+        """Was das Haus fuer das Zurueckgeben zusaetzlich geladen hat."""
+        return self.geladen_kwh - self.geladen_nur_laden_kwh
+
+    @property
+    def gegenueber_nur_laden_eur(self) -> float:
+        return self.posten.summe_eur + self.gutschrift_eur - self.gutschrift_nur_laden_eur
 
 
 @dataclass(frozen=True)
@@ -878,6 +960,13 @@ class OptimizationInput:
     #: Speicher (:class:`Fahrzeugspeicher`). ``None`` (die Vorgabe, jeder
     #: unidirektionale Ladepunkt) = KEIN Term und ein byte-gleicher Plan.
     fahrzeug: Fahrzeugspeicher | None = None
+    #: MiSpeL MP-33d: das Haus hat keinen stationaeren Stromspeicher (Basisfall
+    #: A2 „Ladepunkt“, A1 S. 29–30) - ``battery`` ist dann nur ein Platzhalter,
+    #: seine Leistungsgrenzen fallen im Modell auf 0 (eine SCHRANKE wie
+    #: ``battery_held``, kein neues Modellteil), sein Ladestand zaehlt nicht als
+    #: EE-Speichererzeugung, und die Messlatte des sturen Speichers entfaellt.
+    #: ``False`` (die Vorgabe) = byte-gleich.
+    ohne_stromspeicher: bool = False
     #: MiSpeL MP-33c: die Abbruchregel des Mischbetriebs OHNE Wanduhr - die
     #: Ganzzahl-Suche endet nach :data:`solver.CHECK_KNOTENGRENZE` Knoten statt
     #: nach :data:`solver.MISCHBETRIEB_ZEITGRENZE_S`, dieselbe Eingabe ergibt

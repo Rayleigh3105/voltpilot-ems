@@ -110,7 +110,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [MiSpeL-Ausschließlichkeits-Prüfer: Netzstrom im Speicher je Anlage und Monat (MP-2)](root/mispel-ausschliesslichkeits-pruefer.md)
 - [MiSpeL: strenge Ausschließlichkeit schaltbar, Optimierer + Box (MP-45)](root/mispel-strenge-ausschliesslichkeit.md)
 - [MiSpeL: Box liest den Förderweg statt des Netzlade-Bits, Zeile „Förderweg“ im Lade- & Entladeplan (MP-14)](root/mispel-box-foerderweg.md)
-- [MiSpeL: Optimierer Mischbetrieb I – zwei Ladewege, Farben, Spitzenschutz (MP-10); II – Monatszustand (MP-11); Pauschaloption – Jahreszustand (MP-26); Fahrzeug als Speicher (MP-33)](root/mispel-optimierer-mischbetrieb.md)
+- [MiSpeL: Optimierer Mischbetrieb I – zwei Ladewege, Farben, Spitzenschutz (MP-10); II – Monatszustand (MP-11); Pauschaloption – Jahreszustand (MP-26); Fahrzeug als Speicher (MP-33), auch ohne Hausspeicher A2 mit Messlatte „nur laden“ (MP-33d)](root/mispel-optimierer-mischbetrieb.md)
 - [MiSpeL: Simulator bidirektionales Fahrzeug – Wallbox mit Ladestand, Anstecken/Abstecken, Entladebefehl, Szenario V2H-Abend (MP-34)](root/mispel-simulator-fahrzeug.md)
 - [MiSpeL: OCPP 2.0.1 und 2.1 auf der Box – Subprotokoll-Weiche, TransactionEvent, Z2V/Z2E, Device Model, 1.6-Fingerabdruck, V2X-Spur (MP-35, MP-37)](root/mispel-box-ocpp201.md)
 - [MiSpeL: Box-Entladewächter – Rückspeisen nur mit Freigabe des Fahrers, Exportgrenze, § 14a, Reserve, Abfahrtsziel, Abbruch beim Abstecken (MP-39)](root/mispel-box-entladeschutz.md)

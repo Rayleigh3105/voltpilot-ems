@@ -121,6 +121,9 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         "fahrzeug_rueck_gate",
         "fahrzeug_nur_haus",
         "fahrzeug_zyklenbudget",
+        # MiSpeL MP-33d: Fremdtankstrom (12)/(13) in A2 - Mengen, keine Grenzen.
+        "mischbetrieb_fremdtank",
+        "mischbetrieb_fremdtank_teil",
         "mispel_spitzenschutz",
         "grid_import_cap",
         "grid_export_cap",

@@ -685,7 +685,9 @@ FOERDERWEGE = frozenset(
 #: keine Foerderseite (A1 S. 94–102) und gehoeren nicht zur Abgrenzungsoption
 #: einer marktpraemien-gefoerderten Anlage. A3 und A4 (Stromspeicher und
 #: Ladepunkt hinter Z2, A1 S. 30–32) seit MP-33 mit (14) = 0,85 (A1 S. 35); A2
-#: hat keinen Stromspeicher, den der Speicher-Optimierer planen koennte.
+#: (ohne Stromspeicher, A1 S. 29–30) plant der Optimierer seit MP-33d nur mit
+#: Fahrzeug und ``OptimizationInput.ohne_stromspeicher`` - eine Batterie-Anlage
+#: (jede, die ``load_battery_sites`` laedt) mit A2 bleibt wie heute.
 MISCHBETRIEB_FORMELSAETZE = frozenset({"A1", "A3", "A4", "A5", "A5-Variante"})
 
 

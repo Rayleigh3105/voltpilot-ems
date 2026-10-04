@@ -11,8 +11,10 @@ Regeln:
 - **Einordnung** wie ``LadepunktRegeln.einordnung`` (Zwilling): unidirektional = sonstiger Verbrauch (A1 S. 7, S. 26)
   und nie ein Speicher; bidirektional nur V2H mit unterbundener Rueckspeisung bei Einspeisung = Alternative zur
   Ausschliesslichkeit (A1 S. 26 Fn. 21, S. 27 Fn. 22); sonst Ladepunkt der Festlegung.
-- **Zulaessig** (:func:`zulaessig`): im Mischbetrieb nur mit einem Formelsatz mit Ladepunkt hinter Z2 (A3, A4; A1 S. 9
-  Uebersicht 1, S. 30–32), im EEG-Modus (FK3) nur die Alternative zur Ausschliesslichkeit (A1 S. 27 Fn. 22).
+- **Zulaessig** (:func:`zulaessig`): im Mischbetrieb nur mit einem Formelsatz mit Ladepunkt hinter Z2 (A2, A3, A4;
+  A1 S. 9 Uebersicht 1, S. 29–32), im EEG-Modus (FK3) nur die Alternative zur Ausschliesslichkeit (A1 S. 27 Fn. 22).
+  MP-33d: auch A2 „Ladepunkt“ ohne Stromspeicher (A1 S. 29–30) - der Ladepunkt zaehlt wie ein Stromspeicher
+  (A1 S. 26–27), das Fahrzeug ist dann der einzige Speicher im Modell (``OptimizationInput.ohne_stromspeicher``).
 - **Abfahrtsziel immer erreicht:** an jeder Grenze, an der das Fahrzeug steht, ist der Ladestand mindestens so hoch,
   dass das naechste Ziel mit voller Ladeleistung noch erreichbar ist - auch wenn die Abfahrt hinter dem Horizont liegt.
   An der Abfahrt selbst ist das das Ziel. Nur was physisch nicht erreichbar ist (Ankunft zu leer, Fenster zu kurz),
@@ -40,8 +42,9 @@ ALTERNATIVE_ZUR_AUSSCHLIESSLICHKEIT = "alternative_zur_ausschliesslichkeit"
 
 #: Formelsaetze mit einem Ladepunkt hinter Z2 (A1 S. 9, Uebersicht 1): A2 ohne, A3 und A4 mit Stromspeicher.
 LADEPUNKT_FORMELSAETZE = frozenset({"A2", "A3", "A4"})
-#: Davon die, die der Speicher-Optimierer plant: A2 hat keinen Stromspeicher (A1 S. 29–30).
-FAHRZEUG_FORMELSAETZE = frozenset({"A3", "A4"})
+#: Davon die, in denen der Optimierer das Fahrzeug plant - seit MP-33d alle drei: in A2 (ohne Stromspeicher,
+#: A1 S. 29–30) ist das Fahrzeug der einzige Speicher; Z2 misst dann nur den Ladepunkt.
+FAHRZEUG_FORMELSAETZE = LADEPUNKT_FORMELSAETZE
 
 #: OCPP-1.6-Status mit angestecktem Fahrzeug (ChargePointStatus).
 STECKER_BELEGT = frozenset({"Preparing", "Charging", "SuspendedEVSE", "SuspendedEV", "Finishing"})
@@ -101,9 +104,7 @@ def zulaessig(
     if einordnung_ == SONSTIGER_VERBRAUCH:
         return "unidirektional"
     if foerderweg == "marktpraemie_abgrenzung":
-        if formelsatz in FAHRZEUG_FORMELSAETZE:
-            return None
-        return "formelsatz_ohne_ladepunkt" if formelsatz not in LADEPUNKT_FORMELSAETZE else "formelsatz_ohne_speicher"
+        return None if formelsatz in FAHRZEUG_FORMELSAETZE else "formelsatz_ohne_ladepunkt"
     if not netzladen_erlaubt and einordnung_ != ALTERNATIVE_ZUR_AUSSCHLIESSLICHKEIT:
         # EEG-Modus (FK3): ein Ladepunkt der Festlegung schliesst die Ausschliesslichkeit aus (A1 S. 27 Fn. 22).
         return "ausschliesslichkeit_mit_ladepunkt"

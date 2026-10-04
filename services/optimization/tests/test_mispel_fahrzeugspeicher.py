@@ -254,7 +254,7 @@ def test_einordnung_wie_ladepunktregeln():
         ("ladepunkt_der_festlegung", "marktpraemie_abgrenzung", "A3", True, None),
         ("ladepunkt_der_festlegung", "marktpraemie_abgrenzung", "A4", True, None),
         ("ladepunkt_der_festlegung", "marktpraemie_abgrenzung", "A1", True, "formelsatz_ohne_ladepunkt"),
-        ("ladepunkt_der_festlegung", "marktpraemie_abgrenzung", "A2", True, "formelsatz_ohne_speicher"),
+        ("ladepunkt_der_festlegung", "marktpraemie_abgrenzung", "A2", True, None),  # MP-33d
         ("ladepunkt_der_festlegung", "marktpraemie_ausschliesslichkeit", None, False,
          "ausschliesslichkeit_mit_ladepunkt"),
         ("alternative_zur_ausschliesslichkeit", "marktpraemie_ausschliesslichkeit", None, False, None),

@@ -765,6 +765,11 @@ def load_fahrzeugspeicher(
         grund = fz_regeln.zulaessig(
             einordnung, site.foerderweg, site.formelsatz, site.netzladen_erlaubt
         )
+        if grund is None and site.foerderweg == "marktpraemie_abgrenzung" and site.formelsatz == "A2":
+            # MP-33d: A2 ist der Basisfall OHNE Stromspeicher (A1 S. 29–30); jede
+            # Anlage dieses Laders hat einen (BatterySite). Die Stammdaten
+            # widersprechen sich (richtig waere A3/A4) - kein Fahrzeug, wie vorher.
+            grund = "a2_mit_stromspeicher"
         fahrzeug = None
         if grund is None:
             mindest, kap, anwesenheit = fenster.get(kid, (None, None, []))

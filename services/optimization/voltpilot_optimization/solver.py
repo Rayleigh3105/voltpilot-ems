@@ -331,6 +331,8 @@ from voltpilot_optimization.domain import (
     WIRKUNGSGRAD_LADEPUNKT,
     FahrzeugPlan,
     FahrzeugSlot,
+    MesslatteNurLaden,
+    MesslattePosten,
     OptimizationInput,
     PlanSlot,
     SchedulePlan,
@@ -502,7 +504,9 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # Ebenfalls eine BOUND, kein Constraint: KNOWN_CONSTRAINTS und die
     # Golden-Suite bleiben unberuehrt, und ein Lauf mit Ladestand (die Vorgabe
     # jedes Aufrufers, der seine Eingaben selbst baut) ist byte-identisch.
-    battery_ruht = inp.battery_held or inp.soc_unbekannt
+    # MiSpeL MP-33d: ein Haus ohne stationaeren Speicher (A2) - derselbe
+    # Mechanismus, ein dritter Grund; ``battery`` ist dann nur ein Platzhalter.
+    battery_ruht = inp.battery_held or inp.soc_unbekannt or inp.ohne_stromspeicher
     charge_cap = 0.0 if battery_ruht else p.max_charge_kw
     discharge_cap = 0.0 if battery_ruht else p.max_discharge_kw
     # Steuerung Stufe 7: „Speicher jetzt laden" als Vorschau - die ersten N
@@ -801,9 +805,33 @@ def _z2_max_kw(inp: OptimizationInput) -> tuple[float, float]:
     p = inp.battery
     if inp.fahrzeug is None:
         return p.max_charge_kw, p.max_discharge_kw
+    if inp.ohne_stromspeicher:
+        # MP-33d, A2: Z2 misst nur den Ladepunkt (A1 S. 29–30).
+        return inp.fahrzeug.laden_kw, inp.fahrzeug.rueckspeisen_kw
     return (
         p.max_charge_kw + inp.fahrzeug.laden_kw,
         p.max_discharge_kw + inp.fahrzeug.rueckspeisen_kw,
+    )
+
+
+def _fremdtankstrom_im_lauf(inp: OptimizationInput) -> bool:
+    """MiSpeL MP-33d: bucht der Lauf den Fremdtankstrom (12)/(13) selbst?
+
+    Nur in A2 (Z2 = Ladepunkt allein, A1 S. 29–30) und nur, wenn er im Lauf
+    entstehen UND zaehlen kann: das Fahrzeug steht beim Start mit gemessenem
+    Ladestand da (jede Ankunft startet auf dem Mindest-Ladestand, der nie
+    unterschritten wird - aus ihr kommt keine mitgebrachte Energie) und
+    speist ins Netz ein (V2G; ohne V2G ist (11) = 0 und damit (13) = 0).
+    In A3/A4 bleibt (12) fuer den Lauf 0 wie in MP-33 (offen: dort traegt Z2
+    auch den Start-Ladestand des Speichers, den MP-10 als EE-Speichererzeugung
+    zaehlt)."""
+    fz = inp.fahrzeug
+    return (
+        inp.mispel_formelsatz == "A2"
+        and fz is not None
+        and fz.v2g
+        and fz.rueckspeisen_kw > 0.0
+        and fz.stand_kwh[0] is not None
     )
 
 
@@ -956,9 +984,12 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
     eta_rt = _wirkungsgrad_14(inp)
     praemie = inp.mispel_praemie_eur_mwh or [0.0] * n
     gutschrift_eur_mwh = _gutschrift_eur_mwh(inp)
-    rot_lohnt = any(praemie[t] < gutschrift_eur_mwh for t in range(n))
     ueberschuss = [max(inp.pv_kw[t] - inp.load_kw[t], 0.0) for t in range(n)]
     z2v_max, z2e_max = _z2_max_kw(inp)
+    # MP-33d: ohne moegliche Speicher-Einspeisung (A2, Fahrzeug ohne
+    # Rueckspeisung - die Messlatte „nur laden“) ist (16) = 0, die Ganzzahl
+    # haette nichts zu entscheiden. Mit Speicher ist z2e_max immer > 0.
+    rot_lohnt = z2e_max > 0.0 and any(praemie[t] < gutschrift_eur_mwh for t in range(n))
 
     m.netz_laden = Var(m.T, domain=NonNegativeReals, bounds=(0.0, z2v_max))
     m.speicher_einspeisung = Var(
@@ -1006,10 +1037,13 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
     if inp.mispel_monatsstand is not None:
         return _add_monatszustand(m, inp, praemie, gutschrift_eur_mwh)
 
+    if _fremdtankstrom_im_lauf(inp):
+        return _add_fremdtankstrom(m, inp, praemie, gutschrift_eur_mwh, rot_lohnt)
+
     # (16) = MAX [ (13) - (15) ; 0 ] ueber den Lauf, in kWh.
     soc0 = p.clamp_soc_kwh(inp.initial_soc_kwh)
     start_gelb = p.one_way_efficiency * max(soc0 - p.soc_floor_kwh(soc0), 0.0)
-    if inp.battery_held or inp.soc_unbekannt:
+    if inp.battery_held or inp.soc_unbekannt or inp.ohne_stromspeicher:
         start_gelb = 0.0
     einspeisung_kwh = sum(m.speicher_einspeisung[t] * dt for t in m.T)
     gelb_kwh = start_gelb + eta_rt * sum(
@@ -1028,6 +1062,87 @@ def _add_mischbetrieb(m: ConcreteModel, inp: OptimizationInput):
 
     return -sum(
         praemie[t] * (m.grid_export[t] - m.rot_einspeisung[t]) * dt / 1000.0
+        for t in m.T
+    ) - gutschrift_eur_mwh / 1000.0 * rot_kwh
+
+
+def _add_fremdtankstrom(
+    m: ConcreteModel, inp: OptimizationInput, praemie, gutschrift_eur_mwh, rot_lohnt: bool
+):
+    """Mischbetrieb A2 mit Fremdtankstrom (MiSpeL MP-33d), ueber den Lauf in kWh:
+
+    - (12) = MAX [ (6) - (5) ; 0 ] (A1 S. 35): ``fremdtank`` >= Rueckspeisen -
+      Laden am Ladepunkt (Z2 = Ladepunkt allein). Exakt, weil (12) jede
+      Gutschrift und Praemie nur mindert - die Minimierung haelt es am MAX.
+      Mitgebracht ist im Lauf nur, was beim Start schon im Fahrzeug war (die
+      Planannahme kann nicht wissen, ob es hier geladen wurde - unbekannt ist
+      kein Hausstrom).
+    - (13) = MAX [ (11) - (12) ; 0 ] (A1 S. 35): der Fremdtankstrom geht ganz
+      von der zeitgleichen Netzeinspeisung (11) ab, nicht vom Verbrauch im
+      Haus. ``fremdtank_netz`` [t] ist der Teil der nicht-roten
+      Speicher-Einspeisung, der weder Praemie noch Gutschrift traegt.
+    - Das MAX in (13) braucht eine Lauf-Ganzzahl ``fremdtank_aktiv``: 1 =
+      (11) >= (12), der ganze Fremdtankstrom geht von (11) ab; 0 = keine
+      Speicher-Einspeisung zaehlt (sicher: unterschaetzt nie den Abzug).
+      Zusammen mit ``saldierung_aktiv`` zaehlt :func:`_solve_plan_fahrzeug`
+      beide auf statt zu verzweigen (MP-33b).
+    - (16) = MAX [ (13) - (15) ; 0 ] (A1 S. 36) wie in MP-10, mit (13) statt (11);
+      die Praemie traegt gruen und gelb ohne den Fremdtankstrom, also
+      (28) = MIN [ (13) ; (15) ] (A1 S. 38).
+    """
+    fz = inp.fahrzeug
+    n = inp.slots
+    dt = inp.slot_hours
+    eta_rt = _wirkungsgrad_14(inp)
+    z2v_max, z2e_max = _z2_max_kw(inp)
+    lauf_kwh = n * dt * (eta_rt * z2v_max + z2e_max)
+    m.fremdtank = Var(domain=NonNegativeReals, bounds=(0.0, n * dt * z2e_max))
+    m.fremdtank_netz = Var(m.T, domain=NonNegativeReals, bounds=(0.0, z2e_max))
+    m.fremdtank_aktiv = Var(domain=Binary)
+    einspeisung_kwh = sum(m.speicher_einspeisung[t] * dt for t in m.T)
+    gelb_kwh = eta_rt * sum((_z2v(m, t) - m.netz_laden[t]) * dt for t in m.T)
+    rot_kwh = sum(m.rot_einspeisung[t] * dt for t in m.T)
+    fremd_netz_kwh = sum(m.fremdtank_netz[t] * dt for t in m.T)
+    b = m.fremdtank_aktiv
+    m.mischbetrieb_fremdtank = ConstraintList()
+    # (12) = MAX [ (6) - (5) ; 0 ]
+    m.mischbetrieb_fremdtank.add(
+        m.fremdtank >= sum((m.fz_rueck[t] - m.fz_laden[t]) * dt for t in m.T)
+    )
+    # (13): b = 1 -> der ganze (12) geht von (11) ab
+    m.mischbetrieb_fremdtank.add(fremd_netz_kwh >= m.fremdtank - lauf_kwh * (1 - b))
+    # b = 0 -> keine Speicher-Einspeisung zaehlt
+    m.mischbetrieb_fremdtank.add(rot_kwh <= lauf_kwh * b)
+    m.mischbetrieb_fremdtank_teil = Constraint(
+        m.T,
+        ["hoechstens", "aus"],
+        rule=lambda model, t, glied: (
+            model.fremdtank_netz[t]
+            <= model.speicher_einspeisung[t] - model.rot_einspeisung[t]
+        )
+        if glied == "hoechstens"
+        else (
+            model.fremdtank_netz[t]
+            >= model.speicher_einspeisung[t] - model.rot_einspeisung[t] - z2e_max * b
+        ),
+    )
+    # (16) = MAX [ (13) - (15) ; 0 ] mit (13) = (11) - (12)
+    m.mischbetrieb_saldierung = ConstraintList()
+    m.mischbetrieb_saldierung.add(
+        rot_kwh >= einspeisung_kwh - m.fremdtank - gelb_kwh - lauf_kwh * (1 - b)
+    )
+    if rot_lohnt:
+        m.saldierung_aktiv = Var(domain=Binary)
+        m.mischbetrieb_saldierung.add(
+            rot_kwh
+            <= einspeisung_kwh - m.fremdtank - gelb_kwh + lauf_kwh * (1 - m.saldierung_aktiv)
+        )
+        m.mischbetrieb_saldierung.add(rot_kwh <= lauf_kwh * m.saldierung_aktiv)
+    return -sum(
+        praemie[t]
+        * (m.grid_export[t] - m.rot_einspeisung[t] - m.fremdtank_netz[t])
+        * dt
+        / 1000.0
         for t in m.T
     ) - gutschrift_eur_mwh / 1000.0 * rot_kwh
 
@@ -1432,7 +1547,7 @@ def optimize(
     """
     model = build_model(inp)
     _solve_plan(model, inp)
-    plan = _extract_plan(model, inp, plan_id, generated_at)
+    plan = _mit_messlatte(_extract_plan(model, inp, plan_id, generated_at), model, inp, True)
     if not explain_plan:
         return plan
     return _with_explanation(plan, model, inp, fallback_14a=False)
@@ -1459,10 +1574,115 @@ def optimize_ignoring_grid_limit(
     """Fallback solve with the §14a cap dropped (see :func:`optimize`)."""
     model = build_model(inp, enforce_grid_limit=False)
     _solve_plan(model, inp)
-    plan = _extract_plan(model, inp, plan_id, generated_at)
+    plan = _mit_messlatte(_extract_plan(model, inp, plan_id, generated_at), model, inp, False)
     if not explain_plan:
         return plan
     return _with_explanation(plan, model, inp, fallback_14a=True)
+
+
+def _netz_kw(model: ConcreteModel, inp: OptimizationInput, t: int) -> float:
+    """Netto-Netzleistung eines Slots aus der Bilanz (wie :func:`_extract_plan`)."""
+    curtail_kw = min(max(float(value(model.curtail[t])), 0.0), max(inp.pv_kw[t], 0.0))
+    netz = (
+        inp.load_kw[t]
+        - inp.pv_kw[t]
+        + curtail_kw
+        + float(value(model.charge[t]))
+        - float(value(model.discharge[t]))
+    )
+    if hasattr(model, "fz_laden"):
+        netz += float(value(model.fz_laden[t])) - float(value(model.fz_rueck[t]))
+    return netz
+
+
+def _gutschrift_im_plan_eur(model: ConcreteModel, inp: OptimizationInput) -> float:
+    """(16) des Plans mal der Gutschrift (Mischbetrieb), sonst 0."""
+    if not hasattr(model, "rot_einspeisung"):
+        return 0.0
+    rot_kwh = sum(max(float(value(model.rot_einspeisung[t])), 0.0) for t in model.T)
+    return _gutschrift_eur_mwh(inp) / 1000.0 * rot_kwh * inp.slot_hours
+
+
+def messlatte_nur_laden(
+    inp: OptimizationInput, model: ConcreteModel, enforce_grid_limit: bool = True
+) -> MesslatteNurLaden | None:
+    """MiSpeL MP-33d: die Gegenrechnung „dasselbe Haus, das Auto laedt nur“
+    (:class:`MesslatteNurLaden`) zum geloesten Plan ``model``.
+
+    Dasselbe Modell mit ``rueckspeisen_kw = 0`` - dieselben Fenster,
+    Abfahrtsziele und Mindest-Ladestaende, derselbe Planweg (Mischbetrieb,
+    Aufzaehlung, Knotengrenze im Check). Ohne Rueckspeisung im Modell ist der
+    Plan selbst schon „nur laden“: ``None``. Reine BEWERTUNG und FAIL-SOFT wie
+    die Messlatte des sturen Speichers: eine fehlende Zahl ist eine fehlende
+    Summe im Portal, nie ein fehlender Plan."""
+    fz = inp.fahrzeug
+    if fz is None or fz.rueckspeisen_kw <= 0.0:
+        return None
+    nur = replace(inp, fahrzeug=replace(fz, rueckspeisen_kw=0.0))
+    try:
+        m_nur = build_model(nur, enforce_grid_limit=enforce_grid_limit)
+        _solve_plan(m_nur, nur)
+    except Exception:
+        logger.warning(
+            "messlatte_nur_laden.nicht_gerechnet",
+            extra={"context": {"site_id": str(inp.site_id)}},
+            exc_info=True,
+        )
+        return None
+    dt = inp.slot_hours
+    verschleiss_eur_kwh = fz.verschleiss_ct_je_kwh / 100.0
+    je_slot = []
+    kosten = kosten_nur = 0.0
+    for t in range(inp.slots):
+        netz, netz_nur = _netz_kw(model, inp, t), _netz_kw(m_nur, nur, t)
+        kosten += inp.cashflow_cost_eur(t, netz)
+        kosten_nur += inp.cashflow_cost_eur(t, netz_nur)
+        mehr_bezug = (max(netz, 0.0) - max(netz_nur, 0.0)) * dt
+        mehr_einspeisung = (max(-netz, 0.0) - max(-netz_nur, 0.0)) * dt
+        preis = inp.import_prices[t] / 1000.0
+        je_slot.append(
+            MesslattePosten(
+                weniger_gekauft_eur=round(preis * max(-mehr_bezug, 0.0), 6),
+                mehr_geladen_eur=round(-preis * max(mehr_bezug, 0.0), 6),
+                ins_netz_verkauft_eur=round(inp.export_values[t] / 1000.0 * mehr_einspeisung, 6),
+                akku_verschleiss_eur=round(
+                    -verschleiss_eur_kwh * max(float(value(model.fz_rueck[t])), 0.0) * dt, 6
+                ),
+            )
+        )
+    posten = MesslattePosten(
+        *(round(sum(getattr(p, f) for p in je_slot), 6) for f in (
+            "weniger_gekauft_eur", "mehr_geladen_eur", "ins_netz_verkauft_eur", "akku_verschleiss_eur"
+        ))
+    )
+    return MesslatteNurLaden(
+        posten=posten,
+        kosten_eur=round(kosten, 6),
+        kosten_nur_laden_eur=round(kosten_nur, 6),
+        gutschrift_eur=round(_gutschrift_im_plan_eur(model, inp), 6),
+        gutschrift_nur_laden_eur=round(_gutschrift_im_plan_eur(m_nur, nur), 6),
+        geladen_kwh=round(
+            sum(max(float(value(model.fz_laden[t])), 0.0) for t in model.T) * dt, 6
+        ),
+        geladen_nur_laden_kwh=round(
+            sum(max(float(value(m_nur.fz_laden[t])), 0.0) for t in m_nur.T) * dt, 6
+        ),
+        rueckgespeist_kwh=round(
+            sum(max(float(value(model.fz_rueck[t])), 0.0) for t in model.T) * dt, 6
+        ),
+        posten_je_slot=tuple(je_slot),
+    )
+
+
+def _mit_messlatte(
+    plan: SchedulePlan, model: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool
+) -> SchedulePlan:
+    if plan.fahrzeug is None:
+        return plan
+    messlatte = messlatte_nur_laden(inp, model, enforce_grid_limit)
+    if messlatte is None:
+        return plan
+    return replace(plan, fahrzeug=replace(plan.fahrzeug, messlatte_nur_laden=messlatte))
 
 
 def _with_explanation(
@@ -1826,6 +2046,8 @@ def _solve_plan(model: ConcreteModel, inp: OptimizationInput) -> str | None:
         return _solve_plan_monatszustand(model, inp)
     if hasattr(model, "saldierung_jahr_aktiv"):
         return _solve_plan_jahreszustand(model, inp)
+    if hasattr(model, "fremdtank_aktiv"):
+        return _solve_plan_fahrzeug(model, inp)
     if not hasattr(model, "saldierung_aktiv"):
         _solve(model)
         return None
@@ -1866,8 +2088,8 @@ FAHRZEUG_HIGHS_OPTIONEN = {"mip_heuristic_effort": 0.3}
 
 
 def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> str | None:
-    """Mischbetrieb A3/A4 mit Fahrzeug (MP-33b): die Lauf-Ganzzahl
-    ``saldierung_aktiv`` wird aufgezaehlt statt verzweigt.
+    """Mischbetrieb mit Fahrzeug (MP-33b): die Lauf-Ganzzahlen werden
+    aufgezaehlt statt verzweigt.
 
     Gemessen (Bauplan MP-33b): mit freier Ganzzahl bleibt HiGHS bei 192 Slots
     60 s an der Wurzel haengen (Schranke -9,44 gegen das Optimum -6,84) - das
@@ -1879,8 +2101,14 @@ def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> str | 
     Ergebnis gewinnt; bei Gleichstand der Plan ohne Gutschrift. Beide optimal
     = genau die Loesung des ganzen Modells (Minimum ueber beide Werte).
 
-    Erreicht das zweite Teilproblem die Zeitgrenze, zaehlt sein bester
-    zulaessiger Plan, wenn er besser ist als der ohne Gutschrift (Log
+    MP-33d, A2 mit Fremdtankstrom (:func:`_add_fremdtankstrom`): dazu die
+    Ganzzahl ``fremdtank_aktiv`` des MAX in (13). Aufgezaehlt werden dann
+    (Gutschrift aus, Speicher-Einspeisung zaehlt nicht) - immer zulaessig -,
+    (aus, zaehlt) und (an, zaehlt); (an, zaehlt nicht) ist dasselbe wie das
+    erste, weil ohne zaehlende Einspeisung nichts saldiert.
+
+    Erreicht ein spaeteres Teilproblem die Zeitgrenze, zaehlt sein bester
+    zulaessiger Plan, wenn er besser ist als der bisher beste (Log
     ``mischbetrieb.fahrzeug_saldierung_zeitgrenze`` mit Luecke). Er ist ein
     zulaessiger Plan des ganzen Modells - (16) exakt gebucht -, also
     ueberschaetzt er keinen Wert; er ist nur nicht bewiesen optimal.
@@ -1888,41 +2116,63 @@ def _solve_plan_fahrzeug(model: ConcreteModel, inp: OptimizationInput) -> str | 
     MP-33c: mit ``wiederholbar`` die Knotengrenze statt der Wanduhr; der
     Rueckweg meldet die erreichte Grenze (auch wenn ihr Plan uebernommen ist).
     """
-    model.saldierung_aktiv.fix(0)
-    ohne, _, _ = _solve_teil(model)
-    stand_ohne = [
-        (var, var.value) for var in model.component_data_objects(Var) if not var.fixed
-    ]
-    model.saldierung_aktiv.fix(1)
+    saldierung = getattr(model, "saldierung_aktiv", None)
+    fremdtank = getattr(model, "fremdtank_aktiv", None)
+    if fremdtank is None:
+        teile = [((saldierung, 0),), ((saldierung, 1),)]
+    elif saldierung is None:
+        teile = [((fremdtank, 0),), ((fremdtank, 1),)]
+    else:
+        teile = [
+            ((saldierung, 0), (fremdtank, 0)),
+            ((saldierung, 0), (fremdtank, 1)),
+            ((saldierung, 1), (fremdtank, 1)),
+        ]
+
+    def _fix(teil) -> None:
+        for var, wert in teil:
+            var.fix(wert)
+
+    _fix(teile[0])
+    bestes, _, _ = _solve_teil(model)
+    bester_teil = teile[0]
+    stand = [(var, var.value) for var in model.component_data_objects(Var) if not var.fixed]
     grenzen = _grenzen(inp, FAHRZEUG_SALDIERUNG_ZEITGRENZE_S)
-    try:
-        mit, luecke, grenze = _solve_teil(model, **grenzen)
-    except InfeasiblePlanError:
-        mit, luecke, grenze = None, None, None
-    if luecke is not None:
-        logger.warning(
-            "mischbetrieb.fahrzeug_saldierung_zeitgrenze",
-            extra={
-                "context": {
-                    "site_id": str(inp.site_id),
-                    "zeitgrenze_s": FAHRZEUG_SALDIERUNG_ZEITGRENZE_S,
-                    "grenze": grenze,
-                    "luecke": luecke,
-                    "uebernommen": mit is not None and mit < ohne,
-                    "reason": (
-                        "Mischbetrieb mit Fahrzeug: Teilproblem mit Saldierung "
-                        "nicht in der Zeitgrenze bewiesen - bester zulaessiger "
-                        "Plan, wenn besser als ohne Gutschrift"
-                    ),
-                }
-            },
-        )
-    if mit is not None and mit < ohne:
-        return grenze
-    model.saldierung_aktiv.fix(0)
-    for var, wert in stand_ohne:
+    erreicht = None
+    for teil in teile[1:]:
+        _fix(teil)
+        try:
+            ziel, luecke, grenze = _solve_teil(model, **grenzen)
+        except InfeasiblePlanError:
+            ziel, luecke, grenze = None, None, None
+        erreicht = grenze or erreicht
+        if luecke is not None:
+            logger.warning(
+                "mischbetrieb.fahrzeug_saldierung_zeitgrenze",
+                extra={
+                    "context": {
+                        "site_id": str(inp.site_id),
+                        "zeitgrenze_s": FAHRZEUG_SALDIERUNG_ZEITGRENZE_S,
+                        "grenze": grenze,
+                        "luecke": luecke,
+                        "uebernommen": ziel is not None and ziel < bestes,
+                        "reason": (
+                            "Mischbetrieb mit Fahrzeug: Teilproblem mit Saldierung "
+                            "nicht in der Zeitgrenze bewiesen - bester zulaessiger "
+                            "Plan, wenn besser als ohne Gutschrift"
+                        ),
+                    }
+                },
+            )
+        if ziel is not None and ziel < bestes:
+            bestes, bester_teil = ziel, teil
+            stand = [
+                (var, var.value) for var in model.component_data_objects(Var) if not var.fixed
+            ]
+    _fix(bester_teil)
+    for var, wert in stand:
         var.set_value(wert, skip_validation=True)
-    return grenze
+    return erreicht
 
 
 def _solve_teil(
@@ -2101,7 +2351,9 @@ def _extract_plan(
     # Erfindung neben der, die P7 gerade abgeschafft hat. Der bestehende
     # NULL-Weg traegt das bis in die api (`steuerungPlannedEur` bleibt null,
     # sobald auch nur EIN Slot die Messlatte nicht traegt).
-    if inp.soc_unbekannt:
+    # MP-33d: ohne stationaeren Speicher gibt es keinen sturen Speicher; die
+    # Gegenrechnung des Fahrzeugs ist die Messlatte „nur laden“.
+    if inp.soc_unbekannt or inp.ohne_stromspeicher:
         stur_costs: list[float | None] = [None] * inp.slots
     else:
         try:
