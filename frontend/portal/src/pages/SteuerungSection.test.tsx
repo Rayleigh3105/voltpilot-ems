@@ -10,7 +10,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SteuerungSection } from './SteuerungSection';
-import { api, type Site } from '../api';
+import { api, type FunktionTeilnahme, type Funktionen, type Site } from '../api';
+import { setSelbstauskunft } from '../rollen';
+import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
+import { STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
+import { ahrenbergFunktionen } from '../test/funktionenFixtures';
+import { rechteSeed } from '../test/rollenFixtures';
 import * as flowsApi from '../flows/flowsApi';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import type { SiteVerbraucher } from '../verbraucherZone';
@@ -115,6 +120,8 @@ beforeEach(() => {
   vi.spyOn(api, 'suggestionStates').mockResolvedValue({ states: [] });
   vi.spyOn(api, 'scene').mockResolvedValue({ scene: null, offen: [], message: null });
   vi.spyOn(api, 'entityHistory').mockRejectedValue(new Error('nicht da'));
+  // Ohne Antwort von `/funktionen` behauptet die Seite nichts über „Steuern & Optimieren“.
+  vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('nicht da'));
   cList.mockResolvedValue([
     { id: 'e-hs', type: 'heating-rod', typeLabel: 'Heizstab', name: 'Heizstab Warmwasser', controlKind: 'on_off', ratedPowerKw: 3, minPowerKw: null, levelsKw: null, resolutionKw: null, powerRangesKw: null, storageRelation: 'storage_first', defaultGridEnergyPolicy: 'avoid', allowStorageDischarge: false, failsafe: 'off', enabled: true, version: 4, connection: 'connected', edgeSourceId: 's', controlActivation: 'active', hasDraftPolicy: false, draftPolicyVersion: null, confirmationChannel: 'power_kw' },
   ]);
@@ -326,5 +333,81 @@ describe('Steuerung · ehrlich ohne Daten', () => {
     zeige();
     expect(await screen.findByText(/Die Anlage antwortet nicht\./)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
+  });
+});
+
+/** `/funktionen` mit dieser Anlage (`s-1`) als Halle 1 (Werk Ahrenberg) bzw. Werk Lindach. */
+function funktionenMit(t: Partial<FunktionTeilnahme>, standort: 0 | 1 = 0): Funktionen {
+  const f = structuredClone(ahrenbergFunktionen());
+  const anlage = f.standorte[standort].steuern.anlagen[0];
+  anlage.id = 's-1';
+  Object.assign(anlage.teilnahme, t);
+  return f;
+}
+
+describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
+  it('angehalten: Plakette mit Zustand statt „Automatik an“, Band mit Ruhe-Satz, Eingriffe gesperrt mit Grund', async () => {
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({
+      zustand: 'angehalten', seit: '2026-11-03T14:10:00+01:00', aktionen: ['fortsetzen', 'beenden'],
+      ruhe_hinweis: { jetzt: true, beim_anhalten: false },
+    }));
+    const pause = vi.spyOn(api, 'pauseAutomation');
+    zeige();
+    expect(await screen.findByText('Angehalten seit 03.11.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Automatik an/ })).not.toBeInTheDocument();
+    const band = screen.getByTestId('steuern-ruhe');
+    expect(band).toHaveTextContent('Angehalten seit 03.11.2026 14:10.');
+    expect(band).toHaveTextContent('Regeln und das Betriebsmodell des Speichers wirken nicht');
+    expect(screen.getByTestId('ruhe-verbindung-hinweis')).toHaveTextContent(RUHE_VERBINDUNG_HINWEIS);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Heizstab Warmwasser/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Heizstab Warmwasser/ });
+    expect(within(blatt).getByRole('button', { name: 'Aus' })).toBeDisabled();
+    expect(within(blatt).getByRole('button', { name: 'Ein' })).toBeDisabled();
+    expect(within(blatt).getByRole('note')).toHaveTextContent('Eingriffe und Pause gibt es wieder, sobald die Steuerung fortgesetzt ist.');
+    fireEvent.click(within(blatt).getByRole('button', { name: 'Ein' }));
+    expect(within(blatt).queryByText(/Das passiert:/)).not.toBeInTheDocument();
+    expect(cStartOverride).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
+  });
+
+  it('eingerichtet: „Noch nicht gestartet“, und am Ladepunkt sind Aus und Schnell gesperrt', async () => {
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({ zustand: 'eingerichtet', seit: '2026-10-01T09:00:00+02:00', aktionen: ['starten'] }));
+    const boost = vi.spyOn(api, 'chargingBoost');
+    zeige('laden');
+    expect(await screen.findByText('Noch nicht gestartet')).toBeInTheDocument();
+    expect(screen.getByTestId('steuern-ruhe')).toHaveTextContent('Eingerichtet am 01.10.2026 — Steuerung noch nicht gestartet.');
+    expect(screen.queryByTestId('ruhe-verbindung-hinweis')).not.toBeInTheDocument();
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(within(karte).getByRole('button', { name: /Aus/ })).toBeDisabled();
+    expect(within(karte).getByRole('button', { name: /Schnell/ })).toBeDisabled();
+    expect(within(karte).getByRole('button', { name: /Smart/ })).toBeEnabled();
+    expect(within(karte).getByRole('note')).toHaveTextContent('Eingriffe und Pause gibt es, sobald die Steuerung gestartet ist.');
+    expect(boost).not.toHaveBeenCalled();
+  });
+
+  it('nimmt nicht teil: Einstieg mit Recht, keine Vorschlagskarte, kein „Gerät fehlt?“, die Steuerart bleibt erreichbar', async () => {
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({}, 1));
+    zeige();
+    const einstieg = await screen.findByTestId('steuern-einstieg');
+    expect(einstieg).toHaveTextContent(STEUERN_EINSTIEG_SATZ);
+    expect(within(einstieg).getByRole('button', { name: 'Steuern & Optimieren einrichten' })).toBeInTheDocument();
+    expect(screen.queryByTestId('steuern-ruhe')).not.toBeInTheDocument();
+    await screen.findByRole('button', { name: /Heizstab Warmwasser/ });
+    expect(screen.queryByRole('region', { name: /Neu in Ihrer Anlage/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Gerät fehlt\?/)).not.toBeInTheDocument();
+    const zeile = document.getElementById('offen-e-spuel')!;
+    expect(zeile).toHaveTextContent('Ohne Auftrag.');
+    fireEvent.click(within(zeile).getByRole('button', { name: 'Steuerart' }));
+    expect(await screen.findByRole('dialog', { name: /Spülmaschine steuern/ })).toBeInTheDocument();
+  });
+
+  it('ohne Recht bleibt der Einstiegs-Satz, der Knopf fehlt (nur der Kundenadministrator richtet ein)', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({}, 1));
+    zeige();
+    const einstieg = await screen.findByTestId('steuern-einstieg');
+    expect(einstieg).toHaveTextContent(STEUERN_EINSTIEG_SATZ);
+    expect(within(einstieg).queryByRole('button')).not.toBeInTheDocument();
   });
 });

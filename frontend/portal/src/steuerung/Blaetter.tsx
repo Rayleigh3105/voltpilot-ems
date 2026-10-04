@@ -95,14 +95,16 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
 }) {
   const [a, b, c] = dreiWorte(g);
   const cur: Art3 = eingriff ? eingriff.art : 'smart';
-  const [wahl, setWahl] = useState<Art3>(start ?? cur);
+  // In Ruhe (UEMS R0) gibt es keinen Eingriff - nur „Smart“ beendet einen laufenden.
+  const sperre = bild.funktion.sperre;
+  const [wahl, setWahl] = useState<Art3>(sperre ? cur : start ?? cur);
   const lp = !!g?.eintrag.ladepunkt;
   const [minuten, setMinuten] = useState<number | null>(lp ? null : 60);
   const knopf = (k: Art3, label: string, icon: string) => (
     <button
       type="button"
       aria-pressed={wahl === k}
-      disabled={busy}
+      disabled={busy || (sperre != null && k !== 'smart')}
       onClick={() => {
         if (k === 'smart') {
           setWahl('smart');
@@ -127,7 +129,8 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
         {knopf('smart', b, 'sun')}
         {knopf('an', c, !g ? 'down' : lp ? 'rocket' : 'power')}
       </div>
-      {wahl !== 'smart' && wahl !== cur && (
+      {sperre && <p className="leise" role="note">{sperre}</p>}
+      {wahl !== 'smart' && wahl !== cur && !sperre && (
         <div className="param">
           <div className="blk">
             <h3>Wie lange?</h3>

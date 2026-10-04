@@ -9,10 +9,19 @@
  * Die Seite rechnet nichts selbst: das Bild kommt aus `seite.ts`/`bild.ts`,
  * die Schreibwege sind die bestehenden (Steuerart, Handeingriff, Speicher,
  * Pause, Betriebsmodell, Reihenfolge, Ladepark, Regeln der Box).
+ *
+ * UEMS: die Funktion „Steuern & Optimieren“ (`funktion.ts`) trägt die Bänder
+ * über allen Reitern - Einstieg (#965), Ruhe-Zustand, Ruhe-Satz der älteren
+ * Box (#986). In Ruhe sagt die Plakette nie „Automatik an“, und Eingriffe wie
+ * Pause sind gesperrt, mit Grund statt 409.
  */
 import { liste } from './liste';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type Site, type SzeneKey } from '../api';
+import { Recht } from '../components/Recht';
+import { SteuernAssistent } from '../components/SteuernAssistent';
+import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
+import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
 import type { BereichTab } from '../ebenenNav';
 import type { AnlagenSub } from '../nav';
 import { consumersApi } from '../consumers/consumersApi';
@@ -70,7 +79,9 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   }, []);
   // Jede neue Antwort ist auch ein neues „jetzt“.
   useEffect(() => setNow(new Date()), [daten.live, daten.status]);
-  const bild = useMemo(() => seitenBild(daten, now), [daten, now]);
+  const bild = useMemo(() => seitenBild(daten, now, site.id), [daten, now, site.id]);
+  const funktion = bild.funktion;
+  const [einrichten, setEinrichten] = useState(false);
   const [blatt, setBlatt] = useState<BlattZustand | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; warn?: boolean } | null>(null);
@@ -114,7 +125,15 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     }
   };
 
+  /** In Ruhe endete jeder Eingriff mit 409: vorher sperren und den Grund sagen. „Smart“ beendet nur. */
+  const gesperrt = (art: 'aus' | 'an' | 'smart' | 'pause') => {
+    if (!funktion.sperre || art === 'smart') return false;
+    meldung(funktion.sperre, true);
+    return true;
+  };
+
   const eingriff: Aktionen['eingriff'] = async (g, art, minuten) => {
+    if (gesperrt(art)) return false;
     let ok = false;
     await lauf(g.id, async () => {
       try {
@@ -140,6 +159,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   };
 
   const speicherEingriff: Aktionen['speicherEingriff'] = async (art, minuten) => {
+    if (gesperrt(art)) return false;
     let ok = false;
     await lauf(SPEICHER, async () => {
       try {
@@ -227,6 +247,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       });
     },
     pause: async (minuten) => {
+      if (gesperrt('pause')) return;
       await lauf('pause', async () => {
         try {
           await api.pauseAutomation(site.id, { durationMinutes: minuten });
@@ -389,6 +410,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   };
 
   const automatik = async () => {
+    if (gesperrt('pause')) return;
     if (bild.pausiertBisMs == null) {
       setBlatt({ art: 'pause' });
       return;
@@ -489,14 +511,22 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   }
 
   const pausiert = bild.pausiertBisMs != null;
+  const baender = pausiert || bild.szene || funktion.satz || funktion.ruheHinweis || funktion.einstieg;
   return (
     <div className="stn">
       <div className="stn-kopf">
         <h1>Steuerung</h1>
-        <button type="button" className={`auto${pausiert ? ' aus' : ''}`} onClick={() => void automatik()} disabled={busy === 'pause'}>
-          <i />
-          {pausiert ? `pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
-        </button>
+        {funktion.plakette ? (
+          <span className="auto aus ruht" role="status" title={funktion.sperre ?? undefined}>
+            <i />
+            {funktion.plakette}
+          </span>
+        ) : (
+          <button type="button" className={`auto${pausiert ? ' aus' : ''}`} onClick={() => void automatik()} disabled={busy === 'pause'}>
+            <i />
+            {pausiert ? `pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
+          </button>
+        )}
       </div>
       <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
         {tabs.map((t) => (
@@ -512,8 +542,33 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           </button>
         ))}
       </div>
-      {(pausiert || bild.szene) && (
+      {baender && (
         <div className="stn-baender">
+          {funktion.einstieg && (
+            <div className="stn-band info" data-testid="steuern-einstieg">
+              <Ic n="info" s={18} />
+              <span>
+                <b>{STEUERN_EINSTIEG_SATZ}</b>{' '}
+                <Recht standort={funktion.standortId} aktion="funktion.steuern_einrichten">
+                  <button type="button" className="lnk" onClick={() => setEinrichten(true)}>{STEUERN_EINSTIEG_AKTION}</button>
+                </Recht>
+              </span>
+            </div>
+          )}
+          {funktion.satz && (
+            <div className="stn-band" role="status" data-testid="steuern-ruhe">
+              <Ic n="pause" s={18} />
+              <span>
+                <b>{funktion.satz}.</b> {funktion.folge}
+              </span>
+            </div>
+          )}
+          {funktion.ruheHinweis && (
+            <div className="stn-band info" data-testid="ruhe-verbindung-hinweis">
+              <Ic n="info" s={18} />
+              <span>{RUHE_VERBINDUNG_HINWEIS}</span>
+            </div>
+          )}
           {pausiert && (
             <div className="stn-band">
               <Ic n="pause" s={18} />
@@ -568,6 +623,16 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         });
         return ok;
       }} />}
+      {einrichten && funktion.standortId && (
+        <SteuernAssistent
+          standortId={funktion.standortId}
+          anlageId={site.id}
+          onClose={() => {
+            setEinrichten(false);
+            neuLaden();
+          }}
+        />
+      )}
       {toast && (
         <div className="stn-toast" role="status">
           <Ic n={toast.warn ? 'info' : 'check'} s={18} />

@@ -36,6 +36,20 @@ die Server-Regeln, die sie nennen.
 - Bausteine, die die Box nicht ausführen kann (Außentemperatur, günstigste Stunden, anderes Gerät,
   „nie wenn“), stehen als „kommt noch“ da, nie als stiller Knopf.
 
+## UEMS: „Steuern & Optimieren“ (Nachzug 1d)
+
+- `funktion.ts` leitet aus `/funktionen` (fail-soft in `useSteuerungDaten`; ohne Antwort behauptet die
+  Seite nichts) die Lage der Anlage ab und legt sie als `bild.funktion` ins `seitenBild`.
+- **Ruhe** = entwurf, eingerichtet, angehalten (wie `RuheHinweisRegel`) und beendet (auch „beenden“
+  schreibt die Ruhe). `/interventions` zeigt die Ruhe bewusst nicht. In Ruhe: Plakette mit Zustand statt
+  „Automatik an“ (kein Pause-Knopf), Band „Angehalten seit …“ / „Eingerichtet am … — …“, Ruhe-Satz der
+  älteren Box (#986); Aus/Ein im Blatt und Aus/Schnell am Ladepunkt gesperrt mit Grund, und `eingriff`,
+  `speicherEingriff`, `pause` sperren zentral - sonst antwortet der Server 409. „Smart“ bleibt.
+- **Ohne Teilnahme** (kein Objekt, beendet; Steuern-Regel #779): keine Karte „Neu in Ihrer Anlage“, kein
+  „Gerät fehlt?“; Geräte ohne Auftrag stehen als `einordnung.still` mit dem Weg „Steuerart“. Nur „kein
+  Objekt“ bekommt den Einstieg (#965, Knopf hinter `funktion.steuern_einrichten`, öffnet `SteuernAssistent`).
+- Offen für die Varianten-Pakete: was Geräte einer Messanlage zeigt (SZ-1) und wo man anhält/fortsetzt (SZ-2).
+
 ## Schreibwege (alle bestehend, außer Szene und „nur messen“)
 
 Eingriff am Verbraucher `consumersApi.startOverride/clearOverride` (Server-Deckel 4 h), Ladepunkt
@@ -52,6 +66,6 @@ verweigert der Server das Einschalten, weil er danach nicht fortsetzen könnte.
 ## Prüfen
 
 `src/steuerung/*.test.ts`, `src/pages/SteuerungSection.test.tsx`, Playwright
-`e2e/steuerung.spec.ts` (Beispielanlage `e2e/steuerung.*`, Uhr 29.09.2026 13:10 Berlin, 1440 und 375).
+`e2e/steuerung-anhalten.spec.ts` und `e2e/leerzustaende.spec.ts` (Funktion), `e2e/steuerung.spec.ts` (Beispielanlage `e2e/steuerung.*`, Uhr 29.09.2026 13:10 Berlin, 1440 und 375).
 Die Hilfe-Aufnahmen `steuerung`, `steuerung-geraete`, `regeln`, `regeln-mobil`, `ladepark` kommen aus
 derselben Beispielanlage (`seite: 'steuerung'` in `e2e/help-captures.mjs`).

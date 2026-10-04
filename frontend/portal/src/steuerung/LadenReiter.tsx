@@ -175,7 +175,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
             key={k}
             data-m={k}
             aria-pressed={wahl === k}
-            disabled={busy || (!l?.angesteckt && k !== 'smart')}
+            disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
             onClick={() => {
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
               oeffne({ art: 'geraet', id: g.id, modus: k === 'aus' ? 'aus' : 'an' });
@@ -186,6 +186,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
           </button>
         ))}
       </div>
+      {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>
       {l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
         <div className="soc">

@@ -15,6 +15,7 @@ import {
   type Reihen,
   type SpeicherBild,
 } from './bild';
+import { funktionsLage, type FunktionsLage } from './funktion';
 import { einordnen, type Einordnung } from './neu';
 import { bezugAus, greift, regelKarten } from './regeln';
 import type { SteuerungDaten } from './useSteuerungDaten';
@@ -40,6 +41,8 @@ export interface SeitenBild {
   ladepunkte: GeraetBild[];
   /** Die laufende Szene (E6), sonst `null`. */
   szene: SzenenStand | null;
+  /** „Steuern & Optimieren“ dieser Anlage: Ruhe, Teilnahme, Bänder, Sperre. */
+  funktion: FunktionsLage;
 }
 
 /** Das Betriebsmodell, das den Speicher gerade fährt (die exklusive Gruppe). */
@@ -47,8 +50,9 @@ export function laufendesModell(profiles: SiteProfile[] | null | undefined): Sit
   return liste(profiles).find((p) => p.exklusivGruppe === 'speicher' && p.active) ?? null;
 }
 
-export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
+export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBild {
   const r = raster(now);
+  const funktion = funktionsLage(d.funktionen, siteId);
   const rh = reihen({ raster: r, verlauf: d.verlauf, plan: d.plan, preise: d.preise, wetter: d.wetter, live: d.live });
   // Welche aktive Regel greift gerade? (Die Bedingung gilt jetzt.)
   const regelJetzt: Record<string, string> = {};
@@ -89,6 +93,12 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     : null;
   const bis = d.interventions?.automationPaused ? Date.parse(d.interventions.pausedUntil ?? '') : NaN;
   const modell = laufendesModell(d.profiles?.profiles);
+  const einordnung = einordnen(gs, d.vorschlaege, r.nowMs);
+  if (funktion.ohneTeilnahme) {
+    // Steuern-Regel #779: wer nicht teilnimmt, bekommt keinen Vorschlag.
+    einordnung.still = einordnung.neu;
+    einordnung.neu = [];
+  }
   const iv = liste(d.interventions?.interventions).find(
     (x) => /^speicher_/.test(x.kind) && Date.parse(x.endsAt) > r.nowMs,
   );
@@ -100,12 +110,13 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     reihenfolge: [...rang, ...rest],
     rang,
     rest,
-    einordnung: einordnen(gs, d.vorschlaege, r.nowMs),
+    einordnung,
     pausiertBisMs: d.interventions?.automationPaused ? (Number.isFinite(bis) ? bis : r.nowMs) : null,
     speicherEingriff: iv ? { art: iv.kind === 'speicher_laden' ? 'an' : 'aus', bisMs: Date.parse(iv.endsAt) } : null,
     betriebsmodell: modell?.label ?? 'Eigenverbrauch',
     ladepunkte: gs.filter((g) => g.eintrag.ladepunkt),
     szene,
+    funktion,
   };
 }
 

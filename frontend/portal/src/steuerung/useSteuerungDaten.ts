@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
   type ChargingConfig,
+  type Funktionen,
   type History,
   type PriceSeries,
   type RuleEvents,
@@ -66,6 +67,8 @@ export interface SteuerungDaten {
   vorschlaege: SuggestionStates | null;
   /** Die laufende Szene (E6); `null` = unbekannt, `scene: null` = keine. */
   szene: SiteScene | null;
+  /** „Steuern & Optimieren“ (UEMS `/funktionen`); `null` = unbekannt - die Seite behauptet dann nichts. */
+  funktionen: Funktionen | null;
   /** Gemessene Leistung je Gerät heute (kW je Viertelstunde). */
   gemessen: Record<string, (number | null)[]>;
 }
@@ -75,7 +78,7 @@ const LEER: SteuerungDaten = {
   chargingConfig: null, interventions: null, plan: null, consumerPlan: null, verlauf: null,
   preise: null, wetter: null, live: null, assets: null, profiles: null, fahrzeuge: null,
   flows: null, editorEntities: null, ruleEvents: null, entities: null, vorschlaege: null,
-  szene: null, gemessen: {},
+  szene: null, funktionen: null, gemessen: {},
 };
 
 const heuteIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
@@ -142,6 +145,7 @@ export function useSteuerungDaten(site: Site): SteuerungLaden {
       hole('entities', api.siteEntities(id)),
       hole('vorschlaege', api.suggestionStates(id)),
       hole('szene', api.scene(id)),
+      hole('funktionen', api.funktionen()),
     ]);
   }, [site.id, hole]);
 

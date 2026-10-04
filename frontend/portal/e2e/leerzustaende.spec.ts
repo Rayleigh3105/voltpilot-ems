@@ -13,6 +13,9 @@ import { join } from 'node:path';
  * über Steuern (`nie`, geprüft an der ganzen Seite). Erst auf der vom Kunden
  * selbst geöffneten Steuerungsseite steht der eine sachliche Einstieg in den
  * vorhandenen Standort-Assistenten; Steuerart und Regeln bleiben erreichbar.
+ * Die Steuerung mit drei Reitern (Geräte · Laden · Regeln) zeigt dort keine
+ * Vorschlagskarte „Neu in Ihrer Anlage“ und kein „Gerät fehlt?“; ein Gerät
+ * ohne Auftrag steht still mit dem Weg „Steuerart“, die Regeln über den Reiter.
  *
  * Mit `LEERZUSTAENDE_BILDER=<Ordner>` legt der Lauf je Fall das Bild der
  * Stelle, die ganze Seite und die Messung ab.
@@ -36,6 +39,11 @@ interface Fall {
   wege?: string[];
   /** Die Seite gehört einer Anlage bzw. einem Standort ohne Geld (A13). */
   ohneGeld: boolean;
+  /**
+   * Die Steuerung zeigt den Börsenpreis als Steuersignal (ct/kWh), kein Geld - Beträge
+   * bleiben verboten (Nachzug main → uems, Bericht § 2, Empfehlung ohne Frage).
+   */
+  preisSignal?: boolean;
 }
 
 const FAELLE: Fall[] = [
@@ -69,19 +77,21 @@ const FAELLE: Fall[] = [
     name: 'steuerung-halle2',
     query: 'bild=unternehmen&ansicht=steuerung-halle2',
     ziel: '.vp-main',
-    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Ladepunkt Parkplatz Halle 2', 'Regeln'],
-    nie: ['Diese Anlage misst nur', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot'],
-    wege: ['Steuern & Optimieren einrichten', 'Neue Regel'],
+    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Ladepunkt Parkplatz Halle 2', 'Ohne Auftrag.', 'Regeln'],
+    nie: ['Diese Anlage misst nur', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot', 'Neu in Ihrer Anlage', 'Was soll VoltPilot', 'Übernehmen', 'Gerät fehlt?'],
+    wege: ['Steuern & Optimieren einrichten', 'Steuerart', 'Regeln'],
     ohneGeld: true,
+    preisSignal: true,
   },
   {
     name: 'steuerung-lindach',
     query: 'bild=unternehmen&ansicht=steuerung-lindach',
     ziel: '.vp-main',
     sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Regeln'],
-    nie: ['Diese Anlage misst nur', 'Zum Steuern braucht sie', 'Gerät anbinden'],
-    wege: ['Steuern & Optimieren einrichten', 'Neue Regel'],
+    nie: ['Diese Anlage misst nur', 'Zum Steuern braucht sie', 'Gerät anbinden', 'Neu in Ihrer Anlage', 'Gerät fehlt?'],
+    wege: ['Steuern & Optimieren einrichten', 'Regeln'],
     ohneGeld: true,
+    preisSignal: true,
   },
 ];
 
@@ -120,6 +130,7 @@ async function messe(page: Page, ziel: string) {
       knoepfe: knoepfe.map((k) => (k.textContent ?? '').trim()),
       kleineTreffer: knoepfe.map((k) => Math.round(k.getBoundingClientRect().height)).filter((h) => h < 44),
       euro: /€|\bEUR\b|ct\/kWh|Unterm Strich|Marktpreis|Erlös/.test(document.querySelector('.vp-main')?.textContent ?? ''),
+      betrag: /€|\bEUR\b|Unterm Strich|Marktpreis|Erlös/.test(document.querySelector('.vp-main')?.textContent ?? ''),
     };
   }, ziel);
 }
@@ -152,7 +163,7 @@ for (const fall of FAELLE) {
       }
       expect(m.dokument).toBe(0);
       expect(m.draussen).toEqual([]);
-      if (fall.ohneGeld) expect(m.euro).toBe(false);
+      if (fall.ohneGeld) expect(fall.preisSignal ? m.betrag : m.euro).toBe(false);
       await ablegen(page, fall, breite, m);
     });
   }

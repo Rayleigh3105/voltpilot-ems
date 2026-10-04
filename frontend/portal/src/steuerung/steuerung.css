@@ -100,6 +100,9 @@
 .stn-band { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--st-hand-soft); font: 600 13.5px/1.4 var(--font); color: #4c1d95; }
 .stn-band svg { width: 18px; height: 18px; color: var(--st-hand); }
 .stn-band .lnk { min-height: 28px; }
+/* Sachlicher Hinweis (Einstieg, Ruhe-Satz der älteren Box): kein Handeingriff, darum ohne Violett. */
+.stn-band.info { background: var(--c-card); border: 1px solid var(--c-border); color: var(--c-fg); }
+.stn-band.info svg { color: var(--c-muted-fg); }
 .stn-fehler { padding: 10px 12px; border-radius: 12px; background: var(--c-warn-bg, #fff7ed); color: var(--c-warn-fg, #9a3412); font: 600 13.5px/1.4 var(--font); }
 
 /* Rückmeldung nach einer Änderung */
@@ -148,6 +151,7 @@
 :is(.stn, .stn-blatt) .auto{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px 0 10px;border-radius:999px;border:1px solid var(--c-border);background:var(--c-card);font:700 13px var(--font);color:var(--st-on);cursor:pointer;flex:none}
 :is(.stn, .stn-blatt) .auto i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 20%,transparent)}
 :is(.stn, .stn-blatt) .auto.aus{color:var(--st-hand)}
+:is(.stn, .stn-blatt) .auto.ruht{cursor:default}
 
 
 /* Karten */

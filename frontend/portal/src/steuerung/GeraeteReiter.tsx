@@ -537,10 +537,13 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
         return g ? <GeraetKarte key={id} g={g} bild={bild} platz={null} oeffne={p.oeffne} /> : null;
       })}
       <OffenZeilen bild={bild} oeffne={p.oeffne} onAnlage={p.onAnlage} />
-      <button type="button" className="add-dev" onClick={() => p.oeffne({ art: 'anbinden' })}>
-        <Ic n="plus" s={18} />
-        Gerät fehlt? In der Anlage anbinden
-      </button>
+      {/* Steuern-Regel #779: an einer Anlage ohne Teilnahme kein Anstoß, ein Gerät anzubinden. */}
+      {!bild.funktion.ohneTeilnahme && (
+        <button type="button" className="add-dev" onClick={() => p.oeffne({ art: 'anbinden' })}>
+          <Ic n="plus" s={18} />
+          Gerät fehlt? In der Anlage anbinden
+        </button>
+      )}
     </section>
   );
 });
@@ -618,11 +621,22 @@ function SpeicherKarte({ bild, platz, oeffne }: { bild: SeitenBild; platz: numbe
 }
 
 function OffenZeilen({ bild, oeffne, onAnlage }: { bild: SeitenBild; oeffne: (b: BlattZustand) => void; onAnlage: (g: GeraetBild | null) => void }) {
-  const { nurMessen, nichtSteuerbar } = bild.einordnung;
-  if (!nurMessen.length && !nichtSteuerbar.length) return null;
+  const { nurMessen, nichtSteuerbar, still } = bild.einordnung;
+  if (!nurMessen.length && !nichtSteuerbar.length && !still.length) return null;
   return (
     <>
       <div className="linie">in der Anlage, noch nicht gesteuert</div>
+      {still.map((g) => (
+        <div className="dev offen" id={`offen-${g.id}`} key={g.id}>
+          <span className="ico"><Ic n={g.symbol} s={23} /></span>
+          <span className="d-mid">
+            <span className="d-name"><b>{g.name}</b></span>
+            <span className="d-satz">Ohne Auftrag.</span>
+            <span className="d-satz">{g.typLabel}{g.gemessen ? ' · misst' : ''}</span>
+            <button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuerart</button>
+          </span>
+        </div>
+      ))}
       {nurMessen.map((g) => (
         <div className="dev offen" id={`offen-${g.id}`} key={g.id}>
           <span className="ico"><Ic n={g.symbol} s={23} /></span>
