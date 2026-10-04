@@ -3,7 +3,9 @@ import type { GeraetBild, JetztWerte, SpeicherBild } from './bild';
 import { messBild } from './messen';
 import { raster } from './zeit';
 
-const R = raster(new Date('2026-10-04T13:10:00+02:00'));
+// Das Raster rechnet in der Ortszeit (Wanduhr, zeit.ts): 13:10 in JEDER Zeitzone der Maschine, nicht nur
+// in Europe/Berlin (mit TZ=UTC stand sonst „Jetzt · 11:10“ da) - Gesamtlauf 04.10.2026.
+const R = raster(new Date(2026, 9, 4, 13, 10));
 
 function geraet(id: string, name: string, x: Partial<GeraetBild> = {}): GeraetBild {
   return {
