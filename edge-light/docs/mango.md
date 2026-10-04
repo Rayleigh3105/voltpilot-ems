@@ -58,6 +58,34 @@ Auf `:8484` als Verbraucher eingetragen (`POST /api/sources`), gelesen über die
 | Prozess | VmRSS 17,9 MB, 7 Threads, CPU ca. 1 % (29 Ticks in 30 s) |
 | Offen | die Watt-Deutung von `nrg[11]` bei echter Ladung (braucht ein ladendes Auto) |
 
+### Deye am WLAN des Mango (04.10.2026, SUN-12K-SG04LP3, Logger 2739957886)
+
+Der Datenlogger erreichte das Kunden-WLAN wegen der Entfernung nur schlecht. Er hängt jetzt am WLAN des Mango (`VoltPilot.de-<geraete-id>`, WPA2, Passwort je Box). Folgen: die Solarman-App des Kunden läuft über das NAT des Mango weiter; Geräte im Kundennetz erreichen den Logger nicht mehr direkt; nur noch Edge Light spricht mit ihm (ein Client).
+
+| | |
+|---|---|
+| Logger | 192.168.1.160 per DHCP-Reservierung (`dhcp.deye_logger`), Signal −70 dBm |
+| Suche | UDP 48899 im LAN des Mango antwortet sofort mit IP, MAC und Seriennummer (hinter NAT im Kundennetz kam keine Antwort) |
+| Verbindung testen | `ok`: PV 3,01 kW, Verbrauch 0,52 kW, Netz 0,01 kW, SoC 19 % (plausibel: ~2,5 kW in die Batterie) |
+| Laufend | `inverter_link` up, alle 5 s; **BMS-Block kommt im Core an** (`bms_*`, Strom −45 A) – auf der Docker-Box filtert ihn `vp-telemetrie` heraus |
+| Prozess | VmRSS 20,3 MB, 9 Threads, CPU 1,5 %, 42 MB RAM frei |
+| Flash | `network.json` (zuletzt genutzte Adresse von `:8484`) wird höchstens 1×/min geschrieben, aber nur solange jemand `:8484` benutzt – für Stufe 2 in den RAM oder nur bei Änderung schreiben |
+| Offen | Land im WLAN noch nicht gesetzt (`wireless.radio0.country=DE`) |
+
+### Wartungstunnel (04.10.2026, `edge-light/openwrt/service-tunnel.sh`)
+
+WireGuard ins Service-VPN `vpn.voltpilot.de:1001` (`10.10.1.0/24`, verwaltet mit WireGuard UI), Adresse des Piloten `10.10.1.25`. Im Betriebssystem, unabhängig von vp-edge-light:
+
+| | |
+|---|---|
+| Pakete | `kmod-wireguard`, `wireguard-tools` (+ ~300 KB Flash); **danach netifd neu starten** – ein reload kennt das Protokoll noch nicht |
+| Erreichbar aus dem Tunnel | nur SSH auf `10.10.1.25:2222` (zweite Dropbear-Instanz, `-s -g`: keine Passwort-Anmeldung) und Ping; `:8484`, `:8887`, Port 22 abgewiesen. Web-App per `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25` |
+| Neu verbinden | `persistent_keepalive 25`; cron: `wireguard_watchdog` jede Minute, Neustart der Schnittstelle ohne Handshake seit 10 min |
+| Schlüssel | Pilot: aus der WireGuard-UI-Datei übernommen (der VPN-Server kennt ihn); Flotte: auf der Box erzeugen (`service-tunnel.sh … key`) und nur den öffentlichen Schlüssel eintragen |
+| Belegt | Handshake, Ping zum VPN-Server 25 ms; Test von einem anderen VPN-Gerät steht noch aus |
+
+Das Service-VPN ist ein gemeinsames Netz, in dem auch Kundensysteme hängen (HA-VMs, Router). Deshalb im Tunnel nur Schlüssel-SSH; serverseitig sollten Boxen und Kundensysteme einander nicht erreichen.
+
 Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
 1. **Firewall:** Die go-e steht im Kundennetz, also auf der WAN-Seite des Mango. Die WAN-Zone weist eingehend alles ab, `install.sh` öffnet 8887 nicht. Nötig ist eine Regel nur für das Kundennetz bzw. die Ladesäule, z. B. `uci add firewall rule` mit `src=wan`, `proto=tcp`, `dest_port=8887`, `src_ip=<kundennetz>/24`, `target=ACCEPT`.

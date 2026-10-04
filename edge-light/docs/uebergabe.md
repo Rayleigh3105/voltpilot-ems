@@ -79,6 +79,8 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 5. go-e per OCPP anbinden: in der go-e-App als OCPP-Server `ws://<mango-ip>:8887/ocpp/<kennung>` eintragen, die Kennung im Portal hinzufügen, Überschussladen „Nur Sonnenstrom" wählen. **Vorher** DHCP-Reservierung für den Mango im Kundenrouter und Firewall-Regel für 8887 aus dem Kundennetz – beides fehlt in `install.sh` (am Gerät gefunden, siehe [mango.md](mango.md#ocpp-mit-einer-echten-go-e-03102026-box-ungekoppelt-keine-anschlussgrenze)). Die Verbindung selbst ist mit einer echten go-e belegt.
 6. 48 h beobachten (Pilotplan in [mango.md](mango.md)).
 
+**Stand 04.10.2026:** Der Pilot-Mango läuft als Dienst aus der Kopie im Flash, liest den echten Deye (Logger am WLAN des Mango) und hat den Wartungstunnel (`10.10.1.25`, SSH 2222). Er ist beim Produktiv-Portal angemeldet (`edge-zay5sdd`) und wartet auf die Zuordnung zu einer Anlage. Noch offen: Tunnel-Test von einem anderen VPN-Gerät, Land `DE` im WLAN, Firewall-Regel/DHCP-Reservierung für OCPP.
+
 ⚠ Bis Stufe 2 nur auf Pilotanlagen: Die Echtheit des Programms hängt an HTTPS, nicht an einer Signatur.
 
 ### 4. Stufe 2 bauen ([boot-und-updates.md](boot-und-updates.md))

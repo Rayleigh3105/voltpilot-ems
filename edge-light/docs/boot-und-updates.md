@@ -41,6 +41,21 @@ Bausteine:
 4. **Updates:** Der Core empfängt Zuweisungen bereits über `ems/…/v2/update` und schreibt `target.json`. Auf Edge Light lädt `vp-light-boot` beim nächsten Start die zugewiesene Fassung statt `latest`; der Core beendet sich nach einer neuen Zuweisung kontrolliert, procd startet neu. Kein Docker, keine Images, kein Updater-Container.
 5. **Rückfall:** Startet die neue Fassung nicht sauber (Selbsttest des Cores, wie bei der Docker-Box), lädt `vp-light-boot` beim nächsten Versuch die zuletzt bestätigte Fassung (`current.json` im Flash). Der Selbsttest selbst existiert im Core schon (synthetischer Steuer-Trockenlauf).
 
+## Ein falsches Update darf die Box nie unerreichbar machen
+
+Grundregel: **Erreichbarkeit** (Betriebssystem, Netzwerk, Wartungstunnel, SSH, Loader) und **Anwendung** (nur `vp-edge-light`) sind getrennt. Ein Update ändert nur die Anwendung. Der Wartungstunnel ist ein WireGuard-Interface des Betriebssystems ([mango.md](mango.md#wartungstunnel-04102026-edge-lightopenwrtservice-tunnelsh)) und hängt nicht am Programm.
+
+| Schicht | Umsetzung (Stufe 2) |
+|---|---|
+| Echtheit + Passung | signiertes Manifest mit Architektur und Backend `light`; anderes wird nicht geladen |
+| Probestart | `vp-edge-light --version` mit 5 s Zeitlimit vor dem Wechsel; scheitert er, bleibt die alte Fassung |
+| Zwei Fassungen | im Flash die zuletzt **bestätigte**, der Kandidat nur im RAM – **Strom aus/an startet immer die bestätigte Fassung** |
+| Probezeit | Kandidat muss sich in 15 min bestätigen (Cloud verbunden, Selbsttest, Web-App); ein Cron-Wächter des Betriebssystems setzt sonst (oder nach 3 Abstürzen) zurück; erst dann wird die Kopie im Flash ersetzt |
+| Kein Schaden an der Erreichbarkeit | Programm als eigener Benutzer (alle Ports > 1024), `oom_score_adj` hoch, `GOMEMLIMIT` – es kann weder Netzwerk noch Firewall noch WireGuard ändern |
+| Wellen | erst der Pilot (≥ 24 h), dann 10 %, dann alle; ein Rückfall hält die Welle an |
+
+Nachweis vor der ersten Flotte: am Labor-Mango absichtlich falsche Updates einspielen (falsche Architektur, Absturz beim Start, keine Cloud, Speicherfresser, Stromausfall mitten im Update) – jedes Mal muss der Tunnel stehen bleiben und die bestätigte Fassung zurückkommen.
+
 ## Offene Entscheidungen für Stufe 2
 
 | Frage | Vorschlag |
