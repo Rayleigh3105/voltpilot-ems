@@ -7,7 +7,8 @@ Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Tenor, Anlag
 nächsten Monatsersten, § 5; Partner der Direktvermarktung, § 4), additiv: Felder `vormerkung`, `direktvermarkter`,
 `bilanzkreis_gesondert`, Route `DELETE …/foerderweg/vormerkung`; Fassung 1.3 = MP-27 (Pauschaloption vormerken mit
 offenem Termin, § 5a), additiv: Felder `pauschal_vormerkung`, `pauschaloption_ab`, Route `PUT …/foerderweg/pauschal-vormerkung`,
-`DELETE …/vormerkung` nimmt ohne datierte Vormerkung die Pauschal-Vormerkung zurück.
+`DELETE …/vormerkung` nimmt ohne datierte Vormerkung die Pauschal-Vormerkung zurück. MP-27b (Umsetzen der
+Pauschal-Vormerkung, § 5a) ändert an der Schnittstelle nichts: Spalte `umgesetzt_in`, Läufer, Fassung 1.3 bleibt.
 
 Der Förderweg ist **ein Stammdatum je Einspeisestelle**, aus dem Netzladen, Exportwert, Marktwertbasis,
 Box-Klemme und Portaltexte folgen. Er ersetzt die Bedeutung des Schalters `site.netzladen_erlaubt`
@@ -21,7 +22,9 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 | `services/api/src/main/resources/db/migration/V20261002173500__mispel_foerderweg_aw_regel.sql` | Spalte `aw_regel` (1.1, § 7), leer für jede vorhandene Fassung |
 | `services/api/src/main/resources/db/migration/V20261002231500__mispel_foerderweg_partner.sql` | Spalten `direktvermarkter`, `bilanzkreis_gesondert` (1.2, § 4), leer für jede vorhandene Fassung |
 | `services/api/src/main/resources/db/migration/V20261004131500__mispel_pauschal_vormerkung.sql` | Tabelle `site_pauschal_vormerkung` (1.3, § 5a, RLS + FORCE), beginnt leer, keine Fassung |
-| `services/api/.../mispel/PauschalVormerkungService.java` | Pauschaloption vormerken mit offenem Termin: Voraussetzungen 2–4 der Anlage 2 (§ 5a) |
+| `services/api/src/main/resources/db/migration/V20261004171500__mispel_pauschal_vormerkung_umgesetzt.sql` | Spalte `umgesetzt_in` (MP-27b, § 5a): die Fassung, die aus der Vormerkung wurde; leer für jede vorhandene Zeile |
+| `services/api/.../mispel/PauschalVormerkungService.java` | Pauschaloption vormerken mit offenem Termin: Voraussetzungen 2–4 der Anlage 2 (§ 5a); `umsetzen` (MP-27b) |
+| `services/api/.../mispel/PauschalVormerkungLaeufer.java` | macht aus der Vormerkung eine Fassung, sobald `pauschaloption-ab` gesetzt ist (§ 5a, MP-27b) |
 | `services/api/.../mispel/FoerderwegRegeln.java` | die reinen Regeln (ohne Spring, Datenbank, Uhr) |
 | `services/api/.../mispel/FoerderwegService.java` | lesen am Tag, setzen als Fassung, Spiegel, alter Schalter |
 | `services/api/.../web/SiteFoerderwegController.java` | `GET`/`PUT /api/v1/sites/{siteId}/foerderweg`, `DELETE …/foerderweg/vormerkung` |
@@ -218,9 +221,36 @@ trotzdem einrichten kann (Bedienkonzept BK-27), hält `site_pauschal_vormerkung`
   (A2 S. 27); ihre Leistung ist Angabe des Kunden (`steckersolar_kwp`, 0 = keine) zusätzlich zum Aufbau.
 - **Ändern** = noch einmal senden (die alte Zeile bekommt `aufgehoben_am`), **zurücknehmen** = `DELETE …/vormerkung`.
 
-**Offen (bewusst):** das Umsetzen der Vormerkung in eine Fassung, sobald `pauschaloption-ab` gesetzt wird (ein Läufer
-nach dem Muster des Spiegel-Läufers mit der Einverständnis-Prüfung der Übergangszeit), und die Bestätigungen an einer
-datierten Pauschal-Fassung nach der Genehmigung. Beides wird erst mit einem Tag erreichbar; bis dahin gilt E7 = B.
+**Umsetzen (MP-27b).** Sobald VoltPilot den Tag in `pauschaloption-ab` einträgt, macht der `PauschalVormerkungLaeufer`
+(`voltpilot.mispel.pauschal-vormerkung.enabled`, stündlich zur Minute 5 Europe/Berlin, idempotent, holt nach) je Anlage
+mit stehender Vormerkung über `PauschalVormerkungService#umsetzen` eine Fassung `marktpraemie_pauschal` — über
+`FoerderwegService#setzen`, also nach denselben Regeln wie die Route (§ 3), mit `created_by` = `pauschal-vormerkung-laeufer`:
+
+- **Tag der Fassung** = der früheste Monatserste, der **nach heute** liegt und nicht vor `pauschaloption-ab`: ein
+  Wechsel gilt nur ab dem ersten Kalendertag eines Monats (§ 21b Abs. 1 S. 2 EEG; A2 S. 52 mit Fn. 40, Tenor Ziff. 5),
+  vormerken lässt sich nur der nächste (§ 5), rückwirkend nie (Optimierer, Box und Direktvermarkter haben die Tage davor
+  schon nach dem alten Förderweg gefahren). Liegt der Tag hinter dem nächsten Monatsersten, wartet der Läufer; ohne Tag
+  tut er nichts. Wird der Tag erst nach seinem Datum eingetragen, gilt der nächste Monatserste.
+- **Rumpfjahr:** das erste Jahr in der Pauschaloption reicht vom Tag der Fassung bis 31.12. — ein Rumpfjahr (A2 S. 52,
+  Abschn. 9: „erstmalige Zuordnung … oder ein Wechsel der Zuordnung … zum ersten Kalendertag eines Kalendermonats“), mit
+  (P1)R, (P3)R, (P4)R nach Abschn. 9.1–9.2 (S. 53–55); der Jahreslauf liest es so ([Pauschal, Lesart Rumpfjahr-Grenzen](./mispel-pauschal.md#rechenwerk-und-jahreslauf-mp-25)).
+- **Übergangszeit (Tenor S. 3 Ziff. 9a):** bis 30.09.2027 gilt die Zuordnung nur im Einverständnis mit Netz- und
+  Messstellenbetreiber. Die Vormerkung trägt diese Angabe nicht; liegt der Tag der Fassung bis 30.09.2027, **wartet** die
+  Vormerkung (kein Fehler) — umgesetzt wird sie zum 01.10.2027, früher nur über `PUT …/foerderweg` mit `einverstaendnis`.
+- **Voraussetzung 3** (30 kWp, A2 S. 19) prüft der Läufer noch einmal gegen den Aufbau von heute.
+- **AW-Regel** (§ 7) aus der MiSpeL-Fassung davor (sie gehört zur Anlage, nicht zur Wahl), sonst keine; **Partner**
+  (`direktvermarkter`, `bilanzkreis_gesondert`) aus der Vormerkung; `einverstaendnis` = nein.
+- **Die Vormerkung bleibt** als Zeile mit ihren Bestätigungen samt Datum (Voraussetzungen 2 und 4) stehen, wird
+  aufgehoben und nennt die Fassung (`umgesetzt_in`, `V20261004171500`); aufgehoben ohne `umgesetzt_in` = zurückgenommen.
+  Galt am Tag schon die Pauschaloption (vom Kunden eingetragen), wird nur verknüpft.
+- **Fehler je Anlage** halten die anderen nicht auf und lassen die Vormerkung stehen: Solarleistung unbekannt oder über
+  30 kWp, eine andere zum selben Tag vorgemerkte Fassung (`vormerkung_besteht`, der Läufer wählt nicht zwischen zwei
+  Wünschen), jede Ablehnung nach § 3. Sie zählen am Melder `mispel_pauschal_vormerkung`
+  ([Betriebsüberwachung](../../agents/root/uems-betriebsueberwachung.md)).
+
+**Offen (bewusst):** das Einverständnis der Übergangszeit an der Vormerkung (braucht eine Frage im Portal — erst mit
+abgestimmtem Bedienkonzept; bis dahin zeigt die Ansicht `termin` = `pauschaloption-ab`, auch wenn die Vormerkung bis
+zum 01.10.2027 wartet) und die Bestätigungen an einer datierten Pauschal-Fassung, die der Kunde selbst einträgt.
 
 ## 6. Der alte Netzlade-Schalter (bis MP-17, W2 = B)
 
@@ -277,6 +307,7 @@ dasselbe Vokabular wie `eeg_aw_zeit.regel` (MP-7, Vektoren `aw_regeln`):
 (cd services/api && ./mvnw test -Dtest='FoerderwegRegelnTest')                         # rein, kein Docker
 (cd services/api && ./mvnw test -Dtest='FoerderwegApiTest,FoerderwegMigrationTest')    # Testcontainers
 (cd services/api && ./mvnw test -Dtest='PauschalVormerkungApiTest')                    # 1.3 § 5a und Jahresstand (MP-27)
+(cd services/api && ./mvnw test -Dtest='PauschalVormerkungLaeuferTest')                # § 5a Umsetzen (MP-27b)
 (cd services/api && ./mvnw test -Dtest='MarktwertbasisErloeseTest')                    # Prüfnachweis MP-12/MP-12b
 (cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest python -m pytest tests/test_marktwertbasis.py)
 ```

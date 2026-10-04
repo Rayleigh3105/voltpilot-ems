@@ -420,6 +420,13 @@ voltpilot:
     # Minute 0:30 Europe/Berlin und idempotent. Vorgabe AN, im Testlauf AUS (surefire).
     foerderweg-spiegel:
       enabled: ${VOLTPILOT_MISPEL_FOERDERWEG_SPIEGEL_ENABLED:true}
+    # MiSpeL MP-27b (mispel-foerderweg.md § 5a): sobald pauschaloption-ab gesetzt
+    # ist, macht der PauschalVormerkungLaeufer aus jeder Pauschal-Vormerkung eine
+    # Fassung zum nächsten Monatsersten ab diesem Tag (nie rückwirkend), stündlich
+    # zur Minute 5 Europe/Berlin und idempotent; ohne Tag tut er nichts. Vorgabe
+    # AN, im Testlauf AUS (surefire).
+    pauschal-vormerkung:
+      enabled: ${VOLTPILOT_MISPEL_PAUSCHAL_VORMERKUNG_ENABLED:true}
     # MiSpeL MP-8b (mispel-abgrenzung.md): der Monatslauf der Abgrenzungsoption
     # je Anlage - nach Ablauf des Kalendermonats vorläufig, mit den Werten des
     # Messstellenbetreibers endgültig (Anlage 1 S. 14, Abschn. 2.1.4), Formelsatz

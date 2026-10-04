@@ -105,6 +105,8 @@ public class UemsLaeuferMelder {
     public static final String MISPEL_FOERDERWEG_SPIEGEL = "mispel_foerderweg_spiegel";
     /** {@code MispelMonatslaufLaeufer} (MiSpeL MP-8b) — der Monatslauf der Abgrenzungsoption je Anlage. */
     public static final String MISPEL_MONATSLAUF = "mispel_monatslauf";
+    /** {@code PauschalVormerkungLaeufer} (MiSpeL MP-27b) — macht aus der Pauschal-Vormerkung eine Fassung. */
+    public static final String MISPEL_PAUSCHAL_VORMERKUNG = "mispel_pauschal_vormerkung";
     /** {@code BestandsuebernahmeLaeufer} — Start-Läufer der Standorte. */
     public static final String BESTAND_STANDORT = "bestand_standort";
     /** {@code FunktionBestandLaeufer} — Start-Läufer der Funktionen. */
@@ -175,6 +177,8 @@ public class UemsLaeuferMelder {
                     List.of("voltpilot.mispel.foerderweg-spiegel.enabled"), "1 h (Minute 0:30 Europe/Berlin)"),
             new Eintrag(MISPEL_MONATSLAUF, "MispelMonatslaufLaeufer",
                     List.of("voltpilot.mispel.monatslauf.enabled"), "taeglich 05:17 Europe/Berlin"),
+            new Eintrag(MISPEL_PAUSCHAL_VORMERKUNG, "PauschalVormerkungLaeufer",
+                    List.of("voltpilot.mispel.pauschal-vormerkung.enabled"), "1 h (Minute 5 Europe/Berlin)"),
             new Eintrag(BESTAND_STANDORT, "BestandsuebernahmeLaeufer",
                     List.of("voltpilot.uems.bestandsuebernahme.enabled"), "Start"),
             new Eintrag(BESTAND_FUNKTION, "FunktionBestandLaeufer",

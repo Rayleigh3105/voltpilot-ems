@@ -91,7 +91,9 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   Steckersolar aus dem Aufbau, nur Solar/Speicher/Ladepunkte, „ein Betreiber“ und „Steckersolar in der
   Direktvermarktung“ bestätigt der Kunde) · Pauschalgrenzen ((P1)–(P4) mit Rechenweg) · Partner · Prüfen; vor der
   EU-Genehmigung **vorgemerkt, Termin offen** ([Vertrag 1.3 § 5a](../contracts/v2/mispel-foerderweg.md#5a-pauschaloption-vormerken-mit-offenem-termin-13-mp-27)),
-  keine Fassung. Darunter der Check Haushalt (MP-29) mit eigener Überschrift und Hinweis. In Verlauf › Erlöse die Karte
+  keine Fassung; sobald `voltpilot.mispel.pauschaloption-ab` gesetzt ist, macht der `PauschalVormerkungLaeufer` (MP-27b)
+  daraus eine Fassung zum nächsten Monatsersten ab diesem Tag — bis 30.09.2027 nur mit Einverständnis (Tenor Ziff. 9a),
+  das die Vormerkung nicht trägt. Darunter der Check Haushalt (MP-29) mit eigener Überschrift und Hinweis. In Verlauf › Erlöse die Karte
   „MiSpeL · Jahresstand nach Anlage 2“ (Band förderfähig/indifferent/saldierungsfähig, „Sie stehen bei …“, die nächste
   kWh; im Monat eine Zeile mit Sprung) aus dem Jahreslauf MP-25
   ([Vertrag](../contracts/v2/mispel-pauschal.md#jahresstand-für-das-portal-mp-27)); Zwilling `mispelPauschal.ts`.

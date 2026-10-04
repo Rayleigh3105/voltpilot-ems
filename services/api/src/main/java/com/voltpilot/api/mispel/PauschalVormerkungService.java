@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -110,21 +111,7 @@ public class PauschalVormerkungService {
                         + heuteSicht.vormerkung().gueltigAb() + " vorgemerkt; erst zurücknehmen.", "gueltig_ab",
                         heuteSicht.vormerkung().gueltigAb().toString(), "Vertrag § 5");
             }
-            BigDecimal aufbau = solarleistungImAufbau(siteId);
-            if (aufbau == null) {
-                throw ab("solarleistung_unbekannt", 422, "Die installierte Solarleistung steht nicht im Aufbau; ohne sie "
-                        + "lässt sich die 30-kWp-Grenze nicht prüfen.", "grenze_kwp", GRENZE_KWP,
-                        "Voraussetzung 3, A2 S. 19");
-            }
-            // Steht das Steckersolargerät schon im Aufbau, zählt es dort mit — für die Grenze nicht (Fn. 14).
-            if (aufbau.compareTo(GRENZE_KWP) > 0) {
-                Map<String, Object> f = new LinkedHashMap<>();
-                f.put("solarleistung_kwp", aufbau);
-                f.put("grenze_kwp", GRENZE_KWP);
-                f.put("fundstelle", "Voraussetzung 3, A2 S. 19 mit Fn. 14; § 19 Abs. 3c S. 2 Nr. 3 EEG");
-                throw new FoerderwegAbgelehnt("ueber_30_kwp", 422, "Die Pauschaloption gilt nur bis 30 kWp installierter "
-                        + "Solarleistung hinter der Einspeisestelle.", f);
-            }
+            pruefeGrenze(siteId);
             jdbc.update("UPDATE site_pauschal_vormerkung SET aufgehoben_am = now() WHERE site_id = ? "
                     + "AND aufgehoben_am IS NULL", siteId);
             boolean stecker = a.steckersolarKwp().signum() > 0;
@@ -136,10 +123,153 @@ public class PauschalVormerkungService {
         });
     }
 
+    /** Voraussetzung 3 (A2 S. 19): höchstens 30 kWp Solarleistung im Aufbau; unbekannt ist keine Null. */
+    private void pruefeGrenze(UUID siteId) {
+        BigDecimal aufbau = solarleistungImAufbau(siteId);
+        if (aufbau == null) {
+            throw ab("solarleistung_unbekannt", 422, "Die installierte Solarleistung steht nicht im Aufbau; ohne sie "
+                    + "lässt sich die 30-kWp-Grenze nicht prüfen.", "grenze_kwp", GRENZE_KWP,
+                    "Voraussetzung 3, A2 S. 19");
+        }
+        // Steht das Steckersolargerät schon im Aufbau, zählt es dort mit — für die Grenze nicht (Fn. 14).
+        if (aufbau.compareTo(GRENZE_KWP) > 0) {
+            Map<String, Object> f = new LinkedHashMap<>();
+            f.put("solarleistung_kwp", aufbau);
+            f.put("grenze_kwp", GRENZE_KWP);
+            f.put("fundstelle", "Voraussetzung 3, A2 S. 19 mit Fn. 14; § 19 Abs. 3c S. 2 Nr. 3 EEG");
+            throw new FoerderwegAbgelehnt("ueber_30_kwp", 422, "Die Pauschaloption gilt nur bis 30 kWp installierter "
+                    + "Solarleistung hinter der Einspeisestelle.", f);
+        }
+    }
+
     /** Nimmt die stehende Vormerkung zurück (sie bleibt als aufgehobene lesbar); {@code false} = keine stand. */
     public boolean zuruecknehmen(UUID siteId) {
         return jdbc.update("UPDATE site_pauschal_vormerkung SET aufgehoben_am = now() WHERE site_id = ? "
                 + "AND aufgehoben_am IS NULL", siteId) > 0;
+    }
+
+    // ------------------------------------------------------------------ Umsetzen (MP-27b)
+
+    /** Wer die Fassung einträgt, die der Läufer aus einer Vormerkung macht ({@code site_foerderweg.created_by}). */
+    public static final String LAEUFER = "pauschal-vormerkung-laeufer";
+
+    /** Was der Läufer mit einer Anlage getan hat. */
+    public enum Umsetzung {
+        /** Eine neue Fassung „Marktprämie mit Pauschaloption“ ab {@code gueltigAb}. */
+        UMGESETZT,
+        /** Ab {@code gueltigAb} galt die Pauschaloption schon (vom Kunden eingetragen); nur verknüpft. */
+        VERKNUEPFT,
+        /** Bis 30.09.2027 nur im Einverständnis von Netz- und Messstellenbetreiber (Tenor S. 3 Ziff. 9a). */
+        WARTET_EINVERSTAENDNIS,
+        /** Kein Tag in {@code pauschaloption-ab}, oder der Tag liegt hinter dem nächsten Monatsersten. */
+        WARTET_TERMIN,
+        /** Keine stehende Vormerkung (mehr) — schon umgesetzt, zurückgenommen oder fremd. */
+        KEINE
+    }
+
+    /**
+     * Das Ergebnis je Anlage. {@code gueltigAb} ist der Monatserste der Fassung; das erste Jahr in der Pauschaloption
+     * ist dann das Rumpfjahr {@code [gueltigAb, 31.12.]} (A2 S. 52–53, Abschn. 9 und 9.1; ein Rumpfjahr nur, wenn
+     * {@code gueltigAb} nicht der 1. Januar ist).
+     */
+    public record Ergebnis(Umsetzung umsetzung, LocalDate gueltigAb, UUID fassung) {
+        public boolean rumpfjahr() {
+            return gueltigAb != null && gueltigAb.getDayOfYear() != 1;
+        }
+
+        public LocalDate rumpfjahrBis() {
+            return gueltigAb == null ? null : LocalDate.of(gueltigAb.getYear(), 12, 31);
+        }
+    }
+
+    /**
+     * Der Monatserste, zu dem eine Vormerkung heute eine Fassung wird — der früheste, der nach heute liegt und nicht vor
+     * dem Tag der Pauschaloption: ein Wechsel nur zum ersten Kalendertag eines Monats (§ 21b Abs. 1 S. 2 EEG; A2 S. 52
+     * Fn. 40), vormerken nur den nächsten (Vertrag § 5), nie rückwirkend. {@code null} = noch keiner: kein Tag, oder der
+     * Tag liegt hinter dem nächsten Monatsersten (dann setzt ein späterer Lauf um).
+     */
+    public static LocalDate ziel(LocalDate pauschaloptionAb, LocalDate heute) {
+        if (pauschaloptionAb == null) {
+            return null;
+        }
+        LocalDate naechster = FoerderwegRegeln.naechsterMonatserster(heute);
+        LocalDate erster = pauschaloptionAb.getDayOfMonth() == 1 ? pauschaloptionAb
+                : FoerderwegRegeln.naechsterMonatserster(pauschaloptionAb);
+        return erster.isAfter(naechster) ? null : naechster;
+    }
+
+    /** {@link #ziel(LocalDate, LocalDate)} für heute. */
+    public LocalDate ziel() {
+        return ziel(pauschaloptionAb, foerderwege.heute());
+    }
+
+    /** Die Anlagen mit stehender Vormerkung im Kundenbereich des {@code TenantContext} (RLS). */
+    public List<UUID> anlagenMitVormerkung() {
+        return jdbc.queryForList("SELECT site_id FROM site_pauschal_vormerkung WHERE aufgehoben_am IS NULL "
+                + "ORDER BY created_at, site_id", UUID.class);
+    }
+
+    /**
+     * Macht aus der stehenden Vormerkung der Anlage eine Fassung „Marktprämie mit Pauschaloption“ zum {@link #ziel()}
+     * (Vertrag § 5a, MP-27b) — über {@link FoerderwegService#setzen}, also nach denselben Regeln wie die Route (§ 3).
+     * Die Vormerkung wird aufgehoben und nennt die Fassung ({@code umgesetzt_in}); ihre Bestätigungen bleiben mit Datum
+     * stehen. Vor dem Eintrag prüft der Dienst Voraussetzung 3 noch einmal gegen den Aufbau von heute.
+     *
+     * <p>Idempotent: ohne stehende Vormerkung {@link Umsetzung#KEINE}. Ein Hindernis an der Anlage — Solarleistung
+     * unbekannt oder über 30 kWp, eine andere zum selben Tag vorgemerkte Fassung, eine Regel des Förderwegs — wirft
+     * {@link FoerderwegAbgelehnt}; die Vormerkung bleibt dann stehen.
+     */
+    public Ergebnis umsetzen(UUID siteId) {
+        LocalDate ziel = ziel();
+        if (ziel == null) {
+            return new Ergebnis(Umsetzung.WARTET_TERMIN, null, null);
+        }
+        return transaktion.execute(tx -> {
+            if (wege.schalterSperren(siteId).isEmpty()) {
+                return new Ergebnis(Umsetzung.KEINE, null, null);
+            }
+            List<Map<String, Object>> stehend = jdbc.queryForList("SELECT id, direktvermarkter, bilanzkreis_gesondert "
+                    + "FROM site_pauschal_vormerkung WHERE site_id = ? AND aufgehoben_am IS NULL FOR UPDATE", siteId);
+            if (stehend.isEmpty()) {
+                return new Ergebnis(Umsetzung.KEINE, null, null);
+            }
+            Map<String, Object> v = stehend.get(0);
+            UUID vormerkung = (UUID) v.get("id");
+            // Tenor S. 3 Ziff. 9a: die Zuordnung nach Tenorziffer 5 bis 30.09.2027 nur im Einverständnis mit Netz- und
+            // Messstellenbetreiber. Die Vormerkung trägt diese Angabe nicht — der erste Monatserste ohne sie ist der
+            // 01.10.2027; früher geht es nur über den Förderweg mit „einverstaendnis“.
+            if (!ziel.isAfter(FoerderwegRegeln.EINVERSTAENDNIS_BIS)) {
+                return new Ergebnis(Umsetzung.WARTET_EINVERSTAENDNIS, ziel, null);
+            }
+            FoerderwegService.Ansicht amZiel = foerderwege.ansicht(siteId, ziel);
+            if (amZiel.fassung() != null && amZiel.fassung().angaben().foerderweg() == Foerderweg.MARKTPRAEMIE_PAUSCHAL) {
+                markieren(vormerkung, amZiel.fassung().id());
+                return new Ergebnis(Umsetzung.VERKNUEPFT, amZiel.fassung().gueltigAb(), amZiel.fassung().id());
+            }
+            if (amZiel.fassung() != null && amZiel.fassung().gueltigAb().equals(ziel)) {
+                // Zwei Wünsche des Kunden zum selben Monatsersten: der Läufer wählt nicht (setzen höbe die andere auf).
+                throw ab("vormerkung_besteht", 409, "Zum " + ziel + " ist schon „" + amZiel.fassung().angaben()
+                        .foerderweg().begriff() + "“ vorgemerkt; die Pauschal-Vormerkung bleibt stehen.", "gueltig_ab",
+                        ziel.toString(), "Vertrag § 5, § 5a");
+            }
+            pruefeGrenze(siteId);
+            // Die AW-Differenzierung ist die der Übertragungsnetzbetreiber für die Anlage (Vertrag § 7), kein Teil der
+            // Wahl: aus einer MiSpeL-Fassung davor übernommen, sonst keine (W4-Rückfall des Jahreslaufs).
+            FoerderwegRegeln.Angaben davor = foerderwege.ansicht(siteId, ziel.minusDays(1)).angaben();
+            String awRegel = davor != null && davor.foerderweg().mispel() ? davor.awRegel() : null;
+            foerderwege.setzen(siteId, new FoerderwegService.Aendern(Foerderweg.MARKTPRAEMIE_PAUSCHAL.wert(), null,
+                    false, ziel, null, false, false, awRegel, (String) v.get("direktvermarkter"),
+                    (Boolean) v.get("bilanzkreis_gesondert")), LAEUFER);
+            UUID fassung = wege.derAnlage(siteId).stream().filter(f -> !f.aufgehoben() && f.gueltigAb().equals(ziel))
+                    .map(FoerderwegRepository.Fassung::id).findFirst().orElseThrow();
+            markieren(vormerkung, fassung);
+            return new Ergebnis(Umsetzung.UMGESETZT, ziel, fassung);
+        });
+    }
+
+    private void markieren(UUID vormerkung, UUID fassung) {
+        jdbc.update("UPDATE site_pauschal_vormerkung SET aufgehoben_am = now(), umgesetzt_in = ? WHERE id = ? "
+                + "AND aufgehoben_am IS NULL", fassung, vormerkung);
     }
 
     private static void pruefeForm(Angaben a) {

@@ -383,6 +383,9 @@
                              LadeparkGrenzeLaeufer.lauf() selbst. -->
                         <voltpilot.uems.ladepark-grenze.enabled>false</voltpilot.uems.ladepark-grenze.enabled>
                         <voltpilot.mispel.foerderweg-spiegel.enabled>false</voltpilot.mispel.foerderweg-spiegel.enabled>
+                        <!-- Die Pauschal-Vormerkung (MiSpeL MP-27b): im Testlauf aus, in PRODUKTION an.
+                             Wer sie prueft, ruft PauschalVormerkungLaeufer.lauf() selbst. -->
+                        <voltpilot.mispel.pauschal-vormerkung.enabled>false</voltpilot.mispel.pauschal-vormerkung.enabled>
                         <!-- Der MiSpeL-Monatslauf (MP-8b): im Testlauf aus, in PRODUKTION an.
                              Wer ihn prueft, ruft MispelMonatslaufLaeufer.lauf() selbst. -->
                         <voltpilot.mispel.monatslauf.enabled>false</voltpilot.mispel.monatslauf.enabled>
