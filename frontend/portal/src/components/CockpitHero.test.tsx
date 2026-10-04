@@ -1,12 +1,9 @@
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CockpitHero } from './CockpitHero';
 import { ControlStrip } from './ControlStrip';
-import type { CockpitHeroView } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
-import type { SiteEarnings, SiteTopology } from '../api';
-import FIXTURES from '../erloeseFixtures.json';
-import { speicherAussage } from '../speicherAussage';
+import type { SiteTopology } from '../api';
 
 /**
  * **Die Bühne** (abgenommenes Konzept `data/vp-cockpit-konzept-f4`, Richtung A).
@@ -41,173 +38,53 @@ const SNAP: LiveSnapshot = {
   socAt: '2026-07-30T12:00:00Z',
 };
 
-/**
- * DIESELBE Steuerungs-Aussage, die die Erlöse-Seite zeigt: das Fixture
- * `dv-tag-laufend` — laufender Tag, gemessener Bestand ohne Abzug. Sie wird
- * ABGELEITET, nie abgeschrieben — zwei Formulierungen über dieselbe Zahl wären
- * der Bruch, gegen den §3.5 gebaut ist.
- *
- * ⚠ Seit dem 04.09.2026 trägt das Fixture seine Aufteilung selbst
- * (`money.savedSteuerungEur`); die Kundenfläche liest ausschliesslich sie.
- */
-const SPEICHER = (() => {
-  const f = (FIXTURES.fixtures as unknown as Array<{
-    id: string;
-    now: string;
-    money: SiteEarnings;
-  }>).find((x) => x.id === 'dv-tag-laufend')!;
-  return speicherAussage(f.money, { now: new Date(f.now) })!;
-})();
-
-/** Pilsting: Direktvermarktung, alle vier Leisten-Blöcke. */
-function pilstingView(over: Partial<CockpitHeroView> = {}): CockpitHeroView {
-  return {
-    rings: [
-      { id: 'autarkie', label: 'Autarkie · Heute', pct: 88, valueText: '88 %', hue: 'var(--vp-flow-pv)' },
-      {
-        id: 'eigenverbrauch',
-        label: 'Eigenverbrauch · Heute',
-        pct: 32,
-        valueText: '32 %',
-        hue: 'var(--vp-flow-batt)',
-      },
-    ],
-    ringsNote: null,
-    money: {
-      label: 'Unterm Strich · Heute',
-      value: '371,43 €',
-      kosten: false,
-      speicher: SPEICHER,
-      attribution: 'Steuerung + 12,10 €',
-    },
-    planSentence: 'Nachmittags laden, abends verkaufen (19–24 Uhr).',
-    ...over,
-  };
-}
-
 function renderStage(
-  view: CockpitHeroView,
   over: {
-    periodSeg?: React.ReactNode;
+    seite?: React.ReactNode;
+    showRail?: boolean;
     footer?: React.ReactNode;
     topology?: SiteTopology | null;
   } = {},
 ) {
   return render(
     <CockpitHero
-      view={view}
       topology={over.topology ?? null}
       snapshot={SNAP}
       onOpenSub={() => {}}
-      periodSeg={over.periodSeg ?? null}
+      seite={over.seite ?? null}
+      showRail={over.showRail ?? true}
       footer={over.footer ?? null}
     />,
   );
 }
 
-describe('Die Bilanz-Leiste', () => {
-  it('trägt Zeitraum → Geld → Ringe → Fahrplan in dieser Reihenfolge (Pilsting)', () => {
-    const { container } = renderStage(pilstingView(), {
-      periodSeg: <div className="vp-seg vp-seg-compact" />,
-    });
+describe('Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“)', () => {
+  it('steht rechts neben dem Fluss, die Bühne wird zweispaltig', () => {
+    const { container } = renderStage({ seite: <div className="leit">Unterm Strich</div> });
     const rail = container.querySelector('.vp-hero-side');
-    expect(rail).not.toBeNull();
-    const blocks = [...rail!.querySelectorAll(':scope > .vp-rail-blk')];
-    // Seit P5 sind es ZWEI Blöcke: die Erlöskarte im C-Kleid (Label, Zahl,
-    // Segment, Speicher-Sektion, Ringe) und die Fahrplan-Zeile.
-    expect(blocks).toHaveLength(2);
-    expect(blocks[0].classList.contains('vp-hero-money')).toBe(true);
-    // 1 · Label 12/700 Versalien + Provenienz-Abzeichen.
-    expect(blocks[0].querySelector('.vp-c-label')?.textContent).toContain('Unterm Strich · Heute');
-    // 2 · die EINE Zahl.
-    expect(blocks[0].querySelector('.vp-c-stm-zahl')?.textContent).toBe('371,43 €');
-    // 3 · das Segment steht DIREKT unter der Zahl, die es regiert.
-    expect(blocks[0].querySelector('.vp-c-ck-seg .vp-seg')).not.toBeNull();
-    // 4 · DIESELBE Steuerungs-Sektion wie auf der Erlöse-Seite — ohne eigenen
-    //     Rahmen (ein Rahmen je Karte).
-    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
-    //   04.09.2026): EINE Zahl, und die Gesamtzahl steht nirgends mehr.
-    const sek = blocks[0].querySelector('.vp-c-speicher');
-    expect(sek?.classList.contains('is-sektion')).toBe(true);
-    expect(sek?.classList.contains('vp-c-card')).toBe(false);
-    expect(sek?.textContent).toContain('Steuerung heute');
-    expect(sek?.textContent).not.toContain('Speicher heute');
-    expect(sek?.textContent).not.toContain('davon Steuerung');
-    // 5 · die zwei Ringe wohnen IN der Karte, nicht in einem eigenen Block.
-    expect(blocks[0].querySelectorAll('.vp-c-ck-ring')).toHaveLength(2);
-    // Die frühere Kopfzeile „Bilanz" ist entfallen — das Label sagt es schon.
-    expect(rail!.textContent).not.toContain('Bilanz');
-    expect(blocks[1].querySelector('.vp-hero-plan')?.textContent).toContain('abends verkaufen');
-    // Die Bühne bleibt zweispaltig.
+    expect(rail?.querySelector('.leit')?.textContent).toBe('Unterm Strich');
     expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).toBeNull();
   });
 
-  it('trägt den gemessenen Speicherbestand als eigene Zeile, nie in der Kasse', () => {
-    const { container } = renderStage(pilstingView());
-    const bestand = container.querySelector('.vp-c-sp-bestand');
-    // NBSP vor der Einheit — deshalb wird nur die Zahl geprüft.
-    expect(bestand?.textContent).toContain('35,8');
-    expect(bestand?.textContent).toContain('kWh');
-    expect(bestand?.querySelector('.vp-chip')?.textContent).toBe('Kein Abzug');
-    // Der laufende Zeitraum sagt sein Wort statt nur seine Farbe.
-    expect(container.querySelector('.vp-c-speicher .vp-chip')?.textContent).toBe('Zwischenstand');
-  });
-
-  it('färbt ein negatives Netto und behält sein Vorzeichen im Text', () => {
-    const { container } = renderStage(
-      pilstingView({
-        money: { label: 'Unterm Strich · Heute', value: '− 4,12 €', kosten: true, speicher: SPEICHER },
-      }),
-    );
-    const zahl = container.querySelector('.vp-c-stm-zahl');
-    expect(zahl?.classList.contains('is-kosten')).toBe(true);
-    expect(zahl?.textContent).toContain('−');
-  });
-
-  it('Haushalt: ohne Zeitraum-Segment bleibt die Leiste voll (Ringe führen)', () => {
-    // Ein Eigenverbrauchs-Haushalt hat keinen zeitraum-bezogenen Geld-Modus →
-    // kein Segment. Es entsteht KEIN leerer Rahmen, die Leiste trägt den Rest.
-    const { container } = renderStage(pilstingView({ money: null }));
-    const rail = container.querySelector('.vp-hero-side')!;
-    expect(rail.querySelector('.vp-seg')).toBeNull();
-    // Ohne Geld-Zahl gibt es keine Zahl und keine Speicher-Sektion — die
-    // Ringe tragen sich selbst, damit die Leiste nie leer dasteht.
-    expect(rail.querySelector('.vp-c-stm-zahl')).toBeNull();
-    expect(rail.querySelector('.vp-c-speicher')).toBeNull();
-    expect(rail.querySelectorAll(':scope > .vp-rail-blk')).toHaveLength(2);
-    expect(rail.querySelectorAll('.vp-c-ck-ring')).toHaveLength(2);
-  });
-
-  it('hält den Ring-Platz mit dem ehrlichen Satz statt mit „0 %"', () => {
-    const { container } = renderStage(
-      pilstingView({ rings: [], ringsNote: 'Autarkie und Eigenverbrauch gibt es je Zeitraum.' }),
-    );
-    expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
-    expect(container.querySelector('.vp-c-note')?.textContent).toContain('je Zeitraum');
-    expect(container.textContent).not.toContain('0 %');
-  });
-
-  it('eine Komposition ohne einen einzigen Block bekommt GAR KEINE Leiste', async () => {
-    // Neu/leer: kein Geld, keine Ringe, kein Plan - dann gehört die Bühne dem
-    // Fluss allein, statt eine leere zweite Spalte zu reservieren.
-    const { container } = renderStage({
-      rings: [],
-      ringsNote: null,
-      money: null,
-      planSentence: null,
-    });
-    expect(container.querySelector('.vp-hero-side')).toBeNull();
-    expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).not.toBeNull();
-    // Der Fluss ist trotzdem da.
-    // Die Bühne lädt nach (eigenes Stück); der Fluss ist danach da.
+  it('am Rechner steht rechts „Dieser Moment“ auch ohne Leitkachel', async () => {
+    const { container } = renderStage();
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).not.toBeNull());
+    // Die Bühne schreibt die vier Werte des Moments in die rechte Spalte.
+    await waitFor(() => expect(container.querySelector('.vp-hero-side .vp-eb-moment')).not.toBeNull());
+    expect(container.querySelector('.vp-hero-side .vp-eb-moment-h')?.textContent).toMatch(/^Jetzt \d{2}:\d{2}$/);
+    expect(container.querySelector('.vp-hero-leit')).toBeNull();
+  });
+
+  it('am Telefon (showRail = false) steht sie nicht in der Bühne, sondern im Raster', () => {
+    const { container } = renderStage({ seite: <div className="leit" />, showRail: false });
+    expect(container.querySelector('.vp-hero-side')).toBeNull();
   });
 });
 
 describe('Der Bühnenfuß', () => {
   it('trägt die Steuerung über die volle Breite - nicht mehr in der Fluss-Spalte', () => {
-    const { container } = renderStage(pilstingView(), {
-      periodSeg: <div className="vp-seg vp-seg-compact" />,
+    const { container } = renderStage({
+      seite: <div className="leit" />,
       footer: (
         <ControlStrip
           variant="bare"
@@ -234,7 +111,7 @@ describe('Der Bühnenfuß', () => {
   });
 
   it('fehlt ganz, wenn es keine Steuerung zu zeigen gibt', () => {
-    const { container } = renderStage(pilstingView());
+    const { container } = renderStage();
     expect(container.querySelector('.vp-stage-foot')).toBeNull();
   });
 });
@@ -246,13 +123,15 @@ describe('H-3: der adaptive Fluss liest dieselben Rollen wie die Aufschlüsselun
       { role: 'pv', value_kw: 99, flow_active: true, members: [{ entity_id: 'pv', label: 'Wechselrichter', primary: true, value_kw: 99 }] },
       { role: 'grid', value_kw: 3.5, flow_active: true, members: [{ entity_id: 'netz', label: 'Netz', primary: true, value_kw: 3.5 }] },
     ] } };
-    const { container } = render(<CockpitHero view={pilstingView()} topology={topology} snapshot={SNAP} onOpenSub={() => {}}
+    const { container } = render(<CockpitHero topology={topology} snapshot={SNAP} onOpenSub={() => {}}
       pvRollen={{ role: 'pv', wert: null, einheit: 'kW', stand: null, zuordnung_vorhanden: true, unvollstaendig: true,
         geraete: [{ entity_id: 'pv', name: 'Wechselrichter', art: 'gesamtwert', wert: null, liefernd: false, grund: 'veraltet' }] }} />);
     await waitFor(() => expect(container.querySelector('.vp-lp')).not.toBeNull());
     const fluss = container.querySelector('.vp-lp');
     expect(fluss!.textContent).not.toContain('99');
-    expect(container.querySelector('.vp-rolle-pv')?.textContent).toContain('Stand unbekannt');
+    // Die Aufschlüsselung je Gerät steht im Blatt des Sonnen-Knotens.
+    fireEvent.click(container.querySelector('.vp-lp-k-pv')!);
+    await waitFor(() => expect(document.body.querySelector('.vp-rolle-pv')?.textContent).toContain('Stand unbekannt'));
     expect(topology.topology.nodes[0].value_kw).toBe(99);
   });
 });
@@ -261,13 +140,13 @@ describe('Laden bei Bezug unter dem Fluss (K8/B2)', () => {
   it('steht als Hinweis unter dem Fluss, nur wenn es einen Satz gibt', () => {
     const satz = 'Eine Wolke hat die Sonne gerade verdeckt – der Speicher regelt in den nächsten Sekunden nach.';
     const mit = render(
-      <CockpitHero view={pilstingView()} topology={null} snapshot={SNAP} onOpenSub={() => {}} ladenHinweis={satz} />,
+      <CockpitHero topology={null} snapshot={SNAP} onOpenSub={() => {}} ladenHinweis={satz} />,
     );
     const p = mit.container.querySelector('.vp-hero-flow .vp-hero-hinweis');
     expect(p?.textContent).toBe(satz);
     expect(p?.getAttribute('role')).toBe('status');
     mit.unmount();
-    const ohne = renderStage(pilstingView());
+    const ohne = renderStage();
     expect(ohne.container.querySelector('.vp-hero-hinweis')).toBeNull();
   });
 });

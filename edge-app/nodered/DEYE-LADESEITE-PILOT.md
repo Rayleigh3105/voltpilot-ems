@@ -66,6 +66,8 @@ Die Box verweigert den Start mit HTTP 400 und deutschem Satz in diesen Fällen: 
 
 Nennt `layer1_refusal` einen Grund, hat die Box den Kandidaten gar nicht übergeben, zum Beispiel wegen einer Vorbedingung. Dann ist nichts am Gerät verstellt worden.
 
+Der Satz zu `nicht_uebernommen` sagt, was ankam: keine Rückmeldung zu diesem Lauf, Rückmeldungen ohne Übernahme-Beleg (`run.rueckmeldungen`, `run.letzter_modus`) oder ein Register, das nicht hielt. Nur im letzten Fall nennt er den Wechselrichter als Ursache (Herzogau F11, 29.09.2026: die Belege fielen im Palettenknoten `vp-control-readback` weg).
+
 ## Ergebnis lesen (`run.metrics`)
 
 | Feld | Bedeutung |

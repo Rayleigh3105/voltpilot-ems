@@ -204,8 +204,8 @@
       }
     },
     {
-      "name": "18.08. abgeschlossen - unter Null ohne ableitbaren Grund (nie geraten)",
-      "vertrag": "unter Null ohne ableitbaren Grund",
+      "name": "18.08. abgeschlossen - unter Null ohne spezifischen Grund: der Rückfall steht da (A1)",
+      "vertrag": "unter Null ohne spezifischen Grund: nur der Rückfall",
       "now": "2026-09-24T19:58:00+02:00",
       "money": {
         "range": "day",
@@ -225,21 +225,65 @@
         "steuerungVortagEur": 8.4045,
         "steuerungMonatBisherEur": 104.8722,
         "steuerungPlannedEur": null,
-        "steuerungGruende": []
+        "steuerungGruende": [
+          "anders_geladen"
+        ]
       },
       "erwartet": {
         "wert": "− 0,58 €",
         "chip": "unter Null",
-        "grundZeile": null,
-        "grundErster": null,
-        "grundKurz": null,
+        "grundZeile": "anders geladen und entladen",
+        "grundErster": "anders geladen und entladen",
+        "grundKurz": "anders geladen und entladen",
         "anker": {
           "label": "1.–18. August",
           "wert": "+ 104,87 €"
         },
         "bestand": "3,0 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 0,70 €",
         "bestandBadge": "Kein Abzug",
-        "satzOhne": "hält Energie"
+        "satzOhne": "hält Energie",
+        "satzMit": "gebracht — weniger als demselben Speicher ohne smarte Steuerung; anders geladen und entladen."
+      }
+    },
+    {
+      "name": "19.09. abgeschlossen - 9,2 kWh knapp unter der Schwelle: bis zum 29.09. ohne Grund-Zeile, jetzt der Rückfall (A1)",
+      "vertrag": "19.09., alte Messlatte: knapp unter der Schwelle, nur der Rückfall",
+      "now": "2026-09-29T17:24:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-18T22:00:00Z",
+        "to": "2026-09-19T22:00:00Z",
+        "savedEur": 6.494,
+        "savedSpeicherEur": 7.217,
+        "savedSteuerungEur": -0.723,
+        "speicherDeltaKwh": 16.25,
+        "speicherWertEur": 1.1538,
+        "speicherWertCtKwh": 7.1,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 18.335,
+        "vergleichSocEndKwh": 44.78,
+        "speicherVorsprungKwh": -19.43,
+        "speicherVorsprungEur": -1.3795,
+        "steuerungVortagEur": 7.1188,
+        "steuerungMonatBisherEur": 100.9253,
+        "steuerungPlannedEur": 2.718,
+        "steuerungGruende": [
+          "anders_geladen"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 0,72 €",
+        "chip": "unter Null",
+        "grundZeile": "anders geladen und entladen",
+        "grundErster": "anders geladen und entladen",
+        "grundKurz": "anders geladen und entladen",
+        "anker": {
+          "label": "1.–19. September",
+          "wert": "+ 100,93 €"
+        },
+        "bestand": "19,4 kWh Rückstand auf den Vergleichsspeicher · Planwert 1,38 €",
+        "bestandBadge": "Kein Abzug",
+        "satzMit": "gebracht — weniger als demselben Speicher ohne smarte Steuerung; anders geladen und entladen."
       }
     },
     {

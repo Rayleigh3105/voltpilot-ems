@@ -364,6 +364,33 @@
   }
 }
 
+/* Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“): ohne
+   eigenen Rahmen - die Bühne ist die Karte. */
+.vp-hero-side > .vp-k-platz > .vp-k,
+.vp-hero-leit > .vp-k-platz > .vp-k {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+}
+@media (min-width: 900px) {
+  .vp-hero-side {
+    justify-content: flex-start;
+    gap: 14px;
+  }
+}
+/* Die Leitkachel unter „Dieser Moment“, durch eine Linie getrennt. */
+.vp-hero-moment:not(:empty) + .vp-hero-leit {
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  padding-top: 14px;
+}
+/* Wie im Prototyp: das Cockpit spricht in Plus Jakarta Sans (Variante C). */
+.vp-cockpit-hero,
+.vp-kraster,
+.vp-cockpit-health {
+  font-family: var(--vp-c-font, var(--vp-font-body));
+}
+
 .vp-rail-blk {
   min-width: 0;
 }
@@ -419,6 +446,46 @@
 .vp-control-foot .vp-outlook {
   flex: 1 1 100%;
   margin: 2px 0 0;
+}
+/* Auftrag · Gerät · Wirkung (Konzept „Cockpit als Tagesfilm“): drei Spalten
+   mit ruhigem Strich, am Telefon und am Rechner gleich. */
+.vp-control-spalten {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  max-width: 720px;
+}
+.vp-control-spalten > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--vp-border, #e2e8f0);
+}
+.vp-control-spalten i {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-control-spalten b {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.vp-control-spalten .tone-ok b {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-control-spalten .tone-warn b {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+@media (min-width: 1024px) {
+  .vp-control-spalten {
+    flex: 1 1 0;
+  }
 }
 
 .vp-hero-fresh {

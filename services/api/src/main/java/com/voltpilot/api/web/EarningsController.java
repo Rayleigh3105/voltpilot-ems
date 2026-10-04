@@ -2,7 +2,6 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
-import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.SteuerungGrund;
@@ -74,14 +73,13 @@ public class EarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
-    private final HistoryRepository history;
     private final StandortLesemodellService standortLesemodell;
     private final Geltungsbereich geltungsbereich;
     private final TeilansichtDienst teilansicht;
     private final String activePvModel;
 
     public EarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks, HistoryRepository history,
+            PeakShavingRepository peaks,
             StandortLesemodellService standortLesemodell,
             Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
             @org.springframework.beans.factory.annotation.Value(
@@ -89,7 +87,6 @@ public class EarningsController {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
-        this.history = history;
         this.standortLesemodell = standortLesemodell;
         this.geltungsbereich = geltungsbereich;
         this.teilansicht = teilansicht;
@@ -146,9 +143,13 @@ public class EarningsController {
         } else {
             speicherSplits.putAll(earnings.savedSpeicher(from, to));
         }
-        Map<UUID, BigDecimal> geplant = tag && !einordnungen.isEmpty()
-                ? history.plannedSteuerungPerSite(from, to)
-                : Map.of();
+        // Der Planwert (M2) kommt aus demselben Walk wie die Einordnung.
+        Map<UUID, BigDecimal> geplant = new HashMap<>();
+        einordnungen.forEach((id, e) -> {
+            if (e.steuerungGeplantEur() != null) {
+                geplant.put(id, e.steuerungGeplantEur());
+            }
+        });
         // Whether each site's import valuation engages a tariff/Preisblatt
         // beyond bare spot - the provenance copy's honesty switch - and its
         // export-side sibling (feste EEG-Vergütung vs bare spot, B2 fix).

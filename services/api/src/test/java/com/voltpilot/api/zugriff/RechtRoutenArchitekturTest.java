@@ -130,6 +130,8 @@ class RechtRoutenArchitekturTest {
         m.put("FunktionController#steuernStandort", steuern + " am Standort");
         m.put("SiteChargingConfigController#save", "SiteChargingConfigController.save — RechtPruefung.pruefen je Feld: "
                 + "gridLimitKw = grenze.eintragen, Reihenfolge/Quellen-Wahl = betriebsweise.aendern");
+        m.put("SiteConsumerController#patch", "SiteConsumerController.patch — RechtPruefung.pruefen je Feld: "
+                + "allowStorageDischarge = betriebsweise.aendern, jedes andere Feld = geraet.einrichten");
         // AP-19 IP-7: der Zaun folgt dem Standort des Bezugs (DK1) — beim Anlegen aus dem Körper, sonst am Dokument.
         m.put("EnergiemanagementDokumentController#anlegen", "EnergiemanagementDokumentService.anlegen — "
                 + "energiemanagement.verwalten am Standort des Bezugs aus dem Körper bzw. am Unternehmen");

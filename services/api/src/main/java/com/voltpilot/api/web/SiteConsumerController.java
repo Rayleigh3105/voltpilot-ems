@@ -24,6 +24,7 @@ import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
 import com.voltpilot.api.web.dto.ConsumerOverrideDto;
 import com.voltpilot.api.web.dto.ConsumerRuntimeStatusDto;
 import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +77,7 @@ public class SiteConsumerController {
     private final ConsumerOverrideService overrideService;
     private final ConsumerOverrideRepository overrides;
     private final com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch;
+    private final RechtPruefung recht;
 
     public SiteConsumerController(Geltungsbereich geltungsbereich, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
@@ -83,8 +85,9 @@ public class SiteConsumerController {
             ConsumerPolicyActivationService activation, ConsumerFulfillmentReader fulfillment,
             ConsumerDeviationReader deviation, ConsumerOverrideService overrideService,
             ConsumerOverrideRepository overrides,
-            com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch) {
+            com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch, RechtPruefung recht) {
         this.ioSwitch = ioSwitch;
+        this.recht = recht;
         this.geltungsbereich = geltungsbereich;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
@@ -150,12 +153,34 @@ public class SiteConsumerController {
         return consumers.get(siteId, id);
     }
 
+    /**
+     * Zwei Rechte in EINEM Rumpf (Nachzug der neuen Steuerung, Paket 1b): „Speicher darf aushelfen“
+     * ({@code allowStorageDischarge}) ist Betrieb ({@code betriebsweise.aendern} — wie früher über die Regel, auch
+     * Bedienberechtigt), alles andere ist Einrichtung ({@code geraet.einrichten}). Der Interceptor prüft vor, ob eines
+     * davon irgendwo gilt; hier wird jedes Feld, das der Rumpf wirklich trägt, an der Anlage geprüft — ein Rumpf ohne
+     * Feld bleibt Einrichtung.
+     */
     @PatchMapping("/consumers/{id}")
-    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    @Recht(value = {"geraet.einrichten", "betriebsweise.aendern"}, ziel = RechtZiel.DIENST)
     public ConsumerDto patch(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody PatchConsumerRequest request) {
         requireSite(siteId);
+        if (request.allowStorageDischarge() != null) {
+            recht.pruefen("betriebsweise.aendern", RechtZiel.ANLAGE, siteId, null);
+        }
+        if (traegtEinrichtung(request) || request.allowStorageDischarge() == null) {
+            recht.pruefen("geraet.einrichten", RechtZiel.ANLAGE, siteId, null);
+        }
         return consumers.patch(siteId, id, request);
+    }
+
+    /** Ein Feld außer „Speicher darf aushelfen“ (und der erwarteten Fassung) ist Einrichtung. */
+    private static boolean traegtEinrichtung(PatchConsumerRequest r) {
+        return r.name() != null || r.ratedPowerKw() != null || r.controlKind() != null || r.levelsKw() != null
+                || r.minPowerKw() != null || r.resolutionKw() != null || r.powerRangesKw() != null
+                || r.storageRelation() != null || r.defaultGridEnergyPolicy() != null || r.failsafe() != null
+                || r.enabled() != null || r.minOnSeconds() != null || r.minOffSeconds() != null
+                || r.maxStartsPerDay() != null;
     }
 
     @DeleteMapping("/consumers/{id}")

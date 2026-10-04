@@ -8,6 +8,7 @@
 import { Card } from '../../designsystem/components/core/Card';
 import type { ControlStripView } from '../control';
 import type { ExportGuardView } from '../curtailment';
+import type { SteuerSpalte } from '../kacheln';
 
 /**
  * `card`  — die eigenständige Karte (v1-Zonen-Dashboard, unverändert).
@@ -47,10 +48,16 @@ export function ControlStrip({
   view,
   variant = 'card',
   guard = null,
+  spalten = null,
 }: {
   view: ControlStripView | null;
   variant?: ControlStripVariant;
   guard?: ExportGuardView | null;
+  /**
+   * Auftrag · Gerät · Wirkung getrennt (Konzept „Cockpit als Tagesfilm“). Nur
+   * im gesunden, abweichenden oder veralteten Zustand - sonst trägt der Satz.
+   */
+  spalten?: SteuerSpalte[] | null;
 }) {
   if (!view && !guard) return null;
   const body = view && (
@@ -71,7 +78,16 @@ export function ControlStrip({
     return (
       <section className="vp-control-foot" aria-label="Steuerung">
         <span className="vp-card-label vp-control-foot-lbl">Steuerung</span>
-        {view && (
+        {view && spalten && spalten.length > 0 ? (
+          <div className="vp-control-spalten">
+            {spalten.map((sp) => (
+              <div key={sp.titel} className={`tone-${sp.ton}`}>
+                <i>{sp.titel}</i>
+                <b>{sp.text}</b>
+              </div>
+            ))}
+          </div>
+        ) : view && (
           <>
             <span className={`vp-control-dot tone-${view.tone}`} aria-hidden="true" />
             <p className="vp-control-sentence">{view.sentence}</p>

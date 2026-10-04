@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import sys
 from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
 from voltpilot_optimization.config import (
+    DEFAULT_EEG_RATE_SCHEDULE,
     EegRateBand,
     eeg_rate_schedule,
 )
@@ -420,6 +422,35 @@ def test_degression_steps_and_pre_schedule_dates():
     # pre-2012 plant uses the first band (documented approximation).
     assert feste_verguetung_ct_per_kwh(date(2024, 9, 1), 5.0) == 8.03
     assert feste_verguetung_ct_per_kwh(date(2010, 1, 1), 5.0) == 24.4
+
+
+def test_band_2026_08_carries_the_official_bnetza_rates():
+    # BNetzA "EEG-Förderung und -Fördersätze", Inbetriebnahme 01.08.2026 bis
+    # 31.12.2026, Teileinspeisung Gebäude: 7,70 / 6,66 / 5,44 ct/kWh.
+    assert feste_verguetung_ct_per_kwh(date(2026, 8, 1), 8.0) == 7.70
+    assert feste_verguetung_ct_per_kwh(date(2026, 12, 31), None) == 7.70
+    assert feste_verguetung_ct_per_kwh(date(2026, 7, 31), 8.0) == 7.78
+    rate = feste_verguetung_ct_per_kwh(date(2026, 9, 1), 60.0)
+    assert rate == pytest.approx((10 * 7.70 + 30 * 6.66 + 20 * 5.44) / 60)
+
+
+def test_eeg_2023_bands_follow_the_statutory_degression():
+    # Every EEG-2023 band = round(anzulegender Wert (§48 Abs. 2: 8.6 / 7.5 /
+    # 6.2 ct) x 0.99^n (§49, one step per half-year from 2024-02) - 0.4 ct
+    # (§53 Abs. 1), 2) - the BNetzA computation in VergSaetze*.xlsx. This is
+    # what caught the 2026-02 le100 slip (5.51 instead of 5.50).
+    eeg2023 = [b for b in DEFAULT_EEG_RATE_SCHEDULE if b.valid_from >= date(2022, 7, 30)]
+    assert [b.valid_from for b in eeg2023][-1] == date(2026, 8, 1)
+    # Exact decimal arithmetic with kaufmännische Rundung: 7.5 x 0.99 - 0.4 =
+    # 7.025 must round to the published 7.03, which binary floats miss.
+    def rate(anzulegender_wert: str, n: int) -> float:
+        value = Decimal(anzulegender_wert) * Decimal("0.99") ** n - Decimal("0.4")
+        return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    for n, band in enumerate(eeg2023):
+        assert band.le10_ct == rate("8.6", n), band
+        assert band.le40_ct == rate("7.5", n), band
+        assert band.le100_ct == rate("6.2", n), band
 
 
 def test_eeg_schedule_env_override_and_garbage_rejection(monkeypatch):

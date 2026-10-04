@@ -89,11 +89,16 @@ for (const width of [375, 1440]) {
       if (fall === 'ahrenberg') await rolle(page, f.name, /^Verbrauch/);
       if (fall !== 'lindach') {
         await expect(karte.locator('.vp-summen-chip')).toHaveText(namen[f.rolle as keyof typeof namen]);
-        await expect(cockpit.locator(`.vp-rolle-${f.rolle}`)).toBeVisible();
-        await cockpit.locator(`.vp-rolle-${f.rolle} button`).click();
-        if (new Set(f.register.map((r) => r.entityId)).size > 1) await expect(cockpit.getByText(/Er zählt in der Anlagenzahl einmal/)).toBeVisible();
         const svg = cockpit.getByRole('group', { name: 'Energiefluss Ihrer Anlage' });
         await expect(svg.getByText(fall === 'netz' ? '2,0 kW' : `${f.wert.toLocaleString('de-DE')} kW`, { exact: true })).toBeVisible();
+        // Die Aufschlüsselung je Gerät steht im Blatt des Knotens (Konzept „Cockpit als Tagesfilm“).
+        const knoten = { pv: 'pv', consumer: 'load', grid: 'grid' }[f.rolle as 'pv' | 'consumer' | 'grid'];
+        await cockpit.locator(`.vp-lp-k-${knoten}`).click();
+        const blatt = page.getByRole('dialog');
+        await expect(blatt.locator(`.vp-rolle-${f.rolle}`)).toBeVisible();
+        if (new Set(f.register.map((r) => r.entityId)).size > 1) await expect(blatt.getByText(/Er zählt in der Anlagenzahl einmal/)).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(blatt).toHaveCount(0);
       }
       await pruefe(page);
       await shot(page, karte, `${fall}-${width}-karte`);

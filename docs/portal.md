@@ -12,7 +12,7 @@ flowchart TD
     Auswahl --> Cockpit["Cockpit: aktueller Zustand"]
     Auswahl --> Plan["Fahrplan: Plan, Ladevorgänge, Preise, Wetter"]
     Auswahl --> Verlauf["Verlauf: Energie, Erlöse, Messwerte"]
-    Auswahl --> Steuerung["Steuerung: Betriebsmodell und Regeln"]
+    Auswahl --> Steuerung["Steuerung: Geräte, Laden, Regeln"]
     Auswahl --> Anlage["Anlage: Aufbau und Einstellungen"]
     Login --> Admin["Plattformverwaltung bei entsprechender Rolle"]
     Hilfe["Hilfe: zentral oder im Kontext"] -.-> Auswahl
@@ -69,7 +69,7 @@ Geräteansichten führen über stabile Box-/Gerätereferenzen. Die physische Zie
 
 ## Steuerung und Geräte
 
-Betriebsmodelle, Regeln und zeitlich begrenzte Handeingriffe werden in der Steuerung erklärt. Geräteeigenschaften und Messpunktauswahl gehören an die jeweilige Komponente. Änderungen müssen ihre wirkliche Wirkung und Voraussetzungen nennen.
+Die Steuerung hat drei Reiter ([Konzept](konzepte/steuerung/README.md), [Umsetzung](agents/portal/steuerung-neu-drei-reiter.md)): **Geräte** (in einem Satz, was jetzt läuft und warum; das Tagesbild mit Gemessenem, Plan und Erwartung; die Geräte als Reihenfolge für Sonnenstrom; je Gerät Aus · Smart · Ein mit Ende; „Was immer gilt“ mit Speicher und Betriebsmodell), **Laden** (Netzanschluss, je Ladepunkt „Womit laden“ und Ladeziel, Fahrzeuge; nur mit Ladepunkt) und **Regeln** (Satzbaukasten mit Probelauf und Folgen, Vorlagen, Szenen, „Heute passiert“). Geräte legt die Steuerung nicht an: ein neu verbundenes Gerät fragt einmal nach seinem Auftrag oder bleibt auf Wunsch „nur gemessen“. Geräteeigenschaften und Messpunktauswahl gehören an die jeweilige Komponente. Änderungen müssen ihre wirkliche Wirkung und Voraussetzungen nennen; Annahme durch die Box, Geräteantwort und gemessene Wirkung bleiben getrennt.
 
 Die Plattform-Geräteverwaltung öffnet mit Updates; Registrierung ist ein weiterer Reiter. Gemeldete Version, zugewiesenes Ziel und neuestes Release sind unterschiedliche Angaben. Eine bestätigte Installation ist nicht automatisch das neueste verfügbare Release.
 

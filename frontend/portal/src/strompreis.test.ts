@@ -3,6 +3,7 @@ import type { PricePoint } from './api';
 import type { WhySlot } from './fahrplanWhy';
 import type { ActiveMode } from './surface';
 import {
+  boersenKachel,
   bezugspreisKontext,
   bezugspreisJetzt,
   FLACH_SPANNE_CT,
@@ -402,5 +403,31 @@ describe('kurveBeschreibung (die Kurve war für Vorlesesoftware nicht vorhanden)
   it('behauptet ohne Anker und ohne Fenster nur den Zeitraum', () => {
     const view = strompreisView(dayPoints(() => 12), DAY(12, 30));
     expect(kurveBeschreibung(view)).toBe('Börsenpreis-Verlauf für heute.');
+  });
+});
+
+describe('boersenKachel (Stundenbalken der Kachel „Börsenpreis“)', () => {
+  it('ein Balken je Stunde mit Mittelwert und Einordnung, jetzt und Vergangenes markiert', () => {
+    // 06–10 Uhr 4 ct · 10–17 Uhr 1 ct · 17–21 Uhr 13 ct; jetzt 12:05.
+    const v = strompreisView(dayPoints((h) => (h < 10 ? 4 : h < 17 ? 1 : 13)), DAY(12, 5));
+    const k = boersenKachel(v);
+    expect(k.balken).toHaveLength(15);
+    expect(k.balken.filter((b) => b.jetzt)).toHaveLength(1);
+    const jetzt = k.balken.find((b) => b.jetzt)!;
+    expect(jetzt.ct).toBeCloseTo(1);
+    expect(jetzt.klasse).toBe('guenstig');
+    expect(k.balken.at(-1)!.klasse).toBe('teuer');
+    expect(k.balken[0].vergangen).toBe(true);
+    expect(k.balken.at(-1)!.vergangen).toBe(false);
+    // Die Fenster sind DIESELBEN wie auf der Marktpreise-Seite, mit Ø-Preis.
+    const teuer = k.fenster.find((f) => f.art === 'teuer')!;
+    expect(teuer.mittelCt).toBeCloseTo(13);
+    expect(teuer.zeit).toBe(streifenFenster(v).find((f) => f.art === 'teuer')!.zeit);
+  });
+
+  it('eine Stunde ohne Preis bleibt eine Lücke; kaum Schwankung heißt keine Farbe', () => {
+    const luecke = boersenKachel(strompreisView(dayPoints((h) => (h >= 8 && h < 9 ? null : 8 + (h > 12 ? 2 : 0))), DAY(12)));
+    expect(luecke.balken.find((b) => b.ct == null)).toBeTruthy();
+    expect(luecke.balken.every((b) => b.klasse === 'flach')).toBe(true);
   });
 });

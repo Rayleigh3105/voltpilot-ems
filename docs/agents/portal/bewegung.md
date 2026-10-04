@@ -111,3 +111,54 @@ Skelett→Inhalt) — sie sind dort entstanden, weil sie dieselben Bausteine wie
 - **Die Gesamtmessung** wohnt in `e2e/motion-p7/proof.mjs` (Aufruf, Abschnitte und die drei
   Fallen im README daneben); ihre Zusammenfassung liegt bei firstmate unter
   `data/vp-motion-p7-feinschliff/proof.txt`.
+
+### Q8 — Der VoltPilot-Lade-Moment „Der Puls" (`VpLoader`, Captain-Entscheid 30.09.2026)
+
+**Spec-Quelle:** firstmate `data/vp-ladeanimation-q4/` (Konzept C „Der Puls"). **Beweis:**
+`e2e/boot-flow.spec.ts` (Desktop + Mobil), `src/components/VpLoader.test.tsx`.
+
+- **EIN Marken-Lader für das ganze Portal** (`src/components/VpLoader.tsx`): `VpLoader`
+  (Marke + Text, Grössen `boot`/`page`/`section`) und `VpLoaderScreen` (Vollbild-Bühne:
+  Marken-Streifen + Wortmarke + zentrierter Lader). Die Marke steht ruhig (Kopf + Blitz im
+  Marken-Verlauf), weiche Ringe strahlen im gleichmässigen Rhythmus aus - klar als „lädt"
+  lesbar, kein generischer Kreisel. Die Ringe beginnen AUSSERHALB der Marke (r=19 >
+  Marken-Radius) - Luft zum Kopf, keine Kollision.
+- **EINE Loop `vp-loader-pulse`** in `src/index.css` (`.vp-loader-ring`, drei um je 1/3 der
+  Periode versetzt). Nur `transform`/`opacity` (GPU), KEIN JS-Timer, CLS 0. Sie steht in
+  `LOOP_AUSNAHMEN` und im EINEN `prefers-reduced-motion`-Block (dort ruhen die Ringe, ein
+  leiser Halo bleibt). Wer sie ändert, ändert den Wächter `motionTokens.test.ts` mit.
+- **⚠ Nahtlos vom ersten Bild an.** `index.html` trägt die INLINE-Fassung desselben Laders
+  (`.vp-bs-ring`/`@keyframes vp-bs-pulse`, eigener Keyframe-Name, `-bs`-ID-Präfix). React
+  führt beim Mount GENAU DIESE Bewegung als `VpLoader`/`VpLoaderScreen` weiter (`BootSplash`),
+  das Inline-Bild blendet nur aus (`removeBootSkeleton`, P4). Die Ringe starten weder neu noch
+  springen sie: `src/bootHandoff.ts` liest beim Mount die `currentTime` der laufenden
+  Inline-Ringe (`getAnimations()`) und setzt den React-Lader per negativem `animation-delay`
+  (CSS-Variable `--vp-loader-phase`) auf DIESELBE Phase - so ist die Übergabe rhythmus-nahtlos,
+  nicht nur formgleich. **⚠ Eindeutige SVG-IDs je Instanz** (`useId`, Inline `-bs`): Inline- und
+  React-Lader stehen bei der Übergabe gleichzeitig im Dokument, dazu eingebettete Lader in
+  mehreren Karten - doppelte IDs wären ungültig und `url(#id)` löste aufs ERSTE Element (auch
+  in `display:none`). `VpLoader.test.tsx` rendert zwei Instanzen dagegen. Der
+  bootSkeleton-Wächter erlaubt seither `url(#…)`-Fragment-Refs UND Data-URIs (lokal, kein
+  Request), verbietet externes `url(...)`/`<img src>` weiter.
+- **⚠ Inline- und React-Lader sind PIXELGLEICH** (kein Sprung beim Übergang). Beide tragen die
+  ECHTE Wortmarke (`voltpilot-wordmark.png`, byte-genau) - inline als Data-URI in `index.html`,
+  React über `build.assetsInlineLimit` (`vite.config.ts`) als Data-URI ins Bündel gebacken (kein
+  Nachladen; NICHT `?inline` - das ist Vite 6 und liesse die Marke auf Vite 5.4 als Netz-Asset
+  stehen, Wächter `test:bundle`); gleiche Höhe (40), gleiche
+  stage/loader-Gaps (32/16 = `--vp-space-6`/`-4`), gleiche Statuszeile mit reservierten zwei
+  Zeilen (die Marke springt über keine Phase). Wer eine Zahl in `.vp-loader-*` (src/index.css)
+  ändert, zieht `#vp-boot-skeleton .vp-bs-*` (index.html) mit - `e2e/loader-parity.spec.ts`
+  misst beide Geometrien gegeneinander, das Differenzbild am Prod-Build hat 0 abweichende Pixel.
+- **⚠ Erster Start: EIN Übergang Lader → Inhalt, keine Kette Lader → Skelett → Inhalt.** Der
+  Boot-Cover (`VpLoaderScreen` in `App.tsx`) hält über der montierenden App, BIS die Startseite
+  ihr erstes ECHTES Bild meldet (`src/bootReady.ts` `useReportFirstPaint`; Cockpit/Flotte/
+  Portfolio melden, sobald ihre erste Datenladung/ein terminaler Zustand steht). Sicherheits-
+  grenze ~3 s nach dem Eintreffen der Anlagenliste: danach hebt der Lader ab und die Seite zeigt
+  ihren Rahmen mit Skeletten. Skelette bleiben für spätere Seitenwechsel und stückweises
+  Nachladen INNERHALB einer schon sichtbaren Seite (`States.tsx`, `Lazy.tsx`).
+- **⚠ „Fehlend ist keine Null" - nie ein Leer-Zustand vor der ersten Antwort.** `UnifiedPortal`
+  rendert den mandantengebundenen Seitenbaum erst, wenn die Anlagenliste da ist (`loaded`);
+  davor trägt der Boot-Cover. So erscheint „Noch keine Anlage"/„Willkommen" NIE vor einer
+  erfolgreichen Antwort (der frühere ~1-s-Blitz). Dieselbe Regel gilt je Konsument: jeder
+  „noch keine …"-Leerzustand erscheint erst NACH einer Antwort, ein Fehler bleibt ein
+  Fehler-Zustand (`MandantenPage` `tenantsLoaded`; die Daten-Seiten waren schon so gebaut).

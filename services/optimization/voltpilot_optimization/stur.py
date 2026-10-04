@@ -25,7 +25,8 @@ Ueberschuss) und speist nie aus dem Speicher ein (er entlaedt nur bis zum
 Defizit).
 
 **Gleiche Eingaben wie der Plan** - dieselbe Batterie (Kapazitaet, Leistungen,
-sqrt(eta)-Split, SoC-Band inklusive Reservations-Stack), dieselben Prognosen
+sqrt(eta)-Split, SoC-Band inklusive Reservations-Stack; das Band geweitet um den
+gemessenen Betriebsbereich, :func:`referenz_band`), dieselben Prognosen
 (``pv_kw``/``load_kw`` NACH allen Eingabe-Korrekturen, also inklusive
 PV-Nowcast-Anker und Nachtboden) und derselbe Start-Ladestand. Der Boden ist
 ausdruecklich ``battery.soc_floor_kwh(soc0)`` - der RELAXIERTE Boden, mit dem
@@ -48,17 +49,73 @@ als Steuerungs-WERT (richtig - sie ist eine kluge Entscheidung), eine
 Abregelung, die nur eine Einspeisegrenze einhaelt, als Steuerungs-ABZUG. Diese
 Asymmetrie steckt heute schon in ``batterySavingsPlannedEur`` gegen die
 no-battery-Baseline; sie wird hier geerbt, nicht neu eingefuehrt.
+
+**Seit M2 (29.09.2026) ist ``stur_cost_eur`` nicht mehr die Zahl im Portal.**
+Dieser sture Speicher startet in JEDEM Lauf beim echten Ladestand; weil je
+Viertelstunde der juengste Lauf zaehlt, kannte der Planwert nie einen Uebertrag
+ueber Mitternacht (Plan Sigma 06.-29.09. 245,74 EUR gegen gemessen 136,93 EUR).
+Den Planwert ``steuerungPlannedEur`` rechnet deshalb die api gegen DENSELBEN
+durchlaufenden Vergleichsspeicher wie die gemessene Zahl
+(``services/api .../repo/PlanMesslatte.java``). ``stur_cost_eur`` bleibt die
+Sicht des einzelnen Laufs (Log-Zeile) und der Beleg, dass der Lauf aus einem
+gemessenen Ladestand plante (P7: NULL = ohne Ladestand = kein Planwert).
 """
 
 from __future__ import annotations
 
-from voltpilot_optimization.domain import OptimizationInput
+from dataclasses import replace
+
+from voltpilot_optimization.domain import BatteryParams, OptimizationInput
 from voltpilot_optimization.simulation.greedy import GreedyResult, greedy_dispatch
+
+#: So viele Viertelstunden muss der echte Speicher einen Ladestand erreicht
+#: haben, damit er zum gemessenen Betriebsbereich zaehlt (der vierte
+#: niedrigste ``soc_min_pct`` bzw. vierte hoechste ``soc_max_pct`` eines
+#: Berliner Monats). Java-Zwilling ``StandardSpeicher.BETRIEBSBEREICH_EIMER``;
+#: Regel und Faelle in ``stur-speicher-vectors.json``, Block ``betriebsbereich``.
+BETRIEBSBEREICH_EIMER = 4
+
+
+def referenz_band(
+    soc_min_fraction: float,
+    soc_max_fraction: float,
+    gemessen_tief_pct: float | None,
+    gemessen_hoch_pct: float | None,
+) -> tuple[float, float]:
+    """Das SoC-Band des sturen Speichers (M1, Captain 29.09.2026 "mach alle drei").
+
+    Das Band der Batterie ist das PLANUNGSband des Optimierers
+    (``asset.soc_min_pct``/``soc_max_pct``, zugleich die Waechter-Grenzen der
+    Box), nicht der Bereich, den derselbe Speicher ohne smarte Steuerung
+    faehrt: Pilsting plant 5-95 %, der Deye faehrt gemessen 2-100 %. Der
+    gemessene Betriebsbereich WEITET das Band deshalb - er verengt es nie:
+    was die Steuerung planen darf, darf der Vergleichsspeicher auch.
+    Java-Zwilling: ``StandardSpeicher.batterie``.
+    """
+    tief = soc_min_fraction
+    if gemessen_tief_pct is not None and gemessen_tief_pct >= 0.0:
+        tief = min(tief, gemessen_tief_pct / 100.0)
+    hoch = soc_max_fraction
+    if gemessen_hoch_pct is not None and gemessen_hoch_pct <= 100.0:
+        hoch = max(hoch, gemessen_hoch_pct / 100.0)
+    return tief, hoch
+
+
+def stur_battery(inp: OptimizationInput) -> BatteryParams:
+    """Die Batterie des sturen Speichers: die des Plans mit dem geweiteten Band."""
+    battery = inp.battery
+    tief_pct, hoch_pct = inp.stur_betriebsbereich_pct or (None, None)
+    tief, hoch = referenz_band(
+        battery.soc_min_fraction, battery.soc_max_fraction, tief_pct, hoch_pct
+    )
+    if (tief, hoch) == (battery.soc_min_fraction, battery.soc_max_fraction):
+        return battery
+    return replace(battery, soc_min_fraction=tief, soc_max_fraction=hoch)
 
 
 def stur_dispatch(inp: OptimizationInput) -> GreedyResult:
     """Die Trajektorie des sturen Speichers ueber den Plan-Horizont."""
-    battery = inp.battery
+    battery = stur_battery(inp)
     soc0 = battery.clamp_soc_kwh(inp.initial_soc_kwh)
     return greedy_dispatch(
         battery,

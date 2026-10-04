@@ -2,40 +2,62 @@ import type { HelpArticle } from '../model';
 
 export const controlArticles: HelpArticle[] = [
   {
+    id: 'geraete-steuern', category: 'steuern', title: 'Geräte steuern: Aus, Smart, Ein',
+    summary: 'Was gerade läuft und warum, wer Sonnenstrom zuerst bekommt und wie Sie ein Gerät mit Ende ein- oder ausschalten.',
+    keywords: ['Steuerung', 'Geräte', 'Smart', 'Eingriff', 'Reihenfolge', 'Sonnenstrom', 'Tagesbild', 'Szene', 'Urlaub', 'nur messen', 'Heizstab', 'Wärmepumpe', 'Pool'],
+    sections: [
+      { id: 'jetzt', title: 'Lesen, was jetzt läuft', paragraphs: [
+        "Unter Steuerung → Geräte steht oben in einem Satz, was gerade läuft und warum, darunter, wohin der Sonnenstrom geht. Das Tagesbild zeigt bis jetzt Gemessenes, danach Plan und Erwartung. Ein Gerät ohne Leistungsmessung nennt seinen Zustand, aber keine erfundene Leistung.",
+      ], figure: 'steuerung-geraete' },
+      { id: 'smart', title: 'Aus, Smart, Ein', paragraphs: [
+        "Jedes Gerät hat drei Zustände. Smart ist sein Auftrag, als Satz lesbar, etwa „Mit Sonnenstrom ab 1,0 kW“. Aus und Ein sind Ihr Eingriff: immer mit Ende, danach wieder Smart. Das Blatt nennt vorher die Folgen. Dass die Box den Eingriff angenommen hat, heißt noch nicht, dass das Gerät läuft; das zeigt erst die Messung.",
+      ] },
+      { id: 'reihenfolge', title: 'Wer bekommt Sonnenstrom zuerst?', paragraphs: [
+        "Die Liste der Geräte ist die Reihenfolge für Sonnenstrom, samt Speicher. Mit „Ändern“ verschieben Sie Einträge; die neue Reihenfolge gilt ab dem Speichern. Geräte mit fester Zeit oder Frist stehen darunter, weil sie nicht auf Überschuss warten.",
+      ] },
+      { id: 'neu', title: 'Ein neu verbundenes Gerät', paragraphs: [
+        "Geräte legen Sie in der Anlage an, nicht in der Steuerung. Hat ein Gerät noch keinen Auftrag, fragt die Steuerung einmal: Vorschlag übernehmen, anders einstellen oder nur messen. „Nur messen“ gilt, bis Sie unter „noch nicht gesteuert“ auf „Steuern“ tippen.",
+      ] },
+      { id: 'szenen', title: 'Szenen: ein Tipp, mehrere Geräte', paragraphs: [
+        "Unter Regeln pausieren Szenen wie „Urlaub“ mehrere Geräte zugleich. Im Blatt wählen Sie die Geräte; die Szene gilt, bis Sie sie beenden, und setzt dann genau diese Geräte fort. Pausiert heißt: VoltPilot schaltet das Gerät nicht, es gilt sein sicherer Zustand. Eine Szene stellt keine Temperatur und keine Ladeart um.",
+      ] },
+    ], related: ['regeln', 'betriebsmodelle', 'ladepark'],
+  },
+  {
     id: 'betriebsmodelle', category: 'steuern', title: 'Betriebsmodelle und Voraussetzungen',
     summary: 'Was VoltPilot für Ihre Anlage tun kann und welche Voraussetzungen dafür erfüllt sein müssen.',
     keywords: ['Betriebsmodelle', 'Steuerung', 'Eigenverbrauch', 'Marktoptimierung', 'Direktvermarktung', 'Lastspitzenkappung'],
     sections: [
       { id: 'ziel', title: 'Das Betriebsziel Ihrer Anlage', paragraphs: [
-        "Die Karten unter Steuerung erklären Nutzen, Voraussetzungen und aktiven Zustand: Eigenverbrauch, Marktoptimierung, Lastspitzenkappung oder atypische Netznutzung. Ladepark-Lastmanagement verteilt Leistung auf Ladepunkte.",
+        "Unter Steuerung → Geräte öffnet „Was immer gilt → Speicher“ das Blatt des Speichers. Dort stehen die Betriebsmodelle mit Nutzen und Voraussetzungen: Eigenverbrauch, Marktoptimierung, Lastspitzenkappung oder atypische Netznutzung. Die Verteilung auf Ladepunkte steht unter Steuerung → Laden.",
       ], figure: 'steuerung' },
       { id: 'voraussetzungen', title: 'Fehlende Ausstattung oder fehlende Angabe?', paragraphs: [
         "Prüfen Sie, ob Ausstattung fehlt oder nur eine Angabe wie der Tarif. Folgen Sie dem angebotenen Weg zu Geräten, Einstellungen oder VoltPilot. Eine Erklärung allein erteilt keine Gerätefreigabe.",
       ] },
       { id: 'wechsel', title: 'Ein Modell bewusst wechseln', paragraphs: [
-        "Lesen Sie vor dem Wechsel die Folgenkarte: Speicher-Betriebsmodelle können sich ablösen. Kontrollieren Sie danach die aktive Auswahl und eigene Regeln. Der lokale Schutz des Ladeanschlusses bleibt davon getrennt.",
+        "Wählen Sie ein anderes Modell, nennt das Blatt vor dem Übernehmen die Folgen: welches Modell den Speicher übernimmt und welches endet. Der Wechsel gilt ab dem nächsten Fahrplan. Kontrollieren Sie danach die aktive Auswahl und eigene Regeln. Der lokale Schutz des Netzanschlusses bleibt davon getrennt.",
       ] },
-    ], related: ['regeln', 'speicher', 'lastspitzen'],
+    ], related: ['geraete-steuern', 'regeln', 'speicher', 'lastspitzen'],
   },
   {
     id: 'regeln', category: 'steuern', title: 'Regeln erstellen und kontrollieren',
     summary: 'Vom gewünschten Verhalten über die Prüfung bis zur aktiven Regel und ihrem Verlauf.',
-    keywords: ['Automatik', 'Regeln', 'Vorlage', 'Baukasten', 'Editor', 'Entwurf', 'Aktivieren', 'Verbraucher', 'Pausieren'],
+    keywords: ['Automatik', 'Regeln', 'Vorlage', 'Baukasten', 'Satzbaukasten', 'Probelauf', 'Folgen', 'Aktivieren', 'Verbraucher', 'Szene'],
     prerequisite: 'Ein geeignetes Gerät und die für die jeweilige Regel angebotenen Freigaben.',
     sections: [
       { id: 'absicht', title: 'Mit einer konkreten Aufgabe beginnen', paragraphs: [
-        "Wählen Sie unter Steuerung → Regeln eine Vorlage oder den geführten Weg; für individuelle Aufgaben gibt es den Editor. Legen Sie Zielgerät, Bedingung und gewünschte Aktion fest und benennen Sie die Regel eindeutig.",
+        "Unter Steuerung → Regeln beginnen Sie mit „Neue Regel“ oder einer Vorlage. Eine Regel ist ein Satz, etwa „Wenn der Börsenpreis unter 10 ct/kWh liegt: Heizstab einschalten.“ Jeder Baustein – Bedingung, Wert, Gerät und Aktion – lässt sich antippen und ändern.",
       ], figure: 'regeln' },
       { id: 'ablauf', title: 'Erstellen, prüfen, aktivieren', paragraphs: [], steps: [
-        'Vorlage oder Regeltyp auswählen und das tatsächliche Zielgerät prüfen.',
-        'Bedingungen, Zeitfenster und Zielwerte eintragen. Hinweise zu fehlenden Messwerten oder Fähigkeiten beheben.',
-        'Die Zusammenfassung und die angebotene Prüfung beziehungsweise Simulation lesen. Im Editor auch die verbundenen Ein- und Ausgänge prüfen.',
-        'Den Entwurf speichern und die Folgen vor einer Aktivierung bestätigen. Anschließend kontrollieren, ob die Regel tatsächlich als aktiv angezeigt wird.',
-      ], figure: 'regeln-mobil', note: 'Ein gespeicherter Entwurf steuert noch nichts. Auch eine angenommene Aktivierung ist nicht dasselbe wie eine bereits gemessene Wirkung am Gerät.' },
+        '„Neue Regel“ oder eine Vorlage wählen und das Gerät prüfen, das die Regel schalten soll.',
+        'Bedingung und Wert antippen und einstellen. Bausteine, die die Box noch nicht ausführen kann, sind als „kommt noch“ markiert.',
+        'Den Probelauf lesen: wann die Regel heute und morgen greifen würde und wie viel Energie das ungefähr bedeutet. Wo Preise oder Messwerte fehlen, steht das dabei.',
+        'Mit „Weiter: Folgen“ die Folgen prüfen und die Regel aktivieren. Anschließend kontrollieren, ob sie unter „Ihre Regeln“ als an geführt wird.',
+      ], figure: 'regeln-mobil', note: 'Eine aktive Regel ist eine Vorgabe an die Box. Ob das Gerät tatsächlich läuft, zeigt erst die gemessene Wirkung am Gerät.' },
       { id: 'kontrolle', title: 'Status und Verlauf gehören zur Regel', paragraphs: [
-        "Eine aktive Regel kann auf ihre Bedingung warten. Status und Protokoll zeigen Auslöser, Aktionen und Hindernisse. Zum Unterbrechen nutzen Sie Pause oder Deaktivierung und prüfen die angezeigten Folgen.",
+        "Jede Regel zeigt, ob sie gerade greift, wann sie heute schon gegriffen hat, und einen Streifen für den Tag. Eine aktive Regel kann auf ihre Bedingung warten. Ausschalten wirkt sofort und fragt nicht nach. „Heute passiert“ listet Regeln, Eingriffe und Szenen mit Uhrzeit.",
       ] },
-    ], related: ['betriebsmodelle', 'speicher', 'probleme'],
+    ], related: ['geraete-steuern', 'betriebsmodelle', 'probleme'],
   },
   {
     id: 'speicher', category: 'steuern', title: 'Speichergrenzen und Reserven',
@@ -78,15 +100,15 @@ export const controlArticles: HelpArticle[] = [
     prerequisite: 'Eine Anlage mit angebundenen Ladepunkten.',
     sections: [
       { id: 'ueberblick', title: 'Verbindung und Laden sind verschiedene Zustände', paragraphs: [
-        "Ein erreichbarer Ladepunkt lädt nicht automatisch: Fahrzeug, Freigabe oder Leistungsanforderung können fehlen. Lesen Sie Verbindungszustand, Ladezustand und Datenstand für den richtigen Anschluss.",
+        "Unter Steuerung → Laden steht jeder Ladepunkt mit seinem Zustand. Ein erreichbarer Ladepunkt lädt nicht automatisch: Fahrzeug, Freigabe oder Leistungsanforderung können fehlen. Lesen Sie Verbindungszustand, Ladezustand und Datenstand für den richtigen Anschluss.",
       ], figure: 'ladepark' },
       { id: 'verteilung', title: 'Leistung innerhalb des Anschlusses verteilen', paragraphs: [
-        "Das Lastmanagement verteilt die verfügbare Leistung innerhalb der Anschlussgrenzen. Andere Verbraucher verkleinern den Spielraum. Priorität beeinflusst die Verteilung, erweitert aber keine physische Grenze.",
+        "Oben zeigt „Netzanschluss“, wie sich die Grenze auf Haus und Ladepunkte verteilt. Das Lastmanagement bleibt innerhalb dieser Grenze; andere Verbraucher verkleinern den Spielraum. Vorrang beeinflusst die Verteilung, erweitert aber keine physische Grenze.",
       ] },
       { id: 'einzeln', title: 'Einen Ladepunkt genauer prüfen', paragraphs: [
-        "Öffnen Sie den Ladepunkt und prüfen Sie Daten und angebotene Aktionen. Kontrollieren Sie nach einer Aktion Rückmeldung und Messwerte; eine angenommene Vorgabe belegt noch keine Wirkung am Fahrzeug.",
+        "Je Ladepunkt wählen Sie „Womit laden“ – Sonne, Sonne mit Minimum oder günstig – und bei Bedarf ein Ladeziel, etwa „+30 kWh bis 7:00“. Kontrollieren Sie nach einer Aktion Rückmeldung und Messwerte; eine angenommene Vorgabe belegt noch keine Wirkung am Fahrzeug.",
       ] },
-    ], related: ['ladevorgaenge', 'geraete', 'probleme'],
+    ], related: ['ladevorgaenge', 'geraete-steuern', 'probleme'],
   },
   {
     id: 'ladevorgaenge', category: 'steuern', title: 'Ladevorgänge nachvollziehen',

@@ -63,6 +63,14 @@ main-Datei (39f074e04 ff., Tagesbild) und führt `components/Tagesbild.tsx` nich
 (a32805fc8). Die übrigen Aufnahmen (`verlauf-ladevorgaenge`, `verlauf-lastspitzen`, `verlauf-marktpreise`) und
 die O18-/`startEbene`-Snapshots bleiben am Bezugsstand 84f8307f.
 
+**Nachzug main 308a5cc91 (04.10.2026, Steuerung neu, Paket `vp-uems-nachzug-main-1a`):** `cockpit.html` folgt dem
+Cockpit-Raster von main (1fec2bc1c, 2e655d20e, bf02b8c20) und dem Leitungsplan (ad5210427). Seit dem Nachzug a68f93d20
+lud die Energie-Bühne als eigenes Stück nach, und der Fall fotografierte ihren Platzhalter `vp-eb-warten` — rot auf
+`uems`. Der Fall wartet jetzt, bis die Bühne steht. Die Aufnahme ist auf einem frischen `git archive origin/main`
+(308a5cc91) mit demselben Testfall entstanden (`--root <Archiv>/frontend/portal --no-cache`, Abhängigkeiten
+identisch); der Merge-Baum rendert sie **bytegleich** (21 496 Bytes) — Geld-Regel und `CockpitMessstellenWeg` ändern
+für eine Anlage ohne Messfunktion kein Byte.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

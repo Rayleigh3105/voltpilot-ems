@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { AuthScreen } from './AuthScreen';
+import { LOADER_TEXT, VpLoaderScreen } from './VpLoader';
 // EINE Messung der Ausblend-Dauer fuer das ganze Portal: dieselbe Funktion,
 // mit der P6 seine Modale wartet (`designsystem/components/shell/ausblenden.js`).
 // Ein zweiter Leser desselben Tokens waere ein Zwilling, der abdriften kann.
@@ -9,18 +10,15 @@ import { ausblendDauerMs } from '../../designsystem/components/shell/ausblenden'
 /**
  * Synchronously rendered boot state (white-page fix): shown the moment the
  * bundle runs, BEFORE/WHILE initAuth() awaits Keycloak. Whatever hangs or
- * throws afterwards, the customer never looks at an empty page. Rendered in
- * the same split-view brand language as login/register (AuthScreen).
+ * throws afterwards, the customer never looks at an empty page.
+ *
+ * Es ist die React-Fassung des Inline-Skeletts aus `index.html` - derselbe
+ * VoltPilot-Lade-Moment ({@link VpLoaderScreen}), damit der Übergang
+ * Inline-Skelett → BootSplash → Shell-Cover → Inhalt EIN durchgehender Moment
+ * ist und der Blitz weder neu startet noch springt.
  */
 export function BootSplash() {
-  return (
-    <AuthScreen>
-      <div className="vp-boot-spinner" aria-hidden="true" />
-      <p role="status" style={{ textAlign: 'center' }}>
-        Anmeldung wird geprüft …
-      </p>
-    </AuthScreen>
-  );
+  return <VpLoaderScreen text={LOADER_TEXT.auth} />;
 }
 
 /**

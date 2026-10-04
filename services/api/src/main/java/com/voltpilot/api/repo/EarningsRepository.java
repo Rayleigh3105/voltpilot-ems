@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -989,11 +990,71 @@ public class EarningsRepository {
             double loadKwh) {
     }
 
-    /** Was ein Walk hergibt: die Fenster-Summe je Anlage, ihre Tages-Zuwaechse und Tages-Staende. */
+    /**
+     * Was ein Walk hergibt: die Fenster-Summe je Anlage, ihre Tages-Zuwaechse
+     * und Tages-Staende - und, nur auf Wunsch, den Verlauf des
+     * Vergleichsspeichers, gegen den {@link PlanMesslatte} den Planwert rechnet.
+     */
     private record SpeicherWalk(
             Map<UUID, BigDecimal> total,
             Map<UUID, Map<LocalDate, BigDecimal>> perDay,
-            Map<UUID, Map<LocalDate, VergleichTag>> tage) {
+            Map<UUID, Map<LocalDate, VergleichTag>> tage,
+            Map<UUID, PlanMesslatte.Vergleich> verlauf) {
+    }
+
+    /**
+     * Die Batterie-Spalten einer Anlage, wie der Walk sie liest; die Batterie
+     * selbst wird je Monat aufgelöst, weil der gemessene Betriebsbereich
+     * (M1) je Monat gilt.
+     */
+    private record Stammdaten(
+            BigDecimal capacityKwh,
+            BigDecimal maxChargeKw,
+            BigDecimal maxDischargeKw,
+            BigDecimal roundtripEfficiencyPct,
+            BigDecimal socMinPct,
+            BigDecimal socMaxPct,
+            BigDecimal backupReserveSocPct,
+            BigDecimal peakReserveSocPct) {
+
+        StandardSpeicher.Batterie batterie(Betriebsbereich bereich) {
+            return StandardSpeicher.batterie(capacityKwh, maxChargeKw, maxDischargeKw,
+                    roundtripEfficiencyPct, socMinPct, socMaxPct, backupReserveSocPct,
+                    peakReserveSocPct,
+                    bereich == null ? null : bereich.tiefPct(),
+                    bereich == null ? null : bereich.hochPct());
+        }
+    }
+
+    /**
+     * Der gemessene Betriebsbereich des echten Speichers in einem Berliner
+     * Monat: der {@link StandardSpeicher#BETRIEBSBEREICH_EIMER}-t niedrigste
+     * {@code soc_min_pct} und -t höchste {@code soc_max_pct} der
+     * 15-Minuten-Eimer; null, wo der Monat weniger Eimer mit Ladestand hat.
+     */
+    record Betriebsbereich(BigDecimal tiefPct, BigDecimal hochPct) {
+
+        /** Der weitere von zwei Bereichen (je Seite das Extrem, null zählt nicht). */
+        static Betriebsbereich vereint(Betriebsbereich a, Betriebsbereich b) {
+            if (a == null) {
+                return b;
+            }
+            if (b == null) {
+                return a;
+            }
+            return new Betriebsbereich(extrem(a.tiefPct(), b.tiefPct(), -1),
+                    extrem(a.hochPct(), b.hochPct(), 1));
+        }
+
+        private static BigDecimal extrem(BigDecimal x, BigDecimal y, int richtung) {
+            if (x == null) {
+                return y;
+            }
+            if (y == null) {
+                return x;
+            }
+            return x.compareTo(y) * richtung >= 0 ? x : y;
+        }
     }
 
     private Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to, UUID site) {
@@ -1006,13 +1067,20 @@ public class EarningsRepository {
     }
 
     private SpeicherWalk speicherWalk(Instant from, Instant to, UUID site) {
+        return speicherWalk(from, to, site, false);
+    }
+
+    private SpeicherWalk speicherWalk(Instant from, Instant to, UUID site, boolean mitVerlauf) {
         // Der Lauf beginnt am Monatsbeginn des Fensters (Definition A): die
         // Eimer davor bringen den Vergleichsspeicher nur auf Stand.
         Instant walkFrom = monthStart(from);
         Map<UUID, Map<LocalDate, BigDecimal>> anchors = monthAnchorSocPct(walkFrom, to, site);
+        Map<UUID, Map<LocalDate, Betriebsbereich>> bereiche =
+                monthBetriebsbereich(walkFrom, to, site);
         Map<UUID, BigDecimal> result = new HashMap<>();
         Map<UUID, Map<LocalDate, BigDecimal>> perDay = new HashMap<>();
         Map<UUID, Map<LocalDate, VergleichTag>> tage = new HashMap<>();
+        Map<UUID, PlanMesslatte.Vergleich> verlauf = new HashMap<>();
         // One mutable walk state; rows arrive ordered by (site_id, bucket), so
         // a site change closes the previous site's walk (the arbitrageSplit
         // shape). batterie == null cannot happen for a joined row unless the
@@ -1026,8 +1094,11 @@ public class EarningsRepository {
         // anchor; the window total is the sum of its closed days.
         var state = new Object() {
             UUID site;
+            Stammdaten stammdaten;
             StandardSpeicher.Batterie batterie;
             StandardSpeicher.Walk walk;
+            TreeMap<Instant, Double> staende;
+            TreeMap<Instant, StandardSpeicher.Batterie> batterien;
             YearMonth month;
             boolean counted;
             double totalEur;
@@ -1060,6 +1131,9 @@ public class EarningsRepository {
                 if (site != null && counted) {
                     result.put(site, BigDecimal.valueOf(totalEur));
                 }
+                if (site != null && staende != null && !staende.isEmpty()) {
+                    verlauf.put(site, new PlanMesslatte.Vergleich(staende, batterien));
+                }
             }
         };
         jdbc.query(
@@ -1086,7 +1160,7 @@ public class EarningsRepository {
                     if (!siteId.equals(state.site)) {
                         state.finish();
                         state.site = siteId;
-                        state.batterie = StandardSpeicher.batterie(
+                        state.stammdaten = new Stammdaten(
                                 rs.getBigDecimal("capacity_kwh"),
                                 rs.getBigDecimal("max_charge_kw"),
                                 rs.getBigDecimal("max_discharge_kw"),
@@ -1095,10 +1169,15 @@ public class EarningsRepository {
                                 rs.getBigDecimal("soc_max_pct"),
                                 rs.getBigDecimal("backup_reserve_soc_pct"),
                                 rs.getBigDecimal("peak_reserve_soc_pct"));
+                        // Ob es eine Batterie gibt, hängt nicht am Bereich;
+                        // welcher Bereich gilt, entscheidet jeder Monat neu.
+                        state.batterie = state.stammdaten.batterie(null);
                         state.walk = null;
                         state.month = null;
                         state.counted = false;
                         state.totalEur = 0;
+                        state.staende = mitVerlauf ? new TreeMap<>() : null;
+                        state.batterien = mitVerlauf ? new TreeMap<>() : null;
                     }
                     if (state.batterie == null) {
                         return;
@@ -1112,11 +1191,24 @@ public class EarningsRepository {
                         // Vergleichsspeicher am gemessenen Stand des 1.
                         state.closeDay();
                         state.month = month;
+                        // M1: der Vergleichsspeicher dieses Monats fährt den
+                        // Bereich, den der echte Speicher in diesem oder im
+                        // Vormonat gemessen erreicht hat (nie enger als das Band).
+                        Map<LocalDate, Betriebsbereich> bereich =
+                                bereiche.getOrDefault(siteId, Map.of());
+                        state.batterie = state.stammdaten.batterie(Betriebsbereich.vereint(
+                                bereich.get(month.atDay(1)),
+                                bereich.get(month.minusMonths(1).atDay(1))));
                         BigDecimal socPct = anchors.getOrDefault(siteId, Map.of())
                                 .get(month.atDay(1));
                         state.walk = new StandardSpeicher.Walk(state.batterie, socPct == null
                                 ? null
                                 : socPct.doubleValue() / 100.0 * state.batterie.capacityKwh());
+                        if (state.staende != null) {
+                            Instant beginn = month.atDay(1).atStartOfDay(ZONE).toInstant();
+                            state.staende.put(beginn, state.walk.socKwh());
+                            state.batterien.put(beginn, state.batterie);
+                        }
                     }
                     boolean zaehlt = !rs.getTimestamp("bucket").toInstant().isBefore(from);
                     if (zaehlt && !day.equals(state.day)) {
@@ -1134,6 +1226,11 @@ public class EarningsRepository {
                     state.walk.slot(pv, load,
                             rs.getDouble("import_price_eur_kwh"),
                             rs.getDouble("export_value_eur_kwh"));
+                    if (state.staende != null) {
+                        // Der Stand gilt ab dem Ende des Eimers.
+                        state.staende.put(rs.getTimestamp("bucket").toInstant()
+                                .plus(SLOT), state.walk.socKwh());
+                    }
                     if (zaehlt) {
                         state.dayPvKwh += pv;
                         state.dayLoadKwh += load;
@@ -1142,7 +1239,56 @@ public class EarningsRepository {
                 },
                 args(walkFrom, to, site));
         state.finish();
-        return new SpeicherWalk(result, perDay, tage);
+        return new SpeicherWalk(result, perDay, tage, verlauf);
+    }
+
+    /**
+     * Der gemessene Betriebsbereich (M1) je (Anlage, Berliner Monat) für jeden
+     * Monat, den der Walk über {@code [walkFrom, to)} braucht, und dessen
+     * Vormonat: der {@link StandardSpeicher#BETRIEBSBEREICH_EIMER}-t
+     * niedrigste {@code soc_min_pct} und -t höchste {@code soc_max_pct} der
+     * Eimer des Monats. Ein Monat zählt ganz, unabhängig vom Fenster - sonst
+     * sähe ein Tagesfenster einen anderen Vergleichsspeicher als der Monat,
+     * und die Tage ergäben den Monat nicht mehr. Hat ein Monat weniger als
+     * {@link StandardSpeicher#BETRIEBSBEREICH_EIMER} Eimer mit Ladestand, ist
+     * seine Seite null (Array jenseits der Länge = NULL).
+     */
+    Map<UUID, Map<LocalDate, Betriebsbereich>> monthBetriebsbereich(
+            Instant walkFrom, Instant to, UUID site) {
+        Map<UUID, Map<LocalDate, Betriebsbereich>> result = new HashMap<>();
+        LocalDate ersterMonat = walkFrom.atZone(ZONE).toLocalDate().withDayOfMonth(1)
+                .minusMonths(1);
+        LocalDate nachLetztemMonat = to.minusNanos(1).atZone(ZONE).toLocalDate()
+                .withDayOfMonth(1).plusMonths(1);
+        Instant von = ersterMonat.atStartOfDay(ZONE).toInstant();
+        Instant bis = nachLetztemMonat.atStartOfDay(ZONE).toInstant();
+        int k = StandardSpeicher.BETRIEBSBEREICH_EIMER;
+        jdbc.query(
+                "SELECT r.site_id,"
+                        + " date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')"
+                        + "   AT TIME ZONE 'Europe/Berlin' AS month_start,"
+                        + " (array_agg(r.soc_min_pct ORDER BY r.soc_min_pct)"
+                        + "   FILTER (WHERE r.soc_min_pct IS NOT NULL))[" + k + "] AS tief,"
+                        + " (array_agg(r.soc_max_pct ORDER BY r.soc_max_pct DESC)"
+                        + "   FILTER (WHERE r.soc_max_pct IS NOT NULL))[" + k + "] AS hoch "
+                        + "FROM telemetry_rollup_15m r "
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site) + " "
+                        + "GROUP BY 1, 2",
+                rs -> {
+                    BigDecimal tief = rs.getBigDecimal("tief");
+                    BigDecimal hoch = rs.getBigDecimal("hoch");
+                    if (tief != null || hoch != null) {
+                        result.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                                        x -> new HashMap<>())
+                                .put(rs.getTimestamp("month_start").toInstant()
+                                        .atZone(ZONE).toLocalDate(),
+                                        new Betriebsbereich(tief, hoch));
+                    }
+                },
+                site == null
+                        ? new Object[] {Timestamp.from(von), Timestamp.from(bis)}
+                        : new Object[] {Timestamp.from(von), Timestamp.from(bis), site});
+        return result;
     }
 
     /**
@@ -1290,6 +1436,9 @@ public class EarningsRepository {
      *     wie viel MEHR der gesteuerte Speicher gerade hat als der sture
      * @param pvKwh Erzeugung über die covered Slots des Tages
      * @param loadKwh Verbrauch über dieselben Slots
+     * @param steuerungGeplantEur der Planwert des Tages gegen DENSELBEN
+     *     Vergleichsspeicher ({@link PlanMesslatte}, M2), null ohne
+     *     vollständigen Fahrplan
      */
     public record Tageseinordnung(
             BigDecimal speicherEur,
@@ -1302,7 +1451,8 @@ public class EarningsRepository {
             BigDecimal echtSocEndKwh,
             BigDecimal speicherVorsprungKwh,
             BigDecimal pvKwh,
-            BigDecimal loadKwh) {
+            BigDecimal loadKwh,
+            BigDecimal steuerungGeplantEur) {
     }
 
     /**
@@ -1326,9 +1476,11 @@ public class EarningsRepository {
         // EIN Walk und EIN Tagesscan über [min(Vortag, Monatsbeginn), to): der
         // Walk verankert am Monatsbeginn des Vortags und neu am Monatsersten,
         // also ist jeder Tag darin dieselbe Zahl wie in jedem anderen Fenster.
+        // Derselbe Walk trägt den Verlauf, gegen den der Planwert rechnet (M2).
         Instant scanFrom = (vortag.isBefore(monatsbeginn) ? vortag : monatsbeginn)
                 .atStartOfDay(ZONE).toInstant();
-        SpeicherWalk walk = speicherWalk(scanFrom, to, site);
+        SpeicherWalk walk = speicherWalk(scanFrom, to, site, true);
+        Map<UUID, BigDecimal> geplant = steuerungGeplant(walk, from, to, site);
         Map<UUID, List<DailySaved>> tage = dailySaved(scanFrom, to, site, walk.perDay());
         Map<UUID, BigDecimal> echtStartPct = startSocPct(from, site);
         Map<UUID, Tageseinordnung> result = new HashMap<>();
@@ -1366,8 +1518,79 @@ public class EarningsRepository {
                     echtEnd,
                     echtEnd == null ? null : echtEnd.subtract(vergleichEnd),
                     kwh(stand.pvKwh()),
-                    kwh(stand.loadKwh())));
+                    kwh(stand.loadKwh()),
+                    geplant.get(siteId)));
         });
+        return result;
+    }
+
+    /**
+     * Der PLANWERT der Steuerung über {@code [from, to)} gegen denselben
+     * durchlaufenden Vergleichsspeicher wie die gemessene Zahl (M2, Regel in
+     * {@link PlanMesslatte}) - der Wert hinter
+     * {@code history.totals.steuerungPlannedEur}. Null ohne vollständigen
+     * Fahrplan oder ohne Vergleichsspeicher.
+     */
+    public BigDecimal steuerungGeplantForSite(UUID site, Instant from, Instant to) {
+        SpeicherWalk walk = speicherWalk(from, to, site, true);
+        return steuerungGeplant(walk, from, to, site).get(site);
+    }
+
+    private Map<UUID, BigDecimal> steuerungGeplant(SpeicherWalk walk, Instant from, Instant to,
+            UUID site) {
+        if (walk.verlauf().isEmpty()) {
+            return Map.of();
+        }
+        Instant beginn = from;
+        for (PlanMesslatte.Vergleich v : walk.verlauf().values()) {
+            Instant b = PlanMesslatte.leseBeginn(v, from);
+            if (b.isBefore(beginn)) {
+                beginn = b;
+            }
+        }
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        planSlots(beginn, to, site).forEach((id, slots) -> {
+            BigDecimal eur = PlanMesslatte.steuerungEur(walk.verlauf().get(id), slots, from, to);
+            if (eur != null) {
+                result.put(id, eur);
+            }
+        });
+        return result;
+    }
+
+    /**
+     * Die Fahrplan-Viertelstunden je Anlage über {@code [from, to)}: je Slot
+     * der JÜNGSTE Lauf ({@code DISTINCT ON … generated_at DESC}, dieselbe
+     * Slot-Menge wie {@code batterySavingsPlannedEur}), nur Slots mit Plan-
+     * und Baseline-Kosten. RLS zäunt den Mandanten.
+     */
+    private Map<UUID, List<PlanMesslatte.Slot>> planSlots(Instant from, Instant to, UUID site) {
+        Map<UUID, List<PlanMesslatte.Slot>> result = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id, time, pv_kw, load_kw, baseline_cost_eur, cost_eur,"
+                        + " stur_cost_eur IS NOT NULL AS messlatte"
+                        + " FROM ("
+                        + "  SELECT DISTINCT ON (site_id, time) site_id, time, pv_kw, load_kw,"
+                        + "    baseline_cost_eur, cost_eur, stur_cost_eur"
+                        + "  FROM schedule WHERE time >= ? AND time < ?"
+                        + (site == null ? "" : " AND site_id = ?")
+                        + "  ORDER BY site_id, time, generated_at DESC) s "
+                        + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL "
+                        + "ORDER BY site_id, time",
+                rs -> {
+                    result.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                                    k -> new ArrayList<>())
+                            .add(new PlanMesslatte.Slot(
+                                    rs.getTimestamp("time").toInstant(),
+                                    rs.getBigDecimal("pv_kw"),
+                                    rs.getBigDecimal("load_kw"),
+                                    rs.getBigDecimal("baseline_cost_eur"),
+                                    rs.getBigDecimal("cost_eur"),
+                                    rs.getBoolean("messlatte")));
+                },
+                site == null
+                        ? new Object[] {Timestamp.from(from), Timestamp.from(to)}
+                        : new Object[] {Timestamp.from(from), Timestamp.from(to), site});
         return result;
     }
 
@@ -1536,6 +1759,9 @@ public class EarningsRepository {
      * Anfangsbestand ohnehin nichts mehr behauptet.
      */
     private static final Duration SOC_START_LOOKBACK = Duration.ofDays(7);
+
+    /** Die Länge eines Rollup-Eimers und eines Fahrplan-Slots. */
+    private static final Duration SLOT = Duration.ofMinutes(15);
 
     /**
      * Wie frisch ein ROHES Telemetrie-Sample sein muss, um den Bestand des

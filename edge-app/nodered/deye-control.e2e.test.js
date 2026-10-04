@@ -3058,6 +3058,11 @@ function k5Setpoint(intent, extra = {}) {
   });
 }
 const k5Pilot = (candidate, intent) => ({ native_pilot: { candidate, intent, run: 'k5-test' } });
+// What the CORE receives: the executor's payload through vp-control-readback
+// shape() and over the wire (JSON). Asserting the raw payload alone hid the
+// Herzogau F11 defect (29.09.2026): shape() dropped every native proof field.
+const { shape: shapeReadback } = require('./vp-palette/nodes/vp-control-readback');
+const coreView = (payload) => JSON.parse(JSON.stringify(shapeReadback(JSON.parse(JSON.stringify(payload)))));
 
 test('K5: ohne Zertifikat bleibt die Ladeseite gedämpft - nur E↓ wird gemeldet, nichts wird übergeben', async () => {
   const { server, port, writes, store } = await startSolarmanServer(k5Store());
@@ -3087,6 +3092,9 @@ test('K5 Pilot Kandidat 1 (netzseitig Ziel 0): Totmann zuerst, 1109 <- 0 vor 110
     const pending = await rig.tick(k5Setpoint('self_consumption', k5Pilot('grid_zero', 'self_consumption')));
     assert.notStrictEqual(pending.plan.mode, 'native');
     assert.match(pending.out.payload.native_refusal, /eigene Konfiguration/);
+    const pendingCore = coreView(pending.out.payload);
+    assert.match(pendingCore.native_refusal, /eigene Konfiguration/, 'the core hears why nothing moved');
+    assert.deepStrictEqual(pendingCore.native_precondition, { grid_charge_blocked: true });
     const before = writes.length;
     const nat = await rig.tick(k5Setpoint('self_consumption', k5Pilot('grid_zero', 'self_consumption')));
     assert.strictEqual(nat.plan.mode, 'native');
@@ -3099,11 +3107,21 @@ test('K5 Pilot Kandidat 1 (netzseitig Ziel 0): Totmann zuerst, 1109 <- 0 vor 110
     assert.deepStrictEqual(JSON.parse(JSON.stringify(nat.out.payload.native)), {
       grid_charge_blocked: true, intent: 'self_consumption', curtails_own_pv: true, candidate: 'grid_zero',
     }, 'the proof names the intent, the candidate and its PV side effect (§6.3)');
+    const natCore = coreView(nat.out.payload);
+    assert.strictEqual(natCore.mode, 'native', 'the proof survives the readback node');
+    assert.strictEqual(natCore.wrote, true);
+    assert.deepStrictEqual(natCore.native, {
+      grid_charge_blocked: true, intent: 'self_consumption', curtails_own_pv: true, candidate: 'grid_zero',
+    });
+    assert.deepStrictEqual(natCore.native_capabilities, { intents: ['cover_load'], window: false, persistent: false });
     // Next tick: the watchdog kick keeps remote mode alive (RAM ops re-asserted),
     // the two configuration ops are NOT rewritten while they hold.
     const hb0 = writes.length;
     const hb = await rig.tick(k5Setpoint('self_consumption', k5Pilot('grid_zero', 'self_consumption')));
     assert.strictEqual(hb.out.payload.mode, 'native');
+    const hbCore = coreView(hb.out.payload);
+    assert.strictEqual(hbCore.mode, 'native');
+    assert.strictEqual(hbCore.wrote, true, 'the heartbeat is a write cycle the pilot counts');
     assert.deepStrictEqual(writes.slice(hb0).map((w) => [w.reg, w.value]),
       [[REG_REMOTE.watchdog, 60], [REG_REMOTE.constantPower, 0], [REG_REMOTE.mode, 1]]);
     // Back to the ordinary plan: battery side again, 1100 stays the last word.
@@ -3116,6 +3134,201 @@ test('K5 Pilot Kandidat 1 (netzseitig Ziel 0): Totmann zuerst, 1109 <- 0 vor 110
   } finally {
     server.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// Rückmeldeweg Layer 1 -> Core (Herzogau F11, 29.09.2026). The executor's
+// readback reaches the core ONLY through vp-control-readback shape(). This test
+// runs the shipped plan node + executor and pins, per tick, the raw payload and
+// what the core receives in docs/contracts/v2/control-readback-vectors.json -
+// the file the palette spec and the Go core (internal/agent) read as well.
+// Regenerate after a deliberate change:
+//   VP_VEKTOREN_SCHREIBEN=1 node --test deye-control.e2e.test.js
+// ---------------------------------------------------------------------------
+const READBACK_VECTORS = path.join(__dirname, '..', '..', 'docs', 'contracts', 'v2', 'control-readback-vectors.json');
+// The Layer-1 -> core evidence fields (plan-execution-ownership.md, "Lokaler Bus").
+const EVIDENCE_KEYS = ['wrote', 'native', 'native_precondition', 'native_refusal', 'native_capabilities'];
+
+// Exactly the field picture of the core's nativePilotOverride
+// (edge-app/core/internal/agent/nativepilot.go): no duty, no natural window.
+function f11PilotSetpoint() {
+  return {
+    battery_setpoint_kw: 0, source: 'native-pilot', ts: new Date().toISOString(),
+    control_enabled: true, device_certified: true, grid_charge_allowed: false,
+    soc_min_pct: 5, soc_max_pct: 100, battery_mode: 'native_window', battery_native_intent: 'surplus_charge',
+    battery_window_min_kw: 0, battery_window_max_kw: 30,
+    native_pilot: { candidate: 'grid_zero', intent: 'surplus_charge', run: '20260929T100129Z-1', seconds_remaining: 900 },
+    effective_floor_soc_pct: 5, device_certified_path: 'remote',
+  };
+}
+
+// Every shaped field path -> its keys; `registers` is forwarded verbatim.
+function readbackKeys(obj, prefix = '', out = {}) {
+  out[prefix] = Object.keys(obj).sort();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) readbackKeys(v, prefix ? prefix + '.' + k : k, out);
+  }
+  return out;
+}
+
+// Two-space JSON, but a short run of plain values (a register, a proof block)
+// stays on one line - the file is read by people as well.
+function vectorJson(v, ind = '') {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  const plain = (x) => x === null || typeof x !== 'object' || (Array.isArray(x) && x.every(plain));
+  const flat = Array.isArray(v) ? v.every(plain) : Object.values(v).every(plain);
+  const oneLine = JSON.stringify(v).replace(/,"/g, ', "').replace(/":/g, '": ');
+  if (flat && oneLine.length <= 170) return oneLine;
+  const inner = ind + '  ';
+  if (Array.isArray(v)) return '[\n' + v.map((x) => inner + vectorJson(x, inner)).join(',\n') + '\n' + ind + ']';
+  return '{\n' + Object.entries(v).map(([k, x]) => inner + JSON.stringify(k) + ': ' + vectorJson(x, inner)).join(',\n') + '\n' + ind + '}';
+}
+
+test('Rückmeldeweg: jeder Beleg des Executors kommt über shape() beim Kern an - Vektoren für Palette und Go-Kern', async () => {
+  const faelle = [];
+  const record = (name, why, ts, payload) => {
+    const roh = Object.assign(JSON.parse(JSON.stringify(payload)), { ts });
+    const geformt = JSON.parse(JSON.stringify(shapeReadback(roh)));
+    for (const k of EVIDENCE_KEYS) {
+      assert.deepStrictEqual(geformt[k], roh[k], name + ': ' + k + ' reaches the core unchanged');
+    }
+    assert.strictEqual(geformt.mode, roh.mode, name + ': the mode reaches the core unchanged');
+    faelle.push({ name, why, roh, geformt });
+    return geformt;
+  };
+
+  // A. The F11 run of 29.09.2026: Herzogau's own configuration (Selling First,
+  //    Load First, Solar Sell on, ToU active, no grid charging) and the pilot
+  //    setpoint exactly as the core publishes it.
+  {
+    const { server, port } = await startSolarmanServer(k5Store());
+    try {
+      const rig = makeNativeRig(port);
+      const plan = await rig.tick(nativeSetpoint('setpoint', { battery_setpoint_kw: 0 }));
+      record('f11_plan_vorher', 'Gewöhnlicher Fahrplan-Takt: auch er meldet wrote und die zertifizierten Hebel.',
+        '2026-09-29T10:01:19.000Z', plan.out.payload);
+      const t1 = await rig.tick(f11PilotSetpoint());
+      const g1 = record('f11_pilot_takt1_konfiguration_lesen',
+        'Erster Pilottakt: die eigene Konfiguration ist noch nicht gelesen - Verweigerung mit Grund und Vorab-Lesung des Netzlade-Riegels.',
+        '2026-09-29T10:01:30.000Z', t1.out.payload);
+      assert.match(g1.native_refusal, /eigene Konfiguration/);
+      assert.deepStrictEqual(g1.native_precondition, { grid_charge_blocked: true });
+      const t2 = await rig.tick(f11PilotSetpoint());
+      const g2 = record('f11_pilot_takt2_uebergabe',
+        'Zweiter Pilottakt: Übergabe an grid_zero (1104 <- 2) - der Übernahme-Beleg, den der Kern am 29.09. nie sah.',
+        '2026-09-29T10:01:40.000Z', t2.out.payload);
+      assert.strictEqual(g2.mode, 'native');
+      assert.strictEqual(g2.wrote, true);
+      assert.deepStrictEqual(g2.native, {
+        grid_charge_blocked: true, intent: 'surplus_charge', curtails_own_pv: true, candidate: 'grid_zero',
+      });
+      const t3 = await rig.tick(f11PilotSetpoint());
+      const g3 = record('f11_pilot_takt3_herzschlag', 'Folgetakt: nur der Herzschlag (1101/1109/1100), der Beleg bleibt.',
+        '2026-09-29T10:01:50.000Z', t3.out.payload);
+      assert.strictEqual(g3.mode, 'native');
+      assert.strictEqual(g3.wrote, true);
+    } finally {
+      server.close();
+    }
+  }
+
+  // B. The PRODUCTIVE E-down (K3/K4b) on a setting that may cover the house:
+  //    the same evidence gap kept this hand-over unproven since #531.
+  {
+    const { server, port } = await startSolarmanServer(nativeStore());
+    try {
+      const rig = makeNativeRig(port);
+      await rig.tick(nativeSetpoint('setpoint'));
+      const t1 = await rig.tick(nativeSetpoint('native'));
+      record('e_ab_takt1_konfiguration_lesen', 'E↓: erster Takt liest die eigene Konfiguration, noch keine Übergabe.',
+        '2026-09-29T11:00:10.000Z', t1.out.payload);
+      const t2 = await rig.tick(nativeSetpoint('native'));
+      const g2 = record('e_ab_takt2_uebergabe', 'E↓: Übergabe (1100 <- 0) mit dem Beleg im eigenen Modus des Geräts.',
+        '2026-09-29T11:00:20.000Z', t2.out.payload);
+      assert.strictEqual(g2.mode, 'native');
+      assert.strictEqual(g2.native.grid_charge_blocked, true);
+      const t3 = await rig.tick(nativeSetpoint('native'));
+      const g3 = record('e_ab_takt3_nur_lesen', 'E↓: Folgetakt schreibt nichts (wrote false) und belegt weiter.',
+        '2026-09-29T11:00:30.000Z', t3.out.payload);
+      assert.strictEqual(g3.mode, 'native');
+      assert.strictEqual(g3.wrote, false);
+    } finally {
+      server.close();
+    }
+  }
+
+  // C. E-down at Herzogau: Selling First with ToU active is refused by name.
+  {
+    const { server, port } = await startSolarmanServer(nativeStore({}, { workMode: 0 }));
+    try {
+      const rig = makeNativeRig(port);
+      await rig.tick(nativeSetpoint('setpoint', { grid_charge_allowed: false }));
+      await rig.tick(nativeSetpoint('native', { grid_charge_allowed: false }));
+      const t = await rig.tick(nativeSetpoint('native', { grid_charge_allowed: false }));
+      const g = record('e_ab_herzogau_selling_first',
+        'E↓ mit der Herzogau-Einstellung: verweigert, der Kern hört den Grund (bis 29.09. fiel er weg).',
+        '2026-09-29T11:00:40.000Z', t.out.payload);
+      assert.strictEqual(g.mode, 'normal');
+      assert.match(g.native_refusal, /Selling First/);
+    } finally {
+      server.close();
+    }
+  }
+
+  // D. Every field shape() can forward, plus fields it drops on purpose (the
+  //    list stays fixed: an unknown field never reaches the core).
+  const alle = {
+    ts: '2026-09-29T12:00:00.000Z', family: 'hybrid_3p', source: 'native-pilot', slot_start: '2026-09-29T12:00:00Z',
+    control_enabled: true, certified: true, mode: 'native', control_path: 'remote', remote_status_raw: 0,
+    verify: 'held', verify_reason: '', blocked: false, reason: '',
+    registers: [{ role: 'remote_mode', fc: 3, addr: 1100, commanded_raw: 1, actual_raw: 1, match: true, verdict: 'held' }],
+    wrote: true,
+    native: { grid_charge_blocked: true, intent: 'surplus_charge', curtails_own_pv: true, candidate: 'grid_zero', unbekannt: 1 },
+    native_precondition: { grid_charge_blocked: true },
+    native_refusal: 'Beispielgrund',
+    native_capabilities: { intents: ['cover_load'], window: false, persistent: false },
+    tou_budget: { day: '2026-09-29', changes: 0, limit: 20, held: false },
+    skipped_dwell: 0, snapshot_captured: false, power_scale_confirmed: true, active_slot_conflict: false,
+  };
+  const alleGeformt = JSON.parse(JSON.stringify(shapeReadback(alle)));
+  faelle.push({ name: 'alle_felder', why: 'Jedes Feld, das shape() weiterreichen kann - und Felder, die es absichtlich verwirft.',
+    roh: alle, geformt: alleGeformt });
+  for (const k of ['tou_budget', 'skipped_dwell', 'snapshot_captured', 'power_scale_confirmed', 'active_slot_conflict']) {
+    assert.strictEqual(alleGeformt[k], undefined, k + ' is not forwarded');
+  }
+  assert.strictEqual(alleGeformt.native.unbekannt, undefined, 'nor an unknown proof field');
+
+  const schluessel = readbackKeys(alleGeformt);
+  delete schluessel.registers;
+  for (const f of faelle) {
+    for (const [p, keys] of Object.entries(readbackKeys(f.geformt))) {
+      for (const k of keys) {
+        assert.ok(p === 'registers' || /^registers\./.test(p) || (schluessel[p] || []).includes(k),
+          f.name + ': ' + (p ? p + '.' : '') + k + ' is missing from alle_felder');
+      }
+    }
+  }
+
+  const vectors = {
+    $comment: [
+      'Rückmeldeweg Layer 1 -> Core: was der Deye-Executor meldet (roh) und was der Kern',
+      'nach vp-control-readback shape() erhält (geformt). ERZEUGT von',
+      'edge-app/nodered/deye-control.e2e.test.js - nicht von Hand ändern:',
+      '  VP_VEKTOREN_SCHREIBEN=1 node --test deye-control.e2e.test.js',
+      'Gelesen von: vp-palette/test/nodes_spec.js (shape(roh) = geformt, schluessel),',
+      'edge-app/core/internal/agent (Rückmeldungen durch onControlReadback; jeder JSON-Name,',
+      'den der Kern liest, muss in schluessel stehen).',
+    ],
+    $herkunft: 'Herzogau F11, 29.09.2026: shape() warf mode "native", wrote und native* weg - der Kern sah weder den Pilot-Beleg noch den E↓-Beleg (seit #531).',
+    $regel: 'Die Liste bleibt fest: ein unbekanntes Feld fällt weg. Ein Belegfeld reist nur mit dem Typ, den der Kern liest; native_capabilities nur vollständig (fehlt = nicht gemeldet).',
+    schluessel,
+    unveraendert: ['registers'],
+    faelle,
+  };
+  const text = vectorJson(vectors) + '\n';
+  if (process.env.VP_VEKTOREN_SCHREIBEN === '1') fs.writeFileSync(READBACK_VECTORS, text);
+  assert.strictEqual(fs.readFileSync(READBACK_VECTORS, 'utf8'), text,
+    'control-readback-vectors.json is stale - regenerate with VP_VEKTOREN_SCHREIBEN=1');
 });
 
 test('K5 Pilot Kandidat 2 (Eigenkonfiguration): die Herzogau-Einstellung wird gelesen und mit Grund verweigert - kein Schreiben', async () => {

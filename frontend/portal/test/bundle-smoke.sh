@@ -88,7 +88,7 @@ LIMIT_KB="${LIMIT_KB:-230}"
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT
 
-echo "== 1/4 · Bündel bauen =="
+echo "== 1/6 · Bündel bauen =="
 rm -rf "$OUT"
 npx vite build --sourcemap --outDir "$OUT" --emptyOutDir >/tmp/vp-bundle-build.log 2>&1 || {
   echo "FAIL: vite build ist gescheitert"; tail -30 /tmp/vp-bundle-build.log; exit 1;
@@ -98,7 +98,7 @@ echo "ok"
 entry=$(ls "$OUT"/assets/index-*.js 2>/dev/null | head -1)
 [ -n "$entry" ] || { echo "FAIL: kein Einstiegs-Chunk $OUT/assets/index-*.js"; exit 1; }
 
-echo "== 2/4 · Einstiegs-Chunk unter $LIMIT_KB kB gz =="
+echo "== 2/6 · Einstiegs-Chunk unter $LIMIT_KB kB gz =="
 # ⚠ DIE ZAHL KOMMT AUS VITES EIGENER AUSGABE, nicht aus `gzip -9`. Vite
 # komprimiert mit einer anderen Stufe (gemessen: 228,16 gegen 222,46 kB für
 # dasselbe Artefakt) — nähme der Wächter seine eigene Zahl, stünde im PR eine
@@ -115,7 +115,7 @@ awk -v g="$gz_kb" -v l="$LIMIT_KB" 'BEGIN{ exit !(g <= l) }' || {
 }
 echo "ok"
 
-echo "== 3/4 · kein Motion im Einstiegs-Chunk =="
+echo "== 3/6 · kein Motion im Einstiegs-Chunk =="
 map="$entry.map"
 [ -f "$map" ] || { echo "FAIL: keine Sourcemap neben $entry"; exit 1; }
 # `motion` re-exportiert `framer-motion`; dazu kommen `motion-dom` und
@@ -138,7 +138,7 @@ node -e '
 ' "$map"
 echo "ok"
 
-echo "== 4/4 · Chart-Bündel unter 210 kB gz =="
+echo "== 4/6 · Chart-Bündel unter 210 kB gz =="
 # Nur benötigte ECharts-Module: 344,50 -> 203,28 kB gz (09.09.2026).
 # AP-01 registrierte `Graphic`+`VisualMap` für REPLACE_MERGE: 219,92 kB gz,
 # rot. V-01 (24.09.2026) nimmt `VisualMap` wieder heraus (kein Diagramm setzt
@@ -153,5 +153,39 @@ awk -v g="$chart_gz_kb" 'BEGIN{ exit !(g <= 210) }' || {
 }
 echo "ok: ${chart_gz_kb} kB gz"
 
+echo "== 5/6 · Wortmarke inline (Review SOLLTE-1), kein Netz-Asset =="
+# Die Wortmarke MUSS als Data-URI im Bündel stehen (build.assetsInlineLimit),
+# damit der React-Lader sie ohne Netz-Request zeigt - byte-genau dasselbe Bild
+# wie der Inline-Lader in index.html. `?inline` (Vite 6) taeuscht das auf Vite
+# 5.4 nur vor und liesse sie als eigenes Asset stehen.
+if ls "$OUT"/assets/voltpilot-wordmark-*.* >/dev/null 2>&1; then
+  echo "FAIL: die Wortmarke wurde als eigenes Asset emittiert - der React-Lader luede sie ueber das Netz."
+  echo "      Sie gehoert als Data-URI ins Buendel (build.assetsInlineLimit, vite.config.ts)."
+  exit 1
+fi
+if grep -q '?inline' "$entry"; then
+  echo "FAIL: '?inline' im Einstieg - ein Vite-6-Feature, auf Vite 5.4 wirkungslos."
+  exit 1
+fi
+grep -q 'data:image/png;base64' "$entry" || {
+  echo "FAIL: keine Data-URI-Wortmarke im Einstiegs-Chunk (sollte inline sein)."
+  exit 1
+}
+echo "ok"
+
+echo "== 6/6 · index.html unter Grenze (Data-URI-Wortmarke, no-cache) =="
+# ⚠ index.html ist no-cache: jeder Vollaufruf laedt sie NEU. Der bewusste
+# Zuwachs ist die Data-URI-Wortmarke (~12 kB, Feedback-6) - die echte Marke vor
+# dem JS ohne Extra-Request. Mehr gehoert nicht in diesen Pfad; die Grenze ist
+# eine Ratsche (nach unten von selbst, nach oben nur mit Grund im PR).
+INDEX_LIMIT="${INDEX_LIMIT:-27000}"
+idx_bytes=$(wc -c < "$OUT/index.html")
+echo "   index.html: ${idx_bytes} B (Grenze ${INDEX_LIMIT} B)"
+[ "$idx_bytes" -le "$INDEX_LIMIT" ] || {
+  echo "FAIL: index.html ${idx_bytes} B > ${INDEX_LIMIT} B - der no-cache-Boot-Pfad waechst."
+  exit 1
+}
+echo "ok"
+
 echo
-echo "PASS · Einstieg ${gz_kb} kB gz, Charts ${chart_gz_kb} kB gz, kein Motion im Einstieg."
+echo "PASS · Einstieg ${gz_kb} kB gz, Charts ${chart_gz_kb} kB gz, index.html ${idx_bytes} B, Wortmarke inline, kein Motion im Einstieg."

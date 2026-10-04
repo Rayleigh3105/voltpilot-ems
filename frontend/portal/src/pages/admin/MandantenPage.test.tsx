@@ -167,3 +167,45 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     expect(document.body.textContent).not.toContain('Kontext-Umschalter');
   });
 });
+
+/**
+ * ⚠ SOLLTE-3/4-WÄCHTER: scheitert der Mandanten-Abruf (leer + Fehler), darf die
+ * Seite NICHT ewig das Tabellen-Skelett zeigen (das läse sich wie „lädt noch")
+ * und NICHT den Leer-Zustand „Noch keine Mandanten" behaupten (das wäre eine
+ * erfundene Null über einer Störung). Sie zeigt die ehrliche Fehlerkarte mit
+ * „Erneut versuchen", das `onReloadTenants` auslöst.
+ */
+describe('MandantenPage - Mandanten-Abruf gescheitert', () => {
+  it('zeigt die Fehlerkarte statt Dauer-Skelett oder erfundenem Leer-Zustand', () => {
+    render(
+      <MandantenPage
+        tenants={[]}
+        tenantsLoaded
+        tenantsError
+        onReloadTenants={vi.fn()}
+        onJumpToTenant={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(/Die Mandantenliste ließ sich gerade nicht laden/),
+    ).toBeInTheDocument();
+    // Weder das Lade-Skelett (aria-busy) noch der ehrliche Leer-Zustand.
+    expect(screen.queryByText('Noch keine Mandanten')).toBeNull();
+    expect(document.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it('lädt auf „Erneut versuchen" die Mandanten neu', () => {
+    const onReloadTenants = vi.fn();
+    render(
+      <MandantenPage
+        tenants={[]}
+        tenantsLoaded
+        tenantsError
+        onReloadTenants={onReloadTenants}
+        onJumpToTenant={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Erneut versuchen/ }));
+    expect(onReloadTenants).toHaveBeenCalledTimes(1);
+  });
+});

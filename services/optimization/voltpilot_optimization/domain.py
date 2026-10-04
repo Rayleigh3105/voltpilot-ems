@@ -982,6 +982,13 @@ class OptimizationInput:
     #: MiSpeL-Check). ``False`` (die Vorgabe, die Live-Planung) = die Wanduhr
     #: wie bisher: ein Plan muss rechtzeitig stehen.
     wiederholbar: bool = False
+    #: M1 (Captain 29.09.2026 "mach alle drei"): der GEMESSENE Betriebsbereich
+    #: des echten Speichers (tiefster/hoechster Ladestand in Prozent, je aus
+    #: mindestens vier Viertelstunden dieses oder des Vormonats), mit dem der
+    #: sture Speicher der Messlatte sein Band WEITET - nie verengt. Nur die
+    #: Messlatte liest ihn (:func:`voltpilot_optimization.stur.stur_battery`);
+    #: der Plan faehrt unveraendert sein eigenes Band. ``None`` = kein Messwert.
+    stur_betriebsbereich_pct: tuple[float | None, float | None] | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)

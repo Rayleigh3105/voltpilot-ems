@@ -12,8 +12,14 @@ import java.util.List;
  *
  * <p><b>Nichts wird geraten.</b> Jede Regel braucht ihre Eingaben; fehlt eine
  * (kein gemessener Ladestand, kein Fahrplan-Planwert), greift genau diese
- * Regel nicht. Greift keine, bleibt die Liste leer und die Fläche sagt nur
- * „unter Null“. Einen Grund gibt es NUR für einen negativen Tag.
+ * Regel nicht. Greift keine, steht die Rückfall-Kennung
+ * {@link #ANDERS_GELADEN} da (Korrektur A1, Captain 29.09.2026 „mach alle
+ * drei“): jedes Minus trägt einen Grund, auch das kleine ohne Übertrag und
+ * ohne Planabweichung (19.09.2026: −0,72 € mit leerer Liste). Sie sagt nur,
+ * was ein Minus per Definition bedeutet - der gesteuerte Speicher hat anders
+ * geladen und entladen als der sture, und das hat sich an diesem Tag nicht
+ * ausgezahlt -, und verdrängt nie eine der spezifischen Kennungen. Einen
+ * Grund gibt es NUR für einen negativen Tag.
  *
  * <p><b>Die Schwellen und die Rangfolge stehen in
  * {@code docs/contracts/steuerung-tag-vectors.json}</b> (Block {@code grund});
@@ -42,10 +48,16 @@ public final class SteuerungGrund {
     /** Geplant war kein Minus, gemessen wurde eins. */
     public static final String ANDERS_ALS_GEPLANT = "anders_als_geplant";
 
+    /**
+     * Rückfall (A1): keine spezifische Regel greift - der gesteuerte Speicher
+     * hat im Tagesverlauf anders geladen und entladen als der sture.
+     */
+    public static final String ANDERS_GELADEN = "anders_geladen";
+
     /** Die Rangfolge; ein Tag trägt höchstens {@link #HOECHSTENS} davon, die ersten. */
     public static final List<String> RANGFOLGE = List.of(
             GESTERN_VERKAUFT, HAELT_ENERGIE_FUER_MORGEN, SO_GEPLANT, WENIG_SONNE,
-            ANDERS_ALS_GEPLANT);
+            ANDERS_ALS_GEPLANT, ANDERS_GELADEN);
 
     public static final int HOECHSTENS = 2;
 
@@ -77,7 +89,8 @@ public final class SteuerungGrund {
      * @param vergleichSocStartKwh Vergleichsspeicher um 00:00
      * @param echtSocStartKwh gemessener Ladestand um 00:00
      * @param speicherVorsprungKwh echter minus Vergleichsspeicher am Ende
-     * @param steuerungGeplantEur Fahrplan-Planwert des Tages ({@code steuerungPlannedEur})
+     * @param steuerungGeplantEur Fahrplan-Planwert des Tages ({@code steuerungPlannedEur},
+     *     seit M2 gegen denselben Vergleichsspeicher, {@link PlanMesslatte})
      * @param pvKwh Erzeugung des Tages
      * @param loadKwh Verbrauch des Tages
      */
@@ -105,7 +118,10 @@ public final class SteuerungGrund {
                 e.speicherVorsprungKwh(), steuerungGeplantEur, e.pvKwh(), e.loadKwh()));
     }
 
-    /** Die Gründe eines Tages in Rangfolge, höchstens {@link #HOECHSTENS}; leer ohne Minus. */
+    /**
+     * Die Gründe eines Tages in Rangfolge, höchstens {@link #HOECHSTENS}; leer
+     * ohne Minus, mit Minus nie leer ({@link #ANDERS_GELADEN} als Rückfall).
+     */
     public static List<String> of(Eingaben e) {
         if (e == null || e.steuerungEur() == null || e.steuerungEur().signum() >= 0) {
             return List.of();
@@ -131,6 +147,9 @@ public final class SteuerungGrund {
         if (plan != null && plan.compareTo(ANDERS_ALS_GEPLANT_PLAN_AB_EUR) >= 0
                 && e.steuerungEur().compareTo(ANDERS_ALS_GEPLANT_UNTER_EUR) < 0) {
             gruende.add(ANDERS_ALS_GEPLANT);
+        }
+        if (gruende.isEmpty()) {
+            gruende.add(ANDERS_GELADEN);
         }
         return List.copyOf(gruende.subList(0, Math.min(HOECHSTENS, gruende.size())));
     }

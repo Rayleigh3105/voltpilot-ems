@@ -34,12 +34,14 @@ public class SiteSuggestionStateRepository {
     /**
      * Die Haltungen einer Anlage, die JETZT noch gelten. Eine abgelaufene Zeile
      * wird gar nicht erst ausgeliefert - sie ist keine Aussage mehr, und die
-     * Fläche soll den Vorschlag wieder zeigen.
+     * Fläche soll den Vorschlag wieder zeigen. Eine Haltung ohne Frist
+     * („nur messen", {@code muted_until IS NULL}) gilt immer.
      */
     public List<Row> findLive(UUID siteId, Instant now) {
         List<Row> rows = new ArrayList<>();
         jdbc.query("SELECT suggestion_key, state, muted_until, updated_at "
-                + "FROM site_suggestion_state WHERE site_id = ? AND muted_until > ? "
+                + "FROM site_suggestion_state WHERE site_id = ? "
+                + "AND (muted_until IS NULL OR muted_until > ?) "
                 + "ORDER BY suggestion_key", rs -> {
                     rows.add(new Row(rs.getString("suggestion_key"), rs.getString("state"),
                             instant(rs.getTimestamp("muted_until")),
@@ -62,7 +64,13 @@ public class SiteSuggestionStateRepository {
                 + "ON CONFLICT (site_id, suggestion_key) DO UPDATE SET "
                 + "state = EXCLUDED.state, muted_until = EXCLUDED.muted_until, "
                 + "updated_by = EXCLUDED.updated_by, updated_at = now()",
-                siteId, key, state, Timestamp.from(mutedUntil), by);
+                siteId, key, state, mutedUntil == null ? null : Timestamp.from(mutedUntil), by);
+    }
+
+    /** Eine Haltung zurücknehmen (z. B. „doch steuern"). Wahr, wenn es sie gab. */
+    public boolean delete(UUID siteId, String key) {
+        return jdbc.update("DELETE FROM site_suggestion_state WHERE site_id = ? AND suggestion_key = ?",
+                siteId, key) > 0;
     }
 
     /**
@@ -70,6 +78,7 @@ public class SiteSuggestionStateRepository {
      * (das `rule_event`-Muster) statt über einen neuen {@code @Scheduled}-Job:
      * es sind wenige Zeilen je Anlage, und ein Takt bräuchte ein weiteres, per
      * Vorgabe ausgeschaltetes Flag im gitops-Repo (die dokumentierte Falle).
+     * Eine Zeile ohne Frist bleibt ({@code NULL <= ?} ist nie wahr).
      */
     public int pruneExpired(UUID siteId, Instant now) {
         return jdbc.update("DELETE FROM site_suggestion_state "

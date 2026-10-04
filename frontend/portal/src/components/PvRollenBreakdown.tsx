@@ -7,10 +7,17 @@ import { rollenView, rollenStand, ROLLEN_WOERTER, teilSummeText } from '../pvRol
 import './PvComposition.css';
 
 /** Aufschlüsselung einer ausdrücklich zugeordneten Live-Rolle. Ohne Zuordnung keine Fläche. */
-export function RollenBreakdown({ wert }: { wert: RollenKanonischerWert | null }) {
+export function RollenBreakdown({
+  wert,
+  anfangsOffen = false,
+}: {
+  wert: RollenKanonischerWert | null;
+  /** Im Blatt eines Fluss-Knotens ist die Aufschlüsselung der Grund, es zu öffnen. */
+  anfangsOffen?: boolean;
+}) {
   const view = rollenView(wert);
   const wort = ROLLEN_WOERTER[wert?.role as keyof typeof ROLLEN_WOERTER];
-  const [offen, setOffen] = useState(false);
+  const [offen, setOffen] = useState(anfangsOffen);
   if (!view || !wort) return null;
 
   const summe = view.summe == null ? '–' : fmtNum(view.summe, view.einheit, stellen(view.summe));

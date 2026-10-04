@@ -783,7 +783,7 @@ export function chargerView(c: ChargePoint): ChargerView {
 export const LADEPARK_LINE =
   'Verteilt die verfügbare Leistung Ihres Netzanschlusses dynamisch und fair auf alle ladenden Fahrzeuge. Was Gebäude und Anlage gerade ziehen, wird laufend abgezogen - Ihr Anschluss bleibt immer geschützt.';
 
-export const LADEPARK_SUBLINE = 'Anschlussgrenze und Vorrang stellen Sie unter „Regeln".';
+export const LADEPARK_SUBLINE = 'Anschlussgrenze und Vorrang stellen Sie unter Steuerung → Laden.';
 
 export const PV_UEBERSCHUSS_LINE =
   'Ihre Fahrzeuge laden bevorzugt mit Sonnenstrom, der sonst ins Netz fließen würde. Reicht der Überschuss nicht, entscheidet Ihre Priorität, ob Netzstrom dazukommt.';

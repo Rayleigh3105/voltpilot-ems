@@ -226,7 +226,7 @@ describe('Bewegung P0 · EIN Schalter, EINE Stelle', () => {
     const loops = [
       '.vp-flow-on',
       '.vp-flow-rev',
-      '.vp-boot-spinner',
+      '.vp-loader-ring',
       '.vp-spinner',
       '.vp-auth .vp-auth-fl',
       '.vp-auth .vp-auth-tile',
@@ -348,7 +348,10 @@ function schichten(wert: string): string[] {
  */
 const LOOP_AUSNAHMEN: Record<string, string> = {
   'vp-spin': 'Spinner: die eine Aussage „busy". 0,9 s ist sein Lesetempo.',
-  'vp-boot-spin': 'derselbe Spinner im App-Start, vor dem ersten Stylesheet.',
+  'vp-loader-pulse':
+    'VoltPilot-Lade-Moment „Der Puls": ausstrahlende Ringe, 1,8 s ist der ' +
+    'gleichmässige Rhythmus, der ihn als „lädt" lesbar macht (VpLoader; die ' +
+    'Inline-Fassung `vp-bs-pulse` lebt in index.html, ausserhalb der CSS-Blätter).',
   'vp-skeleton-shimmer': 'Skelett: die Aussage „lädt" (Design-System, eigener reduced-Block).',
   'vp-fleet-pulse-ok': 'Flotten-Punkt „lebt": 2,4 s ist ein Herzschlag, kein Feedback.',
   'vp-fleet-pulse-warn': 'derselbe Herzschlag in Warn-Farbe.',
