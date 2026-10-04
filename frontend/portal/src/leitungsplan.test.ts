@@ -125,6 +125,11 @@ describe('Beschriftung in Worten', () => {
     expect(txt(t.grid.wert)).toBe('—');
   });
 
+  it('am Knoten stehen weder Börsenpreis noch „Sollwert bestätigt“ (die haben ihre eigene Zeile)', () => {
+    const t = knotenTexte({ ansicht: 'jetzt', zeit: 'live', werte: { pv: 5, load: 2, batt: 3, grid: 0 }, socPct: 50 });
+    expect(JSON.stringify(t)).not.toMatch(/Börse|Sollwert/);
+  });
+
   it('Plan heißt „erwartet“ bzw. „· Plan“', () => {
     const t = knotenTexte({ ansicht: 'jetzt', zeit: 'plan', werte: { pv: 0, load: 2, batt: -2, grid: 0 }, socPct: 78 });
     expect(t.pv.zeilen[0]).toBe('keine Erzeugung erwartet');
@@ -155,7 +160,7 @@ describe('Der Satz', () => {
       .toBe('Die Sonne deckt den ganzen Verbrauch. Der Überschuss geht in den Speicher.');
   });
 
-  it('Marktoptimierung nennt Herkunft und Preis', () => {
+  it('Marktoptimierung nennt Herkunft und - für eine andere Viertelstunde - den Preis', () => {
     const w = { pv: 101.3, load: 44.2, batt: 105, grid: 47.9 };
     expect(txt(satz({ betrieb: 'markt', ansicht: 'jetzt', zeit: 'live', werte: w, herkunft: herkunftMoment(w), uhr: '13:52', preisCt: 1.4 })))
       .toBe('Der Speicher lädt mit 105,0 kW aus Netz und Sonne. Börsenpreis 1,4 ct/kWh.');

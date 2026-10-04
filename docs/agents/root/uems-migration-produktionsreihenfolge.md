@@ -30,7 +30,10 @@ Es gibt keinen Zugriff auf bestehende Datenbanken. Timescale-Hintergrundarbeiter
 
 ## Was jeder Nachzug außer der Liste wiederholt
 
-Erprobt beim Nachzug von main `8b8b6a03b` (26.09.2026); Einzelheiten stehen im jeweiligen Wächter.
+Erprobt beim Nachzug von main `8b8b6a03b` (26.09.2026) und `308a5cc91` (04.10.2026, Steuerung neu); Einzelheiten
+stehen im jeweiligen Wächter. Liegt die höchste main-Migration über jeder UEMS-Migration (so seit `V20260929120000`),
+sieht ein alter Build alle UEMS-Migrationen als `MISSING_*`, nicht als `FUTURE_*`; `FlywayStartupGuardTest` erwartet
+`FUTURE_SUCCESS` darum nur, wenn die Versionslage es hergibt.
 
 - **Fingerabdruck-Wächter** (`frontend/portal/src/migration.test.ts`, `test/kundenBestand-vor-ip12.json`): ein von main
   ausgeliefert entferntes Bedienelement fällt nur über den Block `mainNachzug` (je Element main-Commit und Nachfolger,

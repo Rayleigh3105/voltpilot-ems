@@ -33,7 +33,9 @@ smart Steuerung."** Sie ERSETZT die Entscheide E2/E8 vom 02.09.2026 („BEIDES",
   und „Schritt 3 · Speicher gesamt" sind ERSATZLOS entfallen.
 - **⚠ Die PLAN-ZEILE hängt an `history.totals.steuerungPlannedEur`**, NIE an
   `batterySavingsPlannedEur` (das misst gegen „ohne Speicher"). Ohne das Feld bleibt die Zeile
-  WEG — nie die alte Zahl unter dem neuen Wort.
+  WEG — nie die alte Zahl unter dem neuen Wort. Seit M2 (29.09.2026) rechnet die api den Planwert
+  gegen denselben durchlaufenden Vergleichsspeicher wie die Messung; seit A1 trägt jedes Minus
+  mindestens den Rückfall-Grund `anders_geladen` (Worte in `speicherAussage.ts`/`erloesEbenen.ts`).
 - **⚠ Der IDENTITÄTS-WÄCHTER ist fail-soft, aber strenger als vorher:** ergibt
   `savedSpeicherEur + savedSteuerungEur` nicht `savedEur` (Toleranz 0,005 €), wird GAR KEINE
   Steuerungs-Zahl behauptet (`console.warn`) — eine Zahl, der die eigene Prüfsumme widerspricht,

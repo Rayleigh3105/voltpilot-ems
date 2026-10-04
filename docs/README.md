@@ -35,6 +35,8 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 [Cockpit als Tagesfilm](konzepte/cockpit-tagesfilm/README.md): Konzept vom 29.09.2026 für das neue Anlagen-Cockpit mit klickbarem Prototyp; im Portal umgesetzt.
 
+[Preise und Wetter am Telefon](konzepte/preise-und-wetter/README.md): Konzeptentwurf vom 29.09.2026 für die Reiter Preise und Wetter mit klickbarem Prototyp; noch nicht abgenommen.
+
 [MiSpeL-Rechtsfragen-Katalog](mispel/rechtsfragen.md): Entwurf vom 02.10.2026, nicht versandt. Acht Fragen zur MiSpeL-Festlegung mit Normzitat, Fundstelle, abhängigen Paketen, Adressat und der Regel, die bis zur Antwort gilt.
 
 [MiSpeL-Anfrage-Paket Direktvermarkter](mispel/direktvermarkter-anfrage.md): Entwurf vom 02.10.2026, nicht versandt. Anforderungsliste D1–D9 mit Fundstellen, gleichlautende Anfrage an drei Kandidaten (Auswahl beim Captain), Vergleichsraster und Versandprotokoll.

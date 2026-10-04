@@ -265,7 +265,7 @@ export function vorbelegungen(ctx: RezeptKontext): VorbelegungenView {
  */
 export const STEUERART_STATT_REZEPT =
   'Wann ein Gerät grundsätzlich laufen soll — bei Überschuss, zu festen Zeiten, in '
-  + 'günstigen Stunden oder bis zu einer Frist — stellen Sie oben unter „Verbraucher" ein. '
+  + 'günstigen Stunden oder bis zu einer Frist — stellen Sie am Gerät unter „Smart“ ein (Steuerung → Geräte). '
   + 'Eine Regel ist die Ausnahme davon.';
 
 export const KOMPONENTE_ANLEGEN =

@@ -345,12 +345,12 @@ describe('Katalog-Regeln', () => {
 
   it('keine Anwendung nennt mehr die Phantom-Seite „Komponenten & Regeln"', () => {
     // Sie existiert nicht: die Navigation kennt „Anlagen-Modell" und
-    // „Steuerung"; die Regel-Liste wohnt auf derselben Seite eine Kapsel
-    // tiefer. Der Satz schickte den Kunden in eine Sackgasse.
+    // „Steuerung"; Regeln sind seit „Steuerung neu" ein Reiter dort. Der
+    // Satz schickte den Kunden in eine Sackgasse.
     for (const a of ANWENDUNGEN) {
       expect(a.leer_zustand ?? '', a.id).not.toContain('Komponenten & Regeln');
     }
-    expect(anwendung('ueberschuss')?.leer_zustand).toContain('„Regeln“ auf dieser Seite');
+    expect(anwendung('ueberschuss')?.leer_zustand).toContain('Steuerung → Geräte');
   });
 
   it('nur eine Geschäfts-Anwendung trägt Strategie-Knoten oder Starter', () => {

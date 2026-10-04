@@ -70,31 +70,46 @@
       selben Zug die CSP-Allowlist in `frontend/portal/nginx.conf`.
     -->
     <!--
-      Sofort-Skelett gegen Chromes Paint-Holding (2026-08-01).
+      Sofort-Lader gegen Chromes Paint-Holding (2026-08-01, Lade-Moment Q4).
       Beim Reload haelt Chrome das ALTE Bild, bis das neue Dokument ERSTMALS
       zeichnet. Vorher zeichnete das Portal erst nach JS-Download + React-Mount
       + Keycloak-Check - der Captain sah nach jedem Deploy 2-3 s die eingefrorene
-      alte Ansicht. Dieses Skelett zeichnet, sobald das Stylesheet da ist, also
+      alte Ansicht. Dieser Lader zeichnet, sobald das Stylesheet da ist, also
       lange bevor die App laeuft.
 
+      Es ist die INLINE-Fassung des VoltPilot-Lade-Moments (`VpLoaderScreen`),
+      Konzept „Der Puls": die Marke steht ruhig (Kopf-Punkt frei ueber dem
+      Blitz im Marken-Verlauf), weiche Ringe strahlen im gleichen Rhythmus aus.
+      React fuehrt beim Mount GENAU DIESE Ringe weiter (`VpLoader`, dieselbe
+      Loop `vp-loader-pulse`, hier `vp-bs-pulse` mit identischem Inhalt) und
+      uebernimmt sogar deren PHASE (`bootHandoff.ts` liest `getAnimations()`),
+      also blendet das Inline-Bild nur aus - die Ringe starten weder neu noch
+      springen sie (belegt am Produktions-Build, e2e/loader-parity.spec.ts).
+
       Regeln (bitte einhalten):
-      - Nur INLINE: kein externes Asset, keine Schrift-Datei, kein Bild. Damit
-        bleibt index.html no-cache-tauglich und braucht keinen Hash. Die echte
-        Buehne zeigt die Wortmarke als PNG - hier steht ihre Textfassung
-        (Blitz in --vp-primary #95B9FF + schwarzer Schriftzug, die zwei Farben
-        der Datei), weil ein Bild-Request genau den Roundtrip kostete, den das
-        Skelett vermeidet.
+      - Kein zusaetzlicher REQUEST: kein externes Asset, keine Schrift-Datei.
+        Die ECHTE Wortmarke (designsystem/assets/voltpilot-wordmark.png, 9,2 kB,
+        byte-genau) steht hier als DATA-URI - inline, also KEIN Request, damit
+        index.html no-cache-tauglich bleibt und keinen Hash braucht. Der
+        React-Lader zeigt byte-genau DASSELBE Bild (Vite baeckt es ueber
+        `build.assetsInlineLimit` als Data-URI ins Buendel - NICHT `?inline`,
+        das ist ein Vite-6-Feature und liesse die Marke auf Vite 5.4 als
+        Netz-Asset stehen), damit der Uebergang deckungsgleich ist (kein
+        Ersatz-Logo, kein spaetes Auftauchen).
+      - Kein `url(...)` und kein <img> auf ein EXTERNES Asset. Erlaubt sind nur
+        lokale SVG-Fragment-Refs (`url(#vplFill-bs)`, eigenes `-bs`-Praefix gegen
+        Kollision mit den `useId`-IDs des React-Laders) und Data-URIs (kein
+        Request). Waechter: src/bootSkeleton.test.ts.
       - Farben sind aus designsystem/tokens/colors.css HART einkopiert
-        (--vp-grad-hero, --vp-surface, --vp-border, --vp-action, --vp-primary) -
+        (--vp-grad-hero, --vp-surface, --vp-primary, der Marken-Verlauf) -
         die Tokens selbst kommen erst mit dem Stylesheet.
       - Es liegt als position:fixed-Overlay ueber #root, kann also nie einen
         Layout-Sprung ausloesen; BootErrorBoundary.componentDidMount entfernt es
         in DEMSELBEN Commit, in dem React das erste Bild schreibt (kein Flackern).
-      - Optisch die Vorwegnahme von <BootSplash>/<AuthScreen> in ihrer NEUEN
-        Fassung: Wortmarke auf WEISS, der Marken-Verlauf nur als 3-px-Streifen
-        oben, rechts die helle Formularseite mit Spinner. Die Umschaltbreite
-        900 px ist dieselbe wie die Container-Query von `.vp-auth` - wer eine
-        aendert, aendert beide (sonst blitzt beim Start die falsche Aufteilung).
+      - Optisch identisch zur zentrierten Marken-Buehne von `VpLoaderScreen`:
+        Marken-Verlauf als 3-px-Streifen oben, Wortmarke und darunter der Blitz,
+        beide mittig. Wer die Marke neu toent, zieht hier UND in `.vp-loader-*`
+        (src/index.css) mit.
     -->
     <style>
       #vp-boot-skeleton {
@@ -110,53 +125,72 @@
         flex: none;
         background: linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%);
       }
-      #vp-boot-skeleton .vp-bs-split {
+      /* ⚠ Alle Masse hier sind DECKUNGSGLEICH zu `.vp-loader-*` in src/index.css
+         (stage-gap 32 = --vp-space-6, loader-gap 16 = --vp-space-4, Wortmarke-PNG
+         Höhe 40, Marke 104, Statuszeile 16 mit reservierten zwei Zeilen).
+         Wer eine Zahl aendert, aendert sie DORT mit - sonst springt der
+         Uebergang (Waechter: e2e/loader-parity.spec.ts). */
+      #vp-boot-skeleton .vp-bs-stage {
         flex: 1;
         display: flex;
         flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        padding: 24px;
+        padding-bottom: max(24px, env(safe-area-inset-bottom));
         min-width: 0;
       }
-      #vp-boot-skeleton .vp-bs-brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 20px 20px 0;
-      }
-      #vp-boot-skeleton .vp-bs-brand svg {
-        display: block;
-        width: 22px;
-        height: 22px;
-        flex: none;
-      }
       #vp-boot-skeleton .vp-bs-word {
-        font-family:
-          'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-          sans-serif;
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        line-height: 1;
-        color: #000000;
+        display: block;
+        height: 40px;
+        width: auto;
       }
-      #vp-boot-skeleton .vp-bs-panel {
-        flex: 1;
+      #vp-boot-skeleton .vp-bs-loader {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      #vp-boot-skeleton .vp-bs-mark {
+        display: block;
+        width: 104px;
+        height: 104px;
+      }
+      #vp-boot-skeleton .vp-bs-text {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 24px 20px 28px;
+        min-height: 2.8em;
+        max-width: 26ch;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1.4;
+        text-align: center;
+        color: #66717c;
       }
-      #vp-boot-skeleton .vp-bs-spinner {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 3px solid #e9ecef;
-        border-top-color: #2c5282;
-        animation: vp-bs-spin 0.9s linear infinite;
+      /*
+        Die ausstrahlenden Puls-Ringe - GENAU die Loop, die der React-Lader
+        (`.vp-loader-ring` / `vp-loader-pulse`, src/index.css) weiterfuehrt:
+        scale + fade, drei um je 1/3 der Periode versetzt. Reset bei Deckkraft 0
+        (nahtlose Periode). Nur transform/opacity, keine Layout-Bewegung. Eigener
+        Keyframe-Name `vp-bs-pulse`, damit er die gleichnamige Loop des Buendels
+        nicht global ueberschreibt (identischer Inhalt).
+      */
+      #vp-boot-skeleton .vp-bs-ring {
+        fill: none;
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: vp-bs-pulse 1.8s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
       }
-      @keyframes vp-bs-spin {
-        to {
-          transform: rotate(360deg);
-        }
+      #vp-boot-skeleton .vp-bs-ring.r2 { animation-delay: -0.6s; }
+      #vp-boot-skeleton .vp-bs-ring.r3 { animation-delay: -1.2s; }
+      @keyframes vp-bs-pulse {
+        0% { transform: scale(1); opacity: 0; }
+        15% { opacity: 0.5; }
+        70% { opacity: 0; }
+        100% { transform: scale(1.55); opacity: 0; }
       }
       /*
         Das Ausblenden (Bewegungs-Programm P4, Konzept
@@ -165,8 +199,8 @@
         DEMSELBEN Frame uebereinander, der Wechsel war ein Schnitt. Jetzt
         blendet es ueber dem schon fertigen ersten Bild aus.
 
-        ⚠ WARUM DIE REGEL HIER STEHT UND NICHT IN src/index.css: dieses
-          Skelett lebt VOR dem Buendel. Das Buendel ist beim Ausblenden zwar
+        ⚠ WARUM DIE REGEL HIER STEHT UND NICHT IN src/index.css: dieser
+          Lader lebt VOR dem Buendel. Das Buendel ist beim Ausblenden zwar
           laengst da (React hat gerendert), aber die Regel muss auch dann
           greifen, wenn es das NICHT ist - deshalb liest sie die Tokens nur
           MIT Rueckfall. Die Zahlen sind die der Familie
@@ -183,33 +217,15 @@
         transition: opacity var(--vp-motion-exit, 160ms)
           var(--vp-ease-in, cubic-bezier(0.4, 0, 1, 1));
       }
-      /* Breite Fassung: Marke links, Formularseite rechts - wie `.vp-auth`. */
-      @media (min-width: 900px) {
-        #vp-boot-skeleton .vp-bs-split {
-          flex-direction: row;
-          align-items: stretch;
-        }
-        #vp-boot-skeleton .vp-bs-brand {
-          flex: 0 0 46%;
-          max-width: 620px;
-          align-items: flex-start;
-          padding: 40px 44px;
-          border-right: 1px solid #e9ecef;
-        }
-        #vp-boot-skeleton .vp-bs-brand svg {
-          width: 28px;
-          height: 28px;
-        }
-        #vp-boot-skeleton .vp-bs-word {
-          font-size: 28px;
-        }
-        #vp-boot-skeleton .vp-bs-panel {
-          padding: 40px 44px;
-        }
-      }
+      /* Reduzierte Bewegung: die Ringe ruhen (wie der React-Lader), ein einziger
+         bleibt als leiser Halo - der Uebergang ist ein Schnitt. */
       @media (prefers-reduced-motion: reduce) {
-        #vp-boot-skeleton .vp-bs-spinner {
+        #vp-boot-skeleton .vp-bs-ring {
           animation: none;
+          opacity: 0;
+        }
+        #vp-boot-skeleton .vp-bs-ring.r1 {
+          opacity: 0.35;
         }
       }
     </style>
@@ -218,20 +234,25 @@
     <div id="root"></div>
     <div id="vp-boot-skeleton" aria-hidden="true">
       <div class="vp-bs-strip"></div>
-      <div class="vp-bs-split">
-        <div class="vp-bs-brand">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"
-              fill="#95b9ff"
-              stroke="#95b9ff"
-              stroke-width="2"
-              stroke-linejoin="round"
-            />
+      <div class="vp-bs-stage">
+        <img class="vp-bs-word" src="data:image/png;base64,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" alt="VoltPilot" width="640" height="152" />
+        <div class="vp-bs-loader">
+          <svg class="vp-bs-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="vplFill-bs" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#b8d4ff" />
+                <stop offset="0.5" stop-color="#7ba3f7" />
+                <stop offset="1" stop-color="#5a8de8" />
+              </linearGradient>
+            </defs>
+            <circle class="vp-bs-ring r1" cx="32" cy="32" r="19" stroke="#95b9ff" stroke-width="2" />
+            <circle class="vp-bs-ring r2" cx="32" cy="32" r="19" stroke="#95b9ff" stroke-width="2" />
+            <circle class="vp-bs-ring r3" cx="32" cy="32" r="19" stroke="#95b9ff" stroke-width="2" />
+            <circle cx="32" cy="19" r="3.4" fill="#12151b" />
+            <path d="M34 25 L25 37.5 L31 37.5 L30 46 L39 33.5 L33 33.5 Z" fill="url(#vplFill-bs)" />
           </svg>
-          <span class="vp-bs-word">VoltPilot</span>
+          <span class="vp-bs-text">Anmeldung wird geprüft …</span>
         </div>
-        <div class="vp-bs-panel"><div class="vp-bs-spinner"></div></div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

@@ -106,6 +106,9 @@ export const STEUERUNG_GRUENDE = [
   'so_geplant',
   'wenig_sonne',
   'anders_als_geplant',
+  // Rückfall (A1, Captain 29.09.2026 „mach alle drei“): der Server setzt ihn
+  // nur, wenn keine andere Kennung greift - ein Minus steht so nie ohne Grund.
+  'anders_geladen',
 ] as const;
 export type SteuerungGrund = (typeof STEUERUNG_GRUENDE)[number];
 
@@ -144,10 +147,11 @@ export interface SpeicherAussage {
   bestandTitel: string | null;
   /**
    * Was der Fahrplan vorab als Steuerungs-Mehrwert geplant hatte
-   * (`history.totals.steuerungPlannedEur`); null ohne Planwert — und der
-   * Planwert bleibt so lange ABWESEND, bis der Optimierer ihn gegen dieselbe
-   * Messlatte rechnet (parallele Aufgabe). Die alte, gegen „ohne Speicher"
-   * geplante Zahl erreicht diese Fläche nicht mehr.
+   * (`history.totals.steuerungPlannedEur`); null ohne Planwert. Seit M2
+   * (29.09.2026) rechnet die API ihn gegen DENSELBEN durchlaufenden
+   * Vergleichsspeicher wie die gemessene Zahl (`PlanMesslatte.java`), mit
+   * Übertrag über Mitternacht - Plan und Messung sind damit vergleichbar. Die
+   * alte, gegen „ohne Speicher" geplante Zahl erreicht diese Fläche nicht mehr.
    */
   geplant: string | null;
 
@@ -363,6 +367,15 @@ function grundText(
         plan == null ? 'anders als geplant' : `anders als geplant (Plan ${tonWort(plan).wort})`;
       return { kurz: 'anders als geplant', mitZahl, mitPaar: mitZahl };
     }
+    case 'anders_geladen':
+      // Kein Übertrag, keine Planabweichung, genug Sonne: der Speicher wurde
+      // anders geladen und entladen als der Vergleichsspeicher, und das hat
+      // sich an diesem Tag nicht ausgezahlt. Ohne Zahl - es gibt keine eigene.
+      return {
+        kurz: 'anders geladen und entladen',
+        mitZahl: 'anders geladen und entladen',
+        mitPaar: 'anders geladen und entladen',
+      };
   }
 }
 

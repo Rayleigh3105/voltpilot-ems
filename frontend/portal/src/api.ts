@@ -403,10 +403,26 @@ export interface VorschauKnoepfe {
 /** Eine server-seitig gemerkte Haltung zu einem abgeleiteten Vorschlag. */
 export interface SuggestionState {
   key: string;
-  state: 'spaeter' | 'abgelehnt';
-  /** Bis wann sie gilt; danach erscheint der Vorschlag wieder. */
-  mutedUntil: string;
+  /** `nur_messen`: „Nicht steuern, nur messen" - ohne Frist, bis zur Rücknahme. */
+  state: 'spaeter' | 'abgelehnt' | 'nur_messen';
+  /** Bis wann sie gilt; danach erscheint der Vorschlag wieder. `null` = ohne Frist. */
+  mutedUntil: string | null;
   updatedAt: string;
+}
+
+/** Eine Szene (Steuerung neu, E6): ein Tipp pausiert mehrere Geräte. */
+export type SzeneKey = 'urlaub' | 'unterwegs' | 'sparen';
+
+export interface SiteScene {
+  scene: {
+    key: SzeneKey;
+    since: string;
+    /** Genau die Geräte, die DIESE Szene pausiert hat. */
+    pausedEntityIds: string[];
+  } | null;
+  /** Geräte, die nicht wie gewünscht folgten - je Name und Grund. */
+  offen: string[];
+  message: string | null;
 }
 
 /** Alles, was gerade stumm ist (abgelaufene Zeilen kommen nicht mit). */
@@ -766,8 +782,10 @@ export interface HistoryTotals {
    * legitimately differ by a large factor; a surface must never substitute one
    * for the other.
    *
-   * OPTIONAL because the optimizer only starts persisting it with its own
-   * increment: `undefined`/`null` = no plan figure on this yardstick, and the
+   * Since M2 (29.09.2026) the api computes it against the SAME running
+   * Vergleichsspeicher as the measured `savedSteuerungEur` (carry-over across
+   * midnight included), so plan and measurement are comparable.
+   * `undefined`/`null` = no complete plan on this yardstick, and the
    * customer-facing plan line stays ABSENT rather than showing the old one.
    */
   steuerungPlannedEur?: number | null;
@@ -6997,9 +7015,11 @@ export interface CockpitMoney {
    *   ausdrücklich KEIN Summand; nur die Anlagen-Antwort trägt ihn.
    * - `steuerungVortagEur`, `steuerungMonatBisherEur`: Vortag bzw. Σ vom
    *   Monatsersten bis einschließlich dieses Tages (= `range=month`).
-   * - `steuerungPlannedEur`: der Fahrplan-Planwert des Tages (ex ante).
+   * - `steuerungPlannedEur`: der Fahrplan-Planwert des Tages (ex ante), seit
+   *   M2 gegen denselben durchlaufenden Vergleichsspeicher.
    * - `steuerungGruende`: höchstens zwei Kennungen der geschlossenen Liste
-   *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Grund; `null` = nicht
+   *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Minus (ein Minus trägt
+   *   seit A1 immer mindestens den Rückfall `anders_geladen`); `null` = nicht
    *   berechnet.
    */
   vergleichSocStartKwh?: number | null;
@@ -9427,11 +9447,27 @@ export const api = {
    * Server - eine vom Client gewählte Dauer wäre ein Weg, einen Vorschlag für
    * immer verstummen zu lassen, ohne ihn je abzulehnen.
    */
-  setSuggestionState: (siteId: string, key: string, state: 'spaeter' | 'abgelehnt') =>
+  setSuggestionState: (siteId: string, key: string, state: SuggestionState['state']) =>
     request<SuggestionState>(
       `/api/v1/sites/${siteId}/suggestion-states/${encodeURIComponent(key)}`,
       { method: 'PUT', body: JSON.stringify({ state }) },
     ),
+  /** Eine Haltung zurücknehmen (etwa „nur messen"); idempotent. */
+  clearSuggestionState: (siteId: string, key: string) =>
+    request<void>(
+      `/api/v1/sites/${siteId}/suggestion-states/${encodeURIComponent(key)}`,
+      { method: 'DELETE' },
+    ),
+  /** Die laufende Szene der Anlage (`scene: null` = keine). */
+  scene: (siteId: string) => request<SiteScene>(`/api/v1/sites/${siteId}/scene`),
+  /** Eine Szene einschalten: pausiert die gewählten Geräte, bis sie endet. */
+  startScene: (siteId: string, key: SzeneKey, entityIds: string[]) =>
+    request<SiteScene>(`/api/v1/sites/${siteId}/scene`, {
+      method: 'PUT', body: JSON.stringify({ key, entityIds }),
+    }),
+  /** Die Szene beenden - setzt genau die Geräte fort, die sie pausiert hat. */
+  endScene: (siteId: string) =>
+    request<SiteScene>(`/api/v1/sites/${siteId}/scene`, { method: 'DELETE' }),
   /** Die im Portal gepflegte Anschlussgrenze + Vorrang-Wahl. */
   chargingConfig: (siteId: string) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config`),

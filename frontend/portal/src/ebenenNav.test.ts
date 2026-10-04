@@ -72,6 +72,8 @@ const ALL_SUBS: AnlagenSub[] = [
   'prognose',
   'wetter',
   'steuerung',
+  'laden',
+  'regeln',
   'modell',
   'technik',
 ];
@@ -113,6 +115,13 @@ const ALLE = anlageSurface({
     plantKind: 'direktvermarktung',
     hasLeistungspreis: true,
   },
+});
+
+/** Eine Speicher-Anlage mit Ladepunkt - die Steuerung trägt dann den Reiter „Laden". */
+const MIT_LADEPUNKT = anlageSurface({
+  entities: [...ENTITIES, { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+  signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+  config: { plantKind: 'eigenverbrauch', tarifArt: 'fest' },
 });
 
 /** A plain self-consumption plant (no market, no peak). */
@@ -272,10 +281,19 @@ describe('die REITER entstehen aus dem M0-Read-Model', () => {
     }
   });
 
-  it('gibt Cockpit und Steuerung GAR KEINE Reiter - sie sind je EINE Seite', () => {
+  it('gibt dem Cockpit GAR KEINE Reiter - es ist EINE Seite', () => {
     const b = anlageBereiche(ALLE);
     expect(tabsOf(b, 'cockpit')).toEqual([]);
-    expect(tabsOf(b, 'steuerung')).toEqual([]);
+  });
+
+  it('gibt der Steuerung Geräte · Laden · Regeln - Laden nur mit Ladepunkten', () => {
+    // Konzept „Steuerung neu" (E4 = A): „Geräte" ist die Route `steuerung`
+    // selbst, damit jedes Lesezeichen gilt.
+    expect(tabsOf(anlageBereiche(MIT_LADEPUNKT), 'steuerung')).toEqual(['steuerung', 'laden', 'regeln']);
+    expect(tabsOf(anlageBereiche(PRIVAT), 'steuerung')).toEqual(['steuerung', 'regeln']);
+    const b = anlageBereiche(MIT_LADEPUNKT).find((x) => x.key === 'steuerung');
+    expect(b?.tabs.map((t) => t.label)).toEqual(['Geräte', 'Laden', 'Regeln']);
+    expect(b?.target).toEqual({ kind: 'sub', sub: 'steuerung' });
   });
 });
 
@@ -365,7 +383,13 @@ describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
   it('liefert LEER, wo der Bereich EINE Seite ist', () => {
     const s = anlageSidebar(ALLE);
     expect(tabsFor(s, null)).toEqual([]);
-    expect(tabsFor(s, 'steuerung')).toEqual([]);
+  });
+
+  it('liefert dieselben Reiter für alle drei Unterseiten der Steuerung', () => {
+    const s = anlageSidebar(MIT_LADEPUNKT);
+    for (const sub of ['steuerung', 'laden', 'regeln'] as const) {
+      expect(tabsFor(s, sub).map((t) => t.sub)).toEqual(['steuerung', 'laden', 'regeln']);
+    }
   });
 
   it('liefert LEER, wo der Bereich nur EINEN Reiter hätte', () => {

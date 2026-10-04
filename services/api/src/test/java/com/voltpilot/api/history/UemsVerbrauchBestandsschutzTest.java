@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
+import com.voltpilot.api.repo.EarningsRepository;
 import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
 import com.voltpilot.api.web.dto.HistoryDto;
@@ -158,6 +159,7 @@ class UemsVerbrauchBestandsschutzTest {
     void plausibleHistorienAntwortBleibtMitDemAp10SchalterByteGleich() throws Exception {
         HistoryRepository repo = mock(HistoryRepository.class);
         OptimizerDiagnosticsService diagnostics = mock(OptimizerDiagnosticsService.class);
+        EarningsRepository earnings = mock(EarningsRepository.class);
         List<HistoryBucketDto> werte = List.of(
                 bucket(ERSTER, "4", "5", "3", "1"),
                 bucket(ZWEITER, "4", "5", "1", "1"));
@@ -166,8 +168,9 @@ class UemsVerbrauchBestandsschutzTest {
         when(repo.rollupBuckets(eq(SITE), any(), any(), eq(true))).thenReturn(werte);
         when(repo.costPerBucket(eq(SITE), any(), any(), eq("DE-LU"), eq(true)))
                 .thenReturn(Map.of(ERSTER, new BigDecimal("0.30")));
-        when(repo.plannedSavings(eq(SITE), any(), any()))
-                .thenReturn(new HistoryRepository.PlannedSavings(null, null));
+        // Planwerte (#1310): Batterie aus repo.savings, Steuerung aus dem Walk der Erlös-Rechnung - beide ohne Plan null.
+        when(repo.savings(eq(SITE), any(), any())).thenReturn(null);
+        when(earnings.steuerungGeplantForSite(eq(SITE), any(), any())).thenReturn(null);
         when(repo.tariffContext(SITE)).thenReturn(new HistoryRepository.TariffContext("fest", true));
         when(repo.negativePriceSlots(eq("DE-LU"), any(), any())).thenReturn(List.of());
         when(repo.curtailSlots(eq(SITE), any(), any())).thenReturn(List.of());
@@ -175,9 +178,9 @@ class UemsVerbrauchBestandsschutzTest {
         when(repo.dataGaps(eq(SITE), any(), any())).thenReturn(List.of());
         when(repo.coverage(eq(SITE), any(), any())).thenReturn(null);
 
-        HistoryDto ungeklemmt = new HistoryService(repo, diagnostics, true)
+        HistoryDto ungeklemmt = new HistoryService(repo, diagnostics, earnings, true)
                 .history(SITE, "DE-LU", HistoryRange.MONTH, LocalDate.parse("2026-10-15"));
-        HistoryDto rueckbau = new HistoryService(repo, diagnostics, false)
+        HistoryDto rueckbau = new HistoryService(repo, diagnostics, earnings, false)
                 .history(SITE, "DE-LU", HistoryRange.MONTH, LocalDate.parse("2026-10-15"));
         byte[] snapshot = json.writeValueAsBytes(ungeklemmt);
 

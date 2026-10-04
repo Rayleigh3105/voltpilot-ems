@@ -44,6 +44,22 @@ class EegRatesTest {
     }
 
     @Test
+    void band202608CarriesTheOfficialBnetzaRates() {
+        // test_pricing.test_band_2026_08_carries_the_official_bnetza_rates.
+        assertThat(rates.festeVerguetungCtPerKwh(LocalDate.of(2026, 8, 1), 8.0))
+                .isEqualTo(7.70);
+        assertThat(rates.festeVerguetungCtPerKwh(LocalDate.of(2026, 12, 31), null))
+                .isEqualTo(7.70);
+        assertThat(rates.festeVerguetungCtPerKwh(LocalDate.of(2026, 7, 31), 8.0))
+                .isEqualTo(7.78);
+        assertThat(rates.festeVerguetungCtPerKwh(LocalDate.of(2026, 9, 1), 60.0))
+                .isCloseTo((10 * 7.70 + 30 * 6.66 + 20 * 5.44) / 60.0, within(1e-9));
+        // 2026-02 le100 tranche: 5.50 per BNetzA (was 5.51).
+        assertThat(rates.festeVerguetungCtPerKwh(LocalDate.of(2026, 3, 1), 60.0))
+                .isCloseTo((10 * 7.78 + 30 * 6.73 + 20 * 5.50) / 60.0, within(1e-9));
+    }
+
+    @Test
     void remunerationExpiresAfterTwentyYearsPlusCommissioningYear() {
         LocalDate commissioned = LocalDate.of(2004, 6, 1);
         // Dec 31 of 2024 (Berlin) is still remunerated; 2025 is not.

@@ -333,12 +333,10 @@ export interface KnotenEingabe {
   /** Nur „Heute“: Energie getrennt nach Richtung. */
   energie?: FlussEnergie | null;
   socPct: number | null;
-  /** Lastspitzenkappung: Ziel für den Netzbezug in kW. */
+  /** Lastspitzenkappung: Ziel für den Netzbezug in kW (mit Skala am Netz). */
   zielKw?: number | null;
-  /** Marktoptimierung: Börsenpreis der Viertelstunde in ct/kWh. */
-  preisCt?: number | null;
-  /** Der Wechselrichter hat den Fahrplan-Sollwert bestätigt. */
-  bestaetigt?: boolean;
+  // Kein Börsenpreis und kein „Sollwert bestätigt“ am Knoten: den Preis trägt
+  // die Börsenpreis-Zeile, die Bestätigung die Steuerungs-Zeile (R2).
 }
 
 function ct(x: number): string {
@@ -378,9 +376,7 @@ export function knotenTexte(e: KnotenEingabe): Record<Rolle, KnotenText> {
     const b = w.batt;
     const zustand =
       b == null ? 'ohne Messung' : b > TOTBAND_KW ? `lädt ${kw(b)}` : b < -TOTBAND_KW ? `entlädt ${kw(b)}` : 'ruht';
-    const zeilen = [zustand + plan];
-    if (e.bestaetigt && e.zeit === 'live' && b != null && Math.abs(b) > TOTBAND_KW) zeilen.push('Sollwert bestätigt');
-    batt = t('batt', 'Speicher', prozent(e.socPct), zeilen);
+    batt = t('batt', 'Speicher', prozent(e.socPct), [zustand + plan]);
   }
   let grid: KnotenText;
   if (heute) {
@@ -391,7 +387,6 @@ export function knotenTexte(e: KnotenEingabe): Record<Rolle, KnotenText> {
     const wort = g == null ? 'ohne Messung' : g > TOTBAND_KW ? 'Bezug' : g < -TOTBAND_KW ? 'Einspeisung' : 'ausgeglichen';
     const zeilen = [wort + plan];
     if (e.zielKw != null) zeilen.push(`Ziel ${kw(e.zielKw)}`);
-    if (e.preisCt != null) zeilen.push(`Börse ${ct(e.preisCt)}`);
     grid = t('grid', 'Netz', g == null ? '—' : kw(Math.abs(g)), zeilen);
   }
   return { pv, load, batt, grid };
@@ -419,6 +414,7 @@ export interface SatzEingabe {
   zielKw?: number | null;
   /** Höchste Viertelstunde heute (Lastspitze), kW. */
   hoechsteKw?: number | null;
+  /** Börsenpreis der gewählten Viertelstunde - nur abseits von „jetzt“ (jetzt trägt ihn die Börsenpreis-Zeile). */
   preisCt?: number | null;
 }
 

@@ -127,7 +127,7 @@ describe('Die VORBELEGUNGEN sind Einladungen — nie ein toter Knopf (Stufe 2)',
   });
 
   it('nennt den WEG zur Steuerart, statt die vier Absichten spurlos zu streichen', () => {
-    expect(STEUERART_STATT_REZEPT).toContain('Verbraucher');
+    expect(STEUERART_STATT_REZEPT).toContain('Steuerung → Geräte');
     expect(STEUERART_STATT_REZEPT).toContain('Ausnahme');
     // Die REZEPTE selbst bleiben — sie befüllen weiterhin den Editor einer
     // bestehenden „Eigene Regel"-Policy vor.

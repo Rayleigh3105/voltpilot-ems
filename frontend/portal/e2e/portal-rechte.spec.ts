@@ -17,8 +17,16 @@ for (const breite of [375, 1440]) {
       // die strengen 5 s der Zusicherungen - wie in den Geschwister-Specs der Bühne.
       await page.waitForLoadState('networkidle');
       if (bild === 'R1') {
-        await expect(page.getByRole('button', { name: 'Automatik pausieren' })).toBeVisible();
-        await expect(page.getByRole('button', { name: /Speicher: eingreifen/ })).toBeVisible();
+        // Die Steuerung mit drei Reitern (Nachzug 1b): Murat bedient - der Automatik-Knopf ist offen, das
+        // Pause-Blatt bietet die Dauern an; kein Hebel steht als Grund da, „Freigeben“ bleibt dem Kundenadministrator.
+        const automatik = page.getByRole('button', { name: 'Automatik an' });
+        await expect(automatik).toBeEnabled();
+        await automatik.click();
+        const pause = page.getByRole('dialog', { name: /Automatik pausieren/ });
+        await expect(pause.getByRole('button', { name: '1 Std' })).toBeVisible();
+        await pause.getByRole('button', { name: 'Schließen' }).click();
+        await expect(pause).toHaveCount(0);
+        await expect(page.getByRole('note').filter({ hasText: 'Dafür fehlt Ihnen das Recht.' })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Freigeben', exact: true })).toHaveCount(0);
       } else if (bild === 'T1') {
         await expect(page.getByText('Teilansicht: Werk Ahrenberg, Werk Lindach (2 von 3 Standorten)', { exact: true })).toBeVisible();

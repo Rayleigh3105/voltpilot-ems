@@ -1271,13 +1271,6 @@
       "grund": "AP-10 IP-15 sperrt den bestehenden Übernehmen-Knopf bei einer nicht speicherbaren Verteilung; Beschriftung, Formularziel, Speichern-Zustand und Recht bleiben erhalten."
     },
     {
-      "datei": "components/LadeparkRahmenKarte.tsx",
-      "vorher": "c06cf6695903d88a151bcf89f0718b7f4bdea68a35ca8570c429a4629ff80239",
-      "nachher": "a9b62b311d958d15436029ebec1e29a776e6619c2fe9deb9e5fb04f922fdb709",
-      "commit": "fm/vp-uems-a01-ladegrenze-route",
-      "grund": "AP-01 IP-13 sperrt Übernehmen zusätzlich, bis Netzanschluss und Ladebudget geprüft sind; Recht und sichtbares Markup bleiben unverändert."
-    },
-    {
       "datei": "components/AnlagenTabelle.tsx",
       "vorher": "f33673cda60e58e02bf184335e87b5a2ea1ccd998b29e98191f335d97ff59283",
       "nachher": "4330aeb8d228735cd74bfffa49d373f3ca47596aead216f093bc164cdbe2cea9",
@@ -2119,6 +2112,564 @@
             "element": "<button type=\"button\" className=\"vp-btn vp-btn--primary vp-btn--md\" disabled={!connection.sendable |"
           }
         ]
+      }
+    }
+  },
+  "mainNachzugSteuerung": {
+    "main": "308a5cc91fbacc564ab27b338a7afaab47e214ff",
+    "basis": "1300ddaebd20adf4271a6d0038d0f50660cf6739",
+    "paket": "vp-uems-nachzug-main-1a",
+    "regel": "Nachzug main → uems (04.10.2026, Steuerung neu): dieselbe Regel wie im Block mainNachzug. Ein Bedienelement des Ausgangsstands entfällt NUR, wenn es auf der main-Basis 1300ddaeb stand und ein benannter main-Commit es entfernt hat; JEDES Bedienelement der ausgelieferten main-Fassung einer geänderten Datei (Feld main = alle Fingerabdrücke von main 308a5cc91) steht unverändert im Merge. Steht eine Datei in beiden Blöcken, gilt das Feld main des neueren. SteuerartDialog.tsx hat main gelöscht, der Merge behält ihn für den Steuern-Assistenten (AP-01 IP-10a) — darum kein Eintrag, seine Bedienelemente bleiben geschützt.",
+    "dateien": {
+      "components/Betriebsmodelle.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Betriebsmodell-Wahl mit Folgen im Blatt „Speicher“ unter „Was immer gilt“ (Blätter je Gerät (steuerung/Blaetter.tsx)); Schreibweg setSiteProfile unverändert.",
+        "entfallen": [
+          {
+            "vorher": "248ea6860f23eec95bd87902114aea9650b9108baacfff585ff196c260500ca9",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" role=\"radio\" aria-checked={zone.aktiv == null && zone.altbestand.length === 0}"
+          },
+          {
+            "vorher": "df62a29a60b2c8502ca79d3c7e680998c6635c3b41e8e7c48673a2159bd729ff",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" {...(radio ? { role: 'radio' as const, 'aria-checked': karte.aktiv } : { role:"
+          },
+          {
+            "vorher": "cf354a36314a31108f9e1f77c5ef4970a11efacc197c5a43f07e9d199d4b1927",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-bm-open\" aria-label={`${karte.label} öffnen`} onClick={onOpen}> "
+          },
+          {
+            "vorher": "d05abdf03522a5fd505a19936a4a1fbb3c6721e69e0aa5dfcc358a8b759e55cd",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-bm-weg\" onClick={() => onWeg(z)}> {z.weg.label} → </button>"
+          }
+        ]
+      },
+      "components/FahrzeugeKarte.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Laden (steuerung/LadenReiter.tsx), das Fahrzeug steht in der Ladekarte.",
+        "entfallen": [
+          {
+            "vorher": "c75858a8bb08437182f0294615ba396fd619d28f6bc27cd69ac050ac6ca904f9",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-fold\" aria-expanded={offen} onClick={() => setOffen((o) => !o"
+          },
+          {
+            "vorher": "eac1b6f84fc19791c9599155a15ddf497e94ee76deab7802df372b7832b12c1d",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-text is-klick\" onClick={() => setDialog(z.tagRef)}> {inhalt} "
+          }
+        ]
+      },
+      "components/GuidedRuleBuilder.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Regeln, Satzbaukasten mit Probelauf (steuerung/RegelnReiter.tsx); Regeln weiter über die Flow-API.",
+        "entfallen": [
+          {
+            "vorher": "651dd9ef0bae2a0e26abab36d2be85d87d02c53c23051a6b38c4f53bedecff66",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<Button variant=\"outline\" size=\"sm\" onClick={onCancel}>Zurück</Button>"
+          },
+          {
+            "vorher": "f73dc2f35f410915c35e86632496fe2b85f1af23ffbf0a7832e7a4b3ab4687c3",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<button type=\"button\" className=\"vp-startpunkt\" disabled={busy} onClick={() => onVorbelegung(v.id)}>"
+          },
+          {
+            "vorher": "15922500845990066dc042ef73524681994df2c6ef43226b328166992d2ebb41",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<input id=\"guided-name\" className=\"vp-select\" value={name} onChange={(e) => setName(e.target.value)}"
+          },
+          {
+            "vorher": "29fc35428e496db42db05d7756139a4509900d845ca62fdc3437cd8dbb83dcd6",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<button type=\"button\" className={combinator === 'and' ? 'active' : ''} onClick={() => setCombinator("
+          },
+          {
+            "vorher": "93c902e10e5b3586408f7ed3f5ebeac106904a81b95c8e0967fb749197b1b904",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<button type=\"button\" className={combinator === 'or' ? 'active' : ''} onClick={() => setCombinator('"
+          },
+          {
+            "vorher": "3db7d83d28a71788796b73d49137783d1b90500e36af33a2b7ed8f2f13dc2f0f",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<input className=\"vp-select vp-guided-num\" aria-label=\"Schwelle\" inputMode=\"decimal\" placeholder={f."
+          },
+          {
+            "vorher": "fdde8c10391edd1da9347bdd4f4647a1c42c01f8879975c411a2a8cb0b01e599",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<button type=\"button\" className=\"vp-guided-x\" aria-label=\"Bedingung entfernen\" onClick={() => setCon"
+          },
+          {
+            "vorher": "cd754667b9502797fc792fb8fe1d5c4532e70fa2e022c169c11ea0d07664e6b6",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<Button variant=\"ghost\" size=\"sm\" onClick={() => setConds((cs) => [...cs, { ...emptyCond(readable), "
+          },
+          {
+            "vorher": "30486cd437e3c77ab1b5f76a45630491ec760e6200a98a59411125658522d7c4",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<input className=\"vp-select vp-guided-num\" aria-label=\"Sollwert (kW)\" inputMode=\"decimal\" placeholde"
+          },
+          {
+            "vorher": "0e993e2fe86c90349b665a7d763733fa08fae7e21ed3d30627238b164f9b5e83",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<input id=\"guided-message\" className=\"vp-select\" placeholder=\"z. B. Speicher unter 20 %\" value={mess"
+          },
+          {
+            "vorher": "5202e2bb8bd05d6a21367b9acc776a11ebd59c6365c0d790b22f0a64eea19251",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<Button size=\"sm\" onClick={onSolarUeberschuss} disabled={busy}> {UEBERSCHUSS_WEITER} </Button>"
+          },
+          {
+            "vorher": "a137a0da896f4abf7e73973cc7d3a3c3d72fe272a2692a9b0c8c0bdb572c2819",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<Button size=\"sm\" onClick={submit} disabled={busy}>Weiter zur Prüfung</Button>"
+          },
+          {
+            "vorher": "5a4dd89554bb08a886f48e0e5a9aa427f21174d7a35c7a016453e1b9848d89b5",
+            "commit": "1141dbe34ea82cfdd2eb5f6ae73ef6cb3c138612",
+            "element": "<Button variant=\"outline\" size=\"sm\" onClick={onCancel} disabled={busy}>Abbrechen</Button>"
+          }
+        ]
+      },
+      "components/JetztZone.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Geräte (steuerung/GeraeteReiter.tsx): Jetzt-Kopf und Tagesbild; Eingriffe, Boost, Speicher und Pause in den Blätter je Gerät (steuerung/Blaetter.tsx). Funktionszustand angehalten/eingerichtet (AP-01 IP-11) folgt mit Paket 1d.",
+        "entfallen": [
+          {
+            "vorher": "a39f8aab7bbc5b158997975cd4db4955372ec7f90d0277f78c449706795ae74c",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-jetzt-banner-act\" disabled={busy} onClick={() => setLade({ adres"
+          },
+          {
+            "vorher": "9fcb7e35e88d4f1a222b872de1b10b553e47cf318da615f5c9f83c105c33975d",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-jetzt-banner-act\" disabled={busy} onClick={() => setEingriff({ c"
+          },
+          {
+            "vorher": "e6fd84a143721f21836497806b5479dd6bd6cac853f4ccbd88ec733945eca99e",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-jetzt-banner-act\" disabled={busy} onClick={() => setHand({ aktio"
+          },
+          {
+            "vorher": "47126d8d3e2e4c86a25588d70ebe368310691a523cb5b8cf50050d8caa6c2821",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-jetzt-pausebtn\" disabled={busy} onClick={() => { setHandDauer(HA"
+          },
+          {
+            "vorher": "9867efaf876d9f8a44c32c073c1d7107dde6488512d028be098ff510108e3351",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-jetzt-menu\" aria-expanded={offen} aria-label={`${zeile.name}: ei"
+          },
+          {
+            "vorher": "e0dd1ffbb972ad39ceff6794cc3fd26098eb0fb6600acf03c2f24f2a3edeefc5",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" role=\"menuitem\" className=\"vp-jetzt-menuitem\" onClick={() => onAktion(a)}> {me"
+          }
+        ]
+      },
+      "components/LadeparkRahmenKarte.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Laden, Rahmen-Blatt (steuerung/LadenReiter.tsx). Die AP-01-IP-13-Prüfung gegen den Netzanschluss (auf uems nach der Ausgangsaufnahme, samt Fortschreibung „Übernehmen gesperrt“) zieht Paket 1c in das Rahmen-Blatt um.",
+        "entfallen": [
+          {
+            "vorher": "4565fa3451c2508dfa90f45223ec5993362eb1f93061327419e88ba1397e4f69",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input id=\"vp-grenze\" inputMode=\"decimal\" value={draft} onChange={(e) => setDraft(e.target.value)} a"
+          },
+          {
+            "vorher": "c06cf6695903d88a151bcf89f0718b7f4bdea68a35ca8570c429a4629ff80239",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" disabled={busy || draft.trim() === '' || inputError != null} onClick={() ="
+          },
+          {
+            "vorher": "3abc9c0ed71e50a72c8aa6a9ed0d95d3e3392e503bed534ad5359469262a745b",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input inputMode=\"decimal\" value={draft[f.key] ?? ''} onChange={(e) => setDraft({ ...draft, [f.key]:"
+          },
+          {
+            "vorher": "fd91075eea5d07d921735239813ed7f774e3f4cdc59395298f5eaa7a0304a3fd",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" disabled={busy} onClick={() => void speichern()}> Rahmen speichern </Butto"
+          }
+        ]
+      },
+      "components/ModusContainer.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Betriebsmodell im Blatt „Speicher“ (Blätter je Gerät (steuerung/Blaetter.tsx)).",
+        "entfallen": [
+          {
+            "vorher": "ccd8334d282d8a54104cf7c3c3603b27918f8215b414518885208cf7b24bbcf4",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-fleet-back\" onClick={onBack}> <Icon name=\"chevron-left\" size={18"
+          },
+          {
+            "vorher": "1d45daf03ae83cf032de3beb24f93e0b81f5e10283b72718f8f1a770cde72a10",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" role=\"switch\" aria-checked={on} aria-label={`${profile.label} ${on ? 'ausschal"
+          },
+          {
+            "vorher": "29a10c8a67811ae74fe2cb13fded46588554f739ab9ab6cb2646ac2345059ecb",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-modus-view\" onClick={() => onNavigate(v.target)}> <Icon name={v."
+          },
+          {
+            "vorher": "eba38591808ebf155e61ae29721b119f03721b41486ca945674886779f84b9ea",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-modus-openflow\" onClick={() => onOpenFlow(flowRef)}> <Icon name="
+          }
+        ]
+      },
+      "components/NeueRegelDialog.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Regeln, Satzbaukasten mit Probelauf (steuerung/RegelnReiter.tsx); Regeln weiter über die Flow-API.",
+        "entfallen": [
+          {
+            "vorher": "e16b67c3240445697e50ad4ea0520cc040d49663118ec1c2a3f98a53979015a6",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" disabled={busy} onClick={onKomponenteAnlegen}> Komponente anlegen </Button>"
+          },
+          {
+            "vorher": "d9906aba79604632f2a68d53b7b806df8e5347f868d1eb08d663b69a566cd748",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-neuauto-disclose\" aria-expanded={editorOffen} onClick={() => set"
+          },
+          {
+            "vorher": "0189f63dc72461b46119057462086c80ddf3e8bc237692f16d34d4fff3f2dae9",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" variant=\"outline\" disabled={busy} onClick={onOpenEditor}> Editor öffnen </Button>"
+          }
+        ]
+      },
+      "components/RanglisteKarte.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Geräte (steuerung/GeraeteReiter.tsx): die Geräte als Reihenfolge; Schreibweg saveRangliste unverändert.",
+        "entfallen": [
+          {
+            "vorher": "55c0446173bcf10d496389e2460ec3a1c2a38eed2d91b74cffec4b196dc08ea1",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-linkbtn\" onClick={() => (bearbeiten ? beenden() : setBearbeit"
+          },
+          {
+            "vorher": "3d1a6fbf22db3fd23847116fd34bd9e9d4c509ab429a66eb409c085e38578349",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" aria-label={`${RANGLISTE_HOCH}: ${zeilenTitel(e)}`} disabled={i === 0} onClick"
+          },
+          {
+            "vorher": "523e751c0d05ab069f66dc5516f8cdd3fabd847a5bd73bf3c1e1f7daca687cfe",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" aria-label={`${RANGLISTE_RUNTER}: ${zeilenTitel(e)}`} disabled={i === zeilen.l"
+          },
+          {
+            "vorher": "4c71b16d3acd380082cadaa0fcccbad6f43ac4d67ea80bea723bb5dde56fbc59",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-primary\" disabled={busy} onClick={speichern}> {busy ? RANGLIS"
+          }
+        ]
+      },
+      "components/RegelDrawer.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Regeln, Satzbaukasten mit Probelauf (steuerung/RegelnReiter.tsx); Regeln weiter über die Flow-API.",
+        "entfallen": [
+          {
+            "vorher": "64cbf300321e6e0e6554ba2a155c8169532a1188854256bc86d6db0160ba32fb",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" disabled={busy} onClick={onBearbeiten}>{view.bearbeiten}</Button>"
+          },
+          {
+            "vorher": "4b282efc2bf472670f965193a11127eccb9660f2d8b4e21010485ddf6d951d52",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" size=\"sm\" disabled={busy} onClick={() => onToggle(!karte.an)}> {view.schal"
+          }
+        ]
+      },
+      "components/RegelKarten.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Regeln, Satzbaukasten mit Probelauf (steuerung/RegelnReiter.tsx); Regeln weiter über die Flow-API.",
+        "entfallen": [
+          {
+            "vorher": "fc4c7f5ec248bd73ef848f30dcce4b1a421ebf44a9109c598aee52e85f62f906",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" role=\"switch\" aria-checked={karte.an} aria-label={`${karte.name} ${karte.an ? "
+          },
+          {
+            "vorher": "84498c3336758c58d4df308a56b51e867cb2f4d942fb7780b358c67f11cd7ab2",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" size=\"sm\" disabled={busy} onClick={() => onOpen(karte)}> Öffnen </Button>"
+          },
+          {
+            "vorher": "607f271661948cf491537314505686717484775277216e975f2c02d4da355ece",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" size=\"sm\" disabled={busy} onClick={onBeenden}> Jetzt beenden </Button>"
+          }
+        ]
+      },
+      "components/RegelnKapsel.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Regeln, Satzbaukasten mit Probelauf (steuerung/RegelnReiter.tsx); Regeln weiter über die Flow-API.",
+        "entfallen": [
+          {
+            "vorher": "6865eff639a783a9c8789fadba9c2382e0afe9b9834fe37386fec757d85d9614",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" variant=\"outline\" disabled={busy} onClick={() => setEingreifen((v) => !v)} aria-ex"
+          },
+          {
+            "vorher": "8963af47848b578511324dddf124a91ececf968ca117dddd25b7e5b44df86b49",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" disabled={busy} onClick={() => setCreating(true)}> {NEUE_REGEL_LABEL} </Button>"
+          },
+          {
+            "vorher": "014ad69bf03cb62fae8631bb5181e130ad83a9552459b8e5ff65f6631d4f917e",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" variant=\"outline\" disabled={busy} onClick={() => { setEingreifen(false); setSofort"
+          },
+          {
+            "vorher": "9d1b60b229cd470dc5d025c587b41e4774c7fa6b132dde42b60ac60e566422cd",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" disabled={busy} onClick={() => setWizard(true)}> Komponente anlegen </Button>"
+          },
+          {
+            "vorher": "e68fe5a31cd1fc6af9c893c7cf74bb5b028c112d934d8edb9f423ce3fe08b422",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" disabled={busy} onClick={() => setCreating(true)}> Regel erstellen </Button>"
+          }
+        ]
+      },
+      "components/SteuerartIntro.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Intro-Kasten entfällt; Smart/Steuerart im Blatt des Geräts (Blätter je Gerät (steuerung/Blaetter.tsx)).",
+        "entfallen": [
+          {
+            "vorher": "bc4563cb4c583c70dca8b6966027e7d83ee685fa1211e3196fd5e0509063c97d",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-steuerung-intro-close\" onClick={schliessen} title={STEUERART_INT"
+          }
+        ]
+      },
+      "components/SteuerungIntro.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Intro-Kasten entfällt; die Seite erklärt sich über die drei Reiter und die Hilfe „geraete-steuern“.",
+        "entfallen": [
+          {
+            "vorher": "3e72806cb58150ec43c85044ff8b78fca2dcde4d579bddb0212541ed7a93e5f8",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-steuerung-intro-close\" onClick={schliessen} title={STEUERUNG_INT"
+          }
+        ]
+      },
+      "components/SteuerungParts.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Helfer der alten Zonen; ihre Darstellung steht in Reiter Geräte (steuerung/GeraeteReiter.tsx) und den Blätter je Gerät (steuerung/Blaetter.tsx).",
+        "entfallen": [
+          {
+            "vorher": "2bf8523b6f5aaa9c4fff2bd2636e120d04b8c88e42d373d27c1950b3a32c4e5a",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" size=\"sm\" disabled={busy} onClick={() => onOpen(mode)}> Details </Button>"
+          },
+          {
+            "vorher": "7a558cd2e2f778da3e6cb7a1bdb1605081bc09fe29d3f81dbfdf458740dad2ea",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"ghost\" size=\"sm\" disabled={busy} onClick={() => onPause(mode)}> Pausieren </Button>"
+          }
+        ]
+      },
+      "components/VerbraucherDrawers.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Blätter je Gerät (steuerung/Blaetter.tsx): Steuerart, Eingriff, Pause und „nur messen“.",
+        "entfallen": [
+          {
+            "vorher": "904c13683d8c5d3e3cc98777cce1c920b2767bb2f4aa77d77358fc5a1c371b90",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button onClick={() => onCreated(created, true)}> Jetzt festlegen, wann er laufen soll </Button>"
+          },
+          {
+            "vorher": "f16d672df0e5d17c236e9e399e7350f4cd3efec37cd774a4ea487702710ae81c",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"ghost\" onClick={() => onCreated(created, false)}> Später </Button>"
+          },
+          {
+            "vorher": "5b4e57f0c6d69908a05b6ce97702ebcd2cb2ac39d1dd95ba7e4d0b967031755f",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Input label=\"Name\" value={name} onChange={(e) => setName(e.target.value)} placeholder={typeOption?."
+          },
+          {
+            "vorher": "12a13114333ec01b09458d93223fff40d7993ba5c69a8914c5bf136a4713c015",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Input label={powerRequired ? 'Nennleistung (kW)' : 'Nennleistung (kW, optional)'} value={ratedPower"
+          },
+          {
+            "vorher": "04ee38f150829c7156b441d846b2fc7e875c0c51caff5607a92ca6f36d491d70",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input type=\"radio\" name=\"vb-controlkind\" checked={controlKind === k} onChange={() => setControlKind"
+          },
+          {
+            "vorher": "44a6a2e60bc09f19dd309230fdd9ae3eaed794427639e6fe662a6f2cc475297a",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button onClick={submit} disabled={busy}> {busy ? 'Wird angelegt …' : 'Speichern'} </Button>"
+          },
+          {
+            "vorher": "3f7d265f5bcea3ada6c17c467869c489183e37ce8d18c3314d963900a51871e3",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button onClick={onSaved}>Fertig</Button>"
+          },
+          {
+            "vorher": "fe13ff571c9c9c5117b02d903bd1cf781c30969b27bc85b2d8c57161025a8b5b",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"ghost\" onClick={() => setReview(false)}>Zurück</Button>"
+          },
+          {
+            "vorher": "35c98f5a31177aebc1e7ba830fd87cae75185f005165e323d255d8b8fe0248e4",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"ghost\" onClick={save} disabled={busy || !valid}> Als Entwurf speichern </Button>"
+          },
+          {
+            "vorher": "dff6bb96ffc4025d57b7aaf92e31d1ac0cdde0e0d26fab93e653e5cf3ea9fdd2",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button onClick={() => (activationEnabled ? void saveAndActivate() : save())} disabled={busy || !val"
+          },
+          {
+            "vorher": "02e5fe8505fcda08d970faf95b2fb4f713aa535b0bde4588fabba37d5ca56b9f",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button onClick={() => setReview(true)} disabled={!valid}>Prüfen</Button>"
+          },
+          {
+            "vorher": "4c3634492931f3d0a35e941d17019121c00c718350de852af89d7cd62a7adbca",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"ghost\" onClick={() => void deactivate()} disabled={busy}> Regel deaktivieren </Butt"
+          },
+          {
+            "vorher": "e58ef70c998c5c349b1728237df8bba64e6e74b1e433738898a359b1a74e790a",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" role=\"radio\" aria-checked={false} className=\"vp-vb-choice\" onClick={() => upda"
+          },
+          {
+            "vorher": "e024e60002ec006b43af66c1016e95410c2708002f217ac8ee75982b83596ff3",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input type=\"checkbox\" checked={draft.allowStorageDischarge} onChange={(e) => onUpdate({ allowStorag"
+          },
+          {
+            "vorher": "2c41e0a030c69a482ed149a0b0d4ff5ce2fb7692067c022dd0fe063fd06290a4",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input type=\"checkbox\" checked={c.value === true} onChange={(e) => setRow(i, { value: e.target.check"
+          },
+          {
+            "vorher": "3484cacc72380836a846b413f48730dfa21f0945942a97d6c81742a60382007a",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"ghost\" size=\"sm\" onClick={() => remove(i)}>Entfernen</Button>"
+          },
+          {
+            "vorher": "e48ce169df6b1e0d69335326fe07ea13ce9d1f0318d89be13cd742a4ec8916ac",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button variant=\"outline\" size=\"sm\" iconLeft={<Icon name=\"plus\"/>} onClick={add}> Bedingung hinzufüg"
+          },
+          {
+            "vorher": "c73f9ed44d424aff33b720f210dc021391daad8c732bbc3da66aa849029f0dcf",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input type=\"checkbox\" checked={isPercent} onChange={(e) => onUpdate({ target: { kind: e.target.chec"
+          },
+          {
+            "vorher": "6840777c651beaf135a0b08bbf91cd5c0ddbfacd8c951c62c86e45e2407358cd",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input type=\"radio\" name={`rg-${label}`} checked={value === c.value} onChange={() => onChange(c.valu"
+          },
+          {
+            "vorher": "3a3069316515f6e0d4a666318182b297f2379d76a83290a99615c87c8dcd6fd2",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Input label={suffix ? `${label} (${suffix})` : label} value={text} inputMode=\"decimal\" onChange={(e"
+          }
+        ]
+      },
+      "components/VerbraucherZone.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Geräte (steuerung/GeraeteReiter.tsx): die Geräte als Reihenfolge mit Tagesbild.",
+        "entfallen": [
+          {
+            "vorher": "22d9d3e66a6a0dd0972a6998cfa3c07a6ccedf9b1f15c2a6cadecac86feabada",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-link\" onClick={onEinstellungen}> {RAHMEN_EINSTELLUNGEN} <Icon"
+          },
+          {
+            "vorher": "5f2009119313267e64876cdf4c58674a216e9b027b70145f0bf9ac578e73b910",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<input type=\"text\" value={suche} placeholder=\"Ladepunkt suchen …\" onChange={(e) => setSuche(e.target"
+          },
+          {
+            "vorher": "7a9614adb3780e022a664a7ac35e82d8bc24a04beac5138723f1354548ed473c",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-fold\" aria-expanded={standardOffen} onClick={() => setStandar"
+          },
+          {
+            "vorher": "f0e382030db91ebda3782acb83fe3e3139237853a0d2e0e01435858bf1fe3d61",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-fold\" aria-expanded={ranglisteOffen} onClick={() => setRangli"
+          },
+          {
+            "vorher": "d607e4483c5aaa69aaf8d51ed28a7e3c766cf4e9c456a28c55c765e5608e51f0",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-text is-klick\" onClick={oeffnen}> {inhalt} <Icon name=\"chevro"
+          },
+          {
+            "vorher": "dd217a7a21adfd6d7bad4fc00f95cf365f6f562c7af660421306ef0939d8a5bc",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<button type=\"button\" className=\"vp-vz-chip rule\" onClick={() => onRegeln(z.entityId)}> {z.regeln} <"
+          }
+        ]
+      },
+      "components/VorschlagsKarten.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Steuerung neu, E1–E9 = A). Reiter Geräte (steuerung/GeraeteReiter.tsx): Karte „Neu in Ihrer Anlage“; das reine Modul der Vorschläge bleibt. Keine Vorschläge an Anlagen ohne Teilnahme folgt mit Paket 1d.",
+        "entfallen": [
+          {
+            "vorher": "622c8eb6c27521efda328abd26098edeb48af77f91c1e77d7736a7c6c6555374",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" disabled={busy} onClick={() => onUebernehmen(v)}> {UEBERNEHMEN} </Button>"
+          },
+          {
+            "vorher": "469f305a987a4e9fbd663a1ad3d5855f7b9e81330d29059145e66d1c9796373c",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" variant=\"outline\" disabled={busy || v.knoepfe == null} title={v.knoepfe == null ? "
+          },
+          {
+            "vorher": "111297e9c06943722ad30ad72c6d818880c7f5a6911d63dc3833e97c26bee9f4",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" variant=\"outline\" disabled={busy} title={SPAETER_HINWEIS} onClick={() => onStumm(v"
+          },
+          {
+            "vorher": "0d736403a14e397b86629cbc9df70789e714ec2c07157dedffe0cb291a90f6f0",
+            "commit": "e2e6836bc01a0877e55d20116d9d9e86b2e3d1f4",
+            "element": "<Button size=\"sm\" variant=\"ghost\" disabled={busy} title={ABLEHNEN_HINWEIS} onClick={() => onStumm(v,"
+          }
+        ]
+      },
+      "components/CockpitHero.tsx": {
+        "main": [
+          "123e4e7e7516d1c8befe71e2ac85a2187527e2c8f136ce88ef09480a6740d75f"
+        ],
+        "wohin": "Cockpit-Raster ohne Doppelungen: der Plan-Satz steht nicht mehr im Kopf, der Weg zum Fahrplan ist die Fahrplan-Kachel im Raster (pages/AnlagenPage.tsx).",
+        "entfallen": [
+          {
+            "vorher": "54c0fa7715e1b50619b63e6af1a7583524f07df9dbe561926a22a0736b8ab806",
+            "commit": "1fec2bc1c7c66e91ef992e5b8ee834becb80d896",
+            "element": "<button type=\"button\" className=\"vp-hero-plan\" onClick={() => onOpenSub('fahrplan')}> <Icon name=\"tr"
+          }
+        ]
+      },
+      "pages/AnlagenPage.tsx": {
+        "main": [
+          "acf31d26f735c6a09aea84e44d8e4f3262e1a516fedaa4911b8991e3636bf722",
+          "c403702f92b7bb8f7ff92d34d765e6d6802d5936ac5a2e4067b27085233946cf",
+          "0dfa3bb6237d43c81a5377b00ea568ae264c077e2e5922db6b1ae93c1228995a",
+          "5f74b6e5fde857c021fbb02d62d8436fb6ec98f60994caddd2223b2a195c2386",
+          "7520c980c76a153cb047ecc4ff04258e3f46f41526432af57a82d7a2ead0e9e0",
+          "e6e95d30d1a6722ea77a2e222917176bf8027255a1b01bfe93ff9ac7c1df45a4",
+          "cf68fea89925b22565220008fb3bd679b8c86f8c2a124fc6d1857c6cab2b62e4",
+          "6d52994ee339a5c51ec7d8e1f416321422dea7d48846dbbf07a6a3524850a2d2",
+          "061e7532aacd526fb682f5392109d5458034f93caaba65017880c8fa2255187c"
+        ],
+        "wohin": "Cockpit-Raster (stapelMitRaster) mit Geld-Regel und CockpitMessstellenWeg; kein weiteres Element entfällt, das frühere steht im Block mainNachzug.",
+        "entfallen": []
       }
     }
   }

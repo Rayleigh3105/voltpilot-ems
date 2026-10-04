@@ -3,12 +3,15 @@ import { anpassenDokument, CANONICAL_DESKTOP, kachelGroesse, KACHELN, layoutReso
 
 // Kachelgrößen (Konzept „Cockpit als Tagesfilm“): additiv im Layout-Dokument.
 describe('Kachelgrößen', () => {
-  it('jede Kachel des Katalogs kann klein, der Standard bleibt das heutige Bild', () => {
+  it('jede Kachel des Katalogs trägt ihren Standard; breite Inhalte sind immer breit', () => {
     expect(KACHELN.length).toBeGreaterThan(0);
-    for (const k of KACHELN) {
-      expect(k.groessen).toContain(k.standard);
-      expect(k.standard).toBe('klein');
-    }
+    for (const k of KACHELN) expect(k.groessen).toContain(k.standard);
+    const def = (id: string) => KACHELN.find((k) => k.id === id)!;
+    // Wie im Konzept: Sonne breit (umstellbar), Handel und Lastspitze immer breit.
+    expect(def('sonne')).toMatchObject({ standard: 'breit', groessen: ['klein', 'breit'] });
+    expect(def('handel').groessen).toEqual(['breit']);
+    expect(def('lastspitze').groessen).toEqual(['breit']);
+    expect(def('autarkie').standard).toBe('klein');
   });
 
   it('eine gewählte Größe gilt nur, wenn die Kachel sie tragen kann', () => {
@@ -36,7 +39,7 @@ describe('Kachelgrößen', () => {
   });
 });
 
-import { betriebAus, CANONICAL_PHONE, canonicalFuer } from './cockpitLayout';
+import { betriebAus, canonicalFuer } from './cockpitLayout';
 
 describe('Voreinstellung je Betriebsmodell', () => {
   const b = (id: string) => ({ id, title: id, order: 0, from: [] }) as never;
@@ -46,19 +49,36 @@ describe('Voreinstellung je Betriebsmodell', () => {
     expect(betriebAus([])).toBe('eigenverbrauch');
   });
 
-  it('Eigenverbrauch bleibt die bisherige Reihenfolge', () => {
-    expect(canonicalFuer(false, 'eigenverbrauch')).toEqual(CANONICAL_DESKTOP);
-    expect(canonicalFuer(true, 'eigenverbrauch')).toEqual(CANONICAL_PHONE);
+  it('Eigenverbrauch: erst die Tageskacheln, dann Laden und Fahrplan (wie im Prototyp)', () => {
+    const e = canonicalFuer(false, 'eigenverbrauch');
+    expect(e.indexOf('kacheln')).toBeLessThan(e.indexOf('laden'));
+    expect(e.indexOf('laden')).toBeLessThan(e.indexOf('fahrplan'));
+    // Rechner und Telefon teilen die Folge; am Rechner steht die Leitkachel neben dem Fluss.
+    expect(canonicalFuer(true, 'eigenverbrauch')).toEqual(e);
   });
 
   it('Marktoptimierung: der Börsenpreis folgt der Bühne; Lastspitze: die Kacheln', () => {
-    const m = canonicalFuer(false, 'markt');
-    expect(m.indexOf('strompreis')).toBe(m.indexOf('steuerung') + 1);
-    const t = canonicalFuer(true, 'markt');
-    expect(t.indexOf('strompreis')).toBe(t.indexOf('geld') + 1);
-    const s = canonicalFuer(true, 'spitze');
-    expect(s.indexOf('kacheln')).toBe(s.indexOf('geld') + 1);
-    // Dieselben Bausteine, nur umgestellt.
-    expect([...m].sort()).toEqual([...CANONICAL_DESKTOP].sort());
+    const m = canonicalFuer(true, 'markt');
+    expect(m.indexOf('strompreis')).toBe(m.indexOf('energiefluss') + 1);
+    const s = canonicalFuer(false, 'spitze');
+    expect(s.indexOf('kacheln')).toBeLessThan(s.indexOf('geld'));
+    for (const b of ['eigenverbrauch', 'markt', 'spitze'] as const) {
+      expect([...canonicalFuer(false, b)].sort()).toEqual([...CANONICAL_DESKTOP].sort());
+    }
+  });
+
+});
+
+import { layoutResolve as aufloesen, verstecktFuer } from './cockpitLayout';
+
+describe('Voreinstellung: Fahrplan bei Marktoptimierung und Lastspitze ausgeblendet (wie im Prototyp)', () => {
+  it('blendet vor, und der Kunde holt ihn mit „shown“ zurück', () => {
+    expect(verstecktFuer('eigenverbrauch')).toEqual([]);
+    const basis = { canonical: canonicalFuer(false, 'markt'), verfuegbar: canonicalFuer(false, 'markt'), versteckt: verstecktFuer('markt') };
+    const r = aufloesen(basis);
+    expect(r.order).not.toContain('fahrplan');
+    expect(r.hidden).toEqual(['fahrplan']);
+    const zurueck = aufloesen({ ...basis, eigen: { order: [], hidden: [], shown: ['fahrplan'], lead: null } });
+    expect(zurueck.order).toContain('fahrplan');
   });
 });

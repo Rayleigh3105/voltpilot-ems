@@ -106,6 +106,8 @@ interface UseCockpitLayoutInput<T extends string = BausteinId> {
   verfuegbar: readonly T[];
   /** Die kanonische Reihenfolge; ohne sie entscheidet `isPhone` am Cockpit. */
   canonical?: readonly T[];
+  /** Was die Voreinstellung ausblendet (je Betriebsmodell); zurückholbar. */
+  versteckt?: readonly T[];
   /** Die Blöcke der Projektion (M0) — sie entscheiden über den Lead. */
   blocks?: CockpitBlock[] | null;
   isPhone?: boolean;
@@ -212,6 +214,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
     () =>
       layoutResolve<T>({
         canonical,
+        versteckt: input.versteckt,
         verfuegbar: verfuegbarMitEigenen,
         blocks,
         flaeche,
@@ -220,7 +223,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
         siteVorgabe: docOf(layers?.siteVorgabe),
         eigen: docOf(layers?.eigen),
       }),
-    [canonical, verfuegbarMitEigenen, blocks, layers, flaeche],
+    [canonical, input.versteckt, verfuegbarMitEigenen, blocks, layers, flaeche],
   );
 
   /**
@@ -232,6 +235,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
     () =>
       layoutResolve<T>({
         canonical,
+        versteckt: input.versteckt,
         verfuegbar: verfuegbarMitEigenen,
         blocks,
         flaeche,
@@ -239,7 +243,7 @@ export function useCockpitLayout<T extends string = BausteinId>(
         tenantVorgabe: docOf(layers?.tenantVorgabe),
         siteVorgabe: docOf(layers?.siteVorgabe),
       }).hidden,
-    [canonical, verfuegbarMitEigenen, blocks, layers, flaeche],
+    [canonical, input.versteckt, verfuegbarMitEigenen, blocks, layers, flaeche],
   );
 
   // Im Anpassen-Modus gilt der Entwurf, sonst das Gespeicherte.

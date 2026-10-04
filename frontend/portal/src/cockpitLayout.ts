@@ -259,42 +259,39 @@ export function betriebAus(blocks: readonly CockpitBlock[] | null | undefined): 
   return 'eigenverbrauch';
 }
 
-/** Rückt `id` direkt hinter `nach` (sonst unverändert). */
-function hinter(liste: readonly BausteinId[], id: BausteinId, nach: BausteinId): BausteinId[] {
-  const ohne = liste.filter((x) => x !== id);
-  const i = ohne.indexOf(nach);
-  if (i < 0 || !liste.includes(id)) return [...liste];
-  return [...ohne.slice(0, i + 1), id, ...ohne.slice(i + 1)];
-}
+/**
+ * Die Reihenfolge des Kachelrasters je Betriebsmodell (Konzept „Cockpit als
+ * Tagesfilm“, `DEFAULTS` im Prototyp): Eigenverbrauch - die Tageskacheln,
+ * dann Laden und Fahrplan; Marktoptimierung - der Börsenpreis führt;
+ * Lastspitzenkappung - die Kacheln mit der Lastspitze vorn. Rechner und
+ * Telefon teilen die Folge; am Rechner steht die Leitkachel neben dem Fluss.
+ */
+const TAGESFILM: Record<CockpitBetrieb, BausteinId[]> = {
+  eigenverbrauch: ['status', 'energiefluss', 'geld', 'steuerung', 'kacheln', 'laden', 'fahrplan', 'strompreis', 'komponenten', 'zustand'],
+  markt: ['status', 'energiefluss', 'strompreis', 'steuerung', 'kacheln', 'geld', 'laden', 'fahrplan', 'komponenten', 'zustand'],
+  spitze: ['status', 'energiefluss', 'steuerung', 'kacheln', 'geld', 'laden', 'strompreis', 'fahrplan', 'komponenten', 'zustand'],
+};
 
 /**
- * **Die Voreinstellung je Betriebsmodell** (Konzept „Cockpit als Tagesfilm“):
- * dieselben Bausteine, eine andere kanonische Reihenfolge. Bei der
- * Marktoptimierung folgt der Börsenpreis direkt der Bühne, bei der
- * Lastspitzenkappung die Kacheln mit der Lastspitze. Eigenverbrauch bleibt
- * Zeichen für Zeichen die bisherige Reihenfolge (`migration.test.ts`).
- * Gespeicherte Schichten (Vorgabe, eigen) liegen darüber und gewinnen.
+ * Was die Voreinstellung je Betriebsmodell ausblendet (Prototyp `DEFAULTS`):
+ * bei Marktoptimierung trägt der Börsenpreis mit Handel den Plan, bei der
+ * Lastspitzenkappung die Lastspitze - eine eigene Fahrplan-Kachel wäre dort
+ * die zweite Plan-Anzeige. Über „Cockpit anpassen“ jederzeit zurückzuholen.
  */
-function kanonischFuer(basis: readonly BausteinId[], betrieb: CockpitBetrieb): BausteinId[] {
-  // Die unbeweglichen Bausteine der Bühne (Geld, Steuerung) bleiben, wo sie
-  // sind; eingereiht wird hinter dem letzten von ihnen, der vorn steht.
-  const buehne = basis.indexOf('steuerung') < basis.indexOf('laden') ? 'steuerung' : 'geld';
-  if (betrieb === 'markt') return hinter(basis, 'strompreis', buehne);
-  if (betrieb === 'spitze') return hinter(basis, 'kacheln', buehne);
-  return [...basis];
+const VOREINSTELLUNG_VERSTECKT: Record<CockpitBetrieb, BausteinId[]> = {
+  eigenverbrauch: [],
+  markt: ['fahrplan'],
+  spitze: ['fahrplan'],
+};
+
+/** Die je Betriebsmodell ausgeblendeten Bausteine der Voreinstellung. */
+export function verstecktFuer(betrieb: CockpitBetrieb): readonly BausteinId[] {
+  return VOREINSTELLUNG_VERSTECKT[betrieb];
 }
 
 const KANONISCH: Record<'rechner' | 'telefon', Record<CockpitBetrieb, BausteinId[]>> = {
-  rechner: {
-    eigenverbrauch: CANONICAL_DESKTOP,
-    markt: kanonischFuer(CANONICAL_DESKTOP, 'markt'),
-    spitze: kanonischFuer(CANONICAL_DESKTOP, 'spitze'),
-  },
-  telefon: {
-    eigenverbrauch: CANONICAL_PHONE,
-    markt: kanonischFuer(CANONICAL_PHONE, 'markt'),
-    spitze: kanonischFuer(CANONICAL_PHONE, 'spitze'),
-  },
+  rechner: TAGESFILM,
+  telefon: TAGESFILM,
 };
 
 /** Die kanonische Reihenfolge für Bildschirm und Betriebsmodell (stabile Referenz). */
@@ -453,6 +450,12 @@ export interface LayoutResolveInput<T extends string = BausteinId> {
    * `cockpit`, damit jeder bestehende Aufrufer zeichengleich bleibt.
    */
   flaeche?: Flaeche;
+  /**
+   * Bausteine, die die Voreinstellung ausblendet (je Betriebsmodell, Konzept
+   * „Cockpit als Tagesfilm“). Jede Schicht darüber kann sie mit `shown`
+   * zurückholen - sie stehen im Anpassen-Modus unter „Ausgeblendet“.
+   */
+  versteckt?: readonly T[];
   /** Die kunden-weite Vorgabe des Betreibers (E1). */
   tenantVorgabe?: LayoutDocument | null;
   /** Die Vorgabe DIESER Anlage — sie schlägt die kunden-weite (E1). */
@@ -575,7 +578,7 @@ export function layoutResolve<T extends string = BausteinId>(
 ): ResolvedLayout<T> {
   const verfuegbar = new Set<string>(input.verfuegbar);
   let order = input.canonical.filter((id) => verfuegbar.has(id));
-  const hidden = new Set<T>();
+  const hidden = new Set<T>((input.versteckt ?? []).filter((id) => verfuegbar.has(id)));
   let lead: string | null = null;
   let quelle: LayoutQuelle = 'katalog';
   const groessen: Record<string, KachelGroesse> = {};

@@ -1,17 +1,15 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RollenKanonischerWert, SiteEntity, SiteSource, SiteTopology } from '../api';
-import type { CockpitHeroView } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
 import { flowHasValues } from '../liveDetail';
 import type { ChargingNodeOpts } from '../adaptiveFlow';
-import { RollenBreakdown } from './RollenBreakdown';
 import { cockpitRollenTopologie } from '../pvRolle';
 import { pvComposition } from '../pvComposition';
 import { jetztFluss } from '../flussJetzt';
-import type { Betrieb } from '../leitungsplan';
+import type { Betrieb, Rolle } from '../leitungsplan';
 import type { PlanWordingKind } from '../schedule';
 import type { Tag } from '../tagesleiste';
 import type { VerbrauchKomposition } from '../verbrauchKomposition';
@@ -19,7 +17,6 @@ import type { VerbrauchKomposition } from '../verbrauchKomposition';
 // seiner Grenze (`test/bundle-smoke.sh`), und der Platzhalter hält ihre Höhe,
 // damit beim Nachladen nichts springt.
 const EnergieBuehne = lazy(() => import('./EnergieBuehne').then((m) => ({ default: m.EnergieBuehne })));
-import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
 
 /**
@@ -58,7 +55,6 @@ import './CockpitBlocks.css';
  * der Wetter-Kachel) — hier ist sie weg, die Kachel trägt sie.
  */
 export function CockpitHero({
-  view,
   topology,
   snapshot,
   stale = false,
@@ -66,17 +62,14 @@ export function CockpitHero({
   pins = null,
   onOpenSub,
   footer,
-  periodSeg = null,
-  controlConfirmed = false,
   ladenHinweis = null,
   showRail = true,
-  nachtragHref,
+  seite = null,
   pvRollen = null,
   verbrauchRollen = null,
   netzRollen = null,
   buehne = null,
 }: {
-  view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
   topology: SiteTopology | null;
   snapshot: LiveSnapshot;
@@ -99,14 +92,6 @@ export function CockpitHero({
    */
   footer?: ReactNode;
   /**
-   * Das kompakte Zeitraum-Segment der Bilanz-Leiste (`PeriodTabs variant="seg"`).
-   * null = diese Komposition hat keine zeitraum-bezogenen Zahlen, also auch
-   * nichts zu wählen.
-   */
-  periodSeg?: ReactNode;
-  /** Der Wechselrichter bestätigt den Sollwert → Haken am Speicher-Knoten. */
-  controlConfirmed?: boolean;
-  /**
    * Der Satz „Laden bei Bezug" (K8/B2, `ladenBeiBezug.ts`) - steht unter dem
    * Fluss, solange der Speicher lädt, während das Netz liefert. null = nichts.
    */
@@ -126,19 +111,16 @@ export function CockpitHero({
    */
   chargingOwn?: ChargingNodeOpts | null;
   /**
-   * Ob die **Bilanz-Leiste** gerendert wird. Default `true` = die Bühne, wie
-   * sie war. Die Telefon-Fassung (Mobil-Umbau Stufe 2, `<= 720px`) setzt sie
-   * auf `false`: dort trägt die EINE Geld-Karte unter dem Fluss Segment, Zahl,
-   * Zurechnung und die Ringe (als Chips), und die Fahrplan-Zeile ist eine
-   * eigene Zeile mit Absprung — die Leiste wäre die zweite Kopie davon.
+   * Ob rechts neben dem Fluss eine Spalte steht (am Rechner). Am Telefon steht
+   * die Leitkachel als erste Kachel unter der Bühne.
    */
   showRail?: boolean;
   /**
-   * Wohin „Speicher-Daten fehlen ›" in der Speicher-Sektion führt (die
-   * Technik-Seite). Ohne Ziel bleibt der Hinweis ruhiger Text — nie ein Knopf,
-   * der nirgends hinführt.
+   * Die **Leitkachel** rechts neben dem Fluss (Konzept „Cockpit als
+   * Tagesfilm“): „Unterm Strich“, der Börsenpreis oder die Lastspitze. Sie
+   * steht dann nicht noch einmal im Raster darunter.
    */
-  nachtragHref?: string;
+  seite?: ReactNode;
   /**
    * Aktiviert die Umbenennen-Stifte in der PV-Zusammensetzung (Konzept
    * `vp-entity-alias-k1` §5): der Wunsch entsteht beim Blick auf DIESE Liste.
@@ -158,6 +140,8 @@ export function CockpitHero({
     planKind: PlanWordingKind;
     isPhone: boolean;
     now: Date;
+    /** Ein Knoten-Blatt geht auf/zu (z. B. um die Tagessummen je Gerät zu holen). */
+    onBlatt?: (art: Rolle | null) => void;
   } | null;
   /**
    * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Existiert eine
@@ -178,18 +162,13 @@ export function CockpitHero({
   // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht
   // widersprechen. Mit kanonischer PV-Rolle ist deren Wert die Zahl.
   const composition = topology && !pvRolleAktiv ? pvComposition(rollenTopologie, sources, pins) : null;
-  // ⚠ SEIT P5 wohnen die Ringe IN der Erlöskarte (Konzept §3.7): Label · Zahl
-  //   · Zeitraum-Segment · Speicher-Sektion · Ringe. Sie sind deshalb kein
-  //   eigener Leisten-Block mehr — ein zweiter Block hätte dieselbe Kennzahl
-  //   ein zweites Mal getragen. Ohne Geld-Zahl (kein Ergebnis für den
-  //   Zeitraum) tragen sie sich selbst, damit die Leiste nie leer dasteht.
-  const hasRings = view.rings.length > 0 || view.ringsNote != null;
-  // Die Leiste verteilt die VORHANDENEN Blöcke über die Höhe. Steuert eine
-  // Komposition keinen einzigen bei, gibt es keine Leiste (und keinen leeren
-  // Rahmen) - die Bühne wird dann einspaltig und der Fluss nimmt sie ganz ein.
-  const hasRail =
-    showRail &&
-    (periodSeg != null || view.money != null || hasRings || view.planSentence != null);
+  // Rechts neben dem Fluss steht am Rechner die LEITKACHEL (Konzept „Cockpit
+  // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze.
+  // Ohne sie wird die Bühne einspaltig.
+  const hasRail = showRail && (hasFlow || seite != null);
+  // Der Platz für „Dieser Moment“ (die vier Werte der gewählten Uhrzeit) - die
+  // Bühne schreibt hinein, damit die Werte dem Zeitschieber folgen.
+  const [momentZiel, setMomentZiel] = useState<HTMLDivElement | null>(null);
   return (
     <Card
       padding="lg"
@@ -209,12 +188,15 @@ export function CockpitHero({
             betrieb={buehne?.betrieb ?? 'eigenverbrauch'}
             tag={buehne?.tag ?? null}
             zielKw={buehne?.zielKw ?? null}
-            bestaetigt={controlConfirmed}
             verbrauch={buehne?.verbrauch ?? null}
             pv={composition}
+            rollen={{ pv: pvRollen, load: verbrauchRollen, grid: netzRollen }}
             planKind={buehne?.planKind ?? 'eigenverbrauch'}
             isPhone={buehne?.isPhone ?? false}
             now={buehne?.now ?? new Date()}
+            onBlatt={buehne?.onBlatt}
+            onOpenSub={onOpenSub}
+            momentZiel={hasRail ? momentZiel : null}
           />
           </Suspense>
         ) : (
@@ -226,60 +208,14 @@ export function CockpitHero({
             <span>{ladenHinweis}</span>
           </p>
         )}
-        {/* vp-agg §2.4/B: die kanonische PV-Rolle - „berechnet" + Aufschlüsselung
-            je Gerät auf Tipp. Ohne Zuordnung rendert sie nichts. */}
-        <RollenBreakdown wert={pvRollen} />
-        <RollenBreakdown wert={verbrauchRollen} />
-        <RollenBreakdown wert={netzRollen} />
+        {/* vp-agg §2.4/B: die Aufschlüsselung der kanonischen Rollen je Gerät
+            steht im Blatt des jeweiligen Knotens - nicht noch einmal hier. */}
       </div>
 
       {hasRail && (
         <div className="vp-hero-side">
-          {/* DIE BILANZ — EIN Block, das C-Kleid (§3.7 + §3.10 (7)): Label,
-              die eine Zahl, das Zeitraum-Segment, die Speicher-Sektion und
-              die Ringe. Vorher waren das DREI Blöcke („Bilanz"-Segment,
-              Geld, Ringe) mit einer eigenen Kopfzeile „Bilanz" über dem
-              Segment — sie erklärte nichts, was das Label nicht schon sagt. */}
-          {(view.money || periodSeg || hasRings) && (
-            <div className="vp-rail-blk vp-hero-money">
-              {view.money ? (
-                <CockpitErgebnis
-                  money={view.money}
-                  periodSeg={periodSeg}
-                  rings={view.rings}
-                  ringsNote={view.ringsNote}
-                  nachtragHref={nachtragHref}
-                />
-              ) : (
-                <div className="vp-c-ck">
-                  {periodSeg && <div className="vp-c-ck-seg">{periodSeg}</div>}
-                  {view.rings.length > 0 ? (
-                    <p className="vp-c-ck-ringe">
-                      {view.rings.map((r) => (
-                        <ErgebnisRing key={r.id} ring={r} />
-                      ))}
-                    </p>
-                  ) : (
-                    view.ringsNote && <p className="vp-c-note">{view.ringsNote}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {view.planSentence && (
-            <div className="vp-rail-blk">
-              <button
-                type="button"
-                className="vp-hero-plan"
-                onClick={() => onOpenSub('fahrplan')}
-              >
-                <Icon name="trending-up" size={16} />
-                <span>{view.planSentence}</span>
-                <Icon name="chevron-right" size={14} />
-              </button>
-            </div>
-          )}
+          {hasFlow && <div ref={setMomentZiel} className="vp-hero-moment" />}
+          {seite && <div className="vp-hero-leit">{seite}</div>}
         </div>
       )}
 
