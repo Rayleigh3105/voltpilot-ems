@@ -109,6 +109,35 @@ var endText = map[string]string{
 // EndText is the German sentence of an end/abort/take-back code.
 func EndText(code string) string { return endText[code] }
 
+// unprovenText is the AbortUnproven sentence for what the box actually saw.
+// Only a register that did not hold is the inverter's refusal; no readback at
+// all, or readbacks without the proof, name no device cause (Herzogau F11,
+// 29.09.2026: the palette had dropped the proof fields, and the old sentence
+// blamed the inverter for it).
+func (r *Run) unprovenText() string {
+	var t string
+	switch {
+	case r.readbacks == 0:
+		t = "Zu diesem Lauf kam keine Rückmeldung der Steuerung an - ob der Wechselrichter übernommen hat, ist nicht bekannt."
+	case r.mismatches > 0:
+		t = EndText(AbortUnproven)
+	default:
+		n := "eine Rückmeldung"
+		if r.readbacks > 1 {
+			n = fmt.Sprintf("%d Rückmeldungen", r.readbacks)
+		}
+		mode := r.lastMode
+		if mode == "" {
+			mode = "ohne Angabe"
+		}
+		t = fmt.Sprintf("Die Steuerung hat %s geschickt (zuletzt Modus „%s“), aber keine belegt die Übernahme des Kandidaten.", n, mode)
+	}
+	if r.refusal != "" {
+		t += " Grund laut Box: " + r.refusal
+	}
+	return t
+}
+
 // Kind of an end: a normal end, an envelope abort, or a supervision take-back.
 func endKind(code string) string {
 	switch code {
@@ -159,12 +188,16 @@ type Observation struct {
 
 // Readback is Layer 1's answer on one control cycle of this run.
 type Readback struct {
+	Mode              string // the cycle's mode as it arrived (native | normal | release)
 	Native            bool   // mode "native" and every proof register held
 	Intent, Candidate string // native.intent / native.candidate
 	GridChargeBlocked *bool  // native.grid_charge_blocked (or the pre-hand-over read)
-	Refusal           string // native_refusal
+	Refusal           string // native_refusal (a blocked cycle: its reason)
 	Wrote             bool
 	Mismatch          bool // a readback that did NOT hold (unconfirmed cycles are no statement)
+	// Blocked: Layer 1 refused to write at all (empty plan). It arrived and
+	// names its reason, but it wrote, proves and fails nothing.
+	Blocked bool
 }
 
 // Command is the native_pilot block Layer 1 reads (deye-charge-side.js parseNativePilot).
@@ -226,6 +259,11 @@ type Run struct {
 	provenAt time.Time
 	refusal  string
 	badRuns  int
+	// What arrived from Layer 1 for this run - the AbortUnproven sentence
+	// tells "no readback" from "readbacks without the proof" with it.
+	readbacks  int
+	mismatches int
+	lastMode   string
 
 	lastObsAt       time.Time
 	importSince     time.Time
@@ -345,8 +383,8 @@ func (r *Run) finish(now time.Time, code string) {
 		return
 	}
 	ev := Event{At: now, Code: code, Kind: endKind(code), Text: EndText(code)}
-	if code == AbortUnproven && r.refusal != "" {
-		ev.Text = EndText(code) + " Grund laut Box: " + r.refusal
+	if code == AbortUnproven {
+		ev.Text = r.unprovenText()
 	}
 	r.end = &ev
 	r.endedAt = now
@@ -396,11 +434,19 @@ func (s *Session) NoteReadback(rb Readback, now time.Time) {
 	if r == nil || r.end != nil {
 		return
 	}
+	r.readbacks++
+	r.lastMode = rb.Mode
+	if rb.Refusal != "" {
+		r.refusal = rb.Refusal
+	}
+	if rb.Blocked {
+		return
+	}
 	if rb.Wrote {
 		r.m.WriteCycles++
 	}
-	if rb.Refusal != "" {
-		r.refusal = rb.Refusal
+	if rb.Mismatch {
+		r.mismatches++
 	}
 	// EEG: the device SAID it may charge from the grid - never acceptable here
 	// (the pilot always publishes grid_charge_allowed=false).
@@ -589,6 +635,10 @@ type RunView struct {
 	Metrics          Metrics           `json:"metrics"`
 	Aftercare        []AftercareSample `json:"nachlauf,omitempty"`
 	AftercareSummary *Aftercare        `json:"nachlauf_auswertung,omitempty"`
+	// Readbacks counts the Layer-1 readbacks of this run that arrived, LastMode
+	// is the mode the last one said - "0" and "normal" are different diagnoses.
+	Readbacks int    `json:"rueckmeldungen"`
+	LastMode  string `json:"letzter_modus,omitempty"`
 }
 
 // Aftercare summarises the transition back to the plan (F5).
@@ -608,7 +658,8 @@ func (s *Session) Snapshot(now time.Time) *RunView {
 	}
 	v := &RunView{ID: r.ID, Candidate: r.Req.Candidate, Intent: r.Req.Intent, Case: r.Req.Case,
 		Active: r.end == nil, StartedAt: r.StartedAt, Deadline: r.Deadline, Proven: r.proven,
-		Refusal: r.refusal, End: r.end, Events: append([]Event{}, r.events...), Metrics: r.m,
+		Refusal: r.refusal, Readbacks: r.readbacks, LastMode: r.lastMode,
+		End: r.end, Events: append([]Event{}, r.events...), Metrics: r.m,
 		Aftercare: append([]AftercareSample{}, r.aftercare...)}
 	v.Metrics.GridToStorageKwh = round3(v.Metrics.GridToStorageKwh)
 	v.Metrics.ExportHeadroomKwh = round3(v.Metrics.ExportHeadroomKwh)

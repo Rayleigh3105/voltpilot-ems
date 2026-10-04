@@ -1,6 +1,8 @@
 /** Each callout is anchored to a real DOM element, never hand-positioned. */
 const plant = (sub = '') => '#/anlage/help-site' + (sub ? '/' + sub : '');
 const point = (selector, text) => ({ selector, text });
+/** Die Beispielanlage der Steuerung (`e2e/steuerung.*`) lebt am 29.09.2026, 13:10 Uhr. */
+const STEUERUNG_UHR = '2026-09-29T11:10:00Z';
 export const captures = [
   { id: 'cockpit', title: 'Cockpit: Energie und Zustand', hash: plant(), root: 'main', points: [
     point('main h1', 'Der Anlagenname zeigt, welchen Standort Sie gerade betrachten.'),
@@ -76,30 +78,39 @@ export const captures = [
     point('[aria-label="Heute"]', 'Heute zeigt das Ergebnis des Tages und den Verlauf von Erzeugung und Verbrauch aller Anlagen.'),
     point('[aria-label="Ihre Anlagen"]', 'Jede Anlage steht als Karte und führt mit einem Tipp in die Anlage.'),
   ] },
-  { id: 'steuerung', title: 'Betriebsmodelle der Anlage', hash: plant('steuerung'), root: '[aria-label="Betriebsmodelle"]', points: [
-    point('[aria-label="Betriebsmodelle"] h3', 'Hier wählen Sie das übergeordnete Betriebsziel des Speichers.'),
-    point('[aria-label="Betriebsmodelle"] >> text=Marktoptimierung', 'Die Karte erklärt das jeweilige Modell und seine Voraussetzungen.'),
-    point('[aria-label="Betriebsmodelle"] >> text=Lastspitzenkappung', 'Vor einem Wechsel lesen Sie die angezeigten Folgen für die aktuelle Betriebsweise.'),
+  { id: 'steuerung', title: 'Betriebsmodelle im Blatt des Speichers', seite: 'steuerung', uhr: STEUERUNG_UHR, hash: plant('steuerung'), root: '.stn-blatt .sheet',
+    aktionen: [{ klick: /^Speicher: / }, { klick: /^Marktoptimierung/ }, { zeigen: '.stn-blatt .ok-note' }], points: [
+    point('.stn-blatt h3:has-text("Betriebsmodell")', 'Hier wählen Sie das übergeordnete Betriebsziel des Speichers.'),
+    point('.stn-blatt .art:has-text("Lastspitzenkappung")', 'Jede Wahl nennt Nutzen und Voraussetzungen; was fehlt, ist nicht wählbar.'),
+    point('.stn-blatt .ok-note', 'Vor dem Wechsel stehen die Folgen: welches Modell übernimmt und welches endet.'),
   ] },
-  { id: 'regeln', title: 'Eine Regel im Baukasten erstellen', query: 'scene=rule', root: '.vp-modal', points: [
-    point('.vp-guided input', 'Ein aussagekräftiger Name hilft beim späteren Wiederfinden der Regel.'),
-    point('text=WENN', 'Bedingungen bestimmen, wann die Regel gilt.'),
-    point('button:has-text("Weiter zur Prüfung")', 'Prüfen Sie die Zusammenfassung, bevor Sie die Regel aktivieren.'),
+  { id: 'steuerung-geraete', title: 'Steuerung: was läuft und wer zuerst dran ist', seite: 'steuerung', uhr: STEUERUNG_UHR, hash: plant('steuerung'), root: '.stn', maxHeight: 1600, points: [
+    point('[aria-label="Jetzt"]', 'Oben steht in einem Satz, was läuft und warum, darunter, wohin der Sonnenstrom geht.'),
+    point('#devs .dev .rk', 'Die Liste ist die Reihenfolge für Sonnenstrom; ein Tipp auf ein Gerät öffnet Aus, Smart und Ein.'),
+    point('.stn button:has-text("Ändern")', 'Mit „Ändern“ verschieben Sie Geräte und Speicher.'),
+    point('[aria-label="Tagesbild"]', 'Das Tagesbild zeigt bis jetzt Gemessenes, danach Plan und Erwartung.'),
   ] },
-  { id: 'regeln-mobil', title: 'Der Regelbaukasten auf dem Telefon', query: 'scene=rule', mobile: true, root: '.vp-modal', points: [
-    point('.vp-guided input', 'Auch auf dem Telefon wird die Regel über dieselben Eingaben erstellt.'),
-    point('text=WENN', 'Die Bedingungen stehen vor der auszuführenden Aktion.'),
-    point('button:has-text("Weiter zur Prüfung")', 'Der nächste Schritt führt zur Prüfung, nicht unmittelbar zur Aktivierung.'),
+  { id: 'regeln', title: 'Eine Regel im Satzbaukasten', seite: 'steuerung', uhr: STEUERUNG_UHR, hash: plant('regeln'), root: '.stn-blatt .sheet',
+    aktionen: [{ klick: /Neue Regel/ }], points: [
+    point('[aria-label="Regel als Satz"]', 'Die Regel steht als Satz; jeder Baustein lässt sich antippen und ändern.'),
+    point('.stn-blatt >> text=Probelauf', 'Der Probelauf zeigt, wann die Regel heute und morgen greifen würde.'),
+    point('.stn-blatt button:has-text("Weiter: Folgen")', 'Vor dem Aktivieren stehen die Folgen, nicht sofort die Aktivierung.'),
+  ] },
+  { id: 'regeln-mobil', title: 'Der Satzbaukasten auf dem Telefon', seite: 'steuerung', uhr: STEUERUNG_UHR, hash: plant('regeln'), mobile: true, root: '.stn-blatt .sheet',
+    aktionen: [{ klick: /Neue Regel/ }], points: [
+    point('[aria-label="Regel als Satz"]', 'Auch auf dem Telefon ist die Regel ein Satz aus antippbaren Bausteinen.'),
+    point('.stn-blatt .tok.val', 'Ein Tipp auf den Wert öffnet seinen Regler.'),
+    point('.stn-blatt button:has-text("Weiter: Folgen")', 'Der nächste Schritt führt zu den Folgen, nicht unmittelbar zur Aktivierung.'),
   ] },
   { id: 'lastspitzen', title: 'Lastspitze und vermiedene Leistung', hash: plant('lastspitzen'), root: 'main', points: [
     point('text=Gehaltene Spitze in diesem Abrechnungsjahr', 'Die gemessene Spitze gehört zur genannten Abrechnungsperiode.'),
     point('text=Vermiedene Spitze', 'Der Vergleich beschreibt die Differenz gegenüber dem dargestellten Betrieb ohne Speicher.'),
     point('main canvas', 'Der Verlauf ordnet die Spitzen über die vorhandenen Perioden ein.'),
   ] },
-  { id: 'ladepark', title: 'Der Ladepark-Rahmen', hash: plant('steuerung'), root: '.vp-ladepark', points: [
-    point('.vp-ladepark h4:has-text("Ladepark-Rahmen")', 'Der Rahmen beschreibt die Grenzen, innerhalb derer das Lastmanagement verteilt.'),
-    point('.vp-ladepark input', 'Die Anschlussgrenze muss zur tatsächlichen Installation passen.'),
-    point('.vp-ladepark-rahmen', 'Die weiteren Werte zeigen die Rückmeldung der Box; nur hinterlegte Werte werden ausdrücklich so bezeichnet.'),
+  { id: 'ladepark', title: 'Laden: Netzanschluss und Ladepunkte', seite: 'steuerung', uhr: STEUERUNG_UHR, hash: plant('laden'), root: '.stn', maxHeight: 1400, points: [
+    point('[aria-label="Netzanschluss"]', 'Der Netzanschluss teilt sich auf Haus und Ladepunkte; verteilt wird nur innerhalb der Grenze.'),
+    point('[aria-label="Wallbox Werkstatt"] [aria-label="Womit laden"]', 'Je Ladepunkt wählen Sie, womit geladen wird.'),
+    point('[aria-label="Ladepunkt Carport"] .lziel', 'Ein Ladeziel sagt, wie viel bis wann geladen sein soll.'),
   ] },
   { id: 'ladevorgaenge', title: 'Aktuelle Ladeleistung und Ladevorgänge', hash: plant('ladevorgaenge'), root: 'main', points: [
     point('h2:has-text("Ladeleistung")', 'Das Budget setzt Gebäude, Laden und Anschlussgrenze in Beziehung.'),

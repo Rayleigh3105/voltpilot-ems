@@ -13,7 +13,8 @@ for (const width of [375, 1440]) {
       const svg = page.locator('.vp-hero-flow .vp-lp').first();
       if (stand === 'vorher') {
         await expect(svg.getByText('26,2 kW', { exact: true })).toBeVisible();
-        await expect(page.locator('.vp-flow-confirm')).toHaveCount(1);
+        // Die Bestätigung steht in der Steuerzeile, nicht als Haken am Knoten.
+        await expect(page.locator('.vp-flow-confirm')).toHaveCount(0);
         await expect(page.locator('.vp-hero-hinweis')).toHaveCount(0);
       } else {
         await expect(svg.getByText('19,6 kW', { exact: true })).toBeVisible();

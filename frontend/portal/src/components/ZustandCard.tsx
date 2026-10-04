@@ -32,18 +32,24 @@ export function ZustandCard({
   items,
   onOpenSub,
   onOpenModus,
+  kompakt = false,
 }: {
   items: HealthItem[];
   /** Der Hebel eines Befunds öffnet seine Unterseite. */
   onOpenSub: (sub: AnlagenSub) => void;
   /** Der Modus-Fuß öffnet die Steuerung (Modus hinzufügen). */
   onOpenModus: () => void;
+  /**
+   * Die schmale Zustandszeile unter dem Kachelraster (Konzept „Cockpit als
+   * Tagesfilm“): eine Zeile ohne Modus-Fuß; die Befunde bleiben laut.
+   */
+  kompakt?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const view = zustandView(items);
   if (view == null) return null;
 
-  const foot = (
+  const foot = kompakt ? null : (
     <div className="vp-zustand-foot">
       <ToolboxPointer onOpen={onOpenModus} />
     </div>
@@ -54,7 +60,7 @@ export function ZustandCard({
       ? view.line!.slice('Alles in Ordnung'.length)
       : view.line!;
     return (
-      <Card padding="lg" radius="lg" className="vp-zustand" style={{ minWidth: 0 }}>
+      <Card padding={kompakt ? 'md' : 'lg'} radius="lg" className={`vp-zustand${kompakt ? ' is-kompakt' : ''}`} style={{ minWidth: 0, ...(kompakt ? { padding: '12px 16px' } : {}) }}>
         <div className="vp-zustand-line">
           <span className="vp-zustand-dot" aria-hidden="true" />
           <span className="vp-zustand-text">

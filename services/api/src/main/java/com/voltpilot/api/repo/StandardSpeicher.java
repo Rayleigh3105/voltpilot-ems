@@ -69,6 +69,16 @@ public final class StandardSpeicher {
     /** Platform default round-trip efficiency (inputs.py load_battery_sites). */
     private static final double DEFAULT_ROUNDTRIP_EFFICIENCY = 0.92;
 
+    /**
+     * So viele Viertelstunden muss der echte Speicher einen Ladestand erreicht
+     * haben, damit er zum gemessenen Betriebsbereich zählt (der vierte
+     * niedrigste {@code soc_min_pct} bzw. vierte höchste {@code soc_max_pct}
+     * eines Berliner Monats): ein einzelner Ausreißer-Wert verschiebt die
+     * Messlatte nicht. Regel und Fälle: {@code stur-speicher-vectors.json},
+     * Block {@code betriebsbereich}.
+     */
+    public static final int BETRIEBSBEREICH_EIMER = 4;
+
     private StandardSpeicher() {
     }
 
@@ -91,11 +101,25 @@ public final class StandardSpeicher {
             double socMaxKwh) {
     }
 
+    /** Die Stammdaten-Auflösung ohne gemessenen Betriebsbereich (nur das Band). */
+    public static Batterie batterie(
+            BigDecimal capacityKwh,
+            BigDecimal maxChargeKw,
+            BigDecimal maxDischargeKw,
+            BigDecimal roundtripEfficiencyPct,
+            BigDecimal socMinPct,
+            BigDecimal socMaxPct,
+            BigDecimal backupReserveSocPct,
+            BigDecimal peakReserveSocPct) {
+        return batterie(capacityKwh, maxChargeKw, maxDischargeKw, roundtripEfficiencyPct,
+                socMinPct, socMaxPct, backupReserveSocPct, peakReserveSocPct, null, null);
+    }
+
     /**
      * Löst die Spalten, die auch der Optimierer liest, in die Referenz-Physik
-     * auf - WÖRTLICH die Regeln von {@code inputs.load_battery_sites} +
-     * {@code _soc_band} + {@code BatteryParams.soc_floor_kwh}, damit die
-     * Anzeige mit denselben Stammdaten urteilt, mit denen geplant wird:
+     * auf - die Regeln von {@code inputs.load_battery_sites} +
+     * {@code _soc_band} + {@code BatteryParams.soc_floor_kwh}, erweitert um
+     * den GEMESSENEN Betriebsbereich des echten Speichers:
      *
      * <ul>
      * <li>Kapazität/Leistungen sind PFLICHT - fehlt eine (oder ist sie nicht
@@ -103,11 +127,22 @@ public final class StandardSpeicher {
      * <li>NULL-Effizienz = Plattform-Default 92 %; η = sqrt davon.</li>
      * <li>NULL-Bandgrenzen = 5-95 %; ein inkonsistentes Band (min ≥ max)
      *     fällt wie beim Optimierer auf die Defaults zurück statt zu
-     *     scheitern - der Optimierer plant dann ebenfalls mit den Defaults,
-     *     die zwei Urteile bleiben deckungsgleich.</li>
-     * <li>Backup-/Peak-Reserve heben den Boden absolut an ({@code max}, nie
-     *     additiv), gedeckelt an der Obergrenze - der Reservations-STACK von
-     *     {@code soc_floor_kwh}.</li>
+     *     scheitern.</li>
+     * <li><b>Betriebsbereich (Korrektur M1, Captain 29.09.2026 „mach alle
+     *     drei“, Minus-Untersuchung vp-erloes-minus-heute-u1 §9):</b> das Band
+     *     ist das PLANUNGSband des Optimierers ({@code asset.soc_min_pct}/
+     *     {@code soc_max_pct} sind zugleich die Wächter-Grenzen der Box), nicht
+     *     der Bereich, den derselbe Speicher ohne smarte Steuerung fährt. Der
+     *     Deye in Pilsting plant 5-95 %, fährt aber gemessen 2-100 %; ein
+     *     Vergleichsspeicher mit 5-95 % war kleiner als der echte, und der
+     *     Unterschied erschien als „Vorsprung“ der Steuerung. Deshalb weitet
+     *     der gemessene Bereich ({@code gemessenTiefPct}/{@code gemessenHochPct},
+     *     {@link #BETRIEBSBEREICH_EIMER}-Regel, je Monat aus diesem und dem
+     *     Vormonat) das Band - er verengt es NIE: was die Steuerung planen
+     *     darf, darf der Vergleichsspeicher auch.</li>
+     * <li>Backup-/Peak-Reserve heben den Boden danach absolut an ({@code max},
+     *     nie additiv), gedeckelt an der Obergrenze - der Reservations-STACK
+     *     von {@code soc_floor_kwh}.</li>
      * </ul>
      */
     public static Batterie batterie(
@@ -118,7 +153,9 @@ public final class StandardSpeicher {
             BigDecimal socMinPct,
             BigDecimal socMaxPct,
             BigDecimal backupReserveSocPct,
-            BigDecimal peakReserveSocPct) {
+            BigDecimal peakReserveSocPct,
+            BigDecimal gemessenTiefPct,
+            BigDecimal gemessenHochPct) {
         if (capacityKwh == null || maxChargeKw == null || maxDischargeKw == null) {
             return null;
         }
@@ -144,6 +181,12 @@ public final class StandardSpeicher {
             socMin = DEFAULT_SOC_MIN_FRACTION;
             socMax = DEFAULT_SOC_MAX_FRACTION;
         }
+        if (gemessenTiefPct != null && gemessenTiefPct.signum() >= 0) {
+            socMin = Math.min(socMin, gemessenTiefPct.doubleValue() / 100.0);
+        }
+        if (gemessenHochPct != null && gemessenHochPct.doubleValue() <= 100.0) {
+            socMax = Math.max(socMax, gemessenHochPct.doubleValue() / 100.0);
+        }
         double socMaxKwh = capacity * socMax;
         double floor = capacity * socMin;
         for (BigDecimal reserve : new BigDecimal[] {backupReserveSocPct, peakReserveSocPct}) {
@@ -154,6 +197,40 @@ public final class StandardSpeicher {
         }
         return new Batterie(capacity, charge, discharge, Math.sqrt(roundtrip),
                 floor, socMaxKwh);
+    }
+
+    /**
+     * Ein Slot der Referenz-Physik ({@code greedy_dispatch}s Schleifenkörper in
+     * kWh je Slot): geladene bzw. entladene AC-Energie und der Ladestand
+     * danach. Genau eine der beiden Energien ist positiv, oder keine.
+     */
+    public record Schritt(double chargeKwh, double dischargeKwh, double socKwh) {
+    }
+
+    /**
+     * Die sture Regel für EINEN Slot ab {@code socKwh}: jeden Überschuss
+     * sofort laden (bis Leistungs- und SoC-Grenze), jedes Defizit sofort decken
+     * (bis Leistungs- und Boden-Grenze). Der {@link Walk} rechnet damit über
+     * gemessene Energien, {@link PlanMesslatte} über die Prognose des
+     * Fahrplans - dieselbe Physik an EINER Stelle.
+     */
+    public static Schritt schritt(Batterie batterie, double socKwh, double pvKwh, double loadKwh) {
+        double surplus = pvKwh - loadKwh;
+        if (surplus > 0) {
+            double charge = Math.min(surplus, Math.min(
+                    batterie.maxChargeKw() * SLOT_HOURS,
+                    (batterie.socMaxKwh() - socKwh) / batterie.etaOneWay()));
+            charge = Math.max(charge, 0);
+            return new Schritt(charge, 0, socKwh + batterie.etaOneWay() * charge);
+        }
+        if (surplus < 0) {
+            double discharge = Math.min(-surplus, Math.min(
+                    batterie.maxDischargeKw() * SLOT_HOURS,
+                    (socKwh - batterie.socFloorKwh()) * batterie.etaOneWay()));
+            discharge = Math.max(discharge, 0);
+            return new Schritt(0, discharge, socKwh - discharge / batterie.etaOneWay());
+        }
+        return new Schritt(0, 0, socKwh);
     }
 
     /**
@@ -199,22 +276,10 @@ public final class StandardSpeicher {
          */
         public void slot(double pvKwh, double loadKwh,
                 double importPriceEurKwh, double exportValueEurKwh) {
-            double surplus = pvKwh - loadKwh;
-            if (surplus > 0) {
-                double charge = Math.min(surplus, Math.min(
-                        batterie.maxChargeKw() * SLOT_HOURS,
-                        (batterie.socMaxKwh() - socKwh) / batterie.etaOneWay()));
-                charge = Math.max(charge, 0);
-                socKwh += batterie.etaOneWay() * charge;
-                speicherEur -= charge * exportValueEurKwh;
-            } else if (surplus < 0) {
-                double discharge = Math.min(-surplus, Math.min(
-                        batterie.maxDischargeKw() * SLOT_HOURS,
-                        (socKwh - batterie.socFloorKwh()) * batterie.etaOneWay()));
-                discharge = Math.max(discharge, 0);
-                socKwh -= discharge / batterie.etaOneWay();
-                speicherEur += discharge * importPriceEurKwh;
-            }
+            Schritt s = schritt(batterie, socKwh, pvKwh, loadKwh);
+            socKwh = s.socKwh();
+            speicherEur += s.dischargeKwh() * importPriceEurKwh
+                    - s.chargeKwh() * exportValueEurKwh;
         }
 
         /** Σ (discharge × importPrice − charge × exportValue) so far. */

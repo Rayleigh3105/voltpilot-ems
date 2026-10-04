@@ -171,21 +171,6 @@ export const CHIP_STANDARD = 'Standard';
 export const CHIP_ABWEICHEND = 'abweichend';
 
 /**
- * Wo die Steuerart HEUTE eingestellt wird.
- *
- * **⚠ P1 ist lesend**: die Zeile oeffnet noch keinen Steuerart-Dialog (das ist
- * P2). Statt eines toten Klicks nennt die Zone den Weg, den es wirklich gibt —
- * die Haus-Regel „eine Handlung, die strukturell nichts bewirken kann, wird
- * nicht angeboten; stattdessen steht der Grund da".
- */
-export const WEG_LADEPUNKT =
-  'Die Steuerart Ihrer Ladepunkte stellen Sie zurzeit im Ladepark unter '
-  + '„Einstellungen" ein.';
-export const WEG_VERBRAUCHER =
-  'Die Steuerart eines Verbrauchers stellen Sie zurzeit unter „Regeln" auf '
-  + 'dieser Seite ein.';
-
-/**
  * Der Modus als KURZFORM fuer einen Chip.
  *
  * **⚠ ZWILLING von `POLICY_LABEL` (`ladepunkte.ts`)** — dieselbe Wahl, einmal

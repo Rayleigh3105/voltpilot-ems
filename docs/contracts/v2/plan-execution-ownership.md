@@ -87,6 +87,8 @@ Konzept „Der Wechselrichter regelt, die Box setzt Absicht und Grenzen“ (§3,
 | `wrote` | Layer 1 → Core | Deye-Executor: in diesem Takt wurde mindestens ein Register geschrieben |
 | `native_pilot` | Core → Layer 1 | K5: `{candidate, intent, run, seconds_remaining}` – nur im von Hand armierten Pilotfenster (`POST /api/native/pilot`, höchstens 15 min). Layer 1 fährt dann den Kandidaten **ohne** Zertifikat, aber mit Vorbedingung und EEG-Beleg; `grid_charge_allowed` ist dabei immer `false`. Drehbuch: [`edge-app/nodered/DEYE-LADESEITE-PILOT.md`](../../../edge-app/nodered/DEYE-LADESEITE-PILOT.md). |
 
+Die Felder Layer 1 → Core reisen über den Palettenknoten `vp-control-readback`. Seine Liste bleibt fest (ein unbekanntes Feld fällt weg) und reicht `mode: native`, `wrote`, `native`, `native_precondition`, `native_refusal` und `native_capabilities` nur mit dem Typ weiter, den der Core liest. Was der Deye-Executor meldet und was der Core erhält, steht in [`control-readback-vectors.json`](control-readback-vectors.json) (erzeugt vom Node-e2e, gelesen von Palette und Core). Bis zum 29.09.2026 fehlten diese Felder dort, und der Core sah keinen Übernahme-Beleg.
+
 **Rückmeldung an die Wolke:** `execution.mode` = `autonomous_charge` (E↑), `autonomous_selfconsumption` (E, E~), `autonomous_discharge` (E↓) – nur nach bestätigtem Rücklesen, und das Wort fällt im selben Takt wie jede Rücknahme. `execution.planned_kw` ist die Referenz; `commanded_kw` und `confirmed_kw` sind in jedem `autonomous_*`-Modus **null** (die Box schreibt keinen Batteriewert). `execution.window_min_kw` / `window_max_kw` reisen nur bei `autonomous_charge` / `autonomous_selfconsumption`.
 
 ## Mehrere Wechselrichter an einem Netzpunkt (K6, 24.09.2026)

@@ -16,7 +16,6 @@ import { describe, expect, it } from 'vitest';
  */
 const dir = join(__dirname, 'components');
 const dialog = readFileSync(join(dir, 'FahrzeugDialog.tsx'), 'utf8');
-const karte = readFileSync(join(dir, 'FahrzeugeKarte.tsx'), 'utf8');
 const css = readFileSync(join(dir, 'FahrzeugeKarte.css'), 'utf8');
 
 describe('Die P7-Flächen bringen ihr Stylesheet selbst mit', () => {
@@ -24,15 +23,11 @@ describe('Die P7-Flächen bringen ihr Stylesheet selbst mit', () => {
     expect(dialog).toMatch(/import '\.\/FahrzeugeKarte\.css'/);
   });
 
-  it('die Karte ebenso', () => {
-    expect(karte).toMatch(/import '\.\/FahrzeugeKarte\.css'/);
-  });
-
   // ⚠ Und die Datei muss die Klassen wirklich tragen - ein Import auf eine
   // Datei ohne die Regeln wäre derselbe Defekt mit einer grünen Zeile davor.
-  it('und die Datei trägt jede `vp-fz-`-Klasse, die die zwei benutzen', () => {
+  it('und die Datei trägt jede `vp-fz-`-Klasse, die der Dialog benutzt', () => {
     const benutzt = new Set(
-      [...`${dialog}${karte}`.matchAll(/vp-fz-[a-z-]+/g)].map((m) => m[0]),
+      [...dialog.matchAll(/vp-fz-[a-z-]+/g)].map((m) => m[0]),
     );
     expect(benutzt.size).toBeGreaterThan(3);
     for (const klasse of benutzt) {

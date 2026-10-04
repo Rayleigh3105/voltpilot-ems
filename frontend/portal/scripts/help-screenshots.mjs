@@ -28,7 +28,8 @@ try {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1, locale: 'de-DE', timezoneId: 'Europe/Berlin', reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.clock.setFixedTime(new Date('2026-09-10T10:00:00Z'));
+    // Eine eigene Beispielseite (`seite`, etwa die Steuerung) bringt ihre eigene Uhr mit.
+    await page.clock.setFixedTime(new Date(spec.uhr ?? '2026-09-10T10:00:00Z'));
     // Teaching map: deterministic fictional tile; all other off-origin traffic
     // is blocked so recapture cannot depend on a live account or external data.
     await page.route('**/*', (route) => {
@@ -38,7 +39,7 @@ try {
       return route.abort();
     });
     try {
-      await page.goto(`http://127.0.0.1:4176/e2e/help.html${spec.query ? '?' + spec.query : ''}${spec.hash ?? ''}`);
+      await page.goto(`http://127.0.0.1:4176/e2e/${spec.seite ?? 'help'}.html${spec.query ? '?' + spec.query : ''}${spec.hash ?? ''}`);
       await page.locator('.vp-app, .vp-modal').first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(1000);

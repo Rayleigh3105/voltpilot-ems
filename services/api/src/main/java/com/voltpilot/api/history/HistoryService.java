@@ -2,6 +2,7 @@ package com.voltpilot.api.history;
 
 import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
 import com.voltpilot.api.optimizer.SlotEconomics;
+import com.voltpilot.api.repo.EarningsRepository;
 import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
 import com.voltpilot.api.web.dto.HistoryCoverageDto;
@@ -46,10 +47,19 @@ public class HistoryService {
     private final OptimizerDiagnosticsService diagnostics;
     private final boolean ungeklemmteQuoten;
 
+    /**
+     * Der Planwert der Steuerung (M2): gegen denselben durchlaufenden
+     * Vergleichsspeicher wie die gemessene Zahl, deshalb aus dem Walk der
+     * Erlös-Rechnung und nicht mehr aus {@code stur_cost_eur}.
+     */
+    private final EarningsRepository earnings;
+
     public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics,
+            EarningsRepository earnings,
             @Value("${voltpilot.uems.historie.ungeklemmte-quoten-enabled:true}") boolean ungeklemmteQuoten) {
         this.repo = repo;
         this.diagnostics = diagnostics;
+        this.earnings = earnings;
         this.ungeklemmteQuoten = ungeklemmteQuoten;
     }
 
@@ -66,7 +76,9 @@ public class HistoryService {
         List<HistoryBucketDto> buckets = buckets(siteId, biddingZone, range, window, cutover);
 
         HistoryTotalsDto totals = totals(buckets,
-                repo.plannedSavings(siteId, window.from(), window.to()),
+                new HistoryRepository.PlannedSavings(
+                        repo.savings(siteId, window.from(), window.to()),
+                        earnings.steuerungGeplantForSite(siteId, window.from(), window.to())),
                 repo.tariffContext(siteId), ungeklemmteQuoten);
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY

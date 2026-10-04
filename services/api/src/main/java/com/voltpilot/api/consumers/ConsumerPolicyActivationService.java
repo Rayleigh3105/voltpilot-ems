@@ -125,6 +125,14 @@ public class ConsumerPolicyActivationService {
         return controlEnabled && compilerEnabled;
     }
 
+    /**
+     * Whether {@link #resume} can re-establish control (the control flag). A
+     * Szene pauses devices only when it can also resume them at its end.
+     */
+    public boolean resumeAvailable() {
+        return controlEnabled;
+    }
+
     // -- activate ------------------------------------------------------------
 
     @Transactional

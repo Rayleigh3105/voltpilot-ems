@@ -1,0 +1,205 @@
+import { expect, test, type Page } from '@playwright/test';
+
+/**
+ * Der Boot-Ablauf der SCHALE (nach der Keycloak-Anmeldung): `/tenant-context`,
+ * `/sites`, `/devices`. Genau hier sass der falsche „Noch keine Anlage"-Blitz -
+ * `UnifiedPortal` rendert vor der ersten Antwort mit `sites=[]`, und weil
+ * `loaded` noch `false` ist, fiel es früher durch bis zum Leer-Zustand der
+ * Landung, bevor Skelett und Inhalt kamen.
+ *
+ * Die Ehrlichkeitsregel des Hauses: „Fehlend ist keine Null" - ein
+ * „noch keine …"-Leer-Zustand darf erst nach einer ERFOLGREICHEN Antwort
+ * erscheinen. Bis dahin trägt der Marken-Lade-Moment (`VpLoader`) die Zeit.
+ */
+
+const EVID = '/Users/moritzv/IdeaProjects/firstmate/data/vp-ladeanimation-q4/nachweise';
+
+/** Eine plausible, vollständige Anlage - der Inhalt kommt aus diesem Mock. */
+const site = {
+  id: '10000000-0000-0000-0000-000000000001',
+  name: 'Sonnenhof',
+  biddingZone: 'DE-LU',
+  latitude: 49.2,
+  longitude: 12.8,
+  plantKind: 'eigenverbrauch',
+  anzulegenderWertCtKwh: null,
+  tarifArt: 'ohne',
+  tarifParamCtKwh: null,
+  gridChargingEnabled: false,
+};
+
+const device = {
+  id: '20000000-0000-0000-0000-000000000001',
+  siteId: site.id,
+  name: 'Wechselrichter',
+  lastSeenAt: new Date().toISOString(),
+};
+
+/**
+ * Der DATEN-Boot wird verzögert, damit die Lücke sichtbar wird, die in
+ * Produktion (echte Latenz) von selbst entsteht. Lokal ist alles schneller -
+ * die Drosselung macht denselben Fehlerpfad reproduzierbar.
+ */
+async function mockBoot(
+  page: Page,
+  opts: {
+    sites: unknown[];
+    devices: unknown[];
+    delayMs: number;
+    tenants?: unknown[];
+    // Lässt den Sites-Abruf mit diesem HTTP-Status scheitern (z. B. 500/401) -
+    // der initiale Ladefehler, der NICHT als leeres Konto durchgehen darf.
+    failSites?: number;
+  },
+) {
+  const wait = () => new Promise((r) => setTimeout(r, opts.delayMs));
+  // ⚠ In Playwright gewinnt der ZULETZT registrierte Handler. Die Auffang-Route
+  // (alle übrigen Anlagen-/Flotten-Reads fail-soft leer, damit der Test am
+  // Boot-Fenster misst und nicht an den Innereien einer Seite) steht deshalb
+  // ZUERST; die konkreten, verzögerten Routen kommen danach.
+  await page.route('**/api/v1/**', async (route) => {
+    const url = route.request().url();
+    const body = /\/(sites|devices|components|entities|candidates|tenants|runs|releases)(\b|\/|\?|$)/.test(url)
+      ? '[]'
+      : '{}';
+    await route.fulfill({ status: 200, contentType: 'application/json', body });
+  });
+  await page.route('**/api/v1/admin/tenants', (route) =>
+    route.fulfill({ json: opts.tenants ?? [{ id: 't-1', name: 'Demo GmbH' }] }),
+  );
+  await page.route('**/api/v1/tenant-context', async (route) => {
+    await wait();
+    await route.fulfill({ json: { tenantId: 't-1', name: 'Demo', segment: 'B2C', betriebsart: null } });
+  });
+  await page.route('**/api/v1/sites', async (route) => {
+    await wait();
+    if (opts.failSites) {
+      await route.fulfill({
+        status: opts.failSites,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'boom' }),
+      });
+      return;
+    }
+    await route.fulfill({ json: opts.sites });
+  });
+  await page.route('**/api/v1/devices', async (route) => {
+    await wait();
+    await route.fulfill({ json: opts.devices });
+  });
+}
+
+/** Der Marken-Lade-Moment ist als EIN Statusbereich ausgewiesen. */
+function loader(page: Page) {
+  return page.locator('[data-vp-loader]');
+}
+
+const FALSCHER_LEERTEXT = /Noch keine Anlage|Willkommen bei VoltPilot|noch keine Anlage/;
+
+test.describe('Boot-Ablauf · kein Leer-Zustand vor der ersten Antwort', () => {
+  test('Kunde mit Anlage: Marken-Lader statt „Noch keine Anlage"', async ({ page }, info) => {
+    await mockBoot(page, { sites: [site], devices: [device], delayMs: 1500 });
+    await page.goto('/e2e/boot-flow.html');
+
+    // Im Boot-Fenster (Antwort steht aus): der Marken-Lader trägt die Zeit …
+    await expect(loader(page)).toBeVisible();
+    // … und der Leer-Zustand darf zu KEINEM Zeitpunkt behauptet werden.
+    await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
+    await page.screenshot({ path: `${EVID}/nachher/kunde-lader-${info.project.name}.png` });
+
+    // Nach der Antwort verschwindet der Lader und der echte Inhalt kommt -
+    // der falsche Leertext ist nie erschienen.
+    await expect(loader(page)).toHaveCount(0, { timeout: 8000 });
+    await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
+  });
+
+  test('leeres Mandanten-Konto (Admin): Lader zuerst, Leer-Zustand ERST nach der Antwort', async ({
+    page,
+  }, info) => {
+    await mockBoot(page, { sites: [], devices: [], delayMs: 1500 });
+    await page.goto('/e2e/boot-flow.html?admin=1&tenant=t-1#/uebersicht');
+
+    // Boot-Fenster: Lader sichtbar, Leer-Zustand NOCH NICHT.
+    await expect(loader(page)).toBeVisible();
+    await expect(page.getByText(/noch keine Anlage/i)).toHaveCount(0);
+    await page.screenshot({ path: `${EVID}/nachher/leer-lader-${info.project.name}.png` });
+
+    // Nach der (erfolgreichen, leeren) Antwort: der ehrliche Leer-Zustand.
+    await expect(
+      page.getByRole('heading', { name: 'Dieser Mandant hat noch keine Anlage' }),
+    ).toBeVisible({ timeout: 8000 });
+    await expect(loader(page)).toHaveCount(0);
+  });
+});
+
+/**
+ * ⚠ SOLLTE-4-WÄCHTER: die drei Ränder des Boot-Covers, die der Review nachgezogen
+ * sehen wollte - der Ladefehler, die reduzierte Bewegung und die Unterseite, die
+ * NICHT meldet. Alle drei am echten `App` über das Boot-Harness (Netzrand
+ * gemockt), nicht am Einzelbaustein.
+ */
+test.describe('Boot-Cover · Ränder', () => {
+  test('Sites-Abruf scheitert (500): ehrliche Fehlerkarte, KEIN endloser Lader', async ({
+    page,
+  }, info) => {
+    await mockBoot(page, { sites: [], devices: [], delayMs: 300, failSites: 500 });
+    await page.goto('/e2e/boot-flow.html');
+
+    // Im Boot-Fenster trägt der Marken-Lader die Zeit …
+    await expect(loader(page)).toBeVisible();
+
+    // … doch nach dem Fehler kommt die EHRLICHE Fehlerkarte (kein „Willkommen"/
+    // Leer-Zustand über einer Störung, M2) - und der Lader steht NICHT endlos.
+    await expect(
+      page.getByRole('heading', { name: 'Daten konnten nicht geladen werden' }),
+    ).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('.vp-loader-screen')).toHaveCount(0);
+    await expect(loader(page)).toHaveCount(0);
+    await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
+    await page.screenshot({ path: `${EVID}/nachher/sites-500-fehlerkarte-${info.project.name}.png` });
+  });
+
+  test('reduzierte Bewegung: Ringe ruhen, der Lader trägt die Zeit ehrlich, dann Inhalt', async ({
+    page,
+  }, info) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await mockBoot(page, { sites: [site], devices: [device], delayMs: 900 });
+    await page.goto('/e2e/boot-flow.html');
+
+    // Der Lader ist als Statusbereich da (kein Leer-Zustand vor der Antwort) …
+    await expect(loader(page)).toBeVisible();
+    await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
+    // … und die Puls-Ringe RUHEN (der EINE `prefers-reduced-motion`-Schalter):
+    // computed `animation-name` ist `none`, ein leiser Halo bleibt.
+    const ringAnim = await page
+      .locator('.vp-loader-screen .vp-loader-ring.r1')
+      .evaluate((el) => getComputedStyle(el).animationName);
+    expect(ringAnim, 'die Ringe müssen unter reduzierter Bewegung ruhen').toBe('none');
+    await page.screenshot({ path: `${EVID}/nachher/reduced-motion-lader-${info.project.name}.png` });
+
+    // Nach der Antwort kommt der Inhalt, der Lader hebt ab, kein falscher Leertext.
+    await expect(loader(page)).toHaveCount(0, { timeout: 8000 });
+    await expect(page.getByText(FALSCHER_LEERTEXT)).toHaveCount(0);
+  });
+
+  test('Deep-Link auf eine Portfolio-Unterseite: der Cover hebt bei `loaded` ab, nicht erst an der 3-s-Grenze', async ({
+    page,
+  }) => {
+    // Eine Unterseite (`portfolio-messwerte`) MELDET kein erstes Bild
+    // (`useReportFirstPaint`). Ohne die `isReportingLanding`-Grenze hinge der
+    // Cover bis zur 3-s-Sicherheitsgrenze unter fertigem Inhalt (Review SOLLTE-2);
+    // mit ihr hebt er ab, sobald die Anlagenliste da ist (`loaded`).
+    await mockBoot(page, { sites: [site], devices: [device], delayMs: 400 });
+    const t0 = Date.now();
+    await page.goto('/e2e/boot-flow.html?admin=1&tenant=t-1#/portfolio/messwerte');
+
+    // Der Cover erscheint im Boot-Fenster …
+    await expect(page.locator('.vp-loader-screen')).toBeVisible();
+    // … und ist deutlich VOR der 3-s-Grenze wieder weg (er wartete auf `loaded`,
+    // nicht auf die Sicherheitsgrenze). Die Übergabe kostet die Ausblendzeit -
+    // 2,5 s trennt sauber von 3 s + Latenz.
+    await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
+    const dt = Date.now() - t0;
+    expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
+  });
+});

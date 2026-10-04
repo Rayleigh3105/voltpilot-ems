@@ -538,6 +538,10 @@ class _FakeCursor:
             # rollup consumer than the peak anchor below, so it must not land in
             # captured_rollup_since.
             self._rows = []
+        elif "FROM telemetry_rollup_15m" in sql and "soc_min_pct" in sql:
+            # Der gemessene Betriebsbereich der Messlatte (M1) - ein DRITTER
+            # Rollup-Leser; ohne Messwert faehrt sie das Planungsband.
+            self._rows = []
         elif "FROM telemetry_rollup_15m" in sql:
             _FakeCursor.captured_rollup_since.append(params[1])
             # Descending import buckets: a lone 80-kW spike over a real
