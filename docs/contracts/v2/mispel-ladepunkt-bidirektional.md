@@ -1,6 +1,6 @@
 # MiSpeL — bidirektionaler Ladepunkt (MP-31)
 
-Stand 04.10.2026 · Vertrag 1.1 (MP-41a additiv: § 5a, § 6a) · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und Ladepunkten
+Stand 04.10.2026 · Vertrag 1.2 (MP-41a additiv: § 5a, § 6a; MP-33e: Vergleich aus der Ablage) · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und Ladepunkten
 („MiSpeL“, Beschluss 01.10.2026) — Anlage 1 (Abgrenzungsoption) und Tenor mit Begründung.
 Konzept: MiSpeL-Fundament §2.4 und §6, Bauplan §8 Zeile MP-31; Entscheid E3 = D (Software-Tiefe sofort, V2H vor V2G).
 
@@ -190,10 +190,14 @@ vorbehalt}`, `eur` mit Vorzeichen): `weniger_gekauft`, `mehr_geladen`, `ins_netz
 `vermiedenes_netzentgelt` = (20) × Satz des Preisblatts × (1 + USt) wie MP-18 (Netzentgelt mit `vorbehalt: true`, W10),
 `akku_verschleiss`, `marktpraemie` = (31) × MAX[AW − Jahresmarktwert; 0], erst mit dem Jahresmarktwert bestimmt.
 
-**Vergleich** „dasselbe Haus, in dem das Auto nur lädt“: die Messlatte ohne Rückspeisen liefert der Optimierer (MP-33d).
-Solange sie fehlt, sind `weniger_gekauft`, `mehr_geladen`, `ins_netz_verkauft`, `akku_verschleiss` und
-`vergleich.summe_eur` offen (`grund: messlatte_fehlt`) — die Karte zeigt Mengen und Posten, aber keine Summe: ein Minus
-steht nie allein, unbekannt ist keine Null. `summe_eur` ist die Summe ohne Marktprämie. In der Pauschaloption gibt es keine
+**Vergleich** „dasselbe Haus, in dem das Auto nur lädt“: die Messlatte ohne Rückspeisen rechnet der Optimierer (MP-33d)
+und legt sie je Viertelstunde ab; die Route summiert sie über die Tage der Teile bis zur laufenden Viertelstunde
+([Vertrag Messlatte § 3](mispel-messlatte-nur-laden.md#3-ablage-mp-33e), MP-33e). Die vier Posten kommen dann mit
+`menge_kwh` und dem Mittel als `satz_ct`. Fehlt der Ablage eine Viertelstunde eines Ladepunkts, sind `weniger_gekauft`,
+`mehr_geladen`, `ins_netz_verkauft`, `akku_verschleiss` und `vergleich.summe_eur` offen (`grund: messlatte_fehlt`) — die
+Karte zeigt Mengen und Posten, aber keine Summe: ein Minus steht nie allein, unbekannt ist keine Null. `summe_eur` ist
+die Summe der auf Cent gerundeten Posten ohne Marktprämie und steht nur, wenn diese sechs bestimmt sind; sonst ist
+`vergleich` offen mit dem Grund des ersten offenen Postens (in A3/A4 `speicher_und_ladepunkt`). In der Pauschaloption gibt es keine
 eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S. 16) — dann keine Teile.
 
 ## 7. Was dieser Vertrag nicht regelt
@@ -208,7 +212,7 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
 - **Fläche** der Einstellungen des Fahrers (Wallbox-Karte in Steuerung › Laden): MP-41b, wenn `mispel` die neue
   Steuerung von `main` nachgezogen hat. Fähigkeit im Aufbau und Erträge: MP-41a.
 - **Anbindung an Optimierer und Box:** der Optimierer liest § 5a noch nicht und sendet den Fahrplan-Block `fahrzeug` noch
-  nicht; die Messlatte „nur laden“ für § 6a kommt mit MP-33d.
+  nicht; die Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e.
 
 ## Prüfen
 

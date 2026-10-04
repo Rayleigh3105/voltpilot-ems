@@ -94,6 +94,8 @@ class LadepunktErtraegeApiTest {
     MockMvc mvc;
     @Autowired
     MispelAbgrenzungService dienst;
+    @Autowired
+    LadepunktErtragService ertraege;
 
     private static JdbcTemplate root;
 
@@ -181,6 +183,91 @@ class LadepunktErtraegeApiTest {
         // Vor der Festlegung und eine falsche Form: 400.
         assertThat(antwort(w, "/ladepunkte/ertraege/2026-09").getStatus()).isEqualTo(400);
         assertThat(antwort(w, "/ladepunkte/ertraege/November").getStatus()).isEqualTo(400);
+    }
+
+    /**
+     * MP-33e: die Messlatte „nur laden“ aus der Ablage je Viertelstunde (ladepunkt_messlatte) — die vier Posten und
+     * die Summe gegenüber nur laden; eine fehlende Viertelstunde ist eine fehlende Summe, keine kleinere.
+     */
+    @Test
+    void summeGegenNurLadenAusDerAblageJeViertelstunde() throws Exception {
+        Welt w = welt();
+        lauf(w, YearMonth.of(2026, 11), "2026-12-10T12:00:00Z");
+        ertraege.uhrStellen(Clock.fixed(Instant.parse("2026-12-10T12:00:00Z"), ZoneOffset.UTC));
+        // November 2026 in Berlin: 30 Tage × 96 = 2 880 Viertelstunden (ohne Umstellung).
+        int n = messlatteAblegen(w, "2026-10-31T23:00:00Z", "2026-11-30T22:45:00Z");
+        assertThat(n).isEqualTo(2880);
+        // Ein älterer Plan ersetzt nichts: die Ablage hält je Viertelstunde den Plan, der für sie galt.
+        assertThat(root.queryForObject("SELECT count(DISTINCT komponente_id) FROM ladepunkt_messlatte WHERE site_id = ?",
+                Integer.class, w.anlage())).isEqualTo(1);
+
+        JsonNode e = ruf(w, "/ladepunkte/ertraege/2026-11");
+        Map<String, JsonNode> p = new LinkedHashMap<>();
+        e.path("posten").forEach(x -> p.put(x.path("schluessel").asText(), x));
+        // 2 880 × 0,0125 € = 36,00 € für 108 kWh (Mittel 33,3 ct); 2 880 × −0,00785 € = −22,61 € für 95,0 kWh.
+        assertPosten(p.get("weniger_gekauft"), "36.00", "108.0", "33.3");
+        assertPosten(p.get("mehr_geladen"), "-22.61", "95.0", "23.8");
+        assertPosten(p.get("ins_netz_verkauft"), "3.60", "34.0", "10.6");
+        // Verschleiß: 3 ct je zurückgegebener kWh (FAHRZEUG_VERSCHLEISS_CT_JE_KWH, Schätzung).
+        assertPosten(p.get("akku_verschleiss"), "-4.32", "144.0", "3.0");
+        assertThat(p.get("marktpraemie").path("stand").asText()).isEqualTo("offen");
+        BigDecimal summe = BigDecimal.ZERO;
+        for (String k : List.of("weniger_gekauft", "mehr_geladen", "ins_netz_verkauft", "vermiedene_umlagen",
+                "vermiedenes_netzentgelt", "akku_verschleiss")) {
+            summe = summe.add(p.get(k).path("eur").decimalValue());
+        }
+        assertThat(e.path("vergleich").path("stand").asText()).isEqualTo("bestimmt");
+        assertThat(e.path("vergleich").path("grund").isNull()).isTrue();
+        assertThat(e.path("vergleich").path("summe_eur").decimalValue()).isEqualByComparingTo(summe);
+
+        // Eine Viertelstunde fehlt: keine Summe, kein Posten aus dem Vergleich — offen statt 0.
+        root.update("DELETE FROM ladepunkt_messlatte WHERE komponente_id = ? AND zeit = '2026-11-15T12:00:00Z'",
+                w.wallbox());
+        JsonNode luecke = ruf(w, "/ladepunkte/ertraege/2026-11");
+        assertThat(luecke.path("vergleich").path("stand").asText()).isEqualTo("offen");
+        assertThat(luecke.path("vergleich").path("grund").asText()).isEqualTo("messlatte_fehlt");
+        assertThat(luecke.path("vergleich").path("summe_eur").isNull()).isTrue();
+        luecke.path("posten").forEach(x -> {
+            if (List.of("weniger_gekauft", "mehr_geladen", "ins_netz_verkauft", "akku_verschleiss")
+                    .contains(x.path("schluessel").asText())) {
+                assertThat(x.path("stand").asText()).isEqualTo("offen");
+                assertThat(x.path("eur").isNull()).isTrue();
+            }
+        });
+
+        // Im laufenden Monat zählen nur die vergangenen Viertelstunden: am 15.11. 12:07 trägt die Ablage bis 12:00.
+        messlatteAblegen(w, "2026-11-15T12:00:00Z", "2026-11-15T12:00:00Z");
+        ertraege.uhrStellen(Clock.fixed(Instant.parse("2026-11-15T11:07:00Z"), ZoneOffset.UTC));
+        root.update("DELETE FROM ladepunkt_messlatte WHERE komponente_id = ? AND zeit >= '2026-11-15T11:00:00Z'",
+                w.wallbox());
+        assertThat(ruf(w, "/ladepunkte/ertraege/2026-11").path("vergleich").path("stand").asText())
+                .isEqualTo("bestimmt");
+
+        // Der Löschweg: die Komponente nimmt ihre Messlatte mit (ON DELETE CASCADE), über sie Anlage und Mandant.
+        assertThat(root.queryForObject("SELECT confdeltype::text FROM pg_constraint "
+                + "WHERE conname = 'ladepunkt_messlatte_komponente_fk'", String.class)).isEqualTo("c");
+        assertThat(root.queryForObject("SELECT relforcerowsecurity FROM pg_class WHERE relname = 'ladepunkt_messlatte'",
+                Boolean.class)).isTrue();
+    }
+
+    /** Legt je Viertelstunde in {@code [von, bis]} eine Zeile ab wie der Optimierer ({@code persistence.messlatte_rows}). */
+    private static int messlatteAblegen(Welt w, String von, String bis) {
+        return root.update("INSERT INTO ladepunkt_messlatte (komponente_id, zeit, tenant_id, site_id, plan_id, "
+                + "generated_at, weniger_gekauft_eur, weniger_gekauft_kwh, mehr_geladen_eur, mehr_geladen_kwh, "
+                + "ins_netz_verkauft_eur, ins_netz_verkauft_kwh, akku_verschleiss_eur, rueckgespeist_kwh) "
+                + "SELECT ?, z, ?, ?, gen_random_uuid(), z, 0.0125, 0.0375, -0.00785, 0.033, 0.00125, 0.0118, "
+                + "-0.0015, 0.05 FROM generate_series(?::timestamptz, ?::timestamptz, INTERVAL '15 minutes') z "
+                + "ON CONFLICT (komponente_id, zeit) DO NOTHING",
+                w.wallbox(), w.mandant(), w.anlage(), von, bis);
+    }
+
+    private static void assertPosten(JsonNode p, String eur, String kwh, String satzCt) {
+        String k = p.path("schluessel").asText();
+        assertThat(p.path("stand").asText()).as(k).isEqualTo("bestimmt");
+        assertThat(p.path("grund").isNull()).as(k).isTrue();
+        assertThat(p.path("eur").decimalValue()).as(k).isEqualByComparingTo(eur);
+        assertThat(p.path("menge_kwh").decimalValue()).as(k).isEqualByComparingTo(kwh);
+        assertThat(p.path("satz_ct").decimalValue()).as(k).isEqualByComparingTo(satzCt);
     }
 
     private static BigDecimal kwh(Map<String, JsonNode> m, String nr) {

@@ -1,5 +1,5 @@
 {
-  "_hinweis": "MiSpeL MP-41a: Antworten von GET /api/v1/sites/{id}/ladepunkte/ertraege/{monat} (Haus Albers aus BK-41, Formelsatz A2) und GET /ladepunkte (MP-31). „mit Messlatte“ ist ein Bühnenzustand: die Messlatte „nur laden“ liefert MP-33d.",
+  "_hinweis": "MiSpeL MP-41a: Antworten von GET /api/v1/sites/{id}/ladepunkte/ertraege/{monat} (Haus Albers aus BK-41, Formelsatz A2) und GET /ladepunkte (MP-31). „mit Messlatte“: die Messlatte „nur laden“ rechnet der Optimierer (MP-33d) und legt sie je Viertelstunde ab (ladepunkt_messlatte, MP-33e); die Route summiert sie über den Monat.",
   "ertrag-mit": {
     "anlage": "simulator-anlage",
     "monat": "2026-11",

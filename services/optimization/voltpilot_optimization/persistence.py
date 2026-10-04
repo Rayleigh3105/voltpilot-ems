@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from typing import Protocol
+from uuid import UUID
 
 from voltpilot_optimization.domain import SchedulePlan
 
@@ -110,6 +111,66 @@ DO UPDATE SET
     why_night_reserve_q = EXCLUDED.why_night_reserve_q,
     soc_source        = EXCLUDED.soc_source;
 """
+
+
+#: MiSpeL MP-33e: die Messlatte „nur laden“ je Ladepunkt und Viertelstunde
+#: (api-Migration ``V20261004173000``, Vertrag ``mispel-messlatte-nur-laden.md``
+#: § 3). Ein Plan ersetzt eine Zeile nur, wenn er nicht aelter ist - so haelt
+#: die Ablage den Plan, der fuer die Viertelstunde galt (wie ``schedule`` ueber
+#: ``DISTINCT ON (time) … generated_at DESC``), und derselbe Plan ein zweites
+#: Mal aendert nichts.
+_MESSLATTE_SQL = """
+INSERT INTO ladepunkt_messlatte
+    (komponente_id, zeit, tenant_id, site_id, plan_id, generated_at,
+     weniger_gekauft_eur, mehr_geladen_eur, ins_netz_verkauft_eur, akku_verschleiss_eur,
+     weniger_gekauft_kwh, mehr_geladen_kwh, ins_netz_verkauft_kwh, rueckgespeist_kwh)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (komponente_id, zeit)
+DO UPDATE SET
+    plan_id               = EXCLUDED.plan_id,
+    generated_at          = EXCLUDED.generated_at,
+    weniger_gekauft_eur   = EXCLUDED.weniger_gekauft_eur,
+    mehr_geladen_eur      = EXCLUDED.mehr_geladen_eur,
+    ins_netz_verkauft_eur = EXCLUDED.ins_netz_verkauft_eur,
+    akku_verschleiss_eur  = EXCLUDED.akku_verschleiss_eur,
+    weniger_gekauft_kwh   = EXCLUDED.weniger_gekauft_kwh,
+    mehr_geladen_kwh      = EXCLUDED.mehr_geladen_kwh,
+    ins_netz_verkauft_kwh = EXCLUDED.ins_netz_verkauft_kwh,
+    rueckgespeist_kwh     = EXCLUDED.rueckgespeist_kwh
+WHERE ladepunkt_messlatte.generated_at <= EXCLUDED.generated_at;
+"""
+
+
+def messlatte_rows(plan: SchedulePlan) -> list[tuple]:
+    """MiSpeL MP-33e: die Zeilen der Messlatte „nur laden“ eines Plans, eine je Slot.
+
+    - Mit Messlatte (:attr:`FahrzeugPlan.messlatte_nur_laden`) ihre
+      ``posten_je_slot``.
+    - Ohne Messlatte und ohne geplante Rueckspeisung ist der Plan selbst „nur
+      laden“ (Vertrag § 1): jeder Posten ist 0 - eine echte Null, gerechnet.
+    - Sonst (kein Fahrzeug, Messlatte nicht rechenbar): keine Zeile. Die Luecke
+      ist im Portal eine fehlende Summe, nie eine kleinere.
+    """
+    from voltpilot_optimization.solver import MESSLATTE_FELDER  # lazy: solver zieht pyomo
+
+    fz = plan.fahrzeug
+    if fz is None:
+        return []
+    ml = fz.messlatte_nur_laden
+    if ml is not None:
+        je_slot = ml.posten_je_slot
+        if len(je_slot) != len(plan.slots):
+            return []
+        werte = [tuple(round(getattr(p, f), 6) for f in MESSLATTE_FELDER) for p in je_slot]
+    elif all(s.rueckspeisen_kw <= 1e-9 for s in fz.slots):
+        werte = [(0.0,) * len(MESSLATTE_FELDER)] * len(plan.slots)
+    else:
+        return []
+    return [
+        (UUID(str(fz.komponente_id)), slot.start, plan.tenant_id, plan.site_id, plan.plan_id,
+         plan.generated_at, *w)
+        for slot, w in zip(plan.slots, werte)
+    ]
 
 
 def _round_or_none(value: float | None, digits: int) -> float | None:
@@ -266,6 +327,7 @@ class TimescaleScheduleRepository:
                     )
                     return 0
                 cur.executemany(_UPSERT_SQL, rows)
+                self._messlatte_ablegen(conn, cur, plan)
             conn.commit()
         logger.info(
             "persist.ok",
@@ -278,3 +340,21 @@ class TimescaleScheduleRepository:
             },
         )
         return len(rows)
+
+    @staticmethod
+    def _messlatte_ablegen(conn, cur, plan: SchedulePlan) -> None:
+        """MP-33e: die Messlatte im selben Lauf, aber FAIL-SOFT hinter einem
+        Savepoint - eine fehlende Zahl ist eine fehlende Summe im Portal, nie ein
+        fehlender Plan (die Komponente kann z. B. gerade geloescht sein)."""
+        zeilen = messlatte_rows(plan)
+        if not zeilen:
+            return
+        try:
+            with conn.transaction():
+                cur.executemany(_MESSLATTE_SQL, zeilen)
+        except Exception:  # noqa: BLE001 - Bewertung, nie den Plan versenken
+            logger.warning(
+                "persist.messlatte_nicht_abgelegt",
+                extra={"context": {"site_id": str(plan.site_id), "plan_id": str(plan.plan_id)}},
+                exc_info=True,
+            )

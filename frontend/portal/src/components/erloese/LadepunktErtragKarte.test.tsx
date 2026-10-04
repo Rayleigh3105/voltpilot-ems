@@ -108,3 +108,29 @@ describe('LadepunktErtragKarte · A3: ein Zähler Z2 für Stromspeicher und Lade
     expect(k.textContent).toContain('den Anteil des Autos zeigt erst der Vergleich');
   });
 });
+
+describe('LadepunktErtragKarte · MP-33e: Messlatte aus der Ablage, Summe nur mit allen Posten', () => {
+  it('A3 mit Messlatte: Vergleichsposten bestimmt, aber keine Summe und kein Minus allein — mit Grund statt Wartesatz', () => {
+    const vergleich = MIT.posten.filter((p) => ['weniger_gekauft', 'mehr_geladen', 'ins_netz_verkauft', 'akku_verschleiss'].includes(p.schluessel));
+    const daten: LadepunktErtraege = {
+      ...A3,
+      posten: A3.posten.map((p) => vergleich.find((v) => v.schluessel === p.schluessel) ?? p),
+      vergleich: { stand: 'offen', grund: 'speicher_und_ladepunkt', summe_eur: null },
+    };
+    render(<LadepunktErtragKarte daten={daten} />);
+    const k = karte();
+    const betrag = (id: string) => k.querySelector(`[data-betrag="${id}"]`)!.textContent;
+    expect(betrag('summe')).toBe('offen');
+    expect(betrag('weniger_gekauft')).toBe(`+${NBSP}36,94${NBSP}€`);
+    expect(betrag('mehr_geladen')).toBe('offen'); // ein Minus steht nie allein
+    expect(k.querySelector('[data-hinweis="ohne-vergleich"]')).toBeNull();
+    expect(k.querySelector('[data-hinweis="summe-offen"]')!.textContent).toContain('Keine Summe: Stromspeicher und Ladepunkt hängen an einem Zähler');
+  });
+
+  it('A2 mit vollständiger Messlatte: Summe = Summe der Posten ohne Marktprämie', () => {
+    render(<LadepunktErtragKarte daten={MIT} />);
+    const summe = MIT.posten.filter((p) => p.schluessel !== 'marktpraemie').reduce((a, p) => a + (p.eur ?? NaN), 0);
+    expect(MIT.vergleich.summe_eur).toBeCloseTo(summe, 2);
+    expect(karte().querySelector('[data-hinweis="summe-offen"]')).toBeNull();
+  });
+});

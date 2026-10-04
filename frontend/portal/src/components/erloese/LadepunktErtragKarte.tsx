@@ -17,7 +17,9 @@ import './LadepunktErtragKarte.css';
  * Fremdtankstrom (12), was davon zählt (31)/(16) und was es gebracht hat — gegen dasselbe Haus, in dem das Auto nur lädt.
  *
  * ⚠ Keine eigene Rechnung — alle Zahlen kommen fertig aus der Route (`ladepunktErtraege.ts`).
- * ⚠ Ein Minus steht nie allein: ohne den Vergleich (Messlatte „nur laden“) keine Summe und kein Minus-Posten.
+ * ⚠ Ein Minus steht nie allein: ohne den Vergleich (Messlatte „nur laden“) keine Summe und kein Minus-Posten. Die
+ *   Messlatte liest die Route seit MP-33e aus der Ablage je Viertelstunde (`ladepunkt_messlatte`); die Summe steht nur,
+ *   wenn alle sechs Posten außer der Marktprämie bestimmt sind, sonst „offen“ mit Grund.
  */
 export function LadepunktErtragKarte({ daten }: { daten: LadepunktErtraege }) {
   if (daten.teile.length === 0) return null;
@@ -50,10 +52,16 @@ export function LadepunktErtragKarte({ daten }: { daten: LadepunktErtraege }) {
               {vergleichDa ? euroText(daten.vergleich.summe_eur) : 'offen'}
             </dd>
           </dl>
-          {!vergleichDa && (
+          {!vergleichDa && daten.vergleich.grund === 'messlatte_fehlt' && (
             <p className="vp-lpe-notiz" data-hinweis="ohne-vergleich">
               Eine Summe steht hier, sobald VoltPilot den Vergleich mit dem Haus rechnet, in dem das Auto nur lädt. Bis
               dahin zeigt die Karte die Mengen und die Posten, die schon feststehen.
+            </p>
+          )}
+          {!vergleichDa && daten.vergleich.grund !== 'messlatte_fehlt' && (
+            // MP-33e: der Vergleich ist da, aber ein anderer Posten ist offen — die Summe nennt dessen Grund.
+            <p className="vp-lpe-notiz" data-hinweis="summe-offen">
+              Keine Summe: {postenOffenText(daten.vergleich.grund)}.
             </p>
           )}
           {vorbehalt && (

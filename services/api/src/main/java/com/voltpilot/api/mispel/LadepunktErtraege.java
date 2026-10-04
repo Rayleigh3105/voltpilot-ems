@@ -22,8 +22,10 @@ import java.util.UUID;
  * (28), (31) wörtlich aus {@code monatswerte}. In A3 und A4 misst Z2 Stromspeicher und Ladepunkt gemeinsam (A1 S. 30–32)
  * — dann sind es die Mengen beider, und kein Posten aus dem Rechenwerk wird dem Auto allein zugeschrieben.
  *
- * <p>Der Vergleich „Auto lädt nur“ (Messlatte, MP-33d) ist noch nicht angebunden: dann sind die vier Posten, die nur
- * aus ihm folgen, und die Summe {@code offen} — „Ein Minus steht nie allein“, „Unbekannt ist keine Null“.
+ * <p>Der Vergleich „Auto lädt nur“ (Messlatte, MP-33d) kommt aus der Ablage je Viertelstunde (MP-33e,
+ * {@link LadepunktMesslatteRepository}): die vier Posten, die nur aus ihm folgen, und die Summe aller Posten ohne
+ * Marktprämie. Fehlt er für eine Viertelstunde des Monats, sind diese Posten und die Summe {@code offen} — „Ein Minus
+ * steht nie allein“, „Unbekannt ist keine Null“. Die Summe steht nur, wenn alle sechs Posten bestimmt sind.
  */
 public final class LadepunktErtraege {
 
@@ -70,6 +72,14 @@ public final class LadepunktErtraege {
     public record Posten(String schluessel, String stand, BigDecimal eur, BigDecimal mengeKwh, String formel,
             BigDecimal satzCt, String grund, boolean vorbehalt) {}
 
+    /**
+     * Die Messlatte „nur laden“ über den Monat (MP-33e): die Summen der vier Posten aus der Ablage je Viertelstunde,
+     * EUR mit Vorzeichen, kWh wie {@code domain.MesslattePosten}. Ein PLAN-Wert, keine gemessene Wirkung.
+     */
+    public record Messlatte(BigDecimal wenigerGekauftEur, BigDecimal wenigerGekauftKwh, BigDecimal mehrGeladenEur,
+            BigDecimal mehrGeladenKwh, BigDecimal insNetzVerkauftEur, BigDecimal insNetzVerkauftKwh,
+            BigDecimal akkuVerschleissEur, BigDecimal rueckgespeistKwh) {}
+
     /** Der Vergleich mit demselben Haus, in dem das Auto nur lädt; {@code summeEur} ohne Marktprämie. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Vergleich(String stand, String grund, BigDecimal summeEur) {}
@@ -106,20 +116,24 @@ public final class LadepunktErtraege {
     }
 
     /**
-     * Die sieben Posten in der Reihenfolge der Karte und der Vergleich. Ohne Messlatte sind die Posten, die nur aus
-     * dem Vergleich folgen, und die Summe offen.
+     * Die sieben Posten in der Reihenfolge der Karte und der Vergleich. Ohne Messlatte ({@code ml == null}) sind die
+     * Posten, die nur aus dem Vergleich folgen, und die Summe offen; die Summe steht nur, wenn die sechs Posten außer
+     * der Marktprämie alle bestimmt sind — sonst ist sie offen mit dem Grund des ersten offenen Postens.
      */
     static Monat monat(UUID anlage, String monat, List<Ladepunkt> ladepunkte, List<Teil> teile,
-            MispelMengen.Preise preise, MispelMengen.Marktwert mw) {
+            MispelMengen.Preise preise, MispelMengen.Marktwert mw, Messlatte ml) {
         if (teile.isEmpty()) {
             return new Monat(anlage, monat, ladepunkte, List.of(), List.of(), new Vergleich(MispelMengen.OFFEN,
                     MESSLATTE_FEHLT, null), null);
         }
         boolean nurLadepunkt = teile.stream().allMatch(Teil::nurLadepunkt);
         List<Posten> posten = new ArrayList<>();
-        posten.add(ausVergleich(WENIGER_GEKAUFT));
-        posten.add(ausVergleich(MEHR_GELADEN));
-        posten.add(ausVergleich(INS_NETZ_VERKAUFT));
+        posten.add(ml == null ? ausVergleich(WENIGER_GEKAUFT)
+                : ausMesslatte(WENIGER_GEKAUFT, ml.wenigerGekauftEur(), ml.wenigerGekauftKwh(), null));
+        posten.add(ml == null ? ausVergleich(MEHR_GELADEN)
+                : ausMesslatte(MEHR_GELADEN, ml.mehrGeladenEur(), ml.mehrGeladenKwh(), null));
+        posten.add(ml == null ? ausVergleich(INS_NETZ_VERKAUFT)
+                : ausMesslatte(INS_NETZ_VERKAUFT, ml.insNetzVerkauftEur(), ml.insNetzVerkauftKwh(), null));
         BigDecimal menge20 = summe(teile, "(20)");
         BigDecimal ust = preise == null ? null : preise.ustPct();
         posten.add(nurLadepunkt ? vermieden(VERMIEDENE_UMLAGEN, menge20, preise == null ? null : preise.umlagenCt(),
@@ -127,14 +141,43 @@ public final class LadepunktErtraege {
         posten.add(nurLadepunkt ? vermieden(VERMIEDENES_NETZENTGELT, menge20,
                 preise == null ? null : preise.netzentgeltCt(), ust, true)
                 : offen(VERMIEDENES_NETZENTGELT, menge20, "(20)", SPEICHER_UND_LADEPUNKT, true));
-        posten.add(ausVergleich(AKKU_VERSCHLEISS));
+        posten.add(ml == null ? ausVergleich(AKKU_VERSCHLEISS)
+                : ausMesslatte(AKKU_VERSCHLEISS, ml.akkuVerschleissEur(), ml.rueckgespeistKwh(), null));
         posten.add(praemie(summe(teile, "(31)"), nurLadepunkt, mw));
-        return new Monat(anlage, monat, ladepunkte, List.copyOf(teile), List.copyOf(posten),
-                new Vergleich(MispelMengen.OFFEN, MESSLATTE_FEHLT, null), ust);
+        return new Monat(anlage, monat, ladepunkte, List.copyOf(teile), List.copyOf(posten), vergleich(posten), ust);
+    }
+
+    /**
+     * „Gegenüber nur laden“: die Summe der gerundeten Posten ohne Marktprämie (A1 S. 39: erst mit dem
+     * Jahresmarktwert) — nur, wenn jeder dieser sechs Posten bestimmt ist. Ein Minus steht so nie allein.
+     */
+    static Vergleich vergleich(List<Posten> posten) {
+        BigDecimal summe = BigDecimal.ZERO;
+        for (Posten p : posten) {
+            if (MARKTPRAEMIE.equals(p.schluessel())) {
+                continue;
+            }
+            if (!MispelMengen.BESTIMMT.equals(p.stand()) || p.eur() == null) {
+                return new Vergleich(MispelMengen.OFFEN, p.grund() == null ? MESSLATTE_FEHLT : p.grund(), null);
+            }
+            summe = summe.add(p.eur());
+        }
+        return new Vergleich(MispelMengen.BESTIMMT, null, summe);
     }
 
     private static Posten ausVergleich(String schluessel) {
         return new Posten(schluessel, MispelMengen.OFFEN, null, null, null, null, MESSLATTE_FEHLT, false);
+    }
+
+    /**
+     * Ein Posten aus der Messlatte: EUR auf Cent, die kWh dazu und als Satz das Mittel in ct/kWh (EUR ÷ kWh, ohne
+     * Vorzeichen) — beim Verschleiß also die 3 ct je zurückgegebener kWh; ohne Menge kein Satz.
+     */
+    private static Posten ausMesslatte(String schluessel, BigDecimal eur, BigDecimal kwh, String formel) {
+        BigDecimal satz = kwh == null || kwh.signum() == 0 ? null
+                : eur.multiply(HUNDERT).divide(kwh, 1, RoundingMode.HALF_UP).abs();
+        return new Posten(schluessel, MispelMengen.BESTIMMT, eur.setScale(2, RoundingMode.HALF_UP),
+                kwh == null ? null : kwh.setScale(1, RoundingMode.HALF_UP), formel, satz, null, false);
     }
 
     private static Posten offen(String schluessel, BigDecimal menge, String formel, String grund, boolean vorbehalt) {

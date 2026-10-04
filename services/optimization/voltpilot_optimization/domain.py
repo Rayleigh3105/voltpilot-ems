@@ -441,12 +441,20 @@ class MesslattePosten:
     laedt fuer das Zurueckgeben nach), mehr Einspeisung zum Einspeisewert =
     ``ins_netz_verkauft`` (negativ, wenn das Zurueckspeisen PV-Einspeisung
     verdraengt); ``akku_verschleiss`` je rueckgespeister kWh. Die ersten drei
-    ergeben zusammen genau „Kosten nur laden - Kosten“."""
+    ergeben zusammen genau „Kosten nur laden - Kosten“.
+
+    MP-33e: dazu die kWh je Posten (weniger Bezug, mehr Bezug, mehr
+    Einspeisung - negativ wie ihr Betrag -, rueckgespeist), damit die Ablage je
+    Viertelstunde (``ladepunkt_messlatte``) und die Karte Menge und Satz zeigen."""
 
     weniger_gekauft_eur: float
     mehr_geladen_eur: float
     ins_netz_verkauft_eur: float
     akku_verschleiss_eur: float
+    weniger_gekauft_kwh: float = 0.0
+    mehr_geladen_kwh: float = 0.0
+    ins_netz_verkauft_kwh: float = 0.0
+    rueckgespeist_kwh: float = 0.0
 
     @property
     def summe_eur(self) -> float:

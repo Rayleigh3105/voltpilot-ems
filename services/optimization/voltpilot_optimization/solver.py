@@ -1603,6 +1603,13 @@ def _gutschrift_im_plan_eur(model: ConcreteModel, inp: OptimizationInput) -> flo
     return _gutschrift_eur_mwh(inp) / 1000.0 * rot_kwh * inp.slot_hours
 
 
+#: Die Felder von :class:`MesslattePosten` in Ablage-Reihenfolge (MP-33e).
+MESSLATTE_FELDER = (
+    "weniger_gekauft_eur", "mehr_geladen_eur", "ins_netz_verkauft_eur", "akku_verschleiss_eur",
+    "weniger_gekauft_kwh", "mehr_geladen_kwh", "ins_netz_verkauft_kwh", "rueckgespeist_kwh",
+)
+
+
 def messlatte_nur_laden(
     inp: OptimizationInput, model: ConcreteModel, enforce_grid_limit: bool = True
 ) -> MesslatteNurLaden | None:
@@ -1640,20 +1647,21 @@ def messlatte_nur_laden(
         mehr_bezug = (max(netz, 0.0) - max(netz_nur, 0.0)) * dt
         mehr_einspeisung = (max(-netz, 0.0) - max(-netz_nur, 0.0)) * dt
         preis = inp.import_prices[t] / 1000.0
+        rueck_kwh = max(float(value(model.fz_rueck[t])), 0.0) * dt
         je_slot.append(
             MesslattePosten(
                 weniger_gekauft_eur=round(preis * max(-mehr_bezug, 0.0), 6),
                 mehr_geladen_eur=round(-preis * max(mehr_bezug, 0.0), 6),
                 ins_netz_verkauft_eur=round(inp.export_values[t] / 1000.0 * mehr_einspeisung, 6),
-                akku_verschleiss_eur=round(
-                    -verschleiss_eur_kwh * max(float(value(model.fz_rueck[t])), 0.0) * dt, 6
-                ),
+                akku_verschleiss_eur=round(-verschleiss_eur_kwh * rueck_kwh, 6),
+                weniger_gekauft_kwh=round(max(-mehr_bezug, 0.0), 6),
+                mehr_geladen_kwh=round(max(mehr_bezug, 0.0), 6),
+                ins_netz_verkauft_kwh=round(mehr_einspeisung, 6),
+                rueckgespeist_kwh=round(rueck_kwh, 6),
             )
         )
     posten = MesslattePosten(
-        *(round(sum(getattr(p, f) for p in je_slot), 6) for f in (
-            "weniger_gekauft_eur", "mehr_geladen_eur", "ins_netz_verkauft_eur", "akku_verschleiss_eur"
-        ))
+        *(round(sum(getattr(p, f) for p in je_slot), 6) for f in MESSLATTE_FELDER)
     )
     return MesslatteNurLaden(
         posten=posten,
