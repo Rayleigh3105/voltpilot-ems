@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.mispel.FoerderwegAbgelehnt;
 import com.voltpilot.api.mispel.FoerderwegService;
+import com.voltpilot.api.mispel.PauschalVormerkungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.FoerderwegDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -50,11 +51,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class SiteFoerderwegController {
 
     private final FoerderwegService wege;
+    private final PauschalVormerkungService pauschal;
     private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public SiteFoerderwegController(FoerderwegService wege, RechtPruefung rechte, ObjectMapper json) {
+    public SiteFoerderwegController(FoerderwegService wege, PauschalVormerkungService pauschal, RechtPruefung rechte,
+            ObjectMapper json) {
         this.wege = wege;
+        this.pauschal = pauschal;
         this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -63,7 +67,7 @@ public class SiteFoerderwegController {
     /**
      * Recht: {@code messwerte.ansehen} (Leseweg der Anlage). Der Förderweg am Tag {@code am} (fehlend = heute) mit
      * dem Begriff aus EEG und Festlegung, dem Formelsatz und seiner Bindung, der AW-Differenzierung (MP-12b), Netzladen
-     * und allen Fassungen.
+     * und allen Fassungen; dazu die Pauschaloption, vorgemerkt mit offenem Termin (MP-27, § 5a).
      */
     @GetMapping
     public FoerderwegDto.Ansicht ansehen(@PathVariable UUID siteId,
@@ -73,7 +77,7 @@ public class SiteFoerderwegController {
         if (a == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        return FoerderwegDto.aus(a);
+        return mitPauschal(a);
     }
 
     /** Recht: {@code anlage.verwalten}. Eine neue Fassung ab {@code gueltig_ab}; Antwort: die Ansicht an dem Tag. */
@@ -86,19 +90,44 @@ public class SiteFoerderwegController {
         ProtokollAkteur wer = ProtokollAkteur.aus(auth).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bitte melden Sie sich an."));
         wege.setzen(siteId, a, wer.name());
-        return FoerderwegDto.aus(wege.ansicht(siteId, a.gueltigAb()));
+        return mitPauschal(wege.ansicht(siteId, a.gueltigAb()));
+    }
+
+    /**
+     * Recht: {@code anlage.verwalten}. Merkt die Pauschaloption mit offenem Termin vor (MP-27, Vertrag § 5a) — vor der
+     * EU-Genehmigung, mit den Bestätigungen der Voraussetzungen 2 und 4 der Anlage 2; ändern = noch einmal senden.
+     * Antwort: die Ansicht heute.
+     */
+    @PutMapping("/pauschal-vormerkung")
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+    public FoerderwegDto.Ansicht pauschalVormerken(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        imZugriff(siteId);
+        PauschalVormerkungService.Angaben a = lies(body, PauschalVormerkungService.Angaben.class);
+        ProtokollAkteur wer = ProtokollAkteur.aus(auth).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bitte melden Sie sich an."));
+        pauschal.vormerken(siteId, a, wer.name());
+        return mitPauschal(wege.ansicht(siteId, null));
     }
 
     /**
      * Recht: {@code anlage.verwalten}. Nimmt die Vormerkung zum nächsten Monatsersten zurück (Vertrag § 5); die Fassung
-     * bleibt als aufgehobene lesbar. Antwort: die Ansicht heute.
+     * bleibt als aufgehobene lesbar. Ohne sie nimmt die Route die Pauschaloption mit offenem Termin zurück (§ 5a).
+     * Antwort: die Ansicht heute.
      */
     @DeleteMapping("/vormerkung")
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     public FoerderwegDto.Ansicht vormerkungZuruecknehmen(@PathVariable UUID siteId) {
         imZugriff(siteId);
-        wege.vormerkungZuruecknehmen(siteId);
-        return FoerderwegDto.aus(wege.ansicht(siteId, null));
+        FoerderwegService.Ansicht heute = wege.ansicht(siteId, null);
+        if (heute == null || heute.vormerkung() != null || !pauschal.zuruecknehmen(siteId)) {
+            wege.vormerkungZuruecknehmen(siteId);
+        }
+        return mitPauschal(wege.ansicht(siteId, null));
+    }
+
+    private FoerderwegDto.Ansicht mitPauschal(FoerderwegService.Ansicht a) {
+        return FoerderwegDto.aus(a, pauschal.aktuelle(a.siteId()).orElse(null), pauschal.pauschaloptionAb());
     }
 
     private void imZugriff(UUID siteId) {
@@ -107,11 +136,15 @@ public class SiteFoerderwegController {
     }
 
     private FoerderwegService.Aendern lies(JsonNode body) {
+        return lies(body, FoerderwegService.Aendern.class);
+    }
+
+    private <T> T lies(JsonNode body, Class<T> art) {
         if (body == null || !body.isObject()) {
             throw FoerderwegAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");
         }
         try {
-            return streng.treeToValue(body, FoerderwegService.Aendern.class);
+            return streng.treeToValue(body, art);
         } catch (UnrecognizedPropertyException e) {
             throw FoerderwegAbgelehnt.anfrage(e.getPropertyName(), "„" + e.getPropertyName() + "“ gibt es hier nicht.");
         } catch (JsonMappingException e) {

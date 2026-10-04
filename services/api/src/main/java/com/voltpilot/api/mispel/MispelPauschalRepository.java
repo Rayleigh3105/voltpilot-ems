@@ -49,6 +49,30 @@ public class MispelPauschalRepository {
                 MispelPauschalRepository::zeile, siteId, jahr));
     }
 
+    /**
+     * Der Jahresstand je (Rumpf-)Jahr eines Kalenderjahres für das Portal (MP-27): die jüngste Fassung, ohne die
+     * Viertelstunden des Nachweises — nur Kopf, Stammdaten, Gründe und die Jahreswerte ihres Schlüssels.
+     */
+    public record Jahresstand(LocalDate tagVon, LocalDate tagBis, int fassung, String formelsatz, String basisfall,
+            String stand, String wertequelle, int viertelstundenErwartet, int viertelstundenGerechnet,
+            Instant gerechnetAm, String stammdaten, String standGruende, String jahreswerte) {}
+
+    public List<Jahresstand> jahresstaende(UUID siteId, int jahr) {
+        return List.copyOf(jdbc.query("WITH z AS (SELECT DISTINCT ON (tag_von) tag_von, tag_bis, fassung, formelsatz, "
+                + "stand, wertequelle, viertelstunden_erwartet, viertelstunden_gerechnet, gerechnet_am, "
+                + "nachweis::json AS n FROM mispel_pauschal_jahr WHERE site_id = ? AND jahr = ? "
+                + "ORDER BY tag_von, fassung DESC) SELECT tag_von, tag_bis, fassung, formelsatz, stand, wertequelle, "
+                + "viertelstunden_erwartet, viertelstunden_gerechnet, gerechnet_am, n->>'basisfall' AS basisfall, "
+                + "(n->'stammdaten')::text AS stammdaten, (n->'stand_gruende')::text AS stand_gruende, "
+                + "(n->'jahreswerte'->(n->>'schluessel'))::text AS jahreswerte FROM z ORDER BY tag_von",
+                (rs, i) -> new Jahresstand(rs.getObject("tag_von", LocalDate.class),
+                        rs.getObject("tag_bis", LocalDate.class), rs.getInt("fassung"), rs.getString("formelsatz"),
+                        rs.getString("basisfall"), rs.getString("stand"), rs.getString("wertequelle"),
+                        rs.getInt("viertelstunden_erwartet"), rs.getInt("viertelstunden_gerechnet"),
+                        rs.getTimestamp("gerechnet_am").toInstant(), rs.getString("stammdaten"),
+                        rs.getString("stand_gruende"), rs.getString("jahreswerte")), siteId, jahr));
+    }
+
     public UUID anhaengen(UUID tenantId, Zeile z) {
         return jdbc.queryForObject("INSERT INTO mispel_pauschal_jahr (tenant_id, site_id, jahr, tag_von, tag_bis, "
                         + "zeitraum_von, zeitraum_bis, fassung, formelsatz, stand, wertequelle, viertelstunden_erwartet, "

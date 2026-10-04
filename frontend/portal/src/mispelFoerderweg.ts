@@ -3,7 +3,7 @@
  * 02.10.2026). Rein, ohne React: die Zeile „Förderweg“ in Anlage › Einstellungen, die Zeile „Netzladen“ und der Dialog
  * „Förderweg ändern“ (`components/FoerderwegDialog.tsx`) rendern daraus.
  *
- * Vertrag: `docs/contracts/v2/mispel-foerderweg.md` (Fassung 1.2) und `mispel-zaehlerrolle.md`. Begriffe, Formelsätze
+ * Vertrag: `docs/contracts/v2/mispel-foerderweg.md` (Fassung 1.3) und `mispel-zaehlerrolle.md`. Begriffe, Formelsätze
  * und Fundstellen wörtlich nach der Festlegung der Bundesnetzagentur (Az. 618-25-02, Beschluss 01.10.2026): „A1 S. 24“
  * = Anlage 1, Seite 24; „T“ = Tenor. Der Server prüft jede Regel selbst; dieses Modul sagt sie nur vorher und ordnet
  * jede Ablehnung dem Schritt zu, in dem sie entsteht (BK-17: „jede Ablehnung erscheint als Satz im Schritt“).
@@ -32,9 +32,21 @@ export interface FoerderwegBeschreibung {
   gesperrt: string | null;
 }
 
-/** Erst ab dem Monatsersten nach der EU-Genehmigung (T S. 3 Ziff. 9b); die Einrichtung dafür baut MP-27. */
+/** Erst ab dem Monatsersten nach der EU-Genehmigung (T S. 3 Ziff. 9b); bis dahin vormerken mit offenem Termin (MP-27). */
 export const PAUSCHAL_GESPERRT =
   'noch nicht anwendbar: erst ab dem Monatsersten nach der Genehmigung der EU-Kommission (Tenor Ziff. 9b)';
+
+/** Der Hinweis an der Wahl in Schritt 1, solange der Tag der Pauschaloption nicht feststeht (MP-27, BK-27). */
+export const PAUSCHAL_VORMERKBAR = 'noch nicht anwendbar · vormerken möglich (Tenor Ziff. 9b)';
+
+/**
+ * Wird die Pauschaloption mit offenem Termin vorgemerkt (Vertrag § 5a)? Ja, solange VoltPilot keinen Tag nach der
+ * EU-Genehmigung eingetragen hat oder dieser Tag hinter dem nächsten Monatsersten liegt; sonst geht sie als Fassung
+ * zum Monatsersten wie jeder andere Wechsel.
+ */
+export function pauschalTerminOffen(heute: string, pauschaloptionAb: string | null | undefined): boolean {
+  return pauschaloptionAb == null || pauschaloptionAb > naechsterMonatserster(heute);
+}
 
 export const FOERDERWEGE: readonly FoerderwegBeschreibung[] = [
   {
@@ -82,7 +94,7 @@ export const FOERDERWEGE: readonly FoerderwegBeschreibung[] = [
     rechtsgrundlage: '§ 19 Abs. 3c EEG · Anlage 2',
     netzladenMoeglich: true,
     kurzweg: false,
-    gesperrt: PAUSCHAL_GESPERRT,
+    gesperrt: null,
   },
 ];
 
@@ -173,7 +185,14 @@ export const NETZLADEN_ANLEGEN_HINWEIS =
 // Schritte und Monatserster
 // ---------------------------------------------------------------------------
 
-export type SchrittId = 'foerderweg' | 'zaehler' | 'formelsatz' | 'partner' | 'pruefen';
+export type SchrittId =
+  | 'foerderweg'
+  | 'zaehler'
+  | 'formelsatz'
+  | 'voraussetzungen'
+  | 'pauschalgrenzen'
+  | 'partner'
+  | 'pruefen';
 
 export const SCHRITTE: readonly { id: SchrittId; titel: string }[] = [
   { id: 'foerderweg', titel: 'Förderweg' },
@@ -183,14 +202,24 @@ export const SCHRITTE: readonly { id: SchrittId; titel: string }[] = [
   { id: 'pruefen', titel: 'Prüfen' },
 ];
 
+/** Die Pauschaloption (MP-27, BK-27): „Voraussetzungen“ statt „Zähler“, „Pauschalgrenzen“ statt „Formelsatz“. */
+export const SCHRITTE_PAUSCHAL: readonly { id: SchrittId; titel: string }[] = [
+  { id: 'foerderweg', titel: 'Förderweg' },
+  { id: 'voraussetzungen', titel: 'Voraussetzungen' },
+  { id: 'pauschalgrenzen', titel: 'Pauschalgrenzen' },
+  { id: 'partner', titel: 'Partner' },
+  { id: 'pruefen', titel: 'Prüfen' },
+];
+
 /** Die Schritte dieses Weges: der Kurzweg führt von „Förderweg“ direkt zu „Prüfen“ (BK-17). */
 export function schritteFuer(weg: FoerderwegWert | null): SchrittId[] {
   if (weg != null && foerderweg(weg).kurzweg) return ['foerderweg', 'pruefen'];
+  if (weg === 'marktpraemie_pauschal') return SCHRITTE_PAUSCHAL.map((s) => s.id);
   return SCHRITTE.map((s) => s.id);
 }
 
 export function schrittTitel(id: SchrittId): string {
-  return SCHRITTE.find((s) => s.id === id)?.titel ?? id;
+  return [...SCHRITTE, ...SCHRITTE_PAUSCHAL].find((s) => s.id === id)?.titel ?? id;
 }
 
 /** Der erste Kalendertag des folgenden Monats (ISO-Tag). */
@@ -445,7 +474,12 @@ export function folgen(weg: FoerderwegWert): string[] {
         'Der Speicher darf aus dem Netz laden, so lange Ihre Einstellung „Netzladen“ an ist.',
       ];
     case 'marktpraemie_pauschal':
-      return [PAUSCHAL_GESPERRT];
+      return [
+        'Ihre Anlage geht in die Direktvermarktung; die Marktprämie rechnet mit dem Jahresmarktwert Solar.',
+        'Jedes Kalenderjahr wird Ihre Einspeisung pauschal eingeordnet: förderfähig bis (P1), indifferent bis (P4), darüber saldierungsfähig (Anlage 2).',
+        'Der Speicher darf aus dem Netz laden, so lange Ihre Einstellung „Netzladen“ an ist.',
+        'Ein Zähler am Hausanschluss genügt (Anlage 2 S. 27).',
+      ];
   }
 }
 
@@ -476,12 +510,16 @@ const FORMELSATZ_CODES = new Set([
   'aw_regel_passt_nicht',
 ]);
 const PARTNER_CODES = new Set(['einverstaendnis_fehlt', 'partner_passt_nicht']);
+const VORAUSSETZUNG_CODES = new Set(['voraussetzung_unbestaetigt', 'ueber_30_kwp', 'solarleistung_unbekannt']);
 
 /** In welchem Schritt eine Ablehnung des Förderweg-Vertrags entsteht (§ 4). */
 export function ablehnungSchritt(a: Ablehnung): SchrittId {
   if (FOERDERWEG_CODES.has(a.code)) return 'foerderweg';
   if (FORMELSATZ_CODES.has(a.code)) return 'formelsatz';
   if (PARTNER_CODES.has(a.code)) return 'partner';
+  if (VORAUSSETZUNG_CODES.has(a.code)) return 'voraussetzungen';
+  if (a.code === 'anfrage_ungueltig' && a.feld === 'steckersolar_kwp') return 'voraussetzungen';
+  if (a.code === 'vormerkung_besteht' || a.code === 'termin_steht_fest') return 'foerderweg';
   if (a.code === 'anfrage_ungueltig' && a.feld === 'direktvermarkter') return 'partner';
   return 'pruefen';
 }
@@ -525,6 +563,18 @@ export function ablehnungSatz(a: Ablehnung): string {
       return `Ein anderer Förderweg gilt immer ab dem ersten Tag eines Monats — frühestens ab ${tag(a, 'naechster_monatserster')} (§ 21b Abs. 1 S. 2 EEG).`;
     case 'gueltig_ab_in_zukunft':
       return `Vormerken lässt sich nur der nächste Monatserste (${tag(a, 'naechster_monatserster')}).`;
+    case 'voraussetzung_unbestaetigt':
+      return a.feld === 'steckersolar_direktvermarktung'
+        ? 'Auch Steckersolargeräte müssen in der Direktvermarktung sein; unentgeltlich einspeisen ist ausgeschlossen (Anlage 2 S. 19, Fn. 15). Bitte bestätigen Sie das.'
+        : 'Alle Solaranlagen, Speicher und Ladepunkte hinter Ihrem Zähler muss dieselbe Person betreiben (Anlage 2 S. 18, Voraussetzung 2). Bitte bestätigen Sie das.';
+    case 'ueber_30_kwp':
+      return 'Die Pauschaloption gilt nur bis 30 kWp Solarleistung; Steckersolargeräte zählen dabei nicht mit (Anlage 2 S. 19, Voraussetzung 3).';
+    case 'solarleistung_unbekannt':
+      return 'Die Solarleistung Ihrer Anlage steht nicht im Aufbau — ohne sie lässt sich die 30-kWp-Grenze nicht prüfen (Anlage 2 S. 19).';
+    case 'vormerkung_besteht':
+      return `Zum ${tag(a, 'gueltig_ab')} ist schon ein anderer Förderweg vorgemerkt. Nehmen Sie diese Vormerkung in den Einstellungen zurück, dann lässt sich die Pauschaloption vormerken.`;
+    case 'termin_steht_fest':
+      return `Der Tag der Pauschaloption steht fest (${tag(a, 'anwendbar_ab')}); bitte laden Sie die Seite neu und tragen Sie sie zum Monatsersten ein.`;
     case 'foerderweg_rueckwirkend':
       return `Ab ${tag(a, 'letzte_fassung_ab')} ist schon ein Förderweg eingetragen oder vorgemerkt; davor lässt sich nichts mehr einschieben. Eine Vormerkung können Sie in den Einstellungen zurücknehmen.`;
     default:

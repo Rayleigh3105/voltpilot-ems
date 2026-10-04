@@ -1,11 +1,13 @@
 # MiSpeL-Förderweg je Einspeisestelle (MP-5)
 
-Stand 02.10.2026 · Vertrag 1.2 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und
+Stand 04.10.2026 · Vertrag 1.3 · Quelle: BNetzA-Festlegung zur Marktintegration von Speichern und
 Ladepunkten („MiSpeL“, Az. 618-25-02, Beschluss 01.10.2026) — Tenor, Anlage 1, Anlage 2; EEG §§ 19, 21a, 21b,
 51, 51b. Konzept: MiSpeL-Fundament § 5.1, Entscheid E2 = B, Bauplan § 8 Zeile MP-5; Fassung 1.1 = MP-12b
 (AW-Differenzierung, § 7), additiv: jedes Feld von 1.0 bleibt, wie es war; Fassung 1.2 = MP-17 (Vormerken zum
 nächsten Monatsersten, § 5; Partner der Direktvermarktung, § 4), additiv: Felder `vormerkung`, `direktvermarkter`,
-`bilanzkreis_gesondert`, Route `DELETE …/foerderweg/vormerkung`.
+`bilanzkreis_gesondert`, Route `DELETE …/foerderweg/vormerkung`; Fassung 1.3 = MP-27 (Pauschaloption vormerken mit
+offenem Termin, § 5a), additiv: Felder `pauschal_vormerkung`, `pauschaloption_ab`, Route `PUT …/foerderweg/pauschal-vormerkung`,
+`DELETE …/vormerkung` nimmt ohne datierte Vormerkung die Pauschal-Vormerkung zurück.
 
 Der Förderweg ist **ein Stammdatum je Einspeisestelle**, aus dem Netzladen, Exportwert, Marktwertbasis,
 Box-Klemme und Portaltexte folgen. Er ersetzt die Bedeutung des Schalters `site.netzladen_erlaubt`
@@ -18,6 +20,8 @@ Die Einspeisestelle ist die Anlage (`site`): an ihr hängen Schalter, Plan und B
 | `services/api/src/main/resources/db/migration/V20261002141500__mispel_site_foerderweg.sql` | Tabelle `site_foerderweg` (Fassungen, RLS + FORCE), beginnt leer |
 | `services/api/src/main/resources/db/migration/V20261002173500__mispel_foerderweg_aw_regel.sql` | Spalte `aw_regel` (1.1, § 7), leer für jede vorhandene Fassung |
 | `services/api/src/main/resources/db/migration/V20261002231500__mispel_foerderweg_partner.sql` | Spalten `direktvermarkter`, `bilanzkreis_gesondert` (1.2, § 4), leer für jede vorhandene Fassung |
+| `services/api/src/main/resources/db/migration/V20261004131500__mispel_pauschal_vormerkung.sql` | Tabelle `site_pauschal_vormerkung` (1.3, § 5a, RLS + FORCE), beginnt leer, keine Fassung |
+| `services/api/.../mispel/PauschalVormerkungService.java` | Pauschaloption vormerken mit offenem Termin: Voraussetzungen 2–4 der Anlage 2 (§ 5a) |
 | `services/api/.../mispel/FoerderwegRegeln.java` | die reinen Regeln (ohne Spring, Datenbank, Uhr) |
 | `services/api/.../mispel/FoerderwegService.java` | lesen am Tag, setzen als Fassung, Spiegel, alter Schalter |
 | `services/api/.../web/SiteFoerderwegController.java` | `GET`/`PUT /api/v1/sites/{siteId}/foerderweg`, `DELETE …/foerderweg/vormerkung` |
@@ -101,7 +105,7 @@ Weg Netzladen ausschließt, sonst die Angabe `netzladen` (ohne sie die bisherige
 `{site_id, am, quelle, foerderweg, begriff, rechtsgrundlage, formelsatz, formelsatz_gebunden_bis,
 einverstaendnis, gueltig_ab, netzladen: {moeglich, heute}, fassungen[], aw_regel, vormerkung}` (`aw_regel` auch je
 Fassung, 1.1; `vormerkung` = `{id, foerderweg, begriff, rechtsgrundlage, formelsatz, einverstaendnis, gueltig_ab,
-aw_regel}` oder `null`, immer bezogen auf heute, 1.2). `quelle` ∈ `fassung` · `bestand` ·
+aw_regel}` oder `null`, immer bezogen auf heute, 1.2; `pauschal_vormerkung` und `pauschaloption_ab`, 1.3, § 5a). `quelle` ∈ `fassung` · `bestand` ·
 `unbekannt` (ein Tag vor der ersten Fassung einer Anlage, die schon eine hat — die Schalter sind dann
 Spiegel und sagen über die Zeit davor nichts; eine nur vorgemerkte Fassung zählt dafür nicht, bis zu ihrem Tag
 gilt der Bestand, 1.2). `netzladen.heute` ist `site.netzladen_erlaubt` heute.
@@ -118,7 +122,12 @@ der Antwort (oben, je Fassung, in der Vormerkung). Nachtragen ist kein Wechsel d
 Ein VoltPilot-Partner ist noch nicht wählbar (E8 = D: erst nach der Wahl aus den Angeboten, MP-43/MP-20).
 
 `DELETE /api/v1/sites/{siteId}/foerderweg/vormerkung` (Recht `anlage.verwalten`, 1.2) nimmt die Vormerkung zurück
-(`aufgehoben_am`, sie bleibt lesbar) → die Ansicht heute; ohne Vormerkung 404 `keine_vormerkung` mit `heute`.
+(`aufgehoben_am`, sie bleibt lesbar) → die Ansicht heute; ohne datierte Vormerkung die Pauschal-Vormerkung mit offenem
+Termin (1.3, § 5a); ohne beide 404 `keine_vormerkung` mit `heute`.
+
+`PUT /api/v1/sites/{siteId}/foerderweg/pauschal-vormerkung` (Recht `anlage.verwalten`, 1.3, § 5a) mit
+`{ein_betreiber, steckersolar_kwp, steckersolar_direktvermarktung, direktvermarkter, bilanzkreis_gesondert}` → die
+Ansicht heute; streng gelesen wie `PUT …/foerderweg`.
 
 | Code | Status | Fakten (immer mit `fundstelle`) |
 |---|---|---|
@@ -138,6 +147,11 @@ Ein VoltPilot-Partner ist noch nicht wählbar (E8 = D: erst nach der Wahl aus de
 | `wechsel_nur_zum_monatsersten` | 422 | `naechster_monatserster` |
 | `formelsatz_gebunden` | 422 | `formelsatz`, `gebunden_bis` |
 | `foerderweg_unveraendert` | 409 | `am` |
+| `voraussetzung_unbestaetigt` (1.3) | 422 | `feld` (`ein_betreiber` · `steckersolar_direktvermarktung`) |
+| `ueber_30_kwp` (1.3) | 422 | `solarleistung_kwp`, `grenze_kwp` |
+| `solarleistung_unbekannt` (1.3) | 422 | `grenze_kwp` |
+| `vormerkung_besteht` (1.3) | 409 | `gueltig_ab` |
+| `termin_steht_fest` (1.3) | 422 | `anwendbar_ab` |
 
 ## 5. Was dieser Vertrag nicht regelt — und wie die Leser später lesen
 
@@ -181,6 +195,32 @@ Ein VoltPilot-Partner ist noch nicht wählbar (E8 = D: erst nach der Wahl aus de
 - **Rumpfmonate** rechnet MP-21; **Pauschal-Umlageprivilegien für ungeförderte Solaranlagen**
   (Tenor Ziff. 2 S. 2) kommen mit der Pauschaloption (MP-24).
 - `dv_konform` (W8) ist mit MP-10 aus dem Optimierer entfernt.
+
+## 5a. Pauschaloption vormerken mit offenem Termin (1.3, MP-27)
+
+Die Pauschaloption gilt erst ab dem Monatsersten nach der Genehmigung der EU-Kommission (Tenor S. 3 Ziff. 9 b); bis
+VoltPilot den Tag in `voltpilot.mispel.pauschaloption-ab` einträgt (E7 = B), lehnt `PUT …/foerderweg` sie ab
+(`pauschaloption_noch_nicht_anwendbar`), und § 5 erlaubt nur den nächsten Monatsersten. Damit ein Haushalt sich
+trotzdem einrichten kann (Bedienkonzept BK-27), hält `site_pauschal_vormerkung` den Wunsch **ohne Tag**:
+
+- **Keine Fassung.** Optimierer, Box, Spiegel-Läufer, Monats- und Jahreslauf lesen die Tabelle nicht; der Förderweg
+  bleibt bis zu seinem Tag der heutige (die Ansicht zeigt `pauschal_vormerkung` neben `quelle`/`foerderweg`).
+- **Nur solange der Tag offen ist:** ohne `pauschaloption-ab` oder mit einem Tag hinter dem nächsten Monatsersten
+  (`termin` = dieser Tag); sonst 422 `termin_steht_fest` — dann geht die Pauschaloption als Fassung nach § 3.
+  Steht eine datierte Vormerkung (§ 5), 409 `vormerkung_besteht`; gilt die Pauschaloption schon, 409
+  `foerderweg_unveraendert`.
+- **Voraussetzungen der Anlage 2 (Abschn. 3.1.1, S. 18–19):** Voraussetzung 2 „personenidentischer Anlagenbetreiber“
+  und 4 „auch Steckersolargeräte in der Direktvermarktung“ kann VoltPilot nicht messen — der Kunde bestätigt sie
+  (`ein_betreiber: true`; bei `steckersolar_kwp > 0` auch `steckersolar_direktvermarktung: true`), gespeichert mit
+  Zeitpunkt (`…_bestaetigt_am`). Voraussetzung 3 (höchstens 30 kWp, Steckersolargeräte nicht mitgezählt, Fn. 14) prüft
+  der Dienst gegen die Solarleistung im Aufbau (Summe `asset.pv_capacity_kwp` der PV-Assets): fehlt sie, 422
+  `solarleistung_unbekannt` (unbekannt ist keine Null). Für (P1) = Pinst × 500 zählen die Steckersolargeräte mit
+  (A2 S. 27); ihre Leistung ist Angabe des Kunden (`steckersolar_kwp`, 0 = keine) zusätzlich zum Aufbau.
+- **Ändern** = noch einmal senden (die alte Zeile bekommt `aufgehoben_am`), **zurücknehmen** = `DELETE …/vormerkung`.
+
+**Offen (bewusst):** das Umsetzen der Vormerkung in eine Fassung, sobald `pauschaloption-ab` gesetzt wird (ein Läufer
+nach dem Muster des Spiegel-Läufers mit der Einverständnis-Prüfung der Übergangszeit), und die Bestätigungen an einer
+datierten Pauschal-Fassung nach der Genehmigung. Beides wird erst mit einem Tag erreichbar; bis dahin gilt E7 = B.
 
 ## 6. Der alte Netzlade-Schalter (bis MP-17, W2 = B)
 
@@ -236,6 +276,7 @@ dasselbe Vokabular wie `eeg_aw_zeit.regel` (MP-7, Vektoren `aw_regeln`):
 ```bash
 (cd services/api && ./mvnw test -Dtest='FoerderwegRegelnTest')                         # rein, kein Docker
 (cd services/api && ./mvnw test -Dtest='FoerderwegApiTest,FoerderwegMigrationTest')    # Testcontainers
+(cd services/api && ./mvnw test -Dtest='PauschalVormerkungApiTest')                    # 1.3 § 5a und Jahresstand (MP-27)
 (cd services/api && ./mvnw test -Dtest='MarktwertbasisErloeseTest')                    # Prüfnachweis MP-12/MP-12b
 (cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest python -m pytest tests/test_marktwertbasis.py)
 ```

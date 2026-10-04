@@ -84,6 +84,35 @@ export const POSTEN_WORTE: Record<string, { wort: string; erklaerung: string; ku
     erklaerung: 'Entgelt des Direktvermarkters auf die zusätzliche Rückspeisung',
     kurz: 'Vermarktungsentgelt',
   },
+  // Pauschaloption P1 (MP-29; Wörter MP-27, BK-27)
+  einspeisung_marktpraemie: {
+    wort: 'Marktprämie statt Einspeisevergütung',
+    erklaerung:
+      'die Einspeisung bis zur Pauschalgrenze (P1) bekommt die Marktprämie mit dem Jahresmarktwert statt der festen Vergütung (§ 19 Abs. 3c EEG; Anlage 2 S. 28)',
+    kurz: 'Marktprämie',
+  },
+  handel_pauschal: {
+    wort: 'Netzladen-Handel mit der Pauschaloption',
+    erklaerung: 'günstig aus dem Netz laden, teuer zurückspeisen — erlaubt in der Pauschaloption (Tenor Ziff. 4)',
+    kurz: 'Handel',
+  },
+  saldierung_pauschal: {
+    wort: 'Saldierung oberhalb der Pauschalgrenze',
+    erklaerung:
+      'Einspeisung über (P4) senkt die Umlagen auf Ihren Netzbezug, höchstens bis zum Netzbezug (P9) (saldierungsfähige Netzeinspeisung (P10), Anlage 2 S. 31)',
+    kurz: 'Saldierung',
+    nullSatz: 'Über die Saldierungsgrenze (P4) kommt diese Anlage voraussichtlich nicht.',
+  },
+  direktvermarktungsentgelt: {
+    wort: 'Direktvermarktungsentgelt',
+    erklaerung: 'Entgelt Ihres Direktvermarkters — in der Pauschaloption geht die ganze Anlage in die Direktvermarktung (§ 20 EEG)',
+    kurz: 'Direktvermarkter',
+  },
+  messstellenbetrieb: {
+    wort: 'Mehrkosten Messstellenbetrieb',
+    erklaerung: 'Viertelstundenwerte am Hausanschluss (intelligentes Messsystem); ein zweiter Zähler ist nicht nötig (Anlage 2 S. 27)',
+    kurz: 'Messstellenbetrieb',
+  },
 };
 
 /** Was die Abgrenzungsoption verlangt — mit Fundstelle in Festlegung und EEG. */
@@ -93,6 +122,20 @@ export const ABGRENZUNG_VERLANGT: { satz: string; fundstelle: string }[] = [
   { satz: 'bis 30.09.2027: Einverständnis von Netz- und Messstellenbetreiber', fundstelle: 'Tenor Ziff. 9a' },
   { satz: 'Marktprämie mit Jahres- statt Monatsmarktwert', fundstelle: 'EEG Anlage 1 Nr. 2 S. 2; Anlage 1 S. 21' },
 ];
+
+/** Was die Pauschaloption verlangt — Voraussetzungen der Anlage 2 (Abschn. 3.1.1, S. 18–19). */
+export const PAUSCHAL_VERLANGT: { satz: string; fundstelle: string }[] = [
+  { satz: 'höchstens 30 kWp Solarleistung, Steckersolargeräte nicht mitgezählt', fundstelle: 'Anlage 2 S. 19, Voraussetzung 3' },
+  { satz: 'nur Solar, Speicher und Ladepunkte hinter dem Zähler', fundstelle: 'Anlage 2 S. 18, Voraussetzung 1' },
+  { satz: 'alles betreibt dieselbe Person', fundstelle: 'Anlage 2 S. 18, Voraussetzung 2' },
+  { satz: 'alles in der Direktvermarktung, auch Steckersolargeräte', fundstelle: 'Anlage 2 S. 19, Voraussetzung 4' },
+  { satz: 'gilt erst ab dem Monatsersten nach der EU-Genehmigung', fundstelle: 'Tenor Ziff. 9b' },
+];
+
+/** Ist das ein Check der Pauschaloption (Formelsatz P1–P5 der Anlage 2)? */
+export function istPauschal(formelsatz: string | null | undefined): boolean {
+  return formelsatz != null && /^P\d/.test(formelsatz);
+}
 
 /** „+ 1.899 €“ / „− 555 €“ / „0 €“ — ganze Euro im Jahr, das Vorzeichen ein eigenes Zeichen. */
 export function jahresEuro(v: number): string {
@@ -130,6 +173,9 @@ export type CheckKurzfassung =
       posten: CheckPostenZeile[];
       summe: number;
       angenommen: string[];
+      /** Der Satz des Schreibers (z. B. „Information vor dem Wechsel …“, Knotengrenze) — nie verschluckt. */
+      hinweis: string | null;
+      pauschal: boolean;
     };
 
 /** „10/2025–09/2026“ aus dem tagesgenauen Fenster (letzter Tag eingeschlossen). */
@@ -221,6 +267,8 @@ export function kurzfassung(a: MispelCheckAnsicht | null | undefined): CheckKurz
     angenommen: a.datenbasis
       .filter((d) => d.herkunft === 'angenommen')
       .map((d) => `${wertText(d)}${d.quelle ? ` (${d.quelle})` : ''}`),
+    hinweis: a.hinweis?.trim() || null,
+    pauschal: istPauschal(a.formelsatz),
   };
 }
 

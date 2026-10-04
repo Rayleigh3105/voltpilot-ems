@@ -1,5 +1,5 @@
 {
-  "_quelle": "MiSpeL-Check (MP-48) in der Form des Vertrags docs/contracts/v2/mispel-check.md; Beträge und Posten der Kundentypen a4 und a2 aus der Beispielrechnung (vp-mispel-fundament/beispielrechnungen.json, Konzept § 3), Fenster 10/2025–09/2026 wie MP-13. Fiktive Anlagen.",
+  "_quelle": "MiSpeL-Check (MP-48) in der Form des Vertrags docs/contracts/v2/mispel-check.md; Beträge und Posten der Kundentypen a4 und a2 aus der Beispielrechnung (vp-mispel-fundament/beispielrechnungen.json, Konzept § 3), Fenster 10/2025–09/2026 wie MP-13. Fiktive Anlagen. c1 (MP-27): Haushalt P1 aus derselben Beispielrechnung, Kundentyp c1 (10 kWp, 10 kWh), Posten-Schlüssel des MP-29-Schreibers.",
   "a4": {
     "site_id": "s-ahrenberg",
     "stand": "fertig",
@@ -38,5 +38,17 @@
       { "angabe": "Jahresverbrauch", "wert": 60000, "einheit": "kWh", "herkunft": "angenommen", "quelle": "Konzept § 3 a2" }
     ],
     "hinweis": null
+  },
+  "c1": {
+    "site_id": "s-kroeger",
+    "stand": "fertig",
+    "stand_seit": "2026-10-03T03:00:00Z",
+    "formelsatz": "P1",
+    "fenster_von": "2025-10-01",
+    "fenster_bis": "2026-09-30",
+    "differenz": {"niedrig_eur": -130, "mittel_eur": 25, "hoch_eur": 175},
+    "posten": [{"art": "einspeisung_marktpraemie", "niedrig_eur": -20, "mittel_eur": 0, "hoch_eur": 20, "herkunft": "Beispielrechnung c1"}, {"art": "handel_pauschal", "niedrig_eur": 60, "mittel_eur": 95, "hoch_eur": 130, "herkunft": "Beispielrechnung c1, gemessene Simulation"}, {"art": "saldierung_pauschal", "niedrig_eur": 0, "mittel_eur": 0, "hoch_eur": 25, "herkunft": "Beispielrechnung c1"}, {"art": "direktvermarktungsentgelt", "niedrig_eur": -120, "mittel_eur": -60, "hoch_eur": 0, "herkunft": "Schätzung"}, {"art": "messstellenbetrieb", "niedrig_eur": -50, "mittel_eur": -10, "hoch_eur": 0, "herkunft": "Schätzung"}],
+    "datenbasis": [{"angabe": "PV-Leistung", "wert": 10, "einheit": "kWp", "herkunft": "stammdaten", "quelle": "Aufbau"}, {"angabe": "Anzulegender Wert", "wert": 8.18, "einheit": "ct/kWh", "herkunft": "angenommen", "quelle": "Einspeisevergütung + 0,4 ct, § 53 EEG"}, {"angabe": "Jahresverbrauch", "wert": 4500, "einheit": "kWh", "herkunft": "angenommen", "quelle": "Konzept § 3 c1"}],
+    "hinweis": "Information vor dem Wechsel: Die Pauschaloption ist erst ab dem Monatsersten nach der EU-Genehmigung anwendbar (Festlegung, Tenor Ziff. 9 b); gerechnet ist, was sie dieser Anlage gebracht hätte."
   }
 }

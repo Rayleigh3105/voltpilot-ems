@@ -53,11 +53,27 @@ import { showTechnicalLayer, useRollen } from '../rollen';
 import { FLAECHE } from '../uemsGemeinsameSteuerung';
 import { FoerderwegDialog } from '../components/FoerderwegDialog';
 import { MispelCheckPlatz } from '../components/MispelCheckKarte';
+import type { PauschalAufbau } from '../components/FoerderwegPauschal';
 import { foerderweg, netzladenZeile, tagText } from '../mispelFoerderweg';
 import { mispelApi, type FoerderwegAnsicht } from '../mispelFoerderwegApi';
 import '../components/FoerderwegDialog.css';
 import '../components/Profile.css';
 import './Einstellungen.css';
+
+/** Der Aufbau für die Pauschaloption (MP-27): Solarleistung als Summe der PV-Assets — unbekannt, wenn eine fehlt. */
+function pauschalAufbau(assets: SiteAsset[] | null): PauschalAufbau {
+  const liste = assets ?? [];
+  const pv = liste.filter((a) => a.type === 'pv');
+  const speicher = liste.filter((a) => a.type === 'battery');
+  return {
+    pvKwp: pv.length === 0 || pv.some((a) => a.pvCapacityKwp == null) ? null : pv.reduce((s, a) => s + (a.pvCapacityKwp ?? 0), 0),
+    speicherKwh:
+      speicher.length === 0 || speicher.some((a) => a.capacityKwh == null)
+        ? null
+        : speicher.reduce((s, a) => s + (a.capacityKwh ?? 0), 0),
+    arten: [...new Set(liste.map((a) => a.type))],
+  };
+}
 
 /**
  * **„Einstellungen"** (Konzept „Anlage – neu gedacht", Entscheid E5 = A vom
@@ -486,7 +502,7 @@ export function TechnikSection({
             recht="anlage.verwalten"
             onClick={() => fw && setFwOffen(true)}
           />
-          {(fw?.vormerkung || fwFolge) && (
+          {(fw?.vormerkung || fw?.pauschal_vormerkung || fwFolge) && (
             <li className="vp-fw-zeile-vormerkung" data-testid="fw-vormerkung">
               {fwFolge ? (
                 <span role={fwFolge.fehler ? 'alert' : 'status'}>{fwFolge.text}</span>
@@ -495,6 +511,23 @@ export function TechnikSection({
                 <>
                   <span>
                     Ab {tagText(fw.vormerkung.gueltig_ab)}: {fw.vormerkung.begriff} (vorgemerkt)
+                  </span>
+                  <Recht aktion="anlage.verwalten">
+                    <button type="button" className="vp-linklike" onClick={() => void vormerkungZuruecknehmen()}>
+                      Vormerkung zurücknehmen
+                    </button>
+                  </Recht>
+                </>
+              )}
+              {!fw?.vormerkung && fw?.pauschal_vormerkung && (
+                <>
+                  <span data-testid="fw-pauschal-vorgemerkt">
+                    <b>Vorgemerkt: {fw.pauschal_vormerkung.begriff}</b> — gilt ab dem Monatsersten nach der Genehmigung der
+                    EU-Kommission.{' '}
+                    {fw.pauschal_vormerkung.termin
+                      ? `Termin: ${tagText(fw.pauschal_vormerkung.termin)}.`
+                      : 'Der Termin ist offen; sobald er feststeht, steht er hier.'}{' '}
+                    Bis dahin bleibt alles, wie es ist.
                   </span>
                   <Recht aktion="anlage.verwalten">
                     <button type="button" className="vp-linklike" onClick={() => void vormerkungZuruecknehmen()}>
@@ -777,9 +810,19 @@ export function TechnikSection({
           siteId={site.id}
           ansicht={fw}
           mispelCheck={<MispelCheckPlatz siteId={site.id} anlageName={site.name} />}
+          mispelCheckPauschal={<MispelCheckPlatz siteId={site.id} anlageName={site.name} option="pauschal" />}
+          aufbau={pauschalAufbau(assets)}
           onClose={() => setFwOffen(false)}
           onGespeichert={(neu) => {
             setFwOffen(false);
+            if (neu.pauschal_vormerkung && !neu.vormerkung) {
+              setFwFolge({
+                text: 'Gespeichert — die Pauschaloption ist vorgemerkt.',
+                fehler: false,
+              });
+              setFw(neu);
+              return;
+            }
             const ab = neu.am;
             const vorgemerkt = ab > fw.am;
             setFwFolge({

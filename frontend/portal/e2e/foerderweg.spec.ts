@@ -74,7 +74,9 @@ for (const b of BREITEN) {
 
     const d = await dialogOeffnen(page);
     await expect(d.getByRole('radio')).toHaveCount(5);
-    await expect(d.getByRole('radio', { name: /Pauschaloption/ })).toBeDisabled();
+    // MP-27: die Pauschaloption ist wählbar — vor der EU-Genehmigung zum Vormerken mit offenem Termin.
+    await expect(d.getByRole('radio', { name: /Pauschaloption/ })).toBeEnabled();
+    await expect(d.getByTestId('fw-pauschal-vormerkbar')).toContainText('vormerken möglich');
     await d.locator('label', { hasText: 'Marktprämie mit Abgrenzungsoption' }).click();
     await ohneUeberlauf(page, 'Schritt Förderweg');
     await foto(page, `${b.name}-abgrenzung-1-foerderweg`);

@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from 'react';
 import {
   ABGRENZUNG_VERLANGT,
+  istPauschal,
   jahresEuro,
   kurzfassung,
   mispelCheckApi,
+  PAUSCHAL_VERLANGT,
   spanneLage,
   type MispelCheckAnsicht,
 } from '../mispelCheck';
@@ -19,6 +21,9 @@ export function MispelCheckKarte({ check, anlageName }: { check: MispelCheckAnsi
   const basis = useId();
   const [offen, setOffen] = useState(false);
   const k = kurzfassung(check);
+  // MP-27 (Befund aus MP-29): der Check Haushalt vergleicht heute gegen die Pauschaloption — eigene Wörter.
+  const pauschal = istPauschal(check?.formelsatz);
+  const option = pauschal ? 'Pauschaloption' : 'Abgrenzungsoption';
   const kopf = (
     <p className="vp-mc-kopf" id={`${basis}-kopf`}>
       MiSpeL-Check · {anlageName}
@@ -34,7 +39,7 @@ export function MispelCheckKarte({ check, anlageName }: { check: MispelCheckAnsi
         </p>
         <p className="vp-mc-satz">
           Der Check rechnet ein ganzes Jahr mit echten Viertelstundenpreisen und den Werten genau dieser Anlage. Sobald
-          er fertig ist, steht hier, was die Abgrenzungsoption gegenüber heute bringt oder kostet.
+          er fertig ist, steht hier, was die {option} gegenüber heute bringt oder kostet.
         </p>
       </section>
     );
@@ -80,8 +85,13 @@ export function MispelCheckKarte({ check, anlageName }: { check: MispelCheckAnsi
         <p className="vp-mc-klein">
           Mittlere Schätzung, Spanne {spanne}
           {k.fenster ? ` · Ganzjahr ${k.fenster}, echte Viertelstundenpreise` : ''} · Vergleich: dieselbe Anlage mit
-          demselben Speicher und VoltPilot, heute gegen Abgrenzungsoption — nie gegen „ohne Speicher“.
+          demselben Speicher und VoltPilot, heute gegen {option} — nie gegen „ohne Speicher“.
         </p>
+        {k.hinweis && (
+          <p className="vp-mc-hinweis" data-testid="mispel-check-hinweis">
+            {k.hinweis}
+          </p>
+        )}
       </div>
       <button
         type="button"
@@ -112,9 +122,9 @@ export function MispelCheckKarte({ check, anlageName }: { check: MispelCheckAnsi
               <dd className={`is-${k.ton}`}>{jahresEuro(k.summe)}</dd>
             </div>
           </dl>
-          <p className="vp-mc-label">Was die Abgrenzungsoption verlangt</p>
+          <p className="vp-mc-label">Was die {option} verlangt</p>
           <ul className="vp-mc-verlangt">
-            {ABGRENZUNG_VERLANGT.map((v) => (
+            {(pauschal ? PAUSCHAL_VERLANGT : ABGRENZUNG_VERLANGT).map((v) => (
               <li key={v.satz}>
                 {v.satz} <small>{v.fundstelle}</small>
               </li>
@@ -129,8 +139,20 @@ export function MispelCheckKarte({ check, anlageName }: { check: MispelCheckAnsi
   );
 }
 
-/** Lädt den Check der Anlage (nur lesend) und zeigt die Karte; bis zur Antwort steht kein Betrag. */
-export function MispelCheckPlatz({ siteId, anlageName }: { siteId: string; anlageName: string }) {
+/**
+ * Lädt den Check der Anlage (nur lesend) und zeigt die Karte; bis zur Antwort steht kein Betrag. `option`: unter
+ * welcher Wahl die Karte steht — ein Check der anderen Option (Formelsatz A… unter der Pauschaloption oder P… unter
+ * der Abgrenzungsoption) erscheint dort nicht, statt die falsche Option zu bewerten.
+ */
+export function MispelCheckPlatz({
+  siteId,
+  anlageName,
+  option = 'abgrenzung',
+}: {
+  siteId: string;
+  anlageName: string;
+  option?: 'abgrenzung' | 'pauschal';
+}) {
   const [check, setCheck] = useState<MispelCheckAnsicht | null | 'laedt' | 'fehler'>('laedt');
   useEffect(() => {
     let lebt = true;
@@ -158,6 +180,9 @@ export function MispelCheckPlatz({ siteId, anlageName }: { siteId: string; anlag
         <p className="vp-mc-satz">Der MiSpeL-Check ist gerade nicht abrufbar. Sie können trotzdem weiter einrichten.</p>
       </section>
     );
+  }
+  if (check && check.stand !== 'wird_gerechnet' && check.formelsatz != null && istPauschal(check.formelsatz) !== (option === 'pauschal')) {
+    return null;
   }
   return <MispelCheckKarte check={check} anlageName={anlageName} />;
 }

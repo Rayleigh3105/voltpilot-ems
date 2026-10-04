@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.voltpilot.api.mispel.FoerderwegRegeln;
 import com.voltpilot.api.mispel.FoerderwegRepository.Fassung;
 import com.voltpilot.api.mispel.FoerderwegService;
+import com.voltpilot.api.mispel.PauschalVormerkungService;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -33,7 +35,19 @@ public final class FoerderwegDto {
     public record Ansicht(UUID siteId, LocalDate am, String quelle, String foerderweg, String begriff,
             String rechtsgrundlage, String formelsatz, LocalDate formelsatzGebundenBis, Boolean einverstaendnis,
             LocalDate gueltigAb, Netzladen netzladen, List<FassungDto> fassungen, String awRegel,
-            Vormerkung vormerkung, String direktvermarkter, Boolean bilanzkreisGesondert) {}
+            Vormerkung vormerkung, String direktvermarkter, Boolean bilanzkreisGesondert,
+            PauschalVormerkung pauschalVormerkung, LocalDate pauschaloptionAb) {}
+
+    /**
+     * Die Pauschaloption, vorgemerkt mit offenem Termin (Vertrag 1.3, § 5a, MP-27): keine Fassung, bis VoltPilot den
+     * Tag nach der EU-Genehmigung einträgt; {@code termin} = dieser Tag, {@code null} = offen. Die Bestätigungen der
+     * Voraussetzungen 2 und 4 der Anlage 2 tragen ihr Datum; {@code null} = keine Vormerkung.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PauschalVormerkung(UUID id, String foerderweg, String begriff, String rechtsgrundlage,
+            LocalDate termin, BigDecimal steckersolarKwp, Instant einBetreiberBestaetigtAm,
+            Instant steckersolarDirektvermarktungBestaetigtAm, String direktvermarkter, Boolean bilanzkreisGesondert,
+            Instant vorgemerktAm) {}
 
     /**
      * Die vorgemerkte Fassung (Vertrag 1.2, § 5): sie gilt ab {@code gueltigAb}, dem nächsten Monatsersten; {@code null}
@@ -45,6 +59,15 @@ public final class FoerderwegDto {
             Boolean bilanzkreisGesondert) {}
 
     public static Ansicht aus(FoerderwegService.Ansicht a) {
+        return aus(a, null, null);
+    }
+
+    /**
+     * Mit der Pauschaloption (1.3, MP-27): {@code p} die stehende Vormerkung mit offenem Termin, {@code pauschaloptionAb}
+     * der Tag aus {@code voltpilot.mispel.pauschaloption-ab} ({@code null} = noch keine EU-Genehmigung).
+     */
+    public static Ansicht aus(FoerderwegService.Ansicht a, PauschalVormerkungService.Vormerkung p,
+            LocalDate pauschaloptionAb) {
         FoerderwegRegeln.Angaben g = a.angaben();
         Fassung f = a.fassung();
         String quelle = f != null ? "fassung" : g != null ? "bestand" : "unbekannt";
@@ -61,7 +84,17 @@ public final class FoerderwegDto {
                 f == null ? null : f.angaben().einverstaendnis(), f == null ? null : f.gueltigAb(),
                 new Netzladen(g == null ? null : g.foerderweg().netzladenMoeglich(), a.netzladenHeute()), fassungen,
                 g == null ? null : g.awRegel(), vormerkung(a.vormerkung()), g == null ? null : g.direktvermarkter(),
-                g == null ? null : g.bilanzkreisGesondert());
+                g == null ? null : g.bilanzkreisGesondert(), pauschal(p), pauschaloptionAb);
+    }
+
+    private static PauschalVormerkung pauschal(PauschalVormerkungService.Vormerkung p) {
+        if (p == null) {
+            return null;
+        }
+        FoerderwegRegeln.Foerderweg w = FoerderwegRegeln.Foerderweg.MARKTPRAEMIE_PAUSCHAL;
+        return new PauschalVormerkung(p.id(), w.wert(), w.begriff(), w.rechtsgrundlage(), p.termin(),
+                p.steckersolarKwp(), p.einBetreiberBestaetigtAm(), p.steckersolarDvBestaetigtAm(), p.direktvermarkter(),
+                p.bilanzkreisGesondert(), p.vorgemerktAm());
     }
 
     private static Vormerkung vormerkung(Fassung v) {

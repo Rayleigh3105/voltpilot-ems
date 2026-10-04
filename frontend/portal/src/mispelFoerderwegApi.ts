@@ -52,11 +52,41 @@ export interface FoerderwegAnsicht {
   aw_regel: string | null;
   /** Vertrag 1.2: die Vormerkung zum nächsten Monatsersten, bezogen auf heute. Ältere Antworten ohne Feld = keine. */
   vormerkung?: FoerderwegVormerkung | null;
+  /** Die Pauschaloption, vorgemerkt mit offenem Termin (Vertrag 1.3 § 5a, MP-27); ältere Server lassen das Feld weg. */
+  pauschal_vormerkung?: PauschalVormerkung | null;
+  /** Der Tag aus `voltpilot.mispel.pauschaloption-ab` (Tenor Ziff. 9b); `null` = noch keine EU-Genehmigung. */
+  pauschaloption_ab?: string | null;
   direktvermarkter?: string | null;
   bilanzkreis_gesondert?: boolean | null;
 }
 
 /** `PUT /api/v1/sites/{siteId}/foerderweg` (streng: jedes unbekannte Feld ist 400). */
+/**
+ * „Vorgemerkt, Termin offen“ (MP-27, BK-27): keine Fassung, bis VoltPilot den Tag nach der EU-Genehmigung einträgt
+ * (`termin`, sonst `null`). Die Bestätigungen der Voraussetzungen 2 und 4 der Anlage 2 tragen ihr Datum.
+ */
+export interface PauschalVormerkung {
+  id: string;
+  foerderweg: 'marktpraemie_pauschal';
+  begriff: string;
+  rechtsgrundlage: string;
+  termin: string | null;
+  steckersolar_kwp: number;
+  ein_betreiber_bestaetigt_am: string;
+  steckersolar_direktvermarktung_bestaetigt_am: string | null;
+  direktvermarkter: string | null;
+  bilanzkreis_gesondert: boolean | null;
+  vorgemerkt_am: string;
+}
+
+export interface PauschalVormerken {
+  ein_betreiber: boolean;
+  steckersolar_kwp: number;
+  steckersolar_direktvermarktung: boolean | null;
+  direktvermarkter: string | null;
+  bilanzkreis_gesondert: boolean | null;
+}
+
 export interface FoerderwegAendern {
   foerderweg: FoerderwegWert;
   formelsatz: string | null;
@@ -110,6 +140,11 @@ export const mispelApi = {
     request<FoerderwegAnsicht>(`/api/v1/sites/${encodeURIComponent(siteId)}/foerderweg`, {
       method: 'PUT',
       body: JSON.stringify(antrag),
+    }),
+  pauschalVormerken: (siteId: string, body: PauschalVormerken) =>
+    request<FoerderwegAnsicht>(`/api/v1/sites/${encodeURIComponent(siteId)}/foerderweg/pauschal-vormerkung`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     }),
   vormerkungZuruecknehmen: (siteId: string) =>
     request<FoerderwegAnsicht>(`/api/v1/sites/${encodeURIComponent(siteId)}/foerderweg/vormerkung`, {

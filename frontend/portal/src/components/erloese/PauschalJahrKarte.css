@@ -1,0 +1,271 @@
+/*
+ * MiSpeL · Jahresstand nach Anlage 2 (MP-27, BK-27 Variante A „Jahresband“). Die Bereiche der Anlage 2 (A2 Abb. 1):
+ * förderfähig grün-gelb (in Anlage 2 nicht trennbar, A2 S. 33), indifferent grau schraffiert, saldierungsfähig rot —
+ * dieselben Farben wie die MiSpeL-Karte von MP-18 (.vp-mi). Jede Farbe steht mit Wort und Formelnummer.
+ */
+.vp-pj {
+  --pj-tinte: var(--vp-c-fg);
+  --pj-leise: var(--vp-c-muted-fg);
+  --pj-zone-f: linear-gradient(90deg, #dcfce7, #fef9c3);
+  --pj-zone-n: repeating-linear-gradient(135deg, #e2e8f0 0 5px, #f8fafc 5px 10px);
+  --pj-zone-s: #fee2e2;
+  --pj-fill-f: linear-gradient(90deg, var(--mi-gruen), var(--mi-gelb));
+  --pj-fill-n: #94a3b8;
+  --pj-marke: #1e3a8a;
+}
+
+.vp-pj-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 32px;
+}
+@media (max-width: 900px) {
+  .vp-pj-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+.vp-pj-gross {
+  margin: 0;
+  font-size: var(--vp-c-fs-20, 20px);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--pj-tinte);
+}
+.vp-pj-satz {
+  margin: 4px 0 0;
+  line-height: var(--vp-c-lh-text);
+}
+.vp-pj-formel,
+.vp-pj-leg small,
+.vp-pj-kv small {
+  font-weight: 600;
+  color: var(--pj-leise);
+}
+
+.vp-pj-band {
+  position: relative;
+  margin: 40px 2px 38px;
+}
+.vp-pj-bar {
+  position: relative;
+  height: 24px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--vp-c-muted);
+}
+.vp-pj-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: block;
+}
+.vp-pj-zone.is-f {
+  background: var(--pj-zone-f);
+}
+.vp-pj-zone.is-n {
+  background: var(--pj-zone-n);
+}
+.vp-pj-zone.is-s {
+  background: var(--pj-zone-s);
+}
+.vp-pj-fill.is-f {
+  background: var(--pj-fill-f);
+}
+.vp-pj-fill.is-n {
+  background: var(--pj-fill-n);
+}
+.vp-pj-fill.is-s {
+  background: var(--mi-rot);
+}
+.vp-pj-marke {
+  position: absolute;
+  top: -32px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--pj-marke);
+  transform: translateX(-1px);
+}
+.vp-pj-marke span {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+  padding: 0 4px;
+  color: var(--pj-marke);
+  background: var(--vp-c-card, #fff);
+}
+.vp-pj-marke[data-rand='rechts'] span {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.vp-pj-marke[data-rand='links'] span {
+  left: 0;
+  transform: none;
+}
+.vp-pj-tick {
+  position: absolute;
+  top: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: var(--pj-tinte);
+  border-left: 1.5px solid #64748b;
+  padding: 6px 0 0 4px;
+}
+.vp-pj-tick.is-l {
+  transform: translateX(-100%);
+  border-left: 0;
+  border-right: 1.5px solid #64748b;
+  padding: 6px 4px 0 0;
+}
+.vp-pj-tick small {
+  font-weight: 600;
+  color: var(--pj-leise);
+}
+
+.vp-pj-zonen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  font-size: 13px;
+  margin: -8px 0 12px;
+}
+.vp-pj-zonen span {
+  border-radius: 10px;
+  padding: 6px 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-pj-zonen b {
+  display: block;
+}
+.vp-pj-zonen .is-f {
+  background: #f0fdf4;
+  color: #166534;
+}
+.vp-pj-zonen .is-n {
+  background: #f1f5f9;
+  color: #334155;
+}
+.vp-pj-zonen .is-s {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.vp-pj-naechste {
+  margin: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  line-height: var(--vp-c-lh-text);
+  background: #f0fdf4;
+  color: #14532d;
+}
+.vp-pj-naechste.is-indifferent {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+.vp-pj-naechste.is-saldierungsfaehig {
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+.vp-pj-rumpf {
+  margin: 10px 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--pj-leise);
+}
+
+.vp-pj-leg,
+.vp-pj-kv {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.vp-pj-kv {
+  margin-top: 12px;
+}
+.vp-pj-leg > div,
+.vp-pj-kv > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+}
+.vp-pj-leg dt,
+.vp-pj-kv dt {
+  min-width: 0;
+}
+.vp-pj-leg small,
+.vp-pj-kv small {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.vp-pj-leg dd,
+.vp-pj-kv dd {
+  margin: 0;
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-pj-kv dd.is-offen {
+  color: var(--pj-leise);
+}
+.vp-pj-leg i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.vp-pj-leg i.is-f {
+  background: var(--pj-fill-f);
+}
+.vp-pj-leg i.is-n {
+  background: var(--pj-zone-n);
+  outline: 1px solid #94a3b8;
+}
+.vp-pj-leg i.is-s {
+  background: var(--mi-rot);
+}
+.vp-pj-label {
+  margin: 16px 0 0;
+  font-size: 13px;
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--pj-leise);
+}
+.vp-pj-fuss {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--pj-leise);
+}
+
+.vp-pj-zeile {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+.vp-pj-zeile:hover {
+  border-color: var(--vp-c-primary, #2563eb);
+}

@@ -17,6 +17,8 @@ import {
   formelsatzVorschlag,
   gebundenBis,
   giltAb,
+  pauschalTerminOffen,
+  PAUSCHAL_VORMERKBAR,
   schritteFuer,
   schrittTitel,
   tagText,
@@ -33,6 +35,15 @@ import {
   type ZaehlerrolleAnsicht,
 } from '../mispelFoerderwegApi';
 import { AnlegenDialog } from './AnlegenDialog';
+import {
+  PauschalgrenzenSchritt,
+  PauschalPruefen,
+  steckersolarKwp,
+  VoraussetzungenSchritt,
+  voraussetzungUrteil,
+  type PauschalAngaben,
+  type PauschalAufbau,
+} from './FoerderwegPauschal';
 import { Recht } from './Recht';
 import { VpPicker } from './VpPicker';
 import './FoerderwegDialog.css';
@@ -104,15 +115,34 @@ export interface FoerderwegDialogProps {
   onGespeichert: (neu: FoerderwegAnsicht) => void;
   /** Der Platz des MiSpeL-Checks in Schritt 1 unter der Abgrenzungsoption (MP-48, BK-48 Variante A). */
   mispelCheck?: ReactNode;
+  /** Der MiSpeL-Check Haushalt unter der Pauschaloption (MP-29, Basisfall P1; MP-27). */
+  mispelCheckPauschal?: ReactNode;
+  /** Der Aufbau für die Voraussetzungen und Pauschalgrenzen der Pauschaloption (MP-27). */
+  aufbau?: PauschalAufbau;
 }
 
-export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, mispelCheck }: FoerderwegDialogProps) {
+const AUFBAU_LEER: PauschalAufbau = { pvKwp: null, speicherKwh: null, arten: [] };
+
+export function FoerderwegDialog({
+  siteId,
+  ansicht,
+  onClose,
+  onGespeichert,
+  mispelCheck,
+  mispelCheckPauschal,
+  aufbau = AUFBAU_LEER,
+}: FoerderwegDialogProps) {
   const basis = useId();
   const heute = ansicht.am;
   const v = ansicht.vormerkung ?? null;
+  const pv = ansicht.pauschal_vormerkung ?? null;
   const heuteWeg = ansicht.foerderweg;
+  // Die Pauschaloption geht vor der EU-Genehmigung als Vormerkung mit offenem Termin (MP-27, Vertrag § 5a).
+  const terminOffen = pauschalTerminOffen(heute, ansicht.pauschaloption_ab);
 
-  const [weg, setWeg] = useState<FoerderwegWert>(v?.foerderweg ?? heuteWeg ?? 'marktpraemie_ausschliesslichkeit');
+  const [weg, setWeg] = useState<FoerderwegWert>(
+    v?.foerderweg ?? (pv ? 'marktpraemie_pauschal' : null) ?? heuteWeg ?? 'marktpraemie_ausschliesslichkeit',
+  );
   const [schritt, setSchritt] = useState<SchrittId>('foerderweg');
   const [fehler, setFehler] = useState<{ schritt: SchrittId; satz: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -127,14 +157,23 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
   // Formelsatz, Partner
   const [formelsatz, setFormelsatz] = useState<string>(v?.formelsatz ?? ansicht.formelsatz ?? '');
   const [awRegel, setAwRegel] = useState<string>((v ? v.aw_regel : ansicht.aw_regel) ?? AW_UNBEKANNT);
-  const [dv, setDv] = useState<string>((v ? v.direktvermarkter : ansicht.direktvermarkter) ?? '');
+  const [dv, setDv] = useState<string>((v ? v.direktvermarkter : pv ? pv.direktvermarkter : ansicht.direktvermarkter) ?? '');
   const [bilanzkreis, setBilanzkreis] = useState<boolean>(
-    (v ? v.bilanzkreis_gesondert : ansicht.bilanzkreis_gesondert) === true,
+    (v ? v.bilanzkreis_gesondert : pv ? pv.bilanzkreis_gesondert : ansicht.bilanzkreis_gesondert) === true,
   );
+  // Voraussetzungen der Pauschaloption (A2 Abschn. 3.1.1)
+  const [pauschal, setPauschal] = useState<PauschalAngaben>({
+    steckersolar: pv ? (pv.steckersolar_kwp > 0 ? 'ja' : 'nein') : null,
+    steckersolarKwp: pv && pv.steckersolar_kwp > 0 ? String(pv.steckersolar_kwp).replace('.', ',') : '',
+    einBetreiber: pv != null,
+    steckersolarDv: pv?.steckersolar_direktvermarktung_bestaetigt_am != null,
+  });
   const [einverstanden, setEinverstanden] = useState<boolean>((v ? v.einverstaendnis : ansicht.einverstaendnis) === true);
 
   const schritte = schritteFuer(weg);
   const ab = giltAb(heute, heuteWeg, weg, v?.gueltig_ab ?? null);
+  const vormerkenOffen = weg === 'marktpraemie_pauschal' && terminOffen;
+  const stecker = steckersolarKwp(pauschal) ?? 0;
   const index = schritte.indexOf(schritt);
 
   // Das Register der Anlage und die Zählerrollen, sobald der Weg Zähler braucht.
@@ -260,6 +299,17 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
     const kurz = foerderweg(weg).kurzweg;
     const dvWeg = weg !== 'einspeiseverguetung' && !kurz;
     try {
+      if (vormerkenOffen) {
+        const neu = await mispelApi.pauschalVormerken(siteId, {
+          ein_betreiber: pauschal.einBetreiber,
+          steckersolar_kwp: stecker,
+          steckersolar_direktvermarktung: stecker > 0 ? pauschal.steckersolarDv : null,
+          direktvermarkter: dv.trim() ? dv.trim() : null,
+          bilanzkreis_gesondert: bilanzkreis,
+        });
+        onGespeichert(neu);
+        return;
+      }
       const neu = await mispelApi.foerderwegSetzen(siteId, {
         foerderweg: weg,
         formelsatz: weg === 'marktpraemie_abgrenzung' ? formelsatz || null : null,
@@ -289,6 +339,10 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
 
   // Der MiSpeL-Check (MP-48, BK-48 A) vergleicht heute gegen die Abgrenzungsoption — nur, wenn sie nicht schon gilt.
   const mitCheck = weg === 'marktpraemie_abgrenzung' && heuteWeg !== 'marktpraemie_abgrenzung' && mispelCheck != null;
+  // MP-27: unter der Pauschaloption der Check Haushalt (MP-29) — gleiche Regel „informieren, nicht drängen“.
+  const mitCheckPauschal =
+    weg === 'marktpraemie_pauschal' && heuteWeg !== 'marktpraemie_pauschal' && mispelCheckPauschal != null;
+  const urteil = voraussetzungUrteil(aufbau, pauschal);
 
   // ---------------------------------------------------------------- Rümpfe
   let rumpf: ReactNode = null;
@@ -321,16 +375,23 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
                   {f.begriff}
                   {f.wert === heuteWeg && <em className="vp-fw-heute">heute</em>}
                   {v && f.wert === v.foerderweg && <em className="vp-fw-heute">ab {tagText(v.gueltig_ab)} vorgemerkt</em>}
+                  {pv && f.wert === 'marktpraemie_pauschal' && <em className="vp-fw-heute">vorgemerkt, Termin offen</em>}
                 </b>
                 <span>{f.satz}</span>
                 <small>
                   {f.rechtsgrundlage} · {f.gesperrt ?? (f.netzladenMoeglich ? 'Netzladen: Ihre Einstellung' : 'Netzladen ausgeschlossen')}
                 </small>
+                {f.wert === 'marktpraemie_pauschal' && terminOffen && (
+                  <small className="vp-fw-vormerkbar" data-testid="fw-pauschal-vormerkbar">
+                    {PAUSCHAL_VORMERKBAR}
+                  </small>
+                )}
               </span>
             </label>
           ))}
         </div>
         {mitCheck && <div className="vp-fw-check">{mispelCheck}</div>}
+        {mitCheckPauschal && <div className="vp-fw-check">{mispelCheckPauschal}</div>}
         {fehlerZeile('foerderweg')}
       </section>
     );
@@ -476,8 +537,36 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
         {fehlerZeile('formelsatz')}
       </section>
     );
+  } else if (schritt === 'voraussetzungen') {
+    rumpf = (
+      <section className="vp-fw-schritt" data-schritt="voraussetzungen">
+        <VoraussetzungenSchritt aufbau={aufbau} angaben={pauschal} onAngaben={setPauschal} basis={basis} />
+        {fehlerZeile('voraussetzungen')}
+      </section>
+    );
+  } else if (schritt === 'pauschalgrenzen') {
+    rumpf = (
+      <section className="vp-fw-schritt" data-schritt="pauschalgrenzen">
+        <PauschalgrenzenSchritt aufbau={aufbau} steckersolar={stecker} />
+        {fehlerZeile('pauschalgrenzen')}
+      </section>
+    );
+  } else if (schritt === 'pruefen' && vormerkenOffen) {
+    rumpf = (
+      <section className="vp-fw-schritt" data-schritt="pruefen">
+        <PauschalPruefen
+          heuteBegriff={ansicht.begriff ?? 'der heutige Förderweg'}
+          aufbau={aufbau}
+          steckersolar={stecker}
+          heute={heute}
+          dv={dv}
+          bilanzkreis={bilanzkreis}
+        />
+        {fehlerZeile('pruefen')}
+      </section>
+    );
   } else if (schritt === 'partner') {
-    const noetig = einverstaendnisNoetig(weg, ab);
+    const noetig = einverstaendnisNoetig(weg, ab) && !vormerkenOffen;
     rumpf = (
       <section className="vp-fw-schritt" data-schritt="partner">
         <p className="vp-fw-frage" id={`${basis}-partner`}>
@@ -575,7 +664,7 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
   const formelsatzOk = !!(formelsatz || fv.vorschlag) &&
     !fv.optionen.find((o) => o.wert === (formelsatz || fv.vorschlag))?.gesperrt;
   let primaer: ReactNode;
-  if (schritt === 'foerderweg' && mitCheck) {
+  if (schritt === 'foerderweg' && (mitCheck || mitCheckPauschal)) {
     // BK-48 A: „Weiter zur Einrichtung“ und „Beim heutigen Förderweg bleiben“ gleich groß — informieren, nicht drängen.
     primaer = (
       <Button variant="primary" className="vp-fw-gleich" onClick={weiter}>
@@ -612,6 +701,27 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
         Weiter: {naechsterTitel}
       </Button>
     );
+  } else if (schritt === 'voraussetzungen') {
+    primaer = (
+      <Button
+        variant="primary"
+        disabled={!urteil.weiter}
+        className="vp-fw-umbruch"
+        data-testid="fw-weiter-voraussetzungen"
+        onClick={() => {
+          if (!urteil.weiter) return;
+          weiter();
+        }}
+      >
+        Weiter: {naechsterTitel}
+      </Button>
+    );
+  } else if (schritt === 'pauschalgrenzen') {
+    primaer = (
+      <Button variant="primary" onClick={weiter}>
+        Weiter: {naechsterTitel}
+      </Button>
+    );
   } else if (schritt === 'partner') {
     primaer = (
       <Button variant="primary" onClick={weiter}>
@@ -622,14 +732,20 @@ export function FoerderwegDialog({ siteId, ansicht, onClose, onGespeichert, misp
     primaer = (
       <Recht aktion="anlage.verwalten">
         <Button variant="primary" onClick={() => void eintragen()} disabled={busy} aria-busy={busy || undefined} data-testid="fw-eintragen">
-          {busy ? 'Wird eingetragen …' : ab === heute ? 'Ab heute eintragen' : `Ab ${tagText(ab).slice(0, 6)} eintragen`}
+          {busy
+            ? 'Wird eingetragen …'
+            : vormerkenOffen
+              ? 'Vormerken'
+              : ab === heute
+                ? 'Ab heute eintragen'
+                : `Ab ${tagText(ab).slice(0, 6)} eintragen`}
         </Button>
       </Recht>
     );
   }
   const fuss = (
     <>
-      {schritt === 'foerderweg' && mitCheck ? (
+      {schritt === 'foerderweg' && (mitCheck || mitCheckPauschal) ? (
         <Button variant="outline" className="vp-fw-gleich" onClick={onClose}>
           Beim heutigen Förderweg bleiben
         </Button>

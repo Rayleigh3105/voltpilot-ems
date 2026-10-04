@@ -8,6 +8,7 @@ import { MispelCheckKarte, MispelCheckPlatz } from './MispelCheckKarte';
 
 const a4 = fixtures.a4 as MispelCheckAnsicht;
 const a2 = fixtures.a2 as MispelCheckAnsicht;
+const c1 = fixtures.c1 as MispelCheckAnsicht;
 
 const heute: FoerderwegAnsicht = {
   site_id: 's-1',
@@ -112,5 +113,33 @@ describe('Förderweg-Dialog Schritt 1 mit MiSpeL-Check', () => {
     );
     expect(screen.queryByTestId('mispel-check')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Beim heutigen Förderweg bleiben' })).toBeNull();
+  });
+});
+
+describe('MiSpeL-Check Haushalt mit der Pauschaloption (MP-29; Wörter MP-27)', () => {
+  it('eigene Überschrift, Wörter statt Posten-Schlüssel, der Hinweis des Schreibers steht da', () => {
+    render(<MispelCheckKarte check={c1} anlageName="Haus Kröger" />);
+    const karte = screen.getByTestId('mispel-check');
+    expect(karte.textContent).toContain('heute gegen Pauschaloption');
+    expect(karte.textContent).not.toContain('Abgrenzungsoption');
+    expect(screen.getByTestId('mispel-check-hinweis').textContent).toContain('Information vor dem Wechsel');
+    fireEvent.click(screen.getByRole('button', { name: 'Wie gerechnet?' }));
+    const rechnung = screen.getByTestId('mispel-check-rechnung');
+    expect(rechnung.textContent).toContain('Marktprämie statt Einspeisevergütung');
+    expect(rechnung.textContent).toContain('Netzladen-Handel mit der Pauschaloption');
+    expect(rechnung.textContent).toContain('Direktvermarktungsentgelt');
+    expect(rechnung.textContent).toContain('Was die Pauschaloption verlangt');
+    expect(rechnung.textContent).toContain('höchstens 30 kWp Solarleistung');
+    expect(rechnung.textContent).not.toMatch(/einspeisung_marktpraemie|handel_pauschal|direktvermarktungsentgelt|messstellenbetrieb/);
+  });
+
+  it('der Platz unter der Pauschaloption zeigt nur einen Pauschal-Check, der unter der Abgrenzungsoption nur einen A-Check', async () => {
+    vi.spyOn(mispelCheckApi, 'lesen').mockResolvedValue(c1);
+    const { container } = render(<MispelCheckPlatz siteId="s-1" anlageName="Haus Kröger" option="abgrenzung" />);
+    await waitFor(() => expect(container.querySelector('[data-stand="laedt"]')).toBeNull());
+    expect(screen.queryByTestId('mispel-check')).toBeNull();
+    cleanup();
+    render(<MispelCheckPlatz siteId="s-1" anlageName="Haus Kröger" option="pauschal" />);
+    expect(await screen.findByTestId('mispel-check-betrag')).toBeTruthy();
   });
 });

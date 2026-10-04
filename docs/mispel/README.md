@@ -86,6 +86,15 @@ stehen in jeder Antwort daneben. Regeln, Bestand ohne Zeile und Schnittstelle: [
   ungünstig bis günstig; „Wie gerechnet?“ zeigt die Posten mit Vorzeichen und was die Abgrenzungsoption verlangt.
   Daten nur lesend aus `site_mispel_check` (`GET /api/v1/sites/{siteId}/mispel-check`,
   [Vertrag](../contracts/v2/mispel-check.md)); ohne Zeile „wird gerechnet“, nie 0 €.
+- **Haushalt mit der Pauschaloption im Portal (MP-27, BK-27 Variante A „Jahresband“):** im selben Dialog die Wahl
+  „Marktprämie mit Pauschaloption“ mit den Schritten Voraussetzungen (Anlage 2 Abschn. 3.1.1: 30 kWp ohne
+  Steckersolar aus dem Aufbau, nur Solar/Speicher/Ladepunkte, „ein Betreiber“ und „Steckersolar in der
+  Direktvermarktung“ bestätigt der Kunde) · Pauschalgrenzen ((P1)–(P4) mit Rechenweg) · Partner · Prüfen; vor der
+  EU-Genehmigung **vorgemerkt, Termin offen** ([Vertrag 1.3 § 5a](../contracts/v2/mispel-foerderweg.md#5a-pauschaloption-vormerken-mit-offenem-termin-13-mp-27)),
+  keine Fassung. Darunter der Check Haushalt (MP-29) mit eigener Überschrift und Hinweis. In Verlauf › Erlöse die Karte
+  „MiSpeL · Jahresstand nach Anlage 2“ (Band förderfähig/indifferent/saldierungsfähig, „Sie stehen bei …“, die nächste
+  kWh; im Monat eine Zeile mit Sprung) aus dem Jahreslauf MP-25
+  ([Vertrag](../contracts/v2/mispel-pauschal.md#jahresstand-für-das-portal-mp-27)); Zwilling `mispelPauschal.ts`.
 - **Der alte Schalter `netzladen_erlaubt`** bietet das Portal seit MP-17 nur noch, wo der Förderweg Netzladen zulässt
   (sonst gesperrt mit Grund); ohne Fassung ist er der Bestand, mit Fassung bestimmt der Förderweg ([Vertrag § 6](../contracts/v2/mispel-foerderweg.md#6-der-alte-netzlade-schalter-bis-mp-17-w2--b),
   [Wegweiser Netzladen-Schalter](../agents/root/per-site-grid-charging-switch-site-netzl.md)).
@@ -186,6 +195,8 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 | Datenformate | Marktkommunikation nicht geregelt (T S. 28, S. 90, S. 92) | CSV und PDF mit denselben Werten | vor EDI@Energy gibt es kein amtliches Format |
 | Prämien-Viertelstunden | AW>0-Liste der ÜNB (A1 S. 17 Fn. 8) | Liste importiert; ohne Liste Rückfall „keine Prämie bei SP¼ < 0“, Monat bleibt „vorläufig“ | der Rückfall hält nur die Steuerung am Laufen |
 | Rot-Exportwert | Saldierung der Umlagen (§ 21 EnFG), Netzentgelt über § 118 Abs. 6 EnWG (A1 S. 18) | Gutschrift nur für Umlagen + Netzentgelt-Arbeitspreis; Stromsteuer, Konzessionsabgabe und Leistungspreis nicht | Stromsteuer liegt außerhalb der BNetzA-Befugnis (A1 S. 18 Fn. 10); bis zur Rechtsklärung vorsichtig |
+| Pauschal vor der Genehmigung | Wechsel nur zum Monatsersten (§ 21b Abs. 1 S. 2 EEG), Pauschaloption erst nach EU-Genehmigung (Tenor Ziff. 9b) | „vorgemerkt, Termin offen“ ohne Fassung (MP-27) | der Kunde richtet sich heute ein; gewechselt wird erst am Monatsersten nach der Genehmigung |
+| Steckersolar in (P1) | jede Solaranlage hinter der Einspeisestelle, Steckersolargeräte für (P1) mitgezählt (A2 S. 27, Fn. 14) | Leistung als Angabe des Kunden zusätzlich zum Aufbau | der Aufbau führt heute eine PV-Anlage je Anlage; ein Merkmal je Solaranlage braucht mehrere Solaranlagen im Aufbau |
 | Wort „Förderweg“ | Veräußerungsform und Option (§ 19 Abs. 3 S. 1 EEG) | ein Stammdatum, amtlicher Begriff daneben | verhindert widersprüchliche Kombinationen |
 
 ## 9. Was noch nicht gebaut ist

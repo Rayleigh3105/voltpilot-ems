@@ -68,9 +68,11 @@ import { SoVerdientInhalt } from '../components/SoVerdient';
 import { SpeicherKarte } from '../components/erloese/SpeicherKarte';
 import { MispelJahrKarte, MispelMonatKarte } from '../components/erloese/MispelKarte';
 import { MsbAbgleichSatz } from '../components/erloese/MsbAbgleich';
+import { PauschalJahrKarte, PauschalJahrZeile } from '../components/erloese/PauschalJahrKarte';
 import { useMispelMengen } from '../useMispelMengen';
 import { LadepunktErtragKarte } from '../components/erloese/LadepunktErtragKarte';
 import { useLadepunktErtraege } from '../useLadepunktErtraege';
+import { usePauschalJahr } from '../usePauschalJahr';
 import { arbitrageAusweisErlaubt } from '../mispelMengen';
 import '../components/erloese/ErgebnisKarte.css';
 import { RechenZeilen, SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
@@ -166,6 +168,9 @@ export function ErloeseSection({
   const mispelSicht = range === 'year' ? mispel.jahr : mispel.monat;
   // MiSpeL MP-41a (BK-41): die Erträge am bidirektionalen Ladepunkt im Monat, unter der MiSpeL-Karte.
   const ladepunktErtraege = useLadepunktErtraege(site.id, range, anchor);
+  // MiSpeL (MP-27, BK-27 A): der Jahresstand der Pauschaloption — im Jahr die Karte, im Monat eine Zeile mit Sprung.
+  const pauschal = usePauschalJahr(site.id, anchor.getFullYear(), range === 'year' || range === 'month');
+  const pauschalHeute = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
   const modus = normalisiereModus(modusWahl, anchor, range, history?.coverage);
   const vorher = useVergleichsErloese(
     site.id,
@@ -453,6 +458,17 @@ export function ErloeseSection({
               )}
             </Kennzahlen>
 
+            {range === 'month' && pauschal && (
+              <PauschalJahrZeile
+                daten={pauschal}
+                heute={pauschalHeute}
+                onJahr={() => {
+                  setRange('year');
+                  schreibeAdresse('year', anchor, modusWahl);
+                }}
+              />
+            )}
+            {range === 'year' && pauschal && <PauschalJahrKarte daten={pauschal} heute={pauschalHeute} />}
             {range === 'month' && mispel.monat?.abgrenzung && (
               <MispelMonatKarte siteId={site.id} daten={mispel.monat} ampel={<MsbAbgleichSatz siteId={site.id} monat={mispel.monat.monat} />} />
             )}

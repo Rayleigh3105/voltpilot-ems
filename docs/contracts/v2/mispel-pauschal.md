@@ -251,6 +251,27 @@ Fn. 40; Tenorziffer 5), beginnt das Rumpfjahr der Pauschaloption an diesem Monat
 Veräußerungsform bereits; der Lauf prüft genau das am Förderweg. Eine Erkennung der Rumpfjahre aus Fallständen (wie
 MP-21 für Rumpfmonate) folgt mit Einrichtung und Portal (MP-27).
 
+## Jahresstand für das Portal (MP-27)
+
+`GET /api/v1/sites/{siteId}/mispel/pauschal/jahre/{jahr}` (Leseweg der Anlage, `messwerte.ansehen`, fremd 404;
+`SiteMispelPauschalController`) → `{site_id, jahr, anwendbar_ab, staende[], schaetzung}`. Je (Rumpf-)Jahr des
+Kalenderjahres die **jüngste Fassung** aus `mispel_pauschal_jahr` (`MispelPauschalRepository#jahresstaende`): `tag_von`,
+`tag_bis`, `rumpfjahr`, `fassung`, `formelsatz`, `basisfall`, `stand`, `stand_gruende`, `wertequelle`,
+`viertelstunden_erwartet/_gerechnet`, `gerechnet_am`, `stammdaten` und `jahreswerte` des Schlüssels — ohne die
+Viertelstunden des Nachweises. Die Werte des Nachweises sind ungerundete Brüche; die Route rundet sie **nur zur Anzeige**
+auf drei Nachkommastellen (der Nachweis bleibt ungerundet). Ein Jahr ohne Lauf hat leere `staende` (keine Karte).
+`schaetzung` ist immer `null`: eine Schätzung bis Jahresende braucht ein Jahresprofil, das der Jahreszustand (MP-26)
+noch nicht hat — hochgerechnet mit dem bisherigen Tempo wird nicht (Bedienkonzept BK-27).
+
+**Lesart „wo das Jahr steht“** (Portal `mispelPauschal.ts#jahresstand`, Karte „MiSpeL · Jahresstand nach Anlage 2“ in
+Verlauf › Erlöse): förderfähig zählt die Netzeinspeisung in AW>0-Zeiten bis (P1) — (P15) = MIN [ (P14) ; (P1) ];
+saldierungsfähig zählt die Netzeinspeisung bei nicht negativem Preis über (P4) — (P8) = MAX [ 0 ; (P7) − (P4) ]. Der
+Strich „heute“ steht darum unter (P1) bei (P14), darüber bei (P7); dazwischen der Indifferenzbereich (P3). Im Rumpfjahr
+treten (P1)R/(P3)R/(P4)R an die Stelle (Regel `rumpfjahre`, A2 S. 54–55). Fehlt (P14) oder (P7), steht „offen“.
+Die Pauschalgrenzen der Einrichtung rechnet das Portal aus dem Aufbau nach (P1), (P2)P1/P2/P3, (P3), (P4) und das
+Rumpfjahr nach (P17)–(P4)R — geprüft gegen diese Vektoren (`mispelPauschal.test.ts`: `pauschalgrenzen`,
+`bnetza-rumpfjahre-zweiter-speicher-am-16-mai`).
+
 ## Was die Leser prüfen (L1–L10)
 
 Beide Leser prüfen dieselbe Liste; ein Fall, den nur einer anmahnt, ist ein Fehler im anderen.

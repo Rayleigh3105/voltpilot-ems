@@ -322,3 +322,148 @@
     padding-right: 12px;
   }
 }
+
+/* MiSpeL MP-27 (BK-27): Pauschaloption — Voraussetzungen, Pauschalgrenzen, Wartestand „Termin offen“. */
+.vp-fw-vormerkbar {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 8px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-fw-pruefliste {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.vp-fw-punkt {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px 10px 40px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  position: relative;
+  line-height: var(--vp-c-lh-text);
+}
+.vp-fw-punkt::before {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+}
+.vp-fw-punkt.is-ok::before {
+  content: '✓';
+  background: #16a34a;
+}
+.vp-fw-punkt.is-nein::before {
+  content: '✕';
+  background: #dc2626;
+}
+.vp-fw-punkt.is-frage::before {
+  content: '?';
+  background: #2563eb;
+}
+.vp-fw-punkt.is-warn::before {
+  content: '!';
+  background: #d97706;
+}
+.vp-fw-punkt.is-info::before {
+  content: 'i';
+  background: #64748b;
+}
+.vp-fw-punkt.is-nein {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+.vp-fw-punkt small,
+.vp-fw-klein {
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg);
+}
+.vp-fw-klein {
+  margin: 4px 0 8px;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-fw-stecker {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.vp-fw-stecker legend {
+  padding: 0 4px;
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-fw-wahlen.is-reihe {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.vp-fw-grenzen {
+  width: 100%;
+  margin: 4px 0 8px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.vp-fw-grenzen th,
+.vp-fw-grenzen td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--vp-c-border);
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+.vp-fw-grenzen thead th {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-muted-fg);
+}
+.vp-fw-grenzen th small {
+  display: block;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12, 12px);
+}
+.vp-fw-grenzen .is-n {
+  text-align: right;
+  white-space: nowrap;
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-fw-formel {
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-fw-hinweis.is-warn {
+  box-shadow: inset 3px 0 0 #d97706;
+  margin: 8px 0;
+}
+/* Lange Schritt-Titel („Weiter: Pauschalgrenzen“) brechen am Telefon um statt abgeschnitten zu werden. */
+.vp-fw-umbruch {
+  white-space: normal;
+  line-height: 1.2;
+  min-width: 0;
+  text-align: center;
+}
+.vp-fw-stecker legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+}
+.vp-fw-stecker legend + * {
+  clear: both;
+}

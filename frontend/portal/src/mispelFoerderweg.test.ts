@@ -15,6 +15,8 @@ import {
   schritteFuer,
   wahlPaar,
   zaehlerZustand,
+  PAUSCHAL_VORMERKBAR,
+  pauschalTerminOffen,
 } from './mispelFoerderweg';
 
 /** Die Wahrheit des Vertrags (`mispel-foerderweg.md` 1.2): Werte, Begriffe, Netzladen, Formelsätze. */
@@ -50,7 +52,7 @@ describe('MiSpeL-Förderweg im Portal — Zwilling des Vertrags', () => {
   it('jede Ablehnung des Vertrags hat einen Schritt; jede Fall-Ablehnung einen eigenen Satz', () => {
     const codes = [...vertrag.matchAll(/^\| `([a-z_]+)`/gm)].map((m) => m[1]);
     expect(codes).toContain('netzladen_bei_vormerkung');
-    for (const code of codes) expect(['foerderweg', 'zaehler', 'formelsatz', 'partner', 'pruefen']).toContain(ablehnungSchritt({ code }));
+    for (const code of codes) expect(['foerderweg', 'zaehler', 'formelsatz', 'voraussetzungen', 'partner', 'pruefen']).toContain(ablehnungSchritt({ code }));
     for (const code of new Set(vektoren.faelle.map((f) => f.erwartet).filter((c): c is string => c != null))) {
       if (code === 'anfrage_ungueltig' || code === 'netzladen_bei_vormerkung') continue; // die Fläche schickt beides nie
       expect(ablehnungSatz({ code, message: 'SERVER' }), code).not.toBe('SERVER');
@@ -101,11 +103,16 @@ describe('Schritte und Netzladen (BK-17 A)', () => {
     expect(schritteFuer('marktpraemie_abgrenzung')).toEqual(['foerderweg', 'zaehler', 'formelsatz', 'partner', 'pruefen']);
   });
 
-  it('der heutige Weg steht vorn, die Pauschaloption zuletzt und gesperrt mit Grund', () => {
+  it('der heutige Weg steht vorn, die Pauschaloption zuletzt — wählbar, vor der EU-Genehmigung zum Vormerken (MP-27)', () => {
     const reihe = foerderwegReihe('marktpraemie_ausschliesslichkeit');
     expect(reihe[0].wert).toBe('marktpraemie_ausschliesslichkeit');
     expect(reihe.at(-1)?.wert).toBe('marktpraemie_pauschal');
-    expect(reihe.at(-1)?.gesperrt).toMatch(/Tenor Ziff. 9b/);
+    expect(reihe.at(-1)?.gesperrt).toBeNull();
+    expect(PAUSCHAL_VORMERKBAR).toMatch(/Tenor Ziff. 9b/);
+    expect(pauschalTerminOffen('2026-10-04', null)).toBe(true);
+    expect(pauschalTerminOffen('2026-10-04', '2027-03-01')).toBe(true);
+    expect(pauschalTerminOffen('2026-10-04', '2026-11-01')).toBe(false);
+    expect(schritteFuer('marktpraemie_pauschal')).toEqual(['foerderweg', 'voraussetzungen', 'pauschalgrenzen', 'partner', 'pruefen']);
   });
 
   it('Netzladen offen nur, wo der Förderweg es zulässt; unbekannt ist kein „erlaubt“', () => {

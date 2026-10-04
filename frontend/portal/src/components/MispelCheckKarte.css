@@ -257,3 +257,14 @@
   font-size: var(--vp-c-fs-12, 12px);
   color: var(--vp-c-muted-fg);
 }
+
+/* MP-27: der Satz des Schreibers (z. B. „Information vor dem Wechsel …“) steht immer mit da. */
+.vp-mc-hinweis {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-13, 13px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  overflow-wrap: anywhere;
+}
