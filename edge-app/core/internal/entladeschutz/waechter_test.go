@@ -229,3 +229,75 @@ func TestSaeuleUndPlanEintragen(t *testing.T) {
 		t.Fatal("WunschAusPlan")
 	}
 }
+
+// MiSpeL MP-39b: the Lademodus changes to Aus or Schnell on site (or the
+// operator pause takes the box) while the vehicle feeds back - the vehicle is
+// told to stop in the very next Takt (setpoint 0), the connector is released
+// to the load management at once; with the hold gone the plan's stage applies
+// again.
+func TestWaechterHaltEndetImNaechstenTakt(t *testing.T) {
+	for _, grund := range []string{GrundLademodusAus, GrundLademodusSchnell, GrundAutomatikPausiert} {
+		s := &saeule{}
+		w := NewWaechter()
+		frei := 0
+		w.Freigegeben = func() { frei++ }
+		l := basis()
+		w.Schritt(context.Background(), s, sp, l)
+		l.Jetzt = l.Jetzt.Add(Takt)
+		l.Halt = grund
+		e := w.Schritt(context.Background(), s, sp, l)
+		if e.Grund != grund || e.EntladenKw != 0 || !gleich(s.liste(), []float64{-3.3, 0}) ||
+			w.Reserviert(sp.ChargerID, sp.Connector) || frei != 1 {
+			t.Fatalf("%s: %+v gesendet=%v reserviert=%v frei=%d", grund, e, s.liste(),
+				w.Reserviert(sp.ChargerID, sp.Connector), frei)
+		}
+		// Held: nothing more is sent, Takt after Takt.
+		l.Jetzt = l.Jetzt.Add(Takt)
+		if e := w.Schritt(context.Background(), s, sp, l); e.EntladenKw != 0 || len(s.liste()) != 2 {
+			t.Fatalf("%s gehalten: %+v %v", grund, e, s.liste())
+		}
+		// The hold ended (Schnell for this charge, the pause expired): the
+		// plan's stage applies again.
+		l.Jetzt = l.Jetzt.Add(Takt)
+		l.Halt = ""
+		if e := w.Schritt(context.Background(), s, sp, l); e.EntladenKw <= 0 || !w.Reserviert(sp.ChargerID, sp.Connector) {
+			t.Fatalf("%s danach: %+v %v", grund, e, s.liste())
+		}
+	}
+}
+
+// A scene is cloud-only: the optimizer drops the vehicle block, and the next
+// plan without it ends a running feed-back in the next Takt (no block = no
+// consent, MP-39).
+func TestWaechterSzeneKommtMitDemPlan(t *testing.T) {
+	jetzt := time.Date(2026, 10, 1, 17, 0, 0, 0, time.UTC)
+	plan := func(block string) *plan2.Plan {
+		p, err := plan2.Parse([]byte(`{"schema_version":"2.0","tenant_id":"00000000-0000-0000-0000-000000000001",
+		 "site_id":"00000000-0000-0000-0000-000000000002","device_id":"00000000-0000-0000-0000-000000000003",
+		 "plan_id":"00000000-0000-0000-0000-000000000004","generated_at":"2026-10-01T17:00:00Z","slot_minutes":15,
+		 "entities":[{"entity_id":"wb-1","kind":"ev-charger"`+block+`,
+		   "slots":[{"start":"2026-10-01T17:00:00Z","commands":{"setpoint_kw":-6}}]}]}`), jetzt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	mit := plan(`,"fahrzeug":{"rueckspeisen":"v2h","mindest_soc_pct":40,"abfahrt":"2026-10-02T05:00:00Z",
+	  "abfahrt_soc_pct":80,"kapazitaet_kwh":60,"rueckspeiseleistung_kw":10}`)
+	s := &saeule{}
+	w := NewWaechter()
+	l := basis()
+	l.Jetzt = jetzt.Add(time.Minute)
+	l.SocZeit, l.NetzZeit = l.Jetzt, l.Jetzt
+	PlanEintragen(&l, mit, "wb-1")
+	if e := w.Schritt(context.Background(), s, sp, l); e.EntladenKw <= 0 {
+		t.Fatalf("mit block: %+v", e)
+	}
+	l.Jetzt = l.Jetzt.Add(Takt)
+	l.Freigabe, l.WunschKw = "", 0
+	PlanEintragen(&l, plan(""), "wb-1")
+	e := w.Schritt(context.Background(), s, sp, l)
+	if e.Grund != GrundFreigabeAus || w.Reserviert(sp.ChargerID, sp.Connector) || s.liste()[len(s.liste())-1] != 0 {
+		t.Fatalf("szene über den plan: %+v %v", e, s.liste())
+	}
+}

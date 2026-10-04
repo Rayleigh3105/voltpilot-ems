@@ -375,6 +375,9 @@ class Fahrzeugspeicher:
       Einstellungen des Fahrers wurden nicht gelesen), ``mindest_soc_pct`` die
       Reserve wie gesagt, ``naechste_abfahrt`` die naechste Abfahrt (UTC) mit
       ihrem Ladestand und ``box_device_id`` die Box, an der die Saeule haengt.
+    - MP-39b: ``rueckspeisen_halt`` nennt den Halte-Grund (Lademodus „Aus“ oder
+      „Schnell“, eine Szene), der die Freigabe in diesem Lauf auf ``aus``
+      gesetzt hat; ``None`` = keiner.
     """
 
     komponente_id: str
@@ -396,6 +399,7 @@ class Fahrzeugspeicher:
     mindest_soc_pct: float | None = None
     naechste_abfahrt: tuple[datetime, float | None] | None = None
     box_device_id: str | None = None
+    rueckspeisen_halt: str | None = None
 
     def __post_init__(self) -> None:
         n = len(self.angesteckt)

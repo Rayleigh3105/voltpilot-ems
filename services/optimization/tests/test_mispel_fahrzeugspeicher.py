@@ -470,7 +470,7 @@ def test_lader_unidirektional_bleibt_bestand(monkeypatch):
     _lader(monkeypatch, {
         "ladepunkt_faehigkeit": [(kid, "unidirektional", False, False, False, None)],
         "ladepunkt_fahrzeugfenster": [(kid, 20, 60, 3, time(18), time(7), 80)],
-        "device_charge_connector": [(kid, "Charging", 50.0, T0)],
+        "device_charge_connector": [(kid, "Charging", 50.0, T0, False, None)],
     })
     assert load_fahrzeugspeicher("postgresql://fake", _site(), T0, slots) is None
 
@@ -484,7 +484,7 @@ def test_lader_bidirektional_mit_frischer_messung(monkeypatch):
         "ladepunkt_faehigkeit": [(kid, "bidirektional", True, True, False, 11)],
         "ladepunkt_fahrzeugfenster": [(kid, 20, 60, a.wochentag, a.ankunft, a.abfahrt, a.abfahrt_soc_pct)
                                       for a in PENDLER],
-        "device_charge_connector": [(kid, "SuspendedEV", 40.0, T0 - timedelta(minutes=5))],
+        "device_charge_connector": [(kid, "SuspendedEV", 40.0, T0 - timedelta(minutes=5), False, None)],
         "ladepunkt_fahrer_einstellung": [(kid, "v2g", None, None, None)],
     }
     _lader(monkeypatch, tabellen)
@@ -496,5 +496,5 @@ def test_lader_bidirektional_mit_frischer_messung(monkeypatch):
     assert fz is not None and fz.rueckspeisen == "aus" and fz.rueckspeisen_kw == 0.0 and not fz.v2g
     tabellen["ladepunkt_fahrer_einstellung"] = [(kid, "v2g", None, None, None)]
     # veraltete Messung ist nicht aktuell - ohne Ladestand kein Fahrzeug
-    tabellen["device_charge_connector"] = [(kid, "SuspendedEV", 40.0, T0 - timedelta(hours=1))]
+    tabellen["device_charge_connector"] = [(kid, "SuspendedEV", 40.0, T0 - timedelta(hours=1), False, None)]
     assert load_fahrzeugspeicher("postgresql://fake", _site(netzladen_erlaubt=True), T0, slots) is None

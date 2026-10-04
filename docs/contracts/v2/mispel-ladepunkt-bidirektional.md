@@ -140,6 +140,10 @@ nur an Anlagen im Betreiber-Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES`:
   steht es bis zur nächsten Abfahrt des Fahrers. „Nur die nächste Fahrt“ ersetzt den Wochenplan bis einschließlich zu
   ihr; eine vergangene zählt nicht.
 - `vollzyklen_je_tag` ersetzt die feste 1 (leer = 1).
+- **Halte-Grund (MP-39b, Captain-Entscheid 04.10.2026):** Lademodus „Aus“ (die Wallbox ruht ganz) oder „Schnell“ (nur
+  laden, für diese Ladung) am Stecker und eine aktive Szene, die den Ladepunkt pausiert hat, halten das Zurückspeisen
+  an: der Plan lädt nur, der Block entfällt; endet der Halte-Grund, plant der nächste Lauf wieder mit der Stufe von
+  `rueckspeisen`. Die Ansicht (`rueckspeisen_wirksam`) zeigt weiter, was der Fahrer eingestellt hat.
 
 Gesendet wird daraus der Block `fahrzeug` im [Fahrplan 2.0](./mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39).
 
@@ -250,10 +254,11 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
   Anstecken“, nie „nein“. Den Ladestand beurteilt die Karte noch nach `meteredAt` statt nach `socMeasuredAt` — eine
   sichtbare Änderung, die erst ein abgestimmtes Bedienkonzept braucht.
 - **Anbindung an Optimierer und Box:** der Optimierer liest § 5a und sendet den Fahrplan-Block `fahrzeug` (MP-33f); die
-  Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e. Offen: ob „Aus“, „Schnell“
-  oder eine Szene der Steuerung das Zurückspeisen anhalten (keine Kopplung; die Stelle ist `rueckspeisen_wirksam` im
-  Optimierer); die geplante Rückspeisung steht nicht in `entity_plan_slot`, die Wallbox-Karte sagt darum weiter
-  „plant VoltPilot noch nicht“.
+  Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e. „Aus“, „Schnell“ und eine
+  Szene halten das Zurückspeisen an (MP-39b: Optimierer `fahrzeugspeicher.halte_grund`, Box `entladeschutz` `Lage.Halt`).
+  Offen: eine Szene kennt nur die Cloud – die Box erfährt sie mit dem nächsten Plan; heute pausiert keine Szene einen
+  Ladepunkt (Portal `szenenfaehig`). Die geplante Rückspeisung steht nicht in `entity_plan_slot`, die Wallbox-Karte sagt
+  darum weiter „plant VoltPilot noch nicht“.
 
 ## Prüfen
 

@@ -86,7 +86,7 @@ def test_lader_a2_mit_stromspeicher_plant_kein_fahrzeug(monkeypatch):
         "ladepunkt_faehigkeit": [(kid, "bidirektional", True, True, False, 11)],
         "ladepunkt_fahrzeugfenster": [(kid, 20, 60, a.wochentag, a.ankunft, a.abfahrt, a.abfahrt_soc_pct)
                                       for a in PENDLER],
-        "device_charge_connector": [(kid, "SuspendedEV", 40.0, T0 - timedelta(minutes=5))],
+        "device_charge_connector": [(kid, "SuspendedEV", 40.0, T0 - timedelta(minutes=5), False, None)],
     })
     a2 = _site(netzladen_erlaubt=True, foerderweg_fassung="marktpraemie_abgrenzung", formelsatz="A2")
     a3 = replace(a2, formelsatz="A3")

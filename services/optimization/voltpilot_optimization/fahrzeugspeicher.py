@@ -35,6 +35,17 @@ MP-33f - die Einstellungen des Fahrers (Vertrag § 5a, Bedienkonzept BK-41 Varia
   zur naechsten Abfahrt des Fahrers. „Nur die naechste Fahrt“ ersetzt den Wochenplan bis zu ihr („danach gilt wieder
   der Wochenplan“, § 5a); eine vergangene zaehlt nicht.
 - **Akku schonen** ``vollzyklen_je_tag`` (0,5 · 1 · 2) ersetzt die feste 1; leer = nicht gesagt = die feste 1.
+
+MP-39b - **Aus, Schnell und eine Szene halten das Zurueckspeisen an** (Captain-Entscheid 04.10.2026): der Lademodus
+des Ladepunkts „Aus“ (die Wallbox ruht ganz) oder „Schnell“ (nur laden, fuer diese Ladung) - beides der Handeingriff
+der Box auf die laufende Sitzung, gemeldet am Stecker (:func:`lademodus_halt`) - und eine aktive Szene, die den
+Ladepunkt pausiert hat (``site_scene.paused_entity_ids``, „der sichere Zustand des Geraets gilt“), sind ein
+**Halte-Grund** (:func:`halte_grund`). Er wirkt an der einen Stelle :func:`rueckspeisen_wirksam`: der Lauf plant nur
+laden, der Block ``fahrzeug`` entfaellt (MP-39: fehlt = nie zurueckspeisen). Endet der Halte-Grund (Schnell endet mit
+der Sitzung oder nach hoechstens 4 h, die Szene mit „Beenden“), plant der naechste Lauf wieder mit der Stufe der
+Wallbox-Karte (§ 5a). Die Box haelt sofort, nicht erst mit dem Plan (``edge-app/core/internal/entladeschutz``,
+``Lage.Halt``). Kein Wort der Festlegung: die Freigabe ist ein Wunsch am Ladepunkt (A1 S. 27), den der Kunde
+jederzeit zuruecknimmt.
 """
 
 from __future__ import annotations
@@ -96,10 +107,14 @@ class Fenster:
 
 @dataclass(frozen=True)
 class Messung:
-    """Die frische Messung am Stecker zum Laufbeginn: ``angesteckt`` ``None`` = Status sagt nichts."""
+    """Die frische Messung am Stecker zum Laufbeginn: ``angesteckt`` ``None`` = Status sagt nichts.
+
+    ``lademodus`` (MP-39b): der Halte-Grund aus dem Lademodus am Stecker (:func:`lademodus_halt`), ``None`` = keiner.
+    """
 
     angesteckt: bool | None
     soc_pct: float | None
+    lademodus: str | None = None
 
 
 #: Die Freigabe des Fahrers (§ 5a) - das Vokabular von ``entities[].fahrzeug.rueckspeisen`` im Fahrplan 2.0 (MP-39).
@@ -134,16 +149,56 @@ class FahrerEinstellung:
 #: Ohne Zeile gilt „aus“ (§ 5a, ``erfasst: false``) - die Box speist ohne Freigabe nie zurueck (MP-39).
 OHNE_EINSTELLUNG = FahrerEinstellung(RUECKSPEISEN_AUS)
 
+#: MP-39b - die Halte-Gruende. Dieselben Woerter wie die Gruende des Entladeschutzes der Box
+#: (``entladeschutz.GrundLademodusAus`` / ``GrundLademodusSchnell``), damit Plan und Box denselben Grund nennen.
+HALT_LADEMODUS_AUS = "lademodus_aus"
+HALT_LADEMODUS_SCHNELL = "lademodus_schnell"
+HALT_SZENE = "szene"
 
-def rueckspeisen_wirksam(wunsch: str | None, f: Faehigkeit) -> str:
+#: Das Maschinenwort des Lastmanagements fuer „Laden pausieren“ (``lastmgmt.ReasonManual``), wie die Box es in
+#: ``device_charge_connector.reason`` meldet.
+GRUND_HANDEINGRIFF = "handeingriff"
+
+
+def lademodus_halt(boost: bool | None, reason: str | None) -> str | None:
+    """Der Lademodus am Stecker als Halte-Grund (MP-39b), ``None`` = „Smart“ (keiner).
+
+    Zwilling der Ladepunkt-Zweige von ``eingriffVon`` / ``ladeWahl`` im Portal (``frontend/portal/src/steuerung/bild.ts``,
+    ``laden.ts``), in derselben Reihenfolge: ``boost`` = „Schnell“ (der Handeingriff „voll“), ``reason = handeingriff``
+    = „Aus“ (der Handeingriff „pause“). Beides ist derselbe Eintrag der Box je Stecker, gebunden an die laufende
+    Sitzung und hoechstens 4 h lang (``lastmgmt.BoostMaxDuration``). Die dauerhafte Steuerart „sofort“ ist keine
+    Ladung und kein Halte-Grund.
+    """
+    if boost:
+        return HALT_LADEMODUS_SCHNELL
+    if reason == GRUND_HANDEINGRIFF:
+        return HALT_LADEMODUS_AUS
+    return None
+
+
+def halte_grund(messung: Messung | None, szene: bool) -> str | None:
+    """Was das Zurueckspeisen jetzt anhaelt (MP-39b): der Lademodus am Stecker vor der Szene, ``None`` = nichts.
+
+    ``szene`` = eine aktive Szene hat diesen Ladepunkt pausiert (``site_scene.paused_entity_ids``). Nur eine frische
+    Messung traegt einen Lademodus - veraltete Telemetrie ist nicht aktuell.
+    """
+    if messung is not None and messung.lademodus is not None:
+        return messung.lademodus
+    return HALT_SZENE if szene else None
+
+
+def rueckspeisen_wirksam(wunsch: str | None, f: Faehigkeit, halt: str | None = None) -> str:
     """Die Stufe, die der Plan fahren darf: der Wunsch des Fahrers, nie ueber der Faehigkeit des Tages (§ 5a,
     A1 S. 26 Fn. 21). Zwilling von ``LadepunktRegeln.rueckspeisenWirksam``: ``v2g`` ohne V2G wird ``v2h``, ohne V2H
     ``aus``; ein unbekanntes Wort ist ``aus``.
 
-    Die EINE Stelle, an der der Plan die Stufe festlegt. Ob „Aus“, „Schnell“ oder eine Szene der Steuerung das
-    Zurueckspeisen anhalten, ist offen (Captain-Frage) - ein solcher Halte-Grund kaeme hier als weiterer Parameter
-    hinzu und wirkte dann auf Plan und Block ``fahrzeug`` zugleich.
+    Die EINE Stelle, an der der Plan die Stufe festlegt. MP-39b: ein Halte-Grund (:func:`halte_grund` - Lademodus
+    „Aus“ oder „Schnell“, eine Szene) macht sie ``aus`` und wirkt so auf Plan und Block ``fahrzeug`` zugleich; ohne
+    ihn gilt wieder die Stufe der Wallbox-Karte. Die Ansicht (``LadepunktRegeln``) kennt keinen Halte-Grund - sie
+    zeigt, was der Fahrer eingestellt hat.
     """
+    if halt is not None:
+        return RUECKSPEISEN_AUS
     if wunsch == RUECKSPEISEN_V2G and f.v2g:
         return RUECKSPEISEN_V2G
     if wunsch in (RUECKSPEISEN_V2G, RUECKSPEISEN_V2H) and f.v2h:
@@ -277,6 +332,7 @@ def fahrzeugspeicher(
     zone: tzinfo,
     einstellung: FahrerEinstellung | None = None,
     box_device_id: str | None = None,
+    szene: bool = False,
 ) -> tuple[Fahrzeugspeicher | None, str | None]:
     """Der Fahrzeugspeicher am Horizont oder ``(None, grund)``.
 
@@ -284,6 +340,8 @@ def fahrzeugspeicher(
     unbekannt ist keine Null), ``ladestand_unbekannt`` (es steht laut Fenster jetzt da, aber ohne frische Messung des
     Ladestands plant niemand einen Speicher - P7), ``nicht_im_horizont`` (keine Anwesenheit beruehrt den Horizont).
     ``einstellung`` = die Einstellungen des Fahrers (MP-33f; ``None`` = nicht gelesen, rechnet wie MP-33).
+    ``szene`` = eine aktive Szene hat diesen Ladepunkt pausiert (MP-39b); mit dem Lademodus der ``messung`` ein
+    Halte-Grund (:func:`halte_grund`), der auch ohne gelesene Einstellungen gilt.
     """
     fahrer_sagt_abfahrt = einstellung is not None and bool(einstellung.abfahrten or einstellung.naechste_fahrt)
     if fenster is None or not (fenster.anwesenheit or fahrer_sagt_abfahrt):
@@ -297,10 +355,13 @@ def fahrzeugspeicher(
     leistung = float(faehigkeit.rueckspeiseleistung_kw)
     einweg = math.sqrt(WIRKUNGSGRAD_LADEPUNKT)
     mindest = (fenster.mindest_soc_pct or 0.0) / 100.0 * cap
+    halt = halte_grund(messung, szene)
     if einstellung is None:
         stufe, v2g, vollzyklen = None, faehigkeit.v2g, FAHRZEUG_VOLLZYKLEN_JE_TAG
+        if halt is not None:
+            stufe = RUECKSPEISEN_AUS
     else:
-        stufe = rueckspeisen_wirksam(einstellung.rueckspeisen, faehigkeit)
+        stufe = rueckspeisen_wirksam(einstellung.rueckspeisen, faehigkeit, halt)
         v2g = stufe == RUECKSPEISEN_V2G
         vollzyklen = (
             float(einstellung.vollzyklen_je_tag)
@@ -398,6 +459,7 @@ def fahrzeugspeicher(
             mindest_soc_pct=fenster.mindest_soc_pct,
             naechste_abfahrt=(fenster_[erstes_da][1], _ziel_pct(erstes_da)),
             box_device_id=box_device_id,
+            rueckspeisen_halt=halt,
         ),
         None,
     )

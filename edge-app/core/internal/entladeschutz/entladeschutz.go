@@ -58,6 +58,9 @@ func FreigabeLesen(s string) Freigabe {
 // reported: the first hard stop, or the tightest power limit.
 const (
 	GrundSchalterAus          = "schalter_aus"             // csms.Options.V2XDischarge off (default)
+	GrundLademodusAus         = "lademodus_aus"            // Lademodus „Aus“: a Handeingriff pauses this charge (MP-39b)
+	GrundLademodusSchnell     = "lademodus_schnell"        // Lademodus „Schnell“: only charge, for this charge (MP-39b)
+	GrundAutomatikPausiert    = "automatik_pausiert"       // „Automatik pausieren“: every entity on its failsafe (MP-39b)
 	GrundPlanVeraltet         = "plan_veraltet"            // no fresh plan: no discharge wish exists
 	GrundCloudGetrennt        = "cloud_getrennt"           // communication loss with the cloud
 	GrundFreigabeAus          = "freigabe_aus"             // driver's consent absent or aus
@@ -114,6 +117,15 @@ type Lage struct {
 	Jetzt time.Time
 	// Schalter is csms.Options.V2XDischarge - the global switch, default off.
 	Schalter bool
+	// Halt is a local reason that holds every feed-back on this connector,
+	// whatever the plan says (MiSpeL MP-39b, captain's decision 04.10.2026:
+	// Aus, Schnell and a scene hold the feed-back): GrundLademodusAus or
+	// GrundLademodusSchnell while a Handeingriff runs on this charge (the
+	// boost/pause of the load management, bound to its session), or
+	// GrundAutomatikPausiert while the operator pause holds the box. Empty =
+	// nothing holds. The box knows no scene: a scene arrives with the plan
+	// (no vehicle block = Freigabe aus).
+	Halt string
 
 	// --- the cloud's plan (mqtt-schedule-2.0, entity block `fahrzeug`) ---
 
@@ -203,6 +215,10 @@ func Entscheiden(l Lage) Entscheid {
 	switch {
 	case !l.Schalter:
 		return aus(GrundSchalterAus)
+	case l.Halt != "":
+		// The customer's hand on this charge (or the operator pause) outranks
+		// the plan: safety before the next plan run.
+		return aus(l.Halt)
 	case l.Freigabe != FreigabeV2H && l.Freigabe != FreigabeV2G:
 		return aus(GrundFreigabeAus)
 	case !l.PlanFrisch:

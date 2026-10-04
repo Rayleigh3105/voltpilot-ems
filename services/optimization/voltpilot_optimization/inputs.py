@@ -695,6 +695,11 @@ def load_fahrzeugspeicher(
     :func:`load_fahrer_einstellungen`; ohne Zeile ``aus``) und die Box, an der
     die Saeule haengt (``device_charge_point.device_id``, fuer den Block
     ``fahrzeug`` im Fahrplan 2.0).
+
+    MP-39b: der Lademodus am Stecker (``boost``/``reason`` derselben frischen
+    Zeile, :func:`fahrzeugspeicher.lademodus_halt`) und die Szene
+    (:func:`load_szene_ladepunkte`) halten das Zurueckspeisen an (Log
+    ``fahrzeugspeicher.rueckspeisen_gehalten`` mit Grund).
     """
     import psycopg  # lazy: optional [db] extra
 
@@ -726,7 +731,8 @@ def load_fahrzeugspeicher(
             fenster_zeilen = cur.fetchall()
             cur.execute(
                 """
-                SELECT DISTINCT ON (cp.entity_id) cp.entity_id, c.status, c.soc_pct, c.reported_at
+                SELECT DISTINCT ON (cp.entity_id) cp.entity_id, c.status, c.soc_pct, c.reported_at,
+                       c.boost, c.reason
                 FROM device_charge_connector c
                 JOIN device_charge_point cp
                   ON cp.device_id = c.device_id AND cp.charge_point_id = c.charge_point_id
@@ -750,6 +756,7 @@ def load_fahrzeugspeicher(
         logger.warning("fahrzeugspeicher.table_missing")
         return None
     einstellungen = load_fahrer_einstellungen(dsn, site.site_id)
+    szene = load_szene_ladepunkte(dsn, site.site_id) if faehigkeiten else frozenset()
     fenster: dict[str, list] = {}
     for kid, mindest, kap, wt, an, ab, ziel in fenster_zeilen:
         eintrag = fenster.setdefault(str(kid), [mindest, kap, []])
@@ -760,7 +767,7 @@ def load_fahrzeugspeicher(
                 )
             )
     gemessen = {}
-    for kid, status, soc, reported_at in messungen:
+    for kid, status, soc, reported_at, boost, reason in messungen:
         if reported_at is None or jetzt - reported_at > FAHRZEUG_MESSUNG_MAX_ALTER:
             continue  # veraltete Telemetrie ist nicht aktuell
         angesteckt = (
@@ -769,7 +776,9 @@ def load_fahrzeugspeicher(
             else None
         )
         gemessen[str(kid)] = fz_regeln.Messung(
-            angesteckt, float(soc) if soc is not None else None
+            angesteckt,
+            float(soc) if soc is not None else None,
+            fz_regeln.lademodus_halt(boost, reason),
         )
     for kid, nutzbarkeit, v2h, v2g, unterbunden, leistung in faehigkeiten:
         kid = str(kid)
@@ -803,8 +812,15 @@ def load_fahrzeugspeicher(
                 GRENZ_ZONE,
                 einstellung=einstellungen.get(kid, fz_regeln.OHNE_EINSTELLUNG),
                 box_device_id=boxen.get(kid),
+                szene=kid in szene,
             )
         if fahrzeug is not None:
+            if fahrzeug.rueckspeisen_halt is not None:
+                logger.info(
+                    "fahrzeugspeicher.rueckspeisen_gehalten",
+                    extra={"context": {"site_id": str(site.site_id), "komponente": kid,
+                                       "grund": fahrzeug.rueckspeisen_halt}},
+                )
             return fahrzeug
         if einordnung != fz_regeln.SONSTIGER_VERBRAUCH:
             logger.info(
@@ -812,6 +828,32 @@ def load_fahrzeugspeicher(
                 extra={"context": {"site_id": str(site.site_id), "komponente": kid, "grund": grund}},
             )
     return None
+
+
+def load_szene_ladepunkte(dsn: str, site_id: UUID) -> frozenset[str]:
+    """Die Ladepunkte, die eine aktive Szene der Anlage pausiert hat (MiSpeL
+    MP-39b; ``site_scene`` der neuen Steuerung, hoechstens eine Szene je
+    Anlage, ``paused_entity_ids`` = genau die Geraete, die SIE pausiert hat).
+
+    Eigene Verbindung: fehlt die Tabelle (api vor ``V20260929120000``), endet
+    nur dieser Teil - ohne Tabelle keine Szene (Log
+    ``fahrzeugspeicher.szene_tabelle_fehlt``). Leer = keine Szene.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT paused_entity_ids FROM site_scene WHERE site_id = %(site_id)s
+                """,
+                {"site_id": str(site_id)},
+            )
+            zeilen = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("fahrzeugspeicher.szene_tabelle_fehlt")
+        return frozenset()
+    return frozenset(str(kid) for (ids,) in zeilen for kid in (ids or ()))
 
 
 def load_fahrer_einstellungen(dsn: str, site_id: UUID) -> dict[str, "fz_regeln.FahrerEinstellung"]:

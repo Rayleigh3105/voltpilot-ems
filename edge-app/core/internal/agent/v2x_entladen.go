@@ -10,12 +10,21 @@ package agent
 // per connector and sends the OCPP 2.1 V2X setpoint. A connector it feeds
 // back from is reserved - ocppApply leaves it alone.
 //
+// MP-39b (captain's decision 04.10.2026: Aus, Schnell and a scene hold the
+// feed-back): a Handeingriff on the charge - Lademodus „Aus“ (pause) or
+// „Schnell“ (voll), from the portal or the :8484 button, both the same
+// boostStore entry bound to the session - and the operator's „Automatik
+// pausieren“ hold the feed-back in the very next Takt, not with the next
+// plan (v2xHalt). A scene is cloud-only; it reaches the box with the plan
+// (the optimizer drops the vehicle block = Freigabe aus).
+//
 // The loop runs only while Config.V2XEntladen is set (default off, no
 // environment variable): a live release needs the hardware test bench MP-42
 // and the captain's box release.
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
@@ -53,6 +62,9 @@ func (a *Agent) v2xStep(ctx context.Context, now time.Time) {
 
 	st := a.State.Get()
 	basis := entladeschutz.Lage{Jetzt: now, Schalter: a.Cfg.V2XEntladen, CloudVerbunden: st.CloudConnected}
+	if a.automationPausedAt(now) {
+		basis.Halt = entladeschutz.GrundAutomatikPausiert
+	}
 	// The observed § 14a envelope as the last load-management pass published
 	// it (read-only: the budget tracker itself belongs to ocppStep).
 	if st.Ocpp != nil && st.Ocpp.Grid14aKw != nil {
@@ -88,6 +100,9 @@ func (a *Agent) v2xStep(ctx context.Context, now time.Time) {
 			}
 			l := basis
 			entladeschutz.SaeuleEintragen(&l, c, con)
+			if l.Halt == "" {
+				l.Halt = v2xHalt(rt, c.ID, con, now)
+			}
 			if hatFahrzeug {
 				entladeschutz.PlanEintragen(&l, v2, entityID)
 			}
@@ -106,6 +121,25 @@ func (a *Agent) v2xStep(ctx context.Context, now time.Time) {
 		if !done[sp] {
 			w.Schritt(ctx, rt.srv, sp, basis)
 		}
+	}
+}
+
+// v2xHalt names the Handeingriff that runs on the connector's session now:
+// Lademodus „Aus“ (pause) or „Schnell“ (voll) - exactly the override the load
+// management applies (ocppApplyBoosts), so the guard and the executor never
+// disagree about which charge is held. "" = none, or no session.
+func v2xHalt(rt *ocppRuntime, chargerID string, con *csms.Connector, now time.Time) string {
+	if rt == nil || rt.boosts == nil || con == nil || con.Session == nil {
+		return ""
+	}
+	aktiv, pause := rt.boosts.haelt(chargerID+"#"+fmt.Sprint(con.ID), con.Session.TransactionID, now)
+	switch {
+	case !aktiv:
+		return ""
+	case pause:
+		return entladeschutz.GrundLademodusAus
+	default:
+		return entladeschutz.GrundLademodusSchnell
 	}
 }
 

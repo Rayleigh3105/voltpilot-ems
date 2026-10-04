@@ -110,6 +110,20 @@ func (b *boostStore) until(key string, txID int, now time.Time) (time.Time, bool
 	return it.until, it.pause
 }
 
+// haelt reports whether an override runs on a connector's session right now
+// and its direction - the same rules as until (expiry, bound to ITS
+// transaction), but read-only: the discharge guard reads it on its own Takt
+// and must not expire anything for the executor (MiSpeL MP-39b).
+func (b *boostStore) haelt(key string, txID int, now time.Time) (aktiv, pause bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	it, ok := b.items[key]
+	if !ok || !it.until.After(now) || txID != it.txID {
+		return false, false
+	}
+	return true, it.pause
+}
+
 // ocppSurplus is THE source-lane derivation, shared by the executor and the
 // surface exactly like ocppBudget — the page must never show a lane the
 // stations were not given.

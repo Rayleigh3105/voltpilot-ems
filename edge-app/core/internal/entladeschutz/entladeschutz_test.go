@@ -229,3 +229,24 @@ func TestUnbekanntHebtNie(t *testing.T) {
 		}
 	}
 }
+
+// MiSpeL MP-39b (captain 04.10.2026: Aus, Schnell and a scene hold the
+// feed-back): a local hold ends every feed-back, whatever the plan wishes -
+// and names itself, not the plan's consent.
+func TestHaltHaeltJedeRueckspeisung(t *testing.T) {
+	for _, grund := range []string{GrundLademodusAus, GrundLademodusSchnell, GrundAutomatikPausiert} {
+		l := basis()
+		l.Halt = grund
+		pruefe(t, grund, l, 0, grund)
+		l.Freigabe = FreigabeV2G
+		pruefe(t, grund+" v2g", l, 0, grund)
+	}
+	// The switch off still names the switch: it outranks every hold.
+	l := basis()
+	l.Schalter, l.Halt = false, GrundLademodusAus
+	pruefe(t, "schalter vor halt", l, 0, GrundSchalterAus)
+	// Without a hold the plan's stage applies again (Bestand byte-gleich).
+	if e := Entscheiden(basis()); e.EntladenKw <= 0 || e.Grund == GrundLademodusAus {
+		t.Fatalf("ohne halt: %+v", e)
+	}
+}

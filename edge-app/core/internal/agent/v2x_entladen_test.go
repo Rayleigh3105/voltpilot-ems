@@ -65,3 +65,40 @@ func TestV2XEntladenReserviertDenStecker(t *testing.T) {
 		t.Fatal("verschwundener Stecker bleibt reserviert")
 	}
 }
+
+// MiSpeL MP-39b: the guard reads the Lademodus from the same override the
+// load management applies - Aus (pause) and Schnell (voll) on THIS session
+// hold the feed-back; another session, an expired override or no session hold
+// nothing.
+func TestV2XHaltAusDemHandeingriff(t *testing.T) {
+	rt := &ocppRuntime{boosts: newBoostStore()}
+	jetzt := time.Date(2026, 10, 4, 18, 0, 0, 0, time.UTC)
+	con := &csms.Connector{ID: 1, Session: &csms.Session{TransactionID: 7}}
+	if g := v2xHalt(rt, "WB-1", con, jetzt); g != "" {
+		t.Fatalf("ohne Eingriff: %q", g)
+	}
+	rt.boosts.grant("WB-1#1", 7, jetzt, time.Hour, true)
+	if g := v2xHalt(rt, "WB-1", con, jetzt); g != entladeschutz.GrundLademodusAus {
+		t.Fatalf("aus: %q", g)
+	}
+	rt.boosts.grant("WB-1#1", 7, jetzt, 0, false) // 0 = the cap (4 h), „nur für diese Ladung“
+	if g := v2xHalt(rt, "WB-1", con, jetzt); g != entladeschutz.GrundLademodusSchnell {
+		t.Fatalf("schnell: %q", g)
+	}
+	if g := v2xHalt(rt, "WB-1", con, jetzt.Add(4*time.Hour)); g != "" {
+		t.Fatalf("abgelaufen: %q", g)
+	}
+	if g := v2xHalt(rt, "WB-1", &csms.Connector{ID: 1, Session: &csms.Session{TransactionID: 8}}, jetzt); g != "" {
+		t.Fatalf("neue Sitzung erbt: %q", g)
+	}
+	if g := v2xHalt(rt, "WB-1", &csms.Connector{ID: 1}, jetzt); g != "" {
+		t.Fatalf("ohne Sitzung: %q", g)
+	}
+	if g := v2xHalt(rt, "WB-1", &csms.Connector{ID: 2, Session: &csms.Session{TransactionID: 7}}, jetzt); g != "" {
+		t.Fatalf("anderer Stecker: %q", g)
+	}
+	// Read-only: the executor still sees the override afterwards.
+	if until, pause := rt.boosts.until("WB-1#1", 7, jetzt); until.IsZero() || pause {
+		t.Fatalf("Wächter hat den Eingriff verändert: %v %v", until, pause)
+	}
+}

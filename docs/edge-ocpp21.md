@@ -120,6 +120,7 @@ hält ihn vom Schiedsrichter fern (der würde einen Sollwert am Ladepunkt ablehn
 | Grenze | Regel | Grund |
 |---|---|---|
 | Schalter | `Config.V2XEntladen` aus → nichts | `schalter_aus` |
+| Halte-Grund (MP-39b) | Lademodus „Aus“ oder „Schnell“ auf dieser Ladung (der Handeingriff des Lastmanagements, `boostStore`, an die Sitzung gebunden) oder „Automatik pausieren“ → sofort nichts, auch gegen den Plan; eine Szene kommt mit dem Plan (Block fehlt) | `lademodus_aus`, `lademodus_schnell`, `automatik_pausiert` |
 | Freigabe des Fahrers | fehlt/`aus`/unbekanntes Wort → nichts | `freigabe_aus` |
 | nur ins Haus (V2H) | Rückspeisung ≤ Bezug am Netzzähler ohne Ladepunkt − 0,2 kW: keine „Erzeugung im Ladepunkt“, „während es gleichzeitig eine Netzeinspeisung gibt“ (Anlage 1 S. 11, Abschn. 2.1.3; S. 26 Fn. 21; S. 27 Fn. 22) | `nur_haus` |
 | Exportgrenze (V2G) | Einspeisung danach ≤ Exportgrenze des Netzanschlusses − 0,2 kW (`grid_export_limit_kw`, dieselbe Grenze wie der Einspeisewächter); ohne Grenze speist V2G nichts ein | `exportgrenze` |

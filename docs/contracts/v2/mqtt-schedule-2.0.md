@@ -65,8 +65,13 @@ Fahrzeug noch nicht).
   bekommen (`VOLTPILOT_V2_PLAN_SITES` oder scharfe Gemeinsame Steuerung) — der Schalter erweitert nicht, wer eines
   bekommt. Nur im Dokument der Box, an der die Säule hängt (`device_charge_point.device_id`); Box unbekannt = kein Eintrag.
 - **Slots:** nur die rückspeisenden, mit negativem `setpoint_kw`. Wo der Plan schweigt, lädt die Wallbox nach ihrer
-  eigenen Regelung (Aus · Smart · Schnell) – der Plan koppelt nichts an die Lademodi; `ev-charger` kennt am
-  Schiedsrichter ohnehin nur `limit_kw` (wie K2 bei Verbrauchern mit lokaler Quelle: keine Abdeckung = kein Wunsch).
+  eigenen Regelung (Aus · Smart · Schnell); `ev-charger` kennt am Schiedsrichter ohnehin nur `limit_kw` (wie K2 bei
+  Verbrauchern mit lokaler Quelle: keine Abdeckung = kein Wunsch).
+- **Aus, Schnell und eine Szene halten das Zurückspeisen an** (MP-39b, Captain-Entscheid 04.10.2026): Lademodus „Aus“
+  oder „Schnell“ am Stecker (der Handeingriff auf die laufende Ladung, `device_charge_connector.reason = handeingriff`
+  bzw. `boost`) oder eine aktive Szene, die den Ladepunkt pausiert hat (`site_scene.paused_entity_ids`), setzen die
+  Stufe des Laufs auf `aus` – der Plan lädt nur, der Eintrag entfällt. Danach gilt wieder die Stufe der Wallbox-Karte.
+  Die Box hält Aus/Schnell schon im nächsten Regeltakt selbst an (`entladeschutz` `Lage.Halt`), nicht erst mit dem Plan.
 - **Kein Eintrag** ohne Rückspeisewunsch im veröffentlichten Fenster – auch bei `aus`. Für die Box ist das dasselbe:
   fehlt der Block, speist sie nie zurück.
 - Im Block steht nur, was gesagt ist: `rueckspeisen` = die wirksame Stufe (Wunsch des Fahrers, nie über der Fähigkeit

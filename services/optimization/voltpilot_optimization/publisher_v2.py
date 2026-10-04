@@ -315,9 +315,10 @@ def _fahrzeug_entity_payload(plan: SitePlan) -> dict | None:
       keine Null.
     - Slots: NUR die rueckspeisenden, mit negativem ``setpoint_kw`` („Erzeugung
       im Ladepunkt“, A1 S. 27). Wo der Plan schweigt, laedt die Wallbox nach
-      ihrer eigenen Regelung (Aus · Smart · Schnell) - der Plan koppelt nichts an
-      die Lademodi (wie K2 bei Verbrauchern mit lokaler Quelle: ``plan2.
-      ActiveCommands`` ok=false = kein Wunsch).
+      ihrer eigenen Regelung (Aus · Smart · Schnell; wie K2 bei Verbrauchern mit
+      lokaler Quelle: ``plan2.ActiveCommands`` ok=false = kein Wunsch). Halten
+      Aus, Schnell oder eine Szene das Zurueckspeisen an (MP-39b), ist die Stufe
+      ``aus`` und es gibt keinen Eintrag.
     - ``None`` (kein Eintrag): kein Fahrzeug im Plan, die Saeule an einer anderen
       oder unbekannten Box, oder kein Rueckspeisewunsch im Fenster (auch bei
       ``aus``).
