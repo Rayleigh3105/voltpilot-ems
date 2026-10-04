@@ -168,7 +168,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
           <small>{an ? herkunftWort(bild, r.jetzt) : g.pill[1]}</small>
         </span>
       </div>
-      <div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
+      <Recht aktion="handeingriff.setzen"><div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
         {([['aus', 'pause', 'Aus'], ['smart', 'sun', 'Smart'], ['schnell', 'rocket', 'Schnell']] as const).map(([k, i, label]) => (
           <button
             type="button"
@@ -185,7 +185,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
             {label}
           </button>
         ))}
-      </div>
+      </div></Recht>
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>
       {l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
@@ -203,11 +203,11 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
         <>
           <div className="blk">
             <h3>Womit laden?</h3>
-            <div className="chips" role="group" aria-label="Womit laden">
+            <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Womit laden">
               {quellen.filter(([, , id]) => frei.has(id)).map(([k, label]) => (
                 <button type="button" key={k} aria-pressed={q === k} disabled={busy} onClick={() => onQuelle(g, k)}>{label}</button>
               ))}
-            </div>
+            </div></Recht>
             {q === 'guenstig' && !zielAn && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Börsenpreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
             {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
           </div>
@@ -260,10 +260,10 @@ function VorrangKarte({ config, busy, onVorrang, zuGeraete }: { config: Charging
       <p style={{ margin: '0 0 10px', font: '600 15px/1.45 var(--font)' }}>
         {speicherZuerst ? 'Der Speicher hat Vorrang. Die Autos bekommen, was er nicht aufnimmt.' : 'Die Autos haben Vorrang vor dem Speicher.'}
       </p>
-      <div className="chips" role="group" aria-label="Vorrang">
+      <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Vorrang">
         <button type="button" aria-pressed={speicherZuerst} disabled={busy} onClick={() => !speicherZuerst && onVorrang(true)}>Speicher zuerst</button>
         <button type="button" aria-pressed={!speicherZuerst} disabled={busy} onClick={() => speicherZuerst && onVorrang(false)}>Autos zuerst</button>
-      </div>
+      </div></Recht>
       <button type="button" className="lnk" style={{ marginTop: 6 }} onClick={zuGeraete}>Ganze Reihenfolge ansehen <Ic n="chevR" s={16} /></button>
     </section>
   );
@@ -333,7 +333,7 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
       voll
       onClose={k.zu}
       fuss={
-        <>
+        <Recht aktion="betriebsweise.aendern">
           {s?.ziel ? (
             <button type="button" className="btn sek" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunsch(false))) k.zu(); }}>Kein Ziel</button>
           ) : (
@@ -343,7 +343,7 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
             <Ic n="check" s={18} />
             {busy ? 'Speichere …' : 'Ziel übernehmen'}
           </button>
-        </>
+        </Recht>
       }
     >
       <div className="blk">
@@ -463,10 +463,10 @@ export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
       fuss={geaendert ? (
         <>
           <button type="button" className="btn sek" onClick={() => { setKw(start); setUebergangBeruehrt(false); }}>Abbrechen</button>
-          <button type="button" className="btn" disabled={k.busy === 'rahmen' || anschluss.zustand === 'laden' || einwand != null} onClick={() => void uebernehmen()}>
+          <Recht aktion="grenze.eintragen"><button type="button" className="btn" disabled={k.busy === 'rahmen' || anschluss.zustand === 'laden' || einwand != null} onClick={() => void uebernehmen()}>
             <Ic n="check" s={18} />
             Übernehmen
-          </button>
+          </button></Recht>
         </>
       ) : null}
     >
@@ -577,11 +577,11 @@ export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
       unter="Einstellung für diese Ladekarte"
       onClose={k.zu}
       fuss={
-        <button type="button" className="btn" disabled={busy} onClick={async () => {
+        <Recht aktion="ladepunkt.betrieb"><button type="button" className="btn" disabled={busy} onClick={async () => {
           if (name.trim() !== (f.name ?? '')) { if (await onSetzen(tagRef, { name: name.trim() })) k.zu(); } else k.zu();
         }}>
           Fertig
-        </button>
+        </button></Recht>
       }
     >
       <div className="blk">
@@ -596,11 +596,11 @@ export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
       </div>
       <div className="blk">
         <h3>Wenn diese Karte lädt</h3>
-        <div className="chips">
+        <Recht aktion="ladepunkt.betrieb"><div className="chips">
           <button type="button" aria-pressed={q == null} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: '' })}>wie der Ladepunkt</button>
           <button type="button" aria-pressed={q === 'ueberschuss'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss' })}>Smart</button>
           <button type="button" aria-pressed={q === 'sofort'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'sofort' })}>Schnell</button>
-        </div>
+        </div></Recht>
         <p>„Smart“ lädt mit Sonnenstrom, „Schnell“ sofort mit voller Leistung. Ohne Wahl gilt die Einstellung des Ladepunkts.</p>
       </div>
     </Blatt>

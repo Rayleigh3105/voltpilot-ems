@@ -10,6 +10,7 @@
 import { liste } from './liste';
 import { useState, type ChangeEvent, type ReactNode } from 'react';
 import type { RuleEvents } from '../api';
+import { Recht } from '../components/Recht';
 import { ereignisZeile } from '../regeln/verlauf';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
@@ -84,7 +85,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
   log.sort((a, b) => b.t - a.t);
   return (
     <>
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         className="btn voll"
         style={{ width: '100%', minHeight: 52, fontSize: 16 }}
@@ -93,14 +94,14 @@ export function RegelnReiter(p: RegelnReiterProps) {
       >
         <Ic n="plus" s={20} />
         Neue Regel
-      </button>
+      </button></Recht>
       {!p.ziele.length && (
         <p className="leise voll">Noch gibt es kein Gerät, das eine Regel schalten kann. Schaltbare Geräte verbinden Sie in der Anlage.</p>
       )}
       {vorlagen.length > 0 && (
         <section aria-label="Vorlagen" className="voll">
           <div className="grp-h"><h3>Vorlagen</h3><span>antippen und anpassen</span></div>
-          <div className="vorl">
+          <Recht aktion="betriebsweise.aendern"><div className="vorl">
             {vorlagen.map((v) => {
               const g = vorlagenZiel(v, p.ziele);
               const [bg, fg] = FARBE[v.farbe];
@@ -112,13 +113,13 @@ export function RegelnReiter(p: RegelnReiterProps) {
                 </button>
               );
             })}
-          </div>
+          </div></Recht>
         </section>
       )}
       {bild.geraete.some(szenenfaehig) && (
         <section aria-label="Szenen" className="voll">
           <div className="grp-h"><h3>Szenen</h3><span>ein Tipp, mehrere Geräte</span></div>
-          <div className="szenen">
+          <Recht aktion="betriebsweise.aendern"><div className="szenen">
             {SZENEN.map((sz) => {
               const an = bild.szene?.def.id === sz.id;
               return (
@@ -136,7 +137,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
                 </button>
               );
             })}
-          </div>
+          </div></Recht>
         </section>
       )}
       <section aria-label="Ihre Regeln" style={{ display: 'grid', gap: 8 }} className="links">
@@ -188,7 +189,7 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
       <button type="button" className="r-satz" onClick={() => oeffne({ art: 'regel', flowId: k.flowId })}>
         {k.satz ? <><span className="h">{k.satz.wenn}</span>: <span className="d">{k.satz.dann}</span>.</> : <>{k.name}</>}
       </button>
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         className="sw"
         role="switch"
@@ -196,7 +197,7 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
         aria-label={`Regel ${k.name} ${k.an ? 'ausschalten' : 'einschalten'}`}
         disabled={busy}
         onClick={() => onSchalter(k)}
-      />
+      /></Recht>
       <div className="r-meta">
         {pill}
         <span>{k.name}</span>
@@ -278,10 +279,10 @@ export function RegelBlatt(p: RegelBlattProps) {
         fuss={
           <>
             <button type="button" className="btn sek" onClick={() => setSchritt('bau')}>Zurück</button>
-            <button type="button" className="btn" disabled={busy || !d.name.trim()} onClick={async () => { if (await p.onAktivieren(d)) k.zu(); }}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" disabled={busy || !d.name.trim()} onClick={async () => { if (await p.onAktivieren(d)) k.zu(); }}>
               <Ic n="check" s={18} />
               {busy ? 'Aktiviere …' : 'Regel aktivieren'}
-            </button>
+            </button></Recht>
           </>
         }
       >
@@ -480,7 +481,7 @@ export function RegelBlatt(p: RegelBlattProps) {
       fuss={
         <>
           {p.bearbeiten && d.flowId ? (
-            <button
+            <Recht aktion="betriebsweise.aendern"><button
               type="button"
               className="btn sek"
               style={loeschen ? { color: 'var(--c-destructive)', boxShadow: 'inset 0 0 0 1.5px var(--c-destructive)' } : undefined}
@@ -491,7 +492,7 @@ export function RegelBlatt(p: RegelBlattProps) {
               }}
             >
               {loeschen ? 'Endgültig löschen' : 'Löschen'}
-            </button>
+            </button></Recht>
           ) : (
             <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
           )}

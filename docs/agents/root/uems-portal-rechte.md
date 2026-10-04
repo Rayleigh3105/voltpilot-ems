@@ -24,6 +24,8 @@ Gerätekatalog, Diagnose, Hersteller-/Registerausstattung und interne Verwaltung
 Kundenaktionen mit den bestehenden serverseitigen OCPP-Freigaben; Plattformbefehle behalten deren Prüfung.
 Schalttest und physische Freigabe sind getrennte Aktionen. Rückwirkende Eingaben brauchen zusätzlich
 `aenderung.rueckwirkend`; der Bearbeiter richtet gemäß W14 ab heute ein.
+Die Steuerung mit drei Reitern (`src/steuerung/`) trägt dieselbe Weiche an jedem Schreibknopf; die Zuordnung
+steht in [Steuerung neu](../portal/steuerung-neu-drei-reiter.md#rechte-ap-03-ip-12-nachzug-1b).
 
 ## Start und Verlust des Zugriffs
 

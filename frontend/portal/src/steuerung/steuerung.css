@@ -440,6 +440,10 @@
 :is(.stn, .stn-blatt) .rule .r-strip>svg{display:block;width:100%;height:12px}
 :is(.stn, .stn-blatt) .rule.aus{background:var(--c-bg)}
 :is(.stn, .stn-blatt) .rule.aus .r-satz{color:var(--c-muted-fg)}
+/* AP-03 IP-12: Grund und Weg ersetzen einen Hebel ohne Recht - der Satz bekommt die ganze Zeile. */
+.stn-main > .vp-recht-hinweis,
+:is(.stn, .stn-blatt) .rule > .vp-recht-hinweis{grid-column:1/-1}
+:is(.stn, .stn-blatt) :is(.prow, .card-h):has(> .vp-recht-hinweis){flex-wrap:wrap}
 :is(.stn, .stn-blatt) .szenen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 :is(.stn, .stn-blatt) .sz{display:grid;gap:4px;justify-items:start;padding:12px;border-radius:16px;border:1.5px solid var(--c-border);background:var(--c-card);cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:0}
 :is(.stn, .stn-blatt) .sz svg{width:20px;height:20px;color:var(--navy)}

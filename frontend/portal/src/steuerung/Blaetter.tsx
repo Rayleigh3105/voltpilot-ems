@@ -8,6 +8,7 @@
  */
 import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
+import { Recht } from '../components/Recht';
 import type { SiteProfile } from '../profiles';
 import { benefitLine } from '../profiles';
 import { fehlt, fragen, TAGE_WORT, wunschAus, entwurfAus, type SteuerartEntwurf, type SteuerartWunsch } from '../steuerartDialog';
@@ -122,40 +123,43 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
   if (lp) dauern.push([null, 'bis Abstecken']);
   const bisMs = minuten == null ? null : bild.raster.nowMs + minuten * 60_000;
   const bisText = bisMs == null ? 'zum Abstecken' : uhrVon(bild.raster, bisMs);
+  // Die Ruhe sperrt für alle und sagt ihren Grund; die Knöpfe selbst folgen dem Recht (AP-03 IP-12).
   return (
     <>
-      <div className="lmodes" role="group" aria-label={`${a}, ${b} oder ${c}`} style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
-        {knopf('aus', a, g ? 'pause' : 'lock')}
-        {knopf('smart', b, 'sun')}
-        {knopf('an', c, !g ? 'down' : lp ? 'rocket' : 'power')}
-      </div>
-      {sperre && <p className="leise" role="note">{sperre}</p>}
-      {wahl !== 'smart' && wahl !== cur && !sperre && (
-        <div className="param">
-          <div className="blk">
-            <h3>Wie lange?</h3>
-            <div className="dauer" style={{ gridTemplateColumns: `repeat(${dauern.length},minmax(0,1fr))` }}>
-              {dauern.map(([v, l]) => (
-                <button type="button" key={l} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-          <p className="leise" style={{ color: 'var(--c-fg)' }}>
-            <b>Das passiert:</b> {folge(wahl, minuten)} Danach wieder Smart. Schutzgrenzen gelten weiter.
-          </p>
-          <button type="button" className="btn" disabled={busy} onClick={() => onWahl(wahl, minuten)}>
-            <Ic n="check" s={18} />
-            {busy ? 'Wird gesendet …' : `${wahl === 'aus' ? a : c} bis ${bisText}`}
-          </button>
+      <Recht aktion="handeingriff.setzen">
+        <div className="lmodes" role="group" aria-label={`${a}, ${b} oder ${c}`} style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
+          {knopf('aus', a, g ? 'pause' : 'lock')}
+          {knopf('smart', b, 'sun')}
+          {knopf('an', c, !g ? 'down' : lp ? 'rocket' : 'power')}
         </div>
-      )}
-      {eingriff && wahl === cur && (
-        <p className="leise">
-          Ihr Eingriff läuft{eingriff.bisMs != null ? ` bis ${uhrVon(bild.raster, eingriff.bisMs)}` : ''}. „{b}“ beendet ihn sofort.
-        </p>
-      )}
+        {wahl !== 'smart' && wahl !== cur && !sperre && (
+          <div className="param">
+            <div className="blk">
+              <h3>Wie lange?</h3>
+              <div className="dauer" style={{ gridTemplateColumns: `repeat(${dauern.length},minmax(0,1fr))` }}>
+                {dauern.map(([v, l]) => (
+                  <button type="button" key={l} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="leise" style={{ color: 'var(--c-fg)' }}>
+              <b>Das passiert:</b> {folge(wahl, minuten)} Danach wieder Smart. Schutzgrenzen gelten weiter.
+            </p>
+            <button type="button" className="btn" disabled={busy} onClick={() => onWahl(wahl, minuten)}>
+              <Ic n="check" s={18} />
+              {busy ? 'Wird gesendet …' : `${wahl === 'aus' ? a : c} bis ${bisText}`}
+            </button>
+          </div>
+        )}
+        {eingriff && wahl === cur && (
+          <p className="leise">
+            Ihr Eingriff läuft{eingriff.bisMs != null ? ` bis ${uhrVon(bild.raster, eingriff.bisMs)}` : ''}. „{b}“ beendet ihn sofort.
+          </p>
+        )}
+      </Recht>
+      {sperre && <p className="leise" role="note">{sperre}</p>}
     </>
   );
 }
@@ -254,7 +258,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
   const fuss = geaendert ? (
     <>
       <button type="button" className="btn sek" onClick={() => setEntwurf(basis)}>Verwerfen</button>
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         className="btn"
         disabled={busy || grund != null}
@@ -266,7 +270,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
       >
         <Ic n="check" s={18} />
         {busy ? 'Speichere …' : 'Übernehmen'}
-      </button>
+      </button></Recht>
     </>
   ) : null;
   const hilft = g.consumer?.allowStorageDischarge;
@@ -353,10 +357,10 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
             {!regeln.length && <p className="leise">Keine. Das Gerät folgt nur seinem Smart-Auftrag.</p>}
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="tbtn" onClick={() => a.oeffne({ art: 'regel', geraet: g.id })}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => a.oeffne({ art: 'regel', geraet: g.id })}>
               <Ic n="plus" s={16} />
               Auch wenn …
-            </button>
+            </button></Recht>
           </div>
         </div>
       )}
@@ -368,7 +372,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
               Speicher darf aushelfen
               <small>{hilft ? 'Fehlt Sonne, deckt der Speicher den Rest.' : 'Fehlt Sonne, kommt der Rest aus dem Netz. Der Speicher bleibt fürs Haus.'}</small>
             </span>
-            <button
+            <Recht aktion="betriebsweise.aendern"><button
               type="button"
               className="sw"
               role="switch"
@@ -376,7 +380,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
               aria-label="Speicher darf aushelfen"
               disabled={busy}
               onClick={() => void a.speicherHilft(g, !hilft)}
-            />
+            /></Recht>
           </div>
         </div>
       )}
@@ -388,9 +392,9 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
             : 'Läuft nach Zeit, Frist oder Preis und steht deshalb nicht in der Reihenfolge. Pflichten gehen der Reihenfolge vor.'}
         </p>
         {platz >= 0 && platzListe.length > 1 && (
-          <button type="button" className="lnk" onClick={() => { k.zu(); a.reihenfolgeAendern(g.id); }}>
+          <Recht aktion="betriebsweise.aendern"><button type="button" className="lnk" onClick={() => { k.zu(); a.reihenfolgeAendern(g.id); }}>
             Reihenfolge ändern <Ic n="chevR" s={16} />
-          </button>
+          </button></Recht>
         )}
       </div>
       <details className="fein">
@@ -701,7 +705,7 @@ export function NeuBlatt({ k, id }: { k: BlattKontext; id: string }) {
       voll
       onClose={k.zu}
       fuss={
-        <>
+        <Recht aktion="betriebsweise.aendern">
           <button type="button" className="btn sek" disabled={busy} onClick={async () => { await k.a.nurMessen(g); k.zu(); }}>Nur messen</button>
           <button
             type="button"
@@ -714,7 +718,7 @@ export function NeuBlatt({ k, id }: { k: BlattKontext; id: string }) {
             <Ic n="check" s={18} />
             {busy ? 'Speichere …' : 'Steuern beginnen'}
           </button>
-        </>
+        </Recht>
       }
     >
       <div className="warum">Angelegt und verbunden ist {g.name} in der Anlage. Hier entscheiden Sie nur, was das Gerät tut.</div>
@@ -778,10 +782,10 @@ export function SpeicherBlatt({ k }: { k: BlattKontext }) {
         geaendert ? (
           <>
             <button type="button" className="btn sek" onClick={() => setWahl(laufend)}>Verwerfen</button>
-            <button type="button" className="btn" disabled={busy} onClick={async () => { if (await a.betriebsmodell(wahl)) k.zu(); }}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" disabled={busy} onClick={async () => { if (await a.betriebsmodell(wahl)) k.zu(); }}>
               <Ic n="check" s={18} />
               {busy ? 'Wechsle …' : 'Übernehmen'}
-            </button>
+            </button></Recht>
           </>
         ) : null
       }
@@ -824,7 +828,7 @@ export function SpeicherBlatt({ k }: { k: BlattKontext }) {
           <h3>Reihenfolge</h3>
           <p>Platz {bild.rang.indexOf(SPEICHER) + 1} für Sonnenstrom.</p>
           {bild.rang.length > 1 && (
-            <button type="button" className="lnk" onClick={() => { k.zu(); a.reihenfolgeAendern(SPEICHER); }}>Reihenfolge ändern <Ic n="chevR" s={16} /></button>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="lnk" onClick={() => { k.zu(); a.reihenfolgeAendern(SPEICHER); }}>Reihenfolge ändern <Ic n="chevR" s={16} /></button></Recht>
           )}
         </div>
       )}
@@ -846,11 +850,11 @@ export function PauseBlatt({ k }: { k: BlattKontext }) {
       <p className="leise" style={{ color: 'var(--c-fg)' }}>
         Während der Pause schaltet VoltPilot nichts. Die Geräte fallen in ihren sicheren Zustand; Schutzgrenzen gelten weiter.
       </p>
-      <div className="dauer">
+      <Recht aktion="handeingriff.setzen"><div className="dauer">
         {DAUERN.map(([v, l]) => (
           <button type="button" key={v} disabled={k.busy === 'pause'} onClick={async () => { await k.a.pause(v); k.zu(); }}>{l}</button>
         ))}
-      </div>
+      </div></Recht>
     </Blatt>
   );
 }
@@ -893,10 +897,10 @@ export function NegativBlatt({ k }: { k: BlattKontext }) {
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>
       <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
-      <button type="button" className="btn sek" onClick={() => k.a.oeffne({ art: 'regel', vorlage: 'negativ' })}>
+      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={() => k.a.oeffne({ art: 'regel', vorlage: 'negativ' })}>
         <Ic n="plus" s={18} />
         Regel aus Vorlage
-      </button>
+      </button></Recht>
     </Blatt>
   );
 }
@@ -966,7 +970,7 @@ export function SzeneBlatt({ k, id }: { k: BlattKontext; id: string }) {
       fuss={
         <>
           <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
-          <button
+          <Recht aktion="betriebsweise.aendern"><button
             type="button"
             className="btn"
             disabled={busy || wahl.size === 0}
@@ -976,7 +980,7 @@ export function SzeneBlatt({ k, id }: { k: BlattKontext; id: string }) {
           >
             <Ic n="check" s={18} />
             {busy ? 'Schalte …' : 'Szene einschalten'}
-          </button>
+          </button></Recht>
         </>
       }
     >

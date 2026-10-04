@@ -63,6 +63,19 @@ Reihenfolge `saveRangliste`, Betriebsmodell `setSiteProfile`, Regeln über die F
 beim Beenden genau die fort, die die Szene pausiert hat; ohne `voltpilot.consumer-control.enabled`
 verweigert der Server das Einschalten, weil er danach nicht fortsetzen könnte.
 
+## Rechte (AP-03 IP-12, Nachzug 1b)
+
+Jeder Schreibknopf steht in `components/Recht` mit dem Recht seines Schreibwegs: Eingriff, Lademodus,
+Speicher-Eingriff, Pause → `handeingriff.setzen`; Smart/„Womit laden“/Ladeziel, Reihenfolge, Betriebsmodell,
+Vorrang, Regeln (neu, Vorlage, Schalter, aktivieren, löschen), Szene an/aus, „nur messen“ und „Speicher darf
+aushelfen“ → `betriebsweise.aendern`; Fahrzeug → `ladepunkt.betrieb`; Anschlussgrenze → `grenze.eintragen`.
+Ohne Recht stehen Grund und Weg an der Stelle des Hebels; eine Gruppe (Aus · Smart · Ein, Chips, Fußzeile) ist
+EIN Hebel. Ausnahme: der Automatik-Knopf im Kopf zeigt den Zustand und bleibt sichtbar, gesperrt mit dem Grund als
+`title`. In Ruhe (1d) sperrt die Ruhe für alle und sagt ihren Grund (Plakette statt Knopf, Satz unter Aus · Smart · Ein
+und am Lademodus, außerhalb von `Recht`); die Knöpfe selbst folgen weiter dem Recht. `PATCH /consumers/{id}` prüft je Feld (`allowStorageDischarge` = Betrieb, jedes andere Feld
+`geraet.einrichten`) wie `PUT /charging-config`. Nachweise: `SteuerungSection.test.tsx` (IK ohne Steuerrecht,
+MD ohne Grenze), `RechtMatrixApiTest`, `e2e/portal-rechte.spec.ts` (R1).
+
 ## Prüfen
 
 `src/steuerung/*.test.ts`, `src/pages/SteuerungSection.test.tsx`, Playwright

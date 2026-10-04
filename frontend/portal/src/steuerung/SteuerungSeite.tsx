@@ -8,7 +8,8 @@
  *
  * Die Seite rechnet nichts selbst: das Bild kommt aus `seite.ts`/`bild.ts`,
  * die Schreibwege sind die bestehenden (Steuerart, Handeingriff, Speicher,
- * Pause, Betriebsmodell, Reihenfolge, Ladepark, Regeln der Box).
+ * Pause, Betriebsmodell, Reihenfolge, Ladepark, Regeln der Box). Jeder
+ * Schreibknopf trägt das Recht seines Schreibwegs (AP-03 IP-12, `components/Recht`).
  *
  * UEMS: die Funktion „Steuern & Optimieren“ (`funktion.ts`) trägt die Bänder
  * über allen Reitern - Einstieg (#965), Ruhe-Zustand, Ruhe-Satz der älteren
@@ -29,6 +30,7 @@ import { customerFlowApi } from '../flows/flowsApi';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { LIST_POLL_MS } from '../pollCadence';
+import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
 import {
@@ -72,6 +74,7 @@ const fehlerText = (e: unknown, sonst: string) =>
 
 export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeiteProps) {
   const { daten, geladen, fehler, neuLaden, setze } = useSteuerungDaten(site);
+  const rollen = useRollen();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), LIST_POLL_MS);
@@ -512,6 +515,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
 
   const pausiert = bild.pausiertBisMs != null;
   const baender = pausiert || bild.szene || funktion.satz || funktion.ruheHinweis || funktion.einstieg;
+  // Der Automatik-Knopf zeigt zugleich den Zustand: ohne Recht bleibt er sichtbar, aber gesperrt.
+  const darfPausieren = rollen.darf('handeingriff.setzen');
   return (
     <div className="stn">
       <div className="stn-kopf">
@@ -522,7 +527,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             {funktion.plakette}
           </span>
         ) : (
-          <button type="button" className={`auto${pausiert ? ' aus' : ''}`} onClick={() => void automatik()} disabled={busy === 'pause'}>
+          <button
+            type="button"
+            className={`auto${pausiert ? ' aus' : ''}`}
+            onClick={() => void automatik()}
+            disabled={busy === 'pause' || !darfPausieren}
+            title={darfPausieren ? undefined : rollen.grund}
+          >
             <i />
             {pausiert ? `pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
           </button>
@@ -574,7 +585,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
               <Ic n="pause" s={18} />
               <span>
                 <b>Automatik pausiert bis {uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}.</b> Geräte sind im sicheren Zustand; Schutzgrenzen gelten weiter.{' '}
-                <button type="button" className="lnk" onClick={() => void automatik()}>Fortsetzen</button>
+                <Recht aktion="handeingriff.setzen"><button type="button" className="lnk" onClick={() => void automatik()}>Fortsetzen</button></Recht>
               </span>
             </div>
           )}
@@ -583,7 +594,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
               <Ic n={bild.szene.def.icon} s={18} />
               <span>
                 <b>Szene „{bild.szene.def.name}“ ist an.</b> {bild.szene.def.kurz}.{' '}
-                <button type="button" className="lnk" disabled={busy === 'szene'} onClick={() => void szeneAus()}>Beenden</button>
+                <Recht aktion="betriebsweise.aendern"><button type="button" className="lnk" disabled={busy === 'szene'} onClick={() => void szeneAus()}>Beenden</button></Recht>
               </span>
             </div>
           )}

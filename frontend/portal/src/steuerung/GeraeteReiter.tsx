@@ -3,6 +3,7 @@
  * Reihenfolge · Was immer gilt (Prototyp `ui-geraete.js`).
  */
 import { forwardRef, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent } from 'react';
+import { Recht } from '../components/Recht';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { haptik } from '../haptik';
 import {
@@ -319,18 +320,20 @@ function NeuKarte({ g, bild, busy, oeffne, onUebernehmen, onNurMessen }: {
           <span>Wählen Sie unter „Anders einstellen“, womit das Gerät laufen soll.</span>
         </div>
       )}
-      <div className="nk-knoepfe">
-        <button type="button" className="btn" disabled={!v || busy} onClick={() => onUebernehmen(g)}>
-          <Ic n="check" s={18} />
-          {busy ? 'Übernehme …' : 'Übernehmen'}
+      <Recht aktion="betriebsweise.aendern">
+        <div className="nk-knoepfe">
+          <button type="button" className="btn" disabled={!v || busy} onClick={() => onUebernehmen(g)}>
+            <Ic n="check" s={18} />
+            {busy ? 'Übernehme …' : 'Übernehmen'}
+          </button>
+          <button type="button" className="btn sek" onClick={() => oeffne({ art: 'neu', id: g.id })}>
+            Anders einstellen
+          </button>
+        </div>
+        <button type="button" className="lnk" onClick={() => onNurMessen(g)}>
+          Nicht steuern, nur messen
         </button>
-        <button type="button" className="btn sek" onClick={() => oeffne({ art: 'neu', id: g.id })}>
-          Anders einstellen
-        </button>
-      </div>
-      <button type="button" className="lnk" onClick={() => onNurMessen(g)}>
-        Nicht steuern, nur messen
-      </button>
+      </Recht>
     </section>
   );
 }
@@ -513,10 +516,10 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
           Wer bekommt Sonnenstrom zuerst?
         </h2>
         {rang.length > 1 && (
-          <button type="button" className="tbtn" onClick={() => p.setReo([...rang])}>
+          <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => p.setReo([...rang])}>
             <Ic n="sliders" s={16} />
             Ändern
-          </button>
+          </button></Recht>
         )}
       </div>
       {nichts && (
@@ -644,7 +647,7 @@ function OffenZeilen({ bild, oeffne, onAnlage }: { bild: SeitenBild; oeffne: (b:
             <span className="d-name"><b>{g.name}</b></span>
             <span className="d-satz">Nur gemessen, auf Ihren Wunsch.</span>
             <span className="d-satz">{g.typLabel}</span>
-            <button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuern</button>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuern</button></Recht>
           </span>
         </div>
       ))}
@@ -803,9 +806,9 @@ const ReoListe = forwardRef<HTMLElement, ListeProps & { reo: string[] }>(functio
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" className="btn sek" style={{ flex: 1 }} onClick={() => p.setReo(null)}>Abbrechen</button>
-        <button type="button" className="btn" style={{ flex: 1 }} disabled={p.busy || !folgen.length} onClick={() => void speichern()}>
+        <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" style={{ flex: 1 }} disabled={p.busy || !folgen.length} onClick={() => void speichern()}>
           {p.busy ? 'Speichere …' : 'Reihenfolge speichern'}
-        </button>
+        </button></Recht>
       </div>
       <p className="leise" aria-live="polite">{live}</p>
     </section>

@@ -8548,6 +8548,11 @@ paths:
         Optimistic concurrency: send `expectedVersion`; a stale value is refused
         with 409. The control kind is again mapped onto the device capabilities
         (§16). `name` updates the entity label.
+
+
+        Rechte je Feld: `allowStorageDischarge` („Speicher darf aushelfen“) ist
+        Betrieb und braucht `betriebsweise.aendern`, jedes andere Feld (und ein
+        Rumpf ohne Feld) `geraet.einrichten` - fehlt eines, 403 `recht_fehlt`.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8564,6 +8569,7 @@ paths:
               schema: { $ref: "#/components/schemas/Consumer" }
         "400": { description: Invalid master data. Body carries a German `message`. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Consumer/site not found for this tenant. }
         "409": { description: Version conflict (someone else changed it first). }
         "422": { description: The device type cannot execute the requested control kind. }

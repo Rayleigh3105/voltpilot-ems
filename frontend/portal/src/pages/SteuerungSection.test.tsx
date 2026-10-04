@@ -18,6 +18,8 @@ import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { rechteSeed } from '../test/rollenFixtures';
 import * as flowsApi from '../flows/flowsApi';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
+import { RechteStandort, setSelbstauskunft } from '../rollen';
+import { rechteSeed, STANDORT_IDS } from '../test/rollenFixtures';
 import type { SiteVerbraucher } from '../verbraucherZone';
 
 const cList = vi.fn();
@@ -327,6 +329,64 @@ describe('Steuerung · Reiter Laden', () => {
   });
 });
 
+describe('Steuerung · Rechte (AP-03 IP-12)', () => {
+  // Grund und Weg aus /me statt eines Hebels; der Server sperrt ohnehin (403).
+  const GRUND = /Dafür fehlt Ihnen das Recht\./;
+  function zeigeAls(kennung: string, reiter: 'steuerung' | 'laden' | 'regeln' = 'steuerung') {
+    setSelbstauskunft(rechteSeed(kennung).me);
+    render(
+      <RechteStandort.Provider value={STANDORT_IDS['ST-1']}>
+        <SteuerungSection site={site} reiter={reiter} tabs={TABS} onOpenSub={vi.fn()} />
+      </RechteStandort.Provider>,
+    );
+  }
+
+  it('ohne Steuerrecht: der Automatik-Knopf zeigt den Zustand, ist aber gesperrt mit Grund', async () => {
+    zeigeAls('IK');
+    const auto = screen.getByRole('button', { name: /Automatik an/ });
+    expect(auto).toBeDisabled();
+    expect(auto.getAttribute('title')).toMatch(GRUND);
+  });
+
+  it('ohne Steuerrecht: am Gerät stehen Grund und Weg statt Aus · Smart · Ein, Übernehmen und Reihenfolge', async () => {
+    zeigeAls('IK');
+    fireEvent.click(await screen.findByRole('button', { name: /Heizstab Warmwasser/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Heizstab Warmwasser/ });
+    expect(within(blatt).queryByRole('button', { name: 'Ein' })).not.toBeInTheDocument();
+    expect(within(blatt).queryByRole('button', { name: /Auch wenn/ })).not.toBeInTheDocument();
+    expect(within(blatt).queryByRole('button', { name: /Reihenfolge ändern/ })).not.toBeInTheDocument();
+    fireEvent.click(within(blatt).getByRole('button', { name: /Günstige Stunden/ }));
+    expect(within(blatt).queryByRole('button', { name: /Übernehmen/ })).not.toBeInTheDocument();
+    const gruende = within(blatt).getAllByRole('note');
+    expect(gruende.length).toBeGreaterThanOrEqual(3);
+    for (const g of gruende) expect(g).toHaveTextContent(GRUND);
+    expect(cStartOverride).not.toHaveBeenCalled();
+  });
+
+  it('ohne Steuerrecht: keine neue Regel, keine Vorlage, kein Regel-Schalter', async () => {
+    zeigeAls('IK', 'regeln');
+    await screen.findByText(/Wenn der Börsenpreis unter 0,0 ct\/kWh liegt/);
+    expect(screen.queryByRole('button', { name: /Neue Regel/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /Regel Negativpreise mitnehmen/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Vorlagen' })?.querySelector('button.vk') ?? null).toBeNull();
+    expect(screen.getAllByRole('note').every((n) => GRUND.test(n.textContent ?? ''))).toBe(true);
+    expect(BOUND.deactivate).not.toHaveBeenCalled();
+  });
+
+  it('der Bedienberechtigte bedient und rahmt nicht: Lademodus ja, Anschlussgrenze nur mit Grund', async () => {
+    zeigeAls('MD', 'laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(within(karte).getByRole('group', { name: 'Lademodus' })).toBeInTheDocument();
+    expect(within(karte).getByRole('group', { name: 'Womit laden' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Automatik an/ })).toBeEnabled();
+    fireEvent.click(within(screen.getByRole('region', { name: 'Netzanschluss' })).getByRole('button', { name: /Rahmen/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Netzanschluss und Laden/ });
+    expect(within(blatt).queryByRole('button', { name: 'mehr' })).not.toBeInTheDocument();
+    expect(within(blatt).queryByRole('button', { name: 'Übernehmen' })).not.toBeInTheDocument();
+    expect(within(blatt).getByRole('note')).toHaveTextContent(GRUND);
+  });
+});
+
 describe('Steuerung · ehrlich ohne Daten', () => {
   it('nennt den Fehler mit Weg, wenn die Geräte-Liste fehlt', async () => {
     vi.spyOn(api, 'siteVerbraucher').mockRejectedValue(new Error('Die Anlage antwortet nicht.'));
@@ -400,6 +460,21 @@ describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
     expect(zeile).toHaveTextContent('Ohne Auftrag.');
     fireEvent.click(within(zeile).getByRole('button', { name: 'Steuerart' }));
     expect(await screen.findByRole('dialog', { name: /Spülmaschine steuern/ })).toBeInTheDocument();
+  });
+
+  it('angehalten und ohne Recht: der Ruhe-Grund steht für alle, die Knöpfe folgen dem Recht', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({
+      zustand: 'angehalten', seit: '2026-11-03T14:10:00+01:00', aktionen: ['fortsetzen', 'beenden'],
+    }));
+    zeige();
+    expect(await screen.findByText('Angehalten seit 03.11.')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Heizstab Warmwasser/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Heizstab Warmwasser/ });
+    expect(within(blatt).queryByRole('button', { name: 'Smart' })).not.toBeInTheDocument();
+    const saetze = within(blatt).getAllByRole('note').map((n) => n.textContent ?? '');
+    expect(saetze).toContain('Eingriffe und Pause gibt es wieder, sobald die Steuerung fortgesetzt ist.');
+    expect(saetze.some((t) => t.startsWith('Dafür fehlt Ihnen das Recht.'))).toBe(true);
   });
 
   it('ohne Recht bleibt der Einstiegs-Satz, der Knopf fehlt (nur der Kundenadministrator richtet ein)', async () => {
