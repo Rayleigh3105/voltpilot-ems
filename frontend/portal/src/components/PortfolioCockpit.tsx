@@ -5,6 +5,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { api, type Earnings, type Overview, type Site } from '../api';
+import { useReportFirstPaint } from '../bootReady';
 import { ortsHinweis } from '../cockpitLayout';
 import { anlageRoute, hashForRoute } from '../nav';
 import {
@@ -114,6 +115,10 @@ export function PortfolioCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
+
+  // Boot-Cover: das Portfolio hat sein erstes echtes Bild, sobald die Übersicht
+  // steht, der Fehlerzustand greift oder es (leer) gar keine Anlage gibt.
+  useReportFirstPaint(overview != null || failed || sites.length === 0);
 
   useEffect(() => {
     let active = true;

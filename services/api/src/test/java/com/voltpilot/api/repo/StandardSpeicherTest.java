@@ -312,4 +312,48 @@ class StandardSpeicherTest {
                     .isCloseTo(fall.path("speicher_eur").asDouble(), EPS);
         }
     }
+
+    /**
+     * M1: der gemessene Betriebsbereich WEITET das Band des sturen Speichers
+     * und verengt es nie - gegen den Block {@code betriebsbereich} derselben
+     * Vektordatei, den {@code test_stur.py} für {@code stur.referenz_band}
+     * liest. Die Vereinigung von Monat und Vormonat ist
+     * {@link EarningsRepository.Betriebsbereich#vereint}.
+     */
+    @Test
+    void theMeasuredOperatingRangeWidensTheBandLikeThePythonTwin() throws Exception {
+        JsonNode block = MAPPER.readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "stur-speicher-vectors.json")))
+                .path("betriebsbereich");
+        assertThat(block.path("eimer_mindestens").asInt())
+                .isEqualTo(StandardSpeicher.BETRIEBSBEREICH_EIMER);
+        assertThat(block.path("faelle")).isNotEmpty();
+        for (JsonNode fall : block.path("faelle")) {
+            String name = fall.path("name").asText();
+            JsonNode gemessen = fall.path("gemessen_pct");
+            EarningsRepository.Betriebsbereich bereich = EarningsRepository.Betriebsbereich
+                    .vereint(bereich(gemessen.path("monat")), bereich(gemessen.path("vormonat")));
+            StandardSpeicher.Batterie b = StandardSpeicher.batterie(
+                    zahl(fall.path("capacity_kwh")), BigDecimal.ONE, BigDecimal.ONE, null,
+                    zahl(fall.path("band_pct").path("min")),
+                    zahl(fall.path("band_pct").path("max")),
+                    zahl(fall.path("reserve_pct").path("backup")),
+                    zahl(fall.path("reserve_pct").path("peak")),
+                    bereich == null ? null : bereich.tiefPct(),
+                    bereich == null ? null : bereich.hochPct());
+            assertThat(b.socFloorKwh()).as("%s: Boden", name)
+                    .isCloseTo(fall.path("soc_floor_kwh").asDouble(), EPS);
+            assertThat(b.socMaxKwh()).as("%s: Decke", name)
+                    .isCloseTo(fall.path("soc_max_kwh").asDouble(), EPS);
+        }
+    }
+
+    private static EarningsRepository.Betriebsbereich bereich(JsonNode n) {
+        return n.isNull() || n.isMissingNode() ? null
+                : new EarningsRepository.Betriebsbereich(zahl(n.path("tief")), zahl(n.path("hoch")));
+    }
+
+    private static BigDecimal zahl(JsonNode n) {
+        return n.isNull() || n.isMissingNode() ? null : n.decimalValue();
+    }
 }

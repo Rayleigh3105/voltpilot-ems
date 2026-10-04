@@ -25,7 +25,7 @@ const TOKENS = [
   '--vp-motion-stagger', '--vp-motion-distance', '--vp-c-motion',
 ];
 /** Die benannten Loops, die der EINE Block anhalten muss. */
-const LOOPS = ['.vp-flow-on', '.vp-flow-rev', '.vp-boot-spinner', '.vp-spinner',
+const LOOPS = ['.vp-flow-on', '.vp-flow-rev', '.vp-loader-ring', '.vp-spinner',
   '.vp-auth-flow .spoke', '.vp-flowport.accepts', '.vp-ustate-busy .vp-ustate-dot',
   '.vp-fleet-dot', '.vp-skeleton'];
 

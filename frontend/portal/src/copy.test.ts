@@ -903,7 +903,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
 
 describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
   it('nennt Anschluss, Übergang und Rechengrundlage ohne interne Felder', () => {
-    const quelle = readFileSync(join(SRC, 'components/LadeparkRahmenKarte.tsx'), 'utf8');
+    // Seit dem Nachzug „Steuerung neu“ wohnt der Rahmen im Rahmen-Blatt des Reiters Laden (Paket 1c bringt die Prüfung dorthin).
+    const quelle = readFileSync(join(SRC, 'steuerung/LadenReiter.tsx'), 'utf8');
     expect(quelle).toContain('Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.');
     expect(quelle).toContain('Grundlast der letzten 7 Tage');
     expect(quelle).toContain('Hausreserve');

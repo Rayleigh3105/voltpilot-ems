@@ -77,6 +77,33 @@ class SteuerungGrundTest {
         }
     }
 
+    /**
+     * A1 (Captain 29.09.2026 „mach alle drei“): ein Minus steht nie ohne
+     * Grund - jeder negative Fall der Datei trägt mindestens eine Kennung, und
+     * der Rückfall {@code anders_geladen} steht nur, wo keine andere greift.
+     */
+    @Test
+    void jedesMinusTraegtEinenGrundUndDerRueckfallStehtAllein() throws Exception {
+        for (JsonNode fall : grund().path("faelle")) {
+            BigDecimal eur = dec(fall.path("eingaben"), "steuerungEur");
+            List<String> gruende = new ArrayList<>();
+            fall.path("gruende").forEach(n -> gruende.add(n.asText()));
+            if (eur != null && eur.signum() < 0) {
+                assertThat(gruende).as(fall.path("name").asText()).isNotEmpty();
+            }
+            if (gruende.contains(SteuerungGrund.ANDERS_GELADEN)) {
+                assertThat(gruende).as(fall.path("name").asText())
+                        .containsExactly(SteuerungGrund.ANDERS_GELADEN);
+            }
+        }
+        // Auch ganz ohne Eingaben (nichts ableitbar) bleibt die Zeile nicht leer.
+        assertThat(SteuerungGrund.of(new SteuerungGrund.Eingaben(new BigDecimal("-0.01"),
+                null, null, null, null, null, null)))
+                .containsExactly(SteuerungGrund.ANDERS_GELADEN);
+        assertThat(SteuerungGrund.of(new SteuerungGrund.Eingaben(BigDecimal.ZERO,
+                null, null, null, null, null, null))).isEmpty();
+    }
+
     @Test
     void ohneEinordnungGibtEsKeineListe() {
         // null = nicht berechnet (kein Tag, keine Dreiteilung) - nicht dasselbe

@@ -799,6 +799,9 @@ class RechtMatrixApiTest {
         z.add(new Zeile(steuernStandort, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e33"));
         z.add(new Zeile("grenze.eintragen|betriebsweise.aendern", HttpMethod.PUT, s1 + "/charging-config",
                 "e333e3ee3"));
+        // „Speicher darf aushelfen“ ist Betrieb, jedes andere Feld am Verbraucher Einrichtung (Nachzug 1b)
+        z.add(new Zeile("geraet.einrichten|betriebsweise.aendern", HttpMethod.PATCH, s1 + "/consumers/{FREMD}",
+                "eee3e3e33"));
         // Gemeinsame Steuerung (AP-15 IP-5, I5): der Kunde richtet ein und hält an; scharf schaltet nur die
         // Plattform unter /api/v1/admin (keine Zeile hier)
         String nurKa = "e34433333";              // U - - - - - -
@@ -1010,6 +1013,17 @@ class RechtMatrixApiTest {
                 "steuerung.starten_beenden");
         assertThat(ruf(HttpMethod.PUT, anlage + "/funktionen/steuern", MD, false, "{\"aktion\":\"anhalten\"}")
                 .getResponse().getStatus()).as("anhalten ist Betrieb im Rahmen (E4)").isNotEqualTo(403);
+        // „Speicher darf aushelfen“ ist Betrieb (wie früher über die Regel), jedes andere Feld Einrichtung (Nachzug 1b).
+        String verbraucher = anlage + "/consumers/" + FREMD;
+        String aushelfen = "{\"allowStorageDischarge\":true}";
+        assertThat(ruf(HttpMethod.PATCH, verbraucher, MD, false, aushelfen).getResponse().getStatus())
+                .as("aushelfen ist Betrieb im Rahmen (E4)").isNotEqualTo(403);
+        assertRechtFehlt(ruf(HttpMethod.PATCH, verbraucher, MD, false, "{\"name\":\"Heizstab\"}"), "geraet.einrichten");
+        assertRechtFehlt(ruf(HttpMethod.PATCH, verbraucher, MD, false,
+                "{\"name\":\"Heizstab\",\"allowStorageDischarge\":true}"), "geraet.einrichten");
+        assertRechtFehlt(ruf(HttpMethod.PATCH, verbraucher, IK, false, aushelfen), "betriebsweise.aendern");
+        assertThat(ruf(HttpMethod.PATCH, verbraucher, IK, false, "{\"name\":\"Heizstab\"}").getResponse().getStatus())
+                .as("Einrichten bleibt der Energiemanagerin").isNotEqualTo(403);
     }
 
     /**

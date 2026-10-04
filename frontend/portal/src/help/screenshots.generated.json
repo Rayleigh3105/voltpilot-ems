@@ -327,74 +327,74 @@
     ]
   },
   "steuerung": {
-    "title": "Betriebsmodelle der Anlage",
+    "title": "Betriebsmodelle im Blatt des Speichers",
     "file": "steuerung.png",
-    "width": 1128,
-    "height": 477,
-    "alt": "Betriebsmodelle der Anlage. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "width": 620,
+    "height": 880,
+    "alt": "Betriebsmodelle im Blatt des Speichers. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 1.77,
-        "y": 2.81,
+        "x": 5.48,
+        "y": 20.91,
         "text": "Hier wählen Sie das übergeordnete Betriebsziel des Speichers."
       },
       {
-        "x": 8.07,
-        "y": 41.83,
-        "text": "Die Karte erklärt das jeweilige Modell und seine Voraussetzungen."
+        "x": 5.48,
+        "y": 42.69,
+        "text": "Jede Wahl nennt Nutzen und Voraussetzungen; was fehlt, ist nicht wählbar."
       },
       {
-        "x": 8.07,
-        "y": 66.43,
-        "text": "Vor einem Wechsel lesen Sie die angezeigten Folgen für die aktuelle Betriebsweise."
+        "x": 5.48,
+        "y": 58.68,
+        "text": "Vor dem Wechsel stehen die Folgen: welches Modell übernimmt und welches endet."
       }
     ]
   },
   "regeln": {
-    "title": "Eine Regel im Baukasten erstellen",
+    "title": "Eine Regel im Satzbaukasten",
     "file": "regeln.png",
-    "width": 640,
-    "height": 620,
-    "alt": "Eine Regel im Baukasten erstellen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "width": 620,
+    "height": 880,
+    "alt": "Eine Regel im Satzbaukasten. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 8.28,
-        "y": 35.88,
-        "text": "Ein aussagekräftiger Name hilft beim späteren Wiederfinden der Regel."
+        "x": 5.48,
+        "y": 11.25,
+        "text": "Die Regel steht als Satz; jeder Baustein lässt sich antippen und ändern."
       },
       {
-        "x": 8.28,
-        "y": 44.9,
-        "text": "Bedingungen bestimmen, wann die Regel gilt."
+        "x": 5.48,
+        "y": 38.42,
+        "text": "Der Probelauf zeigt, wann die Regel heute und morgen greifen würde."
       },
       {
-        "x": 8.28,
-        "y": 91.78,
-        "text": "Prüfen Sie die Zusammenfassung, bevor Sie die Regel aktivieren."
+        "x": 24.47,
+        "y": 95.68,
+        "text": "Vor dem Aktivieren stehen die Folgen, nicht sofort die Aktivierung."
       }
     ]
   },
   "regeln-mobil": {
-    "title": "Der Regelbaukasten auf dem Telefon",
+    "title": "Der Satzbaukasten auf dem Telefon",
     "file": "regeln-mobil.png",
     "width": 390,
-    "height": 844,
-    "alt": "Der Regelbaukasten auf dem Telefon. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 816,
+    "alt": "Der Satzbaukasten auf dem Telefon. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 13.33,
-        "y": 26.27,
-        "text": "Auch auf dem Telefon wird die Regel über dieselben Eingaben erstellt."
+        "x": 8.72,
+        "y": 14.68,
+        "text": "Auch auf dem Telefon ist die Regel ein Satz aus antippbaren Bausteinen."
       },
       {
-        "x": 13.33,
-        "y": 32.91,
-        "text": "Die Bedingungen stehen vor der auszuführenden Aktion."
+        "x": 12.05,
+        "y": 21.91,
+        "text": "Ein Tipp auf den Wert öffnet seinen Regler."
       },
       {
-        "x": 13.33,
-        "y": 77.98,
-        "text": "Der nächste Schritt führt zur Prüfung, nicht unmittelbar zur Aktivierung."
+        "x": 38.91,
+        "y": 95.34,
+        "text": "Der nächste Schritt führt zu den Folgen, nicht unmittelbar zur Aktivierung."
       }
     ]
   },
@@ -423,26 +423,26 @@
     ]
   },
   "ladepark": {
-    "title": "Der Ladepark-Rahmen",
+    "title": "Laden: Netzanschluss und Ladepunkte",
     "file": "ladepark.png",
     "width": 1128,
-    "height": 524,
-    "alt": "Der Ladepark-Rahmen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 1400,
+    "alt": "Laden: Netzanschluss und Ladepunkte. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 5.41,
-        "y": 14.89,
-        "text": "Der Rahmen beschreibt die Grenzen, innerhalb derer das Lastmanagement verteilt."
+        "x": 1.77,
+        "y": 9.79,
+        "text": "Der Netzanschluss teilt sich auf Haus und Ladepunkte; verteilt wird nur innerhalb der Grenze."
       },
       {
-        "x": 76.42,
-        "y": 36.63,
-        "text": "Die Anschlussgrenze muss zur tatsächlichen Installation passen."
+        "x": 59.45,
+        "y": 27.97,
+        "text": "Je Ladepunkt wählen Sie, womit geladen wird."
       },
       {
-        "x": 5.41,
-        "y": 48.46,
-        "text": "Die weiteren Werte zeigen die Rückmeldung der Box; nur hinterlegte Werte werden ausdrücklich so bezeichnet."
+        "x": 3.1,
+        "y": 65.79,
+        "text": "Ein Ladeziel sagt, wie viel bis wann geladen sein soll."
       }
     ]
   },
@@ -650,6 +650,35 @@
         "x": 76.84,
         "y": 94.4,
         "text": "Gespeichert wird erst mit echten Werten. Solange etwas fehlt, steht der Grund daneben."
+      }
+    ]
+  },
+  "steuerung-geraete": {
+    "title": "Steuerung: was läuft und wer zuerst dran ist",
+    "file": "steuerung-geraete.png",
+    "width": 1128,
+    "height": 1600,
+    "alt": "Steuerung: was läuft und wer zuerst dran ist. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 1.77,
+        "y": 8.56,
+        "text": "Oben steht in einem Satz, was läuft und warum, darunter, wohin der Sonnenstrom geht."
+      },
+      {
+        "x": 57.94,
+        "y": 12.16,
+        "text": "Die Liste ist die Reihenfolge für Sonnenstrom; ein Tipp auf ein Gerät öffnet Aus, Smart und Ein."
+      },
+      {
+        "x": 93.08,
+        "y": 8.81,
+        "text": "Mit „Ändern“ verschieben Sie Geräte und Speicher."
+      },
+      {
+        "x": 1.77,
+        "y": 53.37,
+        "text": "Das Tagesbild zeigt bis jetzt Gemessenes, danach Plan und Erwartung."
       }
     ]
   }

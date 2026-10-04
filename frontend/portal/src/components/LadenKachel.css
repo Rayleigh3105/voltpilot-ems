@@ -185,3 +185,25 @@
   .vp-laden-wort { grid-column: 2 / 3; justify-self: start; text-align: left; }
   .vp-laden-link .vp-laden-go { grid-column: 3; grid-row: 1; }
 }
+
+/* Im Kachelraster (Konzept „Cockpit als Tagesfilm“) trägt die Hülle Rand und
+   Kopf; die Kachel selbst bringt nur ihren Inhalt mit. */
+.vp-laden.vp-laden-in-kachel {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vp-laden-in-kachel .vp-laden-wert {
+  margin-top: 0;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-k .vp-laden-kachel-ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}

@@ -19,20 +19,31 @@ import { describe, expect, it } from 'vitest';
 // vitest root ist frontend/portal (vitest.config.ts).
 const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
-describe('index.html Sofort-Skelett', () => {
-  it('ships the skeleton markup React later replaces', () => {
+describe('index.html Sofort-Lader', () => {
+  it('ships the loader markup React later replaces', () => {
     expect(html).toContain('id="vp-boot-skeleton"');
-    // Der Wortmarken-Blitz ist inline-SVG, kein Bild-Request.
-    expect(html).toContain('<svg viewBox="0 0 24 24"');
+    // Die ECHTE Wortmarke als Data-URI (byte-genau dasselbe Bild wie der
+    // React-Lader), kein zusätzlicher Request und kein Ersatz-Logo.
+    expect(html).toMatch(/class="vp-bs-word"[^>]*src="data:image\/png;base64,/);
     expect(html).toContain('VoltPilot');
+    // Der VoltPilot-Lade-Moment „Der Puls": ausstrahlende Ringe (dieselbe Loop,
+    // die der React-Lader `.vp-loader-ring`/`vp-loader-pulse` weiterführt).
+    expect(html).toContain('vp-bs-ring');
+    expect(html).toContain('@keyframes vp-bs-pulse');
   });
 
-  it('references no external asset (bleibt no-cache-tauglich, kein Hash nötig)', () => {
+  it('references no EXTERNAL asset (bleibt no-cache-tauglich, kein Hash nötig)', () => {
     const skeleton = html.slice(html.indexOf('<style>'));
-    expect(skeleton).not.toMatch(/url\(/i);
-    expect(skeleton).not.toMatch(/<img\b/i);
-    // Der einzige erlaubte externe Verweis im Dokument bleibt das Favicon und
-    // das Modul-Skript - beide ausserhalb des Skeletts.
+    // Kein `url(...)` auf ein externes Asset. Erlaubt sind lokale SVG-Fragment-
+    // Refs (`url(#vplFill-bs)`) und Data-URIs (`url(data:…)`) - beide kosten
+    // KEINEN Request.
+    expect(skeleton).not.toMatch(/url\(\s*["']?(?!#|data:)/i);
+    // Kein <img> auf ein externes Asset - nur Data-URIs (die Wortmarke; kein
+    // Request). Ein externes `src` (http/relativ/Wurzel) ist verboten.
+    for (const tag of skeleton.match(/<img\b[^>]*>/gi) ?? []) {
+      expect(tag, `externes Bild im Lader: ${tag.slice(0, 60)}`).toMatch(/\bsrc="data:/);
+    }
+    // Kein externer http(s)-Verweis im Lader (Data-URI-Base64 enthält kein `://`).
     expect(skeleton).not.toMatch(/https?:\/\//i);
   });
 

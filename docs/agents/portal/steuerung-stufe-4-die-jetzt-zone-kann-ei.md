@@ -1,5 +1,7 @@
 # Steuerung Stufe 4: die Jetzt-Zone kann eingreifen
 
+> ⚠ **Abgelöst** durch [Steuerung neu: drei Reiter](steuerung-neu-drei-reiter.md) (29.09.2026). Die hier beschriebene Zone gibt es im Portal nicht mehr; gültig bleiben nur die genannten Server-Regeln.
+
 Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 19).
 
 

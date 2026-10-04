@@ -38,11 +38,13 @@ import java.math.BigDecimal;
  *       {@code GET /api/v1/earnings}, and the two legitimately differ by a
  *       large factor. Any surface rendering it MUST say "geplant" (audit
  *       H3/X2).</li>
- *   <li>{@code steuerungPlannedEur} = sum of (stur_cost_eur - cost_eur) over
- *       the SAME plan slots: what the plan earns against <b>the same battery
- *       WITHOUT smart control</b> - the stur self-consumption reference of
- *       {@code services/optimization/voltpilot_optimization/stur.py}, whose
- *       measured twin is {@code savedSteuerungEur} on {@code /earnings}.
+ *   <li>{@code steuerungPlannedEur}: what the plan earns over the SAME plan
+ *       slots against <b>the same battery WITHOUT smart control</b> - since M2
+ *       (29.09.2026) against the SAME running Vergleichsspeicher as its
+ *       measured twin {@code savedSteuerungEur} on {@code /earnings}
+ *       (carry-over across midnight included; rule in
+ *       {@code repo/PlanMesslatte.java}), no longer the per-run
+ *       {@code stur_cost_eur} of {@code stur.py}.
  *       <b>This is the number the customer surface shows</b> (Captain
  *       04.09.2026: "du musst Anlage immer mit Speicher berechnen, einer halt
  *       ohne smart Steuerung"); {@code batterySavingsPlannedEur} keeps
@@ -50,10 +52,11 @@ import java.math.BigDecimal;
  *       covered slot of the window carries no Messlatte</b> (a run that
  *       predates migration V20260867000000, or a site the optimizer plans no
  *       battery for) - a partial sum would describe a window nobody computed,
- *       so the surface hides the line instead of understating it. By
- *       construction {@code steuerungPlannedEur <= batterySavingsPlannedEur}:
- *       a stur battery is better than none. Like its sibling it is EX-ANTE
- *       PLANNED money - any surface rendering it MUST say "geplant".</li>
+ *       so the surface hides the line instead of understating it. Over a
+ *       full charge cycle it stays below {@code batterySavingsPlannedEur} (a
+ *       stur battery is better than none); a single day may cut through a
+ *       cycle. Like its sibling it is EX-ANTE PLANNED money - any surface
+ *       rendering it MUST say "geplant".</li>
  *   <li>{@code batterySavingsEur} - <b>deprecated</b> alias of
  *       {@code batterySavingsPlannedEur}, kept for one release so the portal can
  *       switch independently. Same value; do not add new readers.</li>

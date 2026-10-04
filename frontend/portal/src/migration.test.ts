@@ -332,8 +332,10 @@ describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
    *
    * Seit Preise und Wetter Reiter des FAHRPLANS sind, gilt dasselbe für ihn
    * (25.09.2026): ein Kopf nur über „Fahrplan" ließ genau diese Leiste
-   * springen. Die übrigen Bereiche (Einstellungen, Komponenten, Steuerung)
-   * behalten ihren Kopf — dort trägt jeder Reiter einen, nichts springt.
+   * springen. Die übrigen Bereiche (Einstellungen, Aufbau) behalten ihren
+   * Kopf — dort trägt jeder Reiter einen, nichts springt. Die STEUERUNG trägt
+   * Kopf und Reiter selbst (für alle drei Reiter derselbe), sie steht deshalb
+   * gar nicht in `SUB_PAGES`.
    */
   it('kein Verlauf- oder Fahrplan-Reiter trägt einen sichtbaren Seitenkopf', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/AnlagenPage.tsx'), 'utf8'));
@@ -344,7 +346,7 @@ describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
     }
     // Nicht-vakuum: die übrigen Bereiche stehen weiterhin drin.
     expect(gedeckelt).toMatch(/\n\s*technik\s*:/);
-    expect(gedeckelt).toMatch(/\n\s*steuerung\s*:/);
+    expect(gedeckelt).toMatch(/\n\s*modell\s*:/);
   });
 
   /**
@@ -1138,7 +1140,8 @@ describe('Steuerung Stufen 1+2: eine Anlage OHNE Daten bleibt ehrlich leer', () 
   });
 
   it('die Jetzt-Zone speichert nichts im Browser', () => {
-    for (const name of ['steuerungJetzt.ts', 'components/JetztZone.tsx', 'regeln/folgen.ts']) {
+    // Seit den Reitern trägt `steuerung/` den Jetzt-Kopf.
+    for (const name of ['steuerungJetzt.ts', 'steuerung/GeraeteReiter.tsx', 'steuerung/bild.ts', 'regeln/folgen.ts']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
@@ -1203,7 +1206,7 @@ describe('Steuerung Stufe 5: eine Anlage OHNE aktives Betriebsmodell ist unberü
   });
 
   it('die Zone speichert nichts im Browser', () => {
-    for (const name of ['betriebsmodelle.ts', 'components/Betriebsmodelle.tsx']) {
+    for (const name of ['betriebsmodelle.ts', 'steuerung/Blaetter.tsx']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
@@ -1221,8 +1224,8 @@ describe('Steuerung Stufe 5 — Abbau-Invarianten', () => {
   it('coOptimization / socReservationStack / CoOptimizationStrip existieren nicht mehr', () => {
     const dateien = [
       'steuerungArea.ts',
-      'components/SteuerungParts.tsx',
       'pages/SteuerungSection.tsx',
+      'steuerung/SteuerungSeite.tsx',
     ];
     for (const name of dateien) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
@@ -1243,7 +1246,10 @@ describe('Steuerung Stufe 5 — Abbau-Invarianten', () => {
   it('die alte Profil-ZEILE (ProfileRowView) ist durch die Karten ersetzt', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/SteuerungSection.tsx'), 'utf8'));
     expect(code).not.toMatch(/ProfileRowView/);
-    expect(code).toMatch(/Betriebsmodelle/);
+    // Seit den Reitern wählt man das Betriebsmodell im Blatt „Speicher".
+    const blatt = ohneKommentare(readFileSync(join(SRC, 'steuerung/Blaetter.tsx'), 'utf8'));
+    expect(blatt).not.toMatch(/ProfileRowView/);
+    expect(blatt).toMatch(/Betriebsmodell/);
   });
 });
 
@@ -1273,7 +1279,7 @@ describe('Steuerung Stufe 6: ohne Zutaten gibt es keine Vorschlags-Karte', () =>
   it('die Vorschlags-Fläche speichert nichts im Browser', () => {
     // Die Ablehnung ist server-seitig (§7 `localStorage`-Verbot) - sonst
     // überlebte sie den Gerätewechsel nicht und wäre keine Entscheidung.
-    for (const name of ['vorschlaege.ts', 'components/VorschlagsKarten.tsx']) {
+    for (const name of ['vorschlaege.ts', 'steuerung/neu.ts', 'steuerung/GeraeteReiter.tsx']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
@@ -1518,10 +1524,24 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     const drucker = ts.createPrinter({ removeComments: true });
     const tags = new Set(['Button', 'button', 'Switch', 'Input', 'input', 'select', 'textarea']);
     const verwendeteFortschreibungen = new Set<(typeof kundenBestand.fortschreibungen)[number]>();
-    // Nachzug main → uems (26.09.2026): ausgelieferte Neubauten von main, je Bedienelement mit Commit und Nachfolger.
-    const nachzug = kundenBestand.mainNachzug;
+    // Nachzüge main → uems (26.09.2026, 04.10.2026 Steuerung neu): ausgelieferte Neubauten von main, je Bedienelement
+    // mit Commit und Nachfolger. Steht eine Datei in beiden, gilt `main` des neueren; die Entfallenen zählen zusammen.
     type NachzugDatei = { main?: string[]; entfallen_datei?: boolean; wohin: string; entfallen: { vorher: string; commit: string }[] };
-    const nachzugDateien = nachzug.dateien as Record<string, NachzugDatei>;
+    type Nachzug = { main: string; dateien: Record<string, NachzugDatei> };
+    const nachzuege: Nachzug[] = [kundenBestand.mainNachzug, kundenBestand.mainNachzugSteuerung];
+    const nachzugDateien: Record<string, NachzugDatei & { nachzug: string }> = {};
+    for (const n of nachzuege) {
+      for (const [pfad, d] of Object.entries(n.dateien)) {
+        const frueher = nachzugDateien[pfad];
+        nachzugDateien[pfad] = {
+          main: d.main ?? frueher?.main,
+          entfallen_datei: d.entfallen_datei || frueher?.entfallen_datei,
+          wohin: d.wohin,
+          entfallen: [...(frueher?.entfallen ?? []), ...d.entfallen],
+          nachzug: n.main,
+        };
+      }
+    }
     const verwendeteEntfallene = new Set<string>();
     let zahl = 0;
     for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
@@ -1530,7 +1550,7 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
       const nz = nachzugDateien[pfad];
       if (nz?.entfallen_datei) {
         // main hat die Datei gelöscht: sie kehrt nicht still zurück, und jedes ihrer Bedienelemente ist einzeln belegt.
-        expect(existsSync(join(SRC, quellpfad)), `${pfad}: von main ${nachzug.main} gelöscht`).toBe(false);
+        expect(existsSync(join(SRC, quellpfad)), `${pfad}: von main ${nz.nachzug} gelöscht`).toBe(false);
         expect(nz.entfallen.map(e => e.vorher).sort(), `${pfad}: ${nz.wohin}`).toEqual([...vorher].sort());
         nz.entfallen.forEach((_, i) => verwendeteEntfallene.add(`${pfad}#${i}`));
         zahl += vorher.length;
@@ -1567,7 +1587,7 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
           const stelle = rest.indexOf(fingerabdruck);
-          expect(stelle, `${pfad}: Bedienelement von main ${nachzug.main}`).toBeGreaterThanOrEqual(0);
+          expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
       }
@@ -1582,7 +1602,7 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
           // Nur was main selbst entfernt hat, darf fehlen — einzeln belegt und auf main wirklich nicht mehr da.
           const i = nz.entfallen.findIndex((e, j) => e.vorher === fingerabdruck && !verwendeteEntfallene.has(`${pfad}#${j}`));
           expect(i, `${pfad}: Bedienelement aus ${kundenBestand.basis} ohne Beleg im Nachzug`).toBeGreaterThanOrEqual(0);
-          expect(nz.main ?? [], `${pfad}: steht auf main ${nachzug.main} noch`).not.toContain(soll);
+          expect(nz.main ?? [], `${pfad}: steht auf main ${nz.nachzug} noch`).not.toContain(soll);
           verwendeteEntfallene.add(`${pfad}#${i}`);
           zahl++;
           continue;
@@ -1651,7 +1671,8 @@ describe('AP-03 IP-13 · Benutzerverwaltung additiv', () => {
 
 describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () => {
   it('verwendet die Rechte-Weiche und fügt für O18 weder Seite noch Navigation hinzu', () => {
-    const karte = readFileSync(join(SRC, 'components/LadeparkRahmenKarte.tsx'), 'utf8');
+    // Seit dem Nachzug „Steuerung neu“ wohnt der Rahmen im Rahmen-Blatt des Reiters Laden (Paket 1c bringt die Prüfung dorthin).
+    const karte = readFileSync(join(SRC, 'steuerung/LadenReiter.tsx'), 'utf8');
     const api = readFileSync(join(SRC, 'api.ts'), 'utf8');
     const nav = readFileSync(join(SRC, 'ebenenNav.ts'), 'utf8') + readFileSync(join(SRC, 'nav.ts'), 'utf8');
     expect(karte).toContain('<Recht aktion="grenze.eintragen">');

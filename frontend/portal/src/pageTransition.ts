@@ -129,6 +129,8 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   ladevorgaenge: SUB_CHUNK.ladevorgaenge,
   lastspitzen: SUB_CHUNK.lastspitzen,
   steuerung: SUB_CHUNK.steuerung,
+  laden: SUB_CHUNK.steuerung,
+  regeln: SUB_CHUNK.steuerung,
   technik: SUB_CHUNK.technik,
   befehle: SUB_CHUNK.befehle,
   prognose: SUB_CHUNK.prognose,

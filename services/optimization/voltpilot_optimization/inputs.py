@@ -972,7 +972,64 @@ def gather_inputs(
         # E6 A: die ehrliche Marge fuer Netzanteil beim Laden - nur am
         # Festpreis-Tarif, Spot-Anlagen bleiben bei 0 (kein Term).
         grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
+        # M1: nur die Messlatte liest ihn, der Plan bleibt byte-identisch.
+        stur_betriebsbereich_pct=_betriebsbereich_pct(dsn, site.site_id, now),
     )
+
+
+def _betriebsbereich_pct(
+    dsn: str, site_id: UUID, now: datetime
+) -> tuple[float | None, float | None] | None:
+    """Der gemessene Betriebsbereich des echten Speichers (M1) fuer den
+    sturen Speicher der Messlatte, oder ``None``.
+
+    Je Berliner Monat der :data:`~voltpilot_optimization.stur.BETRIEBSBEREICH_EIMER`-t
+    niedrigste ``soc_min_pct`` und -t hoechste ``soc_max_pct`` der 15-min-Eimer,
+    vereint ueber den laufenden Monat und den Vormonat - dieselbe Regel und
+    dieselbe Abfrage wie ``EarningsRepository.monthBetriebsbereich`` (Java).
+
+    FAIL-SOFT wie die Messlatte selbst: ein fehlender Bereich ist das
+    unveraenderte Planungsband, nie ein fehlender Plan.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    from voltpilot_optimization.stur import BETRIEBSBEREICH_EIMER
+
+    now = ensure_utc(now)
+    monat = now.astimezone(BERLIN).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    vormonat = (monat - timedelta(days=1)).replace(day=1)
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT min(tief), max(hoch) FROM (
+                  SELECT date_trunc('month', bucket AT TIME ZONE 'Europe/Berlin'),
+                    (array_agg(soc_min_pct ORDER BY soc_min_pct)
+                      FILTER (WHERE soc_min_pct IS NOT NULL))[{BETRIEBSBEREICH_EIMER}] AS tief,
+                    (array_agg(soc_max_pct ORDER BY soc_max_pct DESC)
+                      FILTER (WHERE soc_max_pct IS NOT NULL))[{BETRIEBSBEREICH_EIMER}] AS hoch
+                  FROM telemetry_rollup_15m
+                  WHERE site_id = %s AND bucket >= %s AND bucket < %s
+                  GROUP BY 1) m
+                """,
+                (site_id, vormonat, now),
+            )
+            row = cur.fetchone()
+        if row is None or (row[0] is None and row[1] is None):
+            return None
+        return (
+            float(row[0]) if row[0] is not None else None,
+            float(row[1]) if row[1] is not None else None,
+        )
+    except Exception:
+        logger.warning(
+            "stur.betriebsbereich_unavailable - Messlatte faehrt das Planungsband",
+            extra={"context": {"site_id": str(site_id)}},
+            exc_info=True,
+        )
+        return None
 
 
 def _night_error_quantiles(

@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 56 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 57 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -89,6 +89,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Managementbewertung](#managementbewertung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG1–MG7, E6)
 - [Sitzung · Beschluss · Folge](#sitzung--beschluss--folge) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)
 - [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
+- [Szene](#szene) — Sicht Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)
 
 ## Kundenbereich
 
@@ -456,7 +457,7 @@ Unverändert übernommen aus Steuerung Stufe 5 und dem Anwendungs-Zielbild: das 
 
 **Beispiel (Referenzunternehmen Ahrenberg).** AN-1: Lastspitzenkappung, läuft seit 02.05.2024. AN-2, AN-3: keines (reine Messung). Der Ladepark-Rahmen an NA-2 ab 01.12.2026 ist Schutz, kein Betriebsmodell.
 
-**Heute im Code.** `site_profile_state(site_id, profile, state an|aus)` (MIG/V20260723000000__site_profile_state.sql:26-36); Katalog services/api/src/main/java/com/voltpilot/api/profile/AnwendungKatalog.java:55-64; Portal „Betriebsmodelle“ als Radiogruppe (PORTAL/components/Betriebsmodelle.tsx:85), „läuft seit …“ (PORTAL/betriebsmodelle.ts:110-137), Grundzustand „Eigenverbrauchs-Fahrplan“ (:274-278); Kundenwort-Regel (PORTAL/copy.test.ts:103-113). Entscheidungen DATA/vp-steuerung-konzept-b3/report.md:146, DATA/vp-portal-zielbild-anwendungen/report.md:324.
+**Heute im Code.** `site_profile_state(site_id, profile, state an|aus)` (MIG/V20260723000000__site_profile_state.sql:26-36); Katalog services/api/src/main/java/com/voltpilot/api/profile/AnwendungKatalog.java:55-64; Portal „Betriebsmodell“ als Wahl mit Folgen im Blatt des Speichers (PORTAL/steuerung/Blaetter.tsx:796), „läuft seit …“ (PORTAL/betriebsmodelle.ts:110-137), Grundzustand „Eigenverbrauchs-Fahrplan“ (:274-278); Kundenwort-Regel (PORTAL/copy.test.ts:103-113). Entscheidungen DATA/vp-steuerung-konzept-b3/report.md:146, DATA/vp-portal-zielbild-anwendungen/report.md:324.
 
 **Abgrenzung.** Nicht die Regel (Ausnahme obendrauf), nicht die Steuerart (Grundverhalten je Verbraucher), nicht der Zustand „steuert“ (Beobachtung).
 
@@ -1374,3 +1375,17 @@ Die Tätigkeit ist eine Aussage des PLANS über eine Phase, nie eine Messung: wa
 **Heute im Code.** Die Wörter stehen als Konstanten `FAHRPLAN_TAETIGKEIT` in PORTAL/glossar.ts:187; die Zuordnung Rolle → Wort macht `filmLabel` (PORTAL/fahrplanFilm.ts:120), für die übrigen Rollen `roleLabel` (PORTAL/fahrplanWhy.ts:718). Die Rolle je Viertelstunde (`slot_role`) schreibt der Optimierer; das Tagesbild legt die Phasen auf die Uhrzeit (PORTAL/fahrplanTag.ts:165).
 
 **Abgrenzung.** Nicht das Betriebsmodell (die Betriebsweise der Anlage), nicht die Regel (eine Ausnahme obendrauf), nicht der Zustand „steuert“ (eine Beobachtung).
+
+## Szene
+
+*Sicht: Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)*
+
+**Ein Tipp, mehrere Geräte: eine Szene (Urlaub · Unterwegs · Sparen) pausiert die gewählten Geräte einer Anlage, bis der Kunde sie beendet.**
+
+Eine Szene schaltet nichts Eigenes: sie nutzt den Pausenweg der Verbraucher (Regel zurückgezogen, der sichere Zustand des Geräts gilt) und merkt sich, WELCHE Geräte sie selbst pausiert hat. Beim Beenden setzt sie genau diese fort — ein vorher schon pausiertes Gerät bleibt pausiert, eines, das der Kunde zwischendurch selbst fortgesetzt hat, bleibt unberührt. Höchstens eine Szene je Anlage; eine neue beendet die laufende. Eine Szene stellt keine Temperatur und keine Ladeart um, und sie endet heute nur von Hand, nicht zu einem Datum.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Szene „Urlaub“ an AN-1: Poolpumpe, Klimagerät und Waschmaschine pausiert; der Heizstab bleibt Smart. Nach dem Urlaub ein Tipp auf „Beenden“ — die drei laufen wieder nach ihrem Auftrag.
+
+**Heute im Code.** Tabelle `site_scene` mit RLS (MIG/V20260929120000__steuerung_szene_und_nur_messen.sql:49), Dienst `SzenenService` (services/api/src/main/java/com/voltpilot/api/szenen/SzenenService.java:65), Wörter als `STEUERUNG_SZENE` (PORTAL/glossar.ts:156), Vorschläge je Szene in PORTAL/steuerung/szenen.ts:40.
+
+**Abgrenzung.** Nicht die Regel (die reagiert auf eine Bedingung), nicht der Eingriff (der gilt für ein Gerät und endet nach Minuten), nicht die Pause der Automatik (die hält die ganze Anlage an).

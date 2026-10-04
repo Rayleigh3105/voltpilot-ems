@@ -6,7 +6,7 @@ Referenzdateien dürfen nicht aus dem UEMS-Lauf neu geschrieben werden.
 
 ## Herkunft der Referenz
 
-- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, siehe unten).
+- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b` und `308a5cc91`, siehe unten).
 - Schema: genau dessen 168 Produktionsmigrationen, ohne Dev-Seeds.
 - Saat: `main-seed.sql`, direkt auf diesem Schema, keine UEMS-Route. Der alte
   V2-Startmarker ist vorhanden, wie bei einer auf main schon gestarteten Anlage.
@@ -45,6 +45,14 @@ gilt für main 8b8b6a03b wie für 4aa1e7fb, `MAIN` nennt seither den jüngeren C
 Aufnahme: auf main fehlen die UEMS-Sender `VerbundAnteilePublisher` und `SprungprobePublisher`; ihre
 zwei `@MockBean`-Zeilen und ihre Namen in `senders()` müssen in der Kopie entfallen (die Klasse
 übersetzt sonst nicht).
+
+## Nachgemessen beim Nachzug main 308a5cc91 (04.10.2026, Steuerung neu)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `308a5cc91fbacc564ab27b338a7afaab47e214ff` (17 Commits:
+Steuerung mit drei Reitern, Szenen und „nur messen“ samt `V20260929120000`, Cockpit-Raster, #1307, #1310, #1312;
+`main-migrations.txt` jetzt 170) in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwei
+entfernten UEMS-Sendern, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu
+`main-reference.json` (12 005 Bytes, alle 13 Einträge). `MAIN` nennt seither 308a5cc91.
 
 ## Bewusste Differenzen main → uems
 

@@ -8,7 +8,10 @@
  * Reine Ableitung aus `verbrauchKomposition` und `pvComposition`; fehlt ein
  * Messwert, steht das Wort bzw. „—“, nie eine erfundene 0.
  */
+import type { RollenKanonischerWert } from './api';
 import type { PvComposition } from './pvComposition';
+import { SUMMENWERT } from './glossar';
+import { rollenStand, rollenView, teilSummeText } from './pvRolle';
 import type { VerbrauchGruppeId, VerbrauchKomposition } from './verbrauchKomposition';
 import { kw, kwh, TOTBAND_KW } from './leitungsplan';
 
@@ -27,6 +30,8 @@ export interface ListenZeile {
   art: 'normal' | 'rest' | 'still' | 'aus' | 'plan' | 'weitere';
   icon: ZeilenIcon;
   title: string | null;
+  /** Im Blatt: Sprung auf die Geräteseite; null = kein Ziel. */
+  href?: string | null;
 }
 
 export interface Liste {
@@ -35,6 +40,8 @@ export interface Liste {
   zeilen: ListenZeile[];
   /** Zahl aller Zeilen vor dem Kürzen. */
   gesamt: number;
+  /** Leise Zeilen unter der Liste („Stand 10:15 Uhr“, „aus 2 von 3 Geräten“). */
+  fuss?: string[];
 }
 
 const GRUPPEN_ICON: Record<VerbrauchGruppeId, ZeilenIcon> = {
@@ -108,6 +115,7 @@ export function verbrauchListe(
         art: t.health === 'stale' ? 'still' : aus ? 'aus' : 'normal',
         icon: GRUPPEN_ICON[g.id],
         title: t.title,
+        href: t.href,
       });
     }
   }
@@ -183,5 +191,41 @@ export function ohneAufteilung(titel: string, summe: string, plan: boolean): Lis
         title: null,
       },
     ],
+  };
+}
+
+/**
+ * Die Aufschlüsselung einer kanonischen Rolle (Summenwert, `GET …/rollen/…`)
+ * in derselben Listenform - für das Blatt des Knotens. Ein stummes Gerät hat
+ * keinen Wert, nur sein Wort; die Summe ist die des Servers, nie nachgerechnet.
+ */
+export function rollenListe(wert: RollenKanonischerWert | null | undefined): Liste | null {
+  const view = rollenView(wert);
+  if (!view || !wert) return null;
+  const netz = wert.role === 'grid';
+  const titel = wert.role === 'pv' ? 'Erzeugung im Detail' : wert.role === 'grid' ? 'Netz im Detail' : 'Verbrauch im Detail';
+  const icon: ZeilenIcon = wert.role === 'pv' ? 'panel' : wert.role === 'grid' ? 'plug' : 'home';
+  const bezug = view.zeilen.reduce((s, z) => s + Math.abs(z.kw ?? 0), 0);
+  const zeilen: ListenZeile[] = view.zeilen.map((z) => ({
+    key: z.entityId,
+    name: z.name,
+    sub: !z.liefernd ? 'liefert gerade nicht' : netz && z.kw != null ? (z.kw < -TOTBAND_KW ? 'Einspeisung' : z.kw > TOTBAND_KW ? 'Bezug' : null) : null,
+    wert: z.kw == null ? '—' : kw(Math.abs(z.kw)),
+    zahl: z.kw == null ? null : Math.abs(z.kw),
+    anteil: z.kw != null && bezug > 0 ? Math.min(1, Math.abs(z.kw) / bezug) : null,
+    art: z.liefernd ? 'normal' : 'still',
+    icon,
+    title: null,
+  }));
+  const fuss = [rollenStand(view.stand)];
+  const teil = teilSummeText(view);
+  if (teil) fuss.push(`Summe ${teil}`);
+  if (view.summenwertHinweis) fuss.push(`Ein ${SUMMENWERT} kann mehreren Geräten zugeordnet sein. Er zählt in der Anlagenzahl einmal.`);
+  return {
+    titel,
+    summe: view.summe == null ? '—' : kw(Math.abs(view.summe)),
+    zeilen: sortiere(zeilen),
+    gesamt: zeilen.length,
+    fuss,
   };
 }

@@ -206,6 +206,63 @@ func TestStaleTelemetryAndMissingProofAbort(t *testing.T) {
 	}
 }
 
+// The AbortUnproven sentence names what the box saw (Herzogau F11,
+// 29.09.2026): no readback, readbacks without the proof, or a register that
+// did not hold - only the last one blames the inverter.
+func TestUnprovenNamesWhatArrived(t *testing.T) {
+	run := func(feed func(s *Session)) (*Session, *Event) {
+		t.Helper()
+		s := started(t, Request{Candidate: CandidateGridZero, Intent: IntentSurplus})
+		feed(s)
+		for at := t0.Add(5 * time.Second); at.Before(t0.Add(70 * time.Second)); at = at.Add(5 * time.Second) {
+			s.Observe(obs(0, 0, 50), at)
+			s.Publish(at, true)
+		}
+		if s.Active() || s.run.end.Code != AbortUnproven {
+			t.Fatalf("unproven: %+v", s.run.end)
+		}
+		return s, s.run.end
+	}
+	blames := EndText(AbortUnproven)
+
+	_, none := run(func(*Session) {})
+	if strings.Contains(none.Text, blames) || !strings.Contains(none.Text, "keine Rückmeldung") {
+		t.Fatalf("no readback: %q", none.Text)
+	}
+
+	s, held := run(func(s *Session) {
+		s.NoteReadback(Readback{Mode: "normal", Wrote: true}, t0.Add(10*time.Second))
+		s.NoteReadback(Readback{Mode: "normal", Wrote: true}, t0.Add(20*time.Second))
+	})
+	if strings.Contains(held.Text, blames) || !strings.Contains(held.Text, "2 Rückmeldungen") ||
+		!strings.Contains(held.Text, "„normal“") || strings.Contains(held.Text, "Grund laut Box") {
+		t.Fatalf("readbacks that held, without the proof: %q", held.Text)
+	}
+	if v := s.Snapshot(t0.Add(70 * time.Second)); v.Readbacks != 2 || v.LastMode != "normal" || v.Metrics.WriteCycles != 2 {
+		t.Fatalf("the view counts what arrived: %+v", v)
+	}
+
+	s, blocked := run(func(s *Session) {
+		s.NoteReadback(Readback{Mode: "normal", Blocked: true, Wrote: true, Refusal: "Nennleistung des Modells unbekannt"},
+			t0.Add(10*time.Second))
+	})
+	if strings.Contains(blocked.Text, blames) || !strings.Contains(blocked.Text, "eine Rückmeldung") ||
+		!strings.HasSuffix(blocked.Text, "Grund laut Box: Nennleistung des Modells unbekannt") {
+		t.Fatalf("a blocked readback arrived and names why: %q", blocked.Text)
+	}
+	if v := s.Snapshot(t0.Add(70 * time.Second)); v.Readbacks != 1 || v.Metrics.WriteCycles != 0 {
+		t.Fatalf("a blocked cycle wrote nothing: %+v", v)
+	}
+
+	_, refused := run(func(s *Session) {
+		s.NoteReadback(Readback{Mode: "normal", Mismatch: true}, t0.Add(10*time.Second))
+		s.NoteReadback(Readback{Mode: "normal", Refusal: "Beispielgrund"}, t0.Add(20*time.Second))
+	})
+	if refused.Text != blames+" Grund laut Box: Beispielgrund" {
+		t.Fatalf("a register that did not hold is the inverter's refusal: %q", refused.Text)
+	}
+}
+
 func TestTwoReadbackFailuresAndTheEEGProof(t *testing.T) {
 	s := started(t, Request{Candidate: CandidateGridZero})
 	s.NoteReadback(Readback{Native: false}, t0.Add(5*time.Second)) // the reading tick: expected

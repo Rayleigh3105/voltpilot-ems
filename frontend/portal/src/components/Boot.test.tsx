@@ -13,7 +13,8 @@ function mountSkeleton(): HTMLElement {
 describe('BootSplash', () => {
   it('renders the boot state synchronously (never a white first frame)', () => {
     render(<BootSplash />);
-    expect(screen.getByText('Anmeldung wird geprüft …')).toBeInTheDocument();
+    expect(screen.getByText(/Anmeldung wird geprüft/)).toBeInTheDocument();
+    // Die echte Wortmarke (PNG per `?inline`, deckungsgleich zum Inline-Lader).
     expect(screen.getByAltText('VoltPilot')).toBeInTheDocument();
   });
 });
@@ -55,7 +56,7 @@ describe('BootErrorBoundary', () => {
     // Gone in the same commit React wrote its first DOM - no flicker, and the
     // splash it hands over to is already on screen.
     expect(document.getElementById('vp-boot-skeleton')).toBeNull();
-    expect(screen.getByText('Anmeldung wird geprüft …')).toBeInTheDocument();
+    expect(screen.getByText(/Anmeldung wird geprüft/)).toBeInTheDocument();
   });
 
   it('also removes it when the very first render throws', () => {

@@ -1458,22 +1458,119 @@ svg [tabindex]:focus-visible {
   }
 }
 
-/* Boot splash spinner (rendered synchronously while initAuth() runs). */
-.vp-boot-spinner {
-  width: 28px;
-  height: 28px;
-  margin: 0 auto var(--vp-space-4);
-  border-radius: 50%;
-  border: 3px solid var(--vp-border);
-  border-top-color: var(--vp-action);
-  animation: vp-boot-spin 0.9s linear infinite;
+/* ============================================================
+   DER VOLTPILOT-LADE-MOMENT (`VpLoader` / `VpLoaderScreen`) - „Der Puls".
+   EINE Loop `vp-loader-pulse`: weiche Ringe strahlen in gleichmässigem
+   Rhythmus aus der ruhigen Marke aus (klar als „lädt" lesbar). Die Ringe
+   beginnen AUSSERHALB der Marke - Luft zum Kopf, keine Kollision. Nur
+   `transform`/`opacity` (GPU), KEIN JS-Timer, CLS 0. Der Halt unter
+   reduzierter Bewegung steht im EINEN `prefers-reduced-motion`-Block am
+   Dateiende (dort namentlich). Optisch identisch zum Inline-Lader in
+   `index.html` - der Übergang Inline → React → Inhalt ist EIN Moment.
+   ============================================================ */
+.vp-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vp-space-4);
+  text-align: center;
 }
-@keyframes vp-boot-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.vp-loader-mark {
+  display: block;
 }
-/* Reduzierte Bewegung: der Spinner und die Laufpunkte des Motivs stehen still. */
+.vp-loader-boot .vp-loader-mark { width: 104px; height: 104px; }
+.vp-loader-page .vp-loader-mark { width: 76px; height: 76px; }
+.vp-loader-section .vp-loader-mark { width: 48px; height: 48px; }
+/* Die ausstrahlenden Ringe: scale + fade, drei um je 1/3 der Periode versetzt
+   (gleichmässiger, sichtbarer Rhythmus). Der Reset liegt bei Deckkraft 0 -
+   nahtlose Periode. */
+.vp-loader-ring {
+  fill: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: vp-loader-pulse 1.8s var(--vp-ease-out) infinite;
+  /* ⚠ PHASEN-ÜBERGABE (`src/bootHandoff.ts`, Review NICE-2): der Boot-Cover
+     (`VpLoaderScreen`) setzt `--vp-loader-phase` auf die laufende Phase des
+     Inline-Laders (negativer Delay), sonst bleibt der Rückfall `0s`. So knüpfen
+     die React-Ringe rhythmus-nahtlos an, statt bei Phase 0 neu zu starten - der
+     Übergang Inline → React springt nicht (nicht nur formgleich, auch phasengleich). */
+  animation-delay: var(--vp-loader-phase, 0s);
+}
+.vp-loader-ring.r2 { animation-delay: calc(var(--vp-loader-phase, 0s) - 0.6s); }
+.vp-loader-ring.r3 { animation-delay: calc(var(--vp-loader-phase, 0s) - 1.2s); }
+@keyframes vp-loader-pulse {
+  0% { transform: scale(1); opacity: 0; }
+  15% { opacity: 0.5; }
+  70% { opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+.vp-loader-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+  max-width: 26ch;
+  text-wrap: balance;
+}
+.vp-loader-boot .vp-loader-text,
+.vp-loader-page .vp-loader-text { font-size: 1rem; }
+/* ⚠ Die Statuszeile RESERVIERT zwei Zeilen Höhe (`min-height`) und zentriert
+   ihren Text darin. So bleibt die Blockhöhe - und damit die Position von Marke
+   und Wortmarke - über ALLE Phasen gleich (ein 1-zeiliger Text „Wird geladen …"
+   und ein 2-zeiliger „Ihre Anlagen werden geladen …" am Telefon verschieben
+   nichts). Deckungsgleich mit `#vp-boot-skeleton .vp-bs-text` in index.html. */
+.vp-loader-boot .vp-loader-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.8em;
+  line-height: 1.4;
+}
+.vp-loader-hint {
+  font-size: 0.82rem;
+  color: var(--vp-text-muted);
+  opacity: 0.85;
+}
+
+/* Vollbild-Marken-Bühne: Boot-Splash UND der Shell-Cover des ersten Starts.
+   `position: fixed`-Overlay über der (montierenden) App - kann keinen
+   Layout-Sprung auslösen, blendet zum Inhalt aus (`is-leaving`). */
+.vp-loader-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482000;
+  display: flex;
+  flex-direction: column;
+  background: var(--vp-surface);
+}
+.vp-loader-screen.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--vp-motion-exit) var(--vp-ease-in);
+}
+.vp-loader-strip {
+  height: 3px;
+  flex: none;
+  background: var(--vp-grad-hero);
+}
+.vp-loader-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vp-space-6);
+  padding: 24px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+/* Die echte Wortmarke (PNG) - DECKUNGSGLEICH zum Inline-Lader
+   `#vp-boot-skeleton .vp-bs-word` (index.html, dort als Data-URI): gleiche
+   Höhe, gleiche Position. Wer die Höhe ändert, ändert sie DORT mit. */
+.vp-loader-word {
+  height: 40px;
+  width: auto;
+  display: block;
+}
+
 /* States */
 .vp-muted {
   color: var(--vp-text-muted);
@@ -4584,54 +4681,6 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-flowpreview .vp-flowcanvas { max-height: 150px; overflow: hidden; }
 .vp-flowpreview svg { width: 100%; height: auto; }
 
-/* The guided Wenn/Dann rule builder. */
-.vp-guided { min-width: 0; }
-.vp-guided-head {
-  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--vp-text-muted); margin: 18px 0 8px;
-}
-.vp-guided-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 4px; }
-.vp-guided-field label { font-size: 0.85rem; font-weight: 600; }
-.vp-guided-cond { margin-bottom: 8px; }
-.vp-guided-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
-.vp-guided-row .vp-select { flex: 1 1 130px; min-width: 0; }
-/* Die Picker der Regel-Zeile sind FELDER in einer Flex-Zeile, keine Bloecke -
-   sie teilen sich den Platz wie die Zahlenfelder daneben. */
-.vp-guided-row .vp-guided-pick { flex: 1 1 130px; min-width: 0; }
-.vp-guided-row .vp-guided-pick .vp-picker-ausloeser {
-  padding: 0.55rem 0.75rem;
-  min-height: 42px;
-}
-.vp-guided-num { flex: 0 1 110px !important; }
-.vp-guided-comb { display: inline-flex; gap: 4px; margin-bottom: 6px; }
-.vp-guided-comb button {
-  border: 1px solid var(--vp-border); background: var(--vp-surface, #fff); cursor: pointer;
-  border-radius: 7px; padding: 3px 12px; font-size: 0.78rem; font-weight: 700;
-  color: var(--vp-text-muted);
-}
-.vp-guided-comb button.active { border-color: var(--vp-action, #2C5282); color: var(--vp-action, #2C5282); background: var(--vp-tint, rgba(149, 185, 255, 0.12)); }
-.vp-guided-x { border: none; background: none; cursor: pointer; color: var(--vp-text-muted); padding: 6px; flex: none; }
-.vp-guided-note { margin: 14px 0 0; max-width: 62ch; }
-.vp-guided-foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-/* Audit B-2/A-3/N-1: the "why is this locked / what does this action really do"
-   line, and the labelled inline field next to the action select. */
-.vp-guided-locknote {
-  display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; max-width: 62ch;
-}
-.vp-guided-locknote svg { flex: none; margin-top: 2px; }
-.vp-guided-field.inline { flex: 1 1 180px; min-width: 0; margin-bottom: 0; }
-/* Audit B-1: the dead end is named, not hidden behind a button that cannot work. */
-.vp-guided-deadend {
-  border: 1px solid var(--vp-border); border-left: 3px solid var(--vp-warn, #C77700);
-  border-radius: var(--vp-radius-md, 12px); padding: 14px 16px; background: var(--vp-surface-2, #f7f9fc);
-}
-.vp-guided-deadend h4 { margin: 0 0 6px; font-size: 0.98rem; }
-.vp-guided-deadend p { margin: 0; color: var(--vp-text-muted); max-width: 62ch; }
-.vp-guided-deadend-link {
-  display: inline-flex; align-items: center; gap: 4px; margin-top: 10px;
-  font-weight: 600; color: var(--vp-link, #2C5282);
-}
-
 @media (max-width: 1024px) {
   .vp-flowed-main { grid-template-columns: 1fr; }
   .vp-flowed-palette { display: flex; flex-wrap: wrap; gap: 4px 14px; }
@@ -6331,7 +6380,7 @@ span.vp-swap-out {
       Sie sind die vollständige Liste der `infinite`-Animationen des Portals
       (`grep -n infinite src/index.css`):
         · `.vp-flow-on/.vp-flow-rev`  — der Energiefluss
-        · `.vp-boot-spinner`, `.vp-spinner` — lädt
+        · `.vp-loader-ring`, `.vp-spinner` — lädt
         · `.vp-auth .vp-auth-fl`, `.vp-auth .vp-auth-tile` — Login-Bühne
         · `.vp-fleet-dot`             — Flotten-Puls
         · `.vp-flowport.accepts`      — Ablege-Ziel
@@ -6365,9 +6414,15 @@ span.vp-swap-out {
     animation: none;
   }
 
+  /* Die Zustands-Pille der Steuerung („läuft"): derselbe Herzschlag wie der
+     Flotten-Punkt - das Wort „läuft" trägt die Aussage auch ohne ihn. */
+  .stn .pill.on i,
+  .stn-blatt .pill.on i {
+    animation: none;
+  }
+
   .vp-flow-on,
   .vp-flow-rev,
-  .vp-boot-spinner,
   .vp-spinner,
   .vp-flowport.accepts,
   .vp-ustate-busy .vp-ustate-dot {
@@ -6389,6 +6444,17 @@ span.vp-swap-out {
   }
   .vp-auth .vp-auth-motion {
     display: none;
+  }
+
+  /* Der Marken-Lader ruht: die Puls-Ringe stehen still (die Marke bleibt, die
+     Aussage „lädt" trägt dann der Text). */
+  .vp-loader-ring {
+    animation: none;
+    opacity: 0;
+  }
+  /* Ein einziger ruhiger Ring als Halo, damit die Marke nicht nackt steht. */
+  .vp-loader-ring.r1 {
+    opacity: 0.35;
   }
 
   /* ⚠ EINE Aussage, die durch das Anhalten VERLOREN GINGE, muss ersetzt

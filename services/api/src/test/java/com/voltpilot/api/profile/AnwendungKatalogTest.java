@@ -296,14 +296,14 @@ class AnwendungKatalogTest {
     @Test
     void noEntryPointsAtThePhantomPage() {
         // Die Seite „Komponenten & Regeln" existiert nicht: die Navigation
-        // kennt „Anlagen-Modell" und „Steuerung", und die Regel-Liste wohnt auf
-        // derselben Seite eine Kapsel tiefer. Der Satz war eine Sackgasse.
+        // kennt „Anlagen-Modell" und „Steuerung", und Regeln sind seit
+        // „Steuerung neu" ein Reiter dort. Der Satz war eine Sackgasse.
         for (Anwendung a : katalog.alle()) {
             assertThat(a.leerZustand() == null ? "" : a.leerZustand()).as(a.id())
                     .doesNotContain("Komponenten & Regeln");
         }
         assertThat(katalog.find(AnwendungKatalog.UEBERSCHUSS).leerZustand())
-                .contains("„Regeln“ auf dieser Seite");
+                .contains("Steuerung → Geräte");
     }
 
     @Test

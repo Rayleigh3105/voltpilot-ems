@@ -229,8 +229,7 @@ function Beschriftung({
     <div className={`vp-lp-lab ${klasse}`} style={style} aria-hidden="true">
       <b>{text.wert}</b>
       {text.zeilen.map((z, i) => (
-        <span key={i} className={`vp-lp-zeile${z === 'Sollwert bestätigt' ? ' vp-flow-confirm' : ''}`}>
-          {z === 'Sollwert bestätigt' && <Icon name="check" size={12} />}
+        <span key={i} className="vp-lp-zeile">
           {skala != null && z.startsWith('Ziel') && (
             <span className="vp-lp-gz">
               <i style={{ width: `${(skala * 100).toFixed(1)}%` }} />

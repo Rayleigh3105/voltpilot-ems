@@ -9,25 +9,35 @@ for (const width of [375, 1440]) {
       page.on('pageerror', e => fehler.push(e.message));
       await page.goto(`/e2e/cockpit-rollen.html?zustand=${zustand}`);
       await expect(page.getByRole('heading', { name: 'Halle 1' })).toBeVisible();
-      const rollen = page.locator('.vp-pvrolle');
+      // Die Aufschlüsselung je Gerät steht im Blatt des jeweiligen Knotens
+      // (Konzept „Cockpit als Tagesfilm“), nicht unter dem Fluss.
+      await expect(page.locator('.vp-hero-flow .vp-pvrolle')).toHaveCount(0);
       if (zustand === 'rueckfall') {
-        await expect(rollen).toHaveCount(0);
         await expect(page.locator('.vp-lp').getByText('148,6 kW', { exact: true })).toBeVisible();
+        await page.locator('.vp-lp-k-pv').click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await expect(page.getByRole('dialog').locator('.vp-rolle-pv')).toHaveCount(0);
+        await page.keyboard.press('Escape');
       } else {
-        await expect(rollen).toHaveCount(3);
-        for (const rolle of await rollen.all()) {
-          const button = rolle.getByRole('button');
-          expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-          await button.click();
-          await expect(button).toHaveAttribute('aria-expanded', 'true');
+        const gesehen: string[] = [];
+        for (const knoten of ['pv', 'load', 'grid']) {
+          await page.locator(`.vp-lp-k-${knoten}`).click();
+          const blatt = page.getByRole('dialog');
+          // Dieselbe Listenform wie „Verbrauch im Detail“ unter dem Fluss, vollständig.
+          const liste = blatt.locator('.vp-eb-liste');
+          await expect(liste).toHaveCount(1);
+          gesehen.push((await liste.textContent()) ?? '');
+          await page.keyboard.press('Escape');
+          await expect(blatt).toHaveCount(0);
         }
+        const alle = gesehen.join(' ');
         if (zustand === 'zugeordnet') {
-          await expect(page.locator('.vp-rolle-stand').first()).toHaveText('Stand 10:15 Uhr');
+          expect(alle).toContain('Stand 10:15 Uhr');
           await expect(page.locator('.vp-lp').getByText('213,5 kW', { exact: true })).toBeVisible();
-          await expect(page.getByText('Unterzähler Kühlung', { exact: true })).toBeVisible();
+          expect(alle).toContain('Unterzähler Kühlung');
         } else {
-          await expect(page.getByText('Stand unbekannt', { exact: true })).toHaveCount(3);
-          await expect(page.getByText('liefert gerade nicht', { exact: true })).toHaveCount(5);
+          expect(alle.split('Stand unbekannt').length - 1).toBe(3);
+          expect(alle.split('liefert gerade nicht').length - 1).toBe(5);
           await expect(page.locator('.vp-lp').getByText('148,6 kW', { exact: true })).toHaveCount(0);
         }
       }

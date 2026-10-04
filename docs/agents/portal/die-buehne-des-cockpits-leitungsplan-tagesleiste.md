@@ -17,18 +17,47 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Nachkommastelle wie überall im Portal.
 - **Bewegung heißt live:** Punkte (`.vp-lp-punkte`, benannter Loop `vp-flow`) laufen nur bei `is-live`;
   unter `prefers-reduced-motion` entfallen sie im EINEN Block am Ende von `index.css`.
-- **Ein Gerät, eine Stelle:** Der Verbraucherstreifen (`ConsumerStrip`) rendert im Cockpit nicht mehr;
-  der Zustand je Verbraucher steht in „Verbrauch im Detail“. Zusätzliche Live-Kacheln (Speicher, Sonne,
-  Autarkie, Netz heute) aus dem Konzeptkatalog sind bewusst NICHT gebaut: ihre Zahlen stehen schon im
-  Fluss, in den Ringen der Geld-Leiste bzw. im Komponenten-Board (R2).
+- **Ein Gerät, eine Stelle:** Unter dem Fluss steht nur „Verbrauch im Detail“ (auch die Ladepunkte,
+  `ladenKachelSichtbar: false`); die Erzeugung je Gerät steht nur im Blatt des Sonnen-Knotens. Die Blätter
+  zeigen dieselbe Listenform vollständig (`ListeBlock` ohne `onOpen`, Zeilen verlinken auf Geräteseiten),
+  kanonische Rollen über `flussListen.rollenListe` - die alten Panels `PvCompositionDetails`,
+  `VerbrauchDetails`, `RollenBreakdown` rendern im Cockpit nicht mehr; Komponenten-Board (`KomponentenSection`) und
+  Verbraucherstreifen rendern im Cockpit nicht mehr (`komponenten` ist nicht mehr `verfuegbar`, die Id
+  bleibt im Katalog für gespeicherte Layouts). Jede Zeile und jeder Knoten öffnet ein Blatt mit Herkunft,
+  Aufschlüsselung je Gerät und den Wegen
+  „Verlauf ansehen“/„Ihre Geräte“. Tagessummen je Gerät werden erst mit „Heute“ bzw. dem Blatt geholt.
+- **Kachelraster wie im Prototyp:** aufeinanderfolgende Bausteine `geld`, `strompreis`, `fahrplan`,
+  `laden`, `kacheln` teilen EIN Raster (`stapelMitRaster` in `AnlagenPage`, 2 Spalten Telefon, 4 Rechner).
+  Hülle `components/kacheln/Kachel.tsx` (Kopf = Absprung, Stern = Leitkachel), Inhalte im nachgeladenen
+  Stück `components/kacheln/CockpitKacheln.tsx`, Ableitungen in `kacheln.ts` (Autarkie/Eigenverbrauch mit
+  den Server-Kennzahlen des Tages und bilanzieller Aufteilung, Speicher, Fahrplan-Tagesuhr, Handel, Sonne,
+  Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop). Der
+  Börsenpreis zeigt Stundenbalken (`strompreis.boersenKachel`: Mittel je Berliner Stunde, Drittel wie das
+  Urteil, Lücke bleibt Lücke) und die zwei Fenster aus `streifenFenster` mit Ø-Preis.
+- **Rechte Spalte der Bühne (Rechner):** oben „Dieser Moment“ - die vier Werte der gewählten Uhrzeit,
+  von der Bühne per Portal in `.vp-hero-moment` geschrieben -, darunter die Leitkachel. Unter der
+  Tagesleiste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
+  Sans) wie der Prototyp; der Zustand ist eine schmale Zeile ohne Modus-Fuß (`ZustandCard kompakt`).
+- **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
+  Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann
+  nicht noch einmal im Raster.
+- **Steuerzeile:** am Fuß der Bühne (Telefon und Rechner) Auftrag · Gerät · Wirkung (`steuerSpalten`); die
+  Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Keine Bestätigungszeile am
+  Speicher-Knoten, kein Plan-Satz in der Leiste; der Zustand lässt Steuerungs- und Plan-Befunde weg, die in
+  Steuerzeile bzw. Fahrplan-Kachel stehen. Börsenpreis im Satz nur abseits von „jetzt“.
 - **Kachelgrößen:** `LayoutDocument.groessen` (Kachel-Id → `klein`|`breit`), Katalog-Liste `kacheln`
-  (beide Kopien), Server-Prüfung in `CockpitLayoutService.validateGroessen`, Standard überall `klein`
-  (= Bild vorher). Wählbar im Anpassen-Modus am Rechner direkt an der Kachel.
+  (beide Kopien; Sonne Standard breit, Handel/Lastspitze nur breit), Server-Prüfung in
+  `CockpitLayoutService.validateGroessen`. Wählbar im Anpassen-Modus unter der Kachel (`GroessenWahl`).
 - **Voreinstellung je Betriebsmodell:** `cockpitLayout.betriebAus(blocks)` + `canonicalFuer(isPhone,
-  betrieb)`: Marktoptimierung rückt `strompreis`, Lastspitzenkappung `kacheln` direkt hinter die Bühne.
-  Eigenverbrauch bleibt Zeichen für Zeichen die alte Reihenfolge (`migration.test.ts`). Gespeicherte
-  Schichten gewinnen.
-- **Beweise:** `leitungsplan.test.ts`, `tagesleiste.test.ts`, `flussListen.test.ts`,
-  `kachelGroessen.test.ts`, `WidgetGrid.test.tsx`; E2E `cockpit-buehne` (drei Betriebsmodelle, 375/1440,
-  Tasten, Blätter, Überlauf), `cockpit-rollen`, `laden-bei-bezug`, `layout-waechter` auf den Leitungsplan
-  umgestellt. Bündel: Einstieg 224,9 kB gz (Grenze 230).
+  betrieb)` aus `TAGESFILM` (Rechner und Telefon gleich); die Kacheln im Baustein `kacheln` folgen
+  `KACHEL_REIHE` in `AnlagenPage` (Prototyp `DEFAULTS`), „@geld“ setzt „Unterm Strich“ an seinen Platz im
+  Raster, solange `geld` direkt hinter `kacheln` steht. `verstecktFuer(betrieb)` blendet bei
+  Marktoptimierung und Lastspitze den Fahrplan vor (zurückholbar über `shown`). „Unterm Strich“ ist
+  kompakt (Zahl, Zeitraum, Zurechnung, „Zwischenstand“), die Langform steht auf der Erlöse-Seite.
+  Gespeicherte Schichten gewinnen.
+- **Beweise:** `leitungsplan.test.ts`, `tagesleiste.test.ts`, `flussListen.test.ts`, `kacheln.test.ts`,
+  `kacheln/CockpitKacheln.test.tsx`, `kachelGroessen.test.ts`, `AnlagenPage.test.tsx`; E2E
+  `cockpit-buehne`, `cockpit-rollen`, `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt),
+  `layout-waechter`. Browserprüfung: `e2e/help.html?betrieb=eigen#/anlage/help-site` (Eigenverbrauch)
+  bzw. ohne Parameter (Marktoptimierung), Uhr auf `2026-09-10T10:00:00Z`, `TZ=Europe/Berlin`. Bündel:
+  Einstieg 210,6 kB gz (Grenze 230).

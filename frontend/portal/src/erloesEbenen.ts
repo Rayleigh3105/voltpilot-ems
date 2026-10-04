@@ -636,6 +636,13 @@ function warumWeniger(input: SpeicherSchritteInput, steuerung: number | null): R
           herkunft: 'Prognose und Wirklichkeit gingen auseinander — Wolken, Verbrauch oder Preise',
         });
         break;
+      case 'anders_geladen':
+        out.push({
+          formel: `${kopf} · anders geladen und entladen als der Vergleichsspeicher`,
+          herkunft:
+            'kein Übertrag vom Vortag, keine Abweichung vom Plan, genug Sonne — die Steuerung hat Energie anders verschoben als der Vergleichsspeicher, und das hat sich an diesem Tag nicht ausgezahlt',
+        });
+        break;
     }
   }
   return out;
@@ -718,9 +725,10 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
   }
 
   // ⚠ Die Plan-Zeile erscheint NUR mit `steuerungPlannedEur` — der Zahl, die
-  //   der Optimierer gegen DIESELBE Messlatte rechnet. Solange er sie nicht
-  //   liefert, bleibt die Zeile weg; die alte, gegen „ohne Speicher“ geplante
-  //   Zahl erreicht diese Fläche nicht mehr (Captain 04.09.2026).
+  //   die API seit M2 (29.09.2026) gegen DENSELBEN durchlaufenden
+  //   Vergleichsspeicher rechnet wie die gemessene. Fehlt sie, bleibt die
+  //   Zeile weg; die alte, gegen „ohne Speicher“ geplante Zahl erreicht diese
+  //   Fläche nicht mehr (Captain 04.09.2026).
   const geplant = num(input.steuerungGeplantEur ?? null);
   if (geplant != null) {
     out.push({

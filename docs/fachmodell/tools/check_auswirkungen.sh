@@ -82,7 +82,7 @@ frontend/portal/src/glossar.ts
 frontend/portal/src/komponenten.ts
 frontend/portal/src/betriebsmodelle.ts
 frontend/portal/src/pages/AnlageTechnik.tsx
-frontend/portal/src/components/Betriebsmodelle.tsx
+frontend/portal/src/steuerung/Blaetter.tsx
 docs/contracts/v2/edge-entity.schema.json
 docs/contracts/v2/mqtt-telemetry-2.0.schema.json
 docs/contracts/v2/topology-read-model.md

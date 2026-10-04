@@ -30,6 +30,7 @@ class VorschlaegeTest {
     void unbekanntesWort() {
         assertThat(Vorschlaege.bekannt("spaeter")).isTrue();
         assertThat(Vorschlaege.bekannt("abgelehnt")).isTrue();
+        assertThat(Vorschlaege.bekannt("nur_messen")).isTrue();
         assertThat(Vorschlaege.bekannt("nie_wieder")).isFalse();
         assertThat(Vorschlaege.bekannt(null)).isFalse();
         assertThatThrownBy(() -> Vorschlaege.stummBis("nie_wieder", NOW))
@@ -63,5 +64,15 @@ class VorschlaegeTest {
         assertThat(Vorschlaege.gilt(NOW, NOW)).isFalse();
         assertThat(Vorschlaege.gilt(NOW.minusSeconds(1), NOW)).isFalse();
         assertThat(Vorschlaege.gilt(null, NOW)).isFalse();
+    }
+
+    @Test
+    @DisplayName("„Nur messen\" ist eine Entscheidung ohne Frist")
+    void nurMessenOhneFrist() {
+        assertThat(Vorschlaege.stummBis(Vorschlaege.NUR_MESSEN, NOW)).isNull();
+        assertThat(Vorschlaege.gilt(Vorschlaege.NUR_MESSEN, null, NOW)).isTrue();
+        // Die anderen Wörter behalten ihre Frist - ohne sie gelten sie nicht.
+        assertThat(Vorschlaege.gilt(Vorschlaege.ABGELEHNT, null, NOW)).isFalse();
+        assertThat(Vorschlaege.gilt(Vorschlaege.SPAETER, NOW.plusSeconds(1), NOW)).isTrue();
     }
 }

@@ -228,11 +228,12 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Ladepark-Lastmanagement: die Ladepunkt-Flächen (Lastmanagement Stufe 3)](portal/ladepark-lastmanagement-die-ladepunkt-fl.md)
 - [Maintaining this file](portal/maintaining-this-file.md)
 - [Notizen vor dem ersten Abschnitt (AGENTS.md)](portal/notizen-vor-dem-ersten-abschnitt-agents/README.md) *(Sammlung, 63 Punkte)*
-- [Steuerung Stufe 3 (A6): die Vorrang-Texte drehen](portal/steuerung-stufe-3-a6-die-vorrang-texte-d.md)
-- [Steuerung Stufe 4: die Jetzt-Zone kann eingreifen](portal/steuerung-stufe-4-die-jetzt-zone-kann-ei.md)
-- [Steuerung Stufe 5: die Betriebsmodell-Zone ist eine RADIOGRUPPE](portal/steuerung-stufe-5-die-betriebsmodell-zon.md)
-- [Steuerung Stufen 1+2: die Jetzt-Zone und die Regel-Karten](portal/steuerung-stufen-1-2-die-jetzt-zone-und.md)
-- [Steuerung Stufen 8+9: die Umzüge im Portal](portal/steuerung-stufen-8-9-die-umzuege-im-port.md)
+- [Steuerung neu: drei Reiter Geräte · Laden · Regeln](portal/steuerung-neu-drei-reiter.md) — aktueller Stand
+- [Steuerung Stufe 3 (A6): die Vorrang-Texte drehen](portal/steuerung-stufe-3-a6-die-vorrang-texte-d.md) — ⚠ abgelöst
+- [Steuerung Stufe 4: die Jetzt-Zone kann eingreifen](portal/steuerung-stufe-4-die-jetzt-zone-kann-ei.md) — ⚠ abgelöst
+- [Steuerung Stufe 5: die Betriebsmodell-Zone ist eine RADIOGRUPPE](portal/steuerung-stufe-5-die-betriebsmodell-zon.md) — ⚠ abgelöst
+- [Steuerung Stufen 1+2: die Jetzt-Zone und die Regel-Karten](portal/steuerung-stufen-1-2-die-jetzt-zone-und.md) — ⚠ abgelöst
+- [Steuerung Stufen 8+9: die Umzüge im Portal](portal/steuerung-stufen-8-9-die-umzuege-im-port.md) — ⚠ abgelöst
 - [Stufe 3 „Bis zum Endkunden": der Kunde fährt DIESELBE Register-Strecke](portal/stufe-3-bis-zum-endkunden-der-kunde-faeh.md)
 - [Verbraucher im Cockpit (Phase 0): die Aufschlüsselung hinter der Haus-Zeile](portal/verbraucher-im-cockpit-phase-0-die-aufsc.md)
 - [Verbrauchsmanagement v1 · P1: die Verbraucher-ZONE, und die Jetzt-Zone zeigt jeden Ladepunkt](portal/verbrauchsmanagement-v1-p1-die-verbrauch.md)
