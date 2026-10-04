@@ -56,7 +56,7 @@ import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
 import { FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
-import type { LadeQuelle } from './laden';
+import { smartSchritte, type LadeQuelle } from './laden';
 import { nurMessenKey, vorschlag } from './neu';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
 import { bezugAus, greift, neuerEntwurf, regelKarten, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
@@ -503,7 +503,11 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         fahrzeuge={daten.fahrzeuge}
         busy={busy}
         oeffne={setBlatt}
-        onSmart={(g) => void eingriff(g, 'smart', null)}
+        onSmart={(g) => void (async () => {
+          const s = smartSchritte(g);
+          if (s.eingriffBeenden) await eingriff(g, 'smart', null);
+          if (s.steuerart) await ladeQuelle(g, s.steuerart);
+        })()}
         onQuelle={(g, q) => void ladeQuelle(g, q)}
         onVorrang={(zuerst) => void lauf('vorrang', async () => {
           try {

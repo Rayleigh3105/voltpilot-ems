@@ -24,6 +24,28 @@ export function ladeWahl(g: GeraetBild): LadeWahl {
   return g.steuerart?.quelle === 'sofort' ? 'schnell' : 'smart';
 }
 
+/**
+ * Was „Smart“ an einem Ladepunkt tun muss. „Schnell“ hat ZWEI Gründe (siehe
+ * {@link ladeWahl}): ein laufender Eingriff („Jetzt voll laden“/Pause) oder die
+ * Steuerart `sofort` - der Anlagen-Standard „schnell“ einer Anlage, deren Kunde
+ * nie gewählt hat (API `SteuerartProjektion.anlagenStandard`). Ein Eingriff
+ * endet; steht die Steuerart auf `sofort`, wird „Smart“ zur Steuerart „Sonne
+ * zuerst“, der Vorgabe innerhalb der Karte. Beides in EINEM Klick.
+ *
+ * Vorher beendete „Smart“ nur einen Eingriff: die Karte blieb bei `sofort` auf
+ * „Schnell“, und „Nur Sonne“ (die Chips erscheinen nur unter „Smart“) war nie
+ * erreichbar (Produktion, 04.10.2026).
+ */
+export function smartSchritte(g: Pick<GeraetBild, 'eingriff' | 'steuerart'>): {
+  eingriffBeenden: boolean;
+  steuerart: LadeQuelle | null;
+} {
+  return {
+    eingriffBeenden: g.eingriff != null,
+    steuerart: g.steuerart?.quelle === 'sofort' ? 'min' : null,
+  };
+}
+
 export function ladeQuelle(g: GeraetBild): LadeQuelle | null {
   const s = g.steuerart;
   if (!s) return null;
