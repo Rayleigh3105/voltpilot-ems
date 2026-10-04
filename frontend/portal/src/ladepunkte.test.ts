@@ -469,6 +469,25 @@ describe('Anlagen-Modell', () => {
     expect(charger.summary).toContain('das Lastmanagement');
     expect(charger.summary).not.toContain('Regel');
   });
+
+  it('schlägt den Ladepunkt NICHT dem Wechselrichter zu', () => {
+    // Die API komponiert die Säule an der BOX - ohne eigene Quelle fiele sie
+    // sonst an den ersten Wechselrichter und läse „gemessen über Deye".
+    const model = plantModel(
+      [
+        { id: 'e1', entityType: 'ev-charger', typeLabel: 'Ladepunkt', label: 'Wallbox Garage', deviceId: 'gw' } as never,
+        { id: 'b1', entityType: 'battery-hybrid', typeLabel: 'Batteriespeicher', label: null, deviceId: 'gw' } as never,
+      ],
+      null,
+      [{ id: 'inverter', kind: 'inverter', role: null, brand: 'deye', model: 'SUN-12K-SG04LP3', label: null } as never],
+      null,
+    );
+    const charger = model.components.find((c) => c.entityId === 'e1')!;
+    expect(charger.deviceIds).toEqual([]);
+    expect(charger.provenance).toBeNull();
+    expect(model.devices.map((d) => d.id)).toEqual(['inverter']);
+    expect(model.devices[0].componentIds).toEqual(['b1']);
+  });
 });
 
 // ---------------------------------------------------------------------------
