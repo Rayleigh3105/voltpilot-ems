@@ -24598,7 +24598,7 @@ components:
           nullable: true
           items:
             type: string
-            enum: [gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant, anders_geladen]
+            enum: [netzladen_mispel, gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant, anders_geladen]
           description: >
             Nur range=day mit Dreiteilung: warum der Tag unter Null liegt -
             hoechstens zwei Kennungen der geschlossenen Liste in Rangfolge
@@ -24606,7 +24606,34 @@ components:
             Block grund). Greift keine spezifische Regel, steht der Rueckfall
             anders_geladen allein - ein Minus hat nie eine leere Liste. [] bei
             einem Tag ab Null; null, wenn nicht berechnet (anderes range,
-            keine Dreiteilung).
+            keine Dreiteilung). netzladen_mispel (MiSpeL MP-18c) steht vorn
+            an einem MiSpeL-Tag mit Netzladen ins Netz (beide Tagessummen
+            unten je mindestens 1 kWh); dann weder so_geplant noch der
+            Rueckfall anders_geladen.
+        mispelNetzstromverbrauchSpeicherKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day an einem MiSpeL-Tag (Foerderweg Abgrenzungs- oder
+            Pauschaloption): Summe (1)¼ = MIN[Z1NB¼; Z2V¼] ueber die
+            Viertelstunden des Tages - zeitgleicher Netzstromverbrauch im
+            Stromspeicher (Anlage 1 S. 33), aus Geraetewerten
+            (mispelMengenQuelle). Null an jedem anderen Tag und ohne Werte
+            (unbekannt ist keine Null).
+        mispelNetzeinspeisungSpeicherKwh:
+          type: number
+          nullable: true
+          description: >
+            Dasselbe fuer (2)¼ = MIN[Z1NE¼; Z2E¼] - zeitgleiche
+            Netzeinspeisung aus dem Stromspeicher (Anlage 1 S. 34).
+        mispelMengenQuelle:
+          type: string
+          nullable: true
+          enum: [geraet]
+          description: >
+            Herkunft der beiden Tagessummen: geraet = Geraetewerte der Anlage;
+            die amtlichen Mengen mit den Werten des Messstellenbetreibers
+            rechnet der Monatslauf (/mispel/abgrenzung/monate/{monat}).
     SiteEarnings:
       type: object
       description: >
@@ -24847,7 +24874,7 @@ components:
           nullable: true
           items:
             type: string
-            enum: [gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant, anders_geladen]
+            enum: [netzladen_mispel, gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant, anders_geladen]
           description: >
             Nur range=day mit Dreiteilung: warum der Tag unter Null liegt -
             hoechstens zwei Kennungen der geschlossenen Liste in Rangfolge
@@ -24855,7 +24882,34 @@ components:
             Block grund). Greift keine spezifische Regel, steht der Rueckfall
             anders_geladen allein - ein Minus hat nie eine leere Liste. [] bei
             einem Tag ab Null; null, wenn nicht berechnet (anderes range,
-            keine Dreiteilung).
+            keine Dreiteilung). netzladen_mispel (MiSpeL MP-18c) steht vorn
+            an einem MiSpeL-Tag mit Netzladen ins Netz (beide Tagessummen
+            unten je mindestens 1 kWh); dann weder so_geplant noch der
+            Rueckfall anders_geladen.
+        mispelNetzstromverbrauchSpeicherKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day an einem MiSpeL-Tag (Foerderweg Abgrenzungs- oder
+            Pauschaloption): Summe (1)¼ = MIN[Z1NB¼; Z2V¼] ueber die
+            Viertelstunden des Tages - zeitgleicher Netzstromverbrauch im
+            Stromspeicher (Anlage 1 S. 33), aus Geraetewerten
+            (mispelMengenQuelle). Null an jedem anderen Tag und ohne Werte
+            (unbekannt ist keine Null).
+        mispelNetzeinspeisungSpeicherKwh:
+          type: number
+          nullable: true
+          description: >
+            Dasselbe fuer (2)¼ = MIN[Z1NE¼; Z2E¼] - zeitgleiche
+            Netzeinspeisung aus dem Stromspeicher (Anlage 1 S. 34).
+        mispelMengenQuelle:
+          type: string
+          nullable: true
+          enum: [geraet]
+          description: >
+            Herkunft der beiden Tagessummen: geraet = Geraetewerte der Anlage;
+            die amtlichen Mengen mit den Werten des Messstellenbetreibers
+            rechnet der Monatslauf (/mispel/abgrenzung/monate/{monat}).
         series:
           type: array
           description: >

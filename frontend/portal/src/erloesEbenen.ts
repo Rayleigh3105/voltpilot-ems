@@ -22,6 +22,7 @@
  */
 import type { SiteEarnings } from './api';
 import { eurAmount, fmtNum, NBSP } from './format';
+import { MISPEL_NETZLADEN } from './glossar';
 import { rundeKaufmaennisch, type ErgebnisZeilenView, type ErloesZeileId } from './erloesZeilen';
 import {
   MESSLATTE_DATIV,
@@ -29,6 +30,8 @@ import {
   MESSLATTE_KURZ,
   grundKennungen,
   paarEur,
+  netzladenMispel,
+  type MispelGutschrift,
 } from './speicherAussage';
 
 /** Eine Rechenzeile: „345,4 kWh × 6,18 ct = 21,34 €" plus ein Halbsatz Herkunft. */
@@ -409,12 +412,18 @@ export function speicherWert(
   netzladenErlaubt: boolean | null | undefined,
   /** MiSpeL (W5): für MiSpeL-Anlagen zählt nur die amtliche Formel — kein „davon durch Netzladen“. */
   arbitrageAusweis = true,
+  /**
+   * Händler-Modus (Förderweg „ungeförderte Direktvermarktung“, W5 = A): der
+   * Netzlade-Anteil ist eine Schätzung des Portals, keine Formel der
+   * Festlegung — er trägt das Wort „geschätzt“. Sonst bleibt der Satz wie bisher.
+   */
+  geschaetzt = false,
 ): string | null {
   if (netzladenErlaubt == null) return null;
   const arb = arbitrageAusweis ? num(money.arbitrageEur) : null;
   const handel =
     netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
-      ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`
+      ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}${geschaetzt ? ' geschätzt' : ''}`
       : '';
   return `${netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom'}${handel}`;
 }
@@ -558,6 +567,12 @@ export interface SpeicherSchritteInput {
   /** Erzeugung und Verbrauch des Tages (`history.totals`) — nur für „wenig Sonne". */
   pvKwh?: number | null;
   verbrauchKwh?: number | null;
+  /**
+   * MiSpeL MP-18c (BK-W5 A): die Gutschrift (20) des Kalendermonats aus dem
+   * Monatslauf, sobald bestimmt — für Schritt 4 an einem Tag mit Netzladen
+   * nach MiSpeL. Ohne sie: „offen“.
+   */
+  mispelGutschrift?: MispelGutschrift | null;
 }
 
 /** „24,55 € Gutschrift" / „3,12 € Kosten" — das Vorzeichen wird zum Wort. */
@@ -579,7 +594,10 @@ function vorzeichen(v: number): string {
  * mit den eingesetzten Zahlen — nur unter einem Minus-Tag, nur Kennungen der
  * geschlossenen Liste (`speicherAussage` filtert sie), nie ein geratener Grund.
  */
-function warumWeniger(input: SpeicherSchritteInput, steuerung: number | null): RechenZeile[] {
+function warumWeniger(
+  input: SpeicherSchritteInput & { netzladen?: boolean },
+  steuerung: number | null,
+): RechenZeile[] {
   if (steuerung == null || rundeKaufmaennisch(steuerung, 2) >= 0) return [];
   const money = input.money;
   if (money.range !== 'day') return [];
@@ -641,7 +659,11 @@ function warumWeniger(input: SpeicherSchritteInput, steuerung: number | null): R
           herkunft: 'Prognose und Wirklichkeit gingen auseinander — Wolken, Verbrauch oder Preise',
         });
         break;
+      case 'netzladen_mispel':
+        // Schritt 4 erklärt diesen Tag - keine zweite Zeile.
+        break;
       case 'anders_geladen':
+        if (input.netzladen) break;
         out.push({
           formel: `${kopf} · anders geladen und entladen als der Vergleichsspeicher`,
           herkunft:
@@ -653,6 +675,38 @@ function warumWeniger(input: SpeicherSchritteInput, steuerung: number | null): R
   return out;
 }
 
+/**
+ * Schritt 4 an einem Tag mit Netzladen nach MiSpeL (BK-W5 A): die
+ * Viertelstunden-Mengen des Tages und der Monat, in dem Anlage 1 rechnet
+ * ((13) − (15) = (16), daraus (20); A1 S. 35–37). Schritt 1 bezahlt den
+ * gespeicherten Netzstrom voll — was zurückkommt, steht erst nach dem
+ * Monatslauf fest.
+ */
+function schrittNetzladen(
+  n: NonNullable<ReturnType<typeof netzladenMispel>>,
+  from: string | null,
+  g: MispelGutschrift | null,
+): RechenZeile {
+  const tag = from ? new Date(from) : null;
+  const monat =
+    g?.monat ??
+    (tag && !Number.isNaN(tag.getTime())
+      ? tag.toLocaleDateString('de-DE', { month: 'long', timeZone: 'Europe/Berlin' })
+      : null);
+  const ergebnis =
+    n.gutschriftEur != null
+      ? `${vorzeichen(rundeKaufmaennisch(n.gutschriftEur, 2))} aus dem Monatslauf`
+      : 'offen';
+  return {
+    formel: `Schritt 4 · ${MISPEL_NETZLADEN}`,
+    herkunft:
+      `${fmtNum(n.gespeichertKwh, 'kWh')} Netzstrom gespeichert ((1)¼), ${fmtNum(n.insNetzKwh, 'kWh')} ins Netz ((2)¼)` +
+      `${n.geraetewert ? ', Gerätewerte' : ''}. Schritt 1 bezahlt diesen Netzstrom mit Umlagen und Netzentgelt. ` +
+      'Was davon zurückkommt, bestimmt Anlage 1 für den ganzen Kalendermonat: (13) − (15) = (16), daraus (20). ' +
+      `${monat ? `Für ${monat}` : 'Für den Monat'}: ${ergebnis}.`,
+  };
+}
+
 export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
   const money = input.money;
   const actual = num(money.actualEur);
@@ -660,6 +714,12 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
 
   const steuerung = num(input.steuerungEur ?? null);
   if (steuerung == null && input.splitReason !== 'no_battery_data') return [];
+  // Netzladen nach MiSpeL (BK-W5 A): dieselbe Ableitung wie die Karte; an
+  // jedem anderen Tag null, und jede Zeile bleibt wie bisher.
+  const netzladen =
+    steuerung != null && money.range === 'day'
+      ? netzladenMispel(money, input.mispelGutschrift)
+      : null;
 
   // Die Stromrechnung ist eine KOSTEN-Groesse; als Gutschrift gelesen dreht sie
   // ihr Vorzeichen genau einmal.
@@ -681,16 +741,21 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
     const sturGutschrift = rundeKaufmaennisch(mit, 2) - rundeKaufmaennisch(steuerung, 2);
     out.push({
       formel: `Schritt 2 · gerechnet: ${gutschrift(sturGutschrift)}`,
-      herkunft: `dieselbe Anlage mit Speicher, aber ${MESSLATTE_KURZ}: lädt jeden Überschuss, deckt jeden Bedarf, kennt keine Preise, hält nie für später`,
+      herkunft:
+        `dieselbe Anlage mit Speicher, aber ${MESSLATTE_KURZ}: lädt jeden Überschuss, deckt jeden Bedarf, kennt keine Preise, hält nie für später` +
+        (netzladen ? ' — lädt nie aus dem Netz' : ''),
     });
     out.push({
-      formel: `Schritt 3 · Steuerung: ${differenz(rundeKaufmaennisch(mit, 2), sturGutschrift)} = ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}`,
+      formel: `Schritt 3 · Steuerung${netzladen ? ' auf der Stromrechnung' : ''}: ${differenz(rundeKaufmaennisch(mit, 2), sturGutschrift)} = ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}`,
       // ⚠ Der Bestandskonto-Hinweis steht GENAU EINMAL (§3.12) — hier, an der
       //   Zahl, die er erklärt.
       herkunft:
         'Preisfenster, Halten für den Abend, Abregelung — Kassenrechnung: was jetzt im Speicher liegt, zählt erst beim späteren Netzbezug; deshalb kann die Zahl mittags sinken',
       probe: { ist: rundeKaufmaennisch(mit, 2) - sturGutschrift, soll: steuerung },
     });
+    if (netzladen) {
+      out.push(schrittNetzladen(netzladen, money.from ?? null, input.mispelGutschrift ?? null));
+    }
   } else {
     out.push({
       formel: 'Schritt 2 · Steuerung: —',
@@ -698,7 +763,7 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
     });
   }
 
-  out.push(...warumWeniger(input, steuerung));
+  out.push(...warumWeniger({ ...input, netzladen: netzladen != null }, steuerung));
 
   // Der Planwert folgt der Bestandszeile (`bestandZeile`, Konzept k1 E2 = A):
   // am Tag der VORSPRUNG vor dem Vergleichsspeicher, auf längeren Zeiträumen
@@ -738,7 +803,9 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
   if (geplant != null) {
     out.push({
       formel: `Fahrplan: ${vorzeichen(rundeKaufmaennisch(geplant, 2))} geplant`,
-      herkunft: `vorab geplanter Mehrwert der Steuerung gegenüber ${MESSLATTE_DATIV} — eine Plan-Zahl, keine Messung`,
+      herkunft: netzladen
+        ? `vorab geplanter Mehrwert gegenüber ${MESSLATTE_DATIV}, wie Schritt 3 ohne MiSpeL-Gutschrift — eine Plan-Zahl, keine Messung`
+        : `vorab geplanter Mehrwert der Steuerung gegenüber ${MESSLATTE_DATIV} — eine Plan-Zahl, keine Messung`,
     });
   }
   return out;

@@ -205,6 +205,18 @@ export const STEUERUNG_SZENE = {
 } as const;
 
 /**
+ * MiSpeL MP-18c (Bedienkonzept BK-W5 = A, Captain 04.10.2026; `docs/fachmodell/glossar.md` › Netzladen nach MiSpeL,
+ * auf der Stromrechnung, Gutschrift nach Anlage 1): die Wörter der Steuerungs-Zahl an einem MiSpeL-Tag, an dem der
+ * Speicher Netzstrom gespeichert UND ins Netz zurückgegeben hat. Die Zahl heißt, was sie ist — die Stromrechnung ohne
+ * die Gutschrift, die Anlage 1 erst im Kalendermonat bestimmt; statt „anders geladen und entladen“ steht der Grund
+ * „Netzladen nach MiSpeL“ mit den Viertelstunden-Mengen (1)¼ und (2)¼. Dieselben Wörter in Cockpit, Verlauf ›
+ * Erlöse, Fahrplan und Portfolio (`speicherAussage.ts`).
+ */
+export const MISPEL_NETZLADEN = 'Netzladen nach MiSpeL';
+export const MISPEL_STROMRECHNUNG = 'auf der Stromrechnung';
+export const MISPEL_GUTSCHRIFT = 'Gutschrift nach Anlage 1';
+
+/**
  * Die zwei Zustandsfamilien (AP-01 E8, `docs/fachmodell/zustaende.md`): der
  * LEBENSZYKLUS, den der Kunde setzt, und die BEOBACHTUNG, die nie jemand von
  * Hand setzt. Die Wörter bedeuten bei JEDEM Objekt dasselbe.

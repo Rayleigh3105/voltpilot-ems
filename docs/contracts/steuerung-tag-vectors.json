@@ -2,9 +2,10 @@
   "$comment": "Die EINE Tageszahl der Steuerung und ihre Einordnung (Captain 24.09.2026: Definition A aus vp-erloes-zahlen-widerspruch-z1 §6, Darstellung E1-E7 = A aus vp-erloese-minus-winter-k1). Java services/api liest diese Datei PER PFAD: SteuerungGrundTest (Block grund, rein) und SteuerungTageszahlTest (Blöcke abends_geleert und band_und_plan, Testcontainers). Seit 29.09.2026 (Captain 'mach alle drei'): der Vergleichsspeicher fährt den gemessenen Betriebsbereich (M1, stur-speicher-vectors.json Block betriebsbereich), der Planwert rechnet gegen denselben durchlaufenden Vergleichsspeicher (M2, PlanMesslatte.java) und jedes Minus trägt einen Grund (A1, Rückfall anders_geladen). Das Portal liest die Grund-Kennungen als geschlossenes Vokabular; die Worte dazu wählt es selbst. Wer eine Schwelle, die Rangfolge oder die Definition ändert, ändert Datei, SteuerungGrund.java bzw. EarningsRepository.speicherWalk und die Leser im Portal zusammen.",
   "$regel_tageszahl": "Der Steuerungsbeitrag eines Zeitraums ist die Summe der Tageszuwächse EINES durchlaufenden sturen Vergleichsspeichers je Anlage (Physik: stur-speicher-vectors.json). Er behält seinen EIGENEN Ladestand über Mitternacht, wird am gemessenen Ladestand zum Monatsbeginn (1., 00:00 Europe/Berlin; letzter soc_last_pct-Eimer davor, 7 Tage Rückschau, sonst Boden) verankert und an jeder Berliner Monatsgrenze neu. Damit gilt je Anlage: Tagesfenster(D) = dailySaved[D], Summe der Tage = Monat, Summe der Monate = Jahr. Ein Tagesfenster, das am gemessenen Stand der gesteuerten Anlage um Mitternacht neu beginnt, ist ausdrücklich FALSCH: es schenkt der Steuerung jeden Übertrag über Mitternacht (Live-Anlage September 2026: Summe dieser Tagesfenster 184,19 EUR gegen Monat 116,94 EUR).",
   "grund": {
-    "$regel": "Nur für einen Tag mit steuerungEur < 0, sonst leer. Jede Regel braucht ihre Eingaben; fehlt eine, greift genau diese Regel nicht (nie geraten). In der Rangfolge geprüft, höchstens 'hoechstens' Kennungen, die ersten. gestern_verkauft: vergleichSocStartKwh - echtSocStartKwh >= gestern_verkauft_ab_kwh. haelt_energie_fuer_morgen: speicherVorsprungKwh >= haelt_energie_ab_kwh. so_geplant: steuerungGeplantEur < so_geplant_unter_eur. wenig_sonne: loadKwh > 0 und pvKwh < wenig_sonne_unter_anteil * loadKwh. anders_als_geplant: steuerungGeplantEur >= anders_als_geplant_plan_ab_eur und steuerungEur < anders_als_geplant_unter_eur. anders_geladen (Rückfall, A1 - Captain 29.09.2026 'mach alle drei'): greift keine der fünf Regeln, steht diese Kennung allein; ein Tag mit steuerungEur < 0 hat damit NIE eine leere Liste. Sie verdrängt nie eine spezifische Kennung.",
-    "$einheiten": "kWh je Tag bzw. Ladestand in kWh; EUR; Anteil als Faktor (0.6 = 60 %). steuerungGeplantEur = history.totals.steuerungPlannedEur desselben Tages (Fahrplan, ex ante); seit M2 (29.09.2026) gegen DENSELBEN durchlaufenden Vergleichsspeicher wie steuerungEur (Block band_und_plan). Die Planwerte der Live-Fälle vor dem 29.09.2026 stammen aus der alten Regel (Summe stur_cost_eur - cost_eur, sturer Speicher je Lauf am echten Ladestand); als Eingaben der Grund-Regel bleiben sie gültig.",
+    "$regel": "Nur für einen Tag mit steuerungEur < 0, sonst leer. Jede Regel braucht ihre Eingaben; fehlt eine, greift genau diese Regel nicht (nie geraten). In der Rangfolge geprüft, höchstens 'hoechstens' Kennungen, die ersten. netzladen_mispel (MiSpeL MP-18c, Bedienkonzept BK-W5 = A, Captain 04.10.2026): an einem MiSpeL-Tag netzstromverbrauchSpeicherKwh = Σ (1)¼ >= netzladen_mispel_ab_kwh und netzeinspeisungSpeicherKwh = Σ (2)¼ >= netzladen_mispel_ab_kwh (Anlage 1 S. 33–34: (1)¼ = MIN[Z1NB¼; Z2V¼], (2)¼ = MIN[Z1NE¼; Z2E¼]); an einem solchen Tag greifen weder so_geplant (der Planwert rechnet blanken Spot ohne MiSpeL-Gutschrift) noch der Rückfall anders_geladen; an jedem anderen Tag fehlen beide Mengen (kein MiSpeL-Tag). gestern_verkauft: vergleichSocStartKwh - echtSocStartKwh >= gestern_verkauft_ab_kwh. haelt_energie_fuer_morgen: speicherVorsprungKwh >= haelt_energie_ab_kwh. so_geplant: steuerungGeplantEur < so_geplant_unter_eur. wenig_sonne: loadKwh > 0 und pvKwh < wenig_sonne_unter_anteil * loadKwh. anders_als_geplant: steuerungGeplantEur >= anders_als_geplant_plan_ab_eur und steuerungEur < anders_als_geplant_unter_eur. anders_geladen (Rückfall, A1 - Captain 29.09.2026 'mach alle drei'): greift keine der sechs Regeln, steht diese Kennung allein; ein Tag mit steuerungEur < 0 hat damit NIE eine leere Liste. Sie verdrängt nie eine spezifische Kennung.",
+    "$einheiten": "kWh je Tag bzw. Ladestand in kWh; EUR; Anteil als Faktor (0.6 = 60 %). steuerungGeplantEur = history.totals.steuerungPlannedEur desselben Tages (Fahrplan, ex ante); seit M2 (29.09.2026) gegen DENSELBEN durchlaufenden Vergleichsspeicher wie steuerungEur (Block band_und_plan). Die Planwerte der Live-Fälle vor dem 29.09.2026 stammen aus der alten Regel (Summe stur_cost_eur - cost_eur, sturer Speicher je Lauf am echten Ladestand); als Eingaben der Grund-Regel bleiben sie gültig. netzstromverbrauchSpeicherKwh/netzeinspeisungSpeicherKwh: kWh je Tag, Summe über die MiSpeL-Viertelstunden (SiteEarnings.mispelNetzstromverbrauchSpeicherKwh/mispelNetzeinspeisungSpeicherKwh, Gerätewerte).",
     "rangfolge": [
+      "netzladen_mispel",
       "gestern_verkauft",
       "haelt_energie_fuer_morgen",
       "so_geplant",
@@ -14,6 +15,7 @@
     ],
     "hoechstens": 2,
     "schwellen": {
+      "netzladen_mispel_ab_kwh": 1,
       "gestern_verkauft_ab_kwh": 10,
       "haelt_energie_ab_kwh": 5,
       "so_geplant_unter_eur": -0.5,
@@ -434,6 +436,129 @@
         "gruende": [
           "gestern_verkauft"
         ]
+      },
+      {
+        "name": "Netzladen nach MiSpeL: Kühlhaus Seebach 17.11.",
+        "herkunft": "Bedienkonzept BK-W5 (vp-mispel-bk-w5-speicher-erklaerung, rechnung.py): Kühlhaus Seebach, Abgrenzungsoption A1, Mittwoch 17.11.2027 - ohne MiSpeL-Mengen der Rückfall anders_geladen",
+        "eingaben": {
+          "steuerungEur": -0.84,
+          "vergleichSocStartKwh": 62.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": 0.62,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0,
+          "netzstromverbrauchSpeicherKwh": 312.0,
+          "netzeinspeisungSpeicherKwh": 214.6
+        },
+        "gruende": [
+          "netzladen_mispel"
+        ]
+      },
+      {
+        "name": "Gegenfall: Netzladen nur für den Eigenverbrauch (Σ (2)¼ = 0) - wie heute",
+        "herkunft": "Bedienkonzept BK-W5 (vp-mispel-bk-w5-speicher-erklaerung, rechnung.py): Kühlhaus Seebach, Abgrenzungsoption A1, Mittwoch 17.11.2027 - ohne MiSpeL-Mengen der Rückfall anders_geladen; der Speicher gibt abends nichts ins Netz",
+        "eingaben": {
+          "steuerungEur": -0.84,
+          "vergleichSocStartKwh": 62.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": 0.62,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0,
+          "netzstromverbrauchSpeicherKwh": 312.0,
+          "netzeinspeisungSpeicherKwh": 0
+        },
+        "gruende": [
+          "anders_geladen"
+        ]
+      },
+      {
+        "name": "Kein MiSpeL-Tag: dieselben Eingaben ohne Mengen - wie heute",
+        "herkunft": "Bedienkonzept BK-W5 (vp-mispel-bk-w5-speicher-erklaerung, rechnung.py): Kühlhaus Seebach, Abgrenzungsoption A1, Mittwoch 17.11.2027 - ohne MiSpeL-Mengen der Rückfall anders_geladen",
+        "eingaben": {
+          "steuerungEur": -0.84,
+          "vergleichSocStartKwh": 62.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": 0.62,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0
+        },
+        "gruende": [
+          "anders_geladen"
+        ]
+      },
+      {
+        "name": "Kante netzladen_mispel_ab_kwh: beide genau 1 kWh greifen",
+        "herkunft": "Kante",
+        "eingaben": {
+          "steuerungEur": -0.84,
+          "vergleichSocStartKwh": 62.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": 0.62,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0,
+          "netzstromverbrauchSpeicherKwh": 1,
+          "netzeinspeisungSpeicherKwh": 1
+        },
+        "gruende": [
+          "netzladen_mispel"
+        ]
+      },
+      {
+        "name": "Kante netzladen_mispel_ab_kwh: Σ (1)¼ 0,999 kWh greift nicht",
+        "herkunft": "Kante",
+        "eingaben": {
+          "steuerungEur": -0.84,
+          "vergleichSocStartKwh": 62.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": 0.62,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0,
+          "netzstromverbrauchSpeicherKwh": 0.999,
+          "netzeinspeisungSpeicherKwh": 214.6
+        },
+        "gruende": [
+          "anders_geladen"
+        ]
+      },
+      {
+        "name": "Netzladen nach MiSpeL verdrängt so_geplant, nicht gestern_verkauft",
+        "herkunft": "Kante: Planwert unter -0,50 €, Vergleichsspeicher um 00:00 12 kWh voller",
+        "eingaben": {
+          "steuerungEur": -0.84,
+          "vergleichSocStartKwh": 70.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": -2.1,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0,
+          "netzstromverbrauchSpeicherKwh": 312.0,
+          "netzeinspeisungSpeicherKwh": 214.6
+        },
+        "gruende": [
+          "netzladen_mispel",
+          "gestern_verkauft"
+        ]
+      },
+      {
+        "name": "Netzladen nach MiSpeL an einem Tag ab Null: kein Grund",
+        "herkunft": "Kante: ein Grund gilt nur für ein Minus",
+        "eingaben": {
+          "steuerungEur": 0.4,
+          "vergleichSocStartKwh": 62.0,
+          "echtSocStartKwh": 58.0,
+          "speicherVorsprungKwh": 2.4,
+          "steuerungGeplantEur": 0.62,
+          "pvKwh": 640.0,
+          "loadKwh": 880.0,
+          "netzstromverbrauchSpeicherKwh": 312.0,
+          "netzeinspeisungSpeicherKwh": 214.6
+        },
+        "gruende": []
       }
     ]
   },

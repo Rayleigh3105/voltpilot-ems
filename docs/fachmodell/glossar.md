@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 57 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 60 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -90,6 +90,9 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Sitzung · Beschluss · Folge](#sitzung--beschluss--folge) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)
 - [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 - [Szene](#szene) — Sicht Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)
+- [Netzladen nach MiSpeL](#netzladen-nach-mispel) — Sicht Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)
+- [auf der Stromrechnung](#auf-der-stromrechnung) — Sicht Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)
+- [Gutschrift nach Anlage 1](#gutschrift-nach-anlage-1) — Sicht Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)
 
 ## Kundenbereich
 
@@ -1389,3 +1392,45 @@ Eine Szene schaltet nichts Eigenes: sie nutzt den Pausenweg der Verbraucher (Reg
 **Heute im Code.** Tabelle `site_scene` mit RLS (MIG/V20260929120000__steuerung_szene_und_nur_messen.sql:49), Dienst `SzenenService` (services/api/src/main/java/com/voltpilot/api/szenen/SzenenService.java:65), Wörter als `STEUERUNG_SZENE` (PORTAL/glossar.ts:156), Vorschläge je Szene in PORTAL/steuerung/szenen.ts:40.
 
 **Abgrenzung.** Nicht die Regel (die reagiert auf eine Bedingung), nicht der Eingriff (der gilt für ein Gerät und endet nach Minuten), nicht die Pause der Automatik (die hält die ganze Anlage an).
+
+## Netzladen nach MiSpeL
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)*
+
+**Ein Tag, an dem der Speicher einer MiSpeL-Anlage Netzstrom gespeichert und Strom ins Netz zurückgegeben hat — beides mindestens 1 kWh, in denselben Viertelstunden gemessen wie die Festlegung.**
+
+Gezählt wird je Viertelstunde, was zugleich aus dem Netz in den Speicher ging ((1)¼, zeitgleicher Netzstromverbrauch im Stromspeicher) und was zugleich aus dem Speicher ins Netz ging ((2)¼, zeitgleiche Netzeinspeisung aus dem Stromspeicher, Anlage 1 S. 33–34), über den Tag summiert. Am Tag sind es Gerätewerte; die amtlichen Mengen mit den Werten des Messstellenbetreibers rechnet der Monatslauf. An einem solchen Tag steht statt „anders geladen und entladen“ die Zeile „Netzladen nach MiSpeL: … gespeichert, … ins Netz · Gutschrift offen“ — Cockpit, Erlöse, Fahrplan und Portfolio sagen denselben Satz.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist der Beispieltag des Bedienkonzepts BK-W5 (erfundene Anlage „Kühlhaus Seebach“, Abgrenzungsoption, Formelsatz A1): Mittwoch, 17.11.2027: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift offen.
+
+**Heute im Code.** Kennung `netzladen_mispel` in `SteuerungGrund` (services/api/src/main/java/com/voltpilot/api/repo/SteuerungGrund.java:49, Schwelle :80; Vertrag docs/contracts/steuerung-tag-vectors.json, Block grund), Tagessummen `MispelTagesmengen` (services/api/src/main/java/com/voltpilot/api/repo/EarningsRepository.java:842), Wörter `MISPEL_NETZLADEN` (PORTAL/glossar.ts), Ableitung `netzladenMispel` (PORTAL/speicherAussage.ts:489).
+
+**Abgrenzung.** Nicht das Netzladen des Speichers allgemein (die Erlaubnis, aus dem Netz zu laden), nicht der Netzlade-Anteil im Händler-Modus („davon durch Netzladen … geschätzt“), nicht die Gutschrift selbst (die bestimmt Anlage 1 im Kalendermonat).
+
+## auf der Stromrechnung
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)*
+
+**Was die Steuerung an einem Tag mit Netzladen nach MiSpeL auf der Stromrechnung gebracht hat — gegenüber demselben Speicher ohne smarte Steuerung, ohne die MiSpeL-Gutschrift.**
+
+Dieselbe Zahl wie sonst „Steuerung“: Netzbezug × Bezugspreis − Einspeisung × Einspeisepreis je Viertelstunde, verglichen mit demselben Speicher, der nie aus dem Netz lädt. An einem MiSpeL-Tag trägt sie den gespeicherten Netzstrom mit vollen Umlagen und Netzentgelt, aber noch keine Gutschrift — darum heißt sie, was sie ist, und trägt kein „unter Null“. Die Marktprämie zählt an Tagen der Abgrenzungsoption nur auf die Einspeisung direkt aus der PV ((23)¼ = Z1NE¼ − (2)¼, Anlage 1 S. 38).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist der Beispieltag des Bedienkonzepts BK-W5 (erfundene Anlage „Kühlhaus Seebach“, Abgrenzungsoption, Formelsatz A1): „Steuerung an diesem Tag · Stromrechnung − 0,84 €“, im November bisher − 3,12 €.
+
+**Heute im Code.** Die Beschriftung setzt `speicherAussage` (PORTAL/speicherAussage.ts:517), die Prämie nur auf (23)¼ `MISPEL_SPEICHER_PRAEMIE_EUR` (services/api/src/main/java/com/voltpilot/api/repo/EarningsRepository.java:252), das Wort `MISPEL_STROMRECHNUNG` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht das Ergebnis der Anlage („unterm Strich“), nicht die Gutschrift nach Anlage 1, nicht der Planwert des Fahrplans (der rechnet ebenfalls ohne MiSpeL-Gutschrift).
+
+## Gutschrift nach Anlage 1
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)*
+
+**Die vermiedenen Umlagen und das vermiedene Netzentgelt auf die umlagereduzierende Strommenge (20) eines Kalendermonats — bestimmt nach dem Monatslauf, bis dahin „offen“.**
+
+Anlage 1 rechnet je Kalendermonat, nie je Tag: aus den Viertelstunden-Mengen werden saldierungsfähige (16) und umlagereduzierende (20) Mengen. Die Gutschrift steht nach dem Monatslauf in derselben Karte neben der Stromrechnung; erst wenn beide bestimmt sind, steht ihre Summe „Zusammen“ da. Vorher heißt sie „offen“, nie 0 €.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist der Beispieltag des Bedienkonzepts BK-W5 (erfundene Anlage „Kühlhaus Seebach“, Abgrenzungsoption, Formelsatz A1): November 2027: (20) 1.926,667 kWh → Gutschrift + 253,71 €; Stromrechnung − 4,86 €, zusammen + 248,85 €.
+
+**Heute im Code.** Gelesen aus der Monatsroute `…/mispel/abgrenzung/monate/{JJJJ-MM}` (`mispelGutschrift`, PORTAL/mispelMengen.ts:223), gezeigt über `mispelMonatAussage` (PORTAL/speicherAussage.ts:551), das Wort `MISPEL_GUTSCHRIFT` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht die Marktprämie (die steht getrennt in der MiSpeL-Karte), nicht die Stromrechnung, keine Tageszahl.

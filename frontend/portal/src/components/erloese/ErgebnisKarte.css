@@ -514,6 +514,37 @@
   white-space: nowrap;
 }
 
+/*
+ * Netzladen nach MiSpeL (MiSpeL MP-18c, BK-W5 A): die Mengen (1)¼/(2)¼ und
+ * die Gutschrift des Monats als eingerückter Block unter der Zahl — dieselben
+ * Zeilen wie die Zahl selbst, nur eine Ebene tiefer.
+ */
+.vp-c-sp-mispel {
+  margin: 0 0 8px;
+  padding: 4px 0 0 12px;
+  border-left: 3px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-c-sp-mispel-titel {
+  margin: 0;
+  font-size: var(--vp-erl-fs-12, 12px);
+  font-weight: var(--vp-erl-fw-700, 700);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-c-sp-mispel .vp-c-sp-zeile:first-of-type,
+.vp-c-sp-mispel .vp-c-sp-mispel-titel + .vp-c-sp-zeile {
+  border-top: 0;
+}
+
+.vp-c-sp-summe .vp-c-sp-label,
+.vp-c-sp-summe .vp-c-sp-wert {
+  font-weight: var(--vp-erl-fw-700, 700);
+}
+
 /* Bestand: ein Satz + Chip „Kein Abzug" — kein Betrag in Prosa. */
 .vp-c-sp-bestand {
   display: flex;

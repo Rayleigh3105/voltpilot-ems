@@ -21,6 +21,15 @@ import java.util.List;
  * ausgezahlt -, und verdrängt nie eine der spezifischen Kennungen. Einen
  * Grund gibt es NUR für einen negativen Tag.
  *
+ * <p><b>Netzladen nach MiSpeL</b> (MiSpeL MP-18c, Bedienkonzept BK-W5 = A,
+ * Captain 04.10.2026): an einem MiSpeL-Tag, an dem der Speicher Netzstrom
+ * gespeichert UND ins Netz zurückgegeben hat (Σ (1)¼ und Σ (2)¼ je
+ * mindestens {@link #NETZLADEN_MISPEL_AB_KWH}, Anlage 1 S. 33–34), steht
+ * {@link #NETZLADEN_MISPEL} vorn. Die Zahl ist dann die Stromrechnung ohne
+ * die Gutschrift, die Anlage 1 erst im Kalendermonat bestimmt; an solchen
+ * Tagen tragen weder {@link #SO_GEPLANT} (der Planwert rechnet blanken Spot
+ * ohne Gutschrift) noch der Rückfall {@link #ANDERS_GELADEN} etwas bei.
+ *
  * <p><b>Die Schwellen und die Rangfolge stehen in
  * {@code docs/contracts/steuerung-tag-vectors.json}</b> (Block {@code grund});
  * {@code SteuerungGrundTest} hält diese Konstanten und die Fälle dort gegen
@@ -32,6 +41,12 @@ import java.util.List;
  * ({@code steuerungPlannedEur}).
  */
 public final class SteuerungGrund {
+
+    /**
+     * MiSpeL-Tag mit Netzladen ins Netz: Σ (1)¼ und Σ (2)¼ des Tages je mindestens
+     * {@link #NETZLADEN_MISPEL_AB_KWH} - die Gutschrift dafür rechnet Anlage 1 im Kalendermonat.
+     */
+    public static final String NETZLADEN_MISPEL = "netzladen_mispel";
 
     /** Der Vergleichsspeicher begann den Tag deutlich voller: die Steuerung hat am Vortag verkauft. */
     public static final String GESTERN_VERKAUFT = "gestern_verkauft";
@@ -56,10 +71,13 @@ public final class SteuerungGrund {
 
     /** Die Rangfolge; ein Tag trägt höchstens {@link #HOECHSTENS} davon, die ersten. */
     public static final List<String> RANGFOLGE = List.of(
-            GESTERN_VERKAUFT, HAELT_ENERGIE_FUER_MORGEN, SO_GEPLANT, WENIG_SONNE,
-            ANDERS_ALS_GEPLANT, ANDERS_GELADEN);
+            NETZLADEN_MISPEL, GESTERN_VERKAUFT, HAELT_ENERGIE_FUER_MORGEN, SO_GEPLANT,
+            WENIG_SONNE, ANDERS_ALS_GEPLANT, ANDERS_GELADEN);
 
     public static final int HOECHSTENS = 2;
+
+    /** Σ (1)¼ {@code ≥} und Σ (2)¼ {@code ≥} dieser Wert am MiSpeL-Tag (kWh). */
+    public static final BigDecimal NETZLADEN_MISPEL_AB_KWH = BigDecimal.ONE;
 
     /** {@code vergleichSocStartKwh − echtSocStartKwh ≥} dieser Wert. */
     public static final BigDecimal GESTERN_VERKAUFT_AB_KWH = new BigDecimal("10");
@@ -93,6 +111,12 @@ public final class SteuerungGrund {
      *     seit M2 gegen denselben Vergleichsspeicher, {@link PlanMesslatte})
      * @param pvKwh Erzeugung des Tages
      * @param loadKwh Verbrauch des Tages
+     * @param netzstromverbrauchSpeicherKwh Σ (1)¼ des Tages (zeitgleicher
+     *     Netzstromverbrauch im Stromspeicher, Anlage 1 S. 33) - nur an einem
+     *     MiSpeL-Tag, sonst null
+     * @param netzeinspeisungSpeicherKwh Σ (2)¼ des Tages (zeitgleiche
+     *     Netzeinspeisung aus dem Stromspeicher, Anlage 1 S. 34) - nur an einem
+     *     MiSpeL-Tag, sonst null
      */
     public record Eingaben(
             BigDecimal steuerungEur,
@@ -101,7 +125,24 @@ public final class SteuerungGrund {
             BigDecimal speicherVorsprungKwh,
             BigDecimal steuerungGeplantEur,
             BigDecimal pvKwh,
-            BigDecimal loadKwh) {
+            BigDecimal loadKwh,
+            BigDecimal netzstromverbrauchSpeicherKwh,
+            BigDecimal netzeinspeisungSpeicherKwh) {
+
+        /** Ein Tag ohne MiSpeL-Mengen (kein MiSpeL-Tag). */
+        public Eingaben(BigDecimal steuerungEur, BigDecimal vergleichSocStartKwh,
+                BigDecimal echtSocStartKwh, BigDecimal speicherVorsprungKwh,
+                BigDecimal steuerungGeplantEur, BigDecimal pvKwh, BigDecimal loadKwh) {
+            this(steuerungEur, vergleichSocStartKwh, echtSocStartKwh, speicherVorsprungKwh,
+                    steuerungGeplantEur, pvKwh, loadKwh, null, null);
+        }
+
+        /** Netzladen ins Netz an einem MiSpeL-Tag: beide Tagessummen bekannt und je ab der Schwelle. */
+        boolean netzladenMispel() {
+            return netzstromverbrauchSpeicherKwh != null && netzeinspeisungSpeicherKwh != null
+                    && netzstromverbrauchSpeicherKwh.compareTo(NETZLADEN_MISPEL_AB_KWH) >= 0
+                    && netzeinspeisungSpeicherKwh.compareTo(NETZLADEN_MISPEL_AB_KWH) >= 0;
+        }
     }
 
     /**
@@ -111,11 +152,23 @@ public final class SteuerungGrund {
      */
     public static List<String> fuer(BigDecimal steuerungEur,
             EarningsRepository.Tageseinordnung e, BigDecimal steuerungGeplantEur) {
+        return fuer(steuerungEur, e, steuerungGeplantEur, null);
+    }
+
+    /**
+     * Wie {@link #fuer(BigDecimal, EarningsRepository.Tageseinordnung, BigDecimal)},
+     * mit den MiSpeL-Mengen des Tages (null = kein MiSpeL-Tag).
+     */
+    public static List<String> fuer(BigDecimal steuerungEur,
+            EarningsRepository.Tageseinordnung e, BigDecimal steuerungGeplantEur,
+            EarningsRepository.MispelTagesmengen mispel) {
         if (steuerungEur == null || e == null) {
             return null;
         }
         return of(new Eingaben(steuerungEur, e.vergleichSocStartKwh(), e.echtSocStartKwh(),
-                e.speicherVorsprungKwh(), steuerungGeplantEur, e.pvKwh(), e.loadKwh()));
+                e.speicherVorsprungKwh(), steuerungGeplantEur, e.pvKwh(), e.loadKwh(),
+                mispel == null ? null : mispel.netzstromverbrauchSpeicherKwh(),
+                mispel == null ? null : mispel.netzeinspeisungSpeicherKwh()));
     }
 
     /**
@@ -127,6 +180,10 @@ public final class SteuerungGrund {
             return List.of();
         }
         List<String> gruende = new ArrayList<>(RANGFOLGE.size());
+        boolean netzladenMispel = e.netzladenMispel();
+        if (netzladenMispel) {
+            gruende.add(NETZLADEN_MISPEL);
+        }
         if (e.vergleichSocStartKwh() != null && e.echtSocStartKwh() != null
                 && e.vergleichSocStartKwh().subtract(e.echtSocStartKwh())
                         .compareTo(GESTERN_VERKAUFT_AB_KWH) >= 0) {
@@ -137,7 +194,7 @@ public final class SteuerungGrund {
             gruende.add(HAELT_ENERGIE_FUER_MORGEN);
         }
         BigDecimal plan = e.steuerungGeplantEur();
-        if (plan != null && plan.compareTo(SO_GEPLANT_UNTER_EUR) < 0) {
+        if (!netzladenMispel && plan != null && plan.compareTo(SO_GEPLANT_UNTER_EUR) < 0) {
             gruende.add(SO_GEPLANT);
         }
         if (e.pvKwh() != null && e.loadKwh() != null && e.loadKwh().signum() > 0

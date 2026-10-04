@@ -73,7 +73,7 @@ import { useMispelMengen } from '../useMispelMengen';
 import { LadepunktErtragKarte } from '../components/erloese/LadepunktErtragKarte';
 import { useLadepunktErtraege } from '../useLadepunktErtraege';
 import { usePauschalJahr } from '../usePauschalJahr';
-import { arbitrageAusweisErlaubt } from '../mispelMengen';
+import { arbitrageAusweisErlaubt, haendlerModus, mispelGutschrift } from '../mispelMengen';
 import '../components/erloese/ErgebnisKarte.css';
 import { RechenZeilen, SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
 
@@ -166,6 +166,8 @@ export function ErloeseSection({
   // entfällt der Arbitrage-Ausweis (W5) — dort zählt nur die amtliche Formel.
   const mispel = useMispelMengen(site.id, range, anchor);
   const mispelSicht = range === 'year' ? mispel.jahr : mispel.monat;
+  // MiSpeL MP-18c (BK-W5 A): die Gutschrift (20) des Monats für Tag und Monat der Steuerungs-Karte.
+  const gutschrift = range === 'day' || range === 'month' ? mispelGutschrift(mispel.monat) : null;
   // MiSpeL MP-41a (BK-41): die Erträge am bidirektionalen Ladepunkt im Monat, unter der MiSpeL-Karte.
   const ladepunktErtraege = useLadepunktErtraege(site.id, range, anchor);
   // MiSpeL (MP-27, BK-27 A): der Jahresstand der Pauschaloption — im Jahr die Karte, im Monat eine Zeile mit Sprung.
@@ -256,6 +258,7 @@ export function ErloeseSection({
             laeuft: isCurrentPeriod(anchor, 'year', now),
           }
         : null,
+    mispelGutschrift: gutschrift,
   });
   const kennzahlen = erloesKennzahlen({
     money,
@@ -353,6 +356,7 @@ export function ErloeseSection({
         laeuft,
         pvKwh: history && !historyStale ? history.totals.pvGenerationKwh : null,
         verbrauchKwh: history && !historyStale ? history.totals.consumptionKwh : null,
+        mispelGutschrift: gutschrift,
       }
     : null;
   const hatSchritte = schritteInput != null && speicherSchritte(schritteInput).length > 0;
@@ -585,6 +589,7 @@ export function ErloeseSection({
                       money,
                       netzladenErlaubt: site.netzladenErlaubt ?? null,
                       arbitrageAusweis: arbitrageAusweisErlaubt(mispelSicht),
+                      geschaetzt: haendlerModus(mispel.monat),
                     })}
                     periode={label}
                     hrefFor={hrefFor}

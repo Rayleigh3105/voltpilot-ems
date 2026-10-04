@@ -7019,8 +7019,9 @@ export interface CockpitMoney {
    *   M2 gegen denselben durchlaufenden Vergleichsspeicher.
    * - `steuerungGruende`: höchstens zwei Kennungen der geschlossenen Liste
    *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Minus (ein Minus trägt
-   *   seit A1 immer mindestens den Rückfall `anders_geladen`); `null` = nicht
-   *   berechnet.
+   *   seit A1 immer mindestens den Rückfall `anders_geladen`, an einem
+   *   MiSpeL-Tag mit Netzladen ins Netz vorn `netzladen_mispel`); `null` =
+   *   nicht berechnet.
    */
   vergleichSocStartKwh?: number | null;
   vergleichSocEndKwh?: number | null;
@@ -7030,6 +7031,18 @@ export interface CockpitMoney {
   steuerungMonatBisherEur?: number | null;
   steuerungPlannedEur?: number | null;
   steuerungGruende?: string[] | null;
+  /**
+   * MiSpeL MP-18c (Bedienkonzept BK-W5 = A): nur `range=day` an einem
+   * MiSpeL-Tag die Tagessummen Σ (1)¼ = MIN[Z1NB¼; Z2V¼] (zeitgleicher
+   * Netzstromverbrauch im Stromspeicher, A1 S. 33) und Σ (2)¼ =
+   * MIN[Z1NE¼; Z2E¼] (zeitgleiche Netzeinspeisung aus dem Stromspeicher,
+   * A1 S. 34), aus Gerätewerten (`mispelMengenQuelle` = `geraet`); an jedem
+   * anderen Tag null. Ab je 1 kWh heißt die Zahl „auf der Stromrechnung“
+   * (`speicherAussage`).
+   */
+  mispelNetzstromverbrauchSpeicherKwh?: number | null;
+  mispelNetzeinspeisungSpeicherKwh?: number | null;
+  mispelMengenQuelle?: string | null;
   /**
    * Die EINE grosse Zahl aller Flaechen: das Ergebnis „unterm Strich"
    * (Erloese-Konzept E9, Paket P9). Beide Endpunkte tragen genau EINEN der

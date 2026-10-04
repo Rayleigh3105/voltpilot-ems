@@ -201,6 +201,11 @@ public class SiteEarningsController {
         // Der Planwert rechnet seit M2 gegen DENSELBEN Vergleichsspeicher und
         // kommt deshalb aus demselben Walk wie die Einordnung.
         BigDecimal geplant = einordnung != null ? einordnung.steuerungGeplantEur() : null;
+        // MiSpeL MP-18c (BK-W5 = A): die Tagessummen (1)¼/(2)¼ nur am Tag
+        // und nur an einem MiSpeL-Tag; sonst null (kein MiSpeL-Tag).
+        EarningsRepository.MispelTagesmengen mispel = tag
+                ? earnings.mispelTagesmengenForSite(siteId, from, to)
+                : null;
         BigDecimal vorsprungKwh = einordnung == null ? null : einordnung.speicherVorsprungKwh();
         BigDecimal vorsprungEur = vorsprungKwh == null || bank.wertCtKwh() == null ? null
                 : vorsprungKwh.multiply(bank.wertCtKwh())
@@ -265,7 +270,10 @@ public class SiteEarningsController {
                 einordnung == null ? null : einordnung.steuerungVortagEur(),
                 einordnung == null ? null : einordnung.steuerungMonatBisherEur(),
                 geplant,
-                SteuerungGrund.fuer(savedSteuerung, einordnung, geplant),
+                SteuerungGrund.fuer(savedSteuerung, einordnung, geplant, mispel),
+                mispel == null ? null : mispel.netzstromverbrauchSpeicherKwh(),
+                mispel == null ? null : mispel.netzeinspeisungSpeicherKwh(),
+                mispel == null ? null : mispel.quelle(),
                 series,
                 EarningsController.peakShaving(site, today, peakRows));
     }

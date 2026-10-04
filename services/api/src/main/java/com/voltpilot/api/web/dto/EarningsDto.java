@@ -160,6 +160,12 @@ public record EarningsDto(
      * {@code steuerungGruende}. Ohne λ je Anlage trägt die Flottenzeile
      * bewusst keinen {@code speicherVorsprungEur}. Für jedes andere
      * {@code range} und ohne Dreiteilung sind alle null.
+     *
+     * <p><b>MiSpeL-Tagesmengen (nur {@code range=day} an einem MiSpeL-Tag,
+     * MP-18c).</b> {@code mispelNetzstromverbrauchSpeicherKwh} = Σ (1)¼,
+     * {@code mispelNetzeinspeisungSpeicherKwh} = Σ (2)¼,
+     * {@code mispelMengenQuelle} - dieselbe Rechenstelle wie auf
+     * {@code SiteEarningsDto}; an jedem anderen Tag null.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -204,7 +210,10 @@ public record EarningsDto(
             BigDecimal steuerungVortagEur,
             BigDecimal steuerungMonatBisherEur,
             BigDecimal steuerungPlannedEur,
-            List<String> steuerungGruende) {
+            List<String> steuerungGruende,
+            BigDecimal mispelNetzstromverbrauchSpeicherKwh,
+            BigDecimal mispelNetzeinspeisungSpeicherKwh,
+            String mispelMengenQuelle) {
     }
 
     /**

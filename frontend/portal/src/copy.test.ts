@@ -38,6 +38,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
+import { MISPEL_GUTSCHRIFT, MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG } from './glossar';
 import {
   UEMS_ABWEICHUNG,
   UEMS_ABWEICHUNG_ERGEBNISSE,
@@ -3898,4 +3899,18 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
     expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
   });
+});
+
+/**
+ * MiSpeL MP-18c (BK-W5 = A): die drei neuen Kundenwörter der Steuerungs-Zahl an einem MiSpeL-Tag stehen ZUERST im
+ * Fachmodell-Glossar (erzeugt aus `docs/fachmodell/tools/fachmodell.py`) und erst dann als Konstante in `glossar.ts` —
+ * byte-gleich, als eigener Eintrag.
+ */
+describe('MiSpeL MP-18c · Kundenwörter der Speicher-Erklärung kommen aus dem Glossar', () => {
+  const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+  for (const wort of [MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG, MISPEL_GUTSCHRIFT]) {
+    it(`„${wort}“ ist ein Eintrag des Glossars`, () => {
+      expect(glossar).toContain(`\n## ${wort}\n`);
+    });
+  }
 });

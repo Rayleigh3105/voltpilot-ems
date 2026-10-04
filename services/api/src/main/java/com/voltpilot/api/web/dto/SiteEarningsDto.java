@@ -127,12 +127,20 @@ import java.util.UUID;
  *     durchlaufenden Vergleichsspeicher wie {@code savedSteuerungEur}
  * @param steuerungGruende nur {@code range=day} mit Dreiteilung: warum der Tag
  *     unter Null liegt, höchstens zwei Kennungen der geschlossenen Liste
- *     ({@code gestern_verkauft}, {@code haelt_energie_fuer_morgen},
- *     {@code so_geplant}, {@code wenig_sonne}, {@code anders_als_geplant},
- *     Rückfall {@code anders_geladen}; Regeln in
+ *     ({@code netzladen_mispel}, {@code gestern_verkauft},
+ *     {@code haelt_energie_fuer_morgen}, {@code so_geplant},
+ *     {@code wenig_sonne}, {@code anders_als_geplant}, Rückfall
+ *     {@code anders_geladen}; Regeln in
  *     {@code docs/contracts/steuerung-tag-vectors.json}) - leer nur bei einem
  *     Tag ab Null (ein Minus trägt seit A1 immer einen Grund), null wenn nicht
  *     berechnet
+ * @param mispelNetzstromverbrauchSpeicherKwh nur {@code range=day} an einem
+ *     MiSpeL-Tag: Σ (1)¼ = MIN[Z1NB¼; Z2V¼] des Tages (Anlage 1 S. 33), aus
+ *     Gerätewerten ({@code mispelMengenQuelle}); null an jedem anderen Tag
+ * @param mispelNetzeinspeisungSpeicherKwh dasselbe für Σ (2)¼ =
+ *     MIN[Z1NE¼; Z2E¼] (Anlage 1 S. 34)
+ * @param mispelMengenQuelle Herkunft der beiden Summen: {@code geraet}
+ *     (Gerätewerte; die amtlichen Mengen rechnet der Monatslauf)
  * @param series the money per Berlin bucket (hour for a day, day for week and
  *     month, month for year/all) - the stacked bars + the cumulative line
  */
@@ -189,6 +197,9 @@ public record SiteEarningsDto(
         BigDecimal steuerungMonatBisherEur,
         BigDecimal steuerungPlannedEur,
         List<String> steuerungGruende,
+        BigDecimal mispelNetzstromverbrauchSpeicherKwh,
+        BigDecimal mispelNetzeinspeisungSpeicherKwh,
+        String mispelMengenQuelle,
         List<SiteEarningsBucketDto> series,
         PeakShavingDto peakShaving) {
 

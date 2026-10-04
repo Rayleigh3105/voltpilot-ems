@@ -22,10 +22,21 @@
  * Geldwahrheiten über dieselbe Kasse (dieselbe Falle, die das Bestandskonto
  * eine Datei weiter ausdrücklich vermeidet).
  *
- * ⚠ **DIESELBE ABLEITUNG SPEIST DREI FLÄCHEN**: die Erlöse-Karte (Langform),
- * die Cockpit-Erlöskarte und den Steuerungs-Bereich (beide `kurz`). Ohne das
- * sagt das Cockpit „Steuerung − 2,67 €" und die Erlöse-Seite „Steuerung
- * + 1,45 €" über dieselbe Stunde.
+ * ⚠ **DIESELBE ABLEITUNG SPEIST VIER FLÄCHEN**: die Erlöse-Karte (Langform),
+ * die Cockpit-Erlöskarte (`kurz`), den Fahrplan („Was hat es gebracht?“) und
+ * das Portfolio (Kachel und Tabellenzelle). Ohne das sagt das Cockpit
+ * „Steuerung − 2,67 €" und die Erlöse-Seite „Steuerung + 1,45 €" über dieselbe
+ * Stunde. (Die neue Steuerung zeigt die Zahl nicht mehr.)
+ *
+ * ⚠ **NETZLADEN NACH MISPEL** (MiSpeL MP-18c, Bedienkonzept BK-W5 = A,
+ * Captain 04.10.2026): an einem MiSpeL-Tag, an dem der Speicher Netzstrom
+ * gespeichert UND ins Netz zurückgegeben hat (Σ (1)¼ und Σ (2)¼ je ab
+ * {@link NETZLADEN_MISPEL_AB_KWH}), heißt die Zahl, was sie ist — „auf der
+ * Stromrechnung“, ohne die Gutschrift, die Anlage 1 erst im Kalendermonat
+ * bestimmt —, und darunter steht „Netzladen nach MiSpeL: … gespeichert, …
+ * ins Netz · Gutschrift offen“ statt eines „unter Null“-Urteils. An jedem
+ * anderen Tag, im Händler-Modus und an Anlagen ohne MiSpeL fehlen die Mengen,
+ * und alles bleibt Wort für Wort wie bisher.
  *
  * ⚠ **OHNE VERGLEICH GIBT ES KEINE ZAHL — und die Gesamtzahl ist KEIN
  * ERSATZ.** Fehlen die Batterie-Stammdaten, sagt die Fläche den GRUND im
@@ -36,6 +47,7 @@
 import type { PlantKind } from './api';
 import { BESTAND_BADGE, bestandZeile, type BestandEingabe } from './erloesKomposition';
 import { eurAmount, fmtNum, NBSP } from './format';
+import { MISPEL_GUTSCHRIFT, MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG } from './glossar';
 
 /** Unter diesem Betrag rundet die Cent-Anzeige auf 0,00 € — dann ist es keine Aussage. */
 export const SPEICHER_TOTBAND = 0.005;
@@ -101,6 +113,9 @@ export type SteuerungSplitReason = 'no_battery_data';
  * dazu. Eine Kennung, die hier fehlt, wird nie als Code gezeigt.
  */
 export const STEUERUNG_GRUENDE = [
+  // MiSpeL MP-18c (BK-W5 = A): Netzladen ins Netz an einem MiSpeL-Tag - vorn,
+  // an solchen Tagen weder `so_geplant` noch der Rückfall.
+  'netzladen_mispel',
   'gestern_verkauft',
   'haelt_energie_fuer_morgen',
   'so_geplant',
@@ -114,6 +129,71 @@ export type SteuerungGrund = (typeof STEUERUNG_GRUENDE)[number];
 
 /** Höchstens so viele Gründe stehen in einer Zeile (Konzept k1 E3 = A). */
 export const GRUENDE_HOECHSTENS = 2;
+
+/**
+ * Σ (1)¼ UND Σ (2)¼ ab dieser Menge (kWh): Netzladen ins Netz an einem
+ * MiSpeL-Tag — dieselbe Schwelle wie der Server (`netzladen_mispel_ab_kwh`
+ * in `docs/contracts/steuerung-tag-vectors.json`, `SteuerungGrund.java`).
+ */
+export const NETZLADEN_MISPEL_AB_KWH = 1;
+
+/**
+ * Die Gutschrift (20) des Kalendermonats aus dem Monatslauf (Route
+ * `…/mispel/abgrenzung/monate/{JJJJ-MM}`, `wert.summeOhneMarktpraemieEur`) —
+ * hereingereicht wie der Jahres-Anker, nie hier gerechnet.
+ */
+export interface MispelGutschrift {
+  /** „November“ */
+  monat: string;
+  /** Bestimmt nach dem Monatslauf; null = offen (unbekannt ist keine Null). */
+  eur: number | null;
+  /** (20) umlagereduzierende Strommenge des Monats; null = noch nicht bestimmt. */
+  mengeKwh: number | null;
+}
+
+/** Netzladen nach MiSpeL an diesem Tag — die Mengen der Tagesantwort in Worten. */
+export interface NetzladenMispel {
+  /** Σ (1)¼: zeitgleicher Netzstromverbrauch im Stromspeicher (A1 S. 33). */
+  gespeichertKwh: number;
+  /** Σ (2)¼: zeitgleiche Netzeinspeisung aus dem Stromspeicher (A1 S. 34). */
+  insNetzKwh: number;
+  /** „312,0 kWh gespeichert, 214,6 kWh ins Netz“ */
+  mengen: string;
+  /** „Gutschrift offen“ bzw. „Gutschrift November + 253,71 €“ */
+  gutschrift: string;
+  /** Die Gutschrift (20) des Monats, sobald bestimmt; sonst null. */
+  gutschriftEur: number | null;
+  /** „Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift offen“ */
+  zeile: string;
+  /** Die Zahl in der Langform: „Auf der Stromrechnung“. */
+  labelLang: string;
+  /** Langform: die Zeile unter der Zahl („gegenüber … · ohne MiSpeL-Gutschrift“, dahinter weitere Gründe). */
+  sekLang: string;
+  /** Langform: der Block „Netzladen nach MiSpeL“ — Menge (1)¼, Menge (2)¼, Gutschrift des Monats. */
+  titel: string;
+  zeilen: { label: string; wert: string; sek: string }[];
+  /** Gerätewerte der Anlage (`mispelMengenQuelle`). */
+  geraetewert: boolean;
+}
+
+/**
+ * Der MONAT einer MiSpeL-Anlage mit Netzladen (Langform, BK-W5 A): die
+ * Stromrechnung, daneben die amtliche Gutschrift (20) nach dem Monatslauf, und
+ * erst wenn beide bestimmt sind die Summe.
+ */
+export interface MispelMonatAussage {
+  /** „MiSpeL-Gutschrift nach Anlage 1“ */
+  gutschriftLabel: string;
+  /** „+ 253,71 €“ bzw. „offen“ */
+  gutschriftWert: string;
+  /** „(20) umlagereduzierende Strommenge … — dieselbe Zahl wie die MiSpeL-Karte oben“ */
+  gutschriftSek: string;
+  /** Unter der Zahl: „gegenüber demselben Speicher ohne smarte Steuerung“ */
+  stromrechnungSek: string;
+  /** „+ 248,85 €“; null, solange die Gutschrift offen ist. */
+  zusammen: string | null;
+  zusammenSek: string;
+}
 
 /** Ein Anker des größeren Zeitraums: „September bisher + 116,94 €". */
 export interface SpeicherAnker {
@@ -173,6 +253,10 @@ export interface SpeicherAussage {
   grundErster: string | null;
   /** Der erste Grund als Kurzwort (Tabellenzelle): „gestern verkauft". */
   grundKurz: string | null;
+  /** Netzladen nach MiSpeL an diesem Tag (BK-W5 A); null an jedem anderen Tag. */
+  netzladenMispel: NetzladenMispel | null;
+  /** Der Monat mit Netzladen nach MiSpeL (BK-W5 A); null sonst. */
+  mispelMonat: MispelMonatAussage | null;
   /**
    * Der Anker des größeren Zeitraums (E4): unter der Tageszahl der laufende
    * Monat, unter der Monatszahl das Jahr — dieselbe Zahl wie der Reiter.
@@ -228,6 +312,10 @@ export interface SpeicherEingabe extends BestandEingabe {
   steuerungMonatBisherEur?: number | null;
   steuerungPlannedEur?: number | null;
   steuerungGruende?: readonly string[] | null;
+  /* MiSpeL MP-18c (nur `range=day` an einem MiSpeL-Tag, sonst null). */
+  mispelNetzstromverbrauchSpeicherKwh?: number | null;
+  mispelNetzeinspeisungSpeicherKwh?: number | null;
+  mispelMengenQuelle?: string | null;
 }
 
 export interface SpeicherKontext {
@@ -252,6 +340,12 @@ export interface SpeicherKontext {
    * anderen Antwort und wird deshalb hereingereicht; ohne ihn kein Anker.
    */
   jahrAnker?: { eur: number | null; jahr: number; laeuft: boolean } | null;
+  /**
+   * Die Gutschrift (20) des Kalendermonats aus dem MiSpeL-Monatslauf (BK-W5 A)
+   * — nur die Erlöse-Seite lädt sie; ohne sie heißt sie „offen“ (der laufende
+   * Monat ist ohnehin nie bestimmt).
+   */
+  mispelGutschrift?: MispelGutschrift | null;
 }
 
 function num(v: number | null | undefined): number | null {
@@ -367,6 +461,13 @@ function grundText(
         plan == null ? 'anders als geplant' : `anders als geplant (Plan ${tonWort(plan).wort})`;
       return { kurz: 'anders als geplant', mitZahl, mitPaar: mitZahl };
     }
+    case 'netzladen_mispel': {
+      // Die Mengen setzt `netzladenMispel` (die Zeile steht vorn); ohne sie
+      // bleibt das Wort allein.
+      const n = netzladenMispel(money, null);
+      const zeile = n?.zeile ?? MISPEL_NETZLADEN;
+      return { kurz: MISPEL_NETZLADEN, mitZahl: zeile, mitPaar: zeile };
+    }
     case 'anders_geladen':
       // Kein Übertrag, keine Planabweichung, genug Sonne: der Speicher wurde
       // anders geladen und entladen als der Vergleichsspeicher, und das hat
@@ -380,6 +481,95 @@ function grundText(
 }
 
 const BERLIN = 'Europe/Berlin';
+
+/** „auf der Stromrechnung“ → „Auf der Stromrechnung“ am Zeilenanfang. */
+function gross(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Netzladen nach MiSpeL an einem Tag (BK-W5 A): beide Tagessummen der Antwort
+ * bekannt und je ab {@link NETZLADEN_MISPEL_AB_KWH}. Sonst null — dann bleibt
+ * jede Zeile wie bisher (Bestandsschutz).
+ */
+export function netzladenMispel(
+  money: SpeicherEingabe,
+  gutschrift: MispelGutschrift | null | undefined,
+): NetzladenMispel | null {
+  const eins = num(money.mispelNetzstromverbrauchSpeicherKwh ?? null);
+  const zwei = num(money.mispelNetzeinspeisungSpeicherKwh ?? null);
+  if (eins == null || zwei == null) return null;
+  if (eins < NETZLADEN_MISPEL_AB_KWH || zwei < NETZLADEN_MISPEL_AB_KWH) return null;
+  const mengen = `${fmtNum(eins, 'kWh')} gespeichert, ${fmtNum(zwei, 'kWh')} ins Netz`;
+  const eur = num(gutschrift?.eur ?? null);
+  const text =
+    eur != null && gutschrift
+      ? `Gutschrift ${gutschrift.monat} ${tonWort(eur).wort}`
+      : 'Gutschrift offen';
+  const tag = money.from ? new Date(money.from) : null;
+  const monat =
+    gutschrift?.monat ??
+    (tag && !Number.isNaN(tag.getTime())
+      ? tag.toLocaleDateString('de-DE', { month: 'long', timeZone: BERLIN })
+      : null);
+  const geraet = money.mispelMengenQuelle === 'geraet' ? ' · Gerätewerte' : '';
+  return {
+    gespeichertKwh: eins,
+    insNetzKwh: zwei,
+    mengen,
+    gutschrift: fest(text),
+    gutschriftEur: eur,
+    zeile: fest(`${MISPEL_NETZLADEN}: ${mengen} · ${text}`),
+    labelLang: gross(MISPEL_STROMRECHNUNG),
+    sekLang: `gegenüber ${MESSLATTE_DATIV} · ohne MiSpeL-Gutschrift`,
+    titel: MISPEL_NETZLADEN,
+    zeilen: [
+      {
+        label: 'Aus dem Netz in den Speicher',
+        wert: fmtNum(eins, 'kWh'),
+        sek: `(1)¼ zeitgleicher Netzstromverbrauch im Stromspeicher · Summe des Tages${geraet}`,
+      },
+      {
+        label: 'Aus dem Speicher ins Netz',
+        wert: fmtNum(zwei, 'kWh'),
+        sek: `(2)¼ zeitgleiche Netzeinspeisung aus dem Stromspeicher · Summe des Tages${geraet}`,
+      },
+      {
+        label: monat ? `Gutschrift für ${monat}` : 'Gutschrift für den Monat',
+        wert: eur == null ? 'offen' : fest(tonWort(eur).wort),
+        sek:
+          eur == null
+            ? 'Anlage 1 rechnet je Kalendermonat: saldierungsfähig (16), umlagereduzierend (20) — bestimmt nach dem Monatslauf'
+            : '(20) umlagereduzierende Strommenge des Monats, aus dem Monatslauf — dieselbe Zahl wie die MiSpeL-Karte',
+      },
+    ],
+    geraetewert: money.mispelMengenQuelle === 'geraet',
+  };
+}
+
+/**
+ * Der Monat mit Netzladen nach MiSpeL (BK-W5 A): nur wenn der Monatslauf eine
+ * umlagereduzierende Menge (20) ab {@link NETZLADEN_MISPEL_AB_KWH} kennt. Die
+ * Summe addiert — wie {@link paarEur} — die zwei GEZEIGTEN, auf Cent
+ * gerundeten Zahlen derselben Seite; sie steht erst, wenn die Gutschrift
+ * bestimmt ist (ein Minus steht nie allein, „offen“ ist keine Null).
+ */
+function mispelMonatAussage(
+  steuerung: SpeicherGeld,
+  g: MispelGutschrift | null | undefined,
+): MispelMonatAussage | null {
+  const menge = num(g?.mengeKwh ?? null);
+  if (!g || menge == null || menge < NETZLADEN_MISPEL_AB_KWH) return null;
+  const eur = num(g.eur);
+  return {
+    gutschriftLabel: `MiSpeL-${MISPEL_GUTSCHRIFT}`,
+    stromrechnungSek: `gegenüber ${MESSLATTE_DATIV}`,
+    gutschriftWert: eur == null ? 'offen' : fest(tonWort(eur).wort),
+    gutschriftSek: `(20) ${fmtNum(menge, 'kWh')} umlagereduzierende Strommenge im ${g.monat} — dieselbe Zahl wie die MiSpeL-Karte`,
+    zusammen: eur == null ? null : fest(tonWort(paarEur(steuerung.eur, eur)).wort),
+    zusammenSek: `was die Steuerung im ${g.monat} gebracht hat — mit der amtlichen Gutschrift`,
+  };
+}
 
 /**
  * Der Anker unter der TAGESZAHL: der Monat bis einschließlich dieses Tages
@@ -477,16 +667,42 @@ export function speicherAussage(
   // wird nur in Worte gesetzt — nie geraten, nie gecacht (der Grund eines
   // laufenden Tages kann am Abend kippen, z2 „Über die Paketgrenze" 1).
   const gruende = tag && steuerung ? grundKennungen(money.steuerungGruende) : null;
-  const texte =
+  // Netzladen nach MiSpeL (BK-W5 A): die Zeile steht vorn — an einem
+  // Minus-Tag als Grund des Servers, an einem Plus-Tag allein; nie ein
+  // „unter Null“-Urteil über gewolltes Netzladen.
+  const netzladen = tag && steuerung ? netzladenMispel(money, ctx.mispelGutschrift) : null;
+  const minusTexte =
     steuerung && steuerung.ton === 'minus' && gruende && gruende.length > 0
-      ? gruende.map((k) => grundText(k, money, steuerung.eur, laeuft))
+      ? gruende.map((k) =>
+          k === 'netzladen_mispel' && netzladen
+            ? { kurz: MISPEL_NETZLADEN, mitZahl: netzladen.zeile, mitPaar: netzladen.zeile }
+            : grundText(k, money, steuerung.eur, laeuft),
+        )
       : [];
+  const texte =
+    netzladen && !gruende?.includes('netzladen_mispel')
+      ? [
+          { kurz: MISPEL_NETZLADEN, mitZahl: netzladen.zeile, mitPaar: netzladen.zeile },
+          ...minusTexte,
+        ].slice(0, GRUENDE_HOECHSTENS)
+      : minusTexte;
   const grundZeile = texte.length > 0 ? fest(texte.map((t) => t.mitPaar).join(' · ')) : null;
+  const weitere = netzladen
+    ? texte.filter((t) => t.kurz !== MISPEL_NETZLADEN).map((t) => t.mitPaar)
+    : [];
+  const netzladenMitGruenden =
+    netzladen && weitere.length > 0
+      ? { ...netzladen, sekLang: fest([netzladen.sekLang, ...weitere].join(' · ')) }
+      : netzladen;
 
   const satz =
     steuerung == null
       ? null
-      : steuerung.ton === 'plus'
+      : netzladen
+        ? laeuft
+          ? `Zwischenstand Steuerung ${MISPEL_STROMRECHNUNG}: ${steuerung.wort} gegenüber ${MESSLATTE_DATIV}, ohne MiSpeL-Gutschrift — ${grundZeile}.`
+          : `${gross(MISPEL_STROMRECHNUNG)} hat die Steuerung ${wann} ${steuerung.wort} gebracht — gegenüber ${MESSLATTE_DATIV}, ohne MiSpeL-Gutschrift; ${grundZeile}.`
+        : steuerung.ton === 'plus'
         ? `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — gegenüber ${MESSLATTE_DATIV}`
         : steuerung.ton === 'minus'
           ? gruende != null
@@ -499,28 +715,40 @@ export function speicherAussage(
               : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — weniger als ${MESSLATTE_DATIV}.`
           : `Die Steuerung und ${MESSLATTE} liegen ${wann} gleichauf.`;
 
-  const anker = steuerung
+  const ankerRoh = steuerung
     ? tag
       ? monatsAnker(money, ctx.now, laeuft)
       : money.range === 'month'
         ? jahresAnker(ctx)
         : null
     : null;
+  const mispelMonat =
+    steuerung && money.range === 'month' ? mispelMonatAussage(steuerung, ctx.mispelGutschrift) : null;
+  const anker =
+    (netzladen || mispelMonat) && ankerRoh
+      ? { ...ankerRoh, label: `${ankerRoh.label} · Stromrechnung` }
+      : ankerRoh;
 
   const bestand = bestandZeile(money, ctx.now);
   const geplantEur = num(ctx.steuerungGeplantEur ?? null);
 
-  const label = laeuft
+  const labelRoh = laeuft
     ? tag
       ? 'Steuerung heute'
       : 'Steuerung bisher'
     : tag
       ? 'Steuerung an diesem Tag'
       : 'Steuerung im Zeitraum';
-  const anzeigeTon = steuerung ? anzeigeTonVon(steuerung.eur, laeuft) : 'neutral';
+  const label = netzladen ? `${labelRoh} · Stromrechnung` : labelRoh;
+  // Kein Rot über gewolltes Netzladen: die Gutschrift fehlt der Zahl noch.
+  const anzeigeTon = steuerung
+    ? netzladen || mispelMonat
+      ? 'neutral'
+      : anzeigeTonVon(steuerung.eur, laeuft)
+    : 'neutral';
 
   const kurz = steuerung
-    ? `${laeuft ? 'Zwischenstand Steuerung' : 'Steuerung'} ${steuerung.wort}`
+    ? `${laeuft ? 'Zwischenstand Steuerung' : 'Steuerung'}${netzladen ? ' · Stromrechnung' : ''} ${steuerung.wort}`
     : 'Steuerung —';
 
   return {
@@ -535,12 +763,14 @@ export function speicherAussage(
     geplant:
       geplantEur == null
         ? null
-        : `Vorab geplant hatte der Fahrplan ${tonWort(geplantEur).wort} durch die Steuerung`,
+        : `Vorab geplant hatte der Fahrplan ${tonWort(geplantEur).wort} durch die Steuerung${netzladen ? ' — ohne MiSpeL-Gutschrift' : ''}`,
 
     gruende,
     grundZeile,
     grundErster: texte[0] ? fest(texte[0].mitZahl) : null,
     grundKurz: texte[0]?.kurz ?? null,
+    netzladenMispel: netzladenMitGruenden,
+    mispelMonat,
     anker,
 
     anzeigeTon,
@@ -548,9 +778,17 @@ export function speicherAussage(
     chip: steuerung
       ? laeuft
         ? 'Zwischenstand'
-        : anzeigeTon === 'warn'
-          ? 'unter Null'
-          : null
+        : netzladen
+          ? netzladen.gutschriftEur == null
+            ? 'Gutschrift offen'
+            : null
+          : mispelMonat
+            ? mispelMonat.zusammen == null
+              ? 'Gutschrift offen'
+              : null
+            : anzeigeTon === 'warn'
+              ? 'unter Null'
+              : null
       : null,
     wert: steuerung ? steuerung.wort : '—',
     hinweis: grund === 'no_battery_data' ? 'Speicher-Daten fehlen ›' : null,

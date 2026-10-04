@@ -605,6 +605,190 @@
         "bestand": null,
         "bestandBadge": null
       }
+    },
+    {
+      "name": "MiSpeL 17.11.2027 abgeschlossen - Netzladen nach MiSpeL, Gutschrift offen (BK-W5 A)",
+      "vertrag": "Netzladen nach MiSpeL: Kühlhaus Seebach 17.11.",
+      "now": "2027-11-18T09:00:00+01:00",
+      "money": {
+        "range": "day",
+        "from": "2027-11-16T23:00:00Z",
+        "to": "2027-11-17T23:00:00Z",
+        "savedEur": 11.66,
+        "savedSpeicherEur": 12.5,
+        "savedSteuerungEur": -0.84,
+        "speicherDeltaKwh": 2.4,
+        "speicherWertEur": 0.52,
+        "speicherWertCtKwh": 21.6,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 62.0,
+        "vergleichSocEndKwh": 120.0,
+        "speicherVorsprungKwh": 2.4,
+        "speicherVorsprungEur": 0.52,
+        "steuerungVortagEur": 6.18,
+        "steuerungMonatBisherEur": -3.12,
+        "steuerungPlannedEur": 0.62,
+        "steuerungGruende": [
+          "netzladen_mispel"
+        ],
+        "mispelNetzstromverbrauchSpeicherKwh": 312.0,
+        "mispelNetzeinspeisungSpeicherKwh": 214.6,
+        "mispelMengenQuelle": "geraet"
+      },
+      "erwartet": {
+        "wert": "− 0,84 €",
+        "chip": "Gutschrift offen",
+        "grundZeile": "Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift offen",
+        "grundErster": "Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift offen",
+        "grundKurz": "Netzladen nach MiSpeL",
+        "anker": {
+          "label": "1.–17. November · Stromrechnung",
+          "wert": "− 3,12 €"
+        },
+        "bestand": "2,4 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 0,52 €",
+        "bestandBadge": "Kein Abzug",
+        "satzMit": "ohne MiSpeL-Gutschrift",
+        "satzOhne": "weniger als"
+      }
+    },
+    {
+      "name": "MiSpeL 17.11.2027 laufend, abends im Cockpit (BK-W5 A)",
+      "vertrag": "Netzladen nach MiSpeL: Kühlhaus Seebach 17.11.",
+      "now": "2027-11-17T19:30:00+01:00",
+      "money": {
+        "range": "day",
+        "from": "2027-11-16T23:00:00Z",
+        "to": "2027-11-17T23:00:00Z",
+        "savedEur": 11.66,
+        "savedSpeicherEur": 12.5,
+        "savedSteuerungEur": -0.84,
+        "speicherDeltaKwh": 2.4,
+        "speicherWertEur": 0.52,
+        "speicherWertCtKwh": 21.6,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 62.0,
+        "vergleichSocEndKwh": 120.0,
+        "speicherVorsprungKwh": 2.4,
+        "speicherVorsprungEur": 0.52,
+        "steuerungVortagEur": 6.18,
+        "steuerungMonatBisherEur": -3.12,
+        "steuerungPlannedEur": 0.62,
+        "steuerungGruende": [
+          "netzladen_mispel"
+        ],
+        "mispelNetzstromverbrauchSpeicherKwh": 312.0,
+        "mispelNetzeinspeisungSpeicherKwh": 214.6,
+        "mispelMengenQuelle": "geraet"
+      },
+      "erwartet": {
+        "wert": "− 0,84 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift offen",
+        "grundErster": "Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift offen",
+        "grundKurz": "Netzladen nach MiSpeL",
+        "anker": {
+          "label": "November bisher · Stromrechnung",
+          "wert": "− 3,12 €"
+        },
+        "bestand": "2,4 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 0,52 €",
+        "bestandBadge": "Kein Abzug",
+        "satzMit": "Zwischenstand Steuerung auf der Stromrechnung"
+      }
+    },
+    {
+      "name": "MiSpeL 17.11.2027 nach dem Monatslauf - Gutschrift bestimmt (BK-W5 A)",
+      "vertrag": "Netzladen nach MiSpeL: Kühlhaus Seebach 17.11.",
+      "now": "2027-12-12T09:00:00+01:00",
+      "kontext": {
+        "mispelGutschrift": {
+          "monat": "November",
+          "eur": 253.71,
+          "mengeKwh": 1926.667
+        }
+      },
+      "money": {
+        "range": "day",
+        "from": "2027-11-16T23:00:00Z",
+        "to": "2027-11-17T23:00:00Z",
+        "savedEur": 11.66,
+        "savedSpeicherEur": 12.5,
+        "savedSteuerungEur": -0.84,
+        "speicherDeltaKwh": 2.4,
+        "speicherWertEur": 0.52,
+        "speicherWertCtKwh": 21.6,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 62.0,
+        "vergleichSocEndKwh": 120.0,
+        "speicherVorsprungKwh": 2.4,
+        "speicherVorsprungEur": 0.52,
+        "steuerungVortagEur": 6.18,
+        "steuerungMonatBisherEur": -3.12,
+        "steuerungPlannedEur": 0.62,
+        "steuerungGruende": [
+          "netzladen_mispel"
+        ],
+        "mispelNetzstromverbrauchSpeicherKwh": 312.0,
+        "mispelNetzeinspeisungSpeicherKwh": 214.6,
+        "mispelMengenQuelle": "geraet"
+      },
+      "erwartet": {
+        "wert": "− 0,84 €",
+        "chip": null,
+        "grundZeile": "Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift November + 253,71 €",
+        "grundErster": "Netzladen nach MiSpeL: 312,0 kWh gespeichert, 214,6 kWh ins Netz · Gutschrift November + 253,71 €",
+        "grundKurz": "Netzladen nach MiSpeL",
+        "anker": {
+          "label": "1.–17. November · Stromrechnung",
+          "wert": "− 3,12 €"
+        },
+        "bestand": "2,4 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 0,52 €",
+        "bestandBadge": "Kein Abzug",
+        "satzMit": "ohne MiSpeL-Gutschrift"
+      }
+    },
+    {
+      "name": "MiSpeL 17.11.2027 Gegenfall: Netzladen nur für den Eigenverbrauch - wie heute",
+      "vertrag": "Gegenfall: Netzladen nur für den Eigenverbrauch (Σ (2)¼ = 0) - wie heute",
+      "now": "2027-11-18T09:00:00+01:00",
+      "money": {
+        "range": "day",
+        "from": "2027-11-16T23:00:00Z",
+        "to": "2027-11-17T23:00:00Z",
+        "savedEur": 11.66,
+        "savedSpeicherEur": 12.5,
+        "savedSteuerungEur": -0.84,
+        "speicherDeltaKwh": 2.4,
+        "speicherWertEur": 0.52,
+        "speicherWertCtKwh": 21.6,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 62.0,
+        "vergleichSocEndKwh": 120.0,
+        "speicherVorsprungKwh": 2.4,
+        "speicherVorsprungEur": 0.52,
+        "steuerungVortagEur": 6.18,
+        "steuerungMonatBisherEur": -3.12,
+        "steuerungPlannedEur": 0.62,
+        "steuerungGruende": [
+          "anders_geladen"
+        ],
+        "mispelNetzstromverbrauchSpeicherKwh": 312.0,
+        "mispelNetzeinspeisungSpeicherKwh": 0,
+        "mispelMengenQuelle": "geraet"
+      },
+      "erwartet": {
+        "wert": "− 0,84 €",
+        "chip": "unter Null",
+        "grundZeile": "anders geladen und entladen",
+        "grundErster": "anders geladen und entladen",
+        "grundKurz": "anders geladen und entladen",
+        "anker": {
+          "label": "1.–17. November",
+          "wert": "− 3,12 €"
+        },
+        "bestand": "2,4 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 0,52 €",
+        "bestandBadge": "Kein Abzug",
+        "satzOhne": "MiSpeL"
+      }
     }
   ]
 }

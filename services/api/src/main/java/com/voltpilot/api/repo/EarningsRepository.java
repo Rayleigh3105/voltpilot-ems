@@ -231,15 +231,42 @@ public class EarningsRepository {
             "s.plant_kind = 'direktvermarktung' AND s.anzulegender_wert_ct_kwh IS NOT NULL AND fw.mispel";
 
     /**
+     * (2)¼ = MIN[Z1NE¼; Z2E¼] - die zeitgleiche Netzeinspeisung aus dem
+     * Stromspeicher (Anlage 1 S. 34), hier aus den Gerätewerten der
+     * Viertelstunde: Netzeinspeisung und Speicher-Entladung. Unbekannte
+     * Entladung zählt wie bisher nicht als Speichereinspeisung.
+     */
+    private static final String NETZEINSPEISUNG_SPEICHER_KWH =
+            "LEAST(r.grid_export_kwh, COALESCE(r.battery_discharge_kwh, 0))";
+
+    /**
+     * Die Marktprämie, die die Speichereinspeisung (2)¼ an einem Tag der
+     * ABGRENZUNGSOPTION nicht bekommt (MiSpeL MP-18c, BK-W5): Anlage 1 fördert
+     * je Viertelstunde nur (25)¼ = (24)¼ · (23)¼ mit (23)¼ = Z1NE¼ − (2)¼, die
+     * Einspeisung direkt aus der PV (A1 S. 38); was der Speicher einspeist,
+     * kommt erst im Monat über (31) zurück (A1 S. 39), die umlagebelastete
+     * Menge (16) nie. Abgezogen von der vollen Prämie auf Z1NE¼, damit jeder
+     * andere Tag (und die Pauschaloption, deren Förderung Anlage 2 je
+     * Kalenderjahr pauschal begrenzt) bitgleich bleibt: 0 ohne Entladung.
+     */
+    private static final String MISPEL_SPEICHER_PRAEMIE_EUR =
+            "(CASE WHEN fw.abgrenzung AND " + PREMIUM_ELIGIBLE
+                    + " THEN " + NETZEINSPEISUNG_SPEICHER_KWH + " * " + PREMIUM_RATE_CT
+                    + " / 100 ELSE 0 END)";
+
+    /**
      * Premium EUR earned by the slot's METERED export (the actual side) - the
      * {@code marktpraemieEur} provenance sum. The premium inside the money
      * terms themselves now travels IN {@link #exportValueEurKwh} (the same
      * eligibility + rate, so the two can never disagree); this constant only
-     * reports the contained premium separately.
+     * reports the contained premium separately - on a day of the
+     * Abgrenzungsoption without the premium of (2)¼
+     * ({@link #MISPEL_SPEICHER_PRAEMIE_EUR}).
      */
     private static final String ACTUAL_PREMIUM_EUR =
             "(CASE WHEN " + PREMIUM_ELIGIBLE
-                    + " THEN r.grid_export_kwh * " + PREMIUM_RATE_CT + " / 100 ELSE 0 END)";
+                    + " THEN r.grid_export_kwh * " + PREMIUM_RATE_CT + " / 100 ELSE 0 END"
+                    + " - " + MISPEL_SPEICHER_PRAEMIE_EUR + ")";
 
     /**
      * Self-consumed energy of a slot: the part of the load NOT drawn from the
@@ -376,7 +403,12 @@ public class EarningsRepository {
         this.exportValueEurKwh = "(" + SlotEconomics.exportValueCtSql(
                 "p.price_eur_mwh", "r.bucket", EegRates.fromJson(optimizer.eegRatesJson()))
                 + " / 100.0)";
-        this.einspeiseErloesEur = "(r.grid_export_kwh * " + exportValueEurKwh + ")";
+        // An einem Tag der Abgrenzungsoption trägt die Speichereinspeisung
+        // (2)¼ keine Prämie (MISPEL_SPEICHER_PRAEMIE_EUR, A1 S. 38); dieselbe
+        // Korrektur steht in actualEur und savedEur, damit die Identitäten
+        // stromkosten − einspeise == actual und saved == baseline − actual halten.
+        this.einspeiseErloesEur = "(r.grid_export_kwh * " + exportValueEurKwh
+                + " - " + MISPEL_SPEICHER_PRAEMIE_EUR + ")";
         this.stromkostenEur = "(r.grid_import_kwh * " + importPriceEurKwh + ")";
         this.eigenverbrauchsWertEur =
                 eigenverbrauchsWertEurSql(optimizer.defaultSupplyComponents());
@@ -387,11 +419,13 @@ public class EarningsRepository {
         this.baselineEur = "(GREATEST(r.load_kwh - r.pv_kwh, 0) * " + importPriceEurKwh
                 + " - GREATEST(r.pv_kwh - r.load_kwh, 0) * " + exportValueEurKwh + ")";
         this.actualEur = "(r.grid_import_kwh * " + importPriceEurKwh
-                + " - r.grid_export_kwh * " + exportValueEurKwh + ")";
+                + " - r.grid_export_kwh * " + exportValueEurKwh
+                + " + " + MISPEL_SPEICHER_PRAEMIE_EUR + ")";
         this.savedEur = "((GREATEST(r.load_kwh - r.pv_kwh, 0) - r.grid_import_kwh) * "
                 + importPriceEurKwh
                 + " - (GREATEST(r.pv_kwh - r.load_kwh, 0) - r.grid_export_kwh)"
-                + "   * " + exportValueEurKwh + ")";
+                + "   * " + exportValueEurKwh
+                + " - " + MISPEL_SPEICHER_PRAEMIE_EUR + ")";
         this.tarifPricedExpr = SlotEconomics.tarifPricedSql(optimizer.defaultSupplyComponents());
         this.exportVerguetungPricedExpr = SlotEconomics.exportVerguetungPricedSql();
     }
@@ -786,6 +820,75 @@ public class EarningsRepository {
      */
     public Map<UUID, ArbitrageSplit> arbitrageSplit(Instant from, Instant to) {
         return arbitrageSplit(from, to, null);
+    }
+
+    /**
+     * Die MiSpeL-Mengen eines Berliner Tages (MiSpeL MP-18c, Bedienkonzept
+     * BK-W5 = A): Σ (1)¼ und Σ (2)¼ über die MiSpeL-Viertelstunden des Tages,
+     * je Viertelstunde als MIN wie die erste Stufe des Rechenwerks
+     * ({@code MispelAbgrenzungRechenwerk#viertelstunde}, Anlage 1 S. 33–34) -
+     * hier aus den Gerätewerten, aus denen auch die Stromrechnung des Tages
+     * rechnet (Z1NB¼ = Netzbezug, Z2V¼ = Speicher-Ladung, Z1NE¼ =
+     * Netzeinspeisung, Z2E¼ = Speicher-Entladung), darum immer
+     * {@link #GERAET}. Die amtlichen Mengen mit den Werten des
+     * Messstellenbetreibers rechnet der Monatslauf.
+     *
+     * @param netzstromverbrauchSpeicherKwh Σ (1)¼ = MIN[Z1NB¼; Z2V¼],
+     *     zeitgleicher Netzstromverbrauch im Stromspeicher
+     * @param netzeinspeisungSpeicherKwh Σ (2)¼ = MIN[Z1NE¼; Z2E¼],
+     *     zeitgleiche Netzeinspeisung aus dem Stromspeicher
+     * @param quelle Herkunft der Viertelstundenwerte, {@link #GERAET}
+     */
+    public record MispelTagesmengen(
+            BigDecimal netzstromverbrauchSpeicherKwh,
+            BigDecimal netzeinspeisungSpeicherKwh,
+            String quelle) {
+
+        /** Gerätewerte der Anlage, nicht die Werte des Messstellenbetreibers. */
+        public static final String GERAET = "geraet";
+    }
+
+    /**
+     * Die {@link MispelTagesmengen} je Anlage über {@code [from, to)} -
+     * flottenweit. Nur Anlagen mit mindestens einer MiSpeL-Viertelstunde, in
+     * der alle vier Werte bekannt sind, stehen darin: kein MiSpeL-Tag oder
+     * keine Werte = kein Eintrag (unbekannt ist keine Null).
+     */
+    public Map<UUID, MispelTagesmengen> mispelTagesmengen(Instant from, Instant to) {
+        return mispelTagesmengen(from, to, null);
+    }
+
+    /** Die {@link MispelTagesmengen} EINER Anlage, oder null. */
+    public MispelTagesmengen mispelTagesmengenForSite(UUID site, Instant from, Instant to) {
+        return mispelTagesmengen(from, to, site).get(site);
+    }
+
+    private Map<UUID, MispelTagesmengen> mispelTagesmengen(Instant from, Instant to, UUID site) {
+        Map<UUID, MispelTagesmengen> result = new HashMap<>();
+        Timestamp f = Timestamp.from(from);
+        Timestamp t = Timestamp.from(to);
+        jdbc.query(
+                "SELECT r.site_id,"
+                        + " round(CAST(sum(LEAST(r.grid_import_kwh, r.battery_charge_kwh)) AS numeric), 3)"
+                        + "   AS netzstrom_in_speicher,"
+                        + " round(CAST(sum(LEAST(r.grid_export_kwh, r.battery_discharge_kwh)) AS numeric), 3)"
+                        + "   AS speicher_ins_netz "
+                        + "FROM telemetry_rollup_15m r "
+                        + "JOIN site s ON s.id = r.site_id "
+                        + SlotEconomics.marktwertbasisJoinSql("s.id", "r.bucket")
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
+                        + " AND fw.mispel"
+                        + " AND r.grid_import_kwh IS NOT NULL AND r.grid_export_kwh IS NOT NULL"
+                        + " AND r.battery_charge_kwh IS NOT NULL AND r.battery_discharge_kwh IS NOT NULL "
+                        + "GROUP BY r.site_id",
+                rs -> {
+                    result.put(rs.getObject("site_id", UUID.class), new MispelTagesmengen(
+                            rs.getBigDecimal("netzstrom_in_speicher"),
+                            rs.getBigDecimal("speicher_ins_netz"),
+                            MispelTagesmengen.GERAET));
+                },
+                site == null ? new Object[] {f, t} : new Object[] {f, t, site});
+        return result;
     }
 
     /** The split of ONE site (P3) - null when that site grid-charged nothing. */

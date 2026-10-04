@@ -7879,7 +7879,12 @@ class PortalApiTest {
                 assertThat(zeile).containsEntry("speicherVorsprungKwh", null)
                         .containsEntry("steuerungVortagEur", null)
                         .containsEntry("steuerungPlannedEur", null)
-                        .containsEntry("steuerungGruende", List.of());
+                        .containsEntry("steuerungGruende", List.of())
+                        // MiSpeL MP-18c (Bestandsschutz): ohne MiSpeL-Förderweg
+                        // keine Tagessummen (1)¼/(2)¼ - die Fläche bleibt wie bisher.
+                        .containsEntry("mispelNetzstromverbrauchSpeicherKwh", null)
+                        .containsEntry("mispelNetzeinspeisungSpeicherKwh", null)
+                        .containsEntry("mispelMengenQuelle", null);
                 assertThat(num(zeile, "steuerungMonatBisherEur")).isCloseTo(0.075, eps);
             }
             assertThat(anlage).containsEntry("speicherVorsprungEur", null);
@@ -7889,6 +7894,7 @@ class PortalApiTest {
                     new HttpEntity<>(bearer(demo)),
                     new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
             assertThat(monat).containsEntry("steuerungGruende", null)
+                    .containsEntry("mispelNetzstromverbrauchSpeicherKwh", null)
                     .containsEntry("vergleichSocStartKwh", null)
                     .containsEntry("steuerungMonatBisherEur", null);
             assertThat(num(monat, "savedSteuerungEur"))

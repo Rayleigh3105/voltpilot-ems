@@ -10,6 +10,7 @@
  * ⚠ Die Farben sind die der Festlegung (A1 S. 18, Abschn. 2.3) und stehen nie allein — immer mit Wort und Formelnummer.
  */
 import { NBSP, eurAmount } from './format';
+import type { MispelGutschrift } from './speicherAussage';
 
 export type MispelFarbeId = 'gruen' | 'gelb' | 'rot' | 'grau';
 
@@ -212,4 +213,26 @@ export function tagText(iso: string): string {
 /** Ob die Seite den Arbitrage-Ausweis zeigen darf: für MiSpeL-Anlagen zählt nur die amtliche Formel (W5). */
 export function arbitrageAusweisErlaubt(mispel: Pick<MispelMonat, 'mispel'> | Pick<MispelJahr, 'mispel'> | null): boolean {
   return !mispel?.mispel;
+}
+
+/**
+ * MiSpeL MP-18c (BK-W5 A): die Gutschrift (20) des Monats für die Steuerungs-Karte — der Betrag erst, wenn beide Teile
+ * (vermiedene Umlagen und vermiedenes Netzentgelt) bestimmt sind; sonst „offen“. Ohne Lauf (kein `wert`) und an
+ * Anlagen ohne MiSpeL gibt es nichts hereinzureichen.
+ */
+export function mispelGutschrift(m: MispelMonat | null): MispelGutschrift | null {
+  if (!m?.mispel || !m.wert) return null;
+  const { vermiedeneUmlagen: u, vermiedenesNetzentgelt: n, summeOhneMarktpraemieEur: summe } = m.wert;
+  const [j, mm] = m.monat.split('-').map(Number);
+  const monat = new Date(j, mm - 1, 15).toLocaleDateString('de-DE', { month: 'long' });
+  return {
+    monat,
+    eur: u.stand === 'bestimmt' && n.stand === 'bestimmt' && summe != null ? summe : null,
+    mengeKwh: u.mengeKwh,
+  };
+}
+
+/** Händler-Modus (W5 = A): Förderweg „ungeförderte Direktvermarktung“ — dort ist der Netzlade-Anteil „geschätzt“. */
+export function haendlerModus(m: Pick<MispelMonat, 'foerderweg'> | null): boolean {
+  return m?.foerderweg === 'ungefoerdert';
 }

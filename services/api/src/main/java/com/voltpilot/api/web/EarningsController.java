@@ -143,6 +143,11 @@ public class EarningsController {
         } else {
             speicherSplits.putAll(earnings.savedSpeicher(from, to));
         }
+        // MiSpeL MP-18c (BK-W5 = A): die Tagessummen (1)¼/(2)¼ je Anlage, nur
+        // am Tag und nur an einem MiSpeL-Tag (sonst fehlt die Anlage).
+        Map<UUID, EarningsRepository.MispelTagesmengen> mispelMengen = tag
+                ? earnings.mispelTagesmengen(from, to)
+                : Map.of();
         // Der Planwert (M2) kommt aus demselben Walk wie die Einordnung.
         Map<UUID, BigDecimal> geplant = new HashMap<>();
         einordnungen.forEach((id, e) -> {
@@ -246,6 +251,7 @@ public class EarningsController {
                     ? einordnungen.get(site.id())
                     : null;
             BigDecimal siteGeplant = einordnung != null ? geplant.get(site.id()) : null;
+            EarningsRepository.MispelTagesmengen mispel = mispelMengen.get(site.id());
             // Forward expected Marktwert Solar (range-independent); absent when
             // the site has no forward PV forecast or price coverage.
             EarningsRepository.ExpectedMarketValue exp = expected.get(site.id());
@@ -334,7 +340,10 @@ public class EarningsController {
                     einordnung == null ? null : einordnung.steuerungVortagEur(),
                     einordnung == null ? null : einordnung.steuerungMonatBisherEur(),
                     siteGeplant,
-                    SteuerungGrund.fuer(savedSteuerung, einordnung, siteGeplant)));
+                    SteuerungGrund.fuer(savedSteuerung, einordnung, siteGeplant, mispel),
+                    mispel == null ? null : mispel.netzstromverbrauchSpeicherKwh(),
+                    mispel == null ? null : mispel.netzeinspeisungSpeicherKwh(),
+                    mispel == null ? null : mispel.quelle()));
         }
 
         // "Gesamt" honestly starts at the first covered slot, not at the epoch.

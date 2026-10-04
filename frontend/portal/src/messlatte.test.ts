@@ -117,6 +117,31 @@ describe('Messlatte · keine Kundenfläche zeigt die Zahl gegen „ohne Speicher
     expect(text).not.toContain('Speicher gesamt');
   });
 
+  it('MiSpeL MP-18c: die Sätze an einem Tag mit Netzladen nach MiSpeL messen gegen dieselbe Messlatte', () => {
+    const tag = {
+      ...MONEY,
+      range: 'day',
+      from: '2027-11-16T23:00:00Z',
+      to: '2027-11-17T23:00:00Z',
+      savedSteuerungEur: -0.84,
+      savedSpeicherEur: GIFT_SAVED + 0.84,
+      steuerungGruende: ['netzladen_mispel'],
+      mispelNetzstromverbrauchSpeicherKwh: 312,
+      mispelNetzeinspeisungSpeicherKwh: 214.6,
+      mispelMengenQuelle: 'geraet',
+    } as unknown as SiteEarnings;
+    const a = speicherAussage(tag as unknown as SpeicherEingabe, {
+      now: new Date('2027-11-18T09:00:00+01:00'),
+      steuerungGeplantEur: 0.62,
+    });
+    const zeilen = speicherSchritte({ money: tag, steuerungEur: -0.84, steuerungGeplantEur: 0.62 });
+    const text = textOf([a, zeilen]);
+    expect(a?.netzladenMispel).not.toBeNull();
+    expect(text).not.toContain(GIFT_TEXT);
+    expect(text).not.toMatch(/ohne Speicher\b/);
+    expect(text).toContain('ohne smarte Steuerung');
+  });
+
   it('savedProvenance() nennt die neue Messlatte', () => {
     const satz = savedProvenance(MONEY as unknown as EarningsSite);
     expect(satz).not.toContain(GIFT_TEXT);

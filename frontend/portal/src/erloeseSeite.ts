@@ -28,6 +28,7 @@ import { eur, eurAmount, fmtNum, NBSP } from './format';
 import { durchschnittCt, erloesBegriff } from './erloesEbenen';
 import { rundeKaufmaennisch, sekundaerFuer, type SekundaerZiel } from './erloesZeilen';
 import { billingPeriodLabel, LEER_TEXT, LEER_TEXT_FALLBACK } from './erloesKomposition';
+import { MISPEL_NETZLADEN } from './glossar';
 import { peakCounterfactualTip } from './moduleSurface';
 import type { ErloesVergleich } from './vergleichLaufend';
 import { MESSLATTE_DATIV, MESSLATTE_KURZ, type SpeicherAussage } from './speicherAussage';
@@ -398,9 +399,13 @@ export function mehrwertBand(speicher: SpeicherAussage | null, range: HistoryRan
     ton: speicher.anzeigeTon,
     // Kein nacktes Minus (Konzept k1 E1): das Kurzwort des Grundes steht
     // schon in der Kachel; Zahl und Anker trägt die Steuerungs-Karte.
-    unter: [speicher.zwischenstand ? `bisher ${richtung}` : richtung, speicher.grundKurz]
-      .filter(Boolean)
-      .join(' · '),
+    // MiSpeL MP-18c (BK-W5 A): an einem Tag mit Netzladen nach MiSpeL sagt die
+    // Kachel, was die Zahl ist — die Stromrechnung, die Gutschrift folgt im Monat.
+    unter: speicher.netzladenMispel
+      ? `Stromrechnung · ${MISPEL_NETZLADEN}, Gutschrift im Monat`
+      : [speicher.zwischenstand ? `bisher ${richtung}` : richtung, speicher.grundKurz]
+          .filter(Boolean)
+          .join(' · '),
     info: [
       // Der Satz zur Zahl nur, wo er mehr sagt als Betrag + Unterzeile
       // (unter Null: warum ein Zwischenstand sinken kann).

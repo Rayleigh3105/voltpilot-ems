@@ -65,6 +65,12 @@ export function SpeicherKarte({
   children,
 }: SpeicherKarteProps) {
   const nachtrag = aussage.nachtragLink && nachtragHref;
+  // MiSpeL MP-18c (BK-W5 A): die Langform (eigene Karte) nennt die Zahl, was
+  // sie ist — „Auf der Stromrechnung“ — und zeigt darunter die Mengen bzw. die
+  // Gutschrift des Monats; die Kurzform (Cockpit) trägt nur die Zeile.
+  const lang = variant === 'karte';
+  const netzladen = lang ? aussage.netzladenMispel : null;
+  const monat = lang ? aussage.mispelMonat : null;
   return (
     <section
       className={
@@ -81,7 +87,9 @@ export function SpeicherKarte({
           der GRUND darunter; die Gesamtzahl ist dafür ausdrücklich kein
           Ersatz (Captain 04.09.2026). */}
       <p className="vp-c-sp-zeile" title={aussage.satz ?? undefined}>
-        <span className="vp-c-sp-label">{aussage.label}</span>
+        <span className="vp-c-sp-label">
+          {netzladen ? netzladen.labelLang : monat ? 'Auf der Stromrechnung' : aussage.label}
+        </span>
         <span className="vp-c-sp-wert">{aussage.wert}</span>
         {aussage.hinweis && (
           <span className="vp-c-sp-sek">
@@ -90,8 +98,48 @@ export function SpeicherKarte({
         )}
         {/* Kein nacktes Minus (k1 E1): der Grund des Servers in Worten mit
             Zahl — Sekundärtext, kein Chip. Ohne Grund steht nur der Chip. */}
-        {aussage.grundZeile && <span className="vp-c-sp-sek vp-c-sp-grund">{aussage.grundZeile}</span>}
+        {netzladen ? (
+          <span className="vp-c-sp-sek vp-c-sp-grund">{netzladen.sekLang}</span>
+        ) : monat ? (
+          <span className="vp-c-sp-sek">{monat.stromrechnungSek}</span>
+        ) : (
+          aussage.grundZeile && <span className="vp-c-sp-sek vp-c-sp-grund">{aussage.grundZeile}</span>
+        )}
       </p>
+
+      {/* Netzladen nach MiSpeL (BK-W5 A): die Viertelstunden-Mengen des Tages
+          und die Gutschrift des Monats — „offen“ bis zum Monatslauf. */}
+      {netzladen && (
+        <div className="vp-c-sp-mispel" aria-label={netzladen.titel}>
+          <p className="vp-c-sp-mispel-titel">{netzladen.titel}</p>
+          {netzladen.zeilen.map((z) => (
+            <p className="vp-c-sp-zeile" key={z.label}>
+              <span className="vp-c-sp-label">{z.label}</span>
+              <span className="vp-c-sp-wert">{z.wert}</span>
+              <span className="vp-c-sp-sek">{z.sek}</span>
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Der Monat (BK-W5 A): die amtliche Gutschrift (20) neben der
+          Stromrechnung, die Summe erst, wenn beide bestimmt sind. */}
+      {monat && (
+        <>
+          <p className="vp-c-sp-zeile">
+            <span className="vp-c-sp-label">{monat.gutschriftLabel}</span>
+            <span className="vp-c-sp-wert">{monat.gutschriftWert}</span>
+            <span className="vp-c-sp-sek">{monat.gutschriftSek}</span>
+          </p>
+          {monat.zusammen && (
+            <p className="vp-c-sp-zeile vp-c-sp-summe">
+              <span className="vp-c-sp-label">Zusammen</span>
+              <span className="vp-c-sp-wert">{monat.zusammen}</span>
+              <span className="vp-c-sp-sek">{monat.zusammenSek}</span>
+            </p>
+          )}
+        </>
+      )}
 
       {/* Der Anker des größeren Zeitraums (k1 E4) — dieselbe Zahl wie der Reiter. */}
       {aussage.anker && (

@@ -382,9 +382,11 @@ function kachelEinordnung(beitragend: EarningsSite[], to: string | null, now: Da
       ? summe(anker.map((a) => a!.eur))
       : null;
   const monatName = now.toLocaleDateString('de-DE', { month: 'long', timeZone: 'Europe/Berlin' });
+  // MiSpeL MP-18c (BK-W5 A): an einem Tag mit Netzladen nach MiSpeL ist auch der Monat die Stromrechnung.
+  const stromrechnung = aussagen.some((a) => a?.netzladenMispel) ? ' · Stromrechnung' : '';
   const teile = [
     grund,
-    monat == null ? null : `${monatName} ${geldWort(monat)}`,
+    monat == null ? null : `${monatName}${stromrechnung} ${geldWort(monat)}`,
   ].filter((t): t is string => !!t);
   return teile.length > 0 ? teile.join(' · ') : null;
 }

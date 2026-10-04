@@ -37,6 +37,8 @@ class SteuerungGrundTest {
         assertThat(rangfolge).containsExactlyElementsOf(SteuerungGrund.RANGFOLGE);
         assertThat(g.path("hoechstens").asInt()).isEqualTo(SteuerungGrund.HOECHSTENS);
         JsonNode s = g.path("schwellen");
+        assertThat(s.path("netzladen_mispel_ab_kwh").decimalValue())
+                .isEqualByComparingTo(SteuerungGrund.NETZLADEN_MISPEL_AB_KWH);
         assertThat(s.path("gestern_verkauft_ab_kwh").decimalValue())
                 .isEqualByComparingTo(SteuerungGrund.GESTERN_VERKAUFT_AB_KWH);
         assertThat(s.path("haelt_energie_ab_kwh").decimalValue())
@@ -60,7 +62,8 @@ class SteuerungGrundTest {
             SteuerungGrund.Eingaben eingaben = new SteuerungGrund.Eingaben(
                     dec(e, "steuerungEur"), dec(e, "vergleichSocStartKwh"),
                     dec(e, "echtSocStartKwh"), dec(e, "speicherVorsprungKwh"),
-                    dec(e, "steuerungGeplantEur"), dec(e, "pvKwh"), dec(e, "loadKwh"));
+                    dec(e, "steuerungGeplantEur"), dec(e, "pvKwh"), dec(e, "loadKwh"),
+                    dec(e, "netzstromverbrauchSpeicherKwh"), dec(e, "netzeinspeisungSpeicherKwh"));
             List<String> erwartet = new ArrayList<>();
             fall.path("gruende").forEach(n -> erwartet.add(n.asText()));
             assertThat(SteuerungGrund.of(eingaben))
@@ -102,6 +105,39 @@ class SteuerungGrundTest {
                 .containsExactly(SteuerungGrund.ANDERS_GELADEN);
         assertThat(SteuerungGrund.of(new SteuerungGrund.Eingaben(BigDecimal.ZERO,
                 null, null, null, null, null, null))).isEmpty();
+    }
+
+    /**
+     * MiSpeL MP-18c (BK-W5 = A): der Beispieltag des Bedienkonzepts - Kühlhaus
+     * Seebach, Mittwoch 17.11.2027, − 0,84 € auf der Stromrechnung - trug heute
+     * den Rückfall {@code anders_geladen}; mit Netzladen ins Netz an seinem
+     * MiSpeL-Tag trägt er {@code netzladen_mispel}. Netzladen nur für den
+     * Eigenverbrauch (Σ (2)¼ = 0) bleibt wie heute.
+     */
+    @Test
+    void netzladenNachMispelStehtVornUndErsetztDenRueckfall() {
+        BigDecimal steuerung = new BigDecimal("-0.84");
+        EarningsRepository.Tageseinordnung seebach = new EarningsRepository.Tageseinordnung(
+                null, steuerung, new BigDecimal("6.18"), new BigDecimal("-3.12"),
+                new BigDecimal("62.0"), null, new BigDecimal("58.0"), null,
+                new BigDecimal("2.4"), new BigDecimal("640"), new BigDecimal("880"),
+                new BigDecimal("0.62"));
+        BigDecimal plan = new BigDecimal("0.62");
+        assertThat(SteuerungGrund.fuer(steuerung, seebach, plan))
+                .containsExactly(SteuerungGrund.ANDERS_GELADEN);
+        assertThat(SteuerungGrund.fuer(steuerung, seebach, plan,
+                new EarningsRepository.MispelTagesmengen(new BigDecimal("312.0"),
+                        new BigDecimal("214.6"), EarningsRepository.MispelTagesmengen.GERAET)))
+                .containsExactly(SteuerungGrund.NETZLADEN_MISPEL);
+        assertThat(SteuerungGrund.fuer(steuerung, seebach, plan,
+                new EarningsRepository.MispelTagesmengen(new BigDecimal("312.0"),
+                        BigDecimal.ZERO, EarningsRepository.MispelTagesmengen.GERAET)))
+                .containsExactly(SteuerungGrund.ANDERS_GELADEN);
+        // so_geplant spricht an einem solchen Tag nicht: der Planwert kennt die Gutschrift nicht.
+        assertThat(SteuerungGrund.fuer(steuerung, seebach, new BigDecimal("-2"),
+                new EarningsRepository.MispelTagesmengen(new BigDecimal("312.0"),
+                        new BigDecimal("214.6"), EarningsRepository.MispelTagesmengen.GERAET)))
+                .containsExactly(SteuerungGrund.NETZLADEN_MISPEL);
     }
 
     @Test

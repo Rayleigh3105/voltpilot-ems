@@ -129,7 +129,8 @@ public final class SlotEconomics {
     /**
      * Die Joins der Marktwertbasis für einen Viertelstunden-Abfrage (Twin von
      * {@link Marktwertbasis}): {@code fw.mispel} = der Förderweg des Berliner Tages ist eine
-     * MiSpeL-Option (NULL = keine Fassung = Bestand), {@code jw} = Jahresmarktwert Solar des
+     * MiSpeL-Option (NULL = keine Fassung = Bestand), {@code fw.abgrenzung} = sie ist die
+     * Abgrenzungsoption (Anlage 1; MP-18c: Prämie dort nur auf (23)¼), {@code jw} = Jahresmarktwert Solar des
      * Berliner Jahres ({@code annual_market_value}), {@code aw.aw_groesser_null} = Formel (24)¼ aus
      * der ÜNB-Liste ({@code eeg_aw_zeit}, Stundenzeilen gelten für ihre vier Viertelstunden, die
      * feinere Auflösung gewinnt). {@code site_foerderweg} ist mandanteneigen und RLS-geschützt.
@@ -137,7 +138,8 @@ public final class SlotEconomics {
     public static String marktwertbasisJoinSql(String siteIdExpr, String slotStartExpr) {
         String tag = "(" + slotStartExpr + " AT TIME ZONE 'Europe/Berlin')::date";
         return "LEFT JOIN LATERAL (SELECT f.foerderweg IN ('marktpraemie_abgrenzung', 'marktpraemie_pauschal')"
-                + " AS mispel, f.aw_regel FROM site_foerderweg f WHERE f.site_id = " + siteIdExpr
+                + " AS mispel, f.foerderweg = 'marktpraemie_abgrenzung' AS abgrenzung, f.aw_regel"
+                + " FROM site_foerderweg f WHERE f.site_id = " + siteIdExpr
                 + " AND f.aufgehoben_am IS NULL AND f.gueltig_ab <= " + tag
                 + " ORDER BY f.gueltig_ab DESC LIMIT 1) fw ON TRUE "
                 + "LEFT JOIN annual_market_value jw ON jw.technology = 'solar'"

@@ -36,6 +36,16 @@ smart Steuerung."** Sie ERSETZT die Entscheide E2/E8 vom 02.09.2026 („BEIDES",
   WEG — nie die alte Zahl unter dem neuen Wort. Seit M2 (29.09.2026) rechnet die api den Planwert
   gegen denselben durchlaufenden Vergleichsspeicher wie die Messung; seit A1 trägt jedes Minus
   mindestens den Rückfall-Grund `anders_geladen` (Worte in `speicherAussage.ts`/`erloesEbenen.ts`).
+- **⚠ NETZLADEN NACH MISPEL** (MiSpeL MP-18c, BK-W5 = A): an einem MiSpeL-Tag mit Σ (1)¼ und
+  Σ (2)¼ je ≥ 1 kWh (`mispelNetzstromverbrauchSpeicherKwh`/`mispelNetzeinspeisungSpeicherKwh` der
+  Tagesantwort, Gerätewerte) heißt die Zahl „auf der Stromrechnung“, der Server-Grund
+  `netzladen_mispel` steht vorn (nie `so_geplant` oder der Rückfall), Schritt 4 nennt die Mengen,
+  die Gutschrift (20) des Monats kommt aus dem Monatslauf (`mispelGutschrift`, sonst „offen“), der
+  Monat zeigt „Zusammen“ erst bestimmt. Dieselbe Ableitung speist Cockpit, Erlöse, Fahrplan und
+  Portfolio (die neue Steuerung zeigt die Zahl nicht mehr). Ohne die Mengen bleibt jede Ausgabe
+  gleich (`speicherAussage.mispel.test.ts`, Bühne `e2e/mispel-w5.tsx`). Im Händler-Modus heißt der
+  Netzlade-Anteil „geschätzt“. Server: Marktprämie an Tagen der Abgrenzungsoption nur auf (23)¼
+  (`EarningsRepository.MISPEL_SPEICHER_PRAEMIE_EUR`, A1 S. 38).
 - **⚠ Der IDENTITÄTS-WÄCHTER ist fail-soft, aber strenger als vorher:** ergibt
   `savedSpeicherEur + savedSteuerungEur` nicht `savedEur` (Toleranz 0,005 €), wird GAR KEINE
   Steuerungs-Zahl behauptet (`console.warn`) — eine Zahl, der die eigene Prüfsumme widerspricht,
