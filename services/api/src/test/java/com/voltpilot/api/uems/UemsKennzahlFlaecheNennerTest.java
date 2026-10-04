@@ -231,7 +231,8 @@ class UemsKennzahlFlaecheNennerTest {
         monat(w, "MS-10", vorletzter, "36900", true);
         monat(w, "MS-10", letzter, "36900", true);
         anlegen(w, "KZ-0005", w.halle2());
-        lauf.lauf(heute.withDayOfMonth(10).atStartOfDay(ZONE).toInstant());
+        Instant ersterLauf = heute.withDayOfMonth(10).atStartOfDay(ZONE).toInstant();
+        lauf.lauf(ersterLauf);
         assertThat(vier(zeile(w, "KZ-0005", "monat", vorletzter).get("wert"))).isEqualTo("11.9032");
         assertThat(vier(zeile(w, "KZ-0005", "monat", letzter).get("wert"))).isEqualTo("11.9032");
 
@@ -244,7 +245,9 @@ class UemsKennzahlFlaecheNennerTest {
         assertThat(zeile(w, "KZ-0005", "monat", letzter).get("version")).as("vor dem Takt ändert sich keine Kennzahl")
                 .isEqualTo(1);
 
-        Instant takt = Instant.now();
+        // Der Takt kommt NACH dem Lauf vom 10.: an den Tagen 1 bis 9 eines Monats liegt der noch vor der echten Uhr,
+        // und die Kaskade schreibt nie vor ihrer neuesten Zeile (KennzahlLauf) — Gesamtlauf 04.10.2026.
+        Instant takt = Instant.now().isAfter(ersterLauf) ? Instant.now() : ersterLauf.plus(Duration.ofHours(1));
         kaskade.lauf(takt);
 
         Map<String, Object> neu = zeile(w, "KZ-0005", "monat", letzter);
