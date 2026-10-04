@@ -46,16 +46,16 @@ func runPairingLoop(seconds int, dropMispaired bool) []float64 {
 	const (
 		houseKw      = -12.0 // negative = the site exports while nothing charges
 		batteryKw    = 10.0
-		meterLagSecs = 2 // the station's MeterValues cadence
+		meterLagSecs = 2  // the station's MeterValues cadence
 		tickSecs     = 20 // ocppTickInterval
 	)
 	set := pairingSite()
 	tr := NewBudgetTracker()
 	start := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	simDraw := 0.0                 // what the station is REALLY drawing
+	simDraw := 0.0                    // what the station is REALLY drawing
 	reported := make(map[int]float64) // second -> what the station had reported by then
-	lastChange := -1                // second of the last allocation CHANGE
+	lastChange := -1                  // second of the last allocation CHANGE
 	var prev *Plan
 	var out []float64
 
@@ -72,7 +72,7 @@ func runPairingLoop(seconds int, dropMispaired bool) []float64 {
 		if settled || !dropMispaired {
 			tr.ObserveM(now, Measurement{
 				GridKw: houseKw + simDraw, ChargingKw: charging, Complete: true,
-				HaveBattery: true, BatteryChargeKw: batteryKw,
+				HaveBattery: true, BatteryKw: batteryKw,
 			})
 		}
 
