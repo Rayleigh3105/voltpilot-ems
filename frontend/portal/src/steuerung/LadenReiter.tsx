@@ -156,7 +156,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
   const ticks: number[] = [];
   for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
   return (
-    <section className="card lp-card" aria-label={g.name}>
+    <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
       <div className="lp-h">
         <span className={`ico${an ? ' on' : ''}`}><Ic n="car" s={26} /></span>
         <span className="t">

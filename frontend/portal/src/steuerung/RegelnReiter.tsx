@@ -176,16 +176,22 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
   const jetzt = heute ? heute[r.jetzt] : null;
   const kommend = heute ? spannen(heute.slice(r.jetzt), r.jetzt) : [];
   const vorbei = heute ? spannen(heute.slice(0, r.jetzt), 0) : [];
+  // Angehalten (UEMS SZ-2 A): eine eingeschaltete Regel wirkt nicht, bis die Steuerung fortgesetzt ist.
+  const ruht = k.an && bild.funktion.angehalten;
   let pill: ReactNode;
   if (!k.an) pill = <span className="pill off"><i />aus</span>;
+  else if (ruht) pill = <span className="pill lock"><i />wirkt nicht</span>;
   else if (jetzt) pill = <span className="pill on"><i />greift gerade</span>;
   else pill = <span className="pill wait"><i />wartet</span>;
   const info: string[] = [];
-  if (k.an && vorbei.length) info.push(`heute schon ${spannenText(vorbei, 2)}`);
-  if (k.an && kommend.length && !jetzt) info.push(`als Nächstes ${uhrTag(kommend[0][0])}`);
-  if (k.an && heute && !kommend.length) info.push('greift heute nicht mehr');
+  if (ruht) info.push('bis Sie fortsetzen');
+  else {
+    if (k.an && vorbei.length) info.push(`heute schon ${spannenText(vorbei, 2)}`);
+    if (k.an && kommend.length && !jetzt) info.push(`als Nächstes ${uhrTag(kommend[0][0])}`);
+    if (k.an && heute && !kommend.length) info.push('greift heute nicht mehr');
+  }
   return (
-    <article className={`rule${k.an ? '' : ' aus'}`} id={`regel-${k.flowId}`}>
+    <article className={`rule${k.an ? '' : ' aus'}${ruht ? ' matt' : ''}`} id={`regel-${k.flowId}`}>
       <button type="button" className="r-satz" onClick={() => oeffne({ art: 'regel', flowId: k.flowId })}>
         {k.satz ? <><span className="h">{k.satz.wenn}</span>: <span className="d">{k.satz.dann}</span>.</> : <>{k.name}</>}
       </button>
@@ -204,7 +210,7 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
         {!k.satz && <span>· {k.freiText}</span>}
         {info.length > 0 && <span>· {info.join(' · ')}</span>}
       </div>
-      {heute && <Streifen bits={heute} an={k.an} jetzt={r.jetzt} />}
+      {heute && <Streifen bits={heute} an={k.an && !ruht} jetzt={r.jetzt} />}
     </article>
   );
 }

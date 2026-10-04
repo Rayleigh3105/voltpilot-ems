@@ -22,7 +22,7 @@ for (const breite of [375, 1440]) {
         const automatik = page.getByRole('button', { name: 'Automatik an' });
         await expect(automatik).toBeEnabled();
         await automatik.click();
-        const pause = page.getByRole('dialog', { name: /Automatik pausieren/ });
+        const pause = page.getByRole('dialog', { name: /Steuerung anhalten/ });
         await expect(pause.getByRole('button', { name: '1 Std' })).toBeVisible();
         await pause.getByRole('button', { name: 'Schließen' }).click();
         await expect(pause).toHaveCount(0);
