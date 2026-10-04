@@ -150,9 +150,8 @@ func (s *Server) startReady(id string) bool {
 // that answers NotSupported AND confirms the key as unknown on GetConfiguration
 // therefore needs nothing set. Found on a go-e Charger V4 (firmware 59.4, which
 // lacks all of the above but the local list), which could otherwise never be
-// commissioned - and with phase limits not even start a charge.
-// AuthorizeRemoteTxRequests is not here: a station must hold it true, and a key
-// the station does know must hold the desired value.
+// commissioned - and with phase limits not even start a charge. A key the
+// station does know must hold the desired value.
 var absentAuthorizationKeys = map[string]bool{
 	"AuthorizationCacheEnabled":  true,
 	"AllowOfflineTxForUnknownId": true,
@@ -161,6 +160,16 @@ var absentAuthorizationKeys = map[string]bool{
 	"LocalAuthListEnabled":       true,
 	"StopTransactionOnInvalidId": true,
 	"MaxEnergyOnInvalidId":       true,
+}
+
+// boxCheckedAuthorizationKeys are set where the station lets the box, but their
+// state does not matter: AuthorizeRemoteTxRequests=true only makes the station
+// ask THIS box again about a RemoteStartTransaction the box already checked
+// (card and start readiness, ExecuteCloudCommand) before sending it, and the
+// StartTransaction that follows is checked once more. The go-e (firmware 59.4)
+// holds it fixed at false.
+var boxCheckedAuthorizationKeys = map[string]bool{
+	"AuthorizeRemoteTxRequests": true,
 }
 
 // Station-side caches must not circumvent the box's offline card decision.
@@ -192,6 +201,9 @@ func (s *Server) configureAuthorization(ctx context.Context, t *transport, id st
 		}
 		if err == nil && !known && slices.Contains(unknown, key) && absentAuthorizationKeys[key] {
 			continue // the feature does not exist on this station: already safe
+		}
+		if boxCheckedAuthorizationKeys[key] {
+			continue
 		}
 		if known {
 			return fmt.Errorf("Kartenfreigabe nicht abgesichert: %s (%s, steht auf %s)", key, status, value)
