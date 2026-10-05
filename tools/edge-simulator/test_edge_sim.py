@@ -436,6 +436,148 @@ def test_hello_payload_matches_provisioning_contract():
     jsonschema.validate(_config_for("edge-77"), schema)  # and $defs/config
 
 
+# --- Commercial / industrial profiles (gewerbe-steuernd, gewerbe-mess) -------
+#
+# The Ahrenberg demo sites need their own realistic shapes: Halle 1 steers
+# (PV + Lastspitzenkappung battery), Halle 2 and Werk Lindach are pure
+# measurement sites that only ever draw from the grid. These tests pin the two
+# properties the demo got wrong before: a measurement site never feeds in and
+# carries no PV/battery, and the steering site keeps its grid peak capped.
+
+def _mess_cfg(**kw) -> sim.Config:
+    base = dict(profile=sim.PROFILE_GEWERBE_MESS, load_base_kw=30.0, load_peak_kw=120.0,
+                grid_limit_kw=200.0, shift_start_hour=6.0, shift_end_hour=22.0,
+                weekend_factor=0.18, noise=0.05, seed=2102)
+    base.update(kw)
+    return sim.Config(**base)
+
+
+def _steuernd_cfg(**kw) -> sim.Config:
+    base = dict(profile=sim.PROFILE_GEWERBE_STEUERND, load_base_kw=70.0, load_peak_kw=300.0,
+                pv_peak_kw=200.0, batt_capacity_kwh=200.0, batt_max_kw=100.0, soc_init_pct=55.0,
+                peak_grid_kw=300.0, export_limit_kw=100.0, grid_limit_kw=550.0,
+                shift_start_hour=6.0, shift_end_hour=20.0, weekend_factor=0.15, noise=0.05, seed=1101)
+    base.update(kw)
+    return sim.Config(**base)
+
+
+def _run_day(cfg: sim.Config, weekday: int):
+    """96 quarter-hour steps; returns the list of measurement dicts."""
+    state = sim.SimState(soc_pct=cfg.soc_init_pct, _rng=sim._Rng(cfg.seed))
+    out = []
+    for i in range(96):
+        out.append(sim.simulate_measurements(cfg, state, i * 15 / 60.0, dt_h=0.25, weekday=weekday))
+    return out
+
+
+def test_gewerbe_mess_only_reports_grid_and_load():
+    m = sim.simulate_measurements(_mess_cfg(), sim.SimState(soc_pct=0.0, _rng=sim._Rng(1)), 10.0, 0.25, weekday=1)
+    assert set(m) == {"power_kw", "load_kw", "grid_limit_kw"}, m
+    assert "pv_power_kw" not in m and "soc_pct" not in m
+    # The payload (a subset of the optional fields) still matches the contract.
+    payload = sim.build_telemetry_payload(_mess_cfg(), sim.rfc3339_now(), 0, m)
+    _manual_validate_telemetry(payload)
+
+
+def test_gewerbe_mess_never_feeds_in():
+    cfg = _mess_cfg()
+    for weekday in range(7):           # every day of the week, incl. weekend
+        for m in _run_day(cfg, weekday):
+            assert m["power_kw"] >= 0.0, (weekday, m)   # never an export
+            assert m["power_kw"] == m["load_kw"]        # the meter sees the load
+
+
+def test_gewerbe_mess_peak_below_connection_and_weekday_busier():
+    cfg = _mess_cfg()  # 200 kW connection
+    weekday_peak = max(m["load_kw"] for m in _run_day(cfg, 2))
+    weekend_peak = max(m["load_kw"] for m in _run_day(cfg, 6))
+    night = sim.simulate_measurements(cfg, sim.SimState(soc_pct=0.0, _rng=sim._Rng(cfg.seed)), 3.0, 0.25, weekday=2)
+    assert weekday_peak < cfg.grid_limit_kw          # a visible peak that stays under the connection
+    assert weekday_peak > 0.6 * cfg.grid_limit_kw    # ...but uses a healthy share of it
+    assert weekend_peak < 0.6 * weekday_peak         # weekends clearly quieter
+    assert night["load_kw"] < 0.5 * weekday_peak     # a real base load, no production at night
+
+
+def test_gewerbe_steuernd_reports_all_fields_and_validates():
+    cfg = _steuernd_cfg()
+    try:
+        import jsonschema  # type: ignore
+        with open(SCHEMA_PATH, "r", encoding="utf-8") as fh:
+            schema = json.load(fh)
+    except ImportError:
+        jsonschema = schema = None
+    state = sim.SimState(soc_pct=cfg.soc_init_pct, _rng=sim._Rng(cfg.seed))
+    for hour in (0.0, 8.0, 12.0, 15.0, 19.0, 23.0):
+        m = sim.simulate_measurements(cfg, state, hour, 0.25, weekday=2)
+        assert set(m) == {"power_kw", "soc_pct", "pv_power_kw", "load_kw", "grid_limit_kw"}
+        payload = sim.build_telemetry_payload(cfg, sim.rfc3339_now(), state.seq, m)
+        _manual_validate_telemetry(payload)
+        if schema is not None:
+            jsonschema.validate(payload, schema)
+
+
+def test_gewerbe_steuernd_caps_grid_import_peak():
+    """Lastspitzenkappung: the battery holds the grid import at/under the target
+    even though the raw load peaks well above it."""
+    cfg = _steuernd_cfg()
+    rows = _run_day(cfg, 2)  # weekday
+    peak_grid = max(r["power_kw"] for r in rows)
+    peak_load = max(r["load_kw"] for r in rows)
+    assert peak_load > cfg.peak_grid_kw            # the load really does exceed the target
+    assert peak_grid <= cfg.peak_grid_kw + 1e-6    # ...but the grid import is shaved to it
+    assert peak_load < cfg.grid_limit_kw           # and stays under the connection
+
+
+def test_gewerbe_steuernd_feed_in_capped_at_einspeisegrenze():
+    """On a low-load sunny weekend PV surplus feeds in, but never beyond the
+    Einspeisegrenze, and on a busy weekday the site only ever imports."""
+    cfg = _steuernd_cfg()
+    for r in _run_day(cfg, 6):  # Sunday: low load, full PV
+        assert r["power_kw"] >= -cfg.export_limit_kw - 1e-6, r
+    assert min(r["power_kw"] for r in _run_day(cfg, 2)) >= 0.0  # weekday: load >> PV, always import
+
+
+def test_profile_validation_rejects_unknown_and_bad_shift():
+    for bad in ("residential", "gewerbe", ""):
+        try:
+            sim.validate_config(_mess_cfg(profile=bad))
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"expected SystemExit for profile {bad!r}")
+    try:
+        sim.validate_config(_mess_cfg(shift_start_hour=20.0, shift_end_hour=6.0))
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("expected SystemExit for shift_end <= shift_start")
+
+
+def test_profile_selectable_via_env():
+    os.environ["EDGE_SIM_PROFILE"] = "gewerbe-mess"
+    os.environ["EDGE_SIM_LOAD_PEAK_KW"] = "120"
+    try:
+        cfg = sim.build_config([])
+        assert cfg.profile == "gewerbe-mess"
+        assert cfg.load_peak_kw == 120.0
+    finally:
+        del os.environ["EDGE_SIM_PROFILE"]
+        del os.environ["EDGE_SIM_LOAD_PEAK_KW"]
+
+
+def test_clock_weekday_matches_real_now_and_rolls_over():
+    import time as _t
+    clock = sim.SimClock(time_scale=1.0, start_hour=None)
+    assert clock.weekday() == _t.localtime().tm_wday  # realtime clock = real weekday
+    # Rollover arithmetic: pin the anchor to a Wednesday (wday=2) and push the
+    # sim clock two days ahead -> Friday (wday=4), independent of wall time.
+    clock._start_wday = 2
+    clock._sim_seconds = lambda: 2.5 * 86400.0  # type: ignore[method-assign]
+    assert clock.weekday() == 4
+    clock._sim_seconds = lambda: 5.0 * 86400.0  # type: ignore[method-assign]
+    assert clock.weekday() == 0  # Wed + 5 days = Monday
+
+
 def test_ref_mode_config_skips_uuid_validation():
     cfg = sim.build_config(["--host", "broker.local", "--ref", "edge-9"])
     assert cfg.ref == "edge-9"
