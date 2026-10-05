@@ -3,6 +3,7 @@ package csms
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppcontrol"
 	"log/slog"
@@ -236,21 +237,35 @@ func (s *Server) Start(ctx context.Context) error {
 	if !s.opts.Enabled {
 		return nil
 	}
-	port := s.opts.Port
-	if port == 0 {
-		p, err := freePort()
-		if err != nil {
-			return fmt.Errorf("kein freier Port für den Ladepunkt-Server: %w", err)
+	var port int
+	for attempt := 1; ; attempt++ {
+		port = s.opts.Port
+		if port == 0 {
+			p, err := pickFreePort()
+			if err != nil {
+				return fmt.Errorf("kein freier Port für den Ladepunkt-Server: %w", err)
+			}
+			port = p
 		}
-		port = p
-	}
-	t := newTransport(s, port, s.opts.URLPath)
-	s.mu.Lock()
-	s.transport = t
-	s.port = port
-	s.mu.Unlock()
+		t := newTransport(s, port, s.opts.URLPath)
+		s.mu.Lock()
+		s.transport = t
+		s.port = port
+		s.mu.Unlock()
 
-	if err := t.start(ctx); err != nil {
+		err := t.start(ctx)
+		if err == nil {
+			break
+		}
+		// Only a port freePort chose may be chosen again: between its probe
+		// and the library's own bind another socket can take it (an
+		// outgoing connection or a container port mapping draws from the
+		// same ephemeral range). A configured port fails exactly as before.
+		var taken portTakenError
+		if s.opts.Port == 0 && errors.As(err, &taken) && attempt < freePortAttempts {
+			t.stop()
+			continue
+		}
 		s.mu.Lock()
 		s.startErr = err.Error()
 		s.listening = false
@@ -549,10 +564,26 @@ func (s *Server) persistLocked() error {
 	return s.store.save(list, next, sessions, control, s.controlTest, starts)
 }
 
+// freePortAttempts bounds how often Start picks a fresh port when the one
+// freePort chose was taken before the library could bind it.
+const freePortAttempts = 5
+
+// pickFreePort is freePort; a test swaps in a port that is already taken.
+var pickFreePort = freePort
+
+// portTakenError: the library could not bind the chosen port (it returned
+// before the socket ever accepted). The text is what an operator sees.
+type portTakenError struct{ port int }
+
+func (e portTakenError) Error() string {
+	return fmt.Sprintf("der Ladepunkt-Server auf Port %d konnte nicht gestartet werden (Port belegt?)", e.port)
+}
+
 // freePort asks the OS for an unused TCP port and hands it back. Used only
 // when Port is 0 (tests): the library binds ":port" itself and exposes the
 // resolved address only through an unsynchronised field, so we choose the port
-// up front instead of reading it back.
+// up front instead of reading it back. The port is free only at the moment of
+// the probe - Start picks again if it is gone by the time the library binds.
 func freePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

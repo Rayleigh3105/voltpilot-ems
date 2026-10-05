@@ -161,7 +161,7 @@ func (t *transport) start(ctx context.Context) error {
 		}
 		select {
 		case <-t.done:
-			return fmt.Errorf("der Ladepunkt-Server auf Port %d konnte nicht gestartet werden (Port belegt?)", t.port)
+			return portTakenError{port: t.port}
 		default:
 		}
 		if time.Now().After(deadline) {
