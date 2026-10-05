@@ -623,7 +623,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
                   <>
                     {' '}
                     <Recht standort={funktion.standortId} aktion="steuerung.anhalten_fortsetzen">
-                      <button type="button" className="lnk" onClick={() => setBlatt({ art: 'fortsetzen' })}>Fortsetzen</button>
+                      <button type="button" className="lnk" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'fortsetzen' }); }}>Fortsetzen</button>
                     </Recht>
                   </>
                 )}

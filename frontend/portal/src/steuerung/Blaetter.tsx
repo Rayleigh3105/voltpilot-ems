@@ -354,7 +354,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
               <div className="bed-r" key={x.flowId}>
                 <span className="k">auch wenn</span>
                 <span>{x.satz}{x.aktiv ? '' : ' (aus)'}</span>
-                <button type="button" className="x" aria-label="Regel öffnen" onClick={() => a.oeffne({ art: 'regel', flowId: x.flowId })}>
+                <button type="button" className="x" aria-label="Regel öffnen" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', flowId: x.flowId }); }}>
                   <Ic n="chevR" s={17} />
                 </button>
               </div>
@@ -362,7 +362,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
             {!regeln.length && <p className="leise">Keine. Das Gerät folgt nur seinem Smart-Auftrag.</p>}
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => a.oeffne({ art: 'regel', geraet: g.id })}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', geraet: g.id }); }}>
               <Ic n="plus" s={16} />
               Auch wenn …
             </button></Recht>
@@ -971,7 +971,7 @@ export function NegativBlatt({ k }: { k: BlattKontext }) {
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>
       <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
-      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={() => k.a.oeffne({ art: 'regel', vorlage: 'negativ' })}>
+      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
         <Ic n="plus" s={18} />
         Regel aus Vorlage
       </button></Recht>

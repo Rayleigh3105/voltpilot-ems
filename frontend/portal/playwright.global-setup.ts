@@ -44,11 +44,21 @@ import { chromium, type Browser, type FullConfig } from '@playwright/test';
      über 30 s fest, auch Fälle ohne Steuerung. Darum steht die Steuerung als
      zweiter Wirt hier; „fertig“ heisst: der Platzhalter der nachladenden
      Unterseite (`PageLoading`, `.vp-lazy-page`) ist weg.
+
+   ⚠ Die Berichtsseite des Unternehmens (`ansicht=bericht`, mit Tagesverlauf)
+     zieht ein drittes Stück, das keiner der beiden Wirte übersetzt
+     (Bezugsbasis-Vergleich, Kennzahl-Stammdaten, Wert-Versionen …). Im
+     Gesamtlauf vom 04./05.10.2026 blieben 139 seiner Modulanfragen in der
+     ersten Welle (tablet-chromium, vier Worker, erste Minute nach dem
+     Serverstart) ohne Antwort — `berichte.spec.ts:210` lief in `page.goto`
+     über 30 s; allein und kalt war die Spec dreimal grün. Darum steht sie
+     als dritter Wirt hier, bezahlt wie die anderen vor der ersten Zusicherung.
    ========================================================================= */
 
 const WIRTE = [
   '/e2e/help.html#/hilfe/fahrplan',
   '/e2e/startansicht.html?bild=unternehmen&rechte=1&person=MD',
+  '/e2e/startansicht.html?bild=unternehmen&ansicht=bericht&br=BR-2026-0001&tagesverlauf=gefuellt',
 ];
 const GEDULD = 120_000;
 

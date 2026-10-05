@@ -72,7 +72,7 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
       <section className="card" aria-label="Netzanschluss">
         <div className="card-h">
           <h2><Ic n="gauge" s={18} />Netzanschluss</h2>
-          <button type="button" className="tbtn" onClick={() => oeffne({ art: 'rahmen' })}><Ic n="sliders" s={16} />Rahmen</button>
+          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
         </div>
         <p className="leise">Die Grenze Ihres Netzanschlusses ist noch nicht hinterlegt. Ohne sie verteilt die Box nur, was sie sicher weiß.</p>
       </section>
@@ -82,7 +82,7 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
     <section className="card" aria-label="Netzanschluss">
       <div className="card-h">
         <h2><Ic n="gauge" s={18} />Netzanschluss {fKw(b.anschlussKw)}</h2>
-        <button type="button" className="tbtn" onClick={() => oeffne({ art: 'rahmen' })}><Ic n="sliders" s={16} />Rahmen</button>
+        <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
       </div>
       <div className="budget">
         <div className="b-bar" role="img" aria-label="Aufteilung des Netzanschlusses">
@@ -176,8 +176,9 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
             data-m={k}
             aria-pressed={wahl === k}
             disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
-            onClick={() => {
+            onClick={(e) => {
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
+              e.currentTarget.focus();
               oeffne({ art: 'geraet', id: g.id, modus: k === 'aus' ? 'aus' : 'an' });
             }}
           >
@@ -212,7 +213,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle }: {
             {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
           </div>
           {zielMoeglich && (
-            <button type="button" className="lziel" onClick={() => oeffne({ art: 'ziel', id: g.id })}>
+            <button type="button" className="lziel" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ziel', id: g.id }); }}>
               <Ic n="flag" s={20} />
               <span>
                 <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel · lädt, wenn es passt'}</b>
@@ -278,7 +279,7 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge |
       {zeilen.length ? (
         <div className="fz">
           {zeilen.map((z) => (
-            <button type="button" key={z.key} className="fz-r" style={{ border: 0, background: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={() => oeffne({ art: 'fahrzeug', tagRef: z.tagRef })}>
+            <button type="button" key={z.key} className="fz-r" style={{ border: 0, background: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'fahrzeug', tagRef: z.tagRef }); }}>
               <span className="li"><Ic n={z.benannt ? 'car' : 'help'} s={19} /></span>
               <span>
                 <b>{z.name}</b>

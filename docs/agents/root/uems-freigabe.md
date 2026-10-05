@@ -35,8 +35,11 @@ hinaus (B10, [Drehbuch §2.8](../../rollout/uems-erste-freigabe.md)).
 
 Die **gemessenen Suiten-Summen** des Zweiges, auf die der Tor-Prüfer mit `--laeufe` zeigt,
 stehen je Gesamtlauf unter `docs/rollout/gesamtlauf-<datum>.md` — zuletzt
-[gesamtlauf-2026-09-19.md](../../rollout/gesamtlauf-2026-09-19.md) (Stand `957217b6`,
-G0 = 9 von 9 belegt). Ein Bericht belegt **nur seinen** Stand: der Prüfer hält `stand.txt`
+[gesamtlauf-2026-10-04.md](../../rollout/gesamtlauf-2026-10-04.md) (Stand `9bd63484f`,
+G0 = 8 von 9, offen M-2: `main` weitergewandert; davor
+[gesamtlauf-2026-09-19.md](../../rollout/gesamtlauf-2026-09-19.md)). Fallen des Laufs vom
+04.10.: Tests an Uhr, Kalender (Tage 1–9) und Zeitzone der Maschine; ein Ruhezustand des
+Rechners macht Keycloak-Klassen rot (abgelaufene Token). Ein Bericht belegt **nur seinen** Stand: der Prüfer hält `stand.txt`
 gegen `HEAD` und nimmt nur denselben Commit oder einen Commit mit demselben Baum an (der
 Merge-Commit auf `main`); die Belegzeile nennt den Fall. NW-3 verlangt ein grünes Protokoll
 **je Paar** aus `tools/nw3-box-image/paare.json` (Q07, `--paare`).

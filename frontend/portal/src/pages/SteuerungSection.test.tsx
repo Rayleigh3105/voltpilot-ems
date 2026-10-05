@@ -253,6 +253,21 @@ describe('Steuerung · Reiter Geräte', () => {
     await waitFor(() => expect(document.activeElement).toBe(knopf));
   });
 
+  it('Safari: der angetippte Knopf bekommt keinen Fokus - nach Escape kehrt der Fokus trotzdem zu ihm zurück', async () => {
+    // jsdom fokussiert beim Klick so wenig wie Safari/WebKit; den Auslöser muss der Öffner selbst fokussieren
+    // (Gesamtlauf 04./05.10.2026, steuerung.spec.ts in mobile-webkit).
+    zeige();
+    const knopf = await screen.findByRole('button', { name: /Heizstab Warmwasser/ });
+    expect(document.activeElement).not.toBe(knopf);
+    fireEvent.click(knopf);
+    const blatt = await screen.findByRole('dialog', { name: /Heizstab Warmwasser/ });
+    fireEvent.click(within(blatt).getByRole('button', { name: 'Ein' }));
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(knopf));
+  });
+
   it('ändert den Smart-Auftrag erst mit „Übernehmen"', async () => {
     const setze = vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({ steuerart: { quelle: 'guenstig', herkunft: 'policy' }, aktiv: true });
     zeige();
@@ -564,13 +579,20 @@ describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
   });
 
   it('SZ-2 A · befristet pausiert: die Plakette sagt „Pausiert bis …“, das Band setzt fort', async () => {
-    vi.spyOn(api, 'siteInterventions').mockResolvedValue({ automationPaused: true, pausedUntil: new Date(Date.now() + 3_600_000).toISOString(), interventions: [] });
-    const weiter = vi.spyOn(api, 'resumeAutomation').mockResolvedValue({} as never);
-    zeige();
-    expect(await screen.findByRole('button', { name: /^Pausiert bis \d{2}:\d{2}$/ })).toBeEnabled();
-    const band = screen.getByText(/^Automatik pausiert bis/).closest('.stn-band') as HTMLElement;
-    fireEvent.click(within(band).getByRole('button', { name: 'Fortsetzen' }));
-    await waitFor(() => expect(weiter).toHaveBeenCalledWith('s-1'));
+    // Fester Mittag statt der echten Uhr: nach 23 Uhr endete die Pause erst morgen
+    // („Pausiert bis morgen 00:00“) - Gesamtlauf 04.10.2026. Nur Date, die Timer bleiben echt.
+    vi.setSystemTime(new Date(2026, 9, 14, 12, 0));
+    try {
+      vi.spyOn(api, 'siteInterventions').mockResolvedValue({ automationPaused: true, pausedUntil: new Date(Date.now() + 3_600_000).toISOString(), interventions: [] });
+      const weiter = vi.spyOn(api, 'resumeAutomation').mockResolvedValue({} as never);
+      zeige();
+      expect(await screen.findByRole('button', { name: /^Pausiert bis \d{2}:\d{2}$/ })).toBeEnabled();
+      const band = screen.getByText(/^Automatik pausiert bis/).closest('.stn-band') as HTMLElement;
+      fireEvent.click(within(band).getByRole('button', { name: 'Fortsetzen' }));
+      await waitFor(() => expect(weiter).toHaveBeenCalledWith('s-1'));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('Bestandsschutz: steuernd und nicht angehalten - die Seite ist dieselbe wie ohne „Steuern & Optimieren“', async () => {

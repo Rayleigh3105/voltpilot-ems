@@ -1164,12 +1164,24 @@ Object.assign(consumersApi, {
 });
 // IP-12: die echte Anwendung mit den drei Rechte-Momentaufnahmen R1/T1/T3.
 // Steuerungs-Schnappschuss zur Referenz-Momentaufnahme MS-04: −40 kW, Entladen.
+const ohneAntwortDerMomentaufnahme = async (): Promise<never> => {
+  throw new Error('Die Rechte-Momentaufnahme hat dafür keine Antwort.');
+};
 if (rechteAnsicht && params.get('person') === 'MD') {
   Object.assign(api, {
     schedule: async () => ({ deviceId: 'E-1', slots: [] }),
     controlStatus: async () => ({ deviceId: 'E-1', certified: true, controlEnabled: true,
       commandedKw: -40, confirmedKw: -40, allMatch: true, checkedAt: STAND, mismatchRoles: null }),
     siteInterventions: async () => ({ automationPaused: false, pausedUntil: null, interventions: [] }),
+    // Die neue Steuerung (Nachzug #1363) liest dazu Messwerte, Verlauf, Preise, Verbraucherplan und Szene.
+    // Die Momentaufnahme hat dafür keine Antwort: dieselbe Absage, die Chromium von der fehlenden api auf
+    // localhost:8090 bekam - nur ohne Netz. WebKit meldete den Aufruf sonst als Seitenfehler („access
+    // control checks“), und R1 war dort rot (Gesamtlauf 04./05.10.2026).
+    telemetry: ohneAntwortDerMomentaufnahme,
+    history: ohneAntwortDerMomentaufnahme,
+    prices: ohneAntwortDerMomentaufnahme,
+    consumerSchedule: ohneAntwortDerMomentaufnahme,
+    scene: ohneAntwortDerMomentaufnahme,
   });
   window.history.replaceState(null, '', hashForRoute(anlageRoute(an1, 'steuerung')));
 }

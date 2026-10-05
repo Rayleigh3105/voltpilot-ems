@@ -207,7 +207,7 @@ function Sonnenleiste({ l, oeffne }: { l: NonNullable<ReturnType<typeof leiste>>
           type="button"
           className="l-wait"
           style={{ width: '100%', border: 0, textAlign: 'left', cursor: 'pointer' }}
-          onClick={() => l.wartet && oeffne({ art: 'geraet', id: l.wartet.id })}
+          onClick={(e) => { e.currentTarget.focus(); if (l.wartet) oeffne({ art: 'geraet', id: l.wartet.id }); }}
         >
           <Ic n="clock" s={17} />
           <span>
@@ -334,7 +334,7 @@ function NeuKarte({ g, bild, busy, oeffne, onUebernehmen, onNurMessen }: {
             <Ic n="check" s={18} />
             {busy ? 'Übernehme …' : 'Übernehmen'}
           </button>
-          <button type="button" className="btn sek" onClick={() => oeffne({ art: 'neu', id: g.id })}>
+          <button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'neu', id: g.id }); }}>
             Anders einstellen
           </button>
         </div>
@@ -529,7 +529,7 @@ function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZu
         </div>
         {!m.zeilen.length && <p className="leise" style={{ padding: '0 4px' }}>Noch misst VoltPilot hier kein einzelnes Gerät.</p>}
         {m.zeilen.map((z) => (
-          <button type="button" className="dev" id={`dev-${z.id}`} key={z.id} onClick={() => auf(z.id)}>
+          <button type="button" className="dev" id={`dev-${z.id}`} key={z.id} onClick={(e) => { e.currentTarget.focus(); auf(z.id); }}>
             <span className="ico"><Ic n={z.symbol} s={23} /></span>
             <span className="d-mid">
               <span className="d-name"><b>{z.name}</b></span>
@@ -632,7 +632,7 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
       <OffenZeilen bild={bild} oeffne={p.oeffne} onAnlage={p.onAnlage} />
       {/* Steuern-Regel #779: an einer Anlage ohne Teilnahme kein Anstoß, ein Gerät anzubinden. */}
       {!bild.funktion.ohneTeilnahme && (
-        <button type="button" className="add-dev" onClick={() => p.oeffne({ art: 'anbinden' })}>
+        <button type="button" className="add-dev" onClick={(e) => { e.currentTarget.focus(); p.oeffne({ art: 'anbinden' }); }}>
           <Ic n="plus" s={18} />
           Gerät fehlt? In der Anlage anbinden
         </button>
@@ -661,7 +661,7 @@ function GeraetKarte({ g, bild, platz, oeffne }: { g: GeraetBild; bild: SeitenBi
     ? <>Eingriff{g.eingriff.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ''} · dann wieder Smart</>
     : <>Smart: <em>{g.auftrag}</em></>;
   return (
-    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={() => oeffne({ art: 'geraet', id: g.id })}>
+    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'geraet', id: g.id }); }}>
       <span className={`ico ${icoKlasse}`}>
         <Ic n={g.symbol} s={23} />
         {platz != null && <span className="rk">{platz}</span>}
@@ -695,7 +695,7 @@ function SpeicherKarte({ bild, platz, oeffne }: { bild: SeitenBild; platz: numbe
   if (!sp) return null;
   const an = sp.jetztKw != null && Math.abs(sp.jetztKw) > 0.05;
   return (
-    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id="dev-sp" onClick={() => oeffne({ art: 'speicher' })}>
+    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id="dev-sp" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'speicher' }); }}>
       <span className={`ico ${an ? 'on batt' : ''}`}>
         <Ic n="battery" s={23} />
         <span className="rk">{platz}</span>
@@ -726,7 +726,7 @@ function OffenZeilen({ bild, oeffne, onAnlage }: { bild: SeitenBild; oeffne: (b:
             <span className="d-name"><b>{g.name}</b></span>
             <span className="d-satz">Ohne Auftrag.</span>
             <span className="d-satz">{g.typLabel}{g.gemessen ? ' · misst' : ''}</span>
-            <button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuerart</button>
+            <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'neu', id: g.id }); }}>Steuerart</button>
           </span>
         </div>
       ))}
@@ -737,7 +737,7 @@ function OffenZeilen({ bild, oeffne, onAnlage }: { bild: SeitenBild; oeffne: (b:
             <span className="d-name"><b>{g.name}</b></span>
             <span className="d-satz">Nur gemessen, auf Ihren Wunsch.</span>
             <span className="d-satz">{g.typLabel}</span>
-            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuern</button></Recht>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'neu', id: g.id }); }}>Steuern</button></Recht>
           </span>
         </div>
       ))}
@@ -934,7 +934,7 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw }: { bild: SeitenBild; oeffn
         </h2>
       </div>
       {rows.map(([i, titel, sub, ziel]) => (
-        <button type="button" className="immer-r" key={titel} onClick={() => oeffne(ziel)}>
+        <button type="button" className="immer-r" key={titel} onClick={(e) => { e.currentTarget.focus(); oeffne(ziel); }}>
           <span className="li"><Ic n={i} s={18} /></span>
           <span className="lt">
             {titel}
