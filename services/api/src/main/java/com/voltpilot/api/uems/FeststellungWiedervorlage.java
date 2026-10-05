@@ -27,7 +27,11 @@ public class FeststellungWiedervorlage implements WiedervorlageQuelle {
         for (var f : feststellungen.liste(abruf).feststellungen()) {
             if (f.lage() == null || f.lage().faelligAm() == null) continue;
             aus.add(new Frist("feststellung", f.kennzeichen(), "Feststellung — Frist", f.lage().faelligAm(),
-                    f.verantwortlich() == null ? null : f.verantwortlich().name(), f.id(), null));
+                    f.verantwortlich() == null ? null : f.verantwortlich().name(), f.id(), null,
+                    Herkunft.von("festgestellt", f.festgestelltAm()).mitBezug(f.wortlaut())
+                            .mitQuelle(f.quelle() == null ? null : f.quelle().art(),
+                                    f.quelle() == null ? null : f.quelle().kennung())
+                            .mitKonto(f.verantwortlich() == null ? null : f.verantwortlich().sub())));
         }
         return aus;
     }

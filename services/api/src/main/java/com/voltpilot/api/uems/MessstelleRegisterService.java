@@ -17,6 +17,7 @@ import com.voltpilot.api.web.dto.MessstelleDto;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -192,6 +193,94 @@ public class MessstelleRegisterService {
         }
         return new MessstelleDto.Liste(List.copyOf(messstellenListe), List.copyOf(zeilen), tag,
                 MessstelleService.zeit(zeitpunkt), false, aggregat(zeilen));
+    }
+
+    // ------------------------------------------------------------ Ablesungen
+
+    /**
+     * Eine Messstelle, deren Werte zum Zeitpunkt aus Ablesungen kommen ({@code quelle.stand = ablesung}), wie die
+     * Wiedervorlage sie braucht (Konzept Wiedervorlage w1, Entscheid 7). {@code ort} ist, wo man sie abliest
+     * ({@link #ableseort}); {@code null}, wo sie an dem Tag an keinem Ort im Baum hängt. {@code seit}: seit wann die
+     * Ablesungs-Quelle führt; {@code zuletzt}: die letzte Ablesung bis zum Zeitpunkt ({@code null} = noch keine).
+     * {@code faelligAb}: ab wann die nächste Ablesung fehlt, derselbe Zeitpunkt wie in der Beobachtung des Registers
+     * ({@link MessstelleBeobachtung#ausAblesungen}): „Ablesung überfällig seit …“ ab der letzten Ablesung + zwei
+     * Kalendermonate ({@link AblesungRegeln#ueberfaelligAb}), „Noch keine Ablesung“ ab dem Beginn der Quelle.
+     */
+    public record Ablesestelle(UUID id, String kennzeichen, String name, Ableseort ort, ZoneId zone, Instant seit,
+            Instant zuletzt, Instant faelligAb) {}
+
+    /**
+     * Wo abgelesen wird: Kurzzeichen ({@code U} für das Unternehmen), Kennung (das Unternehmen hat keine) und Name.
+     */
+    public record Ableseort(String kennzeichen, UUID id, String name) {}
+
+    /**
+     * Die Messstellen, deren Werte zum Zeitpunkt {@code am} ({@code null} = jetzt) aus Ablesungen kommen, soweit
+     * {@code sichtbar} sie zulässt: dieselbe Bedingung wie {@code quelle.stand = ablesung} im Register ({@link #zeile}:
+     * gemessen, eine führende Ablesungs-Quelle, keine gebundene führende Quelle der Hauptgröße). Nur
+     * aktive: eine archivierte, angehaltene oder noch nicht eingerichtete Messstelle erwartet keine Ablesung. Ein
+     * Kundenbereich ohne Ablesungs-Quelle kostet einen Lesezug; sonst kommen die Messstellen und der Ortsbaum dazu, die
+     * Werte nicht.
+     */
+    @Transactional(readOnly = true)
+    public List<Ablesestelle> ablesestellen(Instant am, Predicate<UUID> sichtbar) {
+        Instant zeitpunkt = am != null ? am : uhr.instant();
+        Map<UUID, MessstelleRegisterRepository.Ablesung> ablesungen = register.ablesungen(zeitpunkt);
+        if (ablesungen.isEmpty()) {
+            return List.of();
+        }
+        LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
+        OffsetDateTime jetzt = OffsetDateTime.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
+        List<Bestand> abgelesen = new ArrayList<>();
+        List<OrtsbaumAbleitung.Messstelle> imBaum = new ArrayList<>();
+        for (Bestand b : register.alle()) {
+            MessstelleRepository.Messstelle m = b.messstelle();
+            if (!ablesungen.containsKey(m.id()) || MessstelleRegeln.BERECHNET.equals(m.art())
+                    || fuehrend(b, m.hauptgroesse(), zeitpunkt) != null || !sichtbar.test(m.id())
+                    || !"aktiv".equals(MessstelleService.lebenszyklus(m, MessstelleService.ortVorhanden(b.orte()),
+                            jetzt).lebenszyklus())) {
+                continue;
+            }
+            abgelesen.add(b);
+            imBaum.add(new OrtsbaumAbleitung.Messstelle(m.kennzeichen(), MessstelleOrtsbaumMessstellen.anzeigename(m),
+                    null, ObjektZustand.AKTIV, MessstelleOrtsbaumMessstellen.intervalle(b.orte())));
+        }
+        if (abgelesen.isEmpty()) {
+            return List.of();
+        }
+        StandortService.Baum baum = standorte.baum(imBaum);
+        List<Ablesestelle> aus = new ArrayList<>();
+        for (Bestand b : abgelesen) {
+            MessstelleRepository.Messstelle m = b.messstelle();
+            Verortung v = OrtsbaumAbleitung.verortung(baum.baum(), m.kennzeichen(), tag);
+            ZoneId zone = OrtsbaumAbleitung.zeitzoneVon(baum.baum(), v.standort());
+            MessstelleRegisterRepository.Ablesung a = ablesungen.get(m.id());
+            Instant faelligAb = a.zuletzt() == null ? a.seit() : AblesungRegeln.ueberfaelligAb(a.zuletzt(), zone);
+            aus.add(new Ablesestelle(m.id(), m.kennzeichen(), m.name(), ableseort(v, baum), zone, a.seit(),
+                    a.zuletzt(), faelligAb));
+        }
+        return List.copyOf(aus);
+    }
+
+    /**
+     * Wo man eine Messstelle abliest: das erste Gebäude auf dem Pfad von ihrem Ort hinauf (auch für einen Bereich darin),
+     * ohne Gebäude ihr Standort, am Unternehmen das Unternehmen.
+     */
+    private static Ableseort ableseort(Verortung v, StandortService.Baum baum) {
+        if (OrtsbaumAbleitung.UNTERNEHMEN.equals(v.ort())) {
+            return new Ableseort(OrtsbaumAbleitung.UNTERNEHMEN, null,
+                    baum.zeilen().unternehmen() == null ? null : baum.zeilen().unternehmen().name());
+        }
+        if (v.standort() == null) {
+            return null;
+        }
+        String kurzzeichen = v.pfad().stream()
+                .filter(k -> baum.baum().ort(k).map(o -> o.art() == OrtsbaumAbleitung.OrtArt.GEBAEUDE).orElse(false))
+                .findFirst().orElse(v.standort());
+        UUID id = baum.standorte().containsKey(kurzzeichen) ? baum.standorte().get(kurzzeichen)
+                : baum.ort(kurzzeichen) == null ? null : baum.ort(kurzzeichen).id();
+        return new Ableseort(kurzzeichen, id,
+                baum.baum().ort(kurzzeichen).map(OrtsbaumAbleitung.Ort::name).orElse(null));
     }
 
     /**

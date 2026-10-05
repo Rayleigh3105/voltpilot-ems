@@ -28,6 +28,7 @@ import {
   TITEL,
   ZUR_UEBERSICHT,
   ZUSTAND_HEUTE,
+  ablesungsZiele,
   filterAktiv,
   filterOptionen,
   kopfZeile,
@@ -539,8 +540,14 @@ function spalten(stichtag: string | null): string[] {
   ];
 }
 
+/** Die Messstellen, auf die der Schritt „Ablesungen eintragen“ der Wiedervorlage zeigt (`data-entscheid`). */
+function ablesungsZieleIn(eintraege: RegisterEintrag[]): Set<string> {
+  return ablesungsZiele(eintraege.flatMap((e) => (e.art === 'messstelle' ? [e.woerter] : [])));
+}
+
 /** 1440 px: eine Zeile je Messstelle; die Tabelle scrollt lokal, nie die Seite. */
 function Tabelle({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps) {
+  const ziele = ablesungsZieleIn(eintraege);
   return (
     <div className="vp-ms-rahmen">
       <table className="vp-ms-tabelle">
@@ -571,7 +578,7 @@ function Tabelle({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps
                 </td>
               </tr>
             ) : (
-              <tr key={e.woerter.id}>
+              <tr key={e.woerter.id} data-entscheid={ziele.has(e.woerter.id) ? 'zaehlerablesung' : undefined}>
                 <td>
                   <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
                 </td>
@@ -608,6 +615,7 @@ function Tabelle({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps
 /** 375 px: eine Karte je Messstelle mit denselben Wörtern wie die Spalten. */
 function Karten({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps) {
   const [, , ort, stellung, quelle, zustand, wert] = spalten(stichtag);
+  const ziele = ablesungsZieleIn(eintraege);
   return (
     <ul className="vp-ms-karten">
       {eintraege.map((e) =>
@@ -620,7 +628,11 @@ function Karten({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps)
             <p className="vp-ms-satz">{e.satz}</p>
           </li>
         ) : (
-          <li key={e.woerter.id} className={onWerte ? 'vp-ms-karte is-werte' : 'vp-ms-karte'}>
+          <li
+            key={e.woerter.id}
+            className={onWerte ? 'vp-ms-karte is-werte' : 'vp-ms-karte'}
+            data-entscheid={ziele.has(e.woerter.id) ? 'zaehlerablesung' : undefined}
+          >
             <div className="vp-ms-karte-kopf">
               <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
               <h2 className="vp-ms-karte-name">

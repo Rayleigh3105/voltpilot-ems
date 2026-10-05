@@ -10,8 +10,10 @@ import com.voltpilot.api.web.dto.BezugsbasisDto;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -202,6 +204,35 @@ public class BezugsbasisPflegeService {
         faellig.sort((a, c) -> Integer.compare(c.faelligSeitTagen(), a.faelligSeitTagen()));
         return new Uebersicht((stichtag == null ? LocalDate.ofInstant(jetzt, ZoneId.of("Europe/Berlin")) : stichtag)
                 .toString(), laufend, freigegeben, vorlaeufig, anstoss, faellig.size(), List.copyOf(faellig));
+    }
+
+    /** Ein „geprüft, bleibt“ (F5) mit dem Tag in der Zeitzone der Kennzahl, für „Zuletzt erledigt“ (Konzept w1). */
+    public record Bestaetigt(UUID bezugsbasisId, String kennzeichen, UUID kennzahlId, String kennzahlKennzeichen,
+            String kennzahlName, int fassung, LocalDate am, String eingetragenVon) {}
+
+    /**
+     * Konzept Wiedervorlage w1, „Zuletzt erledigt“: die „geprüft, bleibt“ von {@code ab} bis {@code bis} (beide Tage
+     * eingeschlossen, in der Zeitzone der Kennzahl), die jüngste zuerst. Derselbe Zaun wie die Übersicht: eine Basis an
+     * einer Kennzahl, die der Aufrufer nicht sieht, zählt nicht.
+     */
+    public List<Bestaetigt> bestaetigt(LocalDate ab, LocalDate bis) {
+        Instant jetzt = kennzahlen.jetzt();
+        Map<UUID, Zeile> lesbar = new HashMap<>();
+        List<Bestaetigt> aus = new ArrayList<>();
+        // Ein Tag Vorlauf: die Zeitzone der Kennzahl entscheidet erst unten, an welchem Tag die Handlung lag.
+        for (var b : repo.bestaetigungen(ab.minusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant())) {
+            Zeile k = lesbar.computeIfAbsent(b.kennzahlId(), kennzahlen::lesbareKennzahlOderNichts);
+            if (k == null) {
+                continue;
+            }
+            LocalDate am = LocalDate.ofInstant(b.am(), kennzahlen.zone(k, jetzt));
+            if (am.isBefore(ab) || am.isAfter(bis)) {
+                continue;
+            }
+            aus.add(new Bestaetigt(b.basis(), b.kennzeichen(), k.id(), k.kennzeichen(), k.name(), b.fassung(), am,
+                    b.actorName()));
+        }
+        return List.copyOf(aus);
     }
 
     /**

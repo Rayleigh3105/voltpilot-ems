@@ -891,6 +891,11 @@ Object.assign(api, {
     anzahl_vorschau: 0,
     nicht_in_liste: [],
     verantwortung: UEMS_VERANTWORTUNG,
+    spaeter: [],
+    anzahl_ueberfaellig: 0,
+    anzahl_naechste: 0,
+    anzahl_spaeter: 0,
+    aufgaben_lesbar: true,
   }),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,

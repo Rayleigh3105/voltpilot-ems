@@ -462,3 +462,11 @@
 .vp-mb-zeilen > li > .vp-btn {
   align-self: flex-start;
 }
+
+/* Konzept Wiedervorlage w1: die Rückmeldung nach „geprüft, bleibt“, das Gegenstück zur Warnkarte, in Speicher-Grün. */
+.vp-em-bestaetigt {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-flow-batt, #16a34a) 30%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+}

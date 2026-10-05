@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.tenant.TenantContext;
 import java.sql.Array;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -283,6 +284,20 @@ public class EnergiemanagementDokumentRepository {
     public List<Eintrag> eintraege(UUID dokument) {
         return jdbc.query("SELECT * FROM energiemanagement_dokument_eintrag WHERE dokument_id = ? "
                 + "ORDER BY created_at, id", EINTRAG, dokument);
+    }
+
+    /** Ein „geprüft, bleibt“ mit seinem Dokument. */
+    public record Bleibt(UUID dokumentId, Eintrag eintrag) {}
+
+    /**
+     * Konzept Wiedervorlage w1, „Zuletzt erledigt“: die „geprüft, bleibt“ aller Dokumente mit Tag von {@code ab} bis
+     * {@code bis} (beide eingeschlossen), der jüngste zuerst.
+     */
+    public List<Bleibt> geprueftBleibt(LocalDate ab, LocalDate bis) {
+        return jdbc.query("SELECT * FROM energiemanagement_dokument_eintrag WHERE art = 'geprueft_bleibt' "
+                + "AND am BETWEEN ? AND ? ORDER BY am DESC, created_at DESC, id DESC",
+                (rs, n) -> new Bleibt(rs.getObject("dokument_id", UUID.class), EINTRAG.mapRow(rs, n)),
+                Date.valueOf(ab), Date.valueOf(bis));
     }
 
     /** Ein Eintrag (nur anhängen) und seine Protokoll-Zeile — {@code bekannt_gemacht} bzw. {@code geprueft_bleibt}. */

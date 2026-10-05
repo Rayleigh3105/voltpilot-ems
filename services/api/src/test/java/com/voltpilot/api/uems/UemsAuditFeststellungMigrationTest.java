@@ -53,7 +53,8 @@ class UemsAuditFeststellungMigrationTest {
     /** Migrationen, die auf diesen Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser, in Versionsfolge. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein internes Audit.
-            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
+            "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
+            "20261005220000"); // Konzept Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() (Zählerablesung).
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap19_ip16_test_pw";
     private static final List<String> TABELLEN = List.of("internes_audit", "internes_audit_eintrag", "feststellung",
             "feststellung_eintrag", "feststellung_wirksamkeit");
@@ -421,8 +422,11 @@ class UemsAuditFeststellungMigrationTest {
                 "audit_geaendert", "audit_durchgefuehrt", "hinweis", "audit_abgesagt", "audit_abgeschlossen",
                 "feststellung_erfasst", "eintrag", "feststellung_geaendert", "wirksamkeit_beantragt", "wirksamkeit_geprueft",
                 "wirksamkeit_abgelehnt", "feststellung_abgeschlossen");
+        // Außer dem Protokoll wächst nur wiedervorlage_art um die Zählerablesung (Konzept Wiedervorlage w1, Vertrag 1.2).
         assertThat(root.queryForObject("SELECT count(*) FROM energiemanagement_vokabular() WHERE vokabular <> "
-                + "'energiemanagement_protokoll'", Integer.class)).as("kein anderer Block wächst").isEqualTo(147 - 16);
+                + "'energiemanagement_protokoll'", Integer.class)).as("kein anderer Block wächst").isEqualTo(147 - 16 + 1);
+        assertThat(root.queryForList("SELECT wort FROM energiemanagement_vokabular() WHERE vokabular = "
+                + "'wiedervorlage_art' AND nr > 11 ORDER BY nr", String.class)).containsExactly("zaehlerablesung");
     }
 
     /** Out-of-order: auf einer Datenbank mit ALLEN anderen Migrationen kommt diese zuletzt an und trägt genauso. */
