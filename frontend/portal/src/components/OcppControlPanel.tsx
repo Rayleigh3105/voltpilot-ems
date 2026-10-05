@@ -89,7 +89,7 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
         {wiring && <p>Hinterlegt für Stecker {connector}: {wiring.voltage_v} V, Phase {wiring.phases.join(', ')}, höchstens {wiring.max_current_a} A.</p>}
         {wiring && wiring.phases.length === 3 && <fieldset disabled={busy}>
           <legend>Laden auf einer Phase</legend>
-          <p>Reicht die Leistung nicht für drei Phasen, lädt die Box das Auto auf einer Phase: ab {kwText(minimumKw(wiring, 1))} statt erst ab {kwText(minimumKw(wiring, 3))}. Umgeschaltet wird erst, wenn die neue Phasenzahl eine Minute lang gebraucht wird, und höchstens alle fünf Minuten. Fällt die Box aus, gilt wieder das dreiphasige Sicherheitsprofil der Säule. Eine am Ladepunkt eingetragene Mindestleistung bleibt die Schwelle, ab der geladen wird.</p>
+          <p>Reicht die Leistung nicht für drei Phasen, lädt die Box das Auto auf einer Phase: ab {kwText(minimumKw(wiring, 1))} statt erst ab {kwText(minimumKw(wiring, 3))}. Umgeschaltet wird erst, wenn die neue Phasenzahl eine Minute lang gebraucht wird, und höchstens alle fünf Minuten. Fällt die Box aus, gilt wieder das dreiphasige Sicherheitsprofil der Säule. Bei „Sonne + Mindestleistung“ bleibt die gewählte Mindestleistung die Untergrenze.</p>
           <p>{station?.phase_switch_supported === true ? 'Die Säule meldet, dass sie auf eine Phase umschalten kann.'
             : station?.phase_switch_supported === false ? 'Die Säule meldet, dass sie nicht auf eine Phase umschalten kann. Die Box lädt sie weiter dreiphasig.'
               : 'Die Säule hat noch nicht gemeldet, ob sie auf eine Phase umschalten kann. Bis dahin lädt die Box sie dreiphasig.'}</p>

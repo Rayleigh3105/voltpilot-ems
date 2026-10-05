@@ -34,7 +34,9 @@ func goeRig(t *testing.T, switching, stationCanSwitch bool) (*Agent, *ocppsim.St
 	if err := a.ocpp.store.Save(set); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.ocpp.srv.Add(csms.AddRequest{ID: "GOE", Connectors: 1, RatedKw: 11}); err != nil {
+	// Like the pilot: a 4.2 kW minimum left behind at the charge point by an
+	// earlier „Sonne + Mindestleistung", now under „Nur Sonnenstrom".
+	if _, err := a.ocpp.srv.Add(csms.AddRequest{ID: "GOE", Connectors: 1, RatedKw: 11, MinKw: 4.2}); err != nil {
 		t.Fatal(err)
 	}
 	st := ocppsim.New(ocppsim.Config{ID: "GOE", Connectors: 1, AmpsOnly: true, AmpsVoltageV: 230,

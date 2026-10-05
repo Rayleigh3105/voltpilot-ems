@@ -66,21 +66,34 @@ func (b Bands) OnlyActive(active int) Bands {
 	return b
 }
 
-// explicitMin is the minimum somebody CHOSE for this session (charge point,
-// vehicle profile). It stays a threshold on top of the bands.
+// chosenMin is the minimum somebody CHOSE for a session with bands: the
+// „Sonne + Mindestleistung" of its charge point or vehicle profile. It stays a
+// threshold on top of the bands.
 //
-// ⚠ The site-wide Mindestleistung is NOT applied to a session with bands: it
-// stands in for the physical floor of a charge point the box cannot know
-// ("4,2 kW 3p"), and the bands ARE that floor, known from the wiring. Keeping
-// it would make every site that entered the three-phase minimum lose exactly
-// the one-phase band it just allowed.
-func explicitMin(s Session, _ Settings) float64 {
-	return math.Max(0, s.MinKw)
+// ⚠ Everything else that looks like a minimum is NOT applied here, because the
+// bands are the physical floor, known from the wiring:
+//   - the site-wide Mindestleistung stands in for the floor of a charge point
+//     the box cannot know („4,2 kW 3p");
+//   - a session MinKw under „Nur Sonnenstrom" or „Schnell laden" is no choice
+//     the customer can see - the portal writes it only with „Sonne zuerst",
+//     and it stays behind when the lane changes.
+//
+// Keeping either would close exactly the one-phase band the operator allowed,
+// behind a value no form shows. known=false (a caller that names no policy)
+// keeps the session minimum: the conservative reading.
+func chosenMin(s Session, in Input) float64 {
+	if s.MinKw <= 0 {
+		return 0
+	}
+	if own, known := sessionPolicy(s, in); known && own != PolicySolarFirst {
+		return 0
+	}
+	return s.MinKw
 }
 
 // band is one band after the session's chosen minimum and its ceiling.
-func band(s Session, set Settings, r PowerRange) (lo, hi float64, ok bool) {
-	lo = math.Max(r.MinKw, explicitMin(s, set))
+func band(s Session, chosen float64, r PowerRange) (lo, hi float64, ok bool) {
+	lo = math.Max(r.MinKw, chosen)
 	hi = r.MaxKw
 	if c := s.capped(); c < hi {
 		hi = c
@@ -90,9 +103,9 @@ func band(s Session, set Settings, r PowerRange) (lo, hi float64, ok bool) {
 
 // feasibleMin is the smallest value a session with bands can actually charge
 // with. ok=false = no band survives its minimum and ceiling: it cannot charge.
-func feasibleMin(s Session, set Settings) (float64, bool) {
+func feasibleMin(s Session, chosen float64) (float64, bool) {
 	for _, r := range s.Ranges.list() {
-		if lo, _, ok := band(s, set, r); ok {
+		if lo, _, ok := band(s, chosen, r); ok {
 			return lo, true
 		}
 	}
@@ -101,10 +114,10 @@ func feasibleMin(s Session, set Settings) (float64, bool) {
 
 // snapDown is the largest achievable value not above kw, and its phase count.
 // 0 = nothing achievable at or below kw.
-func snapDown(s Session, set Settings, kw float64) (float64, int) {
+func snapDown(s Session, chosen float64, kw float64) (float64, int) {
 	rs := s.Ranges.list()
 	for i := len(rs) - 1; i >= 0; i-- {
-		lo, hi, ok := band(s, set, rs[i])
+		lo, hi, ok := band(s, chosen, rs[i])
 		if !ok || kw+1e-9 < lo {
 			continue
 		}
@@ -116,7 +129,7 @@ func snapDown(s Session, set Settings, kw float64) (float64, int) {
 // snapBands moves every banded allocation of a filled group DOWN into a band
 // and water-fills what that frees among the others. Returns what is left.
 // Each pass fixes at least one session at its band ceiling, so it ends.
-func snapBands(adm []Session, give map[string]float64, left float64, set Settings) float64 {
+func snapBands(adm []Session, give map[string]float64, left float64, in Input) float64 {
 	open := append([]Session(nil), adm...)
 	for range open {
 		snapped := false
@@ -125,7 +138,7 @@ func snapBands(adm []Session, give map[string]float64, left float64, set Setting
 				continue
 			}
 			v := give[open[i].Key]
-			f, _ := snapDown(open[i], set, v)
+			f, _ := snapDown(open[i], chosenMin(open[i], in), v)
 			if v-f <= 1e-9 {
 				continue
 			}
