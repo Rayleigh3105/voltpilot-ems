@@ -62,7 +62,7 @@ func zbFahre(t *testing.T, vor time.Duration) *zaMessung {
 			e1.a.ocpp = e1.rt
 			if !e1.zaehlerFehlt {
 				e1.rt.budget.ObserveM(m.now, lastmgmt.Measurement{GridKw: m.netz, ChargingKw: m.ladenK13, Complete: true,
-					BatteryChargeKw: math.Max(m.battK2, 0), HaveBattery: true, BatteryPowerKw: &m.battK2})
+					BatteryKw: m.battK2, HaveBattery: true, BatteryPowerKw: &m.battK2})
 			}
 			e1.a.applySetpoint(m.now)
 			if e1.sp != nil && e1.sp["control_enabled"] == true {

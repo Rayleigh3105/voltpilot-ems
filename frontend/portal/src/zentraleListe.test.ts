@@ -280,6 +280,54 @@ describe('zentraleListe · die Reihenfolge und die Karten-Arten', () => {
   });
 });
 
+describe('zentraleListe · der Name gehört dem Gerät selbst', () => {
+  // Die Konstellation vom Dachanlage-Labortest: die Säulen-Komponente und ein
+  // umbenannter Netzanschluss stehen im Modell VOR dem Speicher des Deye.
+  const SAEULE = ent({
+    id: 'cp-ent',
+    entityType: 'ev-charger',
+    typeLabel: 'Ladepunkt',
+    role: 'consumer',
+    label: 'Wallbox Garage',
+    control: true,
+    capabilities: { measure: [{ channel: 'power_kw' }] },
+  });
+  const NETZ_BENANNT = { ...ENTITIES[1], label: 'Hauptzähler' };
+  const MIT_SAEULE: SiteCharging = {
+    ...CHARGING,
+    chargers: [{ ...CHARGING.chargers[0], label: 'Wallbox Garage', entityId: 'cp-ent' }],
+  };
+  const liste = () =>
+    zentraleListe(
+      input({
+        model: plantModel([SAEULE, NETZ_BENANNT, ENTITIES[2], ENTITIES[0], ENTITIES[3]], TOPOLOGY, LOCAL, SOURCES),
+        charging: MIT_SAEULE,
+      }),
+    );
+
+  it('nennt den Wechselrichter nach SEINEM Speicher, nie nach Säule oder Zähler', () => {
+    const deye = karte(liste(), 'inverter')!;
+    expect(deye.titel).toBe('Wechselrichter Scheune');
+    expect(deye.technischerName).toBe('Deye SUN-30K');
+  });
+
+  it('führt die Säulen-Komponente NUR an der Säule, nicht am Wechselrichter', () => {
+    const k = liste();
+    expect(karte(k, 'inverter')!.komponenten.map((c) => c.entityId)).not.toContain('cp-ent');
+    expect(karte(k, 'cp-CARPORT-1')!.komponenten.map((c) => c.entityId)).toEqual(['cp-ent']);
+    // Auch kein synthetisches Gerät nimmt sie auf.
+    expect(k.some((x) => x.id.startsWith('dev:'))).toBe(false);
+  });
+
+  it('bleibt beim technischen Namen, wenn der Speicher keinen Alias trägt', () => {
+    const ohneAlias = { ...ENTITIES[0], label: null };
+    const k = zentraleListe(
+      input({ model: plantModel([NETZ_BENANNT, ENTITIES[2], ohneAlias], TOPOLOGY, LOCAL, SOURCES) }),
+    );
+    expect(karte(k, 'inverter')!.titel).toBe('Deye SUN-30K');
+  });
+});
+
 describe('zentraleListe · Ehrlichkeit', () => {
   it('bietet KEINEN Weg an, wo keine Box bekannt ist', () => {
     const k = zentraleListe(input({ boxRef: null }));

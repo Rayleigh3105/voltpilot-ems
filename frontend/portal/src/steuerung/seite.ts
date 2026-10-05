@@ -5,13 +5,16 @@
 import { liste } from './liste';
 import type { SiteProfile } from '../profiles';
 import {
+  ANGEHALTEN_ZUSTAND,
   SPEICHER,
   geraete,
+  jetztWerte,
   ordnen,
   reihen,
   reihenfolgeAus,
   speicherBild,
   type GeraetBild,
+  type JetztWerte,
   type Reihen,
   type SpeicherBild,
 } from './bild';
@@ -43,6 +46,8 @@ export interface SeitenBild {
   szene: SzenenStand | null;
   /** „Steuern & Optimieren“ dieser Anlage: Ruhe, Teilnahme, Bänder, Sperre. */
   funktion: FunktionsLage;
+  /** Die jüngste Telemetrie, nur gemessen (≤ 20 Minuten) - die Quelle der Messen-Ansicht. */
+  jetztGemessen: JetztWerte | null;
 }
 
 /** Das Betriebsmodell, das den Speicher gerade fährt (die exklusive Gruppe). */
@@ -75,13 +80,14 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
     gemessen: d.gemessen,
     regelJetzt,
     szene: szene ? { name: szene.def.name, ids: szene.ids } : null,
+    angehalten: funktion.angehalten,
   });
   const reihenfolge = reihenfolgeAus(d.verbraucher?.rangliste);
   const batterie = liste(d.assets).find((a) => a.type === 'battery') ?? null;
   const hatSpeicher = reihenfolge.includes(SPEICHER) || batterie != null;
   const { rang, rest } = ordnen(reihenfolge, gs, hatSpeicher);
   const speicherName = liste(d.verbraucher?.rangliste).find((e) => e.art === 'speicher')?.name ?? null;
-  const speicher = hatSpeicher
+  const sp = hatSpeicher
     ? speicherBild({
         raster: r,
         reihen: rh,
@@ -91,6 +97,8 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
         reservePct: d.plan?.effectiveFloorSocPct ?? null,
       })
     : null;
+  // Angehalten (SZ-2 A): das Betriebsmodell wirkt nicht - der Speicher sagt es wie jedes Gerät.
+  const speicher = sp && funktion.angehalten ? { ...sp, pill: ANGEHALTEN_ZUSTAND.pill, warum: ANGEHALTEN_ZUSTAND.kurz } : sp;
   const bis = d.interventions?.automationPaused ? Date.parse(d.interventions.pausedUntil ?? '') : NaN;
   const modell = laufendesModell(d.profiles?.profiles);
   const einordnung = einordnen(gs, d.vorschlaege, r.nowMs);
@@ -117,6 +125,7 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
     ladepunkte: gs.filter((g) => g.eintrag.ladepunkt),
     szene,
     funktion,
+    jetztGemessen: jetztWerte(d.live, r.nowMs),
   };
 }
 
@@ -124,7 +133,9 @@ export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBil
 export type BlattZustand =
   | { art: 'geraet'; id: string; modus?: 'aus' | 'an' }
   | { art: 'speicher' }
+  /** „Steuerung anhalten“: die Dauern der Pause und „Bis ich fortsetze“ (SZ-2 A). */
   | { art: 'pause' }
+  | { art: 'fortsetzen' }
   | { art: 'vorrang' }
   | { art: 'p14a' }
   | { art: 'negativ' }

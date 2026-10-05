@@ -71,6 +71,15 @@ class UemsEnergiemanagementAbnahmeTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String VERANTWORTUNG = EnergiemanagementRegeln.SAETZE.get("verantwortung");
     private static final String GRENZ_SATZ = EnergiemanagementRegeln.SAETZE.get("grenz_satz");
+    /**
+     * D5 (Konzept „Energiemanagement ohne Fachsprache“, PR #1303): eine Fläche trägt die Sätze wörtlich ODER über
+     * {@code components/GrenzSatz.tsx} — dieselben drei Formen, die {@code copy.test.ts} erkennt: {@code <GrenzSatz …/>}
+     * (ohne {@code grenze={false}} mit Grenz-Satz, mit {@code verantwortung} mit Verantwortungs-Satz) oder der
+     * Kopf-Hinweis {@code <GrenzHinweis />}, der beide im vollen Wortlaut trägt.
+     */
+    private static final Pattern GRENZ_BAUSTEIN = Pattern.compile("<GrenzSatz(?![\\w])(?![^>]*\\sgrenze=\\{false\\})[^>]*/>");
+    private static final Pattern VERANTWORTUNG_BAUSTEIN = Pattern.compile("<GrenzSatz(?![\\w])[^>]*\\sverantwortung[\\s/>]");
+    private static final Pattern GRENZ_HINWEIS = Pattern.compile("<GrenzHinweis[\\s/>]");
     private static final String LEER = "Hier ist noch nichts festgehalten.";
 
     /**
@@ -420,11 +429,20 @@ class UemsEnergiemanagementAbnahmeTest {
         List<String> flaechen = energiemanagementFlaechen(src);
         assertThat(flaechen).hasSizeGreaterThanOrEqualTo(18).contains("pages/EnergiemanagementBereich.tsx",
                 "components/VerzeichnisTabelle.tsx", "pages/AuditSeite.tsx", "pages/FeststellungSeite.tsx");
+        // Der Kopf-Hinweis des Bereichs spricht beide Sätze aus ihrer einen Quelle, ohne Bedingung davor.
+        String baustein = Files.readString(src.resolve("components/GrenzSatz.tsx"), StandardCharsets.UTF_8);
+        String hinweis = baustein.substring(baustein.indexOf("export function GrenzHinweis"));
+        assertThat(hinweis).containsPattern(">\\s*\\{\\s*UEMS_NORMGRENZE\\s*\\}\\s*<")
+                .containsPattern(">\\s*\\{\\s*UEMS_VERANTWORTUNG\\s*\\}\\s*<");
+        assertThat(hinweis.substring(0, hinweis.indexOf("</details>"))).doesNotContainPattern("&&\\s*<p>");
         List<String> ohne = new ArrayList<>();
         for (String f : flaechen) {
             String code = Files.readString(src.resolve(f), StandardCharsets.UTF_8);
-            if (!code.contains("UEMS_VERANTWORTUNG") && !code.contains(VERANTWORTUNG)) ohne.add(f + " ohne Verantwortungs-Satz");
-            if (!code.contains("UEMS_NORMGRENZE") && !code.contains(GRENZ_SATZ)) ohne.add(f + " ohne Grenz-Satz");
+            boolean imHinweis = GRENZ_HINWEIS.matcher(code).find();
+            if (!code.contains("UEMS_VERANTWORTUNG") && !code.contains(VERANTWORTUNG) && !imHinweis
+                    && !VERANTWORTUNG_BAUSTEIN.matcher(code).find()) ohne.add(f + " ohne Verantwortungs-Satz");
+            if (!code.contains("UEMS_NORMGRENZE") && !code.contains(GRENZ_SATZ) && !imHinweis
+                    && !GRENZ_BAUSTEIN.matcher(code).find()) ohne.add(f + " ohne Grenz-Satz");
         }
         assertThat(ohne).isEmpty();
     }

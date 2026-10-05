@@ -449,12 +449,14 @@ func (t *BudgetTracker) Netzpunkt(now time.Time, set Settings) (n Netzpunkt, has
 		// an age below zero is no age: older than every window (blind)
 		n.Age = BudgetHoldWindow + BudgetContractWindow + time.Second
 	}
+	// battKw is SIGNED (Measurement.BatteryKw); the ceiling reads the CHARGE,
+	// a discharge is 0 here as it always was
 	if src.haveBatt {
-		n.BattChargeKw = src.battKw
+		n.BattChargeKw = math.Max(0, src.battKw)
 	}
 	if src.steht {
 		n.ChargingKw = math.Min(n.ChargingKw, src.ankerLadenKw)
-		n.BattChargeKw = math.Min(n.BattChargeKw, src.ankerBattKw)
+		n.BattChargeKw = math.Min(n.BattChargeKw, math.Max(0, src.ankerBattKw))
 	}
 	return n, hasLimit
 }

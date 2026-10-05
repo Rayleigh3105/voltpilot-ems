@@ -48,7 +48,17 @@ die Server-Regeln, die sie nennen.
 - **Ohne Teilnahme** (kein Objekt, beendet; Steuern-Regel #779): keine Karte „Neu in Ihrer Anlage“, kein
   „Gerät fehlt?“; Geräte ohne Auftrag stehen als `einordnung.still` mit dem Weg „Steuerart“. Nur „kein
   Objekt“ bekommt den Einstieg (#965, Knopf hinter `funktion.steuern_einrichten`, öffnet `SteuernAssistent`).
-- Offen für die Varianten-Pakete: was Geräte einer Messanlage zeigt (SZ-1) und wo man anhält/fortsetzt (SZ-2).
+- **SZ-1 A Messen-Ansicht** (Captain 04.10.2026): ohne Teilnahme zeigt der Reiter Geräte nur `messen.ts` -
+  Jetzt aus der jüngsten Telemetrie (`seitenBild.jetztGemessen`, nie ein Fahrplanwert), die Geräte als Liste
+  „Gemessene Geräte“ (Antippen = Geräte-Blatt mit Steuerart); keine Plakette, keine Reiter-Zahlen, keine
+  Reihenfolge, kein Tagesbild, keine Vorschläge. Einstiegs-Band mit `STEUERN_EINSTIEG_MESSEN`.
+- **SZ-2 A ein Ort** (Captain 04.10.2026): die Plakette öffnet `PauseBlatt` „Steuerung anhalten“ - die Dauern
+  (`/automation-pause`, `handeingriff.setzen`) und, wenn `/funktionen` „anhalten“ anbietet, „Bis ich fortsetze“
+  (`PUT …/funktionen/steuern`, `steuerung.anhalten_fortsetzen`, ohne Recht gesperrt mit Grund); Antippen wählt,
+  erst „Anhalten“ schreibt. Angehalten: Band „Steuerung angehalten seit …“ mit „Fortsetzen“ (`FortsetzenBlatt`,
+  Folgen + Bestätigung), Geräte/Speicher `ANGEHALTEN_ZUSTAND` ohne Plan, Regeln „wirkt nicht“, Karten `.matt`,
+  keine Reihenfolge zum Ändern. Plakette: „Automatik an“ · „Pausiert bis …“ · „Angehalten seit …“ ·
+  „Noch nicht gestartet“. Bestandsschutz-Test: aktiv und nicht angehalten = dieselbe Seite wie ohne Funktion.
 
 ## Schreibwege (alle bestehend, außer Szene und „nur messen“)
 
@@ -79,6 +89,7 @@ MD ohne Grenze), `RechtMatrixApiTest`, `e2e/portal-rechte.spec.ts` (R1).
 ## Prüfen
 
 `src/steuerung/*.test.ts`, `src/pages/SteuerungSection.test.tsx`, Playwright
-`e2e/steuerung-anhalten.spec.ts` und `e2e/leerzustaende.spec.ts` (Funktion), `e2e/steuerung.spec.ts` (Beispielanlage `e2e/steuerung.*`, Uhr 29.09.2026 13:10 Berlin, 1440 und 375).
+`e2e/steuerung-anhalten.spec.ts` und `e2e/leerzustaende.spec.ts` (Funktion), `e2e/steuerung.spec.ts` (Beispielanlage `e2e/steuerung.*`, Uhr 29.09.2026 13:10 Berlin, 1440 und 375;
+`?funktion=kein_objekt|aktiv|angehalten` stellt „Steuern & Optimieren“, `STEUERUNG_SZ_BILDER=<Ordner>` legt Bilder ab).
 Die Hilfe-Aufnahmen `steuerung`, `steuerung-geraete`, `regeln`, `regeln-mobil`, `ladepark` kommen aus
 derselben Beispielanlage (`seite: 'steuerung'` in `e2e/help-captures.mjs`).

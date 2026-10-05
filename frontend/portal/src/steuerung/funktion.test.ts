@@ -24,14 +24,27 @@ describe('funktionsLage', () => {
     expect([l.plakette, l.satz, l.sperre]).toEqual([null, null, null]);
   });
 
-  it('angehalten: Plakette mit Tag, Satz mit Uhrzeit, Regeln wirken nicht, Eingriffe gesperrt', () => {
+  it('angehalten: Plakette mit Tag, Band im Wortlaut der Variante A (SZ-2), Regeln wirken nicht, Eingriffe gesperrt', () => {
     const l = funktionsLage(halle1({ zustand: 'angehalten', seit: '2026-11-03T14:10:00+01:00', aktionen: ['fortsetzen', 'beenden'] }), FIXTURE_IDS.an1);
     expect(l.ruht).toBe(true);
+    expect(l.angehalten).toBe(true);
     expect(l.plakette).toBe('Angehalten seit 03.11.');
-    expect(l.satz).toBe('Angehalten seit 03.11.2026 14:10');
-    expect(l.folge).toContain('Regeln und das Betriebsmodell des Speichers wirken nicht');
+    expect(l.satz).toBe('Steuerung angehalten seit 03.11.2026 14:10');
+    expect(l.folge).toBe('VoltPilot sendet keine Sollwerte. Regeln und das Betriebsmodell des Speichers wirken nicht, bis Sie fortsetzen. Schutzgrenzen gelten weiter.');
+    expect(l.wirktNicht).toBe('wirkt nicht — angehalten seit 03.11.2026 14:10');
     expect(l.sperre).toBe('Eingriffe und Pause gibt es wieder, sobald die Steuerung fortgesetzt ist.');
     expect(l.ohneTeilnahme).toBe(false);
+    expect([l.fortsetzenMoeglich, l.anhaltenMoeglich]).toEqual([true, false]);
+  });
+
+  it('SZ-2 A: ob „Bis ich fortsetze“ bzw. „Fortsetzen“ angeboten wird, sagt der Server (aktionen)', () => {
+    const aktiv = funktionsLage(halle1({ aktionen: ['anhalten', 'beenden'], ruhe_hinweis: { jetzt: false, beim_anhalten: true } }), FIXTURE_IDS.an1);
+    expect(aktiv).toMatchObject({ anhaltenMoeglich: true, fortsetzenMoeglich: false, ruheHinweisBeimAnhalten: true, angehalten: false, wirktNicht: null });
+    const ohne = funktionsLage(halle1({ aktionen: [] }), FIXTURE_IDS.an1);
+    expect([ohne.anhaltenMoeglich, ohne.fortsetzenMoeglich]).toEqual([false, false]);
+    // Eingerichtet und beendet sind Ruhe, aber nicht „angehalten“: nichts wird abgedimmt.
+    expect(funktionsLage(halle1({ zustand: 'eingerichtet', seit: null }), FIXTURE_IDS.an1).angehalten).toBe(false);
+    expect(funktionsLage(halle1({ zustand: 'archiviert', seit: null }), FIXTURE_IDS.an1).angehalten).toBe(false);
   });
 
   it('eingerichtet und entwurf: „Noch nicht gestartet“ statt „Automatik an“', () => {

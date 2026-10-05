@@ -159,3 +159,68 @@ test('Regeln: eine Szene pausiert die gewählten Geräte und endet mit einem Tip
   await expect(page.getByText('Szene „Urlaub“ ist an.')).toBeHidden();
   expect(fehler).toEqual([]);
 });
+
+// ---------------------------------------------------------------------------
+// UEMS „Steuern & Optimieren“ auf der Beispielanlage (Captain 04.10.2026, SZ-1 A und SZ-2 A).
+// Mit `STEUERUNG_SZ_BILDER=<Ordner>` legt der Lauf die ganze Seite als Bild ab.
+// ---------------------------------------------------------------------------
+
+/** Am Rechner die ganze Seite; am Telefon und für Blätter das Fenster (ab `stelle`, wenn genannt). */
+async function bild(page: Page, name: string, projekt: string, art: { blatt?: boolean; stelle?: string } = {}) {
+  const ordner = process.env.STEUERUNG_SZ_BILDER;
+  if (!ordner) return;
+  const telefon = projekt.startsWith('mobile');
+  await expect(page.locator('.vp-loader')).toHaveCount(0, { timeout: 15_000 });
+  if (art.stelle) await page.locator(art.stelle).first().evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  // Die laufenden Punkte („lädt“) pulsieren endlos - das Bild hält sie an, statt auf ihr Ende zu warten.
+  await page.screenshot({ path: `${ordner}/${name}-${telefon ? 375 : 1440}.png`, fullPage: !telefon && !art.blatt, animations: 'disabled' });
+}
+
+test('UEMS SZ-1 A: eine Anlage, die nur misst, zeigt die Messen-Ansicht - nur Gemessenes, Weg zur Steuerart', async ({ page }, testInfo) => {
+  const fehler = await oeffnen(page, `/e2e/steuerung.html?funktion=kein_objekt#/anlage/help-site/steuerung`);
+  await expect(page.getByTestId('steuern-einstieg')).toContainText('VoltPilot misst hier.');
+  const liste = page.getByRole('region', { name: 'Gemessene Geräte' });
+  await expect(liste.getByRole('button', { name: /Heizstab/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Jetzt' })).toContainText('gemessen');
+  await expect(page.locator('.stn-kopf .auto')).toHaveCount(0);
+  for (const nie of ['Wer bekommt Sonnenstrom zuerst?', 'Neu in Ihrer Anlage', 'Gerät fehlt?', 'Automatik', 'Tagesbild']) {
+    await expect(page.locator('.stn')).not.toContainText(nie);
+  }
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+  await bild(page, 'sz1-messanlage', testInfo.project.name);
+  if (testInfo.project.name.startsWith('mobile')) await bild(page, 'sz1-messanlage-liste', testInfo.project.name, { stelle: '#devs' });
+  await liste.getByRole('button', { name: /Heizstab/ }).first().click();
+  await expect(page.getByRole('dialog')).toContainText('Smart heißt hier');
+});
+
+test('UEMS SZ-2 A: angehalten - Band mit „Fortsetzen“, Geräte und Regeln abgedimmt mit Grund', async ({ page }, testInfo) => {
+  const fehler = await oeffnen(page, `/e2e/steuerung.html?funktion=angehalten#/anlage/help-site/steuerung`);
+  await expect(page.locator('.stn-kopf')).toContainText('Angehalten seit 29.09.');
+  const band = page.getByTestId('steuern-ruhe');
+  await expect(band).toContainText('Steuerung angehalten seit 29.09.2026 08:00.');
+  await expect(band.getByRole('button', { name: 'Fortsetzen' })).toBeVisible();
+  await expect(page.locator('#devs .dev.matt').first()).toContainText('angehalten');
+  await expect(page.locator('#devs').getByRole('button', { name: /Ändern/ })).toHaveCount(0);
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  await bild(page, 'sz2-angehalten', testInfo.project.name);
+  if (testInfo.project.name.startsWith('mobile')) await bild(page, 'sz2-angehalten-liste', testInfo.project.name, { stelle: '#devs' });
+  await page.goto(`/e2e/steuerung.html?funktion=angehalten#/anlage/help-site/regeln`);
+  await expect(page.locator('.rule.matt').first()).toContainText('wirkt nicht');
+  await bild(page, 'sz2-angehalten-regeln', testInfo.project.name, { stelle: '.rule' });
+  expect(fehler).toEqual([]);
+});
+
+test('UEMS SZ-2 A: die Plakette öffnet „Steuerung anhalten“ mit den Dauern und „Bis ich fortsetze“', async ({ page }, testInfo) => {
+  const fehler = await oeffnen(page, `/e2e/steuerung.html?funktion=aktiv#/anlage/help-site/steuerung`);
+  await bild(page, 'sz2-aktiv', testInfo.project.name);
+  await page.locator('.stn-kopf').getByRole('button', { name: 'Automatik an' }).click();
+  const blatt = page.getByRole('dialog', { name: /Steuerung anhalten/ });
+  await blatt.getByRole('button', { name: /Bis ich fortsetze/ }).click();
+  await expect(blatt.getByRole('button', { name: 'Anhalten' })).toBeEnabled();
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  await bild(page, 'sz2-blatt', testInfo.project.name, { blatt: true });
+  expect(fehler).toEqual([]);
+});

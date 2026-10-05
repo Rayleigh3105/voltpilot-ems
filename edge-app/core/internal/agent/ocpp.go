@@ -723,13 +723,13 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// stay building load, see ocpp_wallbox.go.
 	charging += a.wallboxChargingKw(rt.currentSettings(), ts)
 	m := lastmgmt.Measurement{GridKw: grid, ChargingKw: charging, Complete: complete}
-	// ⚠ The battery's MEASURED charge is the third channel of the Stufe-4
+	// ⚠ The battery's MEASURED power is the third channel of the Stufe-4
 	// surplus split (surplus.go): it is already inside `grid`, so handing it
-	// to the cars means taking it back out. A DISCHARGE is not a surplus the
-	// cars could claim and enters as 0 - but it still counts as a MEASUREMENT
-	// ("the battery is taking nothing"), which is what cars-first needs to
-	// know. A site whose flows never publish the channel reports nothing and
-	// both priorities collapse into the measured status quo.
+	// to the cars means taking it back out. It goes in SIGNED: a DISCHARGE
+	// must stay negative, or a battery feeding the cars reads as sunshine
+	// (lastmgmt.Measurement.BatteryKw). A site whose flows never publish the
+	// channel reports nothing and both priorities collapse into the measured
+	// status quo.
 	//
 	// ⚠ It is handed in EXPLICITLY, never read out of `measurements`: the
 	// battery channel is deliberately NOT a published measurement (see the
@@ -738,10 +738,8 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// the rig, not by a unit test - the tests fed the map by hand.
 	if battKw != nil {
 		m.HaveBattery = true
+		m.BatteryKw = *battKw
 		m.BatteryPowerKw = battKw
-		if *battKw > 0 {
-			m.BatteryChargeKw = *battKw
-		}
 	}
 	if rt.budget.ObserveM(ts, m) {
 		rt.nudge()

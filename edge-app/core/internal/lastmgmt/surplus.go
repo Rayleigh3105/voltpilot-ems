@@ -37,17 +37,21 @@ import (
 // is conservative in both directions with one mechanism (see budget.go).
 //
 // ⚠ THE STORAGE ARBITRATION IS A SPLIT OF ONE MEASURED QUANTITY, and it is
-// symmetric by construction. Let `batt` be the power the battery is MEASURED
-// taking. Then
+// symmetric by construction. Let `batt` be the battery's MEASURED power,
+// SIGNED (+ charging, − discharging). Then
 //
 //	S = max(0, batt − rest)        the WHOLE surplus, before anybody took it
 //
 // is independent of how it is currently split, because `rest` contains the
-// battery's own draw. From there the customer's choice is one subtraction:
+// battery's own draw. A DISCHARGE lowers S: a battery feeding the cars makes
+// `rest` negative without a single kilowatt of sunshine, and only the signed
+// term takes that back out (budget.go Measurement.BatteryKw). From there the
+// customer's choice is one subtraction:
 //
-//	speicher_vor_auto : cars get  max(0, S − batt)   ( = max(0, −rest), the
-//	                    measured status quo — the battery already took its
-//	                    share and what is left is what the cars may have)
+//	speicher_vor_auto : cars get  max(0, S − max(0, batt))   ( = max(0, −rest)
+//	                    while the battery CHARGES - the measured status quo,
+//	                    the battery already took its share - and never more
+//	                    than S while it DISCHARGES: its discharge is not sun)
 //	auto_vor_speicher : cars get  S, and the BATTERY is capped at
 //	                    max(0, S − cars) (StorageChargeCap below)
 //
@@ -233,7 +237,9 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 	total := round3(math.Max(0, -restNoBattHold))
 	out.TotalKw = &total
 	if haveBatt {
-		b := round3(batt)
+		// The battery's CHARGE (what it takes of the surplus); a discharge
+		// reports 0 here, as it always did - it is in TotalKw instead.
+		b := round3(math.Max(0, batt))
 		out.BatteryKw = &b
 	}
 
@@ -243,8 +249,10 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 		out.Kw = total
 	default:
 		// The measured status quo: the battery already took its share and what
-		// is left is `max(0, −rest)`.
-		out.Kw = round3(math.Max(0, -restHold))
+		// is left is `max(0, −rest)` - but never more than the whole surplus:
+		// a DISCHARGING battery makes −rest exceed S by exactly its discharge,
+		// and that is the house battery, not the sun.
+		out.Kw = round3(math.Min(math.Max(0, -restHold), total))
 	}
 	out.AllowMinimum = policy == PolicySolarFirst
 	out.Reason = surplusReason(out)

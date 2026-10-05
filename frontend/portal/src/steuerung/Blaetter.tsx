@@ -9,6 +9,8 @@
 import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
+import { useRollen } from '../rollen';
+import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import type { SiteProfile } from '../profiles';
 import { benefitLine } from '../profiles';
 import { fehlt, fragen, TAGE_WORT, wunschAus, entwurfAus, type SteuerartEntwurf, type SteuerartWunsch } from '../steuerartDialog';
@@ -49,7 +51,10 @@ export interface Aktionen {
   speicherEingriff: (art: 'aus' | 'an' | 'smart', minuten: number | null) => Promise<boolean>;
   steuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
   speicherHilft: (g: GeraetBild, an: boolean) => Promise<void>;
-  pause: (minuten: number) => Promise<void>;
+  pause: (minuten: number) => Promise<boolean>;
+  /** „Bis ich fortsetze“: „Steuern & Optimieren“ ohne Ende anhalten (UEMS SZ-2 A). */
+  anhalten: () => Promise<boolean>;
+  fortsetzen: () => Promise<boolean>;
   betriebsmodell: (neu: string | null) => Promise<boolean>;
   nurMessen: (g: GeraetBild) => Promise<void>;
   szeneAn: (id: string, geraete: string[]) => Promise<boolean>;
@@ -349,7 +354,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
               <div className="bed-r" key={x.flowId}>
                 <span className="k">auch wenn</span>
                 <span>{x.satz}{x.aktiv ? '' : ' (aus)'}</span>
-                <button type="button" className="x" aria-label="Regel öffnen" onClick={() => a.oeffne({ art: 'regel', flowId: x.flowId })}>
+                <button type="button" className="x" aria-label="Regel öffnen" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', flowId: x.flowId }); }}>
                   <Ic n="chevR" s={17} />
                 </button>
               </div>
@@ -357,7 +362,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
             {!regeln.length && <p className="leise">Keine. Das Gerät folgt nur seinem Smart-Auftrag.</p>}
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => a.oeffne({ art: 'regel', geraet: g.id })}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); a.oeffne({ art: 'regel', geraet: g.id }); }}>
               <Ic n="plus" s={16} />
               Auch wenn …
             </button></Recht>
@@ -844,17 +849,86 @@ export function speicherEingriff(bild: SeitenBild): { art: 'aus' | 'an'; bisMs: 
 // Kleine Blätter
 // ---------------------------------------------------------------------------
 
+/**
+ * „Steuerung anhalten“ (UEMS SZ-2 A, Captain 04.10.2026): EIN Blatt für „VoltPilot
+ * soll aufhören“. Die Dauern sind die befristete Pause (`/automation-pause`, Recht
+ * `handeingriff.setzen`); „Bis ich fortsetze“ hält „Steuern & Optimieren“ ohne Ende
+ * an (`PUT …/funktionen/steuern`, Recht `steuerung.anhalten_fortsetzen`) und steht nur
+ * da, wo der Server „anhalten“ anbietet - ohne Recht nicht wählbar, mit Grund.
+ * Antippen wählt nur; erst „Anhalten“ schreibt.
+ */
 export function PauseBlatt({ k }: { k: BlattKontext }) {
+  const f = k.bild.funktion;
+  const rollen = useRollen();
+  const darfOffen = rollen.darf('steuerung.anhalten_fortsetzen', f.standortId);
+  const [wahl, setWahl] = useState<number | 'offen' | null>(null);
+  const busy = k.busy === 'pause';
+  const fuss = (
+    <>
+      <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
+      <button
+        type="button"
+        className="btn"
+        disabled={wahl == null || busy}
+        onClick={async () => {
+          if (wahl == null) return;
+          if (await (wahl === 'offen' ? k.a.anhalten() : k.a.pause(wahl))) k.zu();
+        }}
+      >
+        <Ic n="pause" s={18} />
+        {busy ? 'Halte an …' : 'Anhalten'}
+      </button>
+    </>
+  );
   return (
-    <Blatt symbol="pause" titel="Automatik pausieren" unter="für die ganze Anlage" onClose={k.zu}>
+    <Blatt symbol="pause" titel="Steuerung anhalten" unter="für die ganze Anlage" fuss={fuss} onClose={k.zu}>
       <p className="leise" style={{ color: 'var(--c-fg)' }}>
         Während der Pause schaltet VoltPilot nichts. Die Geräte fallen in ihren sicheren Zustand; Schutzgrenzen gelten weiter.
       </p>
-      <Recht aktion="handeingriff.setzen"><div className="dauer">
+      <Recht aktion="handeingriff.setzen"><div className="dauer" role="group" aria-label="Wie lange?">
         {DAUERN.map(([v, l]) => (
-          <button type="button" key={v} disabled={k.busy === 'pause'} onClick={async () => { await k.a.pause(v); k.zu(); }}>{l}</button>
+          <button type="button" key={v} aria-pressed={wahl === v} disabled={busy} onClick={() => setWahl(v)}>{l}</button>
         ))}
       </div></Recht>
+      {f.anhaltenMoeglich && (
+        <>
+          <div className="oder">oder</div>
+          <button type="button" className="bif" aria-pressed={wahl === 'offen'} disabled={busy || !darfOffen} onClick={() => setWahl('offen')}>
+            <span className="rad" />
+            <span>
+              <b>Bis ich fortsetze</b>
+              <small>VoltPilot sendet ab sofort keine Sollwerte; die Anlage bleibt ohne Enddatum angehalten, bis jemand fortsetzt. Die Geräte fallen in ihren sicheren Zustand.</small>
+            </span>
+          </button>
+          {!darfOffen && <p className="leise vp-recht-hinweis" role="note">{rollen.grund}</p>}
+          {wahl === 'offen' && f.ruheHinweisBeimAnhalten && <p className="leise" role="note">{RUHE_VERBINDUNG_HINWEIS}</p>}
+        </>
+      )}
+    </Blatt>
+  );
+}
+
+/** „Steuerung fortsetzen“ (UEMS SZ-2 A): aus dem Band, mit Folgen und Bestätigung. */
+export function FortsetzenBlatt({ k }: { k: BlattKontext }) {
+  const f = k.bild.funktion;
+  const busy = k.busy === 'fortsetzen';
+  const fuss = (
+    <>
+      <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
+      <Recht standort={f.standortId} aktion="steuerung.anhalten_fortsetzen">
+        <button type="button" className="btn" disabled={busy} onClick={async () => { if (await k.a.fortsetzen()) k.zu(); }}>
+          <Ic n="play" s={18} />
+          {busy ? 'Setze fort …' : 'Fortsetzen'}
+        </button>
+      </Recht>
+    </>
+  );
+  return (
+    <Blatt symbol="play" titel="Steuerung fortsetzen" unter="für die ganze Anlage" fuss={fuss} onClose={k.zu}>
+      {f.satz && <div className="warum">{f.satz}.</div>}
+      <p className="leise" style={{ color: 'var(--c-fg)' }}>
+        VoltPilot prüft Box, Freigaben, Grenze, Hauptzähler und Betriebsweise erneut. Nur mit grüner Prüfliste beginnt die Steuerung mit dem nächsten Fahrplan.
+      </p>
     </Blatt>
   );
 }
@@ -897,7 +971,7 @@ export function NegativBlatt({ k }: { k: BlattKontext }) {
     <Blatt symbol="down" titel="Negativpreis-Abregelung" unter="läuft immer mit" onClose={k.zu}>
       <div className="warum">Kostet Strom an der Börse unter null, speist die Anlage nicht ein. Das schützt vor Kosten.</div>
       <p className="leise">Besser als abregeln: den Strom selbst nutzen. Eine Regel schaltet dann Heizstab oder Pumpe ein.</p>
-      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={() => k.a.oeffne({ art: 'regel', vorlage: 'negativ' })}>
+      <Recht aktion="betriebsweise.aendern"><button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); k.a.oeffne({ art: 'regel', vorlage: 'negativ' }); }}>
         <Ic n="plus" s={18} />
         Regel aus Vorlage
       </button></Recht>
