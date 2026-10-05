@@ -1,6 +1,46 @@
-# Übergabe: Stand und nächste Schritte (03.10.2026)
+# Übergabe: Stand und nächste Schritte (05.10.2026)
 
-Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen und für einen KI-Assistenten. Sie fasst zusammen, was in der Sitzung vom 03.10.2026 entschieden, gebaut und gemessen wurde. Alles Weitere steht in den verlinkten Dokumenten.
+Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen und für einen KI-Assistenten. Sie fasst zusammen, was seit dem 03.10.2026 entschieden, gebaut und gemessen wurde. Alles Weitere steht in den verlinkten Dokumenten.
+
+## Stand 05.10.2026: Pilot Anlage Dirolf (`edge-zay5sdd`)
+
+- **Auf dem Mango läuft** `edge-light-gff8746978` (Spitze von `feature/edge-light`). Der Deye wird gelesen, die go-e (`goe-300808`, Firmware 59.4) ist per OCPP eingerichtet (Sicherheitsprofile angenommen).
+- **Überschussladen „Nur Sonne“ am Auto geprüft (Teil 1):** ohne Sonne teilt die Box 0 kW zu, die go-e hält zurück (`SuspendedEVSE`, 0,00 kW). Vorher lud sie dauerhaft mit 6,8 kW (behoben mit #1380, #1382, #1383).
+- **go-e auf 16 A** (`ama`/`amp`, vorher 10/11 A), mit Freigabe des Betreibers; die Variante ist 11 kW/16 A, das Kabel 32 A.
+- **Phasenumschaltung 1p/3p** ([OCPP-Steuerung](../../docs/ocpp-control.md)): PR #1385 ist in `main`, auf `feature/edge-light` übernommen und auf dem Mango. Die go-e meldet `ConnectorSwitch3to1PhaseSupported=true`.
+- **Noch offen:**
+  1. API und Portal mit #1385 deployen.
+  2. Im Portal am Ladepunkt „Wallbox Garage“ unter „AC-Anschluss und Phasengrenzen“ den Knopf **Laden auf einer Phase erlauben** drücken; das geht mit eingestecktem Auto.
+  3. Feldtest mit Sonne: einphasig ab 1,4 kW Überschuss, dreiphasig ab 4,1 kW, 60 s Wartezeit, mindestens 5 min zwischen zwei Umschaltungen. Steigender Überschuss wirkt erst nach einer Minute (Minimum der letzten 60 s), fallender sofort.
+- **Bekannt:**
+  - Die go-e beantwortet die Rückfrage nach dem Ladeplan (`GetCompositeSchedule`) nicht; die Rücklesung bleibt „unbekannt“, die Wirkung zeigt die gemessene Leistung.
+  - Die Statuszeile „Überschuss“ der Box nennt den Standort-Standard, nicht die Quelle des Ladepunkts; gerechnet wird richtig.
+  - Nach einer Wahl „Sonne + Mindestleistung“ bleibt deren Wert am Ladepunkt stehen (API: `COALESCE`). Bei Steckern mit Phasenumschaltung zählt er nur noch bei „Sonne zuerst“.
+- `feature/edge-light` trägt #1380, #1382, #1383 und #1385 als Cherry-Picks; ein späterer Merge von `main` bringt dieselben Änderungen.
+
+### Zugang zum Pilot-Mango
+
+| Weg | Adresse | Bedingung |
+|---|---|---|
+| Wartungstunnel (WireGuard `vpn.voltpilot.de:1001`, 10.10.1.0/24) | SSH `root@10.10.1.25` **Port 2222** | nur Schlüssel, **RSA** (Dropbear kennt kein Ed25519) |
+| Web-App im Tunnel | `http://10.10.1.25:8484` | nur freigegebene Techniker-Adressen, bisher `10.10.1.5` |
+| Vor Ort | WLAN `VoltPilot.de-zay5sdd`, `root@192.168.1.1` Port 22 | Host-Schlüssel prüfen (s. u.) |
+
+Ohne Freigabe in der Liste erreicht ein Rechner mit SSH-Zugang die Web-App über einen SSH-Tunnel: `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25`, dann `http://localhost:8484`.
+
+**Ein weiterer Rechner** braucht drei Dinge:
+1. Einen eigenen Peer in wireguard-ui.
+2. Seinen öffentlichen RSA-Schlüssel in `/etc/dropbear/authorized_keys` des Mango, eingetragen von einem Rechner, der schon Zugang hat, oder vor Ort.
+3. Seine VPN-Adresse für die Web-App: `edge-light/openwrt/service-tunnel.sh root@10.10.1.25 web 10.10.1.5 <neue-ip>` (die Liste wird ersetzt; das Skript nutzt SSH, also mit `-p 2222` über einen Wrapper oder vor Ort mit `root@192.168.1.1`).
+
+Ein **anderer GL.iNet-Router** nutzt ebenfalls 192.168.1.1 (WLAN „VoltPilot Energymanagement“). Der Mango hat den RSA-Host-Schlüssel `SHA256:9v/vmOZqCxM2vkV0IqYIjD3U3HL/Go44eeU83WTos8o`; bei einem anderen Schlüssel nicht verbinden. Die go-e (192.168.2.105, Kundennetz) ist nur aus dem Mango-WLAN erreichbar, nicht über den Tunnel.
+
+**Neue Fassung einspielen:** `edge-light/scripts/build.sh mipsle`, `edge-light/openwrt/install.sh root@10.10.1.25` (SSH auf Port 2222, z. B. per Wrapper im `PATH`), dann `/etc/init.d/vp-edge-light restart`. Während des Neustarts gilt an der go-e die letzte Grenze noch bis zu 120 s.
+
+### Werkzeuge für Feldtests
+
+- `node edge-light/test/ocpp-mitschrift.js <datei.log> [http://10.10.1.25:8484]` schreibt alle 5 s eine Zeile: Messwerte, Zuteilung, Phasenzahl, Antwort der Säule.
+- `edge-light/test/mango-gotest.sh <ziel> <paket> [-test.run …]` lässt Go-Tests auf dem Mango laufen, wenn sie lokal nicht starten (unter Windows blockiert die Anwendungssteuerung die Testprogramme). Die Grenzen stehen im Skriptkopf.
 
 ## Ausgangslage und Ziel
 
