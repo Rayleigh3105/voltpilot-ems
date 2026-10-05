@@ -52,31 +52,39 @@ byte-gleich mit den gepflegten Zahlen (`TestWithoutAMeasurementTheBudgetIsByteFo
     `agent.carsBeforeStorageKw` (P6): dieselbe Frage darf nicht zwei Antworten
     haben.
   - **⚠ Auch ein Start oder Stopp DER SÄULE ist ein Regimewechsel**
-    (`Connector.DrawChangedAt`, `PowerSettled`, Edge-Light-Pilot 05.10.2026).
-    Wechselt die Säule von sich aus nach `Charging` oder aus `Charging` heraus
-    (Auto wacht auf, Pause, Phasenumschaltung), ist ein Messwert von davor „in
-    transit". Danach fährt das Auto über mehrere `MeterValues` hoch (go-e:
-    0 → 0,75 → 1,58 kW im 10-s-Takt), und der Netz-Zähler sieht jeden Schritt
-    Sekunden früher. Bis zwei Messwerte nach dem Wechsel übereinstimmen
-    (0,2 kW oder 10 %), misst der neueste Messwert NUR seinen eigenen Moment.
-    Eine Säule in `Charging` mit Grenze, aber ohne Zug, gilt dabei nicht als
-    eingeschwungen. `agent.gridPairer` verrechnet einen Netz-Messwert nur, wenn er
-    höchstens 3 s nach diesem Säulen-Messwert liegt. Sonst paart er den Säulen-Messwert
-    einmal nachträglich mit dem Netz-Messwert, der ihm am nächsten liegt (die
-    Netz-Messwerte einer Messkadenz werden dafür vorgehalten), und verwirft die übrigen.
-    Pro Säulen-Messwert entsteht mindestens ein richtiges Paar, die Quellen-Bahn bleibt
-    gemessen. Der Preis: ein Lastsprung im Gebäude kommt während des Einschwingens
-    höchstens eine Messkadenz der Säule später an, wie nach jedem befohlenen Wechsel. Ohne das las die Box 2,05 kW Überschuss als 0,94 kW, unter dem
-    einphasigen Minimum von 1,38 kW, und das Fenster-Maximum hielt das Auto eine
-    Minute lang an: elf Starts in 15 Minuten. Nachgestellt in
-    `agent.TestTheFieldRampReproducesThePauseWithoutLatePairing`. Ein
-    BEFOHLENER Wechsel behält die Ein-Messwert-Regel oben.
+    (`Connector.DrawChangedAt`, `PowerSettled`, `Snapshot.DrawSettling`,
+    Edge-Light-Pilot 05.10.2026). Wechselt die Säule von sich aus nach
+    `Charging` oder aus `Charging` heraus (Auto wacht auf, Pause,
+    Phasenumschaltung), fährt das Auto über mehrere `MeterValues` hoch, und die
+    go-e meldet dabei sogar zu ihrem eigenen Zeitstempel zu wenig (0,75 kW, während
+    das Auto 1,1 kW zog). Bis die Säule eingeschwungen ist, wird deshalb GAR KEIN
+    Paar gebildet: zwei Messwerte nach dem Wechsel stimmen überein (0,2 kW oder
+    10 %), und solange die Säule `Charging` unter einer Grenze meldet, zeigen
+    beide ein angelaufenes Auto (mindestens 25 % der Grenze). Nach
+    `DrawSettleTimeout` (40 s) gilt sie in jedem Fall als eingeschwungen. Die
+    verworfenen Messwerte tragen `Measurement.Settling`: die Quellen-Bahn HÄLT
+    ihren letzten gemessenen Überschuss (`SurplusSettleHold`, 60 s ab der letzten
+    gültigen Messung, nur solange Netz-Messwerte weiter eintreffen), statt ihn
+    für nicht belegbar zu erklären und bei „Nur Sonnenstrom" genau das
+    anlaufende Auto anzuhalten. Das Budget hält wie bei jeder kurzen Lücke. Der
+    Preis: ein Lastsprung im Gebäude kommt während des Einschwingens erst danach
+    an, höchstens 40 s später. Ohne die Regel las die Box 2,05 kW Überschuss als
+    0,94 kW, unter dem einphasigen Minimum von 1,38 kW, und das Fenster-Maximum
+    hielt das Auto eine Minute lang an: elf Starts in 15 Minuten. Ein erster
+    Versuch, den Säulen-Messwert mit dem zeitgleichen Netz-Messwert zu paaren,
+    scheiterte genau an der nachlaufenden go-e und an zwei fast gleichen
+    Messwerten eines noch nicht angelaufenen Autos (−0,01 und 0,15 kW).
+    Nachgestellt in `agent.TestTheFieldRampsReproduceThePauseWithoutTheSettleRule`
+    und `TestTheSourceLaneHoldsThroughAStartRamp`. Ein BEFOHLENER Wechsel behält
+    die Ein-Messwert-Regel oben.
   - **⚠ Folge für TESTS: ein Prüfstand muss FORTLAUFEND messen.** Eine
     Attrappe, die ihre `MeterValues` EINMAL veröffentlicht und dann auf
     „complete" wartet, wartet auf einen Bericht, den niemand sendet, sobald der
     Executor im Hintergrund eine Grenze ändert. `publishAndSettle` (und damit
     `measureSite`/`measureSurplus`) veröffentlicht deshalb INNERHALB der
-    Warteschleife — genauso, wie eine echte Säule sich verhält.
+    Warteschleife — genauso, wie eine echte Säule sich verhält. Sie wartet
+    auch, bis keine Säule mehr einschwingt; der Simulator stempelt ganze
+    Sekunden, das Einstecken kostet also ein, zwei Sekunden.
 - **⚠ Die Fail-Safe-Regel ist die UMKEHRUNG jedes ökonomischen Guards:** frisch
   → Schleife · kurze Lücke → das letzte Budget HALTEN · längere Lücke → auf das
   SICHERE Budget zusammenziehen · nie gemessen → das hinterlegte (Stufe-1-)

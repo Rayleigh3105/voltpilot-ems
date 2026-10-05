@@ -71,72 +71,62 @@ func TestASampleFromBeforeTheCarWokeUpIsInTransit(t *testing.T) {
 	}
 }
 
-func TestTheDrawSettlesOnTwoAgreeingSamplesAfterTheChange(t *testing.T) {
+func TestTheDrawSettlesOnTwoAgreeingSamplesOfAStartedCar(t *testing.T) {
 	changed := time.Date(2026, 10, 5, 7, 47, 45, 0, time.UTC)
 	kw := func(v float64) *float64 { return &v }
-	sample := func(sec int) time.Time { return changed.Add(time.Duration(sec) * time.Second) }
-	limit := kw(1.72)
+	at := func(sec int) time.Time { return changed.Add(time.Duration(sec) * time.Second) }
+	limit := kw(2.22)
+	charging := func(prev, cur float64, prevAt, curAt int) Connector {
+		return Connector{Status: StatusCharging, PowerKw: kw(cur), MeteredAt: at(curAt), PrevPowerKw: kw(prev),
+			PrevMeteredAt: at(prevAt), DrawChangedAt: changed, CommandedKw: limit}
+	}
 	cases := []struct {
 		name    string
 		con     Connector
+		now     int
 		settled bool
 	}{
-		{"no station-side change", Connector{Status: StatusCharging, PowerKw: kw(1.58), MeteredAt: sample(4)}, true},
-		{"one sample since the change", Connector{Status: StatusCharging, PowerKw: kw(0.75), MeteredAt: sample(14),
-			PrevPowerKw: kw(0), PrevMeteredAt: sample(-6), DrawChangedAt: changed, CommandedKw: limit}, false},
-		{"ramping", Connector{Status: StatusCharging, PowerKw: kw(1.58), MeteredAt: sample(24),
-			PrevPowerKw: kw(0.75), PrevMeteredAt: sample(14), DrawChangedAt: changed, CommandedKw: limit}, false},
-		{"settled at its draw", Connector{Status: StatusCharging, PowerKw: kw(1.59), MeteredAt: sample(34),
-			PrevPowerKw: kw(1.58), PrevMeteredAt: sample(24), DrawChangedAt: changed, CommandedKw: limit}, true},
-		{"car still waking up", Connector{Status: StatusCharging, PowerKw: kw(0), MeteredAt: sample(14),
-			PrevPowerKw: kw(0), PrevMeteredAt: sample(4), DrawChangedAt: changed, CommandedKw: limit}, false},
-		{"paused, settled at zero", Connector{Status: StatusSuspendedEVSE, PowerKw: kw(0), MeteredAt: sample(14),
-			PrevPowerKw: kw(0), PrevMeteredAt: sample(4), DrawChangedAt: changed, CommandedKw: kw(0)}, true},
-		{"within the relative tolerance", Connector{Status: StatusCharging, PowerKw: kw(10.5), MeteredAt: sample(24),
-			PrevPowerKw: kw(11.0), PrevMeteredAt: sample(14), DrawChangedAt: changed, CommandedKw: kw(11)}, true},
+		{"no station-side change", Connector{Status: StatusCharging, PowerKw: kw(1.58), MeteredAt: at(4)}, 5, true},
+		{"one sample since the change", charging(0, 0.75, -6, 14), 15, false},
+		{"ramping", charging(0.75, 1.58, 14, 24), 25, false},
+		{"settled at its draw", charging(2.18, 2.2, 24, 34), 35, true},
+		{"car still waking up", charging(0, 0, 4, 14), 15, false},
+		// pilot 11:04: two samples 0.16 kW apart, but the car had not started
+		{"barely started", charging(-0.01, 0.15, 4, 14), 15, false},
+		{"within the relative tolerance", Connector{Status: StatusCharging, PowerKw: kw(10.5), MeteredAt: at(24),
+			PrevPowerKw: kw(11.0), PrevMeteredAt: at(14), DrawChangedAt: changed, CommandedKw: kw(11)}, 25, true},
+		{"paused, settled at zero", Connector{Status: StatusSuspendedEVSE, PowerKw: kw(0), MeteredAt: at(14),
+			PrevPowerKw: kw(0), PrevMeteredAt: at(4), DrawChangedAt: changed, CommandedKw: kw(0)}, 15, true},
+		{"a car that draws little settles only by timeout", charging(0.3, 0.3, 14, 24), 25, false},
+		{"... and then it does", charging(0.3, 0.3, 14, 24), 40, true},
+		{"the timeout ends any settling", charging(0, 0.75, -6, 14), 40, true},
 	}
 	for _, tc := range cases {
-		if got := tc.con.PowerSettled(); got != tc.settled {
+		if got := tc.con.PowerSettled(at(tc.now)); got != tc.settled {
 			t.Errorf("%s: settled=%v, want %v", tc.name, got, tc.settled)
 		}
 	}
 }
 
-func TestChargingPairNamesTheMomentOfASettlingConnector(t *testing.T) {
-	now := time.Date(2026, 10, 5, 7, 48, 4, 600_000_000, time.UTC)
-	const maxAge, window = 30 * time.Second, 3 * time.Second
+func TestDrawSettlingAsksEveryChargePointInsideTheMeasurement(t *testing.T) {
+	now := time.Date(2026, 10, 5, 9, 4, 1, 0, time.UTC)
 	kw := func(v float64) *float64 { return &v }
-	settling := func(id int, meteredAt time.Time) Connector {
-		return Connector{ID: id, Status: StatusCharging, Session: &Session{TransactionID: id},
-			PowerKw: kw(0.75), MeteredAt: meteredAt, PrevPowerKw: kw(0), PrevMeteredAt: meteredAt.Add(-10 * time.Second),
-			DrawChangedAt: meteredAt.Add(-14 * time.Second), CommandedKw: kw(1.72)}
+	settling := Connector{ID: 1, Status: StatusCharging, Session: &Session{TransactionID: 1},
+		PowerKw: kw(0.15), MeteredAt: now.Add(-5 * time.Second), PrevPowerKw: kw(-0.01), PrevMeteredAt: now.Add(-15 * time.Second),
+		DrawChangedAt: now.Add(-16 * time.Second), CommandedKw: kw(2.22)}
+	steady := Connector{ID: 1, Status: StatusCharging, Session: &Session{TransactionID: 1}, PowerKw: kw(2.2), MeteredAt: now.Add(-5 * time.Second)}
+	station := func(con Connector) ChargerState {
+		return ChargerState{Charger: Charger{ID: "goe"}, Connected: true, Connectors: []Connector{con}}
 	}
-	snap := func(cons ...Connector) Snapshot {
-		return Snapshot{Chargers: []ChargerState{{Charger: Charger{ID: "goe"}, Connected: true, Connectors: cons}}}
+	if (Snapshot{Chargers: []ChargerState{station(steady)}}).DrawSettling(now) {
+		t.Fatal("a settled charge point does not hold the lanes")
 	}
-
-	steady := Connector{ID: 1, Status: StatusCharging, Session: &Session{TransactionID: 1}, PowerKw: kw(1.58), MeteredAt: now.Add(-5 * time.Second)}
-	if total, complete, at := snap(steady).ChargingPair(now, maxAge, window); !complete || !at.IsZero() || total != 1.58 {
-		t.Fatalf("a settled connector pairs with the current reading: %v %v %v", total, complete, at)
+	if !(Snapshot{Chargers: []ChargerState{station(steady), station(settling)}}).DrawSettling(now) {
+		t.Fatal("one settling charge point is enough")
 	}
-
-	metered := now.Add(-5100 * time.Millisecond)
-	total, complete, at := snap(settling(1, metered)).ChargingPair(now, maxAge, window)
-	if !complete || !at.Equal(metered) || total != 0.75 {
-		t.Fatalf("a settling connector's sample measures its own moment: %v %v %v", total, complete, at)
-	}
-
-	far := snap(settling(1, metered), settling(2, metered.Add(4*time.Second)))
-	if _, complete, _ := far.ChargingPair(now, maxAge, window); complete {
-		t.Fatal("two settling samples 4 s apart cannot share one grid reading")
-	}
-	near := snap(settling(1, metered), settling(2, metered.Add(time.Second)))
-	if _, complete, at := near.ChargingPair(now, maxAge, window); !complete || !at.Equal(metered.Add(time.Second)) {
-		t.Fatalf("two settling samples 1 s apart share the reading nearest to them: %v %v", complete, at)
-	}
-
-	stale := settling(1, now.Add(-31*time.Second))
-	if _, complete, _ := snap(stale).ChargingPair(now, maxAge, window); complete {
-		t.Fatal("the plain staleness rule still applies")
+	gone := station(settling)
+	gone.Connected = false
+	if (Snapshot{Chargers: []ChargerState{gone}}).DrawSettling(now) {
+		t.Fatal("a disconnected station is building load, nothing to settle")
 	}
 }

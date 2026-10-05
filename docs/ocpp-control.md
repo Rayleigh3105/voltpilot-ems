@@ -84,8 +84,8 @@ behalten ihre jeweiligen Berechtigungen.
   jeweilige Messuhr; eine Energiemeldung verjüngt keine alte Leistung.
 - Netz- und Ladeleistung werden nur als Paar desselben Moments verrechnet. Nach einem
   neuen Befehl zählt erst der nächste Messwert der Säule. Startet oder stoppt die Säule
-  von sich aus, zählt jeder Messwert bis zum Einschwingen nur mit dem Netz-Messwert,
-  der ihm zeitlich am nächsten liegt ([Details](agents/edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)).
+  von sich aus, wird bis zum Einschwingen (höchstens 40 s) gar nicht verrechnet; der
+  Sonnenüberschuss hält so lange seinen letzten Messwert ([Details](agents/edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)).
 - Aktive Sitzungen werden mit Transaktions-ID, Startzeit, Anfangszähler und
   Kartenpseudonym atomar gespeichert. Klartext-Karten werden nicht persistiert.
   Nach Neustart braucht die Sitzung eine frische passende Transaktionsmeldung.
