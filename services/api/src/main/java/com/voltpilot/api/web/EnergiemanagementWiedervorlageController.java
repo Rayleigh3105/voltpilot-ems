@@ -52,6 +52,18 @@ public class EnergiemanagementWiedervorlageController {
                 .body(EnergiemanagementWiedervorlageService.ics(w));
     }
 
+    /**
+     * Recht: {@code energiemanagement.ansehen}. Konzept Wiedervorlage w1, „Zuletzt erledigt“: die letzten Entscheidungen,
+     * die eine Frist beendet oder neu begonnen haben ({@value EnergiemanagementWiedervorlageService#ZULETZT_TAGE} Tage
+     * bis zum Abruf, höchstens {@value EnergiemanagementWiedervorlageService#ZULETZT_ANZAHL}), die jüngste zuerst. Ein
+     * eigener Abruf, weil er das Verzeichnis liest; die Liste der Fristen wartet nicht auf ihn.
+     */
+    @GetMapping("/wiedervorlage/zuletzt")
+    public EnergiemanagementWiedervorlageDto.Zuletzt zuletzt() {
+        return dienst.zuletzt(EnergiemanagementWiedervorlageService.ZULETZT_TAGE,
+                EnergiemanagementWiedervorlageService.ZULETZT_ANZAHL);
+    }
+
     /** {@code {code, message, …Fakten}} — wie jede Ablehnung der UEMS-Routen. */
     @ExceptionHandler(EnergiemanagementAbgelehnt.class)
     public ResponseEntity<Map<String, Object>> abgelehnt(EnergiemanagementAbgelehnt e) {

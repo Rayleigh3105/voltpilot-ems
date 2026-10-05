@@ -4,8 +4,9 @@ import { expect, test } from '@playwright/test';
 
 /**
  * „Was steht an“ (Konzept Wiedervorlage w1, Variante A) bei 375, 390 und 1440 px auf der eigenen Bühne
- * `e2e/energiemanagement-baustein.html`: R12 (acht überfällig in vier Bündeln), die Demo (zehn Anstöße sind ein
- * Eintrag), der Normalfall, nur eine Frist in den nächsten Tagen, ohne jede Frist (kein Block). GEMESSEN: kein Querlauf
+ * `e2e/energiemanagement-baustein.html`: R12 (acht überfällig in vier Bündeln), die Demo (zehn Korrekturen sind ein
+ * Eintrag), der Normalfall (die nächsten zwei Fristen aus dem Jahresplan), nur eine Frist in den nächsten Tagen, ohne
+ * jede Frist (kein Block). GEMESSEN: kein Querlauf
  * des Dokuments, kein Element über dem Rand des Blocks, jede Zeile mindestens 52 px hoch (Tippfläche). Mit
  * `ENERGIEMANAGEMENT_BILDER=<Ordner>` legt der Lauf je Fall ein Bild ab.
  */
@@ -25,10 +26,11 @@ const ERWARTET: Record<string, { marken: string[]; zeilen: string[]; ruhe?: stri
     marken: ['4 überfällig'],
     zeilen: ['Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben', 'Messstelle für Messbedarf MB-1 einrichten', '2 Bezugsbasen überprüfen'],
   },
-  normal: { marken: ['Keine Frist überfällig'], zeilen: [], ruhe: 'Bis 30.05.2029 ist nichts fällig. Danach stehen 11 weitere Fristen an.' },
+  // Nichts in den nächsten 30 Tagen: die nächsten zwei Fristen aus dem Jahresplan, je Monat gebündelt.
+  normal: { marken: ['Keine Frist überfällig'], zeilen: ['2 Maßnahmen umsetzen', 'Kriterien für Betrieb und Instandhaltung überprüfen'] },
   bald: {
     marken: ['Keine Frist überfällig', '1 in den nächsten 30 Tagen'],
-    zeilen: ['Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden'],
+    zeilen: ['Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden', 'Feststellung F-2029-0001 klären'],
   },
 };
 

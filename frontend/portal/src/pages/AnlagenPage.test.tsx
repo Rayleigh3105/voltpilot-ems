@@ -341,6 +341,9 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy());
   // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter.
   await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull());
+  // Die Kacheln laden ebenfalls nach (Suspense-Platzhalter `vp-k-platz` mit aria-hidden); unter Last kam der
+  // Schnappschuss sonst vor ihnen und hielt leere Plätze fest.
+  await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull());
   await bestandSnapshot('cockpit', view);
 });
 

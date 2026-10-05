@@ -3,7 +3,6 @@ import { seitenSprung, springeUeberHash, sprungKlick, type Sprung } from '../ent
 import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_NAECHSTE_FRISTEN, UEMS_WOHER_FRISTEN } from '../glossar';
 import { energiemanagementRoute } from '../nav';
 import {
-  danachSatz,
   markeBald,
   markeUeberfaellig,
   nichtsBald,
@@ -25,7 +24,7 @@ import './Wiedervorlage.css';
  * ruhig im Normalfall, deutlich bei Überfälligem. Ein Satz sagt, was das ist; Marken zählen Einträge; bei Überfälligem
  * höchstens vier Zeilen, gebündelt nach Aufgabe („4 Bezugsbasen überprüfen“), je mit Datum und Grund. Eine Zeile mit
  * einem Eintrag öffnet sein Objekt mit offenem Entscheid, ein Bündel die Wiedervorlage mit genau diesem Filter. Ist
- * nichts überfällig, stehen die nächsten Fristen da. Kalender-Abzug und Hinweise wohnen in der Wiedervorlage; Grenz-
+ * nichts überfällig, stehen die nächsten zwei Fristen da, auch aus dem Jahresplan. Kalender-Abzug und Hinweise wohnen in der Wiedervorlage; Grenz-
  * und Verantwortungs-Satz stehen auf der Übersicht einmal unten (K7: `GrenzSatz` schweigt im Bereich).
  */
 export function EnergiemanagementBaustein({
@@ -106,7 +105,7 @@ export function EnergiemanagementBaustein({
         </ul>
       ) : (
         <p className="vp-wsa-ruhe" data-testid="was-steht-an-ruhe">
-          {[nichtsBald(bild.fensterBis), bild.spaeter > 0 ? danachSatz(bild.spaeter) : null].filter(Boolean).join(' ')}
+          {nichtsBald(bild.fensterBis)}
         </p>
       )}
       {bild.weitere > 0 && (

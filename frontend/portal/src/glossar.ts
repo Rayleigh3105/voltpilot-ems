@@ -709,6 +709,13 @@ export const UEMS_KEINE_FRIST_UEBERFAELLIG = 'Keine Frist überfällig';
 export const UEMS_NAECHSTE_FRISTEN = 'Nächste Fristen';
 export const UEMS_ZULETZT_ERLEDIGT = 'Zuletzt erledigt';
 export const UEMS_WOHER_FRISTEN = 'Woher kommen diese Fristen?';
+/** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
+export const UEMS_JAHRESPLAN = 'Jahresplan';
+/**
+ * Die Person einer Frist, wenn das Objekt keine nennt: die der „Aufgabe im Energiemanagement“, zu der die Frist gehört
+ * („Ines Kaltenbach · laut Aufgabe „Dokumente des Energiemanagements pflegen““).
+ */
+export const UEMS_LAUT_AUFGABE = 'laut Aufgabe';
 export const UEMS_DOKUMENT = 'Dokument';
 export const UEMS_DOKUMENTE = 'Dokumente';
 export const UEMS_WORTLAUT = 'Wortlaut';

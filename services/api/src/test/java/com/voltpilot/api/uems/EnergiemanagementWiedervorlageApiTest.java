@@ -49,7 +49,11 @@ import org.testcontainers.utility.DockerImageName;
  * Revisions-Anstoß des Leistungsvergleichs, die energetische Bewertung, Energiepolitik und Anwendungsbereich), am
  * längsten fällig zuerst, und eine Vorschau-Zeile (M-2029-0001 in 16 Tagen); Audit, Feststellung, BB-0001 („geprüft,
  * bleibt“), D-0003, D-0004 und M-2029-0002 liegen außerhalb der Vorschau. Der Tag ist gestellt (keine Uhr). Dazu der
- * Kalender-Abzug mit denselben neun Zeilen und dem Stand-Vermerk — auch für „Einsicht“.
+ * Kalender-Abzug mit denselben Zeilen und dem Stand-Vermerk, auch für „Einsicht“.
+ *
+ * <p>Konzept Wiedervorlage w1 (Vertrag 1.1): der Jahresplan, die Zählung nach Dringlichkeit, je Zeile Herleitung,
+ * Gegenstand und Zuständig (am Objekt oder laut Aufgabe), die offenen Korrekturen eines Berichts als ein Eintrag und
+ * „Zuletzt erledigt“.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -58,6 +62,7 @@ import org.testcontainers.utility.DockerImageName;
 class EnergiemanagementWiedervorlageApiTest {
     private static final String BASIS = "/api/v1/energiemanagement";
     private static final String WIEDERVORLAGE = BASIS + "/wiedervorlage";
+    private static final String ZULETZT = WIEDERVORLAGE + "/zuletzt";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Map<String, String> NAMEN = Map.of("IK", "Ines Kaltenbach", "JW", "Jonas Wendlinger",
             "PH", "Peter Hollerbach", "CB", "Claudia Berger", "RF", "Robert Falk");
@@ -190,7 +195,15 @@ class EnergiemanagementWiedervorlageApiTest {
         // R12 hat noch keine freigegebene Managementbewertung — kein Tag für die nächste (Folge IP-24).
         assertThat(w.path("naechste_managementbewertung").isNull()).isTrue();
 
-        // WV4, E10: der Kalender-Abzug — dieselben neun Zeilen als ganztägige Termine, jeder mit dem Stand-Vermerk.
+        // Vertrag 1.1: der Jahresplan bis 12.02.2030 trägt die sechs Fristen nach dem Fenster; gezählt nach Dringlichkeit.
+        assertThat(texte(w.path("spaeter"), "kennzeichen")).containsExactly("F-2029-0001", "D-0003", "M-2029-0002",
+                "D-0004", "BB-0001", "AU-2029-0001");
+        assertThat(w.path("anzahl_ueberfaellig").asInt()).isEqualTo(8);
+        assertThat(w.path("anzahl_naechste").asInt()).isEqualTo(1);
+        assertThat(w.path("anzahl_spaeter").asInt()).isEqualTo(6);
+
+        // WV4, E10: der Kalender-Abzug: dieselben Zeilen (fällig, Vorschau, Jahresplan) als ganztägige Termine, jeder
+        // mit dem Stand-Vermerk.
         MockHttpServletResponse ics = roh(WIEDERVORLAGE + "?format=ics", "IK");
         assertThat(ics.getStatus()).isEqualTo(200);
         assertThat(ics.getContentType()).startsWith("text/calendar");
@@ -198,11 +211,12 @@ class EnergiemanagementWiedervorlageApiTest {
         String text = ics.getContentAsString(StandardCharsets.UTF_8);
         String entfaltet = text.replace("\r\n ", "");
         assertThat(text).startsWith("BEGIN:VCALENDAR\r\n").endsWith("END:VCALENDAR\r\n");
-        assertThat(entfaltet.split("BEGIN:VEVENT", -1)).hasSize(10);
+        assertThat(entfaltet.split("BEGIN:VEVENT", -1)).hasSize(16);
         assertThat(entfaltet).contains("X-WR-CALDESC:" + VERMERK.replace(";", "\\;"));
         assertThat(entfaltet.split(java.util.regex.Pattern.quote("DESCRIPTION:" + VERMERK.replace(";", "\\;")), -1))
-                .hasSize(10);
+                .hasSize(16);
         assertThat(entfaltet).contains("DTSTART;VALUE=DATE:20271113\r\n", "DTSTART;VALUE=DATE:20290228\r\n",
+                "DTSTART;VALUE=DATE:20300122\r\n",
                 "SUMMARY:BB-0002: Bezugsbasis BB-0002\\, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)",
                 "SUMMARY:M-2029-0001: Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen");
         for (String zeile : text.split("\r\n")) {
@@ -228,6 +242,145 @@ class EnergiemanagementWiedervorlageApiTest {
         assertThat(w.path("naechste_managementbewertung").isNull()).isTrue();
         String ics = roh(WIEDERVORLAGE + "?format=ics", "IK").getContentAsString(StandardCharsets.UTF_8);
         assertThat(ics).doesNotContain("BEGIN:VEVENT").contains("X-WR-CALDESC:Stand vom 12.02.2029");
+    }
+
+    // ------------------------------------------------------------------ Konzept Wiedervorlage w1
+
+    /**
+     * Herleitung und Gegenstand je Zeile, Zuständig am Objekt oder laut Aufgabe (mit „ich“ je Aufrufer), die offenen
+     * Korrekturen eines Berichts als EIN Eintrag ab der ersten, und „Zuletzt erledigt“ mit „geprüft, bleibt“.
+     */
+    @Test
+    void w1HerleitungZustaendigEinEintragJeBerichtUndZuletztErledigt() throws Exception {
+        r12Welt();
+        // Aufgaben im Energiemanagement: Dokumente pflegt Ines Kaltenbach, Bezugsbasen Jonas Wendlinger.
+        heute("2029-01-05T10:00:00Z");
+        aufgabe("dokumente", "IK");
+        aufgabe("bezugsbasen", "JW");
+        // Eine zweite Korrektur am Leistungsvergleich: der Bericht bleibt EIN Eintrag, ab der ersten.
+        UUID stand = root.queryForObject("SELECT s.id FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
+                + "WHERE b.kennung = 'BR-2028-0001' AND b.tenant_id = ?", UUID.class, tenant);
+        root.update("INSERT INTO bericht_revision_anstoss (tenant_id, stand_id, art, anlass_kennung, anlass_fassung, "
+                + "anlass_status, erkannt_am) VALUES (?, ?, 'korrektur_freigegeben', 'K-2028-0002', 1, 'freigegeben', ?)",
+                tenant, stand, Timestamp.from(Instant.parse("2028-05-10T08:00:00Z")));
+        // D-0003 am 15.01.2029 „geprüft, bleibt“: die Frist beginnt neu (15.01.2030), der Eintrag ist erledigt.
+        heute("2029-01-15T10:00:00Z");
+        String d3 = root.queryForObject("SELECT id::text FROM energiemanagement_dokument WHERE kennzeichen = 'D-0003' "
+                + "AND tenant_id = ?", String.class, tenant);
+        ruf("POST", BASIS + "/dokumente/" + d3 + "/geprueft", "IK", Map.of("entschieden_von", person.get("RF"), "am",
+                "2029-01-15", "begruendung", "Rechtskataster durchgesehen; keine neue Pflicht für das Werk."), 200);
+
+        abruf("2029-02-12T07:00:00Z");
+        JsonNode w = ruf(WIEDERVORLAGE, "IK", 200);
+        assertThat(texte(w.path("faellig"), "kennzeichen")).containsExactly("BB-0002", "BB-0005", "BB-0003",
+                "BR-2028-0001", "BB-0004", "BR-2027-0001", "D-0001", "D-0002");
+        assertThat(w.path("anzahl_ueberfaellig").asInt()).isEqualTo(8);
+
+        // Ein Gegenstand, ein Eintrag: zwei offene Korrekturen, die Frist ab der ersten (03.04.2028).
+        JsonNode bericht = zeile(w.path("faellig"), "BR-2028-0001");
+        assertThat(bericht.path("titel").asText()).isEqualTo("Leistungsvergleich Kunststoffwerk Ahrenberg GmbH "
+                + "Dezember 2027 — Revision angestoßen (2 Korrekturen, zuerst K-2028-0001)");
+        assertThat(bericht.path("faellig_am").asText()).isEqualTo("2028-04-03");
+        assertThat(bericht.path("herleitung").path("basis").asText()).isEqualTo("erkannt");
+        assertThat(bericht.path("herleitung").path("anzahl").asInt()).isEqualTo(2);
+        assertThat(bericht.path("herleitung").path("kennung").asText()).isEqualTo("K-2028-0001");
+        assertThat(bericht.path("bezug").asText()).isEqualTo("Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Dezember 2027");
+        assertThat(bericht.path("aufgabe").asText()).isEqualTo("energiemanagement_leiten");
+        assertThat(bericht.path("zustaendig").isNull()).as("niemand leitet das Energiemanagement").isTrue();
+
+        // Dokument: „geprüft, bleibt“ der Fassung 1 am 10.12.2027 + 12 Monate; zuständig laut Aufgabe.
+        JsonNode d1 = zeile(w.path("faellig"), "D-0001");
+        assertThat(d1.path("herleitung").path("basis").asText()).isEqualTo("geprueft_bleibt");
+        assertThat(d1.path("herleitung").path("am").asText()).isEqualTo("2027-12-10");
+        assertThat(d1.path("herleitung").path("fassung").asInt()).isEqualTo(1);
+        assertThat(d1.path("herleitung").path("monate").asInt()).isEqualTo(12);
+        assertThat(d1.path("zustaendig").path("name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(d1.path("zustaendig").path("herkunft").asText()).isEqualTo("aufgabe");
+        assertThat(d1.path("aufgabe").asText()).isEqualTo("dokumente");
+        assertThat(d1.path("zustaendig").path("ich").asBoolean()).isTrue();
+
+        // Bezugsbasis: Freigabe der Fassung 2 am 13.11.2026; der Gegenstand ist die Kennzahl.
+        JsonNode bb2 = zeile(w.path("faellig"), "BB-0002");
+        assertThat(bb2.path("herleitung").path("basis").asText()).isEqualTo("freigabe");
+        assertThat(bb2.path("herleitung").path("am").asText()).isEqualTo("2026-11-13");
+        assertThat(bb2.path("herleitung").path("fassung").asInt()).isEqualTo(2);
+        assertThat(bb2.path("bezug").asText()).isEqualTo("Stromeinsatz Montage je Stück");
+
+        // Energetische Bewertung: Stand Nr. 1 vom 24.11.2027; die Aufgabe hat niemand, also ist niemand zuständig.
+        JsonNode bw = zeile(w.path("faellig"), "BR-2027-0001");
+        assertThat(bw.path("herleitung").path("basis").asText()).isEqualTo("freigabe");
+        assertThat(bw.path("herleitung").path("am").asText()).isEqualTo("2027-11-24");
+        assertThat(bw.path("zustaendig").isNull()).isTrue();
+
+        // Im Jahresplan: die Feststellung (Person am Objekt, mit Konto) und das nächste Audit; D-0003 neu ab 15.01.2029.
+        JsonNode fs = zeile(w.path("spaeter"), "F-2029-0001");
+        assertThat(fs.path("herleitung").path("basis").asText()).isEqualTo("festgestellt");
+        assertThat(fs.path("herleitung").path("am").asText()).isEqualTo("2029-01-22");
+        assertThat(fs.path("herleitung").path("quelle_art").asText()).isEqualTo("internes_audit");
+        assertThat(fs.path("bezug").asText()).startsWith("Wer die Bezugsbasen pflegt");
+        assertThat(fs.path("zustaendig").path("name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(fs.path("zustaendig").path("herkunft").asText()).isEqualTo("objekt");
+        assertThat(fs.path("zustaendig").path("ich").asBoolean()).isFalse();
+        JsonNode au = zeile(w.path("spaeter"), "AU-2029-0001");
+        assertThat(au.path("herleitung").path("basis").asText()).isEqualTo("durchgefuehrt");
+        assertThat(au.path("herleitung").path("am").asText()).isEqualTo("2029-01-22");
+        assertThat(au.path("herleitung").path("monate").asInt()).isEqualTo(12);
+        JsonNode d3zeile = zeile(w.path("spaeter"), "D-0003");
+        assertThat(d3zeile.path("faellig_am").asText()).isEqualTo("2030-01-15");
+        assertThat(d3zeile.path("herleitung").path("basis").asText()).isEqualTo("geprueft_bleibt");
+
+        // „ich“ hängt am Aufrufer: für Jonas Wendlinger ist die Feststellung seine, das Dokument nicht.
+        JsonNode jw = ruf(WIEDERVORLAGE, "JW", 200);
+        assertThat(zeile(jw.path("spaeter"), "F-2029-0001").path("zustaendig").path("ich").asBoolean()).isTrue();
+        assertThat(zeile(jw.path("faellig"), "D-0001").path("zustaendig").path("ich").asBoolean()).isFalse();
+        assertThat(w.path("aufgaben_lesbar").asBoolean()).isTrue();
+
+        // Wer die Aufgaben nicht unternehmensweit liest, erfährt keine Person laut Aufgabe; der Leser sagt das, statt
+        // „niemand zuständig“ zu behaupten. Die Person am Objekt bleibt.
+        JsonNode cb = ruf(WIEDERVORLAGE, "CB", 200);
+        assertThat(cb.path("aufgaben_lesbar").asBoolean()).isFalse();
+        assertThat(texte(cb.path("faellig"), "kennzeichen")).as(cb.toString()).contains("BB-0002");
+        for (JsonNode z : cb.path("faellig")) {
+            assertThat(z.path("zustaendig").path("herkunft").asText()).as(z.path("kennzeichen").asText())
+                    .isNotEqualTo("aufgabe");
+        }
+        assertThat(zeile(cb.path("faellig"), "BB-0002").path("zustaendig").path("herkunft").asText()).isEqualTo("objekt");
+
+        // Zuletzt erledigt: die letzten 90 Tage bis zum Abruf, die jüngste zuerst; „geprüft, bleibt“ steht dabei.
+        JsonNode z = ruf(ZULETZT, "IK", 200);
+        assertThat(z.path("tage").asInt()).isEqualTo(90);
+        assertThat(z.path("stichtag").asText()).startsWith("2029-02-12T08:00");
+        List<String> arten = texte(z.path("eintraege"), "art");
+        assertThat(arten).contains("dokument_geprueft_bleibt", "bezugsbasis_geprueft_bleibt");
+        assertThat(z.path("eintraege").size()).isLessThanOrEqualTo(5);
+        List<String> tage = texte(z.path("eintraege"), "am");
+        assertThat(tage).isSortedAccordingTo(java.util.Comparator.reverseOrder());
+        assertThat(tage).allSatisfy(t -> assertThat(t).isBetween("2028-11-14", "2029-02-12"));
+        JsonNode dok = zeile(z.path("eintraege"), "D-0003");
+        assertThat(dok.path("art").asText()).isEqualTo("dokument_geprueft_bleibt");
+        assertThat(dok.path("am").asText()).isEqualTo("2029-01-15");
+        assertThat(dok.path("nr").asInt()).isEqualTo(1);
+        assertThat(dok.path("entschieden_von").asText()).isEqualTo("Robert Falk");
+        assertThat(dok.path("eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
+        JsonNode bb1 = zeile(z.path("eintraege"), "BB-0001");
+        assertThat(bb1.path("art").asText()).isEqualTo("bezugsbasis_geprueft_bleibt");
+        assertThat(bb1.path("am").asText()).isEqualTo("2028-11-25");
+        assertThat(bb1.path("titel").asText()).isEqualTo("Bezugsbasis BB-0001 (KZ-0004 Stromeinsatz Spritzguss je kg)");
+        assertThat(bb1.path("eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
+        // Dasselbe Recht wie die Wiedervorlage: auch „Einsicht“ liest es.
+        assertThat(ruf(ZULETZT, "RF", 200).path("eintraege").size()).isEqualTo(z.path("eintraege").size());
+    }
+
+    private void aufgabe(String aufgabe, String wer) throws Exception {
+        ruf("POST", BASIS + "/aufgaben", "IK", Map.of("aufgabe", aufgabe, "person_id", person.get(wer), "gilt_ab",
+                "2029-01-05", "entschieden_von", person.get("RF"), "begruendung", "Festgelegt in der Leitungsrunde."), 201);
+    }
+
+    private static JsonNode zeile(JsonNode liste, String kennzeichen) {
+        for (JsonNode z : liste) {
+            if (kennzeichen.equals(z.path("kennzeichen").asText())) return z;
+        }
+        throw new AssertionError("keine Zeile " + kennzeichen + " in " + liste);
     }
 
     // ------------------------------------------------------------------ Welt R12
