@@ -40,9 +40,17 @@ function mitParametern(route: Route, werte: Record<string, string | null>): Spru
   return { route, hash: query ? `${basis}?${query}` : basis };
 }
 
-/** Der Sprung auf die Seite eines Objekts mit offenem Entscheid. */
-export function entscheidSprung(route: Route, art: string, kennzeichen: string | null = null): Sprung {
-  return mitParametern(route, { [ENTSCHEID_PARAMETER]: art, [KENNZEICHEN_PARAMETER]: kennzeichen });
+/**
+ * Der Sprung auf die Seite eines Objekts mit offenem Entscheid. `filter` sind Parameter der Zielseite selbst (das
+ * Register eines Orts: `?ort=G-1`); sie bleiben in der Adresse, wenn der Entscheid sie verlässt.
+ */
+export function entscheidSprung(
+  route: Route,
+  art: string,
+  kennzeichen: string | null = null,
+  filter: Record<string, string> = {},
+): Sprung {
+  return mitParametern(route, { ...filter, [ENTSCHEID_PARAMETER]: art, [KENNZEICHEN_PARAMETER]: kennzeichen });
 }
 
 /** Der Sprung auf eine Seite ohne Entscheid: dieselbe Form, damit eine Liste beide gleich behandelt. */
@@ -56,6 +64,11 @@ export function entscheidAus(hash: string): Entscheid | null {
   const art = p.get(ENTSCHEID_PARAMETER)?.trim();
   if (!art) return null;
   return { art, kennzeichen: p.get(KENNZEICHEN_PARAMETER)?.trim() || null };
+}
+
+/** Derselbe Sprung zum Ansehen: ohne Entscheid; die Parameter der Zielseite selbst (`?ort=G-1`) bleiben. */
+export function ansehenSprung(s: Sprung): Sprung {
+  return { route: s.route, hash: ohneEntscheid(s.hash) };
 }
 
 /** Die Adresse ohne den Entscheid; andere Parameter bleiben. */

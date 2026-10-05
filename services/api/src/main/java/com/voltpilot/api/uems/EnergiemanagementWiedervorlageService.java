@@ -59,6 +59,7 @@ public class EnergiemanagementWiedervorlageService {
             Map.entry("bezugsbasis_ueberpruefung", "bezugsbasen"),
             Map.entry("bewertung_ueberpruefung", "bewertung_messplanung"),
             Map.entry("messbedarf_frist", "bewertung_messplanung"),
+            Map.entry("zaehlerablesung", "bewertung_messplanung"),
             Map.entry("massnahme_termin", "energieziele_massnahmen"),
             Map.entry("energieziel_bewertung", "energieziele_massnahmen"),
             Map.entry("abweichung_frist", "energieziele_massnahmen"),

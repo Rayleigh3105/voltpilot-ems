@@ -12,7 +12,8 @@ import java.util.UUID;
  *
  * <p>Heute: {@link DokumentWiedervorlage} (DK5), {@link AuditWiedervorlage} (IA4), {@link FeststellungWiedervorlage}
  * (FS1) und {@link WiedervorlageBestand} (AP-16 S5, AP-17 F5, AP-12 E7, AP-18 F1–F3 über den Übersichts-Leser, Messbedarf).
- * Die Managementbewertung (MG7) seit IP-23: {@link ManagementbewertungWiedervorlage} in {@code @Order(40)}.
+ * Die Managementbewertung (MG7) seit IP-23: {@link ManagementbewertungWiedervorlage} in {@code @Order(40)}; die
+ * Zählerablesung seit Vertrag 1.2 (Konzept Wiedervorlage w1): {@link AblesungWiedervorlage} in {@code @Order(60)}.
  */
 public interface WiedervorlageQuelle {
 
@@ -84,9 +85,13 @@ public interface WiedervorlageQuelle {
         }
     }
 
-    /** Das geschlossene Vokabular {@code wiedervorlage_basis}: woran eine Frist ansetzt. */
+    /**
+     * Das geschlossene Vokabular {@code wiedervorlage_basis}: woran eine Frist ansetzt. Seit Vertrag 1.2 die
+     * Zählerablesung: {@code abgelesen} (die letzte Ablesung, mit {@code monate}) und {@code ablesebeginn} (noch keine
+     * Ablesung: seit wann die Werte aus Ablesungen kommen sollen).
+     */
     List<String> BASEN = List.of("freigabe", "geprueft_bleibt", "durchgefuehrt", "sitzung", "erkannt", "festgestellt",
-            "termin", "zielperiode");
+            "termin", "zielperiode", "abgelesen", "ablesebeginn");
 
     /** Die Fristen am Tag {@code abruf} — jede Frist genau einmal, auch eine weit in der Zukunft. */
     List<Frist> fristen(LocalDate abruf);

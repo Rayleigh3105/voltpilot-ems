@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "herkunft": "AP-19 entschieden 24.09.2026 (E1–E10 = A, W1–W15 übernommen), §4.2–4.9, §5.8, §7 R1–R3, R7–R14; Python-Referenz aus k_faelle.py (ueberpruefung, AUDIT_NAECHSTES, MB_NAECHSTE, F1_FRIST, zeile/KANDIDATEN, vergleich_anwendungsbereich, vz); Referenzdatei 1.10 (dokumente[], audits[], feststellungen[], managementbewertungen[]) für die Prüfsummen. Die kanonische Zahlform ist die von bericht.md A1 (−5, nie −5.0) — der Katalog rechnete den Stand BR-2029-0001 über json.dumps (sha256:7db218a7…), gültig ist sha256:0a52c97d….",
   "startwerte": {
     "ueberpruefung_monate": 12,
@@ -154,7 +154,8 @@
       "massnahme_termin",
       "abweichung_frist",
       "messbedarf_frist",
-      "bericht_anstoss"
+      "bericht_anstoss",
+      "zaehlerablesung"
     ],
     "verzeichnis_ort": [
       "in_voltpilot",
@@ -1906,6 +1907,83 @@
         "anzahl_naechste": 2,
         "anzahl_spaeter": 0,
         "nicht_in_liste": []
+      }
+    },
+    {
+      "name": "Zählerablesung (Vertrag 1.2): eine Zeile je Gebäude und Fälligkeitstag, Frist = letzte Ablesung + 2 Monate",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "Konzept Wiedervorlage w1, Entscheid 7 (zwölfte Art, Frist aus AblesungRegeln.ueberfaelligAb, gebündelt je Gebäude)",
+      "rechnung": "Abruf 10.12.2026, Fenster 30 Tage bis 09.01.2027. Die Quelle gibt die Frist fertig: sechs Zähler in Halle 1 zuletzt am 01.10.2026 abgelesen → 01.12.2026, seit 9 Tagen fällig; MS-22 in der Verwaltung zuletzt am 04.11.2026 → 04.01.2027, in 25 Tagen; zwei Zähler in Halle 1 zuletzt am 08.12.2026 → 08.02.2027, Jahresplan (60 Tage). Dasselbe Gebäude steht an zwei Tagen in zwei Zeilen; die Operation behandelt die Art wie jede andere: 1 überfällig, 1 in den nächsten 30 Tagen, 1 im Jahresplan; nicht_in_liste nennt G-1",
+      "eingang": {
+        "abruf": "2026-12-10",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "zaehlerablesung",
+            "kennzeichen": "G-1",
+            "titel": "Zählerablesung Halle 1 (2 Zähler)",
+            "faellig_am": "2027-02-08",
+            "verantwortlich": null
+          },
+          {
+            "art": "zaehlerablesung",
+            "kennzeichen": "G-3",
+            "titel": "Zählerablesung Verwaltung (MS-22 Netzbezug Verwaltung)",
+            "faellig_am": "2027-01-04",
+            "verantwortlich": null
+          },
+          {
+            "art": "zaehlerablesung",
+            "kennzeichen": "G-1",
+            "titel": "Zählerablesung Halle 1 (6 Zähler)",
+            "faellig_am": "2026-12-01",
+            "verantwortlich": null
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [
+          {
+            "art": "zaehlerablesung",
+            "kennzeichen": "G-1",
+            "titel": "Zählerablesung Halle 1 (6 Zähler)",
+            "faellig_am": "2026-12-01",
+            "tage": 9,
+            "satz": "seit 9 Tagen fällig",
+            "verantwortlich": null
+          }
+        ],
+        "vorschau": [
+          {
+            "art": "zaehlerablesung",
+            "kennzeichen": "G-3",
+            "titel": "Zählerablesung Verwaltung (MS-22 Netzbezug Verwaltung)",
+            "faellig_am": "2027-01-04",
+            "tage": -25,
+            "satz": "fällig in 25 Tagen",
+            "verantwortlich": null
+          }
+        ],
+        "spaeter": [
+          {
+            "art": "zaehlerablesung",
+            "kennzeichen": "G-1",
+            "titel": "Zählerablesung Halle 1 (2 Zähler)",
+            "faellig_am": "2027-02-08",
+            "tage": -60,
+            "satz": "fällig in 60 Tagen",
+            "verantwortlich": null
+          }
+        ],
+        "anzahl_faellig": 1,
+        "anzahl_vorschau": 1,
+        "anzahl_ueberfaellig": 1,
+        "anzahl_naechste": 1,
+        "anzahl_spaeter": 1,
+        "nicht_in_liste": [
+          "G-1"
+        ]
       }
     },
     {

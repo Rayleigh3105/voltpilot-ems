@@ -3,9 +3,10 @@
  * (UEMS AP-19 IP-21/IP-24; Konzept Wiedervorlage w1, Captain-Freigabe 05.10.2026).
  *
  * Fristen, Lage und Reihenfolge leitet der Server beim Abruf ab (`GET /api/v1/energiemanagement/wiedervorlage`,
- * Operation `wiedervorlage`, Vertrag 1.1 mit dem Jahresplan `spaeter`); hier wird keine Frist gerechnet (WV2). Dieses
- * Modul macht aus den Zeilen der Route Einträge (ein Gegenstand, ein Eintrag: die Korrekturen an einem Bericht sind eine
- * Aufgabe), gibt jedem Eintrag Aufgabe, Grund (aus der Herleitung der Route), Bereich, Zuständig und genau einen
+ * Operation `wiedervorlage`, Vertrag 1.1 mit dem Jahresplan `spaeter`, 1.2 mit der Zählerablesung); hier wird keine
+ * Frist gerechnet (WV2). Dieses Modul macht aus den Zeilen der Route Einträge (ein Gegenstand, ein Eintrag: die
+ * Korrekturen an einem Bericht sind eine Aufgabe, die Zähler einer Ablese-Runde auch), gibt jedem Eintrag Aufgabe,
+ * Grund (aus der Herleitung der Route), Bereich, Zuständig und genau einen
  * Schritt, ordnet nach Dringlichkeit, gruppiert den Jahresplan nach Monaten und bündelt für die Übersicht gleiche
  * Arbeit (gleiche Art). Ein Schritt öffnet das Objekt mit offenem Entscheid (`entscheid.ts`); abgehakt wird nichts.
  * Reines Modul: kein React, kein Netz.
@@ -38,6 +39,7 @@ import {
   kennzahlRoute,
   managementbewertungRoute,
   massnahmeRoute,
+  messstelleRoute,
   pageRoute,
   type Route,
 } from './nav';
@@ -53,9 +55,10 @@ export type WiedervorlageArt =
   | 'massnahme_termin'
   | 'abweichung_frist'
   | 'messbedarf_frist'
-  | 'bericht_anstoss';
+  | 'bericht_anstoss'
+  | 'zaehlerablesung';
 
-/** Woran die Regel einer Frist ansetzt (Vertrag 1.1, `wiedervorlage_basis`). */
+/** Woran die Regel einer Frist ansetzt (Vertrag 1.1, `wiedervorlage_basis`; 1.2: die Zählerablesung). */
 export type WiedervorlageBasis =
   | 'freigabe'
   | 'geprueft_bleibt'
@@ -64,12 +67,15 @@ export type WiedervorlageBasis =
   | 'erkannt'
   | 'festgestellt'
   | 'termin'
-  | 'zielperiode';
+  | 'zielperiode'
+  | 'abgelesen'
+  | 'ablesebeginn';
 
 /**
  * Woraus eine Frist folgt, als Angaben der Route (keine Sätze): `am` der Tag, an dem die Regel ansetzt; `fassung` die
  * Fassung bzw. der Stand Nr., `monate` der Rhythmus, `kennung` das Objekt, an dem die Regel ansetzt, oder die Herkunft,
- * `quelle_art` die Herkunft einer Maßnahme bzw. die Quelle einer Feststellung, `anzahl` die Korrekturen eines Berichts.
+ * `quelle_art` die Herkunft einer Maßnahme bzw. die Quelle einer Feststellung, `anzahl` die Korrekturen eines Berichts
+ * oder die Zähler einer Ablese-Runde.
  */
 export type WiedervorlageHerleitung = {
   basis: WiedervorlageBasis;
@@ -98,7 +104,7 @@ export type WiedervorlageZeile = {
   kennzahl_id: string | null;
   /** Vertrag 1.1: woraus die Frist folgt; `null`, wo die Quelle es nicht nennt. */
   herleitung: WiedervorlageHerleitung | null;
-  /** Der Gegenstand, wo der Titel ihn nicht trägt: die Kennzahl einer Bezugsbasis, der Bericht, ein Wortlaut. */
+  /** Der Gegenstand, wo der Titel ihn nicht trägt: die Kennzahl einer Bezugsbasis, der Bericht, ein Wortlaut, der Ort einer Ablesung. */
   bezug: string | null;
   /** Der Energieeinsatz eines Messbedarfs: dort wird die Messstelle eingerichtet. */
   einsatz_id: string | null;
@@ -178,9 +184,13 @@ export const KALENDER_ABZUG_FEHLER = 'Der Kalender-Abzug ließ sich gerade nicht
 
 /** Der Kopf der Wiedervorlage: was die Seite ist und von wann die Fristen stammen. */
 export const kopfSatz = (stand: string) => `${UEMS_WIEDERVORLAGE_SATZ}, das am längsten Überfällige zuerst. Stand ${stand}.`;
-/** „Woher kommen diese Fristen?“: Festlegung und Rhythmus, erledigt durch eine Entscheidung am Objekt, keine Erinnerung. */
+/**
+ * „Woher kommen diese Fristen?“: Festlegung und Rhythmus, erledigt durch eine Entscheidung oder eine Ablesung am
+ * Objekt, keine Erinnerung. Die Zählerablesung (Vertrag 1.2) folgt der Regel des Registers: zwei Monate nach der
+ * letzten Ablesung.
+ */
 export const WOHER_SATZ =
-  'VoltPilot leitet jede Frist aus Ihren Festlegungen ab: Überprüfungen im Rhythmus Ihrer Einstellung, internes Audit und Managementbewertung nach dem letzten Termin, Maßnahmen und Energieziele mit ihrem Termin. Erledigt ist eine Frist, sobald die Entscheidung am Objekt festgehalten ist. VoltPilot verschickt keine Erinnerungen.';
+  'VoltPilot leitet jede Frist aus Ihren Festlegungen ab: Überprüfungen im Rhythmus Ihrer Einstellung, internes Audit und Managementbewertung nach dem letzten Termin, Maßnahmen und Energieziele mit ihrem Termin, Zählerablesungen zwei Monate nach der letzten Ablesung. Erledigt ist eine Frist, sobald die Entscheidung oder die Ablesung am Objekt festgehalten ist. VoltPilot verschickt keine Erinnerungen.';
 export const NOCH_KEINE_FRISTEN =
   'Noch keine Fristen. Sie entstehen, sobald Sie zum Beispiel eine Bezugsbasis freigeben, ein Dokument festhalten oder ein internes Audit durchführen.';
 export const LADEFEHLER_TITEL = 'Wiedervorlage nicht geladen';
@@ -289,6 +299,7 @@ export const ART_WORT: Record<WiedervorlageArt, string> = {
   abweichung_frist: 'Abweichung',
   messbedarf_frist: 'Messbedarf',
   bericht_anstoss: 'Bericht',
+  zaehlerablesung: 'Zählerablesung',
 };
 
 /** Die Menge im Kundenwort (Statuszeile): Einzahl und Mehrzahl. */
@@ -304,6 +315,7 @@ const ART_MENGE: Record<WiedervorlageArt, [string, string]> = {
   abweichung_frist: ['Abweichung', 'Abweichungen'],
   messbedarf_frist: ['Messbedarf', 'Messbedarfe'],
   bericht_anstoss: ['Bericht', 'Berichte'],
+  zaehlerablesung: ['Zählerablesung', 'Zählerablesungen'],
 };
 
 const ART_BEREICH: Record<WiedervorlageArt, Bereich> = {
@@ -318,6 +330,7 @@ const ART_BEREICH: Record<WiedervorlageArt, Bereich> = {
   energieziel_bewertung: 'verbessern',
   abweichung_frist: 'verbessern',
   messbedarf_frist: 'messen',
+  zaehlerablesung: 'messen',
 };
 
 /** Der eine Schritt je Art; er öffnet das Objekt mit dem offenen Entscheid. */
@@ -333,7 +346,13 @@ export const SCHRITT: Record<WiedervorlageArt, string> = {
   abweichung_frist: 'Abschließen',
   messbedarf_frist: 'Messstelle anlegen',
   bericht_anstoss: 'Entwurf vergleichen',
+  zaehlerablesung: 'Ablesungen eintragen',
 };
+
+/** Der Knopf an der Messstelle (`Ablesungen.tsx`): bei einem Zähler heißt der Schritt genau so. */
+export const ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
+/** Woher die Werte einer Ablese-Runde kommen, wie das Register es sagt (`messstellen.ts`, Quelle „Ablesungen“). */
+const ABLESUNG_QUELLE = 'Werte aus Ablesungen';
 
 // Die Titel der Route (die Quellen bilden sie, `WiedervorlageBestand.java` u. a.); die Kennzeichen stehen am Objekt.
 // Seit Vertrag 1.1 tragen `bezug` und `herleitung` den Gegenstand und die Herleitung; die Titel bleiben, wie sie in
@@ -347,7 +366,7 @@ const berichtName = (z: WiedervorlageZeile) => z.bezug ?? ANSTOSS_TITEL.exec(z.t
 const STAND_BLEIBT = 'Der freigegebene Stand bleibt, bis Sie entscheiden.';
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
-/** Aufgabe mit Verb: Gegenstand plus überprüfen, neu freigeben, durchführen, abhalten, bewerten, klären, einrichten. */
+/** Aufgabe mit Verb: Gegenstand plus überprüfen, neu freigeben, durchführen, abhalten, bewerten, klären, einrichten, ablesen. */
 function aufgabe(z: WiedervorlageZeile): string {
   const { titel } = z;
   switch (z.art) {
@@ -373,6 +392,13 @@ function aufgabe(z: WiedervorlageZeile): string {
       return `Messstelle für Messbedarf ${z.kennzeichen} einrichten`;
     case 'bericht_anstoss':
       return `${berichtName(z)} neu freigeben`;
+    case 'zaehlerablesung': {
+      // Eine Ablese-Runde je Ort: „8 Zähler in Halle 1 ablesen“, bei einem Zähler „Zähler MS-22 in Verwaltung ablesen“.
+      const ort = z.bezug ? ` in ${z.bezug}` : '';
+      const n = z.herleitung?.anzahl ?? 1;
+      if (n > 1) return `${n} Zähler${ort} ablesen`;
+      return z.herleitung?.kennung ? `Zähler ${z.herleitung.kennung}${ort} ablesen` : titel;
+    }
     default:
       // Eine Art, die dieses Portal noch nicht kennt, steht mit dem Titel der Route.
       return titel;
@@ -382,16 +408,35 @@ function aufgabe(z: WiedervorlageZeile): string {
 const tagWort = (iso: string | null) => (iso ? standTag(iso) : null);
 
 /**
+ * Ein Rhythmus in Monaten: Zahl und Einheit brechen nie auseinander (geschütztes Leerzeichen vor der Einheit, AP-08
+ * E11); „+ 2 Monate“ hinter einem Tag bricht nur als Ganzes um, nie „+ 2“ am Zeilenende und „Monate“ darunter.
+ */
+const monateText = (n: number) => `${n}\u00a0Monate`;
+const plusMonate = (n: number | null) => (n ? ` +\u00a0${monateText(n)}` : '');
+
+/**
  * Woraus die Frist folgt, in Wörtern aus der Herleitung der Route: „Fassung 2 vom 13.11.2026 + 12 Monate“,
  * „„geprüft, bleibt“ am 10.12.2027 + 12 Monate“, „Stand Nr. 1 vom 24.11.2027 + 12 Monate“. Ohne Herleitung `null`.
  */
 function ansatz(h: WiedervorlageHerleitung | null): string | null {
   if (!h) return null;
   const am = tagWort(h.am);
-  const plus = h.monate ? ` + ${h.monate} Monate` : '';
+  const plus = plusMonate(h.monate);
   if (!am) return null;
   if (h.basis === 'geprueft_bleibt') return `„geprüft, bleibt“ am ${am}${plus}`;
   if (h.basis === 'freigabe') return h.fassung ? `Fassung ${h.fassung} vom ${am}${plus}` : `Freigabe am ${am}${plus}`;
+  return null;
+}
+
+/**
+ * Woraus die Frist einer Ablese-Runde folgt: „Zuletzt abgelesen am 01.10.2026 + 2 Monate“; ohne Ablesung „Noch keine
+ * Ablesung, vorgesehen seit 15.11.2026“ (das Register sagt dort „Noch keine Ablesung“).
+ */
+function ablesungAnsatz(h: WiedervorlageHerleitung | null): string | null {
+  const am = tagWort(h?.am ?? null);
+  if (!h || !am) return null;
+  if (h.basis === 'abgelesen') return `Zuletzt abgelesen am ${am}${plusMonate(h.monate)}`;
+  if (h.basis === 'ablesebeginn') return `Noch keine Ablesung, vorgesehen seit ${am}`;
   return null;
 }
 
@@ -427,13 +472,13 @@ function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): s
       return mitPunkt(`Vorgabe Ihres Energiemanagements (${z.kennzeichen})`, ansatz(h));
     case 'internes_audit':
       return h?.am
-        ? mitPunkt(`Zuletzt ${h.kennung ?? z.kennzeichen} am ${standTag(h.am)}`, h.monate ? `alle ${h.monate} Monate` : null)
+        ? mitPunkt(`Zuletzt ${h.kennung ?? z.kennzeichen} am ${standTag(h.am)}`, h.monate ? `alle ${monateText(h.monate)}` : null)
         : `Nach dem letzten internen Audit ${z.kennzeichen}, im Rhythmus Ihrer Einstellung`;
     case 'managementbewertung': {
-      if (h?.am) return mitPunkt(`Letzte Sitzung am ${standTag(h.am)} (${h.kennung ?? z.kennzeichen})`, h.monate ? `alle ${h.monate} Monate` : null);
+      if (h?.am) return mitPunkt(`Letzte Sitzung am ${standTag(h.am)} (${h.kennung ?? z.kennzeichen})`, h.monate ? `alle ${monateText(h.monate)}` : null);
       const n = w.naechste_managementbewertung;
       return n && n.kennzeichen === z.kennzeichen
-        ? `Letzte Sitzung am ${standTag(n.sitzung_am)} (${n.kennzeichen}) · alle ${n.rhythmus_monate} Monate`
+        ? `Letzte Sitzung am ${standTag(n.sitzung_am)} (${n.kennzeichen}) · alle ${monateText(n.rhythmus_monate)}`
         : `Nach der letzten Managementbewertung ${z.kennzeichen}`;
     }
     case 'feststellung':
@@ -441,7 +486,7 @@ function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): s
         ? mitPunkt(z.bezug, feststellungHerkunft(h), h.am ? `festgestellt am ${standTag(h.am)}` : null)
         : 'Offen, bis ihre Wirksamkeit geprüft oder sie abgeschlossen ist';
     case 'bewertung_ueberpruefung':
-      return mitPunkt('Grundlage der wesentlichen Energieeinsätze', h?.am ? `Stand Nr. ${h.fassung ?? 1} vom ${standTag(h.am)}${h.monate ? ` + ${h.monate} Monate` : ''}` : null);
+      return mitPunkt('Grundlage der wesentlichen Energieeinsätze', h?.am ? `Stand Nr. ${h.fassung ?? 1} vom ${standTag(h.am)}${plusMonate(h.monate)}` : null);
     case 'bezugsbasis_ueberpruefung':
       return mitPunkt(z.bezug ? `Grundlage für „${z.bezug}“` : 'Vergleichsgrundlage einer Kennzahl', ansatz(h));
     case 'energieziel_bewertung': {
@@ -468,6 +513,9 @@ function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): s
       const korrekturen = erste ? `${anzahl} Korrekturen nach der Freigabe, zuerst ${erste}` : `${anzahl} Korrekturen nach der Freigabe`;
       return kurz ? `${anzahl} Korrekturen nach der Freigabe` : `${korrekturen}. ${STAND_BLEIBT}`;
     }
+    case 'zaehlerablesung':
+      // Ohne Herleitung nur, woher die Werte kommen; ein Tag wird nie geraten.
+      return ablesungAnsatz(h) ?? ABLESUNG_QUELLE;
     default:
       return z.kennzeichen;
   }
@@ -499,6 +547,9 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
       return pageRoute('portfolio-bewertung');
     case 'bericht_anstoss':
       return berichtRoute(z.kennzeichen);
+    case 'zaehlerablesung':
+      // Ohne die Zahl der Zähler ist `id` nicht sicher eine Messstelle: das Register (den Ort setzt {@link eintragSprung}).
+      return pageRoute('portfolio-messstellen');
     default:
       return null;
   }
@@ -507,10 +558,13 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
 /**
  * Entscheid 8: der Schritt öffnet das Objekt dort, wo die Entscheidung fällt. Audit und Managementbewertung legt man
  * im Reiter neu an; der Messbedarf wird an seinem Energieeinsatz eingelöst (dort steht „Messstelle einrichten“), ohne
- * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen).
+ * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen). Eine Ablesung trägt man an der
+ * Messstelle ein: bei einem Zähler direkt dort, bei einer Runde aus dem Register ihres Orts (`?ort=G-1`), das die
+ * abzulesenden Zähler markiert (`ablesungsZiele` in `messstellen.ts`).
  */
 export function eintragSprung(
-  z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'> & Partial<Pick<WiedervorlageZeile, 'einsatz_id'>>,
+  z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'> &
+    Partial<Pick<WiedervorlageZeile, 'einsatz_id' | 'herleitung'>>,
 ): Sprung | null {
   switch (z.art) {
     case 'internes_audit':
@@ -519,6 +573,10 @@ export function eintragSprung(
       return entscheidSprung(energiemanagementRoute('managementbewertung'), z.art);
     case 'messbedarf_frist':
       return entscheidSprung(z.einsatz_id ? energieeinsatzRoute(z.einsatz_id) : pageRoute('portfolio-bewertung'), z.art, z.kennzeichen);
+    case 'zaehlerablesung':
+      return z.herleitung?.anzahl === 1 && z.id
+        ? entscheidSprung(messstelleRoute(z.id), z.art)
+        : entscheidSprung(pageRoute('portfolio-messstellen'), z.art, null, { ort: z.kennzeichen });
     default: {
       const ziel = wiedervorlageSprung(z);
       return ziel ? entscheidSprung(ziel, z.art) : null;
@@ -550,6 +608,10 @@ export type Eintrag = {
   zeilen: number;
   /** Die Kennzahl einer Bezugsbasis (zählt die Kennzahlen eines Bündels). */
   kennzahlId: string | null;
+  /** Der Gegenstand der Route (`bezug`): bei einer Ablese-Runde ihr Ort. */
+  bezug: string | null;
+  /** Die Zähler einer Ablese-Runde (zählt die Zähler eines Bündels); sonst `null`. */
+  zaehler: number | null;
 };
 
 export type Arbeitsliste = {
@@ -579,11 +641,14 @@ function zustaendigAus(zeilen: WiedervorlageZeile[]): Zustaendig | null {
   return name ? { name, herkunft: 'objekt', ich: false } : null;
 }
 
-/** Ein Gegenstand, ein Eintrag: die Zeilen derselben Art und desselben Kennzeichens, in der Reihenfolge der Route. */
+/**
+ * Ein Gegenstand, ein Eintrag: die Zeilen derselben Art und desselben Kennzeichens, in der Reihenfolge der Route. Eine
+ * Ablese-Runde ist Ort UND Tag: derselbe Ort kann an zwei Tagen fällig sein (Vertrag 1.2), das sind zwei Einträge.
+ */
 function eintraege(zeilen: WiedervorlageZeile[], w: Wiedervorlage): Eintrag[] {
   const gruppen = new Map<string, WiedervorlageZeile[]>();
   for (const z of zeilen) {
-    const key = `${z.art}/${z.kennzeichen}`;
+    const key = z.art === 'zaehlerablesung' ? `${z.art}/${z.kennzeichen}/${z.faellig_am}` : `${z.art}/${z.kennzeichen}`;
     const g = gruppen.get(key);
     if (g) g.push(z);
     else gruppen.set(key, [z]);
@@ -604,10 +669,12 @@ function eintraege(zeilen: WiedervorlageZeile[], w: Wiedervorlage): Eintrag[] {
       bereich: ART_BEREICH[z.art] ?? 'nachweisen',
       zustaendig: zustaendigAus(g),
       aufgabeIm: z.aufgabe,
-      schritt: SCHRITT[z.art] ?? ANSEHEN,
+      schritt: z.art === 'zaehlerablesung' && z.herleitung?.anzahl === 1 ? ABLESUNG_EINTRAGEN : (SCHRITT[z.art] ?? ANSEHEN),
       sprung: eintragSprung(z),
       zeilen: g.length,
       kennzahlId: z.kennzahl_id,
+      bezug: z.bezug,
+      zaehler: z.art === 'zaehlerablesung' ? (z.herleitung?.anzahl ?? 1) : null,
     };
   });
 }
@@ -764,6 +831,14 @@ function buendelText(art: WiedervorlageArt, e: Eintrag[]): { aufgabe: string; gr
       return { aufgabe: `${n} interne Audits durchführen`, grund: nameListe(e.map((x) => x.kennzeichen)) };
     case 'managementbewertung':
       return { aufgabe: `${n} Managementbewertungen abhalten`, grund: nameListe(e.map((x) => x.kennzeichen)) };
+    case 'zaehlerablesung': {
+      // Die Runden zählen ihre Zähler: „10 Zähler ablesen“ in „Halle 1, Halle 2 und Verwaltung“.
+      const zaehler = e.reduce((summe, x) => summe + (x.zaehler ?? 1), 0);
+      const orte = [...new Set(e.map((x) => x.bezug ?? x.kennzeichen))];
+      return orte.length === 1
+        ? { aufgabe: `${zaehler} Zähler in ${orte[0]} ablesen`, grund: e[0].grundKurz }
+        : { aufgabe: `${zaehler} Zähler ablesen`, grund: nameListe(orte) };
+    }
     default:
       return { aufgabe: `${n} Fristen`, grund: nameListe(e.map((x) => x.kennzeichen)) };
   }

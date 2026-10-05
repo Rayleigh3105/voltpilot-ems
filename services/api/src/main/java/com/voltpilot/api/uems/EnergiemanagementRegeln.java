@@ -109,7 +109,7 @@ public final class EnergiemanagementRegeln {
         m.put("managementbewertung_zustand", List.of("entwurf", "freigegeben"));
         m.put("beschluss_art", List.of("energieziel", "massnahme", "dokument", "aufgabe", "ressourcen", "audit", "keine_aenderung", "weitere"));
         m.put("folge_art", List.of("energieziel", "massnahme", "dokument", "aufgabe", "audit"));
-        m.put("wiedervorlage_art", List.of("dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung", "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin", "abweichung_frist", "messbedarf_frist", "bericht_anstoss"));
+        m.put("wiedervorlage_art", List.of("dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung", "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin", "abweichung_frist", "messbedarf_frist", "bericht_anstoss", "zaehlerablesung"));
         m.put("verzeichnis_ort", List.of("in_voltpilot", "wortlaut_original_beim_kunden", "verweis"));
         m.put("verzeichnis_gruppe", List.of("grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation", "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen", "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte"));
         m.put("ueberpruefung_art", List.of("dokument", "internes_audit", "managementbewertung", "feststellung"));

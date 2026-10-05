@@ -100,13 +100,21 @@ for (const breite of [375, 390, 1440]) {
       expect(await page.evaluate(() => (window as unknown as { __sprung: string[] }).__sprung)).toEqual(['#/portfolio/energiemanagement/audits']);
     });
 
-    test('Demo: ein Bericht mit zehn Korrekturen ist ein Eintrag; Zuletzt erledigt mit Tag und Person', async ({ page }) => {
+    test('Demo: ein Bericht mit zehn Korrekturen ist ein Eintrag; Ablese-Runden je Ort; Zuletzt erledigt mit Tag und Person', async ({ page }) => {
       await oeffne(page, 'fall=demo', breite);
-      await expect(page.getByTestId('wiedervorlage-ueberfaellig').locator('.vp-wv-eintrag')).toHaveCount(4);
+      await expect(page.getByTestId('wiedervorlage-ueberfaellig').locator('.vp-wv-eintrag')).toHaveCount(7);
       await expect(page.getByTestId('wiedervorlage-eintrag-BR-2026-0001')).toContainText('10 Korrekturen nach der Freigabe');
+      // Entscheid 7: eine Runde je Ort; ihr Schritt führt ins Register des Orts, bei einem Zähler zu seiner Messstelle.
+      await expect(page.getByTestId('wiedervorlage-eintrag-G-1')).toContainText('8 Zähler in Halle 1 ablesen');
+      await expect(page.getByTestId('wiedervorlage-eintrag-G-1')).toContainText('Zuletzt abgelesen am 01.10.2026 + 2 Monate');
+      await expect(page.getByTestId('wiedervorlage-ziel-G-2')).toHaveAttribute('aria-label', 'Zähler MS-20 in Halle 2 ablesen: Ablesung eintragen');
       await expect(page.getByTestId('wiedervorlage-zuletzt').locator('li')).toHaveCount(5);
       await vermessen(page, 'demo');
       await ablegen(page, `wiedervorlage-demo-${breite}`);
+      await page.getByTestId('wiedervorlage-ziel-G-1').click();
+      expect(await page.evaluate(() => (window as unknown as { __sprung: string[] }).__sprung)).toEqual([
+        '#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung',
+      ]);
     });
 
     test('Normalfall, ohne Fristen, Fehler und Einsicht: ehrlich in jedem Zustand', async ({ page }) => {

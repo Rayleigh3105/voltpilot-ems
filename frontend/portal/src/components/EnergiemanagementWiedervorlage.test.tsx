@@ -4,7 +4,7 @@ import { api } from '../api';
 import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
-import { wvDemo, wvLeer, wvNormal, wvR12, zuletztDemo, zuletztLeer } from '../test/wiedervorlageFixtures';
+import { ABLESUNG, ableseRunde, wvDemo, wvLeer, wvNormal, wvR12, zuletztDemo, zuletztLeer } from '../test/wiedervorlageFixtures';
 import { KALENDER_ABZUG_FEHLER, LADEFEHLER, NOCH_KEINE_FRISTEN, NUR_EINSICHT, WOHER_SATZ, ZULETZT_FEHLER } from '../wiedervorlage';
 import { EnergiemanagementWiedervorlage } from './EnergiemanagementWiedervorlage';
 
@@ -41,7 +41,7 @@ describe('Die Wiedervorlage als Arbeitsliste (Konzept Wiedervorlage w1)', () => 
     const ueber = within(screen.getByTestId('wiedervorlage-ueberfaellig')).getAllByRole('listitem');
     expect(ueber).toHaveLength(8);
     expect(ueber[0].textContent).toContain('Bezugsbasis BB-0002 überprüfen');
-    expect(ueber[0].textContent).toContain('Grundlage für „Stromeinsatz Montage je Stück“ · Fassung 2 vom 13.11.2026 + 12 Monate');
+    expect(ueber[0].textContent).toContain('Grundlage für „Stromeinsatz Montage je Stück“ · Fassung 2 vom 13.11.2026 +\u00a012\u00a0Monate');
     expect(ueber[0].textContent).toContain('Auswerten');
     expect(ueber[0].textContent).toContain('Ines Kaltenbach');
     expect(ueber[0].textContent).toContain('Bestätigen oder neu fassen');
@@ -133,19 +133,36 @@ describe('Die Wiedervorlage als Arbeitsliste (Konzept Wiedervorlage w1)', () => 
     expect(within(plan).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['April 2029', 'Juni 2029', 'November 2029', 'Januar 2030']);
     const audit = screen.getByTestId('wiedervorlage-eintrag-AU-2029-0001');
     expect(within(audit).getByRole('img', { name: 'fällig bis 22.01.2030' }).className).toBe('vp-fd is-plan');
-    expect(audit.textContent).toContain('Zuletzt AU-2029-0001 am 22.01.2029 · alle 12 Monate');
+    expect(audit.textContent).toContain('Zuletzt AU-2029-0001 am 22.01.2029 · alle 12\u00a0Monate');
     const link = within(audit).getByRole('link', { name: 'Internes Audit durchführen: Öffnen' });
     expect(link.getAttribute('href')).toBe('#/portfolio/energiemanagement/audits');
     fireEvent.click(screen.getByTestId('wiedervorlage-jahresplan-zuklappen'));
     expect(screen.getByTestId('wiedervorlage-jahresplan-anzeigen')).toBeTruthy();
   });
 
+  it('„Öffnen“ im Jahresplan nimmt nur den Entscheid aus dem Sprung: das Register bleibt auf den Ort der Runde gefiltert', async () => {
+    const w = wvNormal();
+    w.spaeter = [ableseRunde('G-1', 'Halle 1', 8, ABLESUNG.halle1, -90, '2029-07-29'), ...w.spaeter];
+    w.anzahl_spaeter = w.spaeter.length;
+    vi.mocked(api.energiemanagementWiedervorlage).mockResolvedValue(w);
+    render(<EnergiemanagementWiedervorlage />);
+    await ladeAus();
+    const runde = screen.getByTestId('wiedervorlage-eintrag-G-1');
+    const link = within(runde).getByRole('link', { name: '8 Zähler in Halle 1 ablesen: Öffnen' });
+    expect(link.getAttribute('href')).toBe('#/portfolio/messstellen?ort=G-1');
+  });
+
   it('Demo heute: der Bericht mit zehn Korrekturen ist ein Eintrag; Zuletzt erledigt kommt vom Server, mit „geprüft, bleibt“', async () => {
     vi.mocked(api.energiemanagementWiedervorlage).mockResolvedValue(wvDemo());
     render(<EnergiemanagementWiedervorlage />);
     await ladeAus();
-    expect(within(screen.getByTestId('wiedervorlage-ueberfaellig')).getAllByRole('listitem')).toHaveLength(4);
+    expect(within(screen.getByTestId('wiedervorlage-ueberfaellig')).getAllByRole('listitem')).toHaveLength(7);
     expect(screen.getByTestId('wiedervorlage-eintrag-BR-2026-0001').textContent).toContain('10 Korrekturen nach der Freigabe, zuerst K-2026-0014');
+    // Entscheid 7: eine Ablese-Runde je Ort; der Schritt führt ins Register des Orts, bei einem Zähler zu ihm.
+    expect(screen.getByTestId('wiedervorlage-eintrag-G-1').textContent).toContain('8 Zähler in Halle 1 ablesen');
+    expect(screen.getByTestId('wiedervorlage-ziel-G-1').getAttribute('aria-label')).toBe('8 Zähler in Halle 1 ablesen: Ablesungen eintragen');
+    expect(screen.getByTestId('wiedervorlage-ziel-G-1').getAttribute('href')).toBe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung');
+    expect(screen.getByTestId('wiedervorlage-ziel-G-3').getAttribute('aria-label')).toBe('Zähler MS-22 in Verwaltung ablesen: Ablesung eintragen');
     expect(screen.getByTestId('wiedervorlage-nichts-bald').textContent).toBe('Bis 30.05.2029 ist nichts fällig. Die nächste Frist ist am 30.06.2029.');
     const zuletzt = within(screen.getByTestId('wiedervorlage-zuletzt')).getAllByRole('listitem');
     expect(zuletzt.map((z) => z.textContent)).toEqual([

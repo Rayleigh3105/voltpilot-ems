@@ -53,7 +53,7 @@ import org.testcontainers.utility.DockerImageName;
  *
  * <p>Konzept Wiedervorlage w1 (Vertrag 1.1): der Jahresplan, die Zählung nach Dringlichkeit, je Zeile Herleitung,
  * Gegenstand und Zuständig (am Objekt oder laut Aufgabe), die offenen Korrekturen eines Berichts als ein Eintrag und
- * „Zuletzt erledigt“.
+ * „Zuletzt erledigt“. Vertrag 1.2: die Zählerablesungen je Gebäude und Fälligkeitstag.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -96,6 +96,7 @@ class EnergiemanagementWiedervorlageApiTest {
     @Autowired InternesAuditService audits;
     @Autowired FeststellungService feststellungen;
     @Autowired KennzahlService kennzahlen;
+    @Autowired AblesungService ablesungen;
     static JdbcTemplate root;
     static Map<String, JsonNode> kopien;
     UUID tenant, unternehmen, s1, s2, g2, bz1;
@@ -143,7 +144,7 @@ class EnergiemanagementWiedervorlageApiTest {
     @AfterEach
     void uhrZurueck() {
         for (var dienst : List.<java.util.function.Consumer<Clock>>of(wiedervorlage::uhrStellen, dokumente::uhrStellen,
-                audits::uhrStellen, feststellungen::uhrStellen, kennzahlen::uhrStellen)) {
+                audits::uhrStellen, feststellungen::uhrStellen, kennzahlen::uhrStellen, ablesungen::uhrStellen)) {
             dienst.accept(Clock.systemUTC());
         }
     }
@@ -369,6 +370,133 @@ class EnergiemanagementWiedervorlageApiTest {
         assertThat(bb1.path("eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
         // Dasselbe Recht wie die Wiedervorlage: auch „Einsicht“ liest es.
         assertThat(ruf(ZULETZT, "RF", 200).path("eintraege").size()).isEqualTo(z.path("eintraege").size());
+    }
+
+    /**
+     * Konzept Wiedervorlage w1, Entscheid 7 (Vertrag 1.2): Zählerablesungen. Die Frist ist die des Registers (letzte
+     * Ablesung + zwei Kalendermonate, ohne Ablesung der Beginn der Quelle); eine Zeile je Gebäude (ohne Gebäude der
+     * Standort) und Fälligkeitstag; nur aktive Messstellen; Ablesungen nach dem Abruf-Tag zählen nicht; jeder liest nur
+     * die Messstellen, die er sehen darf.
+     */
+    @Test
+    void zaehlerablesungJeGebaeudeUndTagMitDerFristDesRegisters() throws Exception {
+        // Halle 2 (ST-1): MS-20 und MS-24 am 01.10.2026 abgelesen, MS-25 am 20.10.2026 (und am 15.12.2026, nach dem
+        // Abruf); MS-26 wird archiviert, MS-27 angehalten. Werk Lindach (ST-2): MS-30 hängt am Standort selbst und
+        // wird seit dem 15.11.2026 abgelesen, aber noch nie.
+        Map<String, UUID> ms = new LinkedHashMap<>();
+        ms.put("MS-20", root.queryForObject("SELECT id FROM messstelle WHERE kennzeichen = 'MS-20' AND tenant_id = ?",
+                UUID.class, tenant));
+        ms.put("MS-24", messstelle("MS-24", "Druckluft", g2, null));
+        ms.put("MS-25", messstelle("MS-25", "Kühlung", g2, null));
+        ms.put("MS-26", messstelle("MS-26", "Altbau", g2, null));
+        ms.put("MS-27", messstelle("MS-27", "Lüftung", g2, null));
+        ms.put("MS-30", messstelle("MS-30", "Lager", null, s2));
+        ablesungen.uhrStellen(Clock.fixed(Instant.parse("2027-01-10T09:00:00Z"), ZoneOffset.UTC));
+        ablesen("MS-20", "2026-09-01T00:00:00+02:00", "1.000");
+        ablesen("MS-20", "2026-10-01T00:00:00+02:00", "1.120,5");
+        ablesen("MS-24", "2026-10-01T09:30:00+02:00", "88");
+        ablesen("MS-25", "2026-10-20T08:00:00+02:00", "4.711");
+        ablesen("MS-25", "2026-12-15T08:00:00+01:00", "4.800");
+        ablesen("MS-26", "2026-10-01T10:00:00+02:00", "17");
+        ablesen("MS-27", "2026-10-01T10:00:00+02:00", "23");
+        root.update("UPDATE messstelle SET archiviert_am = '2026-11-01T10:00:00Z' WHERE id = ?", ms.get("MS-26"));
+        root.update("UPDATE messstelle SET angehalten_ab = '2026-11-01T10:00:00Z' WHERE id = ?", ms.get("MS-27"));
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, kanal, kanal_wertart, "
+                + "herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, actor_sub, actor_name, actor_rolle, "
+                + "actor_art, art) VALUES (?, ?, 'Wirkenergie', 'Bezug', 'ablesung:Wirkenergie', 'counter', 'differenzen', "
+                + "'fuehrend', '2026-11-15T00:00:00+01:00', false, '2026-11-15T09:00:00Z', 'IK', 'Ines Kaltenbach', "
+                + "'energiemanager', 'kunde', 'ablesung')", tenant, ms.get("MS-30"));
+
+        abruf("2026-12-10T08:00:00Z");
+        JsonNode w = ruf(WIEDERVORLAGE, "IK", 200);
+        // Am längsten fällig zuerst: MS-30 seit dem Beginn der Quelle, dann die Runde in Halle 2 (01.12.2026 00:00 und
+        // 09:30 sind derselbe Tag); MS-25 ist am 20.12.2026 fällig, die Ablesung vom 15.12.2026 kommt nach dem Abruf.
+        assertThat(texte(w.path("faellig"), "kennzeichen")).containsExactly("ST-2", "G-2");
+        assertThat(texte(w.path("faellig"), "faellig_am")).containsExactly("2026-11-15", "2026-12-01");
+        assertThat(texte(w.path("faellig"), "art")).containsOnly("zaehlerablesung");
+        assertThat(texte(w.path("vorschau"), "titel")).containsExactly("Zählerablesung Halle 2 (MS-25 Kühlung)");
+        assertThat(w.at("/vorschau/0/faellig_am").asText()).isEqualTo("2026-12-20");
+        assertThat(w.path("anzahl_ueberfaellig").asInt()).isEqualTo(2);
+        assertThat(w.path("anzahl_naechste").asInt()).isEqualTo(1);
+        assertThat(w.path("spaeter").size()).isZero();
+
+        JsonNode runde = w.at("/faellig/1");
+        assertThat(runde.path("titel").asText()).isEqualTo("Zählerablesung Halle 2 (2 Zähler)");
+        assertThat(runde.path("satz").asText()).isEqualTo("seit 9 Tagen fällig");
+        assertThat(runde.path("bezug").asText()).isEqualTo("Halle 2");
+        assertThat(runde.path("id").asText()).as("mehrere Zähler: der Ort").isEqualTo(g2.toString());
+        assertThat(runde.path("herleitung").path("basis").asText()).isEqualTo("abgelesen");
+        assertThat(runde.path("herleitung").path("am").asText()).isEqualTo("2026-10-01");
+        assertThat(runde.path("herleitung").path("monate").asInt()).isEqualTo(2);
+        assertThat(runde.path("herleitung").path("anzahl").asInt()).isEqualTo(2);
+        assertThat(runde.path("herleitung").path("kennung").isNull()).isTrue();
+        assertThat(runde.path("aufgabe").asText()).isEqualTo("bewertung_messplanung");
+        assertThat(runde.path("verantwortlich").isNull()).isTrue();
+        assertThat(runde.path("zustaendig").isNull()).as("niemand hat die Messplanung").isTrue();
+
+        JsonNode lager = w.at("/faellig/0");
+        assertThat(lager.path("titel").asText()).isEqualTo("Zählerablesung Werk Lindach (MS-30 Lager)");
+        assertThat(lager.path("id").asText()).as("ein Zähler: die Messstelle").isEqualTo(ms.get("MS-30").toString());
+        assertThat(lager.path("bezug").asText()).isEqualTo("Werk Lindach");
+        assertThat(lager.path("herleitung").path("basis").asText()).isEqualTo("ablesebeginn");
+        assertThat(lager.path("herleitung").path("am").asText()).isEqualTo("2026-11-15");
+        assertThat(lager.path("herleitung").path("monate").isNull()).isTrue();
+        assertThat(lager.path("herleitung").path("kennung").asText()).isEqualTo("MS-30");
+        assertThat(lager.path("herleitung").path("anzahl").asInt()).isEqualTo(1);
+        JsonNode kuehlung = w.at("/vorschau/0");
+        assertThat(kuehlung.path("kennzeichen").asText()).isEqualTo("G-2");
+        assertThat(kuehlung.path("id").asText()).isEqualTo(ms.get("MS-25").toString());
+        assertThat(kuehlung.path("herleitung").path("am").asText()).isEqualTo("2026-10-20");
+        assertThat(kuehlung.path("herleitung").path("kennung").asText()).isEqualTo("MS-25");
+
+        // Der Kalender-Abzug trägt die Runde wie jede andere Zeile.
+        String ics = roh(WIEDERVORLAGE + "?format=ics", "IK").getContentAsString(StandardCharsets.UTF_8)
+                .replace("\r\n ", "");
+        assertThat(ics).contains("UID:zaehlerablesung-G-2-20261201@wiedervorlage.voltpilot",
+                "SUMMARY:G-2: Zählerablesung Halle 2 (2 Zähler)");
+
+        // Leserecht je Messstelle wie im Register: Claudia Berger liest Werk Ahrenberg, Peter Hollerbach Werk Lindach;
+        // „Einsicht“ liest alles.
+        JsonNode cb = ruf(WIEDERVORLAGE, "CB", 200);
+        assertThat(texte(cb.path("faellig"), "kennzeichen")).containsExactly("G-2");
+        assertThat(texte(cb.path("vorschau"), "kennzeichen")).containsExactly("G-2");
+        JsonNode ph = ruf(WIEDERVORLAGE, "PH", 200);
+        assertThat(texte(ph.path("faellig"), "kennzeichen")).containsExactly("ST-2");
+        assertThat(ph.path("vorschau").size()).isZero();
+        JsonNode rf = ruf(WIEDERVORLAGE, "RF", 200);
+        assertThat(texte(rf.path("faellig"), "titel")).isEqualTo(texte(w.path("faellig"), "titel"));
+
+        // Ist die Aufgabe vergeben, ist ihre Person zuständig; eine Ablesung beendet die Frist der Runde nicht für
+        // den Zähler, der noch fehlt.
+        person.put("RF", personAnlegen("Robert Falk", "Geschäftsführer", "RF", "RF"));
+        person.put("IK", personAnlegen("Ines Kaltenbach", "Energiemanagement", "IK", "IK"));
+        ruf("POST", BASIS + "/aufgaben", "IK", Map.of("aufgabe", "unternehmensleitung", "person_id", person.get("RF"),
+                "gilt_ab", "2026-10-01", "begruendung", "Geschäftsführer laut Handelsregister"), 201);
+        ruf("POST", BASIS + "/aufgaben", "IK", Map.of("aufgabe", "bewertung_messplanung", "person_id", person.get("IK"),
+                "gilt_ab", "2026-12-01", "entschieden_von", person.get("RF"), "begruendung",
+                "Festgelegt in der Leitungsrunde."), 201);
+        ablesen("MS-24", "2026-12-08T07:00:00+01:00", "95");
+        JsonNode danach = ruf(WIEDERVORLAGE, "IK", 200);
+        JsonNode rest = zeile(danach.path("faellig"), "G-2");
+        assertThat(rest.path("titel").asText()).isEqualTo("Zählerablesung Halle 2 (MS-20 Spritzguss)");
+        assertThat(rest.path("id").asText()).isEqualTo(ms.get("MS-20").toString());
+        assertThat(rest.path("zustaendig").path("name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(rest.path("zustaendig").path("herkunft").asText()).isEqualTo("aufgabe");
+        assertThat(texte(danach.path("spaeter"), "faellig_am")).containsExactly("2027-02-08");
+    }
+
+    private UUID messstelle(String kennzeichen, String name, UUID ort, UUID standort) {
+        UUID id = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', 'Bezug', 'kWh', "
+                + "'Zählerstand') RETURNING id", UUID.class, tenant, kennzeichen, name);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, standort_id, gueltig_ab) "
+                + "VALUES (?, ?, ?, ?, '2020-01-01')", tenant, id, ort, standort);
+        return id;
+    }
+
+    private void ablesen(String kennzeichen, String zeitpunkt, String stand) throws Exception {
+        ruf("POST", "/api/v1/messstellen/" + kennzeichen + "/ablesungen", "IK",
+                Map.of("zeitpunkt", zeitpunkt, "stand", stand), 200);
     }
 
     private void aufgabe(String aufgabe, String wer) throws Exception {
