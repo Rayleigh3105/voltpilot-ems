@@ -339,6 +339,128 @@
       }
     },
     {
+      "name": "phase-switching-three-phases",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32,
+            "phase_switching": true
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "phase-switching-off-explicit",
+      "valid": true,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32,
+            "phase_switching": false
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "phase-switching-needs-three-phases",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1
+            ],
+            "max_current_a": 32,
+            "phase_switching": true
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
+      "name": "phase-switching-not-boolean",
+      "valid": false,
+      "policy": {
+        "revision": 1,
+        "authorization": {
+          "mode": "free",
+          "allowed_tags": []
+        },
+        "electrical": [
+          {
+            "charge_point_id": "CP-1",
+            "connector_id": 1,
+            "voltage_v": 253,
+            "phases": [
+              1,
+              2,
+              3
+            ],
+            "max_current_a": 32,
+            "phase_switching": "yes"
+          }
+        ],
+        "phase_limits_a": [
+          32,
+          32,
+          32
+        ],
+        "limits": []
+      }
+    },
+    {
       "name": "negative-circuit",
       "valid": false,
       "policy": {

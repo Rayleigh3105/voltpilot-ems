@@ -238,6 +238,9 @@ type Connector struct {
 	// CommandedKw is the limit the CSMS last told this connector to hold.
 	// nil = nothing was ever commanded, which is NOT a limit of 0.
 	CommandedKw *float64 `json:"commanded_kw,omitempty"`
+	// CommandedPhases is the phase count of the last ACCEPTED amps limit (0 =
+	// none, or a watt limit). It only varies on a connector allowed to switch.
+	CommandedPhases int `json:"commanded_phases,omitempty"`
 	// CommandStatus is the station's own answer to the last SetChargingProfile
 	// ("Accepted"/"Rejected"/"NotSupported"), or a German reason when the
 	// request never got an answer. Never empty after a command: silence is a
