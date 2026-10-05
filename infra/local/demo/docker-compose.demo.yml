@@ -104,6 +104,17 @@ services:
   # die Flächen „Energie“ und „Erlöse“ Werte tragen. Dieselbe v1-Telemetrie-Strecke wie die Demo-Box
   # (Bild aus `tools/edge-simulator`). Werk Lindach (…0503) entsteht im Weltszenario erst am 15.10.2026;
   # die Box läuft trotzdem mit und meldet, sobald die Anlage dem Standort zugeordnet ist.
+  #
+  # JEDE Box bekommt ihr EIGENES Profil passend zur Referenzwelt
+  # (`docs/contracts/v2/uems-referenzunternehmen.json`, `anlagen[]`/`netzanschluesse[]`) - sonst meldeten
+  # alle drei dieselbe Haushalts-PV-Kurve und „reine Messung“-Anlagen speisten ein:
+  #  · Halle 1 (AN-1, NA-1 550 kW): die EINZIGE steuernde Anlage - PV 240 kWp + Speicher 200 kWh/100 kW,
+  #    Betriebsmodell Lastspitzenkappung (`gewerbe-steuernd`, Netzspitze auf ~300 kW gekappt,
+  #    Einspeisegrenze 100 kW laut `netzanschluss_grenzen`).
+  #  · Halle 2 (AN-2, NA-2 200 kW) und Werk Lindach (AN-3, NA-3 120 kW): „reine Messung … steuert nicht“,
+  #    kein PV, kein Speicher (`gewerbe-mess`): Industrie-Lastgang mit Schichtbetrieb und Netzbezug, NIE
+  #    Einspeisung. Größen so, dass die Lastspitze im 15-min-Raster unter der vereinbarten Leistung bleibt.
+  # Jahresverbrauch der Welt ~2,2 GWh gesamt (3 Anlagen); die Tageswerte liegen in dieser Größenordnung.
   edge-sim-ahrenberg-halle1:
     build: ./tools/edge-simulator
     container_name: voltpilot-edge-sim-ahrenberg-halle1
@@ -122,6 +133,22 @@ services:
       EDGE_SIM_CLIENT_ID: "edge-sim-ahrenberg-halle1"
       EDGE_SIM_INTERVAL: "5"
       EDGE_SIM_TIME_SCALE: "1"
+      # Halle 1 = AN-1: steuernde Anlage, PV 240 kWp + Speicher 200 kWh/100 kW, Lastspitzenkappung.
+      EDGE_SIM_PROFILE: "gewerbe-steuernd"
+      EDGE_SIM_LOAD_BASE_KW: "70"      # Grundlast (Nacht/Wochenende): Druckluft, Kühlung, Gebäudetechnik
+      EDGE_SIM_LOAD_PEAK_KW: "300"     # Produktionslast Spritzguss SG01-06 -> Lastspitze ~390 kW (< 550)
+      EDGE_SIM_PV_PEAK_KW: "200"       # 240 kWp Dach Halle 1, AC-seitig wirksam
+      EDGE_SIM_BATT_CAPACITY_KWH: "200"
+      EDGE_SIM_BATT_MAX_KW: "100"
+      EDGE_SIM_SOC_INIT_PCT: "55"
+      EDGE_SIM_PEAK_GRID_KW: "300"     # Lastspitzenkappung: Netzbezug auf ~300 kW halten
+      EDGE_SIM_EXPORT_LIMIT_KW: "100"  # Einspeisegrenze NA-1 (netzanschluss_grenzen, ab 03.05.2027)
+      EDGE_SIM_GRID_LIMIT_KW: "550"    # vereinbarte Leistung NA-1
+      EDGE_SIM_SHIFT_START_HOUR: "6"
+      EDGE_SIM_SHIFT_END_HOUR: "20"
+      EDGE_SIM_WEEKEND_FACTOR: "0.15"
+      EDGE_SIM_NOISE: "0.05"
+      EDGE_SIM_SEED: "1101"
 
   edge-sim-ahrenberg-halle2:
     build: ./tools/edge-simulator
@@ -141,6 +168,16 @@ services:
       EDGE_SIM_CLIENT_ID: "edge-sim-ahrenberg-halle2"
       EDGE_SIM_INTERVAL: "5"
       EDGE_SIM_TIME_SCALE: "1"
+      # Halle 2 = AN-2: reine Messung (steuert nicht), kein PV/Speicher -> nur Netzbezug, keine Einspeisung.
+      EDGE_SIM_PROFILE: "gewerbe-mess"
+      EDGE_SIM_LOAD_BASE_KW: "30"      # Grundlast Halle 2 (Lager-Allgemeinstrom, Standby)
+      EDGE_SIM_LOAD_PEAK_KW: "120"     # Spritzguss SG07-10 + Montage M1 -> Lastspitze ~155 kW (< 200)
+      EDGE_SIM_GRID_LIMIT_KW: "200"    # vereinbarte Leistung NA-2
+      EDGE_SIM_SHIFT_START_HOUR: "6"
+      EDGE_SIM_SHIFT_END_HOUR: "22"
+      EDGE_SIM_WEEKEND_FACTOR: "0.18"
+      EDGE_SIM_NOISE: "0.05"
+      EDGE_SIM_SEED: "2102"
 
   edge-sim-ahrenberg-lindach:
     build: ./tools/edge-simulator
@@ -160,6 +197,17 @@ services:
       EDGE_SIM_CLIENT_ID: "edge-sim-ahrenberg-lindach"
       EDGE_SIM_INTERVAL: "5"
       EDGE_SIM_TIME_SCALE: "1"
+      # Werk Lindach = AN-3: reine Messung (steuert nicht), kein PV/Speicher -> nur Netzbezug, keine Einspeisung.
+      # Lager/Logistik + kleine Montage M2: leichter, eine Tagschicht, am Wochenende fast still.
+      EDGE_SIM_PROFILE: "gewerbe-mess"
+      EDGE_SIM_LOAD_BASE_KW: "16"      # Grundlast (Tore, Förderer, Beleuchtung, Standby)
+      EDGE_SIM_LOAD_PEAK_KW: "72"      # Montage M2 + Logistik -> Lastspitze ~90 kW (< 120)
+      EDGE_SIM_GRID_LIMIT_KW: "120"    # vereinbarte Leistung NA-3
+      EDGE_SIM_SHIFT_START_HOUR: "7"
+      EDGE_SIM_SHIFT_END_HOUR: "17"
+      EDGE_SIM_WEEKEND_FACTOR: "0.08"
+      EDGE_SIM_NOISE: "0.06"
+      EDGE_SIM_SEED: "3103"
 
   portal:
     build:
