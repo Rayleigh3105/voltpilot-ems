@@ -209,6 +209,24 @@ func (s *Server) stationProfile(id string, connector int, p ChargingProfile) (Ch
 			}
 		}
 	}
+	if connector > 0 && p.NumberPhases > 0 {
+		// An EXPLICIT phase count: only for a connector the operator allowed
+		// to switch, and one phase only when the station said it can.
+		if !caps.AmpsAllowed {
+			return p, errors.New("Phasenumschaltung braucht Ampere-Steuerung")
+		}
+		if p.NumberPhases == 1 && (caps.PhaseSwitch == nil || !*caps.PhaseSwitch) {
+			return p, errors.New("Die Ladesäule hat keine Umschaltung auf eine Phase gemeldet")
+		}
+		amps, ok := policy.SwitchAmpere(id, connector, p.LimitKw, p.NumberPhases)
+		if !ok {
+			return p, errors.New("Phasenumschaltung ist für diesen Stecker nicht freigegeben")
+		}
+		wiring, _ := policy.Wiring(id, connector)
+		p.RateUnit, p.LimitA = "A", amps
+		p.LimitKw = amps * wiring.VoltageV * float64(p.NumberPhases) / 1000
+		return p, nil
+	}
 	if connector > 0 {
 		p.LimitKw = policy.PhaseCaps(id, connector, p.LimitKw)
 	}

@@ -145,15 +145,72 @@ func (s *Server) Commission(ctx context.Context, chargerID string, maxKw, defaul
 	// form is still safely commissioned from the targeted capability read. The
 	// full answer (when supported) is retained by the protocol journal and
 	// normalized in the cloud; failure cannot unwind already-installed failsafes.
-	if _, _, err := t.getConfiguration(ctx, chargerID, InventoryKeys()); err != nil {
+	inventory, _, err := t.getConfiguration(ctx, chargerID, InventoryKeys())
+	if err != nil {
 		s.log.Info("Ladesäule lehnt die vollständige Konfigurationsinventur ab — Sicherheitsprofile bleiben aktiv",
 			"charge_point_id", chargerID, "err", err)
 	}
+	s.readPhaseSwitch(ctx, t, chargerID, inventory)
 
 	s.recordCommission(chargerID, &maxKw, &defaultKw, nil)
 	s.log.Info("Ladesäule eingerichtet",
 		"charge_point_id", chargerID, "max_kw", maxKw, "default_kw", defaultKw)
 	return nil
+}
+
+// readPhaseSwitch records whether the station can switch to one phase. The
+// inventory usually answers it; a station that refused the inventory is asked
+// for the one key, but only where the operator allowed switching. Best-effort:
+// the safety profiles are already installed, and unknown means "no switching".
+func (s *Server) readPhaseSwitch(ctx context.Context, t *transport, chargerID string, inventory map[string]string) {
+	supported := ParsePhaseSwitch(inventory)
+	if supported == nil && s.switchingAllowed(chargerID) {
+		values, _, err := t.getConfiguration(ctx, chargerID, []string{KeyPhaseSwitch})
+		if err != nil {
+			s.log.Info("Ladesäule meldet nicht, ob sie auf eine Phase umschalten kann — sie lädt weiter dreiphasig",
+				"charge_point_id", chargerID, "err", err)
+		}
+		supported = ParsePhaseSwitch(values)
+	}
+	s.mu.Lock()
+	if c, ok := s.chargers[chargerID]; ok {
+		c.Capabilities.PhaseSwitch = supported
+	}
+	s.mu.Unlock()
+}
+
+// RefreshPhaseSwitch asks a connected station for KeyPhaseSwitch again: for a
+// switch the operator allowed after the station was set up, which changes no
+// safety profile and therefore triggers no new commissioning.
+func (s *Server) RefreshPhaseSwitch(ctx context.Context, chargerID string) error {
+	s.profileMu.Lock()
+	defer s.profileMu.Unlock()
+	t, err := s.liveTransport(chargerID)
+	if err != nil {
+		return err
+	}
+	values, _, err := t.getConfiguration(ctx, chargerID, []string{KeyPhaseSwitch})
+	if err != nil {
+		return err
+	}
+	supported := ParsePhaseSwitch(values)
+	s.mu.Lock()
+	if c, ok := s.chargers[chargerID]; ok {
+		c.Capabilities.PhaseSwitch = supported
+	}
+	s.mu.Unlock()
+	return nil
+}
+
+// switchingAllowed reports whether the operator allowed one-phase charging on
+// any connector of this station.
+func (s *Server) switchingAllowed(chargerID string) bool {
+	for _, e := range s.ControlPolicy().Electrical {
+		if e.ChargePointID == chargerID && e.PhaseSwitching {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, err error) {
@@ -183,6 +240,13 @@ func (s *Server) recordCommission(chargerID string, maxKw, defaultKw *float64, e
 // unanswered request is recorded as a German reason, never as silence:
 // silence is not agreement.
 func (s *Server) ApplyLimit(ctx context.Context, chargerID string, connectorID, transactionID int, limitKw float64) error {
+	return s.ApplyLimitPhases(ctx, chargerID, connectorID, transactionID, limitKw, 0)
+}
+
+// ApplyLimitPhases is ApplyLimit with an explicit phase count for a connector
+// the operator allowed to switch (1 or 3; 0 = its wired phases, as always).
+// One phase additionally needs the station's own ConnectorSwitch3to1PhaseSupported.
+func (s *Server) ApplyLimitPhases(ctx context.Context, chargerID string, connectorID, transactionID int, limitKw float64, phases int) error {
 	s.profileMu.Lock()
 	defer s.profileMu.Unlock()
 	t, err := s.liveTransport(chargerID)
@@ -205,7 +269,9 @@ func (s *Server) ApplyLimit(ctx context.Context, chargerID string, connectorID, 
 	}
 	policy := s.ControlPolicy()
 	limitKw = policy.LimitKw(chargerID, connectorID, s.opts.Now(), limitKw)
-	p, err := s.stationProfile(chargerID, connectorID, TxProfile(connectorID, transactionID, limitKw, s.opts.Now(), policy.ProfileDuration(chargerID, connectorID, s.opts.Now(), TxProfileDuration)))
+	tx := TxProfile(connectorID, transactionID, limitKw, s.opts.Now(), policy.ProfileDuration(chargerID, connectorID, s.opts.Now(), TxProfileDuration))
+	tx.NumberPhases = phases
+	p, err := s.stationProfile(chargerID, connectorID, tx)
 	if err != nil {
 		s.recordCommand(chargerID, connectorID, nil, err.Error())
 		return err
@@ -217,6 +283,11 @@ func (s *Server) ApplyLimit(ctx context.Context, chargerID string, connectorID, 
 	}
 	kw := p.LimitKw
 	s.recordCommand(chargerID, connectorID, &kw, status)
+	s.mu.Lock()
+	if c, ok := s.chargers[chargerID]; ok && status == "Accepted" {
+		c.connector(connectorID).CommandedPhases = p.NumberPhases
+	}
+	s.mu.Unlock()
 	if status != "Accepted" {
 		return fmt.Errorf("die Ladesäule hat die Ladegrenze abgelehnt (%s)", status)
 	}
@@ -338,6 +409,7 @@ func (s *Server) ClearLimit(ctx context.Context, chargerID string, connectorID i
 	if c, ok := s.chargers[chargerID]; ok {
 		if con := c.ConnectorByID(connectorID); con != nil {
 			con.CommandedKw = nil
+			con.CommandedPhases = 0
 			con.CommandedChangedAt = time.Time{}
 			con.CommandStatus = ""
 			con.Readback = ""
