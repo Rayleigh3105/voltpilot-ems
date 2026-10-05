@@ -72,22 +72,53 @@
 }
 
 /*
- * Status-Variante A (Review PR2 §5.1, Punkt 2): bei Handlungsbedarf eskaliert
- * die ruhige Statuszeile zu dieser Hinweiskarte unter dem Kopf. Dieselbe
- * Karten-Sprache wie die Bausteine (1-px-Rahmen, Radius 16 px), nur mit einem
- * tonigen linken Akzent und Icon.
+ * Status-Variante A (Review PR2 §5.1, Punkt 2): bei Handlungsbedarf eskaliert die
+ * ruhige Statuszeile zu Hinweiskarten unter dem Kopf — die Datenlage und/oder die
+ * Wiedervorlage-Eskalation (PR #1396, letztere springt zur Wiedervorlage). Dieselbe
+ * Karten-Sprache wie die Bausteine (1-px-Rahmen, Radius 16 px), toniger linker Akzent.
  */
+.vp-portfolio-hinweise {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  margin-top: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
 .vp-portfolio-hinweis {
   display: flex;
   align-items: flex-start;
   gap: var(--vp-space-3, 12px);
-  margin-top: var(--vp-space-4, 16px);
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--vp-space-4, 16px) var(--vp-space-5, 20px);
   background: #fff;
   border: 1px solid #e2e8f0;
   border-left: 4px solid var(--vp-text-subtle, #ced4da);
   border-radius: 16px;
   min-width: 0;
+  text-align: left;
+}
+
+/* Die klickbare Hinweiskarte (Wiedervorlage): springt in die Arbeitsliste. */
+button.vp-portfolio-hinweis {
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--vp-motion-fast) var(--vp-ease-inout);
+}
+button.vp-portfolio-hinweis:hover {
+  background: #f8fafc;
+}
+button.vp-portfolio-hinweis:focus-visible {
+  outline: 2px solid var(--vp-focus, #2563eb);
+  outline-offset: 2px;
+}
+.vp-portfolio-hinweis-pfeil {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  color: var(--vp-text-subtle, #ced4da);
 }
 
 .vp-portfolio-hinweis.is-warn {

@@ -8,6 +8,7 @@ import catalog from '../anwendungen/catalog.json';
 import { berlinDay } from '../fleet';
 import { GELD_BAUSTEINE } from '../portfolioCockpit';
 import { ahrenbergFunktionen, funktionWerkLindach } from '../test/funktionenFixtures';
+import { wvR12 } from '../test/wiedervorlageFixtures';
 import { FIXTURE_IDS, ahrenbergHeute, werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 import { versorgungAhrenberg, versorgungLindach } from '../test/versorgungFixtures';
 import { pageRoute, standortRoute } from '../nav';
@@ -250,6 +251,24 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(hinweis.textContent).toMatch(/Lindach/);
     // Die ruhige Zeile ist dann verschwunden — sie IST die Karte geworden.
     expect(document.querySelector('.vp-portfolio-satz')).toBeNull();
+  });
+
+  it('Status-Variante A: überfällige Wiedervorlage eskaliert zur klickbaren Hinweiskarte (Review PR2 §2 / PR #1396)', async () => {
+    // Datenlage ok (keine Daten-Eskalation) → nur die Wiedervorlage-Eskalation bleibt.
+    mocks({ overview: ahrenbergOverview() });
+    vi.spyOn(api, 'energiemanagementWiedervorlage').mockResolvedValue(wvR12());
+    const onNavigate = renderUnternehmen();
+    const karte = await waitFor(() => {
+      const el = document.querySelector('button.vp-portfolio-hinweis');
+      if (!el) throw new Error('keine klickbare Hinweiskarte');
+      return el as HTMLElement;
+    });
+    expect(karte.className).toContain('is-warn');
+    expect(karte.textContent).toMatch(/überfällig/); // „N Fristen überfällig"
+    expect(karte.textContent).toMatch(/Älteste seit/);
+    // Ein Klick springt in die Wiedervorlage.
+    fireEvent.click(karte);
+    expect(onNavigate).toHaveBeenCalled();
   });
 
   it('die Anlagen-Tabelle ist nach Standorten gruppiert, jede Karte zeigt Messen — Steuern nur, wo eine Anlage steuert', async () => {

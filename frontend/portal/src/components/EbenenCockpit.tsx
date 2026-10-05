@@ -412,13 +412,22 @@ export function EbenenCockpit({
       : null;
 
   const unternehmen = ebene?.art === 'unternehmen';
-  // Review PR2 §5.1 / Punkt 2 — Status-Variante A: die ruhige Statuszeile
-  // eskaliert bei Handlungsbedarf (Datenlage nicht „ok") zur Hinweiskarte unter
-  // dem Kopf. Nur auf der Unternehmens-Übersicht; der Standort-Kopf behält seine
-  // Zeile. (Die Wiedervorlage-Eskalation „N Fristen überfällig · älteste seit …"
-  // kommt aus PR #1396 und wird dort angeschlossen — hier nur die Datenlage.)
-  const handlungsbedarf =
-    unternehmen && !nurAnlagen && kopf?.datenlage != null && kopf.datenlage.ton !== 'ok';
+  // Review PR2 §5.1 / Punkt 2 — Status-Variante A: die ruhige Statuszeile eskaliert
+  // bei Handlungsbedarf zur Hinweiskarte unter dem Kopf. Zwei Quellen, beide nur auf
+  // der Unternehmens-Übersicht (der Standort-Kopf behält seine Zeile): die Datenlage
+  // (nicht „ok") und die Wiedervorlage-Eskalation „N Fristen überfällig · älteste
+  // seit …" aus PR #1396 (`wiedervorlageStatus`, Konzept Wiedervorlage w1 Entscheid 9).
+  const statusHinweise: { text: string; ton: string; route?: Route }[] = [];
+  if (unternehmen && !nurAnlagen) {
+    if (kopf?.datenlage != null && kopf.datenlage.ton !== 'ok') {
+      statusHinweise.push({ text: kopf.datenlage.text, ton: kopf.datenlage.ton });
+    }
+    const wv = uems?.wiedervorlageStatus ?? null;
+    if (wv) {
+      statusHinweise.push({ text: `${wv.titel} · ${wv.satz}`, ton: 'warn', route: wv.sprung.route });
+    }
+  }
+  const handlungsbedarf = statusHinweise.length > 0;
 
   const head = (
     <div className="vp-portfolio-kopf">
@@ -634,14 +643,40 @@ export function EbenenCockpit({
     <>
       {head}
       {/* Status-Variante A (Punkt 2): bei Handlungsbedarf wird aus der ruhigen
-          Statuszeile im Kopf eine Hinweiskarte — mit demselben Text, der schon
-          die auffällige Anlage nennt. */}
-      {handlungsbedarf && kopf?.datenlage && (
-        <div className={`vp-portfolio-hinweis is-${kopf.datenlage.ton}`} role="status">
-          <span className="vp-portfolio-hinweis-icon" aria-hidden="true">
-            <Icon name="alert-triangle" size={20} />
-          </span>
-          <p className="vp-portfolio-hinweis-text">{kopf.datenlage.text}</p>
+          Statuszeile im Kopf eine Hinweiskarte — die Datenlage (nennt die auffällige
+          Anlage) und/oder die Wiedervorlage-Eskalation „N Fristen überfällig · älteste
+          seit …" (PR #1396), die zur Wiedervorlage springt. */}
+      {statusHinweise.length > 0 && (
+        <div className="vp-portfolio-hinweise">
+          {statusHinweise.map((h, i) => {
+            const inhalt = (
+              <>
+                <span className="vp-portfolio-hinweis-icon" aria-hidden="true">
+                  <Icon name="alert-triangle" size={20} />
+                </span>
+                <p className="vp-portfolio-hinweis-text">{h.text}</p>
+                {h.route && (
+                  <span className="vp-portfolio-hinweis-pfeil" aria-hidden="true">
+                    <Icon name="chevron-right" size={18} />
+                  </span>
+                )}
+              </>
+            );
+            return h.route ? (
+              <button
+                key={i}
+                type="button"
+                className={`vp-portfolio-hinweis is-${h.ton}`}
+                onClick={() => onNavigate(h.route!)}
+              >
+                {inhalt}
+              </button>
+            ) : (
+              <div key={i} className={`vp-portfolio-hinweis is-${h.ton}`} role="status">
+                {inhalt}
+              </div>
+            );
+          })}
         </div>
       )}
       {layout.anpassen && (
