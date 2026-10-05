@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { VerlaufExplorer } from './VerlaufExplorer';
 import {
   api,
@@ -150,6 +150,23 @@ function hist(channels: Record<string, number>): EntityHistory {
 }
 
 const anchor = new Date('2026-07-24T10:00:00Z');
+
+// Die ERSTE Darstellung des Explorers im Worker kostet ein Vielfaches jeder
+// weiteren (gemessen unter Last: Median ~230 ms gegen ~80 ms, Spitzen bis über
+// 1 s). Ohne Vorwärmen bezahlt sie der erste Fall dieser Datei innerhalb seiner
+// waitFor-Frist. Das Vorwärmen läuft ohne Wanduhr: nur act-Takte, bis die
+// Kette aus den sofort erfüllten Attrappen durch ist - es prüft nichts.
+beforeAll(async () => {
+  vi.spyOn(api, 'siteEntities').mockResolvedValue(producerOnly);
+  vi.spyOn(api, 'topology').mockResolvedValue(producerTopology);
+  vi.spyOn(api, 'entityHistory').mockResolvedValue(emptyHistory);
+  const view = render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
+  for (let i = 0; i < 20 && !screen.queryByText('Wird über den Wechselrichter gemessen'); i++) {
+    await act(async () => {});
+  }
+  view.unmount();
+  vi.restoreAllMocks();
+});
 
 describe('VerlaufExplorer — F2a producer empty state', () => {
   afterEach(() => vi.restoreAllMocks());
