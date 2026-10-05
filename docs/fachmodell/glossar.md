@@ -1236,6 +1236,15 @@ Die Wiedervorlage rechnet keine Frist selbst: jede Quelle gibt ihr „fällig am
 
 **Abgrenzung.** Nicht ein Postfach, kein Läufer und keine Erinnerung per E-Mail (E10 = A).
 
+**Arbeitsliste (Konzept Wiedervorlage w1, 05.10.2026).**
+Der Name bleibt; darunter sagt ein Satz, was er meint: „Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst.“
+Die Liste ordnet nach Dringlichkeit: „Überfällig“ (die Frist ist abgelaufen; „fällig“ allein hieße umgangssprachlich „jetzt dran“), „In den nächsten 30 Tagen“, „Zuletzt erledigt“.
+Ein Gegenstand ist ein Eintrag (zehn Korrekturen an einem Bericht sind eine Aufgabe), und die Zahlen zählen Einträge.
+Jeder Eintrag nennt Aufgabe mit Verb, Grund, Bereich, Person und genau einen Schritt; der Schritt öffnet das Objekt dort, wo die Entscheidung fällt, abgehakt wird nichts.
+Die Frist steht als Datum („seit 13.11.2027“, „bis 28.02.2029“), nie als Tageszähler.
+Ist nichts überfällig, heißt es „Keine Frist überfällig“, und auf der Übersicht stehen die „Nächsten Fristen“; „Woher kommen diese Fristen?“ erklärt die Herleitung.
+Kundenwörter: `UEMS_WIEDERVORLAGE_SATZ`, `UEMS_UEBERFAELLIG`, `UEMS_KEINE_FRIST_UEBERFAELLIG`, `UEMS_NAECHSTE_FRISTEN`, `UEMS_ZULETZT_ERLEDIGT`, `UEMS_WOHER_FRISTEN`, `UEMS_GEPRUEFT_BLEIBT_KNOPF` (PORTAL/glossar.ts).
+
 ## Dokument · Fassung
 
 *Sicht: Organisation · Nachtrag AP-19 §4.1, §4.4 (DK1–DK8, E2)*

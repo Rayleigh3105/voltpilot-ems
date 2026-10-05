@@ -107,7 +107,7 @@ export function BewertungStand({
   const offen = detail !== null && detail.bericht.archiviert_am === null;
 
   return (
-    <section className="vp-bw-karte vp-bw-stand" aria-labelledby="bw-stand" data-testid="bewertung-stand">
+    <section className="vp-bw-karte vp-bw-stand" aria-labelledby="bw-stand" data-testid="bewertung-stand" data-entscheid="bewertung_ueberpruefung">
       <div className="vp-bw-karte-kopf">
         <h2 id="bw-stand">{STAND_TITEL}</h2>
         {!bewertung && berichte && (
@@ -147,7 +147,7 @@ export function BewertungStand({
               {entwurf ? (
                 <>
                   <p>{entwurfZeile(detail.bericht, entwurf)}</p>
-                  <Button size="sm" onClick={() => setDialog('freigeben')} data-testid="bewertung-freigeben-knopf">
+                  <Button size="sm" onClick={() => setDialog('freigeben')} data-testid="bewertung-freigeben-knopf" data-entscheid-schritt>
                     {gueltig ? `Als Stand Nr. ${gueltig.nr + 1} freigeben` : `Als Stand Nr. 1 freigeben`}
                   </Button>
                 </>

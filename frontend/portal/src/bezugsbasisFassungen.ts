@@ -2,7 +2,7 @@ import type { Bezugsbasis, BezugsbasisAnstoss, BezugsbasisEntwurf, BezugsbasisFa
 import * as B from './bezugsbasisAnlegen';
 import type { BezugsbasisZustand } from './bezugsbasisUebersicht';
 import { beendetSatz, fristSatz } from './bezugsbasisUebersicht';
-import { UEMS_BEZUGSBASIS, UEMS_EINFLUSSGROESSE, UEMS_REFERENZPERIODE, UEMS_STATISCHER_FAKTOR } from './glossar';
+import { UEMS_BEZUGSBASIS, UEMS_EINFLUSSGROESSE, UEMS_GEPRUEFT_BLEIBT_KNOPF, UEMS_REFERENZPERIODE, UEMS_STATISCHER_FAKTOR } from './glossar';
 import { datumText } from './uemsOrtsbaum';
 
 /**
@@ -19,7 +19,7 @@ export const TITEL_BEENDEN = `${UEMS_BEZUGSBASIS} beenden`;
 export const TITEL_BLEIBT = 'Geprüft, bleibt';
 export const KNOPF_NEUE_FASSUNG = TITEL_NEUE_FASSUNG;
 export const KNOPF_BEENDEN = 'Beenden';
-export const KNOPF_BLEIBT = 'Geprüft, bleibt';
+export const KNOPF_BLEIBT = UEMS_GEPRUEFT_BLEIBT_KNOPF;
 export const KNOPF_WEITER_ZUM_ASSISTENTEN = `Weiter zur ${UEMS_REFERENZPERIODE}`;
 export const ANPASSUNGSGRUENDE_TITEL = 'Anpassungsgründe';
 export const FASSUNGEN_TITEL = 'Fassungen';

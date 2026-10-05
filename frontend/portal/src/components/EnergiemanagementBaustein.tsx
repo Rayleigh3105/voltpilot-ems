@@ -1,43 +1,47 @@
 import { Icon } from '../../designsystem/components/core/Icon';
-import { GrenzSatz } from './GrenzSatz';
-import type { Route } from '../nav';
+import { seitenSprung, springeUeberHash, sprungKlick, type Sprung } from '../entscheid';
+import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_NAECHSTE_FRISTEN, UEMS_WOHER_FRISTEN } from '../glossar';
+import { energiemanagementRoute } from '../nav';
 import {
-  KALENDER_ABZUG,
-  KALENDER_ABZUG_FEHLER,
-  KALENDER_ABZUG_HINWEIS,
+  danachSatz,
+  markeBald,
+  markeUeberfaellig,
+  nichtsBald,
   WAS_STEHT_AN,
+  WAS_STEHT_AN_SATZ,
+  weitereAufgaben,
+  WOHER_SATZ,
   ZUR_WIEDERVORLAGE,
-  type EnergiemanagementBausteinBild,
+  type WasStehtAnBild,
 } from '../wiedervorlage';
+import { FristDatum, Kennzeichentext } from './FristDatum';
+import { GrenzSatz } from './GrenzSatz';
+import './kacheln/Kacheln.css';
 import './UebersichtBausteine.css';
+import './Wiedervorlage.css';
 
 /**
- * UEMS AP-19 IP-21 (WV5, E10 = A): der Übersichts-Baustein der Wiedervorlage am Unternehmen — „n fällig · m in den
- * nächsten 30 Tagen“ und der Kalender-Abzug zum Laden. Keine Nachricht, kein Läufer: die Fristen leitet der Server beim
- * Abruf ab. Alle Sätze kommen aus `wiedervorlage.ts`; hier wird nur gerendert. Grenz-Satz und Verantwortungs-Satz unten
- * (SP4).
- *
- * K8 (Konzept „Energiemanagement ohne Fachsprache“): der Titel ist die Frage „Was steht an“, darunter die ersten
- * Punkte der Wiedervorlage mit ihrem Sprung — am Telefon steht der Baustein zuerst.
+ * „Was steht an“ auf der Übersicht des Unternehmens (UEMS AP-19 IP-21, WV5; Konzept Wiedervorlage w1, Variante A):
+ * ruhig im Normalfall, deutlich bei Überfälligem. Ein Satz sagt, was das ist; Marken zählen Einträge; bei Überfälligem
+ * höchstens vier Zeilen, gebündelt nach Aufgabe („4 Bezugsbasen überprüfen“), je mit Datum und Grund. Eine Zeile mit
+ * einem Eintrag öffnet sein Objekt mit offenem Entscheid, ein Bündel die Wiedervorlage mit genau diesem Filter. Ist
+ * nichts überfällig, stehen die nächsten Fristen da. Kalender-Abzug und Hinweise wohnen in der Wiedervorlage; Grenz-
+ * und Verantwortungs-Satz stehen auf der Übersicht einmal unten (K7: `GrenzSatz` schweigt im Bereich).
  */
 export function EnergiemanagementBaustein({
   bild,
   onOeffnen,
-  onKalender,
-  onSprung,
-  kalenderLaeuft = false,
-  kalenderFehler = false,
+  springe = springeUeberHash,
 }: {
-  bild: EnergiemanagementBausteinBild;
+  bild: WasStehtAnBild;
   onOeffnen: () => void;
-  onKalender: () => void;
-  /** Der Sprung einer Zeile (WV3); ohne ihn stehen die Zeilen als Text. */
-  onSprung?: (ziel: Route) => void;
-  kalenderLaeuft?: boolean;
-  kalenderFehler?: boolean;
+  /** Der Sprung einer Zeile; ohne Angabe über die Adresse (`entscheid.ts`). */
+  springe?: (s: Sprung) => void;
 }) {
+  const ruhig = bild.ueberfaellig === 0;
+  const zurListe = seitenSprung(energiemanagementRoute('wiedervorlage'));
   return (
-    <section className="vp-ub-baustein" aria-labelledby="vp-ub-energiemanagement" data-testid="baustein-energiemanagement">
+    <section className="vp-ub-baustein vp-wsa" aria-labelledby="vp-ub-energiemanagement" data-testid="baustein-energiemanagement">
       <div className="vp-ub-kopf">
         <h2 id="vp-ub-energiemanagement" className="vp-ub-titel">
           {WAS_STEHT_AN}
@@ -47,30 +51,52 @@ export function EnergiemanagementBaustein({
           <Icon name="chevron-right" size={16} />
         </button>
       </div>
-      <p className={`vp-ub-summe${bild.faellig ? ' is-warn' : ''}`} data-testid="energiemanagement-summe">
-        {bild.summe}
-      </p>
-      {bild.zeilen.length > 0 && (
-        <ul className="vp-ub-zeilen" data-testid="was-steht-an">
+      <div className="vp-wsa-lead">
+        <p className="vp-wsa-satz">{WAS_STEHT_AN_SATZ}</p>
+        <div className="vp-wv-marken vp-k-farben" data-testid="energiemanagement-marken">
+          {ruhig ? (
+            <span className="vp-k-marke is-ok">
+              <span className="vp-wv-punkt" aria-hidden="true" />
+              {UEMS_KEINE_FRIST_UEBERFAELLIG}
+            </span>
+          ) : (
+            <span className="vp-k-marke is-warn">{markeUeberfaellig(bild.ueberfaellig)}</span>
+          )}
+          {bild.bald > 0 && <span className="vp-k-marke">{markeBald(bild.bald, bild.vorschauTage)}</span>}
+        </div>
+      </div>
+      {ruhig && bild.zeilen.length > 0 && <p className="vp-wsa-unter">{UEMS_NAECHSTE_FRISTEN}</p>}
+      {bild.zeilen.length > 0 ? (
+        <ul className="vp-fzl" data-testid="was-steht-an">
           {bild.zeilen.map((z) => {
             const inhalt = (
               <>
-                <span className="vp-ub-punkt" aria-hidden="true" />
-                <span className="vp-ub-text">
-                  <span className="vp-ub-name">{`${z.art} ${z.kennzeichen} · ${z.titel}`}</span>
-                  <span className="vp-ub-satz">{z.satz}</span>
+                <FristDatum {...z.frist} ton={z.frist.ueberfaellig ? 'ueber' : 'bald'} />
+                <span className="vp-fz-text">
+                  <span className="vp-fz-titel">
+                    <Kennzeichentext text={z.aufgabe} />
+                  </span>
+                  <span className="vp-fz-grund">
+                    <Kennzeichentext text={z.frist.relativ && !z.frist.ueberfaellig ? `${z.grund} · ${z.frist.relativ}` : z.grund} />
+                  </span>
                 </span>
               </>
             );
             return (
               <li key={z.key}>
-                {z.ziel && onSprung ? (
-                  <button type="button" className={`vp-ub-zeile${z.faellig ? ' is-warn' : ''}`} onClick={() => onSprung(z.ziel!)} data-testid={`was-steht-an-${z.kennzeichen}`}>
+                {z.sprung ? (
+                  <a className="vp-fz" href={z.sprung.hash} onClick={sprungKlick(z.sprung, springe)} data-testid={`was-steht-an-${z.key}`}>
                     {inhalt}
-                    <Icon name="chevron-right" size={16} />
-                  </button>
+                    <span className="vp-fz-schritt">
+                      {z.schritt}
+                      <span aria-hidden="true"> ›</span>
+                    </span>
+                    <span className="vp-fz-chev" aria-hidden="true">
+                      <Icon name="chevron-right" size={18} />
+                    </span>
+                  </a>
                 ) : (
-                  <div className={`vp-ub-zeile vp-ub-zeile-text${z.faellig ? ' is-warn' : ''}`} data-testid={`was-steht-an-${z.kennzeichen}`}>
+                  <div className="vp-fz" data-testid={`was-steht-an-${z.key}`}>
                     {inhalt}
                   </div>
                 )}
@@ -78,23 +104,26 @@ export function EnergiemanagementBaustein({
             );
           })}
         </ul>
-      )}
-      <button
-        type="button"
-        className="vp-ub-alle vp-ub-kalender"
-        onClick={onKalender}
-        disabled={kalenderLaeuft}
-        data-testid="energiemanagement-kalender"
-      >
-        <Icon name="calendar" size={16} />
-        {KALENDER_ABZUG}
-      </button>
-      {kalenderFehler && (
-        <p className="vp-ub-hinweis is-warn" role="alert" data-testid="energiemanagement-kalender-fehler">
-          {KALENDER_ABZUG_FEHLER}
+      ) : (
+        <p className="vp-wsa-ruhe" data-testid="was-steht-an-ruhe">
+          {[nichtsBald(bild.fensterBis), bild.spaeter > 0 ? danachSatz(bild.spaeter) : null].filter(Boolean).join(' ')}
         </p>
       )}
-      <p className="vp-ub-hinweis">{KALENDER_ABZUG_HINWEIS}</p>
+      {bild.weitere > 0 && (
+        <p className="vp-wsa-weitere">
+          <a className="vp-wv-link" href={zurListe.hash} onClick={sprungKlick(zurListe, springe)} data-testid="was-steht-an-weitere">
+            {weitereAufgaben(bild.weitere)}
+            <span aria-hidden="true"> ›</span>
+          </a>
+        </p>
+      )}
+      <details className="vp-wv-woher" data-testid="was-steht-an-woher">
+        <summary>
+          <Icon name="info" size={15} />
+          {UEMS_WOHER_FRISTEN}
+        </summary>
+        <p>{WOHER_SATZ}</p>
+      </details>
       <GrenzSatz className="vp-ub-hinweis" verantwortung />
     </section>
   );
