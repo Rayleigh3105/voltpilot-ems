@@ -64,9 +64,11 @@ behalten ihre jeweiligen Berechtigungen.
   einer Phase mit demselben Ampere-Anteil wie dreiphasig. Eine neue Phasenzahl muss
   60 Sekunden gewünscht sein, zwei Umschaltungen liegen mindestens 5 Minuten
   auseinander; solange bleibt der Stecker in seiner Phasenzahl, dreiphasig unter
-  dem Minimum heißt das Pause. Eine Pause schaltet nicht um. Die Mindestleistung
-  des Standorts gilt für solche Stecker nicht (die Bereiche sind die bekannte
-  Untergrenze), eine Mindestleistung am Ladepunkt bleibt Schwelle. Schutz- und
+  dem Minimum heißt das Pause. Eine Pause schaltet nicht um. Die Bereiche sind die
+  bekannte Untergrenze: Die Mindestleistung des Standorts gilt für solche Stecker
+  nicht, die des Ladepunkts oder Fahrzeugprofils nur bei „Sonne zuerst“ (dort ist
+  sie das gewählte „mindestens X kW“; bei „Nur Sonne“ zeigt das Portal sie nicht,
+  ein alter Wert bliebe sonst eine unsichtbare Sperre). Schutz- und
   Default-Profile bleiben dreiphasig; der Schalter ändert keine Phasenreserve und
   verlangt deshalb weder freie Stecker noch eine neue Einrichtung.
 - Autorisierungscaches und lokale Stationslisten dürfen die Entscheidung der Box

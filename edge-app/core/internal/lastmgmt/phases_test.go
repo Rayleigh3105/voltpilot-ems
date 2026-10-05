@@ -76,20 +76,44 @@ func TestWhatOneSnapFreesGoesToTheNextVehicle(t *testing.T) {
 	near(t, "nothing lost", p.AllocatedKw, 7.8)
 }
 
-// TestAChosenMinimumStaysAThreshold - a customer who chose to start at 4.2 kW
-// keeps that, bands or not; the one-phase band below it is not offered.
+// TestAChosenMinimumStaysAThreshold - „Sonne + Mindestleistung 2 kW" keeps
+// its 2 kW from the grid, on one phase.
 func TestAChosenMinimumStaysAThreshold(t *testing.T) {
 	s := switching("goe#1", 0)
-	s.MinKw = 4.2
-	a := alloc(t, solar(t, 3, s), "goe#1")
-	if !a.Paused || a.Reason != ReasonNoSurplus {
+	s.Source, s.MinKw = PolicySolarFirst, 2
+	a := alloc(t, solar(t, 0.5, s), "goe#1")
+	if a.Paused || a.Phases != 1 {
 		t.Fatalf("%+v", a)
 	}
-	a = alloc(t, solar(t, 5, s), "goe#1")
+	near(t, "the chosen minimum", a.Kw, 2)
+
+	// A minimum inside the gap is served at the next achievable value.
+	s.MinKw = 3.9
+	a = alloc(t, solar(t, 0.5, s), "goe#1")
 	if a.Phases != 3 {
 		t.Fatalf("%+v", a)
 	}
-	near(t, "three phases", a.Kw, 5)
+	near(t, "three-phase minimum", a.Kw, 4.14)
+}
+
+// TestAMinimumNobodyCanSeeDoesNotCloseTheOnePhaseBand - the pilot: „Smart"
+// once wrote 4.2 kW as the charge point's minimum, then the customer chose
+// „Nur Sonne", where the portal shows no minimum at all.
+func TestAMinimumNobodyCanSeeDoesNotCloseTheOnePhaseBand(t *testing.T) {
+	s := switching("goe#1", 0)
+	s.MinKw = 4.2
+	a := alloc(t, solar(t, 3, s), "goe#1")
+	if a.Paused || a.Phases != 1 {
+		t.Fatalf("a stale minimum under „Nur Sonne“ must not block one phase: %+v", a)
+	}
+	near(t, "one phase", a.Kw, 3)
+
+	// Without bands it binds exactly as before.
+	plain := sess("plain#1", 11, 0)
+	plain.Source, plain.MinKw = PolicySolarOnly, 4.2
+	if a := alloc(t, solar(t, 3, plain), "plain#1"); !a.Paused {
+		t.Fatalf("%+v", a)
+	}
 
 	// The site-wide Mindestleistung stands in for a floor the box cannot
 	// know; with bands the box knows it, so the one-phase band stays open.
@@ -100,19 +124,11 @@ func TestAChosenMinimumStaysAThreshold(t *testing.T) {
 	if a := alloc(t, p, "goe#1"); a.Paused || a.Phases != 1 {
 		t.Fatalf("the site minimum must not close the one-phase band: %+v", a)
 	}
-	plain := sess("plain#1", 11, 0)
-	plain.Source = PolicySolarOnly
+	plain.MinKw = 0
 	p = Decide(Input{Settings: set, Sessions: []Session{plain}, SourceBudgetKw: kwp(3),
 		Policy: PolicyFast, Now: base})
 	if a := alloc(t, p, "plain#1"); !a.Paused {
 		t.Fatalf("without bands the site minimum binds as before: %+v", a)
-	}
-
-	// A minimum inside the gap starts at the next achievable value.
-	s.MinKw = 3.9
-	a = alloc(t, solar(t, 4, s), "goe#1")
-	if !a.Paused {
-		t.Fatalf("3.9 kW cannot be charged, 4 kW of sun is not 4.14: %+v", a)
 	}
 }
 

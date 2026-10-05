@@ -668,7 +668,7 @@ func Decide(in Input) Plan {
 				// a session whose ceiling or chosen minimum leaves no band at
 				// all cannot charge - admitting it would allocate a value the
 				// station turns into a pause anyway.
-				m, ok := feasibleMin(s, set)
+				m, ok := feasibleMin(s, chosenMin(s, in))
 				if !ok {
 					pausedReason[s.Key] = ReasonBelowMinimum
 					if s.CapKw != nil {
@@ -765,7 +765,7 @@ func Decide(in Input) Plan {
 			}
 		}
 		left := waterFill(adm, give, spare)
-		left = snapBands(adm, give, left, set)
+		left = snapBands(adm, give, left, in)
 		moved := spare - left
 		rest -= moved
 		if !exempt && srcActive {
@@ -813,7 +813,7 @@ func Decide(in Input) Plan {
 			a.Kw = round3(kw)
 			a.Reason = ReasonCharging
 			if s.Ranges.Any() {
-				_, a.Phases = snapDown(s, set, a.Kw)
+				_, a.Phases = snapDown(s, chosenMin(s, in), a.Kw)
 			}
 		} else {
 			a.Paused = true
