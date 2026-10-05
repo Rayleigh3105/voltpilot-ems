@@ -939,6 +939,11 @@ type OcppConnector struct {
 	Readback      string `json:"readback,omitempty"`
 	ReadbackNote  string `json:"readback_note,omitempty"`
 	SessionSince  int64  `json:"session_since_ms,omitempty"`
+	// Phases is the phase count of a plug that may switch between one and
+	// three phases (0 = fixed wiring); PhaseNote names a switch that is held
+	// back by its pacing.
+	Phases    int    `json:"phases,omitempty"`
+	PhaseNote string `json:"phase_note,omitempty"`
 	// SessionKwh is the RUNNING session's own delivered energy (the cumulative
 	// register minus its reading at StartTransaction). nil = no session, no
 	// register, or a register that moved backwards - never a fabricated 0.

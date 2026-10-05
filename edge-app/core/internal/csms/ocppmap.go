@@ -553,7 +553,9 @@ func (t *transport) getCompositeSchedule(ctx context.Context, id string, connect
 			if n := sch.ChargingSchedulePeriod[0].NumberPhases; n != nil {
 				phases = *n
 			}
-			if known && phases == len(wiring.Phases) && limit >= 0 {
+			// One phase is a real answer only where the operator allowed the
+			// switch; anywhere else it stays the mismatch it always was.
+			if known && (phases == len(wiring.Phases) || (wiring.PhaseSwitching && phases == 1)) && limit >= 0 {
 				kw := limit * wiring.VoltageV * float64(phases) / 1000
 				out.LimitKw = &kw
 			}
