@@ -173,6 +173,8 @@ class DemoRundgangAufbau {
         // ein Bezugsdaten-Import und eine befristete Einsicht.
         flaechen(root);
         kennzahlenDistinct();
+        KennzahlLauf.Lauf lauf2 = kennzahlen.lauf(Instant.now()); // die neuen Kennzahlen rechnen (vor den Bezugsbasen)
+        bezugsbasenNeu();
         bewertung(root);
         verteilung();
         bezugsbasenBestaetigen();
@@ -180,7 +182,6 @@ class DemoRundgangAufbau {
         korrektur();
         bezugsdatenImport();
         einsicht();
-        KennzahlLauf.Lauf lauf2 = kennzahlen.lauf(Instant.now());
         System.out.println("Rundgang Runde 2: Flächen, distinkte Kennzahlen, Bewertung, Verteilung, Bezugsbasen, "
                 + "energetische Bewertung, Korrektur, Import und Einsicht ergänzt. Kennzahlen: " + lauf2);
     }
@@ -389,40 +390,100 @@ class DemoRundgangAufbau {
         gasreihe(bz4);
         UUID bz5 = bezugsgroesse("BZ-5", "Gradtagzahl Verwaltung", "Kd", "standort", ST1.toString(), "gradtagzahl");
         gradtagreihe(bz5);
-        kennzahlNeuFassen("KZ-0001", "kWh je Stück", List.of(eingang("zaehler", "messstelle", "MS-21"),
-                eingang("nenner", "bezugsgroesse", "BZ-2")),
-                "Stromeinsatz Montage je Stück: Netzbezug Halle 1 je Stückzahl Montage.");
-        kennzahlNeuFassen("KZ-0002", "kWh je Stück", List.of(eingang("zaehler", "messstelle", "MS-22"),
-                eingang("nenner", "bezugsgroesse", "BZ-2")),
-                "Stromeinsatz Montage Lindach je Stück: Netzbezug Verwaltung je Stückzahl Montage.");
-        kennzahlNeuFassen("KZ-0003", "kWh je Stück", List.of(eingang("zaehler", "messstelle", "MS-20"),
-                eingang("nenner", "bezugsgroesse", "BZ-2")),
-                "Stromeinsatz Montage je Stück (Unternehmen): Spritzguss je Stückzahl Montage.");
-        kennzahlNeuFassen("KZ-0005", "kWh je m²", List.of(eingang("zaehler", "messstelle", "MS-21"),
-                eingang("nenner", "bezugsflaeche", "G-1")),
-                "Netzbezug je Quadratmeter: Strombezug Halle 1 je Bezugsfläche.");
-        kennzahlNeuFassen("KZ-0006", "m³ je Kd", List.of(eingang("zaehler", "bezugsgroesse", "BZ-4"),
-                eingang("nenner", "bezugsgroesse", "BZ-5")),
-                "Gasbezug Verwaltung je Gradtag: Gasbezug je Gradtagzahl.");
+        // Die Welt definiert sechs Kennzahlen identisch (MS-20 ÷ BZ-1 = „kWh je kg"), weil sie nur einen Zähler
+        // seedet; eine einmal gerechnete Fassung lässt sich nicht rückwirkend umdefinieren (die alten Monate blieben
+        // „kWh je kg"). Darum werden die fünf falsch benannten archiviert und durch distinkte neue ersetzt, deren
+        // erste Fassung schon die richtige Definition trägt — so stimmt der ganze Verlauf. KZ-0004 (Spritzguss je kg)
+        // bleibt richtig und wird von Zielen/Maßnahmen zitiert.
+        archiviereKennzahl("KZ-0001");
+        archiviereKennzahl("KZ-0002");
+        archiviereKennzahl("KZ-0003");
+        archiviereKennzahl("KZ-0005");
+        archiviereKennzahl("KZ-0006");
+        neueKennzahl("KZ-0021", "Stromeinsatz Montage je Stück", "gebaeude", GEB_HALLE2.toString(),
+                "Spezifischer Stromeinsatz der Montage je gefertigtem Stück (Halle 2).",
+                eingang("zaehler", "messstelle", "MS-21"), eingang("nenner", "bezugsgroesse", "BZ-2"));
+        neueKennzahl("KZ-0022", "Stromeinsatz Montage je Stück — Verwaltung", "gebaeude", G3,
+                "Spezifischer Stromeinsatz je Stück, bezogen auf den Verwaltungsbereich; Vergleichsgröße.",
+                eingang("zaehler", "messstelle", "MS-22"), eingang("nenner", "bezugsgroesse", "BZ-2"));
+        neueKennzahl("KZ-0023", "Stromeinsatz Montage je Stück — Unternehmen", "unternehmen", UNTERNEHMEN.toString(),
+                "Spezifischer Stromeinsatz der Montage über das ganze Unternehmen; Grundlage der Unternehmensziele.",
+                eingang("zaehler", "messstelle", "MS-20"), eingang("nenner", "bezugsgroesse", "BZ-2"));
+        neueKennzahl("KZ-0024", "Netzbezug je m²", "gebaeude", G1,
+                "Netzbezug je Quadratmeter Bezugsfläche; erkennt Auffälligkeiten im Gebäudebetrieb.",
+                eingang("zaehler", "messstelle", "MS-21"), eingang("nenner", "bezugsflaeche", "G-1"));
+        neueKennzahl("KZ-0025", "Gasbezug Verwaltung je Gradtag", "gebaeude", G3,
+                "Gasbezug der Verwaltung je Heizgradtag; witterungsbereinigte Überwachung des Heizenergieeinsatzes.",
+                eingang("zaehler", "bezugsgroesse", "BZ-4"), eingang("nenner", "bezugsgroesse", "BZ-5"));
     }
 
     private static Map<String, Object> eingang(String rolle, String art, String kennzeichen) {
         return m("rolle", rolle, "art", art, "kennzeichen", kennzeichen);
     }
 
-    /** Eine neue Fassung mit anderen Eingängen — nur wenn die Kennzahl noch die alte Einheit zeigt (idempotent). */
-    private void kennzahlNeuFassen(String kennzeichen, String zielEinheit, List<?> eingaenge, String begruendung)
-            throws Exception {
+    /** Eine Welt-Kennzahl archivieren (sie bleibt mit ihren Bezugsbasen im Hintergrund), idempotent. */
+    private void archiviereKennzahl(String kennzeichen) throws Exception {
         for (JsonNode k : lies("/api/v1/kennzahlen").path("kennzahlen")) {
-            if (kennzeichen.equals(k.path("kennzeichen").asText())) {
-                if (zielEinheit.equals(k.path("einheit_anzeige").asText())) {
-                    return; // schon umgestellt
-                }
-                status("POST", "/api/v1/kennzahlen/" + k.get("id").asText() + "/fassungen",
-                        m("gueltig_ab", LocalDate.now(BERLIN).toString(), "begruendung", begruendung, "eingaenge", eingaenge));
+            if (kennzeichen.equals(k.path("kennzeichen").asText()) && k.path("archiviert_am").isNull()) {
+                roh("POST", "/api/v1/kennzahlen/" + k.get("id").asText() + "/archivieren", Map.of());
                 return;
             }
         }
+    }
+
+    /** Eine distinkte Kennzahl mit eigenen Eingängen — Fassung 1 trägt schon die richtige Definition. Idempotent. */
+    private void neueKennzahl(String kennzeichen, String name, String geltungArt, String geltungId, String zweck,
+            Map<String, Object> zaehler, Map<String, Object> nenner) throws Exception {
+        for (JsonNode k : lies("/api/v1/kennzahlen").path("kennzahlen")) {
+            if (kennzeichen.equals(k.path("kennzeichen").asText())) {
+                return; // schon da
+            }
+        }
+        post("/api/v1/kennzahlen", m("kennzeichen", kennzeichen, "name", name, "rechenform", "quotient",
+                "geltung_art", geltungArt, "geltung_id", geltungId, "verantwortlich_name", "Ines Kaltenbach",
+                "zweck", zweck, "eingaenge", List.of(zaehler, nenner)));
+    }
+
+    /**
+     * Bezugsbasen für die neuen Kennzahlen (die Welt-Bezugsbasen hängen an den archivierten Kennzahlen). Läuft NACH
+     * dem Kennzahl-Lauf, weil eine Referenzperiode gerechnete Werte braucht. Best effort: schlägt eine fehl, bleibt
+     * die Kennzahl trotzdem distinkt.
+     */
+    private void bezugsbasenNeu() throws Exception {
+        bezugsbasisFuer("KZ-0021", "BZ-2", "2026-01/2026-03");
+        bezugsbasisFuer("KZ-0023", "BZ-2", "2026-01/2026-03");
+        bezugsbasisFuer("KZ-0025", "BZ-5", "2026-01/2026-03");
+    }
+
+    private void bezugsbasisFuer(String kennzeichen, String nennerKennzeichen, String referenzperiode) throws Exception {
+        UUID kid = null;
+        for (JsonNode k : lies("/api/v1/kennzahlen").path("kennzahlen")) {
+            if (kennzeichen.equals(k.path("kennzeichen").asText())) {
+                kid = UUID.fromString(k.get("id").asText());
+            }
+        }
+        if (kid == null || !lies("/api/v1/kennzahlen/" + kid + "/bezugsbasen").path("bezugsbasen").isEmpty()) {
+            return; // Kennzahl fehlt oder hat schon eine Bezugsbasis
+        }
+        UUID nenner = null;
+        for (JsonNode b : lies("/api/v1/bezugsgroessen").path("bezugsgroessen")) {
+            if (nennerKennzeichen.equals(b.path("kennzeichen").asText())) {
+                nenner = UUID.fromString(b.get("id").asText());
+            }
+        }
+        if (roh("POST", "/api/v1/kennzahlen/" + kid + "/bezugsbasen", m("zweck", "Referenzniveau aus 2026.")) >= 400) {
+            return;
+        }
+        UUID bb = UUID.fromString(lies("/api/v1/kennzahlen/" + kid + "/bezugsbasen").path("bezugsbasen").get(0)
+                .get("id").asText());
+        String basis = "/api/v1/kennzahlen/" + kid + "/bezugsbasen/" + bb;
+        if (roh("POST", basis + "/fassungen", m("referenzperiode", referenzperiode, "methode", "verhaeltnis",
+                "variablen", List.of(nenner.toString()), "toleranz_prozent", "2.0", "wiedervorlage_monate", 12,
+                "begruendung", "Erstfassung aus dem Referenzzeitraum 2026.", "gilt_ab", "2026-04-01")) >= 400) {
+            return;
+        }
+        roh("POST", basis + "/fassungen/1/beantragen", m("begruendung", "Zur Freigabe vorgelegt."));
+        roh("POST", basis + "/fassungen/1/freigeben", m("begruendung", "Nach Prüfung freigegeben."));
     }
 
     /** Witterungsabhängiger Gasbezug (m³) — grob Grundlast plus Heizanteil je Heizgradtag. */
@@ -534,9 +595,12 @@ class DemoRundgangAufbau {
                 "korrektur", false, "grund", "Aufteilung laut Kostenrechnung."));
     }
 
-    /** Zwei Bezugsbasen als „geprüft, bleibt" bestätigen, damit nicht alle fünf überfällig sind (drei bleiben es bewusst). */
+    /**
+     * Die Bezugsbasis von KZ-0004 als „geprüft, bleibt" bestätigen, damit nicht alles überfällig ist — die neuen
+     * Bezugsbasen (KZ-0021/0023/0025) bleiben bewusst fällig, so steht ein „einige bestätigt, einige fällig" da.
+     */
     private void bezugsbasenBestaetigen() throws Exception {
-        Set<String> ziel = Set.of("BB-0002", "BB-0005");
+        Set<String> ziel = Set.of("BB-0001");
         for (JsonNode k : lies("/api/v1/kennzahlen?stichtag=2029-04-30").path("kennzahlen")) {
             String kid = k.get("id").asText();
             for (JsonNode bb : lies("/api/v1/kennzahlen/" + kid + "/bezugsbasen?stichtag=2029-04-30").path("bezugsbasen")) {
@@ -626,8 +690,8 @@ class DemoRundgangAufbau {
     private void einsichtFuer(String sub, String grund) throws Exception {
         JsonNode liste = lies("/api/v1/zugriff?benutzer=" + sub);
         for (JsonNode z : (liste.isArray() ? liste : liste.path("zugriffe"))) {
-            if ("einsicht".equals(z.path("rolle").asText()) && z.path("beendet").isNull() && z.path("endet_am").isNull()) {
-                return; // schon eine laufende Einsicht
+            if ("einsicht".equals(z.path("rolle").asText())) {
+                return; // hat schon eine Einsicht (die Überlappungssperre lässt keine zweite zu)
             }
         }
         // Einsicht gilt mandantenweit (ohne Standort, „alle Standorte, auch künftige") und ist befristbar.
@@ -635,7 +699,11 @@ class DemoRundgangAufbau {
                 .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(m("benutzer_sub", sub,
                         "rolle", "einsicht", "gueltig_bis", LocalDate.now(BERLIN).plusMonths(6).toString(),
                         "grund", grund)));
-        mvc.perform(b); // best effort (409 bei Überschneidung ist in Ordnung)
+        try {
+            mvc.perform(b); // best effort — eine Überschneidung mit einer bestehenden Zuweisung ist unkritisch
+        } catch (Exception e) {
+            System.out.println("Einsicht für " + sub + " übersprungen: " + e.getMessage());
+        }
     }
 
     /** Jonas Wendlinger (Kundenadministrator) — für die Zuweisungen, die ein Energiemanager nicht darf. */
