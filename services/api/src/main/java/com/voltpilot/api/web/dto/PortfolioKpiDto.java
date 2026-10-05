@@ -27,6 +27,7 @@ public record PortfolioKpiDto(
         Verbrauch verbrauch,
         Kosten kosten,
         Lastspitze lastspitze,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Datenlage datenlage,
         @JsonInclude(JsonInclude.Include.NON_NULL) Leitkennzahl leit) {
 
     /** Der ausgewertete Zeitraum: der letzte abgeschlossene Berliner Monat. */
@@ -53,13 +54,27 @@ public record PortfolioKpiDto(
 
     /**
      * Lastspitze: die höchste gemessene 15-min-Netzbezugsleistung (kW) einer
-     * Anlage im Monat und die vereinbarte Leistung IHRER Anlage. {@code kw} ist
-     * {@code null}, wenn keine 15-min-Quelle einen Netzbezug trägt (die Anlagen
-     * speisen nur ein / es liegen keine Lastdaten vor) - nie 0. {@code anteilProzent}
-     * ist der Balken (Spitze ÷ vereinbart), null ohne beide Werte.
+     * Anlage im laufenden ABRECHNUNGSZEITRAUM (Leistungspreis-Basis, je Anlage aus
+     * {@code abrechnungLeistung}: Kalenderjahr bzw. laufender Monat) und die
+     * vereinbarte Leistung IHRER Anlage. {@code kw} ist {@code null}, wenn keine
+     * 15-min-Quelle einen Netzbezug trägt - nie 0. {@code anteilProzent} ist der
+     * Balken (Spitze ÷ vereinbart), null ohne beide Werte. {@code zeitpunkt} ist der
+     * ISO-Zeitpunkt der Spitze, {@code zeitraum} das Label des Abrechnungszeitraums
+     * (z. B. „2026" oder „Oktober 2026").
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Lastspitze(BigDecimal kw, BigDecimal vereinbartKw, Integer anteilProzent, String anlage) {}
+    public record Lastspitze(BigDecimal kw, BigDecimal vereinbartKw, Integer anteilProzent, String anlage,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String zeitpunkt,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String zeitraum) {}
+
+    /**
+     * Datenlage: wie viele Messstellen aktuell Daten liefern ({@code aktuell}) von
+     * insgesamt ({@code gesamt}) - dieselbe Ableitung wie der Messstellen-Baustein
+     * und die Funktionen-Karte (UEMS „Messen &amp; Auswerten"). {@code null}, wenn
+     * der Mandant keine Messstellen führt.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Datenlage(int aktuell, int gesamt) {}
 
     /**
      * Die Leitkennzahl (EnPI) gegen ihr Ziel: der jüngste Kennzahlwert mit

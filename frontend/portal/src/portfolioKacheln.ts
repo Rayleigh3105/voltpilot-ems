@@ -74,13 +74,24 @@ export interface VergleichKachel {
   vergleich: string | null;
 }
 
-/** Die Lastspitzen-Kachel: gemessene Spitze + Balken gegen die vereinbarte Leistung. */
+/** Die Lastspitzen-Kachel: höchste Spitze im Abrechnungszeitraum + Balken gegen die vereinbarte Leistung. */
 export interface SpitzeKachel {
   wert: string;
   einheit: string;
   leer: boolean;
   satz: string;
   fuellProzent: number | null;
+  /** „höchste Spitze 2026 · 05.10. 20:15" — Abrechnungszeitraum + Zeitpunkt der Spitze; null ohne Daten. */
+  wann: string | null;
+}
+
+/** Die Datenlage-Kachel: wie viele Messstellen aktuell Daten liefern (Konzept-Set §4.2). */
+export interface DatenlageKachel {
+  wert: string;
+  einheit: string;
+  leer: boolean;
+  satz: string;
+  ton: 'ok' | 'warn' | 'neutral';
 }
 
 /** Das ganze Raster, fertig zum Rendern. */
@@ -90,6 +101,7 @@ export interface PortfolioKachelRaster {
   verbrauch: VergleichKachel;
   lastspitze: SpitzeKachel;
   kosten: VergleichKachel;
+  datenlage: DatenlageKachel | null;
 }
 
 function periodeWort(jahr: number, monat: number): string {
@@ -199,17 +211,56 @@ function kostenKachel(k: PortfolioKpi['kosten'], bezug: string): VergleichKachel
   };
 }
 
-function lastspitzeKachel(s: PortfolioKpi['lastspitze'], bezug: string): SpitzeKachel {
+/**
+ * Zeitpunkt der Spitze als „05.10. 20:15" (Europe/Berlin, de-DE) — rein aus dem
+ * gegebenen ISO-Zeitpunkt, keine Uhr. Null bei fehlendem/ungültigem Zeitpunkt.
+ */
+function fmtWann(iso: string | null): string | null {
+  if (!iso) {
+    return null;
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  const datum = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Berlin' });
+  const zeit = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  return `${datum} ${zeit}`;
+}
+
+function lastspitzeKachel(s: PortfolioKpi['lastspitze']): SpitzeKachel {
+  // Review PR3 §1: die Spitze bezieht sich auf den laufenden ABRECHNUNGSZEITRAUM
+  // (Leistungspreis-Basis), nicht auf einen Kalendermonat — `zeitraum` ist das Label.
+  const raum = s.zeitraum ?? null;
   if (s.kw == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: `keine Lastdaten · ${bezug}`, fuellProzent: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: raum ? `keine Lastdaten · ${raum}` : 'keine Lastdaten', fuellProzent: null, wann: null };
   }
   const satz = s.vereinbart_kw != null ? `von ${fmtNum(s.vereinbart_kw, '', 0)} kW vereinbart` : 'gemessene Spitze';
+  const zeit = fmtWann(s.zeitpunkt);
+  const wann = raum ? (zeit ? `höchste Spitze ${raum} · ${zeit}` : `höchste Spitze ${raum}`) : zeit;
   return {
     wert: fmtNum(s.kw, '', 0),
     einheit: 'kW',
     leer: false,
     satz,
     fuellProzent: s.anteil_prozent == null ? null : Math.min(100, Math.max(0, s.anteil_prozent)),
+    wann,
+  };
+}
+
+/** Review PR3 §2: die Datenlage-Kachel — wie viele Messstellen aktuell Daten liefern. */
+function datenlageKachel(d: PortfolioKpi['datenlage']): DatenlageKachel | null {
+  if (!d || d.gesamt == null || d.gesamt === 0) {
+    return null;
+  }
+  const aktuell = d.aktuell ?? 0;
+  const voll = aktuell >= d.gesamt;
+  return {
+    wert: `${fmtNum(aktuell, '', 0)}/${fmtNum(d.gesamt, '', 0)}`,
+    einheit: 'Messstellen',
+    leer: false,
+    satz: voll ? 'vollständig · aktuell' : `${fmtNum(d.gesamt - aktuell, '', 0)} ohne aktuelle Daten`,
+    ton: voll ? 'ok' : 'warn',
   };
 }
 
@@ -220,7 +271,8 @@ export function portfolioKacheln(kpi: PortfolioKpi): PortfolioKachelRaster {
     periodeWort: bezug,
     leit: leitKachel(kpi.leit),
     verbrauch: verbrauchKachel(kpi.verbrauch, bezug),
-    lastspitze: lastspitzeKachel(kpi.lastspitze, bezug),
+    lastspitze: lastspitzeKachel(kpi.lastspitze),
     kosten: kostenKachel(kpi.kosten, bezug),
+    datenlage: datenlageKachel(kpi.datenlage),
   };
 }

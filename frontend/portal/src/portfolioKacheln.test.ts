@@ -7,7 +7,15 @@ function kpi(over: Partial<PortfolioKpi> = {}): PortfolioKpi {
     periode: { von: '2026-09-01', bis: '2026-09-30', jahr: 2026, monat: 9 },
     verbrauch: { kwh: 199500, kwh_vorjahr: 207000, vollstaendig: true },
     kosten: { eur: 48000, eur_vorjahr: 47000, tarif_hinterlegt: true },
-    lastspitze: { kw: 412, vereinbart_kw: 550, anteil_prozent: 75, anlage: 'Werk Ahrenberg – Halle 1' },
+    lastspitze: {
+      kw: 412,
+      vereinbart_kw: 550,
+      anteil_prozent: 75,
+      anlage: 'Werk Ahrenberg – Halle 1',
+      zeitpunkt: '2026-10-05T18:15:00Z',
+      zeitraum: '2026',
+    },
+    datenlage: { aktuell: 10, gesamt: 10 },
     leit: {
       kennzeichen: 'KZ-0004',
       name: 'Stromeinsatz Spritzguss je kg',
@@ -43,6 +51,11 @@ describe('portfolioKacheln', () => {
 
     expect(r.lastspitze).toMatchObject({ wert: '412', einheit: 'kW', leer: false, fuellProzent: 75 });
     expect(r.lastspitze.satz).toBe('von 550 kW vereinbart');
+    // Review PR3 §1: Abrechnungszeitraum + Zeitpunkt der Spitze (Europe/Berlin: 18:15 UTC → 20:15).
+    expect(r.lastspitze.wann).toBe('höchste Spitze 2026 · 05.10. 20:15');
+
+    // Review PR3 §2: Datenlage-Kachel.
+    expect(r.datenlage).toMatchObject({ wert: '10/10', einheit: 'Messstellen', satz: 'vollständig · aktuell', ton: 'ok' });
 
     expect(r.leit).toMatchObject({ kennzeichen: 'KZ-0004', wert: '0,28', einheit: 'kWh/kg', leer: false });
     expect(r.leit?.ziel).toBe('Ziel: 5 % unter Bezugsbasis');
@@ -56,13 +69,15 @@ describe('portfolioKacheln', () => {
       kpi({
         verbrauch: { kwh: null, kwh_vorjahr: null, vollstaendig: true },
         kosten: { eur: null, eur_vorjahr: null, tarif_hinterlegt: false },
-        lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null },
+        lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null, zeitpunkt: null, zeitraum: null },
+        datenlage: null,
         leit: null,
       }),
     );
     expect(r.verbrauch).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null });
     expect(r.kosten).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null });
-    expect(r.lastspitze).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'keine Lastdaten · September 2026', fuellProzent: null });
+    expect(r.lastspitze).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'keine Lastdaten', fuellProzent: null, wann: null });
+    expect(r.datenlage).toBeNull();
     expect(r.leit).toBeNull();
   });
 
@@ -88,10 +103,29 @@ describe('portfolioKacheln', () => {
 
   it('Lastspitze ohne vereinbarte Leistung nennt die gemessene Spitze', () => {
     const r = portfolioKacheln(
-      kpi({ lastspitze: { kw: 300, vereinbart_kw: null, anteil_prozent: null, anlage: 'A' } }),
+      kpi({ lastspitze: { kw: 300, vereinbart_kw: null, anteil_prozent: null, anlage: 'A', zeitpunkt: null, zeitraum: '2026' } }),
     );
     expect(r.lastspitze.wert).toBe('300');
     expect(r.lastspitze.satz).toBe('gemessene Spitze');
     expect(r.lastspitze.fuellProzent).toBeNull();
+    // Ohne Zeitpunkt bleibt nur der Abrechnungszeitraum.
+    expect(r.lastspitze.wann).toBe('höchste Spitze 2026');
+  });
+
+  it('Lastspitze bei Monatsabrechnung trägt das Monats-Label (Review PR3 §1)', () => {
+    const r = portfolioKacheln(
+      kpi({ lastspitze: { kw: 300, vereinbart_kw: 550, anteil_prozent: 55, anlage: 'A', zeitpunkt: '2026-10-05T18:15:00Z', zeitraum: 'Oktober 2026' } }),
+    );
+    expect(r.lastspitze.wann).toBe('höchste Spitze Oktober 2026 · 05.10. 20:15');
+  });
+
+  it('Datenlage: nicht alle Messstellen aktuell → Warnung (Review PR3 §2)', () => {
+    const r = portfolioKacheln(kpi({ datenlage: { aktuell: 8, gesamt: 10 } }));
+    expect(r.datenlage).toMatchObject({ wert: '8/10', einheit: 'Messstellen', satz: '2 ohne aktuelle Daten', ton: 'warn' });
+  });
+
+  it('Datenlage: ohne Messstellen keine Kachel', () => {
+    expect(portfolioKacheln(kpi({ datenlage: null })).datenlage).toBeNull();
+    expect(portfolioKacheln(kpi({ datenlage: { aktuell: 0, gesamt: 0 } })).datenlage).toBeNull();
   });
 });

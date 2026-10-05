@@ -31,18 +31,28 @@ public class PortfolioKpiRepository {
         this.jdbc = jdbc;
     }
 
-    /** Je sichtbarer Anlage ihre höchste 15-min-Netzbezugsleistung (kW) im Fenster {@code [von, bis)}. */
-    public Map<UUID, BigDecimal> importSpitzeKw(Instant von, Instant bis) {
-        Map<UUID, BigDecimal> out = new HashMap<>();
+    /** Die höchste gemessene 15-min-Netzbezugsleistung (kW) samt ihrem Zeitpunkt (Slot-Beginn). */
+    public record Spitze(BigDecimal kw, Instant zeitpunkt) {}
+
+    /**
+     * Je sichtbarer Anlage ihre höchste 15-min-Netzbezugsleistung (kW) UND den
+     * Zeitpunkt (Slot-Beginn) dieser Spitze im Fenster {@code [von, bis)}.
+     * {@code DISTINCT ON (site_id)} nimmt je Anlage die Zeile mit dem höchsten
+     * Netzbezug; Anlagen ohne gemessenen Netzbezug fehlen in der Map (kein 0-Wert).
+     */
+    public Map<UUID, Spitze> importSpitzen(Instant von, Instant bis) {
+        Map<UUID, Spitze> out = new HashMap<>();
         jdbc.query(
-                "SELECT r.site_id, max(GREATEST(r.grid_import_kwh, 0)) * 4.0 AS peak "
+                "SELECT DISTINCT ON (r.site_id) r.site_id, r.bucket, GREATEST(r.grid_import_kwh, 0) * 4.0 AS peak "
                         + "FROM telemetry_rollup_15m r JOIN site s ON s.id = r.site_id "
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND r.grid_import_kwh IS NOT NULL "
-                        + "GROUP BY r.site_id",
+                        + "ORDER BY r.site_id, r.grid_import_kwh DESC, r.bucket",
                 rs -> {
                     BigDecimal peak = rs.getBigDecimal("peak");
                     if (peak != null) {
-                        out.put(rs.getObject("site_id", UUID.class), peak);
+                        Timestamp ts = rs.getTimestamp("bucket");
+                        out.put(rs.getObject("site_id", UUID.class),
+                                new Spitze(peak, ts != null ? ts.toInstant() : null));
                     }
                 },
                 Timestamp.from(von), Timestamp.from(bis));

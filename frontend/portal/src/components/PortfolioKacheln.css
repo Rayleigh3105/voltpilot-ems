@@ -14,16 +14,15 @@
 }
 
 /*
- * Review PR2 §3: die Leitkachel (bzw. der Datenlage-Fallback) steht am Telefon
- * über die volle Breite (`groesse="breit"` → span 2), damit der lange Kennzahl-
- * Name Platz hat und nicht mitten im Wort bricht. Am Rechner (4 Spalten) ist sie
- * wieder eine von vier gleichen Kacheln.
+ * Review PR2 §3 / PR3 §2: die Leitkachel (bzw. der Datenlage-Fallback, wenn keine
+ * Leitkennzahl hinterlegt ist) steht IMMER über die volle Breite — am Telefon über
+ * beide Spalten, am Rechner über alle vier. Darunter das 2×2 der vier Kacheln
+ * (Verbrauch, Lastspitze, Kosten, Datenlage); so bricht der lange Kennzahl-Name
+ * nicht mitten im Wort und keine Kachel steht allein mit leerer Hälfte.
  */
-@media (min-width: 1024px) {
-  .vp-pk-raster .vp-k-platz[data-kachel='pk-leit'],
-  .vp-pk-raster .vp-k-platz[data-kachel='pk-datenlage'] {
-    grid-column: auto;
-  }
+.vp-pk-raster .vp-k-platz[data-kachel='pk-leit'],
+.vp-pk-raster .vp-k-platz[data-kachel='pk-datenlage'] {
+  grid-column: 1 / -1;
 }
 
 /*

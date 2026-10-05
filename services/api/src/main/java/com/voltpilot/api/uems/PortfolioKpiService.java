@@ -5,17 +5,21 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.BilanzDto;
 import com.voltpilot.api.web.dto.EnergiezielDto;
 import com.voltpilot.api.web.dto.KennzahlDto;
+import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.PortfolioKpiDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -65,38 +69,65 @@ public class PortfolioKpiService {
     private final KennzahlWerteService kennzahlWerte;
     private final NetzanschlussRepository netzanschluss;
     private final PortfolioKpiRepository spitzen;
+    private final MessstelleRegisterService messstellen;
 
     public PortfolioKpiService(SiteRepository sites, BilanzService bilanz, EnergiezielService energieziele,
-            KennzahlWerteService kennzahlWerte, NetzanschlussRepository netzanschluss, PortfolioKpiRepository spitzen) {
+            KennzahlWerteService kennzahlWerte, NetzanschlussRepository netzanschluss, PortfolioKpiRepository spitzen,
+            MessstelleRegisterService messstellen) {
         this.sites = sites;
         this.bilanz = bilanz;
         this.energieziele = energieziele;
         this.kennzahlWerte = kennzahlWerte;
         this.netzanschluss = netzanschluss;
         this.spitzen = spitzen;
+        this.messstellen = messstellen;
     }
 
-    /** Die aggregierten Kennzahlen für den letzten abgeschlossenen Monat vor {@code jetzt}. */
+    /**
+     * Die aggregierten Kennzahlen: Verbrauch/Kosten/Leitkennzahl für den letzten
+     * abgeschlossenen Monat, die Lastspitze für den laufenden Abrechnungszeitraum.
+     */
     public PortfolioKpiDto kpis(Instant jetzt) {
         LocalDate heute = LocalDate.ofInstant(jetzt, BERLIN);
         YearMonth aktuell = YearMonth.from(heute).minusMonths(1);
         YearMonth vorjahr = aktuell.minusYears(1);
 
-        Instant peakVon = aktuell.atDay(1).atStartOfDay(BERLIN).toInstant();
-        Instant peakBis = aktuell.plusMonths(1).atDay(1).atStartOfDay(BERLIN).toInstant();
-        Map<UUID, BigDecimal> peaks = spitzen.importSpitzeKw(peakVon, peakBis);
+        List<SiteDto> alle = sites.findAll();
+        // Review PR3 §1: die Lastspitze bemisst sich am laufenden ABRECHNUNGSZEITRAUM bis jetzt (Leistungspreis-Basis),
+        // je Anlage „jahr" (Kalenderjahr) oder „monat" (laufender Monat) - so trägt die Kachel live echte Werte.
+        Instant jahrVon = LocalDate.of(heute.getYear(), 1, 1).atStartOfDay(BERLIN).toInstant();
+        Instant monatVon = heute.withDayOfMonth(1).atStartOfDay(BERLIN).toInstant();
+        boolean brauchtMonat = alle.stream().anyMatch(s -> "monat".equals(s.abrechnungLeistung()));
+        boolean brauchtJahr = alle.stream().anyMatch(s -> !"monat".equals(s.abrechnungLeistung()));
+        Map<UUID, PortfolioKpiRepository.Spitze> spJahr = brauchtJahr ? spitzen.importSpitzen(jahrVon, jetzt) : Map.of();
+        Map<UUID, PortfolioKpiRepository.Spitze> spMonat = brauchtMonat ? spitzen.importSpitzen(monatVon, jetzt) : Map.of();
+        String jahrLabel = String.valueOf(heute.getYear());
+        String monatLabel = Month.of(heute.getMonthValue()).getDisplayName(TextStyle.FULL, Locale.GERMAN)
+                + " " + heute.getYear();
 
         List<AnlageKpiRoh> roh = new ArrayList<>();
-        for (SiteDto s : sites.findAll()) {
+        for (SiteDto s : alle) {
             Netzbezug jetztM = netzbezugAus(bilanz.bilanz(s.id(), "monat", aktuell.atDay(15)));
             Netzbezug vorM = netzbezugAus(bilanz.bilanz(s.id(), "monat", vorjahr.atDay(15)));
+            boolean monat = "monat".equals(s.abrechnungLeistung());
+            PortfolioKpiRepository.Spitze sp = (monat ? spMonat : spJahr).get(s.id());
             roh.add(new AnlageKpiRoh(s.name(), jetztM.kwh(), jetztM.vollstaendig(), vorM.kwh(),
-                    arbeitspreis(s), peaks.get(s.id()), vereinbartKw(s.id(), heute)));
+                    arbeitspreis(s), sp != null ? sp.kw() : null, vereinbartKw(s.id(), heute),
+                    sp != null ? sp.zeitpunkt() : null, monat ? monatLabel : jahrLabel));
         }
 
         PortfolioKpiDto.Periode periode = new PortfolioKpiDto.Periode(
                 aktuell.atDay(1), aktuell.atEndOfMonth(), aktuell.getYear(), aktuell.getMonthValue());
-        return aggregiere(periode, roh, leitkennzahl(aktuell));
+        return aggregiere(periode, roh, datenlage(), leitkennzahl(aktuell));
+    }
+
+    /** Die Datenlage: aktuell liefernde Messstellen / gesamt (dieselbe Ableitung wie der Messstellen-Baustein). */
+    private PortfolioKpiDto.Datenlage datenlage() {
+        MessstelleDto.RegisterAggregat agg = messstellen.liste(null, MessstelleRegisterService.Filter.KEINER).aggregat();
+        if (agg == null || agg.unternehmen() == null || agg.unternehmen().gesamt() <= 0) {
+            return null;
+        }
+        return new PortfolioKpiDto.Datenlage(agg.unternehmen().erfuellt(), agg.unternehmen().gesamt());
     }
 
     // ------------------------------------------------------------------ Reine Aggregation
@@ -109,7 +140,9 @@ public class PortfolioKpiService {
             BigDecimal bezugVorjahrKwh,
             BigDecimal tarifCtKwh,
             BigDecimal lastspitzeKw,
-            BigDecimal vereinbartKw) {}
+            BigDecimal vereinbartKw,
+            Instant lastspitzeZeitpunkt,
+            String lastspitzeZeitraum) {}
 
     record Netzbezug(BigDecimal kwh, boolean vollstaendig) {}
 
@@ -120,7 +153,7 @@ public class PortfolioKpiService {
      * höchste gemessene Spitze samt der vereinbarten Leistung IHRER Anlage.
      */
     public static PortfolioKpiDto aggregiere(PortfolioKpiDto.Periode periode, List<AnlageKpiRoh> anlagen,
-            PortfolioKpiDto.Leitkennzahl leit) {
+            PortfolioKpiDto.Datenlage datenlage, PortfolioKpiDto.Leitkennzahl leit) {
         BigDecimal bezug = null;
         BigDecimal bezugVorjahr = null;
         BigDecimal kosten = null;
@@ -148,19 +181,22 @@ public class PortfolioKpiService {
                 new PortfolioKpiDto.Verbrauch(bezug, bezugVorjahr, vollstaendig),
                 new PortfolioKpiDto.Kosten(runde(kosten, 0), runde(kostenVorjahr, 0), tarifHinterlegt),
                 lastspitzeAus(spitze),
+                datenlage,
                 leit);
     }
 
     private static PortfolioKpiDto.Lastspitze lastspitzeAus(AnlageKpiRoh spitze) {
         if (spitze == null) {
-            return new PortfolioKpiDto.Lastspitze(null, null, null, null);
+            return new PortfolioKpiDto.Lastspitze(null, null, null, null, null, null);
         }
         BigDecimal kw = runde(spitze.lastspitzeKw(), 1);
         BigDecimal vereinbart = spitze.vereinbartKw();
         Integer anteil = (vereinbart != null && vereinbart.signum() > 0)
                 ? kw.multiply(HUNDERT).divide(vereinbart, 0, RoundingMode.HALF_UP).intValue()
                 : null;
-        return new PortfolioKpiDto.Lastspitze(kw, vereinbart, anteil, spitze.name());
+        String zeitpunkt = spitze.lastspitzeZeitpunkt() != null ? spitze.lastspitzeZeitpunkt().toString() : null;
+        return new PortfolioKpiDto.Lastspitze(kw, vereinbart, anteil, spitze.name(), zeitpunkt,
+                spitze.lastspitzeZeitraum());
     }
 
     /**

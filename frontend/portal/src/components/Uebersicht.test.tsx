@@ -117,7 +117,8 @@ const PORTFOLIO_KPIS: PortfolioKpi = {
   periode: { von: '2026-09-01', bis: '2026-09-30', jahr: 2026, monat: 9 },
   verbrauch: { kwh: 199500, kwh_vorjahr: 207000, vollstaendig: true },
   kosten: { eur: 48000, eur_vorjahr: 47000, tarif_hinterlegt: true },
-  lastspitze: { kw: 412, vereinbart_kw: 550, anteil_prozent: 75, anlage: 'Werk Ahrenberg – Halle 1' },
+  lastspitze: { kw: 412, vereinbart_kw: 550, anteil_prozent: 75, anlage: 'Werk Ahrenberg – Halle 1', zeitpunkt: '2026-10-05T18:15:00Z', zeitraum: '2026' },
+  datenlage: { aktuell: 10, gesamt: 10 },
   leit: {
     kennzeichen: 'KZ-0004',
     name: 'Stromeinsatz Spritzguss je kg',

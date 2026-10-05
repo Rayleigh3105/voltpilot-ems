@@ -9097,8 +9097,21 @@ export interface PortfolioKpi {
   verbrauch: { kwh: number | null; kwh_vorjahr: number | null; vollstaendig: boolean };
   /** Σ(Netzbezug × Arbeitspreis); `tarif_hinterlegt` false → kein Arbeitspreis, Beträge null. */
   kosten: { eur: number | null; eur_vorjahr: number | null; tarif_hinterlegt: boolean };
-  /** Höchste gemessene 15-min-Netzbezugsleistung + vereinbarte Leistung ihrer Anlage; `kw` null = keine 15-min-Daten. */
-  lastspitze: { kw: number | null; vereinbart_kw: number | null; anteil_prozent: number | null; anlage: string | null };
+  /**
+   * Höchste gemessene 15-min-Netzbezugsleistung im laufenden Abrechnungszeitraum (Leistungspreis-Basis) + vereinbarte
+   * Leistung ihrer Anlage; `kw` null = keine 15-min-Daten. `zeitpunkt` = ISO-Zeitpunkt der Spitze, `zeitraum` = Label
+   * des Abrechnungszeitraums (z. B. „2026" bei Jahresabrechnung, „Oktober 2026" bei Monatsabrechnung).
+   */
+  lastspitze: {
+    kw: number | null;
+    vereinbart_kw: number | null;
+    anteil_prozent: number | null;
+    anlage: string | null;
+    zeitpunkt: string | null;
+    zeitraum: string | null;
+  };
+  /** Datenlage: wie viele Messstellen aktuell Daten liefern (von gesamt); `null` ohne Messstellen. */
+  datenlage: { aktuell: number | null; gesamt: number | null } | null;
   /** Der EnPI mit Bezugsbasis + Ziel; `null` → Datenlage-Fallback. */
   leit: PortfolioLeitkennzahl | null;
 }
