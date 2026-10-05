@@ -4,7 +4,8 @@
  *
  * Es hält die Zusagen des Hauses (`BottomSheet`, `Modal`): Fokusfalle,
  * Escape, Rückkehr zum Auslöser (auch auf iOS, wo ein angetippter Knopf nicht
- * fokussiert wird - der Auslöser wird beim Öffnen AUSDRÜCKLICH gemerkt),
+ * fokussiert wird - jeder Öffner fokussiert seinen Knopf vor dem Öffnen,
+ * `e.currentTarget.focus()` wie `BenutzerPage`, und das Blatt merkt ihn sich),
  * Scroll-Sperre der Seite darunter und ein Ausblenden in der Dauer der
  * Bewegungs-Familie.
  */

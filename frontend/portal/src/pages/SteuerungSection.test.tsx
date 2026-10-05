@@ -253,6 +253,21 @@ describe('Steuerung · Reiter Geräte', () => {
     await waitFor(() => expect(document.activeElement).toBe(knopf));
   });
 
+  it('Safari: der angetippte Knopf bekommt keinen Fokus - nach Escape kehrt der Fokus trotzdem zu ihm zurück', async () => {
+    // jsdom fokussiert beim Klick so wenig wie Safari/WebKit; den Auslöser muss der Öffner selbst fokussieren
+    // (Gesamtlauf 04./05.10.2026, steuerung.spec.ts in mobile-webkit).
+    zeige();
+    const knopf = await screen.findByRole('button', { name: /Heizstab Warmwasser/ });
+    expect(document.activeElement).not.toBe(knopf);
+    fireEvent.click(knopf);
+    const blatt = await screen.findByRole('dialog', { name: /Heizstab Warmwasser/ });
+    fireEvent.click(within(blatt).getByRole('button', { name: 'Ein' }));
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(knopf));
+  });
+
   it('ändert den Smart-Auftrag erst mit „Übernehmen"', async () => {
     const setze = vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({ steuerart: { quelle: 'guenstig', herkunft: 'policy' }, aktiv: true });
     zeige();

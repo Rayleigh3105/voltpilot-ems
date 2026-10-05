@@ -90,7 +90,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
         className="btn voll"
         style={{ width: '100%', minHeight: 52, fontSize: 16 }}
         disabled={!p.ziele.length}
-        onClick={() => p.oeffne({ art: 'regel' })}
+        onClick={(e) => { e.currentTarget.focus(); p.oeffne({ art: 'regel' }); }}
       >
         <Ic n="plus" s={20} />
         Neue Regel
@@ -106,7 +106,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
               const g = vorlagenZiel(v, p.ziele);
               const [bg, fg] = FARBE[v.farbe];
               return (
-                <button type="button" className="vk" key={v.id} onClick={() => p.oeffne({ art: 'regel', vorlage: v.id })}>
+                <button type="button" className="vk" key={v.id} onClick={(e) => { e.currentTarget.focus(); p.oeffne({ art: 'regel', vorlage: v.id }); }}>
                   <span className="ico" style={{ background: bg, color: fg }}><Ic n={v.icon} s={19} /></span>
                   <b>{v.titel}</b>
                   <small>{g ? v.satz.replace(/: .*$/, `: ${g.name} einschalten`) : v.satz}</small>
@@ -129,7 +129,11 @@ export function RegelnReiter(p: RegelnReiterProps) {
                   key={sz.id}
                   aria-pressed={an}
                   disabled={p.busy === 'szene'}
-                  onClick={() => (an ? p.onSzeneBeenden() : p.oeffne({ art: 'szene', id: sz.id }))}
+                  onClick={(e) => {
+                    if (an) { p.onSzeneBeenden(); return; }
+                    e.currentTarget.focus();
+                    p.oeffne({ art: 'szene', id: sz.id });
+                  }}
                 >
                   <Ic n={sz.icon} s={20} />
                   <b>{sz.name}</b>
@@ -192,7 +196,7 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
   }
   return (
     <article className={`rule${k.an ? '' : ' aus'}${ruht ? ' matt' : ''}`} id={`regel-${k.flowId}`}>
-      <button type="button" className="r-satz" onClick={() => oeffne({ art: 'regel', flowId: k.flowId })}>
+      <button type="button" className="r-satz" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'regel', flowId: k.flowId }); }}>
         {k.satz ? <><span className="h">{k.satz.wenn}</span>: <span className="d">{k.satz.dann}</span>.</> : <>{k.name}</>}
       </button>
       <Recht aktion="betriebsweise.aendern"><button
