@@ -56,13 +56,22 @@ async function waehle(page: Page, feld: Locator, option: RegExp) {
 }
 
 for (const breite of [375, 1440]) {
-  test(`AP-15 IP-23 · ${breite} px: die Karte erscheint nur an einer steuernden Anlage mit mehr als einer Box`, async ({ page }) => {
+  // Je Anlage EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): drei volle
+  // Aufrufe in einem Fall waren unter vier Workern zu langsam für die 30 s (Nachtrag Gesamtlauf mispel 05.10.2026).
+  // Die Zusicherungen sind dieselben.
+  test(`AP-15 IP-23 · ${breite} px: die Karte erscheint nur an einer steuernden Anlage mit mehr als einer Box — nicht an einer Anlage, die nur misst`, async ({ page }) => {
     await oeffne(page, breite, 'anlage=an2');
     await expect(page.getByTestId('gs-ohne-karte')).toBeVisible();
     await expect(page.locator('#technik-gemeinsam')).toHaveCount(0);
+  });
+
+  test(`AP-15 IP-23 · ${breite} px: die Karte erscheint nur an einer steuernden Anlage mit mehr als einer Box — nicht bei nur einer Box`, async ({ page }) => {
     await oeffne(page, breite, 'boxen=1');
     await expect(page.getByTestId('gs-ohne-karte')).toBeVisible();
     await expect(page.locator('#technik-gemeinsam')).toHaveCount(0);
+  });
+
+  test(`AP-15 IP-23 · ${breite} px: die Karte erscheint nur an einer steuernden Anlage mit mehr als einer Box — an einer mit zwei Boxen`, async ({ page }) => {
     await oeffne(page, breite, 'lage=nicht_eingerichtet');
     const k = await karte(page, breite);
     await expect(k).toContainText('Diese Anlage hat 2 Boxen.');
@@ -222,7 +231,10 @@ for (const breite of [375, 1440]) {
     await expect(k2.getByTestId('gs-ausfall').first()).toHaveText('Beide Boxen sind nicht verbunden. Die Grenze am Netzanschluss halten sie selbst ein.');
   });
 
-  test(`AP-15 IP-23 · ${breite} px: aktiv, angehalten und vom Betreiber angehalten — Anhalten mit Recht, kein Scharfschalten`, async ({ page }) => {
+  // Je Lage EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): drei volle
+  // Aufrufe in einem Fall waren unter vier Workern zu langsam für die 30 s (Nachtrag Gesamtlauf mispel 05.10.2026).
+  // Das Anhalten bleibt im ersten Fall nach demselben Aufruf; die Zusicherungen sind dieselben.
+  test(`AP-15 IP-23 · ${breite} px: aktiv, angehalten und vom Betreiber angehalten — Anhalten mit Recht, kein Scharfschalten (aktiv, dann angehalten)`, async ({ page }) => {
     await oeffne(page, breite, 'lage=anteile_aktiv&gebunden=32760&kwh=0');
     const k = await karte(page, breite);
     await expect(k.getByTestId('gs-box')).toHaveText([
@@ -241,13 +253,17 @@ for (const breite of [375, 1440]) {
     await expect(k.getByRole('button', { name: 'Fortsetzen' })).toBeVisible();
     await expect(k.getByRole('button', { name: 'Gemeinsame Steuerung ändern' })).toBeVisible();
     await bild(page.locator('#technik-gemeinsam'), `karte-angehalten-${breite}`);
+  });
 
+  test(`AP-15 IP-23 · ${breite} px: aktiv, angehalten und vom Betreiber angehalten — Anhalten mit Recht, kein Scharfschalten (vom Betreiber angehalten)`, async ({ page }) => {
     await oeffne(page, breite, 'lage=angehalten_betreiber');
     const k2 = await karte(page, breite);
     await expect(k2.getByTestId('gs-betreiber')).toContainText('Fortsetzen kann nur VoltPilot');
     await expect(k2.getByRole('button', { name: 'Fortsetzen' })).toHaveCount(0);
     await bild(page.locator('#technik-gemeinsam'), `karte-betreiber-${breite}`);
+  });
 
+  test(`AP-15 IP-23 · ${breite} px: aktiv, angehalten und vom Betreiber angehalten — Anhalten mit Recht, kein Scharfschalten (erklärt, eingerichtet)`, async ({ page }) => {
     await oeffne(page, breite, 'lage=erklaert');
     const k3 = await karte(page, breite);
     await expect(k3.getByTestId('gs-zustand')).toHaveText('Gemeinsame Steuerung eingerichtet');
@@ -325,20 +341,23 @@ for (const breite of [375, 1440]) {
     await expect(k.getByTestId('gs-box').nth(1)).toHaveText(/^Box Verwaltung steuert mit · hält ihren Anteil: Einspeisung 70 kW · Bezug 72 kW/);
   });
 
-  test(`AP-15 IP-23 · ${breite} px: Verlust-Zeile — kWh nur als Untergrenze, sonst die Stunden (Varianten A und B)`, async ({ page }) => {
-    const faelle = [
-      ['A', 0, 'Heute 9,1 Stunden begrenzt, weil diese Box den Netzanschluss nicht sieht.'],
-      ['A', 160.8, 'Heute mindestens 160 kWh nicht erzeugt, weil diese Box den Netzanschluss nicht sieht.'],
-      ['B', 0, 'Heute 9,1 Stunden begrenzt, weil diese Box den Netzanschluss nicht sieht.'],
-      ['B', 160.8, 'Heute 9,1 Stunden begrenzt, weil diese Box den Netzanschluss nicht sieht — mindestens 160 kWh nicht erzeugt.'],
-    ] as const;
-    for (const [variante, kwh, satz] of faelle) {
+  // Je Variante und Verlust EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A):
+  // vier volle Aufrufe in einem Fall waren unter vier Workern zu langsam für die 30 s (Nachtrag Gesamtlauf mispel
+  // 05.10.2026). Die Zusicherungen sind dieselben.
+  const faelle = [
+    ['A', 0, 'Heute 9,1 Stunden begrenzt, weil diese Box den Netzanschluss nicht sieht.'],
+    ['A', 160.8, 'Heute mindestens 160 kWh nicht erzeugt, weil diese Box den Netzanschluss nicht sieht.'],
+    ['B', 0, 'Heute 9,1 Stunden begrenzt, weil diese Box den Netzanschluss nicht sieht.'],
+    ['B', 160.8, 'Heute 9,1 Stunden begrenzt, weil diese Box den Netzanschluss nicht sieht — mindestens 160 kWh nicht erzeugt.'],
+  ] as const;
+  for (const [variante, kwh, satz] of faelle) {
+    test(`AP-15 IP-23 · ${breite} px: Verlust-Zeile — kWh nur als Untergrenze, sonst die Stunden (Variante ${variante}, ${kwh > 0 ? 'mit kWh' : 'ohne kWh'})`, async ({ page }) => {
       await oeffne(page, breite, `lage=anteile_aktiv&gebunden=32760&kwh=${kwh}&variante=${variante}`);
       const k = await karte(page, breite);
       await expect(k.getByTestId('gs-verlust')).toHaveText(satz);
       await bild(k.getByTestId('gs-box').nth(1), `verlust-${variante}-${kwh > 0 ? 'kwh' : 'null'}-${breite}`);
-    }
-  });
+    });
+  }
 }
 
 for (const breite of [375, 1440]) {

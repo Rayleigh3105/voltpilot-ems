@@ -268,8 +268,12 @@ test.describe('Messstellen-Register', () => {
    * AP-13 IP-12 (L6 · W10): die Spalte „Quelle“ nennt die BOX, die das Gerät liest — aus der
    * Zuständigkeit der Datenquelle (AP-06 IP-3), nicht aus der Anlage. Der Box-Tausch der Zeitachse
    * (04.11.2026 09:38, E-2 → E-2′) ist am Stand danach an derselben Zeile zu sehen.
+   *
+   * Je Bild EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): drei volle
+   * Aufrufe in einem Fall brauchten unter vier Workern bis zu 17 von 30 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die
+   * Zusicherungen sind dieselben.
    */
-  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin (1440 und 375 px)', async ({ page }) => {
+  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin: heute in der Tabelle (1440 px)', async ({ page }) => {
     const boxZeile = (kz: string) =>
       page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) }).locator('.vp-ms-box');
 
@@ -287,6 +291,11 @@ test.describe('Messstellen-Register', () => {
     // Das Bild zeigt die Zeile, um die es geht — MS-10 am WAGO-Controller C-1.
     await boxZeile('MS-10').scrollIntoViewIfNeeded();
     await ablegen(page, 'box-an-quelle-1440', m);
+  });
+
+  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin: am Stand 05.11.2026 in der Tabelle (1440 px)', async ({ page }) => {
+    const boxZeile = (kz: string) =>
+      page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) }).locator('.vp-ms-box');
 
     // Nach dem Box-Tausch: dieselbe Zeile, dieselbe Messstelle — die Nachfolgerin, seit dem Augenblick des Tauschs.
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen&stand=2026-11-05', 1440);
@@ -297,7 +306,9 @@ test.describe('Messstellen-Register', () => {
     ohneQuerlauf(n, 'box-an-quelle-tausch-1440');
     await boxZeile('MS-10').scrollIntoViewIfNeeded();
     await ablegen(page, 'box-an-quelle-tausch-1440', n);
+  });
 
+  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin: heute in der Karte (375 px)', async ({ page }) => {
     // Am Telefon trägt die Karte dieselbe Zeile in ihrem Feld „Quelle“.
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
     await warteAufRegister(page);
@@ -309,8 +320,11 @@ test.describe('Messstellen-Register', () => {
     await ablegen(page, 'box-an-quelle-375', t);
   });
 
-  test('Ausfall 03.11.2026: Messstellen und Standortkarte sprechen nur aus festgehaltenen Fakten', async ({ page }) => {
-    for (const breite of [1440, 375]) {
+  // Je Breite der Messstellen und für die Standortkarte EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate
+  // gm-e2e-mehrfachaufruf = A): drei volle Aufrufe in einem Fall brauchten unter vier Workern bis zu 20 von 30 s
+  // (Nachtrag Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind dieselben.
+  for (const breite of [1440, 375]) {
+    test(`Ausfall 03.11.2026: Messstellen und Standortkarte sprechen nur aus festgehaltenen Fakten — die Messstellen bei ${breite} px`, async ({ page }) => {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen&ausfall=1', breite);
       await warteAufRegister(page);
       const direkt = page.locator(breite === 375 ? '.vp-ms-karte' : '.vp-ms-tabelle tbody tr', {
@@ -328,8 +342,10 @@ test.describe('Messstellen-Register', () => {
       await ablegen(page, `ausfall-messstellen-${breite}`, m);
       await berechnet.scrollIntoViewIfNeeded();
       await ablegen(page, `ausfall-berechnet-${breite}`, m);
-    }
+    });
+  }
 
+  test('Ausfall 03.11.2026: Messstellen und Standortkarte sprechen nur aus festgehaltenen Fakten — die Standortkarte bei 1440 px', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=standorte&ausfall=1', 1440);
     const standort = page.getByTestId('standort-ausfall');
     await expect(standort).toHaveText('1 von 2 Boxen meldet sich nicht · 6 Messstellen unvollständig');

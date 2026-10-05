@@ -50,8 +50,10 @@ for (const scene of ['long', 'admin&long', 'admin&fleet', 'ok', 'unknown']) {
   });
 }
 
-test('plant, health, tenant and account controls stay independently reachable', async ({ page }) => {
-  for (const width of [320, 390, 768]) {
+// One case per width with ONE full load of the stage (firstmate decision gm-e2e-mehrfachaufruf = A): every width loaded
+// the stage again, three full loads in one case (follow-up to the mispel full run 05.10.2026). The assertions are the same.
+for (const width of [320, 390, 768]) {
+  test(`plant, health, tenant and account controls stay independently reachable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/e2e/shell-layout.html?admin&long');
     const title = page.locator('.vp-topbar .here');
@@ -74,8 +76,8 @@ test('plant, health, tenant and account controls stay independently reachable', 
     expect(header!.y).toBe(0);
     await expect(page.getByRole('button', { name: /Konto-Menü/ })).toBeInViewport();
     await expect.poll(async () => (await page.locator('.vp-mob-sticky').boundingBox())!.y).toBeCloseTo(header!.height, 1);
-  }
-});
+  });
+}
 
 test('anlage shows the connected share of all boxes at 375 and 1440', async ({ page }) => {
   await page.goto('/e2e/shell-layout.html?multi');

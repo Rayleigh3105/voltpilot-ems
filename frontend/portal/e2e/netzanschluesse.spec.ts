@@ -3,12 +3,16 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 const BILDER = process.env.NETZANSCHLUSS_BILDER;
 const ST1 = '5a1d0000-0000-4000-8000-000000000001';
-async function oeffne(page: Page, breite: number, zusatz = '') {
+// Uhr und Breite der Bühne ohne Aufruf — für die Fälle, die selbst eine andere Ansicht aufrufen.
+async function richteEin(page: Page, breite: number) {
   await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
   await page.setViewportSize({
     width: breite,
     height: breite === 375 ? 812 : 1000,
   });
+}
+async function oeffne(page: Page, breite: number, zusatz = '') {
+  await richteEin(page, breite);
   await page.goto(`/e2e/startansicht.html?bild=unternehmen&ansicht=werk-netzanschluesse&${zusatz}`);
   await expect(page.getByTestId('netzanschluesse')).toBeVisible();
   await expect(page.getByText('Wird geladen …', { exact: true })).toHaveCount(0);
@@ -166,14 +170,23 @@ for (const breite of [375, 1440]) {
     await expect(trigger).toBeFocused();
     await expect(page.getByTestId('netzanschluss-NA-1')).toContainText('ab 19.10.2026');
   });
-  test(`Leser, leerer Zustand, Lesefehler und Konflikt ${breite}`, async ({ page }) => {
+  // Je Zustand EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): vier volle
+  // Aufrufe in einem Fall brauchten unter vier Workern bis zu 21 von 30 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die
+  // Zusicherungen sind dieselben.
+  test(`Leser, leerer Zustand, Lesefehler und Konflikt: der Leser legt nicht an und bindet nicht ${breite}`, async ({ page }) => {
     await oeffne(page, breite, 'person=CB');
     await expect(page.getByRole('button', { name: 'Netzanschluss anlegen' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Anlage binden / wechseln' })).toHaveCount(0);
+  });
+  test(`Leser, leerer Zustand, Lesefehler und Konflikt: der leere Zustand ${breite}`, async ({ page }) => {
     await oeffne(page, breite, 'netz=leer');
     await expect(page.getByText('Noch kein Netzanschluss', { exact: true })).toBeVisible();
+  });
+  test(`Leser, leerer Zustand, Lesefehler und Konflikt: der Lesefehler ${breite}`, async ({ page }) => {
     await oeffne(page, breite, 'netz=fehler');
     await expect(page.getByRole('alert')).toContainText('konnten nicht geladen');
+  });
+  test(`Leser, leerer Zustand, Lesefehler und Konflikt: der Konflikt beim Binden ${breite}`, async ({ page }) => {
     await oeffne(page, breite, 'netz=konflikt');
     await page
       .getByTestId('netzanschluss-NA-1')
@@ -184,25 +197,48 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('dialog').getByRole('alert')).toContainText('überschneidet');
     await expect(page.getByRole('dialog').getByRole('alert')).toBeFocused();
   });
-  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31) ${breite}`, async ({ page }) => {
+  // Der Bilanzkopf je Aufruf in einem eigenen Fall mit EINEM vollen Aufruf der Bühne (derselbe Entscheid): vier volle
+  // Aufrufe in einem Fall brauchten unter vier Workern bis zu 17 von 30 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die
+  // Zusicherungen sind dieselben; die Fälle, die die Bilanz selbst aufrufen, richten Uhr und Breite wie `oeffne` ein,
+  // ohne dessen Aufruf und Kopf.
+  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): vorab die Netzanschlüsse ${breite}`, async ({ page }) => {
     await oeffne(page, breite);
+  });
+  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): Grenze eingehalten ${breite}`, async ({ page }) => {
+    await richteEin(page, breite);
     const kopf = page.getByTestId('bilanz-netzanschluss');
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=eingehalten');
     await expect(kopf).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA · Grenze im September 2026 eingehalten');
     await foto(page, `bilanz-nachweis-${breite}`);
+  });
+  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): Grenze nicht belegt ${breite}`, async ({ page }) => {
+    await richteEin(page, breite);
+    const kopf = page.getByTestId('bilanz-netzanschluss');
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=nicht_belegt');
     await expect(kopf).toContainText('Grenze im September 2026 nicht belegt');
     await foto(page, `bilanz-nicht-belegt-${breite}`);
+  });
+  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): ohne Nachweis kein Grenz-Satz ${breite}`, async ({ page }) => {
+    await richteEin(page, breite);
+    const kopf = page.getByTestId('bilanz-netzanschluss');
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');
     await expect(kopf).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
     await expect(kopf).not.toContainText('Grenze im');
   });
-  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter ${breite}`, async ({ page }) => {
+  // Tagesroute und Betriebskunde ebenso: drei volle Aufrufe in einem Fall, jetzt je Aufruf ein Fall (derselbe Entscheid).
+  // Der erste ist die Gegenprobe zum Betriebskunden: der messende Kunde sieht die Netzanschlüsse.
+  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter: vorab die Netzanschlüsse ${breite}`, async ({ page }) => {
     await oeffne(page, breite);
+  });
+  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter: der Bilanzkopf ${breite}`, async ({ page }) => {
+    await richteEin(page, breite);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');
     await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('Netzanschluss NA-1');
     await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
     await foto(page, `bilanz-${breite}`);
+  });
+  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter: der Betriebskunde ${breite}`, async ({ page }) => {
+    await richteEin(page, breite);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=werk-netzanschluesse&messen=bestand');
     await expect(page.getByTestId('netzanschluesse')).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Netzanschlüsse' })).toHaveCount(0);

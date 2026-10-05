@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import type { OcppControlPolicy } from '../src/ocppControl';
 
 const now = new Date().toISOString();
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
@@ -307,122 +308,170 @@ test('foreign firmware has an executable bound handoff to a second operator', as
 // The customer journey uses the real page and explicit API evidence fixtures.
 // It proves UI transitions and payloads; physical regulation is covered by the
 // Go websocket tests, never inferred from these staged screenshots.
-test('customer configures OCPP and follows requested accepted and measured states', async ({ page }, testInfo) => {
-  if (testInfo.project.name === 'desktop-chromium') await page.setViewportSize({ width: 1440, height: 1000 });
-  if (testInfo.project.name === 'mobile-chromium') await page.setViewportSize({ width: 375, height: 900 });
-  await mock(page);
-  const { initialOcppControl } = await import('../src/ocppControl');
-  let desired = initialOcppControl();
+// One case per step with ONE full load of the stage (firstmate decision gm-e2e-mehrfachaufruf = A): the journey loaded
+// the stage seven times in one case (one visit, six reloads after the box answered) and was red under four workers
+// (follow-up to the mispel full run 05.10.2026). Each step builds on what the box acknowledged before, so the cases run
+// serially in one worker: the API state lives in this group, and each case opens the address the previous case left -
+// where the journey reloaded. The assertions are the same.
+test.describe('customer configures OCPP and follows requested accepted and measured states', () => {
+  test.describe.configure({ mode: 'serial' });
+  let desired: OcppControlPolicy;
   let appliedLimit = 11;
   let revision = 0;
   let enabled = false;
   let charging = false;
   let testReport: null | Record<string, unknown> = null;
+  let address = '';
   const tag = 'tagref_1234567890abcdef12345678';
-  await page.route('**/ocpp/stations', (route) => route.fulfill({ json: [{ ...station,
-    connectors: [{ ...station.connectors[0], status: charging ? 'Charging' : 'Available' }] }] }));
-  await page.route('**/ocpp/transactions*', (route) => route.fulfill({ json: charging ? [transaction] : [] }));
-  await page.route('**/ocpp/meter-values*', (route) => route.fulfill({ json: charging ? [sample('power', 'Power.Active.Import', appliedLimit * 1000, 'W')] : [] }));
-  await page.route('**/ocpp/control', async (route) => {
-    if (route.request().method() === 'PUT') {
-      const input = route.request().postDataJSON();
-      expect(input.revision).toBe(desired.revision);
-      desired = { ...input, revision: desired.revision + 1 };
+  const journey = async (page: Page, testInfo: TestInfo) => {
+    if (testInfo.project.name === 'desktop-chromium') await page.setViewportSize({ width: 1440, height: 1000 });
+    if (testInfo.project.name === 'mobile-chromium') await page.setViewportSize({ width: 375, height: 900 });
+    await mock(page);
+    await page.route('**/ocpp/stations', (route) => route.fulfill({ json: [{ ...station,
+      connectors: [{ ...station.connectors[0], status: charging ? 'Charging' : 'Available' }] }] }));
+    await page.route('**/ocpp/transactions*', (route) => route.fulfill({ json: charging ? [transaction] : [] }));
+    await page.route('**/ocpp/meter-values*', (route) => route.fulfill({ json: charging ? [sample('power', 'Power.Active.Import', appliedLimit * 1000, 'W')] : [] }));
+    await page.route('**/ocpp/control', async (route) => {
+      if (route.request().method() === 'PUT') {
+        const input = route.request().postDataJSON();
+        expect(input.revision).toBe(desired.revision);
+        desired = { ...input, revision: desired.revision + 1 };
+      }
+      const at = new Date().toISOString();
+      return route.fulfill({ json: { desired: desired.revision ? desired : null, observed: [{ deviceId: 'device-1', reportedAt: at,
+        state: { revision, enabled, authorization_mode: desired.authorization.mode, seen_tags: [tag], test: testReport,
+          stations: [{ id: station.chargePointId, connected: true, capabilities_read: true, profiles_accepted: revision > 0,
+            connectors: [{ id: 1, reconciling: false, fresh_power: charging, power_kw: charging ? appliedLimit : undefined,
+              power_at: charging ? at : undefined, command_status: charging ? 'Accepted' : undefined,
+              readback: charging ? 'ok' : undefined, readback_at: charging ? at : undefined }] }] } }] } });
+    });
+    const openControl = async () => {
+      // Einrichtung und Grenzen wohnen in „Technik & Diagnose" › OCPP - nach einem
+      // Neuladen steht die Ansicht schon offen (sie ist eine Adresse).
+      await technikOeffnen(page);
+      await expect(page.getByRole('heading', { name: 'OCPP einrichten und prüfen' })).toBeVisible();
+    };
+    const capture = async (step: string, selector?: string) => {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (!process.env.OCPP_AUDIT_SCREENSHOTS) return;
+      const path = `${process.env.OCPP_AUDIT_SCREENSHOTS}/flow-${step}-${testInfo.project.name}.png`;
+      if (selector) {
+        // Capture the complete section at the real device width. A taller
+        // capture viewport keeps the sticky section navigation outside the
+        // crop, including when the form is taller than a phone screen.
+        const viewport = page.viewportSize()!;
+        const section = page.locator(selector);
+        const height = await section.evaluate((element) => element.getBoundingClientRect().height);
+        await page.setViewportSize({ width: viewport.width, height: Math.max(viewport.height, Math.ceil(height) + 220) });
+        await section.evaluate((element) => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 160));
+        await section.screenshot({ path });
+        await page.setViewportSize(viewport);
+      } else await page.screenshot({ path });
+    };
+    // The box acknowledges what was requested. The journey reloaded the page here; the next case opens this address.
+    const acknowledge = async () => {
+      revision = desired.revision; enabled = desired.enabled ?? false;
+      appliedLimit = Math.min(11, desired.limits[0]?.limit_kw ?? 11);
+      address = page.url();
+    };
+    // The reload of the journey: the ONE full load of a later case, at the address the previous case left.
+    const reopen = async () => {
+      await page.goto(address); await openControl();
+    };
+    return { openControl, capture, acknowledge, reopen };
+  };
+
+  test('1 visit: readiness, then the connection data are requested', async ({ page }, testInfo) => {
+    const { initialOcppControl } = await import('../src/ocppControl');
+    desired = initialOcppControl();
+    appliedLimit = 11; revision = 0; enabled = false; charging = false; testReport = null; address = '';
+    const { openControl, capture, acknowledge } = await journey(page, testInfo);
+    await page.goto('/e2e/ocpp-wallbox.html');
+    await expect(page.getByRole('heading', { name: 'Wallbox Carport', exact: true })).toBeVisible();
+    await capture('01-ladepunkt');
+    await openControl();
+    await capture('02-bereitschaft', '.vp-ocpp-control-facts');
+
+    await page.getByText('AC-Anschluss und Phasengrenzen', { exact: true }).click();
+    await page.getByLabel('Obere Betriebsspannung in V').fill('253');
+    await page.getByLabel('Stromgrenze des Steckers in A').fill('32');
+    for (const phase of [1, 2, 3]) {
+      await page.getByLabel(`Phase L${phase}`, { exact: true }).check();
+      await page.getByLabel(`Ladepark-Budget L${phase} in A`, { exact: true }).fill('32');
     }
-    const at = new Date().toISOString();
-    return route.fulfill({ json: { desired: desired.revision ? desired : null, observed: [{ deviceId: 'device-1', reportedAt: at,
-      state: { revision, enabled, authorization_mode: desired.authorization.mode, seen_tags: [tag], test: testReport,
-        stations: [{ id: station.chargePointId, connected: true, capabilities_read: true, profiles_accepted: revision > 0,
-          connectors: [{ id: 1, reconciling: false, fresh_power: charging, power_kw: charging ? appliedLimit : undefined,
-            power_at: charging ? at : undefined, command_status: charging ? 'Accepted' : undefined,
-            readback: charging ? 'ok' : undefined, readback_at: charging ? at : undefined }] }] } }] } });
+    await capture('03-anschluss', '.vp-ocpp-control > details:first-of-type');
+    await page.getByRole('button', { name: 'Bestätigte Anschlussdaten speichern' }).click();
+    await expect(page.getByText(/Hinterlegt für Stecker 1: 253 V/)).toBeVisible();
+    expect(desired.electrical[0].phases).toEqual([1, 2, 3]);
+    await acknowledge();
   });
-  const openControl = async () => {
-    // Einrichtung und Grenzen wohnen in „Technik & Diagnose" › OCPP - nach einem
-    // Neuladen steht die Ansicht schon offen (sie ist eine Adresse).
-    await technikOeffnen(page);
-    await expect(page.getByRole('heading', { name: 'OCPP einrichten und prüfen' })).toBeVisible();
-  };
-  const capture = async (step: string, selector?: string) => {
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    if (!process.env.OCPP_AUDIT_SCREENSHOTS) return;
-    const path = `${process.env.OCPP_AUDIT_SCREENSHOTS}/flow-${step}-${testInfo.project.name}.png`;
-    if (selector) {
-      // Capture the complete section at the real device width. A taller
-      // capture viewport keeps the sticky section navigation outside the
-      // crop, including when the form is taller than a phone screen.
-      const viewport = page.viewportSize()!;
-      const section = page.locator(selector);
-      const height = await section.evaluate((element) => element.getBoundingClientRect().height);
-      await page.setViewportSize({ width: viewport.width, height: Math.max(viewport.height, Math.ceil(height) + 220) });
-      await section.evaluate((element) => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 160));
-      await section.screenshot({ path });
-      await page.setViewportSize(viewport);
-    } else await page.screenshot({ path });
-  };
-  const acknowledge = async () => {
-    revision = desired.revision; enabled = desired.enabled ?? false;
-    appliedLimit = Math.min(11, desired.limits[0]?.limit_kw ?? 11);
-    await page.reload(); await openControl();
-  };
-  await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByRole('heading', { name: 'Wallbox Carport', exact: true })).toBeVisible();
-  await capture('01-ladepunkt');
-  await openControl();
-  await capture('02-bereitschaft', '.vp-ocpp-control-facts');
 
-  await page.getByText('AC-Anschluss und Phasengrenzen', { exact: true }).click();
-  await page.getByLabel('Obere Betriebsspannung in V').fill('253');
-  await page.getByLabel('Stromgrenze des Steckers in A').fill('32');
-  for (const phase of [1, 2, 3]) {
-    await page.getByLabel(`Phase L${phase}`, { exact: true }).check();
-    await page.getByLabel(`Ladepark-Budget L${phase} in A`, { exact: true }).fill('32');
-  }
-  await capture('03-anschluss', '.vp-ocpp-control > details:first-of-type');
-  await page.getByRole('button', { name: 'Bestätigte Anschlussdaten speichern' }).click();
-  await expect(page.getByText(/Hinterlegt für Stecker 1: 253 V/)).toBeVisible();
-  expect(desired.electrical[0].phases).toEqual([1, 2, 3]);
-  await acknowledge();
-  await page.getByRole('button', { name: 'OCPP-Regelung freigeben' }).click();
-  await expect(page.getByText('Übernahme noch nicht bestätigt', { exact: true })).toBeVisible();
-  await capture('04-freigabe', '.vp-ocpp-control > fieldset:first-of-type');
-  await acknowledge();
-  await expect(page.getByText('auf der Box freigegeben', { exact: true })).toBeVisible();
-  await capture('05-bestaetigt', '.vp-ocpp-control-facts');
+  test('2 connection data acknowledged: the release is requested', async ({ page }, testInfo) => {
+    const { capture, acknowledge, reopen } = await journey(page, testInfo);
+    await reopen();
+    await page.getByRole('button', { name: 'OCPP-Regelung freigeben' }).click();
+    await expect(page.getByText('Übernahme noch nicht bestätigt', { exact: true })).toBeVisible();
+    await capture('04-freigabe', '.vp-ocpp-control > fieldset:first-of-type');
+    await acknowledge();
+  });
 
-  await page.getByText('Ladekarten und Zugang', { exact: true }).click();
-  await page.getByLabel('Karte …12345678', { exact: true }).click();
-  await expect(page.getByLabel('Karte …12345678', { exact: true })).toBeChecked();
-  // VpPicker is the product picker, used by keyboard on desktop and mobile.
-  await page.getByRole('combobox', { name: 'Ladeberechtigung' }).click();
-  await page.getByRole('option', { name: 'Nur freigegebene Karten' }).click();
-  await expect(page.getByRole('combobox', { name: 'Ladeberechtigung' })).toContainText('Nur freigegebene Karten');
-  expect(desired.authorization).toEqual({ mode: 'allowlist', allowed_tags: [tag] });
-  await capture('06-karten', '.vp-ocpp-control > details:nth-of-type(2)');
-  await acknowledge();
-  charging = true;
-  await page.reload(); await openControl();
+  test('3 release acknowledged: the access cards are requested', async ({ page }, testInfo) => {
+    const { capture, acknowledge, reopen } = await journey(page, testInfo);
+    await reopen();
+    await expect(page.getByText('auf der Box freigegeben', { exact: true })).toBeVisible();
+    await capture('05-bestaetigt', '.vp-ocpp-control-facts');
 
-  await page.getByLabel('Ladegrenze in kW', { exact: true }).fill('7,4');
-  await page.getByLabel('Dauer in Minuten', { exact: true }).fill('60');
-  await page.getByRole('button', { name: 'Ladegrenze speichern', exact: true }).click();
-  await expect(page.getByText(/Angefordert: 7.4 kW/)).toBeVisible();
-  expect(desired.limits[0].limit_kw).toBe(7.4);
-  expect(Date.parse(desired.limits[0].expires_at) - Date.parse(desired.limits[0].requested_at)).toBe(3_600_000);
-  await capture('07-ladegrenze', '.vp-ocpp-control > fieldset:nth-of-type(2)');
-  await acknowledge();
+    await page.getByText('Ladekarten und Zugang', { exact: true }).click();
+    await page.getByLabel('Karte …12345678', { exact: true }).click();
+    await expect(page.getByLabel('Karte …12345678', { exact: true })).toBeChecked();
+    // VpPicker is the product picker, used by keyboard on desktop and mobile.
+    await page.getByRole('combobox', { name: 'Ladeberechtigung' }).click();
+    await page.getByRole('option', { name: 'Nur freigegebene Karten' }).click();
+    await expect(page.getByRole('combobox', { name: 'Ladeberechtigung' })).toContainText('Nur freigegebene Karten');
+    expect(desired.authorization).toEqual({ mode: 'allowlist', allowed_tags: [tag] });
+    await capture('06-karten', '.vp-ocpp-control > details:nth-of-type(2)');
+    await acknowledge();
+  });
 
-  await page.getByLabel('Ich beaufsichtige den Ladevorgang während der Prüfung.').check();
-  await page.getByRole('button', { name: 'Dreiminütige Prüfung anfordern' }).click();
-  await expect(page.getByText('Prüfung angefordert. Die Übernahme durch die Box ist noch nicht bestätigt.')).toBeVisible();
-  expect(desired.test?.limit_kw).toBe(6);
-  await expect(page.getByRole('button', { name: 'Prüfung abbrechen', exact: true })).toBeVisible();
-  await capture('08-pruefung', '.vp-ocpp-control > fieldset:last-of-type');
-  testReport = { ...desired.test, vendor: 'KEBA', model: 'P30', firmware: '1.9.4', state: 'confirmed', baseline_kw: appliedLimit,
-    limited: true, paused: true, resumed: true };
-  await acknowledge();
-  await expect(page.getByText(/Regelwirkung in allen drei Schritten gemessen/)).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Gemessene Prüfschritte' })).toContainText('Wiederaufnahme: gemessen');
-  await expect(page.getByRole('button', { name: 'Prüfung abbrechen', exact: true })).toHaveCount(0);
-  await capture('09-ergebnis', '.vp-ocpp-control > fieldset:last-of-type');
+  test('4 access cards acknowledged, then the car starts charging', async ({ page }, testInfo) => {
+    const { reopen } = await journey(page, testInfo);
+    await reopen();
+    charging = true;
+  });
+
+  test('5 charging: a charging limit is requested', async ({ page }, testInfo) => {
+    const { capture, acknowledge, reopen } = await journey(page, testInfo);
+    await reopen();
+    await page.getByLabel('Ladegrenze in kW', { exact: true }).fill('7,4');
+    await page.getByLabel('Dauer in Minuten', { exact: true }).fill('60');
+    await page.getByRole('button', { name: 'Ladegrenze speichern', exact: true }).click();
+    await expect(page.getByText(/Angefordert: 7.4 kW/)).toBeVisible();
+    expect(desired.limits[0].limit_kw).toBe(7.4);
+    expect(Date.parse(desired.limits[0].expires_at) - Date.parse(desired.limits[0].requested_at)).toBe(3_600_000);
+    await capture('07-ladegrenze', '.vp-ocpp-control > fieldset:nth-of-type(2)');
+    await acknowledge();
+  });
+
+  test('6 charging limit acknowledged: the three-minute test is requested', async ({ page }, testInfo) => {
+    const { capture, acknowledge, reopen } = await journey(page, testInfo);
+    await reopen();
+    await page.getByLabel('Ich beaufsichtige den Ladevorgang während der Prüfung.').check();
+    await page.getByRole('button', { name: 'Dreiminütige Prüfung anfordern' }).click();
+    await expect(page.getByText('Prüfung angefordert. Die Übernahme durch die Box ist noch nicht bestätigt.')).toBeVisible();
+    expect(desired.test?.limit_kw).toBe(6);
+    await expect(page.getByRole('button', { name: 'Prüfung abbrechen', exact: true })).toBeVisible();
+    await capture('08-pruefung', '.vp-ocpp-control > fieldset:last-of-type');
+    testReport = { ...desired.test, vendor: 'KEBA', model: 'P30', firmware: '1.9.4', state: 'confirmed', baseline_kw: appliedLimit,
+      limited: true, paused: true, resumed: true };
+    await acknowledge();
+  });
+
+  test('7 test acknowledged: the regulation effect is measured in all three steps', async ({ page }, testInfo) => {
+    const { capture, reopen } = await journey(page, testInfo);
+    await reopen();
+    await expect(page.getByText(/Regelwirkung in allen drei Schritten gemessen/)).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Gemessene Prüfschritte' })).toContainText('Wiederaufnahme: gemessen');
+    await expect(page.getByRole('button', { name: 'Prüfung abbrechen', exact: true })).toHaveCount(0);
+    await capture('09-ergebnis', '.vp-ocpp-control > fieldset:last-of-type');
+  });
 });

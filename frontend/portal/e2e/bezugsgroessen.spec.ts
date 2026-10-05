@@ -99,13 +99,20 @@ for (const breite of [375, 1440]) {
     await foto(page, `archiv-${breite}`);
     expect(fehler).toEqual([]);
   });
-  test(`${breite}: leer, Leserechte und Ladefehler`, async ({ page }) => {
+  // Je Lage EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): die Startansicht
+  // lädt je Aufruf rund 745 Module vom Dev-Server, drei volle Aufrufe in einem Fall brauchten unter vier Workern allein
+  // 13–16 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind dieselben, `oeffne` wie zuvor je Aufruf.
+  test(`${breite}: leer, Leserechte und Ladefehler — ohne Bezugsgrößen`, async ({ page }) => {
     await oeffne(page, breite, '&bezugs=leer');
     await expect(page.getByRole('heading', { name: 'Noch keine Bezugsgrößen' })).toBeVisible();
     await foto(page, `leer-${breite}`);
+  });
+  test(`${breite}: leer, Leserechte und Ladefehler — nur mit Leserechten`, async ({ page }) => {
     await oeffne(page, breite, '&person=CB');
     await expect(page.getByRole('button', { name: 'Bezugsgröße anlegen', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Archivieren', exact: true })).toHaveCount(0);
+  });
+  test(`${breite}: leer, Leserechte und Ladefehler — beim Ladefehler`, async ({ page }) => {
     await oeffne(page, breite, '&bezugs=fehler');
     await expect(page.getByRole('alert')).toContainText('konnten nicht geladen');
     await expect(page.getByText('Noch keine Bezugsgrößen')).toHaveCount(0);

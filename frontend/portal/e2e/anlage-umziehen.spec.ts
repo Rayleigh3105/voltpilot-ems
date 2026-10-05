@@ -202,6 +202,11 @@ test.describe('T6b · Anlage zuordnen mit Folgen-Karte (AP-02 IP-11)', () => {
       await expect(dialog.getByRole('heading', { name: 'Anlage zuordnen' })).toBeVisible();
       await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
       await page.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
+      // Die Folgen zur Wahl kommen entprellt (200 ms) und lassen den zentrierten Dialog wachsen: bei 1440 px rückt
+      // „Gültig ab“ um rund 100 px nach oben. Ein Klick, dessen Punkt vor diesem Augenblick feststand, trifft danach das
+      // Feld „Begründung“, und der Kalender öffnet sich nie (Gesamtlauf mispel 05.10.2026, mobile-webkit). Darum erst die
+      // geladenen Folgen - die Zeile der Berichte steht erst da, wenn beide Antworten gezeichnet sind -, dann das Datum.
+      await expect(dialog.getByTestId('berichte-folgen')).toBeVisible();
       await dialog.getByRole('combobox', { name: 'Gültig ab *' }).click();
       await page.getByRole('button', { name: 'Nächster Monat' }).click();
       await page.getByRole('gridcell', { name: '1', exact: true }).first().click();

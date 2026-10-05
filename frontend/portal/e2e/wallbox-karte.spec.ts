@@ -171,23 +171,39 @@ test('Anlage ohne Ladepunkt: kein Zurückspeisen, der Reiter wie heute', async (
   expect(fehler).toEqual([]);
 });
 
-test('Bestandsschutz: Ladepunkte „nur laden“ zeichnen den Reiter byte-gleich wie ohne Ladepunkte-Antwort', async ({ page }) => {
-  const reiter = async (fall: string) => {
+// Die zwei Bestandsschutz-Vergleiche je Zeichnung in einem eigenen Fall mit EINEM Aufruf der Bühne (Entscheid firstmate
+// gm-e2e-mehrfachaufruf = A): jeder Aufruf lädt das ganze Portal samt Steuerung, zwei bzw. drei davon in einem Fall
+// waren unter vier Workern vereinzelt rot (Gesamtlauf mispel 05.10.2026, desktop). Der Vergleich braucht die erste
+// Zeichnung - die Fälle einer Gruppe laufen darum seriell im selben Worker, der erste hält sie fest. Die Zusicherungen
+// sind dieselben.
+test.describe('Bestandsschutz: Ladepunkte „nur laden“ zeichnen den Reiter byte-gleich wie ohne Ladepunkte-Antwort', () => {
+  test.describe.configure({ mode: 'serial' });
+  const reiter = async (page: Page, fall: string) => {
     await oeffnen(page, fall);
     await expect(wallbox(page).getByText('Womit laden?')).toBeVisible();
     await expect(page.getByRole('region', { name: 'Fahrzeuge' })).toBeVisible();
     return page.locator('.stn-main').innerHTML();
   };
-  const ohne = await reiter('unbekannt');
-  const nurLaden = await reiter('nur-laden');
-  expect(nurLaden).toBe(ohne);
-  expect(nurLaden).not.toContain('Zurückspeisen');
-  expect(nurLaden).toContain('Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.');
+  let ohne = '';
+
+  test('ohne Ladepunkte-Antwort', async ({ page }) => {
+    ohne = await reiter(page, 'unbekannt');
+  });
+
+  test('nur laden', async ({ page }) => {
+    const nurLaden = await reiter(page, 'nur-laden');
+    expect(nurLaden).toBe(ohne);
+    expect(nurLaden).not.toContain('Zurückspeisen');
+    expect(nurLaden).toContain('Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.');
+  });
 });
 
-test('Abfahrt und Reserve: beide Öffner geben den Fokus zurück - auch wenn der Browser beim Tippen nicht fokussiert', async ({ page }) => {
-  // Safari/WebKit fokussiert einen angetippten Knopf nicht; der Öffner fokussiert ihn selbst (Gesamtlauf uems 04./05.10.2026).
-  for (const [fall, zeile] of [['mit-ladestand', 'abfahrt'], ['ohne-ladestand', 'abfahrt-reserve']] as const) {
+// Je Öffner EIN Fall mit EINEM Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): die zwei Aufrufe in
+// einem Fall waren im Nachtrag zum Gesamtlauf mispel 05.10.2026 zweimal rot (desktop, 36 und 44 s). Die Zusicherungen
+// sind dieselben.
+for (const [fall, zeile] of [['mit-ladestand', 'abfahrt'], ['ohne-ladestand', 'abfahrt-reserve']] as const) {
+  test(`Abfahrt und Reserve: der Öffner „${zeile}“ (${fall}) gibt den Fokus zurück - auch wenn der Browser beim Tippen nicht fokussiert`, async ({ page }) => {
+    // Safari/WebKit fokussiert einen angetippten Knopf nicht; der Öffner fokussiert ihn selbst (Gesamtlauf uems 04./05.10.2026).
     const fehler = await oeffnen(page, fall);
     const knopf = wallbox(page).locator(`[data-zeile="${zeile}"]`);
     await knopf.click();
@@ -197,8 +213,8 @@ test('Abfahrt und Reserve: beide Öffner geben den Fokus zurück - auch wenn der
     await expect(blatt).toBeHidden();
     await expect(knopf).toBeFocused();
     expect(fehler).toEqual([]);
-  }
-});
+  });
+}
 
 test('angehaltener Standort (UEMS SZ-2 A): die Wallbox-Karte steht abgedimmt wie jede Ladekarte, Eingriffe gesperrt mit Grund', async ({ page }) => {
   const fehler = await oeffnen(page, 'mit-ladestand', '&funktion=angehalten');
@@ -287,13 +303,17 @@ test('BK-41c-2 A: Leistung alt, Ladestand frisch - der Ladestand zählt nach sei
   expect(fehler).toEqual([]);
 });
 
-test('BK-41c-2 A: das Alter des Ladestands steht da, ein alter Wert sagt im Kopf, von wann er ist', async ({ page }) => {
-  let fehler = await oeffnen(page, 'ladestand-3min');
+// BK-41c-2 in zwei Fällen mit je EINEM Aufruf der Bühne (derselbe Entscheid; zwei Aufrufe brauchten unter vier
+// Workern bis 23 s). Die Zusicherungen sind dieselben.
+test('BK-41c-2 A: das Alter des Ladestands steht da', async ({ page }) => {
+  const fehler = await oeffnen(page, 'ladestand-3min');
   await expect(wallbox(page).locator('[data-ladestand="62"] [data-alter]')).toHaveText(`≈${NBSP}240${NBSP}km · vor 3 Min.`);
   await foto(page, 'karte-ladestand-3min', wallbox(page));
   expect(fehler).toEqual([]);
+});
 
-  fehler = await oeffnen(page, 'ladestand-alt');
+test('BK-41c-2 A: ein alter Ladestand sagt im Kopf, von wann er ist', async ({ page }) => {
+  const fehler = await oeffnen(page, 'ladestand-alt');
   const k = wallbox(page);
   await expect(k.locator('[data-ladestand]')).toHaveCount(0);
   await expect(k.locator('.lp-h small').first()).toHaveText(`Kleinwagen · Karte 07cd… · Ladestand zuletzt 62${NBSP}% um 12:58 · angesteckt seit 08:00`);
@@ -339,14 +359,26 @@ test('BK-41c-3: der Eingriff „Schnell“ gilt für diese Ladung, Zurückspeise
   expect(fehler).toEqual([]);
 });
 
-test('Bestandsschutz MP-41c: ein Fahrzeug-Eintrag ändert an einem Ladepunkt „nur laden“ nichts', async ({ page }) => {
-  const reiter = async (plan: string) => {
+// Seriell wie der Bestandsschutz oben: je Eintrag EIN Aufruf der Bühne, der erste Fall hält die Zeichnung ohne Eintrag fest.
+test.describe('Bestandsschutz MP-41c: ein Fahrzeug-Eintrag ändert an einem Ladepunkt „nur laden“ nichts', () => {
+  test.describe.configure({ mode: 'serial' });
+  const reiter = async (page: Page, plan: string) => {
     await oeffnen(page, 'nur-laden', `&plan=${plan}`);
     await expect(wallbox(page).getByText('Womit laden?')).toBeVisible();
     await expect(page.getByRole('region', { name: 'Fahrzeuge' })).toBeVisible();
     return page.locator('.stn-main').innerHTML();
   };
-  const ohne = await reiter('ohne');
-  expect(await reiter('zurueck')).toBe(ohne);
-  expect(await reiter('kein')).toBe(ohne);
+  let ohne = '';
+
+  test('die Wallbox ohne Eintrag im Lauf', async ({ page }) => {
+    ohne = await reiter(page, 'ohne');
+  });
+
+  test('ein Fahrzeug-Eintrag mit Zurückspeisen', async ({ page }) => {
+    expect(await reiter(page, 'zurueck')).toBe(ohne);
+  });
+
+  test('ein Fahrzeug-Eintrag, gerechnet ohne Zurückspeisen', async ({ page }) => {
+    expect(await reiter(page, 'kein')).toBe(ohne);
+  });
 });
