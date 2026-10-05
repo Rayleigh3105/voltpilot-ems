@@ -133,7 +133,7 @@ func dbLauf(t *testing.T, f dbFall) dbErgebnis {
 		if !blind(s) && ((s%f.messtakt)+f.messtakt)%f.messtakt == 0 {
 			b := batt
 			m := lastmgmt.Measurement{GridKw: zaehler(), ChargingKw: park, Complete: true,
-				HaveBattery: true, BatteryChargeKw: b}
+				HaveBattery: true, BatteryKw: b}
 			dringend = a.ocpp.budget.ObserveM(now, m)
 		}
 		if dringend || ((s%20)+20)%20 == f.parkPhase {

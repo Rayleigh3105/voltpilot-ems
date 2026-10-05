@@ -10,7 +10,7 @@ import (
 func obs(tr *BudgetTracker, ts time.Time, grid, charging, batt float64) {
 	tr.ObserveM(ts, Measurement{
 		GridKw: grid, ChargingKw: charging,
-		BatteryChargeKw: batt, HaveBattery: true, Complete: true,
+		BatteryKw: batt, HaveBattery: true, Complete: true,
 	})
 }
 
@@ -209,4 +209,69 @@ func TestABatterylessSiteIsUnaffected(t *testing.T) {
 	if storage.BatteryKw != nil {
 		t.Fatal("a site that reported no battery must not carry one")
 	}
+}
+
+// TestADischargingBatteryIsNeverSunshine is the night on the Edge-Light pilot
+// (04.10.2026): PV 0, the house battery discharging 5.3 kW into a car that
+// draws 6.8 kW, 2.3 kW from the grid. rest = 2.3 − 6.8 = −4.5 LOOKS like
+// export; floored to 0, the discharge read as 4.5 kW of surplus and "Nur
+// Sonnenstrom" kept the car on the house battery all night. Signed, the
+// site without cars and battery draws 0.8 kW - there is no surplus.
+func TestADischargingBatteryIsNeverSunshine(t *testing.T) {
+	tr := NewBudgetTracker()
+	obs(tr, t0, 2.3, 6.8, -5.3)
+
+	for _, storage := range []StoragePriority{StorageBeforeCars, CarsBeforeStorage} {
+		for _, policy := range []SurplusPolicy{PolicySolarOnly, PolicySolarFirst} {
+			v := tr.Surplus(t0, policy, storage)
+			if !v.Active || v.Blind {
+				t.Fatalf("%s/%s: a fresh measurement is an answer (active=%v blind=%v)", policy, storage, v.Active, v.Blind)
+			}
+			near(t, string(policy)+"/"+string(storage)+" cars", v.Kw, 0)
+			if v.TotalKw == nil || *v.TotalKw != 0 {
+				t.Fatalf("%s/%s: S must be 0 at night, got %v", policy, storage, v.TotalKw)
+			}
+		}
+	}
+	// The battery's CHARGE is reported, and a discharge charges nothing.
+	v := tr.Surplus(t0, PolicySolarOnly, StorageBeforeCars)
+	if v.BatteryKw == nil || *v.BatteryKw != 0 {
+		t.Fatalf("a discharge must report a charge of 0, got %v", v.BatteryKw)
+	}
+	if !strings.Contains(v.Reason, "kein Sonnenüberschuss") {
+		t.Fatalf("the sentence must say there is none: %q", v.Reason)
+	}
+	// And cars-first has nothing to take from the battery either.
+	kw, ok := tr.StorageChargeCap(t0, PolicySolarOnly, CarsBeforeStorage, 6.8)
+	if !ok || kw != 0 {
+		t.Fatalf("battery cap at night = %v (ok=%v), want 0", kw, ok)
+	}
+}
+
+// TestWithSomeSunTheDischargeIsStillNotCounted - afternoon: PV 3.0, house 0.8,
+// a car drawing 6.8, the battery covering the rest (4.6 kW discharge), grid 0.
+// The sun offers 3.0 − 0.8 = 2.2 kW beyond the house - that, and not the 6.8
+// the battery makes the site look like, is what either priority may hand out.
+func TestWithSomeSunTheDischargeIsStillNotCounted(t *testing.T) {
+	tr := NewBudgetTracker()
+	obs(tr, t0, 0, 6.8, -4.6)
+	storage := tr.Surplus(t0, PolicySolarOnly, StorageBeforeCars)
+	cars := tr.Surplus(t0, PolicySolarOnly, CarsBeforeStorage)
+	near(t, "storage-first", storage.Kw, 2.2)
+	near(t, "cars-first", cars.Kw, 2.2)
+	if storage.TotalKw == nil {
+		t.Fatal("S must be reported")
+	}
+	near(t, "S", *storage.TotalKw, 2.2)
+}
+
+// TestAChargingBatteryKeepsTheMeasuredStatusQuo - the fix must not move the
+// charging case: storage-first still hands the cars exactly what leaves the
+// site, cars-first the whole surplus (the arbitration test above, re-read
+// through the signed field).
+func TestAChargingBatteryKeepsTheMeasuredStatusQuo(t *testing.T) {
+	tr := NewBudgetTracker()
+	obs(tr, t0, -30, 0, 20)
+	near(t, "storage-first", tr.Surplus(t0, PolicySolarOnly, StorageBeforeCars).Kw, 30)
+	near(t, "cars-first", tr.Surplus(t0, PolicySolarOnly, CarsBeforeStorage).Kw, 50)
 }

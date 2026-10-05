@@ -135,6 +135,23 @@ function steckerSatz(c: ChargePoint): string {
   return teile.join(' · ');
 }
 
+/**
+ * Die Komponente, die das Gerät SELBST ist - ihr Alias ist der Kundenname der
+ * Karte. Nie der eines Bauteils, das nur ÜBER das Gerät gemessen oder an
+ * seinem Ausgang geschaltet wird: ein umbenannter Netzanschluss oder ein
+ * Verbraucher, der in der Liste vorn steht, gab sonst dem Wechselrichter
+ * seinen Namen (der Deye hieß „Wallbox Garage", die Bearbeiten-Seite sagte
+ * „SUN-12K-SG04LP3").
+ *
+ * Ein 1:1-Gerät hat genau eine Entität. Am Hauptgerät ist es der Speicher,
+ * sonst die Erzeugung - Netz und Haus sind nie der Wechselrichter selbst.
+ */
+function eigeneKomponente(komponenten: PlantComponent[]): PlantComponent | undefined {
+  const eigene = komponenten.filter((c) => c.aspect === 'main' && !c.io);
+  if (new Set(eigene.map((c) => c.entityId)).size === 1) return eigene[0];
+  return eigene.find((c) => c.role === 'storage') ?? eigene.find((c) => c.role === 'pv');
+}
+
 /** Die Eingabe der Liste - alles, was die Zentrale ohnehin lädt. */
 export interface ZentraleListeInput {
   siteId: string;
@@ -221,8 +238,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       .map(komponenteVon)
       .filter((c): c is PlantComponent => c != null);
     const art = setupVon(d.id)?.kind === 'inverter' ? 'hauptgeraet' : 'quelle';
-    const customerName = komponenten.find((component) => component.aspect === 'main'
-      && component.alias?.trim())?.alias?.trim();
+    const customerName = eigeneKomponente(komponenten)?.alias?.trim();
     karten.push({
       id: d.id,
       art: 'geraet',
