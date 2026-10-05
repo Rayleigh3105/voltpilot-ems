@@ -13,6 +13,10 @@
 #                           mit Daten sieht: richtet „Messen & Auswerten“ an beiden Standorten ein und legt
 #                           Ablesungen (MS-20) und Monatswerte (BZ-1) ab 10/2024 an (DemoRundgangAufbau).
 #                           Teil von `start`; einzeln für eine laufende Demo, idempotent.
+#   demo.sh mispel          MiSpeL: vier Kundenbereiche (Gewerbe, drei Haushalte) mit je einem Login, jede
+#                           MiSpeL-Fläche mit Daten (DemoMispelAufbau). Teil von `start`, idempotent.
+#   demo.sh wallbox [golf]  die Wallbox von Haus Albers meldet ihren Ladestand jetzt (frisch für fünf Minuten);
+#                           `golf` steckt ein Auto ohne Rückspeise-Funktion an.
 #   demo.sh stop            hält alle Container an, Daten bleiben.
 #   demo.sh status          Zustand je Dienst, Datenfrische, Speicher; Exit ≠ 0, wenn etwas fehlt.
 #   demo.sh zuruecksetzen   Container UND Volumes des Projekts weg, danach `start`.
@@ -103,21 +107,25 @@ kc_user_id() { # kc_user_id <admin-token> <benutzername> -> id oder leer
 }
 
 # Das einmalige Startpasswort der Produkt-Wege ersetzt die Demo durch ein festes, zufälliges Passwort
-# ohne Pflichtwechsel - nur im lokalen Realm, nur für die hier angelegten Konten.
+# ohne Pflichtwechsel - nur im lokalen Realm, nur für die hier angelegten Konten. Steht das Konto schon in
+# $DEMO_ZUGANG (etwa nach `zuruecksetzen`), bekommt es dasselbe Passwort wieder: ausgegebene Zugänge bleiben gültig.
 passwort_setzen() { # passwort_setzen <benutzername> <rolle-im-klartext> <kundenbereich>
   local admin id pw
   admin="$(kc_admin_token)"
   id="$(kc_user_id "$admin" "$1")"
-  pw="$(python3 -c 'import secrets; print("Demo-" + secrets.token_urlsafe(9))')"
+  mkdir -p "$(dirname "$DEMO_ZUGANG")"
+  touch "$DEMO_ZUGANG"
+  chmod 600 "$DEMO_ZUGANG"
+  pw="$(awk -F'\t' -v u="$1" '$1 == u {print $2; exit}' "$DEMO_ZUGANG")"
+  if [ -z "$pw" ]; then
+    pw="$(python3 -c 'import secrets; print("Demo-" + secrets.token_urlsafe(9))')"
+    printf '%s\t%s\t%s\t%s\n' "$1" "$pw" "$2" "$3" >>"$DEMO_ZUGANG"
+  fi
   curl -fsS -X PUT -H "Authorization: Bearer $admin" -H 'Content-Type: application/json' \
     -d "{\"type\":\"password\",\"value\":\"$pw\",\"temporary\":false}" \
     "$KEYCLOAK/admin/realms/voltpilot/users/$id/reset-password"
   curl -fsS -X PUT -H "Authorization: Bearer $admin" -H 'Content-Type: application/json' \
     -d '{"requiredActions":[]}' "$KEYCLOAK/admin/realms/voltpilot/users/$id"
-  mkdir -p "$(dirname "$DEMO_ZUGANG")"
-  touch "$DEMO_ZUGANG"
-  chmod 600 "$DEMO_ZUGANG"
-  printf '%s\t%s\t%s\t%s\n' "$1" "$pw" "$2" "$3" >>"$DEMO_ZUGANG"
 }
 
 einsicht_anlegen() {
@@ -165,11 +173,11 @@ print(next((t["id"] for t in json.load(sys.stdin) if t["name"] == n), ""))' "$1"
 }
 
 # Ein Demo-Kundenbereich mit Standort und Kundenadministrator - über die Betreiber-Routen des Portals.
-kundenbereich_anlegen() { # kundenbereich_anlegen <name> <benutzername> <ort> <lat> <lon>
+kundenbereich_anlegen() { # kundenbereich_anlegen <name> <benutzername> <ort> <lat> <lon> [CI|B2C]
   local id body
   id="$(tenant_id "$1")"
   if [ -z "$id" ]; then
-    body="$(python3 -c 'import json,sys; print(json.dumps({"name": sys.argv[1], "segment": "CI"}))' "$1")"
+    body="$(python3 -c 'import json,sys; print(json.dumps({"name": sys.argv[1], "segment": sys.argv[2]}))' "$1" "${6:-CI}")"
     id="$(admin_api POST /api/v1/admin/tenants "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
     body="$(python3 -c 'import json,sys
 print(json.dumps({"name": sys.argv[1], "biddingZone": "DE-LU", "latitude": float(sys.argv[2]),
@@ -199,6 +207,27 @@ print(json.dumps({"auftrag": "Demo: Kündigung zum Vertragsende", "begruendung":
   fi
 }
 
+# MiSpeL (Captain 05.10.2026): je Kundenart ein Login, der jede MiSpeL-Fläche mit Daten sieht. Kundenbereiche und
+# Kundenadministratoren über die Betreiber-Routen, alles Weitere über DemoMispelAufbau (Testquelle, nur mit
+# -Dmispel.jdbc): Förderwege, Zählerrollen, Werte des Messstellenbetreibers, Monats- und Jahreslauf, Check, Wallbox.
+mispel_anlegen() {
+  kundenbereich_anlegen "Demo MiSpeL Gewerbe GmbH" mispel-gewerbe "Kühlhaus Seebach" 48.05 11.21 >/dev/null
+  kundenbereich_anlegen "Haus Kröger" haus-kroeger "Haus Kröger" 53.08 8.80 B2C >/dev/null
+  kundenbereich_anlegen "Haus Sommer" haus-sommer "Haus Sommer" 50.94 6.96 B2C >/dev/null
+  kundenbereich_anlegen "Haus Albers" haus-albers "Haus Albers" 52.37 9.73 B2C >/dev/null
+  mispel_werkzeug
+}
+
+# demo.sh wallbox [golf]: die Wallbox von Haus Albers meldet ihren Ladestand jetzt (die Karte zeigt ihn nur, solange er
+# jünger als fünf Minuten ist) und bekommt den Plan des Tages, falls er fehlt; `golf` steckt ein Auto ohne
+# Rückspeise-Funktion an.
+mispel_werkzeug() { # mispel_werkzeug [familienauto|golf]
+  jdk21
+  (cd "$WURZEL/services/api" && ./mvnw -q test -Dtest=DemoMispelAufbau -Dsurefire.failIfNoSpecifiedTests=false \
+    -Dmispel.jdbc="jdbc:postgresql://localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-voltpilot}" \
+    ${1:+-Dmispel.wallbox="$1"})
+}
+
 start() {
   local fremd
   fremd="$(fremde_container)"
@@ -219,6 +248,7 @@ start() {
   einsicht_anlegen
   vertragsende_anlegen
   rundgang_anlegen
+  mispel_anlegen
   echo
   echo "Demo läuft: $PORTAL  (Zugänge: $DEMO_ZUGANG und die Logins des lokalen Realms)"
   echo "Prognose und Fahrplan brauchen nach dem ersten Start bis zu 15 Minuten; Stand: $0 status"
@@ -279,6 +309,8 @@ case "${1:-}" in
   stop) stop ;;
   status) status ;;
   rundgang) rundgang_anlegen ;;
+  mispel) mispel_anlegen ;;
+  wallbox) mispel_werkzeug "${2:-familienauto}" ;;
   zuruecksetzen) zuruecksetzen ;;
-  *) sed -n '2,26p' "$0"; exit 2 ;;
+  *) sed -n '2,30p' "$0"; exit 2 ;;
 esac

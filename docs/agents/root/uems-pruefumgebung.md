@@ -59,6 +59,10 @@ und das gebaute Portal auf `http://localhost:5173` dazu · [README](../../../inf
   Bericht BR-2029-0001 (Managementbewertung) brachten am 27.09.2026 das ganze Portal auf die Fehlerseite (gemeldet).
 - Rundgang (`demo.sh rundgang`, `DemoRundgangAufbau`): Login `rundgang` sieht jede UEMS-Fläche. ⚠ Ohne „Messen &
   Auswerten“ an einem Standort blendet das Portal alle UEMS-Reiter aus, und die Welt 1.10 legt die Funktion nicht an.
+- MiSpeL (`demo.sh mispel`, `DemoMispelAufbau` im Paket `mispel` wegen der Test-Hooks): vier Kundenbereiche, je
+  Kundenart ein Login. ⚠ Ein Ladepunkt ohne `site_charging_config` steht auf „Schnell“ (Steuerart `sofort`) und hält
+  das Zurückspeisen an — die Wallbox-Karte zeigt dann nie die Plan-Zeile. ⚠ Die Karte braucht einen Ladestand jünger
+  als fünf Minuten (`demo.sh wallbox`). ⚠ Ein Pauschal-Rumpfjahr ab 01.10. hat (P1)R = 0.
 - Berichtsstände der Welt entstehen über Anlegen, Entwurf und Freigabe an ihren Tagen (früher Stummel `{bericht, nr}`
   direkt in `bericht_stand` → Fehlergrenze im Portal). Nr. 2 folgt einer Neubildung wie nach der Kaskade
   (`BerichtAbzugBildung.bilden` mit `TenantContext`). Die erste Bewertung steht am 01.12.2026. ⚠ Die Rangliste liest

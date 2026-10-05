@@ -7,6 +7,8 @@ Anlage mit Speicher. Nie gegen Produktion, nie gegen eine echte Box, keine echte
 infra/local/demo/demo.sh start          # einmal ~15 min (Images, Flyway, Welt 1.10), danach idempotent
 infra/local/demo/demo.sh status         # Dienste, Datenfrische, Speicher; Exit ≠ 0, wenn etwas fehlt
 infra/local/demo/demo.sh rundgang       # Login `rundgang`: jede UEMS-Fläche mit Daten (Teil von start, idempotent)
+infra/local/demo/demo.sh mispel         # vier MiSpeL-Kundenbereiche mit Daten (Teil von start, idempotent)
+infra/local/demo/demo.sh wallbox [golf] # Wallbox von Haus Albers: Ladestand jetzt, Plan des Tages
 infra/local/demo/demo.sh stop           # anhalten, Daten bleiben
 infra/local/demo/demo.sh zuruecksetzen  # Container UND Volumes weg, dann neu aufbauen
 ```
@@ -26,7 +28,8 @@ Voraussetzungen: Docker, JDK 21, Node.js 22.
 
 Die Logins des lokalen Realms (`jonas`, `support-voss`, `demo`, …) stehen in
 `infra/local/keycloak/voltpilot-realm.json`. Die Passwörter der hier angelegten Konten erzeugt das Skript zufällig und
-schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DEMO_ZUGANG`).
+schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DEMO_ZUGANG`); steht ein Konto dort schon,
+bekommt es nach `zuruecksetzen` dasselbe Passwort wieder.
 
 ## Rundgang: ein Login für alles aus dem UEMS-Programm
 
@@ -40,6 +43,31 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   direkter Stand: keine Route setzt ihn für „Messen“.
 - Ablesungen an MS-20 und Monatswerte an BZ-1 ab 10/2024 über die Routen des Portals, bis zum letzten abgeschlossenen
   Monat der echten Zeit; danach ein Kennzahl-Lauf. Alle sechs Kennzahlen der Welt lesen MS-20 ÷ BZ-1.
+
+## MiSpeL: je Kundenart ein Login für alle MiSpeL-Flächen
+
+`demo.sh mispel` (auch am Ende von `start`) legt über die Betreiber-Routen vier Kundenbereiche mit je einem
+Kundenadministrator an (Passwort nach `$DEMO_ZUGANG`) und fährt `DemoMispelAufbau` (Testquelle, nur mit
+`-Dmispel.jdbc`):
+
+| Login | Kundenbereich | Anlagen |
+|---|---|---|
+| `mispel-gewerbe` | Demo MiSpeL Gewerbe GmbH | Kühlhaus Seebach (Abgrenzung A1, MSB-Werte CSV/MSCONS, Monatslauf, Nachweis), Werk Talheim (Ausschließlichkeit, Check „lohnt sich“), Autohaus Brenner (Händler-Modus, Check „lohnt sich nicht“) |
+| `haus-kroeger` | Haus Kröger | Einspeisevergütung, Pauschaloption vorgemerkt „Termin offen“, Check Haushalt |
+| `haus-sommer` | Haus Sommer | Pauschaloption mit Jahreslauf — Vorgriff auf die EU-Genehmigung, Fassung direkt in der Datenbank |
+| `haus-albers` | Haus Albers | Wallbox V2H, Abgrenzung A2, Plan mit Zurückspeisen, Erträge mit Messlatte „nur laden“ |
+
+`demo.sh wallbox [golf]` meldet den Ladestand der Wallbox neu (die Karte zeigt ihn nur fünf Minuten lang), legt den Plan
+des Tages an, falls er fehlt, und füllt die Messlatte bis jetzt auf; `golf` steckt ein Auto ohne Rückspeise-Funktion an.
+
+- Kundenwege über die Portal-Routen; direkt in die Datenbank nur, was im Betrieb Box, Optimierer oder ein Rechenlauf
+  schreibt (Box und Komponenten, Messstellen-Zuordnung, Rollups, Gerätewerte, Check-Ergebnis, Fahrzeug-Plan, Messlatte).
+  Monats- und Jahreslauf laufen über die echten Dienste. Einzelheiten im Klassenkommentar von `DemoMispelAufbau`.
+- Daten liegen für die vollen Tage 01.–04.10.2026 (die Festlegung gilt ab 01.10.2026): jeder MiSpeL-Monat ist
+  „vorläufig“, die Abgleichsampel grau „Lücke“, solange der Monat läuft; das Rumpfjahr 2026 der Pauschaloption hat
+  (P1)R = 0 (nur Sommertage zählen).
+- Den Plan der Wallbox legt die Saat ab; `VOLTPILOT_MISPEL_FAHRZEUG_SITES` bleibt aus (der Fahrzeug-Optimierer braucht
+  eine Box mit Prognose).
 
 ## Was die Datei `docker-compose.demo.yml` ändert
 
