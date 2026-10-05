@@ -319,6 +319,9 @@ func (t *BudgetTracker) verankernLocked(ts time.Time) {
 	if t.incompleteAt.After(ts) {
 		t.incompleteAt = ts
 	}
+	if t.settlingAt.After(ts) {
+		t.settlingAt = ts
+	}
 }
 
 // urgentDropKw is how much smaller a sample must demand the budget to be
