@@ -298,7 +298,7 @@ export function AbweichungSeite({
           )}
         </section>
 
-        <section className="vp-ez-karte" aria-labelledby="aw-abschluss" data-testid="abweichung-abschluss">
+        <section className="vp-ez-karte" aria-labelledby="aw-abschluss" data-testid="abweichung-abschluss" data-entscheid="abweichung_frist">
           <h2 id="aw-abschluss">{A.ABSCHLUSS}</h2>
           {a.abschluss ? (
             <>

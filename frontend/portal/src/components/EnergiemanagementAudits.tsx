@@ -31,7 +31,7 @@ export function EnergiemanagementAudits({ onAudit, saetze = false }: { onAudit: 
   const n = programm?.naechstes ?? null;
   return (
     <section className="vp-ez-karte" aria-label={A.AUDITPROGRAMM} data-testid="audits-register">
-      <div className="vp-em-kopf">
+      <div className="vp-em-kopf" data-entscheid="internes_audit">
         <h2>{A.AUDITPROGRAMM}</h2>
         <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
           <Button onClick={() => setPlanen(true)} data-testid="audit-planen">

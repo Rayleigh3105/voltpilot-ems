@@ -247,7 +247,7 @@ export function MassnahmeSeite({
           )}
         </section>
 
-        <section className="vp-ez-karte" aria-labelledby="ma-zustand" data-testid="massnahme-zustand">
+        <section className="vp-ez-karte" aria-labelledby="ma-zustand" data-testid="massnahme-zustand" data-entscheid="massnahme_termin">
           <h2 id="ma-zustand">{M.SPALTEN.zustand}</h2>
           {m.zustand === 'geplant' ? (
             <div className="vp-ez-aktionen">

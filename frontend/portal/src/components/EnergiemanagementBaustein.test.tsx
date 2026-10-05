@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
@@ -8,145 +8,96 @@ import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import { rechteSeed } from '../test/rollenFixtures';
 import { werkAhrenberg } from '../test/standorteFixtures';
+import { wvDemo, wvLeer, wvNormal, wvR12 } from '../test/wiedervorlageFixtures';
 import { bausteineMitInhalt } from '../uebersichtBausteine';
-import {
-  bausteinSatz,
-  energiemanagementBaustein,
-  kalenderVermerk,
-  KALENDER_ABZUG_FEHLER,
-  type Wiedervorlage,
-  type WiedervorlageZeile,
-} from '../wiedervorlage';
+import { wasStehtAn, WOHER_SATZ } from '../wiedervorlage';
 import { EnergiemanagementBaustein } from './EnergiemanagementBaustein';
-import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
+import { GrenzSatzBereich } from './GrenzSatz';
+import { UebersichtBausteine, useUebersichtBausteine, type UebersichtDaten } from './UebersichtBausteine';
 
-const zeile = (kennzeichen: string, faellig_am: string, tage: number, art: WiedervorlageZeile['art']): WiedervorlageZeile => ({
-  art,
-  kennzeichen,
-  titel: `${kennzeichen} — Überprüfung`,
-  faellig_am,
-  tage,
-  satz: tage > 0 ? `seit ${tage} Tagen fällig` : tage === 0 ? 'heute fällig' : `fällig in ${-tage} Tagen`,
-  verantwortlich: null,
-  id: null,
-  kennzahl_id: null,
-});
-
-/** R12 am 12.02.2029: acht fällige Zeilen und eine Vorschau (die Antwort der Wiedervorlage-Route). */
-function r12(): Wiedervorlage {
-  return {
-    stichtag: '2029-02-12T08:00:00+01:00',
-    vorschau_tage: 30,
-    faellig: [
-      zeile('BB-0002', '2027-11-13', 457, 'bezugsbasis_ueberpruefung'),
-      zeile('BB-0005', '2027-11-20', 450, 'bezugsbasis_ueberpruefung'),
-      zeile('BB-0003', '2028-03-05', 344, 'bezugsbasis_ueberpruefung'),
-      zeile('BR-2028-0001', '2028-04-03', 315, 'bericht_anstoss'),
-      zeile('BB-0004', '2028-11-24', 80, 'bezugsbasis_ueberpruefung'),
-      zeile('BR-2027-0001', '2028-11-24', 80, 'bewertung_ueberpruefung'),
-      zeile('D-0001', '2028-12-10', 64, 'dokument_ueberpruefung'),
-      zeile('D-0002', '2028-12-10', 64, 'dokument_ueberpruefung'),
-    ],
-    vorschau: [zeile('M-2029-0001', '2029-02-28', -16, 'massnahme_termin')],
-    anzahl_faellig: 8,
-    anzahl_vorschau: 1,
-    nicht_in_liste: ['AU-2029-0001', 'BB-0001', 'D-0003', 'D-0004', 'F-2029-0001', 'M-2029-0002'],
-    verantwortung: UEMS_VERANTWORTUNG,
-  };
-}
-
-const leer = (): Wiedervorlage => ({ ...r12(), faellig: [], vorschau: [], anzahl_faellig: 0, anzahl_vorschau: 0, nicht_in_liste: [] });
-
-describe('Wiedervorlage — das reine Bild des Bausteins „Energiemanagement“ (WV5, E10)', () => {
-  it('R12: der §5.8-Satz „Baustein“ wörtlich, am Baustein ohne den Titel davor, mit Warnton', () => {
-    expect(bausteinSatz(r12())).toBe('Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen.');
-    expect(energiemanagementBaustein(r12())).toMatchObject({ summe: '8 fällig · 1 in den nächsten 30 Tagen.', faellig: true });
-  });
-
-  it('K8: die ersten drei Punkte — die am längsten fälligen zuerst, mit Art, Satz und Sprung', () => {
-    const zeilen = energiemanagementBaustein(r12())!.zeilen;
-    expect(zeilen.map((z) => `${z.art} ${z.kennzeichen} · ${z.satz}`)).toEqual([
-      'Bezugsbasis BB-0002 · seit 457 Tagen fällig',
-      'Bezugsbasis BB-0005 · seit 450 Tagen fällig',
-      'Bezugsbasis BB-0003 · seit 344 Tagen fällig',
-    ]);
-    expect(zeilen.every((z) => z.faellig)).toBe(true);
-    // Ohne Kennzahl hat die Bezugsbasis keine Seite — die Zeile springt nicht (WV3).
-    expect(zeilen[0].ziel).toBeNull();
-    // Nur eine Vorschau: ihre Zeile steht, ruhig.
-    const nurVorschau = energiemanagementBaustein({ ...r12(), faellig: [], anzahl_faellig: 0 })!;
-    expect(nurVorschau.zeilen.map((z) => [z.kennzeichen, z.faellig])).toEqual([['M-2029-0001', false]]);
-  });
-
-  it('ohne Inhalt kein Bild: nichts fällig und keine Vorschau — oder keine Antwort', () => {
-    expect(energiemanagementBaustein(leer())).toBeNull();
-    expect(energiemanagementBaustein(null)).toBeNull();
-    expect(bausteineMitInhalt({ messstellen: null, energiebilanz: null, gebaeude: [], kennzahlen: null, energiemanagement: null }))
-      .toEqual([]);
-    expect(
-      bausteineMitInhalt({
-        messstellen: null,
-        energiebilanz: null,
-        gebaeude: [],
-        kennzahlen: null,
-        energiemanagement: energiemanagementBaustein(r12()),
-      }),
-    ).toEqual(['energiemanagement']);
-  });
-
-  it('nur eine Vorschau: die Kachel steht, ruhig — nichts ist fällig', () => {
-    const nurVorschau = { ...r12(), faellig: [], anzahl_faellig: 0 };
-    expect(energiemanagementBaustein(nurVorschau)).toMatchObject({ summe: '0 fällig · 1 in den nächsten 30 Tagen.', faellig: false });
-  });
-
-  it('der Stand-Vermerk des Kalender-Abzugs (§5.8) mit dem Tag des Abrufs', () => {
-    expect(kalenderVermerk(r12().stichtag)).toBe('Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.');
-  });
-});
-
-describe('EnergiemanagementBaustein — die Kachel', () => {
-  it('rendert die Summe, den Kalender-Abzug und beide Sätze (SP4); die Knöpfe rufen ihre Handlung', () => {
-    const onOeffnen = vi.fn();
-    const onKalender = vi.fn();
-    render(<EnergiemanagementBaustein bild={energiemanagementBaustein(r12())!} onOeffnen={onOeffnen} onKalender={onKalender} />);
-    const summe = screen.getByTestId('energiemanagement-summe');
-    expect(summe.textContent).toBe('8 fällig · 1 in den nächsten 30 Tagen.');
-    expect(summe.className).toContain('is-warn');
-    const kachel = screen.getByTestId('baustein-energiemanagement');
-    expect(kachel.textContent).toContain(UEMS_VERANTWORTUNG);
-    expect(kachel.textContent).toContain(UEMS_NORMGRENZE);
-    expect(kachel.textContent).toContain('VoltPilot verschickt nichts.');
-    fireEvent.click(screen.getByTestId('energiemanagement-kalender'));
-    expect(onKalender).toHaveBeenCalledTimes(1);
-    // K8: der Titel ist die Frage, der Sprung führt in die ganze Wiedervorlage.
+describe('„Was steht an“: ruhig im Normalfall, deutlich bei Überfälligem (Konzept Wiedervorlage w1)', () => {
+  it('R12: ein Satz sagt, was das ist; Marken zählen Einträge; vier Zeilen gebündelt nach Aufgabe', () => {
+    render(<EnergiemanagementBaustein bild={wasStehtAn(wvR12())!} onOeffnen={() => {}} />);
+    const block = screen.getByTestId('baustein-energiemanagement');
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Was steht an');
-    expect(screen.getByTestId('was-steht-an').querySelectorAll('li')).toHaveLength(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Zur Wiedervorlage' }));
-    expect(onOeffnen).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(block.textContent).toContain('Fristen aus Ihrem Energiemanagement');
+    expect([...screen.getByTestId('energiemanagement-marken').children].map((m) => m.textContent)).toEqual(['8 überfällig', '1 in den nächsten 30 Tagen']);
+    const zeilen = within(screen.getByTestId('was-steht-an')).getAllByRole('listitem');
+    expect(zeilen.map((z) => z.querySelector('.vp-fz-titel')!.textContent)).toEqual([
+      '4 Bezugsbasen überprüfen',
+      'Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Dezember 2027 neu freigeben',
+      'Energetische Bewertung überprüfen',
+      'Energiepolitik und Anwendungsbereich überprüfen',
+    ]);
+    expect(within(zeilen[0]).getByRole('img', { name: 'fällig seit 13.11.2027' })).toBeTruthy();
+    // Kein Tageszähler, keine Null-Aussage, kein Kalender auf der Übersicht.
+    expect(block.textContent).not.toMatch(/seit \d+ Tagen|0 in den nächsten|Kalender/);
   });
 
-  it('ein gescheiterter Abzug sagt es sichtbar', () => {
+  it('ein Bündel öffnet die Wiedervorlage mit genau diesem Filter, ein einzelner Eintrag sein Objekt mit Entscheid', () => {
+    const springe = vi.fn();
+    render(<EnergiemanagementBaustein bild={wasStehtAn(wvR12())!} onOeffnen={() => {}} springe={springe} />);
+    const [buendel, bericht] = within(screen.getByTestId('was-steht-an')).getAllByRole('link');
+    expect(buendel.getAttribute('href')).toBe('#/portfolio/energiemanagement/wiedervorlage?art=bezugsbasis_ueberpruefung');
+    expect(bericht.getAttribute('href')).toBe('#/portfolio/berichte/BR-2028-0001?entscheid=bericht_anstoss');
+    expect(bericht.textContent).toContain('Entwurf vergleichen');
+    fireEvent.click(bericht);
+    expect(springe).toHaveBeenCalledWith(expect.objectContaining({ hash: '#/portfolio/berichte/BR-2028-0001?entscheid=bericht_anstoss' }));
+  });
+
+  it('Normalfall: „Keine Frist überfällig“ und das Fenster statt einer Null', () => {
+    render(<EnergiemanagementBaustein bild={wasStehtAn(wvNormal())!} onOeffnen={() => {}} />);
+    expect(screen.getByTestId('energiemanagement-marken').textContent).toBe('Keine Frist überfällig');
+    expect(screen.getByTestId('was-steht-an-ruhe').textContent).toBe('Bis 30.05.2029 ist nichts fällig. Danach stehen 11 weitere Fristen an.');
+  });
+
+  it('nur Fristen in den nächsten Tagen: „Nächste Fristen“ mit Datum, ohne Warnton', () => {
+    render(<EnergiemanagementBaustein bild={wasStehtAn({ ...wvR12(), faellig: [] })!} onOeffnen={() => {}} />);
+    expect(screen.getByText('Nächste Fristen')).toBeTruthy();
+    const [zeile] = within(screen.getByTestId('was-steht-an')).getAllByRole('listitem');
+    expect(within(zeile).getByRole('img', { name: 'fällig bis 28.02.2029' }).className).not.toContain('is-ueber');
+    expect(zeile.textContent).toContain('Maßnahme M-2029-0001 · in 16 Tagen');
+  });
+
+  it('„Woher kommen diese Fristen?“ öffnet die Herleitung; allein trägt der Block beide Sätze, in der Übersicht schweigen sie', () => {
+    const { unmount } = render(<EnergiemanagementBaustein bild={wasStehtAn(wvDemo())!} onOeffnen={() => {}} />);
+    expect(screen.getByTestId('was-steht-an-woher').textContent).toContain(WOHER_SATZ);
+    const block = screen.getByTestId('baustein-energiemanagement');
+    expect(block.textContent).toContain(UEMS_VERANTWORTUNG);
+    expect(block.textContent).toContain(UEMS_NORMGRENZE);
+    unmount();
     render(
-      <EnergiemanagementBaustein bild={energiemanagementBaustein(r12())!} onOeffnen={() => {}} onKalender={() => {}} kalenderFehler />,
+      <GrenzSatzBereich>
+        <EnergiemanagementBaustein bild={wasStehtAn(wvDemo())!} onOeffnen={() => {}} />
+      </GrenzSatzBereich>,
     );
-    expect(screen.getByRole('alert').textContent).toBe(KALENDER_ABZUG_FEHLER);
+    expect(screen.getByTestId('baustein-energiemanagement').textContent).not.toContain(UEMS_VERANTWORTUNG);
+  });
+
+  it('ohne jede Frist kein Block (AP-13 E3)', () => {
+    expect(bausteineMitInhalt({ messstellen: null, energiebilanz: null, gebaeude: [], kennzahlen: null, energiemanagement: wasStehtAn(wvLeer()) })).toEqual([]);
+    expect(bausteineMitInhalt({ messstellen: null, energiebilanz: null, gebaeude: [], kennzahlen: null, energiemanagement: wasStehtAn(wvNormal()) })).toEqual([
+      'energiemanagement',
+    ]);
   });
 });
 
 const st = werkAhrenberg();
 const anlagen = st.anlagen.map((a) => ({ id: a.id, name: a.name }));
+let geladen: UebersichtDaten | null = null;
 function Uebersicht({ art, onNavigate = () => {} }: { art: 'unternehmen' | 'standort'; onNavigate?: (r: unknown) => void }) {
   const daten = useUebersichtBausteine(
     art === 'standort' ? { art, standort: st } : { art, name: 'Ahrenberg', standorte: [st] },
     anlagen,
     ahrenbergFunktionen(),
   );
+  geladen = daten;
   return daten && <UebersichtBausteine daten={daten} zeigen={['energiemanagement']} onNavigate={onNavigate} />;
 }
 
-describe('Übersichts-Baustein „Energiemanagement“ am Unternehmen', () => {
+describe('„Was steht an“ in der Übersicht des Unternehmens', () => {
   beforeEach(() => {
+    geladen = null;
     setSelbstauskunft(rechteSeed('IK').me);
     vi.spyOn(api, 'messstellenRegister').mockResolvedValue(ahrenbergRegister());
     vi.spyOn(api, 'anlageBilanz').mockRejectedValue(new Error('nicht gebraucht'));
@@ -155,41 +106,49 @@ describe('Übersichts-Baustein „Energiemanagement“ am Unternehmen', () => {
     vi.spyOn(api, 'berichte').mockResolvedValue({ berichte: [] });
     vi.spyOn(api, 'bezugsbasisUebersicht').mockRejectedValue(new Error('nicht gebraucht'));
     vi.spyOn(api, 'verbesserungUebersicht').mockRejectedValue(new Error('nicht gebraucht'));
-    vi.spyOn(api, 'energiemanagementWiedervorlage').mockResolvedValue(r12());
+    vi.spyOn(api, 'energiemanagementWiedervorlage').mockResolvedValue(wvR12());
   });
   afterEach(() => {
+    cleanup();
     setSelbstauskunft(null);
     vi.restoreAllMocks();
   });
 
-  it('R12: am Unternehmen erscheint die Kachel „8 fällig · 1 in den nächsten 30 Tagen.“; der Sprung geht ins Energiemanagement', async () => {
+  it('R12: der Block steht; „Zur Wiedervorlage“ führt in die Wiedervorlage; die Statuszeile bekommt ihre Eskalation', async () => {
     const onNavigate = vi.fn();
     render(<Uebersicht art="unternehmen" onNavigate={onNavigate} />);
     await act(async () => {});
-    expect(screen.getByTestId('energiemanagement-summe').textContent).toBe('8 fällig · 1 in den nächsten 30 Tagen.');
+    expect(screen.getByTestId('energiemanagement-marken').textContent).toBe('8 überfällig1 in den nächsten 30 Tagen');
     fireEvent.click(screen.getByRole('button', { name: 'Zur Wiedervorlage' }));
     expect(onNavigate).toHaveBeenLastCalledWith(energiemanagementRoute('wiedervorlage'));
+    // Entscheid 9: dieselbe Wiedervorlage liefert die Eskalation für die Statuszeile der Übersicht.
+    expect(geladen?.wiedervorlageStatus).toMatchObject({ titel: '8 Fristen überfällig', satz: 'Älteste seit 13.11.2027 · Bezugsbasen, Bericht, energetische Bewertung, Dokumente' });
   });
 
-  it('der Kalender-Abzug ist ein Abruf: er lädt die Datei, nichts wird verschickt; scheitert er, steht der Satz da', async () => {
-    const ics = vi.spyOn(api, 'energiemanagementWiedervorlageIcs').mockRejectedValue(new Error('503'));
+  it('der Kalender-Abzug wohnt in der Wiedervorlage, nicht auf der Übersicht', async () => {
+    const ics = vi.spyOn(api, 'energiemanagementWiedervorlageIcs');
     render(<Uebersicht art="unternehmen" />);
     await act(async () => {});
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('energiemanagement-kalender'));
-    });
-    expect(ics).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('alert').textContent).toBe(KALENDER_ABZUG_FEHLER);
+    expect(screen.queryByText(/Kalender-Abzug/)).toBeNull();
+    expect(ics).not.toHaveBeenCalled();
   });
 
-  it('ohne Inhalt kein Render (WV5, AP-13 E3)', async () => {
-    vi.mocked(api.energiemanagementWiedervorlage).mockResolvedValue(leer());
+  it('nichts überfällig: der Block bleibt ruhig, die Statuszeile bekommt nichts', async () => {
+    vi.mocked(api.energiemanagementWiedervorlage).mockResolvedValue(wvNormal());
+    render(<Uebersicht art="unternehmen" />);
+    await act(async () => {});
+    expect(screen.getByTestId('energiemanagement-marken').textContent).toBe('Keine Frist überfällig');
+    expect(geladen?.wiedervorlageStatus).toBeNull();
+  });
+
+  it('ohne jede Frist kein Render (WV5, AP-13 E3)', async () => {
+    vi.mocked(api.energiemanagementWiedervorlage).mockResolvedValue(wvLeer());
     const { container } = render(<Uebersicht art="unternehmen" />);
     await act(async () => {});
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('am Standort nie und ohne Abfrage — der Baustein gehört dem Unternehmen', async () => {
+  it('am Standort nie und ohne Abfrage: der Block gehört dem Unternehmen', async () => {
     const { container } = render(<Uebersicht art="standort" />);
     await act(async () => {});
     expect(container).toBeEmptyDOMElement();

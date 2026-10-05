@@ -189,7 +189,7 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
           )}
         </section>
 
-        <section className="vp-ez-karte" aria-label={UEMS_WIRKSAMKEIT} data-testid="feststellung-wirksamkeit">
+        <section className="vp-ez-karte" aria-label={UEMS_WIRKSAMKEIT} data-testid="feststellung-wirksamkeit" data-entscheid="feststellung">
           <h2>{UEMS_WIRKSAMKEIT}</h2>
           {wirksamkeit.length > 0 && (
             <ul className="vp-ez-verlauf">
@@ -229,7 +229,7 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
                 ) : (
                   <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
                     {pruefbar && (
-                      <Button onClick={() => setDialog('wirksamkeit')} data-testid="feststellung-wirksamkeit-pruefen">
+                      <Button onClick={() => setDialog('wirksamkeit')} data-testid="feststellung-wirksamkeit-pruefen" data-entscheid-schritt>
                         {A.KNOPF_WIRKSAMKEIT}
                       </Button>
                     )}

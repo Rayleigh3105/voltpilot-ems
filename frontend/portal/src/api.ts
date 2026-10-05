@@ -8868,6 +8868,13 @@ export interface EnergiemanagementEntscheid {
   entschieden_am?: string | null;
   begruendung?: string | null;
 }
+/** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
+export interface EnergiemanagementGeprueft {
+  entschieden_von: string;
+  am: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
 export interface EnergiemanagementVergleich {
   abruf: string;
   fassung: number | null;
@@ -11348,6 +11355,9 @@ export const api = {
   /** IP-7 (DK3, DK4): freigeben — mit „entschieden von“; bei Vier-Augen bestätigt eine zweite Person. */
   energiemanagementFassungFreigeben: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
+  energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
   /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
   energiemanagementAudits: (tag?: string) =>
     request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
