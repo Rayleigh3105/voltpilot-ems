@@ -186,8 +186,9 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(zustaende).toEqual(['Messen & AuswertenEingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten']);
     expect(lindach.textContent).not.toMatch(/steuer/i);
 
-    // Die Anlagen stehen unter IHREM Standort: jede Gruppe ist ein eigener Zeilen-Block.
-    const bloecke = [...document.querySelectorAll('tbody')];
+    // Die Anlagen stehen unter IHREM Standort: jede Gruppe ist ein eigener Karten-Block
+    // (Konzept Runde 4: Energie-Karten je Anlage statt Tabellenzeilen).
+    const bloecke = screen.getAllByTestId('anlagen-gruppe');
     expect(bloecke).toHaveLength(2);
     expect(within(bloecke[0]).getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 2 öffnen' })).toBeTruthy();
     expect(within(bloecke[1]).getByRole('button', { name: 'Anlage Werk Lindach öffnen' })).toBeTruthy();
@@ -254,8 +255,10 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     // 312,4 + 96,5 = 408,9 — Werk Lindach zählt hier nicht.
     await waitFor(() => expect(within(leiste).getByText('408,9')).toBeTruthy());
     await waitFor(() => expect(within(funktionenImKopf()).getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy());
-    // Je Anlage steht der Netzbezug als Spalte „Netz jetzt".
-    expect(screen.getByRole('columnheader', { name: /Netz jetzt/ })).toBeTruthy();
+    // Je Anlage eine Energie-Karte (Konzept Runde 4): Verbrauch und Netz je Anlage, keine Spaltentabelle.
+    expect(screen.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 1 öffnen' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 2 öffnen' })).toBeTruthy();
+    expect(screen.getAllByText(/Verbrauch/).length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -321,14 +324,18 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     expect(within(leiste).getByText(/4\.800/)).toBeTruthy();
     expect(within(leiste).queryByText(/14\.400/)).toBeNull();
 
-    await waitFor(() => expect(screen.getAllByTestId('standort-gruppe')).toHaveLength(2));
-    const zeileVon = (name: string) =>
-      screen.getByRole('button', { name: `Anlage ${name} öffnen` }).closest('tr') as HTMLElement;
-    expect(zeileVon('Werk Ahrenberg – Halle 1').textContent).toMatch(/12,50/);
-    expect(zeileVon('Werk Ahrenberg – Halle 2').textContent).not.toMatch(/12,50/);
-    expect(zeileVon('Werk Lindach').textContent).not.toMatch(/12,50/);
-    // Die Karte von Werk Lindach trägt kein Geld.
-    const lindach = screen.getAllByTestId('standort-gruppe')[1];
+    // Konzept Runde 4: die Energie-Karten je Anlage tragen KEIN Geld (Energiedaten
+    // statt Geld/Kennzahl je Anlage). Der Vorteil steht nur aggregiert in der Leiste
+    // oben (dort korrekt „nur Halle 1"). A13 bleibt gewahrt — und sogar strenger:
+    // keine Geldzahl je Anlage, egal ob sie steuert.
+    await waitFor(() => expect(screen.getAllByTestId('anlagen-gruppe')).toHaveLength(2));
+    const karteVon = (name: string) =>
+      screen.getByRole('button', { name: `Anlage ${name} öffnen` }).closest('.vp-ae') as HTMLElement;
+    for (const name of ['Werk Ahrenberg – Halle 1', 'Werk Ahrenberg – Halle 2', 'Werk Lindach']) {
+      expect(karteVon(name).textContent).not.toMatch(GELD_TEXT);
+    }
+    // Auch die Gruppe von Werk Lindach trägt kein Geld.
+    const lindach = screen.getAllByTestId('anlagen-gruppe')[1];
     expect(lindach.textContent).not.toMatch(GELD_TEXT);
   });
 });

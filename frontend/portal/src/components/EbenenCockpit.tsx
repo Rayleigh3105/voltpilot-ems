@@ -32,8 +32,11 @@ import {
   ruheSatz,
   tabellenSpalten,
   verfuegbareBausteine,
+  type AnlagenZeile,
   type PortfolioBausteinId,
 } from '../portfolioCockpit';
+import { anlageEnergie } from '../anlageEnergie';
+import { AnlagenEnergie } from './AnlagenEnergie';
 import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
 import {
   anlagenDerEbene,
@@ -543,6 +546,21 @@ export function EbenenCockpit({
       : null;
   const spalten = tabellenSpalten(zeilen, layout.resolved.order);
   const ruhe = ruheSatz(layout.resolved.order);
+  // Konzept Runde 4: „Anlagen nach Standort" zeigt auf der Übersicht Energiedaten
+  // je Anlage (reines Modell `anlageEnergie`), nicht mehr die Tabelle. Die Rollen
+  // (PV/Speicher) entscheiden, welche Energiedaten je Anlagentyp Sinn ergeben.
+  const rollenById = new Map(
+    sicht.sites.map((s) => [s.id, { pv: s.roleCounts?.pv ?? 0, storage: s.roleCounts?.storage ?? 0 }] as const),
+  );
+  const nichtZugeordnetSet = new Set(
+    standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [],
+  );
+  const energieKarte = (z: AnlagenZeile) =>
+    anlageEnergie(z, rollenById.get(z.id) ?? { pv: 0, storage: 0 }, nichtZugeordnetSet.has(z.id));
+  const energieGruppen = gruppen
+    ? gruppen.map((g) => ({ key: g.key, kopf: g.kopf, karten: g.zeilen.map(energieKarte), leer: g.leer }))
+    : null;
+  const energieKarten = energieGruppen ? [] : zeilen.map(energieKarte);
   // K6/K8 (Konzept „Energiemanagement ohne Fachsprache“): am Unternehmen steht oben, was die Rolle zuerst fragt — am
   // Telefon zuerst „Was steht an“, Abweichungen und Datenlage. Was oben steht, steht unten nicht noch einmal. Der
   // Hinweis „Was VoltPilot leistet“ (K7) steht einmal auf der Seite: unter den Bausteinen, ohne sie oben.
@@ -621,7 +639,9 @@ export function EbenenCockpit({
               </>
             }
           />
-        ) : (
+        ) : nurAnlagen ? (
+          // AP-13 IP-2 „Standort › Anlagen": die ausführliche Tabelle mit Vorschau-Zeile,
+          // Energiebilanz-Weg und Zuordnungskorrektur bleibt die Verwaltungssicht.
           <AnlagenTabelle
             gruppen={gruppen}
             zeilen={zeilen}
@@ -642,7 +662,16 @@ export function EbenenCockpit({
                 if (anlage && zuordnung) setKorrektur({ anlage, standorte: antwort, ersterTag: zuordnung.gueltigAb });
               });
             } : undefined}
-            nichtZugeordnet={new Set(standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [])}
+            nichtZugeordnet={nichtZugeordnetSet}
+          />
+        ) : (
+          // Konzept Runde 4: die Übersicht zeigt Energiedaten je Anlage als Karten.
+          <AnlagenEnergie
+            gruppen={energieGruppen}
+            karten={energieKarten}
+            onOeffnen={(id) => onNavigate(anlageRoute(id))}
+            energiebilanz={mitBilanzWeg ? energiebilanz : null}
+            onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
           />
         )}
       </section>
