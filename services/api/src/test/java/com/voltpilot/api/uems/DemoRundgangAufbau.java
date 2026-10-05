@@ -4,8 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -16,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +72,27 @@ class DemoRundgangAufbau {
             "20000000-0000-0000-0000-0000000000a1", LocalDate.parse("2026-10-01"),
             "20000000-0000-0000-0000-0000000000a2", LocalDate.parse("2026-10-15"));
 
+    /**
+     * Die Netzanschlüsse der Referenzwelt (`docs/contracts/v2/uems-referenzunternehmen.json`,
+     * {@code netzanschluesse}): je Anlage Arbeitspreis (Tarif), Leistungspreis und die vereinbarte
+     * Leistung. Nichts erfunden - die Zahlen stehen in der Referenz. Der Rundgang spielt sie der
+     * Demo zu, damit die Kennzahl-Kacheln (Kosten, Lastspitze) echte Werte tragen.
+     */
+    private record Anschluss(UUID site, UUID standort, String kennzeichen, String name, String malo, int anschlussKva,
+            int vereinbartKw, BigDecimal arbeitspreisCtKwh, int leistungspreisEurKw, LocalDate gebundenAb) {}
+
+    private static final String NETZBETREIBER = "Netzgesellschaft Ahrental (fiktiv)";
+    private static final List<Anschluss> ANSCHLUESSE = List.of(
+            new Anschluss(UUID.fromString("20000000-0000-0000-0000-000000000501"),
+                    UUID.fromString("20000000-0000-0000-0000-0000000000a1"), "NA-1", "Hauptanschluss Halle 1",
+                    "47110000001", 630, 550, new BigDecimal("22.4"), 96, LocalDate.parse("2024-03-12")),
+            new Anschluss(UUID.fromString("20000000-0000-0000-0000-000000000502"),
+                    UUID.fromString("20000000-0000-0000-0000-0000000000a1"), "NA-2", "Anschluss Halle 2",
+                    "47110000002", 250, 200, new BigDecimal("23.1"), 96, LocalDate.parse("2026-10-01")),
+            new Anschluss(UUID.fromString("20000000-0000-0000-0000-000000000503"),
+                    UUID.fromString("20000000-0000-0000-0000-0000000000a2"), "NA-3", "Anschluss Lindach",
+                    "47110000003", 160, 120, new BigDecimal("23.8"), 88, LocalDate.parse("2026-10-15")));
+
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry r) {
         r.add("spring.datasource.url", () -> JDBC);
@@ -115,6 +141,95 @@ class DemoRundgangAufbau {
         KennzahlLauf.Lauf lauf = kennzahlen.lauf(Instant.now());
         System.out.println("Rundgang: " + reihe.size() + " Monate an MS-20 und BZ-1 (" + neu + " Bezugswerte neu), "
                 + "Kennzahlen: " + lauf);
+
+        // Referenzwelt: Netzanschluss (vereinbarte Leistung) als Ines, Tarif als Jonas
+        // (kundenadministrator), Leistungspreis als Plattform-Admin - jede Einstellung über ihre
+        // echte Route mit dem Recht, das sie trägt. Je Anlage für sich; ein Fehler an einer Anlage
+        // (z. B. Lindach noch nicht am Standort) hält die anderen nicht auf.
+        int tarife = 0;
+        for (Anschluss a : ANSCHLUESSE) {
+            try {
+                netzanschluss(a);
+            } catch (Exception e) {
+                System.out.println("Rundgang: Netzanschluss " + a.kennzeichen() + " übersprungen (" + e.getMessage() + ")");
+            }
+            tarif(a);
+            leistungspreis(a);
+            tarife++;
+        }
+        System.out.println("Rundgang: Referenzwerte an " + tarife + " Anlagen (Tarif, Leistungspreis, Netzanschluss).");
+    }
+
+    /**
+     * Netzanschluss mit vereinbarter Leistung (Ines). Idempotent: liegt schon ein {@code NA-x} vor, wird er auf die
+     * Referenzwerte gebracht; sonst wird der HEUTE gebundene Anschluss der Anlage auf die Referenz gehoben (statt einen
+     * zweiten daneben zu legen); erst ohne jede Bindung wird neu angelegt. Danach die Bindung (schon gebunden = ok).
+     */
+    private void netzanschluss(Anschluss a) throws Exception {
+        String basis = "/api/v1/standorte/" + a.standort() + "/netzanschluesse";
+        JsonNode liste = lies(basis, ines());
+        UUID id = null;
+        // 1) Schon unter dem Referenz-Kennzeichen da?
+        for (JsonNode n : liste.path("netzanschluesse")) {
+            if (a.kennzeichen().equals(n.path("kennzeichen").asText())) {
+                id = UUID.fromString(n.path("id").asText());
+                break;
+            }
+        }
+        // 2) Sonst der heute gebundene Anschluss dieser Anlage (eine Alt-Bindung auf die Referenz heben).
+        if (id == null) {
+            for (JsonNode n : liste.path("netzanschluesse")) {
+                for (JsonNode b : n.path("anlagen")) {
+                    if (a.site().toString().equals(b.path("anlage").path("id").asText())
+                            && b.path("gueltig_bis").isNull()) {
+                        id = UUID.fromString(n.path("id").asText());
+                    }
+                }
+            }
+        }
+        Map<String, Object> felder = new LinkedHashMap<>();
+        felder.put("kennzeichen", a.kennzeichen());
+        felder.put("name", a.name());
+        felder.put("malo", a.malo());
+        felder.put("netzbetreiber", NETZBETREIBER);
+        felder.put("anschluss_kva", a.anschlussKva());
+        felder.put("vereinbart_kw", a.vereinbartKw());
+        felder.put("messung", "RLM");
+        if (id == null) {
+            MockHttpServletResponse r = antwort("POST", basis, felder, ines(), null);
+            if (r.getStatus() == 201) {
+                id = UUID.fromString(JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8)).path("id").asText());
+            } else if (r.getStatus() != 409) {
+                throw new IllegalStateException("POST " + basis + " → " + r.getStatus());
+            }
+        } else {
+            status("PUT", basis + "/" + id, felder, ines(), null);
+        }
+        if (id != null) {
+            status("POST", basis + "/" + id + "/anlagen",
+                    Map.of("anlage_id", a.site().toString(), "gueltig_ab", a.gebundenAb().toString()), ines(), null);
+        }
+    }
+
+    /** Arbeitspreis als fester Tarif (Jonas: {@code anlage.verwalten}); die ganze Darstellung GET-dann-PUT. */
+    private void tarif(Anschluss a) throws Exception {
+        JsonNode site = lies("/api/v1/sites/" + a.site(), jonas());
+        ObjectNode put = JSON.createObjectNode();
+        for (String f : List.of("name", "biddingZone", "latitude", "longitude", "plantKind",
+                "anzulegenderWertCtKwh", "netzladenErlaubt", "maxFeedInKw")) {
+            put.set(f, site.has(f) ? site.get(f) : NullNode.getInstance());
+        }
+        put.put("tarifArt", "fest");
+        put.put("tarifParamCtKwh", a.arbeitspreisCtKwh());
+        status("PUT", "/api/v1/sites/" + a.site(), put, jonas(), null);
+    }
+
+    /** Leistungspreis + Abrechnung (Plattform-Admin über den Mandanten-Umschalter {@code X-Tenant-Id}). */
+    private void leistungspreis(Anschluss a) throws Exception {
+        Map<String, Object> cfg = new LinkedHashMap<>();
+        cfg.put("leistungspreisEurKw", a.leistungspreisEurKw());
+        cfg.put("abrechnungLeistung", "jahr");
+        status("PUT", "/api/v1/admin/sites/" + a.site() + "/optimizer-config", cfg, plattformAdmin(), TENANT.toString());
     }
 
     /**
@@ -159,22 +274,65 @@ class DemoRundgangAufbau {
     }
 
     private int status(String method, String path, Object body) throws Exception {
-        var b = request(HttpMethod.valueOf(method), path).with(authentication(ines()))
-                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(body));
-        var r = mvc.perform(b).andReturn().getResponse();
+        return status(method, path, body, ines(), null);
+    }
+
+    /** Eine Route rufen (gegebener Akteur, optionaler Mandanten-Umschalter) und den Status zurückgeben; wirft bei echten Fehlern. */
+    private int status(String method, String path, Object body, Authentication auth, String tenant) throws Exception {
+        MockHttpServletResponse r = antwort(method, path, body, auth, tenant);
         if (r.getStatus() >= 400 && r.getStatus() != 409) {
-            throw new IllegalStateException(method + " " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus() + " "
-                    + r.getContentAsString(StandardCharsets.UTF_8));
+            throw new IllegalStateException(method + " " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus()
+                    + " " + r.getContentAsString(StandardCharsets.UTF_8));
         }
         return r.getStatus();
     }
 
-    /** Ines Kaltenbach (Energiemanager) mit dem Subject des lokalen Realms — wie die Welt 1.10. */
-    private static Authentication ines() {
-        Jwt jwt = Jwt.withTokenValue("rundgang").header("alg", "none").subject(AhrenbergWelt.SEED_SUBJECTS.get("IK"))
+    private MockHttpServletResponse antwort(String method, String path, Object body, Authentication auth, String tenant)
+            throws Exception {
+        var b = request(HttpMethod.valueOf(method), path).with(authentication(auth))
+                .contentType(MediaType.APPLICATION_JSON);
+        if (body != null) {
+            b = b.content(JSON.writeValueAsString(body));
+        }
+        if (tenant != null) {
+            b = b.header("X-Tenant-Id", tenant);
+        }
+        return mvc.perform(b).andReturn().getResponse();
+    }
+
+    /** Eine Lese-Route als JSON. */
+    private JsonNode lies(String path, Authentication auth) throws Exception {
+        MockHttpServletResponse r = antwort("GET", path, null, auth, null);
+        if (r.getStatus() >= 400) {
+            throw new IllegalStateException("GET " + path + " → " + r.getStatus() + " "
+                    + r.getContentAsString(StandardCharsets.UTF_8));
+        }
+        return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));
+    }
+
+    /** Ein Realm-Benutzer der Welt 1.10 mit dem gegebenen Subject und Realm-Rollen. */
+    private static Authentication benutzer(String subject, String name, List<String> rollen, boolean mitTenant) {
+        var b = Jwt.withTokenValue("rundgang").header("alg", "none").subject(subject)
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600))
-                .claim("tenant_id", TENANT.toString()).claim("realm_access", Map.of("roles", List.of()))
-                .claim("name", "Ines Kaltenbach").claim("preferred_username", "ines").build();
-        return new KeycloakRealmRoleConverter().convert(jwt);
+                .claim("realm_access", Map.of("roles", rollen)).claim("name", name);
+        if (mitTenant) {
+            b = b.claim("tenant_id", TENANT.toString());
+        }
+        return new KeycloakRealmRoleConverter().convert(b.build());
+    }
+
+    /** Ines Kaltenbach (Energiemanager) — wie die Welt 1.10; trägt u. a. {@code netzanschluss.verwalten}. */
+    private static Authentication ines() {
+        return benutzer(AhrenbergWelt.SEED_SUBJECTS.get("IK"), "Ines Kaltenbach", List.of(), true);
+    }
+
+    /** Jonas Wendlinger (Kundenadministrator) — trägt {@code anlage.verwalten} (Tarif am Standort/an der Anlage). */
+    private static Authentication jonas() {
+        return benutzer(AhrenbergWelt.SEED_SUBJECTS.get("JW"), "Jonas Wendlinger", List.of(), true);
+    }
+
+    /** Plattform-Betrieb (platform-admin) — der Leistungspreis ist admin-geschützt; der Mandant kommt über {@code X-Tenant-Id}. */
+    private static Authentication plattformAdmin() {
+        return benutzer("20000000-0000-0000-0000-0000000008ad", "Plattform-Betrieb", List.of("platform-admin"), false);
     }
 }
