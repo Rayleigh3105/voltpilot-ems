@@ -1524,11 +1524,11 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     const drucker = ts.createPrinter({ removeComments: true });
     const tags = new Set(['Button', 'button', 'Switch', 'Input', 'input', 'select', 'textarea']);
     const verwendeteFortschreibungen = new Set<(typeof kundenBestand.fortschreibungen)[number]>();
-    // Nachzüge main → uems (26.09.2026, 04.10.2026 Steuerung neu): ausgelieferte Neubauten von main, je Bedienelement
-    // mit Commit und Nachfolger. Steht eine Datei in beiden, gilt `main` des neueren; die Entfallenen zählen zusammen.
+    // Nachzüge main → uems (26.09.2026, 04.10.2026 Steuerung neu, 05.10.2026 OCPP): ausgelieferte Neubauten von main, je
+    // Bedienelement mit Commit und Nachfolger. Steht eine Datei in mehreren, gilt `main` des neuesten; die Entfallenen zählen zusammen.
     type NachzugDatei = { main?: string[]; entfallen_datei?: boolean; wohin: string; entfallen: { vorher: string; commit: string }[] };
     type Nachzug = { main: string; dateien: Record<string, NachzugDatei> };
-    const nachzuege: Nachzug[] = [kundenBestand.mainNachzug, kundenBestand.mainNachzugSteuerung];
+    const nachzuege: Nachzug[] = [kundenBestand.mainNachzug, kundenBestand.mainNachzugSteuerung, kundenBestand.mainNachzugOcpp];
     const nachzugDateien: Record<string, NachzugDatei & { nachzug: string }> = {};
     for (const n of nachzuege) {
       for (const [pfad, d] of Object.entries(n.dateien)) {
