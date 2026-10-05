@@ -20,6 +20,7 @@ Voraussetzungen: Docker, JDK 21, Node.js 22.
 |---|---|
 | Stapel, Seed 1.4, Welt der Referenzdatei 1.10, Bühnen-Uhr 30.04.2029 | `infra/local/pruefumgebung/ahrenberg.sh aufbauen` im Projekt `voltpilot-demo` ([Prüfumgebung](../../../docs/agents/root/uems-pruefumgebung.md)) |
 | Simulierte Box der Anlage „Demo Site Berlin“ (Mandant `demo`) | `edge-simulator` → EMQX → ingest → Redpanda → writer |
+| Simulierte Boxen der drei Ahrenberg-Anlagen (Mandant Ahrenberg) | `edge-sim-ahrenberg-halle1/-halle2/-lindach` mit je eigenem Profil passend zur Referenzwelt: Halle 1 steuernd (PV + Speicher + Lastspitzenkappung), Halle 2 und Werk Lindach reine Messung ohne Einspeisung ([Profile](../../../tools/edge-simulator/README.md)) |
 | Börsenpreise, Wetter, Prognose, Fahrplan, Ersparnis-Simulation | `market-data`, `weather-collector`, `forecast-collector`, `optimizer`, `simulation` (Preise und Wetter aus dem Internet) |
 | Demo-Zugänge | `pruefer` (Einsicht bei Ahrenberg, über `ahrenberg.sh einsicht`), zwei Demo-Kundenbereiche für das Vertragsende über die Betreiber-Routen; einer davon ist beendet |
 
