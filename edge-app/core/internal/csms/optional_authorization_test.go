@@ -13,18 +13,16 @@ import (
 
 // ampereStationWithPhaseLimits is the go-e on the Edge-Light pilot: amperes
 // only, one plug on three phases, 16 A, phase budgets 16/16/16 - the setup
-// whose phase limits make the box harden the station's authorization.
-func ampereStationWithPhaseLimits(t *testing.T, id string, notSupported map[string]bool, config map[string]string) (*csms.Server, *station) {
+// whose phase limits make the box harden the station's authorization. setup
+// shapes the station's configuration keys before the policy arrives.
+func ampereStationWithPhaseLimits(t *testing.T, id string, setup func(st *station)) (*csms.Server, *station) {
 	t.Helper()
 	now := time.Now().UTC()
 	s, endpoint := startServerWithClock(t, func() time.Time { return now }, id)
 	cp, st := connectStation(t, s, endpoint, id, func() time.Time { return now })
 	st.mu.Lock()
 	st.config[csms.KeyAllowedChargingRateUnit] = "Current"
-	st.notSupported = notSupported
-	for k, v := range config {
-		st.config[k] = v
-	}
+	setup(st)
 	st.mu.Unlock()
 	if _, err := cp.StatusNotification(1, core.NoError, core.ChargePointStatusAvailable); err != nil {
 		t.Fatal(err)
@@ -39,39 +37,96 @@ func ampereStationWithPhaseLimits(t *testing.T, id string, notSupported map[stri
 	return s, st
 }
 
+// goeFirmware594 is the go-e Charger V4 (firmware 59.4) as its OCPP
+// documentation lists the keys and as it answered on the pilot: no
+// authorization cache, no LocalPreAuthorize, no StopTransactionOnInvalidId, no
+// MaxEnergyOnInvalidId, AuthorizeRemoteTxRequests NotSupported but read as
+// false; the offline and local-list switches are writable.
+func goeFirmware594(st *station) {
+	st.notSupported = map[string]bool{"AuthorizationCacheEnabled": true, "LocalPreAuthorize": true,
+		"StopTransactionOnInvalidId": true, "MaxEnergyOnInvalidId": true, "AuthorizeRemoteTxRequests": true}
+	st.readOnly = map[string]bool{}
+	st.config["AuthorizeRemoteTxRequests"] = "false"
+}
+
 // TestAnAbsentOptionalAuthorizationKeyIsAlreadyTheSafeState: a station that
-// has no authorization cache answers NotSupported and lists the key as unknown
-// - there is no cache to switch off, so commissioning goes on, and every
-// REQUIRED key is still set. Before, the go-e (firmware 59.4) could never be
+// lacks a feature answers NotSupported and lists the key as unknown - there is
+// nothing to switch off, so commissioning goes on, and every key the station
+// HAS is still set. Before, the go-e (firmware 59.4) could never be
 // commissioned, and with phase limits no charge could even start.
 func TestAnAbsentOptionalAuthorizationKeyIsAlreadyTheSafeState(t *testing.T) {
-	s, st := ampereStationWithPhaseLimits(t, "GOE",
-		map[string]bool{"AuthorizationCacheEnabled": true}, nil)
+	s, st := ampereStationWithPhaseLimits(t, "GOE", goeFirmware594)
 	if err := s.Commission(ctx5(t), "GOE", 11, 11, 10*time.Second); err != nil {
-		t.Fatalf("a missing optional key must not block commissioning: %v", err)
+		t.Fatalf("the go-e's missing keys must not block commissioning: %v", err)
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if _, has := st.config["AuthorizationCacheEnabled"]; has {
-		t.Fatal("nothing may be written for a key the station does not have")
-	}
-	for _, want := range []string{"LocalAuthorizeOffline=false", "LocalPreAuthorize=false",
-		"StopTransactionOnInvalidId=true", "AuthorizeRemoteTxRequests=true"} {
+	for _, want := range []string{"AllowOfflineTxForUnknownId=false", "LocalAuthorizeOffline=false",
+		"LocalAuthListEnabled=false"} {
 		if !slices.Contains(st.changed, want) {
-			t.Fatalf("required key %s not set; changed: %v", want, st.changed)
+			t.Fatalf("existing key %s not set; changed: %v", want, st.changed)
 		}
 	}
 }
 
-// TestARequiredAuthorizationKeyMustStillBeAccepted - the exception is for the
-// optional keys only: a station that refuses LocalAuthorizeOffline could start
-// a charge without the box and is still refused.
-func TestARequiredAuthorizationKeyMustStillBeAccepted(t *testing.T) {
-	s, _ := ampereStationWithPhaseLimits(t, "STRICT",
-		map[string]bool{"LocalAuthorizeOffline": true}, nil)
-	err := s.Commission(ctx5(t), "STRICT", 11, 11, 10*time.Second)
-	if err == nil || !strings.Contains(err.Error(), "LocalAuthorizeOffline") {
-		t.Fatalf("a refused required key must block commissioning, got %v", err)
+// TestAReadOnlyKeyMustAlreadyHoldTheSafeValue - a refused write is fine when
+// the station already is in the safe state, and blocks when it is not.
+func TestAReadOnlyKeyMustAlreadyHoldTheSafeValue(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		blocked bool
+	}{{"false", false}, {"true", true}} {
+		t.Run("AllowOfflineTxForUnknownId="+tc.value, func(t *testing.T) {
+			s, _ := ampereStationWithPhaseLimits(t, "OFFLINE", func(st *station) {
+				goeFirmware594(st)
+				st.readOnly["AllowOfflineTxForUnknownId"] = true
+				st.config["AllowOfflineTxForUnknownId"] = tc.value
+			})
+			err := s.Commission(ctx5(t), "OFFLINE", 11, 11, 10*time.Second)
+			if !tc.blocked && err != nil {
+				t.Fatalf("a read-only key already in the safe state must not block: %v", err)
+			}
+			if tc.blocked && (err == nil || !strings.Contains(err.Error(), "AllowOfflineTxForUnknownId (Rejected, steht auf true)")) {
+				t.Fatalf("a read-only key in the unsafe state must block commissioning, got %v", err)
+			}
+		})
+	}
+}
+
+// TestARemoteStartTheBoxCheckedNeedsNoSecondCheck - AuthorizeRemoteTxRequests is
+// written where the station allows it; one that holds it fixed (the go-e: false)
+// is still commissioned, because the box itself checks every remote start
+// before it sends it, and the StartTransaction after it.
+func TestARemoteStartTheBoxCheckedNeedsNoSecondCheck(t *testing.T) {
+	s, st := ampereStationWithPhaseLimits(t, "WRITABLE", func(*station) {})
+	if err := s.Commission(ctx5(t), "WRITABLE", 11, 11, 10*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	written := slices.Contains(st.changed, "AuthorizeRemoteTxRequests=true")
+	st.mu.Unlock()
+	if !written {
+		t.Fatal("a writable AuthorizeRemoteTxRequests must still be set to true")
+	}
+
+	s, _ = ampereStationWithPhaseLimits(t, "FIXED", goeFirmware594)
+	if err := s.Commission(ctx5(t), "FIXED", 11, 11, 10*time.Second); err != nil {
+		t.Fatalf("a fixed AuthorizeRemoteTxRequests must not block commissioning: %v", err)
+	}
+}
+
+// TestALocalListThatStaysOnBlocks - a missing LocalPreAuthorize is only safe
+// while there is no local id store; a local list the station cannot switch
+// off still blocks.
+func TestALocalListThatStaysOnBlocks(t *testing.T) {
+	s, _ := ampereStationWithPhaseLimits(t, "LIST", func(st *station) {
+		goeFirmware594(st)
+		st.readOnly["LocalAuthListEnabled"] = true
+		st.config["LocalAuthListEnabled"] = "true"
+	})
+	err := s.Commission(ctx5(t), "LIST", 11, 11, 10*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "LocalAuthListEnabled") {
+		t.Fatalf("a local list that stays on must block commissioning, got %v", err)
 	}
 }
 
@@ -79,9 +134,10 @@ func TestARequiredAuthorizationKeyMustStillBeAccepted(t *testing.T) {
 // only "feature absent" when the station also says it does not know the key.
 // A station that reports the cache as present and ON keeps blocking.
 func TestAnOptionalKeyTheStationHasMustStillHoldTheSafeValue(t *testing.T) {
-	s, _ := ampereStationWithPhaseLimits(t, "CACHED",
-		map[string]bool{"AuthorizationCacheEnabled": true},
-		map[string]string{"AuthorizationCacheEnabled": "true"})
+	s, _ := ampereStationWithPhaseLimits(t, "CACHED", func(st *station) {
+		st.notSupported = map[string]bool{"AuthorizationCacheEnabled": true}
+		st.config["AuthorizationCacheEnabled"] = "true"
+	})
 	err := s.Commission(ctx5(t), "CACHED", 11, 11, 10*time.Second)
 	if err == nil || !strings.Contains(err.Error(), "AuthorizationCacheEnabled") {
 		t.Fatalf("an existing cache that cannot be switched off must block, got %v", err)
