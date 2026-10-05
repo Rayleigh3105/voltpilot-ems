@@ -15,11 +15,14 @@ import type {
   FahrerAbfahrt, FahrerAnfrage, FahrerEinstellungen, LadepunktAnsicht, LadepunktErtraege, LadepunktErtragTeil,
   LadepunktListe, Rueckspeisen,
 } from '../ladepunktErtraege';
+import {
+  MISPEL_LADESTAND_ZULETZT, MISPEL_LAEDT_IMMER_SOFORT, MISPEL_PLAN_VON, MISPEL_ZURUECKSPEISEN_RUHT,
+} from '../glossar';
 import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { quellenAnteil, type GeraetBild, type Reihen } from './bild';
 import { liste } from './liste';
-import { N, fEur, zahl0 } from './zeit';
+import { N, TAG, fEur, uhr, uhrVon, zahl0, zahl1, type Raster } from './zeit';
 
 export type LadeWahl = 'aus' | 'smart' | 'schnell';
 export type LadeQuelle = 'sonne' | 'min' | 'guenstig';
@@ -253,8 +256,16 @@ export interface WallboxMispel {
   fahrer: FahrerEinstellungen;
   fahrzeug: FahrzeugStand;
   ladestandPct: number | null;
+  /** MiSpeL MP-41c (BK-41c-2 A): die eigene Uhr des frischen Ladestands (ms); `null` = unbekannt (älterer Stand). */
+  ladestandUm: number | null;
+  /** MiSpeL MP-41c: ein Ladestand älter als das Fenster - „Ladestand zuletzt 62 % um 12:58“ im Kopf. */
+  ladestandZuletzt: { pct: number; um: number } | null;
   /** Welche Stufe die Fähigkeit des Ladepunkts heute trägt (A1 S. 26 Fn. 21). */
   traegt: Record<Rueckspeisen, boolean>;
+  /** MiSpeL MP-41c: was das Zurückspeisen gerade anhält (derselbe Grund wie im Optimierer), `null` = nichts. */
+  halt: RueckspeiseHalt | null;
+  /** Die Szene, die den Ladepunkt pausiert hat (ihr Name), wenn `halt` = `szene`. */
+  szene: string | null;
 }
 
 const OHNE_FAHRER = (ansicht: LadepunktAnsicht): FahrerEinstellungen => ({
@@ -276,13 +287,56 @@ export function wallboxMispel(g: GeraetBild, ladepunkte: LadepunktListe | null |
   const fahrzeug: FahrzeugStand = !l?.angesteckt ? 'kein_auto'
     : l.fahrzeugBidirektional === false ? 'ohne_rueckspeisen'
       : l.ladestandPct != null ? 'mit_ladestand' : 'ohne_ladestand';
+  const zuletztPct = fahrzeug === 'ohne_ladestand' ? l?.ladestandZuletztPct ?? null : null;
+  const um = l?.ladestandUm ?? null;
   return {
     ansicht,
     fahrer: ansicht.fahrer_einstellungen ?? OHNE_FAHRER(ansicht),
     fahrzeug,
     ladestandPct: fahrzeug === 'mit_ladestand' ? l?.ladestandPct ?? null : null,
+    ladestandUm: fahrzeug === 'mit_ladestand' ? um : null,
+    ladestandZuletzt: zuletztPct != null && um != null ? { pct: zuletztPct, um } : null,
     traegt: { aus: true, v2h: f.v2h, v2g: f.v2g },
+    halt: rueckspeiseHalt(g),
+    szene: g.szene ?? null,
   };
+}
+
+/**
+ * MiSpeL MP-41c - was das Zurückspeisen gerade anhält: der Eingriff am Stecker
+ * („Aus“, „Schnell“), die dauerhafte Steuerart „sofort“ (BK-41c-3 A: „Schnell“
+ * heißt immer nur laden) oder eine Szene. Dieselben Wörter wie
+ * `fahrzeugspeicher.halte_grund` im Optimierer und der Entladeschutz der Box,
+ * in derselben Reihenfolge: der Lademodus am Stecker vor der Szene.
+ */
+export type RueckspeiseHalt = 'lademodus_aus' | 'lademodus_schnell' | 'lademodus_sofort' | 'szene';
+
+export function rueckspeiseHalt(g: Pick<GeraetBild, 'eingriff' | 'steuerart' | 'szene'>): RueckspeiseHalt | null {
+  if (g.eingriff) return g.eingriff.art === 'aus' ? 'lademodus_aus' : 'lademodus_schnell';
+  if (g.steuerart?.quelle === 'sofort') return 'lademodus_sofort';
+  return g.szene ? 'szene' : null;
+}
+
+/**
+ * Der Satz unter „Aus · Smart · Schnell“ bei „Schnell“ (BK-41c-3 A): ein
+ * Eingriff gilt für diese Ladung, die Steuerart „sofort“ immer. Nur an einer
+ * Wallbox-Karte (`mispel`); jeder andere Ladepunkt behält seinen Satz (Bestand).
+ */
+export function schnellSatz(g: Pick<GeraetBild, 'eingriff'>, mispel: boolean): string {
+  if (mispel && !g.eingriff) return `${MISPEL_LAEDT_IMMER_SOFORT} mit voller Leistung, auch mit Netzstrom — so ist dieser Ladepunkt eingestellt.`;
+  return 'Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.';
+}
+
+/** Das Alter des Ladestands nach seiner Uhr: bis eine Minute „jetzt“, danach „vor 3 Min.“ (BK-41c-2 A). */
+export function ladestandAlterText(umMs: number | null, nowMs: number): string {
+  if (umMs == null || nowMs - umMs <= 60_000) return 'jetzt';
+  return `vor ${zahl0(Math.floor((nowMs - umMs) / 60_000))} Min.`;
+}
+
+/** Der Kopf bei einem alten Ladestand: „Ladestand zuletzt 62 % um 12:58“ (BK-41c-2 A); `null` ohne. */
+export function ladestandZuletztText(m: WallboxMispel | null, r: Raster): string | null {
+  const z = m?.ladestandZuletzt;
+  return z ? `${MISPEL_LADESTAND_ZULETZT} ${zahl0(z.pct)}\u00a0% um ${uhrVon(r, z.um)}` : null;
 }
 
 /** Reichweite zu einem Ladestand, auf 10 km gerundet („≈ 300 km“, untrennbar); `null` ohne Kapazität - unbekannt ist keine Null. */
@@ -379,6 +433,7 @@ export function rueckspeiseSatz(m: WallboxMispel): string {
     return f.rueckspeisen === 'aus' ? 'Das Auto lädt nur.' : `„${RUECKSPEISEN_WORT[f.rueckspeisen]}“ gilt wieder, sobald ein Auto mit Rückspeise-Funktion ansteckt.`;
   }
   if (f.rueckspeisen === 'aus') return 'Das Auto lädt nur und gibt nichts ab.';
+  if (ruhtZurueckspeisen(m)) return haltSatz(m);
   if (f.reserve_pct == null) return 'Ohne Reserve gibt das Auto nichts ab. Legen Sie unter „Abfahrt und Reserve“ eine Reserve fest.';
   const nie = `nie unter ${pctKm(f.reserve_pct, f.km_je_prozent)}`;
   const wohin = f.rueckspeisen_wirksam === 'v2g' ? 'erst ans Haus, dann ins Netz' : 'ans Haus';
@@ -392,9 +447,116 @@ export function rueckspeiseSatz(m: WallboxMispel): string {
 
 export const RUECKSPEISEN_WORT: Record<Rueckspeisen, string> = { aus: 'Aus', v2h: 'Ins Haus', v2g: 'Haus + Netz' };
 
-/** Plant VoltPilot für diesen Ladepunkt gerade ein Zurückspeisen (negativer Sollwert im Fahrplan)? */
-export function plantZurueck(g: GeraetBild): boolean {
-  return g.kw.some((v, t) => g.herkunft[t] === 'plan' && (v ?? 0) < -0.02);
+/**
+ * Ruht das Zurückspeisen sichtbar? Nur wo es sonst liefe: der Fahrer will es,
+ * das Auto kann es (oder es ist unbekannt), der Ladepunkt trägt es heute.
+ */
+export function ruhtZurueckspeisen(m: Pick<WallboxMispel, 'halt' | 'fahrzeug' | 'fahrer'>): boolean {
+  return m.halt != null && m.fahrzeug !== 'ohne_rueckspeisen' && m.fahrer.rueckspeisen !== 'aus' && m.fahrer.rueckspeisen_wirksam !== 'aus';
+}
+
+/**
+ * „Zurückspeisen ruht …“ (BK-41c-3 A, MP-39b): Aus, Schnell und eine Szene
+ * halten es an, ebenso die dauerhafte Steuerart „sofort“. Die Wahl des Fahrers
+ * bleibt gespeichert - ein Halt ist keine Änderung der Einstellung.
+ */
+export function haltSatz(m: Pick<WallboxMispel, 'halt' | 'szene' | 'fahrer'>): string {
+  const wahl = ` Ihre Wahl „${RUECKSPEISEN_WORT[m.fahrer.rueckspeisen]}“ bleibt gespeichert.`;
+  if (m.halt === 'lademodus_sofort') return `${MISPEL_ZURUECKSPEISEN_RUHT}, solange „Schnell“ gilt — mit „Smart“ plant VoltPilot es wieder.${wahl}`;
+  if (m.halt === 'szene') return `${MISPEL_ZURUECKSPEISEN_RUHT}, solange die Szene „${m.szene ?? ''}“ läuft.${wahl}`;
+  return `${MISPEL_ZURUECKSPEISEN_RUHT} bis dahin.${wahl}`;
+}
+
+/** Der geplante Rückspeise-Teil eines Laufs (BK-41c-1 A) - der PLAN, nicht der Auftrag an die Box und nicht die Messung. */
+export interface RueckspeisePlan {
+  /** Erste Viertelstunde des ersten Fensters und das Ende dieses Fensters (Raster, halboffen). */
+  von: number;
+  bis: number;
+  /** Weitere Rückspeise-Fenster danach im selben Lauf. */
+  weitere: number;
+  /** Geplante Menge aller Fenster in kWh (ungerundet). */
+  kwh: number;
+  /** Stand des Laufs (`generatedAt`, ms); `null` = unbekannt. */
+  standMs: number | null;
+  /** Zurückspeisen je Viertelstunde in kW (Betrag) - die grünen Viertelstunden des Bands. */
+  zurueck: (number | null)[];
+}
+
+const RUECK_SCHWELLE_KW = 0.02;
+
+/**
+ * Die Rückspeise-Viertelstunden des Fahrzeug-Eintrags (`reason_code`
+ * `fahrzeug_rueckspeisen`, je −kW): das erste Fenster von–bis, die Menge und
+ * der Stand. `null`, wenn der Lauf ab jetzt keine trägt.
+ */
+export function rueckspeisePlan(g: Pick<GeraetBild, 'fahrzeugPlan'>): RueckspeisePlan | null {
+  const fp = g.fahrzeugPlan;
+  if (!fp) return null;
+  const fenster: [number, number][] = [];
+  let kwh = 0;
+  for (let t = 0; t < fp.zurueck.length; t++) {
+    const kw = fp.zurueck[t];
+    if (!(kw != null && kw > RUECK_SCHWELLE_KW)) continue;
+    kwh += kw * 0.25;
+    const letztes = fenster[fenster.length - 1];
+    if (letztes && letztes[1] === t) letztes[1] = t + 1;
+    else fenster.push([t, t + 1]);
+  }
+  if (!fenster.length) return null;
+  return { von: fenster[0][0], bis: fenster[0][1], weitere: fenster.length - 1, kwh, standMs: fp.standMs, zurueck: fp.zurueck };
+}
+
+/** Plant VoltPilot für diesen Ladepunkt ein Zurückspeisen (Rückspeise-Viertelstunden im Fahrzeug-Eintrag)? */
+export function plantZurueck(g: Pick<GeraetBild, 'fahrzeugPlan'>): boolean {
+  return rueckspeisePlan(g) != null;
+}
+
+/** Wohin der Plan zurückspeist - die wirksame Stufe in Worten. */
+export function rueckspeiseWohin(f: Pick<FahrerEinstellungen, 'rueckspeisen_wirksam'>): string {
+  return f.rueckspeisen_wirksam === 'v2g' ? 'ans Haus und ins Netz' : 'ans Haus';
+}
+
+const kwhUngefaehr = (kwh: number) => `≈\u00a0${kwh >= 1 ? zahl0(kwh) : zahl1(kwh)}\u00a0kWh`;
+
+/**
+ * Die Plan-Zeile (BK-41c-1 A): „Heute 18:00–21:30 ans Haus · ≈ 9 kWh“,
+ * darunter „Plan von 13:00 · nie unter 40 % · morgen 07:15 wieder 80 %“.
+ */
+export function planZeile(p: RueckspeisePlan, m: Pick<WallboxMispel, 'fahrer'>, r: Raster): { titel: string; unter: string } {
+  const f = m.fahrer;
+  const tag = p.von < TAG ? 'Heute' : 'Morgen';
+  const bis = p.von < TAG && p.bis > TAG ? `morgen ${uhr(p.bis)}` : uhr(p.bis);
+  const weitere = p.weitere > 0 ? ` · +${p.weitere} weitere` : '';
+  const ab = naechsteAbfahrt(f, r.nowMs);
+  const unter = [
+    p.standMs != null ? `${MISPEL_PLAN_VON} ${uhrVon(r, p.standMs)}` : null,
+    f.reserve_pct != null ? `nie unter ${zahl0(f.reserve_pct)}\u00a0%` : null,
+    ab ? `${ab.wann} wieder ${zahl0(ab.socPct)}\u00a0%` : null,
+  ].filter(Boolean).join(' · ');
+  return { titel: `${tag} ${uhr(p.von)}–${bis} ${rueckspeiseWohin(f)}${weitere} · ${kwhUngefaehr(p.kwh)}`, unter };
+}
+
+/**
+ * Was die Karte zum geplanten Zurückspeisen sagt (BK-41c-1 A, die Lagen der
+ * Abstimmung): `geplant` mit Plan-Zeile und Band; `kein` - der Lauf hat das
+ * Auto gerechnet (Zeilen mit 0), aber keine Rückspeise-Viertelstunde;
+ * `nicht_eingeschaltet` - kein Fahrzeug-Eintrag im jüngsten Lauf. `null`, wo
+ * schon der Satz zur Stufe alles sagt: „Aus“, ein Auto ohne Rückspeise-
+ * Funktion, ein Ladepunkt, der es nicht trägt, ohne Reserve und angehalten.
+ */
+export type RueckspeiseLage =
+  | { art: 'geplant'; plan: RueckspeisePlan; titel: string; unter: string }
+  | { art: 'kein' | 'nicht_eingeschaltet'; satz: string };
+
+export function rueckspeiseLage(g: Pick<GeraetBild, 'fahrzeugPlan'>, m: WallboxMispel, r: Raster): RueckspeiseLage | null {
+  const f = m.fahrer;
+  if (m.fahrzeug === 'ohne_rueckspeisen' || f.rueckspeisen === 'aus' || f.rueckspeisen_wirksam === 'aus' || f.reserve_pct == null || m.halt) return null;
+  const plan = rueckspeisePlan(g);
+  if (plan) return { art: 'geplant', plan, ...planZeile(plan, m, r) };
+  if (g.fahrzeugPlan) {
+    return { art: 'kein', satz: `Bis ${uhrVon(r, g.fahrzeugPlan.endeMs)} plant VoltPilot kein Zurückspeisen — es lohnt sich gerade nicht.` };
+  }
+  return { art: 'nicht_eingeschaltet', satz: 'An dieser Anlage plant VoltPilot das Zurückspeisen noch nicht. Ihre Wahl ist gespeichert.' };
 }
 
 /**

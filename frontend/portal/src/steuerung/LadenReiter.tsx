@@ -19,10 +19,12 @@ import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
 import { Ic } from './Ic';
 import {
-  abfahrtSetzen, abfahrtZeile, band, ertragZeile, fahrerAnfrage, grenzePruefung, heutigerAnschluss, kmZu,
-  kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan, lokalesDatum, naechsteAbfahrt, naechsteUhrzeit, pctKm, plantZurueck,
-  rueckspeiseSatz, wallboxMispel, wochentageText, type AnschlussStand, type LadeQuelle, type WallboxMispel,
+  abfahrtSetzen, abfahrtZeile, band, ertragZeile, fahrerAnfrage, grenzePruefung, haltSatz, heutigerAnschluss, kmZu,
+  kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan, ladestandAlterText, ladestandZuletztText, lokalesDatum,
+  naechsteAbfahrt, naechsteUhrzeit, pctKm, rueckspeiseLage, rueckspeiseSatz, rueckspeiseWohin, ruhtZurueckspeisen, schnellSatz, wallboxMispel,
+  wochentageText, type AnschlussStand, type LadeQuelle, type RueckspeiseLage, type WallboxMispel,
 } from './laden';
+import { MISPEL_PLAN_VON } from '../glossar';
 import type { BlattZustand, SeitenBild } from './seite';
 import { Zeitband } from './Zeitband';
 import { N, TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
@@ -130,13 +132,15 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
   if (l?.angesteckt) {
     const kurzKarte = l.karte ? kartenKurz(l.karte) : '';
     const wer = [karte?.name?.trim() || null, kurzKarte ? `Karte ${kurzKarte}…` : null].filter(Boolean).join(' · ') || (karte ? fahrzeugName(karte) : 'Ein Auto');
-    sub = `${wer}${l.sitzungSeit ? ` · angesteckt seit ${uhrVon(r, Date.parse(l.sitzungSeit))}` : ''}`;
+    // MiSpeL MP-41c (BK-41c-2 A): ein alter Ladestand verschwindet nicht spurlos - der Kopf sagt, von wann er ist.
+    const zuletzt = ladestandZuletztText(m, r);
+    sub = `${wer}${zuletzt ? ` · ${zuletzt}` : ''}${l.sitzungSeit ? ` · angesteckt seit ${uhrVon(r, Date.parse(l.sitzungSeit))}` : ''}`;
   } else sub = 'Kein Auto angesteckt';
   const platz = bild.rang.indexOf(g.id) + 1;
   const ansage = wahl === 'aus'
     ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ' bis zum Abstecken'}. Danach wieder Smart.`
     : wahl === 'schnell'
-      ? 'Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.'
+      ? schnellSatz(g, m != null)
       : an && g.sonnig && platz > 0 && !g.steuerart?.ziel
         ? `Sonnenstrom · Platz ${platz}`
         : g.warum;
@@ -165,8 +169,15 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
     }
     zielSub = `${art}${fertig != null ? ` · fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? ' · sobald ein Auto ansteckt' : ''}`;
   }
-  const zeile = planKw ? { g, h: 18, kw: mitGemessen(g, planKw, r.jetzt) } : { g, h: 18 };
+  // MiSpeL MP-41c (BK-41c-1 A): was der Lauf zum Zurückspeisen sagt - geplant (Zeile + Band) oder warum nicht.
+  // Ist die Steuerung angehalten, schaltet VoltPilot nichts; das sagt schon der Hinweis der Karte.
+  const lage = m && !bild.funktion.angehalten ? rueckspeiseLage(g, m, r) : null;
+  const zurueck = lage?.art === 'geplant' ? lage.plan.zurueck : undefined;
+  const zeileH = zurueck ? 30 : 18;
+  const zeile = planKw ? { g, h: zeileH, kw: mitGemessen(g, planKw, r.jetzt), zurueck } : { g, h: zeileH, zurueck };
   const t1 = Math.min(N, r.jetzt + TAG);
+  // Die Legende nennt nur, was das Band zeigt: „laden“ nur, wenn die Zeile Laden trägt.
+  const laedtImBand = (zeile.kw ?? g.kw).slice(r.jetzt, t1).some((v) => v != null && v > 0.02);
   const ticks: number[] = [];
   for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
   return (
@@ -214,7 +225,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
           </div>
         </div>
       )}
-      {m && <WallboxTeil g={g} m={m} busy={busy} oeffne={oeffne} onFahrer={onFahrer} nowMs={r.nowMs} />}
+      {m && <WallboxTeil g={g} m={m} lage={lage} busy={busy} oeffne={oeffne} onFahrer={onFahrer} nowMs={r.nowMs} />}
       {wahl === 'smart' && (
         <>
           {!abfahrtStatt && <div className="blk">
@@ -252,7 +263,19 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
             ticks={ticks}
             namen={false}
           />
+          {lage?.art === 'geplant' && m && (
+            <div className="wb-leg" data-legende="zurueck">
+              {laedtImBand && <span><i className="l" />laden</span>}
+              <span><i className="z" />zurück {rueckspeiseWohin(m.fahrer)}</span>
+              {lage.plan.standMs != null && <span className="r">{MISPEL_PLAN_VON} {uhrVon(r, lage.plan.standMs)}</span>}
+            </div>
+          )}
         </>
+      )}
+      {/* BK-41c-3 A: „Abfahrt und Reserve“ bleibt unter „Schnell“ erreichbar - sie gilt wieder mit „Smart“. */}
+      {wahl === 'schnell' && abfahrtStatt && m && (
+        <AbfahrtZeile g={g} m={m} oeffne={oeffne} nowMs={r.nowMs}
+          unter={`gilt wieder mit „Smart“${m.fahrer.reserve_pct != null ? ` · Reserve ${zahl0(m.fahrer.reserve_pct)}\u00a0% bleibt` : ''}`} />
       )}
       {m && <ErtragZeile e={ertraege} komponente={g.id} zuErloesen={zuErloesen} />}
     </section>
@@ -331,8 +354,8 @@ const STUFEN: [Rueckspeisen, 'x' | 'house' | 'pole', string][] = [['aus', 'x', '
  * (MP-41a § 5a), nie über der Fähigkeit des Ladepunkts (A1 S. 26 Fn. 21);
  * V2H vor V2G steht in der Reihenfolge.
  */
-function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
-  g: GeraetBild; m: WallboxMispel; busy: boolean; oeffne: (b: BlattZustand) => void;
+function WallboxTeil({ g, m, lage, busy, oeffne, onFahrer, nowMs }: {
+  g: GeraetBild; m: WallboxMispel; lage: RueckspeiseLage | null; busy: boolean; oeffne: (b: BlattZustand) => void;
   onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>; nowMs: number;
 }) {
   const f = m.fahrer;
@@ -345,7 +368,7 @@ function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
         <div className="soc wb-soc" data-ladestand={m.ladestandPct}>
           <div className="soc-row wb-soc-k">
             <b>{zahl0(m.ladestandPct)} %</b>
-            <span>{[kmZu(m.ladestandPct, km), 'jetzt'].filter(Boolean).join(' · ')}</span>
+            <span data-alter>{[kmZu(m.ladestandPct, km), ladestandAlterText(m.ladestandUm, nowMs)].filter(Boolean).join(' · ')}</span>
           </div>
           <div className="soc-bar" role="img" aria-label={`Ladestand ${zahl0(m.ladestandPct)} %${f.reserve_pct != null ? `, Reserve ${zahl0(f.reserve_pct)} %` : ''}${ab ? `, Abfahrt ${zahl0(ab.socPct)} %` : ''}`}>
             <span style={{ width: `${Math.min(100, Math.max(0, m.ladestandPct))}%` }} />
@@ -386,10 +409,18 @@ function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
             </button>
           ))}
         </div></Recht>
-        <p className="wb-satz">{rueckspeiseSatz(m)}</p>
-        {f.rueckspeisen !== 'aus' && !kannNicht && !plantZurueck(g) && (
-          <p className="leise" data-hinweis="plant-noch-nicht">Zurückspeisen plant VoltPilot noch nicht; bis dahin lädt das Auto nur.</p>
+        <p className="wb-satz" data-halt={ruhtZurueckspeisen(m) ? m.halt ?? undefined : undefined}>{rueckspeiseSatz(m)}</p>
+        {lage?.art === 'geplant' && (
+          <div className="lziel wb-plan" data-zeile="plan-zurueck" role="note">
+            <Ic n="zurueck" s={20} />
+            <span>
+              <b>{lage.titel}</b>
+              <small>{lage.unter}</small>
+            </span>
+            <span />
+          </div>
         )}
+        {lage && lage.art !== 'geplant' && <p className="leise" data-hinweis={lage.art}>{lage.satz}</p>}
         {m.fahrzeug === 'kein_auto' && <p className="leise">Ob ein Auto zurückspeisen kann, prüft die Wallbox beim Anstecken.</p>}
       </div>
       {(m.fahrzeug === 'kein_auto' || m.fahrzeug === 'ohne_ladestand') && (
@@ -407,8 +438,8 @@ function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
 }
 
 /** Das Ladeziel eines Autos mit Ladestand: „Abfahrt und Reserve“ (BK-41 A). */
-function AbfahrtZeile({ g, m, oeffne, nowMs }: { g: GeraetBild; m: WallboxMispel; oeffne: (b: BlattZustand) => void; nowMs: number }) {
-  const z = abfahrtZeile(m.fahrer, nowMs);
+function AbfahrtZeile({ g, m, oeffne, nowMs, unter }: { g: GeraetBild; m: WallboxMispel; oeffne: (b: BlattZustand) => void; nowMs: number; unter?: string }) {
+  const z = { ...abfahrtZeile(m.fahrer, nowMs), ...(unter ? { unter } : {}) };
   return (
     <button type="button" className="lziel" data-zeile="abfahrt" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'abfahrt', id: g.id }); }}>
       <Ic n="flag" s={20} />
@@ -488,9 +519,16 @@ export function AbfahrtBlatt({ k, id, ladepunkte, onSpeichern }: {
         : !/^\d{2}:\d{2}$/.test(um) ? 'Bitte eine Uhrzeit für die Abfahrt eintragen.' : null;
   const kapazitaet = km != null ? (km * 100) / 6 : null;
   const plan = g.kw.map((v, t) => (g.herkunft[t] === 'plan' && (v ?? 0) > 0.02 ? t : -1)).filter((t) => t >= 0);
-  const planSatz = plan.length
-    ? `VoltPilot plant das Laden ab ${uhrTag(plan[0])}${plantZurueck(g) ? ' und das Zurückgeben' : ''}.`
-    : 'Für dieses Auto liegt noch kein Plan vor.';
+  // MiSpeL MP-41c (BK-41c-1 A): das Blatt nennt den Plan wie die Karte - dieselbe Zeile, derselbe Grund.
+  const raster = k.bild.raster;
+  const lage = k.bild.funktion.angehalten ? null : rueckspeiseLage(g, m, raster);
+  const zurueckSatz = lage?.art === 'geplant'
+    ? `Zurückspeisen: ${lage.titel}${lage.plan.standMs != null ? ` (${MISPEL_PLAN_VON} ${uhrVon(raster, lage.plan.standMs)})` : ''}.`
+    : lage ? lage.satz : ruhtZurueckspeisen(m) ? haltSatz(m) : '';
+  const planSatz = [
+    plan.length ? `VoltPilot plant das Laden ab ${uhrTag(plan[0])}.` : lage?.art === 'geplant' ? '' : 'Für dieses Auto liegt noch kein Plan vor.',
+    zurueckSatz,
+  ].filter(Boolean).join(' ');
   const uebernehmen = async () => {
     const anfrage = fahrerAnfrage(f, {
       reserve_pct: reserve,
@@ -552,7 +590,7 @@ export function AbfahrtBlatt({ k, id, ladepunkte, onSpeichern }: {
       </div>
       <div className="blk">
         <h3>Plan</h3>
-        <div className="warum">{planSatz}{f.rueckspeisen !== 'aus' && !plantZurueck(g) ? ' Zurückspeisen plant VoltPilot noch nicht.' : ''}</div>
+        <div className="warum" data-plan>{planSatz}</div>
       </div>
       <div className="blk">
         <h3>Nur die nächste Fahrt</h3>

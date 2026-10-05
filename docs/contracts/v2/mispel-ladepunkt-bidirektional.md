@@ -251,8 +251,9 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
 - **Fläche** der Einstellungen des Fahrers: Wallbox-Karte in Steuerung › Laden (MP-41b). Fähigkeit im Aufbau und
   Erträge: MP-41a. Ob das angesteckte Fahrzeug bidirektional überträgt und seinen Ladestand reicht die Box seit MP-37b
   in die Cloud (§ 5b); das Portal liest beides wahlfrei am Stecker und nennt es ohne Meldung „prüft die Wallbox beim
-  Anstecken“, nie „nein“. Den Ladestand beurteilt die Karte noch nach `meteredAt` statt nach `socMeasuredAt` — eine
-  sichtbare Änderung, die erst ein abgestimmtes Bedienkonzept braucht.
+  Anstecken“, nie „nein“. Den Ladestand beurteilt die Karte seit MP-41c (BK-41c-2 A) nach seiner eigenen Uhr
+  `socMeasuredAt` im 5-Minuten-Fenster, die Leistung weiter nach `meteredAt`; ein älterer Ladestand steht als „Ladestand
+  zuletzt … um …“ im Kopf (Vektoren: Block `karte` in `mispel-ladepunkt-fahrzeug-vectors.json`).
 - **Anbindung an Optimierer und Box:** der Optimierer liest § 5a und sendet den Fahrplan-Block `fahrzeug` (MP-33f); die
   Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e. „Aus“, „Schnell“ und eine
   Szene halten das Zurückspeisen an (MP-39b: Optimierer `fahrzeugspeicher.halte_grund`, Box `entladeschutz` `Lage.Halt`).

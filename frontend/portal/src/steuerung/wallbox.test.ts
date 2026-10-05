@@ -1,11 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { ladestandAlter, messwertAlter, type ChargeConnector } from '../ladepunkte';
 import type { FahrerEinstellungen, LadepunktAnsicht, LadepunktErtraege, LadepunktListe } from '../ladepunktErtraege';
-import type { GeraetBild, LadepunktBezug } from './bild';
+import type { FahrzeugPlan, GeraetBild, LadepunktBezug } from './bild';
+import { N, raster } from './zeit';
 
 const NBSP = String.fromCharCode(160);
 import {
-  abfahrtSetzen, abfahrtZeile, ertragZeile, fahrerAnfrage, kmZu, naechsteAbfahrt, pctKm, plantZurueck, rueckspeiseSatz,
-  wallboxMispel, wochentageText,
+  abfahrtSetzen, abfahrtZeile, ertragZeile, fahrerAnfrage, haltSatz, kmZu, ladestandAlterText, ladestandZuletztText,
+  naechsteAbfahrt, pctKm, planZeile, plantZurueck, rueckspeiseHalt, rueckspeiseLage, rueckspeisePlan, rueckspeiseSatz,
+  schnellSatz, wallboxMispel, wochentageText,
 } from './laden';
 
 /** MiSpeL MP-41b - die Ableitungen der Wallbox-Karte (BK-41 A, Vertrag mispel-ladepunkt-bidirektional.md § 5a). */
@@ -25,9 +30,9 @@ function ansicht(bidi: boolean, f: Partial<FahrerEinstellungen> | null = {}, v2g
   };
 }
 
-function geraet(lp: Partial<LadepunktBezug> | null, kw: (number | null)[] = [], herkunft: GeraetBild['herkunft'] = []): GeraetBild {
+function geraet(lp: Partial<LadepunktBezug> | null, kw: (number | null)[] = [], herkunft: GeraetBild['herkunft'] = [], mehr: Partial<GeraetBild> = {}): GeraetBild {
   return {
-    id: 'e-wb', kw, herkunft,
+    id: 'e-wb', kw, herkunft, eingriff: null, steuerart: null, ...mehr,
     ladepunkt: lp == null ? null : { chargePointId: 'CP', connectorId: 1, angesteckt: true, sitzungSeit: null, sitzungKwh: null, karte: null, laedt: false, ladestandPct: null, fahrzeugBidirektional: null, ...lp },
   } as unknown as GeraetBild;
 }
@@ -105,10 +110,150 @@ describe('MP-41b · der Satz unter „Zurückspeisen“ ist ein Wunsch, kein Ist
     expect(rueckspeiseSatz(m({}, 'ohne_rueckspeisen'))).toBe('„Ins Haus“ gilt wieder, sobald ein Auto mit Rückspeise-Funktion ansteckt.');
   });
 
-  it('„plant VoltPilot noch nicht“, solange der Fahrplan keinen negativen Sollwert trägt', () => {
-    expect(plantZurueck(geraet({}, [null, 3, 3], [null, 'plan', 'plan']))).toBe(false);
-    expect(plantZurueck(geraet({}, [null, 3, -2], [null, 'plan', 'plan']))).toBe(true);
-    expect(plantZurueck(geraet({}, [-2], ['gemessen']))).toBe(false);
+  it('MP-41c: geplant ist ein Zurückspeisen nur aus dem Fahrzeug-Eintrag, nie aus dem Lade-Plan oder der Messung', () => {
+    expect(plantZurueck(geraet({}, [null, 3, -2], [null, 'plan', 'plan']))).toBe(false);
+    expect(plantZurueck(geraet({}, [], [], { fahrzeugPlan: fplan({}) }))).toBe(false);
+    expect(plantZurueck(geraet({}, [], [], { fahrzeugPlan: fplan({ 72: 2.4 }) }))).toBe(true);
+    expect(plantZurueck(geraet({}, [], [], { fahrzeugPlan: fplan({ 72: 0.02 }) }))).toBe(false);
+  });
+});
+
+/** Ein Fahrzeug-Eintrag ab 13:00 (Raster 52) über 96 Viertelstunden, Zurückspeisen in kW (Betrag) je Viertelstunde. */
+function fplan(zurueck: Record<number, number>, standMs: number | null = new Date(2026, 8, 29, 13, 0).getTime()): FahrzeugPlan {
+  const z: (number | null)[] = Array.from({ length: N }, (_, t) => (t >= 52 && t < 148 ? zurueck[t] ?? 0 : null));
+  return { standMs, zurueck: z, endeMs: new Date(2026, 8, 30, 13, 0).getTime() };
+}
+
+// BK-41c: 18:00–21:30 ans Haus, 14 Viertelstunden = 8,825 kWh.
+const ZURUECK = Object.fromEntries([2.4, 2.8, 3.2, 3.2, 3.0, 2.9, 2.7, 2.6, 2.5, 2.4, 2.2, 2.0, 1.8, 1.6].map((kw, i) => [72 + i, kw]));
+const R = raster(new Date(2026, 8, 29, 13, 10));
+
+describe('MP-41c · BK-41c-1 A: der Plan des Zurückspeisens auf der Karte', () => {
+  const m = (mehr: Partial<GeraetBild> = {}, f: Partial<FahrerEinstellungen> = {}, lp: Partial<LadepunktBezug> = { ladestandPct: 62 }) => {
+    const g = geraet(lp, [], [], mehr);
+    return { g, m: wallboxMispel(g, liste(ansicht(true, f)))! };
+  };
+
+  it('Fenster von–bis, Menge und Stand aus den Rückspeise-Viertelstunden', () => {
+    const p = rueckspeisePlan({ fahrzeugPlan: fplan(ZURUECK) })!;
+    expect(p).toMatchObject({ von: 72, bis: 86, weitere: 0, standMs: new Date(2026, 8, 29, 13, 0).getTime() });
+    expect(p.kwh).toBeCloseTo(8.825, 6);
+    expect(rueckspeisePlan({ fahrzeugPlan: fplan({ 72: 2, 73: 2, 80: 1 }) })).toMatchObject({ von: 72, bis: 74, weitere: 1 });
+    expect(rueckspeisePlan({ fahrzeugPlan: null })).toBeNull();
+  });
+
+  it('die Plan-Zeile wie abgestimmt; über Mitternacht und „Haus + Netz“ in Worten', () => {
+    const { m: mm } = m();
+    expect(planZeile(rueckspeisePlan({ fahrzeugPlan: fplan(ZURUECK) })!, mm, R)).toEqual({
+      titel: `Heute 18:00–21:30 ans Haus · ≈${NBSP}9${NBSP}kWh`,
+      unter: `Plan von 13:00 · nie unter 40${NBSP}% · morgen 07:15 wieder 80${NBSP}%`,
+    });
+    const nacht = rueckspeisePlan({ fahrzeugPlan: fplan({ 94: 2, 95: 2, 96: 2 }) })!;
+    const v2g = { fahrer: { ...mm.fahrer, rueckspeisen: 'v2g' as const, rueckspeisen_wirksam: 'v2g' as const } };
+    expect(planZeile(nacht, v2g, R).titel).toBe(`Heute 23:30–morgen 00:15 ans Haus und ins Netz · ≈${NBSP}2${NBSP}kWh`);
+    // Unter 1 kWh mit einer Stelle - „≈ 0 kWh“ wäre eine erfundene Null.
+    expect(planZeile(rueckspeisePlan({ fahrzeugPlan: fplan({ 80: 2 }) })!, mm, R).titel).toBe(`Heute 20:00–20:15 ans Haus · ≈${NBSP}0,5${NBSP}kWh`);
+    expect(planZeile(rueckspeisePlan({ fahrzeugPlan: fplan({ 100: 4 }) })!, mm, R).titel).toBe(`Morgen 01:00–01:15 ans Haus · ≈${NBSP}1${NBSP}kWh`);
+  });
+
+  it('die fünf Lagen: geplant, kein Zurückspeisen im Plan, angehalten, ohne Reserve, noch nicht eingeschaltet', () => {
+    const lage = (mehr: Partial<GeraetBild>, f: Partial<FahrerEinstellungen> = {}) => {
+      const x = m(mehr, f);
+      return rueckspeiseLage(x.g, x.m, R);
+    };
+    expect(lage({ fahrzeugPlan: fplan(ZURUECK) })?.art).toBe('geplant');
+    expect(lage({ fahrzeugPlan: fplan({}) })).toEqual({ art: 'kein', satz: 'Bis morgen 13:00 plant VoltPilot kein Zurückspeisen — es lohnt sich gerade nicht.' });
+    expect(lage({ fahrzeugPlan: fplan(ZURUECK), steuerart: { quelle: 'sofort', herkunft: 'saeule' } as GeraetBild['steuerart'] })).toBeNull();
+    expect(lage({ fahrzeugPlan: fplan(ZURUECK) }, { reserve_pct: null })).toBeNull();
+    expect(lage({ fahrzeugPlan: null })).toEqual({ art: 'nicht_eingeschaltet', satz: 'An dieser Anlage plant VoltPilot das Zurückspeisen noch nicht. Ihre Wahl ist gespeichert.' });
+    // „Aus“ gewählt oder ein Auto ohne Rückspeise-Funktion: der Satz zur Stufe sagt schon alles.
+    expect(lage({ fahrzeugPlan: null }, { rueckspeisen: 'aus', rueckspeisen_wirksam: 'aus' })).toBeNull();
+    const ohne = m({ fahrzeugPlan: null }, {}, { ladestandPct: 55, fahrzeugBidirektional: false });
+    expect(rueckspeiseLage(ohne.g, ohne.m, R)).toBeNull();
+  });
+});
+
+describe('MP-41c · BK-41c-3 A: „Schnell“ heißt immer nur laden - Zurückspeisen ruht', () => {
+  const SOFORT = { quelle: 'sofort', herkunft: 'saeule' } as GeraetBild['steuerart'];
+
+  it('derselbe Halte-Grund wie im Optimierer: Lademodus am Stecker vor Steuerart vor Szene', () => {
+    expect(rueckspeiseHalt({ eingriff: { art: 'aus', bisMs: null }, steuerart: SOFORT, szene: 'Urlaub' })).toBe('lademodus_aus');
+    expect(rueckspeiseHalt({ eingriff: { art: 'an', bisMs: null }, steuerart: null, szene: null })).toBe('lademodus_schnell');
+    expect(rueckspeiseHalt({ eingriff: null, steuerart: SOFORT, szene: 'Urlaub' })).toBe('lademodus_sofort');
+    expect(rueckspeiseHalt({ eingriff: null, steuerart: null, szene: 'Urlaub' })).toBe('szene');
+    expect(rueckspeiseHalt({ eingriff: null, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule' } as GeraetBild['steuerart'], szene: null })).toBeNull();
+  });
+
+  it('der Satz unterscheidet Eingriff und Steuerart - nur an der Wallbox-Karte, sonst Bestand', () => {
+    expect(schnellSatz({ eingriff: null }, true)).toBe('Lädt immer sofort mit voller Leistung, auch mit Netzstrom — so ist dieser Ladepunkt eingestellt.');
+    expect(schnellSatz({ eingriff: { art: 'an', bisMs: null } }, true)).toBe('Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.');
+    expect(schnellSatz({ eingriff: null }, false)).toBe('Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.');
+  });
+
+  it('„Zurückspeisen ruht …“ statt des Wunsches - die Wahl des Fahrers bleibt gespeichert', () => {
+    const satz = (mehr: Partial<GeraetBild>, f: Partial<FahrerEinstellungen> = {}) =>
+      rueckspeiseSatz(wallboxMispel(geraet({ ladestandPct: 62 }, [], [], mehr), liste(ansicht(true, f)))!);
+    expect(satz({ steuerart: SOFORT })).toBe('Zurückspeisen ruht, solange „Schnell“ gilt — mit „Smart“ plant VoltPilot es wieder. Ihre Wahl „Ins Haus“ bleibt gespeichert.');
+    expect(satz({ eingriff: { art: 'an', bisMs: null } })).toBe('Zurückspeisen ruht bis dahin. Ihre Wahl „Ins Haus“ bleibt gespeichert.');
+    expect(satz({ eingriff: { art: 'aus', bisMs: null } }, { rueckspeisen: 'v2g', rueckspeisen_wirksam: 'v2g' })).toBe('Zurückspeisen ruht bis dahin. Ihre Wahl „Haus + Netz“ bleibt gespeichert.');
+    expect(satz({ szene: 'Urlaub' })).toBe('Zurückspeisen ruht, solange die Szene „Urlaub“ läuft. Ihre Wahl „Ins Haus“ bleibt gespeichert.');
+    // Wer „Aus“ gewählt hat, dem ruht nichts: der Satz bleibt.
+    expect(satz({ steuerart: SOFORT }, { rueckspeisen: 'aus', rueckspeisen_wirksam: 'aus' })).toBe('Das Auto lädt nur und gibt nichts ab.');
+    expect(haltSatz({ halt: 'lademodus_sofort', szene: null, fahrer: FAHRER })).toContain('solange „Schnell“ gilt');
+  });
+});
+
+describe('MP-41c · BK-41c-2 A: der Ladestand nach seiner eigenen Uhr', () => {
+  const t = (iso: string) => Date.parse(iso);
+
+  it('bis eine Minute „jetzt“, danach „vor N Min.“; ohne eigene Uhr wie bisher „jetzt“', () => {
+    const um = t('2026-10-04T17:59:50Z');
+    expect(ladestandAlterText(um, t('2026-10-04T18:00:50Z'))).toBe('jetzt');
+    expect(ladestandAlterText(um, t('2026-10-04T18:00:51Z'))).toBe('vor 1 Min.');
+    expect(ladestandAlterText(um, t('2026-10-04T18:03:00Z'))).toBe('vor 3 Min.');
+    expect(ladestandAlterText(null, t('2026-10-04T18:03:00Z'))).toBe('jetzt');
+  });
+
+  it('ein alter Ladestand nennt im Kopf, von wann er ist - und schaltet die Karte auf das Ladeziel', () => {
+    const um = new Date(2026, 8, 29, 12, 58).getTime();
+    const mm = wallboxMispel(geraet({ ladestandPct: null, ladestandUm: um, ladestandZuletztPct: 62 }), liste(ansicht(true)))!;
+    expect(mm.fahrzeug).toBe('ohne_ladestand');
+    expect(ladestandZuletztText(mm, R)).toBe(`Ladestand zuletzt 62${NBSP}% um 12:58`);
+    const frisch = wallboxMispel(geraet({ ladestandPct: 62, ladestandUm: um }), liste(ansicht(true)))!;
+    expect(frisch).toMatchObject({ fahrzeug: 'mit_ladestand', ladestandUm: um, ladestandZuletzt: null });
+    expect(ladestandZuletztText(frisch, R)).toBeNull();
+  });
+
+  /**
+   * Die geteilten Vektoren (`docs/contracts/v2/mispel-ladepunkt-fahrzeug-vectors.json`): Box und Cloud lesen
+   * `box`/`edge`/`portal`, die Karte liest `portal` und - wo ein Fall ihn trägt - den Block `karte`.
+   */
+  const vektoren = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/mispel-ladepunkt-fahrzeug-vectors.json'), 'utf8')) as {
+    jetzt: string;
+    faelle: { name: string; portal: { socPct: number | null; socMeasuredAt: string | null }; karte?: {
+      metered_at: string; ablesungen: { jetzt: string; leistung: string; ladestand: string; alter: string | null }[];
+    } }[];
+  };
+
+  it('Vektoren: ein Ladestand ohne eigene Uhr ist unbekannt, nie frisch', () => {
+    for (const f of vektoren.faelle) {
+      const alter = ladestandAlter({ socMeasuredAt: f.portal.socMeasuredAt }, t(vektoren.jetzt));
+      expect(alter, f.name).toBe(f.portal.socPct == null ? 'unbekannt' : 'frisch');
+    }
+  });
+
+  it('Vektoren: die Ablesungen der Karte - zwei Uhren, ein Fenster, das Alter in Worten', () => {
+    const mitKarte = vektoren.faelle.filter((f) => f.karte);
+    expect(mitKarte.length).toBeGreaterThanOrEqual(1);
+    for (const f of mitKarte) {
+      const con: ChargeConnector = { connectorId: 1, charging: true, socPct: f.portal.socPct, socMeasuredAt: f.portal.socMeasuredAt, meteredAt: f.karte!.metered_at };
+      for (const a of f.karte!.ablesungen) {
+        const jetzt = t(a.jetzt);
+        expect(messwertAlter(con, jetzt), `${f.name} ${a.jetzt} Leistung`).toBe(a.leistung);
+        expect(ladestandAlter(con, jetzt), `${f.name} ${a.jetzt} Ladestand`).toBe(a.ladestand);
+        expect(a.ladestand === 'frisch' ? ladestandAlterText(t(String(con.socMeasuredAt)), jetzt) : null, `${f.name} ${a.jetzt} Alter`).toBe(a.alter);
+      }
+    }
   });
 });
 

@@ -17,7 +17,15 @@
     "`jetzt` ist die Uhr der Box beim Bilden des Herzschlags. Ein Ladestand ist hoechstens drei Messintervalle",
     "alt (3 x 10 s, `ocppMeterMaxAge`), gleich aus welcher Quelle; der juengere aus Messwert und Fahrzeugmeldung",
     "gewinnt (dieselbe Regel wie der Entladeschutz, entladeschutz/waechter.go). Unbekannt ist keine Null:",
-    "ohne Fahrzeugmeldung fehlt `bidirectional`, es ist nie `false`."
+    "ohne Fahrzeugmeldung fehlt `bidirectional`, es ist nie `false`.",
+    "",
+    "MiSpeL MP-41c (BK-41c-2 A): ein Fall darf `karte` tragen - was die Wallbox-Karte des Portals aus der",
+    "`portal`-Zeile macht, wenn die Cloud sie spaeter liest (`jetzt` je Ablesung). Der Ladestand zaehlt nach",
+    "SEINER Uhr `socMeasuredAt` im 5-Minuten-Fenster, bis eine Minute 'jetzt', danach 'vor N Min.', aelter",
+    "faellt er weg und der Kopf nennt 'zuletzt'; die Leistung behaelt ihre Uhr `meteredAt` (`karte.metered_at`).",
+    "Leser: frontend/portal/src/steuerung/wallbox.test.ts (die Box- und Cloud-Leser uebergehen `karte`). Hoechstens acht",
+    "Faelle: der Cloud-Leser macht aus jedem einen Stecker derselben Saeule, die Aufnahme nimmt je Saeule acht an",
+    "(`ChargerStatusListener.MAX_CONNECTORS`)."
   ],
   "jetzt": "2026-10-04T18:00:00Z",
   "faelle": [
@@ -30,10 +38,21 @@
     },
     {
       "name": "messwert_soc_ohne_fahrzeugmeldung",
-      "beschreibung": "AC- oder 1.6-Saeule mit Messwert SoC, ohne ISO-15118-20-Meldung: der Ladestand mit seiner eigenen Uhr, die Faehigkeit bleibt unbekannt.",
+      "beschreibung": "AC- oder 1.6-Saeule mit Messwert SoC, ohne ISO-15118-20-Meldung: der Ladestand mit seiner eigenen Uhr, die Faehigkeit bleibt unbekannt. MP-41c (`karte`): die Saeule meldet die Leistung seltener (acht Minuten alt) - die Karte zeigt den Ladestand nach SEINER Uhr und sagt sein Alter; nach fuenf Minuten faellt er weg.",
       "box": { "soc_pct": 62, "soc_measured_at": "2026-10-04T17:59:50Z" },
       "edge": { "soc_pct": 62, "soc_measured_at": "2026-10-04T17:59:50Z" },
-      "portal": { "bidirectional": null, "socPct": 62, "socMeasuredAt": "2026-10-04T17:59:50Z" }
+      "portal": { "bidirectional": null, "socPct": 62, "socMeasuredAt": "2026-10-04T17:59:50Z" },
+      "karte": {
+        "metered_at": "2026-10-04T17:52:00Z",
+        "ablesungen": [
+          { "jetzt": "2026-10-04T18:00:00Z", "leistung": "veraltet", "ladestand": "frisch", "alter": "jetzt" },
+          { "jetzt": "2026-10-04T18:00:50Z", "leistung": "veraltet", "ladestand": "frisch", "alter": "jetzt" },
+          { "jetzt": "2026-10-04T18:00:51Z", "leistung": "veraltet", "ladestand": "frisch", "alter": "vor 1 Min." },
+          { "jetzt": "2026-10-04T18:02:55Z", "leistung": "veraltet", "ladestand": "frisch", "alter": "vor 3 Min." },
+          { "jetzt": "2026-10-04T18:04:50Z", "leistung": "veraltet", "ladestand": "frisch", "alter": "vor 5 Min." },
+          { "jetzt": "2026-10-04T18:04:51Z", "leistung": "veraltet", "ladestand": "veraltet", "alter": null }
+        ]
+      }
     },
     {
       "name": "bpt_mit_fahrzeug_soc",

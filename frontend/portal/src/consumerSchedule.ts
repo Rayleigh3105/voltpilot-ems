@@ -23,7 +23,10 @@
 export interface ConsumerPlanSlot {
   time: string;
   command: 'on_off' | 'setpoint_kw';
-  /** Planned power in kW (both commands persist kW; on_off: rated when on, 0 when off). */
+  /**
+   * Planned power in kW (both commands persist kW; on_off: rated when on, 0 when off).
+   * Negative only in a vehicle row (`FAHRZEUG_RUECKSPEISEN`): feeding back at the charge point.
+   */
   targetValue: number | null;
   reasonCode: string | null;
   requirementId: string | null;
@@ -68,6 +71,22 @@ export function isPflicht(code: string | null | undefined): boolean {
   return code === 'fixed_window' || code === 'price_below_threshold';
 }
 
+/**
+ * MiSpeL MP-41c (BK-41c-1 A): the vehicle entry of a bidirectional charge
+ * point - the SAME rows the optimizer sends to the box as block `fahrzeug`
+ * (`target_value` = -kW in a feed-back quarter-hour, 0 in the other quarter-
+ * hours of the sent window). They describe the car as a storage, not a
+ * consumer: the Wallbox-Karte reads them (`steuerung/laden.ts`
+ * `rueckspeisePlan`), the consumer layer of the Fahrplan never does - it would
+ * call every feed-back quarter-hour "Aus". Showing feed-back IN the Fahrplan
+ * would be a new visible surface (its own Bedienkonzept).
+ */
+export const FAHRZEUG_RUECKSPEISEN = 'fahrzeug_rueckspeisen';
+
+export function istFahrzeugZeile(slot: Pick<ConsumerPlanSlot, 'reasonCode'>): boolean {
+  return slot.reasonCode === FAHRZEUG_RUECKSPEISEN;
+}
+
 /** One consumer as a chart layer, aligned to the battery plan's slot grid. */
 export interface ConsumerLayer {
   entityId: string;
@@ -95,11 +114,16 @@ export function consumerLayers(
   if (!schedule || schedule.entities.length === 0) return [];
   const timeIndex = new Map<number, number>();
   planSlotTimes.forEach((t, i) => timeIndex.set(new Date(t).getTime(), i));
-  return schedule.entities.map((entity, ei) => {
+  // The vehicle rows (MP-41c) are no consumer: an entity that carries ONLY
+  // them is no layer at all, so the Fahrplan stays byte-identical.
+  const entities = schedule.entities
+    .map((entity) => ({ entity, slots: entity.slots.filter((slot) => !istFahrzeugZeile(slot)) }))
+    .filter(({ entity, slots }) => slots.length > 0 || entity.slots.length === 0);
+  return entities.map(({ entity, slots }, ei) => {
     const values: (number | null)[] = planSlotTimes.map(() => null);
     const pflicht: boolean[] = planSlotTimes.map(() => false);
     const reasons: (string | null)[] = planSlotTimes.map(() => null);
-    for (const slot of entity.slots) {
+    for (const slot of slots) {
       const i = timeIndex.get(new Date(slot.time).getTime());
       if (i == null) continue;
       values[i] = slot.targetValue ?? 0;

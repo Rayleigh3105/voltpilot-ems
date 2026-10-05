@@ -33,13 +33,13 @@ import type {
   TelemetryPoint,
   WeatherForecast,
 } from '../api';
-import type { ConsumerSchedule } from '../consumerSchedule';
+import { istFahrzeugZeile, type ConsumerSchedule } from '../consumerSchedule';
 import type { Consumer } from '../consumers/types';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
 import type { ChargePoint, ChargeConnector, SiteCharging } from '../ladepunkte';
-import { ladeZustand, aktuelleLeistung, messwertAlter } from '../ladepunkte';
+import { ladeZustand, aktuelleLeistung, ladestandAlter, messwertAlter } from '../ladepunkte';
 import type {
   RanglisteEintrag,
   SiteVerbraucher,
@@ -244,8 +244,30 @@ export interface LadepunktBezug {
   laedt: boolean;
   /** MiSpeL MP-41b: der gemeldete Ladestand des Autos (%); `null` = nicht gemeldet oder veraltet - nie 0. */
   ladestandPct: number | null;
+  /**
+   * MiSpeL MP-41c (BK-41c-2 A): die eigene Uhr des Ladestands (ms, `socMeasuredAt`), ob frisch oder alt;
+   * `null`/fehlend = unbekannt (ein älterer Stand) - dann zählt er wie vor MP-41c nach der Uhr der Leistung.
+   */
+  ladestandUm?: number | null;
+  /** MiSpeL MP-41c: der zuletzt gemeldete Ladestand, solange er ÄLTER als das Fenster ist (sonst `null`). */
+  ladestandZuletztPct?: number | null;
   /** MiSpeL MP-41b: überträgt das angesteckte Auto bidirektional? `null` = unbekannt (prüft die Wallbox beim Anstecken). */
   fahrzeugBidirektional: boolean | null;
+}
+
+/**
+ * MiSpeL MP-41c (BK-41c-1 A): der Fahrzeug-Eintrag des jüngsten Laufs an einem
+ * Ladepunkt - dieselben Viertelstunden, die die Box als Block `fahrzeug`
+ * bekommt (`entity_plan_slot`, `reason_code` `fahrzeug_rueckspeisen`). Ein
+ * PLAN, kein Auftrag und keine Messung.
+ */
+export interface FahrzeugPlan {
+  /** Stand des Laufs (`generatedAt`, ms); `null` = unbekannt. */
+  standMs: number | null;
+  /** Zurückspeisen je Viertelstunde ab jetzt in kW (Betrag, ≥ 0; 0 = gerechnet, ohne Zurückspeisen); `null` = nicht im Lauf. */
+  zurueck: (number | null)[];
+  /** Ende des gesendeten Fensters (ms, Ende seiner letzten Viertelstunde). */
+  endeMs: number;
 }
 
 export interface GeraetBild {
@@ -286,6 +308,10 @@ export interface GeraetBild {
   /** Der Smart-Auftrag als kurzer Satz („Mit Sonnenstrom ab 2,0 kW“). */
   auftrag: string;
   regeln: number;
+  /** MiSpeL MP-41c: der Fahrzeug-Eintrag des jüngsten Laufs (nur Ladepunkte); `null`/fehlend = keiner ab jetzt. */
+  fahrzeugPlan?: FahrzeugPlan | null;
+  /** MiSpeL MP-41c: die laufende Szene, die diesen Ladepunkt pausiert hat (ihr Name) - ein Halte-Grund (MP-39b). */
+  szene?: string | null;
 }
 
 export interface SpeicherBild {
@@ -492,9 +518,13 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
     }
     // Pausiert oder angehalten: kein Plan, keine Erwartung - VoltPilot schaltet das Gerät nicht.
     const ohnePlan = geraetAus || i.angehalten === true;
-    const plan = ohnePlan ? null : liste(i.consumerPlan?.entities).find((x) => x.entityId === e.entityId);
+    const planEintrag = ohnePlan ? null : liste(i.consumerPlan?.entities).find((x) => x.entityId === e.entityId) ?? null;
+    // MiSpeL MP-41c: die Fahrzeug-Zeilen (Zurückspeisen) sind kein Lade-Plan. Ein Eintrag NUR aus ihnen
+    // lässt die Erwartung stehen - wie vor MP-41c, als der Lauf sie nicht ablegte.
+    const planSlots = planEintrag ? liste(planEintrag.slots).filter((p) => !istFahrzeugZeile(p)) : [];
+    const plan = planEintrag && (planSlots.length > 0 || liste(planEintrag.slots).length === 0) ? planEintrag : null;
     if (plan) {
-      for (const p of plan.slots) {
+      for (const p of planSlots) {
         const t = slotVon(r, p.time);
         if (t == null || t < r.jetzt) continue;
         kw[t] = num(p.targetValue);
@@ -574,7 +604,7 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
             sitzungKwh: num(lp.con?.sessionKwh),
             karte: lp.con?.tagRef ?? null,
             laedt: lp.con?.charging === true,
-            ladestandPct: lp.con && messwertAlter(lp.con, nowMs) !== 'veraltet' ? num(lp.con.socPct) : null,
+            ...ladestandVon(lp.con, nowMs),
             fahrzeugBidirektional: typeof lp.con?.bidirectional === 'boolean' ? lp.con.bidirectional : null,
           }
         : null,
@@ -600,8 +630,57 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
       regelJetzt: regelJetzt && zustand.pill[0] === 'on' ? regelJetzt : null,
       auftrag: auftragSatz(s, { form, ladepunkt: e.ladepunkt }),
       regeln: e.regeln ?? 0,
+      fahrzeugPlan: lp && planEintrag ? fahrzeugPlanVon(r, i.consumerPlan?.generatedAt ?? null, planEintrag.slots) : null,
+      szene: lp && i.szene?.ids.includes(e.entityId) ? i.szene.name : null,
     };
   });
+}
+
+/**
+ * MiSpeL MP-41c (BK-41c-2 A): der Ladestand nach SEINER Uhr `socMeasuredAt`
+ * im 5-Minuten-Fenster; die Leistung behält ihre (`messwertAlter`). Ohne
+ * eigene Uhr (ein älterer Stand) bleibt es bei der Uhr der Leistung.
+ */
+function ladestandVon(
+  con: ChargeConnector | null,
+  nowMs: number,
+): Pick<LadepunktBezug, 'ladestandPct' | 'ladestandUm' | 'ladestandZuletztPct'> {
+  if (!con) return { ladestandPct: null, ladestandUm: null, ladestandZuletztPct: null };
+  const alter = ladestandAlter(con, nowMs);
+  if (alter === 'unbekannt') {
+    return { ladestandPct: messwertAlter(con, nowMs) !== 'veraltet' ? num(con.socPct) : null, ladestandUm: null, ladestandZuletztPct: null };
+  }
+  const um = Date.parse(String(con.socMeasuredAt));
+  return alter === 'frisch'
+    ? { ladestandPct: num(con.socPct), ladestandUm: um, ladestandZuletztPct: null }
+    : { ladestandPct: null, ladestandUm: um, ladestandZuletztPct: num(con.socPct) };
+}
+
+/**
+ * Der Fahrzeug-Eintrag eines Ladepunkts ab der laufenden Viertelstunde
+ * (MP-41c). `null`, wenn der Lauf ab jetzt keine Fahrzeug-Zeile trägt - „nicht
+ * gerechnet“ ist etwas anderes als „gerechnet, ohne Zurückspeisen“ (0).
+ * Lade-Zeilen und Fahrzeug-Zeilen derselben Wallbox dürfen sich je
+ * Viertelstunde abwechseln (geplantes Laden bleibt Lade-Zeile); das Fenster
+ * endet darum mit der letzten Zeile des Laufs, gleich welcher Art.
+ */
+function fahrzeugPlanVon(r: Raster, generatedAt: string | null, slots: readonly ConsumerSchedule['entities'][number]['slots'][number][]): FahrzeugPlan | null {
+  const zurueck: (number | null)[] = Array.from({ length: N }, () => null);
+  let endeMs: number | null = null;
+  let traegt = false;
+  for (const p of slots) {
+    const t = slotVon(r, p.time);
+    if (t == null || t < r.jetzt) continue;
+    const ende = Date.parse(p.time) + 15 * 60_000;
+    if (endeMs == null || ende > endeMs) endeMs = ende;
+    if (!istFahrzeugZeile(p)) continue;
+    traegt = true;
+    const v = num(p.targetValue);
+    zurueck[t] = v == null ? null : Math.max(0, -v);
+  }
+  if (!traegt || endeMs == null) return null;
+  const stand = generatedAt ? Date.parse(generatedAt) : NaN;
+  return { standMs: Number.isFinite(stand) ? stand : null, zurueck, endeMs };
 }
 
 function nennLeistung(c: Consumer | null, e: VerbraucherEintrag): number | null {

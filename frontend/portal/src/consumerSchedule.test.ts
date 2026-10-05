@@ -3,8 +3,10 @@ import {
   consumerLayers,
   consumerShade,
   consumerSlotInfos,
+  FAHRZEUG_RUECKSPEISEN,
   hasConsumerData,
   isPflicht,
+  istFahrzeugZeile,
   REASON_TEXT,
   reasonText,
   type ConsumerSchedule,
@@ -86,6 +88,41 @@ describe('consumerLayers', () => {
   it('hasConsumerData needs at least one aligned value', () => {
     expect(hasConsumerData(consumerLayers(schedule(), [T2]))).toBe(false);
     expect(hasConsumerData(consumerLayers(schedule(), [T0]))).toBe(true);
+  });
+});
+
+describe('MiSpeL MP-41c · die Fahrzeug-Zeilen sind kein Verbraucher (BK-41c-1 A)', () => {
+  const wallbox = {
+    entityId: 'e-wb',
+    name: 'Wallbox Werkstatt',
+    slots: [
+      { time: T0, command: 'setpoint_kw' as const, targetValue: 0, reasonCode: FAHRZEUG_RUECKSPEISEN, requirementId: null },
+      { time: T1, command: 'setpoint_kw' as const, targetValue: -2.4, reasonCode: FAHRZEUG_RUECKSPEISEN, requirementId: null },
+    ],
+  };
+
+  it('erkennt sie am reason_code, nicht am Vorzeichen', () => {
+    expect(istFahrzeugZeile({ reasonCode: FAHRZEUG_RUECKSPEISEN })).toBe(true);
+    expect(istFahrzeugZeile({ reasonCode: 'fixed_window' })).toBe(false);
+    expect(istFahrzeugZeile({ reasonCode: null })).toBe(false);
+  });
+
+  it('der Fahrplan bleibt byte-gleich: kein Layer, keine „Aus“-Viertelstunde, dieselben Ersatznamen', () => {
+    const vorher = schedule();
+    const mit = schedule({ entities: [wallbox, ...vorher.entities] });
+    const layersVorher = consumerLayers(vorher, [T0, T1, T2]);
+    const layersMit = consumerLayers(mit, [T0, T1, T2]);
+    expect(layersMit).toEqual(layersVorher);
+    expect(consumerSlotInfos(layersMit, 1)).toEqual(consumerSlotInfos(layersVorher, 1));
+    const ohneNamen = schedule({ entities: [wallbox, { ...vorher.entities[0], name: null }] });
+    expect(consumerLayers(ohneNamen, [T0, T1, T2])[0].name).toBe('Verbraucher 1');
+  });
+
+  it('nimmt aus einem gemischten Eintrag nur die Fahrzeug-Zeilen heraus', () => {
+    const gemischt = schedule({
+      entities: [{ ...wallbox, slots: [...wallbox.slots, { time: T2, command: 'setpoint_kw', targetValue: 3.7, reasonCode: 'optimizer_selected_low_cost', requirementId: null }] }],
+    });
+    expect(consumerLayers(gemischt, [T0, T1, T2])[0].values).toEqual([null, null, 3.7]);
   });
 });
 

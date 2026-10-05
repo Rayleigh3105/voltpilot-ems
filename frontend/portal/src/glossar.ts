@@ -217,6 +217,16 @@ export const MISPEL_STROMRECHNUNG = 'auf der Stromrechnung';
 export const MISPEL_GUTSCHRIFT = 'Gutschrift nach Anlage 1';
 
 /**
+ * MiSpeL MP-41c (Bedienkonzept BK-41c = A/A/A, Captain 05.10.2026; `docs/fachmodell/glossar.md` › Zurückspeisen ruht,
+ * Plan von, Ladestand zuletzt, Lädt immer sofort): die Wörter der Wallbox-Karte für den Plan des Zurückspeisens, sein
+ * Anhalten, das Alter des Ladestands und die dauerhafte Steuerart „sofort“ (`steuerung/laden.ts`).
+ */
+export const MISPEL_ZURUECKSPEISEN_RUHT = 'Zurückspeisen ruht';
+export const MISPEL_PLAN_VON = 'Plan von';
+export const MISPEL_LADESTAND_ZULETZT = 'Ladestand zuletzt';
+export const MISPEL_LAEDT_IMMER_SOFORT = 'Lädt immer sofort';
+
+/**
  * Die zwei Zustandsfamilien (AP-01 E8, `docs/fachmodell/zustaende.md`): der
  * LEBENSZYKLUS, den der Kunde setzt, und die BEOBACHTUNG, die nie jemand von
  * Hand setzt. Die Wörter bedeuten bei JEDEM Objekt dasselbe.

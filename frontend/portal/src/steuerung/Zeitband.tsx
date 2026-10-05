@@ -35,6 +35,12 @@ export interface Zeile {
   gap?: number;
   /** Eine andere Reihe als die des Geräts (Vorschau). */
   kw?: (number | null)[];
+  /**
+   * MiSpeL MP-41c (BK-41c-1 A): geplantes Zurückspeisen je Viertelstunde in kW
+   * (Betrag). Trägt es eine, teilt eine Mittellinie die Zeile: Laden darüber,
+   * Zurück darunter, grün wie die Speicher-Herkunft. Ohne bleibt die Zeile wie sie war.
+   */
+  zurueck?: (number | null)[];
 }
 
 export interface ZeitbandProps {
@@ -256,7 +262,20 @@ export function zeitband(W: number, o: ZeitbandProps): { svg: ReactNode; geo: Ge
     const reihe = row.kw ?? g.kw;
     zeilenKopf(g.symbol, y, h, g.name, g.kurz, g.id);
     add(<rect key={key()} x={padL} y={y} width={W - padL - padR} height={h} rx={4} fill="#eef2f6" />);
-    const max = Math.max(g.nennKw ?? 0, ...reihe.slice(t0, t1).map((v) => v ?? 0)) || 1;
+    const zurueck = row.zurueck?.slice(t0, t1).some((v) => v != null && v > 0.02) ? row.zurueck : null;
+    // Mit Zurückspeisen trägt die obere Hälfte das Laden, die untere das Zurück - auf derselben Skala.
+    const hLaden = zurueck ? h / 2 : h;
+    const max = Math.max(g.nennKw ?? 0, ...reihe.slice(t0, t1).map((v) => v ?? 0), ...(zurueck ?? []).slice(t0, t1).map((v) => v ?? 0)) || 1;
+    if (zurueck) {
+      const mitte = y + h / 2;
+      add(<line key={key()} x1={padL} x2={W - padR} y1={mitte} y2={mitte} stroke="#94a3b8" strokeWidth={0.8} data-mitte />);
+      for (let t = t0; t < t1; t++) {
+        const kw = zurueck[t];
+        if (!(kw != null && kw > 0.02)) continue;
+        const hh = Math.max(2, Math.min(1, kw / max) * (h / 2 - 1));
+        add(<rect key={key()} x={x(t)} y={mitte} width={bw + 0.35} height={hh} fill={FARBE.sp} data-zurueck={t} />);
+      }
+    }
     for (let t = t0; t < t1; t++) {
       const kw = reihe[t];
       if (!(kw != null && kw > 0.02)) continue;
@@ -269,13 +288,13 @@ export function zeitband(W: number, o: ZeitbandProps): { svg: ReactNode; geo: Ge
         continue;
       }
       const a = quellenAnteil(rh, t) ?? { pv: 1, sp: 0, netz: 0 };
-      const hh = Math.max(3, Math.min(1, kw / max) * (h - 2));
-      let yy = y + h - 1;
+      const hh = zurueck ? Math.max(2, Math.min(1, kw / max) * (hLaden - 1)) : Math.max(3, Math.min(1, kw / max) * (h - 2));
+      let yy = zurueck ? y + hLaden : y + h - 1;
       for (const q of ['pv', 'sp', 'netz'] as const) {
         if (!(a[q] > 0.01)) continue;
         const part = hh * a[q];
         yy -= part;
-        add(<rect key={key()} x={xx} y={yy} width={ww} height={part} fill={FARBE[q]} />);
+        add(<rect key={key()} x={xx} y={yy} width={ww} height={part} fill={FARBE[q]} data-laden={zurueck ? t : undefined} />);
       }
     }
     y += h + (row.gap ?? 5);

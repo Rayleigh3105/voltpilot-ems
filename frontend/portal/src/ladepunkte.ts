@@ -66,6 +66,14 @@ export interface ChargeConnector {
    * statt eine Frische zu behaupten, die niemand gemessen hat.
    */
   meteredAt?: string | null;
+  /**
+   * MiSpeL MP-41c (BK-41c-2 A): die EIGENE Uhr des Ladestands `socPct` -
+   * Messzeit des Messwerts SoC bzw. Empfangszeit der Fahrzeugmeldung (seit
+   * MP-37b, Vertrag mispel-ladepunkt-bidirektional.md § 5b). Nicht unbedingt
+   * `meteredAt`, die Uhr der Leistung. Fehlt genau dann, wenn `socPct` fehlt;
+   * ein älterer api-Stand meldet sie nicht (dann gilt `messwertAlter`).
+   */
+  socMeasuredAt?: string | null;
   /** An diesem Stecker läuft „Jetzt voll laden" (Stufe 4). */
   boost?: boolean;
   /**
@@ -566,6 +574,20 @@ export function messwertAlter(
   if (!Number.isFinite(t)) return 'unbekannt';
   const now = nowMs ?? Date.now();
   return now - t <= ONLINE_WINDOW_MS ? 'frisch' : 'veraltet';
+}
+
+/**
+ * MiSpeL MP-41c (BK-41c-2 A): das Alter des LADESTANDS nach seiner eigenen Uhr
+ * `socMeasuredAt` - im selben Fenster wie jeder Messwert (`ONLINE_WINDOW_MS`).
+ * Eine alte Leistung macht einen frischen Ladestand nicht alt und umgekehrt.
+ * `unbekannt` = kein Stempel (kein Ladestand oder ein älterer api-Stand); die
+ * Fläche bleibt dann bei `messwertAlter` (Bestand).
+ */
+export function ladestandAlter(
+  con: Pick<ChargeConnector, 'socMeasuredAt'>,
+  nowMs?: number,
+): 'frisch' | 'veraltet' | 'unbekannt' {
+  return messwertAlter({ meteredAt: con.socMeasuredAt }, nowMs);
 }
 
 /**

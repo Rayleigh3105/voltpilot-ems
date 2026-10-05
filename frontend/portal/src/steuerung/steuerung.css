@@ -526,6 +526,14 @@
 :is(.stn, .stn-blatt) .wb-hinweis{cursor:default;background:var(--st-wait-soft);border-color:transparent}
 :is(.stn, .stn-blatt) .wb-hinweis svg{color:var(--st-wait)}
 :is(.stn, .stn-blatt) .wb-ertrag svg:first-child{color:var(--c-primary)}
+/* MiSpeL MP-41c: die Plan-Zeile des Zurückspeisens und die Legende des Bands (BK-41c-1 A) - ein Plan, kein Knopf */
+:is(.stn, .stn-blatt) .wb-plan{cursor:default;background:color-mix(in srgb,var(--batt-fill) 7%,var(--c-bg));border-color:color-mix(in srgb,var(--batt-fill) 30%,transparent)}
+:is(.stn, .stn-blatt) .wb-plan svg{color:var(--batt)}
+:is(.stn, .stn-blatt) .wb-leg{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin:-4px 0 0;font:500 12.5px var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .wb-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+:is(.stn, .stn-blatt) .wb-leg i.l{background:var(--pv-fill)}
+:is(.stn, .stn-blatt) .wb-leg i.z{background:var(--batt-fill)}
+:is(.stn, .stn-blatt) .wb-leg .r{margin-left:auto}
 :is(.stn, .stn-blatt) .fz{display:grid;gap:0}
 :is(.stn, .stn-blatt) .fz-r{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:8px 0}
 :is(.stn, .stn-blatt) .fz-r+.fz-r{border-top:1px solid var(--c-border)}

@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 60 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 64 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -93,6 +93,10 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Netzladen nach MiSpeL](#netzladen-nach-mispel) — Sicht Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)
 - [auf der Stromrechnung](#auf-der-stromrechnung) — Sicht Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)
 - [Gutschrift nach Anlage 1](#gutschrift-nach-anlage-1) — Sicht Betrieb · Nachtrag MiSpeL BK-W5 A (04.10.2026)
+- [Zurückspeisen ruht](#zurückspeisen-ruht) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
+- [Plan von](#plan-von) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
+- [Ladestand zuletzt](#ladestand-zuletzt) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
+- [Lädt immer sofort](#lädt-immer-sofort) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 
 ## Kundenbereich
 
@@ -1434,3 +1438,59 @@ Anlage 1 rechnet je Kalendermonat, nie je Tag: aus den Viertelstunden-Mengen wer
 **Heute im Code.** Gelesen aus der Monatsroute `…/mispel/abgrenzung/monate/{JJJJ-MM}` (`mispelGutschrift`, PORTAL/mispelMengen.ts:223), gezeigt über `mispelMonatAussage` (PORTAL/speicherAussage.ts:551), das Wort `MISPEL_GUTSCHRIFT` (PORTAL/glossar.ts).
 
 **Abgrenzung.** Nicht die Marktprämie (die steht getrennt in der MiSpeL-Karte), nicht die Stromrechnung, keine Tageszahl.
+
+## Zurückspeisen ruht
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)*
+
+**Das Auto an einer bidirektionalen Wallbox gibt gerade keinen Strom ab, weil „Aus“, „Schnell“ (für diese Ladung oder dauerhaft „sofort“) oder eine Szene gilt — die Wahl des Fahrers bleibt gespeichert.**
+
+Ein Halt ist keine Änderung der Einstellung: „Ins Haus“ oder „Haus + Netz“ bleibt stehen und gilt wieder, sobald der Grund endet — der Eingriff mit seinem Ende, die Steuerart „sofort“ mit „Smart“, die Szene mit ihrem Beenden. Optimierer (Halte-Grund des Plans) und Box (Entladeschutz) halten aus demselben Grund an; die Karte sagt ihn statt des Wunsches unter „Zurückspeisen“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keinen bidirektionalen Ladepunkt; das Beispiel ist die E2E-Bühne des Bedienkonzepts BK-41c (erfundene Anlage, „Wallbox Werkstatt“): „Zurückspeisen ruht, solange „Schnell“ gilt — mit „Smart“ plant VoltPilot es wieder. Ihre Wahl „Ins Haus“ bleibt gespeichert.“
+
+**Heute im Code.** Der Grund aus Eingriff, Steuerart und Szene: `rueckspeiseHalt` (PORTAL/steuerung/laden.ts), der Satz `haltSatz`, das Wort `MISPEL_ZURUECKSPEISEN_RUHT` (PORTAL/glossar.ts); der Zwilling im Optimierer ist `halte_grund` (services/optimization/voltpilot_optimization/fahrzeugspeicher.py:179).
+
+**Abgrenzung.** Nicht „Aus“ unter „Zurückspeisen“ (das ist die Wahl des Fahrers), nicht „Heute kann dieser Ladepunkt nicht zurückspeisen“ (die Fähigkeit), nicht die gemessene Wirkung.
+
+## Plan von
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)*
+
+**Der Stand des Laufs, aus dem die Wallbox-Karte das geplante Zurückspeisen liest — „Plan von 13:00“ —, damit Plan, Auftrag an die Box und Messung getrennt bleiben.**
+
+Die Plan-Zeile nennt das erste Rückspeise-Fenster und die geplante Menge („Heute 18:00–21:30 ans Haus · ≈ 9 kWh“), darunter den Stand des Laufs, die Reserve und die nächste Abfahrt. Quelle sind dieselben Viertelstunden, die die Box als Block `fahrzeug` bekommt (gespeicherter Plan = gesendeter Plan); das Band zeigt sie grün unter der Linie. Ohne Rückspeise-Viertelstunde sagt ein leiser Satz den Grund: kein Zurückspeisen im Plan, oder die Anlage plant es noch nicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keinen bidirektionalen Ladepunkt; das Beispiel ist die E2E-Bühne des Bedienkonzepts BK-41c: „Heute 18:00–21:30 ans Haus · ≈ 9 kWh“ · „Plan von 13:10 · nie unter 40 % · morgen 07:15 wieder 80 %“ (14 Viertelstunden, 8,825 kWh).
+
+**Heute im Code.** Die Ableitung `rueckspeisePlan` und `planZeile` (PORTAL/steuerung/laden.ts) aus dem Fahrzeug-Eintrag (`reason_code` `fahrzeug_rueckspeisen`, PORTAL/consumerSchedule.ts), das Wort `MISPEL_PLAN_VON` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht der angenommene Auftrag der Box, nicht das gemessene Zurückspeisen (das steht im Monat in Verlauf › Erlöse), nicht der Fahrplan des Speichers.
+
+## Ladestand zuletzt
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)*
+
+**Ein Ladestand des Autos, der älter ist als fünf Minuten: die Karte zeigt ihn nicht mehr als aktuell, sondern sagt im Kopf, von wann er ist — „Ladestand zuletzt 62 % um 12:58“.**
+
+Der Ladestand hat seine eigene Uhr (Messzeit des Messwerts oder Empfangszeit der Fahrzeugmeldung), getrennt von der Uhr der Leistung. Er zählt im selben 5-Minuten-Fenster wie jeder Messwert: bis eine Minute alt „jetzt“, danach „vor 3 Min.“, älter fällt er weg, und die Karte gilt wie ohne Ladestand (Ladeziel „Menge bis Uhrzeit“). Eine alte Leistung macht einen frischen Ladestand nicht alt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keinen bidirektionalen Ladepunkt; das Beispiel ist die E2E-Bühne des Bedienkonzepts BK-41c: um 13:10 „Kleinwagen · Karte 07cd… · Ladestand zuletzt 62 % um 12:58 · angesteckt seit 08:00“.
+
+**Heute im Code.** Die Uhr `socMeasuredAt` am Stecker (PORTAL/ladepunkte.ts, `ladestandAlter`), der Text `ladestandZuletztText` und `ladestandAlterText` (PORTAL/steuerung/laden.ts), das Wort `MISPEL_LADESTAND_ZULETZT` (PORTAL/glossar.ts); Vertrag docs/contracts/v2/mispel-ladepunkt-fahrzeug-vectors.json (Block `karte`).
+
+**Abgrenzung.** Nicht der Ladestand des Speichers, nicht „unbekannt“ (ohne Meldung steht gar kein Ladestand da), nicht die Uhr der Leistung.
+
+## Lädt immer sofort
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)*
+
+**Die dauerhafte Steuerart „sofort“ eines bidirektionalen Ladepunkts: er lädt immer sofort mit voller Leistung, auch mit Netzstrom, und gibt nichts ab — auf der Karte „Schnell“, wie der Eingriff für eine Ladung.**
+
+„Schnell“ heißt auf der Wallbox-Karte immer dasselbe: nur laden. Der Satz darunter sagt, ob es nur für diese Ladung gilt (der Eingriff) oder so eingestellt ist (Vorgabe der Box oder Wahl je Ladepunkt bzw. Ladekarte). „Smart“ stellt die Steuerart auf „Sonne + Minimum“ um; „Abfahrt und Reserve“ bleibt erreichbar und gilt wieder mit „Smart“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keinen bidirektionalen Ladepunkt; das Beispiel ist die E2E-Bühne des Bedienkonzepts BK-41c: „Lädt immer sofort mit voller Leistung, auch mit Netzstrom — so ist dieser Ladepunkt eingestellt.“
+
+**Heute im Code.** Der Satz `schnellSatz` (PORTAL/steuerung/laden.ts), das Wort `MISPEL_LAEDT_IMMER_SOFORT` (PORTAL/glossar.ts); der Halte-Grund `lademodus_sofort` im Optimierer und in der Box.
+
+**Abgrenzung.** Nicht der Eingriff „Jetzt voll laden“ (der endet mit der Ladung), nicht „Ohne Steuerung“ (VoltPilot steuert den Ladepunkt weiter).

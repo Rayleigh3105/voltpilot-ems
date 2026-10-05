@@ -214,3 +214,40 @@ describe('Jetzt', () => {
     expect(kopfsatz(leereReihen(), 80, [], 52).vor).toBe('Für diese Viertelstunde liegen keine Werte vor.');
   });
 });
+
+describe('MiSpeL MP-41c · Lade-Zeilen und Fahrzeug-Zeilen derselben Wallbox im selben Lauf', () => {
+  // Geplantes Laden bleibt Lade-Zeile; Fahrzeug-Zeilen (−kW / 0) stehen in den Rückspeise- und leeren Viertelstunden.
+  const lade = (t: number, kw: number) => ({ time: iso(t), command: 'setpoint_kw' as const, targetValue: kw, reasonCode: 'optimizer_selected_low_cost', requirementId: null });
+  const fz = (t: number, kw: number) => ({ time: iso(t), command: 'setpoint_kw' as const, targetValue: kw, reasonCode: 'fahrzeug_rueckspeisen', requirementId: null });
+  const bild = (slots: ReturnType<typeof lade>[]) => geraete({
+    raster: r,
+    reihen: leereReihen(),
+    verbraucher: {
+      verbraucher: [eintrag({ entityId: 'e-wb', name: 'Wallbox Werkstatt', typ: 'ev-charger', typLabel: 'Ladepunkt', ladepunkt: true, chargePointId: 'CP-W' })],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 1, rahmen: null },
+      rangliste: [],
+    },
+    charging: { chargers: [{ chargePointId: 'CP-W', entityId: 'e-wb', connectors: [{ connectorId: 1, status: 'Charging', charging: true, powerKw: 3.2, meteredAt: NOW.toISOString() }] }] } as never,
+    consumerPlan: { planId: 'p', generatedAt: iso(52), slotMinutes: 15, entities: [{ entityId: 'e-wb', name: 'Wallbox Werkstatt', slots }] },
+  })[0];
+
+  it('Laden kommt aus den Lade-Zeilen, Zurück aus den Fahrzeug-Zeilen - je Viertelstunde getrennt', () => {
+    const g = bild([fz(52, 0), lade(53, 3.7), lade(54, 3.5), fz(55, 0), fz(72, -2.4), fz(73, -2.8), fz(74, 0), lade(147, 2)]);
+    expect(g.kw[53]).toBe(3.7);
+    expect(g.herkunft[53]).toBe('plan');
+    expect(g.kw[72]).toBeNull();
+    expect(g.herkunft[72]).toBeNull();
+    expect(g.fahrzeugPlan?.zurueck.slice(52, 56)).toEqual([0, null, null, 0]);
+    expect(g.fahrzeugPlan?.zurueck.slice(72, 75)).toEqual([2.4, 2.8, 0]);
+    // Das Fenster endet mit der letzten Zeile des Laufs, auch wenn sie eine Lade-Zeile ist.
+    expect(g.fahrzeugPlan?.endeMs).toBe(Date.parse(iso(148)));
+    expect(g.fahrzeugPlan?.standMs).toBe(Date.parse(iso(52)));
+  });
+
+  it('ohne Fahrzeug-Zeile ab jetzt kein Fahrzeug-Eintrag; nur Fahrzeug-Zeilen lassen die Erwartung stehen', () => {
+    expect(bild([lade(53, 3.7)]).fahrzeugPlan).toBeNull();
+    const nur = bild([fz(53, 0), fz(72, -2)]);
+    expect(nur.herkunft.some((h) => h === 'plan')).toBe(false);
+    expect(nur.fahrzeugPlan?.zurueck[72]).toBe(2);
+  });
+});

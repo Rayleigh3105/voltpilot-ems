@@ -38,7 +38,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
-import { MISPEL_GUTSCHRIFT, MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG } from './glossar';
+import {
+  MISPEL_GUTSCHRIFT, MISPEL_LADESTAND_ZULETZT, MISPEL_LAEDT_IMMER_SOFORT, MISPEL_NETZLADEN, MISPEL_PLAN_VON, MISPEL_STROMRECHNUNG,
+  MISPEL_ZURUECKSPEISEN_RUHT,
+} from './glossar';
 import {
   UEMS_ABWEICHUNG,
   UEMS_ABWEICHUNG_ERGEBNISSE,
@@ -3911,6 +3914,27 @@ describe('MiSpeL MP-18c · Kundenwörter der Speicher-Erklärung kommen aus dem 
   for (const wort of [MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG, MISPEL_GUTSCHRIFT]) {
     it(`„${wort}“ ist ein Eintrag des Glossars`, () => {
       expect(glossar).toContain(`\n## ${wort}\n`);
+    });
+  }
+});
+
+/**
+ * MiSpeL MP-41c (BK-41c = A/A/A): die vier neuen Kundenwörter der Wallbox-Karte stehen ZUERST im Fachmodell-Glossar
+ * (erzeugt aus `docs/fachmodell/tools/fachmodell.py`), dann als Konstante in `glossar.ts` - und die Karte bildet ihre
+ * Sätze aus genau diesen Konstanten, nie aus einer zweiten Schreibweise.
+ */
+describe('MiSpeL MP-41c · Kundenwörter der Wallbox-Karte kommen aus dem Glossar', () => {
+  const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+  const laden = readFileSync(join(SRC, 'steuerung/laden.ts'), 'utf8');
+  const woerter: [string, string][] = [
+    [MISPEL_ZURUECKSPEISEN_RUHT, 'MISPEL_ZURUECKSPEISEN_RUHT'], [MISPEL_PLAN_VON, 'MISPEL_PLAN_VON'],
+    [MISPEL_LADESTAND_ZULETZT, 'MISPEL_LADESTAND_ZULETZT'], [MISPEL_LAEDT_IMMER_SOFORT, 'MISPEL_LAEDT_IMMER_SOFORT'],
+  ];
+  for (const [wort, konstante] of woerter) {
+    it(`„${wort}“ ist ein Eintrag des Glossars und die Karte nutzt die Konstante`, () => {
+      expect(glossar).toContain(`\n## ${wort}\n`);
+      expect(laden).toContain(konstante);
+      expect(stripComments(laden)).not.toContain(`'${wort}`);
     });
   }
 });
