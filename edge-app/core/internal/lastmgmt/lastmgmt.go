@@ -205,6 +205,11 @@ type Session struct {
 	// site-wide StoragePriority as the fallback for an unranked site - so a
 	// site that never ordered anything behaves exactly as it did.
 	BeforeStorage bool
+
+	// Ranges are the achievable bands of a charge point that may switch
+	// between one and three phases (phases.go). The zero value = one
+	// continuous band [minimum, MaxKw], byte-for-byte the behaviour before.
+	Ranges Bands
 }
 
 // boosted reports whether this session's „Jetzt voll laden" is still running.
@@ -425,6 +430,9 @@ type Allocation struct {
 	// power. The surface says so - a full charge nobody asked for would be a
 	// silent break of the customer's own priority.
 	Boost bool `json:"boost,omitempty"`
+	// Phases is the band a charging session with Ranges runs in (1 or 3);
+	// 0 = paused, or a session without bands.
+	Phases int `json:"phases,omitempty"`
 	// ChangedAt is when this VALUE last changed. It carries the pacing across
 	// decisions; the executor refreshes the profile on its own cadence
 	// regardless (the dead-man's switch needs the refresh).
@@ -655,6 +663,21 @@ func Decide(in Input) Plan {
 		var adm []Session
 		for _, s := range group {
 			minKw := effectiveMin(s, set)
+			if s.Ranges.Any() && !s.pausedByHand(in.Now) && !s.capPauses() {
+				// With bands the minimum is the smallest ACHIEVABLE value, and
+				// a session whose ceiling or chosen minimum leaves no band at
+				// all cannot charge - admitting it would allocate a value the
+				// station turns into a pause anyway.
+				m, ok := feasibleMin(s, set)
+				if !ok {
+					pausedReason[s.Key] = ReasonBelowMinimum
+					if s.CapKw != nil {
+						pausedReason[s.Key] = s.capReason()
+					}
+					continue
+				}
+				minKw = m
+			}
 			avail := rest
 			if !exempt && srcActive && sourceRest(s) < avail {
 				avail = sourceRest(s)
@@ -742,6 +765,7 @@ func Decide(in Input) Plan {
 			}
 		}
 		left := waterFill(adm, give, spare)
+		left = snapBands(adm, give, left, set)
 		moved := spare - left
 		rest -= moved
 		if !exempt && srcActive {
@@ -788,6 +812,9 @@ func Decide(in Input) Plan {
 		if kw, ok := give[s.Key]; ok {
 			a.Kw = round3(kw)
 			a.Reason = ReasonCharging
+			if s.Ranges.Any() {
+				_, a.Phases = snapDown(s, set, a.Kw)
+			}
 		} else {
 			a.Paused = true
 			a.Kw = 0
@@ -1029,8 +1056,9 @@ func pace(a Allocation, prev *Plan, p Pacing, now time.Time) Allocation {
 	if !ok {
 		return a
 	}
-	// A pause, a resume and every reduction go through immediately.
-	if a.Paused != old.Paused || a.Kw+1e-9 < old.Kw {
+	// A pause, a resume and every reduction go through immediately. So does a
+	// change of band: the held value would belong to the other phase count.
+	if a.Paused != old.Paused || a.Kw+1e-9 < old.Kw || a.Phases != old.Phases {
 		return a
 	}
 	if a.Kw-old.Kw >= p.MinChangeKw {

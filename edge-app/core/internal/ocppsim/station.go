@@ -33,6 +33,12 @@ type Config struct {
 	// AmpsOnly makes the station report that it takes limits in amperes only —
 	// the firmware class the product refuses to guess for.
 	AmpsOnly bool
+	// AmpsVoltageV makes an AmpsOnly station ACCEPT ampere profiles at this
+	// line voltage (the go-e class): limit A × V × numberPhases (3 when the
+	// profile names none). 0 keeps the strict refusal above.
+	AmpsVoltageV float64
+	// PhaseSwitch makes the station report ConnectorSwitch3to1PhaseSupported.
+	PhaseSwitch bool
 	// RejectFullConfiguration models stations that refuse an empty OCPP key
 	// list but accept targeted GetConfiguration calls.
 	RejectFullConfiguration bool
@@ -78,7 +84,7 @@ func New(cfg Config) *Station {
 	if cfg.AmpsOnly {
 		unit = "Current"
 	}
-	return &Station{
+	st := &Station{
 		cfg:      cfg,
 		profiles: map[int]Profile{},
 		vehicles: map[int]Vehicle{},
@@ -95,6 +101,10 @@ func New(cfg Config) *Station {
 			"RigVendor.Mode":                          "complete",
 		},
 	}
+	if cfg.PhaseSwitch {
+		st.config["ConnectorSwitch3to1PhaseSupported"] = "true"
+	}
+	return st
 }
 
 // Connect dials the CSMS at the given BASE endpoint (the library appends the
@@ -319,13 +329,14 @@ func (s *Station) PublishMeterValues() error {
 // --- OCPP handlers ---
 
 func (s *Station) OnSetChargingProfile(r *smartcharging.SetChargingProfileRequest) (*smartcharging.SetChargingProfileConfirmation, error) {
-	if s.cfg.AmpsOnly {
+	p := r.ChargingProfile
+	amps := p.ChargingSchedule != nil && p.ChargingSchedule.ChargingRateUnit == types.ChargingRateUnitAmperes
+	if s.cfg.AmpsOnly && (s.cfg.AmpsVoltageV <= 0 || !amps) {
 		// A station that only speaks amperes refuses a watt limit. It is the
 		// honest behaviour AND the guard that our refusal to guess is real:
 		// if the product ever did send one, this would reject it.
 		return smartcharging.NewSetChargingProfileConfirmation(smartcharging.ChargingProfileStatusNotSupported), nil
 	}
-	p := r.ChargingProfile
 	prof := Profile{
 		ID: p.ChargingProfileId, ConnectorD: r.ConnectorId,
 		Purpose: string(p.ChargingProfilePurpose), StackLevel: p.StackLevel,
@@ -333,6 +344,13 @@ func (s *Station) OnSetChargingProfile(r *smartcharging.SetChargingProfileReques
 	if sch := p.ChargingSchedule; sch != nil {
 		if len(sch.ChargingSchedulePeriod) > 0 {
 			prof.LimitW = sch.ChargingSchedulePeriod[0].Limit
+			if amps {
+				prof.Phases = 3
+				if n := sch.ChargingSchedulePeriod[0].NumberPhases; n != nil {
+					prof.Phases = *n
+				}
+				prof.LimitW = sch.ChargingSchedulePeriod[0].Limit * s.cfg.AmpsVoltageV * float64(prof.Phases)
+			}
 		}
 		if sch.StartSchedule != nil {
 			prof.StartsAt = sch.StartSchedule.Time

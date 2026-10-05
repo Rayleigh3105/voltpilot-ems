@@ -14,6 +14,8 @@ Einstellungen und zeigt die Meldungen der Box. Ein Speichern beweist weder die
    Netzphasen, maximaler Steckerstrom und das verfügbare Ladepark-Budget je Phase.
    Keine angenommene Spannung oder Phasenzahl. Alle betroffenen Säulen hängen an
    derselben Box; alle Stecker müssen beim Ändern frei und die Säulen verbunden sein.
+   Bei drei angeschlossenen Phasen lässt sich darunter **Laden auf einer Phase**
+   erlauben; das geht auch mit eingestecktem Auto (siehe Phasenumschaltung unten).
 3. **OCPP-Regelung freigeben**. Das gilt ausschließlich für OCPP. Der globale
    Steuerungsstopp bleibt wirksam. Ohne neue Einstellung gilt die bisherige
    Kombination der Box-Schalter weiter. Die Anzeige unterscheidet gespeichert,
@@ -51,9 +53,22 @@ behalten ihre jeweiligen Berechtigungen.
 - Ampere-Profile werden mit erklärter Spannung und Phasen auf 0,1 A abgerundet.
   Phasenbudgets werden konservativ und fest auf die erklärten Stecker aufgeteilt,
   einschließlich getrennter Säulen. Es gibt keine dynamische Umverteilung zwischen
-  Phasen und keine Phasenumschaltung. Bei Änderungen bleiben neue Starts gesperrt,
+  Phasen. Bei Änderungen bleiben neue Starts gesperrt,
   bis sämtliche Säulen die neuen Schutzprofile angenommen haben. Fehlende Angaben
   oder nicht bestätigbare Cache-Einstellungen verhindern die Freigabe.
+- **Phasenumschaltung (1p/3p)** ist je Stecker freigeschaltet (`phase_switching` in
+  der Verdrahtung, nur bei drei Phasen) und braucht zusätzlich die eigene Meldung
+  der Säule `ConnectorSwitch3to1PhaseSupported=true`. Dann kennt der Verteiler zwei
+  Bereiche, z. B. bei 230 V/16 A 1,38–3,68 kW und 4,14–11,04 kW; Werte dazwischen
+  werden abgerundet. Die Phasenzahl geht als `numberPhases` ins Live-Profil, auf
+  einer Phase mit demselben Ampere-Anteil wie dreiphasig. Eine neue Phasenzahl muss
+  60 Sekunden gewünscht sein, zwei Umschaltungen liegen mindestens 5 Minuten
+  auseinander; solange bleibt der Stecker in seiner Phasenzahl, dreiphasig unter
+  dem Minimum heißt das Pause. Eine Pause schaltet nicht um. Die Mindestleistung
+  des Standorts gilt für solche Stecker nicht (die Bereiche sind die bekannte
+  Untergrenze), eine Mindestleistung am Ladepunkt bleibt Schwelle. Schutz- und
+  Default-Profile bleiben dreiphasig; der Schalter ändert keine Phasenreserve und
+  verlangt deshalb weder freie Stecker noch eine neue Einrichtung.
 - Autorisierungscaches und lokale Stationslisten dürfen die Entscheidung der Box
   nicht umgehen. Die relevanten Stationsschlüssel werden gesetzt und zurückgelesen.
   Im verwalteten Modus sperrt das Command Gateway Änderungen dieser Schlüssel und
