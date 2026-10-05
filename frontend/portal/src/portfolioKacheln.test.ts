@@ -49,8 +49,9 @@ describe('portfolioKacheln', () => {
     expect(r.kosten.trend).toMatchObject({ richtung: 'rauf', prozent: '2' });
     expect(r.kosten.satz).toBe('aus Tarif · September 2026');
 
-    expect(r.lastspitze).toMatchObject({ wert: '412', einheit: 'kW', leer: false, fuellProzent: 75 });
-    expect(r.lastspitze.satz).toBe('von 550 kW vereinbart');
+    // Review R2 §B4: gemessene kW mit 1 Nachkommastelle (AP-08). §B3: die Kachel nennt die Anlage.
+    expect(r.lastspitze).toMatchObject({ wert: '412,0', einheit: 'kW', leer: false, fuellProzent: 75 });
+    expect(r.lastspitze.satz).toBe('von 550,0 kW vereinbart · Werk Ahrenberg – Halle 1');
     // Review PR3 §1: Abrechnungszeitraum + Zeitpunkt der Spitze (Europe/Berlin: 18:15 UTC → 20:15).
     expect(r.lastspitze.wann).toBe('höchste Spitze 2026 · 05.10. 20:15');
 
@@ -101,12 +102,31 @@ describe('portfolioKacheln', () => {
     expect(r.verbrauch.vergleich).toBe('Vorjahr noch nicht verfügbar');
   });
 
+  it('unvollständig gemessen → kein Vorjahrespfeil, sondern „unvollständig gemessen" (Review R2 §B2)', () => {
+    const r = portfolioKacheln(
+      kpi({
+        verbrauch: { kwh: 120000, kwh_vorjahr: 207000, vollstaendig: false },
+        kosten: { eur: 29000, eur_vorjahr: 47000, tarif_hinterlegt: true },
+      }),
+    );
+    // Der Wert bleibt sichtbar, aber die Teilmenge wird nicht gegen ein volles Vorjahr gestellt.
+    expect(r.verbrauch.wert).toBe('120.000');
+    expect(r.verbrauch.trend).toBeNull();
+    expect(r.verbrauch.vergleich).toBe('unvollständig gemessen');
+    expect(r.verbrauch.vollstaendig).toBe(false);
+    // Kosten = Menge × Tarif: erbt die Unvollständigkeit der Menge.
+    expect(r.kosten.wert).toBe('29.000');
+    expect(r.kosten.trend).toBeNull();
+    expect(r.kosten.vergleich).toBe('unvollständig gemessen');
+    expect(r.kosten.vollstaendig).toBe(false);
+  });
+
   it('Lastspitze ohne vereinbarte Leistung nennt die gemessene Spitze', () => {
     const r = portfolioKacheln(
       kpi({ lastspitze: { kw: 300, vereinbart_kw: null, anteil_prozent: null, anlage: 'A', zeitpunkt: null, zeitraum: '2026' } }),
     );
-    expect(r.lastspitze.wert).toBe('300');
-    expect(r.lastspitze.satz).toBe('gemessene Spitze');
+    expect(r.lastspitze.wert).toBe('300,0');
+    expect(r.lastspitze.satz).toBe('gemessene Spitze · A');
     expect(r.lastspitze.fuellProzent).toBeNull();
     // Ohne Zeitpunkt bleibt nur der Abrechnungszeitraum.
     expect(r.lastspitze.wann).toBe('höchste Spitze 2026');

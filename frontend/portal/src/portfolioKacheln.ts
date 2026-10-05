@@ -68,10 +68,16 @@ export interface VergleichKachel {
   /**
    * Review PR2 §4 — jede Kachel trägt einen Vergleich: fehlt ein belastbarer
    * Pfeil, steht hier der ehrliche Ersatzsatz („Vorjahr noch nicht verfügbar"
-   * bzw. „unverändert ggü. Vorjahr"). `null`, wenn der Pfeil ihn schon trägt
-   * oder die Kachel leer ist.
+   * bzw. „unverändert ggü. Vorjahr"), bei unvollständiger Messung „unvollständig
+   * gemessen". `null`, wenn der Pfeil ihn schon trägt oder die Kachel leer ist.
    */
   vergleich: string | null;
+  /**
+   * Review R2 §B2: ob die Menge vollständig gemessen ist. Bei `false` kennzeichnet
+   * die Kachel „unvollständig gemessen" und unterdrückt den Vorjahrespfeil (eine
+   * Teilmenge gegen das volle Vorjahr wäre irreführend).
+   */
+  vollstaendig: boolean;
 }
 
 /** Die Lastspitzen-Kachel: höchste Spitze im Abrechnungszeitraum + Balken gegen die vereinbarte Leistung. */
@@ -178,36 +184,48 @@ function vorjahrErsatz(vorjahr: number | null): string {
   return vorjahr == null || vorjahr === 0 ? 'Vorjahr noch nicht verfügbar' : 'unverändert ggü. Vorjahr';
 }
 
+/** Review R2 §B2: bei unvollständiger Messung „unvollständig gemessen" statt des irreführenden Vorjahresvergleichs. */
+function vergleichBei(vollstaendig: boolean, trendDa: boolean, vorjahr: number | null): string | null {
+  if (!vollstaendig) {
+    return 'unvollständig gemessen';
+  }
+  return trendDa ? null : vorjahrErsatz(vorjahr);
+}
+
 function verbrauchKachel(v: PortfolioKpi['verbrauch'], bezug: string): VergleichKachel {
   if (v.kwh == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null, vergleich: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null, vergleich: null, vollstaendig: true };
   }
-  const t = trend(v.kwh, v.kwh_vorjahr, 'ggü. Vorjahr');
+  // Review R2 §B2: bei unvollständiger Menge keinen Vorjahrespfeil (Teilmenge gegen volles Vorjahr wäre irreführend).
+  const t = v.vollstaendig ? trend(v.kwh, v.kwh_vorjahr, 'ggü. Vorjahr') : null;
   return {
     wert: fmtNum(v.kwh, '', 0),
     einheit: 'kWh',
     leer: false,
     satz: `Netzbezug · ${bezug}`,
     trend: t,
-    vergleich: t ? null : vorjahrErsatz(v.kwh_vorjahr),
+    vergleich: vergleichBei(v.vollstaendig, t != null, v.kwh_vorjahr),
+    vollstaendig: v.vollstaendig,
   };
 }
 
-function kostenKachel(k: PortfolioKpi['kosten'], bezug: string): VergleichKachel {
+function kostenKachel(k: PortfolioKpi['kosten'], bezug: string, vollstaendig: boolean): VergleichKachel {
   if (!k.tarif_hinterlegt) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null, vergleich: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null, vergleich: null, vollstaendig: true };
   }
   if (k.eur == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null, vergleich: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null, vergleich: null, vollstaendig: true };
   }
-  const t = trend(k.eur, k.eur_vorjahr, 'ggü. Vorjahr');
+  // Kosten = Menge × Tarif: ist die Menge unvollständig, ist es die Kostensumme auch.
+  const t = vollstaendig ? trend(k.eur, k.eur_vorjahr, 'ggü. Vorjahr') : null;
   return {
     wert: fmtNum(k.eur, '', 0),
     einheit: '€',
     leer: false,
     satz: `aus Tarif · ${bezug}`,
     trend: t,
-    vergleich: t ? null : vorjahrErsatz(k.eur_vorjahr),
+    vergleich: vergleichBei(vollstaendig, t != null, k.eur_vorjahr),
+    vollstaendig,
   };
 }
 
@@ -235,11 +253,15 @@ function lastspitzeKachel(s: PortfolioKpi['lastspitze']): SpitzeKachel {
   if (s.kw == null) {
     return { wert: STRICH, einheit: '', leer: true, satz: raum ? `keine Lastdaten · ${raum}` : 'keine Lastdaten', fuellProzent: null, wann: null };
   }
-  const satz = s.vereinbart_kw != null ? `von ${fmtNum(s.vereinbart_kw, '', 0)} kW vereinbart` : 'gemessene Spitze';
+  // Review R2 §B3: die Portfolio-Lastspitze ist die höchste Spitze EINER Anlage samt DEREN vereinbarter Leistung —
+  // die Anlage benennen, sonst mischt die Kachel Einzelspitze und Einzel-Vereinbarung ununterscheidbar.
+  const grund = s.vereinbart_kw != null ? `von ${fmtNum(s.vereinbart_kw, '', 1)} kW vereinbart` : 'gemessene Spitze';
+  const satz = s.anlage ? `${grund} · ${s.anlage}` : grund;
   const zeit = fmtWann(s.zeitpunkt);
   const wann = raum ? (zeit ? `höchste Spitze ${raum} · ${zeit}` : `höchste Spitze ${raum}`) : zeit;
   return {
-    wert: fmtNum(s.kw, '', 0),
+    // Review R2 §B4: gemessene kW mit 1 Nachkommastelle (AP-08), wie die Anlagenkarte.
+    wert: fmtNum(s.kw, '', 1),
     einheit: 'kW',
     leer: false,
     satz,
@@ -272,7 +294,7 @@ export function portfolioKacheln(kpi: PortfolioKpi): PortfolioKachelRaster {
     leit: leitKachel(kpi.leit),
     verbrauch: verbrauchKachel(kpi.verbrauch, bezug),
     lastspitze: lastspitzeKachel(kpi.lastspitze),
-    kosten: kostenKachel(kpi.kosten, bezug),
+    kosten: kostenKachel(kpi.kosten, bezug, kpi.verbrauch.vollstaendig),
     datenlage: datenlageKachel(kpi.datenlage),
   };
 }

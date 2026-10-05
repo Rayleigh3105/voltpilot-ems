@@ -879,6 +879,11 @@ eine zweite Person kann der Ersteller nicht selbst freigeben.
 Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
 eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
 Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md)."""],
+    "energieleistungskennzahl": ["""**Leitkennzahl (Portfolio-Übersicht, Konzept `data/vp-portfolio-konzept2-p2` §4.2).**
+Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: die Energieleistungskennzahl mit offenem Energieziel, die das Kachelraster als erste, breite Kachel anführt.
+Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.
+Gibt es keine Kennzahl mit offenem Ziel, führt stattdessen die Datenlage, und an ihrer Stelle steht „Noch keine Leitkennzahl gegen ein Ziel hinterlegt.“.
+Kundenwort: `UEMS_LEITKENNZAHL` (PORTAL/glossar.ts)."""],
 }
 
 # ---------------------------------------------------------------------------------------------

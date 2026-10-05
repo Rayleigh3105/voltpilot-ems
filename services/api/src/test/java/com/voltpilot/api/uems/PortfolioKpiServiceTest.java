@@ -153,6 +153,71 @@ class PortfolioKpiServiceTest {
         assertThat(nb.vollstaendig()).isFalse();
     }
 
+    // ------------------------------------------------------------------ Fensterwahl (rein, Review R2)
+
+    @Test
+    void fensterwahlGemischtBrauchtBeideFensterMitBerlinGrenzen() {
+        LocalDate heute = LocalDate.parse("2026-10-05");
+        PortfolioKpiService.Fenster f = PortfolioKpiService.fenster(List.of("monat", "jahr"), heute);
+        assertThat(f.brauchtMonat()).isTrue();
+        assertThat(f.brauchtJahr()).isTrue();
+        // 01.01.2026 00:00 Berlin = CET (UTC+1) → 31.12.2025 23:00 UTC
+        assertThat(f.jahrVon()).isEqualTo(Instant.parse("2025-12-31T23:00:00Z"));
+        // 01.10.2026 00:00 Berlin = CEST (UTC+2, DST bis 25.10.) → 30.09.2026 22:00 UTC
+        assertThat(f.monatVon()).isEqualTo(Instant.parse("2026-09-30T22:00:00Z"));
+        assertThat(f.jahrLabel()).isEqualTo("2026");
+        assertThat(f.monatLabel()).isEqualTo("Oktober 2026");
+    }
+
+    @Test
+    void fensterwahlNurJahrLaesstDasMonatsfensterWeg() {
+        PortfolioKpiService.Fenster f = PortfolioKpiService.fenster(List.of("jahr", "jahr"), LocalDate.parse("2026-10-05"));
+        assertThat(f.brauchtJahr()).isTrue();
+        assertThat(f.brauchtMonat()).isFalse();
+    }
+
+    @Test
+    void fensterwahlNurMonatLaesstDasJahresfensterWeg() {
+        PortfolioKpiService.Fenster f = PortfolioKpiService.fenster(List.of("monat"), LocalDate.parse("2026-10-05"));
+        assertThat(f.brauchtMonat()).isTrue();
+        assertThat(f.brauchtJahr()).isFalse();
+    }
+
+    @Test
+    void fensterwahlNullAbrechnungZaehltAlsJahr() {
+        // abrechnungLeistung == null → Jahresfenster (wie die Produktion), nie „monat".
+        List<String> mitNull = new java.util.ArrayList<>();
+        mitNull.add(null);
+        PortfolioKpiService.Fenster f = PortfolioKpiService.fenster(mitNull, LocalDate.parse("2026-10-05"));
+        assertThat(f.brauchtJahr()).isTrue();
+        assertThat(f.brauchtMonat()).isFalse();
+    }
+
+    @Test
+    void fensterwahlOhneAnlageBrauchtKeinFenster() {
+        PortfolioKpiService.Fenster f = PortfolioKpiService.fenster(List.of(), LocalDate.parse("2026-10-05"));
+        assertThat(f.brauchtJahr()).isFalse();
+        assertThat(f.brauchtMonat()).isFalse();
+    }
+
+    // ------------------------------------------------------------------ Trend (rein, Review R2)
+
+    @Test
+    void trendProzentRechnetGegenDenVormonat() {
+        // (0,2837 − 0,30) ÷ 0,30 × 100 = −5,43… → 1 Stelle −5,4
+        assertThat(PortfolioKpiService.trendProzent(bd("0.2837"), bd("0.30"))).isEqualByComparingTo("-5.4");
+        // Anstieg: (0,33 − 0,30) ÷ 0,30 × 100 = +10,0
+        assertThat(PortfolioKpiService.trendProzent(bd("0.33"), bd("0.30"))).isEqualByComparingTo("10.0");
+    }
+
+    @Test
+    void trendProzentOhneTauglichenVormonatIstNull() {
+        assertThat(PortfolioKpiService.trendProzent(bd("0.30"), null)).isNull();
+        assertThat(PortfolioKpiService.trendProzent(null, bd("0.30"))).isNull();
+        // Vormonat 0 → keine Division, kein irreführender Pfeil.
+        assertThat(PortfolioKpiService.trendProzent(bd("0.30"), bd("0"))).isNull();
+    }
+
     // ------------------------------------------------------------------ Helfer
 
     private static BigDecimal bd(Object o) {

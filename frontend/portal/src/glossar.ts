@@ -573,6 +573,19 @@ export const UEMS_GRUNDLAST = 'Grundlast';
 export const UEMS_LEISTUNGSVERGLEICH = 'Leistungsvergleich';
 
 /**
+ * UEMS Portfolio-Übersicht (Konzept `data/vp-portfolio-konzept2-p2` §4.2) — die
+ * „Leitkennzahl" ist die FÜHRENDE Kennzahl der Unternehmens-Übersicht: die
+ * {@link UEMS_ENERGIELEISTUNGSKENNZAHL} mit offenem Energieziel, die das
+ * Kachelraster als erste (breite) Kachel anführt. Kein neues Fachobjekt,
+ * sondern die Präsentations-Rolle dieser einen Kennzahl im Portfolio-Kopf.
+ * Fehlt ein offenes Ziel, führt stattdessen die Datenlage (Satz unten).
+ * Glossar: `docs/fachmodell/glossar.md` › Energieleistungskennzahl
+ * (Abschnitt „Leitkennzahl").
+ */
+export const UEMS_LEITKENNZAHL = 'Leitkennzahl';
+export const UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ = `Noch keine ${UEMS_LEITKENNZAHL} gegen ein Ziel hinterlegt.`;
+
+/**
  * Die Urteil-Wörter (U2, U3, SP1). Der Vertragswert `nicht_anwendbar` heißt auf der Kundenfläche „nicht bewertbar“;
  * seinen Grund nennt der Satz daneben (§5.8). Eine rohe Zahl hat kein Urteil und darum kein Wort.
  */

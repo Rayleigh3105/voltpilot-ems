@@ -95,15 +95,10 @@ public class PortfolioKpiService {
         List<SiteDto> alle = sites.findAll();
         // Review PR3 §1: die Lastspitze bemisst sich am laufenden ABRECHNUNGSZEITRAUM bis jetzt (Leistungspreis-Basis),
         // je Anlage „jahr" (Kalenderjahr) oder „monat" (laufender Monat) - so trägt die Kachel live echte Werte.
-        Instant jahrVon = LocalDate.of(heute.getYear(), 1, 1).atStartOfDay(BERLIN).toInstant();
-        Instant monatVon = heute.withDayOfMonth(1).atStartOfDay(BERLIN).toInstant();
-        boolean brauchtMonat = alle.stream().anyMatch(s -> "monat".equals(s.abrechnungLeistung()));
-        boolean brauchtJahr = alle.stream().anyMatch(s -> !"monat".equals(s.abrechnungLeistung()));
-        Map<UUID, PortfolioKpiRepository.Spitze> spJahr = brauchtJahr ? spitzen.importSpitzen(jahrVon, jetzt) : Map.of();
-        Map<UUID, PortfolioKpiRepository.Spitze> spMonat = brauchtMonat ? spitzen.importSpitzen(monatVon, jetzt) : Map.of();
-        String jahrLabel = String.valueOf(heute.getYear());
-        String monatLabel = Month.of(heute.getMonthValue()).getDisplayName(TextStyle.FULL, Locale.GERMAN)
-                + " " + heute.getYear();
+        // Welche Fenster gebraucht werden und ihre Grenzen/Labels bestimmt die REINE fenster() (Review R2: Fensterwahl testbar).
+        Fenster f = fenster(alle.stream().map(SiteDto::abrechnungLeistung).toList(), heute);
+        Map<UUID, PortfolioKpiRepository.Spitze> spJahr = f.brauchtJahr() ? spitzen.importSpitzen(f.jahrVon(), jetzt) : Map.of();
+        Map<UUID, PortfolioKpiRepository.Spitze> spMonat = f.brauchtMonat() ? spitzen.importSpitzen(f.monatVon(), jetzt) : Map.of();
 
         List<AnlageKpiRoh> roh = new ArrayList<>();
         for (SiteDto s : alle) {
@@ -113,12 +108,33 @@ public class PortfolioKpiService {
             PortfolioKpiRepository.Spitze sp = (monat ? spMonat : spJahr).get(s.id());
             roh.add(new AnlageKpiRoh(s.name(), jetztM.kwh(), jetztM.vollstaendig(), vorM.kwh(),
                     arbeitspreis(s), sp != null ? sp.kw() : null, vereinbartKw(s.id(), heute),
-                    sp != null ? sp.zeitpunkt() : null, monat ? monatLabel : jahrLabel));
+                    sp != null ? sp.zeitpunkt() : null, monat ? f.monatLabel() : f.jahrLabel()));
         }
 
         PortfolioKpiDto.Periode periode = new PortfolioKpiDto.Periode(
                 aktuell.atDay(1), aktuell.atEndOfMonth(), aktuell.getYear(), aktuell.getMonthValue());
         return aggregiere(periode, roh, datenlage(), leitkennzahl(aktuell));
+    }
+
+    /** Die Abrechnungszeitraum-Fenster der Lastspitze: Grenzen (Berlin), Labels und welche Fenster überhaupt gebraucht werden. */
+    record Fenster(Instant jahrVon, Instant monatVon, boolean brauchtJahr, boolean brauchtMonat,
+            String jahrLabel, String monatLabel) {}
+
+    /**
+     * Die Fensterwahl für die Lastspitze (Review PR3 §1) - REIN, ohne Datenbank testbar: aus den
+     * {@code abrechnungLeistung}-Werten der sichtbaren Anlagen und {@code heute}. „monat" braucht das
+     * Monatsfenster (Monatsanfang Berlin), alles andere - auch {@code null} - das Jahresfenster
+     * (1. Januar Berlin). Beide Flags {@code false} ohne Anlage (kein unnötiger DB-Treffer).
+     */
+    static Fenster fenster(List<String> abrechnungen, LocalDate heute) {
+        Instant jahrVon = LocalDate.of(heute.getYear(), 1, 1).atStartOfDay(BERLIN).toInstant();
+        Instant monatVon = heute.withDayOfMonth(1).atStartOfDay(BERLIN).toInstant();
+        boolean brauchtMonat = abrechnungen.stream().anyMatch("monat"::equals);
+        boolean brauchtJahr = abrechnungen.stream().anyMatch(a -> !"monat".equals(a));
+        String jahrLabel = String.valueOf(heute.getYear());
+        String monatLabel = Month.of(heute.getMonthValue()).getDisplayName(TextStyle.FULL, Locale.GERMAN)
+                + " " + heute.getYear();
+        return new Fenster(jahrVon, monatVon, brauchtJahr, brauchtMonat, jahrLabel, monatLabel);
     }
 
     /** Die Datenlage: aktuell liefernde Messstellen / gesamt (dieselbe Ableitung wie der Messstellen-Baustein). */
@@ -170,6 +186,9 @@ public class PortfolioKpiService {
             if (a.tarifCtKwh() != null) {
                 tarifHinterlegt = true;
                 kosten = plus(kosten, kostenAus(a.bezugKwh(), a.tarifCtKwh()));
+                // Review R2 §B5: die Vorjahreskosten bepreisen die VORJAHRESMENGE mit dem HEUTE
+                // hinterlegten Arbeitspreis (historische Tarife werden nicht gespeichert). „Kosten
+                // ggü. Vorjahr" bildet damit den MENGENeffekt ab, nicht die echte Tarifänderung.
                 kostenVorjahr = plus(kostenVorjahr, kostenAus(a.bezugVorjahrKwh(), a.tarifCtKwh()));
             }
             if (a.lastspitzeKw() != null
@@ -257,7 +276,7 @@ public class PortfolioKpiService {
      * „Leitkennzahl gegen Ziel" erst möglich). Gibt es mehrere, entscheidet das
      * Kennzeichen deterministisch. Ohne Energieziel: {@code null} (Datenlage-Fallback).
      */
-    private PortfolioKpiDto.Leitkennzahl leitkennzahl(YearMonth aktuell) {
+    PortfolioKpiDto.Leitkennzahl leitkennzahl(YearMonth aktuell) {
         EnergiezielDto.Liste ziele = energieziele.liste(Set.of(), null, "offen");
         EnergiezielDto.Energieziel ziel = ziele.energieziele().stream()
                 .min(Comparator.comparing(z -> z.kennzahl().kennzeichen()))
@@ -279,13 +298,9 @@ public class PortfolioKpiService {
         }
         KennzahlDto.Wert juengster = mitWert.get(mitWert.size() - 1);
         BigDecimal wert = dezimal(juengster.wert());
-        BigDecimal trend = null;
-        if (mitWert.size() >= 2 && wert != null) {
-            BigDecimal vorher = dezimal(mitWert.get(mitWert.size() - 2).wert());
-            if (vorher != null && vorher.signum() != 0) {
-                trend = wert.subtract(vorher).multiply(HUNDERT).divide(vorher, 1, RoundingMode.HALF_UP);
-            }
-        }
+        BigDecimal trend = mitWert.size() >= 2
+                ? trendProzent(wert, dezimal(mitWert.get(mitWert.size() - 2).wert()))
+                : null;
         EnergiezielDto.Stand stand = energieziele.stand(ziel.id());
         String urteil = stand.summe() != null ? stand.summe().urteil() : null;
         String einheit = juengster.einheit() != null ? juengster.einheit()
@@ -316,6 +331,17 @@ public class PortfolioKpiService {
 
     private static BigDecimal runde(BigDecimal v, int stellen) {
         return v == null ? null : v.setScale(stellen, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Der Trend des jüngsten Kennzahlwerts gegen den Vormonat in Prozent (1 Stelle, HALF_UP) - REIN.
+     * {@code null}, wenn ein Wert fehlt oder der Vormonat 0 ist (keine Division, kein irreführender Pfeil).
+     */
+    static BigDecimal trendProzent(BigDecimal juengster, BigDecimal vorher) {
+        if (juengster == null || vorher == null || vorher.signum() == 0) {
+            return null;
+        }
+        return juengster.subtract(vorher).multiply(HUNDERT).divide(vorher, 1, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal dezimal(String s) {

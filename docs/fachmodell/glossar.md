@@ -1012,6 +1012,12 @@ Eine Energieleistungskennzahl ist eine Kennzahl (AP-11), für die eine Bezugsbas
 
 **Abgrenzung.** Nicht eine neue Kennzahl-Art; nicht eine gespeicherte bereinigte Kennzahl (Rechenform `modell` bleibt Folgestufe, E7).
 
+**Leitkennzahl (Portfolio-Übersicht, Konzept `data/vp-portfolio-konzept2-p2` §4.2).**
+Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: die Energieleistungskennzahl mit offenem Energieziel, die das Kachelraster als erste, breite Kachel anführt.
+Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.
+Gibt es keine Kennzahl mit offenem Ziel, führt stattdessen die Datenlage, und an ihrer Stelle steht „Noch keine Leitkennzahl gegen ein Ziel hinterlegt.“.
+Kundenwort: `UEMS_LEITKENNZAHL` (PORTAL/glossar.ts).
+
 ## Bezugsbasis
 
 *Sicht: Organisation · Nachtrag AP-17 §4.2–§4.5 (B1, B4, F1–F5)*

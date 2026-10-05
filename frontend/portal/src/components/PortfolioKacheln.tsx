@@ -1,5 +1,6 @@
 import { Gross, Kachel, Marke } from './kacheln/Kachel';
 import type { DatenlageKachel, LeitKachel, PortfolioKachelRaster, SpitzeKachel, Trend, VergleichKachel } from '../portfolioKacheln';
+import { UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ } from '../glossar';
 import './PortfolioKacheln.css';
 
 /**
@@ -47,7 +48,7 @@ function Leit({ leit, datenlage }: { leit: LeitKachel | null; datenlage: Datenla
             </div>
           </>
         ) : (
-          <p className="vp-k-sub">Noch keine Leitkennzahl gegen ein Ziel hinterlegt.</p>
+          <p className="vp-k-sub">{UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ}</p>
         )}
       </Kachel>
     );
