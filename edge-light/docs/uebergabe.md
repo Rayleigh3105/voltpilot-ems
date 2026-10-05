@@ -50,7 +50,7 @@ Ein **anderer GL.iNet-Router** nutzt ebenfalls 192.168.1.1 (WLAN „VoltPilot En
 ### Werkzeuge für Feldtests
 
 - `node edge-light/test/ocpp-mitschrift.js <datei.log> [http://10.10.1.25:8484]` schreibt alle 5 s eine Zeile: Messwerte, Zuteilung, Phasenzahl, Antwort der Säule.
-- `edge-light/test/mango-gotest.sh <ziel> <paket> [-test.run …]` lässt Go-Tests auf dem Mango laufen, wenn sie lokal nicht starten (unter Windows blockiert die Anwendungssteuerung die Testprogramme). Die Grenzen stehen im Skriptkopf.
+- `edge-light/test/mango-gotest.sh <ziel> <paket> [-test.run …]` lässt Go-Tests auf dem Mango laufen, wenn sie lokal nicht starten (unter Windows blockiert die Anwendungssteuerung die Testprogramme). ⚠ **Nur ohne eingestecktes Auto:** Am 05.10. nahmen die Agenten-Tests der Box die CPU. Sie verlor dadurch rund 9 Minuten die Kontrolle über die go-e, und das Auto lud etwa 10–20 s ohne Grenze aus dem Netz. Das Skript bricht deshalb bei laufender Ladesitzung ab. Besser ist ein Linux-Rechner oder Docker (`edge-light/scripts/test.sh`).
 
 ## Ausgangslage und Ziel
 
