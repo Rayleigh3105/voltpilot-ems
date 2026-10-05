@@ -46,6 +46,14 @@ der Sitzung oder nach hoechstens 4 h, die Szene mit „Beenden“), plant der na
 Wallbox-Karte (§ 5a). Die Box haelt sofort, nicht erst mit dem Plan (``edge-app/core/internal/entladeschutz``,
 ``Lage.Halt``). Kein Wort der Festlegung: die Freigabe ist ein Wunsch am Ladepunkt (A1 S. 27), den der Kunde
 jederzeit zuruecknimmt.
+
+MP-41c (BK-41c-3 = A, Captain-Entscheid 05.10.2026: „Schnell“ heisst immer: nur laden) - **die dauerhafte Steuerart
+„sofort“ haelt ebenso an** (:data:`HALT_LADEMODUS_SOFORT`): die Karte zeigt sie als „Schnell“, also ruht das
+Zurueckspeisen wie beim Eingriff. „sofort“ ist, was die Portal-Projektion so nennt (:func:`steuerart_sofort`, Zwilling
+von ``SteuerartProjektion.projiziere`` fuer eine OCPP-Saeule, Vektoren ``mispel-steuerart-sofort-vectors.json``) - die
+Quellen-Bahn ``schnell`` allein reicht nicht, denn „Guenstige Stunden“ faehrt dieselbe Bahn mit einer Preis-Policy.
+Die Box kennt die Policy nicht (sie lebt in Node-RED); sie erfaehrt „sofort“ mit dem Plan (Block fehlt =
+``freigabe_aus``, wie bei der Szene), also hoechstens einen Planlauf spaeter (firstmate-Entscheid 05.10.2026 = A).
 """
 
 from __future__ import annotations
@@ -154,6 +162,9 @@ OHNE_EINSTELLUNG = FahrerEinstellung(RUECKSPEISEN_AUS)
 HALT_LADEMODUS_AUS = "lademodus_aus"
 HALT_LADEMODUS_SCHNELL = "lademodus_schnell"
 HALT_SZENE = "szene"
+#: MP-41c - die dauerhafte Steuerart „sofort“ des Ladepunkts (:func:`steuerart_sofort`). Ein Wort nur des Plans: die
+#: Box haelt dafuer nicht selbst an, sie bekommt keinen Block (``entladeschutz.GrundFreigabeAus``).
+HALT_LADEMODUS_SOFORT = "lademodus_sofort"
 
 #: Das Maschinenwort des Lastmanagements fuer „Laden pausieren“ (``lastmgmt.ReasonManual``), wie die Box es in
 #: ``device_charge_connector.reason`` meldet.
@@ -167,7 +178,7 @@ def lademodus_halt(boost: bool | None, reason: str | None) -> str | None:
     ``laden.ts``), in derselben Reihenfolge: ``boost`` = „Schnell“ (der Handeingriff „voll“), ``reason = handeingriff``
     = „Aus“ (der Handeingriff „pause“). Beides ist derselbe Eintrag der Box je Stecker, gebunden an die laufende
     Sitzung und hoechstens 4 h lang (``lastmgmt.BoostMaxDuration``). Die dauerhafte Steuerart „sofort“ ist keine
-    Ladung und kein Halte-Grund.
+    Ladung - sie haelt seit MP-41c ueber :func:`halte_grund` an (``sofort``), nicht ueber die Messung am Stecker.
     """
     if boost:
         return HALT_LADEMODUS_SCHNELL
@@ -176,15 +187,154 @@ def lademodus_halt(boost: bool | None, reason: str | None) -> str | None:
     return None
 
 
-def halte_grund(messung: Messung | None, szene: bool) -> str | None:
-    """Was das Zurueckspeisen jetzt anhaelt (MP-39b): der Lademodus am Stecker vor der Szene, ``None`` = nichts.
+def halte_grund(messung: Messung | None, szene: bool, sofort: bool = False) -> str | None:
+    """Was das Zurueckspeisen jetzt anhaelt (MP-39b): der Lademodus am Stecker vor der Steuerart „sofort“ (MP-41c)
+    vor der Szene, ``None`` = nichts.
 
     ``szene`` = eine aktive Szene hat diesen Ladepunkt pausiert (``site_scene.paused_entity_ids``). Nur eine frische
-    Messung traegt einen Lademodus - veraltete Telemetrie ist nicht aktuell.
+    Messung traegt einen Lademodus - veraltete Telemetrie ist nicht aktuell. ``sofort`` = die dauerhafte Steuerart
+    des Ladepunkts ist „sofort“ (:func:`steuerart_sofort`); sie ist Einstellung, keine Messung, und gilt ohne Stecker.
     """
     if messung is not None and messung.lademodus is not None:
         return messung.lademodus
+    if sofort:
+        return HALT_LADEMODUS_SOFORT
     return HALT_SZENE if szene else None
+
+
+# --- MP-41c: die dauerhafte Steuerart „sofort“ (Zwilling von SteuerartProjektion) ----------------------------------
+
+#: Die Woerter der Quellen-Bahn der Box (``lastmgmt/surplus.go``, ``charge_points[].source``/``surplus_policy``).
+BAHN_SCHNELL = "schnell"
+BAHN_NUR_SONNE = "nur_sonne"
+BAHN_SONNE_ZUERST = "sonne_zuerst"
+
+#: Die Quelle, die die Wallbox-Karte als „Schnell“ zeigt (``SteuerartProjektion.QUELLE_SOFORT``).
+QUELLE_SOFORT = "sofort"
+
+
+def bahn(saeule: str | None, anlage: str | None) -> str:
+    """Die Quellen-Bahn, die diese Saeule faehrt: ihre eigene Wahl (Allowlist ``source``), sonst die der Anlage
+    (``site_charging_config.surplus_policy``). Ein leeres oder unbekanntes Wort ist ``schnell`` - die Vorgabe der Box
+    (``lastmgmt.NormalizePolicy``), mit der eine nie gefragte Anlage laedt (``SteuerartProjektion.anlagenStandard``)."""
+    wort = (saeule or "").strip() or (anlage or "").strip()
+    return wort if wort in (BAHN_NUR_SONNE, BAHN_SONNE_ZUERST) else BAHN_SCHNELL
+
+
+def steuerart_sofort(dokument: object, saeule: str | None, anlage: str | None) -> bool:
+    """Ob die Portal-Projektion die Steuerart dieses OCPP-Ladepunkts „sofort“ nennt (MP-41c, BK-41c-3).
+
+    Zwilling von ``SteuerartProjektion.projiziere(dokument, istOcppLadepunkt=true, saeulenSteuerart(...))`` -
+    nur die Frage „Quelle = sofort?“, Regel fuer Regel und ohne Werte; gebunden an die geteilten Vektoren
+    ``docs/contracts/v2/mispel-steuerart-sofort-vectors.json`` (Java ``SteuerartSofortVektorenTest``).
+    ``dokument`` = das Dokument der aktiven Policy (``consumer_policy.lifecycle = 'active'``) oder ``None``:
+
+    - keine Policy oder keine aktive Anforderung: die Bahn (:func:`bahn`) - ``schnell`` ist „sofort“ (Regel 1);
+    - eine Quelle (Regeln 3-6, mit Ziel Regel 8): „sofort“ nur die Form „Fahrzeug verbunden ⇒ ein“ (Regel 3) -
+      „Guenstige Stunden“ faehrt dieselbe Bahn ``schnell``, ist aber keine;
+    - eine Frist allein: an einer OCPP-Saeule „diese Bahn plus diese Frist“ - die Bahn entscheidet;
+    - alles andere ist „Eigene Regel“ (Regel 9), nie „sofort“.
+    """
+    bahn_sofort = bahn(saeule, anlage) == BAHN_SCHNELL
+    if not isinstance(dokument, dict):
+        return bahn_sofort
+    anforderungen = dokument.get("requirements")
+    aktive = [
+        r for r in (anforderungen if isinstance(anforderungen, list) else [])
+        if not (isinstance(r, dict) and r.get("active") is False)
+    ]
+    if not aktive:
+        return bahn_sofort
+    quelle = ziel = None
+    for r in aktive:
+        q = _als_quelle(r) if isinstance(r, dict) else None
+        z = _als_ziel(r) if isinstance(r, dict) else None
+        if q is not None and quelle is None:
+            quelle = q
+        elif z is not None and ziel is None:
+            ziel = z
+        else:
+            return False  # zwei Quellen, zwei Ziele oder eine Form, die die Projektion nicht liest: Eigene Regel
+    if quelle is not None:
+        return quelle == QUELLE_SOFORT
+    return bahn_sofort if ziel is not None else False
+
+
+def _text(v: object) -> str:
+    return v if isinstance(v, str) else ""
+
+
+def _zahl(v: object) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _zielbares_target(t: object) -> bool:
+    if not isinstance(t, dict):
+        return False
+    art = _text(t.get("kind"))
+    if art == "on_off":
+        return t.get("value") is True
+    return art == "kw" and _zahl(t.get("value"))
+
+
+def _fenster(rec: object) -> bool:
+    return isinstance(rec, dict) and all(_text(rec.get(k)) for k in ("days", "from", "to"))
+
+
+def _fahrzeug_blatt(n: object) -> bool:
+    return (isinstance(n, dict) and _text(n.get("signal")) == "consumer.vehicle_connected"
+            and _text(n.get("operator")) == "eq" and n.get("value") is True)
+
+
+def _einzel_blatt(cond: object) -> dict | None:
+    """Das eine Blatt einer Quellen-Form; die einzige Verknuepfung ist ``all[Quelle, vehicle_connected]``."""
+    if not isinstance(cond, dict):
+        return None
+    if "signal" in cond:
+        return cond
+    alle = cond.get("all")
+    if not isinstance(alle, list) or len(alle) != 2:
+        return None
+    a, b = alle
+    if _fahrzeug_blatt(a) and not _fahrzeug_blatt(b) and isinstance(b, dict) and "signal" in b:
+        return b
+    if _fahrzeug_blatt(b) and not _fahrzeug_blatt(a) and isinstance(a, dict) and "signal" in a:
+        return a
+    return None
+
+
+def _als_quelle(r: dict) -> str | None:
+    if not _zielbares_target(r.get("target")):
+        return None
+    art = _text(r.get("kind"))
+    if art == "fixed_window":
+        return "feste_zeiten" if _text(r.get("enforcement")) == "must_run" and _fenster(r.get("recurrence")) else None
+    if art != "reactive":
+        return None
+    blatt = _einzel_blatt(r.get("condition"))
+    if blatt is None:
+        return None
+    signal, op, wert = _text(blatt.get("signal")), _text(blatt.get("operator")), blatt.get("value")
+    if signal == "consumer.vehicle_connected":
+        return QUELLE_SOFORT if op == "eq" and wert is True else None
+    if signal == "site.pv_surplus_kw":
+        return "ueberschuss" if op in ("gt", "gte") and _zahl(wert) else None
+    if signal in ("market.import_price_ct_kwh", "market.spot_price_ct_kwh"):
+        return "guenstig" if op in ("lt", "lte") and _zahl(wert) else None
+    return None
+
+
+def _als_ziel(r: dict) -> str | None:
+    if (_text(r.get("kind")) != "flexible_task" or _text(r.get("enforcement")) != "required_by_deadline"
+            or not _zielbares_target(r.get("target")) or not _fenster(r.get("recurrence"))):
+        return None
+    bedarf = r.get("demand") if isinstance(r.get("demand"), dict) else {}
+    energie = _zahl(bedarf.get("energy_kwh"))
+    laufzeit = bedarf.get("runtime_minutes")
+    laufzeit = isinstance(laufzeit, int) and not isinstance(laufzeit, bool) and -2**31 <= laufzeit < 2**31
+    if energie == laufzeit:
+        return None  # beides oder keines: mehrdeutig
+    return "bis_uhrzeit" if energie else "laufzeit_bis"
 
 
 def rueckspeisen_wirksam(wunsch: str | None, f: Faehigkeit, halt: str | None = None) -> str:
@@ -333,6 +483,7 @@ def fahrzeugspeicher(
     einstellung: FahrerEinstellung | None = None,
     box_device_id: str | None = None,
     szene: bool = False,
+    sofort: bool = False,
 ) -> tuple[Fahrzeugspeicher | None, str | None]:
     """Der Fahrzeugspeicher am Horizont oder ``(None, grund)``.
 
@@ -341,7 +492,8 @@ def fahrzeugspeicher(
     Ladestands plant niemand einen Speicher - P7), ``nicht_im_horizont`` (keine Anwesenheit beruehrt den Horizont).
     ``einstellung`` = die Einstellungen des Fahrers (MP-33f; ``None`` = nicht gelesen, rechnet wie MP-33).
     ``szene`` = eine aktive Szene hat diesen Ladepunkt pausiert (MP-39b); mit dem Lademodus der ``messung`` ein
-    Halte-Grund (:func:`halte_grund`), der auch ohne gelesene Einstellungen gilt.
+    Halte-Grund (:func:`halte_grund`), der auch ohne gelesene Einstellungen gilt. ``sofort`` = die dauerhafte
+    Steuerart des Ladepunkts ist „sofort“ (MP-41c, :func:`steuerart_sofort`), ebenso ein Halte-Grund.
     """
     fahrer_sagt_abfahrt = einstellung is not None and bool(einstellung.abfahrten or einstellung.naechste_fahrt)
     if fenster is None or not (fenster.anwesenheit or fahrer_sagt_abfahrt):
@@ -355,7 +507,7 @@ def fahrzeugspeicher(
     leistung = float(faehigkeit.rueckspeiseleistung_kw)
     einweg = math.sqrt(WIRKUNGSGRAD_LADEPUNKT)
     mindest = (fenster.mindest_soc_pct or 0.0) / 100.0 * cap
-    halt = halte_grund(messung, szene)
+    halt = halte_grund(messung, szene, sofort)
     if einstellung is None:
         stufe, v2g, vollzyklen = None, faehigkeit.v2g, FAHRZEUG_VOLLZYKLEN_JE_TAG
         if halt is not None:

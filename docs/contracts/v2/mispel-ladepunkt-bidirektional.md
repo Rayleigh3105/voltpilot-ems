@@ -144,6 +144,11 @@ nur an Anlagen im Betreiber-Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES`:
   laden, für diese Ladung) am Stecker und eine aktive Szene, die den Ladepunkt pausiert hat, halten das Zurückspeisen
   an: der Plan lädt nur, der Block entfällt; endet der Halte-Grund, plant der nächste Lauf wieder mit der Stufe von
   `rueckspeisen`. Die Ansicht (`rueckspeisen_wirksam`) zeigt weiter, was der Fahrer eingestellt hat.
+- **Halte-Grund „sofort“ (MP-41c, BK-41c-3 = A, Captain-Entscheid 05.10.2026):** ebenso die dauerhafte Steuerart
+  „sofort“ des Ladepunkts, die die Karte als „Schnell“ zeigt (`lademodus_sofort`; Quellen-Bahn `schnell` der Säule,
+  sonst der Anlage, nie gewählt = `schnell`, ohne aktive Policy mit eigener Quelle — „Günstige Stunden“ hält nicht an;
+  `fahrzeugspeicher.steuerart_sofort`, Vektoren [`mispel-steuerart-sofort-vectors.json`](./mispel-steuerart-sofort-vectors.json)).
+  Die Box erfährt es mit dem Plan, höchstens einen Planlauf (15 min) später ([Fahrplan 2.0](./mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39)).
 
 Gesendet wird daraus der Block `fahrzeug` im [Fahrplan 2.0](./mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39).
 
@@ -159,6 +164,10 @@ ohne eingefrorenes Schema, `schema_version` bleibt `1.0`) in die Cloud; sie legt
 | `bidirectional` | `bidirectional` | Das Fahrzeug fordert über ISO 15118-20 einen BPT-Modus an (`ev_needs.bidirectional`, OCPP 2.1, [OCPP 2.1 auf der Box](../../edge-ocpp21.md)). **Fehlt** ohne Fahrzeugmeldung (OCPP 1.6/2.0.1, vor der Aushandlung, freier Stecker, ältere Box) → `null` = unbekannt, nie `false`; nur ein gemeldeter Modus ohne BPT ist `false`. Nur ein JSON-Wahrheitswert wird übernommen. Gilt für das angesteckte Fahrzeug, bis der Stecker frei ist (dann löscht die Box `ev_needs`). |
 | `soc_pct` | `socPct` | Ladestand des Fahrzeugs in %: der jüngere aus Messwert `SoC` (MeterValues) und der Meldung des Fahrzeugs (`dcChargingParameters.stateOfCharge`, nur DC) — dieselbe Regel wie der Entladeschutz (MP-39). Höchstens drei Messintervalle alt (3 × 10 s), gleich aus welcher Quelle: ein Leser, der den Ladestand noch nach `metered_at` beurteilt, sieht ihn nie frischer, als er ist. Älter → fehlt. |
 | `soc_measured_at` | `socMeasuredAt` | Die **eigene Uhr** des Ladestands: Messzeit des Messwerts bzw. Empfangszeit der Fahrzeugmeldung — nicht unbedingt `metered_at` (die Uhr der Leistung). Fehlt genau dann, wenn `soc_pct` fehlt. |
+
+Der Optimierer beurteilt den Ladestand seit MP-41c (BK-41c-2 = A) nach dieser Uhr, im selben Fenster wie bisher
+(`inputs.FAHRZEUG_MESSUNG_MAX_ALTER`, 15 min); Stecker und Lademodus bleiben an `reported_at` der Zeile. Ohne
+`soc_measured_at` (eine Box vor MP-37b) gilt wie vorher `reported_at`.
 
 Beides ist Telemetrie, keine Fähigkeit und kein Wunsch. Bidirektional nutzbar ist ein Ladepunkt „nach den
 technischen Gegebenheiten“ (A1 S. 26, Abschnitt 3.2.5): ein bidirektional meldendes Fahrzeug macht einen nicht
@@ -258,8 +267,8 @@ eigenen Ladepunkt-Mengen (A2 S. 11, Fn. 10; Fremdtankstrom nicht erkennbar, A1 S
   Messlatte „nur laden“ für § 6a rechnet MP-33d, abgelegt und gelesen wird sie seit MP-33e. „Aus“, „Schnell“ und eine
   Szene halten das Zurückspeisen an (MP-39b: Optimierer `fahrzeugspeicher.halte_grund`, Box `entladeschutz` `Lage.Halt`).
   Offen: eine Szene kennt nur die Cloud – die Box erfährt sie mit dem nächsten Plan; heute pausiert keine Szene einen
-  Ladepunkt (Portal `szenenfaehig`). Die geplante Rückspeisung steht nicht in `entity_plan_slot`, die Wallbox-Karte sagt
-  darum weiter „plant VoltPilot noch nicht“.
+  Ladepunkt (Portal `szenenfaehig`). Seit MP-41c hält auch die Steuerart „sofort“ an (§ 5a), und die geplante
+  Rückspeisung steht in `entity_plan_slot`, abgelegt wie gesendet ([Fahrplan 2.0](./mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39)).
 
 ## Prüfen
 

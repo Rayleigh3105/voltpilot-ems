@@ -67,6 +67,8 @@ Der Deadline-Fallback nutzt `flex_requirements` aus dem Registry-Push und beginn
 
 Die Kundenoberfläche trennt Gerät anlegen, Betriebsregel erstellen und Ausführung prüfen. Tatsächliche Zustände sind etwa geplant, aktiv, begrenzt, unbestätigt oder verpasst. Sollleistung zählt nicht als gemessene Erfüllung.
 
+Der Fahrplan (`GET …/consumer-schedule`, `entity_plan_slot`) trägt seit MiSpeL MP-41c an Anlagen im Schalter `VOLTPILOT_MISPEL_FAHRZEUG_SITES` auch den Eintrag des bidirektionalen Ladepunkts, abgelegt wie an die Box gesendet: `setpoint_kw` mit negativem Wert = Zurückspeisen am Ladepunkt, `0` = gerechnet, aber kein Zurückspeisen, `reason_code` `fahrzeug_rueckspeisen` ([Fahrplan 2.0](contracts/v2/mqtt-schedule-2.0.md#fahrzeug-an-bidirektionalen-ladepunkten-mispel-mp-39)). Ein Leser, der nur Verbrauch stapelt, nimmt diese Zeilen heraus.
+
 Geräte-/Typfreigabe, Verbindungsprüfung und globale Flags sind verschiedene Voraussetzungen. Herstelleradapter für go-e und Shelly sowie OCPP sind vorhanden; ihre Existenz bedeutet keine pauschale Freigabe jedes realen Modells.
 
 ## Betrieb und Tests

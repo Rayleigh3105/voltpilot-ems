@@ -41,6 +41,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -75,6 +76,14 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
     if plan.device_id is None:
         raise ValueError("cannot build a v2 plan payload without a device")
     site_slots = plan.site_slots[:EDGE_PLAN_SLOTS]
+    # MiSpeL MP-41c (firstmate 003): der Fahrzeug-Eintrag ERSETZT den Verbraucher-
+    # Eintrag derselben Komponente. Die Box nimmt je Komponente nur den ersten
+    # Eintrag (``plan2``), und der Verbraucher-Eintrag einer ``ev-charger``-Saeule
+    # traegt nur ``on_off``/``setpoint_kw``, die ihr Arbiter verwirft (Faehigkeit
+    # ``limit_kw``) - er stuende also wirkungslos vor dem Fahrzeug und naehme ihm
+    # das Zurueckspeisen. Ohne Fahrzeug-Eintrag bleibt das Dokument byte-gleich.
+    payload_fz = _fahrzeug_entity_payload(plan)
+    ersetzt = payload_fz["entity_id"] if payload_fz is not None else None
     entities: list[dict] = []
     for storage in plan.storages:
         entities.append(_storage_entity_payload(storage))
@@ -87,6 +96,8 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
         if any(s.limit_kw is not None for s in producer.slots[:EDGE_PLAN_SLOTS]):
             entities.append(_producer_entity_payload(producer))
     for load in plan.loads:
+        if load.entity_id == ersetzt:
+            continue
         # Consumers WITHOUT a local source carry the FULL slot grid (contract
         # contiguity), always - an all-off grid IS the plan ("do not run"),
         # unlike a producer's no-limit release. Shadow discipline: the entity
@@ -107,7 +118,6 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
     # Dokument der Box, an der die Saeule haengt, und nur mit mindestens einem
     # Rueckspeisewunsch im veroeffentlichten Fenster (sonst fehlt er: fuer die
     # Box dasselbe wie ``aus``, MP-39 „fehlt = nie entladen“).
-    payload_fz = _fahrzeug_entity_payload(plan)
     if payload_fz is not None:
         entities.append(payload_fz)
     if not entities:
@@ -303,6 +313,36 @@ def _load_entity_payload(load: LoadDispatch) -> dict:
     }
 
 
+def fahrzeug_viertelstunden(
+    plan: SitePlan, box: UUID | None = None
+) -> list[tuple[datetime, float]] | None:
+    """Die Viertelstunden des Ladepunkt-Eintrags im gesendeten Fenster (MiSpeL MP-41c, BK-41c-1).
+
+    Die EINE Quelle fuer Sender (:func:`_fahrzeug_entity_payload`, Block ``fahrzeug`` an die Box) und Ablage
+    (:func:`persistence_v2.consumer_slot_rows`, ``entity_plan_slot``): gespeicherter Plan = gesendeter Plan.
+    Je Viertelstunde der ersten ``EDGE_PLAN_SLOTS`` der Sollwert in kW, auf 3 Stellen wie am Draht:
+
+    - negativ = Rueckspeisewunsch des Plans („Erzeugung im Ladepunkt“, A1 S. 27);
+    - ``0.0`` = gerechnet, aber kein Zurueckspeisen - keine Rueckspeise-Viertelstunde, oder die Stufe ist ``aus``
+      (keine Freigabe, Faehigkeit, oder ein Halte-Grund: Aus, Schnell, „sofort“, Szene). Fuer die Box ist das
+      dasselbe wie ein fehlender Eintrag (MP-39: fehlt = nie entladen).
+
+    ``None`` = nicht gerechnet, kein Eintrag fuer diese Box: kein Fahrzeug im Plan, oder die Saeule haengt an einer
+    anderen (``box``, Vorgabe ``plan.device_id``) oder unbekannten Box. Steht dieselbe Komponente auch als
+    Verbraucher im Lauf, legt :func:`persistence_v2.consumer_slot_rows` je Viertelstunde EINE Zeile ab.
+    """
+    fz = plan.fahrzeug
+    ziel = plan.device_id if box is None else box
+    if fz is None or fz.device_id is None or fz.device_id != ziel:
+        return None
+    rueckspeisen = fz.rueckspeisen in ("v2h", "v2g")
+    viertel = []
+    for start, kw in list(zip(fz.slot_starts, fz.rueckspeisen_kw))[:EDGE_PLAN_SLOTS]:
+        sollwert = round(-kw, 3) if rueckspeisen else 0.0
+        viertel.append((start, sollwert if sollwert < 0.0 else 0.0))
+    return viertel
+
+
 def _fahrzeug_entity_payload(plan: SitePlan) -> dict | None:
     """Der Eintrag eines bidirektionalen Ladepunkts mit dem Block ``fahrzeug``
     (Fahrplan 2.0, MP-39; MiSpeL MP-33f).
@@ -313,28 +353,26 @@ def _fahrzeug_entity_payload(plan: SitePlan) -> dict | None:
       ``abfahrt_soc_pct`` die naechste Abfahrt (UTC) mit Ziel, dazu Kapazitaet und
       Rueckspeiseleistung. Nur was gesagt ist, steht im Block - unbekannt ist
       keine Null.
-    - Slots: NUR die rueckspeisenden, mit negativem ``setpoint_kw`` („Erzeugung
-      im Ladepunkt“, A1 S. 27). Wo der Plan schweigt, laedt die Wallbox nach
-      ihrer eigenen Regelung (Aus · Smart · Schnell; wie K2 bei Verbrauchern mit
-      lokaler Quelle: ``plan2.ActiveCommands`` ok=false = kein Wunsch). Halten
-      Aus, Schnell oder eine Szene das Zurueckspeisen an (MP-39b), ist die Stufe
-      ``aus`` und es gibt keinen Eintrag.
+    - Slots: NUR die rueckspeisenden aus :func:`fahrzeug_viertelstunden`, mit
+      negativem ``setpoint_kw`` („Erzeugung im Ladepunkt“, A1 S. 27). Wo der Plan
+      schweigt, laedt die Wallbox nach ihrer eigenen Regelung (Aus · Smart ·
+      Schnell; wie K2 bei Verbrauchern mit lokaler Quelle: ``plan2.ActiveCommands``
+      ok=false = kein Wunsch). Halten Aus, Schnell, die Steuerart „sofort“ oder
+      eine Szene das Zurueckspeisen an (MP-39b, MP-41c), ist die Stufe ``aus`` und
+      es gibt keinen Eintrag.
     - ``None`` (kein Eintrag): kein Fahrzeug im Plan, die Saeule an einer anderen
       oder unbekannten Box, oder kein Rueckspeisewunsch im Fenster (auch bei
       ``aus``).
     """
-    fz = plan.fahrzeug
-    if fz is None or fz.device_id is None or fz.device_id != plan.device_id:
-        return None
-    if fz.rueckspeisen not in ("v2h", "v2g"):
-        return None  # „aus“ kennt keinen Rueckspeisewunsch - der Plan haette keinen
-    slots = []
-    for start, kw in list(zip(fz.slot_starts, fz.rueckspeisen_kw))[:EDGE_PLAN_SLOTS]:
-        sollwert = round(-kw, 3)
-        if sollwert < 0.0:
-            slots.append({"start": _rfc3339(start), "commands": {"setpoint_kw": sollwert}})
+    viertel = fahrzeug_viertelstunden(plan)
+    slots = [
+        {"start": _rfc3339(start), "commands": {"setpoint_kw": sollwert}}
+        for start, sollwert in (viertel or ())
+        if sollwert < 0.0
+    ]
     if not slots:
         return None
+    fz = plan.fahrzeug
     block: dict = {"rueckspeisen": fz.rueckspeisen}
     if fz.mindest_soc_pct is not None:
         block["mindest_soc_pct"] = round(fz.mindest_soc_pct, 2)

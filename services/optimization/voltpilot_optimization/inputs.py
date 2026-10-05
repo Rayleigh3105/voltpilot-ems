@@ -36,6 +36,7 @@ import json
 import logging
 import math
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
@@ -671,7 +672,9 @@ def load_mispel_bisher(dsn: str, site_id: UUID, jetzt: datetime) -> Bisher | Non
 
 
 #: Wie alt die Messung am Stecker hoechstens sein darf, damit ihr Ladestand der
-#: Start des Fahrzeugs ist (MP-33) - ein Herzschlag-Takt mit Reserve.
+#: Start des Fahrzeugs ist (MP-33) - ein Herzschlag-Takt mit Reserve. Seit MP-41c
+#: (BK-41c-2) gilt das Fenster je Uhr: Stecker und Lademodus an ``reported_at``
+#: der Zeile, der Ladestand an seiner eigenen Uhr ``soc_measured_at``.
 FAHRZEUG_MESSUNG_MAX_ALTER = timedelta(minutes=15)
 
 
@@ -700,6 +703,12 @@ def load_fahrzeugspeicher(
     Zeile, :func:`fahrzeugspeicher.lademodus_halt`) und die Szene
     (:func:`load_szene_ladepunkte`) halten das Zurueckspeisen an (Log
     ``fahrzeugspeicher.rueckspeisen_gehalten`` mit Grund).
+
+    MP-41c: ebenso die dauerhafte Steuerart „sofort“ (:func:`load_steuerart_sofort`,
+    BK-41c-3). Und der Ladestand zaehlt nach seiner eigenen Uhr ``soc_measured_at``
+    (Vertrag § 5b, BK-41c-2) - wie die Wallbox-Karte; Stecker und Lademodus
+    bleiben an ``reported_at``. Meldet eine aeltere Box keine Uhr des Ladestands,
+    gilt wie vorher ``reported_at``.
     """
     import psycopg  # lazy: optional [db] extra
 
@@ -732,7 +741,7 @@ def load_fahrzeugspeicher(
             cur.execute(
                 """
                 SELECT DISTINCT ON (cp.entity_id) cp.entity_id, c.status, c.soc_pct, c.reported_at,
-                       c.boost, c.reason
+                       c.boost, c.reason, c.soc_measured_at
                 FROM device_charge_connector c
                 JOIN device_charge_point cp
                   ON cp.device_id = c.device_id AND cp.charge_point_id = c.charge_point_id
@@ -757,6 +766,7 @@ def load_fahrzeugspeicher(
         return None
     einstellungen = load_fahrer_einstellungen(dsn, site.site_id)
     szene = load_szene_ladepunkte(dsn, site.site_id) if faehigkeiten else frozenset()
+    sofort = load_steuerart_sofort(dsn, site.site_id) if faehigkeiten else (lambda kid: False)
     fenster: dict[str, list] = {}
     for kid, mindest, kap, wt, an, ab, ziel in fenster_zeilen:
         eintrag = fenster.setdefault(str(kid), [mindest, kap, []])
@@ -767,7 +777,7 @@ def load_fahrzeugspeicher(
                 )
             )
     gemessen = {}
-    for kid, status, soc, reported_at, boost, reason in messungen:
+    for kid, status, soc, reported_at, boost, reason, soc_um in messungen:
         if reported_at is None or jetzt - reported_at > FAHRZEUG_MESSUNG_MAX_ALTER:
             continue  # veraltete Telemetrie ist nicht aktuell
         angesteckt = (
@@ -775,9 +785,12 @@ def load_fahrzeugspeicher(
             else False if status in fz_regeln.STECKER_FREI
             else None
         )
+        # BK-41c-2: der Ladestand nach seiner eigenen Uhr; ohne sie (aeltere Box) die der Zeile.
+        soc_uhr = soc_um if soc_um is not None else reported_at
+        soc_frisch = soc is not None and jetzt - soc_uhr <= FAHRZEUG_MESSUNG_MAX_ALTER
         gemessen[str(kid)] = fz_regeln.Messung(
             angesteckt,
-            float(soc) if soc is not None else None,
+            float(soc) if soc_frisch else None,
             fz_regeln.lademodus_halt(boost, reason),
         )
     for kid, nutzbarkeit, v2h, v2g, unterbunden, leistung in faehigkeiten:
@@ -813,6 +826,7 @@ def load_fahrzeugspeicher(
                 einstellung=einstellungen.get(kid, fz_regeln.OHNE_EINSTELLUNG),
                 box_device_id=boxen.get(kid),
                 szene=kid in szene,
+                sofort=sofort(kid),
             )
         if fahrzeug is not None:
             if fahrzeug.rueckspeisen_halt is not None:
@@ -854,6 +868,62 @@ def load_szene_ladepunkte(dsn: str, site_id: UUID) -> frozenset[str]:
         logger.warning("fahrzeugspeicher.szene_tabelle_fehlt")
         return frozenset()
     return frozenset(str(kid) for (ids,) in zeilen for kid in (ids or ()))
+
+
+def load_steuerart_sofort(dsn: str, site_id: UUID) -> Callable[[str], bool]:
+    """Ob die dauerhafte Steuerart eines Ladepunkts (Komponente) „sofort“ ist
+    (MiSpeL MP-41c, BK-41c-3; :func:`fahrzeugspeicher.steuerart_sofort`).
+
+    Liest, was die Portal-Projektion liest (``VerbraucherService.forSite``): die
+    Quellen-Bahn der Anlage (``site_charging_config.surplus_policy``), die eigene
+    jeder zugelassenen Saeule (``site_charge_point_allowlist.source`` ueber
+    ``charge_point_id`` an ``device_charge_point`` einer eingebauten Box) und die
+    aktive Policy je Komponente (``consumer_policy``). Ein Ladepunkt ohne Zeile folgt der Anlage, eine
+    Anlage ohne Zeile der Vorgabe der Box ``schnell`` - also „sofort“.
+
+    Eigene Verbindung: fehlt eine Tabelle, ist nichts gelesen (Log
+    ``fahrzeugspeicher.steuerart_tabelle_fehlt``); dann gilt die Vorgabe der
+    Box fuer jeden Ladepunkt und das Zurueckspeisen ruht - unbekannt ist keine
+    Freigabe.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT surplus_policy FROM site_charging_config WHERE site_id = %(site_id)s
+                """,
+                {"site_id": str(site_id)},
+            )
+            anlage = next((wort for (wort,) in cur.fetchall()), None)
+            cur.execute(
+                """
+                SELECT cp.entity_id, a.source
+                FROM site_charge_point_allowlist a
+                JOIN device_charge_point cp
+                  ON cp.site_id = a.site_id AND cp.charge_point_id = a.charge_point_id
+                WHERE a.site_id = %(site_id)s AND a.removed_at IS NULL AND cp.entity_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM device d WHERE d.id = cp.device_id AND d.ausgebaut_am IS NULL)
+                """,
+                {"site_id": str(site_id)},
+            )
+            saeulen = {str(kid): source for kid, source in cur.fetchall()}
+            cur.execute(
+                """
+                SELECT entity_id, document FROM consumer_policy
+                WHERE site_id = %(site_id)s AND lifecycle = 'active'
+                """,
+                {"site_id": str(site_id)},
+            )
+            policen = {
+                str(kid): json.loads(doc) if isinstance(doc, str) else doc
+                for kid, doc in cur.fetchall()
+            }
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("fahrzeugspeicher.steuerart_tabelle_fehlt")
+        return lambda kid: True
+    return lambda kid: fz_regeln.steuerart_sofort(policen.get(kid), saeulen.get(kid), anlage)
 
 
 def load_fahrer_einstellungen(dsn: str, site_id: UUID) -> dict[str, "fz_regeln.FahrerEinstellung"]:

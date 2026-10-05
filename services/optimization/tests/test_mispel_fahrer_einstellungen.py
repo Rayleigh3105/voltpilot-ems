@@ -354,10 +354,12 @@ def test_lader_liest_die_einstellungen_des_fahrers(monkeypatch):
     _lader(monkeypatch, {
         "ladepunkt_faehigkeit": [(kid, "bidirektional", True, True, False, 11)],
         "ladepunkt_fahrzeugfenster": [(kid, 20, 60, None, None, None, None)],
-        "device_charge_connector": [(kid, "Charging", 50.0, T0 - timedelta(minutes=2), False, None)],
+        "device_charge_connector": [(kid, "Charging", 50.0, T0 - timedelta(minutes=2), False, None,
+                                     T0 - timedelta(minutes=2))],
         "device_charge_point": [(kid, BOX)],
         "ladepunkt_fahrer_einstellung": [(kid, "v2h", 0.5, naechste, 90)],
         "ladepunkt_abfahrt": [(kid, 5, time(7, 30), 80)],
+        "site_charging_config": [("nur_sonne",)],  # MP-41c: nicht „sofort“
     })
     fz = load_fahrzeugspeicher("postgresql://fake", _site(netzladen_erlaubt=True), T0, slots)
     assert fz is not None

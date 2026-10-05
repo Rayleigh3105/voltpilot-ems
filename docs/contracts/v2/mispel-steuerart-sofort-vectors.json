@@ -1,0 +1,147 @@
+{
+  "beschreibung": "MiSpeL MP-41c (BK-41c-3 = A): wann die dauerhafte Steuerart eines OCPP-Ladepunkts „sofort“ ist - dann zeigt die Wallbox-Karte „Schnell“, und das Zurueckspeisen ruht (Halte-Grund lademodus_sofort). Leser: Java SteuerartSofortVektorenTest (SteuerartProjektion.projiziere mit istOcppLadepunkt=true, saeulenSteuerart(saeule, -, anlagenStandard(anlage, -))) und Python tests/test_mispel_halt_kopplung.py (fahrzeugspeicher.steuerart_sofort). anlage = site_charging_config.surplus_policy, saeule = site_charge_point_allowlist.source, policy = Dokument der aktiven consumer_policy; null = keine Zeile.",
+  "faelle": [
+    {
+      "name": "nie gewaehlt: ohne Zeile gilt die Vorgabe der Box schnell",
+      "anlage": null, "saeule": null, "policy": null,
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    },
+    {
+      "name": "Anlage Nur Sonne, Saeule schweigt",
+      "anlage": "nur_sonne", "saeule": null, "policy": null,
+      "erwartet": {"quelle": "ueberschuss", "sofort": false}
+    },
+    {
+      "name": "Anlage Sonne zuerst, Saeule eigene Wahl schnell",
+      "anlage": "sonne_zuerst", "saeule": "schnell", "policy": null,
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    },
+    {
+      "name": "Anlage schnell, Saeule eigene Wahl Sonne zuerst",
+      "anlage": "schnell", "saeule": "sonne_zuerst", "policy": null,
+      "erwartet": {"quelle": "ueberschuss", "sofort": false}
+    },
+    {
+      "name": "Saeule leer folgt der Anlage",
+      "anlage": "nur_sonne", "saeule": "  ", "policy": null,
+      "erwartet": {"quelle": "ueberschuss", "sofort": false}
+    },
+    {
+      "name": "unbekanntes Wort an der Saeule ist schnell, auch wenn die Anlage Sonne faehrt",
+      "anlage": "nur_sonne", "saeule": "turbo", "policy": null,
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    },
+    {
+      "name": "Guenstige Stunden faehrt die Bahn schnell und ist trotzdem nicht sofort",
+      "anlage": null, "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "reactive", "enforcement": "opportunistic", "target": {"kind": "on_off", "value": true},
+         "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt", "value": 12}}
+      ]},
+      "erwartet": {"quelle": "guenstig", "sofort": false}
+    },
+    {
+      "name": "Guenstige Stunden mit Ziel",
+      "anlage": null, "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "flexible_task", "enforcement": "required_by_deadline", "target": {"kind": "on_off", "value": true},
+         "recurrence": {"days": "daily", "from": "00:00", "to": "06:00"}, "demand": {"energy_kwh": 20}},
+        {"id": "r2", "kind": "reactive", "enforcement": "opportunistic", "target": {"kind": "on_off", "value": true},
+         "condition": {"signal": "market.spot_price_ct_kwh", "operator": "lte", "value": 9.5}}
+      ]},
+      "erwartet": {"quelle": "guenstig", "sofort": false}
+    },
+    {
+      "name": "eine Frist allein an der Bahn schnell bleibt sofort",
+      "anlage": null, "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "flexible_task", "enforcement": "required_by_deadline", "target": {"kind": "kw", "value": 11},
+         "recurrence": {"days": "weekdays", "from": "18:00", "to": "07:00"}, "demand": {"energy_kwh": 30}}
+      ]},
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    },
+    {
+      "name": "eine Frist allein an der Bahn Nur Sonne",
+      "anlage": "nur_sonne", "saeule": null,
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "flexible_task", "enforcement": "required_by_deadline", "target": {"kind": "on_off", "value": true},
+         "recurrence": {"days": "daily", "from": "00:00", "to": "06:00"}, "demand": {"runtime_minutes": 120}}
+      ]},
+      "erwartet": {"quelle": "ueberschuss", "sofort": false}
+    },
+    {
+      "name": "Regel 3: Fahrzeug verbunden heisst sofort laden, auch an einer Sonnen-Bahn",
+      "anlage": "nur_sonne", "saeule": null,
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "reactive", "enforcement": "must_run", "target": {"kind": "on_off", "value": true},
+         "condition": {"signal": "consumer.vehicle_connected", "operator": "eq", "value": true}}
+      ]},
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    },
+    {
+      "name": "Ueberschuss UND Fahrzeug verbunden ist Ueberschuss",
+      "anlage": null, "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "reactive", "enforcement": "opportunistic", "target": {"kind": "on_off", "value": true},
+         "condition": {"all": [
+           {"signal": "consumer.vehicle_connected", "operator": "eq", "value": true},
+           {"signal": "site.pv_surplus_kw", "operator": "gte", "value": 4}
+         ]}}
+      ]},
+      "erwartet": {"quelle": "ueberschuss", "sofort": false}
+    },
+    {
+      "name": "nur inaktive Anforderungen sagen nichts",
+      "anlage": null, "saeule": null,
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "active": false, "kind": "reactive", "enforcement": "opportunistic", "target": {"kind": "on_off", "value": true},
+         "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt", "value": 12}}
+      ]},
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    },
+    {
+      "name": "zwei Quellen sind Eigene Regel",
+      "anlage": null, "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "reactive", "enforcement": "opportunistic", "target": {"kind": "on_off", "value": true},
+         "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt", "value": 12}},
+        {"id": "r2", "kind": "reactive", "enforcement": "must_run", "target": {"kind": "on_off", "value": true},
+         "condition": {"signal": "consumer.vehicle_connected", "operator": "eq", "value": true}}
+      ]},
+      "erwartet": {"quelle": "eigene_regel", "sofort": false}
+    },
+    {
+      "name": "eine Frist mit Energie UND Laufzeit ist mehrdeutig",
+      "anlage": null, "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "flexible_task", "enforcement": "required_by_deadline", "target": {"kind": "on_off", "value": true},
+         "recurrence": {"days": "daily", "from": "00:00", "to": "06:00"}, "demand": {"energy_kwh": 20, "runtime_minutes": 60}}
+      ]},
+      "erwartet": {"quelle": "eigene_regel", "sofort": false}
+    },
+    {
+      "name": "festes Fenster ist feste Zeiten",
+      "anlage": null, "saeule": null,
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "fixed_window", "enforcement": "must_run", "target": {"kind": "on_off", "value": true},
+         "recurrence": {"days": "weekdays", "from": "13:00", "to": "15:00"}}
+      ]},
+      "erwartet": {"quelle": "feste_zeiten", "sofort": false}
+    },
+    {
+      "name": "ein Aus-Ziel ist Eigene Regel",
+      "anlage": null, "saeule": null,
+      "policy": {"schema_version": "1.0", "entity_id": "e1", "requirements": [
+        {"id": "r1", "kind": "reactive", "enforcement": "must_run", "target": {"kind": "on_off", "value": false},
+         "condition": {"signal": "consumer.vehicle_connected", "operator": "eq", "value": true}}
+      ]},
+      "erwartet": {"quelle": "eigene_regel", "sofort": false}
+    },
+    {
+      "name": "Policy ohne Anforderungsliste sagt nichts",
+      "anlage": "sonne_zuerst", "saeule": "schnell",
+      "policy": {"schema_version": "1.0", "entity_id": "e1"},
+      "erwartet": {"quelle": "sofort", "sofort": true}
+    }
+  ]
+}

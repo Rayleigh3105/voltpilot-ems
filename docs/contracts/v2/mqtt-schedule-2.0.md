@@ -72,8 +72,36 @@ Fahrzeug noch nicht).
   bzw. `boost`) oder eine aktive Szene, die den Ladepunkt pausiert hat (`site_scene.paused_entity_ids`), setzen die
   Stufe des Laufs auf `aus` – der Plan lädt nur, der Eintrag entfällt. Danach gilt wieder die Stufe der Wallbox-Karte.
   Die Box hält Aus/Schnell schon im nächsten Regeltakt selbst an (`entladeschutz` `Lage.Halt`), nicht erst mit dem Plan.
+- **Die dauerhafte Steuerart „sofort“ hält ebenso an** (MP-41c, BK-41c-3 = A, Captain-Entscheid 05.10.2026: „Schnell“
+  heißt immer nur laden): Halte-Grund `lademodus_sofort` des Optimierers, wenn die Portal-Projektion die Steuerart des
+  Ladepunkts „sofort“ nennt — Quellen-Bahn `schnell` (die eigene der Säule, sonst die der Anlage; nie gewählt = die
+  Vorgabe der Box `schnell`) **und** keine aktive Policy mit eigener Quelle (nur ein Ziel oder keine).
+  „Günstige Stunden“ fährt dieselbe Bahn `schnell` mit einer Preis-Policy und hält **nicht** an
+  (`fahrzeugspeicher.steuerart_sofort`, Vektoren [`mispel-steuerart-sofort-vectors.json`](./mispel-steuerart-sofort-vectors.json)).
+  Die Box sieht die Policy nicht (sie lebt in Node-RED) und prüft darum keine Bahn: sie erfährt „sofort“ **mit dem
+  Plan** (Eintrag fehlt → `freigabe_aus`), wie eine Szene. **Verzug: höchstens ein Planlauf** — der Optimierer rechnet
+  alle 15 Minuten (`OPTIMIZER_INTERVAL_SECONDS` = 900, auf die UTC-Viertelstunde ausgerichtet) plus die Laufzeit des
+  Laufs; ein Wechsel der Steuerart löst heute keinen eigenen Lauf aus (der Ereignis-Auslöser
+  `ConsumerReplanTriggerListener` hört nur auf Status-Übergänge der Box, Vorgabe aus). Bis dahin gilt der zuletzt
+  gesendete Eintrag.
 - **Kein Eintrag** ohne Rückspeisewunsch im veröffentlichten Fenster – auch bei `aus`. Für die Box ist das dasselbe:
   fehlt der Block, speist sie nie zurück.
+- **Abgelegt wie gesendet** (MP-41c, BK-41c-1): derselbe Eintrag steht in `entity_plan_slot` (`GET
+  …/consumer-schedule`), aus derselben Funktion wie der Block (`publisher_v2.fahrzeug_viertelstunden`): `entity_id` =
+  Komponente des Ladepunkts, `command` = `setpoint_kw`, `target_value` = −kW in den Rückspeise-Viertelstunden und
+  `0` in allen übrigen des gesendeten Fensters (gerechnet, aber kein Zurückspeisen — auch bei `aus`), `reason_code` =
+  `fahrzeug_rueckspeisen` in jeder Zeile. Keine Zeile heißt: nicht gerechnet (außerhalb des Schalters, ohne gelesene
+  Einstellungen des Fahrers, die Säule an einer Box ohne Dokument dieses Laufs).
+- **Säule auch als Verbraucher geplant** (ihre Policy im Co-Optimierer; nur mit `OPTIMIZER_CONTROLLABLE_LOADS_ENABLED`
+  und dem Fahrzeug-Schalter, beide heute aus; firstmate-Entscheid 05.10.2026):
+  - **Dokument:** der gesendete Fahrzeug-Eintrag **ersetzt den Verbraucher-Eintrag derselben Komponente**. Die Box
+    nimmt je Komponente nur den ersten Eintrag (`plan2`), und ein Verbraucher-Eintrag trägt nur `on_off`/`setpoint_kw`,
+    die der Arbiter an einem `ev-charger` (Fähigkeit `limit_kw`) verwirft — er stünde wirkungslos vor dem Fahrzeug.
+    Ohne gesendeten Fahrzeug-Eintrag bleibt der Verbraucher-Eintrag, das Dokument byte-gleich.
+  - **Ablage:** je Viertelstunde des Fensters **eine** Zeile (Schlüssel `entity_id, generated_at, time`) —
+    Zurückspeisen (−kW, `fahrzeug_rueckspeisen`) vor geplantem Laden (> 0, mit seinem Grund) vor der `0` des
+    Fahrzeugs. Beides kann auf dieselbe Viertelstunde fallen (der Co-Optimierer kennt das Fahrzeug nicht), und die
+    Box reserviert den Stecker, solange sie zurückspeist. Hinter dem Fenster bleibt die Verbraucher-Zeile.
 - Im Block steht nur, was gesagt ist: `rueckspeisen` = die wirksame Stufe (Wunsch des Fahrers, nie über der Fähigkeit
   des Tages; ohne Zeile `aus`), `mindest_soc_pct` = Reserve, `abfahrt`/`abfahrt_soc_pct` = Ende der ersten Anwesenheit
   im Horizont mit dem höheren Ziel aus Fenster und Abfahrten des Fahrers (§ 5a), dazu Kapazität und Rückspeiseleistung.

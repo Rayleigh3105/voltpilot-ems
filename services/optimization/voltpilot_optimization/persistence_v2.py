@@ -8,6 +8,13 @@ Pumpe jetzt?" read from the DB, never from an MQTT payload. Storage/producer
 per-entity persistence deliberately waits for the v2 cutover (their truth
 stays the v1 ``schedule`` table, which every surface reads today).
 
+MiSpeL MP-41c (BK-41c-1): the vehicle at a bidirectional charge point joins
+the rows - the SAME quarter-hours the box gets as the entry with the block
+``fahrzeug`` (:func:`voltpilot_optimization.publisher_v2.fahrzeug_viertelstunden`):
+``setpoint_kw`` with -kW where the plan feeds back and 0 in every other slot
+of the published window, ``reason_code`` ``fahrzeug_rueckspeisen``. No entry,
+no rows ("not planned" stays distinguishable from "planned, no feed-back").
+
 Schema owner: api migration ``V20260810010000__consumer_plan_persistence.sql``
 (RLS + FORCE, 180-day retention, SkipScan index). The optimizer writes as the
 trusted backend role and stamps ``tenant_id`` - the weather-collector pattern,
@@ -21,7 +28,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from voltpilot_optimization.entities import SitePlan
+from voltpilot_optimization.entities import REASON_FAHRZEUG_RUECKSPEISEN, SitePlan
+from voltpilot_optimization.publisher_v2 import fahrzeug_viertelstunden
 
 logger = logging.getLogger("voltpilot.optimization.persistence_v2")
 
@@ -59,7 +67,7 @@ class InMemorySitePlanRepository:
             if not (p.site_id == plan.site_id and p.generated_at == plan.generated_at)
         ]
         self.plans.append(plan)
-        return sum(len(d.slots) for d in plan.loads)
+        return len(consumer_slot_rows(plan))
 
     def record_publication(
         self, plan: SitePlan, device_id: UUID, published_at: datetime
@@ -145,11 +153,49 @@ def consumer_slot_rows(plan: SitePlan) -> list[tuple]:
     ``target_value`` is ALWAYS the planned power in kW (an on/off consumer
     persists its rated power when on, 0 when off - the payload's boolean is
     the edge-command form, the kW is what every read surface stacks/renders).
+
+    MiSpeL MP-41c: then the charge point's vehicle entry, one row per slot of
+    the published window from :func:`publisher_v2.fahrzeug_viertelstunden` -
+    the box's own document (``fahrzeug.device_id``); the engine attaches the
+    entry only when that box gets a document of this run.
+
+    ONE row per (entity, slot) - the table's key. When the same charge point
+    is also a planned consumer of this run (its policy co-optimized), each slot
+    of the published window keeps exactly one of them: feeding back (-kW) first
+    - the box reserves the connector while it feeds back, charging cannot run
+    then (and the co-optimizer does not know the vehicle, so both can land on
+    the same slot) -, else planned charging (> 0) with its own reason, else the
+    vehicle's 0. Slots beyond the window keep their consumer row.
     """
+    fz = plan.fahrzeug
+    viertel = fahrzeug_viertelstunden(plan, fz.device_id) if fz is not None else None
+    offen = dict(viertel or ())
+
+    def fahrzeug_zeile(start, sollwert):
+        return (
+            start,
+            plan.tenant_id,
+            plan.site_id,
+            plan.plan_id,
+            plan.generated_at,
+            fz.entity_id,
+            "setpoint_kw",
+            sollwert,
+            REASON_FAHRZEUG_RUECKSPEISEN,
+            None,
+        )
+
     rows: list[tuple] = []
     for dispatch in plan.loads:
         on_off = dispatch.control_kind == "on_off"
+        auch_fahrzeug = bool(offen) and dispatch.entity_id == fz.entity_id
         for slot in dispatch.slots:
+            target = slot.power_kw if slot.on else 0.0
+            if auch_fahrzeug and slot.start in offen:
+                sollwert = offen.pop(slot.start)
+                if sollwert < 0.0 or not target > 0.0:
+                    rows.append(fahrzeug_zeile(slot.start, sollwert))
+                    continue
             rows.append(
                 (
                     slot.start,
@@ -159,11 +205,13 @@ def consumer_slot_rows(plan: SitePlan) -> list[tuple]:
                     plan.generated_at,
                     dispatch.entity_id,
                     "on_off" if on_off else "setpoint_kw",
-                    slot.power_kw if slot.on else 0.0,
+                    target,
                     slot.reason_code,
                     slot.requirement_id,
                 )
             )
+    for start, sollwert in offen.items():
+        rows.append(fahrzeug_zeile(start, sollwert))
     return rows
 
 

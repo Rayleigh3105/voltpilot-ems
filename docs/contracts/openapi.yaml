@@ -8807,7 +8807,7 @@ paths:
         FULL slot grid (command on_off|setpoint_kw, target value, §15
         reason_code, served requirement). SHADOW semantics: rows exist only for
         sites the optimizer co-plans (VOLTPILOT_V2_PLAN_SITES) with active
-        policies - nothing controls a device. Without a stored run the body is
+        policies - nothing controls a device. MiSpeL MP-41c: at sites in VOLTPILOT_MISPEL_FAHRZEUG_SITES the run also carries the charge point's vehicle entry, stored exactly as sent to the box (negative targetValue = Zurückspeisen). Without a stored run the body is
         well-formed and empty (planId/generatedAt null, entities []); the
         Fahrplan then renders byte-identical to the pre-consumer view.
         Tenant-scoped via RLS (foreign site = 404).
@@ -23106,14 +23106,14 @@ components:
                   properties:
                     time: { type: string, format: date-time }
                     command: { type: string, enum: [on_off, setpoint_kw] }
-                    targetValue: { type: number, nullable: true, description: "Planned power in kW (on_off: rated when on, 0 when off)." }
+                    targetValue: { type: number, nullable: true, description: "Planned power in kW (on_off: rated when on, 0 when off). Negativ = Zurückspeisen am Ladepunkt (MiSpeL MP-41c: the vehicle entry of a bidirectional charge point, setpoint_kw with -kW in the feed-back slots and 0 in every other slot of the published window, reasonCode fahrzeug_rueckspeisen)." }
                     reasonCode:
                       type: string
                       nullable: true
                       description: >
                         §15 vocabulary (fixed_window | price_below_threshold |
                         optimizer_selected_low_cost | flex_deadline |
-                        guard_grid_limit | no_permitted_energy); null on an off
+                        guard_grid_limit | no_permitted_energy | fahrzeug_rueckspeisen); null on an off
                         slot. The portal maps it through a pure, tested table -
                         never by scanning German sentences.
                     requirementId: { type: string, nullable: true }

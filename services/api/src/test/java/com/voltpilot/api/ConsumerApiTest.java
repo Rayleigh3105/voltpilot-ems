@@ -374,6 +374,66 @@ class ConsumerApiTest {
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * MiSpeL MP-41c (BK-41c-1 = A): der Optimierer legt den Ladepunkt-Eintrag ab, wie er
+     * ihn an die Box sendet - {@code setpoint_kw} mit -kW in den Rueckspeise-Viertelstunden
+     * und 0 in den uebrigen, {@code reason_code} {@code fahrzeug_rueckspeisen}. Die Route
+     * liefert ihn unveraendert aus: ein negativer {@code targetValue} bleibt negativ, eine
+     * 0 bleibt eine 0 („gerechnet, aber kein Zurueckspeisen“), nichts wird gefiltert.
+     */
+    @Test
+    void consumerScheduleCarriesTheVehicleEntryWithNegativeTargetsUnchanged() throws Exception {
+        String tokA = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String ladepunkt = java.util.UUID.randomUUID().toString();
+        java.util.UUID plan = java.util.UUID.randomUUID();
+        // juenger als jeder andere Lauf dieser Klasse - und am Ende wieder weg
+        java.time.Instant run = java.time.Instant.parse("2026-10-05T13:00:00Z");
+        String[][] slots = {
+                {"2026-10-05T18:00:00Z", "-2.4"}, {"2026-10-05T18:15:00Z", "-1.6"},
+                {"2026-10-05T18:30:00Z", "0"}};
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = conn.createStatement()) {
+            try {
+                st.executeUpdate("INSERT INTO site_plan_run (plan_id, tenant_id, site_id, "
+                        + "generated_at, horizon_slots, slot_minutes) VALUES ('" + plan + "', '"
+                        + tenantA + "', '" + BERLIN_SITE + "', '" + run + "', 96, 15)");
+                for (String[] slot : slots) {
+                    st.executeUpdate("INSERT INTO entity_plan_slot (time, tenant_id, site_id, "
+                            + "plan_id, generated_at, entity_id, command, target_value, "
+                            + "reason_code, requirement_id) VALUES ('" + slot[0] + "', '" + tenantA
+                            + "', '" + BERLIN_SITE + "', '" + plan + "', '" + run + "', '"
+                            + ladepunkt + "', 'setpoint_kw', " + slot[1]
+                            + ", 'fahrzeug_rueckspeisen', NULL)");
+                }
+
+                Map<String, Object> schedule = getMap(
+                        "/api/v1/sites/" + BERLIN_SITE + "/consumer-schedule", tokA);
+                assertThat(schedule.get("planId")).isEqualTo(plan.toString());
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> entities =
+                        (List<Map<String, Object>>) schedule.get("entities");
+                assertThat(entities).hasSize(1);
+                assertThat(entities.get(0).get("entityId")).isEqualTo(ladepunkt);
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> got =
+                        (List<Map<String, Object>>) entities.get(0).get("slots");
+                assertThat(got).hasSize(3);
+                assertThat(got).extracting(s -> ((Number) s.get("targetValue")).doubleValue())
+                        .containsExactly(-2.4, -1.6, 0.0);
+                assertThat(got).extracting(s -> s.get("command"))
+                        .containsOnly("setpoint_kw");
+                assertThat(got).extracting(s -> s.get("reasonCode"))
+                        .containsOnly("fahrzeug_rueckspeisen");
+                assertThat(got).extracting(s -> s.get("requirementId")).containsOnlyNulls();
+            } finally {
+                st.executeUpdate("DELETE FROM entity_plan_slot WHERE plan_id = '" + plan + "'");
+                st.executeUpdate("DELETE FROM site_plan_run WHERE plan_id = '" + plan + "'");
+            }
+        }
+    }
+
     @Test
     void consumersHeartbeatIsIngestedTenantScopedAndCycleLimitsRideTheRegistryPush() {
         String tok = token("demo", "demo");

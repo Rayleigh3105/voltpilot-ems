@@ -185,6 +185,11 @@ def _shadow_publish_v2(
     ``VOLTPILOT_MISPEL_FAHRZEUG_SITES`` (empty by default) that gets a v2
     document anyway; it never widens who gets one. Without a vehicle the
     document stays byte-identical.
+
+    MiSpeL MP-41c (BK-41c-1): the same entry is persisted into
+    ``entity_plan_slot`` (stored plan = sent plan,
+    :func:`publisher_v2.fahrzeug_viertelstunden`) - and therefore attached only
+    when the box the charge point hangs on gets a document of this run.
     """
     if v2_publisher is None or site.device_id is None:
         return
@@ -244,7 +249,8 @@ def _shadow_publish_v2(
             site_plan = co_optimize(co_inp, v2_plan_id, now)
         except InfeasiblePlanError:
             site_plan = co_optimize_ignoring_grid_limit(co_inp, v2_plan_id, now)
-        site_plan = _mit_fahrzeug(site_plan, site, inp, fahrzeug_plan)
+        site_plan = _mit_fahrzeug(site_plan, site, inp, fahrzeug_plan,
+                                  stand if verbund_scharf else None)
         if v2_repository is not None:
             v2_repository.upsert_site_plan(site_plan)
         lauf_nr = _assign_run_number(v2_repository, site_plan)
@@ -282,14 +288,28 @@ def _shadow_publish_v2(
                 )
 
 
-def _mit_fahrzeug(site_plan, site, inp, fahrzeug_plan):
+def _mit_fahrzeug(site_plan, site, inp, fahrzeug_plan, stand=None):
     """MP-33f: der Ladepunkt-Eintrag am Plan - nur im Betreiber-Schalter und nur
-    mit einem Fahrzeug, das dieser Lauf geplant hat (sonst unveraendert)."""
+    mit einem Fahrzeug, das dieser Lauf geplant hat (sonst unveraendert).
+
+    MP-41c: und nur, wenn die Box der Saeule aus diesem Lauf ein Dokument
+    bekommt (ohne scharfe Gemeinsame Steuerung die eine Box des Plans, sonst die
+    Boxen von :func:`plan_je_box`) - der Eintrag wird auch abgelegt, und
+    abgelegt wird nur, was gesendet wird. Fuer das Dokument aendert das nichts:
+    an eine fremde Box ging der Eintrag ohnehin nie."""
     fz = getattr(inp, "fahrzeug", None)
     if fz is None or fahrzeug_plan is None or site.site_id not in mispel_fahrzeug_site_ids():
         return site_plan
     eintrag = fahrzeug_dispatch(fz, fahrzeug_plan, list(inp.slot_starts))
-    return site_plan if eintrag is None else replace(site_plan, fahrzeug=eintrag)
+    if eintrag is None:
+        return site_plan
+    empfaenger = (
+        [site_plan.device_id] if stand is None
+        else [d.device_id for d in plan_je_box(site_plan, stand)]
+    )
+    if eintrag.device_id is None or eintrag.device_id not in empfaenger:
+        return site_plan
+    return replace(site_plan, fahrzeug=eintrag)
 
 
 def _assign_run_number(v2_repository, site_plan) -> int | None:

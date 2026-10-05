@@ -133,6 +133,10 @@ REASON_OPTIMIZER = "optimizer_selected_low_cost"
 REASON_FLEX_DEADLINE = "flex_deadline"
 REASON_GRID_LIMIT = "guard_grid_limit"
 REASON_NO_PERMITTED_ENERGY = "no_permitted_energy"
+# MiSpeL MP-41c (BK-41c-1): jede Zeile des Ladepunkt-Eintrags mit dem Block
+# ``fahrzeug`` in ``entity_plan_slot`` - negativ = Zurueckspeisen, 0 = gerechnet,
+# aber kein Zurueckspeisen (:func:`publisher_v2.fahrzeug_viertelstunden`).
+REASON_FAHRZEUG_RUECKSPEISEN = "fahrzeug_rueckspeisen"
 
 # A compiled requirement id: the policy document's stable id, optionally with
 # an ``@YYYY-MM-DD`` instance suffix (flexible tasks split per recurrence
