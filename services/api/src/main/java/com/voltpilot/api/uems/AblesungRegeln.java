@@ -28,9 +28,12 @@ public final class AblesungRegeln {
                 + datum.format(bis) + " (Zuordnung durch den Kunden)", BezugsdatenRegeln.zuordnung(von, bis, zone));
     }
 
+    /** Nach so vielen Kalendermonaten ohne neue Ablesung fehlt sie (Z7); die Wiedervorlage nennt die Zahl im Grund. */
+    public static final int UEBERFAELLIG_NACH_MONATEN = 2;
+
     /** Monatlich ist eine Kalenderkadenz, keine feste Zahl von Sekunden (Z7). */
     public static Instant ueberfaelligAb(Instant letzte, ZoneId zone) {
-        return letzte.atZone(zone).plusMonths(2).toInstant();
+        return letzte.atZone(zone).plusMonths(UEBERFAELLIG_NACH_MONATEN).toInstant();
     }
 
     public static LocalDate monat(String text) {

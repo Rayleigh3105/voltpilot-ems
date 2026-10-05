@@ -18,7 +18,14 @@ import {
   type Selbstauskunft,
 } from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
-import { UEMS_DOKUMENTE, UEMS_FESTSTELLUNGEN, UEMS_MANAGEMENTBEWERTUNG, UEMS_VERZEICHNIS, UEMS_WIEDERVORLAGE } from './glossar';
+import {
+  UEMS_DOKUMENTE,
+  UEMS_FESTSTELLUNGEN,
+  UEMS_GEPRUEFT_BLEIBT_KNOPF,
+  UEMS_MANAGEMENTBEWERTUNG,
+  UEMS_VERZEICHNIS,
+  UEMS_WIEDERVORLAGE,
+} from './glossar';
 import { energiemanagementRoute, pageRoute, type EnergiemanagementReiter, type Route } from './nav';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
@@ -109,6 +116,8 @@ export const KNOPF_BEENDEN = 'Zuordnung beenden';
 export const KNOPF_PERSON_AENDERN = 'Angaben ändern';
 export const KNOPF_VERANTWORTUNG = 'Wer ist wofür verantwortlich';
 export const KNOPF_NACHWEIS = 'Nachweis festhalten';
+/** DK5: die gültige Fassung einer Vorgabe bleibt; die Überprüfung beginnt neu (Konzept Wiedervorlage w1, Entscheid 8). */
+export const KNOPF_GEPRUEFT = UEMS_GEPRUEFT_BLEIBT_KNOPF;
 /** Der Abschnitt an der Seite eines Energieeinsatzes und einer Person (IP-15, §5.3). */
 export const NACHWEISE = 'Nachweise';
 export const BEGRUENDUNG_HINWEIS = `${STARTWERTE.begruendung_zeichen_mindestens} bis ${STARTWERTE.begruendung_zeichen_hoechstens} Zeichen.`;
@@ -376,6 +385,16 @@ export interface FreigabeEntwurf {
   entschiedenVon: string;
   entschiedenAm: string;
   begruendung: string;
+}
+
+/** DK5 „geprüft, bleibt“: wer entschieden hat, am (leer = heute beim Server) und warum; Begründung Pflicht. */
+export function geprueftKoerper(e: FreigabeEntwurf) {
+  const fehler: Feldfehler = {};
+  if (!e.entschiedenVon) fehler.entschiedenVon = 'Bitte wählen Sie, wer entschieden hat.';
+  const b = begruendungFehler(e.begruendung);
+  if (b) fehler.begruendung = b;
+  if (Object.keys(fehler).length) return { fehler };
+  return { koerper: { entschieden_von: e.entschiedenVon, am: e.entschiedenAm || null, begruendung: e.begruendung.trim() } };
 }
 
 /** Ohne Vier-Augen und beim Antrag: „entschieden von“, Tag und Begründung. Die zweite Person schickt nur die Begründung. */

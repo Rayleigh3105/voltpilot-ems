@@ -144,7 +144,7 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
               <span className="vp-bw-aktionen">
                 {schreiben && b.zustand === 'offen' && (
                   <>
-                    <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf">
+                    <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf" data-entscheid-schritt>
                       {MESSPLANUNG.einrichten}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'bearbeiten', bedarf: b })} data-testid="messbedarf-bearbeiten-knopf">
@@ -230,7 +230,13 @@ function BedarfZeile({
 }) {
   const satz = bedarfSatz(b, register);
   return (
-    <li className={`vp-mp-zeile is-${b.zustand}`} data-testid={`messbedarf-${b.kennzeichen}`}>
+    <li
+      className={`vp-mp-zeile is-${b.zustand}`}
+      data-testid={`messbedarf-${b.kennzeichen}`}
+      // Konzept Wiedervorlage w1: der Schritt „Messstelle anlegen“ öffnet die Messplanung bei genau diesem Bedarf.
+      data-entscheid={b.zustand === 'offen' ? 'messbedarf_frist' : undefined}
+      data-entscheid-kennzeichen={b.kennzeichen}
+    >
       <span className="vp-mp-kopf">
         <span className="vp-bw-kz">{b.kennzeichen}</span>
         <Badge variant={b.zustand === 'offen' ? 'warn' : b.zustand === 'eingeloest' ? 'ok' : 'off'} data-testid="messbedarf-zustand">
@@ -241,7 +247,8 @@ function BedarfZeile({
       <span className="vp-mp-wortlaut">{b.wortlaut}</span>
       <span className="vp-bw-leise">{bedarfUnter(b, orte)}</span>
       {einsatz && (
-        <button type="button" className="vp-mp-einsatz" onClick={einsatz.onOeffnen} data-testid="messbedarf-zum-einsatz">
+        // In der Welt Bewertung führt der Weg zum Einrichten über den Energieeinsatz: er ist dort der Schritt.
+        <button type="button" className="vp-mp-einsatz" onClick={einsatz.onOeffnen} data-testid="messbedarf-zum-einsatz" data-entscheid-schritt>
           {einsatz.text}
           <Icon name="chevron-right" size={14} />
         </button>

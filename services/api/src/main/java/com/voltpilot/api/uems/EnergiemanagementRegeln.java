@@ -67,7 +67,7 @@ public final class EnergiemanagementRegeln {
             Map.entry("wiedervorlage_zeile", "{gegenstand}: {was} seit {tage} Tagen fällig."),
             Map.entry("wiedervorlage_leer", "Zurzeit ist nichts fällig."),
             Map.entry("kalender_abzug", "Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal."),
-            Map.entry("baustein", "Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen."),
+            Map.entry("baustein", "Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen."),
             Map.entry("verzeichnis_leer", "Hier ist noch nichts festgehalten."),
             Map.entry("verzeichnis_filter", "In meinem Namen festgehalten: {anzahl} Einträge."),
             Map.entry("zuschnitt_titel", "Was VoltPilot führt — was bei Ihnen liegt.")
@@ -109,7 +109,7 @@ public final class EnergiemanagementRegeln {
         m.put("managementbewertung_zustand", List.of("entwurf", "freigegeben"));
         m.put("beschluss_art", List.of("energieziel", "massnahme", "dokument", "aufgabe", "ressourcen", "audit", "keine_aenderung", "weitere"));
         m.put("folge_art", List.of("energieziel", "massnahme", "dokument", "aufgabe", "audit"));
-        m.put("wiedervorlage_art", List.of("dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung", "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin", "abweichung_frist", "messbedarf_frist", "bericht_anstoss"));
+        m.put("wiedervorlage_art", List.of("dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung", "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin", "abweichung_frist", "messbedarf_frist", "bericht_anstoss", "zaehlerablesung"));
         m.put("verzeichnis_ort", List.of("in_voltpilot", "wortlaut_original_beim_kunden", "verweis"));
         m.put("verzeichnis_gruppe", List.of("grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation", "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen", "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte"));
         m.put("ueberpruefung_art", List.of("dokument", "internes_audit", "managementbewertung", "feststellung"));
@@ -233,7 +233,15 @@ public final class EnergiemanagementRegeln {
         }
     }
 
-    /** WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2) — hier nur Lage, Vorschau-Fenster und Reihenfolge. */
+    /** Konzept Wiedervorlage w1 (Vertrag 1.1): der Jahresplan reicht so viele Monate über den Abruf hinaus. */
+    public static final int JAHRESPLAN_MONATE = 12;
+
+    /**
+     * WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2); hier nur Lage, Vorschau-Fenster und Reihenfolge. Seit
+     * Vertrag 1.1 (Konzept Wiedervorlage w1) dazu der Jahresplan {@code spaeter} (nach dem Fenster bis Abruf + 12 Monate)
+     * und die Zählung nach Dringlichkeit: {@code anzahl_ueberfaellig} (abgelaufen, {@code tage} &gt; 0) und
+     * {@code anzahl_naechste} (heute und das Vorschau-Fenster).
+     */
     public static Map<String, Object> wiedervorlage(WiedervorlageEingang e) {
         if (e.vorschau_tage() < 0) return fehler("vorschau_tage");
         var zeilen = new ArrayList<Map<String, Object>>();
@@ -255,11 +263,20 @@ public final class EnergiemanagementRegeln {
                 .toList();
         var faellig = liste.stream().filter(z -> (int) z.get("tage") >= 0).toList();
         var vorschau = liste.stream().filter(z -> (int) z.get("tage") < 0).toList();
+        String planEnde = LocalDate.parse(e.abruf()).plusMonths(JAHRESPLAN_MONATE).toString();
+        var spaeter = zeilen.stream()
+                .filter(z -> (int) z.get("tage") < -e.vorschau_tage() && ((String) z.get("faellig_am")).compareTo(planEnde) <= 0)
+                .sorted(Comparator.comparing((Map<String, Object> z) -> (String) z.get("faellig_am")).thenComparing(z -> (String) z.get("kennzeichen")))
+                .toList();
         var aus = new LinkedHashMap<String, Object>();
         aus.put("faellig", faellig);
         aus.put("vorschau", vorschau);
+        aus.put("spaeter", spaeter);
         aus.put("anzahl_faellig", faellig.size());
         aus.put("anzahl_vorschau", vorschau.size());
+        aus.put("anzahl_ueberfaellig", (int) faellig.stream().filter(z -> (int) z.get("tage") > 0).count());
+        aus.put("anzahl_naechste", (int) liste.stream().filter(z -> (int) z.get("tage") <= 0).count());
+        aus.put("anzahl_spaeter", spaeter.size());
         aus.put("nicht_in_liste", zeilen.stream().filter(z -> (int) z.get("tage") < -e.vorschau_tage()).map(z -> (String) z.get("kennzeichen")).sorted().toList());
         return aus;
     }

@@ -26,7 +26,8 @@ const GRENZE =
 const VERANTWORTUNG =
   'Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.';
 const EINSICHT_LEER = 'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.';
-const KALENDER = 'Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.';
+const KALENDER_HINWEIS =
+  'Kalender-Abzug (.ics): Die Termine veralten in Ihrem Kalender, wenn sich eine Frist ändert; maßgeblich ist die Wiedervorlage im Portal.';
 
 async function oeffne(page: Page, query: string, breite: number, zeit: Date) {
   await page.clock.setFixedTime(zeit);
@@ -89,7 +90,7 @@ const gesendet = (page: Page) => page.evaluate(() => (window as unknown as { __m
 
 for (const breite of [375, 1440]) {
   test.describe(`Energiemanagement › Wiedervorlage und Managementbewertung bei ${breite} px`, () => {
-    test('R12: Wiedervorlage am 12.02.2029 — acht fällig, am längsten fällig zuerst, eine Vorschau, Kalender-Abzug und Sprung', async ({ page }) => {
+    test('R12: Wiedervorlage am 12.02.2029 als Arbeitsliste, Kalender-Abzug und Schritt bis „Geprüft, bleibt“', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&mb=r13', breite, AM_12_02_2029_MORGEN);
       // K1/D2: die Reiter des Energiemanagements stehen in der Gruppe „Nachweisen“, neben den Berichten — ohne zweite
       // Reihe im Bereich. Die Wiedervorlage beantwortet „Was steht an?“ und steht in der Übersicht; ihre Adresse bleibt.
@@ -103,35 +104,65 @@ for (const breite of [375, 1440]) {
       await expect(page).toHaveURL(/#\/portfolio\/energiemanagement\/wiedervorlage$/);
       await expect(page.getByTestId('energiemanagement-reiter-wiedervorlage')).toHaveAttribute('aria-selected', 'true');
       if (breite >= 720) await expect(page.getByTestId('seitenleiste-uebersicht')).toHaveAttribute('aria-current', 'page');
+
+      // Konzept Wiedervorlage w1: Seitentitel wie der Reiter, ein Satz sagt, was das ist; Marken zählen Einträge.
       const w = page.getByTestId('wiedervorlage');
-      await expect(w.getByTestId('wiedervorlage-summe')).toHaveText('Stand 12.02.2029: 8 fällig · 1 in den nächsten 30 Tagen.');
-      const faellig = w.getByTestId('wiedervorlage-faellig').locator('li');
-      await expect(faellig).toHaveCount(8);
-      await expect(faellig.first()).toContainText('BB-0002');
-      await expect(faellig.first()).toContainText('seit 457 Tagen fällig');
-      await expect(faellig.first()).toContainText('Bezugsbasis');
-      await expect(faellig.nth(3)).toContainText('BR-2028-0001');
-      await expect(faellig.last()).toContainText('D-0002');
-      const vorschau = w.getByTestId('wiedervorlage-vorschau').locator('li');
-      await expect(vorschau).toHaveCount(1);
-      await expect(vorschau.first()).toContainText('M-2029-0001');
-      await expect(vorschau.first()).toContainText('fällig in 16 Tagen');
-      await expect(vorschau.first()).toContainText('Verantwortlich Jonas Wendlinger');
-      await expect(w.getByTestId('wiedervorlage-vermerk')).toContainText(KALENDER);
-      await grenzHinweisZeigt(page, VERANTWORTUNG, GRENZE);
+      await expect(w.getByRole('heading', { level: 1 })).toHaveText('Wiedervorlage');
+      await expect(w.getByTestId('wiedervorlage-kopf')).toHaveText('Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst. Stand 12.02.2029.');
+      await expect(w.getByTestId('wiedervorlage-marken').locator('.vp-k-marke')).toHaveText(['8 überfällig', '1 in den nächsten 30 Tagen']);
+      const ueber = w.getByTestId('wiedervorlage-ueberfaellig').locator(':scope > li');
+      await expect(ueber).toHaveCount(8);
+      await expect(ueber.first()).toContainText('Bezugsbasis BB-0002 überprüfen');
+      await expect(ueber.first().getByRole('img', { name: 'fällig seit 13.11.2027' })).toBeVisible();
+      await expect(ueber.nth(3)).toContainText('Leistungsvergleich');
+      await expect(ueber.nth(3)).toContainText('neu freigeben');
+      await expect(ueber.last()).toContainText('Anwendungsbereich überprüfen');
+      const bald = w.getByTestId('wiedervorlage-bald').locator(':scope > li');
+      await expect(bald).toHaveCount(1);
+      await expect(bald.first()).toContainText('M-2029-0001 · in 16 Tagen');
+      await expect(bald.first()).toContainText('Jonas Wendlinger');
+      await expect(w).not.toContainText(/seit \d+ Tagen/);
+      // Grenz- und Verantwortungs-Satz stehen einmal am Fuß, mit „Woher kommen diese Fristen?“.
+      const fuss = w.getByTestId('wiedervorlage-fuss');
+      await expect(fuss).toContainText('Woher kommen diese Fristen?');
+      await expect(fuss).toContainText(VERANTWORTUNG);
+      await expect(fuss).toContainText(GRENZE);
+      await expect(fuss).toContainText(KALENDER_HINWEIS);
       await ohneQuerlauf(page, 'Wiedervorlage');
       await ablegen(page, `w1-wiedervorlage-${breite}`);
 
-      // WV4/E10: der Kalender-Abzug ist ein Abruf — eine Datei, keine Nachricht.
+      // WV4/E10: der Kalender-Abzug ist ein Abruf, eine Datei und keine Nachricht; am Telefon im Menü.
       const laden = page.waitForEvent('download');
-      await w.getByTestId('wiedervorlage-kalender').click();
+      if (breite < 720) {
+        await w.getByRole('button', { name: 'Weitere Aktionen' }).click();
+        await page.getByRole('menu').getByRole('menuitem', { name: 'Kalender-Abzug (.ics)' }).click();
+      } else {
+        await w.getByTestId('wiedervorlage-kalender').click();
+      }
       expect((await laden).suggestedFilename()).toBe('wiedervorlage-energiemanagement.ics');
       expect((await gesendet(page)).map((g) => g.route)).toEqual(['GET /api/v1/energiemanagement/wiedervorlage?format=ics']);
 
-      // WV3: Sprung nur zu einer Seite, die es gibt — D-0001 öffnet die Seite des Dokuments.
-      await w.getByTestId('wiedervorlage-zeile-D-0001').getByRole('button').click();
-      await expect(page).toHaveURL(/#\/portfolio\/energiemanagement\/dokumente\//);
-      await expect(page.getByText('Energiepolitik D-0001', { exact: false }).first()).toBeVisible();
+      // Entscheid 8: der Schritt öffnet das Objekt mit offenem Entscheid. D-0001 „Bestätigen oder neu fassen“ landet beim
+      // Knopf „Geprüft, bleibt“; danach steht die Adresse wieder ohne Parameter.
+      await w.getByTestId('wiedervorlage-eintrag-D-0001').click();
+      await expect(page).toHaveURL(/#\/portfolio\/energiemanagement\/dokumente\/[^?]+$/);
+      const geprueft = page.getByTestId('dokument-geprueft');
+      await expect(geprueft).toBeFocused();
+      await geprueft.click();
+      const dialog = page.getByTestId('geprueft-dialog');
+      await expect(dialog).toContainText('Fassung 1 bleibt gültig.');
+      await waehle(page, dialog.getByRole('combobox', { name: 'entschieden von' }), /^Robert Falk/);
+      await dialog.getByLabel('Begründung').fill('Mit der Jahresplanung 2029 durchgesehen; die Politik gilt unverändert.');
+      await page.getByTestId('geprueft-senden').click();
+      await expect(page.getByTestId('dokument-geprueft-bestaetigt')).toHaveText(
+        'Energiepolitik D-0001: geprüft, bleibt. Die nächste Überprüfung ist am 12.02.2030 fällig.',
+      );
+      const em = await page.evaluate(() => (window as unknown as { __emGesendet: { route: string; koerper: Record<string, unknown> }[] }).__emGesendet);
+      expect(em.filter((g) => g.route.endsWith('/geprueft')).map((g) => g.koerper)).toEqual([
+        { entschieden_von: expect.any(String), am: null, begruendung: 'Mit der Jahresplanung 2029 durchgesehen; die Politik gilt unverändert.' },
+      ]);
+      await ohneQuerlauf(page, 'Dokument nach „Geprüft, bleibt“');
+      await ablegen(page, `w1-dokument-geprueft-${breite}`);
     });
 
     test('Anlegen → Sitzung → Beschluss → Freigabe → Folge, mit Entwurf, Stand Nr. 1 und PDF', async ({ page }) => {

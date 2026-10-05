@@ -1392,6 +1392,13 @@
       "nachher": "17c89de5836d4e18107ab6ba2b11c3e998ea9560fb74dae41755e678f3832074",
       "commit": "uems · Navigation aus einem Guss (N1–N6)",
       "grund": "N1/R2: eine Seite der Ebene, die Seitenleiste und Telefon-Leiste tragen, steht nicht mehr zusätzlich als Reiter über der Seite, darum entfällt die Klasse vp-nur-rechner. Wortlaut, Ziel und Handler unverändert."
+    },
+    {
+      "datei": "pages/BerichtSeite.tsx",
+      "vorher": "fcebd6953f676495f243b773518cfa274f14d3bc4e9854ff720b183a8db220e1",
+      "nachher": "a4c865c22fa3e6fc92c29eba152374037380d440efcf3d54b9152b9cc094f406",
+      "commit": "uems · Wiedervorlage als Arbeitsliste (Konzept w1, PR1)",
+      "grund": "Entscheid 8: der Schritt „Entwurf vergleichen“ der Wiedervorlage öffnet den Bericht mit offenem Entscheid; data-entscheid-schritt sagt dem Fokus-Haken, welcher Knopf der Schritt ist (vor „Anstoß verwerfen“). Wortlaut, Ziel und Handler unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

@@ -1,0 +1,10 @@
+/*
+ * Konzept Wiedervorlage w1 (Entscheid 8): ein Schritt der Wiedervorlage öffnet das Objekt mit offenem Entscheid.
+ * `useEntscheidFokus` scrollt dorthin, fokussiert den ersten Knopf und setzt für einen Augenblick diese Markierung um
+ * ihn (sie folgt seinen runden Ecken), damit der Blick ankommt. Sie bewegt nichts (kein Übergang), also gilt sie auch
+ * unter reduzierter Bewegung.
+ */
+.vp-entscheid-blick {
+  outline: 3px solid color-mix(in srgb, var(--vp-c-primary, #2563eb) 38%, transparent);
+  outline-offset: 3px;
+}

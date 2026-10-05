@@ -16,7 +16,7 @@
 import type { Bilanz, BilanzEingang, Kennzahl, MessstelleRegisterAbdeckung, MessstellenRegister } from './api';
 import type { BewertungFristBild } from './bewertungFrist';
 import type { VerbesserungUebersichtBild } from './verbesserungUebersicht';
-import type { EnergiemanagementBausteinBild } from './wiedervorlage';
+import type { WasStehtAnBild } from './wiedervorlage';
 import { dez, dezText } from './bezugsdaten';
 import { UEMS_MESSSTELLE, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 import { amStandort } from './kennzahlKarte';
@@ -385,8 +385,8 @@ export function bausteineMitInhalt(i: {
   bewertung?: BewertungFristBild | null;
   /** AP-18 IP-19: „Ziele und Maßnahmen“ — nur mit einem Vorgang im Zaun (`verbesserungUebersicht.ts`, R13). */
   zieleMassnahmen?: VerbesserungUebersichtBild | null;
-  /** AP-19 IP-21 (WV5): „Energiemanagement“ — nur mit einer fälligen oder bald fälligen Frist (`wiedervorlage.ts`). */
-  energiemanagement?: EnergiemanagementBausteinBild | null;
+  /** AP-19 IP-21 (WV5): „Was steht an“, nur mit einer Frist der Wiedervorlage (`wiedervorlage.wasStehtAn`). */
+  energiemanagement?: WasStehtAnBild | null;
 }): UebersichtBausteinId[] {
   const out: UebersichtBausteinId[] = [];
   if (i.messstellen) out.push('messstellen');

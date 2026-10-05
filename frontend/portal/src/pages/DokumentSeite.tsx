@@ -4,11 +4,11 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type EnergiemanagementDokument, type EnergiemanagementDokumentEintrag } from '../api';
 import { AnwendungsbereichVergleich } from '../components/AnwendungsbereichVergleich';
-import { FassungDialog, FreigabeDialog } from '../components/DokumentDialoge';
+import { FassungDialog, FreigabeDialog, GeprueftBleibtDialog } from '../components/DokumentDialoge';
 import { EinsichtGruppe } from '../components/EinsichtRecht';
 import { Recht } from '../components/Recht';
 import * as E from '../energiemanagementPortal';
-import { UEMS_DOKUMENTE, UEMS_EINGETRAGEN_VON, UEMS_ENTSCHIEDEN_VON, UEMS_WORTLAUT } from '../glossar';
+import { UEMS_DOKUMENTE, UEMS_EINGETRAGEN_VON, UEMS_ENTSCHIEDEN_VON, UEMS_GEPRUEFT_BLEIBT, UEMS_WORTLAUT } from '../glossar';
 import './Energiemanagement.css';
 import './Verbesserung.css';
 
@@ -29,11 +29,15 @@ function eintragSatz(e: EnergiemanagementDokumentEintrag): string {
  * Ihnen: …“ bzw. „Geführt in Ihrem System: …“), die gezeigte Fassung, beim Anwendungsbereich Standorte, Träger und der
  * Vergleich mit dem Betrachtungsumfang, alle Fassungen mit „entschieden von“, „eingetragen von“ und Prüfsumme, die
  * Einträge. „Neue Fassung“ und „Freigeben“ öffnen die Dialoge; eine Datei gibt es nirgends (G3).
+ * Konzept Wiedervorlage w1: „Geprüft, bleibt“ (DK5) an der gültigen Fassung einer Vorgabe; die Aktionen tragen den
+ * Entscheid `dokument_ueberpruefung`, den der Schritt der Wiedervorlage in den Blick holt.
  */
 export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void }) {
   const [d, setD] = useState<EnergiemanagementDokument | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'fassung' | 'freigabe' | null>(null);
+  const [dialog, setDialog] = useState<'fassung' | 'freigabe' | 'geprueft' | null>(null);
+  /** Die Rückmeldung nach „geprüft, bleibt“ (Konzept Wiedervorlage w1): festgehalten, die Überprüfung beginnt neu. */
+  const [bestaetigt, setBestaetigt] = useState<string | null>(null);
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementDokument(id).then(
@@ -66,7 +70,17 @@ export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void
   const aufgehoben = d.zustand === 'aufgehoben';
   const gespeichert = (neu: EnergiemanagementDokument) => {
     setDialog(null);
+    setBestaetigt(null);
     setD(neu);
+  };
+  // DK5: „geprüft, bleibt“ gibt es an der gültigen Fassung einer Vorgabe; dort beginnt die Überprüfung neu.
+  const pruefbar = !aufgehoben && d.klasse === 'vorgabe' && d.gueltige_fassung !== null;
+  const geprueft = (neu: EnergiemanagementDokument) => {
+    gespeichert(neu);
+    const naechste = neu.ueberpruefung?.faellig_am;
+    setBestaetigt(
+      `${neu.art_wort} ${neu.kennzeichen}: ${UEMS_GEPRUEFT_BLEIBT}.${naechste ? ` Die nächste Überprüfung ist am ${E.tagText(naechste)} fällig.` : ''}`,
+    );
   };
   return (
     <GrenzSatzBereich>
@@ -102,9 +116,21 @@ export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void
           )}
           <GrenzHinweis />
         </div>
+        {bestaetigt && (
+          <p className="vp-ez-satz vp-em-bestaetigt" role="status" data-testid="dokument-geprueft-bestaetigt">
+            {bestaetigt}
+          </p>
+        )}
         {!aufgehoben && (
           <EinsichtGruppe aktion={[E.RECHT_VERWALTEN, E.RECHT_FREIGEBEN]} standort={standort}>
-            <div className="vp-ez-aktionen">
+            <div className="vp-ez-aktionen" data-entscheid="dokument_ueberpruefung">
+              {pruefbar && (
+                <Recht aktion={E.RECHT_FREIGEBEN} standort={standort}>
+                  <Button variant="outline" onClick={() => setDialog('geprueft')} data-testid="dokument-geprueft">
+                    {E.KNOPF_GEPRUEFT}
+                  </Button>
+                </Recht>
+              )}
               <Recht aktion={E.RECHT_VERWALTEN} standort={standort}>
                 <Button variant={offen ? 'ghost' : 'primary'} onClick={() => setDialog('fassung')} disabled={offen?.status === 'beantragt'} data-testid="dokument-fassung">
                   {offen?.status === 'entwurf' ? E.KNOPF_ENTWURF : E.KNOPF_FASSUNG}
@@ -215,6 +241,7 @@ export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void
         )}
         {dialog === 'fassung' && <FassungDialog dokument={d} onClose={() => setDialog(null)} onGespeichert={gespeichert} />}
         {dialog === 'freigabe' && offen && <FreigabeDialog dokument={d} fassung={offen} onClose={() => setDialog(null)} onGespeichert={gespeichert} />}
+        {dialog === 'geprueft' && <GeprueftBleibtDialog dokument={d} onClose={() => setDialog(null)} onGespeichert={geprueft} />}
       </div>
     </GrenzSatzBereich>
   );

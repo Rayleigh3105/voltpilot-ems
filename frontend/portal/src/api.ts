@@ -2,7 +2,7 @@ import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
 import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { VerbesserungUebersicht } from './verbesserungUebersicht';
-import type { Wiedervorlage } from './wiedervorlage';
+import type { Wiedervorlage, WiedervorlageZuletzt } from './wiedervorlage';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -8868,6 +8868,13 @@ export interface EnergiemanagementEntscheid {
   entschieden_am?: string | null;
   begruendung?: string | null;
 }
+/** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
+export interface EnergiemanagementGeprueft {
+  entschieden_von: string;
+  am: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
 export interface EnergiemanagementVergleich {
   abruf: string;
   fassung: number | null;
@@ -11335,6 +11342,8 @@ export const api = {
   },
   /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
   energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
+  /** Konzept Wiedervorlage w1: „Zuletzt erledigt“, die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben. */
+  energiemanagementWiedervorlageZuletzt: () => request<WiedervorlageZuletzt>('/api/v1/energiemanagement/wiedervorlage/zuletzt'),
   /** IP-21 (E10 = A): dieselben Zeilen als Kalender-Abzug (`format=ics`) — ein Abruf, nichts wird verschickt. */
   energiemanagementWiedervorlageIcs: async (): Promise<Blob> => {
     const token = await freshToken();
@@ -11399,6 +11408,9 @@ export const api = {
   /** IP-7 (DK3, DK4): freigeben — mit „entschieden von“; bei Vier-Augen bestätigt eine zweite Person. */
   energiemanagementFassungFreigeben: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
+  energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
   /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
   energiemanagementAudits: (tag?: string) =>
     request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),

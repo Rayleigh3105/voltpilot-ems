@@ -94,14 +94,14 @@ export function BezugsbasisFassungen({
 
   const Antworten = () =>
     pflege ? (
-      <div className="vp-kz-aktionen" data-testid="bezugsbasis-antworten">
+      <div className="vp-kz-aktionen" data-testid="bezugsbasis-antworten" data-entscheid="bezugsbasis_ueberpruefung" data-entscheid-kennzeichen={basis.kennzeichen}>
         <Button size="sm" data-testid="bezugsbasis-neue-fassung-knopf" disabled={offen !== null} onClick={() => setDialog('neu')}>
           {F.KNOPF_NEUE_FASSUNG}
         </Button>
         <Button size="sm" variant="outline" data-testid="bezugsbasis-beenden-knopf" onClick={() => setDialog('beenden')}>
           {F.KNOPF_BEENDEN}
         </Button>
-        <Button size="sm" variant="outline" data-testid="bezugsbasis-bleibt-knopf" onClick={() => setDialog('bleibt')}>
+        <Button size="sm" variant="outline" data-testid="bezugsbasis-bleibt-knopf" data-entscheid-schritt onClick={() => setDialog('bleibt')}>
           {F.KNOPF_BLEIBT}
         </Button>
       </div>
