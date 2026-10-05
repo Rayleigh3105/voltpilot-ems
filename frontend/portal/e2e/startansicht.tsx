@@ -1190,6 +1190,9 @@ if (rechteAnsicht && params.get('person') === 'MD') {
     prices: ohneAntwortDerMomentaufnahme,
     consumerSchedule: ohneAntwortDerMomentaufnahme,
     scene: ohneAntwortDerMomentaufnahme,
+    // Seit MiSpeL MP-41a (#1359) liest die Steuerung auch die Ladepunkte - derselbe Fall, in WebKit wieder als
+    // Seitenfehler (Gesamtlauf mispel 05.10.2026).
+    ladepunkte: ohneAntwortDerMomentaufnahme,
   });
   window.history.replaceState(null, '', hashForRoute(anlageRoute(an1, 'steuerung')));
 }
