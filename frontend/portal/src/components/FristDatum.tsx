@@ -25,8 +25,9 @@ export function Kennzeichentext({ text }: { text: string }) {
 }
 
 /**
- * Der Datumsblock einer Frist (Konzept Wiedervorlage w1): das kleine Wort („seit“, „heute“, „bis“, „am“) über Tag und
- * Jahr. Vorleser hören den ganzen Satz („fällig seit 13.11.2027“), die Teile sind Bild.
+ * Der Datumsblock einer Frist (Konzept Wiedervorlage w1): das kleine Wort („seit“, „heute“, „bis“, „ab“, „am“) über Tag
+ * und Jahr; Warnton nur bei Überfälligem, gestrichelt im Jahresplan, grün bei Erledigtem. Vorleser hören den ganzen Satz
+ * („fällig seit 13.11.2027“), die Teile sind Bild.
  */
 export function FristDatum({
   wort,
@@ -34,9 +35,9 @@ export function FristDatum({
   jahr,
   satz,
   ton,
-}: Pick<FristBild, 'wort' | 'tag' | 'jahr' | 'satz'> & { ton: 'ueber' | 'bald' | 'erledigt' }) {
+}: Pick<FristBild, 'wort' | 'tag' | 'jahr' | 'satz'> & { ton: 'ueber' | 'bald' | 'erledigt' | 'plan' }) {
   return (
-    <span className={`vp-fd${ton === 'ueber' ? ' is-ueber' : ton === 'erledigt' ? ' is-erledigt' : ''}`} role="img" aria-label={satz}>
+    <span className={`vp-fd${ton === 'bald' ? '' : ` is-${ton}`}`} role="img" aria-label={satz}>
       <small aria-hidden="true">{wort}</small>
       <b aria-hidden="true">{tag}</b>
       <span aria-hidden="true">{jahr}</span>

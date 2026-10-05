@@ -29,7 +29,9 @@ public class AuditWiedervorlage implements WiedervorlageQuelle {
         return programm.audits().stream().filter(a -> naechstes.basis().equals(a.durchgefuehrtAm())).findFirst()
                 .map(a -> List.of(new Frist("internes_audit", a.kennzeichen(), "Nächstes internes Audit",
                         naechstes.faelligAm(), a.verantwortlich() == null ? null : a.verantwortlich().name(), a.id(),
-                        null)))
+                        null, Herkunft.von("durchgefuehrt", naechstes.basis()).mitMonaten(naechstes.rhythmusMonate())
+                                .mitKennung(a.kennzeichen())
+                                .mitKonto(a.verantwortlich() == null ? null : a.verantwortlich().sub()))))
                 .orElse(List.of());
     }
 }

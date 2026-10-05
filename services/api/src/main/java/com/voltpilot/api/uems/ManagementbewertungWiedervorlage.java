@@ -37,7 +37,9 @@ public class ManagementbewertungWiedervorlage implements WiedervorlageQuelle {
     @Override
     public List<Frist> fristen(LocalDate abruf) {
         return naechste(abruf).map(n -> List.of(new Frist("managementbewertung", n.kennzeichen(),
-                "Nächste Managementbewertung", n.faelligAm(), n.verantwortlich(), null, null))).orElse(List.of());
+                "Nächste Managementbewertung", n.faelligAm(), n.verantwortlich(), null, null,
+                Herkunft.von("sitzung", n.sitzungAm()).mitMonaten(n.rhythmusMonate()).mitKennung(n.kennzeichen()))))
+                .orElse(List.of());
     }
 
     /** Die EINE Rechnung von MG7: die Frist der Wiedervorlage und das Feld {@code naechste_managementbewertung}. */

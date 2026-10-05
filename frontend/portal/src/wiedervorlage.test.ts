@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { VOKABULARE } from './energiemanagement';
-import { DOK, KZ, verzeichnisDemo, wvDemo, wvLeer, wvNormal, wvR12, wvZeile } from './test/wiedervorlageFixtures';
+import { DOK, herleitung, KZ, wvDemo, wvLeer, wvNormal, wvR12, wvZeile, zuletztDemo, zuletztLeer } from './test/wiedervorlageFixtures';
 import {
   ART_WORT,
   arbeitsliste,
   artAusAdresse,
   artFilterWort,
+  aufgabeFestlegenSprung,
   buendel,
   eintragSprung,
   fristBild,
   gefiltert,
+  jahresplanGruppen,
   kopfSatz,
+  lautAufgabe,
+  OHNE_FILTER,
   SCHRITT,
   wasStehtAn,
   wiedervorlageStatus,
@@ -31,46 +35,79 @@ describe('Wiedervorlage w1 · die Frist als Datum, nie als Tageszähler', () => 
     expect(fristBild('2029-02-13', -1)).toMatchObject({ wort: 'bis', relativ: 'morgen', ueberfaellig: false });
     expect(fristBild('2029-02-28', -16)).toMatchObject({ wort: 'bis', tag: '28.02.', jahr: '2029', relativ: 'in 16 Tagen', satz: 'fällig bis 28.02.2029' });
   });
+  it('ein Energieziel wird mit dem Ende seiner Zielperiode bewertbar: „ab“, nicht „bis“', () => {
+    expect(fristBild('2029-12-31', -245, 'energieziel_bewertung')).toMatchObject({ wort: 'ab', satz: 'bewertbar ab 31.12.2029', ueberfaellig: false });
+    expect(fristBild('2028-12-31', 3, 'energieziel_bewertung')).toMatchObject({ wort: 'seit', ueberfaellig: true });
+  });
 });
 
-describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund, Bereich, Zuständig, ein Schritt', () => {
-  it('R12: acht überfällige Einträge, das älteste zuerst, und eine Frist in den nächsten 30 Tagen', () => {
+describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bereich, Zuständig, ein Schritt', () => {
+  it('R12: acht überfällige Einträge, eine Frist in den nächsten 30 Tagen, sechs im Jahresplan bis 12.02.2030', () => {
     const l = arbeitsliste(wvR12());
     expect(l.stand).toBe('12.02.2029');
     expect(l.fensterBis).toBe('14.03.2029');
     expect(l.ueberfaellig.map((e) => e.kennzeichen)).toEqual(['BB-0002', 'BB-0005', 'BB-0003', 'BR-2028-0001', 'BB-0004', 'BR-2027-0001', 'D-0001', 'D-0002']);
     expect(l.bald.map((e) => e.kennzeichen)).toEqual(['M-2029-0001']);
-    expect(l.spaeter).toBe(6);
+    expect(l.jahresplan.map((e) => e.kennzeichen)).toEqual(['F-2029-0001', 'D-0003', 'M-2029-0002', 'D-0004', 'BB-0001', 'AU-2029-0001']);
+    expect(l.jahresplanBis).toBe('12.02.2030');
     expect(l.bereiche).toEqual(['auswerten', 'verbessern', 'nachweisen']);
   });
 
-  it('jede Art spricht als Aufgabe mit Verb und nennt ihren Grund: Titel und Herleitung getrennt, das Kennzeichen einmal', () => {
+  it('jede Art spricht als Aufgabe mit Verb; der Grund nennt Gegenstand und Herleitung der Route, das Kennzeichen einmal', () => {
     const [bb2, , , bericht, , bewertung, d1] = arbeitsliste(wvR12()).ueberfaellig;
-    expect(text(bb2)).toBe('Bezugsbasis BB-0002 überprüfen | Vergleichsgrundlage einer Kennzahl · Fassung 2 vom 13.11.2026 + 12 Monate');
+    expect(text(bb2)).toBe('Bezugsbasis BB-0002 überprüfen | Grundlage für „Stromeinsatz Montage je Stück“ · Fassung 2 vom 13.11.2026 + 12 Monate');
     expect(text(bericht)).toBe(
       'Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Dezember 2027 neu freigeben | Korrektur K-2028-0001 hat nach der Freigabe Werte geändert. Der freigegebene Stand bleibt, bis Sie entscheiden.',
     );
     expect(bericht.grundKurz).toBe('Werte nach der Freigabe korrigiert (K-2028-0001)');
-    expect(text(bewertung)).toBe('Energetische Bewertung überprüfen | Grundlage der wesentlichen Energieeinsätze (BR-2027-0001)');
-    expect(text(d1)).toBe('Energiepolitik überprüfen | Vorgabe Ihres Energiemanagements (D-0001)');
+    expect(text(bewertung)).toBe('Energetische Bewertung überprüfen | Grundlage der wesentlichen Energieeinsätze · Stand Nr. 1 vom 24.11.2027 + 12 Monate');
+    expect(text(d1)).toBe('Energiepolitik überprüfen | Vorgabe Ihres Energiemanagements (D-0001) · „geprüft, bleibt“ am 10.12.2027 + 12 Monate');
     const [m] = arbeitsliste(wvR12()).bald;
-    expect(text(m)).toBe('Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden | Maßnahme M-2029-0001');
+    expect(text(m)).toBe(
+      'Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden | Maßnahme M-2029-0001 · aus der Feststellung F-2029-0001',
+    );
     expect(m.frist.relativ).toBe('in 16 Tagen');
-    expect(m.verantwortlich).toBe('Jonas Wendlinger');
     expect([bb2.bereich, bericht.bereich, bewertung.bereich, d1.bereich, m.bereich]).toEqual(['auswerten', 'nachweisen', 'auswerten', 'nachweisen', 'verbessern']);
     expect([bb2.schritt, bericht.schritt, bewertung.schritt, d1.schritt, m.schritt]).toEqual([
       'Bestätigen oder neu fassen', 'Entwurf vergleichen', 'Neuen Stand freigeben', 'Bestätigen oder neu fassen', 'Umsetzung melden',
     ]);
-    // Die Route nennt am Dokument, am Bericht und an der Bewertung keine Person; das Portal erfindet keine.
-    expect([bb2.verantwortlich, bericht.verantwortlich, bewertung.verantwortlich, d1.verantwortlich]).toEqual(['Ines Kaltenbach', null, null, null]);
   });
 
-  it('„geprüft, bleibt“ als Herleitung einer Bezugsbasis', () => {
+  it('Zuständig: die Person am Objekt, sonst laut Aufgabe; ohne beide niemand, aber die Aufgabe ist bekannt', () => {
+    const l = arbeitsliste(wvR12());
+    const e = (kz: string) => [...l.ueberfaellig, ...l.bald, ...l.jahresplan].find((x) => x.kennzeichen === kz)!;
+    expect(e('BB-0002').zustaendig).toEqual({ name: 'Ines Kaltenbach', herkunft: 'objekt', ich: true });
+    expect(e('D-0001').zustaendig).toEqual({ name: 'Ines Kaltenbach', herkunft: 'aufgabe', ich: true });
+    expect(e('D-0001').aufgabeIm).toBe('dokumente');
+    expect(e('M-2029-0001').zustaendig).toEqual({ name: 'Jonas Wendlinger', herkunft: 'objekt', ich: false });
+    expect([e('BR-2028-0001').zustaendig, e('BR-2028-0001').aufgabeIm]).toEqual([null, 'energiemanagement_leiten']);
+    expect([e('BR-2027-0001').zustaendig, e('BR-2027-0001').aufgabeIm]).toEqual([null, 'bewertung_messplanung']);
+    expect(lautAufgabe('dokumente')).toBe('laut Aufgabe „Dokumente des Energiemanagements pflegen“');
+    expect(lautAufgabe(null)).toBe('laut Aufgabe');
+    expect(aufgabeFestlegenSprung('energiemanagement_leiten').hash).toBe(
+      '#/portfolio/energiemanagement/aufgaben?entscheid=aufgabe_festlegen&kennzeichen=energiemanagement_leiten',
+    );
+  });
+
+  it('nennt eine Zeile nur „verantwortlich“ (ein Leser vor Vertrag 1.1), ist das die Person am Objekt', () => {
     const [e] = arbeitsliste({
       ...wvLeer(),
-      faellig: [wvZeile('bezugsbasis_ueberpruefung', 'BB-0001', 'Bezugsbasis BB-0001, Fassung 2 — Überprüfung (geprüft, bleibt 30.04.2029 + 12 Monate)', '2030-04-30', 3, { kennzahl_id: 'k' })],
+      faellig: [wvZeile('massnahme_termin', 'M-1', 'Maßnahme', '2029-01-01', 3, { verantwortlich: 'Jonas Wendlinger', id: 'm' })],
     }).ueberfaellig;
-    expect(e.grund).toBe('Vergleichsgrundlage einer Kennzahl · „geprüft, bleibt“ am 30.04.2029 + 12 Monate');
+    expect(e.zustaendig).toEqual({ name: 'Jonas Wendlinger', herkunft: 'objekt', ich: false });
+  });
+
+  it('ohne Herleitung (ein älterer Server) bleibt der Grund beim Gegenstand; nichts wird erfunden', () => {
+    const [bb, d] = arbeitsliste({
+      ...wvLeer(),
+      faellig: [
+        wvZeile('bezugsbasis_ueberpruefung', 'BB-0001', 'Bezugsbasis BB-0001, Fassung 2 — Überprüfung (Freigabe 01.03.2027 + 12 Monate)', '2028-03-01', 3, { kennzahl_id: 'k' }),
+        wvZeile('dokument_ueberpruefung', 'D-0001', 'Energiepolitik — Überprüfung', '2028-12-10', 64, { id: 'd' }),
+      ],
+    }).ueberfaellig;
+    expect(bb.grund).toBe('Vergleichsgrundlage einer Kennzahl');
+    expect(d.grund).toBe('Vorgabe Ihres Energiemanagements (D-0001)');
+    expect([bb.zustaendig, d.zustaendig]).toEqual([null, null]);
   });
 
   it('der Schritt öffnet das Objekt mit offenem Entscheid, auch Audit, Managementbewertung und Messbedarf', () => {
@@ -84,26 +121,71 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund, Bereich, Zuständig, ei
     const z = (art: Wiedervorlage['faellig'][number]['art'], kz: string, id: string | null = null) => ({ art, kennzeichen: kz, id, kennzahl_id: null });
     expect(eintragSprung(z('internes_audit', 'AU-2029-0001', 'a1'))!.hash).toBe('#/portfolio/energiemanagement/audits?entscheid=internes_audit');
     expect(eintragSprung(z('managementbewertung', 'BR-2029-0001'))!.hash).toBe('#/portfolio/energiemanagement/managementbewertung?entscheid=managementbewertung');
+    // Der Messbedarf wird an seinem Energieeinsatz eingelöst; ohne Einsatz führt der Weg über die Messplanung.
+    expect(eintragSprung({ ...z('messbedarf_frist', 'MB-1', 'mb-1'), einsatz_id: 'ee-8' })!.hash).toBe('#/portfolio/bewertung/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(eintragSprung(z('messbedarf_frist', 'MB-1', 'mb-1'))!.hash).toBe('#/portfolio/bewertung?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(eintragSprung(z('feststellung', 'F-2029-0001', 'f1'))!.hash).toBe('#/portfolio/energiemanagement/feststellungen/f1?entscheid=feststellung');
     // Ohne Kennung der Route gibt es keine Seite: dann kein Sprung (WV3).
     expect(eintragSprung(z('dokument_ueberpruefung', 'D-0009'))).toBeNull();
   });
 
-  it('ein Gegenstand, ein Eintrag: zehn Anstöße an einem Bericht sind eine Aufgabe (Demo: 13 Zeilen, 4 Einträge)', () => {
+  it('ein Gegenstand, ein Eintrag: die zehn Korrekturen eines Berichts sind EINE Zeile der Route und EINE Aufgabe', () => {
     const l = arbeitsliste(wvDemo());
     expect(l.ueberfaellig.map((e) => [e.kennzeichen, e.zeilen])).toEqual([
-      ['BR-2026-0001', 10],
+      ['BR-2026-0001', 1],
       ['MB-1', 1],
       ['BB-0006', 1],
       ['BB-0007', 1],
     ]);
     const [bericht, mb] = l.ueberfaellig;
-    expect(text(bericht)).toBe('Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben | 10 Korrekturen nach der Freigabe. Der freigegebene Stand bleibt, bis Sie entscheiden.');
+    expect(text(bericht)).toBe(
+      'Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben | 10 Korrekturen nach der Freigabe, zuerst K-2026-0014. Der freigegebene Stand bleibt, bis Sie entscheiden.',
+    );
+    expect(bericht.grundKurz).toBe('10 Korrekturen nach der Freigabe');
     expect(bericht.frist.satz).toBe('fällig seit 05.10.2026');
-    expect(text(mb)).toBe('Messstelle für Messbedarf MB-1 einrichten | Aus der Messplanung der energetischen Bewertung');
+    expect(text(mb)).toBe('Messstelle für Messbedarf MB-1 einrichten | Wärmemengenzähler am Trockner der Spritzgießmaschine 4');
+    expect(mb.sprung!.hash).toBe('#/portfolio/bewertung/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(mb.bereich).toBe('messen');
     expect(mb.schritt).toBe('Messstelle anlegen');
+  });
+
+  it('ein älterer Server schickte je Korrektur eine Zeile: auch dann bleibt es ein Eintrag', () => {
+    const anstoss = (k: string) => wvZeile('bericht_anstoss', 'BR-2026-0001', `Monatsbericht Oktober 2026 — Revision angestoßen (${k})`, '2026-10-05', 938);
+    const [e] = arbeitsliste({ ...wvLeer(), faellig: ['K-2026-0014', 'K-2026-0015', 'K-2026-0016'].map(anstoss) }).ueberfaellig;
+    expect(e.zeilen).toBe(3);
+    expect(text(e)).toBe('Monatsbericht Oktober 2026 neu freigeben | 3 Korrekturen nach der Freigabe, zuerst K-2026-0014. Der freigegebene Stand bleibt, bis Sie entscheiden.');
+  });
+
+  it('der Jahresplan der Demo: Grund je Art, und nach Monaten gruppiert wie im Konzept', () => {
+    const l = arbeitsliste(wvDemo());
+    expect(l.jahresplanBis).toBe('30.04.2030');
+    expect(l.jahresplan.map((e) => `${e.frist.wort} ${e.frist.tag}${e.frist.jahr} ${text(e)}`)).toEqual([
+      'bis 30.06.2029 Bekanntmachung der Energiepolitik im Werk Lindach wiederholen | Maßnahme M-2029-0002 · aus dem internen Audit AU-2029-0001',
+      'bis 30.06.2029 Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal | Maßnahme M-2029-0003 · aus der Managementbewertung BR-2029-0001 (Beschluss 2)',
+      'bis 10.11.2029 Kriterien für Betrieb und Instandhaltung überprüfen | Vorgabe Ihres Energiemanagements (D-0004) · Fassung 1 vom 10.11.2028 + 12 Monate',
+      'bis 05.12.2029 Rechtskataster überprüfen | Vorgabe Ihres Energiemanagements (D-0003) · Fassung 1 vom 05.12.2028 + 12 Monate',
+      'ab 31.12.2029 Energieziel EZ-2029-0001 bewerten | Zielperiode bis 31.12.2029 · bewertbar, sobald Dezember endgültig ist',
+      'bis 22.01.2030 Internes Audit durchführen | Zuletzt AU-2029-0001 am 22.01.2029 · alle 12 Monate',
+      'bis 12.02.2030 Managementbewertung abhalten | Letzte Sitzung am 12.02.2029 (BR-2029-0001) · alle 12 Monate',
+      'bis 13.02.2030 Anwendungsbereich überprüfen | Vorgabe Ihres Energiemanagements (D-0002) · „geprüft, bleibt“ am 13.02.2029 + 12 Monate',
+      'bis 20.03.2030 Energiepolitik überprüfen | Vorgabe Ihres Energiemanagements (D-0001) · Fassung 2 vom 20.03.2029 + 12 Monate',
+      'bis 30.04.2030 Bezugsbasis BB-0001 überprüfen | Grundlage für „Stromeinsatz Spritzguss je kg“ · „geprüft, bleibt“ am 30.04.2029 + 12 Monate',
+      'bis 30.04.2030 Energetische Bewertung überprüfen | Grundlage der wesentlichen Energieeinsätze · Stand Nr. 1 vom 30.04.2029 + 12 Monate',
+    ]);
+    expect(jahresplanGruppen(l.jahresplan).map((g) => [g.titel, g.eintraege.length])).toEqual([
+      ['Juni 2029', 2],
+      ['November und Dezember 2029', 3],
+      ['Januar bis April 2030', 6],
+    ]);
+  });
+
+  it('Monatsgruppen: eine Lücke und ein Jahreswechsel trennen, ein Monat steht allein', () => {
+    const e = (tag: string) => arbeitsliste({ ...wvLeer(), spaeter: [wvZeile('massnahme_termin', `M-${tag}`, 'M', tag, -40)] }).jahresplan[0];
+    const titel = (tage: string[]) => jahresplanGruppen(tage.map(e)).map((g) => g.titel);
+    expect(titel(['2029-06-01', '2029-06-30', '2029-08-01'])).toEqual(['Juni 2029', 'August 2029']);
+    expect(titel(['2029-11-01', '2029-12-01', '2030-01-01'])).toEqual(['November und Dezember 2029', 'Januar 2030']);
+    expect(titel(['2029-03-01', '2029-04-01', '2029-05-01'])).toEqual(['März bis Mai 2029']);
+    expect(titel([])).toEqual([]);
   });
 
   it('eine Art, die das Portal noch nicht kennt, steht mit dem Titel der Route und ohne Sprung', () => {
@@ -113,10 +195,14 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund, Bereich, Zuständig, ei
     expect(e.sprung).toBeNull();
   });
 
-  it('Filter nach Art (aus der Übersicht) und nach Bereich; ein unbekanntes Wort in der Adresse gilt nicht', () => {
+  it('Filter nach Art, Bereich und Person; ein unbekanntes Wort in der Adresse gilt nicht', () => {
     const l = arbeitsliste(wvR12());
-    expect(gefiltert(l.ueberfaellig, { art: 'bezugsbasis_ueberpruefung', bereich: null })).toHaveLength(4);
-    expect(gefiltert(l.ueberfaellig, { art: null, bereich: 'nachweisen' }).map((e) => e.kennzeichen)).toEqual(['BR-2028-0001', 'D-0001', 'D-0002']);
+    expect(gefiltert(l.ueberfaellig, { ...OHNE_FILTER, art: 'bezugsbasis_ueberpruefung' })).toHaveLength(4);
+    expect(gefiltert(l.ueberfaellig, { ...OHNE_FILTER, bereich: 'nachweisen' }).map((e) => e.kennzeichen)).toEqual(['BR-2028-0001', 'D-0001', 'D-0002']);
+    // Meine: der angemeldeten Person zugeordnet, am Objekt oder laut Aufgabe; Ohne Zuständige: niemand.
+    expect(gefiltert(l.ueberfaellig, { ...OHNE_FILTER, wer: 'meine' }).map((e) => e.kennzeichen)).toEqual(['BB-0002', 'BB-0005', 'BB-0003', 'BB-0004', 'D-0001', 'D-0002']);
+    expect(gefiltert(l.ueberfaellig, { ...OHNE_FILTER, wer: 'ohne' }).map((e) => e.kennzeichen)).toEqual(['BR-2028-0001', 'BR-2027-0001']);
+    expect(gefiltert(l.bald, { ...OHNE_FILTER, wer: 'meine' })).toEqual([]);
     expect(artAusAdresse('bezugsbasis_ueberpruefung')).toBe('bezugsbasis_ueberpruefung');
     expect(artAusAdresse('irgendwas')).toBeNull();
     expect(artAusAdresse(null)).toBeNull();
@@ -139,11 +225,11 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund, Bereich, Zuständig, ei
 describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)', () => {
   it('R12: Marken zählen Einträge; vier Zeilen gebündelt nach Aufgabe, älteste zuerst', () => {
     const b = wasStehtAn(wvR12())!;
-    expect([b.ueberfaellig, b.bald, b.vorschauTage, b.weitere]).toEqual([8, 1, 30, 0]);
+    expect([b.ueberfaellig, b.bald, b.spaeter, b.vorschauTage, b.weitere]).toEqual([8, 1, 6, 30, 0]);
     expect(b.zeilen.map((z) => `${z.frist.tag}${z.frist.jahr} ${text(z)} › ${z.schritt}`)).toEqual([
       '13.11.2027 4 Bezugsbasen überprüfen | Vergleichsgrundlagen von 4 Kennzahlen › Ansehen',
       '03.04.2028 Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Dezember 2027 neu freigeben | Werte nach der Freigabe korrigiert (K-2028-0001) › Entwurf vergleichen',
-      '24.11.2028 Energetische Bewertung überprüfen | Grundlage der wesentlichen Energieeinsätze (BR-2027-0001) › Neuen Stand freigeben',
+      '24.11.2028 Energetische Bewertung überprüfen | Grundlage der wesentlichen Energieeinsätze · Stand Nr. 1 vom 24.11.2027 + 12 Monate › Neuen Stand freigeben',
       '10.12.2028 Energiepolitik und Anwendungsbereich überprüfen | Vorgaben Ihres Energiemanagements › Ansehen',
     ]);
     // Ein Bündel öffnet die Wiedervorlage mit genau diesem Filter, ein einzelner Eintrag sein Objekt mit Entscheid.
@@ -151,12 +237,12 @@ describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)
     expect(b.zeilen[1].sprung!.hash).toBe('#/portfolio/berichte/BR-2028-0001?entscheid=bericht_anstoss');
   });
 
-  it('Demo: aus 13 Zeilen werden drei Zeilen, der Bericht mit seinen zehn Korrekturen', () => {
+  it('Demo: vier Einträge in drei Zeilen, der Bericht mit seinen zehn Korrekturen', () => {
     const b = wasStehtAn(wvDemo())!;
     expect(b.ueberfaellig).toBe(4);
     expect(b.zeilen.map(text)).toEqual([
       'Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben | 10 Korrekturen nach der Freigabe',
-      'Messstelle für Messbedarf MB-1 einrichten | Aus der Messplanung der energetischen Bewertung',
+      'Messstelle für Messbedarf MB-1 einrichten | Wärmemengenzähler am Trockner der Spritzgießmaschine 4',
       '2 Bezugsbasen überprüfen | Vergleichsgrundlagen von 2 Kennzahlen',
     ]);
   });
@@ -164,7 +250,7 @@ describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)
   it('mehr als vier Aufgaben: die übrigen nennt eine Zeile, nichts verschwindet still', () => {
     const w = wvR12();
     w.faellig.push(
-      wvZeile('feststellung', 'F-2029-0001', 'Feststellung — Frist', '2029-01-20', 23, { id: 'f1' }),
+      wvZeile('feststellung', 'F-2029-0002', 'Feststellung — Frist', '2029-01-20', 23, { id: 'f1' }),
       wvZeile('abweichung_frist', 'AW-2029-0001', 'KZ-0004 Netzbezug je m²', '2029-01-30', 13, { id: 'aw1' }),
     );
     const b = wasStehtAn(w)!;
@@ -172,12 +258,19 @@ describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)
     expect(b.weitere).toBe(2);
   });
 
-  it('Normalfall: nichts überfällig, dann die nächsten zwei Fristen, oder wenn auch die fehlen, das Fenster und was danach kommt', () => {
+  it('Normalfall: nichts überfällig, dann die nächsten zwei Fristen, auch aus dem Jahresplan (je Monat gebündelt)', () => {
     const nurBald = wasStehtAn({ ...wvR12(), faellig: [] })!;
     expect(nurBald.ueberfaellig).toBe(0);
-    expect(nurBald.zeilen.map((z) => z.aufgabe)).toEqual(['Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden']);
+    expect(nurBald.zeilen.map((z) => z.aufgabe)).toEqual([
+      'Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden',
+      'Feststellung F-2029-0001 klären',
+    ]);
     const ruhig = wasStehtAn(wvNormal())!;
-    expect([ruhig.ueberfaellig, ruhig.bald, ruhig.spaeter, ruhig.zeilen.length, ruhig.fensterBis]).toEqual([0, 0, 11, 0, '30.05.2029']);
+    expect([ruhig.ueberfaellig, ruhig.bald, ruhig.spaeter, ruhig.weitere, ruhig.fensterBis]).toEqual([0, 0, 11, 0, '30.05.2029']);
+    expect(ruhig.zeilen.map((z) => `${z.frist.tag}${z.frist.jahr} ${text(z)}`)).toEqual([
+      '30.06.2029 2 Maßnahmen umsetzen | Bekanntmachung der Energiepolitik im Werk Lindach wiederholen und Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal',
+      '10.11.2029 Kriterien für Betrieb und Instandhaltung überprüfen | Vorgabe Ihres Energiemanagements (D-0004) · Fassung 1 vom 10.11.2028 + 12 Monate',
+    ]);
   });
 
   it('ohne jede Frist und ohne Antwort kein Block (AP-13 E3)', () => {
@@ -187,9 +280,20 @@ describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)
 
   it('Bündel aus Einträgen derselben Art: zwei Dokumente beim Namen, ab drei gezählt', () => {
     const w = wvR12();
-    w.faellig.push(wvZeile('dokument_ueberpruefung', 'D-0003', 'Rechtskataster — Überprüfung', '2028-12-11', 63, { id: 'd3' }));
+    w.faellig.push(wvZeile('dokument_ueberpruefung', 'D-0009', 'Rechtskataster — Überprüfung', '2028-12-11', 63, { id: 'd3' }));
     const [b] = buendel(arbeitsliste(w).ueberfaellig.filter((e) => e.art === 'dokument_ueberpruefung'));
     expect(text(b)).toBe('3 Dokumente überprüfen | Energiepolitik, Anwendungsbereich und Rechtskataster');
+  });
+
+  it('je Monat gebündelt: dieselbe Art in zwei Monaten sind zwei Zeilen', () => {
+    const plan = arbeitsliste(wvNormal()).jahresplan.filter((e) => e.art === 'dokument_ueberpruefung');
+    expect(buendel(plan).map((b) => b.anzahl)).toEqual([4]);
+    expect(buendel(plan, true).map((b) => [b.frist.tag + b.frist.jahr, b.anzahl])).toEqual([
+      ['10.11.2029', 1],
+      ['05.12.2029', 1],
+      ['13.02.2030', 1],
+      ['20.03.2030', 1],
+    ]);
   });
 });
 
@@ -206,7 +310,10 @@ describe('Wiedervorlage w1 · Status-Eskalation für die Statuszeile (Entscheid 
     });
   });
   it('Einzahl und nichts Überfälliges', () => {
-    const eins = { ...wvLeer(), faellig: [wvZeile('managementbewertung', 'BR-2029-0001', 'Nächste Managementbewertung', '2030-02-12', 2)] };
+    const eins = {
+      ...wvLeer(),
+      faellig: [wvZeile('managementbewertung', 'BR-2029-0001', 'Nächste Managementbewertung', '2030-02-12', 2, { herleitung: herleitung('sitzung', '2029-02-12', { monate: 12 }) })],
+    };
     expect(wiedervorlageStatus(eins)).toMatchObject({ titel: '1 Frist überfällig', arten: ['Managementbewertung'], satz: 'Älteste seit 12.02.2030 · Managementbewertung' });
     expect(wiedervorlageStatus(wvNormal())).toBeNull();
     expect(wiedervorlageStatus({ ...wvR12(), faellig: [] })).toBeNull();
@@ -214,23 +321,21 @@ describe('Wiedervorlage w1 · Status-Eskalation für die Statuszeile (Entscheid 
   });
 });
 
-describe('Wiedervorlage w1 · Zuletzt erledigt aus dem Verzeichnis', () => {
-  it('die Entscheidungen der letzten 90 Tage, die eine Frist beenden: die jüngste zuerst, höchstens fünf', () => {
-    expect(zuletztErledigt(verzeichnisDemo()).map((e) => `${e.tag}${e.jahr} ${e.titel} · ${e.wer}`)).toEqual([
-      '30.04.2029 Energetische Bewertung BR-2029-0002: Stand Nr. 1 freigegeben · eingetragen von ines',
+describe('Wiedervorlage w1 · Zuletzt erledigt (`GET …/wiedervorlage/zuletzt`)', () => {
+  it('die Entscheidungen der Route als Sätze mit Tag und Person, die jüngste zuerst; „geprüft, bleibt“ steht dabei', () => {
+    expect(zuletztErledigt(zuletztDemo()).map((e) => `${e.tag}${e.jahr} ${e.titel} · ${e.wer}`)).toEqual([
+      '30.04.2029 Energetische Bewertung BR-2029-0002: Stand Nr. 1 freigegeben · eingetragen von Ines Kaltenbach',
+      '30.04.2029 Bezugsbasis BB-0001: geprüft, bleibt · eingetragen von Ines Kaltenbach',
       '15.04.2029 Feststellung F-2029-0001: Wirksamkeit festgehalten · entschieden von Ines Kaltenbach',
       '20.03.2029 Energiepolitik: Fassung 2 freigegeben · entschieden von Robert Falk',
-      '12.02.2029 Managementbewertung 2028: Stand Nr. 1 freigegeben · entschieden von Robert Falk',
-      '31.01.2029 Internes Audit AU-2029-0001 abgeschlossen · entschieden von Ines Kaltenbach',
+      '13.02.2029 Anwendungsbereich: geprüft, bleibt · entschieden von Robert Falk',
     ]);
   });
-  it('nicht dabei: Fassungen von Kennzahlen und Kriterien, Aufgaben, Feststellungen, Nachweise, ein erster Berichtsstand, Älteres', () => {
-    const titel = zuletztErledigt(verzeichnisDemo(), '2029-04-30').map((e) => e.titel).join(' / ');
-    expect(titel).not.toMatch(/KZ-0025|Kriterien|Bezugsbasen pflegen|Wer die Bezugsbasen|D-0005|BR-2028-0001|EZ-2028-0001/);
-    // Am 30.01.2029 liegt der 15.01.2029 in den 90 Tagen; die Bezugsbasis vom 25.11.2027 bleibt draußen.
-    expect(zuletztErledigt(verzeichnisDemo(), '2029-01-31').map((e) => e.titel)).toEqual([
-      'Internes Audit AU-2029-0001 abgeschlossen',
-      'Energieziel EZ-2028-0001 bewertet',
-    ]);
+  it('höchstens fünf, ohne Eintrag nichts; eine unbekannte Art steht mit ihrem Titel', () => {
+    const z = zuletztDemo();
+    z.eintraege.push({ ...z.eintraege[0], art: 'neue_art', titel: 'Etwas Neues', am: '2029-02-01' });
+    expect(zuletztErledigt(z)).toHaveLength(5);
+    expect(zuletztErledigt({ ...z, eintraege: [z.eintraege[5]] })[0].titel).toBe('Etwas Neues');
+    expect(zuletztErledigt(zuletztLeer())).toEqual([]);
   });
 });

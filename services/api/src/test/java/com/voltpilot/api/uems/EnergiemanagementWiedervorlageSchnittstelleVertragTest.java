@@ -37,11 +37,17 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
         try (var in = Files.newInputStream(Path.of("../../docs/contracts/openapi.yaml"))) {
             api = new Yaml().load(in);
         }
-        var route = (Map<String, Object>) ((Map<String, Object>) api.get("paths"))
-                .get("/api/v1/energiemanagement/wiedervorlage");
+        var pfade = (Map<String, Object>) api.get("paths");
+        var route = (Map<String, Object>) pfade.get("/api/v1/energiemanagement/wiedervorlage");
         assertThat(route).as("GET …/wiedervorlage").containsOnlyKeys("get");
         var get = (Map<String, Object>) route.get("get");
         assertThat(get.get("description").toString()).contains("energiemanagement.ansehen");
+        // Konzept Wiedervorlage w1: „Zuletzt erledigt“ ist ein eigener Abruf mit demselben Recht, ohne Parameter.
+        var zuletzt = (Map<String, Object>) pfade.get("/api/v1/energiemanagement/wiedervorlage/zuletzt");
+        assertThat(zuletzt).as("GET …/wiedervorlage/zuletzt").containsOnlyKeys("get");
+        var zuletztGet = (Map<String, Object>) zuletzt.get("get");
+        assertThat(zuletztGet.get("description").toString()).contains("energiemanagement.ansehen");
+        assertThat(zuletztGet).doesNotContainKey("parameters");
         var parameter = (List<Map<String, Object>>) get.get("parameters");
         assertThat(parameter.stream().map(p -> p.get("name")).toList()).containsExactly("format");
         assertThat((List<String>) ((Map<String, Object>) parameter.get(0).get("schema")).get("enum"))
@@ -53,7 +59,11 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
                 "EnergiemanagementWiedervorlageZeile", EnergiemanagementWiedervorlageDto.Zeile.class,
                 "EnergiemanagementWiedervorlage", EnergiemanagementWiedervorlageDto.Wiedervorlage.class,
                 "EnergiemanagementWiedervorlageNaechsteManagementbewertung",
-                EnergiemanagementWiedervorlageDto.NaechsteManagementbewertung.class);
+                EnergiemanagementWiedervorlageDto.NaechsteManagementbewertung.class,
+                "EnergiemanagementWiedervorlageHerleitung", EnergiemanagementWiedervorlageDto.Herleitung.class,
+                "EnergiemanagementWiedervorlageZustaendig", EnergiemanagementWiedervorlageDto.Zustaendig.class,
+                "EnergiemanagementWiedervorlageZuletzt", EnergiemanagementWiedervorlageDto.Zuletzt.class,
+                "EnergiemanagementWiedervorlageErledigt", EnergiemanagementWiedervorlageDto.Erledigt.class);
         for (var dto : dtos.entrySet()) {
             var schema = (Map<String, Object>) schemas.get(dto.getKey());
             assertThat(schema).as(dto.getKey()).isNotNull();
@@ -68,6 +78,17 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
                 .get("EnergiemanagementWiedervorlageZeile")).get("properties")).get("art");
         assertThat((List<String>) art.get("enum"))
                 .containsExactlyElementsOf(EnergiemanagementRegeln.VOKABULARE.get("wiedervorlage_art"));
+        var basis = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) schemas
+                .get("EnergiemanagementWiedervorlageHerleitung")).get("properties")).get("basis");
+        assertThat((List<String>) basis.get("enum")).containsExactlyElementsOf(WiedervorlageQuelle.BASEN);
+        var aufgaben = EnergiemanagementRegeln.VOKABULARE.get("aufgabe");
+        assertThat(aufgaben).containsAll(EnergiemanagementWiedervorlageService.ART_AUFGABE.values());
+        var aufgabe = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) schemas
+                .get("EnergiemanagementWiedervorlageZeile")).get("properties")).get("aufgabe");
+        assertThat(((List<String>) aufgabe.get("enum")).stream().filter(java.util.Objects::nonNull).toList())
+                .containsExactlyElementsOf(aufgaben);
+        assertThat(EnergiemanagementRegeln.VOKABULARE.get("wiedervorlage_art"))
+                .containsAll(EnergiemanagementWiedervorlageService.ART_AUFGABE.keySet());
     }
 
     /** WV3: die Zeile trägt die Felder der Operation {@code wiedervorlage} und dazu genau den Sprung. */
@@ -82,9 +103,9 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
         var namen = mapper.getSerializationConfig()
                 .introspect(mapper.constructType(EnergiemanagementWiedervorlageDto.Zeile.class)).findProperties().stream()
                 .map(p -> p.getName()).toList();
-        assertThat(namen).containsExactlyInAnyOrderElementsOf(
-                java.util.stream.Stream.concat(zeile.keySet().stream(), java.util.stream.Stream.of("id", "kennzahl_id"))
-                        .toList());
+        assertThat(namen).containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(zeile.keySet().stream(),
+                java.util.stream.Stream.of("id", "kennzahl_id", "herleitung", "bezug", "einsatz_id", "aufgabe", "zustaendig"))
+                .toList());
         var wv = mapper.getSerializationConfig()
                 .introspect(mapper.constructType(EnergiemanagementWiedervorlageDto.Wiedervorlage.class)).findProperties()
                 .stream().map(p -> p.getName()).toList();
@@ -127,15 +148,20 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
         var faellig = new EnergiemanagementWiedervorlageDto.Zeile("bezugsbasis_ueberpruefung", "BB-0002",
                 "Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)",
                 LocalDate.parse("2027-11-13"), 457, "seit 457 Tagen fällig", "Ines Kaltenbach", UUID.randomUUID(),
-                UUID.randomUUID());
+                UUID.randomUUID(), null, null, null, "bezugsbasen", null);
         var doppelt = new EnergiemanagementWiedervorlageDto.Zeile("bericht_anstoss", "BR-2028-0001", "Anstoß; zwei",
-                LocalDate.parse("2028-04-03"), 315, "seit 315 Tagen fällig", null, null, null);
+                LocalDate.parse("2028-04-03"), 315, "seit 315 Tagen fällig", null, null, null, null, null, null, null, null);
         var vorschau = new EnergiemanagementWiedervorlageDto.Zeile("massnahme_termin", "M-2029-0001",
                 "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
-                LocalDate.parse("2029-02-28"), -16, "fällig in 16 Tagen", "Jonas Wendlinger", UUID.randomUUID(), null);
+                LocalDate.parse("2029-02-28"), -16, "fällig in 16 Tagen", "Jonas Wendlinger", UUID.randomUUID(), null,
+                null, null, null, "energieziele_massnahmen", null);
+        // Seit Vertrag 1.1 trägt der Kalender auch den Jahresplan.
+        var spaeter = new EnergiemanagementWiedervorlageDto.Zeile("internes_audit", "AU-2029-0001",
+                "Nächstes internes Audit", LocalDate.parse("2030-01-22"), -344, "fällig in 344 Tagen", "Claudia Berger",
+                UUID.randomUUID(), null, null, null, null, "interne_audits", null);
         var w = new EnergiemanagementWiedervorlageDto.Wiedervorlage(OffsetDateTime.parse("2029-02-12T08:00:00+01:00"),
-                30, List.of(faellig, doppelt, doppelt), List.of(vorschau), 3, 1, List.of(),
-                EnergiemanagementRegeln.SAETZE.get("verantwortung"), null);
+                30, List.of(faellig, doppelt, doppelt), List.of(vorschau), 3, 1, List.of("AU-2029-0001"),
+                EnergiemanagementRegeln.SAETZE.get("verantwortung"), null, List.of(spaeter), 3, 1, 1, true);
         String text = new String(EnergiemanagementWiedervorlageService.ics(w), StandardCharsets.UTF_8);
 
         assertThat(EnergiemanagementWiedervorlageService.vermerk(LocalDate.parse("2029-02-12"))).isEqualTo(VERMERK);
@@ -145,7 +171,7 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
             assertThat(zeile.getBytes(StandardCharsets.UTF_8).length).as(zeile).isLessThanOrEqualTo(75);
         }
         String entfaltet = text.replace("\r\n ", "");
-        assertThat(entfaltet.split("BEGIN:VEVENT", -1)).hasSize(5);
+        assertThat(entfaltet.split("BEGIN:VEVENT", -1)).hasSize(6);
         assertThat(entfaltet).contains(
                 "X-WR-CALDESC:Stand vom 12.02.2029 aus VoltPilot\\; maßgeblich ist die Wiedervorlage im Portal.\r\n",
                 "DTSTAMP:20290212T070000Z\r\n",
@@ -154,8 +180,9 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
                 "SUMMARY:BR-2028-0001: Anstoß\\; zwei\r\n",
                 "DTSTART;VALUE=DATE:20290228\r\n",
                 "UID:bericht_anstoss-BR-2028-0001-20280403@wiedervorlage.voltpilot\r\n",
-                "UID:bericht_anstoss-BR-2028-0001-20280403-2@wiedervorlage.voltpilot\r\n");
-        assertThat(entfaltet.split("DESCRIPTION:Stand vom 12.02.2029 aus VoltPilot\\\\; maßgeblich", -1)).hasSize(5);
+                "UID:bericht_anstoss-BR-2028-0001-20280403-2@wiedervorlage.voltpilot\r\n",
+                "SUMMARY:AU-2029-0001: Nächstes internes Audit\r\n", "DTSTART;VALUE=DATE:20300122\r\n");
+        assertThat(entfaltet.split("DESCRIPTION:Stand vom 12.02.2029 aus VoltPilot\\\\; maßgeblich", -1)).hasSize(6);
         // Ein gefaltetes UTF-8-Zeichen bleibt ganz: jede Zeile ist für sich gültiges UTF-8.
         for (String zeile : text.split("\r\n")) {
             assertThat(new String(zeile.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8)).doesNotContain("�");

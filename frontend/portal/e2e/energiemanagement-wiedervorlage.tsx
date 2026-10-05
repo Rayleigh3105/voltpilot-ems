@@ -4,7 +4,7 @@ import { api } from '../src/api';
 import { EnergiemanagementWiedervorlage } from '../src/components/EnergiemanagementWiedervorlage';
 import { setSelbstauskunft } from '../src/rollen';
 import { rechteSeed } from '../src/test/rollenFixtures';
-import { verzeichnisDemo, wvDemo, wvLeer, wvNormal, wvR12 } from '../src/test/wiedervorlageFixtures';
+import { wvDemo, wvLeer, wvNormal, wvR12, zuletztDemo, zuletztLeer } from '../src/test/wiedervorlageFixtures';
 import type { Wiedervorlage } from '../src/wiedervorlage';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -16,7 +16,7 @@ import '../src/index.css';
 
 /**
  * Die Wiedervorlage als Arbeitsliste auf einer eigenen Bühne (Konzept Wiedervorlage w1): die ECHTE Seite mit den
- * Antworten von `/energiemanagement/wiedervorlage` und `/verzeichnis`, wie die Routen sie liefern.
+ * Antworten von `/energiemanagement/wiedervorlage` (Vertrag 1.1) und `/wiedervorlage/zuletzt`, wie die Routen sie liefern.
  * `?fall=r12|demo|normal|leer|fehler|einsicht` · `&art=…` setzt den Art-Filter aus der Übersicht. Jeder Sprung landet
  * in `window.__sprung` (die Schale ist hier nicht dabei).
  */
@@ -29,7 +29,7 @@ Object.assign(api, {
     if (fall === 'fehler') throw new Error('503');
     return antworten[fall] ?? wvR12();
   },
-  energiemanagementVerzeichnis: async () => verzeichnisDemo(),
+  energiemanagementWiedervorlageZuletzt: async () => (fall === 'leer' ? zuletztLeer() : zuletztDemo()),
   energiemanagementWiedervorlageIcs: async () => new Blob(['BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n'], { type: 'text/calendar' }),
 });
 const art = params.get('art');

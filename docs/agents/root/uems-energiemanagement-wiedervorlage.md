@@ -28,7 +28,7 @@ an den nicht laufenden Server — `uebersicht.spec.ts` prüft Konsolenfehler).
 ## Arbeitsliste und „Was steht an“ (Konzept Wiedervorlage w1, PR1)
 
 Captain-Freigabe 05.10.2026; Konzept und Bericht: firstmate `data/vp-wiedervorlage-konzept-w1/` (`report.md`, `konzept.html`, `umsetzung.md`).
-PR1 baut nur das Portal aus der heutigen Antwort; die additiven Felder (`spaeter[]`, Zuständig laut Aufgabe, Grund, `zuletzt[]`) und die Zählerablesungen folgen in PR2 und PR3.
+PR1 baute das Portal aus der damaligen Antwort, PR2 die additive API (Vertrag 1.1, unten); die Zählerablesungen folgen in PR3.
 
 - **Ein Gegenstand, ein Eintrag.** `arbeitsliste()` fasst Zeilen gleicher Art und gleichen Kennzeichens zusammen (zehn Anstöße an einem Bericht = ein Eintrag mit `zeilen: 10`); der Tag des Eintrags ist der der ältesten Zeile, die Reihenfolge die der Route.
 - **Dringlichkeit:** überfällig heißt `tage > 0`, heute fällig gehört zu „In den nächsten 30 Tagen“; die Marken zählen Einträge, nicht Zeilen.
@@ -41,8 +41,24 @@ PR1 baut nur das Portal aus der heutigen Antwort; die additiven Felder (`spaeter
 - **Schritt statt Häkchen (Entscheid 8):** `eintragSprung()` hängt `?entscheid=<art>` (beim Messbedarf `&kennzeichen=`) an die Adresse; die Zielseite markiert ihren Entscheid mit `data-entscheid` (Dokument-Aktionen, Kennzahl-Reiter „Bezugsbasis“, Bericht-Revision, Feststellung „Wirksamkeit“, Maßnahme „Zustand“, Energieziel „Bewertung“, Abweichung „Abschluss“, Audits- und Managementbewertungs-Kopf, Bewertung „Stand“, Messbedarf-Zeile).
   `useEntscheidFokus` hängt einmal an der Schale (`App.tsx`), wartet bis zu 8 s auf das Ziel, fokussiert dessen ersten Knopf, markiert ihn 2,4 s und nimmt den Parameter per `replaceCurrentNavigation` wieder aus der Adresse.
 - **„Geprüft, bleibt“ am Dokument (DK5):** die Route gab es, den Knopf nicht; `GeprueftBleibtDialog` (Person, Tag ab der Freigabe der gültigen Fassung, Begründung 10 bis 500 Zeichen), danach die Rückmeldung mit der nächsten Überprüfung.
-- **Zuständig in PR1:** nur `verantwortlich` der Route; ohne Person steht „ohne Person am Objekt“ (nie „Niemand zuständig“, solange die Aufgabe nicht gelesen wird).
-- **Zuletzt erledigt** liest das Verzeichnis (90 Tage, fünf Einträge) und zählt nur Entscheidungen, die eine Frist beenden oder neu starten; „geprüft, bleibt“ steht nicht im Verzeichnis und fehlt deshalb bis PR2.
+- **Zuständig** kommt seit PR2 von der Route (unten); das Portal erfindet keine Person und keine Lücke.
 
 ⚠ **Demo mit zwei Uhren:** die Bühnen-Uhr (`PruefumgebungUhr`, 30.04.2029) gilt für die Leser des Energiemanagements, die Füllung schrieb in echter Zeit.
   „Geprüft, bleibt“ mit dem heutigen Tag scheitert dort an „ab der Freigabe der gültigen Fassung“; in Produktion gibt es eine Uhr.
+
+## Vertrag 1.1 und die additive Antwort (Konzept Wiedervorlage w1, PR2)
+
+- **Operation `wiedervorlage` (drei Zwillinge, Vektoren):** `spaeter[]` ist der Jahresplan (nach dem Fenster bis einschließlich Abruf + `JAHRESPLAN_MONATE` = 12, Monatsende geklemmt), dazu `anzahl_ueberfaellig` (`tage` > 0), `anzahl_naechste` (heute und das Fenster) und `anzahl_spaeter`; `nicht_in_liste` bleibt für Bestandsleser.
+  Der Satz `baustein` lautet „Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen.“; `copy.test.ts` trägt ihn wörtlich.
+- **Ein Gegenstand, eine Zeile, schon an der Quelle:** `WiedervorlageBestand` bündelt die offenen Anstöße eines Berichts zu EINER Frist ab dem ersten erkannten (Titel bei einem Anstoß unverändert, sonst „… (n Korrekturen, zuerst K-…)“); freigegebene Managementbewertungen tragen ihre Titel unverändert weiter, nur neue Stände sehen die Bündelung.
+- **Herleitung statt Satz:** jede Quelle gibt `WiedervorlageQuelle.Herkunft` aus denselben Werten, aus denen sie `faellig_am` hat (`basis` aus `wiedervorlage_basis`, Tag, Fassung, Monate, Kennung, Quelle, Anzahl, Gegenstand `bezug`, Konto, Energieeinsatz); der Leser gibt sie als `herleitung`, `bezug`, `einsatz_id` aus, die Wörter bildet `wiedervorlage.ts` (`grund`).
+  Die Dokument-Überprüfung kennt die Art ihrer Basis aus der Dokument-Antwort (`ueberpruefung.basis_art`, `monate`, additiv), damit die Quelle nicht je Dokument nachlesen muss.
+- **Zuständig:** die Person am Objekt geht vor (`herkunft` `objekt`); sonst die Person der laufenden Zuordnung der Aufgabe der Zeile (`ART_AUFGABE` im Leser, Feld `aufgabe` an jeder Zeile; die Managementbewertung zählt immer als Aufgabe); `ich` vergleicht das Konto (bzw. den Namen der eigenen Person im Energiemanagement).
+  `aufgaben_lesbar = false` (wer nicht unternehmensweit liest, bekommt vom Personen-Dienst keine Aufgabe): dann gibt es keine Person laut Aufgabe, und das Portal schreibt NICHT „Niemand zuständig“ und zeigt den Filter „Ohne Zuständige“ nicht.
+- **„Niemand zuständig“ mit „Aufgabe festlegen“:** der zweite Link der Karte (über dem Link der Aufgabe, der die Karte abdeckt) führt mit `?entscheid=aufgabe_festlegen&kennzeichen=<aufgabe>` in die Aufgaben; die Zeile der Aufgabe ohne Person trägt `data-entscheid`, ihr „Zuordnen“ `data-entscheid-schritt`.
+  Der Messbedarf springt mit `einsatz_id` direkt an seinen Energieeinsatz („Messstelle einrichten“), ohne Einsatz wie bisher in die Messplanung.
+- **Zuletzt erledigt:** eigener Abruf `GET …/wiedervorlage/zuletzt` (90 Tage, höchstens fünf): die Zeilen des Verzeichnisses, die eine Frist beenden oder neu beginnen lassen, und „geprüft, bleibt“ an Dokumenten (`EnergiemanagementDokumentService.geprueftBleibt`) und Bezugsbasen (`BezugsbasisPflegeService.bestaetigt`, Zaun über die lesbare Kennzahl).
+  Der Leser selbst hält keine Abfrage (Vertragstest: kein `Repository` im Leser).
+- **Portal:** Jahresplan als Karte nach Monaten (aufeinanderfolgende Monate eines Jahres unter einer Überschrift), gestrichelter Datumsblock, Schritt „Öffnen“ ohne Entscheid; im Normalfall offen, bei Überfälligem zu; die Marke „Jahresplan“ öffnet ihn.
+  „Was steht an“ zeigt im Normalfall die nächsten zwei Fristen auch aus dem Jahresplan (je Monat gebündelt).
+

@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "herkunft": "AP-19 entschieden 24.09.2026 (E1–E10 = A, W1–W15 übernommen), §4.2–4.9, §5.8, §7 R1–R3, R7–R14; Python-Referenz aus k_faelle.py (ueberpruefung, AUDIT_NAECHSTES, MB_NAECHSTE, F1_FRIST, zeile/KANDIDATEN, vergleich_anwendungsbereich, vz); Referenzdatei 1.10 (dokumente[], audits[], feststellungen[], managementbewertungen[]) für die Prüfsummen. Die kanonische Zahlform ist die von bericht.md A1 (−5, nie −5.0) — der Katalog rechnete den Stand BR-2029-0001 über json.dumps (sha256:7db218a7…), gültig ist sha256:0a52c97d….",
   "startwerte": {
     "ueberpruefung_monate": 12,
@@ -296,7 +296,7 @@
     "wiedervorlage_zeile": "{gegenstand}: {was} seit {tage} Tagen fällig.",
     "wiedervorlage_leer": "Zurzeit ist nichts fällig.",
     "kalender_abzug": "Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.",
-    "baustein": "Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen.",
+    "baustein": "Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen.",
     "verzeichnis_leer": "Hier ist noch nichts festgehalten.",
     "verzeichnis_filter": "In meinem Namen festgehalten: {anzahl} Einträge.",
     "zuschnitt_titel": "Was VoltPilot führt — was bei Ihnen liegt."
@@ -1152,7 +1152,7 @@
       "regel": "WV3",
       "operation": "wiedervorlage",
       "quelle": "R12 · k_faelle KANDIDATEN/FAELLIG/VORSCHAU/NICHT_IN_LISTE · §5.8 Baustein",
-      "rechnung": "fällig: BB-0002 457, BB-0005 450, BB-0003 344, VB-2028-0001 315, BB-0004 80, BW-2027-0001 80, D-0001 64, D-0002 64 (am längsten fällig zuerst, gleicher Tag nach Kennzeichen); Vorschau ≤ 30 Tage: M-2029-0001 in 16; übrige 6 außerhalb",
+      "rechnung": "fällig: BB-0002 457, BB-0005 450, BB-0003 344, VB-2028-0001 315, BB-0004 80, BW-2027-0001 80, D-0001 64, D-0002 64 (am längsten fällig zuerst, gleicher Tag nach Kennzeichen); Vorschau ≤ 30 Tage: M-2029-0001 in 16; übrige 6 außerhalb; Jahresplan bis 12.02.2030 (Vertrag 1.1): M-2029-0002 31.03.2029, F-2029-0001 22.04.2029, D-0004 10.11.2029, BB-0001 25.11.2029, D-0003 05.12.2029, AU-2029-0001 22.01.2030 (alle sechs außerhalb des Fensters); 8 überfällig, 1 in den nächsten 30 Tagen, 6 im Jahresplan",
       "eingang": {
         "abruf": "2029-02-12",
         "vorschau_tage": 30,
@@ -1350,8 +1350,67 @@
             "verantwortlich": "JW"
           }
         ],
+        "spaeter": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-31",
+            "tage": -47,
+            "satz": "fällig in 47 Tagen",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-04-22",
+            "tage": -69,
+            "satz": "fällig in 69 Tagen",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0004",
+            "titel": "Betrieb und Instandhaltung Spritzguss — Überprüfung",
+            "faellig_am": "2029-11-10",
+            "tage": -271,
+            "satz": "fällig in 271 Tagen",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0001",
+            "titel": "Bezugsbasis BB-0001, Fassung 2 — Überprüfung (nach „geprüft, bleibt“ 25.11.2028)",
+            "faellig_am": "2029-11-25",
+            "tage": -286,
+            "satz": "fällig in 286 Tagen",
+            "verantwortlich": null
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0003",
+            "titel": "Rechtliche Anforderungen — Überprüfung",
+            "faellig_am": "2029-12-05",
+            "tage": -296,
+            "satz": "fällig in 296 Tagen",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2030-01-22",
+            "tage": -344,
+            "satz": "fällig in 344 Tagen",
+            "verantwortlich": "CB"
+          }
+        ],
         "anzahl_faellig": 8,
         "anzahl_vorschau": 1,
+        "anzahl_ueberfaellig": 8,
+        "anzahl_naechste": 1,
+        "anzahl_spaeter": 6,
         "nicht_in_liste": [
           "AU-2029-0001",
           "BB-0001",
@@ -1367,7 +1426,7 @@
       "regel": "WV3",
       "operation": "wiedervorlage",
       "quelle": "§5.8 Wiedervorlage, leer",
-      "rechnung": "keine Zeile",
+      "rechnung": "keine Zeile; Jahresplan leer, alle Zählungen 0",
       "eingang": {
         "abruf": "2029-02-12",
         "vorschau_tage": 30,
@@ -1376,8 +1435,12 @@
       "erwartet": {
         "faellig": [],
         "vorschau": [],
+        "spaeter": [],
         "anzahl_faellig": 0,
         "anzahl_vorschau": 0,
+        "anzahl_ueberfaellig": 0,
+        "anzahl_naechste": 0,
+        "anzahl_spaeter": 0,
         "nicht_in_liste": []
       }
     },
@@ -1386,7 +1449,7 @@
       "regel": "WV3",
       "operation": "wiedervorlage",
       "quelle": "WV3 (Vorschau 30 Tage, „heute“)",
-      "rechnung": "12.02.2029 → 14.03.2029 = 30 Tage (Vorschau), 15.03.2029 = 31 Tage (außerhalb), 12.02.2029 = 0 (fällig, heute)",
+      "rechnung": "12.02.2029 → 14.03.2029 = 30 Tage (Vorschau), 15.03.2029 = 31 Tage (außerhalb), 12.02.2029 = 0 (fällig, heute); der 31. Tag steht im Jahresplan; heute fällig ist nicht überfällig: 0 überfällig, 2 in den nächsten 30 Tagen",
       "eingang": {
         "abruf": "2029-02-12",
         "vorschau_tage": 30,
@@ -1437,8 +1500,22 @@
             "verantwortlich": "IK"
           }
         ],
+        "spaeter": [
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-03-15",
+            "tage": -31,
+            "satz": "fällig in 31 Tagen",
+            "verantwortlich": "JW"
+          }
+        ],
         "anzahl_faellig": 1,
         "anzahl_vorschau": 1,
+        "anzahl_ueberfaellig": 0,
+        "anzahl_naechste": 2,
+        "anzahl_spaeter": 1,
         "nicht_in_liste": [
           "F-2029-0001"
         ]
@@ -1449,7 +1526,7 @@
       "regel": "WV3",
       "operation": "wiedervorlage",
       "quelle": "WV3",
-      "rechnung": "M-2029-0002 in 30 Tagen fällt heraus",
+      "rechnung": "M-2029-0002 in 30 Tagen fällt heraus; alles nach heute steht im Jahresplan; 0 überfällig, 1 heute",
       "eingang": {
         "abruf": "2029-02-12",
         "vorschau_tage": 0,
@@ -1490,8 +1567,31 @@
           }
         ],
         "vorschau": [],
+        "spaeter": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-14",
+            "tage": -30,
+            "satz": "fällig in 30 Tagen",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-03-15",
+            "tage": -31,
+            "satz": "fällig in 31 Tagen",
+            "verantwortlich": "JW"
+          }
+        ],
         "anzahl_faellig": 1,
         "anzahl_vorschau": 0,
+        "anzahl_ueberfaellig": 0,
+        "anzahl_naechste": 1,
+        "anzahl_spaeter": 2,
         "nicht_in_liste": [
           "F-2029-0001",
           "M-2029-0002"
@@ -1563,7 +1663,7 @@
       "regel": "WV3",
       "operation": "wiedervorlage",
       "quelle": "R12 · k_faelle sortiert (Tag, Kennzeichen)",
-      "rechnung": "beide 24.11.2028; BB-0004 < BW-2027-0001",
+      "rechnung": "beide 24.11.2028; BB-0004 < BW-2027-0001; 2 überfällig, Jahresplan leer",
       "eingang": {
         "abruf": "2029-02-12",
         "vorschau_tage": 30,
@@ -1606,8 +1706,205 @@
           }
         ],
         "vorschau": [],
+        "spaeter": [],
         "anzahl_faellig": 2,
         "anzahl_vorschau": 0,
+        "anzahl_ueberfaellig": 2,
+        "anzahl_naechste": 0,
+        "anzahl_spaeter": 0,
+        "nicht_in_liste": []
+      }
+    },
+    {
+      "name": "Jahresplan: der erste Tag nach dem Fenster und genau Abruf + 12 Monate gehören dazu, ein Tag später nicht",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "Konzept Wiedervorlage w1, Entscheid 5 (additives Feld spaeter, 12 Monate nach dem Abruf)",
+      "rechnung": "Abruf 12.02.2029, Fenster 30 Tage bis 14.03.2029; M-2029-0002 am 15.03.2029 (31 Tage) und AU-2029-0001 am 12.02.2030 (= Abruf + 12 Monate, 365 Tage) stehen im Jahresplan, BR-2029-0001 am 13.02.2030 nicht; nicht_in_liste nennt alle drei",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "managementbewertung",
+            "kennzeichen": "BR-2029-0001",
+            "titel": "Nächste Managementbewertung",
+            "faellig_am": "2030-02-13",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2030-02-12",
+            "verantwortlich": "CB"
+          },
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-15",
+            "verantwortlich": "IK"
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [],
+        "vorschau": [],
+        "spaeter": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-15",
+            "tage": -31,
+            "satz": "fällig in 31 Tagen",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2030-02-12",
+            "tage": -365,
+            "satz": "fällig in 365 Tagen",
+            "verantwortlich": "CB"
+          }
+        ],
+        "anzahl_faellig": 0,
+        "anzahl_vorschau": 0,
+        "anzahl_ueberfaellig": 0,
+        "anzahl_naechste": 0,
+        "anzahl_spaeter": 2,
+        "nicht_in_liste": [
+          "AU-2029-0001",
+          "BR-2029-0001",
+          "M-2029-0002"
+        ]
+      }
+    },
+    {
+      "name": "Jahresplan: Monatsende geklemmt (29.02.2028 + 12 Monate = 28.02.2029)",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "Konzept Wiedervorlage w1, Entscheid 5; §2 Monate wie LocalDate.plusMonths",
+      "rechnung": "Abruf 29.02.2028, Ende des Jahresplans 28.02.2029 (geklemmt): AU-2028-0001 am 28.02.2029 (365 Tage) gehört dazu, BR-2028-0001 am 01.03.2029 nicht",
+      "eingang": {
+        "abruf": "2028-02-29",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "managementbewertung",
+            "kennzeichen": "BR-2028-0001",
+            "titel": "Nächste Managementbewertung",
+            "faellig_am": "2029-03-01",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2028-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-28",
+            "verantwortlich": "CB"
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [],
+        "vorschau": [],
+        "spaeter": [
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2028-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-28",
+            "tage": -365,
+            "satz": "fällig in 365 Tagen",
+            "verantwortlich": "CB"
+          }
+        ],
+        "anzahl_faellig": 0,
+        "anzahl_vorschau": 0,
+        "anzahl_ueberfaellig": 0,
+        "anzahl_naechste": 0,
+        "anzahl_spaeter": 1,
+        "nicht_in_liste": [
+          "AU-2028-0001",
+          "BR-2028-0001"
+        ]
+      }
+    },
+    {
+      "name": "Zählung nach Dringlichkeit: heute fällig zählt zu den nächsten 30 Tagen, nicht zu überfällig",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "Konzept Wiedervorlage w1, Entscheid 4 (Einträge zählen, Marken „überfällig“ und „in den nächsten 30 Tagen“)",
+      "rechnung": "BB-0004 seit 80 Tagen fällig = überfällig; D-0001 heute fällig steht in faellig (tage 0), zählt aber mit M-2029-0001 (in 16 Tagen) zu den nächsten: anzahl_faellig 2, anzahl_ueberfaellig 1, anzahl_naechste 2, anzahl_vorschau 1",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0001",
+            "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+            "faellig_am": "2029-02-28",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0001",
+            "titel": "Energiepolitik — Überprüfung",
+            "faellig_am": "2029-02-12",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0004",
+            "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+            "faellig_am": "2028-11-24",
+            "verantwortlich": null
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0004",
+            "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+            "faellig_am": "2028-11-24",
+            "tage": 80,
+            "satz": "seit 80 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0001",
+            "titel": "Energiepolitik — Überprüfung",
+            "faellig_am": "2029-02-12",
+            "tage": 0,
+            "satz": "heute fällig",
+            "verantwortlich": "IK"
+          }
+        ],
+        "vorschau": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0001",
+            "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+            "faellig_am": "2029-02-28",
+            "tage": -16,
+            "satz": "fällig in 16 Tagen",
+            "verantwortlich": "JW"
+          }
+        ],
+        "spaeter": [],
+        "anzahl_faellig": 2,
+        "anzahl_vorschau": 1,
+        "anzahl_ueberfaellig": 1,
+        "anzahl_naechste": 2,
+        "anzahl_spaeter": 0,
         "nicht_in_liste": []
       }
     },
@@ -3215,18 +3512,18 @@
       "name": "§5.8 baustein",
       "regel": "SP4",
       "operation": "satz",
-      "quelle": "Report §5.8",
-      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "quelle": "Report §5.8; Konzept Wiedervorlage w1, Entscheid 4 (Einträge, nach Dringlichkeit)",
+      "rechnung": "Schablone gefüllt = Satz der Marken „8 überfällig“ und „1 in den nächsten 30 Tagen“ (R12 am 12.02.2029)",
       "eingang": {
         "schluessel": "baustein",
         "werte": {
-          "faellig": "8",
-          "vorschau": "1",
+          "ueberfaellig": "8",
+          "naechste": "1",
           "tage": "30"
         }
       },
       "erwartet": {
-        "satz": "Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen."
+        "satz": "Energiemanagement: 8 überfällig · 1 in den nächsten 30 Tagen."
       }
     },
     {

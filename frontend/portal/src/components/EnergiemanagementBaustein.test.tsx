@@ -45,10 +45,20 @@ describe('„Was steht an“: ruhig im Normalfall, deutlich bei Überfälligem (
     expect(springe).toHaveBeenCalledWith(expect.objectContaining({ hash: '#/portfolio/berichte/BR-2028-0001?entscheid=bericht_anstoss' }));
   });
 
-  it('Normalfall: „Keine Frist überfällig“ und das Fenster statt einer Null', () => {
+  it('Normalfall: „Keine Frist überfällig“ und die nächsten zwei Fristen aus dem Jahresplan, ohne Null und ohne „weitere“', () => {
     render(<EnergiemanagementBaustein bild={wasStehtAn(wvNormal())!} onOeffnen={() => {}} />);
     expect(screen.getByTestId('energiemanagement-marken').textContent).toBe('Keine Frist überfällig');
-    expect(screen.getByTestId('was-steht-an-ruhe').textContent).toBe('Bis 30.05.2029 ist nichts fällig. Danach stehen 11 weitere Fristen an.');
+    expect(screen.getByText('Nächste Fristen')).toBeTruthy();
+    const zeilen = within(screen.getByTestId('was-steht-an')).getAllByRole('listitem');
+    expect(zeilen.map((z) => z.querySelector('.vp-fz-titel')!.textContent)).toEqual(['2 Maßnahmen umsetzen', 'Kriterien für Betrieb und Instandhaltung überprüfen']);
+    expect(within(zeilen[0]).getByRole('img', { name: 'fällig bis 30.06.2029' }).className).toBe('vp-fd');
+    expect(screen.queryByTestId('was-steht-an-ruhe')).toBeNull();
+    expect(screen.queryByTestId('was-steht-an-weitere')).toBeNull();
+  });
+
+  it('nichts im Fenster und nichts im Jahresplan: das Fenster statt einer Null', () => {
+    render(<EnergiemanagementBaustein bild={wasStehtAn({ ...wvNormal(), spaeter: [] })!} onOeffnen={() => {}} />);
+    expect(screen.getByTestId('was-steht-an-ruhe').textContent).toBe('Bis 30.05.2029 ist nichts fällig.');
   });
 
   it('nur Fristen in den nächsten Tagen: „Nächste Fristen“ mit Datum, ohne Warnton', () => {
@@ -56,7 +66,7 @@ describe('„Was steht an“: ruhig im Normalfall, deutlich bei Überfälligem (
     expect(screen.getByText('Nächste Fristen')).toBeTruthy();
     const [zeile] = within(screen.getByTestId('was-steht-an')).getAllByRole('listitem');
     expect(within(zeile).getByRole('img', { name: 'fällig bis 28.02.2029' }).className).not.toContain('is-ueber');
-    expect(zeile.textContent).toContain('Maßnahme M-2029-0001 · in 16 Tagen');
+    expect(zeile.textContent).toContain('Maßnahme M-2029-0001 · aus der Feststellung F-2029-0001 · in 16 Tagen');
   });
 
   it('„Woher kommen diese Fristen?“ öffnet die Herleitung; allein trägt der Block beide Sätze, in der Übersicht schweigen sie', () => {

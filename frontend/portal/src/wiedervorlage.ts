@@ -3,31 +3,35 @@
  * (UEMS AP-19 IP-21/IP-24; Konzept Wiedervorlage w1, Captain-Freigabe 05.10.2026).
  *
  * Fristen, Lage und Reihenfolge leitet der Server beim Abruf ab (`GET /api/v1/energiemanagement/wiedervorlage`,
- * Operation `wiedervorlage`); hier wird keine Frist gerechnet (WV2). Dieses Modul macht aus den Zeilen der Route
- * Einträge (ein Gegenstand, ein Eintrag: zehn Anstöße an einem Bericht sind eine Aufgabe), gibt jedem Eintrag Aufgabe,
- * Grund, Bereich, Zuständig und genau einen Schritt, ordnet nach Dringlichkeit und bündelt für die Übersicht gleiche
+ * Operation `wiedervorlage`, Vertrag 1.1 mit dem Jahresplan `spaeter`); hier wird keine Frist gerechnet (WV2). Dieses
+ * Modul macht aus den Zeilen der Route Einträge (ein Gegenstand, ein Eintrag: die Korrekturen an einem Bericht sind eine
+ * Aufgabe), gibt jedem Eintrag Aufgabe, Grund (aus der Herleitung der Route), Bereich, Zuständig und genau einen
+ * Schritt, ordnet nach Dringlichkeit, gruppiert den Jahresplan nach Monaten und bündelt für die Übersicht gleiche
  * Arbeit (gleiche Art). Ein Schritt öffnet das Objekt mit offenem Entscheid (`entscheid.ts`); abgehakt wird nichts.
  * Reines Modul: kein React, kein Netz.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { EnergiemanagementVerzeichnis } from './api';
 import { UNTERNEHMEN_GRUPPEN } from './ebenenNav';
 import { artFilterSprung, entscheidSprung, seitenSprung, type Sprung } from './entscheid';
-import { DOKUMENT_ART_KLASSE, satz } from './energiemanagement';
+import { DOKUMENT_ART_KLASSE, jahresplanBis, satz, WOERTER } from './energiemanagement';
 import {
   UEMS_BERICHT,
   UEMS_BEZUGSBASIS,
   UEMS_EINGETRAGEN_VON,
   UEMS_ENTSCHIEDEN_VON,
   UEMS_ENERGIEZIEL,
+  UEMS_JAHRESPLAN,
+  UEMS_LAUT_AUFGABE,
   UEMS_MASSNAHME,
   UEMS_WIEDERVORLAGE_SATZ,
 } from './glossar';
+import { herkunftWort, quelleWort } from './managementbewertung';
 import {
   abweichungRoute,
   auditRoute,
   berichtRoute,
   dokumentRoute,
+  energieeinsatzRoute,
   energiemanagementRoute,
   energiezielRoute,
   feststellungRoute,
@@ -51,6 +55,35 @@ export type WiedervorlageArt =
   | 'messbedarf_frist'
   | 'bericht_anstoss';
 
+/** Woran die Regel einer Frist ansetzt (Vertrag 1.1, `wiedervorlage_basis`). */
+export type WiedervorlageBasis =
+  | 'freigabe'
+  | 'geprueft_bleibt'
+  | 'durchgefuehrt'
+  | 'sitzung'
+  | 'erkannt'
+  | 'festgestellt'
+  | 'termin'
+  | 'zielperiode';
+
+/**
+ * Woraus eine Frist folgt, als Angaben der Route (keine Sätze): `am` der Tag, an dem die Regel ansetzt; `fassung` die
+ * Fassung bzw. der Stand Nr., `monate` der Rhythmus, `kennung` das Objekt, an dem die Regel ansetzt, oder die Herkunft,
+ * `quelle_art` die Herkunft einer Maßnahme bzw. die Quelle einer Feststellung, `anzahl` die Korrekturen eines Berichts.
+ */
+export type WiedervorlageHerleitung = {
+  basis: WiedervorlageBasis;
+  am: string | null;
+  fassung: number | null;
+  monate: number | null;
+  kennung: string | null;
+  quelle_art: string | null;
+  anzahl: number | null;
+};
+
+/** Wer die Frist erledigt: die Person am Objekt oder die der Aufgabe im Energiemanagement; `ich` = die angemeldete. */
+export type Zustaendig = { name: string; herkunft: 'objekt' | 'aufgabe'; ich: boolean };
+
 /** Eine Zeile: die Ausgabe der Operation `wiedervorlage`; `id`/`kennzahl_id` tragen den Sprung (WV3). */
 export type WiedervorlageZeile = {
   art: WiedervorlageArt;
@@ -63,6 +96,16 @@ export type WiedervorlageZeile = {
   verantwortlich: string | null;
   id: string | null;
   kennzahl_id: string | null;
+  /** Vertrag 1.1: woraus die Frist folgt; `null`, wo die Quelle es nicht nennt. */
+  herleitung: WiedervorlageHerleitung | null;
+  /** Der Gegenstand, wo der Titel ihn nicht trägt: die Kennzahl einer Bezugsbasis, der Bericht, ein Wortlaut. */
+  bezug: string | null;
+  /** Der Energieeinsatz eines Messbedarfs: dort wird die Messstelle eingerichtet. */
+  einsatz_id: string | null;
+  /** Die Aufgabe im Energiemanagement (Vokabular `aufgabe`), zu der diese Art Frist gehört; auch ohne Person. */
+  aufgabe: string | null;
+  /** Die Person am Objekt oder laut Aufgabe; `null`, wo niemand festgelegt ist. */
+  zustaendig: Zustaendig | null;
 };
 
 export type Wiedervorlage = {
@@ -79,7 +122,37 @@ export type Wiedervorlage = {
    * wie die Zeile `managementbewertung`; `null` ohne freigegebene Managementbewertung mit Sitzung.
    */
   naechste_managementbewertung?: NaechsteManagementbewertung | null;
+  /** Vertrag 1.1: der Jahresplan, nach dem Fenster bis Abruf + 12 Monate, nach Tag und Kennzeichen. */
+  spaeter: WiedervorlageZeile[];
+  /** Abgelaufen (`tage` > 0); zählt Zeilen, und eine Zeile ist ein Gegenstand. */
+  anzahl_ueberfaellig: number;
+  /** Heute fällig und das Vorschau-Fenster. */
+  anzahl_naechste: number;
+  anzahl_spaeter: number;
+  /**
+   * Die angemeldete Person liest die Aufgaben im Energiemanagement (unternehmensweit). Sonst kennt die Route nur die
+   * Person am Objekt, und eine Zeile ohne sie heißt nicht, dass niemand zuständig ist.
+   */
+  aufgaben_lesbar: boolean;
 };
+
+/**
+ * „Zuletzt erledigt“ (`GET …/wiedervorlage/zuletzt`): eine Entscheidung, die eine Frist beendet oder neu begonnen hat.
+ * `art` ist die Art der Verzeichnis-Zeile (`gruppe` ihre Gruppe) oder `dokument_geprueft_bleibt` bzw.
+ * `bezugsbasis_geprueft_bleibt`; `nr` Fassung bzw. Stand Nr.
+ */
+export type WiedervorlageErledigt = {
+  art: string;
+  gruppe: string | null;
+  kennzeichen: string;
+  titel: string;
+  nr: number | null;
+  am: string;
+  entschieden_von: string | null;
+  eingetragen_von: string | null;
+};
+
+export type WiedervorlageZuletzt = { stichtag: string; tage: number; eintraege: WiedervorlageErledigt[] };
 
 /** MG7: fällig am = Tag der letzten Sitzung (`sitzung_am`) der Managementbewertung `kennzeichen` + `rhythmus_monate`. */
 export type NaechsteManagementbewertung = {
@@ -117,18 +190,31 @@ export const ERNEUT_VERSUCHEN = 'Erneut versuchen';
 export const NUR_EINSICHT = 'Sie sehen alle Fristen. Erledigen können sie die Zuständigen.';
 export const ZULETZT_FEHLER = 'Was zuletzt erledigt wurde, ließ sich gerade nicht laden.';
 export const ANSEHEN = 'Ansehen';
+/** Der Schritt im Jahresplan: noch nichts zu entscheiden, das Objekt lässt sich ansehen. */
+export const OEFFNEN = 'Öffnen';
 export const ALLE = 'Alle';
+/** Filter für die Arbeitsteilung: was der angemeldeten Person zugeordnet ist, was niemandem. */
+export const MEINE = 'Meine';
+export const OHNE_ZUSTAENDIGE = 'Ohne Zuständige';
 export const BEREICH_ALLE = 'Bereich: alle';
 export const UEBERFAELLIG_ORDNUNG = 'am längsten überfällig zuerst';
-/** Am Eintrag ohne Person: die Route nennt am Objekt niemanden (wer laut Aufgabe zuständig ist, kommt mit PR2). */
-export const OHNE_PERSON = 'ohne Person am Objekt';
+/** Am Eintrag ohne Person: weder das Objekt noch seine Aufgabe im Energiemanagement nennt jemanden. */
+export const NIEMAND_ZUSTAENDIG = 'Niemand zuständig';
+export const AUFGABE_FESTLEGEN = 'Aufgabe festlegen';
+export const JAHRESPLAN_ANZEIGEN = `${UEMS_JAHRESPLAN} anzeigen`;
+export const JAHRESPLAN_ZUKLAPPEN = `${UEMS_JAHRESPLAN} zuklappen`;
 
 export const markeUeberfaellig = (n: number) => `${n} überfällig`;
 export const markeBald = (n: number, tage: number) => `${n} in den nächsten ${tage} Tagen`;
+export const markeJahresplan = (n: number) => `${n} im ${UEMS_JAHRESPLAN}`;
 export const abschnittBald = (tage: number) => `In den nächsten ${tage} Tagen`;
 export const nichtsBald = (bis: string) => `Bis ${bis} ist nichts fällig.`;
-export const danachSatz = (n: number) => (n === 1 ? 'Danach steht eine weitere Frist an.' : `Danach stehen ${n} weitere Fristen an.`);
+export const naechsteFrist = (tag: string) => `Die nächste Frist ist am ${tag}.`;
+export const jahresplanSatz = (tage: number) => `Alle Fristen nach den nächsten ${tage} Tagen, nach Monaten`;
 export const weitereAufgaben = (n: number) => (n === 1 ? 'Eine weitere Aufgabe in der Wiedervorlage' : `${n} weitere Aufgaben in der Wiedervorlage`);
+/** „laut Aufgabe „Dokumente des Energiemanagements pflegen““: woher die Person kommt, wenn das Objekt keine nennt. */
+export const lautAufgabe = (aufgabe: string | null) =>
+  aufgabe ? `${UEMS_LAUT_AUFGABE} „${WOERTER.aufgabe[aufgabe] ?? aufgabe}“` : UEMS_LAUT_AUFGABE;
 
 // ------------------------------------------------------------------ Tage (nur Darstellung, keine Frist-Rechnung)
 
@@ -166,13 +252,16 @@ export type FristBild = {
   ueberfaellig: boolean;
 };
 
-export function fristBild(faelligAm: string, tage: number): FristBild {
+export function fristBild(faelligAm: string, tage: number, art: WiedervorlageArt | null = null): FristBild {
   const [j, m, t] = faelligAm.slice(0, 10).split('-');
   const datum = `${t}.${m}.${j}`;
   const teile = { tag: `${t}.${m}.`, jahr: j };
   if (tage > 0) return { ...teile, wort: 'seit', satz: `fällig seit ${datum}`, relativ: null, ueberfaellig: true };
   if (tage === 0) return { ...teile, wort: 'heute', satz: `heute fällig, ${datum}`, relativ: 'heute', ueberfaellig: false };
-  return { ...teile, wort: 'bis', satz: `fällig bis ${datum}`, relativ: tage === -1 ? 'morgen' : `in ${-tage} Tagen`, ueberfaellig: false };
+  const relativ = tage === -1 ? 'morgen' : `in ${-tage} Tagen`;
+  // Ein Energieziel wird mit dem Ende seiner Zielperiode bewertbar (F1): das Datum ist ein „ab“, kein „bis“.
+  if (art === 'energieziel_bewertung') return { ...teile, wort: 'ab', satz: `bewertbar ab ${datum}`, relativ, ueberfaellig: false };
+  return { ...teile, wort: 'bis', satz: `fällig bis ${datum}`, relativ, ueberfaellig: false };
 }
 
 // ------------------------------------------------------------------ Bereich (dieselben Wörter und Zeichen wie die Navigation)
@@ -247,22 +336,16 @@ export const SCHRITT: Record<WiedervorlageArt, string> = {
 };
 
 // Die Titel der Route (die Quellen bilden sie, `WiedervorlageBestand.java` u. a.); die Kennzeichen stehen am Objekt.
+// Seit Vertrag 1.1 tragen `bezug` und `herleitung` den Gegenstand und die Herleitung; die Titel bleiben, wie sie in
+// freigegebenen Managementbewertungen stehen, und dienen nur noch dem Namen eines Dokuments.
 const DOKUMENT_TITEL = /\s+[—-]\s+Überprüfung$/;
 const ANSTOSS_TITEL = /^(.*?)\s+[—-]\s+Revision angestoßen \(([^)]+)\)$/;
-const BEZUGSBASIS_TITEL = /, Fassung (\d+)\s+[—-]\s+Überprüfung \((Freigabe|geprüft, bleibt) (\d{2}\.\d{2}\.\d{4}) \+ (\d+) Monate\)$/;
 
 const dokumentGegenstand = (z: WiedervorlageZeile) => z.titel.replace(DOKUMENT_TITEL, '').trim() || ART_WORT[z.art];
-const berichtName = (z: WiedervorlageZeile) => ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
-const anlass = (z: WiedervorlageZeile) => ANSTOSS_TITEL.exec(z.titel)?.[2] ?? null;
-
-function bezugsbasisHerleitung(z: WiedervorlageZeile): string | null {
-  const m = BEZUGSBASIS_TITEL.exec(z.titel);
-  if (!m) return null;
-  const [, fassung, beginn, tag, monate] = m;
-  return beginn === 'Freigabe' ? `Fassung ${fassung} vom ${tag} + ${monate} Monate` : `„geprüft, bleibt“ am ${tag} + ${monate} Monate`;
-}
+const berichtName = (z: WiedervorlageZeile) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
 
 const STAND_BLEIBT = 'Der freigegebene Stand bleibt, bis Sie entscheiden.';
+const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
 /** Aufgabe mit Verb: Gegenstand plus überprüfen, neu freigeben, durchführen, abhalten, bewerten, klären, einrichten. */
 function aufgabe(z: WiedervorlageZeile): string {
@@ -296,48 +379,97 @@ function aufgabe(z: WiedervorlageZeile): string {
   }
 }
 
-/** Grund: wofür das Objekt da ist und, wo die Route es sagt, woraus die Frist folgt. Kein Wort über Normerfüllung. */
+const tagWort = (iso: string | null) => (iso ? standTag(iso) : null);
+
+/**
+ * Woraus die Frist folgt, in Wörtern aus der Herleitung der Route: „Fassung 2 vom 13.11.2026 + 12 Monate“,
+ * „„geprüft, bleibt“ am 10.12.2027 + 12 Monate“, „Stand Nr. 1 vom 24.11.2027 + 12 Monate“. Ohne Herleitung `null`.
+ */
+function ansatz(h: WiedervorlageHerleitung | null): string | null {
+  if (!h) return null;
+  const am = tagWort(h.am);
+  const plus = h.monate ? ` + ${h.monate} Monate` : '';
+  if (!am) return null;
+  if (h.basis === 'geprueft_bleibt') return `„geprüft, bleibt“ am ${am}${plus}`;
+  if (h.basis === 'freigabe') return h.fassung ? `Fassung ${h.fassung} vom ${am}${plus}` : `Freigabe am ${am}${plus}`;
+  return null;
+}
+
+/** Die Feststellung kommt aus …: „aus dem internen Audit AU-2029-0001“, „selbst festgestellt“. */
+function feststellungHerkunft(h: WiedervorlageHerleitung): string | null {
+  if (!h.quelle_art) return null;
+  if (h.quelle_art === 'internes_audit') return h.kennung ? herkunftWort('audit', h.kennung) : quelleWort(h.quelle_art);
+  if (h.quelle_art === 'managementbewertung') return h.kennung ? herkunftWort('managementbewertung', h.kennung) : quelleWort(h.quelle_art);
+  return quelleWort(h.quelle_art);
+}
+
+/** Woher eine Maßnahme kommt: „aus dem internen Audit AU-2029-0001“, „aus der Managementbewertung BR-2029-0001 (Beschluss 2)“. */
+function massnahmeHerkunft(h: WiedervorlageHerleitung): string | null {
+  if (!h.quelle_art) return null;
+  if (h.quelle_art === 'managementbewertung' && h.kennung?.includes('/')) {
+    const [br, b] = h.kennung.split('/');
+    return `${herkunftWort('managementbewertung', br)} (Beschluss ${b.replace(/^B/, '')})`;
+  }
+  return herkunftWort(h.quelle_art, h.kennung);
+}
+
+const mitPunkt = (...teile: (string | null | undefined)[]) => teile.filter(Boolean).join(' · ');
+
+/**
+ * Grund: wofür das Objekt da ist und woraus die Frist folgt (Herleitung der Route). Kein Wort über Normerfüllung.
+ * `kurz` ist der Grund der Übersicht (beim Bericht ohne den Satz zum freigegebenen Stand).
+ */
 function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): string {
   const z = zeilen[0];
-  const { kennzeichen } = z;
+  const h = z.herleitung;
   switch (z.art) {
     case 'dokument_ueberpruefung':
-      return `Vorgabe Ihres Energiemanagements (${z.kennzeichen})`;
+      return mitPunkt(`Vorgabe Ihres Energiemanagements (${z.kennzeichen})`, ansatz(h));
     case 'internes_audit':
-      return `Nach dem letzten internen Audit ${z.kennzeichen}, im Rhythmus Ihrer Einstellung`;
+      return h?.am
+        ? mitPunkt(`Zuletzt ${h.kennung ?? z.kennzeichen} am ${standTag(h.am)}`, h.monate ? `alle ${h.monate} Monate` : null)
+        : `Nach dem letzten internen Audit ${z.kennzeichen}, im Rhythmus Ihrer Einstellung`;
     case 'managementbewertung': {
+      if (h?.am) return mitPunkt(`Letzte Sitzung am ${standTag(h.am)} (${h.kennung ?? z.kennzeichen})`, h.monate ? `alle ${h.monate} Monate` : null);
       const n = w.naechste_managementbewertung;
       return n && n.kennzeichen === z.kennzeichen
-        ? `Letzte Sitzung am ${standTag(n.sitzung_am)} (${n.kennzeichen}), alle ${n.rhythmus_monate} Monate`
+        ? `Letzte Sitzung am ${standTag(n.sitzung_am)} (${n.kennzeichen}) · alle ${n.rhythmus_monate} Monate`
         : `Nach der letzten Managementbewertung ${z.kennzeichen}`;
     }
     case 'feststellung':
-      return 'Offen, bis ihre Wirksamkeit geprüft oder sie abgeschlossen ist';
+      return h
+        ? mitPunkt(z.bezug, feststellungHerkunft(h), h.am ? `festgestellt am ${standTag(h.am)}` : null)
+        : 'Offen, bis ihre Wirksamkeit geprüft oder sie abgeschlossen ist';
     case 'bewertung_ueberpruefung':
-      return `Grundlage der wesentlichen Energieeinsätze (${z.kennzeichen})`;
-    case 'bezugsbasis_ueberpruefung': {
-      const herleitung = bezugsbasisHerleitung(z);
-      return herleitung ? `Vergleichsgrundlage einer Kennzahl · ${herleitung}` : 'Vergleichsgrundlage einer Kennzahl';
+      return mitPunkt('Grundlage der wesentlichen Energieeinsätze', h?.am ? `Stand Nr. ${h.fassung ?? 1} vom ${standTag(h.am)}${h.monate ? ` + ${h.monate} Monate` : ''}` : null);
+    case 'bezugsbasis_ueberpruefung':
+      return mitPunkt(z.bezug ? `Grundlage für „${z.bezug}“` : 'Vergleichsgrundlage einer Kennzahl', ansatz(h));
+    case 'energieziel_bewertung': {
+      if (h?.basis !== 'zielperiode' || !h.am) return z.titel;
+      const ende = standTag(h.am);
+      return z.tage > 0
+        ? `Zielperiode bis ${ende}`
+        : `Zielperiode bis ${ende} · bewertbar, sobald ${MONATE[Number(h.am.slice(5, 7)) - 1]} endgültig ist`;
     }
-    case 'energieziel_bewertung':
-      return z.titel;
     case 'massnahme_termin':
-      return `${UEMS_MASSNAHME} ${z.kennzeichen}`;
+      return mitPunkt(`${UEMS_MASSNAHME} ${z.kennzeichen}`, h ? massnahmeHerkunft(h) : null);
     case 'abweichung_frist':
-      return `An der Kennzahl ${z.titel}`;
+      return `An der Kennzahl ${z.bezug ?? z.titel}`;
     case 'messbedarf_frist':
-      return 'Aus der Messplanung der energetischen Bewertung';
+      return z.bezug ?? 'Aus der Messplanung der energetischen Bewertung';
     case 'bericht_anstoss': {
-      const anlaesse = zeilen.map(anlass).filter((a): a is string => !!a);
-      if (zeilen.length === 1) {
-        const a = anlaesse[0];
-        if (kurz) return a ? `Werte nach der Freigabe korrigiert (${a})` : 'Werte nach der Freigabe korrigiert';
-        return a ? `Korrektur ${a} hat nach der Freigabe Werte geändert. ${STAND_BLEIBT}` : `Nach der Freigabe korrigiert. ${STAND_BLEIBT}`;
+      // Seit Vertrag 1.1 ist ein Bericht EINE Zeile ab der ersten Korrektur; ältere Zeilen kamen je Korrektur.
+      const anzahl = h?.anzahl ?? zeilen.length;
+      const erste = h?.kennung ?? ANSTOSS_TITEL.exec(z.titel)?.[2] ?? null;
+      if (anzahl === 1) {
+        if (kurz) return erste ? `Werte nach der Freigabe korrigiert (${erste})` : 'Werte nach der Freigabe korrigiert';
+        return erste ? `Korrektur ${erste} hat nach der Freigabe Werte geändert. ${STAND_BLEIBT}` : `Nach der Freigabe korrigiert. ${STAND_BLEIBT}`;
       }
-      return kurz ? `${zeilen.length} Korrekturen nach der Freigabe` : `${zeilen.length} Korrekturen nach der Freigabe. ${STAND_BLEIBT}`;
+      const korrekturen = erste ? `${anzahl} Korrekturen nach der Freigabe, zuerst ${erste}` : `${anzahl} Korrekturen nach der Freigabe`;
+      return kurz ? `${anzahl} Korrekturen nach der Freigabe` : `${korrekturen}. ${STAND_BLEIBT}`;
     }
     default:
-      return kennzeichen;
+      return z.kennzeichen;
   }
 }
 
@@ -374,16 +506,19 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
 
 /**
  * Entscheid 8: der Schritt öffnet das Objekt dort, wo die Entscheidung fällt. Audit und Managementbewertung legt man
- * im Reiter neu an, der Messbedarf wird in der Messplanung eingelöst (sie trägt mehrere, daher das Kennzeichen).
+ * im Reiter neu an; der Messbedarf wird an seinem Energieeinsatz eingelöst (dort steht „Messstelle einrichten“), ohne
+ * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen).
  */
-export function eintragSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'>): Sprung | null {
+export function eintragSprung(
+  z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'> & Partial<Pick<WiedervorlageZeile, 'einsatz_id'>>,
+): Sprung | null {
   switch (z.art) {
     case 'internes_audit':
       return entscheidSprung(energiemanagementRoute('audits'), z.art);
     case 'managementbewertung':
       return entscheidSprung(energiemanagementRoute('managementbewertung'), z.art);
     case 'messbedarf_frist':
-      return entscheidSprung(pageRoute('portfolio-bewertung'), z.art, z.kennzeichen);
+      return entscheidSprung(z.einsatz_id ? energieeinsatzRoute(z.einsatz_id) : pageRoute('portfolio-bewertung'), z.art, z.kennzeichen);
     default: {
       const ziel = wiedervorlageSprung(z);
       return ziel ? entscheidSprung(ziel, z.art) : null;
@@ -405,11 +540,13 @@ export type Eintrag = {
   tage: number;
   frist: FristBild;
   bereich: Bereich;
-  /** Die Person am Objekt, wie die Route sie nennt; `null`, wenn sie dort niemanden nennt. */
-  verantwortlich: string | null;
+  /** Die Person am Objekt oder laut Aufgabe; `null`, wenn niemand festgelegt ist. */
+  zustaendig: Zustaendig | null;
+  /** Die Aufgabe im Energiemanagement, zu der die Frist gehört: ihr Wort hinter „laut Aufgabe“, ihr Sprung ohne Person. */
+  aufgabeIm: string | null;
   schritt: string;
   sprung: Sprung | null;
-  /** So viele Zeilen der Route trägt der Eintrag (Anstöße an einem Bericht). */
+  /** So viele Zeilen der Route trägt der Eintrag (ältere Server: je Anstoß eine Zeile). */
   zeilen: number;
   /** Die Kennzahl einer Bezugsbasis (zählt die Kennzahlen eines Bündels). */
   kennzahlId: string | null;
@@ -422,10 +559,25 @@ export type Arbeitsliste = {
   fensterBis: string;
   ueberfaellig: Eintrag[];
   bald: Eintrag[];
-  /** Fristen nach dem Fenster; die Route nennt heute nur ihre Kennzeichen (`nicht_in_liste`). */
-  spaeter: number;
+  /** Der Jahresplan: die Fristen nach dem Fenster bis Abruf + 12 Monate (Vertrag 1.1, `spaeter`). */
+  jahresplan: Eintrag[];
+  /** Das Ende des Jahresplans als Tag: „30.04.2030“. */
+  jahresplanBis: string;
   bereiche: Bereich[];
+  /** Nur dann ist „ohne Person“ ein „Niemand zuständig“ (sonst weiß die Route es nicht). */
+  aufgabenLesbar: boolean;
 };
+
+/**
+ * Zuständig, wie die Route es sagt; nennt eine Zeile nur `verantwortlich` (ein Leser vor Vertrag 1.1), ist das die
+ * Person am Objekt. Ohne beides: `null`.
+ */
+function zustaendigAus(zeilen: WiedervorlageZeile[]): Zustaendig | null {
+  const mit = zeilen.find((x) => x.zustaendig)?.zustaendig;
+  if (mit) return mit;
+  const name = zeilen.find((x) => x.verantwortlich)?.verantwortlich;
+  return name ? { name, herkunft: 'objekt', ich: false } : null;
+}
 
 /** Ein Gegenstand, ein Eintrag: die Zeilen derselben Art und desselben Kennzeichens, in der Reihenfolge der Route. */
 function eintraege(zeilen: WiedervorlageZeile[], w: Wiedervorlage): Eintrag[] {
@@ -448,9 +600,10 @@ function eintraege(zeilen: WiedervorlageZeile[], w: Wiedervorlage): Eintrag[] {
       grundKurz: grund(g, w, true),
       faellig_am: z.faellig_am,
       tage: z.tage,
-      frist: fristBild(z.faellig_am, z.tage),
+      frist: fristBild(z.faellig_am, z.tage, z.art),
       bereich: ART_BEREICH[z.art] ?? 'nachweisen',
-      verantwortlich: g.find((x) => x.verantwortlich)?.verantwortlich ?? null,
+      zustaendig: zustaendigAus(g),
+      aufgabeIm: z.aufgabe,
       schritt: SCHRITT[z.art] ?? ANSEHEN,
       sprung: eintragSprung(z),
       zeilen: g.length,
@@ -461,10 +614,11 @@ function eintraege(zeilen: WiedervorlageZeile[], w: Wiedervorlage): Eintrag[] {
 
 /**
  * Die Arbeitsliste nach Dringlichkeit (Entscheid 3): überfällig (abgelaufen, das älteste zuerst), dann was in den
- * nächsten Tagen fällig wird (heute eingeschlossen). Lage und Reihenfolge sind die der Route.
+ * nächsten Tagen fällig wird (heute eingeschlossen), dann der Jahresplan. Lage und Reihenfolge sind die der Route.
  */
 export function arbeitsliste(w: Wiedervorlage): Arbeitsliste {
   const alle = eintraege([...w.faellig, ...w.vorschau], w);
+  const jahresplan = eintraege(w.spaeter ?? [], w);
   const ueberfaellig = alle.filter((e) => e.tage > 0);
   const bald = alle.filter((e) => e.tage <= 0);
   return {
@@ -473,16 +627,60 @@ export function arbeitsliste(w: Wiedervorlage): Arbeitsliste {
     fensterBis: standTag(tagPlus(w.stichtag, w.vorschau_tage)),
     ueberfaellig,
     bald,
-    spaeter: w.nicht_in_liste.length,
-    bereiche: BEREICHE.filter((b) => alle.some((e) => e.bereich === b)),
+    jahresplan,
+    jahresplanBis: standTag(jahresplanBis(w.stichtag.slice(0, 10))),
+    bereiche: BEREICHE.filter((b) => [...alle, ...jahresplan].some((e) => e.bereich === b)),
+    aufgabenLesbar: w.aufgaben_lesbar === true,
   };
 }
 
-export type Filter = { art: WiedervorlageArt | null; bereich: Bereich | null };
-export const OHNE_FILTER: Filter = { art: null, bereich: null };
+/** Wer: alle, die der angemeldeten Person zugeordneten („Meine“) oder die ohne Person („Ohne Zuständige“). */
+export type WerFilter = 'alle' | 'meine' | 'ohne';
+export type Filter = { art: WiedervorlageArt | null; bereich: Bereich | null; wer: WerFilter };
+export const OHNE_FILTER: Filter = { art: null, bereich: null, wer: 'alle' };
 
 export function gefiltert(liste: readonly Eintrag[], f: Filter): Eintrag[] {
-  return liste.filter((e) => (!f.art || e.art === f.art) && (!f.bereich || e.bereich === f.bereich));
+  return liste.filter(
+    (e) =>
+      (!f.art || e.art === f.art) &&
+      (!f.bereich || e.bereich === f.bereich) &&
+      (f.wer === 'alle' || (f.wer === 'meine' ? e.zustaendig?.ich === true : e.zustaendig === null)),
+  );
+}
+
+/** Der Sprung „Aufgabe festlegen“: die Aufgaben im Energiemanagement mit genau dieser Aufgabe im Blick. */
+export function aufgabeFestlegenSprung(aufgabeIm: string): Sprung {
+  return entscheidSprung(energiemanagementRoute('aufgaben'), 'aufgabe_festlegen', aufgabeIm);
+}
+
+// ------------------------------------------------------------------ Jahresplan nach Monaten
+
+export type MonatsGruppe = { key: string; titel: string; eintraege: Eintrag[] };
+
+/**
+ * Der Jahresplan nach Monaten: aufeinanderfolgende Monate desselben Jahres mit Fristen stehen unter einer Überschrift
+ * („Juni 2029“, „November und Dezember 2029“, „Januar bis April 2030“); ein Monat ohne Frist und ein Jahreswechsel
+ * trennen. Die Einträge kommen in der Reihenfolge der Route (nach Tag).
+ */
+export function jahresplanGruppen(liste: readonly Eintrag[]): MonatsGruppe[] {
+  const gruppen: { jahr: number; von: number; bis: number; eintraege: Eintrag[] }[] = [];
+  for (const e of liste) {
+    const jahr = Number(e.faellig_am.slice(0, 4));
+    const monat = Number(e.faellig_am.slice(5, 7));
+    const g = gruppen[gruppen.length - 1];
+    if (g && g.jahr === jahr && (monat === g.bis || monat === g.bis + 1)) {
+      g.bis = monat;
+      g.eintraege.push(e);
+    } else {
+      gruppen.push({ jahr, von: monat, bis: monat, eintraege: [e] });
+    }
+  }
+  return gruppen.map((g) => {
+    const von = MONATE[g.von - 1];
+    const bis = MONATE[g.bis - 1];
+    const titel = g.von === g.bis ? `${von} ${g.jahr}` : g.bis === g.von + 1 ? `${von} und ${bis} ${g.jahr}` : `${von} bis ${bis} ${g.jahr}`;
+    return { key: `${g.jahr}-${g.von}`, titel, eintraege: g.eintraege };
+  });
 }
 
 /** Ein Art-Filter aus der Adresse (`?art=`) gilt nur mit einem Wort aus dem Vokabular. */
@@ -518,10 +716,11 @@ export type WasStehtAnBild = {
   bald: number;
   vorschauTage: number;
   fensterBis: string;
+  /** Einträge im Jahresplan (nach dem Fenster bis Abruf + 12 Monate). */
   spaeter: number;
-  /** Bei Überfälligem: höchstens vier Bündel des Überfälligen; sonst die nächsten zwei Fristen. */
+  /** Bei Überfälligem: höchstens vier Bündel des Überfälligen; sonst die nächsten zwei Fristen, auch aus dem Jahresplan. */
   zeilen: Buendel[];
-  /** Bündel, die nicht mehr auf die Übersicht passen. */
+  /** Bündel des Überfälligen, die nicht mehr auf die Übersicht passen. */
   weitere: number;
 };
 
@@ -570,21 +769,27 @@ function buendelText(art: WiedervorlageArt, e: Eintrag[]): { aufgabe: string; gr
   }
 }
 
-/** Bündel je Art, geordnet nach der ältesten Frist; ein Bündel aus einem Eintrag ist dieser Eintrag mit seinem Schritt. */
-export function buendel(liste: readonly Eintrag[]): Buendel[] {
-  const je = new Map<WiedervorlageArt, Eintrag[]>();
+/**
+ * Bündel je Art, geordnet nach der ältesten Frist; ein Bündel aus einem Eintrag ist dieser Eintrag mit seinem Schritt.
+ * `jeMonat` bündelt nur innerhalb eines Monats (die nächsten Fristen aus dem Jahresplan: „2 Maßnahmen umsetzen“ am
+ * selben Termin, nicht dieselbe Art über ein ganzes Jahr).
+ */
+export function buendel(liste: readonly Eintrag[], jeMonat = false): Buendel[] {
+  const je = new Map<string, Eintrag[]>();
   for (const e of liste) {
-    const g = je.get(e.art);
+    const key = jeMonat ? `${e.art}/${e.faellig_am.slice(0, 7)}` : e.art;
+    const g = je.get(key);
     if (g) g.push(e);
-    else je.set(e.art, [e]);
+    else je.set(key, [e]);
   }
-  return [...je.entries()].map(([art, e]) => {
+  return [...je.entries()].map(([key, e]) => {
+    const art = e[0].art;
     if (e.length === 1) {
       const x = e[0];
       return { key: x.key, art, aufgabe: x.aufgabe, grund: x.grundKurz, frist: x.frist, anzahl: 1, schritt: x.schritt, sprung: x.sprung };
     }
     return {
-      key: `art/${art}`,
+      key: `art/${key}`,
       art,
       ...buendelText(art, e),
       frist: e[0].frist,
@@ -597,22 +802,24 @@ export function buendel(liste: readonly Eintrag[]): Buendel[] {
 
 /**
  * Das Bild des Blocks „Was steht an“: Marken zählen Einträge (Entscheid 4); bei Überfälligem höchstens vier Bündel des
- * Überfälligen (Variante A), sonst ruhig mit den nächsten Fristen. `null` ohne jede Frist: ohne Inhalt kein Block
- * (AP-13 E3); die Wiedervorlage selbst erklärt dann, woher Fristen kommen.
+ * Überfälligen (Variante A), sonst ruhig mit den nächsten zwei Fristen, auch aus dem Jahresplan („30.06.2029 · 2
+ * Maßnahmen umsetzen“). `null` ohne jede Frist: ohne Inhalt kein Block (AP-13 E3); die Wiedervorlage selbst erklärt
+ * dann, woher Fristen kommen.
  */
 export function wasStehtAn(w: Wiedervorlage | null): WasStehtAnBild | null {
   if (!w || (w.faellig.length === 0 && w.vorschau.length === 0 && w.nicht_in_liste.length === 0)) return null;
   const l = arbeitsliste(w);
-  const alle = l.ueberfaellig.length > 0 ? buendel(l.ueberfaellig) : buendel(l.bald);
-  const platz = l.ueberfaellig.length > 0 ? WAS_STEHT_AN_ZEILEN : NAECHSTE_ZEILEN;
+  const ueber = l.ueberfaellig.length > 0;
+  const alle = ueber ? buendel(l.ueberfaellig) : [...buendel(l.bald), ...buendel(l.jahresplan, true)];
+  const platz = ueber ? WAS_STEHT_AN_ZEILEN : NAECHSTE_ZEILEN;
   return {
     ueberfaellig: l.ueberfaellig.length,
     bald: l.bald.length,
     vorschauTage: l.vorschauTage,
     fensterBis: l.fensterBis,
-    spaeter: l.spaeter,
+    spaeter: l.jahresplan.length,
     zeilen: alle.slice(0, platz),
-    weitere: Math.max(0, alle.length - platz),
+    weitere: ueber ? Math.max(0, alle.length - platz) : 0,
   };
 }
 
@@ -654,7 +861,7 @@ export function wiedervorlageStatus(w: Wiedervorlage | null): WiedervorlageStatu
   };
 }
 
-// ------------------------------------------------------------------ Zuletzt erledigt (aus dem Verzeichnis)
+// ------------------------------------------------------------------ Zuletzt erledigt (`GET …/wiedervorlage/zuletzt`)
 
 export const ZULETZT_TAGE = 90;
 export const ZULETZT_ANZAHL = 5;
@@ -669,21 +876,26 @@ export type Erledigt = {
 };
 
 /**
- * Was eine Frist beendet oder neu startet, so wie das Verzeichnis es festhält (Tag der Entscheidung): eine freigegebene
- * Fassung einer Vorgabe oder Bezugsbasis, ein abgeschlossenes Audit, eine festgehaltene Wirksamkeit, ein freigegebener
- * Stand der energetischen Bewertung oder Managementbewertung, ein neuer Stand eines Berichts nach einer Korrektur, eine
- * bewertete Maßnahme oder ein bewertetes Energieziel, eine abgeschlossene Abweichung. Alles andere zählt nicht.
+ * Was eine Frist beendet oder neu startet, als Satz (Tag der Entscheidung): eine freigegebene Fassung einer Vorgabe
+ * oder Bezugsbasis, „geprüft, bleibt“ an einem Dokument oder einer Bezugsbasis, ein abgeschlossenes Audit, eine
+ * festgehaltene Wirksamkeit, ein freigegebener Stand der energetischen Bewertung oder Managementbewertung, ein neuer
+ * Stand eines Berichts nach einer Korrektur, eine bewertete Maßnahme oder ein bewertetes Energieziel, eine
+ * abgeschlossene Abweichung. Welche Zeilen dazugehören, entscheidet der Server; eine unbekannte Art steht mit ihrem Titel.
  */
-function erledigtTitel(gruppe: string, z: { art: string; kennzeichen: string; titel: string; nr: number | null }): string | null {
+function erledigtTitel(z: WiedervorlageErledigt): string {
   const nr = z.nr;
   if (DOKUMENT_ART_KLASSE[z.art] === 'vorgabe') return nr ? `${z.titel}: Fassung ${nr} freigegeben` : `${z.titel} freigegeben`;
   switch (z.art) {
+    case 'dokument_geprueft_bleibt':
+      return `${z.titel}: geprüft, bleibt`;
+    case 'bezugsbasis_geprueft_bleibt':
+      return `${UEMS_BEZUGSBASIS} ${z.kennzeichen}: geprüft, bleibt`;
     case 'internes_audit':
       return `Internes Audit ${z.kennzeichen} abgeschlossen`;
     case 'wirksamkeit':
       return `Feststellung ${z.kennzeichen}: Wirksamkeit festgehalten`;
     case 'bezugsbasis_fassung':
-      return nr ? `${UEMS_BEZUGSBASIS} ${z.kennzeichen}: Fassung ${nr} freigegeben` : null;
+      return nr ? `${UEMS_BEZUGSBASIS} ${z.kennzeichen}: Fassung ${nr} freigegeben` : `${UEMS_BEZUGSBASIS} ${z.kennzeichen} freigegeben`;
     case 'energieziel_bewertung':
       return `${UEMS_ENERGIEZIEL} ${z.kennzeichen} bewertet`;
     case 'massnahme_bewertung':
@@ -691,34 +903,23 @@ function erledigtTitel(gruppe: string, z: { art: string; kennzeichen: string; ti
     case 'abweichung_abschluss':
       return `Abweichung ${z.kennzeichen} abgeschlossen`;
     case 'berichtsstand':
-      if (!nr) return null;
-      if (gruppe === 'managementbewertung') return `${z.titel}: Stand Nr. ${nr} freigegeben`;
-      if (gruppe === 'bewertung_messplanung') return `Energetische Bewertung ${z.kennzeichen}: Stand Nr. ${nr} freigegeben`;
-      // Ein Bericht hat seine Frist erst nach einer Korrektur; erledigt ist sie mit dem nächsten Stand.
-      return nr > 1 ? `${UEMS_BERICHT} ${z.kennzeichen}: Stand Nr. ${nr} freigegeben` : null;
+      if (z.gruppe === 'managementbewertung') return nr ? `${z.titel}: Stand Nr. ${nr} freigegeben` : `${z.titel} freigegeben`;
+      if (z.gruppe === 'bewertung_messplanung') return `Energetische Bewertung ${z.kennzeichen}: Stand Nr. ${nr ?? 1} freigegeben`;
+      return `${UEMS_BERICHT} ${z.kennzeichen}: Stand Nr. ${nr ?? 1} freigegeben`;
     default:
-      return null;
+      return z.titel;
   }
 }
 
-/** Zuletzt erledigt: die letzten Entscheidungen der letzten 90 Tage bis zum Stichtag, die jüngste zuerst. */
-export function zuletztErledigt(v: EnergiemanagementVerzeichnis, stichtag: string = v.stichtag): Erledigt[] {
-  const bis = stichtag.slice(0, 10);
-  const ab = tagPlus(bis, -ZULETZT_TAGE);
-  const aus: Erledigt[] = [];
-  for (const g of v.gruppen) {
-    for (const z of g.zeilen) {
-      if (!z.tag || z.tag > bis || z.tag < ab) continue;
-      const titel = erledigtTitel(g.gruppe, z);
-      if (!titel) continue;
-      const [j, m, t] = z.tag.split('-');
-      const wer = z.entschieden_von
-        ? `${UEMS_ENTSCHIEDEN_VON} ${z.entschieden_von}`
-        : z.eingetragen_von
-          ? `${UEMS_EINGETRAGEN_VON} ${z.eingetragen_von}`
-          : null;
-      aus.push({ key: `${g.gruppe}/${z.art}/${z.kennzeichen}/${z.nr ?? ''}`, am: z.tag, tag: `${t}.${m}.`, jahr: j, titel, wer });
-    }
-  }
-  return aus.sort((a, b) => (a.am < b.am ? 1 : a.am > b.am ? -1 : a.titel.localeCompare(b.titel))).slice(0, ZULETZT_ANZAHL);
+/** Zuletzt erledigt: die Entscheidungen der Route (90 Tage bis zum Abruf, die jüngste zuerst) als Zeilen mit Tag und Person. */
+export function zuletztErledigt(z: WiedervorlageZuletzt): Erledigt[] {
+  return z.eintraege.slice(0, ZULETZT_ANZAHL).map((x) => {
+    const [j, m, t] = x.am.slice(0, 10).split('-');
+    const wer = x.entschieden_von
+      ? `${UEMS_ENTSCHIEDEN_VON} ${x.entschieden_von}`
+      : x.eingetragen_von
+        ? `${UEMS_EINGETRAGEN_VON} ${x.eingetragen_von}`
+        : null;
+    return { key: `${x.gruppe ?? ''}/${x.art}/${x.kennzeichen}/${x.nr ?? ''}/${x.am}`, am: x.am, tag: `${t}.${m}.`, jahr: j, titel: erledigtTitel(x), wer };
+  });
 }
