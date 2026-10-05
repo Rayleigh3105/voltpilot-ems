@@ -26,6 +26,7 @@
 package csms
 
 import (
+	"math"
 	"sort"
 	"time"
 )
@@ -222,6 +223,19 @@ type Connector struct {
 	MeterReceivedAt  time.Time `json:"meter_received_at,omitzero"`
 	EnergyMeasuredAt time.Time `json:"energy_measured_at,omitzero"`
 	SocMeasuredAt    time.Time `json:"soc_measured_at,omitzero"`
+	// PrevPowerKw / PrevMeteredAt are the power sample BEFORE PowerKw. They
+	// exist for one question only: has the draw settled after the station
+	// started or stopped on its own (PowerSettled)?
+	PrevPowerKw   *float64  `json:"-"`
+	PrevMeteredAt time.Time `json:"-"`
+	// DrawChangedAt is when the station last crossed the line between drawing
+	// (Charging) and not drawing (any other status) by its OWN report - a car
+	// waking up, a station pausing, a phase switch. Unlike CommandedChangedAt
+	// nobody here caused it, and the draw that follows ramps over several
+	// MeterValues (Edge-Light-Pilot, 05.10.2026: go-e reported Charging, the
+	// car drew 0 kW four seconds later, 0.75 kW at the next sample and its
+	// full 1.6 kW only at the one after).
+	DrawChangedAt time.Time `json:"-"`
 
 	// --- the live allocation, as commanded and as read back ---
 
@@ -401,15 +415,80 @@ const commandedChangeEpsilonKw = 0.05
 // settle in a staircase well below the surplus it really has (reproduced at
 // the rig: 14 kW of a measured 22 kW, indefinitely).
 //
+// A station-side start or stop (DrawChangedAt) is the same kind of change and
+// counts the same way: a sample from before the car woke up describes a draw
+// that no longer exists.
+//
 // ⚠ It can never hold a connector back LONGER than the plain staleness rule
-// already does: if MeteredAt is older than CommandedChangedAt and the change
-// is itself older than maxAge, then MeteredAt is older than maxAge too. So
-// this narrows WHICH samples count, never for how long.
+// already does: if MeteredAt is older than the change and the change is itself
+// older than maxAge, then MeteredAt is older than maxAge too. So this narrows
+// WHICH samples count, never for how long.
 func (c Connector) MeterInTransit() bool {
-	if c.CommandedChangedAt.IsZero() || c.MeteredAt.IsZero() {
+	changed := c.regimeChangedAt()
+	if changed.IsZero() || c.MeteredAt.IsZero() {
 		return false
 	}
-	return c.MeteredAt.Before(c.CommandedChangedAt)
+	return c.MeteredAt.Before(changed)
+}
+
+// regimeChangedAt is the later of the two changes a sample can be behind.
+func (c Connector) regimeChangedAt() time.Time {
+	if c.DrawChangedAt.After(c.CommandedChangedAt) {
+		return c.DrawChangedAt
+	}
+	return c.CommandedChangedAt
+}
+
+const (
+	// The draw counts as settled when two consecutive power samples agree
+	// within the larger of these two tolerances.
+	settleToleranceKw  = 0.2
+	settleToleranceRel = 0.1
+	// startedShare: after a start under a positive limit, a sample below this
+	// share of the limit is a car that is still waking up, not a settled one
+	// (pilot, 11:04: −0.01 then 0.15 kW of a 2.22 kW limit, 1.99 kW at the next
+	// sample).
+	startedShare = 0.25
+	// DrawSettleTimeout ends the settling of a car that draws little or never
+	// steadies: after it, the plain pairing applies again.
+	DrawSettleTimeout = 40 * time.Second
+)
+
+// PowerSettled reports whether this connector's draw has settled since the
+// station last started or stopped on its own (DrawChangedAt): two consecutive
+// samples, both taken after that change, agree - and while the station reports
+// Charging under a positive limit, both show a car that has really started.
+// After DrawSettleTimeout it is settled regardless.
+//
+// ⚠ Until then NO sample of this connector pairs with a grid reading. A car
+// that wakes up ramps over several MeterValues, and the go-e's samples trail
+// the draw even at their own timestamp (Edge-Light-Pilot, 05.10.2026: 0.75 kW
+// reported while the car drew 1.1 kW). Paired anyway, 2.05 kW of surplus read
+// as 0.94 kW, under the 1.38 kW single-phase minimum, and the trailing maximum
+// held the car off for a minute - eleven starts in fifteen minutes. A
+// commanded change keeps the one-sample rule (MeterInTransit): the station
+// follows a new limit within one metering cadence.
+//
+// A connector without a station-side change is settled by definition.
+func (c Connector) PowerSettled(now time.Time) bool {
+	if c.DrawChangedAt.IsZero() || now.Sub(c.DrawChangedAt) >= DrawSettleTimeout {
+		return true
+	}
+	if c.PowerKw == nil || c.MeteredAt.Before(c.DrawChangedAt) {
+		return false
+	}
+	if c.PrevPowerKw == nil || c.PrevMeteredAt.Before(c.DrawChangedAt) {
+		return false
+	}
+	cur, prev := *c.PowerKw, *c.PrevPowerKw
+	if c.Status == StatusCharging && c.CommandedKw != nil && *c.CommandedKw > 0 {
+		started := startedShare * *c.CommandedKw
+		if cur < started || prev < started {
+			return false
+		}
+	}
+	d := math.Abs(cur - prev)
+	return d <= settleToleranceKw || d <= settleToleranceRel*math.Max(math.Abs(cur), math.Abs(prev))
 }
 
 // ChargingTotal is the power the site's charge points are MEASURED drawing
@@ -465,6 +544,24 @@ func (s Snapshot) ChargingTotal(now time.Time, maxAge time.Duration) (kw float64
 		}
 	}
 	return kw, complete
+}
+
+// DrawSettling reports whether a charge point inside the site's measurement is
+// still settling after it started or stopped on its own (PowerSettled). The
+// caller drops the pair then, and the source lane holds
+// (lastmgmt.Measurement.Settling).
+func (s Snapshot) DrawSettling(now time.Time) bool {
+	for _, c := range s.Chargers {
+		if !c.Connected || c.OwnConnection() {
+			continue
+		}
+		for _, con := range c.ActiveConnectors() {
+			if !con.PowerSettled(now) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ChargerByID returns the state of one charge point, or false.

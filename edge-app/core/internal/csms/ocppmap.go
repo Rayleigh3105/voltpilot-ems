@@ -443,6 +443,10 @@ func privacySafeProtocolError(err error) error {
 	return err
 }
 
+// profileStartLead is how far in the past a schedule starts on the wire
+// (toOcppProfile). Far beyond any clock skew a station keeps and still synced.
+const profileStartLead = time.Minute
+
 // toOcppProfile maps our plain profile onto the library's type. It is the ONLY
 // place the wire shape is built.
 func toOcppProfile(p ChargingProfile) *types.ChargingProfile {
@@ -455,9 +459,17 @@ func toOcppProfile(p ChargingProfile) *types.ChargingProfile {
 		period.NumberPhases = &p.NumberPhases
 		schedule = types.NewChargingSchedule(types.ChargingRateUnitAmperes, period)
 	}
-	schedule.StartSchedule = types.NewDateTime(p.StartsAt)
+	// ⚠ On the wire the schedule starts profileStartLead in the PAST and runs
+	// that much longer, so it ends exactly where p says. A station whose clock
+	// lags ours by a fraction of a second would otherwise see every refresh
+	// begin in ITS future and fall back to its default profile for that
+	// moment - for a go-e three phases, which starts its phase-switch
+	// procedure. Suspected at the Edge-Light-Pilot (05.10.2026: the go-e
+	// reported „PhaseSwitch" every 20 s to 3 min while the box commanded one
+	// phase throughout, clocks within ±0.5 s).
+	schedule.StartSchedule = types.NewDateTime(p.StartsAt.Add(-profileStartLead))
 	if p.Duration > 0 {
-		d := int(p.Duration / time.Second)
+		d := int((p.Duration + profileStartLead) / time.Second)
 		schedule.Duration = &d
 	}
 	out := types.NewChargingProfile(p.ID, p.StackLevel,
