@@ -47,7 +47,7 @@ Quellen: [Navigation](../frontend/portal/src/ebenenNav.ts), [Router](../frontend
 
 Die vollständige, paketweise Übersicht steht im [UEMS-Wegweiser](agents/root/uems-uebersicht.md).
 
-**Energiemanagement ohne Fachsprache** (Konzept unter `.lavish/uems-konzept/`, Entscheide D1–D6):
+**Energiemanagement ohne Fachsprache** ([Konzept](konzepte/uems-konzept/README.md), Entscheide D1–D6):
 
 - Begriffe: unter dem Seitenkopf der UEMS-Bereiche erklärt `BegriffeZeile` die Wörter in einem Satz, mit Beispiel und dem Fachwort (ohne Normnummer, ohne Kürzel; `begriffe.ts`). Die Wörter selbst bleiben die des Glossars.
 - Grenz- und Verantwortungs-Satz stehen einmal je Bereich im Hinweis „Was VoltPilot leistet“ (`GrenzSatz.tsx`: `GrenzSatzBereich` lässt die Sätze der Teile schweigen, `GrenzHinweis` trägt beide im vollen Wortlaut). Dialoge, Entscheidungsformulare und Berichte tragen die Sätze weiter selbst; `copy.test.ts` erkennt Baustein und Hinweis.
