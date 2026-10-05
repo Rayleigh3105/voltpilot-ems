@@ -4,20 +4,22 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 
 ## Stand 05.10.2026: Pilot Anlage Dirolf (`edge-zay5sdd`)
 
-- **Auf dem Mango läuft** `edge-light-gff8746978` (Spitze von `feature/edge-light`). Der Deye wird gelesen, die go-e (`goe-300808`, Firmware 59.4) ist per OCPP eingerichtet (Sicherheitsprofile angenommen).
+- **Auf dem Mango läuft** `edge-light-g5af8b452d` (Spitze von `feature/edge-light`, seit 05.10.2026 11:37). Der Deye wird gelesen, die go-e (`goe-300808`, Firmware 59.4) ist per OCPP eingerichtet (Sicherheitsprofile angenommen).
 - **Überschussladen „Nur Sonne“ am Auto geprüft (Teil 1):** ohne Sonne teilt die Box 0 kW zu, die go-e hält zurück (`SuspendedEVSE`, 0,00 kW). Vorher lud sie dauerhaft mit 6,8 kW (behoben mit #1380, #1382, #1383).
 - **go-e auf 16 A** (`ama`/`amp`, vorher 10/11 A), mit Freigabe des Betreibers; die Variante ist 11 kW/16 A, das Kabel 32 A.
 - **Phasenumschaltung 1p/3p** ([OCPP-Steuerung](../../docs/ocpp-control.md)): PR #1385 ist in `main`, auf `feature/edge-light` übernommen und auf dem Mango. Die go-e meldet `ConnectorSwitch3to1PhaseSupported=true`.
 - **Feldtest einphasig, 05.10.2026 vormittags** (API/Portal mit #1385 deployt, „Laden auf einer Phase erlauben“ gedrückt, PV ~2 kW, Speicher 21–26 %):
   - Die Box schaltete die go-e um 09:28 auf eine Phase und teilte 1,56–1,84 kW zu. Die go-e nahm jedes Profil an, lud aber nicht (`modelStatus` 28 „OcppDoesntWant“): ihre Mindest-Ladestromstärke **`mca` stand auf 16 A**, die Box gab 8 A. Mit Freigabe des Betreibers auf 6 A gesetzt (`http://192.168.2.105/api/set?mca=6` vom Mango aus), danach lud sie einphasig mit 1,58 kW. **`mca` muss ≤ 6 A sein**, sonst ist jede Zuteilung unter 16 A wirkungslos – auch dreiphasig.
-  - Danach **pendelte** das Laden: 11 Starts in 15 min, je 15–25 s Laden. Ursache war die Paarung von Netz- und Ladeleistung beim Anlaufen: die go-e misst alle 10 s und hinkt hinterher, die Box las 2,05 kW Überschuss als 0,94 kW. Behoben auf `feature/edge-light` durch die späte Paarung ([Details](../../docs/agents/edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)); **auf dem Mango erst nach dem Einspielen**.
-  - Bei jedem Start simuliert die go-e ein Abstecken (`modelStatus` 22) und meldet kurz „PhaseSwitch“ (23), 3–50 s, obwohl die Box durchgehend eine Phase befiehlt (sekundengenau geprüft).
-  - Eine **Verzögerung des Pausierens** bei „Nur Sonne“ (erst nach z. B. 2 min unter dem Minimum) ist zurückgestellt: erst mit der späten Paarung neu messen. Sie würde das Versprechen „Nur Sonnenstrom“ aufweichen.
+  - Danach **pendelte** das Laden: 11 Starts in 15 min, je 15–25 s Laden. Ursache war die Paarung von Netz- und Ladeleistung beim Anlaufen: die go-e misst alle 10 s und meldet sogar zu ihrem eigenen Zeitstempel zu wenig; die Box las 2,05 kW Überschuss als 0,94 kW. Eine erste Korrektur (`3e1c66524`, zeitgleich paaren) reichte im Feld nicht. **Behoben mit `fa9855eac`:** solange eine Säule nach eigenem Start oder Stopp einschwingt, bildet die Box kein Paar, und der Überschuss hält seinen letzten Messwert (höchstens 60 s) ([Details](../../docs/agents/edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)). Im Feld geprüft: die Box hielt ihre Zuteilung über drei Pausen der go-e hinweg.
+  - **Die go-e unterbrach selbst:** einphasig meldete sie alle 20 s bis 3 min „PhaseSwitch“ (`modelStatus` 23) und öffnete das Schütz, obwohl die Box durchgehend eine Phase befahl (sekundengenau geprüft). `fup=false` änderte nichts (zurückgestellt auf `true`). Verdacht: jede Profil-Erneuerung begann mit der Uhr der Box und für eine nachgehende go-e in ihrer Zukunft, dazwischen galt ihr dreiphasiges Default-Profil. **`5af8b452d`:** Profile beginnen auf der Leitung 60 s in der Vergangenheit, das Ende bleibt gleich. Danach 18,5 min ununterbrochen dreiphasig geladen (11:38–11:57, 4,9–6,4 kW, Netz ≈ 0) – **dreiphasig beweist den Verdacht aber nicht**, dort ändert ein Rückfall auf das Default-Profil nichts. Offen: einphasig nachprüfen.
+  - Bei jedem Start simuliert die go-e ein Abstecken (`modelStatus` 22), 10–20 s.
+  - **Phasenwechsel im Feld:** bei 6,5–8,8 kW PV schaltete die Box auf drei Phasen; fiel die PV gleich danach unter 4,14 kW, blieb sie bis zu 5 min dreiphasig in Pause (Regel: mindestens 5 min zwischen zwei Umschaltungen, dreiphasig unter dem Minimum heißt Pause).
+  - Eine **Verzögerung des Pausierens** bei „Nur Sonne“ (erst nach z. B. 2 min unter dem Minimum) ist zurückgestellt; sie würde das Versprechen „Nur Sonnenstrom“ aufweichen. Erst neu entscheiden, wenn einphasige Mitschriften ohne die go-e-Unterbrechungen noch häufige Stopps zeigen.
 - **Noch offen:**
-  1. Neue Fassung mit der späten Paarung auf den Mango spielen und einen Ladetest mit `edge-light/test/ocpp-mitschrift.js` aufzeichnen.
-  2. Feldtest mit mehr Sonne: dreiphasig ab 4,1 kW, 60 s Wartezeit, mindestens 5 min zwischen zwei Umschaltungen. Steigender Überschuss wirkt erst nach einer Minute (Minimum der letzten 60 s), fallender sofort.
-  3. go-e-Einrichtung: `mca` prüfen bzw. warnen, wenn größer als 6 A.
-  4. Anzeige: das Portal zeigte die Wallbox nach einem Stopp noch mit 1,6 kW („Messwerte passen nicht zusammen“), die Box zeigt „lädt“ bei `SuspendedEVSE` mit 0 kW.
+  1. Einphasigen Ladetest (Überschuss 1,4–3,7 kW) mit `edge-light/test/ocpp-mitschrift.js` aufzeichnen: meldet die go-e noch „PhaseSwitch“? Wenn ja: `psm=1` testen (fest einphasig, dreiphasig dann aus).
+  2. go-e-Einrichtung: `mca` prüfen bzw. warnen, wenn größer als 6 A.
+  3. Anzeige: das Portal zeigte die Wallbox nach einem Stopp noch mit 1,6 kW („Messwerte passen nicht zusammen“), die Box zeigt „lädt“ bei `SuspendedEVSE` mit 0 kW.
+  4. Der Simulator (`ocppsim`) prüft nur das Ende eines Profils, keinen Beginn in der Zukunft – das go-e-Verhalten bildet er nicht ab.
 - **Bekannt:**
   - Die go-e beantwortet die Rückfrage nach dem Ladeplan (`GetCompositeSchedule`) nicht; die Rücklesung bleibt „unbekannt“, die Wirkung zeigt die gemessene Leistung.
   - Die Statuszeile „Überschuss“ der Box nennt den Standort-Standard, nicht die Quelle des Ladepunkts; gerechnet wird richtig.
