@@ -9,6 +9,7 @@ import type {
   ProtokollEintrag,
   ProtokollUrheber,
 } from '../api';
+import type { MessstelleAbgleich } from '../mispelAbgleich';
 import { KOMPONENTE_IDS } from './messstelleDialogFixtures';
 import { FIXTURE_IDS } from './standorteFixtures';
 
@@ -376,6 +377,21 @@ export function ohneProzesse(m: Messstelle): MessstelleProzesse {
 
 export function ohneVerteilung(m: Messstelle): MessstelleVerteilung {
   return { messstelle_id: m.id, kennzeichen: m.kennzeichen, am: null, zustand: null, anteile: [] };
+}
+
+/**
+ * `GET …/messstellen/{id}/msb-abgleich` einer Messstelle OHNE Zählerrolle (MiSpeL MP-15, #1346): so antwortet
+ * `MsbAbgleichService.messstelle` — keine Rolle, keine Monate, keine Importe, die Schwellen der Vorgabe (2 / 5 %).
+ * Die Abgleich-Karte erscheint dann nicht; die UEMS-Bühnen sehen die Messstellen-Seite wie vor MiSpeL.
+ */
+export function ohneZaehlerrolle(m: Messstelle): MessstelleAbgleich {
+  const r = m.hauptgroesse?.richtung;
+  const richtung = r === 'Bezug' || r === 'Laden' ? 'bezug' : r === 'Abgabe' || r === 'Entladen' || r === 'Erzeugung' ? 'abgabe' : null;
+  return {
+    messstelleId: m.id, messstelle: m.kennzeichen, rolle: null, festlegungsgroesse: null, richtung,
+    zaehlpunkt: null, messstellenbetreiber: null, wertequelle: null, anlage: null,
+    monate: [], importe: [], schwellen: { gruenBisProzent: 2, gelbBisProzent: 5 },
+  };
 }
 
 /** Das Protokoll von MS-10 in der Bühne: leer — die Werte-Bühne braucht es nicht. */
