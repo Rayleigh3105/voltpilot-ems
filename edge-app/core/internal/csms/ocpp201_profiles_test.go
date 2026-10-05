@@ -118,12 +118,14 @@ func TestOCPP201ProfilesSetChangeAndClear(t *testing.T) {
 		t.Fatalf("without a live profile the vehicle draws %.3f kW, want the TxDefault 4.2", got)
 	}
 
-	// SET: the live allocation, bound to the station's transactionId.
+	// SET: the live allocation, bound to the station's transactionId. On the
+	// wire it starts one minute in the past and runs that much longer, so it
+	// still ends where the box's fuse says (toProfile201, #1395).
 	if err := s.ApplyLimit(ctx5(t), id, 1, tx, 7); err != nil {
 		t.Fatalf("apply over 2.0.1: %v", err)
 	}
 	live, ok := profileOf(st, csms.TxProfileID(1))
-	if !ok || live.Purpose != ocppsim.PurposeTx || live.ConnectorD != 1 || live.LimitW != 7000 || live.Duration != csms.TxProfileDuration {
+	if !ok || live.Purpose != ocppsim.PurposeTx || live.ConnectorD != 1 || live.LimitW != 7000 || live.Duration != csms.TxProfileDuration+time.Minute {
 		t.Fatalf("tx profile = %+v (%v)", live, ok)
 	}
 	if got := st.DrawKw(1); got != 7 {

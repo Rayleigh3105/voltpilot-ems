@@ -2,6 +2,7 @@ package csms
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lorenzodonini/ocpp-go/ws"
 )
@@ -55,5 +56,42 @@ func TestEvery16GuardKeyHasA201Variable(t *testing.T) {
 	}
 	if purpose201(PurposeMax) != "ChargingStationMaxProfile" || purpose201(PurposeTxDefault) != "TxDefaultProfile" {
 		t.Fatal("purpose mapping")
+	}
+}
+
+// The 2.0.1 twin of TestTheWireScheduleStartsInThePastAndEndsOnTime: toProfile201
+// carries the same lead as toOcppProfile - start profileStartLead in the past,
+// end where the builder said, a permanent profile stays permanent.
+func TestThe201WireScheduleStartsInThePastAndEndsOnTime(t *testing.T) {
+	s := &Server{chargers: map[string]*ChargerState{"A": {
+		Charger: Charger{ID: "A"},
+		Connectors: []Connector{{ID: 1, Session: &Session{TransactionID: 4711,
+			StationTransactionID: "st-4711"}}},
+	}}}
+	tr := &transport201{srv: s}
+	wire, err := tr.toProfile201("A", 1, TxProfile(1, 4711, 41, pt0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wire.TransactionID != "st-4711" || len(wire.ChargingSchedule) != 1 {
+		t.Fatalf("wire profile = %+v", wire)
+	}
+	sch := wire.ChargingSchedule[0]
+	if sch.StartSchedule == nil || !sch.StartSchedule.Time.Equal(pt0.Add(-profileStartLead)) {
+		t.Fatalf("the schedule must start %v before now: %+v", profileStartLead, sch.StartSchedule)
+	}
+	if sch.Duration == nil {
+		t.Fatal("the live profile must carry its duration")
+	}
+	end := sch.StartSchedule.Time.Add(time.Duration(*sch.Duration) * time.Second)
+	if !end.Equal(pt0.Add(TxProfileDuration)) {
+		t.Fatalf("the live limit ends at %v, want %v", end, pt0.Add(TxProfileDuration))
+	}
+	perm, err := tr.toProfile201("A", 0, MaxProfile(240, pt0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := perm.ChargingSchedule[0].Duration; d != nil {
+		t.Fatalf("a permanent profile stays permanent: %v", *d)
 	}
 }

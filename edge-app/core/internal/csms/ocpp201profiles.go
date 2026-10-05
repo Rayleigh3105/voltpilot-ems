@@ -189,9 +189,13 @@ func (t *transport201) toProfile201(id string, evseID int, p ChargingProfile) (*
 		unit = types.ChargingRateUnitAmperes
 	}
 	schedule := types.NewChargingSchedule(p.ID, unit, period)
-	schedule.StartSchedule = types.NewDateTime(p.StartsAt)
+	// ⚠ The same profileStartLead as toOcppProfile: on the wire the schedule
+	// starts that much in the PAST and runs that much longer, so it ends
+	// exactly where p says - a station whose clock lags ours never sees a
+	// refresh begin in its future and falls back to its default in between.
+	schedule.StartSchedule = types.NewDateTime(p.StartsAt.Add(-profileStartLead))
 	if p.Duration > 0 {
-		d := int(p.Duration / time.Second)
+		d := int((p.Duration + profileStartLead) / time.Second)
 		schedule.Duration = &d
 	}
 	out := types.NewChargingProfile(p.ID, p.StackLevel, purpose201(p.Purpose),

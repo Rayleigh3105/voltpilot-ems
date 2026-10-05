@@ -89,8 +89,9 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
 - Tx-Profile laufen spätestens nach 120 Sekunden ab; manuelle Ablaufzeit und
   Prüfschritt begrenzen diese Laufzeit zusätzlich auf OCPP-Sekundenauflösung. Danach
   gilt das hinterlegte Default-Profil. „Regelung abschalten“ ist kein RemoteStop.
-  Auf der Leitung beginnt jeder Zeitplan 60 s in der Vergangenheit und läuft um
-  ebenso viel länger; das Ende bleibt gleich. Eine Säule, deren Uhr nachgeht, sieht
+  Auf der Leitung beginnt jeder Zeitplan (1.6 und 2.0.1; der V2X-Sollwert der
+  2.1-Spur beginnt jetzt) 60 s in der Vergangenheit und läuft um ebenso viel
+  länger; das Ende bleibt gleich. Eine Säule, deren Uhr nachgeht, sieht
   eine Erneuerung so nie in ihrer Zukunft beginnen und fällt dazwischen nicht auf
   ihr dreiphasiges Default-Profil zurück.
 - Leistung, Energie und SoC haben getrennte Messuhren. Historische, zukünftige und
