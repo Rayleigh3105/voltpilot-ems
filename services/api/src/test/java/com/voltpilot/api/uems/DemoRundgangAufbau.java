@@ -215,14 +215,15 @@ class DemoRundgangAufbau {
      * Anlage zeigt „kein Netzanschluss".
      */
     private void netzanschluesse() throws Exception {
-        // anschluss_kva und vereinbart_kw aus der Referenzwelt (docs/contracts/v2/uems-referenzunternehmen.json,
-        // netzanschluesse NA-1/2/3): 630/550, 250/200, 160/120 — nichts erfinden. Die Kennzahl-Kacheln (Lastspitze)
-        // lesen die vereinbarte Leistung von hier.
-        netzanschluss(ST1, "NA-0001", "Haupteinspeisung Werk Ahrenberg", "51238401829", "Bayernwerk Netz GmbH",
+        // Kennzeichen NA-1/2/3, anschluss_kva und vereinbart_kw aus der Referenzwelt
+        // (docs/contracts/v2/uems-referenzunternehmen.json, netzanschluesse): 630/550, 250/200, 160/120 — nichts
+        // erfinden. Dasselbe Kennzeichen wie auf der laufenden Demo, damit der idempotente Lauf keinen zweiten
+        // Anschluss anlegt. Die Kennzahl-Kachel „Lastspitze" liest die vereinbarte Leistung von hier.
+        netzanschluss(ST1, "NA-1", "Hauptanschluss Halle 1", "47110000001", "Netzgesellschaft Ahrental (fiktiv)",
                 "630", "550", "2024-03-12", AN1, "550");
-        netzanschluss(ST1, "NA-0002", "Netzanschluss Halle 2", "51238401830", "Bayernwerk Netz GmbH",
+        netzanschluss(ST1, "NA-2", "Anschluss Halle 2", "47110000002", "Netzgesellschaft Ahrental (fiktiv)",
                 "250", "200", "2026-10-01", AN2, "200");
-        netzanschluss(ST2, "NA-0003", "Netzanschluss Werk Lindach", "51238401831", "LEW Verteilnetz GmbH",
+        netzanschluss(ST2, "NA-3", "Anschluss Lindach", "47110000003", "Netzgesellschaft Ahrental (fiktiv)",
                 "160", "120", "2026-10-15", AN3, "120");
     }
 
