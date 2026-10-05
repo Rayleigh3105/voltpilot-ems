@@ -78,6 +78,10 @@ behalten ihre jeweiligen Berechtigungen.
 - Tx-Profile laufen spätestens nach 120 Sekunden ab; manuelle Ablaufzeit und
   Prüfschritt begrenzen diese Laufzeit zusätzlich auf OCPP-Sekundenauflösung. Danach
   gilt das hinterlegte Default-Profil. „Regelung abschalten“ ist kein RemoteStop.
+  Auf der Leitung beginnt jeder Zeitplan 60 s in der Vergangenheit und läuft um
+  ebenso viel länger; das Ende bleibt gleich. Eine Säule, deren Uhr nachgeht, sieht
+  eine Erneuerung so nie in ihrer Zukunft beginnen und fällt dazwischen nicht auf
+  ihr dreiphasiges Default-Profil zurück.
 - Leistung, Energie und SoC haben getrennte Messuhren. Historische, zukünftige und
   zurücklaufende Samples aktualisieren die Live-Regelung nicht. Das Protokolljournal
   bewahrt ihre ursprünglichen Zeitstempel. Auch Komponenten-Telemetrie verwendet die
