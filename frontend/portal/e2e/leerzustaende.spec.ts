@@ -13,9 +13,11 @@ import { join } from 'node:path';
  * über Steuern (`nie`, geprüft an der ganzen Seite). Erst auf der vom Kunden
  * selbst geöffneten Steuerungsseite steht der eine sachliche Einstieg in den
  * vorhandenen Standort-Assistenten; Steuerart und Regeln bleiben erreichbar.
- * Die Steuerung mit drei Reitern (Geräte · Laden · Regeln) zeigt dort keine
- * Vorschlagskarte „Neu in Ihrer Anlage“ und kein „Gerät fehlt?“; ein Gerät
- * ohne Auftrag steht still mit dem Weg „Steuerart“, die Regeln über den Reiter.
+ * Die Steuerung mit drei Reitern (Geräte · Laden · Regeln) zeigt dort die
+ * Messen-Ansicht (SZ-1 A, Captain 04.10.2026): keine Plakette, keine
+ * Reihenfolge, keine Vorschlagskarte „Neu in Ihrer Anlage“, kein „Gerät
+ * fehlt?“; die gemessenen Geräte stehen als Liste, Antippen führt zur
+ * Steuerart, die Regeln über den Reiter.
  *
  * Mit `LEERZUSTAENDE_BILDER=<Ordner>` legt der Lauf je Fall das Bild der
  * Stelle, die ganze Seite und die Messung ab.
@@ -77,9 +79,11 @@ const FAELLE: Fall[] = [
     name: 'steuerung-halle2',
     query: 'bild=unternehmen&ansicht=steuerung-halle2',
     ziel: '.vp-main',
-    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Ladepunkt Parkplatz Halle 2', 'Ohne Auftrag.', 'Regeln'],
-    nie: ['Diese Anlage misst nur', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot', 'Neu in Ihrer Anlage', 'Was soll VoltPilot', 'Übernehmen', 'Gerät fehlt?'],
-    wege: ['Steuern & Optimieren einrichten', 'Steuerart', 'Regeln'],
+    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'VoltPilot misst hier.', 'Gemessene Geräte', 'Ladepunkt Parkplatz Halle 2',
+      'Antippen zeigt Messwerte und Steuerart des Geräts.', 'Regeln'],
+    nie: ['Diese Anlage misst nur', 'Werk Ahrenberg – Halle 1', 'aufnehmen', 'Wenn VoltPilot', 'Neu in Ihrer Anlage', 'Was soll VoltPilot', 'Übernehmen', 'Gerät fehlt?',
+      'Automatik', 'Wer bekommt Sonnenstrom zuerst?'],
+    wege: ['Steuern & Optimieren einrichten', 'Ladepunkt Parkplatz Halle 2', 'Regeln'],
     ohneGeld: true,
     preisSignal: true,
   },
@@ -87,8 +91,8 @@ const FAELLE: Fall[] = [
     name: 'steuerung-lindach',
     query: 'bild=unternehmen&ansicht=steuerung-lindach',
     ziel: '.vp-main',
-    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'Regeln'],
-    nie: ['Diese Anlage misst nur', 'Zum Steuern braucht sie', 'Gerät anbinden', 'Neu in Ihrer Anlage', 'Gerät fehlt?'],
+    sichtbar: ['Diese Anlage nimmt noch nicht an „Steuern & Optimieren“ teil.', 'VoltPilot misst hier.', 'Regeln'],
+    nie: ['Diese Anlage misst nur', 'Zum Steuern braucht sie', 'Gerät anbinden', 'Neu in Ihrer Anlage', 'Gerät fehlt?', 'Automatik', 'Wer bekommt Sonnenstrom zuerst?'],
     wege: ['Steuern & Optimieren einrichten', 'Regeln'],
     ohneGeld: true,
     preisSignal: true,

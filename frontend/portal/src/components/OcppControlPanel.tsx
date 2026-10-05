@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { LIVE_POLL_MS } from '../pollCadence';
 import { VpPicker } from './VpPicker';
-import { finiteInput, initialOcppControl, observedOcpp, ocppReadiness, withOcppLimit,
+import { finiteInput, initialOcppControl, minimumKw, observedOcpp, ocppReadiness, withOcppLimit, withPhaseSwitching,
   type OcppControlPolicy, type OcppControlView } from '../ocppControl';
 import './OcppControlPanel.css';
+
+const kwText = (kw: number) => `${kw.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW`;
 
 export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
   siteId: string; stationId: string; deviceId?: string; canEdit: boolean;
@@ -90,6 +92,16 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
         <p>Von der Elektrofachkraft bestätigte Verdrahtung eintragen. Die Spannung ist die obere Betriebsspannung zwischen Phase und Neutralleiter. Alle Säulen mit gemeinsamen Phasengrenzen müssen an derselben Box hängen. Die Strombudgets müssen für den Ladepark verfügbar sein und Reserven für andere Verbraucher bereits enthalten.</p>
         <p>Phasengrenzen lassen sich nur übernehmen, wenn alle Säulen verbunden und alle Stecker frei sind. Nach einer Ablehnung erneut speichern, sobald diese Bedingungen erfüllt sind.</p>
         {wiring && <p>Hinterlegt für Stecker {connector}: {wiring.voltage_v} V, Phase {wiring.phases.join(', ')}, höchstens {wiring.max_current_a} A.</p>}
+        {wiring && wiring.phases.length === 3 && <fieldset disabled={busy}>
+          <legend>Laden auf einer Phase</legend>
+          <p>Reicht die Leistung nicht für drei Phasen, lädt die Box das Auto auf einer Phase: ab {kwText(minimumKw(wiring, 1))} statt erst ab {kwText(minimumKw(wiring, 3))}. Umgeschaltet wird erst, wenn die neue Phasenzahl eine Minute lang gebraucht wird, und höchstens alle fünf Minuten. Fällt die Box aus, gilt wieder das dreiphasige Sicherheitsprofil der Säule. Bei „Sonne + Mindestleistung“ bleibt die gewählte Mindestleistung die Untergrenze.</p>
+          <p>{station?.phase_switch_supported === true ? 'Die Säule meldet, dass sie auf eine Phase umschalten kann.'
+            : station?.phase_switch_supported === false ? 'Die Säule meldet, dass sie nicht auf eine Phase umschalten kann. Die Box lädt sie weiter dreiphasig.'
+              : 'Die Säule hat noch nicht gemeldet, ob sie auf eine Phase umschalten kann. Bis dahin lädt die Box sie dreiphasig.'}</p>
+          <p>Gespeichert: {wiring.phase_switching ? 'erlaubt' : 'nicht erlaubt'}. Maßgeblich ist die Bestätigung der Box oben.</p>
+          <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => withPhaseSwitching(p, stationId, connectorId, !wiring.phase_switching))}>
+            {wiring.phase_switching ? 'Laden auf einer Phase abschalten' : 'Laden auf einer Phase erlauben'}</button></Recht>
+        </fieldset>}
         <fieldset disabled={busy}>
           <legend>Verdrahtung dieses Steckers</legend>
           <div className="vp-ocpp-control-inputs">
@@ -100,13 +112,15 @@ export function OcppControlPanel({ siteId, stationId, deviceId, canEdit }: {
           <div className="vp-ocpp-control-inputs">{circuits.map((value, index) => <label key={index}>Ladepark-Budget L{index + 1} in A<input inputMode="decimal" value={value} onChange={(e) => setCircuits(circuits.map((v, i) => i === index ? e.target.value : v))} /></label>)}</div>
           <Recht aktion="freigabe.erteilen"><button type="button" onClick={() => void save((p) => {
             if (!phases.length) throw new Error('Bitte die tatsächlich angeschlossenen Phasen wählen.');
+            // Ein erlaubtes Laden auf einer Phase bleibt erhalten, solange drei Phasen angeschlossen sind.
+            const keep = wiring?.phase_switching && phases.length === 3 ? { phase_switching: true } : {};
             return { ...p, phase_limits_a: circuits.map((v) => finiteInput(v, 0, 2000, 'Phasenbudget')),
               electrical: [...p.electrical.filter((e) => e.charge_point_id !== stationId || e.connector_id !== connectorId), {
                 charge_point_id: stationId, connector_id: connectorId, voltage_v: finiteInput(voltage, 100, 300, 'Spannung'),
-                max_current_a: finiteInput(current, 1, 2000, 'Stromgrenze'), phases,
+                max_current_a: finiteInput(current, 1, 2000, 'Stromgrenze'), phases, ...keep,
               }] };
           })}>Bestätigte Anschlussdaten speichern</button></Recht>
-          <p>Alle Stecker benötigen eine Zuordnung. Die Box reserviert je Phase feste Anteile auch für getrennte Säulen. Eine Phasenumschaltung wird dadurch nicht ausgelöst.</p>
+          <p>Alle Stecker benötigen eine Zuordnung. Die Box reserviert je Phase feste Anteile auch für getrennte Säulen. Laden auf einer Phase nutzt denselben Anteil einer dieser Phasen.</p>
         </fieldset>
       </details>}
       {bearbeitbar && <details>

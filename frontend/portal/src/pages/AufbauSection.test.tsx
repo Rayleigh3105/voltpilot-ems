@@ -1201,16 +1201,28 @@ describe('AufbauSection · die technische Sicht', () => {
 describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  // Eine an der Box komponierte Säule ohne eigene Quelle: seit #1381 gehört sie keinem Wechselrichter,
+  // sie hat ihre eigene Karte aus `/chargers` - dort steht die Fähigkeit im Kurzblick.
   const WALLBOX = {
     ...entities.entities.find((e) => e.id === 'fr1')!,
     id: 'wb1',
-    entityType: 'wallbox',
-    typeLabel: 'Wallbox',
+    entityType: 'ev-charger',
+    typeLabel: 'Ladepunkt',
     role: 'charging',
     label: 'Wallbox Garage',
     capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
     edgeSourceId: null,
   };
+
+  function saeule() {
+    vi.mocked(api.siteChargers).mockResolvedValue({
+      budget: null,
+      chargers: [{
+        deviceId: 'gw', chargePointId: 'CP-GARAGE', entityId: 'wb1', label: 'Wallbox Garage', priority: false,
+        connected: true, ready: true, connectors: [{ connectorId: 1, status: 'Available', charging: false, powerKw: null }],
+      }],
+    } as never);
+  }
 
   function ladepunkt(faehigkeit: Record<string, unknown>) {
     return {
@@ -1218,7 +1230,7 @@ describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () 
       am: '2026-11-15',
       ladepunkte: [
         {
-          anlage: site.id, komponente: 'wb1', name: 'Wallbox Garage', typ: 'wallbox', charge_point_id: null, am: '2026-11-15',
+          anlage: site.id, komponente: 'wb1', name: 'Wallbox Garage', typ: 'ev-charger', charge_point_id: 'CP-GARAGE', am: '2026-11-15',
           faehigkeit: { erfasst: true, nutzbarkeit: 'bidirektional', v2h: true, v2g: true,
             rueckspeisung_bei_einspeisung_unterbunden: false, rueckspeiseleistung_kw: 11, gueltig_ab: '2026-11-15',
             gueltig_bis: null, ...faehigkeit },
@@ -1232,6 +1244,7 @@ describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () 
   it('nennt die Fähigkeit im Kurzblick und öffnet den Dialog — nur am Ladepunkt', async () => {
     stub();
     vi.mocked(api.siteEntities).mockResolvedValue({ ...entities, entities: [...entities.entities, WALLBOX] } as never);
+    saeule();
     vi.spyOn(api, 'ladepunkte').mockResolvedValue(ladepunkt({}) as never);
     rendere();
     const dialog = await kurzblick(zeileMit('Wallbox Garage'));
@@ -1245,6 +1258,7 @@ describe('AufbauSection · Ladepunkt zurückspeisen (MiSpeL MP-41a, BK-41)', () 
   it('sagt „Nur laden“ für einen Ladepunkt ohne Rückspeisung — wie heute', async () => {
     stub();
     vi.mocked(api.siteEntities).mockResolvedValue({ ...entities, entities: [...entities.entities, WALLBOX] } as never);
+    saeule();
     vi.spyOn(api, 'ladepunkte').mockResolvedValue(
       ladepunkt({ erfasst: false, nutzbarkeit: 'unidirektional', v2h: false, v2g: false, rueckspeiseleistung_kw: null, gueltig_ab: null }) as never,
     );

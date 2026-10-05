@@ -166,13 +166,18 @@ describe('Steuerung · Kopf und Reiter', () => {
     expect(open).toHaveBeenCalledWith('regeln');
   });
 
-  it('pausiert die Automatik erst nach der Wahl einer Dauer', async () => {
+  it('hält erst an, wenn eine Dauer gewählt und „Anhalten“ bestätigt ist (SZ-2 A)', async () => {
     const pause = vi.spyOn(api, 'pauseAutomation').mockResolvedValue({ applied: true, pushed: true, kind: 'pause', endsAt: null, effectivePowerKw: null, ttlRenewed: false, message: '' });
     zeige();
     fireEvent.click(screen.getByRole('button', { name: /Automatik an/ }));
-    const blatt = await screen.findByRole('dialog', { name: /Automatik pausieren/ });
-    expect(pause).not.toHaveBeenCalled();
+    const blatt = await screen.findByRole('dialog', { name: /Steuerung anhalten/ });
+    expect(within(blatt).getByRole('button', { name: /Anhalten/ })).toBeDisabled();
+    // Ohne Antwort von `/funktionen` gibt es nur die Dauern, kein „Bis ich fortsetze“.
+    expect(within(blatt).queryByRole('button', { name: /Bis ich fortsetze/ })).not.toBeInTheDocument();
     fireEvent.click(within(blatt).getByRole('button', { name: '1 Std' }));
+    expect(within(blatt).getByRole('button', { name: '1 Std' })).toHaveAttribute('aria-pressed', 'true');
+    expect(pause).not.toHaveBeenCalled();
+    fireEvent.click(within(blatt).getByRole('button', { name: /Anhalten/ }));
     await waitFor(() => expect(pause).toHaveBeenCalledWith('s-1', { durationMinutes: 60 }));
   });
 });
@@ -244,6 +249,21 @@ describe('Steuerung · Reiter Geräte', () => {
     fireEvent.click(within(blatt).getByRole('button', { name: /^Ein bis/ }));
     await waitFor(() => expect(cStartOverride).toHaveBeenCalledWith('s-1', 'e-hs', { action: 'start', durationMinutes: 120 }));
     fireEvent.keyDown(blatt, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(knopf));
+  });
+
+  it('Safari: der angetippte Knopf bekommt keinen Fokus - nach Escape kehrt der Fokus trotzdem zu ihm zurück', async () => {
+    // jsdom fokussiert beim Klick so wenig wie Safari/WebKit; den Auslöser muss der Öffner selbst fokussieren
+    // (Gesamtlauf 04./05.10.2026, steuerung.spec.ts in mobile-webkit).
+    zeige();
+    const knopf = await screen.findByRole('button', { name: /Heizstab Warmwasser/ });
+    expect(document.activeElement).not.toBe(knopf);
+    fireEvent.click(knopf);
+    const blatt = await screen.findByRole('dialog', { name: /Heizstab Warmwasser/ });
+    fireEvent.click(within(blatt).getByRole('button', { name: 'Ein' }));
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(document.activeElement).toBe(knopf));
   });
@@ -416,8 +436,8 @@ describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
     expect(await screen.findByText('Angehalten seit 03.11.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Automatik an/ })).not.toBeInTheDocument();
     const band = screen.getByTestId('steuern-ruhe');
-    expect(band).toHaveTextContent('Angehalten seit 03.11.2026 14:10.');
-    expect(band).toHaveTextContent('Regeln und das Betriebsmodell des Speichers wirken nicht');
+    expect(band).toHaveTextContent('Steuerung angehalten seit 03.11.2026 14:10.');
+    expect(band).toHaveTextContent('Regeln und das Betriebsmodell des Speichers wirken nicht, bis Sie fortsetzen.');
     expect(screen.getByTestId('ruhe-verbindung-hinweis')).toHaveTextContent(RUHE_VERBINDUNG_HINWEIS);
 
     fireEvent.click(await screen.findByRole('button', { name: /Heizstab Warmwasser/ }));
@@ -446,20 +466,150 @@ describe('Steuerung · Steuern & Optimieren (UEMS)', () => {
     expect(boost).not.toHaveBeenCalled();
   });
 
-  it('nimmt nicht teil: Einstieg mit Recht, keine Vorschlagskarte, kein „Gerät fehlt?“, die Steuerart bleibt erreichbar', async () => {
+  it('SZ-1 A · nimmt nicht teil: Messen-Ansicht - Einstieg, nur Gemessenes, Geräte-Liste mit Weg zur Steuerart', async () => {
     vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({}, 1));
     zeige();
     const einstieg = await screen.findByTestId('steuern-einstieg');
     expect(einstieg).toHaveTextContent(STEUERN_EINSTIEG_SATZ);
+    expect(einstieg).toHaveTextContent('VoltPilot misst hier. Steuern richten Sie für den Standort ein.');
     expect(within(einstieg).getByRole('button', { name: 'Steuern & Optimieren einrichten' })).toBeInTheDocument();
     expect(screen.queryByTestId('steuern-ruhe')).not.toBeInTheDocument();
-    await screen.findByRole('button', { name: /Heizstab Warmwasser/ });
+    const liste = await screen.findByRole('region', { name: 'Gemessene Geräte' });
+    await waitFor(() => expect(within(liste).getByRole('button', { name: /Heizstab Warmwasser/ })).toHaveTextContent('3,0 kW'));
+    // Keine Plakette, keine Reihenfolge, kein Plan, keine Vorschläge, kein „Gerät fehlt?“.
+    expect(document.querySelector('.stn-kopf .auto')).toBeNull();
+    expect(document.querySelectorAll('.stn-reiter .n')).toHaveLength(0);
+    expect(screen.queryByText(/Automatik/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Geräte und Reihenfolge' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Wer bekommt Sonnenstrom zuerst?')).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /Neu in Ihrer Anlage/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Gerät fehlt\?/)).not.toBeInTheDocument();
-    const zeile = document.getElementById('offen-e-spuel')!;
-    expect(zeile).toHaveTextContent('Ohne Auftrag.');
-    fireEvent.click(within(zeile).getByRole('button', { name: 'Steuerart' }));
-    expect(await screen.findByRole('dialog', { name: /Spülmaschine steuern/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Plan/)).not.toBeInTheDocument();
+    const jetzt = screen.getByRole('region', { name: 'Jetzt' });
+    expect(jetzt).toHaveTextContent('gemessen');
+    expect(jetzt).toHaveTextContent('Die Anlage speist 0,4 kW ins Netz ein, die PV liefert 8,0 kW.');
+    expect(jetzt).toHaveTextContent('Größter Verbraucher gerade: Heizstab Warmwasser 3,0 kW.');
+    expect(within(liste).getAllByRole('button').map((b) => b.querySelector('.d-name b')?.textContent)).toEqual(
+      ['Speicher Scheune', 'Heizstab Warmwasser', 'Poolpumpe', 'Infrarotheizung', 'Spülmaschine', 'Lüftung', 'Wallbox Werkstatt'],
+    );
+    expect(liste).toHaveTextContent('Antippen zeigt Messwerte und Steuerart des Geräts. Regeln stehen im Reiter Regeln.');
+    // Der Weg zur Steuerart: Antippen öffnet das Geräte-Blatt.
+    fireEvent.click(within(liste).getByRole('button', { name: /Spülmaschine/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Spülmaschine/ });
+    expect(blatt).toHaveTextContent('Smart heißt hier');
+  });
+
+  it('SZ-2 A · aktiv: „Bis ich fortsetze“ im selben Blatt; erst „Anhalten“ hält über die Funktion an', async () => {
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({
+      zustand: 'aktiv', aktionen: ['anhalten', 'beenden'], ruhe_hinweis: { jetzt: false, beim_anhalten: true },
+    }));
+    const steuern = vi.spyOn(api, 'funktionSteuern').mockResolvedValue({} as never);
+    const pause = vi.spyOn(api, 'pauseAutomation');
+    zeige();
+    await waitFor(() => expect(api.funktionen).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Automatik an/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Steuerung anhalten/ });
+    expect(within(blatt).getAllByRole('button').map((b) => b.textContent)).toEqual(expect.arrayContaining(['30 Min', '1 Std', '2 Std', '4 Std']));
+    const offen = await within(blatt).findByRole('button', { name: /Bis ich fortsetze/ });
+    expect(offen).toHaveTextContent('die Anlage bleibt ohne Enddatum angehalten, bis jemand fortsetzt');
+    expect(within(blatt).queryByText(RUHE_VERBINDUNG_HINWEIS)).not.toBeInTheDocument();
+    fireEvent.click(offen);
+    expect(offen).toHaveAttribute('aria-pressed', 'true');
+    // Eine ältere Box hält die Ruhe nur verbunden (#986) - das Blatt sagt es vor dem Anhalten.
+    expect(within(blatt).getByText(RUHE_VERBINDUNG_HINWEIS)).toBeInTheDocument();
+    expect(steuern).not.toHaveBeenCalled();
+    fireEvent.click(within(blatt).getByRole('button', { name: /Anhalten/ }));
+    await waitFor(() => expect(steuern).toHaveBeenCalledWith('s-1', 'anhalten'));
+    expect(pause).not.toHaveBeenCalled();
+  });
+
+  it('SZ-2 A · ohne das Recht zum Anhalten ist „Bis ich fortsetze“ nicht wählbar, mit Grund; die Dauern bleiben', async () => {
+    const me = structuredClone(rechteSeed().me);
+    me.unternehmen_rechte = me.unternehmen_rechte.filter((r) => r !== 'steuerung.anhalten_fortsetzen');
+    me.standorte = me.standorte.map((x) => ({ ...x, rechte: x.rechte.filter((r) => r !== 'steuerung.anhalten_fortsetzen') }));
+    setSelbstauskunft(me);
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({ zustand: 'aktiv', aktionen: ['anhalten', 'beenden'] }));
+    zeige();
+    await waitFor(() => expect(api.funktionen).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Automatik an/ }));
+    const blatt = await screen.findByRole('dialog', { name: /Steuerung anhalten/ });
+    expect(await within(blatt).findByRole('button', { name: /Bis ich fortsetze/ })).toBeDisabled();
+    expect(within(blatt).getByRole('note')).toHaveTextContent('Dafür fehlt Ihnen das Recht.');
+    expect(within(blatt).getByRole('button', { name: '1 Std' })).toBeEnabled();
+  });
+
+  it('SZ-2 A · angehalten: Geräte, Laden und Regeln abgedimmt mit Grund, keine Reihenfolge zum Ändern; Fortsetzen im Band mit Bestätigung', async () => {
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({
+      zustand: 'angehalten', seit: '2026-11-03T14:10:00+01:00', aktionen: ['fortsetzen', 'beenden'],
+    }));
+    const steuern = vi.spyOn(api, 'funktionSteuern').mockResolvedValue({} as never);
+    zeige();
+    const band = await screen.findByTestId('steuern-ruhe');
+    const liste = await screen.findByRole('region', { name: 'Geräte und Reihenfolge' });
+    const heizstab = await within(liste).findByRole('button', { name: /Heizstab Warmwasser/ });
+    expect(heizstab).toHaveClass('matt');
+    expect(heizstab).toHaveTextContent('VoltPilot schaltet nicht · sicherer Zustand');
+    expect(heizstab).toHaveTextContent('angehalten');
+    expect(within(liste).getByRole('button', { name: /Speicher Scheune/ })).toHaveTextContent('wirkt nicht — angehalten seit 03.11.2026 14:10');
+    expect(within(liste).queryByRole('button', { name: /Ändern/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Jetzt' })).toHaveTextContent('VoltPilot steuert gerade nicht.');
+    expect(document.querySelectorAll('.stn-reiter .n')).toHaveLength(0);
+    fireEvent.click(within(band).getByRole('button', { name: 'Fortsetzen' }));
+    const blatt = await screen.findByRole('dialog', { name: /Steuerung fortsetzen/ });
+    expect(blatt).toHaveTextContent('VoltPilot prüft Box, Freigaben, Grenze, Hauptzähler und Betriebsweise erneut.');
+    expect(steuern).not.toHaveBeenCalled();
+    fireEvent.click(within(blatt).getByRole('button', { name: /Fortsetzen/ }));
+    await waitFor(() => expect(steuern).toHaveBeenCalledWith('s-1', 'fortsetzen'));
+  });
+
+  it('SZ-2 A · angehalten: eine eingeschaltete Regel „wirkt nicht“, die Ladekarte steht abgedimmt', async () => {
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({
+      zustand: 'angehalten', seit: '2026-11-03T14:10:00+01:00', aktionen: ['fortsetzen', 'beenden'],
+    }));
+    const { unmount } = render(<SteuerungSection site={site} reiter="regeln" tabs={TABS} onOpenSub={vi.fn()} />);
+    await screen.findByTestId('steuern-ruhe');
+    const regel = await waitFor(() => document.getElementById('regel-f-1')!);
+    await waitFor(() => expect(regel).toHaveTextContent('wirkt nicht'));
+    expect(regel).toHaveTextContent('bis Sie fortsetzen');
+    expect(regel).toHaveClass('matt');
+    unmount();
+    zeige('laden');
+    await screen.findByTestId('steuern-ruhe');
+    expect(await screen.findByRole('region', { name: 'Wallbox Werkstatt' })).toHaveClass('matt');
+  });
+
+  it('SZ-2 A · befristet pausiert: die Plakette sagt „Pausiert bis …“, das Band setzt fort', async () => {
+    // Fester Mittag statt der echten Uhr: nach 23 Uhr endete die Pause erst morgen
+    // („Pausiert bis morgen 00:00“) - Gesamtlauf 04.10.2026. Nur Date, die Timer bleiben echt.
+    vi.setSystemTime(new Date(2026, 9, 14, 12, 0));
+    try {
+      vi.spyOn(api, 'siteInterventions').mockResolvedValue({ automationPaused: true, pausedUntil: new Date(Date.now() + 3_600_000).toISOString(), interventions: [] });
+      const weiter = vi.spyOn(api, 'resumeAutomation').mockResolvedValue({} as never);
+      zeige();
+      expect(await screen.findByRole('button', { name: /^Pausiert bis \d{2}:\d{2}$/ })).toBeEnabled();
+      const band = screen.getByText(/^Automatik pausiert bis/).closest('.stn-band') as HTMLElement;
+      fireEvent.click(within(band).getByRole('button', { name: 'Fortsetzen' }));
+      await waitFor(() => expect(weiter).toHaveBeenCalledWith('s-1'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Bestandsschutz: steuernd und nicht angehalten - die Seite ist dieselbe wie ohne „Steuern & Optimieren“', async () => {
+    const bild = async () => {
+      const { container, unmount } = render(<SteuerungSection site={site} reiter="steuerung" tabs={TABS} onOpenSub={vi.fn()} />);
+      await screen.findByRole('button', { name: /Heizstab Warmwasser/ });
+      await waitFor(() => expect(api.funktionen).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 30));
+      const html = (container.querySelector('.stn') as HTMLElement).innerHTML.replace(/\d{2}:\d{2}/g, 'HH:MM');
+      unmount();
+      return html;
+    };
+    const ohne = await bild();
+    vi.spyOn(api, 'funktionen').mockResolvedValue(funktionenMit({ zustand: 'aktiv', aktionen: ['anhalten', 'beenden'] }));
+    const aktiv = await bild();
+    expect(aktiv).toBe(ohne);
+    expect(aktiv).toContain('Automatik an');
   });
 
   it('angehalten und ohne Recht: der Ruhe-Grund steht für alle, die Knöpfe folgen dem Recht', async () => {

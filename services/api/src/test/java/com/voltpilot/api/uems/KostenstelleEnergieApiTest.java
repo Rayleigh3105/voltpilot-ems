@@ -629,50 +629,57 @@ class KostenstelleEnergieApiTest {
     void dasSetzenWarntUndLehntNichtAb() throws Exception {
         Welt w = spritzguss("Werk Ahrenberg – Spritzguss (Setzen)", true);
         UUID k4100 = w.kostenstellen().get("4100");
-        String vorher = roh(w, k4100, "periode=tag&am=2026-10-16");
+        // Die Sicht stempelt berechnet_am mit ihrer Uhr: zwei Abrufe über eine Sekundengrenze wären sonst
+        // ungleich, ohne dass sich eine Zahl bewegt (Gesamtlauf 04.10.2026) — wie in dieZahlenSindZeichengleich.
+        kostenstellenSicht.uhrStellen(Clock.fixed(Instant.parse("2026-10-31T23:15:00Z"), ZoneId.of("UTC")));
+        try {
+            String vorher = roh(w, k4100, "periode=tag&am=2026-10-16");
 
-        JsonNode ms06 = setzen(w, null, "MS-06", Map.of("4100", "100"));
-        assertThat(ms06.path("anteile")).hasSize(1);
-        assertThat(ms06.path("doppelzaehlung")).hasSize(1);
-        JsonNode an4100 = ms06.path("doppelzaehlung").get(0);
-        assertThat(an4100.path("kostenstelle").path("id").asText()).isEqualTo(k4100.toString());
-        assertThat(an4100.path("kostenstelle").path("kennzeichen").asText()).isEqualTo("4100");
-        assertThat(an4100.path("am").asText()).isEqualTo("2026-10-01");
-        assertThat(an4100.path("enthalten").toString()).isEqualTo("[{\"teil\":\"MS-06\",\"summe\":\"MS-20\","
-                + "\"umfang\":\"ganz\",\"kette\":[\"MS-20\",\"MS-06\"],\"zeitraeume\":[{\"von\":\"2026-10-01\","
-                + "\"bis\":\"2026-10-01\"}],\"satz\":\"MS-06 ist bereits in MS-20 enthalten\"}]");
-        assertThat(an4100.path("nicht_pruefbar")).isEmpty();
+            JsonNode ms06 = setzen(w, null, "MS-06", Map.of("4100", "100"));
+            assertThat(ms06.path("anteile")).hasSize(1);
+            assertThat(ms06.path("doppelzaehlung")).hasSize(1);
+            JsonNode an4100 = ms06.path("doppelzaehlung").get(0);
+            assertThat(an4100.path("kostenstelle").path("id").asText()).isEqualTo(k4100.toString());
+            assertThat(an4100.path("kostenstelle").path("kennzeichen").asText()).isEqualTo("4100");
+            assertThat(an4100.path("am").asText()).isEqualTo("2026-10-01");
+            assertThat(an4100.path("enthalten").toString()).isEqualTo("[{\"teil\":\"MS-06\",\"summe\":\"MS-20\","
+                    + "\"umfang\":\"ganz\",\"kette\":[\"MS-20\",\"MS-06\"],\"zeitraeume\":[{\"von\":\"2026-10-01\","
+                    + "\"bis\":\"2026-10-01\"}],\"satz\":\"MS-06 ist bereits in MS-20 enthalten\"}]");
+            assertThat(an4100.path("nicht_pruefbar")).isEmpty();
 
-        JsonNode ms07 = setzen(w, null, "MS-07", Map.of("4100", "70", "4200", "30"));
-        assertThat(hinweise(ms07)).as("anteilig: nur an 4100, dort ganz").containsExactly("4100: MS-07 ist bereits in MS-20 enthalten");
-        assertThat(hinweise(setzen(w, null, "MS-20", Map.of("4100", "100")))).as("die Summe nennt jeden Teil")
-                .containsExactly("4100: MS-06 ist bereits in MS-20 enthalten", "4100: MS-07 ist bereits in MS-20 enthalten",
-                        "4100: MS-11 ist bereits in MS-20 enthalten");
-        assertThat(setzen(w, null, "MS-08", Map.of("4100", "100")).path("doppelzaehlung").toString())
-                .as("ohne Summe: leer, nicht weggelassen").isEqualTo("[]");
+            JsonNode ms07 = setzen(w, null, "MS-07", Map.of("4100", "70", "4200", "30"));
+            assertThat(hinweise(ms07)).as("anteilig: nur an 4100, dort ganz").containsExactly("4100: MS-07 ist bereits in MS-20 enthalten");
+            assertThat(hinweise(setzen(w, null, "MS-20", Map.of("4100", "100")))).as("die Summe nennt jeden Teil")
+                    .containsExactly("4100: MS-06 ist bereits in MS-20 enthalten", "4100: MS-07 ist bereits in MS-20 enthalten",
+                            "4100: MS-11 ist bereits in MS-20 enthalten");
+            assertThat(setzen(w, null, "MS-08", Map.of("4100", "100")).path("doppelzaehlung").toString())
+                    .as("ohne Summe: leer, nicht weggelassen").isEqualTo("[]");
 
-        MvcResult lesen = mvc.perform(get("/api/v1/messstellen/" + w.messstellen().get("MS-06") + "/verteilung")
-                .with(jwt().jwt(j -> {
-                    j.subject("sub-" + w.mandant());
-                    j.claim("tenant_id", w.mandant().toString());
-                }))).andReturn();
-        assertThat(MAPPER.readTree(lesen.getResponse().getContentAsString(StandardCharsets.UTF_8)).has("doppelzaehlung"))
-                .as("GET bleibt, wie es war").isFalse();
-        assertThat(roh(w, k4100, "periode=tag&am=2026-10-16")).as("die Warnung ändert keine Zahl").isEqualTo(vorher);
+            MvcResult lesen = mvc.perform(get("/api/v1/messstellen/" + w.messstellen().get("MS-06") + "/verteilung")
+                    .with(jwt().jwt(j -> {
+                        j.subject("sub-" + w.mandant());
+                        j.claim("tenant_id", w.mandant().toString());
+                    }))).andReturn();
+            assertThat(MAPPER.readTree(lesen.getResponse().getContentAsString(StandardCharsets.UTF_8)).has("doppelzaehlung"))
+                    .as("GET bleibt, wie es war").isFalse();
+            assertThat(roh(w, k4100, "periode=tag&am=2026-10-16")).as("die Warnung ändert keine Zahl").isEqualTo(vorher);
 
-        UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
-                + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
-                w.mandant(), w.unternehmen());
-        for (UUID ms : w.messstellen().values()) {
-            root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
-                    + "'2024-01-01')", w.mandant(), ms, standort);
+            UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                    + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                    w.mandant(), w.unternehmen());
+            for (UUID ms : w.messstellen().values()) {
+                root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                        + "'2024-01-01')", w.mandant(), ms, standort);
+            }
+            String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
+            String hier = zuweisung(w, "sub-hier-", "bearbeiter", standort);
+            assertThat(hinweise(setzen(w, ka, "MS-06", Map.of("4100", "100"))))
+                    .containsExactly("4100: MS-06 ist bereits in MS-20 enthalten");
+            assertThat(setzen(w, hier, "MS-06", Map.of("4100", "100")).path("doppelzaehlung").toString())
+                    .as("Bearbeiter am Standort: verteilen ja, die Sicht der Kostenstelle nein").isEqualTo("[]");
+        } finally {
+            kostenstellenSicht.uhrStellen(Clock.systemUTC());
         }
-        String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
-        String hier = zuweisung(w, "sub-hier-", "bearbeiter", standort);
-        assertThat(hinweise(setzen(w, ka, "MS-06", Map.of("4100", "100"))))
-                .containsExactly("4100: MS-06 ist bereits in MS-20 enthalten");
-        assertThat(setzen(w, hier, "MS-06", Map.of("4100", "100")).path("doppelzaehlung").toString())
-                .as("Bearbeiter am Standort: verteilen ja, die Sicht der Kostenstelle nein").isEqualTo("[]");
     }
 
     /** {@code PUT …/verteilung} ab dem 01.10.2026 ({@code sub} {@code null} = ohne Zugriff-Kontext); erwartet 200. */

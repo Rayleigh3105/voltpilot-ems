@@ -105,6 +105,10 @@ test.describe('Cockpit-Karte', () => {
 
 test.describe('Meine Anlagen', () => {
   test('Kachel mit Grund und Monat, „1 von 2 Anlagen", Kurzwort, datierter Ladestand', async ({ page }) => {
+    // Zeile und datierter Ladestand gehören der TABELLE: am Telefon zeigt die Liste Karten (useIsPhone,
+    // max-width), und die Karte lässt einen alten Ladestand bewusst weg. Darum fest am Rechner - sonst ist
+    // der Fall in den Telefon-Projekten immer rot (Gesamtlauf 04./05.10.2026).
+    await page.setViewportSize({ width: 1440, height: 900 });
     await oeffne(page, 'herzogau-2409', 'portfolio');
     const kachel = page.locator('.vp-leiste-zelle.is-lead');
     await expect(kachel.locator('.vp-leiste-einordnung')).toHaveText(

@@ -81,7 +81,7 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
       <section className="card" aria-label="Netzanschluss">
         <div className="card-h">
           <h2><Ic n="gauge" s={18} />Netzanschluss</h2>
-          <button type="button" className="tbtn" onClick={() => oeffne({ art: 'rahmen' })}><Ic n="sliders" s={16} />Rahmen</button>
+          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
         </div>
         <p className="leise">Die Grenze Ihres Netzanschlusses ist noch nicht hinterlegt. Ohne sie verteilt die Box nur, was sie sicher weiß.</p>
       </section>
@@ -91,7 +91,7 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
     <section className="card" aria-label="Netzanschluss">
       <div className="card-h">
         <h2><Ic n="gauge" s={18} />Netzanschluss {fKw(b.anschlussKw)}</h2>
-        <button type="button" className="tbtn" onClick={() => oeffne({ art: 'rahmen' })}><Ic n="sliders" s={16} />Rahmen</button>
+        <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
       </div>
       <div className="budget">
         <div className="b-bar" role="img" aria-label="Aufteilung des Netzanschlusses">
@@ -170,7 +170,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
   const ticks: number[] = [];
   for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
   return (
-    <section className="card lp-card" aria-label={g.name}>
+    <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
       <div className="lp-h">
         <span className={`ico${an ? ' on' : ''}`}><Ic n="car" s={26} /></span>
         <span className="t">
@@ -190,8 +190,9 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
             data-m={k}
             aria-pressed={wahl === k}
             disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
-            onClick={() => {
+            onClick={(e) => {
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
+              e.currentTarget.focus();
               oeffne({ art: 'geraet', id: g.id, modus: k === 'aus' ? 'aus' : 'an' });
             }}
           >
@@ -228,7 +229,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
           </div>}
           {abfahrtStatt && m && <AbfahrtZeile g={g} m={m} oeffne={oeffne} nowMs={r.nowMs} />}
           {!abfahrtStatt && zielMoeglich && (
-            <button type="button" className="lziel" onClick={() => oeffne({ art: 'ziel', id: g.id })}>
+            <button type="button" className="lziel" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ziel', id: g.id }); }}>
               <Ic n="flag" s={20} />
               <span>
                 <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel · lädt, wenn es passt'}</b>
@@ -295,7 +296,7 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild, mispel = false }: { fahrzeuge:
       {zeilen.length ? (
         <div className="fz">
           {zeilen.map((z) => (
-            <button type="button" key={z.key} className="fz-r" style={{ border: 0, background: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={() => oeffne({ art: 'fahrzeug', tagRef: z.tagRef })}>
+            <button type="button" key={z.key} className="fz-r" style={{ border: 0, background: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'fahrzeug', tagRef: z.tagRef }); }}>
               <span className="li"><Ic n={z.benannt ? 'car' : 'help'} s={19} /></span>
               <span>
                 <b>{z.name}</b>
@@ -392,7 +393,7 @@ function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
         {m.fahrzeug === 'kein_auto' && <p className="leise">Ob ein Auto zurückspeisen kann, prüft die Wallbox beim Anstecken.</p>}
       </div>
       {(m.fahrzeug === 'kein_auto' || m.fahrzeug === 'ohne_ladestand') && (
-        <button type="button" className="lziel" data-zeile="abfahrt-reserve" onClick={() => oeffne({ art: 'abfahrt', id: g.id })}>
+        <button type="button" className="lziel" data-zeile="abfahrt-reserve" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'abfahrt', id: g.id }); }}>
           <Ic n="shield" s={20} />
           <span>
             <b>{f.reserve_pct != null ? `Abfahrt und Reserve · Reserve ${pctKm(f.reserve_pct, km)}` : 'Abfahrt und Reserve festlegen'}</b>
@@ -409,7 +410,7 @@ function WallboxTeil({ g, m, busy, oeffne, onFahrer, nowMs }: {
 function AbfahrtZeile({ g, m, oeffne, nowMs }: { g: GeraetBild; m: WallboxMispel; oeffne: (b: BlattZustand) => void; nowMs: number }) {
   const z = abfahrtZeile(m.fahrer, nowMs);
   return (
-    <button type="button" className="lziel" data-zeile="abfahrt" onClick={() => oeffne({ art: 'abfahrt', id: g.id })}>
+    <button type="button" className="lziel" data-zeile="abfahrt" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'abfahrt', id: g.id }); }}>
       <Ic n="flag" s={20} />
       <span>
         <b>{z.titel}</b>

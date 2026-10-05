@@ -96,11 +96,17 @@ type station struct {
 	// refuseProfiles makes every SetChargingProfile answer Rejected.
 	refuseProfiles bool
 	// refuseComposite makes GetCompositeSchedule answer Rejected.
-	refuseComposite            bool
-	now                        func() time.Time
-	setCalls                   int
-	changed                    []string
-	rejectFullConfiguration    bool
+	refuseComposite         bool
+	now                     func() time.Time
+	setCalls                int
+	changed                 []string
+	rejectFullConfiguration bool
+	// notSupported answers ChangeConfiguration with NotSupported for these
+	// keys and stores nothing (a station that does not have the feature).
+	notSupported map[string]bool
+	// readOnly answers ChangeConfiguration with Rejected for these keys and
+	// keeps the stored value (a read-only key).
+	readOnly                   map[string]bool
 	targetedConfigurationReads int
 	fullConfigurationReads     int
 }
@@ -306,6 +312,12 @@ func TestCommissioningSurvivesARefusedFullConfigurationInventory(t *testing.T) {
 func (s *station) OnChangeConfiguration(r *core.ChangeConfigurationRequest) (*core.ChangeConfigurationConfirmation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.notSupported[r.Key] {
+		return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusNotSupported), nil
+	}
+	if s.readOnly[r.Key] {
+		return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusRejected), nil
+	}
 	s.config[r.Key] = r.Value
 	s.changed = append(s.changed, r.Key+"="+r.Value)
 	return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusAccepted), nil

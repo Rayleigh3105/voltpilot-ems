@@ -14,6 +14,11 @@
  * - **Ohne Teilnahme** (kein Objekt, beendet): kein Anstoß zum Steuern, also
  *   keine Vorschläge und kein „Gerät fehlt?“. Steuerart und Regeln bleiben
  *   erreichbar. Den Einstieg (Satz und Knopf) bekommt nur „kein Objekt“.
+ *   Der Reiter Geräte zeigt dort die Messen-Ansicht (SZ-1 A, `messen.ts`).
+ * - **Anhalten und Fortsetzen** (SZ-2 A): ein Ort - die Plakette öffnet das
+ *   Blatt „Steuerung anhalten“ mit den Dauern der Pause und „Bis ich
+ *   fortsetze“, das Band „Steuerung angehalten seit …“ trägt „Fortsetzen“. Ob
+ *   der Schritt geht, sagt der Server (`aktionen`); das Recht trennt weiter.
  */
 import type { FunktionTeilnahme, Funktionen } from '../api';
 import type { FunktionZustand } from '../uemsFunktion';
@@ -39,7 +44,20 @@ export interface FunktionsLage {
   einstieg: boolean;
   /** Warum Eingriffe und Pause gesperrt sind; `null` = nicht gesperrt. */
   sperre: string | null;
+  /** Die Steuerung ist ohne Ende angehalten: Geräte, Laden und Regeln stehen abgedimmt. */
+  angehalten: boolean;
+  /** Der Server bietet „anhalten“ an: das Blatt zeigt „Bis ich fortsetze“. */
+  anhaltenMoeglich: boolean;
+  /** Der Server bietet „fortsetzen“ an: das Band trägt „Fortsetzen“. */
+  fortsetzenMoeglich: boolean;
+  /** Anhalten setzt die Ruhe an einer älteren Box (#986): das Blatt sagt es vorher. */
+  ruheHinweisBeimAnhalten: boolean;
+  /** Der Grund an Regeln und Speicher („wirkt nicht — angehalten seit …“). */
+  wirktNicht: string | null;
 }
+
+/** Der zweite Satz des Einstiegs-Bandes (SZ-1 A): was hier geschieht - kein Anstoß. */
+export const STEUERN_EINSTIEG_MESSEN = 'VoltPilot misst hier. Steuern richten Sie für den Standort ein.';
 
 export const OHNE_FUNKTION: FunktionsLage = {
   zustand: null,
@@ -52,6 +70,11 @@ export const OHNE_FUNKTION: FunktionsLage = {
   ruheHinweis: false,
   einstieg: false,
   sperre: null,
+  angehalten: false,
+  anhaltenMoeglich: false,
+  fortsetzenMoeglich: false,
+  ruheHinweisBeimAnhalten: false,
+  wirktNicht: null,
 };
 
 const RUHE: readonly FunktionZustand[] = ['entwurf', 'eingerichtet', 'angehalten', 'archiviert'];
@@ -78,16 +101,22 @@ function lageAus(t: FunktionTeilnahme, standortId: string, zeitzone: string): Fu
     ohneTeilnahme: OHNE_TEILNAHME.includes(z),
     ruheHinweis: ruht && t.ruhe_hinweis?.jetzt === true,
     einstieg: z === 'kein_objekt',
+    anhaltenMoeglich: t.aktionen.includes('anhalten'),
+    fortsetzenMoeglich: t.aktionen.includes('fortsetzen'),
+    ruheHinweisBeimAnhalten: t.ruhe_hinweis?.beim_anhalten === true,
   };
   if (!ruht) return lage;
   const anzeige = steuerungFunktionsAnzeige(t, zeitzone);
   if (z === 'angehalten') {
     return {
       ...lage,
+      angehalten: true,
       plakette: t.seit ? `Angehalten seit ${tagMonat(t.seit, zeitzone)}` : 'Angehalten',
-      satz: anzeige.kopf,
-      folge: `VoltPilot sendet keine Sollwerte; Regeln und das Betriebsmodell des Speichers wirken nicht. ${SCHUTZ}`,
+      // Wortlaut der Variante A (SZ-2): das Band nennt die Steuerung und was bis zum Fortsetzen nicht wirkt.
+      satz: `Steuerung ${(anzeige.kopf ?? 'Angehalten').replace(/^Angehalten/, 'angehalten')}`,
+      folge: `VoltPilot sendet keine Sollwerte. Regeln und das Betriebsmodell des Speichers wirken nicht, bis Sie fortsetzen. ${SCHUTZ}`,
       sperre: 'Eingriffe und Pause gibt es wieder, sobald die Steuerung fortgesetzt ist.',
+      wirktNicht: anzeige.wirktNicht,
     };
   }
   if (z === 'archiviert') {

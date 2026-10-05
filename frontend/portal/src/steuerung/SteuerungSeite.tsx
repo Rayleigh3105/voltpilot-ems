@@ -14,7 +14,10 @@
  * UEMS: die Funktion „Steuern & Optimieren“ (`funktion.ts`) trägt die Bänder
  * über allen Reitern - Einstieg (#965), Ruhe-Zustand, Ruhe-Satz der älteren
  * Box (#986). In Ruhe sagt die Plakette nie „Automatik an“, und Eingriffe wie
- * Pause sind gesperrt, mit Grund statt 409.
+ * Pause sind gesperrt, mit Grund statt 409. Anhalten und Fortsetzen an EINEM Ort
+ * (SZ-2 A): die Plakette öffnet „Steuerung anhalten“ (Dauern + „Bis ich
+ * fortsetze“), das Band „Steuerung angehalten seit …“ trägt „Fortsetzen“. Eine
+ * Anlage ohne Teilnahme hat keine Plakette (SZ-1 A, Messen-Ansicht).
  */
 import { liste } from './liste';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +26,7 @@ import { Recht } from '../components/Recht';
 import { SteuernAssistent } from '../components/SteuernAssistent';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
+import { STEUERN_EINSTIEG_MESSEN } from './funktion';
 import type { BereichTab } from '../ebenenNav';
 import type { AnlagenSub } from '../nav';
 import { consumersApi } from '../consumers/consumersApi';
@@ -40,6 +44,7 @@ import {
   NeuBlatt,
   P14aBlatt,
   PauseBlatt,
+  FortsetzenBlatt,
   SpeicherBlatt,
   SzeneBlatt,
   VorrangBlatt,
@@ -51,9 +56,8 @@ import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
 import { AbfahrtBlatt, FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
-import { ladepunktErsetzt, RUECKSPEISEN_WORT } from './laden';
+import { ladepunktErsetzt, RUECKSPEISEN_WORT, smartSchritte, type LadeQuelle } from './laden';
 import type { FahrerAnfrage } from '../ladepunktErtraege';
-import type { LadeQuelle } from './laden';
 import { nurMessenKey, vorschlag } from './neu';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
 import { bezugAus, greift, neuerEntwurf, regelKarten, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
@@ -269,16 +273,48 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       });
     },
     pause: async (minuten) => {
-      if (gesperrt('pause')) return;
+      if (gesperrt('pause')) return false;
+      let ok = false;
       await lauf('pause', async () => {
         try {
           await api.pauseAutomation(site.id, { durationMinutes: minuten });
           meldung(`Automatik pausiert bis ${uhrVon(bild.raster, Date.now() + minuten * 60_000)}.`);
+          ok = true;
           neuLaden();
         } catch (e) {
           meldung(fehlerText(e, 'Die Pause konnte nicht gesetzt werden.'), true);
         }
       });
+      return ok;
+    },
+    // „Bis ich fortsetze“ und „Fortsetzen“ (SZ-2 A): der Weg der Funktion, den Übergang prüft der Server.
+    anhalten: async () => {
+      let ok = false;
+      await lauf('pause', async () => {
+        try {
+          await api.funktionSteuern(site.id, 'anhalten');
+          meldung('Steuerung angehalten. Sie bleibt angehalten, bis Sie fortsetzen.');
+          ok = true;
+          neuLaden();
+        } catch (e) {
+          meldung(fehlerText(e, 'Die Steuerung konnte nicht angehalten werden.'), true);
+        }
+      });
+      return ok;
+    },
+    fortsetzen: async () => {
+      let ok = false;
+      await lauf('fortsetzen', async () => {
+        try {
+          await api.funktionSteuern(site.id, 'fortsetzen');
+          meldung('Die Steuerung läuft wieder.');
+          ok = true;
+          neuLaden();
+        } catch (e) {
+          meldung(fehlerText(e, 'Die Steuerung konnte nicht fortgesetzt werden.'), true);
+        }
+      });
+      return ok;
     },
     betriebsmodell: async (neu) => {
       let ok = false;
@@ -485,7 +521,11 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         fahrzeuge={daten.fahrzeuge}
         busy={busy}
         oeffne={setBlatt}
-        onSmart={(g) => void eingriff(g, 'smart', null)}
+        onSmart={(g) => void (async () => {
+          const s = smartSchritte(g);
+          if (s.eingriffBeenden) await eingriff(g, 'smart', null);
+          if (s.steuerart) await ladeQuelle(g, s.steuerart);
+        })()}
         onQuelle={(g, q) => void ladeQuelle(g, q)}
         onVorrang={(zuerst) => void lauf('vorrang', async () => {
           try {
@@ -539,12 +579,19 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   const pausiert = bild.pausiertBisMs != null;
   const baender = pausiert || bild.szene || funktion.satz || funktion.ruheHinweis || funktion.einstieg;
   // Der Automatik-Knopf zeigt zugleich den Zustand: ohne Recht bleibt er sichtbar, aber gesperrt.
+  // Sein Blatt trägt zwei Rechte (SZ-2 A): die Dauern `handeingriff.setzen`, „Bis ich fortsetze“
+  // `steuerung.anhalten_fortsetzen` - offen ist es, wenn eines davon reicht.
   const darfPausieren = rollen.darf('handeingriff.setzen');
+  const darfAnhalten = funktion.anhaltenMoeglich && rollen.darf('steuerung.anhalten_fortsetzen', funktion.standortId);
+  const darfKnopf = pausiert ? darfPausieren : darfPausieren || darfAnhalten;
+  // Die Zahlen an den Reitern zählen, was läuft bzw. eingeschaltet ist - an einer Messanlage (SZ-1 A)
+  // und einer angehaltenen Anlage (SZ-2 A) steuert VoltPilot nichts davon, also keine Zahl.
+  const ohneZahlen = funktion.ohneTeilnahme || funktion.angehalten;
   return (
     <div className="stn">
       <div className="stn-kopf">
         <h1>Steuerung</h1>
-        {funktion.plakette ? (
+        {funktion.ohneTeilnahme ? null : funktion.plakette ? (
           <span className="auto aus ruht" role="status" title={funktion.sperre ?? undefined}>
             <i />
             {funktion.plakette}
@@ -554,11 +601,11 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             type="button"
             className={`auto${pausiert ? ' aus' : ''}`}
             onClick={() => void automatik()}
-            disabled={busy === 'pause' || !darfPausieren}
-            title={darfPausieren ? undefined : rollen.grund}
+            disabled={busy === 'pause' || !darfKnopf}
+            title={darfKnopf ? undefined : rollen.grund}
           >
             <i />
-            {pausiert ? `pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
+            {pausiert ? `Pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
           </button>
         )}
       </div>
@@ -572,7 +619,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             onClick={() => t.sub !== reiter && onOpenSub(t.sub)}
           >
             {t.label}
-            {zahlen[t.sub] ? <span className="n">{zahlen[t.sub]}</span> : null}
+            {zahlen[t.sub] && !ohneZahlen ? <span className="n">{zahlen[t.sub]}</span> : null}
           </button>
         ))}
       </div>
@@ -582,7 +629,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             <div className="stn-band info" data-testid="steuern-einstieg">
               <Ic n="info" s={18} />
               <span>
-                <b>{STEUERN_EINSTIEG_SATZ}</b>{' '}
+                <b>{STEUERN_EINSTIEG_SATZ}</b> {STEUERN_EINSTIEG_MESSEN}{' '}
                 <Recht standort={funktion.standortId} aktion="funktion.steuern_einrichten">
                   <button type="button" className="lnk" onClick={() => setEinrichten(true)}>{STEUERN_EINSTIEG_AKTION}</button>
                 </Recht>
@@ -594,6 +641,14 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
               <Ic n="pause" s={18} />
               <span>
                 <b>{funktion.satz}.</b> {funktion.folge}
+                {funktion.angehalten && funktion.fortsetzenMoeglich && (
+                  <>
+                    {' '}
+                    <Recht standort={funktion.standortId} aktion="steuerung.anhalten_fortsetzen">
+                      <button type="button" className="lnk" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'fortsetzen' }); }}>Fortsetzen</button>
+                    </Recht>
+                  </>
+                )}
               </span>
             </div>
           )}
@@ -700,6 +755,8 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
       return <SpeicherBlatt k={k} />;
     case 'pause':
       return <PauseBlatt k={k} />;
+    case 'fortsetzen':
+      return <FortsetzenBlatt k={k} />;
     case 'vorrang':
       return <VorrangBlatt k={k} />;
     case 'p14a':

@@ -98,6 +98,13 @@ type ocppRuntime struct {
 	// put on the local bus, so an unchanged MeterValues sample is not appended
 	// to the store-and-forward buffer once per pass (Cockpit Phase 1 / E1).
 	entityPublished map[string]ocppEntityReading
+	// phases paces the 1p/3p switching per plug, phaseAsked when a station
+	// was last asked whether it can switch (ocpp_phases.go).
+	phases     map[string]*lastmgmt.PhasePacer
+	phaseAsked map[string]time.Time
+	// phaseDwell / phasePause shorten the switch pacing for the rig only
+	// (0 = lastmgmt's defaults).
+	phaseDwell, phasePause time.Duration
 }
 
 // startOcpp brings up the charge-point server and its executor. With the flag
@@ -160,6 +167,8 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 		lastReadback: map[string]time.Time{},
 		lastErrLog:   map[string]time.Time{},
 		active:       map[string]int{},
+		phases:       map[string]*lastmgmt.PhasePacer{},
+		phaseAsked:   map[string]time.Time{},
 	}
 	a.ocpp = rt
 	// Protocol events have their own durable queue: a WAN outage must not erase
@@ -389,7 +398,9 @@ func (a *Agent) ocppStep(ctx context.Context) {
 			}
 		}
 	}
-	plan := lastmgmt.Decide(lastmgmt.Input{
+	// Phasenumschaltung: a plug allowed to switch offers two bands.
+	banded := a.ocppPhaseBands(ctx, sessions, byKey, snap, control, now)
+	input := lastmgmt.Input{
 		Settings: set, Sessions: sessions, BudgetKw: &allocKw,
 		SourceBudgetKw: ocppSourceBudget(surplus, allocKw),
 		// ⚠ P6: the SAME lane read ABOVE the battery. It is only ever consulted
@@ -407,7 +418,13 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		Policy:              set.SurplusPolicy,
 		SourceBlind:         surplus.Blind,
 		Previous:            rt.previousPlan(), Now: now,
-	})
+	}
+	plan := lastmgmt.Decide(input)
+	// A switch the pacing does not allow yet: decide again with those plugs
+	// held in their active band (the sessions are shared with the input).
+	if len(banded) > 0 && rt.ocppPaceSwitches(sessions, banded, plan, now) {
+		plan = lastmgmt.Decide(input)
+	}
 	prevPlan := rt.previousPlan()
 	rt.setPlanAuf(&plan, stichprobe)
 
@@ -416,7 +433,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// the same decision.
 	a.noteWallboxCaps(plan)
 	if allowed, _ := a.ocppControlAllowed(); allowed {
-		a.ocppApply(ctx, plan, byKey, now)
+		a.ocppApply(ctx, plan, byKey, banded, now)
 		// AP-15 IP-20: an allocation lowered below the measured draw MUST show
 		// at the meter (no-op without a share document)
 		drawKw, drawOk := rt.measuredChargingKw(now)
@@ -596,7 +613,7 @@ func (a *Agent) ocppCommission(ctx context.Context, c csms.ChargerState, planabl
 // re-written, because it is the WRITE that re-arms the dead man's switch. The
 // pacing that avoids pointless churn happens one layer up, on the VALUE
 // (lastmgmt.Pacing), not on the write.
-func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[string]ocppClaim, now time.Time) {
+func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[string]ocppClaim, banded map[string]bool, now time.Time) {
 	rt := a.ocpp
 	seen := map[string]int{}
 	for _, alloc := range plan.Allocations {
@@ -608,9 +625,13 @@ func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[str
 		if a.v2xReserviert(claim.chargerID, claim.connectorID) {
 			continue // the discharge guard owns this profile (MiSpeL MP-39)
 		}
+		phases := rt.ocppPhasesFor(alloc, banded)
 		cctx, cancel := context.WithTimeout(ctx, ocppCallTimeout)
-		err := rt.srv.ApplyLimit(cctx, claim.chargerID, claim.connectorID, claim.transactionID, alloc.Kw)
+		err := rt.srv.ApplyLimitPhases(cctx, claim.chargerID, claim.connectorID, claim.transactionID, alloc.Kw, phases)
 		cancel()
+		if err == nil {
+			rt.ocppPhaseSwitched(alloc.Key, phases, now)
+		}
 		if err != nil {
 			rt.logThrottled("apply:"+alloc.Key, now, func() {
 				slog.Warn("Ladegrenze konnte nicht gesetzt werden",
@@ -632,6 +653,7 @@ func (a *Agent) ocppApply(ctx context.Context, plan lastmgmt.Plan, byKey map[str
 	rt.active = seen
 	rt.mu.Unlock()
 	for key, connector := range gone {
+		rt.ocppForgetPhases(key)
 		chargerID := key
 		if i := strings.LastIndex(key, "#"); i > 0 {
 			chargerID = key[:i]
@@ -723,13 +745,13 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// stay building load, see ocpp_wallbox.go.
 	charging += a.wallboxChargingKw(rt.currentSettings(), ts)
 	m := lastmgmt.Measurement{GridKw: grid, ChargingKw: charging, Complete: complete}
-	// ⚠ The battery's MEASURED charge is the third channel of the Stufe-4
+	// ⚠ The battery's MEASURED power is the third channel of the Stufe-4
 	// surplus split (surplus.go): it is already inside `grid`, so handing it
-	// to the cars means taking it back out. A DISCHARGE is not a surplus the
-	// cars could claim and enters as 0 - but it still counts as a MEASUREMENT
-	// ("the battery is taking nothing"), which is what cars-first needs to
-	// know. A site whose flows never publish the channel reports nothing and
-	// both priorities collapse into the measured status quo.
+	// to the cars means taking it back out. It goes in SIGNED: a DISCHARGE
+	// must stay negative, or a battery feeding the cars reads as sunshine
+	// (lastmgmt.Measurement.BatteryKw). A site whose flows never publish the
+	// channel reports nothing and both priorities collapse into the measured
+	// status quo.
 	//
 	// ⚠ It is handed in EXPLICITLY, never read out of `measurements`: the
 	// battery channel is deliberately NOT a published measurement (see the
@@ -738,10 +760,8 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// the rig, not by a unit test - the tests fed the map by hand.
 	if battKw != nil {
 		m.HaveBattery = true
+		m.BatteryKw = *battKw
 		m.BatteryPowerKw = battKw
-		if *battKw > 0 {
-			m.BatteryChargeKw = *battKw
-		}
 	}
 	if rt.budget.ObserveM(ts, m) {
 		rt.nudge()
@@ -1070,6 +1090,7 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 			// „ein Eingriff läuft" wüsste, schriebe „lädt voll" über eine
 			// Ladung, die gerade gestoppt wurde (P3b).
 			ocn.HandPaused = paused[c.ID+"#"+fmt.Sprint(con.ID)]
+			ocn.Phases, ocn.PhaseNote = rt.ocppPhaseView(c.ID, con.ID)
 			if plan != nil {
 				if alloc, ok := plan.Get(c.ID + "#" + fmt.Sprint(con.ID)); ok {
 					kw := alloc.Kw
@@ -1078,7 +1099,11 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 					// TextFor names the customer's own priority where the
 					// sentence is ABOUT that priority - a waiting vehicle
 					// whose owner cannot see WHICH setting holds it is a riddle.
-					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason, set.SurplusPolicy)
+					// ⚠ The station's OWN lane (P5): a plug on „Nur Sonnenstrom" at a
+					// site defaulting to „Schnell laden" must not read „(Ihre
+					// Priorität: Schnell laden)".
+					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason,
+						lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.SourceOrSite(string(set.SurplusPolicy)))))
 					ocn.Boost = alloc.Boost
 					if !alloc.NextTurnAt.IsZero() {
 						ocn.NextTurnMs = alloc.NextTurnAt.UnixMilli()

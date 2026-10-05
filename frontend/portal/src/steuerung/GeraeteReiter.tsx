@@ -1,6 +1,11 @@
 /**
  * Reiter „Geräte“: Jetzt · Neu in Ihrer Anlage · Tagesbild · die Geräte als
  * Reihenfolge · Was immer gilt (Prototyp `ui-geraete.js`).
+ *
+ * UEMS: an einer Anlage ohne Teilnahme an „Steuern & Optimieren“ die
+ * Messen-Ansicht (SZ-1 A, `messen.ts`): Jetzt gemessen und die gemessenen
+ * Geräte, ohne Reihenfolge, Plan und Vorschläge. Angehalten (SZ-2 A) stehen
+ * die Geräte abgedimmt mit ihrem Grund, die Reihenfolge ohne „Ändern“.
  */
 import { forwardRef, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent } from 'react';
 import { Recht } from '../components/Recht';
@@ -18,6 +23,7 @@ import {
   type GeraetBild,
 } from './bild';
 import { Ic } from './Ic';
+import { messBild, type MessTeil } from './messen';
 import { vorschlag } from './neu';
 import type { BlattZustand, SeitenBild } from './seite';
 import { useBreite, zeitband } from './Zeitband';
@@ -67,6 +73,7 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
     });
   }, [p.reoStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} oeffne={p.oeffne} />;
   const t = sel ?? bild.raster.jetzt;
   return (
     <>
@@ -119,6 +126,7 @@ function JetztKarte({ bild, t, sel, onJetzt, oeffne }: {
       }
     }
     if (bild.pausiertBisMs != null) zusatz.push(['pause', 'Automatik pausiert.']);
+    if (bild.funktion.angehalten) zusatz.push(['pause', 'VoltPilot steuert gerade nicht.']);
   }
   const unter = unterzeile(rh, t, bild.speicher != null);
   const l = leiste(rh, t, bild.geraete, bild.reihenfolge, r.jetzt);
@@ -199,7 +207,7 @@ function Sonnenleiste({ l, oeffne }: { l: NonNullable<ReturnType<typeof leiste>>
           type="button"
           className="l-wait"
           style={{ width: '100%', border: 0, textAlign: 'left', cursor: 'pointer' }}
-          onClick={() => l.wartet && oeffne({ art: 'geraet', id: l.wartet.id })}
+          onClick={(e) => { e.currentTarget.focus(); if (l.wartet) oeffne({ art: 'geraet', id: l.wartet.id }); }}
         >
           <Ic n="clock" s={17} />
           <span>
@@ -326,7 +334,7 @@ function NeuKarte({ g, bild, busy, oeffne, onUebernehmen, onNurMessen }: {
             <Ic n="check" s={18} />
             {busy ? 'Übernehme …' : 'Übernehmen'}
           </button>
-          <button type="button" className="btn sek" onClick={() => oeffne({ art: 'neu', id: g.id })}>
+          <button type="button" className="btn sek" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'neu', id: g.id }); }}>
             Anders einstellen
           </button>
         </div>
@@ -489,6 +497,88 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
 }
 
 // ---------------------------------------------------------------------------
+// Messen-Ansicht (UEMS SZ-1 A): nur Gemessenes, die Geräte als ruhige Liste
+// ---------------------------------------------------------------------------
+
+function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZustand) => void }) {
+  const m = messBild({ raster: bild.raster, jetzt: bild.jetztGemessen, geraete: bild.geraete, speicher: bild.speicher });
+  const auf = (id: string) => oeffne(id === SPEICHER ? { art: 'speicher' } : { art: 'geraet', id });
+  return (
+    <>
+      <section className="card jetzt links" id="jetzt" aria-live="polite" aria-label="Jetzt">
+        <div className="j-eye"><p>{m.eye}</p></div>
+        <p className="j-say">{m.satz}</p>
+        {m.zusatz.length > 0 && (
+          <ul className="j-zusatz">
+            {m.zusatz.map((x) => (
+              <li key={x}>
+                <Ic n="gauge" s={16} />
+                <span>{x}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {m.teile.length > 0 && <Messleiste teile={m.teile} auf={auf} />}
+      </section>
+      <section aria-label="Gemessene Geräte" className="devs rechts" id="devs">
+        <div className="card-h" style={{ margin: '4px 2px 0' }}>
+          <h2>
+            <Ic n="list" s={18} />
+            Gemessene Geräte
+          </h2>
+        </div>
+        {!m.zeilen.length && <p className="leise" style={{ padding: '0 4px' }}>Noch misst VoltPilot hier kein einzelnes Gerät.</p>}
+        {m.zeilen.map((z) => (
+          <button type="button" className="dev" id={`dev-${z.id}`} key={z.id} onClick={(e) => { e.currentTarget.focus(); auf(z.id); }}>
+            <span className="ico"><Ic n={z.symbol} s={23} /></span>
+            <span className="d-mid">
+              <span className="d-name"><b>{z.name}</b></span>
+              <span className="d-satz">{z.satz}</span>
+            </span>
+            <span className="d-right">
+              <span className={`pill ${z.gemessen ? 'mess' : 'stale'}`}><i />{z.gemessen ? 'gemessen' : 'nicht gemessen'}</span>
+              <span className="d-kw">{z.kw != null ? fKw(z.kw) : ''}</span>
+            </span>
+          </button>
+        ))}
+        <p className="leise" style={{ padding: '0 4px' }}>Antippen zeigt Messwerte und Steuerart des Geräts. Regeln stehen im Reiter Regeln.</p>
+      </section>
+    </>
+  );
+}
+
+function Messleiste({ teile, auf }: { teile: MessTeil[]; auf: (id: string) => void }) {
+  const sum = teile.reduce((s, x) => s + x.kw, 0) || 1;
+  return (
+    <div className="ladder">
+      <div className="l-top">
+        <span>Verbrauch der Anlage, gemessen</span>
+        <b className="mess">{fKw(sum)}</b>
+      </div>
+      <div className="l-bar" role="img" aria-label="Gemessener Verbrauch nach Geräten">
+        {teile.map((s, i) => (
+          <span
+            key={s.id ?? `rest-${i}`}
+            className={`l-seg ${s.id ? 'mess' : 'haus'}`}
+            style={{ flex: `0 0 ${((s.kw / sum) * 100).toFixed(2)}%` }}
+            title={`${s.label} ${fKw(s.kw)}`}
+            onClick={s.id ? () => auf(s.id!) : undefined}
+          />
+        ))}
+      </div>
+      <div className="l-legend">
+        {teile.map((s, i) => (
+          <span key={s.id ?? `rest-${i}`}>
+            <i className={s.id ? 'mess' : 'haus'} />
+            {s.label} <b>{fKw(s.kw)}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Die Geräte = die Reihenfolge
 // ---------------------------------------------------------------------------
 
@@ -515,7 +605,7 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
           <Ic n="list" s={18} />
           Wer bekommt Sonnenstrom zuerst?
         </h2>
-        {rang.length > 1 && (
+        {rang.length > 1 && !bild.funktion.angehalten && (
           <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => p.setReo([...rang])}>
             <Ic n="sliders" s={16} />
             Ändern
@@ -542,7 +632,7 @@ const Liste = forwardRef<HTMLElement, ListeProps>(function Liste(p, ref) {
       <OffenZeilen bild={bild} oeffne={p.oeffne} onAnlage={p.onAnlage} />
       {/* Steuern-Regel #779: an einer Anlage ohne Teilnahme kein Anstoß, ein Gerät anzubinden. */}
       {!bild.funktion.ohneTeilnahme && (
-        <button type="button" className="add-dev" onClick={() => p.oeffne({ art: 'anbinden' })}>
+        <button type="button" className="add-dev" onClick={(e) => { e.currentTarget.focus(); p.oeffne({ art: 'anbinden' }); }}>
           <Ic n="plus" s={18} />
           Gerät fehlt? In der Anlage anbinden
         </button>
@@ -571,7 +661,7 @@ function GeraetKarte({ g, bild, platz, oeffne }: { g: GeraetBild; bild: SeitenBi
     ? <>Eingriff{g.eingriff.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ''} · dann wieder Smart</>
     : <>Smart: <em>{g.auftrag}</em></>;
   return (
-    <button type="button" className="dev" id={`dev-${g.id}`} onClick={() => oeffne({ art: 'geraet', id: g.id })}>
+    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id={`dev-${g.id}`} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'geraet', id: g.id }); }}>
       <span className={`ico ${icoKlasse}`}>
         <Ic n={g.symbol} s={23} />
         {platz != null && <span className="rk">{platz}</span>}
@@ -605,7 +695,7 @@ function SpeicherKarte({ bild, platz, oeffne }: { bild: SeitenBild; platz: numbe
   if (!sp) return null;
   const an = sp.jetztKw != null && Math.abs(sp.jetztKw) > 0.05;
   return (
-    <button type="button" className="dev" id="dev-sp" onClick={() => oeffne({ art: 'speicher' })}>
+    <button type="button" className={`dev${bild.funktion.angehalten ? ' matt' : ''}`} id="dev-sp" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'speicher' }); }}>
       <span className={`ico ${an ? 'on batt' : ''}`}>
         <Ic n="battery" s={23} />
         <span className="rk">{platz}</span>
@@ -613,7 +703,7 @@ function SpeicherKarte({ bild, platz, oeffne }: { bild: SeitenBild; platz: numbe
       <span className="d-mid">
         <span className="d-name"><b>{sp.name}</b></span>
         <span className="d-satz">{sp.warum}</span>
-        <span className="d-satz">Smart: <em>{bild.betriebsmodell}</em></span>
+        <span className="d-satz">{bild.funktion.wirktNicht ? <>{bild.betriebsmodell}: {bild.funktion.wirktNicht}</> : <>Smart: <em>{bild.betriebsmodell}</em></>}</span>
       </span>
       <span className="d-right">
         <span className={`pill ${sp.pill[0]}`}><i />{sp.pill[1]}</span>
@@ -636,7 +726,7 @@ function OffenZeilen({ bild, oeffne, onAnlage }: { bild: SeitenBild; oeffne: (b:
             <span className="d-name"><b>{g.name}</b></span>
             <span className="d-satz">Ohne Auftrag.</span>
             <span className="d-satz">{g.typLabel}{g.gemessen ? ' · misst' : ''}</span>
-            <button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuerart</button>
+            <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'neu', id: g.id }); }}>Steuerart</button>
           </span>
         </div>
       ))}
@@ -647,7 +737,7 @@ function OffenZeilen({ bild, oeffne, onAnlage }: { bild: SeitenBild; oeffne: (b:
             <span className="d-name"><b>{g.name}</b></span>
             <span className="d-satz">Nur gemessen, auf Ihren Wunsch.</span>
             <span className="d-satz">{g.typLabel}</span>
-            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={() => oeffne({ art: 'neu', id: g.id })}>Steuern</button></Recht>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'neu', id: g.id }); }}>Steuern</button></Recht>
           </span>
         </div>
       ))}
@@ -844,7 +934,7 @@ function ImmerKarte({ bild, oeffne, netzanschlussKw }: { bild: SeitenBild; oeffn
         </h2>
       </div>
       {rows.map(([i, titel, sub, ziel]) => (
-        <button type="button" className="immer-r" key={titel} onClick={() => oeffne(ziel)}>
+        <button type="button" className="immer-r" key={titel} onClick={(e) => { e.currentTarget.focus(); oeffne(ziel); }}>
           <span className="li"><Ic n={i} s={18} /></span>
           <span className="lt">
             {titel}

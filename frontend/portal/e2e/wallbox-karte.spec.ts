@@ -14,7 +14,7 @@ import { expect, test, type Page } from '@playwright/test';
  * geteilte Bühne `steuerung.spec.ts`). Breiten: 1440 am Rechner, 375 am Telefon.
  */
 
-const LADEN = (fall: string) => `/e2e/wallbox-karte.html?fall=${fall}#/anlage/help-site/laden`;
+const LADEN = (fall: string, mehr = '') => `/e2e/wallbox-karte.html?fall=${fall}${mehr}#/anlage/help-site/laden`;
 const FOTOS = process.env.WALLBOX_FOTOS;
 
 test.use({ locale: 'de-DE', timezoneId: 'Europe/Berlin' });
@@ -26,10 +26,10 @@ test.beforeEach(async ({ page }, testInfo) => {
   else if (name.startsWith('desktop')) await page.setViewportSize({ width: 1440, height: 1000 });
 });
 
-async function oeffnen(page: Page, fall: string) {
+async function oeffnen(page: Page, fall: string, mehr = '') {
   const fehler: string[] = [];
   page.on('pageerror', (e) => fehler.push(e.message));
-  await page.goto(LADEN(fall));
+  await page.goto(LADEN(fall, mehr));
   await page.locator('.stn').first().waitFor();
   await expect(page.getByRole('region', { name: 'Netzanschluss' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
@@ -181,4 +181,34 @@ test('Bestandsschutz: Ladepunkte „nur laden“ zeichnen den Reiter byte-gleich
   expect(nurLaden).toBe(ohne);
   expect(nurLaden).not.toContain('Zurückspeisen');
   expect(nurLaden).toContain('Den Ladestand des Autos kennt VoltPilot nicht; ein Ziel ist deshalb eine Menge in kWh.');
+});
+
+test('Abfahrt und Reserve: beide Öffner geben den Fokus zurück - auch wenn der Browser beim Tippen nicht fokussiert', async ({ page }) => {
+  // Safari/WebKit fokussiert einen angetippten Knopf nicht; der Öffner fokussiert ihn selbst (Gesamtlauf uems 04./05.10.2026).
+  for (const [fall, zeile] of [['mit-ladestand', 'abfahrt'], ['ohne-ladestand', 'abfahrt-reserve']] as const) {
+    const fehler = await oeffnen(page, fall);
+    const knopf = wallbox(page).locator(`[data-zeile="${zeile}"]`);
+    await knopf.click();
+    const blatt = page.getByRole('dialog', { name: /Abfahrt und Reserve/ });
+    await expect(blatt).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(blatt).toBeHidden();
+    await expect(knopf).toBeFocused();
+    expect(fehler).toEqual([]);
+  }
+});
+
+test('angehaltener Standort (UEMS SZ-2 A): die Wallbox-Karte steht abgedimmt wie jede Ladekarte, Eingriffe gesperrt mit Grund', async ({ page }) => {
+  const fehler = await oeffnen(page, 'mit-ladestand', '&funktion=angehalten');
+  await expect(page.getByTestId('steuern-ruhe')).toContainText('angehalten');
+  const k = wallbox(page);
+  await expect(k).toHaveClass(/\bmatt\b/);
+  await expect(carport(page)).toHaveClass(/\bmatt\b/);
+  await expect(k.getByRole('group', { name: 'Lademodus' }).getByRole('button', { name: 'Schnell' })).toBeDisabled();
+  await expect(k.getByRole('note').filter({ hasText: 'sobald die Steuerung fortgesetzt ist' })).toBeVisible();
+  // Zurückspeisen ist die Freigabe des Fahrers, kein Eingriff - wie „Womit laden?“ am Carport bleibt sie einstellbar.
+  await expect(k.getByRole('group', { name: 'Zurückspeisen' }).getByRole('button', { name: 'Haus + Netz' })).toBeEnabled();
+  await expect(carport(page).getByRole('group', { name: 'Womit laden' }).getByRole('button').first()).toBeEnabled();
+  await ohneUeberlauf(page);
+  expect(fehler).toEqual([]);
 });
