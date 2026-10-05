@@ -4,15 +4,19 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-10T10:00:00Z'));
 });
 
-test('help is available without plants, during API failure and without an admin tenant', async ({ page }) => {
-  for (const state of ['empty', 'error', 'admin', 'single']) {
+// One case per state with ONE load of the stage plus the reload under test (firstmate decision
+// gm-e2e-mehrfachaufruf = A): four states with a load and a reload each were eight full loads in one case and were
+// red under four workers (follow-up to the mispel full run 05.10.2026). The reload is the step being checked, so
+// each case keeps that pair. The assertions are the same.
+for (const state of ['empty', 'error', 'admin', 'single']) {
+  test(`help is available without plants, during API failure and without an admin tenant: state=${state}`, async ({ page }) => {
     await page.goto('/e2e/help.html?state=' + state + '#/hilfe/fahrplan');
     await expect(page.getByRole('heading', { name: 'Den Fahrplan verstehen', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Zurück zum Portal' })).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Den Fahrplan verstehen', exact: true })).toBeVisible();
-  }
-});
+  });
+}
 
 test('search, article navigation, section links, back and unknown links work', async ({ page }) => {
   await page.goto('/e2e/help.html#/hilfe');
@@ -110,18 +114,28 @@ test('der Artikel zum Energiemanagement: über die Suche erreichbar, mit Verantw
   }
 });
 
-test('help fits phone, tablet and desktop and the menu reaches the center', async ({ page }) => {
+// One case per full load of the stage (firstmate decision gm-e2e-mehrfachaufruf = A): the center, the overview with
+// ?state=empty and the article without it are three different documents, three full loads in one case (follow-up to
+// the mispel full run 05.10.2026). The assertions are the same.
+test('help fits phone, tablet and desktop and the menu reaches the center: the center at 320, 390, 834 and 1440', async ({ page }) => {
   await page.goto('/e2e/help.html#/hilfe');
   for (const width of [320, 390, 834, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByRole('searchbox')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
+});
+
+test('help fits phone, tablet and desktop and the menu reaches the center: the account menu at 390', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/e2e/help.html?state=empty#/uebersicht');
   await page.getByRole('button', { name: /Konto-Menü/ }).click();
   await page.getByRole('menuitem', { name: 'Hilfe & Kontakt' }).click();
   await expect(page.getByRole('searchbox')).toBeVisible();
+});
+
+test('help fits phone, tablet and desktop and the menu reaches the center: an article at 390', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/e2e/help.html#/hilfe/energiefluesse');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

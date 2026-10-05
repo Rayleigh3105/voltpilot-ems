@@ -144,14 +144,17 @@ test('Textbudget: Erlöse-Karte ≤ 30 Wörter, Cockpit-Karte ≤ 42 (Konzept k1
   expect(cockpit).toBeLessThanOrEqual(42);
 });
 
-test('Telefon 375: kein horizontaler Überlauf auf allen Flächen', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 1400 });
-  for (const [fall, flaeche] of [
-    ['herzogau-2409', 'erloese'],
-    ['winter-0909', 'erloese'],
-    ['herzogau-2409', 'cockpit'],
-    ['herzogau-2409', 'portfolio'],
-  ]) {
+// Je Fläche EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): vier volle
+// Aufrufe in einem Fall waren unter vier Workern zu langsam für die 30-s-Frist (Nachtrag Gesamtlauf mispel 05.10.2026).
+// Die Zusicherungen sind dieselben.
+for (const [fall, flaeche] of [
+  ['herzogau-2409', 'erloese'],
+  ['winter-0909', 'erloese'],
+  ['herzogau-2409', 'cockpit'],
+  ['herzogau-2409', 'portfolio'],
+]) {
+  test(`Telefon 375: kein horizontaler Überlauf auf allen Flächen · ${fall}/${flaeche}`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 1400 });
     await oeffne(page, fall, flaeche);
     const r = await page.evaluate(() => {
       const d = document.documentElement;
@@ -165,8 +168,8 @@ test('Telefon 375: kein horizontaler Überlauf auf allen Flächen', async ({ pag
       return { scrollX: d.scrollWidth - d.clientWidth, raus };
     });
     expect(r, `${fall}/${flaeche}`).toEqual({ scrollX: 0, raus: [] });
-  }
-});
+  });
+}
 
 /**
  * Kontrast-Wächter im Browser: die NEUEN Sekundärtexte gegen ihre tatsächliche

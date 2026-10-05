@@ -307,3 +307,85 @@ G0 und G1 stehen im PR-Text — dieser Bericht ist Teil des Standes, den sie pr�
   Bündel statt den Dev-Server legt firstmate als eigenen Folgeauftrag an.
 - **Er sagt nichts über die Tore G1, GA und GB** außer den maschinellen Punkten; den Rest liefert
   der Betreiber. **Er sagt nicht, dass ein Tor offen ist** — das öffnet nur der Betreiber.
+
+## Nachtrag: Last-Rote beseitigt
+
+Nachtrag vom 05.10.2026 abends (Zweig `fm/vp-mispel-e2e-lastfest`). Gemessen auf `origin/mispel` `d41bebe50`;
+Endstand des Testcodes `3f4658814`. Nur Testcode unter `frontend/portal/e2e/`; Produktcode, Playwright-Konfiguration,
+Worker, Retries und Fristen unverändert, kein neues `test.slow`.
+
+**Gezählt statt vermutet.** Ein lokaler Reporter zählte im ganzen Lauf `desktop-chromium` (890 Fälle auf `e8879236a`) je
+Fall jedes `page.goto`/`page.reload`: 767 Fälle mit einem Aufruf, 86 mit zwei, **36 mit drei bis acht** (ein `goto`, das
+nur den `#hash` desselben Dokuments ändert, zählt nicht). Nach Entscheid `gm-e2e-mehrfachaufruf` = A trägt jetzt jeder
+dieser Fälle **genau einen vollen Aufruf**: die hier offenen (`standort-ebenen` Quellenübergabe und Z4, `tageskarte`
+„die Fassung“, `wallbox-karte` Bestandsschutz), alle weiteren mit mehr als zwei Aufrufen in 30 s (`help`, `shell-layout`,
+`ocpp-wallbox`, `unterstuetzung`, `energiemanagement`, `energiemanagement-aufgaben`, `erloese-minus`,
+`gemeinsame-steuerung`, `bezugsgroessen`, `netzanschluesse`, `messstellen`, `tageskarte` „Zeitraum-Wahl“, `wallbox-karte`
+MP-41c) und vier Fälle mit zwei Aufrufen, die im Nachtrag selbst rot waren (`wallbox-karte` „Abfahrt und Reserve“ und
+„BK-41c-2“, `gebaeude-karte` „Halle 2 im Oktober“). Vergleiche über mehrere Aufrufe (die Bestandsschutz-Zeichnungen, der
+OCPP-Weg über sechs Quittungen) laufen als serielle Gruppe: der erste Fall hält fest, der nächste vergleicht. Die
+Zusicherungen sind wortgleich; 890 → 977 Fälle je Projekt.
+
+**Die Ursache des WebKit-Falls** `anlage-umziehen.spec.ts:184` (mobile-webkit, 1440 px), belegt am erhaltenen Trace und mit
+einer Sonde: die Folgen zur Standortwahl kommen entprellt (200 ms) und lassen den bei 1440 px **zentrierten** Dialog von 667
+auf 868 px wachsen; „Gültig ab“ rückt dabei von y = 451 auf y = 350. Der Klick des roten Laufs stand mit (720, 474) auf dem
+alten Mittelpunkt des Feldes, traf nach dem Wachsen das Feld „Begründung“, und der Kalender öffnete sich nie. **Der Dialog
+blieb offen** — oben steht „der Dialog ist zu“; zu war der Kalender. Bei 375 px steht der Dialog als Blatt oben und rückt
+nicht. Der Fall wartet jetzt auf die geladenen Folgen; kein Produktfehler im Sinn „ein Klick schliesst den Dialog“. Der
+Beleglauf fand dieselbe Ursache in `ort-verschieben.spec.ts` (V4, mobile-webkit: Klick bei 4,213 s an (720, 474), Vorschau
+erfüllt bei 4,217 s) — dort wartet jetzt `oeffneDialog` ebenso.
+
+**`standorte.spec.ts:163`** (mobile-chromium, 1440 px) hat nur einen Aufruf und ist kein Mehrfachaufruf-Fall. Der Trace
+zeigt einen einmaligen Stillstand: unmittelbar nachdem der Fokus in die Suche der Mehrfachauswahl „Nutzung“ ging, kein neues
+Bild, kein Schnappschuss und keine Netzanfrage mehr bis zur Frist — ohne offene Anfrage, also nicht der Dev-Server. Allein
+in Ruhe 10 von 10 (2,4–5,2 s), unter Last 60 von 60, im Beleglauf in allen vier Projekten fünffach grün. Eingeordnet als
+einmaliger Stillstand unter der damaligen Last; ein Kreislauf im Code des Pickers ist nicht zu sehen. Nicht geändert.
+
+**Beleglauf.** Ohne Fremdlast, der Demo-Stapel `voltpilot-*` im Leerlauf an wie bei den früheren Läufen, am Netzteil, je
+Projekt vier Worker, nacheinander, eigener Port über eine unversionierte Kopie der Konfiguration.
+
+Erster Durchgang (`b72760aab`): desktop 975 · 1 übersprungen · 0 rot, tablet 938 · 37 · **1**, mobile-chromium 938 · 38 · 0,
+mobile-webkit 936 · 39 · **1**; `--repeat-each=5` über die 364 Fälle, die im Gesamtlauf oder im Nachtrag rot waren (vier
+Projekte): 1 819 von 1 820; `tsc` grün, Vitest 617 Dateien / 12 430 Tests grün. Die drei Roten, je mit Trace belegt und
+repariert:
+
+| Fall | Ursache | Reparatur |
+|---|---|---|
+| `gebaeude-karte.spec.ts:87` (tablet), zwei Aufrufe | zweiter Aufruf: 163 Modul-Anfragen 21 s ohne Antwort des Dev-Servers, die übrigen Worker liefen normal | je Breite ein Fall |
+| `ort-verschieben.spec.ts:233` (mobile-webkit) | wie `anlage-umziehen`: Klick in den wachsenden Dialog | erst die geladenen Folgen |
+| `tageskarte.spec.ts:276` (mobile-chromium, Wiederholung) | Titel vor, Abzeichen nach dem Tausch der Schriften gemessen: 21 statt < 4 px | `oeffne` wartet auf `document.fonts.ready` |
+
+Zweiter Durchgang (`9a799d6db`, mit den drei Reparaturen):
+
+| Projekt | Ergebnis | Dauer |
+|---|---|---|
+| `desktop-chromium` | 976 passed · 1 skipped · 0 rot | 16,0 min |
+| `tablet-chromium` | 940 passed · 37 skipped · 0 rot | 15,6 min |
+| `mobile-chromium` | 939 passed · 38 skipped · 0 rot | 14,8 min |
+| `mobile-webkit` | 936 passed · 39 skipped · **2 rot** | 18,4 min |
+| **Summe** | **3 791 passed · 115 skipped · 2 rot = 3 908** | |
+
+Dazu `--repeat-each=5` über die drei reparierten Dateien (140 Fälle, vier Projekte): **700 von 700**; `tsc` grün, Vitest
+617 Dateien / 12 430 Tests grün. Die übrigen Fälle der ersten Wiederholung liefen fünffach in allen Projekten grün und
+sind seither unverändert.
+
+Die zwei Roten sind **ein** Fall, den dieser Nachtrag nicht angefasst hatte: `steuerung-anhalten.spec.ts:157` „befristet
+angehalten“ bei 375 und 1440 px, gelaufen um 23:16. Der Fall stellte die Pause auf `Date.now()` + 60 Minuten — ab 23 Uhr
+also auf morgen; die Plakette sagte zu Recht „Pausiert bis morgen 00:16“, die Zusicherung verlangt „Pausiert bis HH:MM“. Ein
+Uhr-Fehler des Tests, jeden Tag zwischen 23 und 24 Uhr rot, weder Last noch Produkt. Repariert mit einer festen Uhr der Seite
+(`3f4658814`); seit `9a799d6db` ist das die einzige geänderte Datei (`git diff --stat 9a799d6db..3f4658814`: 1 Datei,
++6/−1). Gezielter Nachlauf um 23:43, Systemzeit nach 23 Uhr: `steuerung-anhalten.spec.ts` fünffach in vier
+Projekten **280 von 280**, der reparierte Fall 40 von 40 (3,4 min). Einen dritten Durchgang der ganzen Suite hat
+firstmate ausdrücklich nicht verlangt: für unveränderte Dateien belegt er nichts Neues.
+
+Weitere Abhängigkeiten von der Tageszeit gesucht (`Date.now()` ± Spanne in `e2e/`): keine weitere Zusicherung auf eine
+Uhrzeit aus der Rechneruhr. Vier Bühnen bauen Daten aus der Rechneruhr minus einer Spanne (`box-updates` −4 h,
+`admin-flotte` −10 min, `ocpp-wallbox` `ago()`, `verbrauch-cockpit` −1 h); ihre Specs prüfen keinen Uhrzeit-Text —
+Folgepunkt, falls dort einmal einer dazukommt.
+
+**Was der Nachtrag nicht sagt:** Die Wurzel bleibt — jeder volle Aufruf lädt die Module einzeln vom Dev-Server, und einzelne
+Aufrufe bleiben dabei bis zu 21 s ohne Antwort. Die Teilung gibt jedem Fall die ganze Frist für einen Aufruf; die übrigen
+Fälle mit genau zwei Aufrufen sind ungeteilt. Unter schwerer Fremdlast (Lastmittel über 100, wie in Zwischenläufen dieses
+Nachtrags) kippen auch Fälle mit einem Aufruf — der Beleg gilt ohne Fremdlast. `flaeche-aendern.spec.ts` klickt nach dem
+Ausfüllen der Fläche ebenfalls sofort auf „Gültig ab“ eines zentrierten Dialogs; dort war nie etwas rot, nicht geändert.
+E2E gegen ein gebautes Bündel ist der Folgeauftrag `vp-portal-e2e-gebautes-buendel`.

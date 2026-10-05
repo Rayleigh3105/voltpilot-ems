@@ -156,7 +156,12 @@ for (const breite of [375, 1440] as const) {
 
   test(`SZ-2 A befristet angehalten · Plakette „Pausiert bis …“ und Band · ${breite}px`, async ({ page }) => {
     await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
-    await cloud(page, { funktion: 'aktiv', pausiertBis: new Date(Date.now() + 60 * 60_000).toISOString() });
+    // Die Pause endet am selben Tag: eine feste Uhr der Seite statt der Uhr des Rechners. Mit `Date.now()` + 60 Min.
+    // endete sie zwischen 23 und 24 Uhr erst morgen, und die Plakette sagte zu Recht „Pausiert bis morgen 00:16“
+    // (Beleglauf des Nachtrags zum Gesamtlauf mispel, 05.10.2026 um 23:16).
+    const jetzt = new Date('2026-10-20T08:15:30Z');
+    await page.clock.setFixedTime(jetzt);
+    await cloud(page, { funktion: 'aktiv', pausiertBis: new Date(jetzt.getTime() + 60 * 60_000).toISOString() });
     await page.goto('/e2e/steuerung-anhalten.html');
     await expect(page.locator('.stn-kopf').getByRole('button', { name: /^Pausiert bis \d{2}:\d{2}$/ })).toBeVisible();
     await expect(page.locator('.stn-band').filter({ hasText: 'Automatik pausiert bis' }).getByRole('button', { name: 'Fortsetzen' })).toBeVisible();

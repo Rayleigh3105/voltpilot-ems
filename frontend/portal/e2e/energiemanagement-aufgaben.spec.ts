@@ -199,44 +199,52 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('aufgaben-reiter')).toBeVisible();
     });
 
-    test('R6: als „Einsicht“ kein Schreib-Knopf — an seiner Stelle der Leer-Satz, lesen und CSV bleiben', async ({ page }) => {
-      const ohneSchreiben = async (fall: string) => {
-        await expect(page.getByRole('button', { name: SCHREIBEN }), fall).toHaveCount(0);
-        await ohneQuerlauf(page, fall);
-      };
+    // R6 in drei Fällen mit je EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): drei volle
+    // Aufrufe in einem Fall waren unter vier Workern zu langsam für die 30-s-Frist (Nachtrag Gesamtlauf mispel 05.10.2026).
+    // Die Zusicherungen sind dieselben; die gesendeten Körper liest wie bisher nur der Fall der Personen-Seite (die Bühne
+    // legt sie je Aufruf neu an).
+    const ohneSchreiben = async (page: Page, fall: string) => {
+      await expect(page.getByRole('button', { name: SCHREIBEN }), fall).toHaveCount(0);
+      await ohneQuerlauf(page, fall);
+    };
+    test('R6: als „Einsicht“ kein Schreib-Knopf — an seiner Stelle der Leer-Satz, lesen und CSV bleiben: Verzeichnis, Dokumente, D-0001', async ({ page }) => {
       await oeffne(page, 'person=RF&lage=ahrenberg', breite);
       await expect(page.getByTestId('einsicht-rolle')).toHaveText(EINSICHT_ROLLE);
       await expect(page.getByTestId('verzeichnis-zeile-D-0001').first()).toBeVisible();
       await expect(page.getByTestId('verzeichnis-csv')).toBeVisible();
-      await ohneSchreiben('Einsicht: Verzeichnis');
+      await ohneSchreiben(page, 'Einsicht: Verzeichnis');
 
       await page.getByTestId('energiemanagement-reiter-dokumente').click();
       await expect(page.getByTestId('dokument-zeile-D-0001')).toBeVisible();
       await expect(page.getByTestId('dokumente-register').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
-      await ohneSchreiben('Einsicht: Dokumente');
+      await ohneSchreiben(page, 'Einsicht: Dokumente');
       await ablegen(page, `f-einsicht-dokumente-${breite}`, true);
 
       await page.getByTestId('dokument-zeile-D-0001').getByRole('button').click();
       await expect(page.getByTestId('dokument-kopf')).toContainText('entschieden von Robert Falk');
       await expect(page.getByTestId('dokument-seite').getByTestId('einsicht-satz')).toHaveCount(1);
-      await ohneSchreiben('Einsicht: Dokument D-0001');
+      await ohneSchreiben(page, 'Einsicht: Dokument D-0001');
+    });
 
+    test('R6: als „Einsicht“ kein Schreib-Knopf — an seiner Stelle der Leer-Satz: Aufgaben, Wer ist wofür verantwortlich', async ({ page }) => {
       await oeffne(page, 'person=RF&lage=ahrenberg&seite=aufgaben', breite);
       await expect(page.getByTestId('aufgabe-bezugsbasen').getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
       await expect(page.getByTestId('aufgaben-reiter').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
-      await ohneSchreiben('Einsicht: Aufgaben');
+      await ohneSchreiben(page, 'Einsicht: Aufgaben');
       await ablegen(page, `g-einsicht-aufgaben-${breite}`, true);
 
       await page.getByTestId('verantwortung-link').click();
       await expect(page.getByTestId('verantwortung-freigaben-satz')).toBeVisible();
-      await ohneSchreiben('Einsicht: Wer ist wofür verantwortlich');
+      await ohneSchreiben(page, 'Einsicht: Wer ist wofür verantwortlich');
+    });
 
+    test('R6: als „Einsicht“ kein Schreib-Knopf — an seiner Stelle der Leer-Satz: Personen-Seite, nichts gesendet', async ({ page }) => {
       await oeffne(page, 'person=RF&lage=ahrenberg&ps=IK', breite);
       await expect(page.getByTestId('person-seite').getByRole('heading', { level: 1 })).toHaveText('Ines Kaltenbach');
       // Zwei Schreib-Stellen, zwei Sätze: „Angaben ändern“ im Kopf und seit IP-15 „Nachweis festhalten“ im Abschnitt „Nachweise“.
       await expect(page.getByTestId('person-seite').getByTestId('einsicht-satz')).toHaveText([EINSICHT_LEER, EINSICHT_LEER]);
       await expect(page.getByTestId('person-nachweise').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
-      await ohneSchreiben('Einsicht: Personen-Seite');
+      await ohneSchreiben(page, 'Einsicht: Personen-Seite');
       expect(await gesendet(page)).toEqual([]);
     });
   });

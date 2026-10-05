@@ -84,3 +84,19 @@ kommt.
   beiden Befunde sahen im Sammelbericht gleich aus.
 - **Erst einordnen, dann reparieren:** Produkt kaputt · Prüfung veraltet ·
   Bühne unecht. Hier zweimal nicht das Produkt.
+
+## Nachtrag 05.10.2026: drei Regeln aus den Last-Roten von `mispel`
+
+Belege und Zahlen: [Gesamtlauf `mispel`, Nachtrag](../../rollout/gesamtlauf-mispel-2026-10-05.md#nachtrag-last-rote-beseitigt).
+
+- **Ein voller Aufruf je Fall** (Entscheid firstmate `gm-e2e-mehrfachaufruf` = A). Jedes `page.goto` auf eine neue Bühne
+  und jedes `page.reload` lädt Hunderte Module einzeln vom Dev-Server; unter vier Workern blieben einzelne Aufrufe bis
+  zu 21 s ohne Antwort. Mehrere Zustände → mehrere Fälle; ein Vergleich über zwei Aufrufe → serielle Gruppe (der erste
+  Fall hält fest, der nächste vergleicht; Muster in `e2e/wallbox-karte.spec.ts`, „Bestandsschutz“). Ein `goto`, das nur
+  den `#hash` ändert, ist kein Aufruf.
+- **Nie in einen wachsenden Dialog klicken.** Die Folgen-Vorschauen kommen entprellt (200 ms) und lassen den bei
+  1440 px zentrierten `Modal` wachsen; ein Klick, dessen Punkt vorher feststand, trifft danach ein anderes Feld. Erst
+  auf den geladenen Inhalt warten (`anlage-umziehen`, `ort-verschieben`), dann klicken. Gemessen wird erst nach
+  `document.fonts.ready`.
+- **Keine Uhrzeit aus der Rechneruhr zusichern.** `Date.now()` + Spanne wird ab 23 Uhr „morgen“ — dafür
+  `page.clock.setFixedTime` und die Spanne relativ zu dieser Uhr (`steuerung-anhalten`).

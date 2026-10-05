@@ -87,6 +87,9 @@ async function oeffne(page: Page, q: string, antworten?: Record<string, () => Me
   await page.goto(`/e2e/tageskarte.html?${q}`);
   await expect(page.getByTestId('werte-karte')).toBeVisible();
   await expect(page.getByTestId('werte-zeile').first()).toBeVisible();
+  // Gemessen wird erst mit den Schriften der Seite: im Beleglauf des Nachtrags zum Gesamtlauf mispel (05.10.2026)
+  // lagen Titel (Ersatzschrift) und Abzeichen (nach dem Tausch) 21 px auseinander, weil die Schriften dazwischen kamen.
+  await page.evaluate(() => document.fonts.ready);
 }
 
 /** Kein Querlauf: weder die Seite noch der Dialog noch ein Element ragt über 375 px. */
@@ -269,8 +272,11 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await bilder(page, '14-noch-nicht-gebildet');
   });
 
+  // Die Fassung in drei Fällen mit je EINEM Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): drei
+  // Aufrufe in einem Fall waren unter vier Workern vereinzelt rot (Gesamtlauf mispel 05.10.2026, tablet). Die
+  // Zusicherungen sind dieselben; der zweite und dritte Fall laden wie „ohne Datenquelle“ ohne den Kopf von `oeffne`.
   // ergebnis-zustand 1.7: immer zeigen, beide Fälle — blättern wechselt die Fassung mit der Periode.
-  test('die Fassung: der vorläufige 03.11., der endgültige 02.11., der vorläufige Oktober mit dem endgültigen 25.10.', async ({ page }) => {
+  test('die Fassung: der vorläufige 03.11., einen Tag zurück der endgültige 02.11.', async ({ page }) => {
     await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03');
     await fassung(page, 'vorläufig');
     await expect(page.getByTestId('werte-fassung')).toHaveAttribute('data-fassung', 'vorlaeufig');
@@ -286,11 +292,21 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(page.getByTestId('werte-fassung')).toHaveAttribute('data-fassung', 'endgueltig');
     await keinQuerlauf(page);
     await bilder(page, '8-endgueltiger-tag');
+  });
+
+  test('die Fassung: der vorläufige Oktober', async ({ page }) => {
+    await verdrahte(page);
+    await page.setViewportSize({ width: BREITE, height: 812 });
     await page.goto('/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=monat&wert=2026-10');
     await expect(page.getByTestId('werte-karte')).toContainText('55.100\u00a0kWh');
     await fassung(page, 'vorläufig');
     await keinQuerlauf(page);
     await bilder(page, '9-vorlaeufiger-monat');
+  });
+
+  test('die Fassung: der endgültige 25.10. im vorläufigen Oktober', async ({ page }) => {
+    await verdrahte(page);
+    await page.setViewportSize({ width: BREITE, height: 812 });
     await page.goto('/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=tag&wert=2026-10-25');
     await expect(page.getByTestId('werte-karte')).toContainText('720\u00a0kWh');
     await fassung(page, 'endgültig');
@@ -298,7 +314,8 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await bilder(page, '10-endgueltiger-tag-im-vorlaeufigen-monat');
   });
 
-  // Die Zeitraum-Wahl als EIN Bedienelement (Captain 14.09.2026: Variante B, ein Kasten mit zwei Zeilen).
+  // Die Zeitraum-Wahl als EIN Bedienelement (Captain 14.09.2026: Variante B, ein Kasten mit zwei Zeilen). In drei Fällen
+  // mit je EINEM Aufruf der Bühne wie „die Fassung“ (derselbe Entscheid); die Zusicherungen sind dieselben.
   test('Zeitraum-Wahl: Tag|Monat und Datum in einem Rahmen, blättern und umschalten behält den Zeitraum', async ({ page }) => {
     await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03');
     const wahl = page.getByRole('group', { name: 'Zeitraum' });
@@ -319,13 +336,23 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     // Vom Tag in SEINEN Monat — nicht in den heutigen (Fehler der ersten Vorschau).
     await wahl.getByRole('tab', { name: 'Monat' }).click();
     await expect(wahl).toContainText('November 2026');
+  });
+
+  test('Zeitraum-Wahl: der Monat Oktober 2026', async ({ page }) => {
+    await verdrahte(page);
+    await page.setViewportSize({ width: BREITE, height: 812 });
     await page.goto('/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=monat&wert=2026-10');
     await expect(page.getByTestId('werte-karte')).toContainText('55.100\u00a0kWh');
     await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('Oktober 2026');
     await keinQuerlauf(page);
     await bilder(page, 'zeitwahl-monat');
-    // Der längste Monatsname steht ganz — auch ohne Werte (die Wahl steht über der Auskunft). Der Bühne fehlt die Antwort
-    // (404): seit AP-13 IP-6 ist das eine ruhige Auskunft, kein Alarm mit „Erneut versuchen“.
+  });
+
+  // Der längste Monatsname steht ganz — auch ohne Werte (die Wahl steht über der Auskunft). Der Bühne fehlt die Antwort
+  // (404): seit AP-13 IP-6 ist das eine ruhige Auskunft, kein Alarm mit „Erneut versuchen“.
+  test('Zeitraum-Wahl: der längste Monatsname steht ganz, auch ohne Werte', async ({ page }) => {
+    await verdrahte(page);
+    await page.setViewportSize({ width: BREITE, height: 812 });
     await page.goto('/e2e/tageskarte.html?ms=MS-06&art=monat&wert=2026-09');
     await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('September 2026');
     await expect(page.getByTestId('werte-auskunft')).toBeVisible();

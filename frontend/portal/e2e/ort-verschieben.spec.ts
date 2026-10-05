@@ -96,6 +96,11 @@ async function oeffneDialog(page: Page) {
   await dialog.getByRole('combobox', { name: 'Neuer Standort *' }).click();
   await expect(page.getByRole('option', { name: /Werk Ahrenberg \(ST-1\)/ })).toHaveCount(0);
   await page.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }).click();
+  // Die Folgen zur Wahl kommen entprellt (200 ms) und lassen den bei 1440 px zentrierten Dialog wachsen — „Gültig ab“
+  // rückt dabei nach oben. Ein Klick, dessen Punkt vorher feststand, trifft danach ein anderes Feld, und der Kalender
+  // öffnet sich nie (Beleglauf des Nachtrags zum Gesamtlauf mispel 05.10.2026, mobile-webkit; dieselbe Ursache wie in
+  // `anlage-umziehen.spec.ts`). Darum erst die geladenen Folgen, dann das Datum.
+  await expect(dialog.getByTestId('verschieben-folgen')).toBeVisible();
   return dialog;
 }
 

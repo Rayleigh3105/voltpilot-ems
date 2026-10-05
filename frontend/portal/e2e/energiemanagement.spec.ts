@@ -286,7 +286,11 @@ for (const breite of [375, 1440]) {
       expect(entwurf.verweis).toMatchObject({ ablage: 'Instandhaltungssystem, Arbeitspläne', kennung: 'IH-SG-01', fassungsangabe: 'Rev. 4', sha256: sha256(inhalt) });
     });
 
-    test('Stand 12.02.2029 (R1–R3): Verzeichnis mit leeren Gruppen, Filter „in meinem Namen“, CSV, Überprüfung, Vergleich, Zuschnitt-Hilfe', async ({ page }) => {
+    // Der Stand 12.02.2029 in vier Fällen mit je EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf
+    // = A): vier volle Aufrufe in einem Fall waren unter vier Workern zu langsam für die 30-s-Frist (Nachtrag Gesamtlauf
+    // mispel 05.10.2026). Die Bühne hält ihren Stand nur im Speicher, jeder Aufruf beginnt bei der Lage. Die Zusicherungen
+    // sind dieselben.
+    test('Stand 12.02.2029 (R1–R3): Verzeichnis mit leeren Gruppen, Filter „in meinem Namen“, CSV', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg', breite, AM_12_02_2029);
       await expect(page.getByTestId('verzeichnis-zeile-D-0001').first()).toBeVisible();
       await expect(page.getByTestId('verzeichnis-gruppe-risiken_chancen')).toContainText(LEER);
@@ -307,7 +311,9 @@ for (const breite of [375, 1440]) {
       expect(csv).toContain(VERANTWORTUNG);
       expect(csv).toContain('Gruppe;Art;Kennzeichen;Titel;Fassung oder Nr.;entschieden von;eingetragen von;Tag;Prüfsumme;Ort');
       expect(csv).toContain('D-0003');
+    });
 
+    test('Stand 12.02.2029 (R1–R3): Überprüfung an der Energiepolitik D-0001', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&dok=1', breite, AM_12_02_2029);
       await expect(page.getByTestId('dokument-kopf')).toHaveText(
         'Energiepolitik D-0001 · Fassung 1 · freigegeben am 15.12.2026 · entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach.',
@@ -322,7 +328,9 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('dokument-original')).toContainText('Original bei Ihnen: Energiepolitik Fassung 1, unterschrieben · QM-Laufwerk, Ordner Energiemanagement/Politik · EP-2026 · Prüfsumme 3f1f…3b9b');
       ohneQuerlauf(await messe(page), 'D-0001');
       await ablegen(page, `l-energiepolitik-${breite}`, true);
+    });
 
+    test('Stand 12.02.2029 (R1–R3): Vergleich am Anwendungsbereich D-0002', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&dok=2', breite, AM_12_02_2029);
       await expect(page.getByTestId('dokument-anwendungsbereich')).toContainText('Werk Ahrenberg, Werk Lindach');
       await expect(page.getByTestId('vergleich-satz')).toHaveText(
@@ -330,7 +338,9 @@ for (const breite of [375, 1440]) {
       );
       ohneQuerlauf(await messe(page), 'D-0002');
       await ablegen(page, `m-anwendungsbereich-${breite}`, true);
+    });
 
+    test('Stand 12.02.2029 (R1–R3): Zuschnitt-Hilfe und zurück', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg', breite, AM_12_02_2029);
       await page.getByTestId('energiemanagement-zuschnitt-link').click();
       const hilfe = page.getByTestId('zuschnitt-hilfe');

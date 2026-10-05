@@ -84,8 +84,11 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string, breite
 }
 
 test.describe('AP-13 IP-10 · die Gebäude-Karte (O4)', () => {
-  test('Halle 2 im Oktober 2026 bei 1440 und 375 px: Energie · Messstellen · Kennzahlen — keine Gebäude-Summe', async ({ page }) => {
-    for (const breite of [1440, 375]) {
+  // Je Breite EIN Fall mit EINEM Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): im Beleglauf des
+  // Nachtrags zum Gesamtlauf mispel (05.10.2026, tablet) bekam der zweite Aufruf 21 s lang keine Antwort des
+  // Dev-Servers auf 163 Modul-Anfragen, und der Fall lief in die Frist. Die Zusicherungen sind dieselben.
+  for (const breite of [1440, 375]) {
+    test(`Halle 2 im Oktober 2026 bei ${breite} px: Energie · Messstellen · Kennzahlen — keine Gebäude-Summe`, async ({ page }) => {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-gebaeude&person=IK', breite);
       const karte = await halle2(page);
       const m = await messe(page);
@@ -113,8 +116,8 @@ test.describe('AP-13 IP-10 · die Gebäude-Karte (O4)', () => {
 
       await ablegen(page, `karte-${breite}`, m);
       await ablegen(page, `karte-${breite}-ganz`, m, true);
-    }
-  });
+    });
+  }
 
   test('der Sprung der Datenlage öffnet das Register MIT Filter Ort = Halle 2', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk-gebaeude&person=IK', 1440);
