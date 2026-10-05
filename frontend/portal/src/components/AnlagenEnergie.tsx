@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { AnlageEnergie, EnergieStat } from '../anlageEnergie';
+import type { AnlageEnergie, AnlageKurve, EnergieStat } from '../anlageEnergie';
 import { UEMS_ENERGIEBILANZ } from '../glossar';
 import { useStaffel } from '../staffel';
+import { flaeche, pfad } from './portfolio/kurveGeometrie';
 import './AnlagenEnergie.css';
 
 /**
@@ -52,6 +53,33 @@ function Stat({ s }: { s: EnergieStat }) {
   );
 }
 
+/**
+ * Die kleine Tages-Verlaufskurve der Anlage in Rollen-Farben: PV-Fläche + -Linie
+ * (orange) und Verbrauch (violett). Rendert mit der GEMEINSAMEN Kurvengeometrie
+ * ({@link flaeche}/{@link pfad}, dieselbe wie die große Tageskurve der Kunden-
+ * übersicht) und schneidet rechts bei „jetzt" ab — rechts davon ist nichts
+ * gemessen (AGENTS.md „veraltete Daten nicht als aktuell zeigen").
+ */
+function Spark({ kurve }: { kurve: AnlageKurve }) {
+  const alle = [...kurve.pv, ...kurve.load].filter((v): v is number => v != null);
+  const max = Math.max(0, ...alle) * 1.1;
+  if (max <= 0) return null;
+  return (
+    <svg
+      className="vp-ae-spark"
+      viewBox="0 0 96 28"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Tagesverlauf von Erzeugung und Verbrauch"
+    >
+      <line className="achse" x1={0} x2={96} y1={27} y2={27} />
+      <path className="pv-a" d={flaeche(kurve.pv, max, kurve.jetzt, 27, 96)} />
+      <path className="pv-l" d={pfad(kurve.pv, max, kurve.jetzt, 27, 96)} />
+      <path className="ld-l" d={pfad(kurve.load, max, kurve.jetzt, 27, 96)} />
+    </svg>
+  );
+}
+
 function Karte({
   k,
   onOeffnen,
@@ -87,7 +115,9 @@ function Karte({
           <span className="vp-ae-typ">{k.typ}</span>
         </span>
       </div>
-      <p className="vp-ae-satz">
+      {/* Statuszeile nur bei Abweichung SICHTBAR — im Normalfall genügt der Punkt
+          (Status-Variante A). Für Screenreader bleibt der Zustand immer lesbar. */}
+      <p className={`vp-ae-satz is-${k.zustand.ton}${k.zustand.ton === 'ok' ? ' vp-sr-only' : ''}`}>
         {k.zustand.wort}
         {k.zustand.alter ? ` · ${k.zustand.alter}` : ''}
       </p>
@@ -97,10 +127,13 @@ function Karte({
           Speicher ohne Gerät
         </span>
       )}
-      <div className="vp-ae-stats" data-count={k.stats.length}>
-        {k.stats.map((s) => (
-          <Stat key={s.label} s={s} />
-        ))}
+      <div className={`vp-ae-body${k.kurve ? ' has-spark' : ''}`}>
+        <div className="vp-ae-stats" data-count={k.stats.length}>
+          {k.stats.map((s) => (
+            <Stat key={s.label} s={s} />
+          ))}
+        </div>
+        {k.kurve && <Spark kurve={k.kurve} />}
       </div>
       {weg && (
         <div className="vp-ae-fuss">

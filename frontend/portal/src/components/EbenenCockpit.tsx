@@ -16,7 +16,7 @@ import {
   type StandorteAmStichtag,
   type StandortZuordnungVorschau as StandortZuordnungVorschauDaten,
 } from '../api';
-import { fleetTonalitaet } from '../fleet';
+import { berlinDay, fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
 import { anlageRoute, aufbauHash, pageRoute, standortAufbauHash, standortRoute, type AufbauNeu, type Route } from '../nav';
 import { misst } from '../ebenenNav';
@@ -35,8 +35,9 @@ import {
   type AnlagenZeile,
   type PortfolioBausteinId,
 } from '../portfolioCockpit';
-import { anlageEnergie } from '../anlageEnergie';
+import { anlageEnergie, anlageKurve } from '../anlageEnergie';
 import { AnlagenEnergie } from './AnlagenEnergie';
+import { usePortfolioHistorie } from '../usePortfolioHistorie';
 import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
 import {
   anlagenDerEbene,
@@ -81,6 +82,9 @@ import { LIVE_POLL_MS } from '../pollCadence';
 
 /** Re-render cadence of the freshness/liveness derivations. */
 const TICK_MS = 5_000;
+
+/** Bis zu so vielen Anlagen tragen die Karten eine Tageskurve; darüber entfällt sie (Perf). */
+const KURVEN_BIS_ANLAGEN = 12;
 
 /**
  * DIE UEMS-ÜBERSICHT EINER EBENE — Unternehmens- und Standort-Übersicht
@@ -275,6 +279,19 @@ export function EbenenCockpit({
   const configById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
   // UEMS AP-13 IP-7: die Bausteine der Messstellen-Welt — nur auf einer Übersicht, nicht auf „Standort › Anlagen“.
   const anlagenDerSicht = useMemo(() => anlagenDerEbene(sites, ebene).map((s) => ({ id: s.id, name: s.name })), [sites, ebene]);
+  // Konzept Runde 4: die Energie-Karten tragen eine Tages-Verlaufskurve — dieselbe
+  // Tages-Historie wie der Reiter „Energie" (geteilter Cache); bei sehr vielen
+  // Anlagen entfällt sie, statt die Seite zu bremsen (nur auf der Übersicht).
+  const { daten: historien } = usePortfolioHistorie(
+    anlagenDerSicht,
+    'day',
+    berlinDay(now),
+    !nurAnlagen && anlagenDerSicht.length > 0 && anlagenDerSicht.length <= KURVEN_BIS_ANLAGEN,
+  );
+  const histById = useMemo(
+    () => new Map((historien ?? []).map((h) => [h.siteId, h.history] as const)),
+    [historien],
+  );
   const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht, funktionen ?? null);
   // UEMS AP-13 IP-8 (Ü7, versprochen von IP-2): „Standort › Anlagen“ trägt je Zeile den Weg „Energiebilanz“ — nur für eine
   // Anlage mit Hauptzähler in der Stellung (dieselbe Frage wie der Reiter). Die Übersicht fragt nichts und bleibt gleich.
@@ -556,7 +573,12 @@ export function EbenenCockpit({
     standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [],
   );
   const energieKarte = (z: AnlagenZeile) =>
-    anlageEnergie(z, rollenById.get(z.id) ?? { pv: 0, storage: 0 }, nichtZugeordnetSet.has(z.id));
+    anlageEnergie(
+      z,
+      rollenById.get(z.id) ?? { pv: 0, storage: 0 },
+      nichtZugeordnetSet.has(z.id),
+      anlageKurve(histById.get(z.id) ?? null, now),
+    );
   const energieGruppen = gruppen
     ? gruppen.map((g) => ({ key: g.key, kopf: g.kopf, karten: g.zeilen.map(energieKarte), leer: g.leer }))
     : null;
