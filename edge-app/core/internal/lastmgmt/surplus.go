@@ -212,12 +212,21 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 	}
 
 	t.mu.Lock()
-	seen, at := t.seen, t.at
+	seen, at, settlingAt := t.seen, t.at, t.settlingAt
 	restHold, restNoBattHold := t.restHoldLocked(), t.restNoBattHoldLocked()
 	batt, haveBatt := t.battKw, t.haveBatt
 	t.mu.Unlock()
 
 	fresh := seen && !at.IsZero() && now.Sub(at) <= BudgetFreshWindow && !now.Before(at)
+	// ⚠ A charge point that is still ramping after its own start or stop is a
+	// KNOWN gap with working meters (Measurement.Settling): the lane keeps the
+	// surplus it last measured instead of calling it unprovable - which under
+	// „Nur Sonnenstrom" would pause the very car that is starting. Bounded by
+	// SurplusSettleHold, and only while the settling readings keep coming.
+	if !fresh && seen && settlingAt.After(at) && !now.Before(at) &&
+		now.Sub(at) <= SurplusSettleHold && now.Sub(settlingAt) <= BudgetFreshWindow {
+		fresh = true
+	}
 	if !fresh {
 		out.Mode, out.Blind = SurplusUnprovable, true
 		if policy == PolicySolarOnly {

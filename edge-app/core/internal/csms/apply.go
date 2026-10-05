@@ -121,6 +121,11 @@ func (s *Server) onStatus(id string, connectorID int, status, errorCode string, 
 			c.Status = status
 		} else {
 			con := c.connector(connectorID)
+			// The station started or stopped drawing on its own: what it
+			// metered before no longer describes its draw (PowerSettled).
+			if (con.Status == StatusCharging) != (status == StatusCharging) {
+				con.DrawChangedAt = now
+			}
 			con.Status = status
 			con.ErrorCode = errorCode
 			// A connector that becomes Available/Unavailable/Faulted after a
@@ -293,6 +298,7 @@ func (s *Server) onMeterSample(id string, connectorID int, r MeterReading, sampl
 				tx.Reconciling = false
 			}
 			if r.PowerKw != nil && (con.MeteredAt.IsZero() || sampled.After(con.MeteredAt)) {
+				con.PrevPowerKw, con.PrevMeteredAt = con.PowerKw, con.MeteredAt
 				con.PowerKw = r.PowerKw
 				con.MeteredAt = sampled
 			}
