@@ -27,7 +27,7 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
     private static final Path UEMS = Path.of("src/main/java/com/voltpilot/api/uems");
     private static final Path WEB = Path.of("src/main/java/com/voltpilot/api/web");
     private static final List<String> QUELLEN = List.of("WiedervorlageQuelle", "DokumentWiedervorlage",
-            "AuditWiedervorlage", "FeststellungWiedervorlage", "WiedervorlageBestand");
+            "AuditWiedervorlage", "FeststellungWiedervorlage", "WiedervorlageBestand", "AblesungWiedervorlage");
     private static final String VERMERK = "Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.";
 
     @Test
@@ -134,7 +134,7 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
         Pattern verboten = Pattern.compile("@Scheduled|KafkaTemplate|ApplicationEventPublisher|MailSender|"
                 + "JavaMailSender|Ereignis|publish\\(|\\.send\\(");
         for (String klasse : List.of("EnergiemanagementWiedervorlageService", "DokumentWiedervorlage",
-                "AuditWiedervorlage", "FeststellungWiedervorlage", "WiedervorlageBestand")) {
+                "AuditWiedervorlage", "FeststellungWiedervorlage", "WiedervorlageBestand", "AblesungWiedervorlage")) {
             String code = ohneKommentare(Files.readString(UEMS.resolve(klasse + ".java")));
             assertThat(verboten.matcher(code).results().map(m -> m.group()).toList()).as(klasse).isEmpty();
         }

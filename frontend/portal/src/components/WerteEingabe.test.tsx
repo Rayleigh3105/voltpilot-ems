@@ -34,6 +34,17 @@ it('Ablesungen zeigen einen Ladefehler und bieten keinen Eingabeweg mit unbekann
   expect(await screen.findByRole('alert')).toHaveTextContent('konnten nicht geladen');
   expect(screen.queryByRole('button', { name: 'Ablesung eintragen' })).not.toBeInTheDocument();
 });
+it('Wiedervorlage w1, Entscheid 7: der Abschnitt ist das Ziel von „Ablesung eintragen“ erst mit seinen Ablesungen, der Knopf ist der Schritt', async () => {
+  let laden: (a: ReturnType<typeof gasAblesungen>) => void = () => {};
+  vi.spyOn(api, 'ablesungen').mockReturnValue(new Promise((r) => { laden = r; }));
+  const { container } = render(<Ablesungen kennzeichen="MS-21" einheit="m³" zone="Europe/Berlin" />);
+  const abschnitt = container.querySelector('section')!;
+  expect(abschnitt.hasAttribute('data-entscheid')).toBe(false);
+  laden(gasAblesungen());
+  const knopf = await screen.findByRole('button', { name: 'Ablesung eintragen' });
+  expect(abschnitt.getAttribute('data-entscheid')).toBe('zaehlerablesung');
+  expect(knopf.hasAttribute('data-entscheid-schritt')).toBe(true);
+});
 it('serverseitig abgelehnte Ablesung bleibt im Dialog mit ihrer Eingabe', async () => {
   const alle = gasAblesungen();
   vi.spyOn(api, 'ablesungBerichtigen').mockRejectedValue(new ApiError(422, 'Der Stand liegt unter der vorherigen Ablesung.'));

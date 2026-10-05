@@ -847,6 +847,8 @@ Der „Jahresplan“ zeigt die Fristen nach den nächsten 30 Tagen bis zwölf Mo
 „Zuständig“ ist die Person am Objekt; nennt das Objekt keine, die Person der passenden Aufgabe im Energiemanagement („laut Aufgabe“); hat auch die Aufgabe keine, steht „Niemand zuständig“ mit dem Weg, die Aufgabe festzulegen.
 Wer die Aufgaben nicht lesen darf, liest keine Person laut Aufgabe und auch kein „Niemand zuständig“.
 „Zuletzt erledigt“ nennt die Entscheidungen der letzten 90 Tage, die eine Frist beendet oder neu begonnen haben, auch „geprüft, bleibt“.
+Seit Vertrag 1.2 steht die „Zählerablesung“ in der Liste (Bereich Messen): eine Ablese-Runde je Gebäude (ohne Gebäude der Standort) und Fälligkeitstag, „8 Zähler in Halle 1 ablesen“, fällig zwei Monate nach der letzten Ablesung wie „Ablesung überfällig seit …“ im Register.
+Der Schritt heißt „Ablesungen eintragen“ und öffnet die Messstellen des Orts; bei einem Zähler heißt er wie der Knopf an der Messstelle, „Ablesung eintragen“.
 Kundenwörter: `UEMS_WIEDERVORLAGE_SATZ`, `UEMS_UEBERFAELLIG`, `UEMS_KEINE_FRIST_UEBERFAELLIG`, `UEMS_NAECHSTE_FRISTEN`, `UEMS_ZULETZT_ERLEDIGT`, `UEMS_WOHER_FRISTEN`, `UEMS_JAHRESPLAN`, `UEMS_LAUT_AUFGABE`, `UEMS_GEPRUEFT_BLEIBT_KNOPF` (PORTAL/glossar.ts)."""],
     "messstelle": ["""## Summenwert
 

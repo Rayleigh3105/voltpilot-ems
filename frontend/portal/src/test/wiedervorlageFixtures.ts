@@ -2,11 +2,12 @@ import { UEMS_VERANTWORTUNG } from '../glossar';
 import type { Wiedervorlage, WiedervorlageErledigt, WiedervorlageHerleitung, WiedervorlageZeile, WiedervorlageZuletzt, Zustaendig } from '../wiedervorlage';
 
 /**
- * Antworten von `GET /api/v1/energiemanagement/wiedervorlage` (Vertrag 1.1) und `…/wiedervorlage/zuletzt` für das
+ * Antworten von `GET /api/v1/energiemanagement/wiedervorlage` (Vertrag 1.2) und `…/wiedervorlage/zuletzt` für das
  * Konzept Wiedervorlage w1, mit den Titeln, wie die Quellen sie bilden (`WiedervorlageBestand.java`,
- * `DokumentWiedervorlage.java` u. a.), und mit Herleitung, Gegenstand und Zuständig je Zeile:
- * R12 (Referenzstand 12.02.2029), der Stand der Demo am 30.04.2029 (zehn Korrekturen an einem Bericht, EINE Zeile) und
- * der Normalfall (nichts in den nächsten 30 Tagen, elf Fristen im Jahresplan).
+ * `DokumentWiedervorlage.java`, `AblesungWiedervorlage.java` u. a.), und mit Herleitung, Gegenstand und Zuständig je
+ * Zeile: R12 (Referenzstand 12.02.2029), der Stand der Demo am 30.04.2029 (zehn Korrekturen an einem Bericht, EINE
+ * Zeile; die Ablese-Runden in Halle 1, Halle 2 und der Verwaltung) und der Normalfall (nichts in den nächsten 30 Tagen,
+ * elf Fristen im Jahresplan).
  */
 export const KZ = {
   stromMontageHalle2: 'k0170000-0000-4000-8000-000000000002',
@@ -16,6 +17,26 @@ export const KZ = {
   stromSpritzguss: 'k0170000-0000-4000-8000-000000000001',
 } as const;
 export const DOK = { d1: 'd0190000-0000-4000-8000-000000000001', d2: 'd0190000-0000-4000-8000-000000000002' } as const;
+/** Die Demo: Halle 1 (G-1) als Ort einer Runde, MS-20 und MS-22 als Messstellen einzelner Zähler. */
+export const ABLESUNG = {
+  halle1: 'a0090000-0000-4000-8000-000000000001',
+  ms20: 'a0090000-0000-4000-8000-000000000020',
+  ms22: 'a0090000-0000-4000-8000-000000000022',
+} as const;
+
+/** Eine Ablese-Runde der Demo: zuletzt am 01.10.2026 abgelesen, fällig am 01.12.2026 (+ 2 Monate). */
+export const ableseRunde = (kz: string, ort: string, zaehler: string | number, id: string, tage = 881, faellig = '2026-12-01'): WiedervorlageZeile =>
+  wvZeile('zaehlerablesung', kz, `Zählerablesung ${ort} (${typeof zaehler === 'number' ? `${zaehler} Zähler` : zaehler})`, faellig, tage, {
+    id,
+    herleitung: herleitung('abgelesen', '2026-10-01', {
+      monate: 2,
+      anzahl: typeof zaehler === 'number' ? zaehler : 1,
+      kennung: typeof zaehler === 'number' ? null : zaehler.split(' ')[0],
+    }),
+    bezug: ort,
+    aufgabe: 'bewertung_messplanung',
+    zustaendig: { name: 'Ines Kaltenbach', herkunft: 'aufgabe', ich: true },
+  });
 
 type Mehr = Partial<Pick<WiedervorlageZeile, 'verantwortlich' | 'id' | 'kennzahl_id' | 'herleitung' | 'bezug' | 'einsatz_id' | 'aufgabe' | 'zustaendig'>>;
 
@@ -217,6 +238,9 @@ export function wvDemo(): Wiedervorlage {
         bezug: 'Monatsbericht Standort Werk Ahrenberg Oktober 2026',
         aufgabe: 'energiemanagement_leiten',
       }),
+      ableseRunde('G-1', 'Halle 1', 8, ABLESUNG.halle1),
+      ableseRunde('G-2', 'Halle 2', 'MS-20 Spritzguss', ABLESUNG.ms20),
+      ableseRunde('G-3', 'Verwaltung', 'MS-22 Netzbezug Verwaltung', ABLESUNG.ms22),
       wvZeile('messbedarf_frist', 'MB-1', 'Messbedarf MB-1 — Frist', '2027-03-31', 761, {
         id: 'mb-1',
         herleitung: herleitung('termin', '2027-03-31'),
@@ -239,9 +263,9 @@ export function wvDemo(): Wiedervorlage {
     ],
     vorschau: [],
     spaeter,
-    anzahl_faellig: 4,
+    anzahl_faellig: 7,
     anzahl_vorschau: 0,
-    anzahl_ueberfaellig: 4,
+    anzahl_ueberfaellig: 7,
     anzahl_naechste: 0,
     anzahl_spaeter: spaeter.length,
     nicht_in_liste: ['AU-2029-0001', 'BB-0001', 'BR-2029-0001', 'BR-2029-0002', 'D-0001', 'D-0002', 'D-0003', 'D-0004', 'EZ-2029-0001', 'M-2029-0002', 'M-2029-0003'],

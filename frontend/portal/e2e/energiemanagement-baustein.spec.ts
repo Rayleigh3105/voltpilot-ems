@@ -22,9 +22,15 @@ const ERWARTET: Record<string, { marken: string[]; zeilen: string[]; ruhe?: stri
       'Energiepolitik und Anwendungsbereich überprüfen',
     ],
   },
+  // Die Demo seit Vertrag 1.2: drei Ablese-Runden (Halle 1, Halle 2, Verwaltung) sind EIN Bündel mit ihren Zählern.
   demo: {
-    marken: ['4 überfällig'],
-    zeilen: ['Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben', 'Messstelle für Messbedarf MB-1 einrichten', '2 Bezugsbasen überprüfen'],
+    marken: ['7 überfällig'],
+    zeilen: [
+      'Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben',
+      '10 Zähler ablesen',
+      'Messstelle für Messbedarf MB-1 einrichten',
+      '2 Bezugsbasen überprüfen',
+    ],
   },
   // Nichts in den nächsten 30 Tagen: die nächsten zwei Fristen aus dem Jahresplan, je Monat gebündelt.
   normal: { marken: ['Keine Frist überfällig'], zeilen: ['2 Maßnahmen umsetzen', 'Kriterien für Betrieb und Instandhaltung überprüfen'] },

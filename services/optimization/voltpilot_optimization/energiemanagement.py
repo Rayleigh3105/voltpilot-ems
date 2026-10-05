@@ -42,7 +42,7 @@ VOKABULARE = dict(
     folge_art=["energieziel", "massnahme", "dokument", "aufgabe", "audit"],
     wiedervorlage_art=["dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung",
                        "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin",
-                       "abweichung_frist", "messbedarf_frist", "bericht_anstoss"],
+                       "abweichung_frist", "messbedarf_frist", "bericht_anstoss", "zaehlerablesung"],
     verzeichnis_ort=["in_voltpilot", "wortlaut_original_beim_kunden", "verweis"],
     verzeichnis_gruppe=["grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation",
                         "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen",

@@ -33,7 +33,7 @@ export const VOKABULARE: Record<string, string[]> = {
   managementbewertung_zustand: ['entwurf', 'freigegeben'],
   beschluss_art: ['energieziel', 'massnahme', 'dokument', 'aufgabe', 'ressourcen', 'audit', 'keine_aenderung', 'weitere'],
   folge_art: ['energieziel', 'massnahme', 'dokument', 'aufgabe', 'audit'],
-  wiedervorlage_art: ['dokument_ueberpruefung', 'internes_audit', 'managementbewertung', 'feststellung', 'bewertung_ueberpruefung', 'bezugsbasis_ueberpruefung', 'energieziel_bewertung', 'massnahme_termin', 'abweichung_frist', 'messbedarf_frist', 'bericht_anstoss'],
+  wiedervorlage_art: ['dokument_ueberpruefung', 'internes_audit', 'managementbewertung', 'feststellung', 'bewertung_ueberpruefung', 'bezugsbasis_ueberpruefung', 'energieziel_bewertung', 'massnahme_termin', 'abweichung_frist', 'messbedarf_frist', 'bericht_anstoss', 'zaehlerablesung'],
   verzeichnis_ort: ['in_voltpilot', 'wortlaut_original_beim_kunden', 'verweis'],
   verzeichnis_gruppe: ['grundlagen', 'verantwortung', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'bewertung_messplanung', 'kennzahlen_bezugsbasen', 'ziele_massnahmen_abweichungen', 'audits_feststellungen', 'managementbewertung', 'berichte'],
   ueberpruefung_art: ['dokument', 'internes_audit', 'managementbewertung', 'feststellung'],

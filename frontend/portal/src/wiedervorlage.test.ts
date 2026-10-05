@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { VOKABULARE } from './energiemanagement';
-import { DOK, herleitung, KZ, wvDemo, wvLeer, wvNormal, wvR12, wvZeile, zuletztDemo, zuletztLeer } from './test/wiedervorlageFixtures';
+import { ABLESUNG, ableseRunde, DOK, herleitung, KZ, wvDemo, wvLeer, wvNormal, wvR12, wvZeile, zuletztDemo, zuletztLeer } from './test/wiedervorlageFixtures';
 import {
+  ABLESUNG_EINTRAGEN,
   ART_WORT,
   arbeitsliste,
   artAusAdresse,
@@ -22,7 +23,8 @@ import {
   type Wiedervorlage,
 } from './wiedervorlage';
 
-const text = (e: { aufgabe: string; grund: string }) => `${e.aufgabe} | ${e.grund}`;
+/** Aufgabe und Grund als ein Satz; das geschützte Leerzeichen in „+ 2 Monate“ prüft ein eigener Fall. */
+const text = (e: { aufgabe: string; grund: string }) => `${e.aufgabe} | ${e.grund}`.replace(/\u00a0/g, ' ');
 
 describe('Wiedervorlage w1 · die Frist als Datum, nie als Tageszähler', () => {
   it('überfällig: „seit“ mit dem Tag, ohne relatives Wort', () => {
@@ -133,11 +135,14 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
     const l = arbeitsliste(wvDemo());
     expect(l.ueberfaellig.map((e) => [e.kennzeichen, e.zeilen])).toEqual([
       ['BR-2026-0001', 1],
+      ['G-1', 1],
+      ['G-2', 1],
+      ['G-3', 1],
       ['MB-1', 1],
       ['BB-0006', 1],
       ['BB-0007', 1],
     ]);
-    const [bericht, mb] = l.ueberfaellig;
+    const [bericht, , , , mb] = l.ueberfaellig;
     expect(text(bericht)).toBe(
       'Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben | 10 Korrekturen nach der Freigabe, zuerst K-2026-0014. Der freigegebene Stand bleibt, bis Sie entscheiden.',
     );
@@ -237,14 +242,17 @@ describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)
     expect(b.zeilen[1].sprung!.hash).toBe('#/portfolio/berichte/BR-2028-0001?entscheid=bericht_anstoss');
   });
 
-  it('Demo: vier Einträge in drei Zeilen, der Bericht mit seinen zehn Korrekturen', () => {
+  it('Demo: sieben Einträge in vier Zeilen, der Bericht mit seinen zehn Korrekturen, die Ablese-Runden mit ihren Zählern', () => {
     const b = wasStehtAn(wvDemo())!;
-    expect(b.ueberfaellig).toBe(4);
+    expect(b.ueberfaellig).toBe(7);
     expect(b.zeilen.map(text)).toEqual([
       'Monatsbericht Standort Werk Ahrenberg Oktober 2026 neu freigeben | 10 Korrekturen nach der Freigabe',
+      '10 Zähler ablesen | Halle 1, Halle 2 und Verwaltung',
       'Messstelle für Messbedarf MB-1 einrichten | Wärmemengenzähler am Trockner der Spritzgießmaschine 4',
       '2 Bezugsbasen überprüfen | Vergleichsgrundlagen von 2 Kennzahlen',
     ]);
+    expect(b.weitere).toBe(0);
+    expect(b.zeilen[1].sprung!.hash).toBe('#/portfolio/energiemanagement/wiedervorlage?art=zaehlerablesung');
   });
 
   it('mehr als vier Aufgaben: die übrigen nennt eine Zeile, nichts verschwindet still', () => {
@@ -294,6 +302,60 @@ describe('Wiedervorlage w1 · „Was steht an“ auf der Übersicht (Variante A)
       ['13.02.2030', 1],
       ['20.03.2030', 1],
     ]);
+  });
+});
+
+describe('Wiedervorlage w1 · Zählerablesung (Entscheid 7, Vertrag 1.2)', () => {
+  it('eine Runde je Ort: Zähler zählen, der Grund ist die letzte Ablesung + 2 Monate, der Schritt führt ins Register des Orts', () => {
+    const [halle1, halle2] = arbeitsliste(wvDemo()).ueberfaellig.filter((e) => e.art === 'zaehlerablesung');
+    expect(text(halle1)).toBe('8 Zähler in Halle 1 ablesen | Zuletzt abgelesen am 01.10.2026 + 2 Monate');
+    // „+ 2 Monate“ bricht nur als Ganzes um (geschützte Leerzeichen), wie jeder Rhythmus der Wiedervorlage.
+    expect(halle1.grund).toBe('Zuletzt abgelesen am 01.10.2026 +\u00a02\u00a0Monate');
+    expect(arbeitsliste(wvR12()).ueberfaellig[0].grund).toMatch(/vom 13\.11\.2026 \+\u00a012\u00a0Monate$/);
+    expect(halle1.frist.satz).toBe('fällig seit 01.12.2026');
+    expect(halle1.bereich).toBe('messen');
+    expect(halle1.schritt).toBe('Ablesungen eintragen');
+    expect(halle1.sprung!.hash).toBe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung');
+    expect(halle1.zustaendig).toEqual({ name: 'Ines Kaltenbach', herkunft: 'aufgabe', ich: true });
+    // Ein Zähler: genau seine Messstelle, der Schritt heißt wie ihr Knopf.
+    expect(text(halle2)).toBe('Zähler MS-20 in Halle 2 ablesen | Zuletzt abgelesen am 01.10.2026 + 2 Monate');
+    expect(halle2.schritt).toBe(ABLESUNG_EINTRAGEN);
+    expect(halle2.sprung!.hash).toBe(`#/portfolio/messstellen/${ABLESUNG.ms20}?entscheid=zaehlerablesung`);
+  });
+
+  it('derselbe Ort an zwei Tagen sind zwei Einträge; ohne Ablesung zählt der Beginn', () => {
+    const neu = wvZeile('zaehlerablesung', 'ST-2', 'Zählerablesung Werk Lindach (MS-30 Lager)', '2026-11-15', 25, {
+      id: 'ms-30',
+      herleitung: herleitung('ablesebeginn', '2026-11-15', { kennung: 'MS-30', anzahl: 1 }),
+      bezug: 'Werk Lindach',
+      aufgabe: 'bewertung_messplanung',
+    });
+    const l = arbeitsliste({
+      ...wvLeer(),
+      stichtag: '2026-12-10T09:00:00+01:00',
+      faellig: [neu, ableseRunde('G-2', 'Halle 2', 2, 'g-2', 9)],
+      vorschau: [ableseRunde('G-2', 'Halle 2', 'MS-25 Kühlung', 'ms-25', -10, '2026-12-20')],
+    });
+    expect(l.ueberfaellig.map((e) => e.key)).toEqual(['zaehlerablesung/ST-2/2026-11-15', 'zaehlerablesung/G-2/2026-12-01']);
+    expect(l.bald.map((e) => e.key)).toEqual(['zaehlerablesung/G-2/2026-12-20']);
+    expect(text(l.ueberfaellig[0])).toBe('Zähler MS-30 in Werk Lindach ablesen | Noch keine Ablesung, vorgesehen seit 15.11.2026');
+    expect(l.ueberfaellig[0].zustaendig).toBeNull();
+    expect(l.ueberfaellig[0].aufgabeIm).toBe('bewertung_messplanung');
+    // Bündel derselben Runde an einem Ort: die Zähler zusammen, der Grund der ältesten.
+    expect(buendel([...l.ueberfaellig.slice(1), ...l.bald]).map(text)).toEqual([
+      '3 Zähler in Halle 2 ablesen | Zuletzt abgelesen am 01.10.2026 + 2 Monate',
+    ]);
+  });
+
+  it('Filter, Statuszeile und eine Runde ohne Zahl (ein älterer Server) bleiben verständlich', () => {
+    const l = arbeitsliste(wvDemo());
+    expect(gefiltert(l.ueberfaellig, { ...OHNE_FILTER, art: 'zaehlerablesung' }).map((e) => e.kennzeichen)).toEqual(['G-1', 'G-2', 'G-3']);
+    expect(gefiltert(l.ueberfaellig, { ...OHNE_FILTER, bereich: 'messen' }).map((e) => e.kennzeichen)).toEqual(['G-1', 'G-2', 'G-3', 'MB-1']);
+    expect(artFilterWort('zaehlerablesung')).toBe('Zählerablesungen');
+    expect(wiedervorlageStatus(wvDemo())!.satz).toBe('Älteste seit 05.10.2026 · Bericht, Zählerablesungen, Messbedarf, Bezugsbasen');
+    const ohne = arbeitsliste({ ...wvLeer(), faellig: [wvZeile('zaehlerablesung', 'G-9', 'Zählerablesung Lager (MS-9 Pumpe)', '2029-01-01', 5)] });
+    expect(text(ohne.ueberfaellig[0])).toBe('Zählerablesung Lager (MS-9 Pumpe) | Werte aus Ablesungen');
+    expect(ohne.ueberfaellig[0].sprung!.hash).toBe('#/portfolio/messstellen?ort=G-9&entscheid=zaehlerablesung');
   });
 });
 

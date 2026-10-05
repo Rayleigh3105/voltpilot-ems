@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api } from '../api';
 import {
+  ansehenSprung,
   artFilterAus,
   ART_PARAMETER,
   seitenSprung,
@@ -512,7 +513,7 @@ function Eintraege({ eintraege, ton, testid, ...rechte }: { eintraege: Eintrag[]
  */
 function EintragKarte({ e, ton, einsicht, festlegen, aufgabenLesbar, springe }: { e: Eintrag; ton: Ton } & EintragRechte) {
   const ansehen = einsicht || ton === 'plan';
-  const ziel = e.sprung ? (ansehen ? seitenSprung(e.sprung.route) : e.sprung) : null;
+  const ziel = e.sprung ? (ansehen ? ansehenSprung(e.sprung) : e.sprung) : null;
   const schritt = einsicht ? ANSEHEN : ton === 'plan' ? OEFFNEN : e.schritt;
   const zuordnen = !e.zustaendig && festlegen && !einsicht && e.aufgabeIm ? aufgabeFestlegenSprung(e.aufgabeIm) : null;
   return (

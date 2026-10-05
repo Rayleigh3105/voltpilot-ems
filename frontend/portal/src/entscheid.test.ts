@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  ansehenSprung,
   artFilterAus,
   artFilterSprung,
   entscheidAus,
@@ -22,6 +23,16 @@ describe('Sprung mit offenem Entscheid (Konzept Wiedervorlage w1, Entscheid 8)',
     const s = entscheidSprung(pageRoute('portfolio-bewertung'), 'messbedarf_frist', 'MB-1');
     expect(s.hash).toBe('#/portfolio/bewertung?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(entscheidAus(s.hash)).toEqual({ art: 'messbedarf_frist', kennzeichen: 'MB-1' });
+  });
+
+  it('mit einem Filter der Zielseite: das Register eines Orts; zum Ansehen geht nur der Entscheid', () => {
+    const s = entscheidSprung(pageRoute('portfolio-messstellen'), 'zaehlerablesung', null, { ort: 'G-1' });
+    expect(s.hash).toBe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung');
+    expect(parseRoute(s.hash)).toEqual(pageRoute('portfolio-messstellen'));
+    expect(entscheidAus(s.hash)).toEqual({ art: 'zaehlerablesung', kennzeichen: null });
+    expect(ansehenSprung(s)).toEqual({ route: pageRoute('portfolio-messstellen'), hash: '#/portfolio/messstellen?ort=G-1' });
+    expect(ansehenSprung(entscheidSprung(dokumentRoute('d1'), 'dokument_ueberpruefung')).hash)
+      .toBe(seitenSprung(dokumentRoute('d1')).hash);
   });
 
   it('ohne Entscheid: andere Parameter bleiben, eine Adresse ohne Parameter bleibt gleich', () => {

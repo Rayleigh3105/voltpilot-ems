@@ -1,8 +1,9 @@
 # Energiemanagement: Überprüfung, Wiedervorlage, Vergleich, Verzeichnis-Zeile, Prüfsumme (UEMS AP-19)
 
-Stand 05.10.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap19-fundament` §4.2–4.9, §5.8, §7 R1–R3, R7–R14, §8 IP-2;
+Stand 05.10.2026 · Vertrag 1.2 · Konzept `data/vp-uems-ap19-fundament` §4.2–4.9, §5.8, §7 R1–R3, R7–R14, §8 IP-2;
 Entscheide E1–E10 = A, W1–W15 übernommen (24.09.2026).
 Vertrag 1.1 (Konzept Wiedervorlage w1, freigegeben 05.10.2026): `wiedervorlage` liefert additiv den Jahresplan und die Zählung nach Dringlichkeit (§3); der Satz `baustein` zählt Einträge nach Dringlichkeit (§7).
+Vertrag 1.2 (Konzept Wiedervorlage w1, Entscheid 7): `wiedervorlage_art` ist um `zaehlerablesung` geweitet, die zwölfte Art (§1, §3); `energiemanagement_vokabular()` trägt sie seit `V20261005220000`.
 
 Die Abnahme des Captains: **„Die erforderlichen Entscheidungen und Nachweise sind auffindbar; die Verantwortung des
 Kunden bleibt ausdrücklich erkennbar.“** VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das
@@ -13,7 +14,7 @@ aber nicht zum Betrachtungsumfang“. Ein Urteil fällt keine dieser Regeln.
 | Datei | Rolle |
 |---|---|
 | [`energiemanagement.schema.json`](./energiemanagement.schema.json) | die Form der Vektor-Datei (geschlossen; nur die Schlüsselwörter beider Schema-Läufer) |
-| [`energiemanagement-vectors.json`](./energiemanagement-vectors.json) | 107 Fälle mit Handrechnung (`rechnung`), Startwerte, Vokabulare, Wörter, Kennzeichen-Muster, die Kundensätze als Schablonen |
+| [`energiemanagement-vectors.json`](./energiemanagement-vectors.json) | 108 Fälle mit Handrechnung (`rechnung`), Startwerte, Vokabulare, Wörter, Kennzeichen-Muster, die Kundensätze als Schablonen |
 | [`bericht.md`](./bericht.md) §2 A1/A6 | die kanonische Form und die Prüfsumme — hier aufgerufen (`BerichtRegeln.kanonisch`, `uemsBericht.kanonisch`), nie nachgebaut |
 | [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) 1.10 | `dokumente[]`, `audits[]`, `feststellungen[]`, `managementbewertungen[]`, `energiemanagement.einstellung` — ihre Prüfsummen und Fristen sind genau das, was die Operationen rechnen |
 | `services/api/.../uems/EnergiemanagementRegeln.java` | der Java-Zwilling (rein) |
@@ -41,7 +42,7 @@ Wo §4.2 ein Wort mit Zusatz nennt, ist der Zusatz eine Pflicht des Schreibwegs,
 | Personen, Aufgaben | `aufgabe` (zehn) · `person_zustand` · `aufgabe_zustand` | §4.2 Vokabulare und Zustände |
 | Audit, Feststellung | `audit_zustand` · `audit_eintrag` · `feststellung_quelle` · `feststellung_zustand` · `feststellung_eintrag` · `wirksamkeit_ergebnis` | §4.2 |
 | Managementbewertung | `managementbewertung_zustand` (`entwurf · freigegeben`, der Stand Nr. n ist AP-12) · `beschluss_art` · `folge_art` (MG6: Energieziel, Maßnahme, Dokument-Fassung, Aufgabe, Audit) | §4.2 Zustände, MG5, MG6 |
-| Leser | `wiedervorlage_art` · `verzeichnis_ort` (drei der vier Stufen von G1 — „bei Ihnen, nicht in VoltPilot“ hat keine Zeile) · `verzeichnis_gruppe` (elf, VZ3) | §4.2, k_faelle `GRUPPEN` |
+| Leser | `wiedervorlage_art` (zwölf; `zaehlerablesung` seit 1.2) · `verzeichnis_ort` (drei der vier Stufen von G1 — „bei Ihnen, nicht in VoltPilot“ hat keine Zeile) · `verzeichnis_gruppe` (elf, VZ3) | §4.2, k_faelle `GRUPPEN` |
 | Operation | `ueberpruefung_art` · `ueberpruefung_grund` | dieser Vertrag (§2) |
 
 `dokument_art_klasse` ordnet jede Art `vorgabe` (mit Überprüfung) oder `nachweis` (Auslegung, Kompetenz — ohne) zu;
@@ -94,6 +95,10 @@ Eingang `abruf`, `vorschau_tage` (Startwert 30) und `zeilen[]` mit `art` (`wiede
   Der Baustein WV5 zählt so: „8 überfällig · 1 in den nächsten 30 Tagen“.
 - **Ein Gegenstand, eine Zeile.**
   Was der Aufrufer übergibt, ist schon ein Eintrag: die offenen Korrekturen eines Berichts bündelt die Quelle zu einer Zeile ab der ersten (Titel unverändert bei einer Korrektur, sonst „… (n Korrekturen, zuerst K-…)“); die Operation zählt Zeilen.
+- **Seit 1.2: `zaehlerablesung`.**
+  Die Quelle nimmt die aktiven Messstellen, deren Werte aus Ablesungen kommen, aus dem Messstellen-Register und gibt je Ort, an dem man abliest (Gebäude, ohne Gebäude der Standort), und Fälligkeitstag eine Zeile: Kennzeichen ist das des Orts, der Titel „Zählerablesung Halle 1 (8 Zähler)“ bzw. bei einem Zähler „Zählerablesung Halle 2 (MS-20 Spritzguss)“.
+  `faellig_am` ist der Tag, ab dem das Register „Ablesung überfällig seit …“ sagt: letzte Ablesung + 2 Kalendermonate in der Zeitzone des Standorts (`AblesungRegeln.ueberfaelligAb`), ohne Ablesung der Beginn der Ablesungs-Quelle („Noch keine Ablesung“).
+  Derselbe Ort kann an zwei Tagen fällig sein (was an verschiedenen Tagen abgelesen wurde); das sind zwei Zeilen mit demselben Kennzeichen, die Operation behandelt sie wie jede andere.
 
 R12 am 12.02.2029: BB-0002 457 · BB-0005 450 · BB-0003 344 · VB-2028-0001 315 · BB-0004 80 · BW-2027-0001 80 · D-0001 64 ·
 D-0002 64, Vorschau M-2029-0001 in 16 Tagen; im Jahresplan bis 12.02.2030 M-2029-0002, F-2029-0001, D-0004, BB-0001, D-0003, AU-2029-0001.
@@ -157,13 +162,13 @@ Namen stellt der Aufrufer (Daten `TT.MM.JJJJ`, Zeiten `TT.MM.JJJJ, HH:MM`).
 ## 8. Die Vektoren
 
 Jeder Fall trägt `name`, `regel`, `operation`, `quelle`, `rechnung`, `eingang` und `erwartet`. Je Operation:
-`ueberpruefung` 30 · `wiedervorlage` 10 · `anwendungsbereich_vergleich` 5 · `verzeichnis_zeile` 11 · `pruefsumme` 7 ·
+`ueberpruefung` 30 · `wiedervorlage` 11 · `anwendungsbereich_vergleich` 5 · `verzeichnis_zeile` 11 · `pruefsumme` 7 ·
 `satz` 44. Pflichtfälle aus §8 IP-2 als eigene Vektoren: „R1 D-0001 seit 64 Tagen fällig“, „R12 BB-0002 seit 457
 Tagen“, „R2 nur Strom → Gas nicht im Betrachtungsumfang“. Die Erwartungen der R-Fälle stammen aus dem Konzept-Katalog
 (`k_faelle.py`: `UEB_D1`, `UEB_D2`, `UEB_D1_APRIL`, `AUDIT_NAECHSTES`, `MB_NAECHSTE`, `F1_FRIST`, `KANDIDATEN`,
 `FAELLIG`, `VORSCHAU`, `NICHT_IN_LISTE`, `VGL_AB`, `VGL_AB_NUR_STROM`, `VERZEICHNIS`), die Prüfsummen aus der
 Referenzdatei 1.10.
-Ränder: 0 Tage, genau 30/31 Tage Vorschau, Jahresplan bis genau Abruf + 12 Monate (auch ab dem 29.02.), heute fällig ist nicht überfällig, Monatsende und Schaltjahr, 60 und 61 Monate, ein
+Ränder: 0 Tage, genau 30/31 Tage Vorschau, Jahresplan bis genau Abruf + 12 Monate (auch ab dem 29.02.), heute fällig ist nicht überfällig, ein Ort an zwei Tagen (Zählerablesung), Monatsende und Schaltjahr, 60 und 61 Monate, ein
 „geprüft, bleibt“ der abgelösten Fassung, ein Audit nach dem Abruf, Art „sonstiges“, Ablage fehlt/unerwartet.
 `test_energiemanagement.py` prüft außerdem Wiedervorlage und Überprüfung im Stand BR-2029-0001 und die Startwerte gegen
 die Einstellung der Referenzdatei.
