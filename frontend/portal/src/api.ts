@@ -2,7 +2,7 @@ import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
 import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { VerbesserungUebersicht } from './verbesserungUebersicht';
-import type { Wiedervorlage } from './wiedervorlage';
+import type { Wiedervorlage, WiedervorlageZuletzt } from './wiedervorlage';
 import type { MispelEmpfaenger, MispelJahr, MispelMonat } from './mispelMengen';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
@@ -8917,6 +8917,13 @@ export interface EnergiemanagementEntscheid {
   entschieden_am?: string | null;
   begruendung?: string | null;
 }
+/** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
+export interface EnergiemanagementGeprueft {
+  entschieden_von: string;
+  am: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
 export interface EnergiemanagementVergleich {
   abruf: string;
   fassung: number | null;
@@ -9134,6 +9141,55 @@ export interface FeststellungListe {
   feststellungen: Feststellung[];
 }
 
+/**
+ * Die Portfolio-Kennzahlen des UEMS-Übersichts-Kachelrasters (Konzept
+ * `vp-portfolio-konzept2-p2` §4.2), aggregiert über die sichtbaren Anlagen für
+ * den letzten abgeschlossenen Monat (`GET /api/v1/portfolio/kpis`). Jede Menge/
+ * jeder Betrag ist `null`, wenn keine Quelle ihn trägt (nie 0).
+ */
+export interface PortfolioKpi {
+  periode: { von: string; bis: string; jahr: number; monat: number };
+  /** Netzbezug (kWh) dieser Monat / Vorjahr aus der UEMS-Ablesewelt. */
+  verbrauch: { kwh: number | null; kwh_vorjahr: number | null; vollstaendig: boolean };
+  /** Σ(Netzbezug × Arbeitspreis); `tarif_hinterlegt` false → kein Arbeitspreis, Beträge null. */
+  kosten: { eur: number | null; eur_vorjahr: number | null; tarif_hinterlegt: boolean };
+  /**
+   * Höchste gemessene 15-min-Netzbezugsleistung im laufenden Abrechnungszeitraum (Leistungspreis-Basis) + vereinbarte
+   * Leistung ihrer Anlage; `kw` null = keine 15-min-Daten. `zeitpunkt` = ISO-Zeitpunkt der Spitze, `zeitraum` = Label
+   * des Abrechnungszeitraums (z. B. „2026" bei Jahresabrechnung, „Oktober 2026" bei Monatsabrechnung).
+   */
+  lastspitze: {
+    kw: number | null;
+    vereinbart_kw: number | null;
+    anteil_prozent: number | null;
+    anlage: string | null;
+    zeitpunkt: string | null;
+    zeitraum: string | null;
+  };
+  /** Datenlage: wie viele Messstellen aktuell Daten liefern (von gesamt); `null` ohne Messstellen. */
+  datenlage: { aktuell: number | null; gesamt: number | null } | null;
+  /** Der EnPI mit Bezugsbasis + Ziel; `null` → Datenlage-Fallback. */
+  leit: PortfolioLeitkennzahl | null;
+}
+
+export interface PortfolioLeitkennzahl {
+  kennzeichen: string;
+  name: string;
+  wert: number | null;
+  einheit: string | null;
+  jahr: number;
+  monat: number;
+  zustand: string | null;
+  /** Ziel als Prozent gegen die Bezugsbasis (z. B. 5 = „5 % unter Bezugsbasis"). */
+  ziel_prozent: number | null;
+  zielperiode: string | null;
+  ziel_wortlaut: string | null;
+  /** Trend des jüngsten Werts zum Vormonat in Prozent; fehlt ohne Vormonat. */
+  trend_prozent?: number | null;
+  /** Urteil gegen die Bezugsbasis: besser · schlechter · im_rahmen · …; fehlt ohne Vergleich. */
+  urteil?: string | null;
+}
+
 export const api = {
   korrekturen: (standortId: string) => request<KorrekturDetail[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/korrekturen`),
   korrektur: (kennung: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}`),
@@ -9147,6 +9203,8 @@ export const api = {
 
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
+  /** Portfolio-Kennzahlen des UEMS-Kachelrasters (Leitkennzahl, Verbrauch, Lastspitze, Kosten). */
+  portfolioKpis: () => request<PortfolioKpi>('/api/v1/portfolio/kpis'),
   /**
    * Der gemeldete Edge-Stand aller Geräte des Mandanten (Plattform-Übersicht).
    * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".
@@ -11364,6 +11422,8 @@ export const api = {
   },
   /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
   energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
+  /** Konzept Wiedervorlage w1: „Zuletzt erledigt“, die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben. */
+  energiemanagementWiedervorlageZuletzt: () => request<WiedervorlageZuletzt>('/api/v1/energiemanagement/wiedervorlage/zuletzt'),
   /** IP-21 (E10 = A): dieselben Zeilen als Kalender-Abzug (`format=ics`) — ein Abruf, nichts wird verschickt. */
   energiemanagementWiedervorlageIcs: async (): Promise<Blob> => {
     const token = await freshToken();
@@ -11428,6 +11488,9 @@ export const api = {
   /** IP-7 (DK3, DK4): freigeben — mit „entschieden von“; bei Vier-Augen bestätigt eine zweite Person. */
   energiemanagementFassungFreigeben: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
+  energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
   /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
   energiemanagementAudits: (tag?: string) =>
     request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),

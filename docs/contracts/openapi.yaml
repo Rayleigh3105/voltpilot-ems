@@ -12487,7 +12487,15 @@ paths:
         längsten fällig zuerst, bei gleichem Tag nach Kennzeichen; `vorschau` die Fristen in den nächsten
         `vorschau_tage` Tagen (Einstellung, Startwert 30; genau 30 ist Vorschau); `nicht_in_liste` die Kennzeichen mit
         späterer Frist; `naechste_managementbewertung` die Frist von MG7 mit Herkunft, auch außerhalb des Fensters.
-        `format=ics` liefert dieselben Zeilen (fällig und Vorschau) als Kalender-Abzug nach RFC 5545 -
+        Seit Vertrag 1.1 (Konzept Wiedervorlage w1, additiv): `spaeter` der Jahresplan (nach dem Fenster bis Abruf +
+        12 Monate, dieselbe Zeilenform), `anzahl_ueberfaellig` (abgelaufen), `anzahl_naechste` (heute und das Fenster),
+        `anzahl_spaeter`; je Zeile `herleitung` (woraus die Frist folgt), `bezug` (der Gegenstand, wo der Titel ihn nicht
+        trägt), `einsatz_id` (der Energieeinsatz eines Messbedarfs) und `zustaendig` (die Person am Objekt oder laut
+        Aufgabe im Energiemanagement). Ein Gegenstand ist eine Zeile: die offenen Korrekturen eines Berichts stehen in
+        einer. Seit Vertrag 1.2 die Zählerablesungen: die aktiven Messstellen, deren Werte aus Ablesungen kommen, über
+        das Messstellen-Register mit dem Leserecht je Messstelle (wie `GET /api/v1/messstellen`); fällig zwei
+        Kalendermonate nach der letzten Ablesung, ohne Ablesung ab dem Beginn der Ablesungs-Quelle - je Gebäude und
+        Fälligkeitstag eine Zeile. `format=ics` liefert dieselben Zeilen (fällig, Vorschau und Jahresplan) als Kalender-Abzug nach RFC 5545 -
         je Zeile ein ganztägiger Termin am Tag, an dem sie fällig ist bzw. wird, Titel „Kennzeichen: Titel“,
         Beschreibung und Kalender mit dem Vermerk „Stand vom TT.MM.JJJJ aus VoltPilot; maßgeblich ist die Wiedervorlage
         im Portal.“ Dasselbe Recht wie die Seite, nicht eigens protokolliert; nichts wird verschickt.
@@ -12504,6 +12512,24 @@ paths:
             text/calendar:
               schema: { type: string }
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/energiemanagement/wiedervorlage/zuletzt:
+    get:
+      tags: [energiemanagement]
+      summary: Zuletzt erledigt - die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben (Konzept Wiedervorlage w1).
+      description: >
+        Recht `energiemanagement.ansehen`. Ein Leser wie die Wiedervorlage: die Zeilen des Verzeichnisses, die eine Frist
+        beenden oder neu beginnen lassen (freigegebene Fassung einer Vorgabe oder Bezugsbasis, abgeschlossenes internes
+        Audit, Wirksamkeit, Bewertung eines Energieziels oder einer Maßnahme, Abschluss einer Abweichung, Stand der
+        energetischen Bewertung oder Managementbewertung, Berichtsstand nach einer Korrektur), dazu „geprüft, bleibt“ an
+        Dokumenten und Bezugsbasen - je mit den Rechten des Aufrufers gelesen. Die letzten 90 Tage bis zum Abruf
+        (Zeitzone des Unternehmens), die jüngste zuerst, höchstens fünf.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZuletzt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/energiemanagement/energieeinsaetze/{id}/nachweise:
     parameters:
@@ -18832,12 +18858,17 @@ components:
           items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisGruppe" }
     EnergiemanagementWiedervorlageZeile:
       type: object
-      required: [art, kennzeichen, titel, faellig_am, tage, satz, verantwortlich, id, kennzahl_id]
+      required: [art, kennzeichen, titel, faellig_am, tage, satz, verantwortlich, id, kennzahl_id, herleitung, bezug, einsatz_id, aufgabe, zustaendig]
       description: >
         Die Ausgabe der Operation `wiedervorlage` (energiemanagement.md §3). `faellig_am` kommt aus der Regel des
         Objekts; `id` und `kennzahl_id` tragen den Sprung auf die Seite des Objekts - wo es keine gibt, `null`.
+        Additiv seit Vertrag 1.1: `herleitung`, `bezug`, `einsatz_id`, `aufgabe`, `zustaendig`.
+        Seit Vertrag 1.2 die Art `zaehlerablesung`: eine Zeile je Ort, an dem man abliest (Gebäude, ohne Gebäude der
+        Standort, `kennzeichen` sein Kurzzeichen, am Unternehmen `U`), und Fälligkeitstag; `herleitung.anzahl` zählt
+        die Zähler, `bezug` nennt den Ort. Bei einem Zähler ist `id` die Messstelle (`herleitung.kennung` ihr
+        Kennzeichen), bei mehreren der Ort (am Unternehmen `null`).
       properties:
-        art: { type: string, enum: [dokument_ueberpruefung, internes_audit, managementbewertung, feststellung, bewertung_ueberpruefung, bezugsbasis_ueberpruefung, energieziel_bewertung, massnahme_termin, abweichung_frist, messbedarf_frist, bericht_anstoss] }
+        art: { type: string, enum: [dokument_ueberpruefung, internes_audit, managementbewertung, feststellung, bewertung_ueberpruefung, bezugsbasis_ueberpruefung, energieziel_bewertung, massnahme_termin, abweichung_frist, messbedarf_frist, bericht_anstoss, zaehlerablesung] }
         kennzeichen: { type: string }
         titel: { type: string }
         faellig_am: { type: string, format: date }
@@ -18846,9 +18877,77 @@ components:
         verantwortlich: { type: string, nullable: true }
         id: { type: string, format: uuid, nullable: true }
         kennzahl_id: { type: string, format: uuid, nullable: true }
+        herleitung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementWiedervorlageHerleitung" }]
+          description: Woraus die Frist folgt - Angaben, keine Sätze; `null`, wo die Quelle sie nicht nennt.
+        bezug: { type: string, nullable: true, description: "Der Gegenstand in Kundenwörtern, wo der Titel ihn nicht trägt (die Kennzahl einer Bezugsbasis, der Bericht, der Wortlaut einer Feststellung, einer Abweichung oder eines Messbedarfs, der Ort einer Zählerablesung)." }
+        einsatz_id: { type: string, format: uuid, nullable: true, description: Der Energieeinsatz eines Messbedarfs - dort entsteht die Messstelle. }
+        aufgabe:
+          type: string
+          nullable: true
+          enum: [unternehmensleitung, energiemanagement_leiten, energieteam, bezugsbasen, energieziele_massnahmen, bewertung_messplanung, interne_audits, managementbewertung, dokumente, weitere, null]
+          description: Die Aufgabe im Energiemanagement (Vokabular `aufgabe`), zu der diese Art Frist gehört - auch wenn niemand sie hat.
+        zustaendig:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementWiedervorlageZustaendig" }]
+          description: Wer die Frist erledigt; `null`, wo weder das Objekt noch die Aufgabe eine Person nennt.
+    EnergiemanagementWiedervorlageHerleitung:
+      type: object
+      required: [basis, am, fassung, monate, kennung, quelle_art, anzahl]
+      description: >
+        Woraus eine Frist folgt (Konzept Wiedervorlage w1): `basis` woran die Regel ansetzt, `am` der Tag dazu; dazu, wo
+        die Regel sie kennt, `fassung` (Fassung bzw. Stand Nr.), `monate` (Rhythmus), `kennung` (das Objekt, an dem die
+        Regel ansetzt, oder die Herkunft), `quelle_art` (Herkunft einer Maßnahme aus `massnahme_herkunft` bzw. Quelle
+        einer Feststellung) und `anzahl` (offene Korrekturen an einem Bericht, Zähler einer Zählerablesung).
+        Zählerablesung (Vertrag 1.2): `abgelesen` am Tag der letzten Ablesung mit `monate` 2, ohne Ablesung
+        `ablesebeginn` am Tag, seit dem die Werte aus Ablesungen kommen sollen.
+      properties:
+        basis: { type: string, enum: [freigabe, geprueft_bleibt, durchgefuehrt, sitzung, erkannt, festgestellt, termin, zielperiode, abgelesen, ablesebeginn] }
+        am: { type: string, format: date, nullable: true }
+        fassung: { type: integer, nullable: true }
+        monate: { type: integer, nullable: true }
+        kennung: { type: string, nullable: true }
+        quelle_art: { type: string, nullable: true }
+        anzahl: { type: integer, nullable: true }
+    EnergiemanagementWiedervorlageZustaendig:
+      type: object
+      required: [name, herkunft, ich]
+      description: >
+        Die Person am Objekt (`herkunft` = `objekt`) oder, wo das Objekt keine nennt, die Person der laufenden Zuordnung
+        der Aufgabe der Zeile (`herkunft` = `aufgabe`). `ich`: die Person ist die angemeldete.
+      properties:
+        name: { type: string }
+        herkunft: { type: string, enum: [objekt, aufgabe] }
+        ich: { type: boolean }
+    EnergiemanagementWiedervorlageZuletzt:
+      type: object
+      required: [stichtag, tage, eintraege]
+      properties:
+        stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
+        tage: { type: integer, description: So viele Tage bis zum Abruf reicht die Liste (90). }
+        eintraege:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageErledigt" }
+    EnergiemanagementWiedervorlageErledigt:
+      type: object
+      required: [art, gruppe, kennzeichen, titel, nr, am, entschieden_von, eingetragen_von]
+      description: >
+        Eine Entscheidung, die eine Frist beendet oder neu beginnen lässt: `art` die Art der Verzeichnis-Zeile (`gruppe`
+        ihre Gruppe) oder `dokument_geprueft_bleibt` bzw. `bezugsbasis_geprueft_bleibt` (ohne Gruppe); `nr` Fassung bzw.
+        Stand Nr., `am` der Tag der Entscheidung, `entschieden_von` die Person, `eingetragen_von` das Konto.
+      properties:
+        art: { type: string }
+        gruppe: { type: string, nullable: true }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        nr: { type: integer, nullable: true }
+        am: { type: string, format: date }
+        entschieden_von: { type: string, nullable: true }
+        eingetragen_von: { type: string, nullable: true }
     EnergiemanagementWiedervorlage:
       type: object
-      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung, naechste_managementbewertung]
+      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung, naechste_managementbewertung, spaeter, anzahl_ueberfaellig, anzahl_naechste, anzahl_spaeter, aufgaben_lesbar]
       properties:
         stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
         vorschau_tage: { type: integer, description: Das Vorschau-Fenster der Einstellung (Startwert 30). }
@@ -18859,9 +18958,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZeile" }
         anzahl_faellig: { type: integer }
-        anzahl_vorschau: { type: integer, description: "Mit `anzahl_faellig` der Baustein „Energiemanagement — n fällig · m in den nächsten 30 Tagen.“ (WV5)." }
+        anzahl_vorschau: { type: integer }
         nicht_in_liste:
           type: array
+          description: Die Kennzeichen mit späterer Frist (für Bestandsleser; den Jahresplan trägt `spaeter`).
           items: { type: string }
         verantwortung: { type: string, description: Der Verantwortungs-Satz (SP4). }
         naechste_managementbewertung:
@@ -18870,6 +18970,18 @@ components:
           description: >
             Additiv (Folge AP-19 IP-24): die Frist von MG7 mit ihrer Herkunft - auch außerhalb des Vorschau-Fensters, aus
             derselben Rechnung wie die Zeile `managementbewertung`; `null` ohne freigegebene Managementbewertung mit Sitzung.
+        spaeter:
+          type: array
+          description: Additiv seit Vertrag 1.1 - der Jahresplan, nach dem Vorschau-Fenster bis Abruf + 12 Monate, nach Tag und Kennzeichen.
+          items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZeile" }
+        anzahl_ueberfaellig: { type: integer, description: "Abgelaufen (`tage` > 0). Mit `anzahl_naechste` der Baustein „Energiemanagement: n überfällig · m in den nächsten 30 Tagen.“ (WV5)." }
+        anzahl_naechste: { type: integer, description: "Heute fällig und das Vorschau-Fenster (`tage` ≤ 0)." }
+        anzahl_spaeter: { type: integer }
+        aufgaben_lesbar:
+          type: boolean
+          description: >
+            Der Aufrufer liest die Aufgaben im Energiemanagement (unternehmensweit). Sonst ist `zustaendig` nur die Person
+            am Objekt; eine Zeile ohne sie sagt dann nicht, dass niemand zuständig ist.
     EnergiemanagementWiedervorlageNaechsteManagementbewertung:
       type: object
       required: [faellig_am, kennzeichen, sitzung_am, rhythmus_monate]
@@ -19541,8 +19653,11 @@ components:
         eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
     EnergiemanagementUeberpruefung:
       type: object
-      required: [abruf, faellig_am, basis, fassung, tage, satz, grund]
-      description: Vertrag `ueberpruefung` (DK5) am Abruf-Tag; ohne Frist sind fällig am, Basis, Fassung, Tage und Satz `null`.
+      required: [abruf, faellig_am, basis, fassung, tage, satz, grund, basis_art, monate]
+      description: >
+        Vertrag `ueberpruefung` (DK5) am Abruf-Tag; ohne Frist sind fällig am, Basis, Fassung, Tage und Satz `null`.
+        Additiv (Konzept Wiedervorlage w1): `basis_art` woher die Basis kommt, `monate` der Rhythmus des Dokuments; beide
+        `null` ohne Frist.
       properties:
         abruf: { type: string, format: date }
         faellig_am: { type: string, format: date, nullable: true }
@@ -19551,6 +19666,8 @@ components:
         tage: { type: integer, nullable: true, description: Abruf minus fällig am - positiv = fällig, 0 = heute fällig. }
         satz: { type: string, nullable: true }
         grund: { type: string, nullable: true, enum: [nachweis, keine_fassung, null] }
+        basis_art: { type: string, nullable: true, enum: [freigabe, geprueft_bleibt, null] }
+        monate: { type: integer, nullable: true }
     EnergiemanagementDokumentSaetze:
       type: object
       required: [kopf, ueberpruefung, freigabe_gesperrt]

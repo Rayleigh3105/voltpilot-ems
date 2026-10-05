@@ -124,6 +124,7 @@ import { useAusblenden } from '../designsystem/components/shell/ausblenden';
 import { PortfolioTabs } from './components/PortfolioTabs';
 import { EbenenTabs } from './components/EbenenTabs';
 import { helpForRoute } from './help/context';
+import { useEntscheidFokus } from './useEntscheidFokus';
 const HelpPage = lazy(PAGE_CHUNK.hilfe);
 // Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
 // (Perf-Review `vp-cockpit-perf-p7` §2 U2). Er hängt über
@@ -715,6 +716,9 @@ function UnifiedPortal() {
   );
 
   const springe = useCallback((s: Sprung) => geheZu(s.route, s.hash), [geheZu]);
+  // Konzept Wiedervorlage w1: ein Schritt öffnet das Objekt mit offenem Entscheid (`?entscheid=`); der Haken führt
+  // den Blick dorthin, sobald die Zielseite ihn zeigt, und nimmt den Parameter danach aus der Adresse.
+  useEntscheidFokus();
 
   // Hash routing: back/forward + direct edits.
   useEffect(() => {
@@ -1616,6 +1620,7 @@ function UnifiedPortal() {
               isAdmin={isAdmin}
               betriebsart={betriebsart}
               ebene={unternehmensEbene}
+              tieferGruppen={gruppenListe}
             />
           )}
           {/* PR G: die zwei Historie-Welten des Portfolios. Sie leben auf der

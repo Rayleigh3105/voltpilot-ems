@@ -3,14 +3,16 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { EbenenCockpit } from './EbenenCockpit';
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { StandortUebersichtPage } from '../pages/StandortUebersichtPage';
-import { api, type Earnings, type Funktionen, type Overview, type OverviewSite, type Site } from '../api';
+import { api, type Earnings, type Funktionen, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
 import catalog from '../anwendungen/catalog.json';
 import { berlinDay } from '../fleet';
 import { GELD_BAUSTEINE } from '../portfolioCockpit';
 import { ahrenbergFunktionen, funktionWerkLindach } from '../test/funktionenFixtures';
+import { wvR12 } from '../test/wiedervorlageFixtures';
 import { FIXTURE_IDS, ahrenbergHeute, werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 import { versorgungAhrenberg, versorgungLindach } from '../test/versorgungFixtures';
-import { standortRoute } from '../nav';
+import { pageRoute, standortRoute } from '../nav';
+import type { EbenenLeistenKachel } from '../ebenenNav';
 
 /**
  * Die Unternehmens- und Standort-Übersicht GERENDERT (UEMS AP-01 IP-6): das
@@ -111,10 +113,34 @@ function geldFuerAlle(): Earnings {
   } as unknown as Earnings;
 }
 
-function mocks(o: { overview: Overview; earnings?: Earnings; funktionen?: Funktionen }) {
+/** Das Kennzahl-Kachelraster der Unternehmens-Übersicht (Konzept §4.2). */
+const PORTFOLIO_KPIS: PortfolioKpi = {
+  periode: { von: '2026-09-01', bis: '2026-09-30', jahr: 2026, monat: 9 },
+  verbrauch: { kwh: 199500, kwh_vorjahr: 207000, vollstaendig: true },
+  kosten: { eur: 48000, eur_vorjahr: 47000, tarif_hinterlegt: true },
+  lastspitze: { kw: 412, vereinbart_kw: 550, anteil_prozent: 75, anlage: 'Werk Ahrenberg – Halle 1', zeitpunkt: '2026-10-05T18:15:00Z', zeitraum: '2026' },
+  datenlage: { aktuell: 10, gesamt: 10 },
+  leit: {
+    kennzeichen: 'KZ-0004',
+    name: 'Stromeinsatz Spritzguss je kg',
+    wert: 0.2837,
+    einheit: 'kWh/kg',
+    jahr: 2026,
+    monat: 9,
+    zustand: 'vollständig',
+    ziel_prozent: 5,
+    zielperiode: '2028-01/2028-12',
+    ziel_wortlaut: '5 % unter Bezugsbasis',
+    trend_prozent: -3.4,
+    urteil: 'besser',
+  },
+};
+
+function mocks(o: { overview: Overview; earnings?: Earnings; funktionen?: Funktionen; kpis?: PortfolioKpi }) {
   vi.spyOn(api, 'overview').mockResolvedValue(o.overview);
   vi.spyOn(api, 'earnings').mockResolvedValue(o.earnings ?? ({ range: 'day', sites: [], totals: {} } as unknown as Earnings));
   vi.spyOn(api, 'funktionen').mockResolvedValue(o.funktionen ?? ahrenbergFunktionen());
+  vi.spyOn(api, 'portfolioKpis').mockResolvedValue(o.kpis ?? PORTFOLIO_KPIS);
 }
 
 beforeEach(() => {
@@ -122,6 +148,7 @@ beforeEach(() => {
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
   vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
+  vi.spyOn(api, 'portfolioKpis').mockResolvedValue(PORTFOLIO_KPIS);
   vi.spyOn(api, 'versorgung').mockImplementation(async (id) =>
     id === FIXTURE_IDS.st1 ? versorgungAhrenberg() : versorgungLindach(),
   );
@@ -134,7 +161,7 @@ function funktionenImKopf(): HTMLElement {
   return kopf;
 }
 
-function renderUnternehmen(onNavigate = vi.fn()) {
+function renderUnternehmen(onNavigate = vi.fn(), tieferGruppen: EbenenLeistenKachel[] = []) {
   render(
     <EbenenCockpit
       sites={SITES}
@@ -144,10 +171,18 @@ function renderUnternehmen(onNavigate = vi.fn()) {
       titel="Portfolio"
       titelBereitsGenannt
       ebene={{ art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH', standorte: ahrenbergHeute().standorte }}
+      tieferGruppen={tieferGruppen}
     />,
   );
   return onNavigate;
 }
+
+const TIEFER_GRUPPEN: EbenenLeistenKachel[] = [
+  { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', ziel: pageRoute('portfolio'), bereiche: ['uebersicht'], frage: 'Läuft alles?' },
+  { key: 'messen', label: 'Messen', icon: 'activity', ziel: pageRoute('portfolio-messstellen'), bereiche: ['messstellen'], frage: 'Wird alles erfasst?' },
+  { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', ziel: pageRoute('portfolio-kennzahlen'), bereiche: ['kennzahlen'], frage: 'Wo geht die Energie hin, wird es besser?' },
+  { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', ziel: pageRoute('portfolio-energiemanagement'), bereiche: ['energiemanagement'], frage: 'Können wir es belegen?' },
+];
 
 describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
   it('Kopfzeile: Name, Standorte, Anlagen, wer steuert, Datenlage', async () => {
@@ -160,13 +195,80 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(screen.getByText('3 von 3 Anlagen liefern Daten')).toBeTruthy();
   });
 
-  it('Kennzahlen-Leiste: Netzbezug jetzt 447,6 kW über alle drei Anlagen', async () => {
+  it('Unternehmen: das Kennzahl-Kachelraster (Leitkennzahl, Verbrauch, Lastspitze, Kosten) statt der Live-Leiste', async () => {
+    // Konzept §4.2: die Unternehmens-Übersicht führt das monatliche Kachelraster
+    // (die Live-„Netzbezug jetzt"-Leiste steht je Anlage, nicht als Flottenzeile oben).
     mocks({ overview: ahrenbergOverview() });
     renderUnternehmen();
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    await waitFor(() => expect(within(leiste).getByText('Netzbezug jetzt')).toBeTruthy());
-    expect(within(leiste).getByText('447,6')).toBeTruthy();
-    expect(within(leiste).getByText('PV jetzt')).toBeTruthy();
+    const raster = await screen.findByRole('region', { name: 'Kennzahlen Ihrer Anlagen' });
+    await waitFor(() => expect(within(raster).getByText('Stromeinsatz Spritzguss je kg')).toBeTruthy());
+    // Punkt 3: kürzere Titel, die am Handy nicht mitten im Wort brechen.
+    expect(within(raster).getByText('Verbrauch')).toBeTruthy();
+    expect(within(raster).getByText('199.500')).toBeTruthy();
+    expect(within(raster).getByText('Lastspitze')).toBeTruthy();
+    expect(within(raster).getByText('Kosten')).toBeTruthy();
+    // Punkt 4: der Bezugszeitraum steht in der Kachel, nicht als Fußzeile.
+    expect(within(raster).getByText('Netzbezug · September 2026')).toBeTruthy();
+    // Die alte Live-Flottenleiste ist am Unternehmen nicht mehr der Held.
+    expect(within(raster).queryByText('Netzbezug jetzt')).toBeNull();
+  });
+
+  it('§5.1-Struktur: Kacheln → Anlagen → „Tiefer einsteigen"; die dichten Bausteine sind weg', async () => {
+    // Review PR2 §5.1: die Unternehmens-Übersicht trägt oben die Kacheln, dann die
+    // Anlagen nach Standort, dann den Weg in die Bereiche. Messstellen, Energiebilanz
+    // und Kennzahlen-Liste verlassen die Übersicht und leben in den Bereichen.
+    mocks({ overview: ahrenbergOverview() });
+    renderUnternehmen(vi.fn(), TIEFER_GRUPPEN);
+    await screen.findByRole('region', { name: 'Kennzahlen Ihrer Anlagen' });
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Anlagen nach Standort' })).toBeTruthy());
+    const tiefer = screen.getByRole('region', { name: 'Tiefer einsteigen' });
+    for (const label of ['Messen', 'Auswerten', 'Nachweisen']) {
+      expect(within(tiefer).getByText(label)).toBeTruthy();
+    }
+    // Die dichten Bausteine sind von der Unternehmens-Übersicht verschwunden.
+    expect(screen.queryByTestId('baustein-messstellen')).toBeNull();
+    expect(screen.queryByTestId('baustein-energiebilanz')).toBeNull();
+    expect(screen.queryByTestId('baustein-kennzahlen')).toBeNull();
+    // Und kein „Anpassen" auf der festen Standardstruktur.
+    expect(screen.queryByRole('button', { name: 'Anpassen' })).toBeNull();
+  });
+
+  it('Status-Variante A (Punkt 2): bei Handlungsbedarf eskaliert die Statuszeile zur Hinweiskarte', async () => {
+    const overview = ahrenbergOverview();
+    // Werk Lindach meldet sich nicht → Datenlage „warn" → Handlungsbedarf.
+    const lindach = overview.sites.find((s) => s.id === an3)!;
+    lindach.onlineCount = 0;
+    lindach.waitingCount = 0;
+    lindach.worstStatus = 'offline';
+    mocks({ overview });
+    renderUnternehmen();
+    const hinweis = await waitFor(() => {
+      const el = document.querySelector('.vp-portfolio-hinweis');
+      if (!el) throw new Error('keine Hinweiskarte');
+      return el as HTMLElement;
+    });
+    expect(hinweis.className).toContain('is-warn');
+    expect(hinweis.textContent).toMatch(/Lindach/);
+    // Die ruhige Zeile ist dann verschwunden — sie IST die Karte geworden.
+    expect(document.querySelector('.vp-portfolio-satz')).toBeNull();
+  });
+
+  it('Status-Variante A: überfällige Wiedervorlage eskaliert zur klickbaren Hinweiskarte (Review PR2 §2 / PR #1396)', async () => {
+    // Datenlage ok (keine Daten-Eskalation) → nur die Wiedervorlage-Eskalation bleibt.
+    mocks({ overview: ahrenbergOverview() });
+    vi.spyOn(api, 'energiemanagementWiedervorlage').mockResolvedValue(wvR12());
+    const onNavigate = renderUnternehmen();
+    const karte = await waitFor(() => {
+      const el = document.querySelector('button.vp-portfolio-hinweis');
+      if (!el) throw new Error('keine klickbare Hinweiskarte');
+      return el as HTMLElement;
+    });
+    expect(karte.className).toContain('is-warn');
+    expect(karte.textContent).toMatch(/überfällig/); // „N Fristen überfällig"
+    expect(karte.textContent).toMatch(/Älteste seit/);
+    // Ein Klick springt in die Wiedervorlage.
+    fireEvent.click(karte);
+    expect(onNavigate).toHaveBeenCalled();
   });
 
   it('die Anlagen-Tabelle ist nach Standorten gruppiert, jede Karte zeigt Messen — Steuern nur, wo eine Anlage steuert', async () => {
@@ -186,8 +288,9 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(zustaende).toEqual(['Messen & AuswertenEingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten']);
     expect(lindach.textContent).not.toMatch(/steuer/i);
 
-    // Die Anlagen stehen unter IHREM Standort: jede Gruppe ist ein eigener Zeilen-Block.
-    const bloecke = [...document.querySelectorAll('tbody')];
+    // Die Anlagen stehen unter IHREM Standort: jede Gruppe ist ein eigener Karten-Block
+    // (Konzept Runde 4: Energie-Karten je Anlage statt Tabellenzeilen).
+    const bloecke = screen.getAllByTestId('anlagen-gruppe');
     expect(bloecke).toHaveLength(2);
     expect(within(bloecke[0]).getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 2 öffnen' })).toBeTruthy();
     expect(within(bloecke[1]).getByRole('button', { name: 'Anlage Werk Lindach öffnen' })).toBeTruthy();
@@ -198,17 +301,16 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(onNavigate).toHaveBeenCalledWith(standortRoute(st1));
   });
 
-  it('sind die Funktionen nicht abrufbar, sagt die Karte das — statt einer leeren Stelle', async () => {
+  it('sind die Funktionen nicht abrufbar, sagt jede Standort-Karte das — statt einer leeren Stelle', async () => {
     mocks({ overview: ahrenbergOverview() });
     vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('offline'));
     renderUnternehmen();
+    // §5.1: die Karte „Funktionen" lebt nicht mehr auf der Unternehmens-Übersicht;
+    // der Zustand steht je Standort-Gruppe (hier zwei Standorte), nie als leere Stelle.
     await waitFor(() =>
-      expect(screen.getAllByText('Der Zustand der Funktionen ist gerade nicht abrufbar.')).toHaveLength(3),
+      expect(screen.getAllByText('Der Zustand der Funktionen ist gerade nicht abrufbar.')).toHaveLength(2),
     );
-    // Je Standort-Karte einmal — und die Karte „Funktionen" (AP-01 IP-8) sagt es auch.
-    expect(
-      within(screen.getByTestId('funktionen-karte')).getByText('Der Zustand der Funktionen ist gerade nicht abrufbar.'),
-    ).toBeTruthy();
+    expect(screen.queryByTestId('funktionen-karte')).toBeNull();
     // Über Steuerung wird dann nichts behauptet.
     expect(screen.getByText('2 Standorte · 3 Anlagen')).toBeTruthy();
   });
@@ -254,8 +356,10 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     // 312,4 + 96,5 = 408,9 — Werk Lindach zählt hier nicht.
     await waitFor(() => expect(within(leiste).getByText('408,9')).toBeTruthy());
     await waitFor(() => expect(within(funktionenImKopf()).getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy());
-    // Je Anlage steht der Netzbezug als Spalte „Netz jetzt".
-    expect(screen.getByRole('columnheader', { name: /Netz jetzt/ })).toBeTruthy();
+    // Je Anlage eine Energie-Karte (Konzept Runde 4): Verbrauch und Netz je Anlage, keine Spaltentabelle.
+    expect(screen.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 1 öffnen' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 2 öffnen' })).toBeTruthy();
+    expect(screen.getAllByText(/Verbrauch/).length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -311,24 +415,27 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     expect(document.body.textContent).toMatch(GELD_TEXT);
   });
 
-  it('Unternehmens-Übersicht Ahrenberg: Vorteil „nur Halle 1", die Zeilen von Halle 2 und Lindach ohne Geld', async () => {
+  it('Unternehmens-Übersicht Ahrenberg: das Kachelraster trägt kein Steuerungs-Geld; die Anlagen-Karten auch nicht', async () => {
     mocks({ overview: ahrenbergOverview(), earnings: geldFuerAlle() });
     renderUnternehmen();
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    await waitFor(() => expect(within(leiste).getByText('Vorteil heute')).toBeTruthy());
-    expect(within(leiste).getByText('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1')).toBeTruthy();
-    // 4.800 € vermiedene Spitze EINMAL (Halle 1), nicht dreimal.
-    expect(within(leiste).getByText(/4\.800/)).toBeTruthy();
-    expect(within(leiste).queryByText(/14\.400/)).toBeNull();
+    const raster = await screen.findByRole('region', { name: 'Kennzahlen Ihrer Anlagen' });
+    await waitFor(() => expect(within(raster).getByText('Verbrauch')).toBeTruthy());
+    // Konzept §4.2: die Unternehmens-Übersicht ist Leitkennzahl-geführt; der aggregierte
+    // Steuerungs-„Vorteil"/Erlös steht NICHT mehr hier (er lebt auf dem Erlöse-Reiter).
+    expect(within(raster).queryByText('Vorteil heute')).toBeNull();
+    expect(within(raster).queryByText(/4\.800/)).toBeNull();
+    // Die einzige Geldzahl des Rasters ist die tarifbasierte Kosten-Kachel.
+    expect(within(raster).getByText('Kosten')).toBeTruthy();
 
-    await waitFor(() => expect(screen.getAllByTestId('standort-gruppe')).toHaveLength(2));
-    const zeileVon = (name: string) =>
-      screen.getByRole('button', { name: `Anlage ${name} öffnen` }).closest('tr') as HTMLElement;
-    expect(zeileVon('Werk Ahrenberg – Halle 1').textContent).toMatch(/12,50/);
-    expect(zeileVon('Werk Ahrenberg – Halle 2').textContent).not.toMatch(/12,50/);
-    expect(zeileVon('Werk Lindach').textContent).not.toMatch(/12,50/);
-    // Die Karte von Werk Lindach trägt kein Geld.
-    const lindach = screen.getAllByTestId('standort-gruppe')[1];
+    // Die Energie-Karten je Anlage tragen KEIN Geld (Energiedaten statt Geld je Anlage, PR1).
+    await waitFor(() => expect(screen.getAllByTestId('anlagen-gruppe')).toHaveLength(2));
+    const karteVon = (name: string) =>
+      screen.getByRole('button', { name: `Anlage ${name} öffnen` }).closest('.vp-ae') as HTMLElement;
+    for (const name of ['Werk Ahrenberg – Halle 1', 'Werk Ahrenberg – Halle 2', 'Werk Lindach']) {
+      expect(karteVon(name).textContent).not.toMatch(GELD_TEXT);
+    }
+    // Auch die Gruppe von Werk Lindach trägt kein Geld.
+    const lindach = screen.getAllByTestId('anlagen-gruppe')[1];
     expect(lindach.textContent).not.toMatch(GELD_TEXT);
   });
 });
@@ -339,22 +446,21 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
  * Einstieg in den Assistenten; Messen bleibt bis zu seinem eigenen Einstieg ein Hinweis.
  */
 describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standort-Übersicht', () => {
-  it('Unternehmens-Übersicht: je Standort Zustand und der eine bewusste Steuern-Einstieg', async () => {
+  it('Unternehmens-Übersicht §5.1: die Karte „Funktionen" ist weg — je Standort steht der Zustand in der Gruppe', async () => {
+    // Review PR2 §5.1: die Karte „Funktionen" (mit „aufnehmen"/„Läuft an N von M"/
+    // „Standort anhalten") verlässt die Unternehmens-Übersicht. Sie lebt auf der
+    // Standort-Übersicht (nächster Test) und im Bereich Steuerung; der Zustand je
+    // Standort steht weiter in der Standort-Gruppe.
     mocks({ overview: ahrenbergOverview() });
     renderUnternehmen();
-    const karte = await screen.findByTestId('funktionen-karte');
-    await waitFor(() => expect(within(karte).getByText('Werk Ahrenberg – Halle 2 aufnehmen')).toBeTruthy());
-    expect(within(karte).getByRole('heading', { level: 2, name: 'Funktionen' })).toBeTruthy();
-    expect(within(karte).getByText('Läuft an 2 von 2 Standorten')).toBeTruthy();
-    expect(within(karte).getByText('Läuft an 1 von 2 Standorten')).toBeTruthy();
-    // Steuern-Regel: Werk Lindach steht nicht im Abschnitt „Steuern & Optimieren“ — kein „einrichten“.
-    expect(within(karte).queryByText(/Werk Lindach einrichten/)).toBeNull();
-    expect(karte.querySelector('[data-funktion="steuern"]')?.textContent).not.toContain('Werk Lindach');
-    expect(within(karte).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'Werk Ahrenberg – Halle 2 aufnehmen',
-      'Standort anhalten',
-    ]);
-    expect(within(karte).queryAllByRole('link')).toHaveLength(0);
+    await waitFor(() => expect(screen.getAllByTestId('standort-gruppe')).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByText('Wird geladen …')).toBeNull());
+    expect(screen.queryByTestId('funktionen-karte')).toBeNull();
+    expect(screen.queryByText('Werk Ahrenberg – Halle 2 aufnehmen')).toBeNull();
+    expect(screen.queryByText(/^Läuft an \d/)).toBeNull();
+    // Der Zustand je Standort bleibt sichtbar — in der Gruppe, nicht in einer Karte.
+    const [ahrenberg] = screen.getAllByTestId('standort-gruppe');
+    expect(within(ahrenberg).getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy();
   });
 
   it('Standort-Übersicht: dieselbe Karte für EINEN Standort, ohne seinen Namen und ohne „läuft an"', async () => {
@@ -457,8 +563,9 @@ describe('Steuern-Regel · je Ebene am Referenzunternehmen Ahrenberg', () => {
     expect(await screen.findByText('2 Standorte · 3 Anlagen · reine Messung')).toBeTruthy();
     await waitFor(() => expect(screen.getAllByTestId('standort-gruppe')).toHaveLength(2));
     await waitFor(() => expect(screen.queryByText('Wird geladen …')).toBeNull());
-    expect(screen.getByTestId('funktionen-karte').querySelector('[data-funktion="steuern"]')).toBeNull();
-    // Das eine Wort, das bleibt, benennt, was der Kunde ist.
+    // §5.1: keine Karte „Funktionen" mehr auf der Unternehmens-Übersicht.
+    expect(screen.queryByTestId('funktionen-karte')).toBeNull();
+    // Das eine Wort, das bleibt, benennt, was der Kunde ist — sonst kein Wort über Steuern.
     expect((document.body.textContent ?? '').replaceAll('reine Messung', '')).not.toMatch(/steuer/i);
   });
 });

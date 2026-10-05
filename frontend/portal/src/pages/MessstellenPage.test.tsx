@@ -116,6 +116,33 @@ describe('MessstellenPage · Register', () => {
     expect(screen.queryByRole('combobox', { name: 'Standort' })).toBeNull();
     expect(screen.getByRole('combobox', { name: 'Ort' })).toBeInTheDocument();
   });
+
+  it('Wiedervorlage w1, Entscheid 7: eine Messstelle, deren Ablesung fehlt, ist Ziel von „Ablesungen eintragen“, am Rechner und am Telefon', async () => {
+    // Fehlt keine Ablesung, zeigt der Schritt auf die Messstellen aus Ablesungen (`messstellen.test.ts`, `ablesungsZiele`).
+    const mitAblesung = () => {
+      const a = ahrenbergRegister();
+      const z = a.register.find((r) => r.kennzeichen === 'MS-21')!;
+      z.quelle = { stand: 'ablesung', fuehrend: null, davor: null, vergleichsquellen: 0,
+        ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-08-01T00:00:00+02:00' } };
+      z.lebenszyklus = 'aktiv';
+      z.beobachtung = { ...z.beobachtung!, zustand: 'liefert_nicht_seit', text: 'Ablesung überfällig seit 01.10.2026' };
+      return a;
+    };
+    telefon(false);
+    verdrahte(mitAblesung);
+    const { unmount } = render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findByRole('table');
+    const ziele = [...document.querySelectorAll<HTMLElement>('[data-entscheid="zaehlerablesung"]')];
+    expect(ziele.map((z) => z.tagName)).toEqual(['TR']);
+    expect(ziele[0]).toHaveTextContent('MS-21');
+    unmount();
+    telefon(true);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByRole('listitem');
+    const karten = [...document.querySelectorAll<HTMLElement>('[data-entscheid="zaehlerablesung"]')];
+    expect(karten.map((z) => z.tagName)).toEqual(['LI']);
+    expect(karten[0]).toHaveTextContent('MS-21');
+  });
 });
 
 describe('MessstellenPage · „Stand am …“', () => {

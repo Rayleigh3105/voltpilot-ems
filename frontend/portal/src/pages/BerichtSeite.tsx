@@ -224,7 +224,7 @@ export function BerichtSeite({
         <p>{kopf?.vorlage ?? vorlageName(b.vorlage)}</p>
       </header>
       {banner && (
-        <section className="vp-br-revision" role="status" data-testid="bericht-revision">
+        <section className="vp-br-revision" role="status" data-testid="bericht-revision" data-entscheid="bericht_anstoss">
           <p className="vp-br-revision-titel">
             <Icon name="alert-triangle" size={18} />
             <span>{banner.titel}</span>
@@ -243,7 +243,7 @@ export function BerichtSeite({
           </ul>
           <p className="vp-br-revision-satz">{banner.satz}</p>
           <div className="vp-br-aktionen">
-            <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'vergleich', gegen: banner.nr })}>
+            <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'vergleich', gegen: banner.nr })} data-entscheid-schritt>
               {VERGLEICHEN}
             </Button>
             {hebel.verwerfen && banner.anstoesse.length === 1 && (

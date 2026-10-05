@@ -24,7 +24,7 @@ import {
 } from '../nav';
 import type { UebersichtEbene } from '../uebersicht';
 import { verbesserungUebersichtBild, type VerbesserungUebersicht, type VerbesserungUebersichtBild } from '../verbesserungUebersicht';
-import { energiemanagementBaustein, type EnergiemanagementBausteinBild, type Wiedervorlage } from '../wiedervorlage';
+import { wasStehtAn, wiedervorlageStatus, type WasStehtAnBild, type Wiedervorlage, type WiedervorlageStatus } from '../wiedervorlage';
 import {
   BILANZ_PERIODEN,
   MESSSTELLEN_TITEL,
@@ -82,8 +82,13 @@ export interface UebersichtDaten {
   bezugsbasen?: BezugsbasisUebersichtBild | null;
   /** AP-18 IP-19: „Ziele und Maßnahmen“ am Unternehmen — `null` ohne Vorgang im Zaun (R13: keine neue Kachel). */
   zieleMassnahmen?: VerbesserungUebersichtBild | null;
-  /** AP-19 IP-21 (WV5): „Energiemanagement“ am Unternehmen — `null` ohne fällige und ohne Vorschau-Zeile. */
-  energiemanagement?: EnergiemanagementBausteinBild | null;
+  /** AP-19 IP-21 (WV5): „Was steht an“ am Unternehmen; `null` ohne jede Frist der Wiedervorlage. */
+  energiemanagement?: WasStehtAnBild | null;
+  /**
+   * Konzept Wiedervorlage w1, Entscheid 9: die Eskalation für die Statuszeile der Übersicht (Status-Variante A des
+   * Portfolio-Konzepts): nur bei Überfälligem, sonst `null`; dieselbe Wiedervorlage wie „Was steht an“.
+   */
+  wiedervorlageStatus?: WiedervorlageStatus | null;
   /** Die Bausteine MIT Inhalt — nur sie bietet die Fläche an. */
   inhalt: UebersichtBausteinId[];
   /** Die lebenden Standorte der Ebene und ob sie messen — für Fahrplan (K2) und Einstieg „Ihr Standort“ (K6). */
@@ -262,8 +267,8 @@ export function useUebersichtBausteine(
   }, [zieleAn]);
   const zieleMassnahmen = zieleAn ? verbesserungUebersichtBild(zieleDaten) : null;
 
-  // AP-19 IP-21 (WV5): „Energiemanagement“ nur am Unternehmen; die Fristen liest der Server beim Abruf aus ihren Regeln,
-  // der Zaun ist der jeder Quelle. Ohne fällige und ohne Vorschau-Zeile bleibt die Kachel weg (AP-13 E3).
+  // AP-19 IP-21 (WV5): „Was steht an“ nur am Unternehmen; die Fristen liest der Server beim Abruf aus ihren Regeln,
+  // der Zaun ist der jeder Quelle. Ohne jede Frist bleibt der Block weg (AP-13 E3).
   const energiemanagementAn = an && ebene?.art === 'unternehmen';
   const [wiedervorlage, setWiedervorlage] = useState<Wiedervorlage | null>(null);
   useEffect(() => {
@@ -280,7 +285,8 @@ export function useUebersichtBausteine(
       aktiv = false;
     };
   }, [energiemanagementAn]);
-  const energiemanagement = energiemanagementAn ? energiemanagementBaustein(wiedervorlage) : null;
+  const energiemanagement = energiemanagementAn ? wasStehtAn(wiedervorlage) : null;
+  const wvStatus = energiemanagementAn ? wiedervorlageStatus(wiedervorlage) : null;
 
   if (!ebene || !an) return null;
   const gebaeude: GebaeudeEingang[] = gebaeudeListe.map((g) => ({
@@ -316,6 +322,7 @@ export function useUebersichtBausteine(
     bezugsbasen,
     zieleMassnahmen,
     energiemanagement,
+    wiedervorlageStatus: wvStatus,
     inhalt,
     standorte: standorte.filter((s) => s.zustand !== 'archiviert').map((s) => ({ id: s.id, name: s.name, misst: misst(lm, s.id) })),
   };
@@ -572,7 +579,7 @@ export function UebersichtBausteine({
       />
     ),
     energiemanagement: energiemanagement && (
-      <EnergiemanagementKachel bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute('wiedervorlage'))} onSprung={onNavigate} />
+      <EnergiemanagementBaustein bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute('wiedervorlage'))} />
     ),
     fahrplan: ebene.art === 'unternehmen' && (
       <EnergiemanagementFahrplan messendeStandorte={daten.standorte.filter((s) => s.misst).map((s) => s.name)} onNavigate={onNavigate} />
@@ -600,46 +607,5 @@ export function UebersichtBausteine({
         {mitSaetzen && <GrenzHinweis />}
       </div>
     </GrenzSatzBereich>
-  );
-}
-
-/** Der Baustein „Was steht an“ (die Wiedervorlage) mit dem Laden des Kalender-Abzugs (E10) — ein Abruf, nichts wird verschickt. */
-function EnergiemanagementKachel({
-  bild,
-  onOeffnen,
-  onSprung,
-}: {
-  bild: EnergiemanagementBausteinBild;
-  onOeffnen: () => void;
-  onSprung: (ziel: Route) => void;
-}) {
-  const [laeuft, setLaeuft] = useState(false);
-  const [fehler, setFehler] = useState(false);
-  async function kalender() {
-    setLaeuft(true);
-    setFehler(false);
-    try {
-      const datei = await api.energiemanagementWiedervorlageIcs();
-      const url = URL.createObjectURL(datei);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'wiedervorlage-energiemanagement.ics';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    } catch {
-      setFehler(true);
-    } finally {
-      setLaeuft(false);
-    }
-  }
-  return (
-    <EnergiemanagementBaustein
-      bild={bild}
-      onOeffnen={onOeffnen}
-      onKalender={kalender}
-      onSprung={onSprung}
-      kalenderLaeuft={laeuft}
-      kalenderFehler={fehler}
-    />
   );
 }

@@ -31,6 +31,7 @@ import { kontenAhrenberg, massnahmeBuehne } from '../src/test/massnahmeFixtures'
 import { rechteSeed } from '../src/test/rollenFixtures';
 import { werkAhrenberg, werkLindach } from '../src/test/standorteFixtures';
 import { unterstuetzungApi } from '../src/unterstuetzung';
+import { useEntscheidFokus } from '../src/useEntscheidFokus';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -171,6 +172,8 @@ if (!location.hash.startsWith('#/portfolio/')) {
 
 function Ansicht() {
   const [route, setRoute] = useState<Route>(() => parseRoute(location.hash));
+  // Wie `App.tsx`: ein Schritt der Wiedervorlage öffnet das Objekt mit offenem Entscheid (Konzept Wiedervorlage w1).
+  useEntscheidFokus();
   useEffect(() => {
     const weiter = () => setRoute(parseRoute(location.hash));
     window.addEventListener('hashchange', weiter);

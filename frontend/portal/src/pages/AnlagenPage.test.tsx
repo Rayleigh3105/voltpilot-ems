@@ -348,7 +348,8 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter.
   await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull());
   // Die Kacheln sind ein ZWEITES Stück (`KachelStueck`, main 1fec2bc1c): auch auf ihr
-  // Bild warten - der Platzhalter `vp-k-platz` mit aria-hidden ist ihr Suspense-Ersatz.
+  // Bild warten - der Platzhalter `vp-k-platz` mit aria-hidden ist ihr Suspense-Ersatz;
+  // unter Last kam der Schnappschuss sonst vor ihnen und hielt leere Plätze fest.
   await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull());
   await bestandSnapshot('cockpit', view);
 });

@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -87,6 +89,7 @@ class DemoRundgangAufbau {
     private static final UUID ST1 = UUID.fromString("20000000-0000-0000-0000-0000000000a1"); // Werk Ahrenberg
     private static final UUID ST2 = UUID.fromString("20000000-0000-0000-0000-0000000000a2"); // Werk Lindach
     private static final UUID AN1 = UUID.fromString("20000000-0000-0000-0000-000000000501"); // Halle 1
+    private static final String WR_HALLE1 = "20000000-0000-0000-0000-000000000701"; // Hybrid-Wechselrichter Halle 1
     private static final UUID AN2 = UUID.fromString("20000000-0000-0000-0000-000000000502"); // Halle 2
     private static final UUID AN3 = UUID.fromString("20000000-0000-0000-0000-000000000503"); // Werk Lindach
     private static final UUID GEB_HALLE2 = UUID.fromString("20000000-0000-0000-0000-000000000102"); // G-2
@@ -159,12 +162,14 @@ class DemoRundgangAufbau {
         // idempotent (ein zweiter Lauf schreibt nichts).
         stammdaten();
         netzanschluesse();
+        referenzpreise();
+        rollenHalle1(root);
         messstellenExtra();
         bezugsgroessenExtra();
         kostenstellen();
         kennzahlZwecke();
-        System.out.println("Rundgang: Stammdaten, Netzanschlüsse, Messstellen, Bezugsgrößen, Kostenstellen und "
-                + "Kennzahl-Zwecke ergänzt.");
+        System.out.println("Rundgang: Stammdaten, Netzanschlüsse, Referenzpreise, Rollen Halle 1, Messstellen, "
+                + "Bezugsgrößen, Kostenstellen und Kennzahl-Zwecke ergänzt.");
 
         // Zweite Runde: die Flächen füllen (sonst „fehlt die Fläche" am echten Datum), jede Kennzahl mit eigener
         // Messgröße und eigener Einheit (statt sechsmal identisch kWh je kg), die energetische Bewertung mit echten
@@ -212,12 +217,16 @@ class DemoRundgangAufbau {
      * Anlage zeigt „kein Netzanschluss".
      */
     private void netzanschluesse() throws Exception {
-        netzanschluss(ST1, "NA-0001", "Haupteinspeisung Werk Ahrenberg", "51238401829", "Bayernwerk Netz GmbH",
-                "630", "500", "2024-03-12", AN1, "500");
-        netzanschluss(ST1, "NA-0002", "Netzanschluss Halle 2", "51238401830", "Bayernwerk Netz GmbH",
-                "400", "315", "2026-10-01", AN2, "315");
-        netzanschluss(ST2, "NA-0003", "Netzanschluss Werk Lindach", "51238401831", "LEW Verteilnetz GmbH",
-                "250", "160", "2026-10-15", AN3, "160");
+        // Kennzeichen NA-1/2/3, anschluss_kva und vereinbart_kw aus der Referenzwelt
+        // (docs/contracts/v2/uems-referenzunternehmen.json, netzanschluesse): 630/550, 250/200, 160/120 — nichts
+        // erfinden. Dasselbe Kennzeichen wie auf der laufenden Demo, damit der idempotente Lauf keinen zweiten
+        // Anschluss anlegt. Die Kennzahl-Kachel „Lastspitze" liest die vereinbarte Leistung von hier.
+        netzanschluss(ST1, "NA-1", "Hauptanschluss Halle 1", "47110000001", "Netzgesellschaft Ahrental (fiktiv)",
+                "630", "550", "2024-03-12", AN1, "550");
+        netzanschluss(ST1, "NA-2", "Anschluss Halle 2", "47110000002", "Netzgesellschaft Ahrental (fiktiv)",
+                "250", "200", "2026-10-01", AN2, "200");
+        netzanschluss(ST2, "NA-3", "Anschluss Lindach", "47110000003", "Netzgesellschaft Ahrental (fiktiv)",
+                "160", "120", "2026-10-15", AN3, "120");
     }
 
     private void netzanschluss(UUID standort, String kennzeichen, String name, String malo, String netzbetreiber,
@@ -236,6 +245,81 @@ class DemoRundgangAufbau {
                 m("anlage_id", anlage.toString(), "gueltig_ab", ab, "grund", "Anschluss laut Netzanschlussvertrag."));
         status("POST", basis + "/" + id + "/grenzen", m("gueltig_ab", ab, "bezugsgrenze_kw", bezugKw,
                 "einspeisegrenze_keine", true, "grund", "Vereinbarte Bezugsleistung laut Netzanschlussvertrag."));
+    }
+
+    /**
+     * Review PR2 (Captain-Entscheid): die Kennzahl-Kacheln „Kosten" und „Lastspitze" brauchen Arbeits- und
+     * Leistungspreis. Beide stehen in der Referenzwelt (docs/contracts/v2/uems-referenzunternehmen.json) und werden je
+     * Anlage über die echten Portal-Routen gesetzt — der Arbeitspreis als Jonas (anlage.verwalten), der Leistungspreis
+     * als Plattform-Admin über den Mandanten-Umschalter X-Tenant-Id. Beides ist ein PUT, also bei jedem Lauf idempotent.
+     */
+    private void referenzpreise() throws Exception {
+        tarif(AN1, "22.4");
+        tarif(AN2, "23.1");
+        tarif(AN3, "23.8");
+        leistungspreis(AN1, 96);
+        leistungspreis(AN2, 96);
+        leistungspreis(AN3, 88);
+    }
+
+    /** Arbeitspreis als fester Tarif am Standort der Anlage (Jonas, anlage.verwalten); GET-dann-PUT über die ganze Darstellung. */
+    private void tarif(UUID site, String ctKwh) throws Exception {
+        JsonNode s = lies("/api/v1/sites/" + site, jw());
+        ObjectNode put = JSON.createObjectNode();
+        for (String f : List.of("name", "biddingZone", "latitude", "longitude", "plantKind",
+                "anzulegenderWertCtKwh", "netzladenErlaubt", "maxFeedInKw")) {
+            put.set(f, s.has(f) ? s.get(f) : NullNode.getInstance());
+        }
+        put.put("tarifArt", "fest");
+        put.put("tarifParamCtKwh", ctKwh);
+        status("PUT", "/api/v1/sites/" + site, put, jw(), null);
+    }
+
+    /** Leistungspreis und jährliche Abrechnung (Plattform-Admin über den Mandanten-Umschalter X-Tenant-Id). */
+    private void leistungspreis(UUID site, int eurKw) throws Exception {
+        Map<String, Object> cfg = new LinkedHashMap<>();
+        cfg.put("leistungspreisEurKw", eurKw);
+        cfg.put("abrechnungLeistung", "jahr");
+        status("PUT", "/api/v1/admin/sites/" + site + "/optimizer-config", cfg, plattformAdmin(), TENANT.toString());
+    }
+
+    /**
+     * Review PR3 §4: Werk Ahrenberg – Halle 1 trägt laut Referenzwelt
+     * ({@code docs/contracts/v2/uems-referenzunternehmen.json}, AN-1) PV 240 kWp + Speicher 200 kWh/100 kW
+     * (Hybrid-Wechselrichter K-1 und PV-Wechselrichter K-12, Betriebsmodell Lastspitzenkappung). Die Anlagenkarte
+     * liest ihre Rollen aus {@code roleCounts} (= {@code measurement_point.entity_type}), NIE aus Live-Werten -
+     * ohne registrierte Erzeuger-/Speicher-Rolle zeigt sie nur „Netz/Verbrauch". Hier werden die beiden Rollen als
+     * Entitäten des bestehenden Hybrid-Wechselrichters registriert (wie die composed-Entitäten grid-meter/house-load
+     * aus dem SQL-Seed), damit {@code roleCounts.pv}/{@code storage} die Wirklichkeit tragen und die Karte
+     * „steuert · PV + Speicher" zeigt. Direkt am Datenbestand (kein Portal-Weg: die Demo führt sonst keine
+     * Erzeuger-Entität und es gibt keine adoptierbare PV-Quelle). Idempotent.
+     */
+    private void rollenHalle1(JdbcTemplate root) {
+        root.update(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, control, unit, device_id, "
+                        + "capabilities, guard_config, source_kind) "
+                        + "SELECT ?::uuid, ?::uuid, 'battery-hybrid', 'battery-hybrid', true, 'kW', ?::uuid, ?::jsonb, "
+                        + "?::jsonb, 'composed' "
+                        + "WHERE NOT EXISTS (SELECT 1 FROM measurement_point WHERE site_id = ?::uuid "
+                        + "AND entity_type = 'battery-hybrid')",
+                TENANT.toString(), AN1.toString(), WR_HALLE1,
+                "{\"actuate\":[{\"max\":100.0,\"min\":-100.0,\"command\":\"setpoint_kw\"},{\"command\":\"limit_kw\"}],"
+                        + "\"measure\":[{\"unit\":\"%\",\"channel\":\"soc_pct\"},"
+                        + "{\"unit\":\"kW\",\"channel\":\"battery_power_kw\"},{\"unit\":\"kW\",\"channel\":\"pv_power_kw\"}]}",
+                "{\"limits\":{\"soc_max_pct\":95.0,\"soc_min_pct\":5.0,\"max_charge_kw\":100.0,"
+                        + "\"max_discharge_kw\":100.0,\"charge_from_grid_allowed\":false},"
+                        + "\"failsafe\":{\"behavior\":\"self-consumption\"}}",
+                AN1.toString());
+        root.update(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, control, unit, device_id, "
+                        + "capabilities, capacity_kwp, source_kind) "
+                        + "SELECT ?::uuid, ?::uuid, 'pv-generation', 'producer', false, 'kW', ?::uuid, ?::jsonb, "
+                        + "240, 'composed' "
+                        + "WHERE NOT EXISTS (SELECT 1 FROM measurement_point WHERE site_id = ?::uuid "
+                        + "AND entity_type = 'producer')",
+                TENANT.toString(), AN1.toString(), WR_HALLE1,
+                "{\"measure\":[{\"unit\":\"kW\",\"channel\":\"pv_power_kw\"}]}",
+                AN1.toString());
     }
 
     /**
@@ -767,6 +851,24 @@ class DemoRundgangAufbau {
         return r.getStatus();
     }
 
+    /** Wie {@link #status}, aber mit bestimmtem Nutzer und optionalem Mandanten-Umschalter (X-Tenant-Id). */
+    private int status(String method, String path, Object body, Authentication auth, String tenant) throws Exception {
+        var b = request(HttpMethod.valueOf(method), path).with(authentication(auth))
+                .contentType(MediaType.APPLICATION_JSON);
+        if (body != null) {
+            b = b.content(JSON.writeValueAsString(body));
+        }
+        if (tenant != null) {
+            b = b.header("X-Tenant-Id", tenant);
+        }
+        var r = mvc.perform(b).andReturn().getResponse();
+        if (r.getStatus() >= 400 && r.getStatus() != 409) {
+            throw new IllegalStateException(method + " " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus()
+                    + " " + r.getContentAsString(StandardCharsets.UTF_8));
+        }
+        return r.getStatus();
+    }
+
     /** Wie {@link #status}, wirft aber nie — für Ablesungen und Werte, die auf einer bespielten Box kollidieren dürfen. */
     private int roh(String method, String path, Object body) throws Exception {
         var b = request(HttpMethod.valueOf(method), path).with(authentication(ines()))
@@ -792,6 +894,12 @@ class DemoRundgangAufbau {
         return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));
     }
 
+    /** GET als bestimmter Nutzer, als Baum gelesen. */
+    private JsonNode lies(String path, Authentication auth) throws Exception {
+        var r = mvc.perform(request(HttpMethod.GET, path).with(authentication(auth))).andReturn().getResponse();
+        return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));
+    }
+
     /** Eine JSON-Abbildung, die {@code null}-Werte auslässt (im Gegensatz zu {@link Map#of}) — Felder ohne Wert bleiben weg. */
     private static Map<String, Object> m(Object... kv) {
         Map<String, Object> o = new LinkedHashMap<>();
@@ -809,6 +917,15 @@ class DemoRundgangAufbau {
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600))
                 .claim("tenant_id", TENANT.toString()).claim("realm_access", Map.of("roles", List.of()))
                 .claim("name", "Ines Kaltenbach").claim("preferred_username", "ines").build();
+        return new KeycloakRealmRoleConverter().convert(jwt);
+    }
+
+    /** Plattform-Betrieb (platform-admin) — der Leistungspreis ist admin-geschützt; der Mandant kommt über X-Tenant-Id (kein tenant-Claim). */
+    private static Authentication plattformAdmin() {
+        Jwt jwt = Jwt.withTokenValue("rundgang").header("alg", "none").subject("20000000-0000-0000-0000-0000000008ad")
+                .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600))
+                .claim("realm_access", Map.of("roles", List.of("platform-admin"))).claim("name", "Plattform-Betrieb")
+                .claim("preferred_username", "plattform").build();
         return new KeycloakRealmRoleConverter().convert(jwt);
     }
 }

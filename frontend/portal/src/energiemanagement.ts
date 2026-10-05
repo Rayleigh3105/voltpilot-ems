@@ -33,7 +33,7 @@ export const VOKABULARE: Record<string, string[]> = {
   managementbewertung_zustand: ['entwurf', 'freigegeben'],
   beschluss_art: ['energieziel', 'massnahme', 'dokument', 'aufgabe', 'ressourcen', 'audit', 'keine_aenderung', 'weitere'],
   folge_art: ['energieziel', 'massnahme', 'dokument', 'aufgabe', 'audit'],
-  wiedervorlage_art: ['dokument_ueberpruefung', 'internes_audit', 'managementbewertung', 'feststellung', 'bewertung_ueberpruefung', 'bezugsbasis_ueberpruefung', 'energieziel_bewertung', 'massnahme_termin', 'abweichung_frist', 'messbedarf_frist', 'bericht_anstoss'],
+  wiedervorlage_art: ['dokument_ueberpruefung', 'internes_audit', 'managementbewertung', 'feststellung', 'bewertung_ueberpruefung', 'bezugsbasis_ueberpruefung', 'energieziel_bewertung', 'massnahme_termin', 'abweichung_frist', 'messbedarf_frist', 'bericht_anstoss', 'zaehlerablesung'],
   verzeichnis_ort: ['in_voltpilot', 'wortlaut_original_beim_kunden', 'verweis'],
   verzeichnis_gruppe: ['grundlagen', 'verantwortung', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'bewertung_messplanung', 'kennzahlen_bezugsbasen', 'ziele_massnahmen_abweichungen', 'audits_feststellungen', 'managementbewertung', 'berichte'],
   ueberpruefung_art: ['dokument', 'internes_audit', 'managementbewertung', 'feststellung'],
@@ -103,7 +103,7 @@ export const SAETZE: Record<string, string> = {
   wiedervorlage_zeile: '{gegenstand}: {was} seit {tage} Tagen fällig.',
   wiedervorlage_leer: 'Zurzeit ist nichts fällig.',
   kalender_abzug: 'Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.',
-  baustein: 'Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen.',
+  baustein: 'Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen.',
   verzeichnis_leer: UEMS_NOCH_NICHTS_FESTGEHALTEN,
   verzeichnis_filter: 'In meinem Namen festgehalten: {anzahl} Einträge.',
   zuschnitt_titel: 'Was VoltPilot führt — was bei Ihnen liegt.',
@@ -186,7 +186,16 @@ export function ueberpruefung(e: UeberpruefungEingang): Frist | Fehler {
   }
 }
 
-/** WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2) — hier nur Lage, Vorschau-Fenster und Reihenfolge. */
+/** Konzept Wiedervorlage w1 (Vertrag 1.1): so viele Monate reicht der Jahresplan über den Abruf hinaus. */
+export const JAHRESPLAN_MONATE = 12;
+
+/** Der letzte Tag des Jahresplans (einschließlich): Abruf + 12 Monate, Monatsende geklemmt, wie die Operation ihn rechnet. */
+export const jahresplanBis = (abruf: string) => plusMonate(abruf.slice(0, 10), JAHRESPLAN_MONATE);
+
+/**
+ * WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2); hier nur Lage, Vorschau-Fenster und Reihenfolge. Seit Vertrag
+ * 1.1 dazu der Jahresplan `spaeter` (nach dem Fenster bis Abruf + 12 Monate) und die Zählung nach Dringlichkeit.
+ */
 export function wiedervorlage(e: WiedervorlageEingang) {
   if (e.vorschau_tage < 0) return { fehler: 'vorschau_tage' };
   if (e.zeilen.some((z) => !VOKABULARE.wiedervorlage_art.includes(z.art))) return { fehler: 'wiedervorlage_art' };
@@ -200,8 +209,14 @@ export function wiedervorlage(e: WiedervorlageEingang) {
     .sort((a, b) => vergleich(a.faellig_am, b.faellig_am) || vergleich(a.kennzeichen, b.kennzeichen));
   const faellig = liste.filter((z) => z.tage >= 0);
   const vorschau = liste.filter((z) => z.tage < 0);
+  const planEnde = plusMonate(e.abruf, JAHRESPLAN_MONATE);
+  const spaeter = zeilen
+    .filter((z) => z.tage < -e.vorschau_tage && z.faellig_am <= planEnde)
+    .sort((a, b) => vergleich(a.faellig_am, b.faellig_am) || vergleich(a.kennzeichen, b.kennzeichen));
   return {
-    faellig, vorschau, anzahl_faellig: faellig.length, anzahl_vorschau: vorschau.length,
+    faellig, vorschau, spaeter, anzahl_faellig: faellig.length, anzahl_vorschau: vorschau.length,
+    anzahl_ueberfaellig: faellig.filter((z) => z.tage > 0).length, anzahl_naechste: liste.filter((z) => z.tage <= 0).length,
+    anzahl_spaeter: spaeter.length,
     nicht_in_liste: zeilen.filter((z) => z.tage < -e.vorschau_tage).map((z) => z.kennzeichen).sort(),
   };
 }

@@ -77,6 +77,17 @@ des Tages an, falls er fehlt, und füllt die Messlatte bis jetzt auf; `golf` ste
 - `max_connections=200`: das Tuning für 1 GB setzt sonst 25, und der Welt-Aufbau bekommt neben der Live-Strecke keine
   Verbindung mehr.
 
+## Abnahme einer API-Änderung neben der Demo
+
+Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf einer Kopie der Demo-Datenbank.
+
+- Kopie: `docker exec voltpilot-timescaledb pg_dump -U voltpilot -Fc voltpilot > demo.dump` liest nur.
+  Ein Wegwerf-Container aus `voltpilot-demo-timescaledb` (eigener Port, `POSTGRES_DB=voltpilot_init`) bekommt die Rollen `voltpilot_app` (ohne BYPASSRLS) und `voltpilot_admin` (BYPASSRLS) mit eigenen Passwörtern, dann `CREATE DATABASE voltpilot`, `timescaledb_pre_restore()`, `pg_restore`, `timescaledb_post_restore()`.
+- ⚠ `pg_restore` setzt `search_path` leer: CHECK-Regeln, die Funktionen ohne Schema rufen (`bezugsarten()`), lassen das Laden von `bezugsgroesse` scheitern, mit ihr die Fremdschlüssel darauf; Trigger-Reihenfolgen lassen `messreihe_korrektur` und die Chunks von `messreihe_ereignis` leer.
+  Diese Daten mit `search_path=public` und `session_replication_role=replica` nachladen, danach Zeilenzahlen und `pg_constraint` mit der Demo vergleichen und fehlende Fremdschlüssel aus `pg_get_constraintdef` anlegen.
+- Die API vom Host: `POSTGRES_JDBC_URL` auf die Kopie setzen (der Vorgabewert ist die Demo-Datenbank), `MQTT_BROKER_URL` und `KEYCLOAK_ADMIN_BASE_URL` auf einen toten Port, alle `VOLTPILOT_*_MQTT_LISTENER_ENABLED=false` (der Status-Zuhörer der Datenquellen steht sonst auf `true`), `OIDC_ISSUER_URI=http://localhost:8081/realms/voltpilot` mit den Schlüsseln von dort, `VOLTPILOT_PRUEFUMGEBUNG_BUEHNEN_UHR` wie die Demo.
+- Das Portal mit `VITE_API_BASE=` bauen und mit der CSP des Demo-Portals ausliefern; im Test-Browser `http://localhost:5173/**` umleiten (die Anmeldung bei Keycloak bleibt gültig): `/api/` an die eigene API, alles andere an die eigene Vorschau.
+
 ## Fallen
 
 - Zwei Zeitachsen: das Energiemanagement liest auf der Bühne (30.04.2029), Portal, Live-Flächen, Unterstützung und

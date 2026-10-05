@@ -878,6 +878,20 @@ VERFEINERUNGEN = {
 # wörtlich ins Glossar kommen: Summenwert (PR 855), Ersatzwert/Korrektur/Widerruf (PR 909).
 # ---------------------------------------------------------------------------------------------
 ABSCHNITTE_NACH = {
+    "wiedervorlage": ["""**Arbeitsliste (Konzept Wiedervorlage w1, 05.10.2026).**
+Der Name bleibt; darunter sagt ein Satz, was er meint: „Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst.“
+Die Liste ordnet nach Dringlichkeit: „Überfällig“ (die Frist ist abgelaufen; „fällig“ allein hieße umgangssprachlich „jetzt dran“), „In den nächsten 30 Tagen“, „Jahresplan“, „Zuletzt erledigt“.
+Ein Gegenstand ist ein Eintrag (zehn Korrekturen an einem Bericht sind eine Aufgabe), und die Zahlen zählen Einträge.
+Jeder Eintrag nennt Aufgabe mit Verb, Grund, Bereich, Person und genau einen Schritt; der Schritt öffnet das Objekt dort, wo die Entscheidung fällt, abgehakt wird nichts.
+Die Frist steht als Datum („seit 13.11.2027“, „bis 28.02.2029“), nie als Tageszähler.
+Ist nichts überfällig, heißt es „Keine Frist überfällig“, und auf der Übersicht stehen die „Nächsten Fristen“; „Woher kommen diese Fristen?“ erklärt die Herleitung.
+Der „Jahresplan“ zeigt die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten; er nennt Fristen, die noch nichts verlangen.
+„Zuständig“ ist die Person am Objekt; nennt das Objekt keine, die Person der passenden Aufgabe im Energiemanagement („laut Aufgabe“); hat auch die Aufgabe keine, steht „Niemand zuständig“ mit dem Weg, die Aufgabe festzulegen.
+Wer die Aufgaben nicht lesen darf, liest keine Person laut Aufgabe und auch kein „Niemand zuständig“.
+„Zuletzt erledigt“ nennt die Entscheidungen der letzten 90 Tage, die eine Frist beendet oder neu begonnen haben, auch „geprüft, bleibt“.
+Seit Vertrag 1.2 steht die „Zählerablesung“ in der Liste (Bereich Messen): eine Ablese-Runde je Gebäude (ohne Gebäude der Standort) und Fälligkeitstag, „8 Zähler in Halle 1 ablesen“, fällig zwei Monate nach der letzten Ablesung wie „Ablesung überfällig seit …“ im Register.
+Der Schritt heißt „Ablesungen eintragen“ und öffnet die Messstellen des Orts; bei einem Zähler heißt er wie der Knopf an der Messstelle, „Ablesung eintragen“.
+Kundenwörter: `UEMS_WIEDERVORLAGE_SATZ`, `UEMS_UEBERFAELLIG`, `UEMS_KEINE_FRIST_UEBERFAELLIG`, `UEMS_NAECHSTE_FRISTEN`, `UEMS_ZULETZT_ERLEDIGT`, `UEMS_WOHER_FRISTEN`, `UEMS_JAHRESPLAN`, `UEMS_LAUT_AUFGABE`, `UEMS_GEPRUEFT_BLEIBT_KNOPF` (PORTAL/glossar.ts)."""],
     "messstelle": ["""## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
@@ -907,6 +921,11 @@ eine zweite Person kann der Ersteller nicht selbst freigeben.
 Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
 eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
 Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md)."""],
+    "energieleistungskennzahl": ["""**Leitkennzahl (Portfolio-Übersicht, Konzept `data/vp-portfolio-konzept2-p2` §4.2).**
+Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: die Energieleistungskennzahl mit offenem Energieziel, die das Kachelraster als erste, breite Kachel anführt.
+Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.
+Gibt es keine Kennzahl mit offenem Ziel, führt stattdessen die Datenlage, und an ihrer Stelle steht „Noch keine Leitkennzahl gegen ein Ziel hinterlegt.“.
+Kundenwort: `UEMS_LEITKENNZAHL` (PORTAL/glossar.ts)."""],
 }
 
 # ---------------------------------------------------------------------------------------------

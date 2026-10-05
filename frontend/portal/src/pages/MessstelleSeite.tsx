@@ -339,7 +339,10 @@ function MessstelleSeiteMitId({
   // UEMS AP-04 IP-14: die Karten der Quelle-Karte; die Uhr ist der Zeitpunkt des Registers.
   const jetzt = register?.zeitpunkt ?? new Date().toISOString();
   // AP-13 IP-12 (L6): die Zuständigkeiten der Anlage dieser Messstelle — daraus nennt die Karte die Box.
-  const quelleKarten: QuelleGroesseKarte[] = quellen ? quelleKarte(quellen, jetzt, boxen.karte) : [];
+  // AP-09 IP-8: kommen die Werte aus Ablesungen, sagt die Karte das wie das Register, nicht „Keine Datenquelle“.
+  const quelleKarten: QuelleGroesseKarte[] = quellen
+    ? quelleKarte(quellen, jetzt, boxen.karte, w?.quelle.art === 'ablesung' ? w.quelle.text : null)
+    : [];
   const oeffneBinden = (rolle: BindungsRolle) => (karte: QuelleGroesseKarte) =>
     setBinden({
       rolle,

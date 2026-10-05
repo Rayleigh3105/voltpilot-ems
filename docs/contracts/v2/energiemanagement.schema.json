@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.2"
     },
     "herkunft": {
       "type": "string",
@@ -1276,8 +1276,12 @@
                     "required": [
                       "faellig",
                       "vorschau",
+                      "spaeter",
                       "anzahl_faellig",
                       "anzahl_vorschau",
+                      "anzahl_ueberfaellig",
+                      "anzahl_naechste",
+                      "anzahl_spaeter",
                       "nicht_in_liste"
                     ],
                     "properties": {
@@ -1383,11 +1387,74 @@
                           }
                         }
                       },
+                      "spaeter": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "art",
+                            "kennzeichen",
+                            "titel",
+                            "faellig_am",
+                            "tage",
+                            "satz",
+                            "verantwortlich"
+                          ],
+                          "properties": {
+                            "art": {
+                              "type": "string",
+                              "pattern": "^[a-z_]+$"
+                            },
+                            "kennzeichen": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "titel": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "faellig_am": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                            },
+                            "tage": {
+                              "type": "integer"
+                            },
+                            "satz": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "verantwortlich": {
+                              "anyOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
                       "anzahl_faellig": {
                         "type": "integer",
                         "minimum": 0
                       },
                       "anzahl_vorschau": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_ueberfaellig": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_naechste": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_spaeter": {
                         "type": "integer",
                         "minimum": 0
                       },

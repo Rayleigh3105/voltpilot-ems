@@ -111,6 +111,7 @@ import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, v
 import * as BD from './berichtDialoge';
 import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
 import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_RECHENFORM } from './glossar';
+import { UEMS_LEITKENNZAHL, UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ } from './glossar';
 import {
   UEMS_DATENLAGE,
   UEMS_ENERGIEBILANZ,
@@ -1713,6 +1714,17 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     expect([...treffer].sort()).toEqual(KENNZAHL_BESTAND);
   });
 
+  it('„Leitkennzahl“ ist ein Glossarbegriff und kommt aus dem Glossar, nicht als freier Literal (Review R2 §B1)', () => {
+    // Der Begriff ist registriert (glossar.ts; `glossar.md` wird aus fachmodell.py erzeugt und trägt ihn).
+    expect(UEMS_LEITKENNZAHL).toBe('Leitkennzahl');
+    // Der Leersatz der Kachel wird aus dem Glossarwort gebildet, nicht getrennt getippt.
+    expect(UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ).toContain(UEMS_LEITKENNZAHL);
+    // Die Kachelraster-Fläche zieht den Satz aus dem Glossar statt ihn hart zu verdrahten.
+    const raster = readFileSync(join(SRC, 'components/PortfolioKacheln.tsx'), 'utf8');
+    expect(raster).toContain('UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ');
+    expect(raster).not.toContain('Noch keine Leitkennzahl gegen ein Ziel');
+  });
+
   it('die Wörter kommen aus dem Glossar: „Kennzahlen“, „Berechnung“, „Menge je Bezugsgröße“', () => {
     expect(KK.TITEL).toBe(UEMS_KENNZAHLEN);
     expect(KK.KARTE_BERECHNUNG).toBe(UEMS_BERECHNUNG);
@@ -1931,6 +1943,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
   'components/PortfolioCockpit.tsx', // alt
+  'components/PortfolioKacheln.tsx', // neu: das Kennzahl-Kachelraster der Unternehmens-Übersicht (PR2, §4.2 — Leitkennzahl, Verbrauch, Lastspitze, Kosten)
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
@@ -1953,6 +1966,7 @@ const KENNZAHL_BESTAND: string[] = [
   'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
   'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
+  'wiedervorlage.ts', // neu: eine Bezugsbasis ist die Vergleichsgrundlage einer Kennzahl (Konzept Wiedervorlage w1)
 ];
 
 /**
@@ -3279,7 +3293,7 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'Bezugsbasis BB-0002, Fassung 2: Überprüfung seit 457 Tagen fällig.',
     'Zurzeit ist nichts fällig.',
     'Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.',
-    'Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen.',
+    'Energiemanagement: 8 überfällig · 1 in den nächsten 30 Tagen.',
     UEMS_NOCH_NICHTS_FESTGEHALTEN,
     'In meinem Namen festgehalten: 11 Einträge.',
     'Was VoltPilot führt — was bei Ihnen liegt.',

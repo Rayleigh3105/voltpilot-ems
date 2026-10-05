@@ -595,6 +595,19 @@ export const UEMS_GRUNDLAST = 'Grundlast';
 export const UEMS_LEISTUNGSVERGLEICH = 'Leistungsvergleich';
 
 /**
+ * UEMS Portfolio-Übersicht (Konzept `data/vp-portfolio-konzept2-p2` §4.2) — die
+ * „Leitkennzahl" ist die FÜHRENDE Kennzahl der Unternehmens-Übersicht: die
+ * {@link UEMS_ENERGIELEISTUNGSKENNZAHL} mit offenem Energieziel, die das
+ * Kachelraster als erste (breite) Kachel anführt. Kein neues Fachobjekt,
+ * sondern die Präsentations-Rolle dieser einen Kennzahl im Portfolio-Kopf.
+ * Fehlt ein offenes Ziel, führt stattdessen die Datenlage (Satz unten).
+ * Glossar: `docs/fachmodell/glossar.md` › Energieleistungskennzahl
+ * (Abschnitt „Leitkennzahl").
+ */
+export const UEMS_LEITKENNZAHL = 'Leitkennzahl';
+export const UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ = `Noch keine ${UEMS_LEITKENNZAHL} gegen ein Ziel hinterlegt.`;
+
+/**
  * Die Urteil-Wörter (U2, U3, SP1). Der Vertragswert `nicht_anwendbar` heißt auf der Kundenfläche „nicht bewertbar“;
  * seinen Grund nennt der Satz daneben (§5.8). Eine rohe Zahl hat kein Urteil und darum kein Wort.
  */
@@ -721,6 +734,23 @@ export const UEMS_VERBESSERUNG_SAETZE = {
 export const UEMS_ENERGIEMANAGEMENT = 'Energiemanagement';
 export const UEMS_VERZEICHNIS = 'Verzeichnis';
 export const UEMS_WIEDERVORLAGE = 'Wiedervorlage';
+/**
+ * Konzept Wiedervorlage w1 (Captain-Freigabe 05.10.2026): der Name bleibt, ein Satz darunter sagt, was er meint. Die
+ * Liste ordnet nach Dringlichkeit; „Überfällig“ heißt abgelaufen („fällig“ allein hieße umgangssprachlich „jetzt dran“).
+ */
+export const UEMS_WIEDERVORLAGE_SATZ = 'Alle Fristen Ihres Energiemanagements';
+export const UEMS_UEBERFAELLIG = 'Überfällig';
+export const UEMS_KEINE_FRIST_UEBERFAELLIG = 'Keine Frist überfällig';
+export const UEMS_NAECHSTE_FRISTEN = 'Nächste Fristen';
+export const UEMS_ZULETZT_ERLEDIGT = 'Zuletzt erledigt';
+export const UEMS_WOHER_FRISTEN = 'Woher kommen diese Fristen?';
+/** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
+export const UEMS_JAHRESPLAN = 'Jahresplan';
+/**
+ * Die Person einer Frist, wenn das Objekt keine nennt: die der „Aufgabe im Energiemanagement“, zu der die Frist gehört
+ * („Ines Kaltenbach · laut Aufgabe „Dokumente des Energiemanagements pflegen““).
+ */
+export const UEMS_LAUT_AUFGABE = 'laut Aufgabe';
 export const UEMS_DOKUMENT = 'Dokument';
 export const UEMS_DOKUMENTE = 'Dokumente';
 export const UEMS_WORTLAUT = 'Wortlaut';
@@ -757,6 +787,8 @@ export const UEMS_FOLGE = 'Folge';
 export const UEMS_ENTSCHIEDEN_VON = 'entschieden von';
 export const UEMS_EINGETRAGEN_VON = 'eingetragen von';
 export const UEMS_GEPRUEFT_BLEIBT = 'geprüft, bleibt';
+/** Der Knopf dazu, an der Bezugsbasis (AP-17) und am Dokument (DK5): dasselbe Wort, eine Konstante. */
+export const UEMS_GEPRUEFT_BLEIBT_KNOPF = 'Geprüft, bleibt';
 export const UEMS_BEKANNT_GEMACHT = 'bekannt gemacht';
 export const UEMS_NOCH_NICHTS_FESTGEHALTEN = 'Hier ist noch nichts festgehalten.';
 

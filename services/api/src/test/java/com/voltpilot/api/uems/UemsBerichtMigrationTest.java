@@ -92,7 +92,8 @@ class UemsBerichtMigrationTest {
             "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme.
             "20260925061500", // AP-19 IP-22: ersetzt bericht_vokabular() und bericht_vorlage() (Vorlage Nr. 7).
             "20260925093000", // AP-19 IP-23: nennt Person, Aufgabe, Fassung und Audit von 013500/031500 (kein Schlüssel auf bericht).
-            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs der Berichte um einsicht.
+            "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs der Berichte um einsicht.
+            "20261005220000"); // Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() von 031500 als Vereinigung.
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 

@@ -19,6 +19,7 @@ import {
   type EnergiemanagementDokumentKurz,
   type EnergiemanagementEingetragen,
   type EnergiemanagementEntscheid,
+  type EnergiemanagementGeprueft,
   type EnergiemanagementFassung,
   type EnergiemanagementFassungEntwerfen,
   type EnergiemanagementNachweis,
@@ -580,6 +581,26 @@ export function energiemanagementBuehne(
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, b);
       const d = finde(id);
       await freigeben(d, nr, b);
+      return abgerufen(d);
+    },
+    // DK5 wie der Dienst (`EnergiemanagementDokumentService.geprueft`): nur an der gültigen Fassung einer Vorgabe, ab dem
+    // Tag ihrer Freigabe, mit einer Person und Begründung; die Überprüfung beginnt an diesem Tag neu.
+    energiemanagementDokumentGeprueft: async (id: string, b: EnergiemanagementGeprueft) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/geprueft`, b);
+      const d = finde(id);
+      const gilt = d.fassungen.find((f) => f.nr === d.gueltige_fassung);
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      const tag = b.am ?? heute();
+      const ablehnen = (code: string, message: string) => new ApiError(422, message, { code, message });
+      if (!p) throw ablehnen('entschieden_von_fehlt', 'Bitte nennen Sie, wer entschieden hat.');
+      if (DOKUMENT_ART_KLASSE[d.art] !== 'vorgabe') throw ablehnen('keine_ueberpruefung', 'Ein Nachweis hat keine Überprüfung.');
+      if (!gilt) throw ablehnen('keine_fassung', 'Es gibt noch keine gültige Fassung.');
+      if (tag < gilt.entschieden_am!) throw ablehnen('am', `Geprüft wird die gültige Fassung, ab dem Tag ihrer Freigabe (${tagText(gilt.entschieden_am!)}).`);
+      d.eintraege.push({
+        id: d.eintraege.length + 100, art: 'geprueft_bleibt', fassung: gilt.nr, am: tag, person: kurz(personen.find((x) => x.name === ich.name) ?? p),
+        entschieden_von: kurz(p), kreis: null, weg: null, weg_wortlaut: null, begruendung: b.begruendung, beschluss_kennung: b.beschluss_kennung ?? null,
+        kommentar: null, satz: satzText('geprueft_bleibt', { person: p.name, am: tagText(tag), begruendung: b.begruendung }), eingetragen: eingetragen(ich.name, jetzt()),
+      });
       return abgerufen(d);
     },
   };

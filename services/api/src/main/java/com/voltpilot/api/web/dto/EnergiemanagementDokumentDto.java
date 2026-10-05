@@ -113,10 +113,14 @@ public final class EnergiemanagementDokumentDto {
             PersonKurz entschiedenVon, String kreis, String weg, String wegWortlaut, String begruendung,
             String beschlussKennung, String kommentar, String satz, Eingetragen eingetragen) {}
 
-    /** DK5 beim Abruf (Vertrag {@code ueberpruefung}); {@code null} an einem aufgehobenen Dokument. */
+    /**
+     * DK5 beim Abruf (Vertrag {@code ueberpruefung}); {@code null} an einem aufgehobenen Dokument. Additiv (Konzept
+     * Wiedervorlage w1): {@code basis_art} sagt, woher die Basis kommt ({@code freigabe} der gültigen Fassung oder ein
+     * späteres {@code geprueft_bleibt}), {@code monate} der Rhythmus des Dokuments; beide {@code null} ohne Frist.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Ueberpruefung(LocalDate abruf, LocalDate faelligAm, LocalDate basis, Integer fassung, Integer tage,
-            String satz, String grund) {}
+            String satz, String grund, String basisArt, Integer monate) {}
 
     /** Die Kundensätze der Seite (Vertrag §7), wörtlich; {@code null}, wo die Lage keinen trägt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
