@@ -54,3 +54,7 @@ infra/local/data/
 # Belege). Hier entstehen private Wegwerf-Schluessel - sie gehoeren NIE ins Git.
 edge-app/test/ota-soak/.work/
 edge-app/test/ota-soak/last-failure/
+
+# Lokale Lavish-Arbeitsmaterialien (Konzeptseiten, Bilder) - nicht versionieren;
+# abgenommene Konzepte gehoeren nach docs/konzepte/<thema>/.
+.lavish/

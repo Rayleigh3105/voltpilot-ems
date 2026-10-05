@@ -14,7 +14,7 @@ flowchart LR
 ```
 
 1. Den Workflow **Build & Deploy** auslösen. Er führt Tests aus und baut die Cloud-Images. **Build & Deploy (fast)** überspringt Tests und setzt bereits erfolgte Prüfung voraus.
-2. Den Job `gitops-tag-bump` prüfen: Er aktualisiert `apps/voltpilot/overlays/prod/kustomization.yaml` im separaten Repository `mamotec/gitops` auf den gebauten Commit-SHA.
+2. Den Job `gitops-tag-bump` prüfen: Er aktualisiert `apps/voltpilot/overlays/prod/kustomization.yaml` im separaten Repository `mamotec/gitops` auf den gebauten Commit-SHA. Er läuft nur bei einem Bau von `main` (`if: github.ref == 'refs/heads/main'`); ein Dispatch auf einem anderen Zweig baut Images, lässt den Job aber übersprungen und die Produktion unverändert.
 3. Den gewünschten Stand in Argo CD synchronisieren und Rollout/Readiness prüfen. Die aktuelle Sync-Policy und Cluster-Manifeste sind im GitOps-Repository maßgeblich; ein erfolgreicher Image-Build belegt noch keinen Rollout. **Zwei Eigenschaften der Produktions-Application gehören dazu:** sie läuft auf Auto-Sync — ein gemergter Commit rollt selbsttätig aus —, und die Dienste tragen Sync-Wellen (`api` Welle 0, `timescale-writer`/`ingest`/`frontend` Welle 1). **Wellen ordnen die Aktualisierung, sie halten keine alten Pods an:** wer alten Code sicher aus dem Weg haben muss, setzt Replikas auf null und belegt den Nullstand.
 4. Nach dem Rollout Anmeldung, aktuelle Telemetrie, Preisabdeckung und Fahrplanalter prüfen.
 
