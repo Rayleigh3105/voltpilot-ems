@@ -8,6 +8,13 @@
 #   edge-light/test/mango-gotest.sh root@10.10.1.25 ./internal/lastmgmt/
 #   SSH_PORT=2222 edge-light/test/mango-gotest.sh root@10.10.1.25 ./internal/agent/ -test.run 'Ocpp|Phase'
 #
+# ⚠ NIE WAEHREND EINER LADESITZUNG. Die Tests belegen die einzige CPU des
+# Mango. Am 05.10.2026 verlor die Box dabei rund 9 Minuten die Kontrolle ueber
+# die go-e (OCPP-Zeitueberschreitungen, Schutzprofile neu einzurichten), und
+# das Auto lud kurz ohne Grenze aus dem Netz. Das Skript bricht deshalb ab,
+# solange an einer Saeule eine Sitzung laeuft (Auto abstecken; FORCE=1 nur
+# ohne Fahrzeug und ohne Saeule, die etwas starten koennte).
+#
 # ⚠ Der Mango ist eine Produktivbox: /tmp ist RAM (~44 MB frei neben dem
 # Dienst). Deshalb:
 #   - der Testprozess ist das bevorzugte Opfer des OOM-Killers
@@ -45,8 +52,15 @@ gzip -c "$OUT/$NAME" > "$OUT/$NAME.gz"
 REMOTE_ARGS=""
 for a in "${ARGS[@]}"; do REMOTE_ARGS+=" '${a//\'/\'\\\'\'}'"; done
 
+SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$TARGET")
+if [ "${FORCE:-0}" != 1 ] && "${SSH[@]}" 'wget -q -T 4 -O - http://127.0.0.1:8484/api/ocpp 2>/dev/null' | grep -q '"session_since_ms"'; then
+  echo "ABBRUCH: an einer Ladesaeule laeuft eine Sitzung - die Tests wuerden der Box die CPU nehmen." >&2
+  echo "Auto abstecken und erneut starten." >&2
+  exit 1
+fi
+
 echo "--- fuehre auf $TARGET aus"
-ssh -o BatchMode=yes -o ConnectTimeout=10 -p "${SSH_PORT:-22}" "$TARGET" "
+"${SSH[@]}" "
   set -e
   cat > /tmp/$NAME.gz
   gunzip -f /tmp/$NAME.gz && chmod +x /tmp/$NAME
