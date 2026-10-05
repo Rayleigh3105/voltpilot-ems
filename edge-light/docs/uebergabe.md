@@ -8,10 +8,16 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 - **Überschussladen „Nur Sonne“ am Auto geprüft (Teil 1):** ohne Sonne teilt die Box 0 kW zu, die go-e hält zurück (`SuspendedEVSE`, 0,00 kW). Vorher lud sie dauerhaft mit 6,8 kW (behoben mit #1380, #1382, #1383).
 - **go-e auf 16 A** (`ama`/`amp`, vorher 10/11 A), mit Freigabe des Betreibers; die Variante ist 11 kW/16 A, das Kabel 32 A.
 - **Phasenumschaltung 1p/3p** ([OCPP-Steuerung](../../docs/ocpp-control.md)): PR #1385 ist in `main`, auf `feature/edge-light` übernommen und auf dem Mango. Die go-e meldet `ConnectorSwitch3to1PhaseSupported=true`.
+- **Feldtest einphasig, 05.10.2026 vormittags** (API/Portal mit #1385 deployt, „Laden auf einer Phase erlauben“ gedrückt, PV ~2 kW, Speicher 21–26 %):
+  - Die Box schaltete die go-e um 09:28 auf eine Phase und teilte 1,56–1,84 kW zu. Die go-e nahm jedes Profil an, lud aber nicht (`modelStatus` 28 „OcppDoesntWant“): ihre Mindest-Ladestromstärke **`mca` stand auf 16 A**, die Box gab 8 A. Mit Freigabe des Betreibers auf 6 A gesetzt (`http://192.168.2.105/api/set?mca=6` vom Mango aus), danach lud sie einphasig mit 1,58 kW. **`mca` muss ≤ 6 A sein**, sonst ist jede Zuteilung unter 16 A wirkungslos – auch dreiphasig.
+  - Danach **pendelte** das Laden: 11 Starts in 15 min, je 15–25 s Laden. Ursache war die Paarung von Netz- und Ladeleistung beim Anlaufen: die go-e misst alle 10 s und hinkt hinterher, die Box las 2,05 kW Überschuss als 0,94 kW. Behoben auf `feature/edge-light` durch die späte Paarung ([Details](../../docs/agents/edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)); **auf dem Mango erst nach dem Einspielen**.
+  - Bei jedem Start simuliert die go-e ein Abstecken (`modelStatus` 22) und meldet kurz „PhaseSwitch“ (23), 3–50 s, obwohl die Box durchgehend eine Phase befiehlt (sekundengenau geprüft).
+  - Eine **Verzögerung des Pausierens** bei „Nur Sonne“ (erst nach z. B. 2 min unter dem Minimum) ist zurückgestellt: erst mit der späten Paarung neu messen. Sie würde das Versprechen „Nur Sonnenstrom“ aufweichen.
 - **Noch offen:**
-  1. API und Portal mit #1385 deployen.
-  2. Im Portal am Ladepunkt „Wallbox Garage“ unter „AC-Anschluss und Phasengrenzen“ den Knopf **Laden auf einer Phase erlauben** drücken; das geht mit eingestecktem Auto.
-  3. Feldtest mit Sonne: einphasig ab 1,4 kW Überschuss, dreiphasig ab 4,1 kW, 60 s Wartezeit, mindestens 5 min zwischen zwei Umschaltungen. Steigender Überschuss wirkt erst nach einer Minute (Minimum der letzten 60 s), fallender sofort.
+  1. Neue Fassung mit der späten Paarung auf den Mango spielen und einen Ladetest mit `edge-light/test/ocpp-mitschrift.js` aufzeichnen.
+  2. Feldtest mit mehr Sonne: dreiphasig ab 4,1 kW, 60 s Wartezeit, mindestens 5 min zwischen zwei Umschaltungen. Steigender Überschuss wirkt erst nach einer Minute (Minimum der letzten 60 s), fallender sofort.
+  3. go-e-Einrichtung: `mca` prüfen bzw. warnen, wenn größer als 6 A.
+  4. Anzeige: das Portal zeigte die Wallbox nach einem Stopp noch mit 1,6 kW („Messwerte passen nicht zusammen“), die Box zeigt „lädt“ bei `SuspendedEVSE` mit 0 kW.
 - **Bekannt:**
   - Die go-e beantwortet die Rückfrage nach dem Ladeplan (`GetCompositeSchedule`) nicht; die Rücklesung bleibt „unbekannt“, die Wirkung zeigt die gemessene Leistung.
   - Die Statuszeile „Überschuss“ der Box nennt den Standort-Standard, nicht die Quelle des Ladepunkts; gerechnet wird richtig.
@@ -25,6 +31,8 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 | Wartungstunnel (WireGuard `vpn.voltpilot.de:1001`, 10.10.1.0/24) | SSH `root@10.10.1.25` **Port 2222** | nur Schlüssel, **RSA** (Dropbear kennt kein Ed25519) |
 | Web-App im Tunnel | `http://10.10.1.25:8484` | nur freigegebene Techniker-Adressen, bisher `10.10.1.5` |
 | Vor Ort | WLAN `VoltPilot.de-zay5sdd`, `root@192.168.1.1` Port 22 | Host-Schlüssel prüfen (s. u.) |
+
+Eingetragene Schlüssel (05.10.2026, am Gerät gelesen): `voltpilot-mango@desktop` (Max' Laptop, `10.10.1.5`) und `claude@CodeServer voltpilot-edge` (CodeServer, `10.10.1.26`, WireGuard im Userspace über `wireproxy`). Einen Zugang entzieht man mit dem Peer in wireguard-ui und der Zeile in `/etc/dropbear/authorized_keys`.
 
 Ohne Freigabe in der Liste erreicht ein Rechner mit SSH-Zugang die Web-App über einen SSH-Tunnel: `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25`, dann `http://localhost:8484`.
 

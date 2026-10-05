@@ -51,6 +51,26 @@ byte-gleich mit den gepflegten Zahlen (`TestWithoutAMeasurementTheBudgetIsByteFo
     `csms.Snapshot.ChargingTotal` und die eigene Schleife von
     `agent.carsBeforeStorageKw` (P6): dieselbe Frage darf nicht zwei Antworten
     haben.
+  - **⚠ Auch ein Start oder Stopp DER SÄULE ist ein Regimewechsel**
+    (`Connector.DrawChangedAt`, `PowerSettled`, Edge-Light-Pilot 05.10.2026).
+    Wechselt die Säule von sich aus nach `Charging` oder aus `Charging` heraus
+    (Auto wacht auf, Pause, Phasenumschaltung), ist ein Messwert von davor „in
+    transit". Danach fährt das Auto über mehrere `MeterValues` hoch (go-e:
+    0 → 0,75 → 1,58 kW im 10-s-Takt), und der Netz-Zähler sieht jeden Schritt
+    Sekunden früher. Bis zwei Messwerte nach dem Wechsel übereinstimmen
+    (0,2 kW oder 10 %), misst der neueste Messwert NUR seinen eigenen Moment.
+    Eine Säule in `Charging` mit Grenze, aber ohne Zug, gilt dabei nicht als
+    eingeschwungen. `agent.gridPairer` verrechnet einen Netz-Messwert nur, wenn er
+    höchstens 3 s nach diesem Säulen-Messwert liegt. Sonst paart er den Säulen-Messwert
+    einmal nachträglich mit dem Netz-Messwert, der ihm am nächsten liegt (die
+    Netz-Messwerte einer Messkadenz werden dafür vorgehalten), und verwirft die übrigen.
+    Pro Säulen-Messwert entsteht mindestens ein richtiges Paar, die Quellen-Bahn bleibt
+    gemessen. Der Preis: ein Lastsprung im Gebäude kommt während des Einschwingens
+    höchstens eine Messkadenz der Säule später an, wie nach jedem befohlenen Wechsel. Ohne das las die Box 2,05 kW Überschuss als 0,94 kW, unter dem
+    einphasigen Minimum von 1,38 kW, und das Fenster-Maximum hielt das Auto eine
+    Minute lang an: elf Starts in 15 Minuten. Nachgestellt in
+    `agent.TestTheFieldRampReproducesThePauseWithoutLatePairing`. Ein
+    BEFOHLENER Wechsel behält die Ein-Messwert-Regel oben.
   - **⚠ Folge für TESTS: ein Prüfstand muss FORTLAUFEND messen.** Eine
     Attrappe, die ihre `MeterValues` EINMAL veröffentlicht und dann auf
     „complete" wartet, wartet auf einen Bericht, den niemand sendet, sobald der
