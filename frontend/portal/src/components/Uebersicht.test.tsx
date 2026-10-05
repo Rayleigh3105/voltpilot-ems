@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { EbenenCockpit } from './EbenenCockpit';
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { StandortUebersichtPage } from '../pages/StandortUebersichtPage';
-import { api, type Earnings, type Funktionen, type Overview, type OverviewSite, type Site } from '../api';
+import { api, type Earnings, type Funktionen, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
 import catalog from '../anwendungen/catalog.json';
 import { berlinDay } from '../fleet';
 import { GELD_BAUSTEINE } from '../portfolioCockpit';
@@ -111,10 +111,33 @@ function geldFuerAlle(): Earnings {
   } as unknown as Earnings;
 }
 
-function mocks(o: { overview: Overview; earnings?: Earnings; funktionen?: Funktionen }) {
+/** Das Kennzahl-Kachelraster der Unternehmens-Übersicht (Konzept §4.2). */
+const PORTFOLIO_KPIS: PortfolioKpi = {
+  periode: { von: '2026-09-01', bis: '2026-09-30', jahr: 2026, monat: 9 },
+  verbrauch: { kwh: 199500, kwh_vorjahr: 207000, vollstaendig: true },
+  kosten: { eur: 48000, eur_vorjahr: 47000, tarif_hinterlegt: true },
+  lastspitze: { kw: 412, vereinbart_kw: 550, anteil_prozent: 75, anlage: 'Werk Ahrenberg – Halle 1' },
+  leit: {
+    kennzeichen: 'KZ-0004',
+    name: 'Stromeinsatz Spritzguss je kg',
+    wert: 0.2837,
+    einheit: 'kWh/kg',
+    jahr: 2026,
+    monat: 9,
+    zustand: 'vollständig',
+    ziel_prozent: 5,
+    zielperiode: '2028-01/2028-12',
+    ziel_wortlaut: '5 % unter Bezugsbasis',
+    trend_prozent: -3.4,
+    urteil: 'besser',
+  },
+};
+
+function mocks(o: { overview: Overview; earnings?: Earnings; funktionen?: Funktionen; kpis?: PortfolioKpi }) {
   vi.spyOn(api, 'overview').mockResolvedValue(o.overview);
   vi.spyOn(api, 'earnings').mockResolvedValue(o.earnings ?? ({ range: 'day', sites: [], totals: {} } as unknown as Earnings));
   vi.spyOn(api, 'funktionen').mockResolvedValue(o.funktionen ?? ahrenbergFunktionen());
+  vi.spyOn(api, 'portfolioKpis').mockResolvedValue(o.kpis ?? PORTFOLIO_KPIS);
 }
 
 beforeEach(() => {
@@ -122,6 +145,7 @@ beforeEach(() => {
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
   vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
+  vi.spyOn(api, 'portfolioKpis').mockResolvedValue(PORTFOLIO_KPIS);
   vi.spyOn(api, 'versorgung').mockImplementation(async (id) =>
     id === FIXTURE_IDS.st1 ? versorgungAhrenberg() : versorgungLindach(),
   );
@@ -160,13 +184,20 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     expect(screen.getByText('3 von 3 Anlagen liefern Daten')).toBeTruthy();
   });
 
-  it('Kennzahlen-Leiste: Netzbezug jetzt 447,6 kW über alle drei Anlagen', async () => {
+  it('Unternehmen: das Kennzahl-Kachelraster (Leitkennzahl, Verbrauch, Lastspitze, Kosten) statt der Live-Leiste', async () => {
+    // Konzept §4.2: die Unternehmens-Übersicht führt das monatliche Kachelraster
+    // (die Live-„Netzbezug jetzt"-Leiste steht je Anlage, nicht als Flottenzeile oben).
     mocks({ overview: ahrenbergOverview() });
     renderUnternehmen();
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    await waitFor(() => expect(within(leiste).getByText('Netzbezug jetzt')).toBeTruthy());
-    expect(within(leiste).getByText('447,6')).toBeTruthy();
-    expect(within(leiste).getByText('PV jetzt')).toBeTruthy();
+    const raster = await screen.findByRole('region', { name: 'Kennzahlen Ihrer Anlagen' });
+    await waitFor(() => expect(within(raster).getByText('Stromeinsatz Spritzguss je kg')).toBeTruthy());
+    expect(within(raster).getByText('Energieverbrauch')).toBeTruthy();
+    expect(within(raster).getByText('199.500')).toBeTruthy();
+    expect(within(raster).getByText('Lastspitze')).toBeTruthy();
+    expect(within(raster).getByText('Energiekosten')).toBeTruthy();
+    expect(within(raster).getByText('Werte für September 2026')).toBeTruthy();
+    // Die alte Live-Flottenleiste ist am Unternehmen nicht mehr der Held.
+    expect(within(raster).queryByText('Netzbezug jetzt')).toBeNull();
   });
 
   it('die Anlagen-Tabelle ist nach Standorten gruppiert, jede Karte zeigt Messen — Steuern nur, wo eine Anlage steuert', async () => {
@@ -314,20 +345,19 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     expect(document.body.textContent).toMatch(GELD_TEXT);
   });
 
-  it('Unternehmens-Übersicht Ahrenberg: Vorteil „nur Halle 1", die Zeilen von Halle 2 und Lindach ohne Geld', async () => {
+  it('Unternehmens-Übersicht Ahrenberg: das Kachelraster trägt kein Steuerungs-Geld; die Anlagen-Karten auch nicht', async () => {
     mocks({ overview: ahrenbergOverview(), earnings: geldFuerAlle() });
     renderUnternehmen();
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    await waitFor(() => expect(within(leiste).getByText('Vorteil heute')).toBeTruthy());
-    expect(within(leiste).getByText('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1')).toBeTruthy();
-    // 4.800 € vermiedene Spitze EINMAL (Halle 1), nicht dreimal.
-    expect(within(leiste).getByText(/4\.800/)).toBeTruthy();
-    expect(within(leiste).queryByText(/14\.400/)).toBeNull();
+    const raster = await screen.findByRole('region', { name: 'Kennzahlen Ihrer Anlagen' });
+    await waitFor(() => expect(within(raster).getByText('Energieverbrauch')).toBeTruthy());
+    // Konzept §4.2: die Unternehmens-Übersicht ist Leitkennzahl-geführt; der aggregierte
+    // Steuerungs-„Vorteil"/Erlös steht NICHT mehr hier (er lebt auf dem Erlöse-Reiter).
+    expect(within(raster).queryByText('Vorteil heute')).toBeNull();
+    expect(within(raster).queryByText(/4\.800/)).toBeNull();
+    // Die einzige Geldzahl des Rasters ist die tarifbasierte Energiekosten-Kachel.
+    expect(within(raster).getByText('Energiekosten')).toBeTruthy();
 
-    // Konzept Runde 4: die Energie-Karten je Anlage tragen KEIN Geld (Energiedaten
-    // statt Geld/Kennzahl je Anlage). Der Vorteil steht nur aggregiert in der Leiste
-    // oben (dort korrekt „nur Halle 1"). A13 bleibt gewahrt — und sogar strenger:
-    // keine Geldzahl je Anlage, egal ob sie steuert.
+    // Die Energie-Karten je Anlage tragen KEIN Geld (Energiedaten statt Geld je Anlage, PR1).
     await waitFor(() => expect(screen.getAllByTestId('anlagen-gruppe')).toHaveLength(2));
     const karteVon = (name: string) =>
       screen.getByRole('button', { name: `Anlage ${name} öffnen` }).closest('.vp-ae') as HTMLElement;

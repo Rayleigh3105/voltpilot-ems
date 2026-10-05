@@ -9085,6 +9085,42 @@ export interface FeststellungListe {
   feststellungen: Feststellung[];
 }
 
+/**
+ * Die Portfolio-Kennzahlen des UEMS-Übersichts-Kachelrasters (Konzept
+ * `vp-portfolio-konzept2-p2` §4.2), aggregiert über die sichtbaren Anlagen für
+ * den letzten abgeschlossenen Monat (`GET /api/v1/portfolio/kpis`). Jede Menge/
+ * jeder Betrag ist `null`, wenn keine Quelle ihn trägt (nie 0).
+ */
+export interface PortfolioKpi {
+  periode: { von: string; bis: string; jahr: number; monat: number };
+  /** Netzbezug (kWh) dieser Monat / Vorjahr aus der UEMS-Ablesewelt. */
+  verbrauch: { kwh: number | null; kwh_vorjahr: number | null; vollstaendig: boolean };
+  /** Σ(Netzbezug × Arbeitspreis); `tarif_hinterlegt` false → kein Arbeitspreis, Beträge null. */
+  kosten: { eur: number | null; eur_vorjahr: number | null; tarif_hinterlegt: boolean };
+  /** Höchste gemessene 15-min-Netzbezugsleistung + vereinbarte Leistung ihrer Anlage; `kw` null = keine 15-min-Daten. */
+  lastspitze: { kw: number | null; vereinbart_kw: number | null; anteil_prozent: number | null; anlage: string | null };
+  /** Der EnPI mit Bezugsbasis + Ziel; `null` → Datenlage-Fallback. */
+  leit: PortfolioLeitkennzahl | null;
+}
+
+export interface PortfolioLeitkennzahl {
+  kennzeichen: string;
+  name: string;
+  wert: number | null;
+  einheit: string | null;
+  jahr: number;
+  monat: number;
+  zustand: string | null;
+  /** Ziel als Prozent gegen die Bezugsbasis (z. B. 5 = „5 % unter Bezugsbasis"). */
+  ziel_prozent: number | null;
+  zielperiode: string | null;
+  ziel_wortlaut: string | null;
+  /** Trend des jüngsten Werts zum Vormonat in Prozent; fehlt ohne Vormonat. */
+  trend_prozent?: number | null;
+  /** Urteil gegen die Bezugsbasis: besser · schlechter · im_rahmen · …; fehlt ohne Vergleich. */
+  urteil?: string | null;
+}
+
 export const api = {
   korrekturen: (standortId: string) => request<KorrekturDetail[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/korrekturen`),
   korrektur: (kennung: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}`),
@@ -9098,6 +9134,8 @@ export const api = {
 
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
+  /** Portfolio-Kennzahlen des UEMS-Kachelrasters (Leitkennzahl, Verbrauch, Lastspitze, Kosten). */
+  portfolioKpis: () => request<PortfolioKpi>('/api/v1/portfolio/kpis'),
   /**
    * Der gemeldete Edge-Stand aller Geräte des Mandanten (Plattform-Übersicht).
    * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".

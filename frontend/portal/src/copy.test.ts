@@ -1927,6 +1927,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
   'components/PortfolioCockpit.tsx', // alt
+  'components/PortfolioKacheln.tsx', // neu: das Kennzahl-Kachelraster der Unternehmens-Übersicht (PR2, §4.2 — Leitkennzahl, Verbrauch, Lastspitze, Kosten)
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
