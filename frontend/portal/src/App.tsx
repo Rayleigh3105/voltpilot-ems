@@ -1620,6 +1620,7 @@ function UnifiedPortal() {
               isAdmin={isAdmin}
               betriebsart={betriebsart}
               ebene={unternehmensEbene}
+              tieferGruppen={gruppenListe}
             />
           )}
           {/* PR G: die zwei Historie-Welten des Portfolios. Sie leben auf der

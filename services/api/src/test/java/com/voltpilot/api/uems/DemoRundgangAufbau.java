@@ -89,6 +89,7 @@ class DemoRundgangAufbau {
     private static final UUID ST1 = UUID.fromString("20000000-0000-0000-0000-0000000000a1"); // Werk Ahrenberg
     private static final UUID ST2 = UUID.fromString("20000000-0000-0000-0000-0000000000a2"); // Werk Lindach
     private static final UUID AN1 = UUID.fromString("20000000-0000-0000-0000-000000000501"); // Halle 1
+    private static final String WR_HALLE1 = "20000000-0000-0000-0000-000000000701"; // Hybrid-Wechselrichter Halle 1
     private static final UUID AN2 = UUID.fromString("20000000-0000-0000-0000-000000000502"); // Halle 2
     private static final UUID AN3 = UUID.fromString("20000000-0000-0000-0000-000000000503"); // Werk Lindach
     private static final UUID GEB_HALLE2 = UUID.fromString("20000000-0000-0000-0000-000000000102"); // G-2
@@ -162,12 +163,13 @@ class DemoRundgangAufbau {
         stammdaten();
         netzanschluesse();
         referenzpreise();
+        rollenHalle1(root);
         messstellenExtra();
         bezugsgroessenExtra();
         kostenstellen();
         kennzahlZwecke();
-        System.out.println("Rundgang: Stammdaten, Netzanschlüsse, Referenzpreise, Messstellen, Bezugsgrößen, "
-                + "Kostenstellen und Kennzahl-Zwecke ergänzt.");
+        System.out.println("Rundgang: Stammdaten, Netzanschlüsse, Referenzpreise, Rollen Halle 1, Messstellen, "
+                + "Bezugsgrößen, Kostenstellen und Kennzahl-Zwecke ergänzt.");
 
         // Zweite Runde: die Flächen füllen (sonst „fehlt die Fläche" am echten Datum), jede Kennzahl mit eigener
         // Messgröße und eigener Einheit (statt sechsmal identisch kWh je kg), die energetische Bewertung mit echten
@@ -279,6 +281,45 @@ class DemoRundgangAufbau {
         cfg.put("leistungspreisEurKw", eurKw);
         cfg.put("abrechnungLeistung", "jahr");
         status("PUT", "/api/v1/admin/sites/" + site + "/optimizer-config", cfg, plattformAdmin(), TENANT.toString());
+    }
+
+    /**
+     * Review PR3 §4: Werk Ahrenberg – Halle 1 trägt laut Referenzwelt
+     * ({@code docs/contracts/v2/uems-referenzunternehmen.json}, AN-1) PV 240 kWp + Speicher 200 kWh/100 kW
+     * (Hybrid-Wechselrichter K-1 und PV-Wechselrichter K-12, Betriebsmodell Lastspitzenkappung). Die Anlagenkarte
+     * liest ihre Rollen aus {@code roleCounts} (= {@code measurement_point.entity_type}), NIE aus Live-Werten -
+     * ohne registrierte Erzeuger-/Speicher-Rolle zeigt sie nur „Netz/Verbrauch". Hier werden die beiden Rollen als
+     * Entitäten des bestehenden Hybrid-Wechselrichters registriert (wie die composed-Entitäten grid-meter/house-load
+     * aus dem SQL-Seed), damit {@code roleCounts.pv}/{@code storage} die Wirklichkeit tragen und die Karte
+     * „steuert · PV + Speicher" zeigt. Direkt am Datenbestand (kein Portal-Weg: die Demo führt sonst keine
+     * Erzeuger-Entität und es gibt keine adoptierbare PV-Quelle). Idempotent.
+     */
+    private void rollenHalle1(JdbcTemplate root) {
+        root.update(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, control, unit, device_id, "
+                        + "capabilities, guard_config, source_kind) "
+                        + "SELECT ?::uuid, ?::uuid, 'battery-hybrid', 'battery-hybrid', true, 'kW', ?::uuid, ?::jsonb, "
+                        + "?::jsonb, 'composed' "
+                        + "WHERE NOT EXISTS (SELECT 1 FROM measurement_point WHERE site_id = ?::uuid "
+                        + "AND entity_type = 'battery-hybrid')",
+                TENANT.toString(), AN1.toString(), WR_HALLE1,
+                "{\"actuate\":[{\"max\":100.0,\"min\":-100.0,\"command\":\"setpoint_kw\"},{\"command\":\"limit_kw\"}],"
+                        + "\"measure\":[{\"unit\":\"%\",\"channel\":\"soc_pct\"},"
+                        + "{\"unit\":\"kW\",\"channel\":\"battery_power_kw\"},{\"unit\":\"kW\",\"channel\":\"pv_power_kw\"}]}",
+                "{\"limits\":{\"soc_max_pct\":95.0,\"soc_min_pct\":5.0,\"max_charge_kw\":100.0,"
+                        + "\"max_discharge_kw\":100.0,\"charge_from_grid_allowed\":false},"
+                        + "\"failsafe\":{\"behavior\":\"self-consumption\"}}",
+                AN1.toString());
+        root.update(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, control, unit, device_id, "
+                        + "capabilities, capacity_kwp, source_kind) "
+                        + "SELECT ?::uuid, ?::uuid, 'pv-generation', 'producer', false, 'kW', ?::uuid, ?::jsonb, "
+                        + "240, 'composed' "
+                        + "WHERE NOT EXISTS (SELECT 1 FROM measurement_point WHERE site_id = ?::uuid "
+                        + "AND entity_type = 'producer')",
+                TENANT.toString(), AN1.toString(), WR_HALLE1,
+                "{\"measure\":[{\"unit\":\"kW\",\"channel\":\"pv_power_kw\"}]}",
+                AN1.toString());
     }
 
     /**

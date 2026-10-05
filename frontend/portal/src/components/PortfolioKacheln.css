@@ -13,6 +13,27 @@
   gap: var(--vp-c-space-3, 12px);
 }
 
+/*
+ * Review PR2 §3 / PR3 §2: die Leitkachel (bzw. der Datenlage-Fallback, wenn keine
+ * Leitkennzahl hinterlegt ist) steht IMMER über die volle Breite — am Telefon über
+ * beide Spalten, am Rechner über alle vier. Darunter das 2×2 der vier Kacheln
+ * (Verbrauch, Lastspitze, Kosten, Datenlage); so bricht der lange Kennzahl-Name
+ * nicht mitten im Wort und keine Kachel steht allein mit leerer Hälfte.
+ */
+.vp-pk-raster .vp-k-platz[data-kachel='pk-leit'],
+.vp-pk-raster .vp-k-platz[data-kachel='pk-datenlage'] {
+  grid-column: 1 / -1;
+}
+
+/*
+ * Review PR2 §3: lange Kennzahl-Namen deutsch trennen (das Elternelement trägt
+ * `lang="de"`) statt mit `break-word` mitten im Wort zu brechen. Nie
+ * `word-break:break-all`.
+ */
+.vp-pk .vp-k-name {
+  hyphens: auto;
+}
+
 /* Urteil + Trend unter der Zahl, nebeneinander, umbrechend. */
 .vp-pk-marken {
   display: flex;

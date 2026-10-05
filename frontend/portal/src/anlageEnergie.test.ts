@@ -54,11 +54,17 @@ function zeile(over: Partial<AnlagenZeile> = {}): AnlagenZeile {
 }
 
 describe('anlageTyp', () => {
-  it('benennt den Typ aus den Rollen', () => {
+  it('benennt ohne Steuerung die Betriebsart "reine Messung" und haengt die Rollen an', () => {
     expect(anlageTyp({ pv: 0, storage: 0 })).toBe('reine Messung');
-    expect(anlageTyp({ pv: 2, storage: 0 })).toBe('PV');
-    expect(anlageTyp({ pv: 0, storage: 1 })).toBe('Speicher');
-    expect(anlageTyp({ pv: 1, storage: 1 })).toBe('PV + Speicher');
+    expect(anlageTyp({ pv: 2, storage: 0 })).toBe('reine Messung · PV');
+    expect(anlageTyp({ pv: 0, storage: 1 })).toBe('reine Messung · Speicher');
+    expect(anlageTyp({ pv: 1, storage: 1 })).toBe('reine Messung · PV + Speicher');
+  });
+
+  it('nennt eine gesteuerte Anlage "steuert", nie "reine Messung"', () => {
+    expect(anlageTyp({ pv: 0, storage: 0, steuert: true })).toBe('steuert');
+    expect(anlageTyp({ pv: 2, storage: 0, steuert: true })).toBe('steuert · PV');
+    expect(anlageTyp({ pv: 1, storage: 1, steuert: true })).toBe('steuert · PV + Speicher');
   });
 });
 
@@ -85,7 +91,8 @@ describe('anlageEnergie', () => {
       }),
       { pv: 1, storage: 1 },
     );
-    expect(m.typ).toBe('PV + Speicher');
+    // Ohne Steuerungs-Signal ist die Betriebsart „reine Messung"; die Rollen stehen dahinter.
+    expect(m.typ).toBe('reine Messung · PV + Speicher');
     expect(m.stats.map((s) => s.rolle)).toEqual(['load', 'pv', 'grid', 'batt']);
     expect(m.stats[1]).toMatchObject({ label: 'Erzeugung', wert: '31.500', einheit: 'kWh' });
     expect(m.stats[3]).toMatchObject({ label: 'Speicher', wert: '64', einheit: '%', zeit: 'lädt' });
