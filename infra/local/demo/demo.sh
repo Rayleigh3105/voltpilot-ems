@@ -39,8 +39,9 @@ DEMO_ZUGANG="${DEMO_ZUGANG:-$HOME/.voltpilot-demo/zugang.txt}"
 PROFILE=(--profile edge --profile sim --profile feeds --profile optimize --profile demo)
 # Was `start` zusätzlich zu ahrenberg.sh hochfährt (edge-nodered/edge-sim und flowc bleiben aus:
 # die simulierte Box ist `edge-simulator`, die Aktivierung von Flows ist lokal abgeschaltet).
-LIVE=(emqx redpanda redpanda-init ingest writer edge-simulator market-data weather-collector
-  forecast-collector optimizer simulation portal)
+LIVE=(emqx redpanda redpanda-init ingest writer edge-simulator
+  edge-sim-ahrenberg-halle1 edge-sim-ahrenberg-halle2 edge-sim-ahrenberg-lindach
+  market-data weather-collector forecast-collector optimizer simulation portal)
 DEMO_TENANT=00000000-0000-0000-0000-000000000001
 AHRENBERG_TENANT=20000000-0000-0000-0000-000000000001
 ENDE_NAME="Demo-Kunde Vertragsende GmbH"

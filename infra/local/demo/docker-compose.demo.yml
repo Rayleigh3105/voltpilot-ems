@@ -99,6 +99,68 @@ services:
   edge-simulator:
     mem_limit: 128m
 
+  # Die simulierten Boxen des UEMS-Kunden Ahrenberg (Mandant 20000000-…-0001): je eine je Anlage/Box
+  # des Seeds (`infra/local/seed/ahrenberg.sql`), damit die Anlagen im Portal „liefern Daten“ zeigen und
+  # die Flächen „Energie“ und „Erlöse“ Werte tragen. Dieselbe v1-Telemetrie-Strecke wie die Demo-Box
+  # (Bild aus `tools/edge-simulator`). Werk Lindach (…0503) entsteht im Weltszenario erst am 15.10.2026;
+  # die Box läuft trotzdem mit und meldet, sobald die Anlage dem Standort zugeordnet ist.
+  edge-sim-ahrenberg-halle1:
+    build: ./tools/edge-simulator
+    container_name: voltpilot-edge-sim-ahrenberg-halle1
+    profiles: ["demo"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+    mem_limit: 96m
+    environment:
+      EDGE_SIM_HOST: emqx
+      EDGE_SIM_PORT: "1883"
+      EDGE_SIM_TENANT_ID: "20000000-0000-0000-0000-000000000001"
+      EDGE_SIM_SITE_ID: "20000000-0000-0000-0000-000000000501"
+      EDGE_SIM_DEVICE_ID: "20000000-0000-0000-0000-000000000701"
+      EDGE_SIM_CLIENT_ID: "edge-sim-ahrenberg-halle1"
+      EDGE_SIM_INTERVAL: "5"
+      EDGE_SIM_TIME_SCALE: "1"
+
+  edge-sim-ahrenberg-halle2:
+    build: ./tools/edge-simulator
+    container_name: voltpilot-edge-sim-ahrenberg-halle2
+    profiles: ["demo"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+    mem_limit: 96m
+    environment:
+      EDGE_SIM_HOST: emqx
+      EDGE_SIM_PORT: "1883"
+      EDGE_SIM_TENANT_ID: "20000000-0000-0000-0000-000000000001"
+      EDGE_SIM_SITE_ID: "20000000-0000-0000-0000-000000000502"
+      EDGE_SIM_DEVICE_ID: "20000000-0000-0000-0000-000000000702"
+      EDGE_SIM_CLIENT_ID: "edge-sim-ahrenberg-halle2"
+      EDGE_SIM_INTERVAL: "5"
+      EDGE_SIM_TIME_SCALE: "1"
+
+  edge-sim-ahrenberg-lindach:
+    build: ./tools/edge-simulator
+    container_name: voltpilot-edge-sim-ahrenberg-lindach
+    profiles: ["demo"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+    mem_limit: 96m
+    environment:
+      EDGE_SIM_HOST: emqx
+      EDGE_SIM_PORT: "1883"
+      EDGE_SIM_TENANT_ID: "20000000-0000-0000-0000-000000000001"
+      EDGE_SIM_SITE_ID: "20000000-0000-0000-0000-000000000503"
+      EDGE_SIM_DEVICE_ID: "20000000-0000-0000-0000-000000000703"
+      EDGE_SIM_CLIENT_ID: "edge-sim-ahrenberg-lindach"
+      EDGE_SIM_INTERVAL: "5"
+      EDGE_SIM_TIME_SCALE: "1"
+
   portal:
     build:
       context: frontend/portal
