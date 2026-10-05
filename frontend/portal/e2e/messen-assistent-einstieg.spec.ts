@@ -5,7 +5,8 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Der Einstieg in den Assistenten „Messen & Auswerten“ (AP-01 E5 = A) auf der ECHTEN App-Schale: die Bühne
  * `startansicht.html` mit `rechte=1` rendert `<App initialAuth />` (nicht die Vorschau), der Assistent kommt also
- * aus `App.tsx` — nachgeladen, an genau einer Stelle. Karte „Funktionen“ → Knopf → Schritt 1; Entwurf → „Einrichtung
+ * aus `App.tsx` — nachgeladen, an genau einer Stelle. Karte „Funktionen“ (seit Konzept §5.1, #1403, nur auf der
+ * Standort-Übersicht) → Knopf → Schritt 1; Entwurf → „Einrichtung
  * fortsetzen (Schritt n von 5)“ → dieser Schritt; Satz „Daten kommen an“ → Schritt 2; Avatar-Menü „Funktionen“ →
  * Karte; Leerzustand der Messstellen → Assistent. Ohne Recht: Grund und Weg statt Knopf.
  *
@@ -37,7 +38,7 @@ for (const breite of [375, 1440] as const) {
     test.use({ viewport: { width: breite, height: breite === 375 ? 812 : 900 } });
 
     test('Übersicht → Karte „Funktionen“ → Knopf → Schritt 1', async ({ page }) => {
-      await oeffnen(page, 'person=JW&messen=bestand');
+      await oeffnen(page, 'person=JW&messen=bestand', `#/standort/${ST1}`);
       const knopf = karte(page).getByRole('button', { name: 'Messen & Auswerten für Werk Ahrenberg einrichten' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
@@ -54,7 +55,7 @@ for (const breite of [375, 1440] as const) {
         ([schluessel, wert]) => window.localStorage.setItem(schluessel, wert),
         [ENTWURF, JSON.stringify({ standortId: ST1, schritt: 3 })] as const,
       );
-      await oeffnen(page, 'person=JW&messen=entwurf');
+      await oeffnen(page, 'person=JW&messen=entwurf', `#/standort/${ST1}`);
       const knopf = karte(page).getByRole('button', { name: 'Einrichtung fortsetzen (Schritt 3 von 5)' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
@@ -94,7 +95,7 @@ for (const breite of [375, 1440] as const) {
     });
 
     test('ohne Recht: Grund und Weg statt Knopf', async ({ page }) => {
-      await oeffnen(page, 'person=CB&messen=bestand');
+      await oeffnen(page, 'person=CB&messen=bestand', `#/standort/${ST1}`);
       await expect(karte(page)).toBeVisible();
       await expect(karte(page).getByRole('button', { name: /Messen & Auswerten für/ })).toHaveCount(0);
       await expect(karte(page).getByRole('note').first()).toBeVisible();

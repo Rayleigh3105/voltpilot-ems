@@ -85,6 +85,7 @@ import {
   type KennzahlFassung,
   type KennzahlPeriodeArt,
   type KennzahlWerte,
+  type PortfolioKpi,
 } from '../src/api';
 import { iso } from '../src/bezugsPeriode';
 import { UEMS_VERANTWORTUNG } from '../src/glossar';
@@ -1172,6 +1173,26 @@ Object.assign(consumersApi, {
 const ohneAntwortDerMomentaufnahme = async (): Promise<never> => {
   throw new Error('Die Rechte-Momentaufnahme hat dafür keine Antwort.');
 };
+// Die UEMS-Übersicht nach #1403 lädt dazu das Kachelraster (`GET /portfolio/kpis`) und je Anlagen-Karte die
+// Tages-Historie (`GET /sites/{id}/history`). Die Momentaufnahme kennt keine Messreihe: das Raster bekommt die
+// Antwort des Servers ohne Grundlage (jeder Wert leer, Zeitraum der letzte volle Monat - wie `LEERE_KPIS` in
+// `EbenenCockpit.test.tsx`), die Historie dieselbe Absage wie oben. Ohne diese Zeilen gingen beide Aufrufe echt
+// an localhost:8090 (Konsolenfehler in `weg`/`uebersicht`, WebKit-Seitenfehler in `portal-rechte`).
+const kpisOhneGrundlage = async (): Promise<PortfolioKpi> => {
+  const heute = new Date();
+  const ersterDesMonats = new Date(Date.UTC(heute.getUTCFullYear(), heute.getUTCMonth(), 1));
+  const bis = new Date(ersterDesMonats.getTime() - 86_400_000);
+  const von = new Date(Date.UTC(bis.getUTCFullYear(), bis.getUTCMonth(), 1));
+  return {
+    periode: { von: von.toISOString().slice(0, 10), bis: bis.toISOString().slice(0, 10), jahr: bis.getUTCFullYear(), monat: bis.getUTCMonth() + 1 },
+    verbrauch: { kwh: null, kwh_vorjahr: null, vollstaendig: true },
+    kosten: { eur: null, eur_vorjahr: null, tarif_hinterlegt: false },
+    lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null, zeitpunkt: null, zeitraum: null },
+    datenlage: null,
+    leit: null,
+  };
+};
+Object.assign(api, { portfolioKpis: kpisOhneGrundlage, history: ohneAntwortDerMomentaufnahme });
 if (rechteAnsicht && params.get('person') === 'MD') {
   Object.assign(api, {
     schedule: async () => ({ deviceId: 'E-1', slots: [] }),
