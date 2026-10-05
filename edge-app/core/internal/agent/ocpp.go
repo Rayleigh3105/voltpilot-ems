@@ -75,6 +75,9 @@ type ocppRuntime struct {
 	// wake carries an out-of-band "re-decide now" from the telemetry path, so
 	// a building load step does not have to wait out a full tick.
 	wake chan struct{}
+	// pairer pairs a settling connector's sample with the grid reading of its
+	// own moment (ocpp_pair.go).
+	pairer gridPairer
 
 	mu       sync.Mutex
 	settings lastmgmt.Settings
@@ -683,15 +686,13 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	if !ok {
 		return
 	}
-	charging, complete := rt.srv.Snapshot().ChargingTotal(ts, ocppMeterMaxAge)
 	// ⚠ P6: a WALLBOX that takes part in the Ladepark-Rahmen is a charge point
 	// of this law too - its measured power sits inside `grid` exactly like a
 	// station's, so it has to be added back or the budget would shrink by the
 	// very power it just handed out (the oscillation this law exists to
 	// prevent). Only a CLAIMING wallbox is added back: what we cannot cap must
 	// stay building load, see ocpp_wallbox.go.
-	charging += a.wallboxChargingKw(rt.currentSettings(), ts)
-	m := lastmgmt.Measurement{GridKw: grid, ChargingKw: charging, Complete: complete}
+	r := gridReading{at: ts, gridKw: grid, wallboxKw: a.wallboxChargingKw(rt.currentSettings(), ts)}
 	// ⚠ The battery's MEASURED power is the third channel of the Stufe-4
 	// surplus split (surplus.go): it is already inside `grid`, so handing it
 	// to the cars means taking it back out. It goes in SIGNED: a DISCHARGE
@@ -706,10 +707,13 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// and the storage arbitration would be dead on every real box. Found by
 	// the rig, not by a unit test - the tests fed the map by hand.
 	if battKw != nil {
-		m.HaveBattery = true
-		m.BatteryKw = *battKw
+		b := *battKw
+		r.battKw = &b
 	}
-	if rt.budget.ObserveM(ts, m) {
+	// The charging power of the same moment: the current total once every
+	// connector has settled, else the late pair (ocpp_pair.go).
+	at, m := rt.pairer.pair(r, rt.srv.Snapshot())
+	if rt.budget.ObserveM(at, m) {
 		rt.nudge()
 	}
 }
