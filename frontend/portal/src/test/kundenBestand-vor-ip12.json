@@ -2672,5 +2672,42 @@
         "entfallen": []
       }
     }
+  },
+  "mainNachzugOcpp": {
+    "main": "e0053145fcd229f25437a7e91079cace825b4a07",
+    "basis": "38b2b0f80bde73796054d6e48c07b330011a09d6",
+    "paket": "vp-uems-nachzug-main-1385",
+    "regel": "Nachzug main → uems (05.10.2026, OCPP #1383/#1385): dieselbe Regel wie im Block mainNachzug. Ein Bedienelement des Ausgangsstands entfällt NUR, wenn es auf der main-Basis 38b2b0f80 stand und ein benannter main-Commit es entfernt hat; JEDES Bedienelement der ausgelieferten main-Fassung einer geänderten Datei (Feld main = alle Fingerabdrücke von main e0053145f) steht unverändert im Merge.",
+    "dateien": {
+      "components/OcppControlPanel.tsx": {
+        "main": [
+          "32ab7abf62c0e3173cc50bdb9b0bdf9537eabbee11c2a48108f84befaaba6131",
+          "08510ab73d277bdb1c11bd4bf393d64e46a1a333c762ef12b4f0b4adf5ac39a1",
+          "7003103071f000b2901b8378a8fc1ecbe6d7dd82c254cb7cc6de503e8dbd44fa",
+          "8d4dbd1c1edf742e5b5827ccf27b60e9f41195d1235ac1275bf1bf3d1c65f69f",
+          "5043c79aeb3bc2fdb9203f2266de6ade3f9b7d6cb72927bebcb5fc7f16230bd0",
+          "c3c4fc42521d0296ea03fd21fe8441678d880e176c5aa7143ffa50d4b325bb66",
+          "18e006e1b5898be3e9e44ca9435fb47f0fb462756c01a1ec22de1d0ea0ab3a46",
+          "e3fadcb6751e50f863d5ecbc7820f34e1ccd3a25594a94cc1183322ca64b2cd4",
+          "e427da4b4d25d5178858d0aa7cef922c3c815e4cdceea96fec4b4dc296148c3e",
+          "f0a1e159f5240fa977af1cd53cf9748aec537898fdd40fd34cbd15212c4d7a72",
+          "70b2628a4aa6284ae82768d3277c198b7e2d50aae75f64327c5a98875a53515b",
+          "72c0576ed078d7de48bf03bed97d0f41089fcbe0827a331131ea13eabf5bc0c9",
+          "1a1ee38ff57443b29562e5560d9b60ab14841fcde38f9b49439ba09c141c47f4",
+          "a603a903940749c50c02dcd6d260da6dfe749982e8c86bb612e083d803cbff15",
+          "f95fe05a9124318fc9438775b14004789009a6b7e3e91a621db7a51c7ab02cbc",
+          "c35f5e36838f1cb0eb48f548047f2e1c6c2ab37ef6493e7dd94ec74237415991",
+          "e4df244be8521d03c06229824be92cb5737f8278e56b6a4b2a8672f20036eda1"
+        ],
+        "wohin": "Phasenumschaltung 1p/3p (#1385): der Speichern-Knopf der Verdrahtung behält ein erlaubtes Laden auf einer Phase, solange drei Phasen angeschlossen sind (Nachfolger in der main-Fassung, weiter in <Recht aktion=\"freigabe.erteilen\">). Neu: Knopf „Laden auf einer Phase erlauben/abschalten“, ebenfalls in <Recht aktion=\"freigabe.erteilen\">.",
+        "entfallen": [
+          {
+            "vorher": "bf2ef8a67a3dbae9185daed21c1405e23d9b3a3b283fb28d3e94c2369ee16a33",
+            "commit": "bc4be065a9c1342dd98ac71091c7ca3437875060",
+            "element": "<button type=\"button\" onClick={() => void save((p) => { if (!phases.length) throw new Error('Bitte d"
+          }
+        ]
+      }
+    }
   }
 }

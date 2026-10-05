@@ -103,7 +103,10 @@ type station struct {
 	rejectFullConfiguration bool
 	// notSupported answers ChangeConfiguration with NotSupported for these
 	// keys and stores nothing (a station that does not have the feature).
-	notSupported               map[string]bool
+	notSupported map[string]bool
+	// readOnly answers ChangeConfiguration with Rejected for these keys and
+	// keeps the stored value (a read-only key).
+	readOnly                   map[string]bool
 	targetedConfigurationReads int
 	fullConfigurationReads     int
 }
@@ -311,6 +314,9 @@ func (s *station) OnChangeConfiguration(r *core.ChangeConfigurationRequest) (*co
 	defer s.mu.Unlock()
 	if s.notSupported[r.Key] {
 		return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusNotSupported), nil
+	}
+	if s.readOnly[r.Key] {
+		return core.NewChangeConfigurationConfirmation(core.ConfigurationStatusRejected), nil
 	}
 	s.config[r.Key] = r.Value
 	s.changed = append(s.changed, r.Key+"="+r.Value)

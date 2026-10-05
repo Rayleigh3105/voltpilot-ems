@@ -1,5 +1,7 @@
 export interface OcppElectrical {
   charge_point_id: string; connector_id: number; voltage_v: number; phases: number[]; max_current_a: number;
+  /** Darf für die laufende Zuteilung auf eine Phase umschalten (nur bei drei Phasen). */
+  phase_switching?: boolean;
 }
 export interface OcppLimit {
   charge_point_id: string; connector_id: number; limit_kw: number; requested_at: string; expires_at: string;
@@ -14,8 +16,10 @@ export interface OcppControlReport {
 	 rejected_revision?: number; rejection_reason?: string;
   revision: number; enabled: boolean; authorization_mode: string; seen_tags: string[];
   stations: { id: string; connected: boolean; capabilities_read: boolean; profiles_accepted: boolean; note?: string;
+    phase_switch_supported?: boolean;
     connectors: { id: number; reconciling: boolean; power_kw?: number; power_at?: string; energy_at?: string; soc_at?: string;
-      received_at?: string; fresh_power: boolean; command_status?: string; readback?: string; readback_at?: string }[] }[];
+      received_at?: string; fresh_power: boolean; command_status?: string; readback?: string; readback_at?: string;
+      phases?: number }[] }[];
   test?: { charge_point_id: string; connector_id: number; requested_at: string; vendor: string; model: string; firmware: string;
     state: 'running' | 'confirmed' | 'not_confirmed' | 'cancelled'; limited: boolean; paused: boolean; resumed: boolean; baseline_kw?: number };
 }
@@ -40,6 +44,23 @@ export function withOcppLimit(p: OcppControlPolicy, station: string, connector: 
     charge_point_id: station, connector_id: connector, limit_kw: limit,
     requested_at: new Date(now).toISOString(), expires_at: new Date(now + duration * 60_000).toISOString(),
   }] };
+}
+
+/** Erlaubt oder verbietet einem dreiphasig verdrahteten Stecker das Laden auf einer Phase. */
+export function withPhaseSwitching(p: OcppControlPolicy, station: string, connector: number, on: boolean): OcppControlPolicy {
+  const wiring = p.electrical.find((e) => e.charge_point_id === station && e.connector_id === connector);
+  if (!wiring) throw new Error('Bitte zuerst die Verdrahtung dieses Steckers speichern.');
+  if (on && wiring.phases.length !== 3) throw new Error('Laden auf einer Phase setzt drei angeschlossene Phasen voraus.');
+  return { ...p, electrical: p.electrical.map((e) => {
+    if (e !== wiring) return e;
+    const { phase_switching: _, ...rest } = e;
+    return on ? { ...rest, phase_switching: true } : rest;
+  }) };
+}
+
+/** Leistung in kW bei Mindeststrom (6 A) über die gegebene Phasenzahl. */
+export function minimumKw(wiring: OcppElectrical, phases: number): number {
+  return Math.round(6 * wiring.voltage_v * phases) / 1000;
 }
 
 export function observedOcpp(view: OcppControlView, station: string, deviceId?: string) {

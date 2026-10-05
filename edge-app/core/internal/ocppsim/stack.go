@@ -37,8 +37,10 @@ type Profile struct {
 	Purpose    string
 	StackLevel int
 	LimitW     float64
-	StartsAt   time.Time
-	Duration   time.Duration
+	// Phases is numberPhases of an ampere profile (0 = a watt profile).
+	Phases   int
+	StartsAt time.Time
+	Duration time.Duration
 }
 
 // Expired reports whether this profile's schedule window has run out.
