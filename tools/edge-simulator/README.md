@@ -44,16 +44,29 @@ Der Ref-Modus benötigt einen Brokerzugang, der die Provisioning-Topics erlaubt.
 
 ## Simulation und Optionen
 
-PV folgt einer Tageskurve, Last einem synthetischen Haushaltsprofil. Die Batterie lädt/entlädt innerhalb des Modells. `power_kw = load - pv + battery`: positiv Netzbezug, negativ Einspeisung.
+`--profile` wählt die Tageskurve und die gemeldeten Felder.
+`power_kw = load - pv + battery`: positiv Netzbezug, negativ Einspeisung.
+
+| Profil | Tageskurve / gemeldete Felder |
+|---|---|
+| `pv-haus` (Vorgabe) | PV-Tageskurve, synthetische Hauslast, Batterie; meldet power/soc/pv/load/grid_limit |
+| `gewerbe-steuernd` | Industrie-Schichtlast + PV + Batterie mit Lastspitzenkappung und gekappter Einspeisung; meldet alle Felder |
+| `gewerbe-mess` | reine Messung: nur Industrie-Schichtlast, Netzbezug nie negativ, kein PV/Speicher; meldet power/load/grid_limit |
+
+Die drei Ahrenberg-Anlagen der [Demo](../../infra/local/demo/README.md) nutzen diese Profile passend zur Referenzwelt (Halle 1 steuernd, Halle 2 und Werk Lindach reine Messung).
 
 | Option | Zweck / Vorgabe |
 |---|---|
+| `--profile` | Tageskurve und gemeldete Felder, Vorgabe `pv-haus` |
 | `--interval` | Abstand der Messungen, 5 Sekunden |
 | `--count` | Nach N Nachrichten stoppen, 0 = unbegrenzt |
 | `--time-scale` | Simulierte Zeit pro Echtzeit; 288 spielt einen Tag in 5 Minuten |
 | `--provision-retry` | Hello-Abstand, 10 Sekunden |
 | `--provision-timeout` | Wartezeit auf Claim, 0 = unbegrenzt |
 | `--pv-peak-kw`, `--batt-capacity-kwh`, `--batt-max-kw` | Größe der simulierten Anlage |
+| `--load-base-kw`, `--load-peak-kw` | Grund- und Produktionslast der `gewerbe-*`-Profile |
+| `--shift-start-hour`, `--shift-end-hour`, `--weekend-factor` | Schichtfenster und Wochenendanteil (`gewerbe-*`) |
+| `--peak-grid-kw`, `--export-limit-kw` | Lastspitzenkappung-Ziel und Einspeisegrenze (`gewerbe-steuernd`) |
 
 CLI-Werte gehen vor Umgebung/`.env` und Defaults. Vollständige Optionen: `--help` und [`.env.example`](.env.example). `--insecure` überspringt Zertifikatsprüfung und ist nur für kontrollierte Tests gedacht.
 

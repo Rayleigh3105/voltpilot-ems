@@ -89,10 +89,19 @@ und am Mandanten-Umschalter der Plattform. `SetChargingProfile` und
 - Tx-Profile laufen spätestens nach 120 Sekunden ab; manuelle Ablaufzeit und
   Prüfschritt begrenzen diese Laufzeit zusätzlich auf OCPP-Sekundenauflösung. Danach
   gilt das hinterlegte Default-Profil. „Regelung abschalten“ ist kein RemoteStop.
+  Auf der Leitung beginnt jeder Zeitplan (1.6 und 2.0.1; der V2X-Sollwert der
+  2.1-Spur beginnt jetzt) 60 s in der Vergangenheit und läuft um ebenso viel
+  länger; das Ende bleibt gleich. Eine Säule, deren Uhr nachgeht, sieht
+  eine Erneuerung so nie in ihrer Zukunft beginnen und fällt dazwischen nicht auf
+  ihr dreiphasiges Default-Profil zurück.
 - Leistung, Energie und SoC haben getrennte Messuhren. Historische, zukünftige und
   zurücklaufende Samples aktualisieren die Live-Regelung nicht. Das Protokolljournal
   bewahrt ihre ursprünglichen Zeitstempel. Auch Komponenten-Telemetrie verwendet die
   jeweilige Messuhr; eine Energiemeldung verjüngt keine alte Leistung.
+- Netz- und Ladeleistung werden nur als Paar desselben Moments verrechnet. Nach einem
+  neuen Befehl zählt erst der nächste Messwert der Säule. Startet oder stoppt die Säule
+  von sich aus, wird bis zum Einschwingen (höchstens 40 s) gar nicht verrechnet; der
+  Sonnenüberschuss hält so lange seinen letzten Messwert ([Details](agents/edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)).
 - Aktive Sitzungen werden mit Transaktions-ID, Startzeit, Anfangszähler und
   Kartenpseudonym atomar gespeichert. Klartext-Karten werden nicht persistiert.
   Nach Neustart braucht die Sitzung eine frische passende Transaktionsmeldung.
