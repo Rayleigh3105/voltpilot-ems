@@ -258,6 +258,25 @@ export const periodenWahl = (
   };
 };
 
+/**
+ * Die Perioden, die eine Übersicht der Reihe nach probiert: die Grundperiode zuerst, dann gröber. Eine Kennzahl,
+ * deren Grundperiode keine eigenen Werte trägt — „Netzbezug je m²“ etwa hat über die Bezugsfläche (ein Stammdatum)
+ * zwingend die Grundperiode „tag“, während ihr Zähler nur monatlich abgelesen wird — zeigt so den jüngsten Wert
+ * ihrer nächstgröberen Periode mit Werten statt „—“. Woche wird nie als eigener Wert gebildet (der Lauf überspringt
+ * sie, `KennzahlLauf.feinere`) und darum ausgelassen. Reihenfolge fein → grob (`PERIODEN`).
+ */
+export const listenPerioden = (k: Pick<Kennzahl, 'perioden' | 'grundperiode'>): KennzahlPeriodeArt[] => {
+  const alle = k.perioden.length > 0 ? k.perioden : k.grundperiode !== null ? [k.grundperiode] : [];
+  return PERIODEN.filter((p) => p !== 'woche' && alle.includes(p));
+};
+
+/**
+ * Ob ein geladenes Fenster KEINEN gebildeten Schritt trägt, nur leere Platzhalter (jede Zeile `zustand === null`,
+ * „noch_nicht_gebildet“). Dann rechnet die Kennzahl in dieser Periode gar nicht — die nächstgröbere lohnt den Blick.
+ * Ein Schritt „keine Werte“ (ausgewertet, nur ohne Zahl) zählt NICHT als leer: er gehört auf die Karte mit seinem Grund.
+ */
+export const ohneWert = (antwort: KennzahlWerte): boolean => antwort.werte.every((w) => w.zustand === null);
+
 /** Der Kalendertag „heute“ in der Zeitzone des Standorts. */
 export const heuteIn = (zone: string, jetzt: number): string => iso(jetzt, zone).slice(0, 10);
 
