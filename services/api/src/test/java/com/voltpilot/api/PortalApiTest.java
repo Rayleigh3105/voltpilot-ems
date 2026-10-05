@@ -4378,7 +4378,8 @@ class PortalApiTest {
         // => saved 0.4 * 150/1000 = 0.06 on that bucket's Berlin day.
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
                 + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), 'CH', 'PT15M', 150.0, 'EUR', 'test' "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                 + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) "
                 + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), '" + tenantA + "', '"
@@ -4522,7 +4523,9 @@ class PortalApiTest {
                 + " + interval '10 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
                 + "VALUES (" + t1 + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
-                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test')"
+                + " ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         for (String site : new String[] {withTariff, noTariff}) {
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
@@ -4780,7 +4783,9 @@ class PortalApiTest {
                 + "VALUES (" + ta + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
                 + "(" + tb + ", 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
                 + "(" + tc + ", 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
-                + "(" + tprev + ", 'CH', 'PT15M', 500.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+                + "(" + tprev + ", 'CH', 'PT15M', 500.0, 'EUR', 'test')"
+                + " ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         for (String site : new String[] {dyn, fest}) {
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
@@ -5284,13 +5289,18 @@ class PortalApiTest {
         // Forward day-ahead prices for CH, aligned to the 15-min slot grid at
         // +1h/+2h/+3h from now (the +4h night slot deliberately has NO price
         // either - a zero-PV slot never needs one).
+        // Die Preise gehören diesem Test - deshalb DO UPDATE: die Klasse teilt EINE
+        // Datenbank, und theDailySeries… (läuft vorher) legt CH 200 auf heute 12:00
+        // und 12:15. Zwischen 09:00 und 09:30 fiel der -40-Slot (+3 h) genau dorthin,
+        // DO NOTHING behielt die 200 -> 1600/9/10 = 17,777 statt 1360/9/10.
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
                 + "(time_bucket('15 minutes', now() + interval '1 hour'), 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
                 + "(time_bucket('15 minutes', now() + interval '2 hours'), 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
                 + "(time_bucket('15 minutes', now() + interval '3 hours'), 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
                 // priced night slot: covered, but pv 0 => it must not move the value
                 + "(time_bucket('15 minutes', now() + interval '4 hours'), 'CH', 'PT15M', 300.0, 'EUR', 'test') "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
 
         // Active-model PV forecast (latest run) for the priced site + a night
         // zero; plus a SHADOW challenger row at a huge price-weighted value that
@@ -7342,7 +7352,9 @@ class PortalApiTest {
                 + " + interval '14 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
                 + "VALUES (" + t1 + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
-                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test')"
+                + " ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                 + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
                 + "(" + t1 + ", '" + tenantA + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
@@ -7820,13 +7832,18 @@ class PortalApiTest {
                     + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
                     + site + "', 'battery', 10, 5, 5, 100)");
             // Berliner Mittag von HEUTE - deterministisch im 14-Tage-Fenster und
-            // nie ueber einer Tagesgrenze.
+            // nie ueber einer Tagesgrenze. Die Preise gehoeren diesem Test (DO UPDATE):
+            // earningsComputesRealized... laeuft vorher und legt CH 150 auf now() - 2 h -
+            // zwischen 14:00 und 14:15 genau dieser Mittag (Gesamtlauf mispel 05.10.2026:
+            // savedEur 0,3 statt 0,2).
             String noon = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
                     + " + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
             for (String offset : new String[] {"0", "15"}) {
                 exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
                         + " currency, source) SELECT " + noon + " + interval '" + offset
-                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test' ON CONFLICT DO NOTHING");
+                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test'"
+                        + " ON CONFLICT (bidding_zone, resolution, ts)"
+                        + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
             }
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
                     + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
@@ -7955,7 +7972,8 @@ class PortalApiTest {
                 + " currency, source) VALUES "
                 + "(" + mittag + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
                 + "(" + letzter + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         // Die Ladestands-Kette: 50 % vor dem Vortag → 24 % zu Tagesbeginn →
         // 92 % zu Tagesende. Der Eimer VOR dem Fenster ist der Anfangsbestand.
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
