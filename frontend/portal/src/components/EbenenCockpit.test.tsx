@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { EbenenCockpit } from './EbenenCockpit';
-import { api, type Earnings, type Overview, type OverviewSite, type Site } from '../api';
+import { api, type Earnings, type Overview, type OverviewSite, type PortfolioKpi, type Site } from '../api';
 import type { Route } from '../nav';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
@@ -100,10 +100,19 @@ const LEERE_ERLOESE = {
   totals: { savedEur: null },
 } as unknown as Earnings;
 
+const LEERE_KPIS = {
+  periode: { von: '', bis: '', jahr: 2026, monat: 9 },
+  verbrauch: { kwh: null, kwh_vorjahr: null, vollstaendig: true },
+  kosten: { eur: null, eur_vorjahr: null, tarif_hinterlegt: false },
+  lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null },
+  leit: null,
+} as PortfolioKpi;
+
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, 'overview').mockResolvedValue(MONITORING_OVERVIEW);
   vi.spyOn(api, 'earnings').mockResolvedValue(LEERE_ERLOESE);
+  vi.spyOn(api, 'portfolioKpis').mockResolvedValue(LEERE_KPIS);
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({
     vorgabe: null,
     eigen: null,
@@ -183,7 +192,7 @@ it('AP-02 O18 · ein reiner Betriebskunde lädt und sieht die Vorschlagsfläche 
   const holen = vi.mocked(api.standortZuordnungVorschlag);
   renderCockpit();
 
-  await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
+  await screen.findByRole('region', { name: 'Kennzahlen Ihrer Anlagen' });
   expect(holen).not.toHaveBeenCalled();
   expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Standorte einrichten' })).toBeNull();

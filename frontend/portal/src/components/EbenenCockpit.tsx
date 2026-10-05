@@ -38,6 +38,9 @@ import {
 import { anlageEnergie, anlageKurve } from '../anlageEnergie';
 import { AnlagenEnergie } from './AnlagenEnergie';
 import { usePortfolioHistorie } from '../usePortfolioHistorie';
+import { usePortfolioKpis } from '../usePortfolioKpis';
+import { portfolioKacheln } from '../portfolioKacheln';
+import { PortfolioKacheln } from './PortfolioKacheln';
 import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
 import {
   anlagenDerEbene,
@@ -292,6 +295,11 @@ export function EbenenCockpit({
     () => new Map((historien ?? []).map((h) => [h.siteId, h.history] as const)),
     [historien],
   );
+  // Konzept §4.2: das Kennzahl-Kachelraster der Unternehmens-Übersicht (Leitkennzahl,
+  // Verbrauch vs. Vorjahr, Lastspitze, Kosten) aus dem Backend-Aggregat.
+  const kpiAktiv = !nurAnlagen && ebene?.art === 'unternehmen';
+  const { kpis, laedt: kpiLaedt, fehler: kpiFehler, erneut: kpiErneut } = usePortfolioKpis(kpiAktiv);
+  const kpiRaster = useMemo(() => (kpis ? portfolioKacheln(kpis) : null), [kpis]);
   const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht, funktionen ?? null);
   // UEMS AP-13 IP-8 (Ü7, versprochen von IP-2): „Standort › Anlagen“ trägt je Zeile den Weg „Energiebilanz“ — nur für eine
   // Anlage mit Hauptzähler in der Stellung (dieselbe Frage wie der Reiter). Die Übersicht fragt nichts und bleibt gleich.
@@ -638,7 +646,13 @@ export function EbenenCockpit({
 
       {!nurAnlagen && (
         <>
-          <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
+          {/* Unternehmen: das Kennzahl-Kachelraster (Konzept §4.2). Standort: die
+              schlanke Live-Leiste wie bisher. */}
+          {ebene?.art === 'unternehmen' ? (
+            <PortfolioKacheln raster={kpiRaster} laedt={kpiLaedt} fehler={kpiFehler} onErneut={kpiErneut} />
+          ) : (
+            <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
+          )}
           {ruhe && <p className="vp-portfolio-ruhe">{ruhe}</p>}
         </>
       )}

@@ -1,0 +1,79 @@
+/*
+ * Das UEMS-Übersichts-Kachelraster (Konzept Runde, §4.2). Nutzt die Kachel-Familie
+ * des Cockpits (`Kacheln.css`: .vp-kraster, .vp-k, .vp-k-gross, .vp-k-spur …) und
+ * die Rollen-/Haus-Tokens; keine zweite Palette (AGENTS.md).
+ */
+.vp-pk {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+}
+
+/* Das Raster: 2 Spalten am Telefon, 4 am Rechner - wie .vp-kraster; hier nur der Abstand. */
+.vp-pk-raster {
+  gap: var(--vp-c-space-3, 12px);
+}
+
+/* Urteil + Trend unter der Zahl, nebeneinander, umbrechend. */
+.vp-pk-marken {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* Der Lastspitzen-Balken trägt den Verbrauch-Ton (Violett) wie im Konzept. */
+.vp-pk-spur {
+  margin-top: 4px;
+}
+.vp-pk-spur > i {
+  background: var(--vp-flow-load, #8b5cf6);
+}
+
+.vp-pk-periode {
+  margin: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-12, 0.75rem);
+}
+
+/* --- Laden: Skelette mit reservierter Höhe (kein Springen) --- */
+.vp-pk-skelett {
+  min-height: 118px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-muted, #e9eff8);
+  opacity: 0.6;
+}
+
+/* --- Fehler: nüchterne Hinweiskarte mit „Erneut versuchen" --- */
+.vp-pk-fehler {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-pk-fehler p {
+  margin: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-14, 0.875rem);
+}
+.vp-pk-fehler button {
+  padding: 6px 14px;
+  border: 1px solid var(--vp-action, #2c5282);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: none;
+  cursor: pointer;
+  color: var(--vp-action, #2c5282);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-14, 0.875rem);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+.vp-pk-fehler button:hover {
+  background: var(--vp-c-muted, #e9eff8);
+}
