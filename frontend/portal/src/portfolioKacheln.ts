@@ -61,8 +61,17 @@ export interface VergleichKachel {
   wert: string;
   einheit: string;
   leer: boolean;
+  /** Der Bezugszeitraum/Kontext unter der Zahl („Netzbezug · September 2026") bzw. der ehrliche Leersatz. */
   satz: string | null;
+  /** Der Vorjahresvergleich als gefärbter Pfeil, wenn er belastbar ist. */
   trend: Trend | null;
+  /**
+   * Review PR2 §4 — jede Kachel trägt einen Vergleich: fehlt ein belastbarer
+   * Pfeil, steht hier der ehrliche Ersatzsatz („Vorjahr noch nicht verfügbar"
+   * bzw. „unverändert ggü. Vorjahr"). `null`, wenn der Pfeil ihn schon trägt
+   * oder die Kachel leer ist.
+   */
+  vergleich: string | null;
 }
 
 /** Die Lastspitzen-Kachel: gemessene Spitze + Balken gegen die vereinbarte Leistung. */
@@ -148,38 +157,51 @@ function vormonatsTrend(l: NonNullable<PortfolioKpi['leit']>): Trend | null {
   };
 }
 
-function verbrauchKachel(v: PortfolioKpi['verbrauch']): VergleichKachel {
+/**
+ * Der ehrliche Ersatz für den Pfeil, wenn kein belastbarer Vorjahresvergleich
+ * möglich ist (Review PR2 §4): kein Vorjahreswert → „noch nicht verfügbar",
+ * sonst ein flacher Verlauf → „unverändert".
+ */
+function vorjahrErsatz(vorjahr: number | null): string {
+  return vorjahr == null || vorjahr === 0 ? 'Vorjahr noch nicht verfügbar' : 'unverändert ggü. Vorjahr';
+}
+
+function verbrauchKachel(v: PortfolioKpi['verbrauch'], bezug: string): VergleichKachel {
   if (v.kwh == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null, vergleich: null };
   }
+  const t = trend(v.kwh, v.kwh_vorjahr, 'ggü. Vorjahr');
   return {
     wert: fmtNum(v.kwh, '', 0),
     einheit: 'kWh',
     leer: false,
-    satz: null,
-    trend: trend(v.kwh, v.kwh_vorjahr, 'ggü. Vorjahr'),
+    satz: `Netzbezug · ${bezug}`,
+    trend: t,
+    vergleich: t ? null : vorjahrErsatz(v.kwh_vorjahr),
   };
 }
 
-function kostenKachel(k: PortfolioKpi['kosten']): VergleichKachel {
+function kostenKachel(k: PortfolioKpi['kosten'], bezug: string): VergleichKachel {
   if (!k.tarif_hinterlegt) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null, vergleich: null };
   }
   if (k.eur == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null, vergleich: null };
   }
+  const t = trend(k.eur, k.eur_vorjahr, 'ggü. Vorjahr');
   return {
     wert: fmtNum(k.eur, '', 0),
     einheit: '€',
     leer: false,
-    satz: null,
-    trend: trend(k.eur, k.eur_vorjahr, 'ggü. Vorjahr'),
+    satz: `aus Tarif · ${bezug}`,
+    trend: t,
+    vergleich: t ? null : vorjahrErsatz(k.eur_vorjahr),
   };
 }
 
-function lastspitzeKachel(s: PortfolioKpi['lastspitze']): SpitzeKachel {
+function lastspitzeKachel(s: PortfolioKpi['lastspitze'], bezug: string): SpitzeKachel {
   if (s.kw == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: 'keine Lastdaten im Zeitraum', fuellProzent: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: `keine Lastdaten · ${bezug}`, fuellProzent: null };
   }
   const satz = s.vereinbart_kw != null ? `von ${fmtNum(s.vereinbart_kw, '', 0)} kW vereinbart` : 'gemessene Spitze';
   return {
@@ -193,11 +215,12 @@ function lastspitzeKachel(s: PortfolioKpi['lastspitze']): SpitzeKachel {
 
 /** Baut das fertige Kachelraster aus den rohen Portfolio-Aggregaten. */
 export function portfolioKacheln(kpi: PortfolioKpi): PortfolioKachelRaster {
+  const bezug = periodeWort(kpi.periode.jahr, kpi.periode.monat);
   return {
-    periodeWort: periodeWort(kpi.periode.jahr, kpi.periode.monat),
+    periodeWort: bezug,
     leit: leitKachel(kpi.leit),
-    verbrauch: verbrauchKachel(kpi.verbrauch),
-    lastspitze: lastspitzeKachel(kpi.lastspitze),
-    kosten: kostenKachel(kpi.kosten),
+    verbrauch: verbrauchKachel(kpi.verbrauch, bezug),
+    lastspitze: lastspitzeKachel(kpi.lastspitze, bezug),
+    kosten: kostenKachel(kpi.kosten, bezug),
   };
 }

@@ -22,9 +22,15 @@ export interface PortfolioKachelnProps {
   messstellen?: { mit: number; gesamt: number } | null;
 }
 
-function Pfeil({ trend }: { trend: Trend }) {
+/**
+ * Der Vorjahres-/Vormonatspfeil. `gewertet` färbt ihn nach Richtung: bei
+ * Verbrauch, Kosten und EnPI ist weniger besser, also ist „runter" ok (grün)
+ * und „rauf" eine Warnung (bernstein). Ungewertet bleibt er neutral.
+ */
+function Pfeil({ trend, gewertet = false }: { trend: Trend; gewertet?: boolean }) {
+  const art = gewertet ? (trend.richtung === 'runter' ? 'ok' : 'warn') : 'neutral';
   return (
-    <Marke art="neutral">
+    <Marke art={art}>
       <span aria-hidden="true">{trend.richtung === 'runter' ? '▼' : '▲'}</span> {trend.prozent} % {trend.bezug}
     </Marke>
   );
@@ -34,7 +40,7 @@ function Leit({ leit, messstellen }: { leit: LeitKachel | null; messstellen?: { 
   if (!leit) {
     // Datenlage-Fallback (Konzept §5.3): keine Leitkennzahl gegen Ziel hinterlegt.
     return (
-      <Kachel id="pk-datenlage" name="Datenlage" icon="activity" ton="neutral" lead>
+      <Kachel id="pk-datenlage" name="Datenlage" icon="activity" ton="neutral" groesse="breit" lead>
         {messstellen ? (
           <>
             <Gross wert={String(messstellen.mit)} einheit={`von ${messstellen.gesamt}`} />
@@ -47,7 +53,7 @@ function Leit({ leit, messstellen }: { leit: LeitKachel | null; messstellen?: { 
     );
   }
   return (
-    <Kachel id="pk-leit" name={leit.name} icon="activity" ton="neutral" lead>
+    <Kachel id="pk-leit" name={leit.name} icon="activity" ton="neutral" groesse="breit" lead>
       <Gross wert={leit.wert} einheit={leit.einheit || undefined} />
       {leit.ziel && <p className="vp-k-sub">{leit.ziel}</p>}
       <p className="vp-k-sub">{leit.stand}</p>
@@ -75,12 +81,14 @@ function Vergleich({
   return (
     <Kachel id={id} name={name} icon={icon} ton={ton}>
       <Gross wert={kachel.wert} einheit={kachel.einheit || undefined} />
-      {kachel.satz && <p className="vp-k-sub">{kachel.satz}</p>}
-      {kachel.trend && (
+      {/* Punkt 4: jede Kachel trägt einen Vergleich — der gefärbte Pfeil oder
+          der ehrliche Ersatzsatz, nie nur die nackte Zahl. */}
+      {(kachel.trend || kachel.vergleich) && (
         <div className="vp-pk-marken">
-          <Pfeil trend={kachel.trend} />
+          {kachel.trend ? <Pfeil trend={kachel.trend} gewertet /> : <Marke art="neutral">{kachel.vergleich}</Marke>}
         </div>
       )}
+      {kachel.satz && <p className="vp-k-sub">{kachel.satz}</p>}
     </Kachel>
   );
 }
@@ -126,14 +134,17 @@ export function PortfolioKacheln({ raster, laedt, fehler, onErneut, messstellen 
     return <Skelett />;
   }
   return (
-    <section className="vp-pk" aria-label="Kennzahlen Ihrer Anlagen">
+    // lang="de" (Punkt 3): erlaubt die deutsche Silbentrennung (`hyphens:auto`)
+    // für lange Kennzahl-Namen wie „Stromeinsatz Spritzguss je kg".
+    <section className="vp-pk" aria-label="Kennzahlen Ihrer Anlagen" lang="de">
       <div className="vp-kraster vp-pk-raster">
         <Leit leit={raster.leit} messstellen={messstellen} />
-        <Vergleich id="pk-verbrauch" name="Energieverbrauch" icon="pole" ton="grid" kachel={raster.verbrauch} />
+        {/* Kürzere Titel (Punkt 3): „Verbrauch"/„Kosten"/„Lastspitze" brechen am
+            Handy nicht mehr mitten im Wort. Der Bezugszeitraum steht je Kachel. */}
+        <Vergleich id="pk-verbrauch" name="Verbrauch" icon="pole" ton="grid" kachel={raster.verbrauch} />
         <Spitze kachel={raster.lastspitze} />
-        <Vergleich id="pk-kosten" name="Energiekosten" icon="euro" ton="geld" kachel={raster.kosten} />
+        <Vergleich id="pk-kosten" name="Kosten" icon="euro" ton="geld" kachel={raster.kosten} />
       </div>
-      <p className="vp-pk-periode">Werte für {raster.periodeWort}</p>
     </section>
   );
 }

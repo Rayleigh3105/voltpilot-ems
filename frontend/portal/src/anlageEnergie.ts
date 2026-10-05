@@ -81,6 +81,12 @@ export interface AnlageKurve {
 export interface AnlageRollen {
   pv: number;
   storage: number;
+  /**
+   * Betriebsart: ob die Anlage gesteuert wird (Steuern & Optimieren aktiv) oder
+   * nur gemessen wird. Aus den Funktionen abgeleitet, nicht aus roleCounts.
+   * Fehlt das Signal (undefined), gilt die Anlage als reine Messung.
+   */
+  steuert?: boolean;
 }
 
 function vwert(v: number | null | undefined): number | null {
@@ -126,10 +132,11 @@ export function anlageKurve(history: History | null | undefined, now: Date): Anl
 export function anlageTyp(rollen: AnlageRollen): string {
   const pv = rollen.pv > 0;
   const speicher = rollen.storage > 0;
-  if (pv && speicher) return 'PV + Speicher';
-  if (pv) return 'PV';
-  if (speicher) return 'Speicher';
-  return 'reine Messung';
+  const rollenTeil = pv && speicher ? 'PV + Speicher' : pv ? 'PV' : speicher ? 'Speicher' : null;
+  // Betriebsart zuerst: eine gesteuerte Anlage ist nie "reine Messung". Rollen
+  // (PV/Speicher) stehen zusaetzlich dahinter, wenn modelliert.
+  const betriebsart = rollen.steuert ? 'steuert' : 'reine Messung';
+  return rollenTeil ? `${betriebsart} · ${rollenTeil}` : betriebsart;
 }
 
 function energieZahl(

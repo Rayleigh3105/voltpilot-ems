@@ -34,9 +34,12 @@ describe('portfolioKacheln', () => {
     expect(r.verbrauch).toMatchObject({ wert: '199.500', einheit: 'kWh', leer: false });
     // 199.500 ggü. 207.000 = −3,6 % → runter, gerundet 4 %
     expect(r.verbrauch.trend).toMatchObject({ richtung: 'runter', prozent: '4', bezug: 'ggü. Vorjahr' });
+    // Punkt 4: der Bezugszeitraum steht in der Kachel.
+    expect(r.verbrauch.satz).toBe('Netzbezug · September 2026');
 
     expect(r.kosten).toMatchObject({ wert: '48.000', einheit: '€', leer: false });
     expect(r.kosten.trend).toMatchObject({ richtung: 'rauf', prozent: '2' });
+    expect(r.kosten.satz).toBe('aus Tarif · September 2026');
 
     expect(r.lastspitze).toMatchObject({ wert: '412', einheit: 'kW', leer: false, fuellProzent: 75 });
     expect(r.lastspitze.satz).toBe('von 550 kW vereinbart');
@@ -59,7 +62,7 @@ describe('portfolioKacheln', () => {
     );
     expect(r.verbrauch).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null });
     expect(r.kosten).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null });
-    expect(r.lastspitze).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'keine Lastdaten im Zeitraum', fuellProzent: null });
+    expect(r.lastspitze).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'keine Lastdaten · September 2026', fuellProzent: null });
     expect(r.leit).toBeNull();
   });
 
@@ -70,15 +73,17 @@ describe('portfolioKacheln', () => {
     expect(r.kosten.satz).toBe('kein Tarif hinterlegt');
   });
 
-  it('unter einem halben Prozent zeigt keinen Pfeil (keine Scheingenauigkeit)', () => {
+  it('unter einem halben Prozent zeigt keinen Pfeil, sondern „unverändert" (Punkt 4)', () => {
     const r = portfolioKacheln(kpi({ verbrauch: { kwh: 100000, kwh_vorjahr: 100200, vollstaendig: true } }));
     expect(r.verbrauch.trend).toBeNull();
+    expect(r.verbrauch.vergleich).toBe('unverändert ggü. Vorjahr');
   });
 
-  it('kein Vorjahr → kein Vergleich, aber der Wert steht', () => {
+  it('kein Vorjahr → ehrlich „Vorjahr noch nicht verfügbar", aber der Wert steht (Punkt 4)', () => {
     const r = portfolioKacheln(kpi({ verbrauch: { kwh: 199500, kwh_vorjahr: null, vollstaendig: true } }));
     expect(r.verbrauch.wert).toBe('199.500');
     expect(r.verbrauch.trend).toBeNull();
+    expect(r.verbrauch.vergleich).toBe('Vorjahr noch nicht verfügbar');
   });
 
   it('Lastspitze ohne vereinbarte Leistung nennt die gemessene Spitze', () => {

@@ -13,6 +13,28 @@
   gap: var(--vp-c-space-3, 12px);
 }
 
+/*
+ * Review PR2 §3: die Leitkachel (bzw. der Datenlage-Fallback) steht am Telefon
+ * über die volle Breite (`groesse="breit"` → span 2), damit der lange Kennzahl-
+ * Name Platz hat und nicht mitten im Wort bricht. Am Rechner (4 Spalten) ist sie
+ * wieder eine von vier gleichen Kacheln.
+ */
+@media (min-width: 1024px) {
+  .vp-pk-raster .vp-k-platz[data-kachel='pk-leit'],
+  .vp-pk-raster .vp-k-platz[data-kachel='pk-datenlage'] {
+    grid-column: auto;
+  }
+}
+
+/*
+ * Review PR2 §3: lange Kennzahl-Namen deutsch trennen (das Elternelement trägt
+ * `lang="de"`) statt mit `break-word` mitten im Wort zu brechen. Nie
+ * `word-break:break-all`.
+ */
+.vp-pk .vp-k-name {
+  hyphens: auto;
+}
+
 /* Urteil + Trend unter der Zahl, nebeneinander, umbrechend. */
 .vp-pk-marken {
   display: flex;
