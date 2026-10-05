@@ -1,4 +1,5 @@
 import type { Betriebsart, Site } from '../api';
+import type { EbenenLeistenKachel } from '../ebenenNav';
 import type { Route } from '../nav';
 import { EbenenCockpit } from '../components/EbenenCockpit';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
@@ -18,6 +19,12 @@ interface PortfolioProps {
    * das Portfolio wie bisher.
    */
   ebene?: UebersichtEbene | null;
+  /**
+   * §5.1 „Tiefer einsteigen": die Arbeitsgruppen des Unternehmens
+   * ({@link unternehmensGruppen}), von `App.tsx` durchgereicht — leer, solange
+   * noch keine drei Standorte messen.
+   */
+  tieferGruppen?: readonly EbenenLeistenKachel[];
 }
 
 /**
@@ -47,6 +54,7 @@ export function PortfolioPage({
   isAdmin = false,
   betriebsart = null,
   ebene = null,
+  tieferGruppen = [],
 }: PortfolioProps) {
   // Ein Admin sieht das Portfolio des GEWÄHLTEN Mandanten; ohne gewählten
   // Mandanten kommt er hier gar nicht an (die Schale leitet ihn weiter).
@@ -62,6 +70,7 @@ export function PortfolioPage({
         titel="Portfolio"
         titelBereitsGenannt
         ebene={ebene}
+        tieferGruppen={tieferGruppen}
       />
     );
   }

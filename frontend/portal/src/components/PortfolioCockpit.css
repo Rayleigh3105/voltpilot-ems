@@ -71,6 +71,52 @@
   background: var(--vp-warn, #f59e0b);
 }
 
+/*
+ * Status-Variante A (Review PR2 §5.1, Punkt 2): bei Handlungsbedarf eskaliert
+ * die ruhige Statuszeile zu dieser Hinweiskarte unter dem Kopf. Dieselbe
+ * Karten-Sprache wie die Bausteine (1-px-Rahmen, Radius 16 px), nur mit einem
+ * tonigen linken Akzent und Icon.
+ */
+.vp-portfolio-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  margin-top: var(--vp-space-4, 16px);
+  padding: var(--vp-space-4, 16px) var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid var(--vp-text-subtle, #ced4da);
+  border-radius: 16px;
+  min-width: 0;
+}
+
+.vp-portfolio-hinweis.is-warn {
+  border-left-color: var(--vp-warn, #f59e0b);
+}
+
+.vp-portfolio-hinweis.is-off {
+  border-left-color: var(--vp-text-subtle, #ced4da);
+}
+
+.vp-portfolio-hinweis-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-portfolio-hinweis.is-off .vp-portfolio-hinweis-icon {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-portfolio-hinweis-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
 .vp-portfolio-aktionen {
   display: flex;
   align-items: center;
