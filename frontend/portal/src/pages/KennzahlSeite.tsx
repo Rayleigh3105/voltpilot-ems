@@ -43,7 +43,9 @@ import {
   kennzahlHistorie,
   kopf,
   letzterSchritt,
+  listenPerioden,
   NICHT_GEFUNDEN,
+  ohneWert,
   PERIODE_WAHL,
   periodenWahl,
   RECHENWEG_TITEL,
@@ -94,6 +96,9 @@ export function KennzahlSeite({
   const [stamm, setStamm] = useState<{ kennzahl: Kennzahl; fassungen: KennzahlFassung[] } | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
   const [art, setArt] = useState<KennzahlPeriodeArt | null>(null);
+  // Die Grundperiode ist die Vorgabe; trägt sie nur Platzhalter (z. B. „tag“ über einer Bezugsfläche), rückt die
+  // Seite beim Öffnen auf die nächstgröbere Periode mit Werten — bis der Nutzer selbst wählt (`autoArt = false`).
+  const [autoArt, setAutoArt] = useState(true);
   const [werte, setWerte] = useState<{ schluessel: string; antwort: KennzahlWerte } | null>(null);
   const [werteFehler, setWerteFehler] = useState(false);
   const [gewaehlt, setGewaehlt] = useState<string | null>(null);
@@ -177,6 +182,18 @@ export function KennzahlSeite({
       aktiv = false;
     };
   }, [id, art, zone, schluessel]);
+
+  // Rückt die Vorgabe über leere Grundperioden hinweg zur nächstgröberen mit Werten (derselbe Rückfall wie an der
+  // Übersichtskarte, `listenPerioden`/`ohneWert`). Nur solange automatisch gewählt und das geladene Fenster leer ist;
+  // rückt streng in der endlichen Reihe vorwärts, läuft also nie im Kreis.
+  useEffect(() => {
+    if (!autoArt || !art || !stamm) return;
+    const geladen = werte && werte.schluessel === schluessel ? werte.antwort : null;
+    if (!geladen || !ohneWert(geladen)) return;
+    const perioden = listenPerioden(stamm.kennzahl);
+    const naechste = perioden[perioden.indexOf(art) + 1];
+    if (naechste) setArt(naechste);
+  }, [autoArt, art, stamm, werte, schluessel]);
 
   // AP-17 IP-9/IP-20: die Reiter „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ (nur Quotient und Zusammenfassung, B2) und
   // die Basis-Zeile im Kopf; der Vergleich lädt erst, wenn er offen ist.
@@ -300,6 +317,7 @@ export function KennzahlSeite({
               onWert={(a) => {
                 setArt(a);
                 setGewaehlt(null);
+                setAutoArt(false);
               }}
             />
           </div>
