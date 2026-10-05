@@ -17,17 +17,28 @@ export const B = 960;
 export const H = 130;
 export const UNTEN = H;
 
-/** Ein Pfad mit Lücken: jede `null`-Viertelstunde bricht die Linie. */
-export function pfad(werte: readonly (number | null)[], max: number, bis: number, hoehe = UNTEN, breite = B): string {
+/**
+ * Ein Pfad mit Lücken: jede `null`-Viertelstunde bricht die Linie. `slots` ist
+ * der Nenner der X-Achse (Vorgabe 96 = der ganze Tag); ein kleinerer Wert zieht
+ * einen bereits zugeschnittenen Datenbereich auf die ganze Breite (Spark).
+ */
+export function pfad(
+  werte: readonly (number | null)[],
+  max: number,
+  bis: number,
+  hoehe = UNTEN,
+  breite = B,
+  slots = 96,
+): string {
   let d = '';
   let offen = false;
-  for (let i = 0; i <= Math.min(bis, 95); i++) {
+  for (let i = 0; i <= Math.min(bis, slots - 1); i++) {
     const v = werte[i];
     if (v == null) {
       offen = false;
       continue;
     }
-    const x = ((i + 0.5) / 96) * breite;
+    const x = ((i + 0.5) / slots) * breite;
     const y = hoehe - (Math.max(0, v) / max) * (hoehe - 8);
     d += `${offen ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
     offen = true;
@@ -36,7 +47,14 @@ export function pfad(werte: readonly (number | null)[], max: number, bis: number
 }
 
 /** Die Fläche unter einer Reihe — je zusammenhängendem Stück geschlossen. */
-export function flaeche(werte: readonly (number | null)[], max: number, bis: number, hoehe = UNTEN, breite = B): string {
+export function flaeche(
+  werte: readonly (number | null)[],
+  max: number,
+  bis: number,
+  hoehe = UNTEN,
+  breite = B,
+  slots = 96,
+): string {
   let d = '';
   let start: number | null = null;
   let letzte = 0;
@@ -44,13 +62,13 @@ export function flaeche(werte: readonly (number | null)[], max: number, bis: num
     if (start != null) d += `L${letzte.toFixed(1)},${hoehe}L${start.toFixed(1)},${hoehe}Z`;
     start = null;
   };
-  for (let i = 0; i <= Math.min(bis, 95); i++) {
+  for (let i = 0; i <= Math.min(bis, slots - 1); i++) {
     const v = werte[i];
     if (v == null) {
       schliessen();
       continue;
     }
-    const x = ((i + 0.5) / 96) * breite;
+    const x = ((i + 0.5) / slots) * breite;
     const y = hoehe - (Math.max(0, v) / max) * (hoehe - 8);
     if (start == null) {
       start = x;

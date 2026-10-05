@@ -54,11 +54,11 @@ function zeile(over: Partial<AnlagenZeile> = {}): AnlagenZeile {
 }
 
 describe('anlageTyp', () => {
-  it('benennt den Typ aus den vorhandenen Flüssen', () => {
-    expect(anlageTyp(false, false)).toBe('reine Messung');
-    expect(anlageTyp(true, false)).toBe('PV');
-    expect(anlageTyp(false, true)).toBe('Speicher');
-    expect(anlageTyp(true, true)).toBe('PV + Speicher');
+  it('benennt den Typ aus den Rollen', () => {
+    expect(anlageTyp({ pv: 0, storage: 0 })).toBe('reine Messung');
+    expect(anlageTyp({ pv: 2, storage: 0 })).toBe('PV');
+    expect(anlageTyp({ pv: 0, storage: 1 })).toBe('Speicher');
+    expect(anlageTyp({ pv: 1, storage: 1 })).toBe('PV + Speicher');
   });
 });
 
@@ -91,23 +91,23 @@ describe('anlageEnergie', () => {
     expect(m.stats[3]).toMatchObject({ label: 'Speicher', wert: '64', einheit: '%', zeit: 'lädt' });
   });
 
-  it('zeigt gemessene PV und Speicher auch ohne modellierte Rolle', () => {
-    // Die Demo-Hallen sind „Monitoring" (roleCounts pv/storage = 0), messen aber
-    // Erzeugung und Ladestand — das gehört auf die Karte, nicht nach roleCounts.
+  it('reine Messung bleibt reine Messung trotz PV-/Speicher-Telemetrie (Rolle ist die Wahrheit)', () => {
+    // Die Demo publiziert reinen Messanlagen dasselbe PV-/Speicher-Profil; die
+    // Karte folgt den ROLLEN, nicht der (womöglich simulierten) Live-Zahl —
+    // sonst erschiene eine reine Messanlage fälschlich als „PV + Speicher".
     const m = anlageEnergie(
-      zeile({ verbrauchKwh: 4280, erzeugungKwh: 33994, ladestandPct: 98, netz: { richtung: 'einspeisung', kw: 5.3 } }),
+      zeile({
+        verbrauchKwh: 4280,
+        erzeugungKwh: 33994,
+        ladestandPct: 98,
+        pvJetztKw: 6.1,
+        netz: { richtung: 'einspeisung', kw: 5.3 },
+      }),
       { pv: 0, storage: 0 },
     );
-    expect(m.typ).toBe('PV + Speicher');
-    expect(m.stats.map((s) => s.label)).toEqual(['Verbrauch', 'Erzeugung', 'Netz', 'Speicher']);
-    expect(m.stats[1]).toMatchObject({ rolle: 'pv', wert: '33.994', einheit: 'kWh' });
-    expect(m.stats[3]).toMatchObject({ rolle: 'batt', wert: '98', einheit: '%' });
-  });
-
-  it('PV allein aus der Live-Leistung (noch kein Tageswert) → Erzeugung „–"', () => {
-    const m = anlageEnergie(zeile({ pvJetztKw: 6.1 }), { pv: 0, storage: 0 });
-    expect(m.typ).toBe('PV');
-    expect(m.stats.find((s) => s.label === 'Erzeugung')).toMatchObject({ rolle: 'pv', wert: '–', leer: true });
+    expect(m.typ).toBe('reine Messung');
+    expect(m.stats.map((s) => s.label)).toEqual(['Verbrauch', 'Netz']);
+    expect(m.stats.some((s) => s.rolle === 'pv' || s.rolle === 'batt')).toBe(false);
   });
 
   it('fehlender Wert steht als „–", nie als 0', () => {

@@ -55,27 +55,46 @@ function Stat({ s }: { s: EnergieStat }) {
 
 /**
  * Die kleine Tages-Verlaufskurve der Anlage in Rollen-Farben: PV-Fläche + -Linie
- * (orange) und Verbrauch (violett). Rendert mit der GEMEINSAMEN Kurvengeometrie
- * ({@link flaeche}/{@link pfad}, dieselbe wie die große Tageskurve der Kunden-
- * übersicht) und schneidet rechts bei „jetzt" ab — rechts davon ist nichts
- * gemessen (AGENTS.md „veraltete Daten nicht als aktuell zeigen").
+ * (orange, nur mit PV-Rolle) und Verbrauch (violett). Rendert mit der GEMEINSAMEN
+ * Kurvengeometrie ({@link flaeche}/{@link pfad}).
+ *
+ * Sie zieht den GEMESSENEN Bereich (erste bis letzte Viertelstunde mit Wert, bis
+ * „jetzt") auf die ganze Breite — kein kleiner Hügel in leerer Fläche (Review 7).
+ * PV folgt der Rolle, nicht der (womöglich simulierten) Telemetrie (Review 8):
+ * eine reine Messanlage zeigt nur den Verbrauch, auch wenn PV-Werte ankommen.
  */
-function Spark({ kurve }: { kurve: AnlageKurve }) {
-  const alle = [...kurve.pv, ...kurve.load].filter((v): v is number => v != null);
-  const max = Math.max(0, ...alle) * 1.1;
+function Spark({ kurve, zeigtPv }: { kurve: AnlageKurve; zeigtPv: boolean }) {
+  const bis = Math.min(kurve.jetzt, 95);
+  let von = -1;
+  let letzte = -1;
+  for (let i = 0; i <= bis; i++) {
+    if (kurve.load[i] != null || (zeigtPv && kurve.pv[i] != null)) {
+      if (von < 0) von = i;
+      letzte = i;
+    }
+  }
+  if (von < 0) return null;
+  const pv = kurve.pv.slice(von, letzte + 1);
+  const load = kurve.load.slice(von, letzte + 1);
+  const n = letzte - von + 1;
+  const werte = (zeigtPv ? [...pv, ...load] : load).filter((v): v is number => v != null);
+  const max = Math.max(0, ...werte) * 1.1;
   if (max <= 0) return null;
+  const W = 300;
+  const H = 40;
+  const boden = H - 1;
   return (
     <svg
       className="vp-ae-spark"
-      viewBox="0 0 96 28"
+      viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label="Tagesverlauf von Erzeugung und Verbrauch"
+      aria-label="Tagesverlauf bis jetzt"
     >
-      <line className="achse" x1={0} x2={96} y1={27} y2={27} />
-      <path className="pv-a" d={flaeche(kurve.pv, max, kurve.jetzt, 27, 96)} />
-      <path className="pv-l" d={pfad(kurve.pv, max, kurve.jetzt, 27, 96)} />
-      <path className="ld-l" d={pfad(kurve.load, max, kurve.jetzt, 27, 96)} />
+      <line className="achse" x1={0} x2={W} y1={boden} y2={boden} />
+      {zeigtPv && <path className="pv-a" d={flaeche(pv, max, n - 1, boden, W, n)} />}
+      {zeigtPv && <path className="pv-l" d={pfad(pv, max, n - 1, boden, W, n)} />}
+      <path className="ld-l" d={pfad(load, max, n - 1, boden, W, n)} />
     </svg>
   );
 }
@@ -133,7 +152,7 @@ function Karte({
             <Stat key={s.label} s={s} />
           ))}
         </div>
-        {k.kurve && <Spark kurve={k.kurve} />}
+        {k.kurve && <Spark kurve={k.kurve} zeigtPv={k.stats.some((s) => s.rolle === 'pv')} />}
       </div>
       {weg && (
         <div className="vp-ae-fuss">

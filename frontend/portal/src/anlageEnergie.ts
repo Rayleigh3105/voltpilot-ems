@@ -12,13 +12,12 @@
  * Ehrlichkeit (AGENTS.md „Fehlend ist keine Null. Veraltete Daten nicht als
  * aktuell zeigen"): ein fehlender Wert steht als „–" (`leer`), nie als 0; ein
  * veralteter Ladestand steht datiert und gedämpft (`dim`), nie als „jetzt".
- * Je Anlage nur, was sie tatsächlich führt: Erzeugung, sobald PV-Daten vorliegen,
- * Speicher, sobald ein Ladestand vorliegt — DATENGETRIEBEN wie die Spalten der
- * Bestandstabelle (`portfolioCockpit` zeigt die Spalte, sobald der Wert `!= null`
- * ist), nicht nach `roleCounts`. Reine Messanlagen messen in der Praxis PV und
- * Ladestand, ohne ein Bauteil mit PV-/Speicher-Rolle (`roleCounts` 0); diese
- * gemessene Energie zu verschweigen wäre unehrlich und würde die echten kWh je
- * Halle aus der Karte tilgen.
+ * Je Anlagentyp nur, was zu den ROLLEN passt: Erzeugung nur mit PV-Rolle,
+ * Speicher nur mit Speicher-Rolle (`roleCounts`). Die modellierte Rolle ist die
+ * Wahrheit — sie sagt, was die Anlage IST; eine Live-/Telemetriezahl kann ein
+ * Simulator-Artefakt sein (die Demo publiziert für reine Messanlagen dasselbe
+ * PV-/Speicher-Profil). Eine reine Messanlage trägt daher keine PV-/Speicher-
+ * Kachel, auch wenn Telemetrie ankommt.
  *
  * Die Kennzahl (kWh/kg usw.) wandert damit aus der Übersicht in die Tiefe
  * (Anlage · Auswerten); hier stehen nur Energiedaten.
@@ -76,8 +75,8 @@ export interface AnlageKurve {
 
 /**
  * Die modellierten Rollen einer Anlage (aus `OverviewSite.roleCounts`); fehlt es,
- * gilt „keine". Nur EIN Signal für PV/Speicher — die gemessene Energie der Zeile
- * (Erzeugung, Ladestand) zählt gleichwertig, siehe {@link anlageEnergie}.
+ * gilt „keine". Sie entscheiden den Anlagentyp und welche Energiedaten die Karte
+ * trägt — die Rolle ist die Wahrheit, nicht eine (womöglich simulierte) Live-Zahl.
  */
 export interface AnlageRollen {
   pv: number;
@@ -123,13 +122,10 @@ export function anlageKurve(history: History | null | undefined, now: Date): Anl
   return { pv, load, jetzt: now.getHours() * 4 + Math.floor(now.getMinutes() / 15) };
 }
 
-/**
- * Der Anlagentyp als Wort aus den tatsächlich geführten Flüssen. `pv`/`speicher`
- * bedeuten „vorhanden" im Sinn von {@link anlageEnergie}: modellierte Rolle ODER
- * gemessener Wert. So trägt eine reine Messanlage mit gemessener PV den Chip „PV"
- * und nicht „reine Messung" — der Chip passt zu den gezeigten Energiedaten.
- */
-export function anlageTyp(pv: boolean, speicher: boolean): string {
+/** Der Anlagentyp als Wort — aus den modellierten Rollen, nicht aus einem Messwert. */
+export function anlageTyp(rollen: AnlageRollen): string {
+  const pv = rollen.pv > 0;
+  const speicher = rollen.storage > 0;
   if (pv && speicher) return 'PV + Speicher';
   if (pv) return 'PV';
   if (speicher) return 'Speicher';
@@ -191,14 +187,13 @@ function speicherStat(z: AnlagenZeile): EnergieStat {
 
 /**
  * Das Energiedaten-Modell einer Anlage. Immer: Verbrauch heute und Netz jetzt.
- * Erzeugung, sobald PV vorhanden ist; Speicher, sobald ein Ladestand vorliegt.
+ * Erzeugung nur mit PV-Rolle, Speicher nur mit Speicher-Rolle (`roleCounts`).
  *
- * „Vorhanden" ist DATENGETRIEBEN (wie die Spalten der Bestandstabelle): eine
- * modellierte Rolle ODER ein gemessener Wert (`erzeugungKwh`/`pvJetztKw` für PV,
- * `ladestandPct` für Speicher). Reine Messanlagen messen oft PV und Ladestand
- * ohne modelliertes Bauteil (`roleCounts` 0) — diese Energie gehört trotzdem auf
- * die Karte (AGENTS.md „Fehlend ist keine Null"). So trägt eine Anlage ganz ohne
- * PV-/Speicher-Fluss genau zwei Angaben (Verbrauch, Netz), eine mit beidem vier.
+ * Die ROLLE entscheidet, nicht die Telemetrie: eine reine Messanlage trägt genau
+ * zwei Angaben (Verbrauch, Netz), auch wenn der Simulator ihr ein PV-/Speicher-
+ * Profil schickt; eine PV-Speicher-Anlage vier. So kann keine simulierte Live-
+ * Zahl eine Anlage falsch als „PV + Speicher" ausweisen (die Rolle ist die
+ * Wahrheit). Fehlende Werte innerhalb einer gezeigten Angabe bleiben „–".
  */
 export function anlageEnergie(
   z: AnlagenZeile,
@@ -206,16 +201,14 @@ export function anlageEnergie(
   nichtZugeordnet = false,
   kurve: AnlageKurve | null = null,
 ): AnlageEnergie {
-  const pv = rollen.pv > 0 || z.erzeugungKwh != null || z.pvJetztKw != null;
-  const speicher = rollen.storage > 0 || z.ladestandPct != null;
   const stats: EnergieStat[] = [energieZahl('load', 'Verbrauch', z.verbrauchKwh, 'kWh', 'heute', 0)];
-  if (pv) stats.push(energieZahl('pv', 'Erzeugung', z.erzeugungKwh, 'kWh', 'heute', 0));
+  if (rollen.pv > 0) stats.push(energieZahl('pv', 'Erzeugung', z.erzeugungKwh, 'kWh', 'heute', 0));
   stats.push(netzStat(z.netz));
-  if (speicher) stats.push(speicherStat(z));
+  if (rollen.storage > 0) stats.push(speicherStat(z));
   return {
     id: z.id,
     name: z.name,
-    typ: anlageTyp(pv, speicher),
+    typ: anlageTyp(rollen),
     zustand: z.zustand,
     stats,
     speicherOhneGeraet: z.speicherOhneGeraet,

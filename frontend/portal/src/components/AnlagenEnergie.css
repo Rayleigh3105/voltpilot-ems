@@ -207,7 +207,9 @@
 .vp-ae-spark .ld-l {
   stroke: var(--vp-c-chart-load, #8b5cf6);
 }
-/* Am Rechner: Energiedaten links in einer Reihe (nacheinander), die Kurve rechts daneben. */
+/* Am Rechner: Energiedaten links in einer Reihe (nehmen nur ihren Platz), die
+   Kurve FÜLLT den freien Raum rechts daneben (Review 7: nicht winzig in einer
+   leeren Fläche). */
 @media (min-width: 900px) {
   .vp-ae-stats {
     display: flex;
@@ -218,12 +220,17 @@
     min-width: 96px;
   }
   .vp-ae-body.has-spark {
-    grid-template-columns: minmax(0, 1fr) 180px;
+    display: flex;
     align-items: center;
-    column-gap: 24px;
+    gap: 28px;
   }
-  .vp-ae-spark {
-    height: 46px;
+  .vp-ae-body.has-spark .vp-ae-stats {
+    flex: 0 1 auto;
+  }
+  .vp-ae-body.has-spark .vp-ae-spark {
+    flex: 1 1 0;
+    min-width: 220px;
+    height: 48px;
   }
 }
 .vp-ae-stat {
