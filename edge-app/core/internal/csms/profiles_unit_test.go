@@ -162,3 +162,26 @@ func TestCompareReadbackHasThreeAnswers(t *testing.T) {
 		t.Fatalf("a confirmed pause = %q", v)
 	}
 }
+
+// TestTheWireScheduleStartsInThePastAndEndsOnTime: a station whose clock lags
+// ours must never see a refresh begin in its future (toOcppProfile), and the
+// lead must not lengthen the fuse - the live limit still ends where the
+// builder said.
+func TestTheWireScheduleStartsInThePastAndEndsOnTime(t *testing.T) {
+	live := TxProfile(1, 4711, 41, pt0, 0)
+	wire := toOcppProfile(live)
+	sch := wire.ChargingSchedule
+	if sch.StartSchedule == nil || !sch.StartSchedule.Time.Equal(pt0.Add(-profileStartLead)) {
+		t.Fatalf("the schedule must start %v before now: %+v", profileStartLead, sch.StartSchedule)
+	}
+	if sch.Duration == nil {
+		t.Fatal("the live profile must carry its duration")
+	}
+	end := sch.StartSchedule.Time.Add(time.Duration(*sch.Duration) * time.Second)
+	if !end.Equal(pt0.Add(TxProfileDuration)) {
+		t.Fatalf("the live limit ends at %v, want %v", end, pt0.Add(TxProfileDuration))
+	}
+	if perm := toOcppProfile(MaxProfile(240, pt0)).ChargingSchedule; perm.Duration != nil {
+		t.Fatalf("a permanent profile stays permanent: %v", *perm.Duration)
+	}
+}
