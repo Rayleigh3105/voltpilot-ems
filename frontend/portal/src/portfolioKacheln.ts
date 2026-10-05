@@ -86,6 +86,8 @@ export interface SpitzeKachel {
   einheit: string;
   leer: boolean;
   satz: string;
+  /** Review R2 §B3: die Anlage der Spitze — eigene Zeile, Name gegen Umbruch geschützt; null ohne Daten. */
+  anlage: string | null;
   fuellProzent: number | null;
   /** „höchste Spitze 2026 · 05.10. 20:15" — Abrechnungszeitraum + Zeitpunkt der Spitze; null ohne Daten. */
   wann: string | null;
@@ -246,17 +248,26 @@ function fmtWann(iso: string | null): string | null {
   return `${datum} ${zeit}`;
 }
 
+/**
+ * Review R2 (Pixel): den Anlagennamen nicht zerreißen — das LETZTE Leerzeichen durch ein
+ * geschütztes ersetzen, damit ein angehängtes Wort/Zahl („Halle 1") nicht allein umbricht.
+ * Nur das letzte Leerzeichen, damit lange Namen trotzdem umbrechen können (kein Überlauf).
+ */
+function nameZusammen(name: string): string {
+  return name.replace(/ (\S+)$/u, ' $1');
+}
+
 function lastspitzeKachel(s: PortfolioKpi['lastspitze']): SpitzeKachel {
   // Review PR3 §1: die Spitze bezieht sich auf den laufenden ABRECHNUNGSZEITRAUM
   // (Leistungspreis-Basis), nicht auf einen Kalendermonat — `zeitraum` ist das Label.
   const raum = s.zeitraum ?? null;
   if (s.kw == null) {
-    return { wert: STRICH, einheit: '', leer: true, satz: raum ? `keine Lastdaten · ${raum}` : 'keine Lastdaten', fuellProzent: null, wann: null };
+    return { wert: STRICH, einheit: '', leer: true, satz: raum ? `keine Lastdaten · ${raum}` : 'keine Lastdaten', anlage: null, fuellProzent: null, wann: null };
   }
   // Review R2 §B3: die Portfolio-Lastspitze ist die höchste Spitze EINER Anlage samt DEREN vereinbarter Leistung —
-  // die Anlage benennen, sonst mischt die Kachel Einzelspitze und Einzel-Vereinbarung ununterscheidbar.
+  // die Anlage benennen, sonst mischt die Kachel Einzelspitze und Einzel-Vereinbarung ununterscheidbar. Die Anlage
+  // steht in EIGENER Zeile (Pixel-Review R2) und ihr Name bleibt gegen Umbruch geschützt, damit „Halle 1" zusammenbleibt.
   const grund = s.vereinbart_kw != null ? `von ${fmtNum(s.vereinbart_kw, '', 1)} kW vereinbart` : 'gemessene Spitze';
-  const satz = s.anlage ? `${grund} · ${s.anlage}` : grund;
   const zeit = fmtWann(s.zeitpunkt);
   const wann = raum ? (zeit ? `höchste Spitze ${raum} · ${zeit}` : `höchste Spitze ${raum}`) : zeit;
   return {
@@ -264,7 +275,8 @@ function lastspitzeKachel(s: PortfolioKpi['lastspitze']): SpitzeKachel {
     wert: fmtNum(s.kw, '', 1),
     einheit: 'kW',
     leer: false,
-    satz,
+    satz: grund,
+    anlage: s.anlage ? nameZusammen(s.anlage) : null,
     fuellProzent: s.anteil_prozent == null ? null : Math.min(100, Math.max(0, s.anteil_prozent)),
     wann,
   };

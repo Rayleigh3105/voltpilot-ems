@@ -49,9 +49,11 @@ describe('portfolioKacheln', () => {
     expect(r.kosten.trend).toMatchObject({ richtung: 'rauf', prozent: '2' });
     expect(r.kosten.satz).toBe('aus Tarif · September 2026');
 
-    // Review R2 §B4: gemessene kW mit 1 Nachkommastelle (AP-08). §B3: die Kachel nennt die Anlage.
+    // Review R2 §B4: gemessene kW mit 1 Nachkommastelle (AP-08). §B3: die Kachel nennt die Anlage (eigene Zeile).
     expect(r.lastspitze).toMatchObject({ wert: '412,0', einheit: 'kW', leer: false, fuellProzent: 75 });
-    expect(r.lastspitze.satz).toBe('von 550,0 kW vereinbart · Werk Ahrenberg – Halle 1');
+    expect(r.lastspitze.satz).toBe('von 550,0 kW vereinbart');
+    // Pixel-Review R2: Anlage in eigener Zeile, letzter Namensteil gegen Umbruch geschützt („Halle 1").
+    expect(r.lastspitze.anlage).toBe('Werk Ahrenberg – Halle 1');
     // Review PR3 §1: Abrechnungszeitraum + Zeitpunkt der Spitze (Europe/Berlin: 18:15 UTC → 20:15).
     expect(r.lastspitze.wann).toBe('höchste Spitze 2026 · 05.10. 20:15');
 
@@ -77,7 +79,7 @@ describe('portfolioKacheln', () => {
     );
     expect(r.verbrauch).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'noch keine Ablesung', trend: null });
     expect(r.kosten).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'kein Tarif hinterlegt', trend: null });
-    expect(r.lastspitze).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'keine Lastdaten', fuellProzent: null, wann: null });
+    expect(r.lastspitze).toMatchObject({ wert: '–', einheit: '', leer: true, satz: 'keine Lastdaten', anlage: null, fuellProzent: null, wann: null });
     expect(r.datenlage).toBeNull();
     expect(r.leit).toBeNull();
   });
@@ -126,7 +128,8 @@ describe('portfolioKacheln', () => {
       kpi({ lastspitze: { kw: 300, vereinbart_kw: null, anteil_prozent: null, anlage: 'A', zeitpunkt: null, zeitraum: '2026' } }),
     );
     expect(r.lastspitze.wert).toBe('300,0');
-    expect(r.lastspitze.satz).toBe('gemessene Spitze · A');
+    expect(r.lastspitze.satz).toBe('gemessene Spitze');
+    expect(r.lastspitze.anlage).toBe('A');
     expect(r.lastspitze.fuellProzent).toBeNull();
     // Ohne Zeitpunkt bleibt nur der Abrechnungszeitraum.
     expect(r.lastspitze.wann).toBe('höchste Spitze 2026');

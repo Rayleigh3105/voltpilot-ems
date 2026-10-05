@@ -82,6 +82,8 @@
   flex-direction: column;
   gap: var(--vp-space-2, 8px);
   margin-top: var(--vp-space-4, 16px);
+  /* Pixel-Review R2: nicht am Kachelraster kleben - derselbe Abstand wie zwischen den Kacheln (`.vp-pk-raster` gap). */
+  margin-bottom: var(--vp-c-space-3, 12px);
   min-width: 0;
 }
 

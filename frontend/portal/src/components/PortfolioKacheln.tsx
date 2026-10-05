@@ -104,6 +104,8 @@ function Spitze({ kachel }: { kachel: SpitzeKachel }) {
         </span>
       )}
       <p className="vp-k-sub">{kachel.satz}</p>
+      {/* Review R2 §B3 (Pixel): die Anlage in eigener Zeile, Name gegen Umbruch geschützt. */}
+      {kachel.anlage && <p className="vp-k-sub vp-pk-anlage">{kachel.anlage}</p>}
       {/* Review PR3 §1: höchste Spitze im Abrechnungszeitraum, mit Zeitpunkt. */}
       {kachel.wann && <p className="vp-k-sub">{kachel.wann}</p>}
     </Kachel>
