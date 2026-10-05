@@ -42,21 +42,30 @@ async function ablegen(page: Page, name: string) {
   await quellen.screenshot({ path: join(BILDER, `${name}.png`) });
 }
 
+// Je Lage EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): die Bühne lädt
+// je Aufruf rund 745 Module einzeln vom Dev-Server, unter vier Workern 9–13 s — drei Aufrufe in einem Fall sprengten
+// die 30 s (Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind dieselben wie im früheren Sammelfall.
 for (const breite of [375, 1440]) {
-  test(`AP-15 IP-26 · Steuerquelle bei ${breite} px: in einer Anlage mit Gemeinsamer Steuerung vor dem Scharfschalten der Knopf, scharf Grund und Weg`, async ({ page }) => {
+  test(`AP-15 IP-26 · Steuerquelle bei ${breite} px: ohne Gemeinsame Steuerung steht der Satz von heute`, async ({ page }) => {
     await oeffne(page, breite, null);
     const dq1 = page.locator('.vp-box-quellen li').filter({ hasText: 'DQ-1' });
     await expect(dq1).toContainText(BESTAND);
     await expect(dq1.getByRole('button', { name: 'Zuständige Box wechseln' })).toHaveCount(0);
     await ablegen(page, `vorher-${breite}`);
+  });
 
+  test(`AP-15 IP-26 · Steuerquelle bei ${breite} px: in einer Anlage mit Gemeinsamer Steuerung vor dem Scharfschalten der Knopf`, async ({ page }) => {
     await oeffne(page, breite, 'beobachtet');
+    const dq1 = page.locator('.vp-box-quellen li').filter({ hasText: 'DQ-1' });
     await expect(dq1.getByRole('button', { name: 'Zuständige Box wechseln' })).toHaveCount(1);
     await expect(dq1).not.toContainText(BESTAND);
     await expect(page.getByTestId('steuerquelle-weg')).toHaveCount(0);
     await ablegen(page, `s1-${breite}`);
+  });
 
+  test(`AP-15 IP-26 · Steuerquelle bei ${breite} px: scharf Grund und Weg`, async ({ page }) => {
     await oeffne(page, breite, 'anteile_aktiv');
+    const dq1 = page.locator('.vp-box-quellen li').filter({ hasText: 'DQ-1' });
     await expect(dq1.getByTestId('steuerquelle-weg')).toHaveText(WEG);
     await expect(dq1).not.toContainText(BESTAND);
     await expect(dq1.getByRole('button', { name: 'Zuständige Box wechseln' })).toHaveCount(0);

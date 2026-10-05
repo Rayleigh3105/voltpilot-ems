@@ -250,7 +250,10 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
-  test('Ü8 · Einstiege auf der Standort-Übersicht führen zu „Berichte/Kennzahlen dieses Standorts“ — der Betriebskunde bekommt keinen', async ({ page }) => {
+  // Ü8 in drei Fällen mit je EINEM Aufruf der Bühne, der Kennzahlen-Fall mit zwei (Standort und das Lesezeichen des
+  // Unternehmens im Vergleich) — Entscheid firstmate gm-e2e-mehrfachaufruf = A: vier Aufrufe in einem Fall sprengten
+  // unter vier Workern die 30 s (Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind dieselben.
+  test('Ü8 · Einstiege auf der Standort-Übersicht führen zu „Berichte dieses Standorts“ (375 px)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 375, AM_20_11);
     await expect(page.getByTestId('einstieg-berichte')).toBeVisible();
     const m = await messe(page);
@@ -272,7 +275,9 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte\/BR-2026-0001$/);
     await page.getByRole('button', { name: 'Berichte dieses Standorts' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte$/);
+  });
 
+  test('Ü8 · Einstiege auf der Standort-Übersicht führen zu „Kennzahlen dieses Standorts“; das Lesezeichen des Unternehmens gilt (1440 px)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440, AM_20_11);
     await page.getByTestId('einstieg-kennzahlen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/kennzahlen$/);
@@ -290,7 +295,9 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     expect(u.route).toBe('#/portfolio/kennzahlen');
     expect(u.titel).toBe('Kennzahlen');
     expect(await page.locator('[data-testid="kennzahl-karte"]').count()).toBeGreaterThan(amStandort);
+  });
 
+  test('Ü8 · der Betriebskunde bekommt keine Einstiege (375 px)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&messen=bestand&ansicht=werk', 375, AM_20_11);
     const betrieb = await messe(page);
     ohneQuerlauf(betrieb, 'betriebskunde-werk-375');
@@ -320,11 +327,19 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 });
 
 
+// Je Adresse EIN Fall (Entscheid firstmate gm-e2e-mehrfachaufruf = A): sieben Aufrufe in einem Fall sprengten unter
+// vier Workern auch die 90 s von test.slow (Gesamtlauf mispel 05.10.2026; je Aufruf ~745 Module, 9–13 s). Ein alter
+// Direktlink braucht die Übersicht als Vergleichstext — zwei Aufrufe, darum behält NUR dieser Fall test.slow.
 for (const breite of [1440, 375]) {
-  test(`O18 · Betriebskunde bei ${breite} px: keine neuen Standort-Reiter; alte AP-13-Direktlinks landen auf der Übersicht`, async ({ page }) => {
-    test.slow(); // sieben Adressen nacheinander, jede lädt die ganze Bühne
-    let uebersichtText = '';
-    for (const bereich of ['', '-gebaeude', '-aufbau', '-anlagen', '-boxen', '-kennzahlen', '-berichte']) {
+  for (const bereich of ['', '-gebaeude', '-aufbau', '-anlagen', '-boxen', '-kennzahlen', '-berichte']) {
+    const was = bereich ? `der alte AP-13-Direktlink „werk${bereich}“ landet auf der Übersicht` : 'die Übersicht';
+    test(`O18 · Betriebskunde bei ${breite} px: keine neuen Standort-Reiter; ${was}`, async ({ page }) => {
+      let uebersichtText = '';
+      if (bereich) {
+        test.slow(); // zwei Aufrufe: die Übersicht als Vergleich, dann der alte Direktlink
+        await oeffne(page, 'bild=unternehmen&messen=bestand&ansicht=werk', breite);
+        uebersichtText = (await messe(page)).text;
+      }
       await oeffne(page, `bild=unternehmen&messen=bestand&ansicht=werk${bereich}`, breite);
       const m = await messe(page);
       ohneQuerlauf(m, `betrieb${bereich}-${breite}`);
@@ -336,6 +351,6 @@ for (const breite of [1440, 375]) {
       expect(m.einstiege).toEqual([]);
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);
-    }
-  });
+    });
+  }
 }
