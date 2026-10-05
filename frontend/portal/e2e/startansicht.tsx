@@ -62,6 +62,7 @@ import {
 import { EbenenTabs } from '../src/components/EbenenTabs';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { consumersApi } from '../src/consumers/consumersApi';
+import { abgleichApi } from '../src/mispelAbgleich';
 import { healthBadge } from '../src/health';
 import {
   anlageRoute,
@@ -108,6 +109,7 @@ import {
   ms10,
   MS_IDS,
   ohneVerteilung,
+  ohneZaehlerrolle,
   protokollMs06,
   protokollMs10,
   prozesseAhrenberg,
@@ -1155,6 +1157,12 @@ Object.assign(api, {
   siteRuleEvents: nichtGestellt,
   suggestionStates: nichtGestellt,
 });
+// Die Messstellen-Seite liest seit MiSpeL MP-15 (#1346) auch den MSB-Abgleich - über ein eigenes Objekt neben
+// `api`. Ahrenberg hat keine Zählerrolle: dieselbe Antwort wie der Server, die Karte erscheint nicht. Ohne diese
+// Zeile ging der Aufruf echt an localhost:8090 (Konsolenfehler, weg.spec rot im Gesamtlauf mispel 05.10.2026).
+Object.assign(abgleichApi, {
+  messstelle: async (id: string) => ohneZaehlerrolle(id === MS_IDS.ms06 ? ms06() : ms10()),
+});
 Object.assign(consumersApi, {
   options: async () => ({ types: [], signals: [], intents: [], hasStorage: false, reportedSources: [] }),
   list: async () => [],
@@ -1182,6 +1190,9 @@ if (rechteAnsicht && params.get('person') === 'MD') {
     prices: ohneAntwortDerMomentaufnahme,
     consumerSchedule: ohneAntwortDerMomentaufnahme,
     scene: ohneAntwortDerMomentaufnahme,
+    // Seit MiSpeL MP-41a (#1359) liest die Steuerung auch die Ladepunkte - derselbe Fall, in WebKit wieder als
+    // Seitenfehler (Gesamtlauf mispel 05.10.2026).
+    ladepunkte: ohneAntwortDerMomentaufnahme,
   });
   window.history.replaceState(null, '', hashForRoute(anlageRoute(an1, 'steuerung')));
 }

@@ -9,6 +9,12 @@ import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../s
 import { GELD_UNTERSEITEN, ohneGeld } from '../anlageGeld';
 import { periodLabel } from '../anlage';
 import { readFace, rememberFace } from '../anlageFace';
+// Die zwei Stücke, die das Cockpit nachlädt (Bühne in `CockpitHero`, Kacheln über
+// `KachelStueck`), schon beim Sammeln übersetzen: sonst bezahlt der Bestandsschutz-
+// Fall ihre erste Übersetzung innerhalb seiner `waitFor`-Fristen. `lazy()` zeigt
+// trotzdem erst den Platzhalter - das Modul ist nur schon da.
+import '../components/EnergieBuehne';
+import '../components/kacheln/CockpitKacheln';
 
 /**
  * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
@@ -341,6 +347,9 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy());
   // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter.
   await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull());
+  // Die Kacheln sind ein ZWEITES Stück (`KachelStueck`, main 1fec2bc1c): auch auf ihr
+  // Bild warten - der Platzhalter `vp-k-platz` mit aria-hidden ist ihr Suspense-Ersatz.
+  await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull());
   await bestandSnapshot('cockpit', view);
 });
 

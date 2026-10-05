@@ -1,7 +1,7 @@
 import { test, expect as baseExpect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ms06, MS_IDS, prozesseAhrenberg, kostenstellenAhrenberg, protokollMs06, prozesseVon, verteilungVon } from '../src/test/messstelleSeiteFixtures';
+import { ms06, MS_IDS, ohneZaehlerrolle, prozesseAhrenberg, kostenstellenAhrenberg, protokollMs06, prozesseVon, verteilungVon } from '../src/test/messstelleSeiteFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
@@ -52,6 +52,8 @@ async function cloud(page: Page, jetzt = WECHSEL_JETZT) {
     if (p === '/api/v1/unternehmen/kostenstellen') return route.fulfill(json({ kostenstellen: kostenstellenAhrenberg(), stichtag: null }));
     if (p.endsWith('/prozesse')) return route.fulfill(json(prozesseVon(ms06())));
     if (p.endsWith('/verteilung')) return route.fulfill(json(verteilungVon(ms06())));
+    // MiSpeL MP-15 (#1346): die Messstellen-Seite liest den MSB-Abgleich; MS-06 hat keine Zählerrolle.
+    if (p.endsWith('/msb-abgleich')) return route.fulfill(json(ohneZaehlerrolle(ms06())));
     if (p.endsWith('/aenderungen')) {
       const protokoll = protokollMs06();
       if (nachher) protokoll.eintraege.unshift({ id: 'messstelle:wechsel', quelle: 'messstelle', art: 'zaehler_gewechselt',

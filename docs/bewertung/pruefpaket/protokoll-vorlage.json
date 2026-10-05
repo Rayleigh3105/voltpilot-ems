@@ -4,7 +4,7 @@
  "lesehilfe": "Vorlage für die Lesart der Fachperson (FP1). Je Norm-Zeile name, datum (JJJJ-MM-TT), lesart (traegt, anmerkung oder widerspruch) und text; AP-20 IP-12 übernimmt sie in das Feld fachperson der Matrix. Eine Zeile ohne Lesart bleibt offen. Ein Widerspruch wird eine Lücke (FP3). Die Bestätigung trägt nur die Zeilen, die gelesen sind (FP4).",
  "pruefpaket": {
   "datei": "pruefpaket.md",
-  "sha256": "71ce92ee9b673151ad3895bd931dd61119dee78f5f6bbc5c7f5ab57eb41e1d1b"
+  "sha256": "f3e9c323f9a8c51cd60c48e2fefe19dbad15f52ec0bbbddbdb73b133307c42d4"
  },
  "matrix_fassung": 1,
  "normfassung": {
