@@ -121,7 +121,14 @@ export function EnergiemanagementAufgaben({
               .map((a) => {
                 const spaeter = E.kuenftige(stand.zuordnungen, a.aufgabe, stand.tag);
                 return (
-                  <li key={a.aufgabe} className="vp-em-aufgabe" data-testid={`aufgabe-${a.aufgabe}`}>
+                  <li
+                    key={a.aufgabe}
+                    className="vp-em-aufgabe"
+                    data-testid={`aufgabe-${a.aufgabe}`}
+                    // Konzept Wiedervorlage w1: „Niemand zuständig“ mit „Aufgabe festlegen“ öffnet genau diese Aufgabe ohne Person.
+                    data-entscheid={a.satz ? 'aufgabe_festlegen' : undefined}
+                    data-entscheid-kennzeichen={a.aufgabe}
+                  >
                     <h3>{a.wort}</h3>
                     {a.satz && (
                       <p className="vp-ez-satz" data-testid="aufgabe-ohne-person">
@@ -135,7 +142,7 @@ export function EnergiemanagementAufgaben({
                       <Zuordnung key={z.id} z={z} tag={stand.tag} onPerson={onPerson} onBeenden={null} />
                     ))}
                     {a.satz && darf && (
-                      <Button variant="ghost" size="sm" onClick={() => setZuordnen({ aufgabe: a.aufgabe })} data-testid="aufgabe-zeile-zuordnen">
+                      <Button variant="ghost" size="sm" onClick={() => setZuordnen({ aufgabe: a.aufgabe })} data-testid="aufgabe-zeile-zuordnen" data-entscheid-schritt>
                         {E.KNOPF_ZUORDNEN}
                       </Button>
                     )}

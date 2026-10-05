@@ -9,6 +9,7 @@ import {
   SPALTEN,
   TITEL,
   VERGLEICHSQUELLE,
+  ablesungsZiele,
   filterAktiv,
   filterOptionen,
   kopfZeile,
@@ -77,6 +78,7 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
       },
       zustand: 'aktiv',
       beobachtung: { text: 'Liefert Daten', ton: 'gut' },
+      ablesung: null,
       // Der Zählerstand der Hauptgröße steht nicht in der Referenzdatei — „—“, nie eine 0.
       wert: null,
       nebenwerte: [{ groesse: 'Wirkleistung', text: '312,4 kW', zeit: '10:15 Uhr' }],
@@ -169,6 +171,28 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
     expect(zeileWoerter(z, kontext(a)).quelle).toEqual({ art: 'ablesung', text: 'Ablesungen · zuletzt am 01.09.2026' });
     z.quelle = { ...z.quelle, ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: null } };
     expect(zeileWoerter(z, kontext(a)).quelle).toEqual({ art: 'ablesung', text: 'Ablesungen' });
+  });
+
+  it('Wiedervorlage w1, Entscheid 7: „die Ablesung fehlt“ ist genau die Aussage des Servers an einer aktiven Messstelle aus Ablesungen', () => {
+    const a = ahrenbergRegister();
+    const z = structuredClone(zeile(a, 'MS-21'));
+    z.quelle = { stand: 'ablesung', fuehrend: null, davor: null, vergleichsquellen: 0,
+      ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-10-01T00:00:00+02:00' } };
+    z.lebenszyklus = 'aktiv';
+    z.beobachtung = { ...z.beobachtung!, zustand: 'liefert_nicht_seit', text: 'Ablesung überfällig seit 01.12.2026' };
+    const fehlt = zeileWoerter(z, kontext(a));
+    expect(fehlt.ablesung).toBe('fehlt');
+    const abgelesen = zeileWoerter({ ...z, id: 'ms-21b', beobachtung: { ...z.beobachtung!, zustand: 'liefert', text: 'Abgelesen am 01.10.2026' } }, kontext(a));
+    expect(abgelesen.ablesung).toBe('abgelesen');
+    // Angehalten oder aus einer gebundenen Quelle: keine Messstelle zum Ablesen.
+    expect(zeileWoerter({ ...z, lebenszyklus: 'angehalten' }, kontext(a)).ablesung).toBeNull();
+    const gebunden = zeileWoerter(zeile(a, 'MS-01'), kontext(a));
+    expect(gebunden.ablesung).toBeNull();
+    // Das Ziel von „Ablesungen eintragen“: was fehlt; fehlt nichts (die Runde ist erst in den nächsten Tagen fällig), die
+    // Messstellen aus Ablesungen; nie eine gebundene.
+    expect([...ablesungsZiele([gebunden, abgelesen, fehlt])]).toEqual([fehlt.id]);
+    expect([...ablesungsZiele([gebunden, abgelesen])]).toEqual(['ms-21b']);
+    expect([...ablesungsZiele([gebunden])]).toEqual([]);
   });
 
   it('der Zustand: Entwurf mit dem, was fehlt · angehalten seit · Archiviert am — und „liefert nicht seit“ ist ein Hinweis, kein Fehler', () => {

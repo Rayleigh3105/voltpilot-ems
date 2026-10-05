@@ -104,6 +104,24 @@ public class BezugsbasisPflegeRepository {
         return true;
     }
 
+    /** Ein „geprüft, bleibt“ (F5): Basis, Kennzahl, Fassung, Zeitpunkt der Handlung und Konto. */
+    public record Bestaetigung(UUID basis, String kennzeichen, UUID kennzahlId, int fassung, Instant am,
+            String actorName) {}
+
+    /**
+     * Konzept Wiedervorlage w1, „Zuletzt erledigt“: die „geprüft, bleibt“ des Kundenbereichs seit {@code ab}, die
+     * jüngste zuerst. Den Zaun (lesbare Kennzahl) zieht der Dienst.
+     */
+    public List<Bestaetigung> bestaetigungen(Instant ab) {
+        return jdbc.query("SELECT a.bezugsbasis_id, b.kennzeichen, b.kennzahl_id, a.fassung, a.created_at, a.actor_name "
+                + "FROM bezugsbasis_aenderung a JOIN bezugsbasis b ON b.id = a.bezugsbasis_id AND b.tenant_id = a.tenant_id "
+                + "WHERE a.art = '" + GUELTIG_BLEIBT + "' AND a.created_at >= ? ORDER BY a.created_at DESC",
+                (rs, n) -> new Bestaetigung(rs.getObject("bezugsbasis_id", UUID.class), rs.getString("kennzeichen"),
+                        rs.getObject("kennzahl_id", UUID.class), rs.getInt("fassung"),
+                        rs.getTimestamp("created_at").toInstant(), rs.getString("actor_name")),
+                Timestamp.from(ab));
+    }
+
     /** Protokoll {@code bezugsbasis_aenderung}: nur anhängen; {@code created_at} ist der Zeitpunkt der Handlung. */
     public void protokoll(UUID tenant, UUID basis, Integer fassung, String art, Map<String, Object> alt,
             Map<String, Object> neu, String begruendung, Instant am, ProtokollAkteur wer) {

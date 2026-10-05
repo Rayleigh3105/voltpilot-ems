@@ -46,7 +46,7 @@ export function EnergiemanagementManagementbewertung({
   }, []);
   return (
     <section className="vp-ez-karte" aria-label={UEMS_MANAGEMENTBEWERTUNG} data-testid="managementbewertung-register">
-      <div className="vp-em-kopf">
+      <div className="vp-em-kopf" data-entscheid="managementbewertung">
         <h2>{UEMS_MANAGEMENTBEWERTUNG}</h2>
         <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
           <Button onClick={() => setAnlegen(true)} data-testid="mb-anlegen">

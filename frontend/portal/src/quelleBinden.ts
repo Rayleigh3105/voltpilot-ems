@@ -385,7 +385,7 @@ export interface QuelleGroesseKarte {
   hauptgroesse: boolean;
   /** Die führende Quelle und jede Vergleichsquelle — NEBENEINANDER (E3), führend zuerst. */
   werte: QuelleWort[];
-  /** Statt einer führenden Quelle: der Leerzustand. */
+  /** Statt einer führenden Quelle: der Leerzustand oder, bei der Hauptgröße, woher die Werte sonst kommen (Ablesungen). */
   leerFuehrend: string | null;
   /** Statt einer Vergleichsquelle: der Leerzustand. */
   leerVergleich: string | null;
@@ -462,11 +462,16 @@ function historieVon(g: MessstelleQuelleGroesse, alle: readonly MessstelleQuelle
  * Die Quelle-Karten der Messstelle — je Größe eine (Hauptgröße zuerst). Sie zeigt, was die führende
  * und was jede Vergleichsquelle sagt, NEBENEINANDER und ohne jede Bewertung (E3), dazu die Historie
  * der führenden Quellen mit jeder Lücke.
+ *
+ * `ablesung`: der Satz des Registers, wenn die Werte der Hauptgröße aus Ablesungen kommen („Ablesungen · zuletzt am
+ * 01.10.2026“, AP-09 IP-8). Die Ablesungs-Quelle hat kein Gerät und steht nicht in dieser Liste; ohne den Satz hieße es
+ * über den Ablesungen „Keine Datenquelle. Diese Messstelle bekommt noch keine Werte.“
  */
 export function quelleKarte(
   liste: MessstelleQuellenListe,
   jetzt: string,
   boxen: ReadonlyMap<string, UemsDatenquelle> = OHNE_BOXEN,
+  ablesung: string | null = null,
 ): QuelleGroesseKarte[] {
   return liste.groessen.map((g) => {
     const groesse: Groesse = { groesse: g.groesse, richtung: g.richtung, einheit: g.einheit, wertart: g.wertart };
@@ -477,7 +482,7 @@ export function quelleKarte(
       groesse,
       hauptgroesse: g.hauptgroesse,
       werte,
-      leerFuehrend: g.fuehrend ? null : KEINE_DATENQUELLE,
+      leerFuehrend: g.fuehrend ? null : g.hauptgroesse && ablesung ? ablesung : KEINE_DATENQUELLE,
       leerVergleich: g.vergleich.length > 0 ? null : KEINE_VERGLEICHSQUELLE,
       historie: historieVon(g, liste.quellen, jetzt),
       fuehrendMoeglich: g.fuehrend === null && g.lebenszyklus !== 'archiviert',

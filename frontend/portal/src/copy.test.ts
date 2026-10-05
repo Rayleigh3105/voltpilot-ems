@@ -1950,6 +1950,7 @@ const KENNZAHL_BESTAND: string[] = [
   'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
   'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
+  'wiedervorlage.ts', // neu: eine Bezugsbasis ist die Vergleichsgrundlage einer Kennzahl (Konzept Wiedervorlage w1)
 ];
 
 /**
@@ -3276,7 +3277,7 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'Bezugsbasis BB-0002, Fassung 2: Überprüfung seit 457 Tagen fällig.',
     'Zurzeit ist nichts fällig.',
     'Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.',
-    'Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen.',
+    'Energiemanagement: 8 überfällig · 1 in den nächsten 30 Tagen.',
     UEMS_NOCH_NICHTS_FESTGEHALTEN,
     'In meinem Namen festgehalten: 11 Einträge.',
     'Was VoltPilot führt — was bei Ihnen liegt.',

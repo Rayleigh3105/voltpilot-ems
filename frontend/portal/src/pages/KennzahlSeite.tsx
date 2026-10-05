@@ -22,6 +22,7 @@ import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog
 import { Fehlergrenze } from '../components/Fehlergrenze';
 import { ErrorState, Skeleton } from '../components/States';
 import { kannBezugsbasis, REITER_BEZUGSBASIS, REITER_KENNZAHL } from '../bezugsbasisAnlegen';
+import { entscheidAus } from '../entscheid';
 import { VERGLEICH_REITER } from '../bezugsbasisVergleich';
 import * as E from '../kennzahlAendern';
 import { ablehnungSatz, KNOPF_KOPIEREN } from '../kennzahlAnlegen';
@@ -197,7 +198,10 @@ export function KennzahlSeite({
 
   // AP-17 IP-9/IP-20: die Reiter „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ (nur Quotient und Zusammenfassung, B2) und
   // die Basis-Zeile im Kopf; der Vergleich lädt erst, wenn er offen ist.
-  const [reiter, setReiter] = useState<'kennzahl' | 'bezugsbasis' | 'vergleich'>('kennzahl');
+  // Konzept Wiedervorlage w1: „Bestätigen oder neu fassen“ öffnet die Kennzahl gleich im Reiter „Bezugsbasis“.
+  const [reiter, setReiter] = useState<'kennzahl' | 'bezugsbasis' | 'vergleich'>(() =>
+    entscheidAus(window.location.hash)?.art === 'bezugsbasis_ueberpruefung' ? 'bezugsbasis' : 'kennzahl',
+  );
   const [bbVersuch, setBbVersuch] = useState(0);
   const bbAn = stamm !== null && kannBezugsbasis(stamm.kennzahl);
   const bbLage = useBezugsbasis(id, bbAn, versuch + bbVersuch);

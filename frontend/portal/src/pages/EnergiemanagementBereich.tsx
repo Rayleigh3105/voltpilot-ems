@@ -40,8 +40,9 @@ import './Verbesserung.css';
  * IP-13: Reiter „Aufgaben“ (mit „Wer ist wofür verantwortlich“ als eigener Ansicht darunter, `…/verantwortung`) und die
  * Seite einer Person; wer die Rolle „Einsicht“ hat, liest im Kopf den Rollen-Satz und an jedem Schreib-Knopf den Leer-Satz.
  * IP-20: Reiter „Audits“ (Auditprogramm) und „Feststellungen“, die Seiten eines Audits und einer Feststellung.
- * IP-24: Reiter „Wiedervorlage“ (an zweiter Stelle, §6.3; `onSprung` führt jede Zeile auf ihre Seite, auch außerhalb
- * des Bereichs) und „Managementbewertung“ (je Jahr) mit der Seite einer Managementbewertung.
+ * IP-24: Reiter „Wiedervorlage“ (an zweiter Stelle, §6.3) und „Managementbewertung“ (je Jahr) mit der Seite einer
+ * Managementbewertung. Seit dem Konzept Wiedervorlage w1 ist die Wiedervorlage eine Arbeitsliste mit eigenem Kopf
+ * (`EnergiemanagementWiedervorlage`); ihre Schritte springen mit offenem Entscheid auch außerhalb des Bereichs.
  */
 export function EnergiemanagementBereich({
   reiter,
@@ -71,7 +72,7 @@ export function EnergiemanagementBereich({
   onAudit?: (id: string) => void;
   onFeststellung?: (id: string) => void;
   onManagementbewertung?: (kennung: string) => void;
-  /** Der Sprung einer Wiedervorlage-Zeile (WV3) — auch auf Seiten außerhalb des Bereichs; ohne ihn springt keine Zeile. */
+  /** Der Sprung einer Verzeichnis-Zeile auf ihre Seite, auch außerhalb des Bereichs. */
   onSprung?: (ziel: Route) => void;
   /**
    * K1 (D2): die Reiter stehen schon über der Seite — in der Gruppe „Nachweisen“, die Wiedervorlage in der Übersicht
@@ -92,6 +93,26 @@ export function EnergiemanagementBereich({
   if (reiter === 'zuschnitt') return <ZuschnittHilfe onZurueck={() => onReiter('verzeichnis')} />;
   // „Wer ist wofür verantwortlich“ steht unter dem Reiter „Aufgaben“ (§6.3 nennt sieben Reiter, diese Ansicht ist keiner).
   const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter;
+  const reiterLeiste = !reiterOben && (
+    <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
+      {E.REITER.map((r) => (
+        <button
+          key={r.key}
+          type="button"
+          role="tab"
+          aria-selected={aktiv === r.key}
+          className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
+          data-testid={`energiemanagement-reiter-${r.key}`}
+          onClick={() => onReiter(r.key)}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+  // Konzept Wiedervorlage w1: die Wiedervorlage ist eine eigene Seite unter ihrem eigenen Namen (wie Reiter und Link),
+  // ohne den Kopf des Bereichs und ohne Begriffs-Chips; ihre Sätze stehen einmal am Fuß, deshalb außerhalb des Bereichs.
+  if (reiter === 'wiedervorlage') return <EnergiemanagementWiedervorlage reiter={reiterLeiste || undefined} />;
   return (
     <GrenzSatzBereich>
       <div className="vp-ez" data-testid="energiemanagement-bereich">
@@ -108,23 +129,7 @@ export function EnergiemanagementBereich({
             {SAETZE.einsicht_rolle}
           </p>
         )}
-        {!reiterOben && (
-          <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
-            {E.REITER.map((r) => (
-              <button
-                key={r.key}
-                type="button"
-                role="tab"
-                aria-selected={aktiv === r.key}
-                className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
-                data-testid={`energiemanagement-reiter-${r.key}`}
-                onClick={() => onReiter(r.key)}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {reiterLeiste}
         {reiter === 'dokumente' ? (
           <DokumenteRegister onOeffnen={onDokument} />
         ) : reiter === 'aufgaben' ? (
@@ -135,8 +140,6 @@ export function EnergiemanagementBereich({
           <EnergiemanagementAudits onAudit={zumAudit} />
         ) : reiter === 'feststellungen' ? (
           <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
-        ) : reiter === 'wiedervorlage' ? (
-          <EnergiemanagementWiedervorlage onSprung={onSprung} />
         ) : reiter === 'managementbewertung' ? (
           <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
         ) : (

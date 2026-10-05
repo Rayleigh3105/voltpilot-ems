@@ -312,6 +312,15 @@ describe('UEMS AP-04 IP-14 · die Quelle-Karte: beide Werte nebeneinander (E3, A
     expect(karte.fuehrendMoeglich).toBe(true);
   });
 
+  it('kommen die Werte aus Ablesungen, sagt die Hauptgröße das wie das Register, nie „Keine Datenquelle“', () => {
+    const liste = quellenMs01();
+    const ohne = { ...liste, groessen: liste.groessen.map((g) => ({ ...g, fuehrend: null, zeitstrahl: [] })) };
+    const karten = quelleKarte(ohne, JETZT, undefined, 'Ablesungen · zuletzt am 01.10.2026');
+    expect(karten[0].leerFuehrend).toBe('Ablesungen · zuletzt am 01.10.2026');
+    // Die Nebengröße (Wirkleistung) ohne führende Quelle bleibt leer: Ablesungen tragen nur die Hauptgröße.
+    expect(karten.map((k) => k.leerFuehrend)).toEqual(['Ablesungen · zuletzt am 01.10.2026', KEINE_DATENQUELLE]);
+  });
+
   it('die Historie zeigt den Zählerwechsel — und die Lücke bleibt eine eigene, sichtbare Zeile', () => {
     const karte = quelleKarte(quellenMs06(), JETZT_NACH_WECHSEL)[0];
     expect(karte.historie.map((h) => [h.wert, h.zeitraum, h.zustand, h.marke])).toEqual([

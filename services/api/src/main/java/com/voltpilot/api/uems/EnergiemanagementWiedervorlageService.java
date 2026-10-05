@@ -1,8 +1,14 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.web.dto.EnergiemanagementPersonenDto;
+import com.voltpilot.api.web.dto.EnergiemanagementVerzeichnisDto;
+import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Erledigt;
+import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Herleitung;
 import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.NaechsteManagementbewertung;
 import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Wiedervorlage;
 import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Zeile;
+import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Zuletzt;
+import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Zustaendig;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -15,12 +21,15 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 /**
@@ -39,19 +48,56 @@ public class EnergiemanagementWiedervorlageService {
     private static final DateTimeFormatter ICS_TAG = DateTimeFormatter.BASIC_ISO_DATE;
     private static final DateTimeFormatter ICS_ZEIT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
 
+    /**
+     * Konzept Wiedervorlage w1, §5.4: wer eine Frist erledigt, wenn das Objekt keine Person nennt: die Person der
+     * laufenden Aufgabe im Energiemanagement. Die Managementbewertung nennt ihre Person schon aus der Aufgabe.
+     */
+    static final Map<String, String> ART_AUFGABE = Map.ofEntries(
+            Map.entry("dokument_ueberpruefung", "dokumente"),
+            Map.entry("internes_audit", "interne_audits"),
+            Map.entry("managementbewertung", "managementbewertung"),
+            Map.entry("bezugsbasis_ueberpruefung", "bezugsbasen"),
+            Map.entry("bewertung_ueberpruefung", "bewertung_messplanung"),
+            Map.entry("messbedarf_frist", "bewertung_messplanung"),
+            Map.entry("zaehlerablesung", "bewertung_messplanung"),
+            Map.entry("massnahme_termin", "energieziele_massnahmen"),
+            Map.entry("energieziel_bewertung", "energieziele_massnahmen"),
+            Map.entry("abweichung_frist", "energieziele_massnahmen"),
+            Map.entry("bericht_anstoss", "energiemanagement_leiten"));
+
+    /** „Zuletzt erledigt“: so weit zurück liest der Leser, so viele Einträge gibt er höchstens (Konzept w1). */
+    public static final int ZULETZT_TAGE = 90;
+    public static final int ZULETZT_ANZAHL = 5;
+
+    /** Verzeichnis-Arten, die eine Frist beenden oder neu beginnen lassen (außer Dokument-Fassungen einer Vorgabe). */
+    private static final Set<String> ERLEDIGT_ARTEN = Set.of("internes_audit", "wirksamkeit", "energieziel_bewertung",
+            "massnahme_bewertung", "abweichung_abschluss");
+
     private final ObjectProvider<WiedervorlageQuelle> quellen;
     private final ObjectProvider<ManagementbewertungWiedervorlage> managementbewertung;
     private final EnergiemanagementEinstellungRepository einstellung;
     private final UnternehmenRepository unternehmen;
+    private final ObjectProvider<EnergiemanagementPersonenService> personen;
+    private final ObjectProvider<EnergiemanagementVerzeichnisService> verzeichnis;
+    private final ObjectProvider<EnergiemanagementDokumentService> dokumente;
+    private final ObjectProvider<BezugsbasisPflegeService> bezugsbasen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public EnergiemanagementWiedervorlageService(ObjectProvider<WiedervorlageQuelle> quellen,
             ObjectProvider<ManagementbewertungWiedervorlage> managementbewertung,
-            EnergiemanagementEinstellungRepository einstellung, UnternehmenRepository unternehmen) {
+            EnergiemanagementEinstellungRepository einstellung, UnternehmenRepository unternehmen,
+            ObjectProvider<EnergiemanagementPersonenService> personen,
+            ObjectProvider<EnergiemanagementVerzeichnisService> verzeichnis,
+            ObjectProvider<EnergiemanagementDokumentService> dokumente,
+            ObjectProvider<BezugsbasisPflegeService> bezugsbasen) {
         this.quellen = quellen;
         this.managementbewertung = managementbewertung;
         this.einstellung = einstellung;
         this.unternehmen = unternehmen;
+        this.personen = personen;
+        this.verzeichnis = verzeichnis;
+        this.dokumente = dokumente;
+        this.bezugsbasen = bezugsbasen;
     }
 
     /** Für Tests: die Uhr des Abrufs — an ihr hängen Stichtag, Lage und Vermerk. */
@@ -87,11 +133,105 @@ public class EnergiemanagementWiedervorlageService {
             je.computeIfAbsent(schluessel(f.art(), f.kennzeichen(), f.titel(), f.faelligAm().toString()),
                     k -> new ArrayDeque<>()).add(f);
         }
-        List<Zeile> faellig = zeilen((List<Map<String, Object>>) r.get("faellig"), je);
-        List<Zeile> vorschau = zeilen((List<Map<String, Object>>) r.get("vorschau"), je);
+        Zustaendigkeit wer = zustaendigkeit(abruf);
+        List<Zeile> faellig = zeilen((List<Map<String, Object>>) r.get("faellig"), je, wer);
+        List<Zeile> vorschau = zeilen((List<Map<String, Object>>) r.get("vorschau"), je, wer);
+        List<Zeile> spaeter = zeilen((List<Map<String, Object>>) r.get("spaeter"), je, wer);
         return new Wiedervorlage(jetzt, vorschauTage, faellig, vorschau, (int) r.get("anzahl_faellig"),
                 (int) r.get("anzahl_vorschau"), (List<String>) r.get("nicht_in_liste"),
-                EnergiemanagementRegeln.SAETZE.get("verantwortung"), naechsteManagementbewertung(abruf));
+                EnergiemanagementRegeln.SAETZE.get("verantwortung"), naechsteManagementbewertung(abruf), spaeter,
+                (int) r.get("anzahl_ueberfaellig"), (int) r.get("anzahl_naechste"), (int) r.get("anzahl_spaeter"),
+                wer.lesbar());
+    }
+
+    // ------------------------------------------------------------------ Zuständig (Konzept w1, Entscheid 6)
+
+    /**
+     * Am Abruf: je Aufgabe die Person der laufenden Zuordnung, dazu wer der Aufrufer ist (Konto und Person im
+     * Energiemanagement); einmal je Abruf, nicht je Zeile. {@code lesbar}: der Aufrufer liest die Aufgaben überhaupt
+     * (unternehmensweit); sonst kennt der Leser keine Person laut Aufgabe und sagt auch nicht, dass es keine gibt.
+     */
+    private record Zustaendigkeit(Map<String, EnergiemanagementPersonenDto.PersonKurz> aufgabe, String sub,
+            UUID person, String personName, boolean lesbar) {}
+
+    private Zustaendigkeit zustaendigkeit(LocalDate abruf) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        String sub = ProtokollAkteur.aus(auth).map(ProtokollAkteur::sub).orElse(null);
+        var dienst = personen.getIfAvailable();
+        if (dienst == null) return new Zustaendigkeit(Map.of(), sub, null, null, false);
+        // Wer nicht unternehmensweit liest, bekommt vom Dienst keine Aufgabe (nicht einmal die ohne Person).
+        var aufgaben = dienst.aufgaben(abruf).aufgaben();
+        Map<String, EnergiemanagementPersonenDto.PersonKurz> aufgabe = new HashMap<>();
+        for (var a : aufgaben) {
+            if (!a.laufend().isEmpty()) aufgabe.put(a.aufgabe(), a.laufend().get(0).person());
+        }
+        var ich = sub == null ? null : dienst.personen().personen().stream()
+                .filter(p -> p.konto() != null && sub.equals(p.konto().sub())).findFirst().orElse(null);
+        return new Zustaendigkeit(aufgabe, sub, ich == null ? null : ich.id(), ich == null ? null : ich.name(),
+                !aufgaben.isEmpty());
+    }
+
+    /**
+     * Die Person am Objekt geht vor; nennt das Objekt keine (Dokument, Bewertung, Bericht, Messbedarf), die Person der
+     * Aufgabe ({@link #ART_AUFGABE}); die Managementbewertung zählt immer als Aufgabe. Ohne beide: {@code null}.
+     */
+    private static Zustaendig zustaendig(String art, String verantwortlich, WiedervorlageQuelle.Herkunft h,
+            Zustaendigkeit wer) {
+        if (verantwortlich != null && !"managementbewertung".equals(art)) {
+            String konto = h == null ? null : h.verantwortlichSub();
+            boolean ich = konto != null ? konto.equals(wer.sub()) : verantwortlich.equals(wer.personName());
+            return new Zustaendig(verantwortlich, "objekt", ich);
+        }
+        String aufgabe = ART_AUFGABE.get(art);
+        var p = aufgabe == null ? null : wer.aufgabe().get(aufgabe);
+        if (p == null) return null;
+        return new Zustaendig(p.name(), "aufgabe", p.id().equals(wer.person()));
+    }
+
+    // ------------------------------------------------------------------ Zuletzt erledigt (Konzept w1)
+
+    /**
+     * Die letzten Entscheidungen, die eine Frist beenden oder neu beginnen lassen: die Zeilen des Verzeichnisses (mit
+     * den Rechten des Aufrufers) und dazu „geprüft, bleibt“ an Dokumenten und Bezugsbasen, die das Verzeichnis nicht
+     * führt. {@code tage} Tage bis zum Abruf, die jüngste zuerst, höchstens {@code anzahl}.
+     */
+    public Zuletzt zuletzt(int tage, int anzahl) {
+        OffsetDateTime jetzt = OffsetDateTime.ofInstant(uhr.instant(), zone()).truncatedTo(ChronoUnit.MINUTES);
+        LocalDate bis = jetzt.toLocalDate();
+        LocalDate ab = bis.minusDays(tage);
+        var aus = new ArrayList<Erledigt>();
+        for (var g : verzeichnis.getObject().lesen(null, ab, bis, null).gruppen()) {
+            for (var z : g.zeilen()) {
+                if (z.tag() == null || z.tag().isBefore(ab) || z.tag().isAfter(bis) || !erledigt(g.gruppe(), z)) continue;
+                aus.add(new Erledigt(z.art(), g.gruppe(), z.kennzeichen(), z.titel(), z.nr(), z.tag(), z.entschiedenVon(),
+                        z.eingetragenVon()));
+            }
+        }
+        for (var b : dokumente.getObject().geprueftBleibt(ab, bis)) {
+            aus.add(new Erledigt("dokument_geprueft_bleibt", null, b.kennzeichen(), b.titel(), b.fassung(), b.am(),
+                    b.entschiedenVon(), b.eingetragenVon()));
+        }
+        for (var b : bezugsbasen.getObject().bestaetigt(ab, bis)) {
+            aus.add(new Erledigt("bezugsbasis_geprueft_bleibt", null, b.kennzeichen(), "Bezugsbasis " + b.kennzeichen()
+                    + " (" + b.kennzahlKennzeichen() + " " + b.kennzahlName() + ")", b.fassung(), b.am(), null,
+                    b.eingetragenVon()));
+        }
+        aus.sort(Comparator.comparing(Erledigt::am).reversed().thenComparing(Erledigt::kennzeichen));
+        return new Zuletzt(jetzt, tage, aus.size() > anzahl ? List.copyOf(aus.subList(0, anzahl)) : List.copyOf(aus));
+    }
+
+    /**
+     * Zählt eine Zeile des Verzeichnisses als „erledigt“? Eine freigegebene Fassung einer Vorgabe, ein abgeschlossenes
+     * Audit, eine Wirksamkeit, eine Bezugsbasis-Fassung, eine Bewertung eines Ziels oder einer Maßnahme, ein Abschluss
+     * einer Abweichung, der Stand einer energetischen Bewertung oder Managementbewertung und ein Berichtsstand nach einer
+     * Korrektur (Nr. ab 2); keine Kennzahl-Fassung, keine Aufgabe, keine Feststellung, kein Nachweis.
+     */
+    private static boolean erledigt(String gruppe, EnergiemanagementVerzeichnisDto.Zeile z) {
+        if ("vorgabe".equals(EnergiemanagementRegeln.DOKUMENT_ART_KLASSE.get(z.art()))) return true;
+        if ("bezugsbasis_fassung".equals(z.art())) return z.nr() != null;
+        if (ERLEDIGT_ARTEN.contains(z.art())) return true;
+        if (!"berichtsstand".equals(z.art()) || z.nr() == null) return false;
+        return "managementbewertung".equals(gruppe) || "bewertung_messplanung".equals(gruppe) || z.nr() > 1;
     }
 
     /** MG7 mit Herkunft, auch außerhalb des Fensters — aus derselben Quelle wie die Zeile, nie nachgerechnet (WV2). */
@@ -117,7 +257,7 @@ public class EnergiemanagementWiedervorlageService {
     }
 
     /**
-     * E10 = A, WV4: der Kalender-Abzug (RFC 5545) — je Zeile der Wiedervorlage (fällig und Vorschau) ein ganztägiger
+     * E10 = A, WV4: der Kalender-Abzug (RFC 5545), je Zeile der Wiedervorlage (fällig, Vorschau, Jahresplan) ein ganztägiger
      * Termin am Tag, an dem sie fällig ist bzw. wird; Titel „Kennzeichen: Titel“, Beschreibung und Kalender tragen den
      * Stand-Vermerk. Die Zeilen veralten im Kalender des Kunden — der Vermerk sagt es.
      */
@@ -155,22 +295,34 @@ public class EnergiemanagementWiedervorlageService {
         return (String) EnergiemanagementRegeln.satz("kalender_abzug", Map.of("am", DATUM.format(stand))).get("satz");
     }
 
+    /** Seit Vertrag 1.1 trägt der Kalender-Abzug auch den Jahresplan: das Jahr steht im Kalender. */
     private static List<Zeile> alle(Wiedervorlage w) {
         var alle = new ArrayList<Zeile>(w.faellig());
         alle.addAll(w.vorschau());
+        if (w.spaeter() != null) alle.addAll(w.spaeter());
         return alle;
     }
 
-    private static List<Zeile> zeilen(List<Map<String, Object>> aus, Map<List<String>, Deque<WiedervorlageQuelle.Frist>> je) {
+    private static List<Zeile> zeilen(List<Map<String, Object>> aus, Map<List<String>, Deque<WiedervorlageQuelle.Frist>> je,
+            Zustaendigkeit wer) {
         return aus.stream().map(z -> {
             var f = je.get(schluessel((String) z.get("art"), (String) z.get("kennzeichen"), (String) z.get("titel"),
                     (String) z.get("faellig_am"))).poll();
             UUID id = f == null ? null : f.id();
             UUID kennzahl = f == null ? null : f.kennzahlId();
-            return new Zeile((String) z.get("art"), (String) z.get("kennzeichen"), (String) z.get("titel"),
+            var h = f == null ? null : f.herkunft();
+            String art = (String) z.get("art");
+            String verantwortlich = (String) z.get("verantwortlich");
+            return new Zeile(art, (String) z.get("kennzeichen"), (String) z.get("titel"),
                     LocalDate.parse((String) z.get("faellig_am")), (int) z.get("tage"), (String) z.get("satz"),
-                    (String) z.get("verantwortlich"), id, kennzahl);
+                    verantwortlich, id, kennzahl, herleitung(h), h == null ? null : h.bezug(),
+                    h == null ? null : h.einsatzId(), ART_AUFGABE.get(art), zustaendig(art, verantwortlich, h, wer));
         }).toList();
+    }
+
+    private static Herleitung herleitung(WiedervorlageQuelle.Herkunft h) {
+        if (h == null || h.basis() == null) return null;
+        return new Herleitung(h.basis(), h.am(), h.fassung(), h.monate(), h.kennung(), h.quelleArt(), h.anzahl());
     }
 
     private static List<String> schluessel(String art, String kennzeichen, String titel, String faelligAm) {

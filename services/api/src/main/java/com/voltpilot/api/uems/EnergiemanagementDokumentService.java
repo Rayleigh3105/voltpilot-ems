@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -158,6 +159,36 @@ public class EnergiemanagementDokumentService {
                 new Eingetragen(d.akteur(), d.angelegtAm()),
                 repo.verlauf(id).stream().map(a -> new EnergiemanagementPersonenDto.Aenderung(a.id(), a.art(),
                         baum(a.alt()), baum(a.neu()), a.begruendung(), a.akteur(), a.zeit())).toList());
+    }
+
+    /** Ein „geprüft, bleibt“ an einem Dokument, für „Zuletzt erledigt“ der Wiedervorlage (Konzept w1). */
+    public record GeprueftBleibt(UUID dokumentId, String kennzeichen, String titel, Integer fassung, LocalDate am,
+            String entschiedenVon, String eingetragenVon) {}
+
+    /**
+     * Konzept Wiedervorlage w1, „Zuletzt erledigt“: die „geprüft, bleibt“ von {@code ab} bis {@code bis} (beide Tage
+     * eingeschlossen), der jüngste zuerst; „entschieden von“ ist die Person, „eingetragen von“ das Konto.
+     */
+    public List<GeprueftBleibt> geprueftBleibt(LocalDate ab, LocalDate bis) {
+        var liste = repo.geprueftBleibt(ab, bis);
+        if (liste.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, EnergiemanagementPersonenRepository.Person> leute = personen.personen().stream()
+                .collect(Collectors.toMap(EnergiemanagementPersonenRepository.Person::id, Function.identity()));
+        Map<UUID, EnergiemanagementDokumentRepository.Dokument> doks = new HashMap<>();
+        var aus = new ArrayList<GeprueftBleibt>();
+        for (var b : liste) {
+            var d = doks.computeIfAbsent(b.dokumentId(), id -> repo.dokument(id).orElse(null));
+            if (d == null) {
+                continue;
+            }
+            var e = b.eintrag();
+            var von = leute.get(e.entschiedenVon());
+            aus.add(new GeprueftBleibt(d.id(), d.kennzeichen(), d.titel(), e.fassung(), e.am(),
+                    von == null ? null : von.name(), e.akteur() == null ? null : e.akteur().name()));
+        }
+        return List.copyOf(aus);
     }
 
     /**
@@ -736,8 +767,17 @@ public class EnergiemanagementDokumentService {
         if (r.containsKey("fehler")) {
             throw new IllegalStateException("Überprüfung nicht berechenbar: " + r.get("fehler"));
         }
-        return new EnergiemanagementDokumentDto.Ueberpruefung(heute, datum(r.get("faellig_am")), datum(r.get("basis")),
-                (Integer) r.get("fassung"), (Integer) r.get("tage"), (String) r.get("satz"), (String) r.get("grund"));
+        LocalDate basis = datum(r.get("basis"));
+        Integer nr = (Integer) r.get("fassung");
+        String basisArt = null;
+        if (r.get("faellig_am") != null && basis != null && nr != null) {
+            LocalDate freigabe = fassungen.stream().filter(f -> "freigegeben".equals(f.status()) && f.nr() == nr)
+                    .map(EnergiemanagementDokumentRepository.Fassung::entschiedenTag).findFirst().orElse(basis);
+            basisArt = basis.isAfter(freigabe) ? "geprueft_bleibt" : "freigabe";
+        }
+        return new EnergiemanagementDokumentDto.Ueberpruefung(heute, datum(r.get("faellig_am")), basis, nr,
+                (Integer) r.get("tage"), (String) r.get("satz"), (String) r.get("grund"), basisArt,
+                basisArt == null ? null : d.ueberpruefungMonate());
     }
 
     private EnergiemanagementDokumentDto.Fassung fassung(EnergiemanagementDokumentRepository.Fassung f,

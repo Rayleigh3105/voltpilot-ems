@@ -242,7 +242,7 @@ export function EnergiezielSeite({
           )}
         </section>
 
-        <section className="vp-ez-karte" aria-labelledby="ez-bewertung" data-testid="energieziel-bewertung">
+        <section className="vp-ez-karte" aria-labelledby="ez-bewertung" data-testid="energieziel-bewertung" data-entscheid="energieziel_bewertung">
           <h2 id="ez-bewertung">Bewertung</h2>
           {bewertung.art === 'bewertet' ? (
             <>

@@ -29,7 +29,8 @@ public class DokumentWiedervorlage implements WiedervorlageQuelle {
             var u = d.ueberpruefung();
             if (u == null || u.faelligAm() == null) continue;
             aus.add(new Frist("dokument_ueberpruefung", d.kennzeichen(), d.titel() + " — Überprüfung", u.faelligAm(),
-                    null, d.id(), null));
+                    null, d.id(), null, Herkunft.von(u.basisArt(), u.basis()).mitFassung(u.fassung())
+                            .mitMonaten(u.monate())));
         }
         return aus;
     }

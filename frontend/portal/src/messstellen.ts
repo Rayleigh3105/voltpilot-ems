@@ -150,6 +150,13 @@ export interface ZeileWoerter {
   zustand: string;
   /** Der Satz des Servers (Beobachtung bzw. bei einer berechneten Messstelle ihre Vollständigkeit); `null` = keiner. */
   beobachtung: { text: string; ton: Ton } | null;
+  /**
+   * Eine aktive Messstelle, deren Werte aus Ablesungen kommen: `fehlt`, wo der Server „Ablesung überfällig seit …“ oder
+   * „Noch keine Ablesung“ sagt (`liefert_nicht_seit`), sonst `abgelesen`; `null` für jede andere. Daraus wählt
+   * {@link ablesungsZiele} das Ziel des Schritts „Ablesungen eintragen“ der Wiedervorlage (Konzept w1, Entscheid 7):
+   * dieselbe Aussage wie das Register, nie eine eigene Frist.
+   */
+  ablesung: 'fehlt' | 'abgelesen' | null;
   /** Der letzte Wert der HAUPTGRÖSSE; `null` = kein guter Wert — „—“, nie eine 0. */
   wert: { text: string; zeit: string } | null;
   /**
@@ -337,6 +344,8 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
     quelle,
     zustand: zustandText(z, k.zone),
     beobachtung: beobachtungWoerter(z, k),
+    ablesung:
+      q.stand !== 'ablesung' || z.lebenszyklus !== 'aktiv' ? null : z.beobachtung?.zustand === 'liefert_nicht_seit' ? 'fehlt' : 'abgelesen',
     wert: w && text !== null ? { text, zeit: `${zeitpunktText(w.zeitpunkt, k.zone, k.zeitpunkt)} Uhr` } : null,
     nebenwerte: (z.nebengroessen ?? []).flatMap((n) => {
       const nt = n.letzter_wert ? wertText(n.letzter_wert) : null;
@@ -371,6 +380,16 @@ export function ersterTag(m: MessstelleVertragsform, zone: string): Tag | null {
   ];
   for (const b of quellen) tage.push(b.gueltig_ab.length > 10 ? lokalerTag(b.gueltig_ab, zone) : b.gueltig_ab);
   return tage.length === 0 ? null : tage.reduce((a, b) => (b < a ? b : a));
+}
+
+/**
+ * Das Ziel des Schritts „Ablesungen eintragen“ im Register eines Orts (Wiedervorlage w1, Entscheid 7): die Messstellen,
+ * deren Ablesung fehlt; fehlt keine (eine Runde, die erst in den nächsten Tagen fällig ist), die Messstellen aus
+ * Ablesungen. Der Schritt landet so immer bei einem Zähler, den man ablesen kann.
+ */
+export function ablesungsZiele(zeilen: readonly ZeileWoerter[]): Set<string> {
+  const fehlt = zeilen.filter((w) => w.ablesung === 'fehlt');
+  return new Set((fehlt.length > 0 ? fehlt : zeilen.filter((w) => w.ablesung === 'abgelesen')).map((w) => w.id));
 }
 
 export type RegisterEintrag =
