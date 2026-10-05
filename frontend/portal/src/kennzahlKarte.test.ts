@@ -309,6 +309,21 @@ describe('Perioden und Verlauf', () => {
     expect(KK.periodenWahl({ perioden: ['monat'], grundperiode: 'monat' })).toEqual({ optionen: [], vorgabe: 'monat' });
   });
 
+  it('listenPerioden: Grundperiode zuerst, dann gröber; Woche ausgelassen; leer, wo keine Periode gilt', () => {
+    expect(KK.listenPerioden({ perioden: ['tag', 'woche', 'monat', 'jahr'], grundperiode: 'tag' })).toEqual(['tag', 'monat', 'jahr']);
+    expect(KK.listenPerioden(kz1)).toEqual(['monat', 'jahr']);
+    expect(KK.listenPerioden({ perioden: [], grundperiode: 'monat' })).toEqual(['monat']);
+    expect(KK.listenPerioden({ perioden: [], grundperiode: null })).toEqual([]);
+  });
+
+  it('ohneWert: nur Platzhalter gilt als leer, ein gebildeter Schritt (auch „keine Werte“) nicht', () => {
+    const basis = kennzahlWerteAntwort(KZ.kz1, 'tag', '2026-11-04', '2026-11-06', Date.parse('2026-12-10T12:00:00+01:00'));
+    expect(KK.ohneWert({ ...basis, werte: [] })).toBe(true);
+    expect(KK.ohneWert({ ...basis, werte: [ohneZeile('tag', '2026-11-05'), ohneZeile('tag', '2026-11-06')] })).toBe(true);
+    expect(KK.ohneWert({ ...basis, werte: [ohneZeile('tag', '2026-11-05'), K10_TAG] })).toBe(false);
+    expect(KK.ohneWert({ ...basis, werte: [K8_NOVEMBER] })).toBe(false);
+  });
+
   it('die Anfrage liegt auf Periodengrenzen und endet mit der Periode von heute', () => {
     expect(KK.anfrage('monat', '2026-11-12', 12)).toEqual({ von: '2025-12-01', bis: '2026-11-30' });
     expect(KK.anfrage('jahr', '2026-11-12', 5)).toEqual({ von: '2022-01-01', bis: '2026-12-31' });

@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Kennzahl } from '../api';
-import { ANZAHL_VERLAUF, amStandort, anfrage, heuteIn, type ListenKarte, type ListenWerte } from '../kennzahlKarte';
+import { api, ApiError, type Kennzahl, type KennzahlPeriodeArt } from '../api';
+import {
+  ANZAHL_VERLAUF,
+  amStandort,
+  anfrage,
+  heuteIn,
+  listenPerioden,
+  ohneWert,
+  type ListenKarte,
+  type ListenWerte,
+} from '../kennzahlKarte';
 import '../pages/KennzahlenPage.css';
 import './Bezugsbasis.css';
 
@@ -35,17 +44,28 @@ export function useKennzahlenListe(zone: string, standortId: string | null, vers
         setWerte({});
         const heute = heuteIn(zone, Date.now());
         const setze = (id: string, w: ListenWerte) => aktiv && setWerte((alt) => ({ ...alt, [id]: w }));
+        // Trägt die Grundperiode keinen gebildeten Wert (nur Platzhalter), die nächstgröbere mit Werten versuchen
+        // (`listenPerioden`), sonst stünde „—“, obwohl die Kennzahl monatlich rechnet. Der Rückfall kann nur
+        // verbessern: bei echtem Schritt (auch „keine Werte“) hält die erste Periode.
+        const laden = (id: string, perioden: KennzahlPeriodeArt[], i: number) => {
+          const art = perioden[i];
+          const { von, bis } = anfrage(art, heute, ANZAHL_VERLAUF[art]);
+          api.kennzahlWerte(id, art, von, bis).then(
+            (antwort) =>
+              aktiv &&
+              (ohneWert(antwort) && i + 1 < perioden.length
+                ? laden(id, perioden, i + 1)
+                : setze(id, { art: 'geladen', antwort })),
+            (e) => setze(id, e instanceof ApiError && e.status === 404 ? { art: 'ausserhalb' } : { art: 'fehler' }),
+          );
+        };
         for (const k of kennzahlen) {
-          const art = k.grundperiode ?? k.perioden[0] ?? null;
-          if (art === null) {
+          const perioden = listenPerioden(k);
+          if (perioden.length === 0) {
             setze(k.id, { art: 'ohne_periode' });
             continue;
           }
-          const { von, bis } = anfrage(art, heute, ANZAHL_VERLAUF[art]);
-          api.kennzahlWerte(k.id, art, von, bis).then(
-            (antwort) => setze(k.id, { art: 'geladen', antwort }),
-            (e) => setze(k.id, e instanceof ApiError && e.status === 404 ? { art: 'ausserhalb' } : { art: 'fehler' }),
-          );
+          laden(k.id, perioden, 0);
         }
       },
       () => aktiv && setFehler(true),

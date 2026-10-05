@@ -223,6 +223,9 @@ type BudgetTracker struct {
 	// connector reported no measurement. It is remembered so a blind stage can
 	// name the real cause instead of blaming the telemetry path.
 	incompleteAt time.Time
+	// settlingAt is when a sample was last discarded ONLY because a charge
+	// point is still ramping (Measurement.Settling).
+	settlingAt time.Time
 
 	// the §14a envelope, once observed. Deliberately NOT expired: it only ever
 	// REDUCES, and the battery guard (guards.Clamp) treats the observed
@@ -316,6 +319,9 @@ func (t *BudgetTracker) verankernLocked(ts time.Time) {
 	if t.incompleteAt.After(ts) {
 		t.incompleteAt = ts
 	}
+	if t.settlingAt.After(ts) {
+		t.settlingAt = ts
+	}
 }
 
 // urgentDropKw is how much smaller a sample must demand the budget to be
@@ -400,7 +406,18 @@ type Measurement struct {
 	// Complete is false when a connector that currently claims budget reports
 	// no fresh measurement of its own.
 	Complete bool
+	// Settling marks an incomplete sample whose ONLY gap is a charge point
+	// still ramping after it started or stopped on its own
+	// (csms.Connector.PowerSettled): the meters work, they just do not
+	// describe one moment yet. The source lane holds instead of going blind
+	// (SurplusSettleHold).
+	Settling bool
 }
+
+// SurplusSettleHold bounds how long the source lane holds its last measured
+// surplus while a charge point settles. It covers csms' longest settle (40 s)
+// plus the gap before it; anything longer is blind again.
+const SurplusSettleHold = 60 * time.Second
 
 // ObserveM is Observe with the full measurement (see Measurement).
 func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
@@ -422,6 +439,9 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 	if !m.Complete {
 		if ts.After(t.incompleteAt) {
 			t.incompleteAt = ts
+		}
+		if m.Settling && ts.After(t.settlingAt) {
+			t.settlingAt = ts
 		}
 		return false
 	}
@@ -678,6 +698,9 @@ func (t *BudgetTracker) finishStatic(res BudgetVerdict) BudgetVerdict {
 func (t *BudgetTracker) blindPrefix(age time.Duration) string {
 	if t.uhrsprung {
 		return "Die Uhr der Box ist hinter die letzte Messung am Netzanschluss zurückgesprungen — "
+	}
+	if t.settlingAt.After(t.at) && !t.settlingAt.Before(t.incompleteAt) {
+		return "Ein Ladepunkt läuft gerade an, seit " + ageText(age) + " ohne verwertbares Messpaar — "
 	}
 	if t.incompleteAt.After(t.at) {
 		return "Ein ladender Ladepunkt meldet seit " + ageText(age) + " keinen Messwert — "
