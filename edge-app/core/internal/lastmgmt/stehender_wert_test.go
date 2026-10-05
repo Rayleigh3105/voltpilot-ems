@@ -72,7 +72,7 @@ func TestNetzpunktStehenderWertHaeltSpeicher(t *testing.T) {
 	tr := NewBudgetTracker()
 	obs := func(s int, netz, batt float64) Netzpunkt {
 		now := swT0.Add(time.Duration(s) * time.Second)
-		tr.ObserveM(now, Measurement{GridKw: netz, ChargingKw: 0, Complete: true, HaveBattery: true, BatteryChargeKw: batt})
+		tr.ObserveM(now, Measurement{GridKw: netz, ChargingKw: 0, Complete: true, HaveBattery: true, BatteryKw: batt})
 		n, _ := tr.Netzpunkt(now, set)
 		return n
 	}
@@ -101,7 +101,7 @@ func TestZwillingBewegterWertWieHeute(t *testing.T) {
 		netz += rng.Float64()*6 - 3 + 1e-6
 		laden = math.Max(0, laden+rng.Float64()*4-2)
 		batt = math.Max(0, batt+rng.Float64()*4-2)
-		tr.ObserveM(now, Measurement{GridKw: netz, ChargingKw: laden, Complete: true, HaveBattery: true, BatteryChargeKw: batt})
+		tr.ObserveM(now, Measurement{GridKw: netz, ChargingKw: laden, Complete: true, HaveBattery: true, BatteryKw: batt})
 		heute, zw := tr.Budget(now, set), tr.twin().Budget(now, set)
 		if heute.Kw != zw.Kw || heute.Mode != zw.Mode {
 			t.Fatalf("second %d: today %.3f (%s), twin %.3f (%s)", s, heute.Kw, heute.Mode, zw.Kw, zw.Mode)
