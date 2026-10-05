@@ -14,6 +14,7 @@ package csms
 
 import (
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -36,6 +37,7 @@ var errWrongLane = errors.New("die Ladesäule spricht ein anderes OCPP-Protokoll
 
 type subprotocolMux struct {
 	upstream ws.Server
+	log      *slog.Logger
 
 	mu    sync.Mutex
 	order []*protocolLane          // the box's preference: creation order
@@ -43,8 +45,8 @@ type subprotocolMux struct {
 	byID  map[string]*protocolLane // station id -> lane of its live socket
 }
 
-func newSubprotocolMux(upstream ws.Server) *subprotocolMux {
-	m := &subprotocolMux{upstream: upstream, lanes: map[string]*protocolLane{}, byID: map[string]*protocolLane{}}
+func newSubprotocolMux(upstream ws.Server, log *slog.Logger) *subprotocolMux {
+	m := &subprotocolMux{upstream: upstream, log: log, lanes: map[string]*protocolLane{}, byID: map[string]*protocolLane{}}
 	upstream.SetCheckClientHandler(m.check)
 	upstream.SetNewClientHandler(func(ch ws.Channel) {
 		if l := m.laneOf(ch.ID()); l != nil && l.handlers().connected != nil {
@@ -66,7 +68,16 @@ func newSubprotocolMux(upstream ws.Server) *subprotocolMux {
 	})
 	upstream.SetMessageHandler(func(ch ws.Channel, data []byte) error {
 		l := m.laneOf(ch.ID())
-		if l == nil || l.handlers().message == nil {
+		if l == nil {
+			// The station's disconnect was handled while this frame was in
+			// flight: its socket is closed and its lane released. Drop the
+			// frame instead of handing an error to the library - the reader
+			// would push it into the error channel that ws.Server.Stop is
+			// closing at that moment (data race, panic on send).
+			m.log.Debug("späte Nachricht einer getrennten Ladesäule verworfen", "charge_point_id", ch.ID())
+			return nil
+		}
+		if l.handlers().message == nil {
 			return errWrongLane
 		}
 		return l.handlers().message(ch, data)

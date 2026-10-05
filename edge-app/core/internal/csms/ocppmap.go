@@ -57,7 +57,7 @@ func newTransport(s *Server, port int, path string) *transport {
 	upstream.SetTimeoutConfig(timeouts)
 	// The 1.6 lane is created first and is therefore the mux's primary: it
 	// owns the shared server exactly as the bare upstream did before.
-	mux := newSubprotocolMux(upstream)
+	mux := newSubprotocolMux(upstream, s.log)
 	wsrv := &journalWsServer{Server: mux.lane(subprotocolOCPP16), journal: s.journal}
 	cs := ocpp16.NewCentralSystem(nil, wsrv)
 	t := &transport{
