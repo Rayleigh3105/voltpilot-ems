@@ -1026,7 +1026,11 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 					// TextFor names the customer's own priority where the
 					// sentence is ABOUT that priority - a waiting vehicle
 					// whose owner cannot see WHICH setting holds it is a riddle.
-					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason, set.SurplusPolicy)
+					// ⚠ The station's OWN lane (P5): a plug on „Nur Sonnenstrom" at a
+					// site defaulting to „Schnell laden" must not read „(Ihre
+					// Priorität: Schnell laden)".
+					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason,
+						lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.SourceOrSite(string(set.SurplusPolicy)))))
 					ocn.Boost = alloc.Boost
 					if !alloc.NextTurnAt.IsZero() {
 						ocn.NextTurnMs = alloc.NextTurnAt.UnixMilli()

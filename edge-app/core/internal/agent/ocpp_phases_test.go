@@ -182,6 +182,26 @@ func TestWithoutTheStationsWordTheGoeStaysOnThreePhases(t *testing.T) {
 	}
 }
 
+// TestTheWaitingSentenceNamesTheStationsOwnSource - the site default here is
+// „Schnell laden", the go-e's own lane „Nur Sonnenstrom"; the sentence must
+// name the lane that actually holds the car.
+func TestTheWaitingSentenceNamesTheStationsOwnSource(t *testing.T) {
+	a, st := goeRig(t, false, true)
+	own := "nur_sonne"
+	if _, err := a.ocpp.srv.Update("GOE", csms.UpdateRequest{Source: &own}); err != nil {
+		t.Fatal(err)
+	}
+	p := string(lastmgmt.PolicyFast)
+	if _, err := a.OcppSaveSettings(lastmgmt.SettingsRequest{SurplusPolicy: &p}); err != nil {
+		t.Fatal(err)
+	}
+	sunStep(t, a, st, 0.5, 0)
+	nearKwSoon(t, "no sun, no charge", drawOf(st, 1), 0)
+	if got := goeView(t, a).ReasonText; got != "wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)" {
+		t.Fatalf("sentence = %q", got)
+	}
+}
+
 // TestWithoutTheOperatorsSwitchNothingChanges - the compatibility promise.
 func TestWithoutTheOperatorsSwitchNothingChanges(t *testing.T) {
 	a, st := goeRig(t, false, true)
