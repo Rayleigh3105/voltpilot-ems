@@ -112,3 +112,32 @@ func TestZwillingBewegterWertWieHeute(t *testing.T) {
 		}
 	}
 }
+
+// main #1380 made the battery feed SIGNED (Measurement.BatteryKw: + charging,
+// − discharging). Netzpunkt still reports the battery CHARGE to the
+// grid-charge ceiling: a discharge is 0 there, as it was while the feed was
+// floored - also when it is the anchor of a standing value.
+func TestNetzpunktEntladungIstKeineLadung(t *testing.T) {
+	set := Settings{GridLimitKw: 550}.WithDefaults()
+	tr := NewBudgetTracker()
+	obs := func(s int, netz, batt float64) Netzpunkt {
+		now := swT0.Add(time.Duration(s) * time.Second)
+		tr.ObserveM(now, Measurement{GridKw: netz, ChargingKw: 0, Complete: true, HaveBattery: true, BatteryKw: batt})
+		n, _ := tr.Netzpunkt(now, set)
+		return n
+	}
+	for _, c := range []struct {
+		s          int
+		netz, batt float64
+		want       float64
+	}{
+		{0, 480, -5.3, 0}, // discharging: no charge
+		{2, 480, 10, 0},   // the value stands, the anchor is that discharge
+		{4, 470, 12, 12},  // moves and charges
+		{6, 470, -4, 0},   // stands and discharges: never below 0
+	} {
+		if n := obs(c.s, c.netz, c.batt); n.BattChargeKw != c.want {
+			t.Fatalf("second %d: battery %.3f kW read as a charge of %.3f kW, want %.3f", c.s, c.batt, n.BattChargeKw, c.want)
+		}
+	}
+}
