@@ -75,9 +75,6 @@ type ocppRuntime struct {
 	// wake carries an out-of-band "re-decide now" from the telemetry path, so
 	// a building load step does not have to wait out a full tick.
 	wake chan struct{}
-	// pairer pairs a settling connector's sample with the grid reading of its
-	// own moment (ocpp_pair.go).
-	pairer gridPairer
 
 	mu       sync.Mutex
 	settings lastmgmt.Settings
@@ -692,7 +689,7 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// very power it just handed out (the oscillation this law exists to
 	// prevent). Only a CLAIMING wallbox is added back: what we cannot cap must
 	// stay building load, see ocpp_wallbox.go.
-	r := gridReading{at: ts, gridKw: grid, wallboxKw: a.wallboxChargingKw(rt.currentSettings(), ts)}
+	wallboxKw := a.wallboxChargingKw(rt.currentSettings(), ts)
 	// ⚠ The battery's MEASURED power is the third channel of the Stufe-4
 	// surplus split (surplus.go): it is already inside `grid`, so handing it
 	// to the cars means taking it back out. It goes in SIGNED: a DISCHARGE
@@ -706,16 +703,31 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battK
 	// parse in onLocalTelemetry), so a map lookup would silently always miss
 	// and the storage arbitration would be dead on every real box. Found by
 	// the rig, not by a unit test - the tests fed the map by hand.
-	if battKw != nil {
-		b := *battKw
-		r.battKw = &b
-	}
-	// The charging power of the same moment: the current total once every
-	// connector has settled, else the late pair (ocpp_pair.go).
-	at, m := rt.pairer.pair(r, rt.srv.Snapshot())
-	if rt.budget.ObserveM(at, m) {
+	m := ocppMeasurement(rt.srv.Snapshot(), ts, grid, wallboxKw, battKw)
+	if rt.budget.ObserveM(ts, m) {
 		rt.nudge()
 	}
+}
+
+// ocppMeasurement pairs one grid reading with the charging power of the same
+// moment - or says why it cannot.
+//
+// ⚠ While a charge point settles after it started or stopped on its own
+// (csms.Connector.PowerSettled), no pair is formed at all: its samples trail
+// the ramp, and one mispaired reading would govern both lanes for a minute.
+// The sample is marked Settling, so the source lane holds its last surplus
+// instead of going blind; the budget holds as for any short gap. A building
+// load step in that window reaches the executor once the draw has settled -
+// at most csms.DrawSettleTimeout later.
+func ocppMeasurement(snap csms.Snapshot, ts time.Time, gridKw, wallboxKw float64, battKw *float64) lastmgmt.Measurement {
+	charging, complete := snap.ChargingTotal(ts, ocppMeterMaxAge)
+	settling := snap.DrawSettling(ts)
+	m := lastmgmt.Measurement{GridKw: gridKw, ChargingKw: charging + wallboxKw,
+		Complete: complete && !settling, Settling: settling}
+	if battKw != nil {
+		m.HaveBattery, m.BatteryKw = true, *battKw
+	}
+	return m
 }
 
 // ocppClaim links an allocator key back to the station it belongs to.

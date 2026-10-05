@@ -118,8 +118,13 @@ func publishAndSettle(t *testing.T, a *Agent, stations ...*ocppsim.Station) {
 				t.Fatalf("meter values: %v", err)
 			}
 		}
-		_, complete := a.ocpp.srv.Snapshot().ChargingTotal(time.Now().UTC(), ocppMeterMaxAge)
-		return complete
+		now := time.Now().UTC()
+		snap := a.ocpp.srv.Snapshot()
+		_, complete := snap.ChargingTotal(now, ocppMeterMaxAge)
+		// A station that just started (the plug-in itself is one) has settled
+		// only after two samples agree - the simulator stamps whole seconds,
+		// so that takes a second or two of metering.
+		return complete && !snap.DrawSettling(now)
 	})
 }
 
