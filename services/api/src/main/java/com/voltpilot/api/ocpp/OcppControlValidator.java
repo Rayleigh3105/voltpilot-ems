@@ -28,13 +28,16 @@ public class OcppControlValidator {
         array(electrical, 2048);
         var targets = new HashSet<String>();
         for (var e : electrical) {
-            fields(e, "charge_point_id", "connector_id", "voltage_v", "phases", "max_current_a");
+            fields(e, "charge_point_id", "connector_id", "voltage_v", "phases", "max_current_a", "phase_switching");
             target(e); check(targets.add(key(e)));
             number(e.path("voltage_v"), 100, 300); number(e.path("max_current_a"), 1, 2000);
             var phases = e.path("phases"); array(phases, 3);
             check(!phases.isEmpty() && phaseLimits.size() == 3);
             var seen = new HashSet<Integer>();
             for (var phase : phases) check(phase.isIntegralNumber() && phase.asInt() >= 1 && phase.asInt() <= 3 && seen.add(phase.asInt()));
+            // Switching to one phase needs three wired phases to switch from.
+            var switching = e.path("phase_switching");
+            check(!e.hasNonNull("phase_switching") || (switching.isBoolean() && (!switching.asBoolean() || phases.size() == 3)));
         }
         targets.clear();
         array(p.path("limits"), 2048);

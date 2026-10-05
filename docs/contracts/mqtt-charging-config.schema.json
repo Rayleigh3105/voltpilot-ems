@@ -373,6 +373,10 @@
                 "type": "number",
                 "minimum": 1,
                 "maximum": 2000
+              },
+              "phase_switching": {
+                "type": "boolean",
+                "description": "Der Stecker darf für die laufende Zuteilung von drei auf eine Phase umschalten (OCPP numberPhases=1). Nur bei drei angeschlossenen Phasen; die Säule muss ConnectorSwitch3to1PhaseSupported melden. Die Sicherheitsprofile bleiben dreiphasig."
               }
             }
           }

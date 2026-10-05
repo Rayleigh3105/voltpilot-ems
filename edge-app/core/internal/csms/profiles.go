@@ -3,6 +3,7 @@ package csms
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -110,7 +111,7 @@ func TxProfile(connectorID, transactionID int, limitKw float64, now time.Time, d
 func (p ChargingProfile) SameAs(o ChargingProfile) bool {
 	return p.ID == o.ID && p.StackLevel == o.StackLevel && p.Purpose == o.Purpose &&
 		p.TransactionID == o.TransactionID && p.Duration == o.Duration &&
-		math.Abs(p.LimitKw-o.LimitKw) < 1e-6
+		p.NumberPhases == o.NumberPhases && math.Abs(p.LimitKw-o.LimitKw) < 1e-6
 }
 
 func nonNegative(v float64) float64 {
@@ -133,7 +134,29 @@ const (
 	KeyMaxProfilesInstalled     = "MaxChargingProfilesInstalled"
 	KeyMeterValueSampleInterval = "MeterValueSampleInterval"
 	KeyMeterValuesSampledData   = "MeterValuesSampledData"
+	// KeyPhaseSwitch is the station's own statement that it can switch a
+	// running charge from three phases to one (OCPP 1.6 §9.4.4). Read after
+	// commissioning and never load-bearing for the safety profiles.
+	KeyPhaseSwitch = "ConnectorSwitch3to1PhaseSupported"
 )
+
+// ParsePhaseSwitch reads KeyPhaseSwitch; nil = not reported or not readable,
+// which is NOT "supported".
+func ParsePhaseSwitch(values map[string]string) *bool {
+	v, ok := values[KeyPhaseSwitch]
+	if !ok {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "true":
+		yes := true
+		return &yes
+	case "false":
+		no := false
+		return &no
+	}
+	return nil
+}
 
 // CapabilityKeys is the narrow safety basis used before any charging profile
 // is installed. Some deployed OCPP 1.6 stations reject an empty/full
@@ -169,6 +192,9 @@ type Capabilities struct {
 	// "the key is unknown" and "the key is missing from the answer" are
 	// different facts about a firmware.
 	Unknown []string `json:"unknown,omitempty"`
+	// PhaseSwitch is KeyPhaseSwitch as the station reported it; nil = unknown.
+	// Only an explicit true allows one-phase charging.
+	PhaseSwitch *bool `json:"phase_switch_supported,omitempty"`
 }
 
 // Usable reports whether we may command this station at all, with the reason

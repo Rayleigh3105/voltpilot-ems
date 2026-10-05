@@ -20,6 +20,10 @@ type ControlStation struct {
 	ProfilesAccepted bool               `json:"profiles_accepted"`
 	Note             string             `json:"note,omitempty"`
 	Connectors       []ControlConnector `json:"connectors"`
+
+	// PhaseSwitchSupported is the station's own ConnectorSwitch3to1PhaseSupported
+	// (nil = not reported).
+	PhaseSwitchSupported *bool `json:"phase_switch_supported,omitempty"`
 }
 
 type ControlConnector struct {
@@ -34,6 +38,9 @@ type ControlConnector struct {
 	CommandStatus string    `json:"command_status,omitempty"`
 	Readback      string    `json:"readback,omitempty"`
 	ReadbackAt    time.Time `json:"readback_at,omitzero"`
+
+	// Phases is the phase count of the last accepted amps limit.
+	Phases int `json:"phases,omitempty"`
 }
 
 type ControlTest struct {
@@ -73,17 +80,27 @@ func (s *Server) ControlStatus(enabled bool, now time.Time) ControlStatus {
 		c := s.chargers[declared.ID]
 		station := ControlStation{ID: c.ID, Connected: c.Connected, CapabilitiesRead: c.Capabilities.Read,
 			ProfilesAccepted: c.Connected && !c.CommissionedAt.IsZero() && !c.CommissionedAt.Before(c.BootedAt) && !c.CommissionedAt.Before(c.ConnectedAt),
-			Note:             c.CommissionError, Connectors: []ControlConnector{}}
+			Note:             c.CommissionError, Connectors: []ControlConnector{},
+			PhaseSwitchSupported: cloneBool(c.Capabilities.PhaseSwitch)}
 		for _, con := range c.Connectors {
 			station.Connectors = append(station.Connectors, ControlConnector{ID: con.ID,
 				Reconciling: con.Session != nil && con.Session.Reconciling,
 				PowerKw:     clonePtr(con.PowerKw), PowerAt: con.MeteredAt, EnergyAt: con.EnergyMeasuredAt, SocAt: con.SocMeasuredAt,
 				ReceivedAt: con.MeterReceivedAt, FreshPower: c.Connected && con.PowerKw != nil && liveMeterTime(con.MeteredAt, now),
-				CommandStatus: con.CommandStatus, Readback: con.Readback, ReadbackAt: con.ReadbackAt})
+				CommandStatus: con.CommandStatus, Readback: con.Readback, ReadbackAt: con.ReadbackAt,
+				Phases: con.CommandedPhases})
 		}
 		out.Stations = append(out.Stations, station)
 	}
 	return out
+}
+
+func cloneBool(p *bool) *bool {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 func (s *Server) startControlTestLocked() {
