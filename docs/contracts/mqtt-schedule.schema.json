@@ -86,9 +86,10 @@
         "speicher_gehalten",
         "prognose_veraltet",
         "nachtbedarf_ueber_kapazitaet",
-        "reserve_ueber_kapazitaet"
+        "reserve_ueber_kapazitaet",
+        "prognose_zu_kurz"
       ],
-      "description": "OPTIONAL (added 2026-10-06, „Sonne + Speicher“, ADDITIVE). Present only alongside ev_release_max_discharge_kw, and only when NO slot of the run carries a floor - the closed vocabulary of WHY: kein_ladestand (no fresh measured SoC; the plan does not dispatch the battery), speicher_gehalten (a customer rule owns the battery), prognose_veraltet (no stored load AND pv forecast run of the active models younger than OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES covers the horizon), nachtbedarf_ueber_kapazitaet (even a full battery does not carry the house to the next generation - grid import is unavoidable, so nothing is released), reserve_ueber_kapazitaet (the site's reserve plus the reservation stack leaves no usable band). The edge shows it; it never changes behavior beyond 'no release'."
+      "description": "OPTIONAL (added 2026-10-06, „Sonne + Speicher“, ADDITIVE). Present only alongside ev_release_max_discharge_kw, and only when NO slot of the run carries a floor - the closed vocabulary of WHY: kein_ladestand (no fresh measured SoC; the plan does not dispatch the battery), speicher_gehalten (a customer rule owns the battery), prognose_veraltet (no stored load AND pv forecast run of the active models younger than OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES covers the horizon), nachtbedarf_ueber_kapazitaet (even a full battery does not carry the house to the next generation - grid import is unavoidable, so nothing is released), reserve_ueber_kapazitaet (the site's reserve plus the reservation stack leaves no usable band), prognose_zu_kurz (plan plus fresh stored forecast do not reach the next generation - past the next night to the first slot where the cautious PV covers the cautious load, or across the whole next day). The edge shows it; it never changes behavior beyond 'no release'."
     },
     "slots": {
       "type": "array",

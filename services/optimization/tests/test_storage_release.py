@@ -1,7 +1,8 @@
 """„Sonne + Speicher" (06.10.2026): die Speicheruntergrenze fürs Laden.
 
 Die Szenarien des Auftrags - 12:00 sonnig, 20:00 Nacht, schlechter Folgetag,
-voller Speicher bei Überschuss, veraltete/fehlende Prognose - plus die
+voller Speicher bei Überschuss, veraltete/fehlende Prognose, 12:00 VOR der
+Day-Ahead-Veröffentlichung (der Plan endet um Mitternacht) - plus die
 Eigenschaften, auf denen die Box sich verlässt: die Untergrenze ist MONOTON
 (mehr Ladestand ist nie schlechter) und eine Freigabe bis zu ihr erhöht den
 prognostizierten Netzbezug NIE. Mehrere Ladepunkte teilen sich die Freigabe
@@ -30,14 +31,19 @@ from voltpilot_optimization.storage_release import (
     GRUND_KEIN_LADESTAND,
     GRUND_NACHT_UEBER_KAPAZITAET,
     GRUND_PROGNOSE_VERALTET,
+    GRUND_PROGNOSE_ZU_KURZ,
     GRUND_RESERVE_UEBER_KAPAZITAET,
     GRUND_SPEICHER_GEHALTEN,
     DayErrorQuantiles,
     day_error_rels,
     day_windows,
     evening_runs,
+    MAX_RELEASE_SLOTS,
+    forecast_tail,
     plan_storage_release,
     planned_sale_kw,
+    reaches_next_generation,
+    release_forecast,
     release_slot,
     required_energy_kwh,
     unsicherheit,
@@ -107,10 +113,11 @@ def make_plan(load, pv, *, bat=None, battery_kw=None, grid_kw=None,
     )
 
 
-def release_of(plan, *, reserve=None, night=None, pv=None, fresh=True, held=False):
+def release_of(plan, *, reserve=None, night=None, pv=None, fresh=True, held=False, tail=((), ())):
     return plan_storage_release(
         plan, reserve_kwh=reserve, night_errors=night, pv_errors=pv,
         forecasts_fresh=fresh, battery_held=held,
+        tail_load_kw=tail[0], tail_pv_kw=tail[1],
     )
 
 
@@ -191,6 +198,97 @@ def test_a_poor_next_day_raises_the_floor():
         assert poor.floor_kwh[0] > good.floor_kwh[0] + 1.0
     else:
         assert poor.grund == GRUND_NACHT_UEBER_KAPAZITAET
+
+
+def test_noon_before_the_day_ahead_auction_still_sees_the_night():
+    """12:00, die Börsenpreise für morgen fehlen noch: der Fahrplan endet um
+    Mitternacht. Die Nacht danach steht nur in der Prognose - die Rechnung
+    läuft über sie weiter und kommt auf dieselbe Untergrenze wie ein Plan, der
+    die Nacht selbst sieht. Ohne Verlängerung gäbe es KEINE Freigabe statt
+    einer zu tiefen."""
+    load, pv = day_profile(12.0, 96, peak_today=3.0, peak_tomorrow=3.0)
+    full = release_of(make_plan(load, pv))
+    short_plan = make_plan(load[:48], pv[:48])
+    # Was eine Rechnung NUR über den Plan (Ende 24:00 = Reservestapel) hieße:
+    rel = release_of(short_plan, tail=(load[48:], pv[48:]))
+    cl, cp = conservative(load[:48], pv[:48], rel)
+    naive, _ = required_energy_kwh(
+        cl, cp, SLOT_H, floor_kwh=lo_kwh(short_plan.battery),
+        ceiling_kwh=short_plan.battery.soc_max_kwh, max_charge_kw=5.0,
+        max_discharge_kw=5.0, one_way_efficiency=1.0,
+    )
+    assert full.floor_kwh[0] is not None
+    assert rel.floor_kwh[0] == pytest.approx(full.floor_kwh[0])
+    assert rel.floor_kwh[0] > naive[0] + 1.0
+    # Untergrenzen trägt nur der Fahrplan; die Verlängerung ist Rechengrundlage.
+    assert len(rel.floor_soc_pct) == 48
+    # Und ohne Verlängerung: keine Freigabe (die Prognose reicht nicht bis zum Morgen).
+    blind = release_of(short_plan)
+    assert blind.grund == GRUND_PROGNOSE_ZU_KURZ
+    assert not blind.any_release
+
+
+def test_a_forecast_that_ends_in_the_night_releases_nothing():
+    """20:00, Plan bis 24:00 und Prognose nur bis 04:00: was der Rest der
+    Nacht braucht, weiß niemand - keine Freigabe."""
+    load, pv = day_profile(20.0, 32, peak_today=8.0, peak_tomorrow=8.0)
+    rel = release_of(make_plan(load[:16], pv[:16], start_hour=20.0), tail=(load[16:], pv[16:]))
+    assert rel.grund == GRUND_PROGNOSE_ZU_KURZ
+    assert not rel.any_release
+
+
+def test_the_next_generation_is_the_morning_the_cautious_sun_covers_the_house():
+    load, pv = day_profile(12.0, 96, peak_today=8.0, peak_tomorrow=8.0)
+    # Nur Tag, keine Nacht: kein Ende der nächsten Nacht in Sicht.
+    assert not reaches_next_generation(load[:24], pv[:24], pv[:24])
+    # Über die Nacht bis in den Vormittag: ja.
+    assert reaches_next_generation(load, pv, pv)
+    # Bis Sonnenaufgang, aber die Sonne deckt das Haus noch nicht: nein.
+    sunrise = next(t for t in range(40, 96) if pv[t] > 0.0)
+    assert not reaches_next_generation(load[:sunrise + 1], pv[:sunrise + 1], pv[:sunrise + 1])
+    # Ein trüber Folgetag, an dem die VORSICHTIGE Sonne die Last nie deckt:
+    # erst der GANZE Tag reicht (bis zur Nacht danach), sein halber nicht.
+    load2, pv2 = day_profile(12.0, 192, peak_today=8.0, peak_tomorrow=8.0)
+    dull = [p * 0.1 for p in pv2]
+    assert not reaches_next_generation(load2[:96], dull[:96], pv2[:96])
+    assert reaches_next_generation(load2, dull, pv2)
+
+
+def test_the_forecast_tail_is_fresh_contiguous_and_bounded(monkeypatch):
+    import voltpilot_optimization.inputs as inputs
+    import voltpilot_optimization.storage_release as sr
+
+    load, pv = day_profile(12.0, 48, peak_today=8.0, peak_tomorrow=8.0)
+    plan = make_plan(load, pv)
+    end = plan.slots[-1].start
+    after = [end + timedelta(minutes=15 * (i + 1)) for i in range(200)]
+    stored_load = {t: 0.5 for t in after}
+    stored_pv = {t: 0.0 for t in after[:10]} | {t: 2.0 for t in after[11:]}  # Lücke bei 10
+
+    def fake_load(dsn, site_id, kind, model, since):
+        assert since == after[0]
+        return stored_load if kind == "load" else stored_pv
+
+    monkeypatch.setattr(inputs, "_load_forecast", fake_load)
+    tl, tp = forecast_tail("dsn", SITE, "m", "m", plan, after[150])
+    # Die Verlängerung endet an der ersten Lücke.
+    assert len(tl) == len(tp) == 10
+    # ... an der Reichweite der frischen Läufe ...
+    tl, _ = forecast_tail("dsn", SITE, "m", "m", plan, after[5])
+    assert len(tl) == 6
+    # ... und spätestens 48 h nach Planbeginn.
+    stored_pv.update({after[10]: 0.0})
+    tl, _ = forecast_tail("dsn", SITE, "m", "m", plan, after[199])
+    assert len(tl) == MAX_RELEASE_SLOTS - len(plan.slots)
+
+    # Frische: reichen die frischen Läufe nicht bis zum Planende, keine Freigabe.
+    monkeypatch.setattr(sr, "fresh_forecast_until", lambda *a, **k: end - timedelta(minutes=15))
+    assert release_forecast("dsn", SITE, "m", "m", None, timedelta(hours=2), plan).fresh is False
+    monkeypatch.setattr(sr, "fresh_forecast_until", lambda *a, **k: None)
+    assert release_forecast("dsn", SITE, "m", "m", None, timedelta(hours=2), plan).fresh is False
+    monkeypatch.setattr(sr, "fresh_forecast_until", lambda *a, **k: after[3])
+    got = release_forecast("dsn", SITE, "m", "m", None, timedelta(hours=2), plan)
+    assert got.fresh is True and len(got.tail_load_kw) == 4
 
 
 def test_a_full_battery_in_a_surplus_releases_and_the_sun_refills_it():
@@ -486,6 +584,7 @@ def test_the_cloud_reasons_and_the_reserve_are_the_shared_vocabulary():
     grunde = {
         sr.GRUND_KEIN_LADESTAND, sr.GRUND_SPEICHER_GEHALTEN, sr.GRUND_PROGNOSE_VERALTET,
         sr.GRUND_NACHT_UEBER_KAPAZITAET, sr.GRUND_RESERVE_UEBER_KAPAZITAET,
+        sr.GRUND_PROGNOSE_ZU_KURZ,
     }
     assert grunde == set(VECTORS["cloud_reasons"])
     assert sr.DEFAULT_RESERVE_KWH == VECTORS["reserve_kwh"]["standard"]

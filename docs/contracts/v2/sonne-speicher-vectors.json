@@ -8,7 +8,8 @@
     "speicher_gehalten",
     "prognose_veraltet",
     "nachtbedarf_ueber_kapazitaet",
-    "reserve_ueber_kapazitaet"
+    "reserve_ueber_kapazitaet",
+    "prognose_zu_kurz"
   ],
   "box_modes": [
     "aus",

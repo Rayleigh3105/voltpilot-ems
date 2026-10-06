@@ -83,6 +83,7 @@ const (
 	ReleaseCloudStale       ReleaseMode = "prognose_veraltet"
 	ReleaseCloudNightTooBig ReleaseMode = "nachtbedarf_ueber_kapazitaet"
 	ReleaseCloudReserveBig  ReleaseMode = "reserve_ueber_kapazitaet"
+	ReleaseCloudTooShort    ReleaseMode = "prognose_zu_kurz"
 )
 
 const (
@@ -302,6 +303,9 @@ func cloudReasonText(reason string) string {
 			"es wird nichts freigegeben, nur Sonnenstrom."
 	case ReleaseCloudReserveBig:
 		return "Die eingestellte Reserve lässt im Speicher keinen Platz für eine Freigabe – nur Sonnenstrom."
+	case ReleaseCloudTooShort:
+		return "Die Prognose reicht noch nicht bis zur nächsten Sonne, die das Haus wieder deckt – " +
+			"ohne sie keine Freigabe, nur Sonnenstrom."
 	}
 	return "Der Fahrplan gibt den Speicher gerade nicht frei – nur Sonnenstrom."
 }

@@ -106,7 +106,8 @@ public class ChargerStatusListener {
     static final Set<String> RELEASE_MODES = Set.of("frei", "an_der_grenze", "kein_plan",
             "plan_handelt", "ladestand_unbekannt", "keine_messung", "speicherpfad", "bms_sperrt",
             "keine_leistung", "wirkung", "kein_ladestand", "speicher_gehalten",
-            "prognose_veraltet", "nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet");
+            "prognose_veraltet", "nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet",
+            "prognose_zu_kurz");
 
     /**
      * WO eine Säule hängt (Cockpit Phase 1 / C1). Wie jedes andere Vokabular

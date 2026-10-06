@@ -52,9 +52,9 @@ from voltpilot_optimization.solver import (
 )
 from voltpilot_optimization.storage_release import (
     load_release_settings,
-    forecasts_fresh,
     plan_storage_release,
     pv_day_error_quantiles,
+    release_forecast,
 )
 
 logger = logging.getLogger("voltpilot.optimization.engine")
@@ -189,9 +189,12 @@ def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
         choices = site_model_choices(model_choices, site.site_id)
         load_model = active_model("load", choices=choices)
         pv_model = active_model("pv", choices=choices)
-        fresh = forecasts_fresh(
+        # Frische UND Verlängerung über das Planende hinaus: vor der
+        # Day-Ahead-Veröffentlichung endet der Plan um Mitternacht, die Nacht
+        # danach liegt nur in der Prognose (storage_release, Moduldoku).
+        forecast = release_forecast(
             dsn, site.site_id, load_model, pv_model, now,
-            storage_release_forecast_max_age(), plan.slots[-1].start,
+            storage_release_forecast_max_age(), plan,
         )
         night = inp.night_error_quantiles
         if night is None and not night_reserve_enabled():
@@ -204,8 +207,10 @@ def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
             reserve_kwh=setting.reserve_kwh,
             night_errors=night,
             pv_errors=pv_errors,
-            forecasts_fresh=fresh,
+            forecasts_fresh=forecast.fresh,
             battery_held=inp.battery_held,
+            tail_load_kw=forecast.tail_load_kw,
+            tail_pv_kw=forecast.tail_pv_kw,
         )
     except Exception:
         logger.warning(
@@ -224,6 +229,7 @@ def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
                 "floor_now_pct": release.floor_soc_pct[0] if release.floor_soc_pct else None,
                 "reserve_kwh": release.reserve_kwh,
                 "grund": release.grund,
+                "forecast_tail_slots": len(forecast.tail_load_kw),
                 "last_aufschlag": u.last_aufschlag if u else None,
                 "pv_abschlag": u.pv_abschlag if u else None,
             }

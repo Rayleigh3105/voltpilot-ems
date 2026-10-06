@@ -83,7 +83,7 @@ func TestTheBoxModesAreTheSharedVocabulary(t *testing.T) {
 	}
 	cloud := map[string]bool{}
 	for _, m := range []ReleaseMode{ReleaseCloudNoSoc, ReleaseCloudHeld, ReleaseCloudStale,
-		ReleaseCloudNightTooBig, ReleaseCloudReserveBig} {
+		ReleaseCloudNightTooBig, ReleaseCloudReserveBig, ReleaseCloudTooShort} {
 		cloud[string(m)] = true
 	}
 	for _, r := range v.CloudReasons {

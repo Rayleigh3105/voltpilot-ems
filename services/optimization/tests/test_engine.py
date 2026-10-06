@@ -305,8 +305,8 @@ def test_v2_shadow_failure_never_sinks_the_v1_cycle(wired, monkeypatch):
 # --- „Sonne + Speicher" (06.10.2026) -----------------------------------------
 
 
-def _release_wired(monkeypatch, wired, settings, fresh=True):
-    from voltpilot_optimization.storage_release import ReleaseSetting
+def _release_wired(monkeypatch, wired, settings, fresh=True, tail=((), ())):
+    from voltpilot_optimization.storage_release import ReleaseForecast, ReleaseSetting
 
     monkeypatch.setattr(
         engine, "load_release_settings",
@@ -314,7 +314,10 @@ def _release_wired(monkeypatch, wired, settings, fresh=True):
     )
     monkeypatch.setattr(engine, "load_model_choices", lambda dsn: None)
     monkeypatch.setattr(engine, "load_battery_claims", lambda dsn: {})
-    monkeypatch.setattr(engine, "forecasts_fresh", lambda *a, **k: fresh)
+    monkeypatch.setattr(
+        engine, "release_forecast",
+        lambda *a, **k: ReleaseForecast(fresh=fresh, tail_load_kw=tail[0], tail_pv_kw=tail[1]),
+    )
     monkeypatch.setattr(engine, "pv_day_error_quantiles", lambda *a, **k: None)
     monkeypatch.setattr(engine, "night_error_quantiles", lambda *a, **k: None)
 
@@ -350,9 +353,28 @@ def test_a_failing_release_costs_the_release_never_the_plan(monkeypatch, wired):
     def boom(*a, **k):
         raise RuntimeError("history unreadable")
 
-    monkeypatch.setattr(engine, "forecasts_fresh", boom)
+    monkeypatch.setattr(engine, "release_forecast", boom)
     publisher = RecordingSchedulePublisher()
     summary = engine.run_cycle("dsn://ignored", InMemoryScheduleRepository(), publisher, now=NOW)
     assert len(summary.planned) == 2 and not summary.skipped
     _, payload = publisher.published[0]
     assert not any(k.startswith("ev_release") for k in payload)
+
+
+def test_the_forecast_tail_reaches_the_release(monkeypatch, wired):
+    """Der Plan endet, wo die Preise enden; die Rechnung läuft über die
+    Prognose-Verlängerung weiter. Der synthetische Plan ist eine einzige Nacht
+    (keine Sonne) - erst die Verlängerung bringt den Morgen, an dem die Sonne
+    das Haus wieder deckt."""
+    with_source, _ = wired
+
+    def grund(tail):
+        _release_wired(monkeypatch, wired, [(with_source, None)], tail=tail)
+        repository = InMemoryScheduleRepository()
+        engine.run_cycle("dsn://ignored", repository, RecordingSchedulePublisher(), now=NOW)
+        return {p.site_id: p for p in repository.plans}[with_source.site_id].storage_release.grund
+
+    # Ohne Morgen weiß niemand, was der Rest der Nacht braucht.
+    assert grund(((), ())) == "prognose_zu_kurz"
+    # Mit Morgen wird gerechnet: 24 h à 4 kW passen in keinen 10-kWh-Speicher.
+    assert grund(([0.5] * 8, [6.0] * 8)) == "nachtbedarf_ueber_kapazitaet"

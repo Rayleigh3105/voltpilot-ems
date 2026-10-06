@@ -564,7 +564,7 @@ func (p *Plan) ReleaseFacts(now time.Time) (*float64, string) {
 func knownReleaseReason(r string) bool {
 	switch r {
 	case "kein_ladestand", "speicher_gehalten", "prognose_veraltet",
-		"nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet":
+		"nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet", "prognose_zu_kurz":
 		return true
 	}
 	return false

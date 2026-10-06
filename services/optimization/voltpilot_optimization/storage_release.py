@@ -20,6 +20,21 @@ den Horizont des Fahrplans, in gespeicherten kWh::
 ``E_lo`` ist der Reservestapel des Speichers (technisch, Notstrom, Spitze)
 PLUS die Reserve dieser Anlage; ``E_hi`` der nutzbare Höchststand.
 
+**Der Horizont reicht bis zur nächsten Erzeugung - auch über den Fahrplan
+hinaus.** Der Fahrplan endet, wo die Börsenpreise enden: vor der
+Day-Ahead-Veröffentlichung (gegen 13 Uhr) also um Mitternacht. Um 12:00 sähe
+die Rechnung dann nur den Abend bis 24:00 und nicht die Nacht danach - genau
+das Beispiel des Kapitäns gäbe zu viel frei. Deshalb läuft die Rückwärtsrechnung
+über die gespeicherte Last- und PV-Prognose WEITER (:func:`forecast_tail`, die
+frischen Läufe des aktiven Modells, höchstens 48 h ab Planbeginn); in diesen
+Viertelstunden gibt es keinen Handel. Reicht auch die Prognose nicht über die
+nächste Nacht bis zur ersten Viertelstunde, in der die vorsichtige Sonne die
+vorsichtige Last wieder deckt (:func:`reaches_next_generation`), gibt es keine
+Freigabe (Grund ``prognose_zu_kurz``). Ein trüber Folgetag, an dem die vorsichtige Sonne die Last nie deckt,
+muss als GANZER Tag in der Reihe liegen; die Rechnung trägt dann seinen ganzen
+Bedarf, und die Untergrenze steigt entsprechend (oder es gibt
+``nachtbedarf_ueber_kapazitaet``).
+
 Warum genau so (die Tests in ``tests/test_storage_release.py`` belegen jede
 Zeile):
 
@@ -111,6 +126,14 @@ DEFAULT_PV_HAIRCUT = 0.30
 #: Mehr als 90 % Abschlag wäre keine Prognose mehr, sondern Nacht.
 MAX_PV_HAIRCUT = 0.9
 
+#: Unter dieser PV-Prognose [kW] ist eine Viertelstunde Nacht (keine
+#: Erzeugung) - dieselbe Größenordnung wie die Totzone des Netzaustauschs.
+NIGHT_PV_KW = 0.05
+
+#: So weit ab Planbeginn liest die Rechnung die Prognose höchstens (48 h, das
+#: Fenster des Fahrplans selbst).
+MAX_RELEASE_SLOTS = 192
+
 #: Ab dieser Netzleistung [kW] plant der Fahrplan einen Austausch - dieselbe
 #: Totzone wie die Eigenverbrauchs-Pflichten (slot_trim).
 GRID_DEADBAND_KW = 0.05
@@ -135,6 +158,9 @@ GRUND_SPEICHER_GEHALTEN = "speicher_gehalten"
 GRUND_PROGNOSE_VERALTET = "prognose_veraltet"
 GRUND_NACHT_UEBER_KAPAZITAET = "nachtbedarf_ueber_kapazitaet"
 GRUND_RESERVE_UEBER_KAPAZITAET = "reserve_ueber_kapazitaet"
+#: Fahrplan und frische Prognose reichen nicht bis zur nächsten Erzeugung
+#: (:func:`reaches_next_generation`) - die Prognose ist frisch, aber zu kurz.
+GRUND_PROGNOSE_ZU_KURZ = "prognose_zu_kurz"
 
 
 @dataclass(frozen=True)
@@ -247,6 +273,42 @@ def required_energy_kwh(
     return need, capped
 
 
+def reaches_next_generation(
+    load_kw: list[float], pv_kw: list[float], pv_raw_kw: list[float]
+) -> bool:
+    """Ob die Reihen über die nächste Nacht bis zur nächsten Erzeugung reichen.
+
+    Nach der ersten Nacht-Viertelstunde (rohe PV-Prognose unter
+    :data:`NIGHT_PV_KW`) muss die Reihe EINES von beiden erreichen:
+
+    - die erste Viertelstunde, in der die VORSICHTIGE Sonne (``pv_kw``) die
+      vorsichtige Last (``load_kw``) wieder deckt - die nächste Erzeugung im
+      Sinn des Kapitäns; oder
+    - das Ende des ganzen nächsten Tages (wieder eine Nacht-Viertelstunde nach
+      Sonnenaufgang) - ein trüber Folgetag, an dem die Sonne das Haus nie
+      deckt. Dann trägt die Rechnung seinen ganzen Bedarf: die Untergrenze
+      steigt oder ist gekappt (``nachtbedarf_ueber_kapazitaet``), statt dass
+      ein fehlender Morgen sie zu tief rechnet.
+
+    Endet die Reihe vorher, wüsste niemand, was der Rest der Nacht braucht.
+    """
+    n = len(load_kw)
+    if len(pv_kw) != n or len(pv_raw_kw) != n:
+        raise ValueError("load_kw, pv_kw and pv_raw_kw must have the same length")
+    night = next((t for t in range(n) if pv_raw_kw[t] < NIGHT_PV_KW), None)
+    if night is None:
+        return False
+    sunrise = next((t for t in range(night + 1, n) if pv_raw_kw[t] >= NIGHT_PV_KW), None)
+    if sunrise is None:
+        return False
+    for t in range(sunrise, n):
+        if pv_raw_kw[t] < NIGHT_PV_KW:
+            return True  # der ganze nächste Tag liegt in der Reihe
+        if pv_kw[t] >= load_kw[t]:
+            return True  # die Sonne deckt das Haus wieder
+    return False
+
+
 def release_slot(battery_kw: float, grid_kw: float, load_kw: float, pv_kw: float) -> bool:
     """Ob der Fahrplan in dieser Viertelstunde eine Freigabe zulässt.
 
@@ -323,6 +385,8 @@ def plan_storage_release(
     pv_errors: DayErrorQuantiles | None,
     forecasts_fresh: bool,
     battery_held: bool = False,
+    tail_load_kw: list[float] | tuple[float, ...] = (),
+    tail_pv_kw: list[float] | tuple[float, ...] = (),
 ) -> StorageRelease:
     """Die Untergrenze je Slot für EINEN gelösten Fahrplan.
 
@@ -331,7 +395,15 @@ def plan_storage_release(
     wird hereingereicht. ``forecasts_fresh=False`` (Prognose fehlt oder ist
     veraltet) ergibt einen Lauf OHNE Freigabe - nie eine Rechnung auf alten
     Zahlen.
+
+    ``tail_load_kw``/``tail_pv_kw`` sind die frischen Prognose-Viertelstunden
+    direkt NACH dem Fahrplan (:func:`forecast_tail`); die Rechnung läuft über
+    sie weiter, eine Untergrenze bekommen nur die Slots des Fahrplans. Reichen
+    Fahrplan und Prognose zusammen nicht bis zur nächsten Erzeugung
+    (:func:`reaches_next_generation`), gibt es keine Freigabe.
     """
+    if len(tail_load_kw) != len(tail_pv_kw):
+        raise ValueError("tail_load_kw and tail_pv_kw must have the same length")
     standard = reserve_kwh is None
     reserve = DEFAULT_RESERVE_KWH if reserve_kwh is None else max(0.0, float(reserve_kwh))
     if plan.soc_source == SOC_SOURCE_UNBEKANNT:
@@ -350,12 +422,17 @@ def plan_storage_release(
 
     slot_hours = plan.slot_minutes / 60.0
     eta = battery.one_way_efficiency
-    load = [s.load_kw * (1.0 + u.last_aufschlag) for s in plan.slots]
-    pv = [max(0.0, s.pv_kw) * (1.0 - u.pv_abschlag) for s in plan.slots]
+    raw_load = [s.load_kw for s in plan.slots] + [float(x) for x in tail_load_kw]
+    raw_pv = [max(0.0, s.pv_kw) for s in plan.slots] + [max(0.0, float(x)) for x in tail_pv_kw]
+    load = [x * (1.0 + u.last_aufschlag) for x in raw_load]
+    pv = [x * (1.0 - u.pv_abschlag) for x in raw_pv]
+    if not reaches_next_generation(load, pv, raw_pv):
+        return _none_release(plan, reserve, standard, GRUND_PROGNOSE_ZU_KURZ, u)
+    # In der Prognose-Verlängerung handelt kein Plan: keine Verkäufe.
     sales = [
         planned_sale_kw(s.battery_kw, s.load_kw, s.pv_kw) * slot_hours / eta
         for s in plan.slots
-    ]
+    ] + [0.0] * len(tail_load_kw)
     need, capped = required_energy_kwh(
         load,
         pv,
@@ -449,6 +526,84 @@ def load_release_settings(dsn: str) -> dict[str, ReleaseSetting]:
     return out
 
 
+@dataclass(frozen=True)
+class ReleaseForecast:
+    """Was die Rechnung über die Prognose wissen muss: ist sie frisch genug für
+    den Fahrplan, und wie geht sie danach weiter (die Verlängerung bis zur
+    nächsten Erzeugung, je Viertelstunde in kW)."""
+
+    fresh: bool
+    tail_load_kw: tuple[float, ...] = ()
+    tail_pv_kw: tuple[float, ...] = ()
+
+
+def release_forecast(
+    dsn: str,
+    site_id: UUID,
+    load_model: str,
+    pv_model: str,
+    now: datetime,
+    max_age: timedelta,
+    plan: SchedulePlan,
+) -> ReleaseForecast:
+    """Frische und Verlängerung der Prognose für EINEN Fahrplan.
+
+    ``fresh`` heißt: ein Lauf des aktiven Last- UND PV-Modells, jünger als
+    ``max_age``, reicht bis zum letzten Slot des Fahrplans. Die Verlängerung
+    (:func:`forecast_tail`) reicht höchstens so weit wie diese frischen Läufe.
+    Fail-soft: nicht lesbar = nicht frisch.
+    """
+    until = fresh_forecast_until(dsn, site_id, load_model, pv_model, now, max_age)
+    if until is None or until < _utc(plan.slots[-1].start):
+        return ReleaseForecast(fresh=False)
+    load, pv = forecast_tail(dsn, site_id, load_model, pv_model, plan, until)
+    return ReleaseForecast(fresh=True, tail_load_kw=load, tail_pv_kw=pv)
+
+
+def forecast_tail(
+    dsn: str,
+    site_id: UUID,
+    load_model: str,
+    pv_model: str,
+    plan: SchedulePlan,
+    until: datetime,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Die gespeicherte Last- und PV-Prognose direkt nach dem Fahrplan.
+
+    Je Viertelstunde der frischeste Wert des aktiven Modells (dieselbe Regel
+    wie der Fahrplan selbst), lückenlos ab dem Planende, bis ``until`` (der
+    Reichweite der frischen Läufe) und höchstens :data:`MAX_RELEASE_SLOTS` ab
+    Planbeginn. Fehlt ein Wert, endet die Verlängerung dort. Fail-soft: leer.
+    """
+    from voltpilot_optimization.inputs import _load_forecast
+
+    step = timedelta(minutes=plan.slot_minutes)
+    first = _utc(plan.slots[-1].start) + step
+    room = max(0, MAX_RELEASE_SLOTS - len(plan.slots))
+    if room == 0 or first > _utc(until):
+        return (), ()
+    try:
+        stored_load = _load_forecast(dsn, site_id, "load", load_model, first)
+        stored_pv = _load_forecast(dsn, site_id, "pv", pv_model, first)
+    except Exception:
+        logger.warning(
+            "storage_release.forecast_tail_unavailable",
+            extra={"context": {"site_id": str(site_id)}},
+            exc_info=True,
+        )
+        return (), ()
+    load: list[float] = []
+    pv: list[float] = []
+    t = first
+    while len(load) < room and t <= _utc(until):
+        if t not in stored_load or t not in stored_pv:
+            break
+        load.append(float(stored_load[t]))
+        pv.append(float(stored_pv[t]))
+        t += step
+    return tuple(load), tuple(pv)
+
+
 def forecasts_fresh(
     dsn: str,
     site_id: UUID,
@@ -460,6 +615,21 @@ def forecasts_fresh(
 ) -> bool:
     """Ob für Last UND PV ein gespeicherter Lauf des aktiven Modells jünger als
     ``max_age`` vorliegt, der bis ``until`` reicht. Fail-soft: ``False``."""
+    reach = fresh_forecast_until(dsn, site_id, load_model, pv_model, now, max_age)
+    return reach is not None and reach >= _utc(until)
+
+
+def fresh_forecast_until(
+    dsn: str,
+    site_id: UUID,
+    load_model: str,
+    pv_model: str,
+    now: datetime,
+    max_age: timedelta,
+) -> datetime | None:
+    """Bis wohin die Läufe des aktiven Last- UND PV-Modells reichen, die
+    jünger als ``max_age`` sind (das Minimum beider), oder ``None``.
+    Fail-soft: ``None``."""
     import psycopg  # lazy: optional [db] extra
 
     now = _utc(now)
@@ -481,8 +651,10 @@ def forecasts_fresh(
             extra={"context": {"site_id": str(site_id)}},
             exc_info=True,
         )
-        return False
-    return all(k in rows and rows[k] >= _utc(until) for k in ("load", "pv"))
+        return None
+    if not all(k in rows for k in ("load", "pv")):
+        return None
+    return min(rows["load"], rows["pv"])
 
 
 def pv_day_error_quantiles(

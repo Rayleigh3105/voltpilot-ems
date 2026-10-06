@@ -900,7 +900,7 @@ func TestTheReleaseReasonsAreTheSharedVocabulary(t *testing.T) {
 	if err := json.Unmarshal(raw, &v); err != nil {
 		t.Fatal(err)
 	}
-	if len(v.CloudReasons) != 5 {
+	if len(v.CloudReasons) != 6 {
 		t.Fatalf("vectors: %v", v.CloudReasons)
 	}
 	for _, r := range v.CloudReasons {
