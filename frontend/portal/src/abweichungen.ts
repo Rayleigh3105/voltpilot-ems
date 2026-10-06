@@ -507,6 +507,20 @@ export function fristBlock(a: Pick<Abweichung, 'frist' | 'zustand'>): { wort: st
   return { wort: ueber ? 'seit' : 'bis', tag: t.slice(0, 6), jahr: t.slice(6), satz: ueber ? `Frist ${t}, ${ueber}` : `Frist bis ${t}`, ton: ueber ? 'ueber' : 'bald' };
 }
 
+/** Die offenen Auffälligkeiten an laufenden Energiezielen: dieselbe Kennzahl, ein Monat in der Zielperiode. */
+export function offenAmEnergieziel(
+  vermerke: readonly Auffaelligkeit[],
+  ziele: readonly { kennzahl: string; zielperiode: string }[],
+): Auffaelligkeit[] {
+  return vermerke.filter((v) => {
+    if (v.zustand !== 'offen') return false;
+    return ziele.some((z) => {
+      const [von, bis = von] = z.zielperiode.split('/');
+      return z.kennzahl === v.kennzahl.id && von <= v.periode && v.periode <= bis;
+    });
+  });
+}
+
 /** Ein Tag als Datumsblock: „07.04.“ über „2029“. */
 export const tagBlock = (iso: string) => {
   const t = tag(iso);

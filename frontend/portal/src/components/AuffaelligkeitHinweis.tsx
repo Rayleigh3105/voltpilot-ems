@@ -12,23 +12,23 @@ import '../pages/Abweichungen.css';
 
 /**
  * Der Hinweis am Energieziel (Verbessern-Konzept v1 §6.3/§6.4, Entscheid 4): liegt für die Kennzahl eines laufenden
- * Energieziels eine offene Auffälligkeit vor, steht sie vor dem Stand - erst klären, woran der Monat lag, dann wissen
- * Sie, welche Maßnahme hilft. „Beantworten“ öffnet das Antwort-Blatt an Ort und Stelle. Lädt die Liste nicht, schweigt
+ * Energieziels in seiner Zielperiode eine offene Auffälligkeit vor, steht sie am Energieziel - erst klären, woran der
+ * Monat lag, dann wissen Sie, welche Maßnahme hilft. „Beantworten“ öffnet das Antwort-Blatt an Ort und Stelle. Lädt die Liste nicht, schweigt
  * der Hinweis (er ist ein Zusatz, die Seite steht ohne ihn).
  */
 export function AuffaelligkeitHinweis({
-  kennzahlen,
+  ziele,
   art,
 }: {
-  /** Die Kennzahlen, deren offene Auffälligkeiten hier zählen (laufende Energieziele). */
-  kennzahlen: readonly string[];
+  /** Die laufenden Energieziele: ihre Kennzahl und Zielperiode (`JJJJ-MM/JJJJ-MM`) - nur dort zählt ein Monat. */
+  ziele: readonly { kennzahl: string; zielperiode: string }[];
   /** `reiter`: im Reiter „Energieziele“ · `seite`: auf der Seite eines Energieziels. */
   art: 'reiter' | 'seite';
 }) {
   const [liste, setListe] = useState<AuffaelligkeitenAlle | null>(null);
   const [versuch, setVersuch] = useState(0);
   const [blatt, setBlatt] = useState<Auffaelligkeit | null>(null);
-  const schluessel = [...kennzahlen].sort().join(',');
+  const schluessel = ziele.map((z) => `${z.kennzahl}:${z.zielperiode}`).sort().join(',');
 
   useEffect(() => {
     if (!schluessel) return undefined;
@@ -46,7 +46,7 @@ export function AuffaelligkeitHinweis({
   }, [schluessel, versuch]);
 
   if (!liste) return null;
-  const offen = liste.vermerke.filter((v) => v.zustand === 'offen' && kennzahlen.includes(v.kennzahl.id));
+  const offen = A.offenAmEnergieziel(liste.vermerke, ziele);
   if (offen.length === 0) return null;
   const v = offen[offen.length - 1];
   const z = A.anlassZahlen(v.anlass_inhalt);

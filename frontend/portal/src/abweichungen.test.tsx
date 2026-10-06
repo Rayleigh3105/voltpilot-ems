@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as A from './abweichungen';
 import { api } from './api';
 import { benutzerApi } from './benutzer';
+import { AuffaelligkeitHinweis } from './components/AuffaelligkeitHinweis';
 import { BezugsbasisVergleich } from './components/BezugsbasisVergleich';
 import { UEMS_NORMGRENZE } from './glossar';
 import { abweichungRoute, hashForRoute, parseRoute } from './nav';
@@ -233,6 +234,32 @@ describe('Reiter „Abweichungen“', () => {
     expect(screen.getByTestId('abweichung-zeile-AW-2028-0001')).toBeTruthy();
     fireEvent.click(within(zu).getByRole('button', { name: 'Erneut versuchen' }));
     expect(await within(screen.getByTestId('abweichungen-zu-beantworten')).findByText(/^Nichts zu beantworten\./)).toBeTruthy();
+  });
+});
+
+describe('Hinweis am Energieziel (Entscheid 4)', () => {
+  const ZIEL = { kennzahl: BB_IDS.kz4, zielperiode: '2028-01/2028-12' };
+
+  it('zählt nur offene Auffälligkeiten derselben Kennzahl in der Zielperiode', () => {
+    const jan = vermerkDez({ id: 'jan', periode: '2028-01' });
+    expect(A.offenAmEnergieziel([vermerkDez(), jan, vermerkJuli()], [ZIEL]).map((v) => v.id)).toEqual(['jan']);
+    expect(A.offenAmEnergieziel([jan], [{ ...ZIEL, kennzahl: 'andere' }])).toEqual([]);
+  });
+
+  it('nennt Monat und Kennzahl und öffnet das Antwort-Blatt an Ort und Stelle', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    const jan = vermerkDez({ id: 'a9000000-0000-4000-8000-000000202801', periode: '2028-01' });
+    Object.assign(api, abweichungBuehne('leer', '2028-02-10'), {
+      alleAuffaelligkeiten: async () => ({ abruf: '2028-02-10', offen: 2, vermerke: [vermerkDez(), jan] }),
+    });
+    Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
+    render(<AuffaelligkeitHinweis ziele={[ZIEL]} art="reiter" />);
+    const hinweis = await screen.findByTestId('auffaelligkeit-hinweis-reiter');
+    expect(ohneNbsp(hinweis.textContent)).toBe(
+      'Auffälligkeit zu Januar 2028 · offen. Stromeinsatz Spritzguss je kg lag 12,9 % über der Erwartung. Klären Sie zuerst, woran es lag - dann wissen Sie, welche Maßnahme hilft. Beantworten',
+    );
+    fireEvent.click(within(hinweis).getByTestId('auffaelligkeit-hinweis-beantworten'));
+    expect(within(await screen.findByTestId('auffaelligkeit-blatt')).getByTestId('auffaelligkeit-frist-vorgabe').textContent).toBe('in 30 Tagen, 11.03.');
   });
 });
 

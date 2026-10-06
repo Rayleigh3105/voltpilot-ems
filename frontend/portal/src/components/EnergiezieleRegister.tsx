@@ -44,7 +44,10 @@ export function EnergiezieleRegister({ onOeffnen }: { onOeffnen: (id: string) =>
   return (
     <section className="vp-ez" data-testid="energieziele-register">
       {/* Verbessern-Konzept v1 (Entscheid 4): offene Auffälligkeiten an Kennzahlen laufender Energieziele zuerst. */}
-      <AuffaelligkeitHinweis kennzahlen={lage.ziele.filter((ez) => ez.zustand === 'offen').map((ez) => ez.kennzahl.id)} art="reiter" />
+      <AuffaelligkeitHinweis
+        ziele={lage.ziele.filter((ez) => ez.zustand === 'offen').map((ez) => ({ kennzahl: ez.kennzahl.id, zielperiode: ez.zielperiode }))}
+        art="reiter"
+      />
       {lage.ziele.length === 0 ? (
         <>
           <p className="vp-ez-wozu" data-testid="energieziele-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>

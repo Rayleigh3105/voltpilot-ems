@@ -248,7 +248,7 @@ export function EnergiezielSeite({
         </section>
 
         {/* Verbessern-Konzept v1 (Entscheid 4): eine offene Auffälligkeit an der Kennzahl steht am Energieziel. */}
-        {offen && <AuffaelligkeitHinweis kennzahlen={[ez.kennzahl.id]} art="seite" />}
+        {offen && <AuffaelligkeitHinweis ziele={[{ kennzahl: ez.kennzahl.id, zielperiode: ez.zielperiode }]} art="seite" />}
 
         <section className="vp-ez-karte" aria-labelledby="ez-bewertung" data-testid="energieziel-bewertung" data-entscheid="energieziel_bewertung">
           <h2 id="ez-bewertung">Bewertung</h2>

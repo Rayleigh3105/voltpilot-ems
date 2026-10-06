@@ -112,14 +112,15 @@ export function AbweichungenRegister({
         <p className="vp-abw-satz" data-testid="abweichungen-satz">
           {bild.satz}
         </p>
-        <div className="vp-abw-formal">
+        <p className="vp-abw-formal">
           <span data-testid="abweichungen-formal">{bild.formal}</span>
-          <span aria-hidden="true">·</span>
+          {/* Der Punkt bleibt am Stand, nie allein am Zeilenanfang. */}
+          {'\u00a0· '}
           <button type="button" className="vp-abw-link" aria-expanded={begriff} onClick={() => setBegriff((b) => !b)} data-testid="abweichungen-was-ist">
             <Icon name="info" size={14} />
             {WAS_IST}
           </button>
-        </div>
+        </p>
       </div>
       {begriff && (
         <div className="vp-abw-hinweis" data-testid="abweichungen-begriff">

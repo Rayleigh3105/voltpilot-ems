@@ -105,10 +105,6 @@
 }
 .vp-abw-formal {
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 6px;
   font-size: 0.75rem;
   line-height: 1.45;
   color: var(--vp-c-muted-fg, #475569);
@@ -150,7 +146,8 @@
 .vp-abw-link {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  vertical-align: middle;
   padding: 0;
   border: 0;
   background: none;
@@ -645,6 +642,7 @@
 }
 .vp-abw-zahlen > div {
   display: grid;
+  align-content: space-between;
   gap: 1px;
   min-width: 0;
   padding: 8px 9px;
