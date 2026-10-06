@@ -153,7 +153,7 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
     expect(ms06).toHaveTextContent('automatisch vom Gerät');
     expect(ms06).toHaveTextContent('Unterzähler Spritzguss SG01–SG06 · Wirkenergie Bezug');
     fireEvent.click(ms06);
-    expect(onOeffnen).toHaveBeenCalledWith(MS06);
+    expect(onOeffnen).toHaveBeenCalledWith(MS06, null);
     // Mit Strg/⌘ bleibt es ein gewöhnlicher Verweis (neuer Tab), die Seite öffnet nicht selbst.
     fireEvent.click(ms06, { ctrlKey: true });
     expect(onOeffnen).toHaveBeenCalledTimes(1);
@@ -301,12 +301,17 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
   it('aus dem Menü ein Tag: die Plan-Marke „Stand …“, die Reihen dieses Tags, benannt was es noch nicht gab - und kein Schreibweg', async () => {
     telefon(false);
     const register = verdrahte();
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const onOeffnen = vi.fn();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onOeffnen={onOeffnen} />);
     await screen.findAllByTestId('messstelle-reihe');
     await menue(/^Stand an einem Tag ansehen/);
     await waehleTag('2026-10-10');
     await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
     expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10' });
+    // Eine Reihe öffnet die Messstelle an genau diesem Tag (AP-13 IP-3) - als Verweis und als Klick.
+    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10`), WARTEN);
+    fireEvent.click(reiheVon('MS-06'));
+    expect(onOeffnen).toHaveBeenCalledWith(MS06, '2026-10-10');
     const nochNicht = await screen.findByTestId('messstellen-noch-nicht', {}, WARTEN);
     expect(nochNicht).toHaveTextContent('Am 10.10.2026 noch nicht im Portal');
     expect(nochNicht).toHaveTextContent('Am 10.10.2026 gab es MS-16 „Netzbezug Lindach“ im Portal noch nicht.');
