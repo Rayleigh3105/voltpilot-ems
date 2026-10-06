@@ -164,8 +164,9 @@ for (const breite of [375, 1440]) {
       await ablegen(page, `ip20-einloesen-ort-${breite}`);
       await ohneQuerlauf(page, `einloesen-ort-${breite}`);
       await modal(page).getByRole('button', { name: 'Weiter: Quelle' }).click();
-      await modal(page).getByRole('button', { name: 'Später binden' }).click();
-      await expect(modal(page)).toContainText('keine Datenquelle');
+      // Schritt „Woher kommen die Werte?“: noch kein Weg - die Messstelle bleibt ohne Quelle, nie 0.
+      await modal(page).getByRole('button', { name: 'Später festlegen' }).click();
+      await expect(modal(page)).toContainText('noch keine Quelle');
       await modal(page).getByRole('button', { name: 'Schließen' }).first().click();
 
       // Das Kennzeichen kommt zurück: eingelöst durch MS-23, keine Datenquelle seit …, keine Zahl.
@@ -242,20 +243,15 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page, `protokoll-${breite}`);
     });
 
-    test('AP-16 P1: im Register „Nur geplant für einen Energieeinsatz“ — nur MS-23, die Adresse fragt geplantFuerEinsatz=true', async ({ page }) => {
+    test('AP-16 P1: die Marke „1 geplant für einen Energieeinsatz“ in der Liste zeigt nur MS-23 (Konzept Messen m1: Marken filtern)', async ({ page }) => {
       await cloudMs23(page);
-      const anfragen: string[] = [];
-      page.on('request', (r) => {
-        if (new URL(r.url()).pathname === '/api/v1/messstellen') anfragen.push(new URL(r.url()).search);
-      });
       await oeffne(page, '/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen', breite);
-      const schalter = page.getByTestId('register-filter-geplant');
-      await expect(schalter).toHaveText('Nur geplant für einen Energieeinsatz (1)');
-      await schalter.click();
-      await expect(schalter).toHaveAttribute('aria-pressed', 'true');
-      await expect.poll(() => anfragen.some((q) => q.includes('geplantFuerEinsatz=true'))).toBe(true);
-      await expect(page.getByText('MS-23').first()).toBeVisible();
-      await expect(page.getByText('MS-21')).toHaveCount(0);
+      const marke = page.getByRole('group', { name: 'Nur diese zeigen' }).getByRole('button', { name: '1 geplant für einen Energieeinsatz' });
+      await expect(marke).toBeVisible();
+      await marke.click();
+      await expect(marke).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('messstelle-reihe')).toHaveCount(1);
+      await expect(page.getByTestId('messstelle-reihe')).toContainText('MS-23');
       await ablegen(page, `ap16-register-geplant-${breite}`);
       await ohneQuerlauf(page, `register-geplant-${breite}`);
     });

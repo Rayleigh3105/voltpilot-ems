@@ -1,0 +1,91 @@
+/*
+ * „Was ist …?“ (Konzept Messen m1, §7, Baustein `.tipp`): zu ein leiser Verweis mit Info-Zeichen wie „Woher kommen
+ * diese Fristen?“ der Wiedervorlage, offen ein ruhiger Kasten im Ton des Verweises. Nur Haus-Tokens.
+ */
+.vp-begriff-auf {
+  min-width: 0;
+  justify-self: start;
+  align-self: flex-start;
+  max-width: 100%;
+  font-family: var(--vp-c-font);
+}
+.vp-begriff-auf summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.85rem/1.3 var(--vp-c-font);
+  list-style: none;
+  cursor: pointer;
+}
+.vp-begriff-auf summary::-webkit-details-marker {
+  display: none;
+}
+.vp-begriff-auf summary svg {
+  flex: 0 0 auto;
+}
+.vp-begriff-auf summary:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+.vp-begriff-auf-zu {
+  display: none;
+  margin-left: auto;
+  color: var(--vp-c-muted-fg, #475569);
+}
+@media (hover: hover) {
+  .vp-begriff-auf:not([open]) summary:hover .vp-begriff-auf-frage {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+/* Offen: der Kasten. */
+.vp-begriff-auf[open] {
+  justify-self: stretch;
+  align-self: stretch;
+  display: grid;
+  gap: 7px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-c-primary, #2563eb) 22%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-md, 16px);
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 4%, var(--vp-c-card, #fff));
+}
+.vp-begriff-auf[open] summary {
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+  color: var(--vp-navy, #1e3a5f);
+  font: 700 0.9375rem/1.3 var(--vp-c-font);
+}
+.vp-begriff-auf[open] summary > svg {
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-begriff-auf[open] .vp-begriff-auf-zu {
+  display: inline-flex;
+  transform: rotate(180deg);
+}
+.vp-begriff-auf-text {
+  display: grid;
+  gap: 7px;
+}
+.vp-begriff-auf-text p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-begriff-auf-text p.vp-begriff-auf-beispiel {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-begriff-auf-text p.vp-begriff-auf-beispiel b {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 600;
+}
+.vp-begriff-auf-text p.vp-begriff-auf-abgrenzung {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}

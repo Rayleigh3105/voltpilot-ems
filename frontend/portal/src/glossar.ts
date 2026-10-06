@@ -722,6 +722,18 @@ export const UEMS_KEINE_FRIST_UEBERFAELLIG = 'Keine Frist überfällig';
 export const UEMS_NAECHSTE_FRISTEN = 'Nächste Fristen';
 export const UEMS_ZULETZT_ERLEDIGT = 'Zuletzt erledigt';
 export const UEMS_WOHER_FRISTEN = 'Woher kommen diese Fristen?';
+
+/**
+ * Konzept Messen m1 (Captain-Freigabe 05.10.2026): woher die Werte einer Messstelle kommen - die Spalte der Liste, die
+ * zwei gleichwertigen Wege einer gemessenen Messstelle im Messstellen-Dialog und das Wort ohne Weg. „Quelle“ bleibt das
+ * Fachwort im Aufklapper und in den Dialogen. Der Ableserhythmus ist fest monatlich (AP-09 Z7).
+ * Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Woher die Werte kommen“).
+ */
+export const UEMS_WOHER_DIE_WERTE = 'Woher die Werte kommen';
+export const UEMS_WEG_GERAET = 'Automatisch von einem Gerät';
+export const UEMS_WEG_ABLESEN = 'Von Hand ablesen';
+export const UEMS_NOCH_KEINE_QUELLE = 'noch keine Quelle';
+export const UEMS_ABLESERHYTHMUS = 'Ableserhythmus';
 /** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
 export const UEMS_JAHRESPLAN = 'Jahresplan';
 /**

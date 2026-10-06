@@ -1586,7 +1586,10 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
-          const stelle = rest.indexOf(fingerabdruck);
+          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
+          const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
+          if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
+          const stelle = rest.indexOf(fortschreibung?.nachher ?? fingerabdruck);
           expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
@@ -1596,6 +1599,13 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
         if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
+        if (fortschreibung && fortschreibung.nachher === null) {
+          // Ein ausdrücklich belegter Wegfall (Neubau einer Fläche nach freigegebenem Konzept, Grund und Commit am
+          // Eintrag): das Bedienelement ist wirklich weg, nicht nur verschoben.
+          expect(jetzt, `${pfad}: als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
+          zahl++;
+          continue;
+        }
         const soll = fortschreibung?.nachher ?? fingerabdruck;
         const stelle = jetzt.indexOf(soll);
         if (stelle < 0 && nz) {

@@ -850,7 +850,14 @@ Wer die Aufgaben nicht lesen darf, liest keine Person laut Aufgabe und auch kein
 Seit Vertrag 1.2 steht die „Zählerablesung“ in der Liste (Bereich Messen): eine Ablese-Runde je Gebäude (ohne Gebäude der Standort) und Fälligkeitstag, „8 Zähler in Halle 1 ablesen“, fällig zwei Monate nach der letzten Ablesung wie „Ablesung überfällig seit …“ im Register.
 Der Schritt heißt „Ablesungen eintragen“ und öffnet die Messstellen des Orts; bei einem Zähler heißt er wie der Knopf an der Messstelle, „Ablesung eintragen“.
 Kundenwörter: `UEMS_WIEDERVORLAGE_SATZ`, `UEMS_UEBERFAELLIG`, `UEMS_KEINE_FRIST_UEBERFAELLIG`, `UEMS_NAECHSTE_FRISTEN`, `UEMS_ZULETZT_ERLEDIGT`, `UEMS_WOHER_FRISTEN`, `UEMS_JAHRESPLAN`, `UEMS_LAUT_AUFGABE`, `UEMS_GEPRUEFT_BLEIBT_KNOPF` (PORTAL/glossar.ts)."""],
-    "messstelle": ["""## Summenwert
+    "messstelle": ["""**Woher die Werte kommen (Konzept Messen m1, Captain-Freigabe 05.10.2026).**
+Auf den Flächen unter Messen heißt die führende Quelle einer Messstelle „Woher die Werte kommen“; „Quelle“ bleibt das Fachwort im Aufklapper und in den Dialogen.
+Eine gemessene Messstelle hat einen von zwei gleichwertigen Wegen: „Automatisch von einem Gerät“ (ein Messwert einer Komponente, laufend, meist jede Viertelstunde) oder „Von Hand ablesen“ (Zählerstände, die jemand einträgt).
+In der Liste heißen sie „automatisch vom Gerät“ und „von Hand abgelesen, monatlich“; eine berechnete Messstelle ist „berechnet aus anderen Messstellen“, und ohne Weg steht „noch keine Quelle“, nie „Keine Datenquelle“.
+Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesung erinnert die Wiedervorlage; mit der ersten Ablesung entsteht die Ablesungsquelle, und nur eine Messstelle mit einem Zählerstand als Hauptgröße lässt sich ablesen.
+„Aus anderen Messstellen berechnet“ ist kein dritter Weg im Messstellen-Dialog: ein Summenwert entsteht an der Anlage, an der seine Messwerte liegen, und „Summenwert anlegen“ steht unter Messen nicht mehr (Konzept §6.10).
+Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
+Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).""", """## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
 aus Registern und anderen berechneten Messstellen derselben Anlage, mit

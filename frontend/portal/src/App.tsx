@@ -1726,13 +1726,9 @@ function UnifiedPortal() {
               onOeffnen={(id) =>
                 navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id))
               }
-              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse. Ein Einstieg aus dem
-              // Register ist ein Seitenwechsel; eine neue Wahl auf der Seite ersetzt nur die Adresse.
+              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse; eine neue Wahl auf der Seite
+              // ersetzt nur die Adresse. Die Liste öffnet die Seite selbst (Konzept Messen m1: die ganze Reihe ist der Einstieg).
               werte={parseMessstelleWerte(window.location.hash)}
-              onWerte={(id, periode) => {
-                const s = sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode });
-                if (s) springe(s);
-              }}
               onWerteZeitraum={(periode) => {
                 // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht (neue Periode, neue Zahl).
                 const jetzt = parseMessstelleWerte(window.location.hash);
