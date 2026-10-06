@@ -48,7 +48,7 @@ import '../src/index.css';
  * (`src/test/energiemanagementFixtures.ts`); jeder Schreib-Körper steht in `window.__emGesendet` (Netzwerk-Probe).
  *
  * Adresse: `?person=IK|JW|CB|RF` (Vorgabe IK; RF = Robert Falk mit der Rolle „Einsicht“, IP-13) · `&lage=start|ahrenberg`
- * (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 … D-0003 der Lage `ahrenberg` · `&seite=dokumente|aufgaben|verantwortung|zuschnitt`
+ * (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 … D-0003 der Lage `ahrenberg` · `&seite=dokumente|aufgaben|verantwortung|zuschnitt|verzeichnis`
  * · `&ps=RF|IK|…` öffnet die Seite dieser Person (IP-13). Die Uhr stellt die Spec (`page.clock`).
  * IP-20: `&al=leer|r10|r11` spielt dazu die Routen des internen Audits und der Feststellung (`auditFeststellungBuehne`)
  * und die der Maßnahme (`massnahmeBuehne`, AP-18), die Konten der Maßnahme und die Maßnahmen-Seite unter
@@ -159,7 +159,7 @@ if (!location.hash.startsWith('#/portfolio/')) {
           : params.get('br') === '1'
             ? managementbewertungRoute(MB_KENNUNG)
             : seite === 'dokumente' || seite === 'zuschnitt' || seite === 'aufgaben' || seite === 'verantwortung' || seite === 'audits' ||
-                seite === 'feststellungen' || seite === 'wiedervorlage' || seite === 'managementbewertung'
+                seite === 'feststellungen' || seite === 'wiedervorlage' || seite === 'managementbewertung' || seite === 'verzeichnis'
               ? energiemanagementRoute(seite)
               : energiemanagementRoute();
   history.replaceState(null, '', hashForRoute(ziel));
@@ -233,7 +233,7 @@ function Ansicht() {
       />
       {route.page === 'portfolio-energiemanagement' ? (
         <EnergiemanagementBereich
-          reiter={route.energiemanagementReiter ?? 'verzeichnis'}
+          reiter={route.energiemanagementReiter ?? 'ueberblick'}
           dokumentId={route.dokumentId ?? null}
           personId={route.personId ?? null}
           auditId={route.auditId ?? null}
