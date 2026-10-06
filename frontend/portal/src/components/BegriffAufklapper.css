@@ -85,7 +85,8 @@
   color: var(--vp-c-fg, #1e293b);
   font-weight: 600;
 }
-.vp-begriff-auf-text p.vp-begriff-auf-abgrenzung {
+.vp-begriff-auf-text p.vp-begriff-auf-abgrenzung,
+.vp-begriff-auf-text p.vp-begriff-auf-fachwort {
   font-size: 0.72rem;
   color: var(--vp-c-muted-fg, #475569);
 }

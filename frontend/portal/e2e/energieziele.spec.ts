@@ -111,7 +111,8 @@ for (const breite of [375, 1440]) {
       const dialog = page.getByTestId('energieziel-setzen');
       await expect(dialog.getByTestId('energieziel-basis-zeile')).toContainText('Bezugsbasis BB-0001 · Fassung 2');
       await expect(dialog.getByText('Januar bis Dezember 2028 — ganze Monate, frühestens ab dem nächsten Monat.')).toBeVisible();
-      await expect(dialog.getByText(GRENZE)).toBeVisible();
+      // Konzept Verbessern v1, PR 4: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Dialog.
+      await expect(dialog.getByText(GRENZE)).toHaveCount(0);
       await ablegen(page, `dialog-${breite}`);
       await page.locator('.vp-modal').getByLabel(/Zielwert in % weniger/).fill('5');
       await page.locator('.vp-modal').getByLabel('Wortlaut').fill('Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt — Jahresziel 2028.');

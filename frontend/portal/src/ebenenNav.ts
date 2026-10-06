@@ -822,7 +822,7 @@ export const UNTERNEHMEN_GRUPPEN: readonly {
   { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', frage: 'Läuft alles? Was steht an?', bereiche: ['uebersicht', 'standorte'] },
   { key: 'messen', label: 'Messen', icon: 'activity', frage: 'Wird alles erfasst?', bereiche: ['messstellen', 'bezugsgroessen'] },
   { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', frage: 'Wo geht die Energie hin, wird es besser?', bereiche: ['kennzahlen', 'bewertung'] },
-  { key: 'verbessern', label: 'Verbessern', icon: 'list', frage: 'Was tun wir dagegen?', bereiche: ['verbesserung'] },
+  { key: 'verbessern', label: 'Verbessern', icon: 'list', frage: 'Was tun wir, um Energie zu sparen?', bereiche: ['verbesserung'] },
   { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', frage: 'Können wir es belegen?', bereiche: ['energiemanagement', 'berichte'] },
 ];
 

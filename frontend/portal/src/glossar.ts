@@ -606,7 +606,8 @@ export const UEMS_KOORDINATEN_FEHLEN_SATZ = (standort: string) =>
 /**
  * UEMS AP-18 IP-4 (SP1–SP4) — Kundenwörter des Bereichs „Ziele und Maßnahmen“. Die Norm-Wörter (Nichtkonformität,
  * Korrekturmaßnahme, Aktionsplan) stehen nur im Konzept und in Verträgen; `copy.test.ts` (Block „Ziele und
- * Maßnahmen“) hält sie von den Kundenflächen fern. „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der
+ * Maßnahmen“) hält sie von den Kundenflächen fern; einzige Ausnahme ist das Feld `fachwort` in `begriffe.ts`
+ * (Konzept Verbessern v1, Entscheid 14). „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der
  * Steuerung (W6); „Verbesserung“ nur im Wirkungs-Satz mit Bedingung, nie als Beschriftung (W5).
  */
 export const UEMS_ZIELE_UND_MASSNAHMEN = 'Ziele und Maßnahmen';
@@ -670,6 +671,22 @@ export const UEMS_AUFFAELLIGKEIT_ANTWORTEN = {
   abweichung: `${UEMS_ABWEICHUNG} eröffnen`,
   zur_kenntnis: UEMS_ZUR_KENNTNIS_GENOMMEN,
 } as const;
+
+/**
+ * Konzept Verbessern v1 §7 (Captain-Freigabe 06.10.2026): die Alltagswörter der Flächen. „auf Kurs“ ist der
+ * Zwischenstand eines Energieziels (Entscheid 3); „Vorher“ und „gemessen an“ sagen auf den Flächen, was im Fachmodell
+ * Ausgangslage und Messgrundlage heißt; „zweite Person“ ist das Vier-Augen-Prinzip; „Einsparung“ ist der Unterschied
+ * zwischen erwartetem und gemessenem Verbrauch, nie „Einsparung durch“ eine Maßnahme. Die Normwörter (Aktionsplan,
+ * Korrekturmaßnahme, Nichtkonformität, Energieleistungsverbesserung) stehen nur im Feld `fachwort` von `begriffe.ts`,
+ * sichtbar in der letzten Zeile von „Was ist …?“ (Entscheid 14), sonst auf keiner Fläche.
+ */
+export const UEMS_AUF_KURS = 'auf Kurs';
+export const UEMS_KNAPP_DAHINTER = 'knapp dahinter';
+export const UEMS_NICHT_AUF_KURS = `nicht ${UEMS_AUF_KURS}`;
+export const UEMS_VORHER = 'Vorher';
+export const UEMS_GEMESSEN_AN = 'gemessen an';
+export const UEMS_ZWEITE_PERSON = 'zweite Person';
+export const UEMS_EINSPARUNG = 'Einsparung';
 
 /** Gemessenes Δ mit einer Stelle; der Wert einer Person (erwartete Wirkung, Zielwert) so, wie sie ihn gesetzt hat. */
 const verbesserungRichtung = (delta: number, stellen: number | null = 1) =>

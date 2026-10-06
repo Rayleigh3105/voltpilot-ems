@@ -713,6 +713,8 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(leiste.length).toBeLessThanOrEqual(LEISTE_HOECHSTENS);
     expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['kennzahlen', 'bewertung']);
     expect(leiste.find((k) => k.key === 'verbessern')?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
+    // Konzept Verbessern v1, Entscheid 1: die Gruppe fragt nach dem Zweck, nicht „Was tun wir dagegen?“.
+    expect(leiste.find((k) => k.key === 'verbessern')?.frage).toBe('Was tun wir, um Energie zu sparen?');
     // „Nachweisen“ öffnet das Verzeichnis des Energiemanagements, die Berichte stehen daneben.
     expect(leiste.find((k) => k.key === 'nachweisen')?.bereiche).toEqual(['energiemanagement', 'berichte']);
     expect(leiste.find((k) => k.key === 'nachweisen')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));

@@ -4,7 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Massnahme, type MassnahmeBewertung, type MassnahmeErgebnis, type MassnahmeWirkung, type VorgangAnstoss } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_MASSNAHME, UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_MASSNAHME } from '../glossar';
 import * as W from '../massnahmeWirkung';
 import * as M from '../massnahmen';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
@@ -409,7 +409,6 @@ export function MassnahmeBewertenDialog({
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <p className="vp-ez-leise">{W.ENDGUELTIG_HINWEIS}</p>
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );

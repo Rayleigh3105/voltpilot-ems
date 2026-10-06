@@ -96,6 +96,10 @@ export const mitgenommen = (monate: string[]) =>
 export const VON_HAND_HINWEIS =
   'Von Hand an dieser Zeile — auch „im Rahmen“ darf eine Person etwas untersuchen. Der Anlass ist die Kopie des Vergleichs dieses Monats.';
 export const WORTLAUT_HINWEIS = 'Pflicht, 10 bis 500 Zeichen: warum diese Zeile untersucht wird.';
+/** Konzept Verbessern v1 §8.4: unter dem Wortlaut einer Aussage steht, wie er zu schreiben ist - die Länge erst als Fehler. */
+export const AUSSAGE_WIE_GESAGT = 'So, wie die Person es gesagt hat.';
+/** Konzept Verbessern v1 §8.4: der Platzhalter von „Warum“ - ein Beispiel statt der Länge. */
+export const WORTLAUT_BEISPIEL = 'Zum Beispiel: Der Monat liegt deutlich über dem Vorjahr, obwohl weniger produziert wurde.';
 export const FRIST_HINWEIS = 'Ohne Angabe: 30 Tage nach dem Eröffnen. Nie vor dem Eröffnungstag.';
 export const AUSSAGE_HINWEIS = `Eine Ursache ist immer die ${UEMS_AUSSAGE_VON} einer Person — das System nennt keine. Wer einträgt, muss nicht wer aussagt sein.`;
 export const BELEG_HINWEIS = 'Wahlfrei: eine Kennung, die die Aussage stützt (Korrektur K-…, Messbedarf MB-…, Ereignis). Ohne Beleg heißt sie „keine Messung“.';

@@ -162,6 +162,16 @@ import {
   kennzahlWertVersionenAntwort,
 } from './test/kennzahlWerteFixtures';
 import { HERKUNFT_WORT as MASSNAHME_HERKUNFT_WORT } from './massnahmen';
+import { BEGRIFFE, fachwortZeile, NORMWOERTER_IM_FACHWORT, type BegriffSchluessel } from './begriffe';
+import {
+  UEMS_AUF_KURS,
+  UEMS_EINSPARUNG,
+  UEMS_GEMESSEN_AN,
+  UEMS_KNAPP_DAHINTER,
+  UEMS_NICHT_AUF_KURS,
+  UEMS_VORHER,
+  UEMS_ZWEITE_PERSON,
+} from './glossar';
 import {
   UEMS_AEHNLICHE_FAELLE,
   UEMS_ANWENDUNGSBEREICH,
@@ -1929,6 +1939,7 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
   'abweichungen.ts', // neu: eine Abweichung zitiert genau eine Kennzahl (AP-18 IP-18, A3; Spalte, Filter, Ablehnungen)
+  'begriffe.ts', // neu: „Was ist eine Maßnahme?“ und „gemessen an“ nennen die Kennzahl, an der die Wirkung gemessen wird (Konzept Verbessern v1 §7)
   'berichtDialoge.ts', // neu: „Bericht anlegen“ wählt Kennzahlen ab (AP-12 IP-14, V3)
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
@@ -2840,6 +2851,17 @@ const VERBESSERUNG_VERBOTEN = [
   /(^|[^\p{L}\p{N}])Einsparung(?:en)?\s+durch([^\p{L}\p{N}]|$)/iu,
 ];
 
+/**
+ * Konzept Verbessern v1, Entscheid 14 (Captain-Freigabe 06.10.2026): Berater suchen die Normwörter. Sie stehen darum in
+ * der letzten Zeile von „Was ist …?“ - nur im Feld `fachwort` der Begriffe aus `NORMWOERTER_IM_FACHWORT`. Genau diese
+ * Texte in `begriffe.ts` lässt der Wächter durch; jede andere Stelle bleibt verboten. Die einzige Ausnahme.
+ */
+const FACHWORT_AUSNAHMEN = new Set<string>([
+  ...Object.values(NORMWOERTER_IM_FACHWORT).flatMap((woerter) => woerter ?? []),
+  ...(Object.keys(NORMWOERTER_IM_FACHWORT) as BegriffSchluessel[]).map((k) => BEGRIFFE[k].fachwort ?? ''),
+]);
+const fachwortAusnahme = (datei: string, text: string) => datei === 'begriffe.ts' && FACHWORT_AUSNAHMEN.has(text);
+
 describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwörter (SP1–SP4)', () => {
   /**
    * IP-8/IP-13/IP-18/IP-20 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren Dateiname
@@ -2886,6 +2908,43 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
   };
   const traegtGrenze = (text: string) =>
     text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
+
+  /**
+   * Konzept Verbessern v1, PR 4 (Muster `BEZUGSBASIS_TEILE`): Dialoge und Abschnitte, die nur INNERHALB einer Seite mit
+   * Grenz-Satz stehen. Der Satz steht einmal am Fuß der Seite, nicht am Fuß jedes Dialogs. Ein Teil gilt weiter als
+   * Fläche für Wörter, Ursachen und Pfeile; jede Eltern-Datei importiert ihn und trägt den Grenz-Satz selbst (oder ist
+   * selbst ein Teil, dessen Eltern ihn tragen).
+   */
+  const VERBESSERUNG_TEILE: Record<string, string[]> = {
+    'components/EnergiezielDialoge.tsx': ['pages/EnergiezielSeite.tsx', 'pages/KennzahlSeite.tsx'],
+    'components/MassnahmeDialoge.tsx': [
+      'pages/MassnahmeSeite.tsx',
+      'components/MassnahmenRegister.tsx',
+      'pages/EnergiezielSeite.tsx',
+      'pages/EnergieeinsatzSeite.tsx',
+      'pages/AuditSeite.tsx',
+      'pages/FeststellungSeite.tsx',
+      'pages/ManagementbewertungSeite.tsx',
+    ],
+    'components/AbweichungDialoge.tsx': ['pages/AbweichungSeite.tsx'],
+    'components/AuffaelligkeitZeile.tsx': ['components/BezugsbasisVergleich.tsx'],
+    'components/MassnahmeWirkung.tsx': ['pages/MassnahmeSeite.tsx'],
+    'components/VerbesserungAnstoesse.tsx': ['pages/EnergiezielSeite.tsx', 'pages/MassnahmeSeite.tsx'],
+  };
+  const importiertTeil = (eltern: string, teil: string) => {
+    if (!existsSync(join(SRC, eltern))) return false;
+    const name = teil.replace(/^components\//, '').replace(/\.tsx$/, '');
+    const pfad = eltern.startsWith('components/') ? `./${name}` : `../components/${name}`;
+    return readFileSync(join(SRC, eltern), 'utf8').includes(`from '${pfad}'`);
+  };
+  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean =>
+    (VERBESSERUNG_TEILE[teil] ?? []).length > 0 &&
+    VERBESSERUNG_TEILE[teil].every(
+      (eltern) =>
+        !gesehen.includes(eltern) &&
+        importiertTeil(eltern, teil) &&
+        (traegtGrenze(stripComments(readFileSync(join(SRC, eltern), 'utf8'))) || grenzeUeberEltern(eltern, [...gesehen, teil])),
+    );
 
   /**
    * U1–U3: eine Ursache ist die Aussage einer Person. „Ursache“ steht nur in der Nähe von „Aussage von“ (auch als
@@ -3009,7 +3068,12 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
       const texte = kundenTexte(code);
       expect(texte.flatMap(verstoesse), datei).toEqual([]);
-      expect(traegtGrenze(code), datei).toBe(true);
+      if (datei in VERBESSERUNG_TEILE) {
+        expect(grenzeUeberEltern(datei), `${datei}: eine Eltern-Seite trägt keinen Grenz-Satz`).toBe(true);
+        expect(traegtGrenze(code), `${datei}: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Teil`).toBe(false);
+      } else {
+        expect(traegtGrenze(code), datei).toBe(true);
+      }
       expect(ursacheOhnePerson(code), `${datei}: „Ursache“ ohne „Aussage von“`).toBe(false);
       expect(texte.filter(verbesserungOhneBedingung), `${datei}: „Verbesserung“ ohne Bedingung`).toEqual([]);
       expect(texte.filter((text) => ZIEL_ALLEIN.test(text)), `${datei}: „Ziel“ allein`).toEqual([]);
@@ -3038,6 +3102,46 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     for (const datei of VERBESSERUNG_FLAECHEN) {
       expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
     }
+    // PR 4: ein Teil ohne Eltern oder mit einer Eltern-Datei, die ihn nicht importiert, trägt keinen Grenz-Satz.
+    expect(grenzeUeberEltern('components/MassnahmeDialoge.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/VerbesserungUnbekannt.tsx')).toBe(false);
+    for (const [teil, eltern] of Object.entries(VERBESSERUNG_TEILE)) {
+      expect(VERBESSERUNG_FLAECHEN, teil).toContain(teil);
+      for (const e of eltern) expect(importiertTeil(e, teil), `${e} importiert ${teil}`).toBe(true);
+    }
+  });
+
+  /** Konzept Verbessern v1, Befund 1: ein offener Monat nennt den Grund der Route; nur ohne Grund „noch nicht endgültig“. */
+  it('„noch nicht endgültig“ steht nur ohne Grund der Route - nie als fester Text einer Fläche', () => {
+    const NOCH_NICHT = /NOCH_NICHT_ENDGUELTIG|noch nicht endgültig/u;
+    for (const datei of [...verbesserungFlaechen(), 'massnahmeWirkung.ts', 'massnahmen.ts', 'abweichungen.ts']) {
+      expect(NOCH_NICHT.test(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
+    }
+    // Im Modul: nur die Konstante selbst und der Rückfall in `offenGrund`.
+    const modul = stripComments(readFileSync(join(SRC, 'energieziele.ts'), 'utf8'));
+    expect(modul.match(/NOCH_NICHT_ENDGUELTIG/g)).toHaveLength(2);
+    expect(modul).toMatch(/export function offenGrund[\s\S]*?return NOCH_NICHT_ENDGUELTIG;\n\}/u);
+  });
+
+  /**
+   * Konzept Verbessern v1 §8.4: die Länge einer Begründung („10 bis 500 Zeichen“) steht erst da, wenn sie nicht passt -
+   * als Fehler am Feld, nie als Dauertext darunter. Der Platzhalter zeigt stattdessen ein Beispiel.
+   */
+  const LAENGE_ALS_DAUERTEXT = />\s*\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b[^{}]*\}\s*</u;
+  it('die Länge einer Begründung steht nur als Fehler da, nie als Dauertext', () => {
+    for (const datei of verbesserungFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      expect(LAENGE_ALS_DAUERTEXT.test(code), datei).toBe(false);
+      expect(kundenTexte(code).filter((t) => /\d+\s+bis\s+[\d.]+\s+Zeichen/u.test(t)), datei).toEqual([]);
+    }
+    for (const probe of [
+      "<p className={fehler ? 'vp-ez-fehler' : 'vp-ez-leise'}>{fehler ?? Z.BEGRUENDUNG_HINWEIS}</p>",
+      "<p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{A.WORTLAUT_HINWEIS}</p>",
+    ]) {
+      expect(LAENGE_ALS_DAUERTEXT.test(probe), probe).toBe(true);
+    }
+    expect(LAENGE_ALS_DAUERTEXT.test("{fehler && <p className=\"vp-ez-fehler\">{fehler}</p>}")).toBe(false);
+    expect(LAENGE_ALS_DAUERTEXT.test("setze({ begruendung: Z.BEGRUENDUNG_HINWEIS });")).toBe(false);
   });
 
   it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {
@@ -3045,6 +3149,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
       return visibleTexts(readFileSync(file, 'utf8'))
         .filter(isKundentext)
+        .filter((text) => !fachwortAusnahme(wo, text))
         .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
     });
     expect(funde, funde.join('\n')).toEqual([]);
@@ -3126,6 +3231,88 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       expect(verbesserungOhneBedingung(wort), wort).toBe(false);
       expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
     }
+  });
+});
+
+describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
+  /** Die Normwörter aus Entscheid 14 samt den übrigen Verboten des AP-18-Blocks - auf jeder Kundenfläche. */
+  const NORMWORT = [...VERBESSERUNG_VERBOTEN, /Energieleistungsverbesserung/iu];
+  const verboteIn = (text: string) => NORMWORT.filter((re) => re.test(text));
+  /** In `begriffe.ts` zusätzlich kein Wort, das Konformität verspricht (Kopf der Datei). */
+  const begriffVerbote = (text: string) => [...NORMWORT, /konform/iu].filter((re) => re.test(text));
+  const verbesserungsBegriffe: BegriffSchluessel[] = [
+    'energieziel', 'massnahme', 'abweichung', 'auf_kurs', 'erwartete_wirkung', 'beobachtet', 'belegt', 'vorher',
+    'gemessen_an', 'auffaelligkeit', 'wirksamkeit', 'zweite_person', 'einsparung',
+  ];
+
+  it('Entscheid 14: die Normwörter stehen nur im Feld `fachwort` der genannten Begriffe', () => {
+    expect(NORMWOERTER_IM_FACHWORT).toEqual({
+      massnahme: ['Aktionsplan', 'Korrekturmaßnahme'],
+      abweichung: ['Nichtkonformität'],
+      einsparung: ['Energieleistungsverbesserung'],
+    });
+    for (const [k, woerter] of Object.entries(NORMWOERTER_IM_FACHWORT) as [BegriffSchluessel, readonly string[]][]) {
+      const fachwort = BEGRIFFE[k].fachwort ?? '';
+      for (const wort of woerter) expect(fachwort, k).toContain(wort);
+      // Außer den genannten Wörtern trägt das Fachwort kein verbotenes.
+      expect(begriffVerbote(woerter.reduce((rest, wort) => rest.replaceAll(wort, ' '), fachwort)), k).toEqual([]);
+    }
+    for (const [k, b] of Object.entries(BEGRIFFE) as [BegriffSchluessel, (typeof BEGRIFFE)[BegriffSchluessel]][]) {
+      for (const text of [b.wort, b.klartext, b.beispiel ?? '', b.frage ?? '', b.mehr ?? '', b.abgrenzung ?? '']) {
+        expect(begriffVerbote(text), `${k}: ${text}`).toEqual([]);
+      }
+      if (!(k in NORMWOERTER_IM_FACHWORT)) expect(begriffVerbote(b.fachwort ?? ''), k).toEqual([]);
+    }
+  });
+
+  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (wo === 'begriffe.ts') return [];
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .filter((text) => verboteIn(text).length > 0)
+        .map((text) => `${wo}: „${text}“`);
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+    // Die Ausnahme greift nur in `begriffe.ts` und nur für genau diese Texte.
+    expect(fachwortAusnahme('begriffe.ts', BEGRIFFE.massnahme.fachwort!)).toBe(true);
+    expect(fachwortAusnahme('components/MassnahmeDialoge.tsx', BEGRIFFE.massnahme.fachwort!)).toBe(false);
+    expect(fachwortAusnahme('begriffe.ts', 'Aktionsplan 2029')).toBe(false);
+  });
+
+  it('die letzte Zeile von „Was ist …?“ sagt „Fachwort“ oder bei mehreren „Fachwörter“', () => {
+    expect(fachwortZeile('Vier-Augen-Prinzip')).toBe('Fachwort: Vier-Augen-Prinzip');
+    expect(fachwortZeile(BEGRIFFE.massnahme.fachwort!)).toBe(
+      'Fachwörter: Aktionsplan (die Liste Ihrer Maßnahmen), Korrekturmaßnahme (eine Maßnahme aus einer Feststellung)',
+    );
+    // Ein Komma in der Klammer trennt keine zwei Wörter.
+    expect(fachwortZeile('Ausgangslage (Monat, festgehalten)')).toBe('Fachwort: Ausgangslage (Monat, festgehalten)');
+  });
+
+  it('jeder Begriff unter Verbessern erklärt sich mit Frage, Klartext und Abgrenzung - in den Wörtern des Bereichs', () => {
+    const ZIEL_ALLEIN = /(?<![\p{L}])Ziel(?![\p{L}])/u;
+    const URSACHE = /(?<![\p{L}])Ursache(?![\p{L}])/u;
+    for (const k of verbesserungsBegriffe) {
+      const b = BEGRIFFE[k];
+      expect(b.frage, k).toMatch(/^Was (?:ist|heißt) .+\?$/u);
+      expect(b.klartext.endsWith('.'), k).toBe(true);
+      expect(b.abgrenzung, k).toBeTruthy();
+      for (const text of [b.klartext, b.beispiel ?? '', b.abgrenzung ?? '']) {
+        expect(ZIEL_ALLEIN.test(text), `${k}: „Ziel“ allein in „${text}“`).toBe(false);
+        expect(URSACHE.test(text), `${k}: „Ursache“ ohne Person in „${text}“`).toBe(false);
+        expect(/verbesserung/iu.test(text), `${k}: „Verbesserung“ in „${text}“`).toBe(false);
+      }
+    }
+  });
+
+  it('die Alltagswörter stehen als Konstanten im Glossar (§7)', () => {
+    expect([UEMS_AUF_KURS, UEMS_KNAPP_DAHINTER, UEMS_NICHT_AUF_KURS, UEMS_VORHER, UEMS_GEMESSEN_AN, UEMS_ZWEITE_PERSON, UEMS_EINSPARUNG])
+      .toEqual(['auf Kurs', 'knapp dahinter', 'nicht auf Kurs', 'Vorher', 'gemessen an', 'zweite Person', 'Einsparung']);
+    expect(BEGRIFFE.vorher.fachwort).toBe(UEMS_AUSGANGSLAGE);
+    expect(BEGRIFFE.gemessen_an.fachwort).toBe(UEMS_MESSGRUNDLAGE);
+    expect(BEGRIFFE.zweite_person.fachwort).toBe('Vier-Augen-Prinzip');
+    for (const k of verbesserungsBegriffe) expect(BEGRIFFE[k].wort.length, k).toBeGreaterThan(0);
   });
 });
 

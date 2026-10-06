@@ -9,7 +9,7 @@ import { verantwortlichOptionen } from '../bewertung';
 import { routenHeute, useRoutenHeute } from '../routenUhr';
 import { basisZeile, monatsOptionen, type BezugsbasisVergleich } from '../bezugsbasisVergleich';
 import * as Z from '../energieziele';
-import { UEMS_AUSGANGSLAGE, UEMS_ENERGIEZIEL, UEMS_ENERGIEZIELE, UEMS_ERWARTETE_WIRKUNG, UEMS_MASSNAHME, UEMS_MESSGRUNDLAGE, UEMS_NORMGRENZE, UEMS_TERMIN, UEMS_VERANTWORTLICH } from '../glossar';
+import { UEMS_AUSGANGSLAGE, UEMS_ENERGIEZIEL, UEMS_ENERGIEZIELE, UEMS_ERWARTETE_WIRKUNG, UEMS_MASSNAHME, UEMS_MESSGRUNDLAGE, UEMS_TERMIN, UEMS_VERANTWORTLICH } from '../glossar';
 import * as M from '../massnahmen';
 import { hashForRoute, massnahmeRoute } from '../nav';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
@@ -303,7 +303,6 @@ export function MassnahmeAnlegenDialog({
           <p className={zeigen.wirkungWortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{zeigen.wirkungWortlaut ?? 'Pflicht — was soll sich ändern und warum.'}</p>
         </div>
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -419,7 +418,6 @@ export function MassnahmeUmgesetztDialog({
         <VpDatePicker id={`${basis}-am`} label="umgesetzt am" value={am} onChange={setAm} min={massnahme.angelegt_am} max={tagHeute} error={zeigen.am ?? null} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -472,7 +470,6 @@ export function MassnahmeVerwerfenDialog({ massnahme, onClose, onFertig }: { mas
         <p className="vp-ez-leise">Eine verworfene {UEMS_MASSNAHME} bleibt mit Verlauf lesbar und wird nie gelöscht.</p>
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -581,7 +578,6 @@ export function MassnahmeAendernDialog({ massnahme, onClose, onFertig }: { massn
         </div>
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );

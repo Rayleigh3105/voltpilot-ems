@@ -1125,6 +1125,15 @@ Ein Energieziel zitiert eine Energieleistungskennzahl mit ihrer freigegebenen Be
 
 **Abgrenzung.** Nicht ein Steuerungs-Ziel („Ziel: 2,2 kW“ gehört der Steuerung, W6); nicht ein absoluter kWh-Wert; nicht die Toleranz der Bezugsbasis.
 
+**Wörter auf den Flächen (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+Die Gruppe „Verbessern“ fragt „Was tun wir, um Energie zu sparen?“.
+Ihre Reiter heißen wie ihre Seite („Energieziele“, „Maßnahmen“, „Abweichungen“); „Ziele und Maßnahmen“ bleibt der Name des Bereichs in Verzeichnis und Rechten.
+Unter jedem Titel erklärt ein Satz das Wort; „Was ist ein Energieziel?“ klappt Klartext, ein Beispiel aus der eigenen Firma und die Abgrenzung zur Bezugsbasis auf.
+„Auf Kurs“ ist der Zwischenstand eines laufenden Energieziels: bisher mindestens so viel weniger, wie vorgenommen; „knapp dahinter“ heißt weniger, aber noch nicht genug; ohne bewertbaren Monat gibt es noch keine Aussage.
+Das ist keine Prognose: Es zählt, was schon gemessen ist, und ob das Energieziel erreicht ist, entscheidet am Ende eine Person.
+Ein offener Monat nennt den Grund der Route („läuft noch“, „kein gemessener Wert“); „noch nicht endgültig“ steht nur, wenn die Route keinen Grund nennt.
+Kundenwörter: `UEMS_AUF_KURS`, `UEMS_KNAPP_DAHINTER`, `UEMS_NICHT_AUF_KURS` (PORTAL/glossar.ts); die Erklärtexte stehen in `begriffe.ts`.
+
 ## Maßnahme
 
 *Sicht: Organisation · Nachtrag AP-18 §4.1, §4.4 (M1–M7, E1, E2)*
@@ -1137,7 +1146,7 @@ Eine Maßnahme trägt Titel, Verantwortlichen (aktives Konto, Fremdschlüssel pl
 
 **Heute im Code.** Tabellen `massnahme`, `massnahme_aenderung`, `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:170, :428, :466; RLS + FORCE); Routen `/api/v1/massnahmen` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:49, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeService.java, AP-18 IP-10/IP-12); Anzeigewort `UEMS_MASSNAHME` (PORTAL/glossar.ts:582). Wegweiser: `docs/agents/root/uems-massnahme-routen.md`.
 
-**Abgrenzung.** Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ (SP1).
+**Abgrenzung.** Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ auf einer Fläche (SP1), beide nur als Fachwort im Aufklapper „Was ist eine Maßnahme?“ (Konzept Verbessern v1, Entscheid 14).
 
 ## Abweichung
 
@@ -1151,7 +1160,7 @@ Eine Abweichung zitiert Kennzahl, Bezugsbasis-Fassung und Monate; ihr Anlass ist
 
 **Heute im Code.** Tabellen `abweichung`, `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:214, :376; RLS + FORCE); Routen `/api/v1/abweichungen` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45, services/api/src/main/java/com/voltpilot/api/uems/AbweichungService.java, AP-18 IP-16); Anzeigewort `UEMS_ABWEICHUNG` (PORTAL/glossar.ts:586). Wegweiser: `docs/agents/root/uems-abweichung-routen.md`.
 
-**Abgrenzung.** Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7); „wesentlich“ bleibt das Wort der Einstufung (W2).
+**Abgrenzung.** Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7; das Wort steht nur als Fachwort im Aufklapper „Was ist eine Abweichung?“, Entscheid 14); „wesentlich“ bleibt das Wort der Einstufung (W2).
 
 ## Auffälligkeit
 
@@ -1194,6 +1203,16 @@ Die beobachtete Wirkung liest das Portal beim Abruf: Nachher-Monate ab dem Monat
 **Heute im Code.** Leser `GET /api/v1/massnahmen/{id}/wirkung` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:105, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeWirkung.java, AP-18 IP-11), Stand `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:466, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeBewertung.java, IP-12); Operation `wirkung` in `docs/contracts/v2/verbesserung-vectors.json`; Anzeigewörter `UEMS_WIRKUNG`, `UEMS_BEOBACHTET_NICHT_BELEGT`, `UEMS_MASSNAHME_ERGEBNISSE` (PORTAL/glossar.ts:593).
 
 **Abgrenzung.** Nicht „hat gewirkt“ und keine „Einsparung durch“ (SP1); nicht ein Mittel und kein gespeicherter Wert; nicht der Ziel-Stand eines Energieziels.
+
+**Drei Wörter für drei Dinge (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+„Erwartet“ ist bei einer Maßnahme die Schätzung einer Person, „beobachtet“ die Messung gegen die Bezugsbasis, „belegt“ das Urteil einer Person.
+Die Schätzung steht immer neben der Beobachtung, nie an ihrer Stelle, und wird nie mit ihr summiert.
+Auf den Flächen heißt die Ausgangslage „Vorher“ (wie der Monat aussah, als die Maßnahme geplant wurde) und die Messgrundlage „gemessen an“ (Kennzahl und Bezugsbasis); die Fachwörter stehen im Aufklapper.
+„Einsparung“ ist der Unterschied zwischen erwartetem und gemessenem Verbrauch in kWh, nie „Einsparung durch“ eine Maßnahme; ob eine Maßnahme ihn bewirkt hat, sagt eine Person.
+„Zweite Person“ ist das Vier-Augen-Prinzip: Wer beantragt hat oder verantwortlich ist, bestätigt nicht selbst.
+Die Normwörter Aktionsplan, Korrekturmaßnahme, Nichtkonformität und Energieleistungsverbesserung stehen nur in der letzten Zeile von „Was ist …?“ (Feld `fachwort` in `begriffe.ts`, Entscheid 14).
+Auf jeder anderen Fläche bleiben sie verboten, ebenso „hat gewirkt“, „Einsparung durch“, „Ursache“ ohne „Aussage von“ und „Ziel“ allein.
+Kundenwörter: `UEMS_VORHER`, `UEMS_GEMESSEN_AN`, `UEMS_ZWEITE_PERSON`, `UEMS_EINSPARUNG` (PORTAL/glossar.ts); Wächter `frontend/portal/src/copy.test.ts` (Block „Konzept Verbessern v1 · Wörter“).
 
 ## Anstoß am Vorgang
 
