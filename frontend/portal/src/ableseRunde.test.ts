@@ -90,7 +90,7 @@ describe('Die Prüfung vor dem Senden (dieselben Regeln wie der Dialog)', () => 
 
   it('keine Zahl, vor der letzten Ablesung, über drei Monate: der Satz bleibt am Zähler, nichts wird gesendet', () => {
     expect(vorpruefung(ms06, 'abc', RUNDE, ZONE)).toEqual({ art: 'satz', satz: 'Bitte geben Sie eine Zahl ein, zum Beispiel 1.234,5.' });
-    expect(vorpruefung(ms06, '662.180', '2026-09-30T12:00:00+02:00', ZONE)).toMatchObject({ art: 'satz', satz: expect.stringContaining('Liegt nicht nach der letzten Ablesung (01.10.2026)') });
+    expect(vorpruefung(ms06, '662.180', '2026-09-30T12:00:00+02:00', ZONE)).toMatchObject({ art: 'satz', satz: expect.stringContaining('Liegt nicht nach der letzten Ablesung (01.10.2026, 00:00)') });
     expect(vorpruefung(ms06, '662.180', '2027-01-15T12:00:00+01:00', ZONE)).toMatchObject({ art: 'satz', satz: expect.stringContaining('über drei oder mehr Monate') });
   });
 

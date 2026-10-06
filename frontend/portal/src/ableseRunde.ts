@@ -3,7 +3,7 @@ import { zuordnung } from './bezugsdaten';
 import { UEMS_ABLESEN } from './glossar';
 import { abzulesen, standZahl } from './messstellenListe';
 import { lokalerTag } from './uemsOrtsbaum';
-import { betrag, wertFehler, zaehltSatz } from './werteEingabe';
+import { betrag, wertFehler, zaehltSatz, zeitText } from './werteEingabe';
 import { zahlText } from './zahl';
 
 /**
@@ -137,7 +137,7 @@ export function vorpruefung(z: RundeZaehler, text: string, zeitpunkt: string, zo
   if (!(bis > von)) {
     return {
       art: 'satz',
-      satz: `Liegt nicht nach der letzten Ablesung (${tagText(lokalerTag(z.zuletzt.zeitpunkt, zone))}) - eine frühere Ablesung tragen Sie an der Messstelle ein.`,
+      satz: `Liegt nicht nach der letzten Ablesung (${zeitText(z.zuletzt.zeitpunkt, zone)}) - eine frühere Ablesung tragen Sie an der Messstelle ein.`,
     };
   }
   const zu = zuordnung(von, bis, zone);
