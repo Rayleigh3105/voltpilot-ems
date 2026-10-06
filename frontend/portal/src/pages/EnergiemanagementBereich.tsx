@@ -1,23 +1,19 @@
-import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useReiterRand } from '../reiterRand';
-import { Button } from '../../designsystem/components/core/Button';
-import { api, type EnergiemanagementDokumentKurz } from '../api';
-import { DokumentAnlegenDialog } from '../components/DokumentDialoge';
-import { EinsichtRecht } from '../components/EinsichtRecht';
 import { EnergiemanagementAudits } from '../components/EnergiemanagementAudits';
 import { EnergiemanagementAufgaben } from '../components/EnergiemanagementAufgaben';
 import { EnergiemanagementFeststellungen } from '../components/EnergiemanagementFeststellungen';
 import { EnergiemanagementManagementbewertung } from '../components/EnergiemanagementManagementbewertung';
 import { EnergiemanagementVerantwortung } from '../components/EnergiemanagementVerantwortung';
 import { EnergiemanagementWiedervorlage } from '../components/EnergiemanagementWiedervorlage';
+import { DokumenteListe } from '../components/nachweisen/DokumenteListe';
 import { VerzeichnisTabelle } from '../components/VerzeichnisTabelle';
 import { ZuschnittHilfe } from '../components/ZuschnittHilfe';
 import '../components/BereichTabs.css';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT } from '../glossar';
+import { UEMS_ENERGIEMANAGEMENT } from '../glossar';
 import type { EnergiemanagementReiter, Route } from '../nav';
 import { useRollen } from '../rollen';
 import { AuditSeite } from './AuditSeite';
@@ -82,7 +78,7 @@ export function EnergiemanagementBereich({
 }) {
   const reiterRand = useReiterRand<HTMLDivElement>();
   const rollen = useRollen();
-  if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} />;
+  if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} onFeststellung={onFeststellung} />;
   if (personId) return <EnergiemanagementPersonSeite id={personId} onListe={() => onReiter('aufgaben')} />;
   const zumAudit = onAudit ?? (() => onReiter('audits'));
   const zurFeststellung = onFeststellung ?? (() => onReiter('feststellungen'));
@@ -131,7 +127,7 @@ export function EnergiemanagementBereich({
         )}
         {reiterLeiste}
         {reiter === 'dokumente' ? (
-          <DokumenteRegister onOeffnen={onDokument} />
+          <DokumenteListe onOeffnen={onDokument} />
         ) : reiter === 'aufgaben' ? (
           <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
         ) : reiter === 'verantwortung' ? (
@@ -147,84 +143,5 @@ export function EnergiemanagementBereich({
         )}
       </div>
     </GrenzSatzBereich>
-  );
-}
-
-/** Reiter „Dokumente“ (DK1): je Dokument Kennzeichen, Art, Titel, Bezug, Zustand, gültige Fassung und Überprüfung. */
-function DokumenteRegister({ onOeffnen }: { onOeffnen: (id: string) => void }) {
-  const [liste, setListe] = useState<EnergiemanagementDokumentKurz[] | null>(null);
-  const [fehler, setFehler] = useState<string | null>(null);
-  const [anlegen, setAnlegen] = useState(false);
-  useEffect(() => {
-    let aktiv = true;
-    api.energiemanagementDokumente().then(
-      (r) => aktiv && setListe(r.dokumente),
-      (e) => aktiv && setFehler(E.ablehnungSatz(e)),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, []);
-  return (
-    <section className="vp-ez-karte" aria-label={UEMS_DOKUMENTE} data-testid="dokumente-register">
-      <div className="vp-em-kopf">
-        <h2>{UEMS_DOKUMENTE}</h2>
-        <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-          <Button onClick={() => setAnlegen(true)} data-testid="dokument-anlegen">
-            {E.KNOPF_ANLEGEN}
-          </Button>
-        </EinsichtRecht>
-      </div>
-      {fehler ? (
-        <p className="vp-ez-fehler" role="alert">{fehler}</p>
-      ) : liste === null ? (
-        <p className="vp-ez-leise">Wird geladen …</p>
-      ) : liste.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="dokumente-leer">{SAETZE.verzeichnis_leer}</p>
-      ) : (
-        <div className="vp-ez-tafel-rahmen">
-          <table className="vp-ez-tafel">
-            <thead>
-              <tr>
-                <th scope="col">Dokument</th>
-                <th scope="col">Art</th>
-                <th scope="col">Bezug</th>
-                <th scope="col">Zustand</th>
-                <th scope="col">Überprüfung</th>
-              </tr>
-            </thead>
-            <tbody>
-              {liste.map((d) => (
-                <tr key={d.id} data-testid={`dokument-zeile-${d.kennzeichen}`}>
-                  <td>
-                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(d.id)}>
-                      {d.kennzeichen} {d.titel}
-                    </button>
-                  </td>
-                  <td data-label="Art">{d.art_wort}</td>
-                  <td data-label="Bezug">{E.bezugWort(d.bezug)}</td>
-                  <td data-label="Zustand">
-                    {E.ZUSTAND_WORT[d.zustand]}
-                    {d.gueltige_fassung ? ` · Fassung ${d.gueltige_fassung}` : ''}
-                  </td>
-                  <td data-label="Überprüfung">
-                    {d.ueberpruefung?.satz ?? (d.ueberpruefung?.faellig_am ? `fällig am ${E.tagText(d.ueberpruefung.faellig_am)}` : '—')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {anlegen && (
-        <DokumentAnlegenDialog
-          onClose={() => setAnlegen(false)}
-          onAngelegt={(d) => {
-            setAnlegen(false);
-            onOeffnen(d.id);
-          }}
-        />
-      )}
-    </section>
   );
 }
