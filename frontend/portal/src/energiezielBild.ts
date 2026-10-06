@@ -464,6 +464,18 @@ export function festAntwort(ez: Energieziel): Antwort | null {
   };
 }
 
+/** Unter dem Zitat der Bewertung: wer, wann — und ohne Vorschlag, warum („weil März 2028 nicht bewertbar war“). */
+export function bewertetFuss(
+  b: { person: { name: string }; am: string; vorschlag: string | null },
+  s: EnergiezielFestgehaltenerStand | undefined,
+): string {
+  const aus = s?.ausgeschlossen.map((a) => monatLang(a.monat)) ?? [];
+  const ohne = b.vorschlag === null && aus.length > 0
+    ? ` · ohne Vorschlag, weil ${aus.join(' und ')} nicht bewertbar ${aus.length === 1 ? 'war' : 'waren'}`
+    : '';
+  return `${b.person.name} · ${tag(b.am)}${ohne}`;
+}
+
 /** Die zwei Kacheln des festgehaltenen Stands und der Satz darunter. */
 export function festKacheln(ez: Energieziel): { kacheln: Kachel[]; fuss: string | null } | null {
   const s = ez.bewertung?.stand;

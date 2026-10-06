@@ -169,6 +169,8 @@ export function EnergiezielSeite({
   const bewertbar = offen && bewertung.art === 'keine' && (faellig || (stand !== null && stand.monate_endgueltig === stand.monate_soll));
   const punkte = stand ? B.monatsPunkte(stand) : [];
   const hatMonatswert = punkte.some((p) => p.art === 'gezaehlt');
+  // Vor dem ersten Monat der Zielperiode gibt es nichts zu zeigen — die Antwort sagt, wann sie beginnt.
+  const begonnen = punkte.some((p) => p.art !== 'kommt');
   const neu = (x: Energieziel) => {
     setDialog(null);
     setAnstoss(null);
@@ -244,7 +246,7 @@ export function EnergiezielSeite({
     </Hinweis>
   );
 
-  const grafik = stand && (offen || hatMonatswert) && (
+  const grafik = stand && begonnen && (offen || hatMonatswert) && (
     <section className="vp-ezl-karte" aria-labelledby="ez-monate" data-testid="energieziel-grafik">
       <div className="vp-ezl-blockkopf">
         <h2 id="ez-monate">Je Monat gegen das Energieziel</h2>
@@ -264,7 +266,7 @@ export function EnergiezielSeite({
     </section>
   );
 
-  const werte = stand && (offen || hatMonatswert) && <WerteJeMonat punkte={punkte} onMonat={onKennzahl ? () => onKennzahl(ez.kennzahl.id) : undefined} />;
+  const werte = stand && begonnen && (offen || hatMonatswert) && <WerteJeMonat punkte={punkte} onMonat={onKennzahl ? () => onKennzahl(ez.kennzahl.id) : undefined} />;
 
   const darfPlanen = offen && rollen.darf(VERWALTEN, ez.standort_id);
   // Am Rechner (§6.4): die Ankündigung der Bewertung steht als Zeile in „Über dieses Energieziel“, die Karte erst, wenn
@@ -343,20 +345,18 @@ export function EnergiezielSeite({
       </div>
       {bewertung.art === 'bewertet' ? (
         <>
-          {bewertung.bewertung && (
+          {bewertung.bewertung ? (
             <blockquote className="vp-ezl-zitat">
               <p>‚{bewertung.bewertung.begruendung}‘</p>
-              <footer>
-                {bewertung.bewertung.person.name} · {B.tag(bewertung.bewertung.am)}
-                {bewertung.bewertung.vorschlag === null && ez.bewertung?.stand?.grund_kein_vorschlag ? ' · ohne Vorschlag, weil nicht jeder Monat bewertbar war' : ''}
+              <footer data-testid="energieziel-bewertet">
+                {B.bewertetFuss(bewertung.bewertung, ez.bewertung?.stand)}
               </footer>
             </blockquote>
+          ) : (
+            <p className="vp-ezl-leise" data-testid="energieziel-bewertet">
+              {`${Z.ZUSTAND_WORT.bewertet}: ${ez.ergebnis ? Z.ERGEBNIS_WORT[ez.ergebnis] : '-'}`}
+            </p>
           )}
-          <p className="vp-ezl-leise" data-testid="energieziel-bewertet">
-            {bewertung.bewertung
-              ? Z.bewertetSatz(bewertung.bewertung.person.name, bewertung.bewertung.am, bewertung.bewertung.ergebnis)
-              : `${Z.ZUSTAND_WORT.bewertet}: ${ez.ergebnis ? Z.ERGEBNIS_WORT[ez.ergebnis] : '—'}`}
-          </p>
           {bewertung.bewertung?.entscheidung && (
             <p className="vp-ezl-leise" data-testid="energieziel-bestaetigt">
               {Z.bestaetigtSatz(bewertung.bewertung.entscheidung.name, bewertung.bewertung.entschieden_am)}
@@ -507,7 +507,7 @@ export function EnergiezielSeite({
         <div className="vp-ezl-r-werte">{werte}</div>
         <div className="vp-ezl-r-massnahmen">{massnahmenKarte}</div>
         <div className="vp-ezl-r-ueber">{ueber}</div>
-        <div className={`vp-ezl-r-bewertung${bewertungBreit ? '' : ' vp-ezl-nur-schmal'}`}>{bewertungKarte}</div>
+        <div className={`vp-ezl-r-bewertung${bewertungBreit ? '' : ' vp-ezl-nur-schmal'}${offen ? '' : ' is-oben'}`}>{bewertungKarte}</div>
       </div>
 
       {/* IP-20 (§5.6, Z5): die Anstöße mit Antwort-Knöpfen — „beibehalten“ mit Begründung, „neu bewerten“ (IP-17-NAHT). */}

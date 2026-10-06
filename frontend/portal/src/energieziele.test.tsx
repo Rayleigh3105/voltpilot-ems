@@ -260,7 +260,7 @@ describe('die Flächen gegen R4/R10', () => {
       }),
     });
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);
-    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.');
+    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Ines Kaltenbach · 15.01.2029 · ohne Vorschlag, weil März 2028 nicht bewertbar war');
     expect(screen.getByTestId('energieziel-bestaetigt').textContent).toBe('Bestätigt von Jonas Wendlinger am 15.01.2029.');
     expect(screen.getByTestId('energieziel-anstoesse').textContent).toContain('Bezugsbasis neu gefasst · BB-0001/3 · 02.11.2028 · offen');
   });
@@ -268,7 +268,7 @@ describe('die Flächen gegen R4/R10', () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, energiezielBuehne('bewertet'));
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);
-    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.');
+    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Ines Kaltenbach · 15.01.2029 · ohne Vorschlag, weil März 2028 nicht bewertbar war');
     expect(screen.getByText(/^Prüfsumme sha256:/)).toBeTruthy();
     expect(screen.queryByTestId('energieziel-bewerten')).toBeNull();
     expect(screen.queryByTestId('energieziel-beenden')).toBeNull();

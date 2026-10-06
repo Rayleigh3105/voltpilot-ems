@@ -248,7 +248,12 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+/* Knöpfe in Karten behalten ihre Breite; nur „Maßnahme planen“ ohne Maßnahme füllt die Zeile (Konzept §6.4). */
+.vp-ezl-karte > .vp-btn {
+  justify-self: start;
+}
 .vp-ezl .vp-btn.vp-ezl-voll {
+  justify-self: stretch;
   width: 100%;
 }
 
@@ -736,6 +741,10 @@ button.vp-ezl-mrow {
 .vp-ezl-r-bewertung {
   order: 5;
 }
+/* Bewertet oder beendet: das Ergebnis steht gleich unter dem festgehaltenen Stand (Konzept §6.4). */
+.vp-ezl-r-bewertung.is-oben {
+  order: 1;
+}
 .vp-ezl-r-ueber {
   order: 6;
 }
@@ -768,6 +777,10 @@ button.vp-ezl-mrow {
   .vp-ezl-nur-schmal {
     display: none;
   }
+  .vp-ezl .vp-btn.vp-ezl-voll {
+    justify-self: start;
+    width: auto;
+  }
   .vp-ezl-nur-breit {
     display: revert;
   }
@@ -787,6 +800,11 @@ button.vp-ezl-mrow {
     flex-direction: column;
     gap: var(--vp-c-space-4, 16px);
     min-width: 0;
+  }
+  /* Im Raster stehen die Karten links, Hinweis und Erklärung rechts — die Reihenfolge des Telefons gilt hier nicht. */
+  .vp-ezl-haupt,
+  .vp-ezl-seite {
+    order: 0;
   }
   .vp-ezl-seitenraster {
     display: grid;
@@ -937,6 +955,7 @@ button.vp-ezl-mrow {
 }
 .vp-ezf-in {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
   min-height: 48px;
@@ -953,6 +972,7 @@ button.vp-ezl-mrow {
 }
 .vp-ezf-in input {
   flex: 1 1 auto;
+  width: 0;
   min-width: 0;
   padding: 0;
   border: 0;
