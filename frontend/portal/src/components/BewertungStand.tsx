@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bericht, type BerichtDetail, type BerichtEntwurf, type Selbstauskunft } from '../api';
+import { api, type Bericht, type BerichtDetail, type BerichtEntwurf, type BerichtStandKurz, type Selbstauskunft } from '../api';
 import { BEWERTUNG_VORLAGE, rechteAus } from '../berichtDialoge';
 import { gueltigerStand } from '../berichtSeite';
 import {
@@ -15,11 +15,12 @@ import {
   revisionVermerk,
   STAND_TITEL,
 } from '../bewertungStand';
-import { entwurfBild, FRUEHERE_STAENDE, KEINE_BEWERTUNG_SATZ, standBild } from '../bewertungErgebnis';
-import { berichtRoute, hashForRoute, pageRoute } from '../nav';
+import { entwurfBild, FRUEHERE_AUSBLENDEN, FRUEHERE_BEWERTUNGEN, FRUEHERE_STAENDE, KEINE_BEWERTUNG_SATZ, standBild } from '../bewertungErgebnis';
+import { hashForRoute, pageRoute } from '../nav';
 import { BerichtAnlegenDialog } from './BerichtAnlegenDialog';
 import { BerichtFreigebenDialog } from './BerichtFreigebenDialog';
 import { BerichtVergleichDialog } from './BerichtVergleichDialog';
+import { Fehlergrenze } from './Fehlergrenze';
 import { FristDatum } from './FristDatum';
 import { ErrorState, Skeleton } from './States';
 import './BewertungErgebnis.css';
@@ -28,7 +29,8 @@ import './BewertungErgebnis.css';
  * „Bewertung › Bewertungsstand“ (UEMS AP-16 IP-25, §5.5, R7/R10; Gestalt nach Konzept Auswerten a1 §6.7): der gültige
  * Stand und der Entwurf als Datumsblöcke — „Stand 1 · 30.04.2029 · gilt · freigegeben von …“ mit PDF und CSV, darunter
  * „Entwurf · Neuer Stand mit den Zahlen bis März 2029“ mit „Als Stand Nr. 2 freigeben“ und „Unterschiede ansehen“. Ersetzte
- * Stände und frühere Bewertungen stehen unter „Frühere Stände“ in den Nachweisen. Nichts ist nachgebaut: die Bewertung
+ * Stände klappen unter „Frühere Stände“ auf (mit PDF und CSV), frühere Bewertungen stehen in den Nachweisen. Nichts ist
+ * nachgebaut: die Bewertung
  * ist ein Bericht der Vorlage `energetische_bewertung` (E5 = A), Anlegen, Vergleichen und Freigeben sind die Dialoge aus
  * AP-12. Ohne `bewertung.abrufen` (aus `/me`) gibt es die Fläche nicht. Die Marke `bewertung_ueberpruefung` bleibt das
  * Ziel des Wiedervorlage-Schritts „Neuen Stand freigeben“.
@@ -53,6 +55,7 @@ export function BewertungStand({
   const [dialog, setDialog] = useState<'anlegen' | 'freigeben' | 'vergleich' | null>(null);
   const [abruf, setAbruf] = useState<{ satz: string; fehler: boolean } | null>(null);
   const [laeuft, setLaeuft] = useState<string | null>(null);
+  const [fruehereOffen, setFruehereOffen] = useState(false);
 
   useEffect(() => {
     if (!kennung) return;
@@ -103,14 +106,42 @@ export function BewertungStand({
   const gueltig = detail ? gueltigerStand(detail.staende) : null;
   const vermerk = detail ? revisionVermerk(detail) : null;
   const offen = detail !== null && detail.bericht.archiviert_am === null;
-  const stand = detail && gueltig ? standBild(detail, gueltig) : null;
   const neu = detail && entwurf ? entwurfBild(detail.bericht, entwurf, gueltig !== null) : null;
-  // „Frühere Stände“: ersetzte Stände dieser Bewertung auf ihrer Seite, sonst frühere Bewertungen in den Nachweisen.
-  const frueher = detail && detail.staende.length > 1
-    ? hashForRoute(berichtRoute(detail.bericht.kennung))
-    : (berichte ?? []).some((b) => b.vorlage === BEWERTUNG_VORLAGE && b.kennung !== kennung)
-      ? hashForRoute(pageRoute('portfolio-berichte'))
-      : null;
+  // „Frühere Stände“: die ersetzten Stände dieser Bewertung klappen hier auf (mit PDF und CSV - die Berichte-Seite
+  // ruft noch keine Dateien ab); frühere Bewertungen stehen in den Nachweisen.
+  const ersetzte = detail ? [...detail.staende].filter((x) => x.ersetzt_durch_nr !== null).sort((a, b) => b.nr - a.nr) : [];
+  const fruehereBewertungen = (berichte ?? []).some((b) => b.vorlage === BEWERTUNG_VORLAGE && b.kennung !== kennung)
+    ? hashForRoute(pageRoute('portfolio-berichte'))
+    : null;
+
+  const standZeile = (s: BerichtStandKurz, ton: 'erledigt' | 'bald') => {
+    if (!detail) return null;
+    const bild = standBild(detail, s);
+    return (
+      <li key={s.nr} className="vp-be-stand" data-testid={`bewertung-stand-${s.nr}`}>
+        <FristDatum wort={bild.wort} tag={bild.tag} jahr={bild.jahr} satz={bild.satz} ton={ton} />
+        <span className="vp-be-stand-text">
+          <span className="vp-be-stand-titel">{bild.titel}</span>
+          {bild.anlass && <span className="vp-be-stand-grund">{bild.anlass}</span>}
+          <span className="vp-be-stand-dateien">
+            {bild.dateien.map((d) => (
+              <button
+                key={d.format}
+                type="button"
+                className="vp-be-link"
+                disabled={laeuft !== null}
+                onClick={() => void abrufen(s.nr, d.format, d.datei)}
+                aria-label={`${d.text} von Stand Nr. ${s.nr}`}
+                data-testid={`bewertung-${d.format}-${s.nr}`}
+              >
+                {d.text}
+              </button>
+            ))}
+          </span>
+        </span>
+      </li>
+    );
+  };
 
   return (
     <section
@@ -122,10 +153,22 @@ export function BewertungStand({
     >
       <div className="vp-be-blockkopf">
         <h2 id="bw-stand">{STAND_TITEL}</h2>
-        {frueher && (
-          <a className="vp-be-link" href={frueher} data-testid="bewertung-fruehere">
-            {FRUEHERE_STAENDE}
-          </a>
+        {ersetzte.length > 0 ? (
+          <button
+            type="button"
+            className="vp-be-link"
+            aria-expanded={fruehereOffen}
+            onClick={() => setFruehereOffen((o) => !o)}
+            data-testid="bewertung-fruehere"
+          >
+            {fruehereOffen ? FRUEHERE_AUSBLENDEN : FRUEHERE_STAENDE}
+          </button>
+        ) : (
+          fruehereBewertungen && (
+            <a className="vp-be-link" href={fruehereBewertungen} data-testid="bewertung-fruehere">
+              {FRUEHERE_STAENDE}
+            </a>
+          )
         )}
       </div>
 
@@ -166,30 +209,8 @@ export function BewertungStand({
           )}
 
           <ul className="vp-be-staende" data-testid="bewertung-staende">
-            {stand && gueltig && (
-              <li className="vp-be-stand" data-testid={`bewertung-stand-${gueltig.nr}`}>
-                <FristDatum wort={stand.wort} tag={stand.tag} jahr={stand.jahr} satz={stand.satz} ton="erledigt" />
-                <span className="vp-be-stand-text">
-                  <span className="vp-be-stand-titel">{stand.titel}</span>
-                  {stand.anlass && <span className="vp-be-stand-grund">{stand.anlass}</span>}
-                  <span className="vp-be-stand-dateien">
-                    {stand.dateien.map((d) => (
-                      <button
-                        key={d.format}
-                        type="button"
-                        className="vp-be-link"
-                        disabled={laeuft !== null}
-                        onClick={() => void abrufen(gueltig.nr, d.format, d.datei)}
-                        aria-label={`${d.text} von Stand Nr. ${gueltig.nr}`}
-                        data-testid={`bewertung-${d.format}-${gueltig.nr}`}
-                      >
-                        {d.text}
-                      </button>
-                    ))}
-                  </span>
-                </span>
-              </li>
-            )}
+            {gueltig && standZeile(gueltig, 'erledigt')}
+            {fruehereOffen && ersetzte.map((x) => standZeile(x, 'bald'))}
             {offen && (
               <li className="vp-be-stand" data-testid="bewertung-entwurf">
                 {neu ? (
@@ -210,6 +231,11 @@ export function BewertungStand({
               </li>
             )}
           </ul>
+          {fruehereOffen && fruehereBewertungen && (
+            <a className="vp-be-link" href={fruehereBewertungen}>
+              {FRUEHERE_BEWERTUNGEN}
+            </a>
+          )}
 
           {offen && entwurf && (
             <div className="vp-be-knoepfe">
@@ -249,17 +275,20 @@ export function BewertungStand({
         />
       )}
       {dialog === 'vergleich' && detail && gueltig && (
-        <BerichtVergleichDialog
-          open
-          onClose={() => setDialog(null)}
-          detail={detail}
-          gegen={gueltig.nr}
-          rechte={selbst ? rechteAus(selbst) : null}
-          onFreigeben={(e) => {
-            setEntwurf(e);
-            setDialog('freigeben');
-          }}
-        />
+        // Der Vergleich ist der Dialog der Bericht-Maschine; scheitert er beim Zeichnen, bleibt die Bewertung stehen.
+        <Fehlergrenze>
+          <BerichtVergleichDialog
+            open
+            onClose={() => setDialog(null)}
+            detail={detail}
+            gegen={gueltig.nr}
+            rechte={selbst ? rechteAus(selbst) : null}
+            onFreigeben={(e) => {
+              setEntwurf(e);
+              setDialog('freigeben');
+            }}
+          />
+        </Fehlergrenze>
       )}
       {dialog === 'freigeben' && detail && entwurf && (
         <BerichtFreigebenDialog

@@ -433,6 +433,10 @@
   -webkit-line-clamp: 3;
   overflow: hidden;
 }
+/* R16: eine Summe enthält den Anteil eines anderen Prozesses - leise, eigene Zeile. */
+.vp-be-hinweis-satz {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
 .vp-be-reihe.is-ohne .vp-be-name {
   color: var(--vp-c-muted-fg, #475569);
 }

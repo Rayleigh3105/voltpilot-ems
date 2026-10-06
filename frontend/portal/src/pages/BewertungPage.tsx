@@ -375,6 +375,11 @@ function BereichZeile({ reihe: r, ohne, onOeffnen }: { reihe: BereichReihe; ohne
           </span>
         ))}
       </span>
+      {r.hinweise.map((h) => (
+        <span key={h} className="vp-be-sub vp-be-hinweis-satz" role="note">
+          {h}
+        </span>
+      ))}
     </a>
   );
 }

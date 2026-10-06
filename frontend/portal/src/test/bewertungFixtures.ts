@@ -360,6 +360,7 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
   };
   return {
     messbedarfe: async () => ({ messbedarfe: [] as Messbedarf[] }),
+    messbedarfeAlle: async () => ({ messbedarfe: [] as Messbedarf[] }),
     ...(messplanung ? messplanungRouten(heute, ich, messplanung.bedarfe) : {}),
     bewertungUmfang: async () => structuredClone(umfangFassung ? umfangAus(umfangFassung.nr, umfangFassung.s, heute) : umfangAus(null, null, heute)),
     bewertungUmfangSpeichern: async (s: BewertungUmfangSpeichern) => {

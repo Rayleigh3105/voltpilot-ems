@@ -79,6 +79,9 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     ]);
     const [ee1, ee3] = e.gruppen[0].reihen;
     expect(ee1).toMatchObject({ wert: `41,8${NB}%`, menge: `77.500${NB}kWh`, balken: 100, abweichung: false });
+    // R16: die Summe des Spritzgusses enthält einen Anteil der Druckluft - der Satz steht unter der Reihe.
+    expect(ee1.hinweise).toHaveLength(1);
+    expect(ee1.hinweise[0]).toContain('MS-07');
     expect(ee1.teile).toEqual([
       { text: 'verantwortlich Murat Demirci' },
       { text: 'Einstufung Fassung 1 seit 06.11.2026', breit: true },
@@ -134,13 +137,24 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     expect(e.gruppen[0].reihen[0].teile[0].text).toBe(`Vorschlag „wesentlich“ (41,8${NB}% des Stroms, ab 10${NB}%)`);
   });
 
+  it('ein Bereich ohne Einstufung wird genannt: „Ein Bereich ist noch nicht eingestuft.“', async () => {
+    const x = await eingabe();
+    const ohneEe2 = Object.fromEntries(Object.entries(x.einstufungen).filter(([id]) => id !== ahrenbergEinsaetze()[1].id));
+    const e = bewertungErgebnis({ ...x, einstufungen: ohneEe2 });
+    expect(e.zusatz).toBe('Eine Einstufung weicht begründet vom Vorschlag ab. Ein Bereich ist noch nicht eingestuft.');
+    expect(e.gruppen.find((g) => g.key === 'offen')?.reihen.map((r) => r.kennzeichen)).toEqual(['EE-2']);
+  });
+
   it('ohne laufenden Bereich ist die Seite leer - erst der Satz, dann der Knopf', async () => {
     expect(bewertungErgebnis(await eingabe({ einsaetze: [] })).leer).toBe(true);
   });
 
   it('nennt nie ein Kürzel K1 bis K8, nie „Roh“, nie „Urteil (Band)“', async () => {
     for (const x of [await eingabe(), await eingabe({ rangliste: ohneWerte() }), await eingabe({ einstufungen: {} })]) {
-      for (const t of texte(bewertungErgebnis(x))) {
+      // Die R16-Hinweise zitieren Namen aus den Kundendaten („Kompressoren K1+K2“) - die prüft dieser Wächter nicht.
+      const e = bewertungErgebnis(x);
+      const ohneDaten = { ...e, gruppen: e.gruppen.map((g) => ({ ...g, reihen: g.reihen.map((r) => ({ ...r, hinweise: [] })) })) };
+      for (const t of texte(ohneDaten)) {
         expect(t, t).not.toMatch(KUERZEL);
         expect(t, t).not.toMatch(/\bRoh\b|Urteil \(Band\)/);
       }
@@ -250,7 +264,7 @@ describe('Umfang in drei Zeilen und Wörter der Dialoge', () => {
   it('Fassung 1: beide Werke, Strom mit Anteil, Gas daneben, seit 04.11.2026 von Ines Kaltenbach', () => {
     expect(umfangZeilen(ahrenbergUmfang('2026-11-20'))).toEqual({
       gespeichert: true,
-      standorte: 'Werk Ahrenberg (2 Anlagen) · Werk Lindach (1 Anlage)',
+      standorte: `Werk Ahrenberg (2${NB}Anlagen) · Werk Lindach (1${NB}Anlage)`,
       traeger: 'Strom mit Anteil · Gas ohne Anteil',
       traegerNotiz: 'Gas hat keinen gemeinsamen Maßstab mit Strom und steht daneben.',
       ausschluesse: [],

@@ -44,7 +44,11 @@ describe('BewertungPage - das Ergebnis', () => {
     // Die Rangliste mit Kürzelspalten, die Messabdeckung je Einsatz und Ort und die zweite Liste sind weg.
     expect(screen.queryByTestId('rangliste')).toBeNull();
     expect(screen.queryByTestId('einsatz-karte')).toBeNull();
-    expect(container.textContent).not.toMatch(/(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)/u);
+    // R16 zitiert Namen aus den Kundendaten („Kompressoren K1+K2“); geprüft wird der Text der Seite ohne diese Sätze.
+    const seite = container.cloneNode(true) as HTMLElement;
+    seite.querySelectorAll('.vp-be-hinweis-satz').forEach((h) => h.remove());
+    expect(seite.textContent).not.toMatch(/(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)/u);
+    expect(screen.getByTestId('bereich-EE-1')).toHaveTextContent('enthält 70 % von Druckluft Kompressoren K1+K2 (MS-07)');
     expect(container.textContent).not.toMatch(/Rangliste|Roh|Urteil \(Band\)|Europe\/Berlin/);
   });
 

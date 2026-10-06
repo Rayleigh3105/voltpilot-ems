@@ -34,6 +34,7 @@ import {
   UEMS_NOCH_OHNE_WERTE,
   UEMS_WESENTLICHE_BEREICHE,
 } from './glossar';
+import { prozessSummeHinweisSatz } from './kostenstellenUebersicht';
 import { MEDIEN_WAEHLBAR } from './uemsMessstelle';
 import { STARTWERTE } from './uemsBewertung';
 
@@ -54,7 +55,8 @@ export const mengeText = (n: number, einheit: string | null) =>
   `${zahl(n, einheit === 'kWh' ? 0 : 1)}${einheit ? `${NBSP}${einheit}` : ''}`;
 
 const ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
-const zahlwort = (n: number) => ZAHLWORT[n] ?? String(n);
+/** „eine Einstufung“, aber „ein Bereich“: die Eins richtet sich nach dem Wort. */
+const zahlwort = (n: number, maennlich = false) => (n === 1 && maennlich ? 'ein' : (ZAHLWORT[n] ?? String(n)));
 const gross = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** „Spritzguss, Montage und Verwaltung“. */
 export const aufzaehlung = (teile: readonly string[]) =>
@@ -161,6 +163,8 @@ export interface BereichReihe {
   /** Breite des Balkens in % des größten Bereichs (Strom). */
   balken: number | null;
   teile: ZeilenTeil[];
+  /** R16: eine Summe dieses Bereichs enthält einen Anteil eines anderen Prozesses - ein Satz je Fall, unter der Reihe. */
+  hinweise: string[];
   abweichung: boolean;
   wartet: boolean;
 }
@@ -275,6 +279,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
       menge: anteil !== null && menge !== null ? mengeText(menge, 'kWh') : null,
       balken: anteil !== null && menge !== null && groesste > 0 ? Math.round((menge / groesste) * 1000) / 10 : null,
       teile,
+      hinweise: (z?.prozess_summe_hinweise ?? []).map(prozessSummeHinweisSatz),
       abweichung,
       wartet,
     };
@@ -305,7 +310,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
   if (n === 0) {
     antwort = 'Noch keine Bereiche festgelegt.';
   } else if (eingestuft === 0) {
-    antwort = `Noch ist keiner der ${n} ${n === 1 ? 'Bereich' : 'Bereiche'} eingestuft.`;
+    antwort = n === 1 ? 'Der Bereich ist noch nicht eingestuft.' : `Noch ist keiner der ${n} Bereiche eingestuft.`;
     if (vorgeschlagen > 0) zusatz = `VoltPilot schlägt ${vorgeschlagen} davon als wesentlich vor.`;
   } else {
     antwort =
@@ -316,7 +321,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
     if (abweichend > 0)
       saetze.push(`${gross(zahlwort(abweichend))} ${abweichend === 1 ? 'Einstufung weicht' : 'Einstufungen weichen'} begründet vom Vorschlag ab.`);
     const offen = n - eingestuft;
-    if (offen > 0) saetze.push(`${gross(zahlwort(offen))} ${offen === 1 ? 'Bereich ist' : 'Bereiche sind'} noch nicht eingestuft.`);
+    if (offen > 0) saetze.push(`${gross(zahlwort(offen, true))} ${offen === 1 ? 'Bereich ist' : 'Bereiche sind'} noch nicht eingestuft.`);
     zusatz = saetze.length ? saetze.join(' ') : null;
   }
 
@@ -523,7 +528,7 @@ export interface UmfangZeilen {
 
 const AUSSCHLUSS_ART = { standort: 'Standort', anlage: 'Anlage', prozess: 'Prozess' } as const;
 
-const anlagenWort = (n: number) => `${n} ${n === 1 ? 'Anlage' : 'Anlagen'}`;
+const anlagenWort = (n: number) => `${n}${NBSP}${n === 1 ? 'Anlage' : 'Anlagen'}`;
 
 /** Der Umfang in drei Zeilen (§6.7): Standorte, Energieträger, seit wann und von wem; Ausschlüsse mit Begründung. */
 export function umfangZeilen(u: BewertungUmfang, namen: ReadonlyMap<string, string> = new Map()): UmfangZeilen {
@@ -546,6 +551,8 @@ export function umfangZeilen(u: BewertungUmfang, namen: ReadonlyMap<string, stri
 // ------------------------------------------------------------------ Bewertungsstand
 
 export const FRUEHERE_STAENDE = 'Frühere Stände';
+export const FRUEHERE_AUSBLENDEN = 'Frühere Stände ausblenden';
+export const FRUEHERE_BEWERTUNGEN = 'Frühere Bewertungen in den Nachweisen';
 export const KEINE_BEWERTUNG_SATZ =
   'Noch keine Bewertung festgestellt. Legen Sie eine an - der Entwurf entsteht aus Umfang, Bereichen, Einstufungen und Messwerten; freigegeben gilt er als Stand Nr.\u00a01.';
 
@@ -564,7 +571,9 @@ export function standBild(detail: BerichtDetail, s: BerichtStandKurz) {
     tag: d.tag,
     jahr: d.jahr,
     satz: `Stand Nr. ${s.nr} vom ${d.voll}`,
-    titel: `gilt · freigegeben von ${s.freigegeben_von.name}`,
+    titel: s.ersetzt_durch_nr === null
+      ? `gilt · freigegeben von ${s.freigegeben_von.name}`
+      : `ersetzt durch Stand Nr. ${s.ersetzt_durch_nr} · freigegeben von ${s.freigegeben_von.name}`,
     anlass: anlass ? `Anlass: ${anlass}` : null,
     dateien: (['pdf', 'csv'] as const).map((format) => ({
       format,
