@@ -31,7 +31,7 @@ const VERWALTEN = 'verbesserung.verwalten';
 const ABSCHLIESSEN = 'verbesserung.abschliessen';
 
 /**
- * Die Seite eines Energieziels (Konzept Verbessern §6.4, PR 1): „Sind wir auf Kurs, und was wird dafür getan?“ — oben
+ * Die Seite eines Energieziels (Konzept Verbessern §6.4, PR 1): „Sind wir auf Kurs, und was wird dafür getan?“ - oben
  * die Antwort mit Bedingung, der Stand auf der Skala mit den kWh-Kacheln und „Was noch nötig ist“, die Maßnahmen am
  * Energieziel (und was schon im Stand enthalten ist), die Monate als Grafik mit dem Energieziel als gestrichelte Linie
  * und als Liste, die Bewertung, „Über dieses Energieziel“. Ein bewertetes Energieziel zeigt oben den festgehaltenen
@@ -94,7 +94,7 @@ export function EnergiezielSeite({
     };
   }, [id, versuch]);
 
-  // Was eine umgesetzte Maßnahme an derselben Kennzahl beobachtet — die Wirkung der Route, je Maßnahme einmal.
+  // Was eine umgesetzte Maßnahme an derselben Kennzahl beobachtet - die Wirkung der Route, je Maßnahme einmal.
   useEffect(() => {
     if (lage.art !== 'da' || !lage.massnahmen) return;
     let aktiv = true;
@@ -169,7 +169,7 @@ export function EnergiezielSeite({
   const bewertbar = offen && bewertung.art === 'keine' && (faellig || (stand !== null && stand.monate_endgueltig === stand.monate_soll));
   const punkte = stand ? B.monatsPunkte(stand) : [];
   const hatMonatswert = punkte.some((p) => p.art === 'gezaehlt');
-  // Vor dem ersten Monat der Zielperiode gibt es nichts zu zeigen — die Antwort sagt, wann sie beginnt.
+  // Vor dem ersten Monat der Zielperiode gibt es nichts zu zeigen - die Antwort sagt, wann sie beginnt.
   const begonnen = punkte.some((p) => p.art !== 'kommt');
   const neu = (x: Energieziel) => {
     setDialog(null);
@@ -510,7 +510,7 @@ export function EnergiezielSeite({
         <div className={`vp-ezl-r-bewertung${bewertungBreit ? '' : ' vp-ezl-nur-schmal'}${offen ? '' : ' is-oben'}`}>{bewertungKarte}</div>
       </div>
 
-      {/* IP-20 (§5.6, Z5): die Anstöße mit Antwort-Knöpfen — „beibehalten“ mit Begründung, „neu bewerten“ (IP-17-NAHT). */}
+      {/* IP-20 (§5.6, Z5): die Anstöße mit Antwort-Knöpfen - „beibehalten“ mit Begründung, „neu bewerten“ (IP-17-NAHT). */}
       <VerbesserungAnstoesse
         vorgang="energieziel"
         anstoesse={ez.anstoesse}
@@ -589,7 +589,7 @@ function Kacheln({ kacheln }: { kacheln: B.Kachel[] | null }) {
   );
 }
 
-/** Bewertet (Entscheid 11): der festgehaltene Stand oben — dieselben Zahlen, die die Prüfsumme deckt. */
+/** Bewertet (Entscheid 11): der festgehaltene Stand oben - dieselben Zahlen, die die Prüfsumme deckt. */
 function FestKarte({ ez }: { ez: Energieziel }) {
   const s = ez.bewertung?.stand;
   const teile = B.festKacheln(ez);

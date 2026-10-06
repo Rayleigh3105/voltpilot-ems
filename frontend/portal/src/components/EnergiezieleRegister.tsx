@@ -26,12 +26,12 @@ type Lage =
 
 const VERWALTEN = 'verbesserung.verwalten';
 
-/** Ein laufendes Energieziel: offen und nicht schon zur Bewertung fällig, die zuerst — sonst nach Beginn. */
+/** Ein laufendes Energieziel: offen und nicht schon zur Bewertung fällig, die zuerst - sonst nach Beginn. */
 const laufendZuerst = (a: Energieziel, b: Energieziel) => a.zielperiode.localeCompare(b.zielperiode);
 
 /**
- * Der Reiter „Energieziele“ (Konzept Verbessern §6.3, PR 1): die Antwort zuerst — ob die laufenden Energieziele auf
- * Kurs sind —, darunter ein Hinweis auf offene Auffälligkeiten an ihren Kennzahlen, je laufendes Energieziel eine Karte
+ * Der Reiter „Energieziele“ (Konzept Verbessern §6.3, PR 1): die Antwort zuerst - ob die laufenden Energieziele auf
+ * Kurs sind -, darunter ein Hinweis auf offene Auffälligkeiten an ihren Kennzahlen, je laufendes Energieziel eine Karte
  * mit der Skala aus Auswerten und dem nächsten Schritt („Maßnahme planen“), Abgeschlossenes als ruhige Reihe. Die Lage,
  * die Lücke in kWh und die Monate kommen von der Route (Operation `kurs`), die Maßnahmen über `?energieziel=`.
  */
@@ -349,7 +349,7 @@ function ZielKarte({ l, onOeffnen, onPlanen }: { l: Laufend; onOeffnen: (id: str
   );
 }
 
-/** Ein abgeschlossenes Energieziel als ruhige Reihe (§6.3): Ergebnis mit Wort, ohne Warnfarbe — es ist Geschichte. */
+/** Ein abgeschlossenes Energieziel als ruhige Reihe (§6.3): Ergebnis mit Wort, ohne Warnfarbe - es ist Geschichte. */
 function AbgeschlossenReihe({ ez, onOeffnen }: { ez: Energieziel; onOeffnen: (id: string) => void }) {
   const s = ez.bewertung?.status === 'bewertet' ? ez.bewertung.stand : undefined;
   const wie =

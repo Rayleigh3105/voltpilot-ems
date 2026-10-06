@@ -12,8 +12,8 @@ import { m1, m1Umgesetzt, wirkungR5 } from './test/massnahmeFixtures';
 import { rechteSeed } from './test/rollenFixtures';
 
 /**
- * Konzept Verbessern v1, PR 1 (Energieziele): das reine Bild — Antwort zuerst, Skala, Kacheln in kWh, „Was noch nötig
- * ist“, Monate mit Grund, festgehaltener Stand —, die Maßnahmen am Energieziel und „Energieziel setzen“ geführt. Die
+ * Konzept Verbessern v1, PR 1 (Energieziele): das reine Bild - Antwort zuerst, Skala, Kacheln in kWh, „Was noch nötig
+ * ist“, Monate mit Grund, festgehaltener Stand -, die Maßnahmen am Energieziel und „Energieziel setzen“ geführt. Die
  * Zahlen sind die der Mocks des Konzepts (§14) und des Vektors „K1 März 2029“.
  */
 beforeEach(() => vergissAbruf());
@@ -153,7 +153,7 @@ describe('Monate: Grafik und Liste mit Grund (§6.4, Befund 1)', () => {
     expect(zeilen.map((z) => z.titel)).toEqual(['April 2029', 'März 2029']);
     expect(spaeter).toBe('Mai bis Dezember 2029 haben noch nicht begonnen.');
   });
-  it('zwölf Monate ohne Wert stehen in einer Zeile — nicht zwölfmal derselbe Satz', () => {
+  it('zwölf Monate ohne Wert stehen in einer Zeile - nicht zwölfmal derselbe Satz', () => {
     const s = { ...standLeer(ez2028()), abruf: '2029-04-30' };
     s.monate = s.monate.map((m) => ({ ...m, vergleich: monat(m.periode, { grund: 'keine_werte' }) }));
     const { zeilen } = B.monatsZeilen(B.monatsPunkte(s));
@@ -195,7 +195,7 @@ describe('bewertet: der festgehaltene Stand oben (Entscheid 11)', () => {
 });
 
 describe('Maßnahmen am Energieziel (Entscheid 5)', () => {
-  it('die Maßnahmen für das Energieziel und, getrennt, was schon im Stand enthalten ist — mit beobachteter Wirkung', async () => {
+  it('die Maßnahmen für das Energieziel und, getrennt, was schon im Stand enthalten ist - mit beobachteter Wirkung', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     const geplant = m1('2028-07-10', { id: 'm-neu', kennzeichen: 'M-2028-0009', titel: 'Kühlwasserpumpen drehzahlgeregelt betreiben', termin: '2028-09-30', messgrundlage: null, energieziel: { id: EZ_IDS.ez1, kennzeichen: 'EZ-2028-0001', name: null } });
     const umgesetzt = { ...m1Umgesetzt('2028-07-10'), zustand: 'bewertet' as const, energieziel: null };
@@ -234,7 +234,7 @@ describe('„Energieziel setzen“ geführt (§6.9)', () => {
     expect(zeitraumWahl('2030-01').map((w) => w.label)).toEqual(['2030', '2031']);
   });
 
-  it('Kennzahl wählen, Wert und Zeitraum, prüfen — gesendet wird, was dasteht', async () => {
+  it('Kennzahl wählen, Wert und Zeitraum, prüfen - gesendet wird, was dasteht', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     merkeAbruf('2029-04-30');
     const anlegen = vi.fn(async (body: Parameters<typeof api.energiezielAnlegen>[0]) => ez2029({ id: 'neu', zielperiode: body.zielperiode }));

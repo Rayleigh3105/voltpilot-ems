@@ -24,7 +24,7 @@ const monatNach = (m: string, n = 1) => {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
 };
 
-/** Der früheste Beginn an einer Kennzahl: der Monat nach heute — und nach dem Ende eines laufenden Energieziels. */
+/** Der früheste Beginn an einer Kennzahl: der Monat nach heute - und nach dem Ende eines laufenden Energieziels. */
 export function fruehesterBeginn(heute: string, laufend: Pick<Energieziel, 'zielperiode'>[]): string {
   let start = monatNach(heute.slice(0, 7));
   for (const ez of laufend) {
@@ -49,7 +49,7 @@ export function zeitraumWahl(start: string): { wert: string; label: string }[] {
 export const wortlautVon = (kennzahl: Pick<Kennzahl, 'name'>, zielwert: string) =>
   `${kennzahl.name}: ${B.zielText(zielwert).replace(/\u00a0/g, ' ')}, als die Bezugsbasis erwarten lässt.`;
 
-/** „Zur Einordnung“ aus dem Vergleich der letzten zwölf abgeschlossenen Monate — ohne Zahl ein Satz ohne Zahl. */
+/** „Zur Einordnung“ aus dem Vergleich der letzten zwölf abgeschlossenen Monate - ohne Zahl ein Satz ohne Zahl. */
 function einordnung(z: BezugsbasisVergleichZeitraum | null, von: string, bis: string): string | null {
   if (!z) return null;
   const periode = B.periodeText(von, bis);
@@ -60,7 +60,7 @@ function einordnung(z: BezugsbasisVergleichZeitraum | null, von: string, bis: st
 }
 
 /**
- * „Energieziel setzen“ geführt (Konzept Verbessern §6.9, PR 1): drei Schritte im zentrierten Fenster — die Kennzahl
+ * „Energieziel setzen“ geführt (Konzept Verbessern §6.9, PR 1): drei Schritte im zentrierten Fenster - die Kennzahl
  * wählen (nur mit freigegebener Bezugsbasis; eine belegte nennt ihren frühesten Beginn), Wert und Zeitraum mit
  * Einordnung und „So steht es da“, dann prüfen und setzen. „Heute“ ist der Tag der Route (eine Uhr, Befund 2); was die
  * Route ablehnt, steht als ihr Satz. Verantwortlich ist, wer die Kennzahl verantwortet (Vorgabe der Route).

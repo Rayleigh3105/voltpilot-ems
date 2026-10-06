@@ -801,7 +801,7 @@ button.vp-ezl-mrow {
     gap: var(--vp-c-space-4, 16px);
     min-width: 0;
   }
-  /* Im Raster stehen die Karten links, Hinweis und Erklärung rechts — die Reihenfolge des Telefons gilt hier nicht. */
+  /* Im Raster stehen die Karten links, Hinweis und Erklärung rechts - die Reihenfolge des Telefons gilt hier nicht. */
   .vp-ezl-haupt,
   .vp-ezl-seite {
     order: 0;

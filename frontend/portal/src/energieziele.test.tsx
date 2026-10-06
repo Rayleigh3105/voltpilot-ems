@@ -174,7 +174,7 @@ describe('die Flächen gegen R4/R10', () => {
     expect(within(karte).getByTestId('energieziel-massnahmen').textContent).toBe('Noch keine Maßnahme geplant');
     expect(within(karte).getByTestId('energieziel-planen').textContent).toBe('Maßnahme planen');
   });
-  it('Seite R4: Antwort mit Bedingung, Stand in kWh, was noch nötig ist, März mit Grund — noch kein „bewerten“ (§6.4)', async () => {
+  it('Seite R4: Antwort mit Bedingung, Stand in kWh, was noch nötig ist, März mit Grund - noch kein „bewerten“ (§6.4)', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, energiezielBuehne('juli'));
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);

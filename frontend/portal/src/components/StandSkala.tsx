@@ -5,7 +5,7 @@ import './StandSkala.css';
 const pct = (x: number) => `${((x / 320) * 100).toFixed(2)}%`;
 
 /**
- * Wo eine Beschriftung an ihrem Strich steht: mittig, am Rand nach innen — und nahe der Bezugsbasis zur Seite, damit
+ * Wo eine Beschriftung an ihrem Strich steht: mittig, am Rand nach innen - und nahe der Bezugsbasis zur Seite, damit
  * „Bezugsbasis“ und „Energieziel −1 %“ sich nie überdecken.
  */
 function anker(x: number, nachbar: number | null, seite: 'links' | 'rechts' | null = null): string {

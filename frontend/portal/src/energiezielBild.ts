@@ -464,7 +464,7 @@ export function festAntwort(ez: Energieziel): Antwort | null {
   };
 }
 
-/** Unter dem Zitat der Bewertung: wer, wann — und ohne Vorschlag, warum („weil März 2028 nicht bewertbar war“). */
+/** Unter dem Zitat der Bewertung: wer, wann - und ohne Vorschlag, warum („weil März 2028 nicht bewertbar war“). */
 export function bewertetFuss(
   b: { person: { name: string }; am: string; vorschlag: string | null },
   s: EnergiezielFestgehaltenerStand | undefined,

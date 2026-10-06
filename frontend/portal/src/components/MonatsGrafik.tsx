@@ -32,7 +32,7 @@ const vorgabe = (punkte: MonatsPunkt[]) => {
 /**
  * „Je Monat gegen das Energieziel“ (Konzept Verbessern §6.4, §6.11): die Abweichung vom Erwarteten je Monat als Säule
  * um die Nulllinie (Auswerten a1), das Band „im Rahmen“ hell hinterlegt, das Energieziel als gestrichelte Linie in Navy
- * — gestrichelt, damit es nie mit einer Säule verwechselt wird. Laufende und nicht bewertbare Monate stehen gestrichelt
+ * - gestrichelt, damit es nie mit einer Säule verwechselt wird. Laufende und nicht bewertbare Monate stehen gestrichelt
  * ohne Zahl, kommende leer mit hellem Namen. Eine Infozeile über der Grafik sagt den gewählten Monat (kein Tooltip, der
  * etwas verdeckt); dieselben Werte stehen als Liste darunter.
  */
@@ -46,7 +46,7 @@ export function MonatsGrafik({
   punkte: MonatsPunkt[];
   zielwert: string;
   band: string | null;
-  /** „Energieziel: 4 % weniger“ — die Legende der Linie. */
+  /** „Energieziel: 4 % weniger“ - die Legende der Linie. */
   linieWort: string;
   label: string;
 }) {
