@@ -352,6 +352,8 @@ describe('Seite einer Maßnahme (§6.6)', () => {
     expect(screen.getByTestId('massnahme-umgesetzt-knopf').textContent).toBe('Umsetzung melden');
     expect(screen.getByTestId('massnahme-zustand').getAttribute('data-entscheid')).toBe('massnahme_termin');
     expect(screen.getByTestId('massnahme-erwartete-wirkung').textContent).toContain('Nicht gemessen:');
+    // Ines (Energiemanagerin) darf Kennzahlen anlegen: der Sprung steht da; ohne das Recht nur der Satz.
+    expect(within(screen.getByTestId('massnahme-erwartete-wirkung')).getByText('Kennzahl anlegen')).toBeTruthy();
     fireEvent.click(within(screen.getByTestId('massnahme-menue')).getByRole('button'));
     for (const w of ['Ändern', 'Kommentar schreiben', 'Verwerfen']) expect(screen.getByText(w)).toBeTruthy();
   });
