@@ -40,6 +40,11 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   direkter Stand: keine Route setzt ihn für „Messen“.
 - Ablesungen an MS-20 und Monatswerte an BZ-1 ab 10/2024 über die Routen des Portals, bis zum letzten abgeschlossenen
   Monat der echten Zeit; danach ein Kennzahl-Lauf. Alle sechs Kennzahlen der Welt lesen MS-20 ÷ BZ-1.
+- Bühnen-Bestand bis März 2029 (Demo-Füllung Auswerten a4): MS-20 und BZ-1 ab Oktober 2026 aus der Referenzwelt, die
+  übrigen Reihen nach ihrem Muster; Ablesungen über die Route mit der Bühnen-Uhr am Ablese-Dienst, Bezugswerte als
+  direkter Stand (keine Route schreibt eine Periode nach heute). BB-0001 Fassung 2 trägt die Regression der Referenzwelt,
+  KZ-0021 bis KZ-0023 rechnen mit passenden Zählern. Die Flächen der echten Uhr zeigen davon nichts vor seiner Zeit
+  (Stichtag-Grenze an Bezugswerten, Werten einer Messstelle, Ablesungen und Lückenlauf).
 
 ## Was die Datei `docker-compose.demo.yml` ändert
 
@@ -67,8 +72,10 @@ Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf ei
   30.04.2029.
 - `demo.sh start --neu` baut das Portal aus dem aktuellen Arbeitsbaum; `start` ohne `--neu` behält das gebaute Portal.
   Plattform-Konten sehen die Plattform-Seiten erst mit #1294 (seit 27.09.2026 im Sammelzweig).
-- Bezugswerte gibt es nur für Monate, die in echter Zeit vorbei sind: `bezugsgroesse_wert_abgeschlossen_chk` verlangt
-  Periodenende ≤ `created_at`. Die Kennzahl-Werte liegen darum auf der echten Zeitachse, das Energiemanagement auf der
-  Bühne. Ablesungen verlangen ab vier Stellen Tausenderpunkte („1.250.000“), sonst 422 „nicht negativer Zählerstand“.
+- Über die Route gibt es Bezugswerte nur für Monate, die in echter Zeit vorbei sind:
+  `bezugsgroesse_wert_abgeschlossen_chk` verlangt Periodenende ≤ `created_at`, und `created_at` setzt die Datenbank.
+  Den Rest bis zum Bühnen-Tag legt der Rundgang als direkten Stand an; ein späterer Lauf über die Route ist eine
+  Wiederholung. Ablesungen verlangen ab vier Stellen Tausenderpunkte („1.250.000“), sonst 422 „nicht negativer
+  Zählerstand“.
 - Die Container tragen die festen Namen `voltpilot-*`: ein Entwicklungs-Stapel oder die Prüfumgebung daneben geht
   nicht; `demo.sh start` bricht dann ab und fasst nichts an.
