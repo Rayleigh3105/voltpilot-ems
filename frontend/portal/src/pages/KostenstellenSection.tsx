@@ -428,11 +428,11 @@ function KostenstelleBeispiel({ antworten }: { antworten: ReadonlyMap<string, En
   }
   return (
     <>
-      Bei Ihnen bekommt <b>{erste.kostenstelle}</b> {erste.anteil} % von {b.messstelle}
+      Bei Ihnen bekommt <b>{erste.kostenstelle}</b> {erste.anteil}{'\u00a0'}% von {b.messstelle}
       {weitere.map((t, i) => (
         <span key={t.kostenstelle}>
           {i === weitere.length - 1 ? ' und ' : ', '}
-          <b>{t.kostenstelle}</b> {t.anteil ?? 100} %
+          <b>{t.kostenstelle}</b> {t.anteil ?? 100}{'\u00a0'}%
         </span>
       ))}
       .

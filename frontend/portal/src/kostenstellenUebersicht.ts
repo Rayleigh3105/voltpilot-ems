@@ -75,8 +75,8 @@ export const ZEITWAHL: readonly { id: KostenstelleEnergiePeriode; label: string 
 export const OHNE_WERT = OHNE_ZAHL;
 
 export const GANZ = 'ganz';
-export const ANTEIL = '{anteil} %';
-export const ANTEIL_VON = '{anteil} % von {menge}';
+export const ANTEIL = '{anteil}\u00a0%';
+export const ANTEIL_VON = '{anteil}\u00a0% von {menge}';
 export const BERECHNET_POSTEN = 'berechnet';
 export const NOCH_KEINE_MESSSTELLE = `Noch keine ${UEMS_MESSSTELLE} zugeordnet.`;
 export const MESSSTELLE_ZUORDNEN = `${UEMS_MESSSTELLE} zuordnen`;
