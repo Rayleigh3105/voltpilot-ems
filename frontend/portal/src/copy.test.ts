@@ -3941,6 +3941,13 @@ describe('Konzept Messen m1 · „Woher die Werte kommen“: Liste und Dialog sp
     expect(texte.filter((t) => /^(Elektrisch|Organisation)$|Ändern ab …|Keine Datenquelle/.test(t))).toEqual([]);
   });
 
+  it('die Ablese-Runde je Gebäude spricht das Glossarwort: „Ablesen ›“ in der Liste, „Halle 1 ablesen“ als Titel', async () => {
+    const g = await import('./glossar');
+    const runde = await import('./ableseRunde');
+    expect(runde.ABLESEN).toBe(g.UEMS_ABLESEN);
+    expect(g.UEMS_ABLESEN).toBe('Ablesen');
+  });
+
   it('die Liste zeigt keine Datenmodell-Wörter mehr: kein „Quelle (führend)“, kein „Keine Datenquelle“, kein „Summenwert anlegen“', () => {
     for (const datei of ['pages/MessstellenPage.tsx', 'messstellenListe.ts']) {
       const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);

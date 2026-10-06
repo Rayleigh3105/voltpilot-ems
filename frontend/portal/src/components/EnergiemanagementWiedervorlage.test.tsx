@@ -161,7 +161,7 @@ describe('Die Wiedervorlage als Arbeitsliste (Konzept Wiedervorlage w1)', () => 
     // Entscheid 7: eine Ablese-Runde je Ort; der Schritt führt ins Register des Orts, bei einem Zähler zu ihm.
     expect(screen.getByTestId('wiedervorlage-eintrag-G-1').textContent).toContain('8 Zähler in Halle 1 ablesen');
     expect(screen.getByTestId('wiedervorlage-ziel-G-1').getAttribute('aria-label')).toBe('8 Zähler in Halle 1 ablesen: Ablesungen eintragen');
-    expect(screen.getByTestId('wiedervorlage-ziel-G-1').getAttribute('href')).toBe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung');
+    expect(screen.getByTestId('wiedervorlage-ziel-G-1').getAttribute('href')).toBe('#/portfolio/messstellen?ablesen=G-1&entscheid=zaehlerablesung');
     expect(screen.getByTestId('wiedervorlage-ziel-G-3').getAttribute('aria-label')).toBe('Zähler MS-22 in Verwaltung ablesen: Ablesung eintragen');
     expect(screen.getByTestId('wiedervorlage-nichts-bald').textContent).toBe('Bis 30.05.2029 ist nichts fällig. Die nächste Frist ist am 30.06.2029.');
     const zuletzt = within(screen.getByTestId('wiedervorlage-zuletzt')).getAllByRole('listitem');

@@ -559,8 +559,8 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
  * Entscheid 8: der Schritt öffnet das Objekt dort, wo die Entscheidung fällt. Audit und Managementbewertung legt man
  * im Reiter neu an; der Messbedarf wird an seinem Energieeinsatz eingelöst (dort steht „Messstelle einrichten“), ohne
  * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen). Eine Ablesung trägt man an der
- * Messstelle ein: bei einem Zähler direkt dort, bei einer Runde aus dem Register ihres Orts (`?ort=G-1`), das die
- * abzulesenden Zähler markiert (`ablesungsZiele` in `messstellen.ts`).
+ * Messstelle ein: bei einem Zähler direkt dort, bei mehreren in der Ablese-Runde ihres Orts (`?ablesen=G-1`, Konzept
+ * Messen m1 §6.5 Variante 3A) - das erste offene Feld der Runde trägt den Entscheid.
  */
 export function eintragSprung(
   z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'> &
@@ -576,7 +576,7 @@ export function eintragSprung(
     case 'zaehlerablesung':
       return z.herleitung?.anzahl === 1 && z.id
         ? entscheidSprung(messstelleRoute(z.id), z.art)
-        : entscheidSprung(pageRoute('portfolio-messstellen'), z.art, null, { ort: z.kennzeichen });
+        : entscheidSprung(pageRoute('portfolio-messstellen'), z.art, null, { ablesen: z.kennzeichen });
     default: {
       const ziel = wiedervorlageSprung(z);
       return ziel ? entscheidSprung(ziel, z.art) : null;

@@ -23,6 +23,7 @@ import {
   OHNE_FILTER,
   TITEL,
   ZUR_UEBERSICHT,
+  ablesenAus,
   anlageAus,
   leerzustand,
   ortAus,
@@ -68,6 +69,7 @@ import {
   type OrtGruppe,
   type Reihe,
 } from '../messstellenListe';
+import { useRollen } from '../rollen';
 import { listeZurueck, merkeListe } from '../messstellenRueckweg';
 import { DIALOG_TITEL } from '../messstelleDialog';
 import { replaceCurrentNavigation } from '../navigationBlocker';
@@ -77,6 +79,8 @@ import { ZURUECK_ZU_HEUTE, stichtagAus } from '../standAm';
 import { VORGABE_ZEITZONE, datumText } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
 import { KostenstellenReiter, ProzesseReiter } from './KostenstellenSection';
+import { ABLESEN, ABLESEN_PARAMETER } from '../ableseRunde';
+import { AbleseRunde } from '../components/AbleseRunde';
 import { MessstelleSeite } from './MessstelleSeite';
 import './MessstellenPage.css';
 import { ausfaelleJeMessstelle } from '../ausfallAnzeige';
@@ -98,7 +102,8 @@ import type { TextTeil } from '../picker/suche';
  *
  * ⚠ Mit Stichtag gibt es keinen Schreibweg: „Messstelle anlegen“ verschwindet, die Hinweiskarte nennt keinen Schritt.
  * ⚠ Die Marke des Schritts „Ablesungen eintragen“ der Wiedervorlage (`data-entscheid="zaehlerablesung"`) trägt jede
- * Reihe, deren Ablesung fehlt - die Wiedervorlage öffnet die gefilterte Liste eines Orts (`?ort=G-1`).
+ * Reihe, deren Ablesung fehlt (für eine gefilterte Liste `?ort=G-1`); die Wiedervorlage selbst öffnet seit Messen m2 die
+ * Ablese-Runde des Orts (`?ablesen=G-1`), deren erstes offenes Feld die Marke trägt.
  */
 export function MessstellenPage({
   messstelleId = null,
@@ -133,6 +138,23 @@ export function MessstellenPage({
    */
   reiterOben?: boolean;
 }) {
+  // Die Ablese-Runde eines Orts (`?ablesen=G-1`) steht statt der Liste - ein Wechsel der Adresse innerhalb derselben
+  // Route (Gebäude-Karte, Wiedervorlage) schaltet hin und zurück.
+  const ablesen = useAdressParameter(ablesenAus);
+  if (ablesen && !messstelleId) {
+    const zurListe = () => {
+      const hash = window.location.hash.split('?')[0];
+      springeUeberHash({ route: parseRoute(hash), hash });
+    };
+    return (
+      <AbleseRunde
+        ort={ablesen}
+        zone={register.zone ?? VORGABE_ZEITZONE}
+        anfrage={registerAnfrage(register.ebene, OHNE_FILTER, null)}
+        onZurueck={zurListe}
+      />
+    );
+  }
   if (messstelleId && onListe) {
     // „‹ Alle Messstellen“ führt in dieselbe Trefferliste zurück (Suche und Filter der Adresse), aus der sie geöffnet
     // wurde (Konzept §6.3); ohne gemerkte Liste in die Liste der Ebene.
@@ -272,6 +294,17 @@ interface RegisterProps {
    * genau diesem Tag (`periode`, AP-13 IP-3); sonst `null`, und die Seite wählt selbst.
    */
   onOeffnen?: (id: string, periode: string | null) => void;
+}
+
+/** Ein Parameter der Adresse, der beim Wechsel der Adresse (hashchange) mitgeht. */
+function useAdressParameter(aus: (hash: string) => string | null): string | null {
+  const [wert, setWert] = useState(() => aus(window.location.hash));
+  useEffect(() => {
+    const neu = () => setWert(aus(window.location.hash));
+    window.addEventListener('hashchange', neu);
+    return () => window.removeEventListener('hashchange', neu);
+  }, [aus]);
+  return wert;
 }
 
 /** Ein Wechsel der Adresse ohne Verlaufseintrag; nur, wenn sie sich ändert. */
@@ -860,11 +893,25 @@ function OrtKarte({
   onOeffnen?: (id: string, periode: string | null) => void;
 }) {
   const titelId = `vp-ms-ort-${useId().replace(/:/g, '')}`;
+  const rollen = useRollen();
+  // Konzept §6.2: „Ablesen ›“ im Kopf der Karte - zur Ablese-Runde des Orts; nur heute (am Stichtag gibt es keinen
+  // Schreibweg) und nur mit dem Recht am Standort des Orts.
+  const ablesen = gruppe.ablesen && !periode && rollen.darf('ablesung.erfassen', gruppe.standortId) ? gruppe.ablesen : null;
   return (
     <section className="vp-ms-ort" aria-labelledby={titelId} data-testid="messstellen-ort">
-      <div className="vp-ms-ort-kopf">
+      <div className={`vp-ms-ort-kopf${ablesen ? ' mit-ablesen' : ''}`}>
         <h2 id={titelId}>{gruppe.titel}</h2>
         <span className="vp-ms-ort-zahl">{gruppenZahl(gruppe, gefiltert)}</span>
+        {ablesen && (
+          <a
+            className="vp-ms-ablesen"
+            href={`${window.location.hash.split('?')[0] || '#/portfolio/messstellen'}?${ABLESEN_PARAMETER}=${encodeURIComponent(ablesen)}`}
+            aria-label={`${gruppe.titel} ablesen`}
+            data-testid="messstellen-ablesen"
+          >
+            {ABLESEN} ›
+          </a>
+        )}
       </div>
       <Spalten wertKopf={wertKopf} />
       <ul className="vp-ms-reihen">

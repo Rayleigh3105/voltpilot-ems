@@ -161,6 +161,41 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
     expect(ms06).toHaveTextContent('Sep 2026');
   });
 
+  it('Messen m2 (§6.5, Variante 3A): „Ablesen ›“ im Kopf eines Orts mit Ablesezählern öffnet seine Ablese-Runde', async () => {
+    telefon(false);
+    verdrahte(() => {
+      const r = ahrenbergRegister();
+      // MS-21 in der Verwaltung (G-3) wird von Hand abgelesen.
+      return {
+        ...r,
+        register: r.register.map((z) =>
+          z.kennzeichen === 'MS-21'
+            ? {
+                ...z,
+                lebenszyklus: 'aktiv' as const,
+                quelle: { stand: 'ablesung' as const, fuehrend: null, davor: null, vergleichsquellen: 0, ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-10-01T00:00:00+02:00', faellig_ab: '2026-12-01T00:00:00+01:00' } },
+                letzter_wert: { wert: 49_451, text: null, einheit: 'm³', zeitpunkt: '2026-10-01T00:00:00+02:00' },
+              }
+            : z,
+        ),
+      };
+    });
+    window.location.hash = '#/portfolio/messstellen';
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    const links = screen.getAllByTestId('messstellen-ablesen');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '#/portfolio/messstellen?ablesen=G-3');
+    expect(links[0]).toHaveTextContent('Ablesen ›');
+    // Die Adresse wechselt innerhalb derselben Route: die Runde steht statt der Liste.
+    window.location.hash = '#/portfolio/messstellen?ablesen=G-3';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(await screen.findByRole('heading', { level: 1, name: /ablesen$/ }, WARTEN)).toBeInTheDocument();
+    expect(screen.getByTestId('ablese-runde')).toBeInTheDocument();
+    expect(screen.queryByTestId('messstellen-ablesen')).toBeNull();
+    window.location.hash = '';
+  });
+
   it('jede Reihe ist der Verweis auf ihre Messstelle; „Woher die Werte kommen“ sagt Gerät oder noch keine Quelle', async () => {
     telefon(false);
     verdrahte();

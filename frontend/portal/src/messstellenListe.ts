@@ -360,6 +360,13 @@ export interface OrtGruppe {
   key: string;
   /** „Halle 1“ - der Ort, an dem die Messstellen stehen. */
   titel: string;
+  /**
+   * Das Kurzzeichen des Orts für die Ablese-Runde (`?ablesen=G-1`), wenn an ihm ein Zähler von Hand abgelesen wird
+   * (Konzept §6.2: „Ablesen ›“ im Kopf der Karte); sonst `null`.
+   */
+  ablesen: string | null;
+  /** Der Standort des Orts (für das Recht „ablesung.erfassen“); `null` am Unternehmen. */
+  standortId: string | null;
   /** Der Standort darüber (nur am Unternehmen und nur, wenn der Ort nicht selbst der Standort ist). */
   standort: string | null;
   reihen: Reihe[];
@@ -382,6 +389,15 @@ function ortReihenfolge(z: MessstelleRegisterZeile): string {
     default:
       return '3';
   }
+}
+
+/** Ein Ablesezähler: wird von Hand abgelesen, misst einen Zählerstand und ist weder archiviert noch im Entwurf. */
+export function abzulesen(z: MessstelleRegisterZeile): boolean {
+  return (
+    z.quelle.stand === 'ablesung' &&
+    z.hauptgroesse?.wertart === 'Zählerstand' &&
+    (z.lebenszyklus === 'aktiv' || z.lebenszyklus === 'eingerichtet')
+  );
 }
 
 function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
@@ -574,8 +590,17 @@ export function liste(
   const je = new Map<string, OrtGruppe & { ordnung: string }>();
   for (const r of offen) {
     const k = ortKopf(r.zeile, i.ebene);
-    const g = je.get(k.key) ?? { ...k, reihen: [], gesamt: 0, ordnung: ortReihenfolge(r.zeile) };
+    const g = je.get(k.key) ?? {
+      ...k,
+      ablesen: null,
+      standortId: r.zeile.ort.standort_id,
+      reihen: [],
+      gesamt: 0,
+      ordnung: ortReihenfolge(r.zeile),
+    };
     g.gesamt += 1;
+    // Die Runde gilt dem Ort der Karte selbst (nur ein verorteter Ort hat ein Kurzzeichen für die Adresse).
+    if (!g.ablesen && r.zeile.ort.grund === 'verortet' && r.zeile.ort.kennzeichen && abzulesen(r.zeile)) g.ablesen = r.zeile.ort.kennzeichen;
     if (passt(r)) g.reihen.push(r);
     je.set(k.key, g);
   }
