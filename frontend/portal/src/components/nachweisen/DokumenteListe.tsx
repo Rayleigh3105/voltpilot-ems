@@ -3,7 +3,7 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { api, type EnergiemanagementDokumentKurz } from '../../api';
 import * as E from '../../energiemanagementPortal';
 import * as N from '../../nachweisDokumente';
-import { GrenzHinweis } from '../GrenzSatz';
+import { GrenzSatz } from '../GrenzSatz';
 import { RowMenu } from '../RowMenu';
 import { ErrorState, Skeleton } from '../States';
 import { DokumentFesthaltenBlatt } from './DokumentFesthaltenBlatt';
@@ -103,7 +103,7 @@ export function DokumenteListe({ onOeffnen }: { onOeffnen: (id: string) => void 
           )}
         </>
       )}
-      <GrenzHinweis />
+      <GrenzSatz className="vp-nw-leise" verantwortung />
       {festhalten && (
         <DokumentFesthaltenBlatt
           onClose={() => setFesthalten(false)}

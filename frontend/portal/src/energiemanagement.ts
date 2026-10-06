@@ -38,6 +38,8 @@ export const VOKABULARE: Record<string, string[]> = {
   verzeichnis_gruppe: ['grundlagen', 'verantwortung', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'bewertung_messplanung', 'kennzahlen_bezugsbasen', 'ziele_massnahmen_abweichungen', 'audits_feststellungen', 'managementbewertung', 'berichte'],
   ueberpruefung_art: ['dokument', 'internes_audit', 'managementbewertung', 'feststellung'],
   ueberpruefung_grund: ['nachweis', 'keine_fassung', 'kein_audit', 'keine_managementbewertung', 'abgeschlossen'],
+  // Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
+  teil: ['energiepolitik', 'anwendungsbereich', 'rechtliche_anforderungen', 'kontext', 'risiken_chancen', 'aufgaben', 'kompetenz', 'kommunikation', 'betrieb', 'auslegung', 'beschaffung', 'energetische_bewertung', 'bezugsbasen', 'massnahmen', 'interne_audits', 'feststellungen', 'managementbewertung', 'berichte'],
 };
 export const DOKUMENT_ART_KLASSE: Record<string, string> = Object.fromEntries(
   VOKABULARE.dokument_art.map((art) => [art, art === 'auslegung' || art === 'kompetenz' ? 'nachweis' : 'vorgabe']),
@@ -64,6 +66,47 @@ export const WOERTER: Record<string, Record<string, string>> = {
     managementbewertung: 'Managementbewertung', berichte: 'Berichte',
   },
   verzeichnis_ort: { in_voltpilot: 'in VoltPilot', wortlaut_original_beim_kunden: 'Wortlaut in VoltPilot, Original bei Ihnen', verweis: 'Geführt in Ihrem System' },
+  /** Vertrag 1.3: die Teile mit ihrem Namen (Blatt einer Gruppe, Verzeichnis) und ihrem Kurzwort (Chips, Entscheid 23). */
+  teil: {
+    energiepolitik: 'Energiepolitik',
+    anwendungsbereich: 'Anwendungsbereich',
+    rechtliche_anforderungen: 'Rechtliche Anforderungen',
+    kontext: 'Kontext und interessierte Parteien',
+    risiken_chancen: 'Risiken und Chancen',
+    aufgaben: 'Aufgaben im Energiemanagement',
+    kompetenz: 'Kompetenz',
+    kommunikation: 'Kommunikation',
+    betrieb: 'Betrieb und Instandhaltung',
+    auslegung: 'Auslegung',
+    beschaffung: 'Beschaffung',
+    energetische_bewertung: 'Energetische Bewertung und Messplanung',
+    bezugsbasen: 'Kennzahlen und Bezugsbasen',
+    massnahmen: 'Energieziele und Maßnahmen',
+    interne_audits: 'Interne Audits',
+    feststellungen: 'Feststellungen',
+    managementbewertung: 'Managementbewertung',
+    berichte: 'Berichte',
+  },
+  teil_kurz: {
+    energiepolitik: 'Energiepolitik',
+    anwendungsbereich: 'Anwendungsbereich',
+    rechtliche_anforderungen: 'Rechtliche Anforderungen',
+    kontext: 'Kontext',
+    risiken_chancen: 'Risiken und Chancen',
+    aufgaben: 'Aufgaben',
+    kompetenz: 'Kompetenz',
+    kommunikation: 'Kommunikation',
+    betrieb: 'Betrieb und Instandhaltung',
+    auslegung: 'Auslegung',
+    beschaffung: 'Beschaffung',
+    energetische_bewertung: 'Energetische Bewertung',
+    bezugsbasen: 'Bezugsbasen',
+    massnahmen: 'Maßnahmen',
+    interne_audits: 'Interne Audits',
+    feststellungen: 'Feststellungen',
+    managementbewertung: 'Managementbewertung',
+    berichte: 'Berichte',
+  },
 };
 /** Die Kundensätze (Report §5.8) als Schablonen; {name} füllt die Operation `satz`. */
 export const SAETZE: Record<string, string> = {

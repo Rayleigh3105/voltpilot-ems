@@ -17,7 +17,7 @@ import * as N from '../../nachweisDokumente';
 import { useRollen } from '../../rollen';
 import { pruefsummeLokal } from '../../uemsMessmittel';
 import { PersonAnlegenDialog } from '../DokumentDialoge';
-import { GrenzHinweis } from '../GrenzSatz';
+import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { VpPicker } from '../VpPicker';
 import { ErklaerKnopf } from './ErklaerKnopf';
@@ -609,7 +609,7 @@ export function NeuFassenBlatt({
           </>
         )}
         <Ablehnung satz={satz} />
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
     </NwBlatt>
   );
@@ -713,7 +713,7 @@ export function FreigebenBlatt({
             </button>
           ))}
         <Ablehnung satz={satz} />
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
     </NwBlatt>
   );
@@ -790,7 +790,7 @@ export function BestaetigenBlatt({
         />
         {antwort === 'ablehnen' && <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} mehrzeilig fehler={fehler} hoechstens={500} testid="bestaetigen-begruendung" />}
         <Ablehnung satz={satz} />
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
     </NwBlatt>
   );
@@ -874,7 +874,7 @@ export function BekanntmachenBlatt({
         {wege.includes('weiterer') && <NwTextfeld label="Welcher Weg?" wert={wegWortlaut} onWert={setWegWortlaut} fehler={fehler.weg} hoechstens={200} />}
         <TagWahl heute={heute} wert={tag} setze={setTag} mitGestern={false} min={g?.entschieden_am ?? null} />
         <Ablehnung satz={satz} />
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
     </NwBlatt>
   );
@@ -950,7 +950,7 @@ export function UeberpruefungBlatt({
           </>
         )}
         <Ablehnung satz={satz} />
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
     </NwBlatt>
   );
@@ -1009,7 +1009,7 @@ export function AufhebenBlatt({
         <TagWahl heute={heute} wert={tag} setze={setTag} />
         <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} mehrzeilig fehler={fehler.begruendung} hoechstens={500} testid="aufheben-begruendung" />
         <Ablehnung satz={satz} />
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
     </NwBlatt>
   );
@@ -1026,7 +1026,7 @@ export function WortlautBlatt({ dokument, fassung, onClose }: { dokument: Energi
       <div className="vp-nw-schritt-inhalt">
         <Wortlaut absaetze={r.absaetze} label={`Wortlaut der Fassung ${fassung.nr}`} />
         {r.neueSaetze.length > 0 && <p className="vp-nw-leise">Neu in Fassung {fassung.nr}: hinterlegt</p>}
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </div>
     </NwBlatt>
   );
@@ -1066,7 +1066,7 @@ export function FassungenBlatt({ dokument, onClose }: { dokument: Energiemanagem
           );
         })}
       </ol>
-      <GrenzHinweis />
+      <GrenzSatz className="vp-nw-leise" verantwortung />
     </NwBlatt>
   );
 }
@@ -1112,7 +1112,7 @@ export function OriginalBlatt({ original, onClose }: { original: N.OriginalBild;
             <span className="vp-nw-status-sub">· {ergebnis.name}</span>
           </p>
         )}
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </div>
     </NwBlatt>
   );

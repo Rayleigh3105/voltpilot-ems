@@ -1681,7 +1681,7 @@ function UnifiedPortal() {
               Person, eines Audits, einer Feststellung, einer Managementbewertung. */}
           {page === 'portfolio-energiemanagement' && (
             <EnergiemanagementBereich
-              reiter={route.energiemanagementReiter ?? 'verzeichnis'}
+              reiter={route.energiemanagementReiter ?? 'ueberblick'}
               dokumentId={route.dokumentId ?? null}
               personId={route.personId ?? null}
               auditId={route.auditId ?? null}

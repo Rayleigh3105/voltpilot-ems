@@ -18,6 +18,7 @@ export function NwKopf({
   status,
   menue,
   zurueck,
+  kennzeichen,
   testId,
 }: {
   titel: string;
@@ -31,6 +32,8 @@ export function NwKopf({
   menue?: ReactNode;
   /** Der Weg eine Ebene höher („‹ Überblick“) über dem Titel. */
   zurueck?: { label: string; onClick: () => void };
+  /** Entscheid 25: am Rechner leise hinter dem Titel („Energiepolitik D-0001“), am Telefon nur im Menü. */
+  kennzeichen?: string | null;
   testId?: string;
 }) {
   return (
@@ -43,8 +46,11 @@ export function NwKopf({
       )}
       <div className="vp-nw-kopf-zeile">
         <div className="vp-nw-kopf-text">
-          <div className="vp-nw-titel">
-            <h1>{titel}</h1>
+          <div className="vp-nw-kopf-titel">
+            <h1>
+              {titel}
+              {kennzeichen && <span className="vp-nw-kopf-kz">{kennzeichen}</span>}
+            </h1>
             {erklaerung && <ErklaerKnopf erklaerung={erklaerung} testId="kopf-erklaeren" />}
           </div>
           {kurzzeile && <p className="vp-nw-kurz">{kurzzeile}</p>}

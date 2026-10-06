@@ -6,7 +6,7 @@ import { WOERTER } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';
 import { useRollen } from '../../rollen';
 import { pruefsummeLokal } from '../../uemsMessmittel';
-import { GrenzHinweis } from '../GrenzSatz';
+import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { VpPicker } from '../VpPicker';
 import { NwBlatt } from './NwBlatt';
@@ -339,7 +339,7 @@ export function DokumentFesthaltenBlatt({
             {satz}
           </p>
         )}
-        <GrenzHinweis />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
       </form>
     </NwBlatt>
   );

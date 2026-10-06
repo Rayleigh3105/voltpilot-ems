@@ -1,9 +1,7 @@
 import { Icon } from '../../designsystem/components/core/Icon';
-import { UEMS_ABWEICHUNGEN, UEMS_DOKUMENTE, UEMS_MANAGEMENTBEWERTUNG, UEMS_MESSSTELLE } from '../glossar';
+import { UEMS_ABWEICHUNGEN, UEMS_MESSSTELLE } from '../glossar';
 import { AUFBAU_REITER } from '../ebenenNav';
 import {
-  energiemanagementRoute,
-  pageRoute,
   standortBereichRoute,
   standortMessstellenRoute,
   verbesserungRoute,
@@ -34,43 +32,6 @@ function Wege({ wege, onNavigate, testid }: { wege: readonly Weg[]; onNavigate: 
         </li>
       ))}
     </ul>
-  );
-}
-
-export const BELEGE_TITEL = 'Belege finden';
-
-/**
- * K6 (Konzept „Energiemanagement ohne Fachsprache“): der Einstieg für Leser und „Einsicht“ — „Wo finde ich die
- * Belege?“. Nur Wege zu Seiten, die die Person sehen darf; ohne einen davon steht die Karte nicht.
- */
-export function BelegeKarte({
-  berichte,
-  energiemanagement,
-  onNavigate,
-}: {
-  /** Die Ebene hat den Bereich „Berichte“ (ein Standort misst). */
-  berichte: boolean;
-  /** Die Person darf das Energiemanagement sehen. */
-  energiemanagement: boolean;
-  onNavigate: (ziel: Route) => void;
-}) {
-  const wege: Weg[] = [
-    ...(berichte ? [{ key: 'berichte', text: 'Berichte', satz: 'Die freigegebenen Berichtsstände zum Nachlesen.', ziel: pageRoute('portfolio-berichte') }] : []),
-    ...(energiemanagement
-      ? [
-          { key: 'dokumente', text: UEMS_DOKUMENTE, satz: 'Energiepolitik, Anwendungsbereich und weitere Dokumente mit ihren Fassungen.', ziel: energiemanagementRoute('dokumente') },
-          { key: 'managementbewertung', text: UEMS_MANAGEMENTBEWERTUNG, satz: 'Der jährliche Rückblick der Leitung.', ziel: energiemanagementRoute('managementbewertung') },
-        ]
-      : []),
-  ];
-  if (wege.length === 0) return null;
-  return (
-    <section className="vp-ub-baustein" aria-labelledby="vp-ub-belege" data-testid="baustein-belege">
-      <h2 id="vp-ub-belege" className="vp-ub-titel">
-        {BELEGE_TITEL}
-      </h2>
-      <Wege wege={wege} onNavigate={onNavigate} testid="belege" />
-    </section>
   );
 }
 
