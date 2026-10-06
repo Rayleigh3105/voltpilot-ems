@@ -455,3 +455,43 @@ def test_pv_day_errors_use_the_evening_run_before_and_drop_thin_days():
     # Ein grauer Tag mit kaum prognostizierter Sonne ist Rauschen.
     grey = {start: {s: 0.01 for s in slots}}
     assert day_error_rels(windows[:1], measured, grey) == []
+
+
+# --- Die gemeinsamen Vertragsvektoren (per PFAD, wie Go/Java/TS) -------------
+
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from voltpilot_optimization import storage_release as sr  # noqa: E402
+
+VECTORS = json.loads(
+    (Path(__file__).resolve().parents[3] / "docs" / "contracts" / "v2"
+     / "sonne-speicher-vectors.json").read_text()
+)
+
+
+@pytest.mark.parametrize("v", VECTORS["required_energy"], ids=lambda v: v["name"][:40])
+def test_the_shared_required_energy_vectors(v):
+    need, capped = required_energy_kwh(
+        v["load_kw"], v["pv_kw"], v["slot_hours"],
+        floor_kwh=v["floor_kwh"], ceiling_kwh=v["ceiling_kwh"],
+        max_charge_kw=v["max_charge_kw"], max_discharge_kw=v["max_discharge_kw"],
+        one_way_efficiency=v["one_way_efficiency"],
+    )
+    assert need[0] == pytest.approx(v["need0_kwh"])
+    assert capped[0] is v["capped0"]
+
+
+def test_the_cloud_reasons_and_the_reserve_are_the_shared_vocabulary():
+    grunde = {
+        sr.GRUND_KEIN_LADESTAND, sr.GRUND_SPEICHER_GEHALTEN, sr.GRUND_PROGNOSE_VERALTET,
+        sr.GRUND_NACHT_UEBER_KAPAZITAET, sr.GRUND_RESERVE_UEBER_KAPAZITAET,
+    }
+    assert grunde == set(VECTORS["cloud_reasons"])
+    assert sr.DEFAULT_RESERVE_KWH == VECTORS["reserve_kwh"]["standard"]
+    assert sr.MAX_RESERVE_KWH == VECTORS["reserve_kwh"]["max"]
+    schema = json.loads(
+        (Path(__file__).resolve().parents[3] / "docs" / "contracts"
+         / "mqtt-schedule.schema.json").read_text()
+    )
+    assert set(schema["properties"]["ev_release_reason"]["enum"]) == grunde

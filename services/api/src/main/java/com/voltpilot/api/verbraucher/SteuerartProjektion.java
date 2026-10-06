@@ -68,6 +68,18 @@ public final class SteuerartProjektion {
     // --- Ueberschuss-Modus eines Ladepunkts (§7.2) --------------------------
     public static final String MODUS_PAUSIEREN = "pausieren";
     public static final String MODUS_MINDESTLEISTUNG = "mindestleistung";
+    /**
+     * „Sonne + Speicher" (06.10.2026): bei zu wenig Ueberschuss gibt der
+     * Hausspeicher, was er laut Prognose bis zur naechsten Erzeugung nicht
+     * braucht (Fachregel docs/verbrauchssteuerung.md#sonne--speicher). Die Box
+     * faehrt dafuer die Bahn {@link #POLICY_NUR_SONNE} mit dem Flag
+     * {@code storage_release} - eine aeltere Box faehrt damit genau den
+     * Rueckfall „Nur Sonne".
+     */
+    public static final String MODUS_SPEICHER = "speicher";
+    /** Das geschlossene Vokabular des Ueberschuss-Modus (Portal-Zwilling: laden.ts). */
+    public static final java.util.Set<String> MODI =
+            java.util.Set.of(MODUS_PAUSIEREN, MODUS_MINDESTLEISTUNG, MODUS_SPEICHER);
 
     // --- Die Woerter der Box-Quellenbahn (lastmgmt/surplus.go) --------------
     public static final String POLICY_SCHNELL = "schnell";
@@ -112,9 +124,24 @@ public final class SteuerartProjektion {
      */
     public static Steuerart saeulenSteuerart(String source, BigDecimal minPowerKw,
             Steuerart standard) {
+        return saeulenSteuerart(source, minPowerKw, standard, false);
+    }
+
+    /**
+     * Wie {@link #saeulenSteuerart(String, BigDecimal, Steuerart)}, mit der
+     * Speicherfreigabe der Säule: {@code nur_sonne} + Freigabe IST „Sonne +
+     * Speicher" ({@link #MODUS_SPEICHER}). Neben jedem anderen Bahn-Wort ist
+     * die Freigabe keine Aussage (die Box verwirft sie dort ebenso).
+     */
+    public static Steuerart saeulenSteuerart(String source, BigDecimal minPowerKw,
+            Steuerart standard, boolean storageRelease) {
         String p = source == null ? "" : source.trim();
         if (p.isEmpty()) {
             return standard;
+        }
+        if (storageRelease && POLICY_NUR_SONNE.equals(p)) {
+            return new Steuerart(QUELLE_UEBERSCHUSS, HERKUNFT_SAEULE, null, null,
+                    MODUS_SPEICHER, null, null, null, null, null, null, null);
         }
         return laneSteuerart(p, minPowerKw, HERKUNFT_SAEULE);
     }
@@ -143,6 +170,15 @@ public final class SteuerartProjektion {
         }
         return MODUS_MINDESTLEISTUNG.equals(ueberschussModus) ? POLICY_SONNE_ZUERST
                 : POLICY_NUR_SONNE;
+    }
+
+    /**
+     * Ob dieser Wunsch „Sonne + Speicher" ist - die zweite Hälfte von
+     * {@link #bahnAus}: die Bahn ist dann {@code nur_sonne}, und die Säule
+     * bekommt zusätzlich {@code storage_release}.
+     */
+    public static boolean speicherFreigabeAus(String quelle, String ueberschussModus) {
+        return QUELLE_UEBERSCHUSS.equals(quelle) && MODUS_SPEICHER.equals(ueberschussModus);
     }
 
     private static Steuerart laneSteuerart(String surplusPolicy, BigDecimal minPowerKw,

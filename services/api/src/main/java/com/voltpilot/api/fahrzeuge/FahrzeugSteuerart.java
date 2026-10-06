@@ -37,6 +37,11 @@ public final class FahrzeugSteuerart {
 
     private FahrzeugSteuerart() {}
 
+    /** „Sonne + Speicher" ist eine Wahl je Ladepunkt (06.10.2026). */
+    public static final String GRUND_SONNE_SPEICHER =
+            "„Sonne + Speicher“ wählen Sie am Ladepunkt — eine Karte bringt nur Sonne, "
+            + "Sonne + Minimum oder Sofort mit.";
+
     /** Die Form, die nur die Box selbst gebildet haben kann. */
     public static final Pattern TAG_REF = Pattern.compile("^tagref_[0-9a-f]{8,64}$");
 
@@ -93,6 +98,15 @@ public final class FahrzeugSteuerart {
             } else {
                 fehler.add("Unbekannte Steuerart „" + quelle + "“.");
             }
+        }
+        // „Sonne + Speicher" (06.10.2026) gibt es je LADEPUNKT, nicht je Karte:
+        // die Freigabe reist mit der Saeule, und ein Profil traegt nur ein
+        // Bahn-Wort. Still auf „Nur Sonne" zu fallen, waere eine andere Wahl
+        // als die, die der Kunde getroffen hat - also wird sie BEIM NAMEN
+        // abgelehnt.
+        if (SteuerartProjektion.QUELLE_UEBERSCHUSS.equals(quelle)
+                && SteuerartProjektion.MODUS_SPEICHER.equals(w.ueberschussModus())) {
+            fehler.add(GRUND_SONNE_SPEICHER);
         }
         if (SteuerartProjektion.QUELLE_UEBERSCHUSS.equals(quelle)
                 && SteuerartProjektion.MODUS_MINDESTLEISTUNG.equals(w.ueberschussModus())) {

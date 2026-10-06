@@ -1,0 +1,100 @@
+{
+  "description": "„Sonne + Speicher“ (06.10.2026): die geschlossenen Vokabulare und Rechenvektoren, die Optimierer (Python), Box (Go), API (Java) und Portal (TS) GEMEINSAM tragen. Eine Änderung an einem Wort oder einer Zahl ändert diese Datei - und die Tests aller vier Seiten lesen sie per Pfad. Fachregel: docs/verbrauchssteuerung.md#sonne--speicher.",
+  "ueberschuss_modus": ["pausieren", "mindestleistung", "speicher"],
+  "option_id": "ueberschuss_speicher",
+  "lane": {"source": "nur_sonne", "flag": "storage_release"},
+  "cloud_reasons": [
+    "kein_ladestand",
+    "speicher_gehalten",
+    "prognose_veraltet",
+    "nachtbedarf_ueber_kapazitaet",
+    "reserve_ueber_kapazitaet"
+  ],
+  "box_modes": [
+    "aus",
+    "frei",
+    "an_der_grenze",
+    "kein_plan",
+    "plan_handelt",
+    "ladestand_unbekannt",
+    "keine_messung",
+    "speicherpfad",
+    "bms_sperrt",
+    "keine_leistung",
+    "wirkung"
+  ],
+  "reserve_kwh": {"standard": 1.0, "max": 100.0},
+  "required_energy": [
+    {
+      "name": "Bewölkter Vormittag vor sonnigem Nachmittag: der spätere Überschuss bezahlt das frühere Defizit nicht",
+      "slot_hours": 0.25,
+      "load_kw": [2, 2, 2, 2, 1, 1, 1, 1],
+      "pv_kw": [0, 0, 0, 0, 9, 9, 9, 9],
+      "floor_kwh": 1.0,
+      "ceiling_kwh": 9.5,
+      "max_charge_kw": 5.0,
+      "max_discharge_kw": 5.0,
+      "one_way_efficiency": 1.0,
+      "need0_kwh": 3.0,
+      "capped0": false
+    },
+    {
+      "name": "Nacht über die Kapazität: gekappt, keine Freigabe",
+      "slot_hours": 0.25,
+      "load_kw": [4, 4, 4, 4, 4, 4, 4, 4],
+      "pv_kw": [0, 0, 0, 0, 0, 0, 0, 0],
+      "floor_kwh": 1.0,
+      "ceiling_kwh": 6.0,
+      "max_charge_kw": 5.0,
+      "max_discharge_kw": 5.0,
+      "one_way_efficiency": 1.0,
+      "need0_kwh": 6.0,
+      "capped0": true
+    },
+    {
+      "name": "Wirkungsgrad und Entladeleistung: nur was der Speicher liefern kann, durch eta",
+      "slot_hours": 0.25,
+      "load_kw": [8, 8],
+      "pv_kw": [0, 0],
+      "floor_kwh": 0.0,
+      "ceiling_kwh": 100.0,
+      "max_charge_kw": 5.0,
+      "max_discharge_kw": 4.0,
+      "one_way_efficiency": 0.8,
+      "need0_kwh": 2.5,
+      "capped0": false
+    }
+  ],
+  "release_decisions": [
+    {
+      "name": "Über der Untergrenze: Entladeleistung minus Hausdefizit",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 80, "deficit_kw": 1.2, "measured": true, "battery_ready": true},
+      "expect": {"active": true, "kw": 3.8, "storage_first": false, "mode": "frei"}
+    },
+    {
+      "name": "An der Untergrenze: der Speicher zuerst",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 31, "deficit_kw": 0, "measured": true, "battery_ready": true},
+      "expect": {"active": false, "kw": 0, "storage_first": true, "mode": "an_der_grenze"}
+    },
+    {
+      "name": "Ladestand unbekannt: keine Freigabe, wie Nur Sonne",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": null, "deficit_kw": 0, "measured": true, "battery_ready": true},
+      "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "ladestand_unbekannt"}
+    },
+    {
+      "name": "Veralteter Fahrplan: keine Freigabe",
+      "input": {"plan_fresh": false, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 80, "deficit_kw": 0, "measured": true, "battery_ready": true},
+      "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "kein_plan"}
+    },
+    {
+      "name": "Der Fahrplan handelt in diesem Slot: keine Freigabe",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": null, "soc_pct": 80, "deficit_kw": 0, "measured": true, "battery_ready": true},
+      "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "plan_handelt"}
+    },
+    {
+      "name": "Die Prognose ist veraltet (Grund der Cloud)",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": null, "cloud_reason": "prognose_veraltet", "soc_pct": 80, "deficit_kw": 0, "measured": true, "battery_ready": true},
+      "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "prognose_veraltet"}
+    }
+  ]
+}

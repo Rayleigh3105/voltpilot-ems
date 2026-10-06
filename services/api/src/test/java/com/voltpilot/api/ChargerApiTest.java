@@ -404,6 +404,14 @@ class ChargerApiTest {
             assertThat(budget.get("surplusKw").asDouble()).isEqualTo(65.0);
             // ⚠ Der deutsche Satz kommt aus der BOX und wird nur durchgereicht.
             assertThat(budget.get("surplusNote").asText()).contains("Nur Sonnenstrom");
+            // „Sonne + Speicher" (06.10.2026): die Stufe der Box reist durch.
+            JsonNode release = budget.get("storageRelease");
+            assertThat(release.get("active").asBoolean()).isTrue();
+            assertThat(release.get("kw").asDouble()).isEqualTo(3.8);
+            assertThat(release.get("floorSocPct").asDouble()).isEqualTo(34.2);
+            assertThat(release.get("socPct").asDouble()).isEqualTo(78.0);
+            assertThat(release.get("mode").asText()).isEqualTo("frei");
+            assertThat(release.get("note").asText()).contains("34,2 %");
             JsonNode connectors = charging.get("chargers").get(0).get("connectors");
             assertThat(connectors.get(0).get("boost").asBoolean()).isTrue();
             assertThat(connectors.get(1).get("boost").asBoolean()).isFalse();
@@ -538,6 +546,9 @@ class ChargerApiTest {
             JsonNode budget = getJson("/api/v1/sites/" + site + "/chargers", customer).get("budget");
             assertThat(budget.get("ocppPort").asInt()).isEqualTo(8887);
             assertThat(budget.get("ocppUrlPath").asText()).isEqualTo("/ocpp");
+            // Eine Box ohne „Sonne + Speicher" meldet keine Stufe - nie eine
+            // erfundene „aus"-Zeile.
+            assertThat(budget.get("storageRelease").isNull()).isTrue();
 
             // 6 · Der Mandanten-Zaun gilt auch auf dieser Route.
             ResponseEntity<String> foreign = rest.exchange(
@@ -889,6 +900,10 @@ class ChargerApiTest {
                  "surplus_active":true,"surplus_kw":65,"surplus_mode":"gemessen",
                  "surplus_note":"Ihre Priorität: Nur Sonnenstrom. Für die Fahrzeuge stehen gerade 65,0 kW Sonnenüberschuss zur Verfügung.",
                  "surplus_total_kw":85,"surplus_battery_kw":20,"source_allocated_kw":65,
+                 "storage_release_active":true,"storage_release_kw":3.8,
+                 "storage_release_floor_soc_pct":34.2,"storage_release_soc_pct":78,
+                 "storage_release_mode":"frei",
+                 "storage_release_note":"Der Speicher gibt bis 3,8 kW für das Auto frei und darf bis 34,2 % entladen.",
                  "chargers":[
                    {"id":"saeule-1","label":"Hof Nord","connected":true,"ready":true,
                     "last_seen":"2026-08-20T13:23:55Z",

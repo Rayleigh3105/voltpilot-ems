@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -882,5 +883,32 @@ func TestAFloorWithoutTheRunFactOrAnUnknownReasonIsDropped(t *testing.T) {
 	}
 	if max, reason := p.ReleaseFacts(now); max != nil || reason != "" {
 		t.Fatalf("no facts: %v %q", max, reason)
+	}
+}
+
+// The cloud's reasons are the SHARED vocabulary (docs/contracts/v2/
+// sonne-speicher-vectors.json): every word is kept, anything else dropped.
+func TestTheReleaseReasonsAreTheSharedVocabulary(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"sonne-speicher-vectors.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		CloudReasons []string `json:"cloud_reasons"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.CloudReasons) != 5 {
+		t.Fatalf("vectors: %v", v.CloudReasons)
+	}
+	for _, r := range v.CloudReasons {
+		if !knownReleaseReason(r) {
+			t.Fatalf("reason %q unknown", r)
+		}
+	}
+	if knownReleaseReason("mondschein") || knownReleaseReason("") {
+		t.Fatal("an unknown reason must be dropped")
 	}
 }
