@@ -717,6 +717,11 @@ const importProtokoll = () => ({
 });
 Object.assign(window, { bzAufrufe });
 Object.assign(api, {
+  // Die Kacheln der Übersicht (#1403) lesen den Tagesverlauf jeder Anlage. Die Bühne hat dafür keine Antwort: dieselbe
+  // Absage, die der Aufruf an localhost:8090 bekam - nur ohne Netz und damit ohne CORS-Fehler in der Konsole.
+  history: async (): Promise<never> => {
+    throw new Error('Die Bühne stellt keinen Verlauf der Anlage.');
+  },
   listSites: async () => sichtbareListe(sites),
   listDevices: async () => sichtbareListe(geraeteAhrenberg(new Date()).filter(d => siteIds.includes(d.siteId))),
   edgeVersions: async () => sichtbareListe([
@@ -1666,15 +1671,11 @@ function Vorschau() {
           }
           // AP-13 IP-13, wie `App.tsx`: aus dem Register führt der Weg auf die Messstellen-Seite — mit Periode.
           messstelleId={route.messstelleId ?? null}
-          onOeffnen={(id) => {
-            setWerte({ periode: null, version: null, vergleich: null });
-            navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
-          }}
-          werte={werte}
-          onWerte={(id, periode) => {
+          onOeffnen={(id, periode) => {
             setWerte({ periode, version: null, vergleich: null });
             navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
           }}
+          werte={werte}
           // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht.
           onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich }))}
           onWerteVergleich={(v) => setWerte((w) => ({ ...w, vergleich: v }))}
