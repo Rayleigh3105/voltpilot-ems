@@ -5,6 +5,12 @@
 .vp-msk {
   margin: 0;
 }
+/* Steht neben der Leitkachel nur EINE kleine Kachel, nimmt sie am Telefon die ganze Reihe - keine halbe Lücke. */
+@media (max-width: 1023.98px) {
+  .vp-msk.is-1 > .vp-k-platz:last-child {
+    grid-column: 1 / -1;
+  }
+}
 @media (min-width: 1024px) {
   .vp-msk.is-2 {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);

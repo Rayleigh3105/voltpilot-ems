@@ -537,3 +537,22 @@
 .vp-wk-vergleich-auf[open] > summary {
   margin-bottom: var(--vp-c-space-3);
 }
+
+/* Ein Zeitraum des Ablesezählers ohne Ablesung (Seite einer Messstelle): der Satz und der Weg in einer ruhigen Zeile. */
+.vp-wk-fehlt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 12px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-wk-weg {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 600 0.875rem/1.4 var(--vp-font-heading);
+  color: var(--vp-action, #2563eb);
+  cursor: pointer;
+}

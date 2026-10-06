@@ -488,14 +488,6 @@ function MessstelleSeiteMitId({
     ausAdresse && !zeitraeume.includes(ausAdresse.art)
       ? { art: 'monat' as Zeitraum, wert: ausAdresse.wert.slice(0, 7) }
       : (ausAdresse ?? start);
-  const seite: WerteSeite = {
-    zeitraeume,
-    titelId: 'vp-mss-werte-titel',
-    ton: r.ton,
-    titel: (art) =>
-      !mitMenge ? UEMS_WERTE : art === 'tag' ? `${r.wort} am Tag` : art === 'woche' ? `${r.wort} in der Woche` : `${r.wort} je Monat`,
-  };
-
   // Ablesungen: die Zeilen (neueste zuerst) und der Schritt oben.
   const wirksam = ablesungen ? wirksameAblesungen(ablesungen) : [];
   const ablesungsZeilen = haupt ? ablesungZeilen({ wirksam, einheit: haupt.einheit, zone: standortZone, serie }) : [];
@@ -503,6 +495,18 @@ function MessstelleSeiteMitId({
   const oeffneAblesung = (alt: Ablesung | null, ausloeser: HTMLElement | null) => {
     ablesungAusloeser.current = ausloeser;
     setAblesungDialog({ alt });
+  };
+
+  const seite: WerteSeite = {
+    zeitraeume,
+    titelId: 'vp-mss-werte-titel',
+    ton: r.ton,
+    titel: (art) =>
+      !mitMenge ? UEMS_WERTE : art === 'tag' ? `${r.wort} am Tag` : art === 'woche' ? `${r.wort} in der Woche` : `${r.wort} je Monat`,
+    onAblesen:
+      darfAblesen && herkunft === 'ablesung' && ablesungen
+        ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null)
+        : undefined,
   };
   const schliesseAblesung = () => {
     setAblesungDialog(null);
@@ -586,7 +590,8 @@ function MessstelleSeiteMitId({
           stand={stand}
           ablesung={naechste}
           laedt={mitMenge && !serieGelesen}
-          onAblesen={darfAblesen ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null) : undefined}
+          // Wie der Knopf oben: ein Weg erst mit den Ablesungen, die der Dialog zum Vergleich braucht.
+          onAblesen={darfAblesen && ablesungen ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null) : undefined}
         />
 
         <div className="vp-mss-spalten">

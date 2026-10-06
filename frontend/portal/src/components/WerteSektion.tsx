@@ -81,7 +81,7 @@ import { VersionenDialog, VersionenEinstieg } from './WertVersionen';
 import { WerteKarte, WerteListe, WerteZusammenfassung } from './WerteKarte';
 import { MonatsBalken } from './MonatsBalken';
 import type { KachelTon } from './kacheln/Kachel';
-import { balken, monatPlus, monatsTage } from '../messstelleSeite';
+import { ABLESUNG_EINTRAGEN, ablesungFehltSatz, balken, monatPlus, monatsTage } from '../messstelleSeite';
 import { ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ, zuordnungDerWerte } from '../werteOhneReihe';
 import { ZUORDNUNG_KNOPF } from '../messenEinstieg';
 
@@ -107,6 +107,8 @@ export interface WerteSeite {
   titel: (art: Zeitraum) => string;
   titelId: string;
   ton: KachelTon;
+  /** Ein Ablesezähler ohne Ablesung im Zeitraum: der Schritt dorthin (nur mit Recht). */
+  onAblesen?: () => void;
 }
 
 /** „12 Monate“ - was die Balken im Monat zeigen. */
@@ -426,6 +428,29 @@ export function WerteSektion({
           </div>
         ) : ausserhalb ? (
           <p className="vp-wk-version" role="status" data-testid="werte-ausserhalb">Die Zahl {ausserhalb}.</p>
+        ) : leer && seite && abgelesen ? (
+          // Konzept Messen m1 §8.1: ein Zeitraum des Ablesezählers ohne Ablesung sagt das und führt hin; die Balken bleiben.
+          <>
+            {balkenModus && (
+              <SeitenBalken
+                art={art}
+                wert={wert}
+                ton={seite.ton}
+                reihe={art === 'monat' ? (reihe?.schluessel === reiheSchluessel ? reihe.antwort : null) : aktuell.liste}
+                fehler={art === 'monat' ? reiheFehler : null}
+                onErneut={() => setNeu((n) => n + 1)}
+                onWahl={(monat) => waehle('monat', monat, true)}
+              />
+            )}
+            <p className="vp-wk-fehlt" data-testid="werte-ablesung-fehlt">
+              <span>{ablesungFehltSatz(art, wert)}</span>
+              {seite.onAblesen && (
+                <button type="button" className="vp-wk-weg" onClick={seite.onAblesen}>
+                  {ABLESUNG_EINTRAGEN} ›
+                </button>
+              )}
+            </p>
+          </>
         ) : leer ? (
           <WerteLeer leer={leer} weg={weg} onAb={(tag) => waehle(art, wertAm(art, tag))} onQuelleZuordnen={onQuelleZuordnen} />
         ) : (

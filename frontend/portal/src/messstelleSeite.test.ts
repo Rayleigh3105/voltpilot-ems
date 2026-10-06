@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Ablesung, MessstelleRegisterZeile, MessstelleWerte } from './api';
 import {
+  ablesungFehltSatz,
   ablesungKachel,
   ablesungZeilen,
   balken,
@@ -164,6 +165,13 @@ describe('die Leitkachel (§6.4 Punkt 4)', () => {
     expect(k.fehlt?.satz).toContain('Gaszähler Verwaltung (GR-12) gilt seit 15.09.2026');
     // Ohne Namen kein Satz mit einer Kennung.
     expect(leitKachel({ serie: teilweise, monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: false }).fehlt).toBeNull();
+  });
+});
+
+describe('Ein Zeitraum ohne Ablesung (§8.1)', () => {
+  it('sagt, was fehlt - statt „Ein Monat summiert ganze Ablesezeiträume …“', () => {
+    expect(ablesungFehltSatz('monat', '2029-04')).toBe('Für April 2029 fehlt noch die Ablesung.');
+    expect(ablesungFehltSatz('jahr', '2029')).toBe('Für 2029 fehlen noch die Ablesungen.');
   });
 });
 

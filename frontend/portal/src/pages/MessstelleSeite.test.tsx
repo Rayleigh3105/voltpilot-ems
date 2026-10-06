@@ -599,6 +599,28 @@ describe('MessstelleSeite · Ablesezähler MS-21 (Konzept Messen m1, §6.4/§6.5
     expect(within(zeitraum).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Monat', 'Jahr']);
   });
 
+  it('ein Monat ohne Ablesung sagt es und führt hin, die Balken bleiben - kein „Ein Monat summiert …“ (Konzept §8.1)', async () => {
+    const { liefere } = abgelesen();
+    // Die Route kennt im ganzen Fenster keine Ablesung: jeder Schritt `keine_quelle`, ohne Zahl.
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      const monate: string[] = [];
+      for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+      const ohne = (v: string, b: string) => schritt({ von: v, bis: b, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, versionen: null });
+      return antwort(MS_21, raster, `${monate[0]}-01T00:00:00+02:00`, `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+        monate.map((m) => ohne(`${m}-01T00:00:00+02:00`, `${monatPlus(m, 1)}-01T00:00:00+02:00`)), false);
+    });
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    const fehlt = await screen.findByTestId('werte-ablesung-fehlt', undefined, WARTEN);
+    expect(fehlt).toHaveTextContent('Für September 2026 fehlt noch die Ablesung.');
+    expect(screen.getByTestId('werte')).not.toHaveTextContent('Ein Monat summiert');
+    await waitFor(() => expect(within(screen.getByTestId('werte')).getByTestId('monatsbalken')).toBeInTheDocument(), WARTEN);
+    // Der Weg erscheint erst mit den Ablesungen, die der Dialog zum Vergleich braucht.
+    expect(within(fehlt).queryByRole('button')).toBeNull();
+    liefere(VIER);
+    fireEvent.click(await within(fehlt).findByRole('button', { name: 'Ablesung eintragen ›' }, WARTEN));
+    expect(await screen.findByRole('dialog', { name: 'Ablesung eintragen' }, WARTEN)).toBeInTheDocument();
+  });
+
   it('die Ablesungen: die neueste zuerst, drei sichtbar, „Alle 4 ›“ öffnet; der Dialog zeigt die letzte zum Vergleich', async () => {
     const { liefere } = abgelesen();
     render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);

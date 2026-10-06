@@ -59,6 +59,14 @@ export const AUS_ANDEREN_MESSSTELLEN = 'Aus anderen Messstellen berechnet';
 export const GGU_VORJAHR = 'ggü. Vorjahr';
 export const UNVERAENDERT = 'unverändert';
 
+/**
+ * „Für April 2029 fehlt noch die Ablesung.“ - ein Zeitraum des Ablesezählers ohne Ablesung (Konzept §8.1: statt „Die
+ * Werte kommen aus Ablesungen. Ein Monat summiert ganze Ablesezeiträume …“).
+ */
+export function ablesungFehltSatz(art: string, wert: string): string {
+  return art === 'jahr' ? `Für ${wert} fehlen noch die Ablesungen.` : `Für ${monatTitel(`${wert.slice(0, 7)}-01`)} fehlt noch die Ablesung.`;
+}
+
 /** „Alle 25“ - der Weg zu den älteren Ablesungen. */
 export const alleText = (n: number): string => `Alle ${n}`;
 
