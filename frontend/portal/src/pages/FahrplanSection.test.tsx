@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { FahrplanSection } from './DataPages';
 import type { ControlStatus, SchedulePlan, ScheduleSlot, Site, TelemetryPoint } from '../api';
@@ -338,9 +338,16 @@ describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', 
  */
 describe('FahrplanSection · die Stationen zeigen den ganzen Tag', () => {
   beforeEach(() => {
+    // Die vier Vormittags-Viertelstunden liegen eine Stunde vor „jetzt" - kurz nach Mitternacht lägen sie gestern und
+    // der Tag zeigte nur noch eine. Eine feste Mittagszeit (nur `Date`, die Zeitgeber bleiben echt für `waitFor`).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T10:07:00Z'));
     schedule.mockImplementation((_id: unknown, mode?: unknown) =>
       Promise.resolve(mode === 'day' ? dayPlan() : plan()),
     );
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('holt den ganzen Tag und hakt die gelaufenen Phasen ab', async () => {
