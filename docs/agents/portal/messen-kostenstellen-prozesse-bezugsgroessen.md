@@ -9,7 +9,9 @@ Stand: Messen-Bau m3, PR3 (Konzept `data/vp-messen-konzept-m1` §6.6-§6.8, Capt
 - Es gibt keine Summe über Kostenstellen und keinen Satz darüber; das Warum steht im Aufklapper (`KOSTENSTELLEN_MEHR`). `copy.test.ts` hält „nicht summierbar“ von diesen Flächen fern.
 - Ein Posten nennt seine Herkunft („ganz“, „30 % von 88.200 kWh“); die Menge hinter „von“ kommt aus der Werte-Route der Messstelle, nie aus Anteil × Posten.
 - „Ohne Kostenstelle“ ist die Differenz Register minus alle Posten aller Kostenstellen des Zeitraums (eine Aussage über die Zuordnung, keine Menge) und steht erst, wenn jede Kostenstelle geantwortet hat. Der Block `nicht_verteilt` der Route nennt nur Messstellen MIT Wert und reicht dafür nicht.
-- Ablesezähler: solange die Kostenstellen-Sicht je Tag verteilt, haben ihre Posten `menge: null` mit Tagesgrund `kein_tageswert`; dann steht EIN ruhiger Satz (`ABLESUNG_OHNE_TAGESWERT`). Verteilt die Route Ablesezeiträume (Konzept Entscheid 3, Auftrag `vp-messen-api-m4`), tragen die Posten Mengen und der Satz verschwindet ohne Portal-Änderung; ein neuer Grund für „Anteil wechselt im Ablesezeitraum“ braucht nur einen eigenen Satz.
+- Ablesezähler (Verteilung 1.5, Messen PR4): über Monat und Jahr trägt ein Posten aus Ablesungen `monate[]` statt `tage[]` - der Anteil steht am Monat, „von 88.200 kWh“ ist bei einem Monat `monate[0].quelle_menge` (keine Werte-Abfrage), über ein Jahr die Werte-Route. `anteil_wechselt_im_ablesezeitraum` wird zu „Anteil am {Tag} geändert · für diesen Ablesezeitraum keine Menge“, `keine_ablesung` zu „für {Monat} noch keine Ablesung“; die Codes und „Verteilung geändert am …“ stehen dann nicht noch einmal.
+- Liefert eine ältere API nur Tage mit `kein_tageswert` für einen Ablesezähler, steht EIN ruhiger Satz (`ABLESUNG_OHNE_TAGESWERT`); mit Monaten verschwindet er von selbst.
+- Messen PR5: die Reiter lesen das Register mit `letzterMonat: true`; im letzten vollständigen Monat ist `letzter_monat.wert` der Wert einer Reihe („Ohne Kostenstelle“, Prozesse), sonst fragt die Fläche die Werte-Route.
 
 ## Prozesse (`#/portfolio/messstellen?reiter=prozesse`)
 
