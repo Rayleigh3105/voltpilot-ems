@@ -392,9 +392,10 @@ public class EnergiemanagementDokumentService {
                         "Ohne Vier-Augen-Freigabe geben Sie die Fassung direkt frei.", Map.of("fassung", nr));
             }
             leitungPruefen(d, entscheid);
+            var original = originalImUebergang(e, f);
             String kopie = kopie(d, f);
             repo.beantragen(id, f, kopie, BerichtRegeln.pruefsumme(kopie), entscheid.von(), entscheid.tag(),
-                    entscheid.begruendung(), freigabeRolle(wer), wer);
+                    entscheid.begruendung(), freigabeRolle(wer), original, wer);
         });
     }
 
@@ -417,13 +418,17 @@ public class EnergiemanagementDokumentService {
                 }
                 var entscheid = entscheid(e);
                 leitungPruefen(d, entscheid);
+                var original = originalImUebergang(e, f);
                 String kopie = kopie(d, f);
                 repo.freigeben(id, f, kopie, BerichtRegeln.pruefsumme(kopie), entscheid.von(), entscheid.tag(),
-                        entscheid.begruendung(), freigabeRolle(wer), wer);
+                        entscheid.begruendung(), freigabeRolle(wer), original, wer);
             } else if ("beantragt".equals(f.status())) {
                 zweitePerson(f, wer);
                 if (e != null && (e.entschiedenVon() != null || e.entschiedenAm() != null)) {
                     throw ungueltig("entschieden_von", "„Entschieden von“ und der Tag stehen schon im Antrag.");
+                }
+                if (e != null && e.original() != null) {
+                    throw ungueltig("original", "Das Original steht schon im Antrag.");
                 }
                 String begruendung = e == null || text(e.begruendung()) == null ? null : begruendung(e.begruendung());
                 repo.bestaetigen(id, f, begruendung, wer);
@@ -459,7 +464,7 @@ public class EnergiemanagementDokumentService {
     /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe — verschiebt die Überprüfung. */
     public void geprueft(UUID id, EnergiemanagementDokumentDto.Geprueft g, ProtokollAkteur wer) {
         var entscheid = entscheid(new EnergiemanagementDokumentDto.Entscheid(g.entschiedenVon(), g.am(),
-                g.begruendung()));
+                g.begruendung(), null));
         String beschluss = beschluss(g.beschlussKennung());
         tx.executeWithoutResult(s -> {
             var d = schreibbar(id, FREIGEBEN);
@@ -525,7 +530,7 @@ public class EnergiemanagementDokumentService {
     /** DK8: aufheben mit Tag und Begründung — das Dokument bleibt mit allen Fassungen lesbar. */
     public void aufheben(UUID id, EnergiemanagementDokumentDto.Aufheben a, ProtokollAkteur wer) {
         var entscheid = entscheid(new EnergiemanagementDokumentDto.Entscheid(a.entschiedenVon(), a.am(),
-                a.begruendung()));
+                a.begruendung(), null));
         String beschluss = beschluss(a.beschlussKennung());
         tx.executeWithoutResult(s -> {
             var d = schreibbar(id, FREIGEBEN);
@@ -636,10 +641,13 @@ public class EnergiemanagementDokumentService {
             }
             laenge("wortlaut", w, EnergiemanagementRegeln.STARTWERTE.wortlaut_zeichen_hoechstens());
             return new EnergiemanagementDokumentRepository.Inhalt("wortlaut", w, null, null, null, null, null, null,
-                    null, begruendung, beschluss);
+                    null, begruendung, beschluss, original(f.original()));
         }
         if (f.wortlaut() != null) {
             throw ungueltig("wortlaut", "Ein Verweis trägt keinen Wortlaut.");
+        }
+        if (f.original() != null) {
+            throw ungueltig("original", "Bei einem Verweis ist der Verweis selbst das Original.");
         }
         var v = f.verweis();
         String ablage = v == null ? null : text(v.ablage());
@@ -661,7 +669,7 @@ public class EnergiemanagementDokumentService {
             throw ungueltig("verweis.sha256", "Die Prüfsumme ist 64 Zeichen 0–9 und a–f.");
         }
         return new EnergiemanagementDokumentRepository.Inhalt("verweis", null, bezeichnung, ablage, kennung, adresse,
-                angabe, v.datum(), sha, begruendung, beschluss);
+                angabe, v.datum(), sha, begruendung, beschluss, null);
     }
 
     /** DK7: nur der Anwendungsbereich trägt Standorte (des Kundenbereichs, einmal), Träger und Ausschlüsse. */
@@ -794,7 +802,9 @@ public class EnergiemanagementDokumentService {
                 kurz(leute.get(f.entschiedenVon())), f.entschiedenTag(), f.freigabeBegruendung(),
                 f.freigabe() == null ? null : new Eingetragen(f.freigabe(), f.freigabeAm()),
                 f.entscheidung() == null ? null : new Eingetragen(f.entscheidung(), f.entschiedenAm()),
-                f.entscheidungsBegruendung(), f.freigegebenAm(), new Eingetragen(f.akteur(), f.angelegtAm()));
+                f.entscheidungsBegruendung(), f.freigegebenAm(), new Eingetragen(f.akteur(), f.angelegtAm()),
+                f.original() == null ? null : new EnergiemanagementPersonenDto.Beleg(f.original().bezeichnung(),
+                        f.original().ablage(), f.original().kennung(), f.original().adresse(), f.original().sha256()));
     }
 
     private EnergiemanagementDokumentDto.Eintrag eintrag(EnergiemanagementDokumentRepository.Eintrag e,
@@ -960,6 +970,32 @@ public class EnergiemanagementDokumentService {
     }
 
     private static EnergiemanagementPersonenDto.Beleg beleg(EnergiemanagementPersonenDto.Beleg b) {
+        return beleg(b, "beleg");
+    }
+
+    /**
+     * Entscheid 10: das Original einer Wortlaut-Fassung, geprüft wie jeder Verweis (G3); ohne Ablage und ohne einen
+     * seiner Teile {@code null} (nichts festgehalten).
+     */
+    private static EnergiemanagementDokumentRepository.Original original(EnergiemanagementPersonenDto.Beleg b) {
+        var n = beleg(b, "original");
+        return n.ablage() == null ? null : new EnergiemanagementDokumentRepository.Original(n.bezeichnung(),
+                n.ablage(), n.kennung(), n.adresse(), n.sha256());
+    }
+
+    /** Das Original beim Übergang aus dem Entwurf: nur an einem Wortlaut; ohne Angabe bleibt das des Entwurfs. */
+    private static EnergiemanagementDokumentRepository.Original originalImUebergang(
+            EnergiemanagementDokumentDto.Entscheid e, EnergiemanagementDokumentRepository.Fassung f) {
+        if (e == null || e.original() == null) {
+            return null;
+        }
+        if (!"wortlaut".equals(f.form())) {
+            throw ungueltig("original", "Bei einem Verweis ist der Verweis selbst das Original.");
+        }
+        return original(e.original());
+    }
+
+    private static EnergiemanagementPersonenDto.Beleg beleg(EnergiemanagementPersonenDto.Beleg b, String feld) {
         if (b == null) {
             return new EnergiemanagementPersonenDto.Beleg(null, null, null, null, null);
         }
@@ -969,16 +1005,16 @@ public class EnergiemanagementDokumentService {
                 || n.sha256() != null;
         if (n.ablage() == null && irgendwas) {
             throw EnergiemanagementAbgelehnt.fachlich("beleg_ungueltig",
-                    "Bitte nennen Sie, wo das Original liegt (Ablage).", Map.of("feld", "beleg.ablage"));
+                    "Bitte nennen Sie, wo das Original liegt (Ablage).", Map.of("feld", feld + ".ablage"));
         }
         if (n.ablage() != null) {
-            laenge("beleg.ablage", n.ablage(), 200);
-            if (n.bezeichnung() != null) laenge("beleg.bezeichnung", n.bezeichnung(), 200);
-            if (n.kennung() != null) laenge("beleg.kennung", n.kennung(), 200);
-            if (n.adresse() != null) laenge("beleg.adresse", n.adresse(), 2000);
+            laenge(feld + ".ablage", n.ablage(), 200);
+            if (n.bezeichnung() != null) laenge(feld + ".bezeichnung", n.bezeichnung(), 200);
+            if (n.kennung() != null) laenge(feld + ".kennung", n.kennung(), 200);
+            if (n.adresse() != null) laenge(feld + ".adresse", n.adresse(), 2000);
             if (n.sha256() != null && !SHA256.matcher(n.sha256()).matches()) {
                 throw EnergiemanagementAbgelehnt.fachlich("beleg_ungueltig",
-                        "Die Prüfsumme ist 64 Zeichen 0–9 und a–f.", Map.of("feld", "beleg.sha256"));
+                        "Die Prüfsumme ist 64 Zeichen 0–9 und a–f.", Map.of("feld", feld + ".sha256"));
             }
         }
         return n;

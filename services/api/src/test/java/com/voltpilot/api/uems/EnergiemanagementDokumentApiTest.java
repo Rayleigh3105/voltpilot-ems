@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -391,6 +392,85 @@ class EnergiemanagementDokumentApiTest {
                 .path("code").asText()).isEqualTo("fassung_abgelehnt");
         ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut", "Fassung 3.",
                 "begruendung", "Halle 2 ab dem 01.03.2027 in Betrieb."), 201);
+    }
+
+    // ------------------------------------------------------------------ Entscheid 10: Original je Fassung
+
+    @Test
+    void entscheid10OriginalGehoertZurFassungMitEntwurfOderFreigabeUndBleibtDanach() throws Exception {
+        var p = personenMitLeitung();
+        String id = ruf("POST", DOKUMENTE, "IK", Map.of("art", "energiepolitik", "titel", "Energiepolitik",
+                "bezug", Map.of("art", "unternehmen"), "beleg", ORIGINAL), 201).path("id").asText();
+        Map<String, Object> entwurfOriginal = Map.of("ablage", "QM-Laufwerk, Ordner Energiemanagement/Entwurf");
+        JsonNode d = ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut",
+                "wortlaut", "Fassung 1.", "original", entwurfOriginal), 201);
+        assertThat(d.at("/fassungen/0/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Energiemanagement/Entwurf");
+
+        // Was die Datenbank nie hätte: ein Teil ohne Ablage, eine Prüfsumme, die keine ist (422, nichts geschrieben).
+        int vorher = protokoll();
+        assertThat(ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("RF")),
+                Map.of("kennung", "EP-2026")), 422).path("feld").asText()).isEqualTo("original.ablage");
+        assertThat(ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("RF")),
+                Map.of("ablage", "QM", "sha256", "abc")), 422).path("feld").asText()).isEqualTo("original.sha256");
+        assertThat(protokoll()).isEqualTo(vorher);
+
+        // Die Freigabe nennt das unterschriebene Original - es ersetzt das des Entwurfs im selben Schritt.
+        d = ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("RF")), ORIGINAL), 200);
+        JsonNode f1 = d.at("/fassungen/0");
+        assertThat(f1.path("status").asText()).isEqualTo("freigegeben");
+        assertThat(f1.at("/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Energiemanagement/Politik");
+        assertThat(f1.at("/original/kennung").asText()).isEqualTo("EP-2026");
+        assertThat(f1.at("/original/sha256").asText()).isEqualTo(ORIGINAL.get("sha256"));
+        assertThat(f1.at("/original/adresse").isNull()).isTrue();
+        // Das Original ist keine Fassung: die Prüfsumme der Kopie bleibt die des Vertrags ohne Original.
+        assertThat(root.queryForObject("SELECT kopie FROM energiemanagement_dokument_fassung WHERE tenant_id = ?",
+                String.class, tenant)).doesNotContain("original").doesNotContain("QM-Laufwerk");
+        // Danach unveränderlich wie die Fassung selbst (Trigger, auch für den Eigentümer der Tabelle).
+        assertThatThrownBy(() -> root.update("UPDATE energiemanagement_dokument_fassung SET original_ablage = 'X' "
+                + "WHERE tenant_id = ?", tenant)).hasMessageContaining("ist freigegeben und unveränderlich");
+
+        // Fassung 2 ohne eigenes Original: die Seite liest null, das Verzeichnis den Ort am Dokument (Fassung 1).
+        heute("2027-03-01");
+        ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut", "Fassung 2.",
+                "begruendung", "Beschaffung und Planung ergänzt."), 201);
+        d = ruf("POST", DOKUMENTE + "/" + id + "/fassungen/2/freigeben", "IK", entscheid(p.get("RF")), 200);
+        assertThat(d.at("/fassungen/1/original").isNull()).isTrue();
+        assertThat(d.at("/beleg/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Energiemanagement/Politik");
+        List<Map<String, Object>> zeilen = als("IK", () -> verzeichnis.zeilen(LocalDate.parse("2027-03-01")));
+        assertThat(zeilen.stream().filter(z -> Integer.valueOf(2).equals(z.get("nr"))).findFirst().orElseThrow())
+                .containsEntry("ort_satz", "Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner "
+                        + "Energiemanagement/Politik");
+
+        // Ein Verweis IST das Original: weder am Entwurf noch bei der Freigabe ein zweites.
+        String rk = ruf("POST", DOKUMENTE, "IK", Map.of("art", "rechtliche_anforderungen", "titel",
+                "Rechtliche Anforderungen zum Energieeinsatz", "bezug", Map.of("art", "unternehmen")), 201)
+                .path("id").asText();
+        Map<String, Object> verweis = Map.of("ablage", "Rechtskataster-Dienst (Abonnement)", "kennung", "RK-AHR");
+        assertThat(ruf("POST", DOKUMENTE + "/" + rk + "/fassungen", "IK", Map.of("form", "verweis", "verweis", verweis,
+                "original", Map.of("ablage", "QM")), 422).path("feld").asText()).isEqualTo("original");
+        ruf("POST", DOKUMENTE + "/" + rk + "/fassungen", "IK", Map.of("form", "verweis", "verweis", verweis), 201);
+        assertThat(ruf("POST", DOKUMENTE + "/" + rk + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("IK")),
+                Map.of("ablage", "QM")), 422).path("feld").asText()).isEqualTo("original");
+
+        // Vier-Augen: das Original steht im Antrag; die zweite Person ändert es nicht.
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE id = ?", unternehmen);
+        String vf = ruf("POST", DOKUMENTE, "IK", Map.of("art", "verfahren", "titel", "Vorgehen Messplanung",
+                "bezug", Map.of("art", "unternehmen")), 201).path("id").asText();
+        ruf("POST", DOKUMENTE + "/" + vf + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut", "Fassung 1."), 201);
+        d = ruf("POST", DOKUMENTE + "/" + vf + "/fassungen/1/beantragen", "IK", mit(entscheid(p.get("IK")),
+                Map.of("ablage", "QM-Laufwerk, Ordner Verfahren")), 200);
+        assertThat(d.at("/fassungen/0/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Verfahren");
+        assertThat(ruf("POST", DOKUMENTE + "/" + vf + "/fassungen/1/freigeben", "JW", Map.of("original",
+                Map.of("ablage", "anderswo")), 422).path("feld").asText()).isEqualTo("original");
+        d = ruf("POST", DOKUMENTE + "/" + vf + "/fassungen/1/freigeben", "JW", Map.of(), 200);
+        assertThat(d.at("/fassungen/0/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Verfahren");
+    }
+
+    /** Ein Entscheid mit Original (Entscheid 10). */
+    private static Map<String, Object> mit(Map<String, Object> entscheid, Map<String, Object> original) {
+        Map<String, Object> e = new LinkedHashMap<>(entscheid);
+        e.put("original", original);
+        return e;
     }
 
     // ------------------------------------------------------------------ Zaun über den Bezug (404) und Recht (403)

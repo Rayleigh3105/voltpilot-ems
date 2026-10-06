@@ -109,7 +109,8 @@ public class EnergiemanagementNachweise {
         }
         var f = d.fassungen().stream().filter(x -> x.nr() == d.gueltigeFassung()).findFirst().orElseThrow();
         var v = f.verweis();
-        var beleg = d.beleg();
+        // Entscheid 10: das Original der gültigen Fassung; ohne eigenes das am Dokument (festgehalten mit Fassung 1).
+        var beleg = f.original() != null ? f.original() : d.beleg();
         String ort;
         String ablage;
         String kennung;

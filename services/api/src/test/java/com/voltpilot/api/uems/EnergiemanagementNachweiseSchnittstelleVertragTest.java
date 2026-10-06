@@ -146,7 +146,7 @@ class EnergiemanagementNachweiseSchnittstelleVertragTest {
             List<EnergiemanagementDokumentDto.Eintrag> eintraege) {
         var fassung = new EnergiemanagementDokumentDto.Fassung(1, v == null ? "wortlaut" : "verweis",
                 v == null ? "Wortlaut" : null, v, null, "freigegeben", null, null, "sha256:x", false, null,
-                LocalDate.parse("2028-11-10"), null, null, null, null, null, null);
+                LocalDate.parse("2028-11-10"), null, null, null, null, null, null, null);
         return new EnergiemanagementDokumentDto.Dokument(UUID.randomUUID(), "D-0004", art, art, "vorgabe", "Titel",
                 null, "gueltig", 12, null, 1, List.of(fassung), eintraege, null, null, null, List.of());
     }
