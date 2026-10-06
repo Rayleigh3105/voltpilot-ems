@@ -38,6 +38,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -126,7 +127,8 @@ public class MessstelleWerteService {
     public MessstelleWerteDto.Werte werteDerRoute(String kennzeichen, String raster, String von, String bis,
             String version, Consumer<UUID> zaun, EingaengeImZugriff eingaenge) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
-        Lesung l = lesen(kennzeichen, form, versionen, zaun);
+        // Stichtag-Grenze: die Route zeigt nie einen Wert nach heute (Bühnen-Bestand der Prüfumgebung, siehe lesen).
+        Lesung l = lesen(kennzeichen, form, versionen, zaun, uhr.instant());
         if (ausserhalb(l, eingaenge)) {
             Zone zone = l.zone();
             return new MessstelleWerteDto.Werte(messstelle(l), l.z().raster().wort(),
@@ -392,14 +394,29 @@ public class MessstelleWerteService {
 
     /** {@code zaun} ist der Leseweg der Route (wirft außerhalb die 404 einer unbekannten Kennung), intern leer. */
     private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun) {
+        return lesen(kennzeichen, form, versionen, zaun, null);
+    }
+
+    private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun,
+            Instant grenze) {
         UUID tenant = TenantContext.get();
         Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
         zaun.accept(m.id());
-        return lesen(tenant, m, form, versionen);
+        return lesen(tenant, m, form, versionen, grenze);
     }
 
     private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen) {
+        return lesen(tenant, m, form, versionen, null);
+    }
+
+    /**
+     * {@code grenze} (nur die Route): nur, was bis dahin vorliegen konnte - eine gespeicherte Periode erst, wenn sie zu
+     * Ende ist, eine Ablesung erst ab ihrem Zeitpunkt. In Produktion liegt nichts danach (eine Ablesung nach jetzt wird
+     * abgelehnt); der Bühnen-Bestand der Prüfumgebung trägt Ablesungen bis zum Bühnen-Tag. Die Leser im Haus (Kennzahl,
+     * Bilanz, Bewertung) rechnen ungezäunt mit ihrer eigenen Uhr ({@code null}).
+     */
+    private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen, Instant grenze) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
         List<Quelle> fuehrend = fuehrend(m);
         AblesungRepository ablesungen = new AblesungRepository(jdbc);
@@ -432,8 +449,28 @@ public class MessstelleWerteService {
         Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z, ablesung != null);
         Map<Instant, List<WertVersionenLeser.Version>> spurVersionen = spur == null ? Map.of()
                 : versionen.perioden(tenant, z.raster().wort(), null, null, m.id(), z.von(), z.bis());
+        List<AblesungRepository.Wert> abgelesen = ablesung == null ? List.of() : ablesungen.werte(tenant, ablesung);
+        if (grenze != null) {
+            Map<Instant, Instant> ende = new HashMap<>();
+            z.schritte().forEach(s -> ende.put(s.von(), s.bis()));
+            Predicate<Instant> vorbei = b -> !ende.getOrDefault(b, b).isAfter(grenze);
+            spur = spur == null ? null : bis(spur, vorbei);
+            spurVersionen = bis(spurVersionen, vorbei);
+            abgelesen = abgelesen.stream().filter(w -> !w.zeitpunkt().isAfter(grenze)).toList();
+        }
         return new Lesung(tenant, m, haupt, zone, z, jetzt, imZeitraum, deckung, gelesen, spur, spurVersionen,
-                new Beschriftung(z), ablesung, ablesung == null ? List.of() : ablesungen.werte(tenant, ablesung));
+                new Beschriftung(z), ablesung, abgelesen);
+    }
+
+    /** Die Einträge, deren Periode (Schlüssel = Beginn) zur Grenze vorbei ist. */
+    private static <V> Map<Instant, V> bis(Map<Instant, V> je, Predicate<Instant> vorbei) {
+        Map<Instant, V> out = new HashMap<>();
+        je.forEach((b, v) -> {
+            if (vorbei.test(b)) {
+                out.put(b, v);
+            }
+        });
+        return out;
     }
 
     private static List<MessstelleWerteDto.Quelle> quellen(Lesung l) {
