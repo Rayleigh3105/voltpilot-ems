@@ -32,9 +32,10 @@ Bedarfe als `geplant` an die Messabdeckung; dort haben sie nie eine Menge.
 
 Portal (`uemsMessplanung.ts`, `components/Messplanung.tsx`): Erfassen/Bearbeiten schreiben
 Struktur und Wortlaut, Bearbeiten behält einen unerkannten alten Wortlaut, „Protokoll“ liest
-`…/protokoll`, die Liste je Standort liest die Übersichtsroute einmal; der Register-Schalter
-„Nur geplant für einen Energieeinsatz“ (`messstellen.ts`, `MessstellenPage.tsx`) erscheint nur,
-wenn eine Messstelle einen Bedarf einlöst.
+`…/protokoll`, die Liste je Standort liest die Übersichtsroute einmal. Unter Messen stehen
+offene Bedarfe als geplante Messstellen an ihrem Ort, mit „Einrichten“ und dem Ziel des
+Wiedervorlage-Schritts `messbedarf_frist`:
+[geplante Messstellen](../portal/messen-geplante-messstellen.md).
 
 Verbindlicher Vertrag: [`docs/contracts/v2/bewertung.md`](../../contracts/v2/bewertung.md),
 Abschnitt 4.1. Die API-Abnahme liegt in `MessbedarfApiTest`; Ranglisten- und

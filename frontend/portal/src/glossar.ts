@@ -750,6 +750,12 @@ export const UEMS_ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
  * Gebäude“).
  */
 export const UEMS_ABLESEN = 'Ablesen';
+/**
+ * Konzept Auswerten a1, Entscheid 9 (Messen-Bau m2): ein offener Messbedarf steht unter Messen als geplante Messstelle
+ * an seinem Ort, bis jemand die Messstelle einrichtet. Glossar: `docs/fachmodell/glossar.md` › Messbedarf (Abschnitt
+ * „Geplante Messstellen unter Messen“).
+ */
+export const UEMS_GEPLANTE_MESSSTELLE = 'geplante Messstelle';
 /** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
 export const UEMS_JAHRESPLAN = 'Jahresplan';
 /**

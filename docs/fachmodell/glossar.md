@@ -1013,6 +1013,15 @@ Messbedarf ist ein Eintrag am Einsatz (was, wo, welche Größe — optional —,
 
 **Abgrenzung.** Nicht eine Messstelle; nicht eine Maßnahme (AP-18).
 
+**Geplante Messstellen unter Messen (Konzept Auswerten a1, Entscheid 9; Messen-Bau m2).**
+Ein offener Messbedarf ist eine geplante Messstelle: eine Messstelle, die noch fehlt.
+Die Liste „Messstellen“ zeigt sie an ihrem Ort nach dessen Messstellen, mit dem Energieeinsatz, für den sie erfasst wurde („Geplant für EE-8 Gebäudetechnik Halle 1“), und der Frist; ohne Ort steht sie unter „Kein Ort zugeordnet“.
+„Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs; sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst, und an ihrer Stelle steht die Messstelle selbst (bis zum Zähler mit „noch keine Quelle“, nie 0).
+Die Marke „1 geplant“ zeigt nur die geplanten Messstellen; ist eine Frist überschritten, nennt eine Hinweiskarte sie wie eine überfällige Ablesung.
+Der Schritt „Messstelle anlegen“ der Wiedervorlage öffnet die Liste bei genau diesem Bedarf.
+Erfasst, bearbeitet und verworfen wird ein Messbedarf weiter am Energieeinsatz; unter Messen steht dazu „Messbedarf erfassen“ im Menü der Liste.
+Kundenwort: `UEMS_GEPLANTE_MESSSTELLE` (PORTAL/glossar.ts).
+
 ## Messmittel-Angabe
 
 *Sicht: Erfassung · Nachtrag AP-16 §3.7, §4.1 (E7)*

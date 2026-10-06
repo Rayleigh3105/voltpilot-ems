@@ -21,6 +21,7 @@ import {
   UEMS_EINGETRAGEN_VON,
   UEMS_ENTSCHIEDEN_VON,
   UEMS_ENERGIEZIEL,
+  UEMS_GEPLANTE_MESSSTELLE,
   UEMS_JAHRESPLAN,
   UEMS_LAUT_AUFGABE,
   UEMS_MASSNAHME,
@@ -32,7 +33,6 @@ import {
   auditRoute,
   berichtRoute,
   dokumentRoute,
-  energieeinsatzRoute,
   energiemanagementRoute,
   energiezielRoute,
   feststellungRoute,
@@ -501,7 +501,7 @@ function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): s
     case 'abweichung_frist':
       return `An der Kennzahl ${z.bezug ?? z.titel}`;
     case 'messbedarf_frist':
-      return z.bezug ?? 'Aus der Messplanung der energetischen Bewertung';
+      return z.bezug ?? `${UEMS_GEPLANTE_MESSSTELLE.charAt(0).toUpperCase()}${UEMS_GEPLANTE_MESSSTELLE.slice(1)} unter Messen`;
     case 'bericht_anstoss': {
       // Seit Vertrag 1.1 ist ein Bericht EINE Zeile ab der ersten Korrektur; ältere Zeilen kamen je Korrektur.
       const anzahl = h?.anzahl ?? zeilen.length;
@@ -572,7 +572,9 @@ export function eintragSprung(
     case 'managementbewertung':
       return entscheidSprung(energiemanagementRoute('managementbewertung'), z.art);
     case 'messbedarf_frist':
-      return entscheidSprung(z.einsatz_id ? energieeinsatzRoute(z.einsatz_id) : pageRoute('portfolio-bewertung'), z.art, z.kennzeichen);
+      // Konzept Auswerten a1, Entscheid 9: ein offener Messbedarf steht unter Messen als geplante Messstelle - der Schritt
+      // „Messstelle anlegen“ öffnet die Liste bei ihm („Einrichten“), nicht mehr den Energieeinsatz.
+      return entscheidSprung(pageRoute('portfolio-messstellen'), z.art, z.kennzeichen);
     case 'zaehlerablesung':
       return z.herleitung?.anzahl === 1 && z.id
         ? entscheidSprung(messstelleRoute(z.id), z.art)

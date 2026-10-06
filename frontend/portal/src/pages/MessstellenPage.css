@@ -592,6 +592,80 @@ a.vp-ms-reihe:focus-visible {
   display: inline-flex;
   color: var(--vp-c-muted-fg, #475569);
 }
+/*
+ * Eine geplante Messstelle (ein offener Messbedarf): der hohle Punkt sagt „noch nicht da“. Am Telefon steht
+ * „Einrichten“ unter dem Satz, damit der Name die ganze Breite hat; ab 760 px rechts in der Spalte des Werts.
+ */
+.vp-ms-reihe.is-geplant {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'name' 'satz' 'wert';
+}
+.vp-ms-reihe.is-geplant .vp-ms-reihe-wert {
+  justify-items: start;
+  margin-top: 6px;
+}
+.vp-ms-reihe.is-geplant .vp-ms-reihe-wert.is-ohne-schritt {
+  display: none;
+}
+.vp-ms-reihe.is-geplant .vp-ms-punkt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vp-text-gray, #66717c);
+}
+.vp-ms-reihe.is-geplant.is-hinweis .vp-ms-punkt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-einsatz {
+  color: var(--vp-action, #2c5282);
+  text-decoration: none;
+}
+.vp-ms-einsatz:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vp-ms-einsatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-ms-reihe.is-geplant.is-hinweis .vp-ms-frist {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz,
+.vp-ms-plan-fehler {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+/* Der Satz nach „Einrichten“ oder „Messbedarf erfassen“: Haken (bzw. Warnung) und Satz, wie eine ruhige Statuszeile. */
+.vp-ms-plansatz {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-ms-plansatz > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--vp-flow-batt, #2e9e5b);
+}
+.vp-ms-plansatz.is-fehler > svg {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz.is-fehler,
+.vp-ms-plan-fehler {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz:focus {
+  outline: none;
+}
+.vp-ms-plansatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 3px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
 @media (hover: hover) {
   a.vp-ms-reihe:hover .vp-ms-reihe-titel {
     color: var(--vp-action, #2c5282);
@@ -750,6 +824,19 @@ a.vp-ms-reihe:focus-visible {
   .vp-ms-reihe.is-ohne-link {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 2.05fr);
     grid-template-areas: 'name satz';
+  }
+  .vp-ms-reihe.is-geplant {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.05fr) minmax(0, 1fr) 128px 18px;
+    grid-template-areas:
+      'name satz woher wert chev'
+      'unter satz woher wert chev';
+  }
+  .vp-ms-reihe.is-geplant .vp-ms-reihe-wert {
+    justify-items: end;
+    margin-top: 0;
+  }
+  .vp-ms-reihe.is-geplant .vp-ms-reihe-wert.is-ohne-schritt {
+    display: grid;
   }
   .vp-ms-reihe-name {
     font-size: 0.9375rem;

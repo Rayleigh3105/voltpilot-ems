@@ -9,6 +9,7 @@ Stand: Messen-Bau m2, PR1 (Konzept `data/vp-messen-konzept-m1`, Captain-Freigabe
 - Suchregel: jedes Wort muss passen, normalisiert über `picker/suche.ts`; eine Ziffer am Wortanfang gehört zum Wort davor („halle 1“ → `halle1`, „az 3“ → `az3`), sonst fände „halle 1“ über „ST-1“ jede Messstelle des Standorts.
 - Gesucht wird in Name, Kennzeichen, Ort (mit Pfad und Standort), Medium und dem Gerät der führenden Quelle, nie in der Anlage (MS-20 liegt in Halle 2, hängt aber an der Anlage Halle 1).
 - Marken erscheinen nur, wenn es sie gibt („1 ohne Quelle“), und filtern; die alten Schalter „Nur ohne Quelle“ und „Nur geplant …“ sind Marken geworden (kein `ohneQuelle`/`geplantFuerEinsatz` mehr aus dem Portal).
+- Die Marke „geplant“ gilt seit PR4 den offenen Messbedarfen als geplanten Messstellen: [geplante Messstellen](messen-geplante-messstellen.md).
 - Die ganze Reihe ist ein Verweis (`<a href>`) auf die Seite der Messstelle; mit „Stand am …“ trägt er den Tag als `?periode=` (`onOeffnen(id, periode)`).
 - Rechts steht der Verbrauch des letzten vollständigen Monats („25.650 kWh · Sep 2026“, am Rechner unter dem Spaltenkopf „September 2026“): die Liste fragt das Register mit `letzterMonat: true` (Messen PR5, #1420) und spricht `letzter_monat.wert` mit `anzeige()` (`monatWert`), ohne eigene Rechnung; eine Hauptgröße ohne Menge (Leistung) oder eine Antwort ohne Monat zeigt den letzten Stand.
 - Andere Flächen, die das Register lesen, fragen den Monat nicht mit - er kostet einen Lesezug je Messstelle.

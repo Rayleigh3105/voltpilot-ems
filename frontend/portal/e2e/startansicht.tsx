@@ -898,6 +898,8 @@ Object.assign(api, {
   // Energieeinsatz und ein leeres Verzeichnis; kein Abruf geht an den (nicht laufenden) Server.
   bewertungUmfang: async () => ahrenbergUmfangVorgabe('2026-10-20'),
   energieeinsaetze: async () => ({ energieeinsaetze: [] }),
+  // Messen m2 PR4: die Liste der Messstellen fragt die offenen Messbedarfe (geplante Messstellen) - die Bühne hat keinen.
+  messbedarfeAlle: async () => ({ messbedarfe: [] }),
   energiemanagementVerzeichnis: energiemanagementBuehne('start', { kennung: 'IK', name: 'Ines Kaltenbach' }, () => '2026-10-20T10:00:00+02:00')
     .routen.energiemanagementVerzeichnis,
   // AP-19 IP-21: keine Frist im Energiemanagement — der Baustein „Energiemanagement“ bleibt weg (WV5), und kein Abruf
