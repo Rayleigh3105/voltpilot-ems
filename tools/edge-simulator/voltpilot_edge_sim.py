@@ -640,9 +640,9 @@ class SimClock:
 
 def _make_client(cfg: Config) -> "mqtt.Client":
     client_id = cfg.client_id or cfg.device_id
-    # VERSION1 callbacks give a stable signature across paho-mqtt 1.x and 2.x.
+    # VERSION2 callbacks (paho-mqtt 2.x); the callbacks below accept the 1.x signatures as well.
     try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=False)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=False)
     except (AttributeError, TypeError):  # paho-mqtt 1.x
         client = mqtt.Client(client_id=client_id, clean_session=False)
 
@@ -789,7 +789,7 @@ def provision(cfg: Config, stopping: dict | None = None) -> bool:
 def _make_bare_client(cfg: Config, client_id: str) -> "mqtt.Client":
     """A client with the transport (TLS/auth) settings but no telemetry will."""
     try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=True)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=True)
     except (AttributeError, TypeError):  # paho-mqtt 1.x
         client = mqtt.Client(client_id=client_id, clean_session=True)
     if cfg.username:
@@ -822,7 +822,9 @@ def run(cfg: Config) -> int:
             connected["ok"] = False
             _log(cfg, f"connect failed rc={rc}", err=True)
 
-    def on_disconnect(client, userdata, rc, *args):
+    def on_disconnect(client, userdata, *args):
+        # paho 2: (disconnect_flags, reason_code, properties); paho 1.x: (rc,).
+        rc = args[1] if len(args) >= 2 else args[0]
         connected["ok"] = False
         if rc != 0:
             _log(cfg, f"disconnected (rc={rc}); auto-reconnecting", err=True)

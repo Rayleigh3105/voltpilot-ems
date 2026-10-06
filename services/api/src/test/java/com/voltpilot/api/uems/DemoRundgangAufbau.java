@@ -14,6 +14,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,6 +62,9 @@ import org.springframework.test.web.servlet.MockMvc;
  *       Stückzahl Montage, BZ-3 Produktionsschichten) mit Werten; vier Kostenstellen; und der Zweck jeder Kennzahl.
  *       Alles über dieselben Portal-Routen wie oben ({@link #stammdaten}, {@link #netzanschluesse},
  *       {@link #messstellenExtra}, {@link #bezugsgroessenExtra}, {@link #kostenstellen}, {@link #kennzahlZwecke}).</li>
+ *   <li>Eine Messstelle, die AUTOMATISCH von einem Gerät liest (Messen-Bau m2): MS-03 „PV-Erzeugung Dach Halle 1“ am
+ *       eigenen Messwert der Box Halle 1 ({@link #messstelleVomGeraet}); die Werte kommen von der Mess-Seite der Box
+ *       ({@code edge-mess-ahrenberg-halle1}).</li>
  * </ul>
  * Idempotent: dieselbe Ablesung und derselbe Bezugswert sind Wiederholungen, die nichts schreiben; die zusätzlichen
  * Objekte legt der Lauf nur an, wenn ihr Kennzeichen noch fehlt.
@@ -90,6 +95,8 @@ class DemoRundgangAufbau {
     private static final UUID ST2 = UUID.fromString("20000000-0000-0000-0000-0000000000a2"); // Werk Lindach
     private static final UUID AN1 = UUID.fromString("20000000-0000-0000-0000-000000000501"); // Halle 1
     private static final String WR_HALLE1 = "20000000-0000-0000-0000-000000000701"; // Hybrid-Wechselrichter Halle 1
+    /** Wie die Box Halle 1 den Hybrid-Wechselrichter liest: DQ-1 der Referenzwelt, Modbus TCP, Geräte-ID 1. */
+    private static final String WR_ANBINDUNG = "{\"ip\":\"192.168.10.21\",\"port\":502,\"unit_id\":1}";
     private static final UUID AN2 = UUID.fromString("20000000-0000-0000-0000-000000000502"); // Halle 2
     private static final UUID AN3 = UUID.fromString("20000000-0000-0000-0000-000000000503"); // Werk Lindach
     private static final UUID GEB_HALLE2 = UUID.fromString("20000000-0000-0000-0000-000000000102"); // G-2
@@ -165,6 +172,7 @@ class DemoRundgangAufbau {
         referenzpreise();
         rollenHalle1(root);
         messstellenExtra();
+        messstelleVomGeraet();
         bezugsgroessenExtra();
         kostenstellen();
         kennzahlZwecke();
@@ -293,13 +301,18 @@ class DemoRundgangAufbau {
      * aus dem SQL-Seed), damit {@code roleCounts.pv}/{@code storage} die Wirklichkeit tragen und die Karte
      * „steuert · PV + Speicher" zeigt. Direkt am Datenbestand (kein Portal-Weg: die Demo führt sonst keine
      * Erzeuger-Entität und es gibt keine adoptierbare PV-Quelle). Idempotent.
+     *
+     * <p>Messen-Bau m2: der Wechselrichter trägt dabei seine Anbindung wie DQ-1 der Referenzwelt
+     * ({@link #WR_ANBINDUNG}). Erst mit ihr kennt VoltPilot eine Adresse, unter der die Box ihn liest, und „Vorschlag
+     * übernehmen" kann ihm eine Datenquelle geben ({@link #messstelleVomGeraet}). Eine Demo, deren Wechselrichter
+     * dieser Lauf früher ohne Anbindung angelegt hat, bekommt sie nachgetragen - nur dort, wo noch keine steht.
      */
     private void rollenHalle1(JdbcTemplate root) {
         root.update(
                 "INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, control, unit, device_id, "
-                        + "capabilities, guard_config, source_kind) "
+                        + "capabilities, guard_config, source_kind, communication, connection_json) "
                         + "SELECT ?::uuid, ?::uuid, 'battery-hybrid', 'battery-hybrid', true, 'kW', ?::uuid, ?::jsonb, "
-                        + "?::jsonb, 'composed' "
+                        + "?::jsonb, 'composed', 'modbus_tcp', ?::jsonb "
                         + "WHERE NOT EXISTS (SELECT 1 FROM measurement_point WHERE site_id = ?::uuid "
                         + "AND entity_type = 'battery-hybrid')",
                 TENANT.toString(), AN1.toString(), WR_HALLE1,
@@ -309,7 +322,13 @@ class DemoRundgangAufbau {
                 "{\"limits\":{\"soc_max_pct\":95.0,\"soc_min_pct\":5.0,\"max_charge_kw\":100.0,"
                         + "\"max_discharge_kw\":100.0,\"charge_from_grid_allowed\":false},"
                         + "\"failsafe\":{\"behavior\":\"self-consumption\"}}",
-                AN1.toString());
+                WR_ANBINDUNG, AN1.toString());
+        root.update(
+                "UPDATE measurement_point SET communication = 'modbus_tcp', connection_json = ?::jsonb "
+                        + "WHERE site_id = ?::uuid AND device_id = ?::uuid AND entity_type = 'battery-hybrid' "
+                        + "AND communication IS NULL "
+                        + "AND (connection_json IS NULL OR connection_json IN ('null'::jsonb, '{}'::jsonb))",
+                WR_ANBINDUNG, AN1.toString(), WR_HALLE1);
         root.update(
                 "INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, control, unit, device_id, "
                         + "capabilities, capacity_kwp, source_kind) "
@@ -351,6 +370,111 @@ class DemoRundgangAufbau {
         UUID id = UUID.fromString(neu.get("id").asText());
         status("PUT", "/api/v1/messstellen/" + id + "/ort",
                 m("kennzeichen", gebaeude, "gueltig_ab", ortAb, "korrektur", false, "grund", "Zuordnung zum Gebäude."));
+    }
+
+    /** Der feste Idempotenzschlüssel des eigenen Messwerts an der Box Halle 1 - ein zweiter Lauf legt nichts neu an. */
+    static final UUID PV_ZAEHLER_ANFRAGE = UUID.fromString("d3000000-0000-4000-8000-000000000003");
+    /** Der Schlüssel, den die Plattform daraus vergibt ({@code MeasurementSelectionService#addCustom}). */
+    static final String PV_ZAEHLER_PUNKT = "custom." + PV_ZAEHLER_ANFRAGE.toString().replace("-", "");
+
+    /**
+     * Messen-Bau m2 (Captain-Punkt „Geräte vs. Eintragung“): jede Messstelle der Welt 1.10 wird abgelesen. Hier kommt
+     * EINE dazu, die automatisch von einem Gerät liest - MS-03 „PV-Erzeugung Dach Halle 1“ wie in der Referenzwelt
+     * ({@code uems-referenzunternehmen.json}, MS-03), an der Erzeuger-Komponente des Hybrid-Wechselrichters von Halle 1
+     * ({@link #rollenHalle1}). Derselbe Weg wie bei einem Messkunden ({@code docs/rollout/uems-erste-freigabe.md}
+     * §14.2), alles über die Routen der Plattform:
+     * <ol>
+     *   <li>„Vorschlag übernehmen“: die Datenquelle des Wechselrichters (DQ-1 der Referenzwelt, mit seiner
+     *       PV-Komponente) und die Zuständigkeit der Box Halle 1. Ohne sie wäre jeder Wert der Box ein Bestandswert
+     *       ohne Herkunft, den keine Viertelstunde und keine Messstelle sieht ({@code MesswertHerkunft}).</li>
+     *   <li>„Eigenen Messwert hinzufügen“: der PV-Ertragszähler des Wechselrichters, Eingangsregister 3000.</li>
+     *   <li>MS-03 mit Ort G-1 und Stellung „Erzeuger“ ab heute und führender Quelle ab der nächsten vollen
+     *       Viertelstunde. Früher geht es nicht ehrlich: die Box liefert erst ab ihrer Quittung, und eine Quelle muss
+     *       ganz in der Speisung des Geräts liegen (GR-10 speist die Komponente erst seit dem Aufbau der Demo). Der
+     *       erste Tag ist darum angebrochen; Tag und Woche füllen sich von da an Tag für Tag.</li>
+     * </ol>
+     *
+     * <p>Die Werte schickt die Mess-Seite der Box ({@code tools/edge-simulator/uems_messbox.py}, Dienst
+     * {@code edge-mess-ahrenberg-halle1}): die laufende api stellt ihr die Auswahl zu (Abgleich alle 30 s), sie lernt
+     * und quittiert sie und sendet von da an alle fünf Minuten den Zählerstand. Idempotent: die Übernahme zählt eine
+     * schon übernommene Quelle als unverändert, der Messwert hat einen festen Idempotenzschlüssel; Messstelle, Ort,
+     * Stellung und Quelle entstehen nur, wenn sie fehlen.
+     */
+    private void messstelleVomGeraet() throws Exception {
+        String pv = null;
+        for (JsonNode e : lies("/api/v1/sites/" + AN1 + "/entities", jw()).path("entities")) {
+            if ("pv-generation".equals(e.path("role").asText()) && WR_HALLE1.equals(e.path("deviceId").asText())) {
+                pv = e.path("id").asText();
+            }
+        }
+        if (pv == null) {
+            System.out.println("Rundgang: keine Erzeuger-Komponente an der Box Halle 1 - MS-03 entfällt.");
+            return;
+        }
+
+        String vorschlag = "/api/v1/sites/" + AN1 + "/data-sources/vorschlag";
+        for (JsonNode v : lies(vorschlag, jw()).path("vorschlaege")) {
+            List<String> komponenten = new ArrayList<>();
+            v.path("komponenten").forEach(k -> komponenten.add(k.path("id").asText()));
+            if (v.path("grund").isNull() && komponenten.contains(pv)) {
+                status("POST", vorschlag + "/uebernehmen", m("vorschlaege", List.of(m(
+                        "device_id", v.at("/box/id").asText(), "protokoll", v.path("protokoll").asText(),
+                        "adresse", v.path("adresse").asText(), "komponenten", komponenten))), jw(), null);
+            }
+        }
+
+        String auswahl = "/api/v1/devices/" + WR_HALLE1 + "/measurement-selection";
+        JsonNode stand = lies(auswahl + "?entityId=" + pv, jw());
+        boolean da = false;
+        for (JsonNode sel : stand.path("selections")) {
+            da |= PV_ZAEHLER_PUNKT.equals(sel.path("pointKey").asText()) && sel.path("enabled").asBoolean();
+        }
+        if (!da) {
+            status("POST", auswahl + "/custom?entityId=" + pv, m(
+                    "expectedRevision", stand.path("desiredRevision").asLong(),
+                    "idempotencyKey", PV_ZAEHLER_ANFRAGE.toString(),
+                    "definition", m("label", "PV-Erzeugung Dach Halle 1 · Zählerstand", "sourceKind", "modbus_input",
+                            "address", 3000, "selector", "input:0x0bb8", "valueType", "uint32", "widthBits", 32,
+                            "signed", false, "endian", "big", "scale", 0.1, "unit", "kWh", "cadenceS", 300,
+                            "retentionClass", "energy_counter", "readOnly", true,
+                            "measures", m("quantity", "active_energy", "direction", "generation",
+                                    "aggregationKind", "counter"))), jw(), null);
+        }
+
+        JsonNode ms03 = null;
+        for (JsonNode ms : lies("/api/v1/messstellen").path("messstellen")) {
+            if ("MS-03".equals(ms.path("kennzeichen").asText())) {
+                ms03 = ms;
+            }
+        }
+        if (ms03 == null) {
+            ms03 = post("/api/v1/messstellen", m("kennzeichen", "MS-03", "name", "PV-Erzeugung Dach Halle 1",
+                    "art", "gemessen", "medium", "Strom",
+                    "notiz", "PV-Anlage 240 kWp auf dem Dach von Halle 1; die Box Halle 1 liest den Ertragszähler "
+                            + "des Hybrid-Wechselrichters.",
+                    "hauptgroesse", m("groesse", "Wirkenergie", "richtung", "Erzeugung", "einheit", "kWh",
+                            "wertart", "Zählerstand"),
+                    "nebengroessen", new ArrayList<>()));
+        }
+        UUID id = UUID.fromString(ms03.get("id").asText());
+        JsonNode bestand = lies("/api/v1/messstellen/" + id);
+        // Die Quelle beginnt mit der nächsten vollen Viertelstunde, frühestens zwei Minuten nach jetzt: bis dahin hat
+        // die Box den eben angelegten Messwert gelernt und quittiert (Abgleich der api alle 30 s).
+        ZonedDateTime jetzt = ZonedDateTime.now(BERLIN).plusMinutes(2);
+        ZonedDateTime ab = jetzt.truncatedTo(ChronoUnit.HOURS).plusMinutes(15L * (jetzt.getMinute() / 15 + 1));
+        if (bestand.path("orte").isEmpty()) {
+            status("PUT", "/api/v1/messstellen/" + id + "/ort", m("kennzeichen", "G-1",
+                    "gueltig_ab", ab.toLocalDate().toString(), "korrektur", false, "grund", "Dach Halle 1."));
+        }
+        if (bestand.path("elektrische_stellung").isEmpty()) {
+            status("PUT", "/api/v1/messstellen/" + id + "/stellung",
+                    m("anlage", AN1.toString(), "stellung", "Erzeuger", "gueltig_ab", ab.toLocalDate().toString()));
+        }
+        if (bestand.path("fuehrende_quelle").isEmpty()) {
+            status("POST", "/api/v1/messstellen/" + id + "/quellen", m("komponente", pv, "kanal", PV_ZAEHLER_PUNKT,
+                    "rolle", "fuehrend", "gueltig_ab", ab.toOffsetDateTime().toString()), jw(), null);
+        }
+        System.out.println("Rundgang: MS-03 liest automatisch von der Box Halle 1 (" + PV_ZAEHLER_PUNKT + ").");
     }
 
     /** Monatliche Zählerstände ab 10/2024 bis zum letzten abgeschlossenen Monat — der erste Wert ist der Anfang. */
