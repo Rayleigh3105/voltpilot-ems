@@ -173,7 +173,7 @@ class DemoRundgangAufbau {
 
         // Zweite Runde: die Flächen füllen (sonst „fehlt die Fläche" am echten Datum), jede Kennzahl mit eigener
         // Messgröße und eigener Einheit (statt sechsmal identisch kWh je kg), die energetische Bewertung mit echten
-        // Zahlen (Hauptzähler + Abzweige je Energieeinsatz, Verantwortliche, Kriterien), die Verteilung auf
+        // Zahlen (Hauptzähler + Unterzähler je Energieeinsatz, Verantwortliche, Kriterien), die Verteilung auf
         // Kostenstellen, bestätigte Bezugsbasen, eine aktuelle energetische Bewertung, eine Verteilung-Korrektur,
         // ein Bezugsdaten-Import und eine befristete Einsicht.
         flaechen(root);
@@ -608,12 +608,12 @@ class DemoRundgangAufbau {
         messreihe("HZ-1", 2_400_000, 210_000);
         unterzaehlerVonHz1("MS-20"); // Spritzguss hat bereits Ablesungen
         prozesseSetzen("MS-20", prozess.get("P-1"));
-        abzweig("AZ-2", "Zähler Montage", prozess.get("P-2"), 27_000);
-        abzweig("AZ-3", "Zähler Druckluft", prozess.get("P-3"), 18_000);
-        abzweig("AZ-4", "Zähler Kühlung", prozess.get("P-4"), 14_000);
-        abzweig("AZ-5", "Zähler Logistik", prozess.get("P-5"), 9_000);
-        abzweig("AZ-6", "Zähler Verwaltung", prozess.get("P-6"), 18_000);
-        abzweig("AZ-8", "Zähler Gebäudetechnik", prozess.get("P-8"), 13_000);
+        bereichszaehler("AZ-2", "Zähler Montage", prozess.get("P-2"), 27_000);
+        bereichszaehler("AZ-3", "Zähler Druckluft", prozess.get("P-3"), 18_000);
+        bereichszaehler("AZ-4", "Zähler Kühlung", prozess.get("P-4"), 14_000);
+        bereichszaehler("AZ-5", "Zähler Logistik", prozess.get("P-5"), 9_000);
+        bereichszaehler("AZ-6", "Zähler Verwaltung", prozess.get("P-6"), 18_000);
+        bereichszaehler("AZ-8", "Zähler Gebäudetechnik", prozess.get("P-8"), 13_000);
         verantwortlich(root, "EE-1", MD);
         verantwortlich(root, "EE-2", PH);
         verantwortlich(root, "EE-3", IK);
@@ -624,8 +624,10 @@ class DemoRundgangAufbau {
         verantwortlich(root, "EE-8", MD);
     }
 
-    private void abzweig(String kennzeichen, String name, String prozessId, long proMonat) throws Exception {
-        messstelle(kennzeichen, name, "Abzweig an der Anlage Werk Ahrenberg – Halle 1.", null, "G-1", "2024-03-12");
+    /** Ein Zähler eines Energieeinsatzes: Unterzähler von HZ-1 (die Kennzeichen „AZ-…“ bleiben, wie sie entstanden sind). */
+    private void bereichszaehler(String kennzeichen, String name, String prozessId, long proMonat) throws Exception {
+        messstelle(kennzeichen, name, "Unterzähler von HZ-1 an der Anlage Werk Ahrenberg – Halle 1.", null, "G-1",
+                "2024-03-12");
         unterzaehlerVonHz1(kennzeichen);
         prozesseSetzen(kennzeichen, prozessId);
         messreihe(kennzeichen, 300_000 + proMonat, proMonat);
@@ -634,19 +636,24 @@ class DemoRundgangAufbau {
     /**
      * Konzept Auswerten a1, Entscheid 5: die Bereichszähler hängen als UNTERZÄHLER an HZ-1, nicht als Abzweig daneben -
      * sonst rechnet die Energiebilanz 100 % „ohne eigenen Zähler“, während Verbrauch und Bewertung über die Prozesse
-     * zuordnen. Frisch entsteht die Stellung ab Beginn; stand sie aus einem früheren Lauf als Abzweig, ersetzt eine
-     * Korrektur sie ab demselben Tag (die Route, wie im Portal). Ist sie schon Unterzähler, schreibt keiner der Aufrufe.
+     * zuordnen. Ist die heutige Stellung schon „Unterzähler von HZ-1“, schreibt nichts (wiederholter Lauf). Ohne Stellung
+     * entsteht sie ab Beginn; stand sie aus einem früheren Lauf anders (Abzweig), ersetzt eine Korrektur sie ab demselben
+     * Tag (die Route, wie im Portal). Jede Ablehnung der Route bricht ab - die Demo bleibt nie still beim Abzweig.
      */
     private void unterzaehlerVonHz1(String kennzeichen) throws Exception {
-        String pfad = "/api/v1/messstellen/" + messstelleId(kennzeichen) + "/stellung";
-        Map<String, Object> neu = m("anlage", AN1.toString(), "stellung", "Unterzähler", "unterzaehler_von", "HZ-1",
-                "gueltig_ab", "2024-03-12", "korrektur", false, "grund", "Zuordnung zur Anlage Halle 1.");
-        if (roh("PUT", pfad, neu) < 400) {
+        UUID id = messstelleId(kennzeichen);
+        List<JsonNode> stellungen = new ArrayList<>();
+        lies("/api/v1/messstellen/" + id).path("elektrische_stellung").forEach(stellungen::add);
+        boolean schon = stellungen.stream().anyMatch(st -> st.path("gueltig_bis").asText(null) == null
+                && "Unterzähler".equals(st.path("stellung").asText()) && "HZ-1".equals(st.path("unterzaehler_von").asText()));
+        if (schon) {
             return;
         }
-        roh("PUT", pfad, m("anlage", AN1.toString(), "stellung", "Unterzähler", "unterzaehler_von", "HZ-1",
-                "gueltig_ab", "2024-03-12", "korrektur", true,
-                "grund", "Korrektur: misst einen Teil des Bezugs von HZ-1 - Unterzähler, nicht Abzweig daneben."));
+        boolean korrektur = !stellungen.isEmpty();
+        put("/api/v1/messstellen/" + id + "/stellung", m("anlage", AN1.toString(), "stellung", "Unterzähler",
+                "unterzaehler_von", "HZ-1", "gueltig_ab", "2024-03-12", "korrektur", korrektur, "grund", korrektur
+                        ? "Korrektur: misst einen Teil des Bezugs von HZ-1 - Unterzähler, nicht Abzweig daneben."
+                        : "Zuordnung zur Anlage Halle 1."));
     }
 
     private void stellung(String kennzeichen, String stellung) throws Exception {
@@ -901,6 +908,18 @@ class DemoRundgangAufbau {
         var r = mvc.perform(b).andReturn().getResponse();
         if (r.getStatus() >= 400) {
             throw new IllegalStateException("POST " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus()
+                    + " " + r.getContentAsString(StandardCharsets.UTF_8));
+        }
+        return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));
+    }
+
+    /** PUT als Ines; ein Fehler ist echt und bricht ab (wie {@link #post}). */
+    private JsonNode put(String path, Object body) throws Exception {
+        var b = request(HttpMethod.PUT, path).with(authentication(ines()))
+                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(body));
+        var r = mvc.perform(b).andReturn().getResponse();
+        if (r.getStatus() >= 400) {
+            throw new IllegalStateException("PUT " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus()
                     + " " + r.getContentAsString(StandardCharsets.UTF_8));
         }
         return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));

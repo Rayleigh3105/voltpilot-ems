@@ -128,8 +128,14 @@ export const AUSSERHALB_SATZ = {
   singular: '1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: {namen}.',
   plural: '{n} Zähler hängen als Abzweig neben dem Hauptzähler und zählen hier nicht mit: {namen}.',
 } as const;
-/** AP-10 §5.2 (F6): der Hilfe-Satz zum negativen Rest - er nennt keine Ursache. */
+/**
+ * AP-10 §5.2 (F6): der Hilfe-Satz zum negativen Rest - er nennt keine Ursache. Er vergleicht mit dem Ganzen der Karte:
+ * dem Bezug laut Hauptzähler oder, mit Erzeugung, Speicher oder Einspeisung, dem Verbrauch in der Anlage (dort können
+ * die Unterzähler unter dem Hauptzähler und trotzdem über dem Verbrauch liegen).
+ */
 export const HILFE_NEGATIV = 'Die Unterzähler zählen mehr als der Hauptzähler. VoltPilot nennt keine Ursache.';
+export const HILFE_NEGATIV_VERBRAUCH = 'Die Unterzähler zählen mehr als der Verbrauch in der Anlage. VoltPilot nennt keine Ursache.';
+const hilfeNegativ = (einfach: boolean): string => (einfach ? HILFE_NEGATIV : HILFE_NEGATIV_VERBRAUCH);
 
 /** Die Live-Zeile steht nur mit einer Zahl - ein Strich mit Gerätegründen ist kein Teil der Antwort (Konzept a1 §6.9). */
 export const LIVE_JETZT = 'jetzt {zahl} ohne eigenen Zähler';
@@ -640,7 +646,7 @@ function summenZeile(
   };
 }
 
-function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | null, ebene: string, zone: string, ctx: BilanzKontext): ZeileBild {
+function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | null, ebene: string, zone: string, ctx: BilanzKontext, einfach: boolean): ZeileBild {
   const r = w.rest;
   const negativ = r.menge !== null && r.menge < 0;
   return {
@@ -651,7 +657,7 @@ function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | nul
     // „nicht zugeordnet“ steht als Kennzeichen am Rest; die Zeile heißt „ohne eigenen Zähler“ - einmal genügt.
     woerter: einmal(ohneLeere([...r.kennzeichen.filter((k) => k !== NICHT_ZUGEORDNET), r.zustand !== VOLLSTAENDIG ? r.zustand : null])),
     ton: r.menge === null ? 'off' : negativ || r.zustand !== VOLLSTAENDIG ? 'warn' : 'ok',
-    saetze: negativ ? ohneLeere([r.kundensatz, HILFE_NEGATIV]) : [],
+    saetze: negativ ? ohneLeere([r.kundensatz, hilfeNegativ(einfach)]) : [],
     teile: [],
     herkunft: restHerkunft(r.herkunft, w.eingaenge, terme, ebene, zone, ctx),
   };
@@ -689,13 +695,14 @@ export function zeilenBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptza
   const hz = h.messstelle.kennzeichen;
   const ebene = ab.raster;
   const ganz = ganzesDer(w);
-  const am = istEinfach(w, hz) ? ANTEIL_AM.bezug : ANTEIL_AM.verbrauch;
+  const einfach = istEinfach(w, hz);
+  const am = einfach ? ANTEIL_AM.bezug : ANTEIL_AM.verbrauch;
   const g = ganz === null ? null : dez(ganz);
   return ohneLeere([
     summenZeile('zufluss', w.zufluss, w, ab.terme, hz, ebene, ctx, g, am),
     summenZeile('abfluss', w.abfluss, w, ab.terme, hz, ebene, ctx, g, am),
     summenZeile('zugeordnet', w.zugeordnet, w, ab.terme, hz, ebene, ctx, g, am),
-    restZeile(w, ab.terme, h.rest_messstelle, ebene, zone, ctx),
+    restZeile(w, ab.terme, h.rest_messstelle, ebene, zone, ctx, einfach),
   ]);
 }
 
@@ -712,7 +719,7 @@ function antwortBild(w: BilanzWerte, zeilen: ZeileBild[], ganz: Dez | null, einf
       ? { satz: fuelle(ANTWORT.fehlt, { zeitraum, namen: r.fehlend.map(namen).join(', ') }), ton: 'off' }
       : { satz: fuelle(ANTWORT.keineWerte, { zeitraum }), ton: 'off' };
   }
-  if (r.menge < 0) return { satz: HILFE_NEGATIV, ton: 'warn' };
+  if (r.menge < 0) return { satz: hilfeNegativ(einfach), ton: 'warn' };
   const restZahl = rest?.zahl ?? zahl(r.menge, r.einheit, null);
   if (w.zugeordnet.gesamt === 0) return { satz: fuelle(ANTWORT.keinUnterzaehler, { am, rest: restZahl }), ton: 'ok' };
   if (r.menge === 0) return { satz: fuelle(ANTWORT.alles, { ganz: einfach ? GANZ_IM_SATZ.bezug : GANZ_IM_SATZ.verbrauch }), ton: 'ok' };
@@ -757,7 +764,7 @@ function kartenZeilen(w: BilanzWerte, zeilen: ZeileBild[], ganzText: string | nu
       unter: ohneLeere([
         w.rest.menge === null && w.rest.fehlend.length > 0 ? fehltText(w.rest.fehlend) : null,
         ...(rest?.woerter ?? []).filter((x) => x !== BERECHNET_DIFFERENZ),
-        ...(rest?.saetze ?? []).filter((x) => x !== HILFE_NEGATIV),
+        ...(rest?.saetze ?? []).filter((x) => x !== hilfeNegativ(einfach)),
       ]),
     },
   ];
