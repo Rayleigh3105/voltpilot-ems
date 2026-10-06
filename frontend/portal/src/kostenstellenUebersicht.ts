@@ -320,6 +320,32 @@ export function messstellenWert(w: WerteAntwort, periode: KostenstelleEnergiePer
   };
 }
 
+/**
+ * Messen PR5: das Register trägt mit `letzterMonat` je Messstelle den letzten vollständigen Monat mit GENAU dem Schritt
+ * der Werte-Route. Ist der gewählte Zeitraum dieser Monat, ist das der Wert - ohne eigene Abfrage; sonst `null`.
+ */
+export function registerWert(z: MessstelleRegisterZeile | undefined, periode: KostenstelleEnergiePeriode, am: string): MessstellenWert | null {
+  const m = z?.letzter_monat;
+  if (!z || !m || periode !== 'monat' || m.monat !== am.slice(0, 7)) return null;
+  if (!m.wert) return { zahl: OHNE_WERT, zustand: m.ausserhalb_zugriff ?? KEINE_WERTE, ton: 'still', fehler: false };
+  const menge = m.wert.menge;
+  const zustand = m.wert.zustand ?? KEINE_WERTE;
+  return {
+    zahl: anzeige(menge, z.hauptgroesse?.einheit ?? null, periode),
+    zustand,
+    ton: menge === null ? 'still' : zustand === VOLLSTAENDIG ? 'gut' : 'hinweis',
+    fehler: false,
+  };
+}
+
+/** Der Wert einer Messstelle im Zeitraum: aus dem Register (PR5), sonst aus der Werte-Route. */
+export const wertDerMessstelle = (
+  z: MessstelleRegisterZeile | undefined,
+  w: WerteAntwort,
+  periode: KostenstelleEnergiePeriode,
+  am: string,
+): MessstellenWert => registerWert(z, periode, am) ?? messstellenWert(w, periode);
+
 /** Die Anfrage an die Werte-Route: EIN Schritt über den Zeitraum. */
 export const werteAnfrage = (periode: KostenstelleEnergiePeriode, am: string): { raster: KostenstelleEnergiePeriode; von: string; bis: string } => ({
   raster: periode,
@@ -706,7 +732,7 @@ export function kostenstellenBild(e: {
               name: z.name ?? z.kennzeichen,
               ort: z.ort.name,
               woher: woherDerZeile(z).zeile,
-              wert: messstellenWert(werte.get(z.kennzeichen) ?? null, periode),
+              wert: wertDerMessstelle(z, werte.get(z.kennzeichen) ?? null, periode, am),
               wann: periodeKurz(periode, am),
               sprung: sprungziel({ art: 'messstelle', id: z.id, periode: werteperiode(periode, am) }),
             })),
@@ -834,7 +860,7 @@ export function prozesseBild(e: {
         id: m.id,
         kennzeichen: m.kennzeichen,
         name: m.name,
-        wert: messstellenWert(werte.get(m.kennzeichen) ?? null, periode),
+        wert: wertDerMessstelle(register?.find((z) => z.id === m.id), werte.get(m.kennzeichen) ?? null, periode, am),
         sprung: sprungziel({ art: 'messstelle', id: m.id, periode: werteperiode(periode, am) }),
       }),
     );

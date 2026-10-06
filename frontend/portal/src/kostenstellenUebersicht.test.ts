@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { KostenstelleEnergie, KostenstelleEnergiePeriode, MessstelleRegisterZeile, MessstelleVerteilung, MessstelleWerte, ProzessMessstellen } from './api';
 import * as MODUL from './kostenstellenUebersicht';
@@ -21,7 +23,9 @@ import {
   reiterAus,
   reiterDa,
   reiterHash,
+  registerWert,
   setzenDoppeltBild,
+  wertDerMessstelle,
   type EnergieAntwort,
   type KarteBild,
   type KostenstellenBild,
@@ -320,6 +324,24 @@ describe('Ablesezeiträume auf Kostenstellen (Messen PR4, Verteilung 1.5): Monat
     const p = karte(bildMit(a), '4200').posten[0];
     expect(n(p.herkunft)).toBe('30 % · für Nov 2026 noch keine Ablesung');
     expect(p.zahl).toBe('—');
+  });
+});
+
+describe('Monatsmenge im Register (Messen PR5): der Standard-Zeitraum braucht keine Werte-Abfrage', () => {
+  // Die echte Antwort von `GET /api/v1/messstellen?letzterMonat=true` (Kopie der Demo, rundgang, 05.10.2026).
+  const demo = (JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures/register-letzter-monat-2026-09.json'), 'utf8')) as {
+    register: MessstelleRegisterZeile[];
+  }).register;
+  const z = (kz: string) => demo.find((x) => x.kennzeichen === kz);
+
+  it('im letzten vollständigen Monat ist der Schritt des Registers der Wert — sonst keiner (dann fragt die Fläche die Werte-Route)', () => {
+    expect(registerWert(z('MS-20'), 'monat', '2026-09-01')).toEqual({ zahl: '88.200\u00a0kWh', zustand: 'vollständig', ton: 'gut', fehler: false });
+    expect(registerWert(z('MS-03'), 'monat', '2026-09-01')).toMatchObject({ zahl: '—', ton: 'still' });
+    expect(registerWert(z('MS-20'), 'monat', '2026-08-01')).toBeNull();
+    expect(registerWert(z('MS-20'), 'jahr', '2025-01-01')).toBeNull();
+    expect(registerWert(undefined, 'monat', '2026-09-01')).toBeNull();
+    // Der Register-Wert hat Vorrang vor einer Antwort der Werte-Route (dieselbe Zahl, keine zweite Abfrage).
+    expect(wertDerMessstelle(z('HZ-1'), null, 'monat', '2026-09-01').zahl).toBe('199.500\u00a0kWh');
   });
 });
 

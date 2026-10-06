@@ -37,6 +37,7 @@ import {
   prozessBeispiel,
   prozessKennzeichen,
   prozesseBild,
+  registerWert,
   werteAnfrage,
   type EnergieAntwort,
   type KarteBild,
@@ -375,7 +376,8 @@ function useRegister(): MessstelleRegisterZeile[] | null | 'fehler' {
   const [register, setRegister] = useState<MessstelleRegisterZeile[] | null | 'fehler'>(null);
   useEffect(() => {
     let aktiv = true;
-    api.messstellenRegister({}).then(
+    // Messen PR5: mit dem letzten vollständigen Monat je Messstelle - im Standard-Zeitraum der Wert jeder Reihe.
+    api.messstellenRegister({ letzterMonat: true }).then(
       (r) => aktiv && setRegister(r.register),
       () => aktiv && setRegister('fehler'),
     );
@@ -472,9 +474,9 @@ export function KostenstellenReiter({ katalog, hervor = null, ...zeit }: ReiterP
   // Welche Werte die Fläche braucht: die Quellen anteiliger Posten („von 88.200 kWh“) und die Messstellen ohne Kostenstelle.
   const bedarf = useMemo(() => {
     if (nurKopf) return [];
-    const ohne = ohneKostenstelle(im, antworten, register) ?? [];
+    const ohne = (ohneKostenstelle(im, antworten, register) ?? []).filter((z) => registerWert(z, periode, am) === null);
     return [...new Set([...anteiligeQuellen(antworten), ...ohne.map((z) => z.kennzeichen)])];
-  }, [nurKopf, im, antworten, register]);
+  }, [nurKopf, im, antworten, register, periode, am]);
   const werte = useWerte(bedarf, periode, am);
 
   const bild = kostenstellenBild({ katalog, antworten, register, werte, periode, am, ohneMengen });
@@ -663,7 +665,14 @@ export function ProzesseReiter({ katalog, ...zeit }: ReiterProps & { katalog: Pr
   }, [katalog, am, versuch]);
 
   const map = zuordnungen.am === am ? zuordnungen.map : new Map<string, ZuordnungAntwort>();
-  const kennzeichen = useMemo(() => prozessKennzeichen(map), [map]);
+  // Was das Register (PR5) schon trägt, fragt die Fläche nicht noch einmal.
+  const kennzeichen = useMemo(
+    () =>
+      registerAntwort === null
+        ? []
+        : prozessKennzeichen(map).filter((kz) => registerWert(register?.find((z) => z.kennzeichen === kz), periode, am) === null),
+    [map, register, registerAntwort, periode, am],
+  );
   const werte = useWerte(kennzeichen, periode, am);
   const bild = prozesseBild({ katalog, zuordnungen: map, werte, register, periode, am });
   const alleFehler = bild.reihen.length > 0 && bild.reihen.every((r) => r.fehler);
