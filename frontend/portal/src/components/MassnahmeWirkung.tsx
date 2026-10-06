@@ -310,7 +310,7 @@ export function UrteilKarte({
             ? m.zustand === 'umgesetzt'
               ? darfAbschliessen
                 ? 'Ohne Kennzahl misst VoltPilot nichts. Ob die Maßnahme hält, sagen Sie mit einem Satz - damit ist sie abgeschlossen.'
-                : `Ohne Kennzahl misst VoltPilot nichts. Ob die Maßnahme hält, hält ein Satz beim Abschließen fest - ${B.WER_ABSCHLIESST}.`
+                : `Ohne Kennzahl misst VoltPilot nichts. Was daraus geworden ist, sagt ein Satz beim Abschließen - ${B.WER_ABSCHLIESST}.`
               : 'Nach der Umsetzung schließen Sie die Maßnahme mit einem Satz ab.'
             : W.bewertungOffenSatz()}
         </p>
