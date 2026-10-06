@@ -183,7 +183,7 @@ function WofuerUndWoran({
 }
 
 /** „Was es bringen soll“ (§6.6): die erwartete Wirkung als Zitat der Person, die Schätzung als solche gekennzeichnet. */
-function WasEsBringenSoll({ m }: { m: Massnahme }) {
+function WasEsBringenSoll({ m, kennzahlAnlegen }: { m: Massnahme; kennzahlAnlegen: boolean }) {
   const angelegt = m.verlauf?.find((e) => e.art === 'massnahme_angelegt');
   const e = m.erwartete_einsparung;
   const zahl =
@@ -209,10 +209,16 @@ function WasEsBringenSoll({ m }: { m: Massnahme }) {
         <div className="vp-mn-hinweis">
           <Icon name="info" size={16} />
           <span>
-            <b>Nicht gemessen:</b> {B.nichtGemessenSatz(m)}{' '}
-            <a className="vp-mn-sprung" href="#/portfolio/kennzahlen">
-              Kennzahl anlegen
-            </a>
+            <b>Nicht gemessen:</b> {B.nichtGemessenSatz(m)}
+            {/* Der Sprung nur, wenn die Person eine Kennzahl anlegen darf - sonst führt er ins Leere. */}
+            {kennzahlAnlegen && (
+              <>
+                {' '}
+                <a className="vp-mn-sprung" href="#/portfolio/kennzahlen">
+                  Kennzahl anlegen
+                </a>
+              </>
+            )}
           </span>
         </div>
       )}
@@ -384,7 +390,12 @@ export function MassnahmeSeite({
             )}
             {zeigeWirkung && w && <WirkungKacheln m={m} w={w} />}
             {zeigeWirkung && wirkung && <WirkungKarte m={m} lage={wirkung} erneut={wirkungErneut} />}
-            {(m.zustand === 'geplant' || m.art !== 'gemessen') && <WasEsBringenSoll m={m} />}
+            {(m.zustand === 'geplant' || m.art !== 'gemessen') && (
+              <WasEsBringenSoll
+                m={m}
+                kennzahlAnlegen={rollen.darf('kennzahl.standort_definieren', m.standort_id) || rollen.darf('kennzahl.unternehmen_definieren', null)}
+              />
+            )}
             <VerbesserungAnstoesse
               vorgang="massnahme"
               anstoesse={m.anstoesse}
