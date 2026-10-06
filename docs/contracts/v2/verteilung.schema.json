@@ -27,7 +27,7 @@
     },
     "schema_version": {
       "type": "string",
-      "const": "1.4",
+      "const": "1.5",
       "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv."
     },
     "$schema_datei": {
@@ -441,6 +441,7 @@
         "familie": {
           "type": "string",
           "enum": [
+            "ablesung",
             "gebaeude",
             "korrektur",
             "live",

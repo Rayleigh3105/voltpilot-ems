@@ -38,6 +38,10 @@ import org.springframework.web.server.ResponseStatusException;
  *       AP-08 IP-9; gemessen aus {@code messreihe_tag}, berechnet aus der Spur von AP-10 IP-10). Ab Version 2 stehen
  *       sie in {@code messreihe_periode_version} (die Korrektur-Kaskade, AP-08 IP-17) — gelesen wird je Tag die höchste
  *       Version bis zur angefragten; ohne Angabe die neueste. Version 1 bleibt damit lesbar ({@code version=1}).</li>
+ *   <li>Eine Messstelle aus Ablesungen hat keine Tageswerte (Messen PR4): über Monat und Jahr liest die Sicht ihre
+ *       MONATE aus demselben Lese-Modell (Raster Monat, Version 1, darüber je Monat die höchste Version bis zur
+ *       angefragten) und die Ablesezeiträume, die der Kunde jedem Monat zugeordnet hat ({@link AblesungRepository}).
+ *       Reicht ein Zeitraum über die Periode hinaus, liest sie die Anteile seiner Tage mit.</li>
  *   <li>Die vier Herkünfte, die Tagesanteile (E12) und die Summen bildet {@link KostenstelleEnergieRegeln} — sie ruft
  *       {@link VerteilungRegeln#amTag}, {@link VerteilungRegeln#erbe} und die Summenregel der Bilanz.</li>
  *   <li>Die Herkunft je Posten baut {@link BilanzwertHerkunft} (E13); der Messwert-Herkunftsvertrag bleibt
@@ -71,16 +75,19 @@ public class KostenstelleEnergieService {
     private final MessstelleRepository messstellen;
     private final MessstelleWerteService werte;
     private final BerechnetePeriodenLauf berechnete;
+    private final AblesungRepository ablesungen;
 
     private volatile Clock uhr = Clock.systemUTC();
 
     public KostenstelleEnergieService(KostenstelleProzessRepository objekte, KostenstelleEnergieRepository lesen,
-            MessstelleRepository messstellen, MessstelleWerteService werte, BerechnetePeriodenLauf berechnete) {
+            MessstelleRepository messstellen, MessstelleWerteService werte, BerechnetePeriodenLauf berechnete,
+            AblesungRepository ablesungen) {
         this.objekte = objekte;
         this.lesen = lesen;
         this.messstellen = messstellen;
         this.werte = werte;
         this.berechnete = berechnete;
+        this.ablesungen = ablesungen;
     }
 
     /** Nur für Tests: die Uhr für „heute“ und {@code berechnet_am}. */
@@ -172,11 +179,41 @@ public class KostenstelleEnergieService {
 
         Map<String, Messstelle> nachKennzeichen = new LinkedHashMap<>();
         Map<String, Map<LocalDate, KostenstelleEnergieRegeln.Tageswert>> tageswerte = new HashMap<>();
+        Map<String, KostenstelleEnergieRegeln.Ablesung> monatswerte = new HashMap<>();
         Map<String, Map<LocalDate, String>> anlaesse = new HashMap<>();
         Map<String, Map<LocalDate, Map<String, Object>>> tagesHerkunft = new HashMap<>();
         List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
+        // Messen PR4: über Monat und Jahr trägt eine Messstelle aus Ablesungen Monate statt Tage; ein Tag hat nie einen
+        // Anteil an einem Ablesezeitraum.
+        Map<UUID, UUID> ablesungsQuellen = "tag".equals(periode) ? Map.of() : lesen.ablesungsQuellen(tenant);
+        // Ablesungen und Monats-Versionen aller dieser Messstellen in je EINEM Zug, nicht je Messstelle.
+        Map<UUID, List<AblesungRepository.Wert>> staende = ablesungen.werte(
+                tenant == null ? TenantContext.get() : tenant, ablesungsQuellen.values());
+        Map<UUID, Map<LocalDate, KostenstelleEnergieRepository.Version>> monatsversionen = new HashMap<>();
+        if (version == null || version > 1) {
+            lesen.monatsversionen(tenant, ablesungsQuellen.keySet(), von, bis, version).forEach(v -> monatsversionen
+                    .computeIfAbsent(v.messstelleId(), x -> new HashMap<>()).put(v.tag(), v));
+        }
         for (Messstelle m : tenant == null ? messstellen.alle() : messstellen.alle(tenant)) {
             List<KostenstelleEnergieRepository.Anteil> eigene = anteile.getOrDefault(m.id(), List.of());
+            UUID ablesung = MessstelleRegeln.BERECHNET.equals(m.art()) ? null : ablesungsQuellen.get(m.id());
+            if (ablesung != null) {
+                Map<LocalDate, String> anlass = new HashMap<>();
+                KostenstelleEnergieRegeln.Ablesung a = monate(tenant, m, staende.getOrDefault(ablesung, List.of()),
+                        monatsversionen.getOrDefault(m.id(), Map.of()), von, bis, anlass);
+                if (eigene.isEmpty() && a.monate().isEmpty()) {
+                    continue;
+                }
+                List<KostenstelleEnergieRepository.Anteil> zeilen = zeilenDerAblesezeitraeume(tenant, m, eigene, a,
+                        von, bis);
+                nachKennzeichen.put(m.kennzeichen(), m);
+                tageswerte.put(m.kennzeichen(), Map.of());
+                monatswerte.put(m.kennzeichen(), a);
+                anlaesse.put(m.kennzeichen(), anlass);
+                quellen.add(new KostenstelleEnergieRegeln.Quelle(m.kennzeichen(), m.art(), m.hauptgroesse().groesse(),
+                        m.hauptgroesse().richtung(), m.hauptgroesse().einheit(), anteile(zeilen), List.of(), a));
+                continue;
+            }
             // Ohne Anteil zählt eine Messstelle nur mit, wenn sie Mengen trägt: ein Momentanwert ist nie „nicht verteilt“.
             if (eigene.isEmpty() && MOMENTANWERT.equals(m.hauptgroesse().wertart())) {
                 continue;
@@ -193,9 +230,7 @@ public class KostenstelleEnergieService {
                 tagesHerkunft.put(m.kennzeichen(), tagesHerkunft(m, tage, von, bis, zone));
             }
             quellen.add(new KostenstelleEnergieRegeln.Quelle(m.kennzeichen(), m.art(), m.hauptgroesse().groesse(),
-                    m.hauptgroesse().richtung(), m.hauptgroesse().einheit(),
-                    eigene.stream().map(a -> new KostenstelleEnergieRegeln.Anteil(a.kostenstelle(), a.anteilProzent(),
-                            a.gueltigAb(), a.gueltigBis(), a.fassung())).toList(),
+                    m.hauptgroesse().richtung(), m.hauptgroesse().einheit(), anteile(eigene),
                     List.copyOf(tage.values())));
         }
 
@@ -203,8 +238,84 @@ public class KostenstelleEnergieService {
                 quellen);
         String berechnetAm = MessstelleWerteRegeln.iso(jetzt, zone);
         Herkunft h = new Herkunft(k.kennzeichen(), periode, schluessel(periode, von), berechnetAm, zone,
-                nachKennzeichen, tageswerte, anlaesse, tagesHerkunft);
+                nachKennzeichen, tageswerte, monatswerte, anlaesse, tagesHerkunft);
         return new Sicht(k, periode, tag, von, bis, zone, version, berechnetAm, ziele, quellen, u, h);
+    }
+
+    private static List<KostenstelleEnergieRegeln.Anteil> anteile(List<KostenstelleEnergieRepository.Anteil> zeilen) {
+        return zeilen.stream().map(a -> new KostenstelleEnergieRegeln.Anteil(a.kostenstelle(), a.anteilProzent(),
+                a.gueltigAb(), a.gueltigBis(), a.fassung())).toList();
+    }
+
+    // ------------------------------------------------------------------------------ Ablesungen (Messen PR4)
+
+    /**
+     * Die Monate einer Messstelle aus Ablesungen im Zeitraum: Version 1 aus dem Lese-Modell „Werte je Messstelle“
+     * (Raster Monat - dieselbe Zahl wie an der Messstelle), darüber je Monat die höchste Version bis zur angefragten
+     * ({@code neueste}, aus {@code messreihe_periode_version}), dazu die Ablesezeiträume aus den Ständen
+     * ({@code staende}, neueste Fassung), die der Kunde jedem Monat zugeordnet hat (die schließende Ablesung trägt den
+     * Monat). Ein Monat ohne gespeicherte Zeile fehlt - unbekannt, nicht 0.
+     */
+    private KostenstelleEnergieRegeln.Ablesung monate(UUID tenant, Messstelle m, List<AblesungRepository.Wert> staende,
+            Map<LocalDate, KostenstelleEnergieRepository.Version> neueste, LocalDate von, LocalDate bis,
+            Map<LocalDate, String> anlass) {
+        MessstelleWerteDto.Werte w = tenant == null
+                ? werte.werte(m.kennzeichen(), "monat", von.toString(), bis.toString(), "1")
+                : werte.werte(tenant, m, "monat", von.toString(), bis.toString(), "1");
+        Map<YearMonth, List<VerteilungRegeln.Ablesezeitraum>> zeitraeume = new HashMap<>();
+        for (int i = 1; i < staende.size(); i++) {
+            AblesungRepository.Wert a = staende.get(i - 1);
+            AblesungRepository.Wert b = staende.get(i);
+            if (b.monat() != null) {
+                zeitraeume.computeIfAbsent(YearMonth.from(b.monat()), x -> new ArrayList<>())
+                        .add(new VerteilungRegeln.Ablesezeitraum(a.zeitpunkt(), b.zeitpunkt()));
+            }
+        }
+        List<KostenstelleEnergieRegeln.Monatswert> raus = new ArrayList<>();
+        for (MessstelleWerteDto.Wert x : w.werte()) {
+            if (x.grund() != null || x.zustand() == null) {
+                continue;
+            }
+            LocalDate erster = OffsetDateTime.parse(x.von()).toLocalDate();
+            YearMonth monat = YearMonth.from(erster);
+            List<VerteilungRegeln.Ablesezeitraum> imMonat = List.copyOf(zeitraeume.getOrDefault(monat, List.of()));
+            KostenstelleEnergieRegeln.Monatswert mw = new KostenstelleEnergieRegeln.Monatswert(monat, imMonat,
+                    x.menge(), x.zustand(), x.abdeckungProzent(), x.version() == null ? 1 : x.version(),
+                    x.kennzeichen() == null ? List.of() : x.kennzeichen());
+            KostenstelleEnergieRepository.Version v = neueste.get(erster);
+            if (v != null && v.version() > mw.version()) {
+                mw = new KostenstelleEnergieRegeln.Monatswert(monat, imMonat, v.menge(), v.zustand(),
+                        v.abdeckungProzent(), v.version(), saetze(v.kennzeichen()));
+                anlass.put(erster, v.anlass());
+            }
+            raus.add(mw);
+        }
+        return new KostenstelleEnergieRegeln.Ablesung(ZoneId.of(w.zeitzone()), List.copyOf(raus));
+    }
+
+    /**
+     * Die Anteile, die die Tage der Ablesezeiträume brauchen: reicht ein Zeitraum über die Periode hinaus (28.08. bis
+     * 03.10., dem September zugeordnet), gelten auch die Zeilen seiner Tage davor und danach - sonst sähe ein Anteil,
+     * der am 31.08. endete, wie „nicht verteilt“ aus.
+     */
+    private List<KostenstelleEnergieRepository.Anteil> zeilenDerAblesezeitraeume(UUID tenant, Messstelle m,
+            List<KostenstelleEnergieRepository.Anteil> eigene, KostenstelleEnergieRegeln.Ablesung a, LocalDate von,
+            LocalDate bis) {
+        LocalDate frueh = von;
+        LocalDate spaet = bis;
+        for (KostenstelleEnergieRegeln.Monatswert mw : a.monate()) {
+            for (VerteilungRegeln.Ablesezeitraum z : mw.ablesezeitraeume()) {
+                LocalDate erster = LocalDate.ofInstant(z.von(), a.zone());
+                LocalDate letzter = LocalDate.ofInstant(z.bis().minusNanos(1), a.zone());
+                frueh = erster.isBefore(frueh) ? erster : frueh;
+                spaet = letzter.isAfter(spaet) ? letzter : spaet;
+            }
+        }
+        if (frueh.equals(von) && spaet.equals(bis)) {
+            return eigene;
+        }
+        return (tenant == null ? lesen.anteile(frueh, spaet) : lesen.anteile(tenant, frueh, spaet)).stream()
+                .filter(x -> x.messstelleId().equals(m.id())).toList();
     }
 
     // ------------------------------------------------------------------------------ Doppelzählung
@@ -368,7 +479,7 @@ public class KostenstelleEnergieService {
 
     private record Herkunft(String kostenstelle, String periode, String schluessel, String berechnetAm, ZoneId zone,
             Map<String, Messstelle> messstellen, Map<String, Map<LocalDate, KostenstelleEnergieRegeln.Tageswert>> tage,
-            Map<String, Map<LocalDate, String>> anlaesse,
+            Map<String, KostenstelleEnergieRegeln.Ablesung> monate, Map<String, Map<LocalDate, String>> anlaesse,
             Map<String, Map<LocalDate, Map<String, Object>>> tagesHerkunft) {}
 
     /**
@@ -405,6 +516,7 @@ public class KostenstelleEnergieService {
     private static KostenstelleEnergieDto.Posten posten(KostenstelleEnergieRegeln.Posten p, Herkunft h,
             boolean verteilt) {
         Messstelle m = h.messstellen().get(p.messstelle());
+        KostenstelleEnergieRegeln.Ablesung a = h.monate().get(p.messstelle());
         return new KostenstelleEnergieDto.Posten(
                 new KostenstelleEnergieDto.MessstelleRef(m.id(), m.kennzeichen(), m.name(), m.art()),
                 p.groesse(), p.richtung(), p.einheit(), p.menge(), p.zustand(), p.abdeckungProzent(), p.version(),
@@ -412,7 +524,14 @@ public class KostenstelleEnergieService {
                 p.tage().stream().map(t -> new KostenstelleEnergieDto.Tag(t.tag(), t.anteilProzent(), t.quelleMenge(),
                         t.menge(), t.zustand(), t.abdeckungProzent(), t.version(), t.grund(),
                         h.tagesHerkunft().getOrDefault(p.messstelle(), Map.of()).get(t.tag()))).toList(),
-                verteilt ? herkunft(p, h) : null);
+                verteilt ? herkunft(p, h) : null,
+                p.monate().isEmpty() ? null : p.monate().stream().map(x -> new KostenstelleEnergieDto.Monat(
+                        x.monat().toString(), x.ablesezeitraeume().stream()
+                                .map(z -> new KostenstelleEnergieDto.Ablesezeitraum(
+                                        MessstelleWerteRegeln.iso(z.von(), a.zone()),
+                                        MessstelleWerteRegeln.iso(z.bis(), a.zone()))).toList(),
+                        x.anteilProzent(), x.quelleMenge(), x.menge(), x.zustand(), x.abdeckungProzent(), x.version(),
+                        x.grund(), x.geaendertAm())).toList());
     }
 
     /**
@@ -421,6 +540,9 @@ public class KostenstelleEnergieService {
      * höchsten Version — und ab Version 2 der Auslöser aus der Version der Quelle.
      */
     private static Map<String, Object> herkunft(KostenstelleEnergieRegeln.Posten p, Herkunft h) {
+        if (!p.monate().isEmpty()) {
+            return herkunftDerMonate(p, h);
+        }
         Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> quelle = h.tage().getOrDefault(p.messstelle(), Map.of());
         List<KostenstelleEnergieRegeln.Tag> tage = p.tage();
         List<BilanzAbleitung.Summand> summanden = new ArrayList<>();
@@ -438,10 +560,6 @@ public class KostenstelleEnergieService {
             tw.kennzeichen().stream().filter(s -> !ErgebnisZustand.istKorrigiert(s)).forEach(kennzeichen::add);
             quelleVersion = Math.max(quelleVersion, tw.version());
         }
-        if (quelleVersion > 1) {
-            kennzeichen.add(ErgebnisZustand.korrigiert(quelleVersion));
-        }
-        BilanzAbleitung.SummeUrteil s = BilanzAbleitung.summeOhneAnzeige(summanden);
         KostenstelleEnergieRegeln.Tag letzter = tage.get(tage.size() - 1);
         String ausloeser = null;
         if (p.version() > 1) {
@@ -451,12 +569,64 @@ public class KostenstelleEnergieService {
             ausloeser = BilanzwertHerkunft.ausloeser(anlass, List.of(p.messstelle()), erster.tag().toString(),
                     p.version());
         }
+        return satz(p, h, summanden, kennzeichen, quelleVersion, letzter.anteilProzent(), ausloeser);
+    }
+
+    /**
+     * Der Herkunfts-Satz eines Postens aus Ablesungen (Messen PR4): EIN Eingang - die Monate der Quelle mit ihrer
+     * höchsten Version -, der Anteil des letzten Monats mit Anteil. Wechselt der Anteil in jedem Monat, gibt es keinen,
+     * den der Satz nennen könnte: er sagt dann, dass die Verteilung fehlt ({@code fehlt: [verteilung]}), statt einen zu
+     * erfinden.
+     */
+    private static Map<String, Object> herkunftDerMonate(KostenstelleEnergieRegeln.Posten p, Herkunft h) {
+        Map<YearMonth, KostenstelleEnergieRegeln.Monatswert> quelle = new HashMap<>();
+        KostenstelleEnergieRegeln.Ablesung a = h.monate().get(p.messstelle());
+        if (a != null) {
+            a.monate().forEach(mw -> quelle.put(mw.monat(), mw));
+        }
+        List<BilanzAbleitung.Summand> summanden = new ArrayList<>();
+        LinkedHashSet<String> kennzeichen = new LinkedHashSet<>();
+        int quelleVersion = 1;
+        for (KostenstelleEnergieRegeln.Monat x : p.monate()) {
+            KostenstelleEnergieRegeln.Monatswert mw = quelle.get(x.monat());
+            if (mw == null) {
+                summanden.add(new BilanzAbleitung.Summand(x.monat().toString(), null, BilanzAbleitung.KEINE_WERTE,
+                        null, 1, List.of(), "+", BigDecimal.ONE));
+                continue;
+            }
+            summanden.add(new BilanzAbleitung.Summand(x.monat().toString(), mw.menge(), mw.zustand(),
+                    mw.abdeckungProzent(), mw.version(), List.of(), "+", BigDecimal.ONE));
+            mw.kennzeichen().stream().filter(k -> !ErgebnisZustand.istKorrigiert(k)).forEach(kennzeichen::add);
+            quelleVersion = Math.max(quelleVersion, mw.version());
+        }
+        KostenstelleEnergieRegeln.Monat letzter = p.monate().get(p.monate().size() - 1);
+        BigDecimal anteil = p.monate().stream().map(KostenstelleEnergieRegeln.Monat::anteilProzent)
+                .filter(x -> x != null).reduce((erste, zweite) -> zweite).orElse(null);
+        String ausloeser = null;
+        if (p.version() > 1) {
+            KostenstelleEnergieRegeln.Monat erster = p.monate().stream().filter(x -> x.version() == p.version())
+                    .findFirst().orElse(letzter);
+            String anlass = h.anlaesse().getOrDefault(p.messstelle(), Map.of()).get(erster.monat().atDay(1));
+            ausloeser = BilanzwertHerkunft.ausloeser(anlass, List.of(p.messstelle()), erster.monat().toString(),
+                    p.version());
+        }
+        return satz(p, h, summanden, kennzeichen, quelleVersion, anteil, ausloeser);
+    }
+
+    /** Der Satz aus den Summanden der Quelle; {@code anteil} {@code null} = keine Verteilung zu nennen. */
+    private static Map<String, Object> satz(KostenstelleEnergieRegeln.Posten p, Herkunft h,
+            List<BilanzAbleitung.Summand> summanden, LinkedHashSet<String> kennzeichen, int quelleVersion,
+            BigDecimal anteil, String ausloeser) {
+        if (quelleVersion > 1) {
+            kennzeichen.add(ErgebnisZustand.korrigiert(quelleVersion));
+        }
+        BilanzAbleitung.SummeUrteil s = BilanzAbleitung.summeOhneAnzeige(summanden);
         BilanzwertHerkunft.Urteil urteil = BilanzwertHerkunft.herkunft(new BilanzwertHerkunft.Eingang(
                 BilanzwertHerkunft.VERTEILT, h.kostenstelle(), h.periode(), h.schluessel(), null, null,
                 BilanzwertHerkunft.periodeEnde(h.periode(), h.schluessel(), h.zone()), h.berechnetAm(), p.version(),
                 ausloeser,
-                new BilanzwertHerkunft.Verteilungsbezug(p.fassungen().stream().mapToInt(Integer::intValue).max()
-                        .orElse(1), h.kostenstelle(), text(letzter.anteilProzent())),
+                anteil == null ? null : new BilanzwertHerkunft.Verteilungsbezug(p.fassungen().stream()
+                        .mapToInt(Integer::intValue).max().orElse(1), h.kostenstelle(), text(anteil)),
                 List.of(new BilanzwertHerkunft.Eingangswert(p.messstelle(), null, "gesamt",
                         s.vorhanden() == 0 ? null : text(s.menge()), s.zustand(), s.abdeckungProzent(), quelleVersion,
                         List.copyOf(kennzeichen))),

@@ -58,6 +58,26 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
    (Anlass, Fassung, Status, Messstelle). ⚠ Tests, die `messreihe_ereignis` vor/nach der Kaskade vergleichen, nehmen
    die Art aus (`UemsKorrekturKaskadeTest.meldungenVorher`).
 
+## Ablesezeiträume (Messen PR4, 06.10.2026)
+
+Konzept `data/vp-messen-konzept-m1/report.md` §4.2 (Befund 2) und §10.3 (Entscheid 3).
+Bis PR4 war jede Kostenstelle mit Ablesezählern immer „keine Werte“: die Sicht rechnet je Tag (E12), ein Ablesezeitraum wird nie auf Tage verteilt.
+Seit Vertrag 1.5 (Regel `ablesezeitraum`, Java `VerteilungRegeln.ablesezeitraum` und TS `uemsVerteilung.ablesezeitraum` über dieselben Vektoren, Fall F17) gilt:
+
+- Über `monat` und `jahr` trägt eine Messstelle mit führender Ablesungs-Quelle (`KostenstelleEnergieRepository.ablesungsQuellen`, ein Zug) MONATE statt Tage: `posten[].monate[]` mit `monat`, `ablesezeitraeume`, `anteil_prozent`, `quelle_menge`, `menge`, `grund`, `geaendert_am`; `tage` ist dann leer.
+  Die Menge je Monat ist die des Lese-Modells (`MessstelleWerteService`, Raster Monat, Version 1, darüber `monatsversionen` bis `version`) - dieselbe Zahl wie an der Messstelle.
+  Die Zeiträume kommen aus den Ablesungen (`AblesungRepository.werte`; die schließende Ablesung trägt den Monat).
+- Gilt der Anteil der Kostenstelle an JEDEM Tag der Zeiträume des Monats (halboffen, Zone der Messstelle), geht Anteil × Menge als Ganzes an sie (über `erbe`, Kennzeichen der Ablesezeiträume reisen mit).
+  Wechselt er, keine Zahl: `anteil_wechselt_im_ablesezeitraum`, Kennzeichen „Verteilung geändert am …“ und „keine Werte (Verteilung im Ablesezeitraum geändert)“.
+  Ein Monat mit Zeile ohne gespeicherte Menge: `keine_ablesung` (der Posten ist dann „unvollständig“ und zählt - wie jeder unvollständige Posten - nicht in der Summe des Blocks).
+- Reicht ein Zeitraum über die Periode hinaus (vor dem Monat begonnen), liest die Sicht die Anteile seiner Tage mit (`zeilenDerAblesezeitraeume`) - sonst sähen fremde Tage wie „nicht verteilt“ aus.
+- `periode=tag` bleibt unverändert (`kein_tageswert`): ein Tag bekommt nie einen Anteil eines Ablesezeitraums.
+- `monate` steht NUR an solchen Posten (`NON_NULL`); jede andere Antwort ist Zeichen für Zeichen die von vorher (`dieZahlenSindZeichengleich`).
+- Die Herkunft eines solchen Postens nennt den Anteil des letzten Monats mit Anteil; wechselt er in jedem Monat, sagt sie `fehlt: [verteilung]`, statt einen zu erfinden.
+- Der Monat ist die Einheit, weil nur er gespeichert und versioniert ist: hat ein Monat zwei Ablesezeiträume mit verschiedenen Anteilen, gibt es keine Zahl, obwohl die einzelnen Zeiträume rechenbar wären (benannte Grenze).
+- Beweise: `VerteilungVectorsTest` (F17), `uemsVerteilung.test.ts`, `KostenstelleEnergieApiTest.einAblesezeitraumGehtAlsGanzesAnDieKostenstelle` und `einWechselMittenImAblesezeitraumHatKeineZahl` (echte Routen: Ablesen, Berichtigen, `version=1`), `KostenstelleEnergieSchnittstelleVertragTest`.
+- Der Berichts-Abzug (`BerichtAbzugBildung`, Mandant ausdrücklich) liest dieselben Monate.
+
 ## Befunde (benannt, nicht still gelöst)
 
 - **Doppelte Zählung im Referenzunternehmen — seit 14.09.2026 GEWARNT, nicht behoben (Captain-Entscheid „Warnen — die

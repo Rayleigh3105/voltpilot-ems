@@ -4121,6 +4121,38 @@ export interface KostenstelleEnergiePosten {
   tage: KostenstelleEnergieTag[];
   /** Art `verteilt`; bei „nicht verteilt“ `null`. */
   herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat`/`jahr` - je Monat der Anteil der Ablesezeiträume,
+   * die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld.
+   */
+  monate?: KostenstelleEnergieMonat[];
+}
+
+/** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung (`bis` ausschließlich), mit Versatz. */
+export interface KostenstelleEnergieAblesezeitraum {
+  von: string;
+  bis: string;
+}
+
+/**
+ * Ein Monat eines Postens aus Ablesungen (Messen PR4, Konzept §10.3): `quelle_menge` ist die Menge des Monats an der
+ * Messstelle (dieselbe Zahl wie `…/werte?raster=monat`), `anteil_prozent` der Anteil, der an JEDEM Tag ihrer
+ * Ablesezeiträume galt, `menge` der Teil daraus. Wechselt der Anteil mitten im Zeitraum, sind Anteil und Menge `null`
+ * (`grund` `anteil_wechselt_im_ablesezeitraum`, `geaendert_am` der Tag); ohne Ablesung `keine_ablesung`. Nie 0.
+ */
+export interface KostenstelleEnergieMonat {
+  /** JJJJ-MM */
+  monat: string;
+  ablesezeitraeume: KostenstelleEnergieAblesezeitraum[];
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: 'quelle_keine_werte' | 'rest_unplausibel' | 'anteil_wechselt_im_ablesezeitraum' | 'keine_ablesung' | null;
+  /** Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt. */
+  geaendert_am: string | null;
 }
 
 /**

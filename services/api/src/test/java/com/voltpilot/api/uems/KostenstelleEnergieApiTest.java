@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -110,6 +111,15 @@ class KostenstelleEnergieApiTest {
 
     @Autowired
     KostenstelleEnergieService kostenstellenSicht;
+
+    @Autowired
+    AblesungService ablesungen;
+
+    @Autowired
+    MessstelleWerteService werteDienst;
+
+    @Autowired
+    MessstelleService messstellenDienst;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -706,6 +716,215 @@ class KostenstelleEnergieApiTest {
         String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(r.getResponse().getStatus()).as(messstelle + " " + text).isEqualTo(200);
         return MAPPER.readTree(text);
+    }
+
+    // ============================================================ Messen PR4: Ablesezeiträume (Vertrag 1.5, F17)
+
+    private static final String ABLESUNG_1 = "2026-10-01T07:15:00+02:00";
+    private static final String ABLESUNG_2 = "2026-11-02T07:40:00+01:00";
+
+    /**
+     * F17 über die echten Routen: MS-21 Gas Verwaltung wird abgelesen (48.211 → 49.451 m³, 01.10. 07:15 – 02.11. 07:40,
+     * dem Oktober zugeordnet). Über den Oktober geht der Zeitraum als Ganzes an 9100 (100 % an jedem seiner Tage) - als
+     * MONAT des Postens, mit derselben Menge wie die Messstelle selbst (…/werte?raster=monat). Das Jahr trägt den
+     * Oktober und nennt November und Dezember, die eine Zeile, aber noch keine Ablesung haben; ein Tag bekommt nie einen
+     * Anteil. Eine Berichtigung (49.500) ist Version 2 (1 289 m³), {@code version=1} zeigt weiter 1 240 m³.
+     */
+    @Test
+    void einAblesezeitraumGehtAlsGanzesAnDieKostenstelle() throws Exception {
+        Welt w = abgelesen("Verwaltung (F17, Ablesung)");
+        UUID k9100 = kostenstelle(w, "9100", "Verwaltung", "2026-10-01", null);
+        verteilung(w, "MS-21", List.of(new Anteil("9100", "100", "2026-10-01", null)));
+        mitUhr(() -> {
+            ablesen(w, ABLESUNG_1, "48.211");
+            ablesen(w, ABLESUNG_2, "49.451");
+        });
+
+        JsonNode oktober = energie(w, k9100, "periode=monat&am=2026-10-15");
+        JsonNode p = oktober.path("gemessen").path("posten").get(0);
+        assertThat(p.path("messstelle").path("kennzeichen").asText()).isEqualTo("MS-21");
+        assertThat(p.path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(p.path("einheit").asText()).isEqualTo("m³");
+        assertThat(p.path("zustand").asText()).isEqualTo(VOLL);
+        assertThat(p.path("tage")).as("ein Ablesezeitraum wird nie auf Tage verteilt").isEmpty();
+        assertThat(p.path("monate")).hasSize(1);
+        JsonNode monat = p.path("monate").get(0);
+        assertThat(monat.path("monat").asText()).isEqualTo("2026-10");
+        assertThat(monat.path("anteil_prozent").decimalValue()).isEqualByComparingTo("100");
+        assertThat(monat.path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(monat.path("grund").isNull()).isTrue();
+        assertThat(monat.path("ablesezeitraeume").toString())
+                .isEqualTo("[{\"von\":\"" + ABLESUNG_1 + "\",\"bis\":\"" + ABLESUNG_2 + "\"}]");
+        JsonNode werte = werteDerMessstelle(w, "MS-21", "monat", "2026-10-01", "2026-10-31", null);
+        assertThat(monat.path("quelle_menge").decimalValue()).as("dieselbe Zahl wie an der Messstelle")
+                .isEqualByComparingTo(werte.path("menge").decimalValue());
+        assertThat(texte(p.path("kennzeichen"))).containsExactly("verteilt (100 % von MS-21)",
+                werte.path("kennzeichen").get(0).asText());
+        assertThat(p.path("herkunft").path("satz").path("verteilung").path("anteil_prozent").asText()).isEqualTo("100");
+        assertThat(p.path("herkunft").path("fehlt")).isEmpty();
+        assertThat(oktober.path("summe").path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(oktober.path("nicht_verteilt").path("posten")).isEmpty();
+
+        JsonNode jahr = energie(w, k9100, "periode=jahr&am=2026-10-15");
+        JsonNode pj = jahr.path("gemessen").path("posten").get(0);
+        assertThat(pj.path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(pj.path("zustand").asText()).isEqualTo("unvollständig");
+        assertThat(texte(pj.path("fehlend"))).containsExactly("2026-11", "2026-12");
+        List<String> gruende = new ArrayList<>();
+        pj.path("monate").forEach(m -> gruende.add(m.path("monat").asText() + " " + m.path("grund").asText()));
+        assertThat(gruende).containsExactly("2026-10 null", "2026-11 keine_ablesung", "2026-12 keine_ablesung");
+
+        JsonNode tag = energie(w, k9100, "periode=tag&am=2026-10-20");
+        JsonNode pt = tag.path("gemessen").path("posten").get(0);
+        assertThat(pt.has("monate")).as("am Tag ohne Monate - die Antwort wie vor PR4").isFalse();
+        assertThat(pt.path("menge").isNull()).isTrue();
+        assertThat(pt.path("tage").get(0).path("grund").asText()).isEqualTo("kein_tageswert");
+
+        mitUhr(() -> berichtigen(w, ABLESUNG_2, "49.500"));
+        JsonNode neu = energie(w, k9100, "periode=monat&am=2026-10-15");
+        JsonNode pn = neu.path("gemessen").path("posten").get(0);
+        assertThat(pn.path("menge").decimalValue()).isEqualByComparingTo("1289");
+        assertThat(pn.path("version").asInt()).isEqualTo(2);
+        assertThat(texte(pn.path("kennzeichen"))).contains("korrigiert (Version 2)");
+        assertThat(pn.path("herkunft").path("satz").path("ausloeser").asText()).startsWith("correction MS-21 2026-10");
+        JsonNode alt = energie(w, k9100, "periode=monat&am=2026-10-15&version=1");
+        assertThat(alt.path("gemessen").path("posten").get(0).path("menge").decimalValue())
+                .as("Version 1 bleibt lesbar").isEqualByComparingTo("1240");
+    }
+
+    /**
+     * Wechselt die Verteilung mitten im Ablesezeitraum (20.10.: 100 % → 60 % an 9100 und 40 % an 4300), gibt es für
+     * diesen Zeitraum keine Zahl - nie 60 % von 1 240 (Stichtag) und nie eine Aufteilung nach Tagen; der Posten nennt den
+     * Tag. Ohne jede Verteilung gehört der Oktober ganz „nicht verteilt“. Ein Zeitraum, der vor seinem Monat beginnt
+     * (dem November zugeordnet), liest die Zeilen seiner Oktobertage mit: dort galt 4300, darum ist für 9100 der Anteil
+     * gewechselt, und „nicht verteilt“ bleibt leer.
+     */
+    @Test
+    void einWechselMittenImAblesezeitraumHatKeineZahl() throws Exception {
+        Welt w = abgelesen("Verwaltung (F17, Wechsel)");
+        UUID k9100 = kostenstelle(w, "9100", "Verwaltung", "2026-10-01", null);
+        UUID k4300 = kostenstelle(w, "4300", "Logistik", "2026-10-01", null);
+        verteilung(w, "MS-21", List.of(new Anteil("9100", "100", "2026-10-01", "2026-10-19")));
+        verteilung(w, "MS-21", List.of(new Anteil("9100", "60", "2026-10-20", null), new Anteil("4300", "40", "2026-10-20", null)));
+        mitUhr(() -> {
+            ablesen(w, ABLESUNG_1, "48.211");
+            ablesen(w, ABLESUNG_2, "49.451");
+        });
+        for (UUID k : List.of(k9100, k4300)) {
+            JsonNode sicht = energie(w, k, "periode=monat&am=2026-10-15");
+            JsonNode p = sicht.path("verteilt").path("posten").get(0);
+            assertThat(p.path("menge").isNull()).as("nie ein Stichtag-Anteil, nie nach Tagen geteilt").isTrue();
+            assertThat(p.path("zustand").asText()).isEqualTo("keine Werte");
+            assertThat(texte(p.path("kennzeichen"))).containsExactly("Verteilung geändert am 20.10.2026",
+                    "keine Werte (Verteilung im Ablesezeitraum geändert)");
+            JsonNode m = p.path("monate").get(0);
+            assertThat(m.path("grund").asText()).isEqualTo("anteil_wechselt_im_ablesezeitraum");
+            assertThat(m.path("geaendert_am").asText()).isEqualTo("2026-10-20");
+            assertThat(m.path("quelle_menge").decimalValue()).isEqualByComparingTo("1240");
+            assertThat(sicht.path("nicht_verteilt").path("posten")).isEmpty();
+            assertThat(sicht.path("summe").path("menge").isNull()).as("keine Zahl, die nicht erfunden wäre").isTrue();
+        }
+
+        Welt ohne = abgelesen("Verwaltung (F17, ohne Verteilung)");
+        UUID k9100ohne = kostenstelle(ohne, "9100", "Verwaltung", "2026-10-01", null);
+        mitUhr(() -> {
+            ablesen(ohne, ABLESUNG_1, "48.211");
+            ablesen(ohne, ABLESUNG_2, "49.451");
+        });
+        JsonNode offen = energie(ohne, k9100ohne, "periode=monat&am=2026-10-15").path("nicht_verteilt");
+        assertThat(offen.path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(texte(offen.path("posten").get(0).path("kennzeichen")).get(0)).isEqualTo("nicht verteilt");
+
+        Welt november = abgelesen("Verwaltung (F17, November)");
+        UUID k9100nov = kostenstelle(november, "9100", "Verwaltung", "2026-10-01", null);
+        kostenstelle(november, "4300", "Logistik", "2026-10-01", null);
+        verteilung(november, "MS-21", List.of(new Anteil("4300", "100", "2026-10-01", "2026-10-31")));
+        verteilung(november, "MS-21", List.of(new Anteil("9100", "100", "2026-11-01", null)));
+        mitUhr(() -> {
+            ablesen(november, ABLESUNG_1, "48.211");
+            ablesen(november, ABLESUNG_2, "49.451", "2026-11");
+        });
+        JsonNode nov = energie(november, k9100nov, "periode=monat&am=2026-11-15");
+        JsonNode pn = nov.path("verteilt").path("posten").get(0);
+        assertThat(pn.path("monate").get(0).path("geaendert_am").asText()).isEqualTo("2026-11-01");
+        assertThat(pn.path("menge").isNull()).isTrue();
+        assertThat(nov.path("nicht_verteilt").path("posten")).as("die Oktobertage gehörten 4300, nicht niemandem")
+                .isEmpty();
+    }
+
+    /** MS-21 Gas Verwaltung - gemessen, ohne Gerät, an einem Standort (wie AblesungApiTest). */
+    private Welt abgelesen(String name) {
+        Welt w = welt(name);
+        UUID st = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), w.unternehmen());
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, 'MS-21', 'Gas Heizung Verwaltung', 'gemessen', 'Gas', "
+                + "'Volumen', 'Bezug', 'm³', 'Zählerstand') RETURNING id", UUID.class, w.mandant());
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "'2026-01-01')", w.mandant(), ms, st);
+        w.messstellen().put("MS-21", ms);
+        return w;
+    }
+
+    private interface Schritt {
+        void tun() throws Exception;
+    }
+
+    /** Die Uhr der Ablesungen nach dem 02.11.2026 - eine Ablesung aus der Zukunft wird abgelehnt. */
+    private void mitUhr(Schritt schritt) throws Exception {
+        Clock uhr = Clock.fixed(Instant.parse("2027-02-10T12:00:00Z"), ZoneId.of("UTC"));
+        ablesungen.uhrStellen(uhr);
+        werteDienst.uhrStellen(uhr);
+        messstellenDienst.uhrStellen(uhr);
+        try {
+            schritt.tun();
+        } finally {
+            ablesungen.uhrStellen(Clock.systemUTC());
+            werteDienst.uhrStellen(Clock.systemUTC());
+            messstellenDienst.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    private void ablesen(Welt w, String zeitpunkt, String stand) throws Exception {
+        ablesen(w, zeitpunkt, stand, null);
+    }
+
+    private void ablesen(Welt w, String zeitpunkt, String stand, String monat) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>(Map.of("zeitpunkt", zeitpunkt, "stand", stand));
+        if (monat != null) {
+            body.put("zuordnung_monat", monat);
+        }
+        schreiben(w, "/api/v1/messstellen/MS-21/ablesungen", body);
+    }
+
+    private void berichtigen(Welt w, String zeitpunkt, String stand) throws Exception {
+        schreiben(w, "/api/v1/messstellen/MS-21/ablesungen/" + zeitpunkt + "/berichtigung",
+                Map.of("stand", stand, "begruendung", "Ablesefehler - eine Ziffer vertauscht (Foto vom 02.11.)"));
+    }
+
+    private void schreiben(Welt w, String pfad, Object body) throws Exception {
+        MvcResult r = mvc.perform(post(pfad).contentType(MediaType.APPLICATION_JSON)
+                .content(MAPPER.writeValueAsString(body))
+                .with(jwt().jwt(j -> {
+                    j.subject("kc-jonas-" + w.mandant());
+                    j.claim("preferred_username", "Jonas Wendlinger");
+                    j.claim("tenant_id", w.mandant().toString());
+                }).authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                        "KONTO_benutzer")))).andReturn();
+        assertThat(r.getResponse().getStatus()).as(pfad + " " + r.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .isEqualTo(200);
+    }
+
+    private JsonNode werteDerMessstelle(Welt w, String kennzeichen, String raster, String von, String bis,
+            String version) throws Exception {
+        MvcResult r = mvc.perform(get("/api/v1/messstellen/" + kennzeichen + "/werte?raster=" + raster + "&von=" + von
+                + "&bis=" + bis + (version == null ? "" : "&version=" + version)).with(jwt().jwt(j -> {
+                    j.subject("sub-" + w.mandant());
+                    j.claim("tenant_id", w.mandant().toString());
+                }))).andReturn();
+        assertThat(r.getResponse().getStatus()).isEqualTo(200);
+        return MAPPER.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8)).path("werte").get(0);
     }
 
     /** Je Kostenstelle und Paar „4100: satz“ in der Reihenfolge der Antwort. */
