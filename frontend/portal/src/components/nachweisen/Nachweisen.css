@@ -1,0 +1,340 @@
+/*
+ * NACHWEISEN, Runde 2 (Konzept n1, Captain-Freigabe 07.10.2026): die gemeinsamen Bausteine für weniger Text am Handy.
+ * Nur Haus-Tokens aus `index.css` (keine neue Farbe, kein neuer Radius, keine neue Schrift); die Bausteine der anderen
+ * Nachweisen-PRs stehen in eigenen Dateien daneben (`NachweisenZeilen.css`, `NwSchritte.css`).
+ *   .vp-nw-ikn        i-Knopf: Erklärung nur auf Antippen (sichtbar 28/24 px, Trefferfläche 44 px)
+ *   .vp-nw-erkl       Erklär-Blatt: Klartext, Bei Ihnen, Nicht verwechseln, Normwort
+ *   .vp-nw-blatt      Blatt von unten (am Rechner: Dialog in der Mitte, `.vp-nw-blatt-inhalt`)
+ *   .vp-nw-kopf       Seitenkopf: Titel + i-Knopf, Kurzzeile, Status-Zeile, Menü
+ *   .vp-nw-zei/.zlg   Zeichen eines Teils und ihre Legende
+ *   .vp-nw-zchip      Zähler-Chip: Zahl groß, Wort kurz, antippbar
+ *   .vp-nw-naechst    Als Nächstes (gestrichelt: Kann noch nicht beginnen)
+ */
+
+/* ---------- i-Knopf ------------------------------------------------------------------------------------------ */
+.vp-nw-ikn {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 9%, var(--vp-c-card, #fff));
+  color: var(--vp-c-primary, #2563eb);
+  cursor: pointer;
+}
+.vp-nw-ikn.is-klein {
+  width: 24px;
+  height: 24px;
+}
+/* Die Trefferfläche reicht über den sichtbaren Kreis hinaus (44 px), ohne ihn größer zu zeichnen. */
+.vp-nw-ikn::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.vp-nw-ikn.is-klein::before {
+  inset: -10px;
+}
+.vp-nw-ikn svg {
+  display: block;
+}
+.vp-nw-ikn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .vp-nw-ikn:hover {
+    background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 16%, var(--vp-c-card, #fff));
+  }
+}
+
+/* ---------- Erklär-Blatt ------------------------------------------------------------------------------------- */
+.vp-nw-erkl {
+  display: grid;
+  gap: 9px;
+  font-family: var(--vp-c-font);
+}
+.vp-nw-erkl p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-nw-erkl p.is-bsp {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-erkl p.is-bsp b {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 600;
+}
+.vp-nw-erkl p.is-fw {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Blatt (am Telefon über BottomSheet, am Rechner über das Modal der Schale) ------------------------- */
+/* Wie `.sheet` des Konzepts: Titel in Navy, keine Linie unter dem Kopf, der Inhalt rückt an den Titel. */
+.vp-bs.vp-nw-blatt {
+  border-radius: 22px 22px 0 0;
+}
+.vp-bs.vp-nw-blatt .vp-bs-head {
+  border-bottom: 0;
+  min-height: 40px;
+}
+.vp-bs.vp-nw-blatt .vp-bs-title {
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-bs.vp-nw-blatt .vp-bs-body {
+  padding: 4px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.vp-nw-blatt-inhalt {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+/* Am Rechner: derselbe Inhalt als Dialog in der Mitte, schmal wie das Blatt (`.ddlg` des Konzepts). */
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) {
+  width: min(480px, 100%);
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt.is-breit) {
+  width: min(760px, 100%);
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) > .dhead {
+  border-bottom: 0;
+  padding: var(--vp-space-5, 20px) var(--vp-space-4, 16px) 0 var(--vp-space-6, 24px);
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) > .dhead h2 {
+  margin: 0;
+  font: 700 1.125rem/1.3 var(--vp-c-font);
+  color: var(--vp-navy, #1e3a5f);
+  white-space: normal;
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) > .dbody {
+  padding: var(--vp-space-3, 12px) var(--vp-space-6, 24px) var(--vp-space-6, 24px);
+}
+
+/* ---------- Seitenkopf ----------------------------------------------------------------------------------------- */
+.vp-nw-kopf {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+}
+.vp-nw-zurueck {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  margin: -6px 0 -2px -4px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.875rem var(--vp-c-font);
+  cursor: pointer;
+}
+.vp-nw-zurueck:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-nw-kopf-zeile {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.vp-nw-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-nw-titel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* Wie der Kopf der Wiedervorlage und der Übersicht: Reiter und Seitentitel tragen dasselbe Wort. */
+.vp-nw-titel h1 {
+  min-width: 0;
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.vp-nw-kurz {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-kopf-status {
+  margin-top: 7px;
+}
+.vp-nw-kopf-menue {
+  flex: 0 0 auto;
+}
+
+/* ---------- Zeichen und Legende -------------------------------------------------------------------------------- */
+.vp-nw-zei {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--vp-navy, #1e3a5f);
+  background: var(--vp-navy, #1e3a5f);
+}
+/* Der Ring „offen“ trägt den Feldrand der Familie (#858D96): 3,4 : 1 Kontrast für ein Zeichen ohne Wort daneben (§12). */
+.vp-nw-zei.is-offen {
+  background: var(--vp-c-card, #fff);
+  border-color: #858d96;
+}
+.vp-nw-zei.is-entwurf {
+  background: var(--vp-c-card, #fff);
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: inset 0 0 0 2px var(--vp-c-card, #fff), inset 0 0 0 6px var(--vp-action, #2c5282);
+}
+.vp-nw-zei.is-ueber {
+  background: var(--vp-c-warn-fg, #9a3412);
+  border-color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zlg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-zlg > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ---------- Zähler-Chips --------------------------------------------------------------------------------------- */
+.vp-nw-zchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-nw-zchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: 600 0.8125rem/1.2 var(--vp-c-font);
+  white-space: nowrap;
+}
+button.vp-nw-zchip {
+  position: relative;
+  cursor: pointer;
+}
+/* 40 px sichtbar, 44 px zum Tippen. */
+button.vp-nw-zchip::before {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+}
+.vp-nw-zchip b {
+  font: 800 1.0625rem/1 var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: inherit;
+}
+.vp-nw-zchip.is-warn {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 22%, var(--vp-c-card, #fff));
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zchip.is-still {
+  background: var(--vp-c-muted, #e9eff8);
+  border-color: transparent;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-zchip:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  button.vp-nw-zchip:hover {
+    border-color: color-mix(in srgb, var(--vp-navy, #1e3a5f) 30%, var(--vp-c-border, #e2e8f0));
+  }
+  button.vp-nw-zchip.is-warn:hover {
+    border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 45%, var(--vp-c-card, #fff));
+  }
+}
+
+/* ---------- Als Nächstes --------------------------------------------------------------------------------------- */
+.vp-nw-naechst {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-action, #2c5282) 30%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  font-family: var(--vp-c-font);
+}
+.vp-nw-naechst.is-kann-nicht {
+  border-style: dashed;
+  border-color: #cbd5e1;
+}
+.vp-nw-naechst-nl {
+  grid-column: 1 / -1;
+  font: 700 0.6875rem/1.3 var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-action, #2c5282);
+}
+.vp-nw-naechst.is-kann-nicht .vp-nw-naechst-nl {
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Ohne Datumsblock steht der Titel über die volle Breite. */
+.vp-nw-naechst-nl + .vp-nw-naechst-nt {
+  grid-column: 1 / -1;
+}
+.vp-nw-naechst-nt {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+.vp-nw-naechst-nt > b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.vp-nw-naechst-why {
+  margin-top: -6px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
