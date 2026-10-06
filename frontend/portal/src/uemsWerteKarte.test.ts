@@ -637,6 +637,19 @@ describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer
     expect(karten.noch_nicht_gebildet!.grund).toBe(UEMS_NOCH_NICHT_GERECHNET_SATZ);
   });
 
+  it('eine Komponente ohne eigenen Namen: der Messwert steht für sie, mit dem Gerät - der Satz bleibt ein Satz aus Namen', () => {
+    const z = zeileVon('MS-16');
+    const ohneName = { ...z.quelle, fuehrend: { ...z.quelle.fuehrend!, komponente_name: null } };
+    const namen = quellenNamen(ohneName);
+    expect(namen[z.quelle.fuehrend!.id]).toEqual({
+      quelle: `${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet})`,
+      kanal: `${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet})`,
+    });
+    expect(karte(ms16Oktober(), namen)!.grund).toContain(`${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet}) gilt seit 15.10.2026`);
+    // Ohne Namen des Messwerts bleibt nur eine Kennung - dann kein Satz.
+    expect(quellenNamen({ ...ohneName, fuehrend: { ...ohneName.fuehrend, kanal_name: null } })).toEqual({});
+  });
+
   it('kein Satz ohne seinen Namen (D5): ohne das Register bleibt `quelle_teilweise` und `anteil_nicht_gespeichert` beim Strich', () => {
     expect(karte(ms16Oktober())).toMatchObject({ zahl: OHNE_ZAHL, grund: null });
     // Eine Bindung, die nicht im Zeitraum BEGINNT (sie endet nur), trägt keinen „gilt seit“-Satz.

@@ -30,7 +30,7 @@ import { MONATE } from './picker/datum';
 import { vergleich as berichtVergleich } from './uemsBericht';
 import { ANZEIGE_EINHEITEN, OHNE_ZAHL, pruefeMenge } from './uemsErgebnis';
 import { lokalerTag, type Tag } from './uemsOrtsbaum';
-import { anzeige, monatTitel } from './uemsWerteKarte';
+import { anzeige, karte, monatTitel, type QuellenNamen } from './uemsWerteKarte';
 
 // -------------------------------------------------------------------- Wörter
 
@@ -265,7 +265,10 @@ export interface LeitKachel {
   verlauf: (number | null)[];
   /** „September 2025: 88.200 kWh · aus Ablesungen“ */
   unter: string;
-  /** Fehlt die Zahl des Monats bei einem Ablesezähler: der Satz und der Schritt (Konzept §6.4 „Zustände“). */
+  /**
+   * Fehlt die Zahl des Monats: beim Ablesezähler der Satz und der Schritt (Konzept §6.4 „Zustände“), sonst der Grund
+   * der Route (z. B. „Die Quelle deckt den Zeitraum nur zum Teil …“), wo sie einen nennt.
+   */
   fehlt: { satz: string; schritt: string | null } | null;
 }
 
@@ -288,6 +291,8 @@ export function leitKachel(e: {
   herkunft: Herkunft;
   /** Darf hier eingetragen werden (Recht, nicht archiviert, nicht „Stand am“)? Sonst ohne Schritt. */
   ablesenMoeglich: boolean;
+  /** Die Namen der Bindungen (`quellenNamen`) - nur der Grund-Satz braucht sie. */
+  namen?: QuellenNamen;
 }): LeitKachel {
   const { serie, monat } = e;
   const jetzt = serie.werte.find((w) => monatDes(w) === monat) ?? null;
@@ -316,14 +321,21 @@ export function leitKachel(e: {
     marke: hatZahl && vorjahr && spricht(serie, vorjahr) ? vorjahrMarke(serie, jetzt!, vorjahr) : null,
     verlauf,
     unter,
-    fehlt:
-      !hatZahl && e.herkunft === 'ablesung'
+    fehlt: hatZahl
+      ? null
+      : e.herkunft === 'ablesung'
         ? {
             satz: `Für ${MONATE[Number(monat.slice(5, 7)) - 1]} fehlt noch die Ablesung.`,
             schritt: e.ablesenMoeglich ? ABLESUNG_EINTRAGEN : null,
           }
-        : null,
+        : grundDes(serie, jetzt, e.namen),
   };
+}
+
+/** Der Grund der Route für einen Monat ohne Zahl - derselbe Satz wie in der Zeile des Monats (`karte`), ohne Schritt. */
+function grundDes(serie: MessstelleWerte, w: MessstelleWerteWert | null, namen: QuellenNamen = {}): LeitKachel['fehlt'] {
+  const satz = w ? karte({ ...serie, werte: [w] }, namen)?.grund : null;
+  return satz ? { satz, schritt: null } : null;
 }
 
 /** Der Vorjahresvergleich - gerechnet im Bericht-Zwilling, hier nur das Wort und der Pfeil (Anzeige ganz in %). */

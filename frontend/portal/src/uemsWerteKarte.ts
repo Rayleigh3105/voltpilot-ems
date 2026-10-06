@@ -369,14 +369,17 @@ export interface BindungsNamen {
 export type QuellenNamen = Readonly<Record<string, BindungsNamen>>;
 
 /**
- * Die Namen der Bindungen, die das Register heute kennt: die führende und die davor. Eine Bindung ohne Namen der
- * Komponente oder des Messwerts fehlt — ein Satz mit einer Kennung statt eines Namens wäre keiner des Vertrags.
+ * Die Namen der Bindungen, die das Register heute kennt: die führende und die davor. Eine Bindung ohne Namen des
+ * Messwerts fehlt — ein Satz mit einer Kennung statt eines Namens wäre keiner des Vertrags. Trägt die Komponente keinen
+ * eigenen Namen (im Bestand häufig: ein Gerät ohne Bezeichnung), steht der Name des Messwerts für sie, mit dem Gerät.
  */
 export const quellenNamen = (quelle: MessstelleRegisterZeile['quelle'] | null | undefined): QuellenNamen => {
   const namen: Record<string, BindungsNamen> = {};
   for (const b of [quelle?.fuehrend, quelle?.davor]) {
-    if (!b?.komponente_name || !b.kanal_name) continue;
-    namen[b.id] = { quelle: `${b.komponente_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.komponente_name})` };
+    if (!b?.kanal_name) continue;
+    namen[b.id] = b.komponente_name
+      ? { quelle: `${b.komponente_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.komponente_name})` }
+      : { quelle: `${b.kanal_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.geraet.geraet})` };
   }
   return namen;
 };

@@ -149,6 +149,22 @@ describe('die Leitkachel (§6.4 Punkt 4)', () => {
     expect(leitKachel({ serie: serie({ '2026-09': null }), monat: '2026-09', rolle: r, herkunft: 'ablesung', ablesenMoeglich: false }).fehlt?.schritt).toBeNull();
     expect(leitKachel({ serie: serie({ '2026-09': null }), monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: true }).fehlt).toBeNull();
   });
+
+  it('ein Gerät, dessen Quelle erst im Monat beginnt: „—“ mit dem Satz der Route und ohne Schritt (D5 mit Namen)', () => {
+    const s = serie();
+    const id = s.quellen[0].id;
+    const teilweise: MessstelleWerte = {
+      ...s,
+      quellen: [{ ...s.quellen[0], gueltig_ab: '2026-09-15T17:30:00+02:00' }],
+      werte: s.werte.map((w) => (w.von.startsWith('2026-09') ? { ...w, menge: null, zustand: null, grund: 'quelle_teilweise' as const } : w)),
+    };
+    const k = leitKachel({ serie: teilweise, monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: false, namen: { [id]: { quelle: 'Gaszähler Verwaltung (GR-12)', kanal: 'Volumen (GR-12)' } } });
+    expect(k.wert).toBe('—');
+    expect(k.fehlt?.schritt).toBeNull();
+    expect(k.fehlt?.satz).toContain('Gaszähler Verwaltung (GR-12) gilt seit 15.09.2026');
+    // Ohne Namen kein Satz mit einer Kennung.
+    expect(leitKachel({ serie: teilweise, monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: false }).fehlt).toBeNull();
+  });
 });
 
 describe('Balken der Monate (§6.4 Punkt 5)', () => {

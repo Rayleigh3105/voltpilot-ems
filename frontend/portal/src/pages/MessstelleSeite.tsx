@@ -93,7 +93,7 @@ import { quelleKarte, type BindungsRolle, type QuelleGroesseKarte } from '../que
 import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
 import { boxAmGeraet, boxWechselAmGeraet } from '../boxAnQuelle';
 import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
-import { nebengroessen, periodeAus } from '../uemsWerteKarte';
+import { nebengroessen, periodeAus, quellenNamen } from '../uemsWerteKarte';
 import { useMessenEinstieg } from '../messenEinstieg';
 import { sprungziel, zoneSatz, type Zeitraum, ZEITRAEUME } from '../uemsOberflaechen';
 import { wirksameAblesungen } from '../werteEingabe';
@@ -511,7 +511,7 @@ function MessstelleSeiteMitId({
 
   const leit =
     mitMenge && serie
-      ? leitKachel({ serie, monat: leitMonat, rolle: r, herkunft, ablesenMoeglich: darfAblesen })
+      ? leitKachel({ serie, monat: leitMonat, rolle: r, herkunft, ablesenMoeglich: darfAblesen, namen: quellenNamen(zeile?.quelle) })
       : null;
   const stand = standKachel(zeile, standortZone, jetzt);
   const naechste = ablesungKachel(zeile, standortZone, jetzt);
