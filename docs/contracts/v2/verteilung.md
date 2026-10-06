@@ -1,7 +1,8 @@
 # Verteilungs-Vertrag: eine Messstelle auf Kostenstellen (UEMS AP-10)
 
-Stand 14.09.2026 · Vertrag 1.4 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, §5.7, Entscheide E4, E11,
-E12, E13 vom 12.09.2026; Regel `doppelzaehlung` nach dem Captain-Entscheid vom 14.09.2026.
+Stand 06.10.2026 · Vertrag 1.5 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, §5.7, Entscheide E4, E11,
+E12, E13 vom 12.09.2026; Regel `doppelzaehlung` nach dem Captain-Entscheid vom 14.09.2026; Regel
+`ablesezeitraum` nach dem Messen-Konzept `data/vp-messen-konzept-m1` §10.3 (Entscheid 3, Messen PR4).
 
 Eine **feste Verteilung** ist eine eigene zeitgültige Beziehung **Messstelle → Kostenstelle** mit
 Anteil (Tage, Muster A). Sie verteilt MENGEN, nie Stammdaten, und sie wirkt je Tag auf die
@@ -9,7 +10,7 @@ Tagesmenge.
 
 | Datei | Rolle |
 |---|---|
-| [`verteilung-vectors.json`](./verteilung-vectors.json) | **die eine Wahrheit**: die Referenzfälle F3, F6, F10–F14 mit Eingang und erwartetem Ergebnis je Prüfung |
+| [`verteilung-vectors.json`](./verteilung-vectors.json) | **die eine Wahrheit**: die Referenzfälle F3, F6, F10–F14 und F17 (Ablesezeitraum, seit 1.5) mit Eingang und erwartetem Ergebnis je Prüfung |
 | [`verteilung.schema.json`](./verteilung.schema.json) | das Schema für Vokabulare, Regeln und die Vektor-Datei selbst (JSON-Schema 2020-12) |
 | `services/api/.../uems/VerteilungRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
 | `services/api/.../uems/KostenstelleEnergieRegeln.java` | die Regel `kostenstelle` (rein, nur Java — sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz) |
@@ -27,7 +28,7 @@ Tagesmenge.
 > seit 14.09.2026 daneben `doppelzaehlung` mit den Formeln je Tag aus `BerechnetePeriodenLauf.formelnJeTag`).
 > Der Verteilen-Dialog kommt mit IP-15.
 
-## 1. Die zehn Regeln
+## 1. Die elf Regeln
 
 | Regel | Was sie beantwortet |
 |---|---|
@@ -38,6 +39,7 @@ Tagesmenge.
 | `mengen` | E12/F13: Wie viel bekommt jedes Ziel über eine Periode? |
 | `erbe` | §4.5: Was erbt der verteilte Wert von seiner Quelle? |
 | `term` | E11/F11: Wie liest ein Formel-Term „Anteil 4100 von MS-07“? |
+| `ablesezeitraum` | Messen PR4: Welchen Teil eines Ablesezeitraums (ohne Tagesmengen) bekommt jede Kostenstelle - als Ganzes oder gar keinen? |
 | `herkunft` | §4.7/E13: Woher kommt dieser verteilte Wert? (gemeinsam mit [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md)) |
 | `kostenstelle` | AP-10 IP-11, §5.7: Was bekommt eine Kostenstelle über eine Periode — gemessen · verteilt · berechnet — und was gehört daneben niemandem (nicht verteilt)? |
 | `doppelzaehlung` | Captain-Entscheid 14.09.2026: Welcher Posten einer Kostenstelle ist an welchen Tagen bereits in einem anderen enthalten — ohne eine Zahl zu ändern? |
@@ -110,6 +112,16 @@ Tagesmenge.
    und zugeordnet) ist nicht enthalten, ein Term auf den positiven/negativen Teil eines Messwerts trägt
    höchstens zum Teil. Es zählt die Einrichtung, nicht der Wert von heute: ein Term ohne Menge ist
    trotzdem enthalten. Nur Posten derselben Größe, Richtung und Einheit; ein Messkanal-Term ist kein Posten.
+
+14. **Ein Ablesezeitraum geht als Ganzes - oder gar nicht (`ablesezeitraum`, Messen PR4, Fall F17).**
+   Ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt.
+   Gilt der Anteil einer Kostenstelle an JEDEM Tag, den er berührt, unverändert, ist Anteil × Menge genau die Summe der Tagesanteile, die E12 aus den (unbekannten) Tagesmengen ergäbe - die Menge geht als Ganzes an sie (MS-21: 1 240 m³ zu 100 % an 9100).
+   Wechselt er, auch von keiner Zeile zu einer, gibt es für sie keine Zahl: Grund `anteil_wechselt_im_ablesezeitraum`, Satz „keine Werte (Verteilung im Ablesezeitraum geändert)“ und „Verteilung geändert am …“ - nie ein Stichtag-Anteil, nie eine Aufteilung nach Tagen.
+   Anders als `mengen` urteilt die Regel JE Kostenstelle: ändert sich der Satz nur für eine andere, bleibt diese Zahl exakt (744 m³ = 60 % × 1 240).
+   Die Tage sind halboffen in der Zone der Messstelle: eine Ablesung am 01.12. 00:00 schließt mit dem 30.11., eine um 07:40 am 02.11. berührt den 02.11.
+   „Nicht verteilt“: an ALLEN Tagen ohne Zeile die ganze Menge, an nur einigen keine Zahl.
+   Die Kostenstellen-Sicht liest eine Messstelle aus Ablesungen über Monat und Jahr in MONATEN statt Tagen (`posten[].monate`): je Monat die gespeicherte Menge (dieselbe Zahl wie `…/werte?raster=monat`) mit den Ablesezeiträumen, die der Kunde ihm zugeordnet hat; ein Monat mit Zeile, aber ohne Ablesung ist `keine_ablesung`.
+   Ein Tag bekommt nie einen Anteil eines Ablesezeitraums.
 
 ## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5, eingelöst mit IP-8)
 
