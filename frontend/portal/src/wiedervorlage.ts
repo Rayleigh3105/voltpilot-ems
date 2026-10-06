@@ -361,7 +361,8 @@ const DOKUMENT_TITEL = /\s+[—-]\s+Überprüfung$/;
 const ANSTOSS_TITEL = /^(.*?)\s+[—-]\s+Revision angestoßen \(([^)]+)\)$/;
 
 const dokumentGegenstand = (z: WiedervorlageZeile) => z.titel.replace(DOKUMENT_TITEL, '').trim() || ART_WORT[z.art];
-const berichtName = (z: WiedervorlageZeile) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
+/** Der Name eines Berichts mit Anstoß (aus `bezug`, sonst aus dem Titel der Route) - auch für den Überblick von Nachweisen. */
+export const berichtName = (z: Pick<WiedervorlageZeile, 'bezug' | 'titel' | 'kennzeichen'>) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
 
 const STAND_BLEIBT = 'Der freigegebene Stand bleibt, bis Sie entscheiden.';
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];

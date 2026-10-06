@@ -39,71 +39,11 @@
   display: none;
 }
 
-.vp-em-filter {
-  display: grid;
-  gap: var(--vp-c-space-3);
-  align-items: end;
-}
-
-@media (min-width: 720px) {
-  .vp-em-filter {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) auto;
-  }
-}
-
 .vp-em-gruppe {
   display: flex;
   flex-direction: column;
   gap: var(--vp-c-space-2);
   min-width: 0;
-}
-
-.vp-em-zuschnitt {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-14);
-}
-
-/* K4: der Stand je Gruppe als Zeichen — gefüllt = etwas festgehalten, Ring = noch nichts. Keine Zahl über das Ganze (G4). */
-.vp-em-gruppe-kopf {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-c-space-2);
-}
-.vp-em-marke {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--vp-gray, #ced4da);
-}
-.vp-em-marke.is-voll {
-  border-color: var(--vp-ok-ink, #2e7d32);
-  background: var(--vp-ok-ink, #2e7d32);
-}
-.vp-em-weg {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-c-space-2);
-  min-width: 0;
-}
-/* Ein langer erster Schritt („Energiepolitik und Anwendungsbereich festhalten“) bricht um, statt bei 375 px über den
-   Rand zu laufen. */
-.vp-em-weg .vp-btn {
-  max-width: 100%;
-  white-space: normal;
-  line-height: 1.3;
-  text-align: left;
-}
-.vp-em-zuschnitt-auf > summary {
-  cursor: pointer;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  color: var(--vp-c-primary);
-  font-weight: var(--vp-c-fw-600, 600);
-  font-size: var(--vp-c-fs-14);
 }
 
 .vp-em-stufe {
@@ -214,12 +154,6 @@
 @media (min-width: 720px) {
   .vp-ez-tafel .vp-em-tag {
     white-space: nowrap;
-  }
-
-  /* „D-0002 · Anwendungsbereich“ bricht sonst mitten im Wort (overflow-wrap: anywhere der Tafel). */
-  .vp-ez-tafel .vp-em-eintrag {
-    min-width: 12rem;
-    overflow-wrap: break-word;
   }
 }
 

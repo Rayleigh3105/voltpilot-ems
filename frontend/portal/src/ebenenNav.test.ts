@@ -713,7 +713,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(leiste.length).toBeLessThanOrEqual(LEISTE_HOECHSTENS);
     expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['kennzahlen', 'bewertung']);
     expect(leiste.find((k) => k.key === 'verbessern')?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
-    // „Nachweisen“ öffnet das Verzeichnis des Energiemanagements, die Berichte stehen daneben.
+    // „Nachweisen“ öffnet den Überblick des Energiemanagements (Nachweisen n1), die Berichte stehen daneben.
     expect(leiste.find((k) => k.key === 'nachweisen')?.bereiche).toEqual(['energiemanagement', 'berichte']);
     expect(leiste.find((k) => k.key === 'nachweisen')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));
     // Am Telefon stehen über der Seite nur die Reiter der offenen Gruppe.
