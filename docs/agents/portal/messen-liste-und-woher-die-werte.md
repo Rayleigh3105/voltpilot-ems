@@ -9,7 +9,8 @@ Stand: Messen-Bau m2, PR1 (Konzept `data/vp-messen-konzept-m1`, Captain-Freigabe
 - Suchregel: jedes Wort muss passen, normalisiert über `picker/suche.ts`; eine Ziffer am Wortanfang gehört zum Wort davor („halle 1“ → `halle1`, „az 3“ → `az3`), sonst fände „halle 1“ über „ST-1“ jede Messstelle des Standorts.
 - Gesucht wird in Name, Kennzeichen, Ort (mit Pfad und Standort), Medium und dem Gerät der führenden Quelle, nie in der Anlage (MS-20 liegt in Halle 2, hängt aber an der Anlage Halle 1).
 - Marken erscheinen nur, wenn es sie gibt („1 ohne Quelle“), und filtern; die alten Schalter „Nur ohne Quelle“ und „Nur geplant …“ sind Marken geworden (kein `ohneQuelle`/`geplantFuerEinsatz` mehr aus dem Portal).
-- Die ganze Reihe ist ein Verweis (`<a href>`) auf die Seite der Messstelle; der Sprung zur Komponente (D1) steht seitdem im Kopf der Seite (`.vp-mss-quelle-sprung`).
+- Die ganze Reihe ist ein Verweis (`<a href>`) auf die Seite der Messstelle; mit „Stand am …“ trägt er den Tag als `?periode=` (`onOeffnen(id, periode)`).
+- Der Sprung zur Komponente (D1) steht seit PR2 in der Karte „Woher die Werte kommen“ der Seite (`.vp-mss-quelle-sprung`).
 - Der Rückweg „‹ Alle Messstellen“ führt über `messstellenRueckweg.ts` in dieselbe Trefferliste (nur Speicher dieser Sitzung).
 - „Summenwert anlegen“ gibt es unter Messen nicht mehr (Konzept §6.10); ein Summenwert entsteht an der Anlage.
 - Box („zuständig: …“) und Vergleichsquellen stehen nicht mehr in der Liste, sondern auf der Seite; die Tatsache „Einstellung geändert ab …“ (A4) steht leise unter dem Zustand, unbekannte Tatsachen-Codes werden nie roh gezeigt.

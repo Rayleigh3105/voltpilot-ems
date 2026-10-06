@@ -256,13 +256,14 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page, `register-geplant-${breite}`);
     });
 
-    test('Messstellen-Seite: „geplant für EE-8 …“ unter „Keine Datenquelle“ — ohne Wert, nie 0', async ({ page }) => {
+    test('Messstellen-Seite: „geplant für EE-8 …“ im Kopf, „Noch keine Quelle“ in der Herkunft — ohne Wert, nie 0', async ({ page }) => {
       await cloudMs23(page);
       await oeffne(page, `/e2e/messstelle-seite.html?id=${MS23_ID}`, breite);
-      const kopf = page.locator('.vp-mss-kopf');
+      const kopf = page.locator('.vp-mss-oben');
       await expect(kopf.getByTestId('messstelle-geplant-fuer')).toHaveText('geplant für EE-8 Gebäudetechnik Halle 1');
-      await expect(kopf).toContainText(/keine Datenquelle/i);
-      await expect(kopf).not.toContainText(/\b0\s?kWh/);
+      // Konzept Messen m1 §8.1: ohne Weg „Noch keine Quelle“, nie „Keine Datenquelle“.
+      await expect(page.getByTestId('karte-herkunft')).toContainText('Noch keine Quelle');
+      await expect(page.getByTestId('messstelle-seite')).not.toContainText(/\b0\s?kWh/);
       await ablegen(page, `ip20-messstelle-geplant-${breite}`);
       await ohneQuerlauf(page, `messstelle-geplant-${breite}`);
     });

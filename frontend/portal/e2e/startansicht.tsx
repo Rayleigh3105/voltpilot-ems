@@ -299,7 +299,27 @@ function werteDerBuehne(
   if (kennzeichen === 'MS-06' && von === '2026-10-01' && bis === '2026-10-31') {
     return raster === 'monat' ? f16Monat() : raster === 'tag' ? f16Tage() : null;
   }
-  return monatDerBuehne(kennzeichen, raster, von, bis);
+  return monatDerBuehne(kennzeichen, raster, von, bis) ?? monateDerBuehne(kennzeichen, raster, von, bis);
+}
+
+/**
+ * Messen m2 (Seite): mehrere ganze Monate im Raster Monat - die zwölf Balken und die Reihe der Leitkachel. Jeder Monat
+ * ist die Antwort, die die Bühne für ihn allein gibt; ein nicht gestellter Monat bleibt nicht gestellt (`null`).
+ */
+function monateDerBuehne(kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string): MessstelleWerte | null {
+  if (raster !== 'monat' || !von.endsWith('-01') || von.slice(0, 7) >= bis.slice(0, 7)) return null;
+  const naechster = (m: string) => {
+    const [j, mm] = m.split('-').map(Number);
+    return mm === 12 ? `${j + 1}-01` : `${j}-${String(mm + 1).padStart(2, '0')}`;
+  };
+  const antworten: MessstelleWerte[] = [];
+  for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = naechster(m)) {
+    const ende = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const a = monatDerBuehne(kennzeichen, 'monat', `${m}-01`, ende);
+    if (!a) return null;
+    antworten.push(a);
+  }
+  return { ...antworten[0], bis: antworten[antworten.length - 1].bis, werte: antworten.flatMap((a) => a.werte) };
 }
 
 /** Die Monate, die Karte, Verlauf und Vergleich lesen (O11/O12) — `null` heißt „nicht gestellt“. */
