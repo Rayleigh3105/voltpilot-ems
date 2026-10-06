@@ -1,0 +1,667 @@
+/*
+ * DIE ENERGETISCHE BEWERTUNG ALS ERGEBNIS (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026). Dieselbe Familie
+ * wie Übersicht, Wiedervorlage und Messen, nur aus Haus-Tokens (keine neue Farbe, kein neuer Radius, keine neue Schrift):
+ *
+ *   .vp-be-kopf      Kopf wie `.vp-wv-kopf` (Titel navy, Satz darunter, am Rechner Rahmenknopf, Menü ⋯)
+ *   .vp-be-status    die ruhige Statuszeile (Punkt + Satz); fällig wird sie zur Hinweiskarte `.vp-be-hinweis`
+ *   .vp-be-antwort   Antwort zuerst: ein Satz, darunter der sachliche Untertitel
+ *   .vp-be-kacheln   die Kacheln der Familie (`Kacheln.css`): am Telefon zwei, am Rechner vier
+ *   .vp-be-karte     Karten mit Blockkopf, darin Reihen `.vp-be-reihe`: Name, Kennzeichen leise, Anteil rechts,
+ *                    Balken in der Rolle Verbrauch, darunter Menge und die leise Zeile
+ *   .vp-be-raster    ab 820 px Breite zwei Spalten: links die Bereiche, rechts Stand, Kriterien und Umfang
+ * Farbe nur mit Bedeutung: der Balken trägt die Rolle Verbrauch; „weicht vom Vorschlag ab“ ist kein Fehler und bleibt
+ * ohne Warnton.
+ */
+
+.vp-be {
+  container: vp-be / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Kopf ------------------------------------------------------------ */
+.vp-be-kopf {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.vp-be-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-be-kopf h1 {
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.vp-be-meta {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-aktionen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+/* Am Telefon steht „Energieeinsatz anlegen“ im Menü ⋯, ab 760 px zusätzlich als Rahmenknopf. */
+.vp-be-anlegen {
+  display: none !important;
+}
+.vp-be-menue {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.vp-be-menue-knopf {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-muted-fg, #475569);
+  cursor: pointer;
+}
+/* Die Tippfläche wächst unsichtbar auf 44 px, ohne den Kopf auseinanderzuziehen. */
+.vp-be-menue-knopf::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+
+/* ---------- „Was ist …?“ und Statuszeile -------------------------------------- */
+.vp-be-lage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin-top: -6px;
+  min-width: 0;
+}
+.vp-be-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 2px 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-be-status-punkt {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  align-self: center;
+  background: var(--vp-text-subtle, #ced4da);
+}
+.vp-be-status.is-ok .vp-be-status-punkt {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-be-status-sub {
+  font-weight: 400;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Bei Handlungsbedarf eine Hinweiskarte wie unter Messen (1-px-Rahmen, Radius 16, toniger Akzent links). */
+.vp-be-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: var(--vp-space-4, 16px) var(--vp-space-5, 20px);
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-left: 4px solid var(--vp-text-subtle, #ced4da);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-be-hinweis.is-warn {
+  border-left-color: var(--vp-warn, #f59e0b);
+}
+.vp-be-karte .vp-be-hinweis {
+  padding: 12px 14px;
+}
+.vp-be-hinweis-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-warn-ink, #b45309);
+}
+.vp-be-hinweis-text {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.vp-be-hinweis-text b {
+  font: 600 0.9375rem/1.4 var(--vp-c-font);
+  color: var(--vp-navy-1, #1e3a5f);
+}
+.vp-be-hinweis-text > span {
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: break-word;
+}
+.vp-be-hinweis-text > .vp-alert {
+  color: inherit;
+}
+
+/* ---------- Antwort zuerst ------------------------------------------------------ */
+.vp-be-antwort {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.vp-be-satz {
+  margin: 0;
+  font: 700 1.0625rem/1.38 var(--vp-c-font);
+  letter-spacing: -0.005em;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-wrap: pretty;
+}
+.vp-be-formal {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Verlässlichkeit vor der Liste: ein Satz mit Grund, nie eine Fußnote (Copy-Regel 4). */
+.vp-be-vertrauen {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-be-vertrauen > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+/* Teile nur am Rechner bzw. nur am Telefon (das Konzept setzt am Rechner andere Sätze). */
+.vp-be-breit {
+  display: none;
+}
+
+/* ---------- Kacheln ---------------------------------------------------------- */
+.vp-be-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.vp-be-kacheln > .vp-k {
+  min-width: 0;
+}
+.vp-be-kacheln .vp-k-kopf {
+  min-height: 0;
+}
+.vp-be-kacheln .vp-k-name {
+  hyphens: auto;
+}
+.vp-be-kacheln .vp-k-sub {
+  overflow-wrap: break-word;
+}
+.vp-be-kachel-breit {
+  display: none !important;
+}
+
+/* ---------- Raster und Karten -------------------------------------------------- */
+.vp-be-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4, 16px);
+  align-items: start;
+  min-width: 0;
+}
+.vp-be-spalte {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+.vp-be-karte {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-be-blockkopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-be-blockkopf h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-be-anzahl {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-be-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.85rem var(--vp-c-font);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-be-link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.vp-be-link:focus-visible,
+.vp-be-menue-knopf:focus-visible,
+.vp-be-reihe:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+@media (hover: hover) {
+  .vp-be-link:hover:not(:disabled) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+.vp-be-leise {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-meldung {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+  color: var(--vp-flow-batt-ink, #166534);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+}
+
+/* ---------- Reihen: Bereiche mit Anteil und Balken -------------------------------- */
+.vp-be-reihen {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-be-reihen > li {
+  min-width: 0;
+}
+.vp-be-reihen > li + li > .vp-be-reihe {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-be-reihe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 12px;
+  min-height: 58px;
+  padding: 10px 0;
+  color: inherit;
+  text-decoration: none;
+}
+.vp-be-reihen > li:first-child > .vp-be-reihe {
+  padding-top: 4px;
+}
+.vp-be-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  min-width: 0;
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+}
+.vp-be-kz {
+  font: 500 0.72rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+/* „weicht vom Vorschlag ab“: leise, gestrichelt, ohne Warnton — eine begründete Entscheidung ist kein Fehler. */
+.vp-be-abweichung {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px dashed color-mix(in srgb, var(--vp-navy-1, #1e3a5f) 35%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-muted-fg, #475569);
+  font: 600 0.6875rem var(--vp-c-font);
+  white-space: nowrap;
+}
+.vp-be-wert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+  font: 700 0.9375rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  white-space: nowrap;
+}
+.vp-be-chev {
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-spur {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.vp-be-spur-t {
+  flex: 1 1 auto;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--vp-flow-base, #e3e9f1);
+}
+.vp-be-spur-t > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--vp-flow-load, #8b5cf6);
+}
+.vp-be-menge {
+  flex: 0 0 auto;
+  min-width: 46px;
+  text-align: right;
+  font: 700 0.78rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg, #1e293b);
+  white-space: nowrap;
+}
+.vp-be-sub {
+  grid-column: 1 / -1;
+  min-width: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: break-word;
+}
+/* Am Telefon bleibt das Zitat einer abweichenden Einstufung kurz; vollständig steht es am Bereich und am Rechner. */
+.vp-be-sub.is-zitat {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.vp-be-reihe.is-ohne .vp-be-name {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-reihe.is-ohne .vp-be-wert {
+  color: var(--vp-text-gray, #66717c);
+}
+@media (hover: hover) {
+  .vp-be-reihe:hover .vp-be-name > span:first-child {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+/* ---------- Kriterien in Worten ---------------------------------------------------- */
+.vp-be-karte .vp-be-satz {
+  font: 400 0.8125rem/1.42 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-be-krit {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-be-krit li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-be-krit-ico {
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-be-fussnote {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-aenderungen {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-be-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ---------- Umfang: drei Zeilen ---------------------------------------------------- */
+.vp-be-zuo {
+  display: grid;
+  margin: 0;
+  min-width: 0;
+}
+.vp-be-zr {
+  display: grid;
+  gap: 2px;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+.vp-be-zr:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+.vp-be-zr dt {
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-zr dd {
+  margin: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+}
+.vp-be-zr dd.vp-be-zr-notiz {
+  font: 400 0.75rem/1.4 var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Bewertungsstand: Datumsblöcke ----------------------------------------- */
+.vp-be-staende {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-be-stand {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 0;
+}
+.vp-be-staende > li + li {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-be-staende > li:first-child {
+  padding-top: 0;
+}
+.vp-be-stand-text {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  align-self: center;
+  min-width: 0;
+}
+.vp-be-stand-titel {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+}
+.vp-be-stand-grund {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: break-word;
+}
+.vp-be-stand-dateien {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+
+/* ---------- Fuß und leerer Zustand ------------------------------------------------- */
+.vp-be-fuss {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+.vp-be-leer {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.vp-be-leer p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+/* ---------- Dialoge ------------------------------------------------------------- */
+.vp-be-vorschlag {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-muted, #e9eff8);
+}
+.vp-be-vorschlag-satz {
+  margin: 0;
+  font: 700 0.9375rem/1.4 var(--vp-c-font);
+  color: var(--vp-navy-1, #1e3a5f);
+}
+.vp-be-herkunft {
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-be-herkunft summary {
+  min-height: 32px;
+  color: var(--vp-c-primary, #2563eb);
+  font-weight: 600;
+  cursor: pointer;
+}
+.vp-be-herkunft p,
+.vp-be-herkunft ul {
+  margin: 4px 0 0;
+}
+.vp-be-herkunft ul {
+  padding-left: 20px;
+}
+
+/* ---------- Rechner -------------------------------------------------------------- */
+@container vp-be (min-width: 760px) {
+  .vp-be-anlegen {
+    display: inline-flex !important;
+  }
+  .vp-be-breit {
+    display: revert;
+  }
+  .vp-be-schmal {
+    display: none;
+  }
+  .vp-be-satz {
+    font-size: 1.25rem;
+    line-height: 1.32;
+  }
+  .vp-be-karte .vp-be-satz {
+    font-size: 0.8125rem;
+    line-height: 1.42;
+  }
+  .vp-be-kacheln {
+    grid-template-columns: repeat(var(--vp-be-kacheln, 4), minmax(0, 1fr));
+    gap: 16px;
+  }
+  .vp-be-kacheln > .vp-k {
+    padding: 16px;
+  }
+  .vp-be-kachel-breit {
+    display: flex !important;
+  }
+  .vp-be-karte {
+    padding: 16px 22px;
+  }
+  .vp-be-sub.is-zitat {
+    display: block;
+    overflow: visible;
+  }
+}
+@container vp-be (min-width: 820px) {
+  .vp-be-raster {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+}

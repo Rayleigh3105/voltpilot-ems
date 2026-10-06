@@ -11231,6 +11231,17 @@ export const api = {
   bewertungKriterien: () => request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`),
   bewertungKriterienSpeichern: (body: BewertungKriterienSpeichern) =>
     request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** Konzept Auswerten a1, Befund 6: alle Fassungen, auch eine beantragte (Vier-Augen) — sie wartet auf eine zweite Person. */
+  bewertungKriterienHistorie: () =>
+    request<{ fassungen: BewertungKriterienFassung[] }>(`/api/v1/unternehmen/bewertung/kriterien/fassungen`),
+  /** Die zweite Person gibt eine beantragte Fassung frei (403 `zweite_person_noetig`, 409 `bereits_entschieden`). */
+  bewertungKriterienFreigeben: (nummer: number) =>
+    request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien/${nummer}/freigeben`, { method: 'POST', body: JSON.stringify({}) }),
+  /** Die zweite Person lehnt ab — mit Begründung (422 `begruendung_fehlt`). */
+  bewertungKriterienAblehnen: (nummer: number, begruendung: string) =>
+    request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien/${nummer}/ablehnen`, {
+      method: 'POST', body: JSON.stringify({ begruendung }),
+    }),
   /** UEMS AP-16 IP-4: die Energieeinsätze, laufende zuerst; Ablehnungen tragen `EnergieeinsatzFehlerCode`. */
   energieeinsaetze: () => request<{ energieeinsaetze: Energieeinsatz[] }>(`/api/v1/unternehmen/energieeinsaetze`),
   /** Prozesse ohne laufenden Einsatz für Strom — die Vorschläge des Prozess-Pickers. */
