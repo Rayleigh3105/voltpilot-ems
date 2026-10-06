@@ -7,7 +7,6 @@ import { bewertungFristBaustein, type BewertungFristBild } from '../bewertungFri
 import { bezugsbasisUebersichtBild, type BezugsbasisUebersicht, type BezugsbasisUebersichtBild } from '../bezugsbasisUebersicht';
 import { misst } from '../ebenenNav';
 import { bearbeiterStandorte, type ObenBaustein } from '../einstieg';
-import { darfAnsehen as darfEnergiemanagementSehen } from '../energiemanagementPortal';
 import { darfAnsehen as darfVerbesserungSehen } from '../energieziele';
 import { UEMS_ENERGIEBILANZ, UEMS_GEBAEUDE, UEMS_KENNZAHLEN } from '../glossar';
 import { heuteIn, listenKarte, ZUR_LISTE } from '../kennzahlKarte';
@@ -47,8 +46,7 @@ import {
 import { useRollen } from '../rollen';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { BewertungBaustein } from './BewertungBaustein';
-import { BelegeKarte, StandortKarte } from './EinstiegKarten';
-import { EnergiemanagementFahrplan } from './EnergiemanagementFahrplan';
+import { StandortKarte } from './EinstiegKarten';
 import { BezugsbasisUebersichtKarte } from './BezugsbasisUebersichtKarte';
 import { EnergiemanagementBaustein } from './EnergiemanagementBaustein';
 import { ZeitSegment } from './HistorieWelt';
@@ -91,7 +89,7 @@ export interface UebersichtDaten {
   wiedervorlageStatus?: WiedervorlageStatus | null;
   /** Die Bausteine MIT Inhalt — nur sie bietet die Fläche an. */
   inhalt: UebersichtBausteinId[];
-  /** Die lebenden Standorte der Ebene und ob sie messen — für Fahrplan (K2) und Einstieg „Ihr Standort“ (K6). */
+  /** Die lebenden Standorte der Ebene und ob sie messen — für den Einstieg „Ihr Standort“ (K6). */
   standorte: { id: string; name: string; misst: boolean }[];
 }
 
@@ -359,9 +357,13 @@ const STANDARD: readonly Block[] = ['messstellen', 'energiebilanz', 'kennzahlen'
 export const UEBERSICHT_REIHENFOLGE: readonly ObenBaustein[] = STANDARD.filter((id): id is ObenBaustein => id !== 'bezugsbasen');
 
 /** Die Bausteine, die Grenz- und Verantwortungs-Satz tragen — mit einem davon steht der Hinweis „Was VoltPilot leistet“. */
-const MIT_SAETZEN: readonly Block[] = ['bewertung', 'bezugsbasen', 'ziele-massnahmen', 'energiemanagement', 'fahrplan'];
+const MIT_SAETZEN: readonly Block[] = ['bewertung', 'bezugsbasen', 'ziele-massnahmen', 'energiemanagement'];
 
-/** Hat ein Baustein Inhalt? Die drei Einstiege (Fahrplan, Belege, Standort) entscheiden selbst, ob sie etwas zeigen. */
+/**
+ * Hat ein Baustein Inhalt? Der Einstieg „Ihr Standort“ entscheidet selbst, ob er etwas zeigt. Fahrplan „Ihr
+ * Energiemanagement“ und „Belege finden“ sind mit Konzept Nachweisen n1 (Entscheid 21) entfallen: der Überblick von
+ * Nachweisen übernimmt sie.
+ */
 export function bausteinDa(b: ReturnType<typeof bausteinBilder>, id: Block): boolean {
   switch (id) {
     case 'messstellen':
@@ -408,7 +410,7 @@ export function UebersichtBausteine({
   grenzHinweis?: boolean;
 }) {
   const { selbst } = useRollen();
-  const { ebene, periode, am, heute, laedt } = daten;
+  const { periode, am, heute, laedt } = daten;
   const b = bausteinBilder(daten, zeigen);
   const { standortId, messstellen, energie, gebaeude, kennzahlen, bewertung, bezugsbasen, zieleMassnahmen, energiemanagement } = b;
   const reihenfolge = (nur ?? STANDARD).filter((id) => !ohne.includes(id as ObenBaustein) && (id !== 'bezugsbasen' || !ohne.includes('kennzahlen')));
@@ -580,12 +582,6 @@ export function UebersichtBausteine({
     ),
     energiemanagement: energiemanagement && (
       <EnergiemanagementBaustein bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute('wiedervorlage'))} />
-    ),
-    fahrplan: ebene.art === 'unternehmen' && (
-      <EnergiemanagementFahrplan messendeStandorte={daten.standorte.filter((s) => s.misst).map((s) => s.name)} onNavigate={onNavigate} />
-    ),
-    belege: ebene.art === 'unternehmen' && (
-      <BelegeKarte berichte energiemanagement={darfEnergiemanagementSehen(selbst)} onNavigate={onNavigate} />
     ),
     standort: (
       <StandortKarte

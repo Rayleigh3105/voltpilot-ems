@@ -156,8 +156,13 @@ export function PortfolioTabs({
     const inGruppe = (bereich: EbenenBereichId | null) => bereich !== null && offeneGruppe.bereiche.includes(bereich);
     const emOffen = page === 'portfolio-energiemanagement';
     // Die Detailseiten tragen ihren Reiter in der Route; „Wer ist wofür verantwortlich“ gehört zu den Aufgaben.
+    // Das Verzeichnis und die Zuschnitt-Hilfe liegen eine Ebene unter dem Überblick (Konzept Nachweisen n1, Entscheid 2).
     const emReiter: EnergiemanagementReiter =
-      energiemanagementReiter === 'verantwortung' ? 'aufgaben' : energiemanagementReiter === 'zuschnitt' ? 'verzeichnis' : (energiemanagementReiter ?? 'verzeichnis');
+      energiemanagementReiter === 'verantwortung'
+        ? 'aufgaben'
+        : energiemanagementReiter === 'zuschnitt' || energiemanagementReiter === 'verzeichnis'
+          ? 'ueberblick'
+          : (energiemanagementReiter ?? 'ueberblick');
     // Entscheid 17 (Konzept Nachweisen n1): eine Feststellung zeigt den Reiter „Audits“ als offen.
     const emReiterOffen: EnergiemanagementReiter = emReiter === 'feststellungen' ? 'audits' : emReiter;
     const emDa = welten.some((p) => p.id === 'portfolio-energiemanagement');
@@ -196,7 +201,7 @@ export function PortfolioTabs({
     }
     for (const p of welten) {
       if (p.id === 'portfolio-energiemanagement') {
-        // „Nachweisen“: die Reiter des Energiemanagements statt eines Reiters „Energiemanagement“ — das Verzeichnis zuerst.
+        // „Nachweisen“: die Reiter des Energiemanagements statt eines Reiters „Energiemanagement“ - der Überblick zuerst.
         if (inGruppe('energiemanagement')) {
           for (const r of ENERGIEMANAGEMENT_REITER) if (r.key !== 'wiedervorlage') eintraege.push(emReiterEintrag(r));
         }
@@ -221,11 +226,11 @@ export function PortfolioTabs({
       }
       if (inGruppe(ebenenAktiv(p.id))) eintraege.push(weltEintrag(p));
     }
-    // Die Berichte stehen in „Nachweisen“ gleich hinter dem Verzeichnis.
+    // Die Berichte stehen in „Nachweisen“ gleich hinter dem Überblick (Konzept Nachweisen n1, §6.2).
     const bericht = eintraege.findIndex((e) => e.key === 'portfolio-berichte');
-    if (bericht >= 0 && eintraege.some((e) => e.key === 'energiemanagement-verzeichnis')) {
+    if (bericht >= 0 && eintraege.some((e) => e.key === 'energiemanagement-ueberblick')) {
       const [b] = eintraege.splice(bericht, 1);
-      eintraege.splice(eintraege.findIndex((e) => e.key === 'energiemanagement-verzeichnis') + 1, 0, b);
+      eintraege.splice(eintraege.findIndex((e) => e.key === 'energiemanagement-ueberblick') + 1, 0, b);
     }
     // Die Wiedervorlage beantwortet „Was steht an?“ — sie steht in der Übersicht, ihre Adresse bleibt.
     if (inGruppe('uebersicht') && (emDa || (emOffen && emReiter === 'wiedervorlage'))) {

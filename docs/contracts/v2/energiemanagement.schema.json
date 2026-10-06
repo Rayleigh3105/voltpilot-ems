@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.2"
+      "const": "1.3"
     },
     "herkunft": {
       "type": "string",
@@ -115,7 +115,8 @@
         "verzeichnis_ort",
         "verzeichnis_gruppe",
         "ueberpruefung_art",
-        "ueberpruefung_grund"
+        "ueberpruefung_grund",
+        "teil"
       ],
       "properties": {
         "dokument_art": {
@@ -317,6 +318,14 @@
             "pattern": "^[a-z_]+$"
           },
           "minItems": 1
+        },
+        "teil": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
         }
       }
     },
@@ -467,7 +476,9 @@
         "dokument_art",
         "aufgabe",
         "verzeichnis_gruppe",
-        "verzeichnis_ort"
+        "verzeichnis_ort",
+        "teil",
+        "teil_kurz"
       ],
       "properties": {
         "dokument_art": {
@@ -677,6 +688,202 @@
               "minLength": 1
             },
             "verweis": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "teil": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "energiepolitik",
+            "anwendungsbereich",
+            "rechtliche_anforderungen",
+            "kontext",
+            "risiken_chancen",
+            "aufgaben",
+            "kompetenz",
+            "kommunikation",
+            "betrieb",
+            "auslegung",
+            "beschaffung",
+            "energetische_bewertung",
+            "bezugsbasen",
+            "massnahmen",
+            "interne_audits",
+            "feststellungen",
+            "managementbewertung",
+            "berichte"
+          ],
+          "properties": {
+            "energiepolitik": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anwendungsbereich": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rechtliche_anforderungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kontext": {
+              "type": "string",
+              "minLength": 1
+            },
+            "risiken_chancen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "aufgaben": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kompetenz": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kommunikation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "betrieb": {
+              "type": "string",
+              "minLength": 1
+            },
+            "auslegung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "beschaffung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energetische_bewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "feststellungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "berichte": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "teil_kurz": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "energiepolitik",
+            "anwendungsbereich",
+            "rechtliche_anforderungen",
+            "kontext",
+            "risiken_chancen",
+            "aufgaben",
+            "kompetenz",
+            "kommunikation",
+            "betrieb",
+            "auslegung",
+            "beschaffung",
+            "energetische_bewertung",
+            "bezugsbasen",
+            "massnahmen",
+            "interne_audits",
+            "feststellungen",
+            "managementbewertung",
+            "berichte"
+          ],
+          "properties": {
+            "energiepolitik": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anwendungsbereich": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rechtliche_anforderungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kontext": {
+              "type": "string",
+              "minLength": 1
+            },
+            "risiken_chancen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "aufgaben": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kompetenz": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kommunikation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "betrieb": {
+              "type": "string",
+              "minLength": 1
+            },
+            "auslegung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "beschaffung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energetische_bewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "feststellungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "berichte": {
               "type": "string",
               "minLength": 1
             }
