@@ -26,5 +26,15 @@ Verbrauchsprognose bis zur nächsten Erzeugung ohne Netzbezug braucht. Alles dar
 4. **Fahrplan gegen Kundenwahl:** In Handels-Viertelstunden (geplanter Netzbezug, Netzladen, Verkauf) gewinnt der
    Fahrplan, geplante Verkäufe erhöhen die Untergrenze. In Eigenverbrauchs-Viertelstunden gewinnt die Kundenwahl.
 5. **Reserve** je Anlage in kWh (`site_charging_config.storage_release_reserve_kwh`), Standard 1,0 kWh.
+6. **Horizont bis zur nächsten Erzeugung, nicht bis zum Planende.** Der Fahrplan endet mit den Börsenpreisen; vor der
+   Day-Ahead-Veröffentlichung (gegen 13 Uhr) also um Mitternacht. Ohne Verlängerung sähe eine Untergrenze um 12:00 die
+   Nacht nach 24:00 nicht und gäbe zu viel frei. Die Rechnung läuft deshalb über die frische gespeicherte Prognose
+   weiter; reicht auch sie nicht bis zur nächsten Erzeugung, gibt es keine Freigabe.
+7. **Ladeziel bleibt kombinierbar.** Das Ziel ist dieselbe Anforderung wie bei „Nur Sonne“ mit Ziel; die Freigabe
+   kommt nur in Eigenverbrauchs-Viertelstunden dazu und verkleinert den Netzrest. Netzbezug während einer Freigabe
+   nimmt die Wirkungsprüfung der Box zurück.
+8. **Portal.** Chip neben den drei Quellen, gesperrt mit Grund statt unsichtbar; Erklärzeile aus der Box-Meldung
+   (veraltet = unbekannt), sonst aus dem Fahrplan als Plan; Reserve-Karte neben „Vorrang vor dem Speicher“;
+   gestrichelte Untergrenze im Ladestand-Band des Ladeplans.
 
 Fachlich verbindlich ist [Verbrauchssteuerung](../../verbrauchssteuerung.md#sonne--speicher).

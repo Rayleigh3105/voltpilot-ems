@@ -10,6 +10,7 @@ Für wirksame Steuerung müssen Datenmodell, Geräteverbindung, Freigaben und Au
 | `VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED` | API: Policy kompilieren und ausrollen | `false` |
 | `OPTIMIZER_CONTROLLABLE_LOADS_ENABLED` | Optimierung: Verbraucher einplanen | `false` |
 | `VP_CONSUMER_CONTROL_ENABLED` | Box: Verbraucherkommandos und Deadline-Fallback | `false` |
+| `OPTIMIZER_STORAGE_RELEASE_ENABLED` | Optimierung: Speicheruntergrenze für „Sonne + Speicher“; aus = alle solchen Ladepunkte fahren „Nur Sonne“ | `true` |
 
 `VP_CONTROL_ENABLED` ist zusätzlich die globale Edge-Freigabe. Bei v2-Planung auch `VOLTPILOT_V2_PLAN_SITES` berücksichtigen. Der **effektive Deploymentwert** kann vom Codedefault abweichen; auf Cloud und Box getrennt prüfen.
 
@@ -41,6 +42,7 @@ flowchart LR
 | Aufgabe ohne Fortschritt | Messkanal, Frische und bestätigter Verbrauch |
 | Frist gefährdet/verpasst | Restbedarf, gültiges Zeitfenster, Grenzen und Fallbackgrund |
 | Regel bleibt nach Stop aktiv | Retained Artefaktrücknahme und Empfang an der Box |
+| „Sonne + Speicher“ gibt nichts frei | `ev_release_reason` im Fahrplan, `storage_release_mode`/`_note` im Herzschlag der Box (Portal: Erklärzeile am Ladepunkt) |
 
 ## Beobachtung und Rücknahme
 
