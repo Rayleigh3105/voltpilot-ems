@@ -505,6 +505,50 @@ def night_reserve_enabled(env=None) -> bool:
     raise ValueError(f"{NIGHT_RESERVE_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Instant off-switch for „Sonne + Speicher" (06.10.2026,
+#: :mod:`voltpilot_optimization.storage_release`): the per-slot battery floor a
+#: charge point on that source may discharge down to. Default ON, and inert on
+#: every site where no charge point chose the source (no floor is computed or
+#: published there). OFF = no floor anywhere; the box then charges those cars
+#: exactly like „Nur Sonne" - the documented safe fallback.
+STORAGE_RELEASE_ENABLED_ENV = "OPTIMIZER_STORAGE_RELEASE_ENABLED"
+
+#: How old the newest stored load AND pv forecast run may be for a floor to be
+#: computed at all. The collector writes every 15 min; two hours is eight missed
+#: runs. An older forecast is "veraltet" - and an outdated forecast must never
+#: decide how much of a battery may leave for a car.
+STORAGE_RELEASE_FORECAST_MAX_AGE_ENV = "OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES"
+DEFAULT_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES = 120.0
+
+
+def storage_release_enabled(env=None) -> bool:
+    """Whether the „Sonne + Speicher" floor is computed. Default ON; garbage
+    values raise loudly, exactly like :func:`night_reserve_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(STORAGE_RELEASE_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{STORAGE_RELEASE_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
+def storage_release_forecast_max_age(env=None) -> timedelta:
+    """Freshness window of the forecasts behind a „Sonne + Speicher" floor."""
+    env = os.environ if env is None else env
+    minutes = _float_env(
+        env,
+        STORAGE_RELEASE_FORECAST_MAX_AGE_ENV,
+        DEFAULT_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES,
+        0.0,
+        allow_equal=False,
+    )
+    return timedelta(minutes=minutes)
+
+
 #: Instant off-switch for the P7 EHRLICHKEITS-REGEL „ohne Ladestand keine
 #: Speicherplanung" (Scout-Report ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7,
 #: Captain-Entscheid E4=b). Default AN (Hausregel: ein Flag hat die Vorgabe AN -

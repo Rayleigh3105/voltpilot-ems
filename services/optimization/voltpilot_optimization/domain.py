@@ -992,6 +992,12 @@ class SchedulePlan:
     # ausgewiesen - die Fahrplan-Seite sagt dann „ohne Ladestand keine
     # Speicherplanung", statt eine Zahl zu erfinden oder zu schweigen.
     soc_source: str = SOC_SOURCE_GEMESSEN
+    # „Sonne + Speicher" (06.10.2026): die Speicheruntergrenze je Slot, bis zu
+    # der ein Ladepunkt auf dieser Quelle den Speicher leeren darf
+    # (:class:`voltpilot_optimization.storage_release.StorageRelease`). Nur an
+    # Anlagen gesetzt, an denen ein Ladepunkt die Quelle fährt - jeder andere
+    # Fahrplan bleibt byte-identisch (None = Feld fehlt im MQTT-Fahrplan).
+    storage_release: object | None = None
 
     @property
     def cost_eur(self) -> float:

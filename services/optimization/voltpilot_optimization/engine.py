@@ -22,6 +22,9 @@ from voltpilot_optimization.co_solver import (
 from voltpilot_optimization.config import (
     controllable_loads_enabled,
     horizon_slots as configured_horizon_slots,
+    night_reserve_enabled,
+    storage_release_enabled,
+    storage_release_forecast_max_age,
     v2_plan_site_ids,
 )
 from voltpilot_optimization.consumer_inputs import load_consumer_entities
@@ -31,11 +34,14 @@ from voltpilot_optimization.persistence_v2 import SitePlanRepository
 from voltpilot_optimization.inputs import (
     BatterySite,
     SkipSite,
+    active_model,
     gather_inputs,
     load_battery_sites,
     load_battery_claims,
     load_model_choices,
+    site_model_choices,
 )
+from voltpilot_optimization.night_reserve import night_error_quantiles
 from voltpilot_optimization.persistence import ScheduleRepository
 from voltpilot_optimization.publisher import SchedulePublisher
 from voltpilot_optimization.publisher_v2 import PlanV2Publisher
@@ -43,6 +49,12 @@ from voltpilot_optimization.solver import (
     InfeasiblePlanError,
     optimize,
     optimize_ignoring_grid_limit,
+)
+from voltpilot_optimization.storage_release import (
+    load_release_settings,
+    forecasts_fresh,
+    plan_storage_release,
+    pv_day_error_quantiles,
 )
 
 logger = logging.getLogger("voltpilot.optimization.engine")
@@ -93,6 +105,7 @@ def plan_site(
     v2_repository: SitePlanRepository | None = None,
     model_choices=None,
     battery_claims=None,
+    release_settings=None,
 ) -> SchedulePlan:
     """Plan one site end to end. Raises :class:`SkipSite` when un-plannable.
 
@@ -114,6 +127,12 @@ def plan_site(
     ``OPTIMIZER_HORIZON_SLOTS``, 192 = 48 h). ``gather_inputs`` truncates it to
     what day-ahead prices and real forecasts cover, so the planned window is
     always ``min(request, known prices, real forecasts)``.
+
+    ``release_settings`` is the cycle's ONE read of the „Sonne + Speicher"
+    sites (:func:`voltpilot_optimization.storage_release.load_release_settings`),
+    same convention: ``None`` = load it here. Only a site in it gets a battery
+    floor (:attr:`SchedulePlan.storage_release`); every other plan is
+    byte-identical.
     """
     if horizon_slots is None:
         horizon_slots = configured_horizon_slots()
@@ -129,6 +148,10 @@ def plan_site(
         )
         plan = optimize_ignoring_grid_limit(inp, plan_id, now)
 
+    release = _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
+    if release is not None:
+        plan = replace(plan, storage_release=release)
+
     if repository is not None:
         repository.upsert_plan(plan)
     if publisher is not None:
@@ -141,6 +164,72 @@ def plan_site(
             )
     _shadow_publish_v2(dsn, site, inp, now, v2_publisher, v2_sites, v2_repository)
     return plan
+
+
+def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings):
+    """Die „Sonne + Speicher"-Untergrenze dieses Laufs, oder ``None``.
+
+    ``None`` heißt „diese Anlage fährt die Quelle nicht" (oder der Schalter
+    ``OPTIMIZER_STORAGE_RELEASE_ENABLED`` ist aus) - dann bleibt der Fahrplan
+    byte-identisch. FAIL-SOFT wie die Nacht-Wertfunktion: ein Fehler hier
+    kostet die Anlage ihre Freigabe (die Box fährt „Nur Sonne"), nie den Plan.
+    """
+    if not storage_release_enabled():
+        return None
+    try:
+        settings = (
+            release_settings if release_settings is not None
+            else load_release_settings(dsn)
+        )
+        setting = settings.get(str(site.site_id))
+        if setting is None:
+            return None
+        if model_choices is None:
+            model_choices = load_model_choices(dsn)
+        choices = site_model_choices(model_choices, site.site_id)
+        load_model = active_model("load", choices=choices)
+        pv_model = active_model("pv", choices=choices)
+        fresh = forecasts_fresh(
+            dsn, site.site_id, load_model, pv_model, now,
+            storage_release_forecast_max_age(), plan.slots[-1].start,
+        )
+        night = inp.night_error_quantiles
+        if night is None and not night_reserve_enabled():
+            # Die Nacht-Wertfunktion ist aus, ihre Verteilung bleibt trotzdem
+            # die gemessene Unsicherheit dieser Anlage.
+            night = night_error_quantiles(dsn, site, now, load_model)
+        pv_errors = pv_day_error_quantiles(dsn, site.site_id, now, pv_model)
+        release = plan_storage_release(
+            plan,
+            reserve_kwh=setting.reserve_kwh,
+            night_errors=night,
+            pv_errors=pv_errors,
+            forecasts_fresh=fresh,
+            battery_held=inp.battery_held,
+        )
+    except Exception:
+        logger.warning(
+            "storage_release.failed",
+            extra={"context": {"site_id": str(site.site_id)}},
+            exc_info=True,
+        )
+        return None
+    u = release.unsicherheit
+    logger.info(
+        "storage_release.planned",
+        extra={
+            "context": {
+                "site_id": str(site.site_id),
+                "slots": sum(1 for v in release.floor_soc_pct if v is not None),
+                "floor_now_pct": release.floor_soc_pct[0] if release.floor_soc_pct else None,
+                "reserve_kwh": release.reserve_kwh,
+                "grund": release.grund,
+                "last_aufschlag": u.last_aufschlag if u else None,
+                "pv_abschlag": u.pv_abschlag if u else None,
+            }
+        },
+    )
+    return release
 
 
 def _shadow_publish_v2(
@@ -265,6 +354,9 @@ def run_cycle(
     # A4) - same reasoning as the model choices above, and fail-soft: without
     # the table every battery is planned exactly as before.
     battery_claims = load_battery_claims(dsn)
+    # ONE read of the „Sonne + Speicher" sites (06.10.2026), fail-soft: without
+    # the columns no site gets a floor and every plan is byte-identical.
+    release_settings = load_release_settings(dsn) if storage_release_enabled() else {}
     for site in sites:
         try:
             plan = plan_site(
@@ -279,6 +371,7 @@ def run_cycle(
                 v2_repository=v2_repository,
                 model_choices=model_choices,
                 battery_claims=battery_claims,
+                release_settings=release_settings,
             )
             summary.planned.append(plan)
         except SkipSite as exc:
