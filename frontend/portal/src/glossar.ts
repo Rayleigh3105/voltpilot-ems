@@ -148,6 +148,20 @@ export const FAHRPLAN_TAETIGKEIT = {
 } as const;
 
 /**
+ * Die LADEQUELLEN unter „Womit laden?“ (Steuerung, Reiter Laden). „Sonne +
+ * Speicher“ (06.10.2026, Glossar-Nachtrag „Sonne + Speicher“) gibt dem Auto zum
+ * Überschuss die Speicherenergie über der Untergrenze, die das Haus laut
+ * Prognose bis zur nächsten Sonne braucht. Die Moduswahl „Aus · Smart ·
+ * Schnell“ darüber bleibt unverändert.
+ */
+export const LADEQUELLE = {
+  sonne: 'Nur Sonne',
+  min: 'Sonne + Minimum',
+  speicher: 'Sonne + Speicher',
+  guenstig: 'Günstig',
+} as const;
+
+/**
  * Die SZENEN der Steuerung (Konzept „Steuerung neu", E6; Glossar-Nachtrag
  * „Szene"): ein Tipp pausiert mehrere Geräte, bis der Kunde die Szene beendet.
  * Das Vokabular ist geschlossen - dieselben Schlüssel hält der Server

@@ -24,6 +24,11 @@ export interface Band {
   frei?: (t: number) => boolean;
   /** Eine Grenzlinie mit Wert (Preis in ct, Temperatur in °C). */
   linie?: number | null;
+  /**
+   * Ladestand-Band: eine Untergrenze je Viertelstunde (%), gestrichelt über
+   * die Ladestand-Linie gelegt („Sonne + Speicher“). `null` = dort keine.
+   */
+  grenze?: (number | null)[];
   symbol?: string;
   label?: string;
   name?: string;
@@ -245,6 +250,18 @@ export function zeitband(W: number, o: ZeitbandProps): { svg: ReactNode; geo: Ge
           offen = true;
         }
         add(<path key={key()} d={d} fill="none" stroke="var(--batt)" strokeWidth={1.6} />);
+        if (b.grenze) {
+          let g = '';
+          let auf = false;
+          for (let t = t0; t < t1; t++) {
+            const v = b.grenze[t];
+            if (v == null) { auf = false; continue; }
+            const yy = (y + h - 1 - (v / 100) * (h - 2)).toFixed(1);
+            g += `${auf ? 'L' : 'M'}${x(t).toFixed(1)},${yy}L${(x(t) + bw).toFixed(1)},${yy}`;
+            auf = true;
+          }
+          if (g) add(<path key={key()} d={g} fill="none" stroke="var(--c-fg)" strokeWidth={1.2} strokeDasharray="4 3" />);
+        }
       }
     }
     y += h + (b.gap ?? 6);
