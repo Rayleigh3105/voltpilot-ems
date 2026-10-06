@@ -229,7 +229,8 @@ if (ORGANISATION_REITER) {
  * AP-13 IP-8: `&ansicht=bilanz&an=AN-2` öffnet Anlage › Verlauf › Energiebilanz (Vorgabe AN-2); `&bilanz=ohne-hz`
  * antwortet ohne Hauptzähler (Leerzustand, kein Reiter), `&rest=vorschlag` ohne Rest-Messstelle (Vorschlag „Rest
  * anlegen“ — der Klick legt sie in der Bühne an, `window.__restAnlegen` zählt ihn), `&live=veraltet` lässt MS-14 veralten
- * (O8). Die Werte gelten zur Uhr der Bühne (`page.clock`); die Momentaufnahme O8 steht eine Minute vor ihr.
+ * (O8), `&ausserhalb=MS-20,…` nennt Abzweige außerhalb der Bilanz. Die Werte gelten zur Uhr der Bühne (`page.clock`); die
+ * Momentaufnahme O8 steht eine Minute vor ihr.
  */
 const ANLAGE_KZ: Record<string, string> = { 'AN-1': an1, 'AN-2': an2, 'AN-3': an3 };
 const bilanzAn = ANLAGE_KZ[params.get('an') ?? ''] ?? an2;
@@ -242,6 +243,7 @@ const bilanzDerBuehne = (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?
     live: params.get('live') === 'veraltet' ? 'veraltet' : 'frisch',
     ohneHauptzaehler: messenArt === 'bestand' || params.get('bilanz') === 'ohne-hz',
     restVorschlag,
+    ausserhalb: (params.get('ausserhalb') ?? '').split(',').filter(Boolean),
   });
 
 /**
