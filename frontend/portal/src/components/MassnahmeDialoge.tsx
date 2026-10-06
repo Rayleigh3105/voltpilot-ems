@@ -18,7 +18,7 @@ import { verantwortlichOptionen } from '../bewertung';
 import type { BezugsbasisVergleich } from '../bezugsbasisVergleich';
 import * as Z from '../energieziele';
 import { NBSP } from '../format';
-import { UEMS_ENERGIEZIEL, UEMS_MASSNAHME, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
+import { UEMS_ENERGIEZIEL, UEMS_MASSNAHME, UEMS_VERANTWORTLICH } from '../glossar';
 import * as M from '../massnahmen';
 import * as B from '../massnahmenBild';
 import * as P from '../massnahmePlanen';
@@ -728,7 +728,6 @@ function Planer({
             </Button>
           </div>
         )}
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -885,7 +884,6 @@ export function MassnahmeUmgesetztDialog({ massnahme, onClose, onFertig }: { mas
             : `Die ${UEMS_MASSNAHME} ist dann nicht mehr änderbar. Ohne Kennzahl wird nichts gemessen - Sie schließen sie mit einem Satz ab, sobald klar ist, ob sie hält.`}
         </Danach>
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -937,7 +935,6 @@ export function MassnahmeVerwerfenDialog({ massnahme, onClose, onFertig }: { mas
           fehler={zeigen}
         />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -988,7 +985,6 @@ export function MassnahmeKommentarDialog({ massnahme, onClose, onFertig }: { mas
           fehler={zeigen}
           testid="massnahme-kommentar-text"
         />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -1136,7 +1132,6 @@ export function MassnahmeAendernDialog({ massnahme, onClose, onFertig }: { massn
           zeilen={2}
         />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );

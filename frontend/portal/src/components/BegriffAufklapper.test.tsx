@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { BEGRIFFE } from '../begriffe';
+import { BEGRIFFE, fachwortZeile } from '../begriffe';
 import { BegriffAufklapper } from './BegriffAufklapper';
 
 /** „Was ist eine Messstelle?“ (Konzept Messen m1, §7, Stufe 2): zu ein leiser Verweis, offen Klartext, Beispiel, Abgrenzung. */
@@ -18,6 +18,26 @@ describe('BegriffAufklapper', () => {
     expect(screen.queryByText(BEGRIFFE.messstelle.beispiel!)).toBeNull();
     expect(screen.getByText(BEGRIFFE.messstelle.mehr!)).toBeInTheDocument();
     expect(screen.getByText(BEGRIFFE.messstelle.abgrenzung!)).toBeInTheDocument();
+  });
+
+  it('das Fachwort steht zuletzt - bei „Was ist eine Maßnahme?“ die Normwörter (Konzept Verbessern v1, Entscheid 14)', () => {
+    render(<BegriffAufklapper begriff="massnahme" />);
+    const details = screen.getByTestId('begriff-auf-massnahme') as HTMLDetailsElement;
+    expect(screen.getByText('Was ist eine Maßnahme?')).toBeInTheDocument();
+    details.open = true;
+    const zeilen = [...details.querySelectorAll('.vp-begriff-auf-text p')].map((p) => p.textContent);
+    expect(zeilen).toEqual([
+      BEGRIFFE.massnahme.klartext,
+      BEGRIFFE.massnahme.beispiel,
+      BEGRIFFE.massnahme.abgrenzung,
+      fachwortZeile(BEGRIFFE.massnahme.fachwort!),
+    ]);
+    expect(zeilen.at(-1)).toMatch(/^Fachwörter: Aktionsplan .*Korrekturmaßnahme/u);
+  });
+
+  it('ohne Fachwort keine letzte Zeile (Messstelle)', () => {
+    render(<BegriffAufklapper begriff="messstelle" />);
+    expect(screen.getByTestId('begriff-auf-messstelle').querySelector('.vp-begriff-auf-fachwort')).toBeNull();
   });
 
   it('ohne eigenes Beispiel das allgemeine; ohne eigene Frage „Was heißt „…“?“', () => {

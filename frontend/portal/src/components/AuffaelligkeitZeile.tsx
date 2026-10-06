@@ -8,7 +8,7 @@ import { verantwortlichOptionen } from '../bewertung';
 import { routenHeute } from '../routenUhr';
 import { monatWort } from '../bezugsbasisVergleich';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
+import { UEMS_VERANTWORTLICH } from '../glossar';
 import { abweichungRoute, hashForRoute } from '../nav';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
 import { Recht } from './Recht';
@@ -169,7 +169,6 @@ export function AuffaelligkeitAntwortDialog({
           </>
         )}
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -337,14 +336,25 @@ export function AbweichungVonHand({
               <label className="vp-ez-label" htmlFor={`${basis}-wortlaut`}>
                 Warum
               </label>
-              <textarea id={`${basis}-wortlaut`} rows={3} value={wortlaut} onChange={(x) => setWortlaut(x.target.value)} aria-invalid={!!zeigen.wortlaut} />
-              <p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{A.WORTLAUT_HINWEIS}</p>
+              <textarea
+                id={`${basis}-wortlaut`}
+                rows={3}
+                value={wortlaut}
+                placeholder={A.WORTLAUT_BEISPIEL}
+                onChange={(x) => setWortlaut(x.target.value)}
+                aria-invalid={!!zeigen.wortlaut}
+                aria-describedby={zeigen.wortlaut ? `${basis}-wortlaut-fehler` : undefined}
+              />
+              {zeigen.wortlaut && (
+                <p id={`${basis}-wortlaut-fehler`} className="vp-ez-fehler">
+                  {zeigen.wortlaut}
+                </p>
+              )}
             </div>
             <VerantwortlichWahl id={`${basis}-verantwortlich`} wert={verantwortlich} setze={setVerantwortlich} fehler={zeigen.verantwortlich ?? null} />
             <VpDatePicker id={`${basis}-frist`} label={`${A.FRIST} (wahlfrei)`} value={frist} onChange={setFrist} min={tagHeute} />
             <p className="vp-ez-leise">{A.FRIST_HINWEIS}</p>
             <Ablehnung satz={satz} />
-            <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
           </form>
         </Modal>
       )}

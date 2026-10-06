@@ -402,13 +402,13 @@ GLOSSAR += [
      "lang": "Eine Maßnahme trägt Titel, Verantwortlichen (aktives Konto, Fremdschlüssel plus Schnappschuss), Termin, Herkunft (Auffälligkeit, Energieziel, Energieeinsatz oder von Hand) und die erwartete Wirkung als Wortlaut. Die Messgrundlage — Energieleistungskennzahl × Bezugsbasis-Fassung × Ausgangslage als Kopie mit Prüfsumme — ist beim Anlegen wahlfrei und erst für die Bewertung der Wirkung Pflicht (E2 = A); ohne sie gibt es keine Zahl, nur „nicht messbar“. „Überfällig seit n Tagen“ leitet der Abruf ab — kein Läufer, keine Nachricht (E5 = A).",
      "beispiel": "M-2028-0001 „Werkzeugheizungen in Betriebspausen abschalten“, verantwortlich Murat Demirci, mit Messgrundlage KZ-0004 × BB-0001 Fassung 2; M-2028-0002 „Druckluft-Leckagen orten und beseitigen“ am Einsatz EE-3 ohne Messgrundlage.",
      "heute": "Tabellen `massnahme`, `massnahme_aenderung`, `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:170, :428, :466; RLS + FORCE); Routen `/api/v1/massnahmen` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:49, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeService.java, AP-18 IP-10/IP-12); Anzeigewort `UEMS_MASSNAHME` (PORTAL/glossar.ts:582). Wegweiser: `docs/agents/root/uems-massnahme-routen.md`.",
-     "abgrenzung": "Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ (SP1)."},
+     "abgrenzung": "Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ auf einer Fläche (SP1), beide nur als Fachwort im Aufklapper „Was ist eine Maßnahme?“ (Konzept Verbessern v1, Entscheid 14)."},
     {"id": "abweichung", "sicht": "org", "begriff": "Abweichung", "nachtrag": "AP-18 §4.1, §4.5 (A2–A6, E1, E7)",
      "kurz": "Ein Vorgang, den eine Person zu einer Auffälligkeit eröffnet, untersucht und mit Ergebnis abschließt (AW-…).",
      "lang": "Eine Abweichung zitiert Kennzahl, Bezugsbasis-Fassung und Monate; ihr Anlass ist die Kopie des Vergleichsergebnisses mit Prüfsumme. Sie hat Verantwortlichen und Frist, ein Protokoll aus Kommentaren und Ursache-Aussagen (append-only) und endet mit einem Abschluss einer Person: Maßnahme (nur mit Verweis), erklärt, keine Abweichung oder nicht bewertbar — immer mit Begründung. Nichts wird gelöscht.",
      "beispiel": "AW-2028-0001 zur Auffälligkeit Dezember 2027 an KZ-0004: Frist, zwei Kommentare, eine Ursache-Aussage von Murat Demirci; am 15.01.2028 von Ines Kaltenbach mit Ergebnis „Maßnahme“ (M-2028-0001) abgeschlossen.",
      "heute": "Tabellen `abweichung`, `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:214, :376; RLS + FORCE); Routen `/api/v1/abweichungen` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45, services/api/src/main/java/com/voltpilot/api/uems/AbweichungService.java, AP-18 IP-16); Anzeigewort `UEMS_ABWEICHUNG` (PORTAL/glossar.ts:586). Wegweiser: `docs/agents/root/uems-abweichung-routen.md`.",
-     "abgrenzung": "Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7); „wesentlich“ bleibt das Wort der Einstufung (W2)."},
+     "abgrenzung": "Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7; das Wort steht nur als Fachwort im Aufklapper „Was ist eine Abweichung?“, Entscheid 14); „wesentlich“ bleibt das Wort der Einstufung (W2)."},
     {"id": "auffaelligkeit", "sicht": "org", "begriff": "Auffälligkeit", "nachtrag": "AP-18 §4.1, §4.5 (A1, E4)",
      "kurz": "Ein Vermerk an der Energieleistungskennzahl: ein endgültiger Monat mit Urteil „schlechter“ — eine Person antwortet.",
      "lang": "Wird ein Monatswert einer Kennzahl mit freigegebener Bezugsbasis endgültig und urteilt der bereinigte Vergleich „schlechter“ (außerhalb des Bands der Basis — keine zweite Schwelle), vermerkt die Naht in derselben Transaktion genau eine Auffälligkeit mit Kopie des Vergleichsergebnisses und Prüfsumme (E4 = A). Sie ist kein Vorgang: eine Person antwortet einmal mit „Abweichung eröffnen“ oder „zur Kenntnis genommen“ (mit Begründung). Das System urteilt nicht und legt nichts an.",
@@ -906,6 +906,23 @@ Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: d
 Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.
 Gibt es keine Kennzahl mit offenem Ziel, führt stattdessen die Datenlage, und an ihrer Stelle steht „Noch keine Leitkennzahl gegen ein Ziel hinterlegt.“.
 Kundenwort: `UEMS_LEITKENNZAHL` (PORTAL/glossar.ts)."""],
+    "energieziel": ["""**Wörter auf den Flächen (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+Die Gruppe „Verbessern“ fragt „Was tun wir, um Energie zu sparen?“.
+Ihre Reiter heißen wie ihre Seite („Energieziele“, „Maßnahmen“, „Abweichungen“); „Ziele und Maßnahmen“ bleibt der Name des Bereichs in Verzeichnis und Rechten.
+Unter jedem Titel erklärt ein Satz das Wort; „Was ist ein Energieziel?“ klappt Klartext, ein Beispiel aus der eigenen Firma und die Abgrenzung zur Bezugsbasis auf.
+„Auf Kurs“ ist der Zwischenstand eines laufenden Energieziels: bisher mindestens so viel weniger, wie vorgenommen; „knapp dahinter“ heißt weniger, aber noch nicht genug; ohne bewertbaren Monat gibt es noch keine Aussage.
+Das ist keine Prognose: Es zählt, was schon gemessen ist, und ob das Energieziel erreicht ist, entscheidet am Ende eine Person.
+Ein offener Monat nennt den Grund der Route („läuft noch“, „kein gemessener Wert“); „noch nicht endgültig“ steht nur, wenn die Route keinen Grund nennt.
+Kundenwörter: `UEMS_AUF_KURS`, `UEMS_KNAPP_DAHINTER`, `UEMS_NICHT_AUF_KURS` (PORTAL/glossar.ts); die Erklärtexte stehen in `begriffe.ts`."""],
+    "wirkung": ["""**Drei Wörter für drei Dinge (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+„Erwartet“ ist bei einer Maßnahme die Schätzung einer Person, „beobachtet“ die Messung gegen die Bezugsbasis, „belegt“ das Urteil einer Person.
+Die Schätzung steht immer neben der Beobachtung, nie an ihrer Stelle, und wird nie mit ihr summiert.
+Auf den Flächen heißt die Ausgangslage „Vorher“ (wie der Monat aussah, als die Maßnahme geplant wurde) und die Messgrundlage „gemessen an“ (Kennzahl und Bezugsbasis); die Fachwörter stehen im Aufklapper.
+„Einsparung“ ist der Unterschied zwischen erwartetem und gemessenem Verbrauch in kWh, nie „Einsparung durch“ eine Maßnahme; ob eine Maßnahme ihn bewirkt hat, sagt eine Person.
+„Zweite Person“ ist das Vier-Augen-Prinzip: Wer beantragt hat oder verantwortlich ist, bestätigt nicht selbst.
+Die Normwörter Aktionsplan, Korrekturmaßnahme, Nichtkonformität und Energieleistungsverbesserung stehen nur in der letzten Zeile von „Was ist …?“ (Feld `fachwort` in `begriffe.ts`, Entscheid 14).
+Auf jeder anderen Fläche bleiben sie verboten, ebenso „hat gewirkt“, „Einsparung durch“, „Ursache“ ohne „Aussage von“ und „Ziel“ allein.
+Kundenwörter: `UEMS_VORHER`, `UEMS_GEMESSEN_AN`, `UEMS_ZWEITE_PERSON`, `UEMS_EINSPARUNG` (PORTAL/glossar.ts); Wächter `frontend/portal/src/copy.test.ts` (Block „Konzept Verbessern v1 · Wörter“)."""],
 }
 
 # ---------------------------------------------------------------------------------------------

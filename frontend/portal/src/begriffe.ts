@@ -10,19 +10,31 @@
  */
 import {
   UEMS_ABWEICHUNG,
+  UEMS_AUF_KURS,
+  UEMS_AUFFAELLIGKEIT,
+  UEMS_AUSGANGSLAGE,
+  UEMS_BEOBACHTET,
   UEMS_BEZUGSBASIS,
   UEMS_BEZUGSGROESSE,
   UEMS_ENERGETISCHE_BEWERTUNG_WORT,
+  UEMS_EINSPARUNG,
   UEMS_ENERGIEEINSATZ,
   UEMS_ENERGIEZIEL,
+  UEMS_ERWARTETE_WIRKUNG,
   UEMS_FESTSTELLUNG,
+  UEMS_GEMESSEN_AN,
   UEMS_KENNZAHL,
   UEMS_MANAGEMENTBEWERTUNG,
   UEMS_MANAGEMENTBEWERTUNG_WOZU,
   UEMS_MASSNAHME,
+  UEMS_MASSNAHME_ERGEBNISSE,
+  UEMS_MESSGRUNDLAGE,
   UEMS_MESSSTELLE,
   UEMS_VERZEICHNIS,
+  UEMS_VORHER,
   UEMS_WIEDERVORLAGE,
+  UEMS_WIRKSAMKEIT,
+  UEMS_ZWEITE_PERSON,
 } from './glossar';
 
 export type BegriffSchluessel =
@@ -42,7 +54,18 @@ export type BegriffSchluessel =
   | 'audit'
   | 'feststellung'
   | 'managementbewertung'
-  | 'energetische_bewertung';
+  | 'energetische_bewertung'
+  // Konzept Verbessern v1 §7: die Wörter der Flächen unter Verbessern.
+  | 'auf_kurs'
+  | 'erwartete_wirkung'
+  | 'beobachtet'
+  | 'belegt'
+  | 'vorher'
+  | 'gemessen_an'
+  | 'auffaelligkeit'
+  | 'wirksamkeit'
+  | 'zweite_person'
+  | 'einsparung';
 
 export interface Begriff {
   /** Das Wort, wie das Portal es zeigt. */
@@ -120,23 +143,31 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     beispiel: 'Zum Beispiel auf dieselbe Produktionsmenge oder dasselbe Wetter wie im Vergleichszeitraum.',
     fachwort: null,
   },
+  // Konzept Verbessern v1 §7: Klartext, Frage und Abgrenzung des Aufklappers „Was ist …?“; die Normwörter nur im Feld
+  // `fachwort` (Entscheid 14). Das Energieziel heißt auch in der Norm so - darum ohne Fachwort.
   energieziel: {
     wort: UEMS_ENERGIEZIEL,
-    klartext: 'Was Sie erreichen wollen, mit Zahl und Zeitraum.',
-    beispiel: 'Zum Beispiel 5 % weniger Strom je Stück im Jahr 2028.',
+    klartext: 'Was Sie erreichen wollen, mit Zahl und Zeitraum: so viel weniger Energie, als die Bezugsbasis bei Ihrer Produktion erwarten lässt.',
+    beispiel: 'Zum Beispiel: Der Spritzguss soll im Jahr 2029 4\u00a0% weniger Strom brauchen, als bei der jeweiligen Produktionsmenge zu erwarten ist.',
     fachwort: null,
+    frage: 'Was ist ein Energieziel?',
+    abgrenzung: 'Nicht die Bezugsbasis: Sie sagt, was normal wäre; das Energieziel, was Sie sich vornehmen. Ob es erreicht ist, entscheidet am Ende eine Person.',
   },
   massnahme: {
     wort: UEMS_MASSNAHME,
-    klartext: 'Was Sie tun, um ein Ziel zu erreichen oder eine Abweichung zu beheben. Ob sie etwas bewirkt, beurteilt eine Person — der Vergleich mit der Bezugsbasis hilft dabei.',
-    beispiel: null,
-    fachwort: null,
+    klartext: 'Etwas, das Sie tun, damit Ihr Betrieb weniger Energie braucht - oder damit Ihr Energiemanagement besser läuft. Sie hat eine verantwortliche Person und einen Termin.',
+    beispiel: 'Zum Beispiel: Die Werkzeugheizungen in Betriebspausen abschalten, verantwortlich die Instandhaltung, Termin Ende Januar.',
+    fachwort: 'Aktionsplan (die Liste Ihrer Maßnahmen), Korrekturmaßnahme (eine Maßnahme aus einer Feststellung)',
+    frage: 'Was ist eine Maßnahme?',
+    abgrenzung: 'Nicht die Wirkung: Was eine Maßnahme gebracht hat, beobachtet VoltPilot an einer Kennzahl - ob sie es bewirkt hat, sagt eine Person.',
   },
   abweichung: {
     wort: UEMS_ABWEICHUNG,
-    klartext: 'Etwas lief anders als erwartet — zum Beispiel ein Verbrauch deutlich über der Bezugsbasis. Sie halten fest, was Sie dazu wissen und tun.',
-    beispiel: null,
-    fachwort: null,
+    klartext: 'Ein Monat, der anders lief als erwartet, und was Sie dazu herausfinden - mit verantwortlicher Person, Frist und Ergebnis.',
+    beispiel: 'Zum Beispiel: Im Dezember brauchte der Spritzguss 12,9\u00a0% mehr Strom als erwartet. Die Instandhaltung sagt, die Werkzeugheizungen liefen über die Feiertage durch.',
+    fachwort: 'Nichtkonformität nur bei einer Feststellung aus einem Audit',
+    frage: 'Was ist eine Abweichung?',
+    abgrenzung: 'Nicht die Feststellung aus einem Audit: Die gehört zu Nachweisen. Und noch nicht jede Auffälligkeit: Eine Abweichung entsteht erst, wenn eine Person den Monat untersucht.',
   },
   verzeichnis: {
     wort: UEMS_VERZEICHNIS,
@@ -178,7 +209,114 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     frage: 'Was ist die energetische Bewertung?',
     abgrenzung: 'Nicht verwechseln mit dem Monatsbericht: der Bericht zählt, die Bewertung ordnet.',
   },
+  // Konzept Verbessern v1 §7: drei Wörter für drei Dinge - erwartet (die Schätzung einer Person), beobachtet (die
+  // Messung gegen die Bezugsbasis), belegt (das Urteil einer Person) - und die Wörter rund um Energieziel und Maßnahme.
+  auf_kurs: {
+    wort: UEMS_AUF_KURS,
+    klartext: 'Bisher mindestens so viel weniger, wie Sie sich vorgenommen haben. Knapp dahinter heißt: weniger, aber noch nicht genug.',
+    beispiel: 'Zum Beispiel: Nach dem März 2,2\u00a0% mehr statt 4\u00a0% weniger - nicht auf Kurs.',
+    fachwort: null,
+    frage: 'Was heißt „auf Kurs“?',
+    abgrenzung: 'Keine Prognose: Es zählt, was schon gemessen ist. Ob das Energieziel erreicht ist, entscheidet am Ende eine Person.',
+  },
+  erwartete_wirkung: {
+    wort: UEMS_ERWARTETE_WIRKUNG,
+    klartext: 'Was eine Person beim Planen schätzt: so viel weniger soll die Maßnahme bringen.',
+    beispiel: 'Zum Beispiel: 3\u00a0% weniger Strom im Spritzguss, weil die Heizungen etwa ein Fünftel der Zeit ohne Produktion laufen.',
+    fachwort: null,
+    frage: 'Was heißt „erwartet“ bei einer Maßnahme?',
+    abgrenzung: 'Eine Schätzung, keine Messung: Sie steht immer neben der beobachteten Zahl, nie an ihrer Stelle.',
+  },
+  beobachtet: {
+    wort: UEMS_BEOBACHTET,
+    klartext: 'Was VoltPilot nach der Umsetzung misst: wie viel weniger als erwartet, Monat für Monat, gegen die Bezugsbasis.',
+    beispiel: 'Zum Beispiel: 3,4\u00a0% weniger als erwartet, Monat für Monat seit der Umsetzung gemessen.',
+    fachwort: null,
+    frage: 'Was heißt „beobachtet“?',
+    abgrenzung: 'Nicht „gespart“ und nicht „bewirkt“: Ob die Maßnahme den Unterschied macht, sagt eine Person.',
+  },
+  belegt: {
+    wort: UEMS_MASSNAHME_ERGEBNISSE.belegt,
+    klartext: 'Das Urteil einer Person: Der Unterschied kommt von der Maßnahme - mit Begründung.',
+    beispiel: 'Zum Beispiel: Laufzeit der Werkzeugheizungen laut Steuerung 18\u00a0% niedriger, keine andere Änderung am Prozess.',
+    fachwort: null,
+    frage: 'Was heißt „belegt“?',
+    abgrenzung: 'Die Gegenstücke: nicht belegt (es gibt andere Gründe) und nicht messbar (die Zahl sagt nichts).',
+  },
+  vorher: {
+    wort: UEMS_VORHER,
+    klartext: 'Wie der Monat aussah, als die Maßnahme geplant wurde - festgehalten, damit man später vergleichen kann.',
+    beispiel: 'Zum Beispiel: Dezember 2027, 12,9\u00a0% mehr als erwartet, festgehalten am 15.01.2028.',
+    fachwort: UEMS_AUSGANGSLAGE,
+    frage: 'Was heißt „Vorher“?',
+    abgrenzung: 'Ändert eine Korrektur den Monat, gibt es einen Hinweis; der festgehaltene Wert bleibt, bis eine Person antwortet.',
+  },
+  gemessen_an: {
+    wort: UEMS_GEMESSEN_AN,
+    klartext: 'Die Kennzahl und die Bezugsbasis, an denen VoltPilot die Wirkung einer Maßnahme misst.',
+    beispiel: 'Zum Beispiel: Stromeinsatz im Spritzguss je kg, gegen die Bezugsbasis des Vorjahrs.',
+    fachwort: UEMS_MESSGRUNDLAGE,
+    frage: 'Was heißt „gemessen an“?',
+    abgrenzung: 'Ohne sie ist eine Maßnahme nicht gemessen. Das ist erlaubt - dann sagt nur eine Person, ob sie geholfen hat.',
+  },
+  auffaelligkeit: {
+    wort: UEMS_AUFFAELLIGKEIT,
+    klartext: 'Ein Monat, den VoltPilot vermerkt, weil er über der Bezugsbasis liegt. Eine Person antwortet: untersuchen oder zur Kenntnis nehmen.',
+    beispiel: 'Zum Beispiel: März 2029, 2,2\u00a0% mehr Strom im Spritzguss als erwartet.',
+    fachwort: null,
+    frage: 'Was ist eine Auffälligkeit?',
+    abgrenzung: 'Noch keine Abweichung: VoltPilot urteilt nicht, es vermerkt nur.',
+  },
+  wirksamkeit: {
+    wort: UEMS_WIRKSAMKEIT,
+    klartext: 'Ob eine Feststellung aus einem Audit behoben ist - das hält eine Person an der Feststellung fest.',
+    beispiel: 'Zum Beispiel: Am 15.04.2029 als wirksam festgehalten.',
+    fachwort: null,
+    frage: 'Was heißt „Wirksamkeit“?',
+    abgrenzung: 'Nicht die Wirkung einer Maßnahme: Die Wirksamkeit gehört zu Nachweisen, die Wirkung zu Verbessern.',
+  },
+  zweite_person: {
+    wort: UEMS_ZWEITE_PERSON,
+    klartext: 'Ist es für Ihr Unternehmen eingestellt, bestätigt eine zweite Person jedes Urteil.',
+    beispiel: 'Zum Beispiel: Das Energiemanagement beantragt „belegt“, die Geschäftsführung bestätigt.',
+    fachwort: 'Vier-Augen-Prinzip',
+    frage: 'Was heißt „zweite Person“?',
+    abgrenzung: 'Wer beantragt hat oder verantwortlich ist, bestätigt nicht selbst.',
+  },
+  einsparung: {
+    wort: UEMS_EINSPARUNG,
+    klartext: 'Was Sie weniger brauchen, als zu erwarten war - in kWh.',
+    beispiel: 'Zum Beispiel: Bei 900.000\u00a0kWh erwartetem Verbrauch sind 3,4\u00a0% weniger rund 30.600\u00a0kWh.',
+    fachwort: 'Energieleistungsverbesserung',
+    frage: 'Was heißt „Einsparung“?',
+    abgrenzung: 'VoltPilot misst den Unterschied; ob eine Maßnahme ihn bewirkt hat, sagt eine Person.',
+  },
 };
+
+/**
+ * Konzept Verbessern v1, Entscheid 14: die Normwörter, die nur im Feld `fachwort` stehen dürfen - je Begriff genau
+ * diese. Der Sprach-Wächter in `copy.test.ts` lässt sie dort und nur dort durch.
+ */
+export const NORMWOERTER_IM_FACHWORT: Partial<Record<BegriffSchluessel, readonly string[]>> = {
+  massnahme: ['Aktionsplan', 'Korrekturmaßnahme'],
+  abweichung: ['Nichtkonformität'],
+  einsparung: ['Energieleistungsverbesserung'],
+};
+
+/**
+ * Die letzte Zeile von „Was ist …?“: „Fachwort: …“, bei mehreren Wörtern „Fachwörter: …“ (ein Komma außerhalb der
+ * Klammern trennt zwei Wörter).
+ */
+export function fachwortZeile(fachwort: string): string {
+  let tiefe = 0;
+  let mehrere = false;
+  for (const z of fachwort) {
+    if (z === '(') tiefe += 1;
+    else if (z === ')') tiefe -= 1;
+    else if (z === ',' && tiefe === 0) mehrere = true;
+  }
+  return `${mehrere ? 'Fachwörter' : 'Fachwort'}: ${fachwort}`;
+}
 
 /** Die Frage, die der Knopf an einem Begriff vorliest. */
 export const begriffFrage = (wort: string) => `Was heißt „${wort}“?`;
