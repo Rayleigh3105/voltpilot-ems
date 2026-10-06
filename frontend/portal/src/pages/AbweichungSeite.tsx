@@ -12,6 +12,7 @@ import { Recht } from '../components/Recht';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import * as Z from '../energieziele';
 import { UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_VERANTWORTLICH } from '../glossar';
+import '../components/kacheln/Kacheln.css';
 import '../components/Wiedervorlage.css';
 import './Abweichungen.css';
 
@@ -166,8 +167,7 @@ export function AbweichungSeite({
         <header className="vp-abw-kopf">
           <div className="vp-abw-kopf-text">
             <h1 data-testid="abweichung-titel">
-              {A.abweichungTitel(a)}
-              <span className="vp-abw-kz">{a.kennzeichen}</span>
+              {A.abweichungTitel(a)} <span className="vp-abw-kz">{a.kennzeichen}</span>
             </h1>
             <p className="vp-abw-meta" data-testid="abweichung-meta">
               {meta.join(' · ')}
@@ -226,14 +226,14 @@ export function AbweichungSeite({
                     <div>
                       <span>gemessen</span>
                       <b className={zahlen.delta && Number(zahlen.delta) > 0 ? 'is-warn' : undefined}>
-                        {A.zahlDe(zahlen.gemessen.wert)} <small>{zahlen.gemessen.einheit}</small>
+                        {A.zahlDe(zahlen.gemessen.wert)}{'\u00a0'}<small>{zahlen.gemessen.einheit}</small>
                       </b>
                     </div>
                     {zahlen.erwartet && (
                       <div>
                         <span>erwartet</span>
                         <b>
-                          {A.zahlDe(zahlen.erwartet.wert)} <small>{zahlen.erwartet.einheit}</small>
+                          {A.zahlDe(zahlen.erwartet.wert)}{'\u00a0'}<small>{zahlen.erwartet.einheit}</small>
                         </b>
                       </div>
                     )}
@@ -241,7 +241,7 @@ export function AbweichungSeite({
                       <div>
                         <span>{A.bedingungLabel(zahlen.bedingung)}</span>
                         <b>
-                          {A.zahlDe(zahlen.bedingung.wert)} <small>{zahlen.bedingung.einheit}</small>
+                          {A.zahlDe(zahlen.bedingung.wert)}{'\u00a0'}<small>{zahlen.bedingung.einheit}</small>
                         </b>
                       </div>
                     )}

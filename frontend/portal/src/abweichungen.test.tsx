@@ -173,7 +173,7 @@ describe('Reiter „Abweichungen“', () => {
       '1 Monat wartet auf Ihre Antwort: Stromeinsatz Spritzguss je kg lag im Januar 2028 12,9 % über der Erwartung.',
     );
     const zu = screen.getByTestId('abweichungen-zu-beantworten');
-    expect(ohneNbsp(within(zu).getByText(/^Januar 2028:/).textContent)).toBe('Januar 2028: 12,9 % mehr als erwartetKZ-0004');
+    expect(ohneNbsp(within(zu).getByText(/^Januar 2028:/).textContent)).toBe('Januar 2028: 12,9 % mehr als erwartet KZ-0004');
     expect(ohneNbsp(zu.textContent)).toContain('Stromeinsatz Spritzguss je kg · 78.000 kWh statt 69.098 bei 250.000 kg');
     expect(within(zu).getByTestId('auffaelligkeit-beantworten').textContent).toBe('Beantworten');
 
@@ -248,7 +248,7 @@ describe('Seite einer Abweichung', () => {
 
   it('offen: Titel was auffiel, Stufen, wer bis wann klärt, Abschließen im Block der Wiedervorlage, Was auffiel in Zahlen', async () => {
     const { kennzahl } = seite('offen');
-    expect(ohneNbsp((await screen.findByTestId('abweichung-titel')).textContent)).toBe('Dezember 2027: 12,9 % mehr als erwartetAW-2028-0001');
+    expect(ohneNbsp((await screen.findByTestId('abweichung-titel')).textContent)).toBe('Dezember 2027: 12,9 % mehr als erwartet AW-2028-0001');
     expect(screen.getByTestId('abweichung-meta').textContent).toBe('Stromeinsatz Spritzguss je kg · verantwortlich Ines Kaltenbach · Frist 31.01.2028');
     const stufen = screen.getByTestId('abweichung-stufen');
     expect([...stufen.querySelectorAll('li')].map((li) => `${li.className}:${li.textContent}`)).toEqual([

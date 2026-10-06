@@ -6,9 +6,10 @@ import { BEGRIFFE } from '../begriffe';
 import { UEMS_ABWEICHUNGEN, UEMS_AUFFAELLIGKEIT, UEMS_VERANTWORTLICH } from '../glossar';
 import { abweichungRoute, hashForRoute } from '../nav';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
-import { FristDatum } from './FristDatum';
+import { FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
 import { Recht } from './Recht';
+import './kacheln/Kacheln.css';
 import './Wiedervorlage.css';
 import '../pages/Abweichungen.css';
 
@@ -193,8 +194,11 @@ function Abschnitt({ titel, n, m, testid, children }: { titel: string; n: number
   return (
     <section className="vp-abw-abschnitt" aria-label={titel} data-testid={testid}>
       <div className="vp-abw-abschnitt-kopf">
-        <h2>{n === null ? titel : `${titel} · ${n}`}</h2>
-        {m && <span className="vp-abw-abschnitt-m">{m}</span>}
+        <h2>
+          {titel}
+          {n !== null && <span className="vp-abw-zahl">{` · ${n}`}</span>}
+        </h2>
+        {n !== null && <span className="vp-abw-abschnitt-m">{m ? `${n} · ${m}` : n}</span>}
       </div>
       {n !== null && n > 0 && (
         <div className="vp-abw-kopfzeile" aria-hidden="true">
@@ -218,8 +222,14 @@ function Eintraege({ reihen = false, children }: { reihen?: boolean; children: R
   );
 }
 
+/** Das Kennzeichen leise hinter dem Titel; das Leerzeichen davor ist die Umbruchstelle. */
 function Kennzeichen({ text }: { text: string | null }) {
-  return text ? <span className="vp-abw-kz">{text}</span> : null;
+  return text ? (
+    <>
+      {' '}
+      <span className="vp-abw-kz">{text}</span>
+    </>
+  ) : null;
 }
 
 /** Eine offene Auffälligkeit: vermerkt am …, was auffiel in Zahlen, noch niemand, „Beantworten“. */
@@ -338,11 +348,13 @@ function Abgeschlossen({
         )}
         <span className="vp-abw-grund">{A.kennzahlName(kennzahl)}</span>
         <span className="vp-abw-grund vp-abw-reihe-ergebnis" data-testid="ergebnis">
-          {ergebnis}
+          <Kennzeichentext text={ergebnis} />
         </span>
       </span>
       <span className="vp-abw-ergebnis" title={ergebnis}>
-        <span>{ergebnis}</span>
+        <span>
+          <Kennzeichentext text={ergebnis} />
+        </span>
       </span>
       <span className="vp-abw-fuss">
         <span className="vp-abw-wer">

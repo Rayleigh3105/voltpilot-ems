@@ -55,6 +55,8 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 
 async function ablegen(page: Page, name: string, ganz = false) {
   if (!BILDER) return;
+  // Der Zeiger bleibt sonst über einer Reihe stehen, die sich nach dem letzten Klick verschoben hat (Hover im Bild).
+  await page.mouse.move(0, 0);
   mkdirSync(BILDER, { recursive: true });
   const path = join(BILDER, `${name}.png`);
   const vp = page.viewportSize();
@@ -106,7 +108,9 @@ async function vergleich(page: Page) {
 
 for (const breite of [375, 1440]) {
   test.describe(`Abweichungen bei ${breite} px`, () => {
-    test('Vermerk → Abweichung → Ursache-Aussage → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog (R1/R2)', async ({ page }) => {
+    test('Vermerk → Abweichung → Aussage festhalten → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog (R1/R2)', async ({ page }) => {
+      // Der längste Fluss der Bühne: fünf Dialoge über drei Seiten.
+      test.slow();
       await oeffne(page, 'lage=vermerk&seite=kennzahl', breite, AM_15_01_2028);
       await vergleich(page);
       const dez = page.getByTestId('monat-2027-12');

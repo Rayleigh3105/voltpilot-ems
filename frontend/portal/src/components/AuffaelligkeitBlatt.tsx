@@ -138,7 +138,10 @@ export function AuffaelligkeitBlatt({
             label="Wer klärt das?"
             hint="Aus den aktiven Konten Ihres Kundenbereichs."
             wert={verantwortlich}
-            setze={setVerantwortlich}
+            setze={(v) => {
+              setVerantwortlich(v);
+              if (v) setZeigen((z) => ({ ...z, verantwortlich: undefined }));
+            }}
             fehler={zeigen.verantwortlich ?? null}
           />
           <fieldset className="vp-abw-feld">
@@ -152,7 +155,17 @@ export function AuffaelligkeitBlatt({
               </button>
             </div>
             {anderer && (
-              <VpDatePicker id={`${basis}-frist`} ariaLabel="Frist" value={frist} onChange={setFrist} min={abruf} error={zeigen.frist ?? null} />
+              <VpDatePicker
+                id={`${basis}-frist`}
+                ariaLabel="Frist"
+                value={frist}
+                onChange={(t) => {
+                  setFrist(t);
+                  setZeigen((z) => ({ ...z, frist: undefined }));
+                }}
+                min={abruf}
+                error={zeigen.frist ?? null}
+              />
             )}
           </fieldset>
           {mit.length > 0 && (
@@ -169,7 +182,10 @@ export function AuffaelligkeitBlatt({
             rows={3}
             value={begruendung}
             placeholder={BEGRUENDUNG_BEISPIEL}
-            onChange={(x) => setBegruendung(x.target.value)}
+            onChange={(x) => {
+              setBegruendung(x.target.value);
+              if (Z.begruendungOk(x.target.value)) setZeigen((z) => ({ ...z, begruendung: undefined }));
+            }}
             aria-invalid={!!zeigen.begruendung}
           />
           {zeigen.begruendung && <p className="vp-abw-fehler">{zeigen.begruendung}</p>}

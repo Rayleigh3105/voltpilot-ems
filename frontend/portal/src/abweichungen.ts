@@ -577,8 +577,10 @@ const zitat = (t: string | null | undefined) => (t ? `‚${t}‘` : null);
 
 /** „Was dazu bekannt ist“: jede Zeile des Protokolls als Satz, neueste zuerst; eine Aussage immer mit „Aussage von …“. */
 export function verlaufBild(a: Pick<Abweichung, 'verlauf' | 'herkunft' | 'abschluss'>): VerlaufBild[] {
+  // Neueste zuerst nach dem Tag, der dasteht (eine Aussage trägt ihren eigenen Tag), bei gleichem Tag die spätere Zeile.
+  const tagDer = (e: AbweichungEintrag) => (e.art === 'ursache_aussage' && e.aussage ? e.aussage.am : e.am).slice(0, 10);
   return [...(a.verlauf ?? [])]
-    .sort((x, y) => y.am.localeCompare(x.am) || y.nr - x.nr)
+    .sort((x, y) => tagDer(y).localeCompare(tagDer(x)) || y.nr - x.nr)
     .map((e) => {
       const key = String(e.nr);
       const mit = (t: string | null) => [e.person, t].filter(Boolean).join(' · ');
