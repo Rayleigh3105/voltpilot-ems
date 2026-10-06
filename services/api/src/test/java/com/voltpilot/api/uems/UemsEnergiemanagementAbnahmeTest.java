@@ -784,6 +784,50 @@ class UemsEnergiemanagementAbnahmeTest {
         return k;
     }
 
+    /**
+     * Konzept Verbessern v1 §4.8 (Vorarbeit der Demo-Füllung, PR 6): die Vorgänge von „Ziele und Maßnahmen“ tragen
+     * Kennzahl, Bezugsbasis, Verantwortliche, Energieziel, Herkunft, Wortlaut und Begründung der Referenz - kein
+     * Platzhalter wie „Umgesetzt wie in der Referenzdatei.“ und kein fremder Wortlaut.
+     */
+    @Test
+    void zieleUndMassnahmenWieDieReferenz() {
+        for (JsonNode aw : referenz.path("abweichungen")) {
+            Map<String, Object> z = root.queryForMap("SELECT k.kennzeichen AS kennzahl, b.kennzeichen AS basis, a.fassung, "
+                    + "a.verantwortlich_name FROM abweichung a JOIN kennzahl k ON k.id = a.kennzahl_id JOIN bezugsbasis b "
+                    + "ON b.id = a.bezugsbasis_id WHERE a.tenant_id = ? AND a.kennzeichen = ?", tenant,
+                    aw.path("kennzeichen").asText());
+            assertThat(z.get("kennzahl")).as(aw.path("kennzeichen").asText()).isEqualTo(aw.path("kennzahl").asText());
+            assertThat(z.get("basis")).isEqualTo(aw.path("bezugsbasis").asText());
+            assertThat(z.get("fassung")).isEqualTo(aw.path("fassung").asInt());
+            assertThat(z.get("verantwortlich_name")).isEqualTo(AhrenbergWelt.NAMEN.get(aw.path("verantwortlich").asText()));
+        }
+        for (String liste : List.of("massnahmen", "massnahmen_1_10")) {
+            for (JsonNode m : referenz.path(liste)) {
+                String k = m.path("kennzeichen").asText();
+                Map<String, Object> z = root.queryForMap("SELECT m.titel, m.termin::text AS termin, m.verantwortlich_name, "
+                        + "m.herkunft_art, m.herkunft_kennung, m.erwartete_wirkung_wortlaut, m.umgesetzt_begruendung, "
+                        + "z.kennzeichen AS energieziel FROM massnahme m LEFT JOIN energieziel z ON z.id = m.energieziel_id "
+                        + "WHERE m.tenant_id = ? AND m.kennzeichen = ?", tenant, k);
+                assertThat(z.get("titel")).as(k).isEqualTo(m.path("titel").asText());
+                assertThat(z.get("termin")).as(k).isEqualTo(m.path("termin").asText());
+                assertThat(z.get("verantwortlich_name")).as(k).isEqualTo(AhrenbergWelt.NAMEN.get(m.path("verantwortlich").asText()));
+                assertThat(z.get("herkunft_art")).as(k).isEqualTo(m.at("/herkunft/art").asText());
+                assertThat(z.get("herkunft_kennung")).as(k).isEqualTo(m.at("/herkunft/kennung").asText());
+                assertThat(z.get("erwartete_wirkung_wortlaut")).as(k).isEqualTo(m.at("/erwartete_wirkung/wortlaut").asText());
+                assertThat(z.get("energieziel")).as(k).isEqualTo(m.path("energieziel").isTextual() ? m.path("energieziel").asText() : null);
+                String umgesetzt = m.has("umgesetzt_begruendung") ? m.path("umgesetzt_begruendung").asText(null) : null;
+                for (JsonNode v : m.path("verlauf")) {
+                    if (v.path("art").asText().equals("massnahme_umgesetzt")) {
+                        umgesetzt = v.path("begruendung").asText();
+                    }
+                }
+                assertThat(z.get("umgesetzt_begruendung")).as(k).isEqualTo(umgesetzt);
+            }
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme WHERE tenant_id = ? AND umgesetzt_begruendung = "
+                + "'Umgesetzt wie in der Referenzdatei.'", Integer.class, tenant)).isZero();
+    }
+
     /** Alle Uhren, an denen ein Dienst „heute“ misst, auf denselben Augenblick. */
     private void uhr(String jetzt) {
         uhr(Clock.fixed(Instant.parse(jetzt), ZoneOffset.UTC));
