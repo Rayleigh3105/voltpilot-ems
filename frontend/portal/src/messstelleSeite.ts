@@ -93,10 +93,8 @@ export function rolle(h: { groesse: string; richtung: string } | null | undefine
   return (h && ROLLEN[h.richtung]) ?? { wort: h?.groesse ?? 'Werte', ton: 'neutral' };
 }
 
-/** Eine Menge je Zeitraum gibt es nur für einen Zählerstand oder eine Intervallmenge - nie für eine Leistung. */
-export function hatMenge(h: { wertart: string } | null | undefined): boolean {
-  return h?.wertart === 'Zählerstand' || h?.wertart === 'Intervallmenge';
-}
+/** Eine Menge je Zeitraum gibt es nur für einen Zählerstand oder eine Intervallmenge (die Regel der Liste). */
+export { hatMenge } from './messstellenListe';
 
 // -------------------------------------------------------------------- Woher die Werte kommen
 
