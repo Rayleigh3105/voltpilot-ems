@@ -101,7 +101,10 @@ export function tageZwischen(von: string, bis: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
+/** „seit 15 Tagen“, „seit 1 Tag“ (Dativ). */
 export const tageWort = (n: number) => `${n} ${n === 1 ? 'Tag' : 'Tagen'}`;
+/** „noch 61 Tage“, „noch 1 Tag“ (Akkusativ). */
+export const tageNoch = (n: number) => `${n} ${n === 1 ? 'Tag' : 'Tage'}`;
 
 /** `2028-02` und `2029-01` → „Februar 2028 bis Januar 2029“. */
 export const zeitraumText = (von: string, bis: string) => zielperiodeText(`${von}/${bis}`);
@@ -394,7 +397,7 @@ export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null): AntwortBi
       };
     }
     const rest = tageZwischen(abruf, m.termin);
-    return { satz: `Geplant bis ${tag(m.termin)} - ${rest === 0 ? 'Termin ist heute' : `noch ${tageWort(rest)}`}.`, formal: null };
+    return { satz: `Geplant bis ${tag(m.termin)} - ${rest === 0 ? 'Termin ist heute' : rest > 0 ? `noch ${tageNoch(rest)}` : `Termin ist vorbei`}.`, formal: null };
   }
   if (m.art !== 'gemessen') {
     if (m.zustand === 'bewertet' && m.bewertung) {

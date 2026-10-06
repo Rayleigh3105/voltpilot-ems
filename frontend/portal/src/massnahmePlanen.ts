@@ -19,7 +19,7 @@ import {
   monateWert,
   type MassnahmeVorbelegung,
 } from './massnahmen';
-import { tageWort, tageZwischen } from './massnahmenBild';
+import { tageNoch, tageWort, tageZwischen } from './massnahmenBild';
 
 export const TITEL = `${UEMS_MASSNAHME} planen`;
 export const KNOPF_ANLEGEN = `${UEMS_MASSNAHME} anlegen`;
@@ -131,7 +131,7 @@ function monatsende(jjjjmm: string): string {
 function plusMonate(jjjjmm: string, n: number): string {
   const j = Number(jjjjmm.slice(0, 4));
   const m = Number(jjjjmm.slice(5, 7)) - 1 + n;
-  return `${j + Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, '0')}`;
+  return `${j + Math.floor(m / 12)}-${String((((m % 12) + 12) % 12) + 1).padStart(2, '0')}`;
 }
 
 /**
@@ -153,7 +153,7 @@ export function terminVorschlaege(heute: string): { wert: string; wort: string }
 /** „Termin 30.06.2029 - noch 61 Tage. Danach steht die Maßnahme als überfällig in der Wiedervorlage.“ */
 export function terminSatz(termin: string, heute: string): string {
   const rest = tageZwischen(heute, termin);
-  const wann = rest > 0 ? `noch ${tageWort(rest)}` : rest === 0 ? 'heute' : `schon seit ${tageWort(-rest)} vorbei`;
+  const wann = rest > 0 ? `noch ${tageNoch(rest)}` : rest === 0 ? 'heute' : `schon seit ${tageWort(-rest)} vorbei`;
   return `Termin ${tag(termin)} - ${wann}. Danach steht die ${UEMS_MASSNAHME} als überfällig in der Wiedervorlage.`;
 }
 
