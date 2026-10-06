@@ -59,6 +59,20 @@ export const VERLAUF_WORT: Record<MassnahmeEintrag['art'], string> = {
 export const aenderbar = (m: Pick<Massnahme, 'zustand'>) => m.zustand === 'geplant';
 export const kommentierbar = (m: Pick<Massnahme, 'zustand'>) => m.zustand === 'geplant' || m.zustand === 'umgesetzt';
 
+/**
+ * Verbessern-Konzept v1, Entscheid 8 (eng gefasst): umgesetzt melden und kommentieren darf, wer `verbesserung.verwalten`
+ * hat - oder als verantwortliche Person `verbesserung.eigene_massnahme` (nur die eigene Maßnahme). Ändern, Verwerfen
+ * und Bewerten fragen das nie. Die Route entscheidet genauso (`RechteAbleitung.eigeneMassnahme`).
+ */
+export function darfMeldenUndKommentieren(
+  darf: (aktion: string, standort: string | null) => boolean,
+  m: Pick<Massnahme, 'standort_id' | 'verantwortlich'>,
+  sub: string | null,
+): boolean {
+  if (darf('verbesserung.verwalten', m.standort_id)) return true;
+  return sub !== null && m.verantwortlich.sub === sub && darf('verbesserung.eigene_massnahme', m.standort_id);
+}
+
 // ------------------------------------------------------------------ Vorbelegung und Formregeln
 
 /**

@@ -52,7 +52,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Kennzahl ist er gewählt (ohne Standort = Unternehmen); das Recht {@code verbesserung.verwalten} prüft
  * {@link KennzahlService#darf} an diesem Standort (BE S am eigenen Standort, BD/LE 403). Sichtbarkeit über RLS
  * {@code site_scope} auf {@code standort_id} und über die Kennzahl — außerhalb 404. Der Kundenbereich kommt nie aus dem
- * Körper. Verantwortung verleiht kein Recht (RE3): der Verantwortliche ist nur ein aktives Konto.
+ * Körper. Verantwortung verleiht kein Recht (RE3): der Verantwortliche ist nur ein aktives Konto - mit der einen engen
+ * Ausnahme aus Verbessern v1 Entscheid 8: die eigene Maßnahme umgesetzt melden und kommentieren
+ * ({@code verbesserung.eigene_massnahme}, {@link #eigeneOderSchreibbar}).
  *
  * <p><b>F1:</b> „überfällig“ ist abgeleitet über die Operation {@code frist} mit der Uhr der Kennzahlen — kein
  * Läufer, kein Zustand.
@@ -379,7 +381,7 @@ public class MassnahmeService {
 
     /** M6: geplant → umgesetzt, einmalig; der Tag nie in der Zukunft (Zeitzone des Unternehmens), mit Begründung. */
     public MassnahmeDto.Massnahme umgesetzt(UUID id, MassnahmeDto.Umgesetzt u, ProtokollAkteur wer) {
-        geplant(schreibbar(id, wer));
+        geplant(eigeneOderSchreibbar(id, wer));
         if (u == null || u.am() == null) {
             throw VerbesserungAbgelehnt.anfrage("am");
         }
@@ -421,7 +423,7 @@ public class MassnahmeService {
 
     /** M7/§5.7: ein Kommentar (1–2 000 Zeichen) an einer geplanten oder umgesetzten Maßnahme — eine Protokollzeile. */
     public MassnahmeDto.Massnahme eintrag(UUID id, MassnahmeDto.NeuerEintrag e, ProtokollAkteur wer) {
-        Map<String, Object> z = schreibbar(id, wer);
+        Map<String, Object> z = eigeneOderSchreibbar(id, wer);
         if (e == null || (e.art() != null && !e.art().equals("kommentar"))) {
             throw VerbesserungAbgelehnt.anfrage("art");
         }
@@ -721,6 +723,28 @@ public class MassnahmeService {
     /** Sichtbar (404) und das Recht {@code verbesserung.verwalten} an Kennzahl bzw. Standort (403). */
     private Map<String, Object> schreibbar(UUID id, ProtokollAkteur wer) {
         return zeile(id, VERWALTEN, wer);
+    }
+
+    /**
+     * Verbessern-Konzept v1, Entscheid 8 (eng gefasst, {@link RechteAbleitung#eigeneMassnahme}): umgesetzt melden und
+     * kommentieren mit {@code verbesserung.verwalten} - oder als verantwortliche Person mit
+     * {@code verbesserung.eigene_massnahme} an derselben Geltung. Jede andere Ablehnung (außerhalb 404, eine fremde
+     * Maßnahme, eine Rolle ohne Zelle) bleibt die von {@code verwalten}; Ändern, Verwerfen und Bewerten fragen nie hier.
+     */
+    private Map<String, Object> eigeneOderSchreibbar(UUID id, ProtokollAkteur wer) {
+        try {
+            return schreibbar(id, wer);
+        } catch (KennzahlAbgelehnt verwalten) {
+            if (verwalten.status() != 403 || wer == null
+                    || !Objects.equals(wer.sub(), sichtbar(id).get("verantwortlich_sub"))) {
+                throw verwalten;
+            }
+            try {
+                return zeile(id, RechteAbleitung.EIGENE_MASSNAHME, wer);
+            } catch (KennzahlAbgelehnt eigene) {
+                throw verwalten;
+            }
+        }
     }
 
     /**
