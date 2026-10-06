@@ -8,11 +8,14 @@ import { benutzerApi } from '../benutzer';
 import * as E from '../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import { Begruendung, Formular, VerweisFelder } from './DokumentDialoge';
+import { routenHeute } from '../routenUhr';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 
 const ABBRECHEN = 'Abbrechen';
-const heute = () => new Date().toISOString().slice(0, 10);
+// Konzept Nachweisen n1, Befund 3: „heute“ ist der Tag der Route (die Seiten merken ihn sich), nie der UTC-Tag des
+// Browsers - sonst setzte „am“ in der Prüfumgebung still 2026 neben einen Termin 2029.
+const heute = routenHeute;
 
 /** Ablehnung, Verantwortungs- und Grenz-Satz am Fuß jedes Dialogs (SP4) — ein Dialog ist eine eigene Fläche. */
 export function DialogFuss({ satz }: { satz: string | null }) {

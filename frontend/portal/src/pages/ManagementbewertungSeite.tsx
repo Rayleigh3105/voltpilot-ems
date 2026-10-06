@@ -1,3 +1,4 @@
+import { merkeAugenblick, routenHeute } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -26,10 +27,11 @@ type Dialog = { art: 'sitzung' } | { art: 'beschluss'; beschluss: Managementbewe
 export function ManagementbewertungSeite({
   kennung,
   onListe,
-  heute = () => new Date().toISOString().slice(0, 10),
+  heute = routenHeute,
 }: {
   kennung: string;
   onListe: () => void;
+  /** Nur für Tests; sonst der Tag der Route (Konzept Nachweisen n1, Befund 3), den die Seite beim Laden merkt. */
   heute?: () => string;
 }) {
   const [detail, setDetail] = useState<BerichtDetail | null>(null);
@@ -48,6 +50,7 @@ export function ManagementbewertungSeite({
     Promise.all([api.bericht(kennung), api.managementbewertung(kennung)]).then(
       async ([d, m]) => {
         if (!aktiv) return;
+        merkeAugenblick(d.abruf, d.bericht.zeitzone);
         setDetail(d);
         setMb(m);
         const g = M.gueltigerStand(d.staende);

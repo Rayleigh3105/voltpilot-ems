@@ -34507,9 +34507,15 @@ components:
         ohne_verantwortliche: { type: array, items: { type: string }, description: "Wesentliche Einsätze ohne verantwortliche Person." }
     BerichtListe:
       type: object
-      required: [berichte]
+      required: [berichte, abruf]
       properties:
         berichte: { type: array, items: { $ref: "#/components/schemas/Bericht" } }
+        abruf:
+          type: string
+          format: date-time
+          description: >
+            Der Augenblick der Route (ihre Uhr, in der Prüfumgebung die Bühnen-Uhr). Das Portal misst „Zeitraum läuft“
+            und die Zeitraum-Wahl daran, nie an der Uhr des Browsers.
     BerichtStandRef:
       type: object
       description: Ein Berichtsstand in einer Folgen-Karte - „BR-2026-0001 Nr. 2“.
@@ -34561,11 +34567,12 @@ components:
         verworfen_am: { type: string, format: date-time, nullable: true }
     BerichtDetail:
       type: object
-      required: [bericht, staende, anstoesse]
+      required: [bericht, staende, anstoesse, abruf]
       properties:
         bericht: { $ref: "#/components/schemas/Bericht" }
         staende: { type: array, items: { $ref: "#/components/schemas/BerichtStandKurz" } }
         anstoesse: { type: array, items: { $ref: "#/components/schemas/BerichtAnstoss" } }
+        abruf: { type: string, format: date-time, description: "Der Augenblick der Route, wie in BerichtListe." }
     BerichtEntwurf:
       type: object
       description: >

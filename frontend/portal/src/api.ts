@@ -3860,6 +3860,8 @@ export interface BerichtDetail {
   bericht: Bericht;
   staende: BerichtStandKurz[];
   anstoesse: BerichtAnstoss[];
+  /** Der Augenblick der Route (ihre Uhr): daran misst die Seite „Zeitraum läuft“, nie an der Uhr des Browsers. */
+  abruf: string;
 }
 
 /** Ein Abzug: `docs/contracts/v2/bericht.schema.json` `$defs/abzug` — gelesen über `uemsBericht.ts`. */
@@ -7444,6 +7446,16 @@ export function vergissGemerkte(): void {
   gemerkt.clear();
 }
 
+/**
+ * Welcher Kundenbereich gemeint ist: `X-Kundenbereich` (Partner und Plattform in einer Unterstützung, Kunden ohnehin),
+ * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
+ * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
+ */
+function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
+  return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
+    : mandant ? { 'X-Tenant-Id': mandant } : {};
+}
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   const angefragterMandant = tenantOverride;
   const angefragterKundenbereich = kundenbereich;
@@ -7462,8 +7474,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(angefragterKundenbereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': angefragterKundenbereich }
-        : angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
+      ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
   });
@@ -7513,7 +7524,7 @@ export async function downloadMeasurementExport(
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf(path),
     },
   });
   if (!response.ok) throw new ApiError(response.status, 'Der Export konnte nicht erstellt werden.');
@@ -7540,7 +7551,7 @@ export async function ladeGesamtabzug(): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/unternehmen/abzug`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf('/api/v1/unternehmen/abzug'),
     },
   });
   if (!res.ok) {
@@ -11141,8 +11152,11 @@ export const api = {
    * welche Hebel sie zeigen; entscheiden tut weiter die Route.
    */
   selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
-  /** Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. */
-  berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
+  /**
+   * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
+   * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
+   */
+  berichte: () => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
@@ -11181,7 +11195,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/berichte/${kennung}/staende/${nr}/${format}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf(`/api/v1/berichte/${kennung}/staende/${nr}/${format}`),
       },
     });
     if (!res.ok) {
@@ -11331,7 +11345,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/verzeichnis?${q}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf(`/api/v1/energiemanagement/verzeichnis?${q}`),
       },
     });
     if (!res.ok) {
@@ -11350,7 +11364,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/wiedervorlage?format=ics`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf('/api/v1/energiemanagement/wiedervorlage?format=ics'),
       },
     });
     if (!res.ok) {

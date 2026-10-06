@@ -15,6 +15,7 @@ import { darfInListen } from './rollen';
  * REIN: kein Netz, kein Zustand, keine Uhr (wer „jetzt“ braucht, bekommt es übergeben).
  */
 
+import type { Erklaerung } from './components/nachweisen/erklaerung';
 import { ApiError } from './api';
 import type {
   Bericht,
@@ -547,6 +548,11 @@ export interface SeitenHebel {
   vergleichen: { knopf: string; gegen: number } | null;
   /** Hebel „Anstoß verwerfen“ im Banner — nur mit Freigabe-Recht (R4). */
   verwerfen: boolean;
+  /**
+   * Am Entwurf ohne Freigabe-Recht (Konzept Nachweisen n1, Befund 2): statt des Knopfs steht, wer freigibt. Am
+   * freigegebenen Stand gibt es nichts freizugeben, also auch keinen Satz.
+   */
+  ohneRecht: boolean;
 }
 
 export const seitenHebel = (
@@ -569,5 +575,26 @@ export const seitenHebel = (
         : null,
     vergleichen: entwurf && gueltig ? { knopf: `Mit ${B.berichtsstand(gueltig.nr)} vergleichen`, gegen: gueltig.nr } : null,
     verwerfen: b.archiviert_am === null && darf(rechte, 'verwerfen', b.geltung_art, b.geltung_id),
+    ohneRecht: entwurf !== null && b.archiviert_am === null && !mitRecht,
   };
 };
+
+// ------------------------------------------------------------------ Freigeben ohne Recht (Nachweisen n1, Befund 2)
+
+/** Die Zeile statt des Knopfs, wenn keine Person bekannt ist, die das Recht vergibt. */
+export const FREIGEBEN_NUR_MIT_RECHT = 'Freigeben nur mit Recht';
+export const FREIGEBEN_FRAGE = 'Wer gibt diesen Bericht frei?';
+export const FREIGEBEN_KLARTEXT = 'Freigeben darf, wer bei Ihnen das Recht dazu hat. Vergeben kann es Ihr Kundenadministrator.';
+
+/** „Freigeben: Jonas Wendlinger“ - die Kundenadministratoren aus der Selbstauskunft. */
+export const freigebenWer = (namen: readonly string[]): string =>
+  namen.length === 0 ? FREIGEBEN_NUR_MIT_RECHT : `Freigeben: ${namen.join(', ')}`;
+
+/** Grund und Weg im Erklär-Blatt hinter dem i-Knopf (Runde 2: Erklären auf Antippen). */
+export const freigebenErklaerung = (namen: readonly string[]): Erklaerung => ({
+  frage: FREIGEBEN_FRAGE,
+  klartext: FREIGEBEN_KLARTEXT,
+  beiIhnen: namen.length === 0 ? null
+    : namen.length === 1 ? `${namen[0]} gibt frei oder vergibt das Recht.`
+      : `${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]} geben frei oder vergeben das Recht.`,
+});

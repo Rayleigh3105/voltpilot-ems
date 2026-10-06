@@ -32,14 +32,24 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
   dort, weil der heutige Leseweg die beiden Richtungen nicht trennt.
 - **Kennzahlen-Nachweis 1.2:** `ort_zum_datenstand` und `endgueltig_ab` stehen in derselben Herkunftsliste wie an einer
   Messstellen-Zahl. Fehlen die optionalen Felder in 1.0/1.1, entsteht keine Ersatzangabe.
-- **PDF und CSV ohne Ziel = kein Knopf.** `ausgabeKnoepfe` leitet ab (nur Stände, EW4; Recht über `uemsBericht.kennung`;
-  Dateiname §5.4). Sichtbar erst mit `AUSGABE_EINGEHAENGT[handlung] = true` UND einer `onAbruf`-Prop an `BerichtSeite`.
-  ⚠ **Stand IP-15: beide aus.** IP-10 und IP-11 haben nur die Routen gebaut; `berichtSeite.test.ts` pinnt
-  `{ pdf: false, csv: false }`. Wer einhängt: `csv` mit `onAbruf` → `GET …/staende/{nr}/csv` und dem Recht `export.*`
-  (`darfNachLesen` weiß nur `abrufen` sicher), dazu „zuletzt abgerufen …“ und die Spalte „letzter Abruf“ (ein Feld an
-  `Bericht`, `BerichtePage.tsx` sagt es); `pdf` mit dem Recht `abrufen` (G1). Lücke am Freigabetag: `uems-berichte-abschluss.md`.
-- **`copy.test.ts` liest JSX-Bedingungen als Text:** `{knoepfe.length > 0 && onAusgabe && (` trug das verbotene „Ausgabe“
-  (§4.15) — die Prop heißt darum `onAbruf`. Die Typ-Namen in `berichtSeite.ts` sind kein Kundentext.
+- **PDF und CSV an jedem Stand (Konzept Nachweisen n1, PR 0).** `ausgabeKnoepfe` leitet ab (nur Stände, EW4; Dateiname
+  §5.4), `darfAusgabe` das Recht: PDF nach dem Lesen (G1), CSV mit `export.*` an der Geltung, die energetische Bewertung
+  mit `bewertung.abrufen`, die Managementbewertung ohne CSV (wie `BerichtService.ausgabe`); ohne Selbstauskunft kein CSV.
+  `BerichtSeite` ruft `api.berichtDatei` selbst ab und meldet „… abgerufen - der Abruf ist protokolliert“; der
+  Leistungsvergleich trägt seine Knöpfe weiter selbst. Offen: „zuletzt abgerufen …“ und die Spalte „letzter Abruf“.
+- **Eine Uhr.** Liste und Seite tragen `abruf` (Augenblick der Route, `BerichtService.jetzt()`); „Zeitraum läuft“, die
+  Freigabe-Vorschau und die Zeitraum-Wahl beim Anlegen messen daran, nie an `Date.now()`.
+- **Name der Person, nicht der Anmeldename.** `ProtokollAkteur` nimmt den Claim `name` vor `preferred_username`;
+  `BerichtRepository` (und `ManagementbewertungVerzeichnis`) lesen `angelegt_von_name`, `freigeber_name` und
+  `verworfen_von_name` über `benutzer.anzeigename` - ein freigegebener Stand wird nie geändert (E13 S1), der Bestand
+  mit „ines“ zeigt so trotzdem „Ines Kaltenbach“. Test-Fixtures, die `preferred_username` = voller Name setzen,
+  verdecken den Unterschied.
+- **Rechte-Satz nur, wo etwas zu tun wäre.** Am freigegebenen Stand steht nichts; am Entwurf ohne Freigabe-Recht
+  „Freigeben: <Kundenadministratoren>“ mit i-Knopf (`seitenHebel().ohneRecht`, `freigebenErklaerung`); die Liste trägt
+  keinen Satz im Kopf.
+- **`copy.test.ts` liest JSX-Bedingungen als Text:** ein Name wie `onAusgabe` in einer Bedingung trüge das verbotene
+  „Ausgabe“ (§4.15) - darum heißen Abruf-Hebel `abrufen`/`dateiAbruf`. Die Typ-Namen in `berichtSeite.ts` sind kein
+  Kundentext.
 - **„heute: …“ (A5)** kommt aus `messstellenRegister()` und `kennzahlen()`; fällt eine Quelle aus, fehlt nur der Hinweis.
   B10 (MS-12 heißt ab 01.12.2026 anders) ist eine Vektor-Annahme — die Bühne nennt sie nur mit `heute=b10`.
 - **B16:** seit IP-16 antwortet `…/werte` `404 wert_nicht_mehr_gespeichert` — aber ohne `version` nur, wo es keine spätere

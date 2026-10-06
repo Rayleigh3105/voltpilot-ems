@@ -235,6 +235,23 @@
   gap: var(--vp-c-space-2);
 }
 
+/* Konzept Nachweisen n1, Befund 2: am Entwurf ohne Recht statt des Knopfs, wer freigibt - Grund hinter dem i-Knopf. */
+.vp-br-ohne-recht {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  min-width: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-br-ohne-recht > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* --- Abschnitte ------------------------------------------------------------- */
 
 .vp-br-dl {

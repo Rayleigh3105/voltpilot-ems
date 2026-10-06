@@ -1,3 +1,4 @@
+import { merkeAugenblick } from '../routenUhr';
 import { useEffect, useMemo, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -61,7 +62,10 @@ export function VerzeichnisTabelle({
     let aktiv = true;
     setFehler(null);
     api.energiemanagementVerzeichnis(filter).then(
-      (v) => aktiv && setDaten(v),
+      (v) => {
+        merkeAugenblick(v.stichtag); // Befund 3: der Stichtag der Route ist „heute“ der Dialoge
+        if (aktiv) setDaten(v);
+      },
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
     );
     return () => {

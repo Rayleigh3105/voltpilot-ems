@@ -66,19 +66,33 @@ public class BerichtRepository {
     /** Ein Standort oder das Unternehmen als Geltung. */
     public record Geltung(UUID id, String name, String zeitzone) {}
 
+    /**
+     * Befund 4 (Konzept Nachweisen n1): eine Person heißt, wie sie im Kundenbereich heißt ({@code benutzer.anzeigename},
+     * „Ines Kaltenbach“), sonst wie gespeichert. Ein freigegebener Stand wird nie geändert (E13 S1); so trägt auch der
+     * Bestand, der vor dem Namen aus dem Konto ({@link ProtokollAkteur}) den Anmeldenamen „ines“ gespeichert hat, im
+     * Kopf, im Verlauf, im Verzeichnis und im PDF den Namen der Person. Dasselbe Muster wie {@code ZugriffRepository}.
+     */
+    private static String person(String tabelle, String spalte) {
+        return "coalesce((SELECT nullif(btrim(p.anzeigename), '') FROM benutzer p WHERE p.tenant_id = " + tabelle
+                + ".tenant_id AND p.sub = " + tabelle + "." + spalte + "_sub), " + tabelle + "." + spalte + "_name) AS "
+                + spalte + "_name";
+    }
+
     private static final String KOPF = "SELECT b.id, b.tenant_id, b.kennung, b.vorlage, b.vorlage_fassung, b.geltung_art, "
             + "b.standort_id, b.unternehmen_id, coalesce(st.name, u.name) AS geltung_name, b.zeitraum_art, "
-            + "b.zeitraum_schluessel, b.zeitzone, b.angelegt_von_sub, b.angelegt_von_name, b.angelegt_am, b.archiviert_am, "
+            + "b.zeitraum_schluessel, b.zeitzone, b.angelegt_von_sub, " + person("b", "angelegt_von")
+            + ", b.angelegt_am, b.archiviert_am, "
             + "b.wiedervorlage_monate "
             + "FROM bericht b LEFT JOIN standort st ON st.id = b.standort_id AND st.tenant_id = b.tenant_id "
             + "LEFT JOIN unternehmen u ON u.id = b.unternehmen_id AND u.tenant_id = b.tenant_id ";
 
     private static final String STAND = "SELECT id, nr, %s pruefsumme, datenstand, freigegeben_am, freigeber_sub, "
-            + "freigeber_name, freigeber_rolle, %s vorlage_fassung, ersetzt_durch_nr, anlass_anstoss_id FROM bericht_stand ";
+            + person("bericht_stand", "freigeber")
+            + ", freigeber_rolle, %s vorlage_fassung, ersetzt_durch_nr, anlass_anstoss_id FROM bericht_stand ";
 
     private static final String ANSTOSS = "SELECT a.id, a.stand_id, s.nr, a.art, a.anlass_kennung, a.anlass_fassung, "
             + "a.erkannt_am, a.zustand, a.erledigt_durch_nr, a.verworfen_begruendung, a.verworfen_von_sub, "
-            + "a.verworfen_von_name, a.verworfen_am FROM bericht_revision_anstoss a "
+            + person("a", "verworfen_von") + ", a.verworfen_am FROM bericht_revision_anstoss a "
             + "JOIN bericht_stand s ON s.id = a.stand_id AND s.tenant_id = a.tenant_id ";
 
     // ================================================================================ Bericht

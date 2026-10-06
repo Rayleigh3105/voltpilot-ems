@@ -1,3 +1,4 @@
+import { merkeAbruf, tagDesAugenblicks } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -37,6 +38,7 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
     setFehler(null);
     const laden = A.istKennzeichen(id)
       ? api.energiemanagementAudits().then((p) => {
+          merkeAbruf(p.tag); // Befund 3: die Dialoge des Audits rechnen mit dem Tag der Route
           const a = p.audits.find((x) => x.kennzeichen === id);
           if (!a) throw new ApiError(404, 'nicht gefunden', { code: 'audit_unbekannt' });
           return api.energiemanagementAudit(a.id);
@@ -205,7 +207,7 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
           <ul className="vp-ez-verlauf" data-testid="audit-verlauf">
             {verlauf.map((v) => (
               <li key={v.id}>
-                {`${A.AUDIT_VERLAUF_WORT[v.art] ?? v.art} — ${v.akteur.name}, ${E.tagText(v.zeit.slice(0, 10))}${v.begruendung ? `: ${v.begruendung}` : ''}`}
+                {`${A.AUDIT_VERLAUF_WORT[v.art] ?? v.art} — ${v.akteur.name}, ${E.tagText(tagDesAugenblicks(v.zeit) ?? v.zeit.slice(0, 10))}${v.begruendung ? `: ${v.begruendung}` : ''}`}
               </li>
             ))}
           </ul>

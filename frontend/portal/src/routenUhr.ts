@@ -53,3 +53,18 @@ export function vergissAbruf(): void {
   gemerkt = null;
   laden = null;
 }
+
+/**
+ * Konzept Nachweisen n1, Befund 3: dieselbe Uhr für Nachweisen. Manche Routen nennen einen Augenblick statt eines Tags
+ * (`abruf` der Berichte, `stichtag` von Verzeichnis und Wiedervorlage); ihr Tag ist der Kalendertag in der Zone des
+ * Unternehmens - nie der UTC-Tag. `null` ohne lesbaren Augenblick.
+ */
+export function tagDesAugenblicks(zeitpunkt: string | null | undefined, zone = 'Europe/Berlin'): string | null {
+  const ms = Date.parse(zeitpunkt ?? '');
+  return Number.isNaN(ms) ? null : new Date(ms).toLocaleDateString('sv-SE', { timeZone: zone });
+}
+
+/** Merkt sich den Tag eines Augenblicks der Route (siehe {@link tagDesAugenblicks}). */
+export function merkeAugenblick(zeitpunkt: string | null | undefined, zone = 'Europe/Berlin'): void {
+  merkeAbruf(tagDesAugenblicks(zeitpunkt, zone));
+}

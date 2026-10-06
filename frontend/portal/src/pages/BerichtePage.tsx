@@ -1,4 +1,3 @@
-import { useRollen } from '../rollen';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -19,6 +18,7 @@ import {
   type ListenKarte,
 } from '../berichtSeite';
 import { STANDORT_BERICHTE } from '../ebenenNav';
+import { merkeAugenblick } from '../routenUhr';
 import { useBerichtRechte } from '../useBerichtRechte';
 import { BerichtSeite } from './BerichtSeite';
 import './BerichtePage.css';
@@ -36,6 +36,9 @@ import './BerichtePage.css';
  * Dialog öffnet nach dem Anlegen die Berichtsseite mit dem frischen Entwurf.
  *
  * ⚠ „letzter Abruf“ kommt mit dem Abruf-Protokoll (IP-10) — vorher keine Spalte ohne Ziel.
+ *
+ * Konzept Nachweisen n1: ohne Recht zum Anlegen steht kein Satz im Kopf (Befund 2, „Fehlerton ohne Fehler“); die
+ * Zeitraum-Wahl beim Anlegen misst am `abruf` der Liste, nie an der Uhr des Browsers (Befund 3).
  */
 export function BerichtePage({
   kennung = null,
@@ -70,11 +73,11 @@ function BerichteListe({
   onBewertung?: () => void;
 }) {
   const [liste, setListe] = useState<Bericht[] | null>(null);
+  const [abruf, setAbruf] = useState<number | null>(null);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
   const standortId = standort?.id ?? null;
   const rechte = useBerichtRechte();
-  const rollen = useRollen();
   const [anlegen, setAnlegen] = useState(false);
   // Der Knopf erst mit Antwort der Selbstauskunft; eine 403 der Liste (Unterstützung) hat keinen.
   const darfAnlegen =
@@ -88,7 +91,13 @@ function BerichteListe({
     let aktiv = true;
     setFehler(null);
     api.berichte().then(
-      ({ berichte }) => aktiv && setListe(standortId ? amStandort(berichte, standortId) : berichte),
+      ({ berichte, abruf: zeitpunkt }) => {
+        merkeAugenblick(zeitpunkt);
+        if (!aktiv) return;
+        const ms = Date.parse(zeitpunkt ?? '');
+        setAbruf(Number.isNaN(ms) ? null : ms);
+        setListe(standortId ? amStandort(berichte, standortId) : berichte);
+      },
       (e) => aktiv && setFehler(listenFehler(e)),
     );
     return () => {
@@ -103,7 +112,6 @@ function BerichteListe({
           <h1>{standort ? STANDORT_BERICHTE : TITEL}</h1>
           {standort && <p className="vp-br-kopf-ort">{standort.name}</p>}
         </div>
-        {!darfAnlegen && rollen.selbst && <p className="vp-muted" role="note">{rollen.grund}</p>}
         {darfAnlegen && (
           <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setAnlegen(true)} data-testid="bericht-anlegen-knopf">
             {ANLEGEN_KNOPF}
@@ -139,6 +147,7 @@ function BerichteListe({
           onClose={() => setAnlegen(false)}
           rechte={rechte ?? null}
           standortId={standortId}
+          jetzt={abruf === null ? undefined : () => abruf}
           onAngelegt={(b) => {
             setAnlegen(false);
             if (b.vorlage === BEWERTUNG_VORLAGE && onBewertung) onBewertung();

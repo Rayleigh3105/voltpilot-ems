@@ -34,7 +34,10 @@ public class ManagementbewertungVerzeichnis implements VerzeichnisQuelle {
     public List<Map<String, Object>> zeilen(LocalDate stichtag) {
         var aus = new ArrayList<Map<String, Object>>();
         jdbc.query("""
-                SELECT b.kennung, b.zeitraum_schluessel, b.zeitzone, s.nr, s.freigegeben_am, s.freigeber_name,
+                SELECT b.kennung, b.zeitraum_schluessel, b.zeitzone, s.nr, s.freigegeben_am,
+                       coalesce((SELECT nullif(btrim(p.anzeigename), '') FROM benutzer p
+                                  WHERE p.tenant_id = s.tenant_id AND p.sub = s.freigeber_sub), s.freigeber_name)
+                           AS freigeber_name,
                        s.pruefsumme, s.abzug::jsonb #>> '{sitzung,leitung}' AS leitung
                   FROM bericht b
                   JOIN bericht_stand s ON s.tenant_id = b.tenant_id AND s.bericht_id = b.id
