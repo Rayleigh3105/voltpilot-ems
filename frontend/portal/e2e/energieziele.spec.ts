@@ -139,7 +139,8 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('energieziel-stand-satz')).toHaveText(STAND_JULI);
       await expect(page.getByTestId('monat-2028-03').getByTestId('grund')).toContainText('außerhalb der Bezugsbasis');
       await expect(page.getByTestId('monat-2028-01').getByTestId('urteil')).toHaveText('besser (± 2 %)');
-      await expect(page.getByTestId('monat-2028-07')).toContainText('noch nicht endgültig');
+      // Konzept Verbessern v1, Befund 1: der offene Monat nennt den Grund der Route - am 10.07.2028 läuft der Juli noch.
+      await expect(page.getByTestId('monat-2028-07')).toContainText('läuft noch');
       await expect(page.getByTestId('energieziel-summe')).toContainText('5 von 12 Monaten');
       await expect(page.getByTestId('energieziel-summe')).toContainText('410 400 kWh');
       await expect(page.getByTestId('energieziel-vorschlag')).toHaveCount(0);
