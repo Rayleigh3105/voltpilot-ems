@@ -84,6 +84,7 @@ public final class VerbesserungRegeln {
         m.put("anstoss_antwort", List.of("bleibt", "neu_kopiert", "neu_bewertet"));
         m.put("frist_art", List.of("massnahme", "abweichung", "energieziel"));
         m.put("frist_faellig", List.of("ueberfaellig", "bewertung_faellig"));
+        m.put("kurs_lage", List.of("auf_kurs", "knapp_dahinter", "nicht_auf_kurs", "noch_keine_aussage"));
         return m;
     }
     private static String plus(String monat, int n) { return YearMonth.parse(monat).plusMonths(n).toString(); }
@@ -190,6 +191,45 @@ public final class VerbesserungRegeln {
         aus.put("nicht_gezaehlt", nichtGezaehlt);
         aus.put("vorschlag", vorschlag);
         aus.putAll(summe);
+        return aus;
+    }
+
+    /**
+     * K1–K3: der Zwischenstand eines laufenden Energieziels über die bisher bewertbaren Monate ({@link #zielstand}). Auf
+     * Kurs nach der Regel des Vorschlags (Z4), knapp dahinter weniger als erwartet und höchstens das Band vom Zielwert
+     * entfernt; {@code hoechstens} und {@code luecke} in der Einheit der Summe; {@code noetig_prozent} der Schnitt der noch
+     * offenen Monate, genähert mit gleich großen Monaten ({@code roh} der Bezugsbasis rundet, wie jede Veränderung).
+     */
+    public static Map<String, Object> kurs(ZielstandEingang e) {
+        var s = zielstand(e);
+        if (s.containsKey("fehler")) return s;
+        int b = (int) s.get("monate_bewertbar"), offen = (int) s.get("monate_soll") - (int) s.get("monate_endgueltig");
+        var aus = new LinkedHashMap<String, Object>();
+        aus.put("lage", "noch_keine_aussage");
+        aus.put("monate_bewertbar", b);
+        aus.put("monate_offen", offen);
+        for (var k : List.of("hoechstens", "luecke", "noetig_prozent", "noetig_richtung")) aus.put(k, null);
+        if (b == 0) return aus;
+        var g = BezugsbasisRegeln.Q.of((String) s.get("gemessen"));
+        var erw = BezugsbasisRegeln.Q.of((String) s.get("erwartet"));
+        var ziel = BezugsbasisRegeln.Q.of(e.zielwert_prozent());
+        var band = BezugsbasisRegeln.Q.of((String) s.get("band_prozent"));
+        var hundert = BezugsbasisRegeln.Q.of(100);
+        var hoechstens = erw.times(hundert.plus(ziel)).div(hundert);
+        var abstand = g.minus(erw).times(hundert);
+        String lage = abstand.compareTo(ziel.times(erw)) <= 0 ? "auf_kurs"
+                : g.compareTo(erw) < 0 && abstand.compareTo(ziel.plus(band).times(erw)) <= 0 ? "knapp_dahinter"
+                : "nicht_auf_kurs";
+        aus.put("lage", lage);
+        aus.put("hoechstens", BezugsbasisRegeln.exakt(hoechstens));
+        aus.put("luecke", BezugsbasisRegeln.exakt(g.minus(hoechstens)));
+        if (offen > 0) {
+            var noetig = BezugsbasisRegeln.roh(
+                    BezugsbasisRegeln.exakt(hoechstens.times(BezugsbasisRegeln.Q.of(b + offen)).minus(g.times(BezugsbasisRegeln.Q.of(b)))),
+                    BezugsbasisRegeln.exakt(erw.times(BezugsbasisRegeln.Q.of(offen))));
+            aus.put("noetig_prozent", noetig.get("delta_prozent"));
+            aus.put("noetig_richtung", noetig.get("richtung"));
+        }
         return aus;
     }
 

@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -219,6 +220,48 @@ class MassnahmeApiTest {
                 Map.of("begruendung", "Noch einmal verworfen.")).status()).isEqualTo(409);
         assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + zweiteId + "/eintraege",
                 Map.of("text", "Nach dem Verwerfen")).status()).isEqualTo(409);
+    }
+
+    /**
+     * Konzept Verbessern, Entscheid 5: {@code ?energieziel=} liefert die Maßnahmen für das Energieziel und die, deren
+     * Wirkung schon im Stand enthalten ist — M-2028-0001 (umgesetzt am 22.01.2028, nach der Referenzperiode der Fassung
+     * 2) an derselben Kennzahl steht zusätzlich in {@code im_stand_enthalten}; eine geplante Maßnahme ohne Bezug nicht.
+     * Ein unbekanntes Energieziel ist 404, ein Text statt einer ID 400; ohne Filter bleibt die Liste leer.
+     */
+    @Test
+    void energiezielFilterMitImStandEnthalten() throws Exception {
+        Welt w = welt();
+        String enthalten = umgesetzteMassnahme(w)[0];
+        Map<String, Object> ez = new LinkedHashMap<>();
+        ez.put("kennzahl", w.kz4().toString());
+        ez.put("zielwert_prozent", -4.0);
+        ez.put("zielperiode", "2028-02/2028-12");
+        ez.put("wortlaut", "Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt.");
+        ez.put("begruendung", "Beschluss der Managementbewertung zum Spritzguss.");
+        Antwort z = ruf(w, "ines", HttpMethod.POST, "/api/v1/energieziele", ez);
+        assertThat(z.status()).as(z.text()).isEqualTo(201);
+        String ziel = z.body().get("id").asText();
+
+        Map<String, Object> fuer = vonHand(w, w.st1());
+        fuer.put("titel", "Kühlwasserpumpen drehzahlgeregelt betreiben");
+        fuer.put("herkunft", "energieziel");
+        fuer.put("energieziel", ziel);
+        Antwort f = ruf(w, "ines", HttpMethod.POST, PFAD, fuer);
+        assertThat(f.status()).as(f.text()).isEqualTo(201);
+        Antwort ohne = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, w.st1()));
+        assertThat(ohne.status()).as(ohne.text()).isEqualTo(201);
+
+        Antwort a = ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null);
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        List<String> ids = new ArrayList<>();
+        a.body().get("massnahmen").forEach(m -> ids.add(m.get("id").asText()));
+        assertThat(ids).containsExactly(enthalten, f.body().get("id").asText());
+        assertThat(a.body().get("im_stand_enthalten").toString()).isEqualTo("[\"" + enthalten + "\"]");
+
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD, null).body().get("im_stand_enthalten")).isEmpty();
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=" + UUID.randomUUID(), null).status())
+                .isEqualTo(404);
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=EZ-2028-0001", null).status()).isEqualTo(400);
     }
 
     /**

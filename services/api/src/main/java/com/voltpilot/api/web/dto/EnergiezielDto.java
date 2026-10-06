@@ -96,7 +96,18 @@ public final class EnergiezielDto {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Bewertung(String status, String ergebnis, String begruendung, String vorschlag, boolean vieraugen,
             Person person, Instant am, Person entscheidung, Instant entschiedenAm, String entscheidungsBegruendung,
-            String kopie, String pruefsumme) {}
+            String kopie, String pruefsumme, FestgehaltenerStand stand) {}
+
+    /**
+     * Konzept Verbessern, Entscheid 11: der Ziel-Stand der Kopie zum Bewertungstag, lesbar statt als Rohtext — Σ
+     * gemessen und Σ erwartet in der Einheit der Kopie, Δ, Richtung, Urteil, Band, „x von y“ und die nicht gezählten
+     * Monate mit Grund. Bewertete Energieziele zeigen ihn oben; der Live-Stand nur, wenn er abweicht.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record FestgehaltenerStand(LocalDate abruf, String gemessen, String erwartet, String einheit,
+            String deltaProzent, String richtung, String urteil, String bandProzent, int monateBewertbar,
+            int monateGesamt, List<Ausschluss> ausgeschlossen, String grundKeinVorschlag) {}
 
     /**
      * Ein Anstoß am Ziel ({@code vorgang_anstoss}, Z5): Basis beendet oder neu gefasst (Pfad 2), die Bewertung zitiert
@@ -136,5 +147,16 @@ public final class EnergiezielDto {
     public record Stand(Energieziel energieziel, LocalDate abruf, String zielperiode, String zielwertProzent,
             List<Monat> monate, int monateBewertbar, int monateEndgueltig, int monateSoll, String monateText,
             boolean vollstaendig, List<Ausschluss> nichtGezaehlt, Summe summe, String vorschlag, String satz,
-            String vorschlagSatz) {}
+            String vorschlagSatz, Kurs kurs) {}
+
+    /**
+     * Operation {@code kurs} (Vertrag §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+     * bewertbaren Monate — {@code lage} {@code auf_kurs · knapp_dahinter · nicht_auf_kurs · noch_keine_aussage}, was
+     * das Energieziel für die bewertbaren Monate höchstens zulässt, die Lücke dazu (positiv = darüber) in der Einheit
+     * der Summe und der nötige Schnitt der offenen Monate (Näherung bei gleich großen Monaten).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Kurs(String lage, int monateBewertbar, int monateOffen, String hoechstens, String luecke,
+            String noetigProzent, String noetigRichtung) {}
 }

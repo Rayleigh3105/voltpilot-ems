@@ -237,10 +237,15 @@ public class EnergiezielService {
                         .get("satz");
             }
         }
+        Map<String, Object> k = VerbesserungRegeln.kurs(new VerbesserungRegeln.ZielstandEingang(
+                z.zielwert().toPlainString(), z.zielperiode(), endgueltig));
+        EnergiezielDto.Kurs kurs = new EnergiezielDto.Kurs((String) k.get("lage"), (int) k.get("monate_bewertbar"),
+                (int) k.get("monate_offen"), (String) k.get("hoechstens"), (String) k.get("luecke"),
+                (String) k.get("noetig_prozent"), (String) k.get("noetig_richtung"));
         return new EnergiezielDto.Stand(dto(z, zone(z), null, null), zv.heute(), z.zielperiode(),
                 z.zielwert().toPlainString(), List.copyOf(monate), bewertbar, (int) r.get("monate_endgueltig"),
                 (int) r.get("monate_soll"), monateText, (boolean) r.get("vollstaendig"), ausschluesse, summe, vorschlag,
-                satz, vorschlagSatz);
+                satz, vorschlagSatz, kurs);
     }
 
     // ================================================================================ anlegen (Z1, Z2)
@@ -807,8 +812,9 @@ public class EnergiezielService {
             return null;
         }
         String vorschlag = null;
+        JsonNode kopie;
         try {
-            JsonNode kopie = json.readTree(z.kopie());
+            kopie = json.readTree(z.kopie());
             vorschlag = kopie.path("vorschlag").isTextual() ? kopie.get("vorschlag").asText() : null;
         } catch (com.fasterxml.jackson.core.JsonProcessingException x) {
             throw new IllegalStateException(x);
@@ -817,7 +823,41 @@ public class EnergiezielService {
                 z.vieraugen(), new EnergiezielDto.Person(z.freigabeSub(), z.freigabeName()), z.freigabeAm(),
                 z.entscheidungName() == null ? null
                         : new EnergiezielDto.Person(z.entscheidungSub(), z.entscheidungName()),
-                z.entschiedenAm(), z.entscheidungsBegruendung(), z.kopie(), z.pruefsumme());
+                z.entschiedenAm(), z.entscheidungsBegruendung(), z.kopie(), z.pruefsumme(), festgehalten(kopie));
+    }
+
+    /**
+     * Entscheid 11 (Konzept Verbessern): der festgehaltene Stand der Kopie lesbar — dieselben Zahlen, die die
+     * Prüfsumme deckt ({@link #kopie}); in kWh mit der Endung {@code _kwh}, sonst mit {@code einheit}. Ohne Zahl (kein
+     * bewertbarer Monat) bleiben Σ, Δ und Richtung {@code null}.
+     */
+    static EnergiezielDto.FestgehaltenerStand festgehalten(JsonNode kopie) {
+        JsonNode st = kopie.path("stand");
+        boolean kwh = st.has("gemessen_kwh");
+        String gemessen = text(st.path(kwh ? "gemessen_kwh" : "gemessen"));
+        String erwartet = text(st.path(kwh ? "erwartet_kwh" : "erwartet"));
+        String richtung = gemessen == null || erwartet == null ? null
+                : switch (new BigDecimal(gemessen).compareTo(new BigDecimal(erwartet))) {
+                    case 1 -> "mehr";
+                    case -1 -> "weniger";
+                    default -> "gleich";
+                };
+        List<EnergiezielDto.Ausschluss> aus = new ArrayList<>();
+        st.path("ausgeschlossen").fields().forEachRemaining(f -> aus.add(new EnergiezielDto.Ausschluss(f.getKey(),
+                f.getValue().asText())));
+        return new EnergiezielDto.FestgehaltenerStand(
+                kopie.path("abruf").isTextual() ? LocalDate.parse(kopie.get("abruf").asText()) : null, gemessen,
+                erwartet, kwh ? "kWh" : text(st.path("einheit")), text(st.path("delta_prozent")), richtung,
+                text(st.path("urteil")), text(st.path("band_prozent")), st.path("monate_bewertbar").asInt(),
+                st.path("monate_gesamt").asInt(), List.copyOf(aus), text(kopie.path("grund_kein_vorschlag")));
+    }
+
+    /** Eine Zahl oder ein Text der Kopie als Text ({@code -2.7}, {@code 900892}); fehlt er oder ist null: {@code null}. */
+    private static String text(JsonNode n) {
+        if (n == null || n.isMissingNode() || n.isNull()) {
+            return null;
+        }
+        return n.isNumber() ? n.decimalValue().toPlainString() : n.asText();
     }
 
     private List<EnergiezielDto.Anstoss> anstoesse(UUID id) {

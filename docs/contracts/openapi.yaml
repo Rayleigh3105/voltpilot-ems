@@ -13932,7 +13932,7 @@ paths:
         ist; über die endgültigen Monate die Operation `zielstand`: Σ gemessen ÷ Σ erwartet über die bewertbaren
         (nie ein Mittel), `monate_text` „x von y“, `nicht_gezaehlt` mit Grund, `vorschlag` (`erreicht ·
         nicht_erreicht`) nur bei vollständiger Periode, sonst null. `satz` und `vorschlag_satz` sind Kundensätze des
-        Vertrags (§6), ohne bewertbaren Monat null.
+        Vertrags (§6), ohne bewertbaren Monat null. `kurs` ist die Operation `kurs` (§4a) über dieselben Monate.
       responses:
         "200":
           description: Der Stand zum Abruf-Tag.
@@ -13950,11 +13950,16 @@ paths:
         `standort_id`, eine Maßnahme am Unternehmen nur unternehmensweit; mit Messgrundlage zusätzlich über die
         Kennzahl). `ueberfaellig` filtert über die Operation `frist` beim Abruf (Uhr der Kennzahlen, kein Läufer,
         kein Zustand); `kennzahl` ist die ID einer sichtbaren Kennzahl (sonst 404); ein anderer Parameter 400.
+        `energieziel` (ID eines sichtbaren Energieziels, sonst 404; Konzept Verbessern, Entscheid 5) liefert die
+        Maßnahmen für dieses Energieziel und die, deren Wirkung schon im Stand enthalten ist: an derselben Kennzahl
+        umgesetzt, nach dem Ende der Referenzperiode seiner Bezugsbasis-Fassung und spätestens am letzten Tag der
+        Zielperiode; diese stehen zusätzlich in `im_stand_enthalten`.
       parameters:
         - { name: zustand, in: query, required: false, schema: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] } }
         - { name: ueberfaellig, in: query, required: false, schema: { type: string, enum: ["true", "false"] } }
         - { name: kennzahl, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: einsatz, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: energieziel, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
         "200":
           description: Die sichtbaren Maßnahmen, nach Kennzeichen, mit dem Abruf-Tag.
@@ -31759,8 +31764,9 @@ components:
       type: object
       description: >
         Z5: die Bewertung - `kopie` ist der kanonische Text des Ziel-Stands zum Bewertungstag, `pruefsumme` sein
-        sha256; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen `entscheidung` die zweite Person.
-      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme]
+        sha256, `stand` derselbe Stand lesbar; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen
+        `entscheidung` die zweite Person.
+      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme, stand]
       properties:
         status: { type: string, enum: [beantragt, bewertet, abgelehnt] }
         ergebnis: { type: string, enum: [erreicht, verfehlt, nicht_bewertbar] }
@@ -31781,6 +31787,34 @@ components:
         entscheidungs_begruendung: { type: string, nullable: true }
         kopie: { type: string }
         pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        stand: { $ref: "#/components/schemas/EnergiezielFestgehaltenerStand" }
+    EnergiezielFestgehaltenerStand:
+      type: object
+      description: >
+        Konzept Verbessern, Entscheid 11 - der Ziel-Stand der Kopie zum Bewertungstag lesbar statt als Rohtext: Σ
+        gemessen und Σ erwartet in `einheit` (kWh, wenn die Kopie `_kwh` trägt), Δ mit Richtung, Urteil, Band, „x von y“
+        und die nicht gezählten Monate mit Grund. Dieselben Zahlen, die `pruefsumme` deckt.
+      required: [abruf, gemessen, erwartet, einheit, delta_prozent, richtung, urteil, band_prozent, monate_bewertbar, monate_gesamt, ausgeschlossen, grund_kein_vorschlag]
+      properties:
+        abruf: { type: string, format: date, nullable: true }
+        gemessen: { type: string, nullable: true }
+        erwartet: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        delta_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
+        urteil: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        monate_bewertbar: { type: integer }
+        monate_gesamt: { type: integer }
+        ausgeschlossen:
+          type: array
+          items:
+            type: object
+            required: [monat, grund]
+            properties:
+              monat: { type: string }
+              grund: { type: string }
+        grund_kein_vorschlag: { type: string, nullable: true }
     EnergiezielAnstoss:
       type: object
       description: >
@@ -31816,7 +31850,7 @@ components:
     EnergiezielStand:
       type: object
       description: Der Ziel-Stand (Z3, Z4) - Ausgang der Operation `zielstand` und je Monat die Vergleichszeile.
-      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz]
+      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz, kurs]
       properties:
         energieziel: { $ref: "#/components/schemas/Energieziel" }
         abruf: { type: string, format: date }
@@ -31858,6 +31892,26 @@ components:
         vorschlag: { type: string, nullable: true, enum: [erreicht, nicht_erreicht, null] }
         satz: { type: string, nullable: true }
         vorschlag_satz: { type: string, nullable: true }
+        kurs: { $ref: "#/components/schemas/EnergiezielKurs" }
+    EnergiezielKurs:
+      type: object
+      description: >
+        Operation `kurs` (Vertrag verbesserung.md §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+        bewertbaren Monate. `lage` auf Kurs nach der Regel des Vorschlags, knapp dahinter weniger als erwartet und
+        höchstens das Band vom Zielwert entfernt, ohne bewertbaren Monat `noch_keine_aussage` (dann sind die Zahlen
+        null). `hoechstens` ist, was das Energieziel für die bewertbaren Monate zulässt, `luecke` = Σ gemessen −
+        höchstens (positiv = darüber), beide in der Einheit der Summe; `noetig_prozent` der nötige Schnitt der
+        `monate_offen` noch nicht endgültigen Monate gegen erwartet (Näherung bei gleich großen Monaten; ohne offenen
+        Monat null).
+      required: [lage, monate_bewertbar, monate_offen, hoechstens, luecke, noetig_prozent, noetig_richtung]
+      properties:
+        lage: { type: string, enum: [auf_kurs, knapp_dahinter, nicht_auf_kurs, noch_keine_aussage] }
+        monate_bewertbar: { type: integer }
+        monate_offen: { type: integer }
+        hoechstens: { type: string, nullable: true }
+        luecke: { type: string, nullable: true }
+        noetig_prozent: { type: string, nullable: true }
+        noetig_richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
     Massnahme:
       type: object
       description: >
@@ -32016,10 +32070,16 @@ components:
         am: { type: string, format: date-time }
     MassnahmeListe:
       type: object
-      required: [abruf, massnahmen]
+      required: [abruf, massnahmen, im_stand_enthalten]
       properties:
         abruf: { type: string, format: date }
         massnahmen: { type: array, items: { $ref: "#/components/schemas/Massnahme" } }
+        im_stand_enthalten:
+          type: array
+          description: >
+            Nur mit `energieziel`: die IDs der Maßnahmen, die nicht für dieses Energieziel angelegt sind, deren Wirkung
+            aber im Stand enthalten ist (Konzept Verbessern, Entscheid 5); sonst leer.
+          items: { type: string, format: uuid }
     MassnahmeWirkung:
       type: object
       description: >

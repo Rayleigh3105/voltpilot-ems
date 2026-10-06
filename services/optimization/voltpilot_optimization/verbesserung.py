@@ -34,6 +34,7 @@ VOKABULARE = dict(
     anstoss_antwort=["bleibt", "neu_kopiert", "neu_bewertet"],
     frist_art=["massnahme", "abweichung", "energieziel"],
     frist_faellig=["ueberfaellig", "bewertung_faellig"],
+    kurs_lage=["auf_kurs", "knapp_dahinter", "nicht_auf_kurs", "noch_keine_aussage"],
 )
 # Die Kundensätze (Report §5.9) als Schablonen; {name} füllt die Operation ``satz``.
 SAETZE = {
@@ -158,6 +159,35 @@ def zielstand(e):
     return dict(zielperiode=e["zielperiode"], zielwert_prozent=e["zielwert_prozent"], monate_bewertbar=len(zaehlen),
                 monate_endgueltig=len(endgueltig), monate_soll=soll, monate=f"{len(zaehlen)} von {soll}",
                 vollstaendig=len(zaehlen) == soll, nicht_gezaehlt=nicht_gezaehlt, vorschlag=vorschlag, **summe)
+
+
+def kurs(e):
+    """K1–K3: der Zwischenstand eines laufenden Energieziels über die bisher bewertbaren Monate (``zielstand``).
+
+    Auf Kurs nach der Regel des Vorschlags (Z4), knapp dahinter weniger als erwartet und höchstens das Band vom Zielwert
+    entfernt; ``hoechstens`` und ``luecke`` in der Einheit der Summe; ``noetig_prozent`` der Schnitt der noch offenen
+    Monate, genähert mit gleich großen Monaten (``roh`` der Bezugsbasis rundet, wie jede Veränderung).
+    """
+    s = zielstand(e)
+    if "fehler" in s:
+        return s
+    b, offen = s["monate_bewertbar"], s["monate_soll"] - s["monate_endgueltig"]
+    aus = dict(lage="noch_keine_aussage", monate_bewertbar=b, monate_offen=offen, hoechstens=None, luecke=None,
+               noetig_prozent=None, noetig_richtung=None)
+    if not b:
+        return aus
+    g, erw, ziel, band = (Fraction(s["gemessen"]), Fraction(s["erwartet"]), Fraction(e["zielwert_prozent"]),
+                          Fraction(s["band_prozent"]))
+    hoechstens = erw * (100 + ziel) / 100
+    if (g - erw) * 100 <= ziel * erw:
+        lage = "auf_kurs"
+    elif g < erw and (g - erw) * 100 <= (ziel + band) * erw:
+        lage = "knapp_dahinter"
+    else:
+        lage = "nicht_auf_kurs"
+    noetig = bb.roh(bb.exakt((b + offen) * hoechstens - b * g), bb.exakt(offen * erw)) if offen else {}
+    return {**aus, "lage": lage, "hoechstens": bb.exakt(hoechstens), "luecke": bb.exakt(g - hoechstens),
+            "noetig_prozent": noetig.get("delta_prozent"), "noetig_richtung": noetig.get("richtung")}
 
 
 def _letzter_tag(monat):

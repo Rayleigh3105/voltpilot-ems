@@ -176,6 +176,6 @@ class PortfolioKpiServiceKpisTest {
 
     private static EnergiezielDto.Stand standMitUrteil(String urteil) {
         return new EnergiezielDto.Stand(null, null, null, null, List.of(), 0, 0, 0, null, false, List.of(),
-                new EnergiezielDto.Summe(null, null, null, null, null, urteil, List.of()), null, null, null);
+                new EnergiezielDto.Summe(null, null, null, null, null, urteil, List.of()), null, null, null, null);
     }
 }

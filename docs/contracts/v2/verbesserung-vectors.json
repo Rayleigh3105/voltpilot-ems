@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "herkunft": "AP-18 entschieden 24.09.2026 (E1–E7 = A, W1–W15 übernommen), §4.3–4.8, §5.9, §7 R4, R5, R6, R9, R10, R12; Python-Referenz aus k_faelle.py; Referenzunternehmen 1.9 (massnahmen[], energieziele[], kennzahlen_1_9_monate). Ab April 2028 sind die Monatswerte Annahmen der Erweiterung 1.9; „konstruiert“ markiert reine Rechenproben (BB-9002, März 2028 innerhalb der Spannweite, Fassung 3).",
   "startwerte": {
     "nachher_monate": 12,
@@ -102,6 +102,12 @@
     "frist_faellig": [
       "ueberfaellig",
       "bewertung_faellig"
+    ],
+    "kurs_lage": [
+      "auf_kurs",
+      "knapp_dahinter",
+      "nicht_auf_kurs",
+      "noch_keine_aussage"
     ]
   },
   "saetze": {
@@ -6767,6 +6773,1426 @@
       },
       "erwartet": {
         "fehler": "satz_unbekannt"
+      }
+    },
+    {
+      "name": "K1 März 2029 (konstruiert, Konzept Verbessern §14): 2,2 % mehr gegen 4 % weniger — nicht auf Kurs, 5 400 kWh über dem Energieziel, in den übrigen neun Monaten 4,7 % weniger nötig",
+      "regel": "K1",
+      "operation": "kurs",
+      "quelle": "Konzept Verbessern §6.4, §14 · Entscheid 3",
+      "rechnung": "Σ gemessen 88 740; Σ erwartet 0,2837 · 306 000 = 86 812,2 (Δ +2,2 %); höchstens 86 812,2 · 0,96 = 83 339,712; Lücke 88 740 − 83 339,712 = 5 400,288; offen 10 − 1 = 9; nötig: (10 · 83 339,712 − 88 740) gegen 9 · 86 812,2 = 744 657,12 gegen 781 309,8 → −4,6912 % → −4,7",
+      "eingang": {
+        "zielwert_prozent": "-4.0",
+        "zielperiode": "2029-03/2029-12",
+        "monate": [
+          {
+            "monat": "2029-03",
+            "referenzperiode": "2027-01/2027-12",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-9003",
+                "fassung": 1,
+                "methode": "verhaeltnis",
+                "monate": 12,
+                "basiswert": "0.2837",
+                "koeffizienten": null,
+                "streuung_prozent": null,
+                "toleranz_prozent": "2.0",
+                "spannweite": null,
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "88740",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "306000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "nicht_auf_kurs",
+        "monate_bewertbar": 1,
+        "monate_offen": 9,
+        "hoechstens": "83339.712",
+        "luecke": "5400.288",
+        "noetig_prozent": "-4.7",
+        "noetig_richtung": "weniger"
+      }
+    },
+    {
+      "name": "K1 Juli 2028 gegen 5 % weniger: 2,9 % weniger reicht nicht — 2,93 % liegt knapp jenseits des Bands (3,0 %)",
+      "regel": "K1",
+      "operation": "kurs",
+      "quelle": "R4 · Entscheid 3",
+      "rechnung": "(410 400 − 422 809) · 100 = −1 240 900 > −5 · 422 809 = −2 114 045 → nicht auf Kurs; knapp nur bis (−5 + 2) · 422 809 = −1 268 427 → nicht auf Kurs; höchstens 422 809 · 0,95 = 401 668,55; Lücke 8 731,45; offen 12 − 6 = 6 (März zählt nie); nötig (11 · 401 668,55 − 5 · 410 400) gegen 6 · 422 809 = 2 366 354,05 gegen 2 536 854 → −6,7208 % → −6,7",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2028-01/2028-12",
+        "monate": [
+          {
+            "monat": "2027-12",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "78000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "250000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-01",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "78000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "300000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-02",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "81500",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "305000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-03",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "100000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "390000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-04",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "81900",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "318000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-05",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "83900",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "326000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-06",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "85100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "331000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "nicht_auf_kurs",
+        "monate_bewertbar": 5,
+        "monate_offen": 6,
+        "hoechstens": "401668.55",
+        "luecke": "8731.45",
+        "noetig_prozent": "-6.7",
+        "noetig_richtung": "weniger"
+      }
+    },
+    {
+      "name": "K2 Juli 2028 gegen 4 % weniger: knapp dahinter (weniger als erwartet, im Band vom Zielwert)",
+      "regel": "K2",
+      "operation": "kurs",
+      "quelle": "R4 · Entscheid 3",
+      "rechnung": "−1 240 900 > −4 · 422 809 = −1 691 236 → nicht auf Kurs; −1 240 900 ≤ (−4 + 2) · 422 809 = −845 618 und weniger als erwartet → knapp dahinter; höchstens 405 896,64; Lücke 4 503,36; nötig 2 412 863,04 gegen 2 536 854 → −4,9",
+      "eingang": {
+        "zielwert_prozent": "-4.0",
+        "zielperiode": "2028-01/2028-12",
+        "monate": [
+          {
+            "monat": "2027-12",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "78000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "250000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-01",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "78000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "300000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-02",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "81500",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "305000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-03",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "100000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "390000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-04",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "81900",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "318000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-05",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "83900",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "326000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-06",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "85100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "331000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "knapp_dahinter",
+        "monate_bewertbar": 5,
+        "monate_offen": 6,
+        "hoechstens": "405896.64",
+        "luecke": "4503.36",
+        "noetig_prozent": "-4.9",
+        "noetig_richtung": "weniger"
+      }
+    },
+    {
+      "name": "K1 Juli 2028 gegen 2 % weniger: auf Kurs — in den übrigen Monaten reichen 1,2 % weniger",
+      "regel": "K1",
+      "operation": "kurs",
+      "quelle": "R4 · Entscheid 3",
+      "rechnung": "−1 240 900 ≤ −2 · 422 809 = −845 618 → auf Kurs; höchstens 414 352,82; Lücke −3 952,82 (darunter); nötig 2 505 881,02 gegen 2 536 854 → −1,2",
+      "eingang": {
+        "zielwert_prozent": "-2.0",
+        "zielperiode": "2028-01/2028-12",
+        "monate": [
+          {
+            "monat": "2027-12",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "78000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "250000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-01",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "78000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "300000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-02",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "81500",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "305000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-03",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "100000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "390000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-04",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "81900",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "318000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-05",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "83900",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "326000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          },
+          {
+            "monat": "2028-06",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "85100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "331000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "auf_kurs",
+        "monate_bewertbar": 5,
+        "monate_offen": 6,
+        "hoechstens": "414352.82",
+        "luecke": "-3952.82",
+        "noetig_prozent": "-1.2",
+        "noetig_richtung": "weniger"
+      }
+    },
+    {
+      "name": "K1 genau auf dem Zielwert (−5,0 %) ist auf Kurs; keine offenen Monate, nichts mehr nötig",
+      "regel": "K1",
+      "operation": "kurs",
+      "quelle": "Z4 · Entscheid 3",
+      "rechnung": "(95 000 − 100 000) · 100 = −500 000 ≤ −5 · 100 000 → auf Kurs; höchstens 95 000; Lücke 0; offen 0 → nötig null",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2029-02/2029-02",
+        "monate": [
+          {
+            "monat": "2029-02",
+            "referenzperiode": null,
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-9002",
+                "fassung": 1,
+                "methode": "verhaeltnis",
+                "monate": 12,
+                "basiswert": "0.25",
+                "koeffizienten": null,
+                "streuung_prozent": null,
+                "toleranz_prozent": "2.0",
+                "spannweite": null,
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "95000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "400000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "auf_kurs",
+        "monate_bewertbar": 1,
+        "monate_offen": 0,
+        "hoechstens": "95000",
+        "luecke": "0",
+        "noetig_prozent": null,
+        "noetig_richtung": null
+      }
+    },
+    {
+      "name": "K2 −4,96 % gegen 5 % weniger: knapp dahinter, nicht auf Kurs — nie auf den Zielwert gerundet",
+      "regel": "K2",
+      "operation": "kurs",
+      "quelle": "Z4 · Entscheid 3",
+      "rechnung": "−496 000 > −500 000 → nicht auf Kurs; knapp: −496 000 ≤ −300 000 und weniger → knapp dahinter; Lücke 40",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2029-02/2029-02",
+        "monate": [
+          {
+            "monat": "2029-02",
+            "referenzperiode": null,
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-9002",
+                "fassung": 1,
+                "methode": "verhaeltnis",
+                "monate": 12,
+                "basiswert": "0.25",
+                "koeffizienten": null,
+                "streuung_prozent": null,
+                "toleranz_prozent": "2.0",
+                "spannweite": null,
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "95040",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "400000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "knapp_dahinter",
+        "monate_bewertbar": 1,
+        "monate_offen": 0,
+        "hoechstens": "95000",
+        "luecke": "40",
+        "noetig_prozent": null,
+        "noetig_richtung": null
+      }
+    },
+    {
+      "name": "K1 mehr als erwartet ist nie knapp dahinter",
+      "regel": "K1",
+      "operation": "kurs",
+      "quelle": "Z4 · Entscheid 3",
+      "rechnung": "101 000 > 100 000 → weder auf Kurs noch knapp; Lücke 101 000 − 95 000 = 6 000",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2029-02/2029-02",
+        "monate": [
+          {
+            "monat": "2029-02",
+            "referenzperiode": null,
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-9002",
+                "fassung": 1,
+                "methode": "verhaeltnis",
+                "monate": 12,
+                "basiswert": "0.25",
+                "koeffizienten": null,
+                "streuung_prozent": null,
+                "toleranz_prozent": "2.0",
+                "spannweite": null,
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "101000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "400000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "nicht_auf_kurs",
+        "monate_bewertbar": 1,
+        "monate_offen": 0,
+        "hoechstens": "95000",
+        "luecke": "6000",
+        "noetig_prozent": null,
+        "noetig_richtung": null
+      }
+    },
+    {
+      "name": "K3 ohne bewertbaren Monat: noch keine Aussage, keine Zahl",
+      "regel": "K3",
+      "operation": "kurs",
+      "quelle": "Entscheid 3 · Invariante 5",
+      "rechnung": "kein zählender Monat → noch keine Aussage; offen 12",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2028-01/2028-12",
+        "monate": []
+      },
+      "erwartet": {
+        "lage": "noch_keine_aussage",
+        "monate_bewertbar": 0,
+        "monate_offen": 12,
+        "hoechstens": null,
+        "luecke": null,
+        "noetig_prozent": null,
+        "noetig_richtung": null
+      }
+    },
+    {
+      "name": "K3 alle endgültigen Monate ausgeschlossen: noch keine Aussage, kein Monat mehr offen",
+      "regel": "K3",
+      "operation": "kurs",
+      "quelle": "Entscheid 3 · Invariante 5",
+      "rechnung": "März 2028 nicht bewertbar → 0 von 1, offen 0",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2028-03/2028-03",
+        "monate": [
+          {
+            "monat": "2028-03",
+            "referenzperiode": "2026-11/2027-10",
+            "vergleich": {
+              "fassung": {
+                "kennzeichen": "BB-0001",
+                "fassung": 2,
+                "methode": "regression_eine_variable",
+                "monate": 12,
+                "basiswert": "0.2685",
+                "koeffizienten": {
+                  "a": "10523",
+                  "b": "0.2343"
+                },
+                "streuung_prozent": "0.8",
+                "toleranz_prozent": "2.0",
+                "spannweite": [
+                  {
+                    "von": "254000",
+                    "bis": "341000",
+                    "toleriert_von": "228600",
+                    "toleriert_bis": "375100"
+                  }
+                ],
+                "variablen": [
+                  {
+                    "name": "Produktionsmenge",
+                    "einheit": "kg",
+                    "art": "produktionsmenge"
+                  }
+                ]
+              },
+              "basis_beendet": false,
+              "abgeschlossen": true,
+              "gemessen": {
+                "wert": "100000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              },
+              "variablen": [
+                {
+                  "wert": "390000",
+                  "zustand": "vollstaendig",
+                  "kennzeichen": []
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "erwartet": {
+        "lage": "noch_keine_aussage",
+        "monate_bewertbar": 0,
+        "monate_offen": 0,
+        "hoechstens": null,
+        "luecke": null,
+        "noetig_prozent": null,
+        "noetig_richtung": null
+      }
+    },
+    {
+      "name": "K1 Zielperiode falsch geformt: der Fehler von zielstand",
+      "regel": "K1",
+      "operation": "kurs",
+      "quelle": "Z2",
+      "rechnung": "zielperiode_format",
+      "eingang": {
+        "zielwert_prozent": "-5.0",
+        "zielperiode": "2028-13/2028-12",
+        "monate": []
+      },
+      "erwartet": {
+        "fehler": "zielperiode_format"
       }
     }
   ]

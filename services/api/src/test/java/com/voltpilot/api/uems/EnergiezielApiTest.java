@@ -210,6 +210,14 @@ class EnergiezielApiTest {
                 + "2,9 % weniger (März 2028 nicht bewertbar: Produktionsmenge Spritzguss außerhalb der Bezugsbasis). "
                 + "Bezugsbasis BB-0001, Fassung 2.");
         assertThat(s.toString()).doesNotContain("\"erreicht\"").doesNotContain("nicht_erreicht");
+        // Konzept Verbessern, Entscheid 3 (Vektor „K1 Juli 2028 gegen 5 % weniger“): 2,9 % weniger reicht nicht.
+        assertThat(s.at("/kurs/lage").asText()).isEqualTo("nicht_auf_kurs");
+        assertThat(s.at("/kurs/monate_bewertbar").asInt()).isEqualTo(5);
+        assertThat(s.at("/kurs/monate_offen").asInt()).isEqualTo(6);
+        assertThat(zahl(s.at("/kurs/hoechstens"))).isEqualByComparingTo("401668.55");
+        assertThat(zahl(s.at("/kurs/luecke"))).isEqualByComparingTo("8731.45");
+        assertThat(s.at("/kurs/noetig_prozent").asText()).isEqualTo("-6.7");
+        assertThat(s.at("/kurs/noetig_richtung").asText()).isEqualTo("weniger");
     }
 
     /** Z1/E3: kein Ziel an KZ-0003 (keine Bezugsbasis) — 422; zweimal dieselbe Periode — 409. */
@@ -379,6 +387,10 @@ class EnergiezielApiTest {
         assertThat(zahl(s.at("/summe/erwartet")).setScale(0, RoundingMode.HALF_UP)).isEqualByComparingTo("900892");
         assertThat(s.at("/summe/delta_prozent").asText()).isEqualTo("-2.7");
         assertThat(s.get("vorschlag").isNull()).as("11 von 12 → kein Vorschlag").isTrue();
+        // Kein Monat mehr offen: der Zwischenstand nennt nichts mehr, was nötig wäre.
+        assertThat(s.at("/kurs/lage").asText()).isEqualTo("nicht_auf_kurs");
+        assertThat(s.at("/kurs/monate_offen").asInt()).isZero();
+        assertThat(s.at("/kurs/noetig_prozent").isNull()).isTrue();
 
         // Lars (Leser) darf nicht bewerten; ein Wort außerhalb des Vertrags ist 400.
         assertThat(ruf(w, "lars", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("verfehlt")).status())
@@ -403,6 +415,21 @@ class EnergiezielApiTest {
         assertThat(z.at("/bewertung/kopie").asText()).isEqualTo(BerichtRegeln.kanonisch(ref.get("kopie")));
         assertThat(root.queryForObject("SELECT bericht_pruefsumme(bewertung_kopie) = bewertung_pruefsumme "
                 + "FROM energieziel WHERE id = ?::uuid", Boolean.class, id)).isTrue();
+        // Entscheid 11 (Konzept Verbessern): derselbe Stand lesbar — die Zahlen, die die Prüfsumme deckt.
+        JsonNode fest = z.at("/bewertung/stand");
+        assertThat(fest.get("abruf").asText()).isEqualTo("2029-01-15");
+        assertThat(fest.get("gemessen").asText()).isEqualTo("876600");
+        assertThat(fest.get("erwartet").asText()).isEqualTo("900892");
+        assertThat(fest.get("einheit").asText()).isEqualTo("kWh");
+        assertThat(fest.get("delta_prozent").asText()).isEqualTo("-2.7");
+        assertThat(fest.get("richtung").asText()).isEqualTo("weniger");
+        assertThat(fest.get("urteil").asText()).isEqualTo("besser");
+        assertThat(zahl(fest.get("band_prozent"))).isEqualByComparingTo("2");
+        assertThat(fest.get("monate_bewertbar").asInt()).isEqualTo(11);
+        assertThat(fest.get("monate_gesamt").asInt()).isEqualTo(12);
+        assertThat(fest.at("/ausgeschlossen/0/monat").asText()).isEqualTo("2028-03");
+        assertThat(fest.at("/ausgeschlossen/0/grund").asText()).isEqualTo("variable_ausserhalb");
+        assertThat(fest.get("grund_kein_vorschlag").asText()).startsWith("Zielperiode nicht vollständig bewertbar");
         assertThat(z.at("/frist/faellig").isNull()).isTrue();
         assertThat(z.at("/verlauf/1/art").asText()).isEqualTo("energieziel_bewertet");
         assertThat(z.at("/verlauf/1/neu/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
