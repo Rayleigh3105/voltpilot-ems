@@ -125,11 +125,11 @@ export function NwZeile({
 }) {
   const mitPfeil = pfeil ?? (!verb && !!(ziel.onClick || ziel.href));
   return (
-    <ZielHuelle ziel={ziel} className={`vp-nw-zeile${warn ? ' is-warn' : ''}${leise ? ' is-leise' : ''}`} label={label} testId={testId}>
+    <ZielHuelle ziel={ziel} className={`vp-nw-zl${warn ? ' is-warn' : ''}${leise ? ' is-leise' : ''}`} label={label} testId={testId}>
       {vorn}
-      <span className="vp-nw-zeile-text">
-        <span className="vp-nw-zeile-titel">{titel}</span>
-        {unter && <span className="vp-nw-zeile-unter">{unter}</span>}
+      <span className="vp-nw-zl-text">
+        <span className="vp-nw-zl-titel">{titel}</span>
+        {unter && <span className="vp-nw-zl-unter">{unter}</span>}
       </span>
       {rechts}
       {verb && <span className="vp-nw-verb">{verb}</span>}

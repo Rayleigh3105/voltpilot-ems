@@ -182,3 +182,18 @@ describe('Teilen', () => {
     expect(pdf).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Textfeld im Blatt', () => {
+  it('Etikett gehört zum Feld, Fehler ist beschrieben, Länge begrenzt', async () => {
+    const { NwTextfeld } = await import('./NwTextfeld');
+    const onWert = vi.fn();
+    render(<NwTextfeld label="Woran sehen Sie das?" wert="" onWert={onWert} mehrzeilig hoechstens={500} fehler="Bitte begründen." testid="t" />);
+    const feld = screen.getByLabelText('Woran sehen Sie das?');
+    expect(feld.tagName).toBe('TEXTAREA');
+    expect(feld.getAttribute('maxlength')).toBe('500');
+    expect(feld.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById(feld.getAttribute('aria-describedby')!)?.textContent).toBe('Bitte begründen.');
+    fireEvent.change(feld, { target: { value: 'Seit März' } });
+    expect(onWert).toHaveBeenCalledWith('Seit März');
+  });
+});
