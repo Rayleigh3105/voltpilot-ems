@@ -282,6 +282,23 @@ class AblesungApiTest {
         assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("1240");
     }
 
+    /**
+     * Stichtag-Grenze (Review r3 zu #1425): in Produktion verbirgt sie nichts. Ein Ablesezeitraum im laufenden Monat ist
+     * dem laufenden Monat zugeordnet - Monat und Jahr zeigen ihn sofort, nicht erst nach dem Monatsende.
+     */
+    @Test
+    void derLaufendeMonatEinerAblesungBleibtSichtbar() throws Exception {
+        var heute=java.time.Clock.fixed(java.time.Instant.parse("2026-10-26T12:00:00Z"),java.time.ZoneOffset.UTC);
+        ablesungen.uhrStellen(heute); werte.uhrStellen(heute); messstellen.uhrStellen(heute);
+        Welt w=welt();
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","48.211")),200);
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2026-10-25T08:00:00+02:00","stand","48.900")),200);
+        assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("689");
+        JsonNode jahr=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=jahr&von=2026-01-01"
+                +"&bis=2026-12-31",null),200).body().path("werte").get(0);
+        assertThat(jahr.path("menge").decimalValue()).isEqualByComparingTo("689");
+    }
+
     /** Stichtag-Grenze (Auswerten a4): eine Ablesung nach dem Lauf beendet keine Lücke, die zum Lauf offen ist. */
     @Test
     void eineAblesungNachDemLaufBeendetKeineLuecke() throws Exception {
