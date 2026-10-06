@@ -298,7 +298,8 @@
       "importe": [
         "./glossar:UEMS_BEWERTUNG_SAETZE",
         "./glossar:UEMS_KOSTENSTELLE",
-        "./glossar:UEMS_PROZESS_SUMME",
+        "./glossar:UEMS_MESSSTELLE",
+        "./messstellenListe:woherDerZeile",
         "./nav:hashForRoute",
         "./nav:pageRoute",
         "./rechte:ROLLE_KUNDENWORT",
@@ -307,10 +308,11 @@
         "./uebersichtBausteine:ende",
         "./uebersichtBausteine:zeitraumText",
         "./uemsErgebnis:KWH",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:VOR_EINHEIT",
         "./uemsErgebnis:zahl",
         "./uemsOberflaechen:periodeSchluessel",
-        "./uemsOberflaechen:sprungziel",
-        "./uemsVerteilung:NICHT_VERTEILT"
+        "./uemsOberflaechen:sprungziel"
       ],
       "operationen": [
         "spanne: mit.length - 1"
@@ -556,6 +558,24 @@
         "lesen: Number.isFinite(Date.parse(`${e.tag}T00:00:00Z`))"
       ],
       "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
+    },
+    "bezugsgroessenUebersicht.ts": {
+      "importe": [
+        "./bezugsPeriode:schluesselVon",
+        "./bezugsPeriode:spanneVon",
+        "./bezugsPeriode:tagPlus",
+        "./bezugsgroesseListe:PERIODE",
+        "./bezugsgroesseListe:ortKey",
+        "./glossar:UEMS_TEMPERATUR_BEZOGEN"
+      ],
+      "operationen": [
+        "faelligePeriode: -1",
+        "vorjahr: Number(schluessel)",
+        "vorjahr: Number(schluessel) - 1",
+        "vorjahr: Number(schluessel.slice(0, 4))",
+        "vorjahr: Number(schluessel.slice(0, 4)) - 1",
+        "zwoelfPerioden: -1"
+      ]
     }
   }
 }

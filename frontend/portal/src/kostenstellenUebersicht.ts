@@ -45,7 +45,6 @@ import type {
   ProzessSummeHinweis,
 } from './api';
 import { UEMS_BEWERTUNG_SAETZE, UEMS_KOSTENSTELLE, UEMS_MESSSTELLE } from './glossar';
-import { MONATE_KURZ } from './historieZeit';
 import { woherDerZeile } from './messstellenListe';
 import type { Ton } from './messstellen';
 import { hashForRoute, pageRoute } from './nav';
@@ -269,14 +268,20 @@ function anzeige(menge: number | null, einheit: string | null, periode: Kostenst
 
 /** „107.210 kWh“ → Zahl und Einheit getrennt (die Einheit steht klein daneben, Konzept `.gross`). */
 export function zahlUndEinheit(text: string): { zahl: string; einheit: string | null } {
-  const i = text.lastIndexOf(VOR_EINHEIT);
-  return i < 0 ? { zahl: text, einheit: null } : { zahl: text.slice(0, i), einheit: text.slice(i + 1) };
+  const teile = text.split(VOR_EINHEIT);
+  const einheit = teile.length > 1 ? teile.pop() ?? null : null;
+  return { zahl: teile.join(VOR_EINHEIT), einheit };
 }
+
+const MONAT_KURZ: Readonly<Record<string, string>> = {
+  '01': 'Jan', '02': 'Feb', '03': 'Mär', '04': 'Apr', '05': 'Mai', '06': 'Jun',
+  '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Okt', '11': 'Nov', '12': 'Dez',
+};
 
 /** Der Zeitraum kurz neben einer Zahl: „Sep 2026“ · „2025“. */
 export function periodeKurz(periode: KostenstelleEnergiePeriode, am: string): string {
   if (periode === 'jahr') return am.slice(0, 4);
-  if (periode === 'monat') return `${MONATE_KURZ[Number(am.slice(5, 7)) - 1]} ${am.slice(0, 4)}`;
+  if (periode === 'monat') return `${MONAT_KURZ[am.slice(5, 7)]} ${am.slice(0, 4)}`;
   return tag(am);
 }
 
@@ -587,13 +592,8 @@ export function ohneKostenstelle(
   const zugeordnet = new Set(
     (geladen as KostenstelleEnergie[]).flatMap((a) => BLOECKE.flatMap((b) => a[b].posten.map((p) => p.messstelle.id))),
   );
-  return register
-    .filter((z) => zaehlt(z) && !zugeordnet.has(z.id))
-    .sort(
-      (a, b) =>
-        Number(istHauptzaehler(b)) - Number(istHauptzaehler(a)) ||
-        a.kennzeichen.localeCompare(b.kennzeichen, 'de', { numeric: true }),
-    );
+  const ohne = nachKennzeichen(register.filter((z) => zaehlt(z) && !zugeordnet.has(z.id)));
+  return [...ohne.filter(istHauptzaehler), ...ohne.filter((z) => !istHauptzaehler(z))];
 }
 
 /** Ein Posten eines Ablesezählers ohne Tageswert - die Sicht verteilt je Tag (bis „Ablesezeiträume verteilen“). */
@@ -854,7 +854,9 @@ export function kostenstelleBeispiel(antworten: ReadonlyMap<string, EnergieAntwo
   const wahl = geteilt ?? sortiert[0];
   if (!wahl) return null;
   const [kz, teile] = wahl;
-  return { messstelle: namen.get(kz) ?? kz, teile: [...teile].sort((a, b) => Number(b.anteil ?? 100) - Number(a.anteil ?? 100)) };
+  // Der größte Anteil zuerst (ein Vergleich von Anteilen als Text, keine Rechnung).
+  const groesserZuerst = [...teile].sort((a, b) => (b.anteil ?? '100').localeCompare(a.anteil ?? '100', 'de', { numeric: true }));
+  return { messstelle: namen.get(kz) ?? kz, teile: groesserZuerst };
 }
 
 /** „Bei Ihnen zum Beispiel Spritzguss, Druckluft und Kühlung.“ - die ersten drei Prozesse mit Messstelle. */

@@ -128,9 +128,7 @@ describe('Bezugsgrößen-Liste und Anlegen (AP-09 IP-9)', () => {
     const { operationen } = rechenstellen(readFileSync('src/bezugsgroessenUebersicht.ts', 'utf8'));
     // Jede Stelle gehört zu Monatsnamen, Kalenderschritten oder der Reihenfolge der Kacheln - keine an `betrag`/`wert`.
     expect(operationen.filter((o) => /betrag|wirksamer|\.wert\b/.test(o))).toEqual([]);
-    expect([...new Set(operationen.map((o) => o.split(':')[0]))].sort()).toEqual(
-      ['balkenMarke', 'faelligePeriode', 'flaechenKacheln', 'periodeText', 'vorjahr', 'woherDesWerts', 'zwoelfPerioden'],
-    );
+    expect([...new Set(operationen.map((o) => o.split(':')[0]))].sort()).toEqual(['faelligePeriode', 'vorjahr', 'zwoelfPerioden']);
   });
   it('übernimmt Vertragsablehnungen und rechnet keine Menge', () => {
     expect(B.fehlerSatz({ body: { code: 'kennzeichen_belegt' } })).toContain('schon eine andere');

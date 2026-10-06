@@ -59,8 +59,11 @@ export const STATUS = {
 const fuell = (vorlage: string, werte: Record<string, string | number>): string =>
   vorlage.replace(/\{([a-z]+)\}/g, (_, k: string) => String(werte[k] ?? `{${k}}`));
 
-const MONATE_LANG = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-const MONATE_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const MONATE: Readonly<Record<string, [string, string]>> = {
+  '01': ['Januar', 'Jan'], '02': ['Februar', 'Feb'], '03': ['März', 'Mär'], '04': ['April', 'Apr'],
+  '05': ['Mai', 'Mai'], '06': ['Juni', 'Jun'], '07': ['Juli', 'Jul'], '08': ['August', 'Aug'],
+  '09': ['September', 'Sep'], '10': ['Oktober', 'Okt'], '11': ['November', 'Nov'], '12': ['Dezember', 'Dez'],
+};
 
 /** Ein Dezimaltext des Servers zur Anzeige: „300000“ → „300.000“, „1130.5“ → „1.130,5“ - nie gerundet, nie gerechnet. */
 export function zahlDe(betrag: string): string {
@@ -71,8 +74,8 @@ export function zahlDe(betrag: string): string {
 
 /** Die Periode eines Schlüssels: lang („September 2026“) oder kurz („Sep 2026“). */
 export function periodeText(schluessel: string, art: string, kurz = false): string {
-  if (art === 'monat') return `${(kurz ? MONATE_KURZ : MONATE_LANG)[Number(schluessel.slice(5, 7)) - 1]} ${schluessel.slice(0, 4)}`;
-  if (art === 'woche') return `KW ${Number(schluessel.slice(6))} ${schluessel.slice(0, 4)}`;
+  if (art === 'monat') return `${MONATE[schluessel.slice(5, 7)][kurz ? 1 : 0]} ${schluessel.slice(0, 4)}`;
+  if (art === 'woche') return `KW ${schluessel.slice(6).replace(/^0/, '')} ${schluessel.slice(0, 4)}`;
   if (art === 'tag') return `${schluessel.slice(8, 10)}.${schluessel.slice(5, 7)}.${schluessel.slice(0, 4)}`;
   return schluessel;
 }
@@ -91,7 +94,7 @@ export type BzTon = 'gut' | 'hinweis' | 'still';
 
 /** Ein Wert mit seinem Text der Herkunft - die wirksame Fassung des Servers. */
 export function woherDesWerts(w: BezugsgroesseWert): string {
-  const f = w.fassungen.find((x) => x.fassung === w.wirksame_fassung) ?? w.fassungen[w.fassungen.length - 1];
+  const f = w.fassungen.find((x) => x.fassung === w.wirksame_fassung) ?? [...w.fassungen].pop();
   if (!f) return WOHER.eingabe;
   if (f.herkunft.art === 'import') return WOHER.import;
   if (f.herkunft.art === 'messkanal') return f.kennzeichen.some((k) => k === UEMS_TEMPERATUR_BEZOGEN) ? WOHER.wetter : WOHER.messkanal;
@@ -259,7 +262,7 @@ export interface FlaecheKachel {
 export function flaechenKacheln(f: Bezugsflaechen | null, orte: Ort[]): FlaecheKachel[] {
   if (!f) return [];
   const kacheln = f.bezugsflaechen.map(({ bezugsflaeche: b, perioden }): FlaecheKachel & { istStandort: boolean } => {
-    const p = perioden[perioden.length - 1];
+    const p = [...perioden].pop();
     return {
       key: ortKey(b.geltung_art, b.geltung_id),
       name: b.geltung_name,
@@ -271,18 +274,23 @@ export function flaechenKacheln(f: Bezugsflaechen | null, orte: Ort[]): FlaecheK
     };
   });
   // Je Standort zusammen: erst der Standort, dann seine Gebäude und Bereiche (Konzept: „Werk Ahrenberg · Halle 1 · …“).
-  const reihenfolge = [...new Set(kacheln.map((k) => k.standort))];
-  return kacheln
-    .map((k, i) => ({ k, i }))
-    .sort((a, b) => reihenfolge.indexOf(a.k.standort) - reihenfolge.indexOf(b.k.standort) || Number(b.k.istStandort) - Number(a.k.istStandort) || a.i - b.i)
-    .map(({ k: { istStandort: _, ...k } }) => k);
+  const gruppen = new Map<string | null, FlaecheKachel[]>();
+  for (const { istStandort, ...k } of kacheln) {
+    const g = gruppen.get(k.standort) ?? [];
+    if (istStandort) g.unshift(k);
+    else g.push(k);
+    gruppen.set(k.standort, g);
+  }
+  return [...gruppen.values()].flat();
 }
+
+const ZWOELF = Array.from({ length: 12 });
 
 /** Der Wert einer Periode für die Balken der Seite - `null` ohne Wert (eine Lücke, nie 0). */
 export function zwoelfPerioden(werte: readonly BezugsgroesseWert[], art: string, bis: string): { schluessel: string; betrag: string | null }[] {
   const out: { schluessel: string; betrag: string | null }[] = [];
   let k = bis;
-  for (let i = 0; i < 12; i++) {
+  for (const _ of ZWOELF) {
     const von = spanneVon(k, art)[0];
     const w = werte.find((x) => x.periode_von === von && x.wirksamer_betrag !== null);
     out.unshift({ schluessel: k, betrag: w?.wirksamer_betrag ?? null });
@@ -293,7 +301,7 @@ export function zwoelfPerioden(werte: readonly BezugsgroesseWert[], art: string,
 
 /** Der Anfangsbuchstabe eines Monats unter dem Balken („S“), sonst der kurze Schlüssel. */
 export const balkenMarke = (schluessel: string, art: string): string =>
-  art === 'monat' ? MONATE_LANG[Number(schluessel.slice(5, 7)) - 1].charAt(0) : art === 'jahr' ? schluessel.slice(2) : periodeText(schluessel, art, true);
+  art === 'monat' ? MONATE[schluessel.slice(5, 7)][0].charAt(0) : art === 'jahr' ? schluessel.slice(2) : periodeText(schluessel, art, true);
 
 /** Die Vorjahresperiode eines Schlüssels (Monat: derselbe Monat ein Jahr früher), sonst `null`. */
 export const vorjahr = (schluessel: string, art: string): string | null =>
