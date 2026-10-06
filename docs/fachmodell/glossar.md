@@ -956,6 +956,14 @@ Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: 
 
 **Abgrenzung.** Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente.
 
+**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts).
+
 ## Einstufung
 
 *Sicht: Organisation · Nachtrag AP-16 §3.1, §4.1*

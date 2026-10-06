@@ -124,7 +124,7 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
     expect(eintragSprung(z('internes_audit', 'AU-2029-0001', 'a1'))!.hash).toBe('#/portfolio/energiemanagement/audits?entscheid=internes_audit');
     expect(eintragSprung(z('managementbewertung', 'BR-2029-0001'))!.hash).toBe('#/portfolio/energiemanagement/managementbewertung?entscheid=managementbewertung');
     // Der Messbedarf wird an seinem Energieeinsatz eingelöst; ohne Einsatz führt der Weg über die Messplanung.
-    expect(eintragSprung({ ...z('messbedarf_frist', 'MB-1', 'mb-1'), einsatz_id: 'ee-8' })!.hash).toBe('#/portfolio/bewertung/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
+    expect(eintragSprung({ ...z('messbedarf_frist', 'MB-1', 'mb-1'), einsatz_id: 'ee-8' })!.hash).toBe('#/portfolio/verbrauch/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(eintragSprung(z('messbedarf_frist', 'MB-1', 'mb-1'))!.hash).toBe('#/portfolio/bewertung?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(eintragSprung(z('feststellung', 'F-2029-0001', 'f1'))!.hash).toBe('#/portfolio/energiemanagement/feststellungen/f1?entscheid=feststellung');
     // Ohne Kennung der Route gibt es keine Seite: dann kein Sprung (WV3).
@@ -149,7 +149,7 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
     expect(bericht.grundKurz).toBe('10 Korrekturen nach der Freigabe');
     expect(bericht.frist.satz).toBe('fällig seit 05.10.2026');
     expect(text(mb)).toBe('Messstelle für Messbedarf MB-1 einrichten | Wärmemengenzähler am Trockner der Spritzgießmaschine 4');
-    expect(mb.sprung!.hash).toBe('#/portfolio/bewertung/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
+    expect(mb.sprung!.hash).toBe('#/portfolio/verbrauch/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(mb.bereich).toBe('messen');
     expect(mb.schritt).toBe('Messstelle anlegen');
   });

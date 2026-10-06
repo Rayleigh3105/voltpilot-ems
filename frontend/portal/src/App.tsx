@@ -42,6 +42,7 @@ import {
   aufbauHash,
   canonicalAnlageHash,
   canonicalStandortHash,
+  canonicalVerbrauchHash,
   canonicalPlatformHash,
   isGeraeteBereich,
   hashForRoute,
@@ -208,6 +209,9 @@ const BerichtePage = lazy(() =>
 );
 const BewertungPage = lazy(() =>
   PAGE_CHUNK['portfolio-bewertung']().then((m) => ({ default: m.BewertungPage })),
+);
+const VerbrauchPage = lazy(() =>
+  PAGE_CHUNK['portfolio-verbrauch']().then((m) => ({ default: m.VerbrauchPage })),
 );
 const VerbesserungBereich = lazy(() =>
   PAGE_CHUNK['portfolio-verbesserung']().then((m) => ({ default: m.VerbesserungBereich })),
@@ -762,7 +766,8 @@ function UnifiedPortal() {
     const canonical =
       canonicalAnlageHash(window.location.hash)
       ?? canonicalStandortHash(window.location.hash)
-      ?? canonicalPlatformHash(window.location.hash);
+      ?? canonicalPlatformHash(window.location.hash)
+      ?? canonicalVerbrauchHash(window.location.hash);
     if (canonical) {
       replaceCurrentNavigation(canonical);
     }
@@ -1301,6 +1306,8 @@ function UnifiedPortal() {
   const berichteDa = ebenenFakten ? bereicheHier.includes('berichte') : null;
   // AP-16 IP-6: der Reiter „Bewertung“ nach derselben Regel, dazu das Recht aus `/me`.
   const bewertungDa = ebenenFakten ? bereicheHier.includes('bewertung') : null;
+  // Konzept Auswerten a1: der Reiter „Verbrauch“ nach der Regel der Bewertung.
+  const verbrauchDa = ebenenFakten ? bereicheHier.includes('verbrauch') : null;
   // AP-18 IP-8: der Reiter „Ziele und Maßnahmen“ nach derselben Regel mit `verbesserung.ansehen`.
   const verbesserungDa = ebenenFakten ? bereicheHier.includes('verbesserung') : null;
   // AP-19 IP-9: der Reiter „Energiemanagement“ nach derselben Regel mit `energiemanagement.ansehen`.
@@ -1589,6 +1596,7 @@ function UnifiedPortal() {
             showBewertung={bewertungDa === true}
             showVerbesserung={verbesserungDa === true}
             showEnergiemanagement={energiemanagementDa === true}
+            showVerbrauch={verbrauchDa === true}
             leiste={leisteHier}
             leisteSeiten={leisteSeitenHier}
             telefonReiter={telefonReiterHier}
@@ -1656,6 +1664,15 @@ function UnifiedPortal() {
               einsatzId={route.energieeinsatzId ?? null}
               onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
               onListe={() => navigate(pageRoute('portfolio-bewertung'))}
+            />
+          )}
+          {/* Konzept Auswerten a1 (Entscheid 10.1): „Unternehmen › Verbrauch“ und die Seite eines Energieeinsatzes. */}
+          {page === 'portfolio-verbrauch' && (
+            <VerbrauchPage
+              einsatzId={route.energieeinsatzId ?? null}
+              onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
+              onListe={() => navigate(pageRoute('portfolio-verbrauch'))}
+              onNavigate={navigate}
             />
           )}
           {/* UEMS AP-18 IP-8: „Unternehmen › Ziele und Maßnahmen“ (Energieziele, Maßnahmen, Abweichungen) und die

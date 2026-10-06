@@ -8,6 +8,7 @@ import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
 import { hashForRoute, parseRoute, pageRoute, energieeinsatzRoute, type Route } from '../src/nav';
 import { BewertungPage } from '../src/pages/BewertungPage';
+import { VerbrauchPage } from '../src/pages/VerbrauchPage';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
 import { benutzerFixture } from '../src/test/benutzerFixtures';
@@ -76,7 +77,8 @@ const lesemodell: EbenenLesemodell = {
 const UNTERNEHMEN = { art: 'unternehmen' } as const;
 
 const ee = params.get('ee');
-if (!location.hash.startsWith('#/portfolio/bewertung')) {
+// Konzept Auswerten a1: die Seite eines Einsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`).
+if (!location.hash.startsWith('#/portfolio/bewertung') && !location.hash.startsWith('#/portfolio/verbrauch')) {
   const ziel = ee ? energieeinsatzRoute(`ee000000-0000-4000-8000-0000000000${ee.slice(3).padStart(2, '0')}`) : pageRoute('portfolio-bewertung');
   history.replaceState(null, '', hashForRoute(ziel));
 }
@@ -124,6 +126,7 @@ function Ansicht() {
         showKennzahlen={bereiche.includes('kennzahlen')}
         showBerichte={bereiche.includes('berichte')}
         showBewertung={bereiche.includes('bewertung')}
+        showVerbrauch={bereiche.includes('verbrauch')}
         // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
         // über der Seite stehen dort nur die Reiter der offenen Gruppe.
         leiste={kacheln.flatMap((k) => k.bereiche)}
@@ -143,6 +146,13 @@ function Ansicht() {
           einsatzId={route.energieeinsatzId ?? null}
           onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
           onListe={() => navigate(pageRoute('portfolio-bewertung'))}
+        />
+      ) : route.page === 'portfolio-verbrauch' ? (
+        <VerbrauchPage
+          einsatzId={route.energieeinsatzId ?? null}
+          onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
+          onListe={() => navigate(pageRoute('portfolio-verbrauch'))}
+          onNavigate={navigate}
         />
       ) : (
         <p>Diese Bühne zeigt nur die Bewertung.</p>

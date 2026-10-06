@@ -47,10 +47,19 @@ export interface Begriff {
   wort: string;
   /** Ein Satz in Alltagssprache. */
   klartext: string;
-  /** Ein Beispiel, wo der Satz allein zu abstrakt bleibt. */
+  /** Ein Beispiel, wo der Satz allein zu abstrakt bleibt; wo es geht, ersetzt die Fläche es durch eines aus der eigenen Firma. */
   beispiel: string | null;
   /** Das Wort, unter dem Berater und Normtexte dasselbe kennen — ohne Nummer und ohne Kürzel. */
   fachwort: string | null;
+  /**
+   * Konzept Messen m1 §7: die Frage des Aufklappers „Was ist …?“ (mit Artikel), nur für die Begriffe, die eine Fläche
+   * mit Satz unter dem Titel und Aufklapper erklärt statt mit der Zeile „Begriffe:“.
+   */
+  frage?: string;
+  /** Ein Satz, der zum Beispiel gehört: was man mit dem Ding tut oder woher es kommt. */
+  mehr?: string;
+  /** Die Abgrenzung: womit man es nicht verwechseln soll. */
+  abgrenzung?: string;
 }
 
 export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
@@ -59,6 +68,9 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     klartext: 'Ein Bereich oder Prozess, in dem Ihr Betrieb Energie einsetzt.',
     beispiel: 'Zum Beispiel Druckluft, Spritzguss oder die Beleuchtung einer Halle.',
     fachwort: null,
+    // Konzept Auswerten a1 §7: „Verbrauch“ erklärt den Begriff mit dem Aufklapper; im Portal heißt er dort „Bereich“.
+    frage: 'Was ist ein Energieeinsatz?',
+    abgrenzung: 'Nicht der Zähler: Ein Bereich kann von mehreren Zählern gemessen werden.',
   },
   wesentlich: {
     wort: 'wesentlich',

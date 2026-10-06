@@ -11591,7 +11591,14 @@ export interface BewertungRanglisteEinsatz {
   menge: string | null; zustand: string; ersatz: string | null; ersatz_prozent: string | null; datenlage_prozent: string | null;
   anteil_prozent: string | null; kumuliert_zugeordnet_prozent: string | null; anteil_zustand: string; rang: number | null;
   urteil: BewertungEinsatzUrteil; vorschlag: 'ueber_schwelle' | 'unter_schwelle'; herkunft: BewertungHerkunftEntwurf;
-  messstellen: Array<{ id: string; kennzeichen: string; anlage_id: string | null; einheit: string | null; menge: string | null }>;
+  /**
+   * Je Messstelle des Einsatzes Menge und Zustand im Zeitraum; `monatswerte` sind ihre Monatsmengen (dieselbe Form wie
+   * `…/messstellen/{kennzeichen}/werte`), `null` ohne Werte — nie 0 (Konzept Auswerten a1 §4.7).
+   */
+  messstellen: Array<{
+    id: string; kennzeichen: string; anlage_id: string | null; einheit: string | null; menge: string | null;
+    zustand?: string | null; ersatz?: string | null; ersatz_prozent?: string | null; monatswerte?: MessstelleWerte | null;
+  }>;
   prozess_summe_hinweise: ProzessSummeHinweis[];
 }
 export interface BewertungRangliste {
@@ -11725,6 +11732,11 @@ export interface EnergieeinsatzMessstelle {
   traeger: string;
   orte: MessstelleOrtZuordnung[];
   zustand: string;
+  /**
+   * Die Menge des letzten vollen Monats (`EnergieeinsatzDto.Messstelle`, Form wie `…/werte` mit `raster: monat`);
+   * `null`, wo die Route keine liefert — nie als Null darstellen.
+   */
+  letzter_monat?: MessstelleWerte | null;
 }
 
 export interface Energieeinsatz {

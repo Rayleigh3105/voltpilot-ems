@@ -1,0 +1,705 @@
+/*
+ * „Auswerten › Verbrauch“ (Konzept Auswerten a1 §6.3, Block „ERGÄNZUNGEN AUSWERTEN“). Bausteine aus der freigegebenen
+ * Familie (Portfolio R4, Wiedervorlage w1, Messen m1), gebaut nur aus Haus-Tokens — keine neue Farbe, kein neuer
+ * Radius, keine neue Schrift:
+ *   .vp-vb-antwort    Antwort zuerst: ein Satz, darunter der sachliche Untertitel
+ *   .vp-vb-vertrauen  Wie verlässlich: ein Satz mit Grund und Weg
+ *   .vp-vb-reihe      sortierte Balken einer Farbe (Rolle Verbrauch), der Rest grau gestrichelt am Ende
+ *   .vp-vb-verlauf    Monatssäulen ab null, gewählter Monat kräftig, Vorjahr als Punkt, Infozeile darüber
+ * Farbe nur mit Bedeutung: Verbrauch in der Rollenfarbe, das Vorjahr farblos (Navy-Punkt), kein Urteil.
+ */
+
+.vp-vb {
+  container: vp-vb / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Kopf ------------------------------------------------------------ */
+.vp-vb-kopf {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.vp-vb-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Wie der Kopf der Wiedervorlage: Reiter und Seitentitel tragen dasselbe Wort. */
+.vp-vb-kopf h1 {
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+.vp-vb-meta {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-menue {
+  flex: 0 0 auto;
+}
+.vp-vb-menue-knopf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-muted-fg, #475569);
+  cursor: pointer;
+}
+.vp-vb-menue-knopf:focus-visible,
+.vp-vb-schritt:focus-visible,
+.vp-vb-reihe-ziel:focus-visible,
+.vp-vb-weiter-ziel:focus-visible,
+.vp-vb-weg:focus-visible,
+.vp-vb-graf-p:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+
+/* ---------- Zeitleiste: Segment und Blättern ---------------------------------- */
+.vp-vb-zeitleiste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  min-width: 0;
+}
+.vp-vb-kopf > .vp-vb-zeitleiste {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+.vp-vb-zeitleiste .vp-seg button {
+  white-space: nowrap;
+}
+.vp-vb-blaetterer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vp-vb-schritt {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  cursor: pointer;
+}
+/* Die Tippfläche reicht über das sichtbare Kästchen hinaus (44 px), ohne es größer zu zeichnen. */
+.vp-vb-schritt::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+.vp-vb-schritt:disabled {
+  color: #cbd5e1;
+  cursor: default;
+}
+.vp-vb-zeitraum {
+  min-width: 8.6em;
+  text-align: center;
+  font: 700 0.9375rem/1.2 var(--vp-c-font);
+  color: var(--vp-navy-1, #1e3a5f);
+  white-space: nowrap;
+}
+
+/* ---------- Antwort und Verlässlichkeit -------------------------------------- */
+.vp-vb-antwort {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.vp-vb-satz {
+  margin: 0;
+  font: 700 1.0625rem/1.38 var(--vp-c-font);
+  letter-spacing: -0.005em;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-wrap: pretty;
+}
+.vp-vb-formal-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-width: 0;
+}
+.vp-vb-formal-zeile .vp-begriff-auf[open] {
+  flex-basis: 100%;
+}
+.vp-vb-formal {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-vertrauen {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-vb-vi {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-vb-vertrauen.is-info .vp-vb-vi {
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-vb-vt {
+  min-width: 0;
+}
+.vp-vb-hinweis-satz {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-weg {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ---------- Raster: am Telefon untereinander, ab 820 px zwei Spalten ------------ */
+.vp-vb-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4, 16px);
+  align-items: start;
+  min-width: 0;
+}
+.vp-vb-weitere {
+  display: grid;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+@container vp-vb (min-width: 820px) {
+  .vp-vb-raster {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-areas:
+      'liste kachel'
+      'liste verlauf'
+      'liste weitere'
+      'liste .';
+    grid-template-rows: auto auto auto 1fr;
+  }
+  .vp-vb-raster > .vp-vb-kachel {
+    grid-area: kachel;
+  }
+  .vp-vb-raster > .vp-vb-verlauf,
+  .vp-vb-raster > .vp-vb-f-verlauf-platz {
+    grid-area: verlauf;
+  }
+  .vp-vb-raster > .vp-vb-liste {
+    grid-area: liste;
+  }
+  .vp-vb-raster > .vp-vb-weitere {
+    grid-area: weitere;
+  }
+  .vp-vb-satz {
+    font-size: 1.25rem;
+    line-height: 1.32;
+  }
+  .vp-vb-karte {
+    padding: 16px 22px;
+  }
+}
+
+/* ---------- Karten ------------------------------------------------------------ */
+.vp-vb-karte {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-vb-blockkopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-vb-blockkopf h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-vb-m {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-vb-kachel .vp-k {
+  gap: 9px;
+}
+.vp-vb-marken {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-vb-marken .vp-k-marke {
+  max-width: 100%;
+}
+.vp-vb-leer {
+  justify-items: start;
+}
+.vp-vb-leer p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+.vp-vb-laden {
+  display: grid;
+  gap: 12px;
+}
+
+/* ---------- Bereiche: sortierte Balken einer Farbe ------------------------------ */
+.vp-vb-reihen {
+  display: grid;
+  min-width: 0;
+}
+.vp-vb-reihe {
+  position: relative;
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+.vp-vb-reihe:first-child {
+  padding-top: 4px;
+  border-top: 0;
+}
+.vp-vb-reihe-ziel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.vp-vb-reihe-ziel {
+  cursor: pointer;
+}
+/* Die ganze Reihe ist der Link; der Weg in der Unterzeile liegt darüber. */
+button.vp-vb-reihe-ziel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.vp-vb-sub .vp-vb-weg {
+  position: relative;
+  z-index: 1;
+}
+.vp-vb-nm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  min-width: 0;
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-vb-name {
+  min-width: 0;
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+.vp-vb-wesentlich {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--vp-navy-1, #1e3a5f) 35%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-navy-1, #1e3a5f);
+  font: 600 0.6875rem/1.4 var(--vp-c-font);
+  white-space: nowrap;
+}
+.vp-vb-v {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  font: 700 0.9375rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  white-space: nowrap;
+}
+.vp-vb-v small {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-chev {
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-spur {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.vp-vb-t {
+  flex: 1 1 auto;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--vp-flow-base, #e3e9f1);
+}
+.vp-vb-t > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--vp-flow-load, #8b5cf6);
+}
+.vp-vb-p {
+  flex: 0 0 auto;
+  min-width: 46px;
+  text-align: right;
+  font: 700 0.78rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-vb-sub {
+  margin: 5px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-kz,
+.vp-vb-fest {
+  white-space: nowrap;
+}
+
+/* Der Rest: grau, gestrichelt — fehlend ist keine Null, und er gehört keinem Bereich. */
+.vp-vb-reihe.is-rest .vp-vb-nm {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: 500;
+}
+.vp-vb-reihe.is-rest .vp-vb-v {
+  color: var(--vp-text-muted, #66717c);
+}
+.vp-vb-reihe.is-rest .vp-vb-t {
+  height: 10px;
+  border: 1px dashed #94a3b8;
+  background: transparent;
+}
+.vp-vb-reihe.is-rest .vp-vb-t > i {
+  background: #cbd5e1;
+}
+
+/* ---------- Weitere Energieträger (Gas) ---------------------------------------- */
+.vp-vb-weitere-liste {
+  display: grid;
+  min-width: 0;
+}
+.vp-vb-weiter {
+  padding: 4px 0 2px;
+}
+.vp-vb-weiter + .vp-vb-weiter {
+  padding-top: 10px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-vb-weiter-ziel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ---------- Fuß ------------------------------------------------------------- */
+.vp-vb-fuss,
+.vp-vb-grenze {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Strom je Monat ------------------------------------------------------ */
+.vp-vb-verlauf {
+  gap: 9px;
+}
+.vp-vb-infozeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-bg, #f8fafc);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-info-erste {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+}
+.vp-vb-info-erste b {
+  font: 700 0.875rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-vb-info-wert {
+  font: 700 0.875rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  white-space: nowrap;
+}
+.vp-vb-info-zweite {
+  display: inline-flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+}
+.vp-vb-info-zweite b {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+  white-space: nowrap;
+}
+
+.vp-vb-graf {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 6px;
+  margin: 4px 0 2px;
+}
+.vp-vb-graf-y {
+  position: relative;
+  align-self: stretch;
+}
+.vp-vb-graf-sizer {
+  display: block;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font: 500 10px/1 var(--vp-c-font);
+  white-space: nowrap;
+}
+.vp-vb-graf-at {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  font: 500 10px/1 var(--vp-c-font);
+  color: #64748b;
+  white-space: nowrap;
+}
+.vp-vb-graf-p {
+  position: relative;
+  height: 128px;
+  min-width: 0;
+  touch-action: pan-y;
+  cursor: pointer;
+}
+.vp-vb-graf-linie {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-vb-graf-saeulen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  column-gap: 5px;
+}
+.vp-vb-graf-spalte {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+}
+.vp-vb-saeule {
+  display: block;
+  width: 100%;
+  max-width: 18px;
+  min-height: 2px;
+  border-radius: 3px 3px 1px 1px;
+  background: color-mix(in srgb, var(--vp-flow-load, #8b5cf6) 30%, var(--vp-flow-base, #e3e9f1));
+}
+.vp-vb-saeule.is-wahl {
+  background: var(--vp-flow-load, #8b5cf6);
+}
+/* Unvollständig: die Säule steht, aber leiser und gestrichelt umrandet — nie als voller Wert. */
+.vp-vb-saeule.is-teil {
+  outline: 1px dashed var(--vp-flow-load, #8b5cf6);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--vp-flow-load, #8b5cf6) 14%, var(--vp-c-card, #fff));
+}
+/* Ohne Wert: eine leere, gestrichelte Säule (fehlend ist keine Null). */
+.vp-vb-saeule.is-leer {
+  height: 20%;
+  border: 1px dashed #cbd5e1;
+  background: transparent;
+}
+.vp-vb-saeule.is-leer.is-wahl {
+  border-color: var(--vp-flow-load, #8b5cf6);
+}
+.vp-vb-punkt {
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--vp-c-card, #fff);
+  border-radius: 50%;
+  background: var(--vp-navy-1, #1e3a5f);
+  transform: translate(-50%, 50%);
+  box-sizing: content-box;
+}
+.vp-vb-graf-x,
+.vp-vb-graf-j {
+  grid-column: 2;
+  display: grid;
+  column-gap: 5px;
+}
+.vp-vb-graf-x {
+  margin-top: 5px;
+}
+.vp-vb-graf-x > span {
+  min-width: 0;
+  text-align: center;
+  font: 500 9.5px/1.2 var(--vp-c-font);
+  color: #64748b;
+  white-space: nowrap;
+}
+.vp-vb-graf-x > span.is-wahl {
+  font-weight: 700;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+.vp-vb-mk {
+  display: none;
+}
+@container (max-width: 300px) {
+  .vp-vb-ml {
+    display: none;
+  }
+  .vp-vb-mk {
+    display: inline;
+  }
+}
+.vp-vb-graf-j {
+  margin-top: 1px;
+}
+.vp-vb-graf-j > span {
+  min-width: 0;
+  padding-left: 3px;
+  font: 500 9px/1.2 var(--vp-c-font);
+  color: #64748b;
+  white-space: nowrap;
+}
+.vp-vb-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-legende span {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.vp-vb-legende i {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+}
+.vp-vb-legende i.is-jahr {
+  background: var(--vp-flow-load, #8b5cf6);
+}
+.vp-vb-legende i.is-vorjahr {
+  border-radius: 50%;
+  background: var(--vp-navy-1, #1e3a5f);
+}
+.vp-vb-tipp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-vb-tipp svg {
+  flex: 0 0 auto;
+}
+.vp-vb-nurvorleser {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
