@@ -22,6 +22,7 @@ import * as M from '../massnahmen';
 import * as B from '../massnahmenBild';
 import { auditRoute, feststellungRoute, hashForRoute, managementbewertungRoute } from '../nav';
 import { useRollen } from '../rollen';
+import { merkeAbruf } from '../routenUhr';
 import '../components/Wiedervorlage.css';
 import './Verbesserung.css';
 import './Massnahmen.css';
@@ -245,7 +246,10 @@ export function MassnahmeSeite({
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahme(id).then(
-      (m) => aktiv && setLage({ art: 'da', m }),
+      (m) => {
+        merkeAbruf(m.frist.abruf);
+        if (aktiv) setLage({ art: 'da', m });
+      },
       (e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }),
     );
     return () => {

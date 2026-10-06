@@ -23,6 +23,7 @@ import * as M from '../massnahmen';
 import * as B from '../massnahmenBild';
 import * as P from '../massnahmePlanen';
 import { hashForRoute, massnahmeRoute } from '../nav';
+import { useRoutenHeute } from '../routenUhr';
 import { useIsPhone } from '../useIsPhone';
 import { Ablehnung } from './EnergiezielDialoge';
 import { Recht } from './Recht';
@@ -144,24 +145,10 @@ function Fuss({ form, haupt, busy, onClose, testid, abbrechen = P.ABBRECHEN }: {
   );
 }
 
-/** „Heute“ der Route (eine Uhr, Befund 2): `frist.abruf` der Maßnahme, sonst der Abruf der Liste. */
+/** „Heute“ der Route (eine Uhr, Befund 2, `routenUhr.ts`): der genannte Tag, sonst der gemerkte bzw. gelesene Abruf. */
 function useHeute(tagHeute?: string): string | null {
-  const [heute, setHeute] = useState<string | null>(tagHeute ?? null);
-  useEffect(() => {
-    if (tagHeute) {
-      setHeute(tagHeute);
-      return;
-    }
-    let aktiv = true;
-    api.massnahmen().then(
-      (l) => aktiv && setHeute(l.abruf),
-      () => aktiv && setHeute(new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [tagHeute]);
-  return heute;
+  const routen = useRoutenHeute();
+  return tagHeute ?? routen;
 }
 
 // ------------------------------------------------------------------ Kataloge des Planers

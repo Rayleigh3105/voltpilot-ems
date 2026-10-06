@@ -10,7 +10,15 @@ import { monatWort } from './bezugsbasisVergleich';
 import { tag, zielwertAusEingabe } from './energieziele';
 import { NBSP } from './format';
 import { UEMS_MASSNAHME } from './glossar';
-import { HERKUNFT_WORT, letzterAbgeschlossenerMonat, monateAus, monateText, monateWert, type MassnahmeVorbelegung } from './massnahmen';
+import {
+  AUSGANGSLAGE_HOECHSTENS_MONATE,
+  HERKUNFT_WORT,
+  letzterAbgeschlossenerMonat,
+  monateAus,
+  monateText,
+  monateWert,
+  type MassnahmeVorbelegung,
+} from './massnahmen';
 import { tageWort, tageZwischen } from './massnahmenBild';
 
 export const TITEL = `${UEMS_MASSNAHME} planen`;
@@ -151,8 +159,8 @@ export function terminSatz(termin: string, heute: string): string {
 
 // ------------------------------------------------------------------ Vorher (Ausgangslage)
 
-/** Höchstens zwölf abgeschlossene Monate vor heute (wie die Route, `AUSGANGSLAGE_HOECHSTENS_MONATE`). */
-export const AUSGANGSLAGE_HOECHSTENS = 12;
+/** Höchstens zwölf abgeschlossene Monate vor heute (wie die Route, `MassnahmeService.AUSGANGSLAGE_HOECHSTENS_MONATE`). */
+export const AUSGANGSLAGE_HOECHSTENS = AUSGANGSLAGE_HOECHSTENS_MONATE;
 
 export function vorherMonate(heute: string): { value: string; label: string }[] {
   const letzter = letzterAbgeschlossenerMonat(heute);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { MassnahmeWirkung } from '../api';
 import { monatWort } from '../bezugsbasisVergleich';
+import { offenGrund } from '../energieziele';
 import { NBSP } from '../format';
 import { ganz, personProzent, prozentBetrag, richtungWort } from '../massnahmenBild';
 
@@ -108,10 +109,9 @@ export function WirkungsGrafik({ w, erwartetProzent }: { w: MassnahmeWirkung; er
           </>
         ) : a === 'nicht_bewertbar' ? (
           <span className="vp-mn-u">{(m.satz ?? m.vergleich.satz).replace(/^[^:]+:\s*/, '')}</span>
-        ) : a === 'laeuft' ? (
-          <span className="vp-mn-u">{m.vergleich.satz ? m.vergleich.satz.replace(/^[^:]+:\s*/, '') : 'noch nicht endgültig'}</span>
         ) : (
-          <span className="vp-mn-u">kommt noch</span>
+          // Befund 1: der Grund der Route (läuft noch, kein gemessener Wert …), nie pauschal „noch nicht endgültig“.
+          <span className="vp-mn-u">{offenGrund(m.vergleich)}</span>
         )}
       </div>
       <div className="vp-mn-graf">

@@ -5,6 +5,7 @@ import { api, type Massnahme, type MassnahmeListe } from '../api';
 import { BEGRIFFE } from '../begriffe';
 import * as B from '../massnahmenBild';
 import { useRollen } from '../rollen';
+import { merkeAbruf } from '../routenUhr';
 import { FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
 import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
@@ -163,7 +164,11 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahmen().then(
-      (l) => aktiv && setLage({ art: 'da', l }),
+      (l) => {
+        // Eine Uhr (Befund 2): die Blätter rechnen „heute“ mit dem Tag der Route.
+        merkeAbruf(l.abruf);
+        if (aktiv) setLage({ art: 'da', l });
+      },
       () => aktiv && setLage({ art: 'fehler' }),
     );
     return () => {

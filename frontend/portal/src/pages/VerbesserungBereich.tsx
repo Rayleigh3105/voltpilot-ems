@@ -92,25 +92,9 @@ export function VerbesserungBereich({
         <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
         <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />
         <GrenzHinweis />
-        {!reiterOben && <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
-          {Z.REITER.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              role="tab"
-              aria-selected={reiter === r.key}
-              className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
-              data-testid={`verbesserung-reiter-${r.key}`}
-              onClick={() => onReiter(r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>}
+        {reiterReihe}
         {reiter === 'energieziele' ? (
           <EnergiezieleRegister onOeffnen={onOeffnen} />
-        ) : reiter === 'massnahmen' ? (
-          <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
         ) : (
           <>
             <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} grenze={false} />

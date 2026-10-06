@@ -159,7 +159,7 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
                             ? `${B.prozentBetrag(b.delta_prozent)} ${B.richtungWort(b.delta_prozent)} · ${URTEIL_WORT[b.urteil] ?? b.urteil}`
                             : x.grund !== null
                               ? 'nicht bewertbar'
-                              : 'noch nicht endgültig'}
+                              : Z.offenGrund(x.vergleich)}
                         </td>
                         <td className="is-zahl" data-testid="roh">
                           {W.rohText(x.kennzahl_roh) ?? '-'}
