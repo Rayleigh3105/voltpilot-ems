@@ -200,7 +200,8 @@ for (const breite of [375, 1440]) {
     test('Rangliste: Balken, K-Spalten, Rest-Zeile und weitere Träger (R2/R12)', async ({ page }) => {
       await oeffne(page, 'stand=voll', breite, AM_20_11);
       const rangliste = page.getByTestId('rangliste');
-      await expect(rangliste).toContainText('Stromeinsatz Oktober 2026: 185.380');
+      // Konzept Auswerten a1, Befund 2: die Rangliste gilt für die Datengrundlage der Bewertung, nie für einen Monat.
+      await expect(rangliste).toContainText('Stromeinsatz November 2025 bis Oktober 2026: 185.380');
       await expect(rangliste.locator('tbody tr')).toHaveCount(7);
       await expect(page.getByTestId('rang-EE-1')).toContainText('41,8 %');
       await expect(page.getByTestId('rang-EE-1')).toContainText('über Schwelle');

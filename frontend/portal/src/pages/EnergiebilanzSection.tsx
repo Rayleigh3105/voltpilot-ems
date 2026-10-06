@@ -54,6 +54,7 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   const [bilanz, setBilanz] = useState<Bilanz | 'fehler' | null>(null);
   const [neuLaden, setNeuLaden] = useState(0);
   const [arten, setArten] = useState<ReadonlyMap<string, MessstellenArt>>(() => new Map());
+  const [namen, setNamen] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [funktionen, setFunktionen] = useState<Funktionen | null>(null);
   const [rueckmeldung, setRueckmeldung] = useState<{ text: string; ton: Ton } | null>(null);
   const [legtAn, setLegtAn] = useState(false);
@@ -62,7 +63,11 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   useEffect(() => {
     let aktiv = true;
     api.messstellenRegister({ anlage: site.id }).then(
-      (r) => aktiv && setArten(new Map(r.register.map((z) => [z.kennzeichen, z.art]))),
+      (r) => {
+        if (!aktiv) return;
+        setArten(new Map(r.register.map((z) => [z.kennzeichen, z.art])));
+        setNamen(new Map(r.register.filter((z) => z.name).map((z) => [z.kennzeichen, z.name as string])));
+      },
       () => undefined,
     );
     api.funktionen().then(
@@ -91,8 +96,8 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   }, [site.id, wahl.periode, wahl.am, neuLaden]);
 
   const bild = useMemo(
-    () => (bilanz && bilanz !== 'fehler' ? energiebilanzBild(bilanz, { heute: heuteIn(bilanz.zeitzone, Date.now()), arten }) : null),
-    [bilanz, arten],
+    () => (bilanz && bilanz !== 'fehler' ? energiebilanzBild(bilanz, { heute: heuteIn(bilanz.zeitzone, Date.now()), arten, namen }) : null),
+    [bilanz, arten, namen],
   );
   const standortId = standortDerAnlage(funktionen, site.id);
 
@@ -248,6 +253,19 @@ function Hauptzaehler({
                 </ul>
               </div>
             ))}
+            {ab.ausserhalb && (
+              <p className="vp-eb-satz vp-eb-ausserhalb" data-testid="energiebilanz-ausserhalb">
+                {ab.ausserhalb.teile.map((t, i) =>
+                  t.kennzeichen ? (
+                    <span key={i} className="vp-eb-kz">
+                      {t.text}
+                    </span>
+                  ) : (
+                    t.text
+                  ),
+                )}
+              </p>
+            )}
           </div>
         ))
       )}
