@@ -209,16 +209,16 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
 
       // ---------------------------------------------------------------- 3 · WELT: das Register der Messstellen
       await zu(page, breite, 'Messstellen');
-      await expect(page.locator('[data-testid="messstellen"] .vp-ms-tabelle, [data-testid="messstellen"] .vp-ms-karten').first()).toBeVisible();
+      await expect(page.locator('[data-testid="messstellen"] [data-testid="messstelle-reihe"]').first()).toBeVisible();
       const welt = await station(page, breite, '03-welt', gesammelt);
       expect(welt.text).toContain('MS-10');
 
       // ------------------------------------------------- 4 · WELT: „Stand am …“ auf den 03.11.2026 zurückgestellt
-      // Der Einstieg „Werte“ des Registers führt auf den Stichtag, sonst auf den Vortag (AP-13 IP-3) — so erreicht
-      // der Kunde einen älteren Tag, ohne sich durch die Zeit-Leiste zu blättern.
+      // Mit „Stand am …“ öffnet die Reihe der Liste die Werte dieses Tages (AP-13 IP-3) — so erreicht der Kunde einen
+      // älteren Tag, ohne sich durch die Zeit-Leiste zu blättern.
       await standAm(page, GESUCHTER_TAG);
       const stand = await station(page, breite, '04-stand-am', gesammelt);
-      expect(stand.text).toContain('Sie sehen den Stand am 03.11.2026');
+      expect(stand.text).toContain('Stand 03.11.2026');
 
       // ---------------------------------------------------------------- 5 · ZAHL: MS-10 am 03.11.2026
       await einstieg(page, breite, 'Netzbezug Halle 2');
@@ -332,16 +332,22 @@ test.describe('AP-13 IP-13 · die Welten, die die Bühne öffnet', () => {
   }
 });
 
-/** „Stand am …“ auf einen früheren Tag stellen — im echten Datumsfeld, Monat für Monat zurückgeblättert. */
+/**
+ * „Stand am …“ auf einen früheren Tag stellen — seit Konzept Messen m1 §6.2 aus dem Menü ⋯ („Stand an einem Tag
+ * ansehen“), dann im echten Datumsfeld, Monat für Monat zurückgeblättert; die Plan-Marke „Stand …“ sagt den Tag.
+ */
 async function standAm(page: Page, iso: string) {
+  const liste = page.getByTestId('messstellen');
+  await liste.getByRole('button', { name: 'Weitere Aktionen' }).click();
+  await page.getByRole('menuitem', { name: /^Stand an einem Tag ansehen/ }).click();
   const feld = page.getByRole('combobox', { name: 'Stand am' });
-  await feld.click();
+  if (!(await page.locator('.vp-kal-gitter').count())) await feld.click();
   const tag = page.locator(`.vp-kal-tag[data-iso="${iso}"]:not(.is-rand)`);
   for (let i = 0; i < 24 && !(await tag.count()); i++) await page.getByRole('button', { name: 'Voriger Monat' }).click();
   await tag.click();
   await expect(page.locator('.vp-kal-gitter')).toHaveCount(0);
   const [jj, mm, dd] = iso.split('-');
-  await expect(page.getByRole('status')).toContainText(`Sie sehen den Stand am ${dd}.${mm}.${jj}`);
+  await expect(page.getByTestId('stand-am')).toContainText(`Stand ${dd}.${mm}.${jj}`);
 }
 
 /** Der Wechsel in einen Bereich der Ebene: am Telefon die Leiste, am Rechner der Reiter (M1/M3). */
@@ -356,11 +362,7 @@ async function zu(page: Page, breite: number, bereich: string) {
  * ⚠ Der zweite Weg am Rechner — „Letzter Wert“ — steht nur an einer Zeile MIT Wert; das Register des
  * Referenzunternehmens trägt seine Momentanwerte allein am 20.10.2026, der Weg wird also an seinem Stand gegangen.
  */
-async function einstieg(page: Page, breite: number, name: string) {
-  if (breite === 375) {
-    await page.locator('.vp-ms-karte', { hasText: name }).first().getByRole('button', { name }).click();
-    return;
-  }
-  await page.locator('tr', { hasText: name }).first().locator('.vp-rowmenu-btn').click();
-  await page.getByRole('menuitem', { name: 'Werte' }).click();
+/** Konzept Messen m1 §6.2: die ganze Reihe der Liste ist der Einstieg - bei jeder Breite derselbe Verweis. */
+async function einstieg(page: Page, _breite: number, name: string) {
+  await page.getByTestId('messstelle-reihe').filter({ hasText: name }).first().click();
 }

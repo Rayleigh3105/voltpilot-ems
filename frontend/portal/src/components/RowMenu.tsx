@@ -6,6 +6,8 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 
 export type RowMenuItem = {
   label: string;
+  /** Eine leise zweite Zeile unter dem Eintrag („Nur lesen, z. B. für eine Prüfung“). */
+  hinweis?: string;
   recht?: string;
   standort?: string | null;
   icon?: IconName;
@@ -146,7 +148,14 @@ export function RowMenu({
                   }}
                 >
                   {it.icon && <Icon name={it.icon} size={16} />}
-                  {it.label}
+                  {it.hinweis ? (
+                    <span className="vp-rowmenu-text">
+                      {it.label}
+                      <small>{it.hinweis}</small>
+                    </span>
+                  ) : (
+                    it.label
+                  )}
                 </button>
               ))}
               {danger.length > 0 && routine.length > 0 && <div className="vp-rowmenu-sep" />}

@@ -125,6 +125,20 @@ class AblesungApiTest {
         assertThat(oktober.path("menge").decimalValue()).isEqualByComparingTo("1240");
         assertThat(oktober.path("zustand").asText()).isEqualTo("vollständig");
         assertThat(oktober.path("kennzeichen").get(0).asText()).contains("01.10. 07:15", "02.11. 07:40", "Zuordnung durch den Kunden");
+        // Seit ergebnis-zustand 1.13 ist der gespeicherte Monat ein gültiges Ergebnis des Vertrags - die Karte spricht ihn.
+        assertThat(ErgebnisZustand.pruefe(new ErgebnisZustand.Ergebnis(oktober.path("menge").decimalValue(), "m³", "monat",
+                oktober.path("zustand").asText(), null, List.of(oktober.path("kennzeichen").get(0).asText())))).isEmpty();
+        // Das Jahr hat einen von zwölf Monaten: unvollständig, und es sagt zuerst, was fehlt.
+        JsonNode jahr=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=jahr&von=2026-01-01&bis=2026-12-31",
+                null),200).body().path("werte").get(0);
+        assertThat(jahr.path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(jahr.path("zustand").asText()).isEqualTo("unvollständig");
+        List<String> jahrKennzeichen=new ArrayList<>();
+        jahr.path("kennzeichen").forEach(k -> jahrKennzeichen.add(k.asText()));
+        assertThat(jahrKennzeichen).containsExactly("11 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen",
+                oktober.path("kennzeichen").get(0).asText());
+        assertThat(ErgebnisZustand.pruefe(new ErgebnisZustand.Ergebnis(jahr.path("menge").decimalValue(), "m³", "jahr",
+                jahr.path("zustand").asText(), null, jahrKennzeichen))).isEmpty();
         assertThat(monat(w,"2026-11-01","2026-11-30",null).path("zustand").asText()).isEqualTo("keine Werte");
         Antwort tag=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=tag&von=2026-10-20&bis=2026-10-20",null),200);
         assertThat(tag.body().path("werte").get(0).path("menge").isNull()).isTrue();

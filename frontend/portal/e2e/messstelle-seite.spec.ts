@@ -848,47 +848,25 @@ test('O14 · MS-06 am 26.10.2026: „Werte“ unter dem Kopf — Zeiten in Europ
   }
 });
 
-test('O13 · Einstieg: vom Register in die Werte — am Rechner „Letzter Wert“ und Zeilenmenü „Werte“, am Telefon die ganze Karte', async ({ page }, info) => {
+test('O13 · Einstieg: die ganze Reihe der Liste öffnet die Messstelle, ihre Werte stehen dort (Konzept Messen m1 §6.2)', async ({ page }, info) => {
   test.slow();
   const breite = breiteFuer(info.project.name);
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page);
   await page.goto('/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen');
-  // Heute ist laut Register der 20.10.2026 — der Einstieg öffnet den letzten ganzen Tag.
-  const ziel = adresse(`#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-19`);
+  const reihe = page.getByTestId('messstelle-reihe').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) });
+  await expect(reihe).toHaveAttribute('href', `#/portfolio/messstellen/${MS_IDS.ms06}`);
+  await messeUndFotografiere(page, breite, 'o13-register');
+  // Getippt wird irgendwo in die Reihe, nicht auf den Namen: die ganze Reihe ist der Einstieg.
+  const box = (await reihe.boundingBox())!;
+  await reihe.click({ position: { x: box.width - 40, y: box.height / 2 } });
+  await expect(page).toHaveURL(adresse(`#/portfolio/messstellen/${MS_IDS.ms06}`));
   const werte = page.getByTestId('werte');
-
-  if (breite === 1440) {
-    const zeile = page.locator('.vp-ms-tabelle tbody tr').filter({ has: page.locator('td:first-child', { hasText: /^MS-06$/ }) });
-    const letzterWert = zeile.getByRole('button', { name: /^Werte MS-06:/ });
-    await expect(letzterWert).toBeVisible();
-    await messeUndFotografiere(page, breite, 'o13-register');
-    await letzterWert.click();
-    await expect(page).toHaveURL(ziel);
-    await expect(werte.getByTestId('werte-karte')).toContainText(/691\skWh/);
-    await page.goBack();
-    await zeile.getByRole('button', { name: 'Aktionen' }).click();
-    await expect(page.getByRole('menuitem', { name: 'Werte' })).toBeVisible();
-    await messeUndFotografiere(page, breite, 'o13-zeilenmenue');
-    await page.getByRole('menuitem', { name: 'Werte' }).click();
-  } else {
-    const karte = page.locator('.vp-ms-karte').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) });
-    await expect(karte).toHaveClass(/is-werte/);
-    await messeUndFotografiere(page, breite, 'o13-register');
-    // Getippt wird unten in die Karte, nicht auf den Namen: die ganze Karte ist der Einstieg.
-    const box = (await karte.boundingBox())!;
-    await karte.click({ position: { x: box.width / 2, y: box.height - 16 } });
-  }
-  await expect(page).toHaveURL(ziel);
-  await expect(werte.getByTestId('werte-karte')).toContainText(/691\skWh/);
+  await expect(werte.getByTestId('werte-karte')).toBeVisible();
   await expect(werte.getByTestId('werte-zone')).toHaveText('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)');
-  await expect(werte).toBeInViewport();
   await messeUndFotografiere(page, breite, 'o13-seite-werte');
 
-  // Eine neue Wahl ersetzt die Adresse ohne Verlaufseintrag: „zurück“ führt ins Register, nicht auf den Vortag.
-  await werte.getByRole('button', { name: 'Vorheriger Zeitraum' }).click();
-  await expect(werte.getByTestId('werte-karte')).toContainText('18.10.2026');
-  await expect(page).toHaveURL(adresse(`#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-18`));
+  // „zurück“ führt in die Liste.
   await page.goBack();
   await expect(page).toHaveURL(/#\/portfolio\/messstellen$/);
   await expect(page.getByTestId('messstellen')).toBeVisible();
@@ -1130,14 +1108,14 @@ test('D4 · die Herkunft einer berechneten Zahl: Formel, Zeitpunkt, Version — 
   await elementBild(herkunft, breite, 'ip11-d4-herkunft-block');
 });
 
-test('D1 · die Quelle im Register führt zur Komponente auf der Geräte-Seite ihrer Anlage', async ({ page }, info) => {
+test('D1 · die Quelle einer Messstelle führt zur Komponente auf der Geräte-Seite ihrer Anlage (aus der Liste über die Seite)', async ({ page }, info) => {
   const breite = breiteFuer(info.project.name);
-  test.skip(breite !== 1440, 'Die Quelle-Spalte steht in der Tabelle des Rechners; am Telefon trägt die Karte sie nicht.');
-  await page.setViewportSize({ width: breite, height: 900 });
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page);
   await page.goto('/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen');
-  const zeile = page.locator('.vp-ms-tabelle tbody tr').filter({ has: page.locator('td:first-child', { hasText: /^MS-06$/ }) });
-  const quelle = zeile.locator('a.vp-ms-quelle-sprung');
+  // Konzept Messen m1: die ganze Reihe ist der Verweis auf die Messstelle; dort steht die Quelle mit ihrem Sprung.
+  await page.getByTestId('messstelle-reihe').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) }).click();
+  const quelle = page.locator('.vp-mss-kopf a.vp-mss-quelle-sprung');
   await expect(quelle).toHaveText('Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a');
   await expect(quelle).toHaveAttribute('href', /^#\/anlage\/[0-9a-f-]+\/modell\?komponente=[0-9a-f-]+$/);
   await messeUndFotografiere(page, breite, 'ip11-d1-quelle');
@@ -1334,10 +1312,7 @@ test('ZU · MS-06: Werte kommen an, gehören aber zu keiner Messreihe — die Li
     await ziel.screenshot({ path: join(BILDER, `zu-${name}-${breite}.png`) });
   };
   const liste = page.getByTestId('messstellen');
-  const ms06 = () =>
-    breite === 1440
-      ? page.locator('.vp-ms-tabelle tbody tr').filter({ has: page.locator('td:first-child', { hasText: /^MS-06$/ }) })
-      : page.locator('.vp-ms-karte').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) });
+  const ms06 = () => page.getByTestId('messstelle-reihe').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) });
 
   for (const fall of (BILDER ? ['vorher', 'a', 'b'] : ['a']) as OhneReihe[]) {
     await page.unrouteAll({ behavior: 'ignoreErrors' });

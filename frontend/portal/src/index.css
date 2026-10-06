@@ -1663,6 +1663,17 @@ svg [tabindex]:focus-visible {
 .vp-rowmenu-pop button.danger {
   color: var(--vp-industry-end);
 }
+/* Ein Eintrag mit leiser zweiter Zeile („Nur lesen, z. B. für eine Prüfung“). */
+.vp-rowmenu-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.vp-rowmenu-text small {
+  font-size: var(--vp-text-meta, 0.72rem);
+  font-weight: 400;
+  color: var(--vp-text-gray);
+}
 .vp-rowmenu-sep {
   height: 1px;
   background: var(--vp-border);

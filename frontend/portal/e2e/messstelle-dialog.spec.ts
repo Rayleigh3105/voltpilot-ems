@@ -17,8 +17,8 @@ const expect = baseExpect.configure({ timeout: 30_000 });
 /**
  * UEMS AP-04 IP-6 · der Messstellen-Dialog am echten Baustein (Bühne `messstelle-dialog.html`):
  * D1 Identität → D2 Zuordnung mit dem zweiten Hauptzähler (409, Wortlaut der FEHLER-Tabelle) und
- * dem Weg „Unterzähler von MS-01“ → D3 Quelle mit ausgegrauten Messwerten und „Was geschieht“ →
- * Fertig. Misst bei jedem Bild: Dokument UND Dialog 0 px Querlauf, kein Element über dem Rand.
+ * dem Weg „Unterzähler von MS-01“ → D3 „Woher kommen die Werte?“ (Messen m2: zwei gleichwertige Wege) mit
+ * ausgegrauten Messwerten und „Was geschieht“ → Fertig; dazu der Weg „Von Hand ablesen“ mit der ersten Ablesung. Misst bei jedem Bild: Dokument UND Dialog 0 px Querlauf, kein Element über dem Rand.
  * Pflicht ist 375 px (Prüfnachweis des Reports); 1440 px fährt denselben Weg für die Ansicht.
  * Mit `MESSSTELLE_DIALOG_BILDER=<Ordner>` legt der Lauf je Schritt ein Bild und `messung-*.json` ab.
  */
@@ -75,6 +75,20 @@ async function cloud(page: Page): Promise<Gesendet[]> {
     if (pfad.endsWith('/entities')) return route.fulfill(json(komponentenHalle1()));
     if (pfad.endsWith('/messkanaele')) return route.fulfill(json(kanaeleK5Frei()));
     if (pfad.endsWith('/quellen') && methode === 'POST') return route.fulfill(json({ quelle: { id: 'q-1' } }, 201));
+    if (pfad.endsWith('/ablesungen') && methode === 'POST') {
+      const b = req.postDataJSON() as { zeitpunkt: string; stand: string };
+      return route.fulfill(
+        json({
+          urteil: 'eingetragen',
+          korrektur: null,
+          ablesung: {
+            quelle: 'q-ablesung', zeitpunkt: b.zeitpunkt, fassung: 1, stand: 1250000, monat: null, woher: 'eingabe',
+            urheber: { name: 'Ines Kaltenbach', rolle: null }, korrektur: null, eingetragen_am: '2026-10-20T09:00:00+02:00',
+          },
+          ablesezeitraum: null,
+        }),
+      );
+    }
     return route.fulfill(json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
   });
   return gesendet;
@@ -188,7 +202,16 @@ for (const breite of BREITEN) {
     await page.getByRole('button', { name: 'Weiter: Quelle' }).click();
     await expect(aktiverSchritt(page)).toHaveText('Quelle');
 
-    // D3 — nur passende Messwerte wählbar, „Was geschieht“ vor dem Klick.
+    // D3 — „Woher kommen die Werte?“: zwei gleichwertige Wege, keiner vorgewählt.
+    await expect(dialog.getByText('Woher kommen die Werte?')).toBeVisible();
+    const geraet = dialog.getByRole('radio', { name: /^Automatisch von einem Gerät/ });
+    const ablesen = dialog.getByRole('radio', { name: /^Von Hand ablesen/ });
+    await expect(geraet).not.toBeChecked();
+    await expect(ablesen).not.toBeChecked();
+    await messeUndFotografiere(page, breite, 'd3-woher');
+    await geraet.check();
+
+    // Nur passende Messwerte wählbar, „Was geschieht“ vor dem Klick.
     await waehle(page, 'Komponente', /^Unterzähler Spritzguss SG01–SG06/);
     const hauptListe = await listeVon(
       page,
@@ -227,5 +250,45 @@ for (const breite of BREITEN) {
       unterzaehler_von: 'MS-01',
       gueltig_ab: '2026-10-20',
     });
+  });
+
+  test(`D3 · „Von Hand ablesen“: Ableserhythmus monatlich, erste Ablesung, Fertig bei ${breite} px ohne Querlauf`, async ({ page }) => {
+    test.slow();
+    await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+    const gesendet = await cloud(page);
+    await page.goto('/e2e/messstelle-dialog.html');
+    const dialog = page.getByRole('dialog', { name: 'Messstelle anlegen' });
+    await expect(page.getByLabel('Kennzeichen', { exact: true })).toHaveValue('MS-0022');
+    await page.getByLabel('Name *').fill('Zähler Kompressor K3');
+    await waehle(page, 'Hauptgröße *', /^Wirkenergie/);
+    await waehle(page, 'Richtung *', /^Bezug/);
+    await waehle(page, 'Wertart *', /^Zählerstand/);
+    await page.getByRole('button', { name: 'Weiter: Zuordnung' }).click();
+    await expect(aktiverSchritt(page)).toHaveText('Zuordnung');
+    await expect(page.getByRole('combobox', { name: 'Ort', exact: true })).toContainText('Werk Ahrenberg');
+    await page.getByRole('button', { name: 'Weiter: Quelle' }).click();
+    await expect(aktiverSchritt(page)).toHaveText('Quelle');
+
+    await dialog.getByRole('radio', { name: /^Von Hand ablesen/ }).check();
+    await expect(dialog.getByText('Ableserhythmus')).toBeVisible();
+    await expect(dialog.getByText('Monatlich', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Erste Ablesung', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Komponente', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Später eintragen' })).toBeVisible();
+    await page.getByLabel('Zählerstand (kWh) *').fill('1.250.000');
+    const uhrzeit = page.getByLabel('Uhrzeit *');
+    await uhrzeit.fill('08:30');
+    await uhrzeit.press('Enter');
+    await messeUndFotografiere(page, breite, 'd3-ablesen');
+
+    await page.getByRole('button', { name: 'Fertigstellen' }).click();
+    await expect(
+      dialog.getByText('MS-0022 Spritzguss SG01–SG06 Kühlung ist eingerichtet und aktiv · wird von Hand abgelesen'),
+    ).toBeVisible();
+    await messeUndFotografiere(page, breite, 'fertig-ablesen');
+    const ablesung = gesendet.find((g) => g.pfad.endsWith('/ablesungen'));
+    expect(ablesung?.pfad).toBe('/api/v1/messstellen/MS-0022/ablesungen');
+    expect(ablesung?.body).toEqual({ zeitpunkt: '2026-10-20T08:30:00+02:00', stand: '1.250.000', zuordnung_monat: null });
+    expect(gesendet.some((g) => g.pfad.endsWith('/quellen'))).toBe(false);
   });
 }

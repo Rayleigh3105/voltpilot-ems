@@ -81,6 +81,19 @@
   color: var(--vp-c-warn-fg, var(--vp-c-fg));
 }
 
+/* AP-13 IP-11 (D1): das Gerät der Quelle als Verweis auf seine Komponente. */
+.vp-mss-kopf .vp-mss-quelle-sprung {
+  color: var(--vp-c-primary, #2563eb);
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .vp-mss-kopf .vp-mss-quelle-sprung:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
 /* UEMS AP-16 IP-20: „geplant für EE-…“ — ein eingelöster Messbedarf, leise unter der Beobachtung. */
 .vp-mss-kopf .vp-mss-geplant {
   color: var(--vp-c-muted-fg);

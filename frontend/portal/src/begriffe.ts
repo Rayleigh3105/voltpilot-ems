@@ -47,10 +47,19 @@ export interface Begriff {
   wort: string;
   /** Ein Satz in Alltagssprache. */
   klartext: string;
-  /** Ein Beispiel, wo der Satz allein zu abstrakt bleibt. */
+  /** Ein Beispiel, wo der Satz allein zu abstrakt bleibt; wo es geht, ersetzt die Fläche es durch eines aus der eigenen Firma. */
   beispiel: string | null;
   /** Das Wort, unter dem Berater und Normtexte dasselbe kennen — ohne Nummer und ohne Kürzel. */
   fachwort: string | null;
+  /**
+   * Konzept Messen m1 §7: die Frage des Aufklappers „Was ist …?“ (mit Artikel), nur für die Begriffe, die eine Fläche
+   * mit Satz unter dem Titel und Aufklapper erklärt statt mit der Zeile „Begriffe:“.
+   */
+  frage?: string;
+  /** Ein Satz, der zum Beispiel gehört: was man mit dem Ding tut oder woher es kommt. */
+  mehr?: string;
+  /** Die Abgrenzung: womit man es nicht verwechseln soll. */
+  abgrenzung?: string;
 }
 
 export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
@@ -74,9 +83,12 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
   },
   messstelle: {
     wort: UEMS_MESSSTELLE,
-    klartext: 'Ein Punkt, an dem Energie gemessen oder aus anderen Messstellen berechnet wird.',
-    beispiel: 'Zum Beispiel der Hauptzähler eines Werks oder der Unterzähler einer Maschine.',
+    klartext: 'Eine Stelle, an der Ihr Verbrauch gemessen, abgelesen oder aus anderen Messstellen berechnet wird.',
+    beispiel: 'Zum Beispiel der Hauptzähler eines Werks oder der Zähler einer Maschine.',
     fachwort: null,
+    frage: 'Was ist eine Messstelle?',
+    mehr: 'Die Werte kommen automatisch von einem Gerät, aus Ablesungen von Hand oder werden aus anderen Messstellen berechnet.',
+    abgrenzung: 'Nicht dasselbe wie das Gerät: Wird ein Zähler getauscht, bleibt die Messstelle mit ihrer Geschichte.',
   },
   bezugsgroesse: {
     wort: UEMS_BEZUGSGROESSE,
