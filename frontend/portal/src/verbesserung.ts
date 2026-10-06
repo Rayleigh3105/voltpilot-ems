@@ -171,7 +171,7 @@ export function kurs(e: ZielstandEingang) {
     luecke: null as string | null, noetig_prozent: null as string | null, noetig_richtung: null as string | null };
   if (!b) return aus;
   const g = dez(s.gemessen!), erw = dez(s.erwartet!), ziel = dez(e.zielwert_prozent);
-  // höchstens = Σ erwartet · (100 + Zielwert) / 100 — exakt, zwei Stellen mehr statt einer Division
+  // höchstens = Σ erwartet · (100 + Zielwert) / 100 - exakt, zwei Stellen mehr statt einer Division
   const h = dezMal(erw, dezPlus({ z: 100n, e: 0 }, ziel));
   const hoechst: Dez = { z: h.z, e: h.e + 2 };
   const knappGrenze = dezKurz(dezPlus(ziel, dez(s.band_prozent!)));

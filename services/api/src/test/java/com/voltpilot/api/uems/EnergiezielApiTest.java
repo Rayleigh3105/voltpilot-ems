@@ -415,7 +415,7 @@ class EnergiezielApiTest {
         assertThat(z.at("/bewertung/kopie").asText()).isEqualTo(BerichtRegeln.kanonisch(ref.get("kopie")));
         assertThat(root.queryForObject("SELECT bericht_pruefsumme(bewertung_kopie) = bewertung_pruefsumme "
                 + "FROM energieziel WHERE id = ?::uuid", Boolean.class, id)).isTrue();
-        // Entscheid 11 (Konzept Verbessern): derselbe Stand lesbar — die Zahlen, die die Prüfsumme deckt.
+        // Entscheid 11 (Konzept Verbessern): derselbe Stand lesbar - die Zahlen, die die Prüfsumme deckt.
         JsonNode fest = z.at("/bewertung/stand");
         assertThat(fest.get("abruf").asText()).isEqualTo("2029-01-15");
         assertThat(fest.get("gemessen").asText()).isEqualTo("876600");

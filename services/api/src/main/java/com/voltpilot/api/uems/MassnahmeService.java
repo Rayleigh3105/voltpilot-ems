@@ -114,7 +114,7 @@ public class MassnahmeService {
 
     /**
      * Wie oben, dazu {@code energieziel} (Konzept Verbessern, Entscheid 5): die Maßnahmen für dieses Energieziel und die,
-     * deren Wirkung schon im Stand enthalten ist — an derselben Kennzahl umgesetzt, nach dem Ende der Referenzperiode
+     * deren Wirkung schon im Stand enthalten ist - an derselben Kennzahl umgesetzt, nach dem Ende der Referenzperiode
      * seiner Bezugsbasis-Fassung (sonst steckte sie in „erwartet“, WK4) und spätestens am letzten Tag der Zielperiode.
      * Diese stehen zusätzlich in {@code im_stand_enthalten}. Ein unbekanntes oder nicht sichtbares Energieziel ist 404.
      */

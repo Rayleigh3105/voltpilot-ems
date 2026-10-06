@@ -224,7 +224,7 @@ class MassnahmeApiTest {
 
     /**
      * Konzept Verbessern, Entscheid 5: {@code ?energieziel=} liefert die Maßnahmen für das Energieziel und die, deren
-     * Wirkung schon im Stand enthalten ist — M-2028-0001 (umgesetzt am 22.01.2028, nach der Referenzperiode der Fassung
+     * Wirkung schon im Stand enthalten ist - M-2028-0001 (umgesetzt am 22.01.2028, nach der Referenzperiode der Fassung
      * 2) an derselben Kennzahl steht zusätzlich in {@code im_stand_enthalten}; eine geplante Maßnahme ohne Bezug nicht.
      * Ein unbekanntes Energieziel ist 404, ein Text statt einer ID 400; ohne Filter bleibt die Liste leer.
      */

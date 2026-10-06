@@ -99,7 +99,7 @@ public final class EnergiezielDto {
             String kopie, String pruefsumme, FestgehaltenerStand stand) {}
 
     /**
-     * Konzept Verbessern, Entscheid 11: der Ziel-Stand der Kopie zum Bewertungstag, lesbar statt als Rohtext — Σ
+     * Konzept Verbessern, Entscheid 11: der Ziel-Stand der Kopie zum Bewertungstag, lesbar statt als Rohtext - Σ
      * gemessen und Σ erwartet in der Einheit der Kopie, Δ, Richtung, Urteil, Band, „x von y“ und die nicht gezählten
      * Monate mit Grund. Bewertete Energieziele zeigen ihn oben; der Live-Stand nur, wenn er abweicht.
      */
@@ -151,7 +151,7 @@ public final class EnergiezielDto {
 
     /**
      * Operation {@code kurs} (Vertrag §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
-     * bewertbaren Monate — {@code lage} {@code auf_kurs · knapp_dahinter · nicht_auf_kurs · noch_keine_aussage}, was
+     * bewertbaren Monate - {@code lage} {@code auf_kurs · knapp_dahinter · nicht_auf_kurs · noch_keine_aussage}, was
      * das Energieziel für die bewertbaren Monate höchstens zulässt, die Lücke dazu (positiv = darüber) in der Einheit
      * der Summe und der nötige Schnitt der offenen Monate (Näherung bei gleich großen Monaten).
      */

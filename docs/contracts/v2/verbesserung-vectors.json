@@ -6776,7 +6776,7 @@
       }
     },
     {
-      "name": "K1 März 2029 (konstruiert, Konzept Verbessern §14): 2,2 % mehr gegen 4 % weniger — nicht auf Kurs, 5 400 kWh über dem Energieziel, in den übrigen neun Monaten 4,7 % weniger nötig",
+      "name": "K1 März 2029 (konstruiert, Konzept Verbessern §14): 2,2 % mehr gegen 4 % weniger - nicht auf Kurs, 5 400 kWh über dem Energieziel, in den übrigen neun Monaten 4,7 % weniger nötig",
       "regel": "K1",
       "operation": "kurs",
       "quelle": "Konzept Verbessern §6.4, §14 · Entscheid 3",
@@ -6836,7 +6836,7 @@
       }
     },
     {
-      "name": "K1 Juli 2028 gegen 5 % weniger: 2,9 % weniger reicht nicht — 2,93 % liegt knapp jenseits des Bands (3,0 %)",
+      "name": "K1 Juli 2028 gegen 5 % weniger: 2,9 % weniger reicht nicht - 2,93 % liegt knapp jenseits des Bands (3,0 %)",
       "regel": "K1",
       "operation": "kurs",
       "quelle": "R4 · Entscheid 3",
@@ -7552,7 +7552,7 @@
       }
     },
     {
-      "name": "K1 Juli 2028 gegen 2 % weniger: auf Kurs — in den übrigen Monaten reichen 1,2 % weniger",
+      "name": "K1 Juli 2028 gegen 2 % weniger: auf Kurs - in den übrigen Monaten reichen 1,2 % weniger",
       "regel": "K1",
       "operation": "kurs",
       "quelle": "R4 · Entscheid 3",
@@ -7970,7 +7970,7 @@
       }
     },
     {
-      "name": "K2 −4,96 % gegen 5 % weniger: knapp dahinter, nicht auf Kurs — nie auf den Zielwert gerundet",
+      "name": "K2 −4,96 % gegen 5 % weniger: knapp dahinter, nicht auf Kurs - nie auf den Zielwert gerundet",
       "regel": "K2",
       "operation": "kurs",
       "quelle": "Z4 · Entscheid 3",

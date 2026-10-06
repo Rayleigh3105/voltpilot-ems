@@ -827,7 +827,7 @@ public class EnergiezielService {
     }
 
     /**
-     * Entscheid 11 (Konzept Verbessern): der festgehaltene Stand der Kopie lesbar — dieselben Zahlen, die die
+     * Entscheid 11 (Konzept Verbessern): der festgehaltene Stand der Kopie lesbar - dieselben Zahlen, die die
      * Prüfsumme deckt ({@link #kopie}); in kWh mit der Endung {@code _kwh}, sonst mit {@code einheit}. Ohne Zahl (kein
      * bewertbarer Monat) bleiben Σ, Δ und Richtung {@code null}.
      */
