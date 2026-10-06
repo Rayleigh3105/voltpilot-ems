@@ -584,7 +584,9 @@ export const seitenHebel = (
 /** Die Zeile statt des Knopfs, wenn keine Person bekannt ist, die das Recht vergibt. */
 export const FREIGEBEN_NUR_MIT_RECHT = 'Freigeben nur mit Recht';
 export const FREIGEBEN_FRAGE = 'Wer gibt diesen Bericht frei?';
-export const FREIGEBEN_KLARTEXT = 'Freigeben darf, wer bei Ihnen das Recht dazu hat. Vergeben kann es Ihr Kundenadministrator.';
+export const FREIGEBEN_KLARTEXT = 'Freigeben darf, wer bei Ihnen das Recht dazu hat.';
+const VERGIBT_EINER = 'Vergeben kann es Ihr Kundenadministrator.';
+const VERGEBEN_MEHRERE = 'Vergeben können es Ihre Kundenadministratoren.';
 
 /** „Freigeben: Jonas Wendlinger“ - die Kundenadministratoren aus der Selbstauskunft. */
 export const freigebenWer = (namen: readonly string[]): string =>
@@ -593,7 +595,7 @@ export const freigebenWer = (namen: readonly string[]): string =>
 /** Grund und Weg im Erklär-Blatt hinter dem i-Knopf (Runde 2: Erklären auf Antippen). */
 export const freigebenErklaerung = (namen: readonly string[]): Erklaerung => ({
   frage: FREIGEBEN_FRAGE,
-  klartext: FREIGEBEN_KLARTEXT,
+  klartext: `${FREIGEBEN_KLARTEXT} ${namen.length > 1 ? VERGEBEN_MEHRERE : VERGIBT_EINER}`,
   beiIhnen: namen.length === 0 ? null
     : namen.length === 1 ? `${namen[0]} gibt frei oder vergibt das Recht.`
       : `${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]} geben frei oder vergeben das Recht.`,

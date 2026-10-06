@@ -36,7 +36,11 @@ describe('Befund 2: kein Rechte-Satz am Stand, am Entwurf ohne Recht wer freigib
     }
     const blatt = freigebenErklaerung(['Jonas Wendlinger']);
     expect(blatt.beiIhnen).toBe('Jonas Wendlinger gibt frei oder vergibt das Recht.');
-    expect(freigebenErklaerung(['A B', 'C D']).beiIhnen).toBe('A B und C D geben frei oder vergeben das Recht.');
+    expect(blatt.klartext).toBe('Freigeben darf, wer bei Ihnen das Recht dazu hat. Vergeben kann es Ihr Kundenadministrator.');
+    expect(freigebenErklaerung(['A B', 'C D'])).toMatchObject({
+      klartext: 'Freigeben darf, wer bei Ihnen das Recht dazu hat. Vergeben können es Ihre Kundenadministratoren.',
+      beiIhnen: 'A B und C D geben frei oder vergeben das Recht.',
+    });
     expect(freigebenErklaerung([]).beiIhnen).toBeNull();
     expect(erklaerWoerter(blatt)).toBeLessThanOrEqual(ERKLAER_WOERTER_HOECHSTENS);
     expect(JSON.stringify(blatt)).not.toContain('Dafür fehlt Ihnen das Recht');

@@ -87,8 +87,9 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         ZoneId zone = ZoneId.of(unternehmen.desKundenbereichs().map(UnternehmenRepository.Unternehmen::zeitzone)
                 .orElse("Europe/Berlin"));
         var aus = new ArrayList<Map<String, Object>>();
-        bewertung(aus, zone, stichtag, personenNamen());
-        kennzahlen(aus, zone);
+        Map<String, String> namen = personenNamen();
+        bewertung(aus, zone, stichtag, namen);
+        kennzahlen(aus, zone, namen);
         berichte(aus, zone);
         verbesserung(aus, zone);
         return aus;
@@ -163,22 +164,38 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
 
     // ------------------------------------------------------------------ AP-11, AP-17
 
-    private void kennzahlen(List<Map<String, Object>> aus, ZoneId zone) {
+    private void kennzahlen(List<Map<String, Object>> aus, ZoneId zone, Map<String, String> namen) {
         var basen = new ArrayList<Map<String, Object>>();
+        // Befund 4: die Leser der Kennzahlen und Bezugsbasen nennen nur den gespeicherten Namen; die Kennung der Person
+        // steht an der Fassung. Gefragt wird nur nach Fassungen, die die Leser oben schon gezeigt haben (ihr Zaun).
+        Map<String, String> kennzahlSub = new HashMap<>();
+        jdbc.query("SELECT kennzahl_id, nummer, actor_sub FROM kennzahl_fassung",
+                rs -> {
+                    kennzahlSub.put(rs.getString("kennzahl_id") + "/" + rs.getInt("nummer"), rs.getString("actor_sub"));
+                });
+        Map<String, String[]> basisSub = new HashMap<>();
+        jdbc.query("SELECT bezugsbasis_id, fassung, freigabe_sub, entscheidung_sub FROM bezugsbasis_fassung",
+                rs -> {
+                    basisSub.put(rs.getString("bezugsbasis_id") + "/" + rs.getInt("fassung"),
+                            new String[] {rs.getString("freigabe_sub"), rs.getString("entscheidung_sub")});
+                });
         for (var k : kennzahlen.liste().kennzahlen()) {
             for (var f : kennzahlen.fassungen(k.id()).fassungen()) {
                 // Tag ist der Eintrag der Fassung — die erste gilt „von Anfang an“ und trägt kein gilt ab.
                 if (f.aufgehobenAm() != null) continue;
                 aus.add(zeile("kennzahlen_bezugsbasen", "kennzahl_fassung", k.kennzeichen(), k.name(), f.nummer(),
-                        null, f.eingetragenVon() == null ? null : f.eingetragenVon().name(),
+                        null, f.eingetragenVon() == null ? null
+                                : person(kennzahlSub.get(k.id() + "/" + f.nummer()), f.eingetragenVon().name(), namen),
                         tag(f.eingetragenAm(), zone), null));
             }
             for (var b : bezugsbasen.liste(k.id()).bezugsbasen()) {
                 for (var kurz : b.fassungen()) {
                     if (!"freigegeben".equals(kurz.freigabeStatus())) continue;
                     BezugsbasisDto.Fassung f = bezugsbasen.fassung(k.id(), b.id(), kurz.fassung());
-                    String freigabe = f.freigabe() == null ? null : f.freigabe().name();
-                    String entscheidung = f.vieraugen() && f.entscheidung() != null ? f.entscheidung().name() : null;
+                    String[] subs = basisSub.getOrDefault(b.id() + "/" + kurz.fassung(), new String[2]);
+                    String freigabe = f.freigabe() == null ? null : person(subs[0], f.freigabe().name(), namen);
+                    String entscheidung = f.vieraugen() && f.entscheidung() != null
+                            ? person(subs[1], f.entscheidung().name(), namen) : null;
                     basen.add(zeile("kennzahlen_bezugsbasen", "bezugsbasis_fassung", b.kennzeichen(),
                             "Bezugsbasis " + b.kennzeichen() + " (" + k.kennzeichen() + ")", kurz.fassung(),
                             entscheidung != null && !entscheidung.equals(freigabe) ? entscheidung : null, freigabe,
@@ -285,7 +302,12 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
     }
 
     private static String name(ProtokollAkteur a, Map<String, String> namen) {
-        return a == null ? null : a.sub() == null ? a.name() : namen.getOrDefault(a.sub(), a.name());
+        return a == null ? null : person(a.sub(), a.name(), namen);
+    }
+
+    /** Der Name der Person zu ihrer Kennung, sonst der gespeicherte (Befund 4, Konzept Nachweisen n1). */
+    private static String person(String sub, String gespeichert, Map<String, String> namen) {
+        return sub == null ? gespeichert : namen.getOrDefault(sub, gespeichert);
     }
 
     private static LocalDate tag(Instant am, ZoneId zone) {
