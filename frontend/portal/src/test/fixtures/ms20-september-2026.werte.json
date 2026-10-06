@@ -1,0 +1,49 @@
+{
+  "messstelle": {
+    "id": "fba1189c-37bb-496e-aafc-a8a6f86f812b",
+    "kennzeichen": "MS-20",
+    "name": "Spritzguss",
+    "art": "gemessen",
+    "groesse": "Wirkenergie",
+    "richtung": "Bezug",
+    "einheit": "kWh",
+    "wertart": "Zählerstand"
+  },
+  "raster": "monat",
+  "von": "2026-09-01T00:00:00+02:00",
+  "bis": "2026-10-01T00:00:00+02:00",
+  "zeitzone": "Europe/Berlin",
+  "zeitzone_herkunft": "unternehmen",
+  "version": null,
+  "quellen": [],
+  "werte": [
+    {
+      "von": "2026-09-01T00:00:00+02:00",
+      "bis": "2026-10-01T00:00:00+02:00",
+      "beschriftung": null,
+      "stunden": 720,
+      "tagesdauer": null,
+      "menge": 88200.0,
+      "mittel": null,
+      "min": null,
+      "max": null,
+      "zustand": "vollständig",
+      "kennzeichen": [
+        "Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)"
+      ],
+      "erhalten": null,
+      "erwartet": null,
+      "abdeckung_prozent": null,
+      "fassung": "endgueltig",
+      "endgueltig_ab": "2026-10-08T00:00:00+02:00",
+      "version": 1,
+      "gebildet_aus": "monat",
+      "quelle": null,
+      "grund": null,
+      "ereignisse": [],
+      "herkunft": null,
+      "versionen": 1
+    }
+  ],
+  "zuordnung": null
+}
