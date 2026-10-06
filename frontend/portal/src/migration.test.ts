@@ -1596,6 +1596,13 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
         if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
+        if (fortschreibung && 'menue' in fortschreibung) {
+          // Ins Menü ⋯ verlegt (Konzept Auswerten a1 §6.5): kein eigener Knopf mehr, sondern ein Eintrag des RowMenu -
+          // Beschriftung, Recht und Handler stehen wörtlich in der Datei, sonst gilt der Knopf als verloren.
+          expect(readFileSync(join(SRC, quellpfad), 'utf8'), `${pfad}: ${fortschreibung.grund}`).toContain(String(fortschreibung.menue));
+          zahl++;
+          continue;
+        }
         const soll = fortschreibung?.nachher ?? fingerabdruck;
         const stelle = jetzt.indexOf(soll);
         if (stelle < 0 && nz) {

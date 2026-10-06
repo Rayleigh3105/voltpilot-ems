@@ -83,8 +83,8 @@ async function messe(page: Page) {
       karten: [...document.querySelectorAll('[data-testid="kennzahl-karte"]')].map((k) => text(k)),
       // Die Reihen zum Beobachten - ohne die zugeklappten Archivierten.
       reihen: [...document.querySelectorAll('[data-testid="kennzahl-reihe"]')].filter((k) => !k.closest('details:not([open])')).map((k) => text(k)),
-      titel: text(document.querySelector('.vp-kz-kopf h1, .vp-kzl-kopf-zeile h1')),
-      unter: text(document.querySelector('.vp-kz-kopf p, .vp-kzl-unterzeile')),
+      titel: text(document.querySelector('.vp-kzs-kopf h1, .vp-kzl-kopf-zeile h1')),
+      unter: text(document.querySelector('.vp-kzs-meta, .vp-kzl-unterzeile')),
       perioden: [...document.querySelectorAll('.vp-kz-perioden [role="tab"]')].map((t) => text(t)),
       kartenKopf: text(karte?.querySelector('.vp-wk-kopf') ?? null),
       zahl: text(karte?.querySelector('.vp-wk-zahl') ?? null),
@@ -92,9 +92,13 @@ async function messe(page: Page) {
       kennzeichen: [...(karte?.querySelectorAll('.vp-wk-kennzeichen li') ?? [])].map((a) => text(a)),
       grund: text(document.querySelector('[data-testid="werte-grund"]')),
       versionen: text(document.querySelector('[data-testid="werte-versionen"]')),
-      herkunft: [...document.querySelectorAll('[data-testid="kennzahl-herkunft"] p, [data-testid="kennzahl-herkunft"] li')].map((p) => text(p)),
+      // Die Herkunft ohne die Berechnung, die im selben Aufklapper „Wie wird gerechnet?“ steht (Konzept Auswerten a1 §6.5).
+      herkunft: [...document.querySelectorAll('[data-testid="kennzahl-herkunft"] p, [data-testid="kennzahl-herkunft"] li')]
+        .filter((p) => !p.closest('[data-testid="kennzahl-berechnung"]'))
+        .map((p) => text(p)),
       berechnung: [...document.querySelectorAll('[data-testid="kennzahl-berechnung"] p')].map((p) => text(p)),
-      stammdaten: [...document.querySelectorAll('[data-testid="kennzahl-stammdaten"] dd')].map((p) => text(p)),
+      // „Über diese Kennzahl“ (Konzept Auswerten a1 §6.5): Zweck und Geltung als Sätze.
+      stammdaten: [...document.querySelectorAll('[data-testid="kennzahl-stammdaten"] p')].map((p) => text(p)),
       balken: [...document.querySelectorAll('[data-testid="verlauf-balken"]')].map((b) => b.getAttribute('aria-label')),
     };
   });
@@ -253,20 +257,17 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
       'Version: ein Rechenstand des Werts einer Periode. Er wird neu gebildet, wenn sich ein Eingang ändert, etwa nach einer Korrektur.',
     ]);
     expect(m.berechnung[0]).toBe('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
-    expect(m.stammdaten).toEqual([
-      'Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.',
-      'Ines Kaltenbach',
-      'Gebäude Halle 2',
-    ]);
+    expect(m.stammdaten[0]).toBe('Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.');
+    expect(m.stammdaten[1]).toMatch(/^Gilt für das Gebäude Halle 2 · verantwortlich Ines Kaltenbach · berechnet seit \d{2}\.\d{2}\.\d{4}$/);
     await ablegen(page, 'k1-375', m);
     await ablegen(page, 'k1-375-ganz', m, true);
-    // Unter der Karte: Herkunft, Berechnung, Stammdaten — ein Bild im Sichtfenster (das ganze Bild legt die Leiste in die Mitte).
+    // Unter der Karte: Rechenweg und „Über diese Kennzahl“ — ein Bild im Sichtfenster (das ganze Bild legt die Leiste in die Mitte).
     await page.getByTestId('kennzahl-herkunft').evaluate((e) => e.scrollIntoView({ block: 'start' }));
     await page.evaluate(() => window.scrollBy(0, -72));
     await ablegen(page, 'k1-375-unten', m);
   });
 
-  test('K1 bei 1440 px: Werte-Karte und Verlauf links, Herkunft, Berechnung und Stammdaten rechts', async ({ page }) => {
+  test('K1 bei 1440 px: Werte-Karte, Verlauf, Rechenweg und „Über diese Kennzahl“ ohne Reiter', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001', 1440, NOVEMBER);
     await warteAufKarte(page);
     const m = await messe(page);
@@ -274,9 +275,8 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     // N1/R4: „Auswerten“ leuchtet in der Seitenleiste; die Kennzahl zeigt ihren Rückweg statt der Reihe der Gruppe.
     expect(m.seiteAktiv).toBe('Auswerten');
     expect(m.reiterAktiv).toEqual([]);
-    // AP-17 IP-9/IP-20 (§5.1, §6.3): an einer Quotient-Kennzahl stehen „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ —
-    // vorgewählt bleibt „Kennzahl“ mit dem Inhalt von vorher.
-    expect(m.kennzahlReiter).toEqual(['Kennzahl (gewählt)', 'Bezugsbasis', 'Vergleich mit Bezugsbasis']);
+    // Konzept Auswerten a1 §6.5: die Seite hat keine Reiter mehr - die Bezugsbasis steht eine Ebene tiefer.
+    expect(m.kennzahlReiter).toEqual([]);
     expect(m.zahl).toBe(`0,15${NB}kWh je Stück`);
     await ablegen(page, 'k1-1440', m);
   });

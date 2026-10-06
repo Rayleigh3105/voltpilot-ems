@@ -87,6 +87,12 @@ async function listeVon(page: Page, feld: Locator): Promise<Locator> {
 
 const weiter = (dialog: Locator) => dialog.getByRole('button', { name: 'Weiter', exact: true });
 
+/** Ein Eintrag des Menüs ⋯ im Kopf der Kennzahl-Seite (Konzept Auswerten a1 §6.5: Werkzeuge ins Menü). */
+async function menue(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
 for (const breite of [375, 1440]) {
   test(`${breite} px — KZ-0001 „Stromeinsatz je Stück — Halle 2“ aus der Vorlage: fünf Schritte, Hebel, K13, vor „Anlegen“ nichts gespeichert`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen&welt=leer&person=IK', breite);
@@ -185,7 +191,7 @@ for (const breite of [375, 1440]) {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001', breite);
     await expect(page.locator('[data-testid="werte-karte"]')).toBeVisible();
     await pruefeUndFotografiere(page, breite, 'seite-kopieren', { ganz: false });
-    await page.getByRole('button', { name: 'Kopieren', exact: true }).click();
+    await menue(page, 'Kopieren');
 
     const dialog = page.getByRole('dialog', { name: 'Kennzahl kopieren' });
     await expect(dialog.getByText('Kopie von KZ-0001')).toBeVisible();

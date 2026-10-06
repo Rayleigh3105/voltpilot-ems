@@ -212,7 +212,8 @@ export function modellText(
 ): string | null {
   const k = f.koeffizienten;
   if (!k || k.a === undefined || k.b === undefined) return null;
-  const [zaehler, nenner] = (einheit ?? '').split('/');
+  // `einheit_anzeige` kommt von der Route als Wort („kWh je kg“) - beide Schreibweisen trennen gleich.
+  const [zaehler, nenner] = (einheit ?? '').split(/\/| je /);
   const grundlast = dezimal(String(Math.round(Number(k.a))));
   const teile = [`${grundlast}${zaehler ? ` ${zaehler}` : ''} Grundlast`, `${dezimal(k.b)}${zaehler ? ` ${zaehler}` : ''} je ${nenner || f.variablen[0]?.kennzeichen || 'Einheit'}`];
   if (k.c !== undefined) teile.push(`${dezimal(k.c)}${zaehler ? ` ${zaehler}` : ''} je ${f.variablen[1]?.kennzeichen ?? 'Einheit'}`);

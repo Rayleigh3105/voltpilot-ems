@@ -75,6 +75,24 @@ public class KennzahlAuswertungService {
         }
     }
 
+    /**
+     * {@code GET /api/v1/kennzahlen/{id}[?mit=auswertung]}: ohne {@code mit} die Kennzahl wie bisher; mit
+     * {@code mit=auswertung} trägt sie - wie in der Liste - ihre Auswertung (Konzept Auswerten a1 §6.5, die Seite einer
+     * Kennzahl), mit dem Stand ihres offenen Energieziels. Ein anderer Wert ist 400 {@code anfrage_ungueltig}.
+     */
+    public KennzahlDto.Kennzahl eine(UUID id, String mit) {
+        if (mit != null && !MIT_AUSWERTUNG.equals(mit)) {
+            throw KennzahlAbgelehnt.anfrage("mit");
+        }
+        KennzahlDto.Kennzahl k = kennzahlen.eine(id);
+        if (mit == null || !auswertbar(k)) {
+            return k;
+        }
+        EnergiezielDto.Energieziel ziel = energieziele.liste(Set.of(), null, "offen").energieziele().stream()
+                .filter(z -> z.kennzahl().id().equals(id)).min(ZIEL_FOLGE).orElse(null);
+        return mitAuswertung(k, ziel);
+    }
+
     /** Eine Auswertung braucht Monatswerte; eine archivierte Kennzahl trägt keine (die Liste klappt sie zu). */
     static boolean auswertbar(KennzahlDto.Kennzahl k) {
         return k.archiviertAm() == null && k.perioden() != null && k.perioden().contains(MONAT);
@@ -96,10 +114,29 @@ public class KennzahlAuswertungService {
         // Verglichen wird nur gegen eine freigegebene Fassung (U1) - ohne eine gibt es kein Urteil und keine Abweichung.
         // Der Vergleich liest dieselben Monatswerte (sie decken auch den Vormonat des ersten der zwölf Monate).
         LocalDate ersteGeltung = vergleich.ersteGeltung(id);
+        YearMonth von = monat.minusMonths(KennzahlAuswertung.MONATE - 1);
         BezugsbasisVergleichDto.Vergleich v = ersteGeltung == null ? null
-                : vergleich.vergleichUeber(k, gelesen, monat.minusMonths(KennzahlAuswertung.MONATE - 1), monat);
+                : vergleich.vergleichUeber(k, gelesen, von, monat);
         EnergiezielDto.Stand stand = ziel == null ? null : energieziele.stand(ziel.id());
-        return KennzahlAuswertung.auswertung(monat, jeMonat, v, ersteGeltung, stand);
+        return KennzahlAuswertung.auswertung(monat, jeMonat, v, ersteGeltung, seitGeltung(k, gelesen, v, ersteGeltung,
+                von, monat), stand);
+    }
+
+    /**
+     * §10.6: der Zeitraum beginnt mit dem ersten der zwölf Monate, für dessen letzten Tag eine Fassung gilt (P4) - die
+     * Monate davor hätte der Zeitraum sonst gegen eine Fassung gerechnet, die für sie noch gar nicht galt. Gilt sie für
+     * alle zwölf, ist es der Vergleich selbst; gilt sie für keinen, gibt es keinen Zeitraum.
+     */
+    private BezugsbasisVergleichDto.Vergleich seitGeltung(KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen,
+            BezugsbasisVergleichDto.Vergleich v, LocalDate ersteGeltung, YearMonth von, YearMonth bis) {
+        if (v == null) {
+            return null;
+        }
+        YearMonth erster = YearMonth.from(ersteGeltung);
+        if (erster.isAfter(bis)) {
+            return null;
+        }
+        return erster.isAfter(von) ? vergleich.vergleichUeber(k, gelesen, erster, bis) : v;
     }
 
     /**

@@ -135,6 +135,7 @@ import {
 import { versorgungAhrenberg, versorgungLindach } from '../src/test/versorgungFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import { bb1, bb1Fassung } from '../src/test/bezugsbasisFixtures';
 import { vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../src/test/bezugsbasisVergleichFixtures';
 import {
   ahrenbergBezugsgroessen,
@@ -864,7 +865,10 @@ Object.assign(api, {
   // AP-17 IP-20: der Vergleich-Leser (IP-19) — `&vergleich=r2|maerz|stand`; ohne Angabe die Kennzahl ohne Bezugsbasis (R10).
   bezugsbasisVergleich: async () =>
     ({ r2: vergleichR2, maerz: vergleichMitMaerz, stand: vergleichMitStand })[params.get('vergleich') ?? '']?.() ?? vergleichLeer(),
-  kennzahlBezugsbasen: async () => ({ bezugsbasen: [] }),
+  // Konzept Auswerten a1 §6.6: mit `&vergleich=…` trägt die Kennzahl BB-0001 (R1) - der Vergleich je Monat steht dann auf
+  // der Ebene der Bezugsbasis (`…/kennzahlen/{id}/bezugsbasis`).
+  kennzahlBezugsbasen: async () => ({ bezugsbasen: params.get('vergleich') ? [bb1('freigegeben')] : [] }),
+  bezugsbasisFassung: async () => bb1Fassung('freigegeben'),
   // AP-17 IP-17 / IP-12c: die Bühne hat keine laufende Bezugsbasis und keinen Wetterbezug — Kachel und Zeile „Wetter“
   // bleiben weg, und kein Abruf geht an den (nicht laufenden) Server.
   bezugsbasisUebersicht: async () => ({ stichtag: '2026-10-20', laufend: 0, freigegeben: 0, vorlaeufig: 0, mit_anstoss: 0,
@@ -1621,7 +1625,8 @@ function Vorschau() {
               standort={{ id: standort.id, name: standort.name }}
               zone={standort.zeitzone}
               kennzahlId={route.kennzahlId ?? null}
-              onOeffnen={(id) => navigate(kennzahlRoute(id, standort.id))}
+              ebene={route.kennzahlEbene ?? null}
+              onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, standort.id, ebene))}
               onListe={() => navigate(standortBereichRoute(standort.id, 'kennzahlen'))}
             />
           )}
@@ -1651,7 +1656,8 @@ function Vorschau() {
           {portfolioReiter('portfolio-kennzahlen')}
           <KennzahlenPage
             kennzahlId={route.kennzahlId ?? null}
-            onOeffnen={(id) => navigate(kennzahlRoute(id))}
+            ebene={route.kennzahlEbene ?? null}
+            onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, null, ebene))}
             onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
           />
         </>

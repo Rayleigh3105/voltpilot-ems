@@ -127,10 +127,14 @@ public class KennzahlController {
         return kennzahlen.paare(anfrage.getParameterMap().keySet(), rechenform, einheit, standortId);
     }
 
-    /** Recht: {@code messwerte.ansehen}. */
+    /**
+     * Recht: {@code messwerte.ansehen}. {@code mit=auswertung} (Konzept Auswerten a1, PR2: die Seite einer Kennzahl) legt
+     * an eine nicht archivierte Kennzahl mit Monatswerten dieselbe Auswertung wie die Liste; ein anderer Wert ist 400
+     * {@code anfrage_ungueltig}.
+     */
     @GetMapping("/{id}")
-    public KennzahlDto.Kennzahl eine(@PathVariable UUID id) {
-        return kennzahlen.eine(id);
+    public KennzahlDto.Kennzahl eine(@PathVariable UUID id, @RequestParam(required = false) String mit) {
+        return auswertung.eine(id, mit);
     }
 
     /**

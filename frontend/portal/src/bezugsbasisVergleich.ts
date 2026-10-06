@@ -112,7 +112,8 @@ export const VERGLEICH_REITER = `Vergleich mit ${UEMS_BEZUGSBASIS}`;
 export { REITER_KENNZAHL } from './bezugsbasisAnlegen';
 /** B2: eine Bezugsbasis — und damit ein Vergleich — gibt es nur an Quotient und Zusammenfassung, nie an einem Anteil. */
 export const kannVergleich = kannBezugsbasis;
-export const VERGLEICH_ROH = 'Roh';
+/** Konzept Auswerten a1 §8.3: die unbereinigte Veränderung heißt nach dem, womit sie vergleicht - nie „Roh“. */
+export const VERGLEICH_ROH = 'ggü. Vormonat';
 export const VERGLEICH_BEREINIGT = UEMS_BEREINIGT;
 export const VERGLEICH_OHNE_URTEIL = 'ohne Urteil';
 export const VERGLEICH_ZEITRAUM = 'Zeitraum';
@@ -122,11 +123,11 @@ export const VERGLEICH_BASIS_WAHL = UEMS_BEZUGSBASIS;
 export const VERGLEICH_SPALTEN = {
   monat: 'Monat',
   gemessen: 'gemessen',
-  vormonat: 'zum Vormonat',
+  vormonat: 'Veränderung',
   bedingung: 'Bedingung',
   erwartet: UEMS_ERWARTET,
   delta: 'Δ',
-  urteil: 'Urteil (Band)',
+  urteil: 'Urteil',
   kennzeichen: 'Kennzeichen',
 } as const;
 export const VERGLEICH_LADEFEHLER = 'Der Vergleich konnte nicht geladen werden.';

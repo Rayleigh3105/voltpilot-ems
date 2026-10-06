@@ -107,8 +107,8 @@ class PortfolioKpiServiceKpisTest {
         KennzahlDto.AuswertungZiel zielStand = new KennzahlDto.AuswertungZiel(zielId4, "EZ-2028-0001", "-5",
                 "2028-01/2028-12", "-2.7", "weniger", "besser", 11, 12);
         when(auswertung.auswertung(eq(kz4), eq(YearMonth.of(2026, 9)), any())).thenReturn(new KennzahlDto.Auswertung(
-                "2026-09", null, null, List.of(), new KennzahlDto.AuswertungVergleich("BB-0001", "schlechter", "2.2",
-                        "2.0", "mehr", null, null, null), zielStand));
+                "2026-09", null, null, null, List.of(), new KennzahlDto.AuswertungVergleich("BB-0001", "schlechter", "2.2",
+                        "2.0", "mehr", null, null, null), null, zielStand));
 
         PortfolioKpiDto.Leitkennzahl leit = service.leitkennzahl(YearMonth.of(2026, 9));
 
@@ -138,7 +138,7 @@ class PortfolioKpiServiceKpisTest {
         when(kennzahlWerte.werte(eq(kz), any(), any(), any(), any(), any())).thenReturn(werte(kz, "KZ-0004",
                 "Stromeinsatz je kg", "kWh/kg", List.of(wert(LocalDate.parse("2026-09-01"), "0.29", "kWh/kg", "vollständig"))));
         when(auswertung.auswertung(eq(kz), any(), any())).thenReturn(new KennzahlDto.Auswertung("2026-09", null, null,
-                List.of(), null, null));
+                null, List.of(), null, null, null));
 
         PortfolioKpiDto.Leitkennzahl leit = service.leitkennzahl(YearMonth.of(2026, 9));
 

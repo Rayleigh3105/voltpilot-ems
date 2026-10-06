@@ -14994,13 +14994,23 @@ paths:
     get:
       tags: [kennzahlen]
       summary: Eine Kennzahl mit der heute geltenden Berechnung.
-      description: Recht `messwerte.ansehen`.
+      description: >
+        Recht `messwerte.ansehen`. Mit `mit=auswertung` (Konzept Auswerten a1 §6.5, die Seite einer Kennzahl)
+        trägt eine nicht archivierte Kennzahl mit Monatswerten dieselbe `auswertung` wie in der Liste, mit dem
+        Stand ihres offenen Energieziels. Ohne `mit` fehlt das Feld.
+      parameters:
+        - name: mit
+          in: query
+          required: false
+          schema: { type: string, enum: [auswertung] }
+          description: Ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
       responses:
         "200":
           description: Die Kennzahl.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Kennzahl" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
     put:
@@ -31122,17 +31132,21 @@ components:
     KennzahlAuswertung:
       type: object
       description: >
-        Nur mit `GET /api/v1/kennzahlen?mit=auswertung`, nur an einer nicht archivierten Kennzahl mit
-        Monatswerten (Konzept Auswerten a1 §6.4, §10.8). Gerechnet wird nichts Neues: Urteil und Abweichungen
-        sind die Operation `vergleich` des Bezugsbasis-Lesers (bezugsbasis.md §16), die Veränderung zum Vorjahr
-        die Operation `roh` (ohne Urteil, VG3), der Stand des Energieziels sein Leser (Z3).
-      required: [monat, wert, vorjahr, monate, vergleich, energieziel]
+        Nur mit `mit=auswertung` an `GET /api/v1/kennzahlen` oder `GET /api/v1/kennzahlen/{id}`, nur an einer
+        nicht archivierten Kennzahl mit Monatswerten (Konzept Auswerten a1 §6.4, §6.5, §10.8). Urteil und
+        Abweichungen sind die Operation `vergleich` des Bezugsbasis-Lesers (bezugsbasis.md §16), der Zeitraum
+        dessen Operation `zeitraum`, die Veränderungen zu Vorjahr und Vormonat die Operation `roh` (ohne Urteil,
+        VG3), der Stand des Energieziels sein Leser (Z3). Selbst gerechnet werden nur die Mengen je Monat
+        (`erwartet_wert`, `abweichung`, `zusammen`), exakt aus derselben Zeile.
+      required: [monat, wert, vorjahr, vormonat, monate, vergleich, zeitraum, energieziel]
       properties:
         monat: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", description: "Der letzte abgeschlossene Monat in der Zone der Geltung - für ihn gilt das Urteil." }
         wert: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungWert" }], nullable: true, description: "Der jüngste Monatswert der zwölf Monate bis `monat`; null ohne jeden." }
-        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungVorjahr" }], nullable: true, description: "Die Veränderung von `wert` gegen denselben Monat ein Jahr davor; null ohne beide Werte." }
+        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen denselben Monat ein Jahr davor; null ohne beide Werte." }
+        vormonat: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen den Monat davor; null ohne beide Werte." }
         monate: { type: array, minItems: 12, maxItems: 12, items: { $ref: "#/components/schemas/KennzahlAuswertungMonat" }, description: "Die zwölf Monate bis `monat`, der älteste zuerst." }
         vergleich: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungVergleich" }], nullable: true, description: "null ohne freigegebene Bezugsbasis." }
+        zeitraum: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZeitraum" }], nullable: true, description: "Der Vergleich über die Monate der zwölf, für die schon eine Fassung gilt (§10.6); null ohne Bezugsbasis oder solange noch keine gilt." }
         energieziel: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZiel" }], nullable: true, description: "Das offene Energieziel (bei mehreren das mit der frühesten Zielperiode) mit Stand; null ohne." }
     KennzahlAuswertungWert:
       type: object
@@ -31143,23 +31157,27 @@ components:
         einheit: { type: string, nullable: true }
         zustand: { type: string, nullable: true }
         richtung: { type: string, nullable: true, description: "untergrenze · obergrenze · unbestimmt - genau bei „unvollständig“ (Q3)." }
-    KennzahlAuswertungVorjahr:
+    KennzahlAuswertungRoh:
       type: object
       required: [periode, wert, delta_prozent, richtung]
       properties:
-        periode: { type: string, description: "Der Vorjahresmonat JJJJ-MM." }
+        periode: { type: string, description: "Der Vorjahresmonat bzw. der Vormonat JJJJ-MM." }
         wert: { type: string }
         delta_prozent: { type: string, description: "Eine Stelle; trägt nie ein Urteil." }
         richtung: { type: string, enum: [mehr, weniger, gleich] }
     KennzahlAuswertungMonat:
       type: object
-      required: [periode, wert, delta_prozent, urteil, grund]
+      required: [periode, wert, delta_prozent, urteil, grund, erwartet_wert, abweichung, zusammen, vorjahr]
       properties:
         periode: { type: string, description: "JJJJ-MM" }
         wert: { type: string, nullable: true, description: "Der Kennzahlwert; null = keiner (nie 0)." }
         delta_prozent: { type: string, nullable: true, description: "Die bereinigte Abweichung gegen die Bezugsbasis (U2); null ohne Vergleich." }
         urteil: { type: string, nullable: true, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
         grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        erwartet_wert: { type: string, nullable: true, description: "Der erwartete Kennzahlwert: erwartet ÷ Nenner des Monats, gerundet wie der Kennzahlwert; null ohne erwartet oder Nenner." }
+        abweichung: { type: string, nullable: true, description: "gemessen − erwartet in der Einheit des Zählers, exakt (positiv = mehr als erwartet); null ohne beide." }
+        zusammen: { type: string, nullable: true, description: "Die Abweichungen aller Monate mit Urteil bis hierher zusammengezählt; null an einem Monat ohne Urteil (er zählt nicht mit)." }
+        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Der Wert desselben Monats ein Jahr davor mit der rohen Veränderung (Operation `roh`, nie ein Urteil); null ohne beide Werte oder mit 0 davor." }
     KennzahlAuswertungVergleich:
       type: object
       required: [bezugsbasis, urteil, delta_prozent, band_prozent, richtung, grund, satz, erster_monat]
@@ -31172,6 +31190,20 @@ components:
         grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
         satz: { type: string, nullable: true, description: "Der Kundensatz des Monats (bezugsbasis.md §10, §16)." }
         erster_monat: { type: string, nullable: true, description: "Nur, solange für `monat` noch keine Fassung gilt: der erste Monat JJJJ-MM, für den eine freigegebene Fassung am letzten Tag gilt (P4)." }
+    KennzahlAuswertungZeitraum:
+      type: object
+      description: Der Vergleich über `von` … `bis` (Operation `zeitraum`, Σ gemessen ÷ Σ erwartet, U5); `von` ist der erste der zwölf Monate mit Fassung.
+      required: [von, bis, delta_prozent, band_prozent, richtung, urteil, grund, monate, satz]
+      properties:
+        von: { type: string, description: "JJJJ-MM" }
+        bis: { type: string, description: "JJJJ-MM" }
+        delta_prozent: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        monate: { type: string, nullable: true, description: "„x von y“ Monaten mit Vergleich." }
+        satz: { type: string, description: "Der Kundensatz des Zeitraums (bezugsbasis.md §10, §16)." }
     KennzahlAuswertungZiel:
       type: object
       required: [id, kennzeichen, zielwert_prozent, zielperiode, delta_prozent, richtung, urteil, monate_bewertbar, monate_soll]

@@ -556,6 +556,112 @@
         "lesen: Number.isFinite(Date.parse(`${e.tag}T00:00:00Z`))"
       ],
       "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
+    },
+    "kennzahlSeite.ts": {
+      "importe": [
+        "./bezugsbasisAnlegen:dezimal",
+        "./bezugsbasisAnlegen:einheitJe",
+        "./bezugsbasisAnlegen:referenzperiodeText",
+        "./bezugsbasisFassungen:freigeberText",
+        "./bezugsbasisFassungen:wertText",
+        "./bezugsbasisUrteil:abweichungKurz",
+        "./bezugsbasisUrteil:prozentText",
+        "./bezugsbasisUrteil:urteilAnsicht",
+        "./glossar:UEMS_BEZUGSBASIS",
+        "./glossar:UEMS_ENERGIEZIEL",
+        "./kennzahlListe:grundKurz",
+        "./kennzahlListe:ortText",
+        "./kennzahlListe:vorjahrText",
+        "./kennzahlListe:zahlUndEinheit",
+        "./kennzahlListe:zielJahre",
+        "./kennzahlListe:zielWert",
+        "./uemsErgebnis:TRENNER",
+        "./uemsErgebnis:zahlMitStellen",
+        "./uemsKennzahl:MONATSNAMEN",
+        "./uemsKennzahl:einheitWort",
+        "./uemsKennzahl:periodeText"
+      ],
+      "operationen": [
+        "abweichungMenge: Number(abweichung)",
+        "bedingungSatz: a.position - b.position",
+        "bedingungZahl: Math.abs(n)",
+        "bedingungZahl: Number(wert)",
+        "bedingungZahl: Number.isFinite(n)",
+        "deltaMitZeichen: Number(delta)",
+        "grundOhneMonat: monat.length + 2",
+        "infozeile: Number(m.delta)",
+        "monatKurz: Number(periode.slice(5, 7))",
+        "monatKurz: Number(periode.slice(5, 7)) - 1",
+        "offeneAuffaelligkeit: -1",
+        "stichtag: Number(monat.slice(0, 4))",
+        "stichtag: Number(monat.slice(5, 7))",
+        "stichtag: j + 1",
+        "stichtag: m + 1",
+        "vorjahrNebensatz: Math.abs(d)",
+        "vorjahrNebensatz: Number(v.delta_prozent)",
+        "vorjahrNebensatz: Number.isFinite(d)",
+        "vormonatText: Math.abs(d)",
+        "vormonatText: Number(delta)",
+        "vormonatText: Number.isFinite(d)",
+        "worausStuecke: -1",
+        "worausStuecke: stuecke.length - 1",
+        "zielKarte: Number(von.slice(5, 7))",
+        "zielKarte: Number(von.slice(5, 7)) - 1",
+        "zusammenEnde: Number(letzter)",
+        "zusammenEnde: mit.length - 1"
+      ]
+    },
+    "bezugsbasisEbene.ts": {
+      "importe": [
+        "./bezugsbasisAnlegen:dezimal",
+        "./bezugsbasisAnlegen:einheitJe",
+        "./bezugsbasisAnlegen:methodeWort",
+        "./bezugsbasisAnlegen:referenzperiodeText",
+        "./bezugsbasisAnlegen:tagIn",
+        "./bezugsbasisAnlegen:zeilenFassung",
+        "./bezugsbasisFassungen:grundWort",
+        "./bezugsbasisFassungen:wertText",
+        "./glossar:UEMS_BEZUGSBASIS",
+        "./kennzahlSeite:tagText",
+        "./kennzahlSeite:zahlWort",
+        "./uemsErgebnis:TRENNER"
+      ],
+      "operationen": []
+    },
+    "kennzahlListe.ts": {
+      "importe": [
+        "./auswertenGrafik:miniAbweichung",
+        "./auswertenGrafik:miniLinie",
+        "./bezugsbasisUrteil:abweichungKurz",
+        "./bezugsbasisUrteil:abweichungSatz",
+        "./bezugsbasisUrteil:prozentText",
+        "./bezugsbasisUrteil:urteilAnsicht",
+        "./glossar:UEMS_KENNZAHL",
+        "./glossar:UEMS_KENNZAHLEN",
+        "./glossar:UEMS_LEITKENNZAHL",
+        "./kennzahlKarte:GELTUNG_WORT",
+        "./uemsErgebnis:TRENNER",
+        "./uemsErgebnis:zahlMitStellen",
+        "./uemsKennzahl:ANZEIGE_NACHKOMMASTELLEN",
+        "./uemsKennzahl:OBERGRENZE",
+        "./uemsKennzahl:UNTERGRENZE",
+        "./uemsKennzahl:einheitWort",
+        "./uemsKennzahl:periodeText"
+      ],
+      "operationen": [
+        "aufzaehlung: -1",
+        "aufzaehlung: teile.length - 1",
+        "kennzahlenListe: Number(a.auswertung?.vergleich?.urteil === 'schlechter')",
+        "kennzahlenListe: Number(b.auswertung?.vergleich?.urteil === 'schlechter')",
+        "kennzahlenListe: Number(b.auswertung?.vergleich?.urteil === 'schlechter') - Number(a.auswertung?.vergleich?.urteil === 'schlechter')",
+        "naechsterMonat: Number(periode.slice(0, 4))",
+        "naechsterMonat: Number(periode.slice(5, 7))",
+        "naechsterMonat: j + 1",
+        "naechsterMonat: m + 1",
+        "vorjahrText: Math.abs(d)",
+        "vorjahrText: Number(v.delta_prozent)",
+        "vorjahrText: Number.isFinite(d)"
+      ]
     }
   }
 }

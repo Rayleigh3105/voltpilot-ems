@@ -1,56 +1,63 @@
-import { Recht } from '../components/Recht';
-import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
-import { BegriffeZeile } from '../components/BegriffeZeile';
-import { useReiterRand } from '../reiterRand';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
-import { BezugsbasisVergleich } from '../components/BezugsbasisVergleich';
-import { BezugsbasisReiter, BezugsbasisZeile, useBezugsbasis } from '../components/BezugsbasisReiter';
-import { EnergiezielSetzen } from '../components/EnergiezielDialoge';
+import { Modal } from '../../designsystem/components/shell/Modal';
+import {
+  api,
+  ApiError,
+  type Auffaelligkeit,
+  type Bezugsbasis,
+  type BezugsbasisFassung,
+  type Energieziel,
+  type Kennzahl,
+  type KennzahlFassung,
+  type KennzahlPeriodeArt,
+  type KennzahlWerte,
+} from '../api';
+import { basisZeile, kannBezugsbasis, zeilenFassung } from '../bezugsbasisAnlegen';
+import type { BezugsbasisVergleich } from '../bezugsbasisVergleich';
+import { AbweichungsGrafik, Infozeile, Legende, SpaltenGrafik, ZielSkala, ZusammenGrafik } from '../components/AuswertenGrafik';
+import { VermerkZeile } from '../components/AuffaelligkeitZeile';
+import { BegriffeZeile } from '../components/BegriffeZeile';
+import { useBezugsbasis } from '../components/BezugsbasisReiter';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import '../components/BereichTabs.css';
 import { DangerZone } from '../components/DangerZone';
+import { EnergiezielSetzenDialog } from '../components/EnergiezielDialoge';
+import { Fehlergrenze } from '../components/Fehlergrenze';
 import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
-import { UEMS_FASSUNG_SATZ, UEMS_VERSION_SATZ, uemsGeteiltSatz } from '../glossar';
+import { Marke } from '../components/kacheln/Kachel';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
-import { Fehlergrenze } from '../components/Fehlergrenze';
+import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { ErrorState, Skeleton } from '../components/States';
-import { kannBezugsbasis, REITER_BEZUGSBASIS, REITER_KENNZAHL } from '../bezugsbasisAnlegen';
-import { entscheidAus } from '../entscheid';
-import { VERGLEICH_REITER } from '../bezugsbasisVergleich';
-import * as E from '../kennzahlAendern';
-import { ablehnungSatz, KNOPF_KOPIEREN } from '../kennzahlAnlegen';
 import { VersionenEinstieg, VersionenModal } from '../components/WertVersionen';
 import { WerteKarte } from '../components/WerteKarte';
+import * as Z from '../energieziele';
+import { UEMS_ENERGIEZIEL, UEMS_FASSUNG_SATZ, UEMS_VERSION_SATZ, uemsGeteiltSatz } from '../glossar';
+import * as E from '../kennzahlAendern';
+import { ablehnungSatz, KNOPF_KOPIEREN } from '../kennzahlAnlegen';
 import {
-  ANZAHL_VERLAUF,
   anfrage,
+  ANZAHL_VERLAUF,
   berechnung,
   eingaengeDer,
   eingangsNamen,
   FASSUNGEN_TITEL,
   heuteIn,
   herkunftAnzeige,
-  KARTE_BERECHNUNG,
-  KARTE_HERKUNFT,
-  KARTE_STAMMDATEN,
-  KARTE_VERLAUF,
   kennzahlHistorie,
   kopf,
+  KARTE_VERLAUF,
   letzterSchritt,
   listenPerioden,
   NICHT_GEFUNDEN,
   ohneWert,
   PERIODE_WAHL,
   periodenWahl,
-  RECHENWEG_TITEL,
-  stammdaten,
   verlauf,
   versionenEinstieg,
   WERTE_FEHLER,
@@ -58,22 +65,27 @@ import {
   ZUR_LISTE,
   type Balken,
 } from '../kennzahlKarte';
-
-const LADEFEHLER_SEITE = 'Die Kennzahl konnte nicht geladen werden.';
+import * as S from '../kennzahlSeite';
+import { TRENNER } from '../uemsErgebnis';
+import { energiezielRoute, hashForRoute } from '../nav';
+import { useRollen } from '../rollen';
+import { LEITKENNZAHL, vorjahrText } from '../kennzahlListe';
+import { useIsPhone } from '../useIsPhone';
+import './KennzahlSeite.css';
 
 /**
- * Die Kennzahl-Seite (UEMS AP-11 IP-13, §5.3/§5.5): Kopf, Perioden-Umschalter (nur die bildbaren), die Werte-Karte
- * (`WerteKarte` wiederverwendet, mit dem Einstieg „Versionen“ ab zwei), der Verlauf als Balken, die Herkunft, die
- * Berechnung mit ihrem Fassungs-Verlauf und die Stammdaten.
+ * Die Seite einer Kennzahl (Konzept Auswerten a1 §6.5, §6.12-§6.14; PR2) - ohne Reiter, die Antwort zuerst: ein Satz
+ * für den letzten abgeschlossenen Monat, die Verlässlichkeit, die Kachel mit gemessen und erwartet, das Energieziel auf
+ * einer Skala, die Abweichung je Monat (am Rechner dazu „Zusammengezählt“), die Werte je Monat, die offene
+ * Auffälligkeit, der Rechenweg, die Bezugsbasis in Klartext und „Über diese Kennzahl“. Werkzeuge liegen im Menü ⋯;
+ * Fassungen, Freigaben und Prüfsummen der Bezugsbasis eine Ebene tiefer (`…/kennzahlen/{id}/bezugsbasis`, §6.6).
  *
- * Sie liest `GET /api/v1/kennzahlen/{id}`, `…/fassungen`, `…/werte` (die letzten Perioden bis heute) und — erst im
- * geöffneten Dialog — `…/werte/versionen`; dazu die Liste und die Fassungen der Zusammenfassungen, um ihre Leser und
- * archivierte Eingänge zu kennen (IP-15). Schreibend (IP-15, §5.4/§5.7): „Berechnung ändern ab …“ (der Assistent der
- * Welt), „Stammdaten ändern“ (`PUT …/{id}`), „Archivieren“ (`POST …/archivieren`) und „Löschen“ (`DELETE`, nur ohne Wert).
- * Ein Wiederherstellen gibt es nicht — die Route fehlt, also auch der Knopf.
+ * Gelesen wird `GET /api/v1/kennzahlen/{id}?mit=auswertung` (dieselbe Ableitung wie Liste und Leitkachel, §10.8), mit
+ * Bezugsbasis die zwölf Zeilen von `…/vergleich`, die Monatswerte (Rechenweg, Versionen, Vorjahr), das offene
+ * Energieziel und - mit `verbesserung.ansehen` - die Auffälligkeiten. Gerechnet wird nichts (`kennzahlSeite.ts`).
  *
- * Ein Tipp auf einen Balken zeigt dessen Periode in der Karte; ohne Wahl steht dort der jüngste Schritt mit einer
- * Zeile (auch „keine Werte“ mit seinem Grund).
+ * Ohne Auswertung (archiviert, ohne Monatswerte, ohne Monat als Periode) bleibt die bisherige Werte-Karte mit Perioden,
+ * Verlauf und Versionen - fehlend ist keine Null.
  */
 export function KennzahlSeite({
   id,
@@ -82,6 +94,7 @@ export function KennzahlSeite({
   zurListe = ZUR_LISTE,
   onKopieren,
   onBerechnungAendern,
+  onBezugsbasis,
 }: {
   id: string;
   zone: string;
@@ -92,25 +105,31 @@ export function KennzahlSeite({
   onKopieren?: (quelle: KopieVon) => void;
   /** AP-11 IP-15 (§5.4): „Berechnung ändern ab …“ — derselbe Assistent im Modus „ändern“, er gehört der Welt. */
   onBerechnungAendern?: (quelle: KopieVon) => void;
+  /** §6.6: die Bezugsbasis eine Ebene tiefer (`…/kennzahlen/{id}/bezugsbasis`). */
+  onBezugsbasis?: () => void;
 }) {
-  const reiterRand = useReiterRand<HTMLDivElement>();
+  const telefon = useIsPhone();
+  const rollen = useRollen();
   const [stamm, setStamm] = useState<{ kennzahl: Kennzahl; fassungen: KennzahlFassung[] } | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
-  const [art, setArt] = useState<KennzahlPeriodeArt | null>(null);
-  // Die Grundperiode ist die Vorgabe; trägt sie nur Platzhalter (z. B. „tag“ über einer Bezugsfläche), rückt die
-  // Seite beim Öffnen auf die nächstgröbere Periode mit Werten — bis der Nutzer selbst wählt (`autoArt = false`).
-  const [autoArt, setAutoArt] = useState(true);
-  const [werte, setWerte] = useState<{ schluessel: string; antwort: KennzahlWerte } | null>(null);
-  const [werteFehler, setWerteFehler] = useState(false);
-  const [gewaehlt, setGewaehlt] = useState<string | null>(null);
-  const [versionenOffen, setVersionenOffen] = useState(false);
   const [versuch, setVersuch] = useState(0);
-  // IP-15: das Umfeld (wer liest mich, welcher Eingang ist archiviert) und die drei schreibenden Wege.
   const [umfeld, setUmfeld] = useState<{ liste: Kennzahl[]; fassungen: Record<string, KennzahlFassung[]> } | null>(null);
-  const [stammdatenOffen, setStammdatenOffen] = useState(false);
-  const [archivierenOffen, setArchivierenOffen] = useState(false);
+  const [dialog, setDialog] = useState<'stammdaten' | 'archivieren' | 'loeschen' | 'ziel' | null>(null);
   const [archiv, setArchiv] = useState<{ laeuft: boolean; fehler: string | null }>({ laeuft: false, fehler: null });
   const [loeschen, setLoeschen] = useState<{ laeuft: boolean; fehler: string | null }>({ laeuft: false, fehler: null });
+  const [gesetzt, setGesetzt] = useState<Energieziel | null>(null);
+
+  useEffect(() => {
+    let aktiv = true;
+    setStammFehler(null);
+    Promise.all([api.kennzahl(id, 'auswertung'), api.kennzahlFassungen(id)]).then(
+      ([kennzahl, f]) => aktiv && setStamm({ kennzahl, fassungen: f.fassungen }),
+      (e) => aktiv && setStammFehler(e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler'),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [id, versuch]);
 
   // Nur eine Zusammenfassung liest Kennzahlen — ihre Fassungen sagen, wer diese liest. Scheitert das, fehlt nur die
   // Vorab-Sperre; die Route entscheidet trotzdem und ihr Satz steht nach dem Versuch.
@@ -131,18 +150,84 @@ export function KennzahlSeite({
     };
   }, [id, versuch]);
 
+  const bbAn = stamm !== null && kannBezugsbasis(stamm.kennzahl);
+  // Die Fassung am Stichtag der Auswertung - dieselbe, die die Ebene der Bezugsbasis zeigt.
+  const bbLage = useBezugsbasis(id, bbAn, versuch, stamm ? S.stichtag(stamm.kennzahl.auswertung?.monat, heuteIn(zone, Date.now())) : undefined);
+
+  const zurueck = (
+    <button type="button" className="vp-kz-zurueck" onClick={onListe}>
+      <Icon name="chevron-left" size={18} />
+      {zurListe}
+    </button>
+  );
+  if (stammFehler === 'fehlt') {
+    return (
+      <div className="vp-kz vp-kzs" data-testid="kennzahl-seite">
+        {zurueck}
+        <p className="vp-kz-leer">{NICHT_GEFUNDEN}</p>
+      </div>
+    );
+  }
+  if (stammFehler) {
+    return (
+      <div className="vp-kz vp-kzs" data-testid="kennzahl-seite">
+        {zurueck}
+        <ErrorState message={S.SEITE_LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />
+      </div>
+    );
+  }
+  if (!stamm) {
+    return (
+      <div className="vp-kz vp-kzs" data-testid="kennzahl-seite" aria-busy="true">
+        {zurueck}
+        {/* Skelette in der Höhe von Satz, Kachel und Grafik: nichts springt, wenn die Zahlen kommen (§6.13). */}
+        <Skeleton height={64} />
+        <Skeleton height={148} />
+        <Skeleton height={232} />
+      </div>
+    );
+  }
+
+  const k = stamm.kennzahl;
+  const kp = kopf(k);
+  const aenderbar = k.archiviert_am === null;
+  const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';
+  const archiviertSatz = E.archiviertSatz(k);
+  const sperre = E.loeschenSperre(k, umfeld ? E.leserVon(k, umfeld.liste, umfeld.fassungen) : null);
+  // IP-15: ein archivierter Eingang steht sichtbar am Rechenweg - die Kennzahl rechnet ab dort nicht mehr weiter.
+  const archivierteEingaenge = umfeld ? E.archivierteEingaenge(E.aktuelleFassung(k, stamm.fassungen), umfeld.liste) : [];
+  // Wie weit der Server ist (Monat der Auswertung) - danach heißt eine Fassung „seit“ oder erst „ab“ einem Tag.
+  const tag = S.stichtag(k.auswertung?.monat, heuteIn(zone, Date.now()));
+  const basisDa = bbLage.art === 'da' ? bbLage : null;
+  const zielMoeglich =
+    bbAn && aenderbar && !k.auswertung?.energieziel && basisDa !== null && basisDa.fassung !== null &&
+    basisDa.basis.beendet_zum === null && zeilenFassung(basisDa.basis)?.freigabe_status === 'freigegeben';
+
+  const menue: RowMenuItem[] = [
+    ...(zielMoeglich ? [{ label: Z.KNOPF_SETZEN, recht: 'verbesserung.verwalten', standort: k.standort_id, onClick: () => setDialog('ziel') }] : []),
+    ...(onKopieren ? [{ label: KNOPF_KOPIEREN, recht, standort: k.standort_id, onClick: () => onKopieren({ kennzahl: k, fassungen: stamm.fassungen }) }] : []),
+    ...(onBerechnungAendern && aenderbar
+      ? [{ label: E.KNOPF_BERECHNUNG_AENDERN, recht, standort: k.standort_id, onClick: () => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen }) }]
+      : []),
+    ...(aenderbar ? [{ label: E.KNOPF_STAMMDATEN, recht, standort: k.standort_id, onClick: () => setDialog('stammdaten') }] : []),
+    ...(aenderbar
+      ? [{ label: E.KNOPF_ARCHIVIEREN, recht, standort: k.standort_id, onClick: () => { setArchiv({ laeuft: false, fehler: null }); setDialog('archivieren'); } }]
+      : []),
+    // Löschen nur ohne Werte (V5) - sonst ist Archivieren der Weg.
+    ...(!k.hat_werte ? [{ label: E.KNOPF_LOESCHEN, recht, standort: k.standort_id, danger: true, onClick: () => setDialog('loeschen') }] : []),
+  ];
+
   const archivieren = async () => {
     setArchiv({ laeuft: true, fehler: null });
     try {
       const neu = await api.kennzahlArchivieren(id);
       setStamm((s) => (s ? { ...s, kennzahl: neu } : s));
-      setArchivierenOffen(false);
+      setDialog(null);
       setArchiv({ laeuft: false, fehler: null });
     } catch (e) {
       setArchiv({ laeuft: false, fehler: ablehnungSatz(e, E.AKTION_FEHLER) });
     }
   };
-
   const endgueltigLoeschen = async () => {
     setLoeschen({ laeuft: true, fehler: null });
     try {
@@ -153,354 +238,134 @@ export function KennzahlSeite({
     }
   };
 
-  useEffect(() => {
-    let aktiv = true;
-    setStammFehler(null);
-    Promise.all([api.kennzahl(id), api.kennzahlFassungen(id)]).then(
-      ([kennzahl, f]) => {
-        if (!aktiv) return;
-        setStamm({ kennzahl, fassungen: f.fassungen });
-        setArt((alt) => alt ?? periodenWahl(kennzahl).vorgabe);
-      },
-      (e) => aktiv && setStammFehler(e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler'),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [id, versuch]);
-
-  const schluessel = art ? `${id}|${art}|${versuch}` : null;
-  useEffect(() => {
-    if (!art || !schluessel) return;
-    let aktiv = true;
-    setWerteFehler(false);
-    const { von, bis } = anfrage(art, heuteIn(zone, Date.now()), ANZAHL_VERLAUF[art]);
-    api.kennzahlWerte(id, art, von, bis).then(
-      (antwort) => aktiv && setWerte({ schluessel, antwort }),
-      () => aktiv && setWerteFehler(true),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [id, art, zone, schluessel]);
-
-  // Rückt die Vorgabe über leere Grundperioden hinweg zur nächstgröberen mit Werten (derselbe Rückfall wie an der
-  // Übersichtskarte, `listenPerioden`/`ohneWert`). Nur solange automatisch gewählt und das geladene Fenster leer ist;
-  // rückt streng in der endlichen Reihe vorwärts, läuft also nie im Kreis.
-  useEffect(() => {
-    if (!autoArt || !art || !stamm) return;
-    const geladen = werte && werte.schluessel === schluessel ? werte.antwort : null;
-    if (!geladen || !ohneWert(geladen)) return;
-    const perioden = listenPerioden(stamm.kennzahl);
-    const naechste = perioden[perioden.indexOf(art) + 1];
-    if (naechste) setArt(naechste);
-  }, [autoArt, art, stamm, werte, schluessel]);
-
-  // AP-17 IP-9/IP-20: die Reiter „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ (nur Quotient und Zusammenfassung, B2) und
-  // die Basis-Zeile im Kopf; der Vergleich lädt erst, wenn er offen ist.
-  // Konzept Wiedervorlage w1: „Bestätigen oder neu fassen“ öffnet die Kennzahl gleich im Reiter „Bezugsbasis“.
-  const [reiter, setReiter] = useState<'kennzahl' | 'bezugsbasis' | 'vergleich'>(() =>
-    entscheidAus(window.location.hash)?.art === 'bezugsbasis_ueberpruefung' ? 'bezugsbasis' : 'kennzahl',
-  );
-  const [bbVersuch, setBbVersuch] = useState(0);
-  const bbAn = stamm !== null && kannBezugsbasis(stamm.kennzahl);
-  const bbLage = useBezugsbasis(id, bbAn, versuch + bbVersuch);
-
-  const zurueck = (
-    <button type="button" className="vp-kz-zurueck" onClick={onListe}>
-      <Icon name="chevron-left" size={18} />
-      {zurListe}
-    </button>
-  );
-
-  if (stammFehler === 'fehlt') {
-    return (
-      <div className="vp-kz" data-testid="kennzahl-seite">
-        {zurueck}
-        <p className="vp-kz-leer">{NICHT_GEFUNDEN}</p>
-      </div>
-    );
-  }
-  if (stammFehler) {
-    return (
-      <div className="vp-kz" data-testid="kennzahl-seite">
-        {zurueck}
-        <ErrorState message={LADEFEHLER_SEITE} onRetry={() => setVersuch((v) => v + 1)} />
-      </div>
-    );
-  }
-  if (!stamm) {
-    return (
-      <div className="vp-kz" data-testid="kennzahl-seite" aria-busy="true">
-        {zurueck}
-        <Skeleton height={220} />
-      </div>
-    );
-  }
-
-  const k = stamm.kennzahl;
-  const kp = kopf(k);
-  const wahl = periodenWahl(k);
-  const aktuell = werte !== null && werte.schluessel === schluessel ? werte.antwort : null;
-  const schritt = aktuell ? (aktuell.werte.find((w) => w.schluessel === gewaehlt) ?? letzterSchritt(aktuell)) : null;
-  const zoneDerWerte = aktuell?.zeitzone ?? zone;
-  const wk = aktuell && schritt ? wertKarte(aktuell, schritt, eingaengeDer(stamm.fassungen, schritt)) : null;
-  const einstieg = versionenEinstieg(schritt);
-  const herkunft = aktuell && schritt ? herkunftAnzeige(aktuell, schritt, eingangsNamen(stamm.fassungen)) : null;
-  const b = berechnung(k, stamm.fassungen, zoneDerWerte);
-  const archiviertSatz = E.archiviertSatz(k);
-  const eingaengeArchiviert = umfeld ? E.archivierteEingaenge(E.aktuelleFassung(k, stamm.fassungen), umfeld.liste) : [];
-  const sperre = E.loeschenSperre(k, umfeld ? E.leserVon(k, umfeld.liste, umfeld.fassungen) : null);
-  const aenderbar = k.archiviert_am === null;
-
   return (
     <GrenzSatzBereich>
-      <div className="vp-kz" data-testid="kennzahl-seite">
+      <div className="vp-kz vp-kzs" data-testid="kennzahl-seite">
         {zurueck}
-        <header className="vp-kz-kopf">
-          {/* K5: der Name zuerst, das Kennzeichen klein dahinter. */}
-          <h1>
-            {kp.name} <span className="vp-kz-kennzeichen">{kp.kennzeichen}</span>
-          </h1>
-          <p>
-            <span>{kp.unter}</span>
-            {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
-          </p>
-          <BegriffeZeile begriffe={bbAn ? ['kennzahl', 'bezugsbasis', 'bereinigt'] : ['kennzahl']} />
-          {bbAn && <BezugsbasisZeile lage={bbLage} einheit={k.einheit_anzeige} />}
-          {/* UEMS AP-18 IP-8 (§5.1): „Energieziel setzen“ nur an einer Energieleistungskennzahl (freigegebene Basis). */}
-          {bbAn && <EnergiezielSetzen kennzahl={k} lage={bbLage} />}
-          {archiviertSatz && (
-            <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
-              {archiviertSatz}
+        <header className="vp-kzs-kopf">
+          <div className="vp-kzs-kopf-text">
+            {/* K5: der Name zuerst, das Kennzeichen leise dahinter. */}
+            <h1>
+              {kp.name} <span className="vp-kz-kennzeichen">{kp.kennzeichen}</span>
+            </h1>
+            <p className="vp-kzs-meta">
+              <span>{kp.unter}</span>
+              {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
             </p>
-          )}
-          {onKopieren && (
-            <div className="vp-kz-aktionen">
-              <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
-                {KNOPF_KOPIEREN}
-              </Button></Recht>
-            </div>
-          )}
-          {bbAn && <GrenzHinweis />}
-        </header>
-        {bbAn && (
-          <div ref={reiterRand} className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
-            {([['kennzahl', REITER_KENNZAHL], ['bezugsbasis', REITER_BEZUGSBASIS], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
-              <button
-                key={r}
-                type="button"
-                role="tab"
-                aria-selected={reiter === r}
-                className={`vp-bereich-tab${reiter === r ? ' active' : ''}`}
-                data-testid={`kennzahl-reiter-${r}`}
-                onClick={() => setReiter(r)}
-              >
-                {wort}
-              </button>
-            ))}
           </div>
+          {menue.length > 0 && <RowMenu items={menue} label="Weitere Aktionen" />}
+        </header>
+        {gesetzt && (
+          <p className="vp-ez-leise" role="status" data-testid="energieziel-gesetzt">
+            {`${UEMS_ENERGIEZIEL} ${gesetzt.kennzeichen} gesetzt - `}
+            <a href={hashForRoute(energiezielRoute(gesetzt.id))}>{`${UEMS_ENERGIEZIEL} ${gesetzt.kennzeichen} öffnen`}</a>
+          </p>
         )}
-        {/* Ein Fehler in einem Reiter bleibt in diesem Reiter — die anderen bleiben erreichbar. */}
-        {bbAn && reiter === 'bezugsbasis' ? (
-          <Fehlergrenze key="bezugsbasis">
-            <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
-          </Fehlergrenze>
-        ) : bbAn && reiter === 'vergleich' ? (
-          <Fehlergrenze key="vergleich">
-            <BezugsbasisVergleich kennzahlId={k.id} standort={k.standort_id} />
+        {archiviertSatz && (
+          <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
+            {archiviertSatz}
+          </p>
+        )}
+        {/* Bis „Was ist eine Kennzahl?“ als Aufklapper kommt (Messen-Bau #1411), bleibt die Begriffe-Zeile. */}
+        <BegriffeZeile begriffe={k.auswertung?.vergleich ? ['kennzahl', 'bezugsbasis', 'bereinigt'] : bbAn ? ['kennzahl', 'bezugsbasis'] : ['kennzahl']} />
+        {k.auswertung ? (
+          <Fehlergrenze key="auswertung">
+            <Auswertung
+              k={k}
+              fassungen={stamm.fassungen}
+              zone={zone}
+              telefon={telefon}
+              lage={basisDa}
+              darfFestlegen={bbAn && aenderbar && rollen.darf('bezugsbasis.verwalten', k.standort_id)}
+              darfVerbesserung={rollen.darf('verbesserung.ansehen', k.standort_id)}
+              archivierteEingaenge={archivierteEingaenge}
+              stichtag={tag}
+              onBezugsbasis={onBezugsbasis}
+            />
           </Fehlergrenze>
         ) : (
-        <>
-        {wahl.optionen.length > 0 && art && (
-          <div className="vp-kz-perioden">
-            <ZeitSegment
-              label={PERIODE_WAHL}
-              optionen={wahl.optionen}
-              wert={art}
-              onWert={(a) => {
-                setArt(a);
-                setGewaehlt(null);
-                setAutoArt(false);
-              }}
+          <Fehlergrenze key="werte">
+            <WerteOhneAuswertung
+              k={k}
+              fassungen={stamm.fassungen}
+              zone={zone}
+              versuch={versuch}
+              archivierteEingaenge={archivierteEingaenge}
+              onNeu={() => setVersuch((v) => v + 1)}
             />
-          </div>
-        )}
-        <div className="vp-kz-raster">
-          <div className="vp-kz-spalte">
-            {werteFehler ? (
-              <ErrorState message={WERTE_FEHLER} onRetry={() => setVersuch((v) => v + 1)} />
-            ) : art && !aktuell ? (
-              <div aria-busy="true">
-                <Skeleton height={148} />
-              </div>
-            ) : (
-              <>
-                {wk && (
-                  <WerteKarte
-                    karte={wk.karte}
-                    grund={wk.grund}
-                    versionen={einstieg && <VersionenEinstieg einstieg={einstieg} onOeffnen={() => setVersionenOffen(true)} />}
-                  />
-                )}
-                {aktuell && (
-                  <GeteiltesRegisterHinweis
-                    saetze={(aktuell.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen))}
-                  />
-                )}
-                {aktuell && (
-                  <Verlauf
-                    balken={verlauf(aktuell)}
-                    dicht={aktuell.periode === 'tag' || aktuell.periode === 'woche'}
-                    gewaehlt={schritt?.schluessel ?? null}
-                    onWahl={setGewaehlt}
-                  />
-                )}
-              </>
+            {bbAn && basisDa && (
+              <BasisKarte
+                k={k}
+                lage={basisDa}
+                stichtag={tag}
+                darfFestlegen={aenderbar && rollen.darf('bezugsbasis.verwalten', k.standort_id)}
+                onBezugsbasis={onBezugsbasis}
+              />
             )}
-          </div>
-          <div className="vp-kz-spalte">
-            {herkunft && (
-              <section className="vp-kz-block" aria-label={KARTE_HERKUNFT} data-testid="kennzahl-herkunft">
-                <h2>{KARTE_HERKUNFT}</h2>
-                {herkunft.klartext ? (
-                  <>
-                    {/* K5: der Rechenweg in Worten; der Name springt wie sein Kennzeichen (AP-13 IP-11, D1/D2). */}
-                    <p className="vp-kz-klartext" data-testid="kennzahl-klartext">
-                      <HerkunftsZeile stuecke={herkunft.klartextStuecke} />
-                    </p>
-                    <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
-                      <summary>{RECHENWEG_TITEL}</summary>
-                      {herkunft.eingaenge && <p>{herkunft.eingaenge}</p>}
-                      {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
-                      <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
-                      <p className="vp-kz-leise">{UEMS_VERSION_SATZ}</p>
-                    </details>
-                  </>
-                ) : (
-                  <>
-                    {/* AP-13 IP-11 (D1/D2): derselbe Satz — die Kennzeichen mit Seite sind Sprünge MIT Periode und Version. */}
-                    {herkunft.eingaenge && (
-                      <p>
-                        <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
-                      </p>
-                    )}
-                    {herkunft.paare.length > 0 && (
-                      <ul className="vp-kz-paare">
-                        {herkunft.paare.map((p, i) => (
-                          <li key={p}>
-                            <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
-                  </>
-                )}
-                {herkunft.fehlt && <p className="vp-kz-ehrlich">{herkunft.fehlt}</p>}
-              </section>
-            )}
-            {b && (
-              <section className="vp-kz-block" aria-label={KARTE_BERECHNUNG} data-testid="kennzahl-berechnung">
-                <h2>{KARTE_BERECHNUNG}</h2>
-                <p>
-                  {b.satz}
-                  {b.abzeichen && (
-                    <>
-                      {' '}
-                      <Badge variant="warn">{b.abzeichen}</Badge>
-                    </>
-                  )}
-                </p>
-                <p className="vp-kz-leise">{b.wer}</p>
-                {eingaengeArchiviert.length > 0 && (
-                  <p className="vp-kz-zeichen" data-testid="kennzahl-eingang-archiviert">
-                    {eingaengeArchiviert.map((t) => (
-                      <Badge key={t} variant="warn">
-                        {t}
-                      </Badge>
-                    ))}
-                  </p>
-                )}
-                {onBerechnungAendern && aenderbar && (
-                  <div className="vp-kz-aktionen">
-                    <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
-                      variant="outline"
-                      size="sm"
-                      data-testid="berechnung-aendern-knopf"
-                      onClick={() => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen })}
-                    >
-                      {E.KNOPF_BERECHNUNG_AENDERN}
-                    </Button></Recht>
-                  </div>
-                )}
-                {b.fassungen.length > 0 && (
-                  <>
-                    <h3>{FASSUNGEN_TITEL}</h3>
-                    <ol className="vp-kz-fassungen">
-                      {b.fassungen.map((f) => (
-                        <li key={f.schluessel} className={`vp-kz-fassung${f.gilt ? ' is-gilt' : ''}`}>
-                          <p>
-                            <strong>{f.titel}</strong> · {f.zeitraum}
-                            {f.abzeichen && (
-                              <>
-                                {' '}
-                                <Badge variant="warn">{f.abzeichen}</Badge>
-                              </>
-                            )}
-                          </p>
-                          <p>{f.berechnung}</p>
-                          <p className="vp-kz-leise">{f.wer}</p>
-                          {f.warum && <p>{f.warum}</p>}
-                          {f.aufgehoben && <p className="vp-kz-ehrlich">{f.aufgehoben}</p>}
-                        </li>
-                      ))}
-                    </ol>
-                  </>
-                )}
-              </section>
-            )}
-            <section className="vp-kz-block" aria-label={KARTE_STAMMDATEN} data-testid="kennzahl-stammdaten">
-              <h2>{KARTE_STAMMDATEN}</h2>
-              <dl className="vp-kz-stamm">
-                {stammdaten(k).map((s) => (
-                  <div key={s.name}>
-                    <dt>{s.name}</dt>
-                    <dd>{s.wert}</dd>
-                  </div>
-                ))}
-              </dl>
-              {aenderbar && (
-                <div className="vp-kz-aktionen">
-                  <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" data-testid="stammdaten-aendern-knopf" onClick={() => setStammdatenOffen(true)}>
-                    {E.KNOPF_STAMMDATEN}
-                  </Button></Recht>
+            {bbAn && bbLage.art === 'keine' && onBezugsbasis && (
+              <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_BEZUGSBASIS} data-testid="kennzahl-bezugsbasis">
+                <div className="vp-kzs-blockkopf">
+                  <h2>{S.TITEL_BEZUGSBASIS}</h2>
+                  <button type="button" className="vp-kzs-link" onClick={onBezugsbasis} data-testid="alle-fassungen">
+                    {S.BEZUGSBASIS_ANSEHEN}
+                  </button>
                 </div>
-              )}
-            </section>
-            <section className="vp-kz-block" aria-label={E.KARTE_LEBENSZYKLUS} data-testid="kennzahl-lebenszyklus">
-              <h2>{E.KARTE_LEBENSZYKLUS}</h2>
-              {aenderbar ? (
-                <>
-                  <p>{E.ARCHIVIEREN_SATZ}</p>
-                  <div className="vp-kz-aktionen">
-                    <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
-                      variant="outline"
-                      size="sm"
-                      data-testid="archivieren-knopf"
-                      onClick={() => {
-                        setArchiv({ laeuft: false, fehler: null });
-                        setArchivierenOffen(true);
-                      }}
-                    >
-                      {E.KNOPF_ARCHIVIEREN}
-                    </Button></Recht>
-                  </div>
-                </>
-              ) : (
-                <p className="vp-kz-leise">{archiviertSatz}</p>
-              )}
-              <DangerZone recht={k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren'} standort={k.standort_id}
+                <p className="vp-kzs-text">{S.OHNE_BEZUGSBASIS_SATZ}</p>
+              </section>
+            )}
+          </Fehlergrenze>
+        )}
+        <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_UEBER} data-testid="kennzahl-stammdaten">
+          <h2>{S.TITEL_UEBER}</h2>
+          {k.zweck && <p className="vp-kzs-text">{k.zweck}</p>}
+          <p className="vp-kzs-fuss">{S.ueberKennzahl(k).geltung}</p>
+        </section>
+        {bbAn && <GrenzHinweis />}
+
+        {dialog === 'ziel' && basisDa?.fassung && (
+          <EnergiezielSetzenDialog
+            kennzahl={k}
+            basisZeile={basisZeile(basisDa.basis, basisDa.fassung, k.einheit_anzeige)}
+            onClose={() => setDialog(null)}
+            onGesetzt={(ez) => {
+              setDialog(null);
+              setGesetzt(ez);
+              setVersuch((v) => v + 1);
+            }}
+          />
+        )}
+        <KennzahlStammdatenDialog
+          open={dialog === 'stammdaten'}
+          kennzahl={k}
+          onClose={() => setDialog(null)}
+          onGespeichert={(neu) => {
+            setStamm((s) => (s ? { ...s, kennzahl: { ...neu, auswertung: s.kennzahl.auswertung } } : s));
+            setDialog(null);
+          }}
+        />
+        <ConfirmDialog
+          open={dialog === 'archivieren'}
+          title={E.ARCHIVIEREN_TITEL}
+          intro={E.archivierenIntro(k)}
+          consequences={E.archivierenFolgen(k, umfeld ? E.heutigeLeser(k, umfeld.liste, umfeld.fassungen) : [])}
+          confirmLabel={E.KNOPF_ARCHIVIEREN}
+          busy={archiv.laeuft}
+          onConfirm={archivieren}
+          onCancel={() => setDialog(null)}
+          extra={
+            archiv.fehler ? (
+              <p className="vp-gw-error" role="alert">
+                {archiv.fehler}
+              </p>
+            ) : undefined
+          }
+        />
+        {dialog === 'loeschen' && (
+          <Modal open onClose={() => setDialog(null)} title={E.KNOPF_LOESCHEN}>
+            <div className="vp-kzs-loeschen" data-testid="kennzahl-lebenszyklus">
+              <DangerZone
+                recht={recht}
+                standort={k.standort_id}
                 actionLabel={E.KNOPF_LOESCHEN}
                 description={E.LOESCHEN_SATZ}
                 consequences={E.loeschenFolgen(k)}
@@ -510,50 +375,871 @@ export function KennzahlSeite({
                 error={loeschen.fehler}
                 onConfirm={endgueltigLoeschen}
               />
-            </section>
-          </div>
-        </div>
-        </>
+            </div>
+          </Modal>
         )}
-        {/* Neben der Seite, nicht in der Karte: der Dialog ist ein eigenes Portal (wie an der Tageskarte). */}
-        {art && schritt && einstieg && (
-          <VersionenModal
-            open={versionenOffen}
-            objekt={kp.titel}
-            periode={schritt.beschriftung}
-            schluessel={`${id}|${art}|${schritt.von}`}
-            laden={() => api.kennzahlWertVersionen(id, art, schritt.von).then(kennzahlHistorie)}
-            onClose={() => setVersionenOffen(false)}
-          />
-        )}
-        <KennzahlStammdatenDialog
-          open={stammdatenOffen}
-          kennzahl={k}
-          onClose={() => setStammdatenOffen(false)}
-          onGespeichert={(neu) => {
-            setStamm((s) => (s ? { ...s, kennzahl: neu } : s));
-            setStammdatenOffen(false);
-          }}
-        />
-        <ConfirmDialog
-          open={archivierenOffen}
-          title={E.ARCHIVIEREN_TITEL}
-          intro={E.archivierenIntro(k)}
-          consequences={E.archivierenFolgen(k, umfeld ? E.heutigeLeser(k, umfeld.liste, umfeld.fassungen) : [])}
-          confirmLabel={E.KNOPF_ARCHIVIEREN}
-          busy={archiv.laeuft}
-          onConfirm={archivieren}
-          onCancel={() => setArchivierenOffen(false)}
-          extra={
-            archiv.fehler ? (
-              <p className="vp-gw-error" role="alert">
-                {archiv.fehler}
-              </p>
-            ) : undefined
-          }
-        />
       </div>
     </GrenzSatzBereich>
+  );
+}
+
+// ================================================================================== die Auswertung (Antwort zuerst)
+
+/** `JJJJ-MM` plus `n` Monate (n darf negativ sein) - Kalender, keine Menge. */
+function monatPlus(periode: string, n: number): string {
+  const i = Number(periode.slice(0, 4)) * 12 + Number(periode.slice(5, 7)) - 1 + n;
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+}
+
+/** Der letzte Tag eines Monats `JJJJ-MM` als `JJJJ-MM-TT`. */
+function letzterTag(periode: string): string {
+  const tage = new Date(Date.UTC(Number(periode.slice(0, 4)), Number(periode.slice(5, 7)), 0)).getUTCDate();
+  return `${periode}-${String(tage).padStart(2, '0')}`;
+}
+
+function Auswertung({
+  k,
+  fassungen,
+  zone,
+  telefon,
+  lage,
+  darfFestlegen,
+  darfVerbesserung,
+  archivierteEingaenge,
+  stichtag,
+  onBezugsbasis,
+}: {
+  k: Kennzahl;
+  fassungen: KennzahlFassung[];
+  zone: string;
+  telefon: boolean;
+  archivierteEingaenge: string[];
+  stichtag: string;
+  lage: { basis: Bezugsbasis; fassung: BezugsbasisFassung | null } | null;
+  darfFestlegen: boolean;
+  darfVerbesserung: boolean;
+  onBezugsbasis?: () => void;
+}) {
+  const a = k.auswertung!;
+  const mitBasis = a.vergleich !== null;
+  const [vergleich, setVergleich] = useState<BezugsbasisVergleich | null>(null);
+  const [vergleichFehler, setVergleichFehler] = useState(false);
+  const [werte, setWerte] = useState<KennzahlWerte | null>(null);
+  const [ziele, setZiele] = useState<Energieziel[] | null>(null);
+  const [vermerke, setVermerke] = useState<Auffaelligkeit[] | null>(null);
+  const [vermerkStand, setVermerkStand] = useState(0);
+  const [versuch, setVersuch] = useState(0);
+  const [gewaehlt, setGewaehlt] = useState<string>(a.monat);
+  const [alle, setAlle] = useState(false);
+  const [antworten, setAntworten] = useState(false);
+  const [versionenOffen, setVersionenOffen] = useState(false);
+
+  useEffect(() => {
+    if (!mitBasis) return;
+    let aktiv = true;
+    setVergleichFehler(false);
+    api.bezugsbasisVergleich(k.id, { von: monatPlus(a.monat, -11), bis: a.monat }).then(
+      (v) => aktiv && setVergleich(v),
+      () => aktiv && setVergleichFehler(true),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [k.id, a.monat, mitBasis, versuch]);
+
+  // Die Monatswerte der zwölf Monate: Rechenweg, Versionen und geteilte Register (das Vorjahr trägt die Auswertung).
+  useEffect(() => {
+    let aktiv = true;
+    api.kennzahlWerte(k.id, 'monat', `${monatPlus(a.monat, -11)}-01`, letzterTag(a.monat)).then(
+      (w) => aktiv && setWerte(w),
+      () => aktiv && setWerte(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [k.id, a.monat, versuch]);
+
+  // Die offenen Energieziele: wer für das Ziel dieser Kennzahl verantwortlich ist und ob sie die Leitkennzahl der
+  // Übersicht ist (der Stern). Antwortet die Route nicht, fehlen nur Name und Stern.
+  useEffect(() => {
+    let aktiv = true;
+    api.energieziele({ zustand: 'offen' }).then(
+      (l) => aktiv && setZiele(l.energieziele),
+      () => aktiv && setZiele(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [k.id]);
+  const ziel = ziele?.find((z) => z.id === a.energieziel?.id) ?? null;
+  const leit = ziele !== null && S.leitkennzahlAusZielen(ziele) === k.kennzeichen;
+
+  useEffect(() => {
+    if (!mitBasis || !darfVerbesserung) return;
+    let aktiv = true;
+    // Ohne Antwort der Route (kein Recht, kein Vermerk-Weg) fehlt nur die Karte der Auffälligkeit.
+    api.auffaelligkeiten(k.id).then(
+      (l) => aktiv && setVermerke(l.vermerke),
+      () => aktiv && setVermerke(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [k.id, mitBasis, darfVerbesserung, vermerkStand]);
+
+  const monate = useMemo(() => S.seitenMonate(k, vergleich), [k, vergleich]);
+  const antwort = S.antwort(k, monate);
+  const vertrauen = S.vertrauen(k, lage, darfFestlegen);
+  const kacheln = S.kacheln(k, monate);
+  const zielKarte = S.zielKarte(a, ziel);
+  const index = Math.max(0, monate.findIndex((m) => m.periode === gewaehlt));
+  const m = monate[index] ?? null;
+  const fazit = S.fazit(a.zeitraum, monate);
+  const auffaelligkeit = vermerke ? S.offeneAuffaelligkeit(vermerke, a.monat) : null;
+  const einheit = k.einheit_anzeige ?? '';
+  // Ohne einen einzigen Monat mit Vergleich (vor der ersten Fassung) keine zwölf leeren Säulen (§6.13): die Werte mit
+  // Vorjahr, der Satz mit dem Datum steht darüber.
+  const mitVergleich = mitBasis && monate.some((x) => x.delta !== null);
+  // Das Vorjahr je Monat bringt die Auswertung mit (Operation `roh`, kein Urteil) - kein zweiter Abruf, kein Flackern.
+  const vorjahrVon = (periode: string) => {
+    const v = a.monate.find((y) => y.periode === periode)?.vorjahr ?? null;
+    return { roh: v, wert: v ? S.zahlKurz(v.wert, k.einheit) : null, text: vorjahrText(v) };
+  };
+  // Am Handy steht das Vorjahr mit seiner Veränderung unter dem Monat - wie die Spalten „Vorjahr“ und „Veränderung“.
+  const vorjahrSpalte = (periode: string) => {
+    const vj = vorjahrVon(periode);
+    return vj.roh ? `Vorjahr ${vj.wert}${TRENNER}${S.deltaMitZeichen(vj.roh.delta_prozent)}` : 'ohne Vorjahreswert';
+  };
+  const info = m ? S.infozeile(m, mitVergleich ? null : vorjahrVon(m.periode)) : null;
+  const schritt = werte?.werte.find((w) => w.schluessel === gewaehlt) ?? null;
+  const herkunft = werte && schritt ? herkunftAnzeige(werte, schritt, eingangsNamen(fassungen)) : null;
+  const einstieg = versionenEinstieg(schritt);
+  const b = berechnung(k, fassungen, werte?.zeitzone ?? zone);
+  const nenner = schritt?.nenner && schritt.einheit?.includes('/') ? { wert: schritt.nenner, einheit: schritt.einheit.split('/')[1] } : null;
+  const erwartetSatz = m ? S.erwartetSatz(m, a.monate[index]?.erwartet_wert ?? null, k.einheit, nenner) : null;
+  const zusammenEnde = m ? S.zusammenEnde(monate, m.mengeEinheit) : null;
+  const zusammenTon = zusammenEnde?.ton ?? 'warn';
+  const zuBasis = onBezugsbasis ? () => onBezugsbasis() : undefined;
+  const wahlText = info ? [info.monat, info.wert, info.statt, info.urteil?.text].filter(Boolean).join(', ') : '';
+
+  // Bis die Zeilen des Vergleichs da sind, Skelette in der Höhe von Satz und Kachel - der Satz springt nicht um (§6.13).
+  const vergleichLaedt = mitBasis && !vergleich && !vergleichFehler;
+  const antwortBlock = vergleichLaedt ? (
+    <div aria-busy="true">
+      <Skeleton height={64} />
+    </div>
+  ) : antwort && (
+    <div className="vp-kzs-antwort" data-testid="kennzahl-antwort">
+      <p className="vp-kzs-satz">{antwort.satz}</p>
+      <p className="vp-kzs-formal">
+        {antwort.formal.vor}
+        {antwort.formal.basis && (
+          <>
+            {' '}
+            {zuBasis ? (
+              <button type="button" className="vp-kzs-begriff" onClick={zuBasis} data-testid="antwort-bezugsbasis">
+                {antwort.formal.basis}
+              </button>
+            ) : (
+              antwort.formal.basis
+            )}
+          </>
+        )}
+      </p>
+      {antwort.marke && !mitBasis && (
+        <div className="vp-kzs-marken">
+          <Marke art={antwort.marke.art}>{antwort.marke.text}</Marke>
+        </div>
+      )}
+    </div>
+  );
+
+  const vertrauenBlock = vertrauen && (
+    <Hinweis art={vertrauen.art} testid="kennzahl-vertrauen">
+      {vertrauen.fett && <b>{vertrauen.fett}</b>} {vertrauen.satz}{' '}
+      {vertrauen.weg && zuBasis && (
+        <button type="button" className="vp-kzs-weg" onClick={zuBasis}>
+          {vertrauen.weg.wort}
+        </button>
+      )}
+    </Hinweis>
+  );
+
+  const kachelBlock = vergleichLaedt ? (
+    <div aria-busy="true">
+      <Skeleton height={148} />
+    </div>
+  ) : kacheln && mitBasis && (
+    <div className="vp-kzs-kacheln" data-testid="kennzahl-kacheln">
+      <article className="vp-k ton-load is-lead vp-kzs-lead" aria-label={kacheln.monat}>
+        <div className="vp-k-kopf">
+          <span className="vp-k-ico" aria-hidden="true">
+            <Icon name="chart" size={16} />
+          </span>
+          <span className="vp-k-name">{kacheln.monat}</span>
+          {leit && (
+            <span className="vp-k-stern" title={LEITKENNZAHL} aria-label={LEITKENNZAHL}>
+              <Icon name="star" size={14} />
+            </span>
+          )}
+        </div>
+        {kacheln.zahl ? (
+          <span className="vp-k-gross is-xl">
+            {kacheln.zahl}
+            {kacheln.einheit && <span className="vp-k-einheit">{kacheln.einheit}</span>}
+          </span>
+        ) : (
+          <span className="vp-kzs-ohnewert">{`${kacheln.monat}: noch kein Wert`}</span>
+        )}
+        {kacheln.marken.length > 0 && (
+          <div className="vp-kzs-marken">
+            {kacheln.marken.map((x) => (
+              <Marke key={x.text} art={x.art}>
+                {x.text}
+              </Marke>
+            ))}
+          </div>
+        )}
+        {kacheln.erwartetWert && (
+          <p className="vp-k-sub">
+            erwartet <b>{kacheln.erwartetWert.wert}</b>
+            {kacheln.erwartetWert.bei && ` bei ${kacheln.erwartetWert.bei}`}
+            {!telefon && kacheln.gemessen && kacheln.erwartet &&
+              ` · gemessen ${kacheln.gemessen.zahl}\u00a0${kacheln.gemessen.einheit}, erwartet ${kacheln.erwartet.zahl}\u00a0${kacheln.erwartet.einheit}`}
+          </p>
+        )}
+      </article>
+      {telefon && kacheln.gemessen && (
+        <article className="vp-k" aria-label={S.KACHEL_GEMESSEN} data-testid="kachel-gemessen">
+          <div className="vp-k-kopf">
+            <span className="vp-k-name">{S.KACHEL_GEMESSEN}</span>
+          </div>
+          <span className="vp-k-gross">
+            {kacheln.gemessen.zahl}
+            <span className="vp-k-einheit">{kacheln.gemessen.einheit}</span>
+          </span>
+          <p className="vp-k-sub">
+            <b>{kacheln.gemessen.fett}</b>
+            {kacheln.gemessen.rest}
+          </p>
+        </article>
+      )}
+      {telefon && kacheln.erwartet && (
+        <article className="vp-k" aria-label={S.KACHEL_ERWARTET} data-testid="kachel-erwartet">
+          <div className="vp-k-kopf">
+            <span className="vp-k-name">{S.KACHEL_ERWARTET}</span>
+          </div>
+          <span className="vp-k-gross">
+            {kacheln.erwartet.zahl}
+            <span className="vp-k-einheit">{kacheln.erwartet.einheit}</span>
+          </span>
+          <p className="vp-k-sub">{kacheln.erwartet.unter}</p>
+        </article>
+      )}
+    </div>
+  );
+
+  const zielBlock = zielKarte && (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={zielKarte.titel} data-testid="kennzahl-energieziel">
+      <div className="vp-kzs-blockkopf">
+        <h2>{zielKarte.titel}</h2>
+        <a className="vp-kzs-link" href={hashForRoute(energiezielRoute(zielKarte.id))}>
+          {S.ZUM_ZIEL}
+        </a>
+      </div>
+      <p className="vp-kzs-text">{zielKarte.satz}</p>
+      <ZielSkala
+        jetzt={zielKarte.jetzt}
+        jetztText={zielKarte.jetztLabel}
+        ziel={zielKarte.ziel}
+        zielText={zielKarte.zielLabel}
+        mitte={S.SKALA_MITTE}
+        links={S.SKALA_MEHR}
+        rechts={S.SKALA_WENIGER}
+        ton={zielKarte.ton}
+      />
+      <p className="vp-kzs-fuss">{zielKarte.fuss}</p>
+    </section>
+  );
+
+  // Ohne einen einzigen Wert in den zwölf Monaten keine Grafik aus leeren Säulen - ein Satz sagt es (fehlend ist keine Null).
+  const ohneJedenWert = !vergleichLaedt && monate.length > 0 && monate.every((x) => x.wert === null && x.delta === null);
+  const grafikBlock = ohneJedenWert ? (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_JE_MONAT_OHNE} data-testid="kennzahl-grafik">
+      <h2>{S.TITEL_JE_MONAT_OHNE}</h2>
+      <p className="vp-kzs-text" data-testid="kennzahl-ohne-werte">
+        {S.ohneWerteSatz(monate[0].periode, a.monat)}
+      </p>
+    </section>
+  ) : (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={mitVergleich ? S.TITEL_JE_MONAT : S.TITEL_JE_MONAT_OHNE} data-testid="kennzahl-grafik">
+      <div className="vp-kzs-blockkopf">
+        <h2>{mitVergleich ? S.TITEL_JE_MONAT : S.TITEL_JE_MONAT_OHNE}</h2>
+        <span className="vp-kzs-m">{mitVergleich ? (telefon || !a.zeitraum ? S.ZWOELF_MONATE : `${S.monatLang(monate[0]?.periode ?? a.monat)} bis ${S.monatLang(a.monat)}`) : einheit}</span>
+      </div>
+      {mitBasis && vergleichFehler ? (
+        <ErrorState message={S.VERGLEICH_LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />
+      ) : mitBasis && !vergleich ? (
+        <div aria-busy="true">
+          <Skeleton height={232} />
+        </div>
+      ) : (
+        <>
+          {info && <Infozeile monat={info.monat} wert={info.wert} statt={info.statt} urteil={info.urteil} />}
+          {mitVergleich ? (
+            <>
+              <AbweichungsGrafik
+                titel={antwort?.satz ?? S.TITEL_JE_MONAT}
+                monate={monate}
+                bandProzent={a.vergleich?.band_prozent ?? null}
+                dicht={!telefon}
+                gewaehlt={index}
+                onWahl={(i) => setGewaehlt(monate[i].periode)}
+                wahlText={wahlText}
+              />
+              <Legende
+                eintraege={[
+                  { text: S.LEGENDE_MEHR, art: 'mehr' },
+                  { text: S.legendeRahmen((a.vergleich?.band_prozent ?? '2').replace(/\.0+$/, '').replace('.', ',')), art: 'rahmen' },
+                  { text: S.LEGENDE_WENIGER, art: 'weniger' },
+                ]}
+              />
+              {fazit && (
+                <p className="vp-kzs-fazit" data-testid="kennzahl-fazit">
+                  <b>{fazit.fett}</b>
+                  {fazit.rest}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <SpaltenGrafik
+                titel={antwort?.satz ?? S.TITEL_JE_MONAT_OHNE}
+                monate={monate.map((x) => ({ ...x, wert: a.monate.find((y) => y.periode === x.periode)?.wert ?? null, vorjahr: vorjahrVon(x.periode).roh?.wert ?? null }))}
+                gewaehlt={index}
+                onWahl={(i) => setGewaehlt(monate[i].periode)}
+                wahlText={wahlText}
+              />
+              <Legende
+                eintraege={[
+                  { text: S.LEGENDE_JAHR, art: 'jahr' },
+                  { text: S.LEGENDE_VORJAHR, art: 'vorjahr' },
+                ]}
+              />
+            </>
+          )}
+          <span className="vp-kzs-tipp">
+            <Icon name="hand" size={13} />
+            {telefon ? S.TIPP_HANDY : S.TIPP_RECHNER}
+          </span>
+        </>
+      )}
+    </section>
+  );
+
+  const zusammenBlock = !telefon && mitBasis && vergleich && zusammenEnde && (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_ZUSAMMEN} data-testid="kennzahl-zusammen">
+      <div className="vp-kzs-blockkopf">
+        <h2>{S.TITEL_ZUSAMMEN}</h2>
+        <span className="vp-kzs-m">{`seit ${zusammenEnde.seit}, in ${m?.mengeEinheit ?? ''}`}</span>
+      </div>
+      <ZusammenGrafik titel={`${S.TITEL_ZUSAMMEN}: ${zusammenEnde.text} seit ${zusammenEnde.seit}`} monate={monate} endText={zusammenEnde.text} ton={zusammenTon} />
+      <p className="vp-kzs-fazit">
+        {`Seit ${zusammenEnde.seit} zusammen `}
+        <b>{zusammenEnde.text}</b>
+        {zusammenTon === 'warn'
+          ? ', als die Bezugsbasis erwarten lässt. Eine steigende Linie heißt: Es wird nicht effizienter.'
+          : ', als die Bezugsbasis erwarten lässt. Eine fallende Linie heißt: Es wird effizienter.'}
+      </p>
+    </section>
+  );
+
+  // Ein Monat aus der Liste: die Grafik zeigt ihn in der Infozeile, der Rechenweg rechnet ihn vor.
+  const zeigeMonat = (periode: string) => {
+    setGewaehlt(periode);
+    const ruhig = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelector('[data-testid="kennzahl-grafik"]')?.scrollIntoView?.({ block: 'start', behavior: ruhig ? 'auto' : 'smooth' });
+  };
+  const werteListe = [...monate].reverse().filter((x) => x.wert !== null || x.delta !== null);
+  const sichtbar = alle ? werteListe : werteListe.slice(0, 3);
+  const werteBlock = werteListe.length > 0 && (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_WERTE} data-testid="kennzahl-werte">
+      <div className="vp-kzs-blockkopf">
+        <h2>{S.TITEL_WERTE}</h2>
+        <span className="vp-kzs-m">{S.NEUESTE_ZUERST}</span>
+      </div>
+      {telefon ? (
+        <ol className="vp-kzs-monate">
+          {sichtbar.map((x) => {
+            const marke = S.urteilMarke(a.monate.find((y) => y.periode === x.periode)?.urteil ?? null, x.delta);
+            return (
+              <li key={x.periode}>
+                <button type="button" className={`vp-kzs-monat${x.periode === gewaehlt ? ' is-wahl' : ''}`} onClick={() => zeigeMonat(x.periode)} aria-pressed={x.periode === gewaehlt}>
+                  <span className="vp-kzs-mo">{x.lang}</span>
+                  <span className="vp-kzs-mw">
+                    {mitVergleich && x.gemessen && x.erwartet
+                      ? `${x.gemessen}, erwartet ${x.erwartet}`
+                      : vorjahrSpalte(x.periode)}
+                  </span>
+                  <span className="vp-kzs-md">
+                    {mitVergleich ? x.deltaZeichen && <b>{x.deltaZeichen}</b> : <b>{x.wert ?? 'kein Wert'}</b>}
+                    {marke && <Marke art={marke.art}>{marke.text}</Marke>}
+                  </span>
+                  <span className="vp-kzs-chev" aria-hidden="true">
+                    <Icon name="chevron-right" size={16} />
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <div className="vp-kzs-tabelle">
+          <table>
+            <thead>
+              <tr>
+                {(mitVergleich ? S.SPALTEN_WERTE : S.SPALTEN_WERTE_OHNE).map((s, i) => (
+                  <th key={s} scope="col" className={i > 0 && i < 5 ? 'is-n' : undefined}>
+                    {s}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(alle ? werteListe : werteListe.slice(0, 12)).map((x) => {
+                const am = a.monate.find((y) => y.periode === x.periode);
+                const marke = S.urteilMarke(am?.urteil ?? null, x.delta);
+                const vj = vorjahrVon(x.periode);
+                return (
+                  <tr key={x.periode} className={x.periode === gewaehlt ? 'is-wahl' : undefined} onClick={() => setGewaehlt(x.periode)}>
+                    <th scope="row">{x.lang}</th>
+                    {mitVergleich ? (
+                      <>
+                        <td className="is-n">{x.gemessen ?? '—'}</td>
+                        <td className="is-n">{x.bedingungKurz ?? '—'}</td>
+                        <td className="is-n">{x.erwartet ?? '—'}</td>
+                        <td className="is-n">{x.deltaZeichen ? <b>{x.deltaZeichen}</b> : '—'}</td>
+                        <td>{marke ? <Marke art={marke.art}>{marke.text}</Marke> : <span className="vp-kz-leise">{x.grundSatz ? 'nicht bewertbar' : '—'}</span>}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="is-n">{x.wert ?? '—'}</td>
+                        <td className="is-n">{vj.wert ?? '—'}</td>
+                        <td className="is-n">{vj.roh ? S.deltaMitZeichen(vj.roh.delta_prozent) : '—'}</td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {telefon && werteListe.length > 3 && (
+        <button type="button" className="vp-kzs-link" onClick={() => setAlle((x) => !x)} aria-expanded={alle}>
+          {alle ? 'Weniger Monate' : S.alleMonate(werteListe.length)}
+        </button>
+      )}
+    </section>
+  );
+
+  const auffaelligkeitBlock = auffaelligkeit && vermerke && (
+    <Hinweis art="auffaellig" testid="kennzahl-auffaelligkeit">
+      <b>{auffaelligkeit.titel}</b> {auffaelligkeit.satz}{' '}
+      {!antworten && (
+        <button type="button" className="vp-kzs-weg" onClick={() => setAntworten(true)} data-testid="auffaelligkeit-beantworten">
+          {S.BEANTWORTEN}
+        </button>
+      )}
+      {antworten && (
+        <VermerkZeile
+          vermerke={vermerke.filter((v) => v.id === auffaelligkeit.id)}
+          alle={vermerke}
+          onNeu={() => {
+            setAntworten(false);
+            setVermerkStand((x) => x + 1);
+          }}
+        />
+      )}
+    </Hinweis>
+  );
+
+  const worausBlock = (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_WORAUS} data-testid="kennzahl-herkunft">
+      <div className="vp-kzs-blockkopf">
+        <h2>{S.TITEL_WORAUS}</h2>
+        {m && <span className="vp-kzs-m">{m.lang}</span>}
+      </div>
+      {herkunft?.klartext ? (
+        <p className="vp-kzs-text" data-testid="kennzahl-klartext">
+          <HerkunftsZeile stuecke={S.worausStuecke(herkunft.klartextStuecke, m?.lang ?? S.monatLang(a.monat), m?.wert ?? null)} />
+        </p>
+      ) : herkunft?.eingaenge ? (
+        <p className="vp-kzs-text">
+          <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
+        </p>
+      ) : (
+        <p className="vp-kz-leise">{m?.wert ? `${m.lang}: ${m.wert}.` : `Für ${m?.lang ?? S.monatLang(a.monat)} gibt es keinen Wert.`}</p>
+      )}
+      {herkunft && herkunft.paare.length > 0 && (
+        <ul className="vp-kz-paare">
+          {herkunft.paare.map((p, i) => (
+            <li key={p}>
+              <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <ArchivierteEingaenge liste={archivierteEingaenge} />
+      {erwartetSatz && (
+        <p className="vp-kzs-text" data-testid="kennzahl-erwartet">
+          {erwartetSatz.vor}
+          <b>{erwartetSatz.fett}</b>.
+        </p>
+      )}
+      {herkunft?.fehlt && <p className="vp-kz-ehrlich">{herkunft.fehlt}</p>}
+      {werte && (
+        <GeteiltesRegisterHinweis saetze={(werte.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen))} />
+      )}
+      <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
+        <summary>{S.WIE_GERECHNET}</summary>
+        {herkunft?.eingaenge && herkunft.klartext && <p>{herkunft.eingaenge}</p>}
+        {herkunft?.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
+        {einstieg && <VersionenEinstieg einstieg={einstieg} onOeffnen={() => setVersionenOffen(true)} />}
+        <BerechnungBlock b={b} />
+        <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
+        <p className="vp-kz-leise">{UEMS_VERSION_SATZ}</p>
+      </details>
+      {schritt && einstieg && (
+        <VersionenModal
+          open={versionenOffen}
+          objekt={kopf(k).titel}
+          periode={schritt.beschriftung}
+          schluessel={`${k.id}|monat|${schritt.von}`}
+          laden={() => api.kennzahlWertVersionen(k.id, 'monat', schritt.von).then(kennzahlHistorie)}
+          onClose={() => setVersionenOffen(false)}
+        />
+      )}
+    </section>
+  );
+
+  const basisBlock = lage && <BasisKarte k={k} lage={lage} stichtag={stichtag} darfFestlegen={darfFestlegen} onBezugsbasis={zuBasis} />;
+
+  if (telefon) {
+    return (
+      <div className="vp-kzs-spalte">
+        {antwortBlock}
+        {vertrauenBlock}
+        {kachelBlock}
+        {zielBlock}
+        {grafikBlock}
+        {werteBlock}
+        {auffaelligkeitBlock}
+        {worausBlock}
+        {basisBlock}
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="vp-kzs-raster">
+        <div className="vp-kzs-spalte">
+          {antwortBlock}
+          {vertrauenBlock}
+          {grafikBlock}
+          {zusammenBlock}
+        </div>
+        <div className="vp-kzs-spalte">
+          {kachelBlock}
+          {zielBlock}
+          {worausBlock}
+          {basisBlock}
+          {auffaelligkeitBlock}
+        </div>
+      </div>
+      {werteBlock}
+    </>
+  );
+}
+
+/** Die Berechnung mit ihren Fassungen (AP-11 IP-15) im Aufklapper „Wie wird gerechnet?“ - mit Abzeichen wie „rückwirkend“. */
+function BerechnungBlock({ b }: { b: ReturnType<typeof berechnung> }) {
+  if (!b) return null;
+  return (
+    <div data-testid="kennzahl-berechnung">
+      <p>
+        {b.satz}
+        {b.abzeichen && (
+          <>
+            {' '}
+            <Badge variant="warn">{b.abzeichen}</Badge>
+          </>
+        )}
+      </p>
+      <p className="vp-kz-leise">{b.wer}</p>
+      {b.fassungen.length > 0 && (
+        <>
+          <h3>{FASSUNGEN_TITEL}</h3>
+          <ol className="vp-kz-fassungen">
+            {b.fassungen.map((f) => (
+              <li key={f.schluessel} className={`vp-kz-fassung${f.gilt ? ' is-gilt' : ''}`}>
+                <p>
+                  <strong>{f.titel}</strong> · {f.zeitraum}
+                  {f.abzeichen && (
+                    <>
+                      {' '}
+                      <Badge variant="warn">{f.abzeichen}</Badge>
+                    </>
+                  )}
+                </p>
+                <p>{f.berechnung}</p>
+                <p className="vp-kz-leise">{f.wer}</p>
+                {f.warum && <p>{f.warum}</p>}
+                {f.aufgehoben && <p className="vp-kz-ehrlich">{f.aufgehoben}</p>}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Die Bezugsbasis in Klartext (§6.5 Nr. 9): Vergleichszeitraum, Erwartung mit Band, Gilt - und der Weg eine Ebene tiefer. */
+function BasisKarte({
+  k,
+  lage,
+  stichtag,
+  darfFestlegen,
+  onBezugsbasis,
+}: {
+  k: Kennzahl;
+  lage: { basis: Bezugsbasis; fassung: BezugsbasisFassung | null };
+  stichtag: string;
+  darfFestlegen: boolean;
+  onBezugsbasis?: () => void;
+}) {
+  const zeilen = S.basisKlartext(lage.basis, lage.fassung, k.einheit_anzeige, stichtag);
+  return (
+    <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_BEZUGSBASIS} data-testid="kennzahl-bezugsbasis">
+      <div className="vp-kzs-blockkopf">
+        <h2>{S.TITEL_BEZUGSBASIS}</h2>
+        {onBezugsbasis && (
+          <button type="button" className="vp-kzs-link" onClick={onBezugsbasis} data-testid="alle-fassungen">
+            {S.ALLE_FASSUNGEN}
+          </button>
+        )}
+      </div>
+      {zeilen.length > 0 ? (
+        <dl className="vp-kzs-zuo">
+          {zeilen.map((z) => (
+            <div key={z.name}>
+              <dt>{z.name}</dt>
+              <dd>{z.wert}</dd>
+              {z.leise && <dd className="vp-kzs-n">{z.leise}</dd>}
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="vp-kzs-text">{S.OHNE_FASSUNG_SATZ}</p>
+      )}
+      {onBezugsbasis && darfFestlegen && k.archiviert_am === null && (
+        <div className="vp-kz-aktionen">
+          <Button variant="outline" size="sm" onClick={onBezugsbasis}>
+            {S.NEUE_FASSUNG}
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** „Eingang archiviert (KZ-0001)“ (IP-15) - als Warnmarke am Rechenweg, nie versteckt. */
+function ArchivierteEingaenge({ liste }: { liste: string[] }) {
+  if (liste.length === 0) return null;
+  return (
+    <p className="vp-kz-zeichen" data-testid="kennzahl-eingang-archiviert">
+      {liste.map((t) => (
+        <Badge key={t} variant="warn">
+          {t}
+        </Badge>
+      ))}
+    </p>
+  );
+}
+
+/** Ein Satz mit Grund und Weg (§6.1 Regel 2) - Warnung mit Warnzeichen, Hinweis mit Info. */
+function Hinweis({ art, testid, children }: { art: 'warn' | 'info' | 'auffaellig'; testid: string; children: ReactNode }) {
+  return (
+    <div className={`vp-kzs-hinweis is-${art}`} data-testid={testid}>
+      <span className="vp-kzs-hinweis-icon" aria-hidden="true">
+        <Icon name={art === 'warn' ? 'alert-triangle' : 'info'} size={16} />
+      </span>
+      <div className="vp-kzs-hinweis-text">{children}</div>
+    </div>
+  );
+}
+
+// ================================================================================== ohne Auswertung: die Werte-Karte
+
+/**
+ * Ohne Auswertung (archiviert, ohne Monatswerte, ohne Monat als Periode): der Perioden-Umschalter (nur die bildbaren),
+ * die Werte-Karte mit „Versionen“, die Herkunft und der Verlauf als Balken - wie vor PR2.
+ */
+function WerteOhneAuswertung({
+  k,
+  fassungen,
+  zone,
+  versuch,
+  archivierteEingaenge,
+  onNeu,
+}: {
+  k: Kennzahl;
+  fassungen: KennzahlFassung[];
+  zone: string;
+  versuch: number;
+  archivierteEingaenge: string[];
+  onNeu: () => void;
+}) {
+  const [art, setArt] = useState<KennzahlPeriodeArt | null>(() => periodenWahl(k).vorgabe);
+  const [autoArt, setAutoArt] = useState(true);
+  const [werte, setWerte] = useState<{ schluessel: string; antwort: KennzahlWerte } | null>(null);
+  const [werteFehler, setWerteFehler] = useState(false);
+  const [gewaehlt, setGewaehlt] = useState<string | null>(null);
+  const [versionenOffen, setVersionenOffen] = useState(false);
+  const schluessel = art ? `${k.id}|${art}|${versuch}` : null;
+
+  useEffect(() => {
+    if (!art || !schluessel) return;
+    let aktiv = true;
+    setWerteFehler(false);
+    const { von, bis } = anfrage(art, heuteIn(zone, Date.now()), ANZAHL_VERLAUF[art]);
+    api.kennzahlWerte(k.id, art, von, bis).then(
+      (antwort) => aktiv && setWerte({ schluessel, antwort }),
+      () => aktiv && setWerteFehler(true),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [k.id, art, zone, schluessel]);
+
+  // Rückt die Vorgabe über leere Grundperioden hinweg zur nächstgröberen mit Werten - nur, solange automatisch gewählt.
+  useEffect(() => {
+    if (!autoArt || !art) return;
+    const geladen = werte && werte.schluessel === schluessel ? werte.antwort : null;
+    if (!geladen || !ohneWert(geladen)) return;
+    const perioden = listenPerioden(k);
+    const naechste = perioden[perioden.indexOf(art) + 1];
+    if (naechste) setArt(naechste);
+  }, [autoArt, art, k, werte, schluessel]);
+
+  const wahl = periodenWahl(k);
+  const aktuell = werte !== null && werte.schluessel === schluessel ? werte.antwort : null;
+  const schritt = aktuell ? (aktuell.werte.find((w) => w.schluessel === gewaehlt) ?? letzterSchritt(aktuell)) : null;
+  const wk = aktuell && schritt ? wertKarte(aktuell, schritt, eingaengeDer(fassungen, schritt)) : null;
+  const einstieg = versionenEinstieg(schritt);
+  const herkunft = aktuell && schritt ? herkunftAnzeige(aktuell, schritt, eingangsNamen(fassungen)) : null;
+  const b = berechnung(k, fassungen, aktuell?.zeitzone ?? zone);
+
+  return (
+    <div className="vp-kzs-spalte">
+      {wahl.optionen.length > 0 && art && (
+        <div className="vp-kz-perioden">
+          <ZeitSegment
+            label={PERIODE_WAHL}
+            optionen={wahl.optionen}
+            wert={art}
+            onWert={(x) => {
+              setArt(x);
+              setGewaehlt(null);
+              setAutoArt(false);
+            }}
+          />
+        </div>
+      )}
+      {werteFehler ? (
+        <ErrorState message={WERTE_FEHLER} onRetry={onNeu} />
+      ) : art && !aktuell ? (
+        <div aria-busy="true">
+          <Skeleton height={148} />
+        </div>
+      ) : (
+        <>
+          {wk && (
+            <WerteKarte
+              karte={wk.karte}
+              grund={wk.grund}
+              versionen={einstieg && <VersionenEinstieg einstieg={einstieg} onOeffnen={() => setVersionenOffen(true)} />}
+            />
+          )}
+          {aktuell && <GeteiltesRegisterHinweis saetze={(aktuell.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen))} />}
+          {aktuell && (
+            <Verlauf
+              balken={verlauf(aktuell)}
+              dicht={aktuell.periode === 'tag' || aktuell.periode === 'woche'}
+              gewaehlt={schritt?.schluessel ?? null}
+              onWahl={setGewaehlt}
+            />
+          )}
+        </>
+      )}
+      <ArchivierteEingaenge liste={archivierteEingaenge} />
+      {herkunft ? (
+        <section className="vp-kz-block vp-kzs-karte" aria-label={S.TITEL_WORAUS} data-testid="kennzahl-herkunft">
+          <h2>{S.TITEL_WORAUS}</h2>
+          {herkunft.klartext ? (
+            <p className="vp-kzs-text" data-testid="kennzahl-klartext">
+              <HerkunftsZeile stuecke={herkunft.klartextStuecke} />
+            </p>
+          ) : (
+            herkunft.eingaenge && (
+              <p className="vp-kzs-text">
+                <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
+              </p>
+            )
+          )}
+          {herkunft.paare.length > 0 && (
+            <ul className="vp-kz-paare">
+              {herkunft.paare.map((p, i) => (
+                <li key={p}>
+                  <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {herkunft.fehlt && <p className="vp-kz-ehrlich">{herkunft.fehlt}</p>}
+          <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
+            <summary>{S.WIE_GERECHNET}</summary>
+            {herkunft.eingaenge && herkunft.klartext && <p>{herkunft.eingaenge}</p>}
+            {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
+            <BerechnungBlock b={b} />
+            <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
+            <p className="vp-kz-leise">{UEMS_VERSION_SATZ}</p>
+          </details>
+        </section>
+      ) : (
+        b && (
+          // Ohne Herkunft des gewählten Schritts (noch kein Wert): die Berechnung bleibt erreichbar.
+          <section className="vp-kz-block vp-kzs-karte" aria-label={S.WIE_GERECHNET} data-testid="kennzahl-rechenweg-karte">
+            <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
+              <summary>{S.WIE_GERECHNET}</summary>
+              <BerechnungBlock b={b} />
+              <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
+            </details>
+          </section>
+        )
+      )}
+      {art && schritt && einstieg && (
+        <VersionenModal
+          open={versionenOffen}
+          objekt={kopf(k).titel}
+          periode={schritt.beschriftung}
+          schluessel={`${k.id}|${art}|${schritt.von}`}
+          laden={() => api.kennzahlWertVersionen(k.id, art, schritt.von).then(kennzahlHistorie)}
+          onClose={() => setVersionenOffen(false)}
+        />
+      )}
+    </div>
   );
 }
 

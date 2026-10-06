@@ -1,0 +1,496 @@
+/*
+ * Die Seite einer Kennzahl (Konzept Auswerten a1 §6.5, §6.13, §6.14). Nur diese Fläche - Klassen mit `vp-kzs-`; die
+ * Grafiken tragen ihre eigenen (`components/AuswertenGrafik.css`), die Kacheln die der Übersicht (`vp-k`).
+ * Handy zuerst: eine Spalte, Reihen statt Tabellen, Tippziele ab 44 px. Am Rechner (über 720 px) zwei Spalten -
+ * links Antwort und Grafik, rechts Kachel, Ziel und Erklärung - und die Monate als Tabelle mit höchstens sechs Spalten.
+ * ⚠ 375 px: lange Namen brechen um, nichts läuft quer; nur die Tabelle am Rechner scrollt lokal.
+ */
+
+.vp-kzs {
+  gap: var(--vp-c-space-4);
+}
+
+.vp-kzs-kopf {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-kzs-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-kzs-kopf h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+  color: var(--vp-c-fg);
+  overflow-wrap: break-word;
+}
+.vp-kzs-kopf h1 .vp-kz-kennzeichen {
+  margin-left: 4px;
+  font-family: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.vp-kzs-meta {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+/* --- Antwort zuerst ------------------------------------------------------------------------------------------------- */
+
+.vp-kzs-antwort {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.vp-kzs-satz {
+  margin: 0;
+  font: 700 1.0625rem/1.38 var(--vp-font-heading);
+  letter-spacing: -0.005em;
+  color: var(--vp-navy, #1e3a5f);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+.vp-kzs-formal {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+.vp-kzs-begriff {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.vp-kzs-begriff:focus-visible,
+.vp-kzs-weg:focus-visible,
+.vp-kzs-link:focus-visible {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-kzs-marken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-kzs-marken .vp-k-marke {
+  white-space: nowrap;
+}
+
+/* --- Hinweis: Verlässlichkeit und Auffälligkeit (§6.1 Regel 2) ----------------------------------------------------- */
+
+.vp-kzs-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-card);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg);
+}
+.vp-kzs-hinweis-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--vp-c-warn-fg);
+}
+.vp-kzs-hinweis.is-info .vp-kzs-hinweis-icon {
+  color: var(--vp-c-primary);
+}
+.vp-kzs-hinweis-text {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.vp-kzs-hinweis-text b {
+  font-weight: 600;
+}
+.vp-kzs-hinweis-text .vp-aw-vermerke {
+  margin-top: var(--vp-c-space-2);
+}
+.vp-kzs-weg,
+.vp-kzs-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--vp-c-primary);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.vp-kzs-link {
+  font-size: 0.85rem;
+  justify-self: start;
+}
+/* Ein Tippziel ab 44 px ohne die Zeile aufzublähen. */
+.vp-kzs-weg,
+.vp-kzs-link,
+.vp-kzs-begriff {
+  position: relative;
+}
+.vp-kzs-weg::after,
+.vp-kzs-link::after {
+  content: '';
+  position: absolute;
+  inset: -12px -6px;
+}
+
+/* --- Kacheln ---------------------------------------------------------------------------------------------------------- */
+
+.vp-kzs-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.vp-kzs-kacheln > .vp-k {
+  min-width: 0;
+}
+.vp-kzs-lead {
+  grid-column: span 2;
+}
+.vp-kzs-ohnewert {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+}
+.vp-kzs-kacheln .vp-k-gross:not(.is-xl) {
+  overflow-wrap: anywhere;
+}
+
+/* --- Karten ----------------------------------------------------------------------------------------------------------- */
+
+.vp-kzs-karte {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--vp-radius-lg, 18px);
+}
+.vp-kzs-karte > h2,
+.vp-kzs-blockkopf h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-font-heading);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vp-c-fg);
+  overflow-wrap: normal;
+}
+.vp-kzs-blockkopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-width: 0;
+}
+.vp-kzs-m {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg);
+  white-space: nowrap;
+}
+.vp-kzs-karte p {
+  margin: 0;
+}
+.vp-kzs .vp-kzs-text {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--vp-c-fg);
+  overflow-wrap: break-word;
+}
+.vp-kzs .vp-kzs-fuss {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg);
+}
+.vp-kzs .vp-kzs-fazit {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg);
+}
+.vp-kzs-fazit b {
+  font-weight: 600;
+}
+.vp-kzs-tipp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.6875rem;
+  color: var(--vp-c-muted-fg);
+}
+.vp-kzs-tipp svg {
+  flex: 0 0 auto;
+}
+
+/* --- Werte je Monat: Reihen am Handy, Tabelle am Rechner -------------------------------------------------------------- */
+
+.vp-kzs-monate {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.vp-kzs-monat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--vp-c-border);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.vp-kzs-monate > li:first-child .vp-kzs-monat {
+  border-top: 0;
+}
+.vp-kzs-monat:focus-visible {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.vp-kzs-monat.is-wahl .vp-kzs-mo {
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-kzs-mo {
+  font: 600 0.875rem var(--vp-font-heading);
+  color: var(--vp-c-fg);
+}
+.vp-kzs-mw {
+  grid-column: 1;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+.vp-kzs-md {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+.vp-kzs-md b {
+  font: 700 0.875rem var(--vp-font-heading);
+  color: var(--vp-navy, #1e3a5f);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vp-kzs-md .vp-k-marke {
+  white-space: nowrap;
+}
+.vp-kzs-tabelle {
+  overflow-x: auto;
+  min-width: 0;
+}
+.vp-kzs-tabelle table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.vp-kzs-tabelle th,
+.vp-kzs-tabelle td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--vp-c-border);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.vp-kzs-tabelle thead th {
+  font: 700 11px var(--vp-font-heading);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+  background: var(--vp-c-bg);
+}
+.vp-kzs-tabelle tbody th {
+  font-weight: 600;
+}
+.vp-kzs-tabelle tbody tr {
+  cursor: pointer;
+}
+.vp-kzs-tabelle tbody tr:hover,
+.vp-kzs-tabelle tbody tr.is-wahl {
+  background: var(--vp-c-bg);
+}
+.vp-kzs-tabelle tbody tr:last-child th,
+.vp-kzs-tabelle tbody tr:last-child td {
+  border-bottom: 0;
+}
+.vp-kzs-tabelle .is-n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.vp-kzs-tabelle b {
+  color: var(--vp-navy, #1e3a5f);
+}
+
+/* --- Bezugsbasis in Klartext ------------------------------------------------------------------------------------------ */
+
+.vp-kzs-zuo {
+  display: grid;
+  margin: 0;
+}
+.vp-kzs-zuo > div {
+  display: grid;
+  gap: 2px;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border);
+  min-width: 0;
+}
+.vp-kzs-zuo > div:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.vp-kzs-zuo dt {
+  font: 700 0.6875rem var(--vp-font-heading);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-kzs-zuo dd {
+  margin: 0;
+  font: 600 0.9375rem/1.35 var(--vp-font-heading);
+  color: var(--vp-c-fg);
+  overflow-wrap: break-word;
+}
+.vp-kzs-zuo dd.vp-kzs-n {
+  font: 400 0.75rem/1.4 var(--vp-c-font);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kzs-loeschen {
+  display: grid;
+  gap: var(--vp-c-space-3);
+}
+
+/* --- Zwei Spalten am Rechner (§6.14) ------------------------------------------------------------------------------------ */
+
+.vp-kzs-spalte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-kzs-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--vp-c-space-4);
+  align-items: start;
+  min-width: 0;
+}
+@media (min-width: 721px) {
+  .vp-kzs-satz {
+    font-size: 1.25rem;
+    line-height: 1.32;
+  }
+  .vp-kzs-karte {
+    padding: 16px 22px;
+  }
+  .vp-kzs-kacheln .vp-k {
+    padding: 16px;
+  }
+}
+@media (max-width: 959px) and (min-width: 721px) {
+  .vp-kzs-raster {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- Die Ebene der Bezugsbasis (§6.6) ---------------------------------------------------------------------------------- */
+
+.vp-kzs-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--vp-c-fg);
+}
+.vp-kzs-status-leise {
+  font-weight: 400;
+  color: var(--vp-c-muted-fg);
+}
+.vp-kzs-punkt {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-c-muted-fg);
+}
+.vp-kzs-punkt.is-ok {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-kzs-punkt.is-warn {
+  background: var(--vp-c-warn-fg);
+}
+.vp-kzs-aufklapp > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+  list-style: none;
+  font: 700 1rem/1.3 var(--vp-font-heading);
+  color: var(--vp-c-fg);
+}
+.vp-kzs-aufklapp > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-kzs-aufklapp-chev {
+  flex: 0 0 auto;
+  color: var(--vp-c-muted-fg);
+  transition: transform var(--vp-motion-fast) var(--vp-ease);
+}
+.vp-kzs-aufklapp[open] .vp-kzs-aufklapp-chev {
+  transform: rotate(180deg);
+}
+.vp-kzs-aufklapp[open] > summary {
+  margin-bottom: var(--vp-c-space-2);
+}
+
+/* Auffälligkeit: das Info-Zeichen im Warnton (die Zeile verlangt eine Antwort), der Text bleibt Tinte. */
+.vp-kzs-hinweis.is-auffaellig .vp-kzs-hinweis-icon {
+  color: var(--vp-c-warn-fg);
+}
+.vp-kzs-monat {
+  grid-template-columns: minmax(0, 1fr) auto 18px;
+}
+.vp-kzs-chev {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg);
+}
+.vp-kzs .vp-k-sub b {
+  font-weight: 600;
+  color: var(--vp-c-fg);
+}
