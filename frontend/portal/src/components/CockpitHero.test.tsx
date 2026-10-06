@@ -1,9 +1,15 @@
 import { fireEvent, render, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CockpitHero } from './CockpitHero';
 import { ControlStrip } from './ControlStrip';
 import type { LiveSnapshot } from '../live';
 import type { SiteTopology } from '../api';
+
+// Der Fluss ist lazy (`Suspense` in CockpitHero): erst geladen, dann gemessen - sonst wartet der erste Fall auf
+// der belasteten Maschine länger als `waitFor` (1 s) auf die Übersetzung des Moduls.
+beforeAll(async () => {
+  await import('./EnergieBuehne');
+});
 
 /**
  * **Die Bühne** (abgenommenes Konzept `data/vp-cockpit-konzept-f4`, Richtung A).
