@@ -43,6 +43,8 @@ import {
   restAnteil,
   stellungAbTagAnfrage,
   unveraendertFehler,
+  unveraendertWas,
+  giltSchonSatz,
   verteilungAbTagAnfrage,
   verteilungSpeicherbar,
   verteilungSummeSatz,
@@ -119,8 +121,14 @@ export function ZuordnungAendernDialog({
   const [doppelt, setDoppelt] = useState<SetzenDoppeltBild | null>(null);
 
   const pruefung = useMemo(() => aendernPruefen(art, form, bestand, kataloge), [art, form, bestand, kataloge]);
-  // „Nichts zu ändern“ steht sofort am Feld; Pflichtfelder erst nach dem ersten Senden.
-  const fehler = versucht ? { ...pruefung, ...server } : { ...unveraendertFehler(art, form, bestand, kataloge), ...server };
+  // Konzept Messen m1 (§6.11 „Dialog ohne Änderung“): gilt schon, was im Formular steht, sagt es ein grauer Satz
+  // („Heute gilt: …“) und „Eintragen“ wartet auf eine Änderung - kein roter Fehler beim Öffnen. Pflichtfelder erst
+  // nach dem ersten Senden.
+  const gleich = unveraendertWas(art, form, bestand, kataloge);
+  const unveraendert = unveraendertFehler(art, form, bestand, kataloge);
+  const fehler = versucht
+    ? { ...Object.fromEntries(Object.entries(pruefung).filter(([feld, satz]) => unveraendert[feld as AendernFeld] !== satz)), ...server }
+    : { ...server };
   const zf = zeitformAm(form.tag, heute, zone);
   const bisher = bisherAm(art, bestand, form.tag, kataloge.namen);
   const vorher = folgen({ art, kennzeichen: messstelle.kennzeichen, f: form, b: bestand, k: kataloge, heute, zone });
@@ -241,7 +249,7 @@ export function ZuordnungAendernDialog({
           <Button variant="ghost" onClick={onClose}>
             {KNOPF.abbrechen}
           </Button>
-          <Recht rueckwirkend={zf?.art === 'rueckwirkend'} aktion={art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><Button type="submit" form={`${basis}-form`} disabled={busy || (art === 'verteilung' && !verteilungSpeicherbar(form.anteile))}>
+          <Recht rueckwirkend={zf?.art === 'rueckwirkend'} aktion={art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><Button type="submit" form={`${basis}-form`} disabled={busy || gleich !== null || (art === 'verteilung' && !verteilungSpeicherbar(form.anteile))}>
             {busy ? KNOPF.speichert : eintragenKnopf(art, form.tag)}
           </Button></Recht>
         </>
@@ -251,6 +259,11 @@ export function ZuordnungAendernDialog({
         <p className="vp-fd-name">
           {messstelle.kennzeichen} {messstelle.name}
         </p>
+        {gleich && (
+          <p className="vp-za-gilt" role="status" data-testid="zuordnung-gilt-schon">
+            {giltSchonSatz(art, form.tag, heute, gleich.was)}
+          </p>
+        )}
 
         {art === 'ort' && (
           <VpPicker

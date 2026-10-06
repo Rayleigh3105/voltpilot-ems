@@ -401,7 +401,7 @@ describe('Kostenstellen ändern — die 100 % ruft den Vertrag (`uemsVerteilung.
   it('am Beginn des laufenden Satzes ist es eine Berichtigung, und derselbe Satz ist „nichts zu ändern“', () => {
     const same = f([{ kostenstelle: KOSTENSTELLE_IDS.k4100, anteil: '100' }], '2026-10-01');
     expect(aendernPruefen('verteilung', same, b, kataloge())).toEqual({
-      anteile: `Am 01.10.2026 gilt schon: 4100 Spritzguss · 100${NBSP}%. Es gibt nichts zu ändern.`,
+      anteile: `Am 01.10.2026 gilt schon: 100${NBSP}% Spritzguss. Es gibt nichts zu ändern.`,
     });
     const neu = f([{ kostenstelle: KOSTENSTELLE_IDS.k4200, anteil: '100' }], '2026-10-01');
     expect(verteilungAbTagAnfrage(neu, b).korrektur).toBe(true);

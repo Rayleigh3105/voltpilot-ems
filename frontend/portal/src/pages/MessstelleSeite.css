@@ -1,9 +1,9 @@
 /*
- * Die Messstellen-Seite (UEMS AP-04 IP-8, Mockup R2). Nur diese Seite — Klassen mit `vp-mss-`,
- * damit nichts in das Register (`vp-ms-`) oder Portfolio-Tabellen greift. Das Protokoll trägt die
- * Klassen des Befehls-Verlaufs (`Befehle.css`, über `ProtokollListe`).
- * ⚠ 375 px: eine Spalte; lange Namen („Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a“) brechen um
- *   (`break-word`), nichts läuft quer. Am Rechner stehen die drei Karten nebeneinander.
+ * Die Seite einer Messstelle (Konzept Messen m1, §6.4; Messen-Bau m2). Nur diese Seite — Klassen mit `vp-mss-`, damit
+ * nichts in das Register (`vp-ms-`) oder Portfolio-Tabellen greift. Am Telefon eine Spalte: Kopf, Schritt, Kacheln,
+ * Karten; am Rechner die Kacheln über die volle Breite und darunter zwei Spalten (links Werte und Ablesungen, rechts
+ * Zuordnung, Herkunft und Protokoll).
+ * ⚠ 375 px: lange Namen („Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a“) brechen um (`break-word`), nichts läuft quer.
  */
 
 .vp-mss {
@@ -26,88 +26,152 @@
   color: var(--vp-c-primary);
   font: inherit;
   font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
   cursor: pointer;
 }
 
 .vp-mss-zurueck:focus-visible,
-.vp-mss-aendern:focus-visible {
+.vp-mss-aendern:focus-visible,
+.vp-mss-link:focus-visible,
+.vp-mss-protokoll:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
 }
 
-.vp-mss-kopf {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vp-c-space-3);
+/* --- Kopf: Titel + ⋯, Statuszeile, der eine Schritt -------------------------- */
+
+.vp-mss-oben {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'titel menue'
+    'status status'
+    'schritt schritt';
+  align-items: start;
+  gap: 10px 12px;
   min-width: 0;
 }
 
-.vp-mss-kopf-text {
-  flex: 1 1 18rem;
+.vp-mss-titel {
+  grid-area: titel;
   min-width: 0;
 }
 
-.vp-mss-kz {
-  display: inline-block;
-  font-size: var(--vp-c-fs-12, 12px);
-  font-weight: var(--vp-c-fw-600);
-  color: var(--vp-c-muted-fg);
-  letter-spacing: 0.04em;
+.vp-mss-menue {
+  grid-area: menue;
 }
 
-.vp-mss-kopf h1 {
-  margin: 2px 0 0;
-  font-size: var(--vp-c-fs-24);
-  font-weight: var(--vp-c-fw-800);
-  line-height: var(--vp-c-lh-title);
+.vp-mss-schritt {
+  grid-area: schritt;
+  min-width: 0;
+}
+
+.vp-mss-schritt .vp-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 8px;
+}
+
+.vp-mss-oben h1 {
+  margin: 0;
+  font: 800 var(--vp-c-fs-24, 1.5rem) / 1.2 var(--vp-font-heading);
+  letter-spacing: -0.01em;
+  color: var(--vp-navy, #1e3a5f);
   overflow-wrap: break-word;
 }
 
-.vp-mss-kopf p {
+.vp-mss-kz {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-600);
+  letter-spacing: 0.02em;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mss-unter,
+.vp-mss-geplant {
   margin: 4px 0 0;
   color: var(--vp-c-muted-fg);
   font-size: var(--vp-c-fs-14);
   line-height: var(--vp-c-lh-text);
-  overflow-wrap: break-word;
-}
-
-.vp-mss-kopf .vp-mss-beob.is-gut {
-  color: var(--vp-c-ok-fg, var(--vp-c-fg));
-}
-
-.vp-mss-kopf .vp-mss-beob.is-hinweis {
-  color: var(--vp-c-warn-fg, var(--vp-c-fg));
-}
-
-/* AP-13 IP-11 (D1): das Gerät der Quelle als Verweis auf seine Komponente. */
-.vp-mss-kopf .vp-mss-quelle-sprung {
-  color: var(--vp-c-primary, #2563eb);
-  font-weight: var(--vp-c-fw-600);
-  text-decoration: none;
-}
-@media (hover: hover) {
-  .vp-mss-kopf .vp-mss-quelle-sprung:hover {
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-}
-
-/* UEMS AP-16 IP-20: „geplant für EE-…“ — ein eingelöster Messbedarf, leise unter der Beobachtung. */
-.vp-mss-kopf .vp-mss-geplant {
-  color: var(--vp-c-muted-fg);
   overflow-wrap: anywhere;
+}
+
+.vp-mss-status {
+  grid-area: status;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  margin: 0;
+  font-size: var(--vp-c-fs-15, 15px);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.vp-mss-status .vp-mss-punkt {
+  align-self: center;
+  margin-top: 0;
+}
+
+.vp-mss-status strong {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-mss-status-neben {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mss-status.is-ok .vp-mss-punkt {
+  background: var(--vp-c-ok, #16a34a);
+  opacity: 1;
+}
+
+.vp-mss-status.is-warn .vp-mss-punkt {
+  background: var(--vp-c-warn, #d97706);
+  opacity: 1;
+}
+
+.vp-mss-status.is-warn strong {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+@media (min-width: 720px) {
+  .vp-mss-oben {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'titel schritt menue'
+      'status status status';
+  }
+
+  .vp-mss-schritt .vp-btn {
+    width: auto;
+  }
+
+  .vp-mss-oben h1 {
+    font-size: 1.75rem;
+  }
 }
 
 /* --- Karten ---------------------------------------------------------------- */
 
-.vp-mss-karten {
+.vp-mss-spalten {
   display: grid;
-  gap: var(--vp-c-space-3);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--vp-c-space-4);
   align-items: start;
   min-width: 0;
+}
+
+.vp-mss-spalte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .vp-mss-spalten {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
 }
 
 .vp-mss-karte {
@@ -116,23 +180,65 @@
   gap: var(--vp-c-space-3);
   box-sizing: border-box;
   min-width: 0;
-  padding: var(--vp-c-space-4);
+  padding: 18px 20px;
   border: 1px solid var(--vp-c-border);
-  border-radius: var(--vp-c-radius);
+  border-radius: var(--vp-radius-lg, 18px);
   background: var(--vp-c-card);
 }
 
-.vp-mss-karte h2,
-.vp-mss-protokoll h2 {
+.vp-mss-karte h2 {
   margin: 0;
-  font-size: var(--vp-c-fs-16, 16px);
-  font-weight: var(--vp-c-fw-700, 700);
+  font: 700 1.0625rem/1.3 var(--vp-font-heading);
+  color: var(--vp-c-fg);
 }
 
-.vp-mss-zeile {
+.vp-mss-karte-kopf {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-mss-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: 600 var(--vp-c-fs-14, 14px) / 1.4 var(--vp-font-heading);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-mss-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vp-mss-link-icon svg {
+  flex: none;
+}
+
+.vp-mss-leise,
+.vp-mss-leer {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-13, 13px);
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+
+/* --- Zuordnung: vier Zeilen, je „Ändern“ ------------------------------------- */
+
+.vp-mss-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
   min-width: 0;
 }
 
@@ -141,27 +247,25 @@
   border-top: 1px solid var(--vp-c-border);
 }
 
+.vp-mss-zeile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .vp-mss-zeile h3 {
   margin: 0;
-  font-size: var(--vp-c-fs-12, 12px);
+  font-size: 0.6875rem;
   font-weight: var(--vp-c-fw-600);
   color: var(--vp-c-muted-fg);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .vp-mss-wert {
   margin: 0;
-  font-weight: var(--vp-c-fw-600);
-  overflow-wrap: break-word;
-}
-
-.vp-mss-neben,
-.vp-mss-leer {
-  margin: 0;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-14);
-  line-height: var(--vp-c-lh-text);
+  font: 600 1rem/1.35 var(--vp-font-heading);
   overflow-wrap: break-word;
 }
 
@@ -171,35 +275,31 @@
   align-items: center;
   gap: 4px var(--vp-c-space-2);
   margin: 0;
-  font-size: var(--vp-c-fs-14);
+  font-size: var(--vp-c-fs-13, 13px);
   overflow-wrap: break-word;
 }
 
 .vp-mss-gespeichert {
   margin: 0;
-  font-size: var(--vp-c-fs-14);
+  font-size: var(--vp-c-fs-13, 13px);
   color: var(--vp-c-ok-fg, var(--vp-c-fg));
   overflow-wrap: break-word;
 }
 
 .vp-mss-aendern {
-  align-self: flex-start;
-  margin-top: 4px;
-  padding: 0;
+  padding: 4px 0;
   border: 0;
   background: none;
   color: var(--vp-c-primary);
-  font: inherit;
-  font-size: var(--vp-c-fs-14);
-  font-weight: var(--vp-c-fw-600);
+  font: 600 var(--vp-c-fs-14, 14px) / 1.3 var(--vp-font-heading);
   cursor: pointer;
 }
 
-/* --- Historie -------------------------------------------------------------- */
+/* --- Historie einer Zeile ---------------------------------------------------- */
 
 .vp-mss-historie {
-  margin-top: 4px;
-  font-size: var(--vp-c-fs-14);
+  margin-top: 2px;
+  font-size: var(--vp-c-fs-13, 13px);
 }
 
 .vp-mss-historie summary {
@@ -270,40 +370,193 @@
   overflow-wrap: break-word;
 }
 
-/* --- Protokoll ------------------------------------------------------------- */
+/* --- Woher die Werte kommen ---------------------------------------------------- */
 
-.vp-mss-protokoll {
+.vp-mss-herkunft-titel {
+  margin: 0;
+  font: 600 1rem/1.35 var(--vp-font-heading);
+}
+
+.vp-mss-herkunft .vp-mss-quelle {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+
+/* AP-13 IP-11 (D1): das Gerät der Quelle als Verweis auf seine Komponente. */
+.vp-mss-quelle-sprung {
+  color: var(--vp-c-primary, #2563eb);
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .vp-mss-quelle-sprung:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+/* Die Quelle-Karte steht in der Hülle dieser Karte: ohne eigenen Rahmen. */
+.vp-mss-herkunft .vp-qk {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* --- Zusammengesetzt aus ------------------------------------------------------- */
+
+.vp-mss-terme {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-mss-terme li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.vp-mss-terme a {
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: none;
+}
+
+.vp-mss-vorzeichen {
+  width: 1em;
+  font-weight: 700;
+  color: var(--vp-c-muted-fg);
+}
+
+/* --- Ablesungen: die neueste zuerst, Datumsblock, Menü je Zeile --------------- */
+
+.vp-mss-ablesung-liste {
   display: flex;
   flex-direction: column;
-  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-mss-ablesung {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 12px 0;
   min-width: 0;
 }
 
-/* --- Werte (UEMS AP-13 IP-3): direkt unter dem Kopf, die `WerteSektion` bringt ihre Klassen mit ------- */
+.vp-mss-ablesung + .vp-mss-ablesung {
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-mss-datum {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 56px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+  line-height: 1.1;
+}
+
+.vp-mss-datum b {
+  font: 800 1rem/1.1 var(--vp-font-heading);
+}
+
+.vp-mss-datum span {
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.vp-mss-ablesung-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-mss-ablesung-text strong {
+  font: 600 1rem/1.3 var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-mss-fassungen {
+  grid-column: 1 / -1;
+}
+
+.vp-mss-antwort p {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+}
+
+/* --- Protokoll als Verweis ------------------------------------------------------ */
+
+.vp-mss-protokoll {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: var(--vp-c-fg);
+  cursor: pointer;
+}
+
+.vp-mss-protokoll > svg {
+  flex: none;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mss-protokoll-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+}
+
+.vp-mss-protokoll-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-mss-protokoll-text strong {
+  font: 600 1rem/1.3 var(--vp-font-heading);
+}
+
+@media (hover: hover) {
+  .vp-mss-protokoll:hover {
+    border-color: color-mix(in srgb, var(--vp-c-primary) 35%, var(--vp-c-border));
+  }
+}
+
+/* --- Werte: die `WerteSektion` bringt ihre Klassen mit ------------------------- */
 
 .vp-mss-werte {
   min-width: 0;
 }
 
-.vp-mss-werte h2 {
-  margin: 0;
-  font-size: var(--vp-c-fs-16, 16px);
-  font-weight: var(--vp-c-fw-700, 700);
-}
-
-/* Am Rechner: links Zone, Zeit-Leiste und Karte, rechts die Liste — die Stunden stehen neben ihrer Zahl
-   statt 1 100 px darunter. Unter 960 px untereinander wie im Dialog. */
-@media (min-width: 960px) {
-  .vp-mss-werte .vp-wk {
-    grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
-    column-gap: var(--vp-c-space-6, 24px);
-    align-items: start;
-  }
-}
-
 /* AP-13 IP-6 · V8: die Nebengrößen unter den Werten — letzter Wert aus dem Register, kein Verlauf. */
 .vp-mss-neben {
-  margin-top: var(--vp-c-space-4, 16px);
   min-width: 0;
   font-size: var(--vp-c-fs-14);
   line-height: var(--vp-c-lh-text);
@@ -325,4 +578,38 @@
 .vp-mss-neben p {
   margin: var(--vp-c-space-2) 0 0;
   color: var(--vp-c-muted-fg);
+}
+
+/* Die Korrektur-Werkzeuge unter den Balken als leise Verweise (Konzept: „Korrekturen und Ersatzwerte“). */
+.vp-mss-werte .vp-korr-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+/* --- Fuß: die Zone einmal (Entscheid 6) --------------------------------------- */
+
+.vp-mss-fuss {
+  margin: 0;
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-mss-werte .vp-korr-aktionen .vp-btn {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--vp-c-primary);
+  font: 600 var(--vp-c-fs-14, 14px) / 1.4 var(--vp-font-heading);
+}
+
+/* Das Menü einer Ablesung: nur das Zeichen, ohne Rahmen (Konzept §6.4 Punkt 6). */
+.vp-mss-ablesung .vp-rowmenu-btn {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
 }

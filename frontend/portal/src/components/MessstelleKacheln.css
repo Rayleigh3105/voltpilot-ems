@@ -1,0 +1,71 @@
+/* Die Kacheln oben auf der Seite einer Messstelle (Konzept Messen m1, §6.4 Punkt 4): am Telefon die Leitkachel über
+   zwei Spalten und darunter Zählerstand und nächste Ablesung nebeneinander; am Rechner alles in einer Reihe, die
+   Leitkachel doppelt so breit. Die Hülle, die Töne und die große Zahl kommen aus kacheln/Kacheln.css. */
+
+.vp-msk {
+  margin: 0;
+}
+@media (min-width: 1024px) {
+  .vp-msk.is-2 {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .vp-msk.is-1 {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+  .vp-msk.is-0 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-msk > .vp-k-platz.is-breit {
+    grid-column: span 1;
+  }
+}
+.vp-msk-marken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-msk-spark {
+  display: block;
+  width: 100%;
+  height: 44px;
+  overflow: visible;
+}
+.vp-msk-spark .linie {
+  fill: none;
+  stroke: var(--vp-k-hue);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.vp-msk-spark .flaeche {
+  fill: var(--vp-k-soft);
+  opacity: 0.7;
+}
+.vp-msk-fehlt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-msk-weg {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 600 0.8125rem/1.35 var(--vp-font-heading);
+  color: var(--vp-action, #2563eb);
+  cursor: pointer;
+}
+.vp-msk-weg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2563eb));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-msk-skelett {
+  min-height: 188px;
+  background: linear-gradient(90deg, var(--vp-c-muted, #e9eff8), var(--vp-c-card, #fff), var(--vp-c-muted, #e9eff8));
+  background-size: 200% 100%;
+}

@@ -38,6 +38,7 @@ import type {
 import { dez, dezText } from './dez';
 import { dezKuerze } from './uemsBilanz';
 import {
+  UEMS_IM_STROMNETZ,
   UEMS_KOSTENSTELLE,
   UEMS_MESSSTELLE,
   UEMS_PROZESS,
@@ -310,11 +311,12 @@ function kartenZeile<T extends Tagesintervall>(e: {
   schluessel: (x: T) => string;
   woerter: (teile: T[]) => Woerter;
   heute: Tag;
+  leer?: string;
 }): KartenZeile {
   if (e.xs === null) {
     return { art: e.art, titel: e.titel, heute: null, leer: NICHT_ABRUFBAR, danach: null, historie: [], geladen: false };
   }
-  const leer = LEER[e.art];
+  const leer = e.leer ?? LEER[e.art];
   const text = (teile: T[]): Woerter => (teile.length ? e.woerter(teile) : { wert: leer, neben: null });
   const liste = abschnitte(e.xs, e.schluessel);
   const historie = liste
@@ -450,6 +452,63 @@ export function organisationKarte(
       }),
     ],
   };
+}
+
+// -------------------------------------------------------------------- Die eine Karte „Zuordnung“
+
+/**
+ * Konzept Messen m1, §6.4 Punkt 7: EINE Karte „Zuordnung“ statt der drei Karten Ort · Elektrisch · Organisation - je
+ * Zeile das Fachgebiet als leises Etikett, der Wert in Alltagswörtern („70 % Produktion Spritzguss · 30 % Montage“),
+ * darunter wo er hängt und seit wann, und ein „Ändern“. Die Abschnitte, die Historie und „geplant“ sind dieselben wie
+ * bisher (`kartenZeile`); nur die Wörter sind die der neuen Karte.
+ */
+export const ZEILE_ETIKETT: Record<AendernArt, string> = {
+  ort: 'Ort',
+  stellung: UEMS_IM_STROMNETZ,
+  prozesse: UEMS_PROZESS,
+  verteilung: 'Kostenstellen',
+};
+
+/** Ohne Zuordnung: was fehlt, ohne Fehlerton (Konzept §8.2 Punkt 2) - „ohne Kostenstelle“ ist ein Zustand. */
+export const LEER_ALLTAG: Record<AendernArt, string> = {
+  ort: KEIN_ORT,
+  stellung: 'Noch nicht im Stromnetz eingeordnet',
+  prozesse: 'Keinem Prozess zugeordnet',
+  verteilung: 'Keiner Kostenstelle zugerechnet',
+};
+
+function stellungImNetz(namen: Namen) {
+  return (teile: MessstelleStellungZuordnung[]): Woerter => {
+    const anlage = namen.anlage(teile[0].anlage);
+    return { wert: stellungWort(teile[0]), neben: anlage ? `Anlage ${anlage}` : null };
+  };
+}
+
+function anteilAlltag(teile: MessstelleVerteilungAnteil[]): Woerter {
+  return {
+    wert: [...teile]
+      .sort(nachKennzeichen((a) => a.kostenstelle.kennzeichen))
+      .map((a) => `${prozentText(normalAnteil(a.anteil_prozent))} ${a.name}`)
+      .join(' · '),
+    neben: null,
+  };
+}
+
+export function zuordnungZeilen(
+  m: Messstelle,
+  prozesse: readonly MessstelleProzessZuordnung[] | null,
+  anteile: readonly MessstelleVerteilungAnteil[] | null,
+  heute: Tag,
+  namen: Namen,
+): KartenZeile[] {
+  const z = <T extends Tagesintervall>(art: AendernArt, xs: readonly T[] | null, schluessel: (x: T) => string, woerter: (t: T[]) => Woerter) =>
+    kartenZeile({ art, titel: ZEILE_ETIKETT[art], xs, schluessel, woerter, heute, leer: LEER_ALLTAG[art] });
+  return [
+    z('ort', m.orte ?? [], ortSchluessel, ortWoerter(namen)),
+    z('stellung', m.elektrische_stellung ?? [], stellungSchluessel, stellungImNetz(namen)),
+    z('prozesse', prozesse, prozessSchluessel, prozessWoerter),
+    z('verteilung', anteile, anteilSchluessel, anteilAlltag),
+  ];
 }
 
 // -------------------------------------------------------------------- Zeitform
@@ -656,18 +715,33 @@ export function unveraendertFehler(
   b: ZuordnungsBestand,
   k: Kataloge,
 ): Partial<Record<AendernFeld, string>> {
-  if (!TAG.test(f.tag)) return {};
+  const g = unveraendertWas(art, f, b, k);
+  return g ? { [g.feld]: unveraendertSatz(f.tag, g.was) } : {};
+}
+
+/**
+ * Gilt am gewählten Tag schon genau, was im Formular steht? Dann das Feld und was gilt - die Grundlage von „es gibt
+ * nichts zu ändern“ ({@link unveraendertFehler}) und des grauen „Heute gilt: …“ im Dialog ({@link giltSchonSatz}).
+ * `null`, solange Tag oder Wert fehlen oder etwas anders ist.
+ */
+export function unveraendertWas(
+  art: AendernArt,
+  f: AendernFormular,
+  b: ZuordnungsBestand,
+  k: Kataloge,
+): { feld: AendernFeld; was: string } | null {
+  if (!TAG.test(f.tag)) return null;
   const tag = f.tag;
   if (art === 'ort') {
     const o = amTag(b.orte, tag)[0];
-    return f.ort && o?.kennzeichen === f.ort ? { ort: unveraendertSatz(tag, k.namen.ort(f.ort)?.name ?? f.ort) } : {};
+    return f.ort && o?.kennzeichen === f.ort ? { feld: 'ort', was: k.namen.ort(f.ort)?.name ?? f.ort } : null;
   }
   if (art === 'stellung') {
     const st = amTag(b.stellungen, tag)[0];
     const bezug = f.stellung === 'Unterzähler' ? f.unterzaehlerVon : '';
     const gleich =
       st && f.anlage && f.stellung && st.anlage === f.anlage && st.stellung === f.stellung && (st.unterzaehler_von ?? '') === bezug;
-    return gleich ? { stellung: unveraendertSatz(tag, stellungWort(st)) } : {};
+    return gleich ? { feld: 'stellung', was: stellungWort(st) } : null;
   }
   if (art === 'prozesse') {
     const heute = amTag(b.prozesse, tag);
@@ -675,17 +749,32 @@ export function unveraendertFehler(
       heute.map((p) => p.prozess.id),
       f.prozesse,
     )
-      ? { prozesse: unveraendertSatz(tag, prozessWoerter(heute).wert || LEER.prozesse) }
-      : {};
+      ? { feld: 'prozesse', was: prozessWoerter(heute).wert || LEER.prozesse }
+      : null;
   }
   const werte = f.anteile.map((a) => anteilWert(a.anteil));
-  if (werte.some((w) => w === null) || f.anteile.some((a) => !a.kostenstelle)) return {};
+  if (werte.some((w) => w === null) || f.anteile.some((a) => !a.kostenstelle)) return null;
   const heute = amTag(b.anteile, tag);
   const gleich = gleicheMenge(
     heute.map((a) => `${a.kostenstelle.id}|${normalAnteil(a.anteil_prozent)}`),
     f.anteile.map((a, i) => `${a.kostenstelle}|${werte[i]}`),
   );
-  return gleich ? { anteile: unveraendertSatz(tag, heute.length ? anteilWoerter(heute).wert : LEER.verteilung) } : {};
+  return gleich ? { feld: 'anteile', was: heute.length ? anteilAlltag(heute).wert : LEER.verteilung } : null;
+}
+
+const GILT_SCHON_WEG: Record<AendernArt, string> = {
+  ort: 'Wählen Sie einen anderen Ort, dann können Sie eintragen.',
+  stellung: 'Ändern Sie die Stellung, dann können Sie eintragen.',
+  prozesse: 'Wählen Sie andere Prozesse, dann können Sie eintragen.',
+  verteilung: 'Ändern Sie einen Anteil, dann können Sie eintragen.',
+};
+
+/**
+ * Konzept Messen m1 (§6.11 „Dialog ohne Änderung“, §8.1): grau statt rot - „Heute gilt: 70 % Produktion Spritzguss ·
+ * 30 % Montage. Ändern Sie einen Anteil, dann können Sie eintragen.“ Ein anderer Tag nennt seinen Tag.
+ */
+export function giltSchonSatz(art: AendernArt, tag: Tag, heute: Tag, was: string): string {
+  return `${tag === heute ? 'Heute gilt' : `Am ${datumText(tag)} gilt`}: ${was}. ${GILT_SCHON_WEG[art]}`;
 }
 
 function anteilePruefen(f: AendernFormular, k: Kataloge): string | null {

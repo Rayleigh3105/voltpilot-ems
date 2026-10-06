@@ -392,6 +392,17 @@ Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesun
 Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
 Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).
 
+**Seite einer Messstelle (Konzept Messen m1 §6.4/§6.5, Messen-Bau m2).**
+Der Kopf nennt Name und Kennzeichen, darunter Medium, Ort und Standort; der Lebenszyklus steht nur, wenn er nicht „aktiv“ ist.
+Die Zustandszeile sagt, ob Werte kommen; bei einem Ablesezähler mit „nächste bis {Tag}“, und oben steht genau ein Schritt: „Ablesung eintragen“.
+Die Leitkachel nennt die Menge des letzten vollständigen Monats in der Rolle der Messstelle („Verbrauch September 2026“, „Erzeugung …“, „Einspeisung …“) mit dem Vergleich zum Vorjahresmonat; daneben stehen „Zählerstand“ und bei einem Ablesezähler „Nächste Ablesung“ mit „im Plan“ oder „überfällig“.
+Die Werte heißen nach der Rolle: „Verbrauch je Monat“ (zwölf Monate als Balken), „Verbrauch am Tag“, „Verbrauch in der Woche“; ein Ablesezähler kennt nur Monat und Jahr.
+„Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“.
+Ohne Änderung steht im Dialog grau „Heute gilt: …“, und der Knopf wartet, bis etwas anders ist; das ist kein Fehler.
+Eine Ablesung „zählt zum“ Monat ihres Zeitraums: „Zählt zum Oktober 2026 – dem Zeitraum seit der letzten Ablesung am 01.10.“; die Wahl des Monats steht nur, wenn der Zeitraum mehr als einen Monat berührt.
+Die Zeitzone steht einmal am Fuß („Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 06.10.2026, 17:42“), am Uhrzeitfeld nur ihr Kürzel („MESZ“, „MEZ“).
+Kundenwörter: `UEMS_ZUORDNUNG`, `UEMS_IM_STROMNETZ`, `UEMS_NAECHSTE_ABLESUNG`, `UEMS_ABLESUNG_EINTRAGEN` (PORTAL/glossar.ts).
+
 ## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:

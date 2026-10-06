@@ -534,15 +534,17 @@
         "./bezugsPeriode:tagPlus",
         "./bezugsdaten:istGanzzahlig",
         "./bezugsdaten:zuordnung",
+        "./uemsOrtsbaum:lokalerTag",
         "./zahl:zahlText"
       ],
       "operationen": [
-        "betrag: g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\\u00a0') + (b ? `,${b}` : '')",
+        "betrag: (negativ ? '\\u2212' : '') + g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.')",
+        "betrag: (negativ ? '\\u2212' : '') + g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.') + (b ? `,${b}` : '')",
         "letzteFreiePeriode: -1",
         "monatsZuordnung: -1",
         "periodenFehler: Number.isFinite(Date.parse(von))"
       ],
-      "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
+      "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung. Messen m2 PR2: Tausenderpunkt und echtes Minus (AP-08 E11) sowie der Tag der letzten Ablesung im Satz „Zählt zum …“ sind Textformatierung."
     },
     "picker/zeitpunkt.ts": {
       "importe": [

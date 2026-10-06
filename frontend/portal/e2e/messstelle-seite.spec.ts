@@ -33,6 +33,7 @@ import { quellenDerMessstellenBuehne } from '../src/test/messstelleQuellenFixtur
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
 import {
+  antwort,
   f13Stunden,
   f13Tag,
   f13Viertelstunden,
@@ -52,17 +53,23 @@ import {
   ohneQuelleStunden,
   ohneQuelleTag,
   ohneQuelleViertelstunden,
+  MS_06,
+  MS_21,
+  schritt,
+  tagesgrenzen,
 } from '../src/test/werteKarteFixtures';
 import { f21Stunden, f21Tag, f21TagWert } from '../src/test/wertVersionenFixtures';
 import { MS_11, monatKarte, monatOhneQuelle, monatTage } from '../src/test/vergleichFixtures';
+import { monatPlus } from '../src/messstelleSeite';
 import { MS_10 } from '../src/test/werteKarteFixtures';
 
 // Der Vite-Dev-Server kompiliert den Modulgraphen beim ersten Zugriff kalt — großzügige Frist.
 const expect = baseExpect.configure({ timeout: 30_000 });
 
 /**
- * UEMS AP-04 IP-8 · die Messstellen-Seite am echten Baustein (Bühne `messstelle-seite.html`):
- * R2 — MS-06 mit drei Zuordnungs-Karten und dem Protokoll nach der Eintragung; Z4 — „Ort ändern“
+ * UEMS AP-04 IP-8 · die Messstellen-Seite am echten Baustein (Bühne `messstelle-seite.html`), seit Messen m2 im Aufbau
+ * des Konzepts Messen m1 §6.4 (Kacheln, Werte je Monat, EINE Karte „Zuordnung“, die Zone am Fuß):
+ * R2 — MS-06 mit der Karte „Zuordnung“ und dem Protokoll nach der Eintragung (im Dialog hinter seinem Verweis); Z4 — „Ort ändern“
  * für MS-08 ab 01.03.2027 („geplant“), gespeichert, Historie der Karte aus der Antwort; dazu das
  * Kennzeichen „rückwirkend (19 Tage)“ im Dialog „Prozesse ändern“. Misst bei jedem Bild: Dokument
  * und Dialog 0 px Querlauf, kein Element über dem Rand. `mobile-chromium` fährt 375 px (Pflicht des
@@ -125,7 +132,18 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
     if (verschiebe(von, 6) === bis) return nach({ tag: () => grundlastWoche(von, heute).tage, stunde: () => grundlastWoche(von, heute).stunden });
     if (von === '2026-10-01' && bis === '2026-10-31') return nach({ monat: f16Monat, tag: f16Tage });
     if (von === '2026-01-01' && bis === '2026-12-31') return nach({ jahr: () => jahr2026(heute).karte, monat: () => jahr2026(heute).monate });
+    // Messen m2 (Seite): die zwölf Balken, die Reihe der Leitkachel und ein Monat vor der Einführung mit seinen Tagen.
+    if (raster === 'monat') return monatsReihe(von, bis, ms06Monat) ?? (einMonat(von, bis) ? ms06Monat(von.slice(0, 7)) : null);
+    if (raster === 'tag' && einMonat(von, bis) && von < '2026-10-01') return ohneDatenTage(MS_06, von.slice(0, 7));
     return null;
+  }
+  if (kz === 'MS-21' && einMonat(von, bis)) {
+    return nach({ monat: () => monatOhneQuelle(MS_21, von.slice(0, 7)), tag: () => ohneQuelleTage(MS_21, von.slice(0, 7)) });
+  }
+  if (kz === 'MS-21' && raster === 'monat') return monatsReihe(von, bis, (m) => monatOhneQuelle(MS_21, m));
+  if (kz === 'MS-16' && raster === 'monat' && !einMonat(von, bis)) {
+    const lindach = ms16Oktober();
+    return monatsReihe(von, bis, (m) => (m === '2026-10' ? lindach : monatOhneQuelle(lindach.messstelle, m)));
   }
   // AP-13 IP-6: MS-21 ohne Datenquelle am 03.11.2026 (Z4), MS-16 im Oktober 2026 — die Bindung beginnt am 15.10. (O16).
   if (kz === 'MS-21' && von === '2026-11-03' && bis === von) {
@@ -137,6 +155,10 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
   // Bindung. MS-11 liegt als zweite Reihe daneben (Oktober 22 400, November 21 500).
   const vergleich = vergleichsMonat(kz, raster, von, bis);
   if (vergleich) return vergleich;
+  if (raster === 'monat' && (kz === 'MS-10' || kz === 'MS-11')) {
+    const messstelle = kz === 'MS-10' ? MS_10 : MS_11;
+    return monatsReihe(von, bis, (m) => vergleichsMonat(kz, 'monat', `${m}-01`, letzterTag(m)) ?? monatOhneQuelle(messstelle, m));
+  }
   if (kz === 'MS-10' && von === '2026-11-03' && bis === von) {
     // O1: die Lücke des Box-Ausfalls (F8) — sonst derselbe Tag nach Ersatzwert und Korrektur (F21).
     if (f8) return nach({ tag: f8Tag, stunde: f8Stunden, viertelstunde: f8Viertelstunden });
@@ -148,6 +170,56 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false)
   return null;
 }
 
+
+/** Der letzte Tag eines Monats (`JJJJ-MM-TT`). */
+const letzterTag = (monat: string): string => verschiebe(`${monatPlus(monat, 1)}-01`, -1);
+
+/** Fragt die Anfrage genau EINEN Kalendermonat? */
+const einMonat = (von: string, bis: string): boolean => von.endsWith('-01') && bis === letzterTag(von.slice(0, 7));
+
+/** Die Grenzen eines Kalendermonats in der Zone des Standorts, so wie die Route sie schreibt. */
+const monatsGrenzen = (monat: string) => ({ von: tagesgrenzen(`${monat}-01`).von, bis: tagesgrenzen(`${monatPlus(monat, 1)}-01`).von });
+
+/**
+ * Messen m2 (Seite): mehrere Monate im Raster Monat - die zwölf Balken und die Reihe der Leitkachel. Jeder Monat ist die
+ * Antwort, die die Bühne für ihn allein gibt; `null`, wenn die Anfrage keine ganzen Monate über mehr als einen fragt.
+ */
+function monatsReihe(von: string, bis: string, monatAllein: (monat: string) => MessstelleWerte): MessstelleWerte | null {
+  if (!von.endsWith('-01') || von.slice(0, 7) === bis.slice(0, 7) || bis !== letzterTag(bis.slice(0, 7))) return null;
+  const monate: string[] = [];
+  for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+  const antworten = monate.map(monatAllein);
+  return { ...antworten[0], bis: antworten[antworten.length - 1].bis, werte: antworten.flatMap((a) => a.werte) };
+}
+
+/** Ein Schritt mit Quelle, aber ohne Daten: „keine Werte“ ohne Zahl - nie 0. */
+const ohneDaten = (grenzen: { von: string; bis: string }) =>
+  schritt({ ...grenzen, zustand: 'keine Werte', fassung: null, version: null, gebildet_aus: null, versionen: null });
+
+/**
+ * MS-06 je Monat: gemessen wird seit der Einführung (01.10.2026, die Box kam mit ihr) - davor hat die rückwirkend
+ * gebundene Quelle keine Werte; der Oktober ist F16, danach ist noch nichts gebildet.
+ */
+function ms06Monat(monat: string): MessstelleWerte {
+  if (monat === '2026-10') return f16Monat();
+  const g = monatsGrenzen(monat);
+  if (monat < '2026-10') return antwort(MS_06, 'monat', g.von, g.bis, [ohneDaten(g)]);
+  return antwort(MS_06, 'monat', g.von, g.bis, [schritt({ ...g, fassung: null, version: null, gebildet_aus: null, versionen: null, grund: 'noch_nicht_gebildet' })]);
+}
+
+/** Die Tage eines Monats vor den ersten Daten (MS-06 vor der Einführung). */
+function ohneDatenTage(messstelle: MessstelleWerte['messstelle'], monat: string): MessstelleWerte {
+  const tage: string[] = [];
+  for (let t = `${monat}-01`; t.slice(0, 7) === monat; t = verschiebe(t, 1)) tage.push(t);
+  const g = monatsGrenzen(monat);
+  return antwort(messstelle, 'tag', g.von, g.bis, tage.map((t) => ohneDaten(tagesgrenzen(t))));
+}
+
+/** Die Tage eines Monats ohne führende Quelle (MS-21, Z4): jeder Tag `keine_quelle`. */
+function ohneQuelleTage(messstelle: MessstelleWerte['messstelle'], monat: string): MessstelleWerte {
+  const tage = ohneDatenTage(messstelle, monat);
+  return { ...tage, quellen: [], werte: tage.werte.map((w) => ({ ...w, grund: 'keine_quelle', quelle: null })) };
+}
 
 /** Die Monatsantworten, die nur der Vergleich braucht (AP-13 IP-5, O11/O12) — `null` = nicht gestellt. */
 function vergleichsMonat(kz: string, raster: string | null, von: string, bis: string): MessstelleWerte | null {
@@ -533,21 +605,31 @@ async function waehleTag(page: Page, dialog: Locator, iso: string) {
 
 const breiteFuer = (projekt: string) => (projekt.startsWith('mobile') ? 375 : 1440);
 
-test('R2 · MS-06: drei Zuordnungs-Karten und das Protokoll nach der Eintragung, ohne Querlauf', async ({ page }, info) => {
+test('R2 · MS-06: EINE Karte „Zuordnung“, woher die Werte kommen, das Protokoll hinter seinem Verweis, ohne Querlauf', async ({ page }, info) => {
   const breite = breiteFuer(info.project.name);
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page);
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06' })).toBeVisible();
-  await expect(page.getByTestId('quelle-karte')).toContainText('Unterzähler Spritzguss SG01–SG06');
-  const ort = page.getByTestId('karte-ort');
-  await expect(ort.getByText('Halle 1 · Werk Ahrenberg · seit 12.03.2024')).toBeVisible();
-  await expect(page.getByTestId('karte-elektrisch').getByText('Unterzähler von MS-01')).toBeVisible();
-  await expect(page.getByTestId('karte-organisation').getByText('4100 Spritzguss · 100 %')).toBeVisible();
-  await expect(page.getByText('Sortiert danach, wann die Änderung eingetragen wurde.')).toBeVisible();
-  await expect(page.locator('.vp-befehl').first()).toContainText('Quelle gebunden: Z-5a');
+  await expect(page.getByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06 MS-06' })).toBeVisible();
+  await expect(page.getByTestId('karte-herkunft').getByTestId('quelle-karte')).toContainText('Unterzähler Spritzguss SG01–SG06');
+  const zuordnung = page.getByTestId('karte-zuordnung');
+  await expect(zuordnung.getByTestId('zuordnung-ort').getByText('Halle 1 · Werk Ahrenberg · seit 12.03.2024')).toBeVisible();
+  await expect(zuordnung.getByTestId('zuordnung-stellung').getByText('Unterzähler von MS-01')).toBeVisible();
+  await expect(zuordnung.getByTestId('zuordnung-verteilung').getByText('100 % Spritzguss')).toBeVisible();
+  // Gemessen wird seit der Einführung am 01.10.2026: der letzte volle Monat (September) hat keine Werte - „—“, nie 0.
+  await expect(page.getByTestId('messstelle-kacheln')).toContainText('Verbrauch · September 2026');
+  await expect(page.getByTestId('werte').getByTestId('werte-karte')).toContainText('September 2026: —');
+  await expect(page.getByTestId('werte-zone')).toHaveText(/^Zeiten: Europe\/Berlin \(Zeitzone des Standorts Werk Ahrenberg\) · Stand 20\.10\.2026, \d{2}:\d{2}$/);
   await messeUndFotografiere(page, breite, 'r2-ms06');
+
+  const verweis = page.getByTestId('protokoll-verweis');
+  await expect(verweis).toContainText(/Einträge · zuletzt \d{2}\.\d{2}\.\d{4}/);
+  await verweis.click();
+  const protokoll = page.getByRole('dialog', { name: /^Änderungsprotokoll: / });
+  await expect(protokoll.getByText('Sortiert danach, wann die Änderung eingetragen wurde.')).toBeVisible();
+  await expect(protokoll.locator('.vp-befehl').first()).toContainText('Quelle gebunden: Z-5a');
+  await messeUndFotografiere(page, breite, 'r2-protokoll', { dialog: true });
 });
 
 test('AP-16 IP-17 · R9: Befund-Zeile unter der Quelle-Karte — 1,1 % passt, 3,4 % bitte prüfen, ohne Ursache', async ({ page }, info) => {
@@ -633,7 +715,7 @@ test('F10 · Verteilen: 70/30 ergibt live 100 %, 90 % sperrt das Eintragen mit d
   const gesendet = await cloud(page);
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
 
-  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  await page.getByRole('button', { name: 'Kostenstellen ändern' }).click();
   const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
   await dialog.getByLabel('Anteil (%)').first().fill('70');
   await dialog.getByRole('button', { name: 'Kostenstelle hinzufügen' }).click();
@@ -659,7 +741,7 @@ test('Doppelzählung beim Setzen (Folge PR 1127): gespeichert, der Dialog nennt 
   const gesendet = await cloud(page, { doppelt: true });
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
 
-  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  await page.getByRole('button', { name: 'Kostenstellen ändern' }).click();
   const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
   await dialog.getByLabel('Anteil (%)').first().fill('70');
   await dialog.getByRole('button', { name: 'Kostenstelle hinzufügen' }).click();
@@ -676,7 +758,7 @@ test('Doppelzählung beim Setzen (Folge PR 1127): gespeichert, der Dialog nennt 
 
   await dialog.getByRole('button', { name: 'Verstanden' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByTestId('karte-organisation')).toContainText('Verteilung ab 20.10.2026 eingetragen');
+  await expect(page.getByTestId('zuordnung-verteilung')).toContainText('Verteilung ab 20.10.2026 eingetragen');
   await messeUndFotografiere(page, breite, 'doppelt-nach-verstanden');
   expect(gesendet.map((g) => `${g.methode} ${g.pfad}`)).toEqual([`PUT /api/v1/messstellen/${MS_IDS.ms06}/verteilung`]);
 });
@@ -687,7 +769,7 @@ test('F12 · das Ziel 9000 zeigt sein gemeinsames Ende mit der Kostenstelle', as
   await cloud(page);
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
 
-  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  await page.getByRole('button', { name: 'Kostenstellen ändern' }).click();
   const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
   const liste = await listeVon(page, dialog.getByRole('combobox', { name: 'Kostenstelle 1' }));
   await liste.getByRole('option', { name: /^9000 Infrastruktur/ }).click();
@@ -702,7 +784,7 @@ test('F13 · neue Verteilung ab 15.01.2027: rückwirkend fünf Tage, danach zwei
   const gesendet = await cloud(page, { heute: '2027-01-20' });
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
 
-  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  await page.getByRole('button', { name: 'Kostenstellen ändern' }).click();
   const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
   await dialog.getByLabel('Anteil (%)').first().fill('60');
   await dialog.getByRole('button', { name: 'Kostenstelle hinzufügen' }).click();
@@ -717,9 +799,10 @@ test('F13 · neue Verteilung ab 15.01.2027: rückwirkend fünf Tage, danach zwei
 
   await dialog.getByRole('button', { name: 'Verteilung ab 15.01.2027 eintragen' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  const organisation = page.getByTestId('karte-organisation');
-  await expect(organisation.getByText('Fassungen (2)')).toBeVisible();
-  await organisation.getByText('Fassungen (2)').click();
+  // Konzept Messen m1: EIN Wort für die Abschnitte jeder Zeile - „Historie“, auch für die Fassungen der Verteilung.
+  const organisation = page.getByTestId('zuordnung-verteilung');
+  await expect(organisation.getByText('Historie (2)')).toBeVisible();
+  await organisation.getByText('Historie (2)').click();
   await expect(organisation).toContainText('Fassung 2');
   await expect(organisation).toContainText('Fassung 1');
   await expect(organisation).toContainText('01.10.2026 bis 14.01.2027');
@@ -734,11 +817,11 @@ test('Z4 · MS-08: Ort ändern ab 01.03.2027 → geplant → gespeichert, Histor
   const gesendet = await cloud(page);
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms08}`);
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Kühlung Kaltwassersatz' })).toBeVisible();
-  await expect(page.getByTestId('karte-ort').getByText('Halle 1 Süd')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Kühlung Kaltwassersatz MS-08' })).toBeVisible();
+  await expect(page.getByTestId('zuordnung-ort').getByText('Halle 1 Süd')).toBeVisible();
   await messeUndFotografiere(page, breite, 'z4-ms08-vorher');
 
-  await page.getByRole('button', { name: 'Ort ändern ab …' }).click();
+  await page.getByRole('button', { name: 'Ort ändern' }).click();
   const dialog = page.getByRole('dialog', { name: 'Ort ändern' });
   await expect(dialog).toBeVisible();
   const ortListe = await listeVon(page, dialog.getByRole('combobox', { name: 'Neuer Ort *' }));
@@ -752,14 +835,17 @@ test('Z4 · MS-08: Ort ändern ab 01.03.2027 → geplant → gespeichert, Histor
 
   await dialog.getByRole('button', { name: 'Ort ab 01.03.2027 eintragen' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  const ort = page.getByTestId('karte-ort');
+  const ort = page.getByTestId('zuordnung-ort');
   await expect(ort.getByText('Ort ab 01.03.2027 eingetragen · geplant.')).toBeVisible();
   await expect(ort.getByText('ab 01.03.2027: Halle 2 Montage')).toBeVisible();
   await ort.getByText('Historie (2)').click();
   await expect(ort.locator('.vp-mss-h').first()).toContainText('Halle 2 Montage');
-  await expect(page.locator('.vp-befehl').first()).toContainText('Ort zugeordnet: B-3');
-  await expect(page.locator('.vp-befehl').first()).toContainText('angekündigt');
   await messeUndFotografiere(page, breite, 'z4-ms08-nachher');
+  // Das Protokoll hinter seinem Verweis: der Eintrag von heute steht oben, obwohl er erst 2027 gilt.
+  await page.getByTestId('protokoll-verweis').click();
+  const protokoll = page.getByRole('dialog', { name: /^Änderungsprotokoll: / });
+  await expect(protokoll.locator('.vp-befehl').first()).toContainText('Ort zugeordnet: B-3');
+  await expect(protokoll.locator('.vp-befehl').first()).toContainText('angekündigt');
 
   expect(gesendet.map((g) => `${g.methode} ${g.pfad}`)).toEqual([`PUT /api/v1/messstellen/${MS_IDS.ms08}/ort`]);
   expect(gesendet[0].body).toEqual({ kennzeichen: 'B-3', gueltig_ab: '2027-03-01' });
@@ -771,8 +857,8 @@ test('rückwirkend · MS-08 am 01.10.2026: Ort ab 12.03.2024 trägt „rückwirk
   const gesendet = await cloud(page, { angelegt: true });
   await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms08}`);
 
-  await expect(page.getByTestId('karte-ort').getByText('Kein Ort zugeordnet')).toBeVisible();
-  await page.getByRole('button', { name: 'Ort ändern ab …' }).click();
+  await expect(page.getByTestId('zuordnung-ort').getByText('Kein Ort zugeordnet')).toBeVisible();
+  await page.getByRole('button', { name: 'Ort ändern' }).click();
   const dialog = page.getByRole('dialog', { name: 'Ort ändern' });
   await expect(dialog).toBeVisible();
   const ortListe = await listeVon(page, dialog.getByRole('combobox', { name: 'Neuer Ort *' }));
@@ -801,20 +887,27 @@ const werteZeile = (werte: Locator, name: string) =>
 
 const adresse = (hash: string) => new RegExp(`${hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
 
-test('O14 · MS-06 am 26.10.2026: „Werte“ unter dem Kopf — Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg), der 25-Stunden-Tag mit MESZ und MEZ', async ({ page }, info) => {
+test('O14 · MS-06 am 26.10.2026: „Verbrauch am Tag“ unter den Kacheln — die Zone EINMAL am Fuß, der 25-Stunden-Tag mit MESZ und MEZ', async ({ page }, info) => {
   const breite = breiteFuer(info.project.name);
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page, { heute: '2026-10-26' });
-  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+  // Claudia öffnet den 25.10.2026, den Sonntag der Zeitumstellung (ein Sprung mit Periode, wie aus der Wiedervorlage).
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-25`);
 
   const werte = page.getByTestId('werte');
-  await expect(werte.getByRole('heading', { level: 2, name: 'Werte' })).toBeVisible();
-  // Claudia öffnet MS-06 am 26.10.2026 — die Sektion zeigt den Vortag, den Sonntag der Zeitumstellung.
+  await expect(werte.getByRole('heading', { level: 2, name: 'Verbrauch am Tag' })).toBeVisible();
   const karte = werte.getByTestId('werte-karte');
   await expect(karte).toContainText(/720\skWh/);
   await expect(karte).toContainText('25 Stunden (Zeitumstellung)');
   await expect(karte.getByTestId('werte-fassung')).toHaveText('endgültig');
-  await expect(werte.getByTestId('werte-zone')).toHaveText('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)');
+  await expect(page.getByTestId('werte-zone')).toHaveText(
+    'Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 26.10.2026, 00:00',
+  );
+  await expect(werte.getByTestId('werte-zone')).toHaveCount(0);
+  // Die Stunden stehen unter „Alle Werte des Zeitraums“ - zugeklappt, bis jemand sie lesen will.
+  const alle = werte.locator('details.vp-wk-alle');
+  await expect(alle).not.toHaveAttribute('open', '');
+  await alle.locator('summary').click();
   await expect(werte.getByTestId('werte-zeile')).toHaveCount(25);
   await expect(werteZeile(werte, '02:00–03:00 MESZ')).toHaveCount(1);
   await expect(werteZeile(werte, '02:00–03:00 MEZ')).toHaveCount(1);
@@ -827,25 +920,17 @@ test('O14 · MS-06 am 26.10.2026: „Werte“ unter dem Kopf — Zeiten in Europ
   await expect(verlauf.getByTestId('verlauf-legende')).toHaveText('vollständig');
   await expect(verlauf).toContainText(/So 25\.10\.2026: 720\skWh · vollständig · endgültig/);
 
-  // Unter dem Kopf, vor den Zuordnungs-Karten — EIN Ort für Stammdaten und Zahlen (E9).
+  // Konzept Messen m1 §6.4: Kacheln über die volle Breite, darunter die Werte - am Rechner links, die Zuordnung rechts
+  // daneben; am Telefon darunter.
   const unten = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().bottom);
   const oben = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().top);
-  expect(await oben(werte)).toBeGreaterThanOrEqual(await unten(page.locator('.vp-mss-kopf')));
-  expect(await oben(page.getByTestId('karte-ort'))).toBeGreaterThan(await oben(werte));
-  if (breite === 1440) {
-    // Am Rechner steht die Liste neben der Karte, nicht 1 100 px darunter.
-    const k = (await karte.boundingBox())!;
-    const l = (await werte.locator('.vp-wk-liste').boundingBox())!;
-    expect(l.x).toBeGreaterThan(k.x + k.width);
-  }
+  expect(await oben(werte)).toBeGreaterThanOrEqual(await unten(page.getByTestId('messstelle-kacheln')));
+  const w = (await werte.boundingBox())!;
+  const z = (await page.getByTestId('karte-zuordnung').boundingBox())!;
+  if (breite === 1440) expect(z.x).toBeGreaterThanOrEqual(w.x + w.width);
+  else expect(z.y).toBeGreaterThanOrEqual(w.y + w.height);
   await messeUndFotografiere(page, breite, 'o14-ms06-werte');
   await werteBild(werte, breite, 'o14-werte');
-  if (BILDER && breite === 1440) {
-    // Vorschau der NICHT gebauten Variante B (eine Spalte wie im Dialog) — nur als Bild, nicht im Code.
-    const stil = await page.addStyleTag({ content: '.vp-mss-werte .vp-wk { grid-template-columns: minmax(0, 40rem) !important; }' });
-    await werteBild(werte, breite, 'variante-b-eine-spalte');
-    await stil.evaluate((el) => el.remove());
-  }
 });
 
 test('O13 · Einstieg: die ganze Reihe der Liste öffnet die Messstelle, ihre Werte stehen dort (Konzept Messen m1 §6.2)', async ({ page }, info) => {
@@ -863,7 +948,7 @@ test('O13 · Einstieg: die ganze Reihe der Liste öffnet die Messstelle, ihre We
   await expect(page).toHaveURL(adresse(`#/portfolio/messstellen/${MS_IDS.ms06}`));
   const werte = page.getByTestId('werte');
   await expect(werte.getByTestId('werte-karte')).toBeVisible();
-  await expect(werte.getByTestId('werte-zone')).toHaveText('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)');
+  await expect(page.getByTestId('werte-zone')).toHaveText(/^Zeiten: Europe\/Berlin \(Zeitzone des Standorts Werk Ahrenberg\) · Stand /);
   await messeUndFotografiere(page, breite, 'o13-seite-werte');
 
   // „zurück“ führt in die Liste.
@@ -911,14 +996,14 @@ test('O1 · MS-10 am 04.11.2026: der Verlauf des 03.11. — die Lücke als Fläc
   const breite = breiteFuer(info.project.name);
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page, { heute: '2026-11-04', f8: true });
-  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms10}`);
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms10}?periode=2026-11-03`);
 
-  // WAS gemessen wurde, WELCHER Zeitraum und WARUM die Zahl eingeschränkt ist — die Karte des Tages …
+  // WAS gemessen wurde, WELCHER Zeitraum und WARUM die Zahl eingeschränkt ist — die Zeile des Tages …
   const werte = page.getByTestId('werte');
   const karte = werte.getByTestId('werte-karte');
   await expect(karte).toContainText(/2\.304\skWh/);
   await expect(karte.getByTestId('werte-verlauf')).toHaveText(/^Verlauf 85\s% · 1 Lücke$/);
-  await expect(werte.getByTestId('werte-zone')).toHaveText(/^Zeiten in Europe\/Berlin \(Zeitzone des Standorts/);
+  await expect(page.getByTestId('werte-zone')).toHaveText(/^Zeiten: Europe\/Berlin \(Zeitzone des Standorts/);
 
   // … und darunter der Verlauf: 96 Viertelstunden, 13 ohne Werte als EINE Fläche, darin kein Balken — keine Null.
   const verlauf = werte.getByTestId('verlauf');
@@ -1003,27 +1088,36 @@ test('E5 · MS-06: Tag · Woche · Monat · Jahr im Raster der Route — die Woc
   await messeUndFotografiere(page, breite, 'e5-woche');
   await werteBild(werte, breite, 'e5-woche');
 
+  // Messen m2 (Seite): Monat und Jahr stehen als Balken - zwölf Monate bis zum gewählten, das Jahr mit seinen Monaten.
   await wahl.getByRole('tab', { name: 'Monat' }).click();
   await expect(page).toHaveURL(adresse(`${MS_IDS.ms06}?periode=2026-10`));
-  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(31);
-  await expect(verlauf).toContainText(/Oktober 2026: 55\.100\skWh · vollständig · vorläufig/);
+  await expect(werte.getByRole('heading', { level: 2, name: 'Verbrauch je Monat' })).toBeVisible();
+  const balken = werte.getByTestId('monatsbalken').locator('.vp-mb-balken');
+  await expect(balken).toHaveCount(12);
+  await expect(balken.last()).toHaveAttribute('aria-pressed', 'true');
+  await expect(balken.last()).toHaveAccessibleName(/^Oktober 2026: 55\.100\skWh · vollständig$/);
+  await expect(werte.getByTestId('werte-karte')).toContainText(/Oktober 2026: 55\.100\skWh/);
+  await expect(werte.getByTestId('werte-fassung')).toHaveText('vorläufig');
+  await expect(verlauf).toHaveCount(0);
   await page.mouse.move(0, 0);
   await werteBild(werte, breite, 'e5-monat');
 
   await wahl.getByRole('tab', { name: 'Jahr' }).click();
   await expect(page).toHaveURL(adresse(`${MS_IDS.ms06}?periode=2026`));
-  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(12);
-  await expect(verlauf.getByTestId('verlauf-luecke')).toHaveCount(1);
-  await expect(verlauf.getByTestId('verlauf-ereignis')).toContainText('keine Werte von Januar 2026 bis September 2026');
-  await expect(werte.getByTestId('werte-zeile')).toHaveCount(12);
+  await expect(balken).toHaveCount(12);
+  await expect(balken.first()).toHaveAccessibleName(/^Januar 2026: — · keine Werte$/);
+  await expect(balken.nth(9)).toHaveAccessibleName(/^Oktober 2026: 55\.100\skWh/);
+  await expect(werte.getByTestId('werte-zeile')).toHaveCount(0);
   await expect(werte.getByRole('button', { name: 'Nächster Zeitraum' })).toBeDisabled();
   await page.mouse.move(0, 0);
   await messeUndFotografiere(page, breite, 'e5-jahr');
   await werteBild(werte, breite, 'e5-jahr');
 
-  // Neu geladen trägt die Adresse das Jahr — die Sektion öffnet es wieder.
+  // Neu geladen trägt die Adresse das Jahr — die Sektion öffnet es wieder; ein Balken wählt seinen Monat.
   await page.reload();
-  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(12);
+  await expect(werte.getByTestId('werte-jahr')).toHaveText('2026');
+  await balken.nth(9).click();
+  await expect(page).toHaveURL(adresse(`${MS_IDS.ms06}?periode=2026-10`));
 });
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -1062,7 +1156,7 @@ test('A10 · MS-21 Gas ohne Datenquelle: der Leerzustand bietet keinen Katalog-Q
   await werteBild(werte, breite, 'z4-ms21-ohne-quelle');
 });
 
-test('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, darunter die 17 Tage ab 15.10. — die Fläche summiert nichts', async ({ page }, info) => {
+test('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, der Balken des Monats bleibt leer — die Fläche summiert nichts', async ({ page }, info) => {
   const breite = breiteFuer(info.project.name);
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await cloud(page, { heute: '2026-11-05' });
@@ -1073,10 +1167,12 @@ test('O16 · MS-16 im Oktober 2026 (W5): „—“ mit dem Satz der Route, darun
   await expect(karte.getByTestId('werte-grund')).toHaveText(
     'Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler Lindach (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.',
   );
-  await expect(karte.locator('.vp-wk-zahl')).toHaveText('—');
+  await expect(karte.locator('.vp-wk-summe-zahl')).toHaveText('—');
   await expect(karte).not.toContainText(/9\.100/);
-  await expect(werte.getByTestId('werte-zeile')).toHaveCount(31);
-  await expect(werte.getByTestId('werte-zeile').filter({ hasText: 'vollständig' })).toHaveCount(17);
+  // Der Balken des Oktobers bleibt leer - die Fläche summiert die 17 Tage nicht selbst.
+  const oktober = werte.getByTestId('monatsbalken').locator('.vp-mb-balken').last();
+  await expect(oktober).toHaveAttribute('aria-pressed', 'true');
+  await expect(oktober.locator('.vp-mb-saeule')).toHaveClass(/is-leer/);
   await page.mouse.move(0, 0);
   await messeUndFotografiere(page, breite, 'o16-ms16-seite');
   await elementBild(karte, breite, 'o16-ms16-karte');
@@ -1115,7 +1211,7 @@ test('D1 · die Quelle einer Messstelle führt zur Komponente auf der Geräte-Se
   await page.goto('/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen');
   // Konzept Messen m1: die ganze Reihe ist der Verweis auf die Messstelle; dort steht die Quelle mit ihrem Sprung.
   await page.getByTestId('messstelle-reihe').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) }).click();
-  const quelle = page.locator('.vp-mss-kopf a.vp-mss-quelle-sprung');
+  const quelle = page.getByTestId('karte-herkunft').locator('a.vp-mss-quelle-sprung');
   await expect(quelle).toHaveText('Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a');
   await expect(quelle).toHaveAttribute('href', /^#\/anlage\/[0-9a-f-]+\/modell\?komponente=[0-9a-f-]+$/);
   await messeUndFotografiere(page, breite, 'ip11-d1-quelle');
@@ -1193,6 +1289,9 @@ test('O11 · MS-10 November 2026: „Vorperiode“ legt den Oktober als zweite R
   const werte = page.getByTestId('werte');
   const vergleich = werte.getByTestId('vergleich');
   await expect(werte.getByTestId('werte-karte')).toContainText(/35\.800\skWh/);
+  // Auf der Seite ist der Vergleich zugeklappt, bis jemand vergleichen will (Inhalt vor Werkzeug) - ohne Verlauf.
+  await expect(werte.getByTestId('verlauf')).toHaveCount(0);
+  await werte.locator('details.vp-wk-vergleich-auf > summary').click();
   // „aus“ ist die Vorgabe: eine Reihe, keine Δ-Zeile.
   await expect(vergleich.getByRole('tab', { name: 'aus' })).toHaveAttribute('aria-selected', 'true');
   await expect(werte.getByTestId('vergleich-delta')).toHaveCount(0);
@@ -1219,6 +1318,7 @@ test('O11 · „Vorjahr“ ohne Basis: November 2025 liegt vor dem Beginn — de
   await page.goto(MS10_HASH);
 
   const werte = page.getByTestId('werte');
+  await werte.locator('details.vp-wk-vergleich-auf > summary').click();
   await werte.getByTestId('vergleich').getByRole('tab', { name: 'Vorjahr' }).click();
   const delta = werte.getByTestId('vergleich-delta');
   await expect(delta).toHaveText('November 2025: keine Werte — vor Beginn');
@@ -1251,6 +1351,7 @@ test('O12 · „Weitere Messstelle“: MS-11 daneben, die anderen mit ihrem Grun
 
   const werte = page.getByTestId('werte');
   await expect(werte.getByTestId('werte-karte')).toContainText(/36\.900\skWh/);
+  await werte.locator('details.vp-wk-vergleich-auf > summary').click();
 
   const liste = await listeVon(page, werte.getByRole('combobox', { name: 'Weitere Messstelle' }));
   await expect(liste.getByRole('option', { name: /MS-11/ })).toBeVisible();
