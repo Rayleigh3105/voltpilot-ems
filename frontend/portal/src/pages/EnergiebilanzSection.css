@@ -109,6 +109,11 @@
   overflow-wrap: anywhere;
 }
 
+/* Ein Kennzeichen („AZ-8“) bricht nie am Bindestrich um. */
+.vp-eb-kz {
+  white-space: nowrap;
+}
+
 .vp-eb-leer-titel {
   margin: 0;
   font-weight: 600;

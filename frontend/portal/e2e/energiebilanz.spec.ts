@@ -206,6 +206,27 @@ for (const breite of BREITEN) {
     if (BILDER) await page.getByTestId('energiebilanz').screenshot({ path: join(BILDER, `rest-angelegt-${breite}.png`) });
   });
 
+  /** Konzept Auswerten a1, Befund 3: Abzweige ohne Vorgänger zählen nicht mit und werden benannt, nie still weggelassen. */
+  test(`Abzweige außerhalb der Bilanz bei ${breite} px: benannt, ein Kennzeichen bricht nie um`, async ({ page }) => {
+    const fehler: string[] = [];
+    // AZ-7/AZ-8 stehen nicht im Register der Bühne: ohne Namen steht nur das Kennzeichen (nie geraten).
+    await oeffne(page, 'an=AN-1&ausserhalb=AZ-7,AZ-8', breite, fehler);
+    const satz = page.getByTestId('energiebilanz-ausserhalb');
+    await expect(satz).toHaveText('2 Zähler hängen als Abzweig neben dem Hauptzähler und zählen hier nicht mit: AZ-7, AZ-8.');
+    // Die Rest-Zahl bleibt die der Stellung: die Abzweige gehen weder in „zugeordnet“ noch in den Rest ein.
+    await expect(zahl(page, 'rest')).toHaveText(nb('54.580 kWh'));
+    // Je Kennzeichen eine Zeilenbox und kein Umbruch erlaubt - auch dort, wo der Satz gerade nicht am Bindestrich bricht.
+    const zeilen = await satz
+      .locator('.vp-eb-kz')
+      .evaluateAll((els) => els.map((el) => [el.textContent, el.getClientRects().length, getComputedStyle(el).whiteSpace]));
+    expect(zeilen).toEqual([
+      ['AZ-7', 1, 'nowrap'],
+      ['AZ-8', 1, 'nowrap'],
+    ]);
+    const m = await pruefeRahmen(page, 'ausserhalb-halle1', breite, fehler);
+    await ablegen(page, 'ausserhalb-halle1', breite, m);
+  });
+
   test(`Rest anlegen ohne Recht bei ${breite} px: kein Knopf, der Satz sagt, wer es darf`, async ({ page }) => {
     const fehler: string[] = [];
     await oeffne(page, 'an=AN-2&rest=vorschlag&person=CB', breite, fehler);

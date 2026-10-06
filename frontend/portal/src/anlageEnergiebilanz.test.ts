@@ -8,9 +8,11 @@ import {
   REST_ANGELEGT,
   STELLUNG_GEAENDERT,
   ausloeserText,
+  ausserhalbSatz,
   darf,
   energiebilanzBild,
   energiebilanzHash,
+  kennzeichenTeile,
   hatHauptzaehler,
   liveBild,
   mitEnergiebilanz,
@@ -401,5 +403,50 @@ describe('AP-07 IP-18b Summen-Wächter — geteilter Punkt im Abschnitt', () => 
     ]);
     expect(nachher.hauptzaehler[0].abschnitte[0].tage).toEqual(vorher.hauptzaehler[0].abschnitte[0].tage);
     expect(alleTexte(nachher)).not.toContain('sunspec');
+  });
+});
+
+describe('Konzept Auswerten a1, Befund 3 - Abzweige außerhalb der Bilanz werden benannt', () => {
+  const namen = new Map([
+    ['MS-20', 'Spritzguss'],
+    ['AZ-2', 'Zähler Montage'],
+  ]);
+
+  it('nennt einen oder mehrere Abzweige mit Namen und Kennzeichen; ohne Abzweig kein Satz', () => {
+    expect(ausserhalbSatz([], { namen })).toBeNull();
+    expect(ausserhalbSatz(['MS-20'], { namen })?.satz).toBe(
+      '1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: Spritzguss (MS-20).',
+    );
+    // Ohne Namen im Register steht nur das Kennzeichen - nie geraten.
+    expect(ausserhalbSatz(['MS-20', 'AZ-2', 'AZ-9'], { namen })?.satz).toBe(
+      '3 Zähler hängen als Abzweig neben dem Hauptzähler und zählen hier nicht mit: Spritzguss (MS-20), Zähler Montage (AZ-2), AZ-9.',
+    );
+  });
+
+  it('teilt den Satz an den Kennzeichen, damit „AZ-8“ nie am Bindestrich umbricht', () => {
+    const bild = ausserhalbSatz(['AZ-8', 'MS-20'], { namen: new Map([['AZ-8', 'Zähler Gebäudetechnik']]) });
+    expect(bild?.teile.map((t) => t.text).join('')).toBe(bild?.satz);
+    expect(bild?.teile.filter((t) => t.kennzeichen).map((t) => t.text)).toEqual(['AZ-8', 'MS-20']);
+    // Nur ganze Kennzeichen: „MS-2“ zerschneidet „MS-20“ nicht, gleich in welcher Reihenfolge; Sonderzeichen sind keine Muster.
+    expect(kennzeichenTeile('a MS-20 b MS-2 c (X.1)', ['MS-2', 'MS-20', 'X.1'])).toEqual([
+      { text: 'a ', kennzeichen: false },
+      { text: 'MS-20', kennzeichen: true },
+      { text: ' b ', kennzeichen: false },
+      { text: 'MS-2', kennzeichen: true },
+      { text: ' c (', kennzeichen: false },
+      { text: 'X.1', kennzeichen: true },
+      { text: ')', kennzeichen: false },
+    ]);
+    expect(kennzeichenTeile('XA1', ['X.1'])).toEqual([{ text: 'XA1', kennzeichen: false }]);
+    expect(kennzeichenTeile('MS-20', ['MS-2']).filter((t) => t.kennzeichen)).toEqual([]);
+  });
+
+  it('trägt den Satz in den Abschnitt der Bilanz, aus dem Feld `ausserhalb` der Route', () => {
+    const roh = ahrenbergBilanz(an2, 'monat', '2026-10-01');
+    expect(energiebilanzBild(roh, ctx()).hauptzaehler[0].abschnitte[0].ausserhalb).toBeNull();
+    roh.hauptzaehler[0].abschnitte[0].ausserhalb = ['MS-20'];
+    expect(energiebilanzBild(roh, { ...ctx(), namen }).hauptzaehler[0].abschnitte[0].ausserhalb?.satz).toBe(
+      '1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: Spritzguss (MS-20).',
+    );
   });
 });

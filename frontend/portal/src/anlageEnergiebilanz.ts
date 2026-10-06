@@ -70,6 +70,14 @@ export const ANTEIL_WORT: Record<BilanzEingang['anteil'], string | null> = {
 export const UNTERZAEHLER_ANZAHL = '{n} Unterzähler';
 export const MESSSTELLEN_ANZAHL = { singular: '{n} Messstelle', plural: '{n} Messstellen' } as const;
 export const KEIN_UNTERZAEHLER = 'kein Unterzähler in der Stellung';
+/**
+ * Konzept Auswerten a1, Befund 3 - der Bilanz-Vertrag: „Abzweig ohne Vorgänger = außerhalb der Bilanz (benannt)“. Gemessene
+ * Abzweige desselben Systems zählen in dieser Bilanz nicht mit; die Seite nennt sie, statt still nur den Rest zu melden.
+ */
+export const AUSSERHALB_SATZ = {
+  singular: '1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: {namen}.',
+  plural: '{n} Zähler hängen als Abzweig neben dem Hauptzähler und zählen hier nicht mit: {namen}.',
+} as const;
 /** AP-10 §5.2 (F6): der Hilfe-Satz zum negativen Rest — er nennt keine Ursache. */
 export const HILFE_NEGATIV = 'Die Unterzähler zählen mehr als der Hauptzähler. VoltPilot nennt keine Ursache.';
 
@@ -218,6 +226,14 @@ export interface AbschnittBild {
   tage: TagBild[];
   /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): je Fund ein Satz; leer ohne Fund. */
   geteilt: string[];
+  /** Die Abzweige außerhalb dieser Bilanz, benannt (Bilanz-Vertrag); `null` ohne Abzweig. */
+  ausserhalb: AusserhalbBild | null;
+}
+
+/** Der Satz zu den Abzweigen außerhalb der Bilanz, in Stücke geteilt: ein Kennzeichen bricht nie am Bindestrich um. */
+export interface AusserhalbBild {
+  satz: string;
+  teile: { text: string; kennzeichen: boolean }[];
 }
 
 export interface LiveBild {
@@ -254,6 +270,8 @@ export interface BilanzKontext {
   heute: string;
   /** Die Herkunfts-Art je Kennzeichen aus dem Register — fehlt eine, steht kein Wort (nie geraten). */
   arten: ReadonlyMap<string, MessstellenArt>;
+  /** Der Name je Kennzeichen aus dem Register - fehlt einer, steht nur das Kennzeichen. */
+  namen?: ReadonlyMap<string, string>;
   /**
    * AP-13 IP-11 (D2): die Periode DIESER Fläche. Jeder Sprung einer Zeile nimmt sie mit — ohne sie
    * landet der Kunde auf der Messstelle bei einer anderen Zahl als der, auf die er geklickt hat.
@@ -590,8 +608,34 @@ function hauptzaehlerBild(h: BilanzHauptzaehler, zone: string, ctx: BilanzKontex
         zeilen: zeilenBild(w, ab, h, zone, ctx),
       })),
       geteilt: (ab.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen)),
+      ausserhalb: ausserhalbSatz(ab.ausserhalb ?? [], ctx),
     })),
   };
+}
+
+/** Die Abzweige außerhalb der Bilanz als ein Satz mit Namen und Kennzeichen; `null` ohne Abzweig. */
+export function ausserhalbSatz(kennzeichen: readonly string[], ctx: Pick<BilanzKontext, 'namen'>): AusserhalbBild | null {
+  if (kennzeichen.length === 0) return null;
+  const namen = kennzeichen.map((k) => {
+    const name = ctx.namen?.get(k);
+    return name && name !== k ? `${name} (${k})` : k;
+  });
+  const satz = fuelle(kennzeichen.length === 1 ? AUSSERHALB_SATZ.singular : AUSSERHALB_SATZ.plural, { n: kennzeichen.length, namen: namen.join(', ') });
+  return { satz, teile: kennzeichenTeile(satz, kennzeichen) };
+}
+
+/**
+ * Teilt einen Satz an den genannten Kennzeichen; die Fläche setzt jedes Kennzeichen-Stück ohne Umbruch. Ein Kennzeichen
+ * zählt nur als ganzes Wort: „MS-2“ trifft nicht den Anfang von „MS-20“.
+ */
+export function kennzeichenTeile(satz: string, kennzeichen: readonly string[]): { text: string; kennzeichen: boolean }[] {
+  const muster = [...new Set(kennzeichen)].filter(Boolean);
+  if (muster.length === 0) return [{ text: satz, kennzeichen: false }];
+  const trenner = new RegExp(`(?<![\\p{L}\\p{N}-])(${muster.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\p{L}\\p{N}-])`, 'u');
+  return satz
+    .split(trenner)
+    .filter((t) => t !== '')
+    .map((text) => ({ text, kennzeichen: muster.includes(text) }));
 }
 
 /** Die ganze Fläche einer Antwort: Kopf, Leerzustand ohne Hauptzähler, je Hauptzähler Live-Zeile, Vorschlag, Abschnitte. */
