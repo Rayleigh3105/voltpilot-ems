@@ -459,7 +459,10 @@ export interface AntwortBild {
  * beobachteten Wirkung gegen die Bezugsbasis (erwartet daneben, nie an ihrer Stelle); ohne Messung, was als Nächstes
  * kommt; abgeschlossen, mit welchem Ergebnis.
  */
-export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null): AntwortBild {
+/** Wer abschließt, wenn die angemeldete Person es selbst nicht darf (`verbesserung.abschliessen`). */
+export const WER_ABSCHLIESST = 'abschließen kann, wer im Energiemanagement Maßnahmen bewertet';
+
+export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null, darfAbschliessen = true): AntwortBild {
   const abruf = m.frist.abruf;
   if (m.zustand === 'verworfen') {
     return { satz: `Verworfen am ${tag(m.verworfen_am)}${m.verworfen_grund ? `: ‚${m.verworfen_grund}‘` : '.'}`, formal: 'Bleibt mit Verlauf lesbar.' };
@@ -478,7 +481,12 @@ export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null): AntwortBi
     if (m.zustand === 'bewertet' && m.bewertung) {
       return { satz: `Abgeschlossen am ${tag(m.bewertung.am)} von ${m.bewertung.person.name}: ${UEMS_MASSNAHME_ERGEBNISSE[m.bewertung.ergebnis]}.`, formal: null };
     }
-    return { satz: `Umgesetzt am ${tag(m.umgesetzt_am)} - jetzt mit einem Satz abschließen.`, formal: 'Ohne Kennzahl misst VoltPilot nichts; ob es geholfen hat, sagt eine Person.' };
+    return {
+      satz: darfAbschliessen
+        ? `Umgesetzt am ${tag(m.umgesetzt_am)} - jetzt mit einem Satz abschließen.`
+        : `Umgesetzt am ${tag(m.umgesetzt_am)} - ${WER_ABSCHLIESST}.`,
+      formal: 'Ohne Kennzahl misst VoltPilot nichts; ob es geholfen hat, sagt eine Person.',
+    };
   }
   if (!w || w.grund !== null || !w.summe || w.summe.delta_prozent === null || !w.monate_bewertbar) {
     // Bewertet, aber heute kein bewertbarer Monat (z. B. fehlen Werte): die Antwort ist das Urteil mit seinem Stand.

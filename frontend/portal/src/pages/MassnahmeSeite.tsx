@@ -310,7 +310,7 @@ export function MassnahmeSeite({
   // Entscheid 8: die verantwortliche Person meldet und kommentiert ihre Maßnahme auch ohne `verwalten`.
   const darfMelden = M.darfMeldenUndKommentieren(rollen.darf, m, sub);
   const darfAbschliessen = rollen.darf('verbesserung.abschliessen', m.standort_id);
-  const antwort = B.antwortBild(m, w);
+  const antwort = B.antwortBild(m, w, darfAbschliessen);
   const stufen = B.stufenBild(m);
   const neu = (x: Massnahme) => {
     setDialog(null);
@@ -411,7 +411,7 @@ export function MassnahmeSeite({
             <Verlauf m={m} />
           </div>
           <div className="vp-mn-spalte">
-            {zeigeUrteil && <UrteilKarte m={m} w={w} sub={sub} onDialog={setDialog} />}
+            {zeigeUrteil && <UrteilKarte m={m} w={w} sub={sub} onDialog={setDialog} darfAbschliessen={darfAbschliessen} />}
             <Woher m={m} />
             <WofuerUndWoran m={m} onKennzahl={onKennzahl} onEnergieziel={onEnergieziel} />
           </div>

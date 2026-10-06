@@ -114,6 +114,12 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
       text: 'als erwartet · Stand nach 8 von 12 Monaten',
       marke: { wort: 'belegt', ton: 'ok' },
     });
+    // Ohne das Recht zum Abschließen sagt die Antwort, wer abschließt, statt die Person dazu aufzufordern.
+    const umgesetzt = mit(m2(), { zustand: 'umgesetzt', umgesetzt_am: '2028-03-10' });
+    expect(B.antwortBild(umgesetzt, null).satz).toBe('Umgesetzt am 10.03.2028 - jetzt mit einem Satz abschließen.');
+    expect(B.antwortBild(umgesetzt, null, false).satz).toBe(
+      'Umgesetzt am 10.03.2028 - abschließen kann, wer im Energiemanagement Maßnahmen bewertet.',
+    );
     // Die Seite: ohne Live-Monate ist die Antwort das Urteil mit dem Stand, nie „noch kein Monat bewertbar“.
     expect(nn(B.antwortBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand }), null))).toEqual({
       satz: 'Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.',
