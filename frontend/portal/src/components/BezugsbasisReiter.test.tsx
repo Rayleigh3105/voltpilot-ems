@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Kennzahl } from '../api';
+import { api, ApiError, type Kennzahl, type KennzahlAuswertung } from '../api';
 import { LEER_SATZ, OHNE_BASISWERT } from '../bezugsbasisAnlegen';
 import { OHNE_GRUNDLAGE } from '../bezugsbasisModell';
 import { FEHLER_IM_BEREICH } from './Fehlergrenze';
@@ -256,28 +256,50 @@ describe('an der Kennzahl-Seite: Reiter und Basis-Zeile', () => {
   });
 });
 
-describe('Register: Kennzeichen „Energieleistungskennzahl“ und Filter (B3, R10)', () => {
+/**
+ * Konzept Auswerten a1 §6.4 (PR1): das Register ordnet in zwei Gruppen statt mit Kennzeichen und Filter - „Mit
+ * Bezugsbasis“ trägt, wer eine freigegebene Fassung hat (der Server legt dann `auswertung.vergleich` an), alles andere
+ * steht „Zum Beobachten“. Eine Bezugsbasis im Entwurf macht keine Energieleistungskennzahl (B3).
+ */
+describe('Register: zwei Gruppen statt Kennzeichen und Filter (B3, Konzept Auswerten a1 §6.4)', () => {
+  const auswertung = (mitVergleich: boolean): KennzahlAuswertung => ({
+    monat: '2026-10',
+    wert: { periode: '2026-10', wert: '0.2837', einheit: 'kWh/kg', zustand: 'vollständig', richtung: null },
+    vorjahr: null,
+    monate: Array.from({ length: 12 }, (_, i) => ({ periode: `2026-${String(i + 1).padStart(2, '0')}`, wert: null, delta_prozent: null, urteil: null, grund: null })),
+    vergleich: mitVergleich
+      ? { bezugsbasis: 'BB-0001', urteil: 'im_rahmen', delta_prozent: '0.4', band_prozent: '2.0', richtung: 'mehr', grund: null, satz: null, erster_monat: null }
+      : null,
+    energieziel: null,
+  });
   const register = (kennzahlen: Kennzahl[]) => {
     vi.spyOn(api, 'kennzahlen').mockResolvedValue({ kennzahlen });
     vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new ApiError(500, 'x'));
     render(<KennzahlenPage onOeffnen={() => undefined} onListe={() => undefined} zone={ZONE} />);
   };
-  it('ohne freigegebene Basis kein Kennzeichen und kein Filter — Bestandskunden merken nichts', async () => {
-    register([kz4(), kz4({ id: 'x2', kennzeichen: 'KZ-0005', bezugsbasis: { kennzeichen: 'BB-0002', fassung: 1, freigabe_status: 'entwurf', vorlaeufig: true } })]);
-    await waitFor(() => expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(2));
-    expect(screen.queryByTestId('kennzahl-energieleistung')).toBeNull();
-    expect(screen.queryByTestId('kennzahl-filter-elk')).toBeNull();
-  });
-  it('mit freigegebener Basis steht das Kennzeichen; der Filter zeigt nur Energieleistungskennzahlen', async () => {
+  it('ohne freigegebene Basis steht alles „Zum Beobachten“ - kein Filter, keine Gruppe „Mit Bezugsbasis“', async () => {
     register([
-      kz4({ bezugsbasis: { kennzeichen: 'BB-0001', fassung: 1, freigabe_status: 'freigegeben', vorlaeufig: true } }),
-      kz4({ id: 'x3', kennzeichen: 'KZ-0003', name: 'Unternehmen je Stück' }),
+      kz4({ auswertung: auswertung(false) }),
+      kz4({ id: 'x2', kennzeichen: 'KZ-0005', bezugsbasis: { kennzeichen: 'BB-0002', fassung: 1, freigabe_status: 'entwurf', vorlaeufig: true }, auswertung: auswertung(false) }),
     ]);
-    await waitFor(() => expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(2));
-    expect(screen.getByTestId('kennzahl-energieleistung').textContent).toBe('Energieleistungskennzahl — Bezugsbasis BB-0001 · vorläufig.');
-    fireEvent.click(screen.getByLabelText('nur Energieleistungskennzahlen'));
-    expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(1);
-    expect(screen.getByText('Spritzguss je kg')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByTestId('kennzahl-reihe')).toHaveLength(2));
+    expect(screen.queryByTestId('kennzahlen-mit')).toBeNull();
+    expect(screen.queryByTestId('kennzahl-filter-elk')).toBeNull();
+    expect(screen.queryByTestId('kennzahl-energieleistung')).toBeNull();
+    // Die Basis im Entwurf ist genannt, nicht als Urteil.
+    expect(screen.getAllByTestId('kennzahl-reihe')[1].textContent).toContain('BB-0002 im Entwurf');
+  });
+  it('mit freigegebener Basis steht die Kennzahl „Mit Bezugsbasis“, mit Urteil und „Bezugsbasis vorläufig“', async () => {
+    register([
+      kz4({ bezugsbasis: { kennzeichen: 'BB-0001', fassung: 1, freigabe_status: 'freigegeben', vorlaeufig: true }, auswertung: auswertung(true) }),
+      kz4({ id: 'x3', kennzeichen: 'KZ-0003', name: 'Unternehmen je Stück', auswertung: auswertung(false) }),
+    ]);
+    const mit = await screen.findByTestId('kennzahlen-mit');
+    expect(within(mit).getAllByTestId('kennzahl-karte')).toHaveLength(1);
+    expect(within(mit).getByText('im Rahmen der Bezugsbasis')).toBeTruthy();
+    expect(mit.textContent).toContain('Bezugsbasis vorläufig');
+    expect(within(screen.getByTestId('kennzahlen-ohne')).getAllByTestId('kennzahl-reihe')).toHaveLength(1);
+    expect(screen.queryByTestId('kennzahl-filter-elk')).toBeNull();
   });
 });
 

@@ -124,7 +124,7 @@ class PortfolioKpiServiceTest {
     void reichtDieLeitkennzahlDurch() {
         PortfolioKpiDto.Leitkennzahl leit = new PortfolioKpiDto.Leitkennzahl("KZ-0004",
                 "Stromeinsatz Spritzguss je kg", bd("0.2837"), "kWh/kg", 2026, 9, "vollständig",
-                bd("5"), "2028-01/2028-12", "5 % unter Bezugsbasis", bd("-3.4"), "besser");
+                bd("5"), "2028-01/2028-12", "5 % unter Bezugsbasis", bd("-3.4"), "besser", null);
 
         PortfolioKpiDto dto = PortfolioKpiService.aggregiere(SEPTEMBER, List.of(), null, leit);
 

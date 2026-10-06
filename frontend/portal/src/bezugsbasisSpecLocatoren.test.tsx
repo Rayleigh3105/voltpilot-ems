@@ -127,14 +127,14 @@ describe('e2e/bezugsbasis.spec.ts — jeder Locator trifft genau ein Element', (
     );
   });
 
-  it('Register: Kennzeichen und Filter', async () => {
+  it('Register: die Gruppe „Mit Bezugsbasis“ mit „Vergleich ab …“ (Konzept Auswerten a1 §6.4)', async () => {
     buehne('freigegeben', 'IK', true);
-    const zeichen = await screen.findAllByTestId('kennzahl-energieleistung');
-    eins(zeichen, 'kennzahl-energieleistung');
-    expect(zeichen[0].textContent).toBe('Energieleistungskennzahl — Bezugsbasis BB-0001 · vorläufig.');
-    const filter = screen.getAllByLabelText('nur Energieleistungskennzahlen');
-    eins(filter, 'getByLabel(nur Energieleistungskennzahlen, exact)');
-    fireEvent.click(filter[0]);
-    expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(1);
+    const gruppe = await screen.findAllByTestId('kennzahlen-mit');
+    eins(gruppe, 'kennzahlen-mit');
+    const karten = within(gruppe[0]).getAllByTestId('kennzahl-karte');
+    eins(karten, 'kennzahl-karte in kennzahlen-mit');
+    const ab = within(karten[0]).getAllByText('Vergleich ab Dezember 2026');
+    eins(ab, 'getByText(Vergleich ab Dezember 2026)');
+    expect(screen.queryByLabelText('nur Energieleistungskennzahlen')).toBeNull();
   });
 });

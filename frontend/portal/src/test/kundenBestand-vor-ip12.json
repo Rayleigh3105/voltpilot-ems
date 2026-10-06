@@ -1399,6 +1399,13 @@
       "nachher": "a4c865c22fa3e6fc92c29eba152374037380d440efcf3d54b9152b9cc094f406",
       "commit": "uems · Wiedervorlage als Arbeitsliste (Konzept w1, PR1)",
       "grund": "Entscheid 8: der Schritt „Entwurf vergleichen“ der Wiedervorlage öffnet den Bericht mit offenem Entscheid; data-entscheid-schritt sagt dem Fokus-Haken, welcher Knopf der Schritt ist (vor „Anstoß verwerfen“). Wortlaut, Ziel und Handler unverändert."
+    },
+    {
+      "datei": "pages/KennzahlenPage.tsx",
+      "vorher": "7d1d0ab0191922f96b8911b854d262e76c3adc04655e3f795388556297c22816",
+      "nachher": "c287447ef1afd33e8bfba18d6573238e0444266268e0761c1383e49ac1a7067e",
+      "commit": "fm/vp-auswerten-bau-a1-pr1",
+      "grund": "Konzept Auswerten a1 §6.4: „Kennzahl anlegen“ ist am Rechner ein Rahmenknopf im Kopf (variant outline), am Handy steht er im Menü ⋯; Beschriftung, Recht und Handler bleiben."
     }
   ],
   "assistentZusammenfuehrung": {

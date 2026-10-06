@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,6 +45,7 @@ class PortfolioKpiServiceKpisTest {
     @Mock private NetzanschlussRepository netzanschluss;
     @Mock private PortfolioKpiRepository spitzen;
     @Mock private MessstelleRegisterService messstellen;
+    @Mock private KennzahlAuswertungService auswertung;
 
     @InjectMocks private PortfolioKpiService service;
 
@@ -100,7 +102,13 @@ class PortfolioKpiServiceKpisTest {
                 "Stromeinsatz Spritzguss je kg", "kWh/kg", List.of(
                         wert(LocalDate.parse("2026-08-01"), "0.30", "kWh/kg", "vollständig"),
                         wert(LocalDate.parse("2026-09-01"), "0.2837", "kWh/kg", "vollständig"))));
-        when(energieziele.stand(eq(zielId4))).thenReturn(standMitUrteil("besser"));
+        // §10.8 (Konzept Auswerten a1): das Urteil der Kachel ist das des Monats - dieselbe Ableitung wie die Karte der
+        // Kennzahl -, nicht die Summe über die Zielperiode; der Stand des Ziels steht getrennt daneben.
+        KennzahlDto.AuswertungZiel zielStand = new KennzahlDto.AuswertungZiel(zielId4, "EZ-2028-0001", "-5",
+                "2028-01/2028-12", "-2.7", "weniger", "besser", 11, 12);
+        when(auswertung.auswertung(eq(kz4), eq(YearMonth.of(2026, 9)), any())).thenReturn(new KennzahlDto.Auswertung(
+                "2026-09", null, null, List.of(), new KennzahlDto.AuswertungVergleich("BB-0001", "schlechter", "2.2",
+                        "2.0", "mehr", null, null, null), zielStand));
 
         PortfolioKpiDto.Leitkennzahl leit = service.leitkennzahl(YearMonth.of(2026, 9));
 
@@ -117,7 +125,25 @@ class PortfolioKpiServiceKpisTest {
         assertThat(leit.zielWortlaut()).isEqualTo("5 % unter Bezugsbasis");
         // Trend des jüngsten Monats (0,2837) gegen den Vormonat (0,30): −5,4 %.
         assertThat(leit.trendProzent()).isEqualByComparingTo("-5.4");
-        assertThat(leit.urteil()).isEqualTo("besser");
+        assertThat(leit.urteil()).isEqualTo("schlechter");
+        assertThat(leit.zielStand()).isEqualTo(zielStand);
+        verify(auswertung).auswertung(eq(kz4), eq(YearMonth.of(2026, 9)), argThat(z -> z.id().equals(zielId4)));
+    }
+
+    @Test
+    void leitkennzahlOhneFreigegebeneBezugsbasisHatKeinUrteil() {
+        UUID kz = UUID.randomUUID();
+        when(energieziele.liste(any(), any(), any())).thenReturn(new EnergiezielDto.Liste(List.of(
+                ziel(UUID.randomUUID(), "KZ-0004", kz, "Stromeinsatz je kg", "5", "2028-01/2028-12", "5 % unter Basis"))));
+        when(kennzahlWerte.werte(eq(kz), any(), any(), any(), any(), any())).thenReturn(werte(kz, "KZ-0004",
+                "Stromeinsatz je kg", "kWh/kg", List.of(wert(LocalDate.parse("2026-09-01"), "0.29", "kWh/kg", "vollständig"))));
+        when(auswertung.auswertung(eq(kz), any(), any())).thenReturn(new KennzahlDto.Auswertung("2026-09", null, null,
+                List.of(), null, null));
+
+        PortfolioKpiDto.Leitkennzahl leit = service.leitkennzahl(YearMonth.of(2026, 9));
+
+        assertThat(leit.urteil()).isNull();
+        assertThat(leit.zielStand()).isNull();
     }
 
     @Test
@@ -172,10 +198,5 @@ class PortfolioKpiServiceKpisTest {
         return new KennzahlDto.Werte(
                 new KennzahlDto.WerteKennzahl(kennzahlId, kennzeichen, name, null, einheit, null),
                 "monat", null, null, null, null, werte, List.of());
-    }
-
-    private static EnergiezielDto.Stand standMitUrteil(String urteil) {
-        return new EnergiezielDto.Stand(null, null, null, null, List.of(), 0, 0, 0, null, false, List.of(),
-                new EnergiezielDto.Summe(null, null, null, null, null, urteil, List.of()), null, null, null);
     }
 }

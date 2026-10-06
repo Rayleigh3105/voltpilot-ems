@@ -1598,6 +1598,12 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'pages/KennzahlenPage.tsx',
     // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
     'components/KennzahlListe.tsx',
+    // Konzept Auswerten a1 (PR1): die Liste mit Urteil, Gruppen und Mini-Grafiken - ihr reines Modell, ihre Bausteine,
+    // ihre Bühnen-Welt und die geteilten Urteils-Wörter.
+    'kennzahlListe.ts',
+    'components/KennzahlenAuswertung.tsx',
+    'test/kennzahlListeFixtures.ts',
+    'bezugsbasisUrteil.ts',
     'pages/KennzahlSeite.tsx',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',

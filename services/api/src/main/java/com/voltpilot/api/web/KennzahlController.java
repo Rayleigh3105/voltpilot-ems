@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.KennzahlAbgelehnt;
 import com.voltpilot.api.uems.KennzahlAbgelehnt.Ablehnung;
+import com.voltpilot.api.uems.KennzahlAuswertungService;
 import com.voltpilot.api.uems.KennzahlService;
 import com.voltpilot.api.uems.KennzahlVorschauService;
 import com.voltpilot.api.uems.ProtokollAkteur;
@@ -70,18 +71,25 @@ public class KennzahlController {
 
     private final KennzahlService kennzahlen;
     private final KennzahlVorschauService vorschau;
+    private final KennzahlAuswertungService auswertung;
     private final ObjectMapper streng;
 
-    public KennzahlController(KennzahlService kennzahlen, KennzahlVorschauService vorschau, ObjectMapper json) {
+    public KennzahlController(KennzahlService kennzahlen, KennzahlVorschauService vorschau,
+            KennzahlAuswertungService auswertung, ObjectMapper json) {
         this.kennzahlen = kennzahlen;
         this.vorschau = vorschau;
+        this.auswertung = auswertung;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
-    /** Recht: {@code messwerte.ansehen} (AP-11 R2). Archivierte eingeschlossen, nach Kennzeichen. */
+    /**
+     * Recht: {@code messwerte.ansehen} (AP-11 R2). Archivierte eingeschlossen, nach Kennzeichen. {@code mit=auswertung}
+     * (Konzept Auswerten a1, PR1) legt an jede nicht archivierte Kennzahl mit Monatswerten ihre Auswertung - Urteil des
+     * letzten abgeschlossenen Monats, zwölf Monate, Vorjahr, Energieziel; ein anderer Wert ist 400 {@code anfrage_ungueltig}.
+     */
     @GetMapping
-    public KennzahlDto.Liste alle() {
-        return kennzahlen.liste();
+    public KennzahlDto.Liste alle(@RequestParam(required = false) String mit) {
+        return auswertung.liste(mit);
     }
 
     /**

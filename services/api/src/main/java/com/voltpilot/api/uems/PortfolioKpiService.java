@@ -70,10 +70,11 @@ public class PortfolioKpiService {
     private final NetzanschlussRepository netzanschluss;
     private final PortfolioKpiRepository spitzen;
     private final MessstelleRegisterService messstellen;
+    private final KennzahlAuswertungService auswertung;
 
     public PortfolioKpiService(SiteRepository sites, BilanzService bilanz, EnergiezielService energieziele,
             KennzahlWerteService kennzahlWerte, NetzanschlussRepository netzanschluss, PortfolioKpiRepository spitzen,
-            MessstelleRegisterService messstellen) {
+            MessstelleRegisterService messstellen, KennzahlAuswertungService auswertung) {
         this.sites = sites;
         this.bilanz = bilanz;
         this.energieziele = energieziele;
@@ -81,6 +82,7 @@ public class PortfolioKpiService {
         this.netzanschluss = netzanschluss;
         this.spitzen = spitzen;
         this.messstellen = messstellen;
+        this.auswertung = auswertung;
     }
 
     /**
@@ -275,11 +277,18 @@ public class PortfolioKpiService {
      * Die führende Kennzahl: der EnPI mit offenem Energieziel (das Ziel macht die
      * „Leitkennzahl gegen Ziel" erst möglich). Gibt es mehrere, entscheidet das
      * Kennzeichen deterministisch. Ohne Energieziel: {@code null} (Datenlage-Fallback).
+     *
+     * <p>Urteil und Stand des Ziels kommen aus {@link KennzahlAuswertungService} -
+     * derselben Ableitung wie die Karte der Kennzahl (Konzept Auswerten a1 §10.8):
+     * das Urteil des Monats {@code aktuell} gegen die Bezugsbasis, der Stand des
+     * Energieziels über seine Zielperiode als eigene Angabe.
      */
     PortfolioKpiDto.Leitkennzahl leitkennzahl(YearMonth aktuell) {
         EnergiezielDto.Liste ziele = energieziele.liste(Set.of(), null, "offen");
+        // Hat die Kennzahl mehrere offene Ziele, dasselbe wie an ihrer Karte (KennzahlAuswertungService.ZIEL_FOLGE).
         EnergiezielDto.Energieziel ziel = ziele.energieziele().stream()
-                .min(Comparator.comparing(z -> z.kennzahl().kennzeichen()))
+                .min(Comparator.<EnergiezielDto.Energieziel, String>comparing(z -> z.kennzahl().kennzeichen())
+                        .thenComparing(KennzahlAuswertungService.ZIEL_FOLGE))
                 .orElse(null);
         if (ziel == null) {
             return null;
@@ -301,8 +310,8 @@ public class PortfolioKpiService {
         BigDecimal trend = mitWert.size() >= 2
                 ? trendProzent(wert, dezimal(mitWert.get(mitWert.size() - 2).wert()))
                 : null;
-        EnergiezielDto.Stand stand = energieziele.stand(ziel.id());
-        String urteil = stand.summe() != null ? stand.summe().urteil() : null;
+        KennzahlDto.Auswertung a = auswertung.auswertung(kennzahlId, aktuell, ziel);
+        String urteil = a.vergleich() != null ? a.vergleich().urteil() : null;
         String einheit = juengster.einheit() != null ? juengster.einheit()
                 : (werte.kennzahl() != null ? werte.kennzahl().einheit() : null);
         return new PortfolioKpiDto.Leitkennzahl(
@@ -317,7 +326,8 @@ public class PortfolioKpiService {
                 ziel.zielperiode(),
                 ziel.wortlaut(),
                 trend,
-                urteil);
+                urteil,
+                a.energieziel());
     }
 
     // ------------------------------------------------------------------ Helfer

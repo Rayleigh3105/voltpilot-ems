@@ -42,31 +42,7 @@ export function useKennzahlenListe(zone: string, standortId: string | null, vers
         setListe(kennzahlen);
         setAusserhalb(ausserhalb_zugriff?.text ?? null);
         setWerte({});
-        const heute = heuteIn(zone, Date.now());
-        const setze = (id: string, w: ListenWerte) => aktiv && setWerte((alt) => ({ ...alt, [id]: w }));
-        // Trägt die Grundperiode keinen gebildeten Wert (nur Platzhalter), die nächstgröbere mit Werten versuchen
-        // (`listenPerioden`), sonst stünde „—“, obwohl die Kennzahl monatlich rechnet. Der Rückfall kann nur
-        // verbessern: bei echtem Schritt (auch „keine Werte“) hält die erste Periode.
-        const laden = (id: string, perioden: KennzahlPeriodeArt[], i: number) => {
-          const art = perioden[i];
-          const { von, bis } = anfrage(art, heute, ANZAHL_VERLAUF[art]);
-          api.kennzahlWerte(id, art, von, bis).then(
-            (antwort) =>
-              aktiv &&
-              (ohneWert(antwort) && i + 1 < perioden.length
-                ? laden(id, perioden, i + 1)
-                : setze(id, { art: 'geladen', antwort })),
-            (e) => setze(id, e instanceof ApiError && e.status === 404 ? { art: 'ausserhalb' } : { art: 'fehler' }),
-          );
-        };
-        for (const k of kennzahlen) {
-          const perioden = listenPerioden(k);
-          if (perioden.length === 0) {
-            setze(k.id, { art: 'ohne_periode' });
-            continue;
-          }
-          laden(k.id, perioden, 0);
-        }
+        ladeWerte(kennzahlen, zone, (id, w) => aktiv && setWerte((alt) => ({ ...alt, [id]: w })), () => aktiv);
       },
       () => aktiv && setFehler(true),
     );
@@ -75,6 +51,60 @@ export function useKennzahlenListe(zone: string, standortId: string | null, vers
     };
   }, [zone, versuch, standortId, an]);
   return { liste, werte, fehler, ausserhalb };
+}
+
+/**
+ * Je Kennzahl das Fenster des Verlaufs in ihrer Grundperiode (`…/werte`, IP-7). Trägt die Grundperiode keinen
+ * gebildeten Wert (nur Platzhalter), die nächstgröbere mit Werten versuchen (`listenPerioden`), sonst stünde „—“, obwohl
+ * die Kennzahl monatlich rechnet. Der Rückfall kann nur verbessern: bei echtem Schritt (auch „keine Werte“) hält die
+ * erste Periode.
+ */
+function ladeWerte(
+  kennzahlen: readonly Kennzahl[],
+  zone: string,
+  setze: (id: string, w: ListenWerte) => void,
+  aktiv: () => boolean,
+) {
+  const heute = heuteIn(zone, Date.now());
+  const laden = (id: string, perioden: KennzahlPeriodeArt[], i: number) => {
+    const art = perioden[i];
+    const { von, bis } = anfrage(art, heute, ANZAHL_VERLAUF[art]);
+    api.kennzahlWerte(id, art, von, bis).then(
+      (antwort) =>
+        aktiv() &&
+        (ohneWert(antwort) && i + 1 < perioden.length ? laden(id, perioden, i + 1) : setze(id, { art: 'geladen', antwort })),
+      (e) => setze(id, e instanceof ApiError && e.status === 404 ? { art: 'ausserhalb' } : { art: 'fehler' }),
+    );
+  };
+  for (const k of kennzahlen) {
+    const perioden = listenPerioden(k);
+    if (perioden.length === 0) {
+      setze(k.id, { art: 'ohne_periode' });
+      continue;
+    }
+    laden(k.id, perioden, 0);
+  }
+}
+
+/**
+ * Konzept Auswerten a1 (PR1): die Werte nur der Kennzahlen, die keine Auswertung tragen - Archivierte erst beim
+ * Aufklappen (`kennzahlen = null` lädt nichts), Kennzahlen ohne Monatswerte immer. Jede andere Karte liest ihre Zahl aus
+ * `GET /api/v1/kennzahlen?mit=auswertung`.
+ */
+export function useListenWerte(kennzahlen: readonly Kennzahl[] | null, zone: string): Record<string, ListenWerte> {
+  const [werte, setWerte] = useState<Record<string, ListenWerte>>({});
+  const schluessel = kennzahlen?.map((k) => k.id).join(',') ?? null;
+  useEffect(() => {
+    if (!kennzahlen || kennzahlen.length === 0) return;
+    let aktiv = true;
+    ladeWerte(kennzahlen, zone, (id, w) => aktiv && setWerte((alt) => ({ ...alt, [id]: w })), () => aktiv);
+    return () => {
+      aktiv = false;
+    };
+    // Die Liste wechselt nur mit ihren Kennungen - ein neues Array derselben Kennzahlen lädt nicht neu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schluessel, zone]);
+  return werte;
 }
 
 /** `zusatz`: AP-17 IP-9 — das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (nur im Register). */

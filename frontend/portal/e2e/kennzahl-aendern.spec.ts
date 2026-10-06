@@ -257,18 +257,21 @@ for (const breite of [375, 1440]) {
     await pruefeUndFotografiere(page, breite, 'archiviert-seite', { seite: true });
 
     await page.getByRole('button', { name: 'Alle Kennzahlen' }).click();
-    const karte = page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0001' });
-    await expect(karte).toContainText('archiviert');
-    await expect(page.locator('[data-testid="kennzahl-zahl"], [data-testid="kennzahl-hinweis"]')).toHaveCount(5);
+    // Konzept Auswerten a1 §6.4: die archivierte steht zugeklappt unter „Archiviert“, die anderen vier bleiben in der Liste.
+    const archiv = page.getByTestId('kennzahlen-archiv');
+    await expect(archiv.locator('summary')).toHaveText('Archiviert · 1 Kennzahl');
+    await archiv.locator('summary').click();
+    await expect(archiv.locator('[data-kennzeichen="KZ-0001"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kennzahlen-ohne"] [data-kennzeichen]')).toHaveCount(4);
     await pruefeUndFotografiere(page, breite, 'liste-archiviert', { seite: true });
-    await page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0003' }).click();
+    await page.locator('[data-kennzeichen="KZ-0003"]').click();
     await expect(page.getByTestId('kennzahl-eingang-archiviert')).toHaveText('Eingang archiviert (KZ-0001)');
     await pruefeUndFotografiere(page, breite, 'eingang-archiviert', { element: 'kennzahl-berechnung' });
   });
 
   test(`${breite} px — eine Kennzahl ohne einen einzigen Wert löschen: bestätigen, dann zurück zur Liste`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen&frisch=1&person=IK', breite, DEZEMBER);
-    await page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0009' }).click();
+    await page.locator('[data-kennzeichen="KZ-0009"]').click();
     const zyklus = page.getByTestId('kennzahl-lebenszyklus');
     await zyklus.getByRole('button', { name: 'Kennzahl löschen' }).click();
     await expect(zyklus).toContainText('KZ-0009 Stromeinsatz je Stück — Halle 2 verschwindet aus der Liste.');
@@ -276,7 +279,7 @@ for (const breite of [375, 1440]) {
     await pruefeUndFotografiere(page, breite, 'loeschen', { ganz: false });
     await zyklus.getByRole('button', { name: 'Endgültig löschen' }).click();
     await expect(page.getByTestId('kennzahlen')).toBeVisible();
-    await expect(page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0009' })).toHaveCount(0);
+    await expect(page.locator('[data-kennzeichen="KZ-0009"]')).toHaveCount(0);
     expect((await aufrufe(page)).loeschen).toBe(1);
   });
 }

@@ -25,6 +25,10 @@ public class PortfolioKpiController {
         this.service = service;
     }
 
+    /**
+     * Recht: keine eigene Kennung - lesend für jede angemeldete Person; Mandant und sichtbare Anlagen begrenzen RLS und
+     * Zugriffs-Zaun wie bei {@code /overview}.
+     */
     @GetMapping
     public PortfolioKpiDto kpis() {
         return service.kpis(Instant.now());

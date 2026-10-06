@@ -118,11 +118,13 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page);
     });
 
-    test(`Register: Kennzeichen „Energieleistungskennzahl“ und Filter (${breite} px)`, async ({ page }) => {
+    // Konzept Auswerten a1 §6.4: zwei Gruppen statt Kennzeichen und Filter; die Fassung gilt erst ab 01.11.2026.
+    test(`Register: „Mit Bezugsbasis“ mit „Vergleich ab Dezember 2026“ (${breite} px)`, async ({ page }) => {
       await oeffne(page, 'person=IK&lage=freigegeben&seite=register', breite);
-      await expect(page.getByTestId('kennzahl-energieleistung')).toHaveText('Energieleistungskennzahl — Bezugsbasis BB-0001 · vorläufig.');
-      await page.getByLabel('nur Energieleistungskennzahlen', { exact: true }).check();
-      await expect(page.getByTestId('kennzahl-karte')).toHaveCount(1);
+      const gruppe = page.getByTestId('kennzahlen-mit');
+      await expect(gruppe.getByTestId('kennzahl-karte')).toHaveCount(1);
+      await expect(gruppe.getByText('Vergleich ab Dezember 2026', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('nur Energieleistungskennzahlen', { exact: true })).toHaveCount(0);
       await ohneQuerlauf(page);
     });
   });
