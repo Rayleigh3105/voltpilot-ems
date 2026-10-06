@@ -35,6 +35,17 @@ it('Ablesungen zeigen einen Ladefehler und bieten keinen Eingabeweg mit unbekann
   expect(await screen.findByRole('alert')).toHaveTextContent('konnten nicht geladen');
   expect(screen.queryByRole('button', { name: 'Ablesung eintragen' })).not.toBeInTheDocument();
 });
+it('Konzept Messen m1, §6.5: gespeichert mit der Menge des Zeitraums; die Kennung des Vorgangs nur beim Vorschlag', () => {
+  const a = gasAblesungen()[1];
+  const antwort = (urteil: string) => ({ urteil, korrektur: 'K-2026-0231', ablesung: a, ablesezeitraum: { menge: 13700, zustand: 'vollständig', kennzeichen: '' } });
+  const { rerender } = render(<Ablesungen kennzeichen="MS-20" einheit="kWh" zone="Europe/Berlin" alle={[a]} zeilen={[]} fehler={false} antwort={antwort('eingetragen')} onErneut={() => {}} onBerichtigen={() => {}} />);
+  const status = screen.getByRole('status');
+  expect(status).toHaveTextContent('Ablesung gespeichert.');
+  expect(status.textContent).toContain('13.700\u00a0kWh seit der letzten Ablesung');
+  expect(status).not.toHaveTextContent('K-2026-0231');
+  rerender(<Ablesungen kennzeichen="MS-20" einheit="kWh" zone="Europe/Berlin" alle={[a]} zeilen={[]} fehler={false} antwort={antwort('vorschlag')} onErneut={() => {}} onBerichtigen={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent('Vorschlag gesendet — bis zur Freigabe gilt der bisherige Stand. (K-2026-0231)');
+});
 it('Konzept Messen m1, §6.4 Punkt 6: die neueste zuerst, drei sichtbar, „Alle n“ öffnet den Rest; Berichtigen im Menü der Zeile', async () => {
   const alle = gasAblesungen();
   const wirksam = wirksameAblesungen(alle);

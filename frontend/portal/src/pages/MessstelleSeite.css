@@ -117,10 +117,6 @@
   font-weight: var(--vp-c-fw-600);
 }
 
-.vp-mss-status-neben {
-  color: var(--vp-c-muted-fg);
-}
-
 .vp-mss-status.is-ok .vp-mss-punkt {
   background: var(--vp-c-ok, #16a34a);
   opacity: 1;

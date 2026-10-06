@@ -448,7 +448,7 @@ function MessstelleSeiteMitId({
     zeile && register
       ? zeileWoerter(zeile, { ebene: { art: 'unternehmen', name: '' }, zone, zeitpunkt: register.zeitpunkt })
       : null;
-  const status = statusZeile(zeile, standortZone);
+  const status = statusZeile(zeile);
   const bestand = bestandAus(m, stamm.prozesse, stamm.anteile);
   const zuordnung = zuordnungZeilen(m, stamm.prozesse, stamm.anteile, heute, namen);
   const darfAendern = aenderbar(m);
@@ -562,7 +562,6 @@ function MessstelleSeiteMitId({
             <p className={`vp-mss-status is-${status.ton}`} data-testid="messstelle-status">
               <span className="vp-mss-punkt" aria-hidden="true" />
               <strong>{status.text}</strong>
-              {status.neben && <span className="vp-mss-status-neben"> · {status.neben}</span>}
             </p>
           )}
           {/* Konzept §6.4 Punkt 3: bei Ablesezählern der EINE Schritt oben. Ohne Quelle stehen beide Wege gleichwertig in
@@ -571,6 +570,9 @@ function MessstelleSeiteMitId({
             <div className="vp-mss-schritt">
               <Button
                 variant="primary"
+                // Die Breite entscheidet das Stylesheet (Konzept §6.4 Punkt 3: am Telefon volle Breite, am Rechner im Kopf);
+                // ohne dies setzt der Knopf selbst „width: auto“ als Inline-Stil.
+                style={{ width: undefined }}
                 onClick={(e) => oeffneAblesung(null, e.currentTarget)}
                 disabled={!ablesungen}
                 // Konzept Wiedervorlage w1, Entscheid 7: der Schritt „Ablesung eintragen“ landet auf diesem Knopf -

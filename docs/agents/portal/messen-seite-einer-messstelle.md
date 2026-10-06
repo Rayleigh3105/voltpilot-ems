@@ -18,7 +18,7 @@ Stand: Messen-Bau m2, PR2 (Konzept `data/vp-messen-konzept-m1` §6.4/§6.5, Capt
 
 - Den Schritt „Ablesung eintragen“ im Kopf gibt es nur bei Herkunft „ablesung“; ohne Quelle stehen „Zähler verbinden“ und „Ablesung eintragen“ gleichwertig in „Woher die Werte kommen“.
 - Ziel der Wiedervorlage (`data-entscheid="zaehlerablesung"`) ist der Kopf-Knopf erst, wenn die Ablesungen geladen sind; der Dialog braucht sie zum Vergleich (Konzept Wiedervorlage w1, Entscheid 7).
-- „Nächste Ablesung“ und „nächste bis …“ kommen aus `quelle.ablesung.faellig_ab` des Registers (API: `AblesungRegeln.ueberfaelligAb(zuletzt)`), nie aus einer Rechnung im Portal.
+- „Nächste Ablesung“ kommt aus `quelle.ablesung.faellig_ab` des Registers (API: `AblesungRegeln.ueberfaelligAb(zuletzt)`), nie aus einer Rechnung im Portal; die Zustandszeile spricht nur den Satz des Servers.
 - Die Ablesungen stehen neueste zuerst, drei sichtbar, „Alle n ›“; Berichtigen und Fassungen liegen im Menü der Zeile, den Dialog hält die Seite.
 - Liegt der Zeitraum seit der letzten Ablesung in EINEM Monat, sagt der Dialog nur „Zählt zum …“ (`zaehltSatz`); die Monatswahl steht erst, wenn er mehr als einen Monat berührt.
 

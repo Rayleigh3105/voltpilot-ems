@@ -193,9 +193,9 @@ describe('Balken der Monate (§6.4 Punkt 5)', () => {
 });
 
 describe('Kopf, Statuszeile und Kacheln aus dem Register', () => {
-  it('die Statuszeile ist der Satz des Servers; bei Ablesungen im Plan dazu „nächste bis …“', () => {
-    expect(statusZeile(abgelesen(), ZONE)).toEqual({ ton: 'ok', text: 'Abgelesen am 01.10.2026', neben: 'nächste bis 01.12.2026' });
-    expect(statusZeile(abgelesen('liefert_nicht_seit'), ZONE)).toEqual({ ton: 'warn', text: 'Ablesung überfällig seit 01.12.2026', neben: null });
+  it('die Statuszeile ist der Satz des Servers - wann die nächste Ablesung fällig ist, sagt die Kachel', () => {
+    expect(statusZeile(abgelesen())).toEqual({ ton: 'ok', text: 'Abgelesen am 01.10.2026' });
+    expect(statusZeile(abgelesen('liefert_nicht_seit'))).toEqual({ ton: 'warn', text: 'Ablesung überfällig seit 01.12.2026' });
     expect(statusZeile(null, ZONE)).toBeNull();
   });
 

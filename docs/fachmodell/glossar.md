@@ -394,7 +394,7 @@ Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `U
 
 **Seite einer Messstelle (Konzept Messen m1 §6.4/§6.5, Messen-Bau m2).**
 Der Kopf nennt Name und Kennzeichen, darunter Medium, Ort und Standort; der Lebenszyklus steht nur, wenn er nicht „aktiv“ ist.
-Die Zustandszeile sagt, ob Werte kommen; bei einem Ablesezähler mit „nächste bis {Tag}“, und oben steht genau ein Schritt: „Ablesung eintragen“.
+Die Zustandszeile sagt mit dem Satz des Servers, ob Werte kommen („Abgelesen am 01.10.2026“); bei einem Ablesezähler steht oben genau ein Schritt: „Ablesung eintragen“.
 Die Leitkachel nennt die Menge des letzten vollständigen Monats in der Rolle der Messstelle („Verbrauch September 2026“, „Erzeugung …“, „Einspeisung …“) mit dem Vergleich zum Vorjahresmonat; daneben stehen „Zählerstand“ und bei einem Ablesezähler „Nächste Ablesung“ mit „im Plan“ oder „überfällig“.
 Die Werte heißen nach der Rolle: „Verbrauch je Monat“ (zwölf Monate als Balken), „Verbrauch am Tag“, „Verbrauch in der Woche“; ein Ablesezähler kennt nur Monat und Jahr.
 „Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“.

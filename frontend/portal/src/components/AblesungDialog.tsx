@@ -11,6 +11,7 @@ import { zahlText } from '../zahl';
 import { VpZeitpunktPicker } from './VpZeitpunktPicker';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
+import './WerteEingabe.css';
 
 /**
  * Eine Ablesung eintragen oder berichtigen (Konzept Messen m1, §6.5): die letzte Ablesung zum Vergleich, „Abgelesen am“
@@ -54,11 +55,11 @@ export function AblesungDialog({ kennzeichen, name = null, einheit, zone, alle, 
     finally { setBusy(false); }
   };
   return <Modal open title={alt ? 'Ablesung berichtigen' : 'Ablesung eintragen'} onClose={() => { if (!busy) onClose(); }} footer={<><Button variant="outline" onClick={onClose} disabled={busy}>Abbrechen</Button>{erlaubt && !vorhanden && <Button type="submit" form="ablesung-form" disabled={busy}>{busy ? 'Wird gespeichert …' : 'Speichern'}</Button>}</>}>
-    <form id="ablesung-form" ref={form} className="vp-bz-form" onSubmit={e => { e.preventDefault(); void speichern(); }} noValidate>
+    <form id="ablesung-form" ref={form} className="vp-bz-form vp-ablesung-form" onSubmit={e => { e.preventDefault(); void speichern(); }} noValidate>
       <p>{[kennzeichen, name].filter(Boolean).join(' ')} · Zählerstand in {einheit}</p>
-      {letzte && <p className="vp-ablesung-letzte" data-testid="ablesung-letzte">Letzte Ablesung <strong>{betrag(letzte.stand)} {einheit}</strong> · {zeitText(letzte.zeitpunkt, zone)}</p>}
-      {alt ? <><p>{zeitText(alt.zeitpunkt, zone)}</p><p>Bisher wirksam: {betrag(alt.stand)} {einheit} · Fassung {alt.fassung}. Bis zu einer erforderlichen Freigabe gilt dieser Stand weiter.</p></> : <VpZeitpunktPicker kopf="Abgelesen am" value={zeit} zone={zone} onChange={v => { setZeit(v); setWahl('vorgabe'); setFehler({}); }} disabled={busy} error={fehler.tag || fehler.zeit || fehler.variante} />}
-      {vorhanden && <div><p>Zu diesem Zeitpunkt gibt es bereits {betrag(vorhanden.stand)} {einheit}.</p>{erlaubt && onBerichtigen && <Button variant="outline" onClick={() => onBerichtigen(vorhanden)}>Vorhandene Ablesung berichtigen</Button>}</div>}
+      {letzte && <p className="vp-ablesung-letzte" data-testid="ablesung-letzte">Letzte Ablesung <strong>{betrag(letzte.stand)}{'\u00a0'}{einheit}</strong> · {zeitText(letzte.zeitpunkt, zone)}</p>}
+      {alt ? <><p>{zeitText(alt.zeitpunkt, zone)}</p><p>Bisher wirksam: {betrag(alt.stand)}{'\u00a0'}{einheit} · Fassung {alt.fassung}. Bis zu einer erforderlichen Freigabe gilt dieser Stand weiter.</p></> : <VpZeitpunktPicker kopf="Abgelesen am" value={zeit} zone={zone} onChange={v => { setZeit(v); setWahl('vorgabe'); setFehler({}); }} disabled={busy} error={fehler.tag || fehler.zeit || fehler.variante} />}
+      {vorhanden && <div><p>Zu diesem Zeitpunkt gibt es bereits {betrag(vorhanden.stand)}{'\u00a0'}{einheit}.</p>{erlaubt && onBerichtigen && <Button variant="outline" onClick={() => onBerichtigen(vorhanden)}>Vorhandene Ablesung berichtigen</Button>}</div>}
       <div className="vp-einheit-feld">
         <label htmlFor="wert-stand">Zählerstand<span className="vp-sr-only"> ({einheit})</span></label>
         <div className="vp-einheit-feld-rahmen">

@@ -2,6 +2,7 @@ import { VpDatePicker } from './VpDatePicker';
 import { VpTimePicker } from './VpTimePicker';
 import { VpPicker } from './VpPicker';
 import { lesen, zonenName, type ZeitpunktEingabe } from '../picker/zeitpunkt';
+import './WerteEingabe.css';
 /**
  * Datum und Uhrzeit mit der Zone des Standorts. Mit `kopf` (Konzept Messen m1, §6.5: „Abgelesen am“ mit „MESZ“ am Feld)
  * steht die Frage über den Feldern und das Kürzel der Zone am Uhrzeit-Feld - ohne die Zeile „Zeitzone: Europe/Berlin“.

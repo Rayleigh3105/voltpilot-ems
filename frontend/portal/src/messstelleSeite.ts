@@ -140,26 +140,18 @@ export interface StatusZeile {
   ton: Ton;
   /** Der Satz des Servers, wörtlich („Abgelesen am 01.10.2026“, „Liefert keine Daten seit 14:15“). */
   text: string;
-  /** Bei Ablesungen im Plan: „nächste bis 01.12.2026“. */
-  neben: string | null;
 }
 
 /**
- * Die Statuszeile unter dem Kopf: der Satz des Registers mit seinem Punkt. Ohne Beobachtung (eine berechnete Messstelle)
+ * Die Statuszeile unter dem Kopf (Konzept §6.4 Punkt 2: „● Abgelesen am 01.10.2026“): der Satz des Registers mit seinem
+ * Punkt. Wann die nächste Ablesung fällig ist, sagt die Kachel darunter. Ohne Beobachtung (eine berechnete Messstelle)
  * spricht die Berechnung („vollständig“/„unvollständig seit …“); ohne beides steht keine Zeile.
  */
-export function statusZeile(zeile: MessstelleRegisterZeile | null, zone: string): StatusZeile | null {
+export function statusZeile(zeile: MessstelleRegisterZeile | null): StatusZeile | null {
   if (!zeile) return null;
   const b = zeile.beobachtung;
-  if (b) {
-    const ton: Ton = b.zustand === 'liefert' ? 'ok' : b.zustand === 'liefert_nicht_seit' ? 'warn' : 'off';
-    const faellig = zeile.quelle.ablesung?.faellig_ab;
-    const neben = zeile.quelle.stand === 'ablesung' && ton === 'ok' && faellig ? `nächste bis ${tagText(faellig, zone)}` : null;
-    return { ton, text: b.text, neben };
-  }
-  if (zeile.berechnung) {
-    return { ton: zeile.berechnung.zustand === 'vollstaendig' ? 'ok' : 'warn', text: zeile.berechnung.text, neben: null };
-  }
+  if (b) return { ton: b.zustand === 'liefert' ? 'ok' : b.zustand === 'liefert_nicht_seit' ? 'warn' : 'off', text: b.text };
+  if (zeile.berechnung) return { ton: zeile.berechnung.zustand === 'vollstaendig' ? 'ok' : 'warn', text: zeile.berechnung.text };
   return null;
 }
 

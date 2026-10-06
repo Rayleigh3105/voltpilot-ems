@@ -571,12 +571,12 @@ describe('MessstelleSeite · Ablesezähler MS-21 (Konzept Messen m1, §6.4/§6.5
     return { liefere: (a: Ablesung[]) => liefere(a) };
   }
 
-  it('Kopf mit „nächste bis“, der Schritt „Ablesung eintragen“ wird erst mit den Ablesungen Ziel; Kachel und Herkunft sagen es', async () => {
+  it('Kopf mit dem Satz des Servers, der Schritt „Ablesung eintragen“ wird erst mit den Ablesungen Ziel; Kachel und Herkunft sagen es', async () => {
     const { liefere } = abgelesen();
     render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
 
     await waitFor(
-      () => expect(screen.getByTestId('messstelle-status')).toHaveTextContent('Abgelesen am 01.10.2026 · nächste bis 02.11.2026'),
+      () => expect(screen.getByTestId('messstelle-status')).toHaveTextContent(/^Abgelesen am 01\.10\.2026$/),
       WARTEN,
     );
     const schritt = await screen.findByRole('button', { name: 'Ablesung eintragen' }, WARTEN);

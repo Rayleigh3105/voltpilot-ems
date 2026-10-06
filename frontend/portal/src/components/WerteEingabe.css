@@ -6,6 +6,12 @@
 .vp-wert-zeile > .vp-btn { align-self: flex-start; }
 .vp-wert-fassung { border-left: 2px solid var(--vp-c-border); padding: var(--vp-c-space-2) var(--vp-c-space-3); margin-bottom: var(--vp-c-space-2); font-size: var(--vp-c-fs-14); }
 .vp-wert-zeitpunkt { min-width: 0; }
+/* Der Ablese-Dialog trägt seine Abstände selbst (dieselben wie .vp-bz-form, die nur die Bezugsgrößen-Seite lädt). */
+.vp-ablesung-form { display: flex; flex-direction: column; gap: var(--vp-c-space-4); min-width: 0; }
+.vp-ablesung-form p { margin: 0; }
+/* Der Picker trägt sein Raster selbst: die Grundregel von .vp-bz-felder steht in BezugsgroessenPage.css, und die ist auf
+   der Seite einer Messstelle nicht geladen (sonst stünden Datum, Uhrzeit und Zone untereinander). */
+.vp-wert-zeitpunkt .vp-bz-felder { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vp-c-space-3); }
 @media (max-width: 419px) { .vp-wert-zeitpunkt .vp-bz-felder { grid-template-columns: minmax(0, 1fr); } }
 /* Konzept Messen m1, §6.5: „Abgelesen am“ über den Feldern, das Kürzel der Zone („MESZ“) am Uhrzeit-Feld. */
 .vp-wert-zeitpunkt-kopf { font-family: var(--vp-font-body); font-size: 0.9rem; font-weight: 600; color: var(--vp-text-dark); }

@@ -105,7 +105,7 @@ export function Ablesungen({
                       .map((f) => (
                         <div className="vp-wert-fassung" key={f.fassung}>
                           <strong>
-                            Fassung {f.fassung} · {betrag(f.stand)} {einheit}
+                            Fassung {f.fassung} · {betrag(f.stand)}{'\u00a0'}{einheit}
                           </strong>
                           <p>
                             {f.woher === 'import' ? 'Importiert' : 'Eingegeben'} · {f.urheber.name} · {zeitText(f.eingetragen_am, zone)}
@@ -141,12 +141,14 @@ function AntwortSatz({ antwort, einheit, zone }: { antwort: AblesungAntwort; ein
   const menge = antwort.ablesezeitraum?.menge;
   return (
     <div role="status" className="vp-mss-antwort">
+      {/* Die Kennung des Vorgangs nur beim Vorschlag - dort ist sie der Bezug für die Freigabe; sonst wäre sie eine rohe Nummer. */}
       <p>
-        {satz} {antwort.korrektur}
+        {satz}
+        {antwort.urteil === 'vorschlag' && antwort.korrektur ? ` (${antwort.korrektur})` : ''}
       </p>
       {antwort.ablesezeitraum && (
         <p className="vp-mss-leise">
-          {menge === null || menge === undefined ? antwort.ablesezeitraum.zustand : `${betrag(menge)} ${einheit} seit der letzten Ablesung`}
+          {menge === null || menge === undefined ? antwort.ablesezeitraum.zustand : `${betrag(menge)}\u00a0${einheit} seit der letzten Ablesung`}
           {' · '}
           {zeitText(antwort.ablesung.zeitpunkt, zone)}
         </p>
