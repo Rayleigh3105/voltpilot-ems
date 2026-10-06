@@ -261,7 +261,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
       teile.push({ text: einstufung === 'offen' ? 'noch nicht eingestuft' : einstufungWort(einstufung) }, { text: ohneWerteGrund(einsatz.traeger) });
     } else {
       if (einstufung === 'offen')
-        teile.push({ text: vorschlag ? `Vorschlag „${vorschlagWort(vorschlag)}“${vorschlag.grund ? ` (${vorschlag.grund})` : ''}` : 'noch kein Vorschlag ohne Messwerte' });
+        teile.push({ text: vorschlag ? `Vorschlag „${vorschlagWort(vorschlag)}“${vorschlag.grund ? ` (${vorschlag.grund})` : ''}` : 'noch kein Vorschlag - es fehlen Messwerte' });
       const wer = verantwortlichText(einsatz.verantwortlich);
       teile.push({ text: wer === OHNE_VERANTWORTLICH ? 'noch ohne verantwortliche Person' : `verantwortlich ${wer}` });
       if (f) teile.push({ text: `Einstufung Fassung ${f.fassung}${f.gueltig_ab ? ` seit ${tag(f.gueltig_ab)}` : ''}`, breit: true });
