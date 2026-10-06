@@ -4,6 +4,8 @@
  * --vp-navy, Punkt in der Farbe des Urteils (weniger als erwartet --vp-flow-batt, mehr --vp-c-warn-fg, im Rahmen Grau).
  */
 .vp-skala {
+  width: 100%;
+  max-width: 560px;
   margin: 6px 0 4px;
   min-width: 0;
 }

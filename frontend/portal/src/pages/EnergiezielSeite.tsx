@@ -275,7 +275,10 @@ export function EnergiezielSeite({
   const monate = !!grafik;
   const flaechen = (
     offen
-      ? [monate ? 'grafik rechts' : 'rechts rechts', ...(monate ? ['werte werte'] : []), 'massnahmen ueber', ...(bewertungBreit ? ['bewertung bewertung'] : [])]
+      ? [
+          ...(monate ? ['grafik rechts', 'werte werte', 'massnahmen ueber'] : ['rechts ueber', 'massnahmen ueber']),
+          ...(bewertungBreit ? ['bewertung bewertung'] : []),
+        ]
       : [bewertungBreit ? 'rechts bewertung' : 'rechts rechts', ...(monate ? ['grafik grafik', 'werte werte'] : []), 'massnahmen ueber']
   )
     .map((z) => `'${z}'`)
