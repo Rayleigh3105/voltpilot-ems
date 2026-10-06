@@ -1469,6 +1469,27 @@
       "nachher": "d7beab1bff86d010fa4d0067207751f8b7ac9e81ded1974fd8dc7d616170d387",
       "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
       "grund": "Captain-Punkt zu Konzept Messen m1: Schritt 3 fragt „Woher kommen die Werte?“ mit den Wegen „Automatisch von einem Gerät“ und „Von Hand ablesen“. Der Ausweg heißt je Weg „Später binden“, „Später eintragen“ oder ohne Wahl „Später festlegen“; Handler (Fertig-Ansicht ohne Quelle) unverändert."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "9aedfdb41fa3d3ba180f9cbff06a896a91f83ecf9ac03c6e53d2cce9021b2ddf",
+      "nachher": "7a8fae790a235301afb2c8fee26491a34505c0efd36ca2796ee492788dc31a65",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.6: „‹ September 2026 ›“ als Blätter-Knopf der Familie (Quadrat 34 px, am Telefon 44 px Tippfläche, Zeichen 16 statt 18 px). Handler, Beschriftung und Rolle unverändert."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "a7bf69c8e34a4a517ca543604417f7c8b40d54c40174ab4147dde2e8fc9e836a",
+      "nachher": "5e6e1d575fefd977f9d608dc18481a299942f20c455a602a84817212cfbaac8b",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.6: „›“ ist am letzten gebildeten Zeitraum aus (im Konzept-Bild ausgegraut bei September 2026) - ein laufender Monat hat keine Zahl (E11), also blättert die Fläche nicht in ihn hinein. Handler und Beschriftung unverändert, Zeichen 16 px."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "4fc5f4ec013e54e2f9d149bbbc892aafa33c294ade05be1a908fb3991c07ab28",
+      "nachher": "89efe5e314e8572786065236748857db16b938a040bd12654fd215fdbc824ada",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11 (Zustand „Fehler“ wie Wiedervorlage): „Erneut versuchen“ ist der leise Verweis der Fehlerkarte (`vp-ms-link`) mit dem Wort aus `ERNEUT`. Handler unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

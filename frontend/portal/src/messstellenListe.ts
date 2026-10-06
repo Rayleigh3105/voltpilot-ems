@@ -575,3 +575,9 @@ export function gruppenZahl(g: OrtGruppe, gefiltert: boolean): string {
   const n = gefiltert ? `${g.reihen.length} von ${g.gesamt}` : `${g.gesamt}`;
   return [g.standort, n].filter(Boolean).join(' · ');
 }
+
+/**
+ * Woher die Werte einer Zeile des Registers kommen („von Hand abgelesen, monatlich“) - dieselben Wörter wie die Liste,
+ * für die Reihen der Reiter „Kostenstellen“ (Ohne Kostenstelle) und „Prozesse“ (Konzept Messen m1 §6.6/§6.7).
+ */
+export const woherDerZeile = (z: MessstelleRegisterZeile): Reihe['woher'] => woherAus(z, wegAus(z));

@@ -202,22 +202,21 @@ function MessstellenWelt({ reiterOben = false, ...register }: RegisterProps & { 
 
   const leiste = da.length > 0 && !reiterOben ? <ReiterLeiste reiter={da} aktiv={offen} onWahl={waehleReiter} /> : null;
   if (offen === 'liste') return <RegisterFlaeche {...register} leiste={leiste} />;
+  // Konzept Messen m1 §6.6: die Reiter wählen Monat · Jahr; ein Tag der Adresse (ein älterer Sprung) zeigt seinen Monat.
+  const zeitwahl = wahl.periode === 'tag' ? { periode: 'monat' as const, am: `${wahl.am.slice(0, 7)}-01` } : wahl;
+  // Jeder Reiter trägt seinen eigenen Kopf (Titel = Reiter, Satz, „Was ist …?“) - nicht mehr „Messstellen“ darüber.
   return (
     <div className="vp-ms" data-testid="messstellen-organisation">
       {leiste}
-      <header className="vp-ms-kopf">
-        <div className="vp-ms-kopf-text">
-          <h1>{TITEL}</h1>
-        </div>
-      </header>
       {katalog === null ? (
-        <p className="vp-ms-laedt" role="status">
-          {LADEN}
-        </p>
+        <div className="vp-ms-skelett" aria-busy="true" aria-label={LADEN} role="status">
+          <span className="vp-skeleton is-zeile" />
+          <span className="vp-skeleton is-karte" />
+        </div>
       ) : offen === 'kostenstellen' ? (
-        <KostenstellenReiter katalog={katalog.kostenstellen} hervor={hervor} wahl={wahl} heute={heute} onWahl={waehleZeitraum} />
+        <KostenstellenReiter katalog={katalog.kostenstellen} hervor={hervor} wahl={zeitwahl} heute={heute} onWahl={waehleZeitraum} />
       ) : (
-        <ProzesseReiter katalog={katalog.prozesse} wahl={wahl} heute={heute} onWahl={waehleZeitraum} />
+        <ProzesseReiter katalog={katalog.prozesse} wahl={zeitwahl} heute={heute} onWahl={waehleZeitraum} />
       )}
     </div>
   );

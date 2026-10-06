@@ -1,21 +1,444 @@
-.vp-bz { display: flex; flex-direction: column; gap: var(--vp-c-space-4); color: var(--vp-c-fg); font-family: var(--vp-c-font); min-width: 0; }
-.vp-bz h1 { font-size: var(--vp-c-fs-24); margin: 0; line-height: var(--vp-c-lh-title); }
-.vp-bz h2 { font-size: var(--vp-c-fs-20); margin: 0; line-height: var(--vp-c-lh-title); overflow-wrap: anywhere; }
-.vp-bz p { margin: 0; line-height: var(--vp-c-lh-text); overflow-wrap: anywhere; }
-.vp-bz-kopf { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--vp-c-space-4); }
-.vp-bz-kopf > div { flex: 1 1 20rem; }
-.vp-bz-aktionen { display: flex; flex: 0 1 auto !important; flex-wrap: wrap; justify-content: flex-end; gap: var(--vp-c-space-2); }
-.vp-bz-kopf p { margin-top: var(--vp-c-space-2); color: var(--vp-c-muted-fg); }
-.vp-bz-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--vp-c-space-3); }
-.vp-bz-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: var(--vp-c-space-4); list-style: none; padding: 0; margin: 0; }
-.vp-bz-karte, .vp-bz-leer { border: 1px solid var(--vp-c-border); border-radius: var(--vp-c-radius); background: var(--vp-c-card); padding: var(--vp-c-space-4); display: flex; flex-direction: column; align-items: flex-start; gap: var(--vp-c-space-3); min-width: 0; }
-.vp-bz-kennung { display: flex; flex-wrap: wrap; gap: var(--vp-c-space-2); justify-content: space-between; width: 100%; font-size: var(--vp-c-fs-12); color: var(--vp-c-muted-fg); }
-.vp-bz-status { background: var(--vp-c-muted); border-radius: var(--vp-c-radius-sm); padding: 2px 6px; }
-.vp-bz-einheit { font-weight: var(--vp-c-fw-700); }
-.vp-bz-hinweis { font-size: var(--vp-c-fs-14); color: var(--vp-c-muted-fg); }
-.vp-bz-weg { display: inline-flex; gap: var(--vp-c-space-2); align-items: center; color: var(--vp-action); min-height: 44px; overflow-wrap: anywhere; }
-.vp-bz-erfolg { padding: var(--vp-c-space-3); background: var(--vp-c-muted); border-radius: var(--vp-c-radius-sm); }
+/*
+ * Bezugsgrößen (UEMS AP-09 IP-9; Konzept Messen m1 §6.8, Captain-Freigabe 05.10.2026) - Liste und Seite einer
+ * Bezugsgröße in der Familie der Messstellen-Liste (`MessstellenPage.css`: Kopf, Statuszeile, Karten mit Reihen). Hier
+ * nur, was die Bezugsgrößen darüber hinaus brauchen, aus Haus-Tokens:
+ *
+ *   .vp-bz-reihe     am Telefon steht unter dem Namen, was sie zählt („Halle 2 · kg je Monat“), ab 760 px der Zustand
+ *   .vp-bz-kacheln   die Flächen aus dem Gebäudeplan (Konzept `.flaechen`: zwei, ab 760 px vier Kacheln)
+ *   .vp-bzs-*        die Seite einer Bezugsgröße: Rückweg, Kachel mit dem letzten Wert, Balken, Werte mit Block
+ *
+ * `.vp-bz-form` und `.vp-bz-felder` gehören den Dialogen (Anlegen, Wert, Messkanal) und bleiben.
+ */
+
+/* ---------- Dialoge (Bestand) --------------------------------------------------------------------- */
 .vp-bz-form { display: flex; flex-direction: column; gap: var(--vp-c-space-4); min-width: 0; }
 .vp-bz-form p { margin: 0; }
 .vp-bz-felder { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vp-c-space-3); }
-@media (max-width: 719px) { .vp-bz-filter { grid-template-columns: minmax(0, 1fr); } .vp-bz-aktionen, .vp-bz-aktionen .vp-btn { width: 100%; } }
+
+/* ---------- Liste ----------------------------------------------------------------------------------- */
+a.vp-bz-hinweis {
+  text-decoration: none;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  a.vp-bz-hinweis:hover {
+    background: #f8fafc;
+  }
+}
+.vp-bz-suche {
+  max-width: 440px;
+}
+
+/* Am Telefon: unter dem Namen, was die Bezugsgröße zählt; der Zustand sagt der Punkt (Konzept, Handy). */
+.vp-bz-reihe .vp-ms-reihe-satz {
+  display: none;
+}
+.vp-bz-reihe .vp-ms-reihe-unter {
+  display: block;
+  grid-area: satz;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-bz-eintragen {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Die Flächen aus dem Gebäudeplan: Kacheln statt sieben gleicher Karten (Konzept `.flaechen`). */
+.vp-bz-flaechen-unter {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-bz-flaechen .vp-ms-ort-kopf {
+  flex-wrap: wrap;
+}
+.vp-bz-aendern {
+  margin-left: auto;
+  min-height: 0;
+}
+.vp-bz-flaechen .vp-ms-ort-kopf .vp-bz-flaechen-unter {
+  flex-basis: 100%;
+  order: 3;
+}
+.vp-bz-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-bz-kachel {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-card, #fff);
+  color: inherit;
+  text-decoration: none;
+}
+a.vp-bz-kachel:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  a.vp-bz-kachel[href]:hover {
+    border-color: color-mix(in srgb, var(--vp-c-primary, #2563eb) 35%, var(--vp-c-border, #e2e8f0));
+  }
+}
+.vp-bz-kachel span {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-bz-kachel b {
+  font: 700 0.9375rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  color: var(--vp-navy, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-bz-kachel b.is-leer {
+  font: 500 0.8125rem var(--vp-c-font);
+  color: var(--vp-text-gray, #66717c);
+}
+.vp-bz-eigene {
+  margin-top: 2px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+/* ---------- Seite einer Bezugsgröße ------------------------------------------------------------------- */
+.vp-bzs-zurueck {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-height: 32px;
+  margin-bottom: -8px;
+  font: 600 0.875rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
+  text-decoration: none;
+}
+.vp-bzs-zurueck:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.vp-bzs-kz {
+  margin-left: 7px;
+  font: 500 0.875rem var(--vp-c-font);
+  letter-spacing: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-bzs .vp-ms-status {
+  margin-top: -6px;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-bzs .vp-ms-status.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-bzs .vp-ms-status.is-warn .vp-ms-status-punkt {
+  background: var(--vp-c-warn-fg, #9a3412);
+}
+/* Der eine Schritt: am Telefon über die volle Breite (Konzept „Ablesung eintragen“). */
+.vp-bzs-schritt {
+  align-self: stretch;
+}
+.vp-bzs-gebaeude {
+  margin-top: -8px;
+}
+
+/* Die Kachel mit dem letzten Wert (Konzept: die Verbrauchs-Kachel, hier ohne Rollen-Farbe - eine Bezugsgröße ist kein Verbrauch). */
+.vp-bzs-kachel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-bzs-kachel-titel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 700 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-bzs-kachel-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-bzs-gross {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  margin: 0;
+}
+.vp-bzs-gross b {
+  font: 800 2.25rem/1.05 var(--vp-font-heading, 'Inter Tight', sans-serif);
+  letter-spacing: -0.02em;
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+.vp-bzs-gross b.is-leer {
+  color: var(--vp-text-gray, #66717c);
+}
+.vp-bzs-gross > span {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-bzs-kachel-fuss {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-bzs-frueher {
+  margin: 0;
+  padding: 8px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  display: grid;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Zwölf Perioden als Balken auf EINER Skala (Konzept `.balken`, ohne Rollen-Farbe: Navy, die letzte kräftig). */
+.vp-bzs-saeulen {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 4px;
+  align-items: end;
+  min-width: 0;
+}
+.vp-bzs-saeule {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 0;
+}
+.vp-bzs-saeule-feld {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 88px;
+}
+.vp-bzs-saeule-wert {
+  position: absolute;
+  left: 50%;
+  width: min(100%, 36px);
+  transform: translateX(-50%);
+  bottom: 0;
+  border-radius: 4px 4px 2px 2px;
+  background: color-mix(in srgb, var(--vp-navy, #1e3a5f) 22%, var(--vp-c-card, #fff));
+}
+.vp-bzs-saeule.is-letzte .vp-bzs-saeule-wert {
+  background: var(--vp-navy, #1e3a5f);
+}
+.vp-bzs-saeule.is-luecke .vp-bzs-saeule-feld::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--vp-text-subtle, #ced4da);
+}
+.vp-bzs-saeule-marke {
+  font: 600 0.6875rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-bzs-saeule.is-letzte .vp-bzs-saeule-marke {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 700;
+}
+.vp-bzs-balken-fuss {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-bzs-balken-fuss b {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 700;
+}
+
+/* Die Werte: Zeitraum als Block (Konzept `.fd`), Wert und Herkunft, ⋯ für Berichtigen und Fassungen. */
+.vp-bzs-liste {
+  display: grid;
+  margin: -4px 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-bzs-zeile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  min-width: 0;
+}
+.vp-bzs-zeile + .vp-bzs-zeile {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-bzs-block {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  width: 56px;
+  min-height: 52px;
+  padding: 5px 2px;
+  box-sizing: border-box;
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+  text-align: center;
+  line-height: 1.15;
+}
+.vp-bzs-block b {
+  font: 800 0.9375rem/1.2 var(--vp-font-heading, 'Inter Tight', sans-serif);
+  letter-spacing: -0.01em;
+}
+.vp-bzs-block span {
+  font: 600 0.6875rem/1.2 var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+.vp-bzs-block.is-leer {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-bzs-zeile-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-bzs-zeile-text b {
+  font: 600 1rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+.vp-bzs-zeile-text span,
+.vp-bzs-zeile-text small {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-bzs-zeile-text small {
+  font-size: 0.75rem;
+}
+.vp-bzs-zeile-text small.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-bzs-zeile-menue {
+  display: inline-flex;
+}
+.vp-bzs-fassungen {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-bzs-fassungen li {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-bzs-fassungen li b {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 600;
+}
+
+/* Woher die Werte kommen: ein Satz, darunter Messkanal und Wetter (Bestand) als ruhige Aufklapper. */
+.vp-bzs-woher-satz {
+  margin: -6px 0 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-bzs-woher .vp-wert-liste > summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding-block: 4px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font: 600 0.875rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-bzs-woher .vp-wert-liste > *:not(summary) {
+  font-size: 0.8125rem;
+}
+
+/* ---------- Ab 760 px Breite -------------------------------------------------------------------------- */
+@container vp-ms (min-width: 760px) {
+  .vp-bz-reihe .vp-ms-reihe-satz {
+    display: flex;
+  }
+  .vp-bz-reihe .vp-ms-reihe-unter {
+    grid-area: unter;
+  }
+  .vp-bz-flaechen .vp-ms-ort-kopf .vp-bz-flaechen-unter {
+    flex-basis: auto;
+    order: 0;
+  }
+  .vp-bz-flaechen .vp-ms-ort-kopf .vp-bz-flaechen-unter::before {
+    content: '· ';
+  }
+  .vp-bz-kacheln {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .vp-bzs-schritt {
+    align-self: flex-start;
+  }
+  .vp-bzs-gross b {
+    font-size: 2.5rem;
+  }
+}
+@media (max-width: 419px) {
+  .vp-bz-felder {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Tippflächen am Telefon: 44 px hoch, ohne das Bild zu verschieben ----------------------- */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-bz .vp-begriff-auf:not([open]) summary,
+  .vp-bzs .vp-bzs-zurueck,
+  .vp-bzs .vp-ks-verweis,
+  .vp-bzs .vp-ks-alle,
+  .vp-bz .vp-ks-verweis {
+    min-height: 44px;
+    margin-block: -6px;
+  }
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-bz .vp-begriff-auf[open] summary {
+    min-height: 44px;
+    margin-block: -12px;
+  }
+}

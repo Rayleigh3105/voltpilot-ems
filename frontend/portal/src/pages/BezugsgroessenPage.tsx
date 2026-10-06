@@ -1,102 +1,441 @@
-import { BezugsKanalbindung } from '../components/BezugsKanalbindung';
-import { BegriffeZeile } from '../components/BegriffeZeile';
-import { BezugsWetter } from '../components/BezugsWetter';
-import { BezugswertListe } from '../components/BezugswertListe';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api } from '../api';
+import { api, type Bezugsflaechen } from '../api';
 import { useRollen } from '../rollen';
-import { heuteIn } from '../kennzahlKarte';
-import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
-import { VpPicker } from '../components/VpPicker';
-import { ConfirmDialog } from '../components/ConfirmDialog';
+import { BegriffAufklapper } from '../components/BegriffAufklapper';
 import { BezugsgroesseAnlegenDialog } from '../components/BezugsgroesseAnlegenDialog';
 import { BezugsdatenImportDialog } from '../components/BezugsdatenImportDialog';
 import { BezugsdatenImportProtokollDialog } from '../components/BezugsdatenImportProtokollDialog';
+import { RowMenu, type RowMenuItem } from '../components/RowMenu';
+import { useIsPhone } from '../useIsPhone';
+import { normalisiereSuche } from '../picker/suche';
+import { suchTerme } from '../messstellenListe';
+import { ohneUmbruchVorZahl } from '../kostenstellenUebersicht';
+import { BezugsgroesseSeite } from './BezugsgroesseSeite';
+import { bezugsLaden, type BezugsStand } from '../bezugsStand';
 import * as B from '../bezugsgroesseListe';
+import * as U from '../bezugsgroessenUebersicht';
+import './MessstellenPage.css';
 import './BezugsgroessenPage.css';
 
-async function laden(): Promise<{ liste: B.Liste; daten: B.OrtsDaten; orte: B.Ort[] }> {
-  const [liste, unternehmen, standorte, prozesse, kostenstellen, register] = await Promise.all([
-    api.bezugsgroessen(), api.unternehmen(), api.standorte(), api.prozesse(), api.kostenstellen(), api.messstellenRegister(),
-  ]);
-  const baeume = await Promise.all(standorte.standorte.map(s => api.standortOrte(s.id)));
-  const daten = { unternehmen, standorte: standorte.standorte, baeume, prozesse: prozesse.prozesse, kostenstellen: kostenstellen.kostenstellen, messstellen: register.register };
-  return { liste, daten, orte: B.geltungsOrte(daten, heuteIn(unternehmen.zeitzone ?? VORGABE_ZEITZONE, Date.now())) };
+/**
+ * „Unternehmen › Bezugsgrößen“ (UEMS AP-09 IP-9; Neubau nach dem Messen-Konzept m1 §6.8, Captain-Freigabe 05.10.2026):
+ * die Werte, mit denen der Verbrauch verglichen wird - zuletzt eingetragen und was fehlt.
+ *
+ * Kopf mit Satz und Menü ⋯ (Werte importieren, Import-Protokoll, Bezugsgröße anlegen, Archivierte zeigen; am Rechner
+ * „Werte importieren“ als Rahmen-Knopf), die Statuszeile, je Periode eine Karte mit Reihen (Name, Zustand, Woher, letzter
+ * Wert) und die Flächen aus dem Gebäudeplan als Kacheln. Jede Reihe öffnet die Seite der Bezugsgröße
+ * (`#/portfolio/bezugsgroessen/{id}`, Entscheid 9) - dort wird eingetragen, berichtigt und archiviert.
+ */
+export function BezugsgroessenPage({ bezugsgroesseId = null }: { bezugsgroesseId?: string | null } = {}) {
+  if (bezugsgroesseId) return <BezugsgroesseSeite key={bezugsgroesseId} id={bezugsgroesseId} />;
+  return <BezugsgroessenListe />;
 }
 
-/** Eigene Unternehmenswelt nach Firstmate-Entscheid 001 (AP-09 IP-9), keine Standortseite. */
-export function BezugsgroessenPage() {
-  const [stand, setStand] = useState<Awaited<ReturnType<typeof laden>> | null>(null);
+function BezugsgroessenListe() {
+  const isPhone = useIsPhone();
+  const [stand, setStand] = useState<BezugsStand | null>(null);
   const [ladefehler, setLadefehler] = useState(false);
   const [neu, setNeu] = useState(0);
-  const [filter, setFilter] = useState({ standort: null as string | null, prozess: null as string | null, archiviert: false });
-  const [kanalRevision, setKanalRevision] = useState(0);
+  const [werte, setWerte] = useState<ReadonlyMap<string, U.WerteStand>>(() => new Map());
+  const [stamm, setStamm] = useState<ReadonlyMap<string, U.StammStand>>(() => new Map());
+  const [flaechen, setFlaechen] = useState<Bezugsflaechen | null>(null);
+  const [archivierte, setArchivierte] = useState(false);
+  const [suche, setSuche] = useState('');
   const [anlegen, setAnlegen] = useState(false);
   const [importOffen, setImportOffen] = useState(false);
   const [protokoll, setProtokoll] = useState<string | null | undefined>(undefined);
-  const [archiv, setArchiv] = useState<B.Zeile | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [fehler, setFehler] = useState<string | null>(null);
   const [erfolg, setErfolg] = useState<string | null>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   const kopf = useRef<HTMLHeadingElement>(null);
   const { darf } = useRollen();
-  const verwalten = (standort: string | null) => darf('bezugsgroesse.verwalten', standort);
-  const darfImportieren = stand ? darf('bezugsgroesse.importieren', null) || stand.daten.standorte.some(s => darf('bezugsgroesse.importieren', s.id)) : false;
+
   useEffect(() => {
     let aktiv = true;
     setLadefehler(false);
-    laden().then(x => { if (aktiv) setStand(x); }, () => { if (aktiv) setLadefehler(true); });
-    return () => { aktiv = false; };
+    bezugsLaden().then(
+      (x) => {
+        if (!aktiv) return;
+        setStand(x);
+        // Je Bezugsgröße ihre Werte (bzw. das Stammdatum) - die Reihen füllen sich, sobald eine Antwort da ist.
+        for (const b of x.liste.bezugsgroessen) {
+          if (b.wertart === 'stammdatum') {
+            api.bezugsgroesseStammdatum(b.id).then(
+              (s) => aktiv && setStamm((m) => new Map(m).set(b.id, s)),
+              () => aktiv && setStamm((m) => new Map(m).set(b.id, 'fehler')),
+            );
+          } else {
+            api.bezugsgroesseWerte(b.id).then(
+              (w) => aktiv && setWerte((m) => new Map(m).set(b.id, w)),
+              () => aktiv && setWerte((m) => new Map(m).set(b.id, 'fehler')),
+            );
+          }
+        }
+        api.bezugsflaechen('tag', x.heute, x.heute).then(
+          (f) => aktiv && setFlaechen(f),
+          () => aktiv && setFlaechen(null),
+        );
+      },
+      () => aktiv && setLadefehler(true),
+    );
+    return () => {
+      aktiv = false;
+    };
   }, [neu]);
-  const schliessen = () => { setAnlegen(false); setArchiv(null); setFehler(null); requestAnimationFrame(() => (ausloeser.current?.isConnected ? ausloeser.current : kopf.current)?.focus()); };
-  const archivieren = async () => {
-    if (!archiv?.original || archiv.standort === undefined || !verwalten(archiv.standort) || busy) return;
-    setBusy(true); setFehler(null);
-    try {
-      const b = await api.bezugsgroesseArchivieren(archiv.original.id);
-      setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: s.liste.bezugsgroessen.map(x => x.id === b.id ? b : x) } } : s);
-      setErfolg(`${b.name} ist archiviert.`); schliessen();
-    } catch (e) { setFehler(B.fehlerSatz(e)); }
-    finally { setBusy(false); }
+
+  const verwalten = (standort: string | null) => darf('bezugsgroesse.verwalten', standort);
+  const darfImportieren = stand ? darf('bezugsgroesse.importieren', null) || stand.daten.standorte.some((s) => darf('bezugsgroesse.importieren', s.id)) : false;
+  const darfAnlegen = stand ? stand.orte.some((o) => o.waehlbar && verwalten(o.standort)) : false;
+  const schliessen = () => {
+    setAnlegen(false);
+    requestAnimationFrame(() => (ausloeser.current?.isConnected ? ausloeser.current : kopf.current)?.focus());
   };
-  const alle = stand ? B.zeilen(stand.liste, stand.orte) : [];
-  const zeilen = B.filtern(alle, filter);
-  return <section className="vp-bz" aria-label={B.TITEL}>
-    <header className="vp-bz-kopf">
-      <div><h1 tabIndex={-1} ref={kopf}>{B.TITEL}</h1><p>Die Grundlage für Kennzahlen je Kilogramm, Stunde oder Quadratmeter.</p><BegriffeZeile begriffe={['bezugsgroesse']} /></div>
-      {stand && <div className="vp-bz-aktionen">
-        {darfImportieren && <Button variant="ghost" onClick={e => { ausloeser.current = e.currentTarget; setProtokoll(null); setErfolg(null); }}>Import-Protokoll</Button>}
-        {darfImportieren && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setImportOffen(true); setErfolg(null); }}>Werte importieren</Button>}
-        {stand.orte.some(o => o.waehlbar && verwalten(o.standort)) && <Button onClick={e => { ausloeser.current = e.currentTarget; setAnlegen(true); setErfolg(null); }}><Icon name="plus" size={16} />{B.ANLEGEN}</Button>}
-      </div>}
-    </header>
-    {erfolg && <p role="status" className="vp-bz-erfolg">{erfolg}</p>}
-    {ladefehler ? <div role="alert"><p>Die Bezugsgrößen konnten nicht geladen werden.</p><Button variant="outline" onClick={() => setNeu(n => n + 1)}>Erneut versuchen</Button></div> : !stand ? <p role="status">Bezugsgrößen werden geladen …</p> : <>
-      <div className="vp-bz-filter">
-        <VpPicker label="Standort" value={filter.standort ?? 'alle'} options={[{ value: 'alle', label: 'Alle Standorte' }, ...stand.daten.standorte.filter(s => s.zustand !== 'archiviert').map(s => ({ value: s.id, label: s.name }))]} onChange={s => setFilter(f => ({ ...f, standort: s === 'alle' ? null : s, prozess: null }))} />
-        <VpPicker label="Prozess" value={filter.prozess ?? 'alle'} options={[{ value: 'alle', label: 'Alle Prozesse' }, ...stand.daten.prozesse.map(p => ({ value: p.id, label: p.name, sub: p.kennzeichen }))]} onChange={p => setFilter(f => ({ ...f, prozess: p === 'alle' ? null : p, standort: null }))} />
-        <VpPicker label="Anzeige" value={filter.archiviert ? 'archiviert' : 'aktiv'} options={[{ value: 'aktiv', label: 'Aktiv' }, { value: 'archiviert', label: 'Archiviert' }]} onChange={v => setFilter(f => ({ ...f, archiviert: v === 'archiviert' }))} />
-      </div>
-      {filter.standort && <p className="vp-bz-hinweis">Bezugsgrößen des Unternehmens, der Prozesse und Kostenstellen sehen Sie unter „Alle Standorte“.</p>}
-      {zeilen.length === 0 ? <div className="vp-bz-leer"><Icon name="layers" size={28} /><h2>{alle.length === 0 ? B.LEER : filter.archiviert ? 'Keine archivierten Bezugsgrößen' : 'Keine Bezugsgrößen für diese Auswahl'}</h2><p>{alle.length === 0 ? B.LEER_SATZ : 'Ändern Sie die Auswahl, um weitere Bezugsgrößen zu sehen.'}</p></div> : <ul className="vp-bz-liste">
-        {zeilen.map(z => <li className="vp-bz-karte" key={z.key} data-testid="bezugsgroesse-karte">
-          <div className="vp-bz-kennung"><span>{z.kennzeichen ?? 'Bezugsfläche'}</span><span className="vp-bz-status">{z.status}</span></div>
-          <h2>{z.name}</h2><p>{z.art}</p><p className="vp-bz-einheit">{z.einheit}</p><p>{z.geltung}</p>
-          {z.flaeche && <p className="vp-bz-hinweis">Flächen werden in der Ortsstruktur gepflegt.</p>}
-          {z.flaeche && z.standort && <a className="vp-bz-weg" href={`#/standort/${encodeURIComponent(z.standort)}/gebaeude`}>Gebäude und Bereiche ansehen<Icon name="chevron-right" size={16} /></a>}
-          {z.original?.wertart === 'periodenwert' && <BezugsKanalbindung onChanged={() => setKanalRevision(n => n + 1)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
-          {z.original?.art === 'gradtagzahl' && <BezugsWetter onChanged={() => setKanalRevision(n => n + 1)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
-          {z.original?.wertart === 'periodenwert' && <BezugswertListe bindungRevision={kanalRevision} onEingegeben={() => setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: s.liste.bezugsgroessen.map(b => b.id === z.original?.id ? { ...b, hat_werte: true } : b) } } : s)} bezug={z.original} standort={z.standort} zone={stand.daten.standorte.find(s => s.id === z.standort)?.zeitzone ?? stand.daten.unternehmen?.zeitzone ?? VORGABE_ZEITZONE} />}
-          {z.original && !z.archiviert && z.standort !== undefined && verwalten(z.standort) && <Button variant="ghost" onClick={e => { ausloeser.current = e.currentTarget; setArchiv(z); setErfolg(null); }}>Archivieren</Button>}
-        </li>)}
-      </ul>}
-    </>}
-    {anlegen && stand && <BezugsgroesseAnlegenDialog orte={stand.orte} onClose={schliessen} onGespeichert={b => { setStand(s => s ? { ...s, liste: { ...s.liste, bezugsgroessen: [...s.liste.bezugsgroessen, b] } } : s); setFilter({ standort: null, prozess: null, archiviert: false }); setErfolg(`${b.kennzeichen} · ${b.name} ist angelegt.`); schliessen(); }} />}
-    {importOffen && stand && <BezugsdatenImportDialog bezugsgroessen={stand.liste.bezugsgroessen} onImportAnsehen={(kennung) => { setImportOffen(false); setProtokoll(kennung); }} onClose={() => { setImportOffen(false); requestAnimationFrame(() => ausloeser.current?.focus()); }} />}
-    {protokoll !== undefined && <BezugsdatenImportProtokollDialog startKennung={protokoll} onClose={() => { setProtokoll(undefined); requestAnimationFrame(() => ausloeser.current?.focus()); }} />}
-    {archiv && archiv.standort !== undefined && verwalten(archiv.standort) && <ConfirmDialog open title="Bezugsgröße archivieren?" intro={`„${archiv.name}“ wird archiviert.`} consequences={B.ARCHIV_FOLGEN} confirmLabel="Archivieren" busy={busy} onConfirm={() => void archivieren()} onCancel={() => { if (!busy) schliessen(); }} extra={fehler ? <p role="alert">{fehler}</p> : undefined} />}
-  </section>;
+
+  const alle = stand ? stand.liste.bezugsgroessen.map((b) => U.bzReihe(b, werte.get(b.id) ?? null, stamm.get(b.id) ?? null, stand.heute)) : [];
+  const terme = suchTerme(suche);
+  const passt = (r: U.BzReihe) => {
+    if (terme.length === 0) return true;
+    const text = normalisiereSuche([r.name, r.kennzeichen, r.unter].join(' '));
+    return terme.every((t) => text.includes(t));
+  };
+  const aktiv = alle.filter((r) => !r.archiviert && passt(r));
+  const archiv = alle.filter((r) => r.archiviert && passt(r));
+  const gruppen = U.bzGruppen(aktiv);
+  const eigene = U.bzOhnePeriode(aktiv);
+  const status = U.bzStatus(alle);
+  const kacheln = stand ? U.flaechenKacheln(flaechen, stand.orte) : [];
+  const standorteDerFlaechen = [...new Set(kacheln.map((k) => k.standort).filter((s): s is string => s !== null))];
+  const beispiel = aktiv.find((r) => r.wert && r.wann);
+
+  const menue: RowMenuItem[] = [];
+  if (darfImportieren && isPhone) menue.push({ label: U.WERTE_IMPORTIEREN, hinweis: U.WERTE_IMPORTIEREN_HINWEIS, icon: 'upload', onClick: () => { setImportOffen(true); setErfolg(null); } });
+  if (darfImportieren) menue.push({ label: U.IMPORT_PROTOKOLL, icon: 'history', onClick: () => { setProtokoll(null); setErfolg(null); } });
+  if (darfAnlegen) menue.push({ label: B.ANLEGEN, icon: 'plus', onClick: () => { setAnlegen(true); setErfolg(null); } });
+  if (alle.some((r) => r.archiviert)) {
+    const n = alle.filter((r) => r.archiviert).length;
+    menue.push({
+      label: archivierte ? U.ARCHIVIERTE_AUSBLENDEN : U.ARCHIVIERTE_ZEIGEN,
+      hinweis: archivierte ? undefined : `${n} archivierte`,
+      icon: 'archive',
+      onClick: () => setArchivierte((x) => !x),
+    });
+  }
+
+  return (
+    <div className="vp-ms vp-bz" data-testid="bezugsgroessen">
+      <header className="vp-ms-kopf">
+        <div className="vp-ms-kopf-text">
+          <h1 tabIndex={-1} ref={kopf}>
+            {B.TITEL}
+          </h1>
+          <p className="vp-ms-meta">{U.KOPF_SATZ}</p>
+        </div>
+        {stand && ((darfImportieren && !isPhone) || menue.length > 0) && (
+          <span
+            className="vp-ms-aktionen"
+
+          >
+            {darfImportieren && !isPhone && (
+              <Button variant="outline" size="sm" iconLeft={<Icon name="upload" size={15} />} onClick={(e: ReactMouseEvent<HTMLButtonElement>) => { ausloeser.current = e.currentTarget; setImportOffen(true); setErfolg(null); }}>
+                {U.WERTE_IMPORTIEREN}
+              </Button>
+            )}
+            {menue.length > 0 && (
+              <span
+                className="vp-ms-menue"
+                data-testid="bezugsgroessen-menue"
+                onClickCapture={(e) => {
+                  // Der Auslöser ⋯ selbst (die Einträge stehen in einem Portal und verschwinden mit dem Menü).
+                  ausloeser.current = e.currentTarget.querySelector('button');
+                }}
+              >
+                <RowMenu label="Weitere Aktionen" buttonClassName="vp-ms-menue-knopf" items={menue} />
+              </span>
+            )}
+          </span>
+        )}
+      </header>
+      {erfolg && (
+        <p role="status" className="vp-ms-status is-ok">
+          <span className="vp-ms-status-punkt" aria-hidden="true" />
+          {erfolg}
+        </p>
+      )}
+      {!ladefehler && (
+        <div className={`vp-ms-lage${status?.ton === 'hinweis' ? ' has-hinweise' : ''}`}>
+          <BegriffAufklapper
+            begriff="bezugsgroesse"
+            beispiel={
+              beispiel?.wert ? (
+                <>
+                  Bei Ihnen zum Beispiel{' '}
+                  <b>
+                    {beispiel.wert.zahl} {beispiel.wert.einheit}
+                  </b>{' '}
+                  {beispiel.name} ({beispiel.kennzeichen}) im {beispiel.wann}.
+                </>
+              ) : undefined
+            }
+          />
+          {status && status.ton === 'ok' && (
+            <p className="vp-ms-status is-ok" data-testid="bezugsgroessen-status">
+              <span className="vp-ms-status-punkt" aria-hidden="true" />
+              {status.text}
+            </p>
+          )}
+          {status && status.ton === 'hinweis' && status.ziel && (
+            <a className="vp-ms-hinweis is-warn vp-bz-hinweis" href={`#/portfolio/bezugsgroessen/${encodeURIComponent(status.ziel.id)}`} data-testid="bezugsgroessen-hinweis">
+              <span className="vp-ms-hinweis-icon" aria-hidden="true">
+                <Icon name="alert-triangle" size={20} />
+              </span>
+              <span className="vp-ms-hinweis-text">
+                <b>{status.text}</b>
+                {status.satz && <span>{status.satz}</span>}
+              </span>
+              <span className="vp-ms-hinweis-schritt">
+                {U.EINTRAGEN}
+                <Icon name="chevron-right" size={16} />
+              </span>
+            </a>
+          )}
+        </div>
+      )}
+      {ladefehler ? (
+        <section className="vp-ms-karte is-fehler" role="alert">
+          <h2>{U.LADEFEHLER.titel}</h2>
+          <p className="vp-ms-leise">{U.LADEFEHLER.satz}</p>
+          <button type="button" className="vp-ms-link" onClick={() => setNeu((n) => n + 1)}>
+            Erneut versuchen
+          </button>
+        </section>
+      ) : !stand ? (
+        <div className="vp-ms-skelett" aria-busy="true" aria-label="Bezugsgrößen werden geladen">
+          <span className="vp-skeleton is-karte" />
+          <span className="vp-skeleton is-karte" />
+        </div>
+      ) : (
+        <>
+          {alle.filter((r) => !r.archiviert).length >= U.SUCHE_AB && (
+            <label className="vp-ms-suche vp-bz-suche" role="search">
+              <Icon name="search" size={17} aria-hidden="true" />
+              <input
+                type="text"
+                role="searchbox"
+                aria-label="Bezugsgrößen suchen"
+                placeholder="Name, Kennzeichen oder Ort …"
+                value={suche}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setSuche(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && suche) {
+                    e.stopPropagation();
+                    setSuche('');
+                  }
+                }}
+              />
+            </label>
+          )}
+          {alle.length === 0 && kacheln.length === 0 ? (
+            <section className="vp-ms-karte" role="status">
+              <p className="vp-ms-leer-satz">{B.LEER}</p>
+              <p className="vp-ms-leise">{B.LEER_SATZ}</p>
+              {darfAnlegen && (
+                <div className="vp-ms-knoepfe">
+                  <Button iconLeft={<Icon name="plus" size={15} />} onClick={(e: ReactMouseEvent<HTMLButtonElement>) => { ausloeser.current = e.currentTarget; setAnlegen(true); }}>
+                    {B.ANLEGEN}
+                  </Button>
+                </div>
+              )}
+            </section>
+          ) : null}
+          {gruppen.map((g) => (
+            <section key={g.art} className="vp-ms-ort" aria-labelledby={`vp-bz-${g.art}`} data-testid="bezugsgroessen-gruppe">
+              <div className="vp-ms-ort-kopf">
+                <h2 id={`vp-bz-${g.art}`}>{g.titel}</h2>
+                <span className="vp-ms-ort-zahl">{g.reihen.length === 1 ? '1 Bezugsgröße' : `${g.reihen.length} Bezugsgrößen`}</span>
+              </div>
+              <Spalten wert={spaltenWert(g.reihen)} />
+              <ul className="vp-ms-reihen">
+                {g.reihen.map((r) => (
+                  <li key={r.id}>
+                    <BzReiheLink r={r} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          {(kacheln.length > 0 || eigene.length > 0) && (
+            <section className="vp-ms-ort vp-bz-flaechen" aria-labelledby="vp-bz-flaechen" data-testid="bezugsgroessen-flaechen">
+              <div className="vp-ms-ort-kopf">
+                <h2 id="vp-bz-flaechen">{U.FLAECHEN.titel}</h2>
+                <span className="vp-bz-flaechen-unter">{U.FLAECHEN.unter}</span>
+                {standorteDerFlaechen.length > 0 && (
+                  <a
+                    className="vp-ks-verweis vp-bz-aendern"
+                    href={standorteDerFlaechen.length === 1 ? `#/standort/${encodeURIComponent(standorteDerFlaechen[0])}/gebaeude` : '#/portfolio/standorte'}
+                  >
+                    {U.FLAECHEN.aendern}
+                    <Icon name="chevron-right" size={14} />
+                  </a>
+                )}
+              </div>
+              {kacheln.length > 0 && (
+                <ul className="vp-bz-kacheln">
+                  {kacheln.map((k) => (
+                    <li key={k.key}>
+                      <a
+                        className="vp-bz-kachel"
+                        href={k.standort ? `#/standort/${encodeURIComponent(k.standort)}/gebaeude` : undefined}
+                        aria-label={`${k.name}: ${k.wert ? `${k.wert} ${k.einheit}` : U.FLAECHEN.keine} – ${U.FLAECHEN.aendern}`}
+                      >
+                        <span>{k.name}</span>
+                        {k.wert ? (
+                          <b>
+                            {k.wert}
+                            {' '}
+                            {k.einheit}
+                          </b>
+                        ) : (
+                          <b className="is-leer">{U.FLAECHEN.keine}</b>
+                        )}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {eigene.length > 0 && (
+                <ul className="vp-ms-reihen vp-bz-eigene">
+                  {eigene.map((r) => (
+                    <li key={r.id}>
+                      <BzReiheLink r={r} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+          {archivierte && archiv.length > 0 && (
+            <section className="vp-ms-ort is-still" aria-labelledby="vp-bz-archiv" data-testid="bezugsgroessen-archiv">
+              <div className="vp-ms-ort-kopf">
+                <h2 id="vp-bz-archiv">{`Archiviert · ${archiv.length}`}</h2>
+              </div>
+              <ul className="vp-ms-reihen">
+                {archiv.map((r) => (
+                  <li key={r.id}>
+                    <BzReiheLink r={r} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {terme.length > 0 && aktiv.length === 0 && (
+            <section className="vp-ms-karte" role="status">
+              <p className="vp-ms-leer-satz">{`Keine Bezugsgröße passt zu „${suche.trim()}“.`}</p>
+              <div className="vp-ms-knoepfe">
+                <button type="button" className="vp-ms-link" onClick={() => setSuche('')}>
+                  Suche leeren
+                </button>
+              </div>
+            </section>
+          )}
+        </>
+      )}
+      {anlegen && stand && (
+        <BezugsgroesseAnlegenDialog
+          orte={stand.orte}
+          onClose={schliessen}
+          onGespeichert={(b) => {
+            setStand((s) => (s ? { ...s, liste: { ...s.liste, bezugsgroessen: [...s.liste.bezugsgroessen, b] } } : s));
+            setWerte((m) => new Map(m).set(b.id, { bezugsgroesse_id: b.id, kennzeichen: b.kennzeichen, wertart: b.wertart, einheit: b.einheit, periode_art: b.periode_art, von: null, bis: null, fassungen: 'wirksam', werte: [] }));
+            setErfolg(`${b.kennzeichen} · ${b.name} ist angelegt.`);
+            schliessen();
+          }}
+        />
+      )}
+      {importOffen && stand && (
+        <BezugsdatenImportDialog
+          bezugsgroessen={stand.liste.bezugsgroessen}
+          onImportAnsehen={(kennung) => {
+            setImportOffen(false);
+            setProtokoll(kennung);
+          }}
+          onClose={() => {
+            setImportOffen(false);
+            setNeu((n) => n + 1);
+            requestAnimationFrame(() => ausloeser.current?.focus());
+          }}
+        />
+      )}
+      {protokoll !== undefined && (
+        <BezugsdatenImportProtokollDialog
+          startKennung={protokoll}
+          onClose={() => {
+            setProtokoll(undefined);
+            requestAnimationFrame(() => ausloeser.current?.focus());
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Die Spalte des Werts: die fällige Periode, wenn jede Reihe ihren letzten Wert dort hat - sonst „Letzter Wert“. */
+function spaltenWert(reihen: readonly U.BzReihe[]): string {
+  const r = reihen[0];
+  if (!r?.faellig || !r.periodeArt) return 'Letzter Wert';
+  const kurz = U.periodeText(r.faellig, r.periodeArt, true);
+  return reihen.every((x) => x.faellig === r.faellig && x.wann === kurz) ? U.periodeText(r.faellig, r.periodeArt) : 'Letzter Wert';
+}
+
+function Spalten({ wert }: { wert: string }) {
+  return (
+    <div className="vp-ms-spalten" aria-hidden="true">
+      <span>{U.SPALTEN.bezugsgroesse}</span>
+      <span>{U.SPALTEN.zustand}</span>
+      <span>{U.SPALTEN.woher}</span>
+      <span className="is-wert">{wert}</span>
+      <span />
+    </div>
+  );
+}
+
+/** Eine Bezugsgröße als Reihe: die ganze Reihe öffnet ihre Seite. */
+function BzReiheLink({ r }: { r: U.BzReihe }) {
+  return (
+    <a className={`vp-ms-reihe is-${r.ton} vp-bz-reihe`} href={`#/portfolio/bezugsgroessen/${encodeURIComponent(r.id)}`} data-testid="bezugsgroesse-reihe" data-kennzeichen={r.kennzeichen}>
+      <span className="vp-ms-reihe-name">
+        <span className="vp-ms-punkt is-name" aria-hidden="true" />
+        <span className="vp-ms-reihe-titel">
+          {ohneUmbruchVorZahl(r.name)} <span className="vp-ms-kz">{r.kennzeichen}</span>
+        </span>
+      </span>
+      <span className="vp-ms-reihe-unter">{r.unter}</span>
+      <span className="vp-ms-reihe-satz">
+        <span className="vp-ms-punkt is-satz" aria-hidden="true" />
+        <span>{r.zustand}</span>
+      </span>
+      <span className="vp-ms-reihe-woher">{r.woher}</span>
+      <span className="vp-ms-reihe-wert">
+        {r.wert ? (
+          <>
+            <b>
+              {r.wert.zahl}
+              <small>{r.wert.einheit}</small>
+            </b>
+            {r.wann && <span>{r.wann}</span>}
+          </>
+        ) : (
+          <>
+            <b className="is-leer">—</b>
+            {r.eintragen && <span className="vp-bz-eintragen">{U.EINTRAGEN}</span>}
+          </>
+        )}
+      </span>
+      <span className="vp-ms-reihe-chev" aria-hidden="true">
+        <Icon name="chevron-right" size={18} />
+      </span>
+    </a>
+  );
 }

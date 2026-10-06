@@ -1,286 +1,350 @@
 import { describe, expect, it } from 'vitest';
-import type { KostenstelleEnergie, KostenstelleEnergiePeriode, MessstelleVerteilung } from './api';
+import type { KostenstelleEnergie, KostenstelleEnergiePeriode, MessstelleRegisterZeile, MessstelleVerteilung, MessstelleWerte, ProzessMessstellen } from './api';
 import * as MODUL from './kostenstellenUebersicht';
 import {
+  ABLESUNG_OHNE_TAGESWERT,
   ALLE_NICHT_ABRUFBAR,
   DOPPELT_HINWEIS,
   DOPPELT_TITEL,
-  setzenDoppeltBild,
-  GRUND_SATZ,
-  KEINE_SUMME,
   NICHT_ABRUFBAR,
-  NICHT_VERTEILT_TITEL,
-  PROZESSE_KEINE_SUMME,
-  PROZESS_SUMME_OHNE,
-  berechnete,
+  NOCH_KEINE_MESSSTELLE_KLEIN,
+  OHNE_KOSTENSTELLE,
   hervorAus,
+  kostenstelleBeispiel,
   kostenstellenBild,
   kostenstellenImZeitraum,
-  prozessSummen,
+  ohneUmbruchVorZahl,
+  periodeKurz,
+  prozessBeispiel,
+  prozessKennzeichen,
   prozesseBild,
   reiterAus,
   reiterDa,
   reiterHash,
+  setzenDoppeltBild,
   type EnergieAntwort,
   type KarteBild,
   type KostenstellenBild,
   type WerteAntwort,
+  type ZuordnungAntwort,
 } from './kostenstellenUebersicht';
 import { parseRoute } from './nav';
-import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte, F12_TAG, r16ProzessSummeHinweis } from './test/kostenstellenFixtures';
+import { ahrenbergKostenstelleEnergie, ahrenbergProzessMessstellen, ahrenbergProzessSummeWerte, F12_TAG } from './test/kostenstellenFixtures';
 import { ahrenbergRegister } from './test/messstellenRegisterFixtures';
 import { kostenstellenAhrenberg, prozesseAhrenberg } from './test/messstelleSeiteFixtures';
 import faelle from './test/oberflaechenFaelle.json';
 import { sprungziel } from './uemsOberflaechen';
 
 /**
- * UEMS AP-13 IP-9 (= AP-10 IP-15, Listen-Teil) gegen den Fall O9 aus `test/oberflaechenFaelle.json` und die Kostenstellen
- * des Referenzunternehmens (`test/kostenstellenFixtures.ts`): 4200 9 700 · 4 770 · 14 470, 4100 mit Warnung, „nicht
- * verteilt“ einmal, KEINE Gesamtsumme — mit dem Satz, warum —, „gültig bis“ an 9000 (F12), Prozess-Summe MS-20.
+ * Die Reiter „Kostenstellen“ und „Prozesse“ (UEMS AP-13 IP-9; Neubau nach dem Messen-Konzept m1 §6.6/§6.7) gegen den
+ * Fall O9 aus `test/oberflaechenFaelle.json` und das Referenzunternehmen (`test/kostenstellenFixtures.ts`): je
+ * Kostenstelle die Summe der Route mit Posten und Herkunft („ganz“, „30 % von …“), „Ohne Kostenstelle“ statt „nicht
+ * verteilt“, KEINE Gesamtsumme und KEIN Satz darüber, die Warnung vor doppelter Zählung mit Weg, Ablesezähler ohne
+ * Tageswert ehrlich; je Prozess die Messstellen, die ihn messen, mit Wert.
  */
 
-type Fall = { id: string; schritte: string[]; erwartet: Record<string, unknown> };
+type Fall = { id: string; schritte: string[]; erwartet: Record<string, unknown>; gegeben: Record<string, unknown> };
 const O9 = (faelle as unknown as { faelle: Fall[] }).faelle.find((f) => f.id === 'O9') as Fall;
 
 const KATALOG = kostenstellenAhrenberg();
+const REGISTER = ahrenbergRegister().register;
 /** Die Anzeige mit gewöhnlichem Leerzeichen statt des geschützten vor der Einheit. */
-const n = (s: string): string => s.replace(/ /g, ' ');
+const n = (s: string): string => s.replace(/\u00a0/g, ' ');
 
 function antworten(periode: KostenstelleEnergiePeriode, am: string): Map<string, EnergieAntwort> {
   return new Map(kostenstellenImZeitraum(KATALOG, periode, am).map((k) => [k.id, ahrenbergKostenstelleEnergie(k.id, periode, am)]));
 }
-const bild = (periode: KostenstelleEnergiePeriode, am: string): KostenstellenBild =>
-  kostenstellenBild(KATALOG, antworten(periode, am), periode, am);
-const oktober = () => bild('monat', '2026-10-01');
+
+/** Die Werte-Route einer Messstelle mit EINEM Schritt (für „von 15.900 kWh“ und die Reihen „Ohne Kostenstelle“). */
+function werteVon(kennzeichen: string, menge: number | null, von = '2026-10-01', bis = '2026-10-31'): MessstelleWerte {
+  const w = ahrenbergProzessSummeWerte('MS-20', 'monat', von, bis);
+  return {
+    ...w,
+    messstelle: { ...w.messstelle, kennzeichen },
+    werte: [{ ...w.werte[0], menge, zustand: menge === null ? 'keine Werte' : 'vollständig' }],
+  };
+}
+
+const bild = (periode: KostenstelleEnergiePeriode, am: string, extra: Partial<Parameters<typeof kostenstellenBild>[0]> = {}): KostenstellenBild =>
+  kostenstellenBild({ katalog: KATALOG, antworten: antworten(periode, am), register: REGISTER, werte: new Map(), periode, am, ...extra });
+const oktober = (extra: Partial<Parameters<typeof kostenstellenBild>[0]> = {}) => bild('monat', '2026-10-01', extra);
 const karte = (b: KostenstellenBild, kz: string): KarteBild => {
   const k = b.karten.find((x) => x.kennzeichen === kz);
   if (!k) throw new Error(`keine Karte ${kz}`);
   return k;
 };
-const zahlen = (k: KarteBild) => k.bloecke.map((b) => `${b.wort} ${n(b.zahl)}`);
+const posten = (k: KarteBild) => k.posten.map((p) => [p.kennzeichen, n(p.zahl), n(p.herkunft)]);
 
-describe('UEMS AP-13 IP-9 · Kostenstellen nebeneinander (O9, E8 = A, B6)', () => {
-  it('ruft je Kostenstelle, die im Oktober besteht, genau einmal — fünf Karten, 9010/9020 beginnen erst 2027', () => {
+describe('Kostenstellen: je Karte die Summe der Route mit Posten und Herkunft (O9, Konzept §6.6)', () => {
+  it('ruft je Kostenstelle, die im Oktober besteht, genau einmal - fünf Karten; Zone und Stand einmal am Fuß', () => {
     const b = oktober();
     expect(b.karten.map((k) => k.kennzeichen)).toEqual(['4100', '4200', '4300', '9000', '9100']);
     expect(O9.schritte[5]).toContain('5 lebende im Oktober');
-    expect(b.zone).toBe('Zeiten in Europe/Berlin');
-    expect(b.stand).toBe('berechnet am 01.11.2026 00:15');
+    expect(b.fuss).toBe('Zeiten: Europe/Berlin · Stand 01.11.2026 00:15');
     expect(b.zeitraum).toBe('Oktober 2026');
+    expect(b.wertSpalte).toBe('Oktober 2026');
   });
 
-  it('O9: 4200 Montage gemessen 9 700 · verteilt 4 770 · berechnet — · Summe 14 470 kWh, jeder Posten ein Sprung', () => {
-    const k = karte(oktober(), '4200');
-    expect(zahlen(k)).toEqual(['gemessen 9.700 kWh', 'verteilt 4.770 kWh', 'berechnet —', 'Summe 14.470 kWh']);
-    const ziffern = (s: string) => s.replace(/kWh/g, '').replace(/[\s. ]/g, '');
-    expect(ziffern(zahlen(k).join(' · '))).toBe(ziffern(String(O9.erwartet.karte_4200)));
-    // „berechnet —“ hat keinen Posten — kein Satz „keine Messstelle zugeordnet“ an einer Kostenstelle mit Zuordnungen.
-    expect(k.saetze).toEqual([]);
-    const [gemessen, verteilt] = k.bloecke;
-    expect(gemessen.posten.map((p) => [p.kennzeichen, n(p.zahl), p.spanne])).toEqual([
-      ['MS-12', '6.100 kWh', null],
-      ['MS-18', '3.600 kWh', 'ab 15.10.2026'],
+  it('O9: 4200 Montage - Summe 14.470 kWh „vollständig“, Posten mit Herkunft; „von …“ nur mit der Menge der Werte-Route', () => {
+    const ohneWerte = karte(oktober(), '4200');
+    expect(ohneWerte.summe).toEqual({ zahl: '14.470', einheit: 'kWh', marke: { text: 'vollständig', ton: 'ok' }, getrennt: false });
+    expect(posten(ohneWerte)).toEqual([
+      ['MS-12', '6.100 kWh', 'ganz'],
+      ['MS-18', '3.600 kWh', 'ganz · ab 15.10.2026'],
+      ['MS-07', '4.770 kWh', '30 %'],
     ]);
-    expect(verteilt.posten[0].woerter).toEqual(['verteilt (30 % von MS-07)']);
-    for (const p of [...gemessen.posten, ...verteilt.posten]) {
+    // Die Menge von MS-07 im Oktober (Referenzwelt: 15.900 kWh) kommt aus der Werte-Route, nie aus Anteil × Posten.
+    expect(O9.gegeben.ms07_anteile_summe).toBe(15900);
+    const mit = karte(oktober({ werte: new Map<string, WerteAntwort>([['MS-07', werteVon('MS-07', 15900)]]) }), '4200');
+    expect(posten(mit)[2]).toEqual(['MS-07', '4.770 kWh', '30 % von 15.900 kWh']);
+    // Die Wörter, die die Herkunft schon sagt („verteilt (30 % von MS-07)“), stehen nicht noch einmal.
+    expect(mit.posten.every((p) => p.woerter.every((w) => !w.startsWith('verteilt')))).toBe(true);
+    for (const p of mit.posten) {
       expect(p.sprung?.hash).toBe(`#/portfolio/messstellen/${p.id}?periode=2026-10`);
       expect(parseRoute(p.sprung?.hash ?? '').messstelleId).toBe(p.id);
     }
+    const ziffern = (s: string) => s.replace(/[^0-9]/g, '');
+    expect(String(O9.erwartet.karte_4200)).toContain('14 470');
+    expect(ziffern(mit.summe?.zahl ?? '')).toBe('14470');
   });
 
-  it('O9: 4100 Spritzguss mit der Doppelzählungs-Warnung als Zeile — und die Warnung ändert keine Zahl', () => {
+  it('O9: 4100 Spritzguss - die Warnung der Route mit Weg zur Messstelle, „zählt doppelt“ statt „vollständig“, keine Zahl ändert sich', () => {
     const k = karte(oktober(), '4100');
-    expect(zahlen(k)).toEqual(['gemessen 83.700 kWh', 'verteilt 11.130 kWh', 'berechnet 88.630 kWh', 'Summe 183.460 kWh']);
-    expect(k.doppelt?.titel).toBe(String(O9.erwartet.karte_4100_warnung).split(':')[0]);
+    expect(k.summe?.zahl).toBe('183.460');
+    expect(k.summe?.marke).toBeNull();
+    expect(k.doppelt?.marke).toBe('zählt doppelt');
     expect(k.doppelt?.saetze).toEqual([
       'MS-06 ist bereits in MS-20 enthalten',
       'MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)',
       'MS-11 ist bereits in MS-20 enthalten',
     ]);
+    expect(k.doppelt?.pruefen.map((x) => x.text)).toEqual(['Verteilung von MS-06 prüfen', 'Verteilung von MS-07 prüfen', 'Verteilung von MS-11 prüfen']);
+    expect(k.doppelt?.pruefen.every((x) => x.sprung?.hash.startsWith('#/portfolio/messstellen/'))).toBe(true);
+    expect(posten(k).find(([kz]) => kz === 'MS-20')?.[2]).toBe('berechnet · ganz');
     const mit = ahrenbergKostenstelleEnergie(k.id, 'monat', '2026-10-01');
     const ohne: KostenstelleEnergie = { ...mit, doppelzaehlung: { enthalten: [], nicht_pruefbar: [] } };
-    const ohneBild = kostenstellenBild(KATALOG, new Map([[k.id, ohne]]), 'monat', '2026-10-01');
-    // Keine Zahl ändert sich: ohne die Warnung am Posten sind die Blöcke dieselben.
-    const ohneWarnung = (k2: KarteBild) => k2.bloecke.map((b) => ({ ...b, posten: b.posten.map((p) => ({ ...p, doppelt: [] })) }));
-    expect(ohneWarnung(karte(ohneBild, '4100'))).toEqual(ohneWarnung(k));
-    expect(karte(ohneBild, '4100').bloecke.flatMap((b) => b.posten).every((p) => p.doppelt.length === 0)).toBe(true);
+    const ohneBild = kostenstellenBild({ katalog: KATALOG, antworten: new Map([[k.id, ohne]]), register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-10-01' });
+    const zahlen = (x: KarteBild) => [x.summe?.zahl, ...x.posten.map((p) => p.zahl)];
+    expect(zahlen(karte(ohneBild, '4100'))).toEqual(zahlen(k));
     expect(karte(ohneBild, '4100').doppelt).toBeNull();
-    // Nur eine Warnung mit enthaltenen Posten sagt, dass die Summe doppelt zählt; ein Kreis ist nur „nicht prüfbar“.
-    const kreis: KostenstelleEnergie = {
-      ...mit,
-      doppelzaehlung: { enthalten: [], nicht_pruefbar: [{ messstelle: 'MS-20', grund: 'formel_kreis', kette: ['MS-20', 'MS-20'], satz: 'Ob MS-20 … nicht prüfbar' }] },
-    };
-    expect(karte(kostenstellenBild(KATALOG, new Map([[k.id, kreis]]), 'monat', '2026-10-01'), '4100').doppelt).toEqual({
-      titel: 'Doppelt gezählt',
-      saetze: ['Ob MS-20 … nicht prüfbar'],
-      hinweis: null,
-    });
+    expect(karte(ohneBild, '4100').summe?.marke).toEqual({ text: 'vollständig', ton: 'ok' });
   });
 
-  it('die Warnung steht auch am Posten, der schon in der Summe steckt — mit seinem Anteil, wenn er unter 100 % liegt', () => {
+  it('die Warnung steht auch am Posten, der schon in der Summe steckt - mit seinem Anteil; Teil-Zeiträume nennen ihre Tage', () => {
     const k = karte(oktober(), '4100');
-    const doppelt = Object.fromEntries(k.bloecke.flatMap((b) => b.posten).map((p) => [p.kennzeichen, p.doppelt]));
-    expect(doppelt).toEqual({
+    expect(Object.fromEntries(k.posten.map((p) => [p.kennzeichen, p.doppelt]))).toEqual({
       'MS-06': ['MS-06 ist bereits in MS-20 enthalten'],
       'MS-08': [],
       'MS-11': ['MS-11 ist bereits in MS-20 enthalten'],
       'MS-07': ['MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)'],
       'MS-20': [],
     });
-    // 4200 bekommt die anderen 30 % von MS-07 — kein Term von MS-20 trägt sie, also keine Warnung.
-    const k4200 = karte(oktober(), '4200');
-    expect(k4200.doppelt).toBeNull();
-    expect(k4200.bloecke.flatMap((b) => b.posten).every((p) => p.doppelt.length === 0)).toBe(true);
-  });
-
-  it('eine Warnung für einen Teil des Zeitraums nennt ihre Tage', () => {
-    const k = KATALOG[0];
-    const mit = ahrenbergKostenstelleEnergie(k.id, 'monat', '2026-10-01');
+    expect(karte(oktober(), '4200').doppelt).toBeNull();
+    const mit = ahrenbergKostenstelleEnergie(KATALOG[0].id, 'monat', '2026-10-01');
     const teil: KostenstelleEnergie = {
       ...mit,
       doppelzaehlung: { enthalten: [{ ...mit.doppelzaehlung.enthalten[0], zeitraeume: [{ von: '2026-10-15', bis: '2026-10-31' }] }], nicht_pruefbar: [] },
     };
-    expect(karte(kostenstellenBild(KATALOG, new Map([[k.id, teil]]), 'monat', '2026-10-01'), '4100').doppelt?.saetze).toEqual([
-      'MS-06 ist bereits in MS-20 enthalten (15.10.2026–31.10.2026)',
-    ]);
+    const b = kostenstellenBild({ katalog: KATALOG, antworten: new Map([[KATALOG[0].id, teil]]), register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-10-01' });
+    expect(karte(b, '4100').doppelt?.saetze).toEqual(['MS-06 ist bereits in MS-20 enthalten (15.10.2026–31.10.2026)']);
   });
 
-  it('„nicht verteilt“ steht EINMAL über allen Karten — aus einer Antwort, gehört keiner, ohne eigene Zahl', () => {
+  it('KEINE Summe über Kostenstellen - und kein Satz darüber: das Bild hat dafür kein Feld, das Modul keine Funktion', () => {
     const b = oktober();
-    expect(O9.erwartet.nicht_verteilt_block).toBe('einmal, gehört keiner');
-    expect(b.nichtVerteilt?.posten.map((p) => p.kennzeichen)).toEqual(['MS-01', 'MS-02', 'MS-03', 'MS-10', 'MS-16', 'MS-19', 'MS-22']);
-    expect(b.nichtVerteilt?.anzahl).toBe('7 Messstellen');
-    expect(b.nichtVerteilt?.unter).toBe('gehört keiner Kostenstelle und steht in keiner Summe');
-    // Das Wort der Überschrift wird an den Posten nicht wiederholt, und keine Karte trägt den Block.
-    expect(b.nichtVerteilt?.posten.every((p) => p.woerter.length === 0)).toBe(true);
-    expect(JSON.stringify(b.karten)).not.toMatch(/nicht verteilt/i);
-    expect(JSON.stringify(b).split(NICHT_VERTEILT_TITEL)).toHaveLength(2);
-    // Fünf Antworten tragen denselben Block — gezeigt wird er einmal, auch wenn die erste Kostenstelle nicht abrufbar ist.
-    const a = antworten('monat', '2026-10-01');
-    a.set(KATALOG[0].id, 'fehler');
-    expect(kostenstellenBild(KATALOG, a, 'monat', '2026-10-01').nichtVerteilt?.posten).toHaveLength(7);
-  });
-
-  it('KEINE Summe über Kostenstellen: der Satz steht wörtlich — und nirgends steht doch eine Gesamtsumme', () => {
-    const b = oktober();
-    const zitate = [...O9.schritte[3].matchAll(/„([^“]*)“/g)].map((m) => m[1]);
-    expect(zitate.at(-1)).toBe(KEINE_SUMME);
-    expect(KEINE_SUMME).toBe('Die Kostenstellen sind nicht summierbar — nicht verteilte Mengen gehören keiner.');
     expect(O9.erwartet.summe_ueber_kostenstellen).toBe(false);
-    expect(b.keineSumme).toBe(KEINE_SUMME);
-    // Das Bild hat kein Feld für eine Zahl über Karten — nur diese Schlüssel (`ohneMengen` ist ein Satz, Kostenstelle B).
     expect(Object.keys(b).sort()).toEqual(
-      ['alleFehler', 'karten', 'keineSumme', 'leer', 'nichtVerteilt', 'ohneMengen', 'vorherBeendet', 'stand', 'zeitraum', 'zone'].sort(),
+      ['ablesung', 'alleFehler', 'alleZugeordnet', 'fuss', 'karten', 'leer', 'ohne', 'ohneMengen', 'vorherBeendet', 'wertSpalte', 'zeitraum'].sort(),
     );
-    // Keine Zahl im Bild ist die Summe der Karten-Summen (mit oder ohne 9100, mit oder ohne „nicht verteilt“).
     const text = n(JSON.stringify(b));
     for (const gesamt of ['264.110', '272.810', '614.110', '632.130']) expect(text).not.toContain(gesamt);
-    expect(text).not.toMatch(/Gesamtsumme|Summe aller|insgesamt/i);
-    // Und das Modul hat keine Funktion, die sie bilden könnte.
-    expect(Object.keys(MODUL).filter((name) => /gesamt|alle.?summe|summe.?alle/i.test(name))).toEqual([]);
-    // Ohne Kostenstelle im Zeitraum kein Satz — es gäbe nichts, das jemand summieren wollte.
-    expect(bild('monat', '2026-09-01').keineSumme).toBeNull();
+    expect(text).not.toMatch(/Gesamtsumme|Summe aller|insgesamt|nicht summierbar/i);
+    expect(Object.keys(MODUL).filter((name) => /gesamt|alle.?summe|summe.?alle|keine_?summe/i.test(name))).toEqual([]);
     expect(bild('monat', '2026-09-01').leer).toBe('In diesem Zeitraum besteht keine Kostenstelle.');
   });
 
-  it('F12: „gültig bis 31.12.2026“ an 9000 — im Januar 2027 vor dem Zeitraum beendet, MS-03 bleibt „nicht verteilt“', () => {
+  it('„Ohne Kostenstelle“: die Messstellen des Registers ohne Posten in einer Kostenstelle - Hauptzähler zuerst, Wert aus der Werte-Route', () => {
+    const b = oktober({ werte: new Map<string, WerteAntwort>([['MS-01', werteVon('MS-01', 128400)], ['MS-02', 'fehler']]) });
+    expect(b.ohne?.titel).toBe(OHNE_KOSTENSTELLE.titel);
+    expect(b.ohne?.anzahl).toBe('8 Messstellen');
+    expect(b.ohne?.reihen.map((r) => r.kennzeichen)).toEqual(['MS-01', 'MS-02', 'MS-10', 'MS-16', 'MS-03', 'MS-04', 'MS-19', 'MS-22']);
+    const [ms01, ms02, ms10] = b.ohne?.reihen ?? [];
+    expect(ms01.wert).toEqual({ zahl: '128.400\u00a0kWh', zustand: 'vollständig', ton: 'gut', fehler: false });
+    expect(ms01.wann).toBe('Okt 2026');
+    expect(ms02.wert.fehler).toBe(true);
+    expect(ms10.wert.zahl).toBeNull();
+    expect(ms01.woher).toBe('automatisch vom Gerät');
+    // Eine Aussage über die Zuordnung, keine Menge: das Bild trägt keine Summe der Reihen.
+    expect(JSON.stringify(b.ohne)).not.toMatch(/summe/i);
+    // Erst, wenn ALLE Kostenstellen geantwortet haben und das Register da ist.
+    const a = antworten('monat', '2026-10-01');
+    a.set(KATALOG[0].id, null);
+    expect(kostenstellenBild({ katalog: KATALOG, antworten: a, register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-10-01' }).ohne).toBeNull();
+    expect(oktober({ register: null }).ohne).toBeNull();
+    // Gehört jede Messstelle einer Kostenstelle, steht das ruhig da - und nur dann.
+    const zugeordnet = REGISTER.filter((z) => !(b.ohne?.reihen ?? []).some((r) => r.id === z.id));
+    const alle = oktober({ register: zugeordnet });
+    expect(alle.ohne).toBeNull();
+    expect(alle.alleZugeordnet).toBe(true);
+    expect(b.alleZugeordnet).toBe(false);
+  });
+
+  it('Ablesezähler ohne Tageswert (bis „Ablesezeiträume verteilen“): EIN ruhiger Satz statt Strichen ohne Grund', () => {
+    const k = KATALOG.find((x) => x.kennzeichen === '4200')!;
+    const roh = ahrenbergKostenstelleEnergie(k.id, 'monat', '2026-11-01');
+    const ohneTag = (b: KostenstelleEnergie['gemessen']) => ({ ...b, posten: b.posten.map((p) => ({ ...p, tage: p.tage.map((t) => ({ ...t, grund: 'kein_tageswert' })) })) });
+    const antwort: KostenstelleEnergie = { ...roh, gemessen: ohneTag(roh.gemessen), verteilt: ohneTag(roh.verteilt) };
+    const ms12 = REGISTER.find((z) => z.kennzeichen === 'MS-12')!;
+    const abgelesen: MessstelleRegisterZeile = { ...ms12, quelle: { ...ms12.quelle, stand: 'ablesung', fuehrend: null } };
+    const register = REGISTER.map((z) => (z.id === ms12.id ? abgelesen : z));
+    const b = kostenstellenBild({ katalog: [k], antworten: new Map([[k.id, antwort]]), register, werte: new Map(), periode: 'monat', am: '2026-11-01' });
+    expect(b.ablesung).toEqual({ titel: 'Für November 2026 noch keine Werte.', satz: ABLESUNG_OHNE_TAGESWERT.satz });
+    expect(karte(b, '4200').summe?.zahl).toBe('—');
+    expect(karte(b, '4200').summe?.marke).toBeNull();
+    // Ein Gerät ohne Tageswert ist kein Ablesezähler - dann kein Satz über Ablesungen.
+    expect(kostenstellenBild({ katalog: [k], antworten: new Map([[k.id, antwort]]), register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-11-01' }).ablesung).toBeNull();
+    // Liefert die Route die Menge (Oktober), verschwindet der Satz von selbst.
+    expect(oktober().ablesung).toBeNull();
+  });
+
+  it('F12: „gültig bis 31.12.2026“ an 9000 - im Januar 2027 vor dem Zeitraum beendet; 9010 noch ohne Messstelle', () => {
     const dezember = bild('monat', '2026-12-01');
     expect(karte(dezember, '9000').gueltig).toBe('gültig bis 31.12.2026');
     expect(karte(dezember, '4100').gueltig).toBeNull();
     expect(dezember.vorherBeendet).toBeNull();
-
-    const januar = bild('tag', F12_TAG);
+    const januar = bild('monat', '2027-01-01');
     expect(januar.karten.map((k) => k.kennzeichen)).toEqual(['4100', '4200', '4300', '9010', '9020', '9100']);
     expect(januar.vorherBeendet).toBe('Vor diesem Zeitraum beendet: 9000 Infrastruktur (Druckluft, Kühlung, PV) (gültig bis 31.12.2026)');
-    expect(karte(januar, '9010').saetze).toEqual([GRUND_SATZ.keine_zuordnung]);
-    expect(zahlen(karte(januar, '9010'))).toEqual(['gemessen —', 'verteilt —', 'berechnet —', 'Summe —']);
-    expect(januar.nichtVerteilt?.posten.map((p) => [p.kennzeichen, n(p.zahl)])).toEqual([['MS-03', '480 kWh']]);
-    expect(januar.nichtVerteilt?.anzahl).toBe('1 Messstelle');
-    // Im Monat, in dem sie beginnt, sagt 9010 nichts über ihren Beginn — am 15.01. auch nicht.
-    expect(karte(januar, '9010').gueltig).toBeNull();
-    expect(karte(bild('jahr', '2027-01-01'), '9010').gueltig).toBeNull();
+    expect(karte(januar, '9010').ohneZuordnung).toBe(true);
+    expect(karte(januar, '9010').summe).toBeNull();
     expect(karte(bild('jahr', '2026-01-01'), '4100').gueltig).toBe('gültig ab 01.10.2026');
+    expect(F12_TAG).toBe('2027-01-15');
   });
 
-  it('9100: verschiedene Größen — je Größe eine Zahl der Route, der Satz einmal, keine Zahl erfunden', () => {
+  it('9100: verschiedene Größen - je Größe eine Zahl der Route, getrennt, nie zusammengezählt', () => {
     const k = karte(oktober(), '9100');
-    const gemessen = k.bloecke[0];
-    expect(gemessen.zahl).toBe('—');
-    expect(gemessen.summen.map(n)).toEqual(['8.700 kWh (Wirkenergie)', '1.240,0 m³ (Volumen)']);
-    expect(k.bloecke[3].summen.map(n)).toEqual(['8.700 kWh (Wirkenergie)', '1.240,0 m³ (Volumen)']);
-    expect(k.saetze).toEqual([GRUND_SATZ.groessen_gemischt]);
+    expect(k.summe).toEqual({ zahl: '8.700\u00a0kWh · 1.240,0\u00a0m³', einheit: null, marke: null, getrennt: true });
+    expect(posten(k).find(([kz]) => kz === 'MS-21')).toEqual(['MS-21', '1.240,0 m³', 'ganz']);
   });
 
-  it('ohne Werte steht der Strich mit „keine Werte“ — nie eine 0', () => {
+  it('ohne Werte steht der Strich, keine Marke - nie eine 0', () => {
     const k = karte(bild('monat', '2026-11-01'), '4200');
-    expect(zahlen(k)).toEqual(['gemessen —', 'verteilt —', 'berechnet —', 'Summe —']);
-    expect(k.bloecke.map((b) => b.zustand)).toEqual(['keine Werte', 'keine Werte', null, 'keine Werte']);
-    expect(JSON.stringify(k)).not.toMatch(/"0 kWh|"0 kWh/);
+    expect(k.summe).toEqual({ zahl: '—', einheit: null, marke: null, getrennt: false });
+    expect(k.posten.map((p) => [p.zahl, p.zustand])).toEqual([['—', null], ['—', null], ['—', null]]);
+    expect(JSON.stringify(k)).not.toMatch(/"0 kWh|"0\\u00a0kWh/);
   });
 
-  it('eine Kostenstelle, die nicht abrufbar ist, sagt es — die anderen stehen; alle nicht abrufbar ist ein Satz', () => {
+  it('eine Kostenstelle, die nicht abrufbar ist, sagt es - die anderen stehen; alle nicht abrufbar ist eine Karte', () => {
     const a = antworten('monat', '2026-10-01');
     const k4200 = KATALOG.find((k) => k.kennzeichen === '4200')?.id as string;
     a.set(k4200, 'fehler');
-    const b = kostenstellenBild(KATALOG, a, 'monat', '2026-10-01');
+    const b = kostenstellenBild({ katalog: KATALOG, antworten: a, register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-10-01' });
     expect(karte(b, '4200').fehler).toBe(NICHT_ABRUFBAR);
-    expect(karte(b, '4100').bloecke).toHaveLength(4);
+    expect(karte(b, '4100').posten).toHaveLength(5);
     expect(b.alleFehler).toBe(false);
+    expect(b.ohne).toBeNull();
     const alle = new Map(kostenstellenImZeitraum(KATALOG, 'monat', '2026-10-01').map((k) => [k.id, 'fehler' as const]));
-    expect(kostenstellenBild(KATALOG, alle, 'monat', '2026-10-01').alleFehler).toBe(true);
+    expect(kostenstellenBild({ katalog: KATALOG, antworten: alle, register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-10-01' }).alleFehler).toBe(true);
     expect(ALLE_NICHT_ABRUFBAR).toBe('Die Kostenstellen sind gerade nicht abrufbar.');
-    const unterwegs = kostenstellenBild(KATALOG, new Map(), 'monat', '2026-10-01');
+    const unterwegs = kostenstellenBild({ katalog: KATALOG, antworten: new Map(), register: REGISTER, werte: new Map(), periode: 'monat', am: '2026-10-01' });
     expect(unterwegs.karten.every((k) => k.laedt)).toBe(true);
-    expect(unterwegs.nichtVerteilt).toBeNull();
-    expect(unterwegs.stand).toBeNull();
+    expect(unterwegs.fuss).toBeNull();
+  });
+
+  it('ohne Recht auf Mengen: nur die Köpfe und EIN Satz - keine Lage, kein „Ohne Kostenstelle“', () => {
+    const b = oktober({ ohneMengen: 'Die Mengen sehen nur …' });
+    expect(b.ohneMengen).toBe('Die Mengen sehen nur …');
+    expect(b.karten.every((k) => !k.laedt && k.summe === null && k.posten.length === 0)).toBe(true);
+    expect(b.ohne).toBeNull();
+    expect(b.fuss).toBeNull();
+  });
+
+  it('das Beispiel des Aufklappers kommt aus den eigenen Kostenstellen - die erste anteilig geteilte Messstelle', () => {
+    expect(kostenstelleBeispiel(antworten('monat', '2026-10-01'))).toEqual({
+      messstelle: 'MS-07 Druckluft Kompressoren K1+K2',
+      teile: [
+        { kostenstelle: '4100 Spritzguss', anteil: '70' },
+        { kostenstelle: '4200 Montage', anteil: '30' },
+      ],
+    });
+    expect(kostenstelleBeispiel(new Map())).toBeNull();
   });
 });
 
-describe('UEMS AP-13 IP-9 · Prozesse mit ihrer Prozess-Summe (MS-20)', () => {
-  const register = ahrenbergRegister().register;
-  const zuordnungen = new Map(berechnete(register).map((z) => [z.id, ahrenbergMessstelleProzesse(z.id)]));
+describe('Prozesse zeigen ihre Messstellen (Konzept §6.7, Entscheid 4)', () => {
+  const KAT = prozesseAhrenberg();
+  const zuordnungen = (f: (id: string) => ZuordnungAntwort = (id) => ahrenbergProzessMessstellen(id, '2026-10-01')) =>
+    new Map<string, ZuordnungAntwort>(KAT.map((p) => [p.id, f(p.id)]));
+  const pb = (z = zuordnungen(), werte: ReadonlyMap<string, WerteAntwort> = new Map()) =>
+    prozesseBild({ katalog: KAT, zuordnungen: z, werte, register: REGISTER, periode: 'monat', am: '2026-10-01' });
 
-  it('fragt nur die berechneten Messstellen nach ihren Prozessen — MS-20 gehört zu P-1', () => {
-    expect(berechnete(register).map((z) => z.kennzeichen)).toEqual(['MS-09', 'MS-15', 'MS-19', 'MS-20', 'MS-22']);
-    const summen = prozessSummen(register, zuordnungen, 'monat', '2026-10-01');
-    expect([...summen.entries()].map(([id, zs]) => [prozesseAhrenberg().find((p) => p.id === id)?.kennzeichen, zs.map((z) => z.kennzeichen)])).toEqual([
-      ['P-1', ['MS-20']],
-    ]);
-    // Vor dem 01.10.2026 gehört MS-20 zu keinem Prozess.
-    expect(prozessSummen(register, zuordnungen, 'monat', '2026-09-01').size).toBe(0);
-  });
-
-  it('P-1 Spritzguss: Prozess-Summe MS-20 88 630 kWh mit Sprung; die anderen sagen, dass es keine gibt; keine Summe über Prozesse', () => {
-    const summen = prozessSummen(register, zuordnungen, 'monat', '2026-10-01');
+  it('eine Prozess-Summe hat Vorrang: P-1 „zusammengerechnet in MS-20“ mit 88.630 kWh und Sprung; ohne Messstelle der Weg', () => {
     const werte = new Map<string, WerteAntwort>([['MS-20', ahrenbergProzessSummeWerte('MS-20', 'monat', '2026-10-01', '2026-10-31')]]);
-    const p1Id = prozesseAhrenberg()[0].id;
-    const b = prozesseBild(prozesseAhrenberg(), summen, werte, 'monat', '2026-10-01', new Map([[p1Id, [r16ProzessSummeHinweis()]]]));
-    expect(b.keineSumme).toBe(PROZESSE_KEINE_SUMME);
-    expect(b.karten.map((p) => p.kennzeichen)).toEqual(['P-1', 'P-2', 'P-3', 'P-4', 'P-5', 'P-6']);
-    const p1 = b.karten[0];
-    expect(p1.summen.map((s) => [s.kennzeichen, s.name, s.zahl && n(s.zahl)])).toEqual([['MS-20', 'Prozess Spritzguss gesamt', '88.630 kWh']]);
-    expect(p1.summen[0].sprung?.hash).toBe(`#/portfolio/messstellen/${p1.summen[0].id}?periode=2026-10`);
-    expect(p1.ohneSumme).toBeNull();
-    expect(p1.hinweise).toEqual(['Hinweis: Die Summe „Prozess Spritzguss gesamt“ (MS-20) enthält 70 % von Druckluft Kompressoren K1+K2 (MS-07) über Verteilung 4100. MS-07 gehört zu Druckluft (P-3). Die Bewertung zählt Druckluft dort.']);
-    expect(b.karten.slice(1).every((p) => p.ohneSumme === PROZESS_SUMME_OHNE && p.summen.length === 0)).toBe(true);
-    expect(PROZESS_SUMME_OHNE).toBe('Keine Prozess-Summe: sie ist eine berechnete Messstelle, die diesem Prozess zugeordnet ist.');
-    expect(Object.keys(b).sort()).toEqual(['karten', 'keineSumme', 'laedt', 'leer', 'vorherBeendet', 'zeitraum'].sort());
+    expect(prozessKennzeichen(zuordnungen())).toEqual(['MS-20']);
+    const b = pb(zuordnungen(), werte);
+    expect(b.anzahl).toBe(`${KAT.length} Prozesse`);
+    const [p1, p2] = b.reihen;
+    expect(p1.quelle).toBe('zusammengerechnet in MS-20 Prozess Spritzguss gesamt');
+    expect(n(p1.wert?.zahl ?? '')).toBe('88.630 kWh');
+    expect(p1.ton).toBe('gut');
+    expect(p1.zustand).toBe('vollständig');
+    expect(p1.sprung?.hash).toMatch(/^#\/portfolio\/messstellen\/[^?]+\?periode=2026-10$/);
+    expect(p1.hinweise).toEqual([
+      'Hinweis: Die Summe „Prozess Spritzguss gesamt“ (MS-20) enthält 70 % von Druckluft Kompressoren K1+K2 (MS-07) über Verteilung 4100. MS-07 gehört zu Druckluft (P-3). Die Bewertung zählt Druckluft dort.',
+    ]);
+    expect(p2).toMatchObject({ zuordnen: true, zustand: NOCH_KEINE_MESSSTELLE_KLEIN, quelle: null, wert: null, ton: 'still' });
+    expect(Object.keys(b).sort()).toEqual(['anzahl', 'leer', 'reihen', 'standort', 'vorherBeendet', 'wertSpalte', 'zeitraum'].sort());
+    expect(n(JSON.stringify(b))).not.toMatch(/nicht summierbar|Keine Prozess-Summe/);
   });
 
-  it('solange die Zuordnungen fehlen, sagt keine Karte „keine Prozess-Summe“; ein Unterprozess nennt seinen Prozess', () => {
+  it('gemessene Messstellen ohne Summe stehen einzeln, nie addiert; eine zweite Zählung sagt „auch bei … gezählt“', () => {
+    const ms = (kz: string) => {
+      const z = REGISTER.find((x) => x.kennzeichen === kz)!;
+      return { id: z.id, kennzeichen: kz, name: z.name ?? kz };
+    };
+    const antwort = (id: string, gemessen: ReturnType<typeof ms>[]): ProzessMessstellen => ({
+      prozess: { id, kennzeichen: KAT.find((p) => p.id === id)!.kennzeichen, name: KAT.find((p) => p.id === id)!.name },
+      am: '2026-10-01',
+      gemessen,
+      berechnet: [],
+      hinweise: [],
+    });
+    const z = zuordnungen((id) => (id === KAT[0].id ? antwort(id, [ms('MS-06'), ms('MS-11')]) : id === KAT[1].id ? antwort(id, [ms('MS-11')]) : antwort(id, [])));
+    const werte = new Map<string, WerteAntwort>([['MS-06', werteVon('MS-06', 55100)], ['MS-11', werteVon('MS-11', 22400)]]);
+    const [p1, p2] = pb(z, werte).reihen;
+    expect(p1.quelle).toBe('2 Messstellen, einzeln');
+    expect(p1.wert).toBeNull();
+    expect(p1.sprung).toBeNull();
+    expect(p1.teile.map((t) => [t.kennzeichen, n(t.wert.zahl ?? '')])).toEqual([['MS-06', '55.100 kWh'], ['MS-11', '22.400 kWh']]);
+    expect(JSON.stringify(p1)).not.toContain('77.500');
+    expect(p2.quelle).toBe('gemessen von MS-11 Spritzguss SG07–SG10');
+    expect(p2.auch).toBe(`auch bei ${KAT[0].name} gezählt`);
+    expect(p1.auch).toBeNull();
+    expect(p1.unter).toBe('Werk Ahrenberg');
+  });
+
+  it('unterwegs, nicht abrufbar, Teil-Prozess und das Beispiel des Aufklappers', () => {
     const katalog = prozesseAhrenberg();
     katalog[3] = { ...katalog[3], eltern: { id: katalog[0].id, kennzeichen: 'P-1' } };
-    const b = prozesseBild(katalog, null, new Map(), 'monat', '2026-10-01');
-    expect(b.laedt).toBe(true);
-    expect(b.karten.every((p) => p.ohneSumme === null)).toBe(true);
-    expect(b.karten[3].teilVon).toBe('Teil von P-1 Spritzguss');
-    const ohneWert = prozesseBild(katalog, prozessSummen(register, zuordnungen, 'monat', '2026-10-01'), new Map([['MS-20', 'fehler' as const]]), 'monat', '2026-10-01');
-    expect(ohneWert.karten[0].summen[0]).toMatchObject({ zahl: '—', hinweis: 'Der Wert ist gerade nicht abrufbar.' });
+    const z = new Map<string, ZuordnungAntwort>(katalog.map((p, i) => [p.id, i === 1 ? 'fehler' : null]));
+    const b = prozesseBild({ katalog, zuordnungen: z, werte: new Map(), register: REGISTER, periode: 'monat', am: '2026-10-01' });
+    expect(b.reihen[0].laedt).toBe(true);
+    expect(b.reihen[1]).toMatchObject({ fehler: true, laedt: false, zustand: 'Die Prozesse sind gerade nicht abrufbar.' });
+    expect(b.reihen[3].unter).toBe('Teil von P-1 Spritzguss');
+    expect(prozessBeispiel(pb())).toEqual([KAT[0].name]);
+    expect(prozessBeispiel(b)).toEqual(katalog.slice(0, 3).map((p) => p.name));
+  });
+});
+
+describe('Anzeige', () => {
+  it('der Zeitraum kurz neben der Zahl; Namen brechen nie vor einer Zahl um', () => {
+    expect(periodeKurz('monat', '2026-09-01')).toBe('Sep 2026');
+    expect(periodeKurz('jahr', '2025-01-01')).toBe('2025');
+    expect(ohneUmbruchVorZahl('Gebäudetechnik Halle 1')).toBe('Gebäudetechnik Halle\u00a01');
   });
 });
 
 describe('UEMS AP-13 IP-9 · Reiter und Adresse', () => {
-  it('die Reiter erscheinen nur mit Inhalt — ohne Kostenstelle und Prozess bleibt das Register zeichengleich', () => {
+  it('die Reiter erscheinen nur mit Inhalt - ohne Kostenstelle und Prozess bleibt das Register zeichengleich', () => {
     expect(reiterDa(0, 0)).toEqual([]);
     expect(reiterDa(7, 6)).toEqual(['liste', 'kostenstellen', 'prozesse']);
     expect(reiterDa(7, 0)).toEqual(['liste', 'kostenstellen']);

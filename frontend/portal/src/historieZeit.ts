@@ -182,7 +182,7 @@ export function sprungJahre(
 /** Wie viele Monate der Streifen zeigt (wie in der Geld-Ansicht). */
 export const STREIFEN_MONATE = 12;
 
-const MONATE_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+export const MONATE_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
 /**
  * Die Monats-Chips der Zeit-Leiste — derselbe `MonthStrip`-Baustein wie in der

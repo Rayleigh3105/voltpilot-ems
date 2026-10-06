@@ -891,6 +891,25 @@ Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: d
 Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.
 Gibt es keine Kennzahl mit offenem Ziel, führt stattdessen die Datenlage, und an ihrer Stelle steht „Noch keine Leitkennzahl gegen ein Ziel hinterlegt.“.
 Kundenwort: `UEMS_LEITKENNZAHL` (PORTAL/glossar.ts)."""],
+    "kostenstelle": ["""**Reiter „Kostenstellen“ (Konzept Messen m1 §6.6, Captain-Freigabe 05.10.2026).**
+Unter dem Titel steht die Erklärung: „Wem Ihr Verbrauch in der Kostenrechnung zugerechnet wird.“; „Was ist eine Kostenstelle?“ klappt Klartext, ein Beispiel aus den eigenen Kostenstellen und die Abgrenzung zum Prozess auf.
+Je Kostenstelle steht die Summe der Kostenstellen-Sicht mit ihren Posten; ein Posten nennt seine Herkunft in Alltagswörtern: „ganz“ (die Messstelle gehört ganz zu ihr), „30 % von 88.200 kWh“ (Anteil und die Menge der Messstelle aus der Werte-Route), „berechnet · ganz“.
+Messstellen ohne Verteilungszeile im Zeitraum heißen auf dieser Fläche „Ohne Kostenstelle“ statt „nicht verteilt“ - ein Zustand, kein Fehler („Ihr Verbrauch ist keiner Kostenstelle zugerechnet. Ordnen Sie sie an der Messstelle zu, wenn sie in die Kostenrechnung gehören.“).
+Eine Gesamtsumme über Kostenstellen gibt es nicht, und kein Satz erklärt ihr Fehlen auf der Fläche; der Grund steht im Aufklapper.
+Solange die Sicht Ablesezeiträume nicht verteilt, sagt die Fläche bei Ablesezählern einmal: „Für {Zeitraum} noch keine Werte. Ihre Zähler werden monatlich abgelesen, diese Ansicht verteilt heute je Tag. Die Monatsmengen stehen an jeder Messstelle. Sie müssen nichts tun.“
+Kundenwörter: `OHNE_KOSTENSTELLE`, `GANZ`, `ANTEIL_VON`, `ABLESUNG_OHNE_TAGESWERT` (PORTAL/kostenstellenUebersicht.ts), Erklärung `kostenstelle` (PORTAL/begriffe.ts)."""],
+    "prozess": ["""**Reiter „Prozesse“ (Konzept Messen m1 §6.7, Entscheid 4).**
+Unter dem Titel steht: „Arbeitsschritte, die Energie brauchen – und was sie verbraucht haben.“; „Was ist ein Prozess?“ klappt Klartext, Beispiel und Abgrenzung zur Kostenstelle auf.
+Je Prozess steht, wovon er gemessen wird, mit dem Wert der Messstelle im Zeitraum: „gemessen von AZ-3 Zähler Druckluft“; eine Prozess-Summe (eine berechnete Messstelle des Prozesses) hat Vorrang („zusammengerechnet in MS-20 …“).
+Mehrere gemessene Messstellen ohne Summe stehen einzeln („2 Messstellen, einzeln“), nie addiert; zählt eine Messstelle schon bei einem anderen Prozess, steht „auch bei {Prozess} gezählt“.
+Ohne Messstelle: „noch keine Messstelle zugeordnet“ mit dem Weg „Messstelle zuordnen“ (zugeordnet wird an der Messstelle).
+Kundenwörter: `GEMESSEN_VON`, `ZUSAMMENGERECHNET_IN`, `AUCH_BEI`, `NOCH_KEINE_MESSSTELLE_KLEIN` (PORTAL/kostenstellenUebersicht.ts), Erklärung `prozess` (PORTAL/begriffe.ts)."""],
+    "bezugsgroesse": ["""**Liste und Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9).**
+Unter dem Titel steht: „Womit Sie Ihren Verbrauch vergleichen: Menge, Schichten, Wetter oder Fläche.“; die Liste ordnet je Periode („Werte je Monat“) und zeigt je Bezugsgröße, was sie zählt („Halle 2 · kg je Monat“), den Zustand („eingetragen bis Sep 2026“, „für Sep 2026 fehlt der Wert“, „noch kein Wert“), woher der letzte Wert kommt („von Hand eingetragen“, „importiert“, „aus einem Messkanal“, „aus dem Wetter-Archiv“) und den letzten Wert.
+Die Statuszeile sagt „Werte bis {Monat} eingetragen“ oder, was fehlt, mit dem Schritt „Eintragen“.
+Die Flächen aus den Gebäuden stehen als Kacheln unter „Flächen · aus dem Gebäudeplan, heute“ mit dem Weg „Am Gebäude ändern“; eine Bezugsfläche aus dem Gebäude ist nicht schreibbar und heißt „aus dem Gebäudeplan“, eine eigene Angabe „eigene Angabe“.
+Jede Bezugsgröße hat eine eigene Seite (`#/portfolio/bezugsgroessen/{id}`): „Wert eintragen“ oben, der letzte Wert und derselbe Zeitraum im Vorjahr, zwölf Perioden als Balken, die Werte neueste zuerst; Berichtigen, Fassungen und Archivieren stehen im Menü ⋯.
+Kundenwörter: `KOPF_SATZ`, `WERTE_JE`, `WOHER`, `ZUSTAND`, `STATUS`, `FLAECHEN`, `WERT_EINTRAGEN` (PORTAL/bezugsgroessenUebersicht.ts), Erklärung `bezugsgroesse` (PORTAL/begriffe.ts)."""],
 }
 
 # ---------------------------------------------------------------------------------------------

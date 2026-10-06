@@ -1660,7 +1660,8 @@ describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => 
   it.each([
     ['components/BezugsKanalbindung.tsx', 'bezugsgroesse.verwalten'],
     ['components/BezugswertDialog.tsx', 'bezugsgroesse.eingeben'],
-    ['components/BezugswertListe.tsx', 'bezugsgroesse.eingeben'],
+    // Messen m1 §6.8: die Werte einer Bezugsgröße stehen auf ihrer Seite (die frühere Inline-Liste entfällt).
+    ['pages/BezugsgroesseSeite.tsx', 'bezugsgroesse.eingeben'],
     ['components/AblesungDialog.tsx', 'ablesung.erfassen'],
     ['components/Ablesungen.tsx', 'ablesung.erfassen'],
   ])('%s verwendet die bestehende Rechte-Weiche für %s', (pfad, recht) => {

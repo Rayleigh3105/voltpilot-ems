@@ -1,367 +1,513 @@
 /*
- * KOSTENSTELLEN UND PROZESSE NEBENEINANDER (UEMS AP-13 IP-9, E8 = A) — Unternehmen › Messstellen › Kostenstellen und
- * › Prozesse. Dieselbe Karten-Sprache wie die Energiebilanz (weiße Karte, 1-px-Rahmen, Radius 16 px); Farbe nur an der
- * Warnung (Bernstein, CVD-sicher), die Zahl bleibt ruhig. Telefon zuerst: Karten untereinander, jede Zeile bricht um,
- * nichts verbreitert die Seite; Tippflächen ≥ 44 px.
+ * Die Reiter „Kostenstellen“ und „Prozesse“ (UEMS AP-13 IP-9; Konzept Messen m1 §6.6/§6.7, Captain-Freigabe
+ * 05.10.2026). Dieselbe Familie wie die Liste der Messstellen (`MessstellenPage.css`): Kopf, Aufklapper, Karten mit
+ * Reihen (`.vp-ms-ort`, `.vp-ms-reihe`) - hier nur, was die Reiter darüber hinaus brauchen, aus Haus-Tokens:
  *
- * Komponenten-lokal, damit `index.css` unangetastet bleibt. Präfix `vp-ks-` — `.vp-ms-karte` zählt das Register.
+ *   .vp-ks-lage      „Was ist …?“ und die Zeitwahl; ab 760 px in einer Zeile (Konzept, Desktop)
+ *   .vp-ks-zeitwahl  Monat · Jahr (`.vp-seg`, kompakt wie der Konzept-Baustein `.seg`) und „‹ September 2026 ›“
+ *   .vp-ks-karte     je Kostenstelle eine Karte (Konzept `.ak`: Radius 16, die Summe groß, Posten mit Herkunft)
+ *   .vp-ks-po        ein Posten (Konzept `.posten .po`): Name, Wert, darunter die Herkunft
+ *   .vp-ks-pz        eine Prozess-Reihe: am Telefon steht „gemessen von …“ unter dem Namen statt des Zustands
+ *
+ * Präfix `vp-ks-`, damit nichts in Portfolio-Tabellen oder -KPIs greift. Keine neue Farbe, kein neuer Radius.
  */
 
 .vp-ks {
   display: flex;
   flex-direction: column;
-  gap: var(--vp-space-4, 16px);
+  gap: var(--vp-c-space-4, 16px);
   min-width: 0;
 }
 
-.vp-ks-kopf {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--vp-space-3, 12px);
+/* ---------- „Was ist …?“ und die Zeitwahl ------------------------------------------------- */
+.vp-ks-lage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-top: -6px;
   min-width: 0;
 }
-
-.vp-ks-kopf-text {
+.vp-ks-lage > .vp-begriff-auf {
   min-width: 0;
-}
-
-.vp-ks-titel {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--vp-navy-1, #1e3a5f);
-}
-
-.vp-ks-zone {
-  margin: 2px 0 0;
-  font-size: 0.875rem;
-  color: var(--vp-text-muted, #6c757d);
 }
 
 .vp-ks-zeitwahl {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--vp-space-2, 8px);
+  gap: 8px 10px;
   min-width: 0;
 }
-
-.vp-ks-datumzeile {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* Der Konzept-Baustein `.seg`: eine Spur kleiner als das Segment der Historie; am Telefon bleiben 44 px Tippfläche. */
+.vp-seg.vp-ks-seg button {
+  padding: 0 12px;
+  min-height: 30px;
+  font: 600 0.8125rem var(--vp-c-font);
+  border-radius: 9px;
 }
-
-.vp-ks-schritt {
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-seg.vp-ks-seg button {
+    min-height: 44px;
+  }
+}
+.vp-ks-blaettern {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #fff;
-  color: var(--vp-navy-1, #1e3a5f);
+  gap: 6px;
+  min-width: 0;
+}
+/* Ein Blätter-Knopf: sichtbar das Quadrat des Konzepts (34 px), getippt 44 px hoch. */
+.vp-ks-schritt {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--vp-c-fg, #1e293b);
   cursor: pointer;
 }
-
+.vp-ks-schritt::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-ks-schritt > svg {
+  position: relative;
+}
 .vp-ks-schritt:disabled {
-  opacity: 0.4;
+  color: #cbd5e1;
   cursor: default;
 }
-
+.vp-ks-schritt:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-ks-schritt {
+    height: 44px;
+  }
+}
+@media (hover: hover) {
+  .vp-ks-schritt:not(:disabled):hover::before {
+    background: var(--vp-bg-light, #f8f9fa);
+  }
+}
 .vp-ks-zeitraum {
-  min-width: 9.5em;
-  text-align: center;
-  font-weight: 600;
-  color: var(--vp-navy-1, #1e3a5f);
-}
-
-/* Der Satz statt einer Gesamtsumme: vor der ersten Zahl, ruhig, aber nicht zu übersehen. */
-.vp-ks-keine-summe {
-  margin: 0;
-  padding: 12px 14px;
-  border-left: 4px solid var(--vp-navy-1, #1e3a5f);
-  border-radius: 10px;
-  background: #f1f5f9;
-  color: var(--vp-navy-1, #1e3a5f);
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.vp-ks-nv,
-.vp-ks-karte {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-3, 12px);
-  min-width: 0;
-  padding: var(--vp-space-4, 16px);
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #fff;
-}
-
-.vp-ks-nv {
-  gap: 4px;
-}
-
-.vp-ks-nv-titel,
-.vp-ks-karte-titel {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--vp-navy-1, #1e3a5f);
-  overflow-wrap: anywhere;
-}
-
-.vp-ks-nv-unter {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  font-size: 0.875rem;
-  color: var(--vp-text-muted, #6c757d);
-  cursor: pointer;
-}
-
-.vp-ks-karten {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
-  gap: var(--vp-space-4, 16px);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vp-ks-karten > li {
-  min-width: 0;
-}
-
-.vp-ks-karte {
-  height: 100%;
-  box-sizing: border-box;
-  scroll-margin-top: 96px;
-}
-
-.vp-ks-karte.is-hervor {
-  border-color: var(--vp-focus, #2563eb);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
-}
-
-.vp-ks-karte-kopf {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.vp-ks-kz {
-  color: var(--vp-text-muted, #6c757d);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.vp-ks-gueltig {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--vp-warn-ink, #b45309);
-}
-
-.vp-ks-bloecke {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-}
-
-.vp-ks-block {
-  display: grid;
-  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
-  gap: 0 var(--vp-space-3, 12px);
-  padding: 8px 0;
-  border-top: 1px solid #f1f5f9;
-}
-
-.vp-ks-block:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.vp-ks-block.is-summe {
-  border-top: 2px solid #e2e8f0;
-}
-
-.vp-ks-block-wort {
-  font-size: 0.875rem;
-  color: var(--vp-text-muted, #6c757d);
-}
-
-.vp-ks-block.is-summe .vp-ks-block-wort {
-  color: var(--vp-navy-1, #1e3a5f);
-  font-weight: 600;
-}
-
-.vp-ks-block-wert {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 2px 8px;
-  margin: 0;
-  min-width: 0;
-  text-align: right;
-}
-
-.vp-ks-zahl {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font: 700 0.9375rem var(--vp-c-font);
+  color: var(--vp-navy, #1e3a5f);
   white-space: nowrap;
-  color: var(--vp-navy-1, #1e3a5f);
 }
 
-.vp-ks-block.is-summe .vp-ks-zahl {
-  font-weight: 700;
-}
-
-.vp-ks-zustand,
-.vp-ks-summen {
-  font-size: 0.8125rem;
-  color: var(--vp-text-muted, #6c757d);
-}
-
-.vp-ks-block-posten {
-  grid-column: 1 / -1;
-  margin: 4px 0 0;
-  min-width: 0;
-}
-
-.vp-ks-posten {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vp-ks-posten-zeile {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+/* Ein leiser Verweis mit Chevron („Messstelle zuordnen ›“, „Verteilung von MS-07 prüfen ›“). */
+.vp-ks-verweis {
+  display: inline-flex;
   align-items: center;
-  gap: 0 var(--vp-space-3, 12px);
-  border-top: 1px dashed #eef2f7;
-}
-
-.vp-ks-posten-zeile:first-child {
-  border-top: 0;
-}
-
-.vp-ks-posten-link {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 6px;
-  min-height: 44px;
-  min-width: 0;
-  color: var(--vp-navy-1, #1e3a5f);
+  gap: 2px;
+  justify-self: start;
+  min-height: 32px;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
   text-decoration: none;
-  overflow-wrap: anywhere;
 }
-
-a.vp-ks-posten-link:hover .vp-ks-posten-name,
-a.vp-ks-posten-link:focus-visible .vp-ks-posten-name {
-  text-decoration: underline;
-}
-
-a.vp-ks-posten-link:focus-visible {
-  outline: 2px solid var(--vp-focus, #2563eb);
+.vp-ks-verweis:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
   outline-offset: 2px;
   border-radius: 6px;
 }
-
-.vp-ks-posten-zahl {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-align: right;
+@media (hover: hover) {
+  .vp-ks-verweis:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
 }
 
-.vp-ks-posten-woerter {
-  grid-column: 1 / -1;
-  padding-bottom: 6px;
-  font-size: 0.8125rem;
-  color: var(--vp-text-muted, #6c757d);
-  overflow-wrap: anywhere;
-}
-
-/* Die Warnung am Posten, der schon in einer Summe derselben Kostenstelle steckt: dieselbe Farbe wie die am Kopf. */
-.vp-ks-posten-doppelt {
-  grid-column: 1 / -1;
+/* ---------- Die ruhige Lage-Karte (Ablesezähler ohne Tageswert, ohne Recht auf Mengen) ---------- */
+.vp-ks-lagekarte {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding-bottom: 6px;
-  font-size: 0.8125rem;
-  color: var(--vp-warn-ink, #b45309);
-  overflow-wrap: anywhere;
-}
-
-.vp-ks-posten-doppelt .vp-ks-punkt {
-  margin-top: 5px;
-}
-
-.vp-ks-satz {
+  gap: 12px;
   margin: 0;
-  font-size: 0.875rem;
-  color: var(--vp-text-muted, #6c757d);
-}
-
-/* Die Doppelzählungs-Warnung als Zeile — Bernstein am Punkt und im Text, keine Zahl ändert sich. */
-.vp-ks-doppelt {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #fff7ed;
-  color: var(--vp-warn-ink, #b45309);
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
   font-size: 0.875rem;
   line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+.vp-ks-lagekarte-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-ks-lagekarte-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.vp-ks-lagekarte-text b {
+  font: 600 0.9375rem/1.4 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ks-lagekarte-text span {
+  font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
 
-.vp-ks-punkt {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: var(--vp-warn-ink, #b45309);
-}
-
-.vp-ks-doppelt-hinweis {
-  color: #7c2d12;
-}
-
-.vp-ks-beendet {
+/* ---------- Je Kostenstelle eine Karte ----------------------------------------------------------- */
+.vp-ks-karten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4, 16px);
   margin: 0;
-  font-size: 0.875rem;
-  color: var(--vp-text-muted, #6c757d);
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-ks-karten > li {
+  min-width: 0;
+}
+.vp-ks-karten {
+  align-items: start;
+}
+.vp-ks-karte {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  box-sizing: border-box;
+  align-content: start;
+  padding: 13px 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  scroll-margin-top: 96px;
+}
+.vp-ks-karte.is-hervor {
+  border-color: var(--vp-c-primary, #2563eb);
+  box-shadow: 0 0 0 1px var(--vp-c-primary, #2563eb);
+}
+.vp-ks-karte-kopf {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-ks-karte-name {
+  margin: 0;
+  font: 600 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-ks-karte-name .vp-ms-kz {
+  margin-left: 2px;
+}
+.vp-ks-gueltig {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-leise {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-ohne-zuordnung,
+.vp-ks-karte-fehler {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
 }
 
-.vp-ks-knopf {
-  align-self: flex-start;
-  min-height: 44px;
-  padding: 0 var(--vp-space-4, 16px);
-  border: 1px solid var(--vp-navy-1, #1e3a5f);
-  border-radius: 10px;
-  background: #fff;
-  color: var(--vp-navy-1, #1e3a5f);
-  cursor: pointer;
+/* Die Summe groß (Konzept `.ak .gross`): Zahl in Inter Tight, Einheit klein, die Marke daneben. */
+.vp-ks-gross {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  min-width: 0;
+}
+.vp-ks-gross b {
+  font: 800 1.375rem/1.1 var(--vp-font-heading, 'Inter Tight', sans-serif);
+  letter-spacing: -0.02em;
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.vp-ks-gross b.is-leer {
+  color: var(--vp-text-gray, #66717c);
+}
+.vp-ks-einheit {
+  margin-right: 4px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-gross .vp-k-marke {
+  align-self: center;
+  white-space: nowrap;
 }
 
-@media (max-width: 720px) {
-  .vp-ks-zeitwahl {
-    width: 100%;
-    justify-content: space-between;
+/* Doppelt gezählt: der Satz der Route im Warnton, der Weg zur Messstelle darunter. */
+.vp-ks-doppelt {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-warn-fg, #9a3412);
+  overflow-wrap: anywhere;
+}
+
+/* Die Posten (Konzept `.posten .po`): Trennlinie oben, je Posten Name · Wert, darunter die Herkunft. */
+.vp-ks-posten {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+.vp-ks-posten > li + li {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ks-po {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 10px;
+  padding: 8px 0;
+  font-size: 0.8125rem;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+a.vp-ks-po:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+@media (hover: hover) {
+  a.vp-ks-po:hover .vp-ks-po-name {
+    color: var(--vp-action, #2c5282);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+.vp-ks-po-name {
+  min-width: 0;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-ks-po-name .vp-ms-kz {
+  margin-left: 2px;
+  font-size: 0.72rem;
+}
+.vp-ks-po-zahl {
+  font: 700 0.8125rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  color: var(--vp-navy, #1e3a5f);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vp-ks-po-zahl.is-leer {
+  color: var(--vp-text-gray, #66717c);
+}
+.vp-ks-po-herkunft,
+.vp-ks-po-doppelt {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ks-po-doppelt {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+.vp-ks-karte-skelett {
+  display: grid;
+  gap: 8px;
+}
+.vp-ks-karte-skelett .is-gross {
+  width: 40%;
+  height: 24px;
+}
+.vp-ks-karte-skelett .is-zeile {
+  height: 12px;
+}
+.vp-ks-wert-skelett {
+  display: inline-block;
+  width: 72px;
+  height: 14px;
+}
+.vp-ks-satz-skelett {
+  display: inline-block;
+  width: 120px;
+  height: 11px;
+}
+
+/* ---------- „Ohne Kostenstelle“ ------------------------------------------------------------------ */
+.vp-ks-ohne-satz {
+  margin: -6px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-ohne-kurz,
+.vp-ks-nur-breit {
+  display: none;
+}
+.vp-ks-nur-schmal {
+  display: flex;
+  margin-top: -4px;
+}
+.vp-ks-alle {
+  font-size: 0.8125rem;
+}
+.vp-ms-ort-kopf > .vp-ks-alle,
+.vp-ms-ort-kopf > .vp-ks-nur-breit {
+  margin-left: auto;
+}
+
+/* ---------- Prozesse --------------------------------------------------------------------------- */
+/* Am Telefon: unter dem Namen steht, wovon der Prozess gemessen wird - der Zustand sagt der Punkt (Konzept §6.7). */
+.vp-ks-pz:not(.is-zuordnen) .vp-ms-reihe-satz {
+  display: none;
+}
+.vp-ks-pz:not(.is-zuordnen) .vp-ms-reihe-woher {
+  grid-area: satz;
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ks-pz .vp-ms-reihe-woher small {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-pz .vp-ms-reihe-woher small.vp-ks-pz-hinweis {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ks-pz.is-zuordnen .vp-ms-reihe-satz {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-zuordnen {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 600;
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-ks-zuordnen-kurz {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ks-teile {
+  margin: 0 0 4px;
+  padding: 0 0 0 16px;
+  list-style: none;
+}
+.vp-ks-teile > li + li > .vp-ms-reihe {
+  border-top: 1px dashed var(--vp-c-border, #e2e8f0);
+}
+.vp-ks-teil .vp-ms-reihe-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+/* ---------- Fuß: Zone und Stand einmal (Konzept Entscheid 6) ---------------------------------------- */
+.vp-ks-fuss {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Ab 760 px Breite ---------------------------------------------------------------------- */
+@container vp-ms (min-width: 760px) {
+  .vp-ks-lage {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 16px;
+    row-gap: 12px;
+  }
+  .vp-ks-lage > .vp-begriff-auf {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .vp-ks-lage > .vp-ks-zeitwahl {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+  }
+  .vp-ks-lage > .vp-begriff-auf[open] {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  .vp-ks-karten {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vp-ks-ohne-satz,
+  .vp-ks-nur-schmal {
+    display: none;
+  }
+  .vp-ks-ohne-kurz {
+    display: inline;
+    font-size: 0.75rem;
+    color: var(--vp-c-muted-fg, #475569);
+  }
+  .vp-ks-ohne-kurz::before {
+    content: '· ';
+  }
+  .vp-ks-nur-breit {
+    display: inline-flex;
+    margin-left: auto;
+  }
+  .vp-ks-pz:not(.is-zuordnen) .vp-ms-reihe-satz {
+    display: flex;
+  }
+  .vp-ks-pz:not(.is-zuordnen) .vp-ms-reihe-woher {
+    grid-area: woher;
+  }
+  .vp-ks-pz.is-zuordnen .vp-ms-reihe-woher {
+    display: grid;
+  }
+  .vp-ks-zuordnen-kurz {
+    display: none;
+  }
+  .vp-ks-teile {
+    padding-left: 18px;
+  }
+}
+
+/* ---------- Tippflächen am Telefon: 44 px hoch, ohne das Bild zu verschieben ----------------------- */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-ks .vp-begriff-auf:not([open]) summary,
+  .vp-ks .vp-ks-verweis,
+  .vp-ks .vp-ks-alle,
+  .vp-ks .vp-ms-link {
+    min-height: 44px;
+    margin-block: -6px;
+  }
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-ks .vp-begriff-auf[open] summary {
+    min-height: 44px;
+    margin-block: -12px;
   }
 }

@@ -18,13 +18,16 @@ async function waehle(page: Page, label: string, name: string) {
   await page.getByRole('option', { name, exact: true }).click();
 }
 for (const breite of [375, 1440]) {
+  // Konzept Messen m1 §6.8: eingetragen wird auf der Seite der Bezugsgröße - „Wert eintragen“ oben, Berichtigen und
+  // Fassungen im Menü ⋯ der Zeile.
   test(`${breite}: Eingabe, Validierung und Fokus`, async ({ page }) => {
     await start(page, breite, 'leer');
-    await page.getByText('Werte und Fassungen', { exact: true }).click();
-    const trigger = page.getByRole('button', { name: 'Wert eingeben', exact: true });
+    await expect(page.getByTestId('bezugsgroesse-status')).toHaveText('Für Oktober 2026 fehlt der Wert');
+    const trigger = page.getByRole('button', { name: 'Wert eintragen', exact: true });
     await trigger.click();
-    const d = page.getByRole('dialog', { name: 'Wert eingeben', exact: true });
+    const d = page.getByRole('dialog', { name: 'Wert eintragen', exact: true });
     await expect(d.getByRole('combobox', { name: 'Periode' })).toContainText('Oktober 2026');
+    await expect(d).not.toContainText('Europe/Berlin');
     await d.getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect(d.getByLabel('Wert (Stück)')).toBeFocused();
     await d.getByLabel('Wert (Stück)').fill('48.200');
@@ -32,31 +35,39 @@ for (const breite of [375, 1440]) {
     for (let i = 0; i < 8; i++) { await page.keyboard.press('Tab'); expect(await d.evaluate(e => e.contains(document.activeElement))).toBe(true); }
     await d.getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect(d).toHaveCount(0); await expect(trigger).toBeFocused();
-    await expect(page.getByText(/48.200 Stück · Fassung 1/)).toBeVisible();
+    await expect(page.getByTestId('bezugswert-zeile').first()).toContainText(/48\.200\sStück/);
+    await expect(page.getByTestId('bezugsgroesse-status')).toHaveText('Werte bis Oktober 2026 eingetragen');
     expect(await page.evaluate(() => (window as any).wertAufrufe)).toMatchObject([{ periode: '2026-10', wert: '48.200' }]);
   });
   test(`${breite}: Berichtigung mit Begründung, Fassungen und Vier-Augen`, async ({ page }) => {
     await start(page, breite);
-    await page.getByText('Werte und Fassungen', { exact: true }).click();
-    await page.getByRole('button', { name: 'Berichtigen', exact: true }).click();
+    const zeile = page.getByTestId('bezugswert-zeile').first();
+    const menue = zeile.getByRole('button', { name: 'Aktionen zu Oktober 2026' });
+    await menue.click();
+    await page.getByRole('menuitem', { name: 'Berichtigen', exact: true }).click();
     const d = page.getByRole('dialog', { name: 'Wert berichtigen', exact: true });
+    await expect(d).toContainText('Bisher wirksam: 4.820 Stück');
     await d.getByLabel('Wert (Stück)').fill('48200');
     await d.getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect(d.getByLabel('Begründung')).toBeFocused();
     await d.getByLabel('Begründung').fill('Tippfehler — eine Null fehlte');
     await foto(page, `berichtigung-${breite}`);
     await d.getByRole('button', { name: 'Speichern', exact: true }).click();
-    await page.getByText('Fassungen ansehen (2)').click();
-    await expect(page.getByText(/Fassung 1 · 4.820 Stück/)).toBeVisible();
-    await expect(page.getByText(/Fassung 2 · 48.200 Stück/)).toBeVisible();
+    await expect(d).toHaveCount(0); await expect(menue).toBeFocused();
+    await menue.click();
+    await page.getByRole('menuitem', { name: 'Fassungen ansehen (2)' }).click();
+    await expect(page.getByText(/Fassung 1 · 4\.820\sStück/)).toBeVisible();
+    await expect(page.getByText(/Fassung 2 · 48\.200\sStück/)).toBeVisible();
     await foto(page, `fassungen-${breite}`);
-    await start(page, breite, 'vier'); await page.getByText('Werte und Fassungen', { exact: true }).click();
-    await page.getByRole('button', { name: 'Berichtigen', exact: true }).click();
+    await start(page, breite, 'vier');
+    await menue.click();
+    await page.getByRole('menuitem', { name: 'Berichtigen', exact: true }).click();
     await d.getByLabel('Wert (Stück)').fill('48.200'); await d.getByLabel('Begründung').fill('Tippfehler — eine Null fehlte');
     await d.getByRole('button', { name: 'Speichern', exact: true }).click();
-    await expect(page.getByText(/4.820 Stück · Fassung 1/)).toBeVisible();
-    await expect(page.getByText(/Vorschlag von Ines/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Berichtigen', exact: true })).toHaveCount(0);
+    await expect(zeile).toContainText(/4\.820\sStück/);
+    await expect(zeile).toContainText(/Vorschlag von Ines/);
+    await menue.click();
+    await expect(page.getByRole('menuitem', { name: 'Berichtigen', exact: true })).toHaveCount(0);
   });
   test(`${breite}: Ablesung am Messstellen-Wirt, Zuordnung und Berichtigung`, async ({ page }) => {
     await start(page, breite, 'ablesung');
@@ -88,9 +99,11 @@ for (const breite of [375, 1440]) {
   });
   test(`${breite}: ohne Eingaberecht bleiben Werte lesbar`, async ({ page }) => {
     await start(page, breite, 'person=CB');
-    await page.getByText('Werte und Fassungen', { exact: true }).click();
-    await expect(page.getByText(/4.820 Stück · Fassung 1/)).toBeVisible();
-    await expect(page.getByRole('button', { name: /Wert eingeben|Berichtigen/ })).toHaveCount(0);
+    await expect(page.getByTestId('bezugswert-zeile').first()).toContainText(/4\.820\sStück/);
+    await expect(page.getByRole('button', { name: 'Wert eintragen', exact: true })).toHaveCount(0);
+    await page.getByTestId('bezugswert-zeile').first().getByRole('button', { name: 'Aktionen zu Oktober 2026' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Berichtigen', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Fassungen ansehen (1)' })).toBeVisible();
   });
 }
 for (const breite of [375, 1440]) {
