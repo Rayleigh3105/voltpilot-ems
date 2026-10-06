@@ -68,7 +68,7 @@ public class MassnahmeController {
      * Recht: {@code verbesserung.ansehen} (Zaun über Standort und Kennzahl). Das Register; {@code zustand}
      * ({@code geplant · umgesetzt · bewertet · verworfen}), {@code ueberfaellig} ({@code true · false}, Operation
      * {@code frist} beim Abruf), {@code kennzahl} und {@code einsatz} (IDs) filtern. Je Maßnahme die beobachtete Wirkung
-     * in Kurzform ({@code wirkung_kurz}, Verbessern-Konzept v1 §6.5) — dieselbe Operation {@code wirkung} wie
+     * in Kurzform ({@code wirkung_kurz}, Verbessern-Konzept v1 §6.5) - dieselbe Operation {@code wirkung} wie
      * {@code …/{id}/wirkung}.
      */
     @GetMapping
@@ -83,7 +83,7 @@ public class MassnahmeController {
      * Recht: {@code verbesserung.ansehen} (die Kennzahl muss sichtbar sein, sonst 404). Die Umrechnung der erwarteten
      * Wirkung in kWh im Jahr für „Maßnahme planen“ (Entscheid 13): {@code prozent} (eine Stelle, weniger negativ) mal
      * die gemessene Menge der zwölf abgeschlossenen Monate vor heute; ohne volle Grundlage keine Zahl, mit Grund. Liest
-     * nur — die Zahl hält erst {@code POST} fest.
+     * nur - die Zahl hält erst {@code POST} fest.
      */
     @GetMapping("/schaetzung")
     public MassnahmeDto.Schaetzung schaetzung(@RequestParam(required = false) String kennzahl,

@@ -1,5 +1,5 @@
 /*
- * MASSNAHMEN — Reiter, Seite und Blätter (Verbessern-Konzept v1, PR 2; Captain-Freigabe 06.10.2026).
+ * MASSNAHMEN - Reiter, Seite und Blätter (Verbessern-Konzept v1, PR 2; Captain-Freigabe 06.10.2026).
  * Familie Portfolio R4 / Wiedervorlage w1 / Messen m1 / Auswerten a1: die Liste nutzt die Einträge der Wiedervorlage
  * (`.vp-wv-*`, `.vp-fd`), hier stehen nur die NEUEN Bausteine aus denselben Tokens (keine neue Farbe, kein neuer
  * Radius, keine neue Schrift):
@@ -20,7 +20,7 @@
 }
 
 /* ---------- Kopf ------------------------------------------------------------------- */
-.vp-mn-kopf {
+.vp-wv-kopf.vp-mn-kopf {
   flex-wrap: nowrap;
 }
 .vp-mn-kopf .vp-mn-planen {
@@ -76,7 +76,8 @@
 .vp-mn-kopfzeile {
   display: none;
 }
-.vp-mn-eintrag {
+/* Zwei Klassen: `.vp-wv-eintrag` (Wiedervorlage.css) kann je nach Ladereihenfolge später stehen. */
+.vp-wv-eintrag.vp-mn-eintrag {
   grid-template-areas:
     'fd tx chev'
     'br br br'
@@ -132,7 +133,12 @@
   white-space: nowrap;
 }
 
-/* Marken der Familie (Kacheln.css trägt .vp-k-marke): leise mit Rand für „Art statt Mangel“. */
+/* Marken der Familie (Kacheln.css trägt .vp-k-marke, die Farben kommen über `.vp-k-farben` an Register, Seite und
+   Blättern). In einer Karte (Raster) steht die Marke so breit wie ihr Wort. */
+.vp-mn-karte > .vp-k-marke {
+  justify-self: start;
+}
+/* Leise mit Rand für „Art statt Mangel“ und „vorläufig“. */
 .vp-k-marke.is-ohne {
   padding: 1px 8px;
   border: 1px solid var(--vp-c-border, #e2e8f0);
@@ -326,17 +332,21 @@
 }
 .vp-mn-spalten {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--vp-c-space-4, 16px);
   min-width: 0;
 }
 .vp-mn-spalte {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--vp-c-space-4, 16px);
   min-width: 0;
 }
+/* Feste Spur statt `auto`: eine breite Tabelle in „Werte je Monat“ scrollt in ihrem Rahmen, nie die Seite. */
 .vp-mn-karte {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
   padding: 14px 16px;
@@ -496,6 +506,7 @@
   grid-row: 1 / span 3;
 }
 .vp-mn-details {
+  min-width: 0;
   margin-top: 4px;
 }
 .vp-mn-details summary {
@@ -718,13 +729,78 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.vp-mn-werte td[data-testid='urteil'] {
+  white-space: nowrap;
+}
 .vp-mn-werte tr.is-aus td,
 .vp-mn-werte tr.is-aus th {
   color: var(--vp-c-muted-fg, #475569);
 }
 .vp-mn-werte-rahmen {
+  display: none;
   max-width: 100%;
   overflow-x: auto;
+}
+.vp-mn-werte-liste {
+  display: grid;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-mn-werte-liste li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.vp-mn-werte-liste b {
+  font-weight: 600;
+}
+.vp-mn-wl-prozent,
+.vp-mn-wl-wort {
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-mn-wl-prozent {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.vp-mn-wl-werte,
+.vp-mn-wl-wort,
+.vp-mn-wl-roh {
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+/* Reihe: Monat | Prozent · darunter gemessen und erwartet über die ganze Breite · Urteil | rohe Kennzahl. */
+.vp-mn-wl-werte {
+  grid-column: 1 / -1;
+}
+.vp-mn-wl-wort {
+  grid-column: 1;
+  text-align: left;
+}
+.vp-mn-wl-roh {
+  grid-column: 2;
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-mn-wl-wort,
+.vp-mn-wl-roh {
+  font-size: 0.75rem;
+}
+.vp-mn-werte-liste li.is-aus {
+  color: var(--vp-c-muted-fg, #475569);
+}
+@container vp-mn-seite (min-width: 560px) {
+  .vp-mn-werte-liste {
+    display: none;
+  }
+  .vp-mn-werte-rahmen {
+    display: block;
+  }
 }
 
 /* ---------- Blätter: Antwort-Karten, Schritt-Anzeige, Schnellwahl, Zusammenfassung -------------------- */
@@ -1072,13 +1148,46 @@
     padding-top: 0;
     border-top: 0;
   }
-  .vp-mn-teil-titel .vp-mn-nr {
+  /* Wie im Konzept (§6.9, Schritt 2): Feld voll breit, darunter der Hinweis, dann „Weiß ich noch nicht“. */
+  .vp-mn-feld > .vp-mn-prozent {
+    display: contents;
+  }
+  .vp-mn-prozent-feld {
+    max-width: none;
+    order: 1;
+  }
+  .vp-mn-feld > .vp-mn-prozent ~ p {
+    order: 2;
+  }
+  .vp-mn-feld > .vp-mn-prozent > .vp-mn-schnell {
+    order: 3;
+  }
+  .vp-mn-feld > label {
+    order: 0;
+  }
+  /* Die Herkunft steht nur im ersten Schritt; danach trägt die Zeile den Titel der Maßnahme. */
+  .vp-mn-blatt:not([data-schritt='1']) > .vp-mn-unter[data-testid='massnahme-herkunft-vorbelegt'] {
+    display: none;
+  }
+  /* Am Telefon trägt der Titel des Blatts die Frage des Schritts (Konzept §6.9): keine zweite Überschrift. */
+  .vp-mn-teil-titel {
     display: none;
   }
 }
 @media (min-width: 721px) {
+  /* Am Rechner steht die Frage als Überschrift des Teils; die gleichlautende Beschriftung nur für Screenreader. */
+  .vp-mn-blatt .vp-mn-label-doppelt {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* Im Blatt mit zwei Klassen: `.vp-mn-planer-knoepfe` (weiter unten) setzt sonst `display: grid` zurück. */
   .vp-mn-schritt,
-  .vp-mn-nur-telefon {
+  .vp-mn-nur-telefon,
+  .vp-mn-blatt .vp-mn-nur-telefon {
     display: none;
   }
   .vp-mn-planer {
@@ -1146,13 +1255,61 @@
   }
 }
 
+/* Die Anstöße (gemeinsam mit der Energieziel-Seite) stehen hier in der Kartenfamilie der Seite. */
+.vp-mn-spalte > .vp-ez-karte {
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--vp-radius-lg, 24px);
+}
+.vp-mn-spalte > .vp-ez-karte > h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-spalte > .vp-ez-karte .vp-ez-verlauf {
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+/* Am Telefon eine Spalte in der Reihenfolge des Konzepts (§6.6): Antwort, Kacheln, Urteil, Wirkung, Herkunft,
+   Wofür und woran gemessen, Verlauf; am Rechner links Antwort und Wirkung, rechts Urteil, Herkunft, Wofür. */
+@container vp-mn-seite (max-width: 899px) {
+  .vp-mn-spalte {
+    display: contents;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-urteil {
+    order: 1;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-wirkung,
+  .vp-mn-spalten > .vp-mn-spalte > .vp-ez-karte {
+    order: 2;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-woher {
+    order: 3;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-wofuer {
+    order: 4;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-verlauf {
+    order: 5;
+  }
+}
+/* Am Telefon zwei Kacheln wie im Konzept: „Vorher“ steht unter „Wofür und woran gemessen“. */
+@container vp-mn-seite (max-width: 559px) {
+  .vp-mn-kacheln > .vp-mn-k:nth-child(3) {
+    display: none;
+  }
+}
+@container vp-mn-seite (min-width: 560px) {
+  .vp-mn-kacheln {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 @container vp-mn-seite (min-width: 900px) {
   .vp-mn-spalten {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
     align-items: start;
-  }
-  .vp-mn-kacheln {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .vp-mn-gross {
     width: auto;

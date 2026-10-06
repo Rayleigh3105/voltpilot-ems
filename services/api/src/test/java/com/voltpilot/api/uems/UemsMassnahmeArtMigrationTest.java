@@ -35,7 +35,7 @@ import org.testcontainers.utility.DockerImageName;
 /**
  * Verbessern-Konzept v1, PR 2 (Entscheide 6 und 13): {@code V20261006213000} gibt der Maßnahme ihre Art
  * ({@code gemessen · nicht_gemessen · organisatorisch}) und die erwartete Einsparung in kWh im Jahr. Der Bestand bekommt
- * seine Art aus dem, was die Zeile schon sagt — auch eine verworfene Maßnahme —, sonst bleibt jede Spalte jeder Zeile
+ * seine Art aus dem, was die Zeile schon sagt - auch eine verworfene Maßnahme -, sonst bleibt jede Spalte jeder Zeile
  * zeichengleich; das Vokabular wird nur geweitet; die Art ist nie änderbar, die Einsparung nur solange geplant; und die
  * Migration trägt auch als späte Ankunft.
  */
@@ -59,7 +59,7 @@ class UemsMassnahmeArtMigrationTest {
 
     private static JdbcTemplate root;
     private static UUID tenant, standort, kennzahl, basis;
-    /** Die fünf Maßnahmen des Bestands — die übrigen Fälle legen in derselben Datenbank weitere an. */
+    /** Die fünf Maßnahmen des Bestands - die übrigen Fälle legen in derselben Datenbank weitere an. */
     private static final List<UUID> BESTAND = new ArrayList<>();
     private static Map<String, String> fingerVorher, fingerNachher;
     private static String massnahmenVorher, massnahmenNachher;
@@ -133,7 +133,7 @@ class UemsMassnahmeArtMigrationTest {
                 "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal:geplant:nicht_gemessen");
     }
 
-    /** Außer der neuen Spalte `art` ändert sich keine Zeile — weder an der Maßnahme noch irgendwo sonst. */
+    /** Außer der neuen Spalte `art` ändert sich keine Zeile - weder an der Maßnahme noch irgendwo sonst. */
     @Test
     void sonstBleibtDerBestandZeichengleich() {
         assertThat(massnahmenVorher).isNotEqualTo(Bestandsschutz.LEER).isEqualTo(massnahmenNachher);

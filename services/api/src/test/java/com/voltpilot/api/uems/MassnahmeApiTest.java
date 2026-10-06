@@ -11,6 +11,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -599,7 +601,7 @@ class MassnahmeApiTest {
 
     /**
      * Verbessern-Konzept v1, Entscheide 6 und 13: die Art der Maßnahme (gemessen genau mit Kennzahl) und die Schätzung in
-     * kWh im Jahr — ohne Kennzahl von der Person (nur weniger Energie, nie organisatorisch), mit Kennzahl umgerechnet über
+     * kWh im Jahr - ohne Kennzahl von der Person (nur weniger Energie, nie organisatorisch), mit Kennzahl umgerechnet über
      * die gemessene Menge der zwölf abgeschlossenen Monate vor heute, wie {@code GET …/schaetzung} sie vorab zeigt.
      */
     @Test
@@ -645,7 +647,7 @@ class MassnahmeApiTest {
             assertThat(x.body().get("code").asText()).as(mehr.toString()).isEqualTo(fall[3]);
         }
 
-        // Am Anlegetag fehlen der Kennzahl die zwölf Monate davor: keine Zahl, mit Grund — angelegt wird trotzdem.
+        // Am Anlegetag fehlen der Kennzahl die zwölf Monate davor: keine Zahl, mit Grund - angelegt wird trotzdem.
         String kz = w.kz4().toString();
         JsonNode frueh = ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + kz + "&prozent=-3", null).body();
         assertThat(frueh.get("kwh_jahr").isNull()).isTrue();
@@ -655,6 +657,20 @@ class MassnahmeApiTest {
         assertThat(ohneGrundlage.status()).as(ohneGrundlage.text()).isEqualTo(201);
         assertThat(ohneGrundlage.body().get("art").asText()).isEqualTo("gemessen");
         assertThat(ohneGrundlage.body().get("erwartete_einsparung").isNull()).isTrue();
+
+        // Gilt die freigegebene Fassung erst ab morgen, nennt die Schätzung denselben Grund wie das Anlegen (M2) -
+        // keine Zahl, die das Anlegen danach ablehnt.
+        LocalDate giltAb = root.queryForObject("SELECT min(f.gilt_ab) FROM bezugsbasis_fassung f JOIN bezugsbasis b "
+                + "ON b.id = f.bezugsbasis_id WHERE b.kennzahl_id = ? AND f.freigabe_status = 'freigegeben'",
+                LocalDate.class, w.kz4());
+        uhr(giltAb.minusDays(1).atTime(9, 0).toInstant(ZoneOffset.UTC));
+        JsonNode vorGeltung = ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + kz + "&prozent=-3", null)
+                .body();
+        assertThat(vorGeltung.get("kwh_jahr").isNull()).isTrue();
+        assertThat(vorGeltung.get("grund").asText()).as(vorGeltung.toString()).isEqualTo("kennzahl_ohne_bezugsbasis");
+        Antwort vorGeltungAnlegen = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, r3));
+        assertThat(vorGeltungAnlegen.status()).as(vorGeltungAnlegen.text()).isEqualTo(422);
+        assertThat(vorGeltungAnlegen.body().get("code").asText()).isEqualTo("kennzahl_ohne_bezugsbasis");
 
         // Am 10.02.2029 liegen Februar 2028 bis Januar 2029 vor: 3 % weniger von ihrer Menge, auf ganze kWh.
         nachher(w, "2028-01", "2029-01");
@@ -708,7 +724,7 @@ class MassnahmeApiTest {
     }
 
     /**
-     * Entscheid 12 (Befund 6): „Weiß ich noch nicht“ — eine gemessene Maßnahme ohne Zahl der Person bekommt den Satz
+     * Entscheid 12 (Befund 6): „Weiß ich noch nicht“ - eine gemessene Maßnahme ohne Zahl der Person bekommt den Satz
      * {@code wirkung_ohne_erwartung}; die Liste trägt je Maßnahme die beobachtete Wirkung in Kurzform (§6.5), dieselbe
      * Summe wie {@code …/wirkung}, und nur ab umgesetzt mit bewertbarem Monat.
      */
@@ -729,6 +745,18 @@ class MassnahmeApiTest {
         uhr(UMGESETZT);
         assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + ohneZahl + "/umgesetzt", Map.of("am", "2028-01-22",
                 "begruendung", "Frequenzumrichter an beiden Pumpen eingebaut.")).status()).isEqualTo(200);
+        // Eine dritte Maßnahme derselben Kennzahl, zwei Monate später umgesetzt: die Liste liest den Vergleich je
+        // Kennzahl einmal über beide Zeiträume - die Kurzform bleibt genau die der eigenen Wirkung.
+        Map<String, Object> spaet = mitMessgrundlage(w, r3);
+        spaet.put("titel", "Trocknerluft im Spritzguss nachts abschalten");
+        spaet.put("herkunft", "von_hand");
+        spaet.remove("herkunft_kennung");
+        Antwort s3 = ruf(w, "ines", HttpMethod.POST, PFAD, spaet);
+        assertThat(s3.status()).as(s3.text()).isEqualTo(201);
+        String spaetId = s3.body().get("id").asText();
+        uhr(Instant.parse("2028-03-25T09:00:00Z"));
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + spaetId + "/umgesetzt", Map.of("am", "2028-03-20",
+                "begruendung", "Zeitschaltung der Trocknerluft eingebaut.")).status()).isEqualTo(200);
         Antwort geplant = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, null));
         nachher(w, "2028-01", "2029-01");
         uhr(Instant.parse("2029-02-10T09:00:00Z"));
@@ -762,7 +790,13 @@ class MassnahmeApiTest {
         assertThat(je.get(ohneZahl).at("/wirkung_kurz/erwartete_wirkung").isNull()).isTrue();
         assertThat(je.get(ohneZahl).at("/wirkung_kurz/delta_prozent").asText()).isEqualTo("-2.7");
         assertThat(je.get(geplant.body().get("id").asText()).get("wirkung_kurz").isNull()).isTrue();
-        // Die einzelne Maßnahme trägt keine Kurzform — dort steht die ganze Wirkung.
+        for (String id : List.of(mitZahl, ohneZahl, spaetId)) {
+            JsonNode eigene = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung", null).body()
+                    .at("/massnahme/wirkung_kurz");
+            assertThat(je.get(id).get("wirkung_kurz")).as(id).isEqualTo(eigene);
+        }
+        assertThat(je.get(spaetId).at("/wirkung_kurz/zeitraum_von").asText()).isEqualTo("2028-04");
+        // Die einzelne Maßnahme trägt keine Kurzform - dort steht die ganze Wirkung.
         assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "/" + mitZahl, null).body().get("wirkung_kurz").isNull()).isTrue();
     }
 

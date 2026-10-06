@@ -557,7 +557,7 @@ public class MassnahmeService {
         if (GEMESSEN.equals(art) != mitKennzahl) {
             throw VerbesserungAbgelehnt.fachlich(mitKennzahl ? "art_mit_kennzahl" : "art_ohne_kennzahl", mitKennzahl
                     ? "Eine Maßnahme mit Kennzahl wird an dieser Kennzahl gemessen."
-                    : "Gemessen wird eine Maßnahme an einer Kennzahl mit Bezugsbasis — bitte eine Kennzahl wählen.",
+                    : "Gemessen wird eine Maßnahme an einer Kennzahl mit Bezugsbasis - bitte eine Kennzahl wählen.",
                     Map.of("feld", "art"));
         }
         return art;
@@ -612,20 +612,24 @@ public class MassnahmeService {
 
     /**
      * Entscheid 13: −Prozent × die gemessene Menge der Kennzahl in den zwölf abgeschlossenen Monaten vor heute (Zeitzone
-     * der Kennzahl), auf ganze kWh gerundet — nur, wenn jeder dieser Monate einen Wert in kWh hat; sonst keine Zahl und
+     * der Kennzahl), auf ganze kWh gerundet - nur, wenn jeder dieser Monate einen Wert in kWh hat; sonst keine Zahl und
      * der Grund ({@code monate_fehlen}, {@code einheit_nicht_kwh}). Gelesen wird über den Vergleich-Leser gegen die
-     * freigegebene Bezugsbasis der Kennzahl, gerechnet nur diese eine Multiplikation.
+     * freigegebene Bezugsbasis der Kennzahl, gerechnet nur diese eine Multiplikation. Die Fassung wählt dieselbe Regel
+     * wie die Messgrundlage (M2: freigegeben und heute geltend) - sonst {@code kennzahl_ohne_bezugsbasis}, damit das
+     * Blatt keine Zahl zeigt, die das Anlegen danach ablehnt.
      */
     Umrechnung umrechnung(UUID kennzahl, BigDecimal prozent) {
         KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(kennzahl, null, null, null);
-        YearMonth dieser = YearMonth.from(LocalDate.ofInstant(k.jetzt(), k.zone()));
+        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
+        YearMonth dieser = YearMonth.from(heute);
         YearMonth von = dieser.minusMonths(AUSGANGSLAGE_HOECHSTENS_MONATE);
         YearMonth bis = dieser.minusMonths(1);
         String monate = von + "/" + bis;
         String basis = jdbc.queryForList("SELECT b.kennzeichen FROM bezugsbasis b JOIN bezugsbasis_fassung f "
                 + "ON f.bezugsbasis_id = b.id AND f.tenant_id = b.tenant_id WHERE b.kennzahl_id = ? AND b.beendet_am IS NULL "
-                + "AND f.freigabe_status = 'freigegeben' ORDER BY f.fassung DESC LIMIT 1", String.class, kennzahl).stream()
-                .findFirst().orElse(null);
+                + "AND f.freigabe_status = 'freigegeben' AND f.gilt_ab <= ? AND (f.gilt_bis IS NULL OR f.gilt_bis >= ?) "
+                + "ORDER BY f.fassung DESC LIMIT 1", String.class, kennzahl, Date.valueOf(heute), Date.valueOf(heute))
+                .stream().findFirst().orElse(null);
         if (basis == null) {
             return new Umrechnung(null, null, monate, 0, "kennzahl_ohne_bezugsbasis");
         }

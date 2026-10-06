@@ -26,7 +26,7 @@
 -- ist (Trigger massnahme_art_eingefroren, neben massnahme_eingefroren). Die App-Rolle
 -- darf die drei Einsparungs-Spalten ändern (Schreibweg „Ändern“), `art` nie.
 --
--- Vokabulare: verbesserung_vokabular() wird mit CREATE OR REPLACE geweitet — alle
+-- Vokabulare: verbesserung_vokabular() wird mit CREATE OR REPLACE geweitet - alle
 -- Wörter von IP-5, IP-9, IP-14 und AP-19 IP-17 unverändert in derselben Reihenfolge,
 -- dazu am Ende nur `massnahme_art` (Vertrag verbesserung.md 1.1). Wer die Funktion
 -- später weitet, schreibt die VEREINIGUNG.
@@ -148,7 +148,7 @@ ALTER TABLE massnahme
 
 -- Der Bestand: die Art aus Messgrundlage und Herkunft. Die Migration läuft als Eigentümer
 -- (Superuser, RLS greift nicht); der Änderungs-Trigger hielte eine verworfene Maßnahme
--- fest — diese Nachtragung ist die EINE Ausnahme.
+-- fest - diese Nachtragung ist die EINE Ausnahme.
 ALTER TABLE massnahme DISABLE TRIGGER massnahme_eingefroren;
 UPDATE massnahme
    SET art = CASE

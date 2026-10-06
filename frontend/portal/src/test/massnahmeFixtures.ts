@@ -14,6 +14,7 @@ import {
   type Massnahme,
   type MassnahmeBewertung,
   type MassnahmeEintrag,
+  type MassnahmeSchaetzung,
   type MassnahmeWirkung,
   type MassnahmeWirkungKurz,
   type VorgangAnstoss,
@@ -137,7 +138,7 @@ export function m2(abruf = '2028-03-15'): Massnahme {
     zustand: 'geplant',
     herkunft: { art: 'einsatz', kennung: 'EE-3' },
     messgrundlage: null,
-    ohne_messgrundlage: { kennzeichen: OHNE_KENNZEICHEN, hinweis: 'Druckluft: zum Beispiel Stromeinsatz je Betriebsstunde', satz: SATZ_OHNE_R7 },
+    ohne_messgrundlage: { kennzeichen: OHNE_KENNZEICHEN, hinweis: 'zum Beispiel Stromeinsatz je Betriebsstunde mit einer Bezugsbasis', satz: SATZ_OHNE_R7 },
     einsatz: { id: M_IDS.ee3, kennzeichen: 'EE-3', name: 'Druckluft' },
     einstufung_fassung: 2,
     energieziel: null,
@@ -185,6 +186,25 @@ export function vergleichKz4(von: string, bis: string): BezugsbasisVergleich {
   const v = vergleichR2();
   const monate = [R2_NOVEMBER, R2_DEZEMBER, ...v.monate.slice(2)].filter((m) => m.periode >= von && m.periode <= bis);
   return { ...v, kennzahl: { ...v.kennzahl, ...KZ4 }, von, bis, monate };
+}
+
+/** Die gemessene Menge von KZ-0004 in zwölf abgeschlossenen Monaten - die Grundlage der Schätzung (Entscheid 13). */
+export const GRUNDLAGE_KZ4_KWH = '1017050';
+
+/** Wie die Route: −Prozent × die zwölf abgeschlossenen Monate vor dem Tag der Route, auf ganze kWh gerundet. */
+export function schaetzungKz4(kennzahl: string, prozent: number, heute: string): MassnahmeSchaetzung {
+  const [j, m] = heute.split('-').map(Number);
+  const von = `${j - 1}-${String(m).padStart(2, '0')}`;
+  const bis = m === 1 ? `${j - 1}-12` : `${j}-${String(m - 1).padStart(2, '0')}`;
+  return {
+    kennzahl,
+    prozent: prozent.toFixed(1),
+    kwh_jahr: String(Math.round((-prozent * Number(GRUNDLAGE_KZ4_KWH)) / 100)),
+    grundlage_kwh: GRUNDLAGE_KZ4_KWH,
+    grundlage_monate: `${von}/${bis}`,
+    monate_mit_wert: 12,
+    grund: null,
+  };
 }
 
 export type MassnahmeLage = 'leer' | 'geplant' | 'r9' | 'r5' | 'r6' | 'r12' | 'antrag';
@@ -303,7 +323,7 @@ export function massnahmeBuehne(
         ...m,
         anstoesse: null,
         verlauf: null,
-        wirkung_kurz: m.messgrundlage && m.umgesetzt_am ? KURZ_R5 : null,
+        wirkung_kurz: m.messgrundlage && m.umgesetzt_am && m.umgesetzt_am.slice(0, 7) < heute.slice(0, 7) ? KURZ_R5 : null,
       })),
     }),
     massnahme: async (id) => holen(id),
@@ -329,6 +349,14 @@ export function massnahmeBuehne(
         messgrundlage: body.kennzahl
           ? {
               ...basis.messgrundlage!,
+              // Wie die Route: die Ausgangslage ist die Kopie der gewählten Monate (nicht immer Dezember 2027).
+              ...(body.monate && body.monate !== '2027-12'
+                ? (() => {
+                    const [von, bis] = body.monate.split('/');
+                    const v = vergleichKz4(von, bis ?? von);
+                    return { ausgangslage_inhalt: { ...v, vergleich: v.monate.map((x) => ({ periode: x.periode, bereinigt: x.bereinigt })) } };
+                  })()
+                : {}),
               satz: body.monate === '2027-12' ? basis.messgrundlage!.satz!.replace('3 % weniger — ‚Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.‘', `${body.erwartete_wirkung_prozent === undefined ? '—' : `${Math.abs(body.erwartete_wirkung_prozent)} % weniger`} — ‚${body.erwartete_wirkung_wortlaut}‘`).replace('Kopie vom 15.01.2028', `Kopie vom ${heute.split('-').reverse().join('.')}`) : null,
             }
           : null,
@@ -336,7 +364,7 @@ export function massnahmeBuehne(
           ? null
           : {
               kennzeichen: OHNE_KENNZEICHEN,
-              hinweis: `${einsatz?.name ?? 'dieser Energieeinsatz'}: zum Beispiel Stromeinsatz je Betriebsstunde`,
+              hinweis: einsatz ? 'zum Beispiel Stromeinsatz je Betriebsstunde mit einer Bezugsbasis' : 'mit einer freigegebenen Bezugsbasis',
               satz: `${kennzeichen} · ${body.titel} · ${OHNE_KENNZEICHEN}. Um die Wirkung zu messen, braucht ${einsatz?.name ?? 'dieser Energieeinsatz'} eine Energieleistungskennzahl (zum Beispiel Stromeinsatz je Betriebsstunde mit einer Bezugsbasis).`,
             },
         einsatz: einsatz ? { id: einsatz.id, kennzeichen: einsatz.kennzeichen, name: einsatz.name } : null,
@@ -351,7 +379,11 @@ export function massnahmeBuehne(
         erwartete_einsparung:
           body.erwartete_einsparung_kwh_jahr !== undefined
             ? { kwh_jahr: String(body.erwartete_einsparung_kwh_jahr), grundlage_kwh: null, grundlage_monate: null }
-            : null,
+            : body.kennzahl && body.erwartete_wirkung_prozent !== undefined
+              ? (({ kwh_jahr, grundlage_kwh, grundlage_monate }) => ({ kwh_jahr: kwh_jahr!, grundlage_kwh, grundlage_monate }))(
+                  schaetzungKz4(body.kennzahl, body.erwartete_wirkung_prozent, heute),
+                )
+              : null,
         wirkung_kurz: null,
       };
       liste.set(m.id, m);
@@ -414,6 +446,7 @@ export function massnahmeBuehne(
       liste.set(id, neu);
       return neu;
     },
+    massnahmeSchaetzung: async (kennzahl, prozent) => schaetzungKz4(kennzahl, prozent, heute),
     energieeinsaetze: async () => ({ energieeinsaetze: einsaetzeAhrenberg() }),
     bezugsbasisVergleich: async (_id, wahl = {}) => vergleichKz4(wahl.von ?? '2027-12', wahl.bis ?? wahl.von ?? '2027-12'),
   };
@@ -545,6 +578,19 @@ function wirkungDer(m: Massnahme, abruf: string): MassnahmeWirkung {
   };
   if (!m.messgrundlage) return { ...leer, grund: 'ohne_messgrundlage', satz: m.ohne_messgrundlage?.satz ?? null };
   if (!m.umgesetzt_am) return { ...leer, grund: 'nicht_umgesetzt', satz: null };
+  // Wie die Route: im Umsetzungsmonat ist noch kein Monat danach bewertbar - keine Kurzform, kein Satz.
+  const umsetzung = m.umgesetzt_am.slice(0, 7);
+  if (abruf.slice(0, 7) <= umsetzung) {
+    const plus = (n: number) => {
+      const [j, mo] = umsetzung.split('-').map(Number);
+      const z = j * 12 + mo - 1 + n;
+      return `${Math.floor(z / 12)}-${String((z % 12) + 1).padStart(2, '0')}`;
+    };
+    return {
+      ...leer, massnahme: { ...m, wirkung_kurz: null }, grund: null, satz: null, umsetzungsmonat: umsetzung, nachher_von: plus(1),
+      nachher_bis: plus(12), monate_bewertbar: 0, monate_endgueltig: 0, monate_soll: 12, monate_text: '0 von 12', vorlaeufig: true,
+    };
+  }
   return wirkungR5(m, abruf);
 }
 

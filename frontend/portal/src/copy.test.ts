@@ -1938,7 +1938,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
-  'components/MassnahmeWirkung.tsx', // neu: ohne Kennzahl misst VoltPilot nichts — Abschließen mit einem Satz (Verbessern v1 PR 2, Entscheid 6)
+  'components/MassnahmeWirkung.tsx', // neu: ohne Kennzahl misst VoltPilot nichts - Abschließen mit einem Satz (Verbessern v1 PR 2, Entscheid 6)
   'components/PortfolioCockpit.tsx', // alt
   'components/PortfolioKacheln.tsx', // neu: das Kennzahl-Kachelraster der Unternehmens-Übersicht (PR2, §4.2 — Leitkennzahl, Verbrauch, Lastspitze, Kosten)
   'components/VerlaufExplorer.tsx', // alt
@@ -1955,7 +1955,7 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmePlanen.ts', // neu: „Maßnahme planen“ fragt, ob an einer Kennzahl gemessen wird (Verbessern v1 PR 2, Entscheid 6)
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
-  'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ — ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
+  'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt

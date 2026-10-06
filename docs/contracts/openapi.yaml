@@ -14041,7 +14041,9 @@ paths:
         gemessene Menge der Kennzahl in den zwölf abgeschlossenen Monaten vor heute (`grundlage_kwh`,
         `grundlage_monate`), auf ganze kWh gerundet, weniger Energie positiv - dieselbe Rechnung, mit der `POST` die
         Schätzung festhält. Ohne volle Grundlage `kwh_jahr` null und `grund` (`monate_fehlen` mit `monate_mit_wert`,
-        `einheit_nicht_kwh`, `kennzahl_ohne_bezugsbasis`, `zu_klein`). Liest nur; fehlender oder anderer Parameter 400.
+        `einheit_nicht_kwh`, `kennzahl_ohne_bezugsbasis`, `zu_klein`); die Fassung wählt dieselbe Regel wie die
+        Messgrundlage beim Anlegen (freigegeben und heute geltend), sonst `kennzahl_ohne_bezugsbasis` - das Blatt zeigt
+        nie eine Zahl, die `POST` danach ablehnt. Liest nur; fehlender oder anderer Parameter 400.
       parameters:
         - { name: kennzahl, in: query, required: true, schema: { type: string, format: uuid } }
         - { name: prozent, in: query, required: true, schema: { type: string, pattern: "^-?[0-9]{1,2}(\\.[0-9])?$" } }

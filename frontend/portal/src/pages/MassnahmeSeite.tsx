@@ -59,13 +59,16 @@ function verlaufTitel(e: MassnahmeEintrag): string {
 function Verlauf({ m }: { m: Massnahme }) {
   const eintraege = [...(m.verlauf ?? [])].reverse();
   return (
-    <section className="vp-mn-karte" aria-labelledby="ma-verlauf" data-testid="massnahme-verlauf">
+    <section className="vp-mn-karte is-verlauf" aria-labelledby="ma-verlauf" data-testid="massnahme-verlauf">
       <div className="vp-wv-blockkopf">
         <h2 id="ma-verlauf">{M.VERLAUF}</h2>
         <span className="vp-wv-abschnitt-m is-immer">neueste zuerst</span>
       </div>
-      {eintraege.length <= 1 && (
-        <p className="vp-mn-leise">{`Noch kein Eintrag seit dem Planen am ${Z.tag(m.angelegt_am)}.`}</p>
+      {eintraege.length === 0 ? (
+        <p className="vp-mn-leise">Für diese Maßnahme ist noch kein Verlauf festgehalten.</p>
+      ) : (
+        eintraege.length === 1 &&
+        eintraege[0].art === 'massnahme_angelegt' && <p className="vp-mn-leise">{`Noch kein Eintrag seit dem Planen am ${Z.tag(m.angelegt_am)}.`}</p>
       )}
       <ol className="vp-mn-verlauf">
         {eintraege.map((e) => {
@@ -92,7 +95,7 @@ function Woher({ m }: { m: Massnahme }) {
   const ziel = herkunftZiel(m.herkunft.art, m.herkunft.kennung);
   if (!satz) return null;
   return (
-    <section className="vp-mn-karte" aria-labelledby="ma-woher" data-testid="massnahme-herkunft">
+    <section className="vp-mn-karte is-woher" aria-labelledby="ma-woher" data-testid="massnahme-herkunft">
       <div className="vp-wv-blockkopf">
         <h2 id="ma-woher">{`Woher die ${UEMS_MASSNAHME} kommt`}</h2>
       </div>
@@ -106,7 +109,7 @@ function Woher({ m }: { m: Massnahme }) {
   );
 }
 
-/** „Wofür und woran gemessen“ (§6.6): Energieziel, Kennzahl mit Bezugsbasis, Vorher — oder ehrlich „nicht gemessen“. */
+/** „Wofür und woran gemessen“ (§6.6): Energieziel, Kennzahl mit Bezugsbasis, Vorher - oder ehrlich „nicht gemessen“. */
 function WofuerUndWoran({
   m,
   onKennzahl,
@@ -119,7 +122,7 @@ function WofuerUndWoran({
   const mg = m.messgrundlage;
   const vorher = B.vorherBild(m);
   return (
-    <section className="vp-mn-karte" aria-labelledby="ma-wofuer" data-testid="massnahme-messgrundlage">
+    <section className="vp-mn-karte is-wofuer" aria-labelledby="ma-wofuer" data-testid="massnahme-messgrundlage">
       <div className="vp-wv-blockkopf">
         <h2 id="ma-wofuer">Wofür und woran gemessen</h2>
       </div>
@@ -128,7 +131,7 @@ function WofuerUndWoran({
           <div className="vp-mn-zr">
             <dt>Für</dt>
             <dd className="vp-mn-w">{B.energiezielName(m.energieziel.kennzeichen)}</dd>
-            <dd className="vp-mn-n">{m.energieziel.name ?? m.energieziel.kennzeichen}</dd>
+            <dd className="vp-mn-n">{B.energiezielRest(m.energieziel.kennzeichen, m.energieziel.name) ?? m.energieziel.kennzeichen}</dd>
             {onEnergieziel && (
               <button type="button" className="vp-mn-sprung vp-mn-a" onClick={() => onEnergieziel(m.energieziel!.id)} data-testid="massnahme-sprung-energieziel">
                 Ansehen
@@ -141,7 +144,7 @@ function WofuerUndWoran({
             <div className="vp-mn-zr">
               <dt>Gemessen an</dt>
               <dd className="vp-mn-w">{mg.kennzahl.name ?? mg.kennzahl.kennzeichen}</dd>
-              <dd className="vp-mn-n" data-testid="massnahme-methode">{`Bezugsbasis ${mg.bezugsbasis.kennzeichen}, Fassung ${mg.fassung} · ${mg.bewertungsmethode}`}</dd>
+              <dd className="vp-mn-n" data-testid="massnahme-methode">{`Bezugsbasis ${mg.bezugsbasis.kennzeichen}, Fassung ${mg.fassung} · ${B.methodeKurz(mg.bewertungsmethode)}`}</dd>
               {onKennzahl && (
                 <button type="button" className="vp-mn-sprung vp-mn-a" onClick={() => onKennzahl(mg.kennzahl.id)} data-testid="massnahme-sprung-kennzahl">
                   Ansehen
@@ -170,7 +173,7 @@ function WofuerUndWoran({
             <dt>Gemessen an</dt>
             <dd className="vp-mn-w">{m.art === 'organisatorisch' ? 'nichts - organisatorisch' : 'nicht gemessen'}</dd>
             {m.art === 'nicht_gemessen' && m.ohne_messgrundlage && (
-              <dd className="vp-mn-n" data-testid="massnahme-ohne-messgrundlage">{`Mit einer Kennzahl ${m.ohne_messgrundlage.hinweis} misst VoltPilot die Wirkung.`}</dd>
+              <dd className="vp-mn-n" data-testid="massnahme-ohne-messgrundlage">{B.nichtGemessenSatz(m)}</dd>
             )}
           </div>
         )}
@@ -190,23 +193,23 @@ function WasEsBringenSoll({ m }: { m: Massnahme }) {
         ? `rund ${B.rund(e.kwh_jahr)}${NBSP}kWh im Jahr, geschätzt`
         : null;
   return (
-    <section className="vp-mn-karte" aria-labelledby="ma-soll" data-testid="massnahme-erwartete-wirkung">
+    <section className="vp-mn-karte is-wirkung" aria-labelledby="ma-soll" data-testid="massnahme-erwartete-wirkung">
       <div className="vp-wv-blockkopf">
         <h2 id="ma-soll">{m.art === 'organisatorisch' ? 'Was sich ändern soll' : 'Was es bringen soll'}</h2>
       </div>
       {zahl && <p className="vp-mn-w vp-mn-text"><b>{zahl}</b></p>}
       <blockquote className="vp-mn-zitat">
         ‚{m.erwartete_wirkung_wortlaut}‘
-        <small>{`${angelegt?.person ?? 'beim Planen'} · beim Planen am ${Z.tag(m.angelegt_am)}`}</small>
+        <small>{`${angelegt ? `${angelegt.person} · ` : ''}beim Planen am ${Z.tag(m.angelegt_am)}`}</small>
       </blockquote>
       {e?.grundlage_kwh && e.grundlage_monate && (
         <p className="vp-mn-leise">{`Gerechnet mit ${B.ganz(e.grundlage_kwh)}${NBSP}kWh in ${Z.zielperiodeText(e.grundlage_monate)} - eine Schätzung, nie mit gemessenen Werten summiert.`}</p>
       )}
-      {m.art === 'nicht_gemessen' && m.ohne_messgrundlage && (
+      {m.art === 'nicht_gemessen' && m.ohne_messgrundlage && (m.zustand === 'geplant' || m.zustand === 'umgesetzt') && (
         <div className="vp-mn-hinweis">
           <Icon name="info" size={16} />
           <span>
-            <b>Nicht gemessen:</b> {`Mit einer Kennzahl ${m.ohne_messgrundlage.hinweis} misst VoltPilot die Wirkung.`}{' '}
+            <b>Nicht gemessen:</b> {B.nichtGemessenSatz(m)}{' '}
             <a className="vp-mn-sprung" href="#/portfolio/kennzahlen">
               Kennzahl anlegen
             </a>
@@ -269,7 +272,7 @@ export function MassnahmeSeite({
 
   if (lage.art === 'laedt') {
     return (
-      <div className="vp-mn-seite" data-testid="massnahme-seite" aria-busy="true">
+      <div className="vp-mn-seite vp-k-farben" data-testid="massnahme-seite" aria-busy="true">
         {zurueck}
         <Skeleton height={260} />
       </div>
@@ -277,7 +280,7 @@ export function MassnahmeSeite({
   }
   if (lage.art !== 'da' || !m) {
     return (
-      <div className="vp-mn-seite" data-testid="massnahme-seite">
+      <div className="vp-mn-seite vp-k-farben" data-testid="massnahme-seite">
         {zurueck}
         {lage.art === 'fehlt' ? (
           <p className="vp-ez-satz">{M.NICHT_GEFUNDEN}</p>
@@ -332,7 +335,7 @@ export function MassnahmeSeite({
 
   return (
     <GrenzSatzBereich>
-      <div className="vp-mn-seite" data-testid="massnahme-seite">
+      <div className="vp-mn-seite vp-k-farben" data-testid="massnahme-seite">
         {zurueck}
         <header className="vp-mn-pkopf" data-entscheid="massnahme_termin" data-testid="massnahme-zustand">
           <div className="vp-mn-pkopf-text">

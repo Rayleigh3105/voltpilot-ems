@@ -109,7 +109,7 @@ public class MassnahmeWirkung {
                         EnergiezielService.zielwertText(new BigDecimal(m.erwarteteWirkungProzent())));
                 satz = satz("wirkung_vorlaeufig", werte);
             } else {
-                // Entscheid 12 (Befund 6): „Weiß ich noch nicht“ beim Planen — der Satz ohne „erwartet waren …“.
+                // Entscheid 12 (Befund 6): „Weiß ich noch nicht“ beim Planen - der Satz ohne „erwartet waren …“.
                 satz = satz("wirkung_ohne_erwartung", werte);
             }
         }
@@ -123,25 +123,41 @@ public class MassnahmeWirkung {
     }
 
     /**
-     * Die Liste mit der beobachteten Wirkung in Kurzform je Maßnahme (Verbessern-Konzept v1 §6.5) — dieselbe Rechnung
+     * Die Liste mit der beobachteten Wirkung in Kurzform je Maßnahme (Verbessern-Konzept v1 §6.5) - dieselbe Rechnung
      * wie {@link #lesen} mit der Vorgabe von 12 Nachher-Monaten, nur die Summe. Ohne Messgrundlage, vor der Umsetzung,
      * verworfen oder ohne bewertbaren Monat bleibt das Feld {@code null}; die Liste braucht so keinen Wirkungs-Abruf je
      * Maßnahme.
      */
     public MassnahmeDto.Liste mitKurzform(MassnahmeDto.Liste liste) {
+        int n = VerbesserungRegeln.STARTWERTE.nachher_monate();
+        // Je Kennzahl und Bezugsbasis EIN Lesen des Vergleichs über alle Nachher-Zeiträume der Liste: die Monatszeilen
+        // hängen nicht am Fenster (jeder Monat gegen seine Fassung, gelesen ab dem Vormonat) - sonst läse die Liste den
+        // Vergleich einmal je Maßnahme (gemessen: Sekunden statt Millisekunden).
+        Map<String, YearMonth[]> fenster = new LinkedHashMap<>();
+        Map<String, MassnahmeDto.Messgrundlage> grundlage = new HashMap<>();
+        for (MassnahmeDto.Massnahme m : liste.massnahmen()) {
+            if (m.messgrundlage() == null || m.umgesetztAm() == null) {
+                continue;
+            }
+            YearMonth u = YearMonth.from(m.umgesetztAm());
+            grundlage.putIfAbsent(schluessel(m), m.messgrundlage());
+            fenster.merge(schluessel(m), new YearMonth[] {u, u.plusMonths(n)}, (a, b) -> new YearMonth[] {
+                a[0].isBefore(b[0]) ? a[0] : b[0], a[1].isAfter(b[1]) ? a[1] : b[1]});
+        }
+        Map<String, BezugsbasisVergleich.ZielVergleich> gelesen = new HashMap<>();
+        fenster.forEach((k, f) -> gelesen.put(k, vergleich.fuerZiel(grundlage.get(k).kennzahl().id(),
+                grundlage.get(k).bezugsbasis().kennzeichen(), f[0], f[1])));
         Map<UUID, String> energie = new HashMap<>();
         List<MassnahmeDto.Massnahme> aus = new ArrayList<>();
         for (MassnahmeDto.Massnahme m : liste.massnahmen()) {
-            aus.add(m.mitWirkungKurz(kurzform(m, energie)));
+            BezugsbasisVergleich.ZielVergleich zv = gelesen.get(schluessel(m));
+            aus.add(m.mitWirkungKurz(zv == null ? null : kurzAus(m, rechnen(m, n, energie, zv))));
         }
         return new MassnahmeDto.Liste(liste.abruf(), List.copyOf(aus));
     }
 
-    private MassnahmeDto.WirkungKurz kurzform(MassnahmeDto.Massnahme m, Map<UUID, String> energie) {
-        if (m.messgrundlage() == null || m.umgesetztAm() == null) {
-            return null;
-        }
-        return kurzAus(m, rechnen(m, VerbesserungRegeln.STARTWERTE.nachher_monate(), energie));
+    private static String schluessel(MassnahmeDto.Massnahme m) {
+        return m.messgrundlage() == null ? "" : m.messgrundlage().kennzahl().id() + "|" + m.messgrundlage().bezugsbasis().kennzeichen();
     }
 
     private static MassnahmeDto.WirkungKurz kurzAus(MassnahmeDto.Massnahme m, Gelesen g) {
@@ -168,14 +184,27 @@ public class MassnahmeWirkung {
             Map<String, BezugsbasisVergleichDto.Monat> zeilen, String energie, String einheit) {}
 
     /**
-     * Die Vergleichszeilen vom Umsetzungsmonat bis N Monate danach und die Operation {@code wirkung} darüber — der
+     * Die Vergleichszeilen vom Umsetzungsmonat bis N Monate danach und die Operation {@code wirkung} darüber - der
      * Umsetzungsmonat geht immer mit (er zählt nie, R6), von den Nachher-Monaten nur die endgültigen (WK2).
      */
     private Gelesen rechnen(MassnahmeDto.Massnahme m, int n, Map<UUID, String> energie) {
         MassnahmeDto.Messgrundlage mg = m.messgrundlage();
         YearMonth umsetzung = YearMonth.from(m.umgesetztAm());
-        BezugsbasisVergleich.ZielVergleich zv = vergleich.fuerZiel(mg.kennzahl().id(), mg.bezugsbasis().kennzeichen(),
-                umsetzung, umsetzung.plusMonths(n));
+        return rechnen(m, n, energie, vergleich.fuerZiel(mg.kennzahl().id(), mg.bezugsbasis().kennzeichen(),
+                umsetzung, umsetzung.plusMonths(n)));
+    }
+
+    /** Wie oben über einen schon gelesenen Vergleich, der den Zeitraum der Maßnahme enthält (die Liste, je Kennzahl). */
+    private Gelesen rechnen(MassnahmeDto.Massnahme m, int n, Map<UUID, String> energie,
+            BezugsbasisVergleich.ZielVergleich gelesen) {
+        MassnahmeDto.Messgrundlage mg = m.messgrundlage();
+        YearMonth umsetzung = YearMonth.from(m.umgesetztAm());
+        String von = umsetzung.toString();
+        String bis = umsetzung.plusMonths(n).toString();
+        List<BezugsbasisVergleich.ZielMonat> eigene = gelesen.monate().stream()
+                .filter(z -> z.zeile().periode().compareTo(von) >= 0 && z.zeile().periode().compareTo(bis) <= 0).toList();
+        BezugsbasisVergleich.ZielVergleich zv = new BezugsbasisVergleich.ZielVergleich(gelesen.vergleich(), eigene,
+                gelesen.heute());
         List<VerbesserungRegeln.MonatEingang> eingang = new ArrayList<>();
         Map<String, BezugsbasisVergleichDto.Monat> zeilen = new LinkedHashMap<>();
         String einheit = null;

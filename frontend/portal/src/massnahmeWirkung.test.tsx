@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
 import { benutzerApi } from './benutzer';
 import { fazit, nachherMonate } from './components/WirkungsGrafik';
-import { standKopie } from './components/MassnahmeWirkung';
 import { UEMS_VERBESSERUNG_SAETZE } from './glossar';
+import * as B from './massnahmenBild';
 import * as W from './massnahmeWirkung';
 import { MassnahmeSeite } from './pages/MassnahmeSeite';
 import { setSelbstauskunft } from './rollen';
@@ -27,7 +27,7 @@ import { rechteSeed } from './test/rollenFixtures';
 /**
  * UEMS AP-18 IP-20 (§5.5–§5.7, WK1–WK6, M4, M5) im Bild des Verbessern-Konzepts v1 (§6.6): Wirkung als Kacheln und
  * Grafik, „Kommt der Unterschied von der Maßnahme?“ und die Anstöße an der Maßnahmen-Seite gegen R5, R6, R7, R12. Das
- * Bild rechnet nichts: Monate, „x von 12“, Σ ÷ Σ, Urteil und Sätze kommen aus der Route; ohne Stand steht „beobachtet —
+ * Bild rechnet nichts: Monate, „x von 12“, Σ ÷ Σ, Urteil und Sätze kommen aus der Route; ohne Stand steht „beobachtet -
  * nicht belegt“; ohne Messung schließt eine Person mit einem Satz ab (Entscheid 6).
  */
 function buehne(lage: 'r5' | 'r6' | 'r12' | 'antrag', vieraugen = false) {
@@ -52,11 +52,23 @@ describe('Das Bild der Wirkung (WK1–WK5)', () => {
     expect(fazit(monate)).toEqual({ kopf: '6 von 8 Monaten', rest: ' lagen unter der Erwartung, 1 im Rahmen, 1 darüber.' });
     expect(fazit(monate.filter((m) => !m.gezaehlt))).toBeNull();
   });
-  it('der festgehaltene Stand nennt Monate und Zahl von damals — aus der Kopie, nie aus dem Live-Stand', () => {
+  it('der festgehaltene Stand nennt Monate und Zahl von damals - aus der Kopie, nie aus dem Live-Stand', () => {
     const kopie = JSON.stringify({ nachher: '2028-02/2029-01', wirkung: { delta_prozent: '-2.4', monate_bewertbar: 8 } });
-    expect(standKopie({ kopie })).toEqual({ monate: '8 von 12', prozent: '2,4 % weniger' });
-    expect(standKopie({ kopie: null })).toBeNull();
-    expect(standKopie({ kopie: '{kaputt' })).toBeNull();
+    expect(B.standKopie({ kopie })).toEqual({ monate: '8 von 12', prozent: '2,4 % weniger', anzahl: 8 });
+    expect(B.standKopie({ kopie: null })).toBeNull();
+    expect(B.standKopie({ kopie: '{kaputt' })).toBeNull();
+  });
+  it('ohne bewertbaren Monat sagt der Satz, ob der Vergleich noch kommt, läuft oder ohne Wert vorbei ist', () => {
+    expect(B.ohneMonatSatz({ abruf: '2028-07-10', nachher_von: '2028-08', nachher_bis: '2029-07' })).toBe(
+      'Noch ist kein Monat nach der Umsetzung bewertbar. VoltPilot vergleicht ab August 2028 zwölf Monate lang mit der Bezugsbasis.',
+    );
+    expect(B.ohneMonatSatz({ abruf: '2028-10-01', nachher_von: '2028-08', nachher_bis: '2029-07' })).toBe(
+      'Bisher ist kein Monat nach der Umsetzung bewertbar - verglichen wird August 2028 bis Juli 2029.',
+    );
+    expect(B.ohneMonatSatz({ abruf: '2029-04-30', nachher_von: '2028-02', nachher_bis: '2029-01' })).toBe(
+      'Für Februar 2028 bis Januar 2029 liegt kein bewertbarer Monatswert vor.',
+    );
+    expect(B.standKopie({ kopie: '{"wirkung":{"delta_prozent":"-2.4","monate_bewertbar":8},"nachher":"2028-02/2029-01"}' })?.anzahl).toBe(8);
   });
   it('Bewertung: ohne Messgrundlage nur „nicht messbar“; Antworten je Art', () => {
     expect(W.ergebnisOptionen({ messgrundlage: null }).map((o) => o.value)).toEqual(['nicht_messbar']);
@@ -101,7 +113,7 @@ describe('Maßnahmen-Seite: Wirkung, Urteil, Anstoß (R5, R6, R7, R12)', () => {
     expect(screen.getByTestId('massnahme-staende')).toBeTruthy();
   });
 
-  it('„Wirkung prüfen“: die beobachtete Zahl oben, Antwort-Karten, ein Satz — Stand Nr. 1 an der Route', async () => {
+  it('„Wirkung prüfen“: die beobachtete Zahl oben, Antwort-Karten, ein Satz - Stand Nr. 1 an der Route', async () => {
     const bewerten = vi.spyOn(api, 'massnahmeBewertung');
     render(<MassnahmeSeite id={M_IDS.m1} onListe={() => undefined} />);
     fireEvent.click(await screen.findByTestId('massnahme-bewerten'));
@@ -119,7 +131,7 @@ describe('Maßnahmen-Seite: Wirkung, Urteil, Anstoß (R5, R6, R7, R12)', () => {
     expect(await screen.findByTestId('massnahme-stand')).toBeTruthy();
   });
 
-  it('R7 / Entscheid 6: ohne Messung keine Grafik — „Abschließen“ mit einem Satz, als Ergebnis „nicht messbar“', async () => {
+  it('R7 / Entscheid 6: ohne Messung keine Grafik - „Abschließen“ mit einem Satz, als Ergebnis „nicht messbar“', async () => {
     const bewerten = vi.spyOn(api, 'massnahmeBewertung');
     render(<MassnahmeSeite id={M_IDS.m2} onListe={() => undefined} />);
     const knopf = await screen.findByTestId('massnahme-bewerten');

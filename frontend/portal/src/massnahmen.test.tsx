@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 const ZIEL_ALLEIN = /(?<![\p{L}])Ziel(?![\p{L}])/u;
-/** Geschützte Leerzeichen vor Einheiten (AP-08 E11) als normale — die Erwartungen bleiben lesbar. */
+/** Geschützte Leerzeichen vor Einheiten (AP-08 E11) als normale - die Erwartungen bleiben lesbar. */
 const n = (t: string | null | undefined) => (t ?? '').replace(/\u00a0/g, ' ');
 const nn = <T,>(o: T): T => JSON.parse(n(JSON.stringify(o))) as T;
 /** Eine Maßnahme der Liste mit den Feldern, die das Bild liest. */
@@ -75,7 +75,7 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
       'Abgeschlossen 1',
     ]);
   });
-  it('V1: der Antwortsatz sagt, wie weit — überfällig zuerst, dann geplant, dann was abzuschließen ist', () => {
+  it('V1: der Antwortsatz sagt, wie weit - überfällig zuerst, dann geplant, dann was abzuschließen ist', () => {
     const geplant = mit(m1('2029-04-30'), { termin: '2029-06-30', frist: { abruf: '2029-04-30', termin: '2029-06-30', faellig: null, seit_tagen: null, satz: null } });
     const zweite = mit(geplant, { id: 'x', kennzeichen: 'M-2029-0003', termin: '2029-06-15' });
     const umgesetzt = mit(m1Umgesetzt('2029-04-30'), { id: 'y', kennzeichen: 'M-2029-0001' });
@@ -95,7 +95,7 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     expect(nn(B.bringtBild(mit(m1Umgesetzt(), { wirkung_kurz: KURZ_R5 })))).toEqual({
       zahl: '2,4 % weniger',
       text: 'als erwartet · rund 16.100 kWh in 8 Monaten',
-      marke: { wort: 'vorläufig, 8 von 12', ton: 'plan' },
+      marke: { wort: 'vorläufig · 8 von 12', ton: 'ohne' },
     });
     expect(nn(B.bringtBild(mit(m1('2028-01-20'), { erwartete_einsparung: { kwh_jahr: '30512', grundlage_kwh: '1017050', grundlage_monate: '2027-01/2027-12' } }))))
       .toMatchObject({ zahl: null, text: 'Soll bringen: 3 % weniger, rund 30.500 kWh im Jahr', marke: null });
@@ -103,6 +103,34 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     expect(n(B.bringtBild(mit(m2('2028-03-15'), { erwartete_einsparung: { kwh_jahr: '12000', grundlage_kwh: null, grundlage_monate: null } })).text))
       .toBe('Soll bringen: rund 12.000 kWh im Jahr, geschätzt');
     expect(B.bringtBild(mit(m2('2028-03-15'), { art: 'organisatorisch' }))).toEqual({ zahl: null, text: null, marke: { wort: 'organisatorisch', ton: 'ohne' } });
+    // Bewertet, aber ohne Live-Kurzform (keine Werte im Zeitraum): die Zahl des festgehaltenen Stands und das Urteil.
+    const stand: NonNullable<Massnahme['bewertung']> = {
+      stand_nr: 1, status: 'bewertet', ergebnis: 'belegt', begruendung: 'Zeitschaltung aktiv, Laufzeit 18 % niedriger.', vieraugen: false,
+      person: { sub: 'IK', name: 'Ines Kaltenbach' }, am: '2028-11-15T10:00:00+01:00', entscheidung: null, entschieden_am: null,
+      entscheidungs_begruendung: null, kopie: '{"wirkung":{"delta_prozent":"-2.4","monate_bewertbar":8},"nachher":"2028-02/2029-01"}', pruefsumme: null, satz: null,
+    };
+    expect(nn(B.bringtBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand, wirkung_kurz: null })))).toEqual({
+      zahl: '2,4 % weniger',
+      text: 'als erwartet · Stand nach 8 von 12 Monaten',
+      marke: { wort: 'belegt', ton: 'ok' },
+    });
+    // Die Seite: ohne Live-Monate ist die Antwort das Urteil mit dem Stand, nie „noch kein Monat bewertbar“.
+    expect(nn(B.antwortBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand }), null))).toEqual({
+      satz: 'Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.',
+      formal: 'Heute ist kein Monat nach der Umsetzung bewertbar; Stand Nr. 1 bleibt, wie er festgehalten wurde.',
+    });
+  });
+  it('ohne Messung ein ganzer Satz aus dem Hinweis der Route - mit Energieeinsatz und Beispiel, sonst ohne', () => {
+    expect(B.nichtGemessenSatz(m2())).toBe(
+      'Druckluft hat noch keine Kennzahl mit Bezugsbasis, zum Beispiel Stromeinsatz je Betriebsstunde. Mit ihr misst VoltPilot die Wirkung.',
+    );
+    expect(B.nichtGemessenSatz({ einsatz: null, ohne_messgrundlage: { ...m2().ohne_messgrundlage!, hinweis: 'mit einer freigegebenen Bezugsbasis' } })).toBe(
+      'Diese Maßnahme hat keine Kennzahl mit Bezugsbasis. Mit ihr misst VoltPilot die Wirkung.',
+    );
+  });
+  it('die Methode ohne Klammer - Bezugsbasis und Fassung stehen schon in der Zeile', () => {
+    expect(B.methodeKurz(m1().messgrundlage!.bewertungsmethode)).toBe('bereinigt um Produktionsmenge');
+    expect(B.methodeKurz('bereinigt um Gradtage (G20/15, Bezugsbasis BB-0002, Fassung 1)')).toBe('bereinigt um Gradtage');
   });
   it('V5: je Karte genau ein Verb; ohne Recht „Ansehen“', () => {
     const darf = { melden: true, abschliessen: true };
@@ -116,9 +144,14 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     expect(B.woherZeile({ ...m2(), art: 'organisatorisch', einsatz: null, herkunft: { art: 'audit', kennung: 'AU-2029-0001' } }))
       .toBe('organisatorisch · Hinweis aus dem internen Audit AU-2029-0001');
     expect(B.herkunftText({ herkunft: { art: 'managementbewertung', kennung: 'BR-2029-0001/B2' } })).toBe('aus der Managementbewertung BR-2029-0001, Beschluss 2');
+    // Beginnt der Wortlaut schon mit dem Namen, steht der Name nicht doppelt.
+    expect(B.energiezielText('EZ-2029-0001', 'Energieziel 2029 für den Spritzguss: 4 % weniger')).toBe('Energieziel 2029 für den Spritzguss: 4 % weniger');
+    expect(B.energiezielText('EZ-2028-0001', 'Spritzguss: 5 % weniger')).toBe('Energieziel 2028 · Spritzguss: 5 % weniger');
+    expect(B.energiezielRest('EZ-2029-0001', 'Energieziel 2029 für den Spritzguss: 4 % weniger')).toBe('Für den Spritzguss: 4 % weniger');
+    expect(B.energiezielRest('EZ-2029-0001', 'Energieziel 2029')).toBeNull();
   });
 
-  it('der Reiter: Titel mit Klartext, Antwort, Gruppen mit Karten — jede Karte behält die Marke der Wiedervorlage', async () => {
+  it('der Reiter: Titel mit Klartext, Antwort, Gruppen mit Karten - jede Karte behält die Marke der Wiedervorlage', async () => {
     render(<VerbesserungBereich reiter="massnahmen" energiezielId={null} onReiter={() => {}} onOeffnen={() => {}} onListe={() => {}} />);
     const register = await screen.findByTestId('massnahmen-register');
     expect(within(register).getByRole('heading', { level: 1 }).textContent).toBe('Maßnahmen');
@@ -177,7 +210,7 @@ describe('Maßnahme planen (§6.9, Entscheide 6, 12, 13)', () => {
     expect(P.entwurfAus({ herkunft: 'einsatz', einsatz: 'ee3' }, '2029-04-30').art).toBe('nicht_gemessen');
     expect(P.entwurfAus({ herkunft: 'von_hand' }, '2029-04-30', false).art).toBe('nicht_gemessen');
   });
-  it('Prüfen je Schritt — vor dem Senden statt danach; Vorher höchstens zwölf abgeschlossene Monate', () => {
+  it('Prüfen je Schritt - vor dem Senden statt danach; Vorher höchstens zwölf abgeschlossene Monate', () => {
     expect(P.pruefen(fertig({ titel: ' ' }), 1, '2029-04-30')).toHaveProperty('titel');
     expect(P.pruefen(fertig({ prozent: '' }), 2, '2029-04-30')).toHaveProperty('prozent');
     expect(P.pruefen(fertig({ prozent: '', weissNicht: true }), 2, '2029-04-30')).toEqual({});
@@ -254,6 +287,10 @@ describe('Maßnahme planen (§6.9, Entscheide 6, 12, 13)', () => {
     schaetzung.mockResolvedValue({ kennzahl: 'kz', prozent: '-2.5', kwh_jahr: null, grundlage_kwh: null, grundlage_monate: '2028-04/2029-03', monate_mit_wert: 3, grund: 'monate_fehlen' });
     fireEvent.change(screen.getByTestId('planen-prozent'), { target: { value: '2,5' } });
     await waitFor(() => expect(screen.getByTestId('planen-umrechnung').textContent).toContain('erst mit zwölf gemessenen Monaten (bisher 3)'));
+    // Gilt heute keine Fassung (M2), sagt das Blatt es schon hier - nicht erst die Ablehnung beim Anlegen.
+    schaetzung.mockResolvedValue({ kennzahl: 'kz', prozent: '-2.0', kwh_jahr: null, grundlage_kwh: null, grundlage_monate: '2028-04/2029-03', monate_mit_wert: 0, grund: 'kennzahl_ohne_bezugsbasis' });
+    fireEvent.change(screen.getByTestId('planen-prozent'), { target: { value: '2' } });
+    await waitFor(() => expect(screen.getByTestId('planen-umrechnung').textContent).toBe(M.ABLEHNUNG.kennzahl_ohne_bezugsbasis));
     fireEvent.click(screen.getByText(P.WEISS_NICHT));
     expect((screen.getByTestId('planen-prozent') as HTMLInputElement).disabled).toBe(true);
   });
@@ -285,7 +322,7 @@ describe('Umsetzung melden und Ändern (§6.9, Befund 2, V7)', () => {
     await act(async () => fireEvent.click(screen.getByTestId('massnahme-umgesetzt-senden')));
     expect(melden).toHaveBeenCalledWith(M_IDS.m1, { am: '2028-01-21', begruendung: 'Zeitschaltung aktiv, Probelauf ohne Befund.' });
   });
-  it('V7: „Ändern“ zeigt die Richtung als Wort und dreht kein Vorzeichen — „3 % mehr“ bleibt „mehr“', async () => {
+  it('V7: „Ändern“ zeigt die Richtung als Wort und dreht kein Vorzeichen - „3 % mehr“ bleibt „mehr“', async () => {
     const aendern = vi.spyOn(api, 'massnahmeAendern');
     render(<MassnahmeAendernDialog massnahme={mit(m1(), { erwartete_wirkung_prozent: '3.0' })} onClose={() => {}} onFertig={() => {}} />);
     expect((screen.getByTestId('massnahme-aendern-zahl') as HTMLInputElement).value).toBe('3');

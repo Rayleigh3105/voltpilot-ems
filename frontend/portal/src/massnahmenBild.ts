@@ -1,6 +1,6 @@
 /**
  * Verbessern-Konzept v1, PR 2 (Captain-Freigabe 06.10.2026): das reine Bild des Reiters „Maßnahmen“ und der Seite einer
- * Maßnahme — Stufen, Gruppen, Antwort zuerst, Datumsblock, „Was es bringt“, der nächste Schritt mit seinem Verb.
+ * Maßnahme - Stufen, Gruppen, Antwort zuerst, Datumsblock, „Was es bringt“, der nächste Schritt mit seinem Verb.
  *
  * **Hier wird nichts gemessen.** Prozent, Summen, „x von 12“ und Urteil kommen von der Route (`wirkung_kurz` der Liste,
  * `…/wirkung` der Seite); das Portal setzt sie ins deutsche Format, wählt Wörter (V1–V7) und rechnet nur Kalender
@@ -68,7 +68,7 @@ export const SPALTEN = {
 const de = (n: number, stellen = 0) =>
   n.toLocaleString('de-DE', { minimumFractionDigits: stellen, maximumFractionDigits: stellen });
 
-/** „2,7 %“ — ein Prozentwert der Route ohne Vorzeichen, eine Stelle. */
+/** „2,7 %“ - ein Prozentwert der Route ohne Vorzeichen, eine Stelle. */
 export function prozentBetrag(delta: string): string {
   return `${de(Math.abs(Number(delta)), 1)}${NBSP}%`;
 }
@@ -79,7 +79,7 @@ export function personProzent(p: string): string {
   return `${de(n, Number.isInteger(n) ? 0 : 1)}${NBSP}%`;
 }
 
-/** „24.200“ — eine Menge der Route, zur Anzeige auf Hundert gerundet (unter 1.000 auf Zehn). */
+/** „24.200“ - eine Menge der Route, zur Anzeige auf Hundert gerundet (unter 1.000 auf Zehn). */
 export function rund(wert: string | number): string {
   const n = Math.abs(Number(wert));
   const stufe = n >= 1000 ? 100 : 10;
@@ -144,7 +144,7 @@ const anzahl = (n: number, einzahl = UEMS_MASSNAHME, mehrzahl = UEMS_MASSNAHMEN)
 const istSind = (n: number) => (n === 1 ? 'ist' : 'sind');
 
 /**
- * V1 · zuerst, wie weit: „2 Maßnahmen sind bis 30.06.2029 geplant; 1 ist umgesetzt und noch abzuschließen.“ —
+ * V1 · zuerst, wie weit: „2 Maßnahmen sind bis 30.06.2029 geplant; 1 ist umgesetzt und noch abzuschließen.“ -
  * Überfälliges zuerst, dann was geplant ist, dann was auf Abschluss wartet; nichts offen: alles abgeschlossen.
  */
 export function antwortSatz(liste: readonly Massnahme[]): string {
@@ -174,13 +174,13 @@ export function antwortSatz(liste: readonly Massnahme[]): string {
   return `${satz.charAt(0).toUpperCase()}${satz.slice(1)}.`;
 }
 
-/** „5 Maßnahmen · 2 abgeschlossen · Stand 30.04.2029“ — der Tag ist der Abruf der Route. */
+/** „5 Maßnahmen · 2 abgeschlossen · Stand 30.04.2029“ - der Tag ist der Abruf der Route. */
 export function formalZeile(liste: readonly Massnahme[], abruf: string): string {
   const fertig = liste.filter((m) => stufeVon(m) === 'abgeschlossen').length;
   return [anzahl(liste.length), ...(fertig ? [`${fertig} abgeschlossen`] : []), `Stand ${tag(abruf)}`].join(' · ');
 }
 
-/** Die Filter-Chips: „Alle 5 · Zu tun 2 · Umgesetzt 1 · Abgeschlossen 2“ — leere Stufen ohne Chip. */
+/** Die Filter-Chips: „Alle 5 · Zu tun 2 · Umgesetzt 1 · Abgeschlossen 2“ - leere Stufen ohne Chip. */
 export function chips(liste: readonly Massnahme[]): { key: Stufe | 'alle'; label: string }[] {
   const g = gruppen(liste);
   return [
@@ -213,12 +213,29 @@ export function datumBild(m: Massnahme): DatumBild {
   }
   if (m.zustand === 'umgesetzt') return datum(m.umgesetzt_am ?? m.termin, 'umgesetzt', 'umgesetzt am', 'erledigt');
   if (m.zustand === 'verworfen') return datum(m.verworfen_am ?? m.termin, 'verworfen', 'verworfen am', 'bald');
-  return m.art === 'gemessen'
-    ? datum(abschlussTag(m) || m.termin, 'geprüft', 'Wirkung geprüft am', 'erledigt')
-    : datum(abschlussTag(m) || m.termin, 'beendet', 'abgeschlossen am', 'erledigt');
+  // Wie im Konzept (§6.5) auch ohne Messung „geprüft“: eine Person hat gesagt, was daraus geworden ist.
+  return datum(abschlussTag(m) || m.termin, 'geprüft', m.art === 'gemessen' ? 'Wirkung geprüft am' : 'abgeschlossen am', 'erledigt');
 }
 
 // ------------------------------------------------------------------ Woher (Zeile unter dem Titel)
+
+/**
+ * Ohne Messung (§6.6): „Druckluft hat noch keine Kennzahl mit Bezugsbasis, zum Beispiel Strom je Betriebsstunde. Mit
+ * ihr misst VoltPilot die Wirkung.“ Das Beispiel ist der Hinweis der Route („zum Beispiel … mit einer Bezugsbasis“);
+ * ohne Energieeinsatz nennt sie keins.
+ */
+export function nichtGemessenSatz(m: Pick<Massnahme, 'einsatz' | 'ohne_messgrundlage'>): string {
+  const beispiel = (m.ohne_messgrundlage?.hinweis ?? '').replace(/\s*mit einer (freigegebenen )?Bezugsbasis$/, '').trim();
+  const wer = m.einsatz?.name ?? m.einsatz?.kennzeichen ?? null;
+  const kopf = wer ? `${wer} hat noch keine Kennzahl mit Bezugsbasis` : 'Diese Maßnahme hat keine Kennzahl mit Bezugsbasis';
+  return `${kopf}${beispiel.startsWith('zum Beispiel') ? `, ${beispiel}` : ''}. Mit ihr misst VoltPilot die Wirkung.`;
+}
+
+/**
+ * „bereinigt um Produktionsmenge“ - die Methode der Fassung ohne ihre Klammer (die nennt Modell, Bezugsbasis und
+ * Fassung, die in derselben Zeile schon stehen; §6.6 „Wofür und woran gemessen“).
+ */
+export const methodeKurz = (methode: string) => methode.replace(/\s*\(.*\)\s*$/, '');
 
 const BR = /^(BR-\d{4}-\d{4,})\/B(\d{1,3})$/;
 
@@ -249,6 +266,24 @@ export const energiezielName = (kennzeichen: string) => {
   return j ? `Energieziel ${j[1]}` : kennzeichen;
 };
 
+/**
+ * „Energieziel 2029 für den Spritzguss: 4 % weniger …“ - Name und Wortlaut ohne Doppelung, wenn der Wortlaut schon mit
+ * dem Namen beginnt (so schreiben ihn viele Kunden).
+ */
+export function energiezielText(kennzeichen: string, wortlaut: string | null | undefined): string {
+  const name = energiezielName(kennzeichen);
+  const w = (wortlaut ?? '').trim();
+  return !w ? name : w.startsWith(name) ? w : `${name} · ${w}`;
+}
+
+/** Der Wortlaut ohne den vorangestellten Namen (für die Zeile unter dem Namen). */
+export function energiezielRest(kennzeichen: string, wortlaut: string | null | undefined): string | null {
+  const name = energiezielName(kennzeichen);
+  const w = (wortlaut ?? '').trim();
+  const rest = w.startsWith(name) ? w.slice(name.length).replace(/^[\s:·-]+/, '') : w;
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : null;
+}
+
 /** „Spritzguss · aus der Abweichung AW-2028-0001 · für das Energieziel 2028“. */
 export function woherZeile(m: Pick<Massnahme, 'herkunft' | 'einsatz' | 'energieziel' | 'art'>): string {
   return [
@@ -276,11 +311,44 @@ export interface BringtBild {
 }
 
 /** Das Urteil einer Person als Marke: belegt grün, sonst leise (V2: „belegt“ ist das Wort einer Person). */
+/**
+ * Kein Monat nach der Umsetzung bewertbar - je nach Lage des Vergleichszeitraums zum Tag der Route: noch nicht
+ * begonnen, läuft, oder vorbei ohne bewertbaren Wert (dann nie „vergleicht ab …“ in der Vergangenheit).
+ */
+export function ohneMonatSatz(w: Pick<MassnahmeWirkung, 'abruf' | 'nachher_von' | 'nachher_bis'>): string {
+  const heute = w.abruf.slice(0, 7);
+  if (!w.nachher_von) return 'Noch ist kein Monat nach der Umsetzung bewertbar.';
+  const zeitraum = w.nachher_bis ? zielperiodeText(`${w.nachher_von}/${w.nachher_bis}`) : monatWort(w.nachher_von);
+  if (w.nachher_bis && w.nachher_bis < heute) return `Für ${zeitraum} liegt kein bewertbarer Monatswert vor.`;
+  if (w.nachher_von <= heute) return `Bisher ist kein Monat nach der Umsetzung bewertbar - verglichen wird ${zeitraum}.`;
+  return `Noch ist kein Monat nach der Umsetzung bewertbar. VoltPilot vergleicht ab ${monatWort(w.nachher_von)} zwölf Monate lang mit der Bezugsbasis.`;
+}
+
+/** „nach 8 von 12 Monaten (damals 2,4 % weniger)“ - aus der Kopie des Stands, wie sie festgehalten wurde. */
+export function standKopie(b: Pick<MassnahmeBewertung, 'kopie'>): { monate: string; prozent: string; anzahl: number } | null {
+  if (!b.kopie) return null;
+  try {
+    const k = JSON.parse(b.kopie) as { wirkung?: { delta_prozent?: string | number; monate_bewertbar?: number }; nachher?: string };
+    const d = k.wirkung?.delta_prozent;
+    const n = k.wirkung?.monate_bewertbar;
+    if (d === undefined || d === null || n === undefined) return null;
+    const soll = k.nachher ? monateZwischen(k.nachher) : 12;
+    return { monate: `${n} von ${soll}`, prozent: `${prozentBetrag(String(d))} ${richtungWort(d)}`, anzahl: n };
+  } catch {
+    return null;
+  }
+}
+
+function monateZwischen(p: string): number {
+  const [von, bis] = p.split('/');
+  return (Number(bis.slice(0, 4)) - Number(von.slice(0, 4))) * 12 + Number(bis.slice(5, 7)) - Number(von.slice(5, 7)) + 1;
+}
+
 export function ergebnisMarke(b: Pick<MassnahmeBewertung, 'ergebnis'>): Marke {
   return { wort: UEMS_MASSNAHME_ERGEBNISSE[b.ergebnis], ton: b.ergebnis === 'belegt' ? 'ok' : 'ohne' };
 }
 
-/** „Soll bringen: 3 % weniger, rund 30 500 kWh im Jahr“ — die Schätzung beim Planen, als solche gekennzeichnet. */
+/** „Soll bringen: 3 % weniger, rund 30 500 kWh im Jahr“ - die Schätzung beim Planen, als solche gekennzeichnet. */
 export function sollBringen(m: Pick<Massnahme, 'erwartete_wirkung_prozent' | 'erwartete_wirkung_wortlaut' | 'erwartete_einsparung' | 'art'>): string {
   const kwh = m.erwartete_einsparung ? Number(m.erwartete_einsparung.kwh_jahr) : null;
   const kwhText = kwh === null ? null : `rund ${rund(kwh)}${NBSP}kWh ${kwh < 0 ? 'mehr ' : ''}im Jahr`;
@@ -313,9 +381,16 @@ export function bringtBild(m: Massnahme): BringtBild {
     const marke = m.bewertung
       ? ergebnisMarke(m.bewertung)
       : k.vorlaeufig
-        ? { wort: `vorläufig, ${k.monate_text}`, ton: 'plan' as const }
+        ? { wort: `vorläufig · ${k.monate_text}`, ton: 'ohne' as const }
         : { wort: 'beobachtet', ton: 'ohne' as const };
     return { zahl: b.zahl, text: b.text, marke };
+  }
+  if (m.art === 'gemessen' && m.bewertung) {
+    // Ohne Live-Kurzform (z. B. keine Werte im Zeitraum) sagt der festgehaltene Stand, was damals beobachtet war.
+    const kopie = standKopie(m.bewertung);
+    return kopie
+      ? { zahl: kopie.prozent, text: `als erwartet · Stand nach ${kopie.monate} Monaten`, marke: ergebnisMarke(m.bewertung) }
+      : { zahl: null, text: sollBringen(m), marke: ergebnisMarke(m.bewertung) };
   }
   if (m.art === 'organisatorisch') {
     return { zahl: null, text: null, marke: m.bewertung ? { wort: 'abgeschlossen', ton: 'ohne' } : { wort: 'organisatorisch', ton: 'ohne' } };
@@ -406,6 +481,15 @@ export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null): AntwortBi
     return { satz: `Umgesetzt am ${tag(m.umgesetzt_am)} - jetzt mit einem Satz abschließen.`, formal: 'Ohne Kennzahl misst VoltPilot nichts; ob es geholfen hat, sagt eine Person.' };
   }
   if (!w || w.grund !== null || !w.summe || w.summe.delta_prozent === null || !w.monate_bewertbar) {
+    // Bewertet, aber heute kein bewertbarer Monat (z. B. fehlen Werte): die Antwort ist das Urteil mit seinem Stand.
+    if (m.zustand === 'bewertet' && m.bewertung) {
+      const b = m.bewertung;
+      const kopie = standKopie(b);
+      return {
+        satz: `Wirkung geprüft am ${tag(b.am)} von ${b.person.name}: ${UEMS_MASSNAHME_ERGEBNISSE[b.ergebnis]}${kopie ? ` - damals ${kopie.prozent} als erwartet nach ${kopie.monate} Monaten` : ''}.`,
+        formal: `Heute ist kein Monat nach der Umsetzung bewertbar; Stand Nr. ${b.stand_nr} bleibt, wie er festgehalten wurde.`,
+      };
+    }
     const ab = m.umgesetzt_am ? monatWort(naechsterMonat(m.umgesetzt_am.slice(0, 7))) : null;
     return {
       satz: `Umgesetzt am ${tag(m.umgesetzt_am)} - noch ist kein Monat danach bewertbar.`,
@@ -473,7 +557,7 @@ export function kachelnBild(m: Pick<Massnahme, 'erwartete_wirkung_prozent' | 'me
   return aus;
 }
 
-/** Die Ausgangslage als „+12,9 %“ mit Monat — nur bei EINEM Monat mit Urteil (sonst steht sie unter „Details“). */
+/** Die Ausgangslage als „+12,9 %“ mit Monat - nur bei EINEM Monat mit Urteil (sonst steht sie unter „Details“). */
 export function vorherBild(m: Pick<Massnahme, 'messgrundlage'>): { wert: string; monat: string; satz: string } | null {
   const inhalt = m.messgrundlage?.ausgangslage_inhalt as
     | { vergleich?: { periode: string; bereinigt?: { delta_prozent?: string | number | null; richtung?: string | null } }[] }

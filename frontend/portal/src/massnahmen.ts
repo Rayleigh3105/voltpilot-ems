@@ -63,7 +63,7 @@ export const kommentierbar = (m: Pick<Massnahme, 'zustand'>) => m.zustand === 'g
 
 /**
  * Womit „Maßnahme planen“ vorbelegt öffnet (§5.4, Verbessern v1 §6.9): aus einer Abweichung (Herkunft `abweichung`,
- * Kennung, Kennzahl und Monate aus dem Anlass — IP-18), aus einem Energieziel, am Energieeinsatz, aus dem
+ * Kennung, Kennzahl und Monate aus dem Anlass - IP-18), aus einem Energieziel, am Energieeinsatz, aus dem
  * Energiemanagement (Feststellung, Audit, Managementbewertung), sonst von Hand.
  */
 export interface MassnahmeVorbelegung {
@@ -80,7 +80,7 @@ export interface MassnahmeVorbelegung {
 
 export const wortlautOk = (t: string) => t.trim().length > 0;
 
-/** Ein Tag (ISO) nie in der Zukunft — „umgesetzt am“ (M6); `heute` ist der Tag der Route. */
+/** Ein Tag (ISO) nie in der Zukunft - „umgesetzt am“ (M6); `heute` ist der Tag der Route. */
 export const tagNichtInZukunft = (tag: string, heute: string) => /^\d{4}-\d{2}-\d{2}$/.test(tag) && tag <= heute;
 
 /** Der letzte abgeschlossene Monat vor `heute` (Vorgabe der Ausgangslage, wie an der Route) — nur Kalender. */
@@ -108,8 +108,8 @@ export const monateText = (von: string, bis: string) => (von === bis ? monatWort
 // ------------------------------------------------------------------ Ablehnungen der Route
 
 export const ABLEHNUNG: Record<string, string> = {
-  ohne_messgrundlage: `Eine Zahl in Prozent gibt es nur mit ${UEMS_MESSGRUNDLAGE} — ohne sie beschreibt der Wortlaut die ${UEMS_ERWARTETE_WIRKUNG}.`,
-  kennzahl_ohne_bezugsbasis: 'Diese Kennzahl hat keine freigegebene, heute geltende Bezugsbasis — wählen Sie eine andere oder „Spart Energie, wird aber nicht gemessen“.',
+  ohne_messgrundlage: `Eine Zahl in Prozent gibt es nur mit ${UEMS_MESSGRUNDLAGE} - ohne sie beschreibt der Wortlaut die ${UEMS_ERWARTETE_WIRKUNG}.`,
+  kennzahl_ohne_bezugsbasis: 'Diese Kennzahl hat keine freigegebene, heute geltende Bezugsbasis - wählen Sie eine andere oder „Spart Energie, wird aber nicht gemessen“.',
   benutzer_unbekannt: 'Diese Person hat kein aktives Konto in Ihrem Kundenbereich.',
   verantwortlich_fehlt: 'Bitte wählen Sie, wer verantwortlich ist.',
   umgesetzt_in_der_zukunft: 'Der Tag der Umsetzung liegt in der Zukunft.',
@@ -126,7 +126,7 @@ export const ABLEHNUNG: Record<string, string> = {
   begruendung_fehlt: 'Begründung mit 10 bis 500 Zeichen.',
   text_ungueltig: `Ein Kommentar hat 1 bis ${KOMMENTAR_MAX.toLocaleString('de-DE')} Zeichen.`,
   // Verbessern v1, Entscheide 6 und 13.
-  art_ohne_kennzahl: 'Gemessen wird an einer Kennzahl mit Bezugsbasis — bitte eine Kennzahl wählen.',
+  art_ohne_kennzahl: 'Gemessen wird an einer Kennzahl mit Bezugsbasis - bitte eine Kennzahl wählen.',
   art_mit_kennzahl: `Eine ${UEMS_MASSNAHME} mit Kennzahl wird an dieser Kennzahl gemessen.`,
   einsparung_mit_kennzahl: 'Mit Kennzahl rechnet VoltPilot die Prozent in kWh im Jahr um.',
   einsparung_organisatorisch: `Eine organisatorische ${UEMS_MASSNAHME} trägt keine Zahl der Einsparung.`,

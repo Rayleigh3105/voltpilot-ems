@@ -75,7 +75,7 @@ export function VerbesserungBereich({
     </div>
   );
   // Verbessern-Konzept v1 §6.5 (Entscheid 2): der Reiter „Maßnahmen“ trägt seinen eigenen Titel mit Klartext-Satz,
-  // Antwort und „Was VoltPilot leistet“ — die gemeinsame Überschrift des Bereichs entfällt dort.
+  // Antwort und „Was VoltPilot leistet“ - die gemeinsame Überschrift des Bereichs entfällt dort.
   if (reiter === 'massnahmen') {
     return (
       <GrenzSatzBereich>

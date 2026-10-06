@@ -47,7 +47,7 @@ export function nachherMonate(w: Pick<MassnahmeWirkung, 'monate' | 'umsetzungsmo
   return w.monate.filter((m) => m.periode !== w.umsetzungsmonat);
 }
 
-/** „9 von 11 Monaten lagen unter der Erwartung, 1 im Rahmen, 1 darüber.“ — gezählt, nicht gerechnet. */
+/** „9 von 11 Monaten lagen unter der Erwartung, 1 im Rahmen, 1 darüber.“ - gezählt, nicht gerechnet. */
 export function fazit(monate: readonly Monat[]): { kopf: string; rest: string } | null {
   const gezaehlt = monate.filter((m) => m.gezaehlt);
   if (!gezaehlt.length) return null;

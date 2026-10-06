@@ -141,7 +141,7 @@ class UemsMassnahmeHerkunftMigrationTest {
     }
 
     /**
-     * Out-of-order: auf einer Datenbank mit allen anderen Migrationen kommt diese zuletzt an und trägt genauso — mit der
+     * Out-of-order: auf einer Datenbank mit allen anderen Migrationen kommt diese zuletzt an und trägt genauso - mit der
      * späteren Migration, die das Vokabular als Vereinigung weiterschreibt (Verbessern v1 PR 2, {@code 20261006213000}):
      * ohne sie überschriebe diese Migration deren Wörter.
      */

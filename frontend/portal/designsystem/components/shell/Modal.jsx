@@ -35,7 +35,7 @@ function lockBodyScroll() {
  * Klick, ✕ und Escape schließen; der Seiten-Scroll ist gesperrt, der Fokus
  * liegt in der Fläche und bleibt darin, und am Telefon wird sie ein
  * Vollbild-Blatt (shell.css). Mit `blatt` ist sie am Telefon ein Blatt von
- * unten, so hoch wie sein Inhalt (kurze Abläufe: melden, prüfen, planen —
+ * unten, so hoch wie sein Inhalt (kurze Abläufe: melden, prüfen, planen -
  * Verbessern-Konzept v1 §6.9), am Rechner dieselbe zentrierte Fläche; `breit`
  * gibt ihr am Rechner 840 px (ein Dialog mit Zusammenfassung daneben).
  *

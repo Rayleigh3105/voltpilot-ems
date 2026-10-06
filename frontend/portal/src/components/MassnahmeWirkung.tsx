@@ -19,7 +19,7 @@ import '../pages/Massnahmen.css';
 
 export type WirkungLage = { art: 'laedt' } | { art: 'fehler' } | { art: 'da'; w: MassnahmeWirkung };
 
-/** Die Wirkung der Maßnahme — ein Leser der Route (`…/wirkung`), erneut bei jeder Umsetzung und auf Wunsch. */
+/** Die Wirkung der Maßnahme - ein Leser der Route (`…/wirkung`), erneut bei jeder Umsetzung und auf Wunsch. */
 export function useWirkung(m: Pick<Massnahme, 'id' | 'umgesetzt_am' | 'zustand' | 'art'>): [WirkungLage | null, () => void] {
   const [lage, setLage] = useState<WirkungLage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
@@ -67,7 +67,7 @@ export function WirkungKacheln({ m, w }: { m: Massnahme; w: MassnahmeWirkung }) 
 export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungLage; erneut: () => void }) {
   if (lage.art === 'laedt') {
     return (
-      <section className="vp-mn-karte" aria-busy="true" data-testid="massnahme-wirkung">
+      <section className="vp-mn-karte is-wirkung" aria-busy="true" data-testid="massnahme-wirkung">
         <div className="vp-wv-blockkopf">
           <h2>Je Monat nach der Umsetzung</h2>
         </div>
@@ -77,7 +77,7 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
   }
   if (lage.art === 'fehler') {
     return (
-      <section className="vp-wv-karte is-fehler" role="alert" data-testid="massnahme-wirkung">
+      <section className="vp-wv-karte is-fehler is-wirkung" role="alert" data-testid="massnahme-wirkung">
         <div className="vp-wv-blockkopf">
           <h2>Je Monat nach der Umsetzung</h2>
         </div>
@@ -92,8 +92,31 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
   const monate = nachherMonate(w);
   const f = fazit(monate);
   const ausschluesse = monate.filter((x) => !x.gezaehlt && x.grund !== null && x.satz).map((x) => x.satz!);
+  const zeilen = monate.some((x) => x.vergleich.bereinigt.gemessen.wert !== null)
+    ? monate
+        .filter((x) => x.vergleich.bereinigt.gemessen.wert !== null || x.grund !== null)
+        .map((x) => {
+          const b = x.vergleich.bereinigt;
+          return {
+            periode: x.periode,
+            gezaehlt: x.gezaehlt,
+            monat: x.vergleich.beschriftung,
+            gemessen: b.gemessen.wert === null ? '-' : `${B.ganz(b.gemessen.wert)}${NBSP}${b.gemessen.einheit}`,
+            erwartet: b.erwartet === null ? '-' : `${B.ganz(b.erwartet)}${NBSP}${b.gemessen.einheit}`,
+            prozent: x.gezaehlt && b.delta_prozent !== null ? `${B.prozentBetrag(b.delta_prozent)} ${B.richtungWort(b.delta_prozent)}` : null,
+            wort: x.gezaehlt && b.delta_prozent !== null ? (URTEIL_WORT[b.urteil] ?? b.urteil) : x.grund !== null ? 'nicht bewertbar' : Z.offenGrund(x.vergleich),
+            urteil:
+              x.gezaehlt && b.delta_prozent !== null
+                ? `${B.prozentBetrag(b.delta_prozent)} ${B.richtungWort(b.delta_prozent)}${b.urteil === 'im_rahmen' ? ` · ${URTEIL_WORT[b.urteil]}` : ' als erwartet'}`
+                : x.grund !== null
+                  ? 'nicht bewertbar'
+                  : Z.offenGrund(x.vergleich),
+            roh: W.rohText(x.kennzahl_roh) ?? '-',
+          };
+        })
+    : [];
   return (
-    <section className="vp-mn-karte" aria-labelledby="ma-je-monat" data-testid="massnahme-wirkung">
+    <section className="vp-mn-karte is-wirkung" aria-labelledby="ma-je-monat" data-testid="massnahme-wirkung">
       <div className="vp-wv-blockkopf">
         <h2 id="ma-je-monat">Je Monat nach der Umsetzung</h2>
         {w.monate_text && <span className="vp-wv-abschnitt-m is-immer">{`${w.monate_text} Monaten`}</span>}
@@ -102,7 +125,7 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
         <WirkungsGrafik w={w} erwartetProzent={m.erwartete_wirkung_prozent} />
       ) : (
         <p className="vp-mn-text" data-testid="massnahme-wirkung-leer">
-          {`Noch ist kein Monat nach der Umsetzung bewertbar. VoltPilot vergleicht ab ${w.nachher_von ? Z.zielperiodeText(`${w.nachher_von}/${w.nachher_von}`) : 'dem Monat danach'} zwölf Monate lang mit der Bezugsbasis.`}
+          {B.ohneMonatSatz(w)}
         </p>
       )}
       {(f || ausschluesse.length > 0) && (
@@ -121,12 +144,26 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
           {w.satz}
         </p>
       )}
-      {monate.some((x) => x.vergleich.bereinigt.gemessen.wert !== null) && (
+      {zeilen.length > 0 && (
         <details className="vp-mn-details vp-mn-werte" data-testid="massnahme-wirkung-monate">
           <summary>
             Werte je Monat
             <Icon name="chevron-down" size={14} />
           </summary>
+          {/* Am Telefon Reihen (wie „Werte je Monat“ am Energieziel), ab 560 px eine Tabelle - dieselben Zeilen. */}
+          <ul className="vp-mn-werte-liste">
+            {zeilen.map((z) => (
+              <li key={z.periode} className={z.gezaehlt ? undefined : 'is-aus'}>
+                <b>{z.monat}</b>
+                <span className="vp-mn-wl-prozent">{z.prozent ?? z.wort}</span>
+                <span className="vp-mn-wl-werte">
+                  {z.gemessen === '-' ? 'kein Wert' : z.erwartet === '-' ? z.gemessen : `${z.gemessen}, erwartet ${z.erwartet}`}
+                </span>
+                <span className="vp-mn-wl-wort">{z.prozent ? z.wort : ''}</span>
+                {z.roh !== '-' && <span className="vp-mn-wl-roh">{`${W.ROH_SPALTE} ${z.roh}`}</span>}
+              </li>
+            ))}
+          </ul>
           <div className="vp-mn-werte-rahmen">
             <table>
               <thead>
@@ -145,28 +182,17 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
                 </tr>
               </thead>
               <tbody>
-                {monate
-                  .filter((x) => x.vergleich.bereinigt.gemessen.wert !== null || x.grund !== null)
-                  .map((x) => {
-                    const b = x.vergleich.bereinigt;
-                    return (
-                      <tr key={x.periode} className={x.gezaehlt ? undefined : 'is-aus'} data-testid={`wirkung-${x.periode}`}>
-                        <th scope="row">{x.vergleich.beschriftung}</th>
-                        <td className="is-zahl">{b.gemessen.wert === null ? '-' : `${B.ganz(b.gemessen.wert)}${NBSP}${b.gemessen.einheit}`}</td>
-                        <td className="is-zahl">{b.erwartet === null ? '-' : `${B.ganz(b.erwartet)}${NBSP}${b.gemessen.einheit}`}</td>
-                        <td data-testid="urteil">
-                          {x.gezaehlt && b.delta_prozent !== null
-                            ? `${B.prozentBetrag(b.delta_prozent)} ${B.richtungWort(b.delta_prozent)} · ${URTEIL_WORT[b.urteil] ?? b.urteil}`
-                            : x.grund !== null
-                              ? 'nicht bewertbar'
-                              : Z.offenGrund(x.vergleich)}
-                        </td>
-                        <td className="is-zahl" data-testid="roh">
-                          {W.rohText(x.kennzahl_roh) ?? '-'}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                {zeilen.map((z) => (
+                  <tr key={z.periode} className={z.gezaehlt ? undefined : 'is-aus'} data-testid={`wirkung-${z.periode}`}>
+                    <th scope="row">{z.monat}</th>
+                    <td className="is-zahl">{z.gemessen}</td>
+                    <td className="is-zahl">{z.erwartet}</td>
+                    <td data-testid="urteil">{z.urteil}</td>
+                    <td className="is-zahl" data-testid="roh">
+                      {z.roh}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -177,27 +203,7 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
   );
 }
 
-/** „nach 8 von 12 Monaten (damals 2,4 % weniger)“ — aus der Kopie des Stands, wie sie festgehalten wurde. */
-export function standKopie(b: Pick<MassnahmeBewertung, 'kopie'>): { monate: string; prozent: string } | null {
-  if (!b.kopie) return null;
-  try {
-    const k = JSON.parse(b.kopie) as { wirkung?: { delta_prozent?: string | number; monate_bewertbar?: number }; nachher?: string };
-    const d = k.wirkung?.delta_prozent;
-    const n = k.wirkung?.monate_bewertbar;
-    if (d === undefined || d === null || n === undefined) return null;
-    const soll = k.nachher ? monateZwischen(k.nachher) : 12;
-    return { monate: `${n} von ${soll}`, prozent: `${B.prozentBetrag(String(d))} ${B.richtungWort(d)}` };
-  } catch {
-    return null;
-  }
-}
-
-function monateZwischen(p: string): number {
-  const [von, bis] = p.split('/');
-  return (Number(bis.slice(0, 4)) - Number(von.slice(0, 4))) * 12 + Number(bis.slice(5, 7)) - Number(von.slice(5, 7)) + 1;
-}
-
-/** „Alle Stände der Bewertung“ — erst beim Aufklappen gelesen; nach einem Fehler mit „Erneut versuchen“. */
+/** „Alle Stände der Bewertung“ - erst beim Aufklappen gelesen; nach einem Fehler mit „Erneut versuchen“. */
 function AlleStaende({ m }: { m: Massnahme }) {
   const [liste, setListe] = useState<MassnahmeBewertung[] | null | 'fehler'>(null);
   const [offen, setOffen] = useState(false);
@@ -251,7 +257,7 @@ export type BewertungSchritt = 'bewerten' | 'freigeben' | 'ablehnen';
 
 /**
  * „Kommt der Unterschied von der Maßnahme?“ (§6.6, WK6, E6 = A): das Urteil einer Person mit Zitat, Person, Datum und
- * dem damaligen Stand — „beobachtet“ ist das Wort des Systems, „belegt“ das einer Person. Ein offener Antrag wartet
+ * dem damaligen Stand - „beobachtet“ ist das Wort des Systems, „belegt“ das einer Person. Ein offener Antrag wartet
  * auf eine zweite Person; „Neu prüfen“, wenn seit dem Stand mehr Monate bewertbar sind.
  */
 export function UrteilKarte({
@@ -267,12 +273,13 @@ export function UrteilKarte({
 }) {
   const b = m.bewertung;
   const antrag = m.bewertung_antrag;
-  const kopie = b ? standKopie(b) : null;
+  const kopie = b ? B.standKopie(b) : null;
   const jetzt = w?.monate_text ?? null;
-  const neuPruefen = b && kopie && jetzt && kopie.monate !== jetzt && W.bewertbar(m);
+  // „Neu prüfen“ nur, wenn heute mehr Monate bewertbar sind als im festgehaltenen Stand.
+  const neuPruefen = b && kopie && jetzt && (w?.monate_bewertbar ?? 0) > kopie.anzahl && W.bewertbar(m);
   const ohneMessung = m.art !== 'gemessen';
   return (
-    <section className="vp-mn-karte" aria-labelledby="ma-urteil" data-testid="massnahme-bewertung">
+    <section className="vp-mn-karte is-urteil" aria-labelledby="ma-urteil" data-testid="massnahme-bewertung">
       <div className="vp-wv-blockkopf">
         <h2 id="ma-urteil">{ohneMessung ? 'Was daraus geworden ist' : `Kommt der Unterschied von der ${UEMS_MASSNAHME}?`}</h2>
       </div>
@@ -337,7 +344,7 @@ const ERGEBNIS_KARTE: Record<MassnahmeErgebnis, { wort: string; satz: string }> 
 };
 
 /**
- * „Wirkung prüfen“ (§6.9, WK6) bzw. ohne Messung „Abschließen“ (Entscheid 6: ein Satz, Ergebnis „nicht messbar“) —
+ * „Wirkung prüfen“ (§6.9, WK6) bzw. ohne Messung „Abschließen“ (Entscheid 6: ein Satz, Ergebnis „nicht messbar“) -
  * ein Blatt. Oben die beobachtete Zahl der Route, darunter die Antwort-Karten und ein Satz Begründung; „Wird als Stand
  * Nr. n festgehalten“. Mit Vier-Augen folgt der Dialog der Route (409 `vieraugen_beantragen` → Antrag); eine ZWEITE
  * Person bestätigt oder lehnt ab. Aus einem Anstoß („neu bewerten“) geht die Antwort an `…/anstoesse/{aid}/antwort`.
@@ -435,7 +442,7 @@ export function MassnahmeBewertenDialog({
         </>
       }
     >
-      <form id={`${basis}-form`} className="vp-mn-blatt" noValidate onSubmit={(e) => void senden(e)} data-testid="massnahme-bewerten-dialog">
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(e) => void senden(e)} data-testid="massnahme-bewerten-dialog">
         <p className="vp-mn-unter">{m.titel}</p>
         {anstoss && <p className="vp-mn-leise">{W.anstossZeile(anstoss)}</p>}
         {schritt === 'bewerten' && !ohneMessung && k && (

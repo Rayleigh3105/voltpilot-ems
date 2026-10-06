@@ -107,7 +107,7 @@ describe('Ausgangslage höchstens zwölf Monate', () => {
 });
 
 describe('Ändern behält die Richtung der erwarteten Wirkung', () => {
-  it('„3 % mehr“ steht als Betrag mit dem Wort „mehr“, „2,5 % weniger“ mit „weniger“ — kein Vorzeichen geht verloren', () => {
+  it('„3 % mehr“ steht als Betrag mit dem Wort „mehr“, „2,5 % weniger“ mit „weniger“ - kein Vorzeichen geht verloren', () => {
     Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
     for (const [gespeichert, betrag, wort] of [['3.0', '3', 'mehr'], ['-2.5', '2,5', 'weniger']] as const) {
       render(<MassnahmeAendernDialog massnahme={m1('2029-04-30', { erwartete_wirkung_prozent: gespeichert })} onClose={() => {}} onFertig={() => {}} />);

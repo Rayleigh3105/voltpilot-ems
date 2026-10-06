@@ -101,6 +101,10 @@ async function vergleich(page: Page) {
 }
 
 for (const breite of [375, 1440]) {
+  /** „Maßnahme planen“: am Telefon vier Schritte mit „Weiter“, am Rechner ein Dialog. */
+  const weiter = async (page: Page) => {
+    if (breite < 720) await modal(page).getByTestId('planen-weiter').click();
+  };
   test.describe(`Abweichungen bei ${breite} px`, () => {
     test('Vermerk → Abweichung → Ursache-Aussage → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog (R1/R2)', async ({ page }) => {
       await oeffne(page, 'lage=vermerk&seite=kennzahl', breite, AM_15_01_2028);
@@ -155,17 +159,21 @@ for (const breite of [375, 1440]) {
       await modal(page).getByTestId('abschluss-massnahme').check();
       await page.getByTestId('abschluss-massnahme-anlegen').click();
       const anlegen = modal(page).getByTestId('massnahme-anlegen');
-      await expect(anlegen.getByTestId('massnahme-herkunft-vorbelegt')).toHaveText('aus der Abweichung AW-2028-0001');
-      await expect(combo(page, 'Kennzahl')).toContainText('KZ-0004');
-      await expect(anlegen.getByTestId('massnahme-ausgangslage-vorschau')).toContainText('Ausgangslage Dezember 2027:');
-      await modal(page).getByLabel('Titel').fill('Werkzeugheizungen in Betriebspausen abschalten');
-      await waehle(page, combo(page, 'Verantwortlich'), /^Murat Demirci/);
-      await waehleTag(page, combo(page, 'Termin'), '2028-01-31');
-      await modal(page).getByTestId('massnahme-wirkung-zahl').fill('3');
-      await modal(page).getByLabel('erwartete Wirkung — Wortlaut').fill('Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.');
-      ohneQuerlauf(await messe(page), 'Sprung in Maßnahme anlegen');
+      await expect(anlegen.getByTestId('massnahme-herkunft-vorbelegt')).toContainText('aus der Abweichung AW-2028-0001');
+      await expect(anlegen.getByTestId('massnahme-herkunft-vorbelegt')).toContainText('Spritzguss je kg');
+      await expect(anlegen.getByTestId('planen-art-gemessen').locator('input')).toBeChecked();
+      await anlegen.getByTestId('planen-titel').fill('Werkzeugheizungen in Betriebspausen abschalten');
+      await weiter(page);
+      await expect(anlegen.getByTestId('planen-vorher')).toContainText('Dezember 2027');
+      await anlegen.getByTestId('planen-prozent').fill('3');
+      await anlegen.getByTestId('planen-wortlaut').fill('Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.');
+      await weiter(page);
+      await waehle(page, combo(page, 'Wer kümmert sich?'), /^Murat Demirci/);
+      await anlegen.getByRole('group', { name: 'Bis wann?' }).getByRole('button', { name: 'Ende Februar' }).click();
+      await weiter(page);
+      ohneQuerlauf(await messe(page), 'Sprung in Maßnahme planen');
       await ablegenDialog(page, `abschluss-sprung-${breite}`);
-      await page.getByTestId('massnahme-anlegen-senden').click();
+      await anlegen.locator('[data-testid="massnahme-anlegen-senden"]:visible').click();
 
       await expect(combo(page, 'Bestehende Maßnahme')).toContainText('M-2028-0001');
       await modal(page).getByLabel('Begründung').fill('Aussage von Murat Demirci erklärt die Ursache plausibel; Dezember-Werte bleiben.');
@@ -181,7 +189,7 @@ for (const breite of [375, 1440]) {
       await ablegen(page, `seite-abgeschlossen-${breite}`, true);
 
       await page.getByTestId('abschluss-sprung-massnahme').click();
-      await expect(page.getByTestId('massnahme-herkunft')).toContainText('aus der Abweichung AW-2028-0001');
+      await expect(page.getByTestId('massnahme-herkunft')).toContainText('Aus der Abweichung AW-2028-0001.');
     });
 
     test('„zur Kenntnis nehmen“ nur mit Begründung (R11); „Abweichung eröffnen“ von Hand an „im Rahmen“ (A3)', async ({ page }) => {

@@ -87,7 +87,7 @@ function Eintrag({ m, onOeffnen }: { m: Massnahme; onOeffnen: (id: string) => vo
   );
 }
 
-/** „Was ist eine Maßnahme?“ — Klartext aus `begriffe.ts`, dazu was sie nicht ist (§7). */
+/** „Was ist eine Maßnahme?“ - Klartext aus `begriffe.ts`, dazu was sie nicht ist (§7). */
 function WasIst({ offen, setOffen, refEl }: { offen: boolean; setOffen: (o: boolean) => void; refEl: React.RefObject<HTMLDetailsElement> }) {
   return (
     <details
@@ -147,7 +147,7 @@ function SoLaeuft() {
 /**
  * Der Reiter „Maßnahmen“ (Verbessern-Konzept v1 §6.5, Richtungsfrage 9.2 A): Titel mit Klartext und „Planen“ im Kopf
  * (Entscheid 7), Antwort zuerst, Filter-Chips nach Stufe, die Gruppen „Zu tun“, „Umgesetzt“, „Abgeschlossen“ mit je
- * einer Karte bzw. Reihe — wer sich kümmert, bis wann, was es bringt, der nächste Schritt mit seinem Verb. Die Marke
+ * einer Karte bzw. Reihe - wer sich kümmert, bis wann, was es bringt, der nächste Schritt mit seinem Verb. Die Marke
  * `data-entscheid="massnahme_termin"` bleibt an jeder Karte, damit die Sprünge der Wiedervorlage treffen.
  */
 export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => void }) {
@@ -189,7 +189,7 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
       </div>
       {darfPlanen && (
         <>
-          {/* Entscheid 7: „Planen“ steht auch am Telefon im Kopf — dort umrandet, am Rechner gefüllt. */}
+          {/* Entscheid 7: „Planen“ steht auch am Telefon im Kopf - dort umrandet, am Rechner gefüllt. */}
           <Button
             className="vp-mn-planen vp-mn-planen-kurz"
             variant="outline"
@@ -317,7 +317,7 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
   }
 
   return (
-    <div className="vp-wv vp-mn" data-testid="massnahmen-register">
+    <div className="vp-wv vp-mn vp-k-farben" data-testid="massnahmen-register">
       {kopf}
       {inhalt}
       {fuss}

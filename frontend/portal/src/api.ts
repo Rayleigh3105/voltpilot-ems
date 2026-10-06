@@ -2780,11 +2780,11 @@ export interface Kennzahl {
 // ---------------------------------------------------------------------------------------- Maßnahmen (UEMS AP-18)
 
 export type MassnahmeZustand = 'geplant' | 'umgesetzt' | 'bewertet' | 'verworfen';
-/** Wie sich die Wirkung zeigt (Verbessern-Konzept v1, Entscheid 6) — `gemessen` genau mit Messgrundlage. */
+/** Wie sich die Wirkung zeigt (Verbessern-Konzept v1, Entscheid 6) - `gemessen` genau mit Messgrundlage. */
 export type MassnahmeArt = 'gemessen' | 'nicht_gemessen' | 'organisatorisch';
 
 /**
- * Die erwartete Einsparung in kWh im Jahr (Entscheid 13): eine Schätzung, nie mit beobachteten Werten summiert —
+ * Die erwartete Einsparung in kWh im Jahr (Entscheid 13): eine Schätzung, nie mit beobachteten Werten summiert -
  * mit Kennzahl von der Route umgerechnet (mit Grundlage), ohne Kennzahl von einer Person geschätzt.
  */
 export interface MassnahmeEinsparung {
@@ -2795,7 +2795,7 @@ export interface MassnahmeEinsparung {
   grundlage_monate: string | null;
 }
 
-/** Die beobachtete Wirkung in Kurzform für die Liste (§6.5) — die Summe der Operation `wirkung`, nur in der Liste. */
+/** Die beobachtete Wirkung in Kurzform für die Liste (§6.5) - die Summe der Operation `wirkung`, nur in der Liste. */
 export interface MassnahmeWirkungKurz {
   delta_prozent: string;
   richtung: string;
@@ -2903,7 +2903,7 @@ export interface Massnahme {
   verlauf: MassnahmeEintrag[] | null;
   /** Entscheid 6. */
   art: MassnahmeArt;
-  /** Entscheid 13 — die Schätzung beim Anlegen; `null` ohne Zahl. */
+  /** Entscheid 13 - die Schätzung beim Anlegen; `null` ohne Zahl. */
   erwartete_einsparung: MassnahmeEinsparung | null;
   /** Nur in der Liste: die beobachtete Wirkung in Kurzform (§6.5), sonst `null`. */
   wirkung_kurz: MassnahmeWirkungKurz | null;
@@ -3029,7 +3029,7 @@ export interface MassnahmeNeu {
   erwartete_wirkung_wortlaut: string;
   /** Entscheid 6; ohne Angabe `gemessen` mit Kennzahl, sonst `nicht_gemessen`. */
   art?: MassnahmeArt;
-  /** Entscheid 13: die Schätzung einer Person — nur ohne Kennzahl und nicht organisatorisch. */
+  /** Entscheid 13: die Schätzung einer Person - nur ohne Kennzahl und nicht organisatorisch. */
   erwartete_einsparung_kwh_jahr?: number;
 }
 
@@ -11111,7 +11111,7 @@ export const api = {
   /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
   massnahmen: () => request<MassnahmeListe>('/api/v1/massnahmen'),
   massnahme: (id: string) => request<Massnahme>(`/api/v1/massnahmen/${id}`),
-  /** Entscheid 13: die Umrechnung der erwarteten Wirkung in kWh im Jahr — liest nur, festgehalten wird beim Anlegen. */
+  /** Entscheid 13: die Umrechnung der erwarteten Wirkung in kWh im Jahr - liest nur, festgehalten wird beim Anlegen. */
   massnahmeSchaetzung: (kennzahl: string, prozent: number) =>
     request<MassnahmeSchaetzung>(
       `/api/v1/massnahmen/schaetzung?kennzahl=${encodeURIComponent(kennzahl)}&prozent=${encodeURIComponent(String(prozent))}`,

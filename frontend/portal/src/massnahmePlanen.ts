@@ -1,5 +1,5 @@
 /**
- * Verbessern-Konzept v1 §6.9 (Richtungsfrage 9.3 A): „Maßnahme planen“ in vier kurzen Schritten — 1 Was ist zu tun?
+ * Verbessern-Konzept v1 §6.9 (Richtungsfrage 9.3 A): „Maßnahme planen“ in vier kurzen Schritten - 1 Was ist zu tun?
  * und wie zeigt sich die Wirkung (Entscheid 6), 2 Was soll es bringen? (Prozent mit Umrechnung in kWh, „Weiß ich noch
  * nicht“, Begründung, Vorher-Monat; Entscheide 12, 13), 3 Wer und bis wann?, 4 Prüfen. Am Rechner dieselben Fragen als
  * ein Dialog. Hier steht nur die Form: Vorbelegung, Prüfung je Schritt (Ablehnungen vor dem Senden statt danach) und
@@ -136,7 +136,7 @@ function plusMonate(jjjjmm: string, n: number): string {
 
 /**
  * „Ende Mai · Ende Juni · Ende September“: das Ende des nächsten und des übernächsten Monats und das Ende des nächsten
- * Quartals danach — vom Tag der Route aus, nie in der Vergangenheit.
+ * Quartals danach - vom Tag der Route aus, nie in der Vergangenheit.
  */
 export function terminVorschlaege(heute: string): { wert: string; wort: string }[] {
   const dieser = heute.slice(0, 7);
@@ -212,7 +212,7 @@ export function pruefen(e: Entwurf, schritt: Schritt, heute: string): Fehler {
   return f;
 }
 
-/** Die Anfrage an `POST /api/v1/massnahmen` — ohne Kennzahl nie eine Zahl in Prozent, mit Kennzahl nie kWh. */
+/** Die Anfrage an `POST /api/v1/massnahmen` - ohne Kennzahl nie eine Zahl in Prozent, mit Kennzahl nie kWh. */
 export function anfrage(e: Entwurf, v: MassnahmeVorbelegung, einstufungFassung?: number): MassnahmeNeu {
   const gemessen = e.art === 'gemessen';
   const prozent = gemessen && !e.weissNicht ? prozentAusEingabe(e.prozent) : null;
@@ -245,12 +245,12 @@ export interface Zeile {
   klein: string | null;
 }
 
-/** „So wird sie angelegt“: Was · Wirkung · Erwartet · Für · Wer und bis wann — je Zeile mit dem Schritt, der sie ändert. */
+/** „So wird sie angelegt“: Was · Wirkung · Erwartet · Für · Wer und bis wann - je Zeile mit dem Schritt, der sie ändert. */
 export function zusammenfassung(
   e: Entwurf,
   namen: { kennzahl: string | null; energieziel: string | null; person: string | null; vorher: string | null; kwhJahr: string | null },
 ): Zeile[] {
-  const zeilen: Zeile[] = [{ schritt: 1, titel: 'Was', wert: e.titel.trim() || '—', klein: null }];
+  const zeilen: Zeile[] = [{ schritt: 1, titel: 'Was', wert: e.titel.trim() || '-', klein: null }];
   zeilen.push({
     schritt: 1,
     titel: 'Wirkung',
@@ -265,19 +265,19 @@ export function zusammenfassung(
       : e.art === 'gemessen'
         ? p
           ? `${String(Math.abs(p)).replace('.', ',')}${NBSP}% weniger${namen.kwhJahr ? `, rund ${namen.kwhJahr}${NBSP}kWh im Jahr` : ''}`
-          : '—'
+          : '-'
         : kwh
           ? `rund ${kwh.toLocaleString('de-DE')}${NBSP}kWh im Jahr, geschätzt`
           : 'ohne Zahl';
     zeilen.push({ schritt: 2, titel: 'Erwartet', wert, klein: e.wortlaut.trim() ? `‚${e.wortlaut.trim()}‘` : null });
   } else {
-    zeilen.push({ schritt: 2, titel: 'Soll sich ändern', wert: e.wortlaut.trim() || '—', klein: null });
+    zeilen.push({ schritt: 2, titel: 'Soll sich ändern', wert: e.wortlaut.trim() || '-', klein: null });
   }
   if (namen.energieziel) zeilen.push({ schritt: 1, titel: 'Für', wert: namen.energieziel, klein: null });
   zeilen.push({
     schritt: 3,
     titel: 'Wer und bis wann',
-    wert: `${namen.person ?? '—'}${e.termin ? ` · bis ${tag(e.termin)}` : ''}`,
+    wert: `${namen.person ?? '-'}${e.termin ? ` · bis ${tag(e.termin)}` : ''}`,
     klein: null,
   });
   return zeilen;

@@ -45,9 +45,12 @@ export function TextFeld({
   platzhalter,
   zeilen = 3,
   testid,
+  labelDoppelt = false,
 }: {
   id: string;
   label: string;
+  /** Die Frage steht schon als Überschrift des Teils (am Rechner): die Beschriftung bleibt nur für Screenreader. */
+  labelDoppelt?: boolean;
   wert: string;
   setze: (t: string) => void;
   hilfe?: string;
@@ -58,7 +61,9 @@ export function TextFeld({
 }) {
   return (
     <div className="vp-mn-feld">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} className={labelDoppelt ? 'vp-mn-label-doppelt' : undefined}>
+        {label}
+      </label>
       <textarea
         id={id}
         rows={zeilen}
@@ -202,13 +207,20 @@ function vorherSatz(vorher: Vorher, e: P.Entwurf): { kurz: string; lang: string 
       const kurz = `${text}, ${B.prozentBetrag(d)} ${Number(d) < 0 ? 'weniger' : 'mehr'} als erwartet`;
       return { kurz, lang: null };
     }
-    return { kurz: text, lang: m?.satz ?? null };
+    return { kurz: text, lang: ohneMonat(m?.satz ?? null, text) };
   }
   const z = v.zeitraum;
   if (z.delta_prozent !== null) {
     return { kurz: `${text}, ${B.prozentBetrag(z.delta_prozent)} ${Number(z.delta_prozent) < 0 ? 'weniger' : 'mehr'} als erwartet`, lang: null };
   }
-  return { kurz: text, lang: z.satz };
+  return { kurz: text, lang: ohneMonat(z.satz, text) };
+}
+
+/** „März 2029: nicht bewertbar …“ hinter „März 2029.“ ohne den Monat ein zweites Mal. */
+function ohneMonat(satz: string | null, monat: string): string | null {
+  if (!satz) return null;
+  const rest = satz.startsWith(`${monat}: `) ? satz.slice(monat.length + 2) : satz;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
 }
 
 // ------------------------------------------------------------------ Maßnahme planen (§6.9)
@@ -281,7 +293,7 @@ function Planer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [daten]);
 
-  // Läuft für die gewählte Kennzahl genau ein Energieziel, steht es vorbelegt — wie bisher (§5.4).
+  // Läuft für die gewählte Kennzahl genau ein Energieziel, steht es vorbelegt - wie bisher (§5.4).
   useEffect(() => {
     if (vorbelegung.energieziel || !daten) return;
     setE((alt) => ({ ...alt, energieziel: alt.art === 'gemessen' && zieleDerKennzahl.length === 1 ? zieleDerKennzahl[0].id : '' }));
@@ -330,7 +342,7 @@ function Planer({
   const kwhJahr = schaetzung?.kwh_jahr ? B.rund(schaetzung.kwh_jahr) : null;
   const zusammen = P.zusammenfassung(e, {
     kennzahl: kennzahlName(kennzahl),
-    energieziel: energieziel ? `${B.energiezielName(energieziel.kennzeichen)} · ${energieziel.wortlaut}` : null,
+    energieziel: energieziel ? B.energiezielText(energieziel.kennzeichen, energieziel.wortlaut) : null,
     person: person ? (person.anzeigename ?? person.sub) : null,
     vorher: e.art === 'gemessen' ? vor.kurz : null,
     kwhJahr,
@@ -400,6 +412,7 @@ function Planer({
         fehler={zeigen.titel}
         zeilen={2}
         testid="planen-titel"
+        labelDoppelt
       />
       <Wahl
         name={`${basis}-art`}
@@ -449,7 +462,9 @@ function Planer({
       {e.titel.trim() && <p className="vp-mn-unter vp-mn-nur-telefon">{e.titel.trim()}</p>}
       {e.art === 'gemessen' && (
         <div className="vp-mn-feld">
-          <label htmlFor={`${basis}-prozent`}>Wie viel weniger Energie erwarten Sie?</label>
+          <label htmlFor={`${basis}-prozent`} className="vp-mn-label-doppelt">
+            Wie viel weniger Energie erwarten Sie?
+          </label>
           <div className="vp-mn-prozent">
             <div className="vp-mn-prozent-feld">
               <input
@@ -471,9 +486,15 @@ function Planer({
               setze={() => setze({ weissNicht: !e.weissNicht })}
             />
           </div>
-          <p id={`${basis}-prozent-hilfe`} className={zeigen.prozent ? 'vp-mn-fehler' : 'vp-mn-hilfe'} data-testid="planen-umrechnung">
+          <p
+            id={`${basis}-prozent-hilfe`}
+            className={zeigen.prozent || schaetzung?.grund === 'kennzahl_ohne_bezugsbasis' ? 'vp-mn-fehler' : 'vp-mn-hilfe'}
+            data-testid="planen-umrechnung"
+          >
             {zeigen.prozent ??
-              (e.weissNicht
+              (schaetzung?.grund === 'kennzahl_ohne_bezugsbasis'
+                ? M.ABLEHNUNG.kennzahl_ohne_bezugsbasis
+                : e.weissNicht
                 ? 'Ohne Zahl misst VoltPilot trotzdem: nach der Umsetzung steht da, was beobachtet wurde.'
                 : schaetzung?.kwh_jahr
                   ? `Entspricht rund ${B.rund(schaetzung.kwh_jahr)}${NBSP}kWh im Jahr - gerechnet mit ${B.ganz(schaetzung.grundlage_kwh!)}${NBSP}kWh in ${Z.zielperiodeText(schaetzung.grundlage_monate)}.`
@@ -485,7 +506,9 @@ function Planer({
       )}
       {e.art === 'nicht_gemessen' && (
         <div className="vp-mn-feld">
-          <label htmlFor={`${basis}-kwh`}>Wie viel weniger Energie erwarten Sie?</label>
+          <label htmlFor={`${basis}-kwh`} className="vp-mn-label-doppelt">
+            Wie viel weniger Energie erwarten Sie?
+          </label>
           <div className="vp-mn-prozent">
             <div className="vp-mn-prozent-feld">
               <input
@@ -574,7 +597,7 @@ function Planer({
         <VpPicker
           id={`${basis}-energieziel`}
           label={`Für welches ${UEMS_ENERGIEZIEL}? (wahlfrei)`}
-          options={[{ value: '', label: 'keines' }, ...zieleDerKennzahl.map((z) => ({ value: z.id, label: `${B.energiezielName(z.kennzeichen)} · ${z.wortlaut}` }))]}
+          options={[{ value: '', label: 'keines' }, ...zieleDerKennzahl.map((z) => ({ value: z.id, label: B.energiezielText(z.kennzeichen, z.wortlaut) }))]}
           value={e.energieziel}
           onChange={(v) => setze({ energieziel: v ?? '' })}
         />
@@ -590,7 +613,7 @@ function Planer({
       </h3>
       {e.titel.trim() && <p className="vp-mn-unter vp-mn-nur-telefon">{e.titel.trim()}</p>}
       {daten?.benutzer === null ? (
-        <p className="vp-mn-fehler">{`Die Konten Ihres Kundenbereichs sind gerade nicht abrufbar — ohne ${UEMS_VERANTWORTLICH} lässt sich nichts anlegen.`}</p>
+        <p className="vp-mn-fehler">{`Die Konten Ihres Kundenbereichs sind gerade nicht abrufbar - ohne ${UEMS_VERANTWORTLICH} lässt sich nichts anlegen.`}</p>
       ) : (
         <VpPicker
           id={`${basis}-verantwortlich`}
@@ -671,7 +694,7 @@ function Planer({
 
   return (
     <Modal open onClose={onClose} title={telefon ? P.SCHRITT_FRAGE[schritt] : P.TITEL} blatt breit>
-      <form id={`${basis}-form`} className="vp-mn-blatt" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-anlegen">
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-anlegen" data-schritt={schritt}>
         <div className="vp-mn-schritt" aria-live="polite">
           <div className="vp-mn-schritt-zeile">
             <span>
@@ -712,7 +735,7 @@ function Planer({
 }
 
 /**
- * Der Einstieg „Maßnahme planen“ — am Energieziel, am Energieeinsatz, an Feststellung, Audit und Managementbewertung;
+ * Der Einstieg „Maßnahme planen“ - am Energieziel, am Energieeinsatz, an Feststellung, Audit und Managementbewertung;
  * IP-18 öffnet den Planer aus dem Abschluss einer Abweichung. Nur mit `verbesserung.verwalten`; danach ein Sprung zur
  * Seite.
  */
@@ -767,7 +790,7 @@ export function MassnahmeAnlegen({
 // ------------------------------------------------------------------ Umsetzung melden (§6.9)
 
 /**
- * „Umsetzung melden“ (§6.9, M6): ein Blatt — der Tag per Schnellwahl („Heute, 30.04.“, „Gestern“, „Anderer Tag“) mit
+ * „Umsetzung melden“ (§6.9, M6): ein Blatt - der Tag per Schnellwahl („Heute, 30.04.“, „Gestern“, „Anderer Tag“) mit
  * der Uhr der Route, ein Satz, was gemacht wurde, und was danach passiert. Einmalig; nie vor dem Anlegen, nie in der
  * Zukunft.
  */
@@ -823,7 +846,7 @@ export function MassnahmeUmgesetztDialog({ massnahme, onClose, onFertig }: { mas
       title={B.KNOPF_UMSETZUNG}
       footer={<Fuss form={`${basis}-form`} haupt="Als umgesetzt melden" busy={busy} onClose={onClose} testid="massnahme-umgesetzt-senden" />}
     >
-      <form id={`${basis}-form`} className="vp-mn-blatt" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-umgesetzt">
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-umgesetzt">
         <p className="vp-mn-unter">{massnahme.titel}</p>
         <div className="vp-mn-feld">
           <span className="vp-mn-frage">Wann war sie fertig?</span>
@@ -868,7 +891,7 @@ export function MassnahmeUmgesetztDialog({ massnahme, onClose, onFertig }: { mas
   );
 }
 
-/** „Verwerfen“ (M6): mit Begründung — endgültig, nie gelöscht. */
+/** „Verwerfen“ (M6): mit Begründung - endgültig, nie gelöscht. */
 export function MassnahmeVerwerfenDialog({ massnahme, onClose, onFertig }: { massnahme: Massnahme; onClose: () => void; onFertig: (m: Massnahme) => void }) {
   const basis = `mv-${useId().replace(/:/g, '')}`;
   const [begruendung, setBegruendung] = useState('');
@@ -903,7 +926,7 @@ export function MassnahmeVerwerfenDialog({ massnahme, onClose, onFertig }: { mas
       title="Verwerfen"
       footer={<Fuss form={`${basis}-form`} haupt="Verwerfen" busy={busy} onClose={onClose} testid="massnahme-verwerfen-senden" />}
     >
-      <form id={`${basis}-form`} className="vp-mn-blatt" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-verwerfen">
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-verwerfen">
         <p className="vp-mn-unter">{massnahme.titel}</p>
         <TextFeld
           id={`${basis}-begruendung`}
@@ -954,7 +977,7 @@ export function MassnahmeKommentarDialog({ massnahme, onClose, onFertig }: { mas
       title="Kommentar schreiben"
       footer={<Fuss form={`${basis}-form`} haupt="Kommentar speichern" busy={busy} onClose={onClose} testid="massnahme-kommentar-senden" />}
     >
-      <form id={`${basis}-form`} className="vp-mn-blatt" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-kommentar">
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-kommentar">
         <p className="vp-mn-unter">{massnahme.titel}</p>
         <TextFeld
           id={`${basis}-text`}
@@ -972,7 +995,7 @@ export function MassnahmeKommentarDialog({ massnahme, onClose, onFertig }: { mas
 }
 
 /**
- * „Ändern“ (M6), solange geplant: Titel, Termin, Verantwortlich, erwartete Wirkung — mit Begründung. V7: die Richtung
+ * „Ändern“ (M6), solange geplant: Titel, Termin, Verantwortlich, erwartete Wirkung - mit Begründung. V7: die Richtung
  * steht als Wort („3 % weniger“ · „3 % mehr“) und bleibt beim Ändern, wie sie war. Mit Kennzahl in Prozent (die Route
  * rechnet neu in kWh um), ohne Kennzahl die Schätzung in kWh im Jahr; organisatorisch nur der Wortlaut.
  */
@@ -1045,7 +1068,7 @@ export function MassnahmeAendernDialog({ massnahme, onClose, onFertig }: { massn
       title="Ändern"
       footer={<Fuss form={`${basis}-form`} haupt="Änderung speichern" busy={busy} onClose={onClose} testid="massnahme-aendern-senden" />}
     >
-      <form id={`${basis}-form`} className="vp-mn-blatt" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-aendern">
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-aendern">
         <Input id={`${basis}-titel`} label="Was ist zu tun?" value={titel} onChange={(x) => setTitel(x.target.value)} error={zeigen.titel ?? null} />
         <VpDatePicker id={`${basis}-termin`} label="Bis wann?" value={termin} onChange={setTermin} min={massnahme.frist.abruf} />
         <VpPicker
