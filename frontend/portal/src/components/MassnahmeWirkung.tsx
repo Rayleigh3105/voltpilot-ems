@@ -265,11 +265,14 @@ export function UrteilKarte({
   w,
   sub,
   onDialog,
+  darfAbschliessen = true,
 }: {
   m: Massnahme;
   w: MassnahmeWirkung | null;
   sub: string | null;
   onDialog: (s: BewertungSchritt) => void;
+  /** Ohne `verbesserung.abschliessen` sagt die Karte, wer abschließt, statt die Person dazu aufzufordern. */
+  darfAbschliessen?: boolean;
 }) {
   const b = m.bewertung;
   const antrag = m.bewertung_antrag;
@@ -305,7 +308,9 @@ export function UrteilKarte({
         <p className="vp-mn-text" data-testid="massnahme-beobachtet">
           {ohneMessung
             ? m.zustand === 'umgesetzt'
-              ? 'Ohne Kennzahl misst VoltPilot nichts. Ob die Maßnahme hält, sagen Sie mit einem Satz - damit ist sie abgeschlossen.'
+              ? darfAbschliessen
+                ? 'Ohne Kennzahl misst VoltPilot nichts. Ob die Maßnahme hält, sagen Sie mit einem Satz - damit ist sie abgeschlossen.'
+                : `Ohne Kennzahl misst VoltPilot nichts. Ob die Maßnahme hält, hält ein Satz beim Abschließen fest - ${B.WER_ABSCHLIESST}.`
               : 'Nach der Umsetzung schließen Sie die Maßnahme mit einem Satz ab.'
             : W.bewertungOffenSatz()}
         </p>
