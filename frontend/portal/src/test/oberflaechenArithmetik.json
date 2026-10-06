@@ -312,7 +312,9 @@
         "./uemsErgebnis:VOR_EINHEIT",
         "./uemsErgebnis:zahl",
         "./uemsOberflaechen:periodeSchluessel",
-        "./uemsOberflaechen:sprungziel"
+        "./uemsOberflaechen:sprungziel",
+        "./uemsVerteilung:ERBE_ANTEIL_WECHSELT",
+        "./uemsVerteilung:GRUND_ANTEIL_WECHSELT"
       ],
       "operationen": [
         "spanne: mit.length - 1"

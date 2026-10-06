@@ -52,6 +52,7 @@ import { ROLLE_KUNDENWORT, TEXTE, datumZeit } from './rechte';
 import { ende, zeitraumText } from './uebersichtBausteine';
 import { KWH, OHNE_ZAHL, VOR_EINHEIT, zahl } from './uemsErgebnis';
 import { periodeSchluessel, sprungziel, type Sprung } from './uemsOberflaechen';
+import { ERBE_ANTEIL_WECHSELT, GRUND_ANTEIL_WECHSELT } from './uemsVerteilung';
 
 // ------------------------------------------------------------------------------------------------ Wörter
 
@@ -74,6 +75,12 @@ export const ZEITWAHL: readonly { id: KostenstelleEnergiePeriode; label: string 
 export const OHNE_WERT = OHNE_ZAHL;
 
 export const GANZ = 'ganz';
+/** Messen PR4: der Anteil wechselt mitten in einem Ablesezeitraum - für ihn gibt es keine Menge (Konzept §10.3). */
+export const ANTEIL_GEAENDERT_AM = 'Anteil am {tag} geändert';
+export const ANTEIL_GEAENDERT = 'Anteil im Ablesezeitraum geändert';
+export const OHNE_MENGE_IM_ABLESEZEITRAUM = 'für diesen Ablesezeitraum keine Menge';
+/** Messen PR4: ein Monat mit Anteil, aber noch ohne gespeicherte Ablesung. */
+export const NOCH_KEINE_ABLESUNG = 'für {monat} noch keine Ablesung';
 export const ANTEIL = '{anteil}\u00a0%';
 export const ANTEIL_VON = '{anteil}\u00a0% von {menge}';
 export const BERECHNET_POSTEN = 'berechnet';
@@ -165,6 +172,8 @@ const tag = (t: string): string => `${t.slice(8, 10)}.${t.slice(5, 7)}.${t.slice
 const spanneTage = (von: string, bis: string): string => (von === bis ? tag(von) : `${tag(von)}–${tag(bis)}`);
 
 const VOLLSTAENDIG = 'vollständig';
+/** Der Grund eines Monats ohne gespeicherte Ablesung (Messen PR4, `KostenstelleEnergieRegeln.GRUND_KEINE_ABLESUNG`). */
+const GRUND_KEINE_ABLESUNG = 'keine_ablesung';
 
 /** Ein Name, der vor einer Zahl nicht umbricht („Halle 1“, nie „Halle / 1“) - nur zur Anzeige. */
 export const ohneUmbruchVorZahl = (name: string): string => name.replace(/ (?=\d)/g, '\u00a0');
@@ -423,7 +432,9 @@ function spanne(p: KostenstelleEnergiePosten, von: string, bis: string): string 
  */
 function anteilUnterVoll(p: KostenstelleEnergiePosten | undefined): string | null {
   if (!p) return null;
-  const anteile = [...new Set(p.tage.map((t) => t.anteil_prozent).filter((a): a is number => a !== null && a < 100))];
+  // Tage (gemessen) oder - bei Ablesungen über Monat und Jahr (Messen PR4) - Monate tragen den Anteil.
+  const roh = [...p.tage.map((t) => t.anteil_prozent), ...(p.monate ?? []).map((m) => m.anteil_prozent)];
+  const anteile = [...new Set(roh.filter((a): a is number => a !== null && a < 100))];
   if (anteile.length === 0) return null;
   return anteile
     .map((a) => String(a).replace('.', ','))
@@ -432,21 +443,47 @@ function anteilUnterVoll(p: KostenstelleEnergiePosten | undefined): string | nul
 }
 
 /** Die Kennzeichen der Route, die die Herkunft nicht schon sagt (der Anteil, „nicht verteilt“, der Ablesezeitraum). */
-const restWoerter = (woerter: string[]): string[] =>
-  woerter.filter((w) => !/^verteilt \(/.test(w) && w !== 'nicht verteilt' && !/^Ablesezeitraum/.test(w));
+const restWoerter = (woerter: string[], wechselt: boolean): string[] =>
+  woerter.filter(
+    (w) =>
+      !/^verteilt \(/.test(w) &&
+      w !== 'nicht verteilt' &&
+      !/^Ablesezeitraum/.test(w) &&
+      // Wechselt der Anteil im Ablesezeitraum, sagt die Herkunft es in eigenen Worten.
+      !(wechselt && (w === ERBE_ANTEIL_WECHSELT || /^Verteilung geändert am /.test(w))),
+  );
 
-/** Die Menge der Quelle eines anteiligen Postens („von 88.200 kWh“) - aus der Werte-Route, sonst nichts. */
-function quelleMenge(w: WerteAntwort, periode: KostenstelleEnergiePeriode): string | null {
+/** Der Monat eines Postens aus Ablesungen, in dem der Anteil mitten im Ablesezeitraum wechselt (Messen PR4). */
+const wechselMonat = (p: KostenstelleEnergiePosten) => (p.monate ?? []).find((m) => m.grund === GRUND_ANTEIL_WECHSELT) ?? null;
+/** Die Monate eines Postens aus Ablesungen, für die noch keine Ablesung gespeichert ist. */
+const ohneAblesung = (p: KostenstelleEnergiePosten) => (p.monate ?? []).filter((m) => m.grund === GRUND_KEINE_ABLESUNG);
+
+/**
+ * Die Menge der Quelle eines anteiligen Postens („von 88.200 kWh“): bei Ablesungen über EINEN Monat die Monatsmenge der
+ * Route (`monate[].quelle_menge`, Messen PR4 - dieselbe Zahl wie die Werte-Route), sonst die Werte-Route; sonst nichts.
+ */
+function quelleMenge(p: KostenstelleEnergiePosten, w: WerteAntwort, periode: KostenstelleEnergiePeriode): string | null {
+  const monate = p.monate ?? [];
+  if (monate.length === 1 && monate[0].quelle_menge !== null) return anzeige(monate[0].quelle_menge, p.einheit, periode);
   if (w === null || w === 'fehler') return null;
   const schritt = w.werte.length === 1 ? w.werte[0] : null;
   return schritt?.menge == null ? null : anzeige(schritt.menge, w.messstelle.einheit, periode);
 }
 
 function herkunft(block: Block, p: KostenstelleEnergiePosten, quelle: string | null, von: string, bis: string): string {
+  const wechsel = wechselMonat(p);
+  if (wechsel) {
+    // Messen PR4: der Anteil wechselt mitten im Ablesezeitraum - keine Zahl, und das in Worten, nicht als Code.
+    const am = wechsel.geaendert_am ? tag(wechsel.geaendert_am) : null;
+    return [block === 'berechnet' ? BERECHNET_POSTEN : null, am ? fuelle(ANTEIL_GEAENDERT_AM, { tag: am }) : ANTEIL_GEAENDERT, OHNE_MENGE_IM_ABLESEZEITRAUM]
+      .filter(Boolean)
+      .join(' · ');
+  }
   const anteil = anteilUnterVoll(p);
   // Ein Anteil, der im Zeitraum wechselt („60 und 70“), hat keine EINE Menge, von der er stammt.
   const teil = anteil === null ? GANZ : quelle && !anteil.includes(' ') ? fuelle(ANTEIL_VON, { anteil, menge: quelle }) : fuelle(ANTEIL, { anteil });
-  return [block === 'berechnet' ? BERECHNET_POSTEN : null, teil, spanne(p, von, bis)].filter(Boolean).join(' · ');
+  const fehlt = ohneAblesung(p).map((m) => fuelle(NOCH_KEINE_ABLESUNG, { monat: periodeKurz('monat', `${m.monat}-01`) }));
+  return [block === 'berechnet' ? BERECHNET_POSTEN : null, teil, spanne(p, von, bis), ...fehlt].filter(Boolean).join(' · ');
 }
 
 function postenBild(
@@ -460,10 +497,10 @@ function postenBild(
     id: p.messstelle.id,
     kennzeichen: p.messstelle.kennzeichen,
     name: p.messstelle.name ?? p.messstelle.kennzeichen,
-    herkunft: herkunft(block, p, quelleMenge(werte.get(p.messstelle.kennzeichen) ?? null, periode), am, ende(periode, am)),
+    herkunft: herkunft(block, p, quelleMenge(p, werte.get(p.messstelle.kennzeichen) ?? null, periode), am, ende(periode, am)),
     zahl: anzeige(p.menge, p.einheit, periode),
-    zustand: p.zustand && p.zustand !== VOLLSTAENDIG && p.zustand !== KEINE_WERTE ? p.zustand : null,
-    woerter: restWoerter(p.kennzeichen),
+    zustand: p.zustand && p.zustand !== VOLLSTAENDIG && !p.zustand.startsWith(KEINE_WERTE) ? p.zustand : null,
+    woerter: restWoerter(p.kennzeichen, wechselMonat(p) !== null),
     sprung: sprungziel({ art: 'messstelle', id: p.messstelle.id, periode: werteperiode(periode, am) }),
     doppelt: [],
   };
@@ -474,7 +511,13 @@ export function anteiligeQuellen(antworten: ReadonlyMap<string, EnergieAntwort>)
   const out = new Set<string>();
   for (const a of antworten.values()) {
     if (a === null || a === 'fehler') continue;
-    for (const b of BLOECKE) for (const p of a[b].posten) if (anteilUnterVoll(p) !== null) out.add(p.messstelle.kennzeichen);
+    for (const b of BLOECKE) {
+      for (const p of a[b].posten) {
+        // Ablesungen über EINEN Monat bringen die Menge der Messstelle schon mit (Messen PR4) - dann keine Abfrage.
+        const mitMonatsmenge = p.monate?.length === 1 && p.monate[0].quelle_menge !== null;
+        if (anteilUnterVoll(p) !== null && !mitMonatsmenge) out.add(p.messstelle.kennzeichen);
+      }
+    }
   }
   return [...out].sort();
 }

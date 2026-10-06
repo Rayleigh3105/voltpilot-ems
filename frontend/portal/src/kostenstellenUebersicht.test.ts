@@ -270,6 +270,59 @@ describe('Kostenstellen: je Karte die Summe der Route mit Posten und Herkunft (O
   });
 });
 
+describe('Ablesezeiträume auf Kostenstellen (Messen PR4, Verteilung 1.5): Monate statt Tage', () => {
+  // Die Antwort der Kostenstellen-Sicht für einen Ablesezähler über einen Monat: `tage` leer, `monate` mit Anteil,
+  // Monatsmenge der Messstelle und dem Teil daraus (Form aus `api.ts`, Zahlen wie MS-20 im September 2026, hier im November der Referenzwelt, in dem 4200 besteht).
+  const k = KATALOG.find((x) => x.kennzeichen === '4200')!;
+  const roh = ahrenbergKostenstelleEnergie(k.id, 'monat', '2026-11-01');
+  const ms12 = REGISTER.find((z) => z.kennzeichen === 'MS-12')!;
+  const ablesezaehler = REGISTER.map((z): MessstelleRegisterZeile => (z.id === ms12.id ? { ...z, quelle: { ...z.quelle, stand: 'ablesung', fuehrend: null } } : z));
+  const monat = (m: Partial<NonNullable<KostenstelleEnergie['gemessen']['posten'][number]['monate']>[number]>) => ({
+    monat: '2026-11', ablesezeitraeume: [{ von: '2026-11-01T00:00:00+01:00', bis: '2026-12-01T00:00:00+01:00' }], anteil_prozent: 30,
+    quelle_menge: 88200, menge: 26460, zustand: 'vollständig', abdeckung_prozent: null, version: 1, grund: null, geaendert_am: null, ...m,
+  });
+  const mitPosten = (posten: KostenstelleEnergie['gemessen']['posten'][number], summe: number | null): KostenstelleEnergie => ({
+    ...roh,
+    gemessen: { ...roh.gemessen, posten: [] },
+    verteilt: { menge: summe, einheit: 'kWh', zustand: summe === null ? 'keine Werte' : 'vollständig', grund: null, summen: [], posten: [posten] },
+    berechnet: { menge: null, einheit: null, zustand: null, grund: 'keine_zuordnung', summen: [], posten: [] },
+    summe: { menge: summe, einheit: 'kWh', zustand: summe === null ? 'keine Werte' : 'vollständig', grund: null, summen: [], posten: [] },
+  });
+  const basis = roh.verteilt.posten[0];
+  const bildMit = (a: KostenstelleEnergie) =>
+    kostenstellenBild({ katalog: [k], antworten: new Map([[k.id, a]]), register: ablesezaehler, werte: new Map(), periode: 'monat', am: '2026-11-01' });
+
+  it('der Anteil steht am Monat: „30 % von 88.200 kWh“ aus der Route, die Menge der Route - und kein Satz über Tageswerte', () => {
+    const a = mitPosten({ ...basis, menge: 26460, zustand: 'vollständig', kennzeichen: ['verteilt (30 % von MS-07)', 'Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden)'], tage: [], monate: [monat({})] }, 26460);
+    const b = bildMit(a);
+    expect(b.ablesung).toBeNull();
+    expect(posten(karte(b, '4200'))).toEqual([['MS-07', '26.460 kWh', '30 % von 88.200 kWh']]);
+    expect(karte(b, '4200').posten[0].woerter).toEqual([]);
+    expect(karte(b, '4200').summe).toEqual({ zahl: '26.460', einheit: 'kWh', marke: { text: 'vollständig', ton: 'ok' }, getrennt: false });
+    // Die Monatsmenge kommt mit der Antwort - die Werte-Route wird dafür nicht gefragt.
+    expect(MODUL.anteiligeQuellen(new Map([[k.id, a]]))).toEqual([]);
+  });
+
+  it('wechselt der Anteil mitten im Ablesezeitraum: keine Zahl, ein Satz in Worten statt der Codes', () => {
+    const wechsel = monat({ anteil_prozent: null, menge: null, zustand: 'keine Werte', grund: 'anteil_wechselt_im_ablesezeitraum', geaendert_am: '2026-11-15' });
+    const a = mitPosten({ ...basis, menge: null, zustand: 'keine Werte', kennzeichen: ['Verteilung geändert am 15.11.2026', 'keine Werte (Verteilung im Ablesezeitraum geändert)'], tage: [], monate: [wechsel] }, null);
+    const p = karte(bildMit(a), '4200').posten[0];
+    expect(n(p.herkunft)).toBe('Anteil am 15.11.2026 geändert · für diesen Ablesezeitraum keine Menge');
+    expect(p.zahl).toBe('—');
+    expect(p.zustand).toBeNull();
+    expect(p.woerter).toEqual([]);
+    expect(bildMit(a).ablesung).toBeNull();
+  });
+
+  it('ein Monat mit Anteil, aber ohne Ablesung, sagt es - nie 0', () => {
+    const ohne = monat({ quelle_menge: null, menge: null, zustand: 'keine Werte', grund: 'keine_ablesung' });
+    const a = mitPosten({ ...basis, menge: null, zustand: 'keine Werte', kennzeichen: [], tage: [], monate: [ohne] }, null);
+    const p = karte(bildMit(a), '4200').posten[0];
+    expect(n(p.herkunft)).toBe('30 % · für Nov 2026 noch keine Ablesung');
+    expect(p.zahl).toBe('—');
+  });
+});
+
 describe('Prozesse zeigen ihre Messstellen (Konzept §6.7, Entscheid 4)', () => {
   const KAT = prozesseAhrenberg();
   const zuordnungen = (f: (id: string) => ZuordnungAntwort = (id) => ahrenbergProzessMessstellen(id, '2026-10-01')) =>
