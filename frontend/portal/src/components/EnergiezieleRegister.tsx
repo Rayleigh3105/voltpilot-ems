@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { api, type Energieziel, type EnergiezielStand } from '../api';
+import { AuffaelligkeitHinweis } from './AuffaelligkeitHinweis';
 import * as Z from '../energieziele';
 import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import { ErrorState, Skeleton } from './States';
@@ -42,6 +43,8 @@ export function EnergiezieleRegister({ onOeffnen }: { onOeffnen: (id: string) =>
 
   return (
     <section className="vp-ez" data-testid="energieziele-register">
+      {/* Verbessern-Konzept v1 (Entscheid 4): offene Auffälligkeiten an Kennzahlen laufender Energieziele zuerst. */}
+      <AuffaelligkeitHinweis kennzahlen={lage.ziele.filter((ez) => ez.zustand === 'offen').map((ez) => ez.kennzahl.id)} art="reiter" />
       {lage.ziele.length === 0 ? (
         <>
           <p className="vp-ez-wozu" data-testid="energieziele-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>

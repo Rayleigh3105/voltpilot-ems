@@ -1,96 +1,46 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
-import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
-import { Badge } from '../../designsystem/components/core/Badge';
+import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import * as A from '../abweichungen';
-import { api, ApiError, type Abweichung, type AbweichungEintrag } from '../api';
-import { monatWort, vergleichBild, type BezugsbasisVergleich } from '../bezugsbasisVergleich';
-import { AbschliessenDialog, FristDialog, UrsacheAussageDialog, VerantwortlicherDialog } from '../components/AbweichungDialoge';
-import { MonateTafel } from '../components/BezugsbasisVergleich';
+import { api, ApiError, type Abweichung, type Massnahme } from '../api';
+import { type BezugsbasisVergleich } from '../bezugsbasisVergleich';
+import { AbschliessenDialog, FristDialog, KommentarDialog, UrsacheAussageDialog, VerantwortlicherDialog } from '../components/AbweichungDialoge';
+import { FristDatum } from '../components/FristDatum';
+import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Recht } from '../components/Recht';
-import { ErrorState, Skeleton } from '../components/States';
+import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import * as Z from '../energieziele';
-import { UEMS_AUFFAELLIGKEIT, UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_VERANTWORTLICH, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
-import '../components/BezugsbasisVergleich.css';
-import './Verbesserung.css';
+import { UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_VERANTWORTLICH } from '../glossar';
+import '../components/Wiedervorlage.css';
+import './Abweichungen.css';
 
 type Lage = { art: 'laedt' } | { art: 'fehlt' } | { art: 'fehler' } | { art: 'da'; a: Abweichung };
-type Vergleich = { art: 'laedt' } | { art: 'fehler' } | { art: 'da'; v: BezugsbasisVergleich };
+type Dialog = null | 'aussage' | 'frist' | 'verantwortlich' | 'abschliessen' | 'kommentar' | 'kopie';
 
-/** Ein Kommentar im Verlauf (A4): 1–2 000 Zeichen, nur offen; nichts wird geändert oder gelöscht. */
-function Kommentar({ a, onNeu }: { a: Abweichung; onNeu: (a: Abweichung) => void }) {
-  const id = `ak-${useId().replace(/:/g, '')}`;
-  const [text, setText] = useState('');
-  const [satz, setSatz] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function senden(ev: FormEvent) {
-    ev.preventDefault();
-    const t = text.trim();
-    if (!t || t.length > A.KOMMENTAR_MAX) {
-      setSatz(A.ABLEHNUNG.text_ungueltig);
-      document.getElementById(id)?.focus();
-      return;
-    }
-    setBusy(true);
-    setSatz(null);
-    try {
-      onNeu(await api.abweichungEintrag(a.id, { art: 'kommentar', text: t }));
-      setText('');
-    } catch (x) {
-      setSatz(A.ablehnungSatz(x));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <form className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-kommentar">
-      <div className="vp-ez-feld">
-        <label className="vp-ez-label" htmlFor={id}>
-          {A.KNOPF_KOMMENTAR}
-        </label>
-        <textarea id={id} rows={2} value={text} onChange={(x) => setText(x.target.value)} aria-invalid={!!satz} />
-        {satz && <p className="vp-ez-fehler">{satz}</p>}
-      </div>
-      <div className="vp-ez-aktionen">
-        <Button type="submit" size="sm" variant="outline" disabled={busy} data-testid="abweichung-kommentar-senden">
-          {A.KNOPF_KOMMENTAR}
-        </Button>
-      </div>
-    </form>
-  );
-}
+const LADEFEHLER = 'Die Abweichung ließ sich gerade nicht laden. Ihre Daten sind nicht betroffen.';
+const ERNEUT = 'Erneut versuchen';
+const KEIN_EINTRAG = (tag: string) => `Noch kein Eintrag seit dem Eröffnen am ${tag}.`;
+const OFFEN_DARAUS = `Noch offen. Schließen Sie die Abweichung mit einer ${UEMS_MASSNAHME} ab, steht sie hier.`;
 
-/** Eine Zeile des Verlaufs — eine Ursache-Aussage immer mit „Aussage von …“ (U1), daneben wer sie eingetragen hat. */
-function VerlaufZeile({ e }: { e: AbweichungEintrag }) {
-  const aussage = e.aussage;
-  return (
-    <li data-testid={`verlauf-${e.art}`}>
-      <p>
-        <strong>{A.VERLAUF_WORT[e.art]}</strong> · {e.person} · {Z.tag(e.am)}
-      </p>
-      {aussage && (
-        <>
-          <p className="vp-aw-aussage" data-testid="ursache-aussage-satz">
-            {aussage.satz ?? UEMS_VERBESSERUNG_SAETZE.ursacheAussage(aussage.name, Z.tag(aussage.am), aussage.beleg_kennung, aussage.wortlaut)}
-          </p>
-          <p className="vp-aw-vorbehalt" data-testid="ursache-aussage-kennzeichen">
-            {aussage.kennzeichen}
-          </p>
-        </>
-      )}
-      {e.kommentar && <p>{e.kommentar}</p>}
-      {e.begruendung && <p className="vp-ez-leise">‚{e.begruendung}‘</p>}
-    </li>
-  );
+/** Der Stand der Maßnahme, die aus der Abweichung wurde: „umgesetzt am 22.01.2028 · belegt“. */
+function massnahmeZeile(m: Massnahme): string {
+  const teile: string[] = [];
+  if (m.zustand === 'geplant') teile.push(`geplant bis ${Z.tag(m.termin)}`);
+  if (m.umgesetzt_am) teile.push(`umgesetzt am ${Z.tag(m.umgesetzt_am)}`);
+  if (m.zustand === 'verworfen') teile.push('verworfen');
+  if (m.bewertung?.status === 'bewertet') teile.push(UEMS_MASSNAHME_ERGEBNISSE[m.bewertung.ergebnis]);
+  return teile.join(' · ');
 }
 
 /**
- * Die Abweichungs-Seite (AP-18 IP-18, §5.3, A3–A6, U1–U3): der Kopf-Satz mit Frist und Verantwortlich („überfällig
- * seit n Tagen“ aus der Route), der Anlass als Kopie mit Vorbehalten und Prüfsumme (aufklappbar), die Vergleichszeilen
- * aus dem Leser daneben, der Verlauf mit Kommentaren und Ursache-Aussagen („Aussage von …“) und der Abschluss — bei
- * „Maßnahme“ mit dem Sprung in den Dialog „Maßnahme anlegen“. Das Portal rechnet nichts; nichts an der Kennzahl ändert
- * sich (A5).
+ * Die Seite einer Abweichung (Verbessern-Konzept v1 §6.8, PR3) als kurze Geschichte: Titel ist, was auffiel (V6, das
+ * Kennzeichen leise daneben), darunter die Stufen mit Datum, oben das Ergebnis bzw. wer bis wann klärt - mit dem
+ * nächsten Schritt „Abschließen“ und „Aussage festhalten“; dann „Was auffiel“ aus der festgehaltenen Kopie (liest der
+ * Vergleich heute anders, steht der Unterschied als Satz da), „Was dazu bekannt ist“ als Datumsblöcke (eine Aussage immer
+ * mit „Aussage von …“), „Daraus wurde“ und „Über diese Abweichung“. Am Rechner zwei Spalten. Die Marke
+ * `data-entscheid="abweichung_frist"` trägt der Block mit dem nächsten Schritt - dort landet der Sprung der
+ * Wiedervorlage. „Heute“ ist der Tag der Route (`frist.abruf`). Nichts an der Kennzahl ändert sich (A5).
  */
 export function AbweichungSeite({
   id,
@@ -105,12 +55,13 @@ export function AbweichungSeite({
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
-  const [vergleich, setVergleich] = useState<Vergleich>({ art: 'laedt' });
-  const [dialog, setDialog] = useState<null | 'aussage' | 'frist' | 'verantwortlich' | 'abschliessen'>(null);
+  const [vergleich, setVergleich] = useState<BezugsbasisVergleich | null>(null);
+  const [massnahme, setMassnahme] = useState<Massnahme | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
 
   useEffect(() => {
     let aktiv = true;
-    setLage({ art: 'laedt' });
+    setLage((l) => (l.art === 'da' && l.a.id === id ? l : { art: 'laedt' }));
     api.abweichung(id).then(
       (a) => aktiv && setLage({ art: 'da', a }),
       (e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }),
@@ -120,217 +71,333 @@ export function AbweichungSeite({
     };
   }, [id, versuch]);
 
-  const kz = lage.art === 'da' ? lage.a.kennzahl.id : null;
-  const monate = lage.art === 'da' ? [...lage.a.monate].sort() : [];
-  const bb = lage.art === 'da' ? lage.a.bezugsbasis.kennzeichen : null;
-  const von = monate[0];
-  const bis = monate[monate.length - 1];
+  // Der Vergleich der Kennzahl heute - nur, um zu sagen, ob er vom festgehaltenen Monat abweicht.
+  const a = lage.art === 'da' ? lage.a : null;
+  const einMonat = a && a.monate.length === 1 ? a.monate[0] : null;
+  const kz = a?.kennzahl.id ?? null;
+  const bb = a?.bezugsbasis.kennzeichen ?? null;
   useEffect(() => {
-    if (!kz || !von) return;
+    setVergleich(null);
+    if (!kz || !einMonat) return undefined;
     let aktiv = true;
-    setVergleich({ art: 'laedt' });
-    api.bezugsbasisVergleich(kz, { von, bis, ...(bb ? { basis: bb } : {}) }).then(
-      (v) => aktiv && setVergleich({ art: 'da', v }),
-      () => aktiv && setVergleich({ art: 'fehler' }),
+    api.bezugsbasisVergleich(kz, { von: einMonat, bis: einMonat, ...(bb ? { basis: bb } : {}) }).then(
+      (v) => aktiv && setVergleich(v),
+      () => undefined,
     );
     return () => {
       aktiv = false;
     };
-  }, [kz, von, bis, bb]);
+  }, [kz, einMonat, bb]);
+
+  const mId = a?.abschluss?.massnahme?.id ?? null;
+  useEffect(() => {
+    setMassnahme(null);
+    if (!mId) return undefined;
+    let aktiv = true;
+    api.massnahme(mId).then(
+      (m) => aktiv && setMassnahme(m),
+      () => undefined,
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [mId]);
 
   const zurueck = (
-    <button type="button" className="vp-ez-zurueck" onClick={onListe}>
-      <Icon name="chevron-left" size={18} />
+    <button type="button" className="vp-abw-zurueck" onClick={onListe} data-testid="abweichung-zurueck">
+      <Icon name="chevron-left" size={16} />
       {A.ZUR_LISTE}
     </button>
   );
 
-  if (lage.art === 'laedt') {
+  if (!a) {
     return (
-      <div className="vp-ez" data-testid="abweichung-seite" aria-busy="true">
+      <div className="vp-abw" data-testid="abweichung-seite" aria-busy={lage.art === 'laedt'}>
         {zurueck}
-        <Skeleton height={260} />
-      </div>
-    );
-  }
-  if (lage.art !== 'da') {
-    return (
-      <div className="vp-ez" data-testid="abweichung-seite">
-        {zurueck}
-        {lage.art === 'fehlt' ? (
-          <p className="vp-ez-satz">{A.NICHT_GEFUNDEN}</p>
+        {lage.art === 'laedt' ? (
+          <div className="vp-wv-skelett" aria-label="Wird geladen">
+            <span className="vp-skeleton is-zeile" />
+            <span className="vp-skeleton is-karte" />
+            <span className="vp-skeleton is-karte" />
+          </div>
+        ) : lage.art === 'fehlt' ? (
+          <p className="vp-abw-leer">{A.NICHT_GEFUNDEN}</p>
         ) : (
-          <ErrorState message={A.LADEFEHLER_SEITE} onRetry={() => setVersuch((v) => v + 1)} />
+          <div className="vp-abw-leer is-fehler" role="alert">
+            <span>{LADEFEHLER}</span>
+            <button type="button" className="vp-abw-link" onClick={() => setVersuch((v) => v + 1)}>
+              {ERNEUT}
+            </button>
+          </div>
         )}
-        <GrenzSatz className="vp-ez-grenze" />
+        <GrenzSatz className="vp-abw-leise" />
       </div>
     );
   }
 
-  const { a } = lage;
-  const ueberfaellig = A.ueberfaelligText(a);
-  const saetze = A.anlassSaetze(a.anlass_inhalt);
+  const offen = A.offen(a);
   const neu = (x: Abweichung) => {
     setDialog(null);
     setLage({ art: 'da', a: x });
   };
-  const bild = vergleich.art === 'da' ? vergleichBild(vergleich.v) : null;
-  const kennzahl = A.kennzahlText(a.kennzahl);
+  const antwort = A.antwortDerAbweichung(a);
+  const stufen = A.stufenDerAbweichung(a);
+  const zahlen = a.monate.length === 1 ? A.anlassZahlen(a.anlass_inhalt) : null;
+  const saetze = zahlen ? [] : A.anlassSaetze(a.anlass_inhalt);
+  const heute = vergleich?.monate.find((m) => m.periode === einMonat)?.bereinigt ?? null;
+  const anders = A.heuteAnders(zahlen, heute);
+  const verlauf = A.verlaufBild(a);
+  const kennzahl = A.kennzahlName(a.kennzahl);
+  const meta = [kennzahl, `${UEMS_VERANTWORTLICH.toLowerCase()} ${a.verantwortlich.name}`, `Frist ${offen ? '' : 'war '}${Z.tag(a.frist.termin)}`];
+  const vermerktAm = [...(a.vermerke ?? [])].map((v) => v.vermerkt_am).sort()[0] ?? null;
+
+  const menue: RowMenuItem[] = offen
+    ? [
+        { label: A.KNOPF_KOMMENTAR_SCHREIBEN, icon: 'pencil', recht: 'verbesserung.verwalten', standort: a.standort_id, onClick: () => setDialog('kommentar') },
+        { label: A.KNOPF_FRIST, icon: 'calendar', recht: 'verbesserung.verwalten', standort: a.standort_id, onClick: () => setDialog('frist') },
+        { label: A.KNOPF_VERANTWORTLICH, icon: 'users', recht: 'verbesserung.verwalten', standort: a.standort_id, onClick: () => setDialog('verantwortlich') },
+      ]
+    : [];
 
   return (
     <GrenzSatzBereich>
-      <div className="vp-ez" data-testid="abweichung-seite">
+      <div className="vp-abw" data-testid="abweichung-seite">
         {zurueck}
-        <header className="vp-ez-kopf">
-          <div className="vp-ez-kopf-zeile">
-            <h1>{`${A.SPALTEN.kennzeichen} ${a.kennzeichen}`}</h1>
-            <Badge variant="tint">{A.ZUSTAND_WORT[a.zustand]}</Badge>
+        <header className="vp-abw-kopf">
+          <div className="vp-abw-kopf-text">
+            <h1 data-testid="abweichung-titel">
+              {A.abweichungTitel(a)}
+              <span className="vp-abw-kz">{a.kennzeichen}</span>
+            </h1>
+            <p className="vp-abw-meta" data-testid="abweichung-meta">
+              {meta.join(' · ')}
+            </p>
           </div>
-          <p className="vp-ez-satz" data-testid="abweichung-kopf">
-            {A.kopfZeile(a, Z.tag)}
-          </p>
-          <p className="vp-ez-herkunft" data-testid="abweichung-herkunft">
-            <span>{A.HERKUNFT_WORT[a.herkunft.art]}</span>
-            {onKennzahl ? (
-              <button type="button" className="vp-ez-sprung" onClick={() => onKennzahl(a.kennzahl.id)} data-testid="abweichung-sprung-kennzahl">
-                {kennzahl}
-              </button>
-            ) : (
-              <span>{kennzahl}</span>
-            )}
-            <span>{`${UEMS_BEZUGSBASIS} ${a.bezugsbasis.kennzeichen ?? ''}, Fassung ${a.fassung}`}</span>
-            <span data-testid="abweichung-verantwortlich">{`${UEMS_VERANTWORTLICH} ${a.verantwortlich.name}`}</span>
-            <span data-testid="abweichung-frist-tag">{`${A.FRIST} ${Z.tag(a.frist.termin)}`}</span>
-          </p>
-          {a.herkunft.wortlaut && (
-            <p className="vp-ez-leise" data-testid="abweichung-wortlaut">
-              ‚{a.herkunft.wortlaut}‘
-            </p>
+          {menue.length > 0 && (
+            <span className="vp-abw-menue" data-testid="abweichung-menue">
+              <RowMenu label="Weitere Aktionen" buttonClassName="vp-abw-menue-knopf" items={menue} />
+            </span>
           )}
-          {ueberfaellig && (
-            <p className="vp-ez-frist" data-testid="abweichung-ueberfaellig">
-              {ueberfaellig}
-            </p>
-          )}
-          {A.offen(a) && (
-            <div className="vp-ez-aktionen">
-              <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
-                <Button size="sm" variant="outline" onClick={() => setDialog('frist')} data-testid="abweichung-frist-knopf">
-                  {A.KNOPF_FRIST}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setDialog('verantwortlich')} data-testid="abweichung-verantwortlich-knopf">
-                  {A.KNOPF_VERANTWORTLICH}
-                </Button>
-              </Recht>
-            </div>
-          )}
-          <GrenzHinweis />
         </header>
 
-        <div className="vp-aw-spalten">
-          <section className="vp-ez-karte" aria-labelledby="aw-anlass" data-testid="abweichung-anlass">
-            <h2 id="aw-anlass">{A.ANLASS}</h2>
-            {saetze.map((s) => (
-              <p key={s} className="vp-ez-satz" data-testid="anlass-satz">
-                {s}
-              </p>
-            ))}
-            {a.vorbehalte.length > 0 && (
-              <p className="vp-ez-herkunft" data-testid="abweichung-vorbehalte">
-                <span>{`${A.VORBEHALTE}:`}</span>
-                {a.vorbehalte.map((x) => (
-                  <span key={x} className="vp-aw-vorbehalt">
-                    {x}
-                  </span>
-                ))}
-              </p>
-            )}
-            {a.vermerke && a.vermerke.length > 0 && (
-              <ul className="vp-aw-liste" data-testid="abweichung-vermerke">
-                {a.vermerke.map((v) => (
-                  <li key={v.id}>{`${UEMS_AUFFAELLIGKEIT} ${monatWort(v.periode)} — vermerkt am ${Z.tag(v.vermerkt_am)}`}</li>
-                ))}
-              </ul>
-            )}
-            <details className="vp-ez-kopie" data-testid="abweichung-anlass-kopie">
-              <summary>{A.ANLASS_KOPIE}</summary>
-              <pre>{a.anlass}</pre>
-            </details>
-            <p className="vp-ez-pruefsumme" data-testid="abweichung-pruefsumme">
-              {`${A.PRUEFSUMME} ${a.anlass_pruefsumme}`}
-            </p>
-          </section>
+        <ol className="vp-abw-stufen" aria-label="Stand der Abweichung" data-testid="abweichung-stufen">
+          {stufen.map((s) => (
+            <li key={s.wort} className={`is-${s.zustand}`} aria-current={s.zustand === 'jetzt' ? 'step' : undefined}>
+              <span className="vp-abw-punkt" aria-hidden="true">
+                {s.zustand === 'erledigt' && <Icon name="check" size={13} />}
+              </span>
+              <b>{s.wort}</b>
+              {s.tag && <small>{s.tag}</small>}
+            </li>
+          ))}
+        </ol>
 
-          <section className="vp-ez-karte vp-aw-vergleich" aria-labelledby="aw-vergleich" data-testid="abweichung-vergleich">
-            <h2 id="aw-vergleich">{A.VERGLEICH_JETZT}</h2>
-            {vergleich.art === 'laedt' ? (
-              <Skeleton height={120} />
-            ) : bild && bild.art === 'vergleich' ? (
-              <>
-                <p className="vp-ez-leise">{bild.basisZeile}</p>
-                <MonateTafel monate={bild.monate} />
-              </>
-            ) : (
-              <p className="vp-ez-leise">{bild?.art === 'leer' ? bild.satz : A.VERGLEICH_FEHLT}</p>
-            )}
-          </section>
-        </div>
-
-        <section className="vp-ez-karte" aria-labelledby="aw-verlauf" data-testid="abweichung-verlauf">
-          <h2 id="aw-verlauf">{A.VERLAUF}</h2>
-          {a.verlauf && a.verlauf.length > 0 && (
-            <ol className="vp-ez-verlauf">
-              {a.verlauf.map((e) => (
-                <VerlaufZeile key={e.nr} e={e} />
-              ))}
-            </ol>
-          )}
-          {A.offen(a) && (
-            <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
-              <p className="vp-ez-leise">{A.AUSSAGE_HINWEIS}</p>
-              <div className="vp-ez-aktionen">
-                <Button size="sm" variant="outline" onClick={() => setDialog('aussage')} data-testid="abweichung-aussage-knopf">
-                  {A.KNOPF_AUSSAGE}
-                </Button>
-              </div>
-              <Kommentar a={a} onNeu={(x) => setLage({ art: 'da', a: x })} />
-            </Recht>
-          )}
-        </section>
-
-        <section className="vp-ez-karte" aria-labelledby="aw-abschluss" data-testid="abweichung-abschluss" data-entscheid="abweichung_frist">
-          <h2 id="aw-abschluss">{A.ABSCHLUSS}</h2>
-          {a.abschluss ? (
-            <>
-              <p className="vp-ez-satz" data-testid="abschluss-satz">
-                {a.abschluss.satz ??
-                  `Abgeschlossen am ${Z.tag(a.abschluss.am)} von ${a.abschluss.person}: ${A.ERGEBNIS_WORT[a.abschluss.ergebnis]} — ‚${a.abschluss.begruendung}‘`}
-              </p>
-              {a.abschluss.massnahme &&
-                (onMassnahme ? (
-                  <button type="button" className="vp-ez-sprung" onClick={() => onMassnahme(a.abschluss!.massnahme!.id)} data-testid="abschluss-sprung-massnahme">
-                    {`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''} öffnen`}
-                  </button>
-                ) : (
-                  <span>{`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''}`}</span>
-                ))}
-            </>
-          ) : (
-            <div className="vp-ez-aktionen">
+        <div className="vp-abw-antwort" data-entscheid="abweichung_frist" data-testid="abweichung-antwort">
+          <p className={`vp-abw-satz${antwort.warn ? ' is-warn' : ''}`} data-testid="abweichung-satz">
+            {antwort.satz}
+          </p>
+          <p className="vp-abw-formal">{antwort.formal}</p>
+          {offen && (
+            <div className="vp-abw-aktionen">
               <Recht aktion="verbesserung.abschliessen" standort={a.standort_id}>
-                <Button size="sm" onClick={() => setDialog('abschliessen')} data-testid="abweichung-abschliessen-knopf">
+                <Button onClick={() => setDialog('abschliessen')} data-testid="abweichung-abschliessen-knopf" data-entscheid-schritt>
                   {A.KNOPF_ABSCHLIESSEN}
                 </Button>
               </Recht>
+              <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
+                <Button variant="outline" onClick={() => setDialog('aussage')} data-testid="abweichung-aussage-knopf">
+                  {A.KNOPF_AUSSAGE}
+                </Button>
+              </Recht>
             </div>
           )}
-        </section>
+        </div>
 
+        <div className="vp-abw-raster">
+          <div className="vp-abw-spalte">
+            <section className="vp-abw-karte" aria-labelledby="aw-auffiel" data-testid="abweichung-was-auffiel">
+              <div className="vp-abw-blockkopf">
+                <h2 id="aw-auffiel">{A.WAS_AUFFIEL}</h2>
+                <span className="vp-abw-blockkopf-m">{A.monateDerAbweichung(a.monate)}</span>
+              </div>
+              {zahlen?.gemessen ? (
+                <>
+                  <div className="vp-abw-zahlen">
+                    <div>
+                      <span>gemessen</span>
+                      <b className={zahlen.delta && Number(zahlen.delta) > 0 ? 'is-warn' : undefined}>
+                        {A.zahlDe(zahlen.gemessen.wert)} <small>{zahlen.gemessen.einheit}</small>
+                      </b>
+                    </div>
+                    {zahlen.erwartet && (
+                      <div>
+                        <span>erwartet</span>
+                        <b>
+                          {A.zahlDe(zahlen.erwartet.wert)} <small>{zahlen.erwartet.einheit}</small>
+                        </b>
+                      </div>
+                    )}
+                    {zahlen.bedingung && (
+                      <div>
+                        <span>{A.bedingungLabel(zahlen.bedingung)}</span>
+                        <b>
+                          {A.zahlDe(zahlen.bedingung.wert)} <small>{zahlen.bedingung.einheit}</small>
+                        </b>
+                      </div>
+                    )}
+                  </div>
+                  {zahlen.delta && (
+                    <p className="vp-abw-zeile" data-testid="abweichung-delta">
+                      {`${A.deltaWort(zahlen.delta)} als erwartet${zahlen.band ? `; im Rahmen wären ${A.bandText(zahlen.band)}` : ''}.`}
+                    </p>
+                  )}
+                </>
+              ) : saetze.length > 0 ? (
+                saetze.map((s) => (
+                  <p key={s} className="vp-abw-zeile" data-testid="anlass-satz">
+                    {s}
+                  </p>
+                ))
+              ) : (
+                <p className="vp-abw-zeile">Die festgehaltene Kopie nennt keine Zahl für diesen Monat.</p>
+              )}
+              {a.vorbehalte.length > 0 && (
+                <div className="vp-abw-marken" data-testid="abweichung-vorbehalte">
+                  {a.vorbehalte.map((x) => (
+                    <span key={x} className="vp-k-marke">
+                      {x}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {anders && (
+                <p className="vp-abw-leise" data-testid="abweichung-heute-anders">
+                  {anders}
+                </p>
+              )}
+            </section>
 
-        {dialog === 'aussage' && <UrsacheAussageDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
-        {dialog === 'frist' && <FristDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
+            <section className="vp-abw-karte" aria-labelledby="aw-bekannt" data-testid="abweichung-verlauf">
+              <div className="vp-abw-blockkopf">
+                <h2 id="aw-bekannt">{A.WAS_BEKANNT}</h2>
+                {verlauf.length > 1 && <span className="vp-abw-blockkopf-m">{A.NEUESTE_ZUERST}</span>}
+              </div>
+              {verlauf.length === 0 ? (
+                <p className="vp-abw-zeile">{KEIN_EINTRAG(Z.tag(a.eroeffnet_am))}</p>
+              ) : (
+                <ul className="vp-fzl vp-abw-verlauf">
+                  {verlauf.map((e) => {
+                    const t = A.tagBlock(e.am);
+                    return (
+                      <li key={e.key} data-testid="verlauf-eintrag">
+                        <div className="vp-fz">
+                          <FristDatum wort="" tag={t.tag} jahr={t.jahr} satz={`am ${t.tag}${t.jahr}`} ton="bald" />
+                          <span className="vp-fz-text">
+                            <span className="vp-fz-titel">{e.titel}</span>
+                            {e.text && <span className="vp-fz-grund">{e.text}</span>}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {offen && verlauf.length <= 1 && (
+                <p className="vp-abw-leise">{A.AUSSAGE_HINWEIS}</p>
+              )}
+            </section>
+          </div>
+
+          <div className="vp-abw-spalte">
+            <section className="vp-abw-karte" aria-labelledby="aw-daraus" data-testid="abweichung-daraus">
+              <div className="vp-abw-blockkopf">
+                <h2 id="aw-daraus">{A.DARAUS_WURDE}</h2>
+              </div>
+              {a.abschluss?.massnahme ? (
+                <button
+                  type="button"
+                  className="vp-abw-reihe"
+                  onClick={() => onMassnahme?.(a.abschluss!.massnahme!.id)}
+                  disabled={!onMassnahme}
+                  data-testid="abschluss-sprung-massnahme"
+                >
+                  <span className="vp-abw-reihe-text">
+                    <b>{a.abschluss.massnahme.name ?? a.abschluss.massnahme.kennzeichen}</b>
+                    <span>{[`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''}`.trim(), massnahme ? massnahmeZeile(massnahme) : null].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  {onMassnahme && <Icon name="chevron-right" size={16} />}
+                </button>
+              ) : a.abschluss ? (
+                <p className="vp-abw-zitat" data-testid="abschluss-satz">
+                  {`Keine ${UEMS_MASSNAHME} - ${A.ERGEBNIS_WORT[a.abschluss.ergebnis]}: ‚${a.abschluss.begruendung}‘`}
+                  <small>{`${a.abschluss.person} · ${Z.tag(a.abschluss.am)}`}</small>
+                </p>
+              ) : (
+                <p className="vp-abw-zeile">{OFFEN_DARAUS}</p>
+              )}
+            </section>
+
+            <section className="vp-abw-karte" aria-labelledby="aw-ueber" data-testid="abweichung-ueber">
+              <div className="vp-abw-blockkopf">
+                <h2 id="aw-ueber">{A.UEBER_DIESE}</h2>
+              </div>
+              <dl className="vp-abw-zuo">
+                <div className="vp-abw-zr">
+                  <dt>Kennzahl</dt>
+                  <dd>
+                    <b>{kennzahl}</b>
+                    <span>{`${UEMS_BEZUGSBASIS} ${a.bezugsbasis.kennzeichen ?? ''}, Fassung ${a.fassung}`}</span>
+                  </dd>
+                  {onKennzahl && (
+                    <button type="button" className="vp-abw-link" onClick={() => onKennzahl(a.kennzahl.id)} data-testid="abweichung-sprung-kennzahl">
+                      {A.KNOPF_ANSEHEN}
+                    </button>
+                  )}
+                </div>
+                <div className="vp-abw-zr">
+                  <dt>Eröffnet</dt>
+                  <dd>
+                    <b>{`${Z.tag(a.eroeffnet_am)} von ${a.eroeffnet_von}`}</b>
+                    <span data-testid="abweichung-herkunft">
+                      {a.herkunft.art === 'von_hand'
+                        ? `von Hand${a.herkunft.wortlaut ? `: ‚${a.herkunft.wortlaut}‘` : ''}`
+                        : vermerktAm
+                          ? `aus der Auffälligkeit vom ${Z.tag(vermerktAm)}`
+                          : A.HERKUNFT_WORT.auffaelligkeit}
+                    </span>
+                  </dd>
+                </div>
+                <div className="vp-abw-zr">
+                  <dt>Was auffiel, festgehalten</dt>
+                  <dd>
+                    <b>{`Kopie vom ${Z.tag(a.eroeffnet_am)}`}</b>
+                    <span>mit Prüfsumme, unverändert</span>
+                  </dd>
+                  <button type="button" className="vp-abw-link" onClick={() => setDialog('kopie')} data-testid="abweichung-kopie-knopf">
+                    {A.KNOPF_KOPIE}
+                  </button>
+                </div>
+              </dl>
+            </section>
+          </div>
+        </div>
+
+        <GrenzHinweis />
+
+        {dialog === 'aussage' && <UrsacheAussageDialog abweichung={a} tagHeute={a.frist.abruf} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'frist' && <FristDialog abweichung={a} tagHeute={a.frist.abruf} onClose={() => setDialog(null)} onFertig={neu} />}
         {dialog === 'verantwortlich' && <VerantwortlicherDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
-        {dialog === 'abschliessen' && <AbschliessenDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'abschliessen' && <AbschliessenDialog abweichung={a} tagHeute={a.frist.abruf} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'kommentar' && <KommentarDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'kopie' && (
+          <Modal open onClose={() => setDialog(null)} title={`${A.WAS_AUFFIEL}, festgehalten`}>
+            <div className="vp-abw-blatt" data-testid="abweichung-kopie">
+              <p className="vp-abw-leise">{`So wurde der Monat beim Eröffnen am ${Z.tag(a.eroeffnet_am)} gelesen; die Prüfsumme zeigt, dass die Kopie unverändert ist.`}</p>
+              <pre className="vp-abw-kopie">{a.anlass}</pre>
+              <p className="vp-abw-leise" data-testid="abweichung-pruefsumme">{`${A.PRUEFSUMME} ${a.anlass_pruefsumme}`}</p>
+            </div>
+          </Modal>
+        )}
       </div>
     </GrenzSatzBereich>
   );

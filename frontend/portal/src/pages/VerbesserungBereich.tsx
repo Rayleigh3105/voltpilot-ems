@@ -50,6 +50,9 @@ export function VerbesserungBereich({
   reiterOben?: boolean;
 }) {
   const reiterRand = useReiterRand<HTMLDivElement>();
+  // Verbessern-Konzept v1 (Entscheid 2): der Reiter „Abweichungen“ trägt seinen Titel selbst, „Was VoltPilot leistet“
+  // steht an seinem Fuß.
+  const eigenerKopf = reiter === 'abweichungen';
   if (energiezielId) return <EnergiezielSeite id={energiezielId} onListe={onListe} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
   if (abweichungId) {
     return <AbweichungSeite id={abweichungId} onListe={() => onReiter('abweichungen')} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
@@ -60,9 +63,9 @@ export function VerbesserungBereich({
   return (
     <GrenzSatzBereich>
       <div className="vp-ez" data-testid="verbesserung-bereich">
-        <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
-        <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />
-        <GrenzHinweis />
+        {!eigenerKopf && <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>}
+        {!eigenerKopf && <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />}
+        {!eigenerKopf && <GrenzHinweis />}
         {!reiterOben && <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
           {Z.REITER.map((r) => (
             <button
@@ -84,7 +87,7 @@ export function VerbesserungBereich({
           <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
         ) : (
           <>
-            <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} grenze={false} />
+            <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} onKennzahl={onKennzahl} grenze={false} />
           </>
         )}
       </div>

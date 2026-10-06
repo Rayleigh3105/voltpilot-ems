@@ -14486,6 +14486,27 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/auffaelligkeiten:
+    get:
+      tags: [kennzahlen]
+      summary: Die Auffälligkeiten (Vermerke) aller sichtbaren Kennzahlen - für Verbessern.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-16, Verbessern-Konzept v1 Entscheid 4); derselbe Zaun wie an der
+        Kennzahl: RLS über `standort_id` des Vermerks und je Kennzahl ihre Sicht - ein Vermerk an einer nicht
+        sichtbaren Kennzahl fehlt in der Liste (kein 404). Je Vermerk die Kennzahl, die Kopie des Vergleichsergebnisses
+        mit Prüfsumme, die geerbten Vorbehalte und die Antwort; ältester Monat zuerst. `zustand` (`offen · beantwortet`)
+        filtert, `offen` zählt immer alle sichtbaren offenen; ein anderer Parameter 400. Beantwortet wird an der
+        Kennzahl (`POST /api/v1/kennzahlen/{id}/auffaelligkeiten/{aid}/antwort`).
+      parameters:
+        - { name: zustand, in: query, required: false, schema: { type: string, enum: [offen, beantwortet] } }
+      responses:
+        "200":
+          description: Die sichtbaren Vermerke nach Monat, mit dem Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuffaelligkeitenAlle" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/abweichungen:
     get:
       tags: [kennzahlen]
@@ -32113,6 +32134,15 @@ components:
       required: [kennzahl, abruf, offen, vermerke]
       properties:
         kennzahl: { $ref: "#/components/schemas/AbweichungVerweis" }
+        abruf: { type: string, format: date }
+        offen: { type: integer }
+        vermerke: { type: array, items: { $ref: "#/components/schemas/Auffaelligkeit" } }
+    AuffaelligkeitenAlle:
+      type: object
+      description: >
+        Die Vermerke aller sichtbaren Kennzahlen (Verbessern, Entscheid 4); die Kennzahl steht an jedem Vermerk.
+      required: [abruf, offen, vermerke]
+      properties:
         abruf: { type: string, format: date }
         offen: { type: integer }
         vermerke: { type: array, items: { $ref: "#/components/schemas/Auffaelligkeit" } }

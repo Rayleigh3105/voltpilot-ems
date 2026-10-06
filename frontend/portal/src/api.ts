@@ -3026,6 +3026,16 @@ export interface AuffaelligkeitListe {
   vermerke: Auffaelligkeit[];
 }
 
+/**
+ * `GET /api/v1/auffaelligkeiten` (Verbessern, Entscheid 4): die Vermerke aller sichtbaren Kennzahlen, ältester Monat
+ * zuerst; die Kennzahl steht an jedem Vermerk, `offen` zählt alle sichtbaren offenen.
+ */
+export interface AuffaelligkeitenAlle {
+  abruf: string;
+  offen: number;
+  vermerke: Auffaelligkeit[];
+}
+
 /** `POST /api/v1/kennzahlen/{id}/auffaelligkeiten/{aid}/antwort` — einmalig. */
 export type AuffaelligkeitAntwort =
   | { antwort: 'abweichung'; verantwortlich: string; frist?: string }
@@ -11083,6 +11093,9 @@ export const api = {
   // ------------------------------------------------------------------ Auffälligkeiten und Abweichungen (UEMS AP-18 IP-16)
   /** Die Vermerke einer Kennzahl — offen und beantwortet; `offen` zählt immer alle offenen. */
   auffaelligkeiten: (kennzahlId: string) => request<AuffaelligkeitListe>(`/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten`),
+  /** Verbessern (Entscheid 4): die Vermerke aller sichtbaren Kennzahlen; beantwortet wird an der Kennzahl. */
+  alleAuffaelligkeiten: (zustand?: Auffaelligkeit['zustand']) =>
+    request<AuffaelligkeitenAlle>(`/api/v1/auffaelligkeiten${zustand ? `?zustand=${zustand}` : ''}`),
   auffaelligkeitAntworten: (kennzahlId: string, vermerkId: string, body: AuffaelligkeitAntwort) =>
     request<{ vermerk: Auffaelligkeit; abweichung: Abweichung | null }>(
       `/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten/${vermerkId}/antwort`, { method: 'POST', body: JSON.stringify(body) }),

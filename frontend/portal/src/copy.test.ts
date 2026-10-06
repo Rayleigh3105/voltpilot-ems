@@ -1933,6 +1933,8 @@ const KENNZAHL_BESTAND: string[] = [
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
   'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
+  'components/AbweichungenRegister.tsx', // neu: der Reiter nennt die Kennzahl jeder Auffälligkeit und Abweichung (Verbessern-Konzept v1, PR3)
+  'components/AuffaelligkeitBlatt.tsx', // neu: „Keine Antwort ändert eine Zahl“ nennt Kennzahl und Bezugsbasis (Verbessern-Konzept v1, PR3)
   'components/AuthScreen.tsx', // neu: die Anmelde-Bühne zeigt die Flächen des Portals als Kacheln, eine davon „Kennzahlen“ (Login-Konzept C)
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
   'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
@@ -1954,6 +1956,7 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
+  'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
   'portfolioCockpit.ts', // alt

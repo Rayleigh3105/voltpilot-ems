@@ -34,7 +34,22 @@ export function useAktiveKonten(): { geladen: boolean; konten: { value: string; 
 }
 
 /** Wahl des Verantwortlichen aus den aktiven Konten; ohne lesbare Konten ein ehrlicher Satz. */
-export function VerantwortlichWahl({ id, wert, setze, fehler }: { id: string; wert: string; setze: (v: string) => void; fehler: string | null }) {
+export function VerantwortlichWahl({
+  id,
+  wert,
+  setze,
+  fehler,
+  label = UEMS_VERANTWORTLICH,
+  hint = 'Aus den aktiven Konten Ihres Kundenbereichs. Verantwortung verleiht kein Recht.',
+}: {
+  id: string;
+  wert: string;
+  setze: (v: string) => void;
+  fehler: string | null;
+  /** Die Frage über der Wahl (im Antwort-Blatt „Wer klärt das?“). */
+  label?: string;
+  hint?: string;
+}) {
   const { geladen, konten } = useAktiveKonten();
   if (konten === null) {
     return <p className="vp-ez-fehler">{`Die Konten Ihres Kundenbereichs sind gerade nicht abrufbar — ohne ${UEMS_VERANTWORTLICH} lässt sich nichts eröffnen.`}</p>;
@@ -42,12 +57,12 @@ export function VerantwortlichWahl({ id, wert, setze, fehler }: { id: string; we
   return (
     <VpPicker
       id={id}
-      label={UEMS_VERANTWORTLICH}
+      label={label}
       options={konten}
       loading={!geladen}
       value={wert || null}
       onChange={(v) => setze(v ?? '')}
-      hint="Aus den aktiven Konten Ihres Kundenbereichs. Verantwortung verleiht kein Recht."
+      hint={hint}
       error={fehler}
     />
   );

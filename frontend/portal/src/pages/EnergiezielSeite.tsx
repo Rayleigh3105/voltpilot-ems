@@ -4,6 +4,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Energieziel, type EnergiezielStand, type VorgangAnstoss } from '../api';
+import { AuffaelligkeitHinweis } from '../components/AuffaelligkeitHinweis';
 import { EnergiezielBeendenDialog, EnergiezielBewertenDialog } from '../components/EnergiezielDialoge';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { Recht } from '../components/Recht';
@@ -241,6 +242,9 @@ export function EnergiezielSeite({
             </>
           )}
         </section>
+
+        {/* Verbessern-Konzept v1 (Entscheid 4): eine offene Auffälligkeit an der Kennzahl steht am Energieziel. */}
+        {offen && <AuffaelligkeitHinweis kennzahlen={[ez.kennzahl.id]} art="seite" />}
 
         <section className="vp-ez-karte" aria-labelledby="ez-bewertung" data-testid="energieziel-bewertung" data-entscheid="energieziel_bewertung">
           <h2 id="ez-bewertung">Bewertung</h2>

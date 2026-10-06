@@ -145,13 +145,14 @@ describe('die Flächen gegen R4/R10', () => {
     expect(await screen.findByText(UEMS_VERBESSERUNG_SAETZE.leer())).toBeTruthy();
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
-  it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf', async () => {
+  it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf zum Eröffnen', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, abweichungBuehne('leer', '2028-01-15'));
     bereich('abweichungen');
     const register = await screen.findByTestId('abweichungen-register');
     expect(within(register).getByTestId('abweichungen-leer')).toBeTruthy();
-    expect(within(register).queryByRole('button')).toBeNull();
+    // Eröffnet wird an der Kennzahl (aus einer Auffälligkeit oder von Hand) — der Reiter erklärt nur „Was ist …?“.
+    expect(within(register).queryByRole('button', { name: /eröffnen/i })).toBeNull();
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
   it('Register R4: Kennzahl, Zielwert, Zielperiode, Stand, Verantwortlich, Zustand', async () => {

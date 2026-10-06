@@ -25,6 +25,7 @@ public class PortfolioKpiController {
         this.service = service;
     }
 
+    // Rechte: lesendes Aggregat, keine eigene Kennung - der Zaun über RLS und die sichtbaren Anlagen wie /overview.
     @GetMapping
     public PortfolioKpiDto kpis() {
         return service.kpis(Instant.now());
