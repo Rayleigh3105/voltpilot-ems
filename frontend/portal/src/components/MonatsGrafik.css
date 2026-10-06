@@ -1,0 +1,247 @@
+/*
+ * Die Abweichung je Monat (Auswerten a1 „.graf“, Verbessern §6.11): das SVG trägt nur Marken, alle Texte sind HTML —
+ * gleich groß bei jeder Breite, nie außerhalb der Grafik. viewBox 290 × 142, Nulllinie in der Mitte. Farben nur für das
+ * Urteil (weniger als erwartet --vp-flow-batt, mehr --vp-c-warn-fg, im Rahmen Grau wie a1), das Energieziel als
+ * gestrichelte Linie in --vp-navy.
+ */
+.vp-mgraf-karte {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.vp-mgraf-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-bg, #f8fafc);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mgraf-info b {
+  font: 700 0.875rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mgraf-info .w {
+  font: 700 0.875rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  color: var(--vp-navy, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-mgraf-info .u {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mgraf-info .u.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mgraf-info .u.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-mgraf {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 6px;
+  container-type: inline-size;
+  margin: 4px 0 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+.vp-mgraf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 4px;
+}
+.vp-mgraf-y {
+  position: relative;
+  align-self: stretch;
+}
+.vp-mgraf-y .sizer {
+  display: block;
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+  font: 500 10px/1 var(--vp-c-font);
+  white-space: nowrap;
+}
+.vp-mgraf-y .sizer.w {
+  font: 600 9.5px/1 var(--vp-c-font);
+}
+.vp-mgraf-y span:not(.sizer) {
+  position: absolute;
+  right: 0;
+  white-space: nowrap;
+  font: 500 10px/1 var(--vp-c-font);
+  color: #64748b;
+}
+.vp-mgraf-y span.w:not(.sizer) {
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.vp-mgraf-y .oben {
+  top: 0;
+}
+.vp-mgraf-y .mitte {
+  transform: translateY(-50%);
+}
+.vp-mgraf-y .unten {
+  top: 100%;
+  transform: translateY(-100%);
+}
+.vp-mgraf-p {
+  position: relative;
+  min-width: 0;
+}
+.vp-mgraf-p > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.vp-mgraf-band {
+  fill: #eef2f7;
+}
+.vp-mgraf-gitter {
+  stroke: var(--vp-c-border, #e2e8f0);
+  stroke-width: 1;
+}
+.vp-mgraf-null {
+  stroke: #cbd5e1;
+  stroke-width: 1;
+}
+.vp-mgraf-saeule {
+  fill: #94a3b8;
+}
+.vp-mgraf-saeule.is-ok {
+  fill: var(--vp-flow-batt, #16a34a);
+}
+.vp-mgraf-saeule.is-warn {
+  fill: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mgraf-offen {
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2.5;
+}
+.vp-mgraf-linie {
+  stroke: var(--vp-navy, #1e3a5f);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3.5;
+}
+.vp-mgraf-wahl {
+  fill: none;
+  stroke: var(--vp-navy, #1e3a5f);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+.vp-mgraf-tippen {
+  fill: transparent;
+  cursor: pointer;
+}
+.vp-mgraf-x,
+.vp-mgraf-j {
+  grid-column: 2;
+  display: grid;
+}
+.vp-mgraf-x {
+  margin-top: 5px;
+}
+.vp-mgraf-x > span {
+  min-width: 0;
+  text-align: center;
+  font: 500 9.5px/1.2 var(--vp-c-font);
+  color: #64748b;
+  white-space: nowrap;
+}
+.vp-mgraf-x > span.sel {
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-mgraf-x > span.spaeter {
+  color: #cbd5e1;
+}
+.vp-mgraf-x .mk {
+  display: none;
+}
+@container (max-width: 300px) {
+  .vp-mgraf-x .ml {
+    display: none;
+  }
+  .vp-mgraf-x .mk {
+    display: inline;
+  }
+}
+.vp-mgraf-j {
+  margin-top: 1px;
+}
+.vp-mgraf-j > span {
+  min-width: 0;
+  font: 500 9px/1.2 var(--vp-c-font);
+  color: #64748b;
+  white-space: nowrap;
+  padding-left: 3px;
+}
+.vp-mgraf-j > span.ende {
+  justify-self: end;
+  text-align: right;
+  padding-left: 0;
+}
+.vp-mgraf-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mgraf-legende span {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.vp-mgraf-legende i {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: #94a3b8;
+}
+.vp-mgraf-legende i.is-warn {
+  background: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mgraf-legende i.is-ok {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-mgraf-legende i.linie {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed var(--vp-navy, #1e3a5f);
+  border-radius: 0;
+  background: none;
+}
+.vp-mgraf-tipp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mgraf-tipp svg {
+  flex: 0 0 auto;
+}
+.vp-mgraf-tipp .maus {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .vp-mgraf-tipp .fein {
+    display: none;
+  }
+  .vp-mgraf-tipp .maus {
+    display: inline;
+  }
+}

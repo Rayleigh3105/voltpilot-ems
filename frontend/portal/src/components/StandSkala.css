@@ -1,0 +1,77 @@
+/*
+ * Die Skala aus Auswerten (Konzept a1, „.skala“), 1:1 in Verbessern §6.11: viewBox 320 × 24, Spur 10…310, Bezugsbasis
+ * bei 160. Farben aus den Haus-Tokens: Spur --vp-flow-base, Weg zum Energieziel --vp-flow-batt-soft, Energieziel
+ * --vp-navy, Punkt in der Farbe des Urteils (weniger als erwartet --vp-flow-batt, mehr --vp-c-warn-fg, im Rahmen Grau).
+ */
+.vp-skala {
+  margin: 6px 0 4px;
+  min-width: 0;
+}
+.vp-skala > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.vp-skala-o,
+.vp-skala-m {
+  position: relative;
+  height: 14px;
+}
+.vp-skala-o span,
+.vp-skala-m span {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+  font: 500 9.5px/14px var(--vp-c-font);
+  color: #64748b;
+}
+.vp-skala-o span {
+  font: 700 10px/14px var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-skala-m span.is-ziel {
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-skala .is-mitte {
+  transform: translateX(-50%);
+}
+.vp-skala .is-ende {
+  transform: translateX(-100%);
+}
+.vp-skala .is-start {
+  transform: none;
+}
+.vp-skala-u {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  font: 500 9.5px/1.3 var(--vp-c-font);
+  color: #64748b;
+}
+.vp-skala-spur {
+  fill: var(--vp-flow-base, #e3e9f1);
+}
+.vp-skala-weg {
+  fill: var(--vp-flow-batt-soft, #e7f6ec);
+}
+.vp-skala-basis {
+  stroke: #64748b;
+  stroke-width: 1.5;
+}
+.vp-skala-ziel {
+  stroke: var(--vp-navy, #1e3a5f);
+  stroke-width: 2.5;
+}
+.vp-skala-punkt {
+  stroke: #fff;
+  stroke-width: 2.5;
+  fill: #94a3b8;
+}
+.vp-skala-punkt.is-ok {
+  fill: var(--vp-flow-batt, #16a34a);
+}
+.vp-skala-punkt.is-warn {
+  fill: var(--vp-c-warn-fg, #9a3412);
+}
