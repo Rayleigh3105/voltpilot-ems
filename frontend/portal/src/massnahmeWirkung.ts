@@ -8,7 +8,7 @@
 import { runden } from './bezugsbasis';
 import { band, deltaText, deZahl, menge, urteilWort } from './bezugsbasisVergleich';
 import type { Massnahme, MassnahmeBewertung, MassnahmeErgebnis, MassnahmeWirkung, VorgangAnstoss, VorgangAnstossAntwortArt } from './api';
-import { ablehnungCode, ANSTOSS_WORT, summenZeile, tag } from './energieziele';
+import { ablehnungCode, ANSTOSS_WORT, offenGrund, summenZeile, tag } from './energieziele';
 import { ablehnungSatz as massnahmeAblehnung } from './massnahmen';
 import { UEMS_BEOBACHTET, UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_VERBESSERUNG_SAETZE, UEMS_WIRKUNG } from './glossar';
 
@@ -38,7 +38,7 @@ export const bewertungOffenSatz = UEMS_VERBESSERUNG_SAETZE.bewertungOffen;
 // ------------------------------------------------------------------ Wirkung
 
 export type WirkungZeile =
-  | { art: 'offen'; periode: string; beschriftung: string }
+  | { art: 'offen'; periode: string; beschriftung: string; grund: string }
   | { art: 'gezaehlt'; periode: string; beschriftung: string; gemessen: string; erwartet: string; delta: string | null;
       urteil: string; band: string | null; urteilKlasse: string; roh: string | null; version: number | null }
   | { art: 'nicht_gezaehlt'; periode: string; beschriftung: string; gemessen: string; satz: string; roh: string | null };
@@ -47,7 +47,7 @@ export type WirkungZeile =
 export const rohText = (roh: string | null) => (roh === null ? null : deZahl(runden(roh, 4)));
 
 /**
- * Je Monat vom Umsetzungsmonat an eine Zeile: noch nicht endgültig · gezählt (gemessen mit Version, erwartet, Δ,
+ * Je Monat vom Umsetzungsmonat an eine Zeile: offen mit Grund der Route · gezählt (gemessen mit Version, erwartet, Δ,
  * Urteil mit Band, roh) · nicht gezählt mit dem Satz des Lesers (Umsetzungsmonat, nicht bewertbar, Basis nach der
  * Umsetzung). Ob ein Monat zählt, sagt allein `gezaehlt` der Route (WK3).
  */
@@ -57,7 +57,7 @@ export function wirkungZeilen(w: Pick<MassnahmeWirkung, 'monate'>): WirkungZeile
     const b = v.bereinigt;
     const roh = rohText(kennzahl_roh);
     if (!gezaehlt && satz) return { art: 'nicht_gezaehlt', periode, beschriftung, gemessen: menge(b.gemessen.wert, b.gemessen.einheit), satz, roh };
-    if (!endgueltig || !gezaehlt) return { art: 'offen', periode, beschriftung };
+    if (!endgueltig || !gezaehlt) return { art: 'offen', periode, beschriftung, grund: offenGrund(v) };
     return {
       art: 'gezaehlt',
       periode,

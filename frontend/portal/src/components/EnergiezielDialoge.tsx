@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Energieziel, type EnergiezielErgebnis, type EnergiezielStand, type Kennzahl, type VorgangAnstoss } from '../api';
-import { heute } from '../bewertung';
+import { routenHeute, useRoutenHeute } from '../routenUhr';
 import { basisZeile as bezugsbasisZeile, zeilenFassung } from '../bezugsbasisAnlegen';
 import * as Z from '../energieziele';
 import { anstossZeile } from '../massnahmeWirkung';
@@ -48,7 +48,7 @@ export function EnergiezielSetzenDialog({
   basisZeile,
   onClose,
   onGesetzt,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   kennzahl: Pick<Kennzahl, 'id' | 'kennzeichen' | 'name'>;
   basisZeile: string;
@@ -173,6 +173,7 @@ export function EnergiezielSetzen({
 }) {
   const [offen, setOffen] = useState(false);
   const [gesetzt, setGesetzt] = useState<Energieziel | null>(null);
+  const tagHeute = useRoutenHeute();
   if (lage.art !== 'da' || !lage.fassung || lage.basis.beendet_zum !== null) return null;
   if (zeilenFassung(lage.basis)?.freigabe_status !== 'freigegeben') return null;
   return (
@@ -188,9 +189,10 @@ export function EnergiezielSetzen({
           <a href={hashForRoute(energiezielRoute(gesetzt.id))}>{`${UEMS_ENERGIEZIEL} ${gesetzt.kennzeichen} öffnen`}</a>
         </p>
       )}
-      {offen && (
+      {offen && tagHeute && (
         <EnergiezielSetzenDialog
           kennzahl={kennzahl}
+          tagHeute={tagHeute}
           basisZeile={bezugsbasisZeile(lage.basis, lage.fassung, kennzahl.einheit_anzeige)}
           onClose={() => setOffen(false)}
           onGesetzt={(ez) => {
@@ -338,7 +340,7 @@ export function EnergiezielBeendenDialog({
   ez,
   onClose,
   onBeendet,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   ez: Energieziel;
   onClose: () => void;
