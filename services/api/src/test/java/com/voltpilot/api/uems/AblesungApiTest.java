@@ -257,6 +257,31 @@ class AblesungApiTest {
         assertThat(ohne.path("register").size()).isZero();
     }
 
+    /**
+     * Messen PR5: mit letzterMonat=true trägt die Zeile den Monat vor dem Stichtag mit GENAU dem Schritt der Werte-Route
+     * - der Oktober aus dem Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (1.240 m³), ein Monat ohne Ablesung „keine Werte“.
+     */
+    @Test
+    void registerNenntDenLetztenVollstaendigenMonatAusDerWerteRegel() throws Exception {
+        Welt w=welt(); anfang(w);
+        JsonNode z=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?letzterMonat=true&stichtag=2026-11-20",null),200)
+                .body().path("register").get(0);
+        assertThat(z.path("letzter_monat").path("monat").asText()).isEqualTo("2026-10");
+        assertThat(z.path("letzter_monat").path("zeitzone").asText()).isEqualTo("Europe/Berlin");
+        assertThat(z.path("letzter_monat").path("wert")).isEqualTo(monat(w,"2026-10-01","2026-10-31",null));
+        assertThat(z.path("letzter_monat").path("wert").path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(z.path("letzter_monat").path("wert").path("kennzeichen").get(0).asText())
+                .contains("01.10. 07:15", "02.11. 07:40", "Zuordnung durch den Kunden");
+        JsonNode spaeter=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?letzterMonat=true&stichtag=2026-12-01",null),200)
+                .body().path("register").get(0).path("letzter_monat");
+        assertThat(spaeter.path("monat").asText()).isEqualTo("2026-11");
+        assertThat(spaeter.path("wert")).isEqualTo(monat(w,"2026-11-01","2026-11-30",null));
+        assertThat(spaeter.path("wert").path("menge").isNull()).isTrue();
+        assertThat(spaeter.path("wert").path("zustand").asText()).isEqualTo("keine Werte");
+        assertThat(registerZeile(w,"2026-11-20").has("letzter_monat")).isFalse();
+        ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?letzterMonat=ja",null),400);
+    }
+
     private JsonNode registerZeile(Welt w,String stichtag) throws Exception {
         JsonNode r=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?stichtag="+stichtag,null),200).body().path("register");
         assertThat(r.size()).isEqualTo(1);
