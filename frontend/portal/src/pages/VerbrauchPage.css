@@ -235,7 +235,8 @@
     font-size: 1.25rem;
     line-height: 1.32;
   }
-  .vp-vb-karte {
+  /* Wie die Karten der Familie am Rechner; vor der Grundregel weiter unten nur mit höherer Spezifität. */
+  .vp-vb .vp-vb-karte {
     padding: 16px 22px;
   }
 }
