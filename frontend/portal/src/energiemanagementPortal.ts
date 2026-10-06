@@ -20,7 +20,6 @@ import {
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import {
   UEMS_DOKUMENTE,
-  UEMS_FESTSTELLUNGEN,
   UEMS_GEPRUEFT_BLEIBT_KNOPF,
   UEMS_MANAGEMENTBEWERTUNG,
   UEMS_VERZEICHNIS,
@@ -98,8 +97,8 @@ export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt
   // §6.3 nennt den Reiter „Aufgaben“; die Überschrift darin ist das Glossar-Wort „Aufgaben im Energiemanagement“.
   { key: 'aufgaben', label: 'Aufgaben' },
   // §6.3 nennt den Reiter „Audits“ (das Auditprogramm, IA4); darin heißt jedes „internes Audit“.
+  // Konzept Nachweisen n1, Entscheid 17: die Feststellungen stehen im Reiter „Audits“; `…/feststellungen` öffnet ihn dort.
   { key: 'audits', label: 'Audits' },
-  { key: 'feststellungen', label: UEMS_FESTSTELLUNGEN },
   { key: 'managementbewertung', label: UEMS_MANAGEMENTBEWERTUNG },
 ];
 

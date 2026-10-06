@@ -516,14 +516,16 @@ button.vp-nw-fz {
   gap: 8px;
   min-width: 0;
 }
-/* Am Rechner zwei Spalten (Konzept, Desktop-Mocks): links der Inhalt, rechts Stufen, Knöpfe und der Kasten „Stand“. */
+/* Am Rechner zwei Spalten (Konzept, Desktop-Mocks r2d-M2/r2d-EP): links der Inhalt, rechts Stufen und Knöpfe, darunter
+   die Angaben als Karte. Am Telefon bleibt die Reihenfolge Stufen · Inhalt · Angaben. */
 .vp-nw-zwei {
   display: grid;
   gap: 16px;
   min-width: 0;
 }
 .vp-nw-spalte-seite,
-.vp-nw-spalte-haupt {
+.vp-nw-spalte-haupt,
+.vp-nw-spalte-mehr {
   display: grid;
   gap: 16px;
   align-content: start;
@@ -532,15 +534,33 @@ button.vp-nw-fz {
 @media (min-width: 1080px) {
   .vp-nw-zwei {
     grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'haupt seite'
+      'haupt mehr';
     align-items: start;
   }
+  .vp-nw-zwei.is-ohne-haupt {
+    grid-template-areas:
+      'mehr seite'
+      'mehr seite';
+  }
   .vp-nw-zwei > .vp-nw-spalte-seite {
-    grid-column: 2;
-    grid-row: 1;
+    grid-area: seite;
   }
   .vp-nw-zwei > .vp-nw-spalte-haupt {
-    grid-column: 1;
-    grid-row: 1;
+    grid-area: haupt;
+  }
+  .vp-nw-zwei > .vp-nw-spalte-mehr {
+    grid-area: mehr;
+  }
+  /* Die Angaben-Zeilen stehen rechts als Karte („Sitzung“, „Stand“ der Desktop-Mocks). */
+  .vp-nw-spalte-seite + .vp-nw-spalte-haupt + .vp-nw-spalte-mehr > .vp-nw-zeilen,
+  .vp-nw-zwei:not(.is-ohne-haupt) > .vp-nw-spalte-mehr > .vp-nw-zeilen {
+    padding: 4px 22px;
+    border: 1px solid var(--vp-c-border, #e2e8f0);
+    border-radius: var(--vp-radius-lg, 24px);
+    background: var(--vp-c-card, #fff);
   }
 }
 

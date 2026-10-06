@@ -75,7 +75,8 @@ public final class FeststellungDto {
     public record Feststellung(UUID id, String kennzeichen, QuelleAus quelle, String wortlaut, VorgabeAus vorgabe,
             BezugAus bezug, EnergiemanagementPersonenDto.PersonKurz festgestelltVon, LocalDate festgestelltAm,
             EnergiemanagementVerantwortungDto.Person verantwortlich, LocalDate frist, String zustand, Frist lage,
-            String ergebnis, int eintraege, List<String> massnahmen, EnergiemanagementPersonenDto.Eingetragen eingetragen) {}
+            String ergebnis, LocalDate abgeschlossenAm, int eintraege, List<String> massnahmen,
+            EnergiemanagementPersonenDto.Eingetragen eingetragen) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Eintrag(long id, String art, LocalDate am, EnergiemanagementPersonenDto.PersonKurz person,

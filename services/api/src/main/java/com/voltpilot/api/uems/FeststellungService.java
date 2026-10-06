@@ -641,7 +641,7 @@ public class FeststellungService {
                         f.bezugObjekte()),
                 leute.get(f.festgestelltVon()), f.festgestelltAm(),
                 new EnergiemanagementVerantwortungDto.Person(f.verantwortlichSub(), f.verantwortlichName()), f.frist(),
-                f.zustand(), frist, f.ergebnis(), f.eintraege(), massnahmen,
+                f.zustand(), frist, f.ergebnis(), f.abgeschlossenAm(), f.eintraege(), massnahmen,
                 new EnergiemanagementPersonenDto.Eingetragen(f.akteur(), f.angelegtAm()));
     }
 

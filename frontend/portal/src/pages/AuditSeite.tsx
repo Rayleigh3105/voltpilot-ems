@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
-import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type InternesAuditMitVerlauf } from '../api';
+import { api, ApiError, type Feststellung, type InternesAuditMitVerlauf, type Massnahme } from '../api';
+import * as B from '../auditBild';
 import * as A from '../auditFeststellung';
 import { EinsichtGruppe, EinsichtRecht } from '../components/EinsichtRecht';
 import { FeststellungErfassenDialog } from '../components/FeststellungDialoge';
+import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import {
   AuditAbsagenDialog,
   AuditAbschliessenDialog,
@@ -14,26 +14,43 @@ import {
   ablehnung,
 } from '../components/InternesAuditDialoge';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
+import { ErklaerKnopf } from '../components/nachweisen/ErklaerKnopf';
+import { NwBlatt } from '../components/nachweisen/NwBlatt';
+import { NwKopf } from '../components/nachweisen/NwKopf';
+import { PruefZeilen } from '../components/nachweisen/NwSchritte';
+import { StatusZeile, ZustandsZeichen } from '../components/nachweisen/NwStatus';
+import { Fakt, NwKarte, NwZeile, NwZeilen, ZeilenZustand } from '../components/nachweisen/NwZeilen';
+import { Stufen } from '../components/nachweisen/Stufen';
+import { RowMenu } from '../components/RowMenu';
 import * as E from '../energiemanagementPortal';
-import { UEMS_EINGETRAGEN_VON, UEMS_ENTSCHIEDEN_VON, UEMS_FESTSTELLUNGEN } from '../glossar';
-import { feststellungRoute, hashForRoute } from '../nav';
+import { feststellungRoute, hashForRoute, massnahmeRoute } from '../nav';
+import { useRollen } from '../rollen';
+import '../components/nachweisen/NwZeilen.css';
 import './Energiemanagement.css';
 
 type Dialog = null | 'durchgefuehrt' | 'hinweis' | 'feststellung' | 'abschliessen' | 'absagen';
+type Blatt = null | 'umfang' | 'pruefer' | 'original' | 'verlauf' | { hinweis: number };
 
 /**
- * Die Seite eines internen Audits (UEMS AP-19 IP-20, §5.4, IA1–IA5): Kopf „Internes Audit AU-… · durchgeführt am … von
- * …“, Unabhängigkeit als Wortlaut, was und woran geprüft wird, die Hinweise (festgestellt von der Person, die prüft,
- * eingetragen von einem Konto) mit „Maßnahme anlegen“ (Herkunft internes Audit vorbelegt), die Feststellungen mit
- * Quelle dieses Audits, der Abschluss mit Bericht als Verweis und Prüfsumme, der Verlauf. `id` darf das Kennzeichen sein.
+ * Die Seite eines internen Audits (Konzept Nachweisen n1 Runde 2, §6.6; vorher IP-20, IA1–IA5): Name mit i-Knopf, wer
+ * prüft als Kurzzeile, der Zustand als Status-Zeile, die Stufen „Geplant · Durchgeführt · Abgeschlossen“ mit Tag, genau
+ * der nächste Schritt als Knopf, „Was daraus wurde“ als Zeilen (Hinweis mit dem Zustand seiner Maßnahme, Feststellung mit
+ * ihrem) und drei Zeilen „Geprüft“, „Wer prüfte“, „Original“, deren Wortlaut erst im Blatt steht. Kennzeichen und Verlauf
+ * stehen im Menü „…“. `id` darf das Kennzeichen sein (Sprung von der Maßnahmen-Seite).
  */
 export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onListe: () => void; onFeststellung: (id: string) => void }) {
+  const rollen = useRollen();
   const [daten, setDaten] = useState<InternesAuditMitVerlauf | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [massnahmen, setMassnahmen] = useState<Massnahme[] | null>(null);
+  const [feststellungen, setFeststellungen] = useState<Feststellung[] | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [blatt, setBlatt] = useState<Blatt>(null);
+  const [versuch, setVersuch] = useState(0);
+  const [kopiert, setKopiert] = useState(false);
+
   useEffect(() => {
     let aktiv = true;
-    setDaten(null);
     setFehler(null);
     const laden = A.istKennzeichen(id)
       ? api.energiemanagementAudits().then((p) => {
@@ -46,171 +63,244 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
       (d) => aktiv && setDaten(d),
       (e) => aktiv && setFehler(ablehnung(e)),
     );
+    // Was daraus wurde: die Maßnahmen aus Verbessern (Herkunft dieses Audits) und die Feststellungen mit ihrem Zustand.
+    api.massnahmen().then(
+      (r) => aktiv && setMassnahmen(r.massnahmen),
+      () => aktiv && setMassnahmen(null),
+    );
+    api.energiemanagementFeststellungen().then(
+      (r) => aktiv && setFeststellungen(r.feststellungen),
+      () => aktiv && setFeststellungen(null),
+    );
     return () => {
       aktiv = false;
     };
-  }, [id]);
+  }, [id, versuch]);
+
   const fertig = (d: InternesAuditMitVerlauf) => {
     setDialog(null);
     setDaten(d);
+    setVersuch((v) => v + 1);
   };
-  const zurueck = (
-    <button type="button" className="vp-ez-zurueck" onClick={onListe} data-testid="audit-zurueck">
-      <Icon name="chevron-left" size={18} />
-      Zum Auditprogramm
-    </button>
-  );
+
   if (!daten) {
     return (
-      <div className="vp-ez" data-testid="audit-seite">
-        {zurueck}
-        {fehler ? <p className="vp-ez-fehler" role="alert">{fehler}</p> : <p className="vp-ez-leise">Wird geladen …</p>}
-        <div className="vp-em-saetze">
-          <GrenzSatz className="vp-ez-grenze" verantwortung />
-        </div>
-      </div>
-    );
-  }
-  const { audit: a, hinweise, verlauf } = daten;
-  const durchgefuehrt = a.zustand === 'durchgefuehrt';
-  const abschluss = a.abschluss;
-  return (
-    <GrenzSatzBereich>
-      <div className="vp-ez" data-testid="audit-seite">
-        {zurueck}
-        <div className="vp-ez-kopf">
-          <h1>{`${a.kennzeichen} ${a.titel}`}</h1>
-          <p className="vp-ez-satz" data-testid="audit-kopf">
-            {A.auditKopf(a)}
-          </p>
-          <p className="vp-ez-leise" data-testid="audit-zustand">
-            {`${A.AUDIT_ZUSTAND_WORT[a.zustand]} · Verantwortlich ${a.verantwortlich.name}`}
-            {a.abgesagt_begruendung ? ` · ${a.abgesagt_begruendung}` : ''}
-          </p>
-          <EinsichtGruppe aktion={[E.RECHT_VERWALTEN, E.RECHT_FREIGEBEN]} standort={null}>
-            <div className="vp-ez-aktionen">
-              {a.zustand === 'geplant' && (
-                <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-                  <Button onClick={() => setDialog('durchgefuehrt')} data-testid="audit-durchgefuehrt">
-                    {A.KNOPF_DURCHGEFUEHRT}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setDialog('absagen')} data-testid="audit-absagen">
-                    {A.KNOPF_AUDIT_ABSAGEN}
-                  </Button>
-                </EinsichtRecht>
-              )}
-              {durchgefuehrt && (
-                <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-                  <Button variant="outline" onClick={() => setDialog('hinweis')} data-testid="audit-hinweis">
-                    {A.KNOPF_HINWEIS}
-                  </Button>
-                  <Button variant="outline" onClick={() => setDialog('feststellung')} data-testid="audit-feststellung">
-                    {A.KNOPF_FESTSTELLUNG}
-                  </Button>
-                </EinsichtRecht>
-              )}
-              {durchgefuehrt && (
-                <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
-                  <Button onClick={() => setDialog('abschliessen')} data-testid="audit-abschliessen">
-                    {A.KNOPF_AUDIT_ABSCHLIESSEN}
-                  </Button>
-                </EinsichtRecht>
-              )}
-            </div>
-          </EinsichtGruppe>
+      <GrenzSatzBereich>
+        <div className="vp-nw-seite" data-testid="audit-seite">
+          <NwKopf titel={fehler ? 'Internes Audit' : 'Wird geladen …'} zurueck={{ label: B.ALLE_AUDITS, onClick: onListe }} />
+          {fehler && (
+            <p className="vp-ez-fehler" role="alert">
+              {fehler}
+            </p>
+          )}
+          <GrenzSatz verantwortung />
           <GrenzHinweis />
         </div>
+      </GrenzSatzBereich>
+    );
+  }
 
-        <section className="vp-ez-karte" aria-label="Umfang" data-testid="audit-umfang">
-          <dl className="vp-em-dl">
-            <dt>Wer prüft</dt>
-            <dd>{a.auditoren.map((p) => `${p.name} (${p.funktion})`).join(', ')}</dd>
-            <dt>Unabhängigkeit</dt>
-            <dd data-testid="audit-unabhaengigkeit">{a.unabhaengigkeit}</dd>
-            <dt>Was geprüft wird</dt>
-            <dd>{a.was}</dd>
-            <dt>Woran geprüft wird</dt>
-            <dd>{a.woran}</dd>
-            <dt>Termin</dt>
-            <dd className="vp-em-tag">{E.tagText(a.termin)}</dd>
-          </dl>
-        </section>
+  const { audit: a, hinweise, verlauf } = daten;
+  const status = B.auditStatus(a);
+  const ausAudit = massnahmen?.filter((m) => m.herkunft.art === 'audit' && m.herkunft.kennung === a.kennzeichen) ?? null;
+  const daraus = B.wasDarausWurde(a, ausAudit, feststellungen);
+  const abschluss = a.abschluss;
+  const bericht = abschluss?.bericht ?? null;
+  const verwalten = rollen.darf(E.RECHT_VERWALTEN, null);
+  const offenesBlatt = typeof blatt === 'object' && blatt ? hinweise.find((h) => h.nr === blatt.hinweis) ?? null : null;
+  const hinweisMassnahme = (nr: number) => {
+    const z = (abschluss?.kopie?.hinweise ?? []) as { nr?: number; massnahme?: string | null }[];
+    const kz = z.find((h) => h.nr === nr)?.massnahme ?? (a.hinweise === 1 && ausAudit?.length === 1 ? ausAudit[0].kennzeichen : null);
+    return kz ? (ausAudit?.find((m) => m.kennzeichen === kz) ?? null) : null;
+  };
 
-        <section className="vp-ez-karte" aria-label="Hinweise" data-testid="audit-hinweise">
-          <h2>Hinweise</h2>
-          {hinweise.length === 0 ? (
-            <p className="vp-ez-leise">{a.zustand === 'geplant' ? 'Hinweise halten Sie fest, sobald das Audit durchgeführt ist.' : 'Kein Hinweis festgehalten.'}</p>
-          ) : (
-            <ol className="vp-ez-verlauf">
-              {hinweise.map((h) => (
-                <li key={h.nr} data-testid={`audit-hinweis-${h.nr}`}>
-                  <blockquote className="vp-em-wortlaut">{h.wortlaut}</blockquote>
-                  <p className="vp-ez-leise">{A.hinweisSatz(h)}</p>
-                  {a.zustand !== 'abgesagt' && (
-                    <MassnahmeAnlegen vorbelegung={{ herkunft: 'audit', herkunftKennung: a.kennzeichen, titel: h.wortlaut.slice(0, 120) }} standort={null} />
-                  )}
-                </li>
-              ))}
-            </ol>
+  const aktionen =
+    a.zustand === 'geplant' ? (
+      <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+        <Button onClick={() => setDialog('durchgefuehrt')} data-testid="audit-durchgefuehrt">
+          {A.KNOPF_DURCHGEFUEHRT}
+        </Button>
+      </EinsichtRecht>
+    ) : a.zustand === 'durchgefuehrt' ? (
+      <EinsichtGruppe aktion={[E.RECHT_VERWALTEN, E.RECHT_FREIGEBEN]} standort={null}>
+        <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
+          <Button onClick={() => setDialog('abschliessen')} data-testid="audit-abschliessen">
+            {A.KNOPF_AUDIT_ABSCHLIESSEN}
+          </Button>
+        </EinsichtRecht>
+        <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+          <Button variant="outline" onClick={() => setDialog('hinweis')} data-testid="audit-hinweis">
+            {A.KNOPF_HINWEIS}
+          </Button>
+          <Button variant="outline" onClick={() => setDialog('feststellung')} data-testid="audit-feststellung">
+            {A.KNOPF_FESTSTELLUNG}
+          </Button>
+        </EinsichtRecht>
+      </EinsichtGruppe>
+    ) : null;
+
+  const menue = (
+    <RowMenu
+      label="Weitere Aktionen"
+      items={[
+        {
+          label: kopiert ? `${a.kennzeichen} kopiert` : `Kennzeichen ${a.kennzeichen}`,
+          onClick: () => {
+            void navigator.clipboard?.writeText(a.kennzeichen).then(() => setKopiert(true), () => undefined);
+          },
+        },
+        { label: B.VERLAUF, onClick: () => setBlatt('verlauf') },
+        ...(a.zustand === 'geplant' && verwalten
+          ? [{ label: A.KNOPF_AUDIT_ABSAGEN, recht: E.RECHT_VERWALTEN, standort: null, danger: true, onClick: () => setDialog('absagen') }]
+          : []),
+      ]}
+    />
+  );
+
+  return (
+    <GrenzSatzBereich>
+      <div className="vp-nw-seite" data-testid="audit-seite">
+        <NwKopf
+          titel={B.auditName(a)}
+          zurueck={{ label: B.ALLE_AUDITS, onClick: onListe }}
+          erklaerung={B.erklaerungAudit([a])}
+          kurzzeile={B.auditorenZeile(a)}
+          status={<StatusZeile zeichen={<ZustandsZeichen art={status.zeichen} />} text={status.text} sub={status.sub} warn={status.warn} testId="audit-status" />}
+          menue={menue}
+          testId="audit-kopf"
+        />
+        <div className={`vp-nw-zwei${daraus.length ? '' : ' is-ohne-haupt'}`}>
+          <div className="vp-nw-spalte-seite">
+            <Stufen stufen={B.auditStufen(a, verlauf)} testId="audit-stufen" />
+            {aktionen && <div className="vp-nw-aktionen">{aktionen}</div>}
+          </div>
+          {daraus.length > 0 && (
+            <div className="vp-nw-spalte-haupt">
+              <NwKarte titel={B.WAS_DARAUS_WURDE} zahl={daraus.length} testId="audit-daraus">
+                <NwZeilen>
+                  {daraus.map((z, i) => (
+                    <NwZeile
+                      key={`${z.art}-${i}`}
+                      vorn={<ZustandsZeichen art={z.zeichen} stumm />}
+                      titel={z.titel}
+                      rechts={z.zustand ? <ZeilenZustand ton={z.warn ? 'warn' : undefined}>{z.zustand}</ZeilenZustand> : undefined}
+                      {...(z.art === 'hinweis'
+                        ? { onClick: () => setBlatt({ hinweis: hinweise[i]?.nr ?? i + 1 }) }
+                        : z.ziel
+                          ? { href: hashForRoute(feststellungRoute(z.ziel)), onClick: () => onFeststellung(z.ziel!) }
+                          : {})}
+                      testId={`audit-daraus-${z.art}-${i}`}
+                    />
+                  ))}
+                </NwZeilen>
+              </NwKarte>
+            </div>
           )}
-        </section>
+          <div className="vp-nw-spalte-mehr">
+            <NwZeilen testId="audit-angaben">
+              <NwZeile titel="Geprüft" rechts={<Fakt>{`${B.themenZahl(a.was)} Themen`}</Fakt>} onClick={() => setBlatt('umfang')} testId="audit-umfang" />
+              <NwZeile titel="Wer prüfte" rechts={<Fakt>unabhängig</Fakt>} onClick={() => setBlatt('pruefer')} testId="audit-pruefer" />
+              {(bericht || abschluss?.zusammenfassung) && (
+                <NwZeile
+                  titel="Original"
+                  rechts={<Fakt>{bericht ? B.ortKurz(bericht.ablage) : 'Zusammenfassung'}</Fakt>}
+                  onClick={() => setBlatt('original')}
+                  testId="audit-original"
+                />
+              )}
+            </NwZeilen>
+          </div>
+        </div>
+        <GrenzSatz verantwortung />
+        <GrenzHinweis />
 
-        <section className="vp-ez-karte" aria-label={UEMS_FESTSTELLUNGEN} data-testid="audit-feststellungen">
-          <h2>{UEMS_FESTSTELLUNGEN}</h2>
-          {a.feststellungen.length === 0 ? (
-            <p className="vp-ez-leise">Keine Feststellung aus diesem Audit.</p>
-          ) : (
-            <ul className="vp-em-liste">
-              {a.feststellungen.map((k) => (
-                <li key={k}>
-                  <a href={hashForRoute(feststellungRoute(k))} onClick={(ev) => (ev.preventDefault(), onFeststellung(k))} data-testid={`audit-sprung-${k}`}>
-                    {`Feststellung ${k}`}
-                  </a>
-                </li>
-              ))}
-            </ul>
+        <NwBlatt open={blatt === 'umfang'} titel="Geprüft" onClose={() => setBlatt(null)} testId="audit-blatt-umfang">
+          <PruefZeilen
+            zeilen={[
+              { etikett: 'Audit', wert: a.titel },
+              { etikett: 'Was', wert: a.was },
+              { etikett: 'Woran', wert: a.woran },
+              { etikett: 'Termin', wert: E.tagText(a.termin) },
+            ]}
+          />
+        </NwBlatt>
+        <NwBlatt open={blatt === 'pruefer'} titel="Wer prüfte" onClose={() => setBlatt(null)} testId="audit-blatt-pruefer">
+          <PruefZeilen
+            zeilen={[
+              { etikett: 'Wer prüft', wert: a.auditoren.map((p) => [p.name, p.funktion].filter(Boolean).join(', ')).join(' · ') },
+              { etikett: 'Warum unabhängig', wert: a.unabhaengigkeit },
+              { etikett: 'Verantwortlich', wert: a.verantwortlich.name },
+            ]}
+          />
+        </NwBlatt>
+        <NwBlatt open={blatt === 'original'} titel="Original" onClose={() => setBlatt(null)} testId="audit-blatt-original">
+          {abschluss && (
+            <PruefZeilen
+              zeilen={[
+                ...(bericht
+                  ? [
+                      { etikett: 'Bericht', wert: bericht.bezeichnung ?? '' },
+                      { etikett: 'Wo', wert: `${bericht.ablage}${E.verweisAngaben(bericht) ? ` (${E.verweisAngaben(bericht)})` : ''}` },
+                    ]
+                  : []),
+                ...(abschluss.zusammenfassung ? [{ etikett: 'Zusammenfassung', wert: abschluss.zusammenfassung }] : []),
+                { etikett: 'Abgeschlossen', wert: `${abschluss.entschieden_von.name} · ${E.tagText(abschluss.am)}` },
+                { etikett: 'Eingetragen', wert: abschluss.eingetragen.akteur.name },
+                { etikett: 'Prüfsumme', wert: <span title={abschluss.pruefsumme}>{E.kurz(abschluss.pruefsumme)}</span> },
+              ]}
+            />
           )}
-        </section>
-
-        {abschluss && (
-          <section className="vp-ez-karte" aria-label="Abschluss" data-testid="audit-abschluss">
-            <h2>Abschluss</h2>
-            <dl className="vp-em-dl">
-              <dt>{UEMS_ENTSCHIEDEN_VON}</dt>
-              <dd>{`${abschluss.entschieden_von.name} am ${E.tagText(abschluss.am)}`}</dd>
-              <dt>{UEMS_EINGETRAGEN_VON}</dt>
-              <dd>{abschluss.eingetragen.akteur.name}</dd>
-              {abschluss.bericht?.ablage && (
-                <>
-                  <dt>Bericht</dt>
-                  <dd data-testid="audit-bericht">{`Geführt in Ihrem System: ${abschluss.bericht.ablage}${E.verweisAngaben(abschluss.bericht) ? ` (${E.verweisAngaben(abschluss.bericht)})` : ''}.`}</dd>
-                </>
-              )}
-              {abschluss.zusammenfassung && (
-                <>
-                  <dt>Zusammenfassung</dt>
-                  <dd>{abschluss.zusammenfassung}</dd>
-                </>
-              )}
-              <dt>Prüfsumme</dt>
-              <dd className="vp-ez-pruefsumme" title={abschluss.pruefsumme} data-testid="audit-pruefsumme">
-                {E.kurz(abschluss.pruefsumme)}
-              </dd>
-            </dl>
-          </section>
-        )}
-
-        <section className="vp-ez-karte" aria-label="Verlauf">
-          <h2>Verlauf</h2>
-          <ul className="vp-ez-verlauf" data-testid="audit-verlauf">
+        </NwBlatt>
+        <NwBlatt open={!!offenesBlatt} titel="Hinweis" onClose={() => setBlatt(null)} testId="audit-blatt-hinweis">
+          {offenesBlatt && (
+            <>
+              <blockquote className="vp-nw-zitat" data-testid={`audit-hinweis-${offenesBlatt.nr}`}>
+                {offenesBlatt.wortlaut}
+              </blockquote>
+              <PruefZeilen
+                zeilen={[
+                  { etikett: 'Festgestellt', wert: `${offenesBlatt.festgestellt_von.name} · ${E.tagText(offenesBlatt.am)}` },
+                  { etikett: 'Eingetragen', wert: offenesBlatt.eingetragen.akteur.name },
+                  ...(hinweisMassnahme(offenesBlatt.nr)
+                    ? [
+                        {
+                          etikett: 'Maßnahme',
+                          wert: (
+                            <a href={hashForRoute(massnahmeRoute(hinweisMassnahme(offenesBlatt.nr)!.id))}>
+                              {`${hinweisMassnahme(offenesBlatt.nr)!.kennzeichen} · ${B.massnahmeZustand(hinweisMassnahme(offenesBlatt.nr)!).wort.replace('Maßnahme ', '')}`}
+                            </a>
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+              <div className="vp-nw-blatt-zeile">
+                <ErklaerKnopf erklaerung={B.ERKLAERUNG_HINWEIS} klein testId="hinweis-erklaeren" />
+                {!hinweisMassnahme(offenesBlatt.nr) && a.zustand !== 'abgesagt' && (
+                  <MassnahmeAnlegen
+                    vorbelegung={{ herkunft: 'audit', herkunftKennung: a.kennzeichen, titel: offenesBlatt.wortlaut.slice(0, 120) }}
+                    standort={null}
+                    onAngelegt={() => {
+                      setBlatt(null);
+                      setVersuch((v) => v + 1);
+                    }}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </NwBlatt>
+        <NwBlatt open={blatt === 'verlauf'} titel={B.VERLAUF} onClose={() => setBlatt(null)} testId="audit-blatt-verlauf">
+          <ul className="vp-nw-verlauf" data-testid="audit-verlauf">
             {verlauf.map((v) => (
               <li key={v.id}>
-                {`${A.AUDIT_VERLAUF_WORT[v.art] ?? v.art} — ${v.akteur.name}, ${E.tagText(v.zeit.slice(0, 10))}${v.begruendung ? `: ${v.begruendung}` : ''}`}
+                <b>{E.tagText(v.zeit.slice(0, 10))}</b>
+                {`${A.AUDIT_VERLAUF_WORT[v.art] ?? v.art} · ${v.akteur.name}${v.begruendung ? ` · ${v.begruendung}` : ''}`}
               </li>
             ))}
           </ul>
-        </section>
-
+        </NwBlatt>
 
         {dialog === 'durchgefuehrt' && <AuditDurchgefuehrtDialog id={a.id} termin={a.termin} onClose={() => setDialog(null)} onFertig={fertig} />}
         {dialog === 'absagen' && <AuditAbsagenDialog id={a.id} onClose={() => setDialog(null)} onFertig={fertig} />}

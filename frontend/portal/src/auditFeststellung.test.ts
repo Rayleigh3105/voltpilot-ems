@@ -18,7 +18,7 @@ const feststellung = (over: Partial<Feststellung> = {}): Feststellung => ({
   vorgabe: { dokument_id: 'd1', dokument: 'D-0001', fassung: 1, wortlaut: '„Wir legen fest, wer wofür zuständig ist.“' },
   bezug: { standort_id: null, aufgabe: 'bezugsbasen', dokument_id: null, dokument: null, objekte: ['BB-0001', 'BB-0002'] },
   festgestellt_von: CB, festgestellt_am: '2029-01-22', verantwortlich: { sub: 'JW', name: 'Jonas Wendlinger' }, frist: '2029-04-22', zustand: 'offen',
-  lage: { abruf: '2029-01-23', faellig_am: '2029-04-22', tage: -89, satz: 'fällig in 89 Tagen', grund: null }, ergebnis: null, eintraege: 0, massnahmen: [], eingetragen, ...over,
+  lage: { abruf: '2029-01-23', faellig_am: '2029-04-22', tage: -89, satz: 'fällig in 89 Tagen', grund: null }, ergebnis: null, abgeschlossen_am: null, eintraege: 0, massnahmen: [], eingetragen, ...over,
 });
 
 describe('UEMS AP-19 IP-20 · Audits und Feststellungen: Sätze aus §5.8', () => {

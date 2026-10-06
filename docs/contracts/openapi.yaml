@@ -19069,7 +19069,7 @@ components:
         grund: { type: string, nullable: true, enum: [abgeschlossen, null] }
     Feststellung:
       type: object
-      required: [id, kennzeichen, quelle, wortlaut, vorgabe, bezug, festgestellt_von, festgestellt_am, verantwortlich, frist, zustand, lage, ergebnis, eintraege, massnahmen, eingetragen]
+      required: [id, kennzeichen, quelle, wortlaut, vorgabe, bezug, festgestellt_von, festgestellt_am, verantwortlich, frist, zustand, lage, ergebnis, abgeschlossen_am, eintraege, massnahmen, eingetragen]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^F-[0-9]{4}-[0-9]{4,9}$" }
@@ -19084,6 +19084,7 @@ components:
         zustand: { type: string, enum: [offen, abgeschlossen] }
         lage: { $ref: "#/components/schemas/FeststellungFrist" }
         ergebnis: { type: string, nullable: true, enum: [wirksam, ohne_massnahme, zurueckgenommen, null], description: Das Ergebnis des schließenden Stands. }
+        abgeschlossen_am: { type: string, format: date, nullable: true, description: "Der Tag des schließenden Stands („wirksam seit …“); offen null." }
         eintraege: { type: integer, description: Anzahl der Einträge. }
         massnahmen: { type: array, items: { type: string }, description: Die Kennzeichen der Maßnahmen mit Herkunft dieser Feststellung. }
         eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }

@@ -9027,6 +9027,8 @@ export interface Feststellung {
   /** Vertrag `ueberpruefung` (Art `feststellung`) am Abruf-Tag — „seit n Tagen fällig“; abgeschlossen ohne Frist. */
   lage: { abruf: string; faellig_am: string | null; tage: number | null; satz: string | null; grund: string | null };
   ergebnis: 'wirksam' | 'ohne_massnahme' | 'zurueckgenommen' | null;
+  /** Der Tag des schließenden Stands („wirksam seit …“); offen `null`. */
+  abgeschlossen_am: string | null;
   eintraege: number;
   massnahmen: string[];
   eingetragen: EnergiemanagementEingetragen;
