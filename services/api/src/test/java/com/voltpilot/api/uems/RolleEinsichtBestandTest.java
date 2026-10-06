@@ -39,9 +39,11 @@ class RolleEinsichtBestandTest {
 
     /**
      * SHA-256 der Zeilen {@code kennung;KA;EM;BE;BD;LE;US;VB\n} aller Aktionen in der Folge der Datei, gemessen an
-     * {@code origin/uems} vor IP-12, mit den drei {@code energiemanagement.*} von IP-5 (81 Aktionen, 25.09.2026).
+     * {@code origin/uems} vor IP-12, mit den drei {@code energiemanagement.*} von IP-5 (81 Aktionen, 25.09.2026) und
+     * der Zeile {@code verbesserung.eigene_massnahme;U;U;S;S;S;-;-} aus Verbessern v1 §10.8 (82 Aktionen, 06.10.2026;
+     * alle 81 Zeilen davor unverändert).
      */
-    private static final String BESTAND_SHA256 = "3b4bf6d65ac84c94edb54c557e3ce27af360b2d60d4bef8536644b1884edff19";
+    private static final String BESTAND_SHA256 = "b211bc0dc08c8fd8443e33948e6e8a95516b55f941cfb866bcf90221baf823b8";
 
     /** R6 „lesen“ — die Zeilen, an denen Einsicht U trägt (energiemanagement.ansehen seit IP-5). */
     private static final Set<String> LESEND = Set.of("aenderungsprotokoll.lesen", "messwerte.ansehen",
