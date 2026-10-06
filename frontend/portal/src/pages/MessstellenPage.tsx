@@ -265,8 +265,11 @@ interface RegisterProps {
   onUebersicht?: () => void;
   /** AP-01 E5 = A: der Leerzustand führt in den Assistenten „Messen & Auswerten“ (nur mit Recht). */
   onMessenEinrichten?: () => void;
-  /** Öffnet die Messstellen-Seite (AP-04 IP-8) - jede Reihe ist der Einstieg. */
-  onOeffnen?: (id: string) => void;
+  /**
+   * Öffnet die Messstellen-Seite (AP-04 IP-8) - jede Reihe ist der Einstieg. Mit „Stand am …“ öffnet sie die Werte an
+   * genau diesem Tag (`periode`, AP-13 IP-3); sonst `null`, und die Seite wählt selbst.
+   */
+  onOeffnen?: (id: string, periode: string | null) => void;
 }
 
 /** Ein Wechsel der Adresse ohne Verlaufseintrag; nur, wenn sie sich ändert. */
@@ -527,10 +530,10 @@ function RegisterFlaeche({
             ) : (
               <>
                 {sichtbar.gruppen.map((g) => (
-                  <OrtKarte key={g.key} gruppe={g} gefiltert={gefiltert} suche={suche} onOeffnen={onOeffnen} />
+                  <OrtKarte key={g.key} gruppe={g} gefiltert={gefiltert} suche={suche} periode={stichtag} onOeffnen={onOeffnen} />
                 ))}
                 {sichtbar.archiviert.length > 0 && (
-                  <ArchivKarte reihen={sichtbar.archiviert} suche={suche} onOeffnen={onOeffnen} />
+                  <ArchivKarte reihen={sichtbar.archiviert} suche={suche} periode={stichtag} onOeffnen={onOeffnen} />
                 )}
               </>
             )}
@@ -827,12 +830,14 @@ function OrtKarte({
   gruppe,
   gefiltert,
   suche,
+  periode,
   onOeffnen,
 }: {
   gruppe: OrtGruppe;
   gefiltert: boolean;
   suche: string;
-  onOeffnen?: (id: string) => void;
+  periode: string | null;
+  onOeffnen?: (id: string, periode: string | null) => void;
 }) {
   const titelId = `vp-ms-ort-${useId().replace(/:/g, '')}`;
   return (
@@ -845,7 +850,7 @@ function OrtKarte({
       <ul className="vp-ms-reihen">
         {gruppe.reihen.map((r) => (
           <li key={r.id}>
-            <ReiheLink r={r} suche={suche} onOeffnen={onOeffnen} />
+            <ReiheLink r={r} suche={suche} periode={periode} onOeffnen={onOeffnen} />
           </li>
         ))}
       </ul>
@@ -853,14 +858,27 @@ function OrtKarte({
   );
 }
 
-/** Eine Reihe: die ganze Fläche ist der Link auf die Messstelle (mindestens 56 px hoch). */
-function ReiheLink({ r, suche, onOeffnen }: { r: Reihe; suche: string; onOeffnen?: (id: string) => void }) {
+/**
+ * Eine Reihe: die ganze Fläche ist der Link auf die Messstelle (mindestens 56 px hoch). Mit „Stand am …“ trägt er den
+ * Tag als Periode - die Seite öffnet die Werte dieses Tages, nicht die von heute.
+ */
+function ReiheLink({
+  r,
+  suche,
+  periode,
+  onOeffnen,
+}: {
+  r: Reihe;
+  suche: string;
+  periode: string | null;
+  onOeffnen?: (id: string, periode: string | null) => void;
+}) {
   const pfad = window.location.hash.split('?')[0] || '#/portfolio/messstellen';
-  const href = `${pfad}/${encodeURIComponent(r.id)}`;
+  const href = `${pfad}/${encodeURIComponent(r.id)}${periode ? `?periode=${periode}` : ''}`;
   const klick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
     if (!onOeffnen || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    onOeffnen(r.id);
+    onOeffnen(r.id, periode);
   };
   return (
     <a
@@ -917,7 +935,17 @@ function ReiheLink({ r, suche, onOeffnen }: { r: Reihe; suche: string; onOeffnen
 }
 
 /** Archivierte Messstellen: zugeklappt am Ende („Archiviert · 2“), aufgeklappt als Reihen. */
-function ArchivKarte({ reihen, suche, onOeffnen }: { reihen: Reihe[]; suche: string; onOeffnen?: (id: string) => void }) {
+function ArchivKarte({
+  reihen,
+  suche,
+  periode,
+  onOeffnen,
+}: {
+  reihen: Reihe[];
+  suche: string;
+  periode: string | null;
+  onOeffnen?: (id: string, periode: string | null) => void;
+}) {
   return (
     <details className="vp-ms-ort vp-ms-archiv" data-testid="messstellen-archiv">
       <summary className="vp-ms-ort-kopf">
@@ -927,7 +955,7 @@ function ArchivKarte({ reihen, suche, onOeffnen }: { reihen: Reihe[]; suche: str
       <ul className="vp-ms-reihen">
         {reihen.map((r) => (
           <li key={r.id}>
-            <ReiheLink r={r} suche={suche} onOeffnen={onOeffnen} />
+            <ReiheLink r={r} suche={suche} periode={periode} onOeffnen={onOeffnen} />
           </li>
         ))}
       </ul>

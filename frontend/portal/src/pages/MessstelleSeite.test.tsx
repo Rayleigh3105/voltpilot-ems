@@ -110,7 +110,7 @@ describe('die Adresse der Seite', () => {
     const reihe = await screen.findByRole('link', { name: /^Spritzguss SG01–SG06 MS-06/ }, WARTEN);
     expect(reihe.getAttribute('href')).toMatch(new RegExp(`/messstellen/${MS_IDS.ms06}$`));
     fireEvent.click(reihe);
-    expect(onOeffnen).toHaveBeenCalledWith(MS_IDS.ms06);
+    expect(onOeffnen).toHaveBeenCalledWith(MS_IDS.ms06, null);
   });
 });
 
