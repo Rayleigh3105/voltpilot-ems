@@ -91,7 +91,9 @@ describe('VerbrauchPage — Wo geht die Energie hin?', () => {
     await waitFor(() => expect(abruf).toHaveBeenCalledWith('2025-11-01', '2026-10-31'));
     expect(abruf).toHaveBeenCalledWith('2024-11-01', '2025-10-31');
     expect(window.location.hash).toBe('#/portfolio/verbrauch?zeitraum=12monate');
-    expect(await screen.findByTestId('verbrauch-antwort')).toHaveTextContent('In zwölf Monaten 2,2 Millionen kWh Strom');
+    // Bis der neue Stand da ist, steht der alte gedimmt (aria-busy) — dann der Satz über zwölf Monate.
+    await waitFor(() => expect(screen.getByTestId('verbrauch-inhalt')).toHaveAttribute('aria-busy', 'false'));
+    expect(screen.getByTestId('verbrauch-antwort')).toHaveTextContent('In zwölf Monaten 2,2 Millionen kWh Strom');
     expect(screen.getByTestId('verbrauch-zeitraum')).toHaveTextContent('Nov 2025 – Okt 2026');
     const info = screen.getByTestId('verbrauch-infozeile');
     expect(info).toHaveTextContent(`Oktober 2026191.000 kWh`);

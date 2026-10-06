@@ -256,6 +256,9 @@
   display: grid;
   gap: 12px;
 }
+.vp-ee-protokoll .vp-bw-karte {
+  border-radius: var(--vp-radius-md, 16px);
+}
 .vp-ee-nurvorleser {
   position: absolute;
   width: 1px;

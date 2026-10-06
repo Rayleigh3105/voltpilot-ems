@@ -400,16 +400,17 @@ function hinweise(d: VerbrauchDaten, rest: number | null): Hinweis[] {
 const zugeordnetTon = (k8: string): 'ok' | 'warn' | 'neutral' =>
   k8 === 'ueber_schwelle' ? 'ok' : k8 === 'unter_schwelle' ? 'warn' : 'neutral';
 
+/**
+ * Woher die Gesamtmenge kommt: der Hauptzähler der Anlage. Die Herkunft nennt neben ihm auch die Unterzähler, darum
+ * steht hier die Anlage, nicht ein Kennzeichen.
+ */
 function hauptzaehlerZeile(r: BewertungRangliste): string {
-  const quelle = [...r.einsaetze, ...r.weitere_traeger].find((e) => e.herkunft?.nenner);
-  const kennzeichen = [
-    ...new Set((quelle?.herkunft.nenner?.bilanzwerte ?? []).flatMap((b) => b.eingaenge.map((x) => x.objekt))),
-  ];
+  const mitBilanz = r.anlagen.filter((a) => a.zustand !== 'ohne Bilanz');
   const wer =
     r.nenner.gesamt > 1
-      ? `Hauptzähler von ${r.nenner.anlagen} Anlagen`
-      : kennzeichen.length === 1
-        ? `Hauptzähler ${kennzeichen[0]}`
+      ? `Hauptzähler aus ${r.nenner.vorhanden} von ${r.nenner.gesamt} Anlagen`
+      : mitBilanz.length === 1
+        ? `Hauptzähler ${mitBilanz[0].name}`
         : 'Hauptzähler';
   return r.nenner.wert === null ? `${wer} · keine Werte` : `${wer} · ${r.nenner.zustand}`;
 }

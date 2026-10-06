@@ -290,6 +290,16 @@
   font-size: 0.9375rem;
   line-height: 1.45;
 }
+/* Der Inhalt eines Zeitraums; beim Blättern bleibt er gedimmt stehen, bis der neue Stand da ist. */
+.vp-vb-inhalt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+.vp-vb-inhalt.is-laedt {
+  opacity: 0.55;
+}
 .vp-vb-laden {
   display: grid;
   gap: 12px;

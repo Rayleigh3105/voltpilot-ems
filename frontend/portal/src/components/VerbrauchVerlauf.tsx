@@ -150,10 +150,13 @@ export function VerbrauchVerlauf({
           <i className="is-jahr" />
           dieses Jahr
         </span>
-        <span>
-          <i className="is-vorjahr" />
-          Vorjahr (Punkt)
-        </span>
+        {/* Ohne einen Vorjahreswert (etwa ganz am Anfang der Daten) kein Punkt — dann auch keine Legende dafür. */}
+        {bild.saeulen.some((x) => x.vorjahr !== null) && (
+          <span>
+            <i className="is-vorjahr" />
+            Vorjahr (Punkt)
+          </span>
+        )}
       </div>
       {tippHinweis && (
         <p className="vp-vb-tipp">

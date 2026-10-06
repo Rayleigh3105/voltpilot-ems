@@ -209,12 +209,13 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
 
             <div className="vp-ee-raster">
               <div className="vp-ee-spalte">
-                {v ? <VerbrauchKachel v={v} /> : <Skeleton height={190} />}
+                {/* Ohne Menge (etwa Gas, das noch nicht gemessen wird) sagt der Antwortsatz alles — keine leere Kachel. */}
+                {!v ? <Skeleton height={190} /> : v.menge !== null && <VerbrauchKachel v={v} />}
                 <section className="vp-vb-karte" aria-labelledby="ee-gemessen" data-testid="einsatz-messstellen">
                   <div className="vp-vb-blockkopf">
                     <h2 id="ee-gemessen">Gemessen von</h2>
                   </div>
-                  {einsatz.keine_werte && <p className="vp-vb-sub">{KEINE_WERTE_SATZ}</p>}
+                  {einsatz.keine_werte && einsatz.messstellen.length > 0 && <p className="vp-vb-sub">{KEINE_WERTE_SATZ}</p>}
                   {einsatz.messstellen.length === 0 ? (
                     <p className="vp-vb-sub">{KEINE_MESSSTELLEN}</p>
                   ) : (
@@ -338,7 +339,8 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
         )}
         {dialog === 'protokoll' && einsatz && (
           <Modal open onClose={() => setDialog(null)} title={`Änderungsprotokoll · ${einsatz.name}`}>
-            <div className="vp-ee-protokoll">
+            {/* `vp-bw`: die Historie der Einstufung trägt die Karten- und Überschriften-Klassen der Bewertung. */}
+            <div className="vp-bw vp-ee-protokoll">
               <p className="vp-vb-sub">
                 {prozessText(einsatz.prozess)} · verantwortlich {verantwortlichText(einsatz.verantwortlich)}
               </p>

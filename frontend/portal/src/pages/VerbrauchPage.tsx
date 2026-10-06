@@ -88,6 +88,7 @@ const BASIS = '#/portfolio/verbrauch';
 
 interface Geladen {
   schluessel: string;
+  zeitraum: VerbrauchZeitraum;
   rangliste: BewertungRangliste;
   vorjahr: BewertungRangliste | null;
   abdeckung: BewertungMessabdeckung | null;
@@ -143,7 +144,7 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
       oderNull(api.bewertungMessabdeckung(g.von, g.bis)),
     ]).then(
       ([rangliste, vorjahr, abdeckung]) => {
-        if (aktiv) setDaten({ schluessel: schluesselVon(zeitraum), rangliste, vorjahr, abdeckung });
+        if (aktiv) setDaten({ schluessel: schluesselVon(zeitraum), zeitraum, rangliste, vorjahr, abdeckung });
       },
       (e) => aktiv && setFehler(ladeFehler(e)),
     );
@@ -198,26 +199,30 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
     };
   }, [versuch]);
 
-  const aktuell = daten && daten.schluessel === schluessel ? daten : null;
+  // Beim Blättern bleibt der bisherige Stand gedimmt stehen, bis der neue da ist — nichts springt auf Skelette zurück.
+  // Gezeigt wird immer ein in sich stimmiger Stand: Zahlen und Wörter aus demselben Abruf und seinem Zeitraum.
+  const aktuell = daten;
+  const laedt = daten !== null && daten.schluessel !== schluessel;
+  const z = aktuell?.zeitraum ?? zeitraum;
   const verlaufBildHier: VerlaufBild | null = useMemo(() => {
     if (!aktuell) return null;
-    if (zeitraum.art === 'zwoelf') return verlaufBild(aktuell.rangliste, aktuell.vorjahr, zeitraum.bis);
-    return verlauf && verlauf.schluessel === schluessel ? verlauf.bild : null;
-  }, [aktuell, verlauf, schluessel, zeitraum]);
+    if (aktuell.zeitraum.art === 'zwoelf') return verlaufBild(aktuell.rangliste, aktuell.vorjahr, aktuell.zeitraum.bis);
+    return verlauf && verlauf.schluessel === aktuell.schluessel ? verlauf.bild : null;
+  }, [aktuell, verlauf]);
   const bild: VerbrauchBild | null = useMemo(
     () =>
       aktuell
         ? verbrauchBild({
-            zeitraum,
+            zeitraum: aktuell.zeitraum,
             rangliste: aktuell.rangliste,
             vorjahr: aktuell.vorjahr,
             abdeckung: aktuell.abdeckung,
             einstufungen,
             messbedarfe,
-            verlauf: zeitraum.art === 'zwoelf' ? verlaufBildHier : null,
+            verlauf: aktuell.zeitraum.art === 'zwoelf' ? verlaufBildHier : null,
           })
         : null,
-    [aktuell, zeitraum, einstufungen, messbedarfe, verlaufBildHier],
+    [aktuell, einstufungen, messbedarfe, verlaufBildHier],
   );
 
   const stromEinsaetze = (liste ?? []).filter((e) => laeuft(e) && e.traeger === 'Strom');
@@ -311,7 +316,7 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
           {!phone && aufklapper}
         </section>
       ) : (
-        <>
+        <div className={`vp-vb-inhalt${laedt ? ' is-laedt' : ''}`} aria-busy={laedt} data-testid="verbrauch-inhalt">
           <div className="vp-vb-antwort" data-testid="verbrauch-antwort">
             {bild.antwort && <p className="vp-vb-satz">{phone ? bild.antwort : (bild.antwortBreit ?? bild.antwort)}</p>}
             <div className="vp-vb-formal-zeile">
@@ -325,15 +330,15 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
           ))}
 
           <div className="vp-vb-raster">
-            {(!phone || zeitraum.art === 'monat') && <StromKachel bild={bild} />}
-            {(!phone || zeitraum.art === 'zwoelf') &&
+            {(!phone || z.art === 'monat') && <StromKachel bild={bild} />}
+            {(!phone || z.art === 'zwoelf') &&
               (verlaufBildHier ? (
                 <VerbrauchVerlauf
-                  key={`${schluessel}-${phone}`}
+                  key={`${schluesselVon(z)}-${phone}`}
                   bild={verlaufBildHier}
-                  antwort={`Strom je Monat, ${zeitraumLang({ art: 'zwoelf', bis: zeitraum.bis })}`}
-                  rechts={phone ? 'kWh' : zeitraumLang({ art: 'zwoelf', bis: zeitraum.bis })}
-                  gewaehlt={zeitraum.bis}
+                  antwort={`Strom je Monat, ${zeitraumLang({ art: 'zwoelf', bis: z.bis })}`}
+                  rechts={phone ? 'kWh' : zeitraumLang({ art: 'zwoelf', bis: z.bis })}
+                  gewaehlt={z.bis}
                   tippHinweis={phone}
                 />
               ) : (
@@ -378,7 +383,7 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
             )}
           </div>
           <Fuss rangliste={aktuell!.rangliste} />
-        </>
+        </div>
       )}
       {/* Der Grenz-Satz einmal am Fuß der Fläche (Konzept a1 §6.11), aufklappbar wie in jedem Bereich (K7). */}
       <div className="vp-vb-grenze">

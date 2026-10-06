@@ -150,7 +150,7 @@ describe('verbrauchBild: Antwort zuerst, Balken einer Farbe, der Rest am Ende', 
       titel: 'Strom im Oktober 2026', wert: '185.380',
       vorjahr: { text: 'unverändert ggü. Vorjahr', richtung: 'gleich' },
       zugeordnet: { text: `68${NB}% einem Bereich zugeordnet`, ton: 'warn' },
-      unterzeile: 'Hauptzähler von 3 von 3 Anlagen · vollständig',
+      unterzeile: 'Hauptzähler aus 3 von 3 Anlagen · vollständig',
     });
     const mengen = b.bereiche.map((x) => x.menge);
     expect(mengen).toEqual([...mengen].sort((x, y) => (y ?? 0) - (x ?? 0)));
