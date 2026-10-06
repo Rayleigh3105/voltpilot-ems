@@ -4,6 +4,7 @@ import * as A from '../abweichungen';
 import { api, type AuffaelligkeitenAlle, type Auffaelligkeit } from '../api';
 import { monatWort } from '../bezugsbasisVergleich';
 import { abweichungRoute, hashForRoute } from '../nav';
+import { merkeAbruf } from '../routenUhr';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
 import { GrenzSatz } from './GrenzSatz';
 import { Recht } from './Recht';
@@ -33,7 +34,10 @@ export function AuffaelligkeitHinweis({
     if (!schluessel) return undefined;
     let aktiv = true;
     api.alleAuffaelligkeiten('offen').then(
-      (l) => aktiv && setListe(l),
+      (l) => {
+        merkeAbruf(l.abruf);
+        if (aktiv) setListe(l);
+      },
       () => aktiv && setListe(null),
     );
     return () => {

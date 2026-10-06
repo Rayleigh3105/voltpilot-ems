@@ -10,6 +10,7 @@ import { FristDatum } from '../components/FristDatum';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Recht } from '../components/Recht';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
+import { merkeAbruf } from '../routenUhr';
 import * as Z from '../energieziele';
 import { UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_VERANTWORTLICH } from '../glossar';
 import '../components/kacheln/Kacheln.css';
@@ -64,7 +65,10 @@ export function AbweichungSeite({
     let aktiv = true;
     setLage((l) => (l.art === 'da' && l.a.id === id ? l : { art: 'laedt' }));
     api.abweichung(id).then(
-      (a) => aktiv && setLage({ art: 'da', a }),
+      (a) => {
+        merkeAbruf(a.frist.abruf);
+        if (aktiv) setLage({ art: 'da', a });
+      },
       (e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }),
     );
     return () => {

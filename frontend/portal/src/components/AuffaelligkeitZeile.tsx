@@ -4,7 +4,8 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import * as A from '../abweichungen';
 import { api, type Abweichung, type Auffaelligkeit } from '../api';
 import { benutzerApi, type BenutzerEintrag } from '../benutzer';
-import { heute, verantwortlichOptionen } from '../bewertung';
+import { verantwortlichOptionen } from '../bewertung';
+import { routenHeute } from '../routenUhr';
 import { monatWort } from '../bezugsbasisVergleich';
 import * as Z from '../energieziele';
 import { UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
@@ -79,7 +80,7 @@ export function AuffaelligkeitAntwortDialog({
   art,
   onClose,
   onFertig,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   vermerk: Auffaelligkeit;
   /** Die offenen Vermerke derselben Kennzahl × Fassung (samt diesem) — sie werden genannt und übernommen. */
@@ -254,7 +255,7 @@ export function AbweichungVonHand({
   periode,
   basis: basisKennzeichen,
   standort,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   kennzahlId: string;
   periode: string;

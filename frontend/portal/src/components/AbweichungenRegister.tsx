@@ -9,6 +9,7 @@ import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
 import { FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
 import { Recht } from './Recht';
+import { merkeAbruf } from '../routenUhr';
 import './kacheln/Kacheln.css';
 import './Wiedervorlage.css';
 import '../pages/Abweichungen.css';
@@ -55,7 +56,11 @@ export function AbweichungenRegister({
     let aktiv = true;
     setLage((l) => (l.art === 'da' ? l : { art: 'laedt' }));
     Promise.all([api.abweichungen(), api.alleAuffaelligkeiten().catch(() => 'fehler' as const)]).then(
-      ([liste, vermerke]) => aktiv && setLage({ art: 'da', abweichungen: liste.abweichungen, abruf: liste.abruf, vermerke }),
+      ([liste, vermerke]) => {
+        // Eine Uhr (Befund 2): die Dialoge rechnen „heute“ mit dem Tag der Route.
+        merkeAbruf(liste.abruf);
+        if (aktiv) setLage({ art: 'da', abweichungen: liste.abweichungen, abruf: liste.abruf, vermerke });
+      },
       () => aktiv && setLage({ art: 'fehler' }),
     );
     return () => {
