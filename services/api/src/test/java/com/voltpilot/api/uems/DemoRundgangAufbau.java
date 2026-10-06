@@ -72,6 +72,8 @@ import org.springframework.test.web.servlet.MockMvc;
  * ({@link #buehnenBestand}): MS-20 und BZ-1 aus der Referenzwelt (2026-10 bis 2029-01, drei Monate als Annahme), die
  * übrigen Reihen nach ihrem Muster. Dazu BB-0001 Fassung 2 als Regression der Referenzwelt
  * ({@link #bezugsbasisReferenzwelt}) - erst dann liegt 2028 rund 3,4 % unter der Bezugsbasis wie im Energieziel 2028.
+ * Die Kennzahlen rechnet die Bühne (K1, {@link PruefumgebungUhr} stellt den Kennzahl-Lauf): erst die Kaskaden der
+ * eingetragenen Ablesungen, dann der Regellauf. Die Demo-API braucht K1 ebenso, sonst hält ihre Kaskade an.
  *
  * <p>Die {@code null}-Anzeige der Bewertung (Rangliste/Messabdeckung „unvollständig“, „0 von 3 Anlagen“) ist KEIN
  * Datenmangel dieses Werkzeugs, sondern folgt aus der bewusst dünnen Messabdeckung der Welt 1.10 (nur Spritzguss
@@ -202,20 +204,41 @@ class DemoRundgangAufbau {
                 + "energetische Bewertung, Korrektur, Import und Einsicht ergänzt. Kennzahlen: " + lauf2);
 
         // Runde 3 - Demo-Füllung Auswerten (Konzept a1, Entscheid 12): passende Zähler, Bühnen-Bestand bis 03/2029,
-        // BB-0001 Fassung 2 wie die Referenzwelt, Kennzahlen gerechnet bis zum Bühnen-Tag, BB-0006/BB-0007 neu gefasst.
+        // BB-0001 Fassung 2 wie die Referenzwelt, Kennzahlen gerechnet auf der Bühne, BB-0006/BB-0007 neu gefasst.
+        // Die Kennzahlen rechnet die Bühne: PruefumgebungUhr stellt den Kennzahl-Lauf (K1, PR #1428). Ohne K1 trügen die
+        // Werte 2027-2029 ein berechnet_am in der Zukunft, und die erste echte Ablesung hielte die Kaskade der API an.
+        assertThat(kennzahlen.rechenzeit(Instant.now())).as("der Kennzahl-Lauf rechnet auf der Bühne (K1)")
+                .isAfterOrEqualTo(Instant.parse(PruefumgebungAhrenberg.BUEHNE));
         kennzahlenPassend();
         // Die rückwirkende Berechnung rechnet die alten Monate neu - in der API im nächsten Takt, hier sofort, damit die
         // Bezugsbasen unten aus den neuen Werten gefasst werden.
-        kaskade.lauf(Instant.now());
+        int anlaesse = kaskadeLeeren();
         buehnenBestand(root, bz1);
         bezugsbasisReferenzwelt(root);
-        KennzahlLauf.Lauf heute = kennzahlen.lauf(Instant.now());
-        kennzahlen.lauf(Instant.parse("2027-06-30T12:00:00Z")); // der Lauf deckt 24 Monate je Aufruf
-        KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.parse(PruefumgebungAhrenberg.BUEHNE));
+        // Jede eingetragene Ablesung ist ein Anlass der Kaskade über die ganze Reihe (auch 10/2026 bis 03/2027, vor dem
+        // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
+        anlaesse += kaskadeLeeren();
+        KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
         bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
         bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
         System.out.println("Rundgang Runde 3: passende Zähler, Bühnen-Bestand bis 03/2029, BB-0001 Fassung 2 "
-                + "(Referenzwelt). Kennzahlen heute: " + heute + ", Bühne: " + buehne);
+                + "(Referenzwelt). Kaskade: " + anlaesse + " Anlässe, Kennzahlen auf der Bühne: " + buehne);
+    }
+
+    /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */
+    private int kaskadeLeeren() {
+        int summe = 0;
+        for (int i = 0; i < 100; i++) {
+            KorrekturKaskade.Lauf l = kaskade.lauf(Instant.now());
+            if (!l.abgelehnt().isEmpty()) {
+                System.out.println("Rundgang: Kaskade lehnte ab: " + l.abgelehnt());
+            }
+            if (l.anlaesse() == 0) {
+                return summe;
+            }
+            summe += l.anlaesse();
+        }
+        throw new IllegalStateException("die Kaskade wird nicht leer");
     }
 
     /** Postleitzahl (Unternehmen und beide Standorte), Lage und Notiz von Werk Lindach — Pflichtfelder, die die Welt leer lässt. */
