@@ -144,9 +144,9 @@ public class MessstelleRegisterService {
      *
      * <p><b>Der letzte vollständige Monat (Messen PR5):</b> mit {@code letzterMonat} ≠ {@code null} trägt jede Zeile der
      * Antwort ({@code letzter_monat}) den Monat vor dem Monat des Zeitpunkts in der Zone ihres Standorts und seinen Wert
-     * aus dem Lese-Modell „Werte je Messstelle“ ({@link MessstelleWerteService#monatswert}) — dieselbe Regel wie
+     * aus dem Lese-Modell „Werte je Messstelle“ ({@link MessstelleWerteService#monatswert}) - dieselbe Regel wie
      * {@code …/werte?raster=monat}, keine zweite; {@code letzterMonat} ist dessen Zaun über die Eingänge einer berechneten
-     * Messstelle. ⚠ Das kostet einen Lesezug JE gezeigter Messstelle (der Rest des Registers bleibt eine feste Zahl) —
+     * Messstelle. ⚠ Das kostet einen Lesezug JE gezeigter Messstelle (der Rest des Registers bleibt eine feste Zahl) -
      * darum nur auf Verlangen der Route ({@code letzterMonat=true}), nie für die Leser im Haus.
      */
     public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar,

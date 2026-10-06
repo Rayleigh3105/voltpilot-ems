@@ -5920,7 +5920,7 @@ export interface MessstelleRegisterZeile {
   /** UEMS AP-16 IP-19: eingelöste Messbedarfe — die Messstelle ist „geplant für EE-…“. Ältere Antworten ohne Feld = keiner. */
   geplant_fuer_einsaetze?: { id: string; kennzeichen: string; name: string }[];
   /**
-   * Messen PR5: NUR mit `letzterMonat: true` in der Anfrage — der letzte vollständige Monat und sein Wert, genau der
+   * Messen PR5: NUR mit `letzterMonat: true` in der Anfrage - der letzte vollständige Monat und sein Wert, genau der
    * Schritt von `…/werte?raster=monat`. Ohne die Anfrage fehlt das Feld.
    */
   letzter_monat?: MessstelleRegisterMonat;
@@ -5928,7 +5928,7 @@ export interface MessstelleRegisterZeile {
 
 /**
  * Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2): der Monat vor dem des Stichtags in
- * der Zone ihres Standorts. `wert` ist der Schritt, den `GET …/{kennzeichen}/werte?raster=monat` für ihn zeigt — eine
+ * der Zone ihres Standorts. `wert` ist der Schritt, den `GET …/{kennzeichen}/werte?raster=monat` für ihn zeigt - eine
  * Fläche spricht ihn wie jeden anderen Schritt (Zustand, Kennzeichen, Grund) und rechnet nichts nach; `menge: null` ist
  * nie 0. `wert` ist `null` NUR mit `ausserhalb_zugriff` (ein Eingang einer berechneten Messstelle liegt außerhalb).
  */
@@ -6012,7 +6012,7 @@ export interface MessstellenRegisterAnfrage {
   /** Ein Tag (`2026-11-20`); fehlt = jetzt. */
   stichtag?: string;
   /**
-   * Messen PR5: jede Zeile trägt `letzter_monat` (kein Filter). Kostet einen Lesezug je Messstelle — nur setzen, wo der
+   * Messen PR5: jede Zeile trägt `letzter_monat` (kein Filter). Kostet einen Lesezug je Messstelle - nur setzen, wo der
    * Monatswert gezeigt wird.
    */
   letzterMonat?: boolean;

@@ -169,7 +169,7 @@ public final class MessstelleDto {
     /**
      * Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2): der Monat vor dem Monat des
      * Zeitpunkts in der Zone ihres Standorts ({@code monat}, JJJJ-MM). {@code wert} ist GENAU der Schritt, den
-     * {@code GET /api/v1/messstellen/{kennzeichen}/werte?raster=monat} für diesen Monat in der neuesten Version zeigt —
+     * {@code GET /api/v1/messstellen/{kennzeichen}/werte?raster=monat} für diesen Monat in der neuesten Version zeigt -
      * Menge, Zustand, Kennzeichen, Abdeckung, Fassung, Version, Grund; das Portal rechnet nichts nach. {@code zeitzone}
      * ist die Zone dieser Werte. Liegt ein Eingang einer berechneten Messstelle im Monat außerhalb des Zugriffs (AP-03
      * R-A3), fehlt die Zahl ganz: {@code wert} {@code null}, {@code ausserhalb_zugriff} der Hinweis.

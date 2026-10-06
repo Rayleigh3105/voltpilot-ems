@@ -243,11 +243,11 @@ public class MessstelleWerteService {
 
     /**
      * Der Wert eines Monats, wie ihn eine Fläche neben anderen Angaben zeigt (Messen PR5, Konzept §10.2): GENAU der
-     * Schritt, den {@code GET …/werte?raster=monat} für diesen Monat in der neuesten Version zeigt — dieselbe Regel,
+     * Schritt, den {@code GET …/werte?raster=monat} für diesen Monat in der neuesten Version zeigt - dieselbe Regel,
      * dieselben Kennzeichen, dieselbe Herkunft. Ohne {@code zuordnung} (sie sagt etwas über die Box im Zeitraum, nicht
      * über die Zahl) und ohne die Frist der Route: ein Monat jenseits der Aufbewahrung ist hier „keine Werte“ wie für
      * jeden Leser im Haus. {@code wert} ist {@code null} NUR, wenn ein Eingang einer berechneten Messstelle im Monat
-     * außerhalb des Zugriffs liegt (AP-03 R-A3) — dann fehlt die Zahl ganz und {@code ausserhalbZugriff} ist gesetzt.
+     * außerhalb des Zugriffs liegt (AP-03 R-A3) - dann fehlt die Zahl ganz und {@code ausserhalbZugriff} ist gesetzt.
      */
     public record Monatswert(String zeitzone, MessstelleWerteDto.Wert wert, String ausserhalbZugriff) {}
 

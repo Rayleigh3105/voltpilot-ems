@@ -281,12 +281,12 @@ class MessstelleSchnittstelleVertragTest {
                 .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
         assertThat(liste(map(map(schema("MessstelleWerte"), "properties"), "zuordnung"), "enum"))
                 .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
-        // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge; danach `letzterMonat`
+        // Die Filter der Route sind die des Berichts (§6.1) - in derselben Reihenfolge; danach `letzterMonat`
         // (Messen PR5), kein Filter: er fügt jeder Zeile ihren letzten vollständigen Monat hinzu.
         assertThat(parameter("/api/v1/messstellen"))
                 .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle",
                         "geplantFuerEinsatz", "stichtag", "letzterMonat");
-        // Der Wert des Monats ist der Schritt der Werte-Route — dieselbe Form, kein eigenes Schema.
+        // Der Wert des Monats ist der Schritt der Werte-Route - dieselbe Form, kein eigenes Schema.
         assertThat(map(map(schema("MessstelleRegisterMonat"), "properties"), "wert").toString())
                 .contains("#/components/schemas/MessstelleWerteWert");
     }

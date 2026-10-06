@@ -469,7 +469,7 @@ class MessstelleRegisterApiTest {
 
     /**
      * Messen PR5: {@code letzterMonat=true} gibt JEDER Zeile den Monat vor dem Stichtag (Oktober 2026) mit genau dem
-     * Schritt, den {@code …/werte?raster=monat} für sie zeigt — gemessen mit Gerät, gemessen ohne Quelle, berechnet;
+     * Schritt, den {@code …/werte?raster=monat} für sie zeigt - gemessen mit Gerät, gemessen ohne Quelle, berechnet;
      * keine zweite Rechnung. Ohne den Parameter fehlt das Feld, und das Register bleibt Zeichen für Zeichen dasselbe.
      */
     @Test

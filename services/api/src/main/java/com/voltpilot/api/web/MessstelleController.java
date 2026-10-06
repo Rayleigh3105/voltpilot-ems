@@ -111,7 +111,7 @@ public class MessstelleController {
      * Messkanäle ({@link MessstelleFormelService#komponenteSichtbar}, AP-03 R-A3/R-A6/R-A7).
      * Ein Stichtag ist ein Tag ({@code 2026-11-20}, dann gilt sein Beginn) oder ein Zeitpunkt mit
      * Versatz; fehlend = jetzt. Mit {@code letzterMonat=true} trägt jede Zeile {@code letzter_monat}: den Monat vor dem
-     * des Stichtags und seinen Wert, wie {@code …/werte?raster=monat} ihn zeigt (Messen PR5) — bei einer berechneten
+     * des Stichtags und seinen Wert, wie {@code …/werte?raster=monat} ihn zeigt (Messen PR5) - bei einer berechneten
      * Messstelle mit einem Eingang außerhalb des Zugriffs ohne Zahl, wie an der Werte-Route.
      */
     @GetMapping

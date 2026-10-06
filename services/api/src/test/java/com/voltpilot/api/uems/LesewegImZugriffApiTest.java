@@ -475,7 +475,7 @@ class LesewegImZugriffApiTest {
             assertThat(roh(w, k.hier(), nurSichtbar)).as(nurSichtbar).isEqualTo(alle);
         }
 
-        // Messen PR5: der letzte vollständige Monat im Register ist der Schritt von …/werte?raster=monat — mit
+        // Messen PR5: der letzte vollständige Monat im Register ist der Schritt von …/werte?raster=monat - mit
         // demselben Zaun. Für den Bearbeiter an ST-1 fehlt die Zahl von MS-30 ganz, MS-31 sagt dasselbe wie für alle.
         gespeicherterMonat(w, ms30, f30, "98765.25");
         gespeicherterMonat(w, ms31, f31, "4321.5");
@@ -498,7 +498,7 @@ class LesewegImZugriffApiTest {
         assertThat(hier30.at("/letzter_monat/ausserhalb_zugriff").asText()).isEqualTo(hinweis);
         assertThat(hier30.at("/letzter_monat/wert").isNull()).isTrue();
         assertThat(hier30.path("letzter_monat").toString()).doesNotContain("98765");
-        // Ohne letzterMonat=true fehlt das Feld — die Antwort ist die von vorher.
+        // Ohne letzterMonat=true fehlt das Feld - die Antwort ist die von vorher.
         assertThat(ok(w, k.ka(), MS + "?stichtag=2026-10-05").body()).doesNotContain("letzter_monat");
     }
 
