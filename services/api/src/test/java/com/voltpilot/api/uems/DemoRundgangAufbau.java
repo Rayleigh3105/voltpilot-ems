@@ -588,7 +588,7 @@ class DemoRundgangAufbau {
 
     /**
      * Die energetische Bewertung mit echten Zahlen: ein Hauptzähler der Anlage Halle 1 (der Nenner der Bilanz),
-     * je Energieeinsatz ein Abzweig mit Ablesungen (die Anteile und K1…K6), Kriterien-Schwellen und eine
+     * je Energieeinsatz ein Unterzähler von HZ-1 mit Ablesungen (die Anteile und K1…K6), Kriterien-Schwellen und eine
      * verantwortliche Person je Einsatz. Nur Halle 1 trägt Ablesungen; Montage/Lindach entstehen im Weltszenario
      * erst im Oktober 2026, darum zeigt die Rangliste „1 von … Anlagen". Die Verantwortlichen setzt der Lauf direkt,
      * weil freigegebene Berichte die Route sperren ({@code berichts_belege}).
@@ -606,7 +606,7 @@ class DemoRundgangAufbau {
                 "250", "G-1", "2024-03-12");
         stellung("HZ-1", "Hauptzähler");
         messreihe("HZ-1", 2_400_000, 210_000);
-        stellung("MS-20", "Abzweig"); // Spritzguss hat bereits Ablesungen
+        unterzaehlerVonHz1("MS-20"); // Spritzguss hat bereits Ablesungen
         prozesseSetzen("MS-20", prozess.get("P-1"));
         abzweig("AZ-2", "Zähler Montage", prozess.get("P-2"), 27_000);
         abzweig("AZ-3", "Zähler Druckluft", prozess.get("P-3"), 18_000);
@@ -626,9 +626,27 @@ class DemoRundgangAufbau {
 
     private void abzweig(String kennzeichen, String name, String prozessId, long proMonat) throws Exception {
         messstelle(kennzeichen, name, "Abzweig an der Anlage Werk Ahrenberg – Halle 1.", null, "G-1", "2024-03-12");
-        stellung(kennzeichen, "Abzweig");
+        unterzaehlerVonHz1(kennzeichen);
         prozesseSetzen(kennzeichen, prozessId);
         messreihe(kennzeichen, 300_000 + proMonat, proMonat);
+    }
+
+    /**
+     * Konzept Auswerten a1, Entscheid 5: die Bereichszähler hängen als UNTERZÄHLER an HZ-1, nicht als Abzweig daneben -
+     * sonst rechnet die Energiebilanz 100 % „ohne eigenen Zähler“, während Verbrauch und Bewertung über die Prozesse
+     * zuordnen. Frisch entsteht die Stellung ab Beginn; stand sie aus einem früheren Lauf als Abzweig, ersetzt eine
+     * Korrektur sie ab demselben Tag (die Route, wie im Portal). Ist sie schon Unterzähler, schreibt keiner der Aufrufe.
+     */
+    private void unterzaehlerVonHz1(String kennzeichen) throws Exception {
+        String pfad = "/api/v1/messstellen/" + messstelleId(kennzeichen) + "/stellung";
+        Map<String, Object> neu = m("anlage", AN1.toString(), "stellung", "Unterzähler", "unterzaehler_von", "HZ-1",
+                "gueltig_ab", "2024-03-12", "korrektur", false, "grund", "Zuordnung zur Anlage Halle 1.");
+        if (roh("PUT", pfad, neu) < 400) {
+            return;
+        }
+        roh("PUT", pfad, m("anlage", AN1.toString(), "stellung", "Unterzähler", "unterzaehler_von", "HZ-1",
+                "gueltig_ab", "2024-03-12", "korrektur", true,
+                "grund", "Korrektur: misst einen Teil des Bezugs von HZ-1 - Unterzähler, nicht Abzweig daneben."));
     }
 
     private void stellung(String kennzeichen, String stellung) throws Exception {
