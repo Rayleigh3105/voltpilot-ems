@@ -5,6 +5,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import * as A from '../abweichungen';
 import { api, ApiError, type Abweichung, type AbweichungEintrag } from '../api';
+import { merkeAbruf } from '../routenUhr';
 import { monatWort, vergleichBild, type BezugsbasisVergleich } from '../bezugsbasisVergleich';
 import { AbschliessenDialog, FristDialog, UrsacheAussageDialog, VerantwortlicherDialog } from '../components/AbweichungDialoge';
 import { MonateTafel } from '../components/BezugsbasisVergleich';
@@ -112,7 +113,10 @@ export function AbweichungSeite({
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.abweichung(id).then(
-      (a) => aktiv && setLage({ art: 'da', a }),
+      (a) => {
+        merkeAbruf(a.frist.abruf);
+        if (aktiv) setLage({ art: 'da', a });
+      },
       (e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }),
     );
     return () => {
