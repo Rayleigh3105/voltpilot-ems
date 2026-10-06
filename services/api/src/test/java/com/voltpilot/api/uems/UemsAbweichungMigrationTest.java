@@ -56,7 +56,8 @@ class UemsAbweichungMigrationTest {
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20260925040000", // AP-19 IP-17: weitet das Vokabular als Vereinigung (mit den Wörtern dieser Migration).
-            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
+            "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
+            "20261006213000"); // Konzept Verbessern PR 1: weitet verbesserung_vokabular() um kurs_lage (Vereinigung).
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip14_test_pw";
     private static final List<String> TABELLEN = List.of("auffaelligkeit", "abweichung", "abweichung_aenderung");
     private static final String BEGRUENDUNG = "Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme "
@@ -505,7 +506,10 @@ class UemsAbweichungMigrationTest {
                 "abweichung_protokoll:5:verantwortlicher_geaendert", "abweichung_protokoll:6:abweichung_abgeschlossen",
                 // AP-19 IP-17 weitet dahinter die Herkunft der Maßnahme.
                 "massnahme_herkunft:5:nichtkonformitaet", "massnahme_herkunft:6:audit",
-                "massnahme_herkunft:7:managementbewertung");
+                "massnahme_herkunft:7:managementbewertung",
+                // Konzept Verbessern (Vertrag 1.1) weitet dahinter um die Lage des Zwischenstands.
+                "kurs_lage:1:auf_kurs", "kurs_lage:2:knapp_dahinter", "kurs_lage:3:nicht_auf_kurs",
+                "kurs_lage:4:noch_keine_aussage");
         // Die Einträge des Vertrags (`abweichung_eintrag_art`) sind Wörter des Protokolls.
         assertThat(root.queryForList("SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'abweichung_eintrag_art' "
                 + "EXCEPT SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'abweichung_protokoll'", String.class))
