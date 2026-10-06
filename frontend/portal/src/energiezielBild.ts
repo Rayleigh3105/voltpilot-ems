@@ -23,6 +23,8 @@ const NBSP = ' ';
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const MONATE_KURZ = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const ZAHLWORT = ['null', 'einen', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
+/** Zahlen bis zwölf als Wort („neun Monaten“), darüber als Ziffer. */
+export const zahlwort = (n: number) => (n >= 2 && n <= 12 ? ZAHLWORT[n] : String(n));
 
 // ------------------------------------------------------------------ Wörter
 
@@ -413,7 +415,7 @@ export function standKacheln(stand: EnergiezielStand): Kachel[] | null {
 /** „In den übrigen neun Monaten im Schnitt rund 4,7 % weniger als erwartet.“ - ohne offenen Monat `null`. */
 export function noetigSatz(k: EnergiezielKurs | undefined): string | null {
   if (!k || k.monate_offen === 0 || k.noetig_prozent === null) return null;
-  const wo = k.monate_offen === 1 ? 'Im übrigen Monat' : `In den übrigen ${k.monate_offen <= 12 ? ZAHLWORT[k.monate_offen] : k.monate_offen} Monaten`;
+  const wo = k.monate_offen === 1 ? 'Im übrigen Monat' : `In den übrigen ${zahlwort(k.monate_offen)} Monaten`;
   if (Number(k.noetig_prozent) <= -100) return `${wo} lässt sich das Energieziel nicht mehr erreichen - selbst ohne jeden Verbrauch.`;
   if (k.noetig_richtung === 'mehr') return `${wo} im Schnitt bis zu ${prozent(k.noetig_prozent)} mehr als erwartet.`;
   if (k.noetig_richtung === 'gleich') return `${wo} im Schnitt so viel wie erwartet.`;

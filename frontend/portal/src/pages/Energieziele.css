@@ -1,0 +1,1092 @@
+/*
+ * ENERGIEZIELE (Konzept Verbessern v1 §6.3, §6.4, §6.9, §12; Captain-Freigabe 06.10.2026): Reiter, Seite eines
+ * Energieziels und „Energieziel setzen“ geführt. Gebaut nur aus Haus-Tokens und den Bausteinen der freigegebenen
+ * Familie (Portfolio, Wiedervorlage, Messen, Auswerten): Kopf wie .vp-wv-kopf, Karte wie .vp-wv-karte (Radius 24),
+ * Energieziel-Karte wie die Anlagen-Karte .ak (Radius 16), Marken .vp-k-marke, Kacheln .vp-k, Hinweis wie .vertrauen.
+ * Farbe nur mit Bedeutung: grün „weniger als erwartet“/erledigt, Warnton „mehr als erwartet“/„nicht auf Kurs“/
+ * überfällig, Navy das Energieziel und der nächste Schritt. Ab 760 px Breite der Seite zwei Spalten.
+ */
+
+/* ---------- Seite und Kopf -------------------------------------------------- */
+.vp-ezl {
+  container: vp-ezl / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-zurueck {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.875rem var(--vp-c-font);
+  cursor: pointer;
+}
+.vp-ezl-kopf {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.vp-ezl-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-ezl-kopf h1 {
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+.vp-ezl-kopf h1 .kz {
+  display: inline-block;
+  margin-left: 4px;
+  font: 500 0.875rem var(--vp-c-font);
+  letter-spacing: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-ezl-meta {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-kopf > .vp-btn {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.vp-ezl-menue {
+  flex: 0 0 auto;
+}
+.vp-ezl-menue-knopf {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-muted-fg, #475569);
+  cursor: pointer;
+}
+.vp-ezl-menue-knopf::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+
+/* ---------- Antwort zuerst ----------------------------------------------------- */
+.vp-ezl-antwort {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.vp-ezl-satz {
+  margin: 0;
+  font: 700 1.0625rem/1.38 var(--vp-c-font);
+  letter-spacing: -0.005em;
+  color: var(--vp-navy, #1e3a5f);
+  text-wrap: pretty;
+}
+.vp-ezl-formal {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-marken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-ezl .vp-k-marke.is-rahmen {
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl .vp-k-marke.is-ohne {
+  padding: 1px 7px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  background: transparent;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Hinweis (Konzept .vertrauen.hinweis) -------------------------------- */
+.vp-ezl-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-hinweis-i {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-action, #2c5282);
+}
+.vp-ezl-hinweis.is-warn .vp-ezl-hinweis-i {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ezl-hinweis-t {
+  min-width: 0;
+}
+.vp-ezl-hinweis-t b {
+  font-weight: 600;
+}
+
+/* ---------- Links und Texte ----------------------------------------------------- */
+.vp-ezl-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-ezl-link::before {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
+}
+.vp-ezl-link.is-im-satz {
+  display: inline;
+  font-size: inherit;
+}
+.vp-ezl-link.is-im-satz::before {
+  inset: -6px -2px;
+}
+.vp-ezl-zurueck:focus-visible,
+.vp-ezl-link:focus-visible,
+.vp-ezl-menue-knopf:focus-visible,
+.vp-ezl-zk-titel:focus-visible,
+.vp-ezl-reihe:focus-visible,
+.vp-ezl-mrow:focus-visible,
+.vp-ezl-zr .a:focus-visible,
+.vp-ezf-chip:focus-visible,
+.vp-ezl-details summary:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-ezl-text,
+.vp-ezl-leer {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-leise {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-label {
+  margin: 2px 0 0;
+  font: 700 0.72rem/1.3 var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-fussnote {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-noetig {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-noetig b,
+.vp-ezl-fazit b {
+  font-weight: 600;
+}
+.vp-ezl-fazit {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-frist {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ezl-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vp-ezl .vp-btn.vp-ezl-voll {
+  width: 100%;
+}
+
+/* ---------- Karten ---------------------------------------------------------------- */
+.vp-ezl-karte {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-ezl-karte.is-fehler {
+  border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 22%, var(--vp-c-card, #fff));
+  background: var(--vp-c-warn-bg, #fff7ed);
+}
+.vp-ezl-blockkopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-ezl-blockkopf h2,
+.vp-ezl-h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: normal;
+}
+.vp-ezl-blockkopf .m {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-ezl-abschnitt {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+/* Am Telefon stehen abgeschlossene Energieziele ohne Hülle (Konzept §6.3), ab 760 px in einer Karte. */
+.vp-ezl-karte.is-liste {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* ---------- Energieziel-Karte (.ak.zk) --------------------------------------------- */
+.vp-ezl-zk {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-ezl-zk-kopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-zk-zeichen {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-ezl-zk-titel {
+  display: inline-flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+/* Die ganze Karte öffnet das Energieziel; der nächste Schritt im Fuß liegt darüber. */
+.vp-ezl-zk-titel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.vp-ezl-zk-titel .nm {
+  font: 600 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-zk-titel .kz,
+.vp-ezl-reihe .kz {
+  font: 500 0.75rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-ezl-zz {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-zz b {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-zk .vp-skala {
+  margin: 0;
+}
+.vp-ezl-zk-fuss {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-zk-fuss .is-warn {
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ezl-zk-fuss .vp-ezl-link {
+  z-index: 1;
+}
+
+/* ---------- Reihen (.row) ------------------------------------------------------------ */
+.vp-ezl-liste {
+  display: grid;
+  min-width: 0;
+}
+.vp-ezl-reihe {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.vp-ezl-reihe {
+  cursor: pointer;
+}
+.vp-ezl-liste > .vp-ezl-reihe:first-child,
+.vp-ezl-karte.is-liste > .vp-ezl-reihe:first-child {
+  border-top: 0;
+}
+.vp-ezl-reihe .lead {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 3px;
+  min-width: 0;
+}
+.vp-ezl-reihe .nm {
+  font: 600 1rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  hyphens: auto;
+}
+.vp-ezl-reihe .st {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-reihe .st.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ezl-reihe .rt {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: end;
+  gap: 1px;
+  text-align: right;
+}
+.vp-ezl-reihe .rt .v {
+  font: 700 1rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  color: var(--vp-navy, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ezl-reihe .rt .k2 {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-reihe > svg {
+  flex: 0 0 auto;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Kacheln im Stand ---------------------------------------------------------- */
+.vp-ezl-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.vp-ezl-kacheln .vp-k-sub b {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Werte je Monat: Liste am Telefon, Tabelle ab 760 px ------------------------ */
+.vp-ezl-mliste {
+  display: grid;
+  min-width: 0;
+}
+.vp-ezl-mrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 2px 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+div.vp-ezl-mrow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+button.vp-ezl-mrow {
+  cursor: pointer;
+}
+.vp-ezl-mliste > .vp-ezl-mrow:first-child {
+  border-top: 0;
+}
+.vp-ezl-mrow .mo {
+  font: 600 0.875rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-mrow .mw {
+  grid-column: 1;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-mrow .md {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  justify-items: end;
+  gap: 2px;
+}
+.vp-ezl-mrow .md b {
+  font: 700 0.875rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  color: var(--vp-navy, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ezl-mrow .chev {
+  display: inline-flex;
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-mliste > .vp-ezl-leise {
+  padding-top: 10px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ezl-tafel-rahmen {
+  min-width: 0;
+  overflow-x: auto;
+}
+.vp-ezl-tafel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.vp-ezl-tafel thead th {
+  padding: 8px 12px;
+  background: var(--vp-c-bg, #f8fafc);
+  font: 700 11px var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-ezl-tafel tbody th,
+.vp-ezl-tafel tbody td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-weight: 400;
+  text-align: left;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-tafel .z {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ezl-tafel tr.is-ohne td,
+.vp-ezl-tafel tr.is-ohne th {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Über dieses Energieziel (.zuo) ----------------------------------------- */
+.vp-ezl-zuo {
+  display: grid;
+  min-width: 0;
+}
+.vp-ezl-zr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ezl-zr:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+.vp-ezl-zr .l {
+  grid-column: 1;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-zr .w {
+  grid-column: 1;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-ezl-zr .n {
+  grid-column: 1;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-zr .a {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-ezl-zr .a::before {
+  content: '';
+  position: absolute;
+  inset: -12px -6px;
+}
+.vp-ezl-verlauf {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-ezl-verlauf li {
+  display: grid;
+  gap: 2px;
+  padding: 9px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.vp-ezl-verlauf li span {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Bewertung --------------------------------------------------------------- */
+.vp-ezl-zitat {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ezl-zitat p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezl-zitat footer {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezl-details summary {
+  min-height: 32px;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  cursor: pointer;
+}
+.vp-ezl-pruefsumme {
+  margin: 4px 0 0;
+  font: 400 0.72rem/1.4 var(--vp-font-mono, ui-monospace, monospace);
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Laden ------------------------------------------------------------------ */
+.vp-ezl-skelett {
+  display: grid;
+  gap: 12px;
+}
+.vp-ezl-skelett .is-zeile {
+  width: 45%;
+  height: 12px;
+}
+.vp-ezl-skelett .is-satz {
+  height: 44px;
+}
+.vp-ezl-skelett .is-karte {
+  height: 196px;
+  border-radius: var(--vp-radius-md, 16px);
+}
+
+/* ---------- Anordnung: Telefon zuerst ------------------------------------------------ */
+.vp-ezl-raster,
+.vp-ezl-seitenraster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+.vp-ezl-haupt,
+.vp-ezl-r-rechts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+.vp-ezl-haupt {
+  gap: 10px;
+}
+.vp-ezl-haupt > .vp-ezl-abschnitt {
+  margin-top: 6px;
+}
+/* Reiter: Hinweis vor den Karten, „So entsteht ein Energieziel“ danach. */
+.vp-ezl-seite {
+  display: contents;
+}
+.vp-ezl-o-hinweis {
+  order: 1;
+}
+.vp-ezl-haupt {
+  order: 2;
+}
+.vp-ezl-o-entsteht {
+  order: 3;
+}
+/* Seite: Stand und Hinweise, Maßnahmen, Grafik, Werte, Bewertung, Über. */
+.vp-ezl-r-rechts {
+  display: contents;
+}
+.vp-ezl-r-rechts > * {
+  order: 1;
+}
+.vp-ezl-r-massnahmen {
+  order: 2;
+}
+.vp-ezl-r-grafik {
+  order: 3;
+}
+.vp-ezl-r-werte {
+  order: 4;
+}
+.vp-ezl-r-bewertung {
+  order: 5;
+}
+.vp-ezl-r-ueber {
+  order: 6;
+}
+.vp-ezl-r-grafik:empty,
+.vp-ezl-r-werte:empty {
+  display: none;
+}
+.vp-ezl-nur-breit {
+  display: none;
+}
+.vp-ezl-fuss {
+  display: grid;
+  gap: 6px;
+}
+
+/* ---------- Ab 760 px Breite der Seite ---------------------------------------------- */
+@container vp-ezl (min-width: 760px) {
+  .vp-ezl-satz {
+    font-size: 1.25rem;
+    line-height: 1.32;
+  }
+  .vp-ezl-karte {
+    padding: 16px 22px;
+  }
+  .vp-ezl-karte.is-liste {
+    padding: 4px 22px;
+    border: 1px solid var(--vp-c-border, #e2e8f0);
+    background: var(--vp-c-card, #fff);
+  }
+  .vp-ezl-nur-schmal {
+    display: none;
+  }
+  .vp-ezl-nur-breit {
+    display: revert;
+  }
+  div.vp-ezl-nur-breit {
+    display: block;
+  }
+  .vp-ezl-zr.vp-ezl-nur-breit {
+    display: grid;
+  }
+  .vp-ezl-raster {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .vp-ezl-seite {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vp-c-space-4, 16px);
+    min-width: 0;
+  }
+  .vp-ezl-seitenraster {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .vp-ezl-r-rechts {
+    display: flex;
+    grid-area: rechts;
+  }
+  .vp-ezl-r-grafik {
+    grid-area: grafik;
+  }
+  .vp-ezl-r-werte {
+    grid-area: werte;
+  }
+  .vp-ezl-r-massnahmen {
+    grid-area: massnahmen;
+  }
+  .vp-ezl-r-ueber {
+    grid-area: ueber;
+  }
+  .vp-ezl-r-bewertung {
+    grid-area: bewertung;
+  }
+  .vp-ezl-r-massnahmen,
+  .vp-ezl-r-ueber,
+  .vp-ezl-r-massnahmen > .vp-ezl-karte,
+  .vp-ezl-r-ueber > .vp-ezl-karte {
+    align-self: stretch;
+    height: 100%;
+  }
+  .vp-ezl-r-massnahmen > .vp-ezl-karte,
+  .vp-ezl-r-ueber > .vp-ezl-karte {
+    align-content: start;
+  }
+}
+
+/* ---------- Energieziel setzen (geführt) --------------------------------------------- */
+.vp-ezf {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezf-schritt {
+  display: grid;
+  gap: 5px;
+}
+.vp-ezf-schritt .st {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font: 600 0.72rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezf-schritt .st b {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezf-schritt .bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.vp-ezf-schritt .bar i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vp-flow-base, #e3e9f1);
+}
+.vp-ezf-schritt .bar i.an {
+  background: var(--vp-action, #2c5282);
+}
+.vp-ezf-frage {
+  margin: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  outline: none;
+}
+.vp-ezf-wahl {
+  display: grid;
+  gap: 8px;
+  outline: none;
+}
+.vp-ezf-wo {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 11px;
+  row-gap: 2px;
+  min-height: 52px;
+  padding: 12px 13px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+}
+.vp-ezf-wo.an {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(149, 185, 255, 0.15);
+}
+.vp-ezf-wo input {
+  grid-row: 1 / span 2;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  border: 2px solid var(--vp-field-border, #858d96);
+  border-radius: 50%;
+  background: var(--vp-c-card, #fff);
+  appearance: none;
+  cursor: pointer;
+}
+.vp-ezf-wo input:checked {
+  border: 6px solid var(--vp-action, #2c5282);
+}
+.vp-ezf-wo input:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-ezf-wo b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezf-wo .s {
+  grid-column: 2;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezf-feld {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.vp-ezf-feld > label,
+.vp-ezf-feld > legend {
+  padding: 0;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezf-feld > legend {
+  margin-bottom: 5px;
+}
+.vp-ezf-in {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-ezf-in:focus-within,
+.vp-ezf-feld textarea:focus {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(149, 185, 255, 0.15);
+  outline: none;
+}
+.vp-ezf-in input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 600 1rem var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ezf-in .e {
+  flex: 0 0 auto;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-ezf-in.is-fehler,
+.vp-ezf-feld textarea.is-fehler {
+  border-color: var(--vp-c-destructive, #b91c1c);
+}
+.vp-ezf-feld textarea {
+  width: 100%;
+  min-height: 74px;
+  padding: 11px 14px;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  font: 500 0.9375rem/1.45 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  resize: vertical;
+}
+.vp-ezf-hilfe {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezf-fehler {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--vp-c-destructive, #b91c1c);
+}
+.vp-ezf-schnell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-ezf-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+  font: 600 0.8125rem var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-ezf-chip[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 12%, var(--vp-c-card, #fff));
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-ezf-zwei {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+.vp-ezf-so {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-bg, #f8fafc);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezf-so b {
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-ezf-pruef {
+  display: grid;
+  margin: 0;
+}
+.vp-ezf-pruef > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ezf-pruef > div:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.vp-ezf-pruef dt {
+  grid-column: 1;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezf-pruef dd {
+  grid-column: 1;
+  display: grid;
+  margin: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-ezf-pruef dd small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ezf-pruef .vp-ezl-link {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.vp-ezf-grenze {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+@media (max-width: 420px) {
+  .vp-ezf-zwei {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
