@@ -43,12 +43,14 @@ class PruefumgebungUhr {
     private final ZugriffBuehnenUhr zugriffe;
     private final BewertungUmfangService umfang;
     private final BewertungKriterienService kriterien;
+    private final KennzahlLauf kennzahlLauf;
 
     PruefumgebungUhr(@Value("${voltpilot.pruefumgebung.buehnen-uhr}") String buehne,
             EnergiemanagementDokumentService dokumente, InternesAuditService audits,
             FeststellungService feststellungen, KennzahlService kennzahlen, BerichtService berichte,
             EnergiemanagementVerzeichnisService verzeichnis, EnergiemanagementWiedervorlageService wiedervorlage,
-            ZugriffBuehnenUhr zugriffe, BewertungUmfangService umfang, BewertungKriterienService kriterien) {
+            ZugriffBuehnenUhr zugriffe, BewertungUmfangService umfang, BewertungKriterienService kriterien,
+            KennzahlLauf kennzahlLauf) {
         this.buehne = Instant.parse(buehne);
         this.dokumente = dokumente;
         this.audits = audits;
@@ -60,6 +62,7 @@ class PruefumgebungUhr {
         this.zugriffe = zugriffe;
         this.umfang = umfang;
         this.kriterien = kriterien;
+        this.kennzahlLauf = kennzahlLauf;
     }
 
     /**
@@ -85,6 +88,9 @@ class PruefumgebungUhr {
         // (ab 01.10.2026) in echter Zeit davor keinen Umfang, und die Rangliste bleibt leer (Demo-Befund 27.09.2026).
         umfang.uhrStellen(uhr);
         kriterien.uhrStellen(uhr);
+        // Der Kennzahl-Lauf rechnet auf der Uhr seiner Leser: eine Periode der Bühne bekäme sonst ein berechnet_am nach
+        // jeder Kaskade der echten Uhr, und die erste Ablesung hielte die Kaskade an (Befund Auswerten a4, 06.10.2026).
+        kennzahlLauf.uhrStellen(uhr);
         zugriffe.stellen(uhr);
     }
 }
