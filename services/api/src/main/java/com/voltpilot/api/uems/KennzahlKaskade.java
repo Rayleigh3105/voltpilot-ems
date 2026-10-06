@@ -7,10 +7,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -79,7 +81,9 @@ public class KennzahlKaskade implements KennzahlenNaht {
     }
 
     @Override
-    public void nachKorrektur(Connection con, KorrekturKaskade.Betroffen betroffen) throws SQLException {
+    public void nachKorrektur(Connection con, KorrekturKaskade.Betroffen anlass) throws SQLException {
+        // Die Uhr der Kennzahlen, auch für ihre Folgen: in Produktion die der Kaskade, in der Prüfumgebung die Bühne.
+        KorrekturKaskade.Betroffen betroffen = aufDerUhr(anlass, lauf.rechenzeit(anlass.jetzt()));
         Set<UUID> messstellen = messstellen(con, betroffen);
         Set<UUID> bezugsgroessen = new LinkedHashSet<>();
         betroffen.bezugsgroessen().forEach(g -> bezugsgroessen.add(g.id()));
@@ -105,6 +109,16 @@ public class KennzahlKaskade implements KennzahlenNaht {
                     + "{} unverändert, {} abgelehnt", betroffen.anlass(), betroffen.fassung(), n.kennzahlen(),
                     n.geschrieben(), n.neu().size(), n.unveraendert(), n.abgelehnt().size());
         }
+    }
+
+    /** Dasselbe Betroffen zu einem anderen Zeitpunkt - unverändert, wenn er gleich ist (Produktion). */
+    static KorrekturKaskade.Betroffen aufDerUhr(KorrekturKaskade.Betroffen b, Instant jetzt) {
+        if (Objects.equals(b.jetzt(), jetzt)) {
+            return b;
+        }
+        return new KorrekturKaskade.Betroffen(b.tenant(), b.anlass(), b.fassung(), b.status(), b.reihen(), b.von(),
+                b.bis(), b.zone(), b.ersterTag(), b.letzterTag(), b.messstellen(), b.ereignisse(), b.versionen(), jetzt,
+                b.bezugsgroessen());
     }
 
     /**

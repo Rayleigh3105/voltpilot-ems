@@ -22,10 +22,12 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -93,6 +95,8 @@ class UemsKennzahlKaskadeTest {
     private static final Instant T_V1 = Instant.parse("2026-11-10T08:00:00Z");
     /** Die Kaskade: im Takt der Freigabe von K-2026-0007 (12.11.2026 10:05:33, Referenzdatei 1.4). */
     private static final Instant T_KASKADE = Instant.parse("2026-11-12T09:05:33Z");
+    /** Ein späterer Lauf - in der Prüfumgebung die Bühne, die der echten Uhr voraus ist. */
+    private static final Instant SPAETER = Instant.parse("2027-06-30T12:00:00Z");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -156,6 +160,7 @@ class UemsKennzahlKaskadeTest {
     @AfterEach
     void aufraeumen() {
         TenantContext.clear();
+        lauf.uhrStellen(null);
     }
 
     // ================================================================ K7: die Kaskade trifft, was betroffen ist
@@ -333,6 +338,75 @@ class UemsKennzahlKaskadeTest {
         inDerKaskade(con -> naht.nachKorrektur(con, betroffen(w, "MS-12", T_KASKADE.plusSeconds(300))));
         assertThat(kennzahlTabellen(w)).as("zweimal verarbeitet schreibt beim zweiten Mal nichts").isEqualTo(nachK7);
         assertThat(meldungen(w)).isEqualTo(meldungen).hasSize(2);
+    }
+
+    // ================================================================ die Uhr der Kennzahlen (Befund Auswerten a4, K1)
+
+    /**
+     * Produktion: der Lauf rechnet zu dem Zeitpunkt, den er bekommt, die Kaskade zu ihrem. Hat ein späterer Lauf eine
+     * betroffene Periode schon gerechnet, reiht die Kaskade keine Version VOR ihrer Vorgängerin ein - sie bricht ab, und
+     * nichts bleibt halb. Genau das hielt die Demo an, als der Lauf eine Periode der Bühne in echter Zeit rechnete.
+     */
+    @Test
+    void inProduktionRechnetDieKaskadeZuIhremZeitpunkt() throws Exception {
+        Welt w = k7Welt();
+        assertThat(lauf.rechenzeit(T_KASKADE)).as("keine Bühne: der übergebene Zeitpunkt").isEqualTo(T_KASKADE);
+        lauf.lauf(SPAETER);
+        String vorher = kaskadenTabellen(w);
+        assertThatThrownBy(() -> inDerKaskade(con -> {
+            ms12Version2(con, w);
+            naht.nachKorrektur(con, betroffen(w, "MS-12", T_KASKADE));
+        })).hasStackTraceContaining("liegt nicht nach der neuesten Zeile (" + SPAETER + ")");
+        assertThat(kaskadenTabellen(w)).as("nichts Halbes bleibt").isEqualTo(vorher);
+    }
+
+    /**
+     * Die Prüfumgebung: dort steht der Lauf auf der Bühne ({@link PruefumgebungUhr}), auch wenn Läufer und Kaskade die
+     * echte Uhr nennen. Dieselbe Folge - ein Lauf, danach eine Kaskade der echten Uhr - hält nicht an: die neuen
+     * Versionen tragen die Bühne als {@code berechnet_am}, ihre Meldungen ebenso.
+     */
+    @Test
+    void inDerPruefumgebungRechnetDieKaskadeAufDerBuehne() throws Exception {
+        Welt w = k7Welt();
+        lauf.uhrStellen(Clock.fixed(SPAETER, ZoneOffset.UTC));
+        lauf.lauf(T_V1);
+        Instant buehne = SPAETER.plusSeconds(300); // die Bühne läuft in echter Zeit weiter
+        lauf.uhrStellen(Clock.fixed(buehne, ZoneOffset.UTC));
+        inDerKaskade(con -> {
+            ms12Version2(con, w);
+            naht.nachKorrektur(con, betroffen(w, "MS-12", T_KASKADE));
+        });
+        assertThat(zeile(w, "KZ-0001").get("version")).isEqualTo(2);
+        assertThat(zeile(w, "KZ-0003").get("version")).isEqualTo(2);
+        assertThat(root.queryForList("SELECT DISTINCT w.berechnet_am FROM kennzahl_wert w WHERE w.tenant_id = ? "
+                + "AND w.version = 2", Timestamp.class, w.mandant())).extracting(Timestamp::toInstant)
+                .as("die Versionen der Kaskade stehen auf der Bühne").containsExactly(buehne);
+        assertThat(root.queryForList("SELECT DISTINCT eingang FROM messreihe_ereignis WHERE tenant_id = ? "
+                + "AND art = 'kennzahl_neu_gebildet'", Timestamp.class, w.mandant())).extracting(Timestamp::toInstant)
+                .as("ihre Meldungen auch").containsExactly(buehne);
+    }
+
+    /**
+     * Jeder Prozess der Prüfumgebung (API, Seed) und jeder Neustart beginnt die Bühne neu an ihrem Augenblick. Steht eine
+     * Zeile eines früheren Starts „später“ als die Bühne jetzt, hält die Kaskade trotzdem nicht an: die neue Version
+     * reiht sich direkt hinter ihre Vorgängerin ein.
+     */
+    @Test
+    void einNeustartDerBuehneHaeltDieKaskadeNichtAn() throws Exception {
+        Welt w = k7Welt();
+        lauf.uhrStellen(Clock.fixed(SPAETER, ZoneOffset.UTC));
+        lauf.lauf(T_V1);
+        Instant neustart = SPAETER.minus(Duration.ofDays(3)); // die Bühne beginnt wieder an ihrem Augenblick
+        lauf.uhrStellen(Clock.fixed(neustart, ZoneOffset.UTC));
+        inDerKaskade(con -> {
+            ms12Version2(con, w);
+            naht.nachKorrektur(con, betroffen(w, "MS-12", T_KASKADE));
+        });
+        assertThat(zeile(w, "KZ-0001").get("version")).isEqualTo(2);
+        assertThat(root.queryForList("SELECT DISTINCT w.berechnet_am FROM kennzahl_wert w WHERE w.tenant_id = ? "
+                + "AND w.berechnet_am > ?", Timestamp.class, w.mandant(), Timestamp.from(neustart)))
+                .extracting(Timestamp::toInstant).as("hinter der Zeile des früheren Starts, nicht davor")
+                .containsExactlyInAnyOrder(SPAETER, SPAETER.plusNanos(1_000));
     }
 
     // ================================================================ die Kaskade im Test
