@@ -87,6 +87,10 @@ type Agent struct {
 	lastReadingAt time.Time
 	lastRawSoc    *float64
 
+	// releaseReady is the battery executor's per-tick word on whether it
+	// covers a vehicle's draw („Sonne + Speicher", ocpp_release.go).
+	releaseReady releaseReadiness
+
 	// net answers "under which address is my box reachable" - the ONE fact the
 	// box could never say about itself (D5). It records the Host header of
 	// every request that reaches the local web app (see internal/netinfo) and
@@ -2726,6 +2730,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Native = nil
 			s.NativeWithheld = nil
 			s.CarsFirstCapKw = nil
+			s.ReleaseCoverKw = nil
 			s.ExportGuard = exportGuard
 			// Without a reading the tracker has no evaluation point at all, so a
 			// previous claim is cleared rather than left standing - the same rule
@@ -2884,6 +2889,27 @@ func (a *Agent) applySetpoint(now time.Time) {
 		portableReady = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
 	}
 	economicUnplanned := economicUnplannedRequested && portableReady
+
+	// „SONNE + SPEICHER" (ocpp_release.go): tell the charge-point executor
+	// whether THIS path covers a vehicle's draw right now. Every hold reason
+	// the battery honours is a reason not to release - a battery that a rule
+	// holds, that runs its stale-plan fallback or that the box may not
+	// command would leave the car on grid power.
+	switch {
+	case paused:
+		a.noteReleaseReadiness(now, false, "Die Steuerung des Speichers ist pausiert")
+	case nonPlanHolder || a.batteryOwnerClaimed():
+		a.noteReleaseReadiness(now, false, "Eine Regel oder ein Handeingriff hält den Speicher")
+	case mode != state.ModeSchedule || !p.Fresh(now):
+		a.noteReleaseReadiness(now, false, "Ohne aktuellen Fahrplan fährt der Speicher seinen Rückfall")
+	case !measurementFresh:
+		a.noteReleaseReadiness(now, false, "Die Messung des Wechselrichters ist nicht frisch")
+	case !portableReady:
+		a.noteReleaseReadiness(now, false, "VoltPilot führt den Speicher gerade nicht (Steuerung "+
+			"abgeschaltet, für dieses Gerät nicht freigegeben oder ohne bestätigte Rückmeldung)")
+	default:
+		a.noteReleaseReadiness(now, true, "")
+	}
 
 	unplanned := economicUnplanned
 	floor := peakReserve
@@ -3047,6 +3073,40 @@ func (a *Agent) applySetpoint(now time.Time) {
 		v := cap
 		carsFirstCap = &v
 		kw = cap
+	}
+
+	// „SONNE + SPEICHER" - the RELEASE COVER (ocpp_release.go): while cars on
+	// that source draw released battery power, a planned CHARGE in a slot the
+	// cloud authorized (it carries ev_release_floor_soc_pct, i.e. a
+	// self-consumption slot - never a trade) yields to the MEASURED
+	// self-consumption value pv - load, where load includes the cars. Without
+	// it the PV-bus semantics would keep charging the battery from the sun
+	// while the car's draw came from the grid - exactly what the source
+	// promises never happens.
+	//
+	// ⚠ LOWER-ONLY and bounded by the cloud's floor: the target is re-run
+	// through the SAME guards.Clamp with the SoC floor raised to the release
+	// floor, so rated band, BMS, §14a and the solar-only clamp hold; it lands
+	// at predicted grid 0, so it can never create an export, and the peak
+	// guard and the export watchdog below still act on the result. In every
+	// other slot the battery already covers the cars (deficit cover, load
+	// following, self-consumption), so this is a no-op there.
+	var releaseCoverKw *float64
+	if floorPct, inUse := a.ocppReleaseInUse(now); inUse && marketCorrectionsAllowed &&
+		mode == state.ModeSchedule && p.Fresh(now) && measurementFresh && portableReady &&
+		!math.IsNaN(rc.PvKw) && !math.IsNaN(rc.LoadKw) {
+		if _, slotOk := p.ActiveReleaseFloor(now); slotOk {
+			l := limits
+			if floorPct > l.SocMinPct {
+				l.SocMinPct = floorPct
+			}
+			target := guards.Clamp(rc.PvKw-rc.LoadKw, l, r)
+			if kw > target {
+				v := target
+				releaseCoverKw = &v
+				kw = target
+			}
+		}
 	}
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
@@ -3300,6 +3360,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Follow = followInfo
 		s.Absorb = absorbInfo
 		s.CarsFirstCapKw = carsFirstCap
+		s.ReleaseCoverKw = releaseCoverKw
 		s.ExportGuard = exportGuard
 		s.CurtailTrack = curtailTrack
 		s.Leader = leaderInfo

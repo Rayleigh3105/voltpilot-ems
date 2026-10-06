@@ -128,8 +128,14 @@ type Charger struct {
 	// by side the SAME number, and the allocator keeps rotating between them.
 	// Like `connection`/`source` it is applied to a station the box ALREADY
 	// knows - there is no :8484 surface for it, so there is nothing to protect.
-	Rank    int       `json:"rank,omitempty"`
-	AddedAt time.Time `json:"added_at"`
+	Rank int `json:"rank,omitempty"`
+	// StorageRelease is „Sonne + Speicher" (2026-10-06,
+	// `charge_points[].storage_release`): on top of the lane `nur_sonne` this
+	// station may receive battery energy above the cloud's floor
+	// (internal/lastmgmt/release.go). Only ever true next to Source
+	// "nur_sonne" - NormalizeAdd drops it anywhere else.
+	StorageRelease bool      `json:"storage_release,omitempty"`
+	AddedAt        time.Time `json:"added_at"`
 }
 
 // KnownSource reports whether s is part of the source vocabulary. Empty is NOT
