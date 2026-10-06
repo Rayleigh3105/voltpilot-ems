@@ -4,9 +4,11 @@ import com.voltpilot.api.web.dto.BezugsbasisVergleichDto;
 import com.voltpilot.api.web.dto.EnergiezielDto;
 import com.voltpilot.api.web.dto.MassnahmeDto;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -66,46 +68,30 @@ public class MassnahmeWirkung {
         if (m.umgesetztAm() == null) {
             return leer(m, "nicht_umgesetzt", null);
         }
-
+        Gelesen g = rechnen(m, n, new HashMap<>());
+        Map<String, Object> r = g.r();
         MassnahmeDto.Messgrundlage mg = m.messgrundlage();
         YearMonth umsetzung = YearMonth.from(m.umgesetztAm());
-        BezugsbasisVergleich.ZielVergleich zv = vergleich.fuerZiel(mg.kennzahl().id(), mg.bezugsbasis().kennzeichen(),
-                umsetzung, umsetzung.plusMonths(n));
-        // Der Umsetzungsmonat geht immer mit (er zählt nie, R6); von den Nachher-Monaten nur die endgültigen (WK2).
-        List<VerbesserungRegeln.MonatEingang> eingang = new ArrayList<>();
-        Map<String, BezugsbasisVergleichDto.Monat> zeilen = new LinkedHashMap<>();
-        for (BezugsbasisVergleich.ZielMonat z : zv.monate()) {
-            zeilen.put(z.zeile().periode(), z.zeile());
-            if (z.endgueltig() || z.zeile().periode().equals(umsetzung.toString())) {
-                eingang.add(z.eingang());
-            }
-        }
-        Map<String, Object> r = VerbesserungRegeln.wirkung(new VerbesserungRegeln.WirkungEingang(
-                m.umgesetztAm().toString(), n, eingang));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> ng = (List<Map<String, Object>>) r.get("nicht_gezaehlt");
         Map<String, String> grund = new LinkedHashMap<>();
         ng.forEach(a -> grund.put((String) a.get("monat"), (String) a.get("grund")));
         List<MassnahmeDto.WirkungMonat> monate = new ArrayList<>();
-        for (BezugsbasisVergleich.ZielMonat z : zv.monate()) {
+        for (BezugsbasisVergleich.ZielMonat z : g.zv().monate()) {
             String periode = z.zeile().periode();
-            String g = grund.get(periode);
-            boolean gezaehlt = z.endgueltig() && g == null && !periode.equals(umsetzung.toString());
-            monate.add(new MassnahmeDto.WirkungMonat(periode, z.endgueltig(), gezaehlt, g, monatSatz(z, g, mg),
+            String gr = grund.get(periode);
+            boolean gezaehlt = z.endgueltig() && gr == null && !periode.equals(umsetzung.toString());
+            monate.add(new MassnahmeDto.WirkungMonat(periode, z.endgueltig(), gezaehlt, gr, monatSatz(z, gr, mg),
                     z.kennzahl(), z.zeile()));
         }
 
-        @SuppressWarnings("unchecked")
-        List<String> kennzeichen = (List<String>) r.get("kennzeichen");
-        MassnahmeDto.WirkungSumme summe = new MassnahmeDto.WirkungSumme((String) r.get("gemessen"),
-                (String) r.get("erwartet"), (String) r.get("delta_prozent"), (String) r.get("band_prozent"),
-                (String) r.get("richtung"), (String) r.get("urteil"), List.copyOf(kennzeichen));
+        MassnahmeDto.WirkungSumme summe = summe(r);
         int bewertbar = (int) r.get("monate_bewertbar");
         String monateSatz = (String) r.get("monate");
 
         String satz = null;
-        if (bewertbar > 0 && m.erwarteteWirkungProzent() != null) {
+        if (bewertbar > 0) {
             // Die Ausschlüsse des Satzes sind die der Nachher-Monate; der Umsetzungsmonat hat seinen eigenen Satz.
             List<EnergiezielDto.Ausschluss> nachher = ng.stream()
                     .filter(a -> !"umsetzungsmonat".equals(a.get("grund")))
@@ -113,19 +99,106 @@ public class MassnahmeWirkung {
             Map<String, String> werte = new LinkedHashMap<>();
             werte.put("massnahme", m.kennzeichen());
             werte.put("prozent", EnergiezielService.prozent(summe.deltaProzent(), summe.richtung()));
-            werte.put("energie", energie(mg.kennzahl().id()));
+            werte.put("energie", g.energie());
             werte.put("zeitraum", EnergiezielService.periodeText(YearMonth.parse((String) r.get("zeitraum_von")),
                     YearMonth.parse((String) r.get("zeitraum_bis"))));
             werte.put("monate", monateSatz);
-            werte.put("ausschluesse", EnergiezielService.ausschluesse(nachher, zeilen));
-            werte.put("erwartete_wirkung", EnergiezielService.zielwertText(new BigDecimal(m.erwarteteWirkungProzent())));
-            satz = satz("wirkung_vorlaeufig", werte);
+            werte.put("ausschluesse", EnergiezielService.ausschluesse(nachher, g.zeilen()));
+            if (m.erwarteteWirkungProzent() != null) {
+                werte.put("erwartete_wirkung",
+                        EnergiezielService.zielwertText(new BigDecimal(m.erwarteteWirkungProzent())));
+                satz = satz("wirkung_vorlaeufig", werte);
+            } else {
+                // Entscheid 12 (Befund 6): „Weiß ich noch nicht“ beim Planen — der Satz ohne „erwartet waren …“.
+                satz = satz("wirkung_ohne_erwartung", werte);
+            }
         }
-        return new MassnahmeDto.Wirkung(m, m.frist().abruf(), null, (String) r.get("umsetzungsmonat"),
+        // Die Kurzform steht auch hier an der Maßnahme: die Seite zeigt dieselben Mengen wie die Liste.
+        return new MassnahmeDto.Wirkung(m.mitWirkungKurz(kurzAus(m, g)), m.frist().abruf(), null,
+                (String) r.get("umsetzungsmonat"),
                 (String) r.get("nachher_von"), (String) r.get("nachher_bis"), List.copyOf(monate), bewertbar,
                 (int) r.get("monate_endgueltig"), (int) r.get("monate_soll"), monateSatz, (boolean) r.get("vorlaeufig"),
                 ng.stream().map(a -> new MassnahmeDto.WirkungAusschluss((String) a.get("monat"),
-                        (String) a.get("grund"))).toList(), summe, satz);
+                        (String) a.get("grund"))).toList(), summe, satz, g.energie());
+    }
+
+    /**
+     * Die Liste mit der beobachteten Wirkung in Kurzform je Maßnahme (Verbessern-Konzept v1 §6.5) — dieselbe Rechnung
+     * wie {@link #lesen} mit der Vorgabe von 12 Nachher-Monaten, nur die Summe. Ohne Messgrundlage, vor der Umsetzung,
+     * verworfen oder ohne bewertbaren Monat bleibt das Feld {@code null}; die Liste braucht so keinen Wirkungs-Abruf je
+     * Maßnahme.
+     */
+    public MassnahmeDto.Liste mitKurzform(MassnahmeDto.Liste liste) {
+        Map<UUID, String> energie = new HashMap<>();
+        List<MassnahmeDto.Massnahme> aus = new ArrayList<>();
+        for (MassnahmeDto.Massnahme m : liste.massnahmen()) {
+            aus.add(m.mitWirkungKurz(kurzform(m, energie)));
+        }
+        return new MassnahmeDto.Liste(liste.abruf(), List.copyOf(aus));
+    }
+
+    private MassnahmeDto.WirkungKurz kurzform(MassnahmeDto.Massnahme m, Map<UUID, String> energie) {
+        if (m.messgrundlage() == null || m.umgesetztAm() == null) {
+            return null;
+        }
+        return kurzAus(m, rechnen(m, VerbesserungRegeln.STARTWERTE.nachher_monate(), energie));
+    }
+
+    private static MassnahmeDto.WirkungKurz kurzAus(MassnahmeDto.Massnahme m, Gelesen g) {
+        Map<String, Object> r = g.r();
+        int bewertbar = (int) r.get("monate_bewertbar");
+        if (bewertbar == 0 || r.get("gemessen") == null) {
+            return null;
+        }
+        BigDecimal gemessen = new BigDecimal((String) r.get("gemessen"));
+        BigDecimal erwartet = new BigDecimal((String) r.get("erwartet"));
+        String erwarteteWirkung = m.erwarteteWirkungProzent() == null ? null
+                : new BigDecimal(m.erwarteteWirkungProzent()).multiply(erwartet)
+                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP).toPlainString();
+        return new MassnahmeDto.WirkungKurz((String) r.get("delta_prozent"), (String) r.get("richtung"),
+                (String) r.get("urteil"), bewertbar, (int) r.get("monate_soll"), (String) r.get("monate"),
+                (boolean) r.get("vorlaeufig"), (String) r.get("zeitraum_von"), (String) r.get("zeitraum_bis"),
+                gemessen.toPlainString(), erwartet.toPlainString(),
+                gemessen.subtract(erwartet).setScale(0, RoundingMode.HALF_UP).toPlainString(), erwarteteWirkung,
+                g.einheit(), g.energie());
+    }
+
+    /** Was die Operation {@code wirkung} über den Nachher-Zeitraum liefert, mit den gelesenen Zeilen und dem Träger. */
+    private record Gelesen(Map<String, Object> r, BezugsbasisVergleich.ZielVergleich zv,
+            Map<String, BezugsbasisVergleichDto.Monat> zeilen, String energie, String einheit) {}
+
+    /**
+     * Die Vergleichszeilen vom Umsetzungsmonat bis N Monate danach und die Operation {@code wirkung} darüber — der
+     * Umsetzungsmonat geht immer mit (er zählt nie, R6), von den Nachher-Monaten nur die endgültigen (WK2).
+     */
+    private Gelesen rechnen(MassnahmeDto.Massnahme m, int n, Map<UUID, String> energie) {
+        MassnahmeDto.Messgrundlage mg = m.messgrundlage();
+        YearMonth umsetzung = YearMonth.from(m.umgesetztAm());
+        BezugsbasisVergleich.ZielVergleich zv = vergleich.fuerZiel(mg.kennzahl().id(), mg.bezugsbasis().kennzeichen(),
+                umsetzung, umsetzung.plusMonths(n));
+        List<VerbesserungRegeln.MonatEingang> eingang = new ArrayList<>();
+        Map<String, BezugsbasisVergleichDto.Monat> zeilen = new LinkedHashMap<>();
+        String einheit = null;
+        for (BezugsbasisVergleich.ZielMonat z : zv.monate()) {
+            zeilen.put(z.zeile().periode(), z.zeile());
+            if (z.endgueltig() || z.zeile().periode().equals(umsetzung.toString())) {
+                eingang.add(z.eingang());
+            }
+            if (einheit == null && z.zeile().bereinigt().gemessen() != null) {
+                einheit = z.zeile().bereinigt().gemessen().einheit();
+            }
+        }
+        Map<String, Object> r = VerbesserungRegeln.wirkung(new VerbesserungRegeln.WirkungEingang(
+                m.umgesetztAm().toString(), n, eingang));
+        return new Gelesen(r, zv, zeilen, energie.computeIfAbsent(mg.kennzahl().id(), this::energie), einheit);
+    }
+
+    private static MassnahmeDto.WirkungSumme summe(Map<String, Object> r) {
+        @SuppressWarnings("unchecked")
+        List<String> kennzeichen = (List<String>) r.get("kennzeichen");
+        return new MassnahmeDto.WirkungSumme((String) r.get("gemessen"), (String) r.get("erwartet"),
+                (String) r.get("delta_prozent"), (String) r.get("band_prozent"), (String) r.get("richtung"),
+                (String) r.get("urteil"), List.copyOf(kennzeichen));
     }
 
     /** WK2: ganze Zahl; die Grenzen prüft die Operation {@code wirkung} selbst ({@code fehler: nachher_monate}). */
@@ -146,7 +219,7 @@ public class MassnahmeWirkung {
 
     private static MassnahmeDto.Wirkung leer(MassnahmeDto.Massnahme m, String grund, String satz) {
         return new MassnahmeDto.Wirkung(m, m.frist().abruf(), grund, null, null, null, List.of(), null, null, null,
-                null, null, List.of(), null, satz);
+                null, null, List.of(), null, satz, null);
     }
 
     /** §5.9 „Wirkung, Monat nicht gezählt“ und „Basis nach der Umsetzung“ — nur für einen Monat, der nicht zählt. */

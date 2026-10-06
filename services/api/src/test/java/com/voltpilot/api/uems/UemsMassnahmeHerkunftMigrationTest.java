@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -108,7 +109,10 @@ class UemsMassnahmeHerkunftMigrationTest {
     void dasVokabularWirdNurGeweitet() {
         List<String> nachher = vokabular();
         assertThat(nachher.subList(0, vokabularVorher.size())).containsExactlyElementsOf(vokabularVorher);
-        assertThat(nachher.subList(vokabularVorher.size(), nachher.size())).containsExactlyElementsOf(NEU);
+        // Verbessern v1 PR 2 (V20261006213000) weitet dahinter um die Art der Maßnahme.
+        assertThat(nachher.subList(vokabularVorher.size(), nachher.size())).containsExactlyElementsOf(
+                Stream.concat(NEU.stream(), Stream.of("massnahme_art:1:gemessen",
+                        "massnahme_art:2:nicht_gemessen", "massnahme_art:3:organisatorisch")).toList());
         assertThat(root.queryForList("SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'massnahme_herkunft' "
                 + "ORDER BY nr", String.class)).containsExactlyElementsOf(VerbesserungRegeln.VOKABULARE
                 .get("massnahme_herkunft"));
@@ -136,22 +140,28 @@ class UemsMassnahmeHerkunftMigrationTest {
         }
     }
 
-    /** Out-of-order: auf einer Datenbank mit ALLEN anderen Migrationen kommt diese zuletzt an und trägt genauso. */
+    /**
+     * Out-of-order: auf einer Datenbank mit allen anderen Migrationen kommt diese zuletzt an und trägt genauso — mit der
+     * späteren Migration, die das Vokabular als Vereinigung weiterschreibt (Verbessern v1 PR 2, {@code 20261006213000}):
+     * ohne sie überschriebe diese Migration deren Wörter.
+     */
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
+        List<String> spaeter = List.of(DIESE, "20261006213000");
         root.execute("CREATE DATABASE voltpilot_spaet");
         String url = POSTGRES.getJdbcUrl().replace("/voltpilot?", "/voltpilot_spaet?");
         Path ohneDiese = Files.createTempDirectory("ohne-herkunft");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (spaeter.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeter);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String check = "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'massnahme_herkunft_chk'";
         assertThat(spaetDb.queryForObject(check, String.class)).isEqualTo(root.queryForObject(check, String.class));

@@ -14,7 +14,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "herkunft": {
       "type": "string",
@@ -52,6 +52,7 @@
         "zielstand_vorschlag",
         "massnahme_zustand",
         "massnahme_herkunft",
+        "massnahme_art",
         "abweichung_zustand",
         "abweichung_ergebnis",
         "abweichung_eintrag_art",
@@ -100,6 +101,14 @@
           }
         },
         "massnahme_herkunft": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "massnahme_art": {
           "type": "array",
           "minItems": 1,
           "items": {
@@ -228,6 +237,7 @@
         "messgrundlage",
         "ohne_messgrundlage",
         "wirkung_vorlaeufig",
+        "wirkung_ohne_erwartung",
         "wirkung_umsetzungsmonat",
         "wirkung_nicht_bewertbar",
         "wirkung_basis_nach_umsetzung",
@@ -285,6 +295,10 @@
           "minLength": 1
         },
         "wirkung_vorlaeufig": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirkung_ohne_erwartung": {
           "type": "string",
           "minLength": 1
         },

@@ -1,32 +1,169 @@
-import { useEffect, useState } from 'react';
-import { GrenzSatz } from './GrenzSatz';
-import { api, type Massnahme } from '../api';
-import * as Z from '../energieziele';
-import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
-import * as M from '../massnahmen';
-import { MassnahmeAnlegen } from './MassnahmeDialoge';
-import { ErrorState, Skeleton } from './States';
-import { VpPicker } from './VpPicker';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { api, type Massnahme, type MassnahmeListe } from '../api';
+import { BEGRIFFE } from '../begriffe';
+import * as B from '../massnahmenBild';
+import { useRollen } from '../rollen';
+import { FristDatum, Kennzeichentext } from './FristDatum';
+import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
+import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
 import '../pages/Verbesserung.css';
+import './Wiedervorlage.css';
+import './kacheln/Kacheln.css';
+import '../pages/Massnahmen.css';
 
-type Lage = { art: 'laedt' } | { art: 'fehler' } | { art: 'da'; liste: Massnahme[] };
+type Lage = { art: 'laedt' } | { art: 'fehler' } | { art: 'da'; l: MassnahmeListe };
+type Filter = B.Stufe | 'alle';
+
+/** Die Marke „Was es bringt“ in der Familie der Kacheln (`.vp-k-marke`). */
+export function BringtMarke({ marke }: { marke: B.Marke }) {
+  const ton = marke.ton === 'ok' ? ' is-ok' : marke.ton === 'warn' ? ' is-warn' : marke.ton === 'plan' ? ' is-plan' : marke.ton === 'ohne' ? ' is-ohne' : '';
+  return (
+    <span className={`vp-k-marke${ton}`} data-testid="massnahme-marke">
+      {marke.ton === 'ok' && <Icon name="check" size={12} />}
+      {marke.wort}
+    </span>
+  );
+}
+
+/** Eine Maßnahme der Liste: am Telefon eine Karte, ab 760 px Breite eine Reihe mit fünf Spalten (§6.5). */
+function Eintrag({ m, onOeffnen }: { m: Massnahme; onOeffnen: (id: string) => void }) {
+  const rollen = useRollen();
+  const datum = B.datumBild(m);
+  const bringt = B.bringtBild(m);
+  const schritt = B.naechsterSchritt(m, {
+    melden: rollen.darf('verbesserung.verwalten', m.standort_id),
+    abschliessen: rollen.darf('verbesserung.abschliessen', m.standort_id),
+  });
+  const woher = B.woherZeile(m);
+  return (
+    <div className="vp-wv-eintrag vp-mn-eintrag is-ziel" data-testid={`massnahme-eintrag-${m.kennzeichen}`} data-entscheid="massnahme_termin">
+      <FristDatum wort={datum.wort} tag={datum.tag} jahr={datum.jahr} satz={datum.satz} ton={datum.ton} />
+      <span className="vp-wv-text">
+        <span className="vp-wv-aufgabe vp-mn-titel">
+          <a
+            className="vp-wv-ziel"
+            href={`#/portfolio/verbesserung/massnahmen/${m.id}`}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              onOeffnen(m.id);
+            }}
+            aria-label={`${m.titel}: ${schritt.wort}`}
+            data-testid={`massnahme-oeffnen-${m.kennzeichen}`}
+          >
+            {m.titel}
+          </a>
+          <span className="vp-mn-kz">{m.kennzeichen}</span>
+        </span>
+        {woher && (
+          <span className="vp-wv-grund">
+            <Kennzeichentext text={woher} />
+          </span>
+        )}
+      </span>
+      <span className="vp-wv-chev" aria-hidden="true">
+        <Icon name="chevron-right" size={18} />
+      </span>
+      <span className="vp-mn-bringt" data-testid="massnahme-bringt">
+        {bringt.zahl && <span className="vp-mn-zahl">{bringt.zahl}</span>}
+        {bringt.text && <span className="vp-mn-bringt-text">{bringt.text}</span>}
+        {bringt.marke && <BringtMarke marke={bringt.marke} />}
+      </span>
+      <span className="vp-wv-fuss">
+        <span className="vp-wv-wer">
+          <span className="vp-mn-wer-icon" aria-hidden="true">
+            <Icon name="users" size={14} />
+          </span>
+          {m.verantwortlich.name}
+        </span>
+        <span className={`vp-wv-schritt${schritt.leise ? ' is-leise' : ''}`} aria-hidden="true" data-testid="massnahme-schritt">
+          {schritt.wort}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+/** „Was ist eine Maßnahme?“ — Klartext aus `begriffe.ts`, dazu was sie nicht ist (§7). */
+function WasIst({ offen, setOffen, refEl }: { offen: boolean; setOffen: (o: boolean) => void; refEl: React.RefObject<HTMLDetailsElement> }) {
+  return (
+    <details
+      ref={refEl}
+      className="vp-mn-tipp"
+      open={offen}
+      onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}
+      data-testid="massnahmen-was-ist"
+    >
+      <summary>
+        <Icon name="info" size={16} />
+        {B.WAS_IST}
+        <span className="vp-mn-tipp-zu" aria-hidden="true">
+          <Icon name="chevron-down" size={16} />
+        </span>
+      </summary>
+      <p>{BEGRIFFE.massnahme.klartext}</p>
+      <p className="is-leise">
+        <b>Nicht verwechseln:</b> Nicht die Wirkung: was eine Maßnahme gebracht hat, beobachtet VoltPilot an einer Kennzahl -
+        ob sie es bewirkt hat, sagt eine Person.
+      </p>
+    </details>
+  );
+}
+
+/** „So läuft eine Maßnahme“: die drei Stufen mit einem Satz (§6.5). */
+function SoLaeuft() {
+  return (
+    <section className="vp-wv-karte" aria-labelledby="mn-so-laeuft" data-testid="massnahmen-so-laeuft">
+      <div className="vp-wv-blockkopf">
+        <h2 id="mn-so-laeuft">{B.SO_LAEUFT}</h2>
+      </div>
+      <ol className="vp-mn-stufen" aria-label="Stufen einer Maßnahme">
+        <li className="is-done">
+          <span className="vp-mn-punkt" aria-hidden="true">
+            <Icon name="check" size={13} />
+          </span>
+          <b>Geplant</b>
+          <small>Wer, was, bis wann</small>
+        </li>
+        <li className="is-an">
+          <span className="vp-mn-punkt" aria-hidden="true" />
+          <b>Umgesetzt</b>
+          <small>gemeldet mit Tag</small>
+        </li>
+        <li className="is-offen">
+          <span className="vp-mn-punkt" aria-hidden="true" />
+          <b>Wirkung geprüft</b>
+          <small>nach bis zu 12 Monaten</small>
+        </li>
+      </ol>
+      <p className="vp-wv-leise">{B.SO_LAEUFT_SATZ}</p>
+    </section>
+  );
+}
 
 /**
- * Das Register „Maßnahmen“ (AP-18 IP-13, §5.4, M1, M4, E5 = A): je Maßnahme Kennzeichen und Titel, Zustand, Termin,
- * Verantwortlich, Messgrundlage — ohne sie das Kennzeichen „ohne Messgrundlage — Wirkung nicht messbar“ in der Zeile;
- * „überfällig seit n Tagen“ aus `frist` der Route, überfällige zuerst; Filter Zustand, Kennzahl, überfällig. Ohne
- * Maßnahme der Leer-Satz aus §5.9; der Grenz-Satz steht immer (SP3). „Maßnahme anlegen“ legt von Hand an.
+ * Der Reiter „Maßnahmen“ (Verbessern-Konzept v1 §6.5, Richtungsfrage 9.2 A): Titel mit Klartext und „Planen“ im Kopf
+ * (Entscheid 7), Antwort zuerst, Filter-Chips nach Stufe, die Gruppen „Zu tun“, „Umgesetzt“, „Abgeschlossen“ mit je
+ * einer Karte bzw. Reihe — wer sich kümmert, bis wann, was es bringt, der nächste Schritt mit seinem Verb. Die Marke
+ * `data-entscheid="massnahme_termin"` bleibt an jeder Karte, damit die Sprünge der Wiedervorlage treffen.
  */
 export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => void }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
-  const [filter, setFilter] = useState<M.RegisterFilter>(M.FILTER_LEER);
+  const [filter, setFilter] = useState<Filter>('alle');
+  const [planen, setPlanen] = useState(false);
+  const [wasIst, setWasIst] = useState(false);
+  const wasIstRef = useRef<HTMLDetailsElement>(null);
+  const rollen = useRollen();
+  const darfPlanen = rollen.darf('verbesserung.verwalten', null) || (rollen.selbst?.standorte ?? []).some((s) => rollen.darf('verbesserung.verwalten', s.id));
 
   useEffect(() => {
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahmen().then(
-      ({ massnahmen }) => aktiv && setLage({ art: 'da', liste: M.ordnen(massnahmen) }),
+      (l) => aktiv && setLage({ art: 'da', l }),
       () => aktiv && setLage({ art: 'fehler' }),
     );
     return () => {
@@ -34,98 +171,162 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
     };
   }, [versuch]);
 
-  const anlegen = <MassnahmeAnlegen vorbelegung={{ herkunft: 'von_hand' }} standort={null} variante="primary" onAngelegt={(m) => onOeffnen(m.id)} />;
+  const zeigeWasIst = () => {
+    setWasIst(true);
+    requestAnimationFrame(() => wasIstRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
-  if (lage.art === 'laedt') return <Skeleton height={180} />;
-  if (lage.art === 'fehler') return <ErrorState message={M.LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />;
-
-  const zeilen = M.filtern(lage.liste, filter);
-  return (
-    <section className="vp-ez" data-testid="massnahmen-register">
-      {anlegen}
-      {lage.liste.length === 0 ? (
+  const kopf = (
+    <header className="vp-wv-kopf vp-mn-kopf">
+      <div className="vp-wv-kopf-text">
+        <h1>{B.TITEL}</h1>
+        <p className="vp-wv-meta">{B.UNTERTITEL}</p>
+      </div>
+      {darfPlanen && (
         <>
-          <p className="vp-ez-wozu" data-testid="massnahmen-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>
-          <p className="vp-ez-satz" data-testid="massnahmen-leer">
-            {UEMS_VERBESSERUNG_SAETZE.leer()}
-          </p>
-        </>
-      ) : (
-        <>
-          <div className="vp-ez-filter" data-testid="massnahmen-filter">
-            <VpPicker
-              label={M.FILTER.zustand}
-              options={[{ value: '', label: M.FILTER.alle }, ...Object.entries(M.ZUSTAND_WORT).map(([value, label]) => ({ value, label }))]}
-              value={filter.zustand}
-              onChange={(v) => setFilter((f) => ({ ...f, zustand: v as M.RegisterFilter['zustand'] }))}
-              search="nie"
-            />
-            <VpPicker
-              label={M.FILTER.kennzahl}
-              options={[{ value: '', label: M.FILTER.alle }, ...M.kennzahlOptionen(lage.liste)]}
-              value={filter.kennzahl}
-              onChange={(v) => setFilter((f) => ({ ...f, kennzahl: v }))}
-            />
-            <label className="vp-ez-wahl-punkt">
-              <input
-                type="checkbox"
-                checked={filter.ueberfaellig}
-                onChange={(x) => setFilter((f) => ({ ...f, ueberfaellig: x.target.checked }))}
-                data-testid="massnahmen-filter-ueberfaellig"
-              />
-              {M.FILTER.ueberfaellig}
-            </label>
-          </div>
-          {zeilen.length === 0 ? (
-            <p className="vp-ez-satz">{M.LEER_GEFILTERT}</p>
-          ) : (
-            <div className="vp-ez-tafel-rahmen">
-              <table className="vp-ez-tafel" data-testid="massnahmen-tafel">
-                <thead>
-                  <tr>
-                    <th scope="col">{M.SPALTEN.kennzeichen}</th>
-                    <th scope="col">{M.SPALTEN.zustand}</th>
-                    <th scope="col">{M.SPALTEN.termin}</th>
-                    <th scope="col">{M.SPALTEN.verantwortlich}</th>
-                    <th scope="col">{M.SPALTEN.messgrundlage}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {zeilen.map((m) => {
-                    const ueberfaellig = M.ueberfaelligText(m);
-                    return (
-                      <tr key={m.id} data-testid={`massnahme-zeile-${m.kennzeichen}`}>
-                        <th scope="row">
-                          <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(m.id)}>
-                            {m.kennzeichen}
-                          </button>
-                          <span className="vp-ez-unter">{m.titel}</span>
-                        </th>
-                        <td data-label={M.SPALTEN.zustand} data-testid="zustand">
-                          {M.ZUSTAND_WORT[m.zustand]}
-                        </td>
-                        <td data-label={M.SPALTEN.termin} data-testid="termin">
-                          {Z.tag(m.termin)}
-                          {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
-                        </td>
-                        <td data-label={M.SPALTEN.verantwortlich}>{m.verantwortlich.name}</td>
-                        <td data-label={M.SPALTEN.messgrundlage} data-testid="messgrundlage">
-                          {m.messgrundlage ? (
-                            `${m.messgrundlage.kennzahl.kennzeichen} ${m.messgrundlage.kennzahl.name ?? ''}`.trim()
-                          ) : (
-                            <span className="vp-ez-ohne">{m.ohne_messgrundlage?.kennzeichen}</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Entscheid 7: „Planen“ steht auch am Telefon im Kopf — dort umrandet, am Rechner gefüllt. */}
+          <Button
+            className="vp-mn-planen vp-mn-planen-kurz"
+            variant="outline"
+            size="sm"
+            iconLeft={<Icon name="plus" size={15} />}
+            onClick={() => setPlanen(true)}
+            data-testid="massnahme-planen-knopf"
+          >
+            {B.KNOPF_PLANEN_KURZ}
+          </Button>
+          <Button
+            className="vp-mn-planen vp-mn-planen-lang"
+            size="sm"
+            iconLeft={<Icon name="plus" size={15} />}
+            onClick={() => setPlanen(true)}
+            data-testid="massnahme-planen-knopf-lang"
+          >
+            {B.KNOPF_PLANEN}
+          </Button>
         </>
       )}
+    </header>
+  );
+
+  const fuss = (
+    <>
+      <WasIst offen={wasIst} setOffen={setWasIst} refEl={wasIstRef} />
+      <SoLaeuft />
+      <GrenzHinweis />
       <GrenzSatz className="vp-ez-grenze" />
-    </section>
+    </>
+  );
+
+  let inhalt: React.ReactNode;
+  if (lage.art === 'laedt') {
+    inhalt = (
+      <div className="vp-wv-skelett" aria-busy="true" aria-label="Wird geladen" data-testid="massnahmen-laedt">
+        <span className="vp-skeleton is-zeile" />
+        <span className="vp-skeleton is-karte" />
+        <span className="vp-skeleton is-karte" />
+      </div>
+    );
+  } else if (lage.art === 'fehler') {
+    inhalt = (
+      <section className="vp-wv-karte is-fehler" role="alert" data-testid="massnahmen-fehler">
+        <div className="vp-wv-blockkopf">
+          <h2>{B.LADEFEHLER_TITEL}</h2>
+        </div>
+        <p className="vp-wv-leise">{B.LADEFEHLER}</p>
+        <button type="button" className="vp-wv-link" onClick={() => setVersuch((v) => v + 1)}>
+          {B.ERNEUT_VERSUCHEN}
+        </button>
+      </section>
+    );
+  } else if (lage.l.massnahmen.length === 0) {
+    inhalt = (
+      <section className="vp-wv-karte" data-testid="massnahmen-leer">
+        <p className="vp-wv-leer">{B.LEER}</p>
+        {darfPlanen && (
+          <Button size="sm" iconLeft={<Icon name="plus" size={15} />} onClick={() => setPlanen(true)}>
+            {B.KNOPF_PLANEN}
+          </Button>
+        )}
+      </section>
+    );
+  } else {
+    const liste = lage.l.massnahmen;
+    const g = B.gruppen(liste);
+    const sichtbar = B.STUFEN.filter((s) => g[s].length > 0 && (filter === 'alle' || filter === s));
+    inhalt = (
+      <>
+        <div className="vp-mn-antwort" data-testid="massnahmen-antwort">
+          <p className="vp-mn-satz">{B.antwortSatz(liste)}</p>
+          <p className="vp-mn-formal">
+            {B.formalZeile(liste, lage.l.abruf)} ·{' '}
+            <button type="button" className="vp-mn-wasist" onClick={zeigeWasIst}>
+              <Icon name="info" size={13} />
+              {B.WAS_IST}
+            </button>
+          </p>
+        </div>
+        <div className="vp-wv-filter" role="group" aria-label="Nach Stufe zeigen" data-testid="massnahmen-chips">
+          {B.chips(liste).map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              className="vp-wv-chip"
+              aria-pressed={filter === c.key}
+              onClick={() => setFilter(c.key)}
+              data-testid={`massnahmen-chip-${c.key}`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        {sichtbar.map((s, i) => (
+          <section key={s} className="vp-wv-abschnitt" aria-labelledby={`mn-gruppe-${s}`} data-testid={`massnahmen-gruppe-${s}`}>
+            <div className="vp-wv-abschnitt-kopf">
+              <h2 id={`mn-gruppe-${s}`}>
+                {B.STUFE_WORT[s]}
+                <span className="vp-mn-nur-telefon"> · {g[s].length}</span>
+              </h2>
+              <span className="vp-wv-abschnitt-m">{`${g[s].length} · ${B.STUFE_ORDNUNG[s]}`}</span>
+            </div>
+            {i === 0 && (
+              <div className="vp-mn-kopfzeile" aria-hidden="true">
+                <span>{B.SPALTEN.termin}</span>
+                <span>{B.SPALTEN.massnahme}</span>
+                <span>{B.SPALTEN.bringt}</span>
+                <span>{B.SPALTEN.verantwortlich}</span>
+                <span>{B.SPALTEN.schritt}</span>
+              </div>
+            )}
+            <ul className="vp-wv-eintraege">
+              {g[s].map((m) => (
+                <li key={m.id}>
+                  <Eintrag m={m} onOeffnen={onOeffnen} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <div className="vp-wv vp-mn" data-testid="massnahmen-register">
+      {kopf}
+      {inhalt}
+      {fuss}
+      {planen && (
+        <MassnahmeAnlegenDialog
+          vorbelegung={{ herkunft: 'von_hand' }}
+          tagHeute={lage.art === 'da' ? lage.l.abruf : undefined}
+          onClose={() => setPlanen(false)}
+          onAngelegt={(m) => {
+            setPlanen(false);
+            onOeffnen(m.id);
+          }}
+        />
+      )}
+    </div>
   );
 }

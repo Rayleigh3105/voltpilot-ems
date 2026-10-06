@@ -66,6 +66,7 @@ public class MassnahmeService {
     static final int AUSGANGSLAGE_HOECHSTENS_MONATE = 12;
     static final String OHNE_KENNZEICHEN = "ohne Messgrundlage — Wirkung nicht messbar";
     private static final String GEPLANT = "geplant";
+    private static final String GEMESSEN = "gemessen";
     private static final Pattern MONAT = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
     private static final Pattern ABWEICHUNG = Pattern.compile("AW-[0-9]{4}-[0-9]{4,9}");
     /** Die Kennungen der Herkünfte aus dem Energiemanagement (AP-19 W4; {@code kennzeichen_muster} des Vertrags). */
@@ -216,6 +217,12 @@ public class MassnahmeService {
             }
         };
 
+        String art = art(a.art(), a.kennzahl() != null);
+        if (a.erwarteteEinsparungKwhJahr() != null) {
+            einsparungDarf(art);
+        }
+        BigDecimal geschaetzt = kwhJahr(a.erwarteteEinsparungKwhJahr());
+
         Messgrundlage mg = null;
         UUID standort;
         if (a.kennzahl() != null) {
@@ -236,6 +243,9 @@ public class MassnahmeService {
             darfAm(standort, wer, VERWALTEN);
         }
         BigDecimal prozent = prozent(a.erwarteteWirkungProzent());
+        // Entscheid 13: mit Kennzahl rechnet VoltPilot die Prozent der Person in kWh im Jahr um, ohne eine Person.
+        Einsparung einsparung = mg != null ? (prozent == null ? Einsparung.KEINE : umrechnen(mg.kennzahl(), prozent))
+                : new Einsparung(geschaetzt, null, null);
         Map<String, Object> person = verantwortlich(a.verantwortlich());
         UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
         Instant jetzt = kennzahlen.jetzt();
@@ -246,19 +256,22 @@ public class MassnahmeService {
                     + "verantwortlich_name, verantwortlich_konto, termin, standort_id, herkunft_art, herkunft_kennung, "
                     + "kennzahl_id, bezugsbasis_id, fassung, ausgangslage, ausgangslage_pruefsumme, einsatz_id, "
                     + "einstufung_fassung, energieziel_id, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, "
-                    + "actor_sub, actor_name, actor_rolle, actor_art, angelegt_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                    + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id", UUID.class, tenant, titel,
-                    person.get("sub"), person.get("name"), person.get("konto"), Date.valueOf(a.termin()), standort,
-                    herkunft, kennung, m == null ? null : m.kennzahl(), m == null ? null : m.basis(),
+                    + "actor_sub, actor_name, actor_rolle, actor_art, angelegt_am, art, erwartete_einsparung_kwh_jahr, "
+                    + "erwartete_einsparung_grundlage_kwh, erwartete_einsparung_grundlage_monate) VALUES (?, ?, ?, ?, ?, "
+                    + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id", UUID.class,
+                    tenant, titel, person.get("sub"), person.get("name"), person.get("konto"), Date.valueOf(a.termin()),
+                    standort, herkunft, kennung, m == null ? null : m.kennzahl(), m == null ? null : m.basis(),
                     m == null ? null : m.fassung(), m == null ? null : m.text(), m == null ? null : m.pruefsumme(),
                     a.einsatz(), a.einstufungFassung(), a.energieziel(), prozent, wortlaut, wer.sub(), wer.name(),
-                    wer.rolle(), wer.art(), Timestamp.from(jetzt));
+                    wer.rolle(), wer.art(), Timestamp.from(jetzt), art, einsparung.kwhJahr(), einsparung.grundlageKwh(),
+                    einsparung.grundlageMonate());
             Map<String, Object> inhalt = new LinkedHashMap<>();
             inhalt.put("zustand", GEPLANT);
             inhalt.put("titel", titel);
             inhalt.put("termin", a.termin().toString());
             inhalt.put("verantwortlich_name", person.get("name"));
             inhalt.put("herkunft", herkunft);
+            inhalt.put("art", art);
             if (kennung != null) {
                 inhalt.put("herkunft_kennung", kennung);
             }
@@ -273,6 +286,9 @@ public class MassnahmeService {
             if (prozent != null) {
                 inhalt.put("erwartete_wirkung_prozent", prozent.toPlainString());
             }
+            if (einsparung.kwhJahr() != null) {
+                inhalt.put("erwartete_einsparung_kwh_jahr", einsparung.kwhJahr().toPlainString());
+            }
             protokoll(tenant, id, "massnahme_angelegt", null, inhalt, null, null, wer);
             return id;
         }));
@@ -285,8 +301,11 @@ public class MassnahmeService {
     public MassnahmeDto.Massnahme aendern(UUID id, MassnahmeDto.Aendern a, ProtokollAkteur wer) {
         Map<String, Object> z = geplant(schreibbar(id, wer));
         if (a == null || (a.titel() == null && a.termin() == null && a.erwarteteWirkungProzent() == null
-                && a.erwarteteWirkungWortlaut() == null)) {
+                && a.erwarteteWirkungWortlaut() == null && a.erwarteteEinsparungKwhJahr() == null)) {
             throw VerbesserungAbgelehnt.anfrage("");
+        }
+        if (a.erwarteteEinsparungKwhJahr() != null) {
+            einsparungDarf((String) z.get("art"));
         }
         String begruendung = begruendung(a.begruendung());
         String titel = a.titel() == null ? (String) z.get("titel")
@@ -303,6 +322,16 @@ public class MassnahmeService {
             }
             prozent = prozent(a.erwarteteWirkungProzent());
         }
+        // Entscheid 13: mit Kennzahl folgt die Schätzung in kWh der Zahl in Prozent (neu umgerechnet, wenn sie sich
+        // ändert); ohne Kennzahl trägt die Person sie selbst ein.
+        Einsparung einsparung = new Einsparung((BigDecimal) z.get("erwartete_einsparung_kwh_jahr"),
+                (BigDecimal) z.get("erwartete_einsparung_grundlage_kwh"),
+                (String) z.get("erwartete_einsparung_grundlage_monate"));
+        if (z.get("kennzahl_id") != null && !Objects.equals(prozent, altProzent)) {
+            einsparung = prozent == null ? Einsparung.KEINE : umrechnen((UUID) z.get("kennzahl_id"), prozent);
+        } else if (a.erwarteteEinsparungKwhJahr() != null) {
+            einsparung = new Einsparung(kwhJahr(a.erwarteteEinsparungKwhJahr()), null, null);
+        }
         Map<String, Object> alt = new LinkedHashMap<>();
         Map<String, Object> neu = new LinkedHashMap<>();
         vergleiche(alt, neu, "titel", z.get("titel"), titel);
@@ -310,11 +339,17 @@ public class MassnahmeService {
         vergleiche(alt, neu, "erwartete_wirkung_wortlaut", z.get("erwartete_wirkung_wortlaut"), wortlaut);
         vergleiche(alt, neu, "erwartete_wirkung_prozent", altProzent == null ? null : altProzent.toPlainString(),
                 prozent == null ? null : prozent.toPlainString());
+        BigDecimal altKwh = (BigDecimal) z.get("erwartete_einsparung_kwh_jahr");
+        vergleiche(alt, neu, "erwartete_einsparung_kwh_jahr", altKwh == null ? null : altKwh.toPlainString(),
+                einsparung.kwhJahr() == null ? null : einsparung.kwhJahr().toPlainString());
         UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
         BigDecimal p = prozent;
+        Einsparung e = einsparung;
         schreiben(() -> transaktion.execute(s -> {
             jdbc.update("UPDATE massnahme SET titel = ?, termin = ?, erwartete_wirkung_wortlaut = ?, "
-                    + "erwartete_wirkung_prozent = ? WHERE id = ?", titel, Date.valueOf(termin), wortlaut, p, id);
+                    + "erwartete_wirkung_prozent = ?, erwartete_einsparung_kwh_jahr = ?, "
+                    + "erwartete_einsparung_grundlage_kwh = ?, erwartete_einsparung_grundlage_monate = ? WHERE id = ?",
+                    titel, Date.valueOf(termin), wortlaut, p, e.kwhJahr(), e.grundlageKwh(), e.grundlageMonate(), id);
             protokoll(tenant, id, "massnahme_geaendert", alt, neu, begruendung, null, wer);
             return id;
         }));
@@ -504,6 +539,143 @@ public class MassnahmeService {
                     + "abgeschlossene Monate.", Map.of("feld", "monate", "spaetestens", dieser.minusMonths(1).toString()));
         }
         return new YearMonth[] {von, bis};
+    }
+
+    // ================================================================================ Art und Einsparung (Entscheide 6, 13)
+
+    /**
+     * Entscheid 6: die Art aus dem Vokabular {@code massnahme_art}; {@code gemessen} genau mit Kennzahl. Ohne Angabe gilt
+     * {@code gemessen} mit Kennzahl, sonst {@code nicht_gemessen} (die Aufrufer von vor der Art legen weiter so an).
+     */
+    static String art(String art, boolean mitKennzahl) {
+        if (art == null) {
+            return mitKennzahl ? GEMESSEN : "nicht_gemessen";
+        }
+        if (!VerbesserungRegeln.VOKABULARE.get("massnahme_art").contains(art)) {
+            throw VerbesserungAbgelehnt.anfrage("art");
+        }
+        if (GEMESSEN.equals(art) != mitKennzahl) {
+            throw VerbesserungAbgelehnt.fachlich(mitKennzahl ? "art_mit_kennzahl" : "art_ohne_kennzahl", mitKennzahl
+                    ? "Eine Maßnahme mit Kennzahl wird an dieser Kennzahl gemessen."
+                    : "Gemessen wird eine Maßnahme an einer Kennzahl mit Bezugsbasis — bitte eine Kennzahl wählen.",
+                    Map.of("feld", "art"));
+        }
+        return art;
+    }
+
+    /** Entscheid 13: eine Schätzung in kWh trägt nur eine Maßnahme ohne Kennzahl, die Energie spart. */
+    private static void einsparungDarf(String art) {
+        if (GEMESSEN.equals(art)) {
+            throw VerbesserungAbgelehnt.fachlich("einsparung_mit_kennzahl", "Mit Kennzahl rechnet VoltPilot die "
+                    + "erwartete Wirkung in Prozent in kWh im Jahr um.", Map.of("feld", "erwartete_einsparung_kwh_jahr"));
+        }
+        if ("organisatorisch".equals(art)) {
+            throw VerbesserungAbgelehnt.fachlich("einsparung_organisatorisch", "Eine organisatorische Maßnahme trägt "
+                    + "keine Zahl der Einsparung.", Map.of("feld", "erwartete_einsparung_kwh_jahr"));
+        }
+    }
+
+    /** Die Schätzung einer Person: ganze kWh im Jahr, weniger Energie (größer 0), unter einer Billion. */
+    private static BigDecimal kwhJahr(BigDecimal wert) {
+        if (wert == null) {
+            return null;
+        }
+        if (wert.stripTrailingZeros().scale() > 0 || wert.signum() <= 0
+                || wert.compareTo(BigDecimal.valueOf(1_000_000_000_000L)) >= 0) {
+            throw VerbesserungAbgelehnt.anfrage("erwartete_einsparung_kwh_jahr");
+        }
+        return wert.setScale(0, RoundingMode.UNNECESSARY);
+    }
+
+    /** Die Spalten der Schätzung; mit Kennzahl samt Grundlage (Menge und Monate). */
+    record Einsparung(BigDecimal kwhJahr, BigDecimal grundlageKwh, String grundlageMonate) {
+        static final Einsparung KEINE = new Einsparung(null, null, null);
+    }
+
+    private Einsparung umrechnen(UUID kennzahl, BigDecimal prozent) {
+        Umrechnung u = umrechnung(kennzahl, prozent);
+        return u.kwhJahr() == null ? Einsparung.KEINE : new Einsparung(u.kwhJahr(), u.grundlageKwh(), u.monate());
+    }
+
+    private static MassnahmeDto.Einsparung einsparungDto(Map<String, Object> z) {
+        BigDecimal kwh = (BigDecimal) z.get("erwartete_einsparung_kwh_jahr");
+        if (kwh == null) {
+            return null;
+        }
+        BigDecimal grundlage = (BigDecimal) z.get("erwartete_einsparung_grundlage_kwh");
+        return new MassnahmeDto.Einsparung(kwh.toPlainString(), grundlage == null ? null : grundlage.toPlainString(),
+                (String) z.get("erwartete_einsparung_grundlage_monate"));
+    }
+
+    /** Die Grundlage der Umrechnung: die gemessene Menge der zwölf abgeschlossenen Monate vor heute. */
+    record Umrechnung(BigDecimal kwhJahr, BigDecimal grundlageKwh, String monate, int monateMitWert, String grund) {}
+
+    /**
+     * Entscheid 13: −Prozent × die gemessene Menge der Kennzahl in den zwölf abgeschlossenen Monaten vor heute (Zeitzone
+     * der Kennzahl), auf ganze kWh gerundet — nur, wenn jeder dieser Monate einen Wert in kWh hat; sonst keine Zahl und
+     * der Grund ({@code monate_fehlen}, {@code einheit_nicht_kwh}). Gelesen wird über den Vergleich-Leser gegen die
+     * freigegebene Bezugsbasis der Kennzahl, gerechnet nur diese eine Multiplikation.
+     */
+    Umrechnung umrechnung(UUID kennzahl, BigDecimal prozent) {
+        KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(kennzahl, null, null, null);
+        YearMonth dieser = YearMonth.from(LocalDate.ofInstant(k.jetzt(), k.zone()));
+        YearMonth von = dieser.minusMonths(AUSGANGSLAGE_HOECHSTENS_MONATE);
+        YearMonth bis = dieser.minusMonths(1);
+        String monate = von + "/" + bis;
+        String basis = jdbc.queryForList("SELECT b.kennzeichen FROM bezugsbasis b JOIN bezugsbasis_fassung f "
+                + "ON f.bezugsbasis_id = b.id AND f.tenant_id = b.tenant_id WHERE b.kennzahl_id = ? AND b.beendet_am IS NULL "
+                + "AND f.freigabe_status = 'freigegeben' ORDER BY f.fassung DESC LIMIT 1", String.class, kennzahl).stream()
+                .findFirst().orElse(null);
+        if (basis == null) {
+            return new Umrechnung(null, null, monate, 0, "kennzahl_ohne_bezugsbasis");
+        }
+        BigDecimal summe = BigDecimal.ZERO;
+        int mitWert = 0;
+        boolean nurKwh = true;
+        for (BezugsbasisVergleich.ZielMonat z : vergleich.fuerZiel(kennzahl, basis, von, bis).monate()) {
+            BezugsbasisVergleichDto.Gemessen g = z.zeile().bereinigt().gemessen();
+            if (g != null && g.wert() != null) {
+                mitWert++;
+                summe = summe.add(new BigDecimal(g.wert()));
+                nurKwh &= "kWh".equals(g.einheit());
+            }
+        }
+        if (mitWert < AUSGANGSLAGE_HOECHSTENS_MONATE) {
+            return new Umrechnung(null, null, monate, mitWert, "monate_fehlen");
+        }
+        if (!nurKwh) {
+            return new Umrechnung(null, null, monate, mitWert, "einheit_nicht_kwh");
+        }
+        BigDecimal kwh = prozent.negate().multiply(summe).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+        if (kwh.signum() == 0 || summe.signum() <= 0) {
+            return new Umrechnung(null, null, monate, mitWert, "zu_klein");
+        }
+        return new Umrechnung(kwh, summe.setScale(0, RoundingMode.HALF_UP), monate, mitWert, null);
+    }
+
+    /** {@code GET /api/v1/massnahmen/schaetzung}: die Umrechnung für das Blatt „Maßnahme planen“, vor dem Anlegen. */
+    public MassnahmeDto.Schaetzung schaetzung(Collection<String> parameter, String kennzahlText, String prozentText) {
+        parameter.stream().filter(p -> !Set.of("kennzahl", "prozent").contains(p)).findFirst().ifPresent(p -> {
+            throw VerbesserungAbgelehnt.anfrage(p);
+        });
+        if (kennzahlText == null || prozentText == null) {
+            throw VerbesserungAbgelehnt.anfrage(kennzahlText == null ? "kennzahl" : "prozent");
+        }
+        UUID kennzahl = uuid(kennzahlText, "kennzahl");
+        BigDecimal prozent;
+        try {
+            prozent = prozent(new BigDecimal(prozentText.strip()));
+        } catch (NumberFormatException x) {
+            throw VerbesserungAbgelehnt.anfrage("prozent");
+        }
+        if (prozent.signum() == 0) {
+            throw VerbesserungAbgelehnt.anfrage("prozent");
+        }
+        Umrechnung u = umrechnung(kennzahl, prozent);
+        return new MassnahmeDto.Schaetzung(kennzahl, prozent.toPlainString(),
+                u.kwhJahr() == null ? null : u.kwhJahr().toPlainString(),
+                u.grundlageKwh() == null ? null : u.grundlageKwh().toPlainString(), u.monate(), u.monateMitWert(),
+                u.grund());
     }
 
     /** M4: eine Zahl ohne Messgrundlage — mit dem Hinweis, welche Kennzahl fehlt. */
@@ -858,7 +1030,8 @@ public class MassnahmeService {
                 wortlaut, angelegt, umgesetzt, (String) z.get("umgesetzt_begruendung"),
                 verworfen == null ? null : verworfen.toInstant(), (String) z.get("verworfen_grund"),
                 new MassnahmeDto.Frist(abruf, termin, faellig, seit, fristSatz), kopf, staende[0], staende[1],
-                verlauf == null ? null : anstoesse((UUID) z.get("id")), verlauf);
+                verlauf == null ? null : anstoesse((UUID) z.get("id")), verlauf, (String) z.get("art"),
+                einsparungDto(z), null);
     }
 
     /** Die Anstöße an der Maßnahme (M5, IP-17), älteste zuerst — offene und beantwortete. */

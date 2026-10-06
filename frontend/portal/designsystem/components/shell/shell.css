@@ -284,6 +284,68 @@
   }
 }
 
+/* Breit (Verbessern-Konzept v1 §6.9): ein Dialog mit Zusammenfassung daneben. */
+.vp-modal.is-breit {
+  width: min(840px, 100%);
+}
+/* Das Blatt (Verbessern-Konzept v1 §6.9, Muster Messen m1 / Auswerten a1): am Telefon von unten, so hoch wie sein
+   Inhalt, mit Griff; der Hauptknopf steht zuerst, am Daumen, „Abbrechen“ leise darunter. Am Rechner bleibt es die
+   zentrierte Fläche. */
+@media (max-width: 720px) {
+  .vp-modal-scrim.is-blatt {
+    place-items: end stretch;
+  }
+  .vp-modal.is-blatt {
+    height: auto;
+    max-height: calc(100dvh - 48px);
+    padding-top: 0;
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.1);
+    animation: vp-modal-blatt-ein var(--vp-motion-page) var(--vp-ease-feder, var(--vp-ease-out));
+  }
+  .vp-modal-scrim.is-blatt.is-closing .vp-modal {
+    animation: vp-modal-blatt-aus var(--vp-motion-exit) var(--vp-ease-in) forwards;
+  }
+  .vp-modal.is-blatt::before {
+    content: '';
+    flex-shrink: 0;
+    align-self: center;
+    width: 40px;
+    height: 4px;
+    margin: 8px 0 2px;
+    border-radius: 2px;
+    background: #cbd5e1;
+  }
+  .vp-modal.is-blatt .dhead {
+    padding: 6px 8px 0 16px;
+    border-bottom: 0;
+  }
+  .vp-modal.is-blatt .dhead h2 {
+    font-size: 1.0625rem;
+    color: var(--vp-navy, #1e3a5f);
+    white-space: normal;
+  }
+  .vp-modal.is-blatt .dbody {
+    padding: 6px 16px 12px;
+  }
+  .vp-modal.is-blatt .dfoot {
+    flex-direction: column-reverse;
+    gap: 6px;
+    padding: 4px 16px 16px;
+    border-top: 0;
+  }
+}
+@keyframes vp-modal-blatt-ein {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes vp-modal-blatt-aus {
+  to {
+    transform: translateY(100%);
+  }
+}
+
 /* ---------- KpiCard ---------- */
 .vp-kpi {
   display: flex;

@@ -2780,6 +2780,52 @@ export interface Kennzahl {
 // ---------------------------------------------------------------------------------------- Maßnahmen (UEMS AP-18)
 
 export type MassnahmeZustand = 'geplant' | 'umgesetzt' | 'bewertet' | 'verworfen';
+/** Wie sich die Wirkung zeigt (Verbessern-Konzept v1, Entscheid 6) — `gemessen` genau mit Messgrundlage. */
+export type MassnahmeArt = 'gemessen' | 'nicht_gemessen' | 'organisatorisch';
+
+/**
+ * Die erwartete Einsparung in kWh im Jahr (Entscheid 13): eine Schätzung, nie mit beobachteten Werten summiert —
+ * mit Kennzahl von der Route umgerechnet (mit Grundlage), ohne Kennzahl von einer Person geschätzt.
+ */
+export interface MassnahmeEinsparung {
+  /** Dezimaltext, ganze kWh im Jahr, weniger Energie positiv. */
+  kwh_jahr: string;
+  grundlage_kwh: string | null;
+  /** `JJJJ-MM/JJJJ-MM`. */
+  grundlage_monate: string | null;
+}
+
+/** Die beobachtete Wirkung in Kurzform für die Liste (§6.5) — die Summe der Operation `wirkung`, nur in der Liste. */
+export interface MassnahmeWirkungKurz {
+  delta_prozent: string;
+  richtung: string;
+  urteil: 'besser' | 'schlechter' | 'im_rahmen' | 'nicht_anwendbar' | 'ohne_urteil';
+  monate_bewertbar: number;
+  monate_soll: number;
+  monate_text: string;
+  vorlaeufig: boolean;
+  zeitraum_von: string;
+  zeitraum_bis: string;
+  gemessen: string;
+  erwartet: string;
+  /** Σ gemessen − Σ erwartet, weniger negativ. */
+  differenz: string;
+  /** Prozent der Person × Σ erwartet derselben Monate, weniger negativ; ohne Zahl `null`. */
+  erwartete_wirkung: string | null;
+  einheit: string | null;
+  energie: string;
+}
+
+/** `GET /api/v1/massnahmen/schaetzung` (Entscheid 13): die Umrechnung der Prozent in kWh im Jahr, vor dem Anlegen. */
+export interface MassnahmeSchaetzung {
+  kennzahl: string;
+  prozent: string;
+  kwh_jahr: string | null;
+  grundlage_kwh: string | null;
+  grundlage_monate: string;
+  monate_mit_wert: number;
+  grund: 'monate_fehlen' | 'einheit_nicht_kwh' | 'kennzahl_ohne_bezugsbasis' | 'zu_klein' | null;
+}
 /** Die Herkunft einer Maßnahme; die letzten drei kommen aus dem Energiemanagement (AP-19 IP-17, Kennung F-/AU-/BR-…/Bn). */
 export type MassnahmeHerkunft =
   | 'abweichung' | 'energieziel' | 'einsatz' | 'von_hand' | 'nichtkonformitaet' | 'audit' | 'managementbewertung';
@@ -2855,6 +2901,12 @@ export interface Massnahme {
   /** IP-17-NAHT (M5, OpenAPI `MassnahmeAnstoss`): die Anstöße am Vorgang, älteste zuerst — wie `verlauf` nur an der einzelnen. */
   anstoesse: VorgangAnstoss[] | null;
   verlauf: MassnahmeEintrag[] | null;
+  /** Entscheid 6. */
+  art: MassnahmeArt;
+  /** Entscheid 13 — die Schätzung beim Anlegen; `null` ohne Zahl. */
+  erwartete_einsparung: MassnahmeEinsparung | null;
+  /** Nur in der Liste: die beobachtete Wirkung in Kurzform (§6.5), sonst `null`. */
+  wirkung_kurz: MassnahmeWirkungKurz | null;
 }
 
 export type MassnahmeErgebnis = 'belegt' | 'nicht_belegt' | 'nicht_messbar';
@@ -2923,8 +2975,10 @@ export interface MassnahmeWirkung {
   vorlaeufig: boolean | null;
   nicht_gezaehlt: { monat: string; grund: MassnahmeWirkungGrund }[];
   summe: EnergiezielStand['summe'] | null;
-  /** Kundensatz `wirkung_vorlaeufig` bzw. `ohne_messgrundlage` (§5.9). */
+  /** Kundensatz `wirkung_vorlaeufig` (ohne Zahl der Person `wirkung_ohne_erwartung`) bzw. `ohne_messgrundlage` (§5.9). */
   satz: string | null;
+  /** Der Energieträger des Zählers („Strom“, sonst „Energie“); ohne Nachher-Monate `null`. */
+  energie: string | null;
 }
 
 /**
@@ -2973,6 +3027,10 @@ export interface MassnahmeNeu {
   standort?: string;
   erwartete_wirkung_prozent?: number;
   erwartete_wirkung_wortlaut: string;
+  /** Entscheid 6; ohne Angabe `gemessen` mit Kennzahl, sonst `nicht_gemessen`. */
+  art?: MassnahmeArt;
+  /** Entscheid 13: die Schätzung einer Person — nur ohne Kennzahl und nicht organisatorisch. */
+  erwartete_einsparung_kwh_jahr?: number;
 }
 
 /** `PUT /api/v1/massnahmen/{id}` — nur solange geplant, mit Begründung. */
@@ -2981,6 +3039,8 @@ export interface MassnahmeAendern {
   termin?: string;
   erwartete_wirkung_prozent?: number;
   erwartete_wirkung_wortlaut?: string;
+  /** Nur ohne Kennzahl; mit Kennzahl folgt sie der Zahl in Prozent. */
+  erwartete_einsparung_kwh_jahr?: number;
   begruendung: string;
 }
 
@@ -11051,6 +11111,11 @@ export const api = {
   /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
   massnahmen: () => request<MassnahmeListe>('/api/v1/massnahmen'),
   massnahme: (id: string) => request<Massnahme>(`/api/v1/massnahmen/${id}`),
+  /** Entscheid 13: die Umrechnung der erwarteten Wirkung in kWh im Jahr — liest nur, festgehalten wird beim Anlegen. */
+  massnahmeSchaetzung: (kennzahl: string, prozent: number) =>
+    request<MassnahmeSchaetzung>(
+      `/api/v1/massnahmen/schaetzung?kennzahl=${encodeURIComponent(kennzahl)}&prozent=${encodeURIComponent(String(prozent))}`,
+    ),
   massnahmeAnlegen: (body: MassnahmeNeu) =>
     request<Massnahme>('/api/v1/massnahmen', { method: 'POST', body: JSON.stringify(body) }),
   massnahmeAendern: (id: string, body: MassnahmeAendern) =>

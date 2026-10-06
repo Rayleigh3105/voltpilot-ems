@@ -38,6 +38,7 @@ public final class VerbesserungRegeln {
             Map.entry("messgrundlage", "Messgrundlage: {kennzahl}, Bezugsbasis {bezugsbasis}, Fassung {fassung} — bereinigt um {bereinigt_um} ({methode}). Ausgangslage {ausgangslage_monat}: {ausgangslage_prozent} als erwartet (Version {version}, Kopie vom {kopiert_am}). Erwartete Wirkung: {erwartete_wirkung} — ‚{wortlaut}‘"),
             Map.entry("ohne_messgrundlage", "{kennzeichen} · {titel} · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht {einsatz} eine Energieleistungskennzahl ({hinweis})."),
             Map.entry("wirkung_vorlaeufig", "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}) — erwartet waren {erwartete_wirkung}. Ob die Maßnahme das bewirkt hat, sagt eine Person."),
+            Map.entry("wirkung_ohne_erwartung", "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}). Eine erwartete Wirkung ist nicht genannt. Ob die Maßnahme das bewirkt hat, sagt eine Person."),
             Map.entry("wirkung_umsetzungsmonat", "{monat}: Umsetzungsmonat — nicht gezählt."),
             Map.entry("wirkung_nicht_bewertbar", "{monat}: nicht bewertbar — {grund}."),
             Map.entry("wirkung_basis_nach_umsetzung", "{monat}: nicht bewertbar — die Bezugsbasis {bezugsbasis}, Fassung {fassung} hat eine Referenzperiode ({referenzperiode}), die nach der Umsetzung endet; sie enthielte die Maßnahme."),
@@ -71,6 +72,7 @@ public final class VerbesserungRegeln {
         m.put("massnahme_zustand", List.of("geplant", "umgesetzt", "bewertet", "verworfen"));
         m.put("massnahme_herkunft", List.of("abweichung", "energieziel", "einsatz", "von_hand", "nichtkonformitaet", "audit",
                 "managementbewertung"));
+        m.put("massnahme_art", List.of("gemessen", "nicht_gemessen", "organisatorisch"));
         m.put("abweichung_zustand", List.of("offen", "abgeschlossen"));
         m.put("abweichung_ergebnis", List.of("massnahme", "erklaert", "keine_abweichung", "nicht_bewertbar"));
         m.put("abweichung_eintrag_art", List.of("kommentar", "ursache_aussage"));
