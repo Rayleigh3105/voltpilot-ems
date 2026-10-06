@@ -251,6 +251,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
         <NwKopf
           zurueck={zurueck}
           titel={d.titel}
+          kennzeichen={d.kennzeichen}
           erklaerung={N.fassungErklaerung(d)}
           kurzzeile={isPhone ? N.kurzzeile(d) : [N.kurzzeile(d), E.bezugWort(d.bezug)].join(' · ')}
           status={<StatusZeile zeichen={<NwZeichen art={status.zeichen} />} text={status.text} sub={status.sub} warn={status.warn} testId="dokument-status" />}

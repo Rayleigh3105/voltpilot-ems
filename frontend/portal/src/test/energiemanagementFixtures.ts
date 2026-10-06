@@ -14,6 +14,8 @@
 import {
   ApiError,
   type EnergiemanagementAufgaben,
+  type EnergiemanagementAufheben,
+  type EnergiemanagementBekanntmachen,
   type EnergiemanagementDokument,
   type EnergiemanagementDokumentAnlegen,
   type EnergiemanagementDokumentKurz,
@@ -145,6 +147,7 @@ export function energiemanagementBuehne(
   einsaetze: readonly { id: string; kennzeichen: string; name: string }[] = [],
 ) {
   const heute = () => jetzt().slice(0, 10);
+  let vierAugen = false;
   const gesendet: { route: string; koerper: unknown }[] = [];
   const merke = (route: string, koerper: unknown) => {
     gesendet.push({ route, koerper: structuredClone(koerper) });
@@ -622,14 +625,66 @@ export function energiemanagementBuehne(
     },
     energiemanagementFassungBeantragen: async (id: string, nr: number, b: EnergiemanagementEntscheid) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/beantragen`, b);
-      throw new ApiError(409, 'Vier-Augen ist bei Ihnen aus.', { code: 'vieraugen_aus', message: 'Vier-Augen ist bei Ihnen aus.' });
+      if (!vierAugen) throw new ApiError(409, 'Vier-Augen ist bei Ihnen aus.', { code: 'vieraugen_aus', message: 'Vier-Augen ist bei Ihnen aus.' });
+      // Nachweisen PR 2 (Entscheid 11): der Antrag trägt „entschieden von“ und das beantragende Konto.
+      const d = finde(id);
+      const f = d.fassungen.find((x) => x.nr === nr)!;
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      Object.assign(f, {
+        status: 'beantragt', vieraugen: true, entschieden_von: p ? kurz(p) : null, entschieden_am: b.entschieden_am ?? heute(),
+        freigabe_begruendung: b.begruendung ?? null, freigabe: { akteur: { ...akteur(ich.name), sub: ich.kennung }, am: jetzt() },
+        ...(b.original ? { original: b.original } : {}),
+      });
+      return abgerufen(d);
     },
     energiemanagementFassungFreigeben: async (id: string, nr: number, b: EnergiemanagementEntscheid) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, b);
       const d = finde(id);
+      const f = d.fassungen.find((x) => x.nr === nr)!;
+      if (vierAugen && f.status === 'entwurf') {
+        throw new ApiError(409, 'Mit Vier-Augen-Freigabe beantragen Sie die Fassung.', { code: 'vieraugen_beantragen', message: 'Mit Vier-Augen-Freigabe beantragen Sie die Fassung.' });
+      }
+      if (f.status === 'beantragt') {
+        Object.assign(f, { status: 'freigegeben', zweite_person: eingetragen(ich.name, jetzt()), freigegeben_am: jetzt() });
+        d.gueltige_fassung = nr;
+        d.zustand = 'gueltig';
+        return abgerufen(d);
+      }
       await freigeben(d, nr, b);
+      if (b.original) Object.assign(f, { original: b.original });
       return abgerufen(d);
     },
+    // Nachweisen PR 2 (Entscheide 11, 12): Vier-Augen vorab, Ablehnen, Bekanntmachen, Aufheben - wie der Dienst.
+    unternehmenVierAugen: async () => ({ vieraugen: vierAugen, vorgabe: false }),
+    energiemanagementFassungAblehnen: async (id: string, nr: number, begruendung: string) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/ablehnen`, { begruendung });
+      const d = finde(id);
+      Object.assign(d.fassungen.find((x) => x.nr === nr)!, { status: 'abgelehnt', ablehnung_begruendung: begruendung, zweite_person: eingetragen(ich.name, jetzt()) });
+      return abgerufen(d);
+    },
+    energiemanagementBekanntmachen: async (id: string, b: EnergiemanagementBekanntmachen) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, b);
+      const d = finde(id);
+      const ik = personen.find((x) => x.name === ich.name) ?? personen[1];
+      d.eintraege.push({
+        id: d.eintraege.length + 200, art: 'bekannt_gemacht', fassung: d.gueltige_fassung, am: b.am ?? heute(), person: kurz(ik), entschieden_von: null,
+        kreis: b.kreis, weg: b.weg, weg_wortlaut: b.weg_wortlaut ?? null, begruendung: null, beschluss_kennung: null, kommentar: null, satz: null,
+        eingetragen: eingetragen(ich.name, jetzt()),
+      });
+      return abgerufen(d);
+    },
+    energiemanagementDokumentAufheben: async (id: string, b: EnergiemanagementAufheben) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/aufheben`, b);
+      const d = finde(id);
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      d.eintraege.push({
+        id: d.eintraege.length + 300, art: 'aufgehoben', fassung: null, am: b.am ?? heute(), person: null, entschieden_von: p ? kurz(p) : null,
+        kreis: null, weg: null, weg_wortlaut: null, begruendung: b.begruendung, beschluss_kennung: null, kommentar: null, satz: null, eingetragen: eingetragen(ich.name, jetzt()),
+      });
+      d.zustand = 'aufgehoben';
+      return abgerufen(d);
+    },
+    energiemanagementFeststellungen: async () => ({ tag: heute(), feststellungen: [] }),
     // DK5 wie der Dienst (`EnergiemanagementDokumentService.geprueft`): nur an der gültigen Fassung einer Vorgabe, ab dem
     // Tag ihrer Freigabe, mit einer Person und Begründung; die Überprüfung beginnt an diesem Tag neu.
     energiemanagementDokumentGeprueft: async (id: string, b: EnergiemanagementGeprueft) => {
@@ -651,5 +706,9 @@ export function energiemanagementBuehne(
       return abgerufen(d);
     },
   };
-  return { routen, gesendet, bereit };
+  /** Nachweisen PR 2: die Vier-Augen-Einstellung des Unternehmens für einen Fall umstellen. */
+  const setzeVierAugen = (an: boolean) => {
+    vierAugen = an;
+  };
+  return { routen, gesendet, bereit, setzeVierAugen };
 }

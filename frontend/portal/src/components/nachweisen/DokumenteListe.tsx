@@ -3,6 +3,7 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { api, type EnergiemanagementDokumentKurz } from '../../api';
 import * as E from '../../energiemanagementPortal';
 import * as N from '../../nachweisDokumente';
+import { useRollen } from '../../rollen';
 import { GrenzSatz } from '../GrenzSatz';
 import { RowMenu } from '../RowMenu';
 import { ErrorState, Skeleton } from '../States';
@@ -26,6 +27,7 @@ export function DokumenteListe({ onOeffnen }: { onOeffnen: (id: string) => void 
   const [versuch, setVersuch] = useState(0);
   const [festhalten, setFesthalten] = useState(false);
   const [aufgehobenOffen, setAufgehobenOffen] = useState(false);
+  const rollen = useRollen();
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
@@ -64,7 +66,7 @@ export function DokumenteListe({ onOeffnen }: { onOeffnen: (id: string) => void 
         titel={N.DOKUMENTE_TITEL}
         erklaerung={N.dokumenteErklaerung(liste ?? [])}
         status={status && <StatusZeile zeichen={<NwZeichen art={status.zeichen} />} text={status.text} sub={status.sub} warn={status.warn} testId="dokumente-status" />}
-        menue={<RowMenu label="Weitere Aktionen" items={[{ label: 'Dokument festhalten', recht: E.RECHT_VERWALTEN, standort: null, icon: 'plus', onClick: () => setFesthalten(true) }]} />}
+        menue={rollen.darf(E.RECHT_VERWALTEN, null) ? <RowMenu label="Weitere Aktionen" items={[{ label: 'Dokument festhalten', icon: 'plus', onClick: () => setFesthalten(true) }]} /> : null}
         testId="dokumente-kopf"
       />
       {fehler ? (
