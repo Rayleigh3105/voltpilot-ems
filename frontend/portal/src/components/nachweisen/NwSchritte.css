@@ -1,0 +1,368 @@
+/*
+ * DIE BAUSTEINE DER GEFÜHRTEN BLÄTTER in Nachweisen (Konzept Nachweisen n1, Runde 2, §6.10 und §12). Nur Haus-Tokens -
+ * keine neue Farbe, kein neuer Radius, keine neue Schrift; die Maße folgen dem freigegebenen Artefakt (`.schritt`,
+ * `.wahl`, `.schnell .ak-chip`, `.bezug`, `.zuo`, `.wd`, `.wortlaut`, `.seg`):
+ *   .vp-nw-schritt   Schritt-Anzeige „Schritt 2 von 3“ mit Balken
+ *   .vp-nw-wahl      Antwort-Karten: Radio als ganze Karte, mind. 52 px hoch
+ *   .vp-nw-chips     Wahl-Chips, 40 px hoch; gewählt = Hinterlegung der Familie
+ *   .vp-nw-hz        Hinweis-Zeile mit Zeichen und i-Knopf statt eines Hilfesatzes
+ *   .vp-nw-pruef     Prüfen in Zeilen: Etikett, Wert, „Ändern“
+ *   .vp-nw-wdl/.wd   Werte „alt → neu“ mit Einheit
+ *   .vp-nw-wortlaut  Wortlaut in Lese-Schrift, das Neue hinterlegt
+ *   .vp-nw-seg       Umschalter zweier Formen („Text · Verweis“)
+ * Farbe nur mit Bedeutung: Navy/Aktion für die Wahl, Warnton nur für Fehler.
+ */
+
+.vp-nw-unsichtbar {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Die Hinterlegung der Familie (`.ak-chip.steuert`, #e7edff): Primär-Blau auf Weiß. */
+.vp-nw-chips,
+.vp-nw-wortlaut {
+  --vp-nw-hinterlegt: color-mix(in srgb, var(--vp-c-primary) 11%, var(--vp-c-card));
+}
+
+/* Ein natives Feld steckt in seinem Etikett, unsichtbar; das Etikett ist die Fläche. */
+.vp-nw-wo > input,
+.vp-nw-chip > input,
+.vp-nw-seg input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.vp-nw-feldsatz {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-nw-frage {
+  padding: 0;
+  font: 600 0.8125rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-nw-fehler {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-warn-fg);
+}
+
+/* ---------- Schritt-Anzeige --------------------------------------------------- */
+.vp-nw-schritt {
+  display: grid;
+  gap: 5px;
+}
+.vp-nw-schritt-st {
+  margin: 0;
+  font: 600 0.72rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-schritt-st b {
+  font-weight: 600;
+  color: var(--vp-c-fg);
+}
+.vp-nw-schritt-bar {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  gap: 4px;
+}
+.vp-nw-schritt-bar i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vp-flow-base);
+}
+.vp-nw-schritt-bar i.an {
+  background: var(--vp-action);
+}
+
+/* ---------- Antwort-Karten ---------------------------------------------------- */
+.vp-nw-wahl {
+  display: grid;
+  gap: 8px;
+}
+.vp-nw-wo {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 11px;
+  row-gap: 2px;
+  align-items: start;
+  min-height: 52px;
+  padding: 12px 13px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-c-card);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.vp-nw-wo.an {
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-primary) 15%, transparent);
+}
+.vp-nw-wo:has(input:focus-visible) {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-nw-wo.aus {
+  cursor: default;
+  background: var(--vp-c-bg);
+}
+.vp-nw-rb {
+  grid-row: 1 / span 2;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2px solid var(--vp-field-border);
+  background: var(--vp-c-card);
+  box-sizing: border-box;
+}
+.vp-nw-wo.an .vp-nw-rb {
+  border: 6px solid var(--vp-action);
+}
+.vp-nw-wo.aus .vp-nw-rb {
+  border-style: dashed;
+}
+.vp-nw-wo b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg);
+  min-width: 0;
+}
+.vp-nw-wo.aus b {
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-s {
+  grid-column: 2;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg);
+}
+
+/* ---------- Wahl-Chips -------------------------------------------------------- */
+.vp-nw-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-nw-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 0 14px;
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-muted-fg);
+  font: 600 0.8125rem/1.25 var(--vp-c-font);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.vp-nw-chip.an {
+  background: var(--vp-nw-hinterlegt);
+  color: var(--vp-c-primary);
+}
+.vp-nw-chip:has(input:focus-visible) {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ---------- Hinweis-Zeile ----------------------------------------------------- */
+.vp-nw-hz {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-c-bg);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-hz-i {
+  display: inline-flex;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-hz-t {
+  min-width: 0;
+}
+.vp-nw-hz b {
+  font: 700 0.875rem var(--vp-font-heading);
+  color: var(--vp-navy);
+}
+
+/* ---------- Prüfen in Zeilen -------------------------------------------------- */
+.vp-nw-pruef {
+  display: grid;
+  margin: 0;
+}
+.vp-nw-pz {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-nw-pz:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.vp-nw-pz dt {
+  grid-column: 1;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-pz dd {
+  grid-column: 1;
+  margin: 0;
+  min-width: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+.vp-nw-aendern {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ---------- Werte alt → neu --------------------------------------------------- */
+.vp-nw-wdl {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-nw-wd {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-nw-wdl > .vp-nw-wd:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.vp-nw-wdn {
+  flex: 1 1 9.5rem;
+  min-width: 0;
+  font: 600 0.875rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+.vp-nw-wdw {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font: 700 0.875rem var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy);
+  white-space: nowrap;
+}
+.vp-nw-wdw s {
+  font-weight: 600;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-wdw svg {
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-wdw small {
+  margin-left: 1px;
+  font: 600 0.6875rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg);
+}
+
+/* ---------- Wortlaut in Lese-Schrift ------------------------------------------ */
+.vp-nw-wortlaut {
+  display: grid;
+  gap: 0.8em;
+  min-width: 0;
+}
+.vp-nw-wortlaut p {
+  margin: 0;
+  font: 400 0.9375rem/1.62 var(--vp-font-body);
+  color: var(--vp-c-fg);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+@media (min-width: 721px) {
+  .vp-nw-wortlaut p {
+    font-size: 1rem;
+    max-width: 68ch;
+  }
+}
+/* Hinterlegung ohne seitlichen Innenabstand (der Schatten malt ihn): an der Zeilenkante ragt nichts aus dem Absatz. */
+.vp-nw-neu {
+  padding: 1px 0;
+  border-radius: 4px;
+  background: var(--vp-nw-hinterlegt);
+  color: var(--vp-c-fg);
+  box-shadow: -3px 0 0 var(--vp-nw-hinterlegt), 3px 0 0 var(--vp-nw-hinterlegt);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* ---------- Umschalter -------------------------------------------------------- */
+.vp-nw-seg {
+  display: inline-flex;
+  justify-self: start;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-c-bg);
+}
+.vp-nw-seg label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+}
+.vp-nw-seg label.an {
+  background: var(--vp-c-card);
+  color: var(--vp-c-primary);
+  box-shadow: var(--vp-shadow-sm);
+}
+.vp-nw-seg label:has(input:focus-visible) {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 1px;
+}
