@@ -474,6 +474,41 @@ class LesewegImZugriffApiTest {
             assertThat(alle.body()).as(nurSichtbar).contains("815.5").doesNotContain("ausserhalb_zugriff");
             assertThat(roh(w, k.hier(), nurSichtbar)).as(nurSichtbar).isEqualTo(alle);
         }
+
+        // Messen PR5: der letzte vollständige Monat im Register ist der Schritt von …/werte?raster=monat — mit
+        // demselben Zaun. Für den Bearbeiter an ST-1 fehlt die Zahl von MS-30 ganz, MS-31 sagt dasselbe wie für alle.
+        gespeicherterMonat(w, ms30, f30, "98765.25");
+        gespeicherterMonat(w, ms31, f31, "4321.5");
+        String register = MS + "?letzterMonat=true&stichtag=2026-10-05";
+        String september = "/werte?raster=monat&von=2026-09-01&bis=2026-09-30";
+        for (String sub : List.of(k.ka(), k.hier())) {
+            JsonNode zeilen = MAPPER.readTree(ok(w, sub, register).body()).path("register");
+            JsonNode z31 = zeileVon(zeilen, "MS-31");
+            assertThat(z31.at("/letzter_monat/monat").asText()).isEqualTo("2026-09");
+            assertThat(z31.at("/letzter_monat/zeitzone").asText()).isEqualTo("Europe/Berlin");
+            assertThat(z31.path("letzter_monat").has("ausserhalb_zugriff")).isFalse();
+            assertThat(z31.at("/letzter_monat/wert"))
+                    .isEqualTo(MAPPER.readTree(ok(w, sub, MS + "/MS-31" + september).body()).path("werte").get(0));
+            assertThat(z31.at("/letzter_monat/wert/menge").decimalValue()).isEqualByComparingTo("4321.5");
+        }
+        JsonNode alleZeilen = MAPPER.readTree(ok(w, k.ka(), register).body()).path("register");
+        assertThat(zeileVon(alleZeilen, "MS-30").at("/letzter_monat/wert/menge").decimalValue())
+                .isEqualByComparingTo("98765.25");
+        JsonNode hier30 = zeileVon(MAPPER.readTree(ok(w, k.hier(), register).body()).path("register"), "MS-30");
+        assertThat(hier30.at("/letzter_monat/ausserhalb_zugriff").asText()).isEqualTo(hinweis);
+        assertThat(hier30.at("/letzter_monat/wert").isNull()).isTrue();
+        assertThat(hier30.path("letzter_monat").toString()).doesNotContain("98765");
+        // Ohne letzterMonat=true fehlt das Feld — die Antwort ist die von vorher.
+        assertThat(ok(w, k.ka(), MS + "?stichtag=2026-10-05").body()).doesNotContain("letzter_monat");
+    }
+
+    private static JsonNode zeileVon(JsonNode register, String kennzeichen) {
+        for (JsonNode z : register) {
+            if (kennzeichen.equals(z.path("kennzeichen").asText())) {
+                return z;
+            }
+        }
+        throw new AssertionError("keine Zeile " + kennzeichen + " in " + register);
     }
 
     /**
@@ -810,6 +845,16 @@ class LesewegImZugriffApiTest {
                 + "VALUES ('2026-09-20', ?, ?, ?, 'gewichtete_summe', 'Europe/Berlin', 'vorgabe', "
                 + "'2026-09-19T22:00:00Z', '2026-09-20T22:00:00Z', 24, ?::numeric, 'vollständig', 100, "
                 + "'2026-09-27T22:00:00Z')", w.mandant(), messstelle, fassung, menge);
+    }
+
+    /** Der gespeicherte September 2026 einer berechneten Messstelle (Europe/Berlin, 720 Stunden). */
+    private static void gespeicherterMonat(Welt w, UUID messstelle, UUID fassung, String menge) {
+        root.update("INSERT INTO messreihe_periode (tag, art, tenant_id, messstelle_id, formel_fassung_id, formel_typ, "
+                + "zeitzone, zeitzone_herkunft, beginn, ende, stunden, menge, menge_zustand, kennzeichen, "
+                + "abdeckung_prozent, zustand, endgueltig_ab, version, berechnet_am) VALUES (DATE '2026-09-01', 'monat', "
+                + "?, ?, ?, 'gewichtete_summe', 'Europe/Berlin', 'vorgabe', '2026-08-31T22:00:00Z', "
+                + "'2026-09-30T22:00:00Z', 720, ?::numeric, 'vollständig', '[]'::jsonb, 100, 'endgueltig', "
+                + "'2026-10-07T22:00:00Z', 1, '2026-10-01T02:00:00Z')", w.mandant(), messstelle, fassung, menge);
     }
 
     /** Ein Bearbeiter an ST-1 UND ST-2. */

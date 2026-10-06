@@ -238,6 +238,7 @@ class MessstelleSchnittstelleVertragTest {
         PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
         for (Object[] paar : new Object[][] {{"MessstelleListe", MessstelleDto.Liste.class},
                 {"MessstelleRegisterZeile", MessstelleDto.RegisterZeile.class},
+                {"MessstelleRegisterMonat", MessstelleDto.RegisterMonat.class},
                 {"MessstelleRegisterOrt", MessstelleDto.RegisterOrt.class},
                 {"MessstelleRegisterStellung", MessstelleDto.RegisterStellung.class},
                 {"MessstelleRegisterQuelle", MessstelleDto.RegisterQuelle.class},
@@ -280,10 +281,14 @@ class MessstelleSchnittstelleVertragTest {
                 .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
         assertThat(liste(map(map(schema("MessstelleWerte"), "properties"), "zuordnung"), "enum"))
                 .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
-        // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge.
+        // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge; danach `letzterMonat`
+        // (Messen PR5), kein Filter: er fügt jeder Zeile ihren letzten vollständigen Monat hinzu.
         assertThat(parameter("/api/v1/messstellen"))
                 .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle",
-                        "geplantFuerEinsatz", "stichtag");
+                        "geplantFuerEinsatz", "stichtag", "letzterMonat");
+        // Der Wert des Monats ist der Schritt der Werte-Route — dieselbe Form, kein eigenes Schema.
+        assertThat(map(map(schema("MessstelleRegisterMonat"), "properties"), "wert").toString())
+                .contains("#/components/schemas/MessstelleWerteWert");
     }
 
     /** AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator; der Plattform-Admin ist VoltPilot. */
