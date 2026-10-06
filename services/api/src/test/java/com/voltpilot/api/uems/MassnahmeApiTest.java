@@ -417,10 +417,11 @@ class MassnahmeApiTest {
             assertThat(x.status()).as(r.getKey() + " " + x.text()).isEqualTo(403);
             assertThat(x.body().get("code").asText()).isEqualTo("recht_fehlt");
         }
-        // Ein anderer Kundenbereich sieht die Maßnahme nicht - auch nicht sein Murat (dieselbe Antwort wie unbekannt).
-        for (var r : koerper("Murat aus einem anderen Kundenbereich.").entrySet()) {
-            assertThat(ruf(fremd, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/" + r.getKey(), r.getValue())
-                    .status()).as(r.getKey()).isEqualTo(404);
+        // Ein anderer Kundenbereich sieht die Maßnahme nicht - auch nicht sein Murat, der dort selbst eigene_massnahme
+        // hat: die Vorprüfung lässt ihn durch, der Dienst antwortet wie für eine unbekannte Kennung (404).
+        for (String schritt : List.of("umgesetzt", "eintraege")) {
+            assertThat(ruf(fremd, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/" + schritt,
+                    koerper("Murat aus einem anderen Kundenbereich.").get(schritt)).status()).as(schritt).isEqualTo(404);
         }
 
         uhr(UMGESETZT);
