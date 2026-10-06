@@ -192,7 +192,7 @@ export function VerzeichnisMonate({
                         <span className="vp-nw-vz-titel">{e.titel}</span>
                         {e.unter && <span className="vp-nw-vz-unter">{e.unter}</span>}
                       </span>
-                      <span className="vp-nw-vz-kz">{e.zeilen.length === 1 ? e.zeilen[0].kennzeichen : ''}</span>
+                      <span className="vp-nw-vz-kz">{kennzeichenSpalte(e)}</span>
                       {kz && (
                         <span className="vp-nw-kuerzel is-immer" title={e.person ?? undefined}>
                           {kz}
@@ -278,6 +278,16 @@ export function VerzeichnisMonate({
       </NwBlatt>
     </div>
   );
+}
+
+/**
+ * Das Kennzeichen als leise Spalte am Rechner (Entscheid 25) - nur, wo es etwas sagt, was der Titel nicht schon trägt
+ * (eine Aufgabe nennt ihr Wort als Kennzeichen und im Titel).
+ */
+function kennzeichenSpalte(e: VerzeichnisEintrag): string {
+  if (e.zeilen.length !== 1) return '';
+  const z = e.zeilen[0];
+  return z.titel.startsWith(z.kennzeichen) || e.titel.startsWith(z.kennzeichen) ? '' : z.kennzeichen;
 }
 
 function zeitraumText(f: Filter): string {

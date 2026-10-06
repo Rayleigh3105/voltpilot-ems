@@ -8,7 +8,7 @@ import {
 } from '../../api';
 import { sprungKlick, springeUeberHash, seitenSprung, type Sprung } from '../../entscheid';
 import * as E from '../../energiemanagementPortal';
-import { UEMS_KEINE_FRIST_UEBERFAELLIG } from '../../glossar';
+import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_WIEDERVORLAGE } from '../../glossar';
 import { energiemanagementRoute, type Route } from '../../nav';
 import { useRollen } from '../../rollen';
 import {
@@ -211,7 +211,8 @@ export function Ueberblick({
                 href={seitenSprung(energiemanagementRoute('wiedervorlage')).hash}
                 onClick={sprungKlick(seitenSprung(energiemanagementRoute('wiedervorlage')), springe)}
               >
-                {WIEDERVORLAGE_LINK}
+                <span className="vp-nw-nur-telefon">{WIEDERVORLAGE_LINK}</span>
+                <span className="vp-nw-nur-rechner">{UEMS_WIEDERVORLAGE}</span>
               </a>
             </div>
             {stand.demnaechst.length === 0 ? (
