@@ -36,6 +36,7 @@ import {
   monatKurzJahr,
   zaehlerZeilen,
   type EinsatzVerbrauch,
+  type KriteriumZeile,
 } from '../einsatzSeite';
 import { EinstufungDialog, EinstufungHistorie } from '../components/BewertungEntscheidungen';
 import { EnergieeinsatzBearbeitenDialog, EnergieeinsatzBeendenDialog } from '../components/EnergieeinsatzDialoge';
@@ -50,7 +51,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { messstelleRoute, type Route } from '../nav';
 import { useRollen } from '../rollen';
 import { useBewertungZeitraum } from '../useBewertungZeitraum';
-import { grenzen, letzterVollerMonat, monatWort, VERBRAUCH_TITEL, vorjahrVon } from '../verbrauch';
+import { grenzen, kwhZahl, letzterVollerMonat, monatWort, prozentGanz, VERBRAUCH_FEHLER, VERBRAUCH_TITEL, vorjahrVon } from '../verbrauch';
 // Die Karten der Bewertung (Messplanung, Einstufungs-Historie, Dialoge) tragen ihre Klassen aus `BewertungPage.css`.
 import './BewertungPage.css';
 import './VerbrauchPage.css';
@@ -72,7 +73,8 @@ const freigegebeneFassung = (fassungen: readonly EnergieeinsatzEinstufungFassung
 const oderNull = <T,>(p: Promise<T>): Promise<T | null> => p.then((x) => x, () => null);
 
 interface Verbrauchsdaten {
-  imMonat: BewertungRangliste | null;
+  /** Der Monat selbst muss laden — sonst wäre „keine Werte“ eine falsche Fachaussage über einen Netzfehler. */
+  imMonat: BewertungRangliste;
   vorjahr: BewertungRangliste | null;
   zwoelf: BewertungRangliste | null;
   abdeckung: BewertungMessabdeckung | null;
@@ -90,6 +92,7 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
   const [grundlage, setGrundlage] = useState<BewertungRangliste | null>(null);
   const [einstufungen, setEinstufungen] = useState<EnergieeinsatzEinstufungFassung[]>([]);
   const [verbrauch, setVerbrauch] = useState<Verbrauchsdaten | null>(null);
+  const [verbrauchFehler, setVerbrauchFehler] = useState(false);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
   const [dialog, setDialog] = useState<'bearbeiten' | 'beenden' | 'einstufen' | 'protokoll' | null>(null);
@@ -121,15 +124,20 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
   // Der Verbrauch: der letzte volle Monat, derselbe Monat ein Jahr früher und die zwölf Monate bis zu ihm.
   useEffect(() => {
     let aktiv = true;
+    setVerbrauchFehler(false);
     const m = grenzen({ art: 'monat', bis: monat });
     const vj = grenzen(vorjahrVon({ art: 'monat', bis: monat }));
     const z = grenzen({ art: 'zwoelf', bis: monat });
+    // Vorjahr, zwölf Monate und Messabdeckung kosten nur einen Teil (kein Vergleich, keine Linie, kein Ort).
     Promise.all([
-      oderNull(api.bewertungRangliste(m.von, m.bis)),
+      api.bewertungRangliste(m.von, m.bis),
       oderNull(api.bewertungRangliste(vj.von, vj.bis)),
       oderNull(api.bewertungRangliste(z.von, z.bis)),
       oderNull(api.bewertungMessabdeckung(m.von, m.bis)),
-    ]).then(([imMonat, vorjahr, zwoelf, abdeckung]) => aktiv && setVerbrauch({ imMonat, vorjahr, zwoelf, abdeckung }));
+    ]).then(
+      ([imMonat, vorjahr, zwoelf, abdeckung]) => aktiv && setVerbrauch({ imMonat, vorjahr, zwoelf, abdeckung }),
+      () => aktiv && setVerbrauchFehler(true),
+    );
     return () => {
       aktiv = false;
     };
@@ -200,6 +208,11 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
             </header>
             <Status einsatz={einsatz} gilt={gilt} />
 
+            {verbrauchFehler && (
+              <div className="vp-ee-verbrauch-fehler" data-testid="einsatz-verbrauch-fehler">
+                <ErrorState message={VERBRAUCH_FEHLER} onRetry={() => setVersuch((x) => x + 1)} />
+              </div>
+            )}
             {v && (
               <div className="vp-vb-antwort" data-testid="einsatz-antwort">
                 <p className="vp-vb-satz">{einsatzAntwort(einsatz, v)}</p>
@@ -210,7 +223,7 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
             <div className="vp-ee-raster">
               <div className="vp-ee-spalte">
                 {/* Ohne Menge (etwa Gas, das noch nicht gemessen wird) sagt der Antwortsatz alles — keine leere Kachel. */}
-                {!v ? <Skeleton height={190} /> : v.menge !== null && <VerbrauchKachel v={v} />}
+                {!v ? !verbrauchFehler && <Skeleton height={190} /> : v.menge !== null && <VerbrauchKachel v={v} />}
                 <section className="vp-vb-karte" aria-labelledby="ee-gemessen" data-testid="einsatz-messstellen">
                   <div className="vp-vb-blockkopf">
                     <h2 id="ee-gemessen">Gemessen von</h2>
@@ -384,34 +397,56 @@ function Status({ einsatz, gilt }: { einsatz: Energieeinsatz; gilt: Energieeinsa
   );
 }
 
+/**
+ * Die Linie der zwölf Monate als Teilstrecken: ein Monat ohne Wert unterbricht sie (fehlend ist keine Null, und eine
+ * Linie über die Lücke behauptete einen Verlauf). Ein einzelner Monat zwischen zwei Lücken bleibt als Punkt stehen.
+ */
+function sparkStrecken(verlauf: NonNullable<EinsatzVerbrauch['verlauf']>, min: number, spanne: number): string[] {
+  const n = verlauf.length;
+  const strecken: string[][] = [[]];
+  verlauf.forEach((x, i) => {
+    if (x.wert === null) {
+      if (strecken[strecken.length - 1].length > 0) strecken.push([]);
+      return;
+    }
+    strecken[strecken.length - 1].push(`${((i / Math.max(1, n - 1)) * 100).toFixed(2)},${(36 - ((x.wert - min) / spanne) * 30).toFixed(2)}`);
+  });
+  // Ein einzelner Punkt wird als Strecke der Länge null gezeichnet — die runde Linienkappe macht ihn sichtbar.
+  return strecken.filter((p) => p.length > 0).map((p) => (p.length === 1 ? `${p[0]} ${p[0]}` : p.join(' ')));
+}
+
 function VerbrauchKachel({ v }: { v: EinsatzVerbrauch }) {
   const werte = (v.verlauf ?? []).map((x) => x.wert).filter((x): x is number => x !== null);
   const max = Math.max(0, ...werte);
   const min = Math.min(...werte);
   const spanne = max - min || 1;
-  const n = v.verlauf?.length ?? 0;
-  const punkte =
-    v.verlauf && werte.length > 1
-      ? v.verlauf
-          .map((x, i) => (x.wert === null ? null : `${((i / Math.max(1, n - 1)) * 100).toFixed(2)},${(36 - ((x.wert - min) / spanne) * 30).toFixed(2)}`))
-          .filter(Boolean)
-          .join(' ')
-      : null;
+  const strecken = v.verlauf && werte.length > 1 ? sparkStrecken(v.verlauf, min, spanne) : null;
   const letzter = v.verlauf ? (v.verlauf[v.verlauf.length - 1]?.wert ?? null) : null;
   return (
     <div className="vp-vb-kachel">
       <Kachel id="einsatz-verbrauch" name={`Verbrauch · ${monatWort(v.monat)}`} icon="pole" ton="load" className="is-lead">
-        {v.menge === null ? <Gross wert="–" /> : <Gross wert={v.menge.toLocaleString('de-DE', { maximumFractionDigits: 0 })} einheit="kWh" xl />}
+        {v.menge === null ? <Gross wert="–" /> : <Gross wert={kwhZahl(v.menge)} einheit={v.einheit} xl />}
         {(v.vorjahr || v.anteil !== null) && (
           <span className="vp-ee-marken">
             {v.vorjahr && <Marke>{v.vorjahr.text}</Marke>}
-            {v.anteil !== null && <Marke>{`${Math.round(v.anteil).toLocaleString('de-DE')}\u00a0% des Stroms`}</Marke>}
+            {v.anteil !== null && <Marke>{`${prozentGanz(v.anteil)} des Stroms`}</Marke>}
           </span>
         )}
-        {punkte && v.verlauf && (
+        {strecken && v.verlauf && (
           <div className="vp-ee-spark" role="img" aria-label={`Verbrauch je Monat, ${monatWort(v.verlauf[0].monat)} bis ${monatWort(v.monat)}`}>
             <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
-              <polyline points={punkte} fill="none" stroke="currentColor" strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+              {strecken.map((punkte, i) => (
+                <polyline
+                  key={i}
+                  points={punkte}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  vectorEffect="non-scaling-stroke"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ))}
             </svg>
             {letzter !== null && <i className="vp-ee-spark-ende" style={{ bottom: `${(((letzter - min) / spanne) * 30 + 4) / 40 * 100}%` }} />}
             <span className="vp-ee-spark-achse">
@@ -424,6 +459,13 @@ function VerbrauchKachel({ v }: { v: EinsatzVerbrauch }) {
     </div>
   );
 }
+
+/** ✓ erfüllt · ✗ nicht erfüllt · ? nicht prüfbar (mit dem Wort der Regel und dem Grund) — nie ein falsches ✗. */
+const KRITERIUM_ZEICHEN: Record<KriteriumZeile['stand'], { icon: 'check' | 'x' | 'help-circle'; klasse: string | undefined }> = {
+  erfuellt: { icon: 'check', klasse: undefined },
+  nicht_erfuellt: { icon: 'x', klasse: 'is-nein' },
+  offen: { icon: 'help-circle', klasse: 'is-offen' },
+};
 
 function Warum({
   einsatz,
@@ -456,14 +498,14 @@ function Warum({
         (kriterien ? (
           <ul className="vp-ee-krit">
             {kriterien.map((k) => (
-              <li key={k.text} className={k.erfuellt ? undefined : 'is-nein'}>
+              <li key={k.text} className={KRITERIUM_ZEICHEN[k.stand].klasse} data-testid={`einsatz-kriterium-${k.stand}`}>
                 <span className="vp-ee-ki" aria-hidden="true">
-                  <Icon name={k.erfuellt ? 'check' : 'x'} size={15} />
+                  <Icon name={KRITERIUM_ZEICHEN[k.stand].icon} size={15} />
                 </span>
                 <span>
                   {k.text}
-                  <span className="vp-ee-nurvorleser">{k.erfuellt ? ' (erfüllt)' : ' (nicht erfüllt)'}</span>
-                  {k.schwelle && <small>{k.schwelle}</small>}
+                  <span className="vp-ee-nurvorleser">{` (${k.urteil})`}</span>
+                  {k.zusatz && <small>{k.zusatz}</small>}
                 </span>
               </li>
             ))}

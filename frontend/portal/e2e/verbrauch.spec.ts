@@ -96,12 +96,27 @@ for (const breite of [375, 1440]) {
       await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Spritzguss');
       expect(await page.evaluate(() => location.hash)).toMatch(/^#\/portfolio\/verbrauch\/ee000000-/);
       await expect(page.getByTestId('einsatz-antwort')).toContainText('Spritzguss brauchte im Oktober 2026');
+      // „Warum“: K2 ist bei 67,8 % Zuordnung nicht belastbar, K3 ohne zwölf Monate nicht anwendbar — kein ✗.
+      const warum = page.getByTestId('einsatz-warum');
+      await expect(warum.getByTestId('einsatz-kriterium-offen')).toHaveCount(2);
+      await expect(warum).toContainText('nicht belastbar – erst ab 80');
+      await expect(warum).not.toContainText('nicht erfüllt');
       const m = await messe(page);
       expect(m.dokument, 'Querlauf').toBe(0);
       expect(m.ueberstehend, 'überstehende Elemente').toEqual([]);
       await ablegen(page, `einsatz-${breite}`);
       await seite.getByRole('button', { name: 'Verbrauch' }).click();
       await expect(page.getByTestId('verbrauch-antwort')).toBeVisible();
+    });
+
+    test('der Rückweg „Verbrauch“ behält den gewählten Zeitraum', async ({ page }) => {
+      await oeffne(page, breite, '#/portfolio/verbrauch?zeitraum=12monate&bis=2026-10');
+      await page.locator('[data-testid^="verbrauch-reihe-"]').first().getByRole('button').first().click();
+      await expect(page.getByTestId('einsatz-seite')).toBeVisible();
+      expect(await page.evaluate(() => location.hash)).toMatch(/^#\/portfolio\/verbrauch\/ee000000-[^?]+\?zeitraum=12monate&bis=2026-10$/);
+      await page.getByTestId('einsatz-seite').getByRole('button', { name: 'Verbrauch' }).click();
+      await expect(page.getByTestId('verbrauch-zeitraum')).toHaveText('Nov 2025 – Okt 2026');
+      expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/verbrauch?zeitraum=12monate&bis=2026-10');
     });
 
     test('die alte Adresse eines Einsatzes unter „Bewertung“ öffnet dieselbe Seite', async ({ page }) => {

@@ -22,6 +22,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { VerbrauchVerlauf } from '../components/VerbrauchVerlauf';
 import { ladeCsv } from '../ladeCsv';
 import { anlageRoute, messstelleRoute, pageRoute, type Route } from '../nav';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
 import {
@@ -38,6 +39,8 @@ import {
   VERBRAUCH_LISTE_TITEL,
   VERBRAUCH_TITEL,
   VERBRAUCH_UNTERZEILE,
+  VERBRAUCH_VERLAUF_TITEL,
+  VERLAUF_FEHLER,
   verbrauchBild,
   verbrauchCsv,
   verlaufBild,
@@ -96,7 +99,8 @@ interface Geladen {
 
 interface VerlaufGeladen {
   schluessel: string;
-  bild: VerlaufBild;
+  /** `null`: der Abruf der zwölf Monate ist gescheitert — die Fläche sagt das, statt ewig zu laden. */
+  bild: VerlaufBild | null;
 }
 
 const schluesselVon = (z: VerbrauchZeitraum) => `${z.art}:${z.bis}`;
@@ -129,7 +133,7 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
   const setZeitraum = (z: VerbrauchZeitraum) => {
     setZeitraumState(z);
     // Die Wahl steht in der Adresse (Lesezeichen, Zurück aus einem Bereich); kein neuer Verlaufseintrag je Klick.
-    window.history.replaceState(window.history.state, '', zeitraumAdresse(BASIS, z, letzter));
+    replaceCurrentNavigation(zeitraumAdresse(BASIS, z, letzter));
   };
 
   // Rangliste, Vorjahr und Messabdeckung des gewählten Zeitraums.
@@ -163,7 +167,7 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
     const vj = grenzen(vorjahrVon(zwoelf));
     Promise.all([api.bewertungRangliste(g.von, g.bis), oderNull(api.bewertungRangliste(vj.von, vj.bis))]).then(
       ([r, v]) => aktiv && setVerlauf({ schluessel: schluesselVon(zeitraum), bild: verlaufBild(r, v, zeitraum.bis) }),
-      () => aktiv && setVerlauf(null),
+      () => aktiv && setVerlauf({ schluessel: schluesselVon(zeitraum), bild: null }),
     );
     return () => {
       aktiv = false;
@@ -209,6 +213,7 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
     if (aktuell.zeitraum.art === 'zwoelf') return verlaufBild(aktuell.rangliste, aktuell.vorjahr, aktuell.zeitraum.bis);
     return verlauf && verlauf.schluessel === aktuell.schluessel ? verlauf.bild : null;
   }, [aktuell, verlauf]);
+  const verlaufFehlt = aktuell?.zeitraum.art === 'monat' && verlauf?.schluessel === aktuell.schluessel && verlauf.bild === null;
   const bild: VerbrauchBild | null = useMemo(
     () =>
       aktuell
@@ -341,6 +346,10 @@ function VerbrauchUebersicht({ onOeffnen, onNavigate }: { onOeffnen: (id: string
                   gewaehlt={z.bis}
                   tippHinweis={phone}
                 />
+              ) : verlaufFehlt ? (
+                <section className="vp-vb-karte vp-vb-verlauf" aria-label={VERBRAUCH_VERLAUF_TITEL} data-testid="verbrauch-verlauf-fehler">
+                  <ErrorState message={VERLAUF_FEHLER} onRetry={() => setVersuch((v) => v + 1)} />
+                </section>
               ) : (
                 <div className="vp-vb-f-verlauf-platz" aria-busy="true">
                   <Skeleton height={260} />
@@ -546,7 +555,7 @@ function BereichReihe({ b, onOeffnen }: { b: BereichZeile; onOeffnen: (id: strin
         <span className="vp-vb-nm">
           <span className="vp-vb-name">{b.name}</span>
           {b.wesentlich === true && <span className="vp-vb-wesentlich">{WESENTLICH}</span>}
-          {b.marke && <span className="vp-k-marke is-warn">{b.marke}</span>}
+          {b.marke && <span className={`vp-k-marke is-${b.marke.ton}`}>{b.marke.text}</span>}
         </span>
         <span className="vp-vb-v">
           {b.mengeText ?? '–'}

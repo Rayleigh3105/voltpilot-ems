@@ -15,28 +15,33 @@ const NB = String.fromCharCode(160);
 const EE1 = ahrenbergEinsaetze()[0];
 
 /** Die Monatsmengen einer Messstelle in der Form von `…/werte` (raster monat). */
-function monatswerte(kennzeichen: string, mengen: Record<string, number | null>): MessstelleWerte {
+function monatswerte(kennzeichen: string, mengen: Record<string, number | null>, zustaende: Record<string, 'unvollständig' | 'mit Ersatzwert'> = {}): MessstelleWerte {
   return {
     messstelle: { id: `ms-${kennzeichen}`, kennzeichen, name: kennzeichen, art: 'gemessen', groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Zählerstand' },
     raster: 'monat', von: '', bis: '', zeitzone: 'Europe/Berlin', zeitzone_herkunft: 'standort', version: 1, quellen: [], zuordnung: null,
     werte: Object.entries(mengen).map(([monat, menge]) => ({
       von: `${monat}-01T00:00:00+02:00`, bis: '', beschriftung: null, stunden: null, tagesdauer: null, menge, mittel: null, min: null, max: null,
-      zustand: menge === null ? 'keine Werte' : 'vollständig', kennzeichen: [], erhalten: null, erwartet: null, abdeckung_prozent: null,
+      zustand: menge === null ? 'keine Werte' : (zustaende[monat] ?? 'vollständig'), kennzeichen: [], erhalten: null, erwartet: null, abdeckung_prozent: null,
       fassung: 'endgueltig', endgueltig_ab: null, version: 1, gebildet_aus: 'monat', quelle: null, grund: null, ereignisse: [], herkunft: null, versionen: 1,
     })),
   };
 }
 
 /** Rangliste mit EE-1 als einzigem Bereich; `ms` sind seine Messstellen mit Menge und Monatswerten. */
-function mitEE1(menge: string | null, anteil: string | null, ms: { kz: string; menge: string; mw: Record<string, number | null> }[] = []): BewertungRangliste {
+function mitEE1(
+  menge: string | null,
+  anteil: string | null,
+  ms: { kz: string; menge: string; mw: Record<string, number | null>; zustaende?: Record<string, 'unvollständig' | 'mit Ersatzwert'> }[] = [],
+  zustand = menge === null ? 'keine Werte' : 'vollständig',
+): BewertungRangliste {
   const r = ahrenbergRangliste();
   const e = r.einsaetze.find((x) => x.id === EE1.id)!;
   return {
     ...r,
     monate: 12,
     einsaetze: [{
-      ...e, menge, anteil_prozent: anteil, zustand: menge === null ? 'keine Werte' : 'vollständig',
-      messstellen: ms.map((m) => ({ id: `ms-${m.kz}`, kennzeichen: m.kz, anlage_id: null, einheit: 'kWh', menge: m.menge, monatswerte: monatswerte(m.kz, m.mw) })),
+      ...e, menge, anteil_prozent: anteil, zustand,
+      messstellen: ms.map((m) => ({ id: `ms-${m.kz}`, kennzeichen: m.kz, anlage_id: null, einheit: 'kWh', menge: m.menge, monatswerte: monatswerte(m.kz, m.mw, m.zustaende) })),
     }],
   };
 }
@@ -51,10 +56,34 @@ const fassung = (f: Partial<EnergieeinsatzEinstufungFassung>): EnergieeinsatzEin
 describe('Seite eines Energieeinsatzes: Antwort zuerst', () => {
   it('Monat, Anteil und Vorjahr in einem Satz; der Gedankenstrich bricht nie an den Zeilenanfang', () => {
     const v = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('88200', '44.2'), mitEE1('88200', '44.0'), null);
-    expect(v).toMatchObject({ menge: 88200, vollstaendig: true, anteil: 44.2, vorjahr: { richtung: 'gleich' }, verlauf: null });
+    expect(v).toMatchObject({ menge: 88200, einheit: 'kWh', vollstaendig: true, anteil: '44.2', vorjahr: { richtung: 'gleich' }, verlauf: null });
     expect(einsatzAntwort(EE1, v)).toBe(`${EE1.name} brauchte im September 2026 88.200${NB}kWh${NB}– 44${NB}% des Stroms, so viel wie im Vorjahr.`);
     const mehr = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('88200', '44.2'), mitEE1('80000', '40'), null);
     expect(einsatzAntwort(EE1, mehr)).toBe(`${EE1.name} brauchte im September 2026 88.200${NB}kWh${NB}– 44${NB}% des Stroms, 10${NB}% mehr als im Vorjahr.`);
+  });
+
+  it('ein unvollständiges Vorjahr (Zähler kam erst im Vorjahr dazu) gibt keinen Vergleich, sondern sagt das (Review r3, MUSS)', () => {
+    const v = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('88200', '44.2'), mitEE1('29400', '15', [], 'unvollständig'), null);
+    expect(v.vorjahr).toEqual({ text: 'Vorjahr unvollständig', richtung: null });
+    expect(einsatzAntwort(EE1, v)).toBe(`${EE1.name} brauchte im September 2026 88.200${NB}kWh${NB}– 44${NB}% des Stroms.`);
+    // Ist der Monat selbst unvollständig, gibt es ebenfalls keinen Vergleich — die Antwort sagt „unvollständig“.
+    const selbst = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('29400', '15', [], 'unvollständig'), mitEE1('88200', '44'), null);
+    expect(selbst.vorjahr).toBeNull();
+    expect(einsatzAntwort(EE1, selbst)).toBe(`${EE1.name} brauchte im September 2026 29.400${NB}kWh${NB}– 15${NB}% des Stroms (unvollständig).`);
+  });
+
+  it('Ersatz ist Teil der Menge: verglichen wie vollständig, die Antwort nennt den Ersatzwert', () => {
+    const v = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('88200', '44.2', [], 'mit Ersatzwert'), mitEE1('80000', '40'), null);
+    expect(v).toMatchObject({ vollstaendig: true, vorjahr: { richtung: 'rauf' } });
+    expect(einsatzAntwort(EE1, v)).toBe(`${EE1.name} brauchte im September 2026 88.200${NB}kWh${NB}– 44${NB}% des Stroms, 10${NB}% mehr als im Vorjahr (mit Ersatzwert).`);
+  });
+
+  it('die Einheit kommt aus der Rangliste: ein Gas-Einsatz in m³ steht nie als „kWh“', () => {
+    const r = mitEE1('1240', null);
+    r.einsaetze[0] = { ...r.einsaetze[0], traeger: 'Gas', einheit: 'm³' };
+    const v = einsatzVerbrauch(EE1.id, '2026-09', r, null, null);
+    expect(v.einheit).toBe('m³');
+    expect(einsatzAntwort({ ...EE1, name: 'Heizung Verwaltung', traeger: 'Gas' }, v)).toBe(`Heizung Verwaltung brauchte im September 2026 1.240${NB}m³.`);
   });
 
   it('ohne Werte sagt die Seite das, nie „0 kWh“; Gas wird noch nicht gemessen', () => {
@@ -76,6 +105,18 @@ describe('Seite eines Energieeinsatzes: Antwort zuerst', () => {
     // Zählt ein Zähler nur anteilig, ergäbe die Summe eine zu große Linie — dann keine.
     const anteilig = mitEE1('2100', '40', [{ kz: 'MS-20', menge: '3000', mw }]);
     expect(einsatzVerbrauch(EE1.id, '2026-09', null, null, anteilig).verlauf).toBeNull();
+  });
+
+  it('der Verlauf summiert mehrere Zähler über den Zwilling; fehlt einer oder ist er unvollständig, bleibt der Monat eine Lücke', () => {
+    const zwei = mitEE1('4500', '40', [
+      { kz: 'MS-20', menge: '3000', mw: { '2026-08': 1000, '2026-09': 2000 } },
+      { kz: 'MS-21', menge: '1500', mw: { '2026-08': 500, '2026-09': 1000, '2026-07': 300 }, zustaende: { '2026-09': 'mit Ersatzwert', '2026-07': 'unvollständig' } },
+    ]);
+    const v = einsatzVerbrauch(EE1.id, '2026-09', null, null, zwei).verlauf!;
+    expect(v[11]).toEqual({ monat: '2026-09', wert: 3000 });
+    expect(v[10]).toEqual({ monat: '2026-08', wert: 1500 });
+    // Juli: MS-20 ohne Wert, MS-21 unvollständig — nie 300 als Monatswert des Bereichs.
+    expect(v[9]).toEqual({ monat: '2026-07', wert: null });
   });
 });
 
@@ -102,11 +143,33 @@ describe('Gemessen von, Status und Gründe der Einstufung', () => {
     const r = mitEE1('1017050', '40.6');
     const rang = { ...r.einsaetze[0], urteil: { ...r.einsaetze[0].urteil, K1: 'ueber_schwelle' as const, K2: 'unter_schwelle' as const, K3: 'ueber_schwelle' as const } };
     expect(kriterienInWorten(r, rang)).toEqual([
-      { erfuellt: true, text: `40,6${NB}% des Stroms`, schwelle: `ab 10${NB}%` },
-      { erfuellt: false, text: `gehört nicht zu den größten Bereichen, die zusammen 80${NB}% ausmachen`, schwelle: null },
-      { erfuellt: true, text: `1.017.050${NB}kWh im Jahr`, schwelle: `ab 100.000${NB}kWh` },
+      { stand: 'erfuellt', text: `40,6${NB}% des Stroms`, zusatz: `ab 10${NB}%`, urteil: 'erfüllt' },
+      { stand: 'nicht_erfuellt', text: `gehört nicht zu den größten Bereichen, die zusammen 80${NB}% ausmachen`, zusatz: null, urteil: 'nicht erfüllt' },
+      { stand: 'erfuellt', text: `1.017.050${NB}kWh im Jahr`, zusatz: `ab 100.000${NB}kWh`, urteil: 'erfüllt' },
     ]);
     expect(kriterienInWorten(r, { ...rang, menge: null })).toBeNull();
     expect(kriterienInWorten(null, rang)).toBeNull();
+  });
+
+  it('nicht belastbar / nicht anwendbar sind kein „nicht erfüllt“: das Wort der Regel und der Grund (Review r3, MUSS)', () => {
+    // 67,8 % zugeordnet (K8 unter 80 %) → K2 nicht belastbar; sechs Monate Datengrundlage → K3 nicht anwendbar.
+    const r = { ...mitEE1('88200', '44.2'), monate: 6, abdeckung_prozent: '67.8' };
+    const rang = { ...r.einsaetze[0], urteil: { ...r.einsaetze[0].urteil, K1: 'ueber_schwelle' as const, K2: 'nicht_belastbar' as const, K3: 'nicht_anwendbar' as const } };
+    const [k1, k2, k3] = kriterienInWorten(r, rang)!;
+    expect(k1.stand).toBe('erfuellt');
+    expect(k2).toEqual({
+      stand: 'offen',
+      text: `Rangfolge zu den größten Bereichen, die zusammen 80${NB}% ausmachen`,
+      zusatz: `nicht belastbar – erst ab 80${NB}% zugeordnetem Strom (jetzt 68${NB}%)`,
+      urteil: 'nicht belastbar',
+    });
+    expect(k3).toEqual({ stand: 'offen', text: `88.200${NB}kWh in 6 Monaten`, zusatz: 'nicht anwendbar – die Schwelle gilt für zwölf Monate', urteil: 'nicht anwendbar' });
+    // Ohne vollständigen Hauptzähler-Wert ist auch K1 nicht prüfbar.
+    const ohneAnteil = kriterienInWorten({ ...r, abdeckung_prozent: null }, { ...rang, anteil_prozent: null, urteil: { ...rang.urteil, K1: 'nicht_anwendbar' as const } })!;
+    expect(ohneAnteil[0]).toMatchObject({ stand: 'offen', text: 'Anteil am Strom unbekannt', urteil: 'nicht anwendbar' });
+    expect(ohneAnteil[1].zusatz).toBe(`nicht belastbar – erst ab 80${NB}% zugeordnetem Strom`);
+    // Eine vereinbarte Schwelle mit Nachkommastelle bleibt, wie sie ist.
+    const genau = { ...r, kriterien: { ...r.kriterien, werte: { ...r.kriterien.werte, K1: '7.5' } } };
+    expect(kriterienInWorten(genau, rang)![0].zusatz).toBe(`ab 7,5${NB}%`);
   });
 });

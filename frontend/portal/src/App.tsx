@@ -57,6 +57,8 @@ import {
   kennzahlRoute,
   berichtRoute,
   energieeinsatzRoute,
+  verbrauchEinsatzHash,
+  verbrauchListeHash,
   energiezielRoute,
   massnahmeRoute,
   abweichungRoute,
@@ -1669,19 +1671,13 @@ function UnifiedPortal() {
             />
           )}
           {/* UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (Umfang, Energieeinsätze) und die Seite eines Einsatzes. */}
-          {page === 'portfolio-bewertung' && (
-            <BewertungPage
-              einsatzId={route.energieeinsatzId ?? null}
-              onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-              onListe={() => navigate(pageRoute('portfolio-bewertung'))}
-            />
-          )}
+          {page === 'portfolio-bewertung' && <BewertungPage onOeffnen={(id) => navigate(energieeinsatzRoute(id))} />}
           {/* Konzept Auswerten a1 (Entscheid 10.1): „Unternehmen › Verbrauch“ und die Seite eines Energieeinsatzes. */}
           {page === 'portfolio-verbrauch' && (
             <VerbrauchPage
               einsatzId={route.energieeinsatzId ?? null}
-              onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-              onListe={() => navigate(pageRoute('portfolio-verbrauch'))}
+              onOeffnen={(id) => geheZu(energieeinsatzRoute(id), verbrauchEinsatzHash(id, window.location.hash))}
+              onListe={() => geheZu(pageRoute('portfolio-verbrauch'), verbrauchListeHash(window.location.hash))}
               onNavigate={navigate}
             />
           )}

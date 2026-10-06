@@ -4,7 +4,7 @@ import { api, ApiError, type BewertungRangliste } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { ahrenbergEinsaetze, ahrenbergRangliste } from '../test/bewertungFixtures';
 import { rechteSeed } from '../test/rollenFixtures';
-import { VERBRAUCH_FEHLER, VERBRAUCH_GESPERRT, VERBRAUCH_LEER } from '../verbrauch';
+import { VERBRAUCH_FEHLER, VERBRAUCH_GESPERRT, VERBRAUCH_LEER, VERLAUF_FEHLER } from '../verbrauch';
 import { VerbrauchPage } from './VerbrauchPage';
 
 /** Zwölf Monate bis Oktober 2026: dieselben Bereiche, je Monat der Hauptzähler als Herkunft (wie die Route). */
@@ -19,6 +19,7 @@ function zwoelf(von: string): BewertungRangliste {
   return {
     ...r, von, monate: 12,
     nenner: { ...r.nenner, gesamt: 1, vorhanden: 1, anlagen: '1 von 1', wert: '2226000' },
+    anlagen: [r.anlagen[0]],
     einsaetze: r.einsaetze.map((e) => ({ ...e, herkunft: { ...e.herkunft, nenner: { wert: '2226000', anlagen: '1 von 1', bilanzwerte } } })),
   };
 }
@@ -132,6 +133,24 @@ describe('VerbrauchPage — Wo geht die Energie hin?', () => {
     abruf.mockImplementation(async (von, bis) => (von.slice(0, 7) === bis.slice(0, 7) ? ahrenbergRangliste() : zwoelf(von)));
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
     expect(await screen.findByTestId('verbrauch-antwort')).toBeInTheDocument();
+  });
+
+  it('scheitert der Monatsverlauf, sagt die Fläche das mit „Erneut versuchen“ — kein Skelett ohne Ende (Review r3)', async () => {
+    let kaputt = true;
+    verdrahte(async (von, bis) => {
+      if (von.slice(0, 7) === bis.slice(0, 7)) return ahrenbergRangliste();
+      if (kaputt) throw new ApiError(500, 'kaputt');
+      return zwoelf(von);
+    });
+    render(<VerbrauchPage onOeffnen={vi.fn()} onListe={vi.fn()} onNavigate={vi.fn()} />);
+    await screen.findByTestId('verbrauch-antwort');
+    const fehler = await screen.findByTestId('verbrauch-verlauf-fehler');
+    expect(fehler).toHaveTextContent(VERLAUF_FEHLER);
+    expect(document.querySelector('.vp-vb-f-verlauf-platz')).toBeNull();
+    kaputt = false;
+    fireEvent.click(within(fehler).getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await screen.findByTestId('verbrauch-verlauf')).toBeInTheDocument();
+    expect(screen.queryByTestId('verbrauch-verlauf-fehler')).toBeNull();
   });
 
   it('ohne Recht: der Grund statt eines Versuchs', async () => {

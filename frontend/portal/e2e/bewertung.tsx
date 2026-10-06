@@ -6,7 +6,7 @@ import { benutzerApi } from '../src/benutzer';
 import { darfAnsehen } from '../src/bewertung';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
-import { hashForRoute, parseRoute, pageRoute, energieeinsatzRoute, type Route } from '../src/nav';
+import { hashForRoute, parseRoute, pageRoute, energieeinsatzRoute, verbrauchEinsatzHash, verbrauchListeHash, type Route } from '../src/nav';
 import { BewertungPage } from '../src/pages/BewertungPage';
 import { VerbrauchPage } from '../src/pages/VerbrauchPage';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
@@ -142,16 +142,17 @@ function Ansicht() {
         onNavigate={(p) => navigate(pageRoute(p))}
       />
       {route.page === 'portfolio-bewertung' ? (
-        <BewertungPage
-          einsatzId={route.energieeinsatzId ?? null}
-          onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-          onListe={() => navigate(pageRoute('portfolio-bewertung'))}
-        />
+        <BewertungPage onOeffnen={(id) => navigate(energieeinsatzRoute(id))} />
       ) : route.page === 'portfolio-verbrauch' ? (
         <VerbrauchPage
           einsatzId={route.energieeinsatzId ?? null}
-          onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-          onListe={() => navigate(pageRoute('portfolio-verbrauch'))}
+          // Wie `App.tsx`: die Wahl der Liste reist zur Seite eines Einsatzes und zurück.
+          onOeffnen={(id) => {
+            location.hash = verbrauchEinsatzHash(id, location.hash);
+          }}
+          onListe={() => {
+            location.hash = verbrauchListeHash(location.hash);
+          }}
           onNavigate={navigate}
         />
       ) : (

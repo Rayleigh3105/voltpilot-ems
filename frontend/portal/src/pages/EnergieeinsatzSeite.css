@@ -230,6 +230,10 @@
 .vp-ee-krit li.is-nein {
   color: var(--vp-text-muted, #66717c);
 }
+/* Nicht prüfbar (nicht belastbar / nicht anwendbar): weder Haken noch Kreuz — das Zeichen ruht, der Grund steht darunter. */
+.vp-ee-krit li.is-offen .vp-ee-ki {
+  color: var(--vp-text-muted, #66717c);
+}
 .vp-ee-zitat {
   margin: 0;
   padding: 2px 0 2px 11px;

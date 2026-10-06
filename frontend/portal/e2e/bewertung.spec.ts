@@ -270,9 +270,11 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('einsatz-warum')).toBeVisible();
       await page.getByTestId('einsatz-menue').getByRole('button', { name: 'Weitere Aktionen' }).click();
       await page.getByRole('menuitem', { name: 'Änderungsprotokoll' }).click();
-      await expect(page.getByTestId('einstufung-historie')).toContainText('Fassung 3 · nicht wesentlich');
-      await expect(page.getByTestId('einstufung-historie')).toContainText('Fassung 1 · wesentlich');
-      await expect(page.getByTestId('einstufung-historie')).toContainText('Grundlage 2026-10');
+      // Eine beantragte Fassung zeigt die Historie auch auf der Seite — gelesen wird die im Protokoll.
+      const historie = page.getByRole('dialog').getByTestId('einstufung-historie');
+      await expect(historie).toContainText('Fassung 3 · nicht wesentlich');
+      await expect(historie).toContainText('Fassung 1 · wesentlich');
+      await expect(historie).toContainText('Grundlage 2026-10');
       ohneQuerlauf(await messe(page), `historie-${breite}`);
       await ablegen(page, `historie-${breite}`, true);
     });

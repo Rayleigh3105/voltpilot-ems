@@ -624,6 +624,10 @@ button.vp-vb-reihe-ziel::after {
   transform: translate(-50%, 50%);
   box-sizing: content-box;
 }
+.vp-vb-punkt.is-teil {
+  border-color: var(--vp-navy-1, #1e3a5f);
+  background: var(--vp-c-card, #fff);
+}
 .vp-vb-graf-x,
 .vp-vb-graf-j {
   grid-column: 2;

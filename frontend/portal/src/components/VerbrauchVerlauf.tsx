@@ -124,7 +124,10 @@ export function VerbrauchVerlauf({
                   className={`vp-vb-saeule${x.wert === null ? ' is-leer' : ''}${!x.vollstaendig && x.wert !== null ? ' is-teil' : ''}${i === wahl ? ' is-wahl' : ''}`}
                   style={x.wert === null ? undefined : { height: `${x.hoehe}%` }}
                 />
-                {x.vorjahrHoehe !== null && <i className="vp-vb-punkt" style={{ bottom: `${x.vorjahrHoehe}%` }} />}
+                {/* Ein unvollständiges Vorjahr steht hohl — eine Teilsumme, kein Vorjahreswert. */}
+                {x.vorjahrHoehe !== null && (
+                  <i className={`vp-vb-punkt${x.vorjahrVollstaendig ? '' : ' is-teil'}`} style={{ bottom: `${x.vorjahrHoehe}%` }} />
+                )}
               </span>
             ))}
           </div>
