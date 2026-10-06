@@ -58,6 +58,7 @@ const LAGEN: MassnahmeLage[] = ['leer', 'geplant', 'r9', 'r5', 'r6', 'r12', 'ant
 const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'r9';
 const tag = heute();
 const me = rechteSeed('IK').me;
+const ziele = energiezielBuehne('juli', false, me.kennung!, me.name!);
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
@@ -66,7 +67,9 @@ Object.assign(
   api,
   bewertungBuehne('voll', 'IK', tag),
   bezugsbasisBuehne('modell'),
-  energiezielBuehne('juli', false, me.kennung!, me.name!),
+  ziele,
+  // Der Tag der Routen ist der Tag der Uhr - auch im Stand eines Energieziels (eine Uhr, Konzept Verbessern v1 Befund 2).
+  { energiezielStand: async (id: string) => ({ ...(await ziele.energiezielStand!(id)), abruf: tag }) },
   massnahmeBuehne(lage, tag, me.name!, { sub: me.kennung!, vieraugen: params.get('vieraugen') === '1' }),
   { standorte: async () => ({ stichtag: tag, standorte: [] }) },
 );
