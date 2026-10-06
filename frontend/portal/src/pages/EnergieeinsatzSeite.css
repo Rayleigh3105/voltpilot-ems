@@ -149,10 +149,20 @@
 }
 .vp-ee-zaehler-nm {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 7px;
+  align-items: flex-start;
+  gap: 7px;
   min-width: 0;
+}
+/* Mitte der ersten Zeile (Zeilenhöhe 1,3 × 15 px). */
+.vp-ee-zaehler-nm .vp-ee-punkt {
+  margin-top: 6px;
+}
+.vp-ee-zaehler-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-ee-zaehler-name .vp-ee-kz {
+  white-space: nowrap;
 }
 .vp-ee-zaehler-nm b {
   font: 600 0.9375rem/1.3 var(--vp-c-font);
@@ -194,6 +204,8 @@
 }
 .vp-ee-zaehler-sub {
   grid-column: 1;
+  /* bündig unter dem Namen: Punkt (8 px) und Abstand (7 px) */
+  padding-left: 15px;
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--vp-c-muted-fg, #475569);

@@ -159,7 +159,7 @@ describe('Gemessen von, Status und Gründe der Einstufung', () => {
     expect(k1.stand).toBe('erfuellt');
     expect(k2).toEqual({
       stand: 'offen',
-      text: `Rangfolge zu den größten Bereichen, die zusammen 80${NB}% ausmachen`,
+      text: `Platz unter den größten Bereichen, die zusammen 80${NB}% ausmachen`,
       zusatz: `nicht belastbar – erst ab 80${NB}% zugeordnetem Strom (jetzt 68${NB}%)`,
       urteil: 'nicht belastbar',
     });

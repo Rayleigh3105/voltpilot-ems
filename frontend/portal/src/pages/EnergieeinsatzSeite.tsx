@@ -241,10 +241,12 @@ export function EnergieeinsatzSeite({ id, onListe, onNavigate }: { id: string; o
                             onClick={() => onNavigate?.(messstelleRoute(z.id))}
                             disabled={!onNavigate}
                           >
+                            {/* Der Punkt bleibt an der ersten Zeile; Name und Kennzeichen brechen gemeinsam um. */}
                             <span className="vp-ee-zaehler-nm">
                               <i className={`vp-ee-punkt is-${z.ton}`} aria-hidden="true" />
-                              <b>{z.name}</b>
-                              <span className="vp-ee-kz">{z.kennzeichen}</span>
+                              <span className="vp-ee-zaehler-name">
+                                <b>{z.name}</b> <span className="vp-ee-kz">{z.kennzeichen}</span>
+                              </span>
                             </span>
                             <span className="vp-ee-zaehler-w">
                               {z.wert ? (

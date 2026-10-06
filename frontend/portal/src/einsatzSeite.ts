@@ -216,7 +216,7 @@ export function kriterienInWorten(r: BewertungRangliste | null, rang: BewertungR
   if (!r || !rang || rang.menge === null || rang.traeger !== 'Strom') return null;
   const w = r.kriterien.werte;
   const menge = zahl(rang.menge);
-  const zeitraum = r.monate === 12 ? 'im Jahr' : `in ${r.monate} Monaten`;
+  const zeitraum = r.monate === 12 ? 'im Jahr' : r.monate === 1 ? 'in einem Monat' : `in ${r.monate} Monaten`;
   const k2 = `zu den größten Bereichen, die zusammen ${schwelle(w.K2, PROZENT)} ausmachen`;
   const zugeordnet = r.abdeckung_prozent === null ? null : prozentGanz(r.abdeckung_prozent);
   return [
@@ -228,7 +228,11 @@ export function kriterienInWorten(r: BewertungRangliste | null, rang: BewertungR
     ),
     stand(
       rang.urteil.K2,
-      rang.urteil.K2 === 'ueber_schwelle' ? `gehört ${k2}` : rang.urteil.K2 === 'unter_schwelle' ? `gehört nicht ${k2}` : `Rangfolge ${k2}`,
+      rang.urteil.K2 === 'ueber_schwelle'
+        ? `gehört ${k2}`
+        : rang.urteil.K2 === 'unter_schwelle'
+          ? `gehört nicht ${k2}`
+          : `Platz unter den größten Bereichen, die zusammen ${schwelle(w.K2, PROZENT)} ausmachen`,
       null,
       `erst ab ${schwelle(w.K8, PROZENT)} zugeordnetem Strom${zugeordnet ? ` (jetzt ${zugeordnet})` : ''}`,
     ),
