@@ -110,10 +110,10 @@ describe('Liste, Gruppen und Reihen', () => {
       register: MessstelleRegisterZeile[];
     };
     const z = (kz: string) => echt.register.find((x) => x.kennzeichen === kz)!;
-    expect(monatWert(z('MS-20'))).toEqual({ zahl: '88.200', einheit: 'kWh', wann: 'Sep 2026' });
-    expect(monatWert(z('HZ-1'))).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026' });
+    expect(monatWert(z('MS-20'))).toEqual({ zahl: '88.200', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    expect(monatWert(z('HZ-1'))).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
     // Ohne Zahl der Strich mit dem Monat - nie 0.
-    expect(monatWert(z('MS-03'))).toEqual({ zahl: '—', einheit: null, wann: 'Sep 2026' });
+    expect(monatWert(z('MS-03'))).toEqual({ zahl: '—', einheit: null, wann: 'Sep 2026', monat: true });
     // Eine Hauptgröße ohne Menge (Leistung) und eine Antwort ohne Monat: kein Monat, dann steht der letzte Stand.
     expect(monatWert({ ...z('HZ-1'), hauptgroesse: { ...z('HZ-1').hauptgroesse!, wertart: 'Momentanwert' } })).toBeNull();
     expect(monatWert({ ...z('HZ-1'), letzter_monat: undefined })).toBeNull();
@@ -121,7 +121,7 @@ describe('Liste, Gruppen und Reihen', () => {
     const r = ahrenbergRegister();
     const ms06 = r.register.find((x) => x.kennzeichen === 'MS-06')!;
     ms06.letzter_monat = z('HZ-1').letzter_monat;
-    expect(aus(r).reihen.find((x) => x.kennzeichen === 'MS-06')!.wert).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026' });
+    expect(aus(r).reihen.find((x) => x.kennzeichen === 'MS-06')!.wert).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
     expect(monatKurz('2026-09')).toBe('Sep 2026');
     expect(monatKurz('2027-03')).toBe('Mär 2027');
     expect(monatLang('2026-09')).toBe('September 2026');

@@ -189,7 +189,7 @@ export interface Reihe {
    * Der Wert rechts: der Verbrauch des letzten vollständigen Monats („25.650 kWh · Sep 2026“), bei einer Hauptgröße ohne
    * Menge der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0.
    */
-  wert: { zahl: string; einheit: string | null; wann: string } | null;
+  wert: { zahl: string; einheit: string | null; wann: string; monat?: true } | null;
   /** Hauptzähler stehen in ihrem Ort zuerst. */
   hauptzaehler: boolean;
   /** Archiviert: in der zugeklappten Gruppe am Ende. */
@@ -226,7 +226,7 @@ export function monatLang(monat: string): string {
 export function monatWert(z: MessstelleRegisterZeile): Reihe['wert'] {
   const lm = z.letzter_monat;
   if (!lm || !z.hauptgroesse || !hatMenge(z.hauptgroesse)) return null;
-  if (!lm.wert) return { zahl: OHNE_ZAHL, einheit: null, wann: monatKurz(lm.monat) };
+  if (!lm.wert) return { zahl: OHNE_ZAHL, einheit: null, wann: monatKurz(lm.monat), monat: true };
   const a = anzeige(
     { messstelle: { id: z.id, kennzeichen: z.kennzeichen, name: z.name, art: z.art, ...z.hauptgroesse }, raster: 'monat' },
     lm.wert,
@@ -234,8 +234,8 @@ export function monatWert(z: MessstelleRegisterZeile): Reihe['wert'] {
   );
   const i = a.zahl.lastIndexOf('\u00a0');
   return i < 0
-    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat) }
-    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat) };
+    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true }
+    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true };
 }
 
 /** Stellen je Einheit wie E11 (kW 1, kWh 1, m³ 1); ganze Werte stehen ganz („970.680 kWh“, nicht „970.680,0 kWh“). */

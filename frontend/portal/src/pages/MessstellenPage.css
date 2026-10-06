@@ -768,4 +768,13 @@ a.vp-ms-reihe:focus-visible {
   .vp-ms-reihe-wert b {
     font-size: 0.9375rem;
   }
+  /* Der Monat der Reihen steht im Kopf der Spalte („September 2026“) - in der Reihe nur für Vorlesende. */
+  .vp-ms-reihe-wert > span.is-monat {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }

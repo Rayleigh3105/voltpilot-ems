@@ -941,7 +941,8 @@ function ReiheLink({
               {r.wert.zahl}
               {r.wert.einheit && <small>{r.wert.einheit}</small>}
             </b>
-            <span>{r.wert.wann}</span>
+            {/* Der Monat steht am Rechner im Kopf der Spalte; in der Reihe bleibt er für Vorlesende. */}
+            <span className={r.wert.monat ? 'is-monat' : undefined}>{r.wert.wann}</span>
           </>
         ) : (
           <b className="is-leer">{OHNE_ANGABE}</b>
