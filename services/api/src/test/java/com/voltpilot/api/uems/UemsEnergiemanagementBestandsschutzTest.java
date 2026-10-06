@@ -107,6 +107,7 @@ class UemsEnergiemanagementBestandsschutzTest {
 
     private static JdbcTemplate root;
     private static Map<String, String> vorher;
+    private static String massnahmenVorher;
     private static Map<String, String> bisAp19;
     private static Map<String, String> nachher;
     private static Map<String, TreeSet<String>> vokabulareVorher;
@@ -123,6 +124,7 @@ class UemsEnergiemanagementBestandsschutzTest {
         bestand();
         jobsAus();
         vorher = Bestandsschutz.fingerabdruck(root, List.of());
+        massnahmenVorher = Bestandsschutz.inhalt(root, "massnahme", null);
         vokabulareVorher = vokabulare();
         checksVorher = checks();
 
@@ -149,8 +151,17 @@ class UemsEnergiemanagementBestandsschutzTest {
         assertThat(root.queryForObject("SELECT count(*) FROM bericht_stand WHERE tenant_id = ?", Integer.class, KB))
                 .as("je ein Stand von AP-12, AP-16 und AP-17").isEqualTo(3);
         assertThat(Bestandsschutz.abweichungen(vorher, bisAp19)).as("AP-19: jede Bestandstabelle byte-gleich").isEmpty();
+        // Verbessern-Konzept v1 PR 2 (V20261006213000): die Art jeder Maßnahme ist eine neue Spalte mit Wert - sonst
+        // bleibt jede Maßnahme byte-gleich, und die Art folgt aus der Zeile (mit Kennzahl gemessen, aus Feststellung
+        // oder Audit organisatorisch, sonst nicht gemessen).
         assertThat(Bestandsschutz.abweichungen(vorher, nachher))
-                .as("bis zum neuesten Stand: keine Maßnahme, kein Stand, kein Bericht ändert sich").isEmpty();
+                .as("bis zum neuesten Stand: kein Stand, kein Bericht ändert sich, die Maßnahme nur um ihre Art")
+                .containsExactly("massnahme: bestehender Inhalt geändert");
+        assertThat(Bestandsschutz.inhaltOhne(root, "massnahme", "art")).as("die Maßnahmen ohne die neue Spalte")
+                .isEqualTo(massnahmenVorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme WHERE art IS DISTINCT FROM CASE WHEN kennzahl_id "
+                + "IS NOT NULL THEN 'gemessen' WHEN herkunft_art IN ('nichtkonformitaet', 'audit') THEN 'organisatorisch' "
+                + "ELSE 'nicht_gemessen' END", Integer.class)).as("die Art aus der Zeile").isZero();
         assertThat(nachher.keySet()).containsAll(vorher.keySet());
     }
 
