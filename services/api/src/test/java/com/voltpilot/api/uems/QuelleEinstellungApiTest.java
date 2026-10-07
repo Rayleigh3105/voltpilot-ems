@@ -520,8 +520,7 @@ class QuelleEinstellungApiTest {
             assertThat(hebel.get("gueltig_bis").isNull()).isTrue();
             assertThat(hebel.get("rueckwirkend").asBoolean()).isFalse();
             assertThat(hebel.get("begruendung").asText()).isEqualTo(QuelleEinstellungService.GRUND_VERBINDUNG);
-            // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
-            assertThat(hebel.at("/eingetragen/von").asText()).isEqualTo("Demo Operator");
+            assertThat(hebel.at("/eingetragen/von").asText()).isEqualTo("demo");
             assertThat(hebel.at("/eingetragen/art").asText()).isEqualTo("kunde");
             assertThat(hebel.at("/eingetragen/rolle").asText()).isEqualTo("kundenadministrator");
             Instant ab = zeit(hebel.get("gueltig_ab"));

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EnergiemanagementTeilVermerk } from './api';
+import type { EnergiemanagementTeilVermerk, Selbstauskunft } from './api';
 import { VOKABULARE, WOERTER } from './energiemanagement';
 import { dokumentRoute, energiemanagementRoute, pageRoute } from './nav';
-import { nachweisStand, TEIL_GRUPPEN, teilDerZeile, type NachweisEingang } from './nachweisStand';
+import { nachweisStand, TEIL_GRUPPEN, teilDerZeile, teilZiel, type NachweisEingang } from './nachweisStand';
 import { energiemanagementBuehne } from './test/energiemanagementFixtures';
-import { wvLeer, wvR12 } from './test/wiedervorlageFixtures';
+import { rechteSeed } from './test/rollenFixtures';
+import { wvLeer, wvR12, wvZeile } from './test/wiedervorlageFixtures';
 
 /**
  * Der Stand je Teil für den Überblick (Konzept Nachweisen n1, Runde 2, §6.3, Entscheide 3 bis 5): auf der Bühne des
@@ -108,13 +109,28 @@ describe('Stand je Teil am 12.02.2029 (R12)', () => {
     expect(s.demnaechst.every((x) => x.bereich === 'nachweisen' && x.tage <= 0)).toBe(true);
   });
 
-  it('ohne Wiedervorlage keine Frist - nichts wird geraten', async () => {
+  it('ohne Wiedervorlage keine Frist - nichts wird geraten, auch kein nächster Schritt (Review r1, P1-2)', async () => {
     const s = nachweisStand(await eingang(null as never));
     expect(s.ueberfaellig).toEqual([]);
     expect(s.demnaechst).toEqual([]);
     expect(s.teile.every((t) => t.zustand !== 'ueber')).toBe(true);
-    // Ohne Überfälliges ist der erste offene Teil der nächste Schritt.
-    expect(s.naechstes).toMatchObject({ art: 'festhalten', titel: 'Kontext festhalten', knopf: 'Festhalten' });
+    // Unbekannt ist, ob etwas überfällig ist - „Kontext festhalten“ wäre geraten.
+    expect(s.naechstes).toBeNull();
+    // Mit einer Wiedervorlage ohne Überfälliges ist der erste offene Teil der nächste Schritt.
+    expect(nachweisStand(await eingang(wvLeer())).naechstes).toMatchObject({ art: 'festhalten', titel: 'Kontext festhalten', knopf: 'Festhalten' });
+  });
+
+  it('Zähler und „Als Nächstes“ lesen dieselbe Menge: die Überprüfung eines Vorgehens (ohne Teil) zählt mit (Review r1, P1-3)', async () => {
+    const e = await eingang();
+    const vorgehen = { ...e.dokumente[0], id: 'd-vorgehen', kennzeichen: 'D-0099', art: 'verfahren', titel: 'Vorgehen Energiedaten' };
+    const wv = wvR12();
+    wv.faellig = [wvZeile('dokument_ueberpruefung', 'D-0099', 'Vorgehen Energiedaten - Überprüfung', '2027-10-01', 499, { id: 'd-vorgehen', aufgabe: 'dokumente' }), ...wv.faellig];
+    const s = nachweisStand({ ...e, dokumente: [...e.dokumente, vorgehen], wiedervorlage: wv });
+    expect(s.naechstes?.art === 'frist' && s.naechstes.eintrag.kennzeichen).toBe('D-0099');
+    expect(s.ueberfaellig.map((x) => x.kennzeichen)).toContain('D-0099');
+    expect(s.ueberfaellig).toHaveLength(9);
+    // Keinem Teil zugeordnet: der Teil-Zustand bleibt, wie er war.
+    expect(s.teile.every((t) => t.ueberfaellig.every((x) => x.kennzeichen !== 'D-0099'))).toBe(true);
   });
 
   it('ein Vermerk „Trifft bei uns zurzeit nicht zu“ hält den Teil fest - ein aufgehobener nicht mehr (Entscheid 5)', async () => {
@@ -126,6 +142,14 @@ describe('Stand je Teil am 12.02.2029 (R12)', () => {
     const ohne = nachweisStand(await eingang(wvLeer(), [vermerk('kontext', true)]));
     expect(ohne.teile.find((t) => t.teil === 'kontext')?.zustand).toBe('offen');
     expect(ohne.offen).toBe(mit.offen + 1);
+  });
+
+  it('ein aufgehobenes Dokument hält seinen Teil über die Zeilen des Verzeichnisses nicht mehr fest (Review r1, P1-8)', async () => {
+    const e = await eingang(wvLeer());
+    const d3 = e.dokumente.find((d) => d.art === 'rechtliche_anforderungen')!;
+    expect(nachweisStand(e).teile.find((t) => t.teil === 'rechtliche_anforderungen')?.zustand).toBe('festgehalten');
+    const aufgehoben = e.dokumente.map((d) => (d.id === d3.id ? { ...d, zustand: 'aufgehoben' as const } : d));
+    expect(nachweisStand({ ...e, dokumente: aufgehoben }).teile.find((t) => t.teil === 'rechtliche_anforderungen')?.zustand).toBe('offen');
   });
 
   it('jeder Teil führt an seinen Ort: das eine Dokument, die Dokumente oder die Fläche, auf der er entsteht', async () => {
@@ -140,5 +164,44 @@ describe('Stand je Teil am 12.02.2029 (R12)', () => {
     // Festhalten legt bei den Teilen eines Dokuments ein Dokument dieser Art an; die übrigen entstehen an ihrem Ort.
     expect(s.teile.find((t) => t.teil === 'kontext')?.dokumentArt).toBe('kontext');
     expect(s.teile.find((t) => t.teil === 'interne_audits')?.dokumentArt).toBeNull();
+  });
+});
+
+describe('Wohin ein Teil führt (Review r1, P1-4 und P1-5)', () => {
+  const ohne = (me: Selbstauskunft, ...rechte: string[]): Selbstauskunft => ({
+    ...me,
+    unternehmen_rechte: me.unternehmen_rechte.filter((r) => !rechte.includes(r)),
+    standorte: me.standorte.map((st) => ({ ...st, rechte: st.rechte.filter((r) => !rechte.includes(r)) })),
+  });
+
+  it('ein Ort außerhalb des Energiemanagements nur mit dem Recht, ihn zu sehen; unbekannte Rechte sind nein', async () => {
+    const e = await eingang(wvLeer());
+    const ik = rechteSeed('IK').me;
+    const sichtbar = (rechte: Selbstauskunft | null) =>
+      Object.fromEntries(nachweisStand({ ...e, rechte }).teile.map((t) => [t.teil, t.ortSichtbar]));
+    expect(sichtbar(ik)).toMatchObject({ energetische_bewertung: true, bezugsbasen: true, massnahmen: true, aufgaben: true, kontext: true });
+    expect(sichtbar(ohne(ik, 'energieeinsatz.ansehen', 'messwerte.ansehen', 'verbesserung.ansehen'))).toMatchObject({
+      energetische_bewertung: false,
+      bezugsbasen: false,
+      massnahmen: false,
+      aufgaben: true,
+      interne_audits: true,
+      berichte: true,
+      kontext: true,
+    });
+    expect(sichtbar(null)).toMatchObject({ energetische_bewertung: false, massnahmen: false, kontext: true });
+  });
+
+  it('ein offener Teil führt nur mit Recht ins Festhalten; ohne Recht an seinen Ort - oder nirgends hin', async () => {
+    const e = await eingang(wvLeer(), [vermerk('risiken_chancen')]);
+    const s = nachweisStand({ ...e, rechte: ohne(rechteSeed('CB').me, 'verbesserung.ansehen') });
+    const teil = (k: string) => s.teile.find((t) => t.teil === k)!;
+    expect(teilZiel(teil('kontext'), true)).toBe('festhalten');
+    expect(teilZiel(teil('kontext'), false)).toBe('ort');
+    // Den Vermerk lesen alle; aufheben steht im Blatt nur mit Recht.
+    expect(teilZiel(teil('risiken_chancen'), false)).toBe('vermerk');
+    expect(teilZiel(teil('massnahmen'), false)).toBeNull();
+    const ueber = nachweisStand(await eingang());
+    expect(teilZiel(ueber.teile.find((t) => t.teil === 'bezugsbasen')!, false)).toBe('frist');
   });
 });

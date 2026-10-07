@@ -6,4 +6,30 @@
 .vp-wert-zeile > .vp-btn { align-self: flex-start; }
 .vp-wert-fassung { border-left: 2px solid var(--vp-c-border); padding: var(--vp-c-space-2) var(--vp-c-space-3); margin-bottom: var(--vp-c-space-2); font-size: var(--vp-c-fs-14); }
 .vp-wert-zeitpunkt { min-width: 0; }
+/* Der Ablese-Dialog trägt seine Abstände selbst (dieselben wie .vp-bz-form, die nur die Bezugsgrößen-Seite lädt). */
+.vp-ablesung-form { display: flex; flex-direction: column; gap: var(--vp-c-space-4); min-width: 0; }
+.vp-ablesung-form p { margin: 0; }
+/* Eine Ablehnung des Servers steht als Fehler da, nicht als gewöhnlicher Satz (wie die Fehler der Korrekturen, mit ausreichendem Kontrast). */
+.vp-ablesung-form > p[role='alert'] { color: var(--vp-industry-end); font-weight: 600; }
+/* Der Picker trägt sein Raster selbst: die Grundregel von .vp-bz-felder steht in BezugsgroessenPage.css, und die ist auf
+   der Seite einer Messstelle nicht geladen (sonst stünden Datum, Uhrzeit und Zone untereinander). */
+.vp-wert-zeitpunkt .vp-bz-felder { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--vp-c-space-3); }
 @media (max-width: 419px) { .vp-wert-zeitpunkt .vp-bz-felder { grid-template-columns: minmax(0, 1fr); } }
+/* Konzept Messen m1, §6.5: „Abgelesen am“ über den Feldern, das Kürzel der Zone („MESZ“) am Uhrzeit-Feld. */
+.vp-wert-zeitpunkt-kopf { font-family: var(--vp-font-body); font-size: 0.9rem; font-weight: 600; color: var(--vp-text-dark); }
+.vp-wert-zeitpunkt .vp-bz-felder:has(> .vp-wert-zone) { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; align-items: end; }
+.vp-wert-zone { display: flex; align-items: center; min-height: 48px; font: 600 0.8125rem/1 var(--vp-font-heading); color: var(--vp-c-muted-fg); }
+@media (max-width: 419px) {
+  .vp-wert-zeitpunkt .vp-bz-felder:has(> .vp-wert-zone) { grid-template-columns: minmax(0, 1fr) auto; }
+  .vp-wert-zeitpunkt .vp-bz-felder:has(> .vp-wert-zone) > :first-child { grid-column: 1 / -1; }
+}
+/* Ein Zahlenfeld mit seiner Einheit im Feld (Konzept §6.5: „Zählerstand … kWh“). */
+.vp-einheit-feld { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.vp-einheit-feld > label { font-family: var(--vp-font-body); font-size: 0.9rem; font-weight: 600; color: var(--vp-text-dark); }
+.vp-einheit-feld-rahmen { position: relative; min-width: 0; }
+.vp-einheit-feld-einheit { position: absolute; top: 0; right: 1rem; bottom: 0; display: flex; align-items: center; pointer-events: none; font: 600 0.875rem/1 var(--vp-font-heading); color: var(--vp-c-muted-fg); }
+.vp-einheit-feld-fehler { font-family: var(--vp-font-body); font-size: 0.82rem; color: var(--vp-industry-end); }
+/* Die letzte Ablesung zum Vergleich (Konzept §6.5). */
+.vp-ablesung-letzte { margin: 0; padding: var(--vp-c-space-3) var(--vp-c-space-4); border: 1px solid var(--vp-c-border); border-radius: var(--vp-radius-btn); background: var(--vp-bg-light); font-size: var(--vp-c-fs-14); color: var(--vp-c-muted-fg); overflow-wrap: anywhere; }
+.vp-ablesung-letzte strong { color: var(--vp-c-fg); }
+.vp-ablesung-zaehlt { margin: 0; font-size: 0.82rem; color: var(--vp-c-muted-fg); }

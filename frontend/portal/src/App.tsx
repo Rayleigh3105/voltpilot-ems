@@ -1649,7 +1649,7 @@ function UnifiedPortal() {
           {page === 'portfolio-standorte' && <StandortePage />}
           {/* AP-09 IP-9: Unternehmenswelt; Direktadressen beachten dieselbe Messkunden-Grenze. */}
           {page === 'portfolio-bezugsgroessen' && (
-            bezugsgroessenDa === true ? <BezugsgroessenPage /> : (
+            bezugsgroessenDa === true ? <BezugsgroessenPage bezugsgroesseId={route.bezugsgroesseId ?? null} /> : (
               <p>{bezugsgroessenDa === null ? 'Wird geladen …' : 'Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.'}</p>
             )
           )}
@@ -1748,16 +1748,18 @@ function UnifiedPortal() {
               }
               // AP-04 IP-8: die Messstellen-Seite im Bereich, aus dem sie geöffnet wird.
               messstelleId={route.messstelleId ?? null}
-              onOeffnen={(id) =>
-                navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id))
-              }
-              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse. Ein Einstieg aus dem
-              // Register ist ein Seitenwechsel; eine neue Wahl auf der Seite ersetzt nur die Adresse.
-              werte={parseMessstelleWerte(window.location.hash)}
-              onWerte={(id, periode) => {
-                const s = sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode });
+              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse; eine neue Wahl auf der Seite
+              // ersetzt nur die Adresse. Die Liste öffnet die Seite selbst (Konzept Messen m1: die ganze Reihe ist der
+              // Einstieg) - mit „Stand am …“ an genau diesem Tag.
+              onOeffnen={(id, periode) => {
+                // Die Liste nennt eine Periode nur mit „Stand am …“: dann liest die Seite diesen Tag, nur lesend.
+                const s = periode
+                  ? sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode, stand: periode })
+                  : null;
                 if (s) springe(s);
+                else navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id));
               }}
+              werte={parseMessstelleWerte(window.location.hash)}
               onWerteZeitraum={(periode) => {
                 // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht (neue Periode, neue Zahl).
                 const jetzt = parseMessstelleWerte(window.location.hash);
@@ -1768,6 +1770,7 @@ function UnifiedPortal() {
                       standortId: page === 'standort' ? route.standortId : null,
                       periode,
                       vergleich: jetzt.vergleich,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
@@ -1783,9 +1786,17 @@ function UnifiedPortal() {
                       periode: jetzt.periode,
                       version: jetzt.version,
                       vergleich: v,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
+              }}
+              // „Zurück zu heute“ aus „Stand am …“: dieselbe Messstelle ohne Tag und ohne dessen Periode.
+              onWerteHeute={() => {
+                const s = route.messstelleId
+                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null })
+                  : null;
+                if (s) springe(s);
               }}
               onListe={() =>
                 navigate(

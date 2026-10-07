@@ -61,6 +61,7 @@ import {
 } from '../src/betriebsart';
 import { EbenenTabs } from '../src/components/EbenenTabs';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
+import { bezugswert as bezugswertFixture } from '../src/test/werteEingabeFixtures';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { healthBadge } from '../src/health';
 import {
@@ -71,6 +72,7 @@ import {
   kennzahlRoute,
   messstelleRoute,
   pageRoute,
+  parseRoute,
   standortBereichRoute,
   standortMessstellenRoute,
   standortRoute,
@@ -304,7 +306,27 @@ function werteDerBuehne(
   if (kennzeichen === 'MS-06' && von === '2026-10-01' && bis === '2026-10-31') {
     return raster === 'monat' ? f16Monat() : raster === 'tag' ? f16Tage() : null;
   }
-  return monatDerBuehne(kennzeichen, raster, von, bis);
+  return monatDerBuehne(kennzeichen, raster, von, bis) ?? monateDerBuehne(kennzeichen, raster, von, bis);
+}
+
+/**
+ * Messen m2 (Seite): mehrere ganze Monate im Raster Monat - die zwölf Balken und die Reihe der Leitkachel. Jeder Monat
+ * ist die Antwort, die die Bühne für ihn allein gibt; ein nicht gestellter Monat bleibt nicht gestellt (`null`).
+ */
+function monateDerBuehne(kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string): MessstelleWerte | null {
+  if (raster !== 'monat' || !von.endsWith('-01') || von.slice(0, 7) >= bis.slice(0, 7)) return null;
+  const naechster = (m: string) => {
+    const [j, mm] = m.split('-').map(Number);
+    return mm === 12 ? `${j + 1}-01` : `${j}-${String(mm + 1).padStart(2, '0')}`;
+  };
+  const antworten: MessstelleWerte[] = [];
+  for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = naechster(m)) {
+    const ende = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const a = monatDerBuehne(kennzeichen, 'monat', `${m}-01`, ende);
+    if (!a) return null;
+    antworten.push(a);
+  }
+  return { ...antworten[0], bis: antworten[antworten.length - 1].bis, werte: antworten.flatMap((a) => a.werte) };
 }
 
 /** Die Monate, die Karte, Verlauf und Vergleich lesen (O11/O12) — `null` heißt „nicht gestellt“. */
@@ -901,6 +923,8 @@ Object.assign(api, {
   // Energieeinsatz und ein leeres Verzeichnis; kein Abruf geht an den (nicht laufenden) Server.
   bewertungUmfang: async () => ahrenbergUmfangVorgabe('2026-10-20'),
   energieeinsaetze: async () => ({ energieeinsaetze: [] }),
+  // Messen m2 PR4: die Liste der Messstellen fragt die offenen Messbedarfe (geplante Messstellen) - die Bühne hat keinen.
+  messbedarfeAlle: async () => ({ messbedarfe: [] }),
   energiemanagementVerzeichnis: energiemanagementBuehne('start', { kennung: 'IK', name: 'Ines Kaltenbach' }, () => '2026-10-20T10:00:00+02:00')
     .routen.energiemanagementVerzeichnis,
   // AP-19 IP-21: keine Frist im Energiemanagement — der Baustein „Energiemanagement“ bleibt weg (WV5), und kein Abruf
@@ -939,6 +963,37 @@ Object.assign(api, {
     if (params.get('bezugs') === 'fehler') throw new ApiError(503, 'Nicht erreichbar');
     return structuredClone(bzListe);
   },
+  // Messen m1 §6.8: Liste und Seite lesen die Werte je Bezugsgröße und die Flächen von heute (Annahmen der Bühne:
+  // Monatswerte bis September 2026 für BZ-1, BZ-2 und BZ-6; BZ-7 Lindach ohne September; Flächen der Gebäude).
+  bezugsgroesseWerte: async (id: string) => {
+    const b = bzListe.bezugsgroessen.find((x) => x.id === id);
+    // Prüfung r4 M3: die Werte EINER Bezugsgröße kommen nie an (BZ-1) bzw. sind nicht abrufbar (BZ-2).
+    if (params.get('bezugs') === 'werteunterwegs' && b?.kennzeichen === 'BZ-1') return new Promise<never>(() => {});
+    if (params.get('bezugs') === 'wertefehler' && b?.kennzeichen === 'BZ-2') throw new ApiError(503, 'Nicht erreichbar');
+    const monate: Record<string, [string, string][]> = {
+      'BZ-1': [['2026-08', '298400'], ['2026-09', '305200']],
+      'BZ-2': [['2026-08', '4610'], ['2026-09', '4820']],
+      'BZ-6': [['2026-09', '2140']],
+      'BZ-7': [['2026-08', '1910']],
+    };
+    // Prüfung r4 S22: vier Monate, der jüngste zurückgenommen - „Alle 4“ muss den ältesten erreichbar machen.
+    const zurueck = params.get('bezugs') === 'zurueckgenommen';
+    if (zurueck) monate['BZ-1'] = [['2026-06', '290000'], ['2026-07', '295000'], ['2026-08', '298400'], ['2026-09', '305200']];
+    const werte = (monate[b?.kennzeichen ?? ''] ?? []).map(([m, betrag]) => {
+      const w = bezugswertFixture(betrag);
+      const [j, mo] = m.split('-').map(Number);
+      const zurueckgenommen = zurueck && b?.kennzeichen === 'BZ-1' && m === '2026-09';
+      return { ...w, ...(zurueckgenommen ? { wirksamer_betrag: null } : {}), periode_von: `${m}-01`, periode_bis: new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10) };
+    });
+    return { bezugsgroesse_id: id, kennzeichen: b?.kennzeichen ?? '', wertart: b?.wertart ?? 'periodenwert', einheit: b?.einheit ?? '', periode_art: b?.periode_art ?? null, von: null, bis: null, fassungen: 'wirksam' as const, werte };
+  },
+  bezugsflaechen: async (periode_art: 'tag' | 'woche' | 'monat' | 'jahr', von: string, bis: string) => ({
+    periode_art, von, bis,
+    bezugsflaechen: bzListe.bezugsflaechen.map((f) => ({
+      bezugsflaeche: f,
+      perioden: [{ periode: von, von, stichtag: bis, betrag: ({ 'G-1': '4200', 'G-2': '3100', 'G-3': '1150' } as Record<string, string>)[f.geltung_kennzeichen ?? ''] ?? null, quelle: 'eigen' as const, gilt_ab: null, eingetragen_am: null, abzeichen: null, kennzeichen: [] }],
+    })),
+  }),
   bezugsgroesseAnlegen: async (body: BezugsgroesseAnfrage) => {
     bzAufrufe.anlegen.push(body);
     if (params.get('bezugs') === 'konflikt') throw new ApiError(409, 'Belegt', { code: 'kennzeichen_belegt' });
@@ -1380,10 +1435,11 @@ function Vorschau() {
    * Regeln: ein Einstieg aus dem Register setzt die Periode, ein Zeitraum-Wechsel lässt den Vergleich stehen und
    * vergisst die Version, der Weg zurück in die Liste räumt alles ab.
    */
-  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null }>(() => ({
+  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null; stand: string | null }>(() => ({
     periode: WEG_ANSICHT ? WEG_PERIODE : null,
     version: WEG_ANSICHT ? WEG_VERSION : null,
     vergleich: WEG_ANSICHT ? WEG_V : null,
+    stand: null,
   }));
   const [route, setRoute] = useState<Route>(() =>
     kanonisch(
@@ -1451,11 +1507,21 @@ function Vorschau() {
     if (route.messstelleId && werte.periode) anhang.set('periode', werte.periode);
     if (route.messstelleId && werte.version != null) anhang.set('version', String(werte.version));
     if (route.messstelleId && werte.vergleich) anhang.set('v', werte.vergleich);
+    if (route.messstelleId && werte.stand) anhang.set('stand', werte.stand);
     const frage = anhang.toString();
     document.body.dataset.route = hashForRoute(route) + (frage ? `?${frage}` : '');
   }, [route, werte]);
 
   const navigate = (ziel: Route | PageId) => setRoute(kanonisch(typeof ziel === 'string' ? pageRoute(ziel) : ziel));
+  // Messen m1 §6.8: die Reihe einer Bezugsgröße ist ein Verweis auf ihre Seite - die Bühne folgt dieser Adresse wie die App.
+  useEffect(() => {
+    const folgen = () => {
+      const r = parseRoute(window.location.hash);
+      if (r.page === 'portfolio-bezugsgroessen') setRoute(r);
+    };
+    window.addEventListener('hashchange', folgen);
+    return () => window.removeEventListener('hashchange', folgen);
+  }, []);
   const navigateSchale = (ziel: Route | PageId) => {
     if (ebene.art === 'standort' && ziel === 'portfolio') return navigate(flottenLandung(shell));
     if (ebene.art === 'standort' && ziel === 'portfolio-messstellen') return navigate(standortMessstellenRoute(ebene.standort.id));
@@ -1692,9 +1758,9 @@ function Vorschau() {
         <StandortePage />
       </>}
       {route.page === 'portfolio-bezugsgroessen' && <>
-        {portfolioReiter(ansicht === 'bezugsgroessen-b' ? 'portfolio-messstellen' : 'portfolio-bezugsgroessen')}
+        {!route.bezugsgroesseId && portfolioReiter(ansicht === 'bezugsgroessen-b' ? 'portfolio-messstellen' : 'portfolio-bezugsgroessen')}
         {ansicht === 'bezugsgroessen-b' && <div className="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Messstellen"><button className="vp-bereich-tab" role="tab" aria-selected={false}>Liste</button><button className="vp-bereich-tab" role="tab" aria-selected={false}>Kostenstellen</button><button className="vp-bereich-tab" role="tab" aria-selected={false}>Prozesse</button><button className="vp-bereich-tab active" role="tab" aria-selected={true}>Bezugsgrößen<span className="vp-tab-strich" /></button></div>}
-        {ebenenBereiche({ art: 'unternehmen' }, lesemodell).some(b => b.key === 'bezugsgroessen') ? <BezugsgroessenPage /> : <p>Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.</p>}
+        {ebenenBereiche({ art: 'unternehmen' }, lesemodell).some(b => b.key === 'bezugsgroessen') ? <BezugsgroessenPage bezugsgroesseId={route.bezugsgroesseId ?? null} /> : <p>Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.</p>}
       </>}
       {route.page === 'portfolio-kennzahlen' && (
         <>
@@ -1731,20 +1797,18 @@ function Vorschau() {
           }
           // AP-13 IP-13, wie `App.tsx`: aus dem Register führt der Weg auf die Messstellen-Seite — mit Periode.
           messstelleId={route.messstelleId ?? null}
-          onOeffnen={(id) => {
-            setWerte({ periode: null, version: null, vergleich: null });
+          onOeffnen={(id, periode) => {
+            // Wie `App.tsx`: die Liste nennt eine Periode nur mit „Stand am …“ - dann liest die Seite diesen Tag, nur lesend.
+            setWerte({ periode, version: null, vergleich: null, stand: periode });
             navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
           }}
           werte={werte}
-          onWerte={(id, periode) => {
-            setWerte({ periode, version: null, vergleich: null });
-            navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
-          }}
           // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht.
-          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich }))}
+          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich, stand: w.stand }))}
           onWerteVergleich={(v) => setWerte((w) => ({ ...w, vergleich: v }))}
+          onWerteHeute={() => setWerte({ periode: null, version: null, vergleich: null, stand: null })}
           onListe={() => {
-            setWerte({ periode: null, version: null, vergleich: null });
+            setWerte({ periode: null, version: null, vergleich: null, stand: null });
             navigate(
               messstellenEbene.art === 'standort'
                 ? standortMessstellenRoute(messstellenEbene.id)

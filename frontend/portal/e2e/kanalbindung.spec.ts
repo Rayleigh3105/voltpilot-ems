@@ -43,10 +43,11 @@ for (const width of [375, 1440]) {
     await expect(page.getByText('Gradtage G22/17', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => (window as any).kanalAufrufe)).toMatchObject([{ raumtemperatur: 22, heizgrenze: 17, von: '2026-11-02T07:40:00+01:00' }]);
     await page.clock.setFixedTime(new Date('2026-12-02T06:40:00Z'));
-    await page.getByText('Werte und Fassungen', { exact: true }).click();
-    await page.getByText('Fassungen ansehen (1)').click();
-    await expect(page.getByText(/Aus Messkanal Außentemperatur · Gradtage G22\/17 · unvollständig · Abdeckung 83,3/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Berichtigen', exact: true })).toHaveCount(0);
+    // Konzept Messen m1 §6.8: die Werte stehen auf der Seite der Bezugsgröße, Fassungen im Menü ⋯ der Zeile.
+    await page.getByTestId('bezugswert-zeile').first().getByRole('button', { name: /^Aktionen zu/ }).click();
+    await expect(page.getByRole('menuitem', { name: 'Berichtigen', exact: true })).toHaveCount(0);
+    await page.getByRole('menuitem', { name: 'Fassungen ansehen (1)' }).click();
+    await expect(page.getByText(/Aus Messkanal Außentemperatur · Gradtage G22\/17 · unvollständig · Verlauf 83,3/)).toBeVisible();
     await foto(page, `regel-${width}`);
     await page.getByRole('button', { name: 'Bindung beenden', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Bindung beenden', exact: true }).click();

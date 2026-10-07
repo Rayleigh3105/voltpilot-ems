@@ -53,24 +53,25 @@ function Wirt() {
       bereichDa
       messstelleId={route.messstelleId ?? null}
       werte={parseMessstelleWerte(hash)}
-      onOeffnen={(m) => zu(hashForRoute(messstelleRoute(m)))}
-      onWerte={(m, periode) => zu(sprungziel({ art: 'messstelle', id: m, periode })!.hash)}
+      // Wie `App.tsx`: die Reihe öffnet die Seite - mit „Stand am …“ an genau diesem Tag.
+      onOeffnen={(m, periode) => zu(periode ? sprungziel({ art: 'messstelle', id: m, periode, stand: periode })!.hash : hashForRoute(messstelleRoute(m)))}
       onWerteZeitraum={(periode) => {
         if (!route.messstelleId) return;
         const jetzt = parseMessstelleWerte(window.location.hash);
         window.history.replaceState(
           null,
           '',
-          sprungziel({ art: 'messstelle', id: route.messstelleId, periode, vergleich: jetzt.vergleich })!.hash,
+          sprungziel({ art: 'messstelle', id: route.messstelleId, periode, vergleich: jetzt.vergleich, stand: jetzt.stand })!.hash,
         );
       }}
       onWerteVergleich={(v) => {
         if (!route.messstelleId) return;
         const jetzt = parseMessstelleWerte(window.location.hash);
-        const ziel = sprungziel({ art: 'messstelle', id: route.messstelleId, periode: jetzt.periode, version: jetzt.version, vergleich: v })!.hash;
+        const ziel = sprungziel({ art: 'messstelle', id: route.messstelleId, periode: jetzt.periode, version: jetzt.version, vergleich: v, stand: jetzt.stand })!.hash;
         window.history.replaceState(null, '', ziel);
         setHash(ziel);
       }}
+      onWerteHeute={() => route.messstelleId && zu(hashForRoute(messstelleRoute(route.messstelleId)))}
       onListe={() => zu('#/portfolio/messstellen')}
     />
   );

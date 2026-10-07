@@ -15764,6 +15764,13 @@ paths:
         der Zeitpunkt dieser Sicht. Liest nur. `doppelzaehlung` (Captain-Entscheid 14.09.2026) warnt,
         welcher Posten in welchem bereits enthalten ist (Regel `doppelzaehlung`, Formeln je Tag, rekursiv,
         Kreis benannt) - und ändert keine Zahl: kein Posten fehlt, keine Summe wird bereinigt.
+        Messen PR4 (Regel `ablesezeitraum`, Vertrag 1.5): eine Messstelle aus Ablesungen hat keine
+        Tageswerte. Über `monat` und `jahr` trägt ihr Posten `monate` statt `tage`: je Monat die Menge
+        aus den Ablesezeiträumen, die der Kunde ihm zugeordnet hat - als Ganzes an die Kostenstelle,
+        wenn ihr Anteil an JEDEM Tag dieser Zeiträume gilt; wechselt er mitten darin, keine Zahl
+        (`anteil_wechselt_im_ablesezeitraum`, Satz „keine Werte (Verteilung im Ablesezeitraum
+        geändert)“ und „Verteilung geändert am …“). Ein Monat mit Zeile, aber noch ohne Ablesung:
+        `keine_ablesung`. Ein Tag bekommt nie einen Anteil eines Ablesezeitraums.
       parameters:
         - { name: periode, in: query, required: false, schema: { type: string, enum: [tag, monat, jahr] } }
         - { name: am, in: query, required: false, schema: { type: string, format: date } }
@@ -20060,7 +20067,7 @@ components:
         Ohne Struktur (`ort_ziel`, `messgroesse` null) bleibt der Wortlaut führend für die Anzeige — so liest sich jeder
         Bedarf aus der Fassung vor der Struktur unverändert.
       required: [id, kennzeichen, energieeinsatz_id, wortlaut, ort, groesse, frist, zustand, messstelle,
-        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung]
+        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung, zitiert_von, einloesbar]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: '^MB-[1-9][0-9]*$' }
@@ -20094,6 +20101,19 @@ components:
           nullable: true
         messgroesse: { type: string, nullable: true }
         richtung: { type: string, nullable: true }
+        zitiert_von:
+          type: array
+          items: { $ref: "#/components/schemas/BerichtStandRef" }
+          description: >-
+            Die freigegebenen Berichtsstände, die diesen Bedarf zitieren (`uems_berichts_belege`), nach `kennung` und
+            `nr` - dieselbe Liste wie `berichtsstaende` der 409 `berichts_belege`; leer, wenn keiner zitiert. In jedem
+            Zustand gefüllt.
+        einloesbar:
+          type: boolean
+          description: >-
+            `true` genau dann, wenn der Bedarf `offen` ist und `zitiert_von` leer ist. Ein zitierter offener Bedarf
+            ist nicht einlösbar (Einlösen, Bearbeiten und Verwerfen antworten 409 `berichts_belege`); eingelöste und
+            verworfene sind es nie.
     MessbedarfListe:
       type: object
       required: [messbedarfe]
@@ -29257,10 +29277,14 @@ components:
         ablesung:
           type: object
           description: "Nur bei stand = ablesung: seit wann die Ablesungs-Quelle führt und wann zuletzt abgelesen wurde (null = noch nie). Die Beobachtung sagt dann „Abgelesen am …“ bzw. nach der Frist der überfälligen Ablesung „Ablesung überfällig seit …“."
-          required: [seit, zuletzt]
+          required: [seit, zuletzt, faellig_ab]
           properties:
             seit: { type: string, format: date-time }
             zuletzt: { type: string, format: date-time, nullable: true }
+            faellig_ab:
+              type: string
+              format: date-time
+              description: "Ab wann die nächste Ablesung fehlt (additiv, Messen-Bau m2): die letzte Ablesung plus zwei Kalendermonate in der Zeitzone des Standorts, ohne Ablesung der Beginn der Quelle - derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung."
         fuehrend:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]
@@ -31024,6 +31048,37 @@ components:
           nullable: true
           description: "{satz, fehlt} nach bilanzwert-herkunft.schema.json (Art verteilt); bei nicht_verteilt null — die Rechnung einer berechneten Messstelle steht je Tag an tage[].herkunft."
           additionalProperties: true
+        monate:
+          type: array
+          description: "Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat` oder `jahr` - je Monat der Anteil der Ablesezeiträume, die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld."
+          items: { $ref: "#/components/schemas/KostenstelleEnergieMonat" }
+    KostenstelleEnergieMonat:
+      type: object
+      description: >
+        Ein Monat eines Postens aus Ablesungen (Messen PR4): die Menge des Monats an der Messstelle
+        (`quelle_menge`, dieselbe Zahl wie `…/werte?raster=monat`), der Anteil, der an JEDEM Tag ihrer
+        Ablesezeiträume galt, und der Teil daraus. Ein Ablesezeitraum wird nie auf Tage verteilt.
+      required: [monat, ablesezeitraeume, anteil_prozent, quelle_menge, menge, zustand, abdeckung_prozent, version, grund, geaendert_am]
+      properties:
+        monat: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$", example: "2026-10" }
+        ablesezeitraeume:
+          type: array
+          description: "Die Ablesezeiträume, die der Kunde dem Monat zugeordnet hat; leer ohne gespeicherten Monat."
+          items: { $ref: "#/components/schemas/KostenstelleEnergieAblesezeitraum" }
+        anteil_prozent: { type: number, nullable: true, description: "Der Anteil an jedem Tag der Ablesezeiträume; null, wenn er mitten darin wechselt, und bei nicht_verteilt." }
+        quelle_menge: { type: number, nullable: true }
+        menge: { type: number, nullable: true, description: "Anteil × Menge des Monats; null = keine Zahl (siehe grund), nie 0." }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        version: { type: integer }
+        grund: { type: string, nullable: true, enum: [quelle_keine_werte, rest_unplausibel, anteil_wechselt_im_ablesezeitraum, keine_ablesung, null] }
+        geaendert_am: { type: string, format: date, nullable: true, description: "Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt." }
+    KostenstelleEnergieAblesezeitraum:
+      type: object
+      required: [von, bis]
+      properties:
+        von: { type: string, format: date-time, example: "2026-10-01T07:15:00+02:00" }
+        bis: { type: string, format: date-time, description: "ausschließlich", example: "2026-11-02T07:40:00+01:00" }
     KostenstelleEnergieMessstelle:
       type: object
       required: [id, kennzeichen, name, art]

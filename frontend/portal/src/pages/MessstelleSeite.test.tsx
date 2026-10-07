@@ -2,7 +2,19 @@ import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Messstelle, type MessstelleVerteilung, type MessstelleWerte, type Protokoll } from '../api';
+import {
+  api,
+  ApiError,
+  type Ablesung,
+  type Messkanal,
+  type Messstelle,
+  type MessstelleFormel,
+  type MessstelleFormelTerm,
+  type MessstelleVerteilung,
+  type MessstelleWerte,
+  type Protokoll,
+  type SiteEntity,
+} from '../api';
 import { ebenenAktiv } from '../ebenenNav';
 import { hashForRoute, messstelleRoute, parseRoute, standortMessstellenRoute } from '../nav';
 import {
@@ -15,6 +27,7 @@ import {
   ms08OrtGeplant,
   ms08Vorher,
   ms10,
+  ms21,
   protokollMs06,
   protokollMs08Angelegt,
   protokollMs08OrtGeplant,
@@ -25,7 +38,8 @@ import {
   verteilungVon,
 } from '../test/messstelleSeiteFixtures';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
-import { grundlastStunden, grundlastTag, normalStunden, normalTag } from '../test/werteKarteFixtures';
+import { antwort, grundlastStunden, grundlastTag, MS_06, MS_21, normalStunden, normalTag, schritt, voll } from '../test/werteKarteFixtures';
+import { monatPlus } from '../messstelleSeite';
 import { f21Stunden, f21Tag, f21TagWert } from '../test/wertVersionenFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../test/standorteFixtures';
@@ -33,12 +47,15 @@ import { MessstelleSeite } from './MessstelleSeite';
 import { MessstellenPage } from './MessstellenPage';
 
 /**
- * Die Messstellen-Seite (UEMS AP-04 IP-8) gegen die gestellten Routen — Referenzunternehmen
- * Ahrenberg, heute = 20.10.2026 (Stichtag des Registers). R2: drei Zuordnungs-Karten und das
- * Protokoll nach der EINTRAGUNG; Z4: „Ort ändern“ für MS-08 ab 01.03.2027 → „geplant“.
+ * Die Seite einer Messstelle (UEMS AP-04 IP-8, Konzept Messen m1 §6.4) gegen die gestellten Routen — Referenzunternehmen
+ * Ahrenberg, heute = 20.10.2026 (Stichtag des Registers). R2: EINE Karte „Zuordnung“ und das Protokoll nach der
+ * EINTRAGUNG (im Dialog hinter dem Verweis); Z4: „Ort ändern“ für MS-08 ab 01.03.2027 → „geplant“; MS-21 als Ablesezähler.
  */
 
 const WARTEN = { timeout: 3000 };
+// Die Dialog-Fälle gehen mehrere Schritte mit je bis zu WARTEN; im vollen Lauf (621 Dateien parallel) reichen dafür die
+// 5 s der Vorgabe nicht. `vi.setConfig` gilt nur für diese Datei.
+vi.setConfig({ testTimeout: 15_000 });
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', (q: string) => ({
@@ -69,6 +86,35 @@ function verdrahte(stand: { messstelle: () => Messstelle; protokoll: () => Proto
 }
 
 const karte = (art: string) => screen.getByTestId(`karte-${art}`);
+
+/**
+ * Die Werte-Route für MS-06, wie die Seite sie fragt: im Raster Monat je Monat 8.000 kWh vollständig (Fenster der Balken
+ * und Reihe der Leitkachel), sonst der Grundlast-Tag.
+ */
+function monatsWerte(messstelle: MessstelleWerte['messstelle'] = MS_06) {
+  return vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+    if (raster !== 'monat') return raster === 'tag' ? grundlastTag(von, 'vorlaeufig') : grundlastStunden(von, 'vorlaeufig');
+    const monate: string[] = [];
+    for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+    return antwort(
+      messstelle,
+      'monat',
+      `${monate[0]}-01T00:00:00+02:00`,
+      `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+      monate.map((m) =>
+        schritt({ von: `${m}-01T00:00:00+02:00`, bis: `${monatPlus(m, 1)}-01T00:00:00+02:00`, gebildet_aus: 'monat', fassung: 'endgueltig', ...voll(8000, 720) }),
+      ),
+    );
+  });
+}
+/** Eine Zeile der Karte „Zuordnung“ (Konzept Messen m1, §6.4 Punkt 7): ort · stellung · prozesse · verteilung. */
+const zeile = (art: string) => screen.getByTestId(`zuordnung-${art}`);
+
+/** Das Protokoll steht hinter dem Verweis am Fuß der rechten Spalte (Konzept §6.4 Punkt 9) und öffnet im Dialog. */
+async function oeffneProtokoll() {
+  fireEvent.click(await screen.findByTestId('protokoll-verweis', undefined, WARTEN));
+  return screen.findByRole('dialog', { name: /^Änderungsprotokoll: / }, WARTEN);
+}
 
 /** Wählt im Datumsfeld einen Tag (wie `MessstellenPage.test.tsx`). */
 function waehleTag(label: string, iso: string) {
@@ -101,41 +147,52 @@ describe('die Adresse der Seite', () => {
     expect(hashForRoute(standortMessstellenRoute(FIXTURE_IDS.st1))).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
   });
 
-  it('das Register öffnet die Seite über den Namen', async () => {
+  it('die Liste öffnet die Seite über die ganze Reihe (ein Verweis auf die Adresse der Messstelle)', async () => {
     vi.spyOn(api, 'messstellenRegister').mockImplementation(async () => ahrenbergRegister());
     const onOeffnen = vi.fn();
     render(
       <MessstellenPage ebene={{ art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH' }} bereichDa onOeffnen={onOeffnen} />,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Spritzguss SG01–SG06' }, WARTEN));
-    expect(onOeffnen).toHaveBeenCalledWith(MS_IDS.ms06);
+    const reihe = await screen.findByRole('link', { name: /^Spritzguss SG01–SG06 MS-06/ }, WARTEN);
+    expect(reihe.getAttribute('href')).toMatch(new RegExp(`/messstellen/${MS_IDS.ms06}$`));
+    fireEvent.click(reihe);
+    expect(onOeffnen).toHaveBeenCalledWith(MS_IDS.ms06, null);
   });
 });
 
 describe('MessstelleSeite · R2 — MS-06 am 20.10.2026', () => {
-  it('drei Zuordnungs-Karten mit dem Stand von heute, Kopf mit Zustand und Quelle', async () => {
+  it('EINE Karte „Zuordnung“ mit dem Stand von heute und je Zeile „Ändern“; der Kopf mit Medium, Ort und Zustand', async () => {
     verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
     render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06' }, WARTEN)).toBeInTheDocument();
-    expect(screen.getByText('Strom · Wirkenergie · Bezug · Zählerstand · aktiv')).toBeInTheDocument();
-    expect(within(karte('ort')).getByText('Halle 1 Nord')).toBeInTheDocument();
-    await waitFor(() => expect(within(karte('ort')).getByText('Halle 1 · Werk Ahrenberg · seit 12.03.2024')).toBeInTheDocument(), WARTEN);
-    expect(within(karte('elektrisch')).getByText('Unterzähler von MS-01')).toBeInTheDocument();
-    expect(within(karte('elektrisch')).getByText('Werk Ahrenberg – Halle 1 · seit 12.03.2024')).toBeInTheDocument();
-    expect(within(karte('organisation')).getByText('Spritzguss')).toBeInTheDocument();
-    expect(within(karte('organisation')).getByText('4100 Spritzguss · 100 %')).toBeInTheDocument();
-    for (const name of ['Ort ändern ab …', 'Elektrische Stellung ändern ab …', 'Prozesse ändern ab …', 'Kostenstellen ändern ab …']) {
-      expect(screen.getByRole('button', { name })).toHaveTextContent('Ändern ab …');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06 MS-06' }, WARTEN)).toBeInTheDocument();
+    expect(screen.getByText('Strom · Halle 1 Nord · Werk Ahrenberg')).toBeInTheDocument();
+    expect(within(karte('zuordnung')).getByRole('heading', { level: 2, name: 'Zuordnung' })).toBeInTheDocument();
+    expect(within(zeile('ort')).getByText('Halle 1 Nord')).toBeInTheDocument();
+    await waitFor(() => expect(within(zeile('ort')).getByText('Halle 1 · Werk Ahrenberg · seit 12.03.2024')).toBeInTheDocument(), WARTEN);
+    expect(within(zeile('stellung')).getByRole('heading', { level: 3, name: 'Im Stromnetz' })).toBeInTheDocument();
+    expect(within(zeile('stellung')).getByText('Unterzähler von MS-01')).toBeInTheDocument();
+    expect(within(zeile('stellung')).getByText('Anlage Werk Ahrenberg – Halle 1 · seit 12.03.2024')).toBeInTheDocument();
+    expect(within(zeile('prozesse')).getByText('Spritzguss')).toBeInTheDocument();
+    expect(within(zeile('verteilung')).getByText('100 % Spritzguss')).toBeInTheDocument();
+    for (const name of ['Ort ändern', 'Stellung im Stromnetz ändern', 'Prozesse ändern', 'Kostenstellen ändern']) {
+      expect(screen.getByRole('button', { name })).toHaveTextContent(/^Ändern$/);
     }
     // Eine Zuordnung mit nur einem Abschnitt hat keine aufklappbare Historie.
     expect(screen.queryByText(/^Historie/)).toBeNull();
+    // Bearbeiten, Korrekturen und das Protokoll stehen im Menü ⋯ des Kopfs.
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(await screen.findByRole('menuitem', { name: 'Bearbeiten' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Änderungsprotokoll' })).toBeInTheDocument();
   });
 
   it('das Änderungsprotokoll steht nach der EINTRAGUNG — die rückwirkende Quelle von 09:14 oben, „gilt ab 12.03.2024“ an der Zeile', async () => {
     const aenderungen = verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
     render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
 
+    // Der Verweis sagt, wie viel es gibt und wann zuletzt; der Dialog zeigt die Zeilen.
+    await waitFor(() => expect(screen.getByTestId('protokoll-verweis')).toHaveTextContent(/Einträge · zuletzt \d{2}\.\d{2}\.\d{4}/), WARTEN);
+    await oeffneProtokoll();
     expect(await screen.findByText('Sortiert danach, wann die Änderung eingetragen wurde.', undefined, WARTEN)).toBeInTheDocument();
     expect(aenderungen).toHaveBeenCalledWith(MS_IDS.ms06, expect.objectContaining({ achse: 'eintrag' }));
     const zeilen = [...document.querySelectorAll('.vp-befehl')];
@@ -146,12 +203,17 @@ describe('MessstelleSeite · R2 — MS-06 am 20.10.2026', () => {
     expect(zeilen[zeilen.length - 1]).toHaveTextContent('Messstelle angelegt: Spritzguss SG01–SG06');
   });
 
-  it('„nichts zu ändern“ steht sofort am Feld und „Was geschieht“ entfällt', async () => {
+  it('ohne Änderung steht grau „Heute gilt: …“, der Knopf wartet und „Was geschieht“ entfällt (kein roter Fehler)', async () => {
     verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
     render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Prozesse ändern ab …' }, WARTEN));
+    fireEvent.click(await screen.findByRole('button', { name: 'Prozesse ändern' }, WARTEN));
     const dialog = screen.getByRole('dialog', { name: 'Prozesse ändern' });
-    expect(within(dialog).getByText('Am 20.10.2026 gilt schon: Spritzguss. Es gibt nichts zu ändern.')).toBeInTheDocument();
+    expect(within(dialog).getByTestId('zuordnung-gilt-schon')).toHaveTextContent(
+      'Heute gilt: Spritzguss. Wählen Sie andere Prozesse, dann können Sie eintragen.',
+    );
+    expect(within(dialog).queryByText(/nichts zu ändern/)).toBeNull();
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(dialog.querySelector('button[type="submit"]')).toBeDisabled();
     expect(within(dialog).queryByTestId('zuordnung-folgen')).toBeNull();
   });
 
@@ -160,9 +222,9 @@ describe('MessstelleSeite · R2 — MS-06 am 20.10.2026', () => {
     vi.spyOn(api, 'messstellenRegister').mockImplementation(async () => ({ ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG }));
     render(<MessstelleSeite id={MS_IDS.ms08} onListe={vi.fn()} />);
 
-    expect(await within(await screen.findByTestId('karte-ort', undefined, WARTEN)).findByText('Kein Ort zugeordnet')).toBeInTheDocument();
-    expect(await screen.findByText('Seit dem Anlegen am 01.10.2026 keine Änderung.', undefined, WARTEN)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Ort ändern ab …' }));
+    expect(await within(await screen.findByTestId('zuordnung-ort', undefined, WARTEN)).findByText('Kein Ort zugeordnet')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('protokoll-verweis')).toHaveTextContent('1 Eintrag · zuletzt 01.10.2026'), WARTEN);
+    fireEvent.click(screen.getByRole('button', { name: 'Ort ändern' }));
     const dialog = screen.getByRole('dialog', { name: 'Ort ändern' });
     fireEvent.click(within(dialog).getByRole('combobox', { name: 'Neuer Ort *' }));
     fireEvent.click(await screen.findByRole('option', { name: /^Halle 1 Süd/ }, WARTEN));
@@ -197,7 +259,7 @@ describe('MessstelleSeite · Z4 — MS-08 zieht am 01.03.2027 nach Halle 2 Monta
       return ms08OrtGeplant();
     });
     render(<MessstelleSeite id={MS_IDS.ms08} onListe={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern ab …' }, WARTEN));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern' }, WARTEN));
 
     const dialog = screen.getByRole('dialog', { name: 'Ort ändern' });
     fireEvent.click(within(dialog).getByRole('combobox', { name: 'Neuer Ort *' }));
@@ -215,7 +277,7 @@ describe('MessstelleSeite · Z4 — MS-08 zieht am 01.03.2027 nach Halle 2 Monta
     await waitFor(() => expect(put).toHaveBeenCalledWith(MS_IDS.ms08, { kennzeichen: 'B-3', gueltig_ab: '2027-03-01' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), WARTEN);
-    const ort = karte('ort');
+    const ort = zeile('ort');
     expect(await within(ort).findByText('Ort ab 01.03.2027 eingetragen · geplant.', undefined, WARTEN)).toBeInTheDocument();
     await waitFor(() => expect(within(ort).getByText('Halle 1 · Werk Ahrenberg · seit 12.03.2024 · endet 28.02.2027')).toBeInTheDocument(), WARTEN);
     expect(within(ort).getByText('ab 01.03.2027: Halle 2 Montage')).toBeInTheDocument();
@@ -226,6 +288,7 @@ describe('MessstelleSeite · Z4 — MS-08 zieht am 01.03.2027 nach Halle 2 Monta
     expect(historie[0]).toHaveTextContent('geplant');
 
     // Das Protokoll lädt neu: der Eintrag von heute steht OBEN, obwohl er erst 2027 gilt.
+    await oeffneProtokoll();
     await waitFor(() => expect(document.querySelector('.vp-befehl')).toHaveTextContent('Ort zugeordnet: B-3'), WARTEN);
     expect(document.querySelector('.vp-befehl')).toHaveTextContent('angekündigt');
     expect(document.querySelector('.vp-befehl')).toHaveTextContent('gilt ab 01.03.2027, 00:00 Uhr');
@@ -240,7 +303,7 @@ describe('MessstelleSeite · Z4 — MS-08 zieht am 01.03.2027 nach Halle 2 Monta
       }),
     );
     render(<MessstelleSeite id={MS_IDS.ms08} onListe={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern ab …' }, WARTEN));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern' }, WARTEN));
     const dialog = screen.getByRole('dialog', { name: 'Ort ändern' });
     fireEvent.click(within(dialog).getByRole('combobox', { name: 'Neuer Ort *' }));
     fireEvent.click(await screen.findByRole('option', { name: /^Halle 2 Lager/ }, WARTEN));
@@ -256,27 +319,25 @@ describe('MessstelleSeite · Z4 — MS-08 zieht am 01.03.2027 nach Halle 2 Monta
 describe('MessstelleSeite · Werte (UEMS AP-13 IP-3, E9 = A, E12 = A)', () => {
   /** F21 · MS-10 · 03.11.2026 in Version v — so, wie `…/werte?version=v` den Tag liefert. */
   const tagIn = (v: 1 | 2 | 3): MessstelleWerte => ({ ...f21Tag(), version: v, werte: [f21TagWert(v)] });
-  const grundlast = () =>
-    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von) =>
-      raster === 'tag' ? grundlastTag(von, 'vorlaeufig') : grundlastStunden(von, 'vorlaeufig'),
-    );
-
-  it('der Abschnitt steht direkt unter dem Kopf, vor den Zuordnungen: Zone aus der Antwort mit dem Standort, der Vortag', async () => {
+  it('„Verbrauch je Monat“ öffnet im letzten vollen Monat, links vor der Zuordnung; die Zone steht EINMAL am Fuß', async () => {
     verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
-    const werte = grundlast();
+    const werte = monatsWerte();
     render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
 
     const abschnitt = await screen.findByTestId('werte', undefined, WARTEN);
-    expect(within(abschnitt).getByRole('heading', { level: 2, name: 'Werte' })).toBeInTheDocument();
+    expect(within(abschnitt).getByRole('heading', { level: 2, name: 'Verbrauch je Monat' })).toBeInTheDocument();
+    expect(within(abschnitt).getByText('12 Monate')).toBeInTheDocument();
+    await waitFor(() => expect(werte).toHaveBeenCalledWith('MS-06', 'monat', '2026-09-01', '2026-09-30'), WARTEN);
+    // Die zwölf Balken und die Reihe der Leitkachel mit dem Vorjahresmonat.
+    expect(werte).toHaveBeenCalledWith('MS-06', 'monat', '2025-10-01', '2026-09-30');
+    expect(werte).toHaveBeenCalledWith('MS-06', 'monat', '2025-09-01', '2026-09-30');
     await waitFor(
-      () => expect(within(abschnitt).getByTestId('werte-zone')).toHaveTextContent('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)'),
+      () => expect(screen.getByTestId('werte-zone')).toHaveTextContent(/^Zeiten: Europe\/Berlin \(Zeitzone des Standorts Werk Ahrenberg\) · Stand 20\.10\.2026, \d{2}:\d{2}$/),
       WARTEN,
     );
-    expect(werte).toHaveBeenCalledWith('MS-06', 'tag', '2026-10-19', '2026-10-19');
-    expect(werte).toHaveBeenCalledWith('MS-06', 'stunde', '2026-10-19', '2026-10-19');
-    expect(within(abschnitt).getAllByTestId('werte-zeile')).toHaveLength(24);
-    expect(document.querySelector('.vp-mss-kopf')?.nextElementSibling).toBe(abschnitt);
-    expect(abschnitt.compareDocumentPosition(karte('ort')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId('werte-zone')).toHaveLength(1);
+    expect(abschnitt).not.toContainElement(screen.getByTestId('werte-zone'));
+    expect(abschnitt.compareDocumentPosition(karte('zuordnung')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Keine Version in der Adresse, kein Hinweis.
     expect(within(abschnitt).queryByTestId('werte-version')).toBeNull();
   });
@@ -326,11 +387,11 @@ describe('MessstelleSeite · Werte (UEMS AP-13 IP-3, E9 = A, E12 = A)', () => {
     await waitFor(() => expect(screen.queryByTestId('werte-version')).toBeNull(), WARTEN);
   });
 
-  it('eine Version ohne gültige Periode gilt nicht: die Seite öffnet den Vortag, ohne Version zu fragen', async () => {
+  it('eine Version ohne gültige Periode gilt nicht: die Seite öffnet im letzten vollen Monat, ohne Version zu fragen', async () => {
     verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
-    const werte = grundlast();
+    const werte = monatsWerte();
     render(<MessstelleSeite id={MS_IDS.ms06} werte={{ periode: '2026-02-30', version: 2 }} onListe={vi.fn()} />);
-    await waitFor(() => expect(werte).toHaveBeenCalledWith('MS-06', 'tag', '2026-10-19', '2026-10-19'), WARTEN);
+    await waitFor(() => expect(werte).toHaveBeenCalledWith('MS-06', 'monat', '2026-09-01', '2026-09-30'), WARTEN);
     expect(werte.mock.calls.every((c) => c.length === 4)).toBe(true);
   });
 });
@@ -338,9 +399,7 @@ describe('MessstelleSeite · Werte (UEMS AP-13 IP-3, E9 = A, E12 = A)', () => {
 describe('MessstelleSeite · Nebengrößen unter den Werten (UEMS AP-13 IP-6, V8)', () => {
   it('MS-06: die Wirkleistung mit ihrem letzten Wert aus dem Register und der Satz, wofür es Werte gibt — ohne einen Sprung, den es nicht gibt', async () => {
     verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
-    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von) =>
-      raster === 'tag' ? grundlastTag(von, 'vorlaeufig') : grundlastStunden(von, 'vorlaeufig'),
-    );
+    monatsWerte();
     render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
 
     const neben = await screen.findByTestId('werte-nebengroessen', undefined, WARTEN);
@@ -360,18 +419,22 @@ it('IP-12: der Standort des Registers trägt auch auf einer Unternehmensadresse 
   setSelbstauskunft(rechteSeed('TB').me);
   verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
   render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
-  expect(await screen.findByRole('button', { name: 'Bearbeiten', exact: true }, WARTEN)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Ort ändern ab …' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Ort ändern' }, WARTEN)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+  expect(await screen.findByRole('menuitem', { name: 'Bearbeiten' })).toBeInTheDocument();
 });
 
 it('IP-12: Murat liest dieselbe Messstelle ohne Pflegeknöpfe, mit Jonas als Weg', async () => {
   setSelbstauskunft(rechteSeed('MD').me);
   verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
   render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
-  await screen.findByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06' }, WARTEN);
-  expect(screen.queryByRole('button', { name: 'Bearbeiten', exact: true })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Ort ändern ab …' })).toBeNull();
+  await screen.findByRole('heading', { level: 1, name: 'Spritzguss SG01–SG06 MS-06' }, WARTEN);
+  await waitFor(() => expect(screen.getByTestId('zuordnung-verteilung')).toHaveTextContent('100 % Spritzguss'), WARTEN);
+  expect(screen.queryByRole('button', { name: 'Ort ändern' })).toBeNull();
   expect(screen.getAllByRole('note').some(n => n.textContent?.includes('Jonas Wendlinger'))).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+  expect(await screen.findByRole('menuitem', { name: 'Änderungsprotokoll' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Bearbeiten' })).toBeNull();
 });
 
 
@@ -379,12 +442,15 @@ it('W14: eine rückwirkende Zuordnung zeigt Thomas den Weg statt des Eintragen-K
   setSelbstauskunft(rechteSeed('TB').me);
   verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
   render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern ab …' }, WARTEN));
+  fireEvent.click(await screen.findByRole('button', { name: 'Ort ändern' }, WARTEN));
   const dialog = screen.getByRole('dialog', { name: 'Ort ändern' });
   expect(dialog.querySelector('button[type="submit"]')).not.toBeNull();
   waehleTag('Gilt ab *', '2026-10-19');
   expect(dialog.querySelector('button[type="submit"]')).toBeNull();
-  expect(within(dialog).getByRole('note')).toHaveTextContent('Jonas Wendlinger');
+  // Konzept Messen m1 §8.2: was nicht geht, wer es kann, und dass er ab heute selbst eintragen kann.
+  const note = within(dialog).getByRole('note');
+  expect(note).toHaveTextContent('Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute können Sie es selbst eintragen.');
+  expect(note).toHaveTextContent('Jonas Wendlinger');
 });
 
 describe('MessstelleSeite · Kostenstellen ändern — Hinweis auf doppelte Zählung (Folge PR 1127, Captain „warnen, nicht ablehnen“)', () => {
@@ -403,7 +469,7 @@ describe('MessstelleSeite · Kostenstellen ändern — Hinweis auf doppelte Zäh
   /** MS-06 von 100 % Spritzguss auf 70 % Spritzguss und 30 % Montage — bis vor „eintragen“. */
   async function setze7030() {
     render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Kostenstellen ändern ab …' }, WARTEN));
+    fireEvent.click(await screen.findByRole('button', { name: 'Kostenstellen ändern' }, WARTEN));
     const dialog = screen.getByRole('dialog', { name: 'Kostenstellen ändern' });
     fireEvent.change(within(dialog).getByLabelText('Anteil (%)'), { target: { value: '70' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Kostenstelle hinzufügen' }));
@@ -445,7 +511,7 @@ describe('MessstelleSeite · Kostenstellen ändern — Hinweis auf doppelte Zäh
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Verstanden' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), WARTEN);
-    expect(await within(karte('organisation')).findByText(/^Verteilung ab .* eingetragen/, undefined, WARTEN)).toBeInTheDocument();
+    expect(await within(zeile('verteilung')).findByText(/^Verteilung ab .* eingetragen/, undefined, WARTEN)).toBeInTheDocument();
     expect(put).toHaveBeenCalledTimes(1);
   });
 
@@ -458,6 +524,352 @@ describe('MessstelleSeite · Kostenstellen ändern — Hinweis auf doppelte Zäh
     await setze7030();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), WARTEN);
     expect(screen.queryByTestId('verteilung-doppelzaehlung')).toBeNull();
-    expect(await within(karte('organisation')).findByText(/^Verteilung ab .* eingetragen/, undefined, WARTEN)).toBeInTheDocument();
+    expect(await within(zeile('verteilung')).findByText(/^Verteilung ab .* eingetragen/, undefined, WARTEN)).toBeInTheDocument();
+  });
+});
+
+
+describe('MessstelleSeite · Ablesezähler MS-21 (Konzept Messen m1, §6.4/§6.5)', () => {
+  const ablesung = (tag: string, stand: number, monat: string | null): Ablesung => ({
+    quelle: 'q-ms21',
+    zeitpunkt: `${tag}T07:30:00+02:00`,
+    fassung: 1,
+    stand,
+    monat,
+    woher: 'eingabe',
+    urheber: { name: 'Ines Kaltenbach', rolle: 'energiemanager' },
+    korrektur: null,
+    eingetragen_am: `${tag}T07:35:00+02:00`,
+  });
+  const VIER = [
+    ablesung('2026-07-01', 48200, null),
+    ablesung('2026-08-01', 48610, '2026-07-01'),
+    ablesung('2026-09-01', 49020, '2026-08-01'),
+    ablesung('2026-10-01', 49451, '2026-09-01'),
+  ];
+
+  /** MS-21 liest von Hand ab: zuletzt am 01.10.2026, die nächste ist ab dem 02.11.2026 fällig. */
+  function abgelesen() {
+    verdrahte({ messstelle: ms21, protokoll: protokollMs10 });
+    vi.spyOn(api, 'messstellenRegister').mockImplementation(async () => {
+      const r = ahrenbergRegister();
+      return {
+        ...r,
+        register: r.register.map((z) =>
+          z.kennzeichen !== 'MS-21'
+            ? z
+            : {
+                ...z,
+                quelle: {
+                  stand: 'ablesung' as const,
+                  fuehrend: null,
+                  davor: null,
+                  vergleichsquellen: 0,
+                  ablesung: { seit: '2026-07-01T07:30:00+02:00', zuletzt: '2026-10-01T07:30:00+02:00', faellig_ab: '2026-11-02T07:30:00+01:00' },
+                },
+                beobachtung: { zustand: 'liefert' as const, text: 'Abgelesen am 01.10.2026', seit: null, toleranz_s: null, kadenz_s: null, geraet: null },
+                letzter_wert: { wert: 49451, text: null, einheit: 'm³', zeitpunkt: '2026-10-01T07:30:00+02:00' },
+              },
+        ),
+      };
+    });
+    vi.spyOn(api, 'messstelleQuellen').mockImplementation(async () => ({
+      messstelle_id: MS_IDS.ms21,
+      kennzeichen: 'MS-21',
+      stichtag: '2026-10-20',
+      groessen: [],
+      quellen: [],
+    }));
+    monatsWerte(MS_21);
+    let liefere: (a: Ablesung[]) => void = () => undefined;
+    vi.spyOn(api, 'ablesungen').mockImplementation(() => new Promise((r) => (liefere = r)));
+    return { liefere: (a: Ablesung[]) => liefere(a) };
+  }
+
+  it('Kopf mit dem Satz des Servers, der Schritt „Ablesung eintragen“ wird erst mit den Ablesungen Ziel; Kachel und Herkunft sagen es', async () => {
+    const { liefere } = abgelesen();
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+
+    await waitFor(
+      () => expect(screen.getByTestId('messstelle-status')).toHaveTextContent(/^Abgelesen am 01\.10\.2026$/),
+      WARTEN,
+    );
+    const schritt = await screen.findByRole('button', { name: 'Ablesung eintragen' }, WARTEN);
+    // Konzept Wiedervorlage w1, Entscheid 7: ohne die Ablesungen zum Vergleich ist der Knopf noch kein Ziel.
+    expect(schritt).toBeDisabled();
+    expect(schritt).not.toHaveAttribute('data-entscheid');
+    expect(schritt).toHaveAttribute('data-entscheid-schritt');
+    liefere(VIER);
+    await waitFor(() => expect(schritt).toHaveAttribute('data-entscheid', 'zaehlerablesung'), WARTEN);
+    expect(schritt).toBeEnabled();
+
+    const kacheln = screen.getByTestId('messstelle-kacheln');
+    await waitFor(() => expect(kacheln).toHaveTextContent('Nächste Ablesung'), WARTEN);
+    expect(kacheln).toHaveTextContent('02.11.2026');
+    expect(kacheln).toHaveTextContent('im Plan');
+    expect(within(karte('herkunft')).getByText('Von Hand abgelesen')).toBeInTheDocument();
+    expect(within(karte('herkunft')).getByText('monatlich · 4 Ablesungen seit 01.07.2026')).toBeInTheDocument();
+    // Ein Ablesezähler kennt Monat und Jahr - Tag und Woche gibt es erst mit einem Gerät.
+    const zeitraum = within(screen.getByTestId('werte')).getByRole('tablist', { name: 'Zeitraum' });
+    expect(within(zeitraum).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Monat', 'Jahr']);
+  });
+
+  it('ein Monat ohne Ablesung sagt es und führt hin, die Balken bleiben - kein „Ein Monat summiert …“ (Konzept §8.1)', async () => {
+    const { liefere } = abgelesen();
+    // Die Route kennt im ganzen Fenster keine Ablesung: jeder Schritt `keine_quelle`, ohne Zahl.
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      const monate: string[] = [];
+      for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+      const ohne = (v: string, b: string) => schritt({ von: v, bis: b, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, versionen: null });
+      return antwort(MS_21, raster, `${monate[0]}-01T00:00:00+02:00`, `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+        monate.map((m) => ohne(`${m}-01T00:00:00+02:00`, `${monatPlus(m, 1)}-01T00:00:00+02:00`)), false);
+    });
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    const fehlt = await screen.findByTestId('werte-ablesung-fehlt', undefined, WARTEN);
+    expect(fehlt).toHaveTextContent('Für September 2026 fehlt noch die Ablesung.');
+    expect(screen.getByTestId('werte')).not.toHaveTextContent('Ein Monat summiert');
+    await waitFor(() => expect(within(screen.getByTestId('werte')).getByTestId('monatsbalken')).toBeInTheDocument(), WARTEN);
+    // Der Weg erscheint erst mit den Ablesungen, die der Dialog zum Vergleich braucht.
+    expect(within(fehlt).queryByRole('button')).toBeNull();
+    liefere(VIER);
+    fireEvent.click(await within(fehlt).findByRole('button', { name: 'Ablesung eintragen ›' }, WARTEN));
+    expect(await screen.findByRole('dialog', { name: 'Ablesung eintragen' }, WARTEN)).toBeInTheDocument();
+  });
+
+  it('eine Woche aus der Adresse öffnet beim Ablesezähler ihren Monat („2026-W43“ → Oktober 2026, nicht „2026-W4“)', async () => {
+    const { liefere } = abgelesen();
+    const werte = vi.mocked(api.messstelleWerte);
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} werte={{ periode: '2026-W43', version: null, vergleich: null }} />);
+    liefere(VIER);
+    await waitFor(() => expect(werte.mock.calls.some(([, raster, von]) => raster === 'monat' && von === '2026-10-01')).toBe(true), WARTEN);
+  });
+
+  it('nach dem Speichern über den Weg am fehlenden Monat steht der Fokus auf der Bestätigung - nie auf `body` (Review r4 S23)', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    const { liefere } = abgelesen();
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      const monate: string[] = [];
+      for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+      const ohne = (v: string, b: string) => schritt({ von: v, bis: b, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, versionen: null });
+      return antwort(MS_21, raster, `${monate[0]}-01T00:00:00+02:00`, `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+        monate.map((m) => ohne(`${m}-01T00:00:00+02:00`, `${monatPlus(m, 1)}-01T00:00:00+02:00`)), false);
+    });
+    vi.spyOn(api, 'ablesungEintragen').mockImplementation(async (_kz, a) => ({
+      urteil: 'angenommen',
+      korrektur: null,
+      ablesung: { ...VIER[3], zeitpunkt: a.zeitpunkt, stand: 49900, monat: null, eingetragen_am: a.zeitpunkt },
+      ablesezeitraum: { menge: 449, zustand: 'vollständig', kennzeichen: 'kein_fehlbestand' },
+    }));
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    const fehlt = await screen.findByTestId('werte-ablesung-fehlt', undefined, WARTEN);
+    liefere(VIER);
+    fireEvent.click(await within(fehlt).findByRole('button', { name: 'Ablesung eintragen ›' }, WARTEN));
+    const dialog = await screen.findByRole('dialog', { name: 'Ablesung eintragen' }, WARTEN);
+    fireEvent.change(within(dialog).getByLabelText(/^Zählerstand/), { target: { value: '49900' } });
+    fireEvent.click(within(dialog.closest('.vp-modal') ?? document.body).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ablesung eintragen' })).toBeNull(), WARTEN);
+    await waitFor(() => expect(screen.getByTestId('ablesung-antwort')).toHaveFocus(), WARTEN);
+  });
+
+  it('die Ablesungen: die neueste zuerst, drei sichtbar, „Alle 4 ›“ öffnet; der Dialog zeigt die letzte zum Vergleich', async () => {
+    const { liefere } = abgelesen();
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    const schritt = await screen.findByRole('button', { name: 'Ablesung eintragen' }, WARTEN);
+    liefere(VIER);
+    const liste = await screen.findByTestId('ablesungen', undefined, WARTEN);
+    await waitFor(() => expect(within(liste).getAllByTestId('ablesung-zeile')).toHaveLength(3), WARTEN);
+    expect(within(liste).getAllByTestId('ablesung-zeile')[0]).toHaveTextContent('49.451');
+    fireEvent.click(within(liste).getByRole('button', { name: 'Alle 4 ›' }));
+    expect(within(liste).getAllByTestId('ablesung-zeile')).toHaveLength(4);
+    expect(within(liste).getByRole('button', { name: 'Weniger' })).toHaveAttribute('aria-expanded', 'true');
+
+    await waitFor(() => expect(schritt).toBeEnabled(), WARTEN);
+    fireEvent.click(schritt);
+    const dialog = await screen.findByRole('dialog', { name: 'Ablesung eintragen' }, WARTEN);
+    expect(within(dialog).getByTestId('ablesung-letzte')).toHaveTextContent('Letzte Ablesung');
+    expect(within(dialog).getByTestId('ablesung-letzte')).toHaveTextContent('49.451');
+    expect(within(dialog).getByText('MS-21 Gas Heizung Verwaltung · Zählerstand in m³')).toBeInTheDocument();
+  });
+  it('aus „Stand am …“ geöffnet: die Seite liest diesen Tag und bietet keinen Schreibweg (Review r4 S4)', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    const { liefere } = abgelesen();
+    const register = vi.mocked(api.messstellenRegister);
+    const onHeute = vi.fn();
+    render(
+      <MessstelleSeite
+        id={MS_IDS.ms21}
+        onListe={vi.fn()}
+        onHeute={onHeute}
+        werte={{ periode: '2026-10-10', version: null, vergleich: null, stand: '2026-10-10' }}
+      />,
+    );
+    const marke = await screen.findByTestId('messstelle-stand-am', undefined, WARTEN);
+    expect(marke).toHaveTextContent('Stand 10.10.2026');
+    expect(marke).toHaveTextContent('Nur lesen');
+    expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10' });
+    liefere(VIER);
+    // Die Leitkachel spricht den letzten vollen Monat vor dem Tag; kein Schritt, kein „Ändern“, kein Berichtigen.
+    await waitFor(() => expect(screen.getByTestId('messstelle-kacheln')).toHaveTextContent('September 2026'), WARTEN);
+    await waitFor(() => expect(within(screen.getByTestId('ablesungen')).getAllByTestId('ablesung-zeile')).toHaveLength(3), WARTEN);
+    expect(screen.queryByRole('button', { name: 'Ablesung eintragen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Ablesung eintragen/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ort ändern' })).toBeNull();
+    fireEvent.click(within(screen.getByTestId('ablesungen')).getAllByRole('button', { name: /^Ablesung vom / })[0]);
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual(['Fassungen ansehen']);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual(['Änderungsprotokoll']);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.click(within(marke).getByRole('button', { name: 'Zurück zu heute' }));
+    expect(onHeute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('berechnete Messstelle · „Zusammengesetzt aus“ (Review r4 M2/S8)', () => {
+  const ms09 = () => ahrenbergRegister().register.find((z) => z.kennzeichen === 'MS-09')!;
+  const ms01 = () => ahrenbergRegister().register.find((z) => z.kennzeichen === 'MS-01')!;
+  const KOMPONENTE = 'c0000000-0000-4000-8000-0000000000aa';
+  const berechnet = (): Messstelle => ({
+    id: ms09().id,
+    kennzeichen: 'MS-09',
+    name: 'Halle 1 + Verwaltung nicht zugeordnet',
+    art: 'berechnet',
+    medium: 'Strom',
+    lebenszyklus: 'aktiv',
+    fehlt: [],
+    notiz: null,
+    hauptgroesse: { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Intervallmenge' },
+    nebengroessen: [],
+    orte: [],
+    elektrische_stellung: [],
+    fuehrende_quelle: [],
+    anschlussleistung_kw: null,
+  });
+  const term = (t: Partial<MessstelleFormelTerm>): MessstelleFormelTerm => ({
+    position: 0,
+    eingang_art: 'messstelle',
+    entity_id: null,
+    point_key: null,
+    quell_messstelle_id: null,
+    vorzeichen: '+',
+    faktor: 1,
+    gilt_als_erzeugung: false,
+    groesse: null,
+    eingerichtet: true,
+    ...t,
+  });
+  const formel = (terme: MessstelleFormelTerm[], ausserhalb?: string): MessstelleFormel => ({
+    messstelle_id: ms09().id,
+    schema_version: '1',
+    hauptgroesse: null,
+    terme,
+    formel_vorhanden: true,
+    eingaenge_eingerichtet: true,
+    ...(ausserhalb ? { ausserhalb_zugriff: ausserhalb } : {}),
+  });
+  function verdrahteBerechnet() {
+    verdrahte({ messstelle: berechnet, protokoll: () => ({ eintraege: [], weiter: null }) as unknown as Protokoll });
+    vi.spyOn(api, 'messstelleWerte').mockResolvedValue(null as unknown as MessstelleWerte);
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [{ id: KOMPONENTE, label: 'Hauptzähler Halle 1', typeLabel: 'Zähler' } as SiteEntity],
+      localSetup: [],
+      staleOnDevice: [],
+    });
+    vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue({
+      site_id: FIXTURE_IDS.an1,
+      komponente: KOMPONENTE,
+      inhaltsstand: null,
+      messkanaele: [{ kanal: 'energy_import', anzeigename: 'Wirkenergie Bezug' } as Messkanal],
+    });
+  }
+
+  it('„Formel ändern“ öffnet den Formel-Dialog, nicht den Messstellen-Dialog; ein Messwert heißt nach seiner Komponente, nie nach ihrer Kennung', async () => {
+    // Jonas Wendlinger (Kundenadministrator) darf die Formel ändern.
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahteBerechnet();
+    vi.spyOn(api, 'messstelleFormel').mockResolvedValue(
+      formel([
+        term({ position: 0, quell_messstelle_id: ms01().id }),
+        term({ position: 1, eingang_art: 'messkanal', entity_id: KOMPONENTE, point_key: 'energy_import', vorzeichen: '-' }),
+      ]),
+    );
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(formelKarte).toHaveTextContent('Hauptzähler Halle 1 · Wirkenergie Bezug'), WARTEN);
+    expect(formelKarte.textContent).not.toContain(KOMPONENTE);
+    fireEvent.click(within(formelKarte).getByRole('button', { name: 'Formel ändern' }));
+    expect(await screen.findByRole('dialog', { name: /^Formel ändern · / }, WARTEN)).toBeInTheDocument();
+    // Der Messstellen-Dialog mit „Woher kommen die Werte?“ bleibt zu.
+    expect(screen.queryByText('Automatisch von einem Gerät')).toBeNull();
+  });
+
+  it('ohne Recht `messstelle.formel` kein „Formel ändern“', async () => {
+    setSelbstauskunft(rechteSeed('MD').me);
+    verdrahteBerechnet();
+    vi.spyOn(api, 'messstelleFormel').mockResolvedValue(formel([term({ position: 0, quell_messstelle_id: ms01().id })]));
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(within(formelKarte).getAllByRole('listitem')).toHaveLength(1), WARTEN);
+    expect(within(formelKarte).queryByRole('button', { name: 'Formel ändern' })).toBeNull();
+  });
+
+  it('ein Ladefehler steht als Satz mit „Erneut versuchen“ - nie ewig „wird geladen“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahteBerechnet();
+    const lesen = vi
+      .spyOn(api, 'messstelleFormel')
+      .mockRejectedValueOnce(new ApiError(500, 'kaputt'))
+      .mockResolvedValue(formel([term({ position: 0, quell_messstelle_id: ms01().id })]));
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(formelKarte).toHaveTextContent('Die Formel ist gerade nicht abrufbar.'), WARTEN);
+    fireEvent.click(within(formelKarte).getByRole('button', { name: 'Erneut versuchen' }));
+    await waitFor(() => expect(within(formelKarte).getAllByRole('listitem')).toHaveLength(1), WARTEN);
+    expect(lesen).toHaveBeenCalledTimes(2);
+  });
+
+  it('liegen alle Terme außerhalb des Zugriffs, sagt das der Hinweis - nicht „Noch keine Formel“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahteBerechnet();
+    vi.spyOn(api, 'messstelleFormel').mockResolvedValue(formel([], 'Ein Teil der Formel liegt außerhalb Ihres Zugriffs.'));
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(formelKarte).toHaveTextContent('Ein Teil der Formel liegt außerhalb Ihres Zugriffs.'), WARTEN);
+    expect(formelKarte).not.toHaveTextContent('Noch keine Formel.');
+  });
+});
+
+describe('Wörter, wie sie gerendert stehen (Review r4 S6/S7)', () => {
+  // Die Wächter in `copy.test.ts` lesen den Quelltext; viele Wörter kommen aber über Konstanten anderer Module (Werte-Karte,
+  // Zuordnung). Hier zählt, was tatsächlich auf dem Schirm steht.
+  const VERBOTEN = /Keine Datenquelle|Elektrische Stellung|Quelle \(führend\)|Summenwert anlegen|Ändern ab …/;
+
+  it('ohne Quelle (MS-21): „Noch keine Quelle“ in den Werten wie in „Woher die Werte kommen“ - nie „Keine Datenquelle“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahte({ messstelle: ms21, protokoll: protokollMs10 });
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      const monate: string[] = [];
+      for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+      const ohne = (v: string, b: string) => schritt({ von: v, bis: b, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, versionen: null });
+      return antwort(MS_21, raster, `${monate[0]}-01T00:00:00+02:00`, `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+        monate.map((m) => ohne(`${m}-01T00:00:00+02:00`, `${monatPlus(m, 1)}-01T00:00:00+02:00`)), false);
+    });
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    await waitFor(() => expect(karte('herkunft')).toHaveTextContent('Noch keine Quelle'), WARTEN);
+    await waitFor(() => expect(within(screen.getByTestId('werte')).getByTestId('werte-leer')).toHaveTextContent('Noch keine Quelle'), WARTEN);
+    const t = document.body.textContent ?? '';
+    expect(t.match(VERBOTEN) ? t.slice(Math.max(0, t.search(VERBOTEN) - 120), t.search(VERBOTEN) + 60) : null).toBeNull();
+  });
+
+  it('Gerät (MS-06) mit offenem Dialog „Stellung im Stromnetz ändern“ - dieselben Wörter wie die Zeile „Im Stromnetz“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+    await waitFor(() => expect(zeile('stellung')).toHaveTextContent('Im Stromnetz'), WARTEN);
+    fireEvent.click(within(zeile('stellung')).getByRole('button', { name: 'Stellung im Stromnetz ändern' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Stellung im Stromnetz ändern' }, WARTEN);
+    expect(within(dialog).getByText('Stellung im Stromnetz *')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(VERBOTEN);
   });
 });
