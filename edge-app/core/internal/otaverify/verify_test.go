@@ -79,6 +79,30 @@ func validManifest() Manifest {
 	}
 }
 
+// lightManifest ist ein Edge-Light-Release: nur Backend light, nur binary,
+// je Architektur ein Eintrag (Plan Edge Light Stufe 2, §2.2).
+func lightManifest() Manifest {
+	bin := func(arch string, raw, gz byte, size, gzSize int64) Artifact {
+		return Artifact{Type: ArtifactBinary, Name: "vp-edge-light", Arch: arch,
+			SHA256: strings.Repeat(string(raw), 64), Size: size,
+			GzSHA256: strings.Repeat(string(gz), 64), GzSize: gzSize}
+	}
+	return Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Release:       "edge-light-2026.10.1",
+		ReleaseSeq:    14,
+		TargetCommit:  "5b28311b4c0d",
+		Artifacts: []Artifact{
+			bin("linux/mipsle", 'a', 'b', 14614743, 4679121),
+			bin("linux/arm64", 'c', 'd', 13893816, 4475301),
+			bin("linux/amd64", 'e', 'f', 14753976, 4720556),
+		},
+		StateSchema:  1,
+		Compat:       Compat{Backends: []string{BackendLight}},
+		SigningKeyID: "rel-2026-a",
+	}
+}
+
 // world ist eine vollstaendige, gueltige Kette (Wurzel -> Trust-Set -> Manifest).
 type world struct {
 	root, rel pair
@@ -408,6 +432,76 @@ func TestVerifyDefersAReleaseForAnotherBackend(t *testing.T) {
 	if !strings.Contains(v.Reason, "compose") || !strings.Contains(v.Reason, "mender") {
 		t.Errorf("Grund nennt weder eigenes noch zulaessiges Backend: %s", v.Reason)
 	}
+	if !v.BackendMismatch {
+		t.Error("eine fremde Box-Art muss maschinenlesbar von der Politik getrennt sein")
+	}
+}
+
+// Die Docker-Toleranz (Plan Edge Light Stufe 2, B1): ein gueltig signiertes
+// Edge-Light-Release ist auf der Docker-Box „nicht fuer mich" - deferred mit
+// Grund, nie rejected. Bis zu diesem Stand lehnte sie es als „Form kaputt" ab
+// und meldete failed.
+func TestVerifyDefersAGenuineEdgeLightReleaseOnTheDockerBox(t *testing.T) {
+	w := newWorld(t)
+	w.withManifest(t, lightManifest())
+	v := Verify(w.in)
+	if v.Outcome != OutcomeDeferred || !v.BackendMismatch {
+		t.Fatalf("Edge-Light-Release auf der Docker-Box -> deferred/BackendMismatch, bekam %s/%v: %s",
+			v.Outcome, v.BackendMismatch, v.Reason)
+	}
+	if !strings.Contains(v.Reason, "Box-Art") || !strings.Contains(v.Reason, BackendLight) {
+		t.Errorf("der Grund muss die Box-Art nennen: %s", v.Reason)
+	}
+	if v.Manifest == nil || v.Manifest.Release != "edge-light-2026.10.1" {
+		t.Fatalf("das verifizierte Manifest bleibt fuer den Bericht erhalten: %+v", v.Manifest)
+	}
+
+	// Dieselben Bytes mit kaputter Signatur bleiben ein VORFALL.
+	w.in.Manifest = append(append([]byte{}, w.in.Manifest...), ' ')
+	if v := Verify(w.in); v.Outcome != OutcomeRejected || v.BackendMismatch {
+		t.Fatalf("ungueltige Signatur -> rejected, bekam %s/%v", v.Outcome, v.BackendMismatch)
+	}
+}
+
+func TestVerifyAcceptsAnEdgeLightReleaseOnEdgeLight(t *testing.T) {
+	w := newWorld(t)
+	w.withManifest(t, lightManifest())
+	w.in.Backend = BackendLight
+	if v := Verify(w.in); !v.OK() {
+		t.Fatalf("Edge-Light-Release auf Edge Light -> ok, bekam %s: %s", v.Outcome, v.Reason)
+	}
+	// …und die Gegenrichtung: das compose-Release ist dort nicht anwendbar.
+	w.withManifest(t, validManifest())
+	if v := Verify(w.in); v.Outcome != OutcomeDeferred || !v.BackendMismatch {
+		t.Fatalf("compose-Release auf Edge Light -> deferred, bekam %s: %s", v.Outcome, v.Reason)
+	}
+}
+
+func TestVerifyAppliesNothingOfAReleaseWithAPartItsBackendDoesNotApply(t *testing.T) {
+	w := newWorld(t)
+	m := validManifest()
+	m.Artifacts = append(m.Artifacts, Artifact{Type: "os-image", Name: "rootfs"})
+	w.withManifest(t, m)
+	v := Verify(w.in)
+	if v.Outcome != OutcomeDeferred || !v.BackendMismatch {
+		t.Fatalf("unbekannter Typ -> deferred, bekam %s: %s", v.Outcome, v.Reason)
+	}
+	if !strings.Contains(v.Reason, "os-image") || !strings.Contains(v.Reason, "nichts davon") {
+		t.Errorf("der Grund nennt den Typ nicht oder verschweigt, dass nichts angewandt wird: %s", v.Reason)
+	}
+}
+
+// Ein Release, das hier laeuft, wird nicht wegen seiner Box-Art
+// zurueckgestellt - die Box-Art ist ein Tor fuer das ANWENDEN.
+func TestTheBackendGateDoesNotTurnARunningReleaseIntoADeferral(t *testing.T) {
+	w := newWorld(t)
+	w.in.RunningVersion = "edge-2026.08.0-3bf8c038a1b2"
+	m := validManifest()
+	m.Compat.Backends = []string{BackendCompose, "balena"}
+	w.withManifest(t, m)
+	if v := Verify(w.in); !v.OK() || !v.AlreadyRunning || v.BackendMismatch {
+		t.Fatalf("laufender Stand -> ok, bekam %s/%v/%v: %s", v.Outcome, v.AlreadyRunning, v.BackendMismatch, v.Reason)
+	}
 }
 
 func TestValidUntilIsAdvisoryAndNeverRefuses(t *testing.T) {
@@ -440,9 +534,10 @@ func TestParseManifestRejectsStructuralLies(t *testing.T) {
 		},
 		"leere artefakte":      func(m *Manifest) { m.Artifacts = nil },
 		"doppeltes artefakt":   func(m *Manifest) { m.Artifacts[1].Name = m.Artifacts[0].Name },
-		"unbekannter typ":      func(m *Manifest) { m.Artifacts[0].Type = "os-image" },
+		"leerer typ":           func(m *Manifest) { m.Artifacts[0].Type = "" },
+		"krummer typ":          func(m *Manifest) { m.Artifacts[0].Type = "OS Image" },
 		"leere backends":       func(m *Manifest) { m.Compat.Backends = nil },
-		"unbekanntes backend":  func(m *Manifest) { m.Compat.Backends = []string{"balena"} },
+		"leeres backend":       func(m *Manifest) { m.Compat.Backends = []string{""} },
 		"seq null":             func(m *Manifest) { m.ReleaseSeq = 0 },
 		"boden ueber seq":      func(m *Manifest) { m.MinFromSeq = 99 },
 		"falsches releasetag":  func(m *Manifest) { m.Release = "edge-2026.8" },
@@ -458,6 +553,123 @@ func TestParseManifestRejectsStructuralLies(t *testing.T) {
 		if _, err := ParseManifest(mustJSON(t, m)); err == nil {
 			t.Errorf("%s: haette abgelehnt werden muessen", name)
 		}
+	}
+}
+
+func TestParseManifestChecksEveryFieldOfABinary(t *testing.T) {
+	for name, mutate := range map[string]func(a *Artifact){
+		"ohne arch":          func(a *Artifact) { a.Arch = "" },
+		"arch ohne os":       func(a *Artifact) { a.Arch = "mipsle" },
+		"kurze sha256":       func(a *Artifact) { a.SHA256 = "abc" },
+		"grosse hex":         func(a *Artifact) { a.SHA256 = strings.Repeat("A", 64) },
+		"size null":          func(a *Artifact) { a.Size = 0 },
+		"ohne gz_sha256":     func(a *Artifact) { a.GzSHA256 = "" },
+		"negative gz_size":   func(a *Artifact) { a.GzSize = -1 },
+		"ungueltiger name":   func(a *Artifact) { a.Name = "VP Edge" },
+		"doppelte plattform": nil,
+	} {
+		m := lightManifest()
+		if mutate == nil {
+			m.Artifacts[1].Arch = m.Artifacts[0].Arch
+		} else {
+			mutate(&m.Artifacts[0])
+		}
+		if _, err := ParseManifest(mustJSON(t, m)); err == nil {
+			t.Errorf("%s: haette abgelehnt werden muessen", name)
+		}
+	}
+}
+
+// Ein Typ oder Backend, das dieser Stand nicht kennt, ist kein Formfehler -
+// ob das Release hier anwendbar ist, entscheidet erst die Politik.
+func TestParseManifestToleratesUnknownTypesAndBackends(t *testing.T) {
+	m := validManifest()
+	m.Artifacts = append(m.Artifacts, Artifact{Type: "os-image", Name: "rootfs"})
+	m.Compat.Backends = []string{BackendCompose, "balena"}
+	got, err := ParseManifest(mustJSON(t, m))
+	if err != nil {
+		t.Fatalf("unbekannter Typ/Backend ist kein Formfehler: %v", err)
+	}
+	if r := got.NotApplicableReason(BackendCompose); !strings.Contains(r, "os-image") {
+		t.Fatalf("…aber nicht anwendbar: %q", r)
+	}
+	if _, err := ParseManifestStrict(mustJSON(t, m)); err == nil {
+		t.Fatal("erzeugen darf ein Werkzeug so ein Manifest nicht")
+	}
+}
+
+// Ein Manifest je Box-Art - die Regel, an der die Werkzeuge haengen.
+func TestParseManifestStrictKeepsOneManifestPerBoxType(t *testing.T) {
+	if _, err := ParseManifestStrict(mustJSON(t, validManifest())); err != nil {
+		t.Fatalf("das compose-Release muss erzeugbar sein: %v", err)
+	}
+	if _, err := ParseManifestStrict(mustJSON(t, lightManifest())); err != nil {
+		t.Fatalf("das Edge-Light-Release muss erzeugbar sein: %v", err)
+	}
+	for name, build := range map[string]func() Manifest{
+		"light mit compose": func() Manifest {
+			m := lightManifest()
+			m.Compat.Backends = []string{BackendLight, BackendCompose}
+			return m
+		},
+		"light mit oci-image": func() Manifest {
+			m := lightManifest()
+			m.Artifacts = append(m.Artifacts, validManifest().Artifacts[0])
+			return m
+		},
+		"compose mit binary": func() Manifest {
+			m := validManifest()
+			m.Artifacts = append(m.Artifacts, lightManifest().Artifacts[0])
+			return m
+		},
+		"light-backend unter docker-namen": func() Manifest {
+			m := lightManifest()
+			m.Release = "edge-2026.10.5"
+			return m
+		},
+		"docker-release unter light-namen": func() Manifest {
+			m := validManifest()
+			m.Release = "edge-light-2026.10.2"
+			return m
+		},
+		"binary mit ref": func() Manifest {
+			m := lightManifest()
+			m.Artifacts[0].Ref = validManifest().Artifacts[0].Ref
+			return m
+		},
+		"oci-image mit arch": func() Manifest {
+			m := validManifest()
+			m.Artifacts[0].Arch = "linux/arm64"
+			return m
+		},
+		"unbekanntes backend": func() Manifest {
+			m := validManifest()
+			m.Compat.Backends = []string{"balena"}
+			return m
+		},
+	} {
+		raw := mustJSON(t, build())
+		if _, err := ParseManifest(raw); err != nil {
+			t.Fatalf("%s: das Geraet liest es (tolerant), bekam %v", name, err)
+		}
+		if _, err := ParseManifestStrict(raw); err == nil {
+			t.Errorf("%s: haette beim Erzeugen abgelehnt werden muessen", name)
+		}
+	}
+}
+
+// Das oci-image-Manifest bleibt BYTE-GLEICH: die neuen binary-Felder sind
+// omitempty, ein Docker-Release traegt sie nicht.
+func TestAnOCIManifestCarriesNoBinaryFields(t *testing.T) {
+	raw := string(mustJSON(t, validManifest()))
+	for _, f := range []string{"arch", "sha256\"", "size", "gz_"} {
+		if strings.Contains(raw, `"`+f) {
+			t.Errorf("ein oci-image-Manifest traegt das Feld %s: %s", f, raw)
+		}
+	}
+	raw = string(mustJSON(t, lightManifest()))
+	if strings.Contains(raw, `"ref"`) {
+		t.Errorf("ein binary traegt kein ref: %s", raw)
 	}
 }
 
@@ -486,17 +698,21 @@ func TestContractExamplesParseAsSpecified(t *testing.T) {
 	}{
 		{"ota-release-manifest.valid.compose.json", true},
 		{"ota-release-manifest.valid.downgrade.json", true},
+		{"ota-release-manifest.valid.light.json", true},
 		{"ota-release-manifest.invalid.tag-not-digest.json", false},
+		{"ota-release-manifest.invalid.binary-ohne-pruefsumme.json", false},
 	} {
 		raw, err := os.ReadFile(filepath.Join(dir, tc.file))
 		if err != nil {
 			t.Fatalf("%s: %v", tc.file, err)
 		}
-		_, err = ParseManifest(raw)
-		if tc.valid && err != nil {
-			t.Errorf("%s sollte gueltig sein: %v", tc.file, err)
-		}
-		if !tc.valid && err == nil {
+		// Ein gueltiges Beispiel ist etwas, das die Werkzeuge ERZEUGEN duerfen
+		// (streng); ein ungueltiges scheitert schon am Geraete-Leser.
+		if tc.valid {
+			if _, err := ParseManifestStrict(raw); err != nil {
+				t.Errorf("%s sollte gueltig sein: %v", tc.file, err)
+			}
+		} else if _, err := ParseManifest(raw); err == nil {
 			t.Errorf("%s sollte abgelehnt werden", tc.file)
 		}
 	}

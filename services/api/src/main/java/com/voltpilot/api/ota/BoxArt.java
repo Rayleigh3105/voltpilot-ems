@@ -36,8 +36,14 @@ import java.util.Set;
  * signierte Manifest {@code light} unter {@code compat.backends} führt oder der
  * Register-Name zur Linie {@value #LIGHT_STAMP_PREFIX}JJJJ.MM.N gehört (E7).
  * Ein Manifest, das neben {@code light} auch ein Docker-Backend nennt, gilt als
- * Edge Light: Ein heutiger Docker-Kern lehnt das unbekannte Backend
- * {@code light} als Prüffehler ab, statt es zurückzustellen.
+ * Edge Light: Ein Docker-Kern vor dem Edge-Light-Update-Vertrag lehnt das
+ * Backend {@code light} als Prüffehler ab ({@code failed}); ein neuerer stellt
+ * ein solches Release nur zurück (Sperre {@code backend}). Solange ältere Kerne
+ * in der Flotte sind, bleibt diese Sperre die sichere Seite. Erzeugen darf ein
+ * Werkzeug ein gemischtes Manifest ohnehin nicht ({@code ParseManifestStrict}).
+ * Den vollen Formleser hat {@link ReleaseManifest}; hier genügt bewusst der rohe
+ * Blick in {@code compat.backends}, damit auch ein unlesbares Manifest mit
+ * {@code light} als Edge Light gilt.
  *
  * <h2>Zuweisen</h2>
  * Gesperrt wird, was belegt nicht passt. Ein Edge-Light-Release verlangt

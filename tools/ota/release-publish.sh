@@ -324,6 +324,8 @@ for it in items:
 # dieselbe Zahl); der Monat ist zweistellig, weil er es im Bestand ist.
 OTA_RELEASE_RE='^edge-[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$'
 OTA_RELEASE_MONTH_RE='^[0-9]{4}\.(0[1-9]|1[0-2])$'
+# Die eigene Release-Linie von Edge Light (Entscheid E7).
+OTA_LIGHT_RELEASE_PREFIX='edge-light-'
 
 # ota_check_release <name> - bricht LAUT ab, wenn der Name nicht dem Schema
 # folgt. Ein erfundenes Schema waere schlimmer als eine Ablehnung: der Name
@@ -331,6 +333,21 @@ OTA_RELEASE_MONTH_RE='^[0-9]{4}\.(0[1-9]|1[0-2])$'
 ota_check_release() {
 	[[ "${1-}" =~ $OTA_RELEASE_RE ]] ||
 		ota_die "Release-Name '${1-}' folgt nicht dem Schema edge-<JJJJ>.<MM>.<N> (N ist ein laufender Zaehler je Monat, KEIN Kalendertag). Es wurde nichts angelegt."
+}
+
+# ota_check_docker_release <name> - wie ota_check_release, aber NUR fuer die
+# Docker-Linie. Edge Light hat eine eigene Release-Linie edge-light-JJJJ.MM.N
+# mit eigenem Lauf (Entscheid E7, Plan Edge Light Stufe 2 §2.3); der manuelle
+# Weg in edge-images.yaml darf einen solchen Namen nie anlegen - der Tag
+# startete sonst den Docker-Lauf. Die Pruefung steht AUSDRUECKLICH hier und
+# nicht nur im Muster, damit sie haelt, wenn das Muster beide Linien kennt.
+ota_check_docker_release() {
+	case "${1-}" in
+	"$OTA_LIGHT_RELEASE_PREFIX"*)
+		ota_die "Release-Name '${1-}' gehoert zur Edge-Light-Linie - dieser Weg legt nur Docker-Releases an (edge-<JJJJ>.<MM>.<N>). Es wurde nichts angelegt."
+		;;
+	esac
+	ota_check_release "${1-}"
 }
 
 # ota_next_release <JJJJ.MM> - liest die vorhandenen Tag-Namen von STDIN und

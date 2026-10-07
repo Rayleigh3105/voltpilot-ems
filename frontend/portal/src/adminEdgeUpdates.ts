@@ -221,7 +221,13 @@ const BLOCKER_LEVERS: Record<string, string> = {
   politik:
     'Das Release gilt für diese Box nicht (Anti-Rollback-Boden oder Rückschritt) - '
     + 'ein passendes Release zuweisen.',
-  backend: 'Das Release ist nicht für das Apply-Backend dieser Box bestimmt.',
+  // Gültig signiert, aber für eine andere Box-Art (Docker-Box ↔ Edge Light)
+  // oder mit Bestandteilen, die diese Box nicht anwendet. Die Box stellt
+  // zurück, statt abzulehnen - kein Vorfall, und es bleibt dabei, bis ein
+  // Release ihrer Box-Art zugewiesen ist (docs/contracts/ota-release-manifest-vectors.json).
+  backend:
+    'Das Release ist für eine andere Box-Art bestimmt (Docker-Box oder Edge Light) oder trägt '
+    + 'Bestandteile, die diese Box nicht anwendet - ein Release ihrer eigenen Box-Art zuweisen.',
   state_schema: 'Das Release kennt den Datenstand dieser Box nicht.',
   platte:
     'Platz auf dem Datenträger der Box schaffen - die Box hat ihre abgelösten '
