@@ -280,6 +280,43 @@ for (const breite of [375, 1440]) {
       expect(entwurf.verweis).toMatchObject({ ablage: 'Instandhaltungssystem, Arbeitspläne', kennung: 'IH-SG-01', bezeichnung: 'IH-SG-01_Rev4.pdf', sha256: sha256(inhalt) });
     });
 
+    test('Review r2, N-2.1: scheitert die Freigabe und ändert die Person danach das Original, gilt das geänderte', async ({ page }) => {
+      await oeffne(page, 'lage=start&seite=dokumente&freigabe=scheitert', breite, AM_12_11_2028);
+      await page.getByTestId('dokumente-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Dokument festhalten' }).click();
+      const blatt = page.getByTestId('festhalten-blatt');
+      await waehle(page, blatt.getByRole('combobox', { name: 'Was?' }), /^Betrieb und Instandhaltung/);
+      await page.getByTestId('festhalten-titel').fill('Kriterien für Betrieb und Instandhaltung - Spritzguss');
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-ablage').fill('Altes Laufwerk, Arbeitspläne');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(page.getByTestId('festhalten-pruefen')).toContainText('Ines Kaltenbach');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(blatt.getByTestId('blatt-ablehnung')).toBeVisible();
+
+      // Die Person korrigiert, wo das Original liegt, und hält erneut fest.
+      await page.getByTestId('festhalten-pruefen').getByRole('button', { name: 'Original ändern' }).click();
+      await page.getByTestId('festhalten-ablage').fill('Instandhaltungssystem, Arbeitspläne');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(page.getByTestId('festhalten-pruefen')).toContainText('Instandhaltungssystem, Arbeitspläne');
+      // „Zurück“ bis Schritt 1: das Dokument ist angelegt, Art und Titel stehen fest.
+      await page.getByRole('button', { name: 'Zurück', exact: true }).click();
+      await page.getByRole('button', { name: 'Zurück', exact: true }).click();
+      await expect(page.getByTestId('festhalten-angelegt')).toHaveText('Angelegt: Art, Titel und Ort stehen fest.');
+      await expect(page.getByTestId('festhalten-titel')).toBeDisabled();
+      ohneQuerlauf(await messe(page), 'Festhalten: angelegt');
+      await dialogBild(page, `i2-festhalten-angelegt-${breite}`);
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-weiter').click();
+
+      const original = page.getByTestId('dokument-original');
+      await expect(original).toContainText('Instandhaltungssystem, Arbeitspläne');
+      await expect(original).not.toContainText('Altes Laufwerk');
+      const routen = (await gesendet(page)).map((k) => k.route.split('/').pop());
+      expect(routen).toEqual(['dokumente', 'fassungen', 'fassungen', 'freigeben']);
+    });
+
     test('Stand 12.02.2029 (R1–R3): Überblick, Verzeichnis nach Monaten, „Meine“, CSV, Überprüfung, Vergleich, Zuschnitt-Hilfe', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg', breite, AM_12_02_2029);
       // Offen sind die Teile ohne Eintrag; Risiken und Chancen etwa (Konzept n1, §6.3).

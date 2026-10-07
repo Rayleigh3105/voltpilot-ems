@@ -577,6 +577,7 @@ export function BerichtSeite({
       {blatt === 'archivieren' && (
         <BerichtArchivierenBlatt
           bericht={b}
+          offeneKorrekturen={offen.length}
           onClose={() => setBlatt(null)}
           onFertig={() => {
             setBlatt(null);

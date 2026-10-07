@@ -668,6 +668,14 @@ textarea.vp-nw-feld-in {
 .vp-nw-feld-in[aria-invalid='true'] {
   border-color: var(--vp-c-warn-fg, #9a3412);
 }
+/* Steht fest (Titel eines angelegten Dokuments): lesbar wie ein Wert, nicht wie ein Feld zum Tippen. */
+.vp-nw-feld-in:disabled {
+  background: var(--vp-c-bg);
+  color: var(--vp-c-fg, #1e293b);
+  -webkit-text-fill-color: currentColor;
+  opacity: 1;
+  cursor: default;
+}
 .vp-nw-feld-fehler {
   margin: 0;
   font-size: 0.8125rem;
