@@ -158,18 +158,23 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
     />
   );
 
+  // Review P4-2: Bestätigen und Ablehnen nur für die zweite Person, wie die Route sie nennt (FS6) - nie für wer beantragt
+  // hat oder verantwortlich ist; die anderen sehen, wer entscheiden kann.
+  const entscheidet = antrag !== null && B.darfAntragEntscheiden(sub, f, antrag, vieraugen);
+  const wer = antrag && !entscheidet ? B.entscheidenKann(vieraugen) : null;
+
   /** Der eine nächste Schritt: Antrag entscheiden, sonst Wirksamkeit prüfen, sobald sie sich prüfen lässt. */
   const schritt = !offen ? null : antrag ? (
-    <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
-      {antrag.eingetragen.akteur.sub !== sub && (
+    entscheidet ? (
+      <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
         <Button onClick={() => void bestaetigen()} data-testid="feststellung-bestaetigen">
           {A.KNOPF_ANTRAG_BESTAETIGEN}
         </Button>
-      )}
-      <Button variant="ghost" onClick={() => setDialog('ablehnen')} data-testid="feststellung-ablehnen">
-        {A.KNOPF_ANTRAG_ABLEHNEN}
-      </Button>
-    </EinsichtRecht>
+        <Button variant="ghost" onClick={() => setDialog('ablehnen')} data-testid="feststellung-ablehnen">
+          {A.KNOPF_ANTRAG_ABLEHNEN}
+        </Button>
+      </EinsichtRecht>
+    ) : null
   ) : pruefbar ? (
     <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
       <Button onClick={() => setDialog('wirksamkeit')} data-testid="feststellung-wirksamkeit-pruefen" data-entscheid-schritt>
@@ -202,6 +207,17 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
                 knopf={<ErklaerKnopf erklaerung={B.ERKLAERUNG_WIRKSAMKEIT} klein testId="wirksamkeit-erklaeren" />}
                 testid="feststellung-noch-nicht"
               />
+            )}
+            {offen && antrag && (
+              // Was beantragt ist (Ergebnis, Begründung, wer) einen Tipp tiefer im Blatt des Stands - nicht nur im Menü.
+              <NwZeilen testId="feststellung-antrag">
+                <NwZeile titel={`Antrag · Stand ${antrag.nr}`} rechts={<Fakt>{A.ERGEBNIS_WORT[antrag.ergebnis]}</Fakt>} onClick={() => setBlatt({ stand: antrag.nr })} testId="feststellung-antrag-zeile" />
+              </NwZeilen>
+            )}
+            {wer && (
+              <p className="vp-ez-satz" data-testid="feststellung-entscheidet">
+                {wer}
+              </p>
             )}
             {offen && vieraugen.an && vieraugen.satz && (
               <p className="vp-ez-satz" data-testid="feststellung-vieraugen">

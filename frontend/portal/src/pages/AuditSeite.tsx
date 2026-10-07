@@ -73,7 +73,12 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
       () => aktiv && setMassnahmen(null),
     );
     api.energiemanagementFeststellungen().then(
-      (r) => aktiv && setFeststellungen(r.feststellungen),
+      (r) => {
+        // Review P4-3: über die UUID geöffnet (Neuladen, Link) kommt der Tag der Route aus dieser Liste - die Dialoge
+        // des Audits rechnen sonst mit dem Tag des Browsers.
+        merkeAbruf(r.tag);
+        if (aktiv) setFeststellungen(r.feststellungen);
+      },
       () => aktiv && setFeststellungen(null),
     );
     return () => {
