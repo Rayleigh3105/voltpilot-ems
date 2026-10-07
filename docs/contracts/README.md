@@ -16,6 +16,7 @@ flowchart LR
 | HTTP-API | [openapi.yaml](openapi.yaml) |
 | v1-Telemetrie / Ereignis | [MQTT](mqtt-telemetry.schema.json), [telemetry.raw](telemetry-raw.event.schema.json) |
 | v1-Fahrplan | [mqtt-schedule](mqtt-schedule.schema.json) |
+| Status-Herzschlag: Steuerstand des Speichers | [Vertrag](speicher-steuerstand.md), [Vektoren](speicher-steuerstand-vectors.json) |
 | Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |
 | v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |

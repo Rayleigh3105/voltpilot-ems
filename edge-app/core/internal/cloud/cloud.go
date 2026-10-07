@@ -36,6 +36,9 @@ type Link struct {
 	version string
 	// networkFn is the link-level reachability source (see Options.NetworkFn).
 	networkFn func() *NetworkSummary
+	// batteryControlFn is the link-level steering-state source (see
+	// Options.BatteryControlFn).
+	batteryControlFn func() *BatteryControlSummary
 
 	onSchedule          func(payload []byte)
 	onCommand           func(payload []byte) bool
@@ -187,6 +190,13 @@ type Options struct {
 	// It reports ONLY what the box can PROVE (see internal/netinfo); the cloud
 	// never invents a box address.
 	NetworkFn func() *NetworkSummary
+	// BatteryControlFn is asked at PUBLISH time whether VoltPilot commands this
+	// box's battery or only observes it (contract
+	// docs/contracts/speicher-steuerstand.md). It hangs on the LINK for the
+	// same reason NetworkFn does: the block must ride every heartbeat,
+	// independent of the control readback that gates the `control` block. nil
+	// (or a nil result) = omit the block.
+	BatteryControlFn func() *BatteryControlSummary
 }
 
 func (o Options) brokerURL() string {
@@ -199,8 +209,9 @@ func (o Options) brokerURL() string {
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, networkFn: o.NetworkFn,
-		onSchedule: o.OnSchedule,
-		onCommand:  o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
+		batteryControlFn: o.BatteryControlFn,
+		onSchedule:       o.OnSchedule,
+		onCommand:        o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:       o.OnControlCert,
 		onChargingConfig:    o.OnChargingConfig,
@@ -1187,6 +1198,34 @@ type ActiveControlEntity struct {
 	AllMatch *bool `json:"all_match,omitempty"`
 }
 
+// BatteryControlSummary is the additive `battery_control` block of the status
+// heartbeat (contract docs/contracts/speicher-steuerstand.md, vectors
+// speicher-steuerstand-vectors.json): does VoltPilot COMMAND this box's
+// battery, or does the box only OBSERVE it?
+//
+// It exists because the `control` block cannot answer that question: it rides
+// only with a Layer-1 readback (controlSummary returns nil without one), so a
+// box that never reads back - Edge Light with its read-only Deye - never told
+// the cloud that it does not command the battery. The optimizer then planned
+// every battery as commanded, including trades nobody executes.
+//
+// The block comes from the CORE gate (the kill-switch and the certification
+// merge), never from a readback stamp, and it is omitted while no inverter is
+// selected: an unknown battery is not an observed one.
+type BatteryControlSummary struct {
+	// State is "gesteuert" (kill-switch on AND certified: the box writes the
+	// battery), "beobachtet" (kill-switch on, no model/device approval: Layer 1
+	// writes nothing, the inverter regulates itself) or "not_aus" (kill-switch
+	// off: the box writes neither the battery nor the wallboxes).
+	State string `json:"state"`
+	// ControlEnabled means exactly what `control.control_enabled` and the
+	// control_enabled on edge/setpoint mean: kill-switch AND certification.
+	ControlEnabled bool `json:"control_enabled"`
+	// Certified is the model/device approval (env allowlist, First-Light or
+	// platform register), as in `control.certified`.
+	Certified bool `json:"certified"`
+}
+
 // ControlSummary is the compact inverter-control confirmation folded into the
 // status heartbeat (report §5.3), so the cloud sees "Fahrplan sagt X ->
 // Wechselrichter bestätigt Y" without register-level detail. Additive; the
@@ -1518,6 +1557,11 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if update != nil {
 		payload["update"] = update
+	}
+	if l.batteryControlFn != nil {
+		if b := l.batteryControlFn(); b != nil {
+			payload["battery_control"] = b
+		}
 	}
 	if control != nil {
 		payload["control"] = control
