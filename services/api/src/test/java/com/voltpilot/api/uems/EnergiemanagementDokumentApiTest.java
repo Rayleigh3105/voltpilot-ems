@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -289,6 +290,16 @@ class EnergiemanagementDokumentApiTest {
         assertThat(v.path("saetze")).hasSize(1);
         assertThat(v.at("/saetze/0").asText()).isEqualTo("Gas gehört zum Anwendungsbereich, aber nicht zum "
                 + "Betrachtungsumfang der energetischen Bewertung (Fassung 1).");
+
+        // Die Gegenrichtung hat seit Vertrag 1.4 ihren Satz (Konzept Nachweisen n1, Befund A21).
+        UUID s3 = standort("ST-3", "Werk Kaltenbrunn");
+        root.update("INSERT INTO bewertung_umfang_standort (tenant_id, umfang_id, standort_id) SELECT tenant_id, id, ? "
+                + "FROM bewertung_umfang WHERE tenant_id = ?", s3, tenant);
+        v = ruf("GET", DOKUMENTE + "/" + id + "/vergleich", "IK", null, 200);
+        assertThat(werte(v.at("/vergleich/standorte_nur_im_betrachtungsumfang"), "name")).containsExactly("Werk Kaltenbrunn");
+        assertThat(v.path("saetze")).hasSize(2);
+        assertThat(v.at("/saetze/1").asText()).isEqualTo("Werk Kaltenbrunn gehört zum Betrachtungsumfang der "
+                + "energetischen Bewertung (Fassung 1), aber nicht zum Anwendungsbereich.");
     }
 
     // ------------------------------------------------------------------ Leitungs-Pflicht (DK3, PA3)
@@ -314,9 +325,12 @@ class EnergiemanagementDokumentApiTest {
         ruf("POST", "/api/v1/energiemanagement/aufgaben", "IK", Map.of("aufgabe", "unternehmensleitung",
                 "person_id", id(rf), "gilt_ab", "2026-10-01", "begruendung", "Geschäftsführer laut Handelsregister"), 201);
         assertThat(ruf("GET", DOKUMENTE + "/" + id, "IK", null, 200).at("/saetze/freigabe_gesperrt").isNull()).isTrue();
+        // Befund A11 (Konzept Nachweisen n1): eine andere Person als die Leitung ist eine eigene Ablehnung.
         a = ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", entscheid(ik), 422);
-        assertThat(a.path("code").asText()).isEqualTo("leitung_fehlt");
+        assertThat(a.path("code").asText()).isEqualTo("nicht_die_leitung");
         assertThat(a.path("message").asText()).isEqualTo("Über Energiepolitik entscheidet die Leitung des Unternehmens.");
+        assertThat(a.path("leitung").size()).isEqualTo(1);
+        assertThat(a.path("leitung").get(0).asText()).isEqualTo(id(rf));
         Map<String, Object> vorDerLeitung = new LinkedHashMap<>(entscheid(rf));
         vorDerLeitung.put("entschieden_am", "2026-09-30");
         assertThat(ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", vorDerLeitung, 422)
@@ -393,7 +407,121 @@ class EnergiemanagementDokumentApiTest {
                 "begruendung", "Halle 2 ab dem 01.03.2027 in Betrieb."), 201);
     }
 
+    // ------------------------------------------------------------------ Entscheid 10: Original je Fassung
+
+    @Test
+    void entscheid10OriginalGehoertZurFassungMitEntwurfOderFreigabeUndBleibtDanach() throws Exception {
+        var p = personenMitLeitung();
+        String id = ruf("POST", DOKUMENTE, "IK", Map.of("art", "energiepolitik", "titel", "Energiepolitik",
+                "bezug", Map.of("art", "unternehmen"), "beleg", ORIGINAL), 201).path("id").asText();
+        Map<String, Object> entwurfOriginal = Map.of("ablage", "QM-Laufwerk, Ordner Energiemanagement/Entwurf");
+        JsonNode d = ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut",
+                "wortlaut", "Fassung 1.", "original", entwurfOriginal), 201);
+        assertThat(d.at("/fassungen/0/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Energiemanagement/Entwurf");
+
+        // Was die Datenbank nie hätte: ein Teil ohne Ablage, eine Prüfsumme, die keine ist (422, nichts geschrieben).
+        int vorher = protokoll();
+        assertThat(ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("RF")),
+                Map.of("kennung", "EP-2026")), 422).path("feld").asText()).isEqualTo("original.ablage");
+        assertThat(ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("RF")),
+                Map.of("ablage", "QM", "sha256", "abc")), 422).path("feld").asText()).isEqualTo("original.sha256");
+        assertThat(protokoll()).isEqualTo(vorher);
+
+        // Die Freigabe nennt das unterschriebene Original - es ersetzt das des Entwurfs im selben Schritt.
+        d = ruf("POST", DOKUMENTE + "/" + id + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("RF")), ORIGINAL), 200);
+        JsonNode f1 = d.at("/fassungen/0");
+        assertThat(f1.path("status").asText()).isEqualTo("freigegeben");
+        assertThat(f1.at("/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Energiemanagement/Politik");
+        assertThat(f1.at("/original/kennung").asText()).isEqualTo("EP-2026");
+        assertThat(f1.at("/original/sha256").asText()).isEqualTo(ORIGINAL.get("sha256"));
+        assertThat(f1.at("/original/adresse").isNull()).isTrue();
+        // Das Original ist keine Fassung: die Prüfsumme der Kopie bleibt die des Vertrags ohne Original.
+        assertThat(root.queryForObject("SELECT kopie FROM energiemanagement_dokument_fassung WHERE tenant_id = ?",
+                String.class, tenant)).doesNotContain("original").doesNotContain("QM-Laufwerk");
+        // Danach unveränderlich wie die Fassung selbst (Trigger, auch für den Eigentümer der Tabelle).
+        assertThatThrownBy(() -> root.update("UPDATE energiemanagement_dokument_fassung SET original_ablage = 'X' "
+                + "WHERE tenant_id = ?", tenant)).hasMessageContaining("ist freigegeben und unveränderlich");
+
+        // Fassung 2 ohne eigenes Original: die Seite liest null, das Verzeichnis den Ort am Dokument (Fassung 1).
+        heute("2027-03-01");
+        ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut", "Fassung 2.",
+                "begruendung", "Beschaffung und Planung ergänzt."), 201);
+        d = ruf("POST", DOKUMENTE + "/" + id + "/fassungen/2/freigeben", "IK", entscheid(p.get("RF")), 200);
+        assertThat(d.at("/fassungen/1/original").isNull()).isTrue();
+        assertThat(d.at("/beleg/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Energiemanagement/Politik");
+        List<Map<String, Object>> zeilen = als("IK", () -> verzeichnis.zeilen(LocalDate.parse("2027-03-01")));
+        assertThat(zeilen.stream().filter(z -> Integer.valueOf(2).equals(z.get("nr"))).findFirst().orElseThrow())
+                .containsEntry("ort_satz", "Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner "
+                        + "Energiemanagement/Politik");
+
+        // Ein Verweis IST das Original: weder am Entwurf noch bei der Freigabe ein zweites.
+        String rk = ruf("POST", DOKUMENTE, "IK", Map.of("art", "rechtliche_anforderungen", "titel",
+                "Rechtliche Anforderungen zum Energieeinsatz", "bezug", Map.of("art", "unternehmen")), 201)
+                .path("id").asText();
+        Map<String, Object> verweis = Map.of("ablage", "Rechtskataster-Dienst (Abonnement)", "kennung", "RK-AHR");
+        assertThat(ruf("POST", DOKUMENTE + "/" + rk + "/fassungen", "IK", Map.of("form", "verweis", "verweis", verweis,
+                "original", Map.of("ablage", "QM")), 422).path("feld").asText()).isEqualTo("original");
+        ruf("POST", DOKUMENTE + "/" + rk + "/fassungen", "IK", Map.of("form", "verweis", "verweis", verweis), 201);
+        assertThat(ruf("POST", DOKUMENTE + "/" + rk + "/fassungen/1/freigeben", "IK", mit(entscheid(p.get("IK")),
+                Map.of("ablage", "QM")), 422).path("feld").asText()).isEqualTo("original");
+
+        // Vier-Augen: das Original steht im Antrag; die zweite Person ändert es nicht.
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE id = ?", unternehmen);
+        String vf = ruf("POST", DOKUMENTE, "IK", Map.of("art", "verfahren", "titel", "Vorgehen Messplanung",
+                "bezug", Map.of("art", "unternehmen")), 201).path("id").asText();
+        ruf("POST", DOKUMENTE + "/" + vf + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut", "Fassung 1."), 201);
+        d = ruf("POST", DOKUMENTE + "/" + vf + "/fassungen/1/beantragen", "IK", mit(entscheid(p.get("IK")),
+                Map.of("ablage", "QM-Laufwerk, Ordner Verfahren")), 200);
+        assertThat(d.at("/fassungen/0/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Verfahren");
+        assertThat(ruf("POST", DOKUMENTE + "/" + vf + "/fassungen/1/freigeben", "JW", Map.of("original",
+                Map.of("ablage", "anderswo")), 422).path("feld").asText()).isEqualTo("original");
+        d = ruf("POST", DOKUMENTE + "/" + vf + "/fassungen/1/freigeben", "JW", Map.of(), 200);
+        assertThat(d.at("/fassungen/0/original/ablage").asText()).isEqualTo("QM-Laufwerk, Ordner Verfahren");
+    }
+
+    /** Ein Entscheid mit Original (Entscheid 10). */
+    private static Map<String, Object> mit(Map<String, Object> entscheid, Map<String, Object> original) {
+        Map<String, Object> e = new LinkedHashMap<>(entscheid);
+        e.put("original", original);
+        return e;
+    }
+
     // ------------------------------------------------------------------ Zaun über den Bezug (404) und Recht (403)
+
+    /**
+     * Befund A4 (Konzept Nachweisen n1): die Leitung für die Freigabe kommt aus {@code …/leitung} im Zaun des
+     * Freigaberechts, nicht aus {@code …/aufgaben}, das Lesern ohne unternehmensweites Recht leer antwortet. Heute
+     * tragen das Freigaberecht nur Rollen am Unternehmen (KA U, EM U); die Route bleibt richtig, wenn die Matrix es
+     * einmal an einem Standort vergibt.
+     */
+    @Test
+    void leitungImZaunDesFreigaberechts() throws Exception {
+        var p = personenMitLeitung();
+        // Ohne Tag gilt heute in der Zone des Unternehmens (wie `…/aufgaben`); das Blatt nennt den Tag der Route.
+        JsonNode heute = ruf("GET", "/api/v1/energiemanagement/leitung", "IK", null, 200);
+        assertThat(heute.path("tag").asText()).matches("\\d{4}-\\d{2}-\\d{2}");
+        assertThat(werte(heute.path("leitung"), "name")).containsExactly("Robert Falk");
+        JsonNode l = ruf("GET", "/api/v1/energiemanagement/leitung?tag=2026-12-15", "IK", null, 200);
+        assertThat(l.path("tag").asText()).isEqualTo("2026-12-15");
+        assertThat(werte(l.path("leitung"), "name")).containsExactly("Robert Falk");
+        assertThat(l.at("/leitung/0/id").asText()).isEqualTo(id(p.get("RF")));
+        assertThat(werte(ruf("GET", "/api/v1/energiemanagement/leitung?standort=" + s1, "JW", null, 200)
+                .path("leitung"), "name")).containsExactly("Robert Falk");
+        // Vor dem ersten Tag der Leitung: leer - die Freigabe mit Leitungs-Pflicht wäre gesperrt.
+        assertThat(ruf("GET", "/api/v1/energiemanagement/leitung?tag=2026-09-30", "IK", null, 200)
+                .path("leitung").size()).isZero();
+        // Ohne Freigaberecht 403 - auch am eigenen Standort; Werk Ahrenberg sieht der Bearbeiter von Werk Lindach
+        // nicht (wie ein fremder Standort); ein falscher Tag ist eine falsche Anfrage.
+        assertThat(ruf("GET", "/api/v1/energiemanagement/leitung", "PH", null, 403).path("code").asText())
+                .isEqualTo("recht_fehlt");
+        assertThat(ruf("GET", "/api/v1/energiemanagement/leitung?standort=" + s2, "PH", null, 403).path("code")
+                .asText()).isEqualTo("recht_fehlt");
+        assertThat(ruf("GET", "/api/v1/energiemanagement/leitung?standort=" + s1, "PH", null, 422).path("code")
+                .asText()).isEqualTo("standort_unbekannt");
+        ruf("GET", "/api/v1/energiemanagement/leitung?standort=" + s1, "CB", null, 403);
+        ruf("GET", "/api/v1/energiemanagement/leitung?standort=" + UUID.randomUUID(), "IK", null, 422);
+        ruf("GET", "/api/v1/energiemanagement/leitung?tag=gestern", "IK", null, 400);
+    }
 
     @Test
     void zaunUeberDenStandortDesBezugs404UndOhneRecht403UndNichtsGeschrieben() throws Exception {

@@ -77,6 +77,8 @@ export function AntwortKarten<T extends string>({
 export interface ChipOption<T extends string> {
   wert: T;
   label: string;
+  /** Steht fest: sichtbar (die gewählte bleibt hinterlegt), nicht wählbar. */
+  aus?: boolean;
 }
 
 /**
@@ -102,8 +104,8 @@ export function WahlChips<T extends string>(
       <legend className="vp-nw-frage">{props.frage}</legend>
       <div className="vp-nw-chips">
         {props.optionen.map((o) => (
-          <label key={o.wert} className={`vp-nw-chip${gewaehlt(o.wert) ? ' an' : ''}`} data-testid={props.testid ? `${props.testid}-${o.wert}` : undefined}>
-            <input type={props.mehrfach ? 'checkbox' : 'radio'} name={name} value={o.wert} checked={gewaehlt(o.wert)} onChange={() => umschalten(o.wert)} />
+          <label key={o.wert} className={`vp-nw-chip${gewaehlt(o.wert) ? ' an' : ''}${o.aus ? ' aus' : ''}`} data-testid={props.testid ? `${props.testid}-${o.wert}` : undefined}>
+            <input type={props.mehrfach ? 'checkbox' : 'radio'} name={name} value={o.wert} checked={gewaehlt(o.wert)} disabled={o.aus} onChange={() => umschalten(o.wert)} />
             {o.label}
           </label>
         ))}
@@ -217,7 +219,8 @@ export interface WortlautStueck {
  */
 export function Wortlaut({ absaetze, testid, label }: { absaetze: readonly (readonly WortlautStueck[])[]; testid?: string; label?: string }) {
   return (
-    <div className="vp-nw-wortlaut" data-testid={testid} aria-label={label}>
+    // Mit Namen ein eigener Bereich („Wortlaut der Fassung 2“) - ein `aria-label` ohne Rolle liest niemand vor (Review r1, P2-12).
+    <div className="vp-nw-wortlaut" data-testid={testid} role={label ? 'region' : undefined} aria-label={label}>
       {absaetze.map((a, i) => (
         <p key={i}>
           {a.map((s, j) =>

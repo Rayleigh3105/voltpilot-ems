@@ -1,0 +1,698 @@
+/*
+ * NACHWEISEN: ZEILEN-BAUSTEINE (Konzept Nachweisen n1, Runde 2 „weniger Text“, §0.3 und §12; Captain-Freigabe
+ * 07.10.2026). 1:1 aus dem Stil-Block des Artefakts (Verbessern v1 + Ergänzungen Nachweisen + RUNDE 2), gebaut nur aus
+ * Haus-Tokens - keine neue Farbe, kein neuer Radius, keine neue Schrift:
+ *   .vp-nw-zs       Zustands-Zeichen einer Folge (erledigt, läuft, überfällig, ohne Folge)
+ *   .vp-nw-status   Status-Zeile unter dem Titel (Zeichen + zwei bis fünf Wörter)
+ *   .vp-nw-stufen   Stufen eines Vorgangs mit Tag
+ *   .vp-nw-karte    Karte mit Kopf (Titel, Zahl, Weg)
+ *   .vp-nw-zl    Zeile ohne Datumsblock; .vp-nw-fz Zeile mit Datumsblock (.vp-fd aus Wiedervorlage.css)
+ *   .vp-nw-avs      Personen als Kürzel
+ *   .vp-nw-segbar   Folgen-Balken mit Legende
+ *   .vp-nw-wg       Weitergeben: PDF, Teilen, CSV
+ * Farbe nur mit Bedeutung: Warnton nur für Abgelaufenes, Navy für „gilt“ und den nächsten Schritt, Grün nur für
+ * erledigte Schritte und Folgen. Andere Nachweisen-Bausteine (Kopf, i-Knopf, Blatt, Schritte) haben eigene Dateien.
+ */
+
+/* ---------- Zustands-Zeichen (das Zeichen eines Teils, .vp-nw-zei, steht in Nachweisen.css) ------------------- */
+.vp-nw-zs {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  color: #fff;
+}
+.vp-nw-zs.is-done {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-nw-zs.is-laeuft {
+  border: 2px solid var(--vp-action, #2c5282);
+  color: var(--vp-action, #2c5282);
+}
+.vp-nw-zs.is-ueber {
+  border: 2px solid var(--vp-c-warn-fg, #9a3412);
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zs.is-ohne {
+  border: 2px dashed #94a3b8;
+}
+
+/* ---------- Status-Zeile ---------------------------------------------------------------------------------------- */
+.vp-nw-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 7px 0 0;
+  font: 600 0.875rem/1.4 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-status > .vp-nw-zei,
+.vp-nw-status > .vp-nw-zs {
+  margin-right: 1px;
+}
+.vp-nw-status.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-status-sub {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: 500;
+}
+
+/* ---------- Stufen eines Vorgangs ------------------------------------------------------------------------------- */
+.vp-nw-stufen {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-nw-stufen > li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 1px;
+  min-width: 0;
+  padding: 0 3px;
+  text-align: center;
+}
+.vp-nw-stufen > li::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--vp-c-border, #e2e8f0);
+}
+.vp-nw-stufen > li:first-child::before {
+  display: none;
+}
+.vp-nw-stufen > li.is-done::before,
+.vp-nw-stufen > li.is-an::before {
+  background: color-mix(in srgb, var(--vp-flow-batt, #16a34a) 55%, var(--vp-c-border, #e2e8f0));
+}
+.vp-nw-stufe-p {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  background: var(--vp-c-card, #fff);
+  border: 2px solid #cbd5e1;
+  color: #fff;
+}
+.vp-nw-stufen > li.is-done .vp-nw-stufe-p {
+  background: var(--vp-flow-batt, #16a34a);
+  border-color: var(--vp-flow-batt, #16a34a);
+}
+.vp-nw-stufen > li.is-an .vp-nw-stufe-p {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-action, #2c5282) 16%, transparent);
+}
+.vp-nw-stufen > li.is-an .vp-nw-stufe-p::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-action, #2c5282);
+}
+.vp-nw-stufen > li.is-aus .vp-nw-stufe-p {
+  border-style: dashed;
+}
+.vp-nw-stufen b {
+  margin-top: 4px;
+  font: 600 0.75rem/1.25 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+.vp-nw-stufen > li.is-offen b,
+.vp-nw-stufen > li.is-aus b {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: 500;
+}
+.vp-nw-stufen small {
+  font: 400 0.6875rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+.vp-nw-stufen > li.is-an small {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 600;
+}
+@media (min-width: 721px) {
+  .vp-nw-stufen {
+    max-width: 520px;
+  }
+}
+
+/* ---------- Karte -------------------------------------------------------------------------------------------- */
+.vp-nw-karte {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+@media (min-width: 721px) {
+  .vp-nw-karte {
+    padding: 16px 22px;
+  }
+}
+.vp-nw-kk {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-nw-kk h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  hyphens: manual;
+}
+.vp-nw-kk-zahl {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+
+.vp-nw-unterkopf {
+  margin: 2px 0 0;
+  font: 700 0.72rem/1.3 var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Zeilen ------------------------------------------------------------------------------------------- */
+.vp-nw-zeilen,
+.vp-nw-fzl {
+  display: grid;
+  min-width: 0;
+}
+.vp-nw-zl,
+.vp-nw-fz {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.vp-nw-zl {
+  align-items: center;
+  padding: 12px 0;
+}
+.vp-nw-fz {
+  align-items: flex-start;
+  padding: 11px 0;
+}
+.vp-nw-zeilen > :first-child,
+.vp-nw-fzl > :first-child {
+  border-top: 0;
+}
+button.vp-nw-zl,
+button.vp-nw-fz {
+  cursor: pointer;
+}
+.vp-nw-zl:focus-visible,
+.vp-nw-fz:focus-visible,
+.vp-nw-wg-k:focus-visible,
+/* „Original prüfen“ ist ein <label> um ein verstecktes Datei-Feld: der Fokus liegt am Feld (Review r1, P2-8). */
+.vp-nw-wg-k:has(input:focus-visible) {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-nw-zl-text {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.vp-nw-zl-titel {
+  font: 600 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.vp-nw-zl-unter {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-zl.is-warn .vp-nw-zl-titel {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zl.is-leise .vp-nw-zl-titel {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-chev {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-verb {
+  flex: 0 0 auto;
+  align-self: center;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
+  white-space: nowrap;
+}
+.vp-nw-fakt {
+  flex: 0 0 auto;
+  align-self: center;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-nw-fakt.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zst {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  white-space: nowrap;
+}
+.vp-nw-zst.is-leise {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: 500;
+}
+.vp-nw-zst.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-nr {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vp-navy, #1e3a5f);
+  color: #fff;
+  font: 700 11px/1 var(--vp-font-heading);
+}
+.vp-nw-zl > .vp-nw-zei {
+  margin: 0 1px;
+}
+
+/* Zeile mit Datumsblock: im Nachweisen-Kontext ist der Block 64 px breit (Ergänzungen Nachweisen). */
+.vp-nw-fz > .vp-fd {
+  width: 64px;
+}
+.vp-nw-fd-symbol {
+  color: var(--vp-action, #2c5282);
+}
+.vp-nw-fz-text {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  align-self: center;
+  min-width: 0;
+}
+.vp-nw-fz-titel {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+}
+.vp-nw-fz-titel.is-kurz {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vp-nw-fz-unter {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-fz > .vp-nw-avs {
+  align-self: center;
+}
+
+/* ---------- Personen als Kürzel ------------------------------------------------------------------------------- */
+.vp-nw-avs {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+}
+.vp-nw-avs-pi {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+  font: 700 0.6875rem var(--vp-font-heading);
+  box-shadow: 0 0 0 2px var(--vp-c-card, #fff);
+}
+.vp-nw-avs-pi + .vp-nw-avs-pi {
+  margin-left: 3px;
+}
+
+/* ---------- Folgen-Balken ------------------------------------------------------------------------------------- */
+.vp-nw-folgen {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.vp-nw-segbar {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr));
+  gap: 2px;
+}
+.vp-nw-segbar > i {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--vp-flow-base, #e3e9f1);
+}
+.vp-nw-segbar > i.is-done,
+.vp-nw-seglg i.is-done {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-nw-segbar > i.is-laeuft,
+.vp-nw-seglg i.is-laeuft {
+  background: var(--vp-action, #2c5282);
+}
+.vp-nw-segbar > i.is-ueber,
+.vp-nw-seglg i.is-ueber {
+  background: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-segbar > i.is-ohne {
+  background: var(--vp-c-card, #fff);
+  box-shadow: inset 0 0 0 1.5px #94a3b8;
+}
+.vp-nw-seglg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-seglg > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.vp-nw-seglg i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.vp-nw-seglg i.is-ohne {
+  box-shadow: inset 0 0 0 1.5px #94a3b8;
+}
+.vp-nw-seglg b {
+  font: 700 0.8125rem var(--vp-font-heading);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Weitergeben ---------------------------------------------------------------------------------------- */
+.vp-nw-wg-rahmen {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-nw-wg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vp-nw-wg-k {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 84px;
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-action, #2c5282);
+  font: 700 0.875rem var(--vp-c-font);
+  cursor: pointer;
+}
+.vp-nw-wg-k:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+@media (hover: hover) {
+  .vp-nw-wg-k:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--vp-action, #2c5282) 35%, var(--vp-c-border, #e2e8f0));
+  }
+  button.vp-nw-zl:hover .vp-nw-zl-titel,
+  button.vp-nw-fz:hover .vp-nw-fz-titel,
+  a.vp-nw-zl:hover .vp-nw-zl-titel,
+  a.vp-nw-fz:hover .vp-nw-fz-titel {
+    color: var(--vp-action, #2c5282);
+  }
+}
+.vp-nw-wg-satz {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Seiten-Rahmen der Nachweisen-Seiten (Reiter und Seiten eines Objekts) --------------------------------- */
+.vp-nw-seite {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-abschnitt {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+/* Die Status-Zeile im Kopf: der Kopf gibt den Abstand schon vor. */
+.vp-nw-kopf-status > .vp-nw-status {
+  margin-top: 0;
+}
+/* Langer Wortlaut eines Kunden als Titel (Feststellung): kleiner, wie `.pkopf.lang`. */
+.vp-nw-lang .vp-nw-titel h1 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.vp-nw-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+/* Am Rechner zwei Spalten (Konzept, Desktop-Mocks): links der Inhalt, rechts Stufen, Knöpfe und der Kasten „Stand“. */
+.vp-nw-zwei {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.vp-nw-spalte-seite,
+.vp-nw-spalte-haupt {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+@media (min-width: 1080px) {
+  .vp-nw-zwei {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+    align-items: start;
+  }
+  .vp-nw-zwei > .vp-nw-spalte-seite {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .vp-nw-zwei > .vp-nw-spalte-haupt {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}
+
+/* ---------- Im Blatt ------------------------------------------------------------------------------------------ */
+.vp-nw-zitat {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 0 var(--vp-radius-sm, 10px) var(--vp-radius-sm, 10px) 0;
+  background: var(--vp-c-bg, #f8fafc);
+  font: 400 0.9375rem/1.5 var(--vp-font-doc, 'Inter', var(--vp-c-font));
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+}
+.vp-nw-blatt-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+.vp-nw-verlauf {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-nw-verlauf > li {
+  display: grid;
+  gap: 1px;
+  padding: 9px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-verlauf > li:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.vp-nw-verlauf > li > b {
+  font: 600 0.75rem var(--vp-font-heading);
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+/* Das Verb im Kopf einer Karte („Festhalten“): blaues Wort, Tippfläche 44 px. */
+.vp-nw-kk-verb {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  cursor: pointer;
+}
+.vp-nw-kk-verb::before {
+  content: '';
+  position: absolute;
+  inset: -14px -8px;
+}
+.vp-nw-kk-verb:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+
+/* ---------- Textfeld im Blatt (`.feld`) ---------------------------------------------------------------------- */
+.vp-nw-feld {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.vp-nw-feld > label {
+  font: 600 0.8125rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-feld-in {
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: 500 0.9375rem/1.45 var(--vp-c-font);
+}
+textarea.vp-nw-feld-in {
+  min-height: 74px;
+  padding: 11px 14px;
+  resize: vertical;
+}
+.vp-nw-feld-in::placeholder {
+  color: var(--vp-text-gray, #66717c);
+  font-weight: 400;
+}
+.vp-nw-feld-in:focus-visible {
+  outline: none;
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(149, 185, 255, 0.15);
+}
+.vp-nw-feld-in[aria-invalid='true'] {
+  border-color: var(--vp-c-warn-fg, #9a3412);
+}
+/* Steht fest (Titel eines angelegten Dokuments): lesbar wie ein Wert, nicht wie ein Feld zum Tippen. */
+.vp-nw-feld-in:disabled {
+  background: var(--vp-c-bg);
+  color: var(--vp-c-fg, #1e293b);
+  -webkit-text-fill-color: currentColor;
+  opacity: 1;
+  cursor: default;
+}
+.vp-nw-feld-fehler {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+/* Leiser Satz in einem Blatt („spätestens 22.01.2030“). */
+.vp-nw-leise {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Die Fragen eines Blatt-Schritts untereinander. */
+.vp-nw-schritt-inhalt {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+/* Knöpfe am Fuß eines Blatts: am Telefon untereinander, voll breit (`.sheet .knoepfe`); am Rechner in einer Reihe rechts,
+   „Abbrechen“ vor dem Hauptknopf (`.ddlg .knoepfe.quer`). */
+.vp-nw-blatt-fuss {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+.vp-nw-blatt-fuss > .vp-btn {
+  width: 100%;
+  min-height: 48px;
+}
+@media (min-width: 721px) {
+  .vp-nw-blatt-fuss {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  .vp-nw-blatt-fuss > .vp-btn {
+    width: auto;
+    min-height: 44px;
+  }
+}

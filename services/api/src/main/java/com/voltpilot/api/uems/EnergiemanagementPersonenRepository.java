@@ -127,6 +127,11 @@ public class EnergiemanagementPersonenRepository {
                 + "AND id IS DISTINCT FROM ?", UUID.class, sub, ausser).isEmpty();
     }
 
+    /** Ein Standort, den die Anfrage sieht (Mandanten-RLS und Standort-Zaun). */
+    public boolean standortSichtbar(UUID id) {
+        return !jdbc.queryForList("SELECT id FROM standort WHERE id = ?", UUID.class, id).isEmpty();
+    }
+
     /** Ein Konto des Kundenbereichs, das es gibt und das nicht entfernt ist (Muster Energieeinsatz). */
     public boolean kontoVorhanden(String sub) {
         return !jdbc.queryForList("SELECT sub FROM benutzer WHERE sub = ? AND konto = 'benutzer' "

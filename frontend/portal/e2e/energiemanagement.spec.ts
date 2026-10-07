@@ -139,77 +139,61 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(m0, 'Überblick leer');
       await ablegen(page, `a-ueberblick-leer-${breite}`);
 
+      // Konzept Nachweisen n1, Runde 2 (§6.5, §6.10): Festhalten in drei Schritten - Art, wo es geführt wird, Text;
+      // Prüfen mit „Gleich freigeben“. Bei der Energiepolitik entscheidet die Leitung - ohne Leitung sagt das Blatt, warum,
+      // und bietet „Person anlegen“ an (PA3). Das unterschriebene Original gehört zur Fassung (Entscheid 10).
       await page.getByTestId('energiemanagement-reiter-dokumente').click();
-      await expect(page.getByTestId('dokumente-leer')).toHaveText(LEER);
+      await expect(page.getByTestId('dokumente-status')).toHaveText('Noch kein Dokument festgehalten.');
       expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/energiemanagement/dokumente');
-      await page.getByTestId('dokument-anlegen').click();
-      const anlegen = page.getByTestId('dokument-anlegen-dialog');
-      await waehle(page, modal(page).getByRole('combobox', { name: 'Art', exact: true }), /^Energiepolitik/);
-      await expect(anlegen.getByTestId('dokument-art-satz')).toContainText('Die Leitung entscheidet.');
-      await expect(anlegen.getByLabel('Titel')).toHaveValue('Energiepolitik');
-      const original = anlegen.locator('fieldset').filter({ hasText: 'Original bei Ihnen' });
-      await original.getByLabel('Ablage bei Ihnen').fill('QM-Laufwerk, Ordner Energiemanagement/Politik');
-      await original.getByLabel('Bezeichnung').fill('Energiepolitik Fassung 1, unterschrieben');
-      await original.getByLabel('Kennung bei Ihnen').fill('EP-2026');
-      const inhalt = `UNTERSCHRIEBENE-ENERGIEPOLITIK-${breite}-DIESER-INHALT-VERLAESST-DEN-RECHNER-NIE`;
-      await original.locator('input[type="file"]').setInputFiles({ name: 'energiepolitik-2026.pdf', mimeType: 'application/pdf', buffer: Buffer.from(inhalt) });
-      await expect(original.getByTestId(/-pruefsumme$/)).toContainText('aus „energiepolitik-2026.pdf“.');
-      await expect(original.getByTestId(/-pruefsumme$/)).toContainText(PRUEFSUMME_SATZ);
-      await expect(anlegen.getByText(VERANTWORTUNG)).toBeVisible();
-      ohneQuerlauf(await messe(page), 'Anlegen');
-      await dialogBild(page, `b-anlegen-${breite}`);
-      await page.getByTestId('dokument-anlegen-senden').click();
-
-      const seite = page.getByTestId('dokument-seite');
-      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Energiepolitik D-0001');
-      await expect(page.getByTestId('dokument-kopf')).toHaveText('Entwurf — noch keine Fassung freigegeben.');
-      await page.getByTestId('dokument-fassung').click();
-      const fassung = page.getByTestId('fassung-dialog');
-      await expect(fassung.getByTestId('fassung-form-wortlaut')).toBeChecked();
-      await fassung.getByLabel('Wortlaut', { exact: true }).fill(POLITIK);
-      ohneQuerlauf(await messe(page), 'Fassung');
-      await dialogBild(page, `c-fassung-${breite}`);
-      await page.getByTestId('fassung-senden').click();
-      await expect(page.getByTestId('dokument-fassung-inhalt')).toContainText('Fassung 1 · Entwurf');
-      await expect(page.getByTestId('dokument-fassung-inhalt')).toContainText(POLITIK);
-
-      // Freigabe: bei der Energiepolitik entscheidet die Leitung — ohne Leitung sagt der Dialog, warum er sperrt (PA3).
-      await page.getByTestId('dokument-freigeben').click();
-      const freigabe = page.getByTestId('freigabe-dialog');
-      await expect(freigabe.getByTestId('freigabe-ohne-leitung')).toHaveText(OHNE_LEITUNG);
-      await expect(page.getByTestId('freigabe-senden')).toBeDisabled();
-      ohneQuerlauf(await messe(page), 'Freigabe ohne Leitung');
-      await dialogBild(page, `d-freigabe-ohne-leitung-${breite}`);
-      await freigabe.getByTestId('freigabe-person-anlegen').click();
+      await page.getByTestId('dokumente-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Dokument festhalten' }).click();
+      const blatt = page.getByTestId('festhalten-blatt');
+      await waehle(page, blatt.getByRole('combobox', { name: 'Was?' }), /^Energiepolitik/);
+      await expect(page.getByTestId('festhalten-titel')).toHaveValue('Energiepolitik');
+      await expect(page.getByTestId('festhalten-wo-wortlaut').getByRole('radio')).toBeChecked();
+      ohneQuerlauf(await messe(page), 'Festhalten: was und wo');
+      await dialogBild(page, `b-festhalten-${breite}`);
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-text').fill(POLITIK);
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(blatt.getByTestId('freigabe-ohne-leitung')).toHaveText(OHNE_LEITUNG);
+      ohneQuerlauf(await messe(page), 'Festhalten ohne Leitung');
+      await dialogBild(page, `d-festhalten-ohne-leitung-${breite}`);
+      await blatt.getByTestId('freigabe-person-anlegen').click();
       const personDialog = page.getByTestId('person-dialog');
       await personDialog.getByLabel('Name').fill('Robert Falk');
       await personDialog.getByLabel('Funktion').fill('Geschäftsführer');
-      await personDialog.getByLabel('Kürzel (wahlfrei)').fill('RF');
-      await expect(personDialog.getByTestId('person-leitung')).toBeChecked();
-      await personDialog.getByLabel('Begründung').fill('Geschäftsführer der Kunststoffwerk Ahrenberg GmbH.');
+      await personDialog.getByLabel('Kürzel · wahlfrei').fill('RF');
+      await expect(personDialog.getByTestId('person-leitung-ja')).toHaveCount(0);
+      await personDialog.getByLabel('Warum?').fill('Geschäftsführer der Kunststoffwerk Ahrenberg GmbH.');
       ohneQuerlauf(await messe(page), 'Person anlegen');
-      await dialogBild(page, `e-person-leitung-${breite}`);
       await page.getByTestId('person-senden').click();
       await expect(personDialog).toBeHidden();
-      await expect(modal(page).getByRole('combobox', { name: 'entschieden von' })).toContainText('Robert Falk');
-      await freigabe.getByLabel('Begründung').fill('Erste Fassung zum Start des Energiemanagements.');
-      ohneQuerlauf(await messe(page), 'Freigabe');
-      await dialogBild(page, `f-freigabe-${breite}`);
-      await page.getByTestId('freigabe-senden').click();
+      // Die neue Person ist gewählt und steht als Prüfzeile „Entschieden“ (Review r1, P2-1: das Absenden von „Person
+      // anlegen“ erreicht das Blatt darunter nicht mehr).
+      await expect(blatt.getByTestId('festhalten-pruefen')).toContainText('Robert Falk · 15.12.2026');
+      await page.getByTestId('festhalten-original').click();
+      await page.getByTestId(/-original-ablage$/).fill('QM-Laufwerk, Ordner Energiemanagement/Politik');
+      await page.getByTestId(/-original-kennung$/).fill('EP-2026');
+      const inhalt = `UNTERSCHRIEBENE-ENERGIEPOLITIK-${breite}-DIESER-INHALT-VERLAESST-DEN-RECHNER-NIE`;
+      await blatt.locator('input[type="file"]').setInputFiles({ name: 'energiepolitik-2026.pdf', mimeType: 'application/pdf', buffer: Buffer.from(inhalt) });
+      await expect(blatt.getByTestId('datei-pruefen')).toContainText('Prüfsumme festgehalten');
+      ohneQuerlauf(await messe(page), 'Festhalten: prüfen');
+      await dialogBild(page, `f-festhalten-pruefen-${breite}`);
+      await page.getByTestId('festhalten-weiter').click();
 
-      await expect(page.getByTestId('dokument-kopf')).toHaveText(
-        'Energiepolitik D-0001 · Fassung 1 · freigegeben am 15.12.2026 · entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach.',
-      );
-      await expect(page.getByTestId('dokument-ort')).toHaveText('Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik.');
-      await expect(page.getByTestId('dokument-fassung-1')).toContainText('Robert Falk (Geschäftsführer)');
-      await expect(page.getByTestId('dokument-fassung-1')).toContainText(/sha256|[0-9a-f]{4}…[0-9a-f]{4}/);
-      await expect(page.getByTestId('dokument-ueberpruefung')).toHaveText('Überprüfung fällig am 15.12.2027.');
+      const seite = page.getByTestId('dokument-seite');
+      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('EnergiepolitikD-0001');
+      await expect(page.getByTestId('dokument-status')).toHaveText('gilt· Robert Falk');
+      await expect(page.getByTestId('dokument-stufen').getByRole('listitem')).toHaveText(['Entwurf15.12.2026', 'Freigegeben15.12.2026', 'Bekannt', 'Prüfenbis 15.12.2027']);
+      await expect(page.getByTestId('zeile-original')).toContainText('QM-Laufwerk');
       await grenzHinweisZeigt(seite, VERANTWORTUNG);
       ohneQuerlauf(await messe(page), 'Dokument-Seite');
       await ablegen(page, `g-dokument-${breite}`, true);
 
-      await page.getByTestId('dokument-zurueck').click();
-      await expect(page.getByTestId('dokument-zeile-D-0001')).toContainText('gültig · Fassung 1');
+      await seite.getByRole('button', { name: 'Alle Dokumente' }).click();
+      await expect(page.getByTestId('dokument-zeile-D-0001')).toContainText('Energiepolitik');
+      await expect(page.getByTestId('dokument-zeile-D-0001').getByRole('img')).toHaveAttribute('aria-label', 'bis 15.12.2027');
       // Im Überblick sind Energiepolitik und Aufgaben (die Leitung) festgehalten.
       await page.getByTestId('energiemanagement-reiter-ueberblick').click();
       await expect(page.getByTestId('zaehler-offen')).toHaveText(`${offenVorher - 2} Teile offen`);
@@ -235,27 +219,25 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(await messe(page), 'Eintrag');
       await ablegen(page, `h2-eintrag-${breite}`);
       await eintrag.getByRole('button', { name: 'Dokument öffnen' }).click();
-      await expect(page.getByTestId('dokument-kopf')).toContainText('Energiepolitik D-0001 · Fassung 1');
+      await expect(page.getByTestId('dokument-kopf')).toContainText('Fassung 1');
 
       // Netzwerk-Probe: der Inhalt stand in keiner Anfrage und in keinem Körper; gesendet wurde nur seine Prüfsumme.
       const koerper = await gesendet(page);
       expect(anfragen.filter((a) => a.includes(inhalt))).toEqual([]);
       expect(JSON.stringify(koerper)).not.toContain(inhalt);
-      const angelegt = koerper.find((k) => k.route === 'POST /api/v1/energiemanagement/dokumente')!.koerper as { beleg: Record<string, unknown> };
-      expect(angelegt.beleg).toEqual({
-        bezeichnung: 'Energiepolitik Fassung 1, unterschrieben', ablage: 'QM-Laufwerk, Ordner Energiemanagement/Politik', kennung: 'EP-2026', adresse: null,
-        sha256: sha256(inhalt),
-      });
       expect(koerper.map((k) => k.route.replace(/[0-9a-f-]{36}/g, '{id}'))).toEqual([
-        'POST /api/v1/energiemanagement/dokumente',
-        'POST /api/v1/energiemanagement/dokumente/{id}/fassungen',
         'POST /api/v1/energiemanagement/personen',
         'POST /api/v1/energiemanagement/aufgaben',
+        'POST /api/v1/energiemanagement/dokumente',
+        'POST /api/v1/energiemanagement/dokumente/{id}/fassungen',
         'POST /api/v1/energiemanagement/dokumente/{id}/fassungen/1/freigeben',
       ]);
       const freigegeben = koerper[4].koerper as Record<string, unknown>;
-      expect(freigegeben).toEqual({ entschieden_von: expect.any(String), entschieden_am: '2026-12-15', begruendung: 'Erste Fassung zum Start des Energiemanagements.' });
-      expect((koerper[3].koerper as { aufgabe: string }).aufgabe).toBe('unternehmensleitung');
+      expect(freigegeben).toEqual({
+        entschieden_von: expect.any(String), entschieden_am: null, begruendung: 'Erste Fassung festgehalten.',
+        original: { ablage: 'QM-Laufwerk, Ordner Energiemanagement/Politik', bezeichnung: 'energiepolitik-2026.pdf', kennung: 'EP-2026', adresse: null, sha256: sha256(inhalt) },
+      });
+      expect((koerper[1].koerper as { aufgabe: string }).aufgabe).toBe('unternehmensleitung');
     });
 
     test('Verweis-Fassung (R7-Muster): Ablage, Kennung, Fassungsangabe und die Prüfsumme — die Datei verlässt den Rechner nicht', async ({ page }) => {
@@ -264,32 +246,27 @@ for (const breite of [375, 1440]) {
         if (r.method() !== 'GET') anfragen.push(`${r.method()} ${r.url()} ${r.postData() ?? ''}`);
       });
       await oeffne(page, 'lage=start&seite=dokumente', breite, AM_12_11_2028);
-      await page.getByTestId('dokument-anlegen').click();
-      await waehle(page, modal(page).getByRole('combobox', { name: 'Art', exact: true }), /^Betrieb und Instandhaltung/);
-      await page.getByTestId('dokument-anlegen-dialog').getByLabel('Titel').fill('Kriterien für Betrieb und Instandhaltung — Spritzguss');
-      await page.getByTestId('dokument-anlegen-senden').click();
-      await expect(page.getByTestId('dokument-seite').getByRole('heading', { level: 1 })).toHaveText('Betrieb und Instandhaltung D-0001');
-      await page.getByTestId('dokument-fassung').click();
-      const fassung = page.getByTestId('fassung-dialog');
-      await fassung.getByTestId('fassung-form-verweis').check();
-      const verweis = fassung.locator('fieldset').filter({ hasText: 'Wo das Original liegt' });
-      await verweis.getByLabel('Ablage bei Ihnen').fill('Instandhaltungssystem, Arbeitspläne');
-      await verweis.getByLabel('Bezeichnung').fill('Arbeitsplan Spritzguss');
-      await verweis.getByLabel('Kennung bei Ihnen').fill('IH-SG-01');
-      await verweis.getByLabel('Ihre Fassungsangabe').fill('Rev. 4');
+      await page.getByTestId('dokumente-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Dokument festhalten' }).click();
+      const blatt = page.getByTestId('festhalten-blatt');
+      await waehle(page, blatt.getByRole('combobox', { name: 'Was?' }), /^Betrieb und Instandhaltung/);
+      await page.getByTestId('festhalten-titel').fill('Kriterien für Betrieb und Instandhaltung - Spritzguss');
+      await expect(page.getByTestId('festhalten-wo-verweis').getByRole('radio')).toBeChecked();
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-ablage').fill('Instandhaltungssystem, Arbeitspläne');
+      await page.getByTestId('festhalten-kennung').fill('IH-SG-01');
       const inhalt = `ARBEITSPLAN-IH-SG-01-REV-4-${breite}-INHALT-BLEIBT-AUF-DEM-GERAET`;
-      await verweis.locator('input[type="file"]').setInputFiles({ name: 'IH-SG-01_Rev4.pdf', mimeType: 'application/pdf', buffer: Buffer.from(inhalt) });
-      await expect(verweis.getByTestId(/-pruefsumme$/)).toContainText('aus „IH-SG-01_Rev4.pdf“.');
-      await expect(fassung.getByText('VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.')).toBeVisible();
-      ohneQuerlauf(await messe(page), 'Verweis-Dialog');
+      await blatt.locator('input[type="file"]').setInputFiles({ name: 'IH-SG-01_Rev4.pdf', mimeType: 'application/pdf', buffer: Buffer.from(inhalt) });
+      await expect(blatt.getByTestId('datei-pruefen')).toContainText('Prüfsumme festgehalten');
+      ohneQuerlauf(await messe(page), 'Verweis-Blatt');
       await dialogBild(page, `i-verweis-${breite}`);
-      await page.getByTestId('fassung-senden').click();
-      await page.getByTestId('dokument-freigeben').click();
-      await waehle(page, modal(page).getByRole('combobox', { name: 'entschieden von' }), /^Ines Kaltenbach/);
-      await page.getByTestId('freigabe-dialog').getByLabel('Begründung').fill('Arbeitsplan nach der Überarbeitung übernommen.');
-      await page.getByTestId('freigabe-senden').click();
-      await expect(page.getByTestId('dokument-ort')).toHaveText('Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne (IH-SG-01, Rev. 4).');
-      await expect(page.getByTestId('dokument-kopf')).toContainText('entschieden von Ines Kaltenbach (Energiemanagement) · eingetragen von Ines Kaltenbach.');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(page.getByTestId('festhalten-pruefen')).toContainText('Instandhaltungssystem, Arbeitspläne · IH-SG-01');
+      await page.getByTestId('festhalten-weiter').click();
+      const original = page.getByTestId('dokument-original');
+      await expect(original).toContainText('Instandhaltungssystem, Arbeitspläne');
+      await expect(original).toContainText('IH-SG-01');
+      await expect(page.getByTestId('dokument-status')).toHaveText('gilt· Ines Kaltenbach');
       ohneQuerlauf(await messe(page), 'Verweis-Seite');
       await ablegen(page, `j-verweis-seite-${breite}`, true);
 
@@ -300,7 +277,44 @@ for (const breite of [375, 1440]) {
       expect(entwurf.form).toBe('verweis');
       expect(entwurf.wortlaut).toBeUndefined();
       expect(Object.keys(entwurf.verweis).sort()).toEqual(VERWEIS_FELDER);
-      expect(entwurf.verweis).toMatchObject({ ablage: 'Instandhaltungssystem, Arbeitspläne', kennung: 'IH-SG-01', fassungsangabe: 'Rev. 4', sha256: sha256(inhalt) });
+      expect(entwurf.verweis).toMatchObject({ ablage: 'Instandhaltungssystem, Arbeitspläne', kennung: 'IH-SG-01', bezeichnung: 'IH-SG-01_Rev4.pdf', sha256: sha256(inhalt) });
+    });
+
+    test('Review r2, N-2.1: scheitert die Freigabe und ändert die Person danach das Original, gilt das geänderte', async ({ page }) => {
+      await oeffne(page, 'lage=start&seite=dokumente&freigabe=scheitert', breite, AM_12_11_2028);
+      await page.getByTestId('dokumente-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Dokument festhalten' }).click();
+      const blatt = page.getByTestId('festhalten-blatt');
+      await waehle(page, blatt.getByRole('combobox', { name: 'Was?' }), /^Betrieb und Instandhaltung/);
+      await page.getByTestId('festhalten-titel').fill('Kriterien für Betrieb und Instandhaltung - Spritzguss');
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-ablage').fill('Altes Laufwerk, Arbeitspläne');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(page.getByTestId('festhalten-pruefen')).toContainText('Ines Kaltenbach');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(blatt.getByTestId('blatt-ablehnung')).toBeVisible();
+
+      // Die Person korrigiert, wo das Original liegt, und hält erneut fest.
+      await page.getByTestId('festhalten-pruefen').getByRole('button', { name: 'Original ändern' }).click();
+      await page.getByTestId('festhalten-ablage').fill('Instandhaltungssystem, Arbeitspläne');
+      await page.getByTestId('festhalten-weiter').click();
+      await expect(page.getByTestId('festhalten-pruefen')).toContainText('Instandhaltungssystem, Arbeitspläne');
+      // „Zurück“ bis Schritt 1: das Dokument ist angelegt, Art und Titel stehen fest.
+      await page.getByRole('button', { name: 'Zurück', exact: true }).click();
+      await page.getByRole('button', { name: 'Zurück', exact: true }).click();
+      await expect(page.getByTestId('festhalten-angelegt')).toHaveText('Angelegt: Art, Titel und Ort stehen fest.');
+      await expect(page.getByTestId('festhalten-titel')).toBeDisabled();
+      ohneQuerlauf(await messe(page), 'Festhalten: angelegt');
+      await dialogBild(page, `i2-festhalten-angelegt-${breite}`);
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-weiter').click();
+      await page.getByTestId('festhalten-weiter').click();
+
+      const original = page.getByTestId('dokument-original');
+      await expect(original).toContainText('Instandhaltungssystem, Arbeitspläne');
+      await expect(original).not.toContainText('Altes Laufwerk');
+      const routen = (await gesendet(page)).map((k) => k.route.split('/').pop());
+      expect(routen).toEqual(['dokumente', 'fassungen', 'fassungen', 'freigeben']);
     });
 
     test('Stand 12.02.2029 (R1–R3): Überblick, Verzeichnis nach Monaten, „Meine“, CSV, Überprüfung, Vergleich, Zuschnitt-Hilfe', async ({ page }) => {
@@ -338,25 +352,24 @@ for (const breite of [375, 1440]) {
       expect(csv).toContain('D-0003');
 
       await oeffne(page, 'lage=ahrenberg&dok=1', breite, AM_12_02_2029);
-      await expect(page.getByTestId('dokument-kopf')).toHaveText(
-        'Energiepolitik D-0001 · Fassung 1 · freigegeben am 15.12.2026 · entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach.',
-      );
-      await expect(page.getByTestId('dokument-ueberpruefung')).toHaveText('Überprüfung fällig seit 64 Tagen.');
-      await expect(page.getByTestId('dokument-seite')).toContainText(
-        'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang — eingetragen von Ines Kaltenbach.',
-      );
-      await expect(page.getByTestId('dokument-seite')).toContainText(
-        'Geprüft, bleibt — entschieden von Robert Falk am 10.12.2027: ‚Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.‘',
-      );
-      await expect(page.getByTestId('dokument-original')).toContainText('Original bei Ihnen: Energiepolitik Fassung 1, unterschrieben · QM-Laufwerk, Ordner Energiemanagement/Politik · EP-2026 · Prüfsumme 3f1f…3b9b');
+      // Konzept Nachweisen n1, Runde 2 (§6.5): Status-Zeile statt Kopf-Satz; die Prüfung ist seit dem 10.12.2028 fällig.
+      await expect(page.getByTestId('dokument-status')).toHaveText('Prüfung seit 10.12.2028· gilt');
+      await expect(page.getByTestId('dokument-stufen').getByRole('listitem')).toHaveText(['Entwurf15.12.2026', 'Freigegeben15.12.2026', 'Bekannt18.12.2026', 'Prüfenseit 10.12.2028']);
+      await expect(page.getByTestId('zeile-original')).toContainText('QM-Laufwerk');
+      await page.getByTestId('zeile-fassungen').click();
+      await expect(page.getByTestId('fassung-1')).toContainText('Fassung 1 · gilt');
+      await page.keyboard.press('Escape');
+      await page.getByTestId('zeile-original').click();
+      await expect(page.getByTestId('original-zeilen')).toContainText('EP-2026');
+      await page.keyboard.press('Escape');
       ohneQuerlauf(await messe(page), 'D-0001');
       await ablegen(page, `l-energiepolitik-${breite}`, true);
 
       await oeffne(page, 'lage=ahrenberg&dok=2', breite, AM_12_02_2029);
-      await expect(page.getByTestId('dokument-anwendungsbereich')).toContainText('Werk Ahrenberg, Werk Lindach');
-      await expect(page.getByTestId('vergleich-satz')).toHaveText(
-        'Der Betrachtungsumfang der energetischen Bewertung (Fassung 1, ab 04.11.2026) umfasst dieselben Standorte und Energieträger.',
-      );
+      await page.getByTestId('zeile-geltung').click();
+      await expect(page.getByTestId('geltung-zeilen')).toContainText('Werk Ahrenberg, Werk Lindach');
+      await expect(page.getByTestId('geltung-zeilen')).toContainText('deckungsgleich');
+      await page.keyboard.press('Escape');
       ohneQuerlauf(await messe(page), 'D-0002');
       await ablegen(page, `m-anwendungsbereich-${breite}`, true);
 

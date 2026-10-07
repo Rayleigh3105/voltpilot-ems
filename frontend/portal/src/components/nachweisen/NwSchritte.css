@@ -57,6 +57,12 @@
   font: 600 0.8125rem/1.35 var(--vp-c-font);
   color: var(--vp-c-fg);
 }
+/* Im Blatt fragt jedes Feld gleich: die Beschriftung von VpPicker und VpDatePicker wie „An wen?“ und das Textfeld
+   (vorher 14,4 statt 13 px - „Standorte“ stand größer als „Ausschlüsse“). */
+.vp-nw-schritt-inhalt .vp-picker-label {
+  font: 600 0.8125rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
 
 .vp-nw-fehler {
   margin: 0;
@@ -185,6 +191,12 @@
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
 }
+.vp-nw-chip.aus {
+  cursor: default;
+}
+.vp-nw-chip.aus:not(.an) {
+  background: var(--vp-c-bg);
+}
 
 /* ---------- Hinweis-Zeile ----------------------------------------------------- */
 .vp-nw-hz {
@@ -230,6 +242,10 @@
   border-top: 0;
   padding-top: 2px;
 }
+/* Unten wie oben: die Liste endet an ihrem letzten Wert, nicht an einer leeren Zeile. */
+.vp-nw-pz:last-child {
+  padding-bottom: 2px;
+}
 .vp-nw-pz dt {
   grid-column: 1;
   font: 700 0.6875rem var(--vp-c-font);
@@ -245,9 +261,13 @@
   color: var(--vp-c-fg);
   overflow-wrap: anywhere;
 }
-.vp-nw-aendern {
+/* „Ändern“ rechts in der Prüfzeile; außerhalb einer Prüfzeile (ein leises blaues Wort im Blatt) ohne Platzierung -
+   sonst legte `grid-column: 2` im umgebenden Formular eine zweite Spalte an. */
+.vp-nw-pz > .vp-nw-aendern {
   grid-column: 2;
   grid-row: 1 / span 2;
+}
+.vp-nw-aendern {
   min-height: 44px;
   padding: 0 2px;
   border: 0;
