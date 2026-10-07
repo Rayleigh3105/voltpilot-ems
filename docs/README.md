@@ -8,7 +8,7 @@ Starten Sie mit der Frage, die Sie beantworten möchten. Jede Erklärung hat ein
 | Entwicklung | [Lokal starten und testen](development.md), [API und Datenbank](api.md) |
 | Cloud-Betrieb | [Deployment](deploy.md), [Kubernetes-Betriebsvertrag](k8s-readiness.md) |
 | Geräte verbinden | [Enrollment](connect-a-device.md), [MQTT-Sicherheit](security-mqtt.md) |
-| Box betreiben | [Edge-App](../edge-app/README.md), [Installation](../edge-app/DEPLOY.md), [Laufzeitregeln](edge-runtime.md) |
+| Box betreiben | [Edge-App](../edge-app/README.md), [Installation](../edge-app/DEPLOY.md), [Laufzeitregeln](edge-runtime.md), [Fernwartung](fernwartung.md) |
 | Updates | [Edge-Updates bedienen](ota-autonomie.md), [Signaturkette und Schlüssel](ota-signing.md) |
 | Energie planen | [Optimierung](../services/optimization/README.md), [Prognose und Modellwahl](forecasting.md) |
 | Verbraucher | [Funktionsmodell](verbrauchssteuerung.md), [Betrieb und Fehlerdiagnose](verbrauchssteuerung-betrieb.md) |

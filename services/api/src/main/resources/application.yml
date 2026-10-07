@@ -488,6 +488,19 @@ voltpilot:
       password: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_PASSWORD:}
       timeout: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_TIMEOUT:PT5S}
       debounce: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_DEBOUNCE:PT0.3S}
+  # Fernwartung (Wartungstunnel, Entscheid E5): das Portal fuehrt den Soll-Stand,
+  # der Tunnel-Dienst auf der Wartungs-VM holt ihn ab (docs/fernwartung.md).
+  # Die beiden Netze muessen mit VP_TUNNEL_BOX_NETZ / VP_TUNNEL_TECHNIKER_NETZ
+  # des Dienstes uebereinstimmen. Der Servername ist noch offen; der
+  # Server-Schluessel bleibt leer, bis die VM steht (das Portal zeigt dann
+  # "Server noch nicht eingerichtet").
+  fernwartung:
+    box-netz: ${VP_FERNWARTUNG_BOX_NETZ:10.10.16.0/20}
+    techniker-netz: ${VP_FERNWARTUNG_TECHNIKER_NETZ:10.10.32.0/24}
+    max-fenster-dauer: ${VP_FERNWARTUNG_MAX_FENSTER_DAUER:PT24H}
+    server-endpunkt: ${VP_FERNWARTUNG_SERVER_ENDPUNKT:wartung.voltpilot.de}
+    server-port: ${VP_FERNWARTUNG_SERVER_PORT:51820}
+    server-public-key: ${VP_FERNWARTUNG_SERVER_PUBLIC_KEY:}
   # Keycloak Admin REST API access for provisioning customer users. The API
   # authenticates as the voltpilot-api service account (client_credentials) that
   # holds the realm-management roles. base-url is the compose-internal Keycloak.

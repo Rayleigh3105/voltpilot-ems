@@ -12,6 +12,7 @@ Keycloak ersetzt `${VAR}` / `${VAR:default}` aus der Containerumgebung. `${env.V
 | `VP_API_CLIENT_SECRET` | Vertraulicher API-Client |
 | `VP_PORTAL_ADMIN_PASSWORD` | Initialer Portal-Admin |
 | `VP_RELEASE_PUBLISHER_SECRET` | Optionaler OTA-Publisher |
+| `VP_TUNNEL_DIENST_SECRET` | Optionaler Tunnel-Dienst der Fernwartung |
 
 Die ersten Secret-Platzhalter haben keinen eingebauten Standardwert. Fehlende Werte außerhalb der Compose-Prüfungen können als Literal stehen bleiben; das ist kein gültiges Secret-Setup.
 
@@ -32,5 +33,7 @@ Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen 
 ## OTA und Demodaten
 
 Der Client `voltpilot-release-publisher` wird deaktiviert importiert. Sein Servicekonto besitzt nur `edge-release-publisher` für die dafür freigegebenen Release-/Trust-Set-Routen, keine Geräte-Rollout-Rechte. Vor Aktivierung ein echtes Secret setzen; den Platzhalter `change-me` nicht verwenden. [Signierung](../../../docs/ota-signing.md)
+
+Der Client `voltpilot-tunnel-dienst` wird ebenfalls deaktiviert importiert. Sein Servicekonto besitzt nur `tunnel-dienst` und liest damit ausschließlich den Soll-Stand der Fernwartung (`GET /api/v1/fernwartung/soll`). Auf einem bestehenden Realm Rolle, Client und Servicekonto-Rolle von Hand anlegen. [Fernwartung](../../../docs/fernwartung.md)
 
 Der Import enthält initiale Admin- und Demo-Benutzer. Für Kundenbetrieb Demozugänge entfernen und das API-Profil leer lassen; `local` aktiviert zusätzliche Demo-Seeds. [API und Mandanten](../../../docs/api.md)
