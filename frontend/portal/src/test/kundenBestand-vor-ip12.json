@@ -1459,9 +1459,9 @@
     {
       "datei": "components/RowMenu.tsx",
       "vorher": "e672f844877af663d97834540bf10b94e00b73d57e2c8af5414a3e70f06a19cd",
-      "nachher": "f7803067c20adb87657ab06f7af4cf13b1a258cea5031d2438e338f2611b6680",
+      "nachher": "23c062af4d6c88cc76adac51534a47e0edc76049b8b8254705ed278435b60866",
       "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
-      "grund": "Konzept Messen m1 §6.2 „Aktionen“: ein Menüeintrag darf eine leise zweite Zeile tragen („Stand an einem Tag ansehen · Nur lesen, z. B. für eine Prüfung“). Ohne Hinweis rendert er wie bisher; Handler und Rolle unverändert."
+      "grund": "Konzept Messen m1 §6.2 „Aktionen“: ein Menüeintrag darf eine leise zweite Zeile tragen („Stand an einem Tag ansehen · Nur lesen, z. B. für eine Prüfung“). Ohne Hinweis rendert er wie bisher; Rolle unverändert. Der Handler wählt über `waehle(it)`: er schließt das Menü wie bisher, gibt den Fokus an den Auslöser ⋯ zurück und ruft dann denselben `it.onClick()` (Review r4 S23: ein Dialog aus dem Menü kehrt beim Schließen auf den Auslöser zurück statt auf `body`)."
     },
     {
       "datei": "components/MessstelleDialog.tsx",
@@ -1490,6 +1490,13 @@
       "nachher": "c7a91d16173eb2ac9e6019334f814ba6d575a7a6135e4f78482037a8fcda35a9",
       "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
       "grund": "Konzept Messen m1 §6.11 „Dialog ohne Änderung“ und §8.1: gilt am gewählten Tag schon, was im Formular steht, sagt ein grauer Satz „Heute gilt: …“ und der Knopf wartet auf eine Änderung - statt beim Öffnen rot „Es gibt nichts zu ändern“ am Feld. Senden und Prüfung sonst unverändert."
+    },
+    {
+      "datei": "components/RowMenu.tsx",
+      "vorher": "bf85f09f03404888c72d1f3aa6121d8fdf3f3313902d5a8fc5a828387dfa3cb7",
+      "nachher": "101ec6e531f5d1db7450b5b2e781f8fafce0aca07a65369cf557ab29bfbde2e9",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Review r4 S23: der gefährliche Menüeintrag wählt wie die übrigen über `waehle(it)` - Menü schließen wie bisher, Fokus an den Auslöser ⋯ zurück, dann derselbe `it.onClick()`; ein Bestätigungsdialog kehrt beim Schließen auf den Auslöser zurück statt auf `body`. Text, Klasse und Rolle unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

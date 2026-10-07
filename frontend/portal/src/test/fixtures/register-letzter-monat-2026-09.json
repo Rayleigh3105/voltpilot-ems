@@ -1,0 +1,284 @@
+{
+  "_quelle": "GET /api/v1/messstellen?letzterMonat=true&stichtag=2026-10-05 - Demo rundgang (Kunststoffwerk Ahrenberg), eigene API auf einer Kopie der Demo-Datenbank, 06.10.2026; nur die Zeilen HZ-1, MS-03, MS-20.",
+  "register": [
+    {
+      "id": "3d9c45e5-1619-4b4e-a338-6ba175d69551",
+      "kennzeichen": "HZ-1",
+      "name": "Hauptzähler Halle 1",
+      "art": "gemessen",
+      "medium": "Strom",
+      "hauptgroesse": {
+        "groesse": "Wirkenergie",
+        "richtung": "Bezug",
+        "einheit": "kWh",
+        "wertart": "Zählerstand"
+      },
+      "ort": {
+        "id": "20000000-0000-0000-0000-000000000101",
+        "kennzeichen": "G-1",
+        "ort_art": "gebaeude",
+        "name": "Halle 1",
+        "gueltig_ab": "2024-03-12",
+        "gueltig_bis": null,
+        "pfad": [
+          "G-1",
+          "ST-1"
+        ],
+        "standort": "ST-1",
+        "standort_id": "20000000-0000-0000-0000-0000000000a1",
+        "standort_name": "Werk Ahrenberg",
+        "grund": "verortet"
+      },
+      "elektrische_stellung": {
+        "anlage": "20000000-0000-0000-0000-000000000501",
+        "anlage_name": "Werk Ahrenberg – Halle 1",
+        "stellung": "Hauptzähler",
+        "unterzaehler_von": null,
+        "gueltig_ab": "2024-03-12",
+        "gueltig_bis": null
+      },
+      "quelle": {
+        "stand": "ablesung",
+        "fuehrend": null,
+        "davor": null,
+        "vergleichsquellen": 0,
+        "ablesung": {
+          "seit": "2024-10-01T00:00:00+02:00",
+          "zuletzt": "2026-10-01T00:00:00+02:00"
+        }
+      },
+      "lebenszyklus": "aktiv",
+      "fehlt": [],
+      "angehalten_ab": null,
+      "archiviert_am": null,
+      "beobachtung": {
+        "zustand": "liefert",
+        "text": "Abgelesen am 01.10.2026",
+        "seit": "2026-10-01T00:00:00+02:00",
+        "toleranz_s": null,
+        "kadenz_s": null,
+        "geraet": null
+      },
+      "letzter_wert": {
+        "wert": 7406400.0,
+        "text": null,
+        "einheit": "kWh",
+        "zeitpunkt": "2026-10-01T00:00:00+02:00"
+      },
+      "nebengroessen": [],
+      "fakten": [],
+      "berechnung": null,
+      "geplant_fuer_einsaetze": [],
+      "letzter_monat": {
+        "monat": "2026-09",
+        "zeitzone": "Europe/Berlin",
+        "wert": {
+          "von": "2026-09-01T00:00:00+02:00",
+          "bis": "2026-10-01T00:00:00+02:00",
+          "beschriftung": null,
+          "stunden": 720,
+          "tagesdauer": null,
+          "menge": 199500.0,
+          "mittel": null,
+          "min": null,
+          "max": null,
+          "zustand": "vollständig",
+          "kennzeichen": [
+            "Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)"
+          ],
+          "erhalten": null,
+          "erwartet": null,
+          "abdeckung_prozent": null,
+          "fassung": "endgueltig",
+          "endgueltig_ab": "2026-10-08T00:00:00+02:00",
+          "version": 1,
+          "gebildet_aus": "monat",
+          "quelle": null,
+          "grund": null,
+          "ereignisse": [],
+          "herkunft": null,
+          "versionen": 1
+        }
+      }
+    },
+    {
+      "id": "8232b670-bc6a-449d-9169-4a19f86295d9",
+      "kennzeichen": "MS-03",
+      "name": "PV-Erzeugung Dach Halle 1",
+      "art": "gemessen",
+      "medium": "Strom",
+      "hauptgroesse": {
+        "groesse": "Wirkenergie",
+        "richtung": "Erzeugung",
+        "einheit": "kWh",
+        "wertart": "Zählerstand"
+      },
+      "ort": {
+        "id": null,
+        "kennzeichen": null,
+        "ort_art": null,
+        "name": null,
+        "gueltig_ab": null,
+        "gueltig_bis": null,
+        "pfad": [],
+        "standort": null,
+        "standort_id": null,
+        "standort_name": null,
+        "grund": "nicht_verortet"
+      },
+      "elektrische_stellung": null,
+      "quelle": {
+        "stand": "keine_datenquelle",
+        "fuehrend": null,
+        "davor": null,
+        "vergleichsquellen": 0
+      },
+      "lebenszyklus": "aktiv",
+      "fehlt": [],
+      "angehalten_ab": null,
+      "archiviert_am": null,
+      "beobachtung": {
+        "zustand": "keine_datenquelle",
+        "text": "Keine Datenquelle",
+        "seit": null,
+        "toleranz_s": null,
+        "kadenz_s": null,
+        "geraet": null
+      },
+      "letzter_wert": null,
+      "nebengroessen": [],
+      "fakten": [],
+      "berechnung": null,
+      "geplant_fuer_einsaetze": [],
+      "letzter_monat": {
+        "monat": "2026-09",
+        "zeitzone": "Europe/Berlin",
+        "wert": {
+          "von": "2026-09-01T00:00:00+02:00",
+          "bis": "2026-10-01T00:00:00+02:00",
+          "beschriftung": null,
+          "stunden": 720,
+          "tagesdauer": null,
+          "menge": null,
+          "mittel": null,
+          "min": null,
+          "max": null,
+          "zustand": "keine Werte",
+          "kennzeichen": [],
+          "erhalten": null,
+          "erwartet": null,
+          "abdeckung_prozent": null,
+          "fassung": null,
+          "endgueltig_ab": null,
+          "version": null,
+          "gebildet_aus": null,
+          "quelle": null,
+          "grund": "keine_quelle",
+          "ereignisse": [],
+          "herkunft": null,
+          "versionen": null
+        }
+      }
+    },
+    {
+      "id": "fba1189c-37bb-496e-aafc-a8a6f86f812b",
+      "kennzeichen": "MS-20",
+      "name": "Spritzguss",
+      "art": "gemessen",
+      "medium": "Strom",
+      "hauptgroesse": {
+        "groesse": "Wirkenergie",
+        "richtung": "Bezug",
+        "einheit": "kWh",
+        "wertart": "Zählerstand"
+      },
+      "ort": {
+        "id": "20000000-0000-0000-0000-000000000102",
+        "kennzeichen": "G-2",
+        "ort_art": "gebaeude",
+        "name": "Halle 2",
+        "gueltig_ab": "2020-01-01",
+        "gueltig_bis": null,
+        "pfad": [
+          "G-2",
+          "ST-1"
+        ],
+        "standort": "ST-1",
+        "standort_id": "20000000-0000-0000-0000-0000000000a1",
+        "standort_name": "Werk Ahrenberg",
+        "grund": "verortet"
+      },
+      "elektrische_stellung": {
+        "anlage": "20000000-0000-0000-0000-000000000501",
+        "anlage_name": "Werk Ahrenberg – Halle 1",
+        "stellung": "Abzweig",
+        "unterzaehler_von": null,
+        "gueltig_ab": "2024-03-12",
+        "gueltig_bis": null
+      },
+      "quelle": {
+        "stand": "ablesung",
+        "fuehrend": null,
+        "davor": null,
+        "vergleichsquellen": 0,
+        "ablesung": {
+          "seit": "2024-10-01T00:00:00+02:00",
+          "zuletzt": "2026-10-01T00:00:00+02:00"
+        }
+      },
+      "lebenszyklus": "aktiv",
+      "fehlt": [],
+      "angehalten_ab": null,
+      "archiviert_am": null,
+      "beobachtung": {
+        "zustand": "liefert",
+        "text": "Abgelesen am 01.10.2026",
+        "seit": "2026-10-01T00:00:00+02:00",
+        "toleranz_s": null,
+        "kadenz_s": null,
+        "geraet": null
+      },
+      "letzter_wert": {
+        "wert": 3284100.0,
+        "text": null,
+        "einheit": "kWh",
+        "zeitpunkt": "2026-10-01T00:00:00+02:00"
+      },
+      "nebengroessen": [],
+      "fakten": [],
+      "berechnung": null,
+      "geplant_fuer_einsaetze": [],
+      "letzter_monat": {
+        "monat": "2026-09",
+        "zeitzone": "Europe/Berlin",
+        "wert": {
+          "von": "2026-09-01T00:00:00+02:00",
+          "bis": "2026-10-01T00:00:00+02:00",
+          "beschriftung": null,
+          "stunden": 720,
+          "tagesdauer": null,
+          "menge": 88200.0,
+          "mittel": null,
+          "min": null,
+          "max": null,
+          "zustand": "vollständig",
+          "kennzeichen": [
+            "Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)"
+          ],
+          "erhalten": null,
+          "erwartet": null,
+          "abdeckung_prozent": null,
+          "fassung": "endgueltig",
+          "endgueltig_ab": "2026-10-08T00:00:00+02:00",
+          "version": 1,
+          "gebildet_aus": "monat",
+          "quelle": null,
+          "grund": null,
+          "ereignisse": [],
+          "herkunft": null,
+          "versionen": 1
+        }
+      }
+    }
+  ]
+}

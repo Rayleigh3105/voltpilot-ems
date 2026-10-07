@@ -467,6 +467,34 @@ class MessstelleRegisterApiTest {
         assertThat(nachher.get("id")).isEqualTo(vorher.get("id"));
     }
 
+    /**
+     * Messen PR5: {@code letzterMonat=true} gibt JEDER Zeile den Monat vor dem Stichtag (Oktober 2026) mit genau dem
+     * Schritt, den {@code …/werte?raster=monat} für sie zeigt - gemessen mit Gerät, gemessen ohne Quelle, berechnet;
+     * keine zweite Rechnung. Ohne den Parameter fehlt das Feld, und das Register bleibt Zeichen für Zeichen dasselbe.
+     */
+    @Test
+    void derLetzteMonatIstDerSchrittDerWerteRoute() {
+        Ahrenberg ah = ahrenberg();
+        JsonNode mit = register(ah.wer(), "?letzterMonat=true&stichtag=" + NACH_DEM_WECHSEL);
+        JsonNode ohne = register(ah.wer(), "?stichtag=" + NACH_DEM_WECHSEL);
+        assertThat(mit.get("register")).hasSize(ohne.get("register").size()).isNotEmpty();
+        for (JsonNode z : mit.get("register")) {
+            String kz = z.get("kennzeichen").asText();
+            JsonNode monat = z.get("letzter_monat");
+            assertThat(monat.get("monat").asText()).as(kz).isEqualTo("2026-10");
+            assertThat(monat.has("ausserhalb_zugriff")).as(kz).isFalse();
+            JsonNode schritt = ok(rufe(HttpMethod.GET, "/messstellen/" + kz
+                    + "/werte?raster=monat&von=2026-10-01&bis=2026-10-31", ah.wer())).get("werte").get(0);
+            assertThat(monat.get("wert")).as(kz).isEqualTo(schritt);
+            assertThat(monat.get("zeitzone").asText()).as(kz).isEqualTo("Europe/Berlin");
+            com.fasterxml.jackson.databind.node.ObjectNode ohneMonat = z.deepCopy();
+            ohneMonat.remove("letzter_monat");
+            assertThat(ohneMonat).as(kz).isEqualTo(zeile(ohne, kz));
+        }
+        assertThat(ohne.toString()).doesNotContain("letzter_monat");
+        abgelehnt(rufe(HttpMethod.GET, "/messstellen?letzterMonat=1", ah.wer()), "letzterMonat");
+    }
+
     /** Ohne Stichtag gilt jetzt: der Tag von heute in der Zeitzone der Schnittstelle. */
     @Test
     void ohneStichtagGiltJetzt() {

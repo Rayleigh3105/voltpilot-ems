@@ -37,7 +37,9 @@ const FAELLE: Fall[] = [
     name: 'unternehmen',
     query: 'bild=unternehmen',
     route: '#/portfolio',
-    sichtbar: ['Kunststoffwerk Ahrenberg GmbH', '2 Standorte · 3 Anlagen · 1 steuert', '3 von 3 Anlagen liefern Daten', '447,6', 'Netz jetzt'],
+    // Konzept §4.2/§5.1 (#1403): statt der Live-Leiste mit der Summe „Netz jetzt“ trägt die Unternehmens-Übersicht das
+    // Kachelraster; der Netzbezug steht je Anlage auf ihrer Karte (Konzept Runde 4, uems 002f2415a).
+    sichtbar: ['Kunststoffwerk Ahrenberg GmbH', '2 Standorte · 3 Anlagen · 1 steuert', '3 von 3 Anlagen liefern Daten', 'Lastspitze', '312,4', '96,5', '38,7'],
     gruppen: 2,
   },
   {
@@ -158,22 +160,10 @@ interface BausteinFall {
   gebaeude: number;
 }
 
+// Seit Konzept §5.1 (#1403) trägt nur noch die Standort-Übersicht die Bausteine; der frühere Fall `o2-unternehmen`
+// entfällt (die Unternehmens-Zahlen stehen in den Bereichen hinter „Tiefer einsteigen“, `einstieg.spec.ts` sichert das
+// Fehlen der Bausteine auf der Unternehmens-Übersicht).
 const BAUSTEIN_FAELLE: BausteinFall[] = [
-  {
-    name: 'o2-unternehmen',
-    query: 'bild=unternehmen',
-    route: '#/portfolio',
-    jetzt: new Date('2026-11-10T08:00:00Z'),
-    sichtbar: [
-      '21 von 22 Messstellen liefern Daten',
-      '15 von 16 Messstellen liefern Daten',
-      'Oktober 2026',
-      'Netzbezug 174.400 kWh · 3 von 3 Systemen · Werk Lindach ab 15.10.2026',
-      '165.300 kWh · 2 von 2 Systemen',
-    ],
-    kennzahlen: 5,
-    gebaeude: 0,
-  },
   {
     name: 'o3-lindach-tag',
     query: 'bild=messkunde&welt=leer',
@@ -259,9 +249,10 @@ for (const fall of BAUSTEIN_FAELLE) {
   }
 }
 
-test('Rechner: „Werk Ahrenberg · 15 von 16“ im Baustein Messstellen springt ins Register des Standorts', async ({ page }) => {
-  await oeffne(page, 'bild=unternehmen', 1440, new Date('2026-11-10T08:00:00Z'));
-  await page.getByTestId(`datenlage-${ST1}`).click();
+test('Rechner: „15 von 16“ im Baustein Messstellen der Standort-Übersicht springt ins Register des Standorts', async ({ page }) => {
+  // Seit §5.1 (#1403) steht der Baustein nur noch auf der Standort-Übersicht (früher: Zeile „Werk Ahrenberg“ am Unternehmen).
+  await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440, new Date('2026-11-10T08:00:00Z'));
+  await page.getByTestId('baustein-messstellen').getByRole('button', { name: /15 von 16 Messstellen liefern Daten/ }).click();
   await expect.poll(() => page.evaluate(() => document.body.dataset.route)).toBe(`#/standort/${ST1}/messstellen`);
 });
 

@@ -6,12 +6,15 @@ Stand: Messen-Bau m2, PR1 (Konzept `data/vp-messen-konzept-m1`, Captain-Freigabe
 
 - Die reine Ableitung steht in `src/messstellenListe.ts` (Gruppen je Ort, Suche, Marken, Statuszeile, Reihen); `MessstellenPage.tsx` rendert nur.
 - Gesucht und gefiltert wird in der GELADENEN Antwort von `GET /api/v1/messstellen`, nie je Taste beim Server; die Suche steht als `?suche=` in der Adresse, `?ort=`/`?anlage=` bleiben Parameter derselben Route.
-- Suchregel: jedes Wort muss passen, normalisiert über `picker/suche.ts`; eine Ziffer am Wortanfang gehört zum Wort davor („halle 1“ → `halle1`, „az 3“ → `az3`), sonst fände „halle 1“ über „ST-1“ jede Messstelle des Standorts.
+- Suchregel (`suchTerme`, `passtZurSuche`): jedes Wort muss passen, normalisiert über `picker/suche.ts`; eine Zahl ist ein eigener Begriff („halle 1“ = „Halle-1“ = „halle1“ → `halle`, `1`; „MS-06“ → `ms`, `6`).
+- Eine Zahl trifft nur als ganze Zahl (`zahlFundstellen`: davor und danach keine Ziffer, führende Nullen zählen nicht): „halle 1“ nie „Halle 10“, „az 3“ nie „AZ-30“; die Markierung (`markiert`) folgt derselben Regel.
+- Eine Zahl gehört zum Wort davor: im selben Feld passt sie immer („spritzguss 2“ → „Spritzguss Halle 2“); trägt das Wort im Feld schon eine eigene Zahl („Halle 2“), muss es diese sein, sonst fände „halle 1“ über „ST-1“ jede Halle des Standorts; sonst darf sie in einem anderen Feld stehen („druck 3“ → „Druckluft“ in „Halle 3“).
 - Gesucht wird in Name, Kennzeichen, Ort (mit Pfad und Standort), Medium und dem Gerät der führenden Quelle, nie in der Anlage (MS-20 liegt in Halle 2, hängt aber an der Anlage Halle 1).
 - Marken erscheinen nur, wenn es sie gibt („1 ohne Quelle“), und filtern; die alten Schalter „Nur ohne Quelle“ und „Nur geplant …“ sind Marken geworden (kein `ohneQuelle`/`geplantFuerEinsatz` mehr aus dem Portal).
 - Die ganze Reihe ist ein Verweis (`<a href>`) auf die Seite der Messstelle; mit „Stand am …“ trägt er den Tag als `?periode=` (`onOeffnen(id, periode)`).
 - Der Sprung zur Komponente (D1) steht seit PR2 in der Karte „Woher die Werte kommen“ der Seite (`.vp-mss-quelle-sprung`).
-- Der Rückweg „‹ Alle Messstellen“ führt über `messstellenRueckweg.ts` in dieselbe Trefferliste (nur Speicher dieser Sitzung).
+- Suche (`?suche=`), Marke (`?marke=`) und „Stand an einem Tag“ (`?stand=`) stehen in der Adresse; der Rückweg „‹ Alle Messstellen“ führt über `messstellenRueckweg.ts` in dieselbe Trefferliste (nur Speicher dieser Sitzung, ohne den einmaligen Sprung `entscheid=` der Wiedervorlage).
+- Ein Filter `?anlage=`, dessen Anlage im Register nicht vorkommt, holt ihren Namen aus `GET /api/v1/sites`; ohne Antwort heißt sie „diese Anlage“, nie die Kennung (D5).
 - „Summenwert anlegen“ gibt es unter Messen nicht mehr (Konzept §6.10); ein Summenwert entsteht an der Anlage.
 - Box („zuständig: …“) und Vergleichsquellen stehen nicht mehr in der Liste, sondern auf der Seite; die Tatsache „Einstellung geändert ab …“ (A4) steht leise unter dem Zustand, unbekannte Tatsachen-Codes werden nie roh gezeigt.
 
@@ -23,6 +26,7 @@ Stand: Messen-Bau m2, PR1 (Konzept `data/vp-messen-konzept-m1`, Captain-Freigabe
 - Beim Bearbeiten ist der Weg der Messstelle fest (`wegBestand` aus `MessstelleRegisterZeile.quelle.stand`); der Wechsel vom Ablesen zum Gerät gehört auf die Seite der Messstelle.
 - „Aus anderen Messstellen berechnet“ ist bewusst kein dritter Weg im Dialog.
 - Die Wörter kommen aus dem Glossar (`UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS`); `copy.test.ts` hält Liste und Dialog daran.
+- Die Quelltext-Wächter in `copy.test.ts` sehen keine Wörter, die über Konstanten anderer Module kommen; verbotene Wörter prüft deshalb zusätzlich der gerenderte Text (`MessstellenPage.test.tsx`, „Wörter, wie sie gerendert stehen“).
 
 ## Bestandsschutz der Bedienelemente (`migration.test.ts`, AP-03 IP-12)
 

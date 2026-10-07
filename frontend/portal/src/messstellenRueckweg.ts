@@ -6,9 +6,16 @@
  */
 let gemerkt: string | null = null;
 
-/** Die Adresse der Liste, so wie sie gerade steht. */
+/**
+ * Die Adresse der Liste, so wie sie gerade steht - ohne den Sprung der Wiedervorlage (`entscheid=`): er gilt beim
+ * Ankommen einmal, der Rückweg von einer Messstelle löst den Blick nicht noch einmal aus.
+ */
 export function merkeListe(hash: string): void {
-  gemerkt = hash;
+  const [pfad, ...rest] = hash.split('?');
+  const p = new URLSearchParams(rest.join('?'));
+  p.delete('entscheid');
+  const q = p.toString();
+  gemerkt = `${pfad}${q ? `?${q}` : ''}`;
 }
 
 /** Die gemerkte Adresse, wenn sie zur Liste `pfad` gehört (`#/portfolio/messstellen`, `#/standort/{id}/messstellen`). */
