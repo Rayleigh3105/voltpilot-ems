@@ -153,20 +153,20 @@ for (const breite of [375, 1440]) {
       expect((await gesendet(page)).map((g) => g.route)).toEqual(['GET /api/v1/energiemanagement/wiedervorlage?format=ics']);
 
       // Entscheid 8: der Schritt öffnet das Objekt mit offenem Entscheid. D-0001 „Bestätigen oder neu fassen“ landet beim
-      // Knopf „Geprüft, bleibt“; danach steht die Adresse wieder ohne Parameter.
+      // Knopf „Prüfen“ (Konzept Nachweisen n1, §6.10: Überprüfung festhalten); danach steht die Adresse ohne Parameter.
       await w.getByTestId('wiedervorlage-eintrag-D-0001').click();
       await expect(page).toHaveURL(/#\/portfolio\/energiemanagement\/dokumente\/[^?]+$/);
-      const geprueft = page.getByTestId('dokument-geprueft');
-      await expect(geprueft).toBeFocused();
-      await geprueft.click();
-      const dialog = page.getByTestId('geprueft-dialog');
-      await expect(dialog).toContainText('Fassung 1 bleibt gültig.');
-      await waehle(page, dialog.getByRole('combobox', { name: 'entschieden von' }), /^Robert Falk/);
-      await dialog.getByLabel('Begründung').fill('Mit der Jahresplanung 2029 durchgesehen; die Politik gilt unverändert.');
-      await page.getByTestId('geprueft-senden').click();
-      await expect(page.getByTestId('dokument-geprueft-bestaetigt')).toHaveText(
-        'Energiepolitik D-0001: geprüft, bleibt. Die nächste Überprüfung ist am 12.02.2030 fällig.',
-      );
+      const pruefen = page.getByTestId('dokument-pruefen');
+      await expect(pruefen).toBeFocused();
+      await pruefen.click();
+      const blatt = page.getByTestId('ueberpruefung-blatt');
+      await expect(blatt.getByRole('group', { name: 'Gilt Fassung 1 noch?' })).toBeVisible();
+      await waehle(page, blatt.getByRole('combobox', { name: 'Wer hat entschieden?' }), /^Robert Falk/);
+      await page.getByTestId('ueberpruefung-begruendung').fill('Mit der Jahresplanung 2029 durchgesehen; die Politik gilt unverändert.');
+      await page.getByTestId('ueberpruefung-senden').click();
+      await expect(blatt).toBeHidden();
+      await expect(page.getByTestId('dokument-status')).toHaveText('gilt· Robert Falk');
+      await expect(page.getByTestId('dokument-stufen')).toContainText('bis 12.02.2030');
       const em = await page.evaluate(() => (window as unknown as { __emGesendet: { route: string; koerper: Record<string, unknown> }[] }).__emGesendet);
       expect(em.filter((g) => g.route.endsWith('/geprueft')).map((g) => g.koerper)).toEqual([
         { entschieden_von: expect.any(String), am: null, begruendung: 'Mit der Jahresplanung 2029 durchgesehen; die Politik gilt unverändert.' },

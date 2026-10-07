@@ -48,18 +48,9 @@ interface Fall {
   preisSignal?: boolean;
 }
 
+// Die Karte „Funktionen“ steht seit Konzept §5.1 (#1403) nur noch auf der Standort-Übersicht; der frühere Fall
+// `karte-unternehmen` (Unternehmens-Übersicht) entfällt mit ihr, `einstieg.spec.ts` sichert ihr Fehlen dort.
 const FAELLE: Fall[] = [
-  {
-    // Seit #1403 (Konzept p2 §5.1) lebt die Karte „Funktionen“ nicht mehr auf der Unternehmens-Übersicht: der Zustand
-    // steht je Standort-Gruppe, „aufnehmen“ und „Standort anhalten“ trägt die Standort-Übersicht (Fall karte-werk).
-    name: 'karte-unternehmen',
-    query: 'bild=unternehmen',
-    ziel: '[data-testid="standort-gruppe"]',
-    sichtbar: ['Läuft mit Werk Ahrenberg – Halle 1'],
-    nie: ['Steuern & Optimieren für Werk Lindach einrichten', 'Noch nicht eingerichtet', 'Werk Ahrenberg – Halle 2 aufnehmen',
-      'Läuft an 2 von 2 Standorten'],
-    ohneGeld: false,
-  },
   {
     name: 'karte-werk',
     query: 'bild=unternehmen&ansicht=werk',

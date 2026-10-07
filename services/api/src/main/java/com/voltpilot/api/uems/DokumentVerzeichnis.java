@@ -80,8 +80,10 @@ public class DokumentVerzeichnis implements VerzeichnisQuelle {
             ablage = f.verweis().ablage();
             pruefsumme = f.verweis().sha256();
         } else {
-            ort = d.beleg() == null ? "in_voltpilot" : "wortlaut_original_beim_kunden";
-            ablage = d.beleg() == null ? null : d.beleg().ablage();
+            // Entscheid 10: das Original dieser Fassung; ohne eigenes das am Dokument (festgehalten mit Fassung 1).
+            var original = f.original() != null ? f.original() : d.beleg();
+            ort = original == null ? "in_voltpilot" : "wortlaut_original_beim_kunden";
+            ablage = original == null ? null : original.ablage();
             pruefsumme = f.pruefsumme();
         }
         return zeile(d.kennzeichen(), new EnergiemanagementRegeln.VerzeichnisEingang(GRUPPE.get(d.art()), d.art(),

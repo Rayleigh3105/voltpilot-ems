@@ -1,0 +1,286 @@
+/*
+ * DOKUMENTE in Nachweisen (Konzept Nachweisen n1, Runde 2, §6.5, Desktop-Mock „Energiepolitik“): die Anordnung der Seite
+ * eines Dokuments, die Fußnote „ⓘ Grund: Beschluss 3“, die Karte „Original“ eines Verweises, die Fassungs-Zeitleiste
+ * und kleine Teile der Blätter. Nur Haus-Tokens; die Bausteine selbst stehen in NwSchritte.css und NwZeilen.css.
+ */
+
+/* ---------- Seite eines Dokuments: am Handy A · B · C untereinander, am Rechner B links, A und C rechts ------------ */
+.vp-nw-dok-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'a' 'b' 'c';
+  gap: 16px;
+  min-width: 0;
+}
+.vp-nw-dok-a {
+  grid-area: a;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+.vp-nw-dok-b {
+  grid-area: b;
+  min-width: 0;
+}
+.vp-nw-dok-c {
+  grid-area: c;
+  min-width: 0;
+}
+@media (min-width: 1080px) {
+  .vp-nw-dok-raster {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+    grid-template-areas: 'b a' 'b c';
+    grid-template-rows: auto 1fr;
+    column-gap: 18px;
+    align-items: start;
+  }
+  /* Ohne Wortlaut-Karte (Verweis ohne Inhalt) steht A über C in der rechten Spalte, links nichts. */
+  .vp-nw-dok-raster:not(:has(.vp-nw-dok-b)) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'a' 'c';
+    max-width: 640px;
+  }
+  .vp-nw-dok-a .vp-nw-stufen {
+    max-width: 520px;
+  }
+}
+
+/* Die Fußnote unter dem neuen Satz: „ⓘ Grund: Beschluss 3“ - der ganze Grund öffnet auf Antippen. */
+.vp-nw-fussnote {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: 600 0.8125rem/1.35 var(--vp-c-font);
+  text-align: left;
+  cursor: pointer;
+}
+.vp-nw-fussnote::before {
+  content: '';
+  position: absolute;
+  inset: -12px -6px;
+}
+.vp-nw-fussnote:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-nw-karte .vp-nw-wortlaut + .vp-nw-fussnote {
+  margin-top: 10px;
+}
+
+/* Die Karte „Original“ eines Verweises: „GEFÜHRT IN“, der Ort, Kennung und Stand; darunter zwei ruhige Knöpfe. */
+.vp-nw-original {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+.vp-nw-original-l {
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-original > b {
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+
+/* „Freigeben: Jonas Wendlinger ⓘ“ - ohne Recht steht, wer es kann, statt des Knopfs. */
+.vp-nw-ohne-recht {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 600;
+}
+
+/* Das Kennzeichen hinter dem Titel einer Zeile: nur am Rechner, leise (Entscheid 25). */
+.vp-nw-kz-leise {
+  display: none;
+}
+@media (min-width: 721px) {
+  .vp-nw-kz-leise {
+    display: inline;
+    margin-left: 7px;
+    font: 500 0.8125rem var(--vp-c-font);
+    color: var(--vp-c-muted-fg);
+    white-space: nowrap;
+  }
+}
+
+/* ---------- Fassungs-Zeitleiste (Blatt „Fassungen“) -------------------------------------------------------------- */
+.vp-nw-zeitleiste {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-nw-zeitleiste > li {
+  position: relative;
+  padding-left: 22px;
+  min-width: 0;
+}
+/* Die Linie zwischen den Punkten; die letzte Fassung (die erste, unten) hat keine nach unten. */
+.vp-nw-zeitleiste > li::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 22px;
+  bottom: -14px;
+  width: 2px;
+  background: var(--vp-c-border);
+}
+.vp-nw-zeitleiste > li:last-child::before {
+  display: none;
+}
+.vp-nw-zeitleiste-k {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.vp-nw-zeitleiste-k:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm);
+}
+.vp-nw-zeitleiste-p {
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 2px solid var(--vp-field-border);
+  background: var(--vp-c-card);
+}
+.vp-nw-zeitleiste > li.is-gilt .vp-nw-zeitleiste-p {
+  border-color: var(--vp-navy);
+  background: var(--vp-navy);
+}
+.vp-nw-zeitleiste > li.is-offen .vp-nw-zeitleiste-p {
+  border-color: var(--vp-action);
+  box-shadow: inset 0 0 0 2px var(--vp-c-card), inset 0 0 0 6px var(--vp-action);
+}
+.vp-nw-zeitleiste > li.is-warn .vp-nw-zeitleiste-p {
+  border-color: var(--vp-c-warn-fg);
+}
+.vp-nw-zeitleiste-t {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-nw-zeitleiste-t b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+.vp-nw-zeitleiste > li.is-gilt .vp-nw-zeitleiste-t b {
+  color: var(--vp-navy);
+}
+.vp-nw-zeitleiste > li.is-still .vp-nw-zeitleiste-t b,
+.vp-nw-zeitleiste > li.is-warn .vp-nw-zeitleiste-t b {
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-zeitleiste-t span {
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+.vp-nw-zeitleiste-inhalt {
+  display: grid;
+  gap: 8px;
+  padding: 0 0 12px;
+}
+
+/* ---------- Teile der Blätter ------------------------------------------------------------------------------------- */
+/* Zwei Felder nebeneinander („Kennung · Stand vom“); am schmalen Telefon untereinander. */
+.vp-nw-paar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+/* „Datei prüfen · wahlfrei“ ist eine Hinweis-Zeile, die eine Datei wählt - die ganze Zeile ist das Ziel. */
+.vp-nw-datei {
+  cursor: pointer;
+}
+.vp-nw-datei:has(input:focus-visible) {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+/* Ein leises blaues Wort im Blatt („Original festhalten · wahlfrei“, „Weiteren Ausschluss“). */
+.vp-nw-links {
+  justify-self: start;
+  text-align: left;
+}
+.vp-nw-ausschluss {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-radius-md);
+  min-width: 0;
+}
+.vp-nw-ausschluss > .vp-nw-aendern {
+  justify-self: end;
+}
+/* Die Unterzeile eines Blatts („Fassung 3“) rückt an den Titel, wie `.sheet .sub` des Konzepts. */
+.vp-nw-blatt-sub {
+  margin-top: -8px;
+}
+
+/* ---------- Dialog am Rechner: links die Fragen, rechts drei Stichworte statt Sätzen (Konzept §6.10, `.ddlg .pruef`) - */
+.vp-nw-dlg-zwei {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 15rem);
+  gap: 20px;
+  align-items: start;
+}
+.vp-nw-dlg-seite {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-nw-dlg-info {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-c-bg);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.vp-nw-dlg-info dt {
+  margin-top: 8px;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-dlg-info dt:first-child {
+  margin-top: 0;
+}
+.vp-nw-dlg-info dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--vp-c-fg);
+}

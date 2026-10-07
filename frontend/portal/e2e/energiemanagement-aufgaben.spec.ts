@@ -265,15 +265,17 @@ for (const breite of [375, 1440]) {
       await page.keyboard.press('Escape');
       await ohneSchreiben('Einsicht: Verzeichnis');
 
+      // Dokumente (Konzept Nachweisen n1, §6.13 „Einsicht“): lesen, kein Menü zum Festhalten, kein Knopf zum Ändern.
       await page.getByTestId('energiemanagement-reiter-dokumente').click();
       await expect(page.getByTestId('dokument-zeile-D-0001')).toBeVisible();
-      await expect(page.getByTestId('dokumente-register').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
+      await expect(page.getByTestId('dokumente-kopf').getByRole('button', { name: 'Weitere Aktionen' })).toHaveCount(0);
       await ohneSchreiben('Einsicht: Dokumente');
       await ablegen(page, `f-einsicht-dokumente-${breite}`, true);
 
-      await page.getByTestId('dokument-zeile-D-0001').getByRole('button').click();
-      await expect(page.getByTestId('dokument-kopf')).toContainText('entschieden von Robert Falk');
-      await expect(page.getByTestId('dokument-seite').getByTestId('einsicht-satz')).toHaveCount(1);
+      await page.getByTestId('dokument-zeile-D-0001').click();
+      await expect(page.getByTestId('dokument-status')).toContainText('gilt');
+      await expect(page.getByTestId('dokument-neu-fassen')).toHaveCount(0);
+      await expect(page.getByTestId('dokument-pruefen')).toHaveCount(0);
       await ohneSchreiben('Einsicht: Dokument D-0001');
 
       // Aufgaben: lesen ja, kein Schreib-Knopf; im Blatt der Aufgabe steht der Leer-Satz an der Stelle von „Aufgabe zuordnen“.

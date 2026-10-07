@@ -16,10 +16,10 @@ import {
   type TeilZustand,
 } from '../../nachweisStand';
 import { buendel, standTag, type Eintrag } from '../../wiedervorlage';
-import { DokumentAnlegenDialog } from '../DokumentDialoge';
 import { EinsichtRecht } from '../EinsichtRecht';
 import { FristDatum, Kennzeichentext } from '../FristDatum';
 import { VpPicker } from '../VpPicker';
+import { DokumentFesthaltenBlatt } from './DokumentFesthaltenBlatt';
 import { ErklaerKnopf } from './ErklaerKnopf';
 import { TRIFFT_NICHT_ZU as TRIFFT_NICHT_ZU_ERKLAERUNG } from './nachweisBegriffe';
 import { NwBlatt } from './NwBlatt';
@@ -338,14 +338,15 @@ function FesthaltenBlatt({
         )}
       </NwBlatt>
       {anlegen && teil.dokumentArt && (
-        <DokumentAnlegenDialog
-          vorArt={teil.dokumentArt}
+        <DokumentFesthaltenBlatt
+          art={teil.dokumentArt}
           onClose={() => {
             setAnlegen(false);
             onClose();
           }}
-          onAngelegt={(d) => {
+          onFertig={(d) => {
             setAnlegen(false);
+            onGeaendert();
             onNavigate(dokumentRoute(d.id));
           }}
         />

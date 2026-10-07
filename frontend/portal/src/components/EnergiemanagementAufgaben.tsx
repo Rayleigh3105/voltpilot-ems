@@ -7,10 +7,10 @@ import * as E from '../energiemanagementPortal';
 import { merkeAbruf, routenHeute } from '../routenUhr';
 import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
-import { PersonAnlegenDialog } from './DokumentDialoge';
 import { AufgabeZuordnenDialog, ZuordnungBeendenDialog } from './EnergiemanagementAufgabeDialoge';
 import { EinsichtRecht } from './EinsichtRecht';
 import { GrenzSatz } from './GrenzSatz';
+import { PersonAnlegenBlatt } from './nachweisen/DokumentBlaetter';
 import { NwBlatt } from './nachweisen/NwBlatt';
 import { NwKopf } from './nachweisen/NwKopf';
 import { PruefZeilen } from './nachweisen/NwSchritte';
@@ -251,7 +251,7 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
 
       {zuordnen && <AufgabeZuordnenDialog aufgabe={zuordnen.aufgabe} ab={tag} onClose={() => setZuordnen(null)} onZugeordnet={gespeichert} />}
       {beenden && <ZuordnungBeendenDialog zuordnung={beenden} ab={tag} onClose={() => setBeenden(null)} onBeendet={gespeichert} />}
-      {personDialog && <PersonAnlegenDialog leitung={false} ab={tag} onClose={() => setPersonDialog(false)} onAngelegt={gespeichert} />}
+      {personDialog && <PersonAnlegenBlatt leitung={false} ab={tag} onClose={() => setPersonDialog(false)} onAngelegt={gespeichert} />}
     </div>
   );
 }

@@ -101,7 +101,7 @@ WOERTER = dict(
                    beschaffung="Beschaffung", energetische_bewertung="Energetische Bewertung",
                    bezugsbasen="Bezugsbasen", massnahmen="Maßnahmen", interne_audits="Interne Audits",
                    feststellungen="Feststellungen", managementbewertung="Managementbewertung", berichte="Berichte"),
-    # Vertrag 1.4 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy.
+    # Vertrag 1.5 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy.
     aufgabe_kurz=dict(unternehmensleitung="Leitung", energiemanagement_leiten="Energiemanagement leiten",
                       energieteam="Energieteam", bezugsbasen="Bezugsbasen", energieziele_massnahmen="Ziele und Maßnahmen",
                       bewertung_messplanung="Energetische Bewertung", interne_audits="Interne Audits",
@@ -121,9 +121,13 @@ SAETZE = dict(
     verweis_keine_datei="VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.",
     ueberpruefung="Überprüfung fällig seit {tage} Tagen.",
     geprueft_bleibt="Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘",
-    bekanntmachung="Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.",
+    bekanntmachung="Bekannt gemacht am {am} an {kreis} über {weg}.",
+    # Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+    bekanntmachung_durch="Bekannt gemacht von {person} am {am} an {kreis} über {weg}.",
     anwendungsbereich_deckungsgleich="Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.",
     anwendungsbereich_unterschied="{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).",
+    # Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+    anwendungsbereich_nur_im_umfang="{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.",
     freigabe_ohne_leitung="Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.",
     aufgabe_ohne_person="{aufgabe} — keine Person festgelegt.",
     person_ohne_konto="{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.",

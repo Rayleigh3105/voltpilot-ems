@@ -8,7 +8,7 @@ Verzeichnis-Quelle „Aufgaben“. Flächen: Reiter „Aufgaben“, „Wer ist w
 
 | Stelle | Was |
 |---|---|
-| `EnergiemanagementPersonenController` | `GET/POST /api/v1/energiemanagement/personen`, `GET/PUT …/personen/{id}`, `GET/POST …/aufgaben` (`?tag=`), `POST …/aufgaben/{id}/beenden`; Schreiben `@Recht(energiemanagement.verwalten, UNTERNEHMEN)` (KA U · EM U · Bearbeiter nur Standort und Einsicht → 403; Einsicht liest Aufgaben unternehmensweit), keine Löschroute (PA5) |
+| `EnergiemanagementPersonenController` | `GET/POST /api/v1/energiemanagement/personen`, `GET/PUT …/personen/{id}`, `GET/POST …/aufgaben` (`?tag=`), `POST …/aufgaben/{id}/beenden`, `GET …/leitung` (`?tag=&standort=`, Recht `energiemanagement.freigeben` am Standort bzw. Unternehmen im Dienst: die Leitung für die Freigabe, unabhängig vom unternehmensweiten Lesen der Aufgaben, Befund A4); Schreiben `@Recht(energiemanagement.verwalten, UNTERNEHMEN)` (KA U · EM U · Bearbeiter nur Standort und Einsicht → 403; Einsicht liest Aufgaben unternehmensweit), keine Löschroute (PA5) |
 | `EnergiemanagementPersonenService` | Prüfungen und Ablehnungs-Codes (`openapi.yaml`); `leitungAm(tag)` = die Personen mit laufender `unternehmensleitung` — für die Leitungs-Pflicht der Dokument-Freigabe (IP-7) und die Managementbewertung (IP-23) |
 | `EnergiemanagementPersonenRepository` | SQL unter RLS; jeder Übergang schreibt `energiemanagement_aenderung` (`person_erfasst · person_geaendert · person_beendet · aufgabe_zugeordnet · aufgabe_beendet`, alt/neu ohne `tenant_id`, Begründung) |
 | Satz und Wort | `EnergiemanagementRegeln.satz("aufgabe_ohne_person", …)` und `WOERTER.aufgabe` aus dem Vertrag IP-2 — nie im Dienst nachgebaut |

@@ -25,6 +25,8 @@ public class PortfolioKpiController {
         this.service = service;
     }
 
+    // Rechte: lesendes Aggregat, keine eigene Kennung (wie GET /overview, AP-03 §4.5 R-A2).
+    // authenticated() plus Mandanten-/Standort-RLS: nur die sichtbaren Anlagen.
     @GetMapping
     public PortfolioKpiDto kpis() {
         return service.kpis(Instant.now());

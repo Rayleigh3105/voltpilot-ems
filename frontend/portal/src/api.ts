@@ -5921,6 +5921,26 @@ export interface MessstelleRegisterZeile {
   berechnung: MessstelleRegisterBerechnung | null;
   /** UEMS AP-16 IP-19: eingelöste Messbedarfe — die Messstelle ist „geplant für EE-…“. Ältere Antworten ohne Feld = keiner. */
   geplant_fuer_einsaetze?: { id: string; kennzeichen: string; name: string }[];
+  /**
+   * Messen PR5: NUR mit `letzterMonat: true` in der Anfrage - der letzte vollständige Monat und sein Wert, genau der
+   * Schritt von `…/werte?raster=monat`. Ohne die Anfrage fehlt das Feld.
+   */
+  letzter_monat?: MessstelleRegisterMonat;
+}
+
+/**
+ * Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2): der Monat vor dem des Stichtags in
+ * der Zone ihres Standorts. `wert` ist der Schritt, den `GET …/{kennzeichen}/werte?raster=monat` für ihn zeigt - eine
+ * Fläche spricht ihn wie jeden anderen Schritt (Zustand, Kennzeichen, Grund) und rechnet nichts nach; `menge: null` ist
+ * nie 0. `wert` ist `null` NUR mit `ausserhalb_zugriff` (ein Eingang einer berechneten Messstelle liegt außerhalb).
+ */
+export interface MessstelleRegisterMonat {
+  /** JJJJ-MM, z. B. `2026-09`. */
+  monat: string;
+  /** Die Zone, in der `wert.von`/`wert.bis` den Monat schneiden. */
+  zeitzone: string;
+  wert: MessstelleWerteWert | null;
+  ausserhalb_zugriff?: string;
 }
 
 export interface MessstelleRegisterFakt {
@@ -5993,6 +6013,11 @@ export interface MessstellenRegisterAnfrage {
   geplantFuerEinsatz?: boolean;
   /** Ein Tag (`2026-11-20`); fehlt = jetzt. */
   stichtag?: string;
+  /**
+   * Messen PR5: jede Zeile trägt `letzter_monat` (kein Filter). Kostet einen Lesezug je Messstelle - nur setzen, wo der
+   * Monatswert gezeigt wird.
+   */
+  letzterMonat?: boolean;
 }
 
 /**
@@ -8604,6 +8629,11 @@ export interface EnergiemanagementAufgaben {
   aufgaben: { aufgabe: string; wort: string; laufend: EnergiemanagementZuordnung[]; satz: string | null }[];
   zuordnungen: EnergiemanagementZuordnung[];
 }
+/** Die Leitung am Tag (PA3) für wen am Standort bzw. am Unternehmen freigibt (Konzept Nachweisen n1, Befund A4). */
+export interface EnergiemanagementLeitung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+}
 export interface EnergiemanagementAufgabeZuordnen {
   aufgabe: string;
   aufgabe_wortlaut?: string | null;
@@ -8775,6 +8805,11 @@ export interface EnergiemanagementFassung {
   ablehnung_begruendung: string | null;
   freigegeben_am: string | null;
   eingetragen: EnergiemanagementEingetragen;
+  /**
+   * Additiv (Konzept Nachweisen n1, Entscheid 10): wo das unterschriebene Original DIESER Fassung liegt - nur an einem
+   * Wortlaut, sonst `null`. Eine API vor dieser Version liefert das Feld nicht (dann gilt das Original am Dokument).
+   */
+  original?: EnergiemanagementBeleg | null;
 }
 export interface EnergiemanagementDokumentEintrag {
   id: number;
@@ -8901,11 +8936,35 @@ export interface EnergiemanagementFassungEntwerfen {
   anwendungsbereich?: { standort_ids: string[]; traeger: string[]; ausschluesse?: EnergiemanagementAusschluss[] } | null;
   begruendung?: string | null;
   beschluss_kennung?: string | null;
+  /** Entscheid 10: das Original dieser Fassung - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
 }
 export interface EnergiemanagementEntscheid {
   entschieden_von?: string | null;
   entschieden_am?: string | null;
   begruendung?: string | null;
+  /** Entscheid 10: das Original beim Übergang aus dem Entwurf (Antrag, Freigabe) - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
+}
+/** DK6: bekannt machen - an wen, am (leer = heute beim Server), über welchen Weg, durch welche Person. */
+export interface EnergiemanagementBekanntmachen {
+  kreis: string;
+  am?: string | null;
+  weg: string;
+  weg_wortlaut?: string | null;
+  person_id?: string | null;
+}
+/** DK8: aufheben - wer entschieden hat, am, warum; das Dokument bleibt lesbar. */
+export interface EnergiemanagementAufheben {
+  entschieden_von: string;
+  am?: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
+/** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens (`vorgabe` = nie eingestellt, dann gilt aus). */
+export interface UnternehmenVierAugen {
+  vieraugen: boolean;
+  vorgabe: boolean;
 }
 /** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
 export interface EnergiemanagementGeprueft {
@@ -11349,6 +11408,17 @@ export const api = {
   /** IP-6 (PA2, PA3): die Aufgaben am Tag mit der Leitung — nur unternehmensweit. */
   energiemanagementAufgaben: (tag?: string) =>
     request<EnergiemanagementAufgaben>(`/api/v1/energiemanagement/aufgaben${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /**
+   * PA3, DK3: die Leitung am Tag für die Freigabe mit Leitungs-Pflicht - Recht `energiemanagement.freigeben` am Standort
+   * (ohne Standort am Unternehmen), auch ohne die Aufgaben unternehmensweit zu lesen (Konzept Nachweisen n1, Befund A4).
+   */
+  energiemanagementLeitung: (tag?: string | null, standort?: string | null) => {
+    const q = new URLSearchParams();
+    if (tag) q.set('tag', tag);
+    if (standort) q.set('standort', standort);
+    const s = q.toString();
+    return request<EnergiemanagementLeitung>(`/api/v1/energiemanagement/leitung${s ? `?${s}` : ''}`);
+  },
   /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
   energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
     request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),
@@ -11464,6 +11534,17 @@ export const api = {
   /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
   energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK3 (Entscheid 11): die zweite Person lehnt einen Antrag mit Begründung ab; danach ist ein neuer Entwurf möglich. */
+  energiemanagementFassungAblehnen: (id: string, nr: number, begruendung: string) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/ablehnen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** DK6 (Entscheid 12): bekannt gemacht an einem Kreis über EINEN Weg - mehrere Wege sind mehrere Einträge. */
+  energiemanagementBekanntmachen: (id: string, body: EnergiemanagementBekanntmachen) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK8 (Entscheid 12): aufheben - Recht `energiemanagement.freigeben`; das Dokument bleibt mit allen Fassungen lesbar. */
+  energiemanagementDokumentAufheben: (id: string, body: EnergiemanagementAufheben) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/aufheben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** AP-08 E8 (Entscheid 11): ob bei diesem Unternehmen zwei Personen freigeben - das Blatt zeigt es vorab. */
+  unternehmenVierAugen: () => request<UnternehmenVierAugen>('/api/v1/unternehmen/vieraugen'),
   /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
   energiemanagementAudits: (tag?: string) =>
     request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
