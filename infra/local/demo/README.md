@@ -99,3 +99,8 @@ Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf ei
   ab dem Tag der Einrichtung Tag für Tag.
   Die Sequenz eines Umschlags zählt Umschläge (Messzeit ÷ Kadenz), nicht Sekunden: sonst meldet der Writer je Umschlag
   `sequence_gap`.
+- Messbedarf MB-1 steht wie in der Referenzwelt: am 27.11.2026 durch die eingerichtete MS-23 „Halle 1 Allgemein“
+  eingelöst, VOR der ersten energetischen Bewertung, die ihn seitdem als Quelle zitiert
+  (`AhrenbergWelt.mb1DurchMs23Einloesen`, [Prüfumgebung](../../../docs/agents/root/uems-pruefumgebung.md)). Ohne
+  diesen Schritt blieb MB-1 „geplant“ und „Einrichten“ legte bei jedem Rundgang eine neue Messstelle an (409
+  Belegschutz beim Einlösen, Review r4 M4).
