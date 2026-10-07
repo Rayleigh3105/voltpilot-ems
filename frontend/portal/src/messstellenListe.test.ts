@@ -247,6 +247,9 @@ describe('Ableseort einer Reihe (Review r4 S11)', () => {
     expect(ableseortVon(ms21)).toBe(ms21.ort.kennzeichen);
     const l = aus(r);
     expect(l.gruppen.find((g) => g.titel === 'Halle 1 Nord')!.ablesen).toBe('G-1');
+    // Der Name des Verweises sagt dann nicht „Halle 1 Nord ablesen“; an der Verwaltung ist es ihre eigene Runde.
+    expect(l.gruppen.find((g) => g.titel === 'Halle 1 Nord')!.ablesenHier).toBe(false);
+    expect(l.gruppen.find((g) => g.titel === 'Verwaltung')!.ablesenHier).toBe(true);
     const amStandort = r.register.find((x) => x.ort.kennzeichen === 'ST-1')!;
     expect(ableseortVon(amStandort)).toBe('ST-1');
   });
