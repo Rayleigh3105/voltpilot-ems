@@ -701,7 +701,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       'Läuft alles? Was steht an?',
       'Wird alles erfasst?',
       'Wo geht die Energie hin, wird es besser?',
-      'Können wir es belegen?',
+      'Können wir belegen, was wir tun?',
     ]);
   });
 
