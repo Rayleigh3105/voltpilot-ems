@@ -130,8 +130,11 @@ public class BerichtService {
         this.uhr = uhr;
     }
 
-    /** Auf die Sekunde: so steht ein Datenstand im Ereignis ({@code ZEIT_UTC}) und in der Datenbank gleich. */
-    Instant jetzt() {
+    /**
+     * Auf die Sekunde: so steht ein Datenstand im Ereignis ({@code ZEIT_UTC}) und in der Datenbank gleich. Die Liste und
+     * die Seite eines Berichts tragen ihn als {@code abruf} - die eine Uhr, an der das Portal „Zeitraum läuft“ misst.
+     */
+    public Instant jetzt() {
         return uhr.instant().truncatedTo(ChronoUnit.SECONDS);
     }
 
@@ -908,7 +911,7 @@ public class BerichtService {
 
     private static BerichtAbgelehnt gibtEsSchon(Kopf x) {
         return BerichtAbgelehnt.regel(Ablehnung.BERICHT_GIBT_ES_SCHON,
-                BerichtRegeln.berichtGibtEsSchon(x.kennung(), x.geltungName(), x.zeitraumArt(), x.schluessel()),
+                BerichtRegeln.berichtGibtEsSchon(x.kennung(), x.vorlage(), x.geltungName(), x.zeitraumArt(), x.schluessel()),
                 Map.of("kennung", x.kennung()));
     }
 

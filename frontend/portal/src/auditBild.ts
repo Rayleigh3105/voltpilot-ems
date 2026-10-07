@@ -23,6 +23,7 @@ import type { Stufe } from './components/nachweisen/Stufen';
 import { wirksamkeitPruefbar } from './auditFeststellung';
 import { tagText } from './energiemanagementPortal';
 import { UEMS_MASSNAHME_ZUSTAENDE } from './glossar';
+import { tagDesAugenblicks } from './routenUhr';
 
 /** Ein Datumsblock: kleines Wort, Tag (ISO), Ton. */
 export type Datum = { wort: string; tag: string; ton: DatumTon };
@@ -202,11 +203,12 @@ export function auditStatus(a: InternesAudit): Status {
 
 /** Geplant (Tag der Planung) · Durchgeführt · Abgeschlossen; abgesagt endet nach „Geplant“. */
 export function auditStufen(a: InternesAudit, verlauf: Pick<InternesAuditAenderung, 'art' | 'zeit'>[]): Stufe[] {
-  const geplantAm = tagText((verlauf.find((v) => v.art === 'audit_geplant')?.zeit ?? a.eingetragen.am).slice(0, 10));
+  // Ein Zeitpunkt zählt mit dem Tag in Berlin, nicht dem UTC-Tag (Befund 3, `routenUhr.tagDesAugenblicks`).
+  const geplantAm = tagText(tagDesAugenblicks(verlauf.find((v) => v.art === 'audit_geplant')?.zeit ?? a.eingetragen.am));
   const geplant: Stufe = { titel: 'Geplant', datum: geplantAm, zustand: 'done' };
   if (a.zustand === 'abgesagt') {
-    const am = verlauf.find((v) => v.art === 'audit_abgesagt')?.zeit;
-    return [geplant, { titel: 'Abgesagt', datum: am ? tagText(am.slice(0, 10)) : null, zustand: 'aus' }];
+    const am = tagDesAugenblicks(verlauf.find((v) => v.art === 'audit_abgesagt')?.zeit);
+    return [geplant, { titel: 'Abgesagt', datum: am ? tagText(am) : null, zustand: 'aus' }];
   }
   const durch: Stufe =
     a.zustand === 'geplant'
@@ -328,7 +330,7 @@ export function feststellungStufen(
   }
   const ersteMassnahme = angelegt.filter((t): t is string => !!t).sort()[0] ?? null;
   const massnahme: Stufe = massnahmen.length
-    ? { titel: 'Maßnahme', datum: ersteMassnahme ? tagText(ersteMassnahme.slice(0, 10)) : null, zustand: 'done' }
+    ? { titel: 'Maßnahme', datum: ersteMassnahme ? tagText(tagDesAugenblicks(ersteMassnahme) ?? ersteMassnahme.slice(0, 10)) : null, zustand: 'done' }
     : { titel: 'Maßnahme', datum: f.zustand === 'offen' ? 'jetzt' : null, zustand: f.zustand === 'offen' ? 'an' : 'offen' };
   const umgesetztTage = massnahmen
     .map((m) => m.umgesetzt_am)

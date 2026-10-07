@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { api, type Massnahme } from '../api';
+import { merkeAbruf } from '../routenUhr';
 import * as Z from '../energieziele';
 import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import * as M from '../massnahmen';
@@ -26,7 +27,10 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahmen().then(
-      ({ massnahmen }) => aktiv && setLage({ art: 'da', liste: M.ordnen(massnahmen) }),
+      ({ abruf, massnahmen }) => {
+        merkeAbruf(abruf);
+        if (aktiv) setLage({ art: 'da', liste: M.ordnen(massnahmen) });
+      },
       () => aktiv && setLage({ art: 'fehler' }),
     );
     return () => {

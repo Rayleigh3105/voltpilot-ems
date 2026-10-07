@@ -91,10 +91,9 @@ alles.
 
 **Ein Kunde kann nicht:**
 
-1. **Einen Berichtsstand im Portal als PDF oder CSV herunterladen** — `AUSGABE_EINGEHAENGT = { pdf: false, csv: false }`
-   (`berichtSeite.ts:649`). Die Routen `…/staende/{nr}/pdf` und `…/csv` stehen und sind geprüft; es fehlt nur der Knopf. Auch
-   „zuletzt abgerufen“ und die Spalte „letzter Abruf“ zeigt das Portal nicht (`BerichtePage.tsx:37`). **Die größte Lücke:**
-   ein Bericht, den man nicht weitergeben kann.
+1. **„Zuletzt abgerufen“ sehen** - PDF und CSV hängen seit Konzept Nachweisen n1 (PR 0) an jedem Stand
+   (`uems-berichte-portal.md`); „zuletzt abgerufen“ und die Spalte „letzter Abruf“ zeigt das Portal noch nicht
+   (`BerichtePage.tsx`).
 2. **Monatswerte im Jahresbericht sehen** — der Vertrag trägt den Abschnitt noch nicht.
 3. **Bei PV aus Leistung das Kennzeichen „aus Leistung integriert …“** im Bericht (MS-03, Lücke 5 aus IP-5).
 4. **Eine Messstelle ohne Ort, die nur über die Anlage zum Standort gehört** (MS-22 „Rest“) im Standort-Bericht — Q3 über die

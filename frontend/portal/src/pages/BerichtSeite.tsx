@@ -4,13 +4,21 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type BerichtDetail, type BerichtEntwurf } from '../api';
-import { KEINE_RECHTE, revisionBanner, seitenHebel, VERGLEICHEN, VERWERFEN } from '../berichtDialoge';
+import {
+  freigebenErklaerung,
+  freigebenWer,
+  KEINE_RECHTE,
+  revisionBanner,
+  seitenHebel,
+  VERGLEICHEN,
+  VERWERFEN,
+} from '../berichtDialoge';
 import {
   abschnitte,
   abzugAus,
   ausgabeKnoepfe,
   berichtTitel,
-  darfNachLesen,
+  darfAusgabe,
   HEUTIGEN_WERT,
   HEUTIGER_WERT_LAEDT,
   heuteAnfrage,
@@ -45,8 +53,10 @@ import { MiniBarSpark } from '../components/MiniChart';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteKarte } from '../components/WerteKarte';
 import { TRENNER } from '../uemsErgebnis';
+import { merkeAugenblick } from '../routenUhr';
 import { useBerichtRechte } from '../useBerichtRechte';
-import { istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht';
+import { ausgabeAbgerufen, ausgabeFehler, istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht';
+import { ErklaerKnopf } from '../components/nachweisen/ErklaerKnopf';
 
 /**
  * Die Berichtsseite (UEMS AP-12 IP-13, §5.1–§5.6): Reiter „Nr. 1 · Nr. 2 · Entwurf“ (vorgewählt der gültige Stand),
@@ -63,23 +73,22 @@ import { istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht'
  * Seite das Banner „Revision nötig“ mit „Entwurf vergleichen“ und „Anstoß verwerfen“ (§5.3). Schreibende Hebel nur mit
  * Recht aus der Selbstauskunft (`useBerichtRechte`); nach einer Freigabe zeigt die Seite den neuen Stand.
  *
- * ⚠ PDF und CSV: `ausgabeKnoepfe` leitet ab, wer an welchem Stand welche Ausgabe hat — sichtbar wird ein Knopf erst,
- *   wenn seine Route steht. IP-10 (CSV) und IP-11 (PDF) setzen `AUSGABE_EINGEHAENGT` in `berichtSeite.ts` und reichen
- *   hier `onAbruf` herein; bis dahin gibt es keinen Knopf ohne Ziel.
+ * PDF und CSV (Konzept Nachweisen n1, Befund 1): `ausgabeKnoepfe` leitet ab, wer an welchem Stand welche Ausgabe hat;
+ * die Seite ruft die Datei über `api.berichtDatei` ab. Der Leistungsvergleich trägt seine Knöpfe selbst.
+ *
+ * Eine Uhr (Befund 3): „Zeitraum läuft“ und die Freigabe-Vorschau messen am `abruf` der Route, nie am Browser.
  */
 export function BerichtSeite({
   kennung,
   onListe,
   zurListe = ZUR_LISTE,
-  onAbruf,
-  jetzt = () => Date.now(),
+  jetzt: jetztVorgabe,
 }: {
   kennung: string;
   onListe: () => void;
   /** Das Wort des Rückwegs — am Standort „Berichte dieses Standorts“ (AP-13 IP-2), sonst „Alle Berichte“. */
   zurListe?: string;
-  /** Der Abruf einer Datei (IP-10/IP-11) — ohne ihn kein Knopf. */
-  onAbruf?: (knopf: AusgabeKnopf) => void;
+  /** Nur für Tests; sonst der Augenblick der Route (`abruf`). */
   jetzt?: () => number;
 }) {
   const [detail, setDetail] = useState<BerichtDetail | null>(null);
@@ -89,6 +98,9 @@ export function BerichtSeite({
   const [ansichtFehler, setAnsichtFehler] = useState<{ id: string; satz: string } | null>(null);
   const [namen, setNamen] = useState<ReadonlyMap<string, string>>(new Map());
   const [versuch, setVersuch] = useState(0);
+  // Der letzte Datei-Abruf und an welchem Stand er geschah - wechselt der Stand, gilt die Meldung nicht mehr.
+  const [dateiAbruf, setDateiAbruf] = useState<{ wahl: string; satz: string; fehler: boolean } | null>(null);
+  const [laeuft, setLaeuft] = useState(false);
   // AP-12 IP-14: was die Person darf, und welcher Dialog offen ist.
   const rechte = useBerichtRechte();
   const rollen = useRollen();
@@ -105,6 +117,7 @@ export function BerichtSeite({
     api.bericht(kennung).then(
       (d) => {
         if (!aktiv) return;
+        merkeAugenblick(d.abruf, d.bericht.zeitzone);
         setDetail(d);
         setWahl((alt) => alt ?? standWahl(d).vorgabe);
       },
@@ -182,6 +195,9 @@ export function BerichtSeite({
   }
 
   const b = detail.bericht;
+  // Befund 3: die Uhr der Route; ohne `abruf` (ältere Antwort) die des Browsers.
+  const routenJetzt = Date.parse(detail.abruf ?? '');
+  const jetzt = jetztVorgabe ?? (() => (Number.isNaN(routenJetzt) ? Date.now() : routenJetzt));
   const wahlen = standWahl(detail);
   const aktuell = ansicht !== null && ansicht.id === wahl ? ansicht.ansicht : null;
   const kopf = aktuell ? seitenKopf(detail, aktuell, jetzt()) : null;
@@ -190,7 +206,22 @@ export function BerichtSeite({
   const inhalt = aktuell && !lv
     ? abschnitte(abzugAus(aktuell.art === 'stand' ? aktuell.stand.abzug : aktuell.entwurf.abzug), (k) => namen.get(k) ?? null)
     : null;
-  const knoepfe = onAbruf ? ausgabeKnoepfe(b, aktuell, darfNachLesen(b)) : [];
+  const knoepfe = lv ? [] : ausgabeKnoepfe(b, aktuell, darfAusgabe(b, rechte ?? null));
+  const nr = aktuell?.art === 'stand' ? aktuell.stand.nr : null;
+  const abrufen = async (k: AusgabeKnopf) => {
+    if (nr === null) return;
+    setLaeuft(true);
+    setDateiAbruf(null);
+    try {
+      speichern(await api.berichtDatei(b.kennung, nr, k.handlung), k.datei);
+      setDateiAbruf({ wahl, satz: ausgabeAbgerufen(k.handlung, nr), fehler: false });
+    } catch (e) {
+      setDateiAbruf({ wahl, satz: ausgabeFehler(e), fehler: true });
+    } finally {
+      setLaeuft(false);
+    }
+  };
+  const kundenadministratoren = (rollen.selbst?.kundenadministratoren ?? []).map((p) => p.name);
   const verlauf = verlaufDerStaende(detail);
   // Solange die Selbstauskunft fehlt, keine schreibenden Hebel; unbekannte Rechte geben keine Handlung frei.
   const rechteJetzt = rechte === undefined ? KEINE_RECHTE : rechte;
@@ -289,7 +320,12 @@ export function BerichtSeite({
               </p>
             )}
             {kopf.teilansicht && <p className="vp-br-teilansicht">{kopf.teilansicht}</p>}
-            {!hebel.freigeben && rollen.selbst && <p className="vp-muted" role="note">{rollen.grund}</p>}
+            {hebel.ohneRecht && rollen.selbst && (
+              <p className="vp-br-ohne-recht" data-testid="bericht-freigeben-ohne-recht">
+                <span>{freigebenWer(kundenadministratoren)}</span>
+                <ErklaerKnopf klein erklaerung={freigebenErklaerung(kundenadministratoren)} testId="bericht-freigeben-warum-knopf" />
+              </p>
+            )}
             {(hebel.freigeben || vergleichen) && (
               <div className="vp-br-aktionen" data-testid="bericht-hebel">
                 {hebel.freigeben && (
@@ -313,14 +349,19 @@ export function BerichtSeite({
                 )}
               </div>
             )}
-            {knoepfe.length > 0 && onAbruf && (
-              <div className="vp-br-knoepfe">
+            {knoepfe.length > 0 && (
+              <div className="vp-br-knoepfe" data-testid="bericht-dateien">
                 {knoepfe.map((k) => (
-                  <button key={k.handlung} type="button" className="vp-br-knopf" onClick={() => onAbruf(k)}>
+                  <button key={k.handlung} type="button" className="vp-br-knopf" disabled={laeuft} onClick={() => void abrufen(k)}>
                     {k.text}
                   </button>
                 ))}
               </div>
+            )}
+            {dateiAbruf?.wahl === wahl && (
+              <p className={dateiAbruf.fehler ? 'vp-alert vp-alert-err' : 'vp-muted'} role={dateiAbruf.fehler ? 'alert' : 'status'} data-testid="bericht-abruf">
+                {dateiAbruf.satz}
+              </p>
             )}
           </section>
           {lv ? (
@@ -588,7 +629,7 @@ function ZahlZeile({ zahl: z, heuteLaden }: { zahl: QuellenZahl; heuteLaden: ((k
         <span className="vp-br-zeile-zahl">{z.zahl}</span>
         <span className="vp-br-zeile-info">
           <Badge variant={z.zustandTon}>{z.zustand}</Badge>
-          <span>{z.version}</span>
+          {z.version && <span>{z.version}</span>}
           {z.kennzeichenSaetze.map((s) => (
             <span key={s} className="vp-br-kennzeichen">
               {s}
@@ -631,4 +672,16 @@ function ZahlZeile({ zahl: z, heuteLaden }: { zahl: QuellenZahl; heuteLaden: ((k
       </div>
     </details>
   );
+}
+
+/** Legt eine abgerufene Datei unter ihrem Namen ab (wie der Leistungsvergleich). */
+function speichern(blob: Blob, name: string) {
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(href);
 }

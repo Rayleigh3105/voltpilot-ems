@@ -1399,6 +1399,13 @@
       "nachher": "a4c865c22fa3e6fc92c29eba152374037380d440efcf3d54b9152b9cc094f406",
       "commit": "uems · Wiedervorlage als Arbeitsliste (Konzept w1, PR1)",
       "grund": "Entscheid 8: der Schritt „Entwurf vergleichen“ der Wiedervorlage öffnet den Bericht mit offenem Entscheid; data-entscheid-schritt sagt dem Fokus-Haken, welcher Knopf der Schritt ist (vor „Anstoß verwerfen“). Wortlaut, Ziel und Handler unverändert."
+    },
+    {
+      "datei": "pages/BerichtSeite.tsx",
+      "vorher": "adbd0313ee745697dbf00cad76a292f001396269b66ae6ba46e6a193da318cc4",
+      "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
+      "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
+      "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

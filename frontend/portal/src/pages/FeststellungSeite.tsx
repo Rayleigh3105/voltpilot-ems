@@ -1,3 +1,4 @@
+import { merkeAbruf, tagDesAugenblicks } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, ApiError, type FeststellungMitVerlauf, type InternesAudit, type Massnahme } from '../api';
@@ -62,6 +63,7 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
       : api.energiemanagementFeststellung(id);
     laden.then(
       (d) => {
+        merkeAbruf(d.feststellung.lage.abruf); // Befund 3: die Dialoge rechnen mit dem Tag der Route
         if (!aktiv) return;
         setDaten(d);
         const f = d.feststellung;
@@ -319,7 +321,7 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
           <ul className="vp-nw-verlauf" data-testid="feststellung-verlauf">
             {verlauf.map((v) => (
               <li key={v.id}>
-                <b>{E.tagText(v.zeit.slice(0, 10))}</b>
+                <b>{E.tagText(tagDesAugenblicks(v.zeit) ?? v.zeit.slice(0, 10))}</b>
                 {`${A.FESTSTELLUNG_VERLAUF_WORT[v.art] ?? v.art} · ${v.akteur.name}${v.begruendung ? ` · ${v.begruendung}` : ''}`}
               </li>
             ))}

@@ -98,7 +98,7 @@ Anlegen ist `BerichtAnlegenDialog` mit `nurVorlage`, Freigeben `BerichtFreigeben
   Punkt „Alle n Werte endgültig“ bei null Werten weg. `zeitraumWahlen/zeitraumVorgabe('datengrundlage')` = zwölf volle
   Monate (`2025-11/2026-10`), keiner „läuft“. Eine in „Berichte“ angelegte Bewertung öffnet die Seite „Bewertung“
   (`BerichtePage.onBewertung`); die Berichtsseite kennt die acht Bewertungs-Abschnitte nicht.
-- PDF/CSV hängen nur hier ein (`api.berichtDatei` → Blob → Download); `AUSGABE_EINGEHAENGT` der Berichtsseite bleibt aus.
+- PDF/CSV hängen hier ein (`api.berichtDatei` → Blob → Download); seit Konzept Nachweisen n1 PR 0 auch an jedem Stand der allgemeinen Berichtsseite (`darfAusgabe`).
 - ⚠ Kein Feld „Name“ am Anlegen (§5.5 Schritt 1): `BerichtAnlegen` kennt nur Vorlage, Geltung, Zeitraum — Befund, nicht
   nachgebaut; der Stand-Satz nennt „Bewertung <Jahr>“ aus dem letzten Monat der Datengrundlage.
 - Bühne: `e2e/bewertung.html?stand=voll&bewertungsstand=keine|entwurf|nr1|revision|nr2|faellig` (Routen in

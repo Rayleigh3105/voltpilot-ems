@@ -1,3 +1,4 @@
+import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { api, type Feststellung, type InternesAuditprogramm } from '../api';
 import * as B from '../auditBild';
@@ -50,6 +51,7 @@ export function EnergiemanagementAudits({
     let aktiv = true;
     api.energiemanagementAudits().then(
       (p) => {
+        merkeAbruf(p.tag); // Befund 3: „Audit planen“ und „durchgeführt am“ nehmen den Tag der Route
         if (!aktiv) return;
         setProgramm(p);
         // Wer das nächste Audit plant: die Person der Aufgabe „Interne Audits“ am Tag der Route.

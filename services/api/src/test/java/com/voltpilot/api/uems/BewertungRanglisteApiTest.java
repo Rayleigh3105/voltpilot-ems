@@ -247,6 +247,17 @@ class BewertungRanglisteApiTest {
                 .path("wiedervorlage_monate").asInt()).isEqualTo(18);
         assertThat(ruf("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "energetische_bewertung",
                 "geltung_id", unternehmen.toString()), 201).path("zeitraum").asText()).isEqualTo("2025-12/2026-11");
+        // Konzept Nachweisen n1, Inventur C6/C7: ein zweites Anlegen derselben Datengrundlage ist 409 mit dem Wort der
+        // Vorlage und den Monaten - vorher fiel der Satz über „vorlage_datengrundlage“ und LocalDate.parse in eine 500.
+        JsonNode schon = JSON.readTree(rufText("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "energetische_bewertung",
+                "geltung_id", unternehmen.toString()), 409));
+        assertThat(schon.path("code").asText()).isEqualTo("bericht_gibt_es_schon");
+        assertThat(schon.path("message").asText()).startsWith("Diesen Bericht gibt es schon: BR-")
+                .contains("(Energetische Bewertung ").endsWith(", Dezember 2025 bis November 2026).");
+        assertThat(JSON.readTree(rufText("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "energetische_bewertung",
+                "geltung_id", unternehmen.toString(), "zeitraum", "2026-10"), 409)).path("message").asText())
+                .isEqualTo("Diesen Bericht gibt es schon: " + kennung + " (Energetische Bewertung "
+                        + bericht.path("geltung_name").asText() + ", Oktober 2026).");
         JsonNode entwurf = ruf("GET", "/api/v1/berichte/" + kennung + "/entwurf", "IK", null, 200);
         JsonNode abzug = entwurf.path("abzug");
         assertThat(abzug.path("rangliste").at("/kriterien/fassung").asInt()).isEqualTo(1);

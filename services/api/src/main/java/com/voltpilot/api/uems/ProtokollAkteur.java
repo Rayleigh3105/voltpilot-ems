@@ -30,7 +30,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
  *   <li>Ohne Zugriff-Kontext (OIDC aus, Token ohne Kontoart): die Festlegung von vor IP-7 —
  *       Plattform-Admin → {@code voltpilot}, sonst {@code kundenadministrator}/{@code kunde}.</li>
  * </ul>
- * Der NAME bleibt, was er war: {@code preferred_username}, sonst {@code name}, sonst das Subject.
+ * Der NAME ist der der Person: {@code name} (Vor- und Nachname aus dem Konto), sonst {@code preferred_username}, sonst das
+ * Subject. Bis Konzept Nachweisen n1 (Befund 4) stand der Anmeldename vorn; dann hieß es im Verlauf, im Kopf eines
+ * Berichtsstands und im PDF „freigegeben von ines“ statt „Ines Kaltenbach“.
  */
 public record ProtokollAkteur(String sub, String name, String rolle, String art) {
 
@@ -81,9 +83,9 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
                 || jwt.getSubject() == null || jwt.getSubject().isBlank()) {
             return Optional.empty();
         }
-        Object name = jwt.getClaims().get("preferred_username");
-        if (name == null) {
-            name = jwt.getClaims().get("name");
+        Object name = jwt.getClaims().get("name");
+        if (name == null || name.toString().isBlank()) {
+            name = jwt.getClaims().get("preferred_username");
         }
         boolean plattformAdmin = auth.getAuthorities().stream()
                 .anyMatch(a -> PLATTFORM_ADMIN.equals(a.getAuthority()));

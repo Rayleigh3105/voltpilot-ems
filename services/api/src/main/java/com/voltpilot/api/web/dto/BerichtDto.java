@@ -63,8 +63,12 @@ public final class BerichtDto {
     /** Eine verantwortliche Person und ihre wesentlichen Einsätze (Kennzeichen). */
     public record Verantwortliche(String name, List<String> einsaetze) {}
 
-    /** {@code GET /api/v1/berichte}: die Berichte, die die Person lesen darf — archivierte nicht (V4). */
-    public record Liste(List<Bericht> berichte) {}
+    /**
+     * {@code GET /api/v1/berichte}: die Berichte, die die Person lesen darf, archivierte nicht (V4). {@code abruf} ist der
+     * Augenblick der Route (ihre Uhr): an ihm misst das Portal „Zeitraum läuft“ und die Zeitraum-Wahl, nie an der Uhr des
+     * Browsers (Konzept Nachweisen n1, Befund 3).
+     */
+    public record Liste(List<Bericht> berichte, OffsetDateTime abruf) {}
 
     /** Ein Berichtsstand in einer Folgen-Karte: „BR-2026-0001 Nr. 2“. */
     public record StandRef(String kennung, int nr) {}
@@ -89,8 +93,11 @@ public final class BerichtDto {
             OffsetDateTime erkanntAm, String zustand, Integer erledigtDurchNr, String verworfenBegruendung,
             Person verworfenVon, OffsetDateTime verworfenAm) {}
 
-    /** {@code GET /api/v1/berichte/{kennung}}: Kopf, Stände (Nr. 1 zuerst) und Anstöße (älteste zuerst). */
-    public record Detail(Bericht bericht, List<StandKurz> staende, List<Anstoss> anstoesse) {}
+    /**
+     * {@code GET /api/v1/berichte/{kennung}}: Kopf, Stände (Nr. 1 zuerst) und Anstöße (älteste zuerst); {@code abruf} wie
+     * in der {@link Liste} - der Augenblick der Route.
+     */
+    public record Detail(Bericht bericht, List<StandKurz> staende, List<Anstoss> anstoesse, OffsetDateTime abruf) {}
 
     /**
      * {@code GET …/entwurf}: der gespeicherte Entwurf nach der D4-Prüfung — {@code neu_gebildet} = DIESER Abruf hat ihn neu

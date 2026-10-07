@@ -4,7 +4,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import * as A from '../abweichungen';
 import { api, type Abweichung, type AbweichungErgebnis, type Massnahme } from '../api';
-import { heute } from '../bewertung';
+import { routenHeute } from '../routenUhr';
 import * as Z from '../energieziele';
 import { UEMS_AUSSAGE_VON, UEMS_NORMGRENZE } from '../glossar';
 import { useAktiveKonten, VerantwortlichWahl } from './AuffaelligkeitZeile';
@@ -48,7 +48,7 @@ function Rahmen({ titel, basis, busy, knopf, testid, onClose, children }: {
  * Konto), an welchem Tag, wahlfrei eine Beleg-Kennung. Wer einträgt, muss nicht wer aussagt sein (R2). Das System
  * nennt keine Ursache — es trägt ein, was eine Person sagt, und zeigt es immer mit „Aussage von …“.
  */
-export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute = heute() }: Props) {
+export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute = routenHeute() }: Props) {
   const basis = `ua-${useId().replace(/:/g, '')}`;
   const { geladen, konten } = useAktiveKonten();
   const [e, setE] = useState<A.AussageEntwurf>({ wortlaut: '', person: '', am: tagHeute, beleg: '' });

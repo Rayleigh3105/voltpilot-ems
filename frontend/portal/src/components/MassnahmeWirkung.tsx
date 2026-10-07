@@ -106,7 +106,7 @@ function WirkungKarte({ m, w }: { m: Massnahme; w: MassnahmeWirkung }) {
                   ) : (
                     <tr key={z.periode} className="vp-ez-offen" data-testid={`wirkung-${z.periode}`}>
                       <th scope="row">{z.beschriftung}</th>
-                      <td colSpan={5}>{Z.NOCH_NICHT_ENDGUELTIG}</td>
+                      <td colSpan={5} data-testid="grund">{z.grund}</td>
                     </tr>
                   ),
                 )}
@@ -174,10 +174,19 @@ function AlleStaende({ m }: { m: Massnahme }) {
     );
   }, [offen, liste, m.id]);
   return (
-    <details className="vp-ez-kopie" data-testid="massnahme-staende" onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}>
+    <details className="vp-ez-kopie" data-testid="massnahme-staende" onToggle={(e) => {
+        const auf = (e.target as HTMLDetailsElement).open;
+        setOffen(auf);
+        if (auf && liste === 'fehler') setListe(null);
+      }}>
       <summary>{W.ALLE_STAENDE}</summary>
       {liste === 'fehler' ? (
-        <p className="vp-ez-leise">{W.STAENDE_LADEFEHLER}</p>
+        <>
+          <p className="vp-ez-leise" role="alert">{W.STAENDE_LADEFEHLER}</p>
+          <Button variant="outline" size="sm" onClick={() => setListe(null)} data-testid="massnahme-staende-erneut">
+            Erneut versuchen
+          </Button>
+        </>
       ) : liste === null ? (
         offen && <Skeleton height={60} />
       ) : (

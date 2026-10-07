@@ -342,7 +342,7 @@ describe('Bericht anlegen (§5.1, V1–V5, Q4)', () => {
   });
 
   it('„Diesen Bericht gibt es schon“ (§5.8) spricht den Satz des Zwillings und bietet den Bericht an', () => {
-    const satz = B.berichtGibtEsSchon(BR, 'Werk Ahrenberg', { art: 'monat', schluessel: '2026-10' });
+    const satz = B.berichtGibtEsSchon(BR, 'monatsbericht_standort', 'Werk Ahrenberg', { art: 'monat', schluessel: '2026-10' });
     expect(satz).toBe('Diesen Bericht gibt es schon: BR-2026-0001 (Monatsbericht Werk Ahrenberg, Oktober 2026).');
     expect(anlegenFehler(new ApiError(409, satz, { code: 'bericht_gibt_es_schon', message: satz, kennung: BR }))).toEqual({ satz, kennung: BR });
     const leer = B.keineQuellen('Werk Lindach', { art: 'monat', schluessel: '2026-09' }, '2026-10-15');
