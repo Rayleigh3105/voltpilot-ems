@@ -1382,13 +1382,15 @@ function UnifiedPortal() {
   const isPlatform = isPlatformPage(page);
   // ⚠ Nach `loaded` HÄLT der Cover nur über den echten LANDESEITEN, die ihr
   // erstes Bild melden (`useReportFirstPaint`): Übersicht/Portfolio (→
-  // PortfolioCockpit), Anlagen (→ AnlageSeite/AnlagenListe). Flotten-Unterreiter
-  // wie `portfolio/messwerte`/`portfolio/erloese` (und jede künftige Unterseite)
-  // melden NICHT und würden sonst bis zur 3-s-Grenze unter fertigem Inhalt
-  // hängen (Review SOLLTE-2). Für sie hebt der Cover ab, sobald `loaded` steht -
-  // die Seite trägt dann ihre eigenen Skelette. Wer eine neue meldende
-  // Landeseite baut, trägt sie hier ein.
-  const isReportingLanding = page === 'uebersicht' || page === 'portfolio' || page === 'anlagen';
+  // PortfolioCockpit bzw. EbenenCockpit), Anlagen (→ AnlageSeite/AnlagenListe) -
+  // die Anlage nur ohne Reiter: `#/anlage/{id}/energiebilanz` und jeder andere
+  // Reiter meldet nicht. Flotten-Unterreiter wie `portfolio/messwerte`/
+  // `portfolio/erloese` (und jede künftige Unterseite) melden ebenfalls NICHT und
+  // würden sonst bis zur 3-s-Grenze unter fertigem Inhalt hängen (Review
+  // SOLLTE-2). Für sie hebt der Cover ab, sobald `loaded` steht - die Seite trägt
+  // dann ihre eigenen Skelette. Wer eine neue meldende Landeseite baut, trägt sie
+  // hier ein.
+  const isReportingLanding = page === 'uebersicht' || page === 'portfolio' || (page === 'anlagen' && route.sub == null);
   const asyncLanding =
     loaded &&
     !error &&
@@ -1414,6 +1416,14 @@ function UnifiedPortal() {
     const cap = window.setTimeout(() => setLandingReady(true), 3000);
     return () => window.clearTimeout(cap);
   }, [asyncLanding, landingReady]);
+  // Einmal gehoben, kehrt der Cover nicht zurück: steht nach dem Laden eine
+  // Seite, die nicht meldet (Unterseite, Hilfe, Plattform, Onboarding), endet
+  // der Boot-Moment hier. Sonst käme die Lade-Bühne beim ersten späteren Wechsel
+  // auf eine meldende Landeseite zurück. Ohne Mandantenwahl oder bei einem
+  // Ladefehler bleibt er offen - der nächste Ladelauf ist wieder ein Start.
+  useEffect(() => {
+    if (!landingReady && loaded && !error && !loadFailed && !needsTenantPick && !asyncLanding) setLandingReady(true);
+  }, [landingReady, loaded, error, loadFailed, needsTenantPick, asyncLanding]);
   // Bei ungewöhnlich langer Ladezeit ein ruhiger Hinweis (kein endloses Kreisen).
   useEffect(() => {
     if (!coverActive) {
@@ -1727,8 +1737,9 @@ function UnifiedPortal() {
               // ersetzt nur die Adresse. Die Liste öffnet die Seite selbst (Konzept Messen m1: die ganze Reihe ist der
               // Einstieg) - mit „Stand am …“ an genau diesem Tag.
               onOeffnen={(id, periode) => {
+                // Die Liste nennt eine Periode nur mit „Stand am …“: dann liest die Seite diesen Tag, nur lesend.
                 const s = periode
-                  ? sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode })
+                  ? sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode, stand: periode })
                   : null;
                 if (s) springe(s);
                 else navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id));
@@ -1744,6 +1755,7 @@ function UnifiedPortal() {
                       standortId: page === 'standort' ? route.standortId : null,
                       periode,
                       vergleich: jetzt.vergleich,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
@@ -1759,9 +1771,17 @@ function UnifiedPortal() {
                       periode: jetzt.periode,
                       version: jetzt.version,
                       vergleich: v,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
+              }}
+              // „Zurück zu heute“ aus „Stand am …“: dieselbe Messstelle ohne Tag und ohne dessen Periode.
+              onWerteHeute={() => {
+                const s = route.messstelleId
+                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null })
+                  : null;
+                if (s) springe(s);
               }}
               onListe={() =>
                 navigate(

@@ -1,7 +1,7 @@
 import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
 import { zuordnung } from './bezugsdaten';
 import { UEMS_ABLESEN } from './glossar';
-import { abzulesen, standZahl } from './messstellenListe';
+import { ableseortVon, abzulesen, standZahl } from './messstellenListe';
 import { lokalerTag } from './uemsOrtsbaum';
 import { betrag, wertFehler, zaehltSatz, zeitText } from './werteEingabe';
 import { zahlText } from './zahl';
@@ -35,8 +35,8 @@ export interface RundeZaehler {
 export interface Runde {
   /** Das Kurzzeichen des Orts (`G-1`). */
   ort: string;
-  /** „Halle 1“ */
-  ortName: string;
+  /** „Halle 1“; `null` = aus dem Register nicht bekannt (die Fläche liest ihn aus dem Ortsbaum). */
+  ortName: string | null;
   standortName: string | null;
   standortId: string | null;
   zaehler: RundeZaehler[];
@@ -47,17 +47,22 @@ export interface Runde {
 const nachZiffern = (a: string, b: string) => a.localeCompare(b, 'de-DE', { numeric: true });
 
 /**
- * Die Runde eines Orts aus dem Register: die Ablesezähler, die an ihm oder darunter stehen (`ort.pfad` beginnt mit dem
- * Ort selbst), im Ort der Hauptzähler zuerst, dann nach Kennzeichen - wie die Liste. `null`, wenn der Ort keinen hat.
+ * Die Runde eines Ableseorts aus dem Register: die Ablesezähler, deren Ableseort er ist (`ableseortVon`: ihr Gebäude,
+ * ohne Gebäude ihr Standort - wie der Server sie in der Wiedervorlage bündelt), im Ort der Hauptzähler zuerst, dann nach
+ * Kennzeichen - wie die Liste. Am Standort also nur die Zähler ohne Gebäude, nie die aller Gebäude (Review r4 S11).
+ * `null`, wenn der Ort keinen hat.
  */
 export function rundeAus(register: MessstellenRegister, ort: string, zone: string): Runde | null {
-  const zeilen = register.register.filter((z) => z.ort.pfad.includes(ort) && abzulesen(z));
+  const zeilen = register.register.filter((z) => ableseortVon(z) === ort && abzulesen(z));
   if (zeilen.length === 0) return null;
   const hauptzaehler = (z: MessstelleRegisterZeile) => z.elektrische_stellung?.stellung === 'Hauptzähler';
   const sortiert = [...zeilen].sort((a, b) =>
     hauptzaehler(a) !== hauptzaehler(b) ? (hauptzaehler(a) ? -1 : 1) : nachZiffern(a.kennzeichen, b.kennzeichen),
   );
-  const amOrt = zeilen.find((z) => z.ort.kennzeichen === ort);
+  // Der Name des Orts: am Standort der des Standorts, sonst der einer Messstelle, die an ihm selbst hängt; ein Gebäude
+  // nur mit Zählern in Bereichen nennt erst der Ortsbaum (`null`, die Fläche fragt ihn nach).
+  const standortName = zeilen[0].ort.standort === ort ? zeilen[0].ort.standort_name : null;
+  const amOrt = register.register.find((z) => z.ort.kennzeichen === ort);
   const zaehler = sortiert.map((z): RundeZaehler => {
     const lw = z.letzter_wert;
     return {
@@ -71,7 +76,7 @@ export function rundeAus(register: MessstellenRegister, ort: string, zone: strin
   const tage = zaehler.flatMap((z) => (z.zuletzt ? [lokalerTag(z.zuletzt.zeitpunkt, zone)] : [])).sort();
   return {
     ort,
-    ortName: amOrt?.ort.name ?? ort,
+    ortName: standortName ?? amOrt?.ort.name ?? null,
     standortName: zeilen[0].ort.standort_name,
     standortId: zeilen[0].ort.standort_id,
     zaehler,
@@ -81,14 +86,15 @@ export function rundeAus(register: MessstellenRegister, ort: string, zone: strin
 
 const tagText = (tag: string) => tag.split('-').reverse().join('.');
 
-/** „Halle 1 ablesen“ */
-export const rundenTitel = (r: Runde): string => `${r.ortName} ablesen`;
+/** „Halle 1 ablesen“ - ohne bekannten Namen das Kurzzeichen des Orts („G-1 ablesen“). */
+export const rundenTitel = (r: Runde, name: string | null = r.ortName): string => `${name ?? r.ort} ablesen`;
 
 /** „8 Zähler · Werk Ahrenberg · zuletzt abgelesen am 01.10.2026“ */
 export function rundenUnter(r: Runde): string {
   return [
     `${r.zaehler.length} Zähler`,
-    r.standortName,
+    // Die Runde des Standorts nennt ihn schon im Titel.
+    r.standortName !== r.ortName ? r.standortName : null,
     r.zuletztAm ? `zuletzt abgelesen am ${tagText(r.zuletztAm)}` : null,
   ]
     .filter(Boolean)

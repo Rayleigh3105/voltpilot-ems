@@ -31,6 +31,7 @@ import { ZaehlerwechselVerlauf } from '../components/ZaehlerwechselVerlauf';
 import { ZaehlerwechselDialog } from '../components/ZaehlerwechselDialog';
 import type { WechselZiel } from '../zaehlerwechsel';
 import { QuelleKarte } from '../components/QuelleKarte';
+import { SummenwertFormelDialog } from '../components/SummenwertFormelDialog';
 import { VergleichBefund } from '../components/VergleichBefund';
 import type { Schritt } from '../messstelleDialog';
 import { PROTOKOLL_LABEL, ProtokollDialog } from '../components/ProtokollDialog';
@@ -70,6 +71,8 @@ import {
   ablesungKachel,
   ablesungZeilen,
   FORMEL_AENDERN,
+  FORMEL_NICHT_ABRUFBAR,
+  NUR_LESEN,
   fussSatz,
   hatMenge,
   herkunftAus,
@@ -90,13 +93,15 @@ import {
   type Herkunft,
 } from '../messstelleSeite';
 import { quelleKarte, type BindungsRolle, type QuelleGroesseKarte } from '../quelleBinden';
-import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
+import { datumText, lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
+import { ZURUECK_ZU_HEUTE } from '../standAm';
 import { boxAmGeraet, boxWechselAmGeraet } from '../boxAnQuelle';
 import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
 import { nebengroessen, periodeAus, quellenNamen } from '../uemsWerteKarte';
 import { useMessenEinstieg } from '../messenEinstieg';
 import { sprungziel, zoneSatz, type Zeitraum, ZEITRAEUME } from '../uemsOberflaechen';
 import { wirksameAblesungen } from '../werteEingabe';
+import { datumVon, isoMonat } from '../picker/datum';
 import './MessstelleSeite.css';
 
 interface Stamm {
@@ -176,13 +181,18 @@ export function MessstelleSeite(props: MessstelleSeiteProps) {
 interface MessstelleSeiteProps {
   id: string;
   zone?: string;
-  /** Periode und Version der Adresse für den Abschnitt „Werte“. */
-  werte?: { periode: string | null; version: number | null; vergleich: string | null } | null;
+  /**
+   * Periode und Version der Adresse für den Abschnitt „Werte“; `stand` = aus „Stand an einem Tag ansehen“ geöffnet: die
+   * Seite liest diesen Tag und bietet keinen Schreibweg (wie die Liste, `standAm.ts`).
+   */
+  werte?: { periode: string | null; version: number | null; vergleich: string | null; stand?: string | null } | null;
   /** Die neu gewählte Periode der Werte (`JJJJ-MM-TT` bzw. `JJJJ-MM`). */
   onWerteZeitraum?: (periode: string) => void;
   /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters — der Wirt schreibt sie als `v=` in die Adresse. */
   onWerteVergleich?: (v: string | null) => void;
   onListe: () => void;
+  /** „Zurück zu heute“ aus „Stand am …“ (dieselbe Seite ohne Tag). */
+  onHeute?: () => void;
 }
 
 /** Die Zeiträume der Werte je Herkunft: ein Ablesezähler hat keine Tages- und Wochenwerte. */
@@ -195,8 +205,12 @@ function MessstelleSeiteMitId({
   onWerteZeitraum,
   onWerteVergleich,
   onListe,
+  onHeute,
 }: MessstelleSeiteProps) {
   const messenEinstieg = useMessenEinstieg();
+  // Aus „Stand am …“: der Tag, den die Seite liest - dann nur lesend (Review r4 S4).
+  const standAm = werte?.stand ?? null;
+  const nurLesen = standAm !== null;
   const rollen = useRollen();
   const [stamm, setStamm] = useState<Stamm | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
@@ -227,7 +241,10 @@ function MessstelleSeiteMitId({
   const [ablesungDialog, setAblesungDialog] = useState<{ alt: Ablesung | null } | null>(null);
   const [ablesungAntwort, setAblesungAntwort] = useState<AblesungAntwort | null>(null);
   const ablesungAusloeser = useRef<HTMLElement | null>(null);
-  const [formel, setFormel] = useState<MessstelleFormel | null>(null);
+  // `null` = lädt, `'fehler'` = gerade nicht abrufbar (nie ewig „wird geladen“).
+  const [formel, setFormel] = useState<MessstelleFormel | null | 'fehler'>(null);
+  const [formelVersuch, setFormelVersuch] = useState(0);
+  const [formelDialog, setFormelDialog] = useState(false);
   const [kanalNamen, setKanalNamen] = useState<Record<string, string>>({});
   const [protokollOffen, setProtokollOffen] = useState(false);
   const [korrekturenOffen, setKorrekturenOffen] = useState(false);
@@ -250,7 +267,7 @@ function MessstelleSeiteMitId({
       ([messstelle, prozesse, anteile]) => aktiv && setStamm({ messstelle, prozesse, anteile }),
       (e) => aktiv && setStammFehler(e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler'),
     );
-    api.messstellenRegister().then(
+    api.messstellenRegister(standAm ? { stichtag: standAm } : {}).then(
       (r) => {
         if (!aktiv) return;
         setRegister(r);
@@ -267,7 +284,7 @@ function MessstelleSeiteMitId({
     return () => {
       aktiv = false;
     };
-  }, [id, versuch]);
+  }, [id, versuch, standAm]);
 
   // Die Namen und Kataloge ändern sich durch einen Eintrag nicht — sie werden einmal gelesen.
   useEffect(() => {
@@ -307,7 +324,7 @@ function MessstelleSeiteMitId({
 
   const m = stamm?.messstelle ?? null;
   const zeile = m ? (zeilen.find((r) => r.id === m.id) ?? null) : null;
-  const heute: Tag = register?.stichtag ?? lokalerTag(new Date().toISOString(), zone);
+  const heute: Tag = register?.stichtag ?? standAm ?? lokalerTag(new Date().toISOString(), zone);
   const standortZone = standorte?.standorte.find((s) => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone;
   const herkunft: Herkunft = m ? herkunftAus(zeile, m) : 'keine';
   const haupt = zeile?.hauptgroesse ?? m?.hauptgroesse ?? null;
@@ -369,31 +386,42 @@ function MessstelleSeiteMitId({
   useEffect(() => {
     if (!m || m.art !== 'berechnet') return;
     let aktiv = true;
+    setFormel(null);
     api.messstelleFormel(m.id).then(
       (f) => {
         if (!aktiv) return;
         setFormel(f);
         const anlage = zeile?.elektrische_stellung?.anlage;
         const komponenten = [...new Set(f.terme.map((t) => t.entity_id).filter((e): e is string => Boolean(e)))];
-        if (!anlage) return;
-        for (const k of komponenten) {
-          api.komponenteMesskanaele(anlage, k).then(
-            (l) =>
-              aktiv &&
-              setKanalNamen((alt) => ({
-                ...alt,
-                ...Object.fromEntries(l.messkanaele.map((c) => [`${k}|${c.kanal}`, `${l.komponente} · ${c.anzeigename ?? c.kanal}`])),
-              })),
-            () => undefined,
-          );
-        }
+        if (!anlage || komponenten.length === 0) return;
+        // D5: ein Messwert heißt nach seiner Komponente im Aufbau der Anlage - nie nach ihrer Kennung. Ohne Namen bleibt
+        // „Messwert einer Komponente“.
+        api.siteEntities(anlage).then(
+          (aufbau) => {
+            const namen = new Map(aufbau.entities.map((e) => [e.id, e.label || e.typeLabel]));
+            for (const k of komponenten) {
+              const komponente = namen.get(k);
+              if (!komponente) continue;
+              api.komponenteMesskanaele(anlage, k).then(
+                (l) =>
+                  aktiv &&
+                  setKanalNamen((alt) => ({
+                    ...alt,
+                    ...Object.fromEntries(l.messkanaele.map((c) => [`${k}|${c.kanal}`, `${komponente} · ${c.anzeigename ?? 'Messwert'}`])),
+                  })),
+                () => undefined,
+              );
+            }
+          },
+          () => undefined,
+        );
       },
-      () => aktiv && setFormel(null),
+      () => aktiv && setFormel('fehler'),
     );
     return () => {
       aktiv = false;
     };
-  }, [m, zeile, versuch]);
+  }, [m, zeile, versuch, formelVersuch]);
 
   // Ein Sprung mit Periode (Register, Herkunfts-Zeile) holt den Abschnitt „Werte“ in den Blick — einmal, und
   // nur so weit wie nötig: steht er schon im Bild, bleibt die Seite, wo sie ist.
@@ -451,7 +479,7 @@ function MessstelleSeiteMitId({
   const status = statusZeile(zeile);
   const bestand = bestandAus(m, stamm.prozesse, stamm.anteile);
   const zuordnung = zuordnungZeilen(m, stamm.prozesse, stamm.anteile, heute, namen);
-  const darfAendern = aenderbar(m);
+  const darfAendern = aenderbar(m) && !nurLesen;
   const archiviert = m.lebenszyklus === 'archiviert';
   const neben = haupt ? nebengroessen(w, haupt) : null;
   const r = rolle(haupt);
@@ -484,14 +512,18 @@ function MessstelleSeiteMitId({
   // Werte: womit sie öffnen (die Adresse zuerst) und was die Seite anbietet.
   const zeitraeume = herkunft === 'ablesung' ? ZEITRAEUME_ABLESUNG : ZEITRAEUME;
   const ausAdresse = periodeAus(werte?.periode);
+  // Ein Ablesezähler kennt Tag und Woche nicht: dann der Monat des Tags bzw. des Montags der Woche („2026-W43“ → Oktober).
   const werteAnfang =
     ausAdresse && !zeitraeume.includes(ausAdresse.art)
-      ? { art: 'monat' as Zeitraum, wert: ausAdresse.wert.slice(0, 7) }
+      ? { art: 'monat' as Zeitraum, wert: ausAdresse.art === 'woche' ? isoMonat(datumVon(ausAdresse.wert, 'woche')!) : ausAdresse.wert.slice(0, 7) }
       : (ausAdresse ?? start);
   // Ablesungen: die Zeilen (neueste zuerst) und der Schritt oben.
-  const wirksam = ablesungen ? wirksameAblesungen(ablesungen) : [];
+  // Mit „Stand am …“ nur die Ablesungen bis zu diesem Tag.
+  const wirksam = ablesungen
+    ? wirksameAblesungen(ablesungen).filter((a) => !standAm || lokalerTag(a.zeitpunkt, standortZone) <= standAm)
+    : [];
   const ablesungsZeilen = haupt ? ablesungZeilen({ wirksam, einheit: haupt.einheit, zone: standortZone, serie }) : [];
-  const darfAblesen = ablesbar && !archiviert && rollen.darf('ablesung.erfassen', zeile?.ort.standort_id ?? null);
+  const darfAblesen = ablesbar && !archiviert && !nurLesen && rollen.darf('ablesung.erfassen', zeile?.ort.standort_id ?? null);
   const oeffneAblesung = (alt: Ablesung | null, ausloeser: HTMLElement | null) => {
     ablesungAusloeser.current = ausloeser;
     setAblesungDialog({ alt });
@@ -508,9 +540,20 @@ function MessstelleSeiteMitId({
         ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null)
         : undefined,
   };
-  const schliesseAblesung = () => {
+  // Der Fokus kehrt zum Auslöser zurück (Review r4 S23: nie auf `body`). Nach dem Speichern verschwindet ein Weg in Kachel
+  // oder Werten mit dem Neuladen („Ablesung eintragen ›“ am fehlenden Monat) - dann steht er auf der Bestätigung; nur der
+  // Schritt oben bleibt stehen und bekommt ihn zurück.
+  const schliesseAblesung = (gespeichert = false) => {
     setAblesungDialog(null);
-    requestAnimationFrame(() => ablesungAusloeser.current?.focus());
+    requestAnimationFrame(() => {
+      const ausloeser = ablesungAusloeser.current;
+      const bleibt = ausloeser?.isConnected && (!gespeichert || ausloeser.closest('.vp-mss-schritt') !== null);
+      const ziel = bleibt
+        ? ausloeser
+        : (document.querySelector<HTMLElement>('[data-testid="ablesung-antwort"]') ??
+          document.querySelector<HTMLElement>('.vp-mss-schritt button'));
+      ziel?.focus();
+    });
   };
 
   const leit =
@@ -521,7 +564,7 @@ function MessstelleSeiteMitId({
   const naechste = ablesungKachel(zeile, standortZone, jetzt);
   const herkunftsKarte = herkunftKarte({ herkunft, zeile, zone: standortZone, ablesungen: ablesungen ? wirksam.length : null });
   const korrekturKontext =
-    quellen && zeile?.ort.standort_id && haupt?.einheit && m.art === 'gemessen' && !archiviert
+    quellen && zeile?.ort.standort_id && haupt?.einheit && m.art === 'gemessen' && !archiviert && !nurLesen
       ? { quellen, standort: zeile.ort.standort_id, einheit: haupt.einheit }
       : undefined;
 
@@ -554,6 +597,20 @@ function MessstelleSeiteMitId({
             <p className="vp-mss-unter">{[k.unter, k.lebenszyklus].filter(Boolean).join(' · ')}</p>
             {/* AP-16 IP-20 (R5): ein eingelöster Messbedarf — „geplant für EE-8 …“; ersetzt weder Quelle noch Wert. */}
             {geplantFuerText(zeile) && <p className="vp-mss-geplant" data-testid="messstelle-geplant-fuer">{geplantFuerText(zeile)}</p>}
+            {standAm && (
+              <div className="vp-mss-stand vp-k-farben" role="status" data-testid="messstelle-stand-am">
+                <span className="vp-k-marke is-plan">
+                  <Icon name="calendar" size={13} />
+                  Stand {datumText(standAm)}
+                </span>
+                <span className="vp-mss-leise">{NUR_LESEN}</span>
+                {onHeute && (
+                  <button type="button" className="vp-mss-link" onClick={onHeute}>
+                    {ZURUECK_ZU_HEUTE}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div className="vp-mss-menue">
             <RowMenu label="Weitere Aktionen" items={menue} />
@@ -604,7 +661,7 @@ function MessstelleSeiteMitId({
                 kennzeichen={m.kennzeichen}
                 seite={seite}
                 // AP-01 E5 = A: „Daten kommen an“ → Messen-Assistent, Schritt 2 des Standorts dieser Messstelle.
-                onZuordnen={messenEinstieg && zeile?.ort.standort_id
+                onZuordnen={messenEinstieg && zeile?.ort.standort_id && !nurLesen
                   ? () => messenEinstieg.oeffnen({ standortId: zeile.ort.standort_id, schritt: 2 })
                   : undefined}
                 messstelle={`${k.kennzeichen} · ${k.titel}`}
@@ -661,6 +718,7 @@ function MessstelleSeiteMitId({
                 einheit={haupt.einheit}
                 zone={standortZone}
                 archiviert={archiviert}
+                nurLesen={nurLesen}
                 alle={ablesungen}
                 zeilen={ablesungsZeilen}
                 fehler={ablesungenFehler}
@@ -760,8 +818,10 @@ function MessstelleSeiteMitId({
                 kanalNamen={kanalNamen}
                 register={zeilen}
                 standortId={zeile?.ort.standort_id ?? null}
-                darfAendern={darfAendern}
-                onAendern={() => oeffneBearbeiten(3)}
+                // Konzept §6.10: die Formel ändert der Formel-Dialog (Recht `messstelle.formel`), nicht der
+                // Messstellen-Dialog; er braucht die Anlage, an der die Messwerte hängen.
+                onAendern={darfAendern && zeile?.elektrische_stellung?.anlage ? () => setFormelDialog(true) : undefined}
+                onErneut={() => setFormelVersuch((v) => v + 1)}
               />
             )}
 
@@ -815,7 +875,7 @@ function MessstelleSeiteMitId({
             alle={ablesungen}
             alt={ablesungDialog.alt}
             onBerichtigen={(alt) => setAblesungDialog({ alt })}
-            onClose={schliesseAblesung}
+            onClose={() => schliesseAblesung()}
             onSaved={(a) => {
               if (a.urteil !== 'vorschlag' && a.urteil !== 'wiederholung') {
                 clearWerteCache();
@@ -824,7 +884,20 @@ function MessstelleSeiteMitId({
               }
               setAblesungAntwort(a);
               setAblesungenNeu((n) => n + 1);
-              schliesseAblesung();
+              schliesseAblesung(true);
+            }}
+          />
+        )}
+        {formelDialog && zeile?.elektrische_stellung?.anlage && rollen.darf('messstelle.formel', zeile.ort.standort_id ?? null) && (
+          <SummenwertFormelDialog
+            siteId={zeile.elektrische_stellung.anlage}
+            messstelle={m}
+            onClose={() => setFormelDialog(false)}
+            onGespeichert={() => {
+              clearWerteCache();
+              setWechselStand((v) => v + 1);
+              setFormelVersuch((v) => v + 1);
+              nachEintrag();
             }}
           />
         )}
@@ -949,62 +1022,73 @@ function ZuordnungZeile({
 
 /**
  * „Zusammengesetzt aus“ (Konzept Messen m1, §6.4 Punkt 10): die Terme der Formel von heute, je mit ihrem Sprung - eine
- * Messstelle auf ihre Seite; ein Messwert nennt seine Komponente. „Formel ändern“ für Berechtigte.
+ * Messstelle auf ihre Seite; ein Messwert nennt seine Komponente. „Formel ändern“ (Formel-Dialog) für Berechtigte.
  */
 function ZusammengesetztAus({
   formel,
   kanalNamen,
   register,
   standortId,
-  darfAendern,
   onAendern,
+  onErneut,
 }: {
-  formel: MessstelleFormel | null;
+  formel: MessstelleFormel | null | 'fehler';
   kanalNamen: Record<string, string>;
   register: readonly { id: string; kennzeichen: string; name: string | null }[];
   standortId: string | null;
-  darfAendern: boolean;
-  onAendern: () => void;
+  /** Ohne: kein „Formel ändern“ (archiviert, „Stand am“, keine Anlage). */
+  onAendern?: () => void;
+  onErneut: () => void;
 }) {
   return (
     <section className="vp-mss-karte vp-mss-formel" aria-labelledby="vp-mss-formel-titel" data-testid="karte-formel">
       <div className="vp-mss-karte-kopf">
         <h2 id="vp-mss-formel-titel">{ZUSAMMENGESETZT_AUS}</h2>
-        {darfAendern && (
-          <Recht aktion="messstelle.bearbeiten">
+        {onAendern && formel !== null && formel !== 'fehler' && (
+          <Recht aktion="messstelle.formel">
             <button type="button" className="vp-mss-link" onClick={onAendern}>
               {FORMEL_AENDERN}
             </button>
           </Recht>
         )}
       </div>
-      {!formel ? (
+      {formel === null ? (
         <p className="vp-mss-leise" role="status">
           Die Formel wird geladen …
         </p>
+      ) : formel === 'fehler' ? (
+        <p className="vp-mss-leise" role="status">
+          {FORMEL_NICHT_ABRUFBAR}{' '}
+          <button type="button" className="vp-mss-link" onClick={onErneut}>
+            Erneut versuchen
+          </button>
+        </p>
       ) : formel.terme.length === 0 ? (
-        <p className="vp-mss-leise">Noch keine Formel.</p>
+        // Alle Terme außerhalb des Zugriffs: das sagt der Hinweis des Servers - nicht „Noch keine Formel“.
+        <p className="vp-mss-leise">{formel.ausserhalb_zugriff ?? 'Noch keine Formel.'}</p>
       ) : (
-        <ul className="vp-mss-terme">
-          {formel.terme.map((t) => {
-            const quelle = t.quell_messstelle_id ? register.find((r) => r.id === t.quell_messstelle_id) : null;
-            const sprung = quelle ? sprungziel({ art: 'messstelle', id: quelle.id, standortId }) : null;
-            const name = quelle
-              ? `${quelle.name ?? quelle.kennzeichen} ${quelle.kennzeichen}`
-              : (t.entity_id && t.point_key ? kanalNamen[`${t.entity_id}|${t.point_key}`] : null) ?? 'Messwert einer Komponente';
-            const faktor = t.faktor !== 1 ? ` × ${String(t.faktor).replace('.', ',')}` : '';
-            return (
-              <li key={t.position}>
-                <span className="vp-mss-vorzeichen" aria-label={t.vorzeichen === '-' ? 'minus' : 'plus'}>
-                  {t.vorzeichen === '-' ? '−' : '+'}
-                </span>
-                {sprung ? <a href={sprung.hash}>{name}</a> : <span>{name}</span>}
-                {faktor && <span className="vp-mss-leise">{faktor}</span>}
-                {formel.ausserhalb_zugriff && <span className="vp-mss-leise"> · {formel.ausserhalb_zugriff}</span>}
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <ul className="vp-mss-terme">
+            {formel.terme.map((t) => {
+              const quelle = t.quell_messstelle_id ? register.find((r) => r.id === t.quell_messstelle_id) : null;
+              const sprung = quelle ? sprungziel({ art: 'messstelle', id: quelle.id, standortId }) : null;
+              const name = quelle
+                ? `${quelle.name ?? quelle.kennzeichen} ${quelle.kennzeichen}`
+                : (t.entity_id && t.point_key ? kanalNamen[`${t.entity_id}|${t.point_key}`] : null) ?? 'Messwert einer Komponente';
+              const faktor = t.faktor !== 1 ? ` × ${String(t.faktor).replace('.', ',')}` : '';
+              return (
+                <li key={t.position}>
+                  <span className="vp-mss-vorzeichen" aria-label={t.vorzeichen === '-' ? 'minus' : 'plus'}>
+                    {t.vorzeichen === '-' ? '−' : '+'}
+                  </span>
+                  {sprung ? <a href={sprung.hash}>{name}</a> : <span>{name}</span>}
+                  {faktor && <span className="vp-mss-leise">{faktor}</span>}
+                </li>
+              );
+            })}
+          </ul>
+          {formel.ausserhalb_zugriff && <p className="vp-mss-leise">{formel.ausserhalb_zugriff}</p>}
+        </>
       )}
     </section>
   );

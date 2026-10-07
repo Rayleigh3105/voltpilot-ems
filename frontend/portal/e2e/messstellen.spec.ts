@@ -197,8 +197,11 @@ test.describe('Messstellen-Liste', () => {
       await warteAufListe(page);
       await expect(page.getByRole('combobox', { name: /Summenwert anlegen/ })).toHaveCount(0);
       await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
-      await expect(page.getByRole('menuitem')).not.toHaveText([/Summenwert/]);
+      // Erst muss das Menü offen sein, dann zählt, dass KEIN Eintrag „Summenwert“ heißt (`not.toHaveText([…])` bestand
+      // bei zwei oder mehr Einträgen immer).
       await expect(page.getByRole('menuitem', { name: /Korrekturen am Standort/ })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: /Summenwert/ })).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText('Summenwert');
       await page.keyboard.press('Escape');
     }
   });

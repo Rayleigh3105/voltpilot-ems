@@ -200,7 +200,7 @@ describe('„rückwirkend“ und „geplant“ — der gewählte Tag gegen heute
     expect(gespeichertSatz('prozesse', '2026-10-01', SEITE_HEUTE, ZONE)).toBe(
       'Prozesse ab 01.10.2026 eingetragen · rückwirkend (19 Tage).',
     );
-    expect(gespeichertSatz('stellung', SEITE_HEUTE, SEITE_HEUTE, ZONE)).toBe('Elektrische Stellung ab 20.10.2026 eingetragen.');
+    expect(gespeichertSatz('stellung', SEITE_HEUTE, SEITE_HEUTE, ZONE)).toBe('Stellung im Stromnetz ab 20.10.2026 eingetragen.');
   });
 });
 

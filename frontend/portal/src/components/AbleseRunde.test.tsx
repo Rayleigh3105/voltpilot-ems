@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type AblesungAntwort, type MessstelleRegisterZeile, type MessstellenRegister } from '../api';
@@ -134,6 +136,56 @@ describe('Ablese-Runde Halle 1', () => {
     await waitFor(() => expect(reihen()[2]).toHaveClass('is-gespeichert'), WARTEN);
     expect(post.mock.calls.map((c) => c[0])).toEqual(['MS-06', 'MS-07']);
     expect(zurueck).not.toHaveBeenCalled();
+  });
+
+  it('ein neuer Zeitpunkt macht einen abgelehnten Stand wieder sendbar - „Fertig“ schickt ihn dann (Review r4 S10)', async () => {
+    let erster = true;
+    const post = vi.spyOn(api, 'ablesungEintragen').mockImplementation(async (kz) => {
+      if (kz === 'MS-06' && erster) {
+        erster = false;
+        throw new ApiError(422, 'Liegt nicht nach der letzten Ablesung (01.10.2026, 00:00).', { code: 'reihenfolge' });
+      }
+      return antwort(kz, 1_000);
+    });
+    const zurueck = vi.fn();
+    render(<AbleseRunde ort="G-1" zone={ZONE} anfrage={{}} onZurueck={zurueck} />);
+    await screen.findAllByTestId('ablese-runde-reihe', undefined, WARTEN);
+    fireEvent.change(feld('MS-06'), { target: { value: '662.180' } });
+    fireEvent.keyDown(feld('MS-06'), { key: 'Enter' });
+    expect(await within(reihen()[1]).findByRole('alert', undefined, WARTEN)).toHaveTextContent('Liegt nicht nach der letzten Ablesung');
+    const uhr = screen.getByLabelText(/^Uhrzeit/) as HTMLInputElement;
+    // Früher als „jetzt“ (07:30 MEZ) - eine Ablesung liegt nie in der Zukunft.
+    fireEvent.change(uhr, { target: { value: '07:15' } });
+    fireEvent.blur(uhr);
+    await waitFor(() => expect(within(reihen()[1]).queryByRole('alert')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    await waitFor(() => expect(zurueck).toHaveBeenCalled(), WARTEN);
+    expect(post.mock.calls.filter((c) => c[0] === 'MS-06')).toHaveLength(2);
+  });
+
+  it('wer das Feld verlässt, speichert einen neuen Stand; „Fertig“ währenddessen wartet darauf statt doppelt zu senden (Review r4 S12)', async () => {
+    let fertigMelden: () => void = () => undefined;
+    const post = vi.spyOn(api, 'ablesungEintragen').mockImplementation(
+      (kz) => new Promise<AblesungAntwort>((ok) => (fertigMelden = () => ok(antwort(kz, 1_000)))),
+    );
+    const zurueck = vi.fn();
+    render(<AbleseRunde ort="G-1" zone={ZONE} anfrage={{}} onZurueck={zurueck} />);
+    await screen.findAllByTestId('ablese-runde-reihe', undefined, WARTEN);
+    fireEvent.change(feld('MS-07'), { target: { value: '540.000' } });
+    fireEvent.blur(feld('MS-07'));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    fertigMelden();
+    await waitFor(() => expect(zurueck).toHaveBeenCalled(), WARTEN);
+    expect(post).toHaveBeenCalledTimes(1);
+    // Ein leeres oder abgelehntes Feld verlassen sendet nichts.
+    fireEvent.blur(feld('MS-08'));
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('am Telefon zoomt iOS das Feld nicht heran (16 px)', () => {
+    const css = readFileSync(resolve('src/components/AbleseRunde.css'), 'utf8');
+    expect(css).toMatch(/font: 600 1rem var\(--vp-font-heading\)/);
   });
 
   it('ohne Recht zum Ablesen: lesen ja, ein Feld nein - mit Grund und Person', async () => {

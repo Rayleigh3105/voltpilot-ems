@@ -65,12 +65,15 @@ import {
   marken as markenAus,
   markiert,
   messstelleBeispiel,
+  markeAus,
+  mitParameter,
   mitSuche,
   monatLang,
   ohneParameter,
   ortKopf,
   status as statusAus,
   suchTerme,
+  standAus,
   sucheAus,
   trefferSatz,
   type Hinweis,
@@ -138,6 +141,7 @@ export function MessstellenPage({
   onOeffnen,
   onWerteZeitraum,
   onWerteVergleich,
+  onWerteHeute,
   onListe,
   organisation = false,
   reiterOben = false,
@@ -146,11 +150,13 @@ export function MessstellenPage({
   /** Die Messstelle der Adresse (AP-04 IP-8) - dann steht ihre Seite statt des Registers. */
   messstelleId?: string | null;
   /** Periode und Version der Adresse für den Abschnitt „Werte“ der Seite (AP-13 IP-3). */
-  werte?: { periode: string | null; version: number | null; vergleich: string | null } | null;
+  werte?: { periode: string | null; version: number | null; vergleich: string | null; stand?: string | null } | null;
   /** Die neu gewählte Periode im Abschnitt „Werte“ - der Wirt schreibt die Adresse nach. */
   onWerteZeitraum?: (periode: string) => void;
   /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters (`v=` der Adresse). */
   onWerteVergleich?: (v: string | null) => void;
+  /** „Zurück zu heute“ einer aus „Stand am …“ geöffneten Messstelle - der Wirt öffnet sie ohne Tag (Review r4 S4). */
+  onWerteHeute?: () => void;
   /** Der Weg zurück ins Register der Ebene. */
   onListe?: () => void;
   /**
@@ -200,6 +206,7 @@ export function MessstellenPage({
         onWerteZeitraum={onWerteZeitraum}
         onWerteVergleich={onWerteVergleich}
         onListe={zurueck}
+        onHeute={onWerteHeute}
       />
     );
   }
@@ -335,6 +342,9 @@ function useAdressParameter(aus: (hash: string) => string | null): string | null
 }
 
 /** Ein Wechsel der Adresse ohne Verlaufseintrag; nur, wenn sie sich ändert. */
+/** Die Marke des Filters `?anlage=` einer Anlage, deren Namen die Liste nicht erfährt - nie die Kennung (D5). */
+const GEWAEHLTE_ANLAGE = 'Gewählte Anlage';
+
 function ersetzeAdresse(hash: string) {
   if (hash !== window.location.hash) replaceCurrentNavigation(hash);
 }
@@ -349,8 +359,10 @@ function RegisterFlaeche({
   leiste = null,
 }: RegisterProps & { /** Die Reiter der Welt (AP-13 IP-9) - unter dem Kopf; ohne sie steht die Fläche wie zuvor. */ leiste?: ReactNode }) {
   const isPhone = useIsPhone();
-  const [stichtag, setStichtag] = useState<string | null>(null);
-  const [heute, setHeute] = useState<string | null>(null);
+  // Stichtag, Suche und Marke stehen in der Adresse: der Rückweg von einer Messstelle findet die Liste, wie sie war.
+  const [stichtag, setStichtag] = useState<string | null>(() => standAus(window.location.hash));
+  // Mit einem Stichtag aus der Adresse kennt die erste Antwort heute nicht - bis „Zurück zu heute“ gilt der Tag der Zone.
+  const [heute, setHeute] = useState<string | null>(() => (stichtag ? heuteIn(zone, Date.now()) : null));
   const [standWahl, setStandWahl] = useState(false);
   // AP-13 IP-10/IP-11: die Adresse bringt den Filter mit - `?ort=` aus der Gebäude-Karte und der Wiedervorlage,
   // `?anlage=` aus dem EINEN Weg des Anlagen-Cockpits (O18). Beide sind Lesezeichen-fähig und Marken mit „×“.
@@ -360,7 +372,7 @@ function RegisterFlaeche({
     anlage: anlageAus(window.location.hash),
   }));
   const [suche, setSuche] = useState(() => sucheAus(window.location.hash));
-  const [marke, setMarke] = useState<MarkeSchluessel | null>(null);
+  const [marke, setMarke] = useState<MarkeSchluessel | null>(() => markeAus(window.location.hash));
   const ortAufgeloest = useRef(false);
   const [stand, setStand] = useState<{ schluessel: string; basis: MessstellenRegister; liste: MessstellenRegister } | null>(
     null,
@@ -458,10 +470,11 @@ function RegisterFlaeche({
     if (planSatz && !einrichten && !erfassen) planSatzRef.current?.focus();
   }, [planSatz, einrichten, erfassen]);
 
-  // Die Liste merkt sich ihre Adresse (Suche, Filter) - der Rückweg einer Messstelle führt genau hierher zurück.
+  // Die Liste merkt sich ihre Adresse (Suche, Filter, Marke, Stichtag) - der Rückweg einer Messstelle führt genau
+  // hierher zurück.
   useEffect(() => {
     merkeListe(window.location.hash);
-  }, [suche, filter]);
+  }, [suche, filter, marke, stichtag]);
 
   // Jede Antwort gilt nur für ihren Tag und ihre Filter - bis die neue da ist, stehen Skelette.
   const aktuell = stand?.schluessel === schluessel ? stand : null;
@@ -484,6 +497,25 @@ function RegisterFlaeche({
     };
   }, [aktuell, stichtag]);
   const ausfallKarte = ausfaelleJeMessstelle(ausfaelle);
+  const [anlageNachgefragt, setAnlageNachgefragt] = useState<{ id: string; name: string | null } | null>(null);
+  const anlageFehlt =
+    filter.anlage !== null && aktuell !== null && !aktuell.basis.register.some((z) => z.elektrische_stellung?.anlage === filter.anlage);
+  useEffect(() => {
+    const id = filter.anlage;
+    if (!anlageFehlt || id === null) return;
+    let aktiv = true;
+    api.listSites().then(
+      (antwort) => {
+        if (aktiv) setAnlageNachgefragt({ id, name: antwort.eintraege.find((x) => x.id === id)?.name ?? null });
+      },
+      () => {
+        if (aktiv) setAnlageNachgefragt({ id, name: null });
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [anlageFehlt, filter.anlage]);
   const eintraege =
     aktuell && !leer
       ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, ausfaelle: ausfallKarte })
@@ -517,14 +549,19 @@ function RegisterFlaeche({
     setFilter((f) => ({ ...f, [name]: null }));
     ersetzeAdresse(ohneParameter(window.location.hash, name));
   };
+  const waehleMarke = (k: MarkeSchluessel | null) => {
+    setMarke(k);
+    ersetzeAdresse(mitParameter(window.location.hash, 'marke', k));
+  };
   const allesZeigen = () => {
-    setMarke(null);
+    waehleMarke(null);
     if (filter.ort) ohneAdressFilter('ort');
     if (filter.anlage) ohneAdressFilter('anlage');
   };
   const neuerTag = (wahl: string | null) => {
     setStandWahl(false);
     setStichtag(wahl);
+    ersetzeAdresse(mitParameter(window.location.hash, 'stand', wahl));
   };
 
   const menue: RowMenuItem[] = [];
@@ -552,8 +589,12 @@ function RegisterFlaeche({
 
   const ortName = (id: string | null) =>
     id ? (aktuell?.basis.register.find((z) => z.ort.id === id || z.ort.kennzeichen === id)?.ort.name ?? id) : null;
-  const anlageName = (id: string | null) =>
-    id ? (aktuell?.basis.register.find((z) => z.elektrische_stellung?.anlage === id)?.elektrische_stellung?.anlage_name ?? id) : null;
+  // D5: nie eine Kennung - kennt das Register die Anlage nicht (keine Messstelle hängt an ihr), fragt die Liste ihren
+  // Namen einmal nach; bis dahin und ohne Antwort heißt sie „diese Anlage“.
+  const anlageImRegister = filter.anlage
+    ? (aktuell?.basis.register.find((z) => z.elektrische_stellung?.anlage === filter.anlage)?.elektrische_stellung?.anlage_name ?? null)
+    : null;
+  const anlageName = anlageImRegister ?? (anlageNachgefragt?.id === filter.anlage ? anlageNachgefragt.name : null);
   const gefiltert = suchTerme(suche).length > 0 || markeDa !== null;
 
   return (
@@ -578,7 +619,9 @@ function RegisterFlaeche({
                 className="vp-ms-menue"
                 data-testid="messstellen-menue"
                 onClickCapture={(e) => {
-                  menueAusloeser.current = e.target instanceof HTMLElement ? e.target.closest('button') : null;
+                  // Der Auslöser ⋯ selbst - nicht der Eintrag, der mit dem Menü verschwindet (sonst landet der Fokus nach
+                  // dem Dialog auf `body`).
+                  menueAusloeser.current = e.currentTarget.querySelector<HTMLElement>('[aria-haspopup="menu"]');
                 }}
               >
                 <RowMenu label={WEITERE_AKTIONEN} buttonClassName="vp-ms-menue-knopf" items={menue} />
@@ -603,7 +646,7 @@ function RegisterFlaeche({
         // erst der Verweis, dann die Statuszeile.
         <div className={`vp-ms-lage${st && st.hinweise.length > 0 ? ' has-hinweise' : ''}`}>
           <BegriffAufklapper begriff="messstelle" beispiel={l ? <Beispiel reihen={l.reihen} /> : undefined} />
-          {st && <Statuszeile status={st} onMarke={(k) => setMarke((alt) => (alt === k ? null : k))} />}
+          {st && <Statuszeile status={st} onMarke={(k) => waehleMarke(markeDa === k ? null : k)} />}
         </div>
       )}
       {fehler ? (
@@ -629,7 +672,15 @@ function RegisterFlaeche({
           onMessenEinrichten={onMessenEinrichten}
           onAnlegen={anlegbar ? () => setAnlegen(true) : undefined}
           onAllesZeigen={allesZeigen}
-          filterName={ortName(filter.ort) ?? anlageName(filter.anlage)}
+          filterSatz={
+            filter.ort
+              ? `In ${ortName(filter.ort)} steht keine Messstelle.`
+              : filter.anlage
+                ? anlageName
+                  ? `An der Anlage ${anlageName} hängt keine Messstelle.`
+                  : 'An dieser Anlage hängt keine Messstelle.'
+                : null
+          }
         />
       ) : (
         l &&
@@ -648,9 +699,9 @@ function RegisterFlaeche({
             <MarkenLeiste
               marken={m}
               aktiv={markeDa}
-              onMarke={(k) => setMarke((alt) => (alt === k ? null : k))}
+              onMarke={(k) => waehleMarke(markeDa === k ? null : k)}
               ort={filter.ort ? ortName(filter.ort) : null}
-              anlage={filter.anlage ? anlageName(filter.anlage) : null}
+              anlage={filter.anlage ? (anlageName ? `Anlage ${anlageName}` : GEWAEHLTE_ANLAGE) : null}
               onOhne={ohneAdressFilter}
             />
             {plan === 'fehler' && (
@@ -978,8 +1029,8 @@ function MarkenLeiste({
         </button>
       )}
       {anlage && (
-        <button type="button" className="vp-ms-chip is-adresse" onClick={() => onOhne('anlage')} aria-label={`Anlage ${anlage} – Filter entfernen`}>
-          Anlage {anlage}
+        <button type="button" className="vp-ms-chip is-adresse" onClick={() => onOhne('anlage')} aria-label={`${anlage} – Filter entfernen`}>
+          {anlage}
           <Icon name="x" size={13} />
         </button>
       )}
@@ -1179,7 +1230,8 @@ function ReiheLink({
   onOeffnen?: (id: string, periode: string | null) => void;
 }) {
   const pfad = window.location.hash.split('?')[0] || '#/portfolio/messstellen';
-  const href = `${pfad}/${encodeURIComponent(r.id)}${periode ? `?periode=${periode}` : ''}`;
+  // Mit „Stand am …“ öffnet die Messstelle an diesem Tag - nur lesend wie die Liste (`stand=`).
+  const href = `${pfad}/${encodeURIComponent(r.id)}${periode ? `?periode=${periode}&stand=${periode}` : ''}`;
   const klick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
     if (!onOeffnen || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
@@ -1228,6 +1280,7 @@ function ReiheLink({
             </b>
             {/* Der Monat steht am Rechner im Kopf der Spalte; in der Reihe bleibt er für Vorlesende. */}
             <span className={r.wert.monat ? 'is-monat' : undefined}>{r.wert.wann}</span>
+            {r.wert.hinweis && <small className="vp-ms-reihe-hinweis">{r.wert.hinweis}</small>}
           </>
         ) : (
           <b className="is-leer">{OHNE_ANGABE}</b>
@@ -1337,7 +1390,7 @@ function Leer({
   onMessenEinrichten,
   onAnlegen,
   onAllesZeigen,
-  filterName,
+  filterSatz,
 }: {
   leer: Leerzustand;
   ebene: MessstellenEbene;
@@ -1351,13 +1404,14 @@ function Leer({
   onAnlegen?: () => void;
   /** Ein Filter der Adresse (Ort, Anlage) ohne Treffer: zurück zu allen. */
   onAllesZeigen: () => void;
-  filterName: string | null;
+  /** Der Satz eines Filters der Adresse ohne Treffer („In Halle 1 steht keine Messstelle.“). */
+  filterSatz: string | null;
 }) {
   const messen = (leer.art === 'bereich_fehlt' || leer.art === 'keine_messstelle') && onMessenEinrichten;
   return (
     <section className="vp-ms-karte" role="status" data-testid="messstellen-leer">
       <p className="vp-ms-leer-satz">
-        {leer.art === 'filter_ohne_treffer' && filterName ? `In ${filterName} steht keine Messstelle.` : leer.satz}
+        {leer.art === 'filter_ohne_treffer' && filterSatz ? filterSatz : leer.satz}
       </p>
       {leer.art === 'keine_messstelle' && (
         <p className="vp-ms-leise">

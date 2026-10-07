@@ -85,6 +85,7 @@ import {
   type KennzahlFassung,
   type KennzahlPeriodeArt,
   type KennzahlWerte,
+  type PortfolioKpi,
 } from '../src/api';
 import { iso } from '../src/bezugsPeriode';
 import { UEMS_VERANTWORTUNG } from '../src/glossar';
@@ -228,7 +229,8 @@ if (ORGANISATION_REITER) {
  * AP-13 IP-8: `&ansicht=bilanz&an=AN-2` öffnet Anlage › Verlauf › Energiebilanz (Vorgabe AN-2); `&bilanz=ohne-hz`
  * antwortet ohne Hauptzähler (Leerzustand, kein Reiter), `&rest=vorschlag` ohne Rest-Messstelle (Vorschlag „Rest
  * anlegen“ — der Klick legt sie in der Bühne an, `window.__restAnlegen` zählt ihn), `&live=veraltet` lässt MS-14 veralten
- * (O8). Die Werte gelten zur Uhr der Bühne (`page.clock`); die Momentaufnahme O8 steht eine Minute vor ihr.
+ * (O8), `&ausserhalb=MS-20,…` nennt Abzweige außerhalb der Bilanz. Die Werte gelten zur Uhr der Bühne (`page.clock`); die
+ * Momentaufnahme O8 steht eine Minute vor ihr.
  */
 const ANLAGE_KZ: Record<string, string> = { 'AN-1': an1, 'AN-2': an2, 'AN-3': an3 };
 const bilanzAn = ANLAGE_KZ[params.get('an') ?? ''] ?? an2;
@@ -241,6 +243,7 @@ const bilanzDerBuehne = (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?
     live: params.get('live') === 'veraltet' ? 'veraltet' : 'frisch',
     ohneHauptzaehler: messenArt === 'bestand' || params.get('bilanz') === 'ohne-hz',
     restVorschlag,
+    ausserhalb: (params.get('ausserhalb') ?? '').split(',').filter(Boolean),
   });
 
 /**
@@ -1194,6 +1197,26 @@ Object.assign(consumersApi, {
 const ohneAntwortDerMomentaufnahme = async (): Promise<never> => {
   throw new Error('Die Rechte-Momentaufnahme hat dafür keine Antwort.');
 };
+// Die UEMS-Übersicht nach #1403 lädt dazu das Kachelraster (`GET /portfolio/kpis`) und je Anlagen-Karte die
+// Tages-Historie (`GET /sites/{id}/history`). Die Momentaufnahme kennt keine Messreihe: das Raster bekommt die
+// Antwort des Servers ohne Grundlage (jeder Wert leer, Zeitraum der letzte volle Monat - wie `LEERE_KPIS` in
+// `EbenenCockpit.test.tsx`), die Historie dieselbe Absage wie oben. Ohne diese Zeilen gingen beide Aufrufe echt
+// an localhost:8090 (Konsolenfehler in `weg`/`uebersicht`, WebKit-Seitenfehler in `portal-rechte`).
+const kpisOhneGrundlage = async (): Promise<PortfolioKpi> => {
+  const heute = new Date();
+  const ersterDesMonats = new Date(Date.UTC(heute.getUTCFullYear(), heute.getUTCMonth(), 1));
+  const bis = new Date(ersterDesMonats.getTime() - 86_400_000);
+  const von = new Date(Date.UTC(bis.getUTCFullYear(), bis.getUTCMonth(), 1));
+  return {
+    periode: { von: von.toISOString().slice(0, 10), bis: bis.toISOString().slice(0, 10), jahr: bis.getUTCFullYear(), monat: bis.getUTCMonth() + 1 },
+    verbrauch: { kwh: null, kwh_vorjahr: null, vollstaendig: true },
+    kosten: { eur: null, eur_vorjahr: null, tarif_hinterlegt: false },
+    lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null, zeitpunkt: null, zeitraum: null },
+    datenlage: null,
+    leit: null,
+  };
+};
+Object.assign(api, { portfolioKpis: kpisOhneGrundlage, history: ohneAntwortDerMomentaufnahme });
 if (rechteAnsicht && params.get('person') === 'MD') {
   Object.assign(api, {
     schedule: async () => ({ deviceId: 'E-1', slots: [] }),
@@ -1339,10 +1362,11 @@ function Vorschau() {
    * Regeln: ein Einstieg aus dem Register setzt die Periode, ein Zeitraum-Wechsel lässt den Vergleich stehen und
    * vergisst die Version, der Weg zurück in die Liste räumt alles ab.
    */
-  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null }>(() => ({
+  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null; stand: string | null }>(() => ({
     periode: WEG_ANSICHT ? WEG_PERIODE : null,
     version: WEG_ANSICHT ? WEG_VERSION : null,
     vergleich: WEG_ANSICHT ? WEG_V : null,
+    stand: null,
   }));
   const [route, setRoute] = useState<Route>(() =>
     kanonisch(
@@ -1410,6 +1434,7 @@ function Vorschau() {
     if (route.messstelleId && werte.periode) anhang.set('periode', werte.periode);
     if (route.messstelleId && werte.version != null) anhang.set('version', String(werte.version));
     if (route.messstelleId && werte.vergleich) anhang.set('v', werte.vergleich);
+    if (route.messstelleId && werte.stand) anhang.set('stand', werte.stand);
     const frage = anhang.toString();
     document.body.dataset.route = hashForRoute(route) + (frage ? `?${frage}` : '');
   }, [route, werte]);
@@ -1689,15 +1714,17 @@ function Vorschau() {
           // AP-13 IP-13, wie `App.tsx`: aus dem Register führt der Weg auf die Messstellen-Seite — mit Periode.
           messstelleId={route.messstelleId ?? null}
           onOeffnen={(id, periode) => {
-            setWerte({ periode, version: null, vergleich: null });
+            // Wie `App.tsx`: die Liste nennt eine Periode nur mit „Stand am …“ - dann liest die Seite diesen Tag, nur lesend.
+            setWerte({ periode, version: null, vergleich: null, stand: periode });
             navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
           }}
           werte={werte}
           // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht.
-          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich }))}
+          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich, stand: w.stand }))}
           onWerteVergleich={(v) => setWerte((w) => ({ ...w, vergleich: v }))}
+          onWerteHeute={() => setWerte({ periode: null, version: null, vergleich: null, stand: null })}
           onListe={() => {
-            setWerte({ periode: null, version: null, vergleich: null });
+            setWerte({ periode: null, version: null, vergleich: null, stand: null });
             navigate(
               messstellenEbene.art === 'standort'
                 ? standortMessstellenRoute(messstellenEbene.id)

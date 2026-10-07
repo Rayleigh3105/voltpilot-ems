@@ -28,9 +28,9 @@ import { lebenszyklusWort, type Lebenszyklus } from './messstellen';
 import { standWann, standZahl } from './messstellenListe';
 import { MONATE } from './picker/datum';
 import { vergleich as berichtVergleich } from './uemsBericht';
-import { ANZEIGE_EINHEITEN, OHNE_ZAHL, pruefeMenge } from './uemsErgebnis';
+import { ANZEIGE_EINHEITEN, OHNE_ZAHL, PROZENT, pruefeMenge, UNVOLLSTAENDIG, zahlMitStellen } from './uemsErgebnis';
 import { lokalerTag, type Tag } from './uemsOrtsbaum';
-import { anzeige, karte, monatTitel, type QuellenNamen } from './uemsWerteKarte';
+import { anzeige, karte, monatTitel, NOCH_KEINE_QUELLE_TITEL as KEINE_QUELLE_TITEL, type QuellenNamen } from './uemsWerteKarte';
 
 // -------------------------------------------------------------------- Wörter
 
@@ -52,8 +52,12 @@ export const QUELLE_BINDEN = 'Quelle binden';
 export const KORREKTUREN_UND_ERSATZWERTE = 'Korrekturen und Ersatzwerte';
 export const ZUSAMMENGESETZT_AUS = 'Zusammengesetzt aus';
 export const FORMEL_AENDERN = 'Formel ändern';
+export const FORMEL_NICHT_ABRUFBAR = 'Die Formel ist gerade nicht abrufbar.';
+/** Aus „Stand an einem Tag ansehen“ geöffnet: die Seite zeigt diesen Tag und bietet keinen Schreibweg. */
+export const NUR_LESEN = 'Nur lesen';
 export const MONATLICH = 'monatlich';
-export const NOCH_KEINE_QUELLE_TITEL = 'Noch keine Quelle';
+/** Das Glossarwort „Noch keine Quelle“ - dasselbe in Kopf, Werte-Karte, „Woher die Werte kommen“ und Liste. */
+export const NOCH_KEINE_QUELLE_TITEL = KEINE_QUELLE_TITEL;
 export const NOCH_KEINE_QUELLE_SATZ = 'Werte kommen, sobald Sie einen Zähler verbinden oder eine Ablesung eintragen.';
 export const AUS_ANDEREN_MESSSTELLEN = 'Aus anderen Messstellen berechnet';
 export const GGU_VORJAHR = 'ggü. Vorjahr';
@@ -142,12 +146,14 @@ export interface StatusZeile {
 
 /**
  * Die Statuszeile unter dem Kopf (Konzept §6.4 Punkt 2: „● Abgelesen am 01.10.2026“): der Satz des Registers mit seinem
- * Punkt. Wann die nächste Ablesung fällig ist, sagt die Kachel darunter. Ohne Beobachtung (eine berechnete Messstelle)
+ * Punkt („Noch keine Quelle“ statt „Keine Datenquelle“). Wann die nächste Ablesung fällig ist, sagt die Kachel darunter. Ohne Beobachtung (eine berechnete Messstelle)
  * spricht die Berechnung („vollständig“/„unvollständig seit …“); ohne beides steht keine Zeile.
  */
 export function statusZeile(zeile: MessstelleRegisterZeile | null): StatusZeile | null {
   if (!zeile) return null;
   const b = zeile.beobachtung;
+  // Wie die Liste: der Satz des Servers „Keine Datenquelle“ weicht dem Kundenwort (Review r4 S7).
+  if (b?.zustand === 'keine_datenquelle') return { ton: 'off', text: NOCH_KEINE_QUELLE_TITEL };
   if (b) return { ton: b.zustand === 'liefert' ? 'ok' : b.zustand === 'liefert_nicht_seit' ? 'warn' : 'off', text: b.text };
   if (zeile.berechnung) return { ton: zeile.berechnung.zustand === 'vollstaendig' ? 'ok' : 'warn', text: zeile.berechnung.text };
   return null;
@@ -218,17 +224,22 @@ export interface Balken {
   titel: string;
   /** „88.200 kWh“ oder „—“. */
   zahl: string;
-  /** `null` = kein Wert - kein Balken, nie eine 0. */
+  /** `null` = kein Wert - kein Balken, nie eine 0. Der Betrag auf der Skala. */
   hoehe: number | null;
+  /** Ein negativer Monat (saldiert): anders gezeichnet, die Zahl trägt das Minus. */
+  negativ: boolean;
   zustand: string | null;
   gewaehlt: boolean;
 }
 
-/** Die Monate der Reihe als Balken auf einer Skala; der gewählte Monat ist der kräftige. */
+/**
+ * Die Monate der Reihe als Balken auf einer Skala; der gewählte Monat ist der kräftige. Ein negativer Monat (eine
+ * saldierte Messstelle) steht mit seinem Betrag und als `negativ` gezeichnet - nie als 0-Balken.
+ */
 export function balken(serie: MessstelleWerte, gewaehlt: string): Balken[] {
   const zeilen = serie.werte.map((w) => ({ w, a: anzeige(serie, w, false) }));
-  const zahlen = zeilen.map(({ w, a }) => (a.zustand !== null && w.menge !== null ? Math.max(0, w.menge) : null));
-  const max = Math.max(0, ...zahlen.filter((z): z is number => z !== null));
+  const zahlen = zeilen.map(({ w, a }) => (a.zustand !== null && w.menge !== null ? w.menge : null));
+  const max = Math.max(0, ...zahlen.filter((z): z is number => z !== null).map((z) => Math.abs(z)));
   return zeilen.map(({ w, a }, i) => {
     const monat = monatDes(w);
     const z = zahlen[i];
@@ -237,7 +248,8 @@ export function balken(serie: MessstelleWerte, gewaehlt: string): Balken[] {
       kurz: MONATE[Number(monat.slice(5, 7)) - 1].slice(0, 1),
       titel: monatTitel(w.von),
       zahl: a.zahl,
-      hoehe: z === null ? null : max > 0 ? z / max : 0,
+      hoehe: z === null ? null : max > 0 ? Math.abs(z) / max : 0,
+      negativ: z !== null && z < 0,
       zustand: a.zustand,
       gewaehlt: monat === gewaehlt,
     };
@@ -298,25 +310,35 @@ export function leitKachel(e: {
   const zahl = jetzt ? anzeige(serie, jetzt, false).zahl : OHNE_ZAHL;
   const { wert, einheit } = zahlUndEinheit(zahl);
   const zwoelf = Array.from({ length: 12 }, (_, i) => monatPlus(monat, i - 11));
+  // Der Verlauf trägt die Mengen der Route wie geliefert - ein negativer Monat (saldiert) bleibt negativ, nie 0.
   const verlauf = zwoelf.map((m) => {
     const w = serie.werte.find((x) => monatDes(x) === m);
-    return w && spricht(serie, w) ? Math.max(0, w.menge!) : null;
+    return w && spricht(serie, w) ? w.menge : null;
   });
   const vjZahl = vorjahr ? anzeige(serie, vorjahr, false).zahl : OHNE_ZAHL;
   const woher = HERKUNFT_WORT[e.herkunft];
+  const vjSpricht = vorjahr !== null && spricht(serie, vorjahr);
   const unter = [
     `${monatTitel(`${monatPlus(monat, -12)}-01`)}: ${vjZahl === OHNE_ZAHL ? 'keine Werte' : vjZahl}`,
+    vjSpricht && vorjahr.zustand === UNVOLLSTAENDIG ? UNVOLLSTAENDIG : null,
     woher,
   ]
     .filter(Boolean)
     .join(' · ');
   const hatZahl = jetzt !== null && spricht(serie, jetzt);
+  // Review r4 S3: ein unvollständiger Monat darf eine Zahl tragen - dann sagt die Marke das, und einen Vergleich mit dem
+  // Vorjahr gibt es nur zwischen zwei ganzen Monaten (vollständig oder mit Ersatzwert).
+  const unvollstaendig = hatZahl && jetzt.zustand === UNVOLLSTAENDIG;
   return {
     name: `${e.rolle.wort} · ${monatTitel(`${monat}-01`)}`,
     ton: e.rolle.ton,
     wert: hatZahl ? wert : OHNE_ZAHL,
     einheit: hatZahl ? einheit : '',
-    marke: hatZahl && vorjahr && spricht(serie, vorjahr) ? vorjahrMarke(serie, jetzt!, vorjahr) : null,
+    marke: unvollstaendig
+      ? { text: UNVOLLSTAENDIG, ton: 'warn' }
+      : hatZahl && vjSpricht && vorjahr.zustand !== UNVOLLSTAENDIG
+        ? vorjahrMarke(serie, jetzt, vorjahr)
+        : null,
     verlauf,
     unter,
     fehlt: hatZahl
@@ -336,7 +358,10 @@ function grundDes(serie: MessstelleWerte, w: MessstelleWerteWert | null, namen: 
   return satz ? { satz, schritt: null } : null;
 }
 
-/** Der Vorjahresvergleich - gerechnet im Bericht-Zwilling, hier nur das Wort und der Pfeil (Anzeige ganz in %). */
+/**
+ * Der Vorjahresvergleich - gerechnet im Bericht-Zwilling (das ungerundete Prozent), gesprochen mit der Schreibweise des
+ * Ergebnis-Vertrags (E11: Prozent ohne Stelle, `zahlMitStellen`); hier nur das Wort und der Pfeil.
+ */
 function vorjahrMarke(serie: MessstelleWerte, jetzt: MessstelleWerteWert, vorjahr: MessstelleWerteWert): Marke | null {
   const gespeichert = serie.messstelle.einheit;
   if (pruefeMenge(gespeichert, serie.raster).length > 0) return null;
@@ -349,9 +374,10 @@ function vorjahrMarke(serie: MessstelleWerte, jetzt: MessstelleWerteWert, vorjah
     grund: null,
   });
   if (v.prozent === null) return null;
-  const p = Math.round(Number(v.prozent));
-  if (p === 0) return { text: `${UNVERAENDERT} ${GGU_VORJAHR}`, ton: 'neutral' };
-  return { text: `${p > 0 ? '▲' : '▼'} ${Math.abs(p)} % ${GGU_VORJAHR}`, ton: 'neutral' };
+  const weniger = v.prozent.startsWith('-');
+  const betrag = zahlMitStellen(weniger ? v.prozent.slice(1) : v.prozent, 0, PROZENT);
+  if (betrag === zahlMitStellen('0', 0, PROZENT)) return { text: `${UNVERAENDERT} ${GGU_VORJAHR}`, ton: 'neutral' };
+  return { text: `${weniger ? '▼' : '▲'} ${betrag} ${GGU_VORJAHR}`, ton: 'neutral' };
 }
 
 export interface StandKachel {

@@ -59,8 +59,35 @@ describe('Welche Zähler zur Runde gehören', () => {
     expect(rundeAus(halle1(), 'G-2', ZONE)).toBeNull();
   });
 
-  it('nur am Bereich: B-2 trägt MS-07 und MS-08', () => {
-    expect(rundeAus(halle1(), 'B-2', ZONE)!.zaehler.map((z) => z.kennzeichen)).toEqual(['MS-07', 'MS-08']);
+  it('ein Bereich gehört zur Runde seines Gebäudes; am Standort nur die Zähler ohne Gebäude (Review r4 S11)', () => {
+    // Wie der Server (`ableseort`): MS-07 und MS-08 in B-2 liest man in der Runde von Halle 1, eine eigene Runde B-2 gibt es nicht.
+    expect(rundeAus(halle1(), 'B-2', ZONE)).toBeNull();
+    // Alle Zähler von Hand abgelesen: die Runde des Standorts nimmt nur die, die an keinem Gebäude hängen - nie die
+    // sechzehn aller Gebäude.
+    const r = ahrenbergRegister();
+    const alle: MessstellenRegister = { ...r, register: r.register.map((z) => abgelesen(z, 1000)) };
+    const st = rundeAus(alle, 'ST-1', ZONE)!;
+    const gebaeude = new Set(st.zaehler.map((x) => alle.register.find((z) => z.id === x.id)!.ort.pfad.find((k) => k.startsWith('G-')) ?? null));
+    expect([...gebaeude]).toEqual([null]);
+    const amStandort = alle.register.filter((z) => z.ort.kennzeichen === 'ST-1' && z.hauptgroesse?.wertart === 'Zählerstand');
+    expect(amStandort.length).toBeGreaterThan(0);
+    expect(new Set(st.zaehler.map((z) => z.kennzeichen))).toEqual(new Set(amStandort.map((z) => z.kennzeichen)));
+    expect(rundenTitel(st)).toBe('Werk Ahrenberg ablesen');
+    expect(rundenUnter(st)).not.toContain('Werk Ahrenberg ·');
+    // Halle 1 nimmt die Zähler der Halle und ihrer Bereiche, keinen am Standort.
+    const g1 = rundeAus(alle, 'G-1', ZONE)!;
+    expect(g1.zaehler.every((x) => alle.register.find((z) => z.id === x.id)!.ort.pfad.includes('G-1'))).toBe(true);
+  });
+
+  it('ein Gebäude nur mit Zählern in Bereichen kennt das Register nicht beim Namen - dann das Kurzzeichen, bis der Ortsbaum antwortet', () => {
+    const r = halle1();
+    // MS-03 (direkt an G-1) wird gebunden: an G-1 hängt keine Messstelle mehr, nur in B-1/B-2.
+    r.register = r.register.map((z) => (z.kennzeichen === 'MS-03' ? { ...z, ort: { ...z.ort, kennzeichen: 'B-1', ort_art: 'bereich' as const, pfad: ['B-1', 'G-1', 'ST-1'] } } : z));
+    r.register = r.register.filter((z) => !(z.ort.kennzeichen === 'G-1'));
+    const runde = rundeAus(r, 'G-1', ZONE)!;
+    expect(runde.ortName).toBeNull();
+    expect(rundenTitel(runde)).toBe('G-1 ablesen');
+    expect(rundenTitel(runde, 'Halle 1')).toBe('Halle 1 ablesen');
   });
 });
 

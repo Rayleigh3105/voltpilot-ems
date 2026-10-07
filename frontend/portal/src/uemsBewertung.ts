@@ -1,4 +1,4 @@
-/** AP-16 NW-1: reine Vertragsregeln. Keine Fläche ruft diese Regeln bisher auf.
+/** AP-16 NW-1: reine Vertragsregeln. Die Energiebilanz der Anlage ruft `nenner` und `prozent` (Konzept Auswerten a1 §6.9).
  * Zwillinge: BewertungRegeln.java und voltpilot_optimization/bewertung.py.
  * Mengen kommen aus Monatswerten/Bilanz; keine zweite Verbrauchsbildung.
  */

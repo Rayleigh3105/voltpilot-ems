@@ -79,14 +79,15 @@ export type AendernArt = 'ort' | 'stellung' | 'prozesse' | 'verteilung';
 
 export const AENDERN_TITEL: Record<AendernArt, string> = {
   ort: 'Ort ändern',
-  stellung: 'Elektrische Stellung ändern',
+  // Review r4 S7: dieselben Wörter wie die Zeile „Im Stromnetz“ der Karte (Glossar: Fachwort elektrische Stellung).
+  stellung: 'Stellung im Stromnetz ändern',
   prozesse: 'Prozesse ändern',
   verteilung: 'Kostenstellen ändern',
 };
 
 const WAS: Record<AendernArt, string> = {
   ort: 'Ort',
-  stellung: 'Elektrische Stellung',
+  stellung: 'Stellung im Stromnetz',
   prozesse: 'Prozesse',
   verteilung: 'Verteilung',
 };

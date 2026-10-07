@@ -261,6 +261,22 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
   });
 });
 
+describe('Messstellen · Wörter, wie sie gerendert stehen (Review r4 S6)', () => {
+  // Die Wächter in `copy.test.ts` lesen den Quelltext; die Wörter kommen aber oft über Konstanten anderer Module. Hier
+  // zählt, was tatsächlich auf dem Schirm steht - mit offenem Menü, am Rechner und am Telefon.
+  const VERBOTEN = /Quelle \(führend\)|Keine Datenquelle|Summenwert|Elektrische Stellung/;
+
+  it.each([false, true])('Telefon %s: kein Datenmodell-Wort in der Liste und im Menü ⋯', async (ja) => {
+    telefon(ja);
+    verdrahte();
+    render(<MessstellenPage ebene={WERK} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    await screen.findAllByRole('menuitem');
+    expect(document.body.textContent).not.toMatch(VERBOTEN);
+  });
+});
+
 describe('Messstellen · die EINE Suche', () => {
   it('sucht sofort und tolerant in Name, Kennzeichen, Ort und Gerät; die Fundstelle ist markiert, die Suche steht in der Adresse', async () => {
     telefon(false);
@@ -329,8 +345,25 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     expect(reihen()[0]).toHaveTextContent('MS-21');
     expect(marken.getByRole('button', { name: '1 ohne Quelle' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('1 von 22 Messstellen')).toBeInTheDocument();
+    // Die Marke steht in der Adresse - der Rückweg von einer Messstelle findet sie wieder (Konzept §6.4).
+    expect(window.location.hash).toBe('#/portfolio/messstellen?marke=ohneQuelle');
     fireEvent.click(marken.getByRole('button', { name: '1 ohne Quelle' }));
     expect(reihen()).toHaveLength(22);
+    expect(window.location.hash).toBe('#/portfolio/messstellen');
+  });
+
+  it('Rückweg: Marke und Stichtag aus der Adresse stehen beim Öffnen schon da (Review r4 S2)', async () => {
+    window.history.replaceState(null, '', '#/portfolio/messstellen?marke=ohneQuelle&stand=2026-10-10');
+    telefon(false);
+    const register = verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10', letzterMonat: true }), WARTEN);
+    await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
+    await waitFor(() => expect(reihen()).toHaveLength(1), WARTEN);
+    expect(screen.getByRole('button', { name: '1 ohne Quelle' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück zu heute' }));
+    await waitFor(() => expect(screen.queryByTestId('stand-am')).toBeNull(), WARTEN);
+    expect(window.location.hash).toBe('#/portfolio/messstellen?marke=ohneQuelle');
   });
 
   it('`?ort=G-1`: wird das Kurzzeichen zur ID des Orts, bleiben die Reihen stehen - kein zweites Skelett', async () => {
@@ -360,6 +393,34 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
   });
 });
 
+describe('Messstellen · Filter `?anlage=` ohne Messstelle (Review r4 S9)', () => {
+  const ANLAGE = '9f2c0000-0000-4000-8000-0000000000aa';
+  const ohneTreffer = (a: MessstellenRegisterAnfrage) => (a.anlage ? leeresRegister() : ahrenbergRegister());
+
+  it('der Name der Anlage kommt aus der Liste der Anlagen - nie die Kennung', async () => {
+    window.history.replaceState(null, '', `#/portfolio/messstellen?anlage=${ANLAGE}`);
+    telefon(false);
+    verdrahte(ohneTreffer);
+    vi.spyOn(api, 'listSites').mockResolvedValue({
+      eintraege: [{ id: ANLAGE, name: 'Halle 3 Dach' } as Awaited<ReturnType<typeof api.listSites>>['eintraege'][number]],
+      teilansicht: { sichtbar: 1, gesamt: 1 },
+    });
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    expect(await screen.findByText('An der Anlage Halle 3 Dach hängt keine Messstelle.', {}, WARTEN)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(ANLAGE);
+  });
+
+  it('ohne Antwort heißt sie „diese Anlage“', async () => {
+    window.history.replaceState(null, '', `#/portfolio/messstellen?anlage=${ANLAGE}`);
+    telefon(false);
+    verdrahte(ohneTreffer);
+    vi.spyOn(api, 'listSites').mockRejectedValue(new Error('nicht erreichbar'));
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    expect(await screen.findByText('An dieser Anlage hängt keine Messstelle.', {}, WARTEN)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(ANLAGE);
+  });
+});
+
 describe('Messstellen · „Stand an einem Tag ansehen“', () => {
   it('aus dem Menü ein Tag: die Plan-Marke „Stand …“, die Reihen dieses Tags, benannt was es noch nicht gab - und kein Schreibweg', async () => {
     telefon(false);
@@ -371,8 +432,9 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     await waehleTag('2026-10-10');
     await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
     expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10', letzterMonat: true });
+    expect(window.location.hash).toBe('#/portfolio/messstellen?stand=2026-10-10');
     // Eine Reihe öffnet die Messstelle an genau diesem Tag (AP-13 IP-3) - als Verweis und als Klick.
-    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10`), WARTEN);
+    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10&stand=2026-10-10`), WARTEN);
     fireEvent.click(reiheVon('MS-06'));
     expect(onOeffnen).toHaveBeenCalledWith(MS06, '2026-10-10');
     const nochNicht = await screen.findByTestId('messstellen-noch-nicht', {}, WARTEN);
@@ -381,6 +443,7 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Zurück zu heute' }));
     await waitFor(() => expect(screen.queryByTestId('stand-am')).toBeNull(), WARTEN);
+    expect(window.location.hash).toBe('#/portfolio/messstellen');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument(), WARTEN);
   });
 
@@ -396,6 +459,13 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
       'Stand an einem Tag ansehenNur lesen, z. B. für eine Prüfung',
       'Korrekturen am Standort',
     ]);
+    // Escape schließt den Dialog; der Fokus kehrt zum Menü ⋯ zurück, nicht auf `body` (Review r4 S23).
+    vi.spyOn(api, 'korrekturen').mockResolvedValue([]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Korrekturen am Standort' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Korrekturen am Standort' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weitere Aktionen' })).toHaveFocus());
   });
 });
 

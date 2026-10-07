@@ -57,6 +57,12 @@ export function AbleseRunde({
   const [zeitFehler, setZeitFehler] = useState<string | null>(null);
   const [texte, setTexte] = useState<Record<string, string>>({});
   const [zustaende, setZustaende] = useState<Record<string, Zustand>>({});
+  // Der Zustand der Reihen auch als Ref: Enter, Verlassen des Felds und „Fertig“ lesen ihn, während ein Speichern läuft.
+  const zustaendeRef = useRef<Record<string, Zustand>>({});
+  // Je Reihe das laufende Speichern - wer währenddessen speichern will (Verlassen des Felds, dann „Fertig“), wartet auf
+  // dasselbe statt einen zweiten POST zu senden.
+  const laufend = useRef(new Map<string, Promise<boolean>>());
+  const [ortsbaumName, setOrtsbaumName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const felder = useRef(new Map<string, HTMLInputElement>());
   const schluessel = JSON.stringify(anfrage);
@@ -76,9 +82,38 @@ export function AbleseRunde({
   }, [schluessel, versuch]);
 
   const runde = useMemo(() => (register ? rundeAus(register, ort, zone) : null), [register, ort, zone]);
+  // Ein Gebäude nur mit Zählern in Bereichen kennt das Register nicht beim Namen - dann der Ortsbaum des Standorts.
+  const ohneName = runde !== null && runde.ortName === null ? runde.standortId : null;
+  useEffect(() => {
+    if (!ohneName) return;
+    let aktiv = true;
+    api.standortOrte(ohneName).then(
+      (baum) => aktiv && setOrtsbaumName(baum.gebaeude.find((g) => g.kurzzeichen === ort)?.name ?? null),
+      () => undefined,
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [ohneName, ort]);
   const z = lesen(zeit, zone);
   const zustand = (id: string): Zustand => zustaende[id] ?? { art: 'offen' };
-  const setze = (id: string, s: Zustand) => setZustaende((alt) => ({ ...alt, [id]: s }));
+  const aktuell = (id: string): Zustand => zustaendeRef.current[id] ?? { art: 'offen' };
+  const setze = (id: string, s: Zustand) => {
+    zustaendeRef.current = { ...zustaendeRef.current, [id]: s };
+    setZustaende(zustaendeRef.current);
+  };
+  /**
+   * Review r4 S10: ein neuer Zeitpunkt macht jeden abgelehnten Stand wieder sendbar - der Satz („Liegt nicht nach der
+   * letzten Ablesung …“) galt dem alten Zeitpunkt; „Fertig“ und „Weiter“ schicken ihn dann noch einmal.
+   */
+  const neueZeit = (v: typeof zeit) => {
+    setZeit(v);
+    setZeitFehler(null);
+    zustaendeRef.current = Object.fromEntries(
+      Object.entries(zustaendeRef.current).map(([id, s]) => [id, s.art === 'satz' ? { art: 'offen' } : s]),
+    ) as Record<string, Zustand>;
+    setZustaende(zustaendeRef.current);
+  };
 
   const zurueck = (
     <button type="button" className="vp-mss-zurueck" onClick={onZurueck}>
@@ -116,11 +151,18 @@ export function AbleseRunde({
   const zaehltSatz = rundeZaehltSatz(runde, z.wert, zone);
   const erstesOffenes = runde.zaehler.find((x) => zustand(x.id).art !== 'gespeichert')?.id ?? null;
 
-  /** Speichert eine Reihe; `true`, wenn sie danach gespeichert ist. */
-  const speichere = async (x: RundeZaehler): Promise<boolean> => {
+  /** Speichert eine Reihe; `true`, wenn sie danach gespeichert ist. Läuft ihr Speichern schon, wartet es darauf. */
+  const speichere = (x: RundeZaehler): Promise<boolean> => {
+    const schon = laufend.current.get(x.id);
+    if (schon) return schon;
+    const p = speichereJetzt(x).finally(() => laufend.current.delete(x.id));
+    laufend.current.set(x.id, p);
+    return p;
+  };
+  const speichereJetzt = async (x: RundeZaehler): Promise<boolean> => {
     const text = (texte[x.id] ?? '').trim();
-    if (zustand(x.id).art === 'speichert') return false;
-    if (!text || zustand(x.id).art === 'gespeichert') return zustand(x.id).art === 'gespeichert';
+    if (aktuell(x.id).art === 'speichert') return false;
+    if (!text || aktuell(x.id).art === 'gespeichert') return aktuell(x.id).art === 'gespeichert';
     if (!z.wert) {
       setZeitFehler(z.fehler ?? 'Bitte geben Sie Datum und Uhrzeit an.');
       return false;
@@ -168,7 +210,7 @@ export function AbleseRunde({
     setBusy(true);
     let alleGut = true;
     for (const x of runde.zaehler) {
-      const art = zustand(x.id).art;
+      const art = aktuell(x.id).art;
       if (!(texte[x.id] ?? '').trim() || art === 'gespeichert') continue;
       // Ein abgelehnter Stand, seit der Ablehnung unverändert, geht nicht noch einmal hinaus - sein Satz bleibt stehen.
       if (art === 'satz') alleGut = false;
@@ -183,7 +225,7 @@ export function AbleseRunde({
       <div className="vp-ar" data-testid="ablese-runde">
         {zurueck}
         <header className="vp-ar-kopf">
-          <h1>{rundenTitel(runde)}</h1>
+          <h1>{rundenTitel(runde, runde.ortName ?? ortsbaumName)}</h1>
           <p className="vp-ar-unter">{rundenUnter(runde)}</p>
         </header>
         <Recht aktion="ablesung.erfassen">
@@ -192,17 +234,14 @@ export function AbleseRunde({
               kopf="Abgelesen am"
               value={zeit}
               zone={zone}
-              onChange={(v) => {
-                setZeit(v);
-                setZeitFehler(null);
-              }}
+              onChange={neueZeit}
               disabled={busy}
               error={zeitFehler ?? undefined}
             />
             {zaehltSatz && <p className="vp-ar-zaehlt">{zaehltSatz}</p>}
           </div>
           <div className="vp-ar-fortschritt" data-testid="ablese-runde-fortschritt">
-            <span>
+            <span aria-live="polite">
               <b>{f.zahl}</b> {f.wort}
             </span>
             <span className="vp-ar-balken" role="progressbar" aria-valuemin={0} aria-valuemax={runde.zaehler.length} aria-valuenow={gespeichert} aria-label="Eingetragen">
@@ -248,6 +287,11 @@ export function AbleseRunde({
                         if (s.art === 'satz') setze(x.id, { art: 'offen' });
                       }}
                       onKeyDown={(e) => void weiter(e, i)}
+                      // Review r4 S12: am iPhone hat das Ziffernfeld keine Eingabetaste - wer mit ∧∨ oder einem Tipp
+                      // weitergeht, verlässt das Feld; ein neuer Stand wird dann gespeichert wie mit „Weiter“.
+                      onBlur={() => {
+                        if ((texte[x.id] ?? '').trim() && aktuell(x.id).art === 'offen') void speichere(x);
+                      }}
                     />
                     <span className="vp-ar-einheit" aria-hidden="true">
                       {s.art === 'gespeichert' ? <Icon name="check" size={16} /> : x.einheit}

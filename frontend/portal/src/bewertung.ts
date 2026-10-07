@@ -10,6 +10,7 @@
  */
 import {
   ApiError,
+  type Bericht,
   type Bezugsgroesse,
   type BewertungUmfang,
   type BewertungUmfangAusschluss,
@@ -491,15 +492,39 @@ export function ladeFehler(e: unknown): { satz: string; erneut: boolean } {
 
 // ------------------------------------------------------------------ Rangliste, Einstufung und Kriterien (AP-16 IP-12)
 
-/** Der letzte abgeschlossene Kalendermonat in der Unternehmenszeitzone. */
-export function bewertungZeitraum(jetzt: Date = new Date()) {
+const MONAT_JAHR = (y: number, m: number): string =>
+  new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const MONATSENDE = (y: number, m: number): string =>
+  `${y}-${String(m).padStart(2, '0')}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+
+/**
+ * Der Zeitraum von Rangliste und Messabdeckung (Konzept Auswerten a1, Befund 2): die Datengrundlage der energetischen
+ * Bewertung (`zeitraum` „2028-04/2029-03“ eines Berichts mit `zeitraum_art` `datengrundlage`). Ohne Bewertung rechnet er
+ * wie der Server beim Anlegen einer Bewertung: die zwölf vollen Monate bis zum Vormonat in der Unternehmenszeitzone
+ * (`BerichtService.anlegen`). Nie ein einzelner Monat - die Kriterien verlangen mehrere Monate (K7), ein Monat bliebe
+ * immer „vorläufig“.
+ */
+export function bewertungZeitraum(
+  bericht?: Pick<Bericht, 'zeitraum' | 'zeitraum_art' | 'zeitraum_text'> | null,
+  jetzt: Date = new Date(),
+): { von: string; bis: string; label: string } {
+  const dg = bericht?.zeitraum_art === 'datengrundlage' ? /^(\d{4})-(\d{2})(?:\/(\d{4})-(\d{2}))?$/.exec(bericht.zeitraum) : null;
+  if (bericht && dg) {
+    const [, vj, vm, bj = vj, bm = vm] = dg;
+    return { von: `${vj}-${vm}-01`, bis: MONATSENDE(Number(bj), Number(bm)), label: bericht.zeitraum_text };
+  }
   const teile = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit' })
     .formatToParts(jetzt).reduce<Record<string, string>>((a, x) => ({ ...a, [x.type]: x.value }), {});
-  const ersterDieser = new Date(Date.UTC(Number(teile.year), Number(teile.month) - 1, 1));
-  const letzter = new Date(ersterDieser.getTime() - 86_400_000);
-  const y = letzter.getUTCFullYear(), m = String(letzter.getUTCMonth() + 1).padStart(2, '0');
-  const bis = `${y}-${m}-${String(new Date(Date.UTC(y, letzter.getUTCMonth() + 1, 0)).getUTCDate()).padStart(2, '0')}`;
-  return { von: `${y}-${m}-01`, bis, label: letzter.toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' }) };
+  // Der Vormonat ist der letzte volle Monat; elf Monate davor beginnt die Datengrundlage.
+  const bisIndex = Number(teile.year) * 12 + (Number(teile.month) - 1) - 1;
+  const vonIndex = bisIndex - 11;
+  const [vj, vm] = [Math.floor(vonIndex / 12), (vonIndex % 12) + 1];
+  const [bj, bm] = [Math.floor(bisIndex / 12), (bisIndex % 12) + 1];
+  return {
+    von: `${vj}-${String(vm).padStart(2, '0')}-01`,
+    bis: MONATSENDE(bj, bm),
+    label: `${MONAT_JAHR(vj, vm)} bis ${MONAT_JAHR(bj, bm)}`,
+  };
 }
 
 export const zahlMitEinheit = (wert: string | null, einheit: string | null) => {

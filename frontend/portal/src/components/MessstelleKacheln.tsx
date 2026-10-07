@@ -99,8 +99,9 @@ function Verlauf({ werte }: { werte: readonly (number | null)[] }) {
   const boden = H - 4;
   const min = Math.min(...da);
   const max = Math.max(...da);
-  const rand = (max - min) * 0.6 || max * 0.1 || 1;
-  const unten = Math.max(0, min - rand);
+  const rand = (max - min) * 0.6 || Math.abs(max) * 0.1 || 1;
+  // Ein negativer Monat (saldiert) liegt unter der Null - dann reicht die Achse dorthin, statt ihn abzuschneiden.
+  const unten = min >= 0 ? Math.max(0, min - rand) : min - rand;
   const verschoben = werte.map((v) => (v === null ? null : v - unten));
   const n = werte.length;
   return (
