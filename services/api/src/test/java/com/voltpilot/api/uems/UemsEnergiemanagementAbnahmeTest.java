@@ -348,7 +348,18 @@ class UemsEnergiemanagementAbnahmeTest {
             assertThat(z.path("eingetragen_von").asText()).as(e.fall() + " eingetragen von").isNotBlank();
             assertThat(z.path("tag").asText()).as(e.fall()).isEqualTo(e.tag());
             assertThat(e.nr() == 0 || z.path("nr").asInt() == e.nr()).as(e.fall()).isTrue();
-            assertThat(z.path("pruefsumme").asText()).as(e.fall() + " Prüfsumme").matches("(sha256:)?[0-9a-f]{64}");
+            if (z.path("ort").asText().equals("verweis")) {
+                // Ein Verweis trägt die Prüfsumme seines Originals; die Referenz nennt sie nur für IH-SG-01 (R7).
+                String sha = null;
+                for (JsonNode d : referenz.path("dokumente")) {
+                    if (d.path("kennzeichen").asText().equals(e.kennzeichen())) {
+                        sha = d.at("/fassungen/0/verweis/sha256").asText(null);
+                    }
+                }
+                assertThat(z.path("pruefsumme").asText(null)).as(e.fall() + " Prüfsumme").isEqualTo(sha);
+            } else {
+                assertThat(z.path("pruefsumme").asText()).as(e.fall() + " Prüfsumme").matches("(sha256:)?[0-9a-f]{64}");
+            }
         }
         // Die Prüfsummen sind die der Träger — gelesen, nicht gebildet (VZ1).
         assertThat(zeile(v, "energiepolitik", "D-0001", 1).path("pruefsumme").asText())
@@ -618,6 +629,75 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(z.path("gruppe").asText()).isEqualTo("managementbewertung");
         assertThat(z.path("entschieden_von").asText()).isEqualTo("Robert Falk");
         assertThat(z.path("eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
+    }
+
+    /**
+     * Nachweisen PR 8 (Konzept n1 §4.10, Entscheid 20): Dokumente, Feststellung und Audit tragen am 30.04.2029, was die
+     * Referenzdatei führt - Titel, jede Fassung mit ihrer Prüfsumme und Begründung, Bekanntmachungen und „geprüft,
+     * bleibt“ mit Kreis, Weg und Begründung, F-2029-0001 mit drei Einträgen und dem Stand der Wirksamkeit der
+     * Referenz, der Abschluss von AU-2029-0001 byte-gleich. Fassung 2 der Energiepolitik hat ihr eigenes Original.
+     */
+    @Test
+    void nachweisenWieDieReferenz() throws Exception {
+        for (JsonNode d : referenz.path("dokumente")) {
+            String k = d.path("kennzeichen").asText();
+            JsonNode seite = antwort("dokument " + k);
+            assertThat(seite.path("titel").asText()).as(k).isEqualTo(d.path("titel").asText());
+            assertThat(seite.path("zustand").asText()).as(k).isEqualTo("gueltig");
+            assertThat(seite.path("fassungen")).as(k).hasSize(d.path("fassungen").size());
+            for (int i = 0; i < d.path("fassungen").size(); i++) {
+                JsonNode soll = d.path("fassungen").get(i);
+                JsonNode ist = seite.path("fassungen").get(i);
+                assertThat(ist.path("pruefsumme").asText()).as(k + "/" + (i + 1)).isEqualTo(soll.path("pruefsumme").asText());
+                assertThat(ist.path("begruendung").asText()).as(k + "/" + (i + 1)).isEqualTo(soll.path("begruendung").asText());
+                assertThat(ist.path("beschluss_kennung").asText(null)).as(k + "/" + (i + 1))
+                        .isEqualTo(soll.path("beschluss").asText(null));
+                assertThat(ist.at("/entschieden_von/name").asText()).as(k + "/" + (i + 1))
+                        .isEqualTo(AhrenbergWelt.NAMEN.get(soll.path("entschieden_von").asText()));
+            }
+            // Je Weg ein Eintrag (EnergiemanagementNachweise: „aushang · intranet“ ist eine Mitteilung mit zwei Wegen).
+            List<String> soll = new ArrayList<>();
+            d.path("eintraege").forEach(e -> {
+                for (String weg : e.path("weg").asText("").split(" · ")) {
+                    soll.add(e.path("art").asText() + " " + e.path("fassung").asInt() + " " + e.path("am").asText() + " "
+                            + e.path("kreis").asText("") + " " + weg + " " + e.path("begruendung").asText("") + " "
+                            + e.path("beschluss").asText(""));
+                }
+            });
+            List<String> ist = new ArrayList<>();
+            seite.path("eintraege").forEach(e -> ist.add(e.path("art").asText() + " " + e.path("fassung").asInt() + " "
+                    + e.path("am").asText() + " " + e.path("kreis").asText("") + " " + e.path("weg").asText("") + " "
+                    + e.path("begruendung").asText("") + " " + e.path("beschluss_kennung").asText("")));
+            assertThat(ist).as(k).containsExactlyInAnyOrderElementsOf(soll);
+        }
+        // Original je Fassung (Entscheid 10): Fassung 1 liest das Original am Dokument, Fassung 2 trägt ihr eigenes.
+        JsonNode politik = antwort("dokument D-0001");
+        assertThat(politik.at("/beleg/kennung").asText()).isEqualTo("EP-2026");
+        assertThat(politik.at("/fassungen/1/original/kennung").asText()).isEqualTo("EP-2029");
+
+        JsonNode rf1 = referenz.at("/feststellungen/0");
+        JsonNode f = antwort("feststellung F-2029-0001");
+        assertThat(f.at("/feststellung/wortlaut").asText()).isEqualTo(rf1.path("wortlaut").asText());
+        assertThat(f.at("/feststellung/vorgabe/dokument").asText()).isEqualTo("D-0001");
+        assertThat(f.at("/feststellung/vorgabe/fassung").asInt()).isEqualTo(1);
+        assertThat(texte(f.at("/feststellung/bezug/objekte"), null)).containsExactly("BB-0001", "BB-0002", "BB-0003",
+                "BB-0004", "BB-0005");
+        List<String> eintraege = new ArrayList<>();
+        f.path("eintraege").forEach(e -> eintraege.add(e.path("am").asText() + " " + e.path("art").asText() + " "
+                + e.at("/person/name").asText() + " " + e.path("wortlaut").asText()));
+        List<String> sollEintraege = new ArrayList<>();
+        rf1.path("eintraege").forEach(e -> sollEintraege.add(e.path("am").asText() + " " + e.path("art").asText() + " "
+                + AhrenbergWelt.NAMEN.get(e.path("person").asText()) + " " + e.path("text").asText()));
+        assertThat(eintraege).containsExactlyElementsOf(sollEintraege);
+        JsonNode stand = f.at("/wirksamkeit/0");
+        assertThat(stand.path("begruendung").asText()).isEqualTo(rf1.at("/wirksamkeit/0/begruendung").asText());
+        assertThat(stand.path("pruefsumme").asText()).isEqualTo(rf1.at("/wirksamkeit/0/pruefsumme").asText());
+
+        JsonNode au = antwort("audit AU-2029-0001");
+        assertThat(au.at("/audit/was").asText()).isEqualTo(referenz.at("/audits/0/was").asText());
+        assertThat(au.at("/audit/woran").asText()).isEqualTo(referenz.at("/audits/0/woran").asText());
+        assertThat(au.at("/audit/abschluss/pruefsumme").asText())
+                .isEqualTo(referenz.at("/audits/0/abgeschlossen/pruefsumme").asText());
     }
 
     // ================================================================================ Die Sprach-Probe

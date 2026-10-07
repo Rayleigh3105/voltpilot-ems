@@ -77,12 +77,17 @@ final class AhrenbergWelt {
             "bezeichnung", "Bericht internes Audit 2029, unterschrieben",
             "ablage", "QM-Laufwerk, Ordner Energiemanagement/Audits", "kennung", "IA-2029",
             "sha256", "761d45606a2ed3511c91e2a61bf4ba3287dac583b70f43ead3f3d8716233fdeb");
-    private static final Map<String, Object> UNTERWEISUNG = Map.of(
-            "bezeichnung", "Unterweisung Zeitschaltung Werkzeugheizungen, Murat Demirci", "ablage", "Personalsystem",
-            "kennung", "UW-2028-014",
-            "sha256", "5b0d6c3f1e2a4978b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3");
     private static final String SHA_GR2 = "3b1f4d86f164c8e54eaa3a9c335975dd54dcbd68b42bbb9c7b24d2195e2a9a2e";
     private static final String SHA_Z5B = "c07dd7a33d2b17df6fece484ec4e08bb50c93326653576cfb1b8dd8dcf8a41f0";
+    /**
+     * Nachweisen PR 8 (Konzept n1, Entscheid 10): das unterschriebene Original von D-0001 Fassung 2. Die Referenzdatei
+     * kennt nur das Original am Dokument (Fassung 1); ohne eigenes Original hieße es unter Fassung 2 „Fassung 1,
+     * unterschrieben“. Annahme wie EP-2026: derselbe Ordner, eigene Kennung.
+     */
+    private static final Map<String, Object> ORIGINAL_F2 = Map.of(
+            "bezeichnung", "Energiepolitik Fassung 2, unterschrieben",
+            "ablage", "QM-Laufwerk, Ordner Energiemanagement/Politik", "kennung", "EP-2029",
+            "sha256", "9d4f3c1a8e6b2d7f0a5c4e3b2d1f0e9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e");
 
     private final MockMvc mvc;
     private final JdbcTemplate root;
@@ -260,13 +265,15 @@ final class AhrenbergWelt {
         // R1, R2: D-0001 und D-0002 am 15.12.2026, entschieden von Robert Falk; bekannt gemacht am 18.12.2026.
         uhr("2026-12-15T10:00:00Z");
         String d1 = dokumentAnlegen("D-0001", "energiepolitik", "Energiepolitik", ORIGINAL, unternehmenBezug());
-        fassung(d1, Map.of("form", "wortlaut", "wortlaut", kopien.get("D-0001").at("/eingang/kopie/wortlaut").asText()));
+        fassung(d1, Map.of("form", "wortlaut", "wortlaut", kopien.get("D-0001").at("/eingang/kopie/wortlaut").asText(),
+                "begruendung", referenzFassung("D-0001", 1).path("begruendung").asText()));
         freigeben(d1, 1, "RF");
         String d2 = dokumentAnlegen("D-0002", "anwendungsbereich", "Anwendungsbereich des Energiemanagements", null,
                 unternehmenBezug());
         fassung(d2, Map.of("form", "wortlaut", "wortlaut", kopien.get("D-0002").at("/eingang/kopie/wortlaut").asText(),
                 "anwendungsbereich", Map.of("standort_ids", List.of(s1.toString(), s2.toString()),
-                        "traeger", List.of("Strom", "Gas"), "ausschluesse", List.of())));
+                        "traeger", List.of("Strom", "Gas"), "ausschluesse", List.of()),
+                "begruendung", referenzFassung("D-0002", 1).path("begruendung").asText()));
         freigeben(d2, 1, "RF");
         uhr("2026-12-18T10:00:00Z");
         for (String weg : List.of("aushang", "intranet")) {
@@ -274,9 +281,9 @@ final class AhrenbergWelt {
                     Map.of("kreis", "alle Mitarbeitenden beider Werke", "weg", weg), 201);
         }
         uhr("2027-12-10T10:00:00Z");
-        for (String d : List.of(d1, d2)) {
-            ruf("POST", BASIS + "/dokumente/" + d + "/geprueft", "IK", Map.of("entschieden_von", rf, "am",
-                    "2027-12-10", "begruendung", "Mit der Jahresplanung 2028 durchgesehen; gilt unverändert."), 200);
+        for (String k : List.of("D-0001", "D-0002")) {
+            ruf("POST", BASIS + "/dokumente/" + dokument.get(k) + "/geprueft", "IK", Map.of("entschieden_von", rf, "am",
+                    "2027-12-10", "begruendung", referenzEintrag(k, "2027-12-10").path("begruendung").asText()), 200);
         }
 
         // AP-11, AP-17, AP-12, AP-18: sechs Kennzahlen, fünf Bezugsbasen mit acht Fassungen, Berichtsstände, die
@@ -285,30 +292,27 @@ final class AhrenbergWelt {
 
         // D-0003 … D-0005 nach der Referenzdatei nummeriert (Anlage-Reihenfolge), freigegeben an ihren Tagen.
         uhr("2028-01-25T09:00:00Z");
-        String d3 = dokumentAnlegen("D-0003", "rechtliche_anforderungen", "Rechtskataster", null, unternehmenBezug());
+        String d3 = dokumentAnlegen("D-0003", "rechtliche_anforderungen", referenzDokument("D-0003").path("titel").asText(),
+                null, unternehmenBezug());
         String d4 = dokumentAnlegen("D-0004", "betrieb", "Kriterien für Betrieb und Instandhaltung — Spritzguss", null,
                 Map.of("art", "energieeinsatz", "energieeinsatz_id", einsatz.get("EE-1").toString()));
-        String d5 = dokumentAnlegen("D-0005", "kompetenz", "Unterweisung Zeitschaltung Werkzeugheizungen",
+        String d5 = dokumentAnlegen("D-0005", "kompetenz", referenzDokument("D-0005").path("titel").asText(),
                 null, Map.of("art", "person", "person_id", person.get("MD")));
         // R8: die Unterweisung von Murat Demirci am 25.01.2028 als Verweis auf das Personalsystem, ohne Überprüfung.
         uhr("2028-01-25T10:00:00Z");
-        fassung(d5, Map.of("form", "verweis", "verweis", UNTERWEISUNG));
+        fassung(d5, verweisFassung("D-0005"));
         freigeben(d5, 1, "IK");
         // R7: D-0004 am Einsatz EE-1 — Verweis auf den Arbeitsplan IH-SG-01 im Instandhaltungssystem.
         uhr("2028-11-10T10:00:00Z");
-        fassung(d4, Map.of("form", "verweis", "verweis", JSON.convertValue(kopien.get("D-0004")
-                .at("/eingang/kopie/verweis"), Map.class)));
+        fassung(d4, verweisFassung("D-0004"));
         freigeben(d4, 1, "IK");
         uhr("2028-11-12T10:00:00Z");
-        ruf("POST", BASIS + "/dokumente/" + d4 + "/bekanntmachungen", "IK",
-                Map.of("kreis", "Schichtführer und Instandhaltung", "weg", "besprechung"), 201);
-        // D-0003 Rechtliche Anforderungen am 05.12.2028 als Verweis auf den Rechtskataster-Dienst.
+        JsonNode unterwiesen = referenzEintrag("D-0004", "2028-11-12");
+        ruf("POST", BASIS + "/dokumente/" + d4 + "/bekanntmachungen", "IK", Map.of("kreis",
+                unterwiesen.path("kreis").asText(), "weg", unterwiesen.path("weg").asText()), 201);
+        // D-0003 Rechtliche Anforderungen am 05.12.2028 als eigener Verweis auf den Rechtskataster-Dienst (RK-AHR).
         uhr("2028-12-05T10:00:00Z");
-        Map<String, Object> kataster = new LinkedHashMap<>(JSON.convertValue(kopien.get("D-0004")
-                .at("/eingang/kopie/verweis"), Map.class));
-        kataster.put("ablage", "Rechtskataster-Dienst");
-        kataster.put("kennung", "RK-2028");
-        fassung(d3, Map.of("form", "verweis", "verweis", kataster));
+        fassung(d3, verweisFassung("D-0003"));
         freigeben(d3, 1, "IK");
 
         // R9, R10: AU-2029-0001 am 22.01.2029 mit Hinweis und Feststellung F-2029-0001; M-2029-0001/-0002; Abschluss
@@ -319,8 +323,8 @@ final class AhrenbergWelt {
         a.put("termin", "2029-01-22");
         a.put("auditor_ids", List.of(person.get("CB")));
         a.put("unabhaengigkeit", "Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.");
-        a.put("was", "Bezugsbasen, Energieziel, Maßnahmen und Grundlagen");
-        a.put("woran", "Energiepolitik D-0001 Fassung 1, Anwendungsbereich D-0002, Aufgaben im Energiemanagement");
+        a.put("was", referenz.at("/audits/0/was").asText());
+        a.put("woran", referenz.at("/audits/0/woran").asText());
         a.put("verantwortlich", sub("IK"));
         audit = ruf("POST", BASIS + "/audits", "IK", a, 201).at("/audit/id").asText();
         uhr("2029-01-22T15:00:00Z");
@@ -331,12 +335,22 @@ final class AhrenbergWelt {
         uhr("2029-01-23T10:00:00Z");
         Map<String, Object> f = new LinkedHashMap<>();
         f.put("quelle", Map.of("art", "internes_audit", "audit_id", audit));
-        f.put("wortlaut", "Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt.");
-        f.put("vorgabe", Map.of("wortlaut", "„Wir legen fest, wer im Energiemanagement wofür zuständig ist.“"));
+        JsonNode rf1 = referenz.at("/feststellungen/0");
+        f.put("wortlaut", rf1.path("wortlaut").asText());
+        f.put("vorgabe", Map.of("dokument_id", dokument.get("D-0001"), "fassung", 1, "wortlaut",
+                rf1.at("/vorgabe/wortlaut").asText()));
+        f.put("bezug", Map.of("aufgabe", rf1.at("/bezug/aufgabe").asText(), "objekte", texte(rf1.at("/bezug/objekte"))));
         f.put("festgestellt_von", person.get("CB"));
         f.put("festgestellt_am", "2029-01-22");
         f.put("verantwortlich", sub("JW"));
         feststellung = ruf("POST", BASIS + "/feststellungen", "IK", f, 201).at("/feststellung/id").asText();
+        // Die drei Einträge der Referenz: sofort behoben (23.01.), Ursache und ähnliche Fälle (beide 25.01.2029).
+        for (JsonNode e : rf1.path("eintraege")) {
+            uhr(e.path("am").asText() + "T11:00:00Z");
+            ruf("POST", BASIS + "/feststellungen/" + feststellung + "/eintraege", "IK", Map.of("art",
+                    e.path("art").asText(), "wortlaut", e.path("text").asText(), "person_id",
+                    person.get(e.path("person").asText()), "am", e.path("am").asText()), 201);
+        }
         uhr("2029-01-26T10:00:00Z");
         massnahme("Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden", "JW",
                 "2029-02-28", "nichtkonformitaet", "F-2029-0001");
@@ -476,8 +490,8 @@ final class AhrenbergWelt {
         // B6 13.02.2029: „geprüft, bleibt“ an D-0002 mit dem Beschluss.
         uhr("2029-02-13T10:00:00Z");
         ruf("POST", BASIS + "/dokumente/" + dokument.get("D-0002") + "/geprueft", "IK", Map.of("entschieden_von",
-                person.get("RF"), "am", "2029-02-13", "begruendung", "Beschluss B6 der Managementbewertung 2028: bleibt "
-                + "unverändert.", "beschluss_kennung", "BR-2029-0001/B6"), 200);
+                person.get("RF"), "am", "2029-02-13", "begruendung", referenzEintrag("D-0002", "2029-02-13")
+                .path("begruendung").asText(), "beschluss_kennung", "BR-2029-0001/B6"), 200);
         // B2 14.02.2029: M-2029-0003 mit Herkunft `managementbewertung`.
         uhr("2029-02-14T10:00:00Z");
         massnahme("Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal", "IK", "2029-06-30",
@@ -506,16 +520,23 @@ final class AhrenbergWelt {
                 + "(Beschluss B4)."), 200);
         // B3 10.03./20.03.2029: D-0001 Fassung 2, entschieden von Robert Falk.
         uhr("2029-03-10T10:00:00Z");
-        fassung(dokument.get("D-0001"), Map.of("form", "wortlaut", "wortlaut", "Energiepolitik, ergänzt um Einkauf und "
-                + "Planung.", "begruendung", "Beschluss B3 der Managementbewertung 2028", "beschluss_kennung",
-                "BR-2029-0001/B3"));
+        JsonNode f2 = referenzFassung("D-0001", 2);
+        fassung(dokument.get("D-0001"), Map.of("form", "wortlaut", "wortlaut", f2.path("wortlaut").asText(),
+                "begruendung", f2.path("begruendung").asText(), "beschluss_kennung", f2.path("beschluss").asText(),
+                "original", ORIGINAL_F2));
         uhr("2029-03-20T10:00:00Z");
         freigeben(dokument.get("D-0001"), 2, "RF");
+        // 25.03.2029: Fassung 2 bekannt gemacht wie Fassung 1 - alle Mitarbeitenden beider Werke, Aushang und Intranet.
+        uhr("2029-03-25T10:00:00Z");
+        for (String weg : List.of("aushang", "intranet")) {
+            ruf("POST", BASIS + "/dokumente/" + dokument.get("D-0001") + "/bekanntmachungen", "IK",
+                    Map.of("kreis", referenzEintrag("D-0001", "2029-03-25").path("kreis").asText(), "weg", weg), 201);
+        }
         // R11 15.04.2029: Wirksamkeit Stand Nr. 1 „wirksam“ — eine Person sagt es.
         uhr("2029-04-15T10:00:00Z");
         ruf("POST", BASIS + "/feststellungen/" + feststellung + "/wirksamkeit", "IK", Map.of("ergebnis", "wirksam",
-                "begruendung", "Aufgabe seit 01.03.2029 festgelegt (Ines Kaltenbach, Vertretung Jonas Wendlinger); die "
-                + "Freigaben seit März nennen die zuständige Person.", "entschieden_von", person.get("IK")), 201);
+                "begruendung", referenz.at("/feststellungen/0/wirksamkeit/0/begruendung").asText(), "entschieden_von",
+                person.get("IK")), 201);
     }
 
     // ================================================================================ Welt: Helfer
@@ -538,6 +559,36 @@ final class AhrenbergWelt {
 
     private static Map<String, Object> unternehmenBezug() {
         return Map.of("art", "unternehmen");
+    }
+
+    /** Ein Dokument der Referenzdatei ({@code dokumente}) nach Kennzeichen - Titel, Fassungen und Einträge. */
+    private JsonNode referenzDokument(String kennzeichen) {
+        for (JsonNode d : referenz.path("dokumente")) {
+            if (d.path("kennzeichen").asText().equals(kennzeichen)) return d;
+        }
+        throw new IllegalStateException("Dokument fehlt in der Referenzdatei: " + kennzeichen);
+    }
+
+    private JsonNode referenzFassung(String kennzeichen, int nr) {
+        return referenzDokument(kennzeichen).path("fassungen").get(nr - 1);
+    }
+
+    /** Der Eintrag eines Dokuments der Referenzdatei an einem Tag (bekannt gemacht, geprüft, bleibt). */
+    private JsonNode referenzEintrag(String kennzeichen, String am) {
+        for (JsonNode e : referenzDokument(kennzeichen).path("eintraege")) {
+            if (e.path("am").asText().equals(am)) return e;
+        }
+        throw new IllegalStateException("Eintrag fehlt in der Referenzdatei: " + kennzeichen + " am " + am);
+    }
+
+    /** Fassung 1 als Verweis wie in der Referenzdatei - Verweis und Begründung; die Prüfsumme bildet der Dienst. */
+    private Map<String, Object> verweisFassung(String kennzeichen) {
+        JsonNode f = referenzFassung(kennzeichen, 1);
+        Map<String, Object> verweis = new LinkedHashMap<>();
+        f.path("verweis").fields().forEachRemaining(e -> {
+            if (!e.getValue().isNull()) verweis.put(e.getKey(), e.getValue().asText());
+        });
+        return Map.of("form", "verweis", "verweis", verweis, "begruendung", f.path("begruendung").asText());
     }
 
     private String dokumentAnlegen(String kennzeichen, String art, String titel, Map<String, Object> beleg,
