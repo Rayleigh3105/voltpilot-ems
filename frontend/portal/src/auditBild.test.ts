@@ -85,10 +85,20 @@ describe('Reiter „Audits“: Status zuerst, Als Nächstes, Zeilen', () => {
   });
 
   it('Zeile einer Feststellung: offen mit Frist, abgeschlossen mit dem Tag des Stands', () => {
-    expect(B.feststellungZeile(feststellung())).toEqual({ datum: null, erledigt: true, titel: feststellung().wortlaut, unter: 'wirksam seit 15.04.2029' });
+    expect(B.feststellungZeile(feststellung())).toEqual({ datum: null, zeichen: 'done', titel: feststellung().wortlaut, unter: 'wirksam seit 15.04.2029' });
     expect(B.feststellungZeile(feststellung({ abgeschlossen_am: null })).unter).toBe('wirksam');
     const offen = feststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-04-22', tage: 8, satz: null, grund: null } });
-    expect(B.feststellungZeile(offen)).toMatchObject({ datum: { wort: 'seit', tag: '2029-04-22', ton: 'ueber' }, erledigt: false, unter: 'Jonas Wendlinger' });
+    expect(B.feststellungZeile(offen)).toMatchObject({ datum: { wort: 'seit', tag: '2029-04-22', ton: 'ueber' }, zeichen: null, unter: 'Jonas Wendlinger' });
+  });
+
+  it('Review P4-4: ohne Maßnahme „abgeschlossen am“, zurückgenommen „am“ und mit dem Zeichen „ohne“ statt eines Hakens', () => {
+    const ohne = B.feststellungZeile(feststellung({ ergebnis: 'ohne_massnahme', abgeschlossen_am: '2029-03-12' }));
+    expect(ohne).toMatchObject({ zeichen: 'done', unter: 'ohne Maßnahme abgeschlossen am 12.03.2029' });
+    expect(ohne.unter).not.toMatch(/ohne Maßnahme seit/u);
+    const zurueck = B.feststellungZeile(feststellung({ ergebnis: 'zurueckgenommen', abgeschlossen_am: '2029-03-12' }));
+    expect(zurueck).toMatchObject({ zeichen: 'ohne', unter: 'zurückgenommen am 12.03.2029' });
+    // Dasselbe Zeichen wie unter „Was daraus wurde“ auf der Seite des Audits.
+    expect(zurueck.zeichen).toBe('ohne');
   });
 });
 
@@ -128,7 +138,13 @@ describe('Seite eines Audits', () => {
 });
 
 describe('Seite einer Feststellung', () => {
-  const stand = (over: Partial<FeststellungStand> = {}) => ({ status: 'freigegeben' as const, ergebnis: 'wirksam' as const, am: '2029-04-15', ...over });
+  const stand = (over: Partial<FeststellungStand> = {}) => ({
+    status: 'freigegeben' as const,
+    ergebnis: 'wirksam' as const,
+    am: '2029-04-15',
+    eingetragen: { akteur: { sub: 'IK', name: 'Ines Kaltenbach', rolle: 'energiemanager', art: 'kunde' as const }, am: '2029-04-14T09:00:00+02:00' },
+    ...over,
+  });
 
   it('Herkunft und Status', () => {
     expect(B.feststellungHerkunft(feststellung(), audit())).toBe('Feststellung · Audit 2029');
@@ -137,6 +153,28 @@ describe('Seite einer Feststellung', () => {
     const offen = feststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-04-22', tage: 8, satz: null, grund: null } });
     expect(B.feststellungStatus(offen, [])).toEqual({ zeichen: 'ueber', text: 'überfällig', sub: '· seit 22.04.2029', warn: true });
     expect(B.feststellungStatus(offen, [stand({ status: 'beantragt' })]).text).toBe('Wirksamkeit beantragt');
+  });
+
+  it('Review P4-2: die Status-Zeile sagt, was beantragt ist und von wem; entscheiden darf nur die zweite Person', () => {
+    const offen = feststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null });
+    expect(B.feststellungStatus(offen, [stand({ status: 'beantragt' })])).toMatchObject({ text: 'Wirksamkeit beantragt', sub: '· Ines Kaltenbach' });
+    expect(B.feststellungStatus(offen, [stand({ status: 'beantragt', ergebnis: 'ohne_massnahme' })]).text).toBe('Abschluss ohne Maßnahme beantragt');
+    expect(B.feststellungStatus(offen, [stand({ status: 'beantragt', ergebnis: 'zurueckgenommen' })]).text).toBe('Zurücknahme beantragt');
+    const antrag = stand({ status: 'beantragt' });
+    const f = { verantwortlich: { sub: 'JW', name: 'Jonas Wendlinger' } };
+    const vieraugen = { an: true, zweite_person: [{ sub: 'MD', name: 'Murat Demirci' }] };
+    expect(B.darfAntragEntscheiden('IK', f, antrag, vieraugen)).toBe(false); // hat beantragt
+    expect(B.darfAntragEntscheiden('JW', f, antrag, vieraugen)).toBe(false); // ist verantwortlich
+    expect(B.darfAntragEntscheiden('MD', f, antrag, vieraugen)).toBe(true);
+    expect(B.darfAntragEntscheiden(null, f, antrag, vieraugen)).toBe(false);
+    // Ohne Vier-Augen-Liste dieselbe Regel selbst.
+    expect(B.darfAntragEntscheiden('IK', f, antrag, { an: false, zweite_person: [] })).toBe(false);
+    expect(B.darfAntragEntscheiden('CB', f, antrag, { an: false, zweite_person: [] })).toBe(true);
+    expect(B.entscheidenKann(vieraugen)).toBe('Entscheiden kann Murat Demirci.');
+    expect(B.entscheidenKann({ zweite_person: [{ sub: 'MD', name: 'Murat Demirci' }, { sub: 'CB', name: 'Claudia Berger' }] })).toBe(
+      'Entscheiden können Murat Demirci und Claudia Berger.',
+    );
+    expect(B.entscheidenKann({ zweite_person: [] })).toBeNull();
   });
 
   it('Stufen bis zur Wirksamkeit, jede mit ihrem Tag', () => {

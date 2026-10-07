@@ -12,6 +12,7 @@ import type {
   FeststellungEintrag,
   FeststellungMassnahme,
   FeststellungStand,
+  FeststellungVierAugen,
   InternesAudit,
   InternesAuditAenderung,
   InternesAuditprogramm,
@@ -24,6 +25,7 @@ import { wirksamkeitPruefbar } from './auditFeststellung';
 import { tagText } from './energiemanagementPortal';
 import { UEMS_MASSNAHME_ZUSTAENDE } from './glossar';
 import { tagDesAugenblicks } from './routenUhr';
+import { aufzaehlung } from './uemsZustand';
 
 /** Ein Datumsblock: kleines Wort, Tag (ISO), Ton. */
 export type Datum = { wort: string; tag: string; ton: DatumTon };
@@ -171,19 +173,29 @@ export const ERGEBNIS_KURZ: Record<FeststellungStand['ergebnis'], string> = {
   zurueckgenommen: 'zurückgenommen',
 };
 
+/** Wie eine Feststellung abgeschlossen ist, als Zeile („… am 12.03.2029“; wirksam „seit“). */
+const ABGESCHLOSSEN_WORT: Record<FeststellungStand['ergebnis'], string> = {
+  wirksam: 'wirksam',
+  nicht_wirksam: 'abgeschlossen',
+  ohne_massnahme: 'ohne Maßnahme abgeschlossen',
+  zurueckgenommen: 'zurückgenommen',
+};
+
 /**
  * Die Zeile einer Feststellung: der Wortlaut ist der Titel (auf zwei Zeilen gekürzt); offen mit der Frist als
- * Datumsblock (Warnton erst, wenn sie abgelaufen ist) und der verantwortlichen Person, abgeschlossen mit Haken und dem
- * Ergebnis seit dem Tag des schließenden Stands.
+ * Datumsblock (Warnton erst, wenn sie abgelaufen ist) und der verantwortlichen Person, abgeschlossen mit dem Zeichen
+ * ihres Ergebnisses (Haken, zurückgenommen „ohne“ wie unter „Was daraus wurde“) und dem Tag des schließenden Stands:
+ * „wirksam seit …“, sonst „… am …“ (Review P4-4: „ohne Maßnahme seit …“ las sich wie „seit … ohne Maßnahme“).
  */
-export function feststellungZeile(f: Feststellung): { datum: Datum | null; erledigt: boolean; titel: string; unter: string } {
+export function feststellungZeile(f: Feststellung): { datum: Datum | null; zeichen: 'done' | 'ohne' | null; titel: string; unter: string } {
   const titel = f.wortlaut.trim();
   if (f.zustand === 'offen') {
     const ueber = (f.lage.tage ?? 0) > 0;
-    return { datum: { wort: ueber ? 'seit' : 'bis', tag: f.frist, ton: ueber ? 'ueber' : 'bald' }, erledigt: false, titel, unter: f.verantwortlich.name };
+    return { datum: { wort: ueber ? 'seit' : 'bis', tag: f.frist, ton: ueber ? 'ueber' : 'bald' }, zeichen: null, titel, unter: f.verantwortlich.name };
   }
-  const wort = f.ergebnis ? ERGEBNIS_KURZ[f.ergebnis] : 'abgeschlossen';
-  return { datum: null, erledigt: true, titel, unter: f.abgeschlossen_am ? `${wort} seit ${tagText(f.abgeschlossen_am)}` : wort };
+  const was = f.ergebnis ? ABGESCHLOSSEN_WORT[f.ergebnis] : 'abgeschlossen';
+  const unter = f.abgeschlossen_am ? `${was} ${f.ergebnis === 'wirksam' ? 'seit' : 'am'} ${tagText(f.abgeschlossen_am)}` : was;
+  return { datum: null, zeichen: f.ergebnis === 'zurueckgenommen' ? 'ohne' : 'done', titel, unter };
 }
 
 // ------------------------------------------------------------------ Seite eines Audits
@@ -302,13 +314,22 @@ export function feststellungHerkunft(f: Pick<Feststellung, 'quelle'>, audit: Pic
   }
 }
 
-export function feststellungStatus(f: Feststellung, staende: Pick<FeststellungStand, 'status'>[]): Status {
+/** Was ein offener Antrag will, als Status-Zeile (Review P4-2: nicht immer „Wirksamkeit beantragt“). */
+const BEANTRAGT: Record<FeststellungStand['ergebnis'], string> = {
+  wirksam: 'Wirksamkeit beantragt',
+  nicht_wirksam: '„nicht wirksam“ beantragt',
+  ohne_massnahme: 'Abschluss ohne Maßnahme beantragt',
+  zurueckgenommen: 'Zurücknahme beantragt',
+};
+
+export function feststellungStatus(f: Feststellung, staende: Pick<FeststellungStand, 'status' | 'ergebnis' | 'eingetragen'>[]): Status {
   if (f.zustand === 'abgeschlossen') {
     if (f.ergebnis === 'wirksam') return { zeichen: 'done', text: 'behoben und wirksam', sub: null, warn: false };
     if (f.ergebnis === 'zurueckgenommen') return { zeichen: 'ohne', text: 'zurückgenommen', sub: null, warn: false };
     return { zeichen: 'done', text: 'ohne Maßnahme abgeschlossen', sub: null, warn: false };
   }
-  if (staende.some((s) => s.status === 'beantragt')) return { zeichen: 'laeuft', text: 'Wirksamkeit beantragt', sub: null, warn: false };
+  const antrag = staende.find((s) => s.status === 'beantragt');
+  if (antrag) return { zeichen: 'laeuft', text: BEANTRAGT[antrag.ergebnis], sub: `· ${antrag.eingetragen.akteur.name}`, warn: false };
   if ((f.lage.tage ?? 0) > 0) return { zeichen: 'ueber', text: 'überfällig', sub: `· seit ${tagText(f.frist)}`, warn: true };
   return { zeichen: 'laeuft', text: 'offen', sub: `· bis ${tagText(f.frist)}`, warn: false };
 }
@@ -353,6 +374,28 @@ export function feststellungStufen(
 }
 
 /** Ein Stand der Wirksamkeit als Menüpunkt: „Stand 1 · wirksam“, „Stand 2 · beantragt“. */
+/**
+ * Vier-Augen an der Feststellung (FS6, Review P4-2): über einen offenen Antrag entscheidet nur, wen die Route als zweite
+ * Person nennt (nie wer beantragt hat, nie wer verantwortlich ist). Ohne Vier-Augen-Liste gilt dieselbe Regel selbst.
+ */
+export function darfAntragEntscheiden(
+  sub: string | null,
+  f: Pick<Feststellung, 'verantwortlich'>,
+  antrag: Pick<FeststellungStand, 'eingetragen'>,
+  vieraugen: Pick<FeststellungVierAugen, 'an' | 'zweite_person'>,
+): boolean {
+  if (!sub) return false;
+  if (vieraugen.an) return vieraugen.zweite_person.some((p) => p.sub === sub);
+  return sub !== antrag.eingetragen.akteur.sub && sub !== f.verantwortlich.sub;
+}
+
+/** „Entscheiden kann Jonas Wendlinger.“ - für alle, die den Antrag sehen, aber nicht entscheiden; ohne Liste nichts. */
+export function entscheidenKann(vieraugen: Pick<FeststellungVierAugen, 'zweite_person'>): string | null {
+  const namen = vieraugen.zweite_person.map((p) => p.name);
+  if (!namen.length) return null;
+  return `Entscheiden ${namen.length === 1 ? 'kann' : 'können'} ${aufzaehlung(namen)}.`;
+}
+
 export const standMenue = (s: Pick<FeststellungStand, 'nr' | 'status' | 'ergebnis'>) =>
   `Stand ${s.nr} · ${s.status === 'freigegeben' ? ERGEBNIS_KURZ[s.ergebnis] : s.status === 'beantragt' ? 'beantragt' : 'abgelehnt'}`;
 
