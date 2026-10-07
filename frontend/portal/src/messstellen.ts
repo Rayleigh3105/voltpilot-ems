@@ -457,6 +457,12 @@ export const ortAus = (hash: string): string | null => filterAus(hash, 'ort');
  */
 export const anlageAus = (hash: string): string | null => filterAus(hash, 'anlage');
 
+/**
+ * Messen m2 (Konzept Messen m1, §6.5 Variante 3A): die Ablese-Runde eines Orts aus der Adresse
+ * (`#/portfolio/messstellen?ablesen=G-1`) - das Kurzzeichen, wie die Gebäude-Karte und die Wiedervorlage es tragen.
+ */
+export const ablesenAus = (hash: string): string | null => filterAus(hash, 'ablesen');
+
 const filterAus = (hash: string, schluessel: string): string | null =>
   new URLSearchParams(hash.split('?').slice(1).join('?')).get(schluessel)?.trim() || null;
 

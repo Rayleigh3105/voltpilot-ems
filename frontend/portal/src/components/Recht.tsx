@@ -11,8 +11,10 @@ export function Recht({ aktion, standort, rueckwirkend = false, children }: {
 }) {
   const rollen = useRollen();
   const ziel = standort === undefined ? rollen.standort : standort;
-  if ((typeof aktion === 'string' ? [aktion] : aktion).some(a => rollen.darf(a, ziel))
-    && (!rueckwirkend || rollen.darf('aenderung.rueckwirkend', ziel))) return <>{children}</>;
+  const darfAktion = (typeof aktion === 'string' ? [aktion] : aktion).some(a => rollen.darf(a, ziel));
+  const darfRueckwirkend = !rueckwirkend || rollen.darf('aenderung.rueckwirkend', ziel);
+  if (darfAktion && darfRueckwirkend) return <>{children}</>;
   if (!rollen.selbst || (ziel !== null && !rollen.selbst.standorte.some((s) => s.id === ziel))) return null;
-  return <span className="vp-muted vp-recht-hinweis" role="note">{rollen.grund}</span>;
+  // Konzept Messen m1 (§8.2 Punkt 9): fehlt nur die rückwirkende Zeile, sagt der Satz das - und wer es kann.
+  return <span className="vp-muted vp-recht-hinweis" role="note">{darfAktion ? rollen.rueckwirkendGrund : rollen.grund}</span>;
 }

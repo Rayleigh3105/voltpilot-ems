@@ -41,8 +41,8 @@ describe('BegriffAufklapper', () => {
   });
 
   it('ohne eigenes Beispiel das allgemeine; ohne eigene Frage „Was heißt „…“?“', () => {
-    render(<BegriffAufklapper begriff="bezugsgroesse" />);
-    expect(screen.getByText(`Was heißt „${BEGRIFFE.bezugsgroesse.wort}“?`)).toBeInTheDocument();
-    if (BEGRIFFE.bezugsgroesse.beispiel) expect(screen.getByText(BEGRIFFE.bezugsgroesse.beispiel)).toBeInTheDocument();
+    render(<BegriffAufklapper begriff="kennzahl" />);
+    expect(screen.getByText(`Was heißt „${BEGRIFFE.kennzahl.wort}“?`)).toBeInTheDocument();
+    if (BEGRIFFE.kennzahl.beispiel) expect(screen.getByText(BEGRIFFE.kennzahl.beispiel)).toBeInTheDocument();
   });
 });

@@ -776,6 +776,28 @@ export const UEMS_WEG_GERAET = 'Automatisch von einem Gerät';
 export const UEMS_WEG_ABLESEN = 'Von Hand ablesen';
 export const UEMS_NOCH_KEINE_QUELLE = 'noch keine Quelle';
 export const UEMS_ABLESERHYTHMUS = 'Ableserhythmus';
+/**
+ * Konzept Messen m1 §6.4/§6.5 (Messen-Bau m2): die Seite einer Messstelle - EINE Karte „Zuordnung“ mit Ort, „Im
+ * Stromnetz“ (Fachwort: elektrische Stellung), Prozess und Kostenstellen; beim Ablesezähler die Kachel „Nächste
+ * Ablesung“ und oben genau ein Schritt. Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Seite
+ * einer Messstelle“).
+ */
+export const UEMS_ZUORDNUNG = 'Zuordnung';
+export const UEMS_IM_STROMNETZ = 'Im Stromnetz';
+export const UEMS_NAECHSTE_ABLESUNG = 'Nächste Ablesung';
+export const UEMS_ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
+/**
+ * Konzept Messen m1 §6.5, Variante 3A (Messen-Bau m2): die Ablese-Runde je Gebäude - „Ablesen ›“ im Kopf der Ortskarte
+ * öffnet „Halle 1 ablesen“. Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Ablese-Runde je
+ * Gebäude“).
+ */
+export const UEMS_ABLESEN = 'Ablesen';
+/**
+ * Konzept Auswerten a1, Entscheid 9 (Messen-Bau m2): ein offener Messbedarf steht unter Messen als geplante Messstelle
+ * an seinem Ort, bis jemand die Messstelle einrichtet. Glossar: `docs/fachmodell/glossar.md` › Messbedarf (Abschnitt
+ * „Geplante Messstellen unter Messen“).
+ */
+export const UEMS_GEPLANTE_MESSSTELLE = 'geplante Messstelle';
 /** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
 export const UEMS_JAHRESPLAN = 'Jahresplan';
 /**

@@ -1,0 +1,99 @@
+/* Die Monate einer Messstelle als Balken auf einer Skala (Konzept Messen m1, §6.4 Punkt 5).
+   Farben aus den Rollen-Tokens des Flusses (Kacheln.css) - keine zweite Palette. */
+
+.vp-mb {
+  --vp-mb-hue: var(--vp-c-fg, #1e293b);
+  --vp-mb-blass: var(--vp-c-muted, #e9eff8);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-mb.ton-load {
+  --vp-mb-hue: var(--vp-flow-load, #8b5cf6);
+  --vp-mb-blass: color-mix(in srgb, var(--vp-flow-load, #8b5cf6) 36%, var(--vp-c-card, #fff));
+}
+.vp-mb.ton-pv {
+  --vp-mb-hue: var(--vp-flow-pv, #f59e0b);
+  --vp-mb-blass: color-mix(in srgb, var(--vp-flow-pv, #f59e0b) 36%, var(--vp-c-card, #fff));
+}
+.vp-mb.ton-grid {
+  --vp-mb-hue: var(--vp-flow-grid, #0ea5a3);
+  --vp-mb-blass: color-mix(in srgb, var(--vp-flow-grid, #0ea5a3) 36%, var(--vp-c-card, #fff));
+}
+.vp-mb.ton-batt {
+  --vp-mb-hue: var(--vp-flow-batt, #16a34a);
+  --vp-mb-blass: color-mix(in srgb, var(--vp-flow-batt, #16a34a) 36%, var(--vp-c-card, #fff));
+}
+
+.vp-mb-flaeche,
+.vp-mb-achse {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-mb-flaeche {
+  height: 92px;
+  align-items: end;
+}
+.vp-mb-balken {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+button.vp-mb-balken {
+  cursor: pointer;
+}
+/* Die Zielfläche reicht über die ganze Höhe, auch über einem kurzen Balken. */
+button.vp-mb-balken:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2563eb));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-mb-saeule {
+  display: block;
+  width: 100%;
+  border-radius: 4px 4px 1px 1px;
+  background: var(--vp-mb-blass);
+  /* Reduzierte Bewegung: --vp-motion-fast skaliert mit --vp-motion-scale (EIN Block in index.css). */
+  transition: background-color var(--vp-motion-fast, 120ms) ease;
+}
+.vp-mb-balken.is-gewaehlt .vp-mb-saeule {
+  background: var(--vp-mb-hue);
+}
+button.vp-mb-balken:hover .vp-mb-saeule {
+  background: color-mix(in srgb, var(--vp-mb-hue) 70%, var(--vp-c-card, #fff));
+}
+button.vp-mb-balken.is-gewaehlt:hover .vp-mb-saeule {
+  background: var(--vp-mb-hue);
+}
+/* Ein negativer Monat (saldiert): derselbe Betrag auf der Skala, aber hohl und gestrichelt - die Zahl trägt das Minus. */
+.vp-mb-saeule.is-negativ,
+button.vp-mb-balken:hover .vp-mb-saeule.is-negativ {
+  background: repeating-linear-gradient(135deg, var(--vp-mb-blass) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px var(--vp-mb-hue);
+}
+.vp-mb-balken.is-gewaehlt .vp-mb-saeule.is-negativ,
+button.vp-mb-balken.is-gewaehlt:hover .vp-mb-saeule.is-negativ {
+  background: repeating-linear-gradient(135deg, var(--vp-mb-hue) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 2px var(--vp-mb-hue);
+}
+/* Kein Wert: kein Balken - nur eine feine Grundlinie, damit der Monat seinen Platz behält. */
+.vp-mb-saeule.is-leer {
+  height: 2px;
+  background: var(--vp-c-border, #dbe3ee);
+}
+.vp-mb-achse span {
+  text-align: center;
+  font: 500 0.6875rem/1 var(--vp-font-body, inherit);
+  letter-spacing: 0.04em;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mb-achse span.is-gewaehlt {
+  font-weight: 700;
+  color: var(--vp-c-fg, #1e293b);
+}

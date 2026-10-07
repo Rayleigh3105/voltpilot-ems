@@ -24,12 +24,14 @@ import {
   UEMS_FESTSTELLUNG,
   UEMS_GEMESSEN_AN,
   UEMS_KENNZAHL,
+  UEMS_KOSTENSTELLE,
   UEMS_MANAGEMENTBEWERTUNG,
   UEMS_MANAGEMENTBEWERTUNG_WOZU,
   UEMS_MASSNAHME,
   UEMS_MASSNAHME_ERGEBNISSE,
   UEMS_MESSGRUNDLAGE,
   UEMS_MESSSTELLE,
+  UEMS_PROZESS,
   UEMS_VERZEICHNIS,
   UEMS_VORHER,
   UEMS_WIEDERVORLAGE,
@@ -42,6 +44,7 @@ export type BegriffSchluessel =
   | 'wesentlich'
   | 'umfang'
   | 'messstelle'
+  | 'zuordnung'
   | 'bezugsgroesse'
   | 'kennzahl'
   | 'bezugsbasis'
@@ -55,6 +58,8 @@ export type BegriffSchluessel =
   | 'feststellung'
   | 'managementbewertung'
   | 'energetische_bewertung'
+  | 'kostenstelle'
+  | 'prozess'
   // Konzept Verbessern v1 §7: die Wörter der Flächen unter Verbessern.
   | 'auf_kurs'
   | 'erwartete_wirkung'
@@ -118,11 +123,24 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     mehr: 'Die Werte kommen automatisch von einem Gerät, aus Ablesungen von Hand oder werden aus anderen Messstellen berechnet.',
     abgrenzung: 'Nicht dasselbe wie das Gerät: Wird ein Zähler getauscht, bleibt die Messstelle mit ihrer Geschichte.',
   },
+  // Konzept Messen m1 §6.4 Punkt 7: die Karte „Zuordnung“ an der Messstelle erklärt ihre vier Zeilen mit „Was heißt das?“.
+  zuordnung: {
+    wort: 'Zuordnung',
+    klartext: 'Wo die Messstelle hängt und wem ihr Verbrauch gehört - je ab einem Tag.',
+    beispiel:
+      'Ort: das Gebäude oder der Bereich, in dem der Zähler sitzt. Im Stromnetz: am Netzanschluss (Hauptzähler) oder dahinter (Unterzähler). Prozess: der Arbeitsschritt, der die Energie braucht. Kostenstellen: wem der Verbrauch in der Kostenrechnung zugerechnet wird, ganz oder in Anteilen.',
+    fachwort: 'Ort, elektrische Stellung, Prozess und Verteilung',
+    frage: 'Was heißt das?',
+    abgrenzung: 'Eine Änderung gilt ab ihrem Tag; was davor galt, bleibt in der Historie stehen.',
+  },
   bezugsgroesse: {
     wort: UEMS_BEZUGSGROESSE,
     klartext: 'Eine Größe, von der Ihr Verbrauch abhängt.',
     beispiel: 'Zum Beispiel Stückzahl, Fläche, Betriebsstunden oder die Außentemperatur.',
     fachwort: 'relevante Variable',
+    frage: 'Was ist eine Bezugsgröße?',
+    mehr: 'Ihre Werte tragen Sie je Monat ein oder importieren sie; manche kommen aus einem Messkanal oder dem Wetter, Flächen aus dem Gebäudeplan.',
+    abgrenzung: `Erst mit ihr wird aus kWh eine ${UEMS_KENNZAHL} wie kWh je kg.`,
   },
   kennzahl: {
     wort: UEMS_KENNZAHL,
@@ -208,6 +226,24 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     fachwort: null,
     frage: 'Was ist die energetische Bewertung?',
     abgrenzung: 'Nicht verwechseln mit dem Monatsbericht: der Bericht zählt, die Bewertung ordnet.',
+  },
+  // Konzept Messen m1 §7 (Captain-Freigabe 05.10.2026): Klartext unter dem Titel, Beispiel aus der eigenen Firma im Aufklapper.
+  kostenstelle: {
+    wort: UEMS_KOSTENSTELLE,
+    klartext: 'Eine Nummer aus Ihrer Buchhaltung, der Verbrauch ganz oder anteilig zugerechnet wird.',
+    beispiel: 'Zum Beispiel bekommt die Produktion 70 % eines Zählers und die Montage die übrigen 30 %.',
+    fachwort: null,
+    frage: 'Was ist eine Kostenstelle?',
+    abgrenzung: 'Nicht dasselbe wie ein Prozess: der beschreibt die Arbeit, die Kostenstelle die Rechnung.',
+  },
+  prozess: {
+    wort: UEMS_PROZESS,
+    klartext: 'Ein Arbeitsschritt in Ihrem Betrieb, der Energie braucht – egal, in welchem Gebäude er stattfindet.',
+    beispiel: 'Zum Beispiel Spritzguss, Druckluft, Kühlung oder Logistik.',
+    fachwort: null,
+    frage: 'Was ist ein Prozess?',
+    mehr: 'Sie ordnen einem Prozess die Messstellen zu, die seinen Verbrauch messen. Dann steht hier, was er im Monat verbraucht hat.',
+    abgrenzung: 'Nicht dasselbe wie eine Kostenstelle: die rechnet Verbrauch der Buchhaltung zu, mit Anteilen.',
   },
   // Konzept Verbessern v1 §7: drei Wörter für drei Dinge - erwartet (die Schätzung einer Person), beobachtet (die
   // Messung gegen die Bezugsbasis), belegt (das Urteil einer Person) - und die Wörter rund um Energieziel und Maßnahme.
