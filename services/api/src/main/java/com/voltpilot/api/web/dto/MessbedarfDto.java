@@ -3,6 +3,7 @@ package com.voltpilot.api.web.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.voltpilot.api.uems.BerichtRegeln;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,11 +28,16 @@ public final class MessbedarfDto {
     public record Einloesen(UUID messstelleId) {}
     public record Verwerfen(String begruendung) {}
 
+    /**
+     * {@code zitiert_von}: die freigegebenen Berichtsstände, die den Bedarf zitieren (dieselbe Liste wie
+     * {@code berichtsstaende} der 409 {@code berichts_belege}); {@code einloesbar}: offen und von keinem Stand zitiert.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bedarf(UUID id, String kennzeichen, UUID energieeinsatzId, String wortlaut, String ort,
             String groesse, LocalDate frist, String zustand, Messstelle messstelle, String begruendung,
             ProtokollAkteur akteur, Instant angelegtAm, Instant geaendertAm,
-            OrtZiel ortZiel, String messgroesse, String richtung) {}
+            OrtZiel ortZiel, String messgroesse, String richtung,
+            List<BerichtRegeln.StandBezeichnung> zitiertVon, boolean einloesbar) {}
     /** Der strukturierte Ort; {@code standort_*} ist der Standort, an dem er heute hängt ({@code null}: keiner). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record OrtZiel(UUID id, String art, String kurzzeichen, String name, UUID standortId, String standortName) {}

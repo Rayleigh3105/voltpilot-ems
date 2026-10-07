@@ -1056,7 +1056,7 @@ def _broker_veroeffentlicher(host: str, port: int, *, tls: bool, benutzer: str |
         raise SystemExit("paho-mqtt fehlt: pip install -r requirements.txt") from fehler
 
     try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     except AttributeError:  # paho-mqtt 1.6.x
         client = mqtt.Client()
     if benutzer:

@@ -88,6 +88,47 @@ export function WerteKarte({
   );
 }
 
+/**
+ * Die Zahl der Periode als EINE Zeile (Konzept Messen m1, §6.4 Punkt 5: „September 2026: 88.200 kWh · vollständig ·
+ * endgültig“) - auf der Seite einer Messstelle unter den Balken statt der großen Karte; die große Zahl steht dort
+ * schon in der Leitkachel. Dieselben Wörter wie die Karte, in derselben Reihenfolge: Zustand, Verlauf, Fassung.
+ */
+export function WerteZusammenfassung({
+  karte,
+  versionen,
+  grund = null,
+}: {
+  karte: Karte;
+  versionen?: ReactNode;
+  grund?: string | null;
+}) {
+  const verlauf = [karte.abdeckung, karte.luecken].filter((t): t is string => !!t).join(TRENNER);
+  return (
+    <section className="vp-wk-summe" aria-label={karte.titel} data-testid="werte-karte">
+      <p className="vp-wk-summe-zeile">
+        <strong>
+          {karte.titel}: <span className="vp-wk-summe-zahl">{karte.zahl}</span>
+        </strong>
+        {karte.zustand && <span className={`is-${karte.zustandTon}`}>{karte.zustand}</span>}
+        {verlauf && <span data-testid="werte-verlauf">{verlauf}</span>}
+        {karte.fassung && (
+          <span data-testid="werte-fassung" data-fassung={karte.fassungWert ?? undefined}>
+            {karte.fassung}
+          </span>
+        )}
+        {karte.tagesdauer && <span>{karte.tagesdauer}</span>}
+      </p>
+      <Kennzeichen saetze={karte.kennzeichen} />
+      {grund && (
+        <p className="vp-wk-grund" data-testid="werte-grund">
+          {grund}
+        </p>
+      )}
+      {versionen}
+    </section>
+  );
+}
+
 export function WerteListe({ titel, zeilen }: { titel: string; zeilen: Zeile[] }) {
   return (
     <section className="vp-wk-liste" aria-label={titel}>

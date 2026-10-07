@@ -181,6 +181,8 @@ it('AP-13 Bestandsschutz · Verlauf Erlöse ohne Messfunktion', async () => {
   stub();
   const view = render(<ErloeseSection site={site()} />);
   await geladen();
+  // Der Vergleich kommt aus einer eigenen Abfrage; unter Last steht er sonst noch nicht im Bild.
+  await screen.findByText(/25 % weniger als gestern bis 12 Uhr/);
   await bestandSnapshot('verlauf-erloese', view);
 });
 
