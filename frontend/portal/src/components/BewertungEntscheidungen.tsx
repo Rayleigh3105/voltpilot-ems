@@ -315,9 +315,11 @@ export function EinstufungHistorie({ einsatzId, fassungen, darfBestaetigen, onBe
   einsatzId: string; fassungen: EnergieeinsatzEinstufungFassung[]; darfBestaetigen: boolean; onBestaetigt?: (f: EnergieeinsatzEinstufungFassung) => void;
 }) {
   const [fehler, setFehler] = useState<string | null>(null);
+  // Die Karte steht auf der Einsatzseite UND im Änderungsprotokoll — die Überschrift braucht je Ort eine eigene Kennung.
+  const kopf = useId();
   const offen = fassungen.find((f) => f.freigabe_status === 'beantragt');
-  return <section className="vp-bw-karte" aria-labelledby="ee-einstufung-historie" data-testid="einstufung-historie">
-    <div className="vp-bw-karte-kopf"><h2 id="ee-einstufung-historie">Einstufung · Historie</h2>{offen && <Badge variant="tint">wartet auf Bestätigung</Badge>}</div>
+  return <section className="vp-bw-karte" aria-labelledby={kopf} data-testid="einstufung-historie">
+    <div className="vp-bw-karte-kopf"><h2 id={kopf}>Einstufung · Historie</h2>{offen && <Badge variant="tint">wartet auf Bestätigung</Badge>}</div>
     {fassungen.length === 0 ? <p className="vp-bw-leise">Noch keine Einstufung — der Vorschlag entscheidet nichts.</p> : <ol className="vp-bw-historie">
       {fassungen.map((f) => {
         // Nur was die Fassung trägt: ältere Fassungen ohne Herkunft drucken keine leeren Platzhalter.

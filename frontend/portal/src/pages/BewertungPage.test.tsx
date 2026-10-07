@@ -39,7 +39,8 @@ describe('BewertungPage - das Ergebnis', () => {
     expect(screen.getByTestId('bewertung-status')).toHaveTextContent('Gilt · Stand Nr. 2 vom 17.11.2026nächste Überprüfung bis 17.11.2027');
     expect(within(screen.getByTestId('bereiche-wesentlich')).getAllByRole('link').map((a) => a.getAttribute('data-testid'))).toEqual(['bereich-EE-1', 'bereich-EE-3']);
     expect(screen.getByTestId('bereich-EE-3')).toHaveTextContent('weicht vom Vorschlag ab');
-    expect(screen.getByTestId('bereich-EE-1').getAttribute('href')).toBe('#/portfolio/bewertung/ee000000-0000-4000-8000-000000000001');
+    // Die Seite eines Bereichs wohnt unter „Verbrauch“ (PR3, Konzept a1 Entscheid 10.1).
+    expect(screen.getByTestId('bereich-EE-1').getAttribute('href')).toBe('#/portfolio/verbrauch/ee000000-0000-4000-8000-000000000001');
     await screen.findByText('Er braucht mindestens 10 % des Stroms.');
     // Die Rangliste mit Kürzelspalten, die Messabdeckung je Einsatz und Ort und die zweite Liste sind weg.
     expect(screen.queryByTestId('rangliste')).toBeNull();

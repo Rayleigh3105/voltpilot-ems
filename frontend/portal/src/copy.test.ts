@@ -2504,6 +2504,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/BewertungBaustein.tsx',
     // IP-25: der Bewertungsstand — Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV.
     'components/BewertungStand.tsx',
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ liest Rangliste und Messabdeckung — der Satz steht am Fuß.
+    'pages/VerbrauchPage.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,

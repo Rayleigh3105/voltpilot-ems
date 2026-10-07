@@ -140,10 +140,12 @@ describe('der Bereich „Bewertung“ erscheint nach der Berichte-Regel und nur 
     expect(ebenenBereiche(werk, lm(true)).map((b) => b.key)).not.toContain('bewertung');
   });
 
-  it('die Adresse: `#/portfolio/bewertung` ist Umfang und Liste, `…/{id}` die Seite eines Einsatzes', () => {
+  it('die Adresse: `#/portfolio/bewertung` ist Umfang und Liste; die Seite eines Einsatzes wohnt unter „Verbrauch“', () => {
     const id = ahrenbergEinsaetze()[0].id;
     expect(hashForRoute(pageRoute('portfolio-bewertung'))).toBe('#/portfolio/bewertung');
-    expect(hashForRoute(energieeinsatzRoute(id))).toBe(`#/portfolio/bewertung/${id}`);
+    // Konzept Auswerten a1, Entscheid 10.1: `…/verbrauch/{id}`; die alte Adresse führt auf dieselbe Seite.
+    expect(hashForRoute(energieeinsatzRoute(id))).toBe(`#/portfolio/verbrauch/${id}`);
+    expect(parseRoute(`#/portfolio/verbrauch/${id}`)).toEqual(energieeinsatzRoute(id));
     expect(parseRoute(`#/portfolio/bewertung/${id}`)).toEqual(energieeinsatzRoute(id));
     expect(parseRoute('#/portfolio/bewertung')).toEqual(pageRoute('portfolio-bewertung'));
     expect(ebenenAktiv('portfolio-bewertung')).toBe('bewertung');

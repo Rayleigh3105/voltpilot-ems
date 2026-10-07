@@ -70,6 +70,9 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     klartext: 'Ein Bereich oder Prozess, in dem Ihr Betrieb Energie einsetzt.',
     beispiel: 'Zum Beispiel Druckluft, Spritzguss oder die Beleuchtung einer Halle.',
     fachwort: null,
+    // Konzept Auswerten a1 §7: „Verbrauch“ erklärt den Begriff mit dem Aufklapper; im Portal heißt er dort „Bereich“.
+    frage: 'Was ist ein Energieeinsatz?',
+    abgrenzung: 'Nicht der Zähler: Ein Bereich kann von mehreren Zählern gemessen werden.',
   },
   wesentlich: {
     wort: 'wesentlich',

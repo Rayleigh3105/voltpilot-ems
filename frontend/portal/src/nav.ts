@@ -27,6 +27,7 @@ export type PageId =
   | 'portfolio-kennzahlen'
   | 'portfolio-berichte'
   | 'portfolio-bewertung'
+  | 'portfolio-verbrauch'
   | 'portfolio-verbesserung'
   | 'portfolio-energiemanagement'
   | 'portfolio-messwerte'
@@ -160,8 +161,9 @@ export interface Route {
    */
   berichtKennung?: string;
   /**
-   * Nur bei `page === 'portfolio-bewertung'`: WELCHER Energieeinsatz die Seite zeigt (UEMS AP-16 IP-6
-   * `#/portfolio/bewertung/{id}`). Absent = Umfang und Liste.
+   * Nur bei `page === 'portfolio-verbrauch'`: WELCHER Energieeinsatz die Seite zeigt (Konzept Auswerten a1, Entscheid
+   * 10.1: `#/portfolio/verbrauch/{id}`; bis dahin UEMS AP-16 IP-6 `#/portfolio/bewertung/{id}`, das weiterleitet).
+   * Absent = die Verteilung.
    */
   energieeinsatzId?: string;
   /**
@@ -286,6 +288,10 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // Kennzahl unter `…/kennzahlen/{id}`), bis AP-13 die Ebenen-Navigation bringt.
   // Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showKennzahlen`).
   { id: 'portfolio-bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
+  // Konzept Auswerten a1 (Richtungsfrage 1 = A, Entscheid 10.1): „Unternehmen › Verbrauch“ (`#/portfolio/verbrauch`,
+  // ein Energieeinsatz unter `…/verbrauch/{id}`) — der erste Reiter von „Auswerten“, vor Kennzahlen und Bewertung.
+  // Der Reiter steht nach der Regel der Bewertung (`PortfolioTabs.showVerbrauch`).
+  { id: 'portfolio-verbrauch', label: 'Verbrauch', icon: 'zap' },
   { id: 'portfolio-kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   // UEMS AP-12 IP-13: „Unternehmen › Berichte“ (`#/portfolio/berichte`, ein Bericht unter
   // `…/berichte/{kennung}`), bis AP-13 die Ebenen-Navigation bringt. Der Reiter steht
@@ -684,7 +690,10 @@ export function parseRoute(hash: string): Route {
   if (head === 'portfolio') {
     if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
-    if (segments[1] === 'bewertung' && segments[2]) return energieeinsatzRoute(decodeURIComponent(segments[2]));
+    // Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“; die frühere Adresse unter „Bewertung“ führt dorthin.
+    if ((segments[1] === 'verbrauch' || segments[1] === 'bewertung') && segments[2]) {
+      return energieeinsatzRoute(decodeURIComponent(segments[2]));
+    }
     if (segments[1] === 'verbesserung') {
       if (segments[2] === 'energieziele' && segments[3]) return energiezielRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'massnahmen' && segments[3]) return massnahmeRoute(decodeURIComponent(segments[3]));
@@ -842,7 +851,7 @@ export function hashForRoute(route: Route): string {
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     const einsatz =
-      route.page === 'portfolio-bewertung' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
+      route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
     const verbesserung =
       route.page !== 'portfolio-verbesserung'
         ? ''
@@ -962,6 +971,41 @@ export function canonicalStandortHash(hash: string): string | null {
   return `#/standort/${segments[1]}/aufbau${query}`;
 }
 
+/**
+ * Die kanonische Adresse der früheren Seite eines Energieeinsatzes (Konzept Auswerten a1, Entscheid 10.1):
+ * `#/portfolio/bewertung/{id}` steht jetzt unter `#/portfolio/verbrauch/{id}`. Die Parameter reisen mit (der Sprung der
+ * Wiedervorlage trägt `?entscheid=…`); sonst null.
+ */
+export function canonicalVerbrauchHash(hash: string): string | null {
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pathPart.split('/').filter((s) => s.length > 0);
+  if (segments[0] !== 'portfolio' || segments[1] !== 'bewertung' || !segments[2] || segments.length !== 3) return null;
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  return `#/portfolio/verbrauch/${segments[2]}${query}`;
+}
+
+/** Die Wahl der Liste „Verbrauch“ (`zeitraum`, `bis`) aus einer Adresse — als Query, sonst leer. */
+function verbrauchWahl(hash: string): string {
+  const q = new URLSearchParams(hash.split('?').slice(1).join('?'));
+  const wahl = new URLSearchParams();
+  for (const k of ['zeitraum', 'bis']) {
+    const v = q.get(k);
+    if (v) wahl.set(k, v);
+  }
+  const s = wahl.toString();
+  return s ? `?${s}` : '';
+}
+
+/**
+ * Die Seite eines Energieeinsatzes, geöffnet aus der Liste „Verbrauch“: die Wahl der Liste reist mit, damit der
+ * Rückweg „Verbrauch“ denselben Zeitraum zeigt (Queryparameter bei Rückwegen erhalten).
+ */
+export const verbrauchEinsatzHash = (energieeinsatzId: string, listeHash: string): string =>
+  `#/portfolio/verbrauch/${encodeURIComponent(energieeinsatzId)}${verbrauchWahl(listeHash)}`;
+
+/** Der Rückweg von der Seite eines Energieeinsatzes zur Liste „Verbrauch“ — mit der Wahl, die sie beim Öffnen hatte. */
+export const verbrauchListeHash = (einsatzHash: string): string => `#/portfolio/verbrauch${verbrauchWahl(einsatzHash)}`;
+
 /** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */
 export function standortBereichRoute(standortId: string, standortBereich: StandortBereich): Route {
   return { page: 'standort', siteId: null, sub: null, standortId, standortBereich };
@@ -1052,9 +1096,13 @@ export function dokumentRoute(dokumentId: string): Route {
   return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'dokumente', dokumentId };
 }
 
-/** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */
+/**
+ * Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6) — nur am Unternehmen. Seit dem Konzept Auswerten a1
+ * (Entscheid 10.1) unter „Verbrauch“: `#/portfolio/verbrauch/{id}`; `#/portfolio/bewertung/{id}` leitet dorthin
+ * ({@link canonicalVerbrauchHash}).
+ */
 export function energieeinsatzRoute(energieeinsatzId: string): Route {
-  return { page: 'portfolio-bewertung', siteId: null, sub: null, energieeinsatzId };
+  return { page: 'portfolio-verbrauch', siteId: null, sub: null, energieeinsatzId };
 }
 
 /**

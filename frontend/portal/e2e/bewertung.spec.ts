@@ -25,7 +25,8 @@ const AM_20_11 = new Date('2026-11-20T09:00:00Z');
 // K1/D2: fünf Gruppen nach Arbeitsfragen; die Berichte stehen in „Nachweisen“.
 const LEISTE = ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'];
 // N1: am Rechner stehen die Gruppen in der Seitenleiste; über der Seite nur die Reiter der offenen Gruppe „Auswerten“.
-const REITER = ['Kennzahlen', 'Bewertung'];
+// Konzept Auswerten a1 (Richtungsfrage 1 = A): drei Fragen, drei Reiter.
+const REITER = ['Verbrauch', 'Kennzahlen', 'Bewertung'];
 const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
 const LEER = 'Noch keine Bereiche festgelegt. Legen Sie fest, wofür Ihr Betrieb Energie einsetzt - dann zeigt VoltPilot hier die Verteilung.';
@@ -182,19 +183,28 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(await messe(page), `anlegen-${breite}`);
       await page.getByTestId('einsatz-anlegen-senden').click();
 
-      await expect(page.getByTestId('einsatz-seite')).toBeVisible();
-      await expect(page.locator('.vp-bw-kopf h1')).toHaveText('Spritzguss');
-      await expect(page.getByTestId('einsatz-prozess')).toHaveText('P-1 Spritzguss');
+      const seite = page.getByTestId('einsatz-seite');
+      await expect(seite).toBeVisible();
+      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Spritzguss');
+      await expect(page.getByTestId('einsatz-prozess')).toHaveText('Prozess Spritzguss');
       await expect(page.getByTestId('einsatz-verantwortlich')).toHaveText('Murat Demirci');
       await expect(page.getByTestId('einsatz-einfluesse-liste')).toHaveText('Produktion: Produktionsmenge Spritzguss (BZ-1)');
       await expect(page.getByTestId('einsatz-messstellen').locator('li')).toHaveCount(3);
-      await expect(page.getByTestId('einsatz-protokoll')).toContainText('angelegt · Ines Kaltenbach');
       const m = await messe(page);
       ohneQuerlauf(m, `einsatz-${breite}`);
-      expect(m.route).toMatch(/^#\/portfolio\/bewertung\/ee000000-/);
+      // Konzept Auswerten a1, Entscheid 10.1: die Seite eines Einsatzes wohnt unter „Verbrauch“.
+      expect(m.route).toMatch(/^#\/portfolio\/verbrauch\/ee000000-/);
       await ablegen(page, `einsatz-${breite}`, true);
+      // Das Änderungsprotokoll liegt im Menü ⋯.
+      await page.getByTestId('einsatz-menue').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Änderungsprotokoll' }).click();
+      await expect(page.getByTestId('einsatz-protokoll')).toContainText('angelegt · Ines Kaltenbach');
+      await page.keyboard.press('Escape');
 
-      await page.getByRole('button', { name: 'Alle Energieeinsätze' }).click();
+      // Der Rückweg führt zu „Verbrauch“; die Bewertung ist der dritte Reiter von „Auswerten“.
+      await seite.getByRole('button', { name: 'Verbrauch' }).click();
+      await expect(page.getByTestId('verbrauch')).toBeVisible();
+      await page.getByRole('tab', { name: 'Bewertung' }).click();
       await expect(page.getByTestId('bereich-EE-1')).toBeVisible();
       await expect(page.getByTestId('bewertung-antwort')).toContainText('Der Bereich ist noch nicht eingestuft.');
       await expect(page.getByTestId('bewertung-leer')).toHaveCount(0);
@@ -267,7 +277,11 @@ for (const breite of [375, 1440]) {
       await dialog.getByLabel('Begründung').fill('Querschnitt für Spritzguss und Montage; Leckageverluste werden geprüft.');
       await page.getByTestId('einstufung-speichern').click();
       await expect(dialog).toHaveCount(0);
-      await expect(page.getByTestId('einstufung-historie')).toContainText('Fassung 2 · wesentlich');
+      // Seit PR3 liegen alle Fassungen im Änderungsprotokoll (Menü ⋯) — eine freigegebene steht nicht mehr auf der Seite.
+      await page.getByTestId('einsatz-menue').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Änderungsprotokoll' }).click();
+      await expect(page.getByRole('dialog').getByTestId('einstufung-historie')).toContainText('Fassung 2 · wesentlich');
+      await page.keyboard.press('Escape');
 
       await oeffne(page, 'stand=voll&vieraugen=1&ee=EE-2', breite, AM_20_11);
       await page.getByTestId('einsatz-einstufen-knopf').click();
@@ -275,8 +289,12 @@ for (const breite of [375, 1440]) {
       await vier.getByRole('radio', { name: 'wesentlich', exact: true }).check();
       await vier.getByLabel('Begründung').fill('Montage wird wegen des erwarteten Jahresverbrauchs wesentlich eingestuft.');
       await page.getByTestId('einstufung-speichern').click();
-      await expect(page.getByTestId('einstufung-historie')).toContainText('wartet auf Bestätigung');
-      await page.getByRole('button', { name: 'Alle Energieeinsätze' }).click();
+      await expect(vier).toHaveCount(0);
+      // Eine beantragte Fassung steht auf der Seite (sie wartet auf eine zweite Person).
+      await expect(page.getByTestId('einsatz-seite').getByTestId('einstufung-historie')).toContainText('wartet auf Bestätigung');
+      // Der Rückweg führt zu „Verbrauch“; die Bewertung ist der Reiter daneben.
+      await page.getByTestId('einsatz-seite').getByRole('button', { name: 'Verbrauch' }).click();
+      await page.getByRole('tab', { name: 'Bewertung' }).click();
       await expect(page.getByTestId('bereich-EE-2')).toContainText('neue Einstufung wartet auf Bestätigung');
     });
 
@@ -341,7 +359,12 @@ for (const breite of [375, 1440]) {
 
     test('Historie: Fassungen bleiben auf der Einsatzseite lesbar, Gründe in Worten (R13)', async ({ page }) => {
       await oeffne(page, 'stand=voll&ee=EE-3&historie=r13', breite, AM_20_11);
-      const historie = page.getByTestId('einstufung-historie');
+      // Die Gründe der geltenden Einstufung stehen auf der Seite, alle Fassungen im Änderungsprotokoll (Menü ⋯).
+      await expect(page.getByTestId('einsatz-warum')).toBeVisible();
+      await page.getByTestId('einsatz-menue').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Änderungsprotokoll' }).click();
+      // Eine beantragte Fassung zeigt die Historie auch auf der Seite — gelesen wird die im Protokoll.
+      const historie = page.getByRole('dialog').getByTestId('einstufung-historie');
       await expect(historie).toContainText('Fassung 3 · nicht wesentlich');
       await expect(historie).toContainText('Fassung 1 · wesentlich');
       await expect(historie).toContainText('Gründe: Anteil am Strom über der Schwelle und unter den größten Bereichen · Zahlen aus November 2027 bis Oktober 2028');
@@ -361,8 +384,12 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('kriterien-oeffnen')).toHaveCount(0);
       await page.getByTestId('bereich-EE-2').click();
       await expect(page.getByTestId('einsatz-verantwortlich')).toHaveText('Peter Hollerbach');
-      await expect(page.getByTestId('einsatz-bearbeiten-knopf')).toHaveCount(0);
-      await expect(page.getByTestId('einsatz-beenden-knopf')).toHaveCount(0);
+      // Lesend: im Menü ⋯ nur das Änderungsprotokoll, kein Bearbeiten und kein Beenden.
+      await page.getByTestId('einsatz-menue').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Änderungsprotokoll' })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: 'Bearbeiten' })).toHaveCount(0);
+      await expect(page.getByRole('menuitem', { name: 'Beenden' })).toHaveCount(0);
+      await page.keyboard.press('Escape');
       ohneQuerlauf(await messe(page), `lesend-${breite}`);
     });
   });

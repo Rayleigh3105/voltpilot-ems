@@ -33,33 +33,24 @@ import { energieeinsatzRoute, hashForRoute } from '../nav';
 import { useRollen } from '../rollen';
 import { useBewertungZeitraum } from '../useBewertungZeitraum';
 import { zumEntscheid } from '../useEntscheidFokus';
-import { EnergieeinsatzSeite } from './EnergieeinsatzSeite';
 import '../components/kacheln/Kacheln.css';
 import '../components/BewertungErgebnis.css';
 import './BewertungPage.css';
 
 /**
- * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`) und die Seite eines Energieeinsatzes
- * (`#/portfolio/bewertung/{id}`). Seit dem Konzept Auswerten a1 (§6.7) zeigt die Bewertung ihr Ergebnis statt ihrer
- * Rohdaten: welche Bereiche wesentlich sind (Anteil, Menge, Verantwortliche), welche nicht, wo eine Einstufung begründet
- * vom Vorschlag abweicht — dazu Bewertungsstand, Kriterien in Worten und Umfang. Die Rangliste mit Kürzelspalten, die
- * Messabdeckung je Einsatz und je Ort und die zweite Liste der Energieeinsätze sind weg; die Messabdeckung steht als
- * Kachel „Keinem Bereich zugeordnet“, die Messplanung zieht nach Messen. Die Welt erscheint nach der Berichte-Regel (ein
- * Standort misst) und nur mit `energieeinsatz.ansehen` (`ebenenNav.ts`).
+ * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`). Die Seite eines Energieeinsatzes wohnt seit dem
+ * Konzept Auswerten a1 unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`, die alte Adresse leitet dorthin). Seit §6.7
+ * zeigt die Bewertung ihr Ergebnis statt ihrer Rohdaten: welche Bereiche wesentlich sind (Anteil, Menge,
+ * Verantwortliche), welche nicht, wo eine Einstufung begründet vom Vorschlag abweicht — dazu Bewertungsstand, Kriterien
+ * in Worten und Umfang. Die Rangliste mit Kürzelspalten, die Messabdeckung je Einsatz und je Ort und die zweite Liste der
+ * Energieeinsätze sind weg; die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“, die Messplanung zieht nach
+ * Messen. Die Welt erscheint nach der Berichte-Regel (ein Standort misst) und nur mit `energieeinsatz.ansehen`
+ * (`ebenenNav.ts`).
  *
  * Jede Ableitung steht im reinen Modul `bewertungErgebnis.ts`; der Grenz-Satz steht einmal am Fuß („Was VoltPilot
  * leistet“, SP3, `copy.test.ts`).
  */
-export function BewertungPage({
-  einsatzId = null,
-  onOeffnen,
-  onListe,
-}: {
-  einsatzId?: string | null;
-  onOeffnen: (id: string) => void;
-  onListe: () => void;
-}) {
-  if (einsatzId) return <EnergieeinsatzSeite key={einsatzId} id={einsatzId} onListe={onListe} />;
+export function BewertungPage({ onOeffnen }: { onOeffnen: (id: string) => void }) {
   return <BewertungUebersicht onOeffnen={onOeffnen} />;
 }
 
