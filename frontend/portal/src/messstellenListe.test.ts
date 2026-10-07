@@ -107,6 +107,10 @@ describe('Suche (Konzept §6.3)', () => {
     expect(teile('Halle 10', 'halle 1')).toEqual(['Halle']);
     expect(teile('AZ-30', 'az 3')).toEqual(['AZ']);
     expect(teile('MS-06', 'ms 6')).toEqual(['MS-06']);
+    // Die Zahl gehört zu ihrem Wort: ohne das Wort im Text bleibt sie unmarkiert.
+    expect(teile('HZ-1', 'halle 1')).toEqual([]);
+    expect(teile('Hauptzähler Halle 1', 'halle 1')).toEqual(['Halle 1']);
+    expect(teile('AZ-3', '3')).toEqual(['3']);
   });
 
   it('gesucht wird in Name, Kennzeichen, Ort und dem Gerät der führenden Quelle - nie in der Anlage', () => {
