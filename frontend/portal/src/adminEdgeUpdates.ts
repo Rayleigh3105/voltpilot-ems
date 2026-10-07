@@ -40,6 +40,12 @@ export type UpdateTone = 'ok' | 'warn' | 'off' | 'busy';
  */
 export type StateClass = 'busy' | 'blocked' | 'incident' | 'calm';
 
+/**
+ * Die Bauart einer Box (`ota.BoxArt` in der API): die Docker-Box (`edge-app`)
+ * oder Edge Light (`vp-edge-light`, z. B. auf dem GL.iNet Mango).
+ */
+export type BoxArt = 'docker' | 'light';
+
 export interface EdgeUpdatesRelease {
   releaseSeq: number;
   version: string;
@@ -49,6 +55,11 @@ export interface EdgeUpdatesRelease {
   signingKeyId: string | null;
   createdAt: string;
   runningOnDevices: number;
+  /**
+   * Für welche Box-Art das Release gebaut ist. Fehlt das Feld (älterer
+   * Server), gilt es wie dort als Docker-Release.
+   */
+  boxArt?: BoxArt;
 }
 
 export interface RolloutDevice {
@@ -124,6 +135,11 @@ export interface FleetRow {
   reportedAt: string | null;
   rolloutId: string | null;
   trust?: DeviceTrust | null;
+  /**
+   * Die Box-Art aus der letzten Meldung, abgeleitet in der API (`ota.BoxArt`).
+   * `null`/fehlend heißt „unbekannt" - nie still „Docker-Box".
+   */
+  boxArt?: string | null;
 }
 export interface JournalEntry {
   id: number;
@@ -303,7 +319,13 @@ export function rolloutStateLabel(state: string): { label: string; tone: UpdateT
       return { label: 'unbekannt', tone: 'off' };
   }
 }
-export type CrossoverState = 'gekreuzt' | 'offen' | 'unbekannt' | 'fehler';
+export type CrossoverState = 'gekreuzt' | 'offen' | 'unbekannt' | 'fehler' | 'von_hand';
+
+/** Die ruhige Zeile für Edge Light ohne signierte Updates (Plan Edge Light, Stufe 1). */
+export const VON_HAND_LABEL = 'Updates von Hand (Edge Light, Stufe 1)';
+export const VON_HAND_DETAIL =
+  'Diese Box prüft Updates noch nicht gegen die Signaturkette; Aktualisierung über den '
+  + 'Wartungstunnel.';
 
 /**
  * Trägt dieses Gerät schon ein schlüsseltragendes Image?
@@ -317,13 +339,27 @@ export type CrossoverState = 'gekreuzt' | 'offen' | 'unbekannt' | 'fehler';
  *
  * Rot wird es nur bei `fehler`: ein Gerät, das eine Wurzel trägt, aber ein
  * Vertrauens-Set abgelehnt hat - das ist ein Vorfall, keine offene Aufgabe.
+ *
+ * **Edge Light ohne gekreuztes Vertrauen ist `von_hand`, nie `fehler`.** Die
+ * Box trägt die Wurzel, ein Vertrauens-Set kommt aber erst mit Stufe 2 -
+ * bis dahin ist das der bekannte Betrieb, kein Vorfall. Sobald eine
+ * Edge-Light-Box ein geprüftes Set meldet, gilt dieselbe Regel wie für die
+ * Docker-Box („gekreuzt ✓").
  */
-export function crossoverState(trust: DeviceTrust | null | undefined): {
+export function crossoverState(
+  trust: DeviceTrust | null | undefined,
+  boxArt?: string | null,
+): {
   state: CrossoverState;
   label: string;
   tone: UpdateTone;
   detail: string | null;
 } {
+  const crossed = !!trust && Array.isArray(trust.rootKeyIds) && trust.rootKeyIds.length > 0
+    && Array.isArray(trust.trustSetKeyIds) && trust.trustSetKeyIds.length > 0;
+  if (deviceBoxArt(boxArt) === 'light' && !crossed) {
+    return { state: 'von_hand', label: VON_HAND_LABEL, tone: 'off', detail: VON_HAND_DETAIL };
+  }
   if (!trust || !Array.isArray(trust.rootKeyIds)) {
     return {
       state: 'unbekannt',
@@ -372,11 +408,13 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
   let offen = 0;
   let unbekannt = 0;
   let fehler = 0;
+  let vonHand = 0;
   for (const row of fleet) {
-    const s = crossoverState(row.trust).state;
+    const s = crossoverState(row.trust, row.boxArt).state;
     if (s === 'offen') offen += 1;
     else if (s === 'unbekannt') unbekannt += 1;
     else if (s === 'fehler') fehler += 1;
+    else if (s === 'von_hand') vonHand += 1;
   }
   const parts: string[] = [];
   if (offen > 0) {
@@ -394,7 +432,127 @@ export function crossoverHint(fleet: FleetRow[]): string | null {
       ? '1 Gerät meldet seinen Vertrauensanker nicht (unbekannt)'
       : `${unbekannt} Geräte melden ihren Vertrauensanker nicht (unbekannt)`);
   }
+  // Benannt statt verschwiegen (E10) - aber ruhig: das ist kein Vorfall.
+  if (vonHand > 0) {
+    parts.push(vonHand === 1
+      ? '1 Edge-Light-Box bekommt Updates von Hand (Stufe 1)'
+      : `${vonHand} Edge-Light-Boxen bekommen Updates von Hand (Stufe 1)`);
+  }
   return parts.length > 0 ? `${parts.join(' · ')}.` : null;
+}
+
+// ── Box-Art: Docker-Box oder Edge Light ────────────────────────────────────
+
+/** Die Box-Art eines Geräts; ein unbekanntes Wort bleibt unbekannt. */
+export function deviceBoxArt(boxArt: string | null | undefined): BoxArt | null {
+  return boxArt === 'docker' || boxArt === 'light' ? boxArt : null;
+}
+
+/** Die Box-Art eines Releases - ohne Kennzeichnung ein Docker-Release (wie in der API). */
+export function releaseBoxArt(release: Pick<EdgeUpdatesRelease, 'boxArt'>): BoxArt {
+  return release.boxArt === 'light' ? 'light' : 'docker';
+}
+
+const BOX_ART_LABELS: Record<BoxArt, string> = {
+  docker: 'Docker-Box',
+  light: 'Edge Light',
+};
+export const BOX_ART_UNBEKANNT = 'Box-Art unbekannt';
+
+/**
+ * Der Chip einer Box: „Docker-Box", „Edge Light" oder ehrlich „Box-Art
+ * unbekannt". Die Ableitung macht die API; hier wird nur übersetzt.
+ */
+export function boxArtLabel(boxArt: string | null | undefined): {
+  art: BoxArt | null;
+  label: string;
+  detail: string;
+} {
+  const art = deviceBoxArt(boxArt);
+  if (art === 'light') {
+    return { art, label: BOX_ART_LABELS.light,
+      detail: 'Edge Light (vp-edge-light): eigene Release-Linie, kein Docker-Release.' };
+  }
+  if (art === 'docker') {
+    return { art, label: BOX_ART_LABELS.docker,
+      detail: 'Docker-Box (edge-app): bekommt Docker-Releases über das Portal.' };
+  }
+  return { art: null, label: BOX_ART_UNBEKANNT,
+    detail: 'Die Box hat noch nichts gemeldet, woran sich ihre Bauart erkennen lässt.' };
+}
+
+/** Die Sätze der Zuweisungs-Sperre - wortgleich mit `ota.BoxArt` in der API. */
+export const GRUND_DOCKER_AUF_LIGHT =
+  'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
+  + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.';
+export const GRUND_LIGHT_AUF_DOCKER = 'Release für Edge Light – diese Box ist eine Docker-Box.';
+export const GRUND_LIGHT_AUF_UNBEKANNT =
+  'Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein Edge-Light-Release '
+  + 'geht nur an eine Box, die sich als Edge Light gemeldet hat.';
+
+/**
+ * Warum dieses Release diesem Gerät NICHT zugewiesen werden kann - oder
+ * `null`, wenn es passt.
+ *
+ * Der Zwilling von `BoxArt.sperrgrund` in der API, die mit 409 dasselbe
+ * ablehnt. Das Portal zeigt den Grund VOR dem Klick, statt eine Zuweisung
+ * anzubieten, die der Server verweigert (E10: ausgegraut mit Grund, nie still
+ * weggelassen).
+ */
+export function releaseSperre(
+  release: Pick<EdgeUpdatesRelease, 'boxArt'>,
+  boxArt: string | null | undefined,
+): string | null {
+  const geraet = deviceBoxArt(boxArt);
+  if (releaseBoxArt(release) === 'light') {
+    if (geraet === 'light') return null;
+    return geraet == null ? GRUND_LIGHT_AUF_UNBEKANNT : GRUND_LIGHT_AUF_DOCKER;
+  }
+  return geraet === 'light' ? GRUND_DOCKER_AUF_LIGHT : null;
+}
+
+export interface ZuweisbareReleases {
+  /** Signiert UND zur Box-Art passend - nur die werden angeboten. */
+  passend: EdgeUpdatesRelease[];
+  /** Alle signierten (ohne sie gibt es gar nichts zu verteilen). */
+  signiert: number;
+  /** Der Satz zu den signierten, aber unpassenden - `null`, wenn alle passen. */
+  hinweis: string | null;
+}
+
+/**
+ * Die Releases, die EINEM Gerät angeboten werden: signiert und passend. Was
+ * nicht passt, wird gezählt und mit Grund GENANNT, damit die Auswahl nicht
+ * kommentarlos schrumpft (E10). Für eine Edge-Light-Box ohne eigenes Release
+ * ist das heute der ehrliche Satz „Updates von Hand (Edge Light, Stufe 1)".
+ */
+export function zuweisbareReleases(
+  releases: EdgeUpdatesRelease[],
+  boxArt: string | null | undefined,
+): ZuweisbareReleases {
+  const signed = releases.filter((r) => r.signed);
+  const passend: EdgeUpdatesRelease[] = [];
+  let gesperrt = 0;
+  let grund: string | null = null;
+  for (const r of signed) {
+    const g = releaseSperre(r, boxArt);
+    if (g == null) passend.push(r);
+    else {
+      gesperrt += 1;
+      grund ??= g;
+    }
+  }
+  let hinweis: string | null = null;
+  if (gesperrt > 0 && passend.length === 0) {
+    hinweis = `${gesperrt === 1
+      ? 'Das signierte Release passt nicht zu dieser Box.'
+      : `Keines der ${gesperrt} signierten Releases passt zu dieser Box.`} ${grund}`;
+  } else if (gesperrt > 0) {
+    hinweis = `${gesperrt === 1
+      ? '1 weiteres signiertes Release ist'
+      : `${gesperrt} weitere signierte Releases sind`} hier nicht zuweisbar: ${grund}`;
+  }
+  return { passend, signiert: signed.length, hinweis };
 }
 
 /**
@@ -709,21 +867,36 @@ export interface CandidateView {
   cls: StateClass;
   /** Was gegen dieses Gerät spricht - null heißt: nichts Bekanntes. */
   caveat: string | null;
+  /** Die Box-Art für den Chip (`null` = unbekannt). */
+  boxArt: BoxArt | null;
+  /**
+   * Warum dieses Release dieser Box NICHT zugewiesen werden kann (Box-Art).
+   * Anders als `caveat` ist das eine Sperre: die API lehnt mit 409 ab, also
+   * ist die Zeile ausgegraut - und nennt den Grund.
+   */
+  sperre: string | null;
 }
 
 /**
  * Die wählbaren Geräte - **mit ihrem Zustand**, statt als nackte Checkbox-Liste.
  *
  * Ein Einwand ist ein HINWEIS, nie eine Sperre: seit dem Ein-Schritt-Umbau gibt
- * es keine Vorbedingung mehr, die der Betreiber erst erfüllen müsste. Ein
- * offline gegangenes Gerät holt die Zuweisung beim nächsten Verbindungsaufbau
- * selbst ab (die Zuweisung liegt retained beim Broker) - es auszuschließen wäre
- * die alte Gängelung in neuer Form.
+ * es keine Vorbedingung über den ZUSTAND eines Geräts mehr. Ein offline
+ * gegangenes Gerät holt die Zuweisung beim nächsten Verbindungsaufbau selbst ab
+ * (die Zuweisung liegt retained beim Broker) - es auszuschließen wäre die alte
+ * Gängelung in neuer Form.
+ *
+ * Die eine Sperre ist die BAUART: ein Release passt nur auf Boxen seiner
+ * Box-Art (`releaseSperre`). Solche Geräte stehen ausgegraut mit Grund am Ende
+ * der Liste, statt still zu fehlen.
  */
-export function candidates(fleet: FleetRow[]): CandidateView[] {
-  return sortFleet(fleet).map((row) => {
+export function candidates(
+  fleet: FleetRow[],
+  release?: Pick<EdgeUpdatesRelease, 'boxArt'> | null,
+): CandidateView[] {
+  const views = sortFleet(fleet).map((row) => {
     const st = stateLabel(row.state);
-    const cross = crossoverState(row.trust);
+    const cross = crossoverState(row.trust, row.boxArt);
     let caveat: string | null = null;
     if (row.state === 'offline_holt_nach') {
       caveat = 'meldet sich gerade nicht - die Zuweisung wird nachgeholt';
@@ -739,8 +912,12 @@ export function candidates(fleet: FleetRow[]): CandidateView[] {
       state: st.label,
       cls: st.cls,
       caveat,
+      boxArt: deviceBoxArt(row.boxArt),
+      sperre: release ? releaseSperre(release, row.boxArt) : null,
     };
   });
+  // Stabil: die passenden zuerst, in der Warn-first-Ordnung von `sortFleet`.
+  return [...views.filter((c) => !c.sperre), ...views.filter((c) => c.sperre)];
 }
 
 /**
@@ -762,7 +939,7 @@ export function startSummary(deviceIds: string[], fleet: FleetRow[]): string[] {
       + 'Zuweisung liegt beim Broker bereit und wird nachgeholt.');
   }
   const uncrossed = chosen.filter((r) => {
-    const c = crossoverState(r.trust).state;
+    const c = crossoverState(r.trust, r.boxArt).state;
     return c === 'offen' || c === 'fehler';
   }).length;
   if (uncrossed > 0) {

@@ -44,13 +44,14 @@ public record AdminDevicesDto(List<DeviceRowDto> devices) {
      * {@code state}/{@code reason}/{@code blocker} sind die Ableitung aus
      * {@code RolloutStates} - bei einer noch nicht verbundenen Aufkleber-ID ist
      * {@code state} {@code null}, weil es über sie schlicht nichts abzuleiten
-     * gibt (sie ist noch kein Gerät).
+     * gibt (sie ist noch kein Gerät). {@code boxArt} ist wortgleich die der
+     * Flotten-Zeile und bei einer nicht verbundenen ID ebenfalls {@code null}.
      */
     public record DeviceRowDto(UUID deviceId, String externalRef, String label,
             UUID siteId, String siteName, UUID tenantId, String tenantName, String kind,
             String ist, String soll, Long sollSeq,
             String state, String reason, String blocker, Instant lastSeenAt, Instant reportedAt,
             boolean provisioned, String note, Instant provisionedAt,
-            EdgeUpdatesDto.TrustDto trust) {
+            EdgeUpdatesDto.TrustDto trust, String boxArt) {
     }
 }

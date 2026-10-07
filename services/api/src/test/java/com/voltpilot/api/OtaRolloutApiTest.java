@@ -391,6 +391,128 @@ class OtaRolloutApiTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    /**
+     * Die Box-Art (Edge Light Stufe 2, Teilaufgabe A3): eine Edge-Light-Box
+     * bekommt kein Docker-Release und eine Docker-Box kein Edge-Light-Release -
+     * auf BEIDEN Schreibwegen 409 mit deutschem Grund, und ein Auftrag mit einem
+     * unpassenden Gerät schreibt gar nichts.
+     */
+    @Test
+    @Order(6)
+    void aReleaseOnlyReachesBoxesOfItsOwnKind() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID docker = claim(customer, "ota-bd-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID light = claim(customer, "ota-bl-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID silent = claim(customer, "ota-bs-" + UUID.randomUUID().toString().substring(0, 8));
+        reportBox(docker, "compose", "edge-2026.09.1-3bf8c038a1b2");
+        // Die Pilot-Box heute: der Core meldet noch fest `compose`, erkennbar
+        // ist Edge Light nur am Stempel.
+        reportBox(light, "compose", "edge-light-g2d2bca1b6");
+
+        registerRelease(admin, "edge-2026.10.0", 40,
+                MANIFEST.replace("edge-2026.08.0", "edge-2026.10.0").replace(":12", ":40"),
+                SIGNATURE);
+        String lightManifest = MANIFEST.replace("edge-2026.08.0", "edge-2026.10.1")
+                .replace(":12", ":41")
+                .replace("\"signing_key_id\"",
+                        "\"compat\": {\"backends\": [\"light\"]},\n  \"signing_key_id\"");
+        registerRelease(admin, "edge-2026.10.1", 41, lightManifest, SIGNATURE);
+
+        // ── Die Leserouten tragen die Box-Art ─────────────────────────────
+        JsonNode page = readModel(admin);
+        assertThat(fieldOf(page, docker, "boxArt")).isEqualTo("docker");
+        assertThat(fieldOf(page, light, "boxArt")).isEqualTo("light");
+        assertThat(fieldOf(page, silent, "boxArt"))
+                .as("ohne Meldung ist die Box-Art unbekannt, nie still Docker").isNull();
+        assertThat(releaseBoxArt(page, 40)).isEqualTo("docker");
+        assertThat(releaseBoxArt(page, 41)).isEqualTo("light");
+        JsonNode inventory = json.readTree(rest.exchange(url("/api/v1/admin/devices"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class).getBody())
+                .get("devices");
+        assertThat(inventoryRow(inventory, light).get("boxArt").asText()).isEqualTo("light");
+
+        // ── Einzelzuweisung: Docker-Release → Edge Light = 409 ────────────
+        ResponseEntity<Map<String, Object>> single = post(
+                "/api/v1/admin/devices/" + light + "/update-target", admin,
+                Map.of("releaseSeq", 40));
+        assertThat(single.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) single.getBody().get("message"))
+                .contains("edge-2026.10.0")
+                .contains("diese Box ist eine Edge Light")
+                .contains("Updates von Hand (Edge Light, Stufe 1)");
+
+        // ── Rollout mit einem unpassenden Gerät: 409, NICHTS zugewiesen ───
+        int rolloutsBefore = readModel(admin).get("rollouts").size();
+        ResponseEntity<Map<String, Object>> mixed = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 40, "devices", List.of(docker.toString(), light.toString())));
+        assertThat(mixed.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) mixed.getBody().get("message"))
+                .contains("passt nicht zu einem der gewählten Geräte")
+                .contains("es wurde nichts zugewiesen");
+        page = readModel(admin);
+        assertThat(sollOf(page, docker)).as("auch das passende Gerät bekam nichts").isNull();
+        assertThat(sollOf(page, light)).isNull();
+        assertThat(page.get("rollouts").size()).isEqualTo(rolloutsBefore);
+
+        // ── Edge-Light-Release → Docker-Box und unbekannte Box = 409 ──────
+        ResponseEntity<Map<String, Object>> lightOnDocker = post(
+                "/api/v1/admin/devices/" + docker + "/update-target", admin,
+                Map.of("releaseSeq", 41));
+        assertThat(lightOnDocker.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) lightOnDocker.getBody().get("message"))
+                .contains("diese Box ist eine Docker-Box");
+        ResponseEntity<Map<String, Object>> lightOnUnknown = post("/api/v1/admin/rollouts",
+                admin, Map.of("releaseSeq", 41, "devices", List.of(silent.toString())));
+        assertThat(lightOnUnknown.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat((String) lightOnUnknown.getBody().get("message"))
+                .contains("Box-Art dieses Geräts ist unbekannt");
+
+        // ── Passende Zuweisungen gehen durch ──────────────────────────────
+        assertThat(post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 40, "devices", List.of(docker.toString(), silent.toString())))
+                .getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(post("/api/v1/admin/devices/" + light + "/update-target", admin,
+                Map.of("releaseSeq", 41)).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        page = readModel(admin);
+        assertThat(sollOf(page, docker)).isEqualTo("edge-2026.10.0");
+        assertThat(sollOf(page, silent)).isEqualTo("edge-2026.10.0");
+        assertThat(sollOf(page, light)).isEqualTo("edge-2026.10.1");
+    }
+
+    /** Backend und Stempel einer Box direkt setzen (Ingest: UpdateStatusListenerTest). */
+    private void reportBox(UUID deviceId, String backend, String version) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("""
+                    INSERT INTO device_update_status (device_id, tenant_id, site_id, version,
+                            backend, current_version, state, reported_at)
+                    VALUES ('%s', '%s', '%s', %s, %s, %s, 'idle', now())
+                    ON CONFLICT (device_id) DO UPDATE SET version = EXCLUDED.version,
+                            backend = EXCLUDED.backend,
+                            current_version = EXCLUDED.current_version
+                    """.formatted(deviceId, TENANT_A, BERLIN_SITE, sql(version), sql(backend),
+                    sql(version)));
+        }
+    }
+
+    private static String releaseBoxArt(JsonNode page, long releaseSeq) {
+        for (JsonNode r : page.get("releases")) {
+            if (r.get("releaseSeq").asLong() == releaseSeq) {
+                return r.get("boxArt").asText();
+            }
+        }
+        throw new AssertionError("Release " + releaseSeq + " fehlt im Register");
+    }
+
+    private static JsonNode inventoryRow(JsonNode rows, UUID deviceId) {
+        for (JsonNode r : rows) {
+            if (deviceId.toString().equals(r.path("deviceId").asText())) {
+                return r;
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt im Inventar");
+    }
+
     /** Die gemeldete Vertrauens-Identität eines Geräts direkt setzen. */
     private void reportTrust(UUID deviceId, String rootKeyIds, String trustSetKeyIds,
             String generatedAt, String error) throws Exception {

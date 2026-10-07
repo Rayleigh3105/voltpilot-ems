@@ -5057,6 +5057,12 @@ paths:
         several updates may run side by side); one that just finished must not
         vanish from the page in the very moment it completed. Platform-admin
         only; there is deliberately NO customer-facing surface for updates.
+        BOX KIND: every release and every fleet row carries `boxArt` (`docker` |
+        `light`, derived once in `ota.BoxArt`). A device reporting backend
+        `light` - or, during the transition, a stamp starting `edge-light-` - is
+        Edge Light; a fleet row with nothing to go by is `null` (unknown, never
+        silently Docker). A release is Docker unless its signed manifest lists
+        `light` in `compat.backends` or its name starts `edge-light-`.
       responses:
         "200":
           description: Releases, the recent updates, the fleet matrix, the journal and the KPI.
@@ -5079,8 +5085,9 @@ paths:
         installed base). A row that is not yet a device carries NO state -
         deriving one would be a claim about a device that does not exist.
         The state fields are the SAME derivation as the fleet row
-        (RolloutStates), so the two surfaces can never disagree.
-        Platform-admin only.
+        (RolloutStates), so the two surfaces can never disagree; `boxArt` is the
+        same derivation as on the fleet row (`null` for a printed ID that is not
+        a device yet). Platform-admin only.
       responses:
         "200":
           description: One row per device - registry half, fleet half, or both.
@@ -5109,6 +5116,12 @@ paths:
         stays unique is what matters: exactly one assignment per DEVICE.
 
 
+        The release must fit the BOX KIND of every chosen device (`ota.BoxArt`):
+        no Docker release to an Edge Light box, no Edge Light release to a
+        Docker box or to a box of unknown kind. If one device does not fit,
+        NOTHING is assigned and the 409 names the devices with the German reason.
+
+
         Assigning publishes the signed manifest RETAINED on
         `ems/{t}/{s}/{d}/v2/update` (contract mqtt-ota-target.schema.json), so a
         device that is offline right now picks it up on its next connect.
@@ -5129,7 +5142,7 @@ paths:
         "201": { description: Started; every chosen device has its assignment. }
         "400": { description: No devices, or an unknown device. }
         "404": { description: The release is not registered. }
-        "409": { description: The release is not signed. }
+        "409": { description: "The release is not signed, or it does not fit the box kind of a chosen device (nothing assigned)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -5138,8 +5151,9 @@ paths:
       tags: [admin]
       summary: Assign ONE device a release.
       description: >
-        The single-device path (the device page). Only a signed release is
-        assignable (409 otherwise); the device does the rest by itself.
+        The single-device path (the device page). Only a signed release that
+        fits the device's box kind (`ota.BoxArt`) is assignable (409 with a
+        German reason otherwise); the device does the rest by itself.
       parameters:
         - name: deviceId
           in: path
@@ -5157,7 +5171,7 @@ paths:
       responses:
         "204": { description: Assigned; the signed manifest went out retained. }
         "404": { description: Device or release not found. }
-        "409": { description: The release is not signed. }
+        "409": { description: "The release is not signed, or it does not fit the device's box kind." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
