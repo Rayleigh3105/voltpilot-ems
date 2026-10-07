@@ -83,7 +83,7 @@ describe('die Adresse: `#/portfolio/verbrauch`, ein Energieeinsatz darunter, die
     expect(canonicalVerbrauchHash('#/portfolio/verbrauch/ee-1')).toBeNull();
   });
 
-  it('die Wahl der Liste reist zur Seite eines Einsatzes und zurück — sonst nichts', () => {
+  it('die Wahl der Liste reist zur Seite eines Einsatzes und zurück - sonst nichts', () => {
     const liste = '#/portfolio/verbrauch?zeitraum=12monate&bis=2026-03';
     const seite = verbrauchEinsatzHash('ee-1', liste);
     expect(seite).toBe('#/portfolio/verbrauch/ee-1?zeitraum=12monate&bis=2026-03');
@@ -153,13 +153,13 @@ describe('Vorjahr: roh, ohne Farbe, Pfeil erst ab 0,5 %, nur Vollständiges gege
   it('ein unvollständiges Vorjahr ist eine Teilsumme: „Vorjahr unvollständig“, nie „▲ 200 %“ (Review r3, MUSS)', () => {
     // Der Bereichszähler kam im Vorjahr erst im 9. Monat dazu: 30.000 statt 90.000 kWh, Zustand „unvollständig“.
     expect(vorjahrVergleich(seite('90000'), seite('30000', 'unvollständig'))).toEqual({ text: 'Vorjahr unvollständig', richtung: null });
-    // Ist das laufende Jahr selbst unvollständig, sagt das die Reihe — kein Vergleich.
+    // Ist das laufende Jahr selbst unvollständig, sagt das die Reihe - kein Vergleich.
     expect(vorjahrVergleich(seite('30000', 'unvollständig'), seite('90000'))).toBeNull();
     // Ersatz ist Teil der Menge: „mit Ersatzwert“ wird verglichen wie „vollständig“.
     expect(vorjahrVergleich(seite('1100', 'mit Ersatzwert'), seite('1000', 'mit Ersatzwert')).richtung).toBe('rauf');
   });
 
-  it('große Mengen im Satz in Millionen — „1 Million“, nicht „1 Millionen“', () => {
+  it('große Mengen im Satz in Millionen - „1 Million“, nicht „1 Millionen“', () => {
     expect(mengeImSatz(2_503_200)).toBe('2,5 Millionen kWh');
     expect(mengeImSatz(1_020_000)).toBe('1 Million kWh');
     expect(mengeImSatz(199_500)).toBe(`199.500${NB}kWh`);
@@ -218,7 +218,7 @@ describe('verbrauchBild: Antwort zuerst, Balken einer Farbe, der Rest am Ende', 
     expect(b.rest).toMatchObject({ anteil: `32,2${NB}%`, satz: 'Strom ohne eigenen Zähler' });
   });
 
-  it('ein negativer Rest steht nie als negative Zahl, sondern als Satz mit Weg — und „102 % zugeordnet“ ist nie „ok“', () => {
+  it('ein negativer Rest steht nie als negative Zahl, sondern als Satz mit Weg - und „102 % zugeordnet“ ist nie „ok“', () => {
     const r = { ...ahrenbergRangliste(), rest: '-3200', abdeckung_prozent: '101.7', urteil: { K7: 'vorlaeufig' as const, K8: 'ueber_schwelle' as const } };
     const b = verbrauchBild({ zeitraum: MONAT, rangliste: r, vorjahr: null, abdeckung: null, einstufungen: null, messbedarfe: null });
     expect(b.rest).toBeNull();
@@ -231,7 +231,7 @@ describe('verbrauchBild: Antwort zuerst, Balken einer Farbe, der Rest am Ende', 
     expect(b.antwortBreit).toBe(`${r.einsaetze[0].name} braucht mit 42${NB}% den größten Teil des Stroms; die Bereiche ergeben mehr Strom, als der Hauptzähler gemessen hat.`);
   });
 
-  it('ist der Rest größer als jeder Bereich, steht er vorn — nicht „den größten Teil“ beim kleineren Bereich', () => {
+  it('ist der Rest größer als jeder Bereich, steht er vorn - nicht „den größten Teil“ beim kleineren Bereich', () => {
     const r = ahrenbergRangliste();
     // 70 % keinem Bereich zugeordnet, der größte Bereich hat 15 %.
     const klein = { ...r, rest: '129766', abdeckung_prozent: '30', einsaetze: r.einsaetze.map((e, i) => ({ ...e, menge: String(27807 - i * 1000), anteil_prozent: i === 0 ? '15' : '5' })) };
@@ -303,7 +303,7 @@ describe('verbrauchBild: Antwort zuerst, Balken einer Farbe, der Rest am Ende', 
     expect(b.antwortBreit).toBeNull();
     expect(b.untertitel).toBe('Strom · Oktober 2025 bis September 2026 · 12 von 12 Monaten vollständig');
     expect(b.kachel.titel).toBe('Strom in zwölf Monaten');
-    // Ein unvollständiges Vorjahr gibt keinen Teilsatz („… mehr als im Jahr davor“) — nur die Kachel sagt es.
+    // Ein unvollständiges Vorjahr gibt keinen Teilsatz („… mehr als im Jahr davor“) - nur die Kachel sagt es.
     const teil = { ...vj, nenner: { ...vj.nenner, zustand: 'unvollständig' } };
     const ohne = verbrauchBild({ zeitraum: z, rangliste: r, vorjahr: teil, abdeckung: null, einstufungen: null, messbedarfe: null, verlauf });
     expect(ohne.antwort).toBe(`In zwölf Monaten 2,5 Millionen kWh Strom. Der Dezember brauchte am meisten, 24${NB}% mehr als der August.`);
@@ -335,7 +335,7 @@ describe('Monatsverlauf: Säulen ab null, Vorjahr als Punkt, fehlend ist keine N
     expect(n.get('2026-09')).toEqual({ monat: '2026-09', menge: null, wert: null, zustand: 'unvollständig', vollstaendig: false });
   });
 
-  it('eine Stellungsänderung (zwei Abschnitte einer Anlage) ersetzt keine fehlende Anlage — nie eine Teilsumme (Review r3, MUSS)', () => {
+  it('eine Stellungsänderung (zwei Abschnitte einer Anlage) ersetzt keine fehlende Anlage - nie eine Teilsumme (Review r3, MUSS)', () => {
     const r = zwoelfMonate('2026-09', [100]);
     const zwei = { ...r, nenner: { ...r.nenner, gesamt: 2 }, anlagen: [r.anlagen[0], { ...r.anlagen[0], id: 'an-2', name: 'Halle 2' }] };
     const [a] = zwei.einsaetze[0].herkunft.nenner!.bilanzwerte;
@@ -353,7 +353,7 @@ describe('Monatsverlauf: Säulen ab null, Vorjahr als Punkt, fehlend ist keine N
     expect(nennerJeMonat(zwei).get('2026-09')).toMatchObject({ menge: '125', zustand: 'mit Ersatzwert', vollstaendig: true });
   });
 
-  it('ein unvollständiger Vorjahresmonat steht als hohler Punkt mit diesem Wort — ohne Vergleich (Review r3, MUSS)', () => {
+  it('ein unvollständiger Vorjahresmonat steht als hohler Punkt mit diesem Wort - ohne Vergleich (Review r3, MUSS)', () => {
     const r = zwoelfMonate('2026-09', [100, 200]);
     const vj = zwoelfMonate('2026-09', [100, 50], true);
     vj.einsaetze[0].herkunft.nenner!.bilanzwerte[1] = { ...vj.einsaetze[0].herkunft.nenner!.bilanzwerte[1], zustand: 'unvollständig' };

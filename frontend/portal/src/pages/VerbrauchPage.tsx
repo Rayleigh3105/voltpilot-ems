@@ -99,7 +99,7 @@ interface Geladen {
 
 interface VerlaufGeladen {
   schluessel: string;
-  /** `null`: der Abruf der zwölf Monate ist gescheitert — die Fläche sagt das, statt ewig zu laden. */
+  /** `null`: der Abruf der zwölf Monate ist gescheitert - die Fläche sagt das, statt ewig zu laden. */
   bild: VerlaufBild | null;
 }
 

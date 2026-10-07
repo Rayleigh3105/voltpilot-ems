@@ -41,7 +41,7 @@ import './BewertungPage.css';
  * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`). Die Seite eines Energieeinsatzes wohnt seit dem
  * Konzept Auswerten a1 unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`, die alte Adresse leitet dorthin). Seit §6.7
  * zeigt die Bewertung ihr Ergebnis statt ihrer Rohdaten: welche Bereiche wesentlich sind (Anteil, Menge,
- * Verantwortliche), welche nicht, wo eine Einstufung begründet vom Vorschlag abweicht — dazu Bewertungsstand, Kriterien
+ * Verantwortliche), welche nicht, wo eine Einstufung begründet vom Vorschlag abweicht - dazu Bewertungsstand, Kriterien
  * in Worten und Umfang. Die Rangliste mit Kürzelspalten, die Messabdeckung je Einsatz und je Ort und die zweite Liste der
  * Energieeinsätze sind weg; die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“, die Messplanung zieht nach
  * Messen. Die Welt erscheint nach der Berichte-Regel (ein Standort misst) und nur mit `energieeinsatz.ansehen`

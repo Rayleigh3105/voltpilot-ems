@@ -66,7 +66,7 @@ describe('Seite eines Energieeinsatzes: Antwort zuerst', () => {
     const v = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('88200', '44.2'), mitEE1('29400', '15', [], 'unvollständig'), null);
     expect(v.vorjahr).toEqual({ text: 'Vorjahr unvollständig', richtung: null });
     expect(einsatzAntwort(EE1, v)).toBe(`${EE1.name} brauchte im September 2026 88.200${NB}kWh${NB}– 44${NB}% des Stroms.`);
-    // Ist der Monat selbst unvollständig, gibt es ebenfalls keinen Vergleich — die Antwort sagt „unvollständig“.
+    // Ist der Monat selbst unvollständig, gibt es ebenfalls keinen Vergleich - die Antwort sagt „unvollständig“.
     const selbst = einsatzVerbrauch(EE1.id, '2026-09', mitEE1('29400', '15', [], 'unvollständig'), mitEE1('88200', '44'), null);
     expect(selbst.vorjahr).toBeNull();
     expect(einsatzAntwort(EE1, selbst)).toBe(`${EE1.name} brauchte im September 2026 29.400${NB}kWh${NB}– 15${NB}% des Stroms (unvollständig).`);
@@ -115,7 +115,7 @@ describe('Seite eines Energieeinsatzes: Antwort zuerst', () => {
     const v = einsatzVerbrauch(EE1.id, '2026-09', null, null, zwei).verlauf!;
     expect(v[11]).toEqual({ monat: '2026-09', wert: 3000 });
     expect(v[10]).toEqual({ monat: '2026-08', wert: 1500 });
-    // Juli: MS-20 ohne Wert, MS-21 unvollständig — nie 300 als Monatswert des Bereichs.
+    // Juli: MS-20 ohne Wert, MS-21 unvollständig - nie 300 als Monatswert des Bereichs.
     expect(v[9]).toEqual({ monat: '2026-07', wert: null });
   });
 });

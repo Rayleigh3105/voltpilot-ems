@@ -365,7 +365,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('einsatz-warum')).toBeVisible();
       await page.getByTestId('einsatz-menue').getByRole('button', { name: 'Weitere Aktionen' }).click();
       await page.getByRole('menuitem', { name: 'Änderungsprotokoll' }).click();
-      // Eine beantragte Fassung zeigt die Historie auch auf der Seite — gelesen wird die im Protokoll.
+      // Eine beantragte Fassung zeigt die Historie auch auf der Seite - gelesen wird die im Protokoll.
       const historie = page.getByRole('dialog').getByTestId('einstufung-historie');
       await expect(historie).toContainText('Fassung 3 · nicht wesentlich');
       await expect(historie).toContainText('Fassung 1 · wesentlich');

@@ -984,7 +984,7 @@ export function canonicalVerbrauchHash(hash: string): string | null {
   return `#/portfolio/verbrauch/${segments[2]}${query}`;
 }
 
-/** Die Wahl der Liste „Verbrauch“ (`zeitraum`, `bis`) aus einer Adresse — als Query, sonst leer. */
+/** Die Wahl der Liste „Verbrauch“ (`zeitraum`, `bis`) aus einer Adresse - als Query, sonst leer. */
 function verbrauchWahl(hash: string): string {
   const q = new URLSearchParams(hash.split('?').slice(1).join('?'));
   const wahl = new URLSearchParams();
@@ -1003,7 +1003,7 @@ function verbrauchWahl(hash: string): string {
 export const verbrauchEinsatzHash = (energieeinsatzId: string, listeHash: string): string =>
   `#/portfolio/verbrauch/${encodeURIComponent(energieeinsatzId)}${verbrauchWahl(listeHash)}`;
 
-/** Der Rückweg von der Seite eines Energieeinsatzes zur Liste „Verbrauch“ — mit der Wahl, die sie beim Öffnen hatte. */
+/** Der Rückweg von der Seite eines Energieeinsatzes zur Liste „Verbrauch“ - mit der Wahl, die sie beim Öffnen hatte. */
 export const verbrauchListeHash = (einsatzHash: string): string => `#/portfolio/verbrauch${verbrauchWahl(einsatzHash)}`;
 
 /** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */

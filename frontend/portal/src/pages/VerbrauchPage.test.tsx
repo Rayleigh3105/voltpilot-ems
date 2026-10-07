@@ -135,7 +135,7 @@ describe('VerbrauchPage — Wo geht die Energie hin?', () => {
     expect(await screen.findByTestId('verbrauch-antwort')).toBeInTheDocument();
   });
 
-  it('scheitert der Monatsverlauf, sagt die Fläche das mit „Erneut versuchen“ — kein Skelett ohne Ende (Review r3)', async () => {
+  it('scheitert der Monatsverlauf, sagt die Fläche das mit „Erneut versuchen“ - kein Skelett ohne Ende (Review r3)', async () => {
     let kaputt = true;
     verdrahte(async (von, bis) => {
       if (von.slice(0, 7) === bis.slice(0, 7)) return ahrenbergRangliste();

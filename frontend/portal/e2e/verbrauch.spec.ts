@@ -96,7 +96,7 @@ for (const breite of [375, 1440]) {
       await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Spritzguss');
       expect(await page.evaluate(() => location.hash)).toMatch(/^#\/portfolio\/verbrauch\/ee000000-/);
       await expect(page.getByTestId('einsatz-antwort')).toContainText('Spritzguss brauchte im Oktober 2026');
-      // „Warum“: K2 ist bei 67,8 % Zuordnung nicht belastbar, K3 ohne zwölf Monate nicht anwendbar — kein ✗.
+      // „Warum“: K2 ist bei 67,8 % Zuordnung nicht belastbar, K3 ohne zwölf Monate nicht anwendbar - kein ✗.
       const warum = page.getByTestId('einsatz-warum');
       await expect(warum.getByTestId('einsatz-kriterium-offen')).toHaveCount(2);
       await expect(warum).toContainText('nicht belastbar – erst ab 80');
