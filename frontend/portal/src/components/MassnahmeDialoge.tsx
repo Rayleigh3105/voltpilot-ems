@@ -875,7 +875,7 @@ export function MassnahmeUmgesetztDialog({ massnahme, onClose, onFertig }: { mas
           label="Was wurde gemacht?"
           wert={begruendung}
           setze={setBegruendung}
-          hilfe="Steht später im Verlauf. Mindestens zehn Zeichen."
+          hilfe="Steht später im Verlauf."
           fehler={zeigen.begruendung}
           testid="massnahme-umgesetzt-text"
         />
@@ -1131,7 +1131,7 @@ export function MassnahmeAendernDialog({ massnahme, onClose, onFertig }: { massn
           label="Warum ändern Sie?"
           wert={begruendung}
           setze={setBegruendung}
-          hilfe="Steht im Verlauf. Mindestens zehn Zeichen."
+          hilfe="Steht im Verlauf."
           fehler={zeigen.begruendung}
           zeilen={2}
         />

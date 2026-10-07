@@ -134,6 +134,23 @@ describe('Ändern behält die Richtung der erwarteten Wirkung', () => {
   });
 });
 
+describe('Länge nur als Fehler (§8.4)', () => {
+  it('„Umsetzung melden“ und „Ändern“ nennen die Mindestlänge erst, wenn sie fehlt', async () => {
+    merkeAbruf('2029-04-30');
+    Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
+    render(<MassnahmeUmgesetztDialog massnahme={m1('2029-04-30', { angelegt_am: '2029-01-26' })} onClose={() => {}} onFertig={() => {}} />);
+    expect(screen.getByTestId('massnahme-umgesetzt').textContent).not.toMatch(/Zeichen/);
+    fireEvent.change(screen.getByTestId('massnahme-umgesetzt-text'), { target: { value: 'kurz' } });
+    await act(async () => fireEvent.submit(screen.getByTestId('massnahme-umgesetzt')));
+    expect(screen.getByTestId('massnahme-umgesetzt').textContent).toContain('Ein Satz mit mindestens zehn Zeichen, was gemacht wurde.');
+    cleanup();
+    render(<MassnahmeAendernDialog massnahme={m1('2029-04-30')} onClose={() => {}} onFertig={() => {}} />);
+    expect(screen.getByTestId('massnahme-aendern').textContent).not.toMatch(/Zeichen/);
+    await act(async () => fireEvent.submit(screen.getByTestId('massnahme-aendern')));
+    expect(screen.getByTestId('massnahme-aendern').textContent).toContain('Ein Satz mit mindestens zehn Zeichen, warum Sie ändern.');
+  });
+});
+
 describe('„Alle Stände der Bewertung“ lässt sich nach einem Fehler neu laden', () => {
   it('Satz mit „Erneut versuchen“, danach die Stände', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
