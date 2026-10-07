@@ -529,6 +529,8 @@ a.vp-ms-reihe:focus-visible {
 }
 .vp-ms-punkt.is-satz {
   display: none;
+  /* (0.8125rem × 1.35 − 8 px) / 2: mittig zur ersten Zeile. */
+  margin-top: 4.8px;
 }
 .vp-ms-reihe.is-gut .vp-ms-punkt {
   background: var(--vp-flow-batt, #16a34a);
@@ -542,7 +544,8 @@ a.vp-ms-reihe:focus-visible {
 .vp-ms-reihe-satz {
   grid-area: satz;
   display: flex;
-  align-items: center;
+  /* Der Punkt steht an der ersten Zeile, auch wenn der Satz umbricht oder eine Tatsache darunter steht. */
+  align-items: flex-start;
   gap: 7px;
   min-width: 0;
   font-size: 0.8125rem;
