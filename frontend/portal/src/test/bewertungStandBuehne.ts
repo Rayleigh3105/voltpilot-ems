@@ -114,6 +114,8 @@ export function bewertungStandBuehne(lage: BewertungsLage) {
     stand_text: null,
     neueste_nr: staende.length === 0 ? null : Math.max(...staende.map((s) => s.nr)),
     entwurf_datenstand: entwurfDatenstand,
+    freigegeben_am: staende.find((s) => s.ersetzt_durch_nr === null)?.freigegeben_am ?? null,
+    anstoss_seit: anstoesse.filter((a) => a.zustand === 'offen').map((a) => a.erkannt_am).sort()[0] ?? null,
     wiedervorlage_monate: 12,
     ueberpruefung: (() => {
       const g = staende.find((s) => s.ersetzt_durch_nr === null);

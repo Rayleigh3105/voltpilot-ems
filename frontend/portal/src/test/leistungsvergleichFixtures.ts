@@ -138,6 +138,8 @@ export function lvBericht(nr: number | null): Bericht {
     stand_text: nr === null ? null : B.berichtsstand(nr),
     neueste_nr: nr,
     entwurf_datenstand: abzugR8().kopf.datenstand,
+    freigegeben_am: nr === null ? null : LV_ZEIT.freigegeben,
+    anstoss_seit: null,
   };
 }
 

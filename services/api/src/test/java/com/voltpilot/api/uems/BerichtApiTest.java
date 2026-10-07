@@ -609,6 +609,9 @@ class BerichtApiTest {
         uhr("2026-11-10T09:02:00+01:00");
         ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
         assertThat(liste(w.ines()).get("stand_text").asText()).isEqualTo("Berichtsstand Nr. 1");
+        // Konzept Nachweisen n1, §6.4: die Liste trägt den Tag der Freigabe („frei“) und - ohne Anstoß - kein „seit“.
+        assertThat(Instant.parse(liste(w.ines()).get("freigegeben_am").asText())).isEqualTo(t("2026-11-10T09:02:00+01:00"));
+        assertThat(liste(w.ines()).get("anstoss_seit").isNull()).isTrue();
 
         // Die Kaskade (IP-8) stößt an und bildet den Entwurf neu — hier von Hand
         UUID stand1 = root.queryForObject("SELECT id FROM bericht_stand WHERE bericht_id = ? AND nr = 1", UUID.class, st);
@@ -618,6 +621,8 @@ class BerichtApiTest {
         JsonNode eintrag = liste(w.ines());
         assertThat(eintrag.get("stand_zeichen").asText()).isEqualTo("revision_noetig");
         assertThat(eintrag.get("stand_text").asText()).isEqualTo("Revision nötig — Korrektur K-2026-0007");
+        assertThat(Instant.parse(eintrag.get("anstoss_seit").asText())).isEqualTo(t("2026-11-12T10:05:33+01:00"));
+        assertThat(Instant.parse(eintrag.get("freigegeben_am").asText())).isEqualTo(t("2026-11-10T09:02:00+01:00"));
 
         Antwort v = ok(ruf(w.claudia(), HttpMethod.GET, k + "/entwurf/vergleich?gegen=1", null), 200);
         List<Map<String, Object>> soll = BerichtRegeln.abweichungen(EXAKT.readTree(nummerEins), EXAKT.readTree(nummerZwei))
@@ -1018,6 +1023,7 @@ class BerichtApiTest {
         Antwort neu = ok(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10")), 201);
         assertThat(neu.body().get("kennung").asText()).isEqualTo("BR-2026-0002");
         assertThat(neu.body().get("stand_zeichen").asText()).isEqualTo("entwurf");
+        assertThat(neu.body().get("freigegeben_am").isNull()).isTrue();
         assertThat(neu.body().get("geltung_name").asText()).isEqualTo("Werk Lindach");
         assertThat(neu.body().get("zeitraum_text").asText()).isEqualTo("Oktober 2026");
         assertThat(Instant.parse(neu.body().get("entwurf_datenstand").asText())).isEqualTo(t("2026-11-02T10:00:00+01:00"));

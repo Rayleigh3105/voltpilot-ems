@@ -34519,7 +34519,7 @@ components:
         Ein Bericht in der Liste und im Kopf: `stand_zeichen` ist der Vermerk aus R5 als Wort,
         `stand_text` sein Kundensatz („Entwurf · Datenstand …“, „Berichtsstand Nr. 1“, „Revision nötig —
         Korrektur K-2026-0007“, „Anstoß verworfen (…)“).
-      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung]
+      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung, freigegeben_am, anstoss_seit]
       properties:
         kennung: { type: string }
         vorlage: { type: string }
@@ -34543,6 +34543,16 @@ components:
           allOf: [{ $ref: "#/components/schemas/BerichtUeberpruefung" }]
           nullable: true
           description: "AP-16 S5/S6 (IP-24): nur an einer energetischen Bewertung mit freigegebenem Stand, sonst null."
+        freigegeben_am:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Die Freigabe des gültigen Stands; ohne Stand null (Konzept Nachweisen n1, §6.4: Datumsblock „frei“)."
+        anstoss_seit:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Der früheste offene Anstoß am gültigen Stand (`stand_zeichen` revision_noetig), sonst null (Datumsblock „seit“)."
     BerichtUeberpruefung:
       type: object
       description: >

@@ -321,7 +321,7 @@ public class BerichtController {
                 new BerichtDto.Person(k.angelegtVonName(), null), utc(k.angelegtAm()), utc(k.archiviertAm()),
                 u.standZeichen(), u.standText(), u.neuesteNr(), utc(u.entwurfDatenstand()),
                 BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(k.vorlage()) ? k.wiedervorlageMonate() : null,
-                ueberpruefung(u.ueberpruefung()));
+                ueberpruefung(u.ueberpruefung()), utc(u.freigegebenAm()), utc(u.anstossSeit()));
     }
 
     private static BerichtDto.Ueberpruefung ueberpruefung(BerichtService.Ueberpruefung u) {
