@@ -549,6 +549,52 @@ def storage_release_forecast_max_age(env=None) -> timedelta:
     return timedelta(minutes=minutes)
 
 
+#: Instant off-switch for the STEUERSTAND (07.10.2026,
+#: docs/contracts/speicher-steuerstand.md): a battery the box freshly reports as
+#: NOT commanded (``beobachtet``/``not_aus``) is planned as self-consumption -
+#: the stur rule, no trade - and its „Sonne + Speicher" floor carries no trade
+#: check. Default ON. OFF = every battery is planned as commanded, exactly the
+#: behaviour before the box reported its steering state.
+BATTERY_CONTROL_ENABLED_ENV = "OPTIMIZER_BATTERY_CONTROL_ENABLED"
+
+#: How old the stored steering state may be (``device_battery_control.
+#: reported_at``, the api's clock on receipt). The box reports every 15 s; ten
+#: minutes are 40 missed heartbeats and less than one optimizer cycle, so a box
+#: that stopped reporting (offline, or an older image after a rollback) is back
+#: on the commanded plan by the next cycle. The contract vectors pin the default
+#: (speicher-steuerstand-vectors.json, ``optimierer.max_alter_minuten``).
+BATTERY_CONTROL_MAX_AGE_ENV = "OPTIMIZER_BATTERY_CONTROL_MAX_AGE_MINUTES"
+DEFAULT_BATTERY_CONTROL_MAX_AGE_MINUTES = 10.0
+
+
+def battery_control_enabled(env=None) -> bool:
+    """Whether the reported steering state is read at all. Default ON; garbage
+    values raise loudly, exactly like :func:`storage_release_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(BATTERY_CONTROL_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{BATTERY_CONTROL_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
+def battery_control_max_age(env=None) -> timedelta:
+    """Freshness window of the reported steering state."""
+    env = os.environ if env is None else env
+    minutes = _float_env(
+        env,
+        BATTERY_CONTROL_MAX_AGE_ENV,
+        DEFAULT_BATTERY_CONTROL_MAX_AGE_MINUTES,
+        0.0,
+        allow_equal=False,
+    )
+    return timedelta(minutes=minutes)
+
+
 #: Instant off-switch for the P7 EHRLICHKEITS-REGEL „ohne Ladestand keine
 #: Speicherplanung" (Scout-Report ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7,
 #: Captain-Entscheid E4=b). Default AN (Hausregel: ein Flag hat die Vorgabe AN -

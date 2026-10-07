@@ -36,6 +36,7 @@ from voltpilot_optimization.inputs import (
     SkipSite,
     active_model,
     gather_inputs,
+    load_battery_controls,
     load_battery_sites,
     load_battery_claims,
     load_model_choices,
@@ -89,6 +90,10 @@ class CycleSummary:
             steuerung = plan.steuerung_savings_eur
             if steuerung is not None:
                 line += f", steuerung={steuerung:.2f} EUR vs. stur battery"
+            if plan.battery_observed:
+                # Steuerstand: die Box steuert den Speicher nicht - der Plan
+                # ist seine Eigenverbrauchsregelung, keine Steuerung.
+                line += " EIGENVERBRAUCH (Speicher nicht gesteuert)"
             parts.append(line)
         return "\n".join(parts)
 
@@ -106,6 +111,7 @@ def plan_site(
     model_choices=None,
     battery_claims=None,
     release_settings=None,
+    battery_controls=None,
 ) -> SchedulePlan:
     """Plan one site end to end. Raises :class:`SkipSite` when un-plannable.
 
@@ -128,6 +134,11 @@ def plan_site(
     what day-ahead prices and real forecasts cover, so the planned window is
     always ``min(request, known prices, real forecasts)``.
 
+    ``battery_controls`` is the same convention for the reported steering
+    states (:func:`voltpilot_optimization.inputs.load_battery_controls`): a
+    battery its box freshly reports as NOT commanded is planned as
+    self-consumption, never traded.
+
     ``release_settings`` is the cycle's ONE read of the „Sonne + Speicher"
     sites (:func:`voltpilot_optimization.storage_release.load_release_settings`),
     same convention: ``None`` = load it here. Only a site in it gets a battery
@@ -137,16 +148,9 @@ def plan_site(
     if horizon_slots is None:
         horizon_slots = configured_horizon_slots()
     inp = gather_inputs(dsn, site, now, horizon_slots, model_choices=model_choices,
-                        battery_claims=battery_claims)
+                        battery_claims=battery_claims, battery_controls=battery_controls)
     plan_id = uuid4()
-    try:
-        plan = optimize(inp, plan_id, now)
-    except InfeasiblePlanError as exc:
-        logger.warning(
-            "solve.grid_limit_infeasible",
-            extra={"context": {"site_id": str(site.site_id), "error": str(exc)}},
-        )
-        plan = optimize_ignoring_grid_limit(inp, plan_id, now)
+    plan = _solve_site(inp, plan_id, now, site)
 
     release = _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
     if release is not None:
@@ -164,6 +168,33 @@ def plan_site(
             )
     _shadow_publish_v2(dsn, site, inp, now, v2_publisher, v2_sites, v2_repository)
     return plan
+
+
+def _solve_site(inp, plan_id, now, site) -> SchedulePlan:
+    """Solve one site: the full model, else without the §14a cap.
+
+    Steuerstand: the self-consumption path of a battery VoltPilot does not
+    command is a fixed bound. Should it ever be infeasible even without the
+    §14a cap, the site is planned as commanded instead - the behaviour before
+    the box reported its steering state. A steering fact never costs a plan.
+    """
+    try:
+        return optimize(inp, plan_id, now)
+    except InfeasiblePlanError as exc:
+        logger.warning(
+            "solve.grid_limit_infeasible",
+            extra={"context": {"site_id": str(site.site_id), "error": str(exc)}},
+        )
+        try:
+            return optimize_ignoring_grid_limit(inp, plan_id, now)
+        except InfeasiblePlanError:
+            if not inp.battery_observed:
+                raise
+            logger.warning(
+                "battery_control.self_consumption_infeasible",
+                extra={"context": {"site_id": str(site.site_id)}},
+            )
+            return _solve_site(replace(inp, battery_observed=False), plan_id, now, site)
 
 
 def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings):
@@ -209,6 +240,7 @@ def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
             pv_errors=pv_errors,
             forecasts_fresh=forecast.fresh,
             battery_held=inp.battery_held,
+            battery_observed=plan.battery_observed,
             tail_load_kw=forecast.tail_load_kw,
             tail_pv_kw=forecast.tail_pv_kw,
         )
@@ -229,6 +261,7 @@ def _storage_release(dsn, site, inp, plan, now, model_choices, release_settings)
                 "floor_now_pct": release.floor_soc_pct[0] if release.floor_soc_pct else None,
                 "reserve_kwh": release.reserve_kwh,
                 "grund": release.grund,
+                "battery_observed": plan.battery_observed,
                 "forecast_tail_slots": len(forecast.tail_load_kw),
                 "last_aufschlag": u.last_aufschlag if u else None,
                 "pv_abschlag": u.pv_abschlag if u else None,
@@ -273,6 +306,15 @@ def _shadow_publish_v2(
     # also genau die Erfindung, die der v1-Pfad eine Zeile weiter oben gerade
     # verweigert hat, nur eine Etage tiefer. Ein ausgelassener Schatten kostet
     # nichts: er wird nie ausgefuehrt.
+    # Steuerstand: derselbe Gedanke fuer einen Speicher, den VoltPilot nicht
+    # steuert. Der Co-Optimizer kennt keine Eigenverbrauchs-Bahn und wuerde ihn
+    # handeln lassen - die Erfindung, die der v1-Pfad gerade vermieden hat.
+    if inp.battery_observed:
+        logger.info(
+            "publish_v2.shadow_skipped_battery_observed",
+            extra={"context": {"site_id": str(site.site_id)}},
+        )
+        return
     if inp.soc_unbekannt:
         logger.info(
             "publish_v2.shadow_skipped_no_soc",
@@ -363,6 +405,9 @@ def run_cycle(
     # ONE read of the „Sonne + Speicher" sites (06.10.2026), fail-soft: without
     # the columns no site gets a floor and every plan is byte-identical.
     release_settings = load_release_settings(dsn) if storage_release_enabled() else {}
+    # ONE read of the reported steering states (07.10.2026), fail-soft: without
+    # the table every battery is planned as commanded, as before.
+    battery_controls = load_battery_controls(dsn)
     for site in sites:
         try:
             plan = plan_site(
@@ -378,6 +423,7 @@ def run_cycle(
                 model_choices=model_choices,
                 battery_claims=battery_claims,
                 release_settings=release_settings,
+                battery_controls=battery_controls,
             )
             summary.planned.append(plan)
         except SkipSite as exc:

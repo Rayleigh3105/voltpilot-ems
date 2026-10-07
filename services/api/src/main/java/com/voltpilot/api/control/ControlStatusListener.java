@@ -3,6 +3,7 @@ package com.voltpilot.api.control;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
+import com.voltpilot.api.repo.BatteryControlRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -23,6 +24,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -43,6 +45,12 @@ import org.springframework.stereotype.Component;
  * depth: the device is resolved through the RLS-scoped repository with the
  * topic's tenant (a fabricated identity yields zero rows and is skipped), and
  * the upsert runs under that tenant so RLS' WITH CHECK stamps the row.
+ *
+ * <p>The same heartbeat carries the additive {@code battery_control} block
+ * (Steuerstand des Speichers, {@code docs/contracts/speicher-steuerstand.md}):
+ * does VoltPilot command the battery or only observe it? It rides EVERY
+ * heartbeat - also without a {@code control} block, which needs a readback -
+ * and lands in {@code device_battery_control}, where the optimizer reads it.
  *
  * <p>Off by default so unit tests and broker-less deployments are unaffected;
  * both composes turn it on next to the purge listener.
@@ -113,23 +121,34 @@ public class ControlStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final ControlStatusRepository controlStatus;
+    /** Null only for callers that predate the Steuerstand (the block is then ignored). */
+    private final BatteryControlRepository batteryControl;
     private final CommandLogWriter commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
 
+    @Autowired
     public ControlStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             DeviceRepository devices, ControlStatusRepository controlStatus,
-            CommandLogWriter commandLog) {
+            CommandLogWriter commandLog, BatteryControlRepository batteryControl) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.controlStatus = controlStatus;
         this.commandLog = commandLog;
+        this.batteryControl = batteryControl;
+    }
+
+    /** Without the Steuerstand store: the {@code battery_control} block is ignored. */
+    public ControlStatusListener(String brokerUrl, String username, String password,
+            DeviceRepository devices, ControlStatusRepository controlStatus,
+            CommandLogWriter commandLog) {
+        this(brokerUrl, username, password, devices, controlStatus, commandLog, null);
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -205,8 +224,11 @@ public class ControlStatusListener {
             return; // not JSON - not for us
         }
         JsonNode control = json == null ? null : json.get("control");
-        if (control == null || !control.isObject()) {
-            return; // a heartbeat without a control block (or a purge_request)
+        boolean hasControl = control != null && control.isObject();
+        JsonNode batteryBlock = json == null ? null : json.get("battery_control");
+        boolean hasBattery = batteryBlock != null && batteryControl != null;
+        if (!hasControl && !hasBattery) {
+            return; // a heartbeat without either block (or a purge_request)
         }
         String[] parts = topic.split("/");
         if (parts.length != 5) {
@@ -232,6 +254,25 @@ public class ControlStatusListener {
             Optional<DeviceDto> device = devices.findById(deviceId);
             if (device.isEmpty() || !siteId.equals(device.get().siteId())) {
                 log.warn("control status for unknown device {} (tenant {}) skipped", deviceId, tenantId);
+                return;
+            }
+            if (hasBattery) {
+                Optional<BatteryControlRepository.State> state = batteryControlState(batteryBlock);
+                if (state.isPresent()) {
+                    // Additive and never throwing: a failed Steuerstand write
+                    // must not cost the control row of the same heartbeat - the
+                    // row simply ages out, and a stale row reads as commanded.
+                    try {
+                        batteryControl.upsert(deviceId, siteId, state.get());
+                    } catch (RuntimeException e) {
+                        log.warn("battery_control of device {} not stored: {}", deviceId, e.getMessage());
+                    }
+                } else {
+                    log.warn("battery_control block of device {} dropped (unknown word or "
+                            + "contradicting flags): {}", deviceId, batteryBlock);
+                }
+            }
+            if (!hasControl) {
                 return;
             }
             ControlStatusRepository.Execution execution = execution(json, control);
@@ -262,6 +303,30 @@ public class ControlStatusListener {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * The {@code battery_control} block (Steuerstand des Speichers), STRICT like
+     * every other word here: the optimizer turns {@code beobachtet} into a
+     * self-consumption plan, so an unknown word, a missing or non-boolean flag
+     * or a word that contradicts its flags is DROPPED, never stored. A dropped
+     * block leaves the row to age out - and a stale row reads as
+     * {@code gesteuert}, today's behaviour.
+     *
+     * <p>Package-visible for the shared vectors
+     * ({@code speicher-steuerstand-vectors.json}, section {@code api}).
+     */
+    static Optional<BatteryControlRepository.State> batteryControlState(JsonNode block) {
+        if (block == null || !block.isObject()) {
+            return Optional.empty();
+        }
+        JsonNode enabled = block.get("control_enabled");
+        JsonNode certified = block.get("certified");
+        if (enabled == null || !enabled.isBoolean() || certified == null || !certified.isBoolean()) {
+            return Optional.empty();
+        }
+        return BatteryControlRepository.State.of(optText(block, "state"),
+                enabled.booleanValue(), certified.booleanValue());
     }
 
     /**
