@@ -44,6 +44,8 @@ export function EnergiemanagementAudits({
   const [feststellungen, setFeststellungen] = useState<Feststellung[] | null>(null);
   const [zustaendig, setZustaendig] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  // Review P4-1: die Feststellungen haben ihren eigenen Fehler - ein Ladefehler ist nie „keine Feststellung offen“.
+  const [festFehler, setFestFehler] = useState<string | null>(null);
   const [planen, setPlanen] = useState(false);
   const [erfassen, setErfassen] = useState(false);
 
@@ -63,20 +65,27 @@ export function EnergiemanagementAudits({
       (e) => aktiv && setFehler(A.ABLEHNUNG[E.ablehnungCode(e) ?? ''] ?? E.ablehnungSatz(e)),
     );
     api.energiemanagementFeststellungen().then(
-      (r) => aktiv && setFeststellungen(r.feststellungen),
-      () => aktiv && setFeststellungen([]),
+      (r) => {
+        merkeAbruf(r.tag);
+        if (aktiv) setFeststellungen(r.feststellungen);
+      },
+      (e) => aktiv && setFestFehler(A.ABLEHNUNG[E.ablehnungCode(e) ?? ''] ?? E.ablehnungSatz(e)),
     );
     return () => {
       aktiv = false;
     };
   }, []);
 
+  // Erst rollen, wenn beide Abschnitte stehen (geladen oder mit Fehlersatz) - sonst verschiebt der spätere den Anker.
+  const programmDa = programm !== null || fehler !== null;
+  const feststellungenDa = feststellungen !== null || festFehler !== null;
   useEffect(() => {
-    if (!feststellungenZeigen || !programm || !feststellungen) return;
+    if (!feststellungenZeigen || !programmDa || !feststellungenDa) return;
     document.getElementById(FESTSTELLUNGEN_ANKER)?.scrollIntoView({ block: 'start' });
-  }, [feststellungenZeigen, programm, feststellungen]);
+  }, [feststellungenZeigen, programmDa, feststellungenDa]);
 
-  const status = feststellungen ? B.auditsStatus(feststellungen) : null;
+  // Die Antwort im Kopf nur aus einer geladenen Liste (Fehlend ist keine Null).
+  const status = feststellungen && !festFehler ? B.auditsStatus(feststellungen) : null;
   const naechstes = programm ? B.auditNaechstes(programm, zustaendig) : null;
   const menue = (
     <RowMenu
@@ -146,37 +155,42 @@ export function EnergiemanagementAudits({
               </NwFristZeilen>
             )}
           </section>
-          <section className="vp-nw-abschnitt" id={FESTSTELLUNGEN_ANKER} aria-label={B.FESTSTELLUNGEN} data-testid="feststellungen-register">
-            <Unterkopf>{B.FESTSTELLUNGEN}</Unterkopf>
-            {feststellungen === null ? (
-              <p className="vp-ez-leise">Wird geladen …</p>
-            ) : feststellungen.length === 0 ? (
-              <p className="vp-ez-leise" data-testid="feststellungen-leer">
-                {B.NOCH_KEINE_FESTSTELLUNG}
-              </p>
-            ) : (
-              <NwFristZeilen>
-                {feststellungen.map((f) => {
-                  const z = B.feststellungZeile(f);
-                  return (
-                    <NwFristZeile
-                      key={f.id}
-                      datum={z.datum}
-                      symbol={z.erledigt ? <NwSymbol name="check" size={18} /> : undefined}
-                      titel={z.titel}
-                      kurz
-                      unter={z.unter}
-                      href={hashForRoute(feststellungRoute(f.id))}
-                      onClick={() => onFeststellung(f.id)}
-                      testId={`feststellung-zeile-${f.kennzeichen}`}
-                    />
-                  );
-                })}
-              </NwFristZeilen>
-            )}
-          </section>
         </>
       )}
+      {/* Unabhängig vom Auditprogramm: scheitert dessen Route, stehen die Feststellungen trotzdem da (und umgekehrt). */}
+      <section className="vp-nw-abschnitt" id={FESTSTELLUNGEN_ANKER} aria-label={B.FESTSTELLUNGEN} data-testid="feststellungen-register">
+        <Unterkopf>{B.FESTSTELLUNGEN}</Unterkopf>
+        {festFehler ? (
+          <p className="vp-ez-fehler" role="alert" data-testid="feststellungen-fehler">
+            {festFehler}
+          </p>
+        ) : feststellungen === null ? (
+          <p className="vp-ez-leise">Wird geladen …</p>
+        ) : feststellungen.length === 0 ? (
+          <p className="vp-ez-leise" data-testid="feststellungen-leer">
+            {B.NOCH_KEINE_FESTSTELLUNG}
+          </p>
+        ) : (
+          <NwFristZeilen>
+            {feststellungen.map((f) => {
+              const z = B.feststellungZeile(f);
+              return (
+                <NwFristZeile
+                  key={f.id}
+                  datum={z.datum}
+                  symbol={z.zeichen === 'done' ? <NwSymbol name="check" size={18} /> : z.zeichen === 'ohne' ? <ZustandsZeichen art="ohne" /> : undefined}
+                  titel={z.titel}
+                  kurz
+                  unter={z.unter}
+                  href={hashForRoute(feststellungRoute(f.id))}
+                  onClick={() => onFeststellung(f.id)}
+                  testId={`feststellung-zeile-${f.kennzeichen}`}
+                />
+              );
+            })}
+          </NwFristZeilen>
+        )}
+      </section>
       {planen && programm && (
         <AuditPlanenBlatt
           programm={programm}

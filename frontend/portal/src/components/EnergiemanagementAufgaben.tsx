@@ -44,6 +44,11 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
   const [beenden, setBeenden] = useState<EnergiemanagementZuordnung | null>(null);
   const [personDialog, setPersonDialog] = useState(false);
   const [blatt, setBlatt] = useState<null | 'personen' | 'tag' | { aufgabe: string }>(null);
+  // Review P5-2: ein anderer Tag ist ein anderer Stand - der alte steht nicht unter dem neuen Tag, auch nicht nach einem
+  // Ladefehler.
+  useEffect(() => {
+    setStand(null);
+  }, [gewaehlt]);
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
@@ -70,7 +75,9 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
   };
 
   const zeilen = stand ? T.aufgabenZeilen(stand) : [];
-  const status = stand ? T.aufgabenStatus(zeilen) : null;
+  // Die Antwort nur aus einem geladenen Stand ohne Fehler; ohne sichtbare Aufgabe keine (Review P5-1, P5-2).
+  const status = stand && !fehler ? T.aufgabenStatus(zeilen) : null;
+  const sichtbar = zeilen.length > 0;
   const leute = personen && stand ? T.personenZeilen(personen, stand) : [];
   const offen = typeof blatt === 'object' && blatt ? (zeilen.find((z) => z.aufgabe === blatt.aufgabe) ?? null) : null;
 
@@ -119,7 +126,7 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
       <NwKopf
         titel="Aufgaben"
         erklaerung={T.erklaerungAufgabe(zeilen, tag)}
-        kurzzeile={stand ? `${T.KURZZEILE} · Stand ${E.tagText(tag)}` : T.KURZZEILE}
+        kurzzeile={stand && !fehler && sichtbar ? `${T.KURZZEILE} · Stand ${E.tagText(stand.tag)}` : T.KURZZEILE}
         status={status && <StatusZeile zeichen={<NwZeichen art={status.zeichen} />} text={status.text} testId="aufgaben-status" />}
         menue={menue}
         testId="aufgaben-kopf"
@@ -130,6 +137,10 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
         </p>
       ) : !stand ? (
         <p className="vp-ez-leise">Wird geladen …</p>
+      ) : !sichtbar ? (
+        <p className="vp-ez-leise" data-testid="aufgaben-nicht-sichtbar">
+          {T.AUFGABEN_NICHT_SICHTBAR}
+        </p>
       ) : (
         <div className="vp-nw-zwei">
           <div className="vp-nw-spalte-haupt">

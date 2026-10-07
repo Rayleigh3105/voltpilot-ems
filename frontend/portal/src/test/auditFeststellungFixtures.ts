@@ -130,8 +130,13 @@ export function auditFeststellungBuehne(
     const u = ueberpruefung({ art: 'feststellung', festgestellt_am: f.festgestellt_am, frist: f.frist, frist_tage: STARTWERTE.feststellung_frist_tage, zustand: f.zustand, abruf });
     const lage = 'fehler' in u ? f.lage : { abruf, faellig_am: u.faellig_am, tage: u.tage, satz: u.satz, grund: u.grund };
     const ms = await fsMassnahmen(f);
-    const beteiligt = [f.verantwortlich.sub];
-    const zweite = ['IK', 'JW'].filter((s) => !beteiligt.includes(s) && s !== ich.kennung).map(verantwortlich);
+    // Wie `FeststellungService#vierAugen`: Urheberin ist, wer den offenen Antrag gestellt hat, sonst ich (wenn berechtigt);
+    // zweite Person ist jede Berechtigte außer der Urheberin und der Verantwortlichen.
+    const berechtigt = ['IK', 'JW'];
+    const antrag = (staende.get(id) ?? []).find((s) => s.status === 'beantragt');
+    const urheberin = antrag ? antrag.eingetragen.akteur.sub : berechtigt.includes(ich.kennung) ? ich.kennung : null;
+    const zweite =
+      urheberin === null && berechtigt.length < 2 ? [] : berechtigt.filter((s) => s !== urheberin && s !== f.verantwortlich.sub).map(verantwortlich);
     return structuredClone({
       feststellung: { ...f, lage, eintraege: (eintraege.get(id) ?? []).length, massnahmen: ms.map((m) => m.kennzeichen) },
       eintraege: eintraege.get(id) ?? [],
@@ -362,8 +367,12 @@ export function auditFeststellungBuehne(
     },
     energiemanagementFeststellungAblehnen: async (id, begruendung) => {
       merke(`POST /api/v1/energiemanagement/feststellungen/${id}/wirksamkeit/ablehnen`, { begruendung });
+      const f = fsFinden(id);
       const s = (staende.get(id) ?? []).find((x) => x.status === 'beantragt');
       if (!s) throw fehler(409, 'kein_antrag');
+      // Wie der Server: auch Ablehnen ist der zweiten Person vorbehalten (FS6).
+      if (s.eingetragen.akteur.name === ich.name) throw fehler(422, 'vieraugen_urheber');
+      if (f.verantwortlich.sub === ich.kennung) throw fehler(422, 'vieraugen_verantwortlich');
       Object.assign(s, { status: 'abgelehnt', zweite_person: eingetragen(ich.name, jetzt()), ablehnung_begruendung: begruendung });
       fsLog(id, 'wirksamkeit_abgelehnt', jetzt(), begruendung);
       return fsLesen(id);
