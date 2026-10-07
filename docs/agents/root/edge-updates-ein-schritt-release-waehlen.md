@@ -136,7 +136,8 @@ Zuweisung desselben Release versucht wieder).
   (ein gemischtes Manifest gilt als Edge Light). Beide Schreibwege antworten bei
   unpassender Box-Art mit **409** und deutschem Grund; ein Rollout mit einem
   unpassenden Gerät schreibt NICHTS. Ein Edge-Light-Release verlangt den Beleg
-  „Edge Light" (heutige Docker-Kerne lehnen `light` als Prüffehler ab), ein
+  „Edge Light" (Docker-Kerne vor dem Edge-Light-Update-Vertrag lehnen `light`
+  als Prüffehler ab; neuere stellen zurück, Sperre `backend`), ein
   Docker-Release bleibt einer Box unbekannter Art zuweisbar. Das ist kein
   Zustands-Tor, sondern der Cloud-Zwilling von `compat.backends`. `boxArt`
   reist auf `ReleaseDto`, `FleetRowDto` und `DeviceRowDto`; der Portal-Zwilling

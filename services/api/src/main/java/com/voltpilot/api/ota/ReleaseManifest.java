@@ -32,6 +32,12 @@ import java.util.regex.Pattern;
  * anwendet, „nicht anwendbar". Die Felder eines bekannten Typs werden voll
  * geprüft.
  *
+ * <p><b>Verhältnis zu {@link BoxArt}:</b> {@code BoxArt.ofRelease} schaut
+ * bewusst nur roh in {@code compat.backends} und sperrt damit auch ein
+ * unlesbares Manifest, das {@code light} nennt. Dieser Leser beantwortet die
+ * genauere Frage, ob ein Release auf einem Backend ANWENDBAR ist - so, wie das
+ * Gerät sie nach gültiger Signatur beantwortet.
+ *
  * <p><b>Was hier NICHT passiert: keine Signaturprüfung.</b> Der einzige
  * Verifizierer, auf den es ankommt, ist das Gerät mit seiner eingebackenen
  * Wurzel (siehe {@code AdminEdgeReleaseController.readSigned}). Dieser Leser
