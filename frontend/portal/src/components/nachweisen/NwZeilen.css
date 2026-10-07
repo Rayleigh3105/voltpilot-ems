@@ -506,6 +506,7 @@ button.vp-nw-fz {
   margin-top: 0;
 }
 /* Langer Wortlaut eines Kunden als Titel (Feststellung): kleiner, wie `.pkopf.lang`. */
+.vp-nw-lang .vp-nw-kopf-titel,
 .vp-nw-lang .vp-nw-kopf-titel h1 {
   font-size: 1.125rem;
   line-height: 1.35;

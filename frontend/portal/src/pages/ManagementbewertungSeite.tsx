@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Managementbewertung, type ManagementbewertungBeschluss } from '../api';
 import { EinsichtRecht } from '../components/EinsichtRecht';
@@ -68,6 +68,10 @@ export function ManagementbewertungSeite({
   const [abruf, setAbruf] = useState<{ satz: string; fehler: boolean } | null>(null);
   const [laeuft, setLaeuft] = useState<number | null>(null);
   const [kopiert, setKopiert] = useState(false);
+  // Im Blatt „Was die Leitung sah“ wechselt der Inhalt zwischen Liste und Abschnitt; der Fokus geht mit (zum Zurück-Knopf,
+  // zurück auf die Zeile des Abschnitts), sonst fiele er aus dem Blatt und Escape und Tab griffen nicht mehr.
+  const eingabenRef = useRef<HTMLDivElement>(null);
+  const [vonEingabe, setVonEingabe] = useState<string | null>(null);
 
   useEffect(() => {
     let aktiv = true;
@@ -148,6 +152,13 @@ export function ManagementbewertungSeite({
   const offen = blatt && typeof blatt === 'object' && 'beschluss' in blatt ? (beschluesse.find((x) => x.nr === blatt.beschluss) ?? null) : null;
   const eingabe = blatt && typeof blatt === 'object' && 'eingabe' in blatt ? (eingaben?.find((z) => z.key === blatt.eingabe) ?? null) : null;
 
+  useEffect(() => {
+    const wurzel = eingabenRef.current;
+    if (!wurzel) return;
+    if (eingabe) wurzel.querySelector<HTMLElement>('[data-testid="mb-eingaben-zurueck"]')?.focus();
+    else if (blatt === 'eingaben' && vonEingabe) wurzel.querySelector<HTMLElement>(`[data-testid="mb-eingabe-zeile-${vonEingabe}"]`)?.focus();
+  }, [blatt, eingabe, vonEingabe]);
+
   if (fehler || !detail || !b || !mb) {
     return (
       <GrenzSatzBereich>
@@ -213,9 +224,10 @@ export function ManagementbewertungSeite({
                     <ZeilenZustand zeichen={<ZustandsZeichen art={z.art} stumm />} ton={z.art === 'ohne' ? 'leise' : undefined}>
                       {z.wort}
                     </ZeilenZustand>
-                  ) : (
-                    <Fakt>{B.BESCHLUSS_CHIP[x.art] ?? x.art}</Fakt>
-                  )
+                  ) : x.zustaendig?.name ? (
+                    // Im Entwurf gibt es noch keine Folge: rechts steht, wer sich kümmert.
+                    <Kuerzel personen={[{ name: x.zustaendig.name }]} />
+                  ) : undefined
                 }
                 onClick={() => setBlatt({ beschluss: x.nr })}
                 testId={`mb-beschluss-${x.nr}`}
@@ -320,9 +332,10 @@ export function ManagementbewertungSeite({
               <blockquote className="vp-nw-zitat" data-testid="mb-beschluss-wortlaut">
                 {offen.wortlaut}
               </blockquote>
+              {/* Entschieden hat die Leitung der Sitzung; nur wer davon abweicht, steht hier (Blatt ≤ 35 Wörter). */}
               <PruefZeilen
                 zeilen={[
-                  { etikett: M.ENTSCHIEDEN_VON.replace(/ von$/, ''), wert: offen.entschieden_von.name ?? '–' },
+                  ...(offen.entschieden_von.id !== sitzung?.leitung.id ? [{ etikett: 'Entschieden', wert: offen.entschieden_von.name ?? '–' }] : []),
                   ...(offen.zustaendig?.name ? [{ etikett: 'Wer', wert: offen.zustaendig.name }] : []),
                   ...(offen.termin ? [{ etikett: 'Bis', wert: E.tagText(offen.termin) }] : []),
                 ]}
@@ -454,10 +467,18 @@ export function ManagementbewertungSeite({
           onClose={() => setBlatt(null)}
           testId="mb-eingaben-blatt"
         >
-          <div className="vp-nw-schritt-inhalt">
+          <div className="vp-nw-schritt-inhalt" ref={eingabenRef}>
             {eingabe && zeigt ? (
               <>
-                <button type="button" className="vp-nw-zurueck" onClick={() => setBlatt('eingaben')} data-testid="mb-eingaben-zurueck">
+                <button
+                  type="button"
+                  className="vp-nw-zurueck"
+                  onClick={() => {
+                    setVonEingabe(eingabe.key);
+                    setBlatt('eingaben');
+                  }}
+                  data-testid="mb-eingaben-zurueck"
+                >
                   <NwSymbol name="chevron-left" size={16} />
                   Alle Teile
                 </button>
@@ -476,7 +497,10 @@ export function ManagementbewertungSeite({
                       key={z.key}
                       titel={z.titel}
                       rechts={z.zahl !== null ? <Fakt>{z.zahl}</Fakt> : undefined}
-                      onClick={() => setBlatt({ eingabe: z.key })}
+                      onClick={() => {
+                        setVonEingabe(null);
+                        setBlatt({ eingabe: z.key });
+                      }}
                       testId={`mb-eingabe-zeile-${z.key}`}
                     />
                   ))}

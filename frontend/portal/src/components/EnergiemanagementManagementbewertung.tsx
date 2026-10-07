@@ -8,7 +8,7 @@ import { merkeAugenblick, routenHeute, tagDesAugenblicks } from '../routenUhr';
 import { useRollen } from '../rollen';
 import type { Wiedervorlage } from '../wiedervorlage';
 import { GrenzSatz } from './GrenzSatz';
-import { ManagementbewertungAnlegenDialog } from './ManagementbewertungDialoge';
+import { ManagementbewertungAnlegenBlatt } from './ManagementbewertungDialoge';
 import { AlsNaechstes } from './nachweisen/AlsNaechstes';
 import { FolgenBalken } from './nachweisen/FolgenBalken';
 import { datumsblock } from './nachweisen/nwBild';
@@ -161,8 +161,9 @@ export function EnergiemanagementManagementbewertung({
         </>
       )}
       {anlegen && (
-        <ManagementbewertungAnlegenDialog
+        <ManagementbewertungAnlegenBlatt
           heute={tag}
+          vorhanden={(liste ?? []).map((b) => b.zeitraum)}
           onClose={() => setAnlegen(false)}
           onAngelegt={(kennung) => {
             setAnlegen(false);

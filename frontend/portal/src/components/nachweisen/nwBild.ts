@@ -44,7 +44,7 @@ const LEGENDE_WORT: Record<ZustandArt, [string, string]> = {
   ueber: ['überfällig', 'überfällig'],
   ohne: ['ohne Folge', 'ohne Folge'],
 };
-const LEGENDE_REIHE: ZustandArt[] = ['done', 'laeuft', 'ueber', 'ohne'];
+export const LEGENDE_REIHE: ZustandArt[] = ['done', 'laeuft', 'ueber', 'ohne'];
 
 /** Die Legende des Folgen-Balkens: nur Arten, die vorkommen, in fester Reihe. */
 export function folgenLegende(zustaende: ZustandArt[]): LegendenTeil[] {

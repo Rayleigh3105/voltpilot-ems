@@ -301,7 +301,7 @@ function Beschluss({
       <NwTextfeld label="Beschluss" wert={wortlaut} onWert={setWortlaut} mehrzeilig hoechstens={M.WORTLAUT_HOECHSTENS} fehler={fehler.wortlaut} testid="mb-vb-wortlaut" />
       <div className="vp-nw-vb-zwei">
         <VpPicker label="Wer?" options={optionen} value={zustaendig} onChange={setZustaendig} placeholder="Person" loading={personen === null} />
-        <VpDatePicker label="Bis?" value={termin || null} onChange={setTermin} />
+        <VpDatePicker label="Bis?" value={termin || null} onChange={setTermin} placeholder="Tag" />
       </div>
       <Ablehnung satz={satz} />
       <Knoepfe>

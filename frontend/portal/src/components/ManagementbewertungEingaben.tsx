@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import * as M from '../managementbewertung';
+import { beschlussZustand, jahre } from '../managementbewertungBild';
+import { Fakt, NwZeile, NwZeilen, Unterkopf } from './nachweisen/NwZeilen';
 
 /**
  * Die Eingaben einer Managementbewertung (UEMS AP-19 IP-24, MG2): die Abschnitte der Vorlage in ihrer Reihenfolge, genau
- * so, wie der Abzug sie festhält — Kennzeichen, Nr., Prüfsumme und das Ergebnis wie festgehalten; nichts wird neu
- * gerechnet oder beurteilt. Derselbe Baustein zeigt den Entwurf (die Eingaben von heute) und einen Stand (die Eingaben
+ * so, wie der Abzug sie festhält - das Ergebnis wie festgehalten, Kennzeichen und Prüfsumme im Tooltip; nichts wird neu
+ * gerechnet oder beurteilt. Seit Konzept Nachweisen n1 (Runde 2, PR 5) ein Abschnitt je Blatt („Was die Leitung sah“),
+ * je Gegenstand eine Zeile. Derselbe Baustein zeigt den Entwurf (die Eingaben von heute) und einen Stand (die Eingaben
  * seines Tages). Sitzung und Beschlüsse füllt, wer das Energiemanagement bearbeitet (`beschluesse`, `sitzung` als Kinder).
  * `saetze` zeigt Grenz- und Verantwortungs-Satz, wo der Baustein allein steht (auf der Seite stehen sie am Fuß).
  */
@@ -39,9 +42,10 @@ export function ManagementbewertungEingaben({
           ) : key === 'energieziele' ? (
             <Liste leer={M.LEER.energieziele} zeilen={(a.energieziele ?? []).map((e) => ({
               key: e.kennzeichen,
-              titel: `${e.kennzeichen} · Ziel ${M.prozent(e.zielwert_prozent)} (${e.zielperiode})`,
+              titel: `${e.kennzeichen} · Energieziel ${jahre(e.zielperiode)}: ${M.prozent(e.zielwert_prozent)}`,
               zustand: M.zustandWort(e.zustand),
-              text: M.energiezielErgebnis(e),
+              // Ein Fakt: das Ergebnis wie festgehalten; wer und wann steht im PDF.
+              text: [e.ergebnis ? M.ergebnisWort(e.ergebnis) : null, e.stand ? `${M.prozent(e.stand.delta_prozent)} in ${e.stand.monate} Monaten` : null].filter(Boolean).join(' · ') || 'noch ohne Ergebnis',
               pruefsumme: e.pruefsumme,
             }))} />
           ) : key === 'energieleistung' ? (
@@ -64,12 +68,15 @@ export function ManagementbewertungEingaben({
               key: m.kennzeichen,
               titel: `${m.kennzeichen} · ${m.titel}`,
               zustand: M.zustandWort(m.zustand),
-              text: `${M.herkunftWort(m.herkunft_art, m.herkunft_kennung)} · ${M.massnahmeStand(m)}`,
+              // Ein Fakt: das Ergebnis der Bewertung („belegt · 2,4 % weniger“); Stand Nr. und Tag stehen im PDF.
+              text: m.bewertung
+                ? [M.ergebnisWort(m.bewertung.ergebnis), m.bewertung.wirkung_prozent !== null ? M.prozent(m.bewertung.wirkung_prozent) : null].filter(Boolean).join(' · ')
+                : M.massnahmeStand(m),
               pruefsumme: m.bewertung?.pruefsumme ?? null,
             }))} />
           ) : key === 'abweichungen' ? (
             <>
-              <p className="vp-ez-leise">{M.offenSatz(a.abweichungen?.offen ?? 0, 'Abweichung', 'Abweichungen')}</p>
+              <p className="vp-nw-leise">{M.offenSatz(a.abweichungen?.offen ?? 0, 'Abweichung', 'Abweichungen')}</p>
               <Liste leer={M.LEER.abweichungen} zeilen={(a.abweichungen?.im_jahr ?? []).map((x) => ({
                 key: x.kennzeichen,
                 titel: `${x.kennzeichen} · ${x.monate.join(', ')}`,
@@ -85,7 +92,7 @@ export function ManagementbewertungEingaben({
             </>
           ) : key === 'audits_feststellungen' ? (
             <>
-              <p className="vp-ez-leise">{M.offenSatz(a.audits_feststellungen?.offen ?? 0, 'Feststellung', 'Feststellungen')}</p>
+              <p className="vp-nw-leise">{M.offenSatz(a.audits_feststellungen?.offen ?? 0, 'Feststellung', 'Feststellungen')}</p>
               <Liste leer={M.LEER.audits} zeilen={(a.audits_feststellungen?.audits ?? []).map((x) => ({
                 key: x.kennzeichen,
                 titel: `${x.kennzeichen} · ${x.titel}`,
@@ -119,7 +126,7 @@ export function ManagementbewertungEingaben({
             </>
           ) : key === 'wiedervorlage' ? (
             <>
-              <p className="vp-ez-leise">
+              <p className="vp-nw-leise">
                 {a.wiedervorlage
                   ? `Stichtag ${M.tag(a.wiedervorlage.stichtag)}: ${a.wiedervorlage.anzahl_faellig} fällig · ${a.wiedervorlage.anzahl_vorschau} in den nächsten ${a.wiedervorlage.vorschau_tage} Tagen`
                   : '—'}
@@ -131,9 +138,9 @@ export function ManagementbewertungEingaben({
               }))} />
             </>
           ) : key === 'beschluesse' ? (
-            beschluesse ?? <p className="vp-ez-leise">{M.LEER.beschluesse}</p>
+            beschluesse ?? <p className="vp-nw-leise">{M.LEER.beschluesse}</p>
           ) : key === 'sitzung' ? (
-            sitzung ?? <p className="vp-ez-leise">{M.LEER.sitzung}</p>
+            sitzung ?? <p className="vp-nw-leise">{M.LEER.sitzung}</p>
           ) : (
             <Quellen a={a} />
           )}
@@ -150,30 +157,38 @@ export function ManagementbewertungEingaben({
 
 type Zeile = { key: string; titel: string; zustand?: string; text: string; pruefsumme?: string | null };
 
-/** Eine Zeile je Gegenstand — Titel, Zustand, was festgehalten ist, Prüfsumme gekürzt (die ganze im `title`). */
+/** Ein Kennzeichen vorn im Titel („M-2028-0001 · …“) - es steht im Tooltip, nicht in der Zeile (Entscheid 25). */
+const KENNZEICHEN_VORN = /^[A-Z]{1,4}-\d{4}-\d{4}(?:\/\S+)? · /u;
+
+/**
+ * Eine Zeile je Gegenstand (Konzept Nachweisen n1 Runde 2): der Name, rechts der Zustand, darunter höchstens ein Fakt -
+ * was festgehalten ist. Kennzeichen und Prüfsumme stehen im Tooltip der Zeile, vollständig im PDF des Stands.
+ */
 function Liste({ zeilen, leer }: { zeilen: Zeile[]; leer: string }) {
-  if (zeilen.length === 0) return <p className="vp-ez-leise">{leer}</p>;
+  if (zeilen.length === 0) return <p className="vp-nw-leise">{leer}</p>;
   return (
-    <ul className="vp-mb-zeilen">
-      {zeilen.map((z) => (
-        <li key={z.key} data-testid={`mb-eingabe-${z.key}`}>
-          <span className="vp-mb-gegenstand">{z.titel}</span>
-          {z.zustand && <span className="vp-mb-zustand">{z.zustand}</span>}
-          <span className="vp-mb-text">{z.text}</span>
-          {z.pruefsumme && (
-            <span className="vp-mb-pruef" title={z.pruefsumme}>
-              Prüfsumme {M.pruefsummeKurz(z.pruefsumme)}
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
+    <NwZeilen>
+      {zeilen.map((z) => {
+        const kz = KENNZEICHEN_VORN.exec(z.titel)?.[0].replace(' · ', '') ?? null;
+        const hinweis = [kz, z.pruefsumme ? `Prüfsumme ${z.pruefsumme}` : null].filter(Boolean).join(' · ');
+        return (
+          <div key={z.key} title={hinweis || undefined} data-testid={`mb-eingabe-${z.key}`}>
+            <NwZeile
+              titel={z.titel.replace(KENNZEICHEN_VORN, '')}
+              kurz
+              unter={z.text && z.text !== '—' ? z.text : undefined}
+              rechts={z.zustand ? <Fakt>{z.zustand}</Fakt> : undefined}
+            />
+          </div>
+        );
+      })}
+    </NwZeilen>
   );
 }
 
 function Vorige({ a }: { a: M.MbAbzug }) {
   const v = a.vorige_beschluesse;
-  if (!v || !v.managementbewertung) return <p className="vp-ez-satz" data-testid="mb-vorige-keine">{v?.satz ?? M.KEINE_VORIGE}</p>;
+  if (!v || !v.managementbewertung) return <p className="vp-nw-leise" data-testid="mb-vorige-keine">{v?.satz ?? M.KEINE_VORIGE}</p>;
   const mb = v.managementbewertung;
   return (
     <>
@@ -184,24 +199,14 @@ function Vorige({ a }: { a: M.MbAbzug }) {
         text: v.beschluesse.length === 1 ? '1 Beschluss' : `${v.beschluesse.length} Beschlüsse`,
         pruefsumme: mb.pruefsumme,
       }]} />
-      {/* MG6 (R14): jeder Beschluss der vorigen mit seinen Folgen und deren Zustand von heute — oder dem Satz ohne Folge. */}
-      <ul className="vp-mb-zeilen vp-mb-vorige" data-testid="mb-vorige-beschluesse">
+      {/* MG6 (R14): jeder Beschluss der vorigen mit dem Zustand seiner Folgen von heute - oder „ohne Folge“. */}
+      <NwZeilen testId="mb-vorige-beschluesse">
         {v.beschluesse.map((b) => (
-          <li key={b.kennung} data-testid={`mb-vorig-${b.kennung}`}>
-            <span className="vp-mb-gegenstand">{`${b.kennung} · ${M.BESCHLUSS_ART_WORT[b.art] ?? b.art}${b.entschieden_von ? ` · entschieden von ${b.entschieden_von}` : ''}`}</span>
-            <span className="vp-mb-text">{b.wortlaut}</span>
-            {b.folgen.length > 0 ? (
-              <ul className="vp-em-kurzliste">
-                {b.folgen.map((f) => (
-                  <li key={`${f.art}/${f.objekt}/${f.wie}`}>{M.folgeZeile(f)}</li>
-                ))}
-              </ul>
-            ) : (
-              <span className="vp-ez-leise">{b.satz ?? '—'}</span>
-            )}
-          </li>
+          <div key={b.kennung} title={b.kennung} data-testid={`mb-vorig-${b.kennung}`}>
+            <NwZeile titel={b.wortlaut} kurz rechts={<Fakt>{beschlussZustand(b).wort}</Fakt>} />
+          </div>
         ))}
-      </ul>
+      </NwZeilen>
     </>
   );
 }
@@ -214,9 +219,9 @@ function Grundlagen({ a }: { a: M.MbAbzug }) {
         const g = M.grundlage(a, art);
         return (
           <div key={art} className="vp-mb-grundlage" data-testid={`mb-grundlage-${art}`}>
-            <h4>{WORT[art]}</h4>
+            <Unterkopf>{WORT[art]}</Unterkopf>
             {g.satz ? (
-              <p className="vp-ez-leise">{g.satz}</p>
+              <p className="vp-nw-leise">{g.satz}</p>
             ) : (
               <Liste leer="—" zeilen={g.dokumente.map((d) => ({
                 key: d.dokument,
@@ -229,7 +234,7 @@ function Grundlagen({ a }: { a: M.MbAbzug }) {
           </div>
         );
       })}
-      {aufgaben && <p className="vp-ez-satz" data-testid="mb-aufgaben">{aufgaben}</p>}
+      {aufgaben && <p className="vp-nw-leise" data-testid="mb-aufgaben">{aufgaben}</p>}
     </>
   );
 }
@@ -243,20 +248,14 @@ const WORT: Record<string, string> = {
 
 function Quellen({ a }: { a: M.MbAbzug }) {
   const q = a.quellenverzeichnis ?? [];
-  if (q.length === 0) return <p className="vp-ez-leise">—</p>;
   return (
-    <details className="vp-mb-quellen">
-      <summary>{q.length === 1 ? '1 Quelle' : `${q.length} Quellen`}</summary>
-      <ul className="vp-mb-zeilen">
-        {q.map((x) => (
-          <li key={`${x.art}/${x.kennzeichen}/${x.version ?? ''}/${x.fassung ?? ''}`}>
-            <span className="vp-mb-gegenstand">{`${x.kennzeichen}${x.name_zum_datenstand ? ` · ${x.name_zum_datenstand}` : ''}`}</span>
-            <span className="vp-mb-text">
-              {[x.version !== null ? `Nr. ${x.version}` : null, x.fassung !== null ? `Fassung ${x.fassung}` : null].filter(Boolean).join(' · ') || '—'}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </details>
+    <Liste
+      leer="—"
+      zeilen={q.map((x) => ({
+        key: `${x.art}/${x.kennzeichen}/${x.version ?? ''}/${x.fassung ?? ''}`,
+        titel: x.name_zum_datenstand ?? x.kennzeichen,
+        text: [x.version !== null ? `Nr. ${x.version}` : null, x.fassung !== null ? `Fassung ${x.fassung}` : null].filter(Boolean).join(' · ') || '—',
+      }))}
+    />
   );
 }

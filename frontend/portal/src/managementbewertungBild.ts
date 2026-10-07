@@ -70,11 +70,24 @@ export function beschlussZustand(b: Pick<ManagementbewertungBeschluss, 'folgen'>
 export const folgenZustaende = (mb: Pick<Managementbewertung, 'beschluesse'>): ZustandArt[] =>
   [...mb.beschluesse].sort((a, b) => a.nr - b.nr).map((b) => beschlussZustand(b).art);
 
-/** Kürzt einen Titel am ersten Komma, Semikolon oder an einer Klammer („Druckluft: Leckagen jährlich orten, 2029 …“). */
-const bisKomma = (t: string) => t.split(/,| \(|;/u)[0].trim();
+/**
+ * Kürzt einen Satz am ersten Komma oder Semikolon außerhalb einer Klammer („Druckluft: Leckagen jährlich orten, 2029 …“,
+ * „Energiepolitik um Einkauf und Planung ergänzen; neue Fassung …“); „Der Anwendungsbereich (D-0002, Fassung 1) bleibt
+ * unverändert.“ bleibt ganz. Ein Punkt am Ende fällt weg.
+ */
+export function bisKomma(t: string): string {
+  let tiefe = 0;
+  for (let i = 0; i < t.length; i++) {
+    const z = t[i];
+    if (z === '(') tiefe++;
+    else if (z === ')') tiefe = Math.max(0, tiefe - 1);
+    else if ((z === ',' || z === ';') && tiefe === 0) return t.slice(0, i).trim();
+  }
+  return t.trim().replace(/\.$/u, '');
+}
 
 /** Die Jahre einer Zielperiode („2029-03/2029-12“ → „2029“, „2029-07/2030-06“ → „2029–2030“); sonst die Angabe selbst. */
-function jahre(angabe: string): string {
+export function jahre(angabe: string): string {
   const j = [...angabe.matchAll(/(?<!\d)(\d{4})-\d{2}/gu)].map((m) => m[1]);
   if (!j.length) return angabe;
   return j[0] === j[j.length - 1] ? j[0] : `${j[0]}–${j[j.length - 1]}`;
@@ -160,12 +173,15 @@ export type MbNaechstes = {
 };
 
 /**
- * Der eine nächste Schritt im Reiter: ein Entwurf wird vorbereitet („Öffnen“); fehlt die Managementbewertung des Vorjahrs,
- * ist sie anzulegen; sonst kann die des laufenden Jahres noch nicht beginnen - gestrichelt, mit der Frist aus der
- * Wiedervorlage und „ab Januar …“, ohne Knopf. `heute` ist der Tag der Route.
+ * Der eine nächste Schritt im Reiter: ein Entwurf wird vorbereitet („Öffnen“); fehlt die Managementbewertung des Vorjahrs
+ * und gibt es keine spätere, ist sie anzulegen; sonst kann die nächste noch nicht beginnen - gestrichelt, mit der Frist aus
+ * der Wiedervorlage und „ab Januar …“, ohne Knopf. Die nächste ist die des laufenden Jahres, oder die nach der jüngsten,
+ * wenn es die schon gibt. `heute` ist der Tag der Route.
  */
 export function mbNaechstes(liste: readonly Pick<Bericht, 'kennung' | 'zeitraum' | 'neueste_nr'>[], naechste: NaechsteManagementbewertung | null, heute: string): MbNaechstes {
-  const jahr = Number(heute.slice(0, 4));
+  const jahre = liste.map((b) => Number(b.zeitraum)).filter((j) => Number.isFinite(j));
+  const juengste = jahre.length ? Math.max(...jahre) : null;
+  const jahr = Math.max(Number(heute.slice(0, 4)), juengste !== null ? juengste + 1 : 0);
   const frist = naechste?.faellig_am ?? null;
   const entwurf = liste.find((b) => !b.neueste_nr);
   if (entwurf) {
@@ -178,7 +194,7 @@ export function mbNaechstes(liste: readonly Pick<Bericht, 'kennung' | 'zeitraum'
       kennung: entwurf.kennung,
     };
   }
-  if (!liste.some((b) => b.zeitraum === String(jahr - 1))) {
+  if (juengste === null || juengste < jahr - 1) {
     return {
       art: 'als_naechstes',
       frist: frist ? { wort: frist < heute ? 'seit' : 'bis', tag: frist, ton: frist < heute ? 'ueber' : 'bald' } : null,

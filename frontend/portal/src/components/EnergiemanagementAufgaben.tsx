@@ -96,12 +96,13 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
     </span>
   );
 
+  // Am Rechner mit Kürzel (Mock r2d-T1); im Blatt am Telefon steht der Name allein (Blatt ≤ 35 Wörter).
   const personenListe = (
     <NwZeilen testId="personen-liste">
       {leute.map((z) => (
         <NwZeile
           key={z.person.id}
-          vorn={<Kuerzel personen={[{ name: z.person.name, kuerzel: z.person.kuerzel }]} />}
+          vorn={isPhone ? undefined : <Kuerzel personen={[{ name: z.person.name, kuerzel: z.person.kuerzel }]} />}
           titel={z.person.name}
           unter={z.person.funktion}
           rechts={T.personFakt(z) ? <Fakt>{T.personFakt(z)}</Fakt> : undefined}
@@ -200,32 +201,41 @@ export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPer
                 />
                 {darf && z.gilt_ab <= tag && (
                   <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-                    <Button variant="ghost" size="sm" onClick={() => setBeenden(z)} data-testid="zuordnung-beenden">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setBlatt(null);
+                        setBeenden(z);
+                      }}
+                      data-testid="zuordnung-beenden"
+                    >
                       {E.KNOPF_BEENDEN}
                     </Button>
                   </EinsichtRecht>
                 )}
               </div>
             ))}
-            {darf && (
-              <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-                <Button variant={offen.ohnePerson ? 'primary' : 'outline'} onClick={() => setZuordnen({ aufgabe: offen.aufgabe })} data-testid="aufgabe-zeile-zuordnen" data-entscheid-schritt>
-                  {E.KNOPF_ZUORDNEN}
-                </Button>
-              </EinsichtRecht>
-            )}
+            {/* Mit „Einsicht“ steht hier der Leer-Satz statt des Knopfs (R6); ohne Recht und ohne Einsicht nichts. */}
+            <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+              <Button
+                variant={offen.ohnePerson ? 'primary' : 'outline'}
+                onClick={() => {
+                  setBlatt(null);
+                  setZuordnen({ aufgabe: offen.aufgabe });
+                }}
+                data-testid="aufgabe-zeile-zuordnen"
+                data-entscheid-schritt
+              >
+                {E.KNOPF_ZUORDNEN}
+              </Button>
+            </EinsichtRecht>
           </div>
         )}
       </NwBlatt>
+      {/* „Person anlegen“ steht am Telefon im Menü „…“. */}
       <NwBlatt open={blatt === 'personen'} titel={T.PERSONEN} onClose={() => setBlatt(null)} testId="personen-blatt">
         {personenListe}
-        {darf && (
-          <div className="vp-nw-blatt-zeile">
-            <Button variant="outline" onClick={() => setPersonDialog(true)} data-testid="aufgaben-person-anlegen">
-              {E.KNOPF_PERSON}
-            </Button>
-          </div>
-        )}
       </NwBlatt>
       <NwBlatt open={blatt === 'tag'} titel="Stand am" onClose={() => setBlatt(null)} testId="aufgaben-tag-blatt">
         <VpDatePicker
