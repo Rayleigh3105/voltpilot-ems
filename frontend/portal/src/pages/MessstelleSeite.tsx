@@ -1,7 +1,8 @@
 import { geplantFuerText } from '../uemsMessplanung';
 import { clearWerteCache } from '../uemsWerteCache';
 import { Ablesungen } from '../components/Ablesungen';
-import { RechteStandort } from '../rollen';
+import { AblesungDialog } from '../components/AblesungDialog';
+import { RechteStandort, useRollen } from '../rollen';
 import { Recht } from '../components/Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
@@ -10,12 +11,16 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
   ApiError,
+  type Ablesung,
+  type AblesungAntwort,
   type Kostenstelle,
   type Messstelle,
+  type MessstelleFormel,
   type MessstelleProzessZuordnung,
   type MessstellenRegister,
   type MessstelleQuellenListe,
   type MessstelleVerteilungAnteil,
+  type MessstelleWerte,
   type OrtsbaumAmStichtag,
   type Prozess,
   type StandorteAmStichtag,
@@ -26,46 +31,77 @@ import { ZaehlerwechselVerlauf } from '../components/ZaehlerwechselVerlauf';
 import { ZaehlerwechselDialog } from '../components/ZaehlerwechselDialog';
 import type { WechselZiel } from '../zaehlerwechsel';
 import { QuelleKarte } from '../components/QuelleKarte';
+import { SummenwertFormelDialog } from '../components/SummenwertFormelDialog';
 import { VergleichBefund } from '../components/VergleichBefund';
 import type { Schritt } from '../messstelleDialog';
-import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
-import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
+import { PROTOKOLL_LABEL, ProtokollDialog } from '../components/ProtokollDialog';
+import { useProtokoll } from '../components/ProtokollListe';
 import { ErrorState, Skeleton } from '../components/States';
 import { WagoKarte } from '../components/WagoKarte';
 import { kannKartenangabenHaben } from '../wagoKarte';
-import { WerteSektion } from '../components/WerteSektion';
+import { WerteSektion, type WerteSeite } from '../components/WerteSektion';
 import { wahlHash } from '../uemsVergleich';
 import { ZuordnungAendernDialog } from '../components/ZuordnungAendernDialog';
-import { UEMS_WERTE } from '../glossar';
-import { lebenszyklusWort, zeileWoerter, type Lebenszyklus } from '../messstellen';
+import { KorrekturenDialog } from '../components/KorrekturenDialog';
+import { MessstelleKacheln } from '../components/MessstelleKacheln';
+import { BegriffAufklapper } from '../components/BegriffAufklapper';
+import { RowMenu, type RowMenuItem } from '../components/RowMenu';
+import { UEMS_WERTE, UEMS_WOHER_DIE_WERTE } from '../glossar';
+import { zeileWoerter } from '../messstellen';
 import {
-  AENDERN_AB,
   AENDERN_TITEL,
   aenderbar,
   BEARBEITEN,
   bestandAus,
-  elektrischKarte,
   gespeichertSatz,
   HISTORIE,
-  kopf,
   LADEFEHLER,
   MESSSTELLE_PROTOKOLL_ACHSE,
   namenAus,
   NICHT_GEFUNDEN,
-  organisationKarte,
-  ortKarte,
   ZUR_LISTE,
+  zuordnungZeilen,
   type AendernArt,
   type Kataloge,
   type KartenZeile,
-  type ZuordnungsKarte,
 } from '../messstelleZuordnung';
+import {
+  ABLESUNG_EINTRAGEN,
+  AENDERN,
+  ablesungKachel,
+  ablesungZeilen,
+  FORMEL_AENDERN,
+  FORMEL_NICHT_ABRUFBAR,
+  NUR_LESEN,
+  fussSatz,
+  hatMenge,
+  herkunftAus,
+  herkunftKarte,
+  KORREKTUREN_UND_ERSATZWERTE,
+  leitKachel,
+  monatPlus,
+  monatsTage,
+  protokollSatz,
+  rolle,
+  seitenKopf,
+  standKachel,
+  statusZeile,
+  werteStart,
+  ZAEHLER_VERBINDEN,
+  ZUORDNUNG,
+  ZUSAMMENGESETZT_AUS,
+  type Herkunft,
+} from '../messstelleSeite';
 import { quelleKarte, type BindungsRolle, type QuelleGroesseKarte } from '../quelleBinden';
-import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
+import { datumText, lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
+import { ZURUECK_ZU_HEUTE } from '../standAm';
 import { boxAmGeraet, boxWechselAmGeraet } from '../boxAnQuelle';
 import { useBoxenAnQuellen } from '../useBoxenAnQuellen';
-import { nebengroessen, periodeAus } from '../uemsWerteKarte';
+import { nebengroessen, periodeAus, quellenNamen } from '../uemsWerteKarte';
 import { useMessenEinstieg } from '../messenEinstieg';
+import { sprungziel, zoneSatz, type Zeitraum, ZEITRAEUME } from '../uemsOberflaechen';
+import { wirksameAblesungen } from '../werteEingabe';
+import { datumVon, isoMonat } from '../picker/datum';
 import './MessstelleSeite.css';
 
 interface Stamm {
@@ -76,29 +112,22 @@ interface Stamm {
 }
 
 /**
- * Die Messstellen-Seite (UEMS AP-04 IP-8, Mockups R2 · Z4): Kopf mit Zustand und Quelle, drei
- * Zuordnungs-Karten Ort · Elektrisch · Organisation mit „Ändern ab …“ und der Historie je Karte,
- * darunter das Änderungsprotokoll nach dem Muster des Befehls-Verlaufs.
+ * Die Seite einer Messstelle (Konzept Messen m1, §6.4/§6.5, Captain-Freigabe 05.10.2026; Messen-Bau m2 PR2): oben
+ * steht, ob die Messstelle aktuell ist und der eine nächste Schritt („Ablesung eintragen“ bei einem Ablesezähler);
+ * darunter der Verbrauch als Kachel, die Monate als Balken, die Ablesungen (neueste zuerst), EINE Karte „Zuordnung“,
+ * woher die Werte kommen und der Verweis auf das Änderungsprotokoll. Am Rechner Kacheln über die volle Breite, darunter
+ * zwei Spalten: links Werte und Ablesungen, rechts Zuordnung, Herkunft und Protokoll. Die Zone steht einmal am Fuß
+ * (Entscheid 6).
  *
- * Sie liest `GET /api/v1/messstellen/{id}` (Orte, Stellungen), `…/prozesse`, `…/verteilung`, das
- * Register von heute (Zustand, Quelle, „Unterzähler von …“), Standorte und Ortsbäume (Namen) und
- * die Kataloge Prozesse/Kostenstellen; das Protokoll `…/aenderungen?achse=eintrag`. Jede Ableitung
- * steht in `messstelleZuordnung.ts`; hier wird nur geladen und gerendert. Nach jedem Eintrag liest
- * die Seite neu — Karten, Historie und Protokoll zeigen dann den Stand des Servers.
+ * Sie liest `GET /api/v1/messstellen/{id}` (Orte, Stellungen), `…/prozesse`, `…/verteilung`, `…/quellen`, das Register
+ * von heute (Zustand, Quelle, letzter Wert, nächste Ablesung), die Monatsreihe der Werte (Leitkachel, Ablesungen),
+ * die Ablesungen eines Ablesezählers, die Formel einer berechneten Messstelle, Standorte und Ortsbäume (Namen) und die
+ * Kataloge Prozesse/Kostenstellen. Jede Ableitung steht in `messstelleSeite.ts` und `messstelleZuordnung.ts`; hier
+ * wird nur geladen und gerendert. Nach jedem Eintrag liest die Seite neu.
  *
- * Das Ziel des Registers (`#/portfolio/messstellen/{id}`, `#/standort/{sid}/messstellen/{id}`).
- *
- * Über den Zuordnungs-Karten steht seit AP-04 IP-14 die QUELLE-KARTE (`components/QuelleKarte.tsx`,
- * abgeleitet in `quelleBinden.ts` aus `GET …/quellen`): je Messgröße die führende Quelle und jede
- * Vergleichsquelle mit ihren Werten NEBENEINANDER (E3), die Historie der führenden Quellen mit jeder
- * Lücke, und die Einstiege „Quelle binden“ · „Vergleichsquelle hinzufügen“ (`QuelleBindenDialog`).
- *
- * Direkt unter dem Kopf steht der Abschnitt „Werte“ (UEMS AP-13 IP-3, E9 = A): die `WerteSektion`, die
- * auch der Dialog an den Gesamtwert-Karten öffnet — hier wohnt die Zahl einer Messstelle. Periode und
- * Version kommen aus der Adresse (`?periode=2026-10-25&version=2`); mit einer Periode holt die Seite den
- * Abschnitt in den Blick, und jede neue Wahl meldet sie dem Wirt, der die Adresse nachschreibt.
- *
- * Eine Adresse darf seit AP-13 IP-11 auch das KENNZEICHEN nennen — siehe {@link KENNZEICHEN_ADRESSE}.
+ * Das Ziel des Registers (`#/portfolio/messstellen/{id}`, `#/standort/{sid}/messstellen/{id}`); eine Adresse darf auch
+ * das KENNZEICHEN nennen ({@link KENNZEICHEN_ADRESSE}). Periode und Version der Werte kommen aus der Adresse
+ * (`?periode=2026-10-25&version=2`); mit einer Periode holt die Seite die Werte in den Blick.
  */
 
 /**
@@ -110,19 +139,18 @@ const KENNZEICHEN_ADRESSE = /^MS-[0-9A-Za-z]+$/;
 
 export function MessstelleSeite(props: MessstelleSeiteProps) {
   const alsKennzeichen = KENNZEICHEN_ADRESSE.test(props.id);
-  const [id, setId] = useState<string | 'fehlt' | null>(alsKennzeichen ? null : props.id);
+  // Die Auflösung gehört zu GENAU einer Adresse: beim Wechsel zu einem anderen Kennzeichen steht sonst für einen
+  // Augenblick die vorige Messstelle da (Messen-Bau m2, gefunden im Browser).
+  const [aufgeloest, setAufgeloest] = useState<{ fuer: string; id: string | 'fehlt' } | null>(null);
+  const id: string | 'fehlt' | null = !alsKennzeichen ? props.id : aufgeloest?.fuer === props.id ? aufgeloest.id : null;
 
   useEffect(() => {
-    if (!alsKennzeichen) {
-      setId(props.id);
-      return;
-    }
+    if (!alsKennzeichen) return;
     let aktiv = true;
-    setId(null);
     api.messstellenRegister().then(
-      (r) => aktiv && setId(r.register.find((z) => z.kennzeichen === props.id)?.id ?? 'fehlt'),
+      (r) => aktiv && setAufgeloest({ fuer: props.id, id: r.register.find((z) => z.kennzeichen === props.id)?.id ?? 'fehlt' }),
       // Ohne Register ist das Kennzeichen nicht aufzulösen — dann sagt die Seite das, statt leer zu bleiben.
-      () => aktiv && setId('fehlt'),
+      () => aktiv && setAufgeloest({ fuer: props.id, id: 'fehlt' }),
     );
     return () => {
       aktiv = false;
@@ -153,14 +181,22 @@ export function MessstelleSeite(props: MessstelleSeiteProps) {
 interface MessstelleSeiteProps {
   id: string;
   zone?: string;
-  /** Periode und Version der Adresse für den Abschnitt „Werte“. */
-  werte?: { periode: string | null; version: number | null; vergleich: string | null } | null;
+  /**
+   * Periode und Version der Adresse für den Abschnitt „Werte“; `stand` = aus „Stand an einem Tag ansehen“ geöffnet: die
+   * Seite liest diesen Tag und bietet keinen Schreibweg (wie die Liste, `standAm.ts`).
+   */
+  werte?: { periode: string | null; version: number | null; vergleich: string | null; stand?: string | null } | null;
   /** Die neu gewählte Periode der Werte (`JJJJ-MM-TT` bzw. `JJJJ-MM`). */
   onWerteZeitraum?: (periode: string) => void;
   /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters — der Wirt schreibt sie als `v=` in die Adresse. */
   onWerteVergleich?: (v: string | null) => void;
   onListe: () => void;
+  /** „Zurück zu heute“ aus „Stand am …“ (dieselbe Seite ohne Tag). */
+  onHeute?: () => void;
 }
+
+/** Die Zeiträume der Werte je Herkunft: ein Ablesezähler hat keine Tages- und Wochenwerte. */
+const ZEITRAEUME_ABLESUNG: readonly Zeitraum[] = ['monat', 'jahr'];
 
 function MessstelleSeiteMitId({
   id,
@@ -169,8 +205,13 @@ function MessstelleSeiteMitId({
   onWerteZeitraum,
   onWerteVergleich,
   onListe,
+  onHeute,
 }: MessstelleSeiteProps) {
   const messenEinstieg = useMessenEinstieg();
+  // Aus „Stand am …“: der Tag, den die Seite liest - dann nur lesend (Review r4 S4).
+  const standAm = werte?.stand ?? null;
+  const nurLesen = standAm !== null;
+  const rollen = useRollen();
   const [stamm, setStamm] = useState<Stamm | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
   const [register, setRegister] = useState<MessstellenRegister | null>(null);
@@ -191,6 +232,22 @@ function MessstelleSeiteMitId({
   const [wechselStand, setWechselStand] = useState(0);
   const [quellen, setQuellen] = useState<MessstelleQuellenListe | null>(null);
   const [binden, setBinden] = useState<{ rolle: BindungsRolle; ziel: QuelleBindenZiel } | null>(null);
+  // Messen m2: die Monatsreihe der Leitkachel, die Ablesungen, die Formel, das Protokoll im Dialog.
+  const [serie, setSerie] = useState<MessstelleWerte | null>(null);
+  const [serieGelesen, setSerieGelesen] = useState(false);
+  const [ablesungen, setAblesungen] = useState<Ablesung[] | null>(null);
+  const [ablesungenFehler, setAblesungenFehler] = useState(false);
+  const [ablesungenNeu, setAblesungenNeu] = useState(0);
+  const [ablesungDialog, setAblesungDialog] = useState<{ alt: Ablesung | null } | null>(null);
+  const [ablesungAntwort, setAblesungAntwort] = useState<AblesungAntwort | null>(null);
+  const ablesungAusloeser = useRef<HTMLElement | null>(null);
+  // `null` = lädt, `'fehler'` = gerade nicht abrufbar (nie ewig „wird geladen“).
+  const [formel, setFormel] = useState<MessstelleFormel | null | 'fehler'>(null);
+  const [formelVersuch, setFormelVersuch] = useState(0);
+  const [formelDialog, setFormelDialog] = useState(false);
+  const [kanalNamen, setKanalNamen] = useState<Record<string, string>>({});
+  const [protokollOffen, setProtokollOffen] = useState(false);
+  const [korrekturenOffen, setKorrekturenOffen] = useState(false);
   const protokoll = useProtokoll({ art: 'messstelle', id }, { achse: MESSSTELLE_PROTOKOLL_ACHSE, anlegeSatz: true });
 
   useEffect(() => {
@@ -210,7 +267,7 @@ function MessstelleSeiteMitId({
       ([messstelle, prozesse, anteile]) => aktiv && setStamm({ messstelle, prozesse, anteile }),
       (e) => aktiv && setStammFehler(e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler'),
     );
-    api.messstellenRegister().then(
+    api.messstellenRegister(standAm ? { stichtag: standAm } : {}).then(
       (r) => {
         if (!aktiv) return;
         setRegister(r);
@@ -227,7 +284,7 @@ function MessstelleSeiteMitId({
     return () => {
       aktiv = false;
     };
-  }, [id, versuch]);
+  }, [id, versuch, standAm]);
 
   // Die Namen und Kataloge ändern sich durch einen Eintrag nicht — sie werden einmal gelesen.
   useEffect(() => {
@@ -265,6 +322,107 @@ function MessstelleSeiteMitId({
     [namen, prozessKatalog, kostenstellen],
   );
 
+  const m = stamm?.messstelle ?? null;
+  const zeile = m ? (zeilen.find((r) => r.id === m.id) ?? null) : null;
+  const heute: Tag = register?.stichtag ?? standAm ?? lokalerTag(new Date().toISOString(), zone);
+  const standortZone = standorte?.standorte.find((s) => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone;
+  const herkunft: Herkunft = m ? herkunftAus(zeile, m) : 'keine';
+  const haupt = zeile?.hauptgroesse ?? m?.hauptgroesse ?? null;
+  // Seit wann die erste führende Quelle gilt - eine eben eingerichtete Messstelle öffnet dort, wo es Werte gibt.
+  const quelleSeit: Tag | null = useMemo(() => {
+    if (herkunft === 'ablesung') return zeile?.quelle.ablesung ? lokalerTag(zeile.quelle.ablesung.seit, standortZone) : null;
+    const ab = (quellen?.quellen ?? []).filter((q) => q.rolle === 'fuehrend').map((q) => q.gueltig_ab).sort()[0];
+    return ab ? lokalerTag(ab, standortZone) : null;
+  }, [herkunft, zeile, quellen, standortZone]);
+  const start = werteStart({ heute, herkunft, quelleSeit });
+  const leitMonat = start.art === 'monat' ? start.wert : start.wert.slice(0, 7);
+  const mitMenge = hatMenge(haupt);
+  const kennzeichen = m?.kennzeichen ?? null;
+
+  // Die Monatsreihe der Leitkachel: dreizehn Monate bis zu ihrem Monat (der Vorjahresmonat gehört dazu).
+  useEffect(() => {
+    if (!kennzeichen || !registerGelesen || !mitMenge) {
+      setSerieGelesen(true);
+      return;
+    }
+    let aktiv = true;
+    setSerieGelesen(false);
+    const { von, bis } = monatsTage(monatPlus(leitMonat, -12), leitMonat);
+    api.messstelleWerte(kennzeichen, 'monat', von, bis).then(
+      (s) => {
+        if (!aktiv) return;
+        setSerie(s ?? null);
+        setSerieGelesen(true);
+      },
+      () => {
+        if (!aktiv) return;
+        setSerie(null);
+        setSerieGelesen(true);
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [kennzeichen, registerGelesen, mitMenge, leitMonat, versuch]);
+
+  // Ablesbar ist eine gemessene Messstelle mit Zählerstand ohne führende Gerätequelle (wie bisher die Ablesungen).
+  const ablesbar = Boolean(
+    m && quellen && m.art === 'gemessen' && haupt?.wertart === 'Zählerstand' && !quellen.quellen.some((q) => q.rolle === 'fuehrend'),
+  );
+  useEffect(() => {
+    if (!kennzeichen || !ablesbar) return;
+    let aktiv = true;
+    setAblesungenFehler(false);
+    api.ablesungen(kennzeichen).then(
+      (a) => aktiv && setAblesungen(a),
+      () => aktiv && setAblesungenFehler(true),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [kennzeichen, ablesbar, ablesungenNeu]);
+
+  // Eine berechnete Messstelle: woraus sie zusammengesetzt ist (§6.4 Punkt 10), mit den Namen der Messwerte.
+  useEffect(() => {
+    if (!m || m.art !== 'berechnet') return;
+    let aktiv = true;
+    setFormel(null);
+    api.messstelleFormel(m.id).then(
+      (f) => {
+        if (!aktiv) return;
+        setFormel(f);
+        const anlage = zeile?.elektrische_stellung?.anlage;
+        const komponenten = [...new Set(f.terme.map((t) => t.entity_id).filter((e): e is string => Boolean(e)))];
+        if (!anlage || komponenten.length === 0) return;
+        // D5: ein Messwert heißt nach seiner Komponente im Aufbau der Anlage - nie nach ihrer Kennung. Ohne Namen bleibt
+        // „Messwert einer Komponente“.
+        api.siteEntities(anlage).then(
+          (aufbau) => {
+            const namen = new Map(aufbau.entities.map((e) => [e.id, e.label || e.typeLabel]));
+            for (const k of komponenten) {
+              const komponente = namen.get(k);
+              if (!komponente) continue;
+              api.komponenteMesskanaele(anlage, k).then(
+                (l) =>
+                  aktiv &&
+                  setKanalNamen((alt) => ({
+                    ...alt,
+                    ...Object.fromEntries(l.messkanaele.map((c) => [`${k}|${c.kanal}`, `${komponente} · ${c.anzeigename ?? 'Messwert'}`])),
+                  })),
+                () => undefined,
+              );
+            }
+          },
+          () => undefined,
+        );
+      },
+      () => aktiv && setFormel('fehler'),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [m, zeile, versuch, formelVersuch]);
+
   // Ein Sprung mit Periode (Register, Herkunfts-Zeile) holt den Abschnitt „Werte“ in den Blick — einmal, und
   // nur so weit wie nötig: steht er schon im Bild, bleibt die Seite, wo sie ist.
   const werteRef = useRef<HTMLElement>(null);
@@ -278,7 +436,7 @@ function MessstelleSeiteMitId({
 
   // AP-13 IP-12 (L6): die Zuständigkeiten der Anlage dieser Messstelle — VOR den Leerbildern
   // gelesen, damit der Hook-Aufruf unbedingt bleibt. Ohne Anlage wird nichts gefragt.
-  const boxen = useBoxenAnQuellen([zeilen.find((r) => r.id === id)?.elektrische_stellung?.anlage]);
+  const boxen = useBoxenAnQuellen([zeile?.elektrische_stellung?.anlage]);
 
   const zurueck = (
     <button type="button" className="vp-mss-zurueck" onClick={onListe}>
@@ -304,7 +462,7 @@ function MessstelleSeiteMitId({
     );
   }
   // „heute“ ist der Stichtag des Servers (das Register von heute) — erst mit ihm stehen die Karten.
-  if (!stamm || !registerGelesen) {
+  if (!stamm || !m || !registerGelesen) {
     return (
       <div className="vp-mss" data-testid="messstelle-seite" aria-busy="true">
         {zurueck}
@@ -313,24 +471,18 @@ function MessstelleSeiteMitId({
     );
   }
 
-  const m = stamm.messstelle;
-  const heute: Tag = register?.stichtag ?? lokalerTag(new Date().toISOString(), zone);
-  const k = kopf(m);
-  const zeile = zeilen.find((r) => r.id === m.id) ?? null;
+  const k = seitenKopf(m, zeile);
   const w =
     zeile && register
       ? zeileWoerter(zeile, { ebene: { art: 'unternehmen', name: '' }, zone, zeitpunkt: register.zeitpunkt })
       : null;
+  const status = statusZeile(zeile);
   const bestand = bestandAus(m, stamm.prozesse, stamm.anteile);
-  const karten: ZuordnungsKarte[] = [
-    ortKarte(m, heute, namen),
-    elektrischKarte(m, heute, namen),
-    organisationKarte(stamm.prozesse, stamm.anteile, heute),
-  ];
-  const darfAendern = aenderbar(m);
-  const werteAnfang = periodeAus(werte?.periode);
-  const haupt = zeile?.hauptgroesse ?? m.hauptgroesse ?? null;
+  const zuordnung = zuordnungZeilen(m, stamm.prozesse, stamm.anteile, heute, namen);
+  const darfAendern = aenderbar(m) && !nurLesen;
+  const archiviert = m.lebenszyklus === 'archiviert';
   const neben = haupt ? nebengroessen(w, haupt) : null;
+  const r = rolle(haupt);
   const oeffneBearbeiten = (ab: Schritt) => {
     setBearbeitenAb(ab);
     setBearbeiten(true);
@@ -342,9 +494,9 @@ function MessstelleSeiteMitId({
   const quelleKarten: QuelleGroesseKarte[] = quellen
     ? quelleKarte(quellen, jetzt, boxen.karte, w?.quelle.art === 'ablesung' ? w.quelle.text : null)
     : [];
-  const oeffneBinden = (rolle: BindungsRolle) => (karte: QuelleGroesseKarte) =>
+  const oeffneBinden = (rolleWahl: BindungsRolle) => (karte: QuelleGroesseKarte) =>
     setBinden({
-      rolle,
+      rolle: rolleWahl,
       ziel: {
         art: 'messstelle',
         messstelleId: m.id,
@@ -355,243 +507,453 @@ function MessstelleSeiteMitId({
         anlageId: zeile?.elektrische_stellung?.anlage ?? null,
       },
     });
+  const hauptKarte = quelleKarten.find((q) => q.hauptgroesse) ?? quelleKarten[0] ?? null;
+
+  // Werte: womit sie öffnen (die Adresse zuerst) und was die Seite anbietet.
+  const zeitraeume = herkunft === 'ablesung' ? ZEITRAEUME_ABLESUNG : ZEITRAEUME;
+  const ausAdresse = periodeAus(werte?.periode);
+  // Ein Ablesezähler kennt Tag und Woche nicht: dann der Monat des Tags bzw. des Montags der Woche („2026-W43“ → Oktober).
+  const werteAnfang =
+    ausAdresse && !zeitraeume.includes(ausAdresse.art)
+      ? { art: 'monat' as Zeitraum, wert: ausAdresse.art === 'woche' ? isoMonat(datumVon(ausAdresse.wert, 'woche')!) : ausAdresse.wert.slice(0, 7) }
+      : (ausAdresse ?? start);
+  // Ablesungen: die Zeilen (neueste zuerst) und der Schritt oben.
+  // Mit „Stand am …“ nur die Ablesungen bis zu diesem Tag.
+  const wirksam = ablesungen
+    ? wirksameAblesungen(ablesungen).filter((a) => !standAm || lokalerTag(a.zeitpunkt, standortZone) <= standAm)
+    : [];
+  const ablesungsZeilen = haupt ? ablesungZeilen({ wirksam, einheit: haupt.einheit, zone: standortZone, serie }) : [];
+  const darfAblesen = ablesbar && !archiviert && !nurLesen && rollen.darf('ablesung.erfassen', zeile?.ort.standort_id ?? null);
+  const oeffneAblesung = (alt: Ablesung | null, ausloeser: HTMLElement | null) => {
+    ablesungAusloeser.current = ausloeser;
+    setAblesungDialog({ alt });
+  };
+
+  const seite: WerteSeite = {
+    zeitraeume,
+    titelId: 'vp-mss-werte-titel',
+    ton: r.ton,
+    titel: (art) =>
+      !mitMenge ? UEMS_WERTE : art === 'tag' ? `${r.wort} am Tag` : art === 'woche' ? `${r.wort} in der Woche` : `${r.wort} je Monat`,
+    onAblesen:
+      darfAblesen && herkunft === 'ablesung' && ablesungen
+        ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null)
+        : undefined,
+  };
+  // Der Fokus kehrt zum Auslöser zurück (Review r4 S23: nie auf `body`). Nach dem Speichern verschwindet ein Weg in Kachel
+  // oder Werten mit dem Neuladen („Ablesung eintragen ›“ am fehlenden Monat) - dann steht er auf der Bestätigung; nur der
+  // Schritt oben bleibt stehen und bekommt ihn zurück.
+  const schliesseAblesung = (gespeichert = false) => {
+    setAblesungDialog(null);
+    requestAnimationFrame(() => {
+      const ausloeser = ablesungAusloeser.current;
+      const bleibt = ausloeser?.isConnected && (!gespeichert || ausloeser.closest('.vp-mss-schritt') !== null);
+      const ziel = bleibt
+        ? ausloeser
+        : (document.querySelector<HTMLElement>('[data-testid="ablesung-antwort"]') ??
+          document.querySelector<HTMLElement>('.vp-mss-schritt button'));
+      ziel?.focus();
+    });
+  };
+
+  const leit =
+    mitMenge && serie
+      ? leitKachel({ serie, monat: leitMonat, rolle: r, herkunft, ablesenMoeglich: darfAblesen, namen: quellenNamen(zeile?.quelle) })
+      : null;
+  const stand = standKachel(zeile, standortZone, jetzt);
+  const naechste = ablesungKachel(zeile, standortZone, jetzt);
+  const herkunftsKarte = herkunftKarte({ herkunft, zeile, zone: standortZone, ablesungen: ablesungen ? wirksam.length : null });
+  const korrekturKontext =
+    quellen && zeile?.ort.standort_id && haupt?.einheit && m.art === 'gemessen' && !archiviert && !nurLesen
+      ? { quellen, standort: zeile.ort.standort_id, einheit: haupt.einheit }
+      : undefined;
+
+  const menue: RowMenuItem[] = [
+    ...(darfAendern ? [{ label: BEARBEITEN, icon: 'pencil' as const, recht: 'messstelle.bearbeiten', onClick: () => oeffneBearbeiten(1) }] : []),
+    ...(korrekturKontext ? [{ label: KORREKTUREN_UND_ERSATZWERTE, icon: 'list' as const, onClick: () => setKorrekturenOffen(true) }] : []),
+    { label: PROTOKOLL_LABEL, icon: 'history' as const, onClick: () => setProtokollOffen(true) },
+  ];
+  const nachEintrag = () => {
+    setVersuch((v) => v + 1);
+    protokoll.reload();
+  };
+  const ersteZeile = protokoll.seite?.eintraege[0] ?? null;
+  // Entscheid 6: die Zone einmal am Fuß - aus der Antwort der Werte, ohne sie die Zone des Standorts.
+  const fuss = fussSatz(
+    serie ? zoneSatz(serie.zeitzone, serie.zeitzone_herkunft, zeile?.ort.standort_name ?? null) : `Zeiten in ${standortZone}`,
+    jetzt,
+    standortZone,
+  );
 
   return (
     <RechteStandort.Provider value={zeile?.ort.standort_id ?? null}>
-    <div className="vp-mss" data-testid="messstelle-seite">
-      {zurueck}
-      <header className="vp-mss-kopf">
-        <div className="vp-mss-kopf-text">
-          <span className="vp-mss-kz">{k.kennzeichen}</span>
-          <h1>{k.titel}</h1>
-          <p>
-            {[k.unter, lebenszyklusWort(m.lebenszyklus as Lebenszyklus)].filter(Boolean).join(' · ')}
-          </p>
-          {w?.beobachtung && <p className={`vp-mss-beob is-${w.beobachtung.ton}`}>{w.beobachtung.text}</p>}
-          {/* AP-16 IP-20 (R5): ein eingelöster Messbedarf — „geplant für EE-8 …“; ersetzt weder Quelle noch Wert. */}
-          {geplantFuerText(zeile) && <p className="vp-mss-geplant" data-testid="messstelle-geplant-fuer">{geplantFuerText(zeile)}</p>}
-          {w?.quelle.art === 'gebunden' && (
-            // AP-13 IP-11 (D1): das Gerät der Quelle führt auf seine Komponente im Aufbau der Anlage - seit der Liste
-            // nach Konzept Messen m1 (die ganze Reihe ist ein Verweis) steht dieser Weg hier.
-            <p className="vp-mss-quelle">
-              Quelle:{' '}
-              {w.quelle.sprung ? (
-                <a className="vp-mss-quelle-sprung" href={w.quelle.sprung.hash}>
-                  {w.quelle.geraet}
-                </a>
-              ) : (
-                w.quelle.geraet
-              )}
-              {[w.quelle.messwert, w.quelle.seit].map((t) => ` · ${t}`).join('')}
+      <div className="vp-mss" data-testid="messstelle-seite">
+        {zurueck}
+        <header className="vp-mss-oben">
+          <div className="vp-mss-titel">
+            <h1>
+              {k.titel} <span className="vp-mss-kz">{k.kennzeichen}</span>
+            </h1>
+            <p className="vp-mss-unter">{[k.unter, k.lebenszyklus].filter(Boolean).join(' · ')}</p>
+            {/* AP-16 IP-20 (R5): ein eingelöster Messbedarf — „geplant für EE-8 …“; ersetzt weder Quelle noch Wert. */}
+            {geplantFuerText(zeile) && <p className="vp-mss-geplant" data-testid="messstelle-geplant-fuer">{geplantFuerText(zeile)}</p>}
+            {standAm && (
+              <div className="vp-mss-stand vp-k-farben" role="status" data-testid="messstelle-stand-am">
+                <span className="vp-k-marke is-plan">
+                  <Icon name="calendar" size={13} />
+                  Stand {datumText(standAm)}
+                </span>
+                <span className="vp-mss-leise">{NUR_LESEN}</span>
+                {onHeute && (
+                  <button type="button" className="vp-mss-link" onClick={onHeute}>
+                    {ZURUECK_ZU_HEUTE}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="vp-mss-menue">
+            <RowMenu label="Weitere Aktionen" items={menue} />
+          </div>
+          {status && (
+            <p className={`vp-mss-status is-${status.ton}`} data-testid="messstelle-status">
+              <span className="vp-mss-punkt" aria-hidden="true" />
+              <strong>{status.text}</strong>
             </p>
           )}
-          {w?.quelle.art === 'ablesung' && <p className="vp-mss-quelle">Quelle: {w.quelle.text}</p>}
-        </div>
-        {darfAendern && (
-          <Recht aktion="messstelle.bearbeiten"><Button variant="outline" onClick={() => oeffneBearbeiten(1)}>
-            {BEARBEITEN}
-          </Button></Recht>
-        )}
-      </header>
+          {/* Konzept §6.4 Punkt 3: bei Ablesezählern der EINE Schritt oben. Ohne Quelle stehen beide Wege gleichwertig in
+              „Woher die Werte kommen“ - ein Knopf hier oben bevorzugte das Ablesen. */}
+          {darfAblesen && herkunft === 'ablesung' && (
+            <div className="vp-mss-schritt">
+              <Button
+                variant="primary"
+                // Die Breite entscheidet das Stylesheet (Konzept §6.4 Punkt 3: am Telefon volle Breite, am Rechner im Kopf);
+                // ohne dies setzt der Knopf selbst „width: auto“ als Inline-Stil.
+                style={{ width: undefined }}
+                onClick={(e) => oeffneAblesung(null, e.currentTarget)}
+                disabled={!ablesungen}
+                // Konzept Wiedervorlage w1, Entscheid 7: der Schritt „Ablesung eintragen“ landet auf diesem Knopf -
+                // Ziel ist er erst mit den Ablesungen, die der Dialog zum Vergleich braucht.
+                data-entscheid={ablesungen ? 'zaehlerablesung' : undefined}
+                data-entscheid-schritt
+              >
+                <Icon name="pencil" size={16} />
+                {ABLESUNG_EINTRAGEN}
+              </Button>
+            </div>
+          )}
+        </header>
 
-      <section className="vp-mss-werte" aria-labelledby="vp-mss-werte-titel" data-testid="werte" ref={werteRef}>
-        <WerteSektion
-          key={wechselStand}
-          kennzeichen={m.kennzeichen}
-          // AP-01 E5 = A: „Daten kommen an“ → Messen-Assistent, Schritt 2 des Standorts dieser Messstelle.
-          onZuordnen={messenEinstieg && zeile?.ort.standort_id
-            ? () => messenEinstieg.oeffnen({ standortId: zeile.ort.standort_id, schritt: 2 })
-            : undefined}
-          messstelle={`${k.kennzeichen} · ${k.titel}`}
-          kopf={<h2 id="vp-mss-werte-titel">{UEMS_WERTE}</h2>}
-          anfang={werteAnfang}
-          // Die Version gehört zu GENAU der Periode der Adresse — ohne sie gibt es nichts zu wählen.
-          version={werteAnfang ? (werte?.version ?? null) : null}
-          heute={heute}
-          standortName={zeile?.ort.standort_name ?? null}
-          quelle={zeile?.quelle ?? null}
-          korrekturKontext={quellen && zeile?.ort.standort_id && haupt?.einheit && m.art === 'gemessen' && m.lebenszyklus !== 'archiviert'
-            ? { quellen, standort: zeile.ort.standort_id, einheit: haupt.einheit } : undefined}
-          herkunftKontext={zeile?.quelle.fuehrend && zeile.ort.standort_id ? {
-            deviceId: (zeitpunkt) => boxAmGeraet(boxen.karte, zeile.quelle.fuehrend?.geraet.id, zeitpunkt)?.boxId ?? null,
-            siteId: zeile.ort.standort_id,
-            entityId: zeile.quelle.fuehrend.komponente,
-            pointKey: zeile.quelle.fuehrend.kanal,
-            geraete: {
-              [zeile.quelle.fuehrend.geraet.id]: [
-                zeile.quelle.fuehrend.geraet.geraet,
-                zeile.quelle.fuehrend.geraet.einbau,
-                zeile.quelle.fuehrend.geraet.bezeichnung,
-              ].filter(Boolean).join(' · '),
-            },
-            boxen: Object.fromEntries(boxen.quellen.flatMap(q => (q.zeitraeume ?? [])
-              .filter(z => z.box.name)
-              .map(z => [z.box.id, z.box.name!] as const))),
-          } : undefined}
-          // AP-13 IP-12 (L6): Übergabe und Box-Tausch im Verlauf sprechen aus der Zeitachse der Zuständigkeiten.
-          boxWechsel={boxWechselAmGeraet(boxen.karte, zeile?.quelle.fuehrend?.geraet.id, boxen.quellen)}
-          // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).
-          register={zeilen}
-          medium={zeile?.medium}
-          vergleich={werte?.vergleich ?? null}
-          onVergleich={(w) => onWerteVergleich?.(wahlHash(w))}
-          onQuelleZuordnen={darfAendern ? () => oeffneBearbeiten(3) : undefined}
-          onZeitraum={onWerteZeitraum}
+        <MessstelleKacheln
+          leit={leit}
+          stand={stand}
+          ablesung={naechste}
+          laedt={mitMenge && !serieGelesen}
+          // Wie der Knopf oben: ein Weg erst mit den Ablesungen, die der Dialog zum Vergleich braucht.
+          onAblesen={darfAblesen && ablesungen ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null) : undefined}
         />
-        {/* V8: Nebengrößen haben keine Werte-Route — ihr letzter Wert aus dem Register, und wofür es Werte gibt. */}
-        {neben && (
-          <div className="vp-mss-neben" data-testid="werte-nebengroessen">
-            <h3>{neben.titel}</h3>
-            <ul>
-              {neben.zeilen.map((z) => (
-                <li key={z}>{z}</li>
-              ))}
-            </ul>
-            <p>{neben.satz}</p>
+
+        <div className="vp-mss-spalten">
+          <div className="vp-mss-spalte">
+            <section className="vp-mss-karte vp-mss-werte" aria-labelledby="vp-mss-werte-titel" data-testid="werte" ref={werteRef}>
+              <WerteSektion
+                key={wechselStand}
+                kennzeichen={m.kennzeichen}
+                seite={seite}
+                // AP-01 E5 = A: „Daten kommen an“ → Messen-Assistent, Schritt 2 des Standorts dieser Messstelle.
+                onZuordnen={messenEinstieg && zeile?.ort.standort_id && !nurLesen
+                  ? () => messenEinstieg.oeffnen({ standortId: zeile.ort.standort_id, schritt: 2 })
+                  : undefined}
+                messstelle={`${k.kennzeichen} · ${k.titel}`}
+                anfang={werteAnfang}
+                // Die Version gehört zu GENAU der Periode der Adresse — ohne sie gibt es nichts zu wählen.
+                version={ausAdresse ? (werte?.version ?? null) : null}
+                heute={heute}
+                standortName={zeile?.ort.standort_name ?? null}
+                quelle={zeile?.quelle ?? null}
+                korrekturKontext={korrekturKontext}
+                herkunftKontext={zeile?.quelle.fuehrend && zeile.ort.standort_id ? {
+                  deviceId: (zeitpunkt) => boxAmGeraet(boxen.karte, zeile.quelle.fuehrend?.geraet.id, zeitpunkt)?.boxId ?? null,
+                  siteId: zeile.ort.standort_id,
+                  entityId: zeile.quelle.fuehrend.komponente,
+                  pointKey: zeile.quelle.fuehrend.kanal,
+                  geraete: {
+                    [zeile.quelle.fuehrend.geraet.id]: [
+                      zeile.quelle.fuehrend.geraet.geraet,
+                      zeile.quelle.fuehrend.geraet.einbau,
+                      zeile.quelle.fuehrend.geraet.bezeichnung,
+                    ].filter(Boolean).join(' · '),
+                  },
+                  boxen: Object.fromEntries(boxen.quellen.flatMap(q => (q.zeitraeume ?? [])
+                    .filter(z => z.box.name)
+                    .map(z => [z.box.id, z.box.name!] as const))),
+                } : undefined}
+                // AP-13 IP-12 (L6): Übergabe und Box-Tausch im Verlauf sprechen aus der Zeitachse der Zuständigkeiten.
+                boxWechsel={boxWechselAmGeraet(boxen.karte, zeile?.quelle.fuehrend?.geraet.id, boxen.quellen)}
+                // AP-13 IP-5: der Vergleich braucht die Hauptgrößen der anderen Messstellen („passend“, O12).
+                register={zeilen}
+                medium={zeile?.medium}
+                vergleich={werte?.vergleich ?? null}
+                onVergleich={(v) => onWerteVergleich?.(wahlHash(v))}
+                onQuelleZuordnen={darfAendern ? () => oeffneBearbeiten(3) : undefined}
+                onZeitraum={onWerteZeitraum}
+              />
+              {/* V8: Nebengrößen haben keine Werte-Route — ihr letzter Wert aus dem Register, und wofür es Werte gibt. */}
+              {neben && (
+                <div className="vp-mss-neben" data-testid="werte-nebengroessen">
+                  <h3>{neben.titel}</h3>
+                  <ul>
+                    {neben.zeilen.map((z) => (
+                      <li key={z}>{z}</li>
+                    ))}
+                  </ul>
+                  <p>{neben.satz}</p>
+                </div>
+              )}
+            </section>
+
+            {ablesbar && haupt && (
+              <Ablesungen
+                kennzeichen={m.kennzeichen}
+                einheit={haupt.einheit}
+                zone={standortZone}
+                archiviert={archiviert}
+                nurLesen={nurLesen}
+                alle={ablesungen}
+                zeilen={ablesungsZeilen}
+                fehler={ablesungenFehler}
+                antwort={ablesungAntwort}
+                onErneut={() => setAblesungenNeu((n) => n + 1)}
+                onBerichtigen={(a, ausloeser) => oeffneAblesung(a, ausloeser)}
+              />
+            )}
+            {/* AP-16 IP-17 (G5): der Monatsvergleich je Vergleichsquelle — nur wo es eine gibt; ohne steht nichts. */}
+            {/* AP-16 IP-18: je Zeile „Toleranz ändern“ (messmittel.angaben am Standort der Messstelle). */}
+            {quellen?.quellen.some(q => q.rolle === 'vergleich') && <VergleichBefund kennzeichen={m.kennzeichen} messstelleId={m.id} />}
           </div>
-        )}
-      </section>
 
-      {quellen && m.art === 'gemessen' && haupt?.wertart === 'Zählerstand' && !quellen.quellen.some(q => q.rolle === 'fuehrend') && <Ablesungen onWirksam={() => { clearWerteCache(); setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} kennzeichen={m.kennzeichen} einheit={haupt.einheit} zone={standorte?.standorte.find(s => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone} archiviert={m.lebenszyklus === 'archiviert'} />}
-      {quelleKarten.length > 0 && (
-        <QuelleKarte
-          karten={quelleKarten}
-          darfBinden={darfAendern}
-          onBinden={oeffneBinden('fuehrend')}
-          onVergleich={oeffneBinden('vergleich')}
-          onWechsel={(karte) => {
-            const q = quellen?.groessen.find(g => g.groesse === karte.groesse.groesse && g.richtung === karte.groesse.richtung)?.fuehrend;
-            if (q?.geraet.id) setWechsel({ art: 'messstelle', id: m.id, kennzeichen: m.kennzeichen, geraetId: q.geraet.id, anlageId: q.anlage });
-          }}
-        />
-      )}
-      {/* AP-16 IP-17 (G5): der Monatsvergleich je Vergleichsquelle — nur wo es eine gibt; ohne steht nichts. */}
-      {/* AP-16 IP-18: je Zeile „Toleranz ändern“ (messmittel.angaben am Standort der Messstelle). */}
-      {quellen?.quellen.some(q => q.rolle === 'vergleich') && <VergleichBefund kennzeichen={m.kennzeichen} messstelleId={m.id} />}
+          <div className="vp-mss-spalte">
+            <section className="vp-mss-karte vp-mss-zuordnung" aria-labelledby="vp-mss-zuordnung-titel" data-testid="karte-zuordnung">
+              <div className="vp-mss-karte-kopf">
+                <h2 id="vp-mss-zuordnung-titel">{ZUORDNUNG}</h2>
+              </div>
+              <BegriffAufklapper begriff="zuordnung" />
+              {zuordnung.map((z) => (
+                <ZuordnungZeile
+                  key={z.art}
+                  zeile={z}
+                  darfAendern={darfAendern}
+                  gespeichert={gespeichert?.art === z.art ? gespeichert.satz : null}
+                  onAendern={() => {
+                    setGespeichert(null);
+                    setAendern(z.art);
+                  }}
+                />
+              ))}
+            </section>
 
-      {/* AP-05 IP-11: die Energiekarte — nur wo es eine WAGO-Komponente GIBT (sonst 404, nichts
-          gezeichnet). Die Verlauf-Marker der Box-Ereignisse hängen NICHT hieran; sie stehen oben
-          in der WerteSektion und erscheinen bei jeder Box, die sie meldet. */}
-      {quellen?.groessen[0]?.fuehrend
-        && kannKartenangabenHaben(quellen.groessen[0].fuehrend.geraet.hersteller) && (
-        <WagoKarte
-          anlageId={quellen.groessen[0].fuehrend.anlage}
-          standortId={zeile?.ort.standort_id ?? null}
-          entityId={quellen.groessen[0].fuehrend.komponente}
-          zone={standorte?.standorte.find(s => s.id === zeile?.ort.standort_id)?.zeitzone ?? zone}
-          einheit={haupt?.wertart === 'Zählerstand' ? haupt.einheit : null}
-          onGetauscht={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }}
-        />
-      )}
+            <section className="vp-mss-karte vp-mss-herkunft" aria-labelledby="vp-mss-herkunft-titel" data-testid="karte-herkunft">
+              <h2 id="vp-mss-herkunft-titel">{UEMS_WOHER_DIE_WERTE}</h2>
+              <p className="vp-mss-herkunft-titel">{herkunftsKarte.titel}</p>
+              {herkunftsKarte.satz && <p className="vp-mss-leise">{herkunftsKarte.satz}</p>}
+              {herkunft === 'geraet' && w?.quelle.art === 'gebunden' && (
+                // AP-13 IP-11 (D1): das Gerät der Quelle führt auf seine Komponente im Aufbau der Anlage.
+                <p className="vp-mss-quelle">
+                  {w.quelle.sprung ? (
+                    <a className="vp-mss-quelle-sprung" href={w.quelle.sprung.hash}>
+                      {w.quelle.geraet}
+                    </a>
+                  ) : (
+                    w.quelle.geraet
+                  )}
+                  {w.quelle.messwert ? ` · ${w.quelle.messwert}` : ''}
+                </p>
+              )}
+              {(herkunft === 'ablesung' || herkunft === 'keine') && hauptKarte && darfAendern && (
+                <Recht aktion="messstelle.quelle">
+                  <button type="button" className="vp-mss-link vp-mss-link-icon" onClick={() => oeffneBinden('fuehrend')(hauptKarte)}>
+                    <Icon name="zap" size={15} />
+                    {ZAEHLER_VERBINDEN}
+                  </button>
+                </Recht>
+              )}
+              {herkunft === 'keine' && darfAblesen && (
+                <button type="button" className="vp-mss-link vp-mss-link-icon" onClick={(e) => oeffneAblesung(null, e.currentTarget)} disabled={!ablesungen}>
+                  <Icon name="pencil" size={15} />
+                  {ABLESUNG_EINTRAGEN}
+                </button>
+              )}
+              {herkunft === 'geraet' && quelleKarten.length > 0 && (
+                <QuelleKarte
+                  karten={quelleKarten}
+                  darfBinden={darfAendern}
+                  onBinden={oeffneBinden('fuehrend')}
+                  onVergleich={oeffneBinden('vergleich')}
+                  onWechsel={(karte) => {
+                    const q = quellen?.groessen.find(g => g.groesse === karte.groesse.groesse && g.richtung === karte.groesse.richtung)?.fuehrend;
+                    if (q?.geraet.id) setWechsel({ art: 'messstelle', id: m.id, kennzeichen: m.kennzeichen, geraetId: q.geraet.id, anlageId: q.anlage });
+                  }}
+                />
+              )}
+              {/* AP-05 IP-11: die Energiekarte — nur wo es eine WAGO-Komponente GIBT (sonst 404, nichts gezeichnet). */}
+              {quellen?.groessen[0]?.fuehrend
+                && kannKartenangabenHaben(quellen.groessen[0].fuehrend.geraet.hersteller) && (
+                <WagoKarte
+                  anlageId={quellen.groessen[0].fuehrend.anlage}
+                  standortId={zeile?.ort.standort_id ?? null}
+                  entityId={quellen.groessen[0].fuehrend.komponente}
+                  zone={standortZone}
+                  einheit={haupt?.wertart === 'Zählerstand' ? haupt.einheit : null}
+                  onGetauscht={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }}
+                />
+              )}
+              {quellen?.groessen[0]?.fuehrend && <ZaehlerwechselVerlauf
+                anlageId={quellen.groessen[0].fuehrend.anlage}
+                komponenten={[...new Set(quellen.quellen.map(q => q.komponente))]} stand={wechselStand} />}
+            </section>
 
-      {quellen?.groessen[0]?.fuehrend && <ZaehlerwechselVerlauf
-        anlageId={quellen.groessen[0].fuehrend.anlage}
-        komponenten={[...new Set(quellen.quellen.map(q => q.komponente))]} stand={wechselStand} />}
+            {m.art === 'berechnet' && (
+              <ZusammengesetztAus
+                formel={formel}
+                kanalNamen={kanalNamen}
+                register={zeilen}
+                standortId={zeile?.ort.standort_id ?? null}
+                // Konzept §6.10: die Formel ändert der Formel-Dialog (Recht `messstelle.formel`), nicht der
+                // Messstellen-Dialog; er braucht die Anlage, an der die Messwerte hängen.
+                onAendern={darfAendern && zeile?.elektrische_stellung?.anlage ? () => setFormelDialog(true) : undefined}
+                onErneut={() => setFormelVersuch((v) => v + 1)}
+              />
+            )}
 
-      <div className="vp-mss-karten">
-        {karten.map((karte) => (
-          <Karte
-            key={karte.art}
-            karte={karte}
-            darfAendern={darfAendern}
-            gespeichert={gespeichert}
-            onAendern={(art) => {
-              setGespeichert(null);
-              setAendern(art);
+            <button type="button" className="vp-mss-karte vp-mss-protokoll" onClick={() => setProtokollOffen(true)} data-testid="protokoll-verweis">
+              <span className="vp-mss-protokoll-ico" aria-hidden="true">
+                <Icon name="history" size={18} />
+              </span>
+              <span className="vp-mss-protokoll-text">
+                <strong>{PROTOKOLL_LABEL}</strong>
+                <span className="vp-mss-leise">
+                  {protokoll.seite
+                    ? protokollSatz(protokoll.seite.eintraege.length, protokoll.seite.weiter !== null, ersteZeile?.eingetragen_am ?? null, standortZone)
+                    : protokoll.error ?? ' '}
+                </span>
+              </span>
+              <Icon name="chevron-right" size={18} />
+            </button>
+          </div>
+        </div>
+
+        <p className="vp-mss-fuss" data-testid="werte-zone">
+          {fuss}
+        </p>
+
+        {aendern && (
+          <ZuordnungAendernDialog
+            art={aendern}
+            messstelle={m}
+            bestand={bestand}
+            kataloge={kataloge}
+            standorte={standorte}
+            baeume={baeume}
+            register={zeilen}
+            heute={heute}
+            zone={zone}
+            onClose={() => setAendern(null)}
+            onGespeichert={(art, tag) => {
+              setAendern(null);
+              setGespeichert({ art, satz: gespeichertSatz(art, tag, heute, zone) });
+              nachEintrag();
             }}
           />
-        ))}
-      </div>
-
-      <section className="vp-mss-protokoll" aria-labelledby="vp-mss-protokoll-titel">
-        <h2 id="vp-mss-protokoll-titel">{PROTOKOLL_LABEL}</h2>
-        <ProtokollListe state={protokoll} />
-      </section>
-
-      {aendern && (
-        <ZuordnungAendernDialog
-          art={aendern}
-          messstelle={m}
-          bestand={bestand}
-          kataloge={kataloge}
-          standorte={standorte}
-          baeume={baeume}
-          register={zeilen}
+        )}
+        {ablesungDialog && ablesungen && haupt && (
+          <AblesungDialog
+            key={ablesungDialog.alt?.zeitpunkt ?? 'neu'}
+            kennzeichen={m.kennzeichen}
+            name={m.name}
+            einheit={haupt.einheit}
+            zone={standortZone}
+            alle={ablesungen}
+            alt={ablesungDialog.alt}
+            onBerichtigen={(alt) => setAblesungDialog({ alt })}
+            onClose={() => schliesseAblesung()}
+            onSaved={(a) => {
+              if (a.urteil !== 'vorschlag' && a.urteil !== 'wiederholung') {
+                clearWerteCache();
+                setWechselStand((v) => v + 1);
+                nachEintrag();
+              }
+              setAblesungAntwort(a);
+              setAblesungenNeu((n) => n + 1);
+              schliesseAblesung(true);
+            }}
+          />
+        )}
+        {formelDialog && zeile?.elektrische_stellung?.anlage && rollen.darf('messstelle.formel', zeile.ort.standort_id ?? null) && (
+          <SummenwertFormelDialog
+            siteId={zeile.elektrische_stellung.anlage}
+            messstelle={m}
+            onClose={() => setFormelDialog(false)}
+            onGespeichert={() => {
+              clearWerteCache();
+              setWechselStand((v) => v + 1);
+              setFormelVersuch((v) => v + 1);
+              nachEintrag();
+            }}
+          />
+        )}
+        {wechsel && <ZaehlerwechselDialog ziel={wechsel} onClose={() => setWechsel(null)}
+          onBerichtigt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }}
+          onGewechselt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} />}
+        {binden && (
+          <QuelleBindenDialog
+            open
+            rolle={binden.rolle}
+            ziel={binden.ziel}
+            jetzt={jetzt}
+            onClose={() => setBinden(null)}
+            onGebunden={nachEintrag}
+          />
+        )}
+        {korrekturenOffen && korrekturKontext && (
+          <KorrekturenDialog
+            standort={korrekturKontext.standort}
+            kennzeichen={m.kennzeichen}
+            zone={standortZone}
+            onClose={() => setKorrekturenOffen(false)}
+            onGespeichert={() => {
+              clearWerteCache();
+              setWechselStand((v) => v + 1);
+              nachEintrag();
+            }}
+          />
+        )}
+        <ProtokollDialog
+          open={protokollOffen}
+          titel={`${m.kennzeichen} ${m.name ?? ''}`.trim()}
+          ziel={{ art: 'messstelle', id: m.id }}
+          optionen={{ achse: MESSSTELLE_PROTOKOLL_ACHSE, anlegeSatz: true }}
+          onClose={() => setProtokollOffen(false)}
+        />
+        <MessstelleDialog
+          open={bearbeiten}
+          messstelleId={m.id}
+          schritt={bearbeitenAb}
           heute={heute}
-          zone={zone}
-          onClose={() => setAendern(null)}
-          onGespeichert={(art, tag) => {
-            setAendern(null);
-            setGespeichert({ art, satz: gespeichertSatz(art, tag, heute, zone) });
-            setVersuch((v) => v + 1);
-            protokoll.reload();
+          onClose={() => {
+            setBearbeiten(false);
+            if (!bearbeitet) return;
+            setBearbeitet(false);
+            nachEintrag();
           }}
+          onGespeichert={() => setBearbeitet(true)}
         />
-      )}
-      {wechsel && <ZaehlerwechselDialog ziel={wechsel} onClose={() => setWechsel(null)}
-        onBerichtigt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }}
-        onGewechselt={() => { setVersuch(v => v + 1); setWechselStand(v => v + 1); protokoll.reload(); }} />}
-      {binden && (
-        <QuelleBindenDialog
-          open
-          rolle={binden.rolle}
-          ziel={binden.ziel}
-          jetzt={jetzt}
-          onClose={() => setBinden(null)}
-          onGebunden={() => {
-            setVersuch((v) => v + 1);
-            protokoll.reload();
-          }}
-        />
-      )}
-      <MessstelleDialog
-        open={bearbeiten}
-        messstelleId={m.id}
-        schritt={bearbeitenAb}
-        heute={heute}
-        onClose={() => {
-          setBearbeiten(false);
-          if (!bearbeitet) return;
-          setBearbeitet(false);
-          setVersuch((v) => v + 1);
-          protokoll.reload();
-        }}
-        onGespeichert={() => setBearbeitet(true)}
-      />
-    </div>
+      </div>
     </RechteStandort.Provider>
   );
 }
 
-function Karte({
-  karte,
-  darfAendern,
-  gespeichert,
-  onAendern,
-}: {
-  karte: ZuordnungsKarte;
-  darfAendern: boolean;
-  gespeichert: { art: AendernArt; satz: string } | null;
-  onAendern: (art: AendernArt) => void;
-}) {
-  const titelId = `vp-mss-karte-${karte.art}`;
-  return (
-    <section className="vp-mss-karte" aria-labelledby={titelId} data-testid={`karte-${karte.art}`}>
-      <h2 id={titelId}>{karte.titel}</h2>
-      {karte.zeilen.map((z) => (
-        <Zeile
-          key={z.art}
-          zeile={z}
-          darfAendern={darfAendern}
-          gespeichert={gespeichert?.art === z.art ? gespeichert.satz : null}
-          onAendern={() => onAendern(z.art)}
-        />
-      ))}
-    </section>
-  );
-}
-
-function Zeile({
+/** Eine Zeile der Karte „Zuordnung“: Etikett, was heute gilt, seit wann, „Ändern“ - und die Historie. */
+function ZuordnungZeile({
   zeile: z,
   darfAendern,
   gespeichert,
@@ -603,53 +965,131 @@ function Zeile({
   onAendern: () => void;
 }) {
   return (
-    <div className="vp-mss-zeile">
-      {z.titel && <h3>{z.titel}</h3>}
-      {z.heute ? (
-        <>
-          <p className="vp-mss-wert">{z.heute.wert}</p>
-          <p className="vp-mss-neben">{[z.heute.neben, z.heute.zeitraum].filter(Boolean).join(' · ')}</p>
-        </>
-      ) : (
-        <p className="vp-mss-leer">{z.leer}</p>
-      )}
-      {z.danach && (
-        <p className="vp-mss-danach">
-          <span>{z.danach.text}</span>
-          <Badge variant="tint">{z.danach.marke}</Badge>
-        </p>
-      )}
-      {gespeichert && (
-        <p className="vp-mss-gespeichert" role="status">
-          {gespeichert}
-        </p>
-      )}
+    <div className="vp-mss-zeile" data-testid={`zuordnung-${z.art}`}>
+      <div className="vp-mss-zeile-text">
+        <h3>{z.titel}</h3>
+        {z.heute ? (
+          <>
+            <p className="vp-mss-wert">{z.heute.wert}</p>
+            <p className="vp-mss-leise">{[z.heute.neben, z.heute.zeitraum].filter(Boolean).join(' · ')}</p>
+          </>
+        ) : (
+          <p className="vp-mss-leer">{z.leer}</p>
+        )}
+        {z.danach && (
+          <p className="vp-mss-danach">
+            <span>{z.danach.text}</span>
+            <Badge variant="tint">{z.danach.marke}</Badge>
+          </p>
+        )}
+        {gespeichert && (
+          <p className="vp-mss-gespeichert" role="status">
+            {gespeichert}
+          </p>
+        )}
+        {z.historie.length > 1 && (
+          <details className="vp-mss-historie">
+            <summary>
+              {HISTORIE} ({z.historie.length})
+            </summary>
+            <ol>
+              {z.historie.map((h, i) => (
+                <li key={h.schluessel} className={`vp-mss-h is-${h.zustand}`}>
+                  <span className="vp-mss-punkt" aria-hidden="true" />
+                  <span className="vp-mss-h-text">
+                    {z.art === 'verteilung' && <span className="vp-mss-h-neben">Fassung {z.historie.length - i}</span>}
+                    <span className="vp-mss-h-wert">{h.wert}</span>
+                    {h.neben && <span className="vp-mss-h-neben">{h.neben}</span>}
+                    <span className="vp-mss-h-zeit">{h.zeitraum}</span>
+                  </span>
+                  {h.marke && <Badge variant={h.zustand === 'geplant' ? 'tint' : 'ok'}>{h.marke}</Badge>}
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+      </div>
       {z.geladen && darfAendern && (
-        <Recht aktion={z.art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}><button type="button" className="vp-mss-aendern" aria-label={`${AENDERN_TITEL[z.art]} ab …`} onClick={onAendern}>
-          {AENDERN_AB}
-        </button></Recht>
-      )}
-      {z.historie.length > 1 && (
-        <details className="vp-mss-historie">
-          <summary>
-            {z.art === 'verteilung' ? 'Fassungen' : HISTORIE} ({z.historie.length})
-          </summary>
-          <ol>
-            {z.historie.map((h, i) => (
-              <li key={h.schluessel} className={`vp-mss-h is-${h.zustand}`}>
-                <span className="vp-mss-punkt" aria-hidden="true" />
-                <span className="vp-mss-h-text">
-                  {z.art === 'verteilung' && <span className="vp-mss-h-neben">Fassung {z.historie.length - i}</span>}
-                  <span className="vp-mss-h-wert">{h.wert}</span>
-                  {h.neben && <span className="vp-mss-h-neben">{h.neben}</span>}
-                  <span className="vp-mss-h-zeit">{h.zeitraum}</span>
-                </span>
-                {h.marke && <Badge variant={h.zustand === 'geplant' ? 'tint' : 'ok'}>{h.marke}</Badge>}
-              </li>
-            ))}
-          </ol>
-        </details>
+        <Recht aktion={z.art === 'verteilung' ? 'messstelle.verteilung' : 'messstelle.bearbeiten'}>
+          <button type="button" className="vp-mss-aendern" aria-label={AENDERN_TITEL[z.art]} onClick={onAendern}>
+            {AENDERN}
+          </button>
+        </Recht>
       )}
     </div>
+  );
+}
+
+/**
+ * „Zusammengesetzt aus“ (Konzept Messen m1, §6.4 Punkt 10): die Terme der Formel von heute, je mit ihrem Sprung - eine
+ * Messstelle auf ihre Seite; ein Messwert nennt seine Komponente. „Formel ändern“ (Formel-Dialog) für Berechtigte.
+ */
+function ZusammengesetztAus({
+  formel,
+  kanalNamen,
+  register,
+  standortId,
+  onAendern,
+  onErneut,
+}: {
+  formel: MessstelleFormel | null | 'fehler';
+  kanalNamen: Record<string, string>;
+  register: readonly { id: string; kennzeichen: string; name: string | null }[];
+  standortId: string | null;
+  /** Ohne: kein „Formel ändern“ (archiviert, „Stand am“, keine Anlage). */
+  onAendern?: () => void;
+  onErneut: () => void;
+}) {
+  return (
+    <section className="vp-mss-karte vp-mss-formel" aria-labelledby="vp-mss-formel-titel" data-testid="karte-formel">
+      <div className="vp-mss-karte-kopf">
+        <h2 id="vp-mss-formel-titel">{ZUSAMMENGESETZT_AUS}</h2>
+        {onAendern && formel !== null && formel !== 'fehler' && (
+          <Recht aktion="messstelle.formel">
+            <button type="button" className="vp-mss-link" onClick={onAendern}>
+              {FORMEL_AENDERN}
+            </button>
+          </Recht>
+        )}
+      </div>
+      {formel === null ? (
+        <p className="vp-mss-leise" role="status">
+          Die Formel wird geladen …
+        </p>
+      ) : formel === 'fehler' ? (
+        <p className="vp-mss-leise" role="status">
+          {FORMEL_NICHT_ABRUFBAR}{' '}
+          <button type="button" className="vp-mss-link" onClick={onErneut}>
+            Erneut versuchen
+          </button>
+        </p>
+      ) : formel.terme.length === 0 ? (
+        // Alle Terme außerhalb des Zugriffs: das sagt der Hinweis des Servers - nicht „Noch keine Formel“.
+        <p className="vp-mss-leise">{formel.ausserhalb_zugriff ?? 'Noch keine Formel.'}</p>
+      ) : (
+        <>
+          <ul className="vp-mss-terme">
+            {formel.terme.map((t) => {
+              const quelle = t.quell_messstelle_id ? register.find((r) => r.id === t.quell_messstelle_id) : null;
+              const sprung = quelle ? sprungziel({ art: 'messstelle', id: quelle.id, standortId }) : null;
+              const name = quelle
+                ? `${quelle.name ?? quelle.kennzeichen} ${quelle.kennzeichen}`
+                : (t.entity_id && t.point_key ? kanalNamen[`${t.entity_id}|${t.point_key}`] : null) ?? 'Messwert einer Komponente';
+              const faktor = t.faktor !== 1 ? ` × ${String(t.faktor).replace('.', ',')}` : '';
+              return (
+                <li key={t.position}>
+                  <span className="vp-mss-vorzeichen" aria-label={t.vorzeichen === '-' ? 'minus' : 'plus'}>
+                    {t.vorzeichen === '-' ? '−' : '+'}
+                  </span>
+                  {sprung ? <a href={sprung.hash}>{name}</a> : <span>{name}</span>}
+                  {faktor && <span className="vp-mss-leise">{faktor}</span>}
+                </li>
+              );
+            })}
+          </ul>
+          {formel.ausserhalb_zugriff && <p className="vp-mss-leise">{formel.ausserhalb_zugriff}</p>}
+        </>
+      )}
+    </section>
   );
 }

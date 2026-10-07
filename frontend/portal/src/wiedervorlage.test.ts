@@ -124,9 +124,10 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
     const z = (art: Wiedervorlage['faellig'][number]['art'], kz: string, id: string | null = null) => ({ art, kennzeichen: kz, id, kennzahl_id: null });
     expect(eintragSprung(z('internes_audit', 'AU-2029-0001', 'a1'))!.hash).toBe('#/portfolio/energiemanagement/audits?entscheid=internes_audit');
     expect(eintragSprung(z('managementbewertung', 'BR-2029-0001'))!.hash).toBe('#/portfolio/energiemanagement/managementbewertung?entscheid=managementbewertung');
-    // Der Messbedarf wird an seinem Energieeinsatz eingelöst; ohne Einsatz führt der Weg über die Messplanung.
-    expect(eintragSprung({ ...z('messbedarf_frist', 'MB-1', 'mb-1'), einsatz_id: 'ee-8' })!.hash).toBe('#/portfolio/verbrauch/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
-    expect(eintragSprung(z('messbedarf_frist', 'MB-1', 'mb-1'))!.hash).toBe('#/portfolio/bewertung?entscheid=messbedarf_frist&kennzeichen=MB-1');
+    // Konzept Auswerten a1, Entscheid 9: der offene Messbedarf steht unter Messen als geplante Messstelle - der Schritt
+    // öffnet die Liste bei ihm, mit und ohne Einsatz.
+    expect(eintragSprung({ ...z('messbedarf_frist', 'MB-1', 'mb-1'), einsatz_id: 'ee-8' })!.hash).toBe('#/portfolio/messstellen?entscheid=messbedarf_frist&kennzeichen=MB-1');
+    expect(eintragSprung(z('messbedarf_frist', 'MB-1', 'mb-1'))!.hash).toBe('#/portfolio/messstellen?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(eintragSprung(z('feststellung', 'F-2029-0001', 'f1'))!.hash).toBe('#/portfolio/energiemanagement/feststellungen/f1?entscheid=feststellung');
     // Ohne Kennung der Route gibt es keine Seite: dann kein Sprung (WV3).
     expect(eintragSprung(z('dokument_ueberpruefung', 'D-0009'))).toBeNull();
@@ -150,7 +151,7 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
     expect(bericht.grundKurz).toBe('10 Korrekturen nach der Freigabe');
     expect(bericht.frist.satz).toBe('fällig seit 05.10.2026');
     expect(text(mb)).toBe('Messstelle für Messbedarf MB-1 einrichten | Wärmemengenzähler am Trockner der Spritzgießmaschine 4');
-    expect(mb.sprung!.hash).toBe('#/portfolio/verbrauch/ee-8?entscheid=messbedarf_frist&kennzeichen=MB-1');
+    expect(mb.sprung!.hash).toBe('#/portfolio/messstellen?entscheid=messbedarf_frist&kennzeichen=MB-1');
     expect(mb.bereich).toBe('messen');
     expect(mb.schritt).toBe('Messstelle anlegen');
   });
@@ -316,7 +317,7 @@ describe('Wiedervorlage w1 · Zählerablesung (Entscheid 7, Vertrag 1.2)', () =>
     expect(halle1.frist.satz).toBe('fällig seit 01.12.2026');
     expect(halle1.bereich).toBe('messen');
     expect(halle1.schritt).toBe('Ablesungen eintragen');
-    expect(halle1.sprung!.hash).toBe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung');
+    expect(halle1.sprung!.hash).toBe('#/portfolio/messstellen?ablesen=G-1&entscheid=zaehlerablesung');
     expect(halle1.zustaendig).toEqual({ name: 'Ines Kaltenbach', herkunft: 'aufgabe', ich: true });
     // Ein Zähler: genau seine Messstelle, der Schritt heißt wie ihr Knopf.
     expect(text(halle2)).toBe('Zähler MS-20 in Halle 2 ablesen | Zuletzt abgelesen am 01.10.2026 + 2 Monate');
@@ -356,7 +357,7 @@ describe('Wiedervorlage w1 · Zählerablesung (Entscheid 7, Vertrag 1.2)', () =>
     expect(wiedervorlageStatus(wvDemo())!.satz).toBe('Älteste seit 05.10.2026 · Bericht, Zählerablesungen, Messbedarf, Bezugsbasen');
     const ohne = arbeitsliste({ ...wvLeer(), faellig: [wvZeile('zaehlerablesung', 'G-9', 'Zählerablesung Lager (MS-9 Pumpe)', '2029-01-01', 5)] });
     expect(text(ohne.ueberfaellig[0])).toBe('Zählerablesung Lager (MS-9 Pumpe) | Werte aus Ablesungen');
-    expect(ohne.ueberfaellig[0].sprung!.hash).toBe('#/portfolio/messstellen?ort=G-9&entscheid=zaehlerablesung');
+    expect(ohne.ueberfaellig[0].sprung!.hash).toBe('#/portfolio/messstellen?ablesen=G-9&entscheid=zaehlerablesung');
   });
 });
 

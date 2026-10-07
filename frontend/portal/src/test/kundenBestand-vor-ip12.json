@@ -1496,11 +1496,53 @@
       "grund": "Konzept Messen m1 §6.2 „Aktionen“: ein Menüeintrag darf eine leise zweite Zeile tragen („Stand an einem Tag ansehen · Nur lesen, z. B. für eine Prüfung“). Ohne Hinweis rendert er wie bisher; Rolle unverändert. Der Handler wählt über `waehle(it)`: er schließt das Menü wie bisher, gibt den Fokus an den Auslöser ⋯ zurück und ruft dann denselben `it.onClick()` (Review r4 S23: ein Dialog aus dem Menü kehrt beim Schließen auf den Auslöser zurück statt auf `body`)."
     },
     {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "9aedfdb41fa3d3ba180f9cbff06a896a91f83ecf9ac03c6e53d2cce9021b2ddf",
+      "nachher": "7a8fae790a235301afb2c8fee26491a34505c0efd36ca2796ee492788dc31a65",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.6: „‹ September 2026 ›“ als Blätter-Knopf der Familie (Quadrat 34 px, am Telefon 44 px Tippfläche, Zeichen 16 statt 18 px). Handler, Beschriftung und Rolle unverändert."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "a7bf69c8e34a4a517ca543604417f7c8b40d54c40174ab4147dde2e8fc9e836a",
+      "nachher": "5e6e1d575fefd977f9d608dc18481a299942f20c455a602a84817212cfbaac8b",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.6: „›“ ist am letzten gebildeten Zeitraum aus (im Konzept-Bild ausgegraut bei September 2026) - ein laufender Monat hat keine Zahl (E11), also blättert die Fläche nicht in ihn hinein. Handler und Beschriftung unverändert, Zeichen 16 px."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "4fc5f4ec013e54e2f9d149bbbc892aafa33c294ade05be1a908fb3991c07ab28",
+      "nachher": "89efe5e314e8572786065236748857db16b938a040bd12654fd215fdbc824ada",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11 (Zustand „Fehler“ wie Wiedervorlage): „Erneut versuchen“ ist der leise Verweis der Fehlerkarte (`vp-ms-link`) mit dem Wort aus `ERNEUT`. Handler unverändert."
+    },
+    {
       "datei": "components/MessstelleDialog.tsx",
       "vorher": "6be15e79a17431492bbe83464ceb2ab1efd0c941fd8ec95bf5fad1d7b946e28e",
       "nachher": "d7beab1bff86d010fa4d0067207751f8b7ac9e81ded1974fd8dc7d616170d387",
       "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
       "grund": "Captain-Punkt zu Konzept Messen m1: Schritt 3 fragt „Woher kommen die Werte?“ mit den Wegen „Automatisch von einem Gerät“ und „Von Hand ablesen“. Der Ausweg heißt je Weg „Später binden“, „Später eintragen“ oder ohne Wahl „Später festlegen“; Handler (Fertig-Ansicht ohne Quelle) unverändert."
+    },
+    {
+      "datei": "pages/MessstelleSeite.tsx",
+      "vorher": "d04353402791a087dd39083b67fc86bb8bfe9b3c61fa7b4f658511a4a094b542",
+      "nachher": null,
+      "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.1 Punkt 2 und §6.4 Punkt 2: „Bearbeiten“ ist Seltenes und steht im Menü ⋯ des Kopfs (neben „Korrekturen und Ersatzwerte“ und „Änderungsprotokoll“); oben steht der eine Schritt („Ablesung eintragen“). Derselbe Handler (Messstellen-Dialog ab Schritt 1), dasselbe Recht `messstelle.bearbeiten`, nur als Menüeintrag statt als Knopf."
+    },
+    {
+      "datei": "pages/MessstelleSeite.tsx",
+      "vorher": "72317721bfbe7e3a7ac65893637aaba52b0cd628bce6766e682b8450d457aae9",
+      "nachher": "f338343bff31c190c83a53b12aebc53b6e363ec8665d51c407028bb1e8ac5c63",
+      "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.4 Punkt 7 und §8.1: EINE Karte „Zuordnung“ (Ort · Im Stromnetz · Prozess · Kostenstellen) mit „Ändern“ je Zeile statt „Ändern ab …“ in drei Karten. Derselbe Dialog mit „Gilt ab“, dasselbe Recht; der Vorlese-Name nennt die Zeile („Ort ändern“)."
+    },
+    {
+      "datei": "components/ZuordnungAendernDialog.tsx",
+      "vorher": "5087915e57f49076e9e24fc9270a1d4e1b4c51b30a993bce7f530098ca030a05",
+      "nachher": "c7a91d16173eb2ac9e6019334f814ba6d575a7a6135e4f78482037a8fcda35a9",
+      "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11 „Dialog ohne Änderung“ und §8.1: gilt am gewählten Tag schon, was im Formular steht, sagt ein grauer Satz „Heute gilt: …“ und der Knopf wartet auf eine Änderung - statt beim Öffnen rot „Es gibt nichts zu ändern“ am Feld. Senden und Prüfung sonst unverändert."
     },
     {
       "datei": "components/RowMenu.tsx",

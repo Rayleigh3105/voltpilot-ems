@@ -13,6 +13,8 @@ außerhalb des Zauns bleibt eine 404, eine nicht eingerichtete Messstelle ist 42
 RLS; Offboarding löscht sie vor Energieeinsatz und Messstelle. Die Laufzeitrolle darf
 nicht löschen.
 
+Jeder `Bedarf` nennt `zitiert_von` (zitierende freigegebene Stände, je Liste eine Abfrage über `BerichtsBelege.derObjekte`, dieselbe Quelle wie die 409 von `pruefeObjekt`) und `einloesbar` (offen und unzitiert).
+
 Ort und Größe sind Wortlaut (`ort`, `groesse`) und optional Struktur
 (`V20260923234500`): `standort_id` ODER `ort_id` (Gebäude/Bereich, höchstens einer, FK mit
 Mandant) und `messgroesse`/`richtung`, geprüft gegen `MessstelleRegeln.GROESSEN_KATALOG`.
@@ -32,9 +34,10 @@ Bedarfe als `geplant` an die Messabdeckung; dort haben sie nie eine Menge.
 
 Portal (`uemsMessplanung.ts`, `components/Messplanung.tsx`): Erfassen/Bearbeiten schreiben
 Struktur und Wortlaut, Bearbeiten behält einen unerkannten alten Wortlaut, „Protokoll“ liest
-`…/protokoll`, die Liste je Standort liest die Übersichtsroute einmal; der Register-Schalter
-„Nur geplant für einen Energieeinsatz“ (`messstellen.ts`, `MessstellenPage.tsx`) erscheint nur,
-wenn eine Messstelle einen Bedarf einlöst.
+`…/protokoll`, die Liste je Standort liest die Übersichtsroute einmal. Unter Messen stehen
+offene Bedarfe als geplante Messstellen an ihrem Ort, mit „Einrichten“ und dem Ziel des
+Wiedervorlage-Schritts `messbedarf_frist`:
+[geplante Messstellen](../portal/messen-geplante-messstellen.md).
 
 Verbindlicher Vertrag: [`docs/contracts/v2/bewertung.md`](../../contracts/v2/bewertung.md),
 Abschnitt 4.1. Die API-Abnahme liegt in `MessbedarfApiTest`; Ranglisten- und
