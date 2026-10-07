@@ -19,7 +19,7 @@ import {
   verbesserungRoute,
   type Route,
 } from '../src/nav';
-import { BewertungPage } from '../src/pages/BewertungPage';
+import { VerbrauchPage } from '../src/pages/VerbrauchPage';
 import { VerbesserungBereich } from '../src/pages/VerbesserungBereich';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
@@ -141,6 +141,7 @@ function Ansicht() {
         showKennzahlen={bereiche.includes('kennzahlen')}
         showBerichte={bereiche.includes('berichte')}
         showBewertung={bereiche.includes('bewertung')}
+        showVerbrauch={bereiche.includes('verbrauch')}
         showVerbesserung={bereiche.includes('verbesserung')}
         // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
         // über der Seite stehen dort nur die Reiter der offenen Gruppe.
@@ -168,11 +169,12 @@ function Ansicht() {
           onKennzahl={(id) => navigate(kennzahlRoute(id))}
           onMassnahme={(id) => navigate(massnahmeRoute(id))}
         />
-      ) : route.page === 'portfolio-bewertung' && route.energieeinsatzId ? (
-        <BewertungPage
+      ) : route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? (
+        <VerbrauchPage
           einsatzId={route.energieeinsatzId}
           onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-          onListe={() => navigate(pageRoute('portfolio-bewertung'))}
+          onListe={() => navigate(pageRoute('portfolio-verbrauch'))}
+          onNavigate={navigate}
         />
       ) : (
         <p>Diese Bühne zeigt nur Maßnahmen und den Energieeinsatz EE-3.</p>

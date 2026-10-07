@@ -9,8 +9,8 @@ import { grenzHinweisZeigt } from './grenzHinweis';
  * Bericht-Maschine; die Bericht-Routen spielt `src/test/bewertungStandBuehne.ts` entlang R7/R10.
  *
  * Fälle: Freigabe Stand Nr. 1 aus dem Entwurf (09.11.2026 10:12) · Anstoß-Vermerk „Revision nötig — Korrektur
- * K-2026-0007“ und Freigabe Nr. 2 (17.11.2026 09:30, ersetzt Nr. 1) · PDF-Abruf eines ersetzten Stands · Frist-Kopfzeile
- * „fällig seit 1 Tag“ (18.11.2027). Mit `BEWERTUNGSSTAND_BILDER=<Ordner>` legt der Lauf je Fall ein Bild ab.
+ * K-2026-0007“ und Freigabe Nr. 2 (17.11.2026 09:30, ersetzt Nr. 1) · PDF-Abruf eines ersetzten Stands unter „Frühere
+ * Stände“ · „Unterschiede ansehen“ · fällige Bewertung als Hinweiskarte (18.11.2027, Konzept Auswerten a1 §6.7). Mit `BEWERTUNGSSTAND_BILDER=<Ordner>` legt der Lauf je Fall ein Bild ab.
  * Die Spec importiert keine Fixtures.
  */
 
@@ -58,7 +58,7 @@ async function ablegen(page: Page, name: string, ziel: 'stand' | 'dialog' | 'kop
   mkdirSync(BILDER, { recursive: true });
   const pfad = join(BILDER, `${name}.png`);
   if (ziel === 'dialog') await page.locator('.vp-modal').first().screenshot({ path: pfad });
-  else if (ziel === 'kopf') await page.locator('.vp-bw-kopf').screenshot({ path: pfad });
+  else if (ziel === 'kopf') await page.getByTestId('bewertung-faellig').screenshot({ path: pfad });
   else {
     // Die Karte direkt unter die klebende Kopfleiste rollen und den Bildschirm aufnehmen — so verdeckt der Kopf nichts.
     await page.getByTestId('bewertung-stand').evaluate((e) => {
@@ -71,13 +71,15 @@ async function ablegen(page: Page, name: string, ziel: 'stand' | 'dialog' | 'kop
 
 for (const breite of [375, 1440]) {
   test.describe(`Bewertungsstand bei ${breite} px`, () => {
-    test('Freigabe (§5.5 Schritt 2): der Entwurf mit Datenstand wird Stand Nr. 1 — Prüfsumme gekürzt, Frist in der Kopfzeile', async ({ page }) => {
+    test('Freigabe (§5.5 Schritt 2): der Entwurf wird Stand Nr. 1 - Datumsblöcke statt Prüfsumme, die Statuszeile sagt, was gilt', async ({ page }) => {
       await oeffne(page, 'entwurf', breite, AM_09_11_1012);
       const stand = page.getByTestId('bewertung-stand');
-      await expect(stand.getByTestId('bewertung-entwurf')).toContainText('Entwurf · Datenstand 09.11.2026 10:05 · Datengrundlage November 2025 bis Oktober 2026');
-      await expect(stand.getByTestId('bewertung-stand-satz')).toHaveText('Noch kein Berichtsstand — der Entwurf ist noch nicht freigegeben.');
+      await expect(stand.getByTestId('bewertung-entwurf')).toContainText('Erster Stand mit den Zahlen bis Oktober 2026');
+      await expect(stand.getByTestId('bewertung-entwurf').getByRole('img')).toHaveAccessibleName('Entwurf mit Datenstand 09.11.2026');
+      await expect(page.getByTestId('bewertung-status')).toHaveText('Noch kein Stand freigegebenDer Entwurf wartet auf die erste Freigabe.');
       await grenzHinweisZeigt(page, GRENZE);
-      await expect(page.getByTestId('bewertung-frist-kopf')).toHaveCount(0);
+      await expect(page.getByTestId('bewertung-faellig')).toHaveCount(0);
+      await expect(stand.getByTestId('bewertung-unterschiede-knopf')).toHaveCount(0);
       await ohneQuerlauf(page, 'Entwurf');
       await ablegen(page, `entwurf-${breite}`, 'stand');
 
@@ -91,16 +93,16 @@ for (const breite of [375, 1440]) {
       await dialog.getByTestId('bericht-freigeben-knopf').click();
       await expect(dialog).toHaveCount(0);
 
-      await expect(stand.getByTestId('bewertung-stand-satz')).toHaveText('Bewertung 2026 · Stand Nr. 1 vom 09.11.2026.');
       const nr1 = stand.getByTestId('bewertung-stand-1');
-      await expect(nr1).toContainText('freigegeben am 09.11.2026 10:12 · Ines Kaltenbach');
-      await expect(nr1).toContainText('Prüfsumme 3b1f…9a2e');
-      await expect(nr1).toContainText('gültig');
-      await expect(page.getByTestId('bewertung-frist-kopf')).toHaveText('Energetische Bewertung: Stand Nr. 1 vom 09.11.2026 · Überprüfung fällig am 09.11.2027.');
+      await expect(nr1).toContainText('gilt · freigegeben von Ines Kaltenbach');
+      await expect(nr1.getByRole('img')).toHaveAccessibleName('Stand Nr. 1 vom 09.11.2026');
+      await expect(nr1).not.toContainText('Prüfsumme');
+      await expect(page.getByTestId('bewertung-status')).toContainText('Gilt · Stand Nr. 1 vom 09.11.2026');
+      await expect(page.getByTestId('bewertung-status')).toContainText('nächste Überprüfung bis 09.11.2027');
       await ohneQuerlauf(page, 'Stand Nr. 1');
     });
 
-    test('Anstoß (R7): „Revision nötig — Korrektur K-2026-0007“; Freigabe = Stand Nr. 2, ersetzt Nr. 1, Nr. 1 bleibt lesbar', async ({ page }) => {
+    test('Anstoß (R7): „Revision nötig — Korrektur K-2026-0007“; Freigabe = Stand Nr. 2, Nr. 1 bleibt unter „Frühere Stände“ lesbar', async ({ page }) => {
       await oeffne(page, 'revision', breite, AM_17_11_0930);
       const stand = page.getByTestId('bewertung-stand');
       const vermerk = stand.getByTestId('bewertung-revision');
@@ -108,6 +110,7 @@ for (const breite of [375, 1440]) {
       await expect(vermerk).toContainText('Erkannt am 12.11.2026 10:05.');
       await expect(vermerk).toContainText('Der Berichtsstand Nr. 1 bleibt unverändert.');
       await expect(stand.getByTestId('bewertung-freigeben-knopf')).toHaveText('Als Stand Nr. 2 freigeben');
+      await expect(stand.getByTestId('bewertung-entwurf')).toContainText('Neuer Stand mit den Zahlen bis Oktober 2026');
       await ohneQuerlauf(page, 'Revision-Vermerk');
       await ablegen(page, `revision-${breite}`, 'stand');
 
@@ -118,39 +121,55 @@ for (const breite of [375, 1440]) {
       await expect(dialog).toHaveCount(0);
 
       await expect(stand.getByTestId('bewertung-revision')).toHaveCount(0);
-      await expect(stand.getByTestId('bewertung-stand-satz')).toHaveText(
-        'Bewertung 2026 · Stand Nr. 2 vom 17.11.2026 (ersetzt Nr. 1 vom 09.11.2026 — Anlass: Korrektur K-2026-0007).',
-      );
-      await expect(stand.getByTestId('bewertung-stand-1')).toContainText('ersetzt durch Nr. 2');
+      await expect(page.getByTestId('bewertung-status')).toContainText('Gilt · Stand Nr. 2 vom 17.11.2026');
       await expect(stand.getByTestId('bewertung-stand-2')).toContainText('Anlass: Korrektur K-2026-0007');
+      await expect(stand.getByTestId('bewertung-stand-1')).toHaveCount(0);
+      await stand.getByTestId('bewertung-fruehere').click();
+      await expect(stand.getByTestId('bewertung-stand-1')).toContainText('ersetzt durch Stand Nr. 2 · freigegeben von Ines Kaltenbach');
+      await expect(stand.getByTestId('bewertung-fruehere')).toHaveText('Frühere Stände ausblenden');
       await ohneQuerlauf(page, 'Stand Nr. 2');
     });
 
-    test('PDF-Abruf (S4): je Stand PDF und CSV — der ersetzte Stand Nr. 1 bleibt abrufbar, der Abruf wird gemeldet', async ({ page }) => {
+    test('PDF-Abruf (S4): PDF und CSV am gültigen Stand; der ersetzte Stand Nr. 1 bleibt unter „Frühere Stände“ abrufbar', async ({ page }) => {
       await oeffne(page, 'nr2', breite, AM_20_11);
       const stand = page.getByTestId('bewertung-stand');
-      await expect(stand.getByTestId('bewertung-staende').locator('li')).toHaveCount(2);
+      // Der gültige Stand und der Entwurf.
+      await expect(stand.getByTestId('bewertung-staende').locator('> li')).toHaveCount(2);
       await expect(stand.getByTestId('bewertung-pdf-2')).toBeVisible();
       await expect(stand.getByTestId('bewertung-csv-2')).toBeVisible();
       await ohneQuerlauf(page, 'Stände');
       await ablegen(page, `staende-${breite}`, 'stand');
 
+      await stand.getByTestId('bewertung-fruehere').click();
       const download = page.waitForEvent('download');
       await stand.getByTestId('bewertung-pdf-1').click();
       expect((await download).suggestedFilename()).toBe('bericht-BR-2026-0009-nr1.pdf');
-      await expect(stand.getByTestId('bewertung-abruf')).toHaveText('PDF von Stand Nr. 1 abgerufen — der Abruf ist protokolliert.');
+      await expect(stand.getByTestId('bewertung-abruf')).toHaveText('PDF von Stand Nr. 1 abgerufen - der Abruf ist protokolliert.');
       expect(await page.evaluate(() => (window as unknown as { __bewertungAbrufe: string[] }).__bewertungAbrufe)).toEqual(['BR-2026-0009/1/pdf']);
       await ablegen(page, `pdf-abruf-${breite}`, 'stand');
     });
 
-    test('Frist (R10): am 18.11.2027 „Überprüfung fällig seit 1 Tag“ in der Kopfzeile, mit den Verantwortlichen', async ({ page }) => {
+    test('Unterschiede ansehen (§6.7): der Entwurf gegen den gültigen Stand, von dort weiter zur Freigabe', async ({ page }) => {
+      await oeffne(page, 'nr2', breite, AM_20_11);
+      await page.getByTestId('bewertung-unterschiede-knopf').click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toContainText('Keine Abweichung — der Entwurf zeigt dieselben Zahlen wie Nr. 2.');
+      await expect(dialog.getByRole('button', { name: 'Als Berichtsstand Nr. 3 freigeben' })).toBeVisible();
+      await ohneQuerlauf(page, 'Vergleich');
+      await ablegen(page, `unterschiede-${breite}`, 'dialog');
+    });
+
+    test('Frist (R10): fällig wird die Statuszeile zur Hinweiskarte - Datum statt Tageszähler, Verantwortliche, „Neuen Stand freigeben“', async ({ page }) => {
       await oeffne(page, 'faellig', breite, AM_18_11_2027);
-      await expect(page.getByTestId('bewertung-frist-kopf')).toHaveText(
-        'Energetische Bewertung: Stand Nr. 2 vom 17.11.2026 · Überprüfung fällig seit 1 Tag.',
-      );
-      await expect(page.getByTestId('bewertung-frist-hinweis')).toContainText('Paul Hartmann (EE-2, EE-5)');
+      const karte = page.getByTestId('bewertung-faellig');
+      await expect(karte).toContainText('Überprüfung fällig seit 17.11.2027');
+      await expect(karte).toContainText('Stand Nr. 2 vom 17.11.2026 - prüfen Sie den Entwurf und geben Sie einen neuen Stand frei.');
+      await expect(karte).toContainText('Paul Hartmann (EE-2, EE-5)');
+      await expect(page.getByTestId('bewertung-status')).toHaveCount(0);
       await ohneQuerlauf(page, 'Frist');
       await ablegen(page, `frist-${breite}`, 'kopf');
+      await page.getByTestId('bewertung-faellig-schritt').click();
+      await expect(page.getByTestId('bewertung-freigeben-knopf')).toBeFocused();
     });
   });
 }

@@ -231,8 +231,9 @@ const MENGEN: Record<number, { menge: string; anteil: string; rang: number; ms: 
   5: { menge: '7800', anteil: '4.2', rang: 5, ms: [['MS-13', '3500'], ['MS-17', '4300']] },
   4: { menge: '6200', anteil: '3.3', rang: 6, ms: [['MS-08', '6200']] },
 };
+/** Hauptzähler je Anlage im Oktober - `anlage` ist wie auf der Route der NAME der Anlage (`BewertungRanglisteService.bilanzwerte`). */
 const BILANZEN = [
-  [FIXTURE_IDS.an1, '139380'], [FIXTURE_IDS.an2, '36900'], [FIXTURE_IDS.an3, '9100'],
+  ['Halle 1', '139380'], ['Halle 2', '36900'], ['Werk Lindach', '9100'],
 ] as const;
 
 export function ahrenbergRangliste(leer = false, kriterien = kriterienFassung()): BewertungRangliste {
@@ -283,7 +284,12 @@ const FUEHREND_GERAET: Record<string, { id: string; kz: string; einbau: string }
  * aus `messplanungFixtures.ts`; `bedarfe` belegt den Anfang. Ohne sie ist jede Messbedarf-Liste leer (nichts geplant).
  */
 export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen = false, historieR13 = false,
-  messplanung: false | { bedarfe: Messbedarf[] } = false) {
+  messplanung: false | { bedarfe: Messbedarf[] } = false,
+  /**
+   * Konzept Auswerten a1, Befund 6: Kriterien mit Vier-Augen. `vieraugen` legt jede neue Fassung als beantragt an;
+   * `antragVon` (Kürzel) belegt den Anfang mit einer beantragten Fassung 2 (K1 10 % → 8 %) dieser Person.
+   */
+  kriterienLage: { vieraugen?: boolean; antragVon?: string } = {}) {
   let umfangFassung: { nr: number; s: BewertungUmfangSpeichern } | null = stand === 'voll'
     ? { nr: 1, s: { gueltig_ab: '2026-11-04', standort_ids: STANDORTE.map((x) => x.id), traeger: ['Strom', 'Gas'], ausschluesse: [], begruendung: null } }
     : null;
@@ -291,7 +297,31 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
   const protokolle = new Map<string, EnergieeinsatzAenderung[]>();
   let zaehler = einsaetze.length;
   let aenderung = 100;
-  let aktuelleKriterien = kriterienFassung();
+  // Die Kriterien-Fassungen, jüngste zuerst; wirksam ist die jüngste freigegebene, nicht aufgehobene (wie der Dienst).
+  let kriterienFassungen: BewertungKriterienFassung[] = [kriterienFassung()];
+  const wirksameKriterien = () => kriterienFassungen.find((f) => f.freigabe_status === 'freigegeben' && f.aufgehoben_am === null) ?? kriterienFassungen[kriterienFassungen.length - 1];
+  const kriterienAkteur = (kuerzel: string) => ({ ...person(kuerzel), rolle: kuerzel === 'IK' ? 'energiemanager' : 'kundenadministrator', art: 'kunde' as const });
+  if (kriterienLage.antragVon) {
+    kriterienFassungen = [{
+      ...kriterienFassung(2, { ...KRITERIEN, K1: '8' }, 'Druckluft und Montage früher sehen: ab acht Prozent vorschlagen.'),
+      gueltig_ab: null, akteur: kriterienAkteur(kriterienLage.antragVon), vieraugen: true, freigabe_status: 'beantragt', created_at: `${heute}T08:00:00+01:00`,
+    }, ...kriterienFassungen];
+  }
+  const aufheben = () => {
+    kriterienFassungen = kriterienFassungen.map((f) => f.freigabe_status === 'freigegeben' && f.aufgehoben_am === null ? { ...f, aufgehoben_am: `${heute}T10:00:00+01:00` } : f);
+  };
+  const entscheiden = (nummer: number, freigeben: boolean, begruendung: string | null) => {
+    const f = kriterienFassungen.find((x) => x.fassung === nummer);
+    if (!f) throw fehler(404, 'nicht_gefunden', 'Kriterien-Fassung nicht gefunden.');
+    if (f.freigabe_status !== 'beantragt') throw fehler(409, 'bereits_entschieden', 'Diese Fassung ist bereits entschieden.');
+    if (f.akteur?.sub === person(ich).sub) throw fehler(403, 'zweite_person_noetig', 'Freigabe durch eine zweite Person.');
+    if (!freigeben && !begruendung?.trim()) throw fehler(422, 'begruendung_fehlt', 'Bitte begründen Sie die Änderung der Kriterien.');
+    if (freigeben) aufheben();
+    const neu: BewertungKriterienFassung = { ...f, freigabe_status: freigeben ? 'freigegeben' : 'abgelehnt', gueltig_ab: freigeben ? heute : null,
+      entschieden_von: kriterienAkteur(ich), entschieden_am: `${heute}T11:00:00+01:00`, entscheidungs_begruendung: begruendung?.trim() || null };
+    kriterienFassungen = kriterienFassungen.map((x) => x.fassung === nummer ? neu : x);
+    return structuredClone(neu);
+  };
   const einstufungen = new Map<string, EnergieeinsatzEinstufungFassung[]>();
   const akteur = () => ({ ...person(ich), rolle: ich === 'IK' ? 'energiemanager' : null, art: 'kunde' as const });
   const protokolliere = (id: string, art: EnergieeinsatzAenderung['art'], zeit = `${heute}T09:30:00+01:00`) =>
@@ -299,7 +329,7 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
   for (const e of einsaetze) protokolle.set(e.id, [{ id: ++aenderung, art: 'angelegt', alt: null, neu: null, akteur: { ...person('IK'), rolle: 'energiemanager', art: 'kunde' },
     zeit: e.gueltig_ab === '2026-11-04' ? '2026-11-04T10:12:00+01:00' : `${e.gueltig_ab}T09:15:00+01:00` }]);
   if (stand === 'voll') {
-    const r = ahrenbergRangliste(false, aktuelleKriterien);
+    const r = ahrenbergRangliste(false, wirksameKriterien());
     const gruende = ['41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.', '5,2 %; Montage läuft an zwei Standorten.', '8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.', '3,3 % im Oktober.', '4,2 % im Oktober.', '4,7 %; Ladepark 2027 erhöht ihn — Wiedervorlage.', 'Gas ohne Anteil; nur Bürobeheizung.'];
     for (const e of [...r.einsaetze, ...r.weitere_traeger]) {
       const n = Number(e.kennzeichen.slice(3));
@@ -331,6 +361,7 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
   };
   return {
     messbedarfe: async () => ({ messbedarfe: [] as Messbedarf[] }),
+    messbedarfeAlle: async () => ({ messbedarfe: [] as Messbedarf[] }),
     ...(messplanung ? messplanungRouten(heute, ich, messplanung.bedarfe) : {}),
     bewertungUmfang: async () => structuredClone(umfangFassung ? umfangAus(umfangFassung.nr, umfangFassung.s, heute) : umfangAus(null, null, heute)),
     bewertungUmfangSpeichern: async (s: BewertungUmfangSpeichern) => {
@@ -338,7 +369,7 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
       umfangFassung = { nr: (umfangFassung?.nr ?? 0) + 1, s };
       return structuredClone(umfangAus(umfangFassung.nr, s, s.gueltig_ab));
     },
-    bewertungRangliste: async () => structuredClone(ahrenbergRangliste(stand === 'leer' && einsaetze.length === 0, aktuelleKriterien)),
+    bewertungRangliste: async () => structuredClone(ahrenbergRangliste(stand === 'leer' && einsaetze.length === 0, wirksameKriterien())),
     // AP-16 IP-18: Messabdeckung (§5.3) und der Weg Messstelle → führende Quelle → Messmittel (R8: MS-07 an GR-5 ohne
     // Angabe, MS-06 an Z-5b mit Werksbescheinigung). Die übrigen Messstellen haben auf der Bühne keine führende Quelle.
     bewertungMessabdeckung: async () => structuredClone(ahrenbergMessabdeckung()),
@@ -352,12 +383,22 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
       } as unknown as MessstelleQuellenListe;
     },
     geraetMessmittel: async (id: string) => structuredClone(id === GR5_ID ? gr5Messmittel() : z5bMessmittel(id)),
-    bewertungKriterien: async () => structuredClone(aktuelleKriterien),
+    bewertungKriterien: async () => structuredClone(wirksameKriterien()),
+    bewertungKriterienHistorie: async () => ({ fassungen: structuredClone(kriterienFassungen) }),
     bewertungKriterienSpeichern: async (s: BewertungKriterienSpeichern) => {
       if (!s.begruendung.trim()) throw fehler(422, 'begruendung_fehlt', 'Bitte geben Sie eine Begründung an.');
-      aktuelleKriterien = kriterienFassung(aktuelleKriterien.fassung + 1, s.werte, s.begruendung.trim());
-      return structuredClone(aktuelleKriterien);
+      if (kriterienFassungen.some((f) => f.freigabe_status === 'beantragt'))
+        throw fehler(409, 'freigabe_offen', 'Bitte entscheiden Sie zuerst über die beantragte Fassung.');
+      const nr = Math.max(...kriterienFassungen.map((f) => f.fassung)) + 1;
+      const neu: BewertungKriterienFassung = kriterienLage.vieraugen
+        ? { ...kriterienFassung(nr, s.werte, s.begruendung.trim()), gueltig_ab: null, akteur: kriterienAkteur(ich), vieraugen: true, freigabe_status: 'beantragt' }
+        : { ...kriterienFassung(nr, s.werte, s.begruendung.trim()), gueltig_ab: heute, akteur: kriterienAkteur(ich) };
+      if (!kriterienLage.vieraugen) aufheben();
+      kriterienFassungen = [neu, ...kriterienFassungen];
+      return structuredClone(neu);
     },
+    bewertungKriterienFreigeben: async (nummer: number) => entscheiden(nummer, true, null),
+    bewertungKriterienAblehnen: async (nummer: number, begruendung: string) => entscheiden(nummer, false, begruendung),
     energieeinsaetze: async () => ({ energieeinsaetze: structuredClone(einsaetze) }),
     energieeinsatzVorschlaege: async () => ({
       vorschlaege: ahrenbergProzesse()

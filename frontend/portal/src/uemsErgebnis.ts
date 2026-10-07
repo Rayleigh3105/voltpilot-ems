@@ -66,6 +66,10 @@ export const PLATZHALTER: Record<string, string> = {
     + '|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen'
     + '|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)',
   ersatzwert_kennung: 'EW-[0-9]{4}-[0-9]{4,}',
+  // Seit 1.13 (AP-09 F17): Tag und Uhrzeit ohne Jahr („01.10. 07:15“), die Uhrzeit nach E10 wie `uhr`.
+  tag_uhr:
+    '(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\. (?:[01][0-9]|2[0-3]):[0-5][0-9]'
+    + '(?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?',
 };
 
 export type Muster = {
@@ -128,6 +132,11 @@ export const KENNZEICHEN: Muster[] = [
     { minuten: 'ganzzahl', sekunden: 'sekunden', periode_min: 'ganzzahl' }, null, 50, true, true),
   m('aus_leistung_integriert', 'aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)', {},
     'aus Leistung integriert', 60, false, true),
+  // Seit 1.13 (AP-09 F17): woher die Menge eines Monats stammt - aus einem Ablesezeitraum, den der Kunde dem Monat
+  // zugeordnet hat; ein Jahr nennt jeden. Ohne Zuordnung hat der Monat keine Zahl und sagt es.
+  m('ablesezeitraum', 'Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden)', { von: 'tag_uhr', bis: 'tag_uhr' },
+    'Ablesezeitraum', 60, false, false),
+  m('ablesezeitraum_ohne_monat', 'Ablesezeitraum ohne Monatszuordnung', {}, 'Ablesezeitraum', 60, false, true),
   // Seit 1.4 (AP-08 IP-13): zuletzt, was ein Mensch gesetzt hat — nach allem, was gemessen ist.
   m('mit_ersatzwert', 'mit Ersatzwert (Methode „{methode}“, {kennung})',
     { methode: 'ersatzwert_methode', kennung: 'ersatzwert_kennung' }, 'mit Ersatzwert (Methode …)', 70, false, false),
@@ -169,7 +178,6 @@ export type Vorgesehen = { wort: string; anfang: string; wortlautMit: string };
 /** Wörter des Vokabulars, deren Wortlaut ein späteres Paket festlegt. */
 export const VORGESEHEN: Vorgesehen[] = [
   { wort: 'nachgeliefert', anfang: 'nachgeliefert', wortlautMit: 'AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)' },
-  { wort: 'Ablesezeitraum', anfang: 'Ablesezeitraum', wortlautMit: 'AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)' },
 ];
 
 const PLATZ = /\{([a-z_]+)\}/g;

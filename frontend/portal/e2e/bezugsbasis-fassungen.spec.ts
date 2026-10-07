@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Fassungen, Anstoß, neue Fassung, Beenden und Frist im Reiter „Bezugsbasis“ (UEMS AP-17 IP-18, §5.5) bei 375 px und
+ * Fassungen, Anstoß, neue Fassung, Beenden und Frist der Bezugsbasis (UEMS AP-17 IP-18, §5.5; seit Konzept Auswerten a1
+ * §6.6 eine Ebene unter der Kennzahl) bei 375 px und
  * 1440 px auf der Bühne `e2e/bezugsbasis.html` (`lage=anstoss` R5, `lage=frist` R13) — die ECHTE Kennzahl-Seite von
  * KZ-0004, die Routen im Speicher gespielt (`fassungenBuehne`, Form des API-Nachtrags Nachlese 3).
  *
@@ -22,9 +23,9 @@ const LEER =
 async function oeffne(page: Page, query: string, breite: number, uhr = AM_06_01_2027) {
   await page.clock.setFixedTime(uhr);
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
-  await page.goto(`/e2e/bezugsbasis.html?${query}`);
+  // Konzept Auswerten a1 §6.6: die Bezugsbasis steht eine Ebene unter der Kennzahl.
+  await page.goto(`/e2e/bezugsbasis.html?${query}&ebene=bezugsbasis`);
   await page.evaluate(() => document.fonts.ready);
-  await page.getByRole('tab', { name: 'Bezugsbasis', exact: true }).click();
 }
 
 async function ohneQuerlauf(page: Page) {
@@ -57,7 +58,8 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('bezugsbasis-fassung-1')).toContainText('Statischer Faktor: Fläche G-2 3 100 m² (Stand 12.11.2026)');
       await ohneQuerlauf(page);
 
-      await kasten.getByRole('button', { name: 'Neue Fassung bilden', exact: true }).click();
+      // Konzept Auswerten a1 §6.6: die Antworten stehen in der Karte „Überprüfung“ unter dem Anstoß.
+      await page.getByTestId('bezugsbasis-antworten').getByRole('button', { name: 'Neue Fassung bilden', exact: true }).click();
       const anpassung = page.getByTestId('bezugsbasis-neue-fassung');
       await anpassung.getByRole('checkbox', { name: 'Struktur geändert', exact: true }).check();
       await anpassung.getByLabel('Begründung', { exact: true }).fill('Anbau Halle 2: die Fläche wächst von 3 100 auf 3 400 m².');
@@ -95,7 +97,7 @@ for (const breite of [375, 1440]) {
 
     test(`Beenden mit Tag, Grund und Begründung (${breite} px)`, async ({ page }) => {
       await oeffne(page, 'person=IK&lage=anstoss', breite);
-      await page.getByTestId('bezugsbasis-anstoss').getByRole('button', { name: 'Beenden', exact: true }).click();
+      await page.getByTestId('bezugsbasis-antworten').getByRole('button', { name: 'Beenden', exact: true }).click();
       const dialog = page.getByTestId('bezugsbasis-beenden');
       await waehle(page, 'Grund', 'Struktur geändert');
       await dialog.getByLabel('Begründung', { exact: true }).fill('Anbau Halle 2 — die Kennzahl wird neu gefasst.');
