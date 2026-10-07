@@ -140,9 +140,6 @@ class DemoRundgangAufbau {
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         // Die Zuweisungen des Seeds beginnen am 01.10.2026 — Ines Kaltenbach hat ihre Rechte auf der Bühne.
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
-        // Nachweisen PR 8: die Berichts-Naht wie in der API (Surefire schaltet sie ab) - ob ein Bericht nach einer
-        // Ablesung angestoßen wird, hängt sonst davon ab, wer die Korrektur zuerst abholt: dieser Lauf oder der Takt der API.
-        r.add("voltpilot.uems.berichte.enabled", () -> "true");
     }
 
     @Autowired MockMvc mvc;
@@ -239,8 +236,11 @@ class DemoRundgangAufbau {
 
     /**
      * Runde 4 - Demo-Füllung Nachweisen (Konzept n1 §4.10, Entscheid 20): jeder offene Anstoß wird beantwortet, wie es
-     * eine sorgfältige Energiemanagerin täte. Eine Ablesung trägt als Zeitraum ganze Jahre (Befund für Messen und
-     * Berichte): jede Ablesung des Bühnen-Bestands stößt den Monatsbericht Oktober 2026 an, obwohl sein Wert bleibt. Ändert
+     * eine sorgfältige Energiemanagerin täte. Dieser Lauf verarbeitet die Kaskade ohne Berichts-Naht (Surefire; mit ihr
+     * bildete jede der rund 500 Korrekturen des Bühnen-Bestands den Entwurf der Bewertung neu - Stunden); holt der Takt
+     * der Demo-API eine Korrektur zuerst ab, stößt er Berichte an. Eine Ablesung trägt als Zeitraum ganze Jahre (Befund
+     * für Messen und Berichte): jede Ablesung des Bühnen-Bestands trifft den Monatsbericht Oktober 2026, obwohl sein Wert
+     * bleibt. Ändert
      * die Korrektur den Wert ihrer Messstelle in diesem Bericht nicht (Vergleich Entwurf gegen gültigen Stand, nur die
      * Quellen des Stands), verwirft Ines Kaltenbach den Anstoß mit Grund („Änderung nicht übernommen“). Ändert sie ihn,
      * bleibt die Entscheidung offen - wie die Referenz es am Leistungsvergleich zeigt. Idempotent: danach ist kein Anstoß
