@@ -9,7 +9,6 @@ import { useIsPhone } from '../useIsPhone';
 import { STARTWERTE } from '../verbesserung';
 import { VerantwortlichWahl } from './AuffaelligkeitZeile';
 import { BottomSheet } from './BottomSheet';
-import { GrenzSatz } from './GrenzSatz';
 import { VpDatePicker } from './VpDatePicker';
 import '../pages/Abweichungen.css';
 
@@ -199,7 +198,6 @@ export function AuffaelligkeitBlatt({
           {satz}
         </p>
       )}
-      <GrenzSatz className="vp-abw-leise" />
     </form>
   );
 

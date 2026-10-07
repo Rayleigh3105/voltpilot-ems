@@ -1096,12 +1096,6 @@ button.vp-ezl-mrow {
   grid-column: 2;
   grid-row: 1 / span 2;
 }
-.vp-ezf-grenze {
-  margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.45;
-  color: var(--vp-c-muted-fg, #475569);
-}
 @media (max-width: 420px) {
   .vp-ezf-zwei {
     grid-template-columns: minmax(0, 1fr);

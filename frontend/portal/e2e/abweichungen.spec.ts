@@ -264,6 +264,8 @@ for (const breite of [375, 1440]) {
         const zeichen = page.getByTestId(bereich).getByTestId(`abweichung-zeile-${zeile}`).locator('.vp-abw-schritt:visible, .vp-abw-chev:visible');
         await expect(zeichen).toHaveCount(1);
         if (await zeichen.evaluate((e) => e.classList.contains('vp-abw-schritt'))) await expect(zeichen).toHaveText(wort);
+        // In die Mitte holen: am Telefon liegt die feste Leiste unten über dem Seitenende, ein Tipp dort träfe sie.
+        await zeichen.evaluate((e) => e.scrollIntoView({ block: 'center' }));
         const box = (await zeichen.boundingBox())!;
         // Genau dort, wo der Finger das Zeichen trifft - nicht auf den Titel-Link daneben.
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);

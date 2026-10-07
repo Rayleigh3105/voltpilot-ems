@@ -5,7 +5,6 @@ import { api, type Energieziel, type Kennzahl } from '../api';
 import type { BezugsbasisVergleichZeitraum } from '../bezugsbasisVergleich';
 import * as B from '../energiezielBild';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
 import { useRoutenHeute } from '../routenUhr';
 import { VpPicker } from './VpPicker';
@@ -417,7 +416,6 @@ export function EnergiezielSetzenFuehrung({
             )}
           </>
         )}
-        <p className="vp-ezf-grenze">{UEMS_NORMGRENZE}</p>
       </div>
     </Modal>
   );

@@ -6,7 +6,6 @@ import { monatWort } from '../bezugsbasisVergleich';
 import { abweichungRoute, hashForRoute } from '../nav';
 import { merkeAbruf } from '../routenUhr';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
-import { GrenzSatz } from './GrenzSatz';
 import { Recht } from './Recht';
 import '../pages/Abweichungen.css';
 
@@ -58,32 +57,29 @@ export function AuffaelligkeitHinweis({
       : 'VoltPilot hat den Monat vermerkt, weil er über der Bezugsbasis liegt. Ob das eine Abweichung ist, sagt eine Person.';
 
   return (
-    <>
-      <div className="vp-abw-hinweis" role="note" data-testid={`auffaelligkeit-hinweis-${art}`}>
-        <Icon name="info" size={16} />
-        <span>
-          <b>{kopf}</b> {satz}{' '}
-          <Recht aktion="verbesserung.verwalten" standort={v.standort_id}>
-            <button type="button" className="vp-abw-link" onClick={() => setBlatt(v)} data-testid="auffaelligkeit-hinweis-beantworten">
-              {A.KNOPF_BEANTWORTEN}
-            </button>
-          </Recht>
-        </span>
-        {blatt && (
-          <AuffaelligkeitBlatt
-            vermerk={blatt}
-            alle={liste.vermerke}
-            abruf={liste.abruf}
-            onClose={() => setBlatt(null)}
-            onFertig={(x) => {
-              setBlatt(null);
-              setVersuch((n) => n + 1);
-              if (x.abweichung) location.hash = hashForRoute(abweichungRoute(x.abweichung.id));
-            }}
-          />
-        )}
-      </div>
-      <GrenzSatz className="vp-abw-leise" />
-    </>
+    <div className="vp-abw-hinweis" role="note" data-testid={`auffaelligkeit-hinweis-${art}`}>
+      <Icon name="info" size={16} />
+      <span>
+        <b>{kopf}</b> {satz}{' '}
+        <Recht aktion="verbesserung.verwalten" standort={v.standort_id}>
+          <button type="button" className="vp-abw-link" onClick={() => setBlatt(v)} data-testid="auffaelligkeit-hinweis-beantworten">
+            {A.KNOPF_BEANTWORTEN}
+          </button>
+        </Recht>
+      </span>
+      {blatt && (
+        <AuffaelligkeitBlatt
+          vermerk={blatt}
+          alle={liste.vermerke}
+          abruf={liste.abruf}
+          onClose={() => setBlatt(null)}
+          onFertig={(x) => {
+            setBlatt(null);
+            setVersuch((n) => n + 1);
+            if (x.abweichung) location.hash = hashForRoute(abweichungRoute(x.abweichung.id));
+          }}
+        />
+      )}
+    </div>
   );
 }
