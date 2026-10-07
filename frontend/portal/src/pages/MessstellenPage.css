@@ -568,6 +568,13 @@ a.vp-ms-reihe:focus-visible {
   color: var(--vp-c-muted-fg, #475569);
   white-space: nowrap;
 }
+/* Ein unvollständiger Monat mit Zahl (Review r4 S3): leise im Warnton unter der Zahl, an jeder Breite sichtbar. */
+.vp-ms-reihe-hinweis {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
+  white-space: nowrap;
+}
 .vp-ms-reihe-chev {
   grid-area: chev;
   display: inline-flex;
@@ -776,5 +783,14 @@ a.vp-ms-reihe:focus-visible {
   }
   .vp-ms-reihe-wert b {
     font-size: 0.9375rem;
+  }
+  /* Der Monat der Reihen steht im Kopf der Spalte („September 2026“) - in der Reihe nur für Vorlesende. */
+  .vp-ms-reihe-wert > span.is-monat {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }

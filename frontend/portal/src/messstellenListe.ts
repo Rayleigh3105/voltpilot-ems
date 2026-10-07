@@ -11,7 +11,10 @@ import {
   type Ton,
   type ZeileWoerter,
 } from './messstellen';
+import { MONATE } from './picker/datum';
 import { datumText, lokalerTag } from './uemsOrtsbaum';
+import { OHNE_ZAHL, UNVOLLSTAENDIG } from './uemsErgebnis';
+import { anzeige, monatTitel } from './uemsWerteKarte';
 
 /**
  * DIE LISTE „Messstellen“ (Konzept Messen m1, §6.2/§6.3, Captain-Freigabe 05.10.2026): alle Zähler nach Ort, je mit
@@ -258,8 +261,11 @@ export interface Reihe {
   unter: string;
   /** Festgehaltene Tatsachen der Quelle unter dem Satz („Einstellung geändert ab 15.01.2027 09:00“, A4). */
   fakten: string[];
-  /** Der Wert rechts: heute der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0. */
-  wert: { zahl: string; einheit: string | null; wann: string } | null;
+  /**
+   * Der Wert rechts: der Verbrauch des letzten vollständigen Monats („25.650 kWh · Sep 2026“), bei einer Hauptgröße ohne
+   * Menge der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0.
+   */
+  wert: { zahl: string; einheit: string | null; wann: string; monat?: true; hinweis?: string } | null;
   /** Hauptzähler stehen in ihrem Ort zuerst. */
   hauptzaehler: boolean;
   /** Archiviert: in der zugeklappten Gruppe am Ende. */
@@ -270,6 +276,45 @@ export interface Reihe {
   lage: { ablesungFehlt: boolean; liefertNicht: boolean; ohneQuelle: boolean; entwurf: boolean; angehalten: boolean; geplant: boolean };
   /** Die Zeile des Registers - Suche und Gruppen lesen daraus. */
   zeile: MessstelleRegisterZeile;
+}
+
+/** Eine Menge je Zeitraum gibt es nur für einen Zählerstand oder eine Intervallmenge - nie für eine Leistung. */
+export function hatMenge(h: { wertart: string } | null | undefined): boolean {
+  return h?.wertart === 'Zählerstand' || h?.wertart === 'Intervallmenge';
+}
+
+/** „Sep 2026“ - der Monat einer Reihe, kurz (Konzept §6.2: „25.650 kWh · Sep 2026“). */
+export function monatKurz(monat: string): string {
+  return `${MONATE[Number(monat.slice(5, 7)) - 1].slice(0, 3)} ${monat.slice(0, 4)}`;
+}
+
+/** „September 2026“ - der Kopf der Spalte am Rechner, wenn die Reihen den letzten Monat zeigen. */
+export function monatLang(monat: string): string {
+  return monatTitel(`${monat}-01`);
+}
+
+/**
+ * Der Verbrauch des letzten vollständigen Monats (Konzept §6.2, Entscheid 2 = A): der Schritt, den das Register mit
+ * `letzterMonat=true` trägt - gesprochen mit derselben `anzeige()` wie jede Werte-Karte, ohne eigene Rechnung. Ohne
+ * Feld (eine Anfrage ohne Monat) oder für eine Hauptgröße ohne Menge (eine Leistung) `null`: dann steht der letzte
+ * Stand. Ein Monat ohne Zahl ist der Strich, nie 0.
+ */
+export function monatWert(z: MessstelleRegisterZeile): Reihe['wert'] {
+  const lm = z.letzter_monat;
+  if (!lm || !z.hauptgroesse || !hatMenge(z.hauptgroesse)) return null;
+  if (!lm.wert) return { zahl: OHNE_ZAHL, einheit: null, wann: monatKurz(lm.monat), monat: true };
+  const a = anzeige(
+    { messstelle: { id: z.id, kennzeichen: z.kennzeichen, name: z.name, art: z.art, ...z.hauptgroesse }, raster: 'monat' },
+    lm.wert,
+    false,
+  );
+  const i = a.zahl.lastIndexOf('\u00a0');
+  // Review r4 S3: ein unvollständiger Monat darf eine Zahl tragen - dann sagt die Reihe es, statt wie ein ganzer Monat
+  // auszusehen.
+  const hinweis = a.zahl !== OHNE_ZAHL && lm.wert.zustand === UNVOLLSTAENDIG ? { hinweis: UNVOLLSTAENDIG } : {};
+  return i < 0
+    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true, ...hinweis }
+    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true, ...hinweis };
 }
 
 /** Stellen je Einheit wie E11 (kW 1, kWh 1, m³ 1); ganze Werte stehen ganz („970.680 kWh“, nicht „970.680,0 kWh“). */
@@ -366,10 +411,12 @@ export function reiheAus(w: ZeileWoerter, z: MessstelleRegisterZeile, zone: stri
     woher: woherAus(z, weg),
     unter: [stellungUnter(z), z.medium].filter(Boolean).join(' · '),
     fakten: w.fakten,
+    // Rechts der Verbrauch des letzten Monats (Konzept §6.2); ohne Monat (Leistung, Anfrage ohne Monat) der letzte Stand.
     wert:
-      lw && lw.wert !== null
+      monatWert(z) ??
+      (lw && lw.wert !== null
         ? { zahl: standZahl(lw.wert, lw.einheit), einheit: lw.einheit, wann: standWann(lw.zeitpunkt, zone, zeitpunkt) }
-        : null,
+        : null),
     hauptzaehler: z.elektrische_stellung?.stellung === 'Hauptzähler',
     archiviert: z.lebenszyklus === 'archiviert',
     ablesungsZiel: ziel,

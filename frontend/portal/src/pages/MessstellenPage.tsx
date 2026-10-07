@@ -57,6 +57,7 @@ import {
   markeAus,
   mitParameter,
   mitSuche,
+  monatLang,
   ohneParameter,
   status as statusAus,
   suchTerme,
@@ -337,9 +338,13 @@ function RegisterFlaeche({
     const nummer = ++anfrage.current;
     setFehler(false);
     const gemerkt = basisMerker.current?.tag === tagSchluessel ? basisMerker.current.antwort : null;
-    const basis = gemerkt ? Promise.resolve(gemerkt) : api.messstellenRegister(registerAnfrage(hier, OHNE_FILTER, stichtag));
+    // Messen PR5 (Entscheid 2 = A): die Reihen zeigen den Verbrauch des letzten vollständigen Monats - das Register
+    // trägt ihn nur auf Verlangen (`letzterMonat`), so lesen nur die Flächen, die ihn zeigen.
+    const basis = gemerkt
+      ? Promise.resolve(gemerkt)
+      : api.messstellenRegister({ ...registerAnfrage(hier, OHNE_FILTER, stichtag), letzterMonat: true });
     const gefiltert = filter.ort !== null || filter.anlage !== null;
-    const liste = gefiltert ? api.messstellenRegister(registerAnfrage(hier, filter, stichtag)) : basis;
+    const liste = gefiltert ? api.messstellenRegister({ ...registerAnfrage(hier, filter, stichtag), letzterMonat: true }) : basis;
     Promise.all([basis, liste]).then(
       ([b, l]) => {
         // Eine überholte Antwort (Tag oder Filter gewechselt) zeigt nichts mehr.
@@ -424,6 +429,9 @@ function RegisterFlaeche({
   const markeDa = marke !== null && m.some((x) => x.schluessel === marke) ? marke : null;
   const sichtbar = markeDa ? listeMit(markeDa) : l;
   const st = aktuell && l ? statusAus(aktuell.liste, l.reihen, { ebene, zone, stichtag }) : null;
+  // Am Rechner steht über den Werten der Monat der Reihen; ohne Monat (eine ältere Antwort) der letzte Stand.
+  const reihenMonat = aktuell?.liste.register.find((z) => z.letzter_monat)?.letzter_monat?.monat ?? null;
+  const wertKopf = reihenMonat ? monatLang(reihenMonat) : SPALTE.stand;
 
   const neueSuche = (wert: string) => {
     setSuche(wert);
@@ -582,7 +590,15 @@ function RegisterFlaeche({
             ) : (
               <>
                 {sichtbar.gruppen.map((g) => (
-                  <OrtKarte key={g.key} gruppe={g} gefiltert={gefiltert} suche={suche} periode={stichtag} onOeffnen={onOeffnen} />
+                  <OrtKarte
+                    key={g.key}
+                    gruppe={g}
+                    gefiltert={gefiltert}
+                    suche={suche}
+                    periode={stichtag}
+                    wertKopf={wertKopf}
+                    onOeffnen={onOeffnen}
+                  />
                 ))}
                 {sichtbar.archiviert.length > 0 && (
                   <ArchivKarte reihen={sichtbar.archiviert} suche={suche} periode={stichtag} onOeffnen={onOeffnen} />
@@ -865,13 +881,14 @@ function Markiert({ text, suche }: { text: string; suche: string }) {
 }
 
 /** Der Kopf der Spalten ab 760 px - dieselben Wörter wie die Reihen am Telefon. */
-function Spalten() {
+/** Der Kopf der Spalten ab 760 px; rechts der Monat der Reihen („September 2026“), ohne Monat „Letzter Stand“. */
+function Spalten({ wertKopf }: { wertKopf: string }) {
   return (
     <div className="vp-ms-spalten" aria-hidden="true">
       <span>{SPALTE.messstelle}</span>
       <span>{SPALTE.zustand}</span>
       <span>{SPALTE.woher}</span>
-      <span className="is-wert">{SPALTE.stand}</span>
+      <span className="is-wert">{wertKopf}</span>
       <span />
     </div>
   );
@@ -883,12 +900,14 @@ function OrtKarte({
   gefiltert,
   suche,
   periode,
+  wertKopf,
   onOeffnen,
 }: {
   gruppe: OrtGruppe;
   gefiltert: boolean;
   suche: string;
   periode: string | null;
+  wertKopf: string;
   onOeffnen?: (id: string, periode: string | null) => void;
 }) {
   const titelId = `vp-ms-ort-${useId().replace(/:/g, '')}`;
@@ -898,7 +917,7 @@ function OrtKarte({
         <h2 id={titelId}>{gruppe.titel}</h2>
         <span className="vp-ms-ort-zahl">{gruppenZahl(gruppe, gefiltert)}</span>
       </div>
-      <Spalten />
+      <Spalten wertKopf={wertKopf} />
       <ul className="vp-ms-reihen">
         {gruppe.reihen.map((r) => (
           <li key={r.id}>
@@ -974,7 +993,9 @@ function ReiheLink({
               {r.wert.zahl}
               {r.wert.einheit && <small>{r.wert.einheit}</small>}
             </b>
-            <span>{r.wert.wann}</span>
+            {/* Der Monat steht am Rechner im Kopf der Spalte; in der Reihe bleibt er für Vorlesende. */}
+            <span className={r.wert.monat ? 'is-monat' : undefined}>{r.wert.wann}</span>
+            {r.wert.hinweis && <small className="vp-ms-reihe-hinweis">{r.wert.hinweis}</small>}
           </>
         ) : (
           <b className="is-leer">{OHNE_ANGABE}</b>

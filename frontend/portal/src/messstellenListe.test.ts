@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { MessstellenRegister } from './api';
+import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
 import { registerEintraege, type MessstellenEbene } from './messstellen';
 import {
   gruppenZahl,
@@ -10,6 +12,9 @@ import {
   mitParameter,
   messstelleBeispiel,
   mitSuche,
+  monatKurz,
+  monatLang,
+  monatWert,
   NOCH_KEINE_QUELLE,
   ohneParameter,
   passtZurSuche,
@@ -161,6 +166,40 @@ describe('Liste, Gruppen und Reihen', () => {
     const werk = l.gruppen.find((g) => g.titel === 'Werk Ahrenberg')!;
     expect(werk.reihen.map((r) => r.kennzeichen)).toEqual(['MS-01', 'MS-02', 'MS-14']);
     expect(trefferSatz(l, false)).toBe('22 Messstellen an 14 Orten');
+  });
+
+  it('rechts der Verbrauch des letzten Monats (Messen PR5): „88.200 kWh · Sep 2026“ - aus der Antwort, nie gerechnet', () => {
+    // Die echte Antwort der API mit `letzterMonat=true` (Kopie der Demo-Datenbank, Stichtag 05.10.2026).
+    const echt = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures/register-letzter-monat-2026-09.json'), 'utf8')) as {
+      register: MessstelleRegisterZeile[];
+    };
+    const z = (kz: string) => echt.register.find((x) => x.kennzeichen === kz)!;
+    expect(monatWert(z('MS-20'))).toEqual({ zahl: '88.200', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    expect(monatWert(z('HZ-1'))).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    // Ohne Zahl der Strich mit dem Monat - nie 0.
+    expect(monatWert(z('MS-03'))).toEqual({ zahl: '—', einheit: null, wann: 'Sep 2026', monat: true });
+    // Eine Hauptgröße ohne Menge (Leistung) und eine Antwort ohne Monat: kein Monat, dann steht der letzte Stand.
+    expect(monatWert({ ...z('HZ-1'), hauptgroesse: { ...z('HZ-1').hauptgroesse!, wertart: 'Momentanwert' } })).toBeNull();
+    expect(monatWert({ ...z('HZ-1'), letzter_monat: undefined })).toBeNull();
+    // In der Reihe: der Monat ersetzt den Stand.
+    const r = ahrenbergRegister();
+    const ms06 = r.register.find((x) => x.kennzeichen === 'MS-06')!;
+    ms06.letzter_monat = z('HZ-1').letzter_monat;
+    expect(aus(r).reihen.find((x) => x.kennzeichen === 'MS-06')!.wert).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    // Ein unvollständiger Monat mit Zahl sieht nicht wie ein ganzer aus: die Reihe sagt „unvollständig“ (Review r4 S3).
+    const hz1 = z('HZ-1');
+    const teil = {
+      ...hz1,
+      letzter_monat: {
+        ...hz1.letzter_monat!,
+        wert: { ...hz1.letzter_monat!.wert!, zustand: 'unvollständig', abdeckung_prozent: 72, erhalten: 72, erwartet: 100, kennzeichen: ['Anfang nicht gemessen (kein Stand an der Periodengrenze)'] },
+      },
+    };
+    expect(monatWert(teil)).toMatchObject({ zahl: '199.500', einheit: 'kWh', hinweis: 'unvollständig' });
+    expect(monatWert(z('MS-20'))?.hinweis).toBeUndefined();
+    expect(monatKurz('2026-09')).toBe('Sep 2026');
+    expect(monatKurz('2027-03')).toBe('Mär 2027');
+    expect(monatLang('2026-09')).toBe('September 2026');
   });
 
   it('woher die Werte kommen: Gerät mit Komponente und Messwert, berechnet, noch keine Quelle', () => {

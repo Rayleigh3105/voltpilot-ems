@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
@@ -88,7 +90,8 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
     expect(eintraege).toEqual(['Stand an einem Tag ansehenNur lesen, z. B. für eine Prüfung']);
     // EINE Abfrage ohne Filter.
     expect(register).toHaveBeenCalledTimes(1);
-    expect(register).toHaveBeenCalledWith({});
+    // Messen PR5: die Liste fragt den letzten Monat mit - nur sie zeigt ihn.
+    expect(register).toHaveBeenCalledWith({ letzterMonat: true });
   });
 
   it('am Telefon steht „Messstelle anlegen“ im Menü, nicht als Knopf im Kopf', async () => {
@@ -137,6 +140,25 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
       'MS-14',
     ]);
     expect(within(screen.getAllByTestId('messstellen-ort')[2]).getByText('Werk Ahrenberg · 2')).toBeInTheDocument();
+  });
+
+  it('Messen PR5: rechts der Verbrauch des letzten Monats, am Rechner unter dem Kopf „September 2026“', async () => {
+    telefon(false);
+    // Die Antwort mit `letzterMonat=true`: jede Zeile trägt den Monat (hier der Schritt von HZ-1 aus der echten Antwort).
+    const echt = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures/register-letzter-monat-2026-09.json'), 'utf8')) as {
+      register: MessstellenRegister['register'];
+    };
+    const monat = echt.register.find((z) => z.kennzeichen === 'HZ-1')!.letzter_monat;
+    verdrahte(() => {
+      const r = ahrenbergRegister();
+      return { ...r, register: r.register.map((z) => (z.kennzeichen === 'MS-06' ? { ...z, letzter_monat: monat } : z)) };
+    });
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    expect(document.querySelector('.vp-ms-spalten')).toHaveTextContent('September 2026');
+    const ms06 = reiheVon('MS-06');
+    expect(ms06.textContent).toContain('199.500');
+    expect(ms06).toHaveTextContent('Sep 2026');
   });
 
   it('jede Reihe ist der Verweis auf ihre Messstelle; „Woher die Werte kommen“ sagt Gerät oder noch keine Quelle', async () => {
@@ -294,7 +316,7 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     telefon(false);
     const register = verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10' }), WARTEN);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10', letzterMonat: true }), WARTEN);
     await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
     await waitFor(() => expect(reihen()).toHaveLength(1), WARTEN);
     expect(screen.getByRole('button', { name: '1 ohne Quelle' })).toHaveAttribute('aria-pressed', 'true');
@@ -310,7 +332,7 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
     await screen.findAllByTestId('messstelle-reihe');
     const erste = reihen()[0];
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'] }), WARTEN);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'], letzterMonat: true }), WARTEN);
     await waitFor(() => expect(register.mock.results.every((r) => r.type === 'return')).toBe(true));
     expect(screen.queryByTestId('messstellen-laedt')).toBeNull();
     // Dieselbe Reihe, dasselbe Element: der Blick der Wiedervorlage bliebe auf ihr.
@@ -322,7 +344,7 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     telefon(false);
     const register = verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'] }), WARTEN);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'], letzterMonat: true }), WARTEN);
     const marke = await screen.findByRole('button', { name: 'Halle 1 – Filter entfernen' });
     fireEvent.click(marke);
     await waitFor(() => expect(reihen()).toHaveLength(22), WARTEN);
@@ -368,7 +390,7 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     await menue(/^Stand an einem Tag ansehen/);
     await waehleTag('2026-10-10');
     await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
-    expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10' });
+    expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10', letzterMonat: true });
     expect(window.location.hash).toBe('#/portfolio/messstellen?stand=2026-10-10');
     // Eine Reihe öffnet die Messstelle an genau diesem Tag (AP-13 IP-3) - als Verweis und als Klick.
     await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10&stand=2026-10-10`), WARTEN);
@@ -389,7 +411,7 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     const register = verdrahte();
     render(<MessstellenPage ebene={WERK} bereichDa />);
     await screen.findAllByTestId('messstelle-reihe');
-    expect(register).toHaveBeenCalledWith({ standort: FIXTURE_IDS.st1 });
+    expect(register).toHaveBeenCalledWith({ standort: FIXTURE_IDS.st1, letzterMonat: true });
     expect(screen.getByText(`Werk Ahrenberg · ${KOPF_SATZ}`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
     expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
@@ -480,7 +502,7 @@ describe('Messstellen · „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6
     const vorher = register.mock.calls.length;
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(register.mock.calls.length).toBeGreaterThan(vorher));
-    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1 });
+    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1, letzterMonat: true });
   });
 
   it('ohne Speichern geschlossen: kein neues Lesen', async () => {

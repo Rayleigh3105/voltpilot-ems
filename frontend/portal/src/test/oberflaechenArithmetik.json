@@ -1067,17 +1067,25 @@
         "./messstellen:TITEL",
         "./messstellen:ablesungsZiele",
         "./messstellen:zeitpunktText",
+        "./picker/datum:MONATE",
         "./picker/suche:alleFundstellen",
         "./picker/suche:hervorheben",
         "./picker/suche:normalisiereSuche",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:UNVOLLSTAENDIG",
         "./uemsOrtsbaum:datumText",
-        "./uemsOrtsbaum:lokalerTag"
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsWerteKarte:anzeige",
+        "./uemsWerteKarte:monatTitel"
       ],
       "operationen": [
         "gruppen: out.length - 1",
         "imOrt: -1",
         "liste: g.gesamt += 1",
         "liste: n + g.reihen.length",
+        "monatKurz: Number(monat.slice(5, 7))",
+        "monatKurz: Number(monat.slice(5, 7)) - 1",
+        "monatWert: i + 1",
         "namenListe: -1",
         "namenListe: namen.length - 1",
         "standAus: Number.isNaN(Date.parse(`${t}T00:00:00Z`))",
@@ -1086,7 +1094,7 @@
         "zahlFundstellen: von - 1",
         "zahlFundstellen: von -= 1"
       ],
-      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert."
+      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert. Monat der Reihe (#1424): der gelieferte Schritt `letzter_monat.wert`, gesprochen mit `anzeige()` (monatWert trennt Zahl und Einheit an der Textposition, monatKurz ist der Monatsname); „unvollständig“ ist sein Zustand, nicht gerechnet."
     },
     "messstelleSeite.ts": {
       "importe": [
@@ -1110,7 +1118,8 @@
         "./uemsWerteKarte:NOCH_KEINE_QUELLE_TITEL as KEINE_QUELLE_TITEL",
         "./uemsWerteKarte:anzeige",
         "./uemsWerteKarte:karte",
-        "./uemsWerteKarte:monatTitel"
+        "./uemsWerteKarte:monatTitel",
+        "export:export { hatMenge } from './messstellenListe';"
       ],
       "operationen": [
         "balken: Math.abs(z)",
