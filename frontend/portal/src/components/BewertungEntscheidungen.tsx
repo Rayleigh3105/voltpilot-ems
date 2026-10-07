@@ -7,6 +7,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
+  ApiError,
   type BewertungKriterienFassung,
   type BewertungKriterienWerte,
   type BewertungRanglisteEinsatz,
@@ -16,6 +17,7 @@ import { ABBRECHEN, einstufungText, prozentText, SPEICHERN, tag, zahlMitEinheit 
 import {
   GRUND_WOERTER,
   gruendeText,
+  KRITERIEN_BEREITS_ENTSCHIEDEN,
   KRITERIEN_EINLEITUNG,
   KRITERIEN_REIHENFOLGE,
   kriterienAenderungen,
@@ -33,6 +35,8 @@ import { UEMS_WIE_VOLTPILOT_VORSCHLAEGT } from '../glossar';
 import './BewertungErgebnis.css';
 
 const fehlerText = (e: unknown) => e instanceof Error && e.message ? e.message : 'Das hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.';
+/** 409 `bereits_entschieden`: eine dritte Person war schneller — die Karte zeigt dann den neuen Stand statt der alten Knöpfe. */
+const bereitsEntschieden = (e: unknown) => e instanceof ApiError && e.status === 409;
 
 export function EinstufungDialog({
   einsatz,
@@ -44,10 +48,11 @@ export function EinstufungDialog({
   onGespeichert: (fassung: EnergieeinsatzEinstufungFassung) => void;
 }) {
   const basis = `be-${useId().replace(/:/g, '')}`;
-  // Ohne Messwerte gibt es keinen Vorschlag: dann weicht keine Wahl davon ab, und vorbelegt ist nichts Erfundenes.
+  // Ohne Messwerte gibt es keinen Vorschlag: dann weicht keine Wahl davon ab, und vorbelegt ist nichts Erfundenes —
+  // die Person wählt selbst.
   const bild = vorschlagBild(einsatz);
   const vorschlag = bild?.wesentlich ? 'wesentlich' : 'nicht_wesentlich';
-  const [wahl, setWahl] = useState<'wesentlich' | 'nicht_wesentlich'>(vorschlag);
+  const [wahl, setWahl] = useState<'wesentlich' | 'nicht_wesentlich' | null>(bild ? vorschlag : null);
   const [grund, setGrund] = useState<('K1' | 'K2' | 'K3' | 'K4')[]>(() =>
     (['K1', 'K2', 'K3'] as const).filter((k) => einsatz.urteil[k] === 'ueber_schwelle'));
   const [begruendung, setBegruendung] = useState('');
@@ -59,6 +64,11 @@ export function EinstufungDialog({
 
   async function senden(ev: FormEvent) {
     ev.preventDefault();
+    if (wahl === null) {
+      setFehler('Bitte wählen Sie „wesentlich“ oder „nicht wesentlich“.');
+      document.getElementById(`${basis}-wahl-wesentlich`)?.focus();
+      return;
+    }
     if (!begruendung.trim()) {
       setFehler(abweichung ? 'Bitte begründen Sie ausdrücklich, warum Ihre Einstufung vom Vorschlag abweicht.' : 'Bitte geben Sie eine Begründung an.');
       document.getElementById(`${basis}-begruendung`)?.focus();
@@ -93,7 +103,7 @@ export function EinstufungDialog({
         </div>
         <fieldset className="vp-bw-gruppe">
           <legend>Einstufung</legend>
-          <label className="vp-bw-wahl"><input type="radio" name={`${basis}-wahl`} checked={wahl === 'wesentlich'} onChange={() => setWahl('wesentlich')} /> wesentlich</label>
+          <label className="vp-bw-wahl"><input type="radio" id={`${basis}-wahl-wesentlich`} name={`${basis}-wahl`} checked={wahl === 'wesentlich'} onChange={() => setWahl('wesentlich')} /> wesentlich</label>
           <label className="vp-bw-wahl"><input type="radio" name={`${basis}-wahl`} checked={wahl === 'nicht_wesentlich'} onChange={() => setWahl('nicht_wesentlich')} /> nicht wesentlich</label>
         </fieldset>
         <fieldset className="vp-bw-gruppe">
@@ -170,8 +180,10 @@ export function KriterienDialog({ onClose, onGespeichert }: { onClose: () => voi
 }
 
 /** Die Ablehnung einer beantragten Kriterien-Fassung: nur mit Begründung (422 `begruendung_fehlt`). */
-function KriterienAblehnenDialog({ fassung, onClose, onAbgelehnt }: {
+function KriterienAblehnenDialog({ fassung, onClose, onAbgelehnt, onVeraltet }: {
   fassung: BewertungKriterienFassung; onClose: () => void; onAbgelehnt: (f: BewertungKriterienFassung) => void;
+  /** Eine andere Person hat schon entschieden (409): der Dialog schließt, die Karte lädt neu. */
+  onVeraltet: () => void;
 }) {
   const basis = `ba-${useId().replace(/:/g, '')}`;
   const [begruendung, setBegruendung] = useState('');
@@ -186,7 +198,7 @@ function KriterienAblehnenDialog({ fassung, onClose, onAbgelehnt }: {
     }
     setBusy(true); setFehler(null);
     try { onAbgelehnt(await api.bewertungKriterienAblehnen(fassung.fassung, begruendung.trim())); }
-    catch (e) { setFehler(fehlerText(e)); }
+    catch (e) { if (bereitsEntschieden(e)) onVeraltet(); else setFehler(fehlerText(e)); }
     finally { setBusy(false); }
   }
   return <Modal open onClose={onClose} title="Neue Kriterien ablehnen" footer={<>
@@ -241,10 +253,18 @@ export function KriterienKarte({ darfAendern, ich, anstoss, onGeaendert }: {
     onGeaendert();
   };
 
+  /** Eine dritte Person hat die Fassung schon entschieden: neu laden, sagen warum, die alten Knöpfe verschwinden. */
+  const veraltet = () => {
+    setMeldung(KRITERIEN_BEREITS_ENTSCHIEDEN);
+    setDialog(null);
+    setVersion((v) => v + 1);
+    onGeaendert();
+  };
+
   async function freigeben(f: BewertungKriterienFassung) {
     setBusy(true); setEntscheidFehler(null);
     try { fertig(await api.bewertungKriterienFreigeben(f.fassung)); }
-    catch (e) { setEntscheidFehler(fehlerText(e)); }
+    catch (e) { if (bereitsEntschieden(e)) veraltet(); else setEntscheidFehler(fehlerText(e)); }
     finally { setBusy(false); }
   }
 
@@ -305,7 +325,7 @@ export function KriterienKarte({ darfAendern, ich, anstoss, onGeaendert }: {
       )}
       {dialog === 'aendern' && <KriterienDialog onClose={() => setDialog(null)} onGespeichert={fertig} />}
       {dialog === 'ablehnen' && lage?.beantragt && (
-        <KriterienAblehnenDialog fassung={lage.beantragt} onClose={() => setDialog(null)} onAbgelehnt={fertig} />
+        <KriterienAblehnenDialog fassung={lage.beantragt} onClose={() => setDialog(null)} onAbgelehnt={fertig} onVeraltet={veraltet} />
       )}
     </section>
   );

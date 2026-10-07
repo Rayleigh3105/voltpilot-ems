@@ -36,7 +36,14 @@ Bereiche (Wesentlich · Nicht wesentlich · Noch nicht eingestuft · Noch ohne W
 „Wie VoltPilot vorschlägt“ (`KriterienKarte`) und Umfang; Grenz-Satz einmal am Fuß („Was VoltPilot leistet“).
 
 - Gruppen folgen der geltenden Einstufung einer Person, nie dem Vorschlag; „Noch ohne Werte“ = `keine_werte` UND keine
-  Menge im Zeitraum. Strom steht vor Trägern ohne Anteil (m³ ist kein kWh).
+  Menge im Zeitraum — außer „wesentlich“: der bleibt unter „Wesentliche Bereiche“, sonst zählte die Antwort ihn und die
+  Karte nicht. Strom steht vor Trägern ohne Anteil (m³ ist kein kWh).
+- Wächter Q5: `bewertungErgebnis.ts` rechnet keine Menge. Die Menge der wesentlichen Bereiche summiert
+  `uemsBewertung.menge` (nie eine Summe gerundeter Anteile), ihren Anteil und den des Rests bildet `uemsBewertung.prozent`;
+  „x % zugeordnet“ ist `abdeckung_prozent` der Route (eine Stelle, damit 79,6 % nicht wie 80 % aussehen). Ein negativer
+  Rest (Doppelzählung) ist nie „0 % · ausreichend“, sondern „passt nicht“ mit Satz.
+- Entscheidet eine dritte Person zuerst, antwortet die Route 409 `bereits_entschieden`; die Kriterien-Karte lädt dann
+  neu und sagt das, statt veraltete Knöpfe stehen zu lassen. Ohne Vorschlag ist im Einstufen-Dialog nichts vorgewählt.
 - ⚠ Ein Vorschlag zählt nur mit Messwerten: ohne Menge sagt die Route „unter Schwelle“ (alle Kriterien „nicht
   anwendbar“) - das ist kein Vorschlag, „weicht vom Vorschlag ab“ erscheint dann nie (`vorschlagBild`).
 - ⚠ Zwei Uhren der Demo: die Datengrundlage der gültigen Bewertung (Bühne, April 2028 bis März 2029) hat keine

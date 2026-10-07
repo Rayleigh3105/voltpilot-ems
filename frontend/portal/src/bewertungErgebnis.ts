@@ -6,6 +6,10 @@
  * Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und Kriterien-Dialog (§10.10). Zahlen und Urteile kommen fertig aus der
  * Rangliste (über die Datengrundlage, Befund 2), die Einstufungen aus ihren Fassungen; hier wird nur gewählt, gezählt und
  * in Sätze gesetzt. Eine Einstufung trifft immer eine Person — ein Vorschlag ohne Messwerte ist keiner.
+ *
+ * Wächter Q5 (`test/oberflaechenArithmetik.json`): die Menge der wesentlichen Bereiche summiert der Zwilling der
+ * Bewertung (`uemsBewertung.menge`, B3), ihren Anteil und den des Rests am Hauptzähler bildet `uemsBewertung.prozent`
+ * (KR4); wie viel zugeordnet ist, sagt die Route (`abdeckung_prozent`). Zahlen dienen hier nur Anzeige und Balkenbreite.
  */
 import type {
   Bericht,
@@ -34,9 +38,11 @@ import {
   UEMS_NOCH_OHNE_WERTE,
   UEMS_WESENTLICHE_BEREICHE,
 } from './glossar';
+import { dez, dezVergleich } from './dez';
 import { prozessSummeHinweisSatz } from './kostenstellenUebersicht';
 import { MEDIEN_WAEHLBAR } from './uemsMessstelle';
-import { STARTWERTE } from './uemsBewertung';
+import { menge as mengeDerBereiche, prozent as anteilAmGanzen, STARTWERTE } from './uemsBewertung';
+import { KWH, PROZENT, VOLLSTAENDIG, VOR_EINHEIT, zahl as zahlText, zahlMitStellen } from './uemsErgebnis';
 
 // ------------------------------------------------------------------ Zahlen
 
@@ -57,7 +63,12 @@ export const mengeText = (n: number, einheit: string | null) =>
 const ZAHLWORT = ['keine', 'eine', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf'];
 /** „eine Einstufung“, aber „ein Bereich“: die Eins richtet sich nach dem Wort. */
 const zahlwort = (n: number, maennlich = false) => (n === 1 && maennlich ? 'ein' : (ZAHLWORT[n] ?? String(n)));
-const gross = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const gross = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+/** Ein Prozent-Dezimaltext der Route oder des Zwillings: „49.96“ → „50“ (ganze Zahl in Satz und Kachel). */
+const ganzeProzent = (p: string) => zahlMitStellen(p, 0, PROZENT).replace(`${VOR_EINHEIT}${PROZENT}`, '');
+/** Absteigend nach Menge (Vergleich der gelieferten Beträge, keine Rechnung); ohne Menge am Ende. */
+const nachMenge = (a: string | null, b: string | null) =>
+  a === null || b === null ? (a === null ? (b === null ? 0 : 1) : -1) : dezVergleich(dez(b), dez(a));
 /** „Spritzguss, Montage und Verwaltung“. */
 export const aufzaehlung = (teile: readonly string[]) =>
   teile.length < 2 ? (teile[0] ?? '') : `${teile.slice(0, -1).join(', ')} und ${teile[teile.length - 1]}`;
@@ -248,7 +259,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
     const einstufung: Einstufung = f ? f.einstufung : 'offen';
     const menge = z?.menge != null ? Number(z.menge) : null;
     const strom = einsatz.traeger === 'Strom';
-    const anteil = strom && z?.anteil_prozent != null ? Number(z.anteil_prozent) : null;
+    const anteil = strom && z?.anteil_prozent != null ? z.anteil_prozent : null;
     const vorschlag = kriterien ? vorschlagBild(z, kriterien) : null;
     const abweichung = !!f && !!vorschlag && vorschlag.wesentlich !== (f.einstufung === 'wesentlich');
     const ohneWerte = menge === null && einsatz.keine_werte;
@@ -275,7 +286,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
       kennzeichen: einsatz.kennzeichen,
       name: einsatz.name,
       einstufung,
-      wert: anteil !== null ? prozent(anteil) : !strom && menge !== null ? mengeText(menge, z?.einheit ?? null) : '–',
+      wert: anteil !== null ? zahlMitStellen(anteil, 1, PROZENT) : !strom && menge !== null ? mengeText(menge, z?.einheit ?? null) : '–',
       menge: anteil !== null && menge !== null ? mengeText(menge, 'kWh') : null,
       balken: anteil !== null && menge !== null && groesste > 0 ? Math.round((menge / groesste) * 1000) / 10 : null,
       teile,
@@ -283,13 +294,15 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
       abweichung,
       wartet,
     };
-    return { reihe, gruppe: (ohneWerte ? 'ohne_werte' : einstufung) as GruppenSchluessel, menge, strom };
+    // Wesentlich eingestuft ist wesentlich — auch ohne Werte (sonst zählte die Antwort ihn, die Karte nicht).
+    const gruppe: GruppenSchluessel = ohneWerte && einstufung !== 'wesentlich' ? 'ohne_werte' : einstufung;
+    return { reihe, gruppe, menge, mengeText: z?.menge ?? null, strom };
   });
 
   // Wie die Rangliste: Strom vor den Trägern ohne Anteil (m³ ist kein kWh), die größte Menge zuerst, ohne Menge nach
   // dem Kennzeichen.
   const nr = (kz: string) => Number(kz.replace(/\D/g, '')) || 0;
-  reihen.sort((a, b) => Number(b.strom) - Number(a.strom) || (b.menge ?? -1) - (a.menge ?? -1) || nr(a.reihe.kennzeichen) - nr(b.reihe.kennzeichen));
+  reihen.sort((a, b) => (a.strom === b.strom ? 0 : a.strom ? -1 : 1) || nachMenge(a.mengeText, b.mengeText) || nr(a.reihe.kennzeichen) - nr(b.reihe.kennzeichen));
   const gruppen = GRUPPEN.map((g) => ({ ...g, reihen: reihen.filter((x) => x.gruppe === g.key).map((x) => x.reihe) })).filter((g) => g.reihen.length > 0);
 
   const n = laufend.length;
@@ -299,11 +312,19 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
   const abweichend = reihen.filter((x) => x.reihe.abweichung).length;
   const vorgeschlagen = reihen.filter((x) => kriterien && vorschlagBild(zeilen.get(x.reihe.id), kriterien)?.wesentlich).length;
 
-  // Anteil und Menge der wesentlichen Bereiche — nur, wenn jeder wesentliche Strom-Bereich einen Anteil hat.
+  // Menge und Anteil der wesentlichen Bereiche — nur, wenn jeder wesentliche Strom-Bereich eine Menge hat. Die Summe
+  // bildet der Zwilling (B3, nie eine Summe gerundeter Anteile), den Anteil am Hauptzähler ebenso (KR4).
   const wesentlichStrom = wesentliche.filter((x) => x.strom);
-  const anteile = wesentlichStrom.map((x) => zeilen.get(x.reihe.id)?.anteil_prozent ?? null);
-  const anteilSumme = wesentlichStrom.length > 0 && anteile.every((a) => a !== null) ? anteile.reduce((s, a) => s + Number(a), 0) : null;
-  const mengeSumme = wesentlichStrom.length > 0 && wesentlichStrom.every((x) => x.menge !== null) ? wesentlichStrom.reduce((s, x) => s + (x.menge ?? 0), 0) : null;
+  const zusammen =
+    wesentlichStrom.length > 0
+      ? mengeDerBereiche(
+          wesentlichStrom.map((x) => ({ kennung: x.reihe.kennzeichen, traeger: 'Strom', art: 'gemessen' as const, direkt: true, archiviert: false, wert: x.mengeText, ersatz: '0' })),
+          'Strom',
+        )
+      : null;
+  const mengeSumme = zusammen?.zustand === VOLLSTAENDIG ? zusammen.menge : null;
+  const anteilSumme = mengeSumme !== null && r?.nenner.wert != null ? anteilAmGanzen(dez(mengeSumme), dez(r.nenner.wert)) : null;
+  const ohneMenge = wesentlichStrom.filter((x) => x.mengeText === null).map((x) => x.reihe.name);
 
   let antwort: string;
   let zusatz: string | null = null;
@@ -316,11 +337,11 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
     antwort =
       w === 0
         ? `Keiner der ${n} Bereiche ist als wesentlich eingestuft.`
-        : `${w} von ${n} ${bereicheWort(n)} ${w === 1 ? 'ist' : 'sind'} wesentlich${anteilSumme !== null ? ` - zusammen ${prozent(anteilSumme, 0)} des Stroms` : ''}.`;
+        : `${w} von ${n} ${bereicheWort(n)} ${w === 1 ? 'ist' : 'sind'} wesentlich${anteilSumme !== null ? ` - zusammen ${zahlMitStellen(anteilSumme, 0, PROZENT)} des Stroms` : ''}.`;
     const saetze: string[] = [];
     if (abweichend > 0)
       saetze.push(`${gross(zahlwort(abweichend))} ${abweichend === 1 ? 'Einstufung weicht' : 'Einstufungen weichen'} begründet vom Vorschlag ab.`);
-    const offen = n - eingestuft;
+    const offen = reihen.filter((x) => x.reihe.einstufung === 'offen').length;
     if (offen > 0) saetze.push(`${gross(zahlwort(offen, true))} ${offen === 1 ? 'Bereich ist' : 'Bereiche sind'} noch nicht eingestuft.`);
     zusatz = saetze.length ? saetze.join(' ') : null;
   }
@@ -332,20 +353,26 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
   const ohneAnteil = (e.umfang?.traeger ?? []).filter((t) => !t.mit_anteil).map((t) => t.name);
   if (ohneAnteil.length > 0) formal.push(`${aufzaehlung(ohneAnteil)} ohne Anteil`);
 
-  // Wie verlässlich: fehlende Werte zuerst, dann eine zu kurze Datengrundlage.
+  // Ergeben die Bereiche mehr als der Hauptzähler (Doppelzählung), ist der Rest negativ — nie „0 % · ausreichend“.
+  const restNegativ = !!r?.rest && r.rest.startsWith('-');
+  // Wie verlässlich: fehlende Werte zuerst, dann eine Doppelzählung, dann eine zu kurze Datengrundlage.
   let vertrauen: string | null = null;
   if (n > 0 && r) {
     if (!mitWerten) {
       vertrauen = `Für ${e.zeitraum} liegen noch keine Messwerte vor - darum fehlen Anteile und Mengen. Die Einstufungen gelten, wie sie festgelegt sind.`;
     } else if (r.nenner.wert === null) {
-      const fehlen = r.nenner.gesamt - r.nenner.vorhanden;
-      vertrauen = `Für ${fehlen} von ${r.nenner.gesamt} Anlagen fehlen Werte des Hauptzählers - darum fehlen die Anteile am Strom.`;
+      vertrauen = `Werte des Hauptzählers liegen nur für ${r.nenner.anlagen} Anlagen vollständig vor - darum fehlen die Anteile am Strom.`;
+    } else if (restNegativ) {
+      vertrauen = 'Die Bereiche ergeben mehr Strom, als der Hauptzähler gemessen hat - vermutlich ist ein Zähler doppelt zugeordnet; die Anteile sind darum zu groß.';
     } else if (r.urteil.K7 !== 'erfuellt') {
       vertrauen = `${r.urteil.K7 === 'vorlaeufig' ? 'Vorläufig: d' : 'D'}ie Datengrundlage umfasst ${r.monate} ${r.monate === 1 ? 'Monat' : 'Monate'}; belastbar ist der Vorschlag ab ${r.kriterien.werte.K7} Monaten.`;
     }
   }
 
-  const restProzent = r && r.rest !== null && r.nenner.wert !== null && Number(r.nenner.wert) > 0 ? (Number(r.rest) / Number(r.nenner.wert)) * 100 : null;
+  // Der Anteil des Rests vom Zwilling (KR4); wie viel zugeordnet ist, sagt die Route — mit einer Stelle, damit „20 %“ neben
+  // „belastbar ab 80 %“ nicht wie 80 % zugeordnet aussieht (79,6 % sind es nicht).
+  const restProzent = r && r.rest !== null && r.nenner.wert !== null && !restNegativ ? anteilAmGanzen(dez(r.rest), dez(r.nenner.wert)) : null;
+  const zugeordnet = r?.abdeckung_prozent ?? null;
   const k8 = r?.urteil.K8;
   const offeneListe = (e.messbedarfe ?? []).filter((b) => b.zustand === 'offen' && laufend.some((x) => x.id === b.energieeinsatz_id));
   const namen = wesentliche.map((x) => x.reihe.name);
@@ -360,28 +387,43 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
       wesentlich: {
         wert: String(w),
         einheit: `von ${n}`,
-        sub: anteilSumme !== null ? `${prozent(anteilSumme, 0)} des Stroms` : namen.length ? aufzaehlung(namen) : null,
+        sub: anteilSumme !== null ? `${zahlMitStellen(anteilSumme, 0, PROZENT)} des Stroms` : namen.length ? aufzaehlung(namen) : null,
         subBreit: namen.length ? namen.join(', ') : null,
         marke: null,
       },
       anteil: {
-        wert: anteilSumme !== null ? zahl(anteilSumme, 0) : null,
+        wert: anteilSumme !== null ? ganzeProzent(anteilSumme) : null,
         einheit: anteilSumme !== null ? '%' : null,
-        sub: mengeSumme !== null ? `${mengeText(mengeSumme, 'kWh')} ${r?.monate === 12 ? 'im Jahr' : r?.monate === 1 ? 'in 1 Monat' : `in ${r?.monate ?? 0} Monaten`}` : 'noch ohne Messwerte',
+        sub:
+          mengeSumme !== null
+            ? `${zahlText(mengeSumme, KWH, 'jahr')} ${r?.monate === 12 ? 'im Jahr' : r?.monate === 1 ? 'in einem Monat' : `in ${r?.monate ?? 0} Monaten`}`
+            : wesentlichStrom.length === 0
+              ? 'noch kein Bereich als wesentlich eingestuft'
+              : ohneMenge.length < wesentlichStrom.length
+                ? `${aufzaehlung(ohneMenge)} noch ohne Messwerte`
+                : 'noch ohne Messwerte',
         subBreit: null,
         marke: null,
       },
-      rest: {
-        wert: restProzent !== null ? zahl(Math.max(0, restProzent), 0) : null,
-        einheit: restProzent !== null ? '%' : null,
-        sub:
-          restProzent !== null && kriterien
-            ? `ab ${schwelle(kriterien.K8)}${NBSP}% zugeordnet ist die Rangfolge belastbar`
-            : 'Ohne vollständige Werte des Hauptzählers kein Anteil.',
-        subBreit: restProzent !== null ? null : 'Ohne vollständige Werte des Hauptzählers kein Anteil.',
-        marke:
-          restProzent === null ? null : k8 === 'ueber_schwelle' ? { text: 'ausreichend', ton: 'ok' } : k8 === 'unter_schwelle' ? { text: 'zu wenig', ton: 'warn' } : null,
-      },
+      rest: restNegativ
+        ? {
+            wert: null,
+            einheit: null,
+            sub: 'Die Bereiche ergeben mehr als der Hauptzähler - Zuordnung prüfen.',
+            subBreit: null,
+            marke: { text: 'passt nicht', ton: 'warn' },
+          }
+        : {
+            wert: restProzent !== null ? ganzeProzent(restProzent) : null,
+            einheit: restProzent !== null ? '%' : null,
+            sub:
+              restProzent !== null && kriterien
+                ? `${zugeordnet !== null ? `${zahlMitStellen(zugeordnet, 1, PROZENT)} zugeordnet, ` : ''}belastbar ab ${schwelle(kriterien.K8)}${NBSP}%`
+                : 'Ohne vollständige Werte des Hauptzählers kein Anteil.',
+            subBreit: restProzent !== null ? null : 'Ohne vollständige Werte des Hauptzählers kein Anteil.',
+            marke:
+              restProzent === null ? null : k8 === 'ueber_schwelle' ? { text: 'ausreichend', ton: 'ok' } : k8 === 'unter_schwelle' ? { text: 'zu wenig', ton: 'warn' } : null,
+          },
       bedarfe:
         e.messbedarfe === null
           ? null
@@ -439,6 +481,9 @@ export function bewertungBeispiel(berichte: readonly Bericht[] | null): string |
 
 // ------------------------------------------------------------------ Kriterien in Worten
 
+export const KRITERIEN_BEREITS_ENTSCHIEDEN =
+  'Über die beantragten Kriterien hat inzwischen eine andere Person entschieden - hier steht der neue Stand.';
+
 export const KRITERIEN_EINLEITUNG =
   'VoltPilot schlägt einen Bereich als wesentlich vor, wenn eines davon zutrifft. Entscheiden und begründen tut immer eine Person.';
 
@@ -452,9 +497,9 @@ export function kriterienSaetze(f: Pick<BewertungKriterienFassung, 'werte' | 'gu
       `Er braucht mindestens ${zahl(Number(w.K3))}${NBSP}kWh im Jahr.`,
       'Eine Person schätzt ihn begründet als wesentlich ein.',
     ],
-    fussnote:
-      `Belastbar ist der Vorschlag mit mindestens ${w.K7} vollen Monaten, ${schwelle(w.K5)}${NBSP}% Daten und höchstens ${schwelle(w.K6)}${NBSP}% Ersatzwerten. ` +
-      (f.gueltig_ab ? `Kriterien seit ${tag(f.gueltig_ab)}.` : 'Es gelten die Startwerte von VoltPilot.'),
+    fussnote: `Belastbar ist der Vorschlag mit mindestens ${w.K7} vollen Monaten, ${schwelle(w.K5)}${NBSP}% Daten und höchstens ${schwelle(w.K6)}${NBSP}% Ersatzwerten. ${
+      f.gueltig_ab ? `Kriterien seit ${tag(f.gueltig_ab)}.` : 'Es gelten die Startwerte von VoltPilot.'
+    }`,
   };
 }
 
@@ -481,7 +526,7 @@ export const kriterienStartwert = (k: keyof BewertungKriterienWerte) => `Startwe
 
 /** Was eine beantragte Fassung ändert, in Worten: „Anteil am Strom, ab dem VoltPilot vorschlägt: 10 % → 8 %“. */
 export function kriterienAenderungen(alt: BewertungKriterienWerte, neu: BewertungKriterienWerte): string[] {
-  return KRITERIEN_REIHENFOLGE.filter((k) => Number(alt[k]) !== Number(neu[k])).map(
+  return KRITERIEN_REIHENFOLGE.filter((k) => dezVergleich(dez(String(alt[k])), dez(String(neu[k]))) !== 0).map(
     (k) => `${KRITERIEN_FELDER[k].wort}: ${wertMitEinheit(k, alt[k])} → ${wertMitEinheit(k, neu[k])}`,
   );
 }
@@ -494,13 +539,17 @@ export function kriterienMeldung(f: Pick<BewertungKriterienFassung, 'fassung' | 
   return `Die neuen Kriterien gelten ab sofort für den Vorschlag (Fassung ${f.fassung}). Keine Einstufung ändert sich dadurch.${anstoss ? ` ${anstoss}` : ''}`;
 }
 
-/** Der Antrag einer zweiten Person (Vier-Augen): wer, wann, warum — und wer entscheiden darf. */
+/**
+ * Der Antrag einer zweiten Person (Vier-Augen): wer, wann, warum — und wer entscheiden darf. `created_at` ist ein
+ * Zeitpunkt (oft mit `Z`): der Tag gilt in der Zone des Unternehmens, nicht in UTC (00:30 Uhr in Berlin ist schon heute).
+ */
 export function kriterienAntrag(
   f: Pick<BewertungKriterienFassung, 'akteur' | 'created_at' | 'begruendung'>,
   ich: { sub: string | null; darf: boolean },
+  zone = 'Europe/Berlin',
 ): { satz: string; wer: string | null; darfEntscheiden: boolean } {
   const von = f.akteur?.name ?? 'einer Person';
-  const am = f.created_at ? ` am ${tag(f.created_at)}` : '';
+  const am = f.created_at ? ` am ${datumsblock(f.created_at, zone).voll}` : '';
   const satz = `Beantragt von ${von}${am}${f.begruendung ? `: „${f.begruendung}“` : '.'}`;
   const selbst = !!f.akteur?.sub && f.akteur.sub === ich.sub;
   return {
@@ -553,6 +602,8 @@ export function umfangZeilen(u: BewertungUmfang, namen: ReadonlyMap<string, stri
 export const FRUEHERE_STAENDE = 'Frühere Stände';
 export const FRUEHERE_AUSBLENDEN = 'Frühere Stände ausblenden';
 export const FRUEHERE_BEWERTUNGEN = 'Frühere Bewertungen in den Nachweisen';
+/** Ohne ersetzte Stände führt der Kopf nur zu früheren Bewertungen (Berichte) — dann heißt er auch so. */
+export const FRUEHERE_BEWERTUNGEN_KURZ = 'Frühere Bewertungen';
 export const KEINE_BEWERTUNG_SATZ =
   'Noch keine Bewertung festgestellt. Legen Sie eine an - der Entwurf entsteht aus Umfang, Bereichen, Einstufungen und Messwerten; freigegeben gilt er als Stand Nr.\u00a01.';
 

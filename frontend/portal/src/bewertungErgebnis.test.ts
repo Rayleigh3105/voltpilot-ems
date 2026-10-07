@@ -111,8 +111,8 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     const mb = { id: 'm', kennzeichen: 'MB-1', energieeinsatz_id: ahrenbergEinsaetze()[0].id, wortlaut: 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1', zustand: 'offen' } as Messbedarf;
     const e = bewertungErgebnis(await eingabe({ messbedarfe: [mb] }));
     expect(e.kacheln.wesentlich).toMatchObject({ wert: '2', einheit: 'von 7', sub: `50${NB}% des Stroms`, subBreit: 'Spritzguss, Druckluft' });
-    expect(e.kacheln.anteil).toMatchObject({ wert: '50', einheit: '%', sub: `93.400${NB}kWh in 1 Monat` });
-    expect(e.kacheln.rest).toMatchObject({ wert: '32', einheit: '%', marke: { text: 'zu wenig', ton: 'warn' }, sub: `ab 80${NB}% zugeordnet ist die Rangfolge belastbar` });
+    expect(e.kacheln.anteil).toMatchObject({ wert: '50', einheit: '%', sub: `93.400${NB}kWh in einem Monat` });
+    expect(e.kacheln.rest).toMatchObject({ wert: '32', einheit: '%', marke: { text: 'zu wenig', ton: 'warn' }, sub: `67,8${NB}% zugeordnet, belastbar ab 80${NB}%` });
     expect(e.kacheln.bedarfe).toMatchObject({ wert: '1', sub: 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1' });
     expect(e.gruppen[0].reihen[0].teile.at(-1)).toEqual({ text: 'Messbedarf offen' });
   });
@@ -127,6 +127,56 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     expect(e.gruppen[0].reihen.map((r) => [r.wert, r.balken])).toEqual([['–', null], ['–', null]]);
     expect(e.kacheln.rest).toMatchObject({ wert: null, marke: null, sub: 'Ohne vollständige Werte des Hauptzählers kein Anteil.' });
     expect(e.kacheln.anteil).toMatchObject({ wert: null, sub: 'noch ohne Messwerte' });
+  });
+
+  it('Anteil der wesentlichen Bereiche: Summe der Mengen über den Zwilling, nie die Summe gerundeter Anteile (Review r3, MUSS)', async () => {
+    const x = await eingabe();
+    const r = x.rangliste!;
+    // Die Route rundet Anteile auf eine Stelle; die Seite liest sie für die Summe nicht.
+    const anders = { ...r, einsaetze: r.einsaetze.map((z) => ({ ...z, anteil_prozent: z.anteil_prozent === null ? null : '0.1' })) };
+    const e = bewertungErgebnis({ ...x, rangliste: anders });
+    // EE-1 77.500 + EE-3 15.900 = 93.400 von 185.380 kWh = 50,38 %.
+    expect(e.antwort).toBe(`2 von 7 Bereichen sind wesentlich - zusammen 50${NB}% des Stroms.`);
+    expect(e.kacheln.anteil).toMatchObject({ wert: '50', sub: `93.400${NB}kWh in einem Monat` });
+  });
+
+  it('knapp unter der Schwelle: „20 %“ ohne Rangfolge steht neben „79,6 % zugeordnet“, nie neben einem stillen 80 % (Review r3, MUSS)', async () => {
+    const x = await eingabe();
+    const r = { ...x.rangliste!, rest: '37816', abdeckung_prozent: '79.6', urteil: { ...x.rangliste!.urteil, K8: 'unter_schwelle' as const } };
+    const e = bewertungErgebnis({ ...x, rangliste: r });
+    // 37.816 von 185.380 kWh = 20,4 % — die Zahl kommt vom Zwilling, die Zuordnung von der Route.
+    expect(e.kacheln.rest).toMatchObject({ wert: '20', marke: { text: 'zu wenig', ton: 'warn' }, sub: `79,6${NB}% zugeordnet, belastbar ab 80${NB}%` });
+  });
+
+  it('ein negativer Rest (Doppelzählung) ist nie „0 % · ausreichend“, sondern ein eigener Satz (Review r3, MUSS)', async () => {
+    const x = await eingabe();
+    const r = { ...x.rangliste!, rest: '-3200', abdeckung_prozent: '101.7', urteil: { ...x.rangliste!.urteil, K8: 'ueber_schwelle' as const } };
+    const e = bewertungErgebnis({ ...x, rangliste: r });
+    expect(e.kacheln.rest).toEqual({
+      wert: null, einheit: null, subBreit: null,
+      sub: 'Die Bereiche ergeben mehr als der Hauptzähler - Zuordnung prüfen.',
+      marke: { text: 'passt nicht', ton: 'warn' },
+    });
+    expect(e.vertrauen).toBe('Die Bereiche ergeben mehr Strom, als der Hauptzähler gemessen hat - vermutlich ist ein Zähler doppelt zugeordnet; die Anteile sind darum zu groß.');
+  });
+
+  it('ein wesentlicher Bereich ohne Werte bleibt unter „Wesentliche Bereiche“ — Antwort und Karte zählen gleich (Review r3)', async () => {
+    const x = await eingabe();
+    const r = x.rangliste!;
+    const ee3 = ahrenbergEinsaetze()[2];
+    const ohneEe3 = { ...r, einsaetze: r.einsaetze.map((z) => (z.id === ee3.id ? { ...z, menge: null, anteil_prozent: null, zustand: 'keine Werte' } : z)) };
+    const einsaetze = x.einsaetze.map((e) => (e.id === ee3.id ? { ...e, keine_werte: true } : e));
+    const e = bewertungErgebnis({ ...x, einsaetze, rangliste: ohneEe3 });
+    expect(e.antwort).toMatch(/^2 von 7 Bereichen sind wesentlich/);
+    expect(e.gruppen.find((g) => g.key === 'wesentlich')?.reihen.map((r) => r.kennzeichen)).toEqual(['EE-1', 'EE-3']);
+    // Ohne seine Menge fehlt der gemeinsame Anteil — die Kachel nennt, wem die Werte fehlen.
+    expect(e.kacheln.anteil).toMatchObject({ wert: null, sub: `${ee3.name} noch ohne Messwerte` });
+  });
+
+  it('kein wesentlicher Bereich: die Anteil-Kachel sagt das, nicht „noch ohne Messwerte“', async () => {
+    const x = await eingabe();
+    const e = bewertungErgebnis({ ...x, einstufungen: Object.fromEntries(Object.entries(x.einstufungen).map(([id, f]) => [id, f.map((v) => ({ ...v, einstufung: 'nicht_wesentlich' as const }))])) });
+    expect(e.kacheln.anteil.sub).toBe('noch kein Bereich als wesentlich eingestuft');
   });
 
   it('noch nichts eingestuft: VoltPilot schlägt vor, eine Person entscheidet', async () => {
@@ -243,6 +293,8 @@ describe('Kriterien in Worten (§10.10) und mit Vier-Augen (Befund 6)', () => {
     expect(ik).toMatchObject({ darfEntscheiden: true, wer: null });
     expect(kriterienAntrag(antrag, { sub: antrag.akteur!.sub, darf: true })).toMatchObject({ darfEntscheiden: false, wer: 'Freigeben oder ablehnen kann eine zweite Person, die Kriterien ändern darf.' });
     expect(kriterienAntrag(antrag, { sub: 'ph', darf: false }).darfEntscheiden).toBe(false);
+    // Der Tag gilt in der Zone des Unternehmens: 00:30 Uhr in Berlin ist UTC noch der Vortag (Review r3).
+    expect(kriterienAntrag({ ...antrag, created_at: '2026-11-19T23:30:00Z' }, { sub: 'ik', darf: true }).satz).toMatch(/ am 20\.11\.2026: /);
   });
 
   it('die Bühne spielt den Dienst: beantragt sperrt weitere Änderungen; freigeben nur durch eine zweite Person; ablehnen nur begründet', async () => {

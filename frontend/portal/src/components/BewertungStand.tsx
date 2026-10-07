@@ -15,7 +15,15 @@ import {
   revisionVermerk,
   STAND_TITEL,
 } from '../bewertungStand';
-import { entwurfBild, FRUEHERE_AUSBLENDEN, FRUEHERE_BEWERTUNGEN, FRUEHERE_STAENDE, KEINE_BEWERTUNG_SATZ, standBild } from '../bewertungErgebnis';
+import {
+  entwurfBild,
+  FRUEHERE_AUSBLENDEN,
+  FRUEHERE_BEWERTUNGEN,
+  FRUEHERE_BEWERTUNGEN_KURZ,
+  FRUEHERE_STAENDE,
+  KEINE_BEWERTUNG_SATZ,
+  standBild,
+} from '../bewertungErgebnis';
 import { hashForRoute, pageRoute } from '../nav';
 import { BerichtAnlegenDialog } from './BerichtAnlegenDialog';
 import { BerichtFreigebenDialog } from './BerichtFreigebenDialog';
@@ -166,7 +174,7 @@ export function BewertungStand({
         ) : (
           fruehereBewertungen && (
             <a className="vp-be-link" href={fruehereBewertungen} data-testid="bewertung-fruehere">
-              {FRUEHERE_STAENDE}
+              {FRUEHERE_BEWERTUNGEN_KURZ}
             </a>
           )
         )}

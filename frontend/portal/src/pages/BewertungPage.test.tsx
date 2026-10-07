@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
+import { KRITERIEN_BEREITS_ENTSCHIEDEN } from '../bewertungErgebnis';
 import { setSelbstauskunft } from '../rollen';
 import { bewertungBuehne } from '../test/bewertungFixtures';
 import { bewertungStandBuehne, type BewertungsLage } from '../test/bewertungStandBuehne';
@@ -21,7 +22,7 @@ function verdrahte(person = 'IK', lage: BewertungsLage = 'nr2', kriterien: { vie
     if (name in api) vi.spyOn(api as unknown as Record<string, () => unknown>, name).mockImplementation(f as () => unknown);
   }
   vi.spyOn(api, 'messbedarfeAlle').mockResolvedValue({ messbedarfe: [] });
-  return render(<BewertungPage onOeffnen={() => undefined} onListe={() => undefined} />);
+  return { ...render(<BewertungPage onOeffnen={() => undefined} />), buehne };
 }
 
 afterEach(() => {
@@ -105,6 +106,29 @@ describe('BewertungPage - Kriterien mit Vier-Augen (Befund 6)', () => {
     fireEvent.click(screen.getByTestId('kriterien-ablehnen-senden'));
     expect(await screen.findByTestId('kriterien-hinweis')).toHaveTextContent('Die beantragten Kriterien (Fassung 2) sind abgelehnt. Es gelten weiter die bisherigen.');
     expect(await screen.findByText('Er braucht mindestens 10 % des Stroms.')).toBeInTheDocument();
+  });
+
+  it('hat eine dritte Person schon entschieden (409), lädt die Karte neu — keine veralteten Knöpfe (Review r3)', async () => {
+    const { buehne } = verdrahte('JW', 'nr2', { antragVon: 'IK' });
+    const antrag = await screen.findByTestId('kriterien-antrag');
+    // Während die Karte offen steht, lehnt eine andere Person den Antrag ab.
+    await buehne.bewertungKriterienAblehnen(2, 'Eine dritte Person war schneller.');
+    fireEvent.click(within(antrag).getByRole('button', { name: 'Freigeben' }));
+    expect(await screen.findByTestId('kriterien-hinweis')).toHaveTextContent(KRITERIEN_BEREITS_ENTSCHIEDEN);
+    await waitFor(() => expect(screen.queryByTestId('kriterien-antrag')).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('dasselbe beim Ablehnen: der Dialog schließt, die Karte zeigt den neuen Stand (Review r3)', async () => {
+    const { buehne } = verdrahte('JW', 'nr2', { antragVon: 'IK' });
+    fireEvent.click(within(await screen.findByTestId('kriterien-antrag')).getByRole('button', { name: 'Ablehnen' }));
+    const dialog = await screen.findByTestId('kriterien-ablehnen-dialog');
+    await buehne.bewertungKriterienFreigeben(2);
+    fireEvent.change(within(dialog).getByLabelText('Begründung'), { target: { value: 'Erst nach dem Sommer neu bewerten.' } });
+    fireEvent.click(screen.getByTestId('kriterien-ablehnen-senden'));
+    expect(await screen.findByTestId('kriterien-hinweis')).toHaveTextContent(KRITERIEN_BEREITS_ENTSCHIEDEN);
+    await waitFor(() => expect(screen.queryByTestId('kriterien-ablehnen-dialog')).toBeNull());
+    expect(await screen.findByText('Er braucht mindestens 8 % des Stroms.')).toBeInTheDocument();
   });
 
   it('wer Kriterien nicht ändern darf, liest den Antrag und wer entscheidet', async () => {
