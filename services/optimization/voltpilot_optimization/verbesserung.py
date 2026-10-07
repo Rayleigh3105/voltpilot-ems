@@ -20,6 +20,7 @@ VOKABULARE = dict(
     massnahme_zustand=["geplant", "umgesetzt", "bewertet", "verworfen"],
     massnahme_herkunft=["abweichung", "energieziel", "einsatz", "von_hand", "nichtkonformitaet", "audit",
                         "managementbewertung"],
+    massnahme_art=["gemessen", "nicht_gemessen", "organisatorisch"],
     abweichung_zustand=["offen", "abgeschlossen"],
     abweichung_ergebnis=["massnahme", "erklaert", "keine_abweichung", "nicht_bewertbar"],
     abweichung_eintrag_art=["kommentar", "ursache_aussage"],
@@ -34,6 +35,7 @@ VOKABULARE = dict(
     anstoss_antwort=["bleibt", "neu_kopiert", "neu_bewertet"],
     frist_art=["massnahme", "abweichung", "energieziel"],
     frist_faellig=["ueberfaellig", "bewertung_faellig"],
+    kurs_lage=["auf_kurs", "knapp_dahinter", "nicht_auf_kurs", "noch_keine_aussage"],
 )
 # Die Kundensätze (Report §5.9) als Schablonen; {name} füllt die Operation ``satz``.
 SAETZE = {
@@ -48,6 +50,7 @@ SAETZE = {
     "messgrundlage": "Messgrundlage: {kennzahl}, Bezugsbasis {bezugsbasis}, Fassung {fassung} — bereinigt um {bereinigt_um} ({methode}). Ausgangslage {ausgangslage_monat}: {ausgangslage_prozent} als erwartet (Version {version}, Kopie vom {kopiert_am}). Erwartete Wirkung: {erwartete_wirkung} — ‚{wortlaut}‘",
     "ohne_messgrundlage": "{kennzeichen} · {titel} · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht {einsatz} eine Energieleistungskennzahl ({hinweis}).",
     "wirkung_vorlaeufig": "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}) — erwartet waren {erwartete_wirkung}. Ob die Maßnahme das bewirkt hat, sagt eine Person.",
+    "wirkung_ohne_erwartung": "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}). Eine erwartete Wirkung ist nicht genannt. Ob die Maßnahme das bewirkt hat, sagt eine Person.",
     "wirkung_umsetzungsmonat": "{monat}: Umsetzungsmonat — nicht gezählt.",
     "wirkung_nicht_bewertbar": "{monat}: nicht bewertbar — {grund}.",
     "wirkung_basis_nach_umsetzung": "{monat}: nicht bewertbar — die Bezugsbasis {bezugsbasis}, Fassung {fassung} hat eine Referenzperiode ({referenzperiode}), die nach der Umsetzung endet; sie enthielte die Maßnahme.",
@@ -158,6 +161,35 @@ def zielstand(e):
     return dict(zielperiode=e["zielperiode"], zielwert_prozent=e["zielwert_prozent"], monate_bewertbar=len(zaehlen),
                 monate_endgueltig=len(endgueltig), monate_soll=soll, monate=f"{len(zaehlen)} von {soll}",
                 vollstaendig=len(zaehlen) == soll, nicht_gezaehlt=nicht_gezaehlt, vorschlag=vorschlag, **summe)
+
+
+def kurs(e):
+    """K1–K3: der Zwischenstand eines laufenden Energieziels über die bisher bewertbaren Monate (``zielstand``).
+
+    Auf Kurs nach der Regel des Vorschlags (Z4), knapp dahinter weniger als erwartet und höchstens das Band vom Zielwert
+    entfernt; ``hoechstens`` und ``luecke`` in der Einheit der Summe; ``noetig_prozent`` der Schnitt der noch offenen
+    Monate, genähert mit gleich großen Monaten (``roh`` der Bezugsbasis rundet, wie jede Veränderung).
+    """
+    s = zielstand(e)
+    if "fehler" in s:
+        return s
+    b, offen = s["monate_bewertbar"], s["monate_soll"] - s["monate_endgueltig"]
+    aus = dict(lage="noch_keine_aussage", monate_bewertbar=b, monate_offen=offen, hoechstens=None, luecke=None,
+               noetig_prozent=None, noetig_richtung=None)
+    if not b:
+        return aus
+    g, erw, ziel, band = (Fraction(s["gemessen"]), Fraction(s["erwartet"]), Fraction(e["zielwert_prozent"]),
+                          Fraction(s["band_prozent"]))
+    hoechstens = erw * (100 + ziel) / 100
+    if (g - erw) * 100 <= ziel * erw:
+        lage = "auf_kurs"
+    elif g < erw and (g - erw) * 100 <= (ziel + band) * erw:
+        lage = "knapp_dahinter"
+    else:
+        lage = "nicht_auf_kurs"
+    noetig = bb.roh(bb.exakt((b + offen) * hoechstens - b * g), bb.exakt(offen * erw)) if offen else {}
+    return {**aus, "lage": lage, "hoechstens": bb.exakt(hoechstens), "luecke": bb.exakt(g - hoechstens),
+            "noetig_prozent": noetig.get("delta_prozent"), "noetig_richtung": noetig.get("richtung")}
 
 
 def _letzter_tag(monat):

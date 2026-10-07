@@ -60,10 +60,14 @@ function target(patch: Partial<RegisterWriteTarget> = {}): RegisterWriteTarget {
 
 /** Erst das Ziel wählen - seit Stufe 2 der erste Schritt. */
 async function zielWaehlen(label = 'Deye SUN-30K') {
-  await waitFor(() => expect(screen.getByTestId('regwrite-ziele')).toBeTruthy());
-  const radios = screen.getAllByRole('radio') as HTMLInputElement[];
-  const treffer = radios.find((r) => r.closest('label')?.textContent?.includes(label));
-  fireEvent.click(treffer!);
+  // Auf genau dieses Ziel warten, nicht nur auf die Liste: unter Last steht der Container vor seinen Wahlen da.
+  const treffer = await waitFor(() => {
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    const r = radios.find((x) => x.closest('label')?.textContent?.includes(label));
+    expect(r).toBeTruthy();
+    return r!;
+  });
+  fireEvent.click(treffer);
 }
 
 async function lesen() {

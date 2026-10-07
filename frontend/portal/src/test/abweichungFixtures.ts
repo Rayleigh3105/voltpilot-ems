@@ -86,6 +86,28 @@ export function vermerkDez(over: Partial<Auffaelligkeit> = {}): Auffaelligkeit {
   };
 }
 
+/** R11: Juli 2028 an KZ-0004, +2,5 %, am 10.08.2028 zur Kenntnis genommen (flache Kopie wie in der Referenzwelt). */
+export function vermerkJuli(): Auffaelligkeit {
+  const anlass = {
+    kennzahl: 'KZ-0004', bezugsbasis: 'BB-0001', fassung: 2, monat: '2028-07', gemessen_kwh: 73700, gemessen_version: 1,
+    bedingung: { 'BZ-1_kg': 262000, fassung: 1 }, erwartet_kwh: 71910, delta_prozent: 2.5, band_prozent: 2.0, urteil: 'schlechter',
+    kennzeichen: ['bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)', 'Streuung ± 0,8 %'],
+  };
+  return vermerkDez({
+    id: 'a9000000-0000-4000-8000-000000202807',
+    periode: '2028-07',
+    anlass: kanonisch(anlass),
+    anlass_inhalt: anlass,
+    vermerkt_am: '2028-08-07T05:00:00Z',
+    zustand: 'beantwortet',
+    antwort: 'zur_kenntnis',
+    antwort_begruendung: ZUR_KENNTNIS_R11,
+    beantwortet_am: '2028-08-10T09:00:00Z',
+    beantwortet_von: 'Ines Kaltenbach',
+    satz: `Auffälligkeit Juli 2028: 2,5 % mehr als die Bezugsbasis erwarten lässt (schlechter, Band ± 2 %) — zur Kenntnis genommen von Ines Kaltenbach am 10.08.2028: ‚${ZUR_KENNTNIS_R11}‘`,
+  });
+}
+
 const eintrag = (nr: number, art: AbweichungEintrag['art'], person: string, am: string, over: Partial<AbweichungEintrag> = {}): AbweichungEintrag => ({
   nr, art, alt: null, neu: null, begruendung: null, kommentar: null, aussage: null, person, am, ...over,
 });
@@ -236,6 +258,10 @@ export function abweichungBuehne(lage: AbweichungLage, heute: string, name = 'In
     return a;
   };
   return {
+    alleAuffaelligkeiten: async (zustand) => {
+      const alle = [...vermerke.values()].sort((x, y) => x.periode.localeCompare(y.periode));
+      return { abruf: heute, offen: alle.filter((x) => x.zustand === 'offen').length, vermerke: alle.filter((x) => !zustand || x.zustand === zustand) };
+    },
     auffaelligkeiten: async (kennzahlId) => {
       const v = [...vermerke.values()].filter((x) => x.kennzahl.id === kennzahlId);
       return { kennzahl: KZ4, abruf: heute, offen: v.filter((x) => x.zustand === 'offen').length, vermerke: v };

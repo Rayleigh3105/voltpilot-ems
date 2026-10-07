@@ -108,8 +108,9 @@ describe('Prognosequalität - der Reiter in den C-Bausteinen (P7)', () => {
     rendere();
 
     await screen.findByText('Wie gut Ihre Anlage vorhersagt');
-    // Die 24-px-Zahl der Sektion — E8 = a: KEIN Hero, sondern eine Zeile je Art.
-    expect(screen.getByText(/±0,75\s?kW/)).toBeInTheDocument();
+    // Die 24-px-Zahl der Sektion — E8 = a: KEIN Hero, sondern eine Zeile je Art. Die Überschrift steht vor den Zahlen
+    // (zwei Abrufe): auf die erste warten, sonst kippt der Fall unter Last.
+    expect(await screen.findByText(/±0,75\s?kW/)).toBeInTheDocument();
     expect(screen.getByText(/±1,36\s?kW/)).toBeInTheDocument();
     // Beide Arten beim Namen - die Rahmung haengt daran. Sie stehen seit P7 an
     // mehreren Orten (Zeile, Aufklapper, Kurven-Label), deshalb `getAllByText`.

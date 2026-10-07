@@ -41,7 +41,7 @@
       "type": "array",
       "minItems": 7,
       "items": {
-        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen"]
+        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen", "verantwortung"]
       }
     },
     "abnahmefaelle": {
@@ -216,9 +216,9 @@
     },
     "aktion_kennung": { "type": "string", "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$" },
     "abschnitt": {
-      "description": "Paket und Abschnitt eines Konzepts, z. B. „AP-06 §4.8“.",
+      "description": "Paket und Abschnitt eines Konzepts, z. B. „AP-06 §4.8“, oder ein Abschnitt eines späteren Konzepts, z. B. „Verbessern v1 §10.8“ (Entscheid 8).",
       "type": "string",
-      "pattern": "^AP-[0-9]{2} §[0-9]+(\\.[0-9]+)*$"
+      "pattern": "^(AP-[0-9]{2}|[A-Z][a-z]+ v[0-9]+) §[0-9]+(\\.[0-9]+)*$"
     },
 
     "matrix": {
@@ -568,7 +568,7 @@
       "properties": {
         "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "familie": {
-          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen"]
+          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen", "verantwortung"]
         },
         "ableitung": {
           "description": "Welche Funktion der Fall fährt.",
@@ -583,7 +583,8 @@
             "gewaehren",
             "handeingriff",
             "zuweisung_aendern",
-            "korrektur_entscheiden"
+            "korrektur_entscheiden",
+            "eigene_massnahme"
           ]
         },
         "abnahme": { "type": ["string", "null"], "pattern": "^A[0-9]+$" },
@@ -679,6 +680,11 @@
         "vieraugen": {
           "description": "korrektur_entscheiden: „Freigabe durch eine zweite Person“ des Unternehmens zum Zeitpunkt der Entscheidung (AP-08 E8, Vorgabe aus).",
           "type": "boolean"
+        },
+        "verantwortlich": {
+          "description": "eigene_massnahme: die Kennung der verantwortlichen Person der Maßnahme (Verbessern v1 Entscheid 8).",
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "handelnder": { "$ref": "#/$defs/benutzer" },
         "betroffener": { "$ref": "#/$defs/person" },
