@@ -101,6 +101,11 @@ WOERTER = dict(
                    beschaffung="Beschaffung", energetische_bewertung="Energetische Bewertung",
                    bezugsbasen="Bezugsbasen", massnahmen="Maßnahmen", interne_audits="Interne Audits",
                    feststellungen="Feststellungen", managementbewertung="Managementbewertung", berichte="Berichte"),
+    # Vertrag 1.4 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy.
+    aufgabe_kurz=dict(unternehmensleitung="Leitung", energiemanagement_leiten="Energiemanagement leiten",
+                      energieteam="Energieteam", bezugsbasen="Bezugsbasen", energieziele_massnahmen="Ziele und Maßnahmen",
+                      bewertung_messplanung="Energetische Bewertung", interne_audits="Interne Audits",
+                      managementbewertung="Managementbewertung", dokumente="Dokumente", weitere="Weitere Aufgabe"),
 )
 VERANTWORTUNG = ("Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, "
                  "wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.")

@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.3"
+      "const": "1.4"
     },
     "herkunft": {
       "type": "string",
@@ -478,7 +478,8 @@
         "verzeichnis_gruppe",
         "verzeichnis_ort",
         "teil",
-        "teil_kurz"
+        "teil_kurz",
+        "aufgabe_kurz"
       ],
       "properties": {
         "dokument_art": {
@@ -884,6 +885,64 @@
               "minLength": 1
             },
             "berichte": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "aufgabe_kurz": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unternehmensleitung",
+            "energiemanagement_leiten",
+            "energieteam",
+            "bezugsbasen",
+            "energieziele_massnahmen",
+            "bewertung_messplanung",
+            "interne_audits",
+            "managementbewertung",
+            "dokumente",
+            "weitere"
+          ],
+          "properties": {
+            "unternehmensleitung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energiemanagement_leiten": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energieteam": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energieziele_massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bewertung_messplanung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dokumente": {
+              "type": "string",
+              "minLength": 1
+            },
+            "weitere": {
               "type": "string",
               "minLength": 1
             }
