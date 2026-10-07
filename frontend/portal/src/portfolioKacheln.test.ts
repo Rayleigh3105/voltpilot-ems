@@ -60,11 +60,26 @@ describe('portfolioKacheln', () => {
     // Review PR3 §2: Datenlage-Kachel.
     expect(r.datenlage).toMatchObject({ wert: '10/10', einheit: 'Messstellen', satz: 'vollständig · aktuell', ton: 'ok' });
 
-    expect(r.leit).toMatchObject({ kennzeichen: 'KZ-0004', wert: '0,28', einheit: 'kWh/kg', leer: false });
+    // Konzept Auswerten a1 §6.1 Regel 9: dieselbe Einheit wie an der Karte der Kennzahl.
+    expect(r.leit).toMatchObject({ kennzeichen: 'KZ-0004', wert: '0,28', einheit: 'kWh je kg', leer: false });
     expect(r.leit?.ziel).toBe('Ziel: 5 % unter Bezugsbasis');
     expect(r.leit?.stand).toBe('Stand September 2026');
     expect(r.leit?.urteil).toMatchObject({ wort: 'besser als die Bezugsbasis', ton: 'ok' });
     expect(r.leit?.trend).toMatchObject({ richtung: 'runter', prozent: '3', bezug: 'ggü. Vormonat' });
+  });
+
+  it('§10.8 (Konzept Auswerten a1): das Urteil des Monats mit den Wörtern der Karte, der Stand des Ziels als eigene Zeile', () => {
+    const nb = String.fromCharCode(160);
+    const leit = kpi().leit!;
+    const ziel = { id: 'z', kennzeichen: 'EZ-2029-0001', zielwert_prozent: '-4.0', zielperiode: '2029-03/2029-12' };
+    const r = portfolioKacheln(kpi({ leit: { ...leit, urteil: 'schlechter', ziel_stand: { ...ziel, delta_prozent: '2.2', richtung: 'mehr', urteil: 'schlechter', monate_bewertbar: 1, monate_soll: 10 } } }));
+    expect(r.leit?.urteil).toMatchObject({ wort: 'über der Bezugsbasis', ton: 'warn' });
+    expect(r.leit?.zielStand).toBe(`Bisher 2,2${nb}% mehr (1 von 10 Monaten)`);
+    const leer = portfolioKacheln(kpi({ leit: { ...leit, ziel_stand: { ...ziel, delta_prozent: null, richtung: null, urteil: null, monate_bewertbar: 0, monate_soll: 10 } } }));
+    expect(leer.leit?.zielStand).toBe('Noch kein Monat bewertbar (0 von 10)');
+    // Ohne Vergleich im Monat (etwa „nicht anwendbar“) kein Urteil - nie geraten.
+    expect(portfolioKacheln(kpi({ leit: { ...leit, urteil: 'nicht_anwendbar' } })).leit?.urteil).toBeNull();
+    expect(portfolioKacheln(kpi()).leit?.zielStand).toBeNull();
   });
 
   it('fehlende Werte stehen als „–" ohne Einheit mit ehrlichem Satz (nie 0)', () => {

@@ -99,6 +99,10 @@ async function waehleTag(page: Page, feld: Locator, iso: string) {
 }
 
 for (const breite of [375, 1440]) {
+  /** „Maßnahme planen“: am Telefon vier Schritte mit „Weiter“, am Rechner ein Dialog. */
+  const weiter = async (page: Page) => {
+    if (breite < 720) await modal(page).getByTestId('planen-weiter').click();
+  };
   test.describe(`Energiemanagement › Audits und Feststellungen bei ${breite} px`, () => {
     test('Audit → Feststellung → Maßnahme → Wirksamkeit: der ganze Weg mit vorbelegter Herkunft (R9–R11, SP5)', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&al=leer&seite=audits', breite);
@@ -168,14 +172,19 @@ for (const breite of [375, 1440]) {
       // FS3: „Maßnahme anlegen“ öffnet den AP-18-Dialog mit vorbelegter Herkunft — das Kundenwort, nie das Vertragswort.
       await page.getByTestId('feststellung-massnahmen').getByTestId('massnahme-anlegen-knopf').click();
       await expect(modal(page).getByTestId('massnahme-herkunft-vorbelegt')).toHaveText('Herkunft: Feststellung F-2029-0001.');
-      await modal(page).getByTestId('massnahme-wahl-ohne').check();
-      await modal(page).getByLabel('Titel').fill('Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen');
-      await waehle(page, combo(page, 'Verantwortlich'), /^Jonas Wendlinger/);
-      await waehleTag(page, combo(page, 'Termin'), '2029-02-28');
-      await modal(page).getByLabel('erwartete Wirkung — Wortlaut').fill('Zuständigkeit festgelegt; jede Freigabe nennt die zuständige Person und ihre Vertretung.');
-      await ohneQuerlauf(page, 'Dialog Maßnahme anlegen');
+      // Entscheid 6: aus einer Feststellung ist die Maßnahme organisatorisch vorbelegt - sie trägt keine Zahl.
+      await expect(modal(page).getByTestId('planen-art-organisatorisch').locator('input')).toBeChecked();
+      await modal(page).getByTestId('planen-titel').fill('Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen');
+      await weiter(page);
+      await expect(modal(page).getByTestId('planen-prozent')).toHaveCount(0);
+      await modal(page).getByTestId('planen-wortlaut').fill('Zuständigkeit festgelegt; jede Freigabe nennt die zuständige Person und ihre Vertretung.');
+      await weiter(page);
+      await waehle(page, combo(page, 'Wer kümmert sich?'), /^Jonas Wendlinger/);
+      await modal(page).getByRole('group', { name: 'Bis wann?' }).getByRole('button', { name: 'Ende Februar' }).click();
+      await weiter(page);
+      await ohneQuerlauf(page, 'Dialog Maßnahme planen');
       await dialogBild(page, `d-massnahme-anlegen-${breite}`);
-      await page.getByTestId('massnahme-anlegen-senden').click();
+      await modal(page).locator('[data-testid="massnahme-anlegen-senden"]:visible').click();
       await expect(page.locator('.vp-modal')).toHaveCount(0);
       const zeile = page.getByTestId('feststellung-massnahme-M-2029-0001');
       await expect(zeile).toContainText('geplant');
@@ -185,13 +194,13 @@ for (const breite of [375, 1440]) {
       // SP5/W3: die Maßnahmen-Seite sagt „Herkunft: Feststellung F-2029-0001.“ und springt dorthin zurück.
       await zeile.getByRole('link').click();
       const herkunft = page.getByTestId('massnahme-sprung-herkunft');
-      await expect(herkunft).toHaveText('Herkunft: Feststellung F-2029-0001.');
+      await expect(page.getByTestId('massnahme-herkunft')).toContainText('Herkunft: Feststellung F-2029-0001.');
       await expect(page.getByTestId('massnahme-seite')).not.toContainText(/Nichtkonformit/i);
       await page.getByTestId('massnahme-umgesetzt-knopf').click();
-      await page.locator('.vp-kal-tag[data-iso="2029-01-22"]:not(.is-rand)').waitFor({ state: 'detached' }).catch(() => undefined);
-      await modal(page).getByLabel('Begründung').fill('Aufgabe zugeordnet: Ines Kaltenbach, Vertretung Jonas Wendlinger.');
+      await expect(modal(page).getByRole('button', { name: 'Heute, 22.01.' })).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('massnahme-umgesetzt-text').fill('Aufgabe zugeordnet: Ines Kaltenbach, Vertretung Jonas Wendlinger.');
       await page.getByTestId('massnahme-umgesetzt-senden').click();
-      await expect(page.getByTestId('massnahme-umgesetzt-am')).toBeVisible();
+      await expect(page.getByTestId('verlauf-massnahme_umgesetzt')).toBeVisible();
       await ohneQuerlauf(page, 'Maßnahmen-Seite mit Herkunft');
       await ablegen(page, `f-massnahme-herkunft-${breite}`);
       await herkunft.click();

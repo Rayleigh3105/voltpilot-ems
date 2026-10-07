@@ -11,6 +11,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +46,8 @@ import org.testcontainers.utility.DockerImageName;
  * (R7, R9).
  *
  * <p>Personen: Ines Kaltenbach und Jonas Wendlinger nie zugewiesen (Kundenadministrator), Peter Hollerbach Bearbeiter
- * an ST-1, Murat Demirci Bedienberechtigter an ST-1, Olga Alt mit beendetem Konto. Die Uhr der Kennzahlen ist gestellt.
+ * an ST-1, Petra Lindner Bearbeiterin an ST-2, Murat Demirci Bedienberechtigter an ST-1, Olga Alt mit beendetem Konto.
+ * Die Uhr der Kennzahlen ist gestellt.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -219,6 +223,61 @@ class MassnahmeApiTest {
                 Map.of("begruendung", "Noch einmal verworfen.")).status()).isEqualTo(409);
         assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + zweiteId + "/eintraege",
                 Map.of("text", "Nach dem Verwerfen")).status()).isEqualTo(409);
+    }
+
+    /**
+     * Konzept Verbessern, Entscheid 5: {@code ?energieziel=} liefert die Maßnahmen für das Energieziel und die, deren
+     * Wirkung schon im Stand enthalten ist - M-2028-0001 (umgesetzt am 22.01.2028, nach der Referenzperiode der Fassung
+     * 2) an derselben Kennzahl steht zusätzlich in {@code im_stand_enthalten}; eine geplante Maßnahme ohne Bezug nicht.
+     * Ein unbekanntes Energieziel ist 404, ein Text statt einer ID 400; ohne Filter bleibt die Liste leer. Der Zaun
+     * (Review r1 S-1.3): ein Energieziel außerhalb der eigenen Standorte (Petra an ST-2, KZ-0004 an ST-1) und eines aus
+     * einem fremden Kundenbereich antworten wie ein unbekanntes - 404, ohne eine Maßnahmen-ID.
+     */
+    @Test
+    void energiezielFilterMitImStandEnthalten() throws Exception {
+        Welt w = welt();
+        String enthalten = umgesetzteMassnahme(w)[0];
+        Map<String, Object> ez = new LinkedHashMap<>();
+        ez.put("kennzahl", w.kz4().toString());
+        ez.put("zielwert_prozent", -4.0);
+        ez.put("zielperiode", "2028-02/2028-12");
+        ez.put("wortlaut", "Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt.");
+        ez.put("begruendung", "Beschluss der Managementbewertung zum Spritzguss.");
+        Antwort z = ruf(w, "ines", HttpMethod.POST, "/api/v1/energieziele", ez);
+        assertThat(z.status()).as(z.text()).isEqualTo(201);
+        String ziel = z.body().get("id").asText();
+
+        Map<String, Object> fuer = vonHand(w, w.st1());
+        fuer.put("titel", "Kühlwasserpumpen drehzahlgeregelt betreiben");
+        fuer.put("herkunft", "energieziel");
+        fuer.put("energieziel", ziel);
+        Antwort f = ruf(w, "ines", HttpMethod.POST, PFAD, fuer);
+        assertThat(f.status()).as(f.text()).isEqualTo(201);
+        Antwort ohne = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, w.st1()));
+        assertThat(ohne.status()).as(ohne.text()).isEqualTo(201);
+
+        Antwort a = ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null);
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        List<String> ids = new ArrayList<>();
+        a.body().get("massnahmen").forEach(m -> ids.add(m.get("id").asText()));
+        assertThat(ids).containsExactly(enthalten, f.body().get("id").asText());
+        assertThat(a.body().get("im_stand_enthalten").toString()).isEqualTo("[\"" + enthalten + "\"]");
+
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD, null).body().get("im_stand_enthalten")).isEmpty();
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=" + UUID.randomUUID(), null).status())
+                .isEqualTo(404);
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=EZ-2028-0001", null).status()).isEqualTo(400);
+
+        // Der Zaun: Peter (ST-1) sieht es, Petra (nur ST-2) und ein fremder Kundenbereich bekommen dasselbe 404 wie
+        // für ein unbekanntes Energieziel - keine Maßnahme, kein Hinweis, dass es existiert.
+        assertThat(ruf(w, "peter", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null).status()).isEqualTo(200);
+        Welt fremd = welt();
+        for (var x : List.of(ruf(w, "petra", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null),
+                ruf(fremd, "ines", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null))) {
+            assertThat(x.status()).as(x.text()).isEqualTo(404);
+            assertThat(x.text()).doesNotContain(enthalten).doesNotContain(f.body().get("id").asText());
+            assertThat(x.body().get("massnahmen")).isNull();
+        }
     }
 
     /**
@@ -435,6 +494,9 @@ class MassnahmeApiTest {
         JsonNode m = neu.body();
         assertThat(m.get("kennzeichen").asText()).isEqualTo(r10.get("kennzeichen").asText());
         assertThat(m.at("/herkunft/art").asText()).isEqualTo("nichtkonformitaet");
+        // Ohne Angabe der Art dieselbe Ableitung wie Migration, Trigger und Portal: aus einer Feststellung organisatorisch.
+        assertThat(body).doesNotContainKey("art");
+        assertThat(m.get("art").asText()).isEqualTo("organisatorisch");
         assertThat(m.at("/herkunft/kennung").asText()).isEqualTo("F-2029-0001");
         assertThat(m.get("messgrundlage").isNull()).isTrue();
         assertThat(m.at("/ohne_messgrundlage/kennzeichen").asText()).isEqualTo("ohne Messgrundlage — Wirkung nicht messbar");
@@ -453,6 +515,7 @@ class MassnahmeApiTest {
         Antwort ausAudit = ruf(w, "ines", HttpMethod.POST, PFAD, body);
         assertThat(ausAudit.status()).as(ausAudit.text()).isEqualTo(201);
         assertThat(ausAudit.body().at("/herkunft/kennung").asText()).isEqualTo("AU-2029-0001");
+        assertThat(ausAudit.body().get("art").asText()).isEqualTo("organisatorisch");
 
         // Die Managementbewertung gibt es erst mit IP-23: jeder Beschluss ist unbekannt; das Muster ist BR-…/Bn.
         body.put("herkunft", "managementbewertung");
@@ -595,6 +658,208 @@ class MassnahmeApiTest {
             assertThat(x.status()).as(q + " " + x.text()).isEqualTo(400);
             assertThat(x.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
         }
+    }
+
+    /**
+     * Verbessern-Konzept v1, Entscheide 6 und 13: die Art der Maßnahme (gemessen genau mit Kennzahl) und die Schätzung in
+     * kWh im Jahr - ohne Kennzahl von der Person (nur weniger Energie, nie organisatorisch), mit Kennzahl umgerechnet über
+     * die gemessene Menge der zwölf abgeschlossenen Monate vor heute, wie {@code GET …/schaetzung} sie vorab zeigt.
+     */
+    @Test
+    void artUndSchaetzungInKwhImJahr() throws Exception {
+        Welt w = welt();
+        Map<String, Object> organisatorisch = vonHand(w, null);
+        organisatorisch.put("art", "organisatorisch");
+        Antwort o = ruf(w, "ines", HttpMethod.POST, PFAD, organisatorisch);
+        assertThat(o.status()).as(o.text()).isEqualTo(201);
+        assertThat(o.body().get("art").asText()).isEqualTo("organisatorisch");
+        assertThat(o.body().get("erwartete_einsparung").isNull()).isTrue();
+        assertThat(o.body().at("/verlauf/0/neu/art").asText()).isEqualTo("organisatorisch");
+
+        Map<String, Object> geschaetzt = vonHand(w, null);
+        geschaetzt.put("art", "nicht_gemessen");
+        geschaetzt.put("erwartete_einsparung_kwh_jahr", 12000);
+        Antwort g = ruf(w, "ines", HttpMethod.POST, PFAD, geschaetzt);
+        assertThat(g.status()).as(g.text()).isEqualTo(201);
+        assertThat(g.body().get("art").asText()).isEqualTo("nicht_gemessen");
+        assertThat(g.body().at("/erwartete_einsparung/kwh_jahr").asText()).isEqualTo("12000");
+        assertThat(g.body().at("/erwartete_einsparung/grundlage_kwh").isNull()).isTrue();
+        // Ohne Angabe: die Art aus der Zeile (von Hand ohne Kennzahl nicht gemessen; aus Feststellung oder Audit
+        // organisatorisch, siehe R10).
+        Antwort ohneArt = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, null));
+        assertThat(ohneArt.body().get("art").asText()).as(ohneArt.text()).isEqualTo("nicht_gemessen");
+
+        JsonNode r3 = RU.get("M-2028-0001");
+        for (Object[] fall : new Object[][] {
+            {vonHand(w, null), Map.of("art", "organisatorisch", "erwartete_einsparung_kwh_jahr", 500), 422,
+                "einsparung_organisatorisch"},
+            {vonHand(w, null), Map.of("art", "gemessen"), 422, "art_ohne_kennzahl"},
+            {mitMessgrundlage(w, r3), Map.of("art", "nicht_gemessen"), 422, "art_mit_kennzahl"},
+            {mitMessgrundlage(w, r3), Map.of("erwartete_einsparung_kwh_jahr", 30000), 422, "einsparung_mit_kennzahl"},
+            {vonHand(w, null), Map.of("art", "geschaetzt"), 400, "anfrage_ungueltig"},
+            {vonHand(w, null), Map.of("erwartete_einsparung_kwh_jahr", -400), 400, "anfrage_ungueltig"},
+            {vonHand(w, null), Map.of("erwartete_einsparung_kwh_jahr", 120.5), 400, "anfrage_ungueltig"}}) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> body = new LinkedHashMap<>((Map<String, Object>) fall[0]);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> mehr = (Map<String, Object>) fall[1];
+            body.putAll(mehr);
+            Antwort x = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+            assertThat(x.status()).as(mehr + " " + x.text()).isEqualTo(fall[2]);
+            assertThat(x.body().get("code").asText()).as(mehr.toString()).isEqualTo(fall[3]);
+        }
+
+        // Am Anlegetag fehlen der Kennzahl die zwölf Monate davor: keine Zahl, mit Grund - angelegt wird trotzdem.
+        String kz = w.kz4().toString();
+        JsonNode frueh = ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + kz + "&prozent=-3", null).body();
+        assertThat(frueh.get("kwh_jahr").isNull()).isTrue();
+        assertThat(frueh.get("grund").asText()).isEqualTo("monate_fehlen");
+        assertThat(frueh.get("grundlage_monate").asText()).isEqualTo("2027-01/2027-12");
+        Antwort ohneGrundlage = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, r3));
+        assertThat(ohneGrundlage.status()).as(ohneGrundlage.text()).isEqualTo(201);
+        assertThat(ohneGrundlage.body().get("art").asText()).isEqualTo("gemessen");
+        assertThat(ohneGrundlage.body().get("erwartete_einsparung").isNull()).isTrue();
+
+        // Gilt die freigegebene Fassung erst ab morgen, nennt die Schätzung denselben Grund wie das Anlegen (M2) -
+        // keine Zahl, die das Anlegen danach ablehnt.
+        LocalDate giltAb = root.queryForObject("SELECT min(f.gilt_ab) FROM bezugsbasis_fassung f JOIN bezugsbasis b "
+                + "ON b.id = f.bezugsbasis_id WHERE b.kennzahl_id = ? AND f.freigabe_status = 'freigegeben'",
+                LocalDate.class, w.kz4());
+        uhr(giltAb.minusDays(1).atTime(9, 0).toInstant(ZoneOffset.UTC));
+        JsonNode vorGeltung = ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + kz + "&prozent=-3", null)
+                .body();
+        assertThat(vorGeltung.get("kwh_jahr").isNull()).isTrue();
+        assertThat(vorGeltung.get("grund").asText()).as(vorGeltung.toString()).isEqualTo("kennzahl_ohne_bezugsbasis");
+        Antwort vorGeltungAnlegen = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, r3));
+        assertThat(vorGeltungAnlegen.status()).as(vorGeltungAnlegen.text()).isEqualTo(422);
+        assertThat(vorGeltungAnlegen.body().get("code").asText()).isEqualTo("kennzahl_ohne_bezugsbasis");
+
+        // Am 10.02.2029 liegen Februar 2028 bis Januar 2029 vor: 3 % weniger von ihrer Menge, auf ganze kWh.
+        nachher(w, "2028-01", "2029-01");
+        uhr(Instant.parse("2029-02-10T09:00:00Z"));
+        BigDecimal menge = root.queryForObject("SELECT sum(zaehler) FROM kennzahl_wert WHERE tenant_id = ? "
+                + "AND kennzahl_id = ? AND periode_art = 'monat' AND periode_von >= DATE '2028-02-01' "
+                + "AND periode_von < DATE '2029-02-01'", BigDecimal.class, w.mandant(), w.kz4());
+        Antwort sch = ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + kz + "&prozent=-3", null);
+        assertThat(sch.status()).as(sch.text()).isEqualTo(200);
+        assertThat(sch.body().get("grund").isNull()).as(sch.text()).isTrue();
+        assertThat(sch.body().get("grundlage_monate").asText()).isEqualTo("2028-02/2029-01");
+        assertThat(sch.body().get("monate_mit_wert").asInt()).isEqualTo(12);
+        assertThat(zahl(sch.body().get("grundlage_kwh"))).isEqualByComparingTo(menge.setScale(0, RoundingMode.HALF_UP));
+        BigDecimal erwartet = menge.multiply(new BigDecimal("0.03")).setScale(0, RoundingMode.HALF_UP);
+        assertThat(zahl(sch.body().get("kwh_jahr"))).isEqualByComparingTo(erwartet);
+        // „Mehr“ steht als negative Zahl da.
+        assertThat(zahl(ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + kz + "&prozent=2", null).body()
+                .get("kwh_jahr"))).isNegative();
+        for (String q : List.of("kennzahl=" + kz, "prozent=-3", "kennzahl=" + kz + "&prozent=drei",
+                "kennzahl=" + kz + "&prozent=0", "kennzahl=" + kz + "&prozent=-3.25", "kennzahl=" + kz + "&prozent=-3&x=1",
+                "kennzahl=keine-id&prozent=-3")) {
+            Antwort x = ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?" + q, null);
+            assertThat(x.status()).as(q + " " + x.text()).isEqualTo(400);
+        }
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "/schaetzung?kennzahl=" + UUID.randomUUID() + "&prozent=-3",
+                null).status()).isEqualTo(404);
+
+        // Anlegen hält dieselbe Zahl samt Grundlage fest; Ändern der Prozent rechnet neu, ohne Prozent bleibt keine Zahl.
+        Map<String, Object> neu = mitMessgrundlage(w, r3);
+        neu.put("monate", "2029-01");
+        Antwort mit = ruf(w, "ines", HttpMethod.POST, PFAD, neu);
+        assertThat(mit.status()).as(mit.text()).isEqualTo(201);
+        assertThat(zahl(mit.body().at("/erwartete_einsparung/kwh_jahr"))).isEqualByComparingTo(erwartet);
+        assertThat(mit.body().at("/erwartete_einsparung/grundlage_monate").asText()).isEqualTo("2028-02/2029-01");
+        String id = mit.body().get("id").asText();
+        Antwort vier = ruf(w, "ines", HttpMethod.PUT, PFAD + "/" + id, Map.of("erwartete_wirkung_prozent", -4,
+                "begruendung", "Nach der Messung an Maschine 3 eher vier Prozent."));
+        assertThat(vier.status()).as(vier.text()).isEqualTo(200);
+        assertThat(zahl(vier.body().at("/erwartete_einsparung/kwh_jahr")))
+                .isEqualByComparingTo(menge.multiply(new BigDecimal("0.04")).setScale(0, RoundingMode.HALF_UP));
+        Antwort kwhMitKennzahl = ruf(w, "ines", HttpMethod.PUT, PFAD + "/" + id, Map.of("erwartete_einsparung_kwh_jahr",
+                40000, "begruendung", "Die Zahl in kWh von Hand setzen."));
+        assertThat(kwhMitKennzahl.status()).as(kwhMitKennzahl.text()).isEqualTo(422);
+        assertThat(kwhMitKennzahl.body().get("code").asText()).isEqualTo("einsparung_mit_kennzahl");
+        // Ohne Kennzahl ändert die Person ihre Schätzung selbst.
+        Antwort mehr = ruf(w, "ines", HttpMethod.PUT, PFAD + "/" + g.body().get("id").asText(), Map.of(
+                "erwartete_einsparung_kwh_jahr", 15000, "begruendung", "Nach dem Rundgang mit dem Lieferanten."));
+        assertThat(mehr.status()).as(mehr.text()).isEqualTo(200);
+        assertThat(mehr.body().at("/erwartete_einsparung/kwh_jahr").asText()).isEqualTo("15000");
+        assertThat(mehr.body().at("/verlauf/1/neu/erwartete_einsparung_kwh_jahr").asText()).isEqualTo("15000");
+    }
+
+    /**
+     * Entscheid 12 (Befund 6): „Weiß ich noch nicht“ - eine gemessene Maßnahme ohne Zahl der Person bekommt den Satz
+     * {@code wirkung_ohne_erwartung}; die Liste trägt je Maßnahme die beobachtete Wirkung in Kurzform (§6.5), dieselbe
+     * Summe wie {@code …/wirkung}, und nur ab umgesetzt mit bewertbarem Monat.
+     */
+    @Test
+    void wirkungOhneErwartungUndKurzformInDerListe() throws Exception {
+        Welt w = welt();
+        String mitZahl = umgesetzteMassnahme(w)[0];
+        JsonNode r3 = RU.get("M-2028-0001");
+        uhr(ANGELEGT);
+        Map<String, Object> body = mitMessgrundlage(w, r3);
+        body.remove("erwartete_wirkung_prozent");
+        body.put("titel", "Kühlwasserpumpen drehzahlgeregelt betreiben");
+        body.put("herkunft", "von_hand");
+        body.remove("herkunft_kennung");
+        Antwort neu = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(neu.status()).as(neu.text()).isEqualTo(201);
+        String ohneZahl = neu.body().get("id").asText();
+        uhr(UMGESETZT);
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + ohneZahl + "/umgesetzt", Map.of("am", "2028-01-22",
+                "begruendung", "Frequenzumrichter an beiden Pumpen eingebaut.")).status()).isEqualTo(200);
+        // Eine dritte Maßnahme derselben Kennzahl, zwei Monate später umgesetzt: die Liste liest den Vergleich je
+        // Kennzahl einmal über beide Zeiträume - die Kurzform bleibt genau die der eigenen Wirkung.
+        Map<String, Object> spaet = mitMessgrundlage(w, r3);
+        spaet.put("titel", "Trocknerluft im Spritzguss nachts abschalten");
+        spaet.put("herkunft", "von_hand");
+        spaet.remove("herkunft_kennung");
+        Antwort s3 = ruf(w, "ines", HttpMethod.POST, PFAD, spaet);
+        assertThat(s3.status()).as(s3.text()).isEqualTo(201);
+        String spaetId = s3.body().get("id").asText();
+        uhr(Instant.parse("2028-03-25T09:00:00Z"));
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + spaetId + "/umgesetzt", Map.of("am", "2028-03-20",
+                "begruendung", "Zeitschaltung der Trocknerluft eingebaut.")).status()).isEqualTo(200);
+        Antwort geplant = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, null));
+        nachher(w, "2028-01", "2029-01");
+        uhr(Instant.parse("2029-02-10T09:00:00Z"));
+
+        JsonNode wirkung = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + ohneZahl + "/wirkung", null).body();
+        assertThat(wirkung.get("energie").asText()).isEqualTo("Strom");
+        assertThat(wirkung.at("/massnahme/wirkung_kurz/monate_text").asText()).isEqualTo("11 von 12");
+        assertThat(wirkung.get("satz").asText()).isEqualTo("Wirkung von " + neu.body().get("kennzeichen").asText()
+                + ", beobachtet: 2,7 % weniger Strom als die Bezugsbasis erwarten lässt (Februar 2028 bis Januar 2029, "
+                + "11 von 12 Monaten; März 2028 nicht bewertbar: Produktionsmenge Spritzguss außerhalb der Bezugsbasis). "
+                + "Eine erwartete Wirkung ist nicht genannt. Ob die Maßnahme das bewirkt hat, sagt eine Person.");
+
+        Antwort liste = ruf(w, "ines", HttpMethod.GET, PFAD, null);
+        assertThat(liste.status()).as(liste.text()).isEqualTo(200);
+        Map<String, JsonNode> je = new LinkedHashMap<>();
+        liste.body().get("massnahmen").forEach(m -> je.put(m.get("id").asText(), m));
+        JsonNode kurz = je.get(mitZahl).get("wirkung_kurz");
+        assertThat(kurz.get("delta_prozent").asText()).isEqualTo("-2.7");
+        assertThat(kurz.get("richtung").asText()).isEqualTo("weniger");
+        assertThat(kurz.get("urteil").asText()).isEqualTo("besser");
+        assertThat(kurz.get("monate_text").asText()).isEqualTo("11 von 12");
+        assertThat(kurz.get("vorlaeufig").asBoolean()).isFalse();
+        assertThat(kurz.get("zeitraum_von").asText()).isEqualTo("2028-02");
+        assertThat(kurz.get("zeitraum_bis").asText()).isEqualTo("2029-01");
+        assertThat(zahl(kurz.get("gemessen"))).isEqualByComparingTo("876700");
+        assertThat(zahl(kurz.get("erwartet")).setScale(0, RoundingMode.HALF_UP)).isEqualByComparingTo("900892");
+        assertThat(zahl(kurz.get("differenz"))).isEqualByComparingTo("-24192");
+        assertThat(zahl(kurz.get("erwartete_wirkung"))).isEqualByComparingTo("-27027");
+        assertThat(kurz.get("einheit").asText()).isEqualTo("kWh");
+        assertThat(kurz.get("energie").asText()).isEqualTo("Strom");
+        assertThat(je.get(ohneZahl).at("/wirkung_kurz/erwartete_wirkung").isNull()).isTrue();
+        assertThat(je.get(ohneZahl).at("/wirkung_kurz/delta_prozent").asText()).isEqualTo("-2.7");
+        assertThat(je.get(geplant.body().get("id").asText()).get("wirkung_kurz").isNull()).isTrue();
+        for (String id : List.of(mitZahl, ohneZahl, spaetId)) {
+            JsonNode eigene = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung", null).body()
+                    .at("/massnahme/wirkung_kurz");
+            assertThat(je.get(id).get("wirkung_kurz")).as(id).isEqualTo(eigene);
+        }
+        assertThat(je.get(spaetId).at("/wirkung_kurz/zeitraum_von").asText()).isEqualTo("2028-04");
+        // Die einzelne Maßnahme trägt keine Kurzform - dort steht die ganze Wirkung.
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "/" + mitZahl, null).body().get("wirkung_kurz").isNull()).isTrue();
     }
 
     /**

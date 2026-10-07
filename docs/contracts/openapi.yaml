@@ -13937,7 +13937,7 @@ paths:
         ist; über die endgültigen Monate die Operation `zielstand`: Σ gemessen ÷ Σ erwartet über die bewertbaren
         (nie ein Mittel), `monate_text` „x von y“, `nicht_gezaehlt` mit Grund, `vorschlag` (`erreicht ·
         nicht_erreicht`) nur bei vollständiger Periode, sonst null. `satz` und `vorschlag_satz` sind Kundensätze des
-        Vertrags (§6), ohne bewertbaren Monat null.
+        Vertrags (§6), ohne bewertbaren Monat null. `kurs` ist die Operation `kurs` (§4a) über dieselben Monate.
       responses:
         "200":
           description: Der Stand zum Abruf-Tag.
@@ -13955,11 +13955,16 @@ paths:
         `standort_id`, eine Maßnahme am Unternehmen nur unternehmensweit; mit Messgrundlage zusätzlich über die
         Kennzahl). `ueberfaellig` filtert über die Operation `frist` beim Abruf (Uhr der Kennzahlen, kein Läufer,
         kein Zustand); `kennzahl` ist die ID einer sichtbaren Kennzahl (sonst 404); ein anderer Parameter 400.
+        `energieziel` (ID eines sichtbaren Energieziels, sonst 404; Konzept Verbessern, Entscheid 5) liefert die
+        Maßnahmen für dieses Energieziel und die, deren Wirkung schon im Stand enthalten ist: an derselben Kennzahl
+        umgesetzt, nach dem Ende der Referenzperiode seiner Bezugsbasis-Fassung und spätestens am letzten Tag der
+        Zielperiode; diese stehen zusätzlich in `im_stand_enthalten`.
       parameters:
         - { name: zustand, in: query, required: false, schema: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] } }
         - { name: ueberfaellig, in: query, required: false, schema: { type: string, enum: ["true", "false"] } }
         - { name: kennzahl, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: einsatz, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: energieziel, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
         "200":
           description: Die sichtbaren Maßnahmen, nach Kennzeichen, mit dem Abruf-Tag.
@@ -13991,7 +13996,12 @@ paths:
         `monate_nicht_abgeschlossen`; ohne: der letzte abgeschlossene Monat), kanonischer Text mit Prüfsumme; der
         Standort ist der der Kennzahl (422 `standort_der_kennzahl`). Ohne `kennzahl` (M4) ist
         `erwartete_wirkung_prozent` 422 `ohne_messgrundlage` mit `kennzeichen` und `hinweis`, welche Kennzahl fehlt.
-        Protokoll `massnahme_angelegt`.
+        `art` (Verbessern-Konzept v1, Entscheid 6) `gemessen · nicht_gemessen · organisatorisch` - `gemessen` genau mit
+        `kennzahl` (422 `art_ohne_kennzahl` bzw. `art_mit_kennzahl`); ohne Angabe `gemessen` mit Kennzahl, aus
+        `nichtkonformitaet` oder `audit` `organisatorisch`, sonst `nicht_gemessen`. `erwartete_einsparung_kwh_jahr` (Entscheid 13) ist die Schätzung einer Person in ganzen kWh im
+        Jahr, weniger Energie (> 0) - nur ohne Kennzahl (422 `einsparung_mit_kennzahl`) und nicht bei `organisatorisch`
+        (422 `einsparung_organisatorisch`); mit Kennzahl und `erwartete_wirkung_prozent` rechnet die Route selbst um wie
+        `GET …/schaetzung`. Protokoll `massnahme_angelegt`.
       requestBody:
         required: true
         content:
@@ -14018,6 +14028,8 @@ paths:
                 standort: { type: string, format: uuid }
                 erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
                 erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
+                art: { type: string, enum: [gemessen, nicht_gemessen, organisatorisch] }
+                erwartete_einsparung_kwh_jahr: { type: integer, minimum: 1, description: "kWh im Jahr, Schätzung einer Person; nur ohne Kennzahl" }
       responses:
         "201":
           description: Angelegt, geplant.
@@ -14030,6 +14042,30 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/schaetzung:
+    get:
+      tags: [kennzahlen]
+      summary: Rechnet eine erwartete Wirkung in Prozent in kWh im Jahr um - für „Maßnahme planen“ (Entscheid 13).
+      description: >
+        Recht `verbesserung.ansehen`; die Kennzahl muss sichtbar sein (sonst 404). `kwh_jahr` = −`prozent` × die
+        gemessene Menge der Kennzahl in den zwölf abgeschlossenen Monaten vor heute (`grundlage_kwh`,
+        `grundlage_monate`), auf ganze kWh gerundet, weniger Energie positiv - dieselbe Rechnung, mit der `POST` die
+        Schätzung festhält. Ohne volle Grundlage `kwh_jahr` null und `grund` (`monate_fehlen` mit `monate_mit_wert`,
+        `einheit_nicht_kwh`, `kennzahl_ohne_bezugsbasis`, `zu_klein`); die Fassung wählt dieselbe Regel wie die
+        Messgrundlage beim Anlegen (freigegeben und heute geltend), sonst `kennzahl_ohne_bezugsbasis` - das Blatt zeigt
+        nie eine Zahl, die `POST` danach ablehnt. Liest nur; fehlender oder anderer Parameter 400.
+      parameters:
+        - { name: kennzahl, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: prozent, in: query, required: true, schema: { type: string, pattern: "^-?[0-9]{1,2}(\\.[0-9])?$" } }
+      responses:
+        "200":
+          description: Die Umrechnung oder der Grund, warum es keine gibt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MassnahmeSchaetzung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/massnahmen/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -14066,6 +14102,7 @@ paths:
                 erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
                 erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
                 begruendung: { type: string, minLength: 10, maxLength: 500 }
+                erwartete_einsparung_kwh_jahr: { type: integer, minimum: 1, description: "nur ohne Kennzahl und nicht organisatorisch; mit Kennzahl folgt sie `erwartete_wirkung_prozent`" }
       responses:
         "200":
           description: Geändert.
@@ -14906,7 +14943,17 @@ paths:
       summary: Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen.
       description: >
         Recht `messwerte.ansehen` (AP-11 R2). Die Sichtbarkeit R-A1 und R-A6 je Person setzt
-        der Geltungsbereich-Prüfpunkt durch (AP-03 IP-11).
+        der Geltungsbereich-Prüfpunkt durch (AP-03 IP-11). Mit `mit=auswertung` (Konzept Auswerten
+        a1, PR1) trägt jede nicht archivierte Kennzahl mit Monatswerten ihre `auswertung`: das Urteil
+        des letzten abgeschlossenen Monats gegen die Bezugsbasis, die zwölf Monate davor, die Veränderung
+        zum Vorjahr und den Stand des offenen Energieziels - dieselbe Ableitung wie die Leitkachel der
+        Übersicht. Ohne `mit` fehlt das Feld (die Antwort bleibt Byte für Byte gleich).
+      parameters:
+        - name: mit
+          in: query
+          required: false
+          schema: { type: string, enum: [auswertung] }
+          description: Ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
       responses:
         "200":
           description: Die Kennzahlen (ein Objekt, kein nacktes Array - additiv erweiterbar).
@@ -15010,13 +15057,23 @@ paths:
     get:
       tags: [kennzahlen]
       summary: Eine Kennzahl mit der heute geltenden Berechnung.
-      description: Recht `messwerte.ansehen`.
+      description: >
+        Recht `messwerte.ansehen`. Mit `mit=auswertung` (Konzept Auswerten a1 §6.5, die Seite einer Kennzahl)
+        trägt eine nicht archivierte Kennzahl mit Monatswerten dieselbe `auswertung` wie in der Liste, mit dem
+        Stand ihres offenen Energieziels. Ohne `mit` fehlt das Feld.
+      parameters:
+        - name: mit
+          in: query
+          required: false
+          schema: { type: string, enum: [auswertung] }
+          description: Ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
       responses:
         "200":
           description: Die Kennzahl.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Kennzahl" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
     put:
@@ -31157,6 +31214,96 @@ components:
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
         bezugsbasis: { allOf: [{ $ref: "#/components/schemas/KennzahlBezugsbasis" }], nullable: true, description: "Die laufende Bezugsbasis (AP-17 IP-8, B3) oder null." }
+        auswertung: { $ref: "#/components/schemas/KennzahlAuswertung" }
+        leitkennzahl: { type: boolean, description: "Nur an `GET /api/v1/kennzahlen/{id}?mit=auswertung` (Seite einer Kennzahl): ob sie die Leitkennzahl der Übersicht ist - dieselbe Wahl wie `leit` an `GET /api/v1/portfolio/kpis` und `leitkennzahl` der Liste (Konzept Auswerten a1 §10.8)." }
+    KennzahlAuswertung:
+      type: object
+      description: >
+        Nur mit `mit=auswertung` an `GET /api/v1/kennzahlen` oder `GET /api/v1/kennzahlen/{id}`, nur an einer
+        nicht archivierten Kennzahl mit Monatswerten (Konzept Auswerten a1 §6.4, §6.5, §10.8). Urteil und
+        Abweichungen sind die Operation `vergleich` des Bezugsbasis-Lesers (bezugsbasis.md §16), der Zeitraum
+        dessen Operation `zeitraum`, die Veränderungen zu Vorjahr und Vormonat die Operation `roh` (ohne Urteil,
+        VG3), der Stand des Energieziels sein Leser (Z3). Selbst gerechnet werden nur die Mengen je Monat
+        (`erwartet_wert`, `abweichung`, `zusammen`), exakt aus derselben Zeile.
+      required: [monat, wert, vorjahr, vormonat, monate, vergleich, zeitraum, energieziel]
+      properties:
+        monat: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", description: "Der letzte abgeschlossene Monat in der Zone der Geltung - für ihn gilt das Urteil." }
+        wert: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungWert" }], nullable: true, description: "Der jüngste Monatswert der zwölf Monate bis `monat`; null ohne jeden." }
+        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen denselben Monat ein Jahr davor; null ohne beide Werte." }
+        vormonat: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen den Monat davor; null ohne beide Werte." }
+        monate: { type: array, minItems: 12, maxItems: 12, items: { $ref: "#/components/schemas/KennzahlAuswertungMonat" }, description: "Die zwölf Monate bis `monat`, der älteste zuerst." }
+        vergleich: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungVergleich" }], nullable: true, description: "null ohne freigegebene Bezugsbasis." }
+        zeitraum: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZeitraum" }], nullable: true, description: "Der Vergleich gegen die Fassung am letzten Tag von `monat` (P4) über die Monate der zwölf, für die genau diese Fassung gilt (§10.6) - nach einem Fassungswechsel also erst ab dem Wechsel; null ohne Bezugsbasis oder solange noch keine gilt." }
+        energieziel: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZiel" }], nullable: true, description: "Das offene Energieziel (bei mehreren das mit der frühesten Zielperiode) mit Stand; null ohne." }
+    KennzahlAuswertungWert:
+      type: object
+      required: [periode, wert, einheit, zustand, richtung]
+      properties:
+        periode: { type: string, description: "JJJJ-MM" }
+        wert: { type: string, description: "Ungerundeter Dezimaltext (U4)." }
+        einheit: { type: string, nullable: true }
+        zustand: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, description: "untergrenze · obergrenze · unbestimmt - genau bei „unvollständig“ (Q3)." }
+    KennzahlAuswertungRoh:
+      type: object
+      required: [periode, wert, delta_prozent, richtung]
+      properties:
+        periode: { type: string, description: "Der Vorjahresmonat bzw. der Vormonat JJJJ-MM." }
+        wert: { type: string }
+        delta_prozent: { type: string, description: "Eine Stelle; trägt nie ein Urteil." }
+        richtung: { type: string, enum: [mehr, weniger, gleich] }
+    KennzahlAuswertungMonat:
+      type: object
+      required: [periode, wert, delta_prozent, urteil, grund, erwartet_wert, abweichung, zusammen, vorjahr]
+      properties:
+        periode: { type: string, description: "JJJJ-MM" }
+        wert: { type: string, nullable: true, description: "Der Kennzahlwert; null = keiner (nie 0)." }
+        delta_prozent: { type: string, nullable: true, description: "Die bereinigte Abweichung gegen die Bezugsbasis (U2); null ohne Vergleich." }
+        urteil: { type: string, nullable: true, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        erwartet_wert: { type: string, nullable: true, description: "Der erwartete Kennzahlwert: erwartet ÷ Nenner des Monats, gerundet wie der Kennzahlwert; null ohne erwartet oder Nenner." }
+        abweichung: { type: string, nullable: true, description: "gemessen − erwartet in der Einheit des Zählers, exakt (positiv = mehr als erwartet); null ohne beide." }
+        zusammen: { type: string, nullable: true, description: "Die Abweichungen aller Monate mit Urteil bis hierher zusammengezählt; null an einem Monat ohne Urteil (er zählt nicht mit)." }
+        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Der Wert desselben Monats ein Jahr davor mit der rohen Veränderung (Operation `roh`, nie ein Urteil); null ohne beide Werte oder mit 0 davor." }
+    KennzahlAuswertungVergleich:
+      type: object
+      required: [bezugsbasis, urteil, delta_prozent, band_prozent, richtung, grund, satz, erster_monat]
+      properties:
+        bezugsbasis: { type: string, nullable: true, description: "BB-0001 …" }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        delta_prozent: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        satz: { type: string, nullable: true, description: "Der Kundensatz des Monats (bezugsbasis.md §10, §16)." }
+        erster_monat: { type: string, nullable: true, description: "Nur, solange für `monat` noch keine Fassung gilt: der erste Monat JJJJ-MM, für den eine freigegebene Fassung am letzten Tag gilt (P4)." }
+    KennzahlAuswertungZeitraum:
+      type: object
+      description: Der Vergleich über `von` … `bis` (Operation `zeitraum`, Σ gemessen ÷ Σ erwartet, U5); `von` ist der erste der zwölf Monate mit Fassung.
+      required: [von, bis, delta_prozent, band_prozent, richtung, urteil, grund, monate, satz]
+      properties:
+        von: { type: string, description: "JJJJ-MM" }
+        bis: { type: string, description: "JJJJ-MM" }
+        delta_prozent: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        monate: { type: string, nullable: true, description: "„x von y“ Monaten mit Vergleich." }
+        satz: { type: string, description: "Der Kundensatz des Zeitraums (bezugsbasis.md §10, §16)." }
+    KennzahlAuswertungZiel:
+      type: object
+      required: [id, kennzeichen, zielwert_prozent, zielperiode, delta_prozent, richtung, urteil, monate_bewertbar, monate_soll]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, description: "EZ-2029-0001 …" }
+        zielwert_prozent: { type: string, description: "Dezimaltext, negativ = weniger als erwartet." }
+        zielperiode: { type: string, description: "JJJJ-MM/JJJJ-MM" }
+        delta_prozent: { type: string, nullable: true, description: "Die Summe über die bewertbaren Monate (U5); null ohne bewertbaren Monat." }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        urteil: { type: string, nullable: true, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        monate_bewertbar: { type: integer }
+        monate_soll: { type: integer }
     KennzahlBezugsbasis:
       type: object
       description: >
@@ -31568,6 +31715,10 @@ components:
         kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
         ausserhalb_zugriff:
           $ref: "#/components/schemas/KennzahlZugriffHinweis"
+        leitkennzahl:
+          type: string
+          format: uuid
+          description: "Nur mit `mit=auswertung`: die Kennzahl, die die Leitkachel der Übersicht zeigt (`GET /api/v1/portfolio/kpis` `leit`) - dieselbe Wahl über dieselbe Auswertung (Konzept Auswerten a1 §10.8): unter den Kennzahlen mit Auswertung und offenem Energieziel die mit dem kleinsten Kennzeichen, die einen Monatswert trägt. Fehlt ohne eine."
     KennzahlZugriffHinweis:
       type: object
       description: "Nur die Anzahl unsichtbarer standortübergreifender Kennzahlen; niemals Kennung, Name, Formel oder Wert. Fehlt bei voller Sicht (AP-03 IP-11, R-A1 und R-A6)."
@@ -31808,8 +31959,9 @@ components:
       type: object
       description: >
         Z5: die Bewertung - `kopie` ist der kanonische Text des Ziel-Stands zum Bewertungstag, `pruefsumme` sein
-        sha256; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen `entscheidung` die zweite Person.
-      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme]
+        sha256, `stand` derselbe Stand lesbar; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen
+        `entscheidung` die zweite Person.
+      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme, stand]
       properties:
         status: { type: string, enum: [beantragt, bewertet, abgelehnt] }
         ergebnis: { type: string, enum: [erreicht, verfehlt, nicht_bewertbar] }
@@ -31830,6 +31982,34 @@ components:
         entscheidungs_begruendung: { type: string, nullable: true }
         kopie: { type: string }
         pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        stand: { $ref: "#/components/schemas/EnergiezielFestgehaltenerStand" }
+    EnergiezielFestgehaltenerStand:
+      type: object
+      description: >
+        Konzept Verbessern, Entscheid 11 - der Ziel-Stand der Kopie zum Bewertungstag lesbar statt als Rohtext: Σ
+        gemessen und Σ erwartet in `einheit` (kWh, wenn die Kopie `_kwh` trägt), Δ mit Richtung, Urteil, Band, „x von y“
+        und die nicht gezählten Monate mit Grund. Dieselben Zahlen, die `pruefsumme` deckt.
+      required: [abruf, gemessen, erwartet, einheit, delta_prozent, richtung, urteil, band_prozent, monate_bewertbar, monate_gesamt, ausgeschlossen, grund_kein_vorschlag]
+      properties:
+        abruf: { type: string, format: date, nullable: true }
+        gemessen: { type: string, nullable: true }
+        erwartet: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        delta_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
+        urteil: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        monate_bewertbar: { type: integer }
+        monate_gesamt: { type: integer }
+        ausgeschlossen:
+          type: array
+          items:
+            type: object
+            required: [monat, grund]
+            properties:
+              monat: { type: string }
+              grund: { type: string }
+        grund_kein_vorschlag: { type: string, nullable: true }
     EnergiezielAnstoss:
       type: object
       description: >
@@ -31865,7 +32045,7 @@ components:
     EnergiezielStand:
       type: object
       description: Der Ziel-Stand (Z3, Z4) - Ausgang der Operation `zielstand` und je Monat die Vergleichszeile.
-      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz]
+      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz, kurs]
       properties:
         energieziel: { $ref: "#/components/schemas/Energieziel" }
         abruf: { type: string, format: date }
@@ -31907,12 +32087,35 @@ components:
         vorschlag: { type: string, nullable: true, enum: [erreicht, nicht_erreicht, null] }
         satz: { type: string, nullable: true }
         vorschlag_satz: { type: string, nullable: true }
+        kurs: { $ref: "#/components/schemas/EnergiezielKurs" }
+    EnergiezielKurs:
+      type: object
+      description: >
+        Operation `kurs` (Vertrag verbesserung.md §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+        bewertbaren Monate. `lage` auf Kurs nach der Regel des Vorschlags, knapp dahinter weniger als erwartet und
+        höchstens das Band vom Zielwert entfernt, ohne bewertbaren Monat `noch_keine_aussage` (dann sind die Zahlen
+        null). `hoechstens` ist, was das Energieziel für die bewertbaren Monate zulässt, `luecke` = Σ gemessen −
+        höchstens (positiv = darüber), beide in der Einheit der Summe; `noetig_prozent` der nötige Schnitt der
+        `monate_offen` noch nicht endgültigen Monate gegen erwartet (Näherung bei gleich großen Monaten; ohne offenen
+        Monat null).
+      required: [lage, monate_bewertbar, monate_offen, hoechstens, luecke, noetig_prozent, noetig_richtung]
+      properties:
+        lage: { type: string, enum: [auf_kurs, knapp_dahinter, nicht_auf_kurs, noch_keine_aussage] }
+        monate_bewertbar: { type: integer }
+        monate_offen: { type: integer }
+        hoechstens: { type: string, nullable: true }
+        luecke: { type: string, nullable: true }
+        noetig_prozent: { type: string, nullable: true }
+        noetig_richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
     Massnahme:
       type: object
       description: >
         Eine Maßnahme (UEMS AP-18 IP-10, M1–M4, M6); `messgrundlage` oder `ohne_messgrundlage` ist gesetzt, nie beide;
         `frist` über die Operation `frist` beim Abruf; `kopf_satz` erst ab umgesetzt; `verlauf` nur an der einzelnen.
-      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf]
+        `art` (Entscheid 6) sagt, wie sich die Wirkung zeigt; `erwartete_einsparung` die Schätzung in kWh im Jahr
+        (Entscheid 13); `wirkung_kurz` die beobachtete Wirkung in Kurzform - in der Liste und an der Maßnahme von
+        `…/wirkung`, an der einzelnen Maßnahme null.
+      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf, art, erwartete_einsparung, wirkung_kurz]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
@@ -31972,6 +32175,57 @@ components:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/MassnahmeEintrag" }
+        art: { type: string, enum: [gemessen, nicht_gemessen, organisatorisch] }
+        erwartete_einsparung: { $ref: "#/components/schemas/MassnahmeEinsparung" }
+        wirkung_kurz: { $ref: "#/components/schemas/MassnahmeWirkungKurz" }
+    MassnahmeEinsparung:
+      type: object
+      nullable: true
+      description: >
+        Die erwartete Einsparung in kWh im Jahr (Entscheid 13) - eine Schätzung, nie mit beobachteten Werten summiert.
+        `kwh_jahr` weniger Energie positiv; mit Kennzahl umgerechnet aus der erwarteten Wirkung über `grundlage_kwh` der
+        Monate `grundlage_monate`, ohne Kennzahl von einer Person geschätzt (Grundlage null).
+      required: [kwh_jahr, grundlage_kwh, grundlage_monate]
+      properties:
+        kwh_jahr: { type: string }
+        grundlage_kwh: { type: string, nullable: true }
+        grundlage_monate: { type: string, nullable: true, description: "JJJJ-MM/JJJJ-MM" }
+    MassnahmeWirkungKurz:
+      type: object
+      nullable: true
+      description: >
+        Die beobachtete Wirkung in Kurzform für die Liste (Verbessern-Konzept v1 §6.5) - die Summe der Operation
+        `wirkung` mit 12 Nachher-Monaten; nur mit Messgrundlage, ab umgesetzt und mit mindestens einem bewertbaren
+        Monat. Mengen in `einheit`; `differenz` = Σ gemessen − Σ erwartet (weniger negativ); `erwartete_wirkung` =
+        Prozent der Person × Σ erwartet derselben Monate (ohne Zahl null).
+      required: [delta_prozent, richtung, urteil, monate_bewertbar, monate_soll, monate_text, vorlaeufig, zeitraum_von, zeitraum_bis, gemessen, erwartet, differenz, erwartete_wirkung, einheit, energie]
+      properties:
+        delta_prozent: { type: string }
+        richtung: { type: string }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, nicht_anwendbar, ohne_urteil] }
+        monate_bewertbar: { type: integer }
+        monate_soll: { type: integer }
+        monate_text: { type: string }
+        vorlaeufig: { type: boolean }
+        zeitraum_von: { type: string }
+        zeitraum_bis: { type: string }
+        gemessen: { type: string }
+        erwartet: { type: string }
+        differenz: { type: string }
+        erwartete_wirkung: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        energie: { type: string }
+    MassnahmeSchaetzung:
+      type: object
+      required: [kennzahl, prozent, kwh_jahr, grundlage_kwh, grundlage_monate, monate_mit_wert, grund]
+      properties:
+        kennzahl: { type: string, format: uuid }
+        prozent: { type: string }
+        kwh_jahr: { type: string, nullable: true }
+        grundlage_kwh: { type: string, nullable: true }
+        grundlage_monate: { type: string }
+        monate_mit_wert: { type: integer }
+        grund: { type: string, nullable: true, enum: [monate_fehlen, einheit_nicht_kwh, kennzahl_ohne_bezugsbasis, zu_klein, null] }
     MassnahmeAnstoss:
       type: object
       description: >
@@ -32065,16 +32319,22 @@ components:
         am: { type: string, format: date-time }
     MassnahmeListe:
       type: object
-      required: [abruf, massnahmen]
+      required: [abruf, massnahmen, im_stand_enthalten]
       properties:
         abruf: { type: string, format: date }
         massnahmen: { type: array, items: { $ref: "#/components/schemas/Massnahme" } }
+        im_stand_enthalten:
+          type: array
+          description: >
+            Nur mit `energieziel`: die IDs der Maßnahmen, die nicht für dieses Energieziel angelegt sind, deren Wirkung
+            aber im Stand enthalten ist (Konzept Verbessern, Entscheid 5); sonst leer.
+          items: { type: string, format: uuid }
     MassnahmeWirkung:
       type: object
       description: >
         Die Wirkung (WK1–WK5) - Ausgang der Operation `wirkung` und je Monat die Vergleichszeile. Mit `grund`
         (`ohne_messgrundlage`, `nicht_umgesetzt`) sind die Zahlen null und `monate`/`nicht_gezaehlt` leer.
-      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz]
+      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz, energie]
       properties:
         massnahme: { $ref: "#/components/schemas/Massnahme" }
         abruf: { type: string, format: date }
@@ -32092,7 +32352,8 @@ components:
         summe:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MassnahmeWirkungSumme" }]
-        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` bzw. `ohne_messgrundlage` (§5.9)" }
+        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` (ohne Zahl der Person `wirkung_ohne_erwartung`, Entscheid 12) bzw. `ohne_messgrundlage` (§5.9)" }
+        energie: { type: string, nullable: true, description: "Energieträger des Zählers („Strom“, sonst „Energie“); ohne Nachher-Monate null" }
     MassnahmeWirkungMonat:
       type: object
       description: >

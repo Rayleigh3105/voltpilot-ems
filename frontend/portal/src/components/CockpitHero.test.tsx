@@ -5,8 +5,9 @@ import { ControlStrip } from './ControlStrip';
 import type { LiveSnapshot } from '../live';
 import type { SiteTopology } from '../api';
 
-// Der Fluss ist lazy (`Suspense` in CockpitHero): erst geladen, dann gemessen - sonst wartet der erste Fall auf
-// der belasteten Maschine länger als `waitFor` (1 s) auf die Übersetzung des Moduls.
+// Die Bühne lädt `EnergieBuehne` nach (React.lazy). Unter Last dauerte der erste Import länger als die Frist eines
+// `waitFor` (1 s) und der erste Fall scheiterte zufällig; vorgewärmt löst `lazy` sofort auf — geprüft wird das Bild,
+// nicht die Ladezeit des Testlaufs.
 beforeAll(async () => {
   await import('./EnergieBuehne');
 });

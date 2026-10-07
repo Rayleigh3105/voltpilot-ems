@@ -34,7 +34,10 @@ function lockBodyScroll() {
  * und Zeilen-Detailansichten (das wiederholbare Entitäts-Muster). Schleier-
  * Klick, ✕ und Escape schließen; der Seiten-Scroll ist gesperrt, der Fokus
  * liegt in der Fläche und bleibt darin, und am Telefon wird sie ein
- * Vollbild-Blatt (shell.css).
+ * Vollbild-Blatt (shell.css). Mit `blatt` ist sie am Telefon ein Blatt von
+ * unten, so hoch wie sein Inhalt (kurze Abläufe: melden, prüfen, planen -
+ * Verbessern-Konzept v1 §6.9), am Rechner dieselbe zentrierte Fläche; `breit`
+ * gibt ihr am Rechner 840 px (ein Dialog mit Zusammenfassung daneben).
  *
  * ⚠ ES GIBT KEINE SEITENLEISTE MEHR (Captain-Entscheid 04.09.2026: „search for
  * sidebars. I dont want them in my project. Every Sidebar should be a modal.").
@@ -66,6 +69,8 @@ export function Modal({
   title,
   icon = null,
   footer = null,
+  blatt = false,
+  breit = false,
   children,
   ...props
 }) {
@@ -132,14 +137,14 @@ export function Modal({
 
   const modal = (
     <div
-      className={schliessend ? 'vp-modal-scrim is-closing' : 'vp-modal-scrim'}
+      className={`vp-modal-scrim${blatt ? ' is-blatt' : ''}${schliessend ? ' is-closing' : ''}`}
       role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="vp-modal"
+        className={`vp-modal${blatt ? ' is-blatt' : ''}${breit ? ' is-breit' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}

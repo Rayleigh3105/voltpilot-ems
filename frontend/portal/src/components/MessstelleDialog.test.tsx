@@ -1,7 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
-import { PFLICHT, SATZ_KENNZEICHEN_FORMAT } from '../messstelleDialog';
+import {
+  ABLESUNG_ZUKUNFT,
+  OHNE_QUELLE_WEITER,
+  PFLICHT,
+  SATZ_KENNZEICHEN_FORMAT,
+  WEG_FRAGE,
+  WEG_GESPERRT,
+} from '../messstelleDialog';
 import {
   kanaeleK5Frei,
   KOMPONENTE_IDS,
@@ -17,7 +24,8 @@ import { MessstelleDialog } from './MessstelleDialog';
 /**
  * Der Messstellen-Dialog (UEMS AP-04 IP-6) gegen eine gestellte Schnittstelle: Vorbelegung,
  * Pflichtfelder, Kennzeichen-Format, die beiden 409 der FEHLER-Tabelle (Kennzeichen belegt,
- * zweiter Hauptzähler) mit ihrem WORTLAUT, der Schritt Quelle und das Bearbeiten.
+ * zweiter Hauptzähler) mit ihrem WORTLAUT, der Schritt Quelle („Woher kommen die Werte?“ mit den Wegen Gerät und
+ * Ablesen) und das Bearbeiten.
  */
 
 /** FEHLER-Tabelle AP-04 §5.12, Spalte „Wortlaut“ — wörtlich. */
@@ -53,12 +61,19 @@ async function waehle(label: string, option: RegExp) {
   fireEvent.click(await screen.findByRole('option', { name: option }));
 }
 
-async function identitaetAusfuellen() {
+async function identitaetAusfuellen(wertart: RegExp = /^Zählerstand/) {
   await waitFor(() => expect(feld('Kennzeichen').value).toBe(VORSCHLAG));
   tippe('Name *', 'Spritzguss SG01–SG06 Kühlung');
   await waehle('Hauptgröße *', /^Wirkenergie/);
   await waehle('Richtung *', /^Bezug/);
-  await waehle('Wertart *', /^Zählerstand/);
+  await waehle('Wertart *', wertart);
+}
+
+const wegKarte = (titel: RegExp) => screen.getByRole('radio', { name: titel }) as HTMLInputElement;
+/** `VpTimePicker` übernimmt beim Verlassen des Felds (oder mit Enter). */
+function uhrzeit(wert: string) {
+  tippe('Uhrzeit *', wert);
+  fireEvent.blur(feld('Uhrzeit *'));
 }
 
 beforeEach(() => {
@@ -229,6 +244,12 @@ describe('MessstelleDialog — Zuordnung und Quelle', () => {
     fireEvent.click(knopf('Weiter: Quelle'));
     await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
 
+    // „Woher kommen die Werte?“: zwei gleichwertige Wege, keiner vorgewählt; erst der gewählte zeigt seine Felder.
+    expect(screen.getByText(WEG_FRAGE)).toBeInTheDocument();
+    expect(wegKarte(/^Automatisch von einem Gerät/).checked).toBe(false);
+    expect(wegKarte(/^Von Hand ablesen/).checked).toBe(false);
+    expect(screen.queryByRole('combobox', { name: 'Komponente' })).toBeNull();
+    fireEvent.click(wegKarte(/^Automatisch von einem Gerät/));
     await waehle('Komponente', /^Unterzähler Spritzguss SG01–SG06/);
     fireEvent.click(await screen.findByRole('combobox', { name: 'Messwert für die Hauptgröße · Wirkenergie · Bezug' }));
     const leistung = await screen.findByRole('option', { name: /^Wirkleistung/ });
@@ -249,15 +270,107 @@ describe('MessstelleDialog — Zuordnung und Quelle', () => {
     });
   });
 
-  it('„Später binden“: eingerichtet ohne Quelle — „keine Datenquelle“, nie eine 0', async () => {
+  it('„Später festlegen“: eingerichtet ohne Quelle, „noch keine Quelle“ und der Weg dahin, nie eine 0', async () => {
     vi.spyOn(api, 'messstelleOrtAendern').mockResolvedValue(messstelleAngelegt({ lebenszyklus: 'aktiv', fehlt: [] }));
     const binden = vi.spyOn(api, 'messstelleQuelleBinden');
+    const ablesen = vi.spyOn(api, 'ablesungEintragen');
     await bisZuordnung();
     fireEvent.click(knopf('Weiter: Quelle'));
     await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
-    fireEvent.click(knopf('Später binden'));
-    expect(await screen.findByText('MS-0022 Spritzguss SG01–SG06 Kühlung ist eingerichtet und aktiv · keine Datenquelle')).toBeInTheDocument();
+    fireEvent.click(knopf('Später festlegen'));
+    expect(await screen.findByText('MS-0022 Spritzguss SG01–SG06 Kühlung ist eingerichtet und aktiv · noch keine Quelle')).toBeInTheDocument();
+    expect(screen.getByText(OHNE_QUELLE_WEITER)).toBeInTheDocument();
     expect(binden).not.toHaveBeenCalled();
+    expect(ablesen).not.toHaveBeenCalled();
+  });
+
+  it('„Von Hand ablesen“: fester Rhythmus „Monatlich“, die erste Ablesung wird eingetragen, danach der Fertig-Satz', async () => {
+    vi.spyOn(api, 'messstelleOrtAendern').mockResolvedValue(messstelleAngelegt({ lebenszyklus: 'aktiv', fehlt: [] }));
+    const binden = vi.spyOn(api, 'messstelleQuelleBinden');
+    const ablesen = vi.spyOn(api, 'ablesungEintragen').mockResolvedValue({
+      urteil: 'eingetragen',
+      korrektur: null,
+      ablesung: {
+        quelle: 'q-1', zeitpunkt: '2026-10-20T08:30:00+02:00', fassung: 1, stand: 1250000, monat: null, woher: 'eingabe',
+        urheber: { name: 'Ines Kaltenbach', rolle: null }, korrektur: null, eingetragen_am: '2026-10-20T09:00:00+02:00',
+      },
+      ablesezeitraum: null,
+    });
+    const props = await bisZuordnung();
+    fireEvent.click(knopf('Weiter: Quelle'));
+    await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
+    fireEvent.click(wegKarte(/^Von Hand ablesen/));
+    expect(screen.getByText('Ableserhythmus')).toBeInTheDocument();
+    expect(screen.getByText('Monatlich')).toBeInTheDocument();
+    expect(screen.getByText('Erste Ablesung')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Komponente' })).toBeNull();
+    // Der Ausweg heißt hier „Später eintragen“, nicht „Später binden“.
+    expect(knopf('Später eintragen')).toBeInTheDocument();
+
+    // Ohne Stand: der Satz am Feld, der Fokus darauf, nichts gesendet.
+    fireEvent.click(knopf('Fertigstellen'));
+    expect(await screen.findByText(PFLICHT.stand)).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(feld('Zählerstand (kWh) *')));
+    expect(ablesen).not.toHaveBeenCalled();
+
+    // Eine Uhrzeit nach „jetzt“ (09:00) liegt in der Zukunft.
+    tippe('Zählerstand (kWh) *', '1.250.000');
+    uhrzeit('09:30');
+    fireEvent.click(knopf('Fertigstellen'));
+    expect(await screen.findByText(ABLESUNG_ZUKUNFT)).toBeInTheDocument();
+    expect(ablesen).not.toHaveBeenCalled();
+
+    uhrzeit('08:30');
+    fireEvent.click(knopf('Fertigstellen'));
+    expect(await screen.findByText('MS-0022 Spritzguss SG01–SG06 Kühlung ist eingerichtet und aktiv · wird von Hand abgelesen')).toBeInTheDocument();
+    expect(ablesen).toHaveBeenCalledWith('MS-0022', {
+      zeitpunkt: '2026-10-20T08:30:00+02:00',
+      stand: '1.250.000',
+      zuordnung_monat: null,
+    });
+    expect(binden).not.toHaveBeenCalled();
+    expect(props.onGespeichert).toHaveBeenCalled();
+  });
+
+  it('„Von Hand ablesen“: lehnt der Server den Stand ab, steht sein Satz am Feld und der Dialog bleibt im Schritt', async () => {
+    vi.spyOn(api, 'messstelleOrtAendern').mockResolvedValue(messstelleAngelegt({ lebenszyklus: 'aktiv', fehlt: [] }));
+    const satz = 'Den Zählerstand ab vier Stellen mit Tausenderpunkten eingeben, zum Beispiel 1.250.000 oder 49.451,5.';
+    vi.spyOn(api, 'ablesungEintragen').mockRejectedValue(
+      new ApiError(422, satz, { code: 'zahl_unlesbar', message: satz, feld: 'stand' }),
+    );
+    await bisZuordnung();
+    fireEvent.click(knopf('Weiter: Quelle'));
+    await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
+    fireEvent.click(wegKarte(/^Von Hand ablesen/));
+    tippe('Zählerstand (kWh) *', '1250000');
+    uhrzeit('08:30');
+    fireEvent.click(knopf('Fertigstellen'));
+    expect(await screen.findByText(satz)).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(feld('Zählerstand (kWh) *')));
+    expect(aktiverSchritt()).toBe('Quelle');
+  });
+
+  it('eine Hauptgröße ohne Zählerstand lässt sich nicht ablesen: die Karte bleibt sichtbar und nennt den Grund', async () => {
+    vi.spyOn(api, 'messstelleAnlegen').mockResolvedValue(
+      messstelleAngelegt({ hauptgroesse: { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Intervallmenge' } }),
+    );
+    vi.spyOn(api, 'messstelleOrtAendern').mockResolvedValue(
+      messstelleAngelegt({
+        lebenszyklus: 'aktiv',
+        fehlt: [],
+        hauptgroesse: { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Intervallmenge' },
+      }),
+    );
+    zeige();
+    await identitaetAusfuellen(/^Intervallmenge/);
+    fireEvent.click(knopf('Weiter: Zuordnung'));
+    await waitFor(() => expect(aktiverSchritt()).toBe('Zuordnung'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Ort' }).textContent).toContain('Werk Ahrenberg'));
+    fireEvent.click(knopf('Weiter: Quelle'));
+    await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
+    expect(wegKarte(/^Von Hand ablesen/).disabled).toBe(true);
+    expect(screen.getByText(WEG_GESPERRT.keinZaehlerstand)).toBeInTheDocument();
+    expect(wegKarte(/^Automatisch von einem Gerät/).disabled).toBe(false);
   });
 });
 
@@ -294,6 +407,45 @@ describe('MessstelleDialog — bearbeiten', () => {
     await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
     expect(ort).not.toHaveBeenCalled();
     expect(stellung).not.toHaveBeenCalled();
+  });
+});
+
+describe('MessstelleDialog · bearbeiten, Schritt „Woher kommen die Werte?“', () => {
+  it('eine Ablesestelle zeigt ihren Weg fest: abgelesen seit …, das Gerät verbindet man auf ihrer Seite', async () => {
+    const bestand = messstelleAngelegt({ lebenszyklus: 'aktiv', fehlt: [] });
+    vi.spyOn(api, 'messstelle').mockResolvedValue(bestand);
+    const register = registerAntwort();
+    vi.spyOn(api, 'messstellenRegister').mockResolvedValue({
+      ...register,
+      register: [
+        ...register.register,
+        {
+          ...register.register[0],
+          id: bestand.id,
+          kennzeichen: bestand.kennzeichen,
+          name: bestand.name,
+          quelle: {
+            stand: 'ablesung',
+            fuehrend: null,
+            davor: null,
+            vergleichsquellen: 0,
+            ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-10-01T07:15:00+02:00' },
+          },
+        },
+      ],
+    });
+    const ablesen = vi.spyOn(api, 'ablesungEintragen');
+    zeige({ messstelleId: 'ms-neu', schritt: 3 });
+    await waitFor(() => expect(aktiverSchritt()).toBe('Quelle'));
+    await waitFor(() => expect(wegKarte(/^Von Hand ablesen/).checked).toBe(true));
+    expect(wegKarte(/^Automatisch von einem Gerät/).disabled).toBe(true);
+    expect(screen.getByText(WEG_GESPERRT.schonAbgelesen)).toBeInTheDocument();
+    expect(screen.getByText('Wird seit 01.10.2024 von Hand abgelesen, zuletzt am 01.10.2026.')).toBeInTheDocument();
+    expect(screen.queryByText('Erste Ablesung')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Später/ })).toBeNull();
+    fireEvent.click(knopf('Fertigstellen'));
+    expect(await screen.findByText('MS-0022 Spritzguss SG01–SG06 Kühlung ist gespeichert')).toBeInTheDocument();
+    expect(ablesen).not.toHaveBeenCalled();
   });
 });
 

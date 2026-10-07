@@ -230,6 +230,22 @@ const SRC = join(process.cwd(), 'src');
 const GRENZ_BAUSTEIN = /<GrenzSatz(?![\w])(?![^>]*\sgrenze=\{false\})[^>]*\/>/;
 const VERANTWORTUNG_BAUSTEIN = /<GrenzSatz(?![\w])[^>]*\sverantwortung[\s/>]/;
 const GRENZ_HINWEIS = /<GrenzHinweis[\s/>]/;
+/**
+ * Bereiche, die nur Reiter legen (Verbessern-Konzept v1, Entscheid 2; Review r1 S-X.1): jeder Reiter trägt Titel, Satz
+ * und „Was VoltPilot leistet“ selbst, der Bereich keinen eigenen Kopf. Er gilt als „mit Hinweis“, wenn er jedes seiner
+ * Register wirklich zeigt und jedes davon den Hinweis trägt - ein neuer Reiter ohne Hinweis fällt so weiter auf.
+ */
+const REITER_MIT_HINWEIS: Record<string, string[]> = {
+  'pages/VerbesserungBereich.tsx': ['components/EnergiezieleRegister.tsx', 'components/MassnahmenRegister.tsx', 'components/AbweichungenRegister.tsx'],
+};
+function reiterTragenDenHinweis(datei: string, code: string): boolean {
+  const register = REITER_MIT_HINWEIS[datei];
+  if (!register) return false;
+  return register.every((r) => {
+    const name = r.split('/').pop()!.replace(/\.tsx$/, '');
+    return new RegExp(`<${name}[\\s/>]`).test(code) && GRENZ_HINWEIS.test(readFileSync(join(SRC, r), 'utf8'));
+  });
+}
 const traegtGrenzBaustein = (text: string) => GRENZ_HINWEIS.test(text) || GRENZ_BAUSTEIN.test(text);
 const traegtVerantwortungBaustein = (text: string) => GRENZ_HINWEIS.test(text) || VERANTWORTUNG_BAUSTEIN.test(text);
 
@@ -1598,7 +1614,19 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'pages/KennzahlenPage.tsx',
     // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
     'components/KennzahlListe.tsx',
+    // Konzept Auswerten a1 (PR1): die Liste mit Urteil, Gruppen und Mini-Grafiken - ihr reines Modell, ihre Bausteine,
+    // ihre Bühnen-Welt und die geteilten Urteils-Wörter.
+    'kennzahlListe.ts',
+    'components/KennzahlenAuswertung.tsx',
+    'test/kennzahlListeFixtures.ts',
+    'bezugsbasisUrteil.ts',
     'pages/KennzahlSeite.tsx',
+    // Konzept Auswerten a1 (PR2): die Seite einer Kennzahl ohne Reiter, ihre Bezugsbasis eine Ebene tiefer, ihr reines
+    // Modell und ihre Bühnen-Welt.
+    'kennzahlSeite.ts',
+    'test/kennzahlSeiteFixtures.ts',
+    'pages/BezugsbasisEbene.tsx',
+    'bezugsbasisEbene.ts',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',
     // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl (eine Welt) und seine Leser-Antworten der Bühne.
@@ -1650,7 +1678,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
       for (const e of v.entscheidungen) out.push(e.vorgang, ...[e.fassung?.wer, e.fassung?.warum, e.angelegt?.wer].filter(da));
     }
     out.push(
-      KK.TITEL, KK.LADEN, KK.LADEFEHLER, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
+      KK.TITEL, KK.LADEN, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
       KK.AUSSERHALB_ZUGRIFF, KK.KARTE_VERLAUF, KK.KARTE_HERKUNFT, KK.KARTE_BERECHNUNG, KK.KARTE_STAMMDATEN, KK.FASSUNGEN_TITEL,
       KK.PERIODE_WAHL, KK.OHNE_ZWECK, KK.SEIT_BEGINN, KK.HERKUNFT_FEHLT,
       ...Object.values(KK.PERIODEN_NAME), ...Object.values(KK.GELTUNG_WORT), ...Object.values(KK.FEHLT_WORT),
@@ -1695,6 +1723,17 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
     expect(texte.filter((t) => MITTEL_VERBOTEN.test(t))).toEqual([]);
     expect(texte.filter((t) => ROLLEN_VERBOTEN.test(t))).toEqual([]);
+  });
+
+  it('Konzept Auswerten a1 (Wörter): Seite einer Kennzahl und Bezugsbasis sprechen ohne „Roh“, „Urteil (Band)“ und K1-K8', () => {
+    // §8.3: „Roh · Urteil (Band)“ wird „ggü. Vormonat“ und „Urteil“; Kriterien heißen in Worten, nie K1 bis K8 (§10.10).
+    const auswerten = ['kennzahlSeite.ts', 'pages/KennzahlSeite.tsx', 'bezugsbasisEbene.ts', 'pages/BezugsbasisEbene.tsx', 'bezugsbasisVergleich.ts', 'kennzahlListe.ts', 'components/KennzahlenAuswertung.tsx'];
+    const verbotenAuswerten = /(^|[^\p{L}])(Roh|K[1-8])([^\p{L}\p{N}]|$)|Urteil \(Band\)/u;
+    const treffer = auswerten.flatMap((rel) =>
+      // Jede sichtbare Zeichenkette, auch ein einzelnes Wort („Roh“ ist kurz genug, um den Kundentext-Filter zu umgehen).
+      visibleTexts(readFileSync(join(SRC, rel), 'utf8')).filter((t) => verbotenAuswerten.test(t)).map((t) => `${rel}: ${t}`),
+    );
+    expect(treffer).toEqual([]);
   });
 
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
@@ -1938,8 +1977,10 @@ const KENNZAHL_BESTAND: string[] = [
   'components/AuthScreen.tsx', // neu: die Anmelde-Bühne zeigt die Flächen des Portals als Kacheln, eine davon „Kennzahlen“ (Login-Konzept C)
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
   'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
+  'components/EnergiezielSetzenFuehrung.tsx', // neu: „Energieziel setzen“ geführt wählt zuerst die Kennzahl (Konzept Verbessern §6.9)
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
+  'components/MassnahmeWirkung.tsx', // neu: ohne Kennzahl misst VoltPilot nichts - Abschließen mit einem Satz (Verbessern v1 PR 2, Entscheid 6)
   'components/PortfolioCockpit.tsx', // alt
   'components/PortfolioKacheln.tsx', // neu: das Kennzahl-Kachelraster der Unternehmens-Übersicht (PR2, §4.2 — Leitkennzahl, Verbrauch, Lastspitze, Kosten)
   'components/VerlaufExplorer.tsx', // alt
@@ -1947,18 +1988,23 @@ const KENNZAHL_BESTAND: string[] = [
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
+  'energiezielBild.ts', // neu: ein Energieziel entsteht an einer Kennzahl mit Bezugsbasis (Konzept Verbessern §6.3)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'fahrplan.ts', // neu: der Fahrplan „Ihr Energiemanagement“ nennt den Schritt „Kennzahlen mit Vergleichszeitraum“ (Konzept K2)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'massnahmePlanen.ts', // neu: „Maßnahme planen“ fragt, ob an einer Kennzahl gemessen wird (Verbessern v1 PR 2, Entscheid 6)
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
+  'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
+  'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
+  'pages/MassnahmeSeite.tsx', // neu: „Wofür und woran gemessen“ nennt die Kennzahl der Messgrundlage (Verbessern v1 PR 2, §6.6)
   'portfolioCockpit.ts', // alt
   'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
   'test/kennzahlAnlegenFixtures.ts', // neu: die Fixture spiegelt genau diese Ablehnung
@@ -2148,6 +2194,7 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       ...Object.values(EB.AUSSERHALB_SATZ),
       EB.KEIN_UNTERZAEHLER,
       EB.HILFE_NEGATIV,
+      EB.HILFE_NEGATIV_VERBRAUCH,
       EB.LIVE_JETZT,
       EB.LIVE_STAND,
       EB.FUSS_ZONE,
@@ -2507,6 +2554,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/BewertungBaustein.tsx',
     // IP-25: der Bewertungsstand — Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV.
     'components/BewertungStand.tsx',
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ liest Rangliste und Messabdeckung — der Satz steht am Fuß.
+    'pages/VerbrauchPage.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,
@@ -2603,6 +2652,19 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
       'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
       UEMS_NORMGRENZE,
     ]);
+  });
+
+  it('die Ergebnis-Seite nennt kein Kürzel K1 bis K8, kein „Roh“ und kein „Urteil (Band)“ (Konzept Auswerten a1 §10.10)', () => {
+    // Die Kürzel stehen nur im Dialog „Kriterien ändern“ (Wort und Kürzel, `bewertungErgebnis.KRITERIEN_FELDER`).
+    const kuerzel = /(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)|(^|[^\p{L}])Roh([^\p{L}]|$)|Urteil \(Band\)/u;
+    // Die Seitenhülle und der Bewertungsstand; die Sätze aus `bewertungErgebnis.ts` prüft `bewertungErgebnis.test.ts`
+    // an ihrem Ergebnis (jeder Text der Ergebnis-Seite ohne Kürzel).
+    for (const datei of ['pages/BewertungPage.tsx', 'components/BewertungStand.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8'));
+      expect(texte.length, datei).toBeGreaterThan(5);
+      expect(texte.filter((t) => kuerzel.test(t)), datei).toEqual([]);
+    }
+    expect(kuerzel.test('Er braucht mindestens 10 % des Stroms (K1).')).toBe(true);
   });
 });
 
@@ -3023,7 +3085,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
       const texte = kundenTexte(code);
       expect(texte.flatMap(verstoesse), datei).toEqual([]);
-      expect(traegtGrenze(code), datei).toBe(true);
+      expect(traegtGrenze(code) || reiterTragenDenHinweis(datei, code), datei).toBe(true);
       expect(ursacheOhnePerson(code), `${datei}: „Ursache“ ohne „Aussage von“`).toBe(false);
       expect(texte.filter(verbesserungOhneBedingung), `${datei}: „Verbesserung“ ohne Bedingung`).toEqual([]);
       expect(texte.filter((text) => ZIEL_ALLEIN.test(text)), `${datei}: „Ziel“ allein`).toEqual([]);
@@ -3901,7 +3963,7 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
   it('jeder Bereich, der die Sätze seiner Teile schweigen lässt, zeigt den Hinweis', () => {
     const ohne = alle
       .map((datei) => [rel(datei), stripComments(readFileSync(datei, 'utf8'))] as const)
-      .filter(([, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code))
+      .filter(([datei, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code) && !reiterTragenDenHinweis(datei, code))
       .map(([datei]) => datei);
     expect(ohne).toEqual([]);
   });
@@ -3925,5 +3987,32 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
     expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
+    // Ein Bereich mit Reitern gilt nur, wenn er jedes Register zeigt - fehlt eins, trägt er den Hinweis nicht.
+    const bereich = '<EnergiezieleRegister onOeffnen={x} /> <MassnahmenRegister /> <AbweichungenRegister grenze={false} />';
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich)).toBe(true);
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich.replace('<MassnahmenRegister />', ''))).toBe(false);
+    expect(reiterTragenDenHinweis('pages/KennzahlSeite.tsx', bereich)).toBe(false);
+  });
+});
+
+describe('Konzept Messen m1 · „Woher die Werte kommen“: Liste und Dialog sprechen dieselben Glossarwörter', () => {
+  it('die Spalte der Liste, die zwei Wege des Dialogs und das Wort ohne Weg kommen aus dem Glossar', async () => {
+    const g = await import('./glossar');
+    const liste = await import('./messstellenListe');
+    const dialog = await import('./messstelleDialog');
+    expect(g.UEMS_WOHER_DIE_WERTE).toBe('Woher die Werte kommen');
+    expect(liste.SPALTE.woher).toBe(g.UEMS_WOHER_DIE_WERTE);
+    expect(dialog.WEG.geraet.titel).toBe(g.UEMS_WEG_GERAET);
+    expect(dialog.WEG.ablesen.titel).toBe(g.UEMS_WEG_ABLESEN);
+    expect(dialog.ABLESERHYTHMUS.label).toBe(g.UEMS_ABLESERHYTHMUS);
+    expect(liste.WEG_WORT.ohne).toBe(g.UEMS_NOCH_KEINE_QUELLE);
+    expect(liste.NOCH_KEINE_QUELLE).toBe('Noch keine Quelle · zuordnen');
+  });
+
+  it('die Liste zeigt keine Datenmodell-Wörter mehr: kein „Quelle (führend)“, kein „Keine Datenquelle“, kein „Summenwert anlegen“', () => {
+    for (const datei of ['pages/MessstellenPage.tsx', 'messstellenListe.ts']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.filter((t) => /Quelle \(führend\)|Keine Datenquelle|Summenwert anlegen|Elektrische Stellung/.test(t)), datei).toEqual([]);
+    }
   });
 });

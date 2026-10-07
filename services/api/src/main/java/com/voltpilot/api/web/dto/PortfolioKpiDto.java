@@ -80,8 +80,11 @@ public record PortfolioKpiDto(
      * Die Leitkennzahl (EnPI) gegen ihr Ziel: der jüngste Kennzahlwert mit
      * Einheit und Periode, das Ziel als Prozent gegen die Bezugsbasis (Wortlaut
      * aus dem Energieziel), der Trend zum Vormonat und das Urteil gegen die
-     * Bezugsbasis über die Zielperiode. {@code wert}/{@code trendProzent} sind
-     * ungerundet; das Portal rundet zur Anzeige (AP-08).
+     * Bezugsbasis im letzten abgeschlossenen Monat - dieselbe Ableitung wie die
+     * Karte der Kennzahl (Konzept Auswerten a1 §10.8: ein Urteil, eine Ableitung).
+     * Der Stand des Energieziels über seine Zielperiode steht getrennt in
+     * {@code zielStand}. {@code wert}/{@code trendProzent} sind ungerundet; das
+     * Portal rundet zur Anzeige (AP-08).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Leitkennzahl(
@@ -96,5 +99,6 @@ public record PortfolioKpiDto(
             String zielperiode,
             String zielWortlaut,
             @JsonInclude(JsonInclude.Include.NON_NULL) BigDecimal trendProzent,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String urteil) {}
+            @JsonInclude(JsonInclude.Include.NON_NULL) String urteil,
+            @JsonInclude(JsonInclude.Include.NON_NULL) KennzahlDto.AuswertungZiel zielStand) {}
 }

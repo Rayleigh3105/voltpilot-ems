@@ -5,6 +5,7 @@ import {
   ANTWORT,
   HERKUNFT_UNVOLLSTAENDIG,
   HILFE_NEGATIV,
+  HILFE_NEGATIV_VERBRAUCH,
   KARTE_WORT,
   KEIN_UNTERZAEHLER,
   REST_ANGELEGT,
@@ -352,6 +353,23 @@ describe('„nicht zugeordnet“ ist eine Aussage - die Zeile steht immer', () =
     expect(tag0(b).antwort).toEqual({ satz: HILFE_NEGATIV, ton: 'warn' });
     expect(tag0(b).balken).toBeNull();
     expect(tag0(b).karte[2].unter).toEqual(['unplausibel (negativ)', satz]);
+  });
+
+  it('mit Erzeugung und Speicher vergleicht der Hilfe-Satz mit dem Verbrauch in der Anlage, nicht mit dem Hauptzähler', () => {
+    // Review r3 zu #1419: Hauptzähler 140.000 + PV 3.300 + Speicher entladen 7.100 − Abfluss 11.020 = 139.380 kWh
+    // Verbrauch; die Unterzähler zählen 139.500 kWh - weniger als der Hauptzähler, aber 120 kWh mehr als der Verbrauch.
+    const roh = structuredClone(ahrenbergBilanz(an1, 'monat', '2026-10-01'));
+    const w = roh.hauptzaehler[0].abschnitte[0].werte[0];
+    const satz = `Messwerte passen nicht zusammen (${zahl(-120, 'kWh', 'monat')})`;
+    Object.assign(w.zugeordnet, { menge: 139500, anzeige: null });
+    Object.assign(w.rest, { menge: -120, kundensatz: satz, kennzeichen: [BERECHNET_DIFFERENZ, 'unplausibel (negativ)'] });
+    const b = energiebilanzBild(roh, ctx());
+    expect(tag0(b).einfach).toBe(false);
+    expect(tag0(b).karte[0].wort).toBe(KARTE_WORT.verbrauch);
+    expect(tag0(b).antwort).toEqual({ satz: HILFE_NEGATIV_VERBRAUCH, ton: 'warn' });
+    expect(zeile(zeilen(b), 'rest').saetze).toEqual([satz, HILFE_NEGATIV_VERBRAUCH]);
+    expect(tag0(b).karte[2].unter).toEqual(['unplausibel (negativ)', satz]);
+    expect(alleTexte(b)).not.toContain(HILFE_NEGATIV);
   });
 
   it('ohne Unterzähler läuft alles ohne eigenen Zähler - der Balken ist ganz grau', () => {

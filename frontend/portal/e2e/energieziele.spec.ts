@@ -9,7 +9,8 @@ import { grenzHinweisZeigt } from './grenzHinweis';
  * Referenzunternehmen 1.9 (`src/test/energiezielFixtures.ts`, R4/R10).
  *
  * Fälle: leerer Zustand (Satz und Grenz-Satz, R13) · Anlegen an KZ-0004 am 20.12.2027 (Basis-Zeile, Vorgabe nächstes
- * Kalenderjahr, R4) · Stand im Register und auf der Seite am 10.07.2028 (5 von 12, März nicht gezählt, kein Vorschlag) ·
+ * Kalenderjahr, R4) · Stand im Reiter und auf der Seite am 10.07.2028 (Konzept Verbessern §6.3/§6.4: Karte mit Skala,
+ * Antwort zuerst, kWh-Kacheln, was noch nötig ist, Monate mit Grund; 5 von 12, März nicht gezählt, kein Vorschlag) ·
  * Bewerten nach dem Ende (R10: fällig seit 15 Tagen, kein Vorschlag, „verfehlt“) · Vier-Augen (IK beantragt, JW bestätigt).
  *
  * GEMESSEN: Querlauf des Dokuments und überstehende Elemente je Fall. Mit `ENERGIEZIELE_BILDER=<Ordner>` legt der Lauf
@@ -22,10 +23,12 @@ const AM_10_07_2028 = new Date('2028-07-10T09:00:00Z');
 const AM_15_01_2029 = new Date('2029-01-15T09:00:00Z');
 const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
+// Konzept Verbessern §6.3/§6.12: je Reiter ein eigener Leer-Satz mit Beispiel und „Energieziel setzen“.
 const LEER =
-  'Noch keine Energieziele, Maßnahmen oder Abweichungen. Sie entstehen aus Ihren Energieleistungskennzahlen: aus einer Auffälligkeit, aus einem Energieziel oder von Hand.';
-const STAND_JULI =
-  'Energieziel EZ-2028-0001 · Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt · Januar bis Dezember 2028 · Verantwortlich Ines Kaltenbach. Stand nach 5 von 12 Monaten: 2,9 % weniger (März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis). Bezugsbasis BB-0001, Fassung 2.';
+  'Noch kein Energieziel. Ein Energieziel sagt, wie viel weniger Energie eine Kennzahl brauchen soll - zum Beispiel 4 % weniger Strom je kg im Spritzguss.';
+// Konzept Verbessern §6.4: die Antwort zuerst, mit Bedingung (Vektor „K1 Juli 2028 gegen 5 % weniger“).
+const ANTWORT_JULI = 'Bisher nicht auf Kurs: Von Januar bis Juni wurde 2,9\u00a0% weniger Energie gebraucht als erwartet - vorgenommen sind 5\u00a0% weniger.';
+const BEWERTET_FUSS = 'Ines Kaltenbach · 15.01.2029 · ohne Vorschlag, weil März 2028 nicht bewertbar war';
 const BEGRUENDUNG = 'Zwei Maßnahmen wirken erst ab dem zweiten Halbjahr; Juli und März tragen den Rest.';
 
 async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
@@ -86,7 +89,8 @@ for (const breite of [375, 1440]) {
   test.describe(`Energieziele bei ${breite} px`, () => {
     test('leerer Zustand (R13): Satz und Grenz-Satz; das Register Abweichungen leer', async ({ page }) => {
       await oeffne(page, 'lage=leer', breite, AM_20_12_2027);
-      await expect(page.getByTestId('energieziele-leer')).toHaveText(LEER);
+      await expect(page.getByTestId('energieziele-leer')).toContainText(LEER);
+      await expect(page.getByTestId('energieziel-setzen-leer')).toBeVisible();
       await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       const m = await messe(page);
       expect(m.reiter).toEqual(expect.arrayContaining(['Energieziele', 'Maßnahmen', 'Abweichungen']));
@@ -105,10 +109,11 @@ for (const breite of [375, 1440]) {
 
     test('Anlegen an KZ-0004 (R4): Basis-Zeile, Vorgabe Januar bis Dezember 2028, danach die Seite des Energieziels', async ({ page }) => {
       await oeffne(page, 'lage=leer&seite=kennzahl', breite, AM_20_12_2027);
-      const knopf = page.getByTestId('energieziel-setzen-knopf');
-      await expect(knopf).toBeVisible();
+      // Konzept Auswerten a1 §6.5: „Energieziel setzen“ steht im Menü ⋯ der Kennzahl, solange keines gilt.
+      await expect(page.getByTestId('kennzahl-seite')).toBeVisible();
       await ablegen(page, `kennzahl-${breite}`);
-      await knopf.click();
+      await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Energieziel setzen', exact: true }).click();
       const dialog = page.getByTestId('energieziel-setzen');
       await expect(dialog.getByTestId('energieziel-basis-zeile')).toContainText('Bezugsbasis BB-0001 · Fassung 2');
       await expect(dialog.getByText('Januar bis Dezember 2028 — ganze Monate, frühestens ab dem nächsten Monat.')).toBeVisible();
@@ -123,26 +128,29 @@ for (const breite of [375, 1440]) {
       await expect(gesetzt).toContainText('Energieziel EZ-2028-0001 gesetzt');
       await gesetzt.getByRole('link').click();
       const seite = page.getByTestId('energieziel-seite');
-      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Energieziel EZ-2028-0001');
-      await expect(page.getByTestId('energieziel-stand-satz')).toHaveText('noch kein bewertbarer Monat (0 von 12).');
+      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Energieziel 2028 EZ-2028-0001');
+      await expect(page.getByTestId('energieziel-antwort')).toContainText('Noch keine Aussage: Die Zielperiode beginnt im Januar 2028.');
+      await page.getByTestId('energieziel-ueber').getByRole('button', { name: 'Verlauf' }).click();
       await expect(page.getByTestId('energieziel-verlauf')).toContainText('angelegt');
       ohneQuerlauf(await messe(page), 'neu');
     });
 
-    test('Stand am 10.07.2028 (R4): Register mit Stand-Spalte, Seite mit Monaten, Summenzeile und ohne Vorschlag', async ({ page }) => {
+    test('Stand am 10.07.2028 (R4): Karte mit Skala und Lage, Seite mit Antwort, kWh, Monaten mit Grund und ohne Vorschlag', async ({ page }) => {
       await oeffne(page, 'lage=juli', breite, AM_10_07_2028);
-      const zeile = page.getByTestId('energieziel-zeile-EZ-2028-0001');
-      await expect(zeile.getByTestId('stand')).toHaveText('2,9 % weniger nach 5 von 12 Monaten');
+      const karte = page.getByTestId('energieziel-karte-EZ-2028-0001');
+      await expect(karte.getByTestId('energieziel-lage')).toHaveText('nicht auf Kurs');
+      await expect(karte).toContainText('5 von 12 Monaten');
+      await expect(karte).toContainText('Bisher 8.731\u00a0kWh über dem Energieziel');
       ohneQuerlauf(await messe(page), 'Register');
       await ablegen(page, `register-${breite}`, true);
-      await zeile.getByRole('button', { name: 'EZ-2028-0001' }).click();
-      await expect(page.getByTestId('energieziel-stand-satz')).toHaveText(STAND_JULI);
-      await expect(page.getByTestId('monat-2028-03').getByTestId('grund')).toContainText('außerhalb der Bezugsbasis');
-      await expect(page.getByTestId('monat-2028-01').getByTestId('urteil')).toHaveText('besser (± 2 %)');
-      // Konzept Verbessern v1, Befund 1: der offene Monat nennt den Grund der Route - am 10.07.2028 läuft der Juli noch.
-      await expect(page.getByTestId('monat-2028-07')).toContainText('läuft noch');
-      await expect(page.getByTestId('energieziel-summe')).toContainText('5 von 12 Monaten');
-      await expect(page.getByTestId('energieziel-summe')).toContainText('410 400 kWh');
+      await karte.getByRole('button', { name: /Energieziel 2028/ }).click();
+      await expect(page.getByTestId('energieziel-antwort')).toContainText(ANTWORT_JULI);
+      await expect(page.getByTestId('monat-2028-03')).toContainText('außerhalb der Bezugsbasis');
+      await expect(page.getByTestId('monat-2028-01')).toContainText('unter der Bezugsbasis');
+      await expect(page.getByTestId('monat-2028-07')).toContainText('läuft noch - endgültig etwa ab 07.08.2028');
+      await expect(page.getByTestId('energieziel-stand')).toContainText('5 von 12 Monaten');
+      await expect(page.getByTestId('energieziel-stand')).toContainText('410.400');
+      await expect(page.getByTestId('energieziel-noetig')).toContainText('In den übrigen sechs Monaten im Schnitt rund 6,7');
       await expect(page.getByTestId('energieziel-vorschlag')).toHaveCount(0);
       await expect(page.getByTestId('energieziel-bewerten')).toHaveCount(0);
       await grenzHinweisZeigt(page.getByTestId('energieziel-seite'), GRENZE);
@@ -153,7 +161,7 @@ for (const breite of [375, 1440]) {
     test('Bewerten am 15.01.2029 (R10): fällig seit 15 Tagen, kein Vorschlag, „verfehlt“ mit Begründung', async ({ page }) => {
       await oeffne(page, 'lage=faellig&ez=1', breite, AM_15_01_2029);
       await expect(page.getByTestId('energieziel-frist')).toHaveText('Bewertung fällig seit 15 Tagen');
-      await expect(page.getByTestId('energieziel-summe')).toContainText('11 von 12 Monaten');
+      await expect(page.getByTestId('energieziel-stand')).toContainText('11 von 12 Monaten');
       await page.getByTestId('energieziel-bewerten').click();
       await expect(page.getByTestId('bewerten-ohne-vorschlag')).toBeVisible();
       await waehle(page, page.locator('.vp-modal').getByRole('combobox', { name: 'Ergebnis', exact: true }), /^verfehlt$/);
@@ -161,8 +169,10 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(await messe(page), 'Bewerten');
       await ablegen(page, `bewerten-${breite}`);
       await page.getByTestId('energieziel-bewerten-senden').click();
-      await expect(page.getByTestId('energieziel-bewertet')).toHaveText('Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.');
+      await expect(page.getByTestId('energieziel-bewertet')).toHaveText(BEWERTET_FUSS);
       await expect(page.getByTestId('energieziel-frist')).toHaveCount(0);
+      await expect(page.getByTestId('energieziel-antwort')).toContainText('Verfehlt: Im Jahr 2028');
+      await page.getByTestId('energieziel-ueber').getByRole('button', { name: 'Verlauf' }).click();
       await expect(page.getByTestId('energieziel-verlauf')).toContainText('bewertet');
       ohneQuerlauf(await messe(page), 'bewertet');
       await ablegen(page, `bewertet-${breite}`, true);
@@ -182,7 +192,7 @@ for (const breite of [375, 1440]) {
       await page.getByTestId('energieziel-freigeben').click();
       await begruendung(page).fill('Geprüft: Stand und Begründung stimmen mit dem Jahresbericht überein.');
       await page.getByTestId('energieziel-bewerten-senden').click();
-      await expect(page.getByTestId('energieziel-bewertet')).toHaveText('Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.');
+      await expect(page.getByTestId('energieziel-bewertet')).toHaveText(BEWERTET_FUSS);
       await expect(page.getByTestId('energieziel-bestaetigt')).toHaveText('Bestätigt von Jonas Wendlinger am 15.01.2029.');
       ohneQuerlauf(await messe(page), 'Vier-Augen');
     });

@@ -1,6 +1,5 @@
 import { AbweichungenRegister } from '../components/AbweichungenRegister';
-import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
-import { BegriffeZeile } from '../components/BegriffeZeile';
+import { GrenzSatzBereich } from '../components/GrenzSatz';
 import { useReiterRand } from '../reiterRand';
 import { EnergiezieleRegister } from '../components/EnergiezieleRegister';
 import { MassnahmenRegister } from '../components/MassnahmenRegister';
@@ -50,45 +49,44 @@ export function VerbesserungBereich({
   reiterOben?: boolean;
 }) {
   const reiterRand = useReiterRand<HTMLDivElement>();
-  // Verbessern-Konzept v1 (Entscheid 2): der Reiter „Abweichungen“ trägt seinen Titel selbst, „Was VoltPilot leistet“
-  // steht an seinem Fuß.
-  const eigenerKopf = reiter === 'abweichungen';
-  if (energiezielId) return <EnergiezielSeite id={energiezielId} onListe={onListe} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
+  if (energiezielId) {
+    return <EnergiezielSeite id={energiezielId} onListe={onListe} onKennzahl={onKennzahl} onMassnahme={onMassnahme} onOeffnen={onOeffnen} />;
+  }
   if (abweichungId) {
     return <AbweichungSeite id={abweichungId} onListe={() => onReiter('abweichungen')} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
   }
   if (massnahmeId) {
     return <MassnahmeSeite id={massnahmeId} onListe={() => onReiter('massnahmen')} onKennzahl={onKennzahl} onEnergieziel={onOeffnen} />;
   }
+  const reiterReihe = !reiterOben && (
+    <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
+      {Z.REITER.map((r) => (
+        <button
+          key={r.key}
+          type="button"
+          role="tab"
+          aria-selected={reiter === r.key}
+          className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
+          data-testid={`verbesserung-reiter-${r.key}`}
+          onClick={() => onReiter(r.key)}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+  // Verbessern-Konzept v1 (Entscheid 2): jeder Reiter trägt Titel, Klartext-Satz und „Was VoltPilot leistet“ selbst -
+  // der Bereich legt nur die Reiter-Reihe darüber (Review r1 S-X.1: kein gemeinsamer Kopf mehr).
   return (
     <GrenzSatzBereich>
       <div className="vp-ez" data-testid="verbesserung-bereich">
-        {!eigenerKopf && <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>}
-        {!eigenerKopf && <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />}
-        {!eigenerKopf && <GrenzHinweis />}
-        {!reiterOben && <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
-          {Z.REITER.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              role="tab"
-              aria-selected={reiter === r.key}
-              className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
-              data-testid={`verbesserung-reiter-${r.key}`}
-              onClick={() => onReiter(r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>}
+        {reiterReihe}
         {reiter === 'energieziele' ? (
-          <EnergiezieleRegister onOeffnen={onOeffnen} />
+          <EnergiezieleRegister onOeffnen={onOeffnen} onMassnahme={onMassnahme} />
         ) : reiter === 'massnahmen' ? (
           <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
         ) : (
-          <>
-            <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} onKennzahl={onKennzahl} grenze={false} />
-          </>
+          <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} onKennzahl={onKennzahl} grenze={false} />
         )}
       </div>
     </GrenzSatzBereich>

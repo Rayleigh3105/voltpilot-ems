@@ -53,7 +53,7 @@ describe('MessbedarfKarte (AP-16 IP-20)', () => {
     await waitFor(() => expect(spione.messbedarfEinloesen).toHaveBeenCalledWith(ee8().id, mb1().id, MS23_ID));
     expect(spione.messbedarfEinloesen).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Später binden' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Später festlegen' }));
     await waitFor(() =>
       expect(screen.getByTestId('messbedarf-satz').textContent).toBe(
         'Messbedarf MB-1: Lüftung, Beleuchtung und Allgemeinstrom Halle 1 — eingelöst durch MS-23 Halle 1 Allgemein (keine Datenquelle seit 27.11.2026).',
