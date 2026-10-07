@@ -160,6 +160,27 @@ describe('Seite eines Dokuments (Konzept Nachweisen n1, Runde 2, §6.5)', () => 
     expect(screen.getByTestId('geltung-blatt').textContent).not.toContain('gehört zum');
   });
 
+  it('wartet eine neue Fassung neben der gültigen, steht ihr Neues beim Entscheid - mit ihrem Grund', async () => {
+    const d1 = await api.energiemanagementDokument(EM_IDS.d1);
+    const alt = d1.fassungen.find((f) => f.nr === d1.gueltige_fassung)!.wortlaut!;
+    await api.energiemanagementFassungEntwerfen(EM_IDS.d1, {
+      form: 'wortlaut',
+      wortlaut: `${alt} Wer neu bei uns anfängt, lernt diese Energiepolitik in der Einarbeitung kennen.`,
+      begruendung: 'Hinweis aus dem internen Audit 2029 zur Einarbeitung.',
+    });
+    const nr = d1.fassungen.length + 1;
+    await zeige(EM_IDS.d1);
+    expect(screen.getByTestId('dokument-status').textContent).toBe(`Fassung ${nr} wartet auf Freigabe`);
+    const karte = screen.getByTestId('dokument-wartet');
+    expect(within(karte).getByRole('heading').textContent).toBe(`Neu in Fassung ${nr}`);
+    expect(karte.querySelector('mark')?.textContent).toBe('Wer neu bei uns anfängt, lernt diese Energiepolitik in der Einarbeitung kennen.');
+    // Der Kasten mit dem Entscheid steht davor, der Wortlaut der gültigen Fassung bleibt daneben.
+    expect(screen.getByTestId('dokument-aktionen').compareDocumentPosition(karte) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('dokument-wortlaut').textContent).not.toContain('Einarbeitung');
+    await klick(within(karte).getByTestId('dokument-wartet-grund'));
+    expect((await screen.findByRole('dialog')).textContent).toContain('Hinweis aus dem internen Audit 2029 zur Einarbeitung.');
+  });
+
   it('Vier-Augen steht VORAB im Blatt: „Freigabe beantragen“ mit „Zwei Personen prüfen“ - ohne roten Fehlversuch (Befund 6)', async () => {
     buehne.setzeVierAugen(true);
     const d = await api.energiemanagementDokumentAnlegen({ art: 'verfahren', titel: 'Vorgehen Messplanung', bezug: { art: 'unternehmen' } });

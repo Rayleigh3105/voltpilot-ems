@@ -36,7 +36,7 @@ import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
 import '../components/nachweisen/NwDokumente.css';
 
-type Blatt = 'neu' | 'freigeben' | 'bestaetigen' | 'bekannt' | 'pruefen' | 'aufheben' | 'wortlaut' | 'fassungen' | 'original' | 'grund' | 'geltung' | 'wer';
+type Blatt = 'neu' | 'freigeben' | 'bestaetigen' | 'bekannt' | 'pruefen' | 'aufheben' | 'wortlaut' | 'fassungen' | 'original' | 'grund' | 'grund-wartet' | 'geltung' | 'wer';
 
 /**
  * Die Seite eines Dokuments (Konzept Nachweisen n1, Runde 2, §6.5; Entscheide 10 bis 12, 24, 25): Kopf mit Titel des
@@ -127,6 +127,10 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
   const aufgehoben = d.zustand === 'aufgehoben';
   const bekannt = g ? N.bekanntmachungen(d.eintraege).find((b) => b.fassung === g.nr) : null;
   const geltung = N.geltungKurz(gezeigt);
+  // Wartet eine neue Fassung neben der gültigen, steht ihr Neues beim Entscheid - wer freigibt, sieht, was er freigibt.
+  const wartet = g && o?.form === 'wortlaut' && !aufgehoben ? o : null;
+  const wartetText = wartet ? N.wortlautMitNeuem(g?.form === 'wortlaut' ? (g.wortlaut ?? null) : null, wartet.wortlaut ?? '') : null;
+  const wartetGrund = wartet ? N.grundKurz(wartet) : null;
   const offeneFeststellungen = feststellungen.filter((f) => f.zustand === 'offen');
 
   const gespeichert = (neu: EnergiemanagementDokument) => {
@@ -219,11 +223,28 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
       </button>
     ) : null;
 
-  // Am Handy nur der neue Satz („Neu in Fassung 2“), am Rechner der ganze Wortlaut mit dem Neuen hinterlegt.
+  const wartetKarte =
+    wartet && wartetText ? (
+      <NwKarte titel={wartetText.neueSaetze.length ? `Neu in Fassung ${wartet.nr}` : `Fassung ${wartet.nr}`} testId="dokument-wartet">
+        <Wortlaut
+          absaetze={wartetText.neueSaetze.length ? [wartetText.neueSaetze.map((t, i) => ({ text: i < wartetText.neueSaetze.length - 1 ? `${t} ` : t, neu: true }))] : wartetText.absaetze}
+          label={`Neu in Fassung ${wartet.nr}`}
+        />
+        {wartetGrund && (
+          <button type="button" className="vp-nw-fussnote" onClick={() => setBlatt('grund-wartet')} data-testid="dokument-wartet-grund">
+            <Icon name="info" size={14} />
+            Grund: {wartetGrund}
+          </button>
+        )}
+      </NwKarte>
+    ) : null;
+
+  // Am Handy nur der neue Satz („Neu in Fassung 2“), am Rechner der ganze Wortlaut mit dem Neuen hinterlegt. Wartet
+  // eine neue Fassung, steht am Handy nur ihr Neues (eine Karte „Neu“, nicht zwei).
   const inhalt =
     gezeigt?.form === 'wortlaut' && wortlaut ? (
       isPhone ? (
-        wortlaut.neueSaetze.length > 0 ? (
+        !wartetKarte && wortlaut.neueSaetze.length > 0 ? (
           <NwKarte titel={`Neu in Fassung ${gezeigt.nr}`} testId="dokument-neu">
             <Wortlaut absaetze={[wortlaut.neueSaetze.map((t, i) => ({ text: i < wortlaut.neueSaetze.length - 1 ? `${t} ` : t, neu: true }))]} />
             {fussnote}
@@ -269,6 +290,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
                 {anlass?.art !== 'pruefen' && pruefKnopf}
               </div>
             )}
+            {wartetKarte}
             <Weitergeben
               knoepfe={!isPhone && darfVerwalten && !aufgehoben && o?.status !== 'beantragt' ? [{ symbol: 'pencil', text: o ? 'Entwurf bearbeiten' : 'Neu fassen', onClick: () => setBlatt('neu'), testId: 'dokument-neu-fassen' }] : []}
               teilenLink={{ titel: d.titel, url: seitenLink(hashForRoute(dokumentRoute(d.id))) }}
@@ -305,6 +327,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
       {blatt === 'fassungen' && <FassungenBlatt dokument={d} onClose={() => setBlatt(null)} />}
       {blatt === 'original' && original && <OriginalBlatt original={original} onClose={() => setBlatt(null)} />}
       {blatt === 'grund' && gezeigt && <GrundBlatt fassung={gezeigt} onClose={() => setBlatt(null)} />}
+      {blatt === 'grund-wartet' && wartet && <GrundBlatt fassung={wartet} onClose={() => setBlatt(null)} />}
       {blatt === 'geltung' && gezeigt?.anwendungsbereich && <GeltungBlatt dokument={d} fassung={gezeigt} onClose={() => setBlatt(null)} />}
     </GrenzSatzBereich>
   );
