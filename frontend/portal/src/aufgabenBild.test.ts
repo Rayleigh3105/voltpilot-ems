@@ -58,6 +58,8 @@ describe('Reiter „Aufgaben“ (Konzept §6.8, Entscheid 23)', () => {
     expect(T.aufgabenStatus([{ ohnePerson: null }])).toEqual({ zeichen: 'festgehalten', text: 'jede Aufgabe hat eine Person' });
     expect(T.aufgabenStatus([{ ohnePerson: 'x' }, { ohnePerson: null }])).toEqual({ zeichen: 'offen', text: '1 Aufgabe ohne Person' });
     expect(T.aufgabenStatus([{ ohnePerson: 'x' }, { ohnePerson: 'y' }])).toMatchObject({ text: '2 Aufgaben ohne Person' });
+    // Review P5-1: ohne sichtbare Aufgabe keine Antwort - leer ist nie „alle besetzt“.
+    expect(T.aufgabenStatus([])).toBeNull();
   });
 
   it('am Rechner neben den Kürzeln der Name, bei mehreren die Zahl; seit wann und ab wann', () => {

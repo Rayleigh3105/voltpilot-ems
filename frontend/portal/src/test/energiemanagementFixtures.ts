@@ -636,6 +636,16 @@ export function energiemanagementBuehne(
     energiemanagementFassungEntwerfen: async (id: string, b: EnergiemanagementFassungEntwerfen) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen`, b);
       const d = finde(id);
+      // Wie `EnergiemanagementDokumentService.bereich`: nur der Anwendungsbereich trägt Standorte und Träger - und er
+      // braucht beide schon im Entwurf (Review r1, P2-2).
+      const ab = b.anwendungsbereich;
+      if (d.art === 'anwendungsbereich' && (!ab || !ab.standort_ids.length || !ab.traeger.length)) {
+        const message = 'Bitte nennen Sie die Standorte und Energieträger des Anwendungsbereichs.';
+        throw new ApiError(422, message, { code: 'anwendungsbereich_fehlt', message, feld: 'anwendungsbereich' });
+      }
+      if (d.art !== 'anwendungsbereich' && ab) {
+        throw new ApiError(400, 'Anfrage ungültig', { code: 'anfrage_ungueltig', message: 'Standorte und Energieträger trägt nur der Anwendungsbereich.', feld: 'anwendungsbereich' });
+      }
       entwerfen(d, b);
       return abgerufen(d);
     },
@@ -681,9 +691,14 @@ export function energiemanagementBuehne(
     energiemanagementBekanntmachen: async (id: string, b: EnergiemanagementBekanntmachen) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, b);
       const d = finde(id);
-      const ik = personen.find((x) => x.name === ich.name) ?? personen[1];
+      // Wie der Dienst: die genannte Person, sonst die Person des eigenen Kontos, sonst 422 `person_fehlt`.
+      const wer = b.person_id ? personen.find((x) => x.id === b.person_id) : personen.find((x) => x.konto?.sub === ich.kennung);
+      if (!wer) {
+        const message = 'Bitte nennen Sie, wer das Dokument bekannt gemacht hat.';
+        throw new ApiError(422, message, { code: 'person_fehlt', message, feld: 'person_id' });
+      }
       d.eintraege.push({
-        id: d.eintraege.length + 200, art: 'bekannt_gemacht', fassung: d.gueltige_fassung, am: b.am ?? heute(), person: kurz(ik), entschieden_von: null,
+        id: d.eintraege.length + 200, art: 'bekannt_gemacht', fassung: d.gueltige_fassung, am: b.am ?? heute(), person: kurz(wer), entschieden_von: null,
         kreis: b.kreis, weg: b.weg, weg_wortlaut: b.weg_wortlaut ?? null, begruendung: null, beschluss_kennung: null, kommentar: null, satz: null,
         eingetragen: eingetragen(ich.name, jetzt()),
       });

@@ -19,6 +19,7 @@ import type { Erklaerung } from './components/nachweisen/erklaerung';
 import type { Stufe } from './components/nachweisen/Stufen';
 import type { ZeichenArt } from './components/nachweisen/NwZeichen';
 import type { DatumTon } from './components/nachweisen/nwBild';
+import { tagIso, tagText } from './energiemanagementPortal';
 
 // ------------------------------------------------------------------ Wörter
 
@@ -31,8 +32,12 @@ export const DOKUMENTE_LADEFEHLER = 'Die Dokumente ließen sich gerade nicht lad
 export const DOKUMENT_LADEFEHLER = 'Das Dokument ließ sich gerade nicht laden. Ihre Daten sind nicht betroffen.';
 export const DOKUMENT_FEHLT = 'Dieses Dokument gibt es nicht - oder Sie dürfen es nicht sehen.';
 export const KEIN_DOKUMENT = 'Noch kein Dokument festgehalten.';
+export const FESTSTELLUNGEN_FEHLEN = 'Feststellungen nicht geladen';
+export const VERLAUF = 'Verlauf';
+export const VERLAUF_LEER = 'Noch nichts festgehalten.';
 
-const TAG = (iso: string | null | undefined) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '');
+/** Der Tag als „30.04.2029“ - ein Zeitpunkt mit seinem Kalendertag in Berlin (`tagText`, Review r1 P2-7). */
+const TAG = tagText;
 const MEHRZAHL = (n: number, eins: string, viele: string) => (n === 1 ? `1 ${eins}` : `${n} ${viele}`);
 
 /** Die gültige Fassung: die freigegebene, die keine jüngere ablöst; ohne Freigabe `null`. */
@@ -416,12 +421,48 @@ export function fassungsZeitleiste(d: Pick<EnergiemanagementDokument, 'fassungen
     }));
 }
 
+/** Eine Zeile im „Verlauf“ eines Dokuments: Tag, was geschah, wer - und warum, wo es einen Grund gibt. */
+export interface VerlaufZeile {
+  /** ISO-Tag zum Sortieren (ein Zeitpunkt mit seinem Tag in Berlin). */
+  tag: string;
+  text: string;
+}
+
+/**
+ * Der Verlauf eines Dokuments (Review r1, P2-6): was die alte Seite als „Einträge“ führte - Bekanntmachungen mit Kreis,
+ * Wegen und Person, „geprüft, bleibt“ und das Aufheben mit Grund, Kommentare - und dazu, was mit den Fassungen geschah
+ * (freigegeben, beantragt, abgelehnt mit Grund). Neueste zuerst; nichts geraten: ohne Tag keine Zeile.
+ */
+export function verlauf(d: Pick<EnergiemanagementDokument, 'fassungen' | 'eintraege'>): VerlaufZeile[] {
+  const z: VerlaufZeile[] = [];
+  const zeile = (tag: string | null | undefined, ...teile: (string | null | undefined)[]) => {
+    const t = tagIso(tag);
+    if (t) z.push({ tag: t, text: teile.filter((x): x is string => !!x && !!x.trim()).join(' · ') });
+  };
+  for (const f of d.fassungen) {
+    if (f.status === 'freigegeben' || f.status === 'abgeloest') zeile(f.entschieden_am, `Fassung ${f.nr} freigegeben`, f.entschieden_von?.name);
+    if (f.status === 'beantragt') zeile(f.freigabe?.am ?? f.entschieden_am, `Fassung ${f.nr} beantragt`, f.entschieden_von?.name);
+    if (f.status === 'abgelehnt') zeile(f.zweite_person?.am, `Fassung ${f.nr} abgelehnt`, f.zweite_person?.akteur.name, f.ablehnung_begruendung);
+  }
+  for (const b of bekanntmachungen(d.eintraege)) zeile(b.am, `Fassung ${b.fassung} bekannt gemacht`, b.kreis, wegeText(b.wege), b.person);
+  for (const e of d.eintraege) {
+    if (e.art === 'geprueft_bleibt') zeile(e.am, 'Geprüft, bleibt', e.entschieden_von?.name, e.begruendung);
+    if (e.art === 'aufgehoben') zeile(e.am, 'Aufgehoben', e.entschieden_von?.name, e.begruendung);
+    if (e.art === 'kommentar') zeile(e.am ?? e.eingetragen.am, 'Kommentar', e.eingetragen.akteur.name, e.kommentar);
+  }
+  return z.sort((a, b) => b.tag.localeCompare(a.tag));
+}
+
 /** Der Anwendungsbereich in einer Zeile: „2 Standorte · Strom, Gas“. */
 export function geltungKurz(f: EnergiemanagementFassung | null): string | null {
   const a = f?.anwendungsbereich;
   if (!a) return null;
-  return `${MEHRZAHL(a.standorte.length, 'Standort', 'Standorte')} · ${a.traeger.join(', ')}`;
+  return geltungText(a.standorte.length, a.traeger);
 }
+
+/** „2 Standorte · Strom, Gas“ aus Zahl und Trägern - auch für eine Geltung, die erst gewählt wird. */
+export const geltungText = (standorte: number, traeger: readonly string[]): string =>
+  [MEHRZAHL(standorte, 'Standort', 'Standorte'), traeger.join(', ')].filter(Boolean).join(' · ');
 
 // ------------------------------------------------------------------ Erklär-Blätter (Entscheid 24; Normwort nur im Feld `fachwort`, Entscheid 18)
 
@@ -452,13 +493,6 @@ export function dokumenteErklaerung(liste: readonly Pick<EnergiemanagementDokume
 }
 
 /** „Wo liegt das Original?“ - das Erklär-Blatt am Original (Entscheid 9: keine Dateien). */
-export const ORIGINAL_ERKLAERUNG: Erklaerung = {
-  frage: 'Was heißt Original?',
-  klartext: 'Wo das unterschriebene oder führende Stück bei Ihnen liegt. VoltPilot speichert keine Dateien.',
-  beiIhnen: null,
-  nichtVerwechseln: 'Statt der Datei hält VoltPilot eine Prüfsumme fest.',
-  fachwort: null,
-};
 
 // ------------------------------------------------------------------ Blätter
 

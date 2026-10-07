@@ -1433,13 +1433,6 @@
       "grund": "Konzept Auswerten a1 §6.5: „Archivieren“ steht im Menü ⋯ und öffnet denselben Bestätigungsdialog mit den Lesern der Kennzahl; Beschriftung, Recht und Handler bleiben."
     },
     {
-      "datei": "pages/BerichtSeite.tsx",
-      "vorher": "adbd0313ee745697dbf00cad76a292f001396269b66ae6ba46e6a193da318cc4",
-      "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
-      "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
-      "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
-    },
-    {
       "datei": "pages/MessstellenPage.tsx",
       "vorher": "3ca97a0fab9e217ef50e208e8cb4816494289ec19c6a8b6726063c96f770686d",
       "nachher": "046a547ece4f1039908f88241dec4f19935b7a7fcbc5895a2331d21c765c2094",
@@ -1557,6 +1550,13 @@
       "nachher": "101ec6e531f5d1db7450b5b2e781f8fafce0aca07a65369cf557ab29bfbde2e9",
       "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
       "grund": "Review r4 S23: der gefährliche Menüeintrag wählt wie die übrigen über `waehle(it)` - Menü schließen wie bisher, Fokus an den Auslöser ⋯ zurück, dann derselbe `it.onClick()`; ein Bestätigungsdialog kehrt beim Schließen auf den Auslöser zurück statt auf `body`. Text, Klasse und Rolle unverändert."
+    },
+    {
+      "datei": "pages/BerichtSeite.tsx",
+      "vorher": "adbd0313ee745697dbf00cad76a292f001396269b66ae6ba46e6a193da318cc4",
+      "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
+      "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
+      "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
     }
   ],
   "assistentZusammenfuehrung": {
@@ -2883,6 +2883,7 @@
       "dateien": {
         "pages/BerichtSeite.tsx": {
           "nachher": [
+            "7b8e4723f1fd98ad1ba255e992571ece8a8a86b86bf0e52e89dbf3b21763ae30",
             "b22408f2002143b9f6bd547c6b7a682b8dc9bb5daec08beae98935bef2d69e50",
             "c2264c51208c2a065a6fdd612a8e3b49151553122b3f2fe358f528d04bc84fed",
             "8befd4c1a7137d2ff2590e767dbf7f38afe6d11a65489b7ccc87ddb4c29b1bc8",

@@ -91,6 +91,9 @@ class UemsMappeMigrationTest {
             mappe(k, anlass, "{grundlagen}", "{}");
         }
         checkFehler("energiemanagement_mappe_anlass_chk", () -> mappe(k, "zertifizierung", "{grundlagen}", "{}"));
+        // Review P6-0: der Anlass ist ein Block der Datenbank-Funktion wie jedes andere Vokabular des Vertrags.
+        assertThat(root.queryForList("SELECT wort FROM energiemanagement_vokabular() WHERE vokabular = 'mappe_anlass' ORDER BY nr",
+                String.class)).containsExactlyElementsOf(EnergiemanagementRegeln.VOKABULARE.get("mappe_anlass"));
         mappe(k, "eigene_ablage", "{" + String.join(",", EnergiemanagementRegeln.VOKABULARE.get("verzeichnis_gruppe")) + "}",
                 "{" + String.join(",", EnergiemanagementRegeln.VOKABULARE.get("teil")) + "}");
         checkFehler("energiemanagement_mappe_gruppen_chk", () -> mappe(k, "eigene_ablage", "{}", "{}"));

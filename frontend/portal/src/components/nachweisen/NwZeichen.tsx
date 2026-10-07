@@ -67,8 +67,8 @@ export function ZaehlerChip({
   const inhalt = (
     <>
       {zeichen && <NwZeichen art={zeichen} stumm />}
-      <b>{anzahl}</b>
-      {wort}
+      {/* Das Leerzeichen trägt der Text („4 Teile offen“), nicht nur der Abstand der Flex-Reihe. */}
+      <b>{anzahl}</b> {wort}
     </>
   );
   return onClick ? (

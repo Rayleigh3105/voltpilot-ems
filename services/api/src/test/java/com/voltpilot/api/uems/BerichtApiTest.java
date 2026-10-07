@@ -994,6 +994,84 @@ class BerichtApiTest {
     }
 
     /**
+     * Konzept Nachweisen n1, C8 (Review r1, P3-7): mit {@code ?archiviert=true} stehen die archivierten Berichte in der
+     * Liste - mit {@code archiviert_am} -, ohne den Parameter nicht; ein anderer Wert ist 400.
+     */
+    @Test
+    void archivierteBerichteStehenMitArchiviertTrueInDerListe() throws Exception {
+        Welt w = welt();
+        bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        uhr("2026-11-20T11:00:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/archivieren", null), 200);
+        assertThat(ok(ruf(w.ines(), HttpMethod.GET, PFAD, null), 200).body().get("berichte")).isEmpty();
+        assertThat(ok(ruf(w.ines(), HttpMethod.GET, PFAD + "?archiviert=false", null), 200).body().get("berichte")).isEmpty();
+        JsonNode mit = ok(ruf(w.ines(), HttpMethod.GET, PFAD + "?archiviert=true", null), 200).body().get("berichte");
+        assertThat(mit).hasSize(1);
+        assertThat(mit.get(0).get("kennung").asText()).isEqualTo("BR-2026-0001");
+        assertThat(Instant.parse(mit.get(0).get("archiviert_am").asText())).isEqualTo(t("2026-11-20T11:00:00+01:00"));
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "?archiviert=ja", null), 400, "anfrage_ungueltig");
+        // Lesen bleibt Lesen: wer nur Werk Lindach sieht, sieht den archivierten Bericht von Werk Ahrenberg nicht.
+        konto(w.peter(), "bearbeiter", w.st2());
+        assertThat(ok(ruf(w.peter(), HttpMethod.GET, PFAD + "?archiviert=true", null), 200).body().get("berichte")).isEmpty();
+    }
+
+    /**
+     * Konzept Nachweisen n1, Entscheid 16 (Review r1, P3-2): „Nein, Stand 1 behalten“ verwirft die gesehenen offenen
+     * Anstöße mit EINEM Grund in EINER Transaktion - alle oder keiner. Ist einer nicht mehr offen, ist es 409 mit seiner
+     * Kennung und kein Anstoß ist verworfen; ein Anstoß, der nicht in der Anfrage steht, bleibt offen.
+     */
+    @Test
+    void gebuendeltVerwerfenIstEineEntscheidungFuerAlleOderKeinen() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+        UUID stand1 = root.queryForObject("SELECT id FROM bericht_stand WHERE bericht_id = ? AND nr = 1", UUID.class, st);
+        UUID a1 = anstoss(w, stand1, "K-2026-0007", 2, "2026-11-12T10:05:33+01:00");
+        UUID a2 = anstoss(w, stand1, "K-2026-0008", 1, "2026-11-12T11:00:00+01:00");
+        UUID schonWeg = anstoss(w, stand1, "K-2026-0009", 1, "2026-11-12T12:00:00+01:00");
+        UUID neu = anstoss(w, stand1, "K-2026-0010", 1, "2026-11-13T08:00:00+01:00");
+        uhr("2026-11-13T09:00:00+01:00");
+        String grund = "Die Korrekturen betreffen keine Zahl dieses Berichts.";
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/anstoesse/" + schonWeg + "/verwerfen", Map.of("begruendung", grund)), 200);
+        String b = k + "/anstoesse/verwerfen";
+
+        verboten(ruf(w.claudia(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString()), "begruendung", grund)));
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(), "begruendung", grund)), 400, "anfrage_ungueltig");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString(), a1.toString()), "begruendung", grund)),
+                400, "anfrage_ungueltig");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString(), UUID.randomUUID().toString()),
+                "begruendung", grund)), 404, "nicht_gefunden");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString()), "begruendung", "zu kurz")), 422,
+                "begruendung_fehlt");
+        Antwort halb = abgelehnt(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString(), schonWeg.toString()),
+                "begruendung", grund)), 409, "anstoss_nicht_offen");
+        assertThat(halb.body().get("anstoss_id").asText()).isEqualTo(schonWeg.toString());
+        assertThat(root.queryForObject("SELECT zustand FROM bericht_revision_anstoss WHERE id = ?", String.class, a1)).isEqualTo("offen");
+
+        Antwort weg = ok(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString(), a2.toString()),
+                "begruendung", grund)), 200);
+        JsonNode anstoesse = weg.body().get("anstoesse");
+        assertThat(anstoesse).hasSize(2);
+        assertThat(anstoesse.get(0).get("id").asText()).isEqualTo(a1.toString());
+        assertThat(anstoesse.get(1).get("id").asText()).isEqualTo(a2.toString());
+        for (JsonNode a : anstoesse) {
+            assertThat(a.get("zustand").asText()).isEqualTo("verworfen");
+            assertThat(a.get("verworfen_begruendung").asText()).isEqualTo(grund);
+            assertThat(a.get("verworfen_von").get("name").asText()).isEqualTo("Ines Kaltenbach");
+        }
+        assertThat(root.queryForObject("SELECT zustand FROM bericht_revision_anstoss WHERE id = ?", String.class, neu)).isEqualTo("offen");
+        assertThat(root.queryForList("SELECT art FROM bericht_aenderung WHERE bericht_id = ? ORDER BY id", String.class, st))
+                .containsExactly("freigeben", "verwerfen", "verwerfen", "verwerfen");
+        // Noch einmal dieselbe Entscheidung: nichts ist mehr offen - 409, nichts doppelt.
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, b, Map.of("anstoss_ids", List.of(a1.toString(), a2.toString()), "begruendung", grund)),
+                409, "anstoss_nicht_offen");
+    }
+
+    /**
      * Anlegen: jede Ablehnung in ihrer Reihenfolge, dann ein Bericht mit Kennung und Entwurf (gebildet von
      * {@link BerichtAbzugBildung}); ein späterer Abruf nach dem „endgültig ab“ bildet den Entwurf neu (D4).
      */

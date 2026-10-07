@@ -84,9 +84,13 @@ public class BerichtController {
      * — die Liste zeigt nur, was die Person lesen darf; wer nirgends einen Bericht lesen darf (der Unterstützer), bekommt 403.
      */
     @GetMapping("/berichte")
-    public BerichtDto.Liste liste(Authentication auth) {
-        return new BerichtDto.Liste(dienst.liste(OrtAnfrage.akteur(auth)).stream().map(BerichtController::form).toList(),
-                utc(dienst.jetzt()));
+    public BerichtDto.Liste liste(@RequestParam(required = false) String archiviert, Authentication auth) {
+        // Konzept Nachweisen n1, C8: `?archiviert=true` nimmt die archivierten Berichte dazu (die Zeile „Archiviert · n“).
+        if (archiviert != null && !"true".equals(archiviert) && !"false".equals(archiviert)) {
+            throw BerichtAbgelehnt.anfrage("archiviert");
+        }
+        return new BerichtDto.Liste(dienst.liste(OrtAnfrage.akteur(auth), "true".equals(archiviert)).stream()
+                .map(BerichtController::form).toList(), utc(dienst.jetzt()));
     }
 
     /**
@@ -296,6 +300,23 @@ public class BerichtController {
 
     /**
      * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen}, {@code bewertung.abrufen} bzw.
+     * {@code energiemanagement.verwalten} — R4; alle gesehenen offenen Anstöße mit EINEM Grund in einer Transaktion
+     * (Konzept Nachweisen n1, Entscheid 16).
+     */
+    @PostMapping("/berichte/{kennung}/anstoesse/verwerfen")
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen",
+            "energiemanagement.verwalten"}, ziel = RechtZiel.DIENST)
+    public BerichtDto.Verworfene verwerfenAlle(@PathVariable String kennung, @RequestBody(required = false) JsonNode body,
+            Authentication auth) {
+        ProtokollAkteur wer = OrtAnfrage.akteur(auth);
+        String k = kennung(kennung);
+        BerichtDto.VerwerfenAlle b = lies(body, BerichtDto.VerwerfenAlle.class);
+        return new BerichtDto.Verworfene(dienst.verwerfenAlle(k, b.anstossIds(), b.begruendung(), wer).stream()
+                .map(BerichtController::anstoss).toList());
+    }
+
+    /**
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen}, {@code bewertung.abrufen} bzw.
      * {@code energiemanagement.verwalten}.
      */
     @PostMapping("/berichte/{kennung}/archivieren")
@@ -436,7 +457,8 @@ public class BerichtController {
         }
         for (Iterator<Map.Entry<String, JsonNode>> it = body.fields(); it.hasNext(); ) {
             Map.Entry<String, JsonNode> f = it.next();
-            if (form == BerichtDto.Anlegen.class && ABGEWAEHLT.equals(f.getKey())) {
+            if ((form == BerichtDto.Anlegen.class && ABGEWAEHLT.equals(f.getKey()))
+                    || (form == BerichtDto.VerwerfenAlle.class && "anstoss_ids".equals(f.getKey()))) {
                 if (!f.getValue().isNull() && !texte(f.getValue())) {
                     throw BerichtAbgelehnt.anfrage(f.getKey());
                 }

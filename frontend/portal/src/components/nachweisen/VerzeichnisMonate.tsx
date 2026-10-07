@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
@@ -29,7 +29,7 @@ import { VERZEICHNIS, verzeichnisBeiIhnen } from './nachweisBegriffe';
 import { NwBlatt } from './NwBlatt';
 import { NwKopf } from './NwKopf';
 import { AntwortKarten, PruefZeilen } from './NwSchritte';
-import { kuerzel } from './Ueberblick';
+import { CSV_FEHLER, ERNEUT_VERSUCHEN, kuerzel } from './Ueberblick';
 import './Nachweisen.css';
 
 export const SUCHEN = 'Suchen';
@@ -42,6 +42,7 @@ export const NOCH_KEIN_EINTRAG = 'Noch ist nichts festgehalten.';
 export const VERZEICHNIS_LADEFEHLER = 'Das Verzeichnis ließ sich gerade nicht laden. Ihre Daten sind nicht betroffen.';
 export const ZURUECK_UEBERBLICK = 'Überblick';
 export const DOKUMENT_OEFFNEN = 'Dokument öffnen';
+export const FERTIG = 'Fertig';
 
 type Filter = Required<EnergiemanagementVerzeichnisFilter>;
 const LEER: Filter = { gruppe: null, von: null, bis: null, person: null };
@@ -65,6 +66,9 @@ export function VerzeichnisMonate({
   const [suche, setSuche] = useState('');
   const [daten, setDaten] = useState<EnergiemanagementVerzeichnis | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [csvFehler, setCsvFehler] = useState<string | null>(null);
+  // Eine Pfeiltaste wählt im Thema-Blatt nur aus; schließen tut erst ein Antippen, Leertaste oder „Fertig“ (P1-7).
+  const perPfeil = useRef(false);
   const [personen, setPersonen] = useState<EnergiemanagementPerson[]>([]);
   const [dokumente, setDokumente] = useState<EnergiemanagementDokumentKurz[]>([]);
   const [eintrag, setEintrag] = useState<VerzeichnisEintrag | null>(null);
@@ -103,8 +107,11 @@ export function VerzeichnisMonate({
   const kuerzelVon = (name: string | null) => (name ? (personen.find((p) => p.name === name)?.kuerzel ?? kuerzel(name)) : null);
   const setze = (t: Partial<Filter>) => setFilter((alt) => ({ ...alt, ...t }));
   const filterAktiv = filter.gruppe !== null || filter.von !== null || filter.bis !== null || filter.person !== null;
+  const abrufTag = daten?.stichtag ? daten.stichtag.slice(0, 10) : null;
 
+  // Ein Fehler der CSV steht als eigene Zeile da und versucht die CSV erneut - das Verzeichnis bleibt (P1-6).
   async function csv() {
+    setCsvFehler(null);
     try {
       const datei = await api.energiemanagementVerzeichnisCsv(filter);
       const url = URL.createObjectURL(datei);
@@ -114,7 +121,8 @@ export function VerzeichnisMonate({
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e) {
-      setFehler(E.ablehnungSatz(e));
+      // Eine Ablehnung des Servers nennt ihren Grund; ein Netz- oder Serverfehler ohne Code den Satz der Familie.
+      setCsvFehler(E.ablehnungCode(e) ? E.ablehnungSatz(e) : CSV_FEHLER);
     }
   }
 
@@ -161,11 +169,19 @@ export function VerzeichnisMonate({
           {filter.von || filter.bis ? zeitraumText(filter) : ZEITRAUM}
         </button>
       </div>
+      {csvFehler && (
+        <section className="vp-wv-karte is-fehler" role="alert" data-testid="verzeichnis-csv-fehler">
+          <p className="vp-wv-leise">{csvFehler}</p>
+          <button type="button" className="vp-wv-link" onClick={() => void csv()}>
+            {ERNEUT_VERSUCHEN}
+          </button>
+        </section>
+      )}
       {fehler ? (
         <section className="vp-wv-karte is-fehler" role="alert">
           <p className="vp-wv-leise">{fehler}</p>
           <button type="button" className="vp-wv-link" onClick={() => setVersuch((v) => v + 1)}>
-            Erneut versuchen
+            {ERNEUT_VERSUCHEN}
           </button>
         </section>
       ) : !daten ? (
@@ -249,17 +265,38 @@ export function VerzeichnisMonate({
           )}
         </NwBlatt>
       )}
-      <NwBlatt open={blatt === 'thema'} titel={THEMA} onClose={() => setBlatt(null)} testId="thema-blatt">
-        <AntwortKarten
-          label={THEMA}
-          optionen={[{ wert: '', titel: 'Alle Themen' }, ...VOKABULARE.verzeichnis_gruppe.map((g) => ({ wert: g, titel: WOERTER.verzeichnis_gruppe[g] }))]}
-          wert={filter.gruppe ?? ''}
-          onWahl={(g) => {
-            setze({ gruppe: g || null });
-            setBlatt(null);
+      <NwBlatt
+        open={blatt === 'thema'}
+        titel={THEMA}
+        onClose={() => setBlatt(null)}
+        testId="thema-blatt"
+        fuss={
+          <Button fullWidth onClick={() => setBlatt(null)}>
+            {FERTIG}
+          </Button>
+        }
+      >
+        <div
+          onKeyDownCapture={(ev) => {
+            perPfeil.current = ev.key.startsWith('Arrow');
           }}
-          testid="thema-wahl"
-        />
+          onPointerDownCapture={() => {
+            perPfeil.current = false;
+          }}
+        >
+          <AntwortKarten
+            label={THEMA}
+            optionen={[{ wert: '', titel: 'Alle Themen' }, ...VOKABULARE.verzeichnis_gruppe.map((g) => ({ wert: g, titel: WOERTER.verzeichnis_gruppe[g] }))]}
+            wert={filter.gruppe ?? ''}
+            onWahl={(g) => {
+              setze({ gruppe: g || null });
+              // Die Pfeiltaste wandert durch die Themen (der Filter folgt), das Blatt bleibt offen.
+              if (!perPfeil.current) setBlatt(null);
+              perPfeil.current = false;
+            }}
+            testid="thema-wahl"
+          />
+        </div>
       </NwBlatt>
       <NwBlatt
         open={blatt === 'zeitraum'}
@@ -268,12 +305,13 @@ export function VerzeichnisMonate({
         testId="zeitraum-blatt"
         fuss={
           <Button fullWidth onClick={() => setBlatt(null)}>
-            Fertig
+            {FERTIG}
           </Button>
         }
       >
-        <VpDatePicker label="Von" value={filter.von} onChange={(v) => setze({ von: v })} max={filter.bis ?? undefined} />
-        <VpDatePicker label="Bis" value={filter.bis} onChange={(v) => setze({ bis: v })} min={filter.von ?? undefined} />
+        {/* Der Kalender öffnet am Tag des Abrufs (der Bühne), nicht am Tag des Browsers (P1-8). */}
+        <VpDatePicker label="Von" value={filter.von} onChange={(v) => setze({ von: v })} max={filter.bis ?? undefined} heute={abrufTag} />
+        <VpDatePicker label="Bis" value={filter.bis} onChange={(v) => setze({ bis: v })} min={filter.von ?? undefined} heute={abrufTag} />
         {(filter.von || filter.bis) && (
           <button type="button" className="vp-nw-link" onClick={() => setze({ von: null, bis: null })}>
             Zeitraum löschen

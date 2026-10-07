@@ -7,5 +7,6 @@ export function dateiSpeichern(blob: Blob, name: string): void {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(href);
+  // Safari liest die Datei erst nach dem Klick: sofort freigegeben, bricht der Download ab (Review r1, P3-9).
+  window.setTimeout(() => URL.revokeObjectURL(href), 60_000);
 }

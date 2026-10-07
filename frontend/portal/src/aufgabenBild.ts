@@ -47,8 +47,18 @@ export function aufgabenZeilen(stand: EnergiemanagementAufgaben): AufgabeZeile[]
     }));
 }
 
-/** Die Status-Zeile: „● jede Aufgabe hat eine Person“ - oder wie viele keine haben (offen, kein Warnton: keine Frist). */
-export function aufgabenStatus(zeilen: readonly Pick<AufgabeZeile, 'ohnePerson'>[]): { zeichen: 'festgehalten' | 'offen'; text: string } {
+/**
+ * Wer nicht unternehmensweit liest, bekommt von der Route keine Aufgabe (ohne Hinweis, ohne Anzahl) - das Vokabular hat
+ * aber immer welche. Leer heißt deshalb „nicht sichtbar“, nie „alle besetzt“ (Review P5-1).
+ */
+export const AUFGABEN_NICHT_SICHTBAR = 'Die Aufgaben sieht, wer das ganze Unternehmen sieht.';
+
+/**
+ * Die Status-Zeile: „● jede Aufgabe hat eine Person“ - oder wie viele keine haben (offen, kein Warnton: keine Frist).
+ * Ohne Zeilen keine Antwort (`null`): eine leere Liste ist nie „jede Aufgabe hat eine Person“.
+ */
+export function aufgabenStatus(zeilen: readonly Pick<AufgabeZeile, 'ohnePerson'>[]): { zeichen: 'festgehalten' | 'offen'; text: string } | null {
+  if (!zeilen.length) return null;
   const ohne = zeilen.filter((z) => z.ohnePerson).length;
   if (!ohne) return { zeichen: 'festgehalten', text: 'jede Aufgabe hat eine Person' };
   return { zeichen: 'offen', text: ohne === 1 ? '1 Aufgabe ohne Person' : `${ohne} Aufgaben ohne Person` };

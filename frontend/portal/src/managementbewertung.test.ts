@@ -59,6 +59,12 @@ describe('Managementbewertung: Kopf, Stand und Eingaben (§5.8, MG2, MG7)', () =
     expect(M.listenZustand({ neueste_nr: null })).toBe('Entwurf');
     expect(M.listenZustand({ neueste_nr: 2 })).toBe('Stand Nr. 2');
     expect(M.jahreZurWahl('2029-02-05').map((j) => j.label)).toEqual(['2028', '2029 (läuft)', '2027', '2026', '2025']);
+    // Review P5-3: nie ein Jahr vor der jüngsten vorwählen - gibt es 2028 schon, ist nichts vorgewählt (nicht 2027).
+    const wahl = M.jahreZurWahl('2029-02-05').filter((j) => Number(j.id) < 2029);
+    expect(M.vorgewaehltesJahr(wahl, [])).toBe('2028');
+    expect(M.vorgewaehltesJahr(wahl, ['2027'])).toBe('2028');
+    expect(M.vorgewaehltesJahr(wahl, ['2028'])).toBeNull();
+    expect(M.vorgewaehltesJahr(wahl, ['2026', '2028'])).toBeNull();
   });
 });
 

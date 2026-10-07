@@ -16,6 +16,8 @@ const { mocks } = vi.hoisted(() => ({
     berichtVergleich: vi.fn(),
     berichtFreigeben: vi.fn(),
     berichtAnstossVerwerfen: vi.fn(),
+    berichtAnstoesseVerwerfen: vi.fn(),
+    berichtArchivieren: vi.fn(),
   },
 }));
 
@@ -27,7 +29,7 @@ vi.mock('../api', async (importOriginal) => {
   return { ...echt, api };
 });
 
-import type { Selbstauskunft } from '../api';
+import { ApiError, type BerichtDetail, type Selbstauskunft } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { detailAm, entwurfAm, freigabeAm, standAm, vergleichAm, ZEIT } from '../test/berichtFixtures';
 import { FIXTURE_IDS } from '../test/standorteFixtures';
@@ -120,7 +122,8 @@ describe('Seite eines Berichts (Konzept Nachweisen n1, Runde 2, §6.4)', () => {
     expect(within(dateien).getAllByRole('button').map((k) => k.textContent)).toEqual(['PDF', 'Teilen', 'CSV']);
     fireEvent.click(within(dateien).getByRole('button', { name: 'PDF' }));
     await waitFor(() => expect(mocks.berichtDatei).toHaveBeenCalledWith('BR-2026-0001', 1, 'pdf'));
-    expect(await screen.findByTestId('bericht-abruf')).toHaveTextContent('PDF von Stand Nr. 1 abgerufen');
+    // Review r1, P3-9: „Stand 1“ wie überall in Nachweisen, nicht der alte „Stand Nr. 1“.
+    expect(await screen.findByTestId('bericht-abruf')).toHaveTextContent('PDF von Stand 1 abgerufen · protokolliert');
   });
 
   it('„Ja, Stand 2 freigeben“: Prüfen, dann die Bestätigung mit PDF - freigegeben wird genau der gesehene Entwurf', async () => {
@@ -149,7 +152,7 @@ describe('Seite eines Berichts (Konzept Nachweisen n1, Runde 2, §6.4)', () => {
   it('„Nein, Stand 1 behalten“: ein Grund für alle offenen Anstöße (Entscheid 16)', async () => {
     lage(KORREKTUR);
     setSelbstauskunft(selbst(FREIGEBEN));
-    mocks.berichtAnstossVerwerfen.mockResolvedValue({});
+    mocks.berichtAnstoesseVerwerfen.mockResolvedValue({ anstoesse: [] });
     await zeige(KORREKTUR);
     const karte = await screen.findByTestId('bericht-entscheid');
     fireEvent.click(within(karte).getByRole('radio', { name: 'Nein, Stand 1 behalten' }));
@@ -159,13 +162,122 @@ describe('Seite eines Berichts (Konzept Nachweisen n1, Runde 2, §6.4)', () => {
       fireEvent.click(screen.getByTestId('bericht-behalten-senden'));
     });
     expect(blatt.textContent).toContain('Die Begründung fehlt.');
-    expect(mocks.berichtAnstossVerwerfen).not.toHaveBeenCalled();
+    expect(mocks.berichtAnstoesseVerwerfen).not.toHaveBeenCalled();
     fireEvent.change(within(blatt).getByTestId('bericht-behalten-grund'), { target: { value: 'Korrektur betrifft nur den 31.10. nach Betriebsschluss.' } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('bericht-behalten-senden'));
     });
+    // Review r1, P3-2: EINE Route mit allen gesehenen Anstößen - alle oder keiner, nie Anstoß für Anstoß.
     const offen = detailAm(KORREKTUR).anstoesse.filter((a) => a.zustand === 'offen');
-    expect(mocks.berichtAnstossVerwerfen.mock.calls).toEqual(offen.map((a) => ['BR-2026-0001', a.id, 'Korrektur betrifft nur den 31.10. nach Betriebsschluss.']));
+    expect(mocks.berichtAnstoesseVerwerfen.mock.calls).toEqual([['BR-2026-0001', offen.map((a) => a.id), 'Korrektur betrifft nur den 31.10. nach Betriebsschluss.']]);
+    expect(mocks.berichtAnstossVerwerfen).not.toHaveBeenCalled();
+  });
+
+  it('Review r1, P3-2: hat inzwischen jemand anders entschieden (409), lädt die Seite neu und das Blatt sagt warum', async () => {
+    lage(KORREKTUR);
+    setSelbstauskunft(selbst(FREIGEBEN));
+    mocks.berichtAnstoesseVerwerfen.mockRejectedValue(
+      new ApiError(409, 'Dieser Anstoß ist nicht mehr offen.', { code: 'anstoss_nicht_offen', message: 'Dieser Anstoß ist nicht mehr offen.' }),
+    );
+    await zeige(KORREKTUR);
+    const karte = await screen.findByTestId('bericht-entscheid');
+    fireEvent.click(within(karte).getByRole('radio', { name: 'Nein, Stand 1 behalten' }));
+    fireEvent.click(within(karte).getByTestId('bericht-weiter'));
+    const blatt = await screen.findByTestId('bericht-behalten-blatt');
+    fireEvent.change(within(blatt).getByTestId('bericht-behalten-grund'), { target: { value: 'Korrektur betrifft nur den 31.10. nach Betriebsschluss.' } });
+    const vorher = mocks.bericht.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-behalten-senden'));
+    });
+    expect(within(blatt).getByTestId('blatt-ablehnung').textContent).toBe('Dieser Anstoß ist nicht mehr offen.');
+    await waitFor(() => expect(mocks.bericht.mock.calls.length).toBeGreaterThan(vorher));
+  });
+
+  it('Review r1, P3-3: lädt der Entwurf nicht, sagt es die Karte und lädt auf Antippen neu - kein ewiges Skelett', async () => {
+    lage(KORREKTUR);
+    setSelbstauskunft(selbst(FREIGEBEN));
+    mocks.berichtEntwurf.mockRejectedValueOnce(new Error('Netz'));
+    await zeige(KORREKTUR);
+    const karte = await screen.findByTestId('bericht-entscheid');
+    expect((await within(karte).findByTestId('bericht-entscheid-fehler')).textContent).toContain('Die Werte ließen sich gerade nicht laden.');
+    expect(within(karte).getByTestId('bericht-weiter')).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(within(karte).getByTestId('bericht-entscheid-erneut'));
+    });
+    await waitFor(() => expect(within(karte).queryByTestId('bericht-entscheid-fehler')).toBeNull());
+    expect(within(karte).queryByTestId('bericht-entscheid-werte') ?? within(karte).queryByTestId('bericht-entscheid-keine-zahl')).toBeTruthy();
+  });
+
+  it('Review r1, P3-4: die Werte der Karte kommen aus dem Entwurf selbst; nach „Entwurf neu laden“ zeigt das Blatt die neuen Werte vor der Freigabe', async () => {
+    lage(KORREKTUR);
+    setSelbstauskunft(selbst(FREIGEBEN));
+    const neu = { ...entwurfAm(KORREKTUR), datenstand: '2026-11-13T08:00:00Z' };
+    mocks.berichtFreigeben
+      .mockRejectedValueOnce(new ApiError(409, 'Der Entwurf ist nicht mehr aktuell.', { code: 'entwurf_veraltet', message: 'Der Entwurf ist nicht mehr aktuell.' }))
+      .mockImplementation(async (_k: string, datenstand: string) => freigabeAm(datenstand, STAND_ZWEI));
+    await zeige(KORREKTUR);
+    const karte = await screen.findByTestId('bericht-entscheid');
+    await waitFor(() => expect(within(karte).getByTestId('bericht-entscheid-werte')).toBeTruthy());
+    expect(mocks.berichtVergleich).not.toHaveBeenCalled();
+    fireEvent.click(within(karte).getByRole('radio', { name: 'Ja, Stand 2 freigeben' }));
+    fireEvent.click(within(karte).getByTestId('bericht-weiter'));
+    const blatt = await screen.findByTestId('bericht-freigeben-blatt');
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-freigeben-senden'));
+    });
+    mocks.berichtEntwurf.mockResolvedValue(neu);
+    await act(async () => {
+      fireEvent.click(within(blatt).getByRole('button', { name: 'Entwurf neu laden' }));
+    });
+    expect(within(blatt).getByTestId('bericht-freigeben-neu').textContent).toContain('Entwurf neu gebildet');
+    expect(within(blatt).getByTestId('bericht-freigeben-werte')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-freigeben-senden'));
+    });
+    expect(mocks.berichtFreigeben).toHaveBeenLastCalledWith('BR-2026-0001', '2026-11-13T08:00:00Z');
+  });
+
+  it('Review r1, P3-6: ein gebündelt freigegebener Stand nennt als Grund alle Korrekturen, die er erledigte', async () => {
+    lage(STAND_ZWEI);
+    const d = detailAm(STAND_ZWEI);
+    const erste = d.anstoesse.find((a) => a.erledigt_durch_nr === 2)!;
+    const zweite = { ...erste, id: 'a0000000-0000-4000-8000-0000000000b2', anlass_kennung: 'K-2026-0008', anlass_text: 'Korrektur K-2026-0008' };
+    mocks.bericht.mockImplementation(async (): Promise<BerichtDetail> => ({ ...d, anstoesse: [...d.anstoesse, zweite] }));
+    setSelbstauskunft(selbst(LESEN));
+    await zeige(STAND_ZWEI);
+    const karte = await screen.findByTestId('bericht-geaendert');
+    expect(within(karte).getByTestId('bericht-grund').textContent).toBe('Grund: 2 Korrekturen');
+  });
+
+  it('Review r1, P3-7 (C8): „Archivieren“ im Menü - Stände bleiben lesbar; danach „archiviert“ und kein Archivieren mehr', async () => {
+    lage(STAND_ZWEI);
+    setSelbstauskunft(selbst(FREIGEBEN));
+    mocks.berichtArchivieren.mockResolvedValue(detailAm(STAND_ZWEI).bericht);
+    await zeige(STAND_ZWEI);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Archivieren' }));
+    const blatt = await screen.findByTestId('bericht-archivieren-blatt');
+    expect(blatt.textContent).toContain('Stände bleiben lesbar');
+    // Danach liefert die Route den Bericht archiviert.
+    mocks.bericht.mockImplementation(async () => {
+      const d = detailAm(STAND_ZWEI);
+      return { ...d, bericht: { ...d.bericht, archiviert_am: '2026-11-20T10:00:00Z' } };
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-archivieren-senden'));
+    });
+    expect(mocks.berichtArchivieren).toHaveBeenCalledWith('BR-2026-0001');
+    await waitFor(() => expect(screen.getByTestId('bericht-status').textContent).toBe('archiviert· Stand 2 bleibt lesbar'));
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual(['Kennung BR-2026-0001 kopieren']);
+  });
+
+  it('Review r1, P3-9: solange die Selbstauskunft lädt, blitzt kein Rechte-Satz auf', async () => {
+    lage(KORREKTUR);
+    setSelbstauskunft(null);
+    await zeige(KORREKTUR);
+    const karte = await screen.findByTestId('bericht-entscheid');
+    expect(within(karte).queryByTestId('bericht-freigeben-ohne-recht')).toBeNull();
   });
 
   it('am Stand 2: „Geändert ggü. Stand 1“ mit Werten alt → neu und Grund; „Stand 1“ zeigt den überholten Stand', async () => {

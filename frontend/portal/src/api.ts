@@ -11452,7 +11452,8 @@ export const api = {
    * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
    * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
    */
-  berichte: () => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte`),
+  /** Mit `archiviert: true` auch die archivierten Berichte (Konzept Nachweisen n1, C8: die Zeile „Archiviert · n“). */
+  berichte: (o: { archiviert?: boolean } = {}) => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte${o.archiviert ? '?archiviert=true' : ''}`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
@@ -11505,6 +11506,15 @@ export const api = {
     request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {
       method: 'POST',
       body: JSON.stringify({ begruendung }),
+    }),
+  /**
+   * „Nein, Stand n behalten“ (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen Anstöße mit EINEM Grund in
+   * einer Transaktion - alle oder keiner (409 `anstoss_nicht_offen` mit `anstoss_id`).
+   */
+  berichtAnstoesseVerwerfen: (kennung: string, anstossIds: readonly string[], begruendung: string) =>
+    request<{ anstoesse: BerichtAnstoss[] }>(`/api/v1/berichte/${kennung}/anstoesse/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ anstoss_ids: anstossIds, begruendung }),
     }),
   berichtArchivieren: (kennung: string) =>
     request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),

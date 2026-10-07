@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../api';
+import { api, ApiError } from '../../api';
 import { benutzerApi } from '../../benutzer';
 import { VOKABULARE } from '../../energiemanagement';
 import { mappeRoute } from '../../nav';
@@ -9,6 +9,8 @@ import { setSelbstauskunft } from '../../rollen';
 import { vergissAbruf } from '../../routenUhr';
 import { MAPPE_IDS, mappeBuehne, type MappeLage } from '../../test/mappeFixtures';
 import { rechteSeed } from '../../test/rollenFixtures';
+import { EinsichtBlatt } from './EinsichtBlatt';
+import { MappeBlatt } from './MappeBlatt';
 import { PruefungVonAussen } from './PruefungVonAussen';
 
 /**
@@ -197,5 +199,156 @@ describe('Seite einer Mappe', () => {
     expect(screen.queryByTestId('mappe-speichern')).toBeNull();
     expect(screen.queryByTestId('mappe-einsicht')).toBeNull();
     expect(screen.getByTestId('mappe-neu')).toBeTruthy();
+  });
+});
+
+describe('Review r1 (PR 6)', () => {
+  const original = { ...api };
+  const originalBenutzer = { ...benutzerApi };
+  const ADRESSE = 'petra.pruefer@audit.example';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T09:00:00+02:00'));
+    vergissAbruf();
+    setSelbstauskunft(rechteSeed('JW').me);
+    const mp = mappeBuehne('r6', () => new Date(STAGE).toISOString(), { name: 'Jonas Wendlinger' });
+    Object.assign(api, mp.routen);
+    Object.assign(benutzerApi, mp.benutzer);
+  });
+  afterEach(() => {
+    cleanup();
+    setSelbstauskunft(null);
+    Object.assign(api, original);
+    Object.assign(benutzerApi, originalBenutzer);
+    vergissAbruf();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /** Ein Versprechen, das der Test selbst einlöst - so lässt sich prüfen, was während des Wartens geht. */
+  function offen<T>() {
+    let einloesen!: (v: T) => void;
+    const versprechen = new Promise<T>((r) => (einloesen = r));
+    return { versprechen, einloesen };
+  }
+  const ausfuellen = () => {
+    fireEvent.change(screen.getByTestId('einsicht-name'), { target: { value: 'Petra Prüfer' } });
+    fireEvent.change(screen.getByTestId('einsicht-email'), { target: { value: ADRESSE } });
+  };
+
+  it('P6-3: „Einsicht geben“ sagt ohne Aufklappen, was die Person sieht und bis wann', async () => {
+    render(<EinsichtBlatt heute="2029-04-30" onClose={vi.fn()} />);
+    const umfang = () => screen.getByTestId('einsicht-umfang').textContent;
+    expect(umfang()).toBe('Sieht alle Daten aller Standorte, nur lesend, bis\u00a014.05.2029.');
+    fireEvent.click(screen.getByRole('radio', { name: '4 Wochen' }));
+    expect(umfang()).toBe('Sieht alle Daten aller Standorte, nur lesend, bis\u00a028.05.2029.');
+    fireEvent.click(screen.getByRole('radio', { name: 'Anderer Tag' }));
+    expect(umfang()).toBe('Sieht alle Daten aller Standorte, nur lesend.');
+  });
+
+  it('P6-5: während der Zugang entsteht, schließt das Blatt nicht - danach steht das Startpasswort da', async () => {
+    const warten = offen<{ benutzer: never; startpasswort: string }>();
+    Object.assign(benutzerApi, { anlegen: () => warten.versprechen });
+    const onClose = vi.fn();
+    render(<EinsichtBlatt heute="2029-04-30" onClose={onClose} />);
+    ausfuellen();
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => warten.einloesen({ benutzer: undefined as never, startpasswort: 'Start-9Zq4' }));
+    expect(screen.getByTestId('einsicht-passwort').textContent).toBe('Start-9Zq4');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('P6-5: während die Mappe entsteht, schließt das Blatt nicht - und öffnet danach die Mappe', async () => {
+    const warten = offen<Awaited<ReturnType<typeof api.energiemanagementMappeAnlegen>>>();
+    const fertig = await api.energiemanagementMappe(MAPPE_IDS.abrufbar);
+    Object.assign(api, { energiemanagementMappeAnlegen: () => warten.versprechen });
+    const onClose = vi.fn();
+    const onErstellt = vi.fn();
+    render(<MappeBlatt heute="2029-04-30" verzeichnis={{ gruppen: [] }} offen={[]} onClose={onClose} onErstellt={onErstellt} />);
+    fireEvent.click(screen.getByTestId('mappe-erstellen'));
+    await act(async () => {});
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => warten.einloesen(fertig));
+    expect(onErstellt).toHaveBeenCalledWith(fertig);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('P6-7: hat die Adresse schon ein Konto, bekommt es die Einsicht bis zum gewählten Tag - mit Weg in die Benutzerverwaltung', async () => {
+    const zuweisen = vi.fn(async () => ({}));
+    Object.assign(benutzerApi, {
+      anlegen: async () => {
+        throw new ApiError(409, 'vergeben', { code: 'konflikt', message: 'vergeben' });
+      },
+      liste: async () => [{ sub: 'pp-1', anzeigename: 'Petra Prüfer', email: 'Petra.Pruefer@audit.example', zustand: 'aktiv', zuweisungen: [] }],
+      einsichtZuweisen: zuweisen,
+    });
+    render(<EinsichtBlatt heute="2029-04-30" onClose={vi.fn()} />);
+    ausfuellen();
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByTestId('einsicht-vorhanden').textContent).toContain('Petra Prüfer');
+    expect(screen.getByTestId('einsicht-benutzerverwaltung').getAttribute('href')).toBe('#/unternehmen/einstellungen/benutzer');
+    expect(screen.getByTestId('einsicht-anlegen').textContent).toBe('Einsicht bis 14.05.2029 geben');
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    expect(zuweisen).toHaveBeenCalledWith('pp-1', '2029-05-14', null);
+    expect(screen.getByTestId('einsicht-gegeben').textContent).toBe('Einsicht gegeben· bis 14.05.2029');
+  });
+
+  it('P6-7: läuft die Einsicht des Kontos noch, bekommt sie die neue Frist', async () => {
+    const wechseln = vi.fn(async () => undefined);
+    Object.assign(benutzerApi, {
+      anlegen: async () => {
+        throw new ApiError(409, 'vergeben', { code: 'konflikt', message: 'vergeben' });
+      },
+      liste: async () => [
+        {
+          sub: 'pp-1', anzeigename: 'Petra Prüfer', email: ADRESSE, zustand: 'aktiv',
+          zuweisungen: [{ id: 'z-1', rolle: 'einsicht', standort_id: null, standort_name: null, gueltig_ab: '2029-04-01', gueltig_bis: '2029-05-02' }],
+        },
+      ],
+      wechseln,
+    });
+    render(<EinsichtBlatt heute="2029-04-30" onClose={vi.fn()} />);
+    ausfuellen();
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    expect(wechseln).toHaveBeenCalledWith('pp-1', ['z-1'], 'einsicht', [], '2029-05-14');
+  });
+
+  it('P6-6: „Einsicht“ sieht an einer abgelaufenen Mappe kein „Neu zusammenstellen“', async () => {
+    setSelbstauskunft(rechteSeed('RF').me);
+    render(<MappeSeite id={MAPPE_IDS.abgelaufen} onZurueck={vi.fn()} />);
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByTestId('mappe-abgelaufen')).toBeTruthy();
+    expect(screen.queryByTestId('mappe-neu')).toBeNull();
+  });
+
+  it('P6-4: „Öffnen“ lädt das PDF wie „Speichern“ und öffnet kein Fenster mit einem Blob-Dokument', async () => {
+    const oeffnen = vi.spyOn(window, 'open').mockImplementation(() => null);
+    vi.stubGlobal('URL', Object.assign(Object.create(URL), { createObjectURL: vi.fn(() => 'blob:vp/pdf'), revokeObjectURL: vi.fn() }));
+    const klick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    render(<MappeSeite id={MAPPE_IDS.abrufbar} onZurueck={vi.fn()} />);
+    await act(async () => {});
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId('mappe-oeffnen'));
+    await act(async () => {});
+    expect(oeffnen).not.toHaveBeenCalled();
+    expect(klick).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('mappe-abruf').textContent).toBe('Abgerufen, der Abruf ist protokolliert.');
+    klick.mockRestore();
+    oeffnen.mockRestore();
   });
 });

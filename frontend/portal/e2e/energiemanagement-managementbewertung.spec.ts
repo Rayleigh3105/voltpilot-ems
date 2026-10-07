@@ -378,7 +378,9 @@ for (const breite of [375, 1440]) {
       const anlegen = page.getByTestId('mb-anlegen-dialog');
       await expect(anlegen.getByTestId('mb-anlegen-jahr-2028')).toContainText('gibt es schon');
       await expect(anlegen.getByTestId('mb-anlegen-jahr-2028').getByRole('radio')).toBeDisabled();
-      await expect(anlegen.getByTestId('mb-anlegen-jahr-2027').getByRole('radio')).toBeChecked();
+      // Review P5-3: nie ein Jahr vor der jüngsten vorwählen (wie „Als Nächstes“) - 2027 steht zur Wahl, vorgewählt ist nichts.
+      await expect(anlegen.getByTestId('mb-anlegen-jahr-2027').getByRole('radio')).toBeEnabled();
+      await expect(anlegen.getByRole('radio', { checked: true })).toHaveCount(0);
       await ohneQuerlauf(page, 'Anlegen mit vorhandener 2028');
       await blattZu(page);
       await page.getByTestId('mb-naechstes').getByRole('button', { name: 'Öffnen' }).click();

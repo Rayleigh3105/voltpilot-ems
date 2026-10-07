@@ -37,6 +37,8 @@ function speichern(blob: Blob, name: string) {
 export function MappeSeite({ id, onZurueck }: { id: string; onZurueck: () => void }) {
   const rollen = useRollen();
   const darfEinsicht = rollen.darf('benutzer.verwalten', null);
+  // Review P6-6: „Neu zusammenstellen“ nur, wer zusammenstellen darf - „Einsicht“ liest nur.
+  const darfNeu = rollen.darf(E.RECHT_VERWALTEN, null);
   const [m, setM] = useState<EnergiemanagementMappe | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState<'pdf' | 'csv' | null>(null);
@@ -61,20 +63,18 @@ export function MappeSeite({ id, onZurueck }: { id: string; onZurueck: () => voi
     };
   }, [id, versuch]);
 
-  async function abrufen(format: 'pdf' | 'csv', oeffnen = false) {
+  // Review P6-4: „Öffnen“ lädt das PDF wie „Speichern“. Ein Blob-Dokument in einem neuen Fenster erbte die CSP des
+  // Portals (`object-src 'none'`), der PDF-Betrachter wäre dort nicht sicher erlaubt; ein geladenes PDF zeigt das
+  // Telefon direkt an, der Rechner in seiner Download-Leiste.
+  async function abrufen(format: 'pdf' | 'csv') {
     if (!m) return;
-    // „Öffnen“: das Fenster sofort (sonst hält der Browser es nach dem Warten für ein Werbefenster), die Datei danach.
-    const fenster = oeffnen ? window.open('', '_blank') : null;
     setLaeuft(format);
     setSatz(null);
     try {
-      const blob = await api.energiemanagementMappeDatei(m.id, format);
-      if (fenster) fenster.location.href = URL.createObjectURL(blob);
-      else speichern(blob, `${m.datei_name}.${format}`);
+      speichern(await api.energiemanagementMappeDatei(m.id, format), `${m.datei_name}.${format}`);
       setSatz({ text: 'Abgerufen, der Abruf ist protokolliert.', fehler: false });
       setVersuch((v) => v + 1);
     } catch (e) {
-      fenster?.close();
       setSatz({ text: E.ablehnungSatz(e), fehler: true });
       setVersuch((v) => v + 1);
     } finally {
@@ -82,7 +82,9 @@ export function MappeSeite({ id, onZurueck }: { id: string; onZurueck: () => voi
     }
   }
 
-  if (fehler || !m) {
+  // Erst ohne geladene Mappe ist der Fehler die Seite; scheitert nur das Neuladen nach einem Abruf, bleibt die Mappe
+  // stehen und der Satz steht darunter (Review P6-8).
+  if (!m) {
     return (
       <GrenzSatzBereich>
         <div className="vp-nw-seite vp-nw-mappe-seite" data-testid="mappe-seite">
@@ -138,23 +140,28 @@ export function MappeSeite({ id, onZurueck }: { id: string; onZurueck: () => voi
             titel={m.datei_titel}
             unter={P.dateiZeile(m)}
             verb={m.abrufbar ? 'Öffnen' : undefined}
-            {...(m.abrufbar ? { onClick: () => void abrufen('pdf', true) } : {})}
+            {...(m.abrufbar ? { onClick: () => void abrufen('pdf') } : {})}
             testId="mappe-oeffnen"
           />
           <NwZeile titel="Zeitraum" rechts={<Fakt>{P.zeitraumText(m)}</Fakt>} testId="mappe-zeitraum-zeile" />
         </NwZeilen>
         {m.abrufbar ? (
           <Weitergeben knoepfe={knoepfe} teilenLink={{ titel: m.titel, url: seitenLink(hashForRoute(mappeRoute(m.id))) }} testId="mappe-weitergeben" />
-        ) : (
+        ) : darfNeu ? (
           <div className="vp-nw-vb-knoepfe">
             <Button variant="outline" onClick={onZurueck} data-testid="mappe-neu">
               Neu zusammenstellen
             </Button>
           </div>
-        )}
+        ) : null}
         {satz && (
-          <p className={satz.fehler ? 'vp-nw-feld-fehler' : 'vp-nw-leise'} role="status" data-testid="mappe-abruf">
+          <p className={satz.fehler ? 'vp-nw-feld-fehler' : 'vp-nw-leise'} role={satz.fehler ? 'alert' : 'status'} data-testid="mappe-abruf">
             {satz.text}
+          </p>
+        )}
+        {fehler && (
+          <p className="vp-nw-feld-fehler" role="alert" data-testid="mappe-neu-laden">
+            {fehler}
           </p>
         )}
         {offen && <StatusZeile zeichen={<NwZeichen art="offen" />} text={offen} testId="mappe-offen" />}

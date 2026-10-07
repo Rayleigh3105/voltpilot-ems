@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { benutzerApi, benutzerFehler } from '../../benutzer';
+import { ApiError } from '../../api';
+import { benutzerApi, benutzerFehler, type BenutzerEintrag } from '../../benutzer';
 import * as E from '../../energiemanagementPortal';
 import * as P from '../../mappeBild';
-import { ROLLE_BESCHREIBUNG } from '../BenutzerEinladen';
+import { hashForRoute, pageRoute } from '../../nav';
+import { useRollen } from '../../rollen';
 import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { NwBlatt } from './NwBlatt';
@@ -37,49 +39,94 @@ export function namensTeile(name: string): { vorname: string; nachname: string }
 
 /**
  * „Einsicht geben“ (Konzept Nachweisen n1, Runde 2, Entscheid 8, Mock EI): ein Zugang mit der Rolle „Einsicht“ für eine
- * prüfende Person, nur lesen und befristet - Name, E-Mail, „Bis wann?“ und die Vorschau „so sieht es die Person“. Nur
- * für Kundenadministratoren (die Route verlangt `benutzer.verwalten`); die Frist prüft die Route (`gueltig_bis`, nie vor
- * heute). Danach steht das Startpasswort einmal da - persönlich weitergeben; VoltPilot verschickt keine Einladung.
+ * prüfende Person - Name, E-Mail, „Bis wann?“. Was die Person sieht, steht ohne Aufklappen da (Review P6-3, Captain:
+ * die Rolle bleibt, das Blatt sagt ihren Umfang): alle Daten aller Standorte, nur lesend, bis zum letzten Tag - nicht nur
+ * diese Mappe. Nur für Kundenadministratoren (die Route verlangt `benutzer.verwalten`); die Frist prüft die Route
+ * (`gueltig_bis`, nie vor heute). Danach steht das Startpasswort einmal da - persönlich weitergeben; VoltPilot
+ * verschickt keine Einladung. Während des Anlegens schließt das Blatt nicht (sonst entstünde der Zugang, ohne dass
+ * jemand das Passwort sieht, Review P6-5).
+ *
+ * Gibt es für die E-Mail-Adresse schon ein Konto (409, etwa die prüfende Person vom letzten Audit), gibt das Blatt
+ * diesem Konto die Einsicht bis zum gewählten Tag - neu zugewiesen oder, wenn sie noch läuft, mit neuer Frist - und
+ * verweist auf die Benutzerverwaltung (Review P6-7).
  *
  * `heute` ist der Tag der Route (Befund 3): „2 Wochen“ endet am 14. Tag danach.
  */
 export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () => void }) {
+  const rollen = useRollen();
+  const darfZuweisen = rollen.darf('zuweisung.verwalten', null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [frist, setFrist] = useState<Frist>('zwei_wochen');
   const [anderer, setAnderer] = useState<string | null>(null);
-  const [vorschau, setVorschau] = useState(false);
   const [fehler, setFehler] = useState<{ name?: string; email?: string; tag?: string }>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [angelegt, setAngelegt] = useState<{ passwort: string; bis: string } | null>(null);
+  const [vorhanden, setVorhanden] = useState<BenutzerEintrag | null>(null);
+  const [gegeben, setGegeben] = useState<{ name: string; bis: string } | null>(null);
   const [kopiert, setKopiert] = useState(false);
 
   const bis = frist === 'zwei_wochen' ? letzterTag(heute, 14) : frist === 'vier_wochen' ? letzterTag(heute, 28) : anderer;
+  const fertig = angelegt !== null || gegeben !== null;
+  const schliessen = () => {
+    if (!busy) onClose();
+  };
 
-  async function anlegen() {
+  function pruefen(): string | null {
     const f = {
       name: name.trim() ? undefined : 'Bitte nennen Sie den Namen.',
       email: EMAIL.test(email.trim()) ? undefined : 'Bitte geben Sie eine E-Mail-Adresse an.',
       tag: bis ? undefined : 'Bitte wählen Sie den letzten Tag.',
     };
     setFehler(f);
-    if (f.name || f.email || f.tag || !bis) return;
+    return f.name || f.email || f.tag || !bis ? null : bis;
+  }
+
+  async function anlegen() {
+    const tag = pruefen();
+    if (!tag) return;
     setBusy(true);
     setSatz(null);
+    const adresse = email.trim();
     try {
-      const adresse = email.trim();
       const r = await benutzerApi.anlegen({
         username: adresse,
         email: adresse,
         ...namensTeile(name),
         rolle: 'einsicht',
         standorte: [],
-        gueltig_bis: bis,
+        gueltig_bis: tag,
       });
-      setAngelegt({ passwort: r.startpasswort, bis });
+      setAngelegt({ passwort: r.startpasswort, bis: tag });
     } catch (e) {
-      setSatz(benutzerFehler(e, 'Der Zugang ließ sich gerade nicht anlegen. Bitte versuchen Sie es noch einmal.'));
+      // 409: die Adresse hat schon ein Konto - etwa die prüfende Person vom letzten Audit. Dann erneuert das Blatt.
+      const konto =
+        e instanceof ApiError && e.status === 409
+          ? await benutzerApi.liste().then(
+              (l) => l.find((b) => b.email.toLowerCase() === adresse.toLowerCase() && b.zustand !== 'entfernt') ?? null,
+              () => null,
+            )
+          : null;
+      if (konto) setVorhanden(konto);
+      else setSatz(benutzerFehler(e, 'Der Zugang ließ sich gerade nicht anlegen. Bitte versuchen Sie es noch einmal.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function einsichtGeben(konto: BenutzerEintrag) {
+    const tag = pruefen();
+    if (!tag) return;
+    setBusy(true);
+    setSatz(null);
+    try {
+      const laufend = konto.zuweisungen.find((z) => z.rolle === 'einsicht') ?? null;
+      if (laufend) await benutzerApi.wechseln(konto.sub, [laufend.id], 'einsicht', [], tag);
+      else await benutzerApi.einsichtZuweisen(konto.sub, tag, null);
+      setGegeben({ name: konto.anzeigename, bis: tag });
+    } catch (e) {
+      setSatz(benutzerFehler(e, 'Die Einsicht ließ sich gerade nicht geben. Bitte versuchen Sie es noch einmal.'));
     } finally {
       setBusy(false);
     }
@@ -95,7 +142,7 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
   }
 
   // Wie die Blätter der Dokumente: ein Formular, die Knöpfe in der festen Fußzeile (`vp-nw-blatt-fuss`).
-  const fuss = angelegt ? (
+  const fuss = fertig ? (
     <div className="vp-nw-blatt-fuss">
       <Button onClick={onClose} data-testid="einsicht-fertig">
         Fertig
@@ -103,24 +150,27 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
     </div>
   ) : (
     <div className="vp-nw-blatt-fuss">
-      <Button type="submit" form="einsicht-form" disabled={busy} aria-busy={busy || undefined} data-testid="einsicht-anlegen">
-        Zugang anlegen
-      </Button>
-      <Button variant="ghost" onClick={onClose}>
+      {vorhanden && !darfZuweisen ? null : (
+        <Button type="submit" form="einsicht-form" disabled={busy} aria-busy={busy || undefined} data-testid="einsicht-anlegen">
+          {vorhanden ? (bis ? `Einsicht bis ${E.tagText(bis)} geben` : 'Einsicht geben') : 'Zugang anlegen'}
+        </Button>
+      )}
+      <Button variant="ghost" onClick={schliessen} disabled={busy}>
         Abbrechen
       </Button>
     </div>
   );
 
   return (
-    <NwBlatt open titel={P.EINSICHT_GEBEN} onClose={onClose} fuss={fuss} testId="einsicht-blatt">
+    <NwBlatt open titel={P.EINSICHT_GEBEN} onClose={schliessen} fuss={fuss} testId="einsicht-blatt">
       <form
         id="einsicht-form"
         className="vp-nw-schritt-inhalt"
         noValidate
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
-          if (!angelegt) void anlegen();
+          if (fertig || busy) return;
+          void (vorhanden ? einsichtGeben(vorhanden) : anlegen());
         }}
       >
         {angelegt ? (
@@ -137,24 +187,44 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
             </div>
             <p className="vp-nw-leise">Persönlich weitergeben; bei der ersten Anmeldung legt die Person ein eigenes fest.</p>
           </>
+        ) : gegeben ? (
+          <>
+            <StatusZeile zeichen={<NwZeichen art="festgehalten" />} text="Einsicht gegeben" sub={`· bis ${E.tagText(gegeben.bis)}`} testId="einsicht-gegeben" />
+            <p className="vp-nw-leise">{gegeben.name} meldet sich mit dem bisherigen Passwort an.</p>
+          </>
         ) : (
           <>
-            <p className="vp-nw-leise vp-nw-mappe-kurz">nur lesen, befristet</p>
+            {/* Review P6-3: der Umfang ohne Aufklappen - nicht nur diese Mappe, sondern alles, nur lesend, befristet. */}
+            <p className="vp-nw-einsicht-umfang" data-testid="einsicht-umfang">
+              {P.einsichtUmfang(bis)}
+            </p>
             <NwTextfeld label="Name" wert={name} onWert={setName} platzhalter="Vor- und Nachname" hoechstens={200} fehler={fehler.name} testid="einsicht-name" />
-            <NwTextfeld label="E-Mail" art="email" wert={email} onWert={setEmail} platzhalter="E-Mail-Adresse" hoechstens={254} fehler={fehler.email} testid="einsicht-email" />
+            <NwTextfeld
+              label="E-Mail"
+              art="email"
+              wert={email}
+              onWert={(w) => {
+                setEmail(w);
+                setVorhanden(null);
+              }}
+              platzhalter="E-Mail-Adresse"
+              hoechstens={254}
+              fehler={fehler.email}
+              testid="einsicht-email"
+            />
             <WahlChips frage="Bis wann?" optionen={FRISTEN} wert={frist} onWahl={setFrist} testid="einsicht-frist" />
             {frist === 'anderer_tag' && (
               <VpDatePicker label="Letzter Tag" value={anderer} onChange={setAnderer} min={heute} error={fehler.tag ?? null} />
             )}
-            <button type="button" className="vp-nw-link-knopf" aria-expanded={vorschau} onClick={() => setVorschau((v) => !v)} data-testid="einsicht-vorschau">
-              <NwSymbol name="eye" size={16} />
-              Vorschau
-            </button>
-            {vorschau && (
-              // So sieht es die Person: der Satz der Rolle aus der Benutzerverwaltung, eine Quelle für beide Orte.
-              <p className="vp-nw-einsicht-vorschau" data-testid="einsicht-vorschau-inhalt">
-                {ROLLE_BESCHREIBUNG.einsicht}
-              </p>
+            {vorhanden && (
+              <div className="vp-nw-einsicht-vorhanden" data-testid="einsicht-vorhanden">
+                <p>
+                  Schon ein Zugang: <b>{vorhanden.anzeigename}</b>
+                </p>
+                <a href={hashForRoute(pageRoute('kunden-benutzer'))} className="vp-nw-link-knopf" data-testid="einsicht-benutzerverwaltung">
+                  Benutzerverwaltung
+                </a>
+              </div>
             )}
             {satz && (
               <p className="vp-nw-feld-fehler" role="alert" data-testid="energiemanagement-ablehnung">

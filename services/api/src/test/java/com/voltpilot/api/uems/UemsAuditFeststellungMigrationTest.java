@@ -55,7 +55,8 @@ class UemsAuditFeststellungMigrationTest {
             "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein internes Audit.
             "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
             "20261005220000", // Konzept Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() (Zählerablesung).
-            "20261007004500"); // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
+            "20261007004500", // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
+            "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap19_ip16_test_pw";
     private static final List<String> TABELLEN = List.of("internes_audit", "internes_audit_eintrag", "feststellung",
             "feststellung_eintrag", "feststellung_wirksamkeit");
@@ -424,10 +425,11 @@ class UemsAuditFeststellungMigrationTest {
                 "feststellung_erfasst", "eintrag", "feststellung_geaendert", "wirksamkeit_beantragt", "wirksamkeit_geprueft",
                 "wirksamkeit_abgelehnt", "feststellung_abgeschlossen");
         // Außer dem Protokoll wächst nur wiedervorlage_art um die Zählerablesung (Konzept Wiedervorlage w1, Vertrag 1.2),
-        // und der Block teil kommt mit seinen 18 Teilen dazu (Konzept Nachweisen n1, Vertrag 1.3).
+        // der Block teil kommt mit seinen 18 Teilen dazu (Konzept Nachweisen n1, Vertrag 1.3) und der Block
+        // mappe_anlass mit seinen drei Anlässen (Vertrag 1.6).
         assertThat(root.queryForObject("SELECT count(*) FROM energiemanagement_vokabular() WHERE vokabular <> "
                 + "'energiemanagement_protokoll'", Integer.class)).as("kein anderer Block wächst")
-                .isEqualTo(147 - 16 + 1 + 18);
+                .isEqualTo(147 - 16 + 1 + 18 + 3);
         assertThat(root.queryForList("SELECT wort FROM energiemanagement_vokabular() WHERE vokabular = "
                 + "'wiedervorlage_art' AND nr > 11 ORDER BY nr", String.class)).containsExactly("zaehlerablesung");
         assertThat(root.queryForList("SELECT wort FROM energiemanagement_vokabular() WHERE vokabular = 'teil' "

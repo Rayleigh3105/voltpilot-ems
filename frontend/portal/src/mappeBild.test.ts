@@ -24,7 +24,9 @@ describe('Unterlagen zusammenstellen (Konzept Nachweisen n1, Entscheid 7)', () =
     // Schalttag: die zwölf Monate bis zum 29.02.2028 beginnen am 01.03.2027, die drei Jahre am 01.03.2025.
     expect(P.vonFuer('zwoelf_monate', '2028-02-29', null)).toBe('2027-03-01');
     expect(P.vonFuer('drei_jahre', '2028-02-29', null)).toBe('2025-03-01');
-    expect(P.vonFuer('zwoelf_monate', '2029-02-28', null)).toBe('2028-02-29');
+    // Monatsende: ganze Monate - bis 28.02.2029 ab 01.03.2028 (Review P6-8), nicht ab dem 29.02.2028.
+    expect(P.vonFuer('zwoelf_monate', '2029-02-28', null)).toBe('2028-03-01');
+    expect(P.vonFuer('zwoelf_monate', '2029-04-15', null)).toBe('2028-04-16');
     expect(P.vonFuer('zwoelf_monate', '2029-12-31', null)).toBe('2029-01-01');
     expect(P.vonFuer('alles', '2029-04-30', null)).toBeNull();
     expect(P.vonFuer('ab_tag', '2029-04-30', '2029-01-15')).toBe('2029-01-15');

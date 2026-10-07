@@ -46,8 +46,13 @@ nicht je Zeile der Route (zehn Korrekturen an einem Bericht sind eine Frist).
 Erklär-Blatt ≤ 45, Desktop ≤ 150; gezählt mit dem Skript des Konzepts (jedes Stück mit Buchstabe oder Ziffer) bei 390 × 844.
 ⚠ **Alle Dateien unter `components/nachweisen/`** prüft `copy.test.ts` (Fall „Nachweisen n1“ im AP-19-Block) auf die Wörter
 von SP2/SP3 und Norm-Nummern, ohne die beiden Sätze zu verlangen (die trägt der Bereich).
-⚠ **Bekannt machen, „geprüft, bleibt“ und Aufheben** haben Routen (IP-7), aber noch keinen Knopf — die Seite zeigt die
-Einträge nur. Der Anlegen-Dialog bietet Unternehmen und Standort; Einsatz und Person nur über „Nachweis festhalten“ (IP-15).
+⚠ **Bekannt machen, „geprüft, bleibt“ und Aufheben** sind Blätter der Dokument-Seite (Nachweisen PR 2); ihre Einträge zeigt „Verlauf“ im Menü (`nachweisDokumente.verlauf`), auch an einem aufgehobenen Dokument.
+„Bekannt machen“ schickt `person_id`, vorbelegt mit der Person des eigenen Kontos; ohne sie antwortet die Route 422 `person_fehlt`.
+Der Anlegen-Dialog bietet Unternehmen und Standort; Einsatz und Person nur über „Nachweis festhalten“ (IP-15).
+⚠ **Neue Fassung, neue Datei:** „Neu fassen“ übernimmt vom Verweis nur, wo er liegt (Ablage, Kennung, Adresse); Prüfsumme, Bezeichnung, Fassungsangabe und Stand beginnen leer (Review r1, P2-3).
+Der Anwendungsbereich braucht Standorte und Energieträger schon im Entwurf (422 `anwendungsbereich_fehlt`); auch „Festhalten“ fragt sie im Schritt „Wofür gilt es?“.
+⚠ **Vier-Augen unbekannt ist nicht „aus“:** lädt `GET …/unternehmen/vieraugen` nicht, bleibt Freigeben zu (`VierAugenUnbekannt` mit „Erneut laden“); ein 409 `vieraugen_beantragen` stellt das Blatt um.
+⚠ **Tage aus Zeitpunkten:** `E.tagText` und `E.tagIso` machen einen Zeitpunkt zum Kalendertag in Berlin (`uemsOrtsbaum.lokalerTag`), nie `slice(0, 10)` auf einen Wert mit „Z“.
 ⚠ **„Nachweis festhalten“ prüft das Recht am Unternehmen** (`EinsichtRecht standort={null}`, wie „Maßnahme anlegen“): den
 Zaun eines Einsatzes leitet erst die Route ab (Standort seiner Messstellen) — ein reines Standort-Konto sieht den Knopf nicht.
 ⚠ **Der Abschnitt ist eine Fläche** (`copy.test.ts`, Namensmuster `Nachweis…`): an der Einsatz-Seite trägt er den
