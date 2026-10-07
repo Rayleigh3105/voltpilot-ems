@@ -98,9 +98,10 @@ class PortfolioKpiServiceKpisTest {
                 "2029-03/2029-12", "2.2", "mehr", "schlechter", 1, 10);
         KennzahlDto.Auswertung a = new KennzahlDto.Auswertung("2029-03",
                 new KennzahlDto.AuswertungWert("2029-03", "0.2837", "kWh/kg", "vollständig", null), null,
+                new KennzahlDto.AuswertungRoh("2029-02", "0.30", "-5.4", "weniger"),
                 List.of(monat("2029-01", "0.31"), monat("2029-02", "0.30"), monat("2029-03", "0.2837")),
                 new KennzahlDto.AuswertungVergleich("BB-0001", "schlechter", "2.2", "2.0", "mehr", null, null, null),
-                zielStand);
+                null, zielStand);
         when(auswertung.leit()).thenReturn(Optional.of(new KennzahlAuswertungService.Leit(
                 kennzahl(kz4, "KZ-0004", "Stromeinsatz Spritzguss je kg", a),
                 ziel(zielId4, "KZ-0004", kz4, "Stromeinsatz Spritzguss je kg", "-4.0", "2029-03/2029-12",
@@ -119,7 +120,7 @@ class PortfolioKpiServiceKpisTest {
         assertThat(leit.zielProzent()).isEqualByComparingTo("-4.0");
         assertThat(leit.zielperiode()).isEqualTo("2029-03/2029-12");
         assertThat(leit.zielWortlaut()).isEqualTo("4 % weniger Strom, als die Bezugsbasis erwarten lässt");
-        // Trend des jüngsten Monats (0,2837) gegen den Monat davor (0,30): −5,4 %.
+        // Trend: die Veränderung zum Vormonat der Auswertung (Operation roh, 0,2837 gegen 0,30) - nicht selbst gerechnet.
         assertThat(leit.trendProzent()).isEqualByComparingTo("-5.4");
         assertThat(leit.urteil()).isEqualTo("schlechter");
         assertThat(leit.zielStand()).isEqualTo(zielStand);
@@ -129,8 +130,8 @@ class PortfolioKpiServiceKpisTest {
     void leitkachelOhneFreigegebeneBezugsbasisHatKeinUrteilUndOhneVormonatKeinenTrend() {
         UUID kz = UUID.randomUUID();
         KennzahlDto.Auswertung a = new KennzahlDto.Auswertung("2029-03",
-                new KennzahlDto.AuswertungWert("2029-01", "0.29", null, "vollständig", null), null,
-                List.of(monat("2029-01", "0.29"), monat("2029-02", null), monat("2029-03", null)), null, null);
+                new KennzahlDto.AuswertungWert("2029-01", "0.29", null, "vollständig", null), null, null,
+                List.of(monat("2029-01", "0.29"), monat("2029-02", null), monat("2029-03", null)), null, null, null);
         when(auswertung.leit()).thenReturn(Optional.of(new KennzahlAuswertungService.Leit(
                 kennzahl(kz, "KZ-0004", "Stromeinsatz je kg", a),
                 ziel(UUID.randomUUID(), "KZ-0004", kz, "Stromeinsatz je kg", "-5.0", "2029-01/2029-12", "5 % weniger"))));
@@ -179,11 +180,11 @@ class PortfolioKpiServiceKpisTest {
     }
 
     private static KennzahlDto.AuswertungMonat monat(String periode, String wert) {
-        return new KennzahlDto.AuswertungMonat(periode, wert, null, null, null);
+        return new KennzahlDto.AuswertungMonat(periode, wert, null, null, null, null, null, null, null);
     }
 
     private static KennzahlDto.Kennzahl kennzahl(UUID id, String kennzeichen, String name, KennzahlDto.Auswertung a) {
         return new KennzahlDto.Kennzahl(id, kennzeichen, name, "quotient", "unternehmen", null, null, null, null, null,
-                null, null, 1, "kWh/kg", "kWh je kg", "monat", List.of("monat"), true, null, null, null, a);
+                null, null, 1, "kWh/kg", "kWh je kg", "monat", List.of("monat"), true, null, null, null, a, null);
     }
 }

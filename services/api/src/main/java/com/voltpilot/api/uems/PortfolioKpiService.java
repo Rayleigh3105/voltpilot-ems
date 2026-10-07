@@ -272,7 +272,8 @@ public class PortfolioKpiService {
      * Die führende Kennzahl (Konzept Auswerten a1 §10.8: ein Urteil, eine Ableitung). Welche Kennzahl führt, ihr Wert,
      * das Urteil und der Stand des Energieziels kommen aus {@link KennzahlAuswertungService#leit()} - derselben Auswertung
      * wie die Karte der Kennzahl, auf der Uhr der Kennzahlen und in der Zone ihrer Geltung, nie auf der Uhr dieser Route.
-     * Der Trend ist die Veränderung des jüngsten Werts gegen den Monat davor. Ohne führende Kennzahl {@code null}
+     * Der Trend ist die Veränderung des jüngsten Werts gegen den Monat davor ({@code vormonat}, Operation {@code roh}) -
+     * hier nicht neu gerechnet. Ohne führende Kennzahl {@code null}
      * (Datenlage-Fallback).
      */
     PortfolioKpiDto.Leitkennzahl leitkennzahl() {
@@ -286,16 +287,10 @@ public class PortfolioKpiService {
         KennzahlDto.Auswertung a = k.auswertung();
         KennzahlDto.AuswertungWert w = a.wert();
         YearMonth monat = YearMonth.parse(w.periode());
-        BigDecimal wert = dezimal(w.wert());
-        String davor = a.monate().stream()
-                .filter(m -> m.periode().equals(monat.minusMonths(1).toString()))
-                .map(KennzahlDto.AuswertungMonat::wert)
-                .findFirst()
-                .orElse(null);
         return new PortfolioKpiDto.Leitkennzahl(
                 k.kennzeichen(),
                 k.name(),
-                wert,
+                dezimal(w.wert()),
                 w.einheit() != null ? w.einheit() : k.einheit(),
                 monat.getYear(),
                 monat.getMonthValue(),
@@ -303,7 +298,7 @@ public class PortfolioKpiService {
                 dezimal(ziel.zielwertProzent()),
                 ziel.zielperiode(),
                 ziel.wortlaut(),
-                trendProzent(wert, dezimal(davor)),
+                a.vormonat() == null ? null : dezimal(a.vormonat().deltaProzent()),
                 a.vergleich() != null ? a.vergleich().urteil() : null,
                 a.energieziel());
     }
@@ -319,17 +314,6 @@ public class PortfolioKpiService {
 
     private static BigDecimal runde(BigDecimal v, int stellen) {
         return v == null ? null : v.setScale(stellen, RoundingMode.HALF_UP);
-    }
-
-    /**
-     * Der Trend des jüngsten Kennzahlwerts gegen den Vormonat in Prozent (1 Stelle, HALF_UP) - REIN.
-     * {@code null}, wenn ein Wert fehlt oder der Vormonat 0 ist (keine Division, kein irreführender Pfeil).
-     */
-    static BigDecimal trendProzent(BigDecimal juengster, BigDecimal vorher) {
-        if (juengster == null || vorher == null || vorher.signum() == 0) {
-            return null;
-        }
-        return juengster.subtract(vorher).multiply(HUNDERT).divide(vorher, 1, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal dezimal(String s) {

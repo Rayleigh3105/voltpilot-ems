@@ -97,14 +97,19 @@ public class KennzahlAuswertungService {
     }
 
     private Optional<Leit> leitImKatalog() {
-        Map<UUID, List<EnergiezielDto.Energieziel>> ziele = offeneZiele();
+        return leitIn(offeneZiele(), Map.of());
+    }
+
+    /** {@link #leit()} über die schon gelesenen offenen Ziele; {@code bekannt} sind schon ausgewertete Kennzahlen. */
+    private Optional<Leit> leitIn(Map<UUID, List<EnergiezielDto.Energieziel>> ziele,
+            Map<UUID, KennzahlDto.Kennzahl> bekannt) {
         if (ziele.isEmpty()) {
             return Optional.empty();
         }
         return kennzahlen.liste().kennzahlen().stream()
                 .filter(k -> auswertbar(k) && ziele.containsKey(k.id()))
                 .sorted(LEIT_FOLGE)
-                .map(k -> mitAuswertung(k, ziele.get(k.id())))
+                .map(k -> bekannt.containsKey(k.id()) ? bekannt.get(k.id()) : mitAuswertung(k, ziele.get(k.id())))
                 .filter(KennzahlAuswertungService::fuehrt)
                 .findFirst()
                 .map(k -> new Leit(k, ziele.get(k.id()).stream()
@@ -136,6 +141,36 @@ public class KennzahlAuswertungService {
         }
     }
 
+    /**
+     * {@code GET /api/v1/kennzahlen/{id}[?mit=auswertung]}: ohne {@code mit} die Kennzahl wie bisher; mit
+     * {@code mit=auswertung} trägt sie - wie in der Liste - ihre Auswertung (Konzept Auswerten a1 §6.5, die Seite einer
+     * Kennzahl), mit dem Stand des Energieziels, das {@link #zielFuer} wählt, und {@code leitkennzahl}: ob sie die
+     * Leitkennzahl der Übersicht ist (dieselbe Wahl wie {@link #leit()}). Ein anderer Wert ist 400
+     * {@code anfrage_ungueltig}.
+     */
+    public KennzahlDto.Kennzahl eine(UUID id, String mit) {
+        if (mit != null && !MIT_AUSWERTUNG.equals(mit)) {
+            throw KennzahlAbgelehnt.anfrage("mit");
+        }
+        if (mit == null) {
+            return kennzahlen.eine(id);
+        }
+        return kennzahlen.mitEinemKatalog(() -> eineMitAuswertung(id));
+    }
+
+    private KennzahlDto.Kennzahl eineMitAuswertung(UUID id) {
+        KennzahlDto.Kennzahl k = kennzahlen.eine(id);
+        if (!auswertbar(k)) {
+            return k;
+        }
+        Map<UUID, List<EnergiezielDto.Energieziel>> ziele = offeneZiele();
+        KennzahlDto.Kennzahl mit = mitAuswertung(k, ziele.getOrDefault(id, List.of()));
+        // Führen kann nur eine Kennzahl mit Ziel und Wert; dann entscheidet dieselbe Wahl wie an Liste und Kachel.
+        boolean leit = ziele.containsKey(id) && fuehrt(mit)
+                && leitIn(ziele, Map.of(id, mit)).map(l -> l.kennzahl().id().equals(id)).orElse(false);
+        return mit.alsLeitkennzahl(leit);
+    }
+
     /** Eine Auswertung braucht Monatswerte; eine archivierte Kennzahl trägt keine (die Liste klappt sie zu). */
     static boolean auswertbar(KennzahlDto.Kennzahl k) {
         return k.archiviertAm() == null && k.perioden() != null && k.perioden().contains(MONAT);
@@ -158,11 +193,33 @@ public class KennzahlAuswertungService {
         // Verglichen wird nur gegen eine freigegebene Fassung (U1) - ohne eine gibt es kein Urteil und keine Abweichung.
         // Der Vergleich liest dieselben Monatswerte (sie decken auch den Vormonat des ersten der zwölf Monate).
         LocalDate ersteGeltung = vergleich.ersteGeltung(id);
+        YearMonth von = monat.minusMonths(KennzahlAuswertung.MONATE - 1);
         BezugsbasisVergleichDto.Vergleich v = ersteGeltung == null ? null
-                : vergleich.vergleichUeber(k, gelesen, monat.minusMonths(KennzahlAuswertung.MONATE - 1), monat);
+                : vergleich.vergleichUeber(k, gelesen, von, monat);
         EnergiezielDto.Energieziel ziel = zielFuer(ziele, monat);
         EnergiezielDto.Stand stand = ziel == null ? null : energieziele.stand(ziel.id());
-        return KennzahlAuswertung.auswertung(monat, jeMonat, v, ersteGeltung, stand);
+        return KennzahlAuswertung.auswertung(monat, jeMonat, v, ersteGeltung, seitGeltung(k, gelesen, v, ersteGeltung,
+                von, monat), stand);
+    }
+
+    /**
+     * §10.6 mit P4: der Zeitraum rechnet jeden seiner Monate gegen die Fassung am letzten Tag von {@code bis} - er beginnt
+     * darum mit dem Monat, ab dem genau diese Fassung gilt (bei einem Fassungswechsel mitten in den zwölf also mit dem
+     * Wechsel), nie mit Monaten, für die sie noch nicht galt; die früheren Monate stehen mit ihrem eigenen Urteil in
+     * {@code monate}. Gilt am letzten Tag keine Fassung (die Basis endete), zählt die erste. Gilt sie für alle zwölf, ist
+     * es der Vergleich selbst; gilt sie für keinen, gibt es keinen Zeitraum.
+     */
+    private BezugsbasisVergleichDto.Vergleich seitGeltung(KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen,
+            BezugsbasisVergleichDto.Vergleich v, LocalDate ersteGeltung, YearMonth von, YearMonth bis) {
+        if (v == null) {
+            return null;
+        }
+        LocalDate ab = vergleich.geltungAm(k.zeile().id(), bis.atEndOfMonth());
+        YearMonth erster = YearMonth.from(ab != null ? ab : ersteGeltung);
+        if (erster.isAfter(bis)) {
+            return null;
+        }
+        return erster.isAfter(von) ? vergleich.vergleichUeber(k, gelesen, erster, bis) : v;
     }
 
     /**

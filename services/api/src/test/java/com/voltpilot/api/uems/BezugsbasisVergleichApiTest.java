@@ -501,6 +501,8 @@ class BezugsbasisVergleichApiTest {
         assertThat(kz7.at("/vergleich/urteil").asText()).isEqualTo("nicht_anwendbar");
         assertThat(kz7.at("/vergleich/grund").asText()).isEqualTo("basis_fehlt");
         assertThat(kz7.at("/vergleich/erster_monat").asText()).isEqualTo("2026-06");
+        // PR2 (§10.6): solange für keinen der zwölf Monate eine Fassung gilt, gibt es keinen Zeitraum.
+        assertThat(kz7.get("zeitraum").isNull()).isTrue();
 
         root.update("UPDATE kennzahl SET archiviert_am = now() WHERE id = ?", w.kz6());
         Antwort a = ruf(w, PFAD + "?mit=auswertung");
@@ -510,6 +512,94 @@ class BezugsbasisVergleichApiTest {
         assertThat(falsch.status()).isEqualTo(400);
         assertThat(falsch.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
         assertThat(falsch.body().get("feld").asText()).isEqualTo("mit");
+    }
+
+    // ================================================================================ Konzept Auswerten a1, PR2
+
+    /**
+     * {@code GET /api/v1/kennzahlen/{id}?mit=auswertung}: die Seite einer Kennzahl liest dieselbe Auswertung wie die Liste,
+     * dazu die Veränderung zum Vormonat und je Monat die Mengen ihrer Kacheln - erwartet ÷ Nenner, gemessen − erwartet und
+     * deren Summe über die Monate mit Urteil (Oktober 2025 gegen Fassung 1, November bis Februar gegen Fassung 2).
+     */
+    @Test
+    void auswertungEinerKennzahlMitVormonatUndMengen() throws Exception {
+        Welt w = welt();
+        Antwort ohne = ruf(w, PFAD + "/" + w.kz4());
+        assertThat(ohne.status()).as(ohne.text()).isEqualTo(200);
+        assertThat(ohne.text()).doesNotContain("auswertung");
+
+        Antwort a = ruf(w, PFAD + "/" + w.kz4() + "?mit=auswertung");
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        JsonNode kz4 = a.body().get("auswertung");
+        assertThat(kz4.get("monat").asText()).isEqualTo("2026-03");
+        // Dieselbe Auswertung wie an der Liste.
+        assertThat(kz4.get("monate")).isEqualTo(kennzahlIn(ruf(w, PFAD + "?mit=auswertung").body(), "KZ-0004")
+                .at("/auswertung/monate"));
+        assertThat(kz4.at("/vormonat/periode").asText()).isEqualTo("2026-02");
+        assertThat(kz4.at("/vormonat/richtung").asText()).isEqualTo("weniger");
+        assertThat(kz4.at("/vormonat").has("urteil")).isFalse();
+
+        JsonNode monate = kz4.get("monate");
+        JsonNode okt = monate.get(6), dez = monate.get(8), feb = monate.get(10), mar = monate.get(11);
+        assertThat(okt.get("periode").asText()).isEqualTo("2025-10");
+        // 88 000 − 0,2837 × 310 000 = 53 kWh, im Rahmen.
+        assertThat(zahl(okt.get("abweichung"))).isEqualByComparingTo("53");
+        assertThat(zahl(okt.get("zusammen"))).isEqualByComparingTo("53");
+        // R2: 78 000 − 69 098 = 8 902 kWh; erwartet 69 098 ÷ 250 000 kg = 0,276392 kWh je kg.
+        assertThat(zahl(dez.get("abweichung"))).isEqualByComparingTo("8902");
+        assertThat(zahl(dez.get("erwartet_wert"))).isEqualByComparingTo("0.276392");
+        assertThat(zahl(dez.get("zusammen"))).isEqualByComparingTo("8956");
+        assertThat(zahl(feb.get("abweichung"))).isEqualByComparingTo("-484.5");
+        assertThat(zahl(feb.get("zusammen"))).isEqualByComparingTo("5658.5");
+        // März: außerhalb der Spannweite - kein erwartet, also keine Menge und keine Summe; nie 0.
+        assertThat(mar.get("abweichung").isNull()).isTrue();
+        assertThat(mar.get("erwartet_wert").isNull()).isTrue();
+        assertThat(mar.get("zusammen").isNull()).isTrue();
+        assertThat(monate.get(0).get("zusammen").isNull()).isTrue();
+        // Jeder Monat trägt sein Vorjahr roh; am jüngsten ist es dasselbe wie `auswertung.vorjahr` - nie ein Urteil.
+        assertThat(monate).allMatch(m -> m.has("vorjahr"));
+        assertThat(mar.get("vorjahr")).isEqualTo(kz4.get("vorjahr"));
+        assertThat(mar.get("vorjahr").has("urteil")).isFalse();
+        // Review r3 (§10.6 mit P4): Fassung 1 galt bis 31.10.2025, Fassung 2 ab 01.11.2025. Der Zeitraum rechnet gegen die
+        // Fassung am letzten Tag des März - Fassung 2 - und beginnt darum im November, nicht im April: April bis Oktober
+        // stehen mit ihrem Urteil gegen Fassung 1 in `monate`, zählen aber nicht gegen Fassung 2.
+        assertThat(kz4.at("/zeitraum/von").asText()).isEqualTo("2025-11");
+        assertThat(kz4.at("/zeitraum/bis").asText()).isEqualTo("2026-03");
+        assertThat(okt.get("urteil").asText()).isEqualTo("im_rahmen");
+
+        Antwort falsch = ruf(w, PFAD + "/" + w.kz4() + "?mit=werte");
+        assertThat(falsch.status()).isEqualTo(400);
+        assertThat(falsch.body().get("feld").asText()).isEqualTo("mit");
+    }
+
+    /**
+     * §10.6: gilt die erste Fassung erst ab Dezember 2025, beginnt der Zeitraum im Dezember - Oktober und November tragen
+     * Werte, aber für sie galt die Fassung noch nicht (P4 hätte sie sonst gegen sie gerechnet). Gilt sie erst nach dem
+     * Monat des Urteils, gibt es keinen Zeitraum ({@link #auswertungVorjahrErsterMonatArchivUndAnfrage}).
+     */
+    @Test
+    void derZeitraumBeginntMitDemErstenMonatMitFassung() throws Exception {
+        Welt w = welt();
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        TenantContext.set(w.mandant());
+        UUID bb = basis(w, w.ohneBasis());
+        TenantContext.clear();
+        fassung(w.mandant(), bb, 1, bz1, "verhaeltnis", "2024-10/2024-10", "2025-12-01", null, "0.2837", null, null,
+                null, null);
+
+        JsonNode kz7 = ruf(w, PFAD + "/" + w.ohneBasis() + "?mit=auswertung").body().get("auswertung");
+        JsonNode z = kz7.get("zeitraum");
+        assertThat(z.get("von").asText()).isEqualTo("2025-12");
+        assertThat(z.get("bis").asText()).isEqualTo("2026-03");
+        assertThat(z.get("monate").asText()).isEqualTo("4 von 4");
+        // Σ 337 500 ÷ Σ 353 206,5 kWh (0,2837 je kg).
+        assertThat(z.get("delta_prozent").asText()).isEqualTo("-4.4");
+        assertThat(z.get("urteil").asText()).isEqualTo("besser");
+        // Der Monat davor trägt einen Wert, aber kein Urteil: keine Fassung.
+        assertThat(kz7.at("/monate/7/periode").asText()).isEqualTo("2025-11");
+        assertThat(kz7.at("/monate/7/grund").asText()).isEqualTo("basis_fehlt");
+        assertThat(kz7.at("/monate/7/zusammen").isNull()).isTrue();
     }
 
     /**
@@ -563,6 +653,11 @@ class BezugsbasisVergleichApiTest {
         assertThat(leit.get("ziel_wortlaut").asText()).isEqualTo("EZ-2026-0001: 2,5 % weniger");
         // Trend des März (100.000 / 390.000) gegen den Februar (81.500 / 305.000): −4,0 %.
         assertThat(zahl(leit.get("trend_prozent"))).isEqualByComparingTo("-4.0");
+        // Die Seite der Kennzahl nennt dieselbe Leitkennzahl (Stern) - KZ-0006 hat kein Ziel und führt nicht.
+        assertThat(ruf(w, PFAD + "/" + w.kz4() + "?mit=auswertung").body().get("leitkennzahl").asBoolean()).isTrue();
+        JsonNode kz6 = ruf(w, PFAD + "/" + w.kz6() + "?mit=auswertung").body();
+        assertThat(kz6.get("leitkennzahl").asBoolean()).isFalse();
+        assertThat(ruf(w, PFAD + "/" + w.kz4()).body().has("leitkennzahl")).isFalse();
     }
 
     /**
@@ -576,8 +671,9 @@ class BezugsbasisVergleichApiTest {
                 + "zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich_sub, verantwortlich_name, "
                 + "verantwortlich_konto, actor_sub, actor_name, actor_rolle, actor_art, angelegt_am) VALUES (?, ?, ?, ?, 2, "
                 + "?, ?, ?, 'Beschluss der Managementbewertung.', 'IK', 'Ines Kaltenbach', 'benutzer', 'IK', "
-                + "'Ines Kaltenbach', 'energiemanager', 'kunde', '2025-10-15T09:00:00Z')", w.mandant(), kennzeichen, kennzahl, basis, new BigDecimal(prozent),
-                periode, kennzeichen + ": " + prozent.substring(1).replace('.', ',') + " % weniger");
+                + "'Ines Kaltenbach', 'energiemanager', 'kunde', '2025-10-15T09:00:00Z')", w.mandant(), kennzeichen,
+                kennzahl, basis, new BigDecimal(prozent), periode,
+                kennzeichen + ": " + prozent.substring(1).replace('.', ',') + " % weniger");
     }
 
     private static JsonNode kennzahlIn(JsonNode liste, String kennzeichen) {

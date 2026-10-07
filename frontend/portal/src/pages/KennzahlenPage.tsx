@@ -31,6 +31,8 @@ import { useRollen } from '../rollen';
 import { TRENNER } from '../uemsErgebnis';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
+import { entscheidAus } from '../entscheid';
+import { BezugsbasisEbene } from './BezugsbasisEbene';
 import { KennzahlSeite } from './KennzahlSeite';
 import './KennzahlenPage.css';
 
@@ -52,13 +54,16 @@ import './KennzahlenPage.css';
  */
 export function KennzahlenPage({
   kennzahlId = null,
+  ebene = null,
   onOeffnen,
   onListe,
   zone = VORGABE_ZEITZONE,
   standort = null,
 }: {
   kennzahlId?: string | null;
-  onOeffnen: (id: string) => void;
+  /** Konzept Auswerten a1 §6.6: `bezugsbasis` = die Ebene unter der Kennzahl (`…/kennzahlen/{id}/bezugsbasis`). */
+  ebene?: 'bezugsbasis' | null;
+  onOeffnen: (id: string, ebene?: 'bezugsbasis') => void;
   onListe: () => void;
   /** Die Zeitzone, in der „heute“ liegt. */
   zone?: string;
@@ -82,6 +87,18 @@ export function KennzahlenPage({
       }}
     />
   );
+  // Eine alte Adresse der Wiedervorlage (`…/kennzahlen/{id}?entscheid=bezugsbasis_ueberpruefung`, vor §6.6) springt auf
+  // die Ebene der Bezugsbasis - der Entscheid reist mit, damit die Seite ihn in den Blick holt.
+  useEffect(() => {
+    if (!kennzahlId || ebene) return;
+    const hash = window.location.hash;
+    if (entscheidAus(hash)?.art !== 'bezugsbasis_ueberpruefung') return;
+    const [pfad, ...rest] = hash.split('?');
+    window.location.replace(`${pfad.replace(/\/$/, '')}/bezugsbasis${rest.length ? `?${rest.join('?')}` : ''}`);
+  }, [kennzahlId, ebene]);
+  if (kennzahlId && ebene === 'bezugsbasis') {
+    return <BezugsbasisEbene key={`${kennzahlId}|${neu}`} id={kennzahlId} zone={zone} onKennzahl={() => onOeffnen(kennzahlId)} />;
+  }
   if (kennzahlId) {
     return (
       <>
@@ -94,6 +111,7 @@ export function KennzahlenPage({
           zurListe={standort ? STANDORT_KENNZAHLEN : undefined}
           onKopieren={(quelle) => setAssistent({ quelle })}
           onBerechnungAendern={(quelle) => setAssistent({ quelle: null, aendern: quelle })}
+          onBezugsbasis={() => onOeffnen(kennzahlId, 'bezugsbasis')}
         />
         {dialog}
       </>

@@ -118,7 +118,8 @@ public final class KennzahlDto {
             OffsetDateTime archiviertAm,
             OffsetDateTime angelegtAm,
             Bezugsbasis bezugsbasis,
-            @JsonInclude(JsonInclude.Include.NON_NULL) Auswertung auswertung) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) Auswertung auswertung,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Boolean leitkennzahl) {
 
         /** Die Kennzahl ohne Auswertung - so antwortet jede Route außer {@code GET …?mit=auswertung}. */
         public Kennzahl(UUID id, String kennzeichen, String name, String rechenform, String geltungArt, UUID geltungId,
@@ -128,14 +129,24 @@ public final class KennzahlDto {
                 Bezugsbasis bezugsbasis) {
             this(id, kennzeichen, name, rechenform, geltungArt, geltungId, geltungName, rechteGeltung, standortId, kennung,
                     verantwortlichName, zweck, fassung, einheit, einheitAnzeige, grundperiode, perioden, hatWerte,
-                    archiviertAm, angelegtAm, bezugsbasis, null);
+                    archiviertAm, angelegtAm, bezugsbasis, null, null);
         }
 
         /** Dieselbe Kennzahl mit ihrer Auswertung. */
         public Kennzahl mitAuswertung(Auswertung a) {
             return new Kennzahl(id, kennzeichen, name, rechenform, geltungArt, geltungId, geltungName, rechteGeltung,
                     standortId, kennung, verantwortlichName, zweck, fassung, einheit, einheitAnzeige, grundperiode, perioden,
-                    hatWerte, archiviertAm, angelegtAm, bezugsbasis, a);
+                    hatWerte, archiviertAm, angelegtAm, bezugsbasis, a, leitkennzahl);
+        }
+
+        /**
+         * Nur an {@code GET …/{id}?mit=auswertung} (die Seite einer Kennzahl): ob sie die Leitkennzahl der Übersicht ist
+         * (Konzept Auswerten a1 §10.8) - die Liste nennt sie stattdessen als {@code leitkennzahl} der Liste.
+         */
+        public Kennzahl alsLeitkennzahl(boolean leit) {
+            return new Kennzahl(id, kennzeichen, name, rechenform, geltungArt, geltungId, geltungName, rechteGeltung,
+                    standortId, kennung, verantwortlichName, zweck, fassung, einheit, einheitAnzeige, grundperiode, perioden,
+                    hatWerte, archiviertAm, angelegtAm, bezugsbasis, auswertung, leit);
         }
     }
 
@@ -169,23 +180,29 @@ public final class KennzahlDto {
     // ============================================================================ Auswertung (Konzept Auswerten a1, PR1)
 
     /**
-     * Wie eine Kennzahl steht - für die Liste „Kennzahlen“ (Konzept Auswerten a1 §6.4) und die Leitkachel der Übersicht
-     * (§10.8: ein Urteil, eine Ableitung). Nur mit {@code GET /api/v1/kennzahlen?mit=auswertung} und nur an einer nicht
-     * archivierten Kennzahl mit Monatswerten; sonst fehlt das Feld. Gerechnet wird hier nichts: Urteil und Abweichungen
-     * sind die Operation {@code vergleich} des Bezugsbasis-Lesers, die Veränderung zum Vorjahr die Operation {@code roh}
-     * (ohne Urteil, VG3), der Stand des Energieziels der Leser des Ziels.
+     * Wie eine Kennzahl steht - für die Liste „Kennzahlen“ (Konzept Auswerten a1 §6.4), die Seite einer Kennzahl (§6.5)
+     * und die Leitkachel der Übersicht (§10.8: ein Urteil, eine Ableitung). Nur mit {@code mit=auswertung} an
+     * {@code GET /api/v1/kennzahlen} oder {@code GET /api/v1/kennzahlen/{id}} und nur an einer nicht archivierten Kennzahl
+     * mit Monatswerten; sonst fehlt das Feld. Urteil und Abweichungen sind die Operation {@code vergleich} des
+     * Bezugsbasis-Lesers, die Veränderungen zu Vorjahr und Vormonat die Operation {@code roh} (ohne Urteil, VG3), der
+     * Zeitraum die Operation {@code zeitraum} (U5), der Stand des Energieziels der Leser des Ziels. Selbst gerechnet
+     * werden nur die Mengen je Monat ({@link AuswertungMonat}).
      *
      * @param monat der letzte abgeschlossene Monat ({@code JJJJ-MM}) in der Zone der Geltung - für ihn gilt das Urteil
      * @param wert der jüngste Monatswert der zwölf Monate bis {@code monat}; {@code null} ohne jeden
      * @param vorjahr die Veränderung von {@code wert} gegen denselben Monat ein Jahr davor; {@code null} ohne beide Werte
+     * @param vormonat die Veränderung von {@code wert} gegen den Monat davor; {@code null} ohne beide Werte
      * @param monate die zwölf Monate bis {@code monat}, der älteste zuerst
      * @param vergleich {@code null} ohne freigegebene Bezugsbasis
+     * @param zeitraum der Vergleich über die Monate der zwölf, für die schon eine Fassung gilt (§10.6); {@code null}
+     *     ohne Bezugsbasis oder solange noch keine Fassung gilt
      * @param energieziel das offene Energieziel der Kennzahl mit seinem Stand; {@code null} ohne
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record Auswertung(String monat, AuswertungWert wert, AuswertungVorjahr vorjahr, List<AuswertungMonat> monate,
-            AuswertungVergleich vergleich, AuswertungZiel energieziel) {}
+    public record Auswertung(String monat, AuswertungWert wert, AuswertungRoh vorjahr, AuswertungRoh vormonat,
+            List<AuswertungMonat> monate, AuswertungVergleich vergleich, AuswertungZeitraum zeitraum,
+            AuswertungZiel energieziel) {}
 
     /**
      * Ein Monatswert der Kennzahl, wie {@code …/werte} ihn zeigt ({@link Wert}): ungerundeter Dezimaltext, Einheit der
@@ -195,18 +212,32 @@ public final class KennzahlDto {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record AuswertungWert(String periode, String wert, String einheit, String zustand, String richtung) {}
 
-    /** Die rohe Veränderung gegen den Vorjahresmonat {@code periode} (Prozent mit einer Stelle); trägt nie ein Urteil. */
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record AuswertungVorjahr(String periode, String wert, String deltaProzent, String richtung) {}
-
     /**
-     * Ein Monat der zwölf: der Kennzahlwert ({@code null} = keiner) und - mit Bezugsbasis - die bereinigte Abweichung mit
-     * Urteil und Grund aus dem Vergleich.
+     * Die rohe Veränderung gegen den Monat {@code periode} (Vorjahresmonat oder Vormonat; Prozent mit einer Stelle) mit
+     * dessen Wert; trägt nie ein Urteil.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record AuswertungMonat(String periode, String wert, String deltaProzent, String urteil, String grund) {}
+    public record AuswertungRoh(String periode, String wert, String deltaProzent, String richtung) {}
+
+    /**
+     * Ein Monat der zwölf: der Kennzahlwert ({@code null} = keiner) und - mit Bezugsbasis - die bereinigte Abweichung mit
+     * Urteil und Grund aus dem Vergleich. Dazu die Mengen, die die Seite der Kennzahl zeigt; sie rechnet der Server exakt
+     * aus der Zeile des Vergleichs (ungerundeter Dezimaltext, das Portal rundet nur zur Anzeige):
+     *
+     * @param erwartetWert der erwartete Kennzahlwert: erwartet ÷ Nenner des Monats, wie der Kennzahlwert gerundet
+     *     ({@link com.voltpilot.api.uems.KennzahlRegeln#WERT_NACHKOMMASTELLEN}); {@code null} ohne erwartet oder Nenner
+     * @param abweichung gemessen − erwartet in der Einheit des Zählers (positiv = mehr als erwartet); {@code null} ohne
+     *     beide
+     * @param zusammen die Abweichungen aller Monate mit Urteil von den zwölf bis hierher zusammengezählt; {@code null}
+     *     an einem Monat ohne Urteil (er zählt nicht mit, die Linie hat dort eine Lücke)
+     * @param vorjahr der Wert desselben Monats ein Jahr früher mit der rohen Veränderung (Operation {@code roh}, nie ein
+     *     Urteil) - Vorjahrespunkt, Infozeile und Spalte „ggü. Vorjahr“; {@code null} ohne beide Werte oder mit 0 davor
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record AuswertungMonat(String periode, String wert, String deltaProzent, String urteil, String grund,
+            String erwartetWert, String abweichung, String zusammen, AuswertungRoh vorjahr) {}
 
     /**
      * Das Urteil des Monats {@code monat} gegen die Bezugsbasis {@code bezugsbasis} (U1-U6) mit dem Kundensatz des Monats.
@@ -218,6 +249,17 @@ public final class KennzahlDto {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record AuswertungVergleich(String bezugsbasis, String urteil, String deltaProzent, String bandProzent,
             String richtung, String grund, String satz, String ersterMonat) {}
+
+    /**
+     * Der Vergleich über {@code von} … {@code bis} (Operation {@code zeitraum}, Σ gemessen ÷ Σ erwartet, U5) - beginnt
+     * mit dem ersten der zwölf Monate, für den eine freigegebene Fassung gilt (§10.6), nie davor.
+     *
+     * @param monate „x von y“ Monaten mit Vergleich, wie der Leser es zählt
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record AuswertungZeitraum(String von, String bis, String deltaProzent, String bandProzent, String richtung,
+            String urteil, String grund, String monate, String satz) {}
 
     /**
      * Das offene Energieziel der Kennzahl und sein Stand (Z3): die Summe über die bewertbaren Monate der Zielperiode

@@ -1605,6 +1605,12 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'test/kennzahlListeFixtures.ts',
     'bezugsbasisUrteil.ts',
     'pages/KennzahlSeite.tsx',
+    // Konzept Auswerten a1 (PR2): die Seite einer Kennzahl ohne Reiter, ihre Bezugsbasis eine Ebene tiefer, ihr reines
+    // Modell und ihre Bühnen-Welt.
+    'kennzahlSeite.ts',
+    'test/kennzahlSeiteFixtures.ts',
+    'pages/BezugsbasisEbene.tsx',
+    'bezugsbasisEbene.ts',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',
     // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl (eine Welt) und seine Leser-Antworten der Bühne.
@@ -1701,6 +1707,17 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
     expect(texte.filter((t) => MITTEL_VERBOTEN.test(t))).toEqual([]);
     expect(texte.filter((t) => ROLLEN_VERBOTEN.test(t))).toEqual([]);
+  });
+
+  it('Konzept Auswerten a1 (Wörter): Seite einer Kennzahl und Bezugsbasis sprechen ohne „Roh“, „Urteil (Band)“ und K1-K8', () => {
+    // §8.3: „Roh · Urteil (Band)“ wird „ggü. Vormonat“ und „Urteil“; Kriterien heißen in Worten, nie K1 bis K8 (§10.10).
+    const auswerten = ['kennzahlSeite.ts', 'pages/KennzahlSeite.tsx', 'bezugsbasisEbene.ts', 'pages/BezugsbasisEbene.tsx', 'bezugsbasisVergleich.ts', 'kennzahlListe.ts', 'components/KennzahlenAuswertung.tsx'];
+    const verbotenAuswerten = /(^|[^\p{L}])(Roh|K[1-8])([^\p{L}\p{N}]|$)|Urteil \(Band\)/u;
+    const treffer = auswerten.flatMap((rel) =>
+      // Jede sichtbare Zeichenkette, auch ein einzelnes Wort („Roh“ ist kurz genug, um den Kundentext-Filter zu umgehen).
+      visibleTexts(readFileSync(join(SRC, rel), 'utf8')).filter((t) => verbotenAuswerten.test(t)).map((t) => `${rel}: ${t}`),
+    );
+    expect(treffer).toEqual([]);
   });
 
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {

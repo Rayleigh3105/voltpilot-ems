@@ -35,6 +35,8 @@ export type IconName =
   | 'eye-off'
   | 'star'
   | 'target'
+  | 'chart'
+  | 'hand'
   | 'chevron-left'
   | 'chevron-right'
   | 'chevron-down'

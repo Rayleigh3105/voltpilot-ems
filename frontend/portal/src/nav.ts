@@ -153,6 +153,11 @@ export interface Route {
    */
   kennzahlId?: string;
   /**
+   * Nur mit `kennzahlId`: die Ebene unter der Kennzahl-Seite (Konzept Auswerten a1 §6.6) -
+   * `bezugsbasis` = `…/kennzahlen/{id}/bezugsbasis` (Fassungen, Freigaben, Überprüfung). Absent = die Seite.
+   */
+  kennzahlEbene?: 'bezugsbasis';
+  /**
    * Nur bei `page === 'portfolio-berichte'` oder am Standort mit
    * `standortBereich: 'berichte'`: WELCHER Bericht die Seite zeigt (UEMS
    * AP-12 IP-13 `#/portfolio/berichte/{kennung}`, AP-13 IP-2
@@ -682,7 +687,9 @@ export function parseRoute(hash: string): Route {
   if (head === 'unternehmen' && segments[1] === 'einstellungen' && segments[2] === 'benutzer')
     return pageRoute('kunden-benutzer');
   if (head === 'portfolio') {
-    if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'kennzahlen' && segments[2]) {
+      return kennzahlRoute(decodeURIComponent(segments[2]), null, segments[3] === 'bezugsbasis' ? 'bezugsbasis' : undefined);
+    }
     if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'bewertung' && segments[2]) return energieeinsatzRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'verbesserung') {
@@ -723,7 +730,7 @@ export function parseRoute(hash: string): Route {
     // AP-13 IP-2: die übrigen Seiten des Standorts; Kennzahl und Bericht bleiben im Standort, aus dem sie geöffnet werden.
     if (segments[1] && segments[2] === 'kennzahlen') {
       return segments[3]
-        ? kennzahlRoute(decodeURIComponent(segments[3]), segments[1])
+        ? kennzahlRoute(decodeURIComponent(segments[3]), segments[1], segments[4] === 'bezugsbasis' ? 'bezugsbasis' : undefined)
         : standortBereichRoute(segments[1], 'kennzahlen');
     }
     if (segments[1] && segments[2] === 'berichte') {
@@ -832,12 +839,16 @@ export function hashForRoute(route: Route): string {
           : route.standortBereich === 'berichte'
             ? route.berichtKennung
             : undefined;
-    const unter = objekt ? `/${encodeURIComponent(objekt)}` : '';
+    const ebene = route.standortBereich === 'kennzahlen' && route.kennzahlId && route.kennzahlEbene ? `/${route.kennzahlEbene}` : '';
+    const unter = objekt ? `/${encodeURIComponent(objekt)}${ebene}` : '';
     return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}${unter}`;
   }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
-    const kennzahl = route.page === 'portfolio-kennzahlen' && route.kennzahlId ? `/${encodeURIComponent(route.kennzahlId)}` : '';
+    const kennzahl =
+      route.page === 'portfolio-kennzahlen' && route.kennzahlId
+        ? `/${encodeURIComponent(route.kennzahlId)}${route.kennzahlEbene ? `/${route.kennzahlEbene}` : ''}`
+        : '';
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
@@ -974,12 +985,14 @@ export function standortMessstellenRoute(standortId: string): Route {
 
 /**
  * Route einer Kennzahl-Seite (UEMS AP-11 IP-13): ohne Standort `#/portfolio/kennzahlen/{id}`, aus
- * „Kennzahlen dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/kennzahlen/{id}`.
+ * „Kennzahlen dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/kennzahlen/{id}`. Mit `ebene` `bezugsbasis` die Ebene
+ * darunter (Konzept Auswerten a1 §6.6): `…/kennzahlen/{id}/bezugsbasis`.
  */
-export function kennzahlRoute(kennzahlId: string, standortId?: string | null): Route {
+export function kennzahlRoute(kennzahlId: string, standortId?: string | null, ebene?: 'bezugsbasis'): Route {
+  const unter = ebene ? { kennzahlEbene: ebene } : {};
   return standortId
-    ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId }
-    : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+    ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId, ...unter }
+    : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId, ...unter };
 }
 
 /** Die drei Reiter des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8, §6.3). */

@@ -91,6 +91,9 @@ describe('Kundenwörter aus der Fassung (reine Helfer)', () => {
     expect(M.grafik(f)).toBeNull();
     expect(M.basiswertSatz(f, 'kWh/kg')).toBe('Verhältnis 0,2837 kWh je kg aus 1 Monat der Referenzperiode.');
     expect(M.monatsZeilen(f, 'kWh/kg')).toEqual(['Oktober 2026: 88 630 kWh bei 312 400 kg']);
+    // Die Route liefert `einheit_anzeige` als Wort („kWh je kg“) - dieselbe Zeile, nie „kWh je kg bei 312 400“.
+    expect(M.monatsZeilen(f, 'kWh je kg')).toEqual(['Oktober 2026: 88 630 kWh bei 312 400 kg']);
+    expect(M.einheiten('kWh je kg')).toEqual({ energie: 'kWh', bezug: 'kg' });
   });
 });
 
