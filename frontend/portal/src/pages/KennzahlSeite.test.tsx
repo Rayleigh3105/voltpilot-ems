@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
 import { keycloak } from '../auth';
+import { UEMS_NORMGRENZE } from '../glossar';
 import { setSelbstauskunft } from '../rollen';
+import { routenHeute, vergissAbruf } from '../routenUhr';
 import { SEITE_IDS, seitenBuehne, type SeitenLage } from '../test/kennzahlSeiteFixtures';
 import { rechteSeed } from '../test/rollenFixtures';
 import { KennzahlenPage } from './KennzahlenPage';
@@ -216,6 +218,80 @@ describe('die Seite einer Kennzahl (§6.5)', () => {
     await waitFor(() =>
       expect(window.location.hash).toBe(`#/portfolio/kennzahlen/${SEITE_IDS.kz4}/bezugsbasis?entscheid=bezugsbasis_ueberpruefung&kennzeichen=BB-0001`),
     );
+  });
+});
+
+describe('„Energieziel setzen“ an der Kennzahl - eine Uhr (Konzept Verbessern v1, Befund 2; Review r1 M-0.1)', () => {
+  // Der Browser steht im Oktober 2026, die Route im April 2029 (Bühnen-Uhr der Demo).
+  beforeEach(() => {
+    vergissAbruf();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T10:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vergissAbruf();
+  });
+
+  /** Die Welt ohne laufendes Energieziel an KZ-0004 - erst dann bietet das Menü „Energieziel setzen“ an. */
+  function ohneZiel(person = 'IK') {
+    welt('ueber', person);
+    const kennzahl = api.kennzahl;
+    Object.assign(api, {
+      kennzahl: async (id: string, mit?: 'auswertung') => {
+        const k = await kennzahl(id, mit);
+        return k.auswertung ? { ...k, auswertung: { ...k.auswertung, energieziel: null } } : k;
+      },
+      energieziele: async () => ({ energieziele: [] }),
+    });
+  }
+  const zielperiode = (dialog: HTMLElement) =>
+    ['Erster Monat', 'Letzter Monat'].map((l) => within(dialog).getByLabelText(l).textContent?.trim());
+  async function zielDialog() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Weitere Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Energieziel setzen/ }));
+    return screen.findByTestId('energieziel-setzen');
+  }
+
+  it('die Seite merkt sich den Tag der Route aus den Auffälligkeiten; die Vorgabe ist das Jahr nach ihm (2030, nicht 2027)', async () => {
+    ohneZiel();
+    const uebersicht = vi.spyOn(api, 'verbesserungUebersicht').mockRejectedValue(new Error('nicht gebraucht'));
+    render(<KennzahlenPage kennzahlId={SEITE_IDS.kz4} onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    await screen.findByTestId('kennzahl-auffaelligkeit');
+    expect(routenHeute()).toBe('2029-04-30');
+    const dialog = await zielDialog();
+    expect(zielperiode(dialog)).toEqual(['Januar 2030', 'Dezember 2030']);
+    expect(within(dialog).getByTestId('energieziel-basis-zeile').textContent).toContain('Bezugsbasis BB-0001');
+    expect(within(dialog).getByText(UEMS_NORMGRENZE)).toBeTruthy();
+    expect(uebersicht).not.toHaveBeenCalled();
+    // Ohne Wortlaut und Begründung geht nichts an die Route.
+    const senden = vi.spyOn(api, 'energiezielAnlegen');
+    await act(async () => fireEvent.click(screen.getByTestId('energieziel-setzen-senden')));
+    expect(senden).not.toHaveBeenCalled();
+  });
+
+  it('ohne Antwort der Auffälligkeiten-Route holt der Dialog den Tag einmal über die Übersicht', async () => {
+    ohneZiel();
+    Object.assign(api, { auffaelligkeiten: async () => Promise.reject(new ApiError(503, 'nicht erreichbar')) });
+    const uebersicht = vi
+      .spyOn(api, 'verbesserungUebersicht')
+      .mockResolvedValue({ abruf: '2029-04-30' } as Awaited<ReturnType<typeof api.verbesserungUebersicht>>);
+    render(<KennzahlenPage kennzahlId={SEITE_IDS.kz4} onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    await screen.findByTestId('kennzahl-antwort');
+    const dialog = await zielDialog();
+    expect(zielperiode(dialog)).toEqual(['Januar 2030', 'Dezember 2030']);
+    expect(uebersicht).toHaveBeenCalledTimes(1);
+  });
+
+  it('ohne `verbesserung.verwalten` steht „Energieziel setzen“ nicht im Menü', async () => {
+    ohneZiel('CB');
+    render(<KennzahlenPage kennzahlId={SEITE_IDS.kz4} onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    await screen.findByTestId('kennzahl-antwort');
+    const knopf = screen.queryByRole('button', { name: 'Weitere Aktionen' });
+    if (knopf) {
+      fireEvent.click(knopf);
+      expect(screen.queryByRole('menuitem', { name: /Energieziel setzen/ })).toBeNull();
+    }
   });
 });
 
