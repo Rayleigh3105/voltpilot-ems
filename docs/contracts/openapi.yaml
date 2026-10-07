@@ -13987,8 +13987,8 @@ paths:
         Standort ist der der Kennzahl (422 `standort_der_kennzahl`). Ohne `kennzahl` (M4) ist
         `erwartete_wirkung_prozent` 422 `ohne_messgrundlage` mit `kennzeichen` und `hinweis`, welche Kennzahl fehlt.
         `art` (Verbessern-Konzept v1, Entscheid 6) `gemessen · nicht_gemessen · organisatorisch` - `gemessen` genau mit
-        `kennzahl` (422 `art_ohne_kennzahl` bzw. `art_mit_kennzahl`); ohne Angabe `gemessen` mit Kennzahl, sonst
-        `nicht_gemessen`. `erwartete_einsparung_kwh_jahr` (Entscheid 13) ist die Schätzung einer Person in ganzen kWh im
+        `kennzahl` (422 `art_ohne_kennzahl` bzw. `art_mit_kennzahl`); ohne Angabe `gemessen` mit Kennzahl, aus
+        `nichtkonformitaet` oder `audit` `organisatorisch`, sonst `nicht_gemessen`. `erwartete_einsparung_kwh_jahr` (Entscheid 13) ist die Schätzung einer Person in ganzen kWh im
         Jahr, weniger Energie (> 0) - nur ohne Kennzahl (422 `einsparung_mit_kennzahl`) und nicht bei `organisatorisch`
         (422 `einsparung_organisatorisch`); mit Kennzahl und `erwartete_wirkung_prozent` rechnet die Route selbst um wie
         `GET …/schaetzung`. Protokoll `massnahme_angelegt`.

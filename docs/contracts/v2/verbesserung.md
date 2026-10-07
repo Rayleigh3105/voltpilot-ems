@@ -56,8 +56,8 @@ das Kundenwort ist „Feststellung“ (SP5).
 `gemessen` (an einer Kennzahl mit freigegebener Bezugsbasis; genau dann gibt es eine Messgrundlage), `nicht_gemessen`
 (spart Energie, ohne Kennzahl) und `organisatorisch` (regelt Zuständigkeiten, Abläufe, Schulungen; keine Zahl). Die Art
 ersetzt den pauschalen Mangel „ohne Messgrundlage“ als Marke; der Satz `ohne_messgrundlage` bleibt für `nicht_gemessen`.
-Bestand bekommt die Art aus der Messgrundlage (mit Kennzahl `gemessen`, sonst `nicht_gemessen`); die Art ist ab dem
-Anlegen eingefroren. Eine Schätzung in kWh im Jahr (Entscheid 13) ist eine Spalte der Maßnahme, kein Teil dieses
+Bestand und Anlegen ohne Angabe bekommen die Art aus Messgrundlage und Herkunft (mit Kennzahl `gemessen`, aus
+`nichtkonformitaet` oder `audit` `organisatorisch`, sonst `nicht_gemessen`); die Art ist ab dem Anlegen eingefroren. Eine Schätzung in kWh im Jahr (Entscheid 13) ist eine Spalte der Maßnahme, kein Teil dieses
 Vertrags: mit Kennzahl rechnet sie die Route aus der erwarteten Wirkung und den zwölf abgeschlossenen Monaten vor dem
 Anlegen, ohne Kennzahl nennt sie die Person; sie wird nie mit gemessenen Werten summiert.
 

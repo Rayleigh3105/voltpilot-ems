@@ -217,7 +217,7 @@ public class MassnahmeService {
             }
         };
 
-        String art = art(a.art(), a.kennzahl() != null);
+        String art = art(a.art(), a.kennzahl() != null, herkunft);
         if (a.erwarteteEinsparungKwhJahr() != null) {
             einsparungDarf(art);
         }
@@ -544,12 +544,15 @@ public class MassnahmeService {
     // ================================================================================ Art und Einsparung (Entscheide 6, 13)
 
     /**
-     * Entscheid 6: die Art aus dem Vokabular {@code massnahme_art}; {@code gemessen} genau mit Kennzahl. Ohne Angabe gilt
-     * {@code gemessen} mit Kennzahl, sonst {@code nicht_gemessen} (die Aufrufer von vor der Art legen weiter so an).
+     * Entscheid 6: die Art aus dem Vokabular {@code massnahme_art}; {@code gemessen} genau mit Kennzahl. Ohne Angabe
+     * (Aufrufer von vor der Art) dieselbe Ableitung wie Migration, Trigger {@code massnahme_art_vorgabe} und Portal
+     * ({@code artAus}): mit Kennzahl {@code gemessen}, aus Feststellung oder Audit {@code organisatorisch}, sonst
+     * {@code nicht_gemessen} - die Art ist ab dem Anlegen eingefroren.
      */
-    static String art(String art, boolean mitKennzahl) {
+    static String art(String art, boolean mitKennzahl, String herkunft) {
         if (art == null) {
-            return mitKennzahl ? GEMESSEN : "nicht_gemessen";
+            return mitKennzahl ? GEMESSEN
+                    : "nichtkonformitaet".equals(herkunft) || "audit".equals(herkunft) ? "organisatorisch" : "nicht_gemessen";
         }
         if (!VerbesserungRegeln.VOKABULARE.get("massnahme_art").contains(art)) {
             throw VerbesserungAbgelehnt.anfrage("art");

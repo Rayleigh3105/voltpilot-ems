@@ -437,6 +437,9 @@ class MassnahmeApiTest {
         JsonNode m = neu.body();
         assertThat(m.get("kennzeichen").asText()).isEqualTo(r10.get("kennzeichen").asText());
         assertThat(m.at("/herkunft/art").asText()).isEqualTo("nichtkonformitaet");
+        // Ohne Angabe der Art dieselbe Ableitung wie Migration, Trigger und Portal: aus einer Feststellung organisatorisch.
+        assertThat(body).doesNotContainKey("art");
+        assertThat(m.get("art").asText()).isEqualTo("organisatorisch");
         assertThat(m.at("/herkunft/kennung").asText()).isEqualTo("F-2029-0001");
         assertThat(m.get("messgrundlage").isNull()).isTrue();
         assertThat(m.at("/ohne_messgrundlage/kennzeichen").asText()).isEqualTo("ohne Messgrundlage — Wirkung nicht messbar");
@@ -455,6 +458,7 @@ class MassnahmeApiTest {
         Antwort ausAudit = ruf(w, "ines", HttpMethod.POST, PFAD, body);
         assertThat(ausAudit.status()).as(ausAudit.text()).isEqualTo(201);
         assertThat(ausAudit.body().at("/herkunft/kennung").asText()).isEqualTo("AU-2029-0001");
+        assertThat(ausAudit.body().get("art").asText()).isEqualTo("organisatorisch");
 
         // Die Managementbewertung gibt es erst mit IP-23: jeder Beschluss ist unbekannt; das Muster ist BR-…/Bn.
         body.put("herkunft", "managementbewertung");
@@ -623,7 +627,8 @@ class MassnahmeApiTest {
         assertThat(g.body().get("art").asText()).isEqualTo("nicht_gemessen");
         assertThat(g.body().at("/erwartete_einsparung/kwh_jahr").asText()).isEqualTo("12000");
         assertThat(g.body().at("/erwartete_einsparung/grundlage_kwh").isNull()).isTrue();
-        // Ohne Angabe: die Art aus der Zeile (ohne Kennzahl nicht gemessen).
+        // Ohne Angabe: die Art aus der Zeile (von Hand ohne Kennzahl nicht gemessen; aus Feststellung oder Audit
+        // organisatorisch, siehe R10).
         Antwort ohneArt = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, null));
         assertThat(ohneArt.body().get("art").asText()).as(ohneArt.text()).isEqualTo("nicht_gemessen");
 
