@@ -1997,11 +1997,11 @@ const KENNZAHL_BESTAND: string[] = [
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
+  'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
   'energiezielBild.ts', // neu: ein Energieziel entsteht an einer Kennzahl mit Bezugsbasis (Konzept Verbessern §6.3)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
-  'fahrplan.ts', // neu: der Fahrplan „Ihr Energiemanagement“ nennt den Schritt „Kennzahlen mit Vergleichszeitraum“ (Konzept K2)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
@@ -2021,6 +2021,7 @@ const KENNZAHL_BESTAND: string[] = [
   'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
   'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
+  'verzeichnisMonate.ts', // neu: das Verzeichnis bündelt Kennzahl-Fassungen eines Tages zu „Kennzahlen“ (Nachweisen n1, §6.9)
   'wiedervorlage.ts', // neu: eine Bezugsbasis ist die Vergleichsgrundlage einer Kennzahl (Konzept Wiedervorlage w1)
 ];
 
@@ -3434,7 +3435,6 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     // IP-9: Bereich (mit Reiter „Dokumente“), Verzeichnis, Dokument-Seite, Dialoge (Anlegen, Fassung/Verweis, Freigabe,
     // Person anlegen), Vergleich Anwendungsbereich ⟷ Betrachtungsumfang, Zuschnitt-Hilfe.
     'pages/EnergiemanagementBereich.tsx',
-    'components/VerzeichnisTabelle.tsx',
     'pages/DokumentSeite.tsx',
     'components/DokumentDialoge.tsx',
     'components/AnwendungsbereichVergleich.tsx',
@@ -3908,6 +3908,18 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
       expect(artikelFehler(verbogen)).toContain('ohne Grenz-Satz (E8)');
       expect(artikelFehler(verbogen).some((f) => f.startsWith('SP2 /konform/iu'))).toBe(true);
     });
+  });
+
+  it('Nachweisen n1: die Bausteine unter components/nachweisen tragen kein verbotenes Wort und keine Norm-Nummer (SP2, SP3)', () => {
+    // Sie stehen in einer Fläche, die beide Sätze trägt (dem Bereich), und tragen sie darum nicht selbst; die Wörter
+    // prüft dieser Fall für jede Datei des Ordners - auch für die Bausteine der übrigen Nachweisen-PRs.
+    const bausteine = customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.startsWith('components/nachweisen/'));
+    expect(bausteine).toEqual(expect.arrayContaining(['components/nachweisen/Ueberblick.tsx', 'components/nachweisen/VerzeichnisMonate.tsx']));
+    for (const datei of bausteine) {
+      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toEqual([]);
+    }
   });
 });
 

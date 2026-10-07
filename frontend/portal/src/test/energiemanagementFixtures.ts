@@ -32,6 +32,8 @@ import {
   type EnergiemanagementAufgabeBeenden,
   type EnergiemanagementPersonAendern,
   type EnergiemanagementPersonMitVerlauf,
+  type EnergiemanagementTeilVermerk,
+  type EnergiemanagementTeilVermerkAnlegen,
   type EnergiemanagementVerantwortung,
   type EnergiemanagementVergleich,
   type EnergiemanagementVerzeichnis,
@@ -100,6 +102,14 @@ function person(k: keyof typeof PERSONEN_ID, name: string, funktion: string, kon
   };
 }
 const kurz = (p: EnergiemanagementPerson): EnergiemanagementPersonKurz => ({ id: p.id, name: p.name, funktion: p.funktion, kuerzel: p.kuerzel, mit_konto: !!p.konto });
+/** Die Gruppe des Verzeichnisses je Teil (wie `TeilVermerkVerzeichnis` am Server). */
+const TEIL_GRUPPE: Record<string, string> = {
+  energiepolitik: 'grundlagen', anwendungsbereich: 'grundlagen', rechtliche_anforderungen: 'grundlagen', kontext: 'grundlagen',
+  risiken_chancen: 'risiken_chancen', aufgaben: 'verantwortung', kompetenz: 'kompetenz_kommunikation', kommunikation: 'kompetenz_kommunikation',
+  betrieb: 'betrieb_auslegung_beschaffung', auslegung: 'betrieb_auslegung_beschaffung', beschaffung: 'betrieb_auslegung_beschaffung',
+  energetische_bewertung: 'bewertung_messplanung', bezugsbasen: 'kennzahlen_bezugsbasen', massnahmen: 'ziele_massnahmen_abweichungen',
+  interne_audits: 'audits_feststellungen', feststellungen: 'audits_feststellungen', managementbewertung: 'managementbewertung', berichte: 'berichte',
+};
 
 const tagText = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 const satzText = (k: string, w: Record<string, string>) => satz(k, w).satz ?? '';
@@ -150,6 +160,8 @@ export function energiemanagementBuehne(
   for (const p of personen) if (p.konto && p.kuerzel === ich.kennung) p.konto.sub = ich.kennung;
   const zuordnungen: EnergiemanagementZuordnung[] = [];
   const dokumente: EnergiemanagementDokument[] = [];
+  // Konzept Nachweisen n1, Entscheid 5: „Trifft bei uns zurzeit nicht zu“ je Teil (wie `EnergiemanagementTeilVermerkService`).
+  const vermerke: EnergiemanagementTeilVermerk[] = [];
   let zaehler = 0;
   let personNr = 0;
 
@@ -419,6 +431,14 @@ export function energiemanagementBuehne(
         eingetragen_von: z.eingetragen.akteur.name, tag: z.gilt_ab, pruefsumme: null, ort: 'in_voltpilot', ablage: null,
       }) as EnergiemanagementVerzeichnisZeile);
     }
+    for (const v of vermerke.filter((x) => x.entschieden_am <= heute())) {
+      zeilen.push(verzeichnisZeile({
+        gruppe: TEIL_GRUPPE[v.teil], art: 'teil_vermerk', kennzeichen: v.teil_wort,
+        titel: `${v.teil_wort}: trifft bei uns zurzeit nicht zu${v.aufgehoben ? ` · aufgehoben am ${tagText(v.aufgehoben.am.slice(0, 10))}` : ''}`,
+        nr: null, entschieden_von: v.entschieden_von.name, eingetragen_von: v.eingetragen.akteur.name, tag: v.entschieden_am, pruefsumme: null,
+        ort: 'in_voltpilot', ablage: null,
+      }) as EnergiemanagementVerzeichnisZeile);
+    }
     zeilen.push(...bestand(lage));
     const person = filter.person ? personen.find((p) => p.id === filter.person) ?? null : null;
     const passt = (z: EnergiemanagementVerzeichnisZeile) =>
@@ -509,6 +529,33 @@ export function energiemanagementBuehne(
     energiemanagementVerzeichnis: async (filter: EnergiemanagementVerzeichnisFilter = {}) => {
       await bereit;
       return verzeichnis(filter);
+    },
+    energiemanagementTeilVermerke: async () => {
+      await bereit;
+      return { stichtag: jetzt(), vermerke: structuredClone([...vermerke.filter((v) => !v.aufgehoben), ...vermerke.filter((v) => v.aufgehoben).reverse()]) };
+    },
+    energiemanagementTeilVermerkAnlegen: async (b: EnergiemanagementTeilVermerkAnlegen) => {
+      merke('POST /api/v1/energiemanagement/teil-vermerke', b);
+      if (!VOKABULARE.teil.includes(b.teil)) throw new ApiError(400, 'Anfrage ungültig', { code: 'anfrage_ungueltig', message: 'Die Anfrage ist ungültig.', feld: 'teil' });
+      if (vermerke.some((v) => v.teil === b.teil && !v.aufgehoben)) {
+        throw new ApiError(409, 'Vermerk besteht', { code: 'vermerk_besteht', message: 'Für diesen Teil gilt schon ein Vermerk. Heben Sie ihn zuerst auf.', teil: b.teil });
+      }
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      if (!p) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Diese Person gibt es nicht.' });
+      const v: EnergiemanagementTeilVermerk = {
+        id: `a1b00000-0000-4000-8000-${String(vermerke.length + 1).padStart(12, '0')}`, teil: b.teil, teil_wort: WOERTER.teil[b.teil], satz: b.satz,
+        entschieden_von: kurz(p), entschieden_am: b.entschieden_am ?? heute(), eingetragen: eingetragen(ich.name, jetzt()), aufgehoben: null,
+      };
+      vermerke.push(v);
+      return structuredClone(v);
+    },
+    energiemanagementTeilVermerkAufheben: async (id: string) => {
+      merke(`POST /api/v1/energiemanagement/teil-vermerke/${id}/aufheben`, null);
+      const v = vermerke.find((x) => x.id === id);
+      if (!v) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Diesen Vermerk gibt es nicht.' });
+      if (v.aufgehoben) throw new ApiError(409, 'aufgehoben', { code: 'vermerk_aufgehoben', message: 'Dieser Vermerk ist bereits aufgehoben.', aufgehoben_am: v.aufgehoben.am });
+      v.aufgehoben = { akteur: eingetragen(ich.name, jetzt()).akteur, am: jetzt() };
+      return structuredClone(v);
     },
     energiemanagementVerzeichnisCsv: async (filter: EnergiemanagementVerzeichnisFilter = {}) => {
       await bereit;

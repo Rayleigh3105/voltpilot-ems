@@ -41,6 +41,11 @@ import org.springframework.stereotype.Component;
 public class VerzeichnisBestand implements VerzeichnisQuelle {
 
     private static final DateTimeFormatter TAG = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    /** Befund 8 (Nachweisen n1): Einstufung und Zustand des Messbedarfs als Kundenwort, wie das Portal sie nennt. */
+    private static final Map<String, String> EINSTUFUNG = Map.of("wesentlich", "wesentlich", "nicht_wesentlich",
+            "nicht wesentlich");
+    private static final Map<String, String> MESSBEDARF = Map.of("offen", "offen", "eingeloest", "eingelöst",
+            "verworfen", "verworfen");
 
     private final BewertungUmfangService umfang;
     private final BewertungKriterienService kriterien;
@@ -123,15 +128,15 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
             for (var f : einstufungen.historie(e.id()).fassungen()) {
                 if (!"freigegeben".equals(f.freigabeStatus())) continue;
                 aus.add(zeile("bewertung_messplanung", "einstufung_fassung", e.kennzeichen(),
-                        "Einstufung " + e.kennzeichen() + " " + e.name() + ": " + f.einstufung(), f.fassung(),
+                        e.name() + ": " + EINSTUFUNG.getOrDefault(f.einstufung(), f.einstufung()), f.fassung(),
                         zweite(f.akteur(), f.entschiedenVon()), name(f.akteur()), f.gueltigAb(), null));
             }
         }
         for (var b : messbedarfe.alle(null).messbedarfe()) {
             String ee = einsatz.get(b.energieeinsatzId());
             aus.add(zeile("bewertung_messplanung", "messbedarf", b.kennzeichen(), "Messbedarf " + b.kennzeichen()
-                    + (ee == null ? "" : " (" + ee + ")") + ": " + b.zustand(), null, null, name(b.akteur()),
-                    tag(b.angelegtAm(), zone), null));
+                    + (ee == null ? "" : " (" + ee + ")") + ": " + MESSBEDARF.getOrDefault(b.zustand(), b.zustand()),
+                    null, null, name(b.akteur()), tag(b.angelegtAm(), zone), null));
         }
         for (var a : messmittel.alle()) {
             var b = a.beleg();
@@ -194,10 +199,30 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
                 default -> "berichte";
             };
             for (var s : berichte.detail(kopf.kennung(), wer).staende()) {
-                aus.add(zeile(gruppe, "berichtsstand", kopf.kennung(), kopf.geltungName() + " · " + kopf.schluessel(),
-                        s.nr(), null, s.freigeberName(), tag(s.freigegebenAm(), zone), s.pruefsumme()));
+                String titel = berichtTitel(kopf.vorlage(), kopf.zeitraumArt(),
+                        BerichtRegeln.STANDORT.equals(kopf.geltungArt()) ? kopf.geltungName() : null, kopf.schluessel(),
+                        kopf.zone());
+                aus.add(zeile(gruppe, "berichtsstand", kopf.kennung(), titel, s.nr(), null, s.freigeberName(),
+                        tag(s.freigegebenAm(), zone), s.pruefsumme()));
             }
         }
+    }
+
+    /**
+     * Befund 8 (Nachweisen n1): der Titel eines Berichts in Worten - Vorlage, Standort und Zeitraum („Monatsbericht
+     * Werk Ahrenberg Oktober 2026“, „Energetische Bewertung April 2028 bis März 2029“). Monats- und Jahresbericht
+     * heißen nach ihrem Zeitraum, die übrigen Vorlagen nach ihrem Namen. Den Standort nennt nur ein Bericht über einen
+     * Standort; das Unternehmen ist im eigenen Verzeichnis selbstverständlich.
+     */
+    private static String berichtTitel(String vorlage, String zeitraumArt, String standort, String schluessel,
+            ZoneId zone) {
+        boolean nachZeitraum = vorlage.startsWith("monatsbericht_") || vorlage.startsWith("jahresbericht_");
+        String wort = nachZeitraum ? BerichtRegeln.SAETZE.get("vorlage_" + zeitraumArt) : null;
+        if (wort == null) {
+            wort = BerichtPdf.VORLAGEN.getOrDefault(vorlage, vorlage);
+        }
+        return wort + (standort == null ? "" : " " + standort) + " "
+                + BerichtRegeln.zeitraum(zeitraumArt, schluessel, zone).bezeichnung();
     }
 
     // ------------------------------------------------------------------ AP-18

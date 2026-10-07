@@ -1,9 +1,10 @@
 # Energiemanagement: Überprüfung, Wiedervorlage, Vergleich, Verzeichnis-Zeile, Prüfsumme (UEMS AP-19)
 
-Stand 05.10.2026 · Vertrag 1.2 · Konzept `data/vp-uems-ap19-fundament` §4.2–4.9, §5.8, §7 R1–R3, R7–R14, §8 IP-2;
+Stand 07.10.2026 · Vertrag 1.3 · Konzept `data/vp-uems-ap19-fundament` §4.2–4.9, §5.8, §7 R1–R3, R7–R14, §8 IP-2;
 Entscheide E1–E10 = A, W1–W15 übernommen (24.09.2026).
 Vertrag 1.1 (Konzept Wiedervorlage w1, freigegeben 05.10.2026): `wiedervorlage` liefert additiv den Jahresplan und die Zählung nach Dringlichkeit (§3); der Satz `baustein` zählt Einträge nach Dringlichkeit (§7).
 Vertrag 1.2 (Konzept Wiedervorlage w1, Entscheid 7): `wiedervorlage_art` ist um `zaehlerablesung` geweitet, die zwölfte Art (§1, §3); `energiemanagement_vokabular()` trägt sie seit `V20261005220000`.
+Vertrag 1.3 (Konzept Nachweisen n1, Runde 2, Entscheide 5 und 23, freigegeben 07.10.2026): das Vokabular `teil` nennt die 18 Teile des Überblicks von Nachweisen, `woerter.teil` ihren Namen und `woerter.teil_kurz` ihr Kurzwort für Chips (§1); `energiemanagement_vokabular()` trägt `teil` seit `V20261007004500`, die Tabelle `energiemanagement_teil_vermerk` („Trifft bei uns zurzeit nicht zu“) prüft ihre Teile daran.
 
 Die Abnahme des Captains: **„Die erforderlichen Entscheidungen und Nachweise sind auffindbar; die Verantwortung des
 Kunden bleibt ausdrücklich erkennbar.“** VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das
@@ -27,7 +28,7 @@ aber nicht zum Betrachtungsumfang“. Ein Urteil fällt keine dieser Regeln.
 > AP-16 S5, AP-17 F5, AP-12 E7, `faellig[]` des Übersichts-Lesers von AP-18 samt Messbedarf; MG7 seit IP-23:
 > `ManagementbewertungWiedervorlage`, letzte Sitzung einer freigegebenen Managementbewertung + Rhythmus);
 > `anwendungsbereich_vergleich` der Leser `…/dokumente/{id}/vergleich` (IP-7); `verzeichnis_zeile` jede Quelle des
-> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`; IP-23: `ManagementbewertungVerzeichnis`); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
+> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`; IP-23: `ManagementbewertungVerzeichnis`; Nachweisen n1: `TeilVermerkVerzeichnis`, Art `teil_vermerk` in der Gruppe des Teils); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
 
 ## 1. Vokabulare, Startwerte, Wörter (geschlossen, in `energiemanagement-vectors.json`)
 
@@ -44,12 +45,14 @@ Wo §4.2 ein Wort mit Zusatz nennt, ist der Zusatz eine Pflicht des Schreibwegs,
 | Managementbewertung | `managementbewertung_zustand` (`entwurf · freigegeben`, der Stand Nr. n ist AP-12) · `beschluss_art` · `folge_art` (MG6: Energieziel, Maßnahme, Dokument-Fassung, Aufgabe, Audit) | §4.2 Zustände, MG5, MG6 |
 | Leser | `wiedervorlage_art` (zwölf; `zaehlerablesung` seit 1.2) · `verzeichnis_ort` (drei der vier Stufen von G1 — „bei Ihnen, nicht in VoltPilot“ hat keine Zeile) · `verzeichnis_gruppe` (elf, VZ3) | §4.2, k_faelle `GRUPPEN` |
 | Operation | `ueberpruefung_art` · `ueberpruefung_grund` | dieser Vertrag (§2) |
+| Überblick (1.3) | `teil` (achtzehn: Grundlagen, Menschen und Abläufe, Messen und Verbessern, Prüfen und Rückblick; die Gruppen ordnet das Portal) | Konzept Nachweisen n1 §6.3, Entscheide 5 und 23 |
 
 `dokument_art_klasse` ordnet jede Art `vorgabe` (mit Überprüfung) oder `nachweis` (Auslegung, Kompetenz — ohne) zu;
 `leitungs_pflicht` nennt die drei Arten, deren Freigabe die Leitung entscheidet (DK3: Energiepolitik, Anwendungsbereich,
 Bestellung). `kennzeichen_muster`: `D-nnnn` ohne Jahr (`^D-[0-9]{4,13}$`, Muster BB-), `AU-JJJJ-nnnn`, `F-JJJJ-nnnn`
 (`[0-9]{4,9}` wie Maßnahme und Abweichung) und die Kennung eines Beschlusses `BR-JJJJ-nnnn/Bn` (die Herkunft
-`managementbewertung` der Maßnahme). `woerter` trägt die Kundenwörter von Dokument-Art, Aufgabe, Verzeichnis-Gruppe und Ort.
+`managementbewertung` der Maßnahme). `woerter` trägt die Kundenwörter von Dokument-Art, Aufgabe, Verzeichnis-Gruppe und Ort, seit 1.3 dazu je Teil den Namen
+(`teil`, im Blatt einer Gruppe und im Verzeichnis) und das Kurzwort (`teil_kurz`, „Kontext“, „Bezugsbasen“: in Chips am Handy).
 Die geweiteten fremden Vokabulare (`massnahme_herkunft`, `bericht.vorlage`, `bericht.quelle_art`, Rolle `einsicht`) stehen
 in ihren eigenen Verträgen.
 
