@@ -3410,12 +3410,13 @@ describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
     }
   });
 
-  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche', () => {
+  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche — außer der Ausnahme aus Nachweisen Entscheid 18', () => {
     const funde = customerFiles().flatMap((file) => {
       const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
       if (wo === 'begriffe.ts') return [];
       return visibleTexts(readFileSync(file, 'utf8'))
         .filter(isKundentext)
+        .filter((text) => !nachweisenFachwortAusnahme(wo, text))
         .filter((text) => verboteIn(text).length > 0)
         .map((text) => `${wo}: „${text}“`);
     });
@@ -3424,6 +3425,9 @@ describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
     expect(fachwortAusnahme('begriffe.ts', BEGRIFFE.massnahme.fachwort!)).toBe(true);
     expect(fachwortAusnahme('components/MassnahmeDialoge.tsx', BEGRIFFE.massnahme.fachwort!)).toBe(false);
     expect(fachwortAusnahme('begriffe.ts', 'Aktionsplan 2029')).toBe(false);
+    // Die Gegenstelle aus Nachweisen Entscheid 18 greift nur in `auditBild.ts`.
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_FESTSTELLUNG)).toBe(true);
+    expect(nachweisenFachwortAusnahme('begriffe.ts', NORMWORT_FESTSTELLUNG)).toBe(false);
   });
 
   it('die letzte Zeile von „Was ist …?“ sagt „Fachwort“ oder bei mehreren „Fachwörter“', () => {
