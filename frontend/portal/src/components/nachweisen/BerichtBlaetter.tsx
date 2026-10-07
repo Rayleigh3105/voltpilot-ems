@@ -450,7 +450,7 @@ export function BerichtErstellenBlatt({
   if (angelegt) {
     const b = angelegt.detail.bericht;
     const v = vorschauAus(angelegt.detail, angelegt.entwurf, jetztMs);
-    const darfFreigeben = darf(rechte, 'freigeben', b.geltung_art, b.geltung_id) && v.erlaubt;
+    const darfFreigeben = darf(rechte, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage) && v.erlaubt;
     return (
       <NwBlatt
         open

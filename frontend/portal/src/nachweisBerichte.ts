@@ -35,7 +35,7 @@ export const ALLE_AENDERUNGEN = 'Alle Änderungen';
 export const KEINE_ZAHL_AENDERT_SICH = 'Keine Zahl ändert sich';
 export const NEUER_STAND_FRAGE = 'Neuen Stand freigeben?';
 export const WEITER = 'Weiter';
-export const ZUR_SEITE_BEWERTUNG = 'Auf der Seite Bewertung lesen';
+export const ZUR_SEITE_BEWERTUNG = 'Energetische Bewertung öffnen';
 export const ZUR_SEITE_MANAGEMENTBEWERTUNG = 'Managementbewertung öffnen';
 /** Auf der Karte stehen höchstens drei Werte; der Rest eine Zeile tiefer (Konzept §6.4: „drei Werte alt → neu“). */
 export const KARTE_HOECHSTENS = 3;

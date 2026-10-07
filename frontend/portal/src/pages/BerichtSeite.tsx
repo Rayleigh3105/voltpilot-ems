@@ -42,7 +42,7 @@ import { seitenLink } from '../components/nachweisen/teilen';
 import { Weitergeben } from '../components/nachweisen/Weitergeben';
 import { Fakt, NwKarte, NwZeile, NwZeilen } from '../components/nachweisen/NwZeilen';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
-import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
+import { GrenzHinweis } from '../components/GrenzSatz';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { LeistungsvergleichBericht } from '../components/LeistungsvergleichBericht';
 import { MiniBarSpark } from '../components/MiniChart';
@@ -217,8 +217,8 @@ export function BerichtSeite({
   const offen = N.offeneAnstoesse(detail);
   const rechteJetzt = rechte === undefined ? KEINE_RECHTE : rechte;
   const archiviert = b.archiviert_am !== null;
-  const darfFreigeben = !archiviert && darf(rechteJetzt, 'freigeben', b.geltung_art, b.geltung_id);
-  const darfBehalten = !archiviert && darf(rechteJetzt, 'verwerfen', b.geltung_art, b.geltung_id);
+  const darfFreigeben = !archiviert && darf(rechteJetzt, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage);
+  const darfBehalten = !archiviert && darf(rechteJetzt, 'verwerfen', b.geltung_art, b.geltung_id, b.vorlage);
   const eigene = N.eigeneSeite(b);
   // AP-17 IP-24: der Leistungsvergleich trägt seine eigenen acht Abschnitte (`LeistungsvergleichBericht`).
   const lv = istLeistungsvergleich(b);
@@ -419,7 +419,7 @@ export function BerichtSeite({
   const menue: RowMenuItem[] = [{ label: `Kennung ${b.kennung} kopieren`, icon: 'link', onClick: () => void navigator.clipboard?.writeText(b.kennung) }];
 
   return (
-    <GrenzSatzBereich>
+    <>
       <div className={`vp-nw-seite vp-nw-dok vp-br${name.titel.length > 40 ? ' vp-nw-lang' : ''}`} data-testid="bericht-seite">
         <NwKopf
           zurueck={zurueck}
@@ -530,7 +530,7 @@ export function BerichtSeite({
           onClose={() => setBlatt(null)}
         />
       )}
-    </GrenzSatzBereich>
+    </>
   );
 }
 

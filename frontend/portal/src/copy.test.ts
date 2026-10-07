@@ -1786,8 +1786,10 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
     'berichtDialoge.ts',
     'components/BerichtAnlegenDialog.tsx',
     'components/BerichtFreigebenDialog.tsx',
-    'components/BerichtVergleichDialog.tsx',
-    'components/AnstossVerwerfenDialog.tsx',
+    // Konzept Nachweisen n1, Runde 2 (§6.4): Liste, Seite und Blätter der Berichte in Nachweisen.
+    'nachweisBerichte.ts',
+    'components/nachweisen/BerichteListe.tsx',
+    'components/nachweisen/BerichtBlaetter.tsx',
   ];
   const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
   const da = (t: string | null | undefined): t is string => typeof t === 'string';
@@ -1943,6 +1945,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
+  'components/nachweisen/BerichtBlaetter.tsx', // neu: „Bericht erstellen“ wählt Kennzahlen ab bzw. die eine Kennzahl des Leistungsvergleichs (Nachweisen n1, §6.4)
   'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)

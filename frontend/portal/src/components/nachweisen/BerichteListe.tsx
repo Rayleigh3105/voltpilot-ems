@@ -9,7 +9,7 @@ import { ausgabeFehler } from '../../leistungsvergleichBericht';
 import * as N from '../../nachweisBerichte';
 import { merkeAugenblick } from '../../routenUhr';
 import { useBerichtRechte } from '../../useBerichtRechte';
-import { GrenzHinweis, GrenzSatzBereich } from '../GrenzSatz';
+import { GrenzHinweis } from '../GrenzSatz';
 import { ErrorState, Skeleton } from '../States';
 import { BerichtErstellenBlatt } from './BerichtBlaetter';
 import { dateiSpeichern } from './datei';
@@ -79,7 +79,7 @@ export function BerichteListe({
   // „wartet auf Sie“ nur, wo die Person entscheiden darf; sonst „wartet“.
   const aufSie = !!bild && bild.wartet.some((z) => {
     const b = nachKennung.get(z.kennung);
-    return !!b && !!rechte && darf(rechte, 'freigeben', b.geltung_art, b.geltung_id);
+    return !!b && !!rechte && darf(rechte, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage);
   });
 
   const oeffne = (z: N.BerichtZeile) => {
@@ -135,7 +135,7 @@ export function BerichteListe({
   );
 
   return (
-    <GrenzSatzBereich>
+    <>
       <div className="vp-nw-seite vp-nw-berichte" data-testid="berichte">
         <NwKopf
           titel={standort ? STANDORT_BERICHTE : N.BERICHTE_TITEL}
@@ -236,6 +236,6 @@ export function BerichteListe({
           />
         )}
       </div>
-    </GrenzSatzBereich>
+    </>
   );
 }
