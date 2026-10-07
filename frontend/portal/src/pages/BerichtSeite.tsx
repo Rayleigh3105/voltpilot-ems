@@ -102,7 +102,7 @@ export function BerichtSeite({
   const [dateiAbruf, setDateiAbruf] = useState<{ wahl: string; satz: string; fehler: boolean } | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const [antwort, setAntwort] = useState<'ja' | 'nein' | null>(null);
-  const [blatt, setBlatt] = useState<'freigeben' | 'behalten' | 'grund' | 'aenderungen' | 'werte' | null>(null);
+  const [blatt, setBlatt] = useState<'freigeben' | 'behalten' | 'grund' | 'aenderungen' | 'werte' | 'korrekturen' | null>(null);
   const rechte = useBerichtRechte();
   const rollen = useRollen();
   const isPhone = useIsPhone();
@@ -410,6 +410,8 @@ export function BerichtSeite({
       />
     ));
   const sv = aktuell?.art === 'stand' ? aktuell.stand : null;
+  // Die Korrekturen am gezeigten Stand: offen, nicht übernommen (mit Grund) oder in einem neuen Stand.
+  const korrekturen = gezeigtNr !== null ? detail.anstoesse.filter((a) => a.nr === gezeigtNr) : [];
   const eigeneZeile =
     eigene === 'managementbewertung' && onManagementbewertung ? (
       <NwZeile titel={N.ZUR_SEITE_MANAGEMENTBEWERTUNG} onClick={() => onManagementbewertung(b.kennung)} testId="bericht-eigene-seite" />
@@ -483,7 +485,22 @@ export function BerichtSeite({
               <NwZeilen>
                 {sv?.freigegeben_von && <NwZeile titel="Freigegeben" rechts={<Fakt>{sv.freigegeben_von.name}</Fakt>} testId="bericht-zeile-freigegeben" />}
                 {sv && <NwZeile titel="Datenstand" rechts={<Fakt>{N.zeitText(sv.datenstand, b.zeitzone)}</Fakt>} testId="bericht-zeile-datenstand" />}
-                {sv?.pruefsumme_geprueft && <NwZeile titel={PRUEFSUMME_GEPRUEFT} rechts={<Badge variant="ok">✓</Badge>} testId="bericht-zeile-pruefsumme" />}
+                {sv?.pruefsumme_geprueft && (
+                  <NwZeile
+                    titel={PRUEFSUMME_GEPRUEFT}
+                    rechts={
+                      <Fakt>
+                        <code className="vp-nw-br-pruefsumme" title={sv.pruefsumme}>
+                          {N.pruefsummeKurz(sv.pruefsumme)}
+                        </code>
+                      </Fakt>
+                    }
+                    testId="bericht-zeile-pruefsumme"
+                  />
+                )}
+                {korrekturen.length > 0 && (
+                  <NwZeile titel="Korrekturen" rechts={<Fakt>{korrekturen.length}</Fakt>} onClick={() => setBlatt('korrekturen')} testId="bericht-korrekturen" />
+                )}
                 {standZeilen}
               </NwZeilen>
             </NwKarte>
@@ -521,6 +538,9 @@ export function BerichtSeite({
             setVersuch((v) => v + 1);
           }}
         />
+      )}
+      {blatt === 'korrekturen' && (
+        <BerichtGrundBlatt titel="Korrekturen" zeilen={N.korrekturZeilen(korrekturen, b.zeitzone)} onClose={() => setBlatt(null)} />
       )}
       {blatt === 'grund' && grund && <BerichtGrundBlatt titel={grund.titel} zeilen={grund.zeilen} onClose={() => setBlatt(null)} />}
       {blatt === 'aenderungen' && (

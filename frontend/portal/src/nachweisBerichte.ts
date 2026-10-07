@@ -288,6 +288,32 @@ export function freigabeKurz(punkte: readonly { schluessel: 'zeitraum' | 'werte'
   return offen.schluessel === 'zeitraum' ? 'Zeitraum läuft noch' : offen.schluessel === 'werte' ? 'Werte noch vorläufig' : 'Entwurf nicht aktuell';
 }
 
+/**
+ * Die Korrekturen eines Stands als Zeilen (der frühere „Verlauf der Berichtsstände“): offen seit, nicht übernommen mit
+ * dem Grund der Person, oder in welchem Stand sie steht. Nichts davon geht verloren - es steht einen Tipp tiefer.
+ */
+export function korrekturZeilen(anstoesse: readonly BerichtAnstoss[], zone: string): { etikett: string; wert: string }[] {
+  return [...anstoesse]
+    .sort((a, b) => a.erkannt_am.localeCompare(b.erkannt_am))
+    .map((a) => ({
+      etikett: a.anlass_kennung,
+      wert:
+        a.zustand === 'offen'
+          ? `offen seit ${tagText(a.erkannt_am, zone) ?? ''}`.trim()
+          : a.zustand === 'verworfen'
+            ? `nicht übernommen${a.verworfen_begruendung ? `: ${a.verworfen_begruendung}` : ''}`
+            : a.erledigt_durch_nr !== null
+              ? `in Stand ${a.erledigt_durch_nr}`
+              : 'erledigt',
+    }));
+}
+
+/** Die Prüfsumme kurz („0f0feda03d19…0d0d“): ganz steht sie im Titel der Zeile und im PDF. */
+export const pruefsummeKurz = (p: string): string => {
+  const hex = p.replace(/^sha256:/, '');
+  return hex.length > 20 ? `${hex.slice(0, 12)}…${hex.slice(-4)}` : hex;
+};
+
 /** „Stand 3 freigeben“ / „Stand 2 behalten“ - die zwei Antworten nach einer Korrektur (Entscheid 16). */
 export const jaAntwort = (nr: number): string => `Ja, Stand ${nr} freigeben`;
 export const neinAntwort = (nr: number): string => `Nein, Stand ${nr} behalten`;

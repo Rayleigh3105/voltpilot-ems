@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { api, type Bericht, type BerichtAnstoss, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../../api';
 import {
@@ -243,11 +243,13 @@ export function BerichtBehaltenBlatt({
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const basis = basisId('bb', useId());
+  const feld = useRef<HTMLDivElement>(null);
   const nr = gueltigerStand(detail.staende)?.nr ?? 1;
   async function senden() {
     const f = begruendungFehler(grund);
     setFehler(f);
-    if (f) return;
+    // Ungültig: der Fehler steht am Feld, und das Feld bekommt den Fokus (Portal-Regel).
+    if (f) return feld.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus();
     setBusy(true);
     setSatz(null);
     try {
@@ -270,7 +272,9 @@ export function BerichtBehaltenBlatt({
     >
       <BlattFormular id={`${basis}-form`} testid="bericht-behalten-form" onSenden={() => void senden()}>
         <HinweisZeile icon="lock" titel={`Stand ${nr} bleibt gültig`} zusatz="Die Änderung geht nicht in den Bericht" />
-        <NwTextfeld label="Warum?" wert={grund} onWert={setGrund} mehrzeilig fehler={fehler} hoechstens={500} testid="bericht-behalten-grund" />
+        <div ref={feld}>
+          <NwTextfeld label="Warum?" wert={grund} onWert={setGrund} mehrzeilig fehler={fehler} hoechstens={500} testid="bericht-behalten-grund" />
+        </div>
         <Ablehnung satz={satz} />
       </BlattFormular>
     </NwBlatt>

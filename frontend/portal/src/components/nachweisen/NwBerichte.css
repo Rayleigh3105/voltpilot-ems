@@ -93,3 +93,8 @@
 .vp-nw-br-entscheid-innen > .vp-nw-fussnote {
   margin-top: -4px;
 }
+/* Die Prüfsumme kurz in der Zeile „Prüfsumme geprüft“: ruhig, in der Ziffernschrift. */
+.vp-nw-br-pruefsumme {
+  font: 500 0.8125rem var(--vp-c-mono, ui-monospace, monospace);
+  color: var(--vp-c-muted-fg, #475569);
+}

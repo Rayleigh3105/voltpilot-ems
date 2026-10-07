@@ -261,14 +261,14 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 
     await page.getByTestId('einstieg-berichte').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte$/);
-    await expect(page.locator('[data-testid="bericht-karte"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid^="bericht-zeile-BR-"]').first()).toBeVisible();
     const b = await messe(page);
     ohneQuerlauf(b, 'werk-berichte-375');
     expect(b.titel).toBe('Berichte dieses Standorts');
     expect(b.leisteAktiv).toBe('Übersicht');
     await ablegen(page, 'werk-berichte-375', b);
     // Die Berichtsseite bleibt im Standort, und der Rückweg sagt, wohin er führt.
-    await page.locator('[data-testid="bericht-karte"]').first().click();
+    await page.locator('[data-testid^="bericht-zeile-BR-"]').first().click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte\/BR-2026-0001$/);
     await page.getByRole('button', { name: 'Berichte dieses Standorts' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte$/);

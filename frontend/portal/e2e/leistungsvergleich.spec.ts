@@ -2,8 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 /**
  * UEMS AP-17 IP-24 (R8) auf der Bühne `leistungsvergleich`: Ines Kaltenbach legt am 12.01.2028 den Leistungsvergleich
- * Dezember 2027 für KZ-0004 an (Kennzahl ist Pflicht), sieht den Entwurf mit den acht Abschnitten, gibt ihn als Stand
- * Nr. 1 frei und ruft das PDF ab — bei 375 und 1440 px, ohne Querlauf. Die Spec importiert keine Fixtures (sie laden
+ * Dezember 2027 für KZ-0004 an (Kennzahl ist Pflicht), sieht den Entwurf mit den acht Abschnitten (seit Nachweisen n1
+ * einen Tipp tiefer, „Alle Werte“), gibt ihn als Stand Nr. 1 frei (Prüfen, Bestätigung) und ruft das PDF ab — bei 375
+ * und 1440 px, ohne Querlauf. Die Spec importiert keine Fixtures (sie laden
  * `api.ts`, dem im Node-Lauf `import.meta.env` fehlt); die Sätze stehen wörtlich.
  */
 
@@ -47,18 +48,23 @@ for (const breite of [375, 1440]) {
     expect(await querlauf(page)).toBe(0);
     await page.getByRole('button', { name: 'Anlegen', exact: true }).click();
 
-    // Entwurf: acht Abschnitte, ungesichert.
+    // Entwurf: acht Abschnitte, ungesichert - seit Konzept Nachweisen n1, Runde 2 (§6.4) einen Tipp tiefer („Alle Werte“).
+    await page.getByTestId('bericht-alle-werte').click();
     await expect(page.getByTestId('leistungsvergleich')).toBeVisible();
     for (const s of ABSCHNITTE) await expect(page.getByTestId(`bericht-abschnitt-${s}`)).toBeVisible();
     await expect(page.getByTestId('leistungsvergleich-stand')).toHaveText('ungesichert — noch kein Stand');
     await expect(page.getByTestId('monat-2027-12').getByTestId('roh-urteil')).toHaveText('ohne Urteil');
     expect(await querlauf(page)).toBe(0);
+    await page.keyboard.press('Escape');
 
-    // Freigabe → Stand Nr. 1.
-    await page.getByTestId('bericht-hebel').getByRole('button', { name: 'Als Berichtsstand freigeben' }).click();
-    await page.getByTestId('bericht-freigeben-knopf').click();
+    // Freigabe → Prüfen → Bestätigung → Stand Nr. 1.
+    await page.getByTestId('bericht-hebel').getByRole('button', { name: 'Freigeben' }).click();
+    await page.getByTestId('bericht-freigeben-senden').click();
+    await expect(page.getByTestId('bericht-bestaetigung')).toContainText('Stand 1 ist freigegeben');
+    await page.getByTestId('bericht-fertig').click();
+    await expect(page.getByTestId('bericht-zeile-pruefsumme')).toBeVisible();
+    await page.getByTestId('bericht-alle-werte').click();
     await expect(page.getByTestId('leistungsvergleich-stand')).toHaveText(STAND_SATZ);
-    await expect(page.getByTestId('bericht-pruefsumme')).toBeVisible();
     expect(await querlauf(page)).toBe(0);
 
     // PDF-Abruf am Stand.

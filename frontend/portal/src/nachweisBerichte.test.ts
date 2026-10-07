@@ -165,6 +165,14 @@ describe('Berichte in Nachweisen (Konzept n1, Runde 2, §6.4)', () => {
     ]);
   });
 
+  it('die Korrekturen eines Stands: offen seit, nicht übernommen mit Grund, in Stand n - und die Prüfsumme kurz', () => {
+    const offen = detailAm(nach(ZEIT.korrektur)).anstoesse[0];
+    expect(N.korrekturZeilen([offen], 'Europe/Berlin')).toEqual([{ etikett: 'K-2026-0007', wert: 'offen seit 12.11.2026' }]);
+    expect(N.korrekturZeilen([{ ...offen, zustand: 'verworfen', verworfen_begruendung: 'Betrifft nur den 31.10.' }], 'Europe/Berlin')[0].wert).toBe('nicht übernommen: Betrifft nur den 31.10.');
+    expect(N.korrekturZeilen([{ ...offen, zustand: 'erledigt', erledigt_durch_nr: 2 }], 'Europe/Berlin')[0].wert).toBe('in Stand 2');
+    expect(N.pruefsummeKurz('sha256:0f0feda03d1979477a2596db5b9723399f227af0226a5397251704384de10d0d')).toBe('0f0feda03d19…0d0d');
+  });
+
   it('Bewertung und Managementbewertung öffnen ihre Seite, eine abgelöste Bewertung die Berichtsseite', () => {
     expect(DEMO.map((b) => N.eigeneSeite(b))).toEqual(['bewertung', 'managementbewertung', 'bericht', 'bericht', 'bericht', 'bericht', 'bericht']);
     expect(N.berichteErklaerung(DEMO).beiIhnen).toBe('Leistungsvergleich Dezember 2027: Stand 1.');
