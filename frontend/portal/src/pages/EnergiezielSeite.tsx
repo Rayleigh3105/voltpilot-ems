@@ -50,7 +50,7 @@ export function EnergiezielSeite({
   onKennzahl?: (kennzahlId: string) => void;
   /** Nach „Maßnahme planen“ und aus der Liste der Maßnahmen: die Seite der Maßnahme. */
   onMassnahme?: (massnahmeId: string) => void;
-  /** „Daraus folgte“: ein anderes Energieziel öffnen. */
+  /** „Danach an derselben Kennzahl“: ein anderes Energieziel öffnen. */
   onOeffnen?: (energiezielId: string) => void;
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
@@ -326,7 +326,8 @@ export function EnergiezielSeite({
       )}
       {lage.nachfolger && onOeffnen && (
         <p className="vp-ezl-text">
-          Daraus folgte:{' '}
+          {/* Nur die Reihenfolge an derselben Kennzahl - kein behaupteter Zusammenhang (Review r1 K-1). */}
+          Danach an derselben Kennzahl:{' '}
           <button type="button" className="vp-ezl-link is-im-satz" onClick={() => onOeffnen(lage.nachfolger!.id)}>
             {B.energiezielName(lage.nachfolger)}
           </button>

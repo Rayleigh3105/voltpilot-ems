@@ -516,7 +516,8 @@ export function heuteGelesen(fest: EnergiezielFestgehaltenerStand | undefined, l
   if (live.monate_bewertbar === 0 || live.summe.delta_prozent === null) {
     return `Heute gelesen: kein Monat der Zielperiode ist bewertbar. Festgehalten bleibt der Stand${am}.`;
   }
-  return `Heute gelesen: ${prozent(live.summe.delta_prozent)} ${live.summe.richtung ?? ''} als erwartet nach ${live.monate_text} Monaten. Festgehalten bleibt der Stand${am}.`;
+  const wie = live.summe.richtung === 'gleich' ? 'so viel wie erwartet' : `${prozent(live.summe.delta_prozent)} ${live.summe.richtung ?? ''} als erwartet`;
+  return `Heute gelesen: ${wie} nach ${live.monate_text} Monaten. Festgehalten bleibt der Stand${am}.`;
 }
 
 // ------------------------------------------------------------------ Maßnahmen am Energieziel (Entscheid 5)

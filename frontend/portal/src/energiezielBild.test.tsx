@@ -200,6 +200,11 @@ describe('bewertet: der festgehaltene Stand oben (Entscheid 11)', () => {
     );
     const gleich = { ...standJuli(ez), monate_bewertbar: 11, summe: { ...standJuli(ez).summe, delta_prozent: '-2.7' } };
     expect(B.heuteGelesen(ez.bewertung!.stand, gleich)).toBeNull();
+    // Genau wie erwartet heißt „so viel wie erwartet“, nie „0,0 % gleich als erwartet“ (Review r1 K-1).
+    const wieErwartet = { ...gleich, monate_bewertbar: 12, summe: { ...gleich.summe, delta_prozent: '0.0', richtung: 'gleich' as const } };
+    expect(B.heuteGelesen(ez.bewertung!.stand, wieErwartet)).toBe(
+      'Heute gelesen: so viel wie erwartet nach 5 von 12 Monaten. Festgehalten bleibt der Stand vom 15.01.2029.',
+    );
   });
   it('die Seite zeigt den festgehaltenen Stand, das Ergebnis ohne Warnfarbe und die Kopie eine Ebene tiefer', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
@@ -264,6 +269,8 @@ describe('„Energieziel setzen“ geführt (§6.9)', () => {
     });
     render(<EnergiezielSetzenFuehrung onClose={() => undefined} onGesetzt={vi.fn()} />);
     expect(await screen.findByTestId('energieziel-setzen-kennzahl-KZ-0021')).toBeTruthy();
+    // Die Auswahl hat einen Namen für Vorleser (Review r1 K-1), nicht sich selbst als Beschriftung.
+    expect(screen.getByRole('radiogroup', { name: 'Kennzahl' })).toBeTruthy();
     expect(screen.queryByTestId('energieziel-setzen-kennzahl-KZ-0004')).toBeNull();
     cleanup();
 
