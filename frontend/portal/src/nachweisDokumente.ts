@@ -31,6 +31,8 @@ export const ALLE_DOKUMENTE = 'Alle Dokumente';
 export const DOKUMENTE_LADEFEHLER = 'Die Dokumente ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.';
 export const DOKUMENT_LADEFEHLER = 'Das Dokument ließ sich gerade nicht laden. Ihre Daten sind nicht betroffen.';
 export const DOKUMENT_FEHLT = 'Dieses Dokument gibt es nicht - oder Sie dürfen es nicht sehen.';
+/** Im Blatt „Festhalten“, sobald das Dokument angelegt ist (Review r2, N-2.1): Art, Titel und Ort ändert keine Route. */
+export const SCHON_ANGELEGT = 'Angelegt: Art, Titel und Ort stehen fest.';
 export const KEIN_DOKUMENT = 'Noch kein Dokument festgehalten.';
 export const FESTSTELLUNGEN_FEHLEN = 'Feststellungen nicht geladen';
 export const VERLAUF = 'Verlauf';

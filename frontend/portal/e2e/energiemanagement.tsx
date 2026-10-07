@@ -58,6 +58,7 @@ import '../src/index.css';
  * IP-24: `&mb=leer|r13|r13f` spielt die Berichte-Routen der Managementbewertung und die Wiedervorlage R12
  * (`managementbewertungBuehne`, Körper in `window.__mbGesendet`); `&seite=wiedervorlage|managementbewertung` · `&br=1`
  * öffnet BR-2029-0001. Ohne `mb` steht eine leere Wiedervorlage am Tag der Uhr da; `&wv=fehler` spielt ihren Ladefehler.
+ * Review r2, N-2.1: `&freigabe=scheitert` lässt die erste Freigabe einer Fassung am Netz scheitern (der Entwurf steht dann).
  * Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
@@ -71,6 +72,17 @@ Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => 
 const buehne = energiemanagementBuehne(lage, { kennung: me.kennung!, name: me.name! });
 Object.assign(api, buehne.routen);
 (window as unknown as { __emGesendet: unknown }).__emGesendet = buehne.gesendet;
+if (params.get('freigabe') === 'scheitert') {
+  const freigeben = api.energiemanagementFassungFreigeben;
+  let erste = true;
+  api.energiemanagementFassungFreigeben = async (...a: Parameters<typeof freigeben>) => {
+    if (erste) {
+      erste = false;
+      throw new Error('Netz nicht erreichbar');
+    }
+    return freigeben(...a);
+  };
+}
 // Der Überblick liest die Wiedervorlage; ohne sie gibt es kein „Als Nächstes“ und keine Ruhe-Zeile (Review Nachweisen
 // r1, P1-2: ein Ladefehler ist kein „nichts fällig“). Ohne `mb` steht die Bühne ohne Frist am Tag ihrer Uhr - so
 // zeigte der Überblick hier vorher stets den Ladefehler. `mb` ersetzt sie unten durch R12/R13.

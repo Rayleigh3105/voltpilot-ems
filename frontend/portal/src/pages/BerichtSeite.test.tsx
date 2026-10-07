@@ -272,6 +272,42 @@ describe('Seite eines Berichts (Konzept Nachweisen n1, Runde 2, §6.4)', () => {
     expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual(['Kennung BR-2026-0001 kopieren']);
   });
 
+  /** Öffnet „Archivieren“ aus dem Menü und gibt die Zeilen des Blatts zurück. */
+  const archivierenBlatt = async (jetzt: number) => {
+    lage(jetzt);
+    setSelbstauskunft(selbst(FREIGEBEN));
+    await zeige(jetzt);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Archivieren' }));
+    const blatt = await screen.findByTestId('bericht-archivieren-blatt');
+    return [...blatt.querySelectorAll('.vp-nw-hz')].map((z) => z.textContent);
+  };
+
+  it('Review r2, N-3.1: das Blatt sagt, dass Archivieren endgültig ist - am gültigen Stand ohne offene Korrektur', async () => {
+    expect(await archivierenBlatt(STAND_ZWEI)).toEqual([
+      'Nicht rückgängig · für diesen Zeitraum kein neuer Bericht',
+      'Stände bleiben lesbar · PDF und Prüfsumme bleiben',
+      'Aus der Liste · unter „Archiviert“',
+    ]);
+  });
+
+  it('Review r2, N-3.1: wartet eine Korrektur, sagt das Blatt, dass ihre Entscheidung entfällt', async () => {
+    expect(await archivierenBlatt(KORREKTUR)).toEqual([
+      'Nicht rückgängig · für diesen Zeitraum kein neuer Bericht',
+      '1 Korrektur wartet · die Entscheidung entfällt',
+      'Stände bleiben lesbar · PDF und Prüfsumme bleiben',
+      'Aus der Liste · unter „Archiviert“',
+    ]);
+  });
+
+  it('Review r2, N-3.1: ein Entwurf ohne Stand lässt sich danach nie mehr freigeben - das Blatt sagt es statt „Stände bleiben lesbar“', async () => {
+    expect(await archivierenBlatt(Date.parse(ZEIT.angelegt) + 60_000)).toEqual([
+      'Nicht rückgängig · für diesen Zeitraum kein neuer Bericht',
+      'Ohne Stand · freigeben geht danach nicht mehr',
+      'Aus der Liste · unter „Archiviert“',
+    ]);
+  });
+
   it('Review r1, P3-9: solange die Selbstauskunft lädt, blitzt kein Rechte-Satz auf', async () => {
     lage(KORREKTUR);
     setSelbstauskunft(null);

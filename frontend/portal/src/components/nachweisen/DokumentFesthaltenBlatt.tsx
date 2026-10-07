@@ -1,7 +1,14 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { api, type EnergiemanagementAusschluss, type EnergiemanagementDokument, type EnergiemanagementPerson, type StandortAmStichtag } from '../../api';
+import {
+  api,
+  type EnergiemanagementAusschluss,
+  type EnergiemanagementDokument,
+  type EnergiemanagementFassungEntwerfen,
+  type EnergiemanagementPerson,
+  type StandortAmStichtag,
+} from '../../api';
 import { WOERTER } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';
 import * as N from '../../nachweisDokumente';
@@ -82,6 +89,9 @@ export function DokumentFesthaltenBlatt({
   const [traeger, setTraeger] = useState<string[]>([]);
   const [ausschluesse, setAusschluesse] = useState<EnergiemanagementAusschluss[]>([]);
   const [angelegt, setAngelegt] = useState<EnergiemanagementDokument | null>(null);
+  // Der Inhalt des zuletzt gesendeten Entwurfs (Review r2, N-2.1): weicht der Inhalt davon ab, geht er vor der Freigabe
+  // erneut als Entwurf derselben Nummer an die Route - entschieden wird nie ein Inhalt, den das Blatt nicht zeigt.
+  const [entworfen, setEntworfen] = useState<string | null>(null);
   const [fehler, setFehler] = useState<E.Feldfehler>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -206,22 +216,24 @@ export function DokumentFesthaltenBlatt({
         });
         setAngelegt(d);
       }
-      if (!d.fassungen.length) {
-        const v = E.verweisKoerper(verweis, true);
-        const geltung = mitGeltung
-          ? {
-              anwendungsbereich: {
-                standort_ids: orte,
-                traeger,
-                ausschluesse: ausschluesse.filter((a) => a.verweis || a.begruendung.trim()).map((a) => ({ ...a, begruendung: a.begruendung.trim() })),
-              },
-            }
-          : {};
-        d = await api.energiemanagementFassungEntwerfen(
-          d.id,
-          wo === 'verweis' ? { form: 'verweis', verweis: v && !('fehler' in v) ? v : null, ...geltung } : { form: 'wortlaut', wortlaut, ...geltung },
-        );
+      const v = E.verweisKoerper(verweis, true);
+      const geltung = mitGeltung
+        ? {
+            anwendungsbereich: {
+              standort_ids: orte,
+              traeger,
+              ausschluesse: ausschluesse.filter((a) => a.verweis || a.begruendung.trim()).map((a) => ({ ...a, begruendung: a.begruendung.trim() })),
+            },
+          }
+        : {};
+      const entwurf: EnergiemanagementFassungEntwerfen =
+        wo === 'verweis' ? { form: 'verweis', verweis: v && !('fehler' in v) ? v : null, ...geltung } : { form: 'wortlaut', wortlaut, ...geltung };
+      // Nach einer gescheiterten Freigabe steht der Entwurf schon; hat die Person seither Text, Original oder Geltung
+      // geändert, überschreibt die Route den offenen Entwurf (dieselbe Nr.), bevor freigegeben oder beantragt wird.
+      if (!d.fassungen.length || JSON.stringify(entwurf) !== entworfen) {
+        d = await api.energiemanagementFassungEntwerfen(d.id, entwurf);
         setAngelegt(d);
+        setEntworfen(JSON.stringify(entwurf));
       }
       if (freigeben) {
         // Entscheid 10: das unterschriebene Original gehört zur Fassung - festgehalten mit ihrer Freigabe.
@@ -304,6 +316,12 @@ export function DokumentFesthaltenBlatt({
         <SchrittAnzeige nr={schritt} von={letzter} />
         {schritt === 1 && (
           <>
+            {/* Art, Titel und Ort gehören zum Dokument; ist es angelegt, ändert sie keine Route mehr (Review r2, N-2.1). */}
+            {angelegt && (
+              <p className="vp-nw-leise" data-testid="festhalten-angelegt">
+                {N.SCHON_ANGELEGT}
+              </p>
+            )}
             {!festeArt && (
               <>
                 <VpPicker
@@ -318,8 +336,9 @@ export function DokumentFesthaltenBlatt({
                   }}
                   placeholder="Art wählen"
                   error={fehler.art ?? null}
+                  disabled={!!angelegt}
                 />
-                <NwTextfeld label="Titel" wert={titel} onWert={setTitel} fehler={fehler.titel} hoechstens={200} testid="festhalten-titel" />
+                <NwTextfeld label="Titel" wert={titel} onWert={setTitel} fehler={fehler.titel} hoechstens={200} gesperrt={!!angelegt} testid="festhalten-titel" />
               </>
             )}
             <AntwortKarten
@@ -327,7 +346,7 @@ export function DokumentFesthaltenBlatt({
               optionen={[
                 { wert: 'verweis', titel: 'In einem eigenen System', zusatz: 'zum Beispiel ein Register' },
                 { wert: 'wortlaut', titel: 'Als kurzer Text hier' },
-                ...(onTrifftNichtZu ? [{ wert: 'trifft_nicht_zu' as const, titel: 'Trifft zurzeit nicht zu', zusatz: 'mit Grund' }] : []),
+                ...(onTrifftNichtZu && !angelegt ? [{ wert: 'trifft_nicht_zu' as const, titel: 'Trifft zurzeit nicht zu', zusatz: 'mit Grund' }] : []),
               ]}
               wert={wo}
               onWahl={setWo}
@@ -336,7 +355,7 @@ export function DokumentFesthaltenBlatt({
             {mitOrtWahl(art, standorte) && (
               <WahlChips
                 frage="Für wo?"
-                optionen={[{ wert: 'unternehmen', label: 'Unternehmen' }, ...standorte.map((s) => ({ wert: s.id, label: s.name }))]}
+                optionen={[{ wert: 'unternehmen', label: 'Unternehmen' }, ...standorte.map((s) => ({ wert: s.id, label: s.name }))].map((o) => ({ ...o, aus: !!angelegt }))}
                 wert={ort}
                 onWahl={setOrt}
                 testid="festhalten-ort"
