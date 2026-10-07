@@ -7,6 +7,7 @@ import { api, ApiError, type Bilanz, type Funktionen, type Site } from '../api';
 import {
   ENERGIEBILANZ_UNTERZEILE,
   HERKUNFT_EINGAENGE,
+  KARTE_WORT,
   RECHT_REST_ANLEGEN,
   RECHT_STELLUNG,
   REST_ANLEGEN,
@@ -244,7 +245,13 @@ function Hauptzaehler({
   return (
     <article className="vp-bil-hz" data-testid="energiebilanz-hauptzaehler" aria-label={hz.titel}>
       {laeuft ? (
-        <Antwort satz={laeuft} ton="off" formal={formal} testid="energiebilanz-laeuft" kennzeichen={[hz.kennzeichen]} />
+        <>
+          {/* Der laufende Zeitraum hat noch keine Zahlen - der Weg des Teils ohne eigenen Zähler (mit der Live-Zeile)
+              und die Abzweige der heutigen Stellung gelten trotzdem. */}
+          <Antwort satz={laeuft} ton="off" formal={formal} testid="energiebilanz-laeuft" kennzeichen={[hz.kennzeichen]} />
+          <RestWegKarte hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />
+          <Ausserhalb ab={hz.abschnitte[hz.abschnitte.length - 1]?.ausserhalb ?? null} />
+        </>
       ) : tag && einzeln ? (
         <>
           <Antwort satz={tag.antwort.satz} ton={tag.antwort.ton} formal={formal} testid="energiebilanz-antwort" kennzeichen={tag.kennzeichen} />
@@ -262,7 +269,7 @@ function Hauptzaehler({
           {hz.abschnitte.map((ab) => (
             <Abschnitt key={ab.key} ab={ab} />
           ))}
-          <RestWeg hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />
+          <RestWegKarte hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />
         </>
       )}
     </article>
@@ -374,6 +381,28 @@ function RestWeg({ hz, darfAnlegen, legtAn, onAnlegen }: { hz: HauptzaehlerBild;
   );
 }
 
+/**
+ * Der Weg des Teils ohne eigenen Zähler, wo keine Bilanz-Karte steht (laufender Zeitraum, Abschnitte nach einem
+ * Stellungswechsel): als Zeile „ohne eigenen Zähler“ wie in der Karte, nur ohne Zahl.
+ */
+function RestWegKarte(props: { hz: HauptzaehlerBild; darfAnlegen: boolean; legtAn: boolean; onAnlegen: (v: VorschlagBild) => void }) {
+  const { hz } = props;
+  if (!hz.restMessstelle && !hz.vorschlag && !hz.live) return null;
+  return (
+    <div className="vp-bil-karte vp-bil-bilanz" data-testid="energiebilanz-restweg">
+      <div className="vp-bil-zeilen">
+        <div className="vp-bil-zeile is-ohne ton-off">
+          <span className="vp-bil-swatch" aria-hidden="true" />
+          <span className="vp-bil-wort">{KARTE_WORT.ohne}</span>
+          <span className="vp-bil-unter">
+            <RestWeg {...props} />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Die Unterzähler nach Menge, mit ihrem Anteil am Ganzen; jede Reihe führt auf ihre Messstelle (AP-13 IP-11). */
 function Unterzaehler({ teile, zeitraum }: { teile: TeilBild[]; zeitraum: string }) {
   if (teile.length === 0) return null;
@@ -444,7 +473,10 @@ function Ausserhalb({ ab }: { ab: AusserhalbBild | null }) {
   if (!ab) return null;
   return (
     <p className="vp-bil-karte vp-bil-hinweis" data-testid="energiebilanz-ausserhalb">
-      <MitKennzeichen teile={ab.teile} />
+      {/* Ein Satz ist EIN Rasterelement der Karte - sonst stünde jedes Kennzeichen-Stück in einer eigenen Zeile. */}
+      <span>
+        <MitKennzeichen teile={ab.teile} />
+      </span>
     </p>
   );
 }
