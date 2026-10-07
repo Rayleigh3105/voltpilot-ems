@@ -14,7 +14,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "herkunft": {
       "type": "string",
@@ -52,6 +52,7 @@
         "zielstand_vorschlag",
         "massnahme_zustand",
         "massnahme_herkunft",
+        "massnahme_art",
         "abweichung_zustand",
         "abweichung_ergebnis",
         "abweichung_eintrag_art",
@@ -64,7 +65,8 @@
         "anstoss_zustand",
         "anstoss_antwort",
         "frist_art",
-        "frist_faellig"
+        "frist_faellig",
+        "kurs_lage"
       ],
       "properties": {
         "energieziel_zustand": {
@@ -100,6 +102,14 @@
           }
         },
         "massnahme_herkunft": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "massnahme_art": {
           "type": "array",
           "minItems": 1,
           "items": {
@@ -210,6 +220,14 @@
             "type": "string",
             "pattern": "^[a-z_]+$"
           }
+        },
+        "kurs_lage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
         }
       }
     },
@@ -228,6 +246,7 @@
         "messgrundlage",
         "ohne_messgrundlage",
         "wirkung_vorlaeufig",
+        "wirkung_ohne_erwartung",
         "wirkung_umsetzungsmonat",
         "wirkung_nicht_bewertbar",
         "wirkung_basis_nach_umsetzung",
@@ -285,6 +304,10 @@
           "minLength": 1
         },
         "wirkung_vorlaeufig": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirkung_ohne_erwartung": {
           "type": "string",
           "minLength": 1
         },
@@ -689,6 +712,66 @@
                     }
                   }
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^K[0-9]$"
+              },
+              "operation": {
+                "const": "kurs"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "zielwert_prozent",
+                  "zielperiode",
+                  "monate"
+                ],
+                "properties": {
+                  "zielwert_prozent": {
+                    "$ref": "#/$defs/dezimal"
+                  },
+                  "zielperiode": {
+                    "type": "string"
+                  },
+                  "monate": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/monat_eingang"
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "$ref": "#/$defs/kurs_ergebnis"
               }
             }
           }
@@ -1319,6 +1402,100 @@
                 "type": "string",
                 "minLength": 1
               }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fehler"
+          ],
+          "properties": {
+            "fehler": {
+              "enum": [
+                "zielperiode_format",
+                "zielperiode_reihenfolge"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "kurs_ergebnis": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "lage",
+            "monate_bewertbar",
+            "monate_offen",
+            "hoechstens",
+            "luecke",
+            "noetig_prozent",
+            "noetig_richtung"
+          ],
+          "properties": {
+            "lage": {
+              "enum": [
+                "auf_kurs",
+                "knapp_dahinter",
+                "nicht_auf_kurs",
+                "noch_keine_aussage"
+              ]
+            },
+            "monate_bewertbar": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "monate_offen": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hoechstens": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "luecke": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "noetig_prozent": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "noetig_richtung": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "enum": [
+                    "mehr",
+                    "weniger",
+                    "gleich"
+                  ]
+                }
+              ]
             }
           }
         },

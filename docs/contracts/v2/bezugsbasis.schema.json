@@ -1465,6 +1465,9 @@
           "items": {
             "$ref": "#/$defs/wert"
           }
+        },
+        "ohne_fassung": {
+          "type": "boolean"
         }
       }
     },

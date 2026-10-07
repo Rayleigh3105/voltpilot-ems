@@ -296,16 +296,22 @@ def vergleich(e):
 
 
 def zeitraum(e):
-    """U5: Σ gemessen ÷ Σ erwartet über die Monate — nie ein Mittel der Monats-Δ; fehlt ein Monat: „x von y Monaten“."""
+    """U5: Σ gemessen ÷ Σ erwartet über die Monate — nie ein Mittel der Monats-Δ; fehlt ein Monat: „x von y Monaten“.
+
+    P4 je Monat: ein Monat ohne geltende Fassung (``ohne_fassung``) zählt nicht mit, weder als Null noch als fehlender
+    Monat; „x von y“ nennt ihn (y = alle Monate des Zeitraums).
+    """
     f = e["fassung"]
-    einzeln = [vergleich({"fassung": f, "basis_beendet": e.get("basis_beendet"), **m}) for m in e["monate"]]
+    einzeln = [vergleich({"fassung": f, "basis_beendet": e.get("basis_beendet"), **m}) for m in e["monate"]
+               if not m.get("ohne_fassung")]
     nutzbar = [x for x in einzeln if x["urteil"] != NA]
     y = e["soll_monate"]
+    mit_fassung = y - sum(1 for m in e["monate"] if m.get("ohne_fassung"))
     if not nutzbar:
-        grund = einzeln[0]["grund"] if einzeln and f is None else "keine_werte"
+        grund = ("basis_beendet" if e.get("basis_beendet") else "basis_fehlt") if f is None else "keine_werte"
         return {**_ergebnis(NA, grund), "monate": f"0 von {y}"}
     g, erw = sum(q(x["gemessen"]) for x in nutzbar), sum(q(x["erwartet"]) for x in nutzbar)
-    unvollstaendig = len(nutzbar) < y or any(x["urteil"] == OHNE for x in nutzbar)
+    unvollstaendig = len(nutzbar) < mit_fassung or any(x["urteil"] == OHNE for x in nutzbar)
     urteil, richtung = _urteil(g, erw, _band(f), unvollstaendig)
     kennzeichen = _basis_kennzeichen(f)
     for x in nutzbar:

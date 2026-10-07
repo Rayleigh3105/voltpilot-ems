@@ -1,0 +1,1301 @@
+/*
+ * MASSNAHMEN - Reiter, Seite und Blätter (Verbessern-Konzept v1, PR 2; Captain-Freigabe 06.10.2026).
+ * Familie Portfolio R4 / Wiedervorlage w1 / Messen m1 / Auswerten a1: die Liste nutzt die Einträge der Wiedervorlage
+ * (`.vp-wv-*`, `.vp-fd`), hier stehen nur die NEUEN Bausteine aus denselben Tokens (keine neue Farbe, kein neuer
+ * Radius, keine neue Schrift):
+ *   .vp-mn-antwort   Antwort zuerst: ein Satz in Navy, darunter die Bedingung leise
+ *   .vp-mn-eintrag   Maßnahmen-Karte (Telefon) bzw. Reihe mit fünf Spalten (ab 760 px Breite der Liste)
+ *   .vp-mn-bringt    Zeile „Was es bringt“: die beobachtete Zahl fett in Navy, das Urteil als Marke
+ *   .vp-mn-stufen    Stufen eines Vorgangs (grün erledigt, Navy der aktuelle Schritt, grau gestrichelt „anders“)
+ *   .vp-mn-k         Kacheln der Wirkung (beobachtet neben erwartet, nie summiert)
+ *   .vp-mn-zuo       Zuordnungs-Reihen „Wofür und woran gemessen“
+ *   .vp-mn-wahl      Antwort-Karten im Blatt (Radio als ganze Karte, mind. 52 px)
+ *   .vp-mn-schritt   „Schritt 2 von 4“ mit schmaler Leiste
+ * Farbe nur mit Bedeutung: grün erledigt bzw. weniger als erwartet, Warnton mehr als erwartet bzw. überfällig, Navy
+ * der nächste Schritt und das Vorgenommene (gestrichelte Linie).
+ */
+
+.vp-mn {
+  gap: var(--vp-c-space-4, 16px);
+}
+
+/* ---------- Kopf ------------------------------------------------------------------- */
+.vp-wv-kopf.vp-mn-kopf {
+  flex-wrap: nowrap;
+}
+.vp-mn-kopf .vp-mn-planen {
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+.vp-mn-planen.vp-mn-planen-lang {
+  display: none;
+}
+
+/* ---------- Antwort zuerst ---------------------------------------------------------- */
+.vp-mn-antwort {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.vp-mn-satz {
+  margin: 0;
+  font: 700 1.0625rem/1.38 var(--vp-c-font);
+  letter-spacing: -0.005em;
+  color: var(--vp-navy, #1e3a5f);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.vp-mn-formal {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-sprung:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+
+/* ---------- Liste: Gruppe und Eintrag --------------------------------------------------- */
+.vp-mn-anzahl {
+  font: inherit;
+}
+.vp-mn-kopfzeile {
+  display: none;
+}
+/* Zwei Klassen: `.vp-wv-eintrag` (Wiedervorlage.css) kann je nach Ladereihenfolge später stehen. */
+.vp-wv-eintrag.vp-mn-eintrag {
+  grid-template-areas:
+    'fd tx chev'
+    'br br br'
+    'fuss fuss fuss';
+}
+.vp-mn-eintrag .vp-mn-bringt {
+  grid-area: br;
+}
+.vp-mn-titel .vp-mn-kz {
+  margin-left: 6px;
+  font: 500 0.72rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-mn-wer-icon {
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-eintrag .vp-wv-wer {
+  gap: 6px;
+}
+.vp-wv-schritt.is-leise {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: 500;
+}
+
+.vp-mn-bringt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-bringt .vp-mn-zahl {
+  font: 700 0.875rem var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy, #1e3a5f);
+  white-space: nowrap;
+}
+.vp-mn-bringt-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vp-mn-bringt .vp-k-marke {
+  align-self: center;
+  white-space: nowrap;
+}
+
+/* Marken der Familie (Kacheln.css trägt .vp-k-marke, die Farben kommen über `.vp-k-farben` an Register, Seite und
+   Blättern). In einer Karte (Raster) steht die Marke so breit wie ihr Wort. */
+.vp-mn-karte > .vp-k-marke {
+  justify-self: start;
+}
+/* Leise mit Rand für „Art statt Mangel“ und „vorläufig“. */
+.vp-k-marke.is-ohne {
+  padding: 1px 8px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  background: transparent;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+
+/* ---------- Stufen eines Vorgangs (§6.11) ------------------------------------------------- */
+.vp-mn-stufen {
+  --n: 3;
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  max-width: 520px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-mn-stufen li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 1px;
+  min-width: 0;
+  padding: 0 3px;
+  text-align: center;
+}
+.vp-mn-stufen li::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--vp-c-border, #e2e8f0);
+}
+.vp-mn-stufen li:first-child::before {
+  display: none;
+}
+.vp-mn-stufen li.is-done::before,
+.vp-mn-stufen li.is-an::before {
+  background: color-mix(in srgb, var(--vp-flow-batt, #16a34a) 55%, var(--vp-c-border, #e2e8f0));
+}
+.vp-mn-punkt {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #cbd5e1;
+  border-radius: 50%;
+  background: var(--vp-c-card, #fff);
+  color: #fff;
+}
+.vp-mn-stufen li.is-done .vp-mn-punkt {
+  border-color: var(--vp-flow-batt, #16a34a);
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-mn-stufen li.is-an .vp-mn-punkt {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-action, #2c5282) 16%, transparent);
+}
+.vp-mn-stufen li.is-an .vp-mn-punkt::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-action, #2c5282);
+}
+.vp-mn-stufen li.is-aus .vp-mn-punkt {
+  border-style: dashed;
+}
+.vp-mn-stufen b {
+  margin-top: 4px;
+  font: 600 0.75rem/1.25 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-stufen li.is-offen b,
+.vp-mn-stufen li.is-aus b {
+  font-weight: 500;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-stufen small {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-stufen li.is-an small {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Seite einer Maßnahme ------------------------------------------------------- */
+.vp-mn-seite {
+  container: vp-mn-seite / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+.vp-mn-pkopf {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.vp-mn-pkopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-mn-pkopf h1 {
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+.vp-mn-pkopf h1 .vp-mn-kz {
+  margin-left: 7px;
+  font: 500 0.875rem var(--vp-c-font);
+  letter-spacing: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-mn-meta {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-gross {
+  width: 100%;
+}
+.vp-mn-spalten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+.vp-mn-spalte {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+/* Feste Spur statt `auto`: eine breite Tabelle in „Werte je Monat“ scrollt in ihrem Rahmen, nie die Seite. */
+.vp-mn-karte {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-mn-karte .vp-wv-blockkopf h2 {
+  overflow-wrap: normal;
+  hyphens: manual;
+}
+.vp-mn-leise {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-sprung {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  text-decoration: none;
+  cursor: pointer;
+}
+.vp-mn-zitat {
+  margin: 0;
+  padding: 2px 0 2px 11px;
+  border-left: 3px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-mn-zitat small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-hinweis > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-action, #2c5282);
+}
+.vp-mn-hinweis.is-warn > svg {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mn-hinweis b {
+  font-weight: 600;
+}
+
+/* Kacheln: zwei am Telefon, drei am Rechner (Familie Kacheln.css). */
+.vp-mn-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+.vp-mn-k {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 18px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-mn-k-titel {
+  font: 700 0.9rem/1.2 var(--vp-font-heading);
+  color: var(--vp-c-fg, #1e293b);
+  hyphens: auto;
+}
+.vp-mn-k-wert {
+  font: 800 1.5rem/1.1 var(--vp-font-heading);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-mn-k-wert small {
+  margin-left: 3px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-mn-k-unter {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Zuordnungs-Reihen „Wofür und woran gemessen“. */
+.vp-mn-zuo {
+  display: grid;
+  margin: 0;
+}
+.vp-mn-zr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-mn-zr:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+.vp-mn-zr dt {
+  grid-column: 1;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-zr dd {
+  grid-column: 1;
+  margin: 0;
+  min-width: 0;
+}
+.vp-mn-zr .vp-mn-w {
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-mn-zr .vp-mn-n {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-zr .vp-mn-a {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+.vp-mn-details {
+  min-width: 0;
+  margin-top: 4px;
+}
+.vp-mn-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  list-style: none;
+  cursor: pointer;
+}
+.vp-mn-details summary::-webkit-details-marker {
+  display: none;
+}
+.vp-mn-details pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-muted, #e9eff8);
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Verlauf als Datumsblöcke, neutral (grün bleibt „erledigt“ in den Listen vorbehalten). */
+.vp-mn-verlauf {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-mn-verlauf > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-mn-verlauf > li:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+.vp-mn-verlauf-text {
+  display: grid;
+  gap: 2px;
+  align-self: center;
+  min-width: 0;
+}
+.vp-mn-verlauf-text b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-verlauf-text span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Wirkungsgrafik: Abweichung je Monat (Auswerten a1) ------------------------------------- */
+.vp-mn-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 10px);
+  background: var(--vp-c-bg, #f8fafc);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-info b {
+  font: 700 0.875rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-info .vp-mn-w {
+  font: 700 0.875rem var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy, #1e3a5f);
+  white-space: nowrap;
+}
+.vp-mn-info .vp-mn-u {
+  flex-basis: 100%;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-info .vp-mn-u.is-ok {
+  color: var(--vp-k-batt, #166534);
+}
+.vp-mn-info .vp-mn-u.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mn-graf {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 6px;
+  margin: 4px 0 2px;
+}
+.vp-mn-graf-y {
+  position: relative;
+  align-self: stretch;
+  min-width: 34px;
+}
+.vp-mn-graf-y span {
+  position: absolute;
+  right: 0;
+  font: 500 10px/1 var(--vp-c-font);
+  color: #64748b;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+.vp-mn-graf-y span.is-wort {
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.vp-mn-graf-p {
+  position: relative;
+  min-width: 0;
+}
+.vp-mn-graf-p > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.vp-mn-graf-p button {
+  cursor: pointer;
+}
+.vp-mn-graf-x {
+  grid-column: 2;
+  display: grid;
+  margin-top: 5px;
+}
+.vp-mn-graf-x > span {
+  min-width: 0;
+  font: 500 9.5px/1.2 var(--vp-c-font);
+  color: #64748b;
+  text-align: center;
+  white-space: nowrap;
+}
+.vp-mn-graf-x > span.is-sel {
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-mn-graf-x > span.is-spaeter {
+  color: #cbd5e1;
+}
+.vp-mn-graf-x small {
+  display: block;
+  font-size: 9px;
+}
+.vp-mn-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-legende span {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.vp-mn-legende i {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+}
+.vp-mn-legende i.is-strich {
+  background: transparent;
+  border: 1px dashed #94a3b8;
+}
+.vp-mn-legende i.is-linie {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed var(--vp-chart-plan, #1e3a5f);
+  border-radius: 0;
+}
+.vp-mn-fazit {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-fazit b {
+  font-weight: 600;
+}
+.vp-mn-werte table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.vp-mn-werte th,
+.vp-mn-werte td {
+  padding: 7px 6px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  text-align: left;
+  vertical-align: top;
+}
+.vp-mn-werte thead th {
+  border-top: 0;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-werte .is-zahl {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-mn-werte td[data-testid='urteil'] {
+  white-space: nowrap;
+}
+.vp-mn-werte tr.is-aus td,
+.vp-mn-werte tr.is-aus th {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-werte-rahmen {
+  display: none;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.vp-mn-werte-liste {
+  display: grid;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-mn-werte-liste li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.vp-mn-werte-liste b {
+  font-weight: 600;
+}
+.vp-mn-wl-prozent,
+.vp-mn-wl-wort {
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-mn-wl-prozent {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.vp-mn-wl-werte,
+.vp-mn-wl-wort,
+.vp-mn-wl-roh {
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+/* Reihe: Monat | Prozent · darunter gemessen und erwartet über die ganze Breite · Urteil | rohe Kennzahl. */
+.vp-mn-wl-werte {
+  grid-column: 1 / -1;
+}
+.vp-mn-wl-wort {
+  grid-column: 1;
+  text-align: left;
+}
+.vp-mn-wl-roh {
+  grid-column: 2;
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-mn-wl-wort,
+.vp-mn-wl-roh {
+  font-size: 0.75rem;
+}
+.vp-mn-werte-liste li.is-aus {
+  color: var(--vp-c-muted-fg, #475569);
+}
+@container vp-mn-seite (min-width: 560px) {
+  .vp-mn-werte-liste {
+    display: none;
+  }
+  .vp-mn-werte-rahmen {
+    display: block;
+  }
+}
+
+/* ---------- Blätter: Antwort-Karten, Schritt-Anzeige, Schnellwahl, Zusammenfassung -------------------- */
+.vp-mn-blatt {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.vp-mn-unter {
+  margin: -4px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-frage {
+  margin: 0;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-wahl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.vp-mn-wahl legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-wo {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 11px;
+  row-gap: 2px;
+  align-items: start;
+  min-height: 52px;
+  padding: 12px 13px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+}
+.vp-mn-wo input {
+  grid-row: 1 / span 2;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  border: 2px solid #858d96;
+  border-radius: 50%;
+  background: #fff;
+  appearance: none;
+  cursor: pointer;
+}
+.vp-mn-wo input:checked {
+  border: 6px solid var(--vp-action, #2c5282);
+}
+.vp-mn-wo input:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-mn-wo:has(input:checked) {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(149, 185, 255, 0.15);
+}
+.vp-mn-wo b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-wo span {
+  grid-column: 2;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-schritt {
+  display: grid;
+  gap: 5px;
+}
+.vp-mn-schritt-zeile {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font: 600 0.72rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-schritt-zeile b {
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-schritt-leiste {
+  --n: 4;
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: 4px;
+}
+.vp-mn-schritt-leiste i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vp-flow-base, #e3e9f1);
+}
+.vp-mn-schritt-leiste i.is-an {
+  background: var(--vp-action, #2c5282);
+}
+.vp-mn-schnell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-mn-schnell button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+  font: 600 0.8125rem var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-mn-schnell button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 12%, var(--vp-c-card, #fff));
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-mn-schnell button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-mn-danach {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-bg, #f8fafc);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-danach > span:first-child {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-danach b {
+  font-weight: 600;
+}
+.vp-mn-feld {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.vp-mn-feld label,
+.vp-mn-feld .vp-mn-frage {
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-feld textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 74px;
+  padding: 11px 14px;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: 500 0.9375rem/1.45 var(--vp-c-font);
+  resize: vertical;
+}
+.vp-mn-feld textarea:focus {
+  outline: none;
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(149, 185, 255, 0.15);
+}
+.vp-mn-feld textarea[aria-invalid='true'] {
+  border-color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mn-hilfe {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-fehler {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mn-prozent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.vp-mn-prozent-feld {
+  position: relative;
+  flex: 1 1 200px;
+  max-width: 260px;
+}
+.vp-mn-prozent-feld input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 150px 0 14px;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: 600 1rem var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+}
+.vp-mn-prozent-feld input:focus {
+  outline: none;
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(149, 185, 255, 0.15);
+}
+.vp-mn-prozent-feld input:disabled {
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-prozent-feld span {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.vp-mn-pruef {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-bg, #f8fafc);
+}
+.vp-mn-pruef h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 700 0.875rem var(--vp-c-font);
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-mn-pz {
+  display: grid;
+  margin: 0;
+}
+.vp-mn-pz > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 10px;
+  align-items: center;
+  padding: 9px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-mn-pz > div:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.vp-mn-pz dt {
+  grid-column: 1;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-pz dd {
+  grid-column: 1;
+  margin: 0;
+  min-width: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-mn-pz dd small {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-mn-pz .vp-mn-sprung {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.vp-mn-teil {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.vp-mn-teil-titel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 700 0.875rem var(--vp-c-font);
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-mn-nr {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vp-navy, #1e3a5f);
+  color: #fff;
+  font: 700 0.6875rem var(--vp-c-font);
+}
+.vp-mn-planer {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.vp-mn-planer-teile {
+  display: grid;
+  min-width: 0;
+}
+.vp-mn-planer-teile > .vp-mn-teil + .vp-mn-teil {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-mn-planer-rechts {
+  display: none;
+}
+
+/* Am Telefon zeigt der Planer je Schritt nur seinen Teil. */
+@media (max-width: 720px) {
+  .vp-mn-planer[data-schritt] .vp-mn-teil:not(.is-aktiv) {
+    display: none;
+  }
+  .vp-mn-planer-teile > .vp-mn-teil + .vp-mn-teil {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  /* Wie im Konzept (§6.9, Schritt 2): Feld voll breit, darunter der Hinweis, dann „Weiß ich noch nicht“. */
+  .vp-mn-feld > .vp-mn-prozent {
+    display: contents;
+  }
+  .vp-mn-prozent-feld {
+    max-width: none;
+    order: 1;
+  }
+  .vp-mn-feld > .vp-mn-prozent ~ p {
+    order: 2;
+  }
+  .vp-mn-feld > .vp-mn-prozent > .vp-mn-schnell {
+    order: 3;
+  }
+  .vp-mn-feld > label {
+    order: 0;
+  }
+  /* Die Herkunft steht nur im ersten Schritt; danach trägt die Zeile den Titel der Maßnahme. */
+  .vp-mn-blatt:not([data-schritt='1']) > .vp-mn-unter[data-testid='massnahme-herkunft-vorbelegt'] {
+    display: none;
+  }
+  /* Am Telefon trägt der Titel des Blatts die Frage des Schritts (Konzept §6.9): keine zweite Überschrift. */
+  .vp-mn-teil-titel {
+    display: none;
+  }
+}
+@media (min-width: 721px) {
+  /* Am Rechner steht die Frage als Überschrift des Teils; die gleichlautende Beschriftung nur für Screenreader. */
+  .vp-mn-blatt .vp-mn-label-doppelt {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* Im Blatt mit zwei Klassen: `.vp-mn-planer-knoepfe` (weiter unten) setzt sonst `display: grid` zurück. */
+  .vp-mn-schritt,
+  .vp-mn-nur-telefon,
+  .vp-mn-blatt .vp-mn-nur-telefon {
+    display: none;
+  }
+  .vp-mn-planer {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .vp-mn-planer-rechts {
+    display: grid;
+    position: sticky;
+    top: 0;
+  }
+  .vp-mn-planer .vp-mn-teil.is-pruefen {
+    display: none;
+  }
+  .vp-mn-wahl.is-quer {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+/* ---------- Ab 760 px Breite: Reihen statt Karten, zwei Spalten auf der Seite ------------------- */
+@container vp-wv (min-width: 760px) {
+  .vp-mn-planen.vp-mn-planen-kurz {
+    display: none;
+  }
+  .vp-mn-planen.vp-mn-planen-lang {
+    display: inline-flex;
+  }
+  .vp-mn-nur-telefon {
+    display: none;
+  }
+  .vp-mn-kopfzeile {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1.5fr) minmax(0, 1.15fr) 150px 132px;
+    gap: 16px;
+    padding: 0 0 8px;
+    border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+    font: 700 11px var(--vp-c-font);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--vp-c-muted-fg, #475569);
+  }
+  .vp-mn-kopfzeile > :last-child {
+    text-align: right;
+  }
+  .vp-wv-eintrag.vp-mn-eintrag {
+    grid-template-columns: 64px minmax(0, 1.5fr) minmax(0, 1.15fr) 150px 132px;
+    grid-template-areas: 'fd tx br wer schritt';
+    min-height: 60px;
+  }
+  .vp-mn-eintrag .vp-mn-bringt {
+    display: grid;
+    justify-items: start;
+    align-self: center;
+    gap: 3px;
+  }
+  .vp-mn-eintrag .vp-wv-wer {
+    display: block;
+  }
+  .vp-mn-eintrag .vp-mn-wer-icon {
+    display: none;
+  }
+  .vp-mn-eintrag .vp-wv-text {
+    align-self: center;
+  }
+}
+
+/* Die Anstöße (gemeinsam mit der Energieziel-Seite) stehen hier in der Kartenfamilie der Seite. */
+.vp-mn-spalte > .vp-ez-karte {
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--vp-radius-lg, 24px);
+}
+.vp-mn-spalte > .vp-ez-karte > h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-mn-spalte > .vp-ez-karte .vp-ez-verlauf {
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+/* Am Telefon eine Spalte in der Reihenfolge des Konzepts (§6.6): Antwort, Kacheln, Urteil, Wirkung, Herkunft,
+   Wofür und woran gemessen, Verlauf; am Rechner links Antwort und Wirkung, rechts Urteil, Herkunft, Wofür. */
+@container vp-mn-seite (max-width: 899px) {
+  .vp-mn-spalte {
+    display: contents;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-urteil {
+    order: 1;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-wirkung,
+  .vp-mn-spalten > .vp-mn-spalte > .vp-ez-karte {
+    order: 2;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-woher {
+    order: 3;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-wofuer {
+    order: 4;
+  }
+  .vp-mn-spalten > .vp-mn-spalte > .is-verlauf {
+    order: 5;
+  }
+}
+/* Am Telefon zwei Kacheln wie im Konzept: „Vorher“ steht unter „Wofür und woran gemessen“. */
+@container vp-mn-seite (max-width: 559px) {
+  .vp-mn-kacheln > .vp-mn-k:nth-child(3) {
+    display: none;
+  }
+}
+@container vp-mn-seite (min-width: 560px) {
+  .vp-mn-kacheln {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container vp-mn-seite (min-width: 900px) {
+  .vp-mn-spalten {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .vp-mn-gross {
+    width: auto;
+    justify-self: start;
+  }
+}
+
+@media (hover: hover) {
+  .vp-mn-sprung:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+/* Die Knöpfe des Planers: Hauptknopf zuerst, darunter leise „Zurück“ bzw. „Abbrechen“. */
+.vp-mn-planer-knoepfe {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* Die Tasten der Grafik: je Monat eine unsichtbare Fläche über der Säule (Infozeile statt Tooltip). */
+.vp-mn-graf-tasten {
+  position: absolute;
+  inset: 0;
+  display: grid;
+}
+.vp-mn-graf-tasten button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.vp-mn-graf-tasten button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: -2px;
+}
+.vp-mn-satz.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-mn-grafik {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-mn-text.vp-mn-w b {
+  font: 700 0.9375rem var(--vp-c-font);
+  color: var(--vp-navy, #1e3a5f);
+}
