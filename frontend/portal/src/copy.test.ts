@@ -163,8 +163,23 @@ import {
   kennzahlWertVersionenAntwort,
 } from './test/kennzahlWerteFixtures';
 import { HERKUNFT_WORT as MASSNAHME_HERKUNFT_WORT } from './massnahmen';
-import { ERKLAERUNG_WIRKSAMKEIT, NORMWORT_FESTSTELLUNG, NORMWORT_WIRKSAMKEIT, erklaerungFeststellung } from './auditBild';
+import {
+  ERKLAERUNG_WIRKSAMKEIT,
+  NORMWORT_FESTSTELLUNG,
+  NORMWORT_WIRKSAMKEIT,
+  auditStatus,
+  auditorenZeile,
+  auditsKurzzeile,
+  auditsStatus,
+  erklaerungFeststellung,
+  feststellungHerkunft,
+  feststellungStatus,
+} from './auditBild';
 import { ERKLAER_WOERTER_HOECHSTENS, NORMWORT, erklaerWoerter, erklaerZeilen, woerter } from './components/nachweisen/erklaerung';
+import * as ND from './nachweisDokumente';
+import { mbKurzzeile, mbStatus } from './managementbewertungBild';
+import { aufgabenStatus } from './aufgabenBild';
+import type { EnergiemanagementDokument, Feststellung, FeststellungStand, InternesAudit } from './api';
 import { BEGRIFFE, fachwortZeile, NORMWOERTER_IM_FACHWORT, type BegriffSchluessel } from './begriffe';
 import {
   UEMS_AUF_KURS,
@@ -4056,6 +4071,29 @@ describe('Konzept Nachweisen n1 · Wörter (PR 7, Entscheide 1, 18, 25)', () => 
   ];
   const roheWerte = (text: string) => ROHE_WERTE.filter((re) => re.test(text));
 
+  /**
+   * N-7.2 (Review r2, SOLLTE): `isKundentext` verwirft genau die Treffer, auf die es hier ankommt - `nicht_wesentlich`
+   * und `2028-04/2029-03` haben weder ein Leerzeichen noch einen großen Anfangsbuchstaben, gelten der allgemeinen
+   * Regel nach also nicht als Kundentext. Darum lesen wir die reinen Bild-Module roh: jeder Treffer ist verboten,
+   * außer an den zwei Stellen, die keinen Anzeige-Text bauen - ein Vergleich (`=== '…'`/`!== '…'`) und ein
+   * unquotiertes Wörterbuch-Schlüsselwort (`wort: '…'`, siehe `ERGEBNIS_WORT` & Co. in `auditBild.ts`).
+   */
+  const NACHWEISEN_REINE_MODULE = ['auditBild.ts', 'nachweisDokumente.ts', 'nachweisBerichte.ts', 'managementbewertungBild.ts', 'aufgabenBild.ts'];
+  const roheWerteImCode = (code: string) => {
+    const funde: { re: RegExp; text: string }[] = [];
+    for (const re of ROHE_WERTE) {
+      const global = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+      for (const m of code.matchAll(global)) {
+        const vor = code.slice(Math.max(0, m.index - 12), m.index);
+        const nach = code.slice(m.index + m[0].length, m.index + m[0].length + 3);
+        if (/(?:===|!==)\s*['"]?$/u.test(vor)) continue; // Vergleich, kein Anzeige-Text
+        if (/^['"]?\s*:/u.test(nach)) continue; // Wörterbuch-Schlüssel, kein Wert
+        funde.push({ re, text: m[0] });
+      }
+    }
+    return funde;
+  };
+
   it('Befund 8: kein roher Vokabular-Schlüssel und kein roher ISO-Zeitraum auf einer Nachweisen-Fläche', () => {
     for (const probe of ['nicht_wesentlich', 'Wirksamkeit: nicht_wirksam', 'ohne_massnahme', 'zurueckgenommen', 'eingeloest', '2028-04/2029-03']) {
       expect(roheWerte(probe), probe).not.toEqual([]);
@@ -4071,32 +4109,147 @@ describe('Konzept Nachweisen n1 · Wörter (PR 7, Entscheide 1, 18, 25)', () => 
         return texte.flatMap((text) => roheWerte(text).map((re) => `${datei}: ${re} in „${text}“`));
       });
     expect(funde, funde.join('\n')).toEqual([]);
+
+    // Mechanik: ein Vergleich und ein Wörterbuch-Schlüssel bleiben unberührt, ein Anzeige-Text schlägt an.
+    expect(roheWerteImCode("if (f.ergebnis === 'zurueckgenommen') return { text: 'zurückgenommen' };")).toEqual([]);
+    expect(roheWerteImCode("nicht_wirksam: 'nicht wirksam', zurueckgenommen: 'zurückgenommen',")).toEqual([]);
+    expect(roheWerteImCode("text: 'nicht_wesentlich'")).toHaveLength(1);
+    expect(roheWerteImCode("text: 'Wirksamkeit: nicht_wirksam'")).toHaveLength(1);
+    expect(roheWerteImCode("sub: '2028-04/2029-03'")).toHaveLength(1);
+
+    const codeFunde = NACHWEISEN_REINE_MODULE.flatMap((datei) =>
+      roheWerteImCode(stripComments(readFileSync(join(SRC, datei), 'utf8'))).map(({ re, text }) => `${datei}: ${re} im Code „${text}“`),
+    );
+    expect(codeFunde, codeFunde.join('\n')).toEqual([]);
   });
 
   /**
-   * Report, Runde 2, §0.4/PR 7: Kopf- und Status-Zeilen bleiben unter dem Titel leise - höchstens acht Wörter, auch
-   * mit dem Fakt dahinter. Katalog der kurzen Sätze, Wort für Wort aus den reinen Modulen (`auditBild.ts`,
-   * `managementbewertungBild.ts`, `nachweisBerichte.ts`, `nachweisDokumente.ts`, `aufgabenBild.ts`); die Fälle der
-   * Verzweigungen stehen auch einzeln in den Fällen der jeweiligen Seite (`*.test.tsx`).
+   * N-7.3 (Review r2, SOLLTE): `nachweisenFachwortAusnahme` kennt nur Datei und Text - sie ließe das Normwort auch in
+   * einem ANDEREN Feld von `auditBild.ts` durch (M6) oder den Bezeichner `NORMWORT_…` auf einer fremden Fläche
+   * durchreichen (M4). Zwei engere Proben schließen das, ohne die generischen Wächter anzufassen: Der Text steht in
+   * `auditBild.ts` nur in seiner eigenen `export const NORMWORT_… = '…'`-Zeile; der Bezeichner wird außerhalb von
+   * `auditBild.ts` nirgends referenziert (Kundenflächen - Testdateien bringen ihre eigenen Festwerte mit).
    */
-  const KOPF_UND_STATUS_ZEILEN = [
-    'keine Feststellung offen', '2 Feststellungen offen', '3 überfällig', // auditsStatus
-    'abgeschlossen', 'durchgeführt noch offen', 'abgesagt', 'geplant am 22.01.2029', // auditStatus
-    'behoben und wirksam', 'ohne Maßnahme abgeschlossen', 'zurückgenommen', 'Abschluss ohne Maßnahme beantragt', 'überfällig seit 22.04.2029', 'offen bis 22.04.2029', // feststellungStatus
-    'Stand 1 gilt', 'Entwurf noch nicht freigegeben', // mbStatus
-    'jede Aufgabe hat eine Person', '3 Aufgaben ohne Person', // aufgabenStatus
-    '1 gilt', '5 gelten', 'Prüfungen überfällig 5 gelten', 'Entwürfe warten 5 gelten', // listenStatus (Dokumente)
-    'Prüfung seit 01.03.2028 gilt', 'Fassung 1 wartet auf Freigabe', 'Fassung 1 wartet auf Bestätigung', 'noch keine Fassung', 'aufgehoben seit 12.02.2029', // seitenStatus (Dokument)
-    'Daten geändert Stand 1 gilt noch', 'Stand 2 gilt Daten unverändert', 'Stand 1 überholt', 'archiviert Stand 2 bleibt lesbar', // seitenStatus (Bericht)
-    'Claudia Berger (Controlling)', // auditorenZeile
-    'Sitzung 12.02.2029 Robert Falk', 'Entwurf Sitzung 12.02.2029', // mbKurzzeile
-    'Feststellung Audit 2029', 'Feststellung von außen', 'Feststellung Managementbewertung', 'Feststellung eigene', // feststellungHerkunft
-    'Fassung 2', 'Fassung 1 Verweis', // nachweisDokumente.kurzzeile
-    'Selbstprüfung, jährlich', 'Selbstprüfung, alle 2 Monate', // auditsKurzzeile
-  ];
-  it('Kopf- und Status-Zeilen von Nachweisen bleiben unter acht Wörtern', () => {
-    for (const zeile of KOPF_UND_STATUS_ZEILEN) expect(woerter(zeile), zeile).toBeLessThanOrEqual(8);
-    // Mechanik: ein Satz mit neun Wörtern fiele durch.
+  it('N-7.3: die Normwort-Ausnahme ist eng - nur die eigene Deklaration, der Bezeichner nirgends sonst', () => {
+    const normwortAusserhalbDeklaration = (code: string, konstante: string, wort: string) => {
+      const funde: string[] = [];
+      const re = new RegExp(wort.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu');
+      const deklaration = new RegExp(`${konstante}\\s*=\\s*['"]$`, 'u');
+      for (const m of code.matchAll(re)) {
+        const vor = code.slice(Math.max(0, m.index - 40), m.index);
+        if (!deklaration.test(vor)) funde.push(`„${wort}“ außerhalb seiner Deklaration`);
+      }
+      return funde;
+    };
+    // Mechanik: die eigene Deklaration bleibt unberührt, ein zweites Vorkommen (M6: als Status-Text) schlägt an.
+    expect(normwortAusserhalbDeklaration("export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität';", 'NORMWORT_FESTSTELLUNG', 'Nichtkonformität')).toEqual([]);
+    expect(
+      normwortAusserhalbDeklaration("export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität'; const s = { text: 'Nichtkonformität' };", 'NORMWORT_FESTSTELLUNG', 'Nichtkonformität'),
+    ).toHaveLength(1);
+
+    const auditBildCode = stripComments(readFileSync(join(SRC, 'auditBild.ts'), 'utf8'));
+    const texteFunde = [
+      ...normwortAusserhalbDeklaration(auditBildCode, 'NORMWORT_FESTSTELLUNG', NORMWORT_FESTSTELLUNG),
+      ...normwortAusserhalbDeklaration(auditBildCode, 'NORMWORT_WIRKSAMKEIT', NORMWORT_WIRKSAMKEIT),
+    ];
+    expect(texteFunde, texteFunde.join('\n')).toEqual([]);
+
+    // Der Bezeichner selbst steht auf keiner Kundenfläche außer seiner eigenen Datei.
+    const bezeichnerFunde = customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei !== 'auditBild.ts')
+      .flatMap((datei) => {
+        const code = readFileSync(join(SRC, datei), 'utf8');
+        return ['NORMWORT_FESTSTELLUNG', 'NORMWORT_WIRKSAMKEIT']
+          .filter((id) => new RegExp(`\\b${id}\\b`, 'u').test(code))
+          .map((id) => `${datei}: ${id}`);
+      });
+    expect(bezeichnerFunde, bezeichnerFunde.join('\n')).toEqual([]);
+  });
+
+  /**
+   * N-7.1 (Review r2, MUSS): „höchstens acht Wörter“ prüft die ECHTEN Status- und Kurzzeilen-Funktionen der reinen
+   * Module (`auditBild.ts`, `managementbewertungBild.ts`, `nachweisBerichte.ts`, `nachweisDokumente.ts`,
+   * `aufgabenBild.ts`) mit eigenen, minimalen Festwerten (`audit`/`feststellung`/`dokument` unten, Muster
+   * `auditBild.test.ts`) - keine getippte Liste mehr: eine Änderung an einer dieser Funktionen, die ihren Satz länger
+   * macht, lässt diesen Fall rot werden. Gezählt wird `text` + `sub` zusammen (die Status-Zeile zeigt beides).
+   */
+  const PERSON_CB = { id: 'cb', name: 'Claudia Berger', funktion: 'Controlling', kuerzel: 'CB', mit_konto: true };
+  const PERSON_RF = { id: 'rf', name: 'Robert Falk', funktion: 'Geschäftsführer', kuerzel: 'RF', mit_konto: true };
+  const WOERTER_EINGETRAGEN = { akteur: { sub: 'IK', name: 'Ines Kaltenbach', rolle: 'energiemanager', art: 'kunde' as const }, am: '2029-01-10T09:00:00+01:00' };
+  const woerterAudit = (over: Partial<InternesAudit> = {}): InternesAudit => ({
+    id: 'au', kennzeichen: 'AU-2029-0001', titel: 'Internes Audit 2029', termin: '2029-01-22',
+    auditoren: [PERSON_CB], unabhaengigkeit: 'gehört nicht zum Energieteam', was: 'Grundlagen', woran: 'Energiepolitik',
+    verantwortlich: { sub: 'IK', name: 'Ines Kaltenbach' }, standort_ids: [], zustand: 'abgeschlossen', durchgefuehrt_am: '2029-01-22',
+    abgesagt_begruendung: null, hinweise: 0, feststellungen: [], abschluss: null, eingetragen: WOERTER_EINGETRAGEN, ...over,
+  });
+  const woerterFeststellung = (over: Partial<Feststellung> = {}): Feststellung => ({
+    id: 'f1', kennzeichen: 'F-2029-0001', quelle: { art: 'internes_audit', audit_id: 'au', kennung: 'AU-2029-0001', wortlaut: null },
+    wortlaut: 'Wer die Bezugsbasen pflegt und freigibt, ist nicht festgelegt.',
+    vorgabe: { dokument_id: null, dokument: null, fassung: null, wortlaut: null },
+    bezug: { standort_id: null, aufgabe: null, dokument_id: null, dokument: null, objekte: [] },
+    festgestellt_von: PERSON_CB, festgestellt_am: '2029-01-22', verantwortlich: { sub: 'JW', name: 'Jonas Wendlinger' }, frist: '2029-04-22',
+    zustand: 'abgeschlossen', lage: { abruf: '2029-04-30', faellig_am: null, tage: null, satz: null, grund: 'abgeschlossen' },
+    ergebnis: 'wirksam', abgeschlossen_am: '2029-04-15', eintraege: 0, massnahmen: [], eingetragen: WOERTER_EINGETRAGEN, ...over,
+  });
+  const woerterDokument = (over: Partial<EnergiemanagementDokument> = {}): EnergiemanagementDokument => ({
+    id: 'd1', kennzeichen: 'D-0001', art: 'energiepolitik', art_wort: 'Energiepolitik', klasse: 'vorgabe', titel: 'Energiepolitik',
+    bezug: { art: 'unternehmen', standort: null }, zustand: 'gueltig', gueltige_fassung: 1,
+    ueberpruefung: { abruf: '2029-04-30', faellig_am: '2030-03-20', basis: '2029-03-20', fassung: 1, tage: -324, satz: 'fällig in 324 Tagen', grund: null },
+    eingetragen: WOERTER_EINGETRAGEN, ueberpruefung_monate: 12, beleg: null,
+    fassungen: [{
+      nr: 1, form: 'wortlaut', wortlaut: 'Wortlaut der Energiepolitik.', verweis: null, anwendungsbereich: null, status: 'freigegeben',
+      begruendung: null, beschluss_kennung: null, pruefsumme: 'sha256:00', vieraugen: false, entschieden_von: PERSON_RF,
+      entschieden_am: '2026-12-15', freigabe_begruendung: null, freigabe: WOERTER_EINGETRAGEN, zweite_person: null,
+    }],
+    eintraege: [], saetze: { kopf: null, ueberpruefung: null, freigabe_gesperrt: null }, verlauf: [], ...over,
+  });
+  /** `text` + `sub` zusammen, wie die Status-Zeile sie zeigt (`NwKopf`/`StatusZeile`). */
+  const statusWoerter = (s: { text: string; sub?: string | null }) => woerter(s.sub ? `${s.text} ${s.sub}` : s.text);
+
+  it('N-7.1: Status- und Kurzzeilen der reinen Nachweisen-Module bleiben unter acht Wörtern', () => {
+    const status: { name: string; ergebnis: { text: string; sub?: string | null } }[] = [
+      { name: 'auditsStatus (keine offen)', ergebnis: auditsStatus([]) },
+      { name: 'auditsStatus (eine offen)', ergebnis: auditsStatus([{ zustand: 'offen', lage: { abruf: '2029-04-30', faellig_am: '2029-05-01', tage: -1, satz: null, grund: null } }]) },
+      { name: 'auditStatus (abgeschlossen)', ergebnis: auditStatus(woerterAudit({ zustand: 'abgeschlossen' })) },
+      { name: 'auditStatus (durchgeführt)', ergebnis: auditStatus(woerterAudit({ zustand: 'durchgefuehrt' })) },
+      { name: 'auditStatus (geplant)', ergebnis: auditStatus(woerterAudit({ zustand: 'geplant' })) },
+      { name: 'feststellungStatus (behoben und wirksam)', ergebnis: feststellungStatus(woerterFeststellung(), []) },
+      { name: 'feststellungStatus (ohne Maßnahme abgeschlossen)', ergebnis: feststellungStatus(woerterFeststellung({ ergebnis: 'ohne_massnahme' }), []) },
+      { name: 'feststellungStatus (überfällig)', ergebnis: feststellungStatus(woerterFeststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-04-22', tage: 8, satz: null, grund: null } }), []) },
+      {
+        name: 'feststellungStatus (beantragt)',
+        ergebnis: feststellungStatus(
+          woerterFeststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-05-01', tage: -1, satz: null, grund: null } }),
+          [{ status: 'beantragt', ergebnis: 'nicht_wirksam', eingetragen: WOERTER_EINGETRAGEN } as Pick<FeststellungStand, 'status' | 'ergebnis' | 'eingetragen'>],
+        ),
+      },
+      { name: 'mbStatus (gilt)', ergebnis: mbStatus({ freigegeben: true, stand_nr: 1 }) },
+      { name: 'mbStatus (Entwurf)', ergebnis: mbStatus({ freigegeben: false, stand_nr: null }) },
+      { name: 'aufgabenStatus (alle besetzt)', ergebnis: aufgabenStatus([{ ohnePerson: false }]) ?? { text: '' } },
+      { name: 'aufgabenStatus (3 ohne Person)', ergebnis: aufgabenStatus([{ ohnePerson: true }, { ohnePerson: true }, { ohnePerson: true }, { ohnePerson: false }]) ?? { text: '' } },
+      { name: 'ND.listenStatus (gelten)', ergebnis: ND.listenStatus({ gelten: 5, ueberfaellig: 0, entwuerfe: 0 }) },
+      { name: 'ND.listenStatus (überfällig)', ergebnis: ND.listenStatus({ gelten: 5, ueberfaellig: 2, entwuerfe: 0 }) },
+      { name: 'ND.seitenStatus (gilt)', ergebnis: ND.seitenStatus(woerterDokument()) },
+      { name: 'ND.seitenStatus (wartet auf Freigabe)', ergebnis: ND.seitenStatus(woerterDokument({ fassungen: [{ ...woerterDokument().fassungen[0], nr: 2, status: 'entwurf' }, woerterDokument().fassungen[0]] })) },
+      { name: 'NB.seitenStatus (gilt)', ergebnis: NB.seitenStatus(detailAm(Date.parse('2029-04-30T09:00:00+01:00')), null) },
+    ];
+    for (const { name, ergebnis } of status) expect(statusWoerter(ergebnis), `${name}: „${ergebnis.text}${ergebnis.sub ? ` ${ergebnis.sub}` : ''}“`).toBeLessThanOrEqual(8);
+
+    const kurzzeilen: { name: string; text: string }[] = [
+      { name: 'auditorenZeile (eine Person)', text: auditorenZeile(woerterAudit()) },
+      { name: 'auditsKurzzeile (jährlich)', text: auditsKurzzeile(12) },
+      { name: 'auditsKurzzeile (alle 18 Monate)', text: auditsKurzzeile(18) },
+      { name: 'mbKurzzeile (freigegeben)', text: mbKurzzeile({ freigegeben: true, sitzung: { tag: '2029-02-12', leitung: { name: 'Robert Falk' } } }) },
+      { name: 'mbKurzzeile (Entwurf)', text: mbKurzzeile({ freigegeben: false, sitzung: null }) },
+      { name: 'feststellungHerkunft (internes Audit)', text: feststellungHerkunft({ quelle: { art: 'internes_audit' } }, woerterAudit()) },
+      { name: 'feststellungHerkunft (Managementbewertung)', text: feststellungHerkunft({ quelle: { art: 'managementbewertung' } }, null) },
+      { name: 'ND.kurzzeile (Fassung 2)', text: ND.kurzzeile(woerterDokument({ gueltige_fassung: 2, fassungen: [{ ...woerterDokument().fassungen[0], nr: 2 }] })) },
+      { name: 'ND.kurzzeile (Entwurf)', text: ND.kurzzeile(woerterDokument({ gueltige_fassung: null, fassungen: [] })) },
+    ];
+    for (const { name, text } of kurzzeilen) expect(woerter(text), `${name}: „${text}“`).toBeLessThanOrEqual(8);
+
+    // Mechanik: der Zähler selbst schlägt bei neun Wörtern an.
     expect(woerter('eins zwei drei vier fünf sechs sieben acht neun')).toBe(9);
   });
 });
