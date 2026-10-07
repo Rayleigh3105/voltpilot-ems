@@ -1776,6 +1776,13 @@ function UnifiedPortal() {
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
               }}
+              // „Zurück zu heute“ aus „Stand am …“: dieselbe Messstelle ohne Tag und ohne dessen Periode.
+              onWerteHeute={() => {
+                const s = route.messstelleId
+                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null })
+                  : null;
+                if (s) springe(s);
+              }}
               onListe={() =>
                 navigate(
                   page === 'standort' && route.standortId

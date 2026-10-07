@@ -108,6 +108,7 @@ export function MessstellenPage({
   onOeffnen,
   onWerteZeitraum,
   onWerteVergleich,
+  onWerteHeute,
   onListe,
   organisation = false,
   reiterOben = false,
@@ -121,6 +122,8 @@ export function MessstellenPage({
   onWerteZeitraum?: (periode: string) => void;
   /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters (`v=` der Adresse). */
   onWerteVergleich?: (v: string | null) => void;
+  /** „Zurück zu heute“ einer aus „Stand am …“ geöffneten Messstelle - der Wirt öffnet sie ohne Tag (Review r4 S4). */
+  onWerteHeute?: () => void;
   /** Der Weg zurück ins Register der Ebene. */
   onListe?: () => void;
   /**
@@ -144,11 +147,6 @@ export function MessstellenPage({
       if (hash) springeUeberHash({ route: parseRoute(hash), hash });
       else onListe();
     };
-    // „Zurück zu heute“ einer aus „Stand am …“ geöffneten Messstelle: dieselbe Seite ohne Tag und ohne dessen Periode.
-    const heute = () => {
-      const hash = mitParameter(mitParameter(window.location.hash, 'stand', null), 'periode', null);
-      springeUeberHash({ route: parseRoute(hash), hash });
-    };
     return (
       <MessstelleSeite
         key={messstelleId}
@@ -158,7 +156,7 @@ export function MessstellenPage({
         onWerteZeitraum={onWerteZeitraum}
         onWerteVergleich={onWerteVergleich}
         onListe={zurueck}
-        onHeute={heute}
+        onHeute={onWerteHeute}
       />
     );
   }
