@@ -22,7 +22,7 @@ import type {
 } from './api';
 import { STARTWERTE } from './energiemanagement';
 import { begruendungFehler, satzText, tagText, verweisKoerper, type Feldfehler, type VerweisEntwurf } from './energiemanagementPortal';
-import { UEMS_FESTSTELLUNG, UEMS_INTERNES_AUDIT, UEMS_MANAGEMENTBEWERTUNG } from './glossar';
+import { UEMS_FESTSTELLUNG, UEMS_MANAGEMENTBEWERTUNG } from './glossar';
 
 // ------------------------------------------------------------------ Wörter
 
@@ -56,7 +56,8 @@ export const STAND_STATUS_WORT: Record<FeststellungStand['status'], string> = {
 export const QUELLE_WAHL: { value: Feststellung['quelle']['art']; label: string }[] = [
   { value: 'eigene', label: 'eigene Feststellung' },
   { value: 'extern', label: 'von außen (etwa eine Behörde oder ein Kunde)' },
-  { value: 'internes_audit', label: `aus einem ${UEMS_INTERNES_AUDIT}` },
+  // Befund B8: „internes Audit“ dekliniert nach „einem“ zu „internen Audit“.
+  { value: 'internes_audit', label: 'aus einem internen Audit' },
 ];
 export const AUDIT_VERLAUF_WORT: Record<string, string> = {
   audit_geplant: 'geplant', audit_geaendert: 'geändert', audit_durchgefuehrt: 'durchgeführt gemeldet', hinweis: 'Hinweis festgehalten',
@@ -262,7 +263,8 @@ export const leereFeststellung = (audit: { id: string; auditorId: string | null;
 /** Erfassen (FS1): Quelle mit genau ihrem Verweis, Wortlaut, Vorgabe (Dokument-Fassung und/oder Wortlaut), Personen. */
 export function feststellungKoerper(e: FeststellungEntwurf): { fehler: Feldfehler } | { koerper: FeststellungErfassen } {
   const fehler: Feldfehler = {};
-  if (e.quelle === 'internes_audit' && !e.auditId) fehler.auditId = `Bitte wählen Sie das ${UEMS_INTERNES_AUDIT}.`;
+  // Befund B8: „internes Audit“ dekliniert nach „das“ zu „interne Audit“.
+  if (e.quelle === 'internes_audit' && !e.auditId) fehler.auditId = 'Bitte wählen Sie das interne Audit.';
   if (e.quelle === 'extern' && leer(e.extern)) fehler.extern = 'Bitte nennen Sie, von wem die Feststellung kommt.';
   if (leer(e.wortlaut)) fehler.wortlaut = 'Bitte beschreiben Sie, was nicht erfüllt ist.';
   const fassung = e.vorgabeFassung ? Number(e.vorgabeFassung) : null;
@@ -327,7 +329,10 @@ export const istKennzeichen = (x: string) => /^(?:AU|F)-\d{4}-\d{4,9}$/.test(x);
 export const ABLEHNUNG: Record<string, string> = {
   audit_nicht_durchgefuehrt: 'Das geht erst, wenn das Audit als durchgeführt gemeldet ist.',
   audit_nicht_geplant: 'Das Audit ist nicht mehr geplant.',
-  audit_unbekannt: `Dieses ${UEMS_INTERNES_AUDIT} gibt es nicht oder Sie dürfen es nicht sehen.`,
+  // Befund B8: „internes Audit“ dekliniert nach „dieses“ zu „interne Audit“.
+  audit_unbekannt: 'Dieses interne Audit gibt es nicht oder Sie dürfen es nicht sehen.',
+  // Befund B9: derselbe Satz wie audit_unbekannt, nicht mehr die rohe Meldung „nicht gefunden“.
+  feststellung_unbekannt: 'Diese Feststellung gibt es nicht oder Sie dürfen sie nicht sehen.',
   auditor_fehlt: 'Bitte wählen Sie, wer prüft.',
   unabhaengigkeit_fehlt: 'Bitte beschreiben Sie, warum die Person unabhängig prüft.',
   bericht_oder_zusammenfassung: 'Bitte halten Sie den Bericht als Verweis fest oder fassen Sie das Ergebnis zusammen.',

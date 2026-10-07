@@ -57,7 +57,8 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
     const laden = A.istKennzeichen(id)
       ? api.energiemanagementFeststellungen().then((l) => {
           const f = l.feststellungen.find((x) => x.kennzeichen === id);
-          if (!f) throw new ApiError(404, 'nicht gefunden', { code: 'nicht_gefunden' });
+          // Befund B9: derselbe Code wie bei AuditSeite (audit_unbekannt), nicht die rohe Meldung „nicht gefunden“.
+          if (!f) throw new ApiError(404, 'nicht gefunden', { code: 'feststellung_unbekannt' });
           return api.energiemanagementFeststellung(f.id);
         })
       : api.energiemanagementFeststellung(id);

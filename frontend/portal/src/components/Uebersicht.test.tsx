@@ -181,7 +181,7 @@ const TIEFER_GRUPPEN: EbenenLeistenKachel[] = [
   { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', ziel: pageRoute('portfolio'), bereiche: ['uebersicht'], frage: 'Läuft alles?' },
   { key: 'messen', label: 'Messen', icon: 'activity', ziel: pageRoute('portfolio-messstellen'), bereiche: ['messstellen'], frage: 'Wird alles erfasst?' },
   { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', ziel: pageRoute('portfolio-kennzahlen'), bereiche: ['kennzahlen'], frage: 'Wo geht die Energie hin, wird es besser?' },
-  { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', ziel: pageRoute('portfolio-energiemanagement'), bereiche: ['energiemanagement'], frage: 'Können wir es belegen?' },
+  { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', ziel: pageRoute('portfolio-energiemanagement'), bereiche: ['energiemanagement'], frage: 'Können wir belegen, was wir tun?' },
 ];
 
 describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {

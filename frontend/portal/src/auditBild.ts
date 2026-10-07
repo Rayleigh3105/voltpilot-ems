@@ -431,16 +431,21 @@ export function erklaerungAudit(audits: InternesAudit[]): Erklaerung {
 }
 
 /**
- * „Was ist eine Feststellung?“ - das Normwort fehlt hier, solange der Sprach-Wächter die Ausnahme für `fachwort`
- * (Entscheid 18) noch nicht kennt: es enthält ein Wort, das der Wächter auf jeder Fläche sperrt.
+ * Entscheid 18, PR 7: das Normwort einer Feststellung - nur hier, in der letzten Zeile von „Was ist …?“, nie sonst auf
+ * einer Fläche (dieselbe Ausnahme vom Sprach-Wächter wie Verbessern Entscheid 14, `copy.test.ts`).
  */
+export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität';
+/** Entscheid 18, PR 7: das Normwort der Wirksamkeitsprüfung - ebenso nur in der letzten Zeile des Erklär-Blatts. */
+export const NORMWORT_WIRKSAMKEIT = 'Wirksamkeit der Korrekturmaßnahme';
+
+/** „Was ist eine Feststellung?“ */
 export function erklaerungFeststellung(f: Pick<Feststellung, 'kennzeichen' | 'festgestellt_am'> | null): Erklaerung {
   return {
     frage: 'Was ist eine Feststellung?',
     klartext: 'Etwas läuft nicht so, wie Sie es sich vorgenommen haben; es wird behoben, und eine Person prüft, ob es wirkt.',
     beiIhnen: f ? `${f.kennzeichen}, festgestellt am ${tagText(f.festgestellt_am)}.` : null,
     nichtVerwechseln: 'Keine Abweichung im Verbrauch - die gehört zu Verbessern.',
-    fachwort: null,
+    fachwort: NORMWORT_FESTSTELLUNG,
   };
 }
 
@@ -449,6 +454,5 @@ export const ERKLAERUNG_WIRKSAMKEIT: Erklaerung = {
   frage: 'Wann lässt sich die Wirksamkeit prüfen?',
   klartext: 'Sobald jede Maßnahme umgesetzt, bewertet oder verworfen ist. Dann hält eine Person fest, ob behoben ist, was festgestellt wurde.',
   nichtVerwechseln: 'Nicht die Wirkung einer Maßnahme auf den Verbrauch.',
-  // Das Normwort fehlt wie bei der Feststellung, bis der Wächter die Ausnahme für `fachwort` kennt (Entscheid 18, PR 7).
-  fachwort: null,
+  fachwort: NORMWORT_WIRKSAMKEIT,
 };
