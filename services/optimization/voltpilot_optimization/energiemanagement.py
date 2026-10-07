@@ -53,6 +53,8 @@ VOKABULARE = dict(
     teil=["energiepolitik", "anwendungsbereich", "rechtliche_anforderungen", "kontext", "risiken_chancen", "aufgaben",
           "kompetenz", "kommunikation", "betrieb", "auslegung", "beschaffung", "energetische_bewertung",
           "bezugsbasen", "massnahmen", "interne_audits", "feststellungen", "managementbewertung", "berichte"],
+    # Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+    mappe_anlass=["audit_von_aussen", "anfrage_behoerde", "eigene_ablage"],
 )
 DOKUMENT_ART_KLASSE = dict(energiepolitik="vorgabe", anwendungsbereich="vorgabe", kontext="vorgabe",
                            rechtliche_anforderungen="vorgabe", risiken_chancen="vorgabe", bestellung="vorgabe",
@@ -106,6 +108,9 @@ WOERTER = dict(
                       energieteam="Energieteam", bezugsbasen="Bezugsbasen", energieziele_massnahmen="Ziele und Maßnahmen",
                       bewertung_messplanung="Energetische Bewertung", interne_audits="Interne Audits",
                       managementbewertung="Managementbewertung", dokumente="Dokumente", weitere="Weitere Aufgabe"),
+    # Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+    mappe_anlass=dict(audit_von_aussen="Audit von außen", anfrage_behoerde="Anfrage einer Behörde",
+                      eigene_ablage="Eigene Ablage"),
 )
 VERANTWORTUNG = ("Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, "
                  "wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.")

@@ -12,6 +12,7 @@ import * as E from '../../energiemanagementPortal';
 import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_WIEDERVORLAGE } from '../../glossar';
 import { energiemanagementRoute, type Route } from '../../nav';
 import { useRollen } from '../../rollen';
+import { routenHeute } from '../../routenUhr';
 import {
   DEMNAECHST,
   nachweisStand,
@@ -34,6 +35,7 @@ import { ErklaerKnopf } from './ErklaerKnopf';
 import { NACHWEIS, TEIL, nachweisBeiIhnen, teilBeiIhnen } from './nachweisBegriffe';
 import { NwKopf } from './NwKopf';
 import { NwZeichen, NwZeichenLegende, ZaehlerChip, type ZeichenArt } from './NwZeichen';
+import { PruefungVonAussen } from './PruefungVonAussen';
 import { FristenBlatt, GruppenBlatt, TeilBlatt } from './UeberblickBlaetter';
 import './Nachweisen.css';
 
@@ -286,6 +288,13 @@ export function Ueberblick({
               </ul>
             )}
           </section>
+          {/* PR 6 (Entscheide 7 und 8): Unterlagen zusammenstellen und Einsicht geben, nach „Demnächst“. */}
+          <PruefungVonAussen
+            heute={daten?.verzeichnis.stichtag.slice(0, 10) ?? routenHeute()}
+            verzeichnis={daten?.verzeichnis ?? null}
+            offen={stand.teile.filter((t) => t.zustand === 'offen').map((t) => t.teil)}
+            onNavigate={onNavigate}
+          />
           <section ref={teileRef} className="vp-nw-karte vp-nw-ub-teile" aria-labelledby="vp-nw-teile" data-testid="ueberblick-teile">
             <div className="vp-nw-blockkopf">
               <h2>

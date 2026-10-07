@@ -200,6 +200,8 @@ export interface Route {
   auditId?: string;
   feststellungId?: string;
   managementbewertungKennung?: string;
+  /** Konzept Nachweisen n1, Entscheid 7: WELCHE Mappe „Unterlagen zusammenstellen“ die Seite zeigt (`…/mappen/{id}`). */
+  mappeId?: string;
   /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
@@ -728,6 +730,7 @@ export function parseRoute(hash: string): Route {
       if (segments[2] === 'audits' && segments[3]) return auditRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'feststellungen' && segments[3]) return feststellungRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'managementbewertung' && segments[3]) return managementbewertungRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'mappen' && segments[3]) return mappeRoute(decodeURIComponent(segments[3]));
       if (
         segments[2] === 'dokumente' || segments[2] === 'zuschnitt' || segments[2] === 'aufgaben' || segments[2] === 'verantwortung' ||
         segments[2] === 'audits' || segments[2] === 'feststellungen' || segments[2] === 'wiedervorlage' || segments[2] === 'managementbewertung' ||
@@ -906,6 +909,8 @@ export function hashForRoute(route: Route): string {
             ? `/feststellungen/${encodeURIComponent(route.feststellungId)}`
             : route.managementbewertungKennung
             ? `/managementbewertung/${encodeURIComponent(route.managementbewertungKennung)}`
+            : route.mappeId
+            ? `/mappen/${encodeURIComponent(route.mappeId)}`
             : route.energiemanagementReiter && route.energiemanagementReiter !== 'ueberblick'
             ? `/${route.energiemanagementReiter}`
             : '';
@@ -1121,6 +1126,11 @@ export function auditRoute(auditId: string): Route {
 /** Route der Seite einer Feststellung (UEMS AP-19 IP-20): `#/portfolio/energiemanagement/feststellungen/{id|F-…}`. */
 export function feststellungRoute(feststellungId: string): Route {
   return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'feststellungen', feststellungId };
+}
+
+/** Route der Seite einer Mappe (Konzept Nachweisen n1, Entscheid 7): `#/portfolio/energiemanagement/mappen/{id}`, unter dem Überblick. */
+export function mappeRoute(mappeId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, mappeId };
 }
 
 /** Route der Seite einer Managementbewertung (UEMS AP-19 IP-24): `#/portfolio/energiemanagement/managementbewertung/{BR-…}`. */

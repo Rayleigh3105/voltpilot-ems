@@ -13,6 +13,7 @@ export function NwTextfeld({
   platzhalter,
   fehler,
   hoechstens,
+  art = 'text',
   gesperrt = false,
   testid,
 }: {
@@ -23,6 +24,8 @@ export function NwTextfeld({
   platzhalter?: string;
   fehler?: string | null;
   hoechstens?: number;
+  /** Einzeilig: `email` öffnet am Telefon die Tastatur mit „@“ und lässt den Browser die Adresse vorschlagen. */
+  art?: 'text' | 'email';
   /** Steht fest (z. B. der Titel eines schon angelegten Dokuments): sichtbar, nicht änderbar. */
   gesperrt?: boolean;
   testid?: string;
@@ -45,7 +48,7 @@ export function NwTextfeld({
       {mehrzeilig ? (
         <textarea {...gemeinsam} rows={3} onChange={(e) => onWert(e.target.value)} />
       ) : (
-        <input {...gemeinsam} type="text" onChange={(e) => onWert(e.target.value)} />
+        <input {...gemeinsam} type={art} autoComplete={art === 'email' ? 'email' : undefined} onChange={(e) => onWert(e.target.value)} />
       )}
       {fehler && (
         <p id={`${id}-fehler`} className="vp-nw-feld-fehler" role="alert">

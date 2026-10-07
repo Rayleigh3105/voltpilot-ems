@@ -1712,6 +1712,7 @@ function UnifiedPortal() {
               auditId={route.auditId ?? null}
               feststellungId={route.feststellungId ?? null}
               managementbewertungKennung={route.managementbewertungKennung ?? null}
+              mappeId={route.mappeId ?? null}
               reiterOben={gruppenHier.length > 0}
               onReiter={(r) => navigate(energiemanagementRoute(r))}
               onDokument={(id) => navigate(dokumentRoute(id))}

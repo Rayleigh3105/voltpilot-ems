@@ -2029,6 +2029,7 @@ const KENNZAHL_BESTAND: string[] = [
   'help/content/alltag.ts', // alt
   'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'mappeBild.ts', // neu: „Was gehört hinein?“ bündelt die Verzeichnis-Gruppen, eine davon Kennzahlen (Nachweisen n1, Entscheid 7)
   'massnahmePlanen.ts', // neu: „Maßnahme planen“ fragt, ob an einer Kennzahl gemessen wird (Verbessern v1 PR 2, Entscheid 6)
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
