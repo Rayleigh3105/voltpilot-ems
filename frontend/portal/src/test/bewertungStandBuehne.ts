@@ -1,4 +1,4 @@
-import type { Bericht, BerichtAnstoss, BerichtDetail, BerichtEntwurf, BerichtStand, BerichtStandKurz, BerichtUeberpruefung } from '../api';
+import type { Bericht, BerichtAnstoss, BerichtDetail, BerichtEntwurf, BerichtStand, BerichtStandKurz, BerichtUeberpruefung, BerichtVergleich } from '../api';
 import * as B from '../uemsBericht';
 import { FIXTURE_IDS } from './standorteFixtures';
 
@@ -30,6 +30,8 @@ const abzug = (datenstand: string) => ({
     datenstand,
     darstellung: { zeitzone: ZONE, zahlenformat: 'de-DE' },
   },
+  // Wie der Abzug einer Bewertung (BR-2029-0002): ohne Werte-Liste, die Güte mit den Korrekturen im Zeitraum.
+  qualitaet: { korrekturen_im_zeitraum: [] },
 });
 
 const stand1 = (ersetzt: boolean): BerichtStandKurz => ({
@@ -163,6 +165,11 @@ export function bewertungStandBuehne(lage: BewertungsLage) {
         teilansicht: null,
         abzug: abzug(entwurfDatenstand),
       };
+    },
+    // Konzept Auswerten a1 §6.7 „Unterschiede ansehen“: wie die Demo (BR-2029-0002) ohne Abweichung gegen den gültigen Stand.
+    berichtVergleich: async (kennung: string, gegen: number): Promise<BerichtVergleich> => {
+      if (!bericht || kennung !== BW_KENNUNG) throw nichtGefunden();
+      return { kennung, gegen, entwurf_datenstand: entwurfDatenstand, abweichungen: [] };
     },
     berichtFreigeben: async (kennung: string, datenstand: string): Promise<BerichtStand> => {
       const offen = anstoesse.find((a) => a.zustand === 'offen') ?? null;

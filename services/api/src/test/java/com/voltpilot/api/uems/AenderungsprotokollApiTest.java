@@ -303,7 +303,8 @@ class AenderungsprotokollApiTest {
         assertThat(zeitpunkt(eintrag.get("gilt_ab"))).isEqualTo(zeitpunkt(WECHSEL));
         assertThat(zeitpunkt(eintrag.get("eingetragen_am"))).isEqualTo(zeitpunkt(EINGETRAGEN));
         assertThat(eintrag.get("zeitform").asText()).isEqualTo("rueckwirkend");
-        assertThat(eintrag.at("/urheber/name").asText()).isEqualTo("admin");
+        // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
+        assertThat(eintrag.at("/urheber/name").asText()).isEqualTo("Platform Admin");
         assertThat(eintrag.at("/urheber/art").asText()).isEqualTo("voltpilot");
         assertThat(eintrag.at("/bezug/art").asText()).isEqualTo("messstelle");
         assertThat(eintrag.at("/bezug/kennzeichen").asText()).isEqualTo("MS-06");

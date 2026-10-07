@@ -73,7 +73,7 @@ describe('Wiedervorlage: Art-Wörter und Sprünge (WV3)', () => {
     expect(wiedervorlageSprung(z('dokument_ueberpruefung', 'D-0001', 'd1'))).toEqual(dokumentRoute('d1'));
     expect(wiedervorlageSprung(z('dokument_ueberpruefung', 'D-0001'))).toBeNull();
     expect(wiedervorlageSprung(z('massnahme_termin', 'M-2029-0001', 'm1'))).toEqual(massnahmeRoute('m1'));
-    expect(wiedervorlageSprung(z('bezugsbasis_ueberpruefung', 'BB-0002', 'b2', 'k1'))).toEqual(kennzahlRoute('k1'));
+    expect(wiedervorlageSprung(z('bezugsbasis_ueberpruefung', 'BB-0002', 'b2', 'k1'))).toEqual(kennzahlRoute('k1', null, 'bezugsbasis'));
     expect(wiedervorlageSprung(z('bewertung_ueberpruefung', 'BR-2027-0001'))).toEqual(pageRoute('portfolio-bewertung'));
     expect(hashForRoute(wiedervorlageSprung(z('bericht_anstoss', 'BR-2028-0001'))!)).toBe('#/portfolio/berichte/BR-2028-0001');
     expect(wiedervorlageSprung(z('managementbewertung', 'BR-2029-0001'))).toEqual(managementbewertungRoute('BR-2029-0001'));

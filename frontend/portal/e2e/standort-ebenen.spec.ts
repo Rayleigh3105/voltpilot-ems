@@ -276,20 +276,21 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440, AM_20_11);
     await page.getByTestId('einstieg-kennzahlen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/kennzahlen$/);
-    await expect(page.locator('[data-testid="kennzahl-karte"]').first()).toBeVisible();
+    // Konzept Auswerten a1 §6.4: Karten mit Bezugsbasis, Reihen zum Beobachten - beide tragen `data-kennzeichen`.
+    await expect(page.locator('[data-kennzeichen]').first()).toBeVisible();
     const k = await messe(page);
     ohneQuerlauf(k, 'werk-kennzahlen-1440');
     expect(k.titel).toBe('Kennzahlen dieses Standorts');
-    const amStandort = await page.locator('[data-testid="kennzahl-karte"]').count();
+    const amStandort = await page.locator('[data-kennzeichen]').count();
     await ablegen(page, 'werk-kennzahlen-1440', k);
 
     // Das Lesezeichen des Unternehmens gilt unverändert — und zeigt auch die Kennzahlen, die dort nicht gelten.
     await oeffne(page, 'bild=unternehmen&ansicht=kennzahlen', 1440, AM_20_11);
-    await expect(page.locator('[data-testid="kennzahl-karte"]').first()).toBeVisible();
+    await expect(page.locator('[data-kennzeichen]').first()).toBeVisible();
     const u = await messe(page);
     expect(u.route).toBe('#/portfolio/kennzahlen');
     expect(u.titel).toBe('Kennzahlen');
-    expect(await page.locator('[data-testid="kennzahl-karte"]').count()).toBeGreaterThan(amStandort);
+    expect(await page.locator('[data-kennzeichen]').count()).toBeGreaterThan(amStandort);
 
     await oeffne(page, 'bild=unternehmen&messen=bestand&ansicht=werk', 375, AM_20_11);
     const betrieb = await messe(page);

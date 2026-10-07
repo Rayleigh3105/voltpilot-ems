@@ -43,8 +43,11 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
 - **Name der Person, nicht der Anmeldename.** `ProtokollAkteur` nimmt den Claim `name` vor `preferred_username`;
   `BerichtRepository` (und `ManagementbewertungVerzeichnis`) lesen `angelegt_von_name`, `freigeber_name` und
   `verworfen_von_name` über `benutzer.anzeigename` - ein freigegebener Stand wird nie geändert (E13 S1), der Bestand
-  mit „ines“ zeigt so trotzdem „Ines Kaltenbach“. Test-Fixtures, die `preferred_username` = voller Name setzen,
-  verdecken den Unterschied.
+  mit „ines“ zeigt so trotzdem „Ines Kaltenbach“. Das Verzeichnis löst Kriterien, Einstufungen, Messbedarfe,
+  Kennzahl- und Bezugsbasis-Fassungen über `PersonenNamen` auf (eigene Komponente: `VerzeichnisBestand` darf laut
+  `EnergiemanagementVerzeichnisSchnittstelleVertragTest` keine eigene Abfrage tragen). Test-Fixtures, die
+  `preferred_username` = voller Name setzen, verdecken den Unterschied; Tests mit echtem Keycloak sehen den Namen aus
+  dem Realm („Platform Admin“, „Demo Operator“, „Nordwind Operator“).
 - **Rechte-Satz nur, wo etwas zu tun wäre.** Am freigegebenen Stand steht nichts; am Entwurf ohne Freigabe-Recht
   „Freigeben: <Kundenadministratoren>“ mit i-Knopf (`seitenHebel().ohneRecht`, `freigebenErklaerung`); die Liste trägt
   keinen Satz im Kopf.
