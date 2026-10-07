@@ -115,8 +115,8 @@ describe('Reiter „Berichte“ (Konzept Nachweisen n1, Runde 2, §6.4)', () => 
   it('zwei Zähler, die Entscheidung zuerst, dann was gilt - abgelöste Bewertungen als eine Zeile', async () => {
     setSelbstauskunft(selbst(['bericht.standort_abrufen', 'bericht.standort_freigeben']));
     await zeige();
-    expect(screen.getByTestId('zaehler-gelten').textContent).toBe('4gelten');
-    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1wartet auf Sie');
+    expect(screen.getByTestId('zaehler-gelten').textContent).toBe('4 gelten');
+    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1 wartet auf Sie');
     const wartet = within(screen.getByTestId('berichte-wartet')).getByTestId('bericht-zeile-BR-2026-0001');
     expect(wartet.textContent).toContain('Daten geändert');
     expect(wartet.textContent).toContain('Entscheiden');
@@ -134,7 +134,7 @@ describe('Reiter „Berichte“ (Konzept Nachweisen n1, Runde 2, §6.4)', () => 
   it('ohne Recht zu entscheiden „wartet“, nicht „wartet auf Sie“ - und kein „Erstellen“', async () => {
     setSelbstauskunft(selbst(['bericht.standort_abrufen']));
     await zeige();
-    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1wartet');
+    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1 wartet');
     expect(screen.queryByTestId('bericht-anlegen-knopf')).toBeNull();
   });
 
@@ -147,8 +147,8 @@ describe('Reiter „Berichte“ (Konzept Nachweisen n1, Runde 2, §6.4)', () => 
     mocks.berichte.mockResolvedValue({ berichte: [...LISTE, lindach], abruf: '2029-04-30T20:10:00Z' });
     setSelbstauskunft(selbst(['bericht.standort_abrufen', 'bericht.standort_freigeben']));
     await zeige();
-    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1wartet auf Sie');
-    expect(screen.getByTestId('zaehler-wartet-andere').textContent).toBe('1wartet');
+    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1 wartet auf Sie');
+    expect(screen.getByTestId('zaehler-wartet-andere').textContent).toBe('1 wartet');
   });
 
   it('Review r1, P3-7 (C8): die Liste lädt die archivierten mit und zeigt sie als eine Zeile „Archiviert · n“, nie gezählt', async () => {
@@ -157,7 +157,7 @@ describe('Reiter „Berichte“ (Konzept Nachweisen n1, Runde 2, §6.4)', () => 
     setSelbstauskunft(selbst(['bericht.standort_abrufen']));
     const ruf = await zeige();
     expect(mocks.berichte).toHaveBeenCalledWith({ archiviert: true });
-    expect(screen.getByTestId('zaehler-gelten').textContent).toBe('4gelten');
+    expect(screen.getByTestId('zaehler-gelten').textContent).toBe('4 gelten');
     expect(screen.getByTestId('berichte-archiviert').textContent).toContain('1');
     fireEvent.click(screen.getByTestId('berichte-archiviert'));
     const blatt = await screen.findByTestId('berichte-blatt');

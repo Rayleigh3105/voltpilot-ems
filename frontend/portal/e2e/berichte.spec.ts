@@ -141,8 +141,8 @@ test.describe('Berichte — die Liste', () => {
     await expect(zeile).toContainText('Daten geändert');
     await expect(zeile).toContainText('Entscheiden');
     await expect(zeile.getByRole('img')).toHaveAttribute('aria-label', 'seit 12.11.2026');
-    await expect(page.getByTestId('zaehler-gelten')).toHaveText('1gilt');
-    await expect(page.getByTestId('zaehler-wartet')).toContainText('1wartet');
+    await expect(page.getByTestId('zaehler-gelten')).toHaveText('1 gilt');
+    await expect(page.getByTestId('zaehler-wartet')).toContainText('1 wartet');
     await ablegen(page, 'liste-375', m);
   });
 
