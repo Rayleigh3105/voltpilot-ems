@@ -140,6 +140,18 @@ describe('Hebel einer Sperre', () => {
     expect(blockerLever('kette')).toContain('Signaturkette');
   });
 
+  it('schickt bei einer anderen Box-Art zum passenden Release, nicht zur Signatur', () => {
+    // Die Sperre `backend` meldet eine Box, die ein gültig signiertes Release
+    // einer anderen Box-Art bekommen hat (Edge Light auf der Docker-Box oder
+    // umgekehrt). Das ist kein Vorfall: der Hebel ist ein Release der eigenen
+    // Box-Art - nicht die Signaturkette und nicht der Anti-Rollback-Boden.
+    const lever = blockerLever('backend')!;
+    expect(lever).toContain('Box-Art');
+    expect(lever).toContain('Edge Light');
+    expect(lever).not.toContain('Signatur');
+    expect(blockerLever('politik')).not.toContain('Box-Art');
+  });
+
   it('schickt zu einem ENTFALLENEN Tor nicht auf den alten Handgriff', () => {
     // Eine Box mit älterem Image meldet die Wörter noch - der Hebel darf aber
     // nicht auf einen Weg zeigen, den es nicht mehr gibt (Prüfstand-Nachweis,

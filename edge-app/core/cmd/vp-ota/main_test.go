@@ -156,6 +156,26 @@ func TestVerifyRefusesAReleaseForAnotherBackend(t *testing.T) {
 	}
 }
 
+// Ein Manifest je Box-Art, schon beim Erzeugen: bis die Option fuer Programme
+// kommt (Plan Edge Light Stufe 2, B3), kann das Werkzeug kein Edge-Light-
+// Release bauen - und erst recht keines, das oci-images fuer light ausgibt.
+func TestManifestRefusesToMixBoxTypes(t *testing.T) {
+	dir := t.TempDir()
+	for name, args := range map[string][]string{
+		"light-backend mit oci-image": {"--release", "edge-light-2026.10.1", "--backend", "light"},
+		"light und compose":           {"--release", "edge-light-2026.10.1", "--backend", "light", "--backend", "compose"},
+		"light-backend, Docker-Name":  {"--release", "edge-2026.10.1", "--backend", "light"},
+		"unbekanntes Backend":         {"--release", "edge-2026.10.1", "--backend", "balena"},
+	} {
+		err := cmdManifest(append(args,
+			"--seq", "12", "--commit", "3bf8c038a1b2", "--artifact", "core="+coreRef,
+			"--state-schema", "3", "--key-id", "rel-2026-a", "--out", filepath.Join(dir, "release.json")))
+		if err == nil {
+			t.Errorf("%s: wurde erzeugt", name)
+		}
+	}
+}
+
 func TestSignEnforcesTheKeyRoles(t *testing.T) {
 	// Die kalt/heiss-Trennung wird vom Werkzeug ERZWUNGEN, nicht nur beschrieben:
 	// die Wurzel signiert nur Trust-Sets, der Release-Schluessel nur Manifeste.

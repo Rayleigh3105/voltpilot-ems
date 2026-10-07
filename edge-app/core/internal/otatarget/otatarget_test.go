@@ -88,6 +88,27 @@ func TestEnvelopeRejections(t *testing.T) {
 	}
 }
 
+// Eine Docker-Box muss die Zuweisung eines Edge-Light-Release LESEN koennen:
+// ob sie hier gilt, entscheidet erst der Verifizierer am signierten Manifest
+// (deferred, Sperre backend). Ein hier abgelehnter Name waere „unlesbar" und
+// damit failed - genau das, was die Docker-Toleranz verhindern soll.
+func TestAnEdgeLightAssignmentIsReadable(t *testing.T) {
+	env, err := ParseEnvelope(envelopeJSON(t, func(m map[string]any) {
+		m["release"] = "edge-light-2026.10.1"
+	}))
+	if err != nil {
+		t.Fatalf("Edge-Light-Zuweisung muss lesbar sein: %v", err)
+	}
+	if env.Release != "edge-light-2026.10.1" {
+		t.Fatalf("Release = %q", env.Release)
+	}
+	for _, bad := range []string{"edge-lite-2026.10.1", "edge-light-2026.10", "light-2026.10.1"} {
+		if _, err := ParseEnvelope(envelopeJSON(t, func(m map[string]any) { m["release"] = bad })); err == nil {
+			t.Errorf("%q folgt keinem Schema und muss abgelehnt werden", bad)
+		}
+	}
+}
+
 func TestStoreRoundTripIsByteExactAndClearable(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)

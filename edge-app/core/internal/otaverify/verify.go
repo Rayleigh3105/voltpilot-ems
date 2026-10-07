@@ -2,7 +2,6 @@ package otaverify
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -11,7 +10,8 @@ import (
 //
 //   - [OutcomeOK]:       Kette und Politik in Ordnung.
 //   - [OutcomeDeferred]: die Signatur ist EINWANDFREI, nur gilt dieses Release
-//     nicht (jetzt) fuer dieses Geraet - falsches Backend, Anti-Rollback-Boden,
+//     nicht (jetzt) fuer dieses Geraet - andere Box-Art (Backend), ein
+//     Bestandteil, den dieses Backend nicht anwendet, Anti-Rollback-Boden,
 //     Rueckschritt ohne Freigabe. Kein Sicherheitsvorfall, sondern eine
 //     Politik-Entscheidung.
 //   - [OutcomeRejected]: Vertrauenskette oder Form kaputt. Das IST ein
@@ -42,6 +42,17 @@ type Verdict struct {
 	// SignedBy ist die key_id, mit der das Manifest tatsaechlich signiert war.
 	SignedBy string
 
+	// BackendMismatch: zurueckgestellt, weil das Release auf DIESEM Backend
+	// nicht anwendbar ist - es gehoert zu einer anderen Box-Art oder traegt
+	// einen Bestandteil, den dieses Backend nicht anwendet
+	// ([Manifest.NotApplicableReason]). Nur bei [OutcomeDeferred] gesetzt.
+	//
+	// Es trennt diese Zurueckstellung maschinenlesbar von der Politik des
+	// eigenen Stands (Boden, Rueckschritt): die eine hebt ein passendes
+	// Release ihrer Box-Art auf, die andere eine Zwischenstufe. Der Sidecar
+	// meldet daraus die Sperre `backend` statt `politik`.
+	BackendMismatch bool
+
 	// AlreadyRunning: die geprueften Bytes beschreiben genau den Stand, der
 	// hier laeuft (Vergleich gegen die eingestempelte Build-Version).
 	AlreadyRunning bool
@@ -69,7 +80,8 @@ type Input struct {
 	Manifest    []byte
 	ManifestSig []byte
 
-	// Backend ist das Apply-Backend DIESES Geraets ("compose").
+	// Backend ist das Apply-Backend DIESES Geraets ("compose" auf der
+	// Docker-Box, "light" auf Edge Light) - zugleich seine Box-Art.
 	Backend string
 
 	// RunningVersion ist die eingestempelte Build-Version (agent.Version).
@@ -169,10 +181,12 @@ func Verify(in Input) Verdict {
 	if v.AlreadyRunning {
 		v.Notes = append(v.Notes, "Dieses Release laeuft hier bereits.")
 	} else {
-		// compat.backends: nie ein Rateversuch.
-		if !m.SupportsBackend(in.Backend) {
-			return defer_(v, fmt.Sprintf("Release %s ist nicht fuer das Apply-Backend '%s' bestimmt (gilt fuer: %s).",
-				m.Release, in.Backend, strings.Join(m.Compat.Backends, ", ")))
+		// Box-Art und Bestandteile: nie ein Rateversuch. Ein gueltig
+		// signiertes Release einer anderen Box-Art (oder eines neueren Stands
+		// mit unbekanntem Typ) ist „nicht fuer mich", kein Vorfall.
+		if reason := m.NotApplicableReason(in.Backend); reason != "" {
+			v.BackendMismatch = true
+			return defer_(v, reason)
 		}
 
 		// Anti-Rollback-Boden + Rueckschritt: beide brauchen den eigenen Stand.

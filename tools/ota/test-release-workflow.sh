@@ -455,10 +455,32 @@ for name in ("release", "notes"):
 tag = jobs["tag"]
 assert tag.get("if") == "github.event_name == 'workflow_dispatch'", tag.get("if")
 
-# KEIN doppelter Bau: das Gate haengt am Tag-Lauf, build/manifest daran.
-assert jobs["test"].get("if") == "github.ref_type == 'tag'", (
-    "das Gate muss am TAG-Lauf haengen, sonst baut der manuelle Lauf doppelt: %r"
-    % jobs["test"].get("if"))
+# Edge Light ist eine EIGENE Release-Linie mit eigenem Lauf (Entscheid E7,
+# Plan Edge Light Stufe 2 A4). `edge-*` passt auch auf `edge-light-*`; ohne die
+# Verneinung startete ein solcher Tag diesen Docker-Lauf, der schon im Bau
+# `:latest` schiebt. Die Reihenfolge ist tragend: die LETZTE passende Regel
+# gewinnt (GitHub-/Forgejo-Semantik), also muss die Verneinung danach stehen.
+tags = trig["push"]["tags"]
+assert tags == ["edge-*", "!edge-light-*"], tags
+import fnmatch
+def starts(ref, patterns):
+    hit = False
+    for p in patterns:
+        neg = p.startswith("!")
+        if fnmatch.fnmatchcase(ref, p[1:] if neg else p):
+            hit = not neg
+    return hit
+for ref, want in (("edge-2026.10.4", True), ("edge-light-2026.10.1", False),
+                  ("edge-light-2027.01.0", False), ("v1.2.3", False)):
+    assert starts(ref, tags) == want, (ref, want)
+
+# KEIN doppelter Bau: das Gate haengt am Tag-Lauf, build/manifest daran - und
+# dieselbe Bedingung haelt einen edge-light-Tag von jedem Docker-Bau fern, falls
+# ein Runner die Verneinung im Trigger nicht auswertet.
+assert jobs["test"].get("if") == (
+    "github.ref_type == 'tag' && !startsWith(github.ref_name, 'edge-light-')"), (
+    "das Gate muss am TAG-Lauf haengen (sonst baut der manuelle Lauf doppelt) "
+    "und einen edge-light-Tag ausschliessen: %r" % jobs["test"].get("if"))
 assert jobs["build"]["needs"] == "test", jobs["build"].get("needs")
 assert jobs["manifest"]["needs"] == "build", jobs["manifest"].get("needs")
 assert jobs["manifest"].get("if") == "github.ref_type == 'tag'", jobs["manifest"].get("if")
@@ -511,6 +533,7 @@ for step_env in env.values():
             "der automatische Actions-Token loest keinen Lauf aus - mit ihm "
             "laege der Tag da, ohne dass je ein Release entstuende: %r" % v)
 PY
+ok "der Trigger schliesst edge-light-* aus (Verneinung nach dem Muster), das Gate ebenso"
 ok "der Tag-Job ist verdrahtet: nur beim manuellen Lauf, ohne needs, mit Tags und OHNE den Actions-Token"
 ok "der manuelle Lauf baut NICHTS (test haengt am Tag-Lauf, build/manifest daran)"
 ok "die drei Rumpfe sind frei von Workflow-Ausdruecken, alle Eingaben ueber env:"
@@ -530,8 +553,12 @@ git init -q --bare "$TMP/tagremote.git"
 	git init -q .
 	GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
 		git commit -q --allow-empty -m init
-	# Ein Bestand, der die Zaehlregel wirklich auf die Probe stellt.
+	# Ein Bestand, der die Zaehlregel wirklich auf die Probe stellt - samt
+	# Edge-Light-Tags, die in der Docker-Nummerierung NICHT mitzaehlen.
 	for n in 0 1 2 9 24; do git tag "edge-2026.08.$n"; done
+	ym_now="$(TZ=Europe/Berlin date +%Y.%m)"
+	git tag "edge-light-2026.08.30"
+	git tag "edge-light-$ym_now.7"
 ) >/dev/null
 
 # run_tag_step <nr> <ausgabedatei> ; Umgebung kommt vom Aufrufer
@@ -568,7 +595,7 @@ YM="$(TZ=Europe/Berlin date +%Y.%m)"
 if [ "$YM" = "2026.08" ]; then
 	eq "…und zaehlt den Bestand WEITER (24 -> 25), sie datiert nicht" "edge-2026.08.25" "$REL"
 else
-	eq "…und beginnt in einem Monat ohne Tags bei 0" "edge-$YM.0" "$REL"
+	eq "…und beginnt in einem Monat ohne Docker-Tags bei 0 (Edge-Light-Tags zaehlen nicht)" "edge-$YM.0" "$REL"
 fi
 
 echo
@@ -587,6 +614,17 @@ if RELEASE_INPUT="v1.2.3" run_tag_step "$NAME_STEP" "$TMP/tagout3" >"$TMP/tlog3"
 else
 	ok "eine Vorgabe ausserhalb des Schemas bricht ab, statt ein Schema zu erfinden"
 fi
+
+# Der manuelle Weg legt NUR Docker-Releases an: ein edge-light-Name bricht ab,
+# BEVOR ein Name ausgegeben wird (Plan Edge Light Stufe 2, A4).
+: >"$TMP/tagout4"
+if RELEASE_INPUT="edge-light-2026.10.1" run_tag_step "$NAME_STEP" "$TMP/tagout4" >"$TMP/tlog3b" 2>&1; then
+	bad "eine Edge-Light-Vorgabe bricht ab" "Abbruch" "durchgelaufen"
+else
+	ok "eine Edge-Light-Vorgabe bricht ab - dieser Weg legt nur Docker-Releases an"
+fi
+eq "…und gibt keinen Namen aus" "" "$(val "$TMP/tagout4" release)"
+has "$TMP/tlog3b" "Edge-Light-Linie" "…und nennt die Edge-Light-Linie als Grund"
 
 echo
 echo "-- der Push --"
