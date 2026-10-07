@@ -24,7 +24,7 @@
 .vp-box-total { flex-shrink: 0; font-size: .8rem; color: var(--vp-text-muted); padding-top: var(--vp-space-1); }
 .vp-box-filter-panel > summary { cursor: pointer; min-height: 44px; padding: var(--vp-space-2) var(--vp-space-5) var(--vp-space-4); font-size: .875rem; font-weight: 600; color: var(--vp-action); }
 .vp-box-filter-panel > summary span { margin-left: var(--vp-space-2); color: var(--vp-text-muted); font-weight: 400; font-size: .8rem; }
-.vp-box-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 240px); gap: var(--vp-space-4); align-items: end; padding: 0 var(--vp-space-5) var(--vp-space-4); }
+.vp-box-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 240px) minmax(0, 220px); gap: var(--vp-space-4); align-items: end; padding: 0 var(--vp-space-5) var(--vp-space-4); }
 .vp-box-filters { display: flex; flex-wrap: wrap; gap: var(--vp-space-2); padding: 0 var(--vp-space-5) var(--vp-space-4); }
 .vp-box-filters button { display: inline-flex; align-items: center; gap: var(--vp-space-2); min-height: 44px; padding: var(--vp-space-2) var(--vp-space-3); border: 1px solid var(--vp-border); border-radius: var(--vp-radius-sm); background: var(--vp-surface); color: var(--vp-text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
 .vp-box-filters button[aria-pressed="true"] { background: var(--vp-tint); border-color: var(--vp-action); color: var(--vp-action); font-weight: 600; }
@@ -44,6 +44,11 @@
 .vp-box-installed .vp-box-version { color: var(--vp-action); }
 .vp-box-ref, .vp-box-build { color: var(--vp-text-muted); font-size: .75rem; overflow-wrap: anywhere; }
 .vp-box-ref { margin-top: var(--vp-space-1); }
+.vp-box-art { display: block; margin-top: var(--vp-space-2); }
+/* Rollout-Dialog: ein Gerät, auf das das Release nicht passt (Box-Art) -
+   ausgegraut, aber mit seinem Grund sichtbar (E10). */
+.vp-candidate-gesperrt { color: var(--vp-text-muted); cursor: not-allowed; }
+.vp-candidate-gesperrt input { cursor: not-allowed; }
 .vp-box-support { padding: var(--vp-space-4) var(--vp-space-5); margin-top: var(--vp-space-5); }
 .vp-box-support summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; }
 .vp-box-support summary small { color: var(--vp-text-muted); font-weight: 400; }
@@ -53,6 +58,8 @@
   .vp-box-release { grid-template-columns: minmax(0, 1fr); gap: var(--vp-space-4); }
   .vp-box-release-action { text-align: left; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--vp-space-3); }
   .vp-box-release-action p { margin: 0; }
+  .vp-box-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vp-box-tools > :first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
   .vp-box-release, .vp-box-fleet-head { padding: var(--vp-space-4); }

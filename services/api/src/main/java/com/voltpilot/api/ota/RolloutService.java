@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,15 +28,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Die Orchestrierung der Verteilung (OTA Stufe 2 „Verteilen", Scout
- * vp-ota-rollout-h4 §7/§9, Captain-Entscheid D4): Zuweisen, in Wellen
- * freigeben, pausieren, anhalten - und beobachten, was daraus wird.
+ * Die Orchestrierung der Verteilung (OTA Stufe 2 „Verteilen", seit dem
+ * 26.08.2026 in EINEM Schritt): Release und Geräte wählen, zuweisen - und
+ * beobachten, was daraus wird.
  *
  * <p><b>Was hier NICHT passiert: irgendetwas anwenden.</b> Der stärkste Effekt
  * dieser Klasse auf ein Gerät ist eine retained MQTT-Nachricht mit einem
- * signierten Manifest. Ob daraus etwas wird, entscheidet das Gerät (Prüfung
- * gegen die eingebackene Wurzel) und danach ein Mensch am Gerät
- * ({@code update.sh --from-target}).
+ * signierten Manifest. Ob daraus etwas wird, entscheidet das Gerät selbst
+ * (Prüfung gegen die eingebackene Wurzel, danach wendet es an).
  *
  * <p><b>Die Sicherheits-Disziplin ist übernommen:</b> alle Aufrufer liegen
  * unter {@code /api/v1/admin/**} hinter
@@ -92,14 +92,22 @@ public class RolloutService {
      *
      * <p>Nur ein SIGNIERTES Release ist zuweisbar: ohne Manifest-Bytes gäbe es
      * nichts, was das Gerät gegen seine eingebackene Wurzel prüfen könnte, und
-     * der Downlink wäre eine Anweisung ohne Beleg. Das ist die EINE Prüfung,
-     * die diese Klasse noch macht - alles Weitere entscheidet das Gerät.
+     * der Downlink wäre eine Anweisung ohne Beleg. Dazu muss die Box-Art
+     * passen ({@link BoxArt}): eine Edge-Light-Box bekommt kein Docker-Release
+     * und umgekehrt. Beides sind Eigenschaften des Releases bzw. der Bauart,
+     * keine Zustands-Tore - alles Weitere entscheidet das Gerät.
      */
     public void assign(UUID deviceId, long releaseSeq, UUID rolloutId, String actor) {
         RolloutRepository.FleetDeviceRow device = rollouts.fleetDevice(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Gerät nicht gefunden."));
         EdgeReleaseDto release = signedRelease(releaseSeq);
+        String grund = BoxArt.sperrgrund(boxArt(device), releaseBoxArt(release));
+        if (grund != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Release '" + release.version() + "' ist diesem Gerät nicht zuweisbar: "
+                            + grund);
+        }
         rollouts.upsertTarget(deviceId, releaseSeq, release.version(), rolloutId, actor);
         rollouts.appendEvent(actor, "target_assigned", rolloutId, deviceId, release.version());
         publishTarget(device, release.version(), release.releaseSeq(), rolloutId,
@@ -157,6 +165,11 @@ public class RolloutService {
      * „höchstens einer bewegt die Flotte"-Riegel war ein Tor, das einen legitimen
      * zweiten Auftrag blockierte. Eindeutig ist, was zählt: je GERÄT gibt es
      * genau eine Zuweisung (der Primärschlüssel von {@code device_update_target}).
+     *
+     * <p>Passt die Box-Art eines gewählten Geräts nicht zum Release
+     * ({@link BoxArt}), wird NICHTS zugewiesen (409 mit den betroffenen
+     * Geräten und dem Grund) - auch nicht den passenden: ein halb verteilter
+     * Auftrag wäre eine Überraschung, ein abgelehnter eine klare Aussage.
      */
     public UUID createRollout(long releaseSeq, List<UUID> deviceIds, String actor) {
         EdgeReleaseDto release = signedRelease(releaseSeq);
@@ -172,6 +185,20 @@ public class RolloutService {
                         "Unbekanntes Gerät: " + d);
             }
             unique.add(d);
+        }
+        String releaseArt = releaseBoxArt(release);
+        Map<String, List<String>> gesperrt = new LinkedHashMap<>();
+        for (UUID d : unique) {
+            RolloutRepository.FleetDeviceRow row = fleet.get(d);
+            String grund = BoxArt.sperrgrund(boxArt(row), releaseArt);
+            if (grund != null) {
+                gesperrt.computeIfAbsent(grund, g -> new ArrayList<>())
+                        .add(label(row) + " (" + row.siteName() + ")");
+            }
+        }
+        if (!gesperrt.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    boxArtConflict(release.version(), gesperrt));
         }
 
         // Vollständig prüfen, BEVOR das Erste geschrieben wird - die Regel, die
@@ -318,7 +345,8 @@ public class RolloutService {
         for (EdgeReleaseDto rel : releases.findAll()) {
             releaseDtos.add(new EdgeUpdatesDto.ReleaseDto(rel.releaseSeq(), rel.version(),
                     rel.targetCommit(), rel.notes(), rel.manifest() != null, rel.signingKeyId(),
-                    rel.createdAt(), runningPerRelease.getOrDefault(rel.version(), 0)));
+                    rel.createdAt(), runningPerRelease.getOrDefault(rel.version(), 0),
+                    releaseBoxArt(rel)));
         }
 
         // Welche Geräte gerade in IRGENDEINER der jüngsten Verteilungen stehen.
@@ -347,7 +375,7 @@ public class RolloutService {
                     assigned, t == null ? null : t.releaseSeq(),
                     v.state(), v.reason(), d.reportedBlocker(),
                     rd == null ? null : rd.since(), d.reportedAt(),
-                    rd == null ? null : rd.rolloutId(), trustDto(d)));
+                    rd == null ? null : rd.rolloutId(), trustDto(d), boxArt(d)));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;
@@ -410,7 +438,7 @@ public class RolloutService {
                     t == null ? null : t.releaseVersion(), t == null ? null : t.releaseSeq(),
                     v.state(), v.reason(), d.reportedBlocker(), d.lastSeenAt(), d.reportedAt(),
                     p != null, p == null ? null : p.note(),
-                    p == null ? null : p.provisionedAt(), trustDto(d)));
+                    p == null ? null : p.provisionedAt(), trustDto(d), boxArt(d)));
         }
         // Danach die gedruckten IDs, die noch KEIN Gerät sind. Sie tragen
         // bewusst keinen Zustand: über eine ID, die sich nie gemeldet hat, ist
@@ -422,7 +450,8 @@ public class RolloutService {
             }
             rows.add(new AdminDevicesDto.DeviceRowDto(null, p.externalRef(), null, null, null,
                     null, null, p.kind(), null, null, null,
-                    null, null, null, null, null, true, p.note(), p.provisionedAt(), null));
+                    null, null, null, null, null, true, p.note(), p.provisionedAt(), null,
+                    null));
         }
         return new AdminDevicesDto(rows);
     }
@@ -515,6 +544,36 @@ public class RolloutService {
         return d.reportedCurrent() != null ? d.reportedCurrent() : d.reportedVersion();
     }
 
+    /** Die Box-Art aus der letzten Meldung - die Regel steht in {@link BoxArt}. */
+    private static String boxArt(RolloutRepository.FleetDeviceRow d) {
+        return BoxArt.ofDevice(d.reportedBackend(), d.reportedVersion(), d.reportedCurrent());
+    }
+
+    private static String releaseBoxArt(EdgeReleaseDto release) {
+        return BoxArt.ofRelease(release.version(), release.manifest());
+    }
+
+    /**
+     * Der 409-Satz eines Auftrags mit unpassenden Geräten: je Grund die
+     * betroffenen Geräte (höchstens drei beim Namen), damit der Betreiber weiß,
+     * WELCHE er abwählen muss.
+     */
+    static String boxArtConflict(String version, Map<String, List<String>> gesperrt) {
+        int n = gesperrt.values().stream().mapToInt(List::size).sum();
+        StringBuilder msg = new StringBuilder("Release '").append(version)
+                .append("' passt nicht zu ").append(n == 1 ? "einem" : String.valueOf(n))
+                .append(" der gewählten Geräte - es wurde nichts zugewiesen.");
+        for (Map.Entry<String, List<String>> e : gesperrt.entrySet()) {
+            List<String> names = e.getValue();
+            String shown = String.join(", ", names.subList(0, Math.min(3, names.size())));
+            if (names.size() > 3) {
+                shown += " und " + (names.size() - 3) + " weitere";
+            }
+            msg.append(' ').append(shown).append(": ").append(e.getKey());
+        }
+        return msg.toString();
+    }
+
     private static String label(RolloutRepository.FleetDeviceRow d) {
         return d.deviceName() != null && !d.deviceName().isBlank()
                 ? d.deviceName() : d.externalRef();
@@ -525,8 +584,8 @@ public class RolloutService {
      *
      * <p>Ohne Manifest-Bytes hat ein Gerät nichts, was es gegen seine
      * eingebackene Wurzel prüfen könnte - der Downlink wäre eine Anweisung ohne
-     * Beleg. Das ist die einzige verbliebene Vorbedingung dieser Klasse, und
-     * sie ist eine Eigenschaft des RELEASE, nicht des Geräts.
+     * Beleg. Sie ist eine Eigenschaft des RELEASE, nicht des Geräts; die
+     * zweite Vorbedingung, die passende Box-Art, steht in {@link BoxArt}.
      */
     private EdgeReleaseDto signedRelease(long releaseSeq) {
         EdgeReleaseDto release = releases.findAll().stream()
