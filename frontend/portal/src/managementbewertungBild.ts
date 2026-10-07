@@ -94,7 +94,8 @@ export function jahre(angabe: string): string {
 }
 
 /** Ein Betrag im Wortlaut („25 000 €“, „25.000 Euro“) - so wie er dort steht. */
-const betrag = (t: string) => /\d[\d .\u00a0\u202f]*\d\s?(?:€|Euro)|\d\s?(?:€|Euro)/u.exec(t)?.[0].replace(/\s?Euro$/u, ' €') ?? null;
+const betrag = (t: string) =>
+  /\d[\d .\u00a0\u202f]*\d\s?(?:€|Euro)|\d\s?(?:€|Euro)/u.exec(t)?.[0].replace(/\s?Euro$/u, ' €').replace(/ /gu, '\u00a0') ?? null;
 
 /**
  * Der Kurztitel eines Beschlusses (Konzept §6.7: „Energieziel 2029“, „Aufgabe Bezugsbasen“, „Anwendungsbereich
@@ -111,7 +112,7 @@ export function beschlussKurz(
   const wortlaut = bisKomma(b.wortlaut) || b.wortlaut;
   switch (f?.art) {
     case 'energieziel':
-      return f.angabe ? `Energieziel ${jahre(f.angabe)}` : 'Energieziel';
+      return f.angabe ? `Energieziel\u00a0${jahre(f.angabe)}` : 'Energieziel';
     case 'massnahme':
       return titel.massnahmen[f.objekt] ? bisKomma(titel.massnahmen[f.objekt]) : wortlaut;
     case 'aufgabe':
@@ -123,7 +124,7 @@ export function beschlussKurz(
       const name = titel.dokumente[kz];
       if (!name) return wortlaut;
       if (f.wie === 'geprueft_bleibt') return `${name} bleibt`;
-      return fassung ? `${name}, Fassung ${fassung}` : name;
+      return fassung ? `${name}, Fassung\u00a0${fassung}` : name;
     }
   }
   if (b.art === 'ressourcen') {
@@ -143,7 +144,7 @@ export function folgeKurz(
 ): string {
   switch (f.art) {
     case 'energieziel':
-      return f.angabe ? `Energieziel ${jahre(f.angabe)}` : `Energieziel ${f.objekt}`;
+      return f.angabe ? `Energieziel\u00a0${jahre(f.angabe)}` : `Energieziel\u00a0${f.objekt}`;
     case 'massnahme':
       return titel.massnahmen[f.objekt] ? bisKomma(titel.massnahmen[f.objekt]) : `Maßnahme ${f.objekt}`;
     case 'aufgabe':
@@ -154,7 +155,7 @@ export function folgeKurz(
       const [kz, fassung] = f.objekt.split('/');
       const name = titel.dokumente[kz] ?? kz;
       if (f.wie === 'geprueft_bleibt') return `${name} bleibt`;
-      return fassung ? `${name}, Fassung ${fassung}` : name;
+      return fassung ? `${name}, Fassung\u00a0${fassung}` : name;
     }
     default:
       return f.objekt;

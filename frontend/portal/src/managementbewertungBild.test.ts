@@ -72,11 +72,11 @@ describe('Folgen eines Beschlusses (MG6)', () => {
 describe('Kurztitel (Konzept §6.7, Entscheid 25: nie ein Kennzeichen)', () => {
   it('aus der Folge: Energieziel mit Jahr, Maßnahme, Aufgabe mit Kurzwort, Dokument mit Fassung oder „bleibt“', () => {
     expect(DEMO.map((b) => B.beschlussKurz(b, TITEL))).toEqual([
-      'Energieziel 2029',
+      'Energieziel\u00a02029',
       'Druckluft: Leckagen orten',
-      'Energiepolitik, Fassung 2',
+      'Energiepolitik, Fassung\u00a02',
       'Aufgabe Bezugsbasen',
-      'Geld: 25 000 €',
+      'Geld: 25\u00a0000\u00a0€',
       'Anwendungsbereich bleibt',
     ]);
   });
@@ -84,11 +84,11 @@ describe('Kurztitel (Konzept §6.7, Entscheid 25: nie ein Kennzeichen)', () => {
   it('ohne bekannten Namen der Wortlaut bis zum ersten Komma außerhalb einer Klammer, nie das Kennzeichen', () => {
     const ohne = { dokumente: {}, massnahmen: {} };
     expect(DEMO.map((b) => B.beschlussKurz(b, ohne))).toEqual([
-      'Energieziel 2029',
+      'Energieziel\u00a02029',
       'Druckluft: Leckagen jährlich orten',
       'Energiepolitik um Einkauf und Planung ergänzen',
       'Aufgabe Bezugsbasen',
-      'Geld: 25 000 €',
+      'Geld: 25\u00a0000\u00a0€',
       'Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert',
     ]);
     expect(B.beschlussKurz(beschluss(1, 'ressourcen', 'Eine halbe Stelle für das Energieteam.'), ohne)).toBe('Eine halbe Stelle für das Energieteam');
@@ -96,14 +96,14 @@ describe('Kurztitel (Konzept §6.7, Entscheid 25: nie ein Kennzeichen)', () => {
 
   it('eine Zielperiode über zwei Jahre nennt beide', () => {
     const b = beschluss(1, 'energieziel', 'x', [folge({ art: 'energieziel', objekt: 'EZ-1', zustand: 'offen', angabe: '2029-07/2030-06' })]);
-    expect(B.beschlussKurz(b, TITEL)).toBe('Energieziel 2029–2030');
+    expect(B.beschlussKurz(b, TITEL)).toBe('Energieziel\u00a02029–2030');
   });
 
   it('die Folge als Zeile beim Namen', () => {
     expect(DEMO.flatMap((b) => b.folgen).map((f) => B.folgeKurz(f, TITEL))).toEqual([
-      'Energieziel 2029',
+      'Energieziel\u00a02029',
       'Druckluft: Leckagen orten',
-      'Energiepolitik, Fassung 2',
+      'Energiepolitik, Fassung\u00a02',
       'Bezugsbasen: Ines Kaltenbach',
       'Anwendungsbereich bleibt',
     ]);

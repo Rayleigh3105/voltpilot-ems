@@ -133,7 +133,7 @@
   font: 600 0.75rem/1.25 var(--vp-c-font);
   color: var(--vp-c-fg, #1e293b);
   overflow-wrap: anywhere;
-  hyphens: auto;
+  hyphens: manual; /* Brüche nur an der Wortfuge (weiches Trennzeichen), nie mitten im Wort (Konzept §13). */
 }
 .vp-nw-stufen > li.is-offen b,
 .vp-nw-stufen > li.is-aus b {
@@ -256,7 +256,7 @@ button.vp-nw-fz {
   font: 600 1rem/1.3 var(--vp-c-font);
   color: var(--vp-c-fg, #1e293b);
   overflow-wrap: break-word;
-  hyphens: auto;
+  hyphens: manual; /* Brüche nur an der Wortfuge (weiches Trennzeichen), nie mitten im Wort (Konzept §13). */
 }
 .vp-nw-zl-unter {
   font-size: 0.8125rem;
