@@ -236,7 +236,7 @@ class StandortApiTest {
             assertThat(json(e.get("neu")).get("kurzzeichen").asText()).isEqualTo(st.get("kurzzeichen").asText());
             assertThat(json(e.get("neu")).get("zustand").asText()).isEqualTo("aktiv");
             assertThat(e.get("actor_sub")).isEqualTo(adminSub);
-            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (admin)");
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (Platform Admin)");
             assertThat(e.get("rueckwirkend")).isEqualTo(false);
         }
         assertThat(eintraege.get(0).get("gilt_ab").toString()).isEqualTo("2026-10-01");
@@ -606,7 +606,8 @@ class StandortApiTest {
                 String.class, UUID.fromString(id)));
         // Ein Kundenbenutzer steht mit seinem Namen im Protokoll.
         Map<String, Object> e = letzter(mandantA, "standort");
-        assertThat(e.get("actor_name")).isEqualTo("demo");
+        // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
+        assertThat(e.get("actor_name")).isEqualTo("Demo Operator");
         assertThat(e.get("actor_sub")).isEqualTo(anspruch("demo").get("sub").asText());
         long vorher = eintraege(mandantA);
 

@@ -37,7 +37,9 @@ die Revision an; Nr. 2 (16.11.2026) nennt 6 040. Nr. 1 ändert sich nie — auch
 Ein **Bericht** ist ein eigenes Objekt: Vorlage × Geltung × Zeitraum, Kennung `BR-<Jahr>-<Nr.>`, genau ein gespeicherter
 **Entwurf** und null bis n freigegebene **Berichtsstände** (Nr. 1, 2, …). Ein Berichtsstand ist ein **Abzug** — eine Kopie,
 nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage × Geltung × Zeitraum ist
-`409 bericht_gibt_es_schon` (V4). Archivieren verbirgt den Bericht in der Liste; seine Stände bleiben lesbar.
+`409 bericht_gibt_es_schon` (V4); der Satz nennt den Bericht mit dem Wort seiner Vorlage („Monatsbericht“ und
+„Jahresbericht“ nach dem Zeitraum, sonst „Energetische Bewertung“, „Leistungsvergleich“, „Managementbewertung“) und eine
+Datengrundlage als Monate („Oktober 2025 bis September 2026“). Archivieren verbirgt den Bericht in der Liste; seine Stände bleiben lesbar.
 
 - **EW1** Genau ein Entwurf je Bericht; er entsteht beim Anlegen und wird von Pfad 1, Pfad 2 und beim Abruf (D4) ersetzt.
 - **EW2** Die Freigabe friert genau diesen Entwurf ein; mit Stand zeigt der Entwurf den Vergleich gegen den gültigen Stand.
@@ -329,6 +331,9 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   Menge (Schlüssel Quelle + Mengen-Art) und je Kennzahl vorher, nachher, Version („1 → 2“; fehlt eine Seite „—“) und
   Anlass — die Korrekturen, die der neue Abzug zusätzlich nennt: an ihrer Reihe unmittelbar („K-2026-0007“), an einer
   berechneten Messstelle „K-2026-0007 (über die Formel)“, an einer Kennzahl „K-2026-0007 (über die Kennzahl)“.
+  Eine fehlende Seite zählt wie eine Zeile ohne Zahl und ohne Version: eine Quelle, die nur ein Abzug nennt und die
+  dort keine Zahl hat, ist keine Abweichung, und eine fehlende Version steht wie eine fehlende Seite, nie als „null“
+  (Konzept Nachweisen n1, Befund 5; Prüfung `r1_ohne_zahl` in B2).
 - **R2** Die Revision ist die Freigabe des Entwurfs; der alte Stand trägt „ersetzt durch Nr. 2 (16.11.2026)“ und bleibt
   lesbar. **R3** Mehrere Anstöße erledigt eine Revision. **R4** Verwerfen braucht eine Begründung.
 - **R5** Listen-Vermerke: „Entwurf“, „Berichtsstand Nr. n“, „Revision nötig — <Anlass>“, „Anstoß verworfen (…)“. Den Anlass

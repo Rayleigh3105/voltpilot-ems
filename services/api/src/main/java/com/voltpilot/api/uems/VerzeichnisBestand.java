@@ -56,13 +56,14 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
     private final MassnahmeBewertung massnahmeBewertung;
     private final AbweichungService abweichungen;
     private final UnternehmenRepository unternehmen;
+    private final PersonenNamen personen;
 
     public VerzeichnisBestand(BewertungUmfangService umfang, BewertungKriterienService kriterien,
             EnergieeinsatzService einsaetze, EnergieeinsatzEinstufungService einstufungen,
             MessbedarfService messbedarfe, MessmittelService messmittel, KennzahlService kennzahlen,
             BezugsbasisService bezugsbasen, BerichtService berichte, EnergiezielService energieziele,
             MassnahmeService massnahmen, MassnahmeBewertung massnahmeBewertung, AbweichungService abweichungen,
-            UnternehmenRepository unternehmen) {
+            UnternehmenRepository unternehmen, PersonenNamen personen) {
         this.umfang = umfang;
         this.kriterien = kriterien;
         this.einsaetze = einsaetze;
@@ -77,6 +78,7 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         this.massnahmeBewertung = massnahmeBewertung;
         this.abweichungen = abweichungen;
         this.unternehmen = unternehmen;
+        this.personen = personen;
     }
 
     @Override
@@ -84,8 +86,9 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         ZoneId zone = ZoneId.of(unternehmen.desKundenbereichs().map(UnternehmenRepository.Unternehmen::zeitzone)
                 .orElse("Europe/Berlin"));
         var aus = new ArrayList<Map<String, Object>>();
-        bewertung(aus, zone, stichtag);
-        kennzahlen(aus, zone);
+        Map<String, String> namen = personen.jeKennung();
+        bewertung(aus, zone, stichtag, namen);
+        kennzahlen(aus, zone, namen);
         berichte(aus, zone);
         verbesserung(aus, zone);
         return aus;
@@ -93,13 +96,13 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
 
     // ------------------------------------------------------------------ AP-16
 
-    private void bewertung(List<Map<String, Object>> aus, ZoneId zone, LocalDate stichtag) {
+    private void bewertung(List<Map<String, Object>> aus, ZoneId zone, LocalDate stichtag, Map<String, String> namen) {
         try {
             for (var f : umfang.historie().fassungen()) {
                 if (f.fassung() == null) continue;
                 aus.add(zeile("grundlagen", "betrachtungsumfang", "Betrachtungsumfang",
                         abgeloest("Betrachtungsumfang der energetischen Bewertung", f.aufgehobenAm(), zone, stichtag),
-                        f.fassung(), null, name(f.akteur()), f.gueltigAb(), null));
+                        f.fassung(), null, name(f.akteur(), namen), f.gueltigAb(), null));
             }
         } catch (BewertungUmfangAbgelehnt keinStandort) {
             // Kein sichtbarer Standort: der Umfang zeigt diesem Aufrufer nichts — also auch das Verzeichnis nicht.
@@ -112,7 +115,7 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
                 }
                 aus.add(zeile("bewertung_messplanung", "kriterien_fassung", "Kriterien",
                         abgeloest("Kriterien der energetischen Bewertung", f.aufgehobenAm(), zone, stichtag), f.fassung(),
-                        zweite(f.akteur(), f.entschiedenVon()), name(f.akteur()), f.gueltigAb(), null));
+                        zweite(f.akteur(), f.entschiedenVon(), namen), name(f.akteur(), namen), f.gueltigAb(), null));
             }
         } catch (BewertungKriterienAbgelehnt keinStandort) {
             // wie beim Umfang: nichts sichtbar, keine Zeile.
@@ -124,13 +127,13 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
                 if (!"freigegeben".equals(f.freigabeStatus())) continue;
                 aus.add(zeile("bewertung_messplanung", "einstufung_fassung", e.kennzeichen(),
                         "Einstufung " + e.kennzeichen() + " " + e.name() + ": " + f.einstufung(), f.fassung(),
-                        zweite(f.akteur(), f.entschiedenVon()), name(f.akteur()), f.gueltigAb(), null));
+                        zweite(f.akteur(), f.entschiedenVon(), namen), name(f.akteur(), namen), f.gueltigAb(), null));
             }
         }
         for (var b : messbedarfe.alle(null).messbedarfe()) {
             String ee = einsatz.get(b.energieeinsatzId());
             aus.add(zeile("bewertung_messplanung", "messbedarf", b.kennzeichen(), "Messbedarf " + b.kennzeichen()
-                    + (ee == null ? "" : " (" + ee + ")") + ": " + b.zustand(), null, null, name(b.akteur()),
+                    + (ee == null ? "" : " (" + ee + ")") + ": " + b.zustand(), null, null, name(b.akteur(), namen),
                     tag(b.angelegtAm(), zone), null));
         }
         for (var a : messmittel.alle()) {
@@ -139,29 +142,36 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
             String einbau = a.einbauKennzeichen().equals(a.kennzeichen()) ? a.einbauKennzeichen()
                     : a.einbauKennzeichen() + " (" + a.kennzeichen() + ")";
             aus.add(zeile("bewertung_messplanung", "messmittel_angabe", a.einbauKennzeichen(),
-                    "Messmittel " + einbau + ": " + b.bezeichnung(), null, null, name(b.person()),
+                    "Messmittel " + einbau + ": " + b.bezeichnung(), null, null, name(b.person(), namen),
                     tag(b.zeitpunkt(), zone), b.sha256(), "verweis", b.ablage() == null ? b.bezeichnung() : b.ablage()));
         }
     }
 
     // ------------------------------------------------------------------ AP-11, AP-17
 
-    private void kennzahlen(List<Map<String, Object>> aus, ZoneId zone) {
+    private void kennzahlen(List<Map<String, Object>> aus, ZoneId zone, Map<String, String> namen) {
         var basen = new ArrayList<Map<String, Object>>();
+        // Befund 4: die Leser der Kennzahlen und Bezugsbasen nennen nur den gespeicherten Namen; die Kennung der Person
+        // steht an der Fassung. Gefragt wird nur nach Fassungen, die die Leser oben schon gezeigt haben (ihr Zaun).
+        Map<String, String> kennzahlSub = personen.kennzahlFassungen();
+        Map<String, String[]> basisSub = personen.bezugsbasisFassungen();
         for (var k : kennzahlen.liste().kennzahlen()) {
             for (var f : kennzahlen.fassungen(k.id()).fassungen()) {
                 // Tag ist der Eintrag der Fassung — die erste gilt „von Anfang an“ und trägt kein gilt ab.
                 if (f.aufgehobenAm() != null) continue;
                 aus.add(zeile("kennzahlen_bezugsbasen", "kennzahl_fassung", k.kennzeichen(), k.name(), f.nummer(),
-                        null, f.eingetragenVon() == null ? null : f.eingetragenVon().name(),
+                        null, f.eingetragenVon() == null ? null
+                                : person(kennzahlSub.get(k.id() + "/" + f.nummer()), f.eingetragenVon().name(), namen),
                         tag(f.eingetragenAm(), zone), null));
             }
             for (var b : bezugsbasen.liste(k.id()).bezugsbasen()) {
                 for (var kurz : b.fassungen()) {
                     if (!"freigegeben".equals(kurz.freigabeStatus())) continue;
                     BezugsbasisDto.Fassung f = bezugsbasen.fassung(k.id(), b.id(), kurz.fassung());
-                    String freigabe = f.freigabe() == null ? null : f.freigabe().name();
-                    String entscheidung = f.vieraugen() && f.entscheidung() != null ? f.entscheidung().name() : null;
+                    String[] subs = basisSub.getOrDefault(b.id() + "/" + kurz.fassung(), new String[2]);
+                    String freigabe = f.freigabe() == null ? null : person(subs[0], f.freigabe().name(), namen);
+                    String entscheidung = f.vieraugen() && f.entscheidung() != null
+                            ? person(subs[1], f.entscheidung().name(), namen) : null;
                     basen.add(zeile("kennzahlen_bezugsbasen", "bezugsbasis_fassung", b.kennzeichen(),
                             "Bezugsbasis " + b.kennzeichen() + " (" + k.kennzeichen() + ")", kurz.fassung(),
                             entscheidung != null && !entscheidung.equals(freigabe) ? entscheidung : null, freigabe,
@@ -262,13 +272,17 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
     }
 
     /** G2: die zweite Person — nur, wo sie eine andere ist als die, die eingetragen hat. */
-    private static String zweite(ProtokollAkteur eingetragen, ProtokollAkteur entschieden) {
-        String e = name(entschieden);
-        return e == null || e.equals(name(eingetragen)) ? null : e;
+    private static String zweite(ProtokollAkteur eingetragen, ProtokollAkteur entschieden, Map<String, String> namen) {
+        String e = name(entschieden, namen);
+        return e == null || e.equals(name(eingetragen, namen)) ? null : e;
     }
 
-    private static String name(ProtokollAkteur a) {
-        return a == null ? null : a.name();
+    private static String name(ProtokollAkteur a, Map<String, String> namen) {
+        return a == null ? null : person(a.sub(), a.name(), namen);
+    }
+
+    private static String person(String sub, String gespeichert, Map<String, String> namen) {
+        return PersonenNamen.name(sub, gespeichert, namen);
     }
 
     private static LocalDate tag(Instant am, ZoneId zone) {

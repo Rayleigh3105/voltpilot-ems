@@ -1,3 +1,4 @@
+import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -22,7 +23,10 @@ export function EnergiemanagementFeststellungen({ onFeststellung, saetze = false
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementFeststellungen().then(
-      (r) => aktiv && setListe(r.feststellungen),
+      (r) => {
+        merkeAbruf(r.tag); // Befund 3: „Feststellung erfassen“ nimmt den Tag der Route
+        if (aktiv) setListe(r.feststellungen);
+      },
       (e) => aktiv && setFehler(ablehnung(e)),
     );
     return () => {

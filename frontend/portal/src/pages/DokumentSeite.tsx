@@ -1,3 +1,4 @@
+import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -41,7 +42,10 @@ export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementDokument(id).then(
-      (r) => aktiv && setD(r),
+      (r) => {
+        merkeAbruf(r.ueberpruefung?.abruf); // Befund 3: „entschieden am“ endet am Tag der Route
+        if (aktiv) setD(r);
+      },
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
     );
     return () => {

@@ -194,6 +194,9 @@ export const SAETZE: Record<string, string> = {
   bericht_gibt_es_schon: 'Diesen Bericht gibt es schon: {kennung} ({vorlage} {geltung}, {zeitraum}).',
   vorlage_monat: 'Monatsbericht',
   vorlage_jahr: 'Jahresbericht',
+  vorlage_energetische_bewertung: 'Energetische Bewertung',
+  vorlage_leistungsvergleich: 'Leistungsvergleich',
+  vorlage_managementbewertung: 'Managementbewertung',
   stand_gibt_es_nicht: 'Berichtsstand Nr. {nr} gibt es nicht — der neueste ist Nr. {neueste} vom {datum}.',
   stand_gibt_es_nicht_keiner: 'Berichtsstand Nr. {nr} gibt es nicht — der Bericht hat noch keinen freigegebenen Berichtsstand.',
   wert_nicht_mehr_gespeichert: 'Der Wert {zeitraum} wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. {nr} vom {datum} hält ihn fest.',
@@ -362,6 +365,19 @@ export const zeitraum = (art: string, schluessel: string, zone: string): Zeitrau
       : periodeText(art, schluessel), vergleiche,
   };
 };
+
+/**
+ * Zwilling von `BerichtRegeln.zeitraumName`: der Zeitraum in Kundenwörtern - „Oktober 2026“, „2026“, eine Datengrundlage
+ * „Oktober 2025 bis September 2026“. `periodeText` allein kennt keine Datengrundlage (Konzept Nachweisen n1, C7).
+ */
+export const zeitraumName = (art: string, schluessel: string): string => zeitraum(art, schluessel, 'UTC').bezeichnung;
+
+/**
+ * Zwilling von `BerichtRegeln.titelwort`: Monats- und Jahresberichte heißen nach ihrem Zeitraum, jede andere Vorlage nach
+ * ihrem Namen - nie „Jahresbericht“ für eine Managementbewertung (Konzept Nachweisen n1, C6, B10).
+ */
+export const titelwort = (vorlage: string, zeitraumArt: string): string =>
+  SAETZE[`vorlage_${vorlage}`] ?? SAETZE[`vorlage_${zeitraumArt}`];
 
 /** Q5 — warum ein Vergleichszeitraum keine Zahl hat; `null` = es gibt eine Zahl. */
 export const vergleichGrund = (e: { erster_tag: string; letzter_tag: string; besteht_seit: string | null; beendet_am: string | null; hat_werte: boolean }): string | null => {
@@ -631,12 +647,15 @@ export const abweichungen = (alt: Json, neu: Json): Abweichung[] => {
     const schluessel = (w: Json): string => JSON.stringify([w.quelle, w.menge_art ?? null]);
     const alte = new Map(a.map((w) => [schluessel(w), w]));
     const neue = new Map(n.map((w) => [schluessel(w), w]));
+    // Eine fehlende Seite zählt wie eine Zeile ohne Zahl und Version: eine Quelle, die nur ein Abzug nennt und die dort
+    // keine Zahl hat, ist keine Abweichung, und eine fehlende Version heißt „–“, nie „null“ (Nachweisen n1, Befund 5).
+    const version = (w: Json | undefined): string | null => (w === undefined || w.version == null ? null : String(w.version));
     const zeile = (x: Json | undefined, y: Json | undefined): void => {
-      const vorher = x === undefined || x[feld] === null ? null : dez(zahlText(x[feld]));
-      const nachher = y === undefined || y[feld] === null ? null : dez(zahlText(y[feld]));
+      const vorher = x === undefined || x[feld] == null ? null : dez(zahlText(x[feld]));
+      const nachher = y === undefined || y[feld] == null ? null : dez(zahlText(y[feld]));
       const gleich = vorher === null || nachher === null ? vorher === nachher
         : minus(vorher, nachher).z === 0n;
-      if (x !== undefined && y !== undefined && gleich && x.version === y.version) return;
+      if (gleich && version(x) === version(y)) return;
       const w = y ?? x;
       const grund = anlassText === null ? null
         : feld === 'wert' ? fuelle(SAETZE.ueber_kennzahl, { anlass: anlassText })
@@ -644,7 +663,7 @@ export const abweichungen = (alt: Json, neu: Json): Abweichung[] => {
             : 'formel' in w ? fuelle(SAETZE.ueber_formel, { anlass: anlassText }) : anlassText;
       raus.push({
         quelle: w.quelle, menge_art: w.menge_art ?? null, vorher: betragText(vorher), nachher: betragText(nachher),
-        version: `${x === undefined ? OHNE_ZAHL : x.version} → ${y === undefined ? OHNE_ZAHL : y.version}`, anlass: grund,
+        version: `${version(x) ?? OHNE_ZAHL} → ${version(y) ?? OHNE_ZAHL}`, anlass: grund,
       });
     };
     for (const [k, y] of neue) zeile(alte.get(k), y);
@@ -821,8 +840,8 @@ export const keineQuellen = (geltung: string, z: Periode, bestehtSeit: string | 
 /** Zwilling von `BerichtRegeln.keineQuellenUmfang`: die energetische Bewertung ohne Betrachtungsumfang am Tag (422). */
 export const keineQuellenUmfang = (tag: string): string => fuelle(SAETZE.keine_quellen_umfang, { datum: datumText(tag) });
 
-export const berichtGibtEsSchon = (kennungText: string, geltung: string, z: Periode): string =>
-  fuelle(SAETZE.bericht_gibt_es_schon, { kennung: kennungText, vorlage: SAETZE[`vorlage_${z.art}`], geltung, zeitraum: periodeText(z.art, z.schluessel) });
+export const berichtGibtEsSchon = (kennungText: string, vorlage: string, geltung: string, z: Periode): string =>
+  fuelle(SAETZE.bericht_gibt_es_schon, { kennung: kennungText, vorlage: titelwort(vorlage, z.art), geltung, zeitraum: zeitraumName(z.art, z.schluessel) });
 
 export const standGibtEsNicht = (nr: number, neueste: { nr: number; freigegeben_am: string } | null, zone: string): string =>
   neueste === null ? fuelle(SAETZE.stand_gibt_es_nicht_keiner, { nr })

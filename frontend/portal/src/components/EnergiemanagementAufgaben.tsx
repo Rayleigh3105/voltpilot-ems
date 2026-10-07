@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementAufgaben, type EnergiemanagementPerson, type EnergiemanagementZuordnung } from '../api';
-import { heute } from '../bewertung';
+import { merkeAbruf, routenHeute } from '../routenUhr';
 import * as E from '../energiemanagementPortal';
 import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT } from '../glossar';
 import { useRollen } from '../rollen';
@@ -56,7 +56,9 @@ export function EnergiemanagementAufgaben({
 }) {
   const rollen = useRollen();
   const darf = rollen.darf(E.RECHT_VERWALTEN, null);
-  const [tag, setTag] = useState(() => heute());
+  // Konzept Nachweisen n1, Befund 3: ohne gewählten Tag fragt der Reiter die Route - „heute“ ist ihr Tag, nie der des
+  // Browsers (in der Prüfumgebung lag zwischen beiden das Jahr 2026 neben 2029).
+  const [gewaehlt, setGewaehlt] = useState<string | null>(null);
   const [stand, setStand] = useState<EnergiemanagementAufgaben | null>(null);
   const [personen, setPersonen] = useState<EnergiemanagementPerson[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -67,9 +69,10 @@ export function EnergiemanagementAufgaben({
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
-    Promise.all([api.energiemanagementAufgaben(tag), api.energiemanagementPersonen()]).then(
+    Promise.all([api.energiemanagementAufgaben(gewaehlt ?? undefined), api.energiemanagementPersonen()]).then(
       ([a, p]) => {
         if (!aktiv) return;
+        if (gewaehlt === null) merkeAbruf(a.tag);
         setStand(a);
         setPersonen(p.personen);
       },
@@ -78,7 +81,8 @@ export function EnergiemanagementAufgaben({
     return () => {
       aktiv = false;
     };
-  }, [tag, neu]);
+  }, [gewaehlt, neu]);
+  const tag = gewaehlt ?? stand?.tag ?? routenHeute();
   const gespeichert = () => {
     setZuordnen(null);
     setBeenden(null);
@@ -96,7 +100,7 @@ export function EnergiemanagementAufgaben({
           </button>
         </div>
         <div className="vp-em-aufgaben-kopf">
-          <VpDatePicker label="Stand am" value={tag} onChange={(t) => t && setTag(t)} />
+          <VpDatePicker label="Stand am" value={tag} onChange={(t) => t && setGewaehlt(t)} />
           <div className="vp-ez-aktionen">
             <EinsichtGruppe aktion={[E.RECHT_VERWALTEN]} standort={null}>
               <Recht aktion={E.RECHT_VERWALTEN} standort={null}>

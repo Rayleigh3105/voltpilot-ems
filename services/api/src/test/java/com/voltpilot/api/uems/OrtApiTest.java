@@ -197,7 +197,7 @@ class OrtApiTest {
             assertThat(angelegt.get("art")).isEqualTo("angelegt");
             assertThat(angelegt.get("actor_sub")).isEqualTo(anspruch(token).path("sub").asText());
             assertThat(angelegt.get("actor_name"))
-                    .isEqualTo(OrtProtokoll.akteurName(ProtokollAkteur.fuer("x", "admin", true)));
+                    .isEqualTo(OrtProtokoll.akteurName(ProtokollAkteur.fuer("x", "Platform Admin", true))); // Befund 4: Name aus dem Konto
             assertThat((String) angelegt.get("neu")).contains(e.getKey());
         }
         Map<String, Object> g1 = protokoll(ah.tenant, ah.ids.get("G-1")).get(0);

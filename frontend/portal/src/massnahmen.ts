@@ -205,6 +205,15 @@ export const zahlErlaubt = (e: Pick<MassnahmeEntwurf, 'wahl' | 'kennzahl'>) => e
 /** „3“ oder „2,5“ (Prozent weniger als erwartet) → wie im Vertrag, weniger Energie negativ; ungültig → `null`. */
 export const wirkungAusEingabe = zielwertAusEingabe;
 
+/**
+ * Die gespeicherte erwartete Wirkung zurück ins Feld „in % weniger“ — die genaue Umkehrung von `wirkungAusEingabe`:
+ * `-3.0` (weniger) → „3“, `3.0` (mehr) → „-3“, `-2.5` → „2,5“. So geht beim Ändern kein Vorzeichen verloren.
+ */
+export function wirkungEingabe(prozent: string | null): string {
+  const n = prozent === null ? NaN : Number(prozent);
+  return Number.isFinite(n) ? String(0 - n).replace('.', ',') : '';
+}
+
 export const wortlautOk = (t: string) => t.trim().length > 0;
 
 /** Ein Tag (ISO) nie in der Zukunft — „umgesetzt am“ (M6); `heute` in der Zone des Unternehmens. */
@@ -226,6 +235,24 @@ export function monateAus(monate: string | undefined, heute: string): [string, s
   const m = letzterAbgeschlossenerMonat(heute);
   return [m, m];
 }
+/** Höchstens so viele Monate nimmt die Route für die Ausgangslage (`MassnahmeService.AUSGANGSLAGE_HOECHSTENS_MONATE`). */
+export const AUSGANGSLAGE_HOECHSTENS_MONATE = 12;
+const monatIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
+const monatAus = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+/** Monate von `von` bis `bis` einschließlich. */
+export const monateZwischen = (von: string, bis: string) => monatIndex(bis) - monatIndex(von) + 1;
+/** Der späteste wählbare letzte Monat: höchstens zwölf Monate ab `von`, nie nach dem letzten abgeschlossenen Monat. */
+export function ausgangslageEnde(von: string, letzter: string): string {
+  const ende = monatAus(monatIndex(von) + AUSGANGSLAGE_HOECHSTENS_MONATE - 1);
+  return ende < letzter ? ende : letzter;
+}
+/** Ein neuer erster Monat: der letzte Monat bleibt, wenn er passt, sonst rückt er in den erlaubten Bereich. */
+export function bisZu(von: string, bis: string, letzter: string): string {
+  if (bis < von) return von;
+  const ende = ausgangslageEnde(von, letzter);
+  return bis > ende ? ende : bis;
+}
+
 export const monateWert = (von: string, bis: string) => (von === bis ? von : `${von}/${bis}`);
 export const monateText = (von: string, bis: string) => (von === bis ? monatWort(von) : `${monatWort(von)} bis ${monatWort(bis)}`);
 
@@ -257,6 +284,9 @@ export function pruefen(e: MassnahmeEntwurf): EntwurfFehler {
     ...(!/^\d{4}-\d{2}-\d{2}$/.test(e.termin) ? { termin: 'Bitte wählen Sie einen Termin.' } : {}),
     ...(e.wahl === 'mit' && !e.kennzahl ? { kennzahl: `Bitte wählen Sie eine Kennzahl — oder „${WAHL_OHNE}“.` } : {}),
     ...(e.wahl === 'mit' && e.von > e.bis ? { monate: 'Der erste Monat muss vor dem letzten liegen.' } : {}),
+    ...(e.wahl === 'mit' && e.von <= e.bis && monateZwischen(e.von, e.bis) > AUSGANGSLAGE_HOECHSTENS_MONATE
+      ? { monate: `Die ${UEMS_AUSGANGSLAGE} umfasst höchstens ${AUSGANGSLAGE_HOECHSTENS_MONATE} Monate. Wählen Sie einen späteren ersten Monat.` }
+      : {}),
     ...(zahlErlaubt(e) && e.wirkungZahl.trim() && wirkungAusEingabe(e.wirkungZahl) === null
       ? { wirkungZahl: 'Eine Zahl zwischen 0 und 100 mit höchstens einer Nachkommastelle, zum Beispiel 3 oder 2,5.' }
       : {}),
