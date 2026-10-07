@@ -76,4 +76,11 @@ class ProtokollAkteurNameTest {
         ZugriffContext.clear();
         assertThat(ProtokollAkteur.aus(token(Map.of("sub", "s-ines"))).orElseThrow().name()).isEqualTo("s-ines");
     }
+
+    /** Wie vor PR 0: nur ein Token ganz ohne Anmeldenamen (Test-Fixtures, nie Keycloak) nimmt den Claim {@code name}. */
+    @Test
+    void ohneAnmeldenamenWieBisherDerClaimName() {
+        assertThat(ProtokollAkteur.aus(token(Map.of("sub", "s-ines", "name", "Ines Kaltenbach"))).orElseThrow().name())
+                .isEqualTo("Ines Kaltenbach");
+    }
 }
