@@ -77,20 +77,23 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
         return new ProtokollAkteur(null, "Vorbehalt aus Messwerten", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
     }
 
-    /** Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). */
+    /**
+     * Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). Der Name kommt aus dem
+     * Spiegel {@code benutzer.anzeigename} des eigenen Subjects (Konzept Nachweisen n1, Befund 4: „Ines Kaltenbach“
+     * statt „ines“), sonst aus {@code preferred_username} - nie aus dem Claim {@code name}: den darf jedes Konto in
+     * Keycloak selbst ändern, und jede Freigabe stünde dann unter einem gewählten Namen (Review Nachweisen r1, P0-1).
+     */
     public static Optional<ProtokollAkteur> aus(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)
                 || jwt.getSubject() == null || jwt.getSubject().isBlank()) {
             return Optional.empty();
         }
-        Object name = jwt.getClaims().get("name");
-        if (name == null || name.toString().isBlank()) {
-            name = jwt.getClaims().get("preferred_username");
-        }
+        Zugriff z = ZugriffContext.get();
+        String spiegel = z != null && jwt.getSubject().equals(z.sub()) ? z.anzeigename() : null;
+        Object name = spiegel != null && !spiegel.isBlank() ? spiegel : jwt.getClaims().get("preferred_username");
         boolean plattformAdmin = auth.getAuthorities().stream()
                 .anyMatch(a -> PLATTFORM_ADMIN.equals(a.getAuthority()));
-        return Optional.of(fuer(ZugriffContext.get(), jwt.getSubject(), name == null ? null : name.toString(),
-                plattformAdmin));
+        return Optional.of(fuer(z, jwt.getSubject(), name == null ? null : name.toString(), plattformAdmin));
     }
 
     /**
@@ -110,7 +113,7 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
      * Ohne Zugriff-Kontext — die Festlegung von vor IP-7.
      *
      * @param sub das JWT-Subject — die maschinenstabile Identität
-     * @param anzeigename {@code preferred_username} bzw. {@code name}; leer → das Subject, damit
+     * @param anzeigename der Spiegelname bzw. {@code preferred_username}; leer → das Subject, damit
      *     der Eintrag immer einen Namen trägt
      * @param plattformAdmin trägt der Aufrufer die Realm-Rolle {@code platform-admin}?
      */
