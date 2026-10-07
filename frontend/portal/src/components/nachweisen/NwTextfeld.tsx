@@ -14,6 +14,7 @@ export function NwTextfeld({
   fehler,
   hoechstens,
   art = 'text',
+  gesperrt = false,
   testid,
 }: {
   label: string;
@@ -25,6 +26,8 @@ export function NwTextfeld({
   hoechstens?: number;
   /** Einzeilig: `email` öffnet am Telefon die Tastatur mit „@“ und lässt den Browser die Adresse vorschlagen. */
   art?: 'text' | 'email';
+  /** Steht fest (z. B. der Titel eines schon angelegten Dokuments): sichtbar, nicht änderbar. */
+  gesperrt?: boolean;
   testid?: string;
 }) {
   const id = `nw-feld-${useId().replace(/:/g, '')}`;
@@ -33,6 +36,7 @@ export function NwTextfeld({
     value: wert,
     placeholder: platzhalter,
     maxLength: hoechstens,
+    disabled: gesperrt || undefined,
     'aria-invalid': fehler ? true : undefined,
     'aria-describedby': fehler ? `${id}-fehler` : undefined,
     'data-testid': testid,
