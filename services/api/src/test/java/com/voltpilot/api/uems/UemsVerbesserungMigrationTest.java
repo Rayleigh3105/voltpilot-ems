@@ -62,7 +62,8 @@ class UemsVerbesserungMigrationTest {
             "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme und weitet das Vokabular.
             "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
             "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
-            "20261006213000"); // Verbessern v1 PR 2: Art und Einsparung der Maßnahme, weitet das Vokabular.
+            "20261006213000", // Konzept Verbessern PR 1: weitet verbesserung_vokabular() um kurs_lage (Vereinigung).
+            "20261007120000"); // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -411,7 +412,8 @@ class UemsVerbesserungMigrationTest {
                 .path("vokabulare");
         List<String> bloecke = new ArrayList<>();
         vertrag.fieldNames().forEachRemaining(bloecke::add);
-        assertThat(bloecke).hasSize(19);
+        // 20 seit Vertrag 1.1: `kurs_lage` (Konzept Verbessern, Entscheid 3; V20261006213000) und `massnahme_art` (PR 2).
+        assertThat(bloecke).hasSize(20);
         for (String block : bloecke) {
             List<String> woerter = new ArrayList<>();
             vertrag.path(block).forEach(w -> woerter.add(w.asText()));

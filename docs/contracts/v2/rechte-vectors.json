@@ -323,7 +323,8 @@
     "standort_fehlt": "Wählen Sie mindestens einen Standort.",
     "grund_fehlt": "Für einen Notfall-Zugriff ist ein Grund Pflicht.",
     "letzter_kundenadministrator": "{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.",
-    "zweite_person": "Freigabe durch eine zweite Person."
+    "zweite_person": "Freigabe durch eine zweite Person.",
+    "recht_rueckwirkend": "Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute können Sie es selbst eintragen."
   },
   "widersprueche": [
     {

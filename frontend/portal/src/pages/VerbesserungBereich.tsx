@@ -50,7 +50,9 @@ export function VerbesserungBereich({
   reiterOben?: boolean;
 }) {
   const reiterRand = useReiterRand<HTMLDivElement>();
-  if (energiezielId) return <EnergiezielSeite id={energiezielId} onListe={onListe} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
+  if (energiezielId) {
+    return <EnergiezielSeite id={energiezielId} onListe={onListe} onKennzahl={onKennzahl} onMassnahme={onMassnahme} onOeffnen={onOeffnen} />;
+  }
   if (abweichungId) {
     return <AbweichungSeite id={abweichungId} onListe={() => onReiter('abweichungen')} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
   }
@@ -89,12 +91,18 @@ export function VerbesserungBereich({
   return (
     <GrenzSatzBereich>
       <div className="vp-ez" data-testid="verbesserung-bereich">
-        <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
-        <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />
-        <GrenzHinweis />
+        {/* Konzept Verbessern §6.3 (Entscheid 2): der Reiter „Energieziele“ trägt seinen Titel, seinen Satz und
+            „Was VoltPilot leistet“ selbst. */}
+        {reiter !== 'energieziele' && (
+          <>
+            <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
+            <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />
+            <GrenzHinweis />
+          </>
+        )}
         {reiterReihe}
         {reiter === 'energieziele' ? (
-          <EnergiezieleRegister onOeffnen={onOeffnen} />
+          <EnergiezieleRegister onOeffnen={onOeffnen} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />
         ) : (
           <>
             <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} grenze={false} />

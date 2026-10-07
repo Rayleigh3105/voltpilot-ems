@@ -27,8 +27,8 @@
 -- darf die drei Einsparungs-Spalten ändern (Schreibweg „Ändern“), `art` nie.
 --
 -- Vokabulare: verbesserung_vokabular() wird mit CREATE OR REPLACE geweitet - alle
--- Wörter von IP-5, IP-9, IP-14 und AP-19 IP-17 unverändert in derselben Reihenfolge,
--- dazu am Ende nur `massnahme_art` (Vertrag verbesserung.md 1.1). Wer die Funktion
+-- Wörter von IP-5, IP-9, IP-14, AP-19 IP-17 und Verbessern PR 1 (`kurs_lage`, V20261006213000)
+-- unverändert in derselben Reihenfolge, dazu am Ende nur `massnahme_art` (Vertrag verbesserung.md 1.1). Wer die Funktion
 -- später weitet, schreibt die VEREINIGUNG.
 -- =============================================================================
 
@@ -135,6 +135,10 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     ('massnahme_herkunft', 5, 'nichtkonformitaet'),
     ('massnahme_herkunft', 6, 'audit'),
     ('massnahme_herkunft', 7, 'managementbewertung'),
+    ('kurs_lage', 1, 'auf_kurs'),
+    ('kurs_lage', 2, 'knapp_dahinter'),
+    ('kurs_lage', 3, 'nicht_auf_kurs'),
+    ('kurs_lage', 4, 'noch_keine_aussage'),
     ('massnahme_art', 1, 'gemessen'),
     ('massnahme_art', 2, 'nicht_gemessen'),
     ('massnahme_art', 3, 'organisatorisch')

@@ -577,15 +577,15 @@ function Planer({
           <VpPicker
             id={`${basis}-monate`}
             label="Vorher: erster Monat"
-            options={P.vorherMonate(heute)}
+            options={P.vorherVonMonate(heute, e.von)}
             value={e.von}
-            onChange={(v) => setze({ von: v ?? e.von })}
+            onChange={(v) => v && setze({ von: v, bis: P.bisZu(v, e.bis, heute) })}
             search="nie"
           />
           <VpPicker
             id={`${basis}-bis`}
             label="Vorher: letzter Monat"
-            options={P.vorherMonate(heute)}
+            options={P.vorherBisMonate(heute, e.von, e.bis)}
             value={e.bis}
             onChange={(v) => setze({ bis: v ?? e.bis })}
             error={zeigen.monate ?? null}
@@ -875,7 +875,7 @@ export function MassnahmeUmgesetztDialog({ massnahme, onClose, onFertig }: { mas
           label="Was wurde gemacht?"
           wert={begruendung}
           setze={setBegruendung}
-          hilfe="Steht später im Verlauf. Mindestens zehn Zeichen."
+          hilfe="Steht später im Verlauf."
           fehler={zeigen.begruendung}
           testid="massnahme-umgesetzt-text"
         />
@@ -1131,7 +1131,7 @@ export function MassnahmeAendernDialog({ massnahme, onClose, onFertig }: { massn
           label="Warum ändern Sie?"
           wert={begruendung}
           setze={setBegruendung}
-          hilfe="Steht im Verlauf. Mindestens zehn Zeichen."
+          hilfe="Steht im Verlauf."
           fehler={zeigen.begruendung}
           zeilen={2}
         />

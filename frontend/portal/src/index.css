@@ -223,6 +223,20 @@
      Der Betrag im Text bleibt `--vp-c-destructive` — Text trägt Text-Token,
      nie die Reihenfarbe. */
   --vp-c-chart-kosten: #8b1e3f; /* = --vp-chart-battdischarge · 9,00:1 */
+  /* Das URTEIL gegen die Bezugsbasis (Konzept Auswerten a1 §6.12): Farbe trägt
+     nur das Urteil - mehr als erwartet im Warnton, weniger im Speicher-Grün,
+     im Rahmen grau; Verbrauch selbst bleibt `--vp-c-chart-load`.
+     Gemessen (dataviz-Validator, Konzept a1): mehr × weniger ΔE 30,4 bei
+     Normalsicht, 14,8 bei Deuteranopie; dazu trennen die Lage (oben/unten)
+     und die Wörter an jeder Karte. ⚠ `-rahmen` liegt mit 2,56:1 unter 3:1 -
+     bewusst leise (ein Monat im Rahmen ist keine Aussage); die Wörter „im
+     Rahmen der Bezugsbasis“ und die Zusammenfassung für den Vorleser stehen
+     darum immer daneben. Darum hier, nicht im `-chart-`-Satz der Reihen. */
+  --vp-c-urteil-mehr: var(--vp-c-warn-fg); /* #9a3412 · über der Bezugsbasis */
+  --vp-c-urteil-weniger: var(--vp-c-chart-batt); /* #16a34a · besser als die Bezugsbasis */
+  --vp-c-urteil-rahmen: #94a3b8; /* im Rahmen der Bezugsbasis */
+  --vp-c-urteil-band: #eef2f7; /* das Band „im Rahmen“ hinter den Säulen */
+  --vp-c-urteil-leer: #cbd5e1; /* Nulllinie und der gestrichelte Monat ohne Vergleich */
 }
 
 * {
@@ -1662,6 +1676,17 @@ svg [tabindex]:focus-visible {
 }
 .vp-rowmenu-pop button.danger {
   color: var(--vp-industry-end);
+}
+/* Ein Eintrag mit leiser zweiter Zeile („Nur lesen, z. B. für eine Prüfung“). */
+.vp-rowmenu-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.vp-rowmenu-text small {
+  font-size: var(--vp-text-meta, 0.72rem);
+  font-weight: 400;
+  color: var(--vp-text-gray);
 }
 .vp-rowmenu-sep {
   height: 1px;

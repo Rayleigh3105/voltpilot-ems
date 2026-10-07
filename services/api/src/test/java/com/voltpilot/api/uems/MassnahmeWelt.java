@@ -56,8 +56,8 @@ final class MassnahmeWelt {
     static final Map<String, JsonNode> FAELLE = nach(REFERENZ.at("/abnahmefaelle_ap18/faelle"), "fall");
     private static final AtomicInteger NR = new AtomicInteger();
     private static final Map<String, String> NAMEN = Map.of("ines", "Ines Kaltenbach", "peter", "Peter Hollerbach",
-            "murat", "Murat Demirci", "olga", "Olga Alt", "jonas", "Jonas Wendlinger", "lena", "Lena Brandt",
-            "robert", "Robert Fink");
+            "murat", "Murat Demirci", "olga", "Olga Alt", "jonas", "Jonas Wendlinger", "petra", "Petra Lindner",
+            "lena", "Lena Brandt", "robert", "Robert Fink");
 
     record Welt(UUID mandant, UUID st1, UUID st2, UUID kz4, UUID ee3) {}
 
@@ -158,14 +158,15 @@ final class MassnahmeWelt {
                 + "'kg', 'monat', 'gebaeude', ?) RETURNING id", UUID.class, t, g2);
         String[][] personen = {{"ines", "Ines Kaltenbach", null, "aktiv"}, {"peter", "Peter Hollerbach", "bearbeiter", "aktiv"},
             {"murat", "Murat Demirci", "bedienberechtigt", "aktiv"}, {"olga", "Olga Alt", null, "entfernt"},
-            {"jonas", "Jonas Wendlinger", null, "aktiv"}};
+            {"jonas", "Jonas Wendlinger", null, "aktiv"}, {"petra", "Petra Lindner", "bearbeiter", "aktiv"}};
         for (String[] p : personen) {
             String sub = "sub-" + p[0] + "-" + t;
             root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, ?)",
                     t, sub, p[1], p[3]);
             if (p[2] != null) {
                 root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) "
-                        + "VALUES (?, ?, ?, ?, '2024-01-01', 'Europe/Berlin')", t, sub, p[2], st1);
+                        + "VALUES (?, ?, ?, ?, '2024-01-01', 'Europe/Berlin')", t, sub, p[2],
+                        "petra".equals(p[0]) ? st2 : st1);
             }
         }
         Welt ohne = new Welt(t, st1, st2, null, null);

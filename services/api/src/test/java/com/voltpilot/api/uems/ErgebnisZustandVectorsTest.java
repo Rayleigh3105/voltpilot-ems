@@ -606,6 +606,32 @@ class ErgebnisZustandVectorsTest {
     }
 
     /**
+     * Seit 1.13 (AP-09 F17): „Ablesezeitraum“ ist kein vorgesehenes Wort mehr, sondern ein Kennzeichen - der Wortlaut,
+     * den die Bezugsdaten (B8) für den Kalendermonat festhalten, passt auf sein Muster, und beide Muster tragen das Wort
+     * des Vokabulars der Verbrauchsregel.
+     */
+    @Test
+    void derAblesezeitraumDerBezugsdatenIstEinKennzeichen() throws Exception {
+        assertThat(ErgebnisZustand.VORGESEHEN).extracting(Vorgesehen::wort).doesNotContain("Ablesezeitraum");
+        assertThat(texte(lies(VERBRAUCH).path("kennzeichen"))).contains(
+                ErgebnisZustand.muster("ablesezeitraum").wort(), ErgebnisZustand.muster("ablesezeitraum_ohne_monat").wort());
+
+        List<String> saetze = new ArrayList<>();
+        for (JsonNode fall : lies(V2.resolve("bezugsdaten-vectors.json")).path("cases")) {
+            fall.path("beschreibend").path("kalendermonat").forEach(monat -> {
+                if (monat.hasNonNull("kennzeichen")) {
+                    saetze.add(monat.path("kennzeichen").asText());
+                }
+            });
+        }
+        assertThat(saetze).isNotEmpty().allSatisfy(satz -> {
+            Erkannt e = ErgebnisZustand.erkenne(satz);
+            assertThat(e).as(satz).isNotNull();
+            assertThat(e.muster().schluessel()).isEqualTo("ablesezeitraum");
+        });
+    }
+
+    /**
      * Seit 1.11 (AP-13 IP-1, E11 = A): je Code des Feldes {@code grund} der Route „Werte je Messstelle“ genau EIN
      * Kundensatz. Das Vokabular im Code ist das der Datei, die Codes sind die der Route in ihrer Reihenfolge, jedes
      * Beispiel passt auf sein Muster und spricht sich mit den erkannten Werten zurück, und jeder Satz wird in einem Fall

@@ -57,7 +57,8 @@ class UemsAbweichungMigrationTest {
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20260925040000", // AP-19 IP-17: weitet das Vokabular als Vereinigung (mit den Wörtern dieser Migration).
             "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
-            "20261006213000"); // Verbessern v1 PR 2: Art und Einsparung der Maßnahme, weitet das Vokabular.
+            "20261006213000", // Konzept Verbessern PR 1: weitet verbesserung_vokabular() um kurs_lage (Vereinigung).
+            "20261007120000"); // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip14_test_pw";
     private static final List<String> TABELLEN = List.of("auffaelligkeit", "abweichung", "abweichung_aenderung");
     private static final String BEGRUENDUNG = "Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme "
@@ -509,6 +510,9 @@ class UemsAbweichungMigrationTest {
                 // AP-19 IP-17 weitet dahinter die Herkunft der Maßnahme.
                 "massnahme_herkunft:5:nichtkonformitaet", "massnahme_herkunft:6:audit",
                 "massnahme_herkunft:7:managementbewertung",
+                // Konzept Verbessern (Vertrag 1.1) weitet dahinter um die Lage des Zwischenstands.
+                "kurs_lage:1:auf_kurs", "kurs_lage:2:knapp_dahinter", "kurs_lage:3:nicht_auf_kurs",
+                "kurs_lage:4:noch_keine_aussage",
                 // Verbessern v1 PR 2 weitet dahinter um die Art der Maßnahme.
                 "massnahme_art:1:gemessen", "massnahme_art:2:nicht_gemessen", "massnahme_art:3:organisatorisch");
         // Die Einträge des Vertrags (`abweichung_eintrag_art`) sind Wörter des Protokolls.

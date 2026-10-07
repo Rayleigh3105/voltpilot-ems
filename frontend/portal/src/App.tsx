@@ -42,6 +42,7 @@ import {
   aufbauHash,
   canonicalAnlageHash,
   canonicalStandortHash,
+  canonicalVerbrauchHash,
   canonicalPlatformHash,
   isGeraeteBereich,
   hashForRoute,
@@ -56,6 +57,8 @@ import {
   kennzahlRoute,
   berichtRoute,
   energieeinsatzRoute,
+  verbrauchEinsatzHash,
+  verbrauchListeHash,
   energiezielRoute,
   massnahmeRoute,
   abweichungRoute,
@@ -208,6 +211,9 @@ const BerichtePage = lazy(() =>
 );
 const BewertungPage = lazy(() =>
   PAGE_CHUNK['portfolio-bewertung']().then((m) => ({ default: m.BewertungPage })),
+);
+const VerbrauchPage = lazy(() =>
+  PAGE_CHUNK['portfolio-verbrauch']().then((m) => ({ default: m.VerbrauchPage })),
 );
 const VerbesserungBereich = lazy(() =>
   PAGE_CHUNK['portfolio-verbesserung']().then((m) => ({ default: m.VerbesserungBereich })),
@@ -762,7 +768,8 @@ function UnifiedPortal() {
     const canonical =
       canonicalAnlageHash(window.location.hash)
       ?? canonicalStandortHash(window.location.hash)
-      ?? canonicalPlatformHash(window.location.hash);
+      ?? canonicalPlatformHash(window.location.hash)
+      ?? canonicalVerbrauchHash(window.location.hash);
     if (canonical) {
       replaceCurrentNavigation(canonical);
     }
@@ -1301,6 +1308,8 @@ function UnifiedPortal() {
   const berichteDa = ebenenFakten ? bereicheHier.includes('berichte') : null;
   // AP-16 IP-6: der Reiter „Bewertung“ nach derselben Regel, dazu das Recht aus `/me`.
   const bewertungDa = ebenenFakten ? bereicheHier.includes('bewertung') : null;
+  // Konzept Auswerten a1: der Reiter „Verbrauch“ nach der Regel der Bewertung.
+  const verbrauchDa = ebenenFakten ? bereicheHier.includes('verbrauch') : null;
   // AP-18 IP-8: der Reiter „Ziele und Maßnahmen“ nach derselben Regel mit `verbesserung.ansehen`.
   const verbesserungDa = ebenenFakten ? bereicheHier.includes('verbesserung') : null;
   // AP-19 IP-9: der Reiter „Energiemanagement“ nach derselben Regel mit `energiemanagement.ansehen`.
@@ -1382,13 +1391,15 @@ function UnifiedPortal() {
   const isPlatform = isPlatformPage(page);
   // ⚠ Nach `loaded` HÄLT der Cover nur über den echten LANDESEITEN, die ihr
   // erstes Bild melden (`useReportFirstPaint`): Übersicht/Portfolio (→
-  // PortfolioCockpit), Anlagen (→ AnlageSeite/AnlagenListe). Flotten-Unterreiter
-  // wie `portfolio/messwerte`/`portfolio/erloese` (und jede künftige Unterseite)
-  // melden NICHT und würden sonst bis zur 3-s-Grenze unter fertigem Inhalt
-  // hängen (Review SOLLTE-2). Für sie hebt der Cover ab, sobald `loaded` steht -
-  // die Seite trägt dann ihre eigenen Skelette. Wer eine neue meldende
-  // Landeseite baut, trägt sie hier ein.
-  const isReportingLanding = page === 'uebersicht' || page === 'portfolio' || page === 'anlagen';
+  // PortfolioCockpit bzw. EbenenCockpit), Anlagen (→ AnlageSeite/AnlagenListe) -
+  // die Anlage nur ohne Reiter: `#/anlage/{id}/energiebilanz` und jeder andere
+  // Reiter meldet nicht. Flotten-Unterreiter wie `portfolio/messwerte`/
+  // `portfolio/erloese` (und jede künftige Unterseite) melden ebenfalls NICHT und
+  // würden sonst bis zur 3-s-Grenze unter fertigem Inhalt hängen (Review
+  // SOLLTE-2). Für sie hebt der Cover ab, sobald `loaded` steht - die Seite trägt
+  // dann ihre eigenen Skelette. Wer eine neue meldende Landeseite baut, trägt sie
+  // hier ein.
+  const isReportingLanding = page === 'uebersicht' || page === 'portfolio' || (page === 'anlagen' && route.sub == null);
   const asyncLanding =
     loaded &&
     !error &&
@@ -1414,6 +1425,14 @@ function UnifiedPortal() {
     const cap = window.setTimeout(() => setLandingReady(true), 3000);
     return () => window.clearTimeout(cap);
   }, [asyncLanding, landingReady]);
+  // Einmal gehoben, kehrt der Cover nicht zurück: steht nach dem Laden eine
+  // Seite, die nicht meldet (Unterseite, Hilfe, Plattform, Onboarding), endet
+  // der Boot-Moment hier. Sonst käme die Lade-Bühne beim ersten späteren Wechsel
+  // auf eine meldende Landeseite zurück. Ohne Mandantenwahl oder bei einem
+  // Ladefehler bleibt er offen - der nächste Ladelauf ist wieder ein Start.
+  useEffect(() => {
+    if (!landingReady && loaded && !error && !loadFailed && !needsTenantPick && !asyncLanding) setLandingReady(true);
+  }, [landingReady, loaded, error, loadFailed, needsTenantPick, asyncLanding]);
   // Bei ungewöhnlich langer Ladezeit ein ruhiger Hinweis (kein endloses Kreisen).
   useEffect(() => {
     if (!coverActive) {
@@ -1589,6 +1608,7 @@ function UnifiedPortal() {
             showBewertung={bewertungDa === true}
             showVerbesserung={verbesserungDa === true}
             showEnergiemanagement={energiemanagementDa === true}
+            showVerbrauch={verbrauchDa === true}
             leiste={leisteHier}
             leisteSeiten={leisteSeitenHier}
             telefonReiter={telefonReiterHier}
@@ -1629,7 +1649,7 @@ function UnifiedPortal() {
           {page === 'portfolio-standorte' && <StandortePage />}
           {/* AP-09 IP-9: Unternehmenswelt; Direktadressen beachten dieselbe Messkunden-Grenze. */}
           {page === 'portfolio-bezugsgroessen' && (
-            bezugsgroessenDa === true ? <BezugsgroessenPage /> : (
+            bezugsgroessenDa === true ? <BezugsgroessenPage bezugsgroesseId={route.bezugsgroesseId ?? null} /> : (
               <p>{bezugsgroessenDa === null ? 'Wird geladen …' : 'Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.'}</p>
             )
           )}
@@ -1637,7 +1657,8 @@ function UnifiedPortal() {
           {page === 'portfolio-kennzahlen' && (
             <KennzahlenPage
               kennzahlId={route.kennzahlId ?? null}
-              onOeffnen={(id) => navigate(kennzahlRoute(id))}
+              ebene={route.kennzahlEbene ?? null}
+              onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, null, ebene))}
               onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
             />
           )}
@@ -1651,11 +1672,14 @@ function UnifiedPortal() {
             />
           )}
           {/* UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (Umfang, Energieeinsätze) und die Seite eines Einsatzes. */}
-          {page === 'portfolio-bewertung' && (
-            <BewertungPage
+          {page === 'portfolio-bewertung' && <BewertungPage onOeffnen={(id) => navigate(energieeinsatzRoute(id))} />}
+          {/* Konzept Auswerten a1 (Entscheid 10.1): „Unternehmen › Verbrauch“ und die Seite eines Energieeinsatzes. */}
+          {page === 'portfolio-verbrauch' && (
+            <VerbrauchPage
               einsatzId={route.energieeinsatzId ?? null}
-              onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-              onListe={() => navigate(pageRoute('portfolio-bewertung'))}
+              onOeffnen={(id) => geheZu(energieeinsatzRoute(id), verbrauchEinsatzHash(id, window.location.hash))}
+              onListe={() => geheZu(pageRoute('portfolio-verbrauch'), verbrauchListeHash(window.location.hash))}
+              onNavigate={navigate}
             />
           )}
           {/* UEMS AP-18 IP-8: „Unternehmen › Ziele und Maßnahmen“ (Energieziele, Maßnahmen, Abweichungen) und die
@@ -1723,16 +1747,18 @@ function UnifiedPortal() {
               }
               // AP-04 IP-8: die Messstellen-Seite im Bereich, aus dem sie geöffnet wird.
               messstelleId={route.messstelleId ?? null}
-              onOeffnen={(id) =>
-                navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id))
-              }
-              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse. Ein Einstieg aus dem
-              // Register ist ein Seitenwechsel; eine neue Wahl auf der Seite ersetzt nur die Adresse.
-              werte={parseMessstelleWerte(window.location.hash)}
-              onWerte={(id, periode) => {
-                const s = sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode });
+              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse; eine neue Wahl auf der Seite
+              // ersetzt nur die Adresse. Die Liste öffnet die Seite selbst (Konzept Messen m1: die ganze Reihe ist der
+              // Einstieg) - mit „Stand am …“ an genau diesem Tag.
+              onOeffnen={(id, periode) => {
+                // Die Liste nennt eine Periode nur mit „Stand am …“: dann liest die Seite diesen Tag, nur lesend.
+                const s = periode
+                  ? sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode, stand: periode })
+                  : null;
                 if (s) springe(s);
+                else navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id));
               }}
+              werte={parseMessstelleWerte(window.location.hash)}
               onWerteZeitraum={(periode) => {
                 // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht (neue Periode, neue Zahl).
                 const jetzt = parseMessstelleWerte(window.location.hash);
@@ -1743,6 +1769,7 @@ function UnifiedPortal() {
                       standortId: page === 'standort' ? route.standortId : null,
                       periode,
                       vergleich: jetzt.vergleich,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
@@ -1758,9 +1785,17 @@ function UnifiedPortal() {
                       periode: jetzt.periode,
                       version: jetzt.version,
                       vergleich: v,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
+              }}
+              // „Zurück zu heute“ aus „Stand am …“: dieselbe Messstelle ohne Tag und ohne dessen Periode.
+              onWerteHeute={() => {
+                const s = route.messstelleId
+                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null })
+                  : null;
+                if (s) springe(s);
               }}
               onListe={() =>
                 navigate(
@@ -1813,7 +1848,8 @@ function UnifiedPortal() {
               standort={{ id: standortOffen.id, name: standortOffen.name }}
               zone={standortOffen.zeitzone}
               kennzahlId={route.kennzahlId ?? null}
-              onOeffnen={(id) => navigate(kennzahlRoute(id, standortOffen.id))}
+              ebene={route.kennzahlEbene ?? null}
+              onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, standortOffen.id, ebene))}
               onListe={() => navigate(standortBereichRoute(standortOffen.id, 'kennzahlen'))}
             />
           )}

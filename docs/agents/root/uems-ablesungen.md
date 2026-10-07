@@ -23,6 +23,11 @@ Einstieg: `docs/contracts/v2/messwert-herkunft.md` → Ablesungen; Code `Ablesun
 - Z6/E5 ordnet den ganzen Ablesezeitraum einem Monat zu; nie interpolieren oder auf
   Tage verteilen. Das AP-08-Lesemodell liest vorhandene Perioden und Versionen.
   B8/F17: 95,9 %, Oktober 1 240 m³, November keine Werte.
+- Die Sätze der Perioden sind Kennzeichen des Ergebnis-Vertrags (ergebnis-zustand 1.13): gesprochen nur über
+  `ErgebnisZustand.ablesezeitraum`/`ABLESEZEITRAUM_OHNE_MONAT`, nie als eigener Text. Das Jahr bildet
+  `AblesungRegeln.jahr`: Summe der Monate mit Zahl; fehlt einer, „unvollständig“ MIT dem I2-Satz zuerst - ohne
+  ihn verletzt das Jahr den Vertrag (`unvollstaendig_ohne_grund`) und die Karte zeigt „—“. Vor 1.13 gespeicherte
+  Jahre heilen erst mit der nächsten Ablesung (K-Fassung bildet alle Perioden neu), nie per Migration.
 - Archivieren beendet auch die komponentenlose Quellenbindung über den bestehenden
   `MessstelleQuelleService` und nennt sie im Archiv-Protokoll. Der Filter verwendet
   Bestandsspalten; alte Migrationsstände bleiben lesbar.

@@ -209,16 +209,16 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
 
       // ---------------------------------------------------------------- 3 · WELT: das Register der Messstellen
       await zu(page, breite, 'Messstellen');
-      await expect(page.locator('[data-testid="messstellen"] .vp-ms-tabelle, [data-testid="messstellen"] .vp-ms-karten').first()).toBeVisible();
+      await expect(page.locator('[data-testid="messstellen"] [data-testid="messstelle-reihe"]').first()).toBeVisible();
       const welt = await station(page, breite, '03-welt', gesammelt);
       expect(welt.text).toContain('MS-10');
 
       // ------------------------------------------------- 4 · WELT: „Stand am …“ auf den 03.11.2026 zurückgestellt
-      // Der Einstieg „Werte“ des Registers führt auf den Stichtag, sonst auf den Vortag (AP-13 IP-3) — so erreicht
-      // der Kunde einen älteren Tag, ohne sich durch die Zeit-Leiste zu blättern.
+      // Mit „Stand am …“ öffnet die Reihe der Liste die Werte dieses Tages (AP-13 IP-3) — so erreicht der Kunde einen
+      // älteren Tag, ohne sich durch die Zeit-Leiste zu blättern.
       await standAm(page, GESUCHTER_TAG);
       const stand = await station(page, breite, '04-stand-am', gesammelt);
-      expect(stand.text).toContain('Sie sehen den Stand am 03.11.2026');
+      expect(stand.text).toContain('Stand 03.11.2026');
 
       // ---------------------------------------------------------------- 5 · ZAHL: MS-10 am 03.11.2026
       await einstieg(page, breite, 'Netzbezug Halle 2');
@@ -228,7 +228,8 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
       await expect(page.getByTestId('quelle-karte')).toContainText('Zähler Energiekarte EK-1');
       const zahl = await station(page, breite, '05-zahl', gesammelt);
-      expect(zahl.route).toMatch(/\?periode=2026-11-03$/);
+      // Aus „Stand am …“ geöffnet: die Seite liest diesen Tag, nur lesend (Review r4 S4).
+      expect(zahl.route).toMatch(/\?periode=2026-11-03&stand=2026-11-03$/);
 
       // ---------------------------------------------------------------- 6 · ZAHL: der Verlauf desselben Tages
       const verlauf = werte.getByTestId('verlauf');
@@ -237,12 +238,15 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await station(page, breite, '06-verlauf', gesammelt);
 
       // ---------------------------------------------------------------- 7 · ZAHL: der Vergleich im Monat
+      // Messen m2 (Seite): der Monat steht als Balken; der Vergleich ist zugeklappt, bis der Kunde vergleichen will.
       await werte.locator('.vp-wk-zeitwahl').getByRole('tab', { name: 'Monat' }).click();
       await expect(werte.getByTestId('werte-karte')).toContainText('35.800');
+      await expect(werte.getByTestId('monatsbalken')).toBeVisible();
+      await werte.locator('details.vp-wk-vergleich-auf > summary').click();
       await werte.getByTestId('vergleich').getByRole('tab', { name: 'Vorperiode' }).click();
       await expect(werte.getByTestId('vergleich-delta')).toContainText('gegenüber Oktober 2026');
       const vergleich = await station(page, breite, '07-vergleich', gesammelt);
-      expect(vergleich.route).toMatch(/\?periode=2026-11&v=vorperiode$/);
+      expect(vergleich.route).toMatch(/\?periode=2026-11&v=vorperiode&stand=2026-11-03$/);
 
       // ---------------------------------------------------------------- 8 · NACHWEIS: die Versionen der Zahl
       await werte.locator('.vp-wk-zeitwahl').getByRole('tab', { name: 'Tag' }).click();
@@ -279,11 +283,12 @@ const WELTEN: { name: string; bild: string; jetzt: Date; da: string; text?: RegE
     text: /2\.354\s?kWh/,
   },
   {
-    name: 'w3-verlauf',
+    // Messen m2 (Seite): der Monat als zwölf Balken mit der Zeile des Monats (der Verlauf steht am Tag und in der Woche).
+    name: 'w3-monat',
     bild: `bild=standort&stand=${HEUTE}&ansicht=verlauf&ms=MS-10&mon=2026-11`,
     jetzt: JETZT,
-    da: '[data-testid="verlauf"]',
-    text: /35\.800\s?kWh/,
+    da: '[data-testid="werte"]',
+    text: /November 2026: 35\.800\s?kWh/,
   },
   {
     name: 'w4-vergleich',
@@ -332,16 +337,22 @@ test.describe('AP-13 IP-13 · die Welten, die die Bühne öffnet', () => {
   }
 });
 
-/** „Stand am …“ auf einen früheren Tag stellen — im echten Datumsfeld, Monat für Monat zurückgeblättert. */
+/**
+ * „Stand am …“ auf einen früheren Tag stellen — seit Konzept Messen m1 §6.2 aus dem Menü ⋯ („Stand an einem Tag
+ * ansehen“), dann im echten Datumsfeld, Monat für Monat zurückgeblättert; die Plan-Marke „Stand …“ sagt den Tag.
+ */
 async function standAm(page: Page, iso: string) {
+  const liste = page.getByTestId('messstellen');
+  await liste.getByRole('button', { name: 'Weitere Aktionen' }).click();
+  await page.getByRole('menuitem', { name: /^Stand an einem Tag ansehen/ }).click();
   const feld = page.getByRole('combobox', { name: 'Stand am' });
-  await feld.click();
+  if (!(await page.locator('.vp-kal-gitter').count())) await feld.click();
   const tag = page.locator(`.vp-kal-tag[data-iso="${iso}"]:not(.is-rand)`);
   for (let i = 0; i < 24 && !(await tag.count()); i++) await page.getByRole('button', { name: 'Voriger Monat' }).click();
   await tag.click();
   await expect(page.locator('.vp-kal-gitter')).toHaveCount(0);
   const [jj, mm, dd] = iso.split('-');
-  await expect(page.getByRole('status')).toContainText(`Sie sehen den Stand am ${dd}.${mm}.${jj}`);
+  await expect(page.getByTestId('stand-am')).toContainText(`Stand ${dd}.${mm}.${jj}`);
 }
 
 /** Der Wechsel in einen Bereich der Ebene: am Telefon die Leiste, am Rechner der Reiter (M1/M3). */
@@ -356,11 +367,7 @@ async function zu(page: Page, breite: number, bereich: string) {
  * ⚠ Der zweite Weg am Rechner — „Letzter Wert“ — steht nur an einer Zeile MIT Wert; das Register des
  * Referenzunternehmens trägt seine Momentanwerte allein am 20.10.2026, der Weg wird also an seinem Stand gegangen.
  */
-async function einstieg(page: Page, breite: number, name: string) {
-  if (breite === 375) {
-    await page.locator('.vp-ms-karte', { hasText: name }).first().getByRole('button', { name }).click();
-    return;
-  }
-  await page.locator('tr', { hasText: name }).first().locator('.vp-rowmenu-btn').click();
-  await page.getByRole('menuitem', { name: 'Werte' }).click();
+/** Konzept Messen m1 §6.2: die ganze Reihe der Liste ist der Einstieg - bei jeder Breite derselbe Verweis. */
+async function einstieg(page: Page, _breite: number, name: string) {
+  await page.getByTestId('messstelle-reihe').filter({ hasText: name }).first().click();
 }

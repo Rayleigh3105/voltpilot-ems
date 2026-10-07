@@ -219,7 +219,7 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await page.setViewportSize({ width: BREITE, height: 812 });
     await page.goto('/e2e/tageskarte.html?ms=MS-21&name=Gas%20Heizung%20Verwaltung&art=tag&wert=2026-11-03');
     const leer = page.getByTestId('werte-leer');
-    await expect(leer.getByRole('heading', { name: 'Keine Datenquelle' })).toBeVisible();
+    await expect(leer.getByRole('heading', { name: 'Noch keine Quelle' })).toBeVisible();
     await expect(leer).toContainText(
       'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
     );

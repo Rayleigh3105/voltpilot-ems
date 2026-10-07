@@ -133,7 +133,7 @@ for (const breite of [375, 1440]) {
 
     test('Planen am Energieziel (R3): Kennzahl vorbelegt, Prozent in kWh im Jahr, Prüfen am Ende; Kommentar und „Umsetzung melden“', async ({ page }) => {
       await oeffne(page, 'lage=leer&ez=1', breite, AM_10_07_2028);
-      await page.getByTestId('massnahme-anlegen-einstieg-energieziel').getByTestId('massnahme-anlegen-knopf').click();
+      await page.getByTestId('energieziel-planen').click();
       const blatt = page.getByTestId('massnahme-anlegen');
       await expect(page.getByTestId('massnahme-herkunft-vorbelegt')).toContainText('für das Energieziel 2028');
       await expect(blatt.getByTestId('planen-art-gemessen').locator('input')).toBeChecked();

@@ -169,11 +169,14 @@ export function VermerkZeile({
   vermerke,
   alle,
   onNeu,
+  tagHeute,
 }: {
   vermerke: Auffaelligkeit[];
   /** Alle Vermerke der Kennzahl — für „alle offenen gehen hinein“. */
   alle: Auffaelligkeit[];
   onNeu: () => void;
+  /** Der Tag der Route (`abruf` der Vermerk-Liste) für die Frist im Antwort-Dialog; ohne ihn der gemerkte Tag. */
+  tagHeute?: string;
 }) {
   const [dialog, setDialog] = useState<{ v: Auffaelligkeit; art: 'abweichung' | 'zur_kenntnis' } | null>(null);
   return (
@@ -219,6 +222,7 @@ export function VermerkZeile({
           vermerk={dialog.v}
           art={dialog.art}
           mit={A.offeneDerFassung(alle, dialog.v)}
+          tagHeute={tagHeute}
           onClose={() => setDialog(null)}
           onFertig={(x) => {
             setDialog(null);

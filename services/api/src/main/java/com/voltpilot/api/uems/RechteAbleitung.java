@@ -420,6 +420,7 @@ public final class RechteAbleitung {
         t.put("grund_fehlt", "Für einen Notfall-Zugriff ist ein Grund Pflicht.");
         t.put("letzter_kundenadministrator", "{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.");
         t.put("zweite_person", "Freigabe durch eine zweite Person.");
+        t.put("recht_rueckwirkend", "Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute können Sie es selbst eintragen.");
         return Map.copyOf(t);
     }
 

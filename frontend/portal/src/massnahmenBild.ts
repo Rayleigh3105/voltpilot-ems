@@ -11,7 +11,7 @@ import type { Massnahme, MassnahmeArt, MassnahmeBewertung, MassnahmeWirkung, Mas
 import { monatWort } from './bezugsbasisVergleich';
 import { tag, zielperiodeText } from './energieziele';
 import { NBSP } from './format';
-import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_MASSNAHMEN } from './glossar';
+import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_MASSNAHMEN, UEMS_WIRKUNG } from './glossar';
 
 // ------------------------------------------------------------------ Wörter
 
@@ -452,7 +452,14 @@ export function stufenBild(m: Massnahme): StufeBild[] {
 export interface AntwortBild {
   satz: string;
   formal: string | null;
+  /** Die Wirkung ist noch unterwegs: die Seite zeigt ein Skelett statt eines Satzes, der gleich wieder umspringt. */
+  laedt?: true;
+  /** Die Wirkung ließ sich nicht lesen: der Satz sagt es, die Seite bietet „Erneut versuchen“ (ein Fehler ist keine Null). */
+  fehler?: true;
 }
+
+/** Wo die Wirkung der Route für die Antwort steht. */
+export type WirkungStand = 'da' | 'laedt' | 'fehler';
 
 /**
  * V1/V3 · die Antwort der Seite mit Zeitraum: geplant mit Restzeit; überfällig seit n Tagen; umgesetzt mit der
@@ -462,7 +469,7 @@ export interface AntwortBild {
 /** Wer abschließt, wenn die angemeldete Person es selbst nicht darf (`verbesserung.abschliessen`). */
 export const WER_ABSCHLIESST = 'abschließen kann, wer im Energiemanagement Maßnahmen bewertet';
 
-export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null, darfAbschliessen = true): AntwortBild {
+export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null, darfAbschliessen = true, wirkung: WirkungStand = 'da'): AntwortBild {
   const abruf = m.frist.abruf;
   if (m.zustand === 'verworfen') {
     return { satz: `Verworfen am ${tag(m.verworfen_am)}${m.verworfen_grund ? `: ‚${m.verworfen_grund}‘` : '.'}`, formal: 'Bleibt mit Verlauf lesbar.' };
@@ -488,14 +495,19 @@ export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null, darfAbschl
       formal: 'Ohne Kennzahl misst VoltPilot nichts; ob es geholfen hat, sagt eine Person.',
     };
   }
+  // Solange die Wirkung lädt oder fehlt, sagt die Antwort nichts über bewertbare Monate - unbekannt ist keine Null.
+  if (wirkung === 'laedt') return { satz: '', formal: null, laedt: true };
+  if (wirkung === 'fehler') {
+    return m.zustand === 'bewertet' && m.bewertung
+      ? { satz: urteilSatz(m.bewertung), formal: `Die ${UEMS_WIRKUNG} von heute ließ sich nicht laden; Stand Nr. ${m.bewertung.stand_nr} bleibt, wie er festgehalten wurde.`, fehler: true }
+      : { satz: `Umgesetzt am ${tag(m.umgesetzt_am)} - die ${UEMS_WIRKUNG} ließ sich nicht laden.`, formal: 'Ihre Daten sind nicht betroffen.', fehler: true };
+  }
   if (!w || w.grund !== null || !w.summe || w.summe.delta_prozent === null || !w.monate_bewertbar) {
     // Bewertet, aber heute kein bewertbarer Monat (z. B. fehlen Werte): die Antwort ist das Urteil mit seinem Stand.
     if (m.zustand === 'bewertet' && m.bewertung) {
-      const b = m.bewertung;
-      const kopie = standKopie(b);
       return {
-        satz: `Wirkung geprüft am ${tag(b.am)} von ${b.person.name}: ${UEMS_MASSNAHME_ERGEBNISSE[b.ergebnis]}${kopie ? ` - damals ${kopie.prozent} als erwartet nach ${kopie.monate} Monaten` : ''}.`,
-        formal: `Heute ist kein Monat nach der Umsetzung bewertbar; Stand Nr. ${b.stand_nr} bleibt, wie er festgehalten wurde.`,
+        satz: urteilSatz(m.bewertung),
+        formal: `Heute ist kein Monat nach der Umsetzung bewertbar; Stand Nr. ${m.bewertung.stand_nr} bleibt, wie er festgehalten wurde.`,
       };
     }
     const ab = m.umgesetzt_am ? monatWort(naechsterMonat(m.umgesetzt_am.slice(0, 7))) : null;
@@ -516,6 +528,12 @@ export function antwortBild(m: Massnahme, w: MassnahmeWirkung | null, darfAbschl
     satz: `Seit der Umsetzung ${zahl}, als die Bezugsbasis erwarten lässt${erwartet}.`,
     formal: `${zeitraumText(von, bis)} · ${w.monate_text} Monaten${w.vorlaeufig ? ', vorläufig' : ''}${basis}`,
   };
+}
+
+/** „Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.“ */
+function urteilSatz(b: NonNullable<Massnahme['bewertung']>): string {
+  const kopie = standKopie(b);
+  return `Wirkung geprüft am ${tag(b.am)} von ${b.person.name}: ${UEMS_MASSNAHME_ERGEBNISSE[b.ergebnis]}${kopie ? ` - damals ${kopie.prozent} als erwartet nach ${kopie.monate} Monaten` : ''}.`;
 }
 
 function naechsterMonat(jjjjmm: string): string {

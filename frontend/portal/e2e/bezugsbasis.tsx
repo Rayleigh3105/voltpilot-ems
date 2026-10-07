@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { api } from '../src/api';
 import { keycloak } from '../src/auth';
@@ -23,7 +24,9 @@ import '../src/index.css';
  *
  * Adresse: `?person=IK|CB` (Vorgabe IK, Ines Kaltenbach) · `&lage=keine|freigegeben|modell|anstoss|frist` (Vorgabe keine; IP-18:
  * `anstoss` R5, `frist` R13 über `fassungenBuehne`; `modell` ist
- * BB-0001 Fassung 2 nach R12/R4/R9, IP-14) · `&seite=register` zeigt das Register statt der Kennzahl. Eigene Bühne, keine
+ * BB-0001 Fassung 2 nach R12/R4/R9, IP-14) · `&seite=register` zeigt das Register statt der Kennzahl · `&ebene=bezugsbasis`
+ * öffnet die Bezugsbasis eine Ebene unter der Kennzahl (Konzept Auswerten a1 §6.6; die Seite wechselt die Ebene in der
+ * Bühne selbst). Eigene Bühne, keine
  * geteilte Datei wird angefasst. Ein Entwurf mit einer Methode ≠ Verhältnis antwortet mit dem Modell von R12 (IP-10);
  * die zweite Variable lehnt die Bühne wie der Server ab, wenn BZ-3 gewählt ist (G4).
  */
@@ -39,11 +42,13 @@ if (lage === 'anstoss' || lage === 'frist') Object.assign(api, fassungenBuehne(l
 
 function Ansicht() {
   const register = params.get('seite') === 'register';
+  const [ebene, setEbene] = useState<'bezugsbasis' | null>(params.get('ebene') === 'bezugsbasis' ? 'bezugsbasis' : null);
   return (
     <main className="vp-main" style={{ padding: 16 }}>
       <KennzahlenPage
         kennzahlId={register ? null : BB_IDS.kz4}
-        onOeffnen={() => undefined}
+        ebene={ebene}
+        onOeffnen={(_id, e) => setEbene(e ?? null)}
         onListe={() => undefined}
         zone="Europe/Berlin"
       />

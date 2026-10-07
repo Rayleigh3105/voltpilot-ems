@@ -7,14 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -24,7 +17,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,23 +24,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -91,6 +79,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
+@Import(AbfragenZaehlwerk.class)
 class MessstelleRegisterApiTest {
 
     private static final String APP_USER = "voltpilot_app";
@@ -143,84 +132,9 @@ class MessstelleRegisterApiTest {
 
     // ---- Der Abfragen-Zähler ------------------------------------------------------------------
 
-    /**
-     * Zählt, WELCHE Anweisungen die App-Verbindung schickt — der Beleg für „eine Abfrage, keine
-     * N+1“. Er hängt AUSSERHALB von {@code TenantAwareDataSource}: dessen
-     * {@code set_config('app.tenant_id', …)} läuft auf der rohen Verbindung und wird nicht gezählt.
-     */
-    @TestConfiguration
-    static class Zaehlwerk {
-
-        @Bean
-        static BeanPostProcessor abfragenZaehler() {
-            return new BeanPostProcessor() {
-                @Override
-                public Object postProcessAfterInitialization(Object bean, String name) {
-                    return "dataSource".equals(name) && bean instanceof DataSource ds
-                            ? new ZaehlendeDataSource(ds) : bean;
-                }
-            };
-        }
-    }
-
-    private static final List<String> ABFRAGEN = Collections.synchronizedList(new ArrayList<>());
-    private static volatile boolean zaehlen;
-
-    static class ZaehlendeDataSource extends DelegatingDataSource {
-
-        ZaehlendeDataSource(DataSource ziel) {
-            super(ziel);
-        }
-
-        @Override
-        public Connection getConnection() throws SQLException {
-            return verbindung(super.getConnection());
-        }
-
-        @Override
-        public Connection getConnection(String benutzer, String kennwort) throws SQLException {
-            return verbindung(super.getConnection(benutzer, kennwort));
-        }
-    }
-
-    private static Connection verbindung(Connection c) {
-        return (Connection) Proxy.newProxyInstance(MessstelleRegisterApiTest.class.getClassLoader(),
-                new Class<?>[] {Connection.class}, new Handler(c, true));
-    }
-
-    /** Zählt beim Vorbereiten (PreparedStatement) bzw. beim Ausführen (Statement) genau einmal. */
-    private record Handler(Object ziel, boolean verbindung) implements InvocationHandler {
-
-        @Override
-        public Object invoke(Object proxy, Method methode, Object[] args) throws Throwable {
-            String name = methode.getName();
-            String sql = args != null && args.length > 0 && args[0] instanceof String s ? s : null;
-            if (zaehlen && sql != null
-                    && (verbindung ? name.startsWith("prepare") : name.startsWith("execute"))) {
-                ABFRAGEN.add(sql);
-            }
-            Object ergebnis;
-            try {
-                ergebnis = methode.invoke(ziel, args);
-            } catch (InvocationTargetException e) {
-                throw e.getCause();
-            }
-            return verbindung && ergebnis instanceof Statement st && "createStatement".equals(name)
-                    ? Proxy.newProxyInstance(MessstelleRegisterApiTest.class.getClassLoader(),
-                            new Class<?>[] {Statement.class}, new Handler(st, false))
-                    : ergebnis;
-        }
-    }
-
+    /** Was die App-Verbindung schickt ({@link AbfragenZaehlwerk}, eingebunden über {@code @Import}). */
     private List<String> abfragen(Runnable was) {
-        ABFRAGEN.clear();
-        zaehlen = true;
-        try {
-            was.run();
-        } finally {
-            zaehlen = false;
-        }
-        return List.copyOf(ABFRAGEN);
+        return AbfragenZaehlwerk.zaehle(was).abfragen();
     }
 
     // ---- Gerüst -------------------------------------------------------------------------------
@@ -465,6 +379,34 @@ class MessstelleRegisterApiTest {
         assertThat(nachher.get("ort")).isEqualTo(vorher.get("ort"));
         assertThat(nachher.get("elektrische_stellung")).isEqualTo(vorher.get("elektrische_stellung"));
         assertThat(nachher.get("id")).isEqualTo(vorher.get("id"));
+    }
+
+    /**
+     * Messen PR5: {@code letzterMonat=true} gibt JEDER Zeile den Monat vor dem Stichtag (Oktober 2026) mit genau dem
+     * Schritt, den {@code …/werte?raster=monat} für sie zeigt - gemessen mit Gerät, gemessen ohne Quelle, berechnet;
+     * keine zweite Rechnung. Ohne den Parameter fehlt das Feld, und das Register bleibt Zeichen für Zeichen dasselbe.
+     */
+    @Test
+    void derLetzteMonatIstDerSchrittDerWerteRoute() {
+        Ahrenberg ah = ahrenberg();
+        JsonNode mit = register(ah.wer(), "?letzterMonat=true&stichtag=" + NACH_DEM_WECHSEL);
+        JsonNode ohne = register(ah.wer(), "?stichtag=" + NACH_DEM_WECHSEL);
+        assertThat(mit.get("register")).hasSize(ohne.get("register").size()).isNotEmpty();
+        for (JsonNode z : mit.get("register")) {
+            String kz = z.get("kennzeichen").asText();
+            JsonNode monat = z.get("letzter_monat");
+            assertThat(monat.get("monat").asText()).as(kz).isEqualTo("2026-10");
+            assertThat(monat.has("ausserhalb_zugriff")).as(kz).isFalse();
+            JsonNode schritt = ok(rufe(HttpMethod.GET, "/messstellen/" + kz
+                    + "/werte?raster=monat&von=2026-10-01&bis=2026-10-31", ah.wer())).get("werte").get(0);
+            assertThat(monat.get("wert")).as(kz).isEqualTo(schritt);
+            assertThat(monat.get("zeitzone").asText()).as(kz).isEqualTo("Europe/Berlin");
+            com.fasterxml.jackson.databind.node.ObjectNode ohneMonat = z.deepCopy();
+            ohneMonat.remove("letzter_monat");
+            assertThat(ohneMonat).as(kz).isEqualTo(zeile(ohne, kz));
+        }
+        assertThat(ohne.toString()).doesNotContain("letzter_monat");
+        abgelehnt(rufe(HttpMethod.GET, "/messstellen?letzterMonat=1", ah.wer()), "letzterMonat");
     }
 
     /** Ohne Stichtag gilt jetzt: der Tag von heute in der Zeitzone der Schnittstelle. */

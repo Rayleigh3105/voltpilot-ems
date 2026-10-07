@@ -151,7 +151,7 @@ class UemsEnergiemanagementBestandsschutzTest {
         assertThat(root.queryForObject("SELECT count(*) FROM bericht_stand WHERE tenant_id = ?", Integer.class, KB))
                 .as("je ein Stand von AP-12, AP-16 und AP-17").isEqualTo(3);
         assertThat(Bestandsschutz.abweichungen(vorher, bisAp19)).as("AP-19: jede Bestandstabelle byte-gleich").isEmpty();
-        // Verbessern-Konzept v1 PR 2 (V20261006213000): die Art jeder Maßnahme ist eine neue Spalte mit Wert - sonst
+        // Verbessern-Konzept v1 PR 2 (V20261007120000): die Art jeder Maßnahme ist eine neue Spalte mit Wert - sonst
         // bleibt jede Maßnahme byte-gleich, und die Art folgt aus der Zeile (mit Kennzahl gemessen, aus Feststellung
         // oder Audit organisatorisch, sonst nicht gemessen).
         assertThat(Bestandsschutz.abweichungen(vorher, nachher))

@@ -24,7 +24,8 @@ public final class MassnahmeDto {
      * Kennzahl mit freigegebener Bezugsbasis und die Monate der Ausgangslage ({@code JJJJ-MM} oder
      * {@code JJJJ-MM/JJJJ-MM}; ohne: der letzte abgeschlossene Monat). {@code standort} nur ohne Kennzahl.
      * {@code art} (Verbessern-Konzept v1, Entscheid 6) {@code gemessen · nicht_gemessen · organisatorisch} - fehlt sie,
-     * gilt {@code gemessen} mit Kennzahl, sonst {@code nicht_gemessen}. {@code erwartete_einsparung_kwh_jahr}
+     * gilt {@code gemessen} mit Kennzahl, aus Feststellung oder Audit {@code organisatorisch}, sonst
+     * {@code nicht_gemessen}. {@code erwartete_einsparung_kwh_jahr}
      * (Entscheid 13) nur ohne Kennzahl und nur bei {@code nicht_gemessen}: die Schätzung einer Person, weniger Energie;
      * mit Kennzahl rechnet die Route die erwartete Wirkung in kWh im Jahr um.
      */
@@ -197,7 +198,7 @@ public final class MassnahmeDto {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record Liste(LocalDate abruf, List<Massnahme> massnahmen) {}
+    public record Liste(LocalDate abruf, List<Massnahme> massnahmen, List<UUID> imStandEnthalten) {}
 
     /**
      * Ein Monat der Wirkung (WK1, WK2, WK4): die Vergleichszeile des Bezugsbasis-Lesers gegen die Fassung am letzten Tag

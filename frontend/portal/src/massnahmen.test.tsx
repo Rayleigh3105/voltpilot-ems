@@ -120,6 +120,18 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     expect(B.antwortBild(umgesetzt, null, false).satz).toBe(
       'Umgesetzt am 10.03.2028 - abschließen kann, wer im Energiemanagement Maßnahmen bewertet.',
     );
+    // Lädt die Wirkung noch oder fehlt sie, behauptet die Antwort nichts über bewertbare Monate (ein Fehler ist keine Null).
+    expect(B.antwortBild(m1Umgesetzt(), null, true, 'laedt')).toEqual({ satz: '', formal: null, laedt: true });
+    expect(B.antwortBild(m1Umgesetzt(), null, true, 'fehler')).toEqual({
+      satz: 'Umgesetzt am 22.01.2028 - die Wirkung ließ sich nicht laden.',
+      formal: 'Ihre Daten sind nicht betroffen.',
+      fehler: true,
+    });
+    expect(nn(B.antwortBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand }), null, true, 'fehler'))).toEqual({
+      satz: 'Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.',
+      formal: 'Die Wirkung von heute ließ sich nicht laden; Stand Nr. 1 bleibt, wie er festgehalten wurde.',
+      fehler: true,
+    });
     // Die Seite: ohne Live-Monate ist die Antwort das Urteil mit dem Stand, nie „noch kein Monat bewertbar“.
     expect(nn(B.antwortBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand }), null))).toEqual({
       satz: 'Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.',
@@ -216,12 +228,13 @@ describe('Maßnahme planen (§6.9, Entscheide 6, 12, 13)', () => {
     expect(P.entwurfAus({ herkunft: 'einsatz', einsatz: 'ee3' }, '2029-04-30').art).toBe('nicht_gemessen');
     expect(P.entwurfAus({ herkunft: 'von_hand' }, '2029-04-30', false).art).toBe('nicht_gemessen');
   });
-  it('Prüfen je Schritt - vor dem Senden statt danach; Vorher höchstens zwölf abgeschlossene Monate', () => {
+  it('Prüfen je Schritt - vor dem Senden statt danach; Vorher höchstens zwölf abgeschlossene Monate am Stück', () => {
     expect(P.pruefen(fertig({ titel: ' ' }), 1, '2029-04-30')).toHaveProperty('titel');
     expect(P.pruefen(fertig({ prozent: '' }), 2, '2029-04-30')).toHaveProperty('prozent');
     expect(P.pruefen(fertig({ prozent: '', weissNicht: true }), 2, '2029-04-30')).toEqual({});
     expect(P.pruefen(fertig({ prozent: 'drei' }), 2, '2029-04-30').prozent).toContain('zum Beispiel 3 oder 2,5');
-    expect(P.pruefen(fertig({ von: '2028-01', bis: '2028-12' }), 2, '2029-04-30').monate).toBe('Vorher sind abgeschlossene Monate, höchstens 12.');
+    expect(P.pruefen(fertig({ von: '2028-01', bis: '2029-01' }), 2, '2029-04-30').monate).toBe('Vorher sind höchstens 12 Monate. Wählen Sie einen späteren ersten Monat.');
+    expect(P.pruefen(fertig({ von: '2028-01', bis: '2028-12' }), 2, '2029-04-30')).toEqual({});
     expect(P.pruefen(fertig({ von: '2029-04', bis: '2029-04' }), 2, '2029-04-30')).toHaveProperty('monate');
     expect(P.pruefen(fertig({ von: '2028-04', bis: '2029-03' }), 2, '2029-04-30')).toEqual({});
     expect(P.pruefen(fertig({ verantwortlich: '', termin: '' }), 3, '2029-04-30')).toEqual({
@@ -229,7 +242,7 @@ describe('Maßnahme planen (§6.9, Entscheide 6, 12, 13)', () => {
       termin: 'Bitte wählen Sie, bis wann.',
     });
     expect(P.pruefen(fertig(), 4, '2029-04-30')).toEqual({});
-    expect(P.vorherMonate('2029-04-30').map((m) => m.value)).toEqual([
+    expect(P.vorherBisMonate('2029-04-30', '2028-04').map((m) => m.value)).toEqual([
       '2029-03', '2029-02', '2029-01', '2028-12', '2028-11', '2028-10', '2028-09', '2028-08', '2028-07', '2028-06', '2028-05', '2028-04',
     ]);
   });

@@ -177,14 +177,38 @@ describe('Maßnahmen-Seite: Wirkung, Urteil, Anstoß (R5, R6, R7, R12)', () => {
     expect(screen.getByTestId('massnahme-pruefsumme').textContent).toBe(pruefsumme);
   });
 
-  it('die Wirkung lädt nicht: der Satz mit „Erneut versuchen“, danach die Grafik', async () => {
+  it('die Wirkung lädt nicht: die Antwort sagt es mit „Erneut versuchen“ statt „kein Monat bewertbar“, danach die Grafik', async () => {
     const echt = api.massnahmeWirkung;
     const lesen = vi.spyOn(api, 'massnahmeWirkung').mockRejectedValueOnce(new Error('offline')).mockImplementation(echt);
     render(<MassnahmeSeite id={M_IDS.m1} onListe={() => undefined} />);
     const fehler = await screen.findByRole('alert');
-    expect(fehler.textContent).toContain(W.WIRKUNG_LADEFEHLER);
+    expect(fehler).toBe(screen.getByTestId('massnahme-antwort'));
+    expect(fehler.textContent).toContain('die Wirkung ließ sich nicht laden.');
+    expect(fehler.textContent).not.toMatch(/bewertbar/);
+    // Ein Fehler ist keine Null: keine Kacheln, keine leere Karte darunter, nur ein „Erneut versuchen“.
+    expect(screen.queryByTestId('massnahme-wirkung')).toBeNull();
+    expect(screen.getAllByText('Erneut versuchen')).toHaveLength(1);
     fireEvent.click(within(fehler).getByText('Erneut versuchen'));
     await waitFor(() => expect(lesen).toHaveBeenCalledTimes(2));
     expect(await screen.findByTestId('massnahme-wirkung-grafik')).toBeTruthy();
+    expect(screen.getByTestId('massnahme-antwort').textContent).toMatch(/^Seit der Umsetzung/);
+  });
+  it('die Wirkung lädt noch: ein Skelett statt eines Satzes, der gleich umspringt', async () => {
+    const echt = api.massnahmeWirkung;
+    let loslassen: () => void = () => {};
+    const halt = new Promise<void>((r) => {
+      loslassen = r;
+    });
+    vi.spyOn(api, 'massnahmeWirkung').mockImplementation(async (id) => {
+      await halt;
+      return echt(id);
+    });
+    render(<MassnahmeSeite id={M_IDS.m1} onListe={() => undefined} />);
+    await screen.findByTestId('massnahme-titel');
+    expect(screen.getByTestId('massnahme-antwort')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('massnahme-antwort').textContent).toBe('');
+    await act(async () => loslassen());
+    await waitFor(() => expect(screen.getByTestId('massnahme-antwort').textContent).toMatch(/^Seit der Umsetzung/));
+    expect(screen.getByTestId('massnahme-antwort')).not.toHaveAttribute('aria-busy');
   });
 });

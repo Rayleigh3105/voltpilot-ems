@@ -15,7 +15,6 @@ import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_VERBESSERUNG_SAETZE, UE
 // ------------------------------------------------------------------ Wörter
 
 export const WIRKUNG = UEMS_WIRKUNG;
-export const WIRKUNG_LADEFEHLER = `Die ${UEMS_WIRKUNG} konnte nicht geladen werden.`;
 export const ROH_SPALTE = 'Kennzahl roh';
 export const ROH_HINWEIS = 'Die rohe Kennzahl steht ohne Urteil daneben — sie ist nicht um die Einflussgröße bereinigt.';
 export const ERGEBNIS_WORT = UEMS_MASSNAHME_ERGEBNISSE;

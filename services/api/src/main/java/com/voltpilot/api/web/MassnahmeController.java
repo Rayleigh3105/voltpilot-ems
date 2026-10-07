@@ -67,16 +67,18 @@ public class MassnahmeController {
     /**
      * Recht: {@code verbesserung.ansehen} (Zaun über Standort und Kennzahl). Das Register; {@code zustand}
      * ({@code geplant · umgesetzt · bewertet · verworfen}), {@code ueberfaellig} ({@code true · false}, Operation
-     * {@code frist} beim Abruf), {@code kennzahl} und {@code einsatz} (IDs) filtern. Je Maßnahme die beobachtete Wirkung
-     * in Kurzform ({@code wirkung_kurz}, Verbessern-Konzept v1 §6.5) - dieselbe Operation {@code wirkung} wie
-     * {@code …/{id}/wirkung}.
+     * {@code frist} beim Abruf), {@code kennzahl} und {@code einsatz} (IDs) filtern; {@code energieziel} (ID) liefert
+     * die Maßnahmen für das Energieziel und die im Stand enthaltenen (Konzept Verbessern, Entscheid 5). Je Maßnahme die
+     * beobachtete Wirkung in Kurzform ({@code wirkung_kurz}, Verbessern-Konzept v1 §6.5) - dieselbe Operation
+     * {@code wirkung} wie {@code …/{id}/wirkung}.
      */
     @GetMapping
     public MassnahmeDto.Liste liste(@RequestParam(required = false) String zustand,
             @RequestParam(required = false) String ueberfaellig, @RequestParam(required = false) String kennzahl,
-            @RequestParam(required = false) String einsatz, HttpServletRequest anfrage) {
+            @RequestParam(required = false) String einsatz, @RequestParam(required = false) String energieziel,
+            HttpServletRequest anfrage) {
         return wirkung.mitKurzform(massnahmen.liste(anfrage.getParameterMap().keySet(), zustand, ueberfaellig,
-                kennzahl, einsatz));
+                kennzahl, einsatz, energieziel));
     }
 
     /**

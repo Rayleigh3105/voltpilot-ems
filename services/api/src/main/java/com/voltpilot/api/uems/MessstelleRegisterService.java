@@ -18,6 +18,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -101,12 +102,13 @@ public class MessstelleRegisterService {
     private final BilanzRestRepository reste;
     private final MessstelleFormelTermRepository formelTerme;
     private final MessbedarfRepository messbedarfe;
+    private final MessstelleWerteService werte;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleRegisterService(MessstelleRegisterRepository register, MessstelleService messstellen,
             StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen,
             BilanzRestRepository reste, MessstelleFormelTermRepository formelTerme,
-            MessbedarfRepository messbedarfe) {
+            MessbedarfRepository messbedarfe, MessstelleWerteService werte) {
         this.register = register;
         this.messstellen = messstellen;
         this.standorte = standorte;
@@ -115,6 +117,7 @@ public class MessstelleRegisterService {
         this.reste = reste;
         this.formelTerme = formelTerme;
         this.messbedarfe = messbedarfe;
+        this.werte = werte;
     }
 
     /** Nur für Tests: die Uhr, an der „ohne Stichtag = jetzt“ hängt. */
@@ -129,7 +132,7 @@ public class MessstelleRegisterService {
      */
     @Transactional(readOnly = true)
     public MessstelleDto.Liste liste(Instant am, Filter filter) {
-        return liste(am, filter, id -> true, komponente -> true);
+        return liste(am, filter, id -> true, komponente -> true, null);
     }
 
     /**
@@ -138,9 +141,16 @@ public class MessstelleRegisterService {
      * nicht, ebenso wenig den Messkanal einer Komponente, die {@code komponenteSichtbar} nicht zulässt
      * ({@link RegisterBerechnung#ableiten}, AP-03 R-A3/R-A6). Interne Leser (Standort-Übersicht, Ausfall) nehmen
      * {@link #liste(Instant, Filter)}.
+     *
+     * <p><b>Der letzte vollständige Monat (Messen PR5):</b> mit {@code letzterMonat} ≠ {@code null} trägt jede Zeile der
+     * Antwort ({@code letzter_monat}) den Monat vor dem Monat des Zeitpunkts in der Zone ihres Standorts und seinen Wert
+     * aus dem Lese-Modell „Werte je Messstelle“ ({@link MessstelleWerteService#monatswert}) - dieselbe Regel wie
+     * {@code …/werte?raster=monat}, keine zweite; {@code letzterMonat} ist dessen Zaun über die Eingänge einer berechneten
+     * Messstelle. ⚠ Das kostet einen Lesezug JE gezeigter Messstelle (der Rest des Registers bleibt eine feste Zahl) -
+     * darum nur auf Verlangen der Route ({@code letzterMonat=true}), nie für die Leser im Haus.
      */
     public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar,
-            Predicate<UUID> komponenteSichtbar) {
+            Predicate<UUID> komponenteSichtbar, MessstelleWerteService.EingaengeImZugriff letzterMonat) {
         Instant zeitpunkt = am != null ? am : uhr.instant();
         LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
         List<Bestand> bestand = register.alle();
@@ -188,7 +198,8 @@ public class MessstelleRegisterService {
                     berechnungen.get(bestand.get(i).messstelle().id()));
             if (auswahl.passt(z) && sichtbar.test(z.id())) {
                 messstellenListe.add(voll.get(i));
-                zeilen.add(z);
+                zeilen.add(letzterMonat == null ? z : mitMonat(z, bestand.get(i).messstelle(),
+                        OrtsbaumAbleitung.zeitzoneVon(baum.baum(), z.ort().standort()), zeitpunkt, letzterMonat));
             }
         }
         return new MessstelleDto.Liste(List.copyOf(messstellenListe), List.copyOf(zeilen), tag,
@@ -326,10 +337,10 @@ public class MessstelleRegisterService {
         }
         return new MessstelleDto.RegisterZeile(m.id(), m.kennzeichen(), m.name(), m.art(), m.medium(),
                 new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt, abgelesen ? ablesung : null),
+                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt, abgelesen ? ablesung : null, zone),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
-                List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null, List.of());
+                List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null, List.of(), null);
     }
 
     private static MessstelleDto.RegisterZeile mitPlanungen(MessstelleDto.RegisterZeile z,
@@ -338,7 +349,7 @@ public class MessstelleRegisterService {
                 z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
                 z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(),
                 z.berechnung(), planungen.stream().map(p -> new MessstelleDto.GeplanterEinsatz(
-                        p.einsatzId(), p.einsatzKennzeichen(), p.einsatzName())).toList());
+                        p.einsatzId(), p.einsatzKennzeichen(), p.einsatzName())).toList(), z.letzterMonat());
     }
 
     private static MessstelleDto.RegisterZeile mitBerechnung(MessstelleDto.RegisterZeile z,
@@ -346,7 +357,22 @@ public class MessstelleRegisterService {
         return b == null ? z : new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
                 z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
                 z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(), b,
-                z.geplantFuerEinsaetze());
+                z.geplantFuerEinsaetze(), z.letzterMonat());
+    }
+
+    /**
+     * Die Zeile mit ihrem letzten vollständigen Monat: dem Kalendermonat vor dem Monat von {@code zeitpunkt} in
+     * {@code zone} (der Zone ihres Standorts), mit dem Wert, den {@code …/werte?raster=monat} für ihn zeigt.
+     */
+    private MessstelleDto.RegisterZeile mitMonat(MessstelleDto.RegisterZeile z, MessstelleRepository.Messstelle m,
+            ZoneId zone, Instant zeitpunkt, MessstelleWerteService.EingaengeImZugriff eingaenge) {
+        YearMonth monat = YearMonth.from(zeitpunkt.atZone(zone)).minusMonths(1);
+        MessstelleWerteService.Monatswert w = werte.monatswert(m, monat, eingaenge);
+        return new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
+                z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(),
+                z.berechnung(), z.geplantFuerEinsaetze(),
+                new MessstelleDto.RegisterMonat(monat.toString(), w.zeitzone(), w.wert(), w.ausserhalbZugriff()));
     }
 
     private static List<MessstelleDto.RegisterFakt> fakten(List<Fakt> fakten, Instant zeitpunkt) {
@@ -504,7 +530,7 @@ public class MessstelleRegisterService {
      * zuletzt VOR ihr (bzw. vor dem Zeitpunkt) endete; die Zahl der laufenden Vergleichsquellen.
      */
     private MessstelleDto.RegisterQuelle quelle(Bestand b, Instant zeitpunkt,
-            MessstelleRegisterRepository.Ablesung ablesung) {
+            MessstelleRegisterRepository.Ablesung ablesung, ZoneId zone) {
         Groesse h = b.messstelle().hauptgroesse();
         List<QuelleZeile> derHaupt = b.quellen().stream()
                 .filter(z -> z.quelle().groesse().equals(h.groesse()) && z.quelle().richtung().equals(h.richtung()))
@@ -523,7 +549,8 @@ public class MessstelleRegisterService {
                 : gilt != null ? GEBUNDEN : ablesung != null ? ABLESUNG : KEINE_DATENQUELLE;
         return new MessstelleDto.RegisterQuelle(stand, bindung(gilt), bindung(davor), vergleich,
                 ablesung == null ? null : new MessstelleDto.RegisterAblesung(MessstelleService.zeit(ablesung.seit()),
-                        MessstelleService.zeit(ablesung.zuletzt())));
+                        MessstelleService.zeit(ablesung.zuletzt()), MessstelleService.zeit(ablesung.zuletzt() == null
+                                ? ablesung.seit() : AblesungRegeln.ueberfaelligAb(ablesung.zuletzt(), zone))));
     }
 
     private MessstelleDto.RegisterBindung bindung(QuelleZeile z) {

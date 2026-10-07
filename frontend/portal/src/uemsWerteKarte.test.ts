@@ -464,7 +464,7 @@ describe('uemsWerteKarte — die Anzahl der Lücken an der Karte (Captain 15.09.
 describe('uemsWerteKarte — eine Messstelle aus Ablesungen (Demo-Befund 27.09.2026)', () => {
   it('der leere Tag nennt die Ablesungen mit dem letzten Tag, nie „Keine Datenquelle“', () => {
     const tag = ohneQuelleTag();
-    expect(ohneQuelle(tag)?.titel).toBe('Keine Datenquelle');
+    expect(ohneQuelle(tag)?.titel).toBe('Noch keine Quelle');
     const quelle = { stand: 'ablesung', ablesung: { zuletzt: '2026-09-01T00:00:00+02:00' } };
     expect(ausAblesungen(quelle, tag)).toEqual({ titel: 'Ablesungen · zuletzt am 01.09.2026', satz: ABLESUNG_OHNE_WERT });
     expect(ausAblesungen({ stand: 'keine_datenquelle' }, tag)).toBeNull();
@@ -637,6 +637,19 @@ describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer
     expect(karten.noch_nicht_gebildet!.grund).toBe(UEMS_NOCH_NICHT_GERECHNET_SATZ);
   });
 
+  it('eine Komponente ohne eigenen Namen: der Messwert steht für sie, mit dem Gerät - der Satz bleibt ein Satz aus Namen', () => {
+    const z = zeileVon('MS-16');
+    const ohneName = { ...z.quelle, fuehrend: { ...z.quelle.fuehrend!, komponente_name: null } };
+    const namen = quellenNamen(ohneName);
+    expect(namen[z.quelle.fuehrend!.id]).toEqual({
+      quelle: `${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet})`,
+      kanal: `${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet})`,
+    });
+    expect(karte(ms16Oktober(), namen)!.grund).toContain(`${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet}) gilt seit 15.10.2026`);
+    // Ohne Namen des Messwerts bleibt nur eine Kennung - dann kein Satz.
+    expect(quellenNamen({ ...ohneName, fuehrend: { ...ohneName.fuehrend, kanal_name: null } })).toEqual({});
+  });
+
   it('kein Satz ohne seinen Namen (D5): ohne das Register bleibt `quelle_teilweise` und `anteil_nicht_gespeichert` beim Strich', () => {
     expect(karte(ms16Oktober())).toMatchObject({ zahl: OHNE_ZAHL, grund: null });
     // Eine Bindung, die nicht im Zeitraum BEGINNT (sie endet nur), trägt keinen „gilt seit“-Satz.
@@ -674,8 +687,8 @@ describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer
 });
 
 describe('uemsWerteKarte — Z4 · Werte ohne Datenquelle und ihr nächster Schritt (UEMS AP-13 IP-6)', () => {
-  it('der ganze Zeitraum ohne Bindung: Titel „Keine Datenquelle“ und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
-    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Keine Datenquelle', satz: grundBeispiel('keine_quelle') });
+  it('der ganze Zeitraum ohne Bindung: Titel „Noch keine Quelle“ (Review r4 S7) und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
+    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Noch keine Quelle', satz: grundBeispiel('keine_quelle') });
     expect(ohneQuelle(ohneQuelleTag())).not.toBeNull();
     // Lindach im Oktober: 14 Tage ohne Quelle, aber die Bindung berührt den Monat — die Tage sprechen selbst.
     expect(ohneQuelle(ms16OktoberTage())).toBeNull();
@@ -791,5 +804,44 @@ describe('uemsWerteKarte — die Herkunft einer berechneten Zahl (UEMS AP-13 IP-
     const krumm = { ...satz, formel_typ: null, formel_fassung: null, berechnet_am: 'kein Zeitpunkt', version: null, eingaenge: 'keine Liste' };
     const h = berechneteHerkunft({ herkunft: { satz: krumm, fehlt: [] } }, ZONE, null);
     expect(h).toEqual({ zeilen: [], eingaenge: [], fehlt: null });
+  });
+});
+
+describe('uemsWerteKarte - ein Monat aus Ablesungen (ergebnis-zustand 1.13, Befund 1 des Messen-Konzepts)', () => {
+  // Die echte Antwort der Route für MS-20 Spritzguss, September 2026 (Demo „rundgang“, Kunststoffwerk Ahrenberg,
+  // 05.10.2026) - dieselbe Anfrage, die die Seite der Messstelle stellt. Bis 1.12 zeigte die Karte „—“.
+  const antwort = JSON.parse(
+    readFileSync(resolve(process.cwd(), 'src/test/fixtures/ms20-september-2026.werte.json'), 'utf8'),
+  ) as MessstelleWerte;
+
+  it('die Karte spricht die Menge des Ablesezeitraums, ihren Zustand und ihre Fassung', () => {
+    const k = karte(antwort);
+    expect(k).toMatchObject({
+      titel: 'September 2026',
+      zahl: `88.200${NB}kWh`,
+      zustand: 'vollständig',
+      abdeckung: null,
+      kennzeichen: ['Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)'],
+      fassung: 'endgültig',
+      grund: null,
+    });
+  });
+
+  it('ein Jahr mit fehlenden Monaten spricht nur mit dem Satz, der sagt, was fehlt', () => {
+    const w = antwort.werte[0];
+    const jahr = (kennzeichen: string[]): MessstelleWerte => ({
+      ...antwort,
+      raster: 'jahr',
+      werte: [{ ...w, von: '2024-01-01T00:00:00+01:00', bis: '2025-01-01T00:00:00+01:00', menge: 252910, zustand: 'unvollständig', kennzeichen }],
+    });
+    const okt = 'Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)';
+    // So hat AP-09 das Jahr bis 1.12 gespeichert: unvollständig ohne Grund - kein Wert wird behauptet.
+    expect(karte(jahr([okt]))).toMatchObject({ titel: '2024', zahl: OHNE_ZAHL, zustand: null });
+    // Seit 1.13 nennt das Jahr die fehlenden Monate zuerst.
+    expect(karte(jahr(['9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen', okt]))).toMatchObject({
+      titel: '2024',
+      zahl: `252.910${NB}kWh`,
+      zustand: 'unvollständig',
+    });
   });
 });
