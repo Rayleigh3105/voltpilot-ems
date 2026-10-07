@@ -38,6 +38,7 @@ export const PAGE_CHUNK = {
   'portfolio-kennzahlen': () => import('./pages/KennzahlenPage'),
   'portfolio-berichte': () => import('./pages/BerichtePage'),
   'portfolio-bewertung': () => import('./pages/BewertungPage'),
+  'portfolio-verbrauch': () => import('./pages/VerbrauchPage'),
   'portfolio-verbesserung': () => import('./pages/VerbesserungBereich'),
   'portfolio-energiemanagement': () => import('./pages/EnergiemanagementBereich'),
   'portfolio-messwerte': () => import('./pages/PortfolioMesswerte'),

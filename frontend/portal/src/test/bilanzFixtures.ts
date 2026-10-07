@@ -190,6 +190,8 @@ export interface BilanzBuehne {
   ohneHauptzaehler?: boolean;
   /** Der Hauptzähler hat noch keine Rest-Messstelle — die Route schlägt „Rest anlegen“ vor (E18). */
   restVorschlag?: boolean;
+  /** Gemessene Abzweige ohne Vorgänger: außerhalb der Bilanz, von der Route benannt (Bilanz-Vertrag). */
+  ausserhalb?: string[];
 }
 
 /** Die Bilanz einer Anlage des Referenzunternehmens; eine unbekannte Anlage hat keinen Hauptzähler (kein System). */
@@ -279,7 +281,7 @@ export function ahrenbergBilanz(siteId: string, periode: Periode = 'monat', am =
           bis,
           raster: periode,
           terme: a.terme.map((t) => ({ messstelle: t.messstelle, messstelle_id: ref(t.messstelle).id, name: ref(t.messstelle).name, rolle: t.rolle, anteil: t.anteil })),
-          ausserhalb: [],
+          ausserhalb: b.ausserhalb ?? [],
           werte: [
             {
               von,

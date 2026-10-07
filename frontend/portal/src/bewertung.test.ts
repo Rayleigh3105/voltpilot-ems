@@ -11,15 +11,12 @@ import {
   einsatzAnfrage,
   einsatzOk,
   einsatzPruefen,
-  einsatzZeile,
-  LEER,
   leererEntwurf,
   messstelleOrt,
   protokollZeile,
   prozessOptionen,
   umfangAnfrage,
   umfangEntwurf,
-  umfangKarte,
   umfangOk,
   umfangPruefen,
   verantwortlichText,
@@ -29,13 +26,11 @@ import {
   zustandText,
   prozentText,
   zahlMitEinheit,
-  vorschlagText,
 } from './bewertung';
 import { ebenenBereiche, ebenenLeiste, EBENEN_SEITEN, ebenenAktiv, type EbenenLesemodell } from './ebenenNav';
-import { UEMS_BEWERTUNG_SAETZE } from './glossar';
 import { energieeinsatzRoute, hashForRoute, pageRoute, parseRoute } from './nav';
 import { benutzerFixture } from './test/benutzerFixtures';
-import { ahrenbergEinsaetze, ahrenbergRangliste, ahrenbergUmfang, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
+import { ahrenbergEinsaetze, ahrenbergRangliste, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { ahrenbergProzesse } from './test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
@@ -74,11 +69,25 @@ describe('Rechte aus /me (R14)', () => {
 });
 
 describe('Rangliste, Einstufung und Kriterien (IP-12)', () => {
-  it('nimmt den letzten vollen Monat und zeigt UEMS-Zahlen nur gerundet an', () => {
-    expect(bewertungZeitraum(new Date('2026-11-20T12:00:00Z'))).toEqual({ von: '2026-10-01', bis: '2026-10-31', label: 'Oktober 2026' });
+  it('liest Rangliste und Messabdeckung über die Datengrundlage, nie über einen Monat (Konzept Auswerten a1, Befund 2)', () => {
+    // Mit Bewertung: deren Datengrundlage, wie sie der Bericht führt.
+    expect(bewertungZeitraum({ zeitraum_art: 'datengrundlage', zeitraum: '2028-04/2029-03', zeitraum_text: 'April 2028 bis März 2029' }))
+      .toEqual({ von: '2028-04-01', bis: '2029-03-31', label: 'April 2028 bis März 2029' });
+    expect(bewertungZeitraum({ zeitraum_art: 'datengrundlage', zeitraum: '2028-02', zeitraum_text: 'Februar 2028' }))
+      .toEqual({ von: '2028-02-01', bis: '2028-02-29', label: 'Februar 2028' });
+    // Ohne Bewertung wie der Server beim Anlegen: die zwölf vollen Monate bis zum Vormonat in Europe/Berlin.
+    expect(bewertungZeitraum(null, new Date('2026-11-20T12:00:00Z'))).toEqual({ von: '2025-11-01', bis: '2026-10-31', label: 'November 2025 bis Oktober 2026' });
+    expect(bewertungZeitraum(undefined, new Date('2027-01-15T12:00:00Z'))).toEqual({ von: '2026-01-01', bis: '2026-12-31', label: 'Januar 2026 bis Dezember 2026' });
+    expect(bewertungZeitraum(null, new Date('2028-03-10T12:00:00Z'))).toMatchObject({ von: '2027-03-01', bis: '2028-02-29' });
+    // Silvesternacht: in Berlin ist schon Januar, also endet die Datengrundlage im Dezember.
+    expect(bewertungZeitraum(null, new Date('2026-12-31T23:30:00Z'))).toMatchObject({ von: '2026-01-01', bis: '2026-12-31' });
+    // Ein Monats- oder Jahresbericht ist keine Datengrundlage.
+    expect(bewertungZeitraum({ zeitraum_art: 'monat', zeitraum: '2026-10', zeitraum_text: 'Oktober 2026' }, new Date('2026-11-20T12:00:00Z')).von).toBe('2025-11-01');
+  });
+
+  it('zeigt UEMS-Zahlen nur gerundet an', () => {
     expect(zahlMitEinheit('185380', 'kWh')).toBe('185.380 kWh');
     expect(prozentText('67.8')).toBe('67,8 %');
-    expect(vorschlagText('ueber_schwelle')).toBe('über Schwelle');
   });
 
   it('bildet R2 mit sechs Stromzeilen, Rest je Anlage und Gas unter „Weitere Träger“ ab', () => {
@@ -131,10 +140,12 @@ describe('der Bereich „Bewertung“ erscheint nach der Berichte-Regel und nur 
     expect(ebenenBereiche(werk, lm(true)).map((b) => b.key)).not.toContain('bewertung');
   });
 
-  it('die Adresse: `#/portfolio/bewertung` ist Umfang und Liste, `…/{id}` die Seite eines Einsatzes', () => {
+  it('die Adresse: `#/portfolio/bewertung` ist Umfang und Liste; die Seite eines Einsatzes wohnt unter „Verbrauch“', () => {
     const id = ahrenbergEinsaetze()[0].id;
     expect(hashForRoute(pageRoute('portfolio-bewertung'))).toBe('#/portfolio/bewertung');
-    expect(hashForRoute(energieeinsatzRoute(id))).toBe(`#/portfolio/bewertung/${id}`);
+    // Konzept Auswerten a1, Entscheid 10.1: `…/verbrauch/{id}`; die alte Adresse führt auf dieselbe Seite.
+    expect(hashForRoute(energieeinsatzRoute(id))).toBe(`#/portfolio/verbrauch/${id}`);
+    expect(parseRoute(`#/portfolio/verbrauch/${id}`)).toEqual(energieeinsatzRoute(id));
     expect(parseRoute(`#/portfolio/bewertung/${id}`)).toEqual(energieeinsatzRoute(id));
     expect(parseRoute('#/portfolio/bewertung')).toEqual(pageRoute('portfolio-bewertung'));
     expect(ebenenAktiv('portfolio-bewertung')).toBe('bewertung');
@@ -142,23 +153,6 @@ describe('der Bereich „Bewertung“ erscheint nach der Berichte-Regel und nur 
 });
 
 describe('Umfang (U1/U2) — nur die Zahl der Route, kein Nenner', () => {
-  it('ohne Fassung: Vorschlag alle Standorte, Strom; die Anlagenzahl ist y', () => {
-    const k = umfangKarte(ahrenbergUmfangVorgabe('2026-11-04'));
-    expect(k.gespeichert).toBe(false);
-    expect(k.kopf).toBe('Noch nicht festgelegt — Vorschlag: alle Standorte, Träger Strom.');
-    expect(k.standorte.map((s) => `${s.name}: ${s.anlagen}`)).toEqual(['Werk Ahrenberg: 2 Anlagen', 'Werk Lindach: 1 Anlage']);
-    expect(k.anlagen).toBe('am 04.11.2026 im Umfang: 3 Anlagen');
-    expect(k.traeger).toEqual(['Strom (mit Anteil)']);
-  });
-
-  it('Fassung 1 (R1): beide Werke, Strom mit Anteil, Gas im Umfang ohne Anteil — kein kWh, kein „x von y“', () => {
-    const k = umfangKarte(ahrenbergUmfang('2026-11-20'));
-    expect(k.kopf).toBe('Fassung 1 · gültig ab 04.11.2026');
-    expect(k.traeger).toEqual(['Strom (mit Anteil)', 'Gas (im Umfang, ohne Anteil)']);
-    expect(k.akteur).toMatch(/^Ines Kaltenbach · 04\.11\.2026/);
-    expect(JSON.stringify(k)).not.toMatch(/kWh| von \d/);
-  });
-
   it('ein Ausschluss braucht eine Begründung; ein leerer Träger- oder Standortsatz wird nicht gesendet', () => {
     const e = umfangEntwurf(ahrenbergUmfangVorgabe('2026-11-04'), '2026-11-04');
     expect(e).toMatchObject({ gueltigAb: '2026-11-04', traeger: ['Strom'] });
@@ -180,27 +174,7 @@ describe('Umfang (U1/U2) — nur die Zahl der Route, kein Nenner', () => {
 });
 
 describe('Liste und Seite der Einsätze', () => {
-  const [ee1, ee2, , ee4, , , ee7] = ahrenbergEinsaetze();
-
-  it('die Karte nennt Prozess, Träger, Messstellen, Verantwortlichen und Zustand — ohne Zahl', () => {
-    expect(einsatzZeile(ee1)).toMatchObject({
-      kennzeichen: 'EE-1',
-      prozess: 'P-1 Spritzguss',
-      traeger: 'Strom',
-      verantwortlich: 'Verantwortlich: Murat Demirci',
-      zustand: 'läuft seit 04.11.2026',
-      messstellen: '3 Messstellen',
-      keineWerte: false,
-    });
-    expect(einsatzZeile(ee2).verantwortlich).toBe('Verantwortlich: Peter Hollerbach');
-    // R12: Gas trägt „keine Werte“ statt einer Null.
-    expect(einsatzZeile(ee7)).toMatchObject({ traeger: 'Gas', messstellen: '1 Messstelle', keineWerte: true });
-  });
-
-  it('der Leerzustand ist der Satz aus §5.7', () => {
-    expect(LEER).toBe(UEMS_BEWERTUNG_SAETZE.leer());
-    expect(LEER.startsWith('Noch keine Energieeinsätze.')).toBe(true);
-  });
+  const [ee1, , , ee4] = ahrenbergEinsaetze();
 
   it('Messstellen tragen ihren Ort; Einflussgrößen ihre Bezugsgröße oder den Wortlaut', () => {
     const ms06 = ee1.messstellen.find((m) => m.kennzeichen === 'MS-06')!;
