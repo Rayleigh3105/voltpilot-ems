@@ -12,6 +12,7 @@ import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -140,6 +141,9 @@ class DemoRundgangAufbau {
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         // Die Zuweisungen des Seeds beginnen am 01.10.2026 — Ines Kaltenbach hat ihre Rechte auf der Bühne.
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
+        // Demo-Füllung Verbessern (PR 6): die Naht schweigt, solange der Rundgang Monate rechnet - sonst vermerkte sie
+        // jeden Monat bis 03/2029 mit der Bühnen-Uhr; die Vermerke schreibt DemoVerbessernReferenz mit ihrem Tag.
+        r.add(VerbesserungNaht.SCHALTER, () -> "false");
     }
 
     @Autowired MockMvc mvc;
@@ -226,13 +230,19 @@ class DemoRundgangAufbau {
         // Jede eingetragene Ablesung ist ein Anlass der Kaskade über die ganze Reihe (auch 10/2026 bis 03/2027, vor dem
         // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
         anlaesse += kaskadeLeeren();
-        nachweisenReferenz(root);
-        mappeWeitergeben();
         KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
         bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
         bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
         System.out.println("Rundgang Runde 3: passende Zähler, Bühnen-Bestand bis 03/2029, BB-0001 Fassung 2 "
                 + "(Referenzwelt). Kaskade: " + anlaesse + " Anlässe, Kennzahlen auf der Bühne: " + buehne);
+
+        // Runde 4 - Demo-Füllung Verbessern (Konzept v1 §4.8, Entscheid 16): braucht die Monatswerte von Runde 3.
+        DemoVerbessernReferenz.fuellen(mvc, root);
+
+        // Nachweisen läuft erst NACH Verbessern (Review #1454 M2): dessen eigene Wartezeit (KorrekturKaskade#offen)
+        // sorgt dafür, dass die Kaskade hier wirklich leer ist, statt vom Takt der Demo-API abzuhängen.
+        nachweisenReferenz(root);
+        mappeWeitergeben();
     }
 
     /**
@@ -302,20 +312,33 @@ class DemoRundgangAufbau {
                 + mappe.path("eintraege").asInt() + " Einträge, " + mappe.path("gilt").asInt() + " gültig).");
     }
 
-    /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */
+    /**
+     * Die Kaskade, bis der Kundenbereich wirklich leer ist (Review #1454 M2): ein Lauf mit {@code anlaesse() == 0}
+     * heißt nur, dass er die Sperre nicht bekam (eine mitlaufende Demo-API hält sie oft) - {@link KorrekturKaskade#offen}
+     * liest ohne Sperre und sagt verlässlich, ob noch etwas offen ist.
+     */
     private int kaskadeLeeren() {
         int summe = 0;
-        for (int i = 0; i < 100; i++) {
+        Instant spaetestens = Instant.now().plus(Duration.ofMinutes(90));
+        int offen;
+        while ((offen = kaskade.offen(TENANT)) > 0) {
+            if (Instant.now().isAfter(spaetestens)) {
+                throw new IllegalStateException("die Kaskade wird nicht leer (" + offen + " Anlässe offen)");
+            }
             KorrekturKaskade.Lauf l = kaskade.lauf(Instant.now());
             if (!l.abgelehnt().isEmpty()) {
                 System.out.println("Rundgang: Kaskade lehnte ab: " + l.abgelehnt());
             }
-            if (l.anlaesse() == 0) {
-                return summe;
-            }
             summe += l.anlaesse();
+            if (l.anlaesse() == 0) {
+                try {
+                    Thread.sleep(5_000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }
-        throw new IllegalStateException("die Kaskade wird nicht leer");
+        return summe;
     }
 
     /** Postleitzahl (Unternehmen und beide Standorte), Lage und Notiz von Werk Lindach — Pflichtfelder, die die Welt leer lässt. */

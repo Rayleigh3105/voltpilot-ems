@@ -287,6 +287,18 @@ class PruefumgebungAhrenbergTest {
         }
     }
 
+    /**
+     * Demo-Füllung Verbessern (PR 6): die frische Welt steht schon so da, wie der Rundgang einen alten Bestand angleicht
+     * ({@link DemoVerbessernReferenz#angleichen}) - Demo-Korrektur, Geplantes, Verläufe, Auffälligkeiten schreiben keine
+     * Zeile, auch beim zweiten Mal. Bricht, wenn Welt und Rundgang einen Augenblick oder Inhalt verschieden schreiben.
+     */
+    @Test
+    @Order(5)
+    void dieWeltStehtWieDerRundgangEinenAltenBestandAngleicht() throws Exception {
+        assertThat(DemoVerbessernReferenz.angleichen(mvc, root)).as("erster Lauf auf der frischen Welt").isZero();
+        assertThat(DemoVerbessernReferenz.angleichen(mvc, root)).as("zweiter Lauf").isZero();
+    }
+
     // ================================================================================ Helfer
 
     /** „entschieden von“ jeder Verzeichnis-Zeile einer Art und eines Kennzeichens (leer = nicht im Verzeichnis). */

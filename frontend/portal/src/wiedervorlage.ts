@@ -412,7 +412,8 @@ const tagWort = (iso: string | null) => (iso ? standTag(iso) : null);
  * Ein Rhythmus in Monaten: Zahl und Einheit brechen nie auseinander (geschütztes Leerzeichen vor der Einheit, AP-08
  * E11); „+ 2 Monate“ hinter einem Tag bricht nur als Ganzes um, nie „+ 2“ am Zeilenende und „Monate“ darunter.
  */
-const monateText = (n: number) => `${n}\u00a0Monate`;
+// Nachweisen n1, Befund B8: „1 Monat“, nie „1 Monate“.
+const monateText = (n: number) => `${n}\u00a0${n === 1 ? 'Monat' : 'Monate'}`;
 const plusMonate = (n: number | null) => (n ? ` +\u00a0${monateText(n)}` : '');
 
 /**

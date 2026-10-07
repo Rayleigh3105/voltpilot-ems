@@ -173,6 +173,22 @@ for (const breite of [375, 1440]) {
       await page.getByTestId('einsicht-fertig').click();
       await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
 
+      // Review r2, N-6.1: die Prüferin vom letzten Audit hat schon ein Konto mit Einsicht ohne Ende - der Kasten sagt
+      // es, und das Blatt kürzt sie nicht (kein Knopf, nichts gesendet).
+      await page.getByTestId('mappe-einsicht').click();
+      await page.getByTestId('einsicht-name').fill('Helga Brenner');
+      await page.getByTestId('einsicht-email').fill('helga.brenner@zert.example');
+      await page.getByTestId('einsicht-anlegen').click();
+      await expect(page.getByTestId('einsicht-vorhanden')).toContainText('Schon ein Zugang: Helga Brenner');
+      await expect(page.getByTestId('einsicht-stand')).toHaveText('Einsicht läuft ohne Ende · bleibt so');
+      await expect(page.getByTestId('einsicht-umfang')).toHaveText('Sieht alle Daten aller Standorte, nur lesend.');
+      await expect(page.getByTestId('einsicht-anlegen')).toHaveCount(0);
+      await ohneQuerlauf(page, 'Einsicht vorhanden');
+      await ablegen(page, `mp-einsicht-vorhanden-${breite}`);
+      expect((await gesendet(page)).filter((g) => g.route.startsWith('PUT /benutzer') || g.route === 'POST /zugriff')).toEqual([]);
+      await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+      await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
+
       // Zurück im Überblick: die Mappe steht unter „Mappen“.
       await page.getByTestId('mappe-kopf').getByRole('button', { name: /Überblick/ }).or(page.getByTestId('mappe-kopf').getByRole('link', { name: /Überblick/ })).click();
       await expect(page.getByTestId('aussen-mappen')).toContainText('1');

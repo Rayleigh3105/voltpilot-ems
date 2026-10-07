@@ -309,8 +309,20 @@ export function BerichtBehaltenBlatt({
 /**
  * Archivieren (Konzept Nachweisen n1, C8; V4): der Bericht verlässt die Liste und steht unter „Archiviert“; seine Stände
  * bleiben lesbar - PDF und Prüfsumme bleiben gleich. Die Route nimmt keinen Grund; ein zweites Mal ändert nichts.
+ * Es ist endgültig (Review r2, N-3.1): das Blatt sagt es, ohne Stand auch, dass nie mehr freigegeben wird, und mit offenen
+ * Korrekturen, dass ihre Entscheidung entfällt.
  */
-export function BerichtArchivierenBlatt({ bericht, onClose, onFertig }: { bericht: Bericht; onClose: () => void; onFertig: () => void }) {
+export function BerichtArchivierenBlatt({
+  bericht,
+  offeneKorrekturen,
+  onClose,
+  onFertig,
+}: {
+  bericht: Bericht;
+  offeneKorrekturen: number;
+  onClose: () => void;
+  onFertig: () => void;
+}) {
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const basis = basisId('ba', useId());
@@ -336,8 +348,14 @@ export function BerichtArchivierenBlatt({ bericht, onClose, onFertig }: { berich
     >
       <BlattFormular id={`${basis}-form`} testid="bericht-archivieren-form" onSenden={() => void senden()}>
         <p className="vp-nw-leise vp-nw-blatt-sub">{N.berichtName(bericht).titel}</p>
-        <HinweisZeile icon="lock" titel="Stände bleiben lesbar" zusatz="PDF und Prüfsumme bleiben" />
-        <HinweisZeile icon="info" titel="Aus der Liste" zusatz={`unter „${N.ARCHIVIERT}“`} />
+        <HinweisZeile icon="info" titel={N.ARCHIVIEREN_ENDGUELTIG.titel} zusatz={N.ARCHIVIEREN_ENDGUELTIG.zusatz} />
+        {offeneKorrekturen > 0 && <HinweisZeile icon="info" {...N.archivierenKorrekturen(offeneKorrekturen)} />}
+        {bericht.neueste_nr === null ? (
+          <HinweisZeile icon="info" titel={N.ARCHIVIEREN_OHNE_STAND.titel} zusatz={N.ARCHIVIEREN_OHNE_STAND.zusatz} />
+        ) : (
+          <HinweisZeile icon="lock" titel="Stände bleiben lesbar" zusatz="PDF und Prüfsumme bleiben" />
+        )}
+        <HinweisZeile icon="file-text" titel="Aus der Liste" zusatz={`unter „${N.ARCHIVIERT}“`} />
         <Ablehnung satz={satz} />
       </BlattFormular>
     </NwBlatt>
