@@ -87,13 +87,20 @@ async function listeVon(page: Page, feld: Locator): Promise<Locator> {
 
 const weiter = (dialog: Locator) => dialog.getByRole('button', { name: 'Weiter', exact: true });
 
+/** Ein Eintrag des Menüs ⋯ im Kopf der Kennzahl-Seite (Konzept Auswerten a1 §6.5: Werkzeuge ins Menü). */
+async function menue(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
 for (const breite of [375, 1440]) {
   test(`${breite} px — KZ-0001 „Stromeinsatz je Stück — Halle 2“ aus der Vorlage: fünf Schritte, Hebel, K13, vor „Anlegen“ nichts gespeichert`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen&welt=leer&person=IK', breite);
     await expect(page.getByText(/^Es gibt noch keine Kennzahl\. Kennzahlen setzen Messwerte ins Verhältnis/)).toBeVisible();
     await pruefeUndFotografiere(page, breite, 'liste-leer', { ganz: false });
 
-    await page.getByTestId('kennzahl-anlegen-knopf').click();
+    // Konzept Auswerten a1 §6.4: in der leeren Liste steht der eine nächste Schritt sichtbar (am Handy sonst im Menü ⋯).
+    await page.getByTestId('kennzahl-anlegen-leer').click();
     const dialog = page.getByRole('dialog', { name: /^(Kennzahl anlegen|Fertig)$/ });
     await expect(dialog.getByText('Eine Vorlage wählen — oder ohne Vorlage')).toBeVisible();
     await expect(dialog.getByRole('radio')).toHaveCount(11); // zehn Vorlagen (AP-17 W11) und „ohne Vorlage“
@@ -174,8 +181,9 @@ for (const breite of [375, 1440]) {
     expect((await aufrufe(page)).anlegen).toBe(1);
     await pruefeUndFotografiere(page, breite, 's6-fertig', { ganz: false });
     await dialog.getByRole('button', { name: 'Fertig', exact: true }).click();
-    await expect(page.getByTestId('kennzahl-karte')).toHaveCount(1);
-    await expect(page.getByTestId('kennzahl-karte')).toContainText('KZ-0001');
+    // Die neue Kennzahl hat noch keine Bezugsbasis: sie steht „Zum Beobachten“ (Konzept Auswerten a1 §6.4).
+    await expect(page.locator('[data-kennzeichen]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="kennzahlen-ohne"] [data-kennzeichen="KZ-0001"]')).toBeVisible();
   });
 
   test(`${breite} px — Kopieren an KZ-0001 für die Montagehalle Lindach: Form, Name und Zweck übernommen, Eingänge und Verantwortlich neu`, async ({ page }) => {
@@ -183,7 +191,7 @@ for (const breite of [375, 1440]) {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001', breite);
     await expect(page.locator('[data-testid="werte-karte"]')).toBeVisible();
     await pruefeUndFotografiere(page, breite, 'seite-kopieren', { ganz: false });
-    await page.getByRole('button', { name: 'Kopieren', exact: true }).click();
+    await menue(page, 'Kopieren');
 
     const dialog = page.getByRole('dialog', { name: 'Kennzahl kopieren' });
     await expect(dialog.getByText('Kopie von KZ-0001')).toBeVisible();

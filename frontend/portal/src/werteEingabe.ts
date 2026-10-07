@@ -2,11 +2,18 @@ import type { Ablesung, BezugsgroesseWert } from './api';
 import { schluesselVon, spanneVon, tagPlus } from './bezugsPeriode';
 import { istGanzzahlig, zuordnung } from './bezugsdaten';
 import { zahlText } from './zahl';
+import { lokalerTag } from './uemsOrtsbaum';
 
+/**
+ * „1.250.000“ · „3.284.100,5“ · „−40“ - Tausenderpunkt, Komma und echtes Minus wie jede UEMS-Zahl (AP-08 E11; Konzept
+ * Messen m1, Befund „1 250 000“). Gerundet wird hier nicht: die Stellen sind die des eingetragenen Werts.
+ */
 export function betrag(text: string | number | null): string {
   if (text === null) return '— keine Werte';
-  const [g, b] = String(text).split('.');
-  return g.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + (b ? `,${b}` : '');
+  const roh = String(text);
+  const negativ = roh.startsWith('-');
+  const [g, b] = (negativ ? roh.slice(1) : roh).split('.');
+  return (negativ ? '\u2212' : '') + g.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (b ? `,${b}` : '');
 }
 export const zeitText = (text: string, zone: string) => new Intl.DateTimeFormat('de-DE', { timeZone: zone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(text));
 export function periodenText(key: string, art: string): string {
@@ -44,4 +51,15 @@ export function monatsZuordnung(alle: Ablesung[], zeit: string | null, zone: str
   if (!zeit) return null;
   const vor = wirksameAblesungen(alle).filter(a => Date.parse(a.zeitpunkt) < Date.parse(zeit)).slice(-1)[0];
   return vor ? zuordnung(Date.parse(vor.zeitpunkt), Date.parse(zeit), zone) : null;
+}
+
+/**
+ * „Zählt zum Oktober 2026 – dem Zeitraum seit der letzten Ablesung am 01.10.“ (Konzept Messen m1, §6.5): der Monat, zu
+ * dem eine Ablesung zählt, wenn ihr Zeitraum in EINEM Monat liegt - statt „Ablesezeitraum: 4 Tage 21 h 37 min“.
+ */
+export function zaehltSatz(monat: string, letzte: string | null, zone: string): string {
+  const m = periodenText(monat, 'monat');
+  if (!letzte) return `Zählt zum ${m}.`;
+  const [, mo, t] = lokalerTag(letzte, zone).split('-');
+  return `Zählt zum ${m} – dem Zeitraum seit der letzten Ablesung am ${t}.${mo}.`;
 }

@@ -392,6 +392,29 @@ Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesun
 Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
 Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).
 
+**Seite einer Messstelle (Konzept Messen m1 §6.4/§6.5, Messen-Bau m2).**
+Der Kopf nennt Name und Kennzeichen, darunter Medium, Ort und Standort; der Lebenszyklus steht nur, wenn er nicht „aktiv“ ist.
+Die Zustandszeile sagt mit dem Satz des Servers, ob Werte kommen („Abgelesen am 01.10.2026“); bei einem Ablesezähler steht oben genau ein Schritt: „Ablesung eintragen“.
+Die Leitkachel nennt die Menge des letzten vollständigen Monats in der Rolle der Messstelle („Verbrauch September 2026“, „Erzeugung …“, „Einspeisung …“) mit dem Vergleich zum Vorjahresmonat; daneben stehen „Zählerstand“ und bei einem Ablesezähler „Nächste Ablesung“ mit „im Plan“ oder „überfällig“.
+Die Werte heißen nach der Rolle: „Verbrauch je Monat“ (zwölf Monate als Balken), „Verbrauch am Tag“, „Verbrauch in der Woche“; ein Ablesezähler kennt nur Monat und Jahr.
+„Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“; der Dialog der zweiten Zeile heißt „Stellung im Stromnetz ändern“.
+Ohne Änderung steht im Dialog grau „Heute gilt: …“, und der Knopf wartet, bis etwas anders ist; das ist kein Fehler.
+Ohne Quelle sagt auch die Zustandszeile „Noch keine Quelle“, nie „Keine Datenquelle“; ein unvollständiger Monat trägt in der Leitkachel die Marke „unvollständig“ und keinen Vergleich zum Vorjahr.
+Eine berechnete Messstelle zeigt „Zusammengesetzt aus“ mit ihren Termen; „Formel ändern“ öffnet den Formel-Dialog des Summenwerts.
+Aus „Stand an einem Tag ansehen“ geöffnet zeigt die Seite diesen Tag mit der Marke „Stand … · Nur lesen“ und „Zurück zu heute“ und bietet keinen Schreibweg.
+Eine Ablesung „zählt zum“ Monat ihres Zeitraums: „Zählt zum Oktober 2026 – dem Zeitraum seit der letzten Ablesung am 01.10.“; die Wahl des Monats steht nur, wenn der Zeitraum mehr als einen Monat berührt.
+Die Zeitzone steht einmal am Fuß („Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 06.10.2026, 17:42“), am Uhrzeitfeld nur ihr Kürzel („MESZ“, „MEZ“).
+Kundenwörter: `UEMS_ZUORDNUNG`, `UEMS_IM_STROMNETZ`, `UEMS_NAECHSTE_ABLESUNG`, `UEMS_ABLESUNG_EINTRAGEN` (PORTAL/glossar.ts).
+
+**Ablese-Runde je Gebäude (Konzept Messen m1 §6.5, Variante 3A, Messen-Bau m2).**
+„Halle 1 ablesen“ trägt alle Zähler eines Orts ein, die von Hand abgelesen werden - dieselben, die die Wiedervorlage als „8 Zähler in Halle 1 ablesen“ bündelt.
+Ein Zeitpunkt („Abgelesen am“) gilt für alle; je Zähler steht der letzte Stand („zuletzt 647.760 kWh“) neben einem Feld.
+„Weiter“ speichert die Reihe und springt zum nächsten Zähler; die Antwort bestätigt grün („gespeichert · 216.300 kWh seit 01.10.“), „3 von 8 eingetragen“ zeigt den Fortschritt.
+Eine Ablesung der Runde ist dieselbe wie an der Messstelle (gleiche Route, gleiche Rechte, gleiche Prüfung); der Monat ist die Vorgabe mit dem größten Anteil, und ein Zeitraum über drei oder mehr Monate wird an der Messstelle eingetragen.
+Der Satz einer Prüfung steht am Zähler, die Runde läuft weiter; „Fertig“ führt zurück in die Liste.
+Einstieg: „Ablesen ›“ im Kopf der Ortskarte in der Liste und der Schritt „Ablesungen eintragen“ der Wiedervorlage; „Öffnen“ im Jahresplan zeigt die Liste des Orts.
+Kundenwort: `UEMS_ABLESEN` (PORTAL/glossar.ts).
+
 ## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
@@ -987,6 +1010,14 @@ Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: 
 
 **Abgrenzung.** Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente.
 
+**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts).
+
 ## Einstufung
 
 *Sicht: Organisation · Nachtrag AP-16 §3.1, §4.1*
@@ -1001,6 +1032,15 @@ Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufu
 
 **Abgrenzung.** Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt.
 
+**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts).
+
 ## Messbedarf
 
 *Sicht: Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)*
@@ -1014,6 +1054,17 @@ Messbedarf ist ein Eintrag am Einsatz (was, wo, welche Größe — optional —,
 **Heute im Code.** Tabellen `messbedarf`, `messbedarf_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/MessbedarfService.java` (AP-16 IP-19). Wegweiser: `docs/agents/root/uems-messbedarf.md`.
 
 **Abgrenzung.** Nicht eine Messstelle; nicht eine Maßnahme (AP-18).
+
+**Geplante Messstellen unter Messen (Konzept Auswerten a1, Entscheid 9; Messen-Bau m2).**
+Ein offener Messbedarf ist eine geplante Messstelle: eine Messstelle, die noch fehlt.
+Die Liste „Messstellen“ zeigt sie an ihrem Ort nach dessen Messstellen, mit dem Energieeinsatz, für den sie erfasst wurde („Geplant für EE-8 Gebäudetechnik Halle 1“), und der Frist; ohne Ort steht sie unter „Kein Ort zugeordnet“.
+„Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs; sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst, und an ihrer Stelle steht die Messstelle selbst (bis zum Zähler mit „noch keine Quelle“, nie 0).
+Die Marke „1 geplant“ zeigt nur die geplanten Messstellen; ist eine Frist überschritten, nennt eine Hinweiskarte sie wie eine überfällige Ablesung.
+Der Schritt „Messstelle anlegen“ der Wiedervorlage öffnet die Liste bei genau diesem Bedarf.
+Zitieren freigegebene Berichtsstände einen Bedarf, bleibt er, wie er ist: statt „Einrichten“ nennt ein Satz die Stände („2 freigegebene Berichtsstände zitieren diesen Messbedarf (…) - er bleibt, wie er ist.“).
+Scheitert das Einlösen nach dem Anlegen, bietet die Reihe „MS-23 zuordnen“ mit der schon angelegten Messstelle an, nie ein zweites Anlegen.
+Erfasst, bearbeitet und verworfen wird ein Messbedarf weiter am Energieeinsatz; unter Messen steht dazu „Messbedarf erfassen“ im Menü der Liste.
+Kundenwort: `UEMS_GEPLANTE_MESSSTELLE` (PORTAL/glossar.ts).
 
 ## Messmittel-Angabe
 

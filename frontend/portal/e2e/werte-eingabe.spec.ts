@@ -75,10 +75,13 @@ for (const breite of [375, 1440]) {
     await expect(abs).toBeVisible();
     await expect.poll(() => page.evaluate(() => (window as any).wertAbfragen as number)).toBeGreaterThan(0);
     const vorherGelesen = await page.evaluate(() => (window as any).wertAbfragen as number);
-    const trigger = abs.getByRole('button', { name: 'Ablesung eintragen', exact: true });
+    // Konzept Messen m1 §6.4: der EINE Schritt steht oben im Kopf; der Dialog nennt die Zone nur als Kürzel am Feld.
+    const trigger = page.getByRole('button', { name: 'Ablesung eintragen', exact: true });
     await trigger.click();
     const d = page.getByRole('dialog', { name: 'Ablesung eintragen', exact: true });
-    await expect(d).toContainText('Europe/Berlin · MEZ');
+    await expect(d.locator('.vp-wert-zone')).toHaveText('MEZ');
+    await expect(d).not.toContainText('Europe/Berlin');
+    await expect(d.getByTestId('ablesung-letzte')).toContainText('Letzte Ablesung');
     await expect(d).toContainText('95,9 %');
     await d.getByLabel('Zählerstand (m³)').fill('49.451');
     await foto(page, `ablesung-${breite}`);
@@ -87,10 +90,12 @@ for (const breite of [375, 1440]) {
     await expect(d.getByLabel('Zählerstand (m³)')).toHaveValue('49.451');
     await d.getByRole('button', { name: 'Speichern', exact: true }).click();
     await expect(d).toHaveCount(0); await expect(trigger).toBeFocused();
-    await expect(abs.getByRole('status')).toContainText('1\u00a0240 m³');
+    await expect(abs.getByRole('status')).toContainText('1.240 m³ seit der letzten Ablesung');
     await expect.poll(() => page.evaluate(() => (window as any).wertAbfragen as number)).toBeGreaterThan(vorherGelesen);
     expect(await page.evaluate(() => (window as any).wertAufrufe)).toMatchObject([{ kz: 'MS-21', stand: '49.451', zuordnung_monat: '2026-10', zeitpunkt: '2026-11-02T07:40:00+01:00' }]);
-    await abs.getByRole('button', { name: 'Berichtigen', exact: true }).last().click();
+    // Die neueste Ablesung steht oben; Berichtigen liegt im Menü ihrer Zeile.
+    await abs.getByTestId('ablesung-zeile').first().getByRole('button').click();
+    await page.getByRole('menuitem', { name: 'Berichtigen', exact: true }).click();
     const korr = page.getByRole('dialog', { name: 'Ablesung berichtigen', exact: true });
     await waehle(page, 'Zuordnung', 'Keinem Monat zuordnen');
     await korr.getByLabel('Begründung').fill('Die Ablesung gehört nicht zum Oktober.');

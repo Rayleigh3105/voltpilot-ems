@@ -1,4 +1,5 @@
 import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
+import type { GeplanteReihe } from './geplanteMessstellen';
 import { UEMS_MESSSTELLE, UEMS_NOCH_KEINE_QUELLE, UEMS_UNTERNEHMEN, UEMS_WOHER_DIE_WERTE } from './glossar';
 import { alleFundstellen, hervorheben, normalisiereSuche, type Fundstellen, type TextTeil } from './picker/suche';
 import {
@@ -11,7 +12,10 @@ import {
   type Ton,
   type ZeileWoerter,
 } from './messstellen';
+import { MONATE } from './picker/datum';
 import { datumText, lokalerTag } from './uemsOrtsbaum';
+import { OHNE_ZAHL, UNVOLLSTAENDIG } from './uemsErgebnis';
+import { anzeige, monatTitel } from './uemsWerteKarte';
 
 /**
  * DIE LISTE „Messstellen“ (Konzept Messen m1, §6.2/§6.3, Captain-Freigabe 05.10.2026): alle Zähler nach Ort, je mit
@@ -188,9 +192,16 @@ export function passtZurSuche(z: MessstelleRegisterZeile, terme: readonly string
   });
 }
 
-/** Die Fundstellen in einem gezeigten Text (für `<mark>`), dieselbe Regel wie die Suche: eine Zahl nur als ganze Zahl. */
+/**
+ * Die Fundstellen in einem gezeigten Text (für `<mark>`), dieselbe Regel wie die Suche: eine Zahl nur als ganze Zahl,
+ * und nur in einem Text, der auch ihr Wort trägt - „halle 1“ markiert „Halle 1“, nicht die 1 von „HZ-1“.
+ */
 export function markiert(text: string, terme: readonly string[]): TextTeil[] {
-  return hervorheben(text, [...terme], zahlFundstellen);
+  const flach = normalisiereSuche(text);
+  const begriffe = gruppen(terme).flatMap(({ wort, zahlen }) =>
+    wort === null ? zahlen : flach.includes(wort) ? [wort, ...zahlen] : [wort],
+  );
+  return hervorheben(text, begriffe, zahlFundstellen);
 }
 
 const parameter = (hash: string, name: string): string | null =>
@@ -251,18 +262,60 @@ export interface Reihe {
   unter: string;
   /** Festgehaltene Tatsachen der Quelle unter dem Satz („Einstellung geändert ab 15.01.2027 09:00“, A4). */
   fakten: string[];
-  /** Der Wert rechts: heute der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0. */
-  wert: { zahl: string; einheit: string | null; wann: string } | null;
+  /**
+   * Der Wert rechts: der Verbrauch des letzten vollständigen Monats („25.650 kWh · Sep 2026“), bei einer Hauptgröße ohne
+   * Menge der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0.
+   */
+  wert: { zahl: string; einheit: string | null; wann: string; monat?: true; hinweis?: string } | null;
   /** Hauptzähler stehen in ihrem Ort zuerst. */
   hauptzaehler: boolean;
   /** Archiviert: in der zugeklappten Gruppe am Ende. */
   archiviert: boolean;
   /** Der Schritt „Ablesungen eintragen“ der Wiedervorlage zeigt auf diese Reihe (`data-entscheid`). */
   ablesungsZiel: boolean;
-  /** Für die Marken: welche Lage die Reihe hat. */
-  lage: { ablesungFehlt: boolean; liefertNicht: boolean; ohneQuelle: boolean; entwurf: boolean; angehalten: boolean; geplant: boolean };
+  /** Für die Marken: welche Lage die Reihe hat („geplant“ ist keine Lage einer Messstelle, sondern die Reihen der Bedarfe). */
+  lage: Record<Exclude<MarkeSchluessel, 'geplant'>, boolean>;
   /** Die Zeile des Registers - Suche und Gruppen lesen daraus. */
   zeile: MessstelleRegisterZeile;
+}
+
+/** Eine Menge je Zeitraum gibt es nur für einen Zählerstand oder eine Intervallmenge - nie für eine Leistung. */
+export function hatMenge(h: { wertart: string } | null | undefined): boolean {
+  return h?.wertart === 'Zählerstand' || h?.wertart === 'Intervallmenge';
+}
+
+/** „Sep 2026“ - der Monat einer Reihe, kurz (Konzept §6.2: „25.650 kWh · Sep 2026“). */
+export function monatKurz(monat: string): string {
+  return `${MONATE[Number(monat.slice(5, 7)) - 1].slice(0, 3)} ${monat.slice(0, 4)}`;
+}
+
+/** „September 2026“ - der Kopf der Spalte am Rechner, wenn die Reihen den letzten Monat zeigen. */
+export function monatLang(monat: string): string {
+  return monatTitel(`${monat}-01`);
+}
+
+/**
+ * Der Verbrauch des letzten vollständigen Monats (Konzept §6.2, Entscheid 2 = A): der Schritt, den das Register mit
+ * `letzterMonat=true` trägt - gesprochen mit derselben `anzeige()` wie jede Werte-Karte, ohne eigene Rechnung. Ohne
+ * Feld (eine Anfrage ohne Monat) oder für eine Hauptgröße ohne Menge (eine Leistung) `null`: dann steht der letzte
+ * Stand. Ein Monat ohne Zahl ist der Strich, nie 0.
+ */
+export function monatWert(z: MessstelleRegisterZeile): Reihe['wert'] {
+  const lm = z.letzter_monat;
+  if (!lm || !z.hauptgroesse || !hatMenge(z.hauptgroesse)) return null;
+  if (!lm.wert) return { zahl: OHNE_ZAHL, einheit: null, wann: monatKurz(lm.monat), monat: true };
+  const a = anzeige(
+    { messstelle: { id: z.id, kennzeichen: z.kennzeichen, name: z.name, art: z.art, ...z.hauptgroesse }, raster: 'monat' },
+    lm.wert,
+    false,
+  );
+  const i = a.zahl.lastIndexOf('\u00a0');
+  // Review r4 S3: ein unvollständiger Monat darf eine Zahl tragen - dann sagt die Reihe es, statt wie ein ganzer Monat
+  // auszusehen.
+  const hinweis = a.zahl !== OHNE_ZAHL && lm.wert.zustand === UNVOLLSTAENDIG ? { hinweis: UNVOLLSTAENDIG } : {};
+  return i < 0
+    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true, ...hinweis }
+    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true, ...hinweis };
 }
 
 /** Stellen je Einheit wie E11 (kW 1, kWh 1, m³ 1); ganze Werte stehen ganz („970.680 kWh“, nicht „970.680,0 kWh“). */
@@ -359,10 +412,12 @@ export function reiheAus(w: ZeileWoerter, z: MessstelleRegisterZeile, zone: stri
     woher: woherAus(z, weg),
     unter: [stellungUnter(z), z.medium].filter(Boolean).join(' · '),
     fakten: w.fakten,
+    // Rechts der Verbrauch des letzten Monats (Konzept §6.2); ohne Monat (Leistung, Anfrage ohne Monat) der letzte Stand.
     wert:
-      lw && lw.wert !== null
+      monatWert(z) ??
+      (lw && lw.wert !== null
         ? { zahl: standZahl(lw.wert, lw.einheit), einheit: lw.einheit, wann: standWann(lw.zeitpunkt, zone, zeitpunkt) }
-        : null,
+        : null),
     hauptzaehler: z.elektrische_stellung?.stellung === 'Hauptzähler',
     archiviert: z.lebenszyklus === 'archiviert',
     ablesungsZiel: ziel,
@@ -373,7 +428,6 @@ export function reiheAus(w: ZeileWoerter, z: MessstelleRegisterZeile, zone: stri
       ohneQuelle: z.art === 'gemessen' && weg === 'ohne' && z.lebenszyklus !== 'archiviert',
       entwurf: z.lebenszyklus === 'entwurf',
       angehalten: z.lebenszyklus === 'angehalten',
-      geplant: (z.geplant_fuer_einsaetze ?? []).length > 0,
     },
     zeile: z,
   };
@@ -385,17 +439,29 @@ export interface OrtGruppe {
   key: string;
   /** „Halle 1“ - der Ort, an dem die Messstellen stehen. */
   titel: string;
+  /**
+   * Das Kurzzeichen der Ablese-Runde (`?ablesen=G-1`), wenn an dem Ort ein Zähler von Hand abgelesen wird (Konzept
+   * §6.2: „Ablesen ›“ im Kopf der Karte): sein Ableseort (`ableseortVon`), bei einem Bereich also sein Gebäude; sonst
+   * `null`.
+   */
+  ablesen: string | null;
+  /** Die Runde ist die des Orts selbst (Gebäude, Standort) - nicht die seines Gebäudes (Bereich). */
+  ablesenHier: boolean;
+  /** Der Standort des Orts (für das Recht „ablesung.erfassen“); `null` am Unternehmen. */
+  standortId: string | null;
   /** Der Standort darüber (nur am Unternehmen und nur, wenn der Ort nicht selbst der Standort ist). */
   standort: string | null;
   reihen: Reihe[];
   /** So viele hat der Ort ohne Suche und Marke - „1 von 8“. */
   gesamt: number;
+  /** Die geplanten Messstellen des Orts (offene Messbedarfe), die Suche und Marke zeigen - nach den Messstellen. */
+  geplant: GeplanteReihe[];
 }
 
 const nachZiffern = (a: string, b: string) => a.localeCompare(b, 'de-DE', { numeric: true });
 
 /** Der Schlüssel, nach dem die Orte stehen: der Pfad von oben (Standort, Gebäude, Bereich) - wie der Ortsbaum. */
-function ortReihenfolge(z: MessstelleRegisterZeile): string {
+export function ortReihenfolge(z: MessstelleRegisterZeile): string {
   const o = z.ort;
   switch (o.grund) {
     case 'am_unternehmen':
@@ -409,7 +475,32 @@ function ortReihenfolge(z: MessstelleRegisterZeile): string {
   }
 }
 
-function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
+/** Ein Ablesezähler: wird von Hand abgelesen, misst einen Zählerstand und ist weder archiviert noch im Entwurf. */
+export function abzulesen(z: MessstelleRegisterZeile): boolean {
+  return (
+    z.quelle.stand === 'ablesung' &&
+    z.hauptgroesse?.wertart === 'Zählerstand' &&
+    (z.lebenszyklus === 'aktiv' || z.lebenszyklus === 'eingerichtet')
+  );
+}
+
+/**
+ * Wo man eine Messstelle abliest - dieselbe Regel wie der Server (`MessstelleRegisterService.ableseort`, Wiedervorlage
+ * „Zählerablesung“): das erste Gebäude auf dem Pfad von ihrem Ort hinauf, ohne Gebäude ihr Standort, am Unternehmen
+ * `U`. Der Pfad läuft vom Ort hinauf; ein Gebäude hängt immer am Standort, ein Bereich an einem Gebäude oder am Standort
+ * und nie in einem Bereich - das Gebäude ist also der Ort selbst oder der Elternteil eines Bereichs. `null` = an keinem
+ * Ort.
+ */
+export function ableseortVon(z: MessstelleRegisterZeile): string | null {
+  const o = z.ort;
+  if (o.kennzeichen === 'U' || o.ort_art === 'unternehmen') return 'U';
+  if (o.grund !== 'verortet' || !o.standort || !o.kennzeichen) return null;
+  if (o.ort_art === 'gebaeude') return o.kennzeichen;
+  if (o.ort_art === 'bereich' && o.pfad.length >= 3) return o.pfad[1];
+  return o.standort;
+}
+
+export function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
   const o = z.ort;
   switch (o.grund) {
     case 'am_unternehmen':
@@ -459,15 +550,18 @@ function markeText(s: MarkeSchluessel, n: number): string {
     case 'angehalten':
       return `${n} angehalten`;
     case 'geplant':
-      return `${n} geplant für einen Energieeinsatz`;
+      return `${n} geplant`;
   }
 }
 
-/** Die Marken - nur, was es gibt (nie „0 ohne Quelle“); sie zählen die Messstellen ohne die archivierten. */
-export function marken(reihen: readonly Reihe[]): Marke[] {
+/**
+ * Die Marken - nur, was es gibt (nie „0 ohne Quelle“); sie zählen die Messstellen ohne die archivierten, „geplant“ die
+ * geplanten Messstellen (offene Messbedarfe).
+ */
+export function marken(reihen: readonly Reihe[], geplant = 0): Marke[] {
   const aktiv = reihen.filter((r) => !r.archiviert);
   return MARKE_REIHENFOLGE.flatMap((s) => {
-    const n = aktiv.filter((r) => r.lage[s]).length;
+    const n = s === 'geplant' ? geplant : aktiv.filter((r) => r.lage[s]).length;
     return n > 0 ? [{ schluessel: s, text: markeText(s, n), ton: s === 'ablesungFehlt' || s === 'liefertNicht' ? ('warn' as const) : ('neutral' as const), anzahl: n }] : [];
   });
 }
@@ -518,7 +612,13 @@ function seitVon(reihen: readonly Reihe[], zone: string, zeitpunkt: string): str
 export function status(
   antwort: MessstellenRegister,
   reihen: readonly Reihe[],
-  i: { ebene: MessstellenEbene; zone: string; stichtag: string | null },
+  i: {
+    ebene: MessstellenEbene;
+    zone: string;
+    stichtag: string | null;
+    /** Die Karte der geplanten Messstellen mit überschrittener Frist (`geplantHinweis`) - nach denen der Messstellen. */
+    geplant?: Hinweis | null;
+  },
 ): Status {
   const aktiv = reihen.filter((r) => !r.archiviert);
   const hinweise: Hinweis[] = [];
@@ -550,6 +650,7 @@ export function status(
       schritt: 'Ansehen',
     });
   }
+  if (i.geplant) hinweise.push(i.geplant);
   const a = antwort.aggregat?.unternehmen;
   if (!a || a.gesamt === 0) return { zeile: null, hinweise };
   if (hinweise.length > 0) return { zeile: null, hinweise };
@@ -572,6 +673,8 @@ export interface Liste {
   reihen: Reihe[];
   /** So viele zeigt die Liste gerade (Suche und Marke). */
   treffer: number;
+  /** So viele geplante Messstellen zeigt sie gerade - sie zählen nicht zu den Messstellen. */
+  geplant: number;
   /** So viele gäbe es ohne Suche und Marke. */
   gesamt: number;
   /** An wie vielen Orten die gezeigten stehen. */
@@ -580,11 +683,20 @@ export interface Liste {
 
 /**
  * Die Liste aus den Einträgen des Registers (`registerEintraege`): Reihen, nach Ort gruppiert, gefiltert durch Suche
- * und Marke. Leere Gruppen fallen weg; jede Gruppe zählt ihre Treffer gegen ihren ganzen Bestand („1 von 8“).
+ * und Marke. Leere Gruppen fallen weg; jede Gruppe zählt ihre Treffer gegen ihren ganzen Bestand („1 von 8“). Die
+ * geplanten Messstellen (`geplanteAus`) stehen an ihrem Ort nach den Messstellen - ein Ort nur mit geplanten bekommt
+ * eine eigene Gruppe; die Marke „geplant“ zeigt nur sie, jede andere Marke nur Messstellen.
  */
 export function liste(
   eintraege: readonly RegisterEintrag[],
-  i: { ebene: MessstellenEbene; zone: string; zeitpunkt: string; suche: string; marke: MarkeSchluessel | null },
+  i: {
+    ebene: MessstellenEbene;
+    zone: string;
+    zeitpunkt: string;
+    suche: string;
+    marke: MarkeSchluessel | null;
+    geplante?: readonly GeplanteReihe[];
+  },
 ): Liste {
   const ziele = ablesungsZiele(eintraege.flatMap((e) => (e.art === 'messstelle' ? [e.woerter] : [])));
   const reihen: Reihe[] = [];
@@ -594,18 +706,40 @@ export function liste(
     else reihen.push(reiheAus(e.woerter, e.zeile, i.zone, i.zeitpunkt, ziele.has(e.woerter.id)));
   }
   const terme = suchTerme(i.suche);
-  const passt = (r: Reihe) => passtZurSuche(r.zeile, terme) && (i.marke === null || r.lage[i.marke]);
+  const passt = (r: Reihe) => passtZurSuche(r.zeile, terme) && (i.marke === null || (i.marke !== 'geplant' && r.lage[i.marke]));
+  const passtGeplant = (g: GeplanteReihe) => (i.marke === null || i.marke === 'geplant') && geplantPasstZurSuche(g, terme);
   const offen = reihen.filter((r) => !r.archiviert);
   const je = new Map<string, OrtGruppe & { ordnung: string }>();
   for (const r of offen) {
     const k = ortKopf(r.zeile, i.ebene);
-    const g = je.get(k.key) ?? { ...k, reihen: [], gesamt: 0, ordnung: ortReihenfolge(r.zeile) };
+    const g = je.get(k.key) ?? {
+      ...k,
+      ablesen: null,
+      ablesenHier: false,
+      standortId: r.zeile.ort.standort_id,
+      reihen: [],
+      gesamt: 0,
+      geplant: [],
+      ordnung: ortReihenfolge(r.zeile),
+    };
     g.gesamt += 1;
+    // Die Runde gilt dem Ableseort der Zähler der Karte (ihr Gebäude, ohne Gebäude ihr Standort) - wie die Wiedervorlage.
+    if (!g.ablesen && abzulesen(r.zeile)) {
+      g.ablesen = ableseortVon(r.zeile);
+      g.ablesenHier = g.ablesen !== null && g.ablesen === r.zeile.ort.kennzeichen;
+    }
     if (passt(r)) g.reihen.push(r);
     je.set(k.key, g);
   }
+  for (const p of i.geplante ?? []) {
+    if (!passtGeplant(p)) continue;
+    const { key, titel, standort, standortId, ordnung } = p.ort;
+    const g = je.get(key) ?? { key, titel, standort, standortId, ablesen: null, ablesenHier: false, reihen: [], gesamt: 0, geplant: [], ordnung };
+    g.geplant.push(p);
+    je.set(key, g);
+  }
   const gruppen = [...je.values()]
-    .filter((g) => g.reihen.length > 0)
+    .filter((g) => g.reihen.length > 0 || g.geplant.length > 0)
     .sort((a, b) => nachZiffern(a.ordnung, b.ordnung))
     .map(({ ordnung: _o, ...g }) => ({ ...g, reihen: [...g.reihen].sort(imOrt) }));
   const treffer = gruppen.reduce((n, g) => n + g.reihen.length, 0);
@@ -615,9 +749,17 @@ export function liste(
     nochNicht,
     reihen: offen,
     treffer,
+    geplant: gruppen.reduce((n, g) => n + g.geplant.length, 0),
     gesamt: offen.length,
-    orte: gruppen.length,
+    orte: gruppen.filter((g) => g.reihen.length > 0).length,
   };
+}
+
+/** Eine geplante Messstelle wird wie eine Messstelle gesucht: in Name (Wortlaut), Kennzeichen, Ort und Einsatz. */
+function geplantPasstZurSuche(g: GeplanteReihe, terme: readonly string[]): boolean {
+  if (terme.length === 0) return true;
+  const felder = [g.name, g.kennzeichen, g.ort.titel, g.ort.standort ?? '', g.einsatz?.text ?? ''].map(normalisiereSuche);
+  return terme.every((t) => felder.some((f) => f.includes(t)));
 }
 
 /**

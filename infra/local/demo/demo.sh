@@ -11,7 +11,8 @@
 #       Idempotent; `--neu` baut Portal und Images neu.
 #   demo.sh rundgang        EIN Login `rundgang` (Kundenadministrator bei Ahrenberg), der jede UEMS-Fläche
 #                           mit Daten sieht: richtet „Messen & Auswerten“ an beiden Standorten ein und legt
-#                           Ablesungen (MS-20) und Monatswerte (BZ-1) ab 10/2024 an (DemoRundgangAufbau).
+#                           Ablesungen (MS-20) und Monatswerte (BZ-1) ab 10/2024 an (DemoRundgangAufbau);
+#                           dazu MS-03, die automatisch von der Mess-Seite der Box Halle 1 liest.
 #                           Teil von `start`; einzeln für eine laufende Demo, idempotent.
 #   demo.sh stop            hält alle Container an, Daten bleiben.
 #   demo.sh status          Zustand je Dienst, Datenfrische, Speicher; Exit ≠ 0, wenn etwas fehlt.
@@ -40,7 +41,7 @@ PROFILE=(--profile edge --profile sim --profile feeds --profile optimize --profi
 # Was `start` zusätzlich zu ahrenberg.sh hochfährt (edge-nodered/edge-sim und flowc bleiben aus:
 # die simulierte Box ist `edge-simulator`, die Aktivierung von Flows ist lokal abgeschaltet).
 LIVE=(emqx redpanda redpanda-init ingest writer edge-simulator
-  edge-sim-ahrenberg-halle1 edge-sim-ahrenberg-halle2 edge-sim-ahrenberg-lindach
+  edge-sim-ahrenberg-halle1 edge-mess-ahrenberg-halle1 edge-sim-ahrenberg-halle2 edge-sim-ahrenberg-lindach
   market-data weather-collector forecast-collector optimizer simulation portal)
 DEMO_TENANT=00000000-0000-0000-0000-000000000001
 AHRENBERG_TENANT=20000000-0000-0000-0000-000000000001
@@ -134,6 +135,10 @@ einsicht_anlegen() {
 # das Portal alle UEMS-Bereiche aus (ebenenNav.ts, ebenenBereiche). Dazu Messwerte und Bezugsgrößen ab 10/2024.
 rundgang_anlegen() {
   local admin t body
+  # Messen-Bau m2: die Mess-Seite der Box Halle 1, aus der MS-03 automatisch liest - vor dem Rundgang gestartet,
+  # damit sie den Messwert lernt, sobald die api ihn zustellt; ohne einen anderen Dienst anzufassen (`--no-deps`;
+  # in `start` läuft sie schon mit LIVE).
+  compose up -d --build --no-deps edge-mess-ahrenberg-halle1
   jdk21
   (cd "$WURZEL/services/api" && ./mvnw -q test -Dtest=DemoRundgangAufbau -Dsurefire.failIfNoSpecifiedTests=false \
     -Drundgang.jdbc="jdbc:postgresql://localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-voltpilot}")

@@ -174,6 +174,10 @@ den strukturierten Ort als `ort_ziel` mit dem Standort, an dem er heute hängt.
 Bearbeiten (`PUT …/messbedarf/{id}`) ersetzt alle Felder eines offenen Bedarfs und trifft den
 Belegschutz (409 `berichts_belege`) wie Einlösen und Verwerfen.
 
+Jede Antwort mit einem Messbedarf nennt zusätzlich `zitiert_von`: die freigegebenen Berichtsstände aus `uems_berichts_belege`, die ihn zitieren, als `{kennung, nr}` in derselben Reihenfolge wie `berichtsstaende` der 409 (leer, wenn keiner zitiert, in jedem Zustand gefüllt).
+`einloesbar` ist genau dann `true`, wenn der Bedarf `offen` ist und `zitiert_von` leer ist; eingelöste und verworfene Bedarfe sind nie einlösbar.
+Das Portal bietet „Einrichten“ für einen zitierten Bedarf darum gar nicht erst an, statt eine Messstelle anzulegen und danach am Einlösen zu scheitern - die Regel des Belegschutzes selbst bleibt unverändert.
+
 **P4:** `prozess_summe_passt` vergleicht die Quell-Messstellen der Terme jeder
 zugeordneten berechneten Messstelle mit den direkt gemessenen Messstellen des
 Prozesses. Jeder äußere Term liefert einen Hinweis mit Summe, Messstelle und optionaler

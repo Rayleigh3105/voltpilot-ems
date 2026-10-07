@@ -138,6 +138,7 @@ import {
 import { versorgungAhrenberg, versorgungLindach } from '../src/test/versorgungFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import { bb1, bb1Fassung } from '../src/test/bezugsbasisFixtures';
 import { vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../src/test/bezugsbasisVergleichFixtures';
 import {
   ahrenbergBezugsgroessen,
@@ -153,6 +154,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
+import { leitkennzahlWieDerServer, mitAuswertungAus, referenzListe } from '../src/test/kennzahlListeFixtures';
 import {
   anlegenAm,
   detailAm,
@@ -304,7 +306,27 @@ function werteDerBuehne(
   if (kennzeichen === 'MS-06' && von === '2026-10-01' && bis === '2026-10-31') {
     return raster === 'monat' ? f16Monat() : raster === 'tag' ? f16Tage() : null;
   }
-  return monatDerBuehne(kennzeichen, raster, von, bis);
+  return monatDerBuehne(kennzeichen, raster, von, bis) ?? monateDerBuehne(kennzeichen, raster, von, bis);
+}
+
+/**
+ * Messen m2 (Seite): mehrere ganze Monate im Raster Monat - die zwölf Balken und die Reihe der Leitkachel. Jeder Monat
+ * ist die Antwort, die die Bühne für ihn allein gibt; ein nicht gestellter Monat bleibt nicht gestellt (`null`).
+ */
+function monateDerBuehne(kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string): MessstelleWerte | null {
+  if (raster !== 'monat' || !von.endsWith('-01') || von.slice(0, 7) >= bis.slice(0, 7)) return null;
+  const naechster = (m: string) => {
+    const [j, mm] = m.split('-').map(Number);
+    return mm === 12 ? `${j + 1}-01` : `${j}-${String(mm + 1).padStart(2, '0')}`;
+  };
+  const antworten: MessstelleWerte[] = [];
+  for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = naechster(m)) {
+    const ende = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const a = monatDerBuehne(kennzeichen, 'monat', `${m}-01`, ende);
+    if (!a) return null;
+    antworten.push(a);
+  }
+  return { ...antworten[0], bis: antworten[antworten.length - 1].bis, werte: antworten.flatMap((a) => a.werte) };
 }
 
 /** Die Monate, die Karte, Verlauf und Vergleich lesen (O11/O12) — `null` heißt „nicht gestellt“. */
@@ -848,14 +870,29 @@ Object.assign(api, {
     return id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg();
   },
   versorgung: async (id: string) => id === werkLindach().id ? versorgungLindach() : versorgungAhrenberg(),
-  // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
-  kennzahlen: async () => ({ kennzahlen: (messenArt === 'bestand' ? [] : kennzahlenDerBuehne()).filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
-    || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id))) }),
+  // AP-11 IP-13: die Kennzahlen der Welt - gelesen zur Uhr der Bühne. Konzept Auswerten a1 (PR1): mit `'auswertung'`
+  // trägt jede Kennzahl ihre Auswertung - aus den Monatswerten der Bühne (ohne Bezugsbasis), oder mit `&liste=referenz`
+  // die Welt des Konzepts zum 30.04.2029 (§6.4: über der Bezugsbasis, im Rahmen, zum Beobachten, archiviert).
+  kennzahlen: async (mit?: 'auswertung') => {
+    const welt = params.get('liste') === 'referenz' ? referenzListe() : messenArt === 'bestand' ? [] : kennzahlenDerBuehne();
+    const sichtbar = welt.filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
+      || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id)));
+    const heute = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+    if (mit !== 'auswertung') return { kennzahlen: sichtbar.map(({ auswertung: _ohne, ...k }) => k) };
+    // R-A7: eine Kennzahl, deren Werte die Route ablehnt, trägt auch keine Auswertung (wie der Server).
+    const kennzahlen = sichtbar.map((k) => (k.auswertung || k.id === kzAusserhalb ? k : mitAuswertungAus(k, heute, (id, periode, von, bis) =>
+      istAngelegt(id) ? ohneWerte(id, periode, von, bis) : kennzahlWerteAntwort(id, periode, von, bis, Date.now()))));
+    // Die Leitkennzahl nennt der Server (§10.8); die Bühne nennt sie nach seiner Regel.
+    return { kennzahlen, leitkennzahl: leitkennzahlWieDerServer(kennzahlen) };
+  },
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
   // AP-17 IP-20: der Vergleich-Leser (IP-19) — `&vergleich=r2|maerz|stand`; ohne Angabe die Kennzahl ohne Bezugsbasis (R10).
   bezugsbasisVergleich: async () =>
     ({ r2: vergleichR2, maerz: vergleichMitMaerz, stand: vergleichMitStand })[params.get('vergleich') ?? '']?.() ?? vergleichLeer(),
-  kennzahlBezugsbasen: async () => ({ bezugsbasen: [] }),
+  // Konzept Auswerten a1 §6.6: mit `&vergleich=…` trägt die Kennzahl BB-0001 (R1) - der Vergleich je Monat steht dann auf
+  // der Ebene der Bezugsbasis (`…/kennzahlen/{id}/bezugsbasis`).
+  kennzahlBezugsbasen: async () => ({ bezugsbasen: params.get('vergleich') ? [bb1('freigegeben')] : [] }),
+  bezugsbasisFassung: async () => bb1Fassung('freigegeben'),
   // AP-17 IP-17 / IP-12c: die Bühne hat keine laufende Bezugsbasis und keinen Wetterbezug — Kachel und Zeile „Wetter“
   // bleiben weg, und kein Abruf geht an den (nicht laufenden) Server.
   bezugsbasisUebersicht: async () => ({ stichtag: '2026-10-20', laufend: 0, freigegeben: 0, vorlaeufig: 0, mit_anstoss: 0,
@@ -883,6 +920,8 @@ Object.assign(api, {
   // Energieeinsatz und ein leeres Verzeichnis; kein Abruf geht an den (nicht laufenden) Server.
   bewertungUmfang: async () => ahrenbergUmfangVorgabe('2026-10-20'),
   energieeinsaetze: async () => ({ energieeinsaetze: [] }),
+  // Messen m2 PR4: die Liste der Messstellen fragt die offenen Messbedarfe (geplante Messstellen) - die Bühne hat keinen.
+  messbedarfeAlle: async () => ({ messbedarfe: [] }),
   energiemanagementVerzeichnis: energiemanagementBuehne('start', { kennung: 'IK', name: 'Ines Kaltenbach' }, () => '2026-10-20T10:00:00+02:00')
     .routen.energiemanagementVerzeichnis,
   // AP-19 IP-21: keine Frist im Energiemanagement — der Baustein „Energiemanagement“ bleibt weg (WV5), und kein Abruf
@@ -1373,10 +1412,11 @@ function Vorschau() {
    * Regeln: ein Einstieg aus dem Register setzt die Periode, ein Zeitraum-Wechsel lässt den Vergleich stehen und
    * vergisst die Version, der Weg zurück in die Liste räumt alles ab.
    */
-  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null }>(() => ({
+  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null; stand: string | null }>(() => ({
     periode: WEG_ANSICHT ? WEG_PERIODE : null,
     version: WEG_ANSICHT ? WEG_VERSION : null,
     vergleich: WEG_ANSICHT ? WEG_V : null,
+    stand: null,
   }));
   const [route, setRoute] = useState<Route>(() =>
     kanonisch(
@@ -1444,6 +1484,7 @@ function Vorschau() {
     if (route.messstelleId && werte.periode) anhang.set('periode', werte.periode);
     if (route.messstelleId && werte.version != null) anhang.set('version', String(werte.version));
     if (route.messstelleId && werte.vergleich) anhang.set('v', werte.vergleich);
+    if (route.messstelleId && werte.stand) anhang.set('stand', werte.stand);
     const frage = anhang.toString();
     document.body.dataset.route = hashForRoute(route) + (frage ? `?${frage}` : '');
   }, [route, werte]);
@@ -1672,7 +1713,8 @@ function Vorschau() {
               standort={{ id: standort.id, name: standort.name }}
               zone={standort.zeitzone}
               kennzahlId={route.kennzahlId ?? null}
-              onOeffnen={(id) => navigate(kennzahlRoute(id, standort.id))}
+              ebene={route.kennzahlEbene ?? null}
+              onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, standort.id, ebene))}
               onListe={() => navigate(standortBereichRoute(standort.id, 'kennzahlen'))}
             />
           )}
@@ -1702,7 +1744,8 @@ function Vorschau() {
           {portfolioReiter('portfolio-kennzahlen')}
           <KennzahlenPage
             kennzahlId={route.kennzahlId ?? null}
-            onOeffnen={(id) => navigate(kennzahlRoute(id))}
+            ebene={route.kennzahlEbene ?? null}
+            onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, null, ebene))}
             onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
           />
         </>
@@ -1732,15 +1775,17 @@ function Vorschau() {
           // AP-13 IP-13, wie `App.tsx`: aus dem Register führt der Weg auf die Messstellen-Seite — mit Periode.
           messstelleId={route.messstelleId ?? null}
           onOeffnen={(id, periode) => {
-            setWerte({ periode, version: null, vergleich: null });
+            // Wie `App.tsx`: die Liste nennt eine Periode nur mit „Stand am …“ - dann liest die Seite diesen Tag, nur lesend.
+            setWerte({ periode, version: null, vergleich: null, stand: periode });
             navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
           }}
           werte={werte}
           // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht.
-          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich }))}
+          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich, stand: w.stand }))}
           onWerteVergleich={(v) => setWerte((w) => ({ ...w, vergleich: v }))}
+          onWerteHeute={() => setWerte({ periode: null, version: null, vergleich: null, stand: null })}
           onListe={() => {
-            setWerte({ periode: null, version: null, vergleich: null });
+            setWerte({ periode: null, version: null, vergleich: null, stand: null });
             navigate(
               messstellenEbene.art === 'standort'
                 ? standortMessstellenRoute(messstellenEbene.id)

@@ -398,6 +398,34 @@ button.vp-ms-hinweis {
   color: var(--vp-c-muted-fg, #475569);
   white-space: nowrap;
 }
+/* Mit „Ablesen ›“ steht die Zahl am Namen (wie am Rechner) und der Weg rechts. */
+.vp-ms-ort-kopf.mit-ablesen {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.vp-ms-ort-kopf.mit-ablesen .vp-ms-ort-zahl::before {
+  content: '· ';
+}
+.vp-ms-ablesen {
+  display: inline-flex;
+  align-items: center;
+  /* Tippfläche 44 px, ohne den Kopf höher zu machen. */
+  min-height: 44px;
+  margin: -12px 0 -12px auto;
+  font: 600 0.875rem/1.3 var(--vp-font-heading);
+  color: var(--vp-action);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vp-ms-ablesen:hover {
+  text-decoration: underline;
+}
+.vp-ms-ablesen:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .vp-ms-ort.is-still .vp-ms-ort-kopf h2 {
   color: var(--vp-c-muted-fg, #475569);
 }
@@ -501,6 +529,8 @@ a.vp-ms-reihe:focus-visible {
 }
 .vp-ms-punkt.is-satz {
   display: none;
+  /* (0.8125rem × 1.35 − 8 px) / 2: mittig zur ersten Zeile. */
+  margin-top: 4.8px;
 }
 .vp-ms-reihe.is-gut .vp-ms-punkt {
   background: var(--vp-flow-batt, #16a34a);
@@ -514,7 +544,8 @@ a.vp-ms-reihe:focus-visible {
 .vp-ms-reihe-satz {
   grid-area: satz;
   display: flex;
-  align-items: center;
+  /* Der Punkt steht an der ersten Zeile, auch wenn der Satz umbricht oder eine Tatsache darunter steht. */
+  align-items: flex-start;
   gap: 7px;
   min-width: 0;
   font-size: 0.8125rem;
@@ -531,6 +562,21 @@ a.vp-ms-reihe:focus-visible {
 }
 .vp-ms-reihe.is-hinweis .vp-ms-reihe-satz {
   color: var(--vp-c-warn-fg, #9a3412);
+}
+/* Ein zitierter Messbedarf (Review r4 M4): statt „Einrichten“ der Satz mit den Berichtsständen - leise, ganz lesbar,
+   und Ziel des Wiedervorlage-Schritts (Fokus ohne Tab-Halt). */
+.vp-ms-reihe-beleg {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ms-reihe-beleg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .vp-ms-reihe.is-hinweis .vp-ms-weg {
   color: var(--vp-c-muted-fg, #475569);
@@ -565,10 +611,91 @@ a.vp-ms-reihe:focus-visible {
   color: var(--vp-c-muted-fg, #475569);
   white-space: nowrap;
 }
+/* Ein unvollständiger Monat mit Zahl (Review r4 S3): leise im Warnton unter der Zahl, an jeder Breite sichtbar. */
+.vp-ms-reihe-hinweis {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
+  white-space: nowrap;
+}
 .vp-ms-reihe-chev {
   grid-area: chev;
   display: inline-flex;
   color: var(--vp-c-muted-fg, #475569);
+}
+/*
+ * Eine geplante Messstelle (ein offener Messbedarf): der hohle Punkt sagt „noch nicht da“. Am Telefon steht
+ * „Einrichten“ unter dem Satz, damit der Name die ganze Breite hat; ab 760 px rechts in der Spalte des Werts.
+ */
+.vp-ms-reihe.is-geplant {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'name' 'satz' 'wert';
+}
+.vp-ms-reihe.is-geplant .vp-ms-reihe-wert {
+  justify-items: start;
+  margin-top: 6px;
+}
+.vp-ms-reihe.is-geplant .vp-ms-reihe-wert.is-ohne-schritt {
+  display: none;
+}
+.vp-ms-reihe.is-geplant .vp-ms-punkt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vp-text-gray, #66717c);
+}
+.vp-ms-reihe.is-geplant.is-hinweis .vp-ms-punkt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-einsatz {
+  color: var(--vp-action, #2c5282);
+  text-decoration: none;
+}
+.vp-ms-einsatz:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vp-ms-einsatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-ms-reihe.is-geplant.is-hinweis .vp-ms-frist {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz,
+.vp-ms-plan-fehler {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+/* Der Satz nach „Einrichten“ oder „Messbedarf erfassen“: Haken (bzw. Warnung) und Satz, wie eine ruhige Statuszeile. */
+.vp-ms-plansatz {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-ms-plansatz > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--vp-flow-batt, #2e9e5b);
+}
+.vp-ms-plansatz.is-fehler > svg {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz.is-fehler,
+.vp-ms-plan-fehler {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz:focus {
+  outline: none;
+}
+.vp-ms-plansatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 3px;
+  border-radius: var(--vp-radius-sm, 10px);
 }
 @media (hover: hover) {
   a.vp-ms-reihe:hover .vp-ms-reihe-titel {
@@ -729,6 +856,19 @@ a.vp-ms-reihe:focus-visible {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 2.05fr);
     grid-template-areas: 'name satz';
   }
+  .vp-ms-reihe.is-geplant {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.05fr) minmax(0, 1fr) 128px 18px;
+    grid-template-areas:
+      'name satz woher wert chev'
+      'unter satz woher wert chev';
+  }
+  .vp-ms-reihe.is-geplant .vp-ms-reihe-wert {
+    justify-items: end;
+    margin-top: 0;
+  }
+  .vp-ms-reihe.is-geplant .vp-ms-reihe-wert.is-ohne-schritt {
+    display: grid;
+  }
   .vp-ms-reihe-name {
     font-size: 0.9375rem;
   }
@@ -773,5 +913,14 @@ a.vp-ms-reihe:focus-visible {
   }
   .vp-ms-reihe-wert b {
     font-size: 0.9375rem;
+  }
+  /* Der Monat der Reihen steht im Kopf der Spalte („September 2026“) - in der Reihe nur für Vorlesende. */
+  .vp-ms-reihe-wert > span.is-monat {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }

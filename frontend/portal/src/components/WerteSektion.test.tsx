@@ -157,7 +157,7 @@ describe('WerteSektion · warum eine Zahl fehlt: Auskunft statt Fehlermeldung, L
     const onQuelleZuordnen = vi.fn();
     ms21({ onQuelleZuordnen });
     const leer = await screen.findByTestId('werte-leer', undefined, WARTEN);
-    expect(within(leer).getByRole('heading', { name: 'Keine Datenquelle' })).toBeInTheDocument();
+    expect(within(leer).getByRole('heading', { name: 'Noch keine Quelle' })).toBeInTheDocument();
     expect(leer).toHaveTextContent(KEINE_QUELLE_MS21);
     // Kein Strich-Bild: weder Karte noch Liste noch Verlauf — der Leerzustand IST die Auskunft.
     expect(screen.queryByTestId('werte-karte')).toBeNull();

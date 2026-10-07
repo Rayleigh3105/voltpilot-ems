@@ -31,10 +31,19 @@ afterEach(() => {
   setSelbstauskunft(null);
 });
 
+/** Wie `e2e/bezugsbasis.tsx`: ohne Register die Ebene der Bezugsbasis unter KZ-0004 (`&ebene=bezugsbasis`, §6.6). */
 const buehne = (lage: 'keine' | 'freigegeben', person: string, register = false) => {
   setSelbstauskunft(rechteSeed(person).me);
   Object.assign(api, bezugsbasisBuehne(lage));
-  render(<KennzahlenPage kennzahlId={register ? null : BB_IDS.kz4} onOeffnen={() => undefined} onListe={() => undefined} zone="Europe/Berlin" />);
+  render(
+    <KennzahlenPage
+      kennzahlId={register ? null : BB_IDS.kz4}
+      ebene={register ? null : 'bezugsbasis'}
+      onOeffnen={() => undefined}
+      onListe={() => undefined}
+      zone="Europe/Berlin"
+    />,
+  );
 };
 
 async function waehleMonat(feld: string, monat: string) {
@@ -51,16 +60,10 @@ async function waehleMonat(feld: string, monat: string) {
 describe('e2e/bezugsbasis.spec.ts — jeder Locator trifft genau ein Element', () => {
   it('leerer Zustand (IK mit Knopf, CB ohne)', async () => {
     buehne('keine', 'IK');
-    await screen.findByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' });
-    // Warum `exact`: der Teilstring „Bezugsbasis“ träfe auch „Vergleich mit Bezugsbasis“.
-    expect(screen.getAllByRole('tab', { name: teil('Bezugsbasis') })).toHaveLength(2);
-    const tab = screen.getAllByRole('tab', { name: 'Bezugsbasis' });
-    eins(tab, 'tab Bezugsbasis (exact)');
-    fireEvent.click(tab[0]);
     await screen.findByTestId('bezugsbasis-leer');
     eins(screen.getAllByText(teil(LEER)), 'getByText(LEER)');
     eins(screen.getAllByRole('button', { name: 'Bezugsbasis anlegen' }), 'button Bezugsbasis anlegen (exact)');
-    // K7 (`grenzHinweisZeigt`): der Grenz-Satz steht einmal im Kopf der Kennzahl-Seite, nicht im Reiter.
+    // K7 (`grenzHinweisZeigt`): der Grenz-Satz steht einmal am Fuß der Ebene, nicht im Bereich der Bezugsbasis.
     eins(screen.getAllByTestId('grenzhinweis'), 'getByTestId(grenzhinweis)');
     eins(within(screen.getByTestId('grenzhinweis')).getAllByText(teil(UEMS_NORMGRENZE)), 'grenzhinweis getByText(GRENZE)');
     expect(within(screen.getByTestId('bezugsbasis-reiter')).queryAllByText(teil(UEMS_NORMGRENZE))).toHaveLength(0);
@@ -68,15 +71,13 @@ describe('e2e/bezugsbasis.spec.ts — jeder Locator trifft genau ein Element', (
 
   it('leerer Zustand für die Leserin: Satz ja, Knopf 0', async () => {
     buehne('keine', 'CB');
-    fireEvent.click(await screen.findByRole('tab', { name: 'Bezugsbasis' }));
     await screen.findByTestId('bezugsbasis-leer');
     eins(screen.getAllByText(teil(LEER)), 'getByText(LEER)');
     expect(screen.queryAllByRole('button', { name: 'Bezugsbasis anlegen' })).toHaveLength(0);
   });
 
-  it('R1: Anlegen vorläufig bis zur Basis-Zeile', async () => {
+  it('R1: Anlegen vorläufig bis zur Antwort der Ebene', async () => {
     buehne('keine', 'IK');
-    fireEvent.click(await screen.findByRole('tab', { name: 'Bezugsbasis' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Bezugsbasis anlegen' }));
     eins(await screen.findAllByTestId('bezugsbasis-assistent'), 'bezugsbasis-assistent');
     const dialog = screen.getByTestId('bezugsbasis-assistent');
@@ -120,21 +121,22 @@ describe('e2e/bezugsbasis.spec.ts — jeder Locator trifft genau ein Element', (
 
     eins(screen.getAllByTestId('bezugsbasis-fertig'), 'fertig');
     await act(async () => fireEvent.click(screen.getByTestId('bezugsbasis-fertig')));
-    const zeile = await screen.findAllByTestId('bezugsbasis-zeile');
-    eins(zeile, 'bezugsbasis-zeile');
-    expect(zeile[0].textContent).toBe(
-      'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig (1 von 12 Monaten) · freigegeben von Ines Kaltenbach am 12.11.2026.',
-    );
+    const antwort = await screen.findAllByTestId('bezugsbasis-antwort');
+    eins(antwort, 'bezugsbasis-antwort');
+    expect(antwort[0].textContent).toBe('VoltPilot erwartet 0,2837 kWh je kg - so viel wie im Oktober 2026.Fassung 1 · Verhältnis · Vergleichszeitraum Oktober 2026');
+    eins(screen.getAllByTestId('bezugsbasis-status'), 'bezugsbasis-status');
+    expect(screen.getByTestId('bezugsbasis-status').textContent).toBe('Gilt seit 01.11.2026');
+    eins(screen.getAllByTestId('bezugsbasis-vorlaeufig-hinweis'), 'bezugsbasis-vorlaeufig-hinweis');
   });
 
-  it('Register: Kennzeichen und Filter', async () => {
+  it('Register: die Gruppe „Mit Bezugsbasis“ mit „Vergleich ab …“ (Konzept Auswerten a1 §6.4)', async () => {
     buehne('freigegeben', 'IK', true);
-    const zeichen = await screen.findAllByTestId('kennzahl-energieleistung');
-    eins(zeichen, 'kennzahl-energieleistung');
-    expect(zeichen[0].textContent).toBe('Energieleistungskennzahl — Bezugsbasis BB-0001 · vorläufig.');
-    const filter = screen.getAllByLabelText('nur Energieleistungskennzahlen');
-    eins(filter, 'getByLabel(nur Energieleistungskennzahlen, exact)');
-    fireEvent.click(filter[0]);
-    expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(1);
+    const gruppe = await screen.findAllByTestId('kennzahlen-mit');
+    eins(gruppe, 'kennzahlen-mit');
+    const karten = within(gruppe[0]).getAllByTestId('kennzahl-karte');
+    eins(karten, 'kennzahl-karte in kennzahlen-mit');
+    const ab = within(karten[0]).getAllByText('Vergleich ab Dezember 2026');
+    eins(ab, 'getByText(Vergleich ab Dezember 2026)');
+    expect(screen.queryByLabelText('nur Energieleistungskennzahlen')).toBeNull();
   });
 });

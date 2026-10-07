@@ -757,7 +757,10 @@ class KostenstelleEnergieApiTest {
         assertThat(monat.path("grund").isNull()).isTrue();
         assertThat(monat.path("ablesezeitraeume").toString())
                 .isEqualTo("[{\"von\":\"" + ABLESUNG_1 + "\",\"bis\":\"" + ABLESUNG_2 + "\"}]");
-        JsonNode werte = werteDerMessstelle(w, "MS-21", "monat", "2026-10-01", "2026-10-31", null);
+        // Die Route …/werte zeigt seit der Stichtag-Grenze (#1425) nichts nach ihrer Uhr - also mit der Uhr nach der Ablesung.
+        JsonNode[] gelesen = new JsonNode[1];
+        mitUhr(() -> gelesen[0] = werteDerMessstelle(w, "MS-21", "monat", "2026-10-01", "2026-10-31", null));
+        JsonNode werte = gelesen[0];
         assertThat(monat.path("quelle_menge").decimalValue()).as("dieselbe Zahl wie an der Messstelle")
                 .isEqualByComparingTo(werte.path("menge").decimalValue());
         assertThat(texte(p.path("kennzeichen"))).containsExactly("verteilt (100 % von MS-21)",
