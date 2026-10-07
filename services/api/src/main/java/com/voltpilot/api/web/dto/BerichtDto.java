@@ -47,7 +47,7 @@ public final class BerichtDto {
             String geltungName, String zeitraumArt, String zeitraum, String zeitraumText, String zeitzone,
             Person angelegtVon, OffsetDateTime angelegtAm, OffsetDateTime archiviertAm, String standZeichen,
             String standText, Integer neuesteNr, OffsetDateTime entwurfDatenstand, Integer wiedervorlageMonate,
-            Ueberpruefung ueberpruefung) {}
+            Ueberpruefung ueberpruefung, OffsetDateTime freigegebenAm, OffsetDateTime anstossSeit) {}
 
     /**
      * AP-16 S5/S6 (IP-24): die Überprüfung der energetischen Bewertung, beim Abruf abgeleitet — nur an einer Bewertung mit

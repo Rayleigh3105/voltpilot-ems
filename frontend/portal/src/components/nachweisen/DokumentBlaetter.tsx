@@ -43,7 +43,7 @@ const ZURUECK = 'Zurück';
 const WEITER = 'Weiter';
 
 /** Ein Blatt mit Formular: der Hauptknopf im Fuß sendet es ab, Enter auch. */
-function BlattFormular({ id, testid, onSenden, children }: { id: string; testid: string; onSenden: () => void; children: ReactNode }) {
+export function BlattFormular({ id, testid, onSenden, children }: { id: string; testid: string; onSenden: () => void; children: ReactNode }) {
   return (
     <form
       id={id}
@@ -60,7 +60,7 @@ function BlattFormular({ id, testid, onSenden, children }: { id: string; testid:
   );
 }
 
-function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: string; primaer: string; busy: boolean; sekundaer: string; onSekundaer: () => void; testid: string }) {
+export function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: string; primaer: string; busy: boolean; sekundaer: string; onSekundaer: () => void; testid: string }) {
   return (
     <div className="vp-nw-blatt-fuss">
       <Button type="submit" form={form} disabled={busy} aria-busy={busy || undefined} data-testid={testid}>
@@ -73,7 +73,7 @@ function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: s
   );
 }
 
-function Ablehnung({ satz }: { satz: string | null }) {
+export function Ablehnung({ satz }: { satz: string | null }) {
   return satz ? (
     <p className="vp-nw-fehler" role="alert" data-testid="blatt-ablehnung">
       {satz}
@@ -81,7 +81,7 @@ function Ablehnung({ satz }: { satz: string | null }) {
   ) : null;
 }
 
-const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, '')}`;
+export const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, '')}`;
 
 // ------------------------------------------------------------------ gemeinsame Teile
 

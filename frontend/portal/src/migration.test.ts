@@ -1556,6 +1556,19 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         zahl += vorher.length;
         continue;
       }
+      // Ein beschlossener Umbau einer uems-Fläche (Konzept mit Entscheid): die Datei entfällt und nennt, wohin ihre Aufgabe
+      // ging, oder sie trägt danach genau die Bedienelemente des Umbaus (geschützt wie ein Neubau, unten). Ihre bisherigen
+      // Fortschreibungen gehen im Umbau auf.
+      const umbau = kundenBestand.umbauten.find((u) => pfad in u.dateien);
+      const umbauZiel = umbau ? (umbau.dateien[pfad as keyof typeof umbau.dateien] as { nachher?: string[]; entfaellt?: boolean; wohin?: string }) : null;
+      if (umbau && umbauZiel) {
+        kundenBestand.fortschreibungen.filter((f) => f.datei === pfad).forEach((f) => verwendeteFortschreibungen.add(f));
+        if (umbauZiel.entfaellt) {
+          expect(existsSync(join(SRC, pfad)), `${pfad}: ${umbau.entscheid} (${umbauZiel.wohin})`).toBe(false);
+          zahl += vorher.length;
+          continue;
+        }
+      }
       const datei = ts.createSourceFile(quellpfad, readFileSync(join(SRC, quellpfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const jetzt: string[] = [];
       const besuche = (knoten: ts.Node) => {
@@ -1570,6 +1583,11 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         ts.forEachChild(knoten, besuche);
       };
       besuche(datei);
+      if (umbau && umbauZiel) {
+        expect(jetzt, `${pfad}: ${umbau.entscheid}`).toEqual(umbauZiel.nachher);
+        zahl += vorher.length;
+        continue;
+      }
       const zusammen = kundenBestand.assistentZusammenfuehrung;
       const umgebaut = zusammen.dateien[pfad as keyof typeof zusammen.dateien];
       if (umgebaut) {

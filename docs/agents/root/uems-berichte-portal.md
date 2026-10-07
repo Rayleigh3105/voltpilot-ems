@@ -9,7 +9,8 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
 | Datei (`frontend/portal/…`) | Was |
 |---|---|
 | `src/berichtSeite.ts` | reine Ableitung: Listen-Karte, Reiter der Stände, Seitenkopf, Abschnitte nach Vorlage mit Nachweis je Zahl (Form `uemsWerteKarte.Karte`), Tagesverlauf, Verlauf der Stände, PDF/CSV-Ableitung, „heutigen Wert zeigen“ |
-| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Liste und Seite; `WerteKarte`, `ZeitSegment` und `MiniBarSpark` wiederverwendet, Aufklappen als natives `<details>` |
+| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Seite (Kopf, Status-Zeile, Stufen, Weitergeben, Kasten „Stand“, Entscheidung) und die Abschnitte des Abzugs; `WerteKarte` und `MiniBarSpark` wiederverwendet, Aufklappen als natives `<details>` |
+| `src/nachweisBerichte.ts`, `src/components/nachweisen/BerichteListe.tsx`, `BerichtBlaetter.tsx`, `NwBerichte.css` | Konzept Nachweisen n1, Runde 2 (§6.4): Liste mit Zählern, Status-Zeile und Stufen, Werte alt → neu, Gründe; Blätter Erstellen, Prüfen/Bestätigung, Behalten, Grund |
 | `src/test/berichtFixtures.ts`, `src/test/berichtAbzuege.json` | Antworten entlang der Zeitachse der Referenzdatei 1.4 (10.11. Nr. 1 · 12.11. K-2026-0007 · 16.11. Nr. 2); die Abzüge sind die Vektor-Abzüge BR-2026-0001/1 und /2, byte-gleich |
 | `src/berichtSeite.test.ts` | B1 Nr. 1/Nr. 2, B10 („heute: …“), B16 (nach den Fristen) gegen `bericht-vectors.json`; beweist auch die Gleichheit der Fixture-Kopie |
 | `e2e/berichte.spec.ts` | Bühne `startansicht`: `ansicht=berichte`, `ansicht=bericht&br=BR-2026-0001`, `heute=b10`, `tagesverlauf=gefuellt`; vier Uhren (13.11., 20.11., 03.12.2026, 02.11.2036) |
@@ -69,3 +70,11 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
   Banner „Revision nötig“ — `uems-bericht-dialoge.md`. Die Liste zeigt die 403 der Unterstützung weiter mit dem Satz der
   Route (Rechte-Ableitung, nicht §5.8), ohne „Erneut versuchen“ und ohne „Bericht anlegen“.
 - **`.vp-br-hebel` ist der Knopf „heutigen Wert zeigen“** (IP-13) — die Hebel-Leisten von IP-14 heißen `.vp-br-aktionen`.
+- **Seit Konzept Nachweisen n1, Runde 2 (§6.4)** ist die Welt eine Fläche von Nachweisen: Liste mit „● n gelten“ und
+  „● n wartet auf Sie“, die Entscheidung zuerst (Datumsblock „seit“ aus `anstoss_seit`), sonst „frei“ (`freigegeben_am`)
+  und „PDF“; Bewertung und Managementbewertung öffnen ihre Seite (Entscheid 15). Die Seite zeigt die Abschnitte des Abzugs
+  am Handy hinter „Alle Werte“, am Rechner links als Werte-Zeilen mit „Ganzer Bericht“ (Text-Grenzen §0.4). Nach einer
+  Korrektur EINE Entscheidung für alle offenen Anstöße (Entscheid 16): Werte alt → neu nur mit Zahl, „Ja, Stand n+1
+  freigeben“ (Prüfen → Bestätigung mit PDF) oder „Nein, Stand n behalten“ (ein Grund, verworfen je Anstoß). `darf()` immer
+  mit der Vorlage aufrufen (Bewertung und Managementbewertung haben eigene Kennungen). Die Bedienelemente dieser Flächen
+  stehen in `kundenBestand-vor-ip12.json` unter `umbauten` (`migration.test.ts`): bei jeder Änderung neu aufnehmen.

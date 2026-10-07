@@ -1,0 +1,100 @@
+/*
+ * BERICHTE in Nachweisen (Konzept Nachweisen n1, Runde 2, §6.4): eine Zeile je Bericht mit Datumsblock und „PDF“, der
+ * Stand am Rechner als leise Spalte, die Seite eines Berichts (Anordnung wie ein Dokument: am Handy untereinander, am
+ * Rechner links die Werte, rechts Stufen, Weitergeben und der Kasten „Stand“). Nur Haus-Tokens; die Bausteine stehen
+ * in NwZeilen.css und NwSchritte.css.
+ */
+
+/* ---------- Liste ------------------------------------------------------------------------------------------------ */
+/* Die Zeile trägt die Trennlinie, weil neben dem Ziel der Zeile ein eigener Knopf „PDF“ steht (kein Knopf im Knopf). */
+.vp-nw-br-zeile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-nw-fzl > .vp-nw-br-zeile:first-child {
+  border-top: 0;
+}
+.vp-nw-br-zeile > .vp-nw-fz {
+  flex: 1 1 auto;
+  border-top: 0;
+}
+.vp-nw-br-pdf {
+  flex: 0 0 auto;
+  position: relative;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-action, #2c5282);
+  font: 600 0.8125rem var(--vp-c-font);
+  cursor: pointer;
+}
+/* Die Trefferfläche ist 44 px hoch, auch wenn der Knopf ruhig kleiner aussieht. */
+.vp-nw-br-pdf::before {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+.vp-nw-br-pdf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-nw-br-pdf[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+/* „Stand 2“ rechts in der Zeile: nur am Rechner (am Handy trägt die Status-Zeile der Seite den Stand). */
+.vp-nw-br-stand {
+  display: none;
+}
+@media (min-width: 721px) {
+  .vp-nw-br-stand {
+    display: inline;
+    align-self: center;
+    font: 500 0.8125rem var(--vp-c-font);
+    color: var(--vp-c-muted-fg, #475569);
+    white-space: nowrap;
+  }
+}
+
+/* ---------- Bestätigung ------------------------------------------------------------------------------------------ */
+.vp-nw-br-name {
+  margin: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Seite eines Berichts --------------------------------------------------------------------------------- */
+/* Die Werte am Rechner: links unter „Geändert“, als ruhiger Block in der Lesebreite der Spalte. */
+.vp-nw-br-werte {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.vp-nw-br-werte > .vp-br-block:first-child {
+  margin-top: 0;
+}
+/* Die Werte im Blatt am Handy: die Abschnitte wie auf der Seite, ohne eigene Seitenränder. */
+.vp-nw-br-werte-blatt {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+/* Die Entscheidung nach einer Korrektur: Werte, Grund, zwei Antworten, „Weiter“ - in einer Karte. */
+.vp-nw-br-entscheid-innen {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-nw-br-entscheid-innen > .vp-nw-fussnote {
+  margin-top: -4px;
+}
+/* Die Prüfsumme kurz in der Zeile „Prüfsumme geprüft“: ruhig, in der Ziffernschrift. */
+.vp-nw-br-pruefsumme {
+  font: 500 0.8125rem var(--vp-c-mono, ui-monospace, monospace);
+  color: var(--vp-c-muted-fg, #475569);
+}

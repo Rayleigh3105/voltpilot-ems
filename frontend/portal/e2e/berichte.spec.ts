@@ -12,8 +12,8 @@ import { expect, test, type Page } from '@playwright/test';
  * 03.12.2026 mit `heute=b10` (MS-12 heißt heute anders, B10) und 02.11.2036 (die Oktober-Zeilen sind weg, B16).
  *
  * GEMESSEN, nicht behauptet: Querlauf des Dokuments, jedes Element über dem Bildrand (außer in den lokal scrollenden
- * Reitern), die Kacheln der Leiste, die SICHTBAREN Reiter, Kopf, Abschnitte, Nachweis — und dass es keinen Knopf
- * „PDF“ oder „CSV“ gibt, solange IP-10/IP-11 ihr Ziel nicht eingehängt haben.
+ * Reitern), die Kacheln der Leiste, die SICHTBAREN Reiter, Status-Zeile, Stufen, Kasten „Stand“, Abschnitte, Nachweis
+ * und PDF/CSV am Stand (Konzept Nachweisen n1, Runde 2, §6.4: der ganze Bericht steht einen Tipp tiefer).
  *
  * Mit `BERICHTE_BILDER=<Ordner>` legt der Lauf je Fall ein Bild und `messung-<fall>.json` ab — die Vorschau.
  * Die Spec importiert keine Fixtures (sie laden `api.ts`, dem im Node-Lauf `import.meta.env` fehlt).
@@ -42,8 +42,17 @@ async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
 }
 
 async function warteAufSeite(page: Page) {
-  await expect(page.getByTestId('bericht-kopf')).toBeVisible();
-  await expect(page.getByTestId('bericht-verlauf')).toBeVisible();
+  await expect(page.getByTestId('bericht-status')).toBeVisible();
+  await expect(page.getByTestId('bericht-stand-karte')).toBeVisible();
+}
+
+/** Konzept Nachweisen n1, Runde 2 (§6.4): der ganze Bericht steht einen Tipp tiefer - am Handy „Alle Werte“, am Rechner „Ganzer Bericht“. */
+async function alleWerte(page: Page) {
+  await page.getByTestId('bericht-alle-werte').click();
+  const blatt = page.getByTestId('bericht-werte-blatt');
+  await expect(blatt).toBeVisible();
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+  return blatt;
 }
 
 async function messe(page: Page) {
@@ -54,14 +63,14 @@ async function messe(page: Page) {
     const sichtbar = (e: Element) => (e as HTMLElement).offsetParent !== null || getComputedStyle(e).position === 'fixed';
     const bar = document.querySelector<HTMLElement>('.vp-bottombar');
     const leisteSichtbar = bar !== null && getComputedStyle(bar).display !== 'none';
-    const ueberstehend = [...document.querySelectorAll<HTMLElement>('.vp-main *')]
-      .filter((e) => sichtbar(e) && !e.closest('.vp-bereich-tabs, .vp-br-wahl'))
+    const ueberstehend = [...document.querySelectorAll<HTMLElement>('.vp-main *, [role="dialog"] *')]
+      .filter((e) => sichtbar(e) && !e.closest('.vp-bereich-tabs'))
       .filter((e) => e.getBoundingClientRect().right > breite + 0.5)
       .map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`);
     const eintrag = (e: Element) => text(e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'));
     const reiter = (aktiv: boolean) =>
       [...document.querySelectorAll<HTMLElement>(`[role="tablist"] [role="tab"]${aktiv ? '[aria-selected="true"]' : ''}`)]
-        .filter((t) => sichtbar(t) && !t.closest('.vp-br-wahl'))
+        .filter((t) => sichtbar(t))
         .map((t) => text(t));
     return {
       route: document.body.dataset.route ?? null,
@@ -75,18 +84,16 @@ async function messe(page: Page) {
       // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) — ohne die Frage des offenen Eintrags.
       seite: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem')].filter((e) => sichtbar(e)).map(eintrag),
       seiteAktiv: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem[aria-current="page"]')].filter((e) => sichtbar(e)).map(eintrag)[0] ?? null,
-      karten: [...document.querySelectorAll('[data-testid="bericht-karte"]')].map((k) => text(k)),
-      stand: [...document.querySelectorAll('[data-testid="bericht-stand"]')].map((k) => text(k)),
-      titel: text(document.querySelector('.vp-br-kopf h1')),
-      stände: [...document.querySelectorAll('.vp-br-wahl [role="tab"]')].map((t) => text(t)),
-      standAktiv: text(document.querySelector('.vp-br-wahl [role="tab"][aria-selected="true"]')),
-      kopfZeile: text(document.querySelector('.vp-br-zeile-kopf')),
-      abzeichen: [...document.querySelectorAll('.vp-br-abzeichen > *')].map((a) => text(a)),
-      pruefsumme: text(document.querySelector('[data-testid="bericht-pruefsumme"] code')),
+      zeilen: [...document.querySelectorAll('[data-testid^="bericht-zeile-BR-"]')].map((k) => text(k)),
+      titel: text(document.querySelector('[data-testid="bericht-kopf"] h1')),
+      status: text(document.querySelector('[data-testid="bericht-status"]')),
+      stufen: [...document.querySelectorAll('[data-testid="bericht-stufen"] li')].map((l) => l.getAttribute('aria-label')),
+      freigegeben: text(document.querySelector('[data-testid="bericht-zeile-freigegeben"]')),
+      datenstand: text(document.querySelector('[data-testid="bericht-zeile-datenstand"]')),
+      pruefsumme: document.querySelector('[data-testid="bericht-zeile-pruefsumme"] code')?.getAttribute('title') ?? '',
       abschnitte: [...document.querySelectorAll('.vp-br-block > h2')].map((h) => text(h)),
       zahlen: document.querySelectorAll('[data-testid="bericht-zahl"]').length,
-      knoepfe: [...document.querySelectorAll('button')].map((b) => text(b)).filter((t) => t === 'PDF' || t === 'CSV'),
-      verlauf: [...document.querySelectorAll('.vp-br-verlauf > li')].map((l) => text(l)),
+      knoepfe: [...document.querySelectorAll('[data-testid="bericht-dateien"] button')].map((b) => text(b)),
       heute: [...document.querySelectorAll('[data-testid="bericht-heute"]')].map((h) => text(h)),
     };
   });
@@ -118,9 +125,9 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 }
 
 test.describe('Berichte — die Liste', () => {
-  test('bei 375 px am 13.11.2026: BR-2026-0001 mit „Revision nötig — Korrektur K-2026-0007“, die Leiste mit „Nachweisen“ offen', async ({ page }) => {
+  test('bei 375 px am 13.11.2026: BR-2026-0001 wartet - „Daten geändert“, „Entscheiden“, Datumsblock „seit“; die Leiste mit „Nachweisen“ offen', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte', 375, AM_13_11);
-    await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
+    await expect(page.getByTestId('bericht-zeile-BR-2026-0001')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/berichte');
@@ -129,57 +136,70 @@ test.describe('Berichte — die Liste', () => {
     // Ohne Energiemanagement trägt „Nachweisen“ nur die Berichte — eine zweite Reihe mit einem Reiter gibt es nicht.
     expect(m.reiter).toEqual([]);
     expect(m.reiterAktiv).toEqual([]);
-    expect(m.stand).toEqual(['Revision nötig — Korrektur K-2026-0007']);
-    expect(m.karten[0]).toContain('Monatsbericht Werk Ahrenberg Oktober 2026');
-    expect(m.karten[0]).toContain('Monatsbericht Standort · Fassung 1');
+    const zeile = page.getByTestId('bericht-zeile-BR-2026-0001');
+    await expect(zeile).toContainText('Monatsbericht Oktober 2026');
+    await expect(zeile).toContainText('Daten geändert');
+    await expect(zeile).toContainText('Entscheiden');
+    await expect(zeile.getByRole('img')).toHaveAttribute('aria-label', 'seit 12.11.2026');
+    await expect(page.getByTestId('zaehler-gelten')).toHaveText('1gilt');
+    await expect(page.getByTestId('zaehler-wartet')).toContainText('1wartet');
     await ablegen(page, 'liste-375', m);
   });
 
-  test('bei 1440 px am 20.11.2026: Gruppe „Nachweisen“ offen; ein Klick öffnet den Bericht', async ({ page }) => {
+  test('bei 1440 px am 20.11.2026: Gruppe „Nachweisen“ offen; die Zeile mit „frei“ und „PDF“ öffnet den Bericht', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte', 1440, AM_20_11);
-    await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
+    await expect(page.getByTestId('bericht-zeile-BR-2026-0001')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
     // N1: am Rechner die Gruppen in der Seitenleiste, die offene ist „Nachweisen“ — mit nur einem Bereich ohne Reihe.
     expect(m.seite).toEqual(LEISTE);
     expect(m.seiteAktiv).toBe('Nachweisen');
     expect(m.reiter).toEqual([]);
-    expect(m.stand).toEqual(['Berichtsstand Nr. 2']);
+    const zeile = page.getByTestId('bericht-zeile-BR-2026-0001');
+    await expect(zeile.getByRole('img')).toHaveAttribute('aria-label', 'frei 16.11.2026');
+    await expect(zeile).toContainText('Stand 2');
+    await expect(page.getByTestId('bericht-pdf-BR-2026-0001')).toHaveText('PDF');
     await ablegen(page, 'liste-1440', m);
-    await page.getByTestId('bericht-karte').click();
+    await zeile.click();
     await warteAufSeite(page);
     expect((await messe(page)).route).toBe('#/portfolio/berichte/BR-2026-0001');
   });
 });
 
-test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
-  test('bei 375 px am 20.11.2026: Nr. 2 vorgewählt — Kopf, Prüfsumme, Abschnitte der Vorlage, PDF und CSV am Stand; MS-12 klappt seinen Nachweis auf', async ({ page }) => {
+test.describe('Berichte - die Berichtsseite (§5.1–§5.6, Nachweisen n1 §6.4)', () => {
+  test('bei 375 px am 20.11.2026: „Stand 2 gilt“, Stufen, Kasten „Stand“, PDF und CSV; „Geändert ggü. Stand 1“; alle Werte mit Nachweis einen Tipp tiefer', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 375, AM_20_11);
     await warteAufSeite(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'seite-375');
     expect(m.leisteAktiv).toBe('Nachweisen');
-    expect(m.titel).toBe('Monatsbericht Werk Ahrenberg Oktober 2026');
-    expect(m.stände).toEqual(['Nr. 1', 'Nr. 2', 'Entwurf']);
-    expect(m.standAktiv).toBe('Nr. 2');
-    expect(m.kopfZeile).toBe('Datenstand 12.11.2026 10:05 (MEZ) · Berichtsstand Nr. 2 · freigegeben 16.11.2026 14:20 von Ines Kaltenbach');
-    expect(m.abzeichen).toEqual(['Berichtsstand Nr. 2']);
+    expect(m.titel).toContain('Monatsbericht Oktober 2026');
+    expect(m.status).toBe('Stand 2 gilt· Daten unverändert');
+    expect(m.stufen).toEqual(['Entwurf: 10.11.2026', 'Stand 1: 10.11.2026', 'Stand 2: 16.11.2026']);
+    expect(m.freigegeben).toContain('Ines Kaltenbach');
+    expect(m.datenstand).toContain('12.11.2026, 10:05');
     expect(m.pruefsumme).toBe('sha256:0f0feda03d1979477a2596db5b9723399f227af0226a5397251704384de10d0d');
-    expect(m.abschnitte).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Tagesverlauf je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis', 'Verlauf der Berichtsstände']);
-    expect(m.zahlen).toBe(18);
-    // Konzept Nachweisen n1, Befund 1: an jedem Stand PDF (Recht zum Abrufen) und CSV (export.standort); ein Entwurf hat keine.
-    expect(m.knoepfe).toEqual(['PDF', 'CSV']);
-    expect(m.verlauf[0]).toContain('Anlass Korrektur K-2026-0007');
-    expect(m.verlauf[1]).toContain('ersetzt durch Nr. 2 (16.11.2026)');
-    const paar = page.getByTestId('bericht-richtungspaar');
+    // Konzept Nachweisen n1, Befund 1: an jedem Stand PDF (Recht zum Abrufen) und CSV (export.standort); Teilen den Link.
+    expect(m.knoepfe).toEqual(['PDF', 'Teilen', 'CSV']);
+    const geaendert = page.getByTestId('bericht-geaendert');
+    await expect(geaendert.getByRole('heading')).toHaveText('Geändert ggü. Stand 1');
+    await expect(geaendert.getByTestId('bericht-grund')).toContainText('Grund:');
+    await expect(page.getByTestId('bericht-stand-1')).toContainText('überholt');
+    await ablegen(page, 'seite-oben-375', m);
+    await ablegen(page, 'seite-nr2-375', m, true);
+
+    const blatt = await alleWerte(page);
+    const w = await messe(page);
+    ohneQuerlauf(w, 'werte-375');
+    expect(w.abschnitte).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Tagesverlauf je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis']);
+    expect(w.zahlen).toBe(18);
+    const paar = blatt.getByTestId('bericht-richtungspaar');
     await expect(paar).toHaveCount(1);
     await expect(paar).toContainText('MS-04 Speicher Halle 1');
     await expect(paar).toContainText(/Laden\s*7\.900\s*kWh/);
     await expect(paar).toContainText(/Entladen\s*7\.100\s*kWh/);
-    const leer = page.locator('[data-testid="bericht-tagesverlauf"][data-quelle="MS-12"]');
+    const leer = blatt.locator('[data-testid="bericht-tagesverlauf"][data-quelle="MS-12"]');
     await expect(leer).toContainText('In diesem Berichtsstand sind keine Tageswerte gespeichert.');
-    await ablegen(page, 'seite-oben-375', m);
-    await ablegen(page, 'seite-nr2-375', m, true);
     if (BILDER) {
       await paar.scrollIntoViewIfNeeded();
       await paar.screenshot({ path: join(BILDER, 'richtungspaar-375.png') });
@@ -202,7 +222,6 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     // AP-13 IP-11: am Telefon stehen „heutigen Wert zeigen“ und der Weg zur Messstelle untereinander.
     const aktionen = n.zeile.locator('.vp-br-aktionen');
     await expect(n.zeile.getByTestId('bericht-sprung')).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10');
-    // Die Leiste am unteren Rand liegt über dem Fuß der Seite — die Zeile gehört in die MITTE des Bildes.
     await aktionen.evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     if (BILDER) await aktionen.screenshot({ path: join(BILDER, 'ip11-bericht-aktionen-375.png') });
@@ -212,7 +231,8 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     for (const breite of [375, 1440]) {
       await oeffne(page, 'ansicht=bericht&br=BR-2026-0001&tagesverlauf=gefuellt', breite, AM_20_11);
       await warteAufSeite(page);
-      const reihe = page.locator('[data-testid="bericht-tagesverlauf"][data-quelle="MS-12"]');
+      const blatt = await alleWerte(page);
+      const reihe = blatt.locator('[data-testid="bericht-tagesverlauf"][data-quelle="MS-12"]');
       await expect(reihe.locator('[data-testid="mini-col"]')).toHaveCount(5);
       await reihe.locator('[data-testid="mini-col"]').nth(2).dispatchEvent('pointerdown');
       await expect(reihe.locator('.vp-mini-cap')).toHaveText(`03.10.2026: — · keine Werte`);
@@ -224,20 +244,26 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     }
   });
 
-  test('bei 1440 px: Nr. 1 ist „ersetzt durch Nr. 2“ und nennt 6.100 kWh; der Entwurf trägt keine Prüfsumme', async ({ page }) => {
+  test('bei 1440 px: Stand 1 ist „überholt“ und nennt 6.100 kWh; seine Korrektur steht in Stand 2', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 1440, AM_20_11);
     await warteAufSeite(page);
-    await page.locator('.vp-br-wahl [role="tab"]', { hasText: 'Nr. 1' }).click();
-    await expect(page.locator('.vp-br-zeile-kopf')).toContainText('Berichtsstand Nr. 1');
+    // Am Rechner stehen links die Werte als Zeilen; der ganze Bericht einen Klick tiefer.
+    await expect(page.getByTestId('bericht-werte')).toContainText('Werte');
+    await page.getByTestId('bericht-stand-1').click();
+    await expect(page.getByTestId('bericht-status')).toHaveText('Stand 1· überholt');
     const m = await messe(page);
     ohneQuerlauf(m, 'nr1-1440');
     expect(m.seiteAktiv).toBe('Nachweisen');
     // R4: die Berichtsseite zeigt ihren Rückweg statt einer Reihe.
     expect(m.reiterAktiv).toEqual([]);
-    expect(m.kopfZeile).toBe('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
-    expect(m.abzeichen).toEqual(['ersetzt durch Nr. 2 (16.11.2026)']);
+    expect(m.datenstand).toContain('10.11.2026, 08:55');
     expect(m.pruefsumme).toBe('sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03');
+    await page.getByTestId('bericht-korrekturen').click();
+    await expect(page.getByTestId('bericht-grund-blatt')).toContainText('K-2026-0007');
+    await expect(page.getByTestId('bericht-grund-blatt')).toContainText('in Stand 2');
+    await page.keyboard.press('Escape');
     await ablegen(page, 'seite-nr1-1440', m);
+    await alleWerte(page);
     const n = await nachweis(page, 'MS-12');
     expect(n.zahl).toBe(`6.100${NB}kWh`);
     await n.zeile.evaluate((e) => e.scrollIntoView({ block: 'center' }));
@@ -256,20 +282,15 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await expect(quelle).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=1');
     await expect(page.getByTestId('bericht-quellen').locator('a', { hasText: /^BZ-6$/ })).toHaveCount(0);
 
-    // „heutigen Wert zeigen“: heute steht Version 2 — Nr. 1 bleibt, wie er ist.
+    // „heutigen Wert zeigen“: heute steht Version 2 - Stand 1 bleibt, wie er ist.
     await n.zeile.getByRole('button', { name: 'heutigen Wert zeigen' }).click();
     await expect(n.zeile.getByTestId('bericht-heutiger-wert')).toHaveText(`heute: 6.040${NB}kWh · vollständig · Version 2 · korrigiert (Version 2)`);
-
-    await page.locator('.vp-br-wahl [role="tab"]', { hasText: 'Entwurf' }).click();
-    await expect(page.locator('.vp-br-zeile-kopf')).toHaveText('Entwurf · Datenstand 12.11.2026 10:05 (MEZ)');
-    const e = await messe(page);
-    expect(e.pruefsumme).toBe('');
-    expect(e.knoepfe).toEqual([]);
   });
 
-  test('am 03.12.2026 (B10): Nr. 2 nennt MS-12 mit dem Namen zum Datenstand und ergänzt „heute: Montage Linie M1 (Halle 2)“', async ({ page }) => {
+  test('am 03.12.2026 (B10): Stand 2 nennt MS-12 mit dem Namen zum Datenstand und ergänzt „heute: Montage Linie M1 (Halle 2)“', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001&heute=b10', 375, AM_03_12);
     await warteAufSeite(page);
+    await alleWerte(page);
     await expect(page.getByTestId('bericht-heute').first()).toBeVisible();
     const m = await messe(page);
     ohneQuerlauf(m, 'b10-375');
@@ -279,11 +300,12 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await ablegen(page, 'b10-heute-375', m);
   });
 
-  test('am 02.11.2036 (B16): Nr. 1 erklärt weiter 6.100 kWh — „heutigen Wert zeigen“ sagt ehrlich „nicht mehr gespeichert“', async ({ page }) => {
+  test('am 02.11.2036 (B16): Stand 1 erklärt weiter 6.100 kWh - „heutigen Wert zeigen“ sagt ehrlich „nicht mehr gespeichert“', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 375, AM_2036);
     await warteAufSeite(page);
-    await page.locator('.vp-br-wahl [role="tab"]', { hasText: 'Nr. 1' }).click();
-    await expect(page.locator('.vp-br-zeile-kopf')).toContainText('Berichtsstand Nr. 1');
+    await page.getByTestId('bericht-stand-1').click();
+    await expect(page.getByTestId('bericht-status')).toHaveText('Stand 1· überholt');
+    await alleWerte(page);
     const n = await nachweis(page, 'MS-12');
     expect(n.zahl).toBe(`6.100${NB}kWh`);
     await n.zeile.getByRole('button', { name: 'heutigen Wert zeigen' }).click();

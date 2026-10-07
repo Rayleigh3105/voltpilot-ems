@@ -144,8 +144,12 @@ public class BerichtService {
      * Ein Bericht mit seinem Vermerk aus R5 und — nur an einer energetischen Bewertung mit freigegebenem Stand — der beim
      * Abruf abgeleiteten Überprüfung (AP-16 S5/S6, IP-24); sonst {@code null}.
      */
+    /**
+     * Ein Bericht in der Liste und im Kopf; {@code freigegebenAm} ist die Freigabe des gültigen Stands, {@code anstossSeit}
+     * der früheste offene Anstoß an ihm (Konzept Nachweisen n1, §6.4: Datumsblöcke „frei“ und „seit“).
+     */
     public record Uebersicht(Kopf kopf, Integer neuesteNr, Instant entwurfDatenstand, String standZeichen,
-            String standText, Ueberpruefung ueberpruefung) {}
+            String standText, Ueberpruefung ueberpruefung, Instant freigegebenAm, Instant anstossSeit) {}
 
     /** AP-16 S5/S6: die Frist am Abruftag und die laufenden Einsätze des Unternehmens mit wirksamer Einstufung. */
     public record Ueberpruefung(BewertungFrist.Frist frist, List<BerichtRepository.EinsatzLage> einsaetze) {}
@@ -847,23 +851,27 @@ public class BerichtService {
         Instant datenstand = repo.entwurfDatenstand(tenant, x.id()).orElse(null);
         if (staende.isEmpty()) {
             return new Uebersicht(x, null, datenstand, ZEICHEN_ENTWURF,
-                    datenstand == null ? null : BerichtRegeln.entwurf(datenstand, x.zone()), null);
+                    datenstand == null ? null : BerichtRegeln.entwurf(datenstand, x.zone()), null, null, null);
         }
         StandZeile gueltig = staende.get(staende.size() - 1);
         Ueberpruefung ueberpruefung = ueberpruefung(tenant, x, gueltig);
         List<AnstossZeile> anstoesse = repo.anstoesse(tenant, x.id()).stream().filter(a -> a.nr() == gueltig.nr()).toList();
         Optional<AnstossZeile> offen = anstoesse.stream().filter(a -> OFFEN.equals(a.zustand())).findFirst();
         if (offen.isPresent()) {
+            Instant seit = anstoesse.stream().filter(a -> OFFEN.equals(a.zustand())).map(AnstossZeile::erkanntAm)
+                    .min(Instant::compareTo).orElse(null);
             return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_REVISION,
-                    BerichtRegeln.revisionNoetig(BerichtRegeln.anlass(offen.get().anlassKennung())), ueberpruefung);
+                    BerichtRegeln.revisionNoetig(BerichtRegeln.anlass(offen.get().anlassKennung())), ueberpruefung,
+                    gueltig.freigegebenAm(), seit);
         }
         AnstossZeile letzter = anstoesse.isEmpty() ? null : anstoesse.get(anstoesse.size() - 1);
         if (letzter != null && VERWORFEN.equals(letzter.zustand())) {
             return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_VERWORFEN,
-                    BerichtRegeln.anstossVerworfen(letzter.verworfenBegruendung()), ueberpruefung);
+                    BerichtRegeln.anstossVerworfen(letzter.verworfenBegruendung()), ueberpruefung, gueltig.freigegebenAm(),
+                    null);
         }
         return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_STAND, BerichtRegeln.berichtsstand(gueltig.nr()),
-                ueberpruefung);
+                ueberpruefung, gueltig.freigegebenAm(), null);
     }
 
     /**
