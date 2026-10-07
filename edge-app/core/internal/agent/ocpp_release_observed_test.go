@@ -17,9 +17,9 @@ import (
 // „Sonne + Speicher" with a battery VoltPilot does NOT command (Kapitän
 // 07.10.2026): the box commands only the wallbox, watches SoC and battery
 // power, and takes the release back at the floor or when the site imports.
-// Same site, same plan, same measurements as the Edge-Light analysis
-// (ocpp_release_light_test.go on feature/edge-light); the readiness comes from
-// the REAL applySetpoint, never from a hand-set note. Only the simulator
+// Same site, same plan, same measurements as the Edge-Light pilot
+// (ocpp_release_light_test.go); the readiness comes from the REAL
+// applySetpoint, never from a hand-set note. Only the simulator
 // stands behind these numbers (ocppsim) - no bench, no real inverter.
 
 // observedTick is one pass of both executors: the battery tick reports its
@@ -80,8 +80,8 @@ func TestSonneSpeicherReleasesAnObservedBatteryAndKeepsTheCommandedRule(t *testi
 			"darf bis 30 % entladen"},
 		"gesteuert, aber ohne bestätigte Rücklesung": {nil, false, lastmgmt.ReleaseBatteryPath, 3,
 			"ohne bestätigte Rückmeldung"},
-		"Deye ohne Gerätefreigabe, nur gelesen (wie Edge Light)": {uncommandedDeye, false,
-			lastmgmt.ReleaseObserved, 8, "beobachtet"},
+		// Deye without device approval, only read, no readback: the
+		// Edge-Light pilot, TestEdgeLightPilotReleasesItsObservedDeye.
 		// A readback that arrives anyway (Node-RED reads back on a Docker
 		// box) does not make an unapproved battery a commanded one.
 		"Docker-Box ohne Gerätefreigabe, Rücklesung vorhanden": {uncommandedDeye, true,

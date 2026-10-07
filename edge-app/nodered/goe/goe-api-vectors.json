@@ -1,0 +1,554 @@
+{
+  "_comment": [
+    "GENERIERT von goe-api-vectors.gen.js aus goe-api.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: goe-api-vectors.test.js (JS) und edge-app/core/internal/goeapi (Go, Edge Light).",
+    "body ist der rohe Antworttext von /api/status; parse_error = JSON.parse wirft (der Flow verwirft die Antwort)."
+  ],
+  "constants": {
+    "status_path": "/api/status",
+    "status_filter": "nrg,car,alw,amp,wh",
+    "nrg_total_power_idx": 11,
+    "families": [
+      "goe_http_api"
+    ],
+    "car_states": {
+      "0": "unknown",
+      "1": "idle",
+      "2": "charging",
+      "3": "waiting",
+      "4": "complete",
+      "5": "error"
+    }
+  },
+  "car_state": [
+    {
+      "car": 0,
+      "state": "unknown"
+    },
+    {
+      "car": 1,
+      "state": "idle"
+    },
+    {
+      "car": 2,
+      "state": "charging"
+    },
+    {
+      "car": 3,
+      "state": "waiting"
+    },
+    {
+      "car": 4,
+      "state": "complete"
+    },
+    {
+      "car": 5,
+      "state": "error"
+    },
+    {
+      "car": 6,
+      "state": "unknown"
+    },
+    {
+      "car": -1,
+      "state": "unknown"
+    },
+    {
+      "car": 2.5,
+      "state": "unknown"
+    },
+    {
+      "car": null,
+      "state": "unknown"
+    },
+    {
+      "car": "2",
+      "state": "unknown"
+    },
+    {
+      "car": true,
+      "state": "unknown"
+    }
+  ],
+  "status_url": [
+    {
+      "host": "192.168.2.105",
+      "port": 80,
+      "url": "http://192.168.2.105:80/api/status?filter=nrg,car,alw,amp,wh"
+    },
+    {
+      "host": "10.0.0.5",
+      "port": 8080,
+      "url": "http://10.0.0.5:8080/api/status?filter=nrg,car,alw,amp,wh"
+    },
+    {
+      "host": "goe.local",
+      "port": null,
+      "url": "http://goe.local/api/status?filter=nrg,car,alw,amp,wh"
+    },
+    {
+      "host": "goe.local",
+      "port": 0,
+      "url": "http://goe.local/api/status?filter=nrg,car,alw,amp,wh"
+    }
+  ],
+  "cases": [
+    {
+      "name": "laedt 11,04 kW (chargingStatus)",
+      "body": "{\"car\":2,\"alw\":true,\"amp\":16,\"wh\":5321.4,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,3680,3700,3660,0,11040,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 11.04
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": true
+      }
+    },
+    {
+      "name": "fertig, Laden nicht erlaubt, echte 0 W (notChargingStatus)",
+      "body": "{\"car\":4,\"alw\":false,\"amp\":6,\"wh\":8000,\"nrg\":[231,231,231,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "complete",
+        "charging": false,
+        "allowed": false
+      }
+    },
+    {
+      "name": "echte go-e V4, Firmware 59.4, Leerlauf (aufgezeichnet 03.10.2026)",
+      "body": "{\"alw\":true,\"amp\":16,\"car\":1,\"wh\":23980.87648,\"nrg\":[232.5,233.4299927,234.6699982,1.24000001,0,0,0,0,0,0,0,0,0,0,0,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "idle",
+        "charging": false,
+        "allowed": true
+      }
+    },
+    {
+      "name": "Index 11 ist die Summe, nicht eine Phase",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,3680,3680,0,0,7360,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 7.36
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "negative Leistung wird auf 0 geklemmt",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,-12,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "minus null",
+      "body": "{\"car\":1,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,-0,0,0,0,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "idle",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Rundung: 0,5 W",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,0.5,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0.001
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Rundung: 1,5 W",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,1.5,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0.002
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Rundung: 2,5 W",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,2.5,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0.003
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Rundung: 1004,5 W",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,1004.5,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 1.005
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Rundung: 1234,5678 W",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,1234.5678,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 1.235
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Rundung: 22080,4999 W",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,22080.4999,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 22.08
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "grosse Leistung 43,999999 kW",
+      "body": "{\"car\":2,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,43999.999,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 44
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "kein nrg: load_kw fehlt, Zustand bleibt",
+      "body": "{\"car\":2,\"alw\":true}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": true
+      }
+    },
+    {
+      "name": "nrg[11] null",
+      "body": "{\"car\":2,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,null,0,0,0,0]}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg[11] als Text",
+      "body": "{\"car\":2,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,\"11040\",0,0,0,0]}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg[11] als Wahrheitswert",
+      "body": "{\"car\":2,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,true,0,0,0,0]}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg zu kurz",
+      "body": "{\"car\":2,\"nrg\":[230,230]}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg ist ein Objekt",
+      "body": "{\"car\":2,\"nrg\":{\"11\":11040}}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg[11] ausserhalb von float64 (1e400)",
+      "body": "{\"car\":2,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,1e400,0,0,0,0]}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg[11] -1e400",
+      "body": "{\"car\":2,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,-1e400,0,0,0,0]}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "nrg mit verschachteltem Unsinn davor",
+      "body": "{\"car\":2,\"nrg\":[[1],{\"a\":1},\"x\",null,true,0,0,0,0,0,0,3680.25,0,0,0,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 3.68
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car 0 (unbekannt/Fehler)",
+      "body": "{\"car\":0,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,0,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "unknown",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car 3 (wartet)",
+      "body": "{\"car\":3,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,0,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "waiting",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car 5 (Fehler)",
+      "body": "{\"car\":5,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,0,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "error",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car 6 (Initialisierung, Firmware 60.x) bleibt unknown",
+      "body": "{\"car\":6,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,0,99.9,99.8,99.7,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "unknown",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car null",
+      "body": "{\"car\":null,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0
+        },
+        "carState": "unknown",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car als Text",
+      "body": "{\"car\":\"2\",\"alw\":true}",
+      "decode": {
+        "reading": {},
+        "carState": "unknown",
+        "charging": false,
+        "allowed": true
+      }
+    },
+    {
+      "name": "car 2.0 (Zahl mit Nachkommastelle)",
+      "body": "{\"car\":2.0}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car 2.5",
+      "body": "{\"car\":2.5}",
+      "decode": {
+        "reading": {},
+        "carState": "unknown",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "car 2e0",
+      "body": "{\"car\":2e0}",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "alw als Text bleibt null",
+      "body": "{\"car\":1,\"alw\":\"true\"}",
+      "decode": {
+        "reading": {},
+        "carState": "idle",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "alw als Zahl bleibt null",
+      "body": "{\"car\":1,\"alw\":1}",
+      "decode": {
+        "reading": {},
+        "carState": "idle",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "doppelter Schluessel: der letzte gilt",
+      "body": "{\"car\":1,\"car\":2,\"nrg\":[0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0]}",
+      "decode": {
+        "reading": {
+          "load_kw": 0.005
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": null
+      }
+    },
+    {
+      "name": "Leerraum um das Objekt",
+      "body": " \n {\"car\": 2 , \"alw\": false} \n ",
+      "decode": {
+        "reading": {},
+        "carState": "charging",
+        "charging": true,
+        "allowed": false
+      }
+    },
+    {
+      "name": "weitere Schluessel stoeren nicht",
+      "body": "{\"car\":2,\"alw\":true,\"amp\":16,\"wh\":1.5,\"frc\":0,\"psm\":0,\"nrg\":[232.1,231.8,232.5,0,16,16.1,15.9,0,0,0,0,3680.5,99.9,99.8,99.7,0],\"fwv\":\"59.4\"}",
+      "decode": {
+        "reading": {
+          "load_kw": 3.681
+        },
+        "carState": "charging",
+        "charging": true,
+        "allowed": true
+      }
+    },
+    {
+      "name": "leeres Objekt",
+      "body": "{}",
+      "decode": {
+        "reading": {},
+        "carState": "unknown",
+        "charging": false,
+        "allowed": null
+      }
+    },
+    {
+      "name": "null",
+      "body": "null",
+      "decode": null
+    },
+    {
+      "name": "Zahl",
+      "body": "42",
+      "decode": null
+    },
+    {
+      "name": "Text",
+      "body": "\"status\"",
+      "decode": null
+    },
+    {
+      "name": "Array",
+      "body": "[{\"car\":2}]",
+      "decode": null
+    },
+    {
+      "name": "Wahrheitswert",
+      "body": "true",
+      "decode": null
+    },
+    {
+      "name": "leere Antwort",
+      "body": "",
+      "parse_error": true
+    },
+    {
+      "name": "abgeschnittenes JSON",
+      "body": "{\"car\":2,\"nrg\":[0,0",
+      "parse_error": true
+    },
+    {
+      "name": "HTML-Fehlerseite",
+      "body": "<h1>Not Found</h1>",
+      "parse_error": true
+    },
+    {
+      "name": "Komma am Ende",
+      "body": "{\"car\":2,}",
+      "parse_error": true
+    }
+  ]
+}
