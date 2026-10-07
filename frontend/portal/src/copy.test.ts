@@ -2001,7 +2001,7 @@ const CHART_FILES_OBERFLAECHEN: string[] = [
   // AP-11 IP-13: der Kennzahl-Balken (Funktion `Verlauf` der Kennzahl-Seite) und seine Ableitung `kennzahlKarte.verlauf`.
   'pages/KennzahlSeite.tsx',
   'kennzahlKarte.ts',
-  // AP-13 IP-8: die Anteils-Balken der Energiebilanz (kWh je Unterzähler, keine Prozentzahl) — Render und Ableitung.
+  // AP-13 IP-8 / Konzept Auswerten a1 §6.9: der Zwei-Teile-Balken der Energiebilanz (ohne Etikett) - Render und Ableitung.
   'pages/EnergiebilanzSection.tsx',
   'anlageEnergiebilanz.ts',
 ];
@@ -2026,7 +2026,7 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     'netzanschlussListe.ts',
     'pages/StandortNetzanschluessePage.tsx',
     'components/NetzanschlussDialog.tsx',
-    'components/NetzanschlussBilanzKopf.tsx',
+    'components/EnergiebilanzFuss.tsx',
     // AP-13 IP-9: Kostenstellen und Prozesse nebeneinander (reines Modul und Render).
     'kostenstellenUebersicht.ts',
     'pages/KostenstellenSection.tsx',
@@ -2130,18 +2130,27 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     }
     // AP-13 IP-8: die Wörter der Energiebilanz und alles, was sie an O5/O6/O7/O8 und im Vorschlag wirklich sagt.
     for (const t of [
+      EB.ENERGIEBILANZ_UNTERZEILE,
       ...Object.values(EB.ZEILE_WORT),
+      EB.KARTE_WORT.bezug,
+      EB.KARTE_WORT.verbrauch,
+      ...Object.values(EB.KARTE_WORT.erfasst),
+      EB.KARTE_WORT.ohne,
+      ...Object.values(EB.ANTEIL_AM),
+      EB.VERBRAUCH_AUS,
+      ...Object.values(EB.ANTWORT),
+      ...Object.values(EB.OFFEN_SATZ),
       ...Object.values(EB.ANTEIL_WORT).filter((w): w is string => w !== null),
-      ...Object.values(EB.LIVE_GRUND),
-      EB.UNTERZAEHLER_ANZAHL,
-      ...Object.values(EB.MESSSTELLEN_ANZAHL),
+      ...Object.values(EB.UNTERZAEHLER_TITEL),
+      ...Object.values(EB.AUSSERHALB_SATZ),
       EB.KEIN_UNTERZAEHLER,
       EB.HILFE_NEGATIV,
       EB.LIVE_JETZT,
-      EB.LIVE_OHNE_ZAHL,
       EB.LIVE_STAND,
-      EB.ZONE_SATZ,
+      EB.FUSS_ZONE,
+      EB.FUSS_ZONE_STANDORT,
       EB.STELLUNG_GEAENDERT,
+      EB.WORAUS,
       EB.HERKUNFT,
       EB.HERKUNFT_EINGAENGE,
       EB.HERKUNFT_FORMEL,
@@ -2154,6 +2163,8 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       EB.HERKUNFT_UNVOLLSTAENDIG,
       EB.REST_VORSCHLAG,
       EB.REST_ANLEGEN,
+      EB.REST_GEFUEHRT,
+      EB.ZAEHLER_ZUORDNEN,
       EB.REST_OHNE_RECHT,
       EB.REST_ANGELEGT,
       EB.REST_GAB_ES_SCHON,
@@ -2169,7 +2180,7 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       [FIXTURE_IDS.an2, 'tag', '2026-11-04', { live: 'veraltet' }],
     ] as const) {
       const bild = EB.energiebilanzBild(ahrenbergBilanz(siteId, periode, am, b), ctxEB);
-      const texte = [bild.zeitraum, bild.zone, ...bild.hauptzaehler.flatMap((h) => [h.titel, h.live.text, h.vorschlag?.satz ?? '', ...h.abschnitte.flatMap((ab) => ab.tage.flatMap((tag) => tag.zeilen.flatMap((z) => [z.wort, z.zahl, z.zusatz ?? '', ...z.woerter, ...z.saetze, ...z.herkunft.zeilen, ...z.herkunft.eingaenge, ...z.teile.flatMap((x) => [x.name, ...x.woerter])])))])];
+      const texte = [bild.zeitraum, bild.zone, ...bild.hauptzaehler.flatMap((h) => [h.titel, h.live?.text ?? '', h.vorschlag?.satz ?? '', h.restMessstelle?.text ?? '', ...h.abschnitte.flatMap((ab) => ab.tage.flatMap((tag) => [tag.antwort.satz, ...tag.karte.flatMap((k) => [k.wort, k.zahl, ...k.unter]), ...tag.unterzaehler.flatMap((x) => [x.nurName, x.anteil ?? '']), ...tag.zeilen.flatMap((z) => [z.wort, z.zahl, z.zusatz ?? '', ...z.woerter, ...z.saetze, ...z.herkunft.zeilen, ...z.herkunft.eingaenge, ...z.teile.flatMap((x) => [x.name, ...x.woerter])])]))])];
       for (const text of texte.filter(Boolean)) out.push({ wo: `Energiebilanz ${periode} ${am}`, text });
     }
     return out;

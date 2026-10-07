@@ -96,6 +96,19 @@
   overflow-wrap: anywhere;
 }
 
+/* Aus „Stand am …“ geöffnet: die Plan-Marke des Tags, „Nur lesen“ und der Weg zurück (wie in der Liste). */
+.vp-mss-stand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 8px;
+}
+.vp-mss-stand .vp-k-marke {
+  gap: 6px;
+  font-family: var(--vp-font-heading);
+}
+
 .vp-mss-status {
   grid-area: status;
   display: flex;
@@ -608,4 +621,14 @@
   border-color: transparent;
   background: none;
   box-shadow: none;
+}
+
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche für die leisen Verweise (Review r4 S23). */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-mss-link {
+    min-height: 44px;
+  }
+  .vp-mss-historie summary {
+    padding-block: 12px;
+  }
 }

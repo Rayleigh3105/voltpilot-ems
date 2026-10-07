@@ -289,7 +289,7 @@ export function ZuordnungAendernDialog({
             />
             <VpPicker
               id={feldId('stellung')}
-              label="Elektrische Stellung *"
+              label="Stellung im Stromnetz *"
               options={stellungOptionen([...register], anlage, messstelle.id)}
               value={form.stellung || null}
               onChange={(v) => setze('stellung', v as AendernFormular['stellung'])}

@@ -1,6 +1,6 @@
 import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
 import { UEMS_MESSSTELLE, UEMS_NOCH_KEINE_QUELLE, UEMS_UNTERNEHMEN, UEMS_WOHER_DIE_WERTE } from './glossar';
-import { hervorheben, normalisiereSuche, type TextTeil } from './picker/suche';
+import { alleFundstellen, hervorheben, normalisiereSuche, type Fundstellen, type TextTeil } from './picker/suche';
 import {
   KEIN_ORT,
   TITEL,
@@ -13,7 +13,7 @@ import {
 } from './messstellen';
 import { MONATE } from './picker/datum';
 import { datumText, lokalerTag } from './uemsOrtsbaum';
-import { OHNE_ZAHL } from './uemsErgebnis';
+import { OHNE_ZAHL, UNVOLLSTAENDIG } from './uemsErgebnis';
 import { anzeige, monatTitel } from './uemsWerteKarte';
 
 /**
@@ -95,18 +95,59 @@ export const SPALTE = {
 // ───────────────────────────────────────────────────────────── Suche
 
 /**
- * Die Begriffe einer Suche: jedes Wort muss passen (UND), normalisiert wie überall (`picker/suche.ts`). Eine Ziffer am
- * Wortanfang gehört zum Wort davor - „halle 1“ sucht „Halle 1“ und nicht „Halle“ und irgendeine 1 (sonst fände
- * „halle 1“ über „ST-1“ jede Messstelle des Standorts), „az 3“ sucht „AZ-3“.
+ * Die Begriffe einer Suche, normalisiert wie überall (`picker/suche.ts`): jedes Wort muss passen (UND), und eine Zahl
+ * ist ein eigener Begriff - „halle 1“, „Halle-1“ und „halle1“ suchen dasselbe (`['halle', '1']`), „MS-06“ und „ms 6“
+ * ebenso (`['ms', '6']`, führende Nullen zählen nicht).
+ *
+ * Eine Zahl wird nur als ganze Zahl gefunden („1“ trifft „Halle 1“, nie „Halle 10“; „3“ trifft „AZ-3“, nie „AZ-30“) und
+ * gehört zum Begriff davor (`passtZurSuche`).
  */
 export function suchTerme(suche: string): string[] {
-  const teile: string[] = [];
+  const terme: string[] = [];
   for (const wort of suche.trim().split(/\s+/)) {
-    if (wort === '') continue;
-    if (/^\d/.test(wort) && teile.length > 0) teile[teile.length - 1] += wort;
-    else teile.push(wort);
+    const n = normalisiereSuche(wort);
+    if (n === '') continue;
+    // Vor jeder Zahl, die auf einen Buchstaben folgt, beginnt ein neuer Begriff („ms06“ → „ms“, „06“).
+    for (const teil of n.split(/(?<=\D)(?=\d)/)) terme.push(/^\d/.test(teil) ? teil.replace(/^0+(?=\d)/, '') : teil);
   }
-  return teile.map(normalisiereSuche).filter((t) => t !== '');
+  return terme;
+}
+
+const istZiffer = (c: string | undefined) => c !== undefined && c >= '0' && c <= '9';
+
+/**
+ * Die Fundstellen eines Begriffs in einem normalisierten Feld, mit Zahlgrenze: beginnt der Begriff mit einer Ziffer,
+ * steht davor keine (außer führenden Nullen, die zur Fundstelle gehören - „6“ trifft „06“ in „MS-06“, nicht „16“); endet
+ * er mit einer Ziffer, folgt keine („1“ trifft „Halle 1“, nicht „Halle 10“).
+ */
+export const zahlFundstellen: Fundstellen = (flach, begriff) => {
+  const out: Array<[number, number]> = [];
+  for (const [at, bis] of alleFundstellen(flach, begriff)) {
+    if (istZiffer(begriff[begriff.length - 1]) && istZiffer(flach[bis])) continue;
+    let von = at;
+    if (istZiffer(begriff[0])) {
+      while (von > 0 && flach[von - 1] === '0') von -= 1;
+      if (istZiffer(flach[von - 1])) continue;
+    }
+    out.push([von, bis]);
+  }
+  return out;
+};
+
+const kommtVor = (feld: string, begriff: string) => zahlFundstellen(feld, begriff).length > 0;
+
+/**
+ * Ein Wort und die Zahlen, die ihm folgen: „halle 1 nord“ → `halle` + `1`, dann `nord`. Eine Zahl am Anfang der Suche
+ * steht für sich.
+ */
+function gruppen(terme: readonly string[]): Array<{ wort: string | null; zahlen: string[] }> {
+  const out: Array<{ wort: string | null; zahlen: string[] }> = [];
+  for (const t of terme) {
+    if (/^\d/.test(t) && out.length > 0) out[out.length - 1].zahlen.push(t);
+    else if (/^\d/.test(t)) out.push({ wort: null, zahlen: [t] });
+    else out.push({ wort: t, zahlen: [] });
+  }
+  return out;
 }
 
 /** Die Felder einer Zeile, in denen gesucht wird - je Feld getrennt, damit kein Treffer über eine Feldgrenze läuft. */
@@ -129,39 +170,67 @@ function suchFelder(z: MessstelleRegisterZeile): string[] {
   return roh.filter((t): t is string => typeof t === 'string' && t !== '').map(normalisiereSuche);
 }
 
-/** Passt eine Zeile? Jeder Begriff muss in mindestens einem Feld stehen. */
+/**
+ * Passt eine Zeile? Jedes Wort muss in mindestens einem Feld stehen, jede Zahl als ganze Zahl.
+ *
+ * Eine Zahl gehört zum Wort davor: steht sie mit ihm im selben Feld, passt sie dort („spritzguss 2“ findet „Spritzguss
+ * Halle 2“). Trägt das Wort im Feld schon selbst eine Zahl („Halle 2“), muss es diese sein - sonst fände „halle 1“ über
+ * „ST-1“ jede Halle des Standorts. Sonst darf die Zahl in einem anderen Feld stehen („druck 3“ findet „Druckluft“ in
+ * „Halle 3“).
+ */
 export function passtZurSuche(z: MessstelleRegisterZeile, terme: readonly string[]): boolean {
   if (terme.length === 0) return true;
   const felder = suchFelder(z);
-  return terme.every((t) => felder.some((f) => f.includes(t)));
+  const irgendwo = (t: string) => felder.some((f) => kommtVor(f, t));
+  return gruppen(terme).every(({ wort, zahlen }) => {
+    if (wort === null) return zahlen.every(irgendwo);
+    const mitWort = felder.filter((f) => f.includes(wort));
+    if (mitWort.some((f) => zahlen.every((t) => kommtVor(f, t)))) return true;
+    const frei = mitWort.some((f) => alleFundstellen(f, wort).some(([, bis]) => !istZiffer(f[bis])));
+    return frei && zahlen.every(irgendwo);
+  });
 }
 
-/** Die Fundstellen in einem gezeigten Text (für `<mark>`), dieselbe Regel wie im Aufbau und im Picker. */
+/** Die Fundstellen in einem gezeigten Text (für `<mark>`), dieselbe Regel wie die Suche: eine Zahl nur als ganze Zahl. */
 export function markiert(text: string, terme: readonly string[]): TextTeil[] {
-  return hervorheben(text, [...terme]);
+  return hervorheben(text, [...terme], zahlFundstellen);
 }
+
+const parameter = (hash: string, name: string): string | null =>
+  new URLSearchParams(hash.split('?').slice(1).join('?')).get(name);
 
 /** Die Suche aus der Adresse (`#/portfolio/messstellen?suche=druck`) - sie bleibt beim Zurückkommen stehen. */
-export const sucheAus = (hash: string): string =>
-  new URLSearchParams(hash.split('?').slice(1).join('?')).get('suche') ?? '';
+export const sucheAus = (hash: string): string => parameter(hash, 'suche') ?? '';
 
-/** Die Adresse mit der Suche (leer = ohne Parameter); andere Parameter bleiben. */
-export function mitSuche(hash: string, suche: string): string {
+/** Die Adresse mit einem Parameter (`null` = ohne ihn); andere Parameter bleiben. */
+export function mitParameter(hash: string, name: string, wert: string | null): string {
   const [pfad, ...rest] = hash.split('?');
   const p = new URLSearchParams(rest.join('?'));
-  if (suche.trim()) p.set('suche', suche);
-  else p.delete('suche');
+  if (wert !== null) p.set(name, wert);
+  else p.delete(name);
   const q = p.toString();
   return `${pfad}${q ? `?${q}` : ''}`;
 }
 
+/** Die Adresse mit der Suche (leer = ohne Parameter); andere Parameter bleiben. */
+export const mitSuche = (hash: string, suche: string): string => mitParameter(hash, 'suche', suche.trim() ? suche : null);
+
 /** Die Adresse ohne einen Filter der Adresse (`ort`, `anlage`) - die Marke „Halle 1 ×“ nimmt ihn heraus. */
-export function ohneParameter(hash: string, name: string): string {
-  const [pfad, ...rest] = hash.split('?');
-  const p = new URLSearchParams(rest.join('?'));
-  p.delete(name);
-  const q = p.toString();
-  return `${pfad}${q ? `?${q}` : ''}`;
+export const ohneParameter = (hash: string, name: string): string => mitParameter(hash, name, null);
+
+/**
+ * Die gewählte Marke aus der Adresse (`?marke=ohneQuelle`) - wie die Suche bleibt sie beim Zurückkommen von einer
+ * Messstelle stehen (Konzept §6.4: „behält Suche und Marken“). Eine unbekannte Marke gilt nicht.
+ */
+export function markeAus(hash: string): MarkeSchluessel | null {
+  const m = parameter(hash, 'marke');
+  return MARKE_REIHENFOLGE.find((k) => k === m) ?? null;
+}
+
+/** Der Tag von „Stand an einem Tag ansehen“ aus der Adresse (`?stand=2029-04-30`); `null` = heute. */
+export function standAus(hash: string): string | null {
+  const t = parameter(hash, 'stand');
+  return t && /^\d{4}-\d{2}-\d{2}$/.test(t) && !Number.isNaN(Date.parse(`${t}T00:00:00Z`)) ? t : null;
 }
 
 // ───────────────────────────────────────────────────────────── Eine Reihe
@@ -189,7 +258,7 @@ export interface Reihe {
    * Der Wert rechts: der Verbrauch des letzten vollständigen Monats („25.650 kWh · Sep 2026“), bei einer Hauptgröße ohne
    * Menge der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0.
    */
-  wert: { zahl: string; einheit: string | null; wann: string; monat?: true } | null;
+  wert: { zahl: string; einheit: string | null; wann: string; monat?: true; hinweis?: string } | null;
   /** Hauptzähler stehen in ihrem Ort zuerst. */
   hauptzaehler: boolean;
   /** Archiviert: in der zugeklappten Gruppe am Ende. */
@@ -233,9 +302,12 @@ export function monatWert(z: MessstelleRegisterZeile): Reihe['wert'] {
     false,
   );
   const i = a.zahl.lastIndexOf('\u00a0');
+  // Review r4 S3: ein unvollständiger Monat darf eine Zahl tragen - dann sagt die Reihe es, statt wie ein ganzer Monat
+  // auszusehen.
+  const hinweis = a.zahl !== OHNE_ZAHL && lm.wert.zustand === UNVOLLSTAENDIG ? { hinweis: UNVOLLSTAENDIG } : {};
   return i < 0
-    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true }
-    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true };
+    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true, ...hinweis }
+    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true, ...hinweis };
 }
 
 /** Stellen je Einheit wie E11 (kW 1, kWh 1, m³ 1); ganze Werte stehen ganz („970.680 kWh“, nicht „970.680,0 kWh“). */
@@ -440,7 +512,7 @@ const MARKE_REIHENFOLGE: MarkeSchluessel[] = ['ablesungFehlt', 'liefertNicht', '
 function markeText(s: MarkeSchluessel, n: number): string {
   switch (s) {
     case 'ablesungFehlt':
-      return `${n} Ablesung überfällig`;
+      return n === 1 ? '1 Ablesung überfällig' : `${n} Ablesungen überfällig`;
     case 'liefertNicht':
       return n === 1 ? '1 liefert keine Daten' : `${n} liefern keine Daten`;
     case 'ohneQuelle':

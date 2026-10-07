@@ -20,6 +20,7 @@ export function Ablesungen({
   einheit,
   zone,
   archiviert = false,
+  nurLesen = false,
   alle,
   zeilen,
   fehler,
@@ -31,6 +32,8 @@ export function Ablesungen({
   einheit: string;
   zone: string;
   archiviert?: boolean;
+  /** Aus „Stand am …“ geöffnet: lesen ja, berichtigen nicht. */
+  nurLesen?: boolean;
   /** Alle Fassungen aller Ablesungen (die Fassungen je Zeile); `null` = lädt. */
   alle: Ablesung[] | null;
   /** Die wirksamen Ablesungen, die neueste zuerst (`messstelleSeite.ablesungZeilen`). */
@@ -44,7 +47,7 @@ export function Ablesungen({
   const [offen, setOffen] = useState(false);
   const [fassungen, setFassungen] = useState<string | null>(null);
   const { darf } = useRollen();
-  const erlaubt = !archiviert && darf('ablesung.erfassen');
+  const erlaubt = !archiviert && !nurLesen && darf('ablesung.erfassen');
   const sichtbar = offen ? zeilen : zeilen.slice(0, SICHTBAR);
   return (
     <section className="vp-mss-karte vp-mss-ablesungen" aria-labelledby={`vp-mss-ablesungen-${kennzeichen}`} data-testid="ablesungen">
@@ -140,7 +143,9 @@ function AntwortSatz({ antwort, einheit, zone }: { antwort: AblesungAntwort; ein
         : 'Ablesung gespeichert.';
   const menge = antwort.ablesezeitraum?.menge;
   return (
-    <div role="status" className="vp-mss-antwort">
+    // Ziel des Fokus nach dem Speichern, wenn der Auslöser mit dem Neuladen verschwunden ist („Ablesung eintragen ›“ am
+    // fehlenden Monat) - nie `body`.
+    <div role="status" className="vp-mss-antwort" tabIndex={-1} data-testid="ablesung-antwort">
       {/* Die Kennung des Vorgangs nur beim Vorschlag - dort ist sie der Bezug für die Freigabe; sonst wäre sie eine rohe Nummer. */}
       <p>
         {satz}

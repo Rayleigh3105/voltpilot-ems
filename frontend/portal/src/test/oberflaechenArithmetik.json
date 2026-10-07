@@ -4,13 +4,13 @@
     "Kalenderarithmetik und Sortierung von Zeitpunkten: keine Energiemenge.",
     "Textpositionen, Listenindizes und Kennzeichen: keine Energiemenge.",
     "uemsVerlauf: Number(menge) nur zur Bildhöhe; skalaOben/bild nur SVG-Koordinaten und Achsen, keine fachliche Summe oder Δ.",
-    "anlageEnergiebilanz.teilBild: Math.max(0, e.menge) / zufluss nur MiniShareBar-Breite; Beschriftung bleibt die gelieferte Menge, keine Prozentzahl.",
     "kennzahlKarte.verlauf: Betrag/größter Betrag ausschließlich als Balkenbreite; kennzahlKarte/berichtSeite: Anzeige, Versionsnummern und Sortierung; die Fachwerte bilden die Vertrags-Zwillinge.",
     "uemsWerteCache: TTL und LRU-Indizes, keine Menge.",
     "kostenstellenUebersicht ./rechte:ROLLE_KUNDENWORT (PR 1014, Kostenstelle B): nur die Kundenwörter der Rollen für den Satz, wer die Mengen sieht; keine Menge.",
     "kostenstellenUebersicht ./rechte:TEXTE (PR 1014, Kostenstelle B): nur die Satzbausteine weg_ein_kundenadministrator/weg_kundenadministratoren mit den Namen aus /me; keine Menge.",
     "kostenstellenUebersicht ./glossar:UEMS_BEWERTUNG_SAETZE (AP-16 IP-14): formatiert nur den gelieferten Prozess-Summen-Hinweis; keine Menge.",
-    "anlageEnergiebilanz ./glossar:uemsGeteiltSatz (AP-07 IP-18b Summen-Wächter): reiht nur die gelieferten Kennzeichen zu einem Satz; keine Menge."
+    "anlageEnergiebilanz ./glossar:uemsGeteiltSatz (AP-07 IP-18b Summen-Wächter): reiht nur die gelieferten Kennzeichen zu einem Satz; keine Menge.",
+    "anlageEnergiebilanz ./uemsBewertung:nenner und :prozent (Konzept Auswerten a1 §6.9, Entscheid 5): das Ganze der Karte (Zufluss − Abfluss) und jeder Anteil kommen aus dem Vertrags-Zwilling der Bewertung (AP-16 KR4) - dieselbe Regel, mit der die Bewertung „x % der Anlage“ nennt; ./dez:dez/dezVon nur zur Übergabe der gelieferten Mengen an den Zwilling, ./dez:dezVergleich nur zur Sortierung der Unterzähler nach gelieferter Menge, ./bewertung:prozentText nur zur Anzeige."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -36,9 +36,9 @@
         "./glossar:UEMS_FASSUNG",
         "./glossar:UEMS_LUECKE",
         "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NOCH_KEINE_QUELLE",
         "./glossar:UEMS_NOCH_NICHT_GERECHNET",
         "./glossar:UEMS_VERSION",
-        "./messstellen:KEINE_DATENQUELLE",
         "./messstellen:ablesungenText",
         "./messstellen:zeitpunktText",
         "./picker/datum:MONATE",
@@ -264,8 +264,11 @@
     },
     "anlageEnergiebilanz.ts": {
       "importe": [
+        "./bewertung:prozentText",
+        "./dez:dez",
+        "./dez:dezVergleich",
+        "./dez:dezVon",
         "./glossar:UEMS_HAUPTZAEHLER",
-        "./glossar:UEMS_NOCH_NICHT_GERECHNET_SATZ",
         "./glossar:uemsGeteiltSatz",
         "./nav:anlageRoute",
         "./nav:hashForRoute",
@@ -274,6 +277,8 @@
         "./uebersichtBausteine:laeuftNoch",
         "./uebersichtBausteine:letzterGebildeter",
         "./uebersichtBausteine:zeitraumText",
+        "./uemsBewertung:nenner",
+        "./uemsBewertung:prozent",
         "./uemsBilanz:BERECHNET_DIFFERENZ",
         "./uemsBilanz:BERECHNET_SUMME",
         "./uemsBilanz:NICHT_ZUGEORDNET",
@@ -289,8 +294,6 @@
         "hauptzaehlerBild: h.abschnitte.length - 1",
         "mitKostenstelle: von + kennzeichen.length",
         "restHerkunft: Number.isNaN(Date.parse(satz.berechnet_am))",
-        "teilBild: Math.max(0, e.menge)",
-        "teilBild: Math.max(0, e.menge) / zufluss",
         "zeitraumAus: Number.isNaN(Date.parse(`${am}T00:00:00Z`))"
       ]
     },
@@ -558,6 +561,93 @@
         "lesen: Number.isFinite(Date.parse(`${e.tag}T00:00:00Z`))"
       ],
       "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
+    },
+    "messstellenListe.ts": {
+      "importe": [
+        "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NOCH_KEINE_QUELLE",
+        "./glossar:UEMS_UNTERNEHMEN",
+        "./glossar:UEMS_WOHER_DIE_WERTE",
+        "./messstellen:KEIN_ORT",
+        "./messstellen:TITEL",
+        "./messstellen:ablesungsZiele",
+        "./messstellen:zeitpunktText",
+        "./picker/datum:MONATE",
+        "./picker/suche:alleFundstellen",
+        "./picker/suche:hervorheben",
+        "./picker/suche:normalisiereSuche",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:UNVOLLSTAENDIG",
+        "./uemsOrtsbaum:datumText",
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsWerteKarte:anzeige",
+        "./uemsWerteKarte:monatTitel"
+      ],
+      "operationen": [
+        "gruppen: out.length - 1",
+        "imOrt: -1",
+        "liste: g.gesamt += 1",
+        "liste: n + g.reihen.length",
+        "monatKurz: Number(monat.slice(5, 7))",
+        "monatKurz: Number(monat.slice(5, 7)) - 1",
+        "monatWert: i + 1",
+        "namenListe: -1",
+        "namenListe: namen.length - 1",
+        "standAus: Number.isNaN(Date.parse(`${t}T00:00:00Z`))",
+        "stellungUnter: standort.length + 3",
+        "zahlFundstellen: begriff.length - 1",
+        "zahlFundstellen: von - 1",
+        "zahlFundstellen: von -= 1"
+      ],
+      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert. Monat der Reihe (#1424): der gelieferte Schritt `letzter_monat.wert`, gesprochen mit `anzeige()` (monatWert trennt Zahl und Einheit an der Textposition, monatKurz ist der Monatsname); „unvollständig“ ist sein Zustand, nicht gerechnet."
+    },
+    "messstelleSeite.ts": {
+      "importe": [
+        "./glossar:UEMS_ABLESUNG_EINTRAGEN",
+        "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NAECHSTE_ABLESUNG",
+        "./glossar:UEMS_WEG_GERAET",
+        "./glossar:UEMS_ZUORDNUNG",
+        "./messstellen:lebenszyklusWort",
+        "./messstellenListe:standWann",
+        "./messstellenListe:standZahl",
+        "./picker/datum:MONATE",
+        "./uemsBericht:vergleich as berichtVergleich",
+        "./uemsErgebnis:ANZEIGE_EINHEITEN",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:PROZENT",
+        "./uemsErgebnis:UNVOLLSTAENDIG",
+        "./uemsErgebnis:pruefeMenge",
+        "./uemsErgebnis:zahlMitStellen",
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsWerteKarte:NOCH_KEINE_QUELLE_TITEL as KEINE_QUELLE_TITEL",
+        "./uemsWerteKarte:anzeige",
+        "./uemsWerteKarte:karte",
+        "./uemsWerteKarte:monatTitel",
+        "export:export { hatMenge } from './messstellenListe';"
+      ],
+      "operationen": [
+        "balken: Math.abs(z)",
+        "balken: Math.abs(z) / max",
+        "balken: Math.max(0, ...zahlen.filter((z): z is number => z !== null).map((z) => Math.abs(z)))",
+        "balken: Number(monat.slice(5, 7))",
+        "balken: Number(monat.slice(5, 7)) - 1",
+        "leitKachel: -12",
+        "leitKachel: Number(monat.slice(5, 7))",
+        "leitKachel: Number(monat.slice(5, 7)) - 1",
+        "leitKachel: i - 11",
+        "letzterVollerMonat: -1",
+        "monatPlus: (z % 12) + 1",
+        "monatPlus: Math.floor(z / 12)",
+        "monatPlus: j * 12",
+        "monatPlus: j * 12 + (m - 1)",
+        "monatPlus: j * 12 + (m - 1) + n",
+        "monatPlus: m - 1",
+        "monatPlus: z % 12",
+        "monatPlus: z / 12",
+        "zahlUndEinheit: i + 1"
+      ],
+      "grund": "Messen PR2 (Review r4 S5): balken skaliert die gelieferten Monatsmengen nur zur Balkenhöhe (Betrag/größter Betrag, ein negativer Monat mit Betrag und Kennzeichen, nie 0); leitKachel/monatPlus/letzterVollerMonat sind Kalenderarithmetik der Monate, zahlUndEinheit eine Textposition. Der Vorjahresvergleich ist das Prozent des Bericht-Zwillings (uemsBericht.vergleich), gesprochen mit zahlMitStellen des Ergebnis-Vertrags - keine eigene Rundung."
     }
   }
 }

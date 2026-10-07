@@ -2,7 +2,19 @@ import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Ablesung, type Messstelle, type MessstelleVerteilung, type MessstelleWerte, type Protokoll } from '../api';
+import {
+  api,
+  ApiError,
+  type Ablesung,
+  type Messkanal,
+  type Messstelle,
+  type MessstelleFormel,
+  type MessstelleFormelTerm,
+  type MessstelleVerteilung,
+  type MessstelleWerte,
+  type Protokoll,
+  type SiteEntity,
+} from '../api';
 import { ebenenAktiv } from '../ebenenNav';
 import { hashForRoute, messstelleRoute, parseRoute, standortMessstellenRoute } from '../nav';
 import {
@@ -160,7 +172,7 @@ describe('MessstelleSeite · R2 — MS-06 am 20.10.2026', () => {
     expect(within(zeile('stellung')).getByText('Anlage Werk Ahrenberg – Halle 1 · seit 12.03.2024')).toBeInTheDocument();
     expect(within(zeile('prozesse')).getByText('Spritzguss')).toBeInTheDocument();
     expect(within(zeile('verteilung')).getByText('100 % Spritzguss')).toBeInTheDocument();
-    for (const name of ['Ort ändern', 'Elektrische Stellung ändern', 'Prozesse ändern', 'Kostenstellen ändern']) {
+    for (const name of ['Ort ändern', 'Stellung im Stromnetz ändern', 'Prozesse ändern', 'Kostenstellen ändern']) {
       expect(screen.getByRole('button', { name })).toHaveTextContent(/^Ändern$/);
     }
     // Eine Zuordnung mit nur einem Abschnitt hat keine aufklappbare Historie.
@@ -621,6 +633,41 @@ describe('MessstelleSeite · Ablesezähler MS-21 (Konzept Messen m1, §6.4/§6.5
     expect(await screen.findByRole('dialog', { name: 'Ablesung eintragen' }, WARTEN)).toBeInTheDocument();
   });
 
+  it('eine Woche aus der Adresse öffnet beim Ablesezähler ihren Monat („2026-W43“ → Oktober 2026, nicht „2026-W4“)', async () => {
+    const { liefere } = abgelesen();
+    const werte = vi.mocked(api.messstelleWerte);
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} werte={{ periode: '2026-W43', version: null, vergleich: null }} />);
+    liefere(VIER);
+    await waitFor(() => expect(werte.mock.calls.some(([, raster, von]) => raster === 'monat' && von === '2026-10-01')).toBe(true), WARTEN);
+  });
+
+  it('nach dem Speichern über den Weg am fehlenden Monat steht der Fokus auf der Bestätigung - nie auf `body` (Review r4 S23)', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    const { liefere } = abgelesen();
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      const monate: string[] = [];
+      for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+      const ohne = (v: string, b: string) => schritt({ von: v, bis: b, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, versionen: null });
+      return antwort(MS_21, raster, `${monate[0]}-01T00:00:00+02:00`, `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+        monate.map((m) => ohne(`${m}-01T00:00:00+02:00`, `${monatPlus(m, 1)}-01T00:00:00+02:00`)), false);
+    });
+    vi.spyOn(api, 'ablesungEintragen').mockImplementation(async (_kz, a) => ({
+      urteil: 'angenommen',
+      korrektur: null,
+      ablesung: { ...VIER[3], zeitpunkt: a.zeitpunkt, stand: 49900, monat: null, eingetragen_am: a.zeitpunkt },
+      ablesezeitraum: { menge: 449, zustand: 'vollständig', kennzeichen: 'kein_fehlbestand' },
+    }));
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    const fehlt = await screen.findByTestId('werte-ablesung-fehlt', undefined, WARTEN);
+    liefere(VIER);
+    fireEvent.click(await within(fehlt).findByRole('button', { name: 'Ablesung eintragen ›' }, WARTEN));
+    const dialog = await screen.findByRole('dialog', { name: 'Ablesung eintragen' }, WARTEN);
+    fireEvent.change(within(dialog).getByLabelText(/^Zählerstand/), { target: { value: '49900' } });
+    fireEvent.click(within(dialog.closest('.vp-modal') ?? document.body).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ablesung eintragen' })).toBeNull(), WARTEN);
+    await waitFor(() => expect(screen.getByTestId('ablesung-antwort')).toHaveFocus(), WARTEN);
+  });
+
   it('die Ablesungen: die neueste zuerst, drei sichtbar, „Alle 4 ›“ öffnet; der Dialog zeigt die letzte zum Vergleich', async () => {
     const { liefere } = abgelesen();
     render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
@@ -639,5 +686,187 @@ describe('MessstelleSeite · Ablesezähler MS-21 (Konzept Messen m1, §6.4/§6.5
     expect(within(dialog).getByTestId('ablesung-letzte')).toHaveTextContent('Letzte Ablesung');
     expect(within(dialog).getByTestId('ablesung-letzte')).toHaveTextContent('49.451');
     expect(within(dialog).getByText('MS-21 Gas Heizung Verwaltung · Zählerstand in m³')).toBeInTheDocument();
+  });
+  it('aus „Stand am …“ geöffnet: die Seite liest diesen Tag und bietet keinen Schreibweg (Review r4 S4)', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    const { liefere } = abgelesen();
+    const register = vi.mocked(api.messstellenRegister);
+    const onHeute = vi.fn();
+    render(
+      <MessstelleSeite
+        id={MS_IDS.ms21}
+        onListe={vi.fn()}
+        onHeute={onHeute}
+        werte={{ periode: '2026-10-10', version: null, vergleich: null, stand: '2026-10-10' }}
+      />,
+    );
+    const marke = await screen.findByTestId('messstelle-stand-am', undefined, WARTEN);
+    expect(marke).toHaveTextContent('Stand 10.10.2026');
+    expect(marke).toHaveTextContent('Nur lesen');
+    expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10' });
+    liefere(VIER);
+    // Die Leitkachel spricht den letzten vollen Monat vor dem Tag; kein Schritt, kein „Ändern“, kein Berichtigen.
+    await waitFor(() => expect(screen.getByTestId('messstelle-kacheln')).toHaveTextContent('September 2026'), WARTEN);
+    await waitFor(() => expect(within(screen.getByTestId('ablesungen')).getAllByTestId('ablesung-zeile')).toHaveLength(3), WARTEN);
+    expect(screen.queryByRole('button', { name: 'Ablesung eintragen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Ablesung eintragen/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ort ändern' })).toBeNull();
+    fireEvent.click(within(screen.getByTestId('ablesungen')).getAllByRole('button', { name: /^Ablesung vom / })[0]);
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual(['Fassungen ansehen']);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual(['Änderungsprotokoll']);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.click(within(marke).getByRole('button', { name: 'Zurück zu heute' }));
+    expect(onHeute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('berechnete Messstelle · „Zusammengesetzt aus“ (Review r4 M2/S8)', () => {
+  const ms09 = () => ahrenbergRegister().register.find((z) => z.kennzeichen === 'MS-09')!;
+  const ms01 = () => ahrenbergRegister().register.find((z) => z.kennzeichen === 'MS-01')!;
+  const KOMPONENTE = 'c0000000-0000-4000-8000-0000000000aa';
+  const berechnet = (): Messstelle => ({
+    id: ms09().id,
+    kennzeichen: 'MS-09',
+    name: 'Halle 1 + Verwaltung nicht zugeordnet',
+    art: 'berechnet',
+    medium: 'Strom',
+    lebenszyklus: 'aktiv',
+    fehlt: [],
+    notiz: null,
+    hauptgroesse: { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Intervallmenge' },
+    nebengroessen: [],
+    orte: [],
+    elektrische_stellung: [],
+    fuehrende_quelle: [],
+    anschlussleistung_kw: null,
+  });
+  const term = (t: Partial<MessstelleFormelTerm>): MessstelleFormelTerm => ({
+    position: 0,
+    eingang_art: 'messstelle',
+    entity_id: null,
+    point_key: null,
+    quell_messstelle_id: null,
+    vorzeichen: '+',
+    faktor: 1,
+    gilt_als_erzeugung: false,
+    groesse: null,
+    eingerichtet: true,
+    ...t,
+  });
+  const formel = (terme: MessstelleFormelTerm[], ausserhalb?: string): MessstelleFormel => ({
+    messstelle_id: ms09().id,
+    schema_version: '1',
+    hauptgroesse: null,
+    terme,
+    formel_vorhanden: true,
+    eingaenge_eingerichtet: true,
+    ...(ausserhalb ? { ausserhalb_zugriff: ausserhalb } : {}),
+  });
+  function verdrahteBerechnet() {
+    verdrahte({ messstelle: berechnet, protokoll: () => ({ eintraege: [], weiter: null }) as unknown as Protokoll });
+    vi.spyOn(api, 'messstelleWerte').mockResolvedValue(null as unknown as MessstelleWerte);
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [{ id: KOMPONENTE, label: 'Hauptzähler Halle 1', typeLabel: 'Zähler' } as SiteEntity],
+      localSetup: [],
+      staleOnDevice: [],
+    });
+    vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue({
+      site_id: FIXTURE_IDS.an1,
+      komponente: KOMPONENTE,
+      inhaltsstand: null,
+      messkanaele: [{ kanal: 'energy_import', anzeigename: 'Wirkenergie Bezug' } as Messkanal],
+    });
+  }
+
+  it('„Formel ändern“ öffnet den Formel-Dialog, nicht den Messstellen-Dialog; ein Messwert heißt nach seiner Komponente, nie nach ihrer Kennung', async () => {
+    // Jonas Wendlinger (Kundenadministrator) darf die Formel ändern.
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahteBerechnet();
+    vi.spyOn(api, 'messstelleFormel').mockResolvedValue(
+      formel([
+        term({ position: 0, quell_messstelle_id: ms01().id }),
+        term({ position: 1, eingang_art: 'messkanal', entity_id: KOMPONENTE, point_key: 'energy_import', vorzeichen: '-' }),
+      ]),
+    );
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(formelKarte).toHaveTextContent('Hauptzähler Halle 1 · Wirkenergie Bezug'), WARTEN);
+    expect(formelKarte.textContent).not.toContain(KOMPONENTE);
+    fireEvent.click(within(formelKarte).getByRole('button', { name: 'Formel ändern' }));
+    expect(await screen.findByRole('dialog', { name: /^Formel ändern · / }, WARTEN)).toBeInTheDocument();
+    // Der Messstellen-Dialog mit „Woher kommen die Werte?“ bleibt zu.
+    expect(screen.queryByText('Automatisch von einem Gerät')).toBeNull();
+  });
+
+  it('ohne Recht `messstelle.formel` kein „Formel ändern“', async () => {
+    setSelbstauskunft(rechteSeed('MD').me);
+    verdrahteBerechnet();
+    vi.spyOn(api, 'messstelleFormel').mockResolvedValue(formel([term({ position: 0, quell_messstelle_id: ms01().id })]));
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(within(formelKarte).getAllByRole('listitem')).toHaveLength(1), WARTEN);
+    expect(within(formelKarte).queryByRole('button', { name: 'Formel ändern' })).toBeNull();
+  });
+
+  it('ein Ladefehler steht als Satz mit „Erneut versuchen“ - nie ewig „wird geladen“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahteBerechnet();
+    const lesen = vi
+      .spyOn(api, 'messstelleFormel')
+      .mockRejectedValueOnce(new ApiError(500, 'kaputt'))
+      .mockResolvedValue(formel([term({ position: 0, quell_messstelle_id: ms01().id })]));
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(formelKarte).toHaveTextContent('Die Formel ist gerade nicht abrufbar.'), WARTEN);
+    fireEvent.click(within(formelKarte).getByRole('button', { name: 'Erneut versuchen' }));
+    await waitFor(() => expect(within(formelKarte).getAllByRole('listitem')).toHaveLength(1), WARTEN);
+    expect(lesen).toHaveBeenCalledTimes(2);
+  });
+
+  it('liegen alle Terme außerhalb des Zugriffs, sagt das der Hinweis - nicht „Noch keine Formel“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahteBerechnet();
+    vi.spyOn(api, 'messstelleFormel').mockResolvedValue(formel([], 'Ein Teil der Formel liegt außerhalb Ihres Zugriffs.'));
+    render(<MessstelleSeite id={ms09().id} onListe={vi.fn()} />);
+    const formelKarte = await screen.findByTestId('karte-formel', undefined, WARTEN);
+    await waitFor(() => expect(formelKarte).toHaveTextContent('Ein Teil der Formel liegt außerhalb Ihres Zugriffs.'), WARTEN);
+    expect(formelKarte).not.toHaveTextContent('Noch keine Formel.');
+  });
+});
+
+describe('Wörter, wie sie gerendert stehen (Review r4 S6/S7)', () => {
+  // Die Wächter in `copy.test.ts` lesen den Quelltext; viele Wörter kommen aber über Konstanten anderer Module (Werte-Karte,
+  // Zuordnung). Hier zählt, was tatsächlich auf dem Schirm steht.
+  const VERBOTEN = /Keine Datenquelle|Elektrische Stellung|Quelle \(führend\)|Summenwert anlegen|Ändern ab …/;
+
+  it('ohne Quelle (MS-21): „Noch keine Quelle“ in den Werten wie in „Woher die Werte kommen“ - nie „Keine Datenquelle“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahte({ messstelle: ms21, protokoll: protokollMs10 });
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, bis) => {
+      const monate: string[] = [];
+      for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = monatPlus(m, 1)) monate.push(m);
+      const ohne = (v: string, b: string) => schritt({ von: v, bis: b, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, versionen: null });
+      return antwort(MS_21, raster, `${monate[0]}-01T00:00:00+02:00`, `${monatPlus(monate[monate.length - 1], 1)}-01T00:00:00+02:00`,
+        monate.map((m) => ohne(`${m}-01T00:00:00+02:00`, `${monatPlus(m, 1)}-01T00:00:00+02:00`)), false);
+    });
+    render(<MessstelleSeite id={MS_IDS.ms21} onListe={vi.fn()} />);
+    await waitFor(() => expect(karte('herkunft')).toHaveTextContent('Noch keine Quelle'), WARTEN);
+    await waitFor(() => expect(within(screen.getByTestId('werte')).getByTestId('werte-leer')).toHaveTextContent('Noch keine Quelle'), WARTEN);
+    const t = document.body.textContent ?? '';
+    expect(t.match(VERBOTEN) ? t.slice(Math.max(0, t.search(VERBOTEN) - 120), t.search(VERBOTEN) + 60) : null).toBeNull();
+  });
+
+  it('Gerät (MS-06) mit offenem Dialog „Stellung im Stromnetz ändern“ - dieselben Wörter wie die Zeile „Im Stromnetz“', async () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+    await waitFor(() => expect(zeile('stellung')).toHaveTextContent('Im Stromnetz'), WARTEN);
+    fireEvent.click(within(zeile('stellung')).getByRole('button', { name: 'Stellung im Stromnetz ändern' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Stellung im Stromnetz ändern' }, WARTEN);
+    expect(within(dialog).getByText('Stellung im Stromnetz *')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(VERBOTEN);
   });
 });

@@ -22,6 +22,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -192,6 +193,30 @@ public class KennzahlLauf {
         this.beendete = beendete;
     }
 
+    /**
+     * Die Bühnen-Uhr der Prüfumgebung ({@link PruefumgebungUhr}, nur Profil {@code local} mit gesetzter Bühne) - in
+     * Produktion {@code null}. Die Leser der Kennzahlen stehen dort auf der Bühne ({@link KennzahlService#uhrStellen});
+     * rechnete der Lauf in echter Zeit, bekäme eine Periode der Bühne ein {@code berechnet_am} nach jeder echten Kaskade,
+     * und die erste Ablesung bräche sie ab („liegt nicht nach der neuesten Zeile“). Darum rechnet er dort auf derselben
+     * Uhr wie seine Leser: eine Zeitachse für die Kennzahlen.
+     */
+    private volatile Clock buehne;
+
+    /** Nur die Prüfumgebung stellt sie ({@link PruefumgebungUhr#stellen(Clock)}). */
+    void uhrStellen(Clock uhr) {
+        this.buehne = uhr;
+    }
+
+    /**
+     * Der Zeitpunkt, zu dem gerechnet wird: in Produktion der übergebene (der Takt des Läufers, der Lauf der Kaskade), in
+     * der Prüfumgebung die Bühne. Der Regellauf fragt ihn selbst; die Kaskade fragt ihn an ihrer Naht ab und gibt ihn mit
+     * dem {@code Betroffen} an {@link #nachKorrektur} und an die Folgen der Kennzahlen ({@link KennzahlKaskade}).
+     */
+    Instant rechenzeit(Instant jetzt) {
+        Clock b = buehne;
+        return b == null ? jetzt : b.instant();
+    }
+
     public KennzahlLauf(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, KennzahlService kennzahlen,
             KennzahlRepository repo, KennzahlEingangLeser leser, ObjectMapper json,
             @Value("${voltpilot.uems.kennzahlen.enabled:true}") boolean enabled) {
@@ -215,7 +240,7 @@ public class KennzahlLauf {
             UUID vorher = TenantContext.get();
             TenantContext.set(tenant);
             try {
-                mandant(new Kontext(tenant, kennzahlen.katalog(), jetzt, z, leser, repo, null));
+                mandant(new Kontext(tenant, kennzahlen.katalog(), rechenzeit(jetzt), z, leser, repo, null));
             } catch (RuntimeException e) {
                 log.warn("UEMS Kennzahlen für Kundenbereich {} übersprungen: {}", tenant, e.toString());
             } finally {
@@ -730,6 +755,20 @@ public class KennzahlLauf {
 
     // ------------------------------------------------------------------------------ schreiben (V3)
 
+    /**
+     * Das {@code berechnet_am} einer neuen Zeile: der Zeitpunkt des Laufs. In der Prüfumgebung beginnt jeder Prozess (API,
+     * Seed) und jeder Neustart die Bühne neu an ihrem Augenblick - eine Zeile eines früheren Starts kann darum „später“
+     * stehen als die Bühne jetzt. Dort gilt: später gerechnet ist später, die Zeile reiht sich direkt dahinter ein. In
+     * Produktion bleibt der Zeitpunkt, und die Prüfung in {@link #schreiben} entscheidet.
+     */
+    private Instant berechnetAm(Rahmen r, Gespeichert bisher) {
+        Instant am = r.kx().jetzt().truncatedTo(ChronoUnit.MICROS);
+        if (buehne != null && bisher != null && !am.isAfter(bisher.berechnetAm())) {
+            return bisher.berechnetAm().plus(1, ChronoUnit.MICROS);
+        }
+        return am;
+    }
+
     private void schreiben(Rahmen r, FassungZeile f, String art, LocalDate[] p, Gespeichert bisher, Bildung b) {
         if (b == null) {
             return;
@@ -745,7 +784,7 @@ public class KennzahlLauf {
             z.unveraendert++;
             return;
         }
-        Instant am = r.kx().jetzt().truncatedTo(ChronoUnit.MICROS);
+        Instant am = berechnetAm(r, bisher);
         if (bisher != null && !am.isAfter(bisher.berechnetAm())) {
             if (kaskade != null) {
                 throw new IllegalStateException("UEMS Kennzahl " + r.k().kennzeichen() + " " + art + " " + p[0]

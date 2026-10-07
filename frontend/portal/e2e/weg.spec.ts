@@ -228,7 +228,8 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
       await expect(page.getByTestId('quelle-karte')).toContainText('Zähler Energiekarte EK-1');
       const zahl = await station(page, breite, '05-zahl', gesammelt);
-      expect(zahl.route).toMatch(/\?periode=2026-11-03$/);
+      // Aus „Stand am …“ geöffnet: die Seite liest diesen Tag, nur lesend (Review r4 S4).
+      expect(zahl.route).toMatch(/\?periode=2026-11-03&stand=2026-11-03$/);
 
       // ---------------------------------------------------------------- 6 · ZAHL: der Verlauf desselben Tages
       const verlauf = werte.getByTestId('verlauf');
@@ -245,7 +246,7 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await werte.getByTestId('vergleich').getByRole('tab', { name: 'Vorperiode' }).click();
       await expect(werte.getByTestId('vergleich-delta')).toContainText('gegenüber Oktober 2026');
       const vergleich = await station(page, breite, '07-vergleich', gesammelt);
-      expect(vergleich.route).toMatch(/\?periode=2026-11&v=vorperiode$/);
+      expect(vergleich.route).toMatch(/\?periode=2026-11&v=vorperiode&stand=2026-11-03$/);
 
       // ---------------------------------------------------------------- 8 · NACHWEIS: die Versionen der Zahl
       await werte.locator('.vp-wk-zeitwahl').getByRole('tab', { name: 'Tag' }).click();

@@ -1140,7 +1140,7 @@ test('A10 · MS-21 Gas ohne Datenquelle: der Leerzustand bietet keinen Katalog-Q
 
   const werte = page.getByTestId('werte');
   const leer = werte.getByTestId('werte-leer');
-  await expect(leer.getByRole('heading', { name: 'Keine Datenquelle' })).toBeVisible();
+  await expect(leer.getByRole('heading', { name: 'Noch keine Quelle' })).toBeVisible();
   await expect(leer).toContainText(
     'Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.',
   );

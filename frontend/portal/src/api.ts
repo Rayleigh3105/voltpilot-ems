@@ -11271,7 +11271,8 @@ export const api = {
   energieeinsatzBearbeiten: (id: string, body: EnergieeinsatzBearbeiten) =>
     request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   energieeinsatzBeenden: (id: string, body: { grund: string; gueltig_bis?: string }) =>
-    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/beenden`, { method: 'PUT', body: JSON.stringify(body) }),
+    // Server und Vertrag kennen nur POST (`EnergieeinsatzController.beenden`); mit PUT antwortete die Route 405.
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
   /** Verantwortlich ist eine Zuständigkeit, kein Recht (R14); `null` hebt sie auf. */
   energieeinsatzVerantwortlicher: (id: string, verantwortlichSub: string | null) =>
     request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/verantwortlicher`, {

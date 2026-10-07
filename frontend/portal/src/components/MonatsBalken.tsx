@@ -26,7 +26,7 @@ export function MonatsBalken({
           const titel = `${b.titel}: ${b.zahl}${b.zustand ? ` · ${b.zustand}` : ''}`;
           const saeule = (
             <span
-              className={`vp-mb-saeule${b.hoehe === null ? ' is-leer' : ''}`}
+              className={`vp-mb-saeule${b.hoehe === null ? ' is-leer' : ''}${b.negativ ? ' is-negativ' : ''}`}
               style={b.hoehe === null ? undefined : { height: `${Math.max(2, Math.round(b.hoehe * 100))}%` }}
             />
           );

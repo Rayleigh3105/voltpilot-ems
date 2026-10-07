@@ -106,6 +106,12 @@
   white-space: nowrap;
   cursor: pointer;
 }
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche. */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-ms-link {
+    min-height: 44px;
+  }
+}
 @media (hover: hover) {
   .vp-ms-link:hover {
     text-decoration: underline;
@@ -585,6 +591,13 @@ a.vp-ms-reihe:focus-visible {
 .vp-ms-reihe-wert > span {
   font-size: 0.72rem;
   color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+/* Ein unvollständiger Monat mit Zahl (Review r4 S3): leise im Warnton unter der Zahl, an jeder Breite sichtbar. */
+.vp-ms-reihe-hinweis {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
   white-space: nowrap;
 }
 .vp-ms-reihe-chev {
