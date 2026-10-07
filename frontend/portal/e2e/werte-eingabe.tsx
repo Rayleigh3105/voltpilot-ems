@@ -61,4 +61,4 @@ Object.assign(api, {
     posts.push({ kz, zeit, ...body }); return { urteil: 'vorschlag', korrektur: 'K-2026-0001', ablesung: ablesungen.find(a => a.zeitpunkt === zeit), ablesezeitraum: null };
   },
 });
-ReactDOM.createRoot(document.getElementById('root')!).render(<main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}><RechteStandort.Provider value={FIXTURE_IDS.st1}>{params.has('ablesung') ? <MessstelleSeite id={ms21().id} onListe={() => {}} /> : <BezugsgroessenPage />}</RechteStandort.Provider></main>);
+ReactDOM.createRoot(document.getElementById('root')!).render(<main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}><RechteStandort.Provider value={FIXTURE_IDS.st1}>{params.has('ablesung') ? <MessstelleSeite id={ms21().id} onListe={() => {}} /> : <BezugsgroessenPage bezugsgroesseId={ahrenbergBezugsgroessen().bezugsgroessen.find(b => b.kennzeichen === 'BZ-2')!.id} />}</RechteStandort.Provider></main>);

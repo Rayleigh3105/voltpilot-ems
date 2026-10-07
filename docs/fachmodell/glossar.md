@@ -463,6 +463,13 @@ Prozesse bilden die zweite Sicht auf dieselben Messstellen. Ein Prozess kann Mes
 
 **Abgrenzung.** Nicht der Bereich (räumlich), nicht die Kostenstelle (buchhalterisch, mit Prozentaufteilung).
 
+**Reiter „Prozesse“ (Konzept Messen m1 §6.7, Entscheid 4).**
+Unter dem Titel steht: „Arbeitsschritte, die Energie brauchen – und was sie verbraucht haben.“; „Was ist ein Prozess?“ klappt Klartext, Beispiel und Abgrenzung zur Kostenstelle auf.
+Je Prozess steht, wovon er gemessen wird, mit dem Wert der Messstelle im Zeitraum: „gemessen von AZ-3 Zähler Druckluft“; eine Prozess-Summe (eine berechnete Messstelle des Prozesses) hat Vorrang („zusammengerechnet in MS-20 …“).
+Mehrere gemessene Messstellen ohne Summe stehen einzeln („2 Messstellen, einzeln“), nie addiert; zählt eine Messstelle schon bei einem anderen Prozess, steht „auch bei {Prozess} gezählt“.
+Ohne Messstelle: „noch keine Messstelle zugeordnet“ mit dem Weg „Messstelle zuordnen“ (zugeordnet wird an der Messstelle).
+Kundenwörter: `GEMESSEN_VON`, `ZUSAMMENGERECHNET_IN`, `AUCH_BEI`, `NOCH_KEINE_MESSSTELLE_KLEIN` (PORTAL/kostenstellenUebersicht.ts), Erklärung `prozess` (PORTAL/begriffe.ts).
+
 ## Kostenstelle
 
 *Sicht: Organisation*
@@ -478,6 +485,14 @@ Kostenstellen sind flach und kommen aus der Buchhaltung des Kunden. Eine Messste
 **Abgrenzung.** Nicht der Prozess (Tätigkeit), nicht der Bereich (Raum). Prozess und Kostenstelle sind zwei getrennte Achsen (E5).
 
 > **Verfeinert durch AP-10 E11/E12:** Die „festen Prozentanteile“ aus AP-00 werden eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage): an jedem Tag mit Zeilen genau 100 %, sonst „nicht verteilt“. Sie wirkt je Tag auf die Tagesmenge (kein Stichtag), endet mit der Kostenstelle und kennt keine dynamischen Schlüssel. Regeln: `docs/contracts/v2/verteilung.md`.
+
+**Reiter „Kostenstellen“ (Konzept Messen m1 §6.6, Captain-Freigabe 05.10.2026).**
+Unter dem Titel steht die Erklärung: „Wem Ihr Verbrauch in der Kostenrechnung zugerechnet wird.“; „Was ist eine Kostenstelle?“ klappt Klartext, ein Beispiel aus den eigenen Kostenstellen und die Abgrenzung zum Prozess auf.
+Je Kostenstelle steht die Summe der Kostenstellen-Sicht mit ihren Posten; ein Posten nennt seine Herkunft in Alltagswörtern: „ganz“ (die Messstelle gehört ganz zu ihr), „30 % von 88.200 kWh“ (Anteil und die Menge der Messstelle aus der Werte-Route), „berechnet · ganz“.
+Messstellen ohne Verteilungszeile im Zeitraum heißen auf dieser Fläche „Ohne Kostenstelle“ statt „nicht verteilt“ - ein Zustand, kein Fehler („Ihr Verbrauch ist keiner Kostenstelle zugerechnet. Ordnen Sie sie an der Messstelle zu, wenn sie in die Kostenrechnung gehören.“).
+Eine Gesamtsumme über Kostenstellen gibt es nicht, und kein Satz erklärt ihr Fehlen auf der Fläche; der Grund steht im Aufklapper.
+Solange die Sicht Ablesezeiträume nicht verteilt, sagt die Fläche bei Ablesezählern einmal: „Für {Zeitraum} noch keine Werte. Ihre Zähler werden monatlich abgelesen, diese Ansicht verteilt heute je Tag. Die Monatsmengen stehen an jeder Messstelle. Sie müssen nichts tun.“
+Kundenwörter: `OHNE_KOSTENSTELLE`, `GANZ`, `ANTEIL_VON`, `ABLESUNG_OHNE_TAGESWERT` (PORTAL/kostenstellenUebersicht.ts), Erklärung `kostenstelle` (PORTAL/begriffe.ts).
 
 ## Betriebsmodell (übernommen)
 
@@ -530,6 +545,13 @@ AP-00 legt nur fest, dass Bezugsgrößen an Objekte des Fachmodells gebunden sin
 > **Verfeinert durch AP-17 W9:** Heute im Code (Stand 23.09.2026, gebaut mit AP-09): Tabellen `bezugsgroesse` mit genau einem Geltungsbereich, `bezugsgroesse_wert` (Werte als Fassungen, nur anhängend), `bezugsgroesse_kennzeichen_verlauf` und `bezugsgroesse_aenderung` (MIG/V20260913104500__uems_bezugsgroesse.sql:162, :291); Art als eigenes Datum (MIG/V20260918110000__uems_bezugsgroesse_art.sql); Kanalbindung an Zähler-, Zustands- und Temperaturkanäle mit Gradtagen G20/15 (`bezugsgroesse_kanalbindung`, MIG/V20260917100000__uems_bezugsgroesse_kanalbindung.sql:2; services/api/src/main/java/com/voltpilot/api/uems/GradtagRegeln.java:14). Routen `/api/v1/bezugsgroessen` (services/api/src/main/java/com/voltpilot/api/web/BezugsgroesseController.java:64) und `/api/v1/bezugsdaten/importe`; Regeln `uems/BezugsdatenRegeln` ⟷ `bezugsdaten.ts` gegen `docs/contracts/v2/bezugsdaten-vectors.json`; Portal „Unternehmen › Bezugsgrößen“ (PORTAL/nav.ts:250). Die Herkunft `bezogen` einer Gradtagzahl (von VoltPilot aus einem Wetter-Archiv, AP-17 E9 = C) ist seit AP-17 IP-12 gebaut (siehe „Wetterbezug“). Einstieg: `docs/agents/root/uems-bezugsgroessen-abschluss.md`.
 
 > **Verfeinert durch AP-17 W2 (E10 = A):** Erledigt: AP-09 §6.5 wies Betriebskalender, Arbeitszeitmodell und Wetterbereinigung AP-17 zu. Es gibt keinen Kalender und kein Arbeitszeitmodell als Stammdatum — die Betriebszeit ist eine Bezugsgröße mit Periodenwerten und als Einflussgröße eine Variable wie jede; ein Schichtmodell ist höchstens ein Wortlaut-Faktor an der Fassung. Die Wetterbereinigung ist mit Gradtagen eingelöst, die Temperatur dafür bezieht VoltPilot aus dem Wetter-Archiv (E9 = C). AP-09 E2 („die Zahl wäre geplant, nicht gemessen“) bleibt. Einstieg: `docs/agents/root/uems-bezugsbasis.md`.
+
+**Liste und Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9).**
+Unter dem Titel steht: „Womit Sie Ihren Verbrauch vergleichen: Menge, Schichten, Wetter oder Fläche.“; die Liste ordnet je Periode („Werte je Monat“) und zeigt je Bezugsgröße, was sie zählt („Halle 2 · kg je Monat“), den Zustand („eingetragen bis Sep 2026“, „für Sep 2026 fehlt der Wert“, „noch kein Wert“), woher der letzte Wert kommt („von Hand eingetragen“, „importiert“, „aus einem Messkanal“, „aus dem Wetter-Archiv“) und den letzten Wert.
+Die Statuszeile sagt „Werte bis {Monat} eingetragen“ oder, was fehlt, mit dem Schritt „Eintragen“.
+Die Flächen aus den Gebäuden stehen als Kacheln unter „Flächen · aus dem Gebäudeplan, heute“ mit dem Weg „Am Gebäude ändern“; eine Bezugsfläche aus dem Gebäude ist nicht schreibbar und heißt „aus dem Gebäudeplan“, eine eigene Angabe „eigene Angabe“.
+Jede Bezugsgröße hat eine eigene Seite (`#/portfolio/bezugsgroessen/{id}`): „Wert eintragen“ oben, der letzte Wert und derselbe Zeitraum im Vorjahr, zwölf Perioden als Balken, die Werte neueste zuerst; Berichtigen, Fassungen und Archivieren stehen im Menü ⋯.
+Kundenwörter: `KOPF_SATZ`, `WERTE_JE`, `WOHER`, `ZUSTAND`, `STATUS`, `FLAECHEN`, `WERT_EINTRAGEN` (PORTAL/bezugsgroessenUebersicht.ts), Erklärung `bezugsgroesse` (PORTAL/begriffe.ts).
 
 ## Benutzer und Rolle (nur Begriff, Rechte-Matrix AP-03)
 

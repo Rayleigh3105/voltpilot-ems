@@ -304,7 +304,8 @@
       "importe": [
         "./glossar:UEMS_BEWERTUNG_SAETZE",
         "./glossar:UEMS_KOSTENSTELLE",
-        "./glossar:UEMS_PROZESS_SUMME",
+        "./glossar:UEMS_MESSSTELLE",
+        "./messstellenListe:woherDerZeile",
         "./nav:hashForRoute",
         "./nav:pageRoute",
         "./rechte:ROLLE_KUNDENWORT",
@@ -313,10 +314,13 @@
         "./uebersichtBausteine:ende",
         "./uebersichtBausteine:zeitraumText",
         "./uemsErgebnis:KWH",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:VOR_EINHEIT",
         "./uemsErgebnis:zahl",
         "./uemsOberflaechen:periodeSchluessel",
         "./uemsOberflaechen:sprungziel",
-        "./uemsVerteilung:NICHT_VERTEILT"
+        "./uemsVerteilung:ERBE_ANTEIL_WECHSELT",
+        "./uemsVerteilung:GRUND_ANTEIL_WECHSELT"
       ],
       "operationen": [
         "spanne: mit.length - 1"
@@ -1056,6 +1060,24 @@
         "wertMitEinheit: Number(wert)"
       ],
       "grund": "Konzept Auswerten a1 §6.7, Review r3 zu #1415: Anzeige, Balkengeometrie, Reihenfolge, Kalender und Listenindex; Summe und Anteile ausschließlich über die Vertrags-Zwillinge."
+    },
+    "bezugsgroessenUebersicht.ts": {
+      "importe": [
+        "./bezugsPeriode:schluesselVon",
+        "./bezugsPeriode:spanneVon",
+        "./bezugsPeriode:tagPlus",
+        "./bezugsgroesseListe:PERIODE",
+        "./bezugsgroesseListe:ortKey",
+        "./glossar:UEMS_TEMPERATUR_BEZOGEN"
+      ],
+      "operationen": [
+        "faelligePeriode: -1",
+        "vorjahr: Number(schluessel)",
+        "vorjahr: Number(schluessel) - 1",
+        "vorjahr: Number(schluessel.slice(0, 4))",
+        "vorjahr: Number(schluessel.slice(0, 4)) - 1",
+        "zwoelfPerioden: -1"
+      ]
     },
     "messstellenListe.ts": {
       "importe": [

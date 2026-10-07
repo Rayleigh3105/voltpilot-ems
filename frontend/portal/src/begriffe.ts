@@ -23,6 +23,8 @@ import {
   UEMS_MESSSTELLE,
   UEMS_VERZEICHNIS,
   UEMS_WIEDERVORLAGE,
+  UEMS_KOSTENSTELLE,
+  UEMS_PROZESS,
 } from './glossar';
 
 export type BegriffSchluessel =
@@ -43,7 +45,9 @@ export type BegriffSchluessel =
   | 'audit'
   | 'feststellung'
   | 'managementbewertung'
-  | 'energetische_bewertung';
+  | 'energetische_bewertung'
+  | 'kostenstelle'
+  | 'prozess';
 
 export interface Begriff {
   /** Das Wort, wie das Portal es zeigt. */
@@ -111,6 +115,9 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     klartext: 'Eine Größe, von der Ihr Verbrauch abhängt.',
     beispiel: 'Zum Beispiel Stückzahl, Fläche, Betriebsstunden oder die Außentemperatur.',
     fachwort: 'relevante Variable',
+    frage: 'Was ist eine Bezugsgröße?',
+    mehr: 'Ihre Werte tragen Sie je Monat ein oder importieren sie; manche kommen aus einem Messkanal oder dem Wetter, Flächen aus dem Gebäudeplan.',
+    abgrenzung: `Erst mit ihr wird aus kWh eine ${UEMS_KENNZAHL} wie kWh je kg.`,
   },
   kennzahl: {
     wort: UEMS_KENNZAHL,
@@ -188,6 +195,24 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     fachwort: null,
     frage: 'Was ist die energetische Bewertung?',
     abgrenzung: 'Nicht verwechseln mit dem Monatsbericht: der Bericht zählt, die Bewertung ordnet.',
+  },
+  // Konzept Messen m1 §7 (Captain-Freigabe 05.10.2026): Klartext unter dem Titel, Beispiel aus der eigenen Firma im Aufklapper.
+  kostenstelle: {
+    wort: UEMS_KOSTENSTELLE,
+    klartext: 'Eine Nummer aus Ihrer Buchhaltung, der Verbrauch ganz oder anteilig zugerechnet wird.',
+    beispiel: 'Zum Beispiel bekommt die Produktion 70 % eines Zählers und die Montage die übrigen 30 %.',
+    fachwort: null,
+    frage: 'Was ist eine Kostenstelle?',
+    abgrenzung: 'Nicht dasselbe wie ein Prozess: der beschreibt die Arbeit, die Kostenstelle die Rechnung.',
+  },
+  prozess: {
+    wort: UEMS_PROZESS,
+    klartext: 'Ein Arbeitsschritt in Ihrem Betrieb, der Energie braucht – egal, in welchem Gebäude er stattfindet.',
+    beispiel: 'Zum Beispiel Spritzguss, Druckluft, Kühlung oder Logistik.',
+    fachwort: null,
+    frage: 'Was ist ein Prozess?',
+    mehr: 'Sie ordnen einem Prozess die Messstellen zu, die seinen Verbrauch messen. Dann steht hier, was er im Monat verbraucht hat.',
+    abgrenzung: 'Nicht dasselbe wie eine Kostenstelle: die rechnet Verbrauch der Buchhaltung zu, mit Anteilen.',
   },
 };
 

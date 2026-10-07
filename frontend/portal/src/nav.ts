@@ -206,6 +206,11 @@ export interface Route {
    * Absent = das Register.
    */
   messstelleId?: string;
+  /**
+   * Nur bei `portfolio-bezugsgroessen`: WELCHE Bezugsgröße die Seite zeigt (Konzept Messen m1 §6.8, Entscheid 9,
+   * `#/portfolio/bezugsgroessen/{id}`). Absent = die Liste.
+   */
+  bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -731,6 +736,7 @@ export function parseRoute(hash: string): Route {
       return energiemanagementRoute();
     }
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'bezugsgroessen' && segments[2]) return bezugsgroesseRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
@@ -868,6 +874,8 @@ export function hashForRoute(route: Route): string {
         : '';
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    const bezugsgroesse =
+      route.page === 'portfolio-bezugsgroessen' && route.bezugsgroesseId ? `/${encodeURIComponent(route.bezugsgroesseId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     const einsatz =
       route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
@@ -899,7 +907,7 @@ export function hashForRoute(route: Route): string {
             : route.energiemanagementReiter && route.energiemanagementReiter !== 'verzeichnis'
             ? `/${route.energiemanagementReiter}`
             : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -1144,6 +1152,11 @@ export function messstelleRoute(messstelleId: string, standortId?: string | null
   return standortId
     ? { ...standortMessstellenRoute(standortId), messstelleId }
     : { page: 'portfolio-messstellen', siteId: null, sub: null, messstelleId };
+}
+
+/** Route der Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9): `#/portfolio/bezugsgroessen/{id}`. */
+export function bezugsgroesseRoute(bezugsgroesseId: string): Route {
+  return { page: 'portfolio-bezugsgroessen', siteId: null, sub: null, bezugsgroesseId };
 }
 
 /* =========================================================================

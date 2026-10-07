@@ -194,6 +194,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 ## `portal/` — aus `frontend/portal/AGENTS.md` (48 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
+- [Messen: Kostenstellen, Prozesse und Bezugsgrößen](portal/messen-kostenstellen-prozesse-bezugsgroessen.md)
 - [Messen: die Liste der Messstellen und „Woher kommen die Werte?“](portal/messen-liste-und-woher-die-werte.md)
 - [Messen: die Seite einer Messstelle (Kacheln, Monate, Ablesen, Zuordnung)](portal/messen-seite-einer-messstelle.md)
 - [Messen: die Ablese-Runde je Gebäude (`?ablesen=G-1`)](portal/messen-ablese-runde.md)

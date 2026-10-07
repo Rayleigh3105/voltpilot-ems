@@ -1649,7 +1649,7 @@ function UnifiedPortal() {
           {page === 'portfolio-standorte' && <StandortePage />}
           {/* AP-09 IP-9: Unternehmenswelt; Direktadressen beachten dieselbe Messkunden-Grenze. */}
           {page === 'portfolio-bezugsgroessen' && (
-            bezugsgroessenDa === true ? <BezugsgroessenPage /> : (
+            bezugsgroessenDa === true ? <BezugsgroessenPage bezugsgroesseId={route.bezugsgroesseId ?? null} /> : (
               <p>{bezugsgroessenDa === null ? 'Wird geladen …' : 'Bezugsgrößen stehen zur Verfügung, sobald ein Standort misst.'}</p>
             )
           )}
