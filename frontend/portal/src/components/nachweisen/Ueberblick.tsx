@@ -8,8 +8,9 @@ import {
 } from '../../api';
 import { sprungKlick, springeUeberHash, seitenSprung, type Sprung } from '../../entscheid';
 import * as E from '../../energiemanagementPortal';
-import { UEMS_KEINE_FRIST_UEBERFAELLIG } from '../../glossar';
+import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_WIEDERVORLAGE } from '../../glossar';
 import { energiemanagementRoute, type Route } from '../../nav';
+import { useRollen } from '../../rollen';
 import {
   DEMNAECHST,
   nachweisStand,
@@ -67,6 +68,9 @@ export function Ueberblick({
   onNavigate: (r: Route) => void;
   springe?: (s: Sprung) => void;
 }) {
+  const rollen = useRollen();
+  // Festhalten verspricht nur, wer das Energiemanagement bearbeitet; „Einsicht“ und Leser sehen den Stand ohne Knopf.
+  const darfFesthalten = rollen.darf(E.RECHT_VERWALTEN, null);
   const [daten, setDaten] = useState<Daten | null>(null);
   const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
@@ -184,14 +188,18 @@ export function Ueberblick({
                 testId="ueberblick-naechstes"
                 frist={stand.naechstes.art === 'frist' ? { ...stand.naechstes.eintrag.frist, ton: 'ueber' } : null}
                 titel={<Kennzeichentext text={stand.naechstes.titel} />}
-                knopf={{
-                  label: stand.naechstes.knopf,
-                  onClick: () => {
-                    const n = stand.naechstes!;
-                    if (n.art === 'festhalten') zeigeTeil(n.teil);
-                    else if (n.sprung) springe(n.sprung);
-                  },
-                }}
+                knopf={
+                  stand.naechstes.art === 'festhalten' && !darfFesthalten
+                    ? null
+                    : {
+                        label: stand.naechstes.knopf,
+                        onClick: () => {
+                          const n = stand.naechstes!;
+                          if (n.art === 'festhalten') zeigeTeil(n.teil);
+                          else if (n.sprung) springe(n.sprung);
+                        },
+                      }
+                }
               />
             )}
           </div>
@@ -203,7 +211,8 @@ export function Ueberblick({
                 href={seitenSprung(energiemanagementRoute('wiedervorlage')).hash}
                 onClick={sprungKlick(seitenSprung(energiemanagementRoute('wiedervorlage')), springe)}
               >
-                {WIEDERVORLAGE_LINK}
+                <span className="vp-nw-nur-telefon">{WIEDERVORLAGE_LINK}</span>
+                <span className="vp-nw-nur-rechner">{UEMS_WIEDERVORLAGE}</span>
               </a>
             </div>
             {stand.demnaechst.length === 0 ? (
@@ -288,6 +297,7 @@ export function Ueberblick({
         <GruppenBlatt
           gruppe={gruppeJetzt}
           offen={gruppeOffen}
+          darfFesthalten={darfFesthalten}
           onClose={() => setGruppeOffen(false)}
           onTeil={(t) => {
             setGruppeOffen(false);
