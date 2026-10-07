@@ -1586,7 +1586,10 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
-          const stelle = rest.indexOf(fingerabdruck);
+          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
+          const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
+          if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
+          const stelle = rest.indexOf(fortschreibung?.nachher ?? fingerabdruck);
           expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
@@ -1596,6 +1599,25 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
         if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
+        if (fortschreibung && 'menue' in fortschreibung) {
+          // Ins Menü ⋯ verlegt (Konzept Auswerten a1 §6.5): kein eigener Knopf mehr, sondern ein Eintrag des RowMenu -
+          // Beschriftung, Recht und Handler stehen wörtlich in der Datei, sonst gilt der Knopf als verloren. Trägt der
+          // Eintrag sein Recht über eine Variable, steht deren Belegung als `recht` daneben und ebenso wörtlich in der
+          // Datei (Review r3: sonst prüfte niemand, welches Recht der Eintrag verlangt).
+          const quelle = readFileSync(join(SRC, quellpfad), 'utf8');
+          expect(quelle, `${pfad}: ${fortschreibung.grund}`).toContain(String(fortschreibung.menue));
+          expect('recht' in fortschreibung, `${pfad}: Fortschreibung ins Menü ohne belegtes Recht`).toBe(true);
+          expect(quelle, `${pfad}: das Recht des Menüeintrags`).toContain(String((fortschreibung as { recht?: string }).recht));
+          zahl++;
+          continue;
+        }
+        if (fortschreibung && fortschreibung.nachher === null) {
+          // Ein ausdrücklich belegter Wegfall (Neubau einer Fläche nach freigegebenem Konzept, Grund und Commit am
+          // Eintrag): das Bedienelement ist wirklich weg, nicht nur verschoben.
+          expect(jetzt, `${pfad}: als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
+          zahl++;
+          continue;
+        }
         const soll = fortschreibung?.nachher ?? fingerabdruck;
         const stelle = jetzt.indexOf(soll);
         if (stelle < 0 && nz) {

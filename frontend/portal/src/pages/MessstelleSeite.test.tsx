@@ -101,14 +101,16 @@ describe('die Adresse der Seite', () => {
     expect(hashForRoute(standortMessstellenRoute(FIXTURE_IDS.st1))).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
   });
 
-  it('das Register öffnet die Seite über den Namen', async () => {
+  it('die Liste öffnet die Seite über die ganze Reihe (ein Verweis auf die Adresse der Messstelle)', async () => {
     vi.spyOn(api, 'messstellenRegister').mockImplementation(async () => ahrenbergRegister());
     const onOeffnen = vi.fn();
     render(
       <MessstellenPage ebene={{ art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH' }} bereichDa onOeffnen={onOeffnen} />,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Spritzguss SG01–SG06' }, WARTEN));
-    expect(onOeffnen).toHaveBeenCalledWith(MS_IDS.ms06);
+    const reihe = await screen.findByRole('link', { name: /^Spritzguss SG01–SG06 MS-06/ }, WARTEN);
+    expect(reihe.getAttribute('href')).toMatch(new RegExp(`/messstellen/${MS_IDS.ms06}$`));
+    fireEvent.click(reihe);
+    expect(onOeffnen).toHaveBeenCalledWith(MS_IDS.ms06, null);
   });
 });
 

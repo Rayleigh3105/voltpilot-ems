@@ -836,6 +836,14 @@ VERFEINERUNGEN = {
 # wörtlich ins Glossar kommen: Summenwert (PR 855), Ersatzwert/Korrektur/Widerruf (PR 909).
 # ---------------------------------------------------------------------------------------------
 ABSCHNITTE_NACH = {
+    "einstufung": ["""**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts)."""],
     "wiedervorlage": ["""**Arbeitsliste (Konzept Wiedervorlage w1, 05.10.2026).**
 Der Name bleibt; darunter sagt ein Satz, was er meint: „Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst.“
 Die Liste ordnet nach Dringlichkeit: „Überfällig“ (die Frist ist abgelaufen; „fällig“ allein hieße umgangssprachlich „jetzt dran“), „In den nächsten 30 Tagen“, „Jahresplan“, „Zuletzt erledigt“.
@@ -850,7 +858,14 @@ Wer die Aufgaben nicht lesen darf, liest keine Person laut Aufgabe und auch kein
 Seit Vertrag 1.2 steht die „Zählerablesung“ in der Liste (Bereich Messen): eine Ablese-Runde je Gebäude (ohne Gebäude der Standort) und Fälligkeitstag, „8 Zähler in Halle 1 ablesen“, fällig zwei Monate nach der letzten Ablesung wie „Ablesung überfällig seit …“ im Register.
 Der Schritt heißt „Ablesungen eintragen“ und öffnet die Messstellen des Orts; bei einem Zähler heißt er wie der Knopf an der Messstelle, „Ablesung eintragen“.
 Kundenwörter: `UEMS_WIEDERVORLAGE_SATZ`, `UEMS_UEBERFAELLIG`, `UEMS_KEINE_FRIST_UEBERFAELLIG`, `UEMS_NAECHSTE_FRISTEN`, `UEMS_ZULETZT_ERLEDIGT`, `UEMS_WOHER_FRISTEN`, `UEMS_JAHRESPLAN`, `UEMS_LAUT_AUFGABE`, `UEMS_GEPRUEFT_BLEIBT_KNOPF` (PORTAL/glossar.ts)."""],
-    "messstelle": ["""## Summenwert
+    "messstelle": ["""**Woher die Werte kommen (Konzept Messen m1, Captain-Freigabe 05.10.2026).**
+Auf den Flächen unter Messen heißt die führende Quelle einer Messstelle „Woher die Werte kommen“; „Quelle“ bleibt das Fachwort im Aufklapper und in den Dialogen.
+Eine gemessene Messstelle hat einen von zwei gleichwertigen Wegen: „Automatisch von einem Gerät“ (ein Messwert einer Komponente, laufend, meist jede Viertelstunde) oder „Von Hand ablesen“ (Zählerstände, die jemand einträgt).
+In der Liste heißen sie „automatisch vom Gerät“ und „von Hand abgelesen, monatlich“; eine berechnete Messstelle ist „berechnet aus anderen Messstellen“, und ohne Weg steht „noch keine Quelle“, nie „Keine Datenquelle“.
+Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesung erinnert die Wiedervorlage; mit der ersten Ablesung entsteht die Ablesungsquelle, und nur eine Messstelle mit einem Zählerstand als Hauptgröße lässt sich ablesen.
+„Aus anderen Messstellen berechnet“ ist kein dritter Weg im Messstellen-Dialog: ein Summenwert entsteht an der Anlage, an der seine Messwerte liegen, und „Summenwert anlegen“ steht unter Messen nicht mehr (Konzept §6.10).
+Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
+Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).""", """## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
 aus Registern und anderen berechneten Messstellen derselben Anlage, mit
@@ -879,6 +894,13 @@ eine zweite Person kann der Ersteller nicht selbst freigeben.
 Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
 eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
 Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md)."""],
+    "energieeinsatz": ["""**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts)."""],
     "energieleistungskennzahl": ["""**Leitkennzahl (Portfolio-Übersicht, Konzept `data/vp-portfolio-konzept2-p2` §4.2).**
 Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: die Energieleistungskennzahl mit offenem Energieziel, die das Kachelraster als erste, breite Kachel anführt.
 Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.

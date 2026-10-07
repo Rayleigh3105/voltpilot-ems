@@ -383,6 +383,15 @@ Die Messstelle ist das zentrale Objekt des Unternehmens-Energiemanagements. Sie 
 
 > **Verfeinert durch AP-04 IP-1:** Die Regeln der Messstelle sind ein Vertrag mit geteilten Vektoren: `docs/contracts/v2/messstelle.md` (Schema `messstelle.schema.json`, Vektoren `messstelle-vectors.json`). Ein Kennzeichen geht nie an eine ANDERE Messstelle — auch das frühere einer umbenannten bleibt belegt; „genau ein Hauptzähler je Anlage“ heißt: je Anlage und Richtung einer, alle am selben Zähler (MS-01 Bezug und MS-02 Abgabe an K-3); eine neue Quelle beendet die laufende genau zu ihrem Beginn, eine Lücke bleibt als Abschnitt ohne Quelle sichtbar; eine berechnete Messstelle braucht keinen Ort. Zwillinge: `services/api .../uems/MessstelleRegeln` und `frontend/portal/src/uemsMessstelle.ts` — noch ruft niemand an.
 
+**Woher die Werte kommen (Konzept Messen m1, Captain-Freigabe 05.10.2026).**
+Auf den Flächen unter Messen heißt die führende Quelle einer Messstelle „Woher die Werte kommen“; „Quelle“ bleibt das Fachwort im Aufklapper und in den Dialogen.
+Eine gemessene Messstelle hat einen von zwei gleichwertigen Wegen: „Automatisch von einem Gerät“ (ein Messwert einer Komponente, laufend, meist jede Viertelstunde) oder „Von Hand ablesen“ (Zählerstände, die jemand einträgt).
+In der Liste heißen sie „automatisch vom Gerät“ und „von Hand abgelesen, monatlich“; eine berechnete Messstelle ist „berechnet aus anderen Messstellen“, und ohne Weg steht „noch keine Quelle“, nie „Keine Datenquelle“.
+Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesung erinnert die Wiedervorlage; mit der ersten Ablesung entsteht die Ablesungsquelle, und nur eine Messstelle mit einem Zählerstand als Hauptgröße lässt sich ablesen.
+„Aus anderen Messstellen berechnet“ ist kein dritter Weg im Messstellen-Dialog: ein Summenwert entsteht an der Anlage, an der seine Messwerte liegen, und „Summenwert anlegen“ steht unter Messen nicht mehr (Konzept §6.10).
+Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
+Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).
+
 ## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
@@ -956,6 +965,14 @@ Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: 
 
 **Abgrenzung.** Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente.
 
+**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts).
+
 ## Einstufung
 
 *Sicht: Organisation · Nachtrag AP-16 §3.1, §4.1*
@@ -969,6 +986,15 @@ Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufu
 **Heute im Code.** Tabelle `energieeinsatz_einstufung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzEinstufungService.java` (AP-16 IP-11); Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-bewertung-einstufung.md`.
 
 **Abgrenzung.** Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt.
+
+**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts).
 
 ## Messbedarf
 
