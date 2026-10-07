@@ -418,7 +418,9 @@ export function energiemanagementBuehne(
         zeilen.push(verzeichnisZeile({
           gruppe: GRUPPE[d.art], art: d.art, kennzeichen: d.kennzeichen, titel: d.titel, nr: f.nr, entschieden_von: f.entschieden_von?.name ?? null,
           eingetragen_von: f.freigabe?.akteur.name ?? null, tag: f.entschieden_am, pruefsumme: verweis ? (f.verweis?.sha256 ?? null) : f.pruefsumme,
-          ort: verweis ? 'verweis' : d.beleg ? 'wortlaut_original_beim_kunden' : 'in_voltpilot', ablage: verweis ? (f.verweis?.ablage ?? null) : (d.beleg?.ablage ?? null),
+          // Entscheid 10 wie `DokumentVerzeichnis`: das Original der Fassung, sonst das am Dokument (Fassung 1).
+          ort: verweis ? 'verweis' : (f.original ?? d.beleg) ? 'wortlaut_original_beim_kunden' : 'in_voltpilot',
+          ablage: verweis ? (f.verweis?.ablage ?? null) : ((f.original ?? d.beleg)?.ablage ?? null),
         }) as EnergiemanagementVerzeichnisZeile);
       }
       for (const e of d.eintraege.filter((x) => x.art === 'bekannt_gemacht')) {

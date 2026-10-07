@@ -8,6 +8,7 @@ import {
   type EnergiemanagementDokument,
   type EnergiemanagementFassung,
   type EnergiemanagementFassungEntwerfen,
+  type EnergiemanagementPerson,
   type EnergiemanagementPersonKurz,
   type StandortAmStichtag,
 } from '../../api';
@@ -17,7 +18,6 @@ import * as N from '../../nachweisDokumente';
 import { useRollen } from '../../rollen';
 import { useIsPhone } from '../../useIsPhone';
 import { pruefsummeLokal } from '../../uemsMessmittel';
-import { PersonAnlegenDialog } from '../DokumentDialoge';
 import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { VpPicker } from '../VpPicker';
@@ -164,7 +164,7 @@ export function EntscheiderWahl({
         </Button>
       )}
       {anlegen && (
-        <PersonAnlegenDialog
+        <PersonAnlegenBlatt
           leitung={leitung}
           ab={tag}
           onClose={() => setAnlegen(false)}
@@ -176,6 +176,81 @@ export function EntscheiderWahl({
         />
       )}
     </>
+  );
+}
+
+/**
+ * Person anlegen (PA1), wahlweise mit der Aufgabe „Leitung des Unternehmens“ (PA3) - als Blatt, damit es über dem Blatt
+ * liegt, aus dem es kommt (am Telefon über einem Blatt von unten, am Rechner über dem Dialog). Zwei Routen (IP-6): erst
+ * die Person, dann die Aufgabe; schlägt die zweite fehl, bleibt die Person. Danach fragt das Blatt nur noch die Aufgabe
+ * ab und der Knopf sagt, was er tut (Befund A12): „Aufgabe zuordnen“, nicht noch einmal „Person anlegen“.
+ */
+export function PersonAnlegenBlatt({ leitung, ab, onClose, onAngelegt }: { leitung: boolean; ab: string; onClose: () => void; onAngelegt: (p: EnergiemanagementPerson) => void }) {
+  const basis = basisId('pa', useId());
+  const [e, setE] = useState<E.PersonEntwurf>({ name: '', funktion: '', kuerzel: '', organisation: '', leitung, leitungAb: ab, begruendung: '' });
+  const [fehler, setFehler] = useState<E.Feldfehler>({});
+  const [satz, setSatz] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [angelegt, setAngelegt] = useState<EnergiemanagementPerson | null>(null);
+  const setze = (t: Partial<E.PersonEntwurf>) => setE((alt) => ({ ...alt, ...t }));
+  async function senden() {
+    const r = E.personKoerper(e);
+    if ('fehler' in r) return setFehler(r.fehler ?? {});
+    setFehler({});
+    setBusy(true);
+    setSatz(null);
+    try {
+      const person = angelegt ?? (await api.energiemanagementPersonAnlegen(r.person)).person;
+      setAngelegt(person);
+      if (r.leitung) await api.energiemanagementAufgabeZuordnen({ ...r.leitung, person_id: person.id });
+      onAngelegt(person);
+    } catch (err) {
+      setSatz(E.ablehnungSatz(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <NwBlatt
+      open
+      titel={E.KNOPF_PERSON}
+      onClose={onClose}
+      testId="person-dialog"
+      fuss={<Fuss form={`${basis}-form`} primaer={angelegt ? 'Aufgabe zuordnen' : E.KNOPF_PERSON} busy={busy} sekundaer={ABBRECHEN} onSekundaer={onClose} testid="person-senden" />}
+    >
+      <BlattFormular id={`${basis}-form`} testid="person-form" onSenden={() => void senden()}>
+        {angelegt ? (
+          <HinweisZeile icon="check" titel={`${angelegt.name} ist angelegt`} zusatz="Es fehlt noch die Aufgabe." testid="person-angelegt" />
+        ) : (
+          <>
+            <NwTextfeld label="Name" wert={e.name} onWert={(name) => setze({ name })} fehler={fehler.name} hoechstens={200} testid="person-name" />
+            <NwTextfeld label="Funktion" wert={e.funktion} onWert={(funktion) => setze({ funktion })} platzhalter="zum Beispiel Geschäftsführer" fehler={fehler.funktion} hoechstens={200} testid="person-funktion" />
+            <NwTextfeld label="Kürzel · wahlfrei" wert={e.kuerzel} onWert={(kuerzel) => setze({ kuerzel })} fehler={fehler.kuerzel} hoechstens={10} testid="person-kuerzel" />
+            {/* Wo nur die Leitung entscheiden darf, steht die Aufgabe fest; sonst ist sie eine Wahl. */}
+            {!leitung && (
+              <AntwortKarten
+                label="Aufgabe"
+                optionen={[
+                  { wert: 'ja', titel: 'Leitet das Unternehmen' },
+                  { wert: 'nein', titel: 'Später zuordnen' },
+                ]}
+                wert={e.leitung ? 'ja' : 'nein'}
+                onWahl={(w) => setze({ leitung: w === 'ja' })}
+                testid="person-leitung"
+              />
+            )}
+          </>
+        )}
+        {e.leitung && (
+          <>
+            <VpDatePicker label="Ab" value={e.leitungAb || null} onChange={(leitungAb) => setze({ leitungAb })} error={fehler.leitungAb ?? null} />
+            <NwTextfeld label="Warum?" wert={e.begruendung} onWert={(begruendung) => setze({ begruendung })} mehrzeilig fehler={fehler.begruendung} hoechstens={500} testid="person-begruendung" />
+          </>
+        )}
+        <Ablehnung satz={satz} />
+        <GrenzSatz className="vp-nw-leise" verantwortung />
+      </BlattFormular>
+    </NwBlatt>
   );
 }
 
@@ -236,7 +311,7 @@ function DateiPruefen({ id, sha256, setze }: { id: string; sha256: string | null
 }
 
 /** Ein Original oder Verweis im Blatt: wo es liegt (Pflicht), Kennung, Stand vom, Datei prüfen. */
-function OrtFelder({ basis, wert, setze, mitStand, fehler }: { basis: string; wert: E.VerweisEntwurf; setze: (v: E.VerweisEntwurf) => void; mitStand: boolean; fehler?: string | null }) {
+export function OrtFelder({ basis, wert, setze, mitStand, fehler }: { basis: string; wert: E.VerweisEntwurf; setze: (v: E.VerweisEntwurf) => void; mitStand: boolean; fehler?: string | null }) {
   const teil = (t: Partial<E.VerweisEntwurf>) => setze({ ...wert, ...t });
   return (
     <>
@@ -250,7 +325,7 @@ function OrtFelder({ basis, wert, setze, mitStand, fehler }: { basis: string; we
   );
 }
 
-const belegAus = (v: E.VerweisEntwurf): EnergiemanagementBeleg | null =>
+export const belegAus = (v: E.VerweisEntwurf): EnergiemanagementBeleg | null =>
   v.ablage.trim() ? { ablage: v.ablage.trim(), bezeichnung: v.bezeichnung.trim() || null, kennung: v.kennung.trim() || null, adresse: v.adresse.trim() || null, sha256: v.sha256 } : null;
 
 const verweisEntwurf = (v: { bezeichnung?: string | null; ablage?: string | null; kennung?: string | null; adresse?: string | null; fassungsangabe?: string | null; datum?: string | null; sha256?: string | null } | null | undefined): E.VerweisEntwurf =>

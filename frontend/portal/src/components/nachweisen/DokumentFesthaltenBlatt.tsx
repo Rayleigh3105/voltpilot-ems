@@ -9,7 +9,7 @@ import { pruefsummeLokal } from '../../uemsMessmittel';
 import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { VpPicker } from '../VpPicker';
-import { EntscheiderWahl } from './DokumentBlaetter';
+import { belegAus, EntscheiderWahl, OrtFelder } from './DokumentBlaetter';
 import { NwBlatt } from './NwBlatt';
 import { AntwortKarten, PruefZeilen, SchrittAnzeige, WahlChips } from './NwSchritte';
 import { NwTextfeld } from './NwTextfeld';
@@ -64,6 +64,8 @@ export function DokumentFesthaltenBlatt({
   const [von, setVon] = useState('');
   const [tag, setTag] = useState('');
   const [begruendung, setBegruendung] = useState(ERSTE_BEGRUENDUNG);
+  const [mitOriginal, setMitOriginal] = useState(false);
+  const [original, setOriginal] = useState<E.VerweisEntwurf>(E.LEERER_VERWEIS);
   const [heute, setHeute] = useState<string | null>(null);
   const [vierAugen, setVierAugen] = useState<boolean | null>(null);
   const [personen, setPersonen] = useState<{ id: string; label: string; konto: string | null }[] | null>(null);
@@ -76,11 +78,12 @@ export function DokumentFesthaltenBlatt({
   const leitung = !!art && E.leitungsPflicht(art);
   const darfFreigeben = rollen.darf(E.RECHT_FREIGEBEN, null);
 
-  // „Heute“ ist der Tag der Route (die Überprüfung beim Abruf trägt ihn), dazu Vier-Augen und die Standorte.
+  // „Heute“ ist der Tag der Route (die Aufgaben antworten mit ihm, auch ohne ein einziges Dokument), dazu Vier-Augen
+  // und die Standorte.
   useEffect(() => {
     let aktiv = true;
-    api.energiemanagementDokumente().then(
-      (r) => aktiv && setHeute(r.dokumente.find((d) => d.ueberpruefung)?.ueberpruefung?.abruf ?? null),
+    api.energiemanagementAufgaben().then(
+      (r) => aktiv && setHeute(r.tag),
       () => undefined,
     );
     api.unternehmenVierAugen().then(
@@ -171,7 +174,9 @@ export function DokumentFesthaltenBlatt({
         setAngelegt(d);
       }
       if (freigeben) {
-        const koerper = { entschieden_von: von, entschieden_am: tag || null, begruendung: begruendung.trim() };
+        // Entscheid 10: das unterschriebene Original gehört zur Fassung - festgehalten mit ihrer Freigabe.
+        const orig = wo === 'wortlaut' && mitOriginal ? belegAus(original) : null;
+        const koerper = { entschieden_von: von, entschieden_am: tag || null, begruendung: begruendung.trim(), ...(orig ? { original: orig } : {}) };
         d = vierAugen ? await api.energiemanagementFassungBeantragen(d.id, 1, koerper) : await api.energiemanagementFassungFreigeben(d.id, 1, koerper);
       }
       onFertig(d);
@@ -324,6 +329,14 @@ export function DokumentFesthaltenBlatt({
                 <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} fehler={fehler.begruendung} hoechstens={500} testid="festhalten-begruendung" />
               </>
             )}
+            {weiter === 'freigeben' && darfFreigeben && wo === 'wortlaut' &&
+              (mitOriginal ? (
+                <OrtFelder basis={`${basis}-original`} wert={original} setze={setOriginal} mitStand={false} />
+              ) : (
+                <button type="button" className="vp-nw-aendern vp-nw-links" onClick={() => setMitOriginal(true)} data-testid="festhalten-original">
+                  Original festhalten
+                </button>
+              ))}
           </>
         )}
         {satz && (
