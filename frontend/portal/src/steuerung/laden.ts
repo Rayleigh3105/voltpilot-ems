@@ -79,6 +79,7 @@ export function ladeQuelle(g: GeraetBild): LadeQuelle | null {
  */
 export const FREIGABE_STUFE_TEXT: Record<string, string> = {
   frei: 'Der Speicher gibt gerade Energie für das Auto frei – nur was das Haus laut Prognose bis zur nächsten Sonne nicht braucht.',
+  frei_beobachtet: 'Die Box gibt gerade Speicherenergie für das Auto frei, nur was das Haus laut Prognose bis zur nächsten Sonne nicht braucht. VoltPilot steuert den Speicher dabei nicht, sondern beobachtet ihn: Sein Wechselrichter deckt die Wallbox selbst. Kommt dabei Strom aus dem Netz, nimmt die Box die Freigabe zurück.',
   an_der_grenze: 'Der Speicher steht an seiner Untergrenze – er bleibt für das Haus, das Auto lädt nur mit Sonnenstrom.',
   kein_plan: 'Ohne aktuellen Fahrplan gibt es keine Untergrenze – das Auto lädt nur mit Sonnenstrom, wie bei „Nur Sonne“.',
   plan_handelt: 'In dieser Viertelstunde nutzt der Fahrplan den Speicher selbst (Netzbezug oder Verkauf) – der Fahrplan geht vor, das Auto lädt nur mit Sonnenstrom.',
@@ -106,7 +107,9 @@ const kw1 = (v: number) => `${(Math.round(v * 10) / 10).toFixed(1)}`.replace('.'
  * entschieden); ohne ihre Meldung sagt der Fahrplan, bis wohin entladen werden
  * darf - ausdrücklich als Plan, nicht als Wirkung; ohne beides steht nur, was
  * die Quelle tut. Eine Meldung, die älter als das Live-Fenster ist
- * (`messwertAlter`), gilt nicht als aktuell.
+ * (`messwertAlter`), gilt nicht als aktuell. `frei_beobachtet` (07.10.2026)
+ * sagt dazu, dass VoltPilot den Speicher nicht steuert, sondern beobachtet -
+ * die Freigabe hängt dann an der Messung und der Wirkungsprüfung.
  *
  * @param gemeldet `ChargingBudget.reportedAt` - wann die Box zuletzt gemeldet hat
  */
@@ -125,6 +128,11 @@ export function speicherZeile(
   if (box?.mode === 'frei' && box.kw != null && floor != null) {
     return `Der Speicher gibt gerade bis ${kw1(box.kw)} frei und darf bis ${pct(floor)} entladen`
       + `${soc != null ? ` (jetzt ${pct(soc)})` : ''} – darüber braucht das Haus laut Prognose bis zur nächsten Sonne nichts.`;
+  }
+  if (box?.mode === 'frei_beobachtet' && box.kw != null && floor != null) {
+    return `Die Box gibt gerade bis ${kw1(box.kw)} aus dem Speicher frei, bis er bei ${pct(floor)} steht`
+      + `${soc != null ? ` (jetzt ${pct(soc)})` : ''}. VoltPilot steuert den Speicher dabei nicht, sondern beobachtet ihn:`
+      + ' Sein Wechselrichter deckt die Wallbox selbst. Kommt dabei Strom aus dem Netz, nimmt die Box die Freigabe zurück.';
   }
   if (box?.mode === 'an_der_grenze' && floor != null) {
     return `Der Speicher steht an seiner Untergrenze von ${pct(floor)} – er bleibt für das Haus, das Auto lädt nur mit Sonnenstrom.`;

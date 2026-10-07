@@ -101,9 +101,11 @@ public class ChargerStatusListener {
      * „Sonne + Speicher" (06.10.2026): die Stufen der Box
      * ({@code internal/lastmgmt/release.go}) samt der Gruende, die der
      * Fahrplan mitbringt ({@code ev_release_reason}). Ein Wort ausserhalb wird
-     * verworfen - dann meldet die Zeile gar keine Stufe.
+     * verworfen - dann meldet die Zeile gar keine Stufe. {@code frei_beobachtet}
+     * (07.10.2026): dieselbe Freigabe aus einem Speicher, den VoltPilot nicht
+     * steuert, sondern nur beobachtet.
      */
-    static final Set<String> RELEASE_MODES = Set.of("frei", "an_der_grenze", "kein_plan",
+    static final Set<String> RELEASE_MODES = Set.of("frei", "frei_beobachtet", "an_der_grenze", "kein_plan",
             "plan_handelt", "ladestand_unbekannt", "keine_messung", "speicherpfad", "bms_sperrt",
             "keine_leistung", "wirkung", "kein_ladestand", "speicher_gehalten",
             "prognose_veraltet", "nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet",

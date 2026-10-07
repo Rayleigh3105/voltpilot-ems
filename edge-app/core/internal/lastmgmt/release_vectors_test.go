@@ -24,6 +24,9 @@ type releaseVectors struct {
 			DeficitKw      float64  `json:"deficit_kw"`
 			Measured       bool     `json:"measured"`
 			BatteryReady   bool     `json:"battery_ready"`
+			// battery_observed: VoltPilot does not command the battery
+			// (Kapitän 07.10.2026); absent = false.
+			BatteryObserved bool `json:"battery_observed"`
 		} `json:"input"`
 		Expect struct {
 			Active       bool    `json:"active"`
@@ -55,7 +58,8 @@ func TestTheReleaseGateFollowsTheSharedVectors(t *testing.T) {
 			Now: base, PlanFresh: c.Input.PlanFresh, MaxDischargeKw: c.Input.MaxDischargeKw,
 			FloorPct: c.Input.FloorPct, CloudReason: c.Input.CloudReason, SocPct: c.Input.SocPct,
 			DeficitKw: c.Input.DeficitKw, Measured: c.Input.Measured,
-			BatteryReady: c.Input.BatteryReady, BmsDischargeKw: math.NaN(),
+			BatteryReady: c.Input.BatteryReady, BatteryObserved: c.Input.BatteryObserved,
+			BmsDischargeKw: math.NaN(),
 		}
 		v := g.Decide(in)
 		if v.Active != c.Expect.Active || v.StorageFirst != c.Expect.StorageFirst ||
@@ -68,7 +72,7 @@ func TestTheReleaseGateFollowsTheSharedVectors(t *testing.T) {
 func TestTheBoxModesAreTheSharedVocabulary(t *testing.T) {
 	v := loadReleaseVectors(t)
 	ours := map[string]bool{}
-	for _, m := range []ReleaseMode{ReleaseOff, ReleaseActive, ReleaseAtFloor, ReleaseNoPlan,
+	for _, m := range []ReleaseMode{ReleaseOff, ReleaseActive, ReleaseObserved, ReleaseAtFloor, ReleaseNoPlan,
 		ReleasePlanTrades, ReleaseSocUnknown, ReleaseNoMeasurement, ReleaseBatteryPath,
 		ReleaseBmsBlocks, ReleaseNoPower, ReleaseEffectLatch} {
 		ours[string(m)] = true

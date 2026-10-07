@@ -253,3 +253,116 @@ func TestBelowStorageIsAFreshReadingOfTheSameMeasurement(t *testing.T) {
 		t.Fatal("stale facts are no facts")
 	}
 }
+
+// --- the OBSERVED battery (Kapitän 07.10.2026) ------------------------------
+
+// observedBattery is ready() for a battery VoltPilot does not command: the
+// commanded path is not ready, the box only watches SoC and battery power.
+func observedBattery() ReleaseInput {
+	in := ready()
+	in.BatteryReady, in.BatteryObserved = false, true
+	return in
+}
+
+func TestAnObservedBatteryAboveItsFloorReleasesWithItsOwnSentence(t *testing.T) {
+	var g ReleaseGate
+	in := observedBattery()
+	in.DeficitKw = 1.2
+	v := g.Decide(in)
+	if !v.Active || v.Mode != ReleaseObserved || v.StorageFirst {
+		t.Fatalf("an observed battery releases: %+v", v)
+	}
+	near(t, "the same power as a commanded one: 5 kW minus the house", v.Kw, 3.8)
+	for _, want := range []string{"steuert den Speicher nicht", "beobachtet", "30 %", "80 %", "Netz"} {
+		if !strings.Contains(v.Reason, want) {
+			t.Fatalf("the sentence must say %q: %q", want, v.Reason)
+		}
+	}
+	in.RatedDischargeKw, in.BmsDischargeKw = 4, 3
+	near(t, "the BMS envelope binds the observed battery too", g.Decide(in).Kw, 1.8)
+}
+
+func TestAnObservedBatteryNeedsEveryMeasuredFact(t *testing.T) {
+	cases := map[string]struct {
+		mut  func(*ReleaseInput)
+		mode ReleaseMode
+	}{
+		"no battery the plan knows": {func(in *ReleaseInput) { in.MaxDischargeKw = nil }, ReleaseNoPlan},
+		"stale plan":                {func(in *ReleaseInput) { in.PlanFresh = false }, ReleaseNoPlan},
+		"the plan trades here":      {func(in *ReleaseInput) { in.FloorPct = nil }, ReleasePlanTrades},
+		"SoC unknown or stale":      {func(in *ReleaseInput) { in.SocPct = nil }, ReleaseSocUnknown},
+		"battery power not fresh":   {func(in *ReleaseInput) { in.Measured = false }, ReleaseNoMeasurement},
+		"BMS blocks":                {func(in *ReleaseInput) { in.BmsBlocked = true }, ReleaseBmsBlocks},
+		"house takes it all":        {func(in *ReleaseInput) { in.DeficitKw = 5 }, ReleaseNoPower},
+	}
+	for name, c := range cases {
+		var g ReleaseGate
+		in := observedBattery()
+		c.mut(&in)
+		v := g.Decide(in)
+		if v.Active || v.Kw != 0 || v.Mode != c.mode || v.Reason == "" {
+			t.Fatalf("%s: want inactive %q with a sentence, got %+v", name, c.mode, v)
+		}
+	}
+}
+
+func TestACommandedBatteryWithoutReadbackStaysBlocked(t *testing.T) {
+	// The regression the captain asked to keep: a battery VoltPilot drives
+	// but whose readback is missing is NOT observed - it follows the box's
+	// setpoint, not the house.
+	var g ReleaseGate
+	in := ready()
+	in.BatteryReady, in.BatteryNote = false, "VoltPilot steuert den Speicher, aber ohne bestätigte Rückmeldung"
+	v := g.Decide(in)
+	if v.Active || v.Mode != ReleaseBatteryPath || !strings.Contains(v.Reason, "ohne bestätigte Rückmeldung") {
+		t.Fatalf("speicherpfad expected: %+v", v)
+	}
+	// And a commanded, ready battery keeps its own word even if a stale
+	// observed flag came along.
+	in = ready()
+	in.BatteryObserved = true
+	if v := g.Decide(in); !v.Active || v.Mode != ReleaseActive {
+		t.Fatalf("a commanded battery stays „frei“: %+v", v)
+	}
+}
+
+func TestAnObservedBatteryStopsAtItsFloorWithTheSameHysteresis(t *testing.T) {
+	var g ReleaseGate
+	in := observedBattery()
+	in.SocPct = fp(32.5)
+	if v := g.Decide(in); !v.Active || v.Mode != ReleaseObserved {
+		t.Fatalf("2 points above the floor it starts: %+v", v)
+	}
+	in.SocPct = fp(31.0)
+	if !g.Decide(in).Active {
+		t.Fatal("once running it holds down to the off-margin")
+	}
+	in.SocPct = fp(30.4)
+	if v := g.Decide(in); v.Active || !v.StorageFirst || v.Mode != ReleaseAtFloor {
+		t.Fatalf("at floor + 0,5 the observed release stops and the battery comes first: %+v", v)
+	}
+}
+
+func TestAnObservedReleaseThatImportsIsWithdrawnForAQuarterHour(t *testing.T) {
+	var g ReleaseGate
+	in := observedBattery()
+	if v := g.Decide(in); v.Mode != ReleaseObserved {
+		t.Fatalf("precondition: %+v", v)
+	}
+	// The inverter does not cover the car (a forced mode, a hold, a ToU
+	// program): the site imports while the car draws released power.
+	if g.ObserveEffect(base, 5, 4.2, true) {
+		t.Fatal("the first import sample only starts the window")
+	}
+	if !g.ObserveEffect(base.Add(ReleaseEffectWindow+time.Second), 5, 4.2, true) {
+		t.Fatal("90 s of import while releasing latches the observed release off")
+	}
+	in.Now = base.Add(2 * time.Minute)
+	if v := g.Decide(in); v.Active || v.Mode != ReleaseEffectLatch {
+		t.Fatalf("latched: %+v", v)
+	}
+	in.Now = base.Add(ReleaseEffectWindow + ReleaseLatch + 2*time.Second)
+	if v := g.Decide(in); !v.Active || v.Mode != ReleaseObserved {
+		t.Fatalf("after the latch the observed release may try again: %+v", v)
+	}
+}

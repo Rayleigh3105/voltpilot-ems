@@ -2870,6 +2870,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	limitToLoad := marketCorrectionsAllowed && p.ActiveLimitDischargeToLoad(now)
 	economicUnplannedRequested := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
 	portableReady := false
+	// commanded: VoltPilot drives this battery at all (the control_enabled
+	// edge/setpoint carries). Only „Sonne + Speicher" reads it on its own.
+	commanded := false
 	// This additive economic permission belongs exclusively to an idle MARKET
 	// slot. The shared marketCorrectionsAllowed boundary above protects both it
 	// and the established cover_load_from_battery follower from every non-plan
@@ -2886,15 +2889,21 @@ func (a *Agent) applySetpoint(now time.Time) {
 			familyForIdle = a.inv.Family
 		}
 		a.invMu.Unlock()
-		portableReady = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
+		commanded = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle)
+		portableReady = commanded && readbackHealthy
 	}
 	economicUnplanned := economicUnplannedRequested && portableReady
 
 	// „SONNE + SPEICHER" (ocpp_release.go): tell the charge-point executor
 	// whether THIS path covers a vehicle's draw right now. Every hold reason
 	// the battery honours is a reason not to release - a battery that a rule
-	// holds, that runs its stale-plan fallback or that the box may not
-	// command would leave the car on grid power.
+	// holds or that runs its stale-plan fallback would leave the car on grid
+	// power, and so would a COMMANDED battery without a held readback: it
+	// follows the box's setpoint, not the house, and may sit in a forced
+	// charge. A battery the box does NOT command (no model/device approval)
+	// is OBSERVED instead (Kapitän 07.10.2026): its inverter covers the
+	// wallbox by itself, and the release rests on the measurement and the
+	// effect check.
 	switch {
 	case paused:
 		a.noteReleaseReadiness(now, false, "Die Steuerung des Speichers ist pausiert")
@@ -2904,9 +2913,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.noteReleaseReadiness(now, false, "Ohne aktuellen Fahrplan fährt der Speicher seinen Rückfall")
 	case !measurementFresh:
 		a.noteReleaseReadiness(now, false, "Die Messung des Wechselrichters ist nicht frisch")
+	case !portableReady && !a.Cfg.ControlEnabled:
+		// The global stop: the box writes nothing at all, the wallboxes hold
+		// their safety profile (ocppControlAllowed) - no release to speak of.
+		a.noteReleaseReadiness(now, false, "Die Steuerung ist an dieser Box abgeschaltet (Not-Aus)")
+	case !portableReady && commanded:
+		a.noteReleaseReadiness(now, false, "VoltPilot steuert den Speicher, aber ohne bestätigte Rückmeldung "+
+			"des Wechselrichters ist offen, was er gerade ausführt")
 	case !portableReady:
-		a.noteReleaseReadiness(now, false, "VoltPilot führt den Speicher gerade nicht (Steuerung "+
-			"abgeschaltet, für dieses Gerät nicht freigegeben oder ohne bestätigte Rückmeldung)")
+		// No model/device approval: control_enabled=false on edge/setpoint,
+		// Layer 1 writes nothing, the inverter regulates itself.
+		a.noteReleaseObserved(now)
 	default:
 		a.noteReleaseReadiness(now, true, "")
 	}
