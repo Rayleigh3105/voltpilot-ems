@@ -603,6 +603,63 @@ class BezugsbasisVergleichApiTest {
     }
 
     /**
+     * P4 je Monat (Entscheid 07.10.2026, Auswerten Befund 5): gilt die erste Fassung erst ab Dezember 2025, zählt der
+     * Kopf des Vergleichs Oktober 2025 bis März 2026 nur Dezember bis März. Oktober und November tragen Werte, aber keine
+     * Fassung - sie zählen weder als Null noch gegen die Fassung des März; Kopf und Zeilen sagen dasselbe. Liegt der
+     * ganze Zeitraum vor der ersten Fassung, ist kein Monat bewertbar, und der Satz sagt, ab wann sie gilt.
+     */
+    @Test
+    void derKopfZaehltNurMonateMitGeltenderFassung() throws Exception {
+        Welt w = welt();
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        TenantContext.set(w.mandant());
+        UUID bb = basis(w, w.ohneBasis());
+        TenantContext.clear();
+        fassung(w.mandant(), bb, 1, bz1, "verhaeltnis", "2024-10/2024-10", "2025-12-01", null, "0.2837", null, null,
+                null, null);
+
+        Antwort a = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2025-10&bis=2026-03");
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        JsonNode monate = a.body().get("monate");
+        assertThat(monate.get(0).at("/bereinigt/grund").asText()).isEqualTo("basis_fehlt");
+        assertThat(monate.get(1).at("/bereinigt/grund").asText()).isEqualTo("basis_fehlt");
+        JsonNode z = a.body().get("zeitraum");
+        // Σ Dezember bis März: 337 500 kWh gegen 0,2837 × 1 245 000 kg = 353 206,5 kWh (wie die Auswertung ab Geltung).
+        assertThat(zahl(z.get("gemessen"))).isEqualByComparingTo("337500");
+        assertThat(zahl(z.get("erwartet"))).isEqualByComparingTo("353206.5");
+        assertThat(z.get("delta_prozent").asText()).isEqualTo("-4.4");
+        assertThat(z.get("urteil").asText()).isEqualTo("besser");
+        assertThat(z.get("monate").asText()).isEqualTo("4 von 6");
+        assertThat(z.get("kennzeichen").toString()).contains("4 von 6 Monaten");
+        assertThat(z.get("satz").asText()).isEqualTo("Oktober 2025 bis März 2026: 4 von 6 Monaten bewertbar, die "
+                + "Bezugsbasis gilt erst ab Dezember 2025. 337 500 kWh gemessen, 353 207 kWh erwartet — 4,4 % weniger: "
+                + "besser (Summe über vier Monate). Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
+        // Kopf und Zeilen sagen dasselbe: dieselben Monate, dieselben Summen.
+        BigDecimal gemessen = BigDecimal.ZERO, erwartet = BigDecimal.ZERO;
+        int bewertbar = 0;
+        for (JsonNode m : monate) {
+            if (!m.at("/bereinigt/erwartet").isNull()) {
+                gemessen = gemessen.add(zahl(m.at("/bereinigt/gemessen/wert")));
+                erwartet = erwartet.add(zahl(m.at("/bereinigt/erwartet")));
+                bewertbar++;
+            }
+        }
+        assertThat(gemessen).isEqualByComparingTo(zahl(z.get("gemessen")));
+        assertThat(erwartet).isEqualByComparingTo(zahl(z.get("erwartet")));
+        assertThat(bewertbar + " von " + monate.size()).isEqualTo(z.get("monate").asText());
+
+        JsonNode vorher = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2025-10&bis=2025-11").body()
+                .get("zeitraum");
+        assertThat(vorher.get("urteil").asText()).isEqualTo("nicht_anwendbar");
+        assertThat(vorher.get("grund").asText()).isEqualTo("basis_fehlt");
+        assertThat(vorher.get("monate").asText()).isEqualTo("0 von 2");
+        assertThat(vorher.get("gemessen").isNull()).isTrue();
+        assertThat(vorher.get("satz").asText()).isEqualTo("Oktober 2025 bis November 2025: nicht bewertbar — kein Monat "
+                + "mit Vergleich. Die Bezugsbasis gilt erst ab Dezember 2025.");
+    }
+
+    /**
      * Review r3 (Aufwand je Kennzahl): die Auswertung der Liste lädt den Katalog des Mandanten einmal - nicht je Kennzahl
      * und je Dienst neu; ebenso die Leitkachel.
      */

@@ -311,7 +311,9 @@ public class BezugsbasisVergleich {
 
     /**
      * U5 mit P4: der Zeitraum ist eine Periode — er liest die Fassung am letzten Tag von {@code bis} und vergleicht jeden
-     * Monat gegen sie (Operation {@code zeitraum}).
+     * Monat gegen sie (Operation {@code zeitraum}). Ein Monat, für den an seinem letzten Tag keine Fassung gilt, zählt
+     * dabei nicht mit (Entscheid 07.10.2026, Auswerten Befund 5): Kopf und Zeilen sagen dasselbe, der Satz nennt die
+     * übrigen Monate und, wenn sie alle davor liegen, ab wann die Bezugsbasis gilt.
      */
     private BezugsbasisVergleichDto.Zeitraum zeitraum(YearMonth von, YearMonth bis, LocalDate heute,
             Map<String, KennzahlDto.Wert> jeMonat, Einheiten einheiten, Basis basis, List<FassungZeile> fassungen,
@@ -320,21 +322,37 @@ public class BezugsbasisVergleich {
         FassungZeile f = fassungAm(fassungen, letzter);
         List<BezugsbasisRegeln.Monat> monate = new ArrayList<>();
         int soll = 0;
+        int mitFassung = 0;
+        YearMonth erster = null;
+        boolean ohneNachErstem = false;
         for (YearMonth m = von; !m.isAfter(bis); m = m.plusMonths(1)) {
             soll++;
+            boolean ohne = fassungAm(fassungen, m.atEndOfMonth()) == null;
+            if (!ohne) {
+                mitFassung++;
+                erster = erster == null ? m : erster;
+            } else if (erster != null) {
+                ohneNachErstem = true;
+            }
             KennzahlDto.Wert w = jeMonat.get(m.toString());
-            List<BezugsbasisRegeln.Wert> b = f == null ? List.of()
+            List<BezugsbasisRegeln.Wert> b = f == null || ohne ? List.of()
                     : bedingung(f, m, w, einheiten, variablen).stream().map(Variablenwert::wert).toList();
-            monate.add(new BezugsbasisRegeln.Monat(m.atEndOfMonth().isBefore(heute), gemessen(w), b));
+            monate.add(new BezugsbasisRegeln.Monat(m.atEndOfMonth().isBefore(heute), gemessen(w), b, ohne));
         }
         Map<String, Object> e = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(
                 f == null ? null : f.regel(), f == null && beendet(basis, fassungen, letzter), soll, monate));
         String vonText = KennzahlRegeln.periodeText("monat", von.toString());
         String bisText = KennzahlRegeln.periodeText("monat", bis.toString());
+        // Ab wann die Basis gilt: der erste Monat mit Fassung, wenn alle ohne vor ihm liegen; ohne einen im Zeitraum die
+        // erste Fassung danach.
+        YearMonth ab = mitFassung == soll || ohneNachErstem ? null : erster != null ? erster
+                : fassungen.stream().map(FassungZeile::giltAb).filter(d -> d.isAfter(letzter)).min(LocalDate::compareTo)
+                        .map(YearMonth::from).orElse(null);
         return new BezugsbasisVergleichDto.Zeitraum(f == null ? null : f.fassung(), (String) e.get("gemessen"),
                 (String) e.get("erwartet"), (String) e.get("delta_prozent"), (String) e.get("band_prozent"),
                 (String) e.get("richtung"), (String) e.get("urteil"), (String) e.get("grund"), (String) e.get("monate"),
-                kennzeichen(e), BezugsbasisVergleichSatz.zeitraum(e, vonText, bisText, einheiten.zaehler(), soll));
+                kennzeichen(e), BezugsbasisVergleichSatz.zeitraum(e, vonText, bisText, einheiten.zaehler(), soll,
+                        mitFassung, ab == null ? null : KennzahlRegeln.periodeText("monat", ab.toString())));
     }
 
     /**

@@ -32488,7 +32488,10 @@ components:
         zustand: { type: string, nullable: true }
     BezugsbasisVergleichZeitraum:
       type: object
-      description: Operation `zeitraum` (U5) gegen die Fassung am letzten Tag von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel.
+      description: >
+        Operation `zeitraum` (U5) gegen die Fassung am letzten Tag von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel.
+        Ein Monat, für den an seinem letzten Tag keine Fassung gilt, zählt nicht mit (P4 je Monat, Entscheid 07.10.2026):
+        Zahl und Urteil stehen über die Monate mit Fassung, `monate` nennt „x von y“ über alle Monate des Zeitraums.
       required: [fassung, gemessen, erwartet, delta_prozent, band_prozent, richtung, urteil, grund, monate, kennzeichen, satz]
       properties:
         fassung: { type: integer, nullable: true }
