@@ -161,7 +161,8 @@
     "unterstuetzung",
     "entzug",
     "aenderung",
-    "vieraugen"
+    "vieraugen",
+    "verantwortung"
   ],
   "abnahmefaelle": [
     "A1",
@@ -16426,6 +16427,806 @@
           "export_kopfzeile": null,
           "unternehmensweite_objekte": true
         }
+      }
+    },
+    {
+      "name": "e8-murat-meldet-eigene-massnahme",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Entscheid 8: Murat Demirci ist bedienberechtigt in Werk Ahrenberg und verantwortlich für die Maßnahme - ohne verbesserung.verwalten meldet er SIE über verbesserung.eigene_massnahme (BD S).",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "MD"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "bedienberechtigt",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "e8-murat-fremde-massnahme-403",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Eng gefasst: eine Maßnahme von Ines Kaltenbach meldet Murat nicht - es bleibt die Ablehnung von verbesserung.verwalten mit der nötigen Rolle.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "IK"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "e8-murat-eigene-in-werk-lindach-404",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Geltungsbereich vor Aktion: auch als Verantwortlicher sieht Murat in Werk Lindach nichts - 404, die Existenz wird nicht bestätigt.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "MD"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
+      "name": "e8-murat-eigene-am-unternehmen-403",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Eine Maßnahme am Unternehmen braucht ein unternehmensweites Recht; die Standort-Zelle S von Murat trägt sie nicht - die Ablehnung von verwalten bleibt.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "MD"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "e8-claudia-leserin-meldet-eigene",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Leser S: Claudia Brandt ist Leserin in beiden Werken und verantwortlich - sie meldet ihre Maßnahme in Werk Lindach.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "CB"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "leser",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "e8-robert-einsicht-nie-ein-eintrag",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Einsicht nie ein Eintrag (AP-19 RE3): auch als Verantwortlicher meldet Robert Fink nichts - es bleibt die Ablehnung von verbesserung.verwalten, am Standort wie dort 404.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "RF"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
+      "name": "e8-brunner-unterstuetzer-nie",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Unterstützer -: Thomas Brunner meldet keine Maßnahme, auch als eingetragener Verantwortlicher - es bleibt die Ablehnung von verbesserung.verwalten (404).",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "TB"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
+      "name": "e8-ines-fremde-ueber-verwalten",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Wer verwaltet, braucht die Verantwortung nicht: Ines Kaltenbach (Energiemanagerin) meldet die Maßnahme von Murat über verbesserung.verwalten.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "MD"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "e8-peter-bearbeiter-fremde-in-lindach",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Bearbeiter S verwaltet ohnehin: Peter Hollerbach meldet in Werk Lindach auch eine fremde Maßnahme.",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "verantwortlich": "IK"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "e8-murat-nach-entzug-bleibt-leser",
+      "familie": "verantwortung",
+      "ableitung": "eigene_massnahme",
+      "abnahme": null,
+      "why": "Nach dem Entzug von Bedienberechtigt bleibt Murat Leser in Werk Ahrenberg - als Verantwortlicher meldet er seine Maßnahme weiter (LE S).",
+      "annahme": "Die verantwortliche Person steht nicht in der Referenzdatei; sie ist eine Eigenschaft der Maßnahme (AP-18).",
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": "2026-11-14T09:02:00+01:00"
+            },
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-20T10:00:00+01:00",
+        "verantwortlich": "MD"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "leser",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "e8-darf-murat-zelle-bedienberechtigt",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Die Zelle allein: Bedienberechtigt S trägt verbesserung.eigene_massnahme in Werk Ahrenberg (ob die Maßnahme seine ist, prüft eigene_massnahme).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "verbesserung.eigene_massnahme",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "bedienberechtigt",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "e8-darf-brunner-unterstuetzer-nie",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Unterstützer -: verbesserung.eigene_massnahme ist keine Arbeit an der Anlage.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "verbesserung.eigene_massnahme",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
       }
     }
   ]

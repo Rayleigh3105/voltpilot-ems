@@ -11,6 +11,10 @@ export interface ModalProps {
   icon?: React.ReactNode;
   /** Optional footer (action buttons, right-aligned). */
   footer?: React.ReactNode;
+  /** Am Telefon ein Blatt von unten (Höhe nach Inhalt, Griff, Hauptknopf zuerst) statt Vollbild. */
+  blatt?: boolean;
+  /** Am Rechner 840 px breit statt 640 px. */
+  breit?: boolean;
   children?: React.ReactNode;
 }
 

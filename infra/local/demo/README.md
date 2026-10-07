@@ -64,6 +64,7 @@ Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf ei
   Genau diese eine Zeile entfernt der `sed` oben.
 - Die API vom Host: `POSTGRES_JDBC_URL` auf die Kopie setzen (der Vorgabewert ist die Demo-Datenbank), `MQTT_BROKER_URL` und `KEYCLOAK_ADMIN_BASE_URL` auf einen toten Port, alle `VOLTPILOT_*_MQTT_LISTENER_ENABLED=false` (der Status-Zuhörer der Datenquellen steht sonst auf `true`), `OIDC_ISSUER_URI=http://localhost:8081/realms/voltpilot` mit den Schlüsseln von dort, `VOLTPILOT_PRUEFUMGEBUNG_BUEHNEN_UHR` wie die Demo.
 - Das Portal mit `VITE_API_BASE=` bauen und mit der CSP des Demo-Portals ausliefern; im Test-Browser `http://localhost:5173/**` umleiten (die Anmeldung bei Keycloak bleibt gültig): `/api/` an die eigene API, alles andere an die eigene Vorschau.
+  Chromium ab 151 hält umgeleitete Antworten für öffentlich und blockt das Keycloak-iframe (`3p-cookies`, `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS`): mit `--disable-features=LocalNetworkAccessChecks` starten, die CSP bleibt dabei echt. `vite preview` lauscht nur auf `localhost` (IPv6) - dorthin umleiten, nicht auf `127.0.0.1`.
 
 ## Fallen
 

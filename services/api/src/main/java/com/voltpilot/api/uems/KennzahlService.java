@@ -555,6 +555,29 @@ public class KennzahlService {
                 g.standort() == null ? null : g.standort().toString(), jetzt, KennzahlAbgelehnt::rechte);
     }
 
+    /**
+     * Verbessern v1 Entscheid 8: umgesetzt melden und kommentieren mit {@code verbesserung.verwalten} oder als
+     * verantwortliche Person ({@link RechteAbleitung#eigeneMassnahme}) am Rechte-Geltungsbereich {@code g} - 403
+     * {@code recht_fehlt} bzw. 404 wie {@link #darf}.
+     */
+    void darfEigeneMassnahme(ProtokollAkteur wer, Geltung g, Instant jetzt, String verantwortlich) {
+        RechteAbleitung.Kundenbereich k = new RechteAbleitung.Kundenbereich("Kundenbereich",
+                repo.standorte().stream().map(s -> new RechteAbleitung.Standort(s.id().toString(), s.name())).toList(),
+                List.of());
+        RechteAbleitung.DarfErgebnis d = Geltungsbereich.eigeneMassnahme(aufrufer.benutzer(wer), k,
+                g.standort() == null ? null : g.standort().toString(), jetzt, verantwortlich);
+        if (!d.darf()) {
+            throw KennzahlAbgelehnt.rechte(d);
+        }
+    }
+
+    /** Wie {@link #fuerBezugsbasis} mit Recht: die Kennzahl lesbar (404), dann {@link #darfEigeneMassnahme} an ihrer Geltung. */
+    void eigeneMassnahmeAnKennzahl(UUID id, ProtokollAkteur wer, String verantwortlich) {
+        Zeile k = lesbar(katalog(), id);
+        Instant jetzt = jetzt();
+        darfEigeneMassnahme(wer, geltungVon(k, jetzt), jetzt, verantwortlich);
+    }
+
     // ================================================================================ Bezugsbasis (AP-17 IP-17)
 
     /** Die Kennzahl, wenn der Aufrufer sie sieht, sonst {@code null} (Übersicht: eine unsichtbare Basis zählt nicht). */

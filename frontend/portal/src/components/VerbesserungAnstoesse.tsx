@@ -2,7 +2,6 @@ import { useId, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import type { VorgangAnstoss, VorgangAnstossAntwortArt } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE } from '../glossar';
 import * as W from '../massnahmeWirkung';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
 import { Recht } from './Recht';
@@ -44,7 +43,6 @@ function Beibehalten({ onSenden, onAbbrechen }: { onSenden: (begruendung: string
     <form className="vp-ez-form" noValidate onSubmit={(e) => void senden(e)} data-testid="anstoss-beibehalten-form">
       <Begruendung id={id} wert={text} setze={setText} fehler={fehler} />
       <Ablehnung satz={satz} />
-      <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       <div className="vp-ez-aktionen">
         <Button type="submit" size="sm" disabled={busy} data-testid="anstoss-beibehalten-senden">
           {W.ANTWORT_KNOPF.bleibt}
