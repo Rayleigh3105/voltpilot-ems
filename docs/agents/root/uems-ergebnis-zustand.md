@@ -21,8 +21,10 @@ mit `ergebnis-zustand-vectors.json` und Schema.
   heute sprechen: 17 Muster mit Platzhaltern, Wort, Rang, Fehlbestand. Ein Satz ist genau dann ein
   Kennzeichen, wenn er auf genau EIN Muster passt — auch eine gut gemeinte Umformulierung ist ein
   unbekannter Satz. Ein geänderter Wortlaut ist eine neue Fassung: der alte kommt nach
-  `fruehere_fassungen` (erkannt, nie mehr gesprochen), weil er schon gespeichert ist. Die übrigen Vokabular-Wörter (nachgeliefert,
-  Ablesezeitraum) sind `kennzeichen_vorgesehen`: ihren Wortlaut legt das erzeugende Paket fest. Seit 1.4 ist „mit Ersatzwert (Methode „{methode}“, {kennung})“
+  `fruehere_fassungen` (erkannt, nie mehr gesprochen), weil er schon gespeichert ist. Das übrige Vokabular-Wort (nachgeliefert) ist
+  `kennzeichen_vorgesehen`: seinen Wortlaut legt das erzeugende Paket fest. Seit 1.13 ist „Ablesezeitraum {von} – {bis}
+  (Zuordnung durch den Kunden)“ aktiv (Rang 60, `tag_uhr`, nicht einmalig) samt „Ablesezeitraum ohne Monatszuordnung“;
+  vorher zeigte jede Karte eines Ablesezählers „—“; ein Ablese-Jahr mit fehlenden Monaten sagt es mit I2 (`uems-ablesungen.md`). Seit 1.4 ist „mit Ersatzwert (Methode „{methode}“, {kennung})“
   aktiv — Rang 70, Methodenname in Kundensprache (`uems-ersatzwert-methoden.md`). Seit 1.5 ist „korrigiert (Version
   {version})“ aktiv — Rang 80, Version ≥ 2, kein Datum; gesprochen von der Korrektur-Kaskade (`uems-korrektur-kaskade.md`).
   Seit 1.6 steht die Herkunft der Menge am Zustandswort („vollständig (Menge aus Zählerständen)“,
