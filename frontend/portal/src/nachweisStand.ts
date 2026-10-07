@@ -10,10 +10,13 @@
  * wartet, eine Frist ist abgelaufen. Gezählt wird nur, was offen oder überfällig ist (Entscheid 3, G4): nie eine Zahl über
  * das Ganze, nie ein Urteil - ein festgehaltener Teil ist festgehalten, nicht „erfüllt“.
  */
-import type { EnergiemanagementDokumentKurz, EnergiemanagementTeilVermerk, EnergiemanagementVerzeichnis } from './api';
+import type { EnergiemanagementDokumentKurz, EnergiemanagementTeilVermerk, EnergiemanagementVerzeichnis, Selbstauskunft } from './api';
+import { darfAnsehen as darfBewertungSehen } from './bewertung';
+import { darfAnsehen as darfVerbesserungSehen } from './energieziele';
 import { artFilterSprung, seitenSprung, type Sprung } from './entscheid';
 import { VOKABULARE, WOERTER } from './energiemanagement';
 import { dokumentRoute, energiemanagementRoute, pageRoute, verbesserungRoute, type Route } from './nav';
+import { ANSEHEN as KENNZAHLEN_ANSEHEN } from './uemsKennzahl';
 import { arbeitsliste, berichtName, standTag, type Eintrag, type Wiedervorlage, type WiedervorlageArt } from './wiedervorlage';
 
 // ------------------------------------------------------------------ Teile und Gruppen
@@ -103,6 +106,19 @@ const TEIL_ORT: Readonly<Record<string, Route>> = {
   berichte: pageRoute('portfolio-berichte'),
 };
 
+type Rechte = Pick<Selbstauskunft, 'standorte' | 'unternehmen_rechte'>;
+
+/**
+ * Die Orte außerhalb des Energiemanagements, die ein eigenes Recht zum Ansehen brauchen (Review Nachweisen r1, P1-5):
+ * dieselben Rechte, mit denen die Navigation diese Bereiche zeigt (`ebenenNav.ebenenBereiche`) bzw. die Route der
+ * Kennzahlen liest. Unbekannte Rechte (ohne Selbstauskunft) sind nein.
+ */
+const ORT_RECHT: Readonly<Record<string, (s: Rechte | null | undefined) => boolean>> = {
+  energetische_bewertung: darfBewertungSehen,
+  bezugsbasen: (s) => !!s && (s.unternehmen_rechte.includes(KENNZAHLEN_ANSEHEN) || s.standorte.some((st) => st.rechte.includes(KENNZAHLEN_ANSEHEN))),
+  massnahmen: darfVerbesserungSehen,
+};
+
 // ------------------------------------------------------------------ Wörter
 
 export const TEILE_OFFEN = 'Teile offen';
@@ -154,6 +170,8 @@ export interface TeilStand {
   dokumentArt: string | null;
   /** Wo der Teil lebt: das eine Dokument, die Liste der Dokumente oder die Fläche, auf der er entsteht. */
   ort: Route;
+  /** Darf die Person diesen Ort sehen? Sonst führt nichts dorthin (die Seite hätte für sie keinen Inhalt). */
+  ortSichtbar: boolean;
   /** Der Sprung eines überfälligen Teils: die eine Frist mit offenem Entscheid, sonst die Wiedervorlage nach Art. */
   fristSprung: Sprung | null;
 }
@@ -187,9 +205,11 @@ export interface NachweisStand {
 export interface NachweisEingang {
   verzeichnis: EnergiemanagementVerzeichnis;
   dokumente: readonly EnergiemanagementDokumentKurz[];
-  /** Ohne Wiedervorlage (Ladefehler) gibt es keine Fristen - sie werden nicht geraten. */
+  /** Ohne Wiedervorlage (Ladefehler) gibt es keine Fristen - sie werden nicht geraten, und es gibt kein „Als Nächstes“. */
   wiedervorlage: Wiedervorlage | null;
   vermerke: readonly EnergiemanagementTeilVermerk[];
+  /** Die Rechte der Person aus `/me`: sie entscheiden, wohin ein Teil führt (`ortSichtbar`). */
+  rechte?: Rechte | null;
 }
 
 /** Der Fakt eines Teils: nur das Besondere bekommt ein Wort (§0.3 Regel 3). */
@@ -220,18 +240,24 @@ export function nachweisStand(e: NachweisEingang): NachweisStand {
   const fristTeil = (x: Eintrag): string | null =>
     x.art === 'dokument_ueberpruefung' ? (ART_TEIL[dokumentArt.get(x.kennzeichen) ?? ''] ?? null) : FRIST_TEIL[x.art] ?? null;
 
+  // Ein aufgehobenes Dokument hält seinen Teil nicht mehr fest: seine Zeilen bleiben im Verzeichnis (dort ist es
+  // Geschichte), zählen hier aber nicht (Review Nachweisen r1, P1-8).
+  const aufgehoben = new Set(e.dokumente.filter((d) => d.zustand === 'aufgehoben').map((d) => d.kennzeichen));
   const zeilenJeTeil = new Map<string, string[]>();
   for (const g of e.verzeichnis.gruppen) {
     for (const z of g.zeilen) {
       const teil = teilDerZeile(z);
-      if (!teil) continue;
+      if (!teil || aufgehoben.has(z.kennzeichen)) continue;
       const tage = zeilenJeTeil.get(teil) ?? [];
       tage.push(z.tag ?? '');
       zeilenJeTeil.set(teil, tage);
     }
   }
   const geltend = new Map(e.vermerke.filter((v) => !v.aufgehoben).map((v) => [v.teil, v]));
-  const ueberAlle = liste ? liste.ueberfaellig.filter((x) => fristTeil(x) !== null) : [];
+  // EINE Menge für den Zähler „Fristen überfällig“, sein Blatt und „Als Nächstes“: was einen Teil hat und was aus
+  // Nachweisen selbst kommt (die Überprüfung eines Vorgehens etwa hat keinen Teil). Zwei Mengen widersprachen sich:
+  // „Keine Frist überfällig“ neben einer Frist im Warnton (Review Nachweisen r1, P1-3).
+  const ueberAlle = liste ? liste.ueberfaellig.filter((x) => fristTeil(x) !== null || x.bereich === 'nachweisen') : [];
 
   const teile: TeilStand[] = VOKABULARE.teil.map((teil) => {
     const art = TEIL_DOKUMENT_ART[teil] ?? (teil === 'aufgaben' ? 'bestellung' : null);
@@ -257,13 +283,15 @@ export function nachweisStand(e: NachweisEingang): NachweisStand {
       vermerk,
       dokumentArt: TEIL_DOKUMENT_ART[teil] ?? null,
       ort,
+      ortSichtbar: ORT_RECHT[teil]?.(e.rechte) ?? true,
       fristSprung,
     };
   });
   const jeTeil = new Map(teile.map((t) => [t.teil, t]));
   const gruppen = TEIL_GRUPPEN.map((g) => ({ key: g.key, wort: g.wort, teile: g.teile.map((t) => jeTeil.get(t)!) }));
 
-  const naechstes = alsNaechstes(e, liste, teile);
+  // Ohne Wiedervorlage ist unbekannt, ob etwas überfällig ist - dann steht kein nächster Schritt da (P1-2).
+  const naechstes = liste ? alsNaechstes(e, ueberAlle, teile) : null;
   const kommend = liste ? [...liste.bald, ...liste.jahresplan].filter((x) => x.bereich === 'nachweisen') : [];
   const demnaechst = kommend.filter((x) => !(naechstes?.art === 'frist' && naechstes.eintrag.key === x.key));
 
@@ -279,14 +307,28 @@ export function nachweisStand(e: NachweisEingang): NachweisStand {
 }
 
 /**
+ * Wohin ein Teil führt, für eine Person (Review Nachweisen r1, P1-4/P1-5): ein überfälliger zur Frist, ein offener ins
+ * Festhalten - aber nur, wer das Energiemanagement bearbeitet; ein Teil mit Vermerk ins Blatt des Vermerks (lesen
+ * dürfen alle, aufheben nur mit Recht); sonst an seinen Ort, wenn die Person ihn sehen darf. `null`: nichts zu öffnen.
+ */
+export type TeilZiel = 'frist' | 'festhalten' | 'vermerk' | 'ort';
+
+export function teilZiel(t: TeilStand, darfFesthalten: boolean): TeilZiel | null {
+  if (t.zustand === 'ueber' && t.fristSprung) return 'frist';
+  if (t.zustand === 'offen' && darfFesthalten) return 'festhalten';
+  if (t.vermerk) return 'vermerk';
+  return t.ortSichtbar ? 'ort' : null;
+}
+
+/**
  * „Als Nächstes“ (§6.3, Regel der ersten Fassung): zuerst das am längsten Überfällige aus Nachweisen selbst (Bericht,
  * Dokument, Audit, Managementbewertung, Feststellung), dann ein wartender Entwurf, dann der erste offene Teil. Was die
  * Nachbarn schulden (Bezugsbasen in Auswerten, Maßnahmen in Verbessern), steht im Warnton an seinem Teil und führt
  * dorthin, wo es erledigt wird. Ist nichts offen und nichts überfällig, steht nichts da - die nächste Frist zeigt
  * „Demnächst“.
  */
-function alsNaechstes(e: NachweisEingang, liste: ReturnType<typeof arbeitsliste> | null, teile: TeilStand[]): AlsNaechstes | null {
-  const frist = liste?.ueberfaellig.find((x) => x.bereich === 'nachweisen');
+function alsNaechstes(e: NachweisEingang, ueberfaellig: readonly Eintrag[], teile: TeilStand[]): AlsNaechstes | null {
+  const frist = ueberfaellig.find((x) => x.bereich === 'nachweisen');
   if (frist) {
     const zeile = e.wiedervorlage?.faellig.find((z) => z.art === frist.art && z.kennzeichen === frist.kennzeichen);
     const titel = frist.art === 'bericht_anstoss' && zeile ? `${berichtName(zeile)} entscheiden` : frist.aufgabe;
