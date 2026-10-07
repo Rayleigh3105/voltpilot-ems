@@ -140,6 +140,9 @@ AW (so kopiert ihn das Produkt, die Prüfsummen stimmen überein).
 schaltet die Naht ab (`voltpilot.uems.verbesserung.enabled=false`, so der Demo-Rundgang) und vermerkt danach mit
 `new VerbesserungNaht(…).vermerken(con, tenant, werte, tagDesLaufs)`; läuft daneben eine API mit eingeschalteter Naht,
 vermerkt sie mit ihrer Bühnen-Uhr (`demo.sh rundgang` startet die Demo-API darum mit
-`VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false` neu, danach wieder mit Naht). Nachweis:
+`VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false` neu, danach wieder mit Naht).
+⚠ **„0 Anlässe“ heißt nicht „leer“:** `KorrekturKaskade#lauf` nimmt die Sperre `uems-kaskade:<tenant>` nur per
+`pg_try_advisory_xact_lock`; hält sie eine zweite Instanz (die Demo-API), überspringt der Lauf alles. Leer ist die Kaskade
+erst bei `KorrekturKaskade#offen(tenant) == 0` (dieselbe Auswahl wie der Lauf, nur lesend). Nachweis:
 `UemsEnergiemanagementAbnahmeTest#verlaeufeUndAuffaelligkeitenWieDieReferenz`, `DemoVerbessernReferenz` (bricht ab, wenn
 KZ-0004 in anderen Monaten als 12/2027, 07/2028, 03/2029 „schlechter“ liegt oder ein Vermerk einen anderen Tag trägt).

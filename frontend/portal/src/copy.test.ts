@@ -3343,12 +3343,13 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
    * Konzept Verbessern v1 §8.2 „Kennzeichen statt Name“ (Regel V6, Zusage aus PR 4): eine Überschrift und ein
    * Dialogtitel beginnen mit dem Namen des Vorgangs, das Kennzeichen (EZ-, M-, AW-) steht danach - nie vorn.
    */
+  // `title` am Modal, `titel` als Prop eines Rahmens (AbweichungDialoge) oder als Konstante davor.
   const KENNZEICHEN_VORN = [
     /<h1\b[^>]*>\s*(?:\{[^{}]*\bkennzeichen\b[^{}]*\}|(?:EZ|M|AW)-)/u,
-    /\btitle=\{\s*(?:[\w.?]*\.)?kennzeichen\b/u,
-    /\btitle=\{\s*`\$\{[^{}]*\bkennzeichen\b/u,
-    /\btitle="(?:EZ|M|AW)-/u,
-    /\btitel\s*=\s*`\$\{[^{}]*\bkennzeichen\b/u,
+    /\b(?:title|titel)=\{\s*(?:[\w.?]*\.)?kennzeichen\b/u,
+    /\b(?:title|titel)=\{\s*`\$\{[^{}]*\bkennzeichen\b/u,
+    /\b(?:title|titel)="(?:EZ|M|AW)-/u,
+    /\b(?:title|titel)\s*=\s*`\$\{[^{}]*\bkennzeichen\b/u,
   ];
   const kennzeichenVorn = (code: string) => KENNZEICHEN_VORN.some((re) => re.test(code));
   it('Überschrift und Dialogtitel beginnen mit dem Namen, nie mit dem Kennzeichen', () => {
@@ -3363,6 +3364,9 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       '<Modal open title={`${m.kennzeichen} umgesetzt melden`} onClose={zu}>',
       '<Modal open title="AW-2028-0001 abschließen" onClose={zu}>',
       'const titel = `${ez.kennzeichen} bewerten`;',
+      '<Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_AUSSAGE}`} basis={basis}>',
+      '<Rahmen titel={`${abweichung.kennzeichen} ${A.KNOPF_ABSCHLIESSEN}`} basis={basis}>',
+      '<Rahmen titel={abweichung.kennzeichen} basis={basis}>',
     ]) {
       expect(kennzeichenVorn(probe), probe).toBe(true);
     }
@@ -3371,6 +3375,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       '<h1>{A.abweichungTitel(a)} <span className="vp-abw-kz">{a.kennzeichen}</span></h1>',
       'title={`${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEENDEN}`}',
       'const titel = `${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEWERTEN}`;',
+      '<Rahmen titel={A.KNOPF_AUSSAGE} abweichung={abweichung} basis={basis}>',
     ]) {
       expect(kennzeichenVorn(gut), gut).toBe(false);
     }

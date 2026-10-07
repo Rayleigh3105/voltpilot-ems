@@ -296,9 +296,19 @@ public class KorrekturKaskade {
         }
     }
 
+    /**
+     * Wie viele Anlässe eines Kundenbereichs noch offen sind - dieselbe Auswahl wie der Lauf, nur lesend und ohne
+     * Sperre. Ein Lauf, der die Sperre des Kundenbereichs nicht bekommt ({@code pg_try_advisory_xact_lock}), meldet 0
+     * Anlässe, obwohl welche offen sind; wer wissen muss, dass die Kaskade wirklich leer ist (der Demo-Aufbau, bevor er
+     * Auffälligkeiten mit ihrem Tag vermerkt), fragt hier.
+     */
+    public int offen(UUID tenant) {
+        return inTransaktion(con -> kandidaten(con, beendete.sqlFeld(), tenant, Integer.MAX_VALUE).size());
+    }
+
     /** Einen Anlass verarbeiten — {@code null}, wenn es keine Arbeit gibt. */
     private Zug einen(Connection con, Instant jetzt) throws SQLException {
-        for (Anlass a : kandidaten(con, beendete.sqlFeld())) {
+        for (Anlass a : kandidaten(con, beendete.sqlFeld(), null, KANDIDATEN)) {
             if (!sperre(con, "uems-kaskade:" + a.tenant(), false)) {
                 continue;
             }
@@ -330,7 +340,8 @@ public class KorrekturKaskade {
      * ({@code bezugsgroesse_stammdatum:<ID>}, Fassung = der wievielte Eintrag) — jeweils weiter als ihre Wirkung, älteste
      * zuerst.
      */
-    private static List<Anlass> kandidaten(Connection con, String[] beendet) throws SQLException {
+    private static List<Anlass> kandidaten(Connection con, String[] beendet, UUID nurTenant, int hoechstens)
+            throws SQLException {
         List<Anlass> aus = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT tenant_id, kennung, quelle, fassung, status, objekt FROM (
@@ -396,11 +407,13 @@ public class KorrekturKaskade {
                                     WHERE b.tenant_id = o.tenant_id AND b.wertart = 'stammdatum'
                                       AND (b.standort_id = o.objekt_id OR b.ort_id = o.objekt_id)
                                       AND bezugsdaten_groesse(b.einheit) = 'flaeche')) a
-                 WHERE NOT (a.tenant_id = ANY (?::uuid[]))
+                 WHERE NOT (a.tenant_id = ANY (?::uuid[])) AND (?::uuid IS NULL OR a.tenant_id = ?::uuid)
                  ORDER BY created_at, kennung, fassung LIMIT ?
                 """)) {
             ps.setObject(1, beendet); // Kundenbereich beendet: bleibt liegen
-            ps.setInt(2, KANDIDATEN);
+            ps.setObject(2, nurTenant);
+            ps.setObject(3, nurTenant);
+            ps.setInt(4, hoechstens);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     aus.add(new Anlass(rs.getObject(1, UUID.class), rs.getString(2), Quelle.valueOf(rs.getString(3)),

@@ -7,6 +7,8 @@ import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Connection;
+import com.voltpilot.api.web.dto.KennzahlDto;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -25,7 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Demo-Füllung Verbessern (Konzept Verbessern v1 §4.8, §11.1 PR 6, Entscheid 16) — der letzte Schritt des Rundgangs
+ * Demo-Füllung Verbessern (Konzept Verbessern v1 §4.8, §11.1 PR 6, Entscheid 16) - der letzte Schritt des Rundgangs
  * ({@link DemoRundgangAufbau}), nach dem Bühnen-Bestand bis März 2029 (Auswerten a4). Für {@code rundgang} zeigt
  * Verbessern danach die Referenzwelt {@code docs/contracts/v2/uems-referenzunternehmen.json}: Verantwortliche, Anker,
  * Energieziel, Verläufe, Bewertungen, die drei Auffälligkeiten der Referenz beantwortet und März 2029 offen.
@@ -50,14 +52,16 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Begründung von EZ-2029-0001 und der Anlagetag von M-2029-0002 (26. statt 29.01.2029). Eine frische Welt hat sie
  * richtig.
  *
- * <p><b>März 2029</b> (Entscheid 16, nicht in der Referenzdatei): erst prüft der Schritt mit dem Leser der Naht
- * ({@link BezugsbasisVergleich#fuerNaht}), dass KZ-0004 genau in den Monaten von {@link #SCHLECHTER} „schlechter“ liegt
- * - steht ein weiterer Monat, ist die Monatsreihe nicht die der Referenz, und der Rundgang bricht ab, statt ihn
- * wegzubeantworten. Dann vermerkt die Naht selbst ({@link VerbesserungNaht#vermerken}) den März an dem Tag, an dem ihr
- * Lauf ihn vermerkt hätte ({@link #MAERZ_2029_VERMERKT}). Damit das trägt, schweigt die Naht während des Rundgangs
- * (sonst vermerkte sie jeden Monat mit der Bühnen-Uhr - Falle „Naht“), und {@code demo.sh rundgang} startet die
- * Demo-API so lange mit stummer Naht ({@code VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false}), damit ihr Takt nicht nebenher
- * vermerkt.
+ * <p><b>Vor jedem Schreiben</b> wartet der Schritt, bis die Kaskade des Kundenbereichs wirklich leer ist
+ * ({@link KorrekturKaskade#offen}; ein Lauf, der die Sperre nicht bekommt, meldet 0 Anlässe - eine mitlaufende Demo-API
+ * hält sie oft), und prüft dann mit dem Leser der Naht ({@link BezugsbasisVergleich#fuerNaht}), dass KZ-0004 für jeden
+ * Monat von 11/2026 bis 03/2029 einen Wert hat und genau in den Monaten von {@link #SCHLECHTER} „schlechter“ liegt.
+ * Sonst bricht der Rundgang ab, ehe er etwas korrigiert oder beantwortet. <b>März 2029</b> (Entscheid 16, nicht in der
+ * Referenzdatei) vermerkt die Naht selbst ({@link VerbesserungNaht#vermerken}) an dem Tag, an dem ihr Lauf ihn vermerkt
+ * hätte ({@link #MAERZ_2029_VERMERKT}). Damit das trägt, schweigt die Naht während des Rundgangs (sonst vermerkte sie
+ * jeden Monat mit der Bühnen-Uhr - Falle „Naht“; mit ihr schweigen die Anstöße am Vorgang, Pfad 1 und 2), und
+ * {@code demo.sh rundgang} startet die Demo-API so lange mit stummer Naht ({@code VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false});
+ * weil der Schritt erst nach leerer Kaskade endet, rechnet die API danach keinen Rückstand mit eingeschalteter Naht.
  */
 final class DemoVerbessernReferenz {
     private static final UUID TENANT = AhrenbergWelt.AHRENBERG;
@@ -86,17 +90,61 @@ final class DemoVerbessernReferenz {
         new DemoVerbessernReferenz(mvc, root).fuellen();
     }
 
+    /**
+     * Nur das Angleichen ohne Monatswerte (Demo-Korrektur, Geplantes, Verläufe, Auffälligkeiten der Referenz) - für den
+     * Nachweis, dass eine frische Welt schon so dasteht, wie der Rundgang einen alten Bestand angleicht.
+     *
+     * @return wie viele Zeilen geschrieben wurden
+     */
+    static int angleichen(MockMvc mvc, JdbcTemplate root) throws Exception {
+        DemoVerbessernReferenz d = new DemoVerbessernReferenz(mvc, root);
+        return d.demoKorrektur() + d.geplanteAngleichen() + d.verlaeufe() + d.auffaelligkeiten();
+    }
+
     private void fuellen() throws Exception {
+        int gewartet = kaskadeLeerWarten();
+        pruefeMonatsreihe();
         int korrigiert = demoKorrektur();
         int angeglichen = geplanteAngleichen();
         int verlauf = verlaeufe();
-        AhrenbergWelt.auffaelligkeitenDerReferenz(root, TENANT, referenz, ik);
-        pruefeMonatsreihe();
+        auffaelligkeiten();
         boolean maerz = maerz2029();
         pruefeVermerke();
-        System.out.println("Rundgang Verbessern: " + korrigiert + " Zeilen der Demo-Korrektur, " + angeglichen
-                + " geplante Maßnahmen angeglichen, " + verlauf + " Zeilen im Verlauf, Auffälligkeiten der Referenz "
-                + "beantwortet, März 2029 " + (maerz ? "vermerkt (offen)." : "stand schon."));
+        System.out.println("Rundgang Verbessern: Kaskade leer" + (gewartet > 0 ? " (nach " + gewartet + " s)" : "") + ", "
+                + korrigiert + " Zeilen der Demo-Korrektur, " + angeglichen + " geplante Maßnahmen angeglichen, " + verlauf
+                + " Zeilen im Verlauf, Auffälligkeiten der Referenz beantwortet, März 2029 "
+                + (maerz ? "vermerkt (offen)." : "stand schon."));
+    }
+
+    /** Die Auffälligkeiten der Referenz, mit dem Standort, den die Naht setzen würde. */
+    private int auffaelligkeiten() {
+        KennzahlService kennzahlen = ctx.getBean(KennzahlService.class);
+        return AhrenbergWelt.auffaelligkeitenDerReferenz(root, TENANT, referenz, ik,
+                (k, am) -> AhrenbergWelt.standortWieDieNaht(kennzahlen, TENANT, k, am));
+    }
+
+    /**
+     * Bis die Kaskade des Kundenbereichs leer ist: selbst rechnen, wenn die Sperre frei ist, sonst warten (eine
+     * mitlaufende Demo-API rechnet mit stummer Naht mit). Danach einmal der Regellauf der Kennzahlen.
+     *
+     * @return wie viele Sekunden gewartet wurde
+     */
+    private int kaskadeLeerWarten() throws InterruptedException {
+        KorrekturKaskade kaskade = ctx.getBean(KorrekturKaskade.class);
+        Instant beginn = Instant.now();
+        Instant spaetestens = beginn.plus(Duration.ofMinutes(90));
+        int offen;
+        while ((offen = kaskade.offen(TENANT)) > 0) {
+            if (Instant.now().isAfter(spaetestens)) {
+                throw new IllegalStateException("Die Kaskade von Ahrenberg wird nicht leer (" + offen + " Anlässe offen) - "
+                        + "erst wenn alle Monate gerechnet sind, darf der Rundgang vermerken.");
+            }
+            if (kaskade.lauf(Instant.now()).anlaesse() == 0) {
+                Thread.sleep(5_000);
+            }
+        }
+        ctx.getBean(KennzahlLauf.class).lauf(Instant.now());
+        return (int) Duration.between(beginn, Instant.now()).toSeconds();
     }
 
     // ================================================================================ 1 Demo-Korrektur (Option A)
@@ -123,6 +171,8 @@ final class DemoVerbessernReferenz {
                 + zahl("SELECT count(*) " + ma2, ma2Werte) + zahl("SELECT count(*) " + ma3, ma3Werte) == 0) {
             return 0;
         }
+        // Im Replica-Modus prüft niemand die Fremdschlüssel: die Ziele vorher selbst (Konten, Standort, Einstufungen).
+        pruefeZiele(ee1, ee3);
         int[] n = {0};
         new TransactionTemplate(new DataSourceTransactionManager(root.getDataSource())).executeWithoutResult(t -> {
             // Nur diese vier Zeilen; jeder Wert kommt aus der Referenz oder aus einer Zeile des Kundenbereichs (die
@@ -142,6 +192,28 @@ final class DemoVerbessernReferenz {
                     + "(SELECT id " + ma3 + ")", ma3Werte[1], ma3Werte[2], TENANT, ma3Werte[1], ma3Werte[2]);
         });
         return n[0];
+    }
+
+    /** Die Ziele der Fremdschlüssel, die die Demo-Korrektur setzt - fehlt eines, bricht sie ab, statt Waisen zu schreiben. */
+    private void pruefeZiele(UUID ee1, UUID ee3) {
+        List<String> fehlt = new java.util.ArrayList<>();
+        for (String wer : List.of("JW", "MD")) {
+            if (zahl("SELECT count(*) FROM benutzer WHERE tenant_id = ? AND sub = ?", TENANT, sub(wer)) == 0) {
+                fehlt.add("Konto " + AhrenbergWelt.NAMEN.get(wer));
+            }
+        }
+        if (zahl("SELECT count(*) FROM standort WHERE tenant_id = ? AND id = ?", TENANT, ST1) == 0) {
+            fehlt.add("Standort ST-1");
+        }
+        for (Object[] e : List.of(new Object[] {ee1, 1, "EE-1"}, new Object[] {ee3, 2, "EE-3"})) {
+            if (zahl("SELECT count(*) FROM energieeinsatz_einstufung WHERE tenant_id = ? AND einsatz_id = ? AND nummer = ?",
+                    TENANT, e[0], e[1]) == 0) {
+                fehlt.add("Einstufung " + e[2] + " Fassung " + e[1]);
+            }
+        }
+        if (!fehlt.isEmpty()) {
+            throw new IllegalStateException("Die Demo-Korrektur bräuchte " + fehlt + " - der Seed weicht ab, nichts geändert.");
+        }
     }
 
     // ================================================================================ 2 Geplante Maßnahmen
@@ -171,19 +243,19 @@ final class DemoVerbessernReferenz {
         // Die Zeilen, die eine Route der alten Welt schrieb, tragen den Tag des Aufbaus: angelegt und umgesetzt am Tag
         // ihres Vorgangs (wie AhrenbergWelt#verlaufAufDieBuehne), nur an den Maßnahmen der Referenz.
         n += root.update("UPDATE massnahme_aenderung a SET created_at = m.angelegt_am FROM massnahme m WHERE m.id = "
-                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen LIKE 'M-2029-000_' AND a.art = 'massnahme_angelegt' "
+                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen IN ('M-2029-0001', 'M-2029-0002', 'M-2029-0003') AND a.art = 'massnahme_angelegt' "
                 + "AND a.created_at <> m.angelegt_am", TENANT);
         n += root.update("UPDATE massnahme_aenderung a SET created_at = m.umgesetzt_gemeldet_am FROM massnahme m WHERE m.id = "
-                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen LIKE 'M-2029-000_' AND a.art = 'massnahme_umgesetzt' "
+                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen IN ('M-2029-0001', 'M-2029-0002', 'M-2029-0003') AND a.art = 'massnahme_umgesetzt' "
                 + "AND a.created_at <> m.umgesetzt_gemeldet_am", TENANT);
         // Die Zeile `massnahme_umgesetzt` nennt die Begründung der Maßnahme (nach der Demo-Korrektur von M-2029-0001).
         n += root.update("UPDATE massnahme_aenderung a SET begruendung = m.umgesetzt_begruendung FROM massnahme m WHERE m.id = "
-                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen LIKE 'M-2029-000_' AND a.art = 'massnahme_umgesetzt' "
+                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen IN ('M-2029-0001', 'M-2029-0002', 'M-2029-0003') AND a.art = 'massnahme_umgesetzt' "
                 + "AND a.begruendung IS DISTINCT FROM m.umgesetzt_begruendung", TENANT);
 
         JsonNode ez = referenz.at("/energieziele/0");
         Map<String, Object> ziel = zielInhalt(ez.path("wortlaut").asText(), "-5.0", "2028-01/2028-12");
-        n += zeile("energieziel", "EZ-2028-0001", "energieziel_angelegt", "2027-12-20T09:00:00Z", null, ziel,
+        n += zeile("energieziel", "EZ-2028-0001", "energieziel_angelegt", AhrenbergWelt.EZ_2028_ANGELEGT, null, ziel,
                 ez.path("begruendung").asText(), null, null, "IK");
         Map<String, Object> bewertet = new LinkedHashMap<>();
         bewertet.put("zustand", "bewertet");
@@ -192,26 +264,25 @@ final class DemoVerbessernReferenz {
         bewertet.put("vorschlag", ez.at("/bewertung/kopie/vorschlag").isTextual() ? ez.at("/bewertung/kopie/vorschlag").asText()
                 : null);
         bewertet.put("pruefsumme", ez.at("/bewertung/pruefsumme").asText());
-        n += zeile("energieziel", "EZ-2028-0001", "energieziel_bewertet", "2029-01-15T09:00:00Z", Map.of("zustand", "offen"),
+        n += zeile("energieziel", "EZ-2028-0001", "energieziel_bewertet", AhrenbergWelt.EZ_2028_BEWERTET, Map.of("zustand", "offen"),
                 bewertet, ez.at("/bewertung/begruendung").asText(), null, null, "IK");
         Map<String, Object> ez29 = root.queryForMap("SELECT wortlaut, begruendung FROM energieziel WHERE tenant_id = ? AND "
                 + "kennzeichen = 'EZ-2029-0001'", TENANT);
-        n += zeile("energieziel", "EZ-2029-0001", "energieziel_angelegt", "2029-02-15T09:00:00Z", null,
+        n += zeile("energieziel", "EZ-2029-0001", "energieziel_angelegt", AhrenbergWelt.EZ_2029_ANGELEGT, null,
                 zielInhalt((String) ez29.get("wortlaut"), "-4.0", "2029-03/2029-12"), (String) ez29.get("begruendung"), null,
                 null, "IK");
 
-        n += abweichung(referenz.at("/abweichungen/0"), Map.of("2026-12-10", "10:00"));
-        n += abweichung(referenz.at("/abweichungen/1"), Map.of("2028-01-12", "09:30", "2028-01-14", "10:00",
-                "2028-01-15", "08:30"));
+        n += abweichung(referenz.at("/abweichungen/0"));
+        n += abweichung(referenz.at("/abweichungen/1"));
 
         JsonNode m1 = referenz.at("/massnahmen/0"), m2 = referenz.at("/massnahmen/1");
-        n += angelegt("M-2028-0001", m1, "abweichung", "AW-2028-0001", "2028-01-15T09:00:00Z");
-        n += umgesetzt("M-2028-0001", m1, "2028-01-22T12:00:00Z");
+        n += angelegt("M-2028-0001", m1, "abweichung", "AW-2028-0001", AhrenbergWelt.MASSNAHME_ANGELEGT.get("M-2028-0001"));
+        n += umgesetzt("M-2028-0001", m1, AhrenbergWelt.umgesetztGemeldet(m1));
         n += anstoss("M-2028-0001", m1.at("/anstoesse/0"));
-        n += bewertet("M-2028-0001", m1.at("/bewertungen/0"), "2028-11-15T10:00:00Z");
-        n += angelegt("M-2028-0002", m2, "einsatz", "EE-3", "2028-01-20T09:00:00Z");
-        n += umgesetzt("M-2028-0002", m2, "2028-03-28T12:00:00Z");
-        n += bewertet("M-2028-0002", m2.at("/bewertungen/0"), "2028-11-20T10:00:00Z");
+        n += bewertet("M-2028-0001", m1.at("/bewertungen/0"), AhrenbergWelt.MASSNAHME_BEWERTET.get("M-2028-0001"));
+        n += angelegt("M-2028-0002", m2, "einsatz", "EE-3", AhrenbergWelt.MASSNAHME_ANGELEGT.get("M-2028-0002"));
+        n += umgesetzt("M-2028-0002", m2, AhrenbergWelt.umgesetztGemeldet(m2));
+        n += bewertet("M-2028-0002", m2.at("/bewertungen/0"), AhrenbergWelt.MASSNAHME_BEWERTET.get("M-2028-0002"));
         n += bewertungM2029();
         return n;
     }
@@ -229,8 +300,8 @@ final class DemoVerbessernReferenz {
         return z;
     }
 
-    /** Eröffnet, Kommentare und Aussagen (Uhrzeiten wie in der Welt), abgeschlossen - wie die Routen der Welt. */
-    private int abweichung(JsonNode aw, Map<String, String> uhrzeiten) throws JsonProcessingException {
+    /** Eröffnet, Kommentare und Aussagen, abgeschlossen - an den Augenblicken und mit dem Inhalt der Welt. */
+    private int abweichung(JsonNode aw) throws JsonProcessingException {
         String k = aw.path("kennzeichen").asText();
         Map<String, Object> eroeffnet = new LinkedHashMap<>();
         eroeffnet.put("zustand", "offen");
@@ -239,11 +310,11 @@ final class DemoVerbessernReferenz {
         eroeffnet.put("frist", aw.path("frist").asText());
         eroeffnet.put("verantwortlich_name", AhrenbergWelt.NAMEN.get(aw.path("verantwortlich").asText()));
         eroeffnet.put("anlass_pruefsumme", aw.path("pruefsumme").asText());
-        int n = zeile("abweichung", k, "abweichung_eroeffnet", aw.at("/eroeffnet/am").asText() + "T09:00:00Z", null,
+        int n = zeile("abweichung", k, "abweichung_eroeffnet", AhrenbergWelt.abweichungEroeffnet(aw), null,
                 eroeffnet, null, null, null, "IK");
         for (JsonNode v : aw.path("verlauf")) {
             String tag = v.path("am").asText();
-            String am = tag + "T" + uhrzeiten.getOrDefault(tag, "10:00") + ":00Z";
+            String am = AhrenbergWelt.abweichungEintrag(tag);
             if (v.path("art").asText().equals("kommentar")) {
                 n += zeile("abweichung", k, "kommentar", am, null, null, null, v.path("text").asText(), null, "IK");
             } else if (v.path("art").asText().equals("ursache_aussage")) {
@@ -259,7 +330,7 @@ final class DemoVerbessernReferenz {
         if (aw.at("/abschluss/massnahme").isTextual()) {
             neu.put("massnahme", aw.at("/abschluss/massnahme").asText());
         }
-        return n + zeile("abweichung", k, "abweichung_abgeschlossen", aw.at("/abschluss/am").asText() + "T10:00:00Z",
+        return n + zeile("abweichung", k, "abweichung_abgeschlossen", AhrenbergWelt.abweichungAbgeschlossen(aw),
                 Map.of("zustand", "offen"), neu, aw.at("/abschluss/begruendung").asText(), null, null, "IK");
     }
 
@@ -300,7 +371,7 @@ final class DemoVerbessernReferenz {
     private int anstoss(String k, JsonNode a) throws JsonProcessingException {
         UUID massnahme = id("massnahme", k);
         String gesetztAm = OffsetDateTime.parse(a.path("am").asText()).toInstant().toString();
-        String beantwortetAm = a.at("/antwort/am").asText() + "T09:00:00Z";
+        String beantwortetAm = AhrenbergWelt.anstossBeantwortet(a);
         root.update("INSERT INTO vorgang_anstoss (tenant_id, massnahme_id, art, anlass_kennung, angestossen_am, created_at) "
                 + "SELECT ?, ?, ?, ?, ?::timestamptz, ?::timestamptz WHERE NOT EXISTS (SELECT 1 FROM vorgang_anstoss WHERE "
                 + "tenant_id = ? AND massnahme_id = ? AND art = ? AND anlass_kennung = ?)", TENANT, massnahme,
@@ -338,7 +409,7 @@ final class DemoVerbessernReferenz {
     /** M-2029-0001 „nicht messbar“ am 15.04.2029 (massnahmen_1_10) - im alten Bestand fehlt der Stand. */
     private int bewertungM2029() throws JsonProcessingException {
         JsonNode b = referenz.at("/massnahmen_1_10/0/bewertungen/0");
-        String am = b.path("am").asText() + "T10:00:00Z";
+        String am = AhrenbergWelt.MASSNAHME_BEWERTET.get("M-2029-0001");
         UUID m = id("massnahme", "M-2029-0001");
         int n = root.update("INSERT INTO massnahme_bewertung (tenant_id, massnahme_id, ergebnis, begruendung, vieraugen, "
                 + "status, freigabe_sub, freigabe_name, freigabe_rolle, freigabe_art, freigabe_am) SELECT ?, ?, ?, ?, false, "
@@ -403,11 +474,18 @@ final class DemoVerbessernReferenz {
         UUID kz4 = id("kennzahl", "KZ-0004");
         Instant buehne = Instant.parse(PruefumgebungAhrenberg.BUEHNE);
         Map<String, String> schlechter = new TreeMap<>();
+        List<String> ohneWert = new java.util.ArrayList<>();
         TenantContext.set(TENANT);
         try (Connection con = root.getDataSource().getConnection()) {
             JdbcTemplate t = new JdbcTemplate(new SingleConnectionDataSource(con, true));
             KennzahlService.NahtKennzahl k = kennzahlen.fuerNaht(kz4, buehne).orElseThrow();
+            Map<String, KennzahlDto.Wert> werte = KennzahlWerteService.monate(t, kz4, BERLIN, AB.atDay(1), BIS.atEndOfMonth());
+            java.util.Set<YearMonth> mitWert = new java.util.HashSet<>();
+            werte.values().stream().filter(w -> w.wert() != null).forEach(w -> mitWert.add(YearMonth.from(w.von())));
             for (YearMonth m = AB; !m.isAfter(BIS); m = m.plusMonths(1)) {
+                if (!mitWert.contains(m)) {
+                    ohneWert.add(m.toString());
+                }
                 BezugsbasisVergleich.NahtMonat z = vergleich.fuerNaht(t, k.basis(), k.einheit(), m);
                 if (z != null && z.zeile().bereinigt() != null && "schlechter".equals(z.zeile().bereinigt().urteil())) {
                     schlechter.put(m.toString(), new BigDecimal(z.zeile().bereinigt().deltaProzent())
@@ -416,6 +494,10 @@ final class DemoVerbessernReferenz {
             }
         } finally {
             TenantContext.clear();
+        }
+        if (!ohneWert.isEmpty()) {
+            throw new IllegalStateException("KZ-0004 hat für " + ohneWert + " noch keinen Monatswert - die Prüfung liefe "
+                    + "ins Leere; erst rechnen (Kaskade, Regellauf), dann vermerken.");
         }
         if (!schlechter.equals(SCHLECHTER)) {
             throw new IllegalStateException("KZ-0004 liegt gegen BB-0001 in anderen Monaten „schlechter“ als in der "

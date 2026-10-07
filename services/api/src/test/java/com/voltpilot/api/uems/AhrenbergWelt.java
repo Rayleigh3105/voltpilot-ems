@@ -74,6 +74,18 @@ final class AhrenbergWelt {
      */
     static final Map<String, String> ART = Map.of("M-2028-0001", "gemessen", "M-2028-0002", "nicht_gemessen",
             "M-2029-0001", "organisatorisch", "M-2029-0002", "organisatorisch", "M-2029-0003", "nicht_gemessen");
+    /**
+     * Die Augenblicke (UTC), an denen die Welt die Vorgänge von AP-18 schreibt - dieselben trägt
+     * {@link DemoVerbessernReferenz} in einen alten Bestand; ihre Zeile im Verlauf erkennt sie an Art und Augenblick.
+     */
+    static final String EZ_2028_ANGELEGT = "2027-12-20T09:00:00Z", EZ_2028_BEWERTET = "2029-01-15T09:00:00Z",
+            EZ_2029_ANGELEGT = "2029-02-15T09:00:00Z";
+    static final Map<String, String> MASSNAHME_ANGELEGT = Map.of("M-2028-0001", "2028-01-15T09:00:00Z",
+            "M-2028-0002", "2028-01-20T09:00:00Z");
+    static final Map<String, String> MASSNAHME_BEWERTET = Map.of("M-2028-0001", "2028-11-15T10:00:00Z",
+            "M-2028-0002", "2028-11-20T10:00:00Z", "M-2029-0001", "2029-04-15T10:00:00Z");
+    /** Zwei Einträge an einem Tag einer Abweichung (AW-2028-0001) haben ihre Reihenfolge; sonst 10:00. */
+    private static final Map<String, String> EINTRAG_UHRZEIT = Map.of("2028-01-12", "09:30", "2028-01-15", "08:30");
     private static final Map<String, Object> BESTELLUNG = Map.of(
             "bezeichnung", "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
             "ablage", "Personalakte (Personalabteilung)");
@@ -428,8 +440,8 @@ final class AhrenbergWelt {
                 + "fassung, zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich_sub, verantwortlich_name, "
                 + "verantwortlich_konto, standort_id, actor_sub, actor_name, actor_rolle, actor_art, angelegt_am) VALUES "
                 + "(?, 'EZ-2028-0001', ?, ?, 2, -5.0, '2028-01/2028-12', ?, ?, '" + ik + "', 'Ines Kaltenbach', 'benutzer', ?, "
-                + "'" + ik + "', 'Ines Kaltenbach', 'energiemanager', 'kunde', '2027-12-20T09:00:00Z') RETURNING id", UUID.class,
-                tenant, kz4, bb1, ez.path("wortlaut").asText(), ez.path("begruendung").asText(), s1);
+                + "'" + ik + "', 'Ines Kaltenbach', 'energiemanager', 'kunde', ?::timestamptz) RETURNING id", UUID.class,
+                tenant, kz4, bb1, ez.path("wortlaut").asText(), ez.path("begruendung").asText(), s1, EZ_2028_ANGELEGT);
         Map<String, Object> zielInhalt = new LinkedHashMap<>();
         zielInhalt.put("kennzahl", "KZ-0004");
         zielInhalt.put("bezugsbasis", "BB-0001");
@@ -440,38 +452,39 @@ final class AhrenbergWelt {
         zielInhalt.put("verantwortlich_name", "Ines Kaltenbach");
         zielInhalt.put("zustand", "offen");
         verlauf("energieziel", ezId, "energieziel_angelegt", null, zielInhalt, ez.path("begruendung").asText(),
-                "2027-12-20T09:00:00Z");
+                EZ_2028_ANGELEGT);
 
         // AW-2026-0001 gehört zu KZ-0005 (Netzbezug je m², Halle 2) mit BB-0003 Fassung 1 und Jonas Wendlinger.
         JsonNode aw1 = referenz.at("/abweichungen/0");
         UUID a1 = abweichungEroeffnet(aw1, kennzahl, basis);
-        uhr("2026-12-10T10:00:00Z");
+        uhr(abweichungEintrag("2026-12-10"));
         aussage(a1, aw1, "2026-12-10");
-        uhr("2026-12-20T10:00:00Z");
+        uhr(abweichungAbgeschlossen(aw1));
         abschliessen(a1, aw1, null);
 
         // AW-2028-0001: Kommentar, Aussage von Murat Demirci, Kommentar, M-2028-0001, Abschluss mit der Maßnahme.
         JsonNode aw2 = referenz.at("/abweichungen/1");
         UUID a2 = abweichungEroeffnet(aw2, kennzahl, basis);
-        uhr("2028-01-12T09:30:00Z");
+        uhr(abweichungEintrag("2028-01-12"));
         kommentar(a2, aw2, "2028-01-12");
-        uhr("2028-01-14T10:00:00Z");
+        uhr(abweichungEintrag("2028-01-14"));
         aussage(a2, aw2, "2028-01-14");
-        uhr("2028-01-15T08:30:00Z");
+        uhr(abweichungEintrag("2028-01-15"));
         kommentar(a2, aw2, "2028-01-15");
         // Verantwortlich, Energieeinsatz und Energieziel wie die Referenz (Konzept Verbessern v1 §4.8): M-2028-0001
         // gehört Murat Demirci und zählt für EZ-2028-0001, M-2028-0002 kommt vom Energieeinsatz EE-3.
         JsonNode m1 = referenz.at("/massnahmen/0");
         UUID m1Id = massnahmeDirekt("M-2028-0001", m1, "abweichung", "AW-2028-0001", kz4, bb1,
-                BerichtRegeln.kanonisch(m1.at("/ausgangslage/kopie")), "2028-01-15T09:00:00Z", ezId, ART.get("M-2028-0001"));
-        uhr("2028-01-15T10:00:00Z");
+                BerichtRegeln.kanonisch(m1.at("/ausgangslage/kopie")), MASSNAHME_ANGELEGT.get("M-2028-0001"), ezId,
+                ART.get("M-2028-0001"));
+        uhr(abweichungAbgeschlossen(aw2));
         abschliessen(a2, aw2, m1Id);
         JsonNode m2 = referenz.at("/massnahmen/1");
-        UUID m2Id = massnahmeDirekt("M-2028-0002", m2, "einsatz", "EE-3", null, null, null, "2028-01-20T09:00:00Z", null,
-                ART.get("M-2028-0002"));
-        uhr("2028-01-22T12:00:00Z");
+        UUID m2Id = massnahmeDirekt("M-2028-0002", m2, "einsatz", "EE-3", null, null, null,
+                MASSNAHME_ANGELEGT.get("M-2028-0002"), null, ART.get("M-2028-0002"));
+        uhr(umgesetztGemeldet(m1));
         umgesetzt(m1Id, m1);
-        uhr("2028-03-28T12:00:00Z");
+        uhr(umgesetztGemeldet(m2));
         umgesetzt(m2Id, m2);
 
         // Der Anstoß der Korrektur K-2028-0001 an M-2028-0001 (IP-17, Pfad 1): gesetzt von der Kaskade, beantwortet
@@ -487,17 +500,18 @@ final class AhrenbergWelt {
         gesetzt.put("art", anstoss.path("art").asText());
         gesetzt.put("anlass_kennung", anstoss.path("anlass_kennung").asText());
         verlauf("massnahme", m1Id, "anstoss_gesetzt", null, gesetzt, null, angestossen, null);
-        uhr(anstoss.at("/antwort/am").asText() + "T09:00:00Z");
+        uhr(anstossBeantwortet(anstoss));
         ruf("POST", "/api/v1/massnahmen/" + m1Id + "/anstoesse/" + anstossId + "/antwort", "IK", Map.of("antwort",
                 anstoss.at("/antwort/antwort").asText(), "begruendung", anstoss.at("/antwort/begruendung").asText()), 200);
 
-        bewertungDirekt(m1Id, m1.at("/bewertungen/0"), kz4, bb1, "2028-11-15T10:00:00Z");
-        bewertungDirekt(m2Id, m2.at("/bewertungen/0"), null, null, "2028-11-20T10:00:00Z");
+        bewertungDirekt(m1Id, m1.at("/bewertungen/0"), kz4, bb1, MASSNAHME_BEWERTET.get("M-2028-0001"));
+        bewertungDirekt(m2Id, m2.at("/bewertungen/0"), null, null, MASSNAHME_BEWERTET.get("M-2028-0002"));
         root.update("UPDATE energieziel SET zustand = 'bewertet', ergebnis = 'verfehlt', bewertung_status = 'bewertet', "
                 + "bewertung_begruendung = ?, bewertung_kopie = ?, bewertung_pruefsumme = ?, freigabe_sub = '" + ik + "', "
                 + "freigabe_name = 'Ines Kaltenbach', freigabe_rolle = 'energiemanager', freigabe_art = 'kunde', "
-                + "freigabe_am = '2029-01-15T09:00:00Z' WHERE id = ?", ez.at("/bewertung/begruendung").asText(),
-                BerichtRegeln.kanonisch(ez.at("/bewertung/kopie")), ez.at("/bewertung/pruefsumme").asText(), ezId);
+                + "freigabe_am = ?::timestamptz WHERE id = ?", ez.at("/bewertung/begruendung").asText(),
+                BerichtRegeln.kanonisch(ez.at("/bewertung/kopie")), ez.at("/bewertung/pruefsumme").asText(),
+                EZ_2028_BEWERTET, ezId);
         Map<String, Object> bewertet = new LinkedHashMap<>();
         bewertet.put("zustand", "bewertet");
         bewertet.put("bewertung_status", "bewertet");
@@ -506,9 +520,49 @@ final class AhrenbergWelt {
                 ? ez.at("/bewertung/kopie/vorschlag").asText() : null);
         bewertet.put("pruefsumme", ez.at("/bewertung/pruefsumme").asText());
         verlauf("energieziel", ezId, "energieziel_bewertet", Map.of("zustand", "offen"), bewertet,
-                ez.at("/bewertung/begruendung").asText(), "2029-01-15T09:00:00Z");
+                ez.at("/bewertung/begruendung").asText(), EZ_2028_BEWERTET);
 
-        auffaelligkeitenDerReferenz(root, tenant, referenz, ik);
+        KennzahlService kennzahlen = mvc.getDispatcherServlet().getWebApplicationContext().getBean(KennzahlService.class);
+        auffaelligkeitenDerReferenz(root, tenant, referenz, ik, (k, am) -> standortWieDieNaht(kennzahlen, tenant, k, am));
+    }
+
+    static String abweichungEroeffnet(JsonNode aw) {
+        return aw.at("/eroeffnet/am").asText() + "T09:00:00Z";
+    }
+
+    static String abweichungAbgeschlossen(JsonNode aw) {
+        return aw.at("/abschluss/am").asText() + "T10:00:00Z";
+    }
+
+    static String abweichungEintrag(String tag) {
+        return tag + "T" + EINTRAG_UHRZEIT.getOrDefault(tag, "10:00") + ":00Z";
+    }
+
+    /** Umgesetzt gemeldet am Tag der Referenz, 12:00 UTC. */
+    static String umgesetztGemeldet(JsonNode m) {
+        return m.path("umgesetzt_am").asText() + "T12:00:00Z";
+    }
+
+    static String anstossBeantwortet(JsonNode anstoss) {
+        return anstoss.at("/antwort/am").asText() + "T09:00:00Z";
+    }
+
+    /**
+     * Der Standort eines Vermerks wie bei der Naht: der der Geltung seiner Kennzahl am Tag des Vermerks
+     * ({@link KennzahlService#fuerNaht}); archivierte Kennzahlen kennt der Katalog auch.
+     */
+    static UUID standortWieDieNaht(KennzahlService kennzahlen, UUID tenant, UUID kennzahl, Instant am) {
+        UUID vorher = com.voltpilot.api.tenant.TenantContext.get();
+        com.voltpilot.api.tenant.TenantContext.set(tenant);
+        try {
+            return kennzahlen.fuerNaht(kennzahl, am).map(KennzahlService.NahtKennzahl::standort).orElse(null);
+        } finally {
+            if (vorher == null) {
+                com.voltpilot.api.tenant.TenantContext.clear();
+            } else {
+                com.voltpilot.api.tenant.TenantContext.set(vorher);
+            }
+        }
     }
 
     /**
@@ -517,10 +571,15 @@ final class AhrenbergWelt {
      * Kenntnis. Idempotent und ohne Monatswerte: ein Vermerk, den eine Abweichung beantwortet, trägt deren Anlass (so
      * kopiert ihn das Produkt beim Eröffnen, die Prüfsummen stimmen überein); Juli 2028 den Anlass der Referenz. Die Naht
      * trifft danach auf {@code ON CONFLICT … DO NOTHING}. Genutzt von der Welt und vom Rundgang der Demo (alter Bestand).
+     * Der Standort ist der, den die Naht setzen würde ({@link #standortWieDieNaht}), nicht der der Abweichung.
      *
-     * @param ik das Subject von Ines Kaltenbach, die antwortet
+     * @param ik       das Subject von Ines Kaltenbach, die antwortet
+     * @param standort der Standort eines Vermerks je Kennzahl und Tag des Vermerks
+     * @return wie viele Zeilen geschrieben wurden (Vermerk oder Antwort) - auf einer fertigen Welt 0
      */
-    static void auffaelligkeitenDerReferenz(JdbcTemplate root, UUID tenant, JsonNode referenz, String ik) {
+    static int auffaelligkeitenDerReferenz(JdbcTemplate root, UUID tenant, JsonNode referenz, String ik,
+            java.util.function.BiFunction<UUID, Instant, UUID> standort) {
+        int n = 0;
         for (JsonNode r : referenz.path("auffaelligkeiten")) {
             UUID kennzahl = root.queryForObject("SELECT id FROM kennzahl WHERE tenant_id = ? AND kennzeichen = ?", UUID.class,
                     tenant, r.path("kennzahl").asText());
@@ -531,21 +590,22 @@ final class AhrenbergWelt {
             Map<String, Object> aw = awKennzeichen == null ? null : root.queryForMap("SELECT id, anlass, anlass_pruefsumme, "
                     + "standort_id FROM abweichung WHERE tenant_id = ? AND kennzeichen = ?", tenant, awKennzeichen);
             String anlass = aw != null ? (String) aw.get("anlass") : BerichtRegeln.kanonisch(r.path("anlass"));
-            UUID standort = root.queryForObject("SELECT standort_id FROM abweichung WHERE tenant_id = ? AND kennzeichen = "
-                    + "'AW-2028-0001'", UUID.class, tenant);
-            root.update("INSERT INTO auffaelligkeit (tenant_id, kennzahl_id, bezugsbasis_id, fassung, periode, standort_id, "
-                    + "anlass, anlass_pruefsumme, vermerkt_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::timestamptz) "
+            String vermerkt = vermerktAm(r.path("vermerkt_am").asText());
+            Instant am = root.queryForObject("SELECT ?::timestamptz", Timestamp.class, vermerkt).toInstant();
+            n += root.update("INSERT INTO auffaelligkeit (tenant_id, kennzahl_id, bezugsbasis_id, fassung, periode, "
+                    + "standort_id, anlass, anlass_pruefsumme, vermerkt_am) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::timestamptz) "
                     + "ON CONFLICT ON CONSTRAINT auffaelligkeit_eindeutig_uq DO NOTHING", tenant, kennzahl, basis,
-                    r.path("fassung").asInt(), periode, aw != null ? aw.get("standort_id") : standort, anlass,
-                    BerichtRegeln.pruefsumme(anlass), vermerktAm(r.path("vermerkt_am").asText()));
+                    r.path("fassung").asInt(), periode, standort.apply(kennzahl, am), anlass,
+                    BerichtRegeln.pruefsumme(anlass), vermerkt);
             JsonNode a = r.path("antwort");
-            root.update("UPDATE auffaelligkeit SET zustand = 'beantwortet', antwort = ?, antwort_begruendung = ?, "
+            n += root.update("UPDATE auffaelligkeit SET zustand = 'beantwortet', antwort = ?, antwort_begruendung = ?, "
                     + "abweichung_id = ?, beantwortet_am = ?::timestamptz, beantwortet_sub = ?, beantwortet_name = "
                     + "'Ines Kaltenbach', beantwortet_rolle = 'energiemanager', beantwortet_art = 'kunde' WHERE tenant_id = ? "
                     + "AND kennzahl_id = ? AND bezugsbasis_id = ? AND fassung = ? AND periode = ? AND zustand = 'offen'",
                     a.path("antwort").asText(), a.path("begruendung").asText(null), aw == null ? null : aw.get("id"),
                     a.path("am").asText() + "T10:00:00Z", ik, tenant, kennzahl, basis, r.path("fassung").asInt(), periode);
         }
+        return n;
     }
 
     /** „vermerkt am“ der Referenz; ein Tag ohne Uhrzeit ist der Lauf um 05:12 Uhr wie am 07.01.2028. */
@@ -557,7 +617,7 @@ final class AhrenbergWelt {
     private UUID abweichungEroeffnet(JsonNode aw, Map<String, UUID> kennzahl, Map<String, UUID> basis) {
         String wer = aw.path("verantwortlich").asText();
         String anlass = BerichtRegeln.kanonisch(aw.path("anlass"));
-        String am = aw.at("/eroeffnet/am").asText() + "T09:00:00Z";
+        String am = abweichungEroeffnet(aw);
         UUID id = root.queryForObject("INSERT INTO abweichung (tenant_id, kennzeichen, kennzahl_id, bezugsbasis_id, "
                 + "fassung, monate, herkunft_art, anlass, anlass_pruefsumme, verantwortlich_sub, verantwortlich_name, "
                 + "verantwortlich_konto, frist, standort_id, actor_sub, actor_name, actor_rolle, actor_art, eroeffnet_am) "
@@ -697,9 +757,9 @@ final class AhrenbergWelt {
                 + "verantwortlich_konto, standort_id, actor_sub, actor_name, actor_rolle, actor_art, angelegt_am) "
                 + "SELECT tenant_id, 'EZ-2029-0001', kennzahl_id, bezugsbasis_id, fassung, -4.0, '2029-03/2029-12', ?, ?, "
                 + "verantwortlich_sub, verantwortlich_name, verantwortlich_konto, standort_id, actor_sub, actor_name, "
-                + "actor_rolle, actor_art, '2029-02-15T09:00:00Z' FROM energieziel WHERE tenant_id = ? "
+                + "actor_rolle, actor_art, ?::timestamptz FROM energieziel WHERE tenant_id = ? "
                 + "AND kennzeichen = 'EZ-2028-0001' RETURNING id", UUID.class, wortlaut29,
-                ez29.path("begruendung").asText(), tenant);
+                ez29.path("begruendung").asText(), EZ_2029_ANGELEGT, tenant);
         Map<String, Object> ziel29 = new LinkedHashMap<>();
         ziel29.put("kennzahl", "KZ-0004");
         ziel29.put("bezugsbasis", "BB-0001");
@@ -710,7 +770,7 @@ final class AhrenbergWelt {
         ziel29.put("verantwortlich_name", "Ines Kaltenbach");
         ziel29.put("zustand", "offen");
         verlauf("energieziel", ez29Id, "energieziel_angelegt", null, ziel29, ez29.path("begruendung").asText(),
-                "2029-02-15T09:00:00Z");
+                EZ_2029_ANGELEGT);
         ruf("POST", MB + "/beschluesse/1/folgen", "IK", Map.of("art", "energieziel", "objekt", "EZ-2029-0001"), 201);
         // B4 26.02.2029: die Aufgabe „Bezugsbasen“ ab 01.03.2029, eingetragen von Jonas Wendlinger.
         uhr("2029-02-26T10:00:00Z");
@@ -731,7 +791,7 @@ final class AhrenbergWelt {
         freigeben(dokument.get("D-0001"), 2, "RF");
         // R11 15.04.2029: Wirksamkeit Stand Nr. 1 „wirksam“ — eine Person sagt es. Am selben Tag schließt Ines
         // Kaltenbach M-2029-0001 ohne Messung ab („nicht messbar“, massnahmen_1_10).
-        uhr("2029-04-15T10:00:00Z");
+        uhr(MASSNAHME_BEWERTET.get("M-2029-0001"));
         JsonNode m29 = referenz.at("/massnahmen_1_10/0/bewertungen/0");
         ruf("POST", "/api/v1/massnahmen/" + id("massnahme", "M-2029-0001") + "/bewertungen", m29.path("person").asText(),
                 Map.of("ergebnis", m29.path("ergebnis").asText(), "begruendung", m29.path("begruendung").asText()), 201);
