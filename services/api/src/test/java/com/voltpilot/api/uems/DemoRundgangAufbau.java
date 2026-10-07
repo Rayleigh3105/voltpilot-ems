@@ -10,10 +10,13 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -68,6 +71,14 @@ import org.springframework.test.web.servlet.MockMvc;
  * </ul>
  * Idempotent: dieselbe Ablesung und derselbe Bezugswert sind Wiederholungen, die nichts schreiben; die zusätzlichen
  * Objekte legt der Lauf nur an, wenn ihr Kennzeichen noch fehlt.
+ *
+ * <p><b>Runde 3 - Demo-Füllung Auswerten (Konzept a1, Entscheid 12; Entscheid A2 vom 06.10.2026):</b> die Kennzahlen
+ * KZ-0021 bis KZ-0023 rechnen mit passenden Zählern, und die Bühne bekommt ihre Werte bis zum Bühnen-Tag
+ * ({@link #buehnenBestand}): MS-20 und BZ-1 aus der Referenzwelt (2026-10 bis 2029-01, drei Monate als Annahme), die
+ * übrigen Reihen nach ihrem Muster. Dazu BB-0001 Fassung 2 als Regression der Referenzwelt
+ * ({@link #bezugsbasisReferenzwelt}) - erst dann liegt 2028 rund 3,4 % unter der Bezugsbasis wie im Energieziel 2028.
+ * Die Kennzahlen rechnet die Bühne (K1, {@link PruefumgebungUhr} stellt den Kennzahl-Lauf): erst die Kaskaden der
+ * eingetragenen Ablesungen, dann der Regellauf. Die Demo-API braucht K1 ebenso, sonst hält ihre Kaskade an.
  *
  * <p>Die {@code null}-Anzeige der Bewertung (Rangliste/Messabdeckung „unvollständig“, „0 von 3 Anlagen“) ist KEIN
  * Datenmangel dieses Werkzeugs, sondern folgt aus der bewusst dünnen Messabdeckung der Welt 1.10 (nur Spritzguss
@@ -134,6 +145,8 @@ class DemoRundgangAufbau {
     @Autowired MockMvc mvc;
     @Autowired BezugswertService bezugswerte;
     @Autowired KennzahlLauf kennzahlen;
+    @Autowired AblesungService ablesungen;
+    @Autowired KorrekturKaskade kaskade;
 
     @Test
     void aufbauen() throws Exception {
@@ -181,7 +194,7 @@ class DemoRundgangAufbau {
 
         // Zweite Runde: die Flächen füllen (sonst „fehlt die Fläche" am echten Datum), jede Kennzahl mit eigener
         // Messgröße und eigener Einheit (statt sechsmal identisch kWh je kg), die energetische Bewertung mit echten
-        // Zahlen (Hauptzähler + Abzweige je Energieeinsatz, Verantwortliche, Kriterien), die Verteilung auf
+        // Zahlen (Hauptzähler + Unterzähler je Energieeinsatz, Verantwortliche, Kriterien), die Verteilung auf
         // Kostenstellen, bestätigte Bezugsbasen, eine aktuelle energetische Bewertung, eine Verteilung-Korrektur,
         // ein Bezugsdaten-Import und eine befristete Einsicht.
         flaechen(root);
@@ -197,6 +210,43 @@ class DemoRundgangAufbau {
         einsicht();
         System.out.println("Rundgang Runde 2: Flächen, distinkte Kennzahlen, Bewertung, Verteilung, Bezugsbasen, "
                 + "energetische Bewertung, Korrektur, Import und Einsicht ergänzt. Kennzahlen: " + lauf2);
+
+        // Runde 3 - Demo-Füllung Auswerten (Konzept a1, Entscheid 12): passende Zähler, Bühnen-Bestand bis 03/2029,
+        // BB-0001 Fassung 2 wie die Referenzwelt, Kennzahlen gerechnet auf der Bühne, BB-0006/BB-0007 neu gefasst.
+        // Die Kennzahlen rechnet die Bühne: PruefumgebungUhr stellt den Kennzahl-Lauf (K1, PR #1428). Ohne K1 trügen die
+        // Werte 2027-2029 ein berechnet_am in der Zukunft, und die erste echte Ablesung hielte die Kaskade der API an.
+        assertThat(kennzahlen.rechenzeit(Instant.now())).as("der Kennzahl-Lauf rechnet auf der Bühne (K1)")
+                .isAfterOrEqualTo(Instant.parse(PruefumgebungAhrenberg.BUEHNE));
+        kennzahlenPassend();
+        // Die rückwirkende Berechnung rechnet die alten Monate neu - in der API im nächsten Takt, hier sofort, damit die
+        // Bezugsbasen unten aus den neuen Werten gefasst werden.
+        int anlaesse = kaskadeLeeren();
+        buehnenBestand(root, bz1);
+        bezugsbasisReferenzwelt(root);
+        // Jede eingetragene Ablesung ist ein Anlass der Kaskade über die ganze Reihe (auch 10/2026 bis 03/2027, vor dem
+        // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
+        anlaesse += kaskadeLeeren();
+        KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
+        bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
+        bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
+        System.out.println("Rundgang Runde 3: passende Zähler, Bühnen-Bestand bis 03/2029, BB-0001 Fassung 2 "
+                + "(Referenzwelt). Kaskade: " + anlaesse + " Anlässe, Kennzahlen auf der Bühne: " + buehne);
+    }
+
+    /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */
+    private int kaskadeLeeren() {
+        int summe = 0;
+        for (int i = 0; i < 100; i++) {
+            KorrekturKaskade.Lauf l = kaskade.lauf(Instant.now());
+            if (!l.abgelehnt().isEmpty()) {
+                System.out.println("Rundgang: Kaskade lehnte ab: " + l.abgelehnt());
+            }
+            if (l.anlaesse() == 0) {
+                return summe;
+            }
+            summe += l.anlaesse();
+        }
+        throw new IllegalStateException("die Kaskade wird nicht leer");
     }
 
     /** Postleitzahl (Unternehmen und beide Standorte), Lage und Notiz von Werk Lindach — Pflichtfelder, die die Welt leer lässt. */
@@ -479,7 +529,11 @@ class DemoRundgangAufbau {
 
     /** Monatliche Zählerstände ab 10/2024 bis zum letzten abgeschlossenen Monat — der erste Wert ist der Anfang. */
     private void messreihe(String kennzeichen, long start, long proMonat) throws Exception {
-        YearMonth bis = YearMonth.now(BERLIN).minusMonths(1);
+        messreihe(kennzeichen, start, proMonat, YearMonth.now(BERLIN).minusMonths(1));
+    }
+
+    /** Wie {@link #messreihe(String, long, long)}, bis {@code bis} - derselbe Stand je Monat, gleich wann der Lauf läuft. */
+    private void messreihe(String kennzeichen, long start, long proMonat, YearMonth bis) throws Exception {
         long stand = start;
         messwert(kennzeichen, YearMonth.of(2024, 10), stand);
         for (YearMonth mo = YearMonth.of(2024, 10); !mo.isAfter(bis); mo = mo.plusMonths(1)) {
@@ -732,12 +786,12 @@ class DemoRundgangAufbau {
         messreihe("HZ-1", 2_400_000, 210_000);
         unterzaehlerVonHz1("MS-20"); // Spritzguss hat bereits Ablesungen
         prozesseSetzen("MS-20", prozess.get("P-1"));
-        abzweig("AZ-2", "Zähler Montage", prozess.get("P-2"), 27_000);
-        abzweig("AZ-3", "Zähler Druckluft", prozess.get("P-3"), 18_000);
-        abzweig("AZ-4", "Zähler Kühlung", prozess.get("P-4"), 14_000);
-        abzweig("AZ-5", "Zähler Logistik", prozess.get("P-5"), 9_000);
-        abzweig("AZ-6", "Zähler Verwaltung", prozess.get("P-6"), 18_000);
-        abzweig("AZ-8", "Zähler Gebäudetechnik", prozess.get("P-8"), 13_000);
+        bereichszaehler("AZ-2", "Zähler Montage", prozess.get("P-2"), 27_000);
+        bereichszaehler("AZ-3", "Zähler Druckluft", prozess.get("P-3"), 18_000);
+        bereichszaehler("AZ-4", "Zähler Kühlung", prozess.get("P-4"), 14_000);
+        bereichszaehler("AZ-5", "Zähler Logistik", prozess.get("P-5"), 9_000);
+        bereichszaehler("AZ-6", "Zähler Verwaltung", prozess.get("P-6"), 18_000);
+        bereichszaehler("AZ-8", "Zähler Gebäudetechnik", prozess.get("P-8"), 13_000);
         verantwortlich(root, "EE-1", MD);
         verantwortlich(root, "EE-2", PH);
         verantwortlich(root, "EE-3", IK);
@@ -748,8 +802,10 @@ class DemoRundgangAufbau {
         verantwortlich(root, "EE-8", MD);
     }
 
-    private void abzweig(String kennzeichen, String name, String prozessId, long proMonat) throws Exception {
-        messstelle(kennzeichen, name, "Abzweig an der Anlage Werk Ahrenberg – Halle 1.", null, "G-1", "2024-03-12");
+    /** Ein Zähler eines Energieeinsatzes: Unterzähler von HZ-1 (die Kennzeichen „AZ-…“ bleiben, wie sie entstanden sind). */
+    private void bereichszaehler(String kennzeichen, String name, String prozessId, long proMonat) throws Exception {
+        messstelle(kennzeichen, name, "Unterzähler von HZ-1 an der Anlage Werk Ahrenberg – Halle 1.", null, "G-1",
+                "2024-03-12");
         unterzaehlerVonHz1(kennzeichen);
         prozesseSetzen(kennzeichen, prozessId);
         messreihe(kennzeichen, 300_000 + proMonat, proMonat);
@@ -758,19 +814,24 @@ class DemoRundgangAufbau {
     /**
      * Konzept Auswerten a1, Entscheid 5: die Bereichszähler hängen als UNTERZÄHLER an HZ-1, nicht als Abzweig daneben -
      * sonst rechnet die Energiebilanz 100 % „ohne eigenen Zähler“, während Verbrauch und Bewertung über die Prozesse
-     * zuordnen. Frisch entsteht die Stellung ab Beginn; stand sie aus einem früheren Lauf als Abzweig, ersetzt eine
-     * Korrektur sie ab demselben Tag (die Route, wie im Portal). Ist sie schon Unterzähler, schreibt keiner der Aufrufe.
+     * zuordnen. Ist die heutige Stellung schon „Unterzähler von HZ-1“, schreibt nichts (wiederholter Lauf). Ohne Stellung
+     * entsteht sie ab Beginn; stand sie aus einem früheren Lauf anders (Abzweig), ersetzt eine Korrektur sie ab demselben
+     * Tag (die Route, wie im Portal). Jede Ablehnung der Route bricht ab - die Demo bleibt nie still beim Abzweig.
      */
     private void unterzaehlerVonHz1(String kennzeichen) throws Exception {
-        String pfad = "/api/v1/messstellen/" + messstelleId(kennzeichen) + "/stellung";
-        Map<String, Object> neu = m("anlage", AN1.toString(), "stellung", "Unterzähler", "unterzaehler_von", "HZ-1",
-                "gueltig_ab", "2024-03-12", "korrektur", false, "grund", "Zuordnung zur Anlage Halle 1.");
-        if (roh("PUT", pfad, neu) < 400) {
+        UUID id = messstelleId(kennzeichen);
+        List<JsonNode> stellungen = new ArrayList<>();
+        lies("/api/v1/messstellen/" + id).path("elektrische_stellung").forEach(stellungen::add);
+        boolean schon = stellungen.stream().anyMatch(st -> st.path("gueltig_bis").asText(null) == null
+                && "Unterzähler".equals(st.path("stellung").asText()) && "HZ-1".equals(st.path("unterzaehler_von").asText()));
+        if (schon) {
             return;
         }
-        roh("PUT", pfad, m("anlage", AN1.toString(), "stellung", "Unterzähler", "unterzaehler_von", "HZ-1",
-                "gueltig_ab", "2024-03-12", "korrektur", true,
-                "grund", "Korrektur: misst einen Teil des Bezugs von HZ-1 - Unterzähler, nicht Abzweig daneben."));
+        boolean korrektur = !stellungen.isEmpty();
+        put("/api/v1/messstellen/" + id + "/stellung", m("anlage", AN1.toString(), "stellung", "Unterzähler",
+                "unterzaehler_von", "HZ-1", "gueltig_ab", "2024-03-12", "korrektur", korrektur, "grund", korrektur
+                        ? "Korrektur: misst einen Teil des Bezugs von HZ-1 - Unterzähler, nicht Abzweig daneben."
+                        : "Zuordnung zur Anlage Halle 1."));
     }
 
     private void stellung(String kennzeichen, String stellung) throws Exception {
@@ -942,9 +1003,10 @@ class DemoRundgangAufbau {
     }
 
     /**
-     * Je Monat {kWh an MS-20, kg an BZ-1} bis {@code bis}: Jahreszeit, langsam sinkender Einsatz je kg, die Anker der
-     * Referenz. Nur abgeschlossene Monate der ECHTEN Zeit — ein Bezugswert für einen späteren Monat scheitert an
-     * {@code bezugsgroesse_wert_abgeschlossen_chk} (Periodenende ≤ {@code created_at}); die Reihe wächst mit jedem Lauf.
+     * Je Monat {kWh an MS-20, kg an BZ-1} bis {@code bis}: bis September 2026 das Muster des Rundgangs (Jahreszeit,
+     * langsam sinkender Einsatz je kg), ab Oktober 2026 die Referenzwelt ({@link #referenzReihe}) - so stimmen die Läufe
+     * der echten Zeit und der Bühnen-Bestand Monat für Monat überein. Über die Route schreibt der Lauf nur abgeschlossene
+     * Monate der ECHTEN Zeit (Periodenende ≤ {@code created_at}); den Rest bis zum Bühnen-Tag {@link #buehnenBestand}.
      */
     static Map<YearMonth, long[]> reihe(YearMonth bis) {
         double[] saison = {0.95, 0.97, 1.02, 1.00, 1.01, 0.98, 0.93, 0.85, 1.00, 1.04, 1.02, 0.83};
@@ -955,15 +1017,60 @@ class DemoRundgangAufbau {
             jeKg += ((m.getMonthValue() * 7) % 5 - 2) * 0.002;
             out.put(m, new long[] {Math.round(kg * jeKg / 10.0) * 10, kg});
         }
-        out.put(YearMonth.of(2026, 10), new long[] {88_630, 312_400});
-        out.put(YearMonth.of(2027, 12), new long[] {78_000, 250_000});
-        long jahr2028 = 0;
-        for (int i = 1; i <= 11; i++) {
-            jahr2028 += out.get(YearMonth.of(2028, i))[0];
-        }
-        out.get(YearMonth.of(2028, 12))[0] = 876_600 - jahr2028;
+        out.putAll(referenzReihe());
         out.keySet().removeIf(m -> m.isAfter(bis));
         return out;
+    }
+
+    /**
+     * MS-20 (kWh) und BZ-1 (kg) von Oktober 2026 bis März 2029 aus {@code docs/contracts/v2/uems-referenzunternehmen.json}
+     * - die Referenzwelt ist die Wahrheit: Oktober 2026 (BB-0001 Fassung 1), November 2026 bis Oktober 2027 (Grundlage
+     * von BB-0001 Fassung 2), Dezember 2027 (AP-18 R1), Januar 2028 (R6), Februar 2028 bis Januar 2029 (R5, gleich
+     * {@code kennzahlen_1_9_monate}); ihre Summe 2028 ohne den März (außerhalb der Spanne) ist der eingefrorene Stand des
+     * Energieziels 2028: 876.600 kWh. Drei Monate nennt die Referenzwelt nicht; sie stehen als Annahme gegen die
+     * Regression von BB-0001 Fassung 2 (10.523 kWh + 0,2343 kWh je kg): November 2027 im Rahmen (+0,3 %), Februar 2029
+     * wie das Jahr davor (−3,4 %), März 2029 über der Bezugsbasis (+2,2 %, die offene Auffälligkeit der Konzepte).
+     */
+    static Map<YearMonth, long[]> referenzReihe() {
+        JsonNode r = referenz();
+        Map<YearMonth, long[]> out = new LinkedHashMap<>();
+        JsonNode bb1 = r.at("/bezugsbasen/0");
+        for (JsonNode f : bb1.path("fassungen")) {
+            for (JsonNode g : f.path("grundlage")) {
+                out.put(YearMonth.parse(g.path("periode").asText()),
+                        new long[] {g.at("/zaehler/wert").asLong(), g.at("/nenner/wert").asLong()});
+            }
+        }
+        out.put(YearMonth.of(2027, 11), new long[] {82_500, 306_000}); // Annahme
+        for (JsonNode fall : r.at("/abnahmefaelle_ap18/faelle")) {
+            JsonNode g = fall.path("gegeben");
+            if (g.has("vergleich_dezember_2027")) {
+                JsonNode d = g.path("vergleich_dezember_2027");
+                out.put(YearMonth.of(2027, 12), new long[] {d.path("gemessen_kwh").asLong(), d.at("/bedingung/BZ-1_kg").asLong()});
+            }
+            if (g.has("januar_2028")) {
+                out.put(YearMonth.of(2028, 1), new long[] {g.at("/januar_2028/kwh").asLong(), g.at("/januar_2028/kg").asLong()});
+            }
+            g.path("je_monat").fields().forEachRemaining(e -> out.put(YearMonth.parse(e.getKey()),
+                    new long[] {e.getValue().path("kwh").asLong(), e.getValue().path("kg").asLong()}));
+        }
+        out.put(YearMonth.of(2029, 2), new long[] {79_200, 305_000}); // Annahme
+        out.put(YearMonth.of(2029, 3), new long[] {84_030, 306_000}); // Annahme
+        return out;
+    }
+
+    private static JsonNode referenzWelt;
+
+    /** Die Referenzdatei, einmal gelesen (Maven läuft in {@code services/api}). */
+    static synchronized JsonNode referenz() {
+        if (referenzWelt == null) {
+            try {
+                referenzWelt = JSON.readTree(Path.of("../../docs/contracts/v2/uems-referenzunternehmen.json").toFile());
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Referenzdatei nicht lesbar", e);
+            }
+        }
+        return referenzWelt;
     }
 
     private boolean bezugswert(UUID bz, YearMonth monat, long kg) throws Exception {
@@ -975,6 +1082,217 @@ class DemoRundgangAufbau {
         String zeit = tag.atStartOfDay(BERLIN).toOffsetDateTime().toString();
         int s = status("POST", "/api/v1/messstellen/MS-20/ablesungen", Map.of("zeitpunkt", zeit, "stand", zahl(stand)));
         assertThat(s).as("Ablesung MS-20 " + zeit).isIn(200, 201);
+    }
+
+    // ========================= Runde 3: Demo-Füllung Auswerten (Konzept a1, Entscheid 12) =========================
+
+    /** Der letzte Monat des Bühnen-Bestands: der Bühnen-Tag 30.04.2029 liegt im April, der März ist abgeschlossen. */
+    private static final YearMonth BUEHNE_BIS = YearMonth.of(2029, 3);
+
+    /**
+     * KZ-0021 bis KZ-0023 rechnen mit passenden Zählern (Konzept a1 §4.7): die Montage je Stück mit dem Zähler der
+     * Montage (AZ-2) statt dem Netzbezug von Halle 1 bzw. dem Spritzguss, und KZ-0022 - eine Montage gibt es in der
+     * Verwaltung nicht - als Strom der Verwaltung (AZ-6) je m² Bezugsfläche. Über die Route „Berechnung ändern ab …“,
+     * rückwirkend ab dem ersten Monat, damit der ganze Verlauf die neue Definition trägt. Idempotent: steht der Zähler
+     * schon in der wirksamen Fassung, schreibt der Lauf nichts.
+     */
+    private void kennzahlenPassend() throws Exception {
+        berechnungAb("KZ-0021", eingang("zaehler", "messstelle", "AZ-2"), eingang("nenner", "bezugsgroesse", "BZ-2"),
+                "Zähler der Montage statt Netzbezug Halle 1 - der Zähler passt zur Kennzahl.");
+        berechnungAb("KZ-0023", eingang("zaehler", "messstelle", "AZ-2"), eingang("nenner", "bezugsgroesse", "BZ-2"),
+                "Zähler der Montage statt Spritzguss - der Zähler passt zur Kennzahl.");
+        berechnungAb("KZ-0022", eingang("zaehler", "messstelle", "AZ-6"), eingang("nenner", "bezugsflaeche", "G-3"),
+                "Zähler der Verwaltung je Quadratmeter - eine Montage gibt es in der Verwaltung nicht.");
+        stammdaten("KZ-0022", "Stromeinsatz Verwaltung je m²",
+                "Stromeinsatz der Verwaltung je Quadratmeter Bezugsfläche; erkennt Auffälligkeiten im Bürobetrieb.");
+    }
+
+    private void berechnungAb(String kennzeichen, Map<String, Object> zaehler, Map<String, Object> nenner,
+            String begruendung) throws Exception {
+        String id = kennzahlId(kennzeichen);
+        if (id == null) {
+            return;
+        }
+        for (JsonNode f : lies("/api/v1/kennzahlen/" + id + "/fassungen").path("fassungen")) {
+            if (f.path("gueltig_bis").isNull() && f.path("aufgehoben_am").isNull()) {
+                for (JsonNode e : f.path("eingaenge")) {
+                    if ("zaehler".equals(e.path("rolle").asText())
+                            && zaehler.get("kennzeichen").equals(e.path("kennzeichen").asText())) {
+                        return; // schon passend
+                    }
+                }
+            }
+        }
+        status("POST", "/api/v1/kennzahlen/" + id + "/fassungen", m("gueltig_ab", "2024-10-01",
+                "begruendung", begruendung, "eingaenge", List.of(zaehler, nenner)));
+    }
+
+    private void stammdaten(String kennzeichen, String name, String zweck) throws Exception {
+        for (JsonNode k : lies("/api/v1/kennzahlen").path("kennzahlen")) {
+            if (kennzeichen.equals(k.path("kennzeichen").asText()) && !name.equals(k.path("name").asText())) {
+                status("PUT", "/api/v1/kennzahlen/" + k.get("id").asText(), m("kennzeichen", kennzeichen, "name", name,
+                        "verantwortlich_name", k.path("verantwortlich_name").asText(null), "zweck", zweck));
+            }
+        }
+    }
+
+    private String kennzahlId(String kennzeichen) throws Exception {
+        for (JsonNode k : lies("/api/v1/kennzahlen").path("kennzahlen")) {
+            if (kennzeichen.equals(k.path("kennzeichen").asText())) {
+                return k.get("id").asText();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Der Bühnen-Bestand bis März 2029 (Entscheid A2): die Bühne steht am 30.04.2029 - Kennzahl-Vergleich, Energieziele
+     * 2028/2029 und die Bewertung über ihre Datengrundlage (April 2028 bis März 2029) brauchen Werte dieser Monate.
+     * <ul>
+     *   <li><b>Ablesungen</b> über die echte Route, mit der Bühnen-Uhr am Ablese-Dienst - wie der Welt-Aufbau seine Uhren
+     *       stellt. Die Route lehnt sonst jede Ablesung nach jetzt ab ({@code ZEITPUNKT_UNGUELTIG}).</li>
+     *   <li><b>Bezugswerte</b> als direkter Stand mit der Erfassungszeit am Morgen nach dem Periodenende: keine Route kann
+     *       sie schreiben - {@code bezugsgroesse_wert_abgeschlossen_chk} verlangt Periodenende ≤ {@code created_at}, und
+     *       {@code created_at} setzt nur die Datenbank (die App-Rolle darf die Spalte nicht schreiben). Der Lauf schreibt
+     *       dieselben Beträge wie die Route im jeweiligen Monat; ein späterer Lauf über die Route ist eine Wiederholung.</li>
+     * </ul>
+     * Die Flächen der echten Uhr zeigen davon nichts vor seiner Zeit (Stichtag-Grenze an Bezugswerten, Werten einer
+     * Messstelle, Ablesungen und Lückenlauf). Idempotent: dieselbe Ablesung ist eine Wiederholung, ein Bezugswert wird nur
+     * geschrieben, wenn seine Periode noch keinen hat.
+     */
+    private void buehnenBestand(JdbcTemplate root, UUID bz1) throws Exception {
+        ablesungen.uhrStellen(Clock.fixed(Instant.parse(PruefumgebungAhrenberg.BUEHNE), ZoneOffset.UTC));
+        try {
+            Map<YearMonth, long[]> reihe = reihe(BUEHNE_BIS);
+            long stand = 1_250_000;
+            for (var m : reihe.entrySet()) {
+                stand += m.getValue()[0];
+                ablesung(m.getKey().plusMonths(1).atDay(1), stand);
+                bezugswertStand(root, bz1, m.getKey(), m.getValue()[1]);
+            }
+            messreihe("HZ-1", 2_400_000, 210_000, BUEHNE_BIS);
+            messreihe("AZ-2", 327_000, 27_000, BUEHNE_BIS);
+            messreihe("AZ-3", 318_000, 18_000, BUEHNE_BIS);
+            messreihe("AZ-4", 314_000, 14_000, BUEHNE_BIS);
+            messreihe("AZ-5", 309_000, 9_000, BUEHNE_BIS);
+            messreihe("AZ-6", 318_000, 18_000, BUEHNE_BIS);
+            messreihe("AZ-8", 313_000, 13_000, BUEHNE_BIS);
+            messreihe("MS-21", 1_200_000, 85_000, BUEHNE_BIS);
+            messreihe("MS-22", 380_000, 12_000, BUEHNE_BIS);
+        } finally {
+            ablesungen.uhrStellen(Clock.systemUTC());
+        }
+        YearMonth ab = YearMonth.now(BERLIN);
+        for (YearMonth mo = ab; !mo.isAfter(BUEHNE_BIS); mo = mo.plusMonths(1)) {
+            bezugswertStand(root, bezugsgroesseId(root, "BZ-2"), mo, Math.round(40_000 * SAISON[mo.getMonthValue() - 1]));
+            bezugswertStand(root, bezugsgroesseId(root, "BZ-3"), mo, Math.round(60 * SAISON[mo.getMonthValue() - 1]));
+            bezugswertStand(root, bezugsgroesseId(root, "BZ-4"), mo, Math.round(GRADTAGE[mo.getMonthValue() - 1] * 7 + 500));
+            bezugswertStand(root, bezugsgroesseId(root, "BZ-5"), mo, Math.round(GRADTAGE[mo.getMonthValue() - 1]));
+        }
+    }
+
+    private static UUID bezugsgroesseId(JdbcTemplate root, String kennzeichen) {
+        return root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = ?", UUID.class,
+                TENANT, kennzeichen);
+    }
+
+    /**
+     * Ein Monatswert als direkter Stand (siehe {@link #buehnenBestand}) - nur für einen Monat, den die echte Zeit noch
+     * nicht abgeschlossen hat, und nur, wenn die Periode noch keinen Wert trägt. Erfasst „am Morgen danach“ von Ines
+     * Kaltenbach, wie die Route es täte; Einheit, Wertart und Periodenart aus der Bezugsgröße.
+     */
+    private static void bezugswertStand(JdbcTemplate root, UUID bz, YearMonth monat, long wert) {
+        if (!monat.isAfter(YearMonth.now(BERLIN).minusMonths(1))) {
+            return; // abgeschlossen in echter Zeit: das schreibt die Route
+        }
+        Instant erfasst = monat.plusMonths(1).atDay(1).atTime(8, 0).atZone(BERLIN).toInstant();
+        root.update("INSERT INTO bezugsgroesse_wert (tenant_id, bezugsgroesse_id, wertart, einheit, periode_art, "
+                + "periode_von, periode_bis, zeitzone, fassung, vorgang, status, betrag, herkunft_art, geliefert_text, "
+                + "geliefert_einheit, actor_sub, actor_name, actor_rolle, actor_art, created_at) "
+                + "SELECT b.tenant_id, b.id, b.wertart, b.einheit, b.periode_art, ?, ?, 'Europe/Berlin', 1, 'erstwert', "
+                + "'wirksam', ?, 'eingabe', ?, b.einheit, ?, 'Ines Kaltenbach', 'energiemanager', 'kunde', ? "
+                + "FROM bezugsgroesse b WHERE b.id = ? AND b.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM "
+                + "bezugsgroesse_wert w WHERE w.bezugsgroesse_id = b.id AND w.periode_von = ?)",
+                java.sql.Date.valueOf(monat.atDay(1)), java.sql.Date.valueOf(monat.atEndOfMonth()),
+                java.math.BigDecimal.valueOf(wert), zahl(wert), AhrenbergWelt.SEED_SUBJECTS.get("IK"),
+                java.sql.Timestamp.from(erfasst), bz, TENANT, java.sql.Date.valueOf(monat.atDay(1)));
+    }
+
+    /**
+     * BB-0001 Fassung 2 wie die Referenzwelt (Entscheid A2): der Welt-Aufbau schreibt beide Fassungen vereinfacht als
+     * Verhältnis 0,2837 ({@code AhrenbergWelt.bezugsbasisFassung}), weil seine Welt keine Werte für die Referenzperiode
+     * November 2026 bis Oktober 2027 hatte. Die Referenzwelt hat dort die Regression 10.523 kWh + 0,2343 kWh je kg; die
+     * Energieziele 2028 und 2029 zeigen fest auf Fassung 2 und sind gegen sie bewertet. Ohne die Korrektur lägen die
+     * Werte 2028 rund 9 % statt 3,4 % unter der Basis, und der März 2028 wäre nicht „außerhalb der Spanne“.
+     *
+     * <p>Direkter Stand wie im Welt-Aufbau: eine freigegebene Fassung ist eingefroren (Trigger
+     * {@code bezugsbasis_fassung_eingefroren}), eine neue Fassung über die Route bekäme eine neue Nummer. Die Korrektur
+     * läuft darum als Eigentümer in EINER Transaktion mit {@code session_replication_role = replica} und nur, solange
+     * Fassung 2 noch das Verhältnis trägt (idempotent). Alle Zahlen kommen aus der Referenzdatei.
+     */
+    private void bezugsbasisReferenzwelt(JdbcTemplate root) {
+        JsonNode f2 = referenz().at("/bezugsbasen/0/fassungen/1");
+        JsonNode spanne = f2.path("spannweite");
+        List<String> gruende = new ArrayList<>();
+        f2.path("anpassungsgruende").forEach(g -> gruende.add(g.asText()));
+        new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(root.getDataSource()))
+                .executeWithoutResult(t -> {
+                    root.execute("SET LOCAL session_replication_role = replica");
+                    int n = root.update("UPDATE bezugsbasis_fassung f SET referenzperiode = ?, methode = ?, datenlage = ?, "
+                            + "basiswert = ?, koeffizienten = ?::jsonb, r2 = ?, streuung_prozent = ?, "
+                            + "anpassungsgruende = ?::text[], begruendung = ? FROM bezugsbasis b "
+                            + "WHERE b.id = f.bezugsbasis_id AND b.tenant_id = ? AND b.kennzeichen = 'BB-0001' "
+                            + "AND f.fassung = 2 AND f.methode = 'verhaeltnis'",
+                            f2.path("referenzperiode").asText(), f2.path("methode").asText(), f2.path("datenlage").asText(),
+                            f2.path("basiswert").decimalValue(), f2.path("koeffizienten").toString(), f2.path("r2").decimalValue(),
+                            f2.path("streuung_prozent").decimalValue(), "{" + String.join(",", gruende) + "}",
+                            f2.at("/freigabe/begruendung").asText(), TENANT);
+                    if (n == 1) {
+                        root.update("UPDATE bezugsbasis_variable v SET spannweite_von = ?, spannweite_bis = ? "
+                                + "FROM bezugsbasis_fassung f JOIN bezugsbasis b ON b.id = f.bezugsbasis_id "
+                                + "WHERE v.fassung_id = f.id AND b.tenant_id = ? AND b.kennzeichen = 'BB-0001' "
+                                + "AND f.fassung = 2 AND v.position = 1",
+                                spanne.path("von").decimalValue(), spanne.path("bis").decimalValue(), TENANT);
+                    }
+                });
+    }
+
+    /**
+     * Die Bezugsbasis einer Kennzahl, deren Berechnung sich geändert hat ({@link #kennzahlenPassend}), neu gefasst:
+     * dieselbe Referenzperiode aus den neu gerechneten Werten, dasselbe „gilt ab“ - die neue Fassung ersetzt die alte ganz
+     * (Anpassungsgrund „Grundlage korrigiert“). Über die Routen, wie {@link #bezugsbasisFuer}. Idempotent: nur, solange
+     * die Bezugsbasis eine einzige Fassung hat.
+     */
+    private void bezugsbasisNeuGefasst(String kennzeichen, String nennerKennzeichen) throws Exception {
+        String kid = kennzahlId(kennzeichen);
+        if (kid == null) {
+            return;
+        }
+        JsonNode basen = lies("/api/v1/kennzahlen/" + kid + "/bezugsbasen").path("bezugsbasen");
+        if (basen.size() != 1 || basen.get(0).path("fassungen").size() != 1) {
+            return;
+        }
+        JsonNode f1 = basen.get(0).path("fassungen").get(0);
+        String basis = "/api/v1/kennzahlen/" + kid + "/bezugsbasen/" + basen.get(0).get("id").asText();
+        if (roh("POST", basis + "/fassungen", m("referenzperiode", f1.path("referenzperiode").asText(),
+                "methode", "verhaeltnis", "variablen", List.of(bezugsgroesseIdRoute(nennerKennzeichen)),
+                "toleranz_prozent", "2.0", "wiedervorlage_monate", 12, "anpassungsgruende", List.of("grundlage_korrigiert"),
+                "begruendung", "Neu gefasst: die Kennzahl rechnet jetzt mit dem passenden Zähler.",
+                "gilt_ab", f1.path("gilt_ab").asText())) >= 400) {
+            return;
+        }
+        roh("POST", basis + "/fassungen/2/beantragen", m("begruendung", "Zur Freigabe vorgelegt."));
+        roh("POST", basis + "/fassungen/2/freigeben", m("begruendung", "Nach Prüfung freigegeben."));
+    }
+
+    private String bezugsgroesseIdRoute(String kennzeichen) throws Exception {
+        for (JsonNode b : lies("/api/v1/bezugsgroessen").path("bezugsgroessen")) {
+            if (kennzeichen.equals(b.path("kennzeichen").asText())) {
+                return b.get("id").asText();
+            }
+        }
+        throw new IllegalStateException("Bezugsgröße nicht gefunden: " + kennzeichen);
     }
 
     /** Wie im Portal eingetippt: die Zahl-Regel liest ab vier Stellen nur mit Tausenderpunkten ({@code BezugsdatenRegeln}). */
@@ -1025,6 +1343,18 @@ class DemoRundgangAufbau {
         var r = mvc.perform(b).andReturn().getResponse();
         if (r.getStatus() >= 400) {
             throw new IllegalStateException("POST " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus()
+                    + " " + r.getContentAsString(StandardCharsets.UTF_8));
+        }
+        return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));
+    }
+
+    /** PUT als Ines; ein Fehler ist echt und bricht ab (wie {@link #post}). */
+    private JsonNode put(String path, Object body) throws Exception {
+        var b = request(HttpMethod.PUT, path).with(authentication(ines()))
+                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(body));
+        var r = mvc.perform(b).andReturn().getResponse();
+        if (r.getStatus() >= 400) {
+            throw new IllegalStateException("PUT " + path + " " + JSON.writeValueAsString(body) + " → " + r.getStatus()
                     + " " + r.getContentAsString(StandardCharsets.UTF_8));
         }
         return JSON.readTree(r.getContentAsString(StandardCharsets.UTF_8));

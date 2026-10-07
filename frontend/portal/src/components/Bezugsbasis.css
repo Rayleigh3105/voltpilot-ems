@@ -17,12 +17,6 @@
 .vp-bb-assistent p {
   overflow-wrap: anywhere;
 }
-.vp-bb-zeile {
-  margin: 6px 0 0;
-  color: var(--vp-c-fg);
-  font-size: var(--vp-c-fs-14);
-  overflow-wrap: anywhere;
-}
 .vp-bb-leer,
 .vp-bb-basis {
   background: var(--vp-c-card);
@@ -141,19 +135,6 @@
 .vp-kz-reiter {
   margin: var(--vp-c-space-3) 0;
 }
-.vp-kz-elk {
-  font-size: var(--vp-c-fs-12);
-  color: var(--vp-c-primary);
-  font-weight: var(--vp-c-fw-700);
-  overflow-wrap: anywhere;
-}
-.vp-kz-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--vp-c-fs-14);
-  margin: 0 0 var(--vp-c-space-3);
-}
 
 /* IP-18: Fassungen, Anstoß, Frist, Faktoren und die Vorschau alt/neu. 375 px: Karten untereinander; die Tafel alt/neu
  * stapelt je Zeile (Beschriftung aus `data-label`); 1440 px: drei Spalten. */
@@ -191,6 +172,19 @@
 .vp-bb-anstoss li,
 .vp-bb-faktoren li {
   overflow-wrap: anywhere;
+}
+/* Auf der Ebene (§6.6) liest sich der Anstoß in der Schrift der Karte, nicht größer als ihr übriger Text
+   (`.vp-kz-block p` setzte seine Absätze sonst auf 14 px, die Punkte erbten 16 px). */
+.vp-kzs .vp-bb-anstoss,
+.vp-kzs .vp-bb-anstoss p {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.vp-kzs .vp-bb-anstoss li + li {
+  margin-top: 4px;
+}
+.vp-bb-zweck {
+  margin: 0;
 }
 .vp-bb-fassung.is-beendet,
 .vp-bb-fassung.is-abgelehnt {
@@ -247,4 +241,142 @@
 .vp-bb-fuss > .vp-btn {
   max-width: 100%;
   white-space: normal;
+}
+
+/* --- Konzept Auswerten a1 §6.6: die Ebene der Bezugsbasis ---------------------------------------------------------------- */
+
+.vp-bb-ebene {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-bb-pflege {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-bb-ebene .vp-bb-fassungen {
+  margin: 0;
+  gap: 0;
+}
+.vp-bb-ebene .vp-bb-fassung {
+  padding: 11px 0;
+}
+.vp-bb-ebene .vp-bb-fassung:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.vp-bb-fz {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 52px;
+}
+.vp-bb-fd {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  width: 56px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 5px 2px;
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-muted);
+  color: var(--vp-navy, #1e3a5f);
+  text-align: center;
+  line-height: 1.15;
+}
+.vp-bb-fd small {
+  font: 600 0.625rem/1.2 var(--vp-font-heading);
+}
+.vp-bb-fd b {
+  font: 800 0.9375rem/1.2 var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.vp-bb-fd span {
+  font: 600 0.6875rem/1.2 var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+}
+.vp-bb-fd.is-freigegeben {
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-bb-fd.is-entwurf,
+.vp-bb-fd.is-beantragt {
+  background: var(--vp-c-card);
+  border: 1px dashed var(--vp-navy, #1e3a5f);
+}
+.vp-bb-tx {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  align-self: center;
+}
+.vp-bb-ti {
+  font: 600 0.9375rem/1.3 var(--vp-font-heading);
+  color: var(--vp-c-fg);
+}
+.vp-bb-fz.is-zart .vp-bb-ti {
+  font-weight: 500;
+}
+.vp-bb-why {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+.vp-bb-nurvorlesen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.vp-bb-ansehen {
+  margin: 8px 0 0 68px;
+}
+.vp-bb-ansehen > summary {
+  cursor: pointer;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vp-c-primary);
+}
+.vp-bb-ansehen > p {
+  margin: 4px 0 0;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-bb-fassung > .vp-kz-aktionen,
+.vp-bb-fassung > .vp-bb-freigabe {
+  margin-left: 68px;
+}
+.vp-bb-fuss-satz {
+  margin: 0;
+}
+@media (max-width: 400px) {
+  .vp-bb-ansehen,
+  .vp-bb-fassung > .vp-kz-aktionen,
+  .vp-bb-fassung > .vp-bb-freigabe {
+    margin-left: 0;
+  }
+}
+/* In der eigenen Karte trägt das Modell keinen Trennstrich oben. */
+.vp-bb-modell-karte > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+/* „Monate der Referenzperiode“ ist eine Beschriftung wie „Datenlage“ - nicht der 14-px-Absatz der Karte. */
+.vp-bb-modell-karte .vp-bbm-unter {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
 }
