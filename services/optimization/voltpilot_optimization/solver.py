@@ -310,7 +310,7 @@ from voltpilot_optimization.night_reserve import (
     night_reserve_terms,
     stash_night_reserve,
 )
-from voltpilot_optimization.stur import stur_cost_eur
+from voltpilot_optimization.stur import eigenverbrauch_dispatch, stur_cost_eur
 
 logger = logging.getLogger("voltpilot.optimization.solver")
 
@@ -463,19 +463,41 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     battery_ruht = inp.battery_held or inp.soc_unbekannt
     charge_cap = 0.0 if battery_ruht else p.max_charge_kw
     discharge_cap = 0.0 if battery_ruht else p.max_discharge_kw
+    # Steuerstand (07.10.2026): einen Speicher, den VoltPilot NICHT steuert
+    # (die Box meldet ihn frisch als beobachtet oder Not-Aus), kann der Plan
+    # nicht ausfuehren - er folgt seiner eigenen Eigenverbrauchsregelung. Laden
+    # und Entladen liegen deshalb fest auf deren Bahn (stur.eigenverbrauch_
+    # dispatch): keine Handels-Viertelstunde, die niemand ausfuehrt. Dieselbe
+    # Mechanik wie oben, nur mit der Bahn statt 0 - eine BOUND, kein Constraint;
+    # ein Ruhe-Grund (Regel, kein Ladestand) geht vor.
+    eigen = None
+    if inp.battery_observed and not battery_ruht:
+        dispatch = eigenverbrauch_dispatch(inp)
+        eigen = (
+            [max(b, 0.0) for b in dispatch.battery_kw],
+            [max(-b, 0.0) for b in dispatch.battery_kw],
+        )
     # Steuerung Stufe 7: „Speicher jetzt laden" als Vorschau - die ersten N
     # Slots tragen eine UNTERGRENZE auf der Ladung. Ebenfalls eine BOUND (siehe
     # OptimizationInput.forced_charge_slots), also nichts im Modell und nichts
     # in KNOWN_CONSTRAINTS; die Vorgabe 0 ist byte-identisch zu jedem Lauf davor.
-    forced_kw = 0.0 if battery_ruht else max(inp.forced_charge_kw, 0.0)
+    # Einen nicht gesteuerten Speicher kann niemand zwangsladen.
+    forced_kw = 0.0 if battery_ruht or eigen is not None else max(inp.forced_charge_kw, 0.0)
     forced_n = max(min(inp.forced_charge_slots, n), 0) if forced_kw > 0 else 0
 
     def _charge_bounds(model, t):
+        if eigen is not None:
+            return (eigen[0][t], eigen[0][t])
         low = min(forced_kw, charge_cap) if t < forced_n else 0.0
         return (low, charge_cap)
 
+    def _discharge_bounds(model, t):
+        if eigen is not None:
+            return (eigen[1][t], eigen[1][t])
+        return (0, discharge_cap)
+
     m.charge = Var(m.T, domain=NonNegativeReals, bounds=_charge_bounds)
-    m.discharge = Var(m.T, domain=NonNegativeReals, bounds=(0, discharge_cap))
+    m.discharge = Var(m.T, domain=NonNegativeReals, bounds=_discharge_bounds)
     m.is_charging = Var(m.T, domain=Binary)
     # Curtailment can only ever REDUCE feed-in: bounded per slot by the PV
     # forecast, so pv - curtail (the published inverter cap) is never negative.
@@ -716,6 +738,10 @@ def _add_night_reserve(
     # the rule holds it. The customer rule wins, and it also gets the credit.
     if inp.battery_held:
         return None
+    # Steuerstand: ein nicht gesteuerter Speicher faehrt seine eigene Regelung;
+    # was er bei Sonnenaufgang noch hat, haelt nicht der Plan fest.
+    if inp.battery_observed:
+        return None
     # P7: dieselbe Logik fuer einen Lauf OHNE Ladestand. Die Wertfunktion
     # bepreist den Ladestand bei SONNENAUFGANG - ohne Anfangs-Ladestand gibt es
     # keinen Pfad dorthin, den sie bewerten koennte, und der Term wuerde nur
@@ -842,6 +868,12 @@ def _with_explanation(
         # Kontrakt heisst ein abwesendes Feld "keine Pflicht", die Box faehrt
         # den Sollwert 0 starr, und der Speicher ruht wirklich.
         if inp.soc_unbekannt:
+            trim = follow = absorb = unforeseen = limiting = False
+        # Steuerstand: dieselbe Regel fuer einen Speicher, den VoltPilot nicht
+        # steuert - die Box schreibt ihn nicht, also gibt es nichts zu
+        # bevollmaechtigen. Wechselt die Box vor dem naechsten Lauf auf
+        # gesteuert, faehrt sie diesen Eigenverbrauchs-Plan starr.
+        if inp.battery_observed:
             trim = follow = absorb = unforeseen = limiting = False
         slots = [
             replace(
@@ -1244,4 +1276,9 @@ def _extract_plan(
         # er zugleich der GRUND des Ruhe-Plans - persistiert je Slot-Zeile, so
         # dass die Fahrplan-Seite ihn aussprechen kann.
         soc_source=inp.soc_source,
+        # Steuerstand: als Eigenverbrauch geplant (Untergrenze ohne
+        # Handelspruefung, Log). Ein Ruhe-Grund geht vor - dann ruht er.
+        battery_observed=(
+            inp.battery_observed and not (inp.battery_held or inp.soc_unbekannt)
+        ),
     )

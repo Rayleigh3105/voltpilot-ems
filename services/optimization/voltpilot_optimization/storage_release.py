@@ -76,6 +76,16 @@ Untergrenze - dort gibt es keine Freigabe. Ein geplanter Verkauf zählt
 außerdem als Entnahme in der Rückwärtsrechnung, damit kein Auto die Energie
 leert, die der Plan später verkaufen will. In Eigenverbrauchs-Viertelstunden
 (Überschuss laden, Haus decken, ruhen) gewinnt die Kundenwahl.
+
+**Ein Speicher, den VoltPilot nicht steuert** (Steuerstand ``beobachtet`` oder
+``not_aus``, 07.10.2026): der Plan ist dann seine eigene
+Eigenverbrauchsregelung (:func:`voltpilot_optimization.stur.eigenverbrauch_dispatch`),
+und es gibt keinen Handel, der gewinnen könnte. Die Untergrenze entsteht
+deshalb OHNE Handelsprüfung und ohne Verkaufsentnahme
+(``battery_observed=True``): geplanter Netzbezug heißt in diesem Plan „der
+Speicher ist laut Prognose leer oder an seiner Leistungsgrenze", nicht „der
+Plan wählt Netzstrom". Die Rückwärtsrechnung selbst ist schon die
+Eigenverbrauchsregel (Defizit decken, Überschuss laden) - sie bleibt gleich.
 """
 
 from __future__ import annotations
@@ -385,6 +395,7 @@ def plan_storage_release(
     pv_errors: DayErrorQuantiles | None,
     forecasts_fresh: bool,
     battery_held: bool = False,
+    battery_observed: bool = False,
     tail_load_kw: list[float] | tuple[float, ...] = (),
     tail_pv_kw: list[float] | tuple[float, ...] = (),
 ) -> StorageRelease:
@@ -401,6 +412,11 @@ def plan_storage_release(
     sie weiter, eine Untergrenze bekommen nur die Slots des Fahrplans. Reichen
     Fahrplan und Prognose zusammen nicht bis zur nächsten Erzeugung
     (:func:`reaches_next_generation`), gibt es keine Freigabe.
+
+    ``battery_observed`` (Steuerstand, :attr:`SchedulePlan.battery_observed`):
+    VoltPilot steuert den Speicher nicht, der Plan ist seine
+    Eigenverbrauchsregelung - keine Handelsprüfung (:func:`release_slot`) und
+    keine Verkaufsentnahme (:func:`planned_sale_kw`).
     """
     if len(tail_load_kw) != len(tail_pv_kw):
         raise ValueError("tail_load_kw and tail_pv_kw must have the same length")
@@ -428,9 +444,11 @@ def plan_storage_release(
     pv = [x * (1.0 - u.pv_abschlag) for x in raw_pv]
     if not reaches_next_generation(load, pv, raw_pv):
         return _none_release(plan, reserve, standard, GRUND_PROGNOSE_ZU_KURZ, u)
-    # In der Prognose-Verlängerung handelt kein Plan: keine Verkäufe.
+    # In der Prognose-Verlängerung handelt kein Plan: keine Verkäufe. Ein nicht
+    # gesteuerter Speicher verkauft nie - er entlädt nur bis zum Defizit.
     sales = [
-        planned_sale_kw(s.battery_kw, s.load_kw, s.pv_kw) * slot_hours / eta
+        0.0 if battery_observed
+        else planned_sale_kw(s.battery_kw, s.load_kw, s.pv_kw) * slot_hours / eta
         for s in plan.slots
     ] + [0.0] * len(tail_load_kw)
     need, capped = required_energy_kwh(
@@ -450,9 +468,10 @@ def plan_storage_release(
     floors_kwh: list[float | None] = []
     floors_pct: list[float | None] = []
     for t, s in enumerate(plan.slots):
-        if capped[t] or capped[t + 1] or not release_slot(
+        trade = not battery_observed and not release_slot(
             s.battery_kw, s.grid_kw, s.load_kw, s.pv_kw
-        ):
+        )
+        if capped[t] or capped[t + 1] or trade:
             floors_kwh.append(None)
             floors_pct.append(None)
             continue

@@ -1250,13 +1250,16 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		DevInsecure: a.Cfg.DevInsecure,
 		// The build stamp rides EVERY heartbeat as the top-level `version`
 		// (OTA Stufe 0) - see cloud.Options.Version.
-		Version:    Version,
-		NetworkFn:  a.networkSummary,
-		OnSchedule: a.onSchedule,
-		OnCommand:  a.onCloudCommand,
-		OnEntities: a.onEntityRegistryPush,
-		OnPlanV2:   a.onPlanV2,
-		OnFlows:    a.onFlows,
+		Version:   Version,
+		NetworkFn: a.networkSummary,
+		// Gesteuert oder nur beobachtet - in JEDEM Herzschlag, auch ohne
+		// Rücklesung (docs/contracts/speicher-steuerstand.md).
+		BatteryControlFn: a.batteryControlSummary,
+		OnSchedule:       a.onSchedule,
+		OnCommand:        a.onCloudCommand,
+		OnEntities:       a.onEntityRegistryPush,
+		OnPlanV2:         a.onPlanV2,
+		OnFlows:          a.onFlows,
 		// OTA Stufe 2: das zugewiesene Release kommt retained ueber denselben
 		// Link. Es wird geprueft, abgelegt und gemeldet - angewandt wird es
 		// beaufsichtigt (update.sh --from-target).

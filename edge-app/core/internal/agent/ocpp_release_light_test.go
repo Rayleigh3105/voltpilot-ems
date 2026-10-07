@@ -43,4 +43,14 @@ func TestEdgeLightPilotReleasesItsObservedDeye(t *testing.T) {
 	if hb := a.chargersSummary(); hb.StorageReleaseMode != string(lastmgmt.ReleaseObserved) {
 		t.Fatalf("the heartbeat carries the stage: %q", hb.StorageReleaseMode)
 	}
+	// Steuerstand (docs/contracts/speicher-steuerstand.md): without a readback
+	// there is no `control` block - and still the cloud learns that VoltPilot
+	// only observes this Deye, so the optimizer plans its self-consumption.
+	if sum := controlSummary(a.State.Get()); sum != nil {
+		t.Fatalf("no readback, no control block: %+v", *sum)
+	}
+	if bc := a.batteryControlSummary(); bc == nil || bc.State != batteryControlObserved ||
+		bc.ControlEnabled || bc.Certified {
+		t.Fatalf("the heartbeat must report the observed Deye: %+v", bc)
+	}
 }
