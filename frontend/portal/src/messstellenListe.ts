@@ -188,9 +188,16 @@ export function passtZurSuche(z: MessstelleRegisterZeile, terme: readonly string
   });
 }
 
-/** Die Fundstellen in einem gezeigten Text (für `<mark>`), dieselbe Regel wie die Suche: eine Zahl nur als ganze Zahl. */
+/**
+ * Die Fundstellen in einem gezeigten Text (für `<mark>`), dieselbe Regel wie die Suche: eine Zahl nur als ganze Zahl,
+ * und nur in einem Text, der auch ihr Wort trägt - „halle 1“ markiert „Halle 1“, nicht die 1 von „HZ-1“.
+ */
 export function markiert(text: string, terme: readonly string[]): TextTeil[] {
-  return hervorheben(text, [...terme], zahlFundstellen);
+  const flach = normalisiereSuche(text);
+  const begriffe = gruppen(terme).flatMap(({ wort, zahlen }) =>
+    wort === null ? zahlen : flach.includes(wort) ? [wort, ...zahlen] : [wort],
+  );
+  return hervorheben(text, begriffe, zahlFundstellen);
 }
 
 const parameter = (hash: string, name: string): string | null =>
