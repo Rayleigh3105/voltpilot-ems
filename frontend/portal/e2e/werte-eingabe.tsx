@@ -34,7 +34,16 @@ Object.assign(api, {
   unternehmen: async () => ahrenbergUnternehmen(), standorte: async () => ahrenbergHeute(),
   standortOrte: async (id: string) => id === FIXTURE_IDS.st1 ? ortsbaumAhrenberg() : ortsbaumLindach(),
   prozesse: async () => ({ prozesse: ahrenbergProzesse() }), kostenstellen: async () => ({ kostenstellen: ahrenbergKostenstellen() }),
-  messstellenRegister: async () => ahrenbergRegister(),
+  // MS-21 liest von Hand ab: mit der ersten Ablesung ist sie die Quelle (AP-09) - so, wie das Register es sagt.
+  messstellenRegister: async () => {
+    const r = ahrenbergRegister();
+    const [erste, letzte] = [ablesungen[0], ablesungen[ablesungen.length - 1]];
+    return { ...r, register: r.register.map((z) => z.kennzeichen !== 'MS-21' ? z : {
+      ...z,
+      quelle: { stand: 'ablesung' as const, fuehrend: null, davor: null, vergleichsquellen: 0, ablesung: { seit: erste.zeitpunkt, zuletzt: letzte.zeitpunkt, faellig_ab: '2026-12-01T07:15:00+01:00' } },
+      beobachtung: { zustand: 'liefert' as const, text: 'Abgelesen am 01.10.2026', seit: null, toleranz_s: null, kadenz_s: null, geraet: null },
+    }) };
+  },
   bezugsgroesseWerte: async () => ({ werte }),
   bezugswertEingeben: async (id: string, body: { wert: string }) => { posts.push({ id, ...body }); const w = bezugswert(body.wert.replaceAll('.', '').replace(',', '.')); werte = [w]; return { urteil: 'neu', satz: 'Wert gespeichert.', kennung: null, hinweise: [], wert: w }; },
   bezugswertBerichtigen: async (id: string, periode: string, body: { wert: string }) => { posts.push({ id, periode, ...body }); return antwort(body.wert); },
@@ -52,4 +61,4 @@ Object.assign(api, {
     posts.push({ kz, zeit, ...body }); return { urteil: 'vorschlag', korrektur: 'K-2026-0001', ablesung: ablesungen.find(a => a.zeitpunkt === zeit), ablesezeitraum: null };
   },
 });
-ReactDOM.createRoot(document.getElementById('root')!).render(<main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}><RechteStandort.Provider value={FIXTURE_IDS.st1}>{params.has('ablesung') ? <MessstelleSeite id={ms21().id} onListe={() => {}} /> : <BezugsgroessenPage />}</RechteStandort.Provider></main>);
+ReactDOM.createRoot(document.getElementById('root')!).render(<main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}><RechteStandort.Provider value={FIXTURE_IDS.st1}>{params.has('ablesung') ? <MessstelleSeite id={ms21().id} onListe={() => {}} /> : <BezugsgroessenPage bezugsgroesseId={ahrenbergBezugsgroessen().bezugsgroessen.find(b => b.kennzeichen === 'BZ-2')!.id} />}</RechteStandort.Provider></main>);

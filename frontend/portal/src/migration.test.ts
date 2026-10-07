@@ -1543,6 +1543,18 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
       }
     }
     const verwendeteEntfallene = new Set<string>();
+    // Ein Bedienelement kann mehrmals belegt fortgeschrieben werden (AP-10 IP-15, dann Messen-Bau m2): jeder Schritt
+    // trägt seinen eigenen Commit und Grund, und die Kette führt vom Bestand bis zur heutigen Fassung (`null` = entfallen).
+    const kette = (pfad: string, start: string): string | null => {
+      let soll: string | null = start;
+      for (let schritt = 0; soll !== null && schritt < 20; schritt++) {
+        const f = kundenBestand.fortschreibungen.find(x => x.datei === pfad && x.vorher === soll);
+        if (!f || 'menue' in f) break;
+        verwendeteFortschreibungen.add(f);
+        soll = f.nachher;
+      }
+      return soll;
+    };
     let zahl = 0;
     for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
       const nachfolger = kundenBestand.fortschreibungen.find(f => f.datei === pfad && 'nachher_datei' in f);
@@ -1587,9 +1599,7 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
           // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
-          const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
-          if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
-          const stelle = rest.indexOf(fortschreibung?.nachher ?? fingerabdruck);
+          const stelle = rest.indexOf(kette(pfad, fingerabdruck) ?? fingerabdruck);
           expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
@@ -1598,8 +1608,8 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
-        if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
         if (fortschreibung && 'menue' in fortschreibung) {
+          verwendeteFortschreibungen.add(fortschreibung);
           // Ins Menü ⋯ verlegt (Konzept Auswerten a1 §6.5): kein eigener Knopf mehr, sondern ein Eintrag des RowMenu -
           // Beschriftung, Recht und Handler stehen wörtlich in der Datei, sonst gilt der Knopf als verloren. Trägt der
           // Eintrag sein Recht über eine Variable, steht deren Belegung als `recht` daneben und ebenso wörtlich in der
@@ -1611,14 +1621,14 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
           zahl++;
           continue;
         }
-        if (fortschreibung && fortschreibung.nachher === null) {
+        const soll = kette(pfad, fingerabdruck);
+        if (soll === null) {
           // Ein ausdrücklich belegter Wegfall (Neubau einer Fläche nach freigegebenem Konzept, Grund und Commit am
           // Eintrag): das Bedienelement ist wirklich weg, nicht nur verschoben.
           expect(jetzt, `${pfad}: als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
           zahl++;
           continue;
         }
-        const soll = fortschreibung?.nachher ?? fingerabdruck;
         const stelle = jetzt.indexOf(soll);
         if (stelle < 0 && nz) {
           // Nur was main selbst entfernt hat, darf fehlen — einzeln belegt und auf main wirklich nicht mehr da.
@@ -1672,7 +1682,8 @@ describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => 
   it.each([
     ['components/BezugsKanalbindung.tsx', 'bezugsgroesse.verwalten'],
     ['components/BezugswertDialog.tsx', 'bezugsgroesse.eingeben'],
-    ['components/BezugswertListe.tsx', 'bezugsgroesse.eingeben'],
+    // Messen m1 §6.8: die Werte einer Bezugsgröße stehen auf ihrer Seite (die frühere Inline-Liste entfällt).
+    ['pages/BezugsgroesseSeite.tsx', 'bezugsgroesse.eingeben'],
     ['components/AblesungDialog.tsx', 'ablesung.erfassen'],
     ['components/Ablesungen.tsx', 'ablesung.erfassen'],
   ])('%s verwendet die bestehende Rechte-Weiche für %s', (pfad, recht) => {

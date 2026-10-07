@@ -66,9 +66,20 @@ export function entscheidAus(hash: string): Entscheid | null {
   return { art, kennzeichen: p.get(KENNZEICHEN_PARAMETER)?.trim() || null };
 }
 
-/** Derselbe Sprung zum Ansehen: ohne Entscheid; die Parameter der Zielseite selbst (`?ort=G-1`) bleiben. */
+/**
+ * Derselbe Sprung zum Ansehen: ohne Entscheid; die Parameter der Zielseite selbst (`?ort=G-1`) bleiben. Die Ablese-Runde
+ * eines Orts (`?ablesen=G-1`, Messen m2) ist ein Schreibweg - angesehen wird das Register desselben Orts (`?ort=G-1`).
+ */
 export function ansehenSprung(s: Sprung): Sprung {
-  return { route: s.route, hash: ohneEntscheid(s.hash) };
+  const [pfad, ...rest] = ohneEntscheid(s.hash).split('?');
+  const p = new URLSearchParams(rest.join('?'));
+  const runde = p.get('ablesen');
+  if (runde) {
+    p.delete('ablesen');
+    p.set('ort', runde);
+  }
+  const query = p.toString();
+  return { route: s.route, hash: `${pfad}${query ? `?${query}` : ''}` };
 }
 
 /** Die Adresse ohne den Entscheid; andere Parameter bleiben. */

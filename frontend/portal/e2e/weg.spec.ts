@@ -228,7 +228,8 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
       await expect(page.getByTestId('quelle-karte')).toContainText('Zähler Energiekarte EK-1');
       const zahl = await station(page, breite, '05-zahl', gesammelt);
-      expect(zahl.route).toMatch(/\?periode=2026-11-03$/);
+      // Aus „Stand am …“ geöffnet: die Seite liest diesen Tag, nur lesend (Review r4 S4).
+      expect(zahl.route).toMatch(/\?periode=2026-11-03&stand=2026-11-03$/);
 
       // ---------------------------------------------------------------- 6 · ZAHL: der Verlauf desselben Tages
       const verlauf = werte.getByTestId('verlauf');
@@ -237,12 +238,15 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await station(page, breite, '06-verlauf', gesammelt);
 
       // ---------------------------------------------------------------- 7 · ZAHL: der Vergleich im Monat
+      // Messen m2 (Seite): der Monat steht als Balken; der Vergleich ist zugeklappt, bis der Kunde vergleichen will.
       await werte.locator('.vp-wk-zeitwahl').getByRole('tab', { name: 'Monat' }).click();
       await expect(werte.getByTestId('werte-karte')).toContainText('35.800');
+      await expect(werte.getByTestId('monatsbalken')).toBeVisible();
+      await werte.locator('details.vp-wk-vergleich-auf > summary').click();
       await werte.getByTestId('vergleich').getByRole('tab', { name: 'Vorperiode' }).click();
       await expect(werte.getByTestId('vergleich-delta')).toContainText('gegenüber Oktober 2026');
       const vergleich = await station(page, breite, '07-vergleich', gesammelt);
-      expect(vergleich.route).toMatch(/\?periode=2026-11&v=vorperiode$/);
+      expect(vergleich.route).toMatch(/\?periode=2026-11&v=vorperiode&stand=2026-11-03$/);
 
       // ---------------------------------------------------------------- 8 · NACHWEIS: die Versionen der Zahl
       await werte.locator('.vp-wk-zeitwahl').getByRole('tab', { name: 'Tag' }).click();
@@ -279,11 +283,12 @@ const WELTEN: { name: string; bild: string; jetzt: Date; da: string; text?: RegE
     text: /2\.354\s?kWh/,
   },
   {
-    name: 'w3-verlauf',
+    // Messen m2 (Seite): der Monat als zwölf Balken mit der Zeile des Monats (der Verlauf steht am Tag und in der Woche).
+    name: 'w3-monat',
     bild: `bild=standort&stand=${HEUTE}&ansicht=verlauf&ms=MS-10&mon=2026-11`,
     jetzt: JETZT,
-    da: '[data-testid="verlauf"]',
-    text: /35\.800\s?kWh/,
+    da: '[data-testid="werte"]',
+    text: /November 2026: 35\.800\s?kWh/,
   },
   {
     name: 'w4-vergleich',
