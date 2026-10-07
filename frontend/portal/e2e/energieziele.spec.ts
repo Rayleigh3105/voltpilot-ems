@@ -96,9 +96,10 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(m, 'leer');
       await ablegen(page, `leer-${breite}`, true);
       await page.getByTestId('verbesserung-reiter-abweichungen').click();
-      // IP-18: das Register „Abweichungen“ — ohne Abweichung der Leer-Satz, ohne Knopf (eröffnet wird an der Kennzahl).
+      // IP-18: das Register „Abweichungen“ — ohne Abweichung der Leer-Satz, kein Knopf zum Handeln (eröffnet wird an der
+      // Kennzahl); nur der Aufklapper „Was ist eine Abweichung?“ (Verbessern PR3).
       await expect(page.getByTestId('abweichungen-leer')).toBeVisible();
-      await expect(page.getByTestId('abweichungen-register').getByRole('button')).toHaveCount(0);
+      await expect(page.getByTestId('abweichungen-register').getByRole('button')).toHaveText(['Was ist eine Abweichung?']);
       expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/verbesserung/abweichungen');
     });
 
