@@ -7,6 +7,7 @@ import {
   AENDERUNGEN,
   ARTEN,
   darf,
+  eigeneMassnahme,
   ERINNERUNG_TAGE,
   geltungsbereich,
   gewaehren,
@@ -69,6 +70,7 @@ type Ableitung =
   | 'gewaehren'
   | 'handeingriff'
   | 'korrektur_entscheiden'
+  | 'eigene_massnahme'
   | 'zuweisung_aendern';
 
 interface Fall {
@@ -222,6 +224,8 @@ function rechne(c: Fall): unknown {
         i.ersteller,
         i.vieraugen,
       );
+    case 'eigene_massnahme':
+      return eigeneMassnahme(matrix, benutzer(i.benutzer), kundenbereich(i.kundenbereich), ziel(i.ziel), i.jetzt, i.verantwortlich);
     case 'zuweisung_aendern':
       return zuweisungAendern(
         matrix,

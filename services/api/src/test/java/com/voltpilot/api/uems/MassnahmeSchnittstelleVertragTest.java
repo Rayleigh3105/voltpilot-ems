@@ -62,7 +62,11 @@ class MassnahmeSchnittstelleVertragTest {
                 Map.entry("MassnahmeWirkungSumme", MassnahmeDto.WirkungSumme.class),
                 Map.entry("MassnahmeBewertung", MassnahmeDto.Bewertung.class),
                 Map.entry("MassnahmeBewertungen", MassnahmeDto.Bewertungen.class),
-                Map.entry("MassnahmeAnstoss", MassnahmeDto.Anstoss.class));
+                Map.entry("MassnahmeAnstoss", MassnahmeDto.Anstoss.class),
+                // Verbessern-Konzept v1, PR 2 (Entscheide 6, 13; §6.5).
+                Map.entry("MassnahmeEinsparung", MassnahmeDto.Einsparung.class),
+                Map.entry("MassnahmeWirkungKurz", MassnahmeDto.WirkungKurz.class),
+                Map.entry("MassnahmeSchaetzung", MassnahmeDto.Schaetzung.class));
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
