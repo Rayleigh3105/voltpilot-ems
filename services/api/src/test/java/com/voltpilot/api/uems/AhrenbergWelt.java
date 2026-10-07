@@ -252,9 +252,11 @@ final class AhrenbergWelt {
         kriterien(1, "2026-11-04", null);
         kriterien(2, "2026-11-20", "Schwellen nach der ersten Rangliste nachgeschärft.");
         einsaetzeUndEinstufungen();
-        root.update("INSERT INTO messbedarf (tenant_id, kennzeichen, einsatz_id, wortlaut, frist, actor_sub, actor_name, "
-                + "actor_art, created_at) VALUES (?, 'MB-1', ?, 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1', "
-                + "'2027-03-31', '" + ik + "', 'Ines Kaltenbach', 'kunde', '2026-11-27T09:00:00Z')", tenant, einsatz.get("EE-8"));
+        UUID mb1 = root.queryForObject("INSERT INTO messbedarf (tenant_id, kennzeichen, einsatz_id, wortlaut, frist, "
+                + "actor_sub, actor_name, actor_art, created_at) VALUES (?, 'MB-1', ?, 'Lüftung, Beleuchtung und "
+                + "Allgemeinstrom Halle 1', '2027-03-31', '" + ik + "', 'Ines Kaltenbach', 'kunde', "
+                + "'2026-11-27T09:00:00Z') RETURNING id", UUID.class, tenant, einsatz.get("EE-8"));
+        mb1DurchMs23Einloesen(mb1);
         messmittel();
 
         // R1, R2: D-0001 und D-0002 am 15.12.2026, entschieden von Robert Falk; bekannt gemacht am 18.12.2026.
@@ -620,6 +622,34 @@ final class AhrenbergWelt {
                         f.hasNonNull("gueltig_bis") ? f.path("gueltig_bis").asText() : null);
             }
         }
+    }
+
+    /**
+     * Review r4 M4: ohne diesen Schritt bleibt MB-1 „geplant“, bis die erste energetische Bewertung (BR-2026-0002,
+     * ab 01.12.2026) ihn als Quelle zitiert — danach lehnt der Belegschutz jedes Einlösen mit 409 ab, genau die
+     * Falle, die die Demo bei jedem Rundgang zeigte (M4-Fix lässt einen zitierten Bedarf weiter geschützt; Option a
+     * wurde nicht gewählt). Deshalb hier, VOR {@link #messmittel()} und vor jedem Berichtsstand, MS-23
+     * „Halle 1 Allgemein“ direkt angelegt (Muster IP-8/IP-22/IP-23: weder Datenquelle noch elektrische Stellung sind
+     * Teil dieses Schritts — die Referenzdatei trägt beides erst ab 01.03.2027) und über die echte Route eingelöst,
+     * damit Protokoll und Ereignis wie am echten Weg entstehen. BR-2026-0002/BR-2027-0001 zitieren MB-1 trotzdem
+     * weiter (Belegschutz bleibt bestehen: bearbeiten/verwerfen von MB-1 bliebe 409) — nur die Reihenfolge ändert
+     * sich, damit die Einlösung selbst vor der ersten Zitierung liegt, wie in der Referenzdatei (27.11.2026).
+     */
+    private void mb1DurchMs23Einloesen(UUID mb1) throws Exception {
+        UUID ms23 = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, 'MS-23', 'Halle 1 Allgemein', 'gemessen', 'Strom', "
+                + "'Wirkenergie', 'Bezug', 'kWh', 'Zählerstand') RETURNING id", UUID.class, tenant);
+        if (ziel == Ziel.SEED) {
+            UUID g1 = kurzzeichen("ort", "G-1");
+            root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, gueltig_ab) "
+                    + "VALUES (?, ?, ?, '2026-11-27')", tenant, ms23, g1);
+        } else {
+            root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) "
+                    + "VALUES (?, ?, ?, '2026-11-27')", tenant, ms23, s1);
+        }
+        uhr("2026-11-27T10:00:00Z");
+        ruf("POST", "/api/v1/unternehmen/energieeinsaetze/" + einsatz.get("EE-8") + "/messbedarf/" + mb1 + "/einloesen",
+                "IK", Map.of("messstelle_id", ms23), 200);
     }
 
     /** AP-16 M: GR-2 und Z-5b mit Beleg über die Route, GR-5 „nicht erhoben“ — der Wandler K-8.2 hat keine Zeile. */

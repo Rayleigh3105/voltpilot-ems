@@ -317,6 +317,35 @@ class UemsEnergiemanagementAbnahmeTest {
     }
 
     /**
+     * Fall R5 (Konzept AP-16 §7, {@code abnahmefaelle_ap16}) und Review r4 M4: MB-1 ist am 27.11.2026 durch die
+     * eingerichtete MS-23 „Halle 1 Allgemein“ eingelöst — VOR der ersten energetischen Bewertung (BR-2026-0002,
+     * 01.12.2026), die ihn seitdem als Quelle zitiert. Der Belegschutz bleibt trotzdem scharf: Bearbeiten scheitert
+     * weiter mit 409 {@code berichts_belege} (der M4-Fix ändert nur den Weg zum Einrichten, nicht den Schutz selbst).
+     */
+    @Test
+    void r5Mb1DurchMs23EingeloestBelegschutzBleibtScharf() throws Exception {
+        String basis = "/api/v1/unternehmen/energieeinsaetze/" + einsatz.get("EE-8") + "/messbedarf";
+        JsonNode messbedarfe = ruf(basis, "IK", 200).path("messbedarfe");
+        JsonNode mb1 = null;
+        for (JsonNode b : messbedarfe) {
+            if (b.path("kennzeichen").asText().equals("MB-1")) {
+                mb1 = b;
+            }
+        }
+        assertThat(mb1).as("MB-1 in der Liste").isNotNull();
+        assertThat(mb1.path("zustand").asText()).isEqualTo("eingeloest");
+        assertThat(mb1.at("/messstelle/kennzeichen").asText()).isEqualTo("MS-23");
+        assertThat(mb1.path("angelegt_am").asText()).startsWith("2026-11-27");
+        assertThat(mb1.path("einloesbar").asBoolean(true)).isFalse();
+        assertThat(texte(mb1.path("zitiert_von"), "kennung")).contains("BR-2026-0002", "BR-2027-0001");
+
+        JsonNode ablehnung = ruf("PUT", basis + "/" + mb1.path("id").asText(), "IK",
+                Map.of("wortlaut", "Anderer Wortlaut"), 409);
+        assertThat(ablehnung.path("code").asText()).isEqualTo("berichts_belege");
+        assertThat(texte(ablehnung.path("berichtsstaende"), "kennung")).contains("BR-2026-0002", "BR-2027-0001");
+    }
+
+    /**
      * Jede Entscheidung von R1–R14 (Invariante 2: Freigabe, Audit-Abschluss, Wirksamkeit, Stand der
      * Managementbewertung) steht im Verzeichnis vom 30.04.2029 mit „entschieden von“, Tag, Fassung oder Nr. und
      * Prüfsumme. Die Aufgaben (R5, R14 B4) tragen „entschieden von“, Tag und Beleg — eine Prüfsumme nur, wenn der
