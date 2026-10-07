@@ -22,7 +22,8 @@ Verbrauchsprognose bis zur nächsten Erzeugung ohne Netzbezug braucht. Alles dar
    mit Wirkungsgraden, Lade-/Entladeleistung, Kapazität. Die Untergrenze reist je Viertelstunde im v1-Fahrplan
    (`ev_release_floor_soc_pct`) – nur in Viertelstunden, in denen der Plan nicht handelt.
 3. **Durchsetzung auf der Box:** Freigabe nur mit frischem Plan, Untergrenze im laufenden Slot, frischem SoC,
-   bereitem Speicherpfad und gemessener Wirkung. Sonst Verhalten „Nur Sonne“.
+   bereitem Speicherpfad und gemessener Wirkung. Sonst Verhalten „Nur Sonne“. Bereit ist ein gesteuerter Speicher
+   mit bestätigter Rückmeldung oder ein beobachteter Speicher (Entscheidung 9).
 4. **Fahrplan gegen Kundenwahl:** In Handels-Viertelstunden (geplanter Netzbezug, Netzladen, Verkauf) gewinnt der
    Fahrplan, geplante Verkäufe erhöhen die Untergrenze. In Eigenverbrauchs-Viertelstunden gewinnt die Kundenwahl.
 5. **Reserve** je Anlage in kWh (`site_charging_config.storage_release_reserve_kwh`), Standard 1,0 kWh.
@@ -36,5 +37,15 @@ Verbrauchsprognose bis zur nächsten Erzeugung ohne Netzbezug braucht. Alles dar
 8. **Portal.** Chip neben den drei Quellen, gesperrt mit Grund statt unsichtbar; Erklärzeile aus der Box-Meldung
    (veraltet = unbekannt), sonst aus dem Fahrplan als Plan; Reserve-Karte neben „Vorrang vor dem Speicher“;
    gestrichelte Untergrenze im Ladestand-Band des Ladeplans.
+
+9. **Beobachteter Speicher (Kapitän, 07.10.2026).** Die Box muss den Speicher nicht steuern. Steuert VoltPilot ihn
+   nicht (keine Modell-/Gerätefreigabe, so Edge Light mit nur gelesenem Deye), gibt die Box trotzdem frei
+   (`frei_beobachtet`), wenn kein Haltegrund besteht und Ladestand und Speicherleistung frisch gemessen sind, das BMS
+   nicht sperrt und die Cloud für die Anlage eine Untergrenze gerechnet hat. Der Wechselrichter deckt die Wallbox im
+   Eigenverbrauch selbst; die Box nimmt an der Untergrenze zurück, und gemessener Netzbezug sperrt die Freigabe. Die
+   Absenkung einer geplanten Ladung entfällt, weil es keinen Schreibhebel gibt. Ein **gesteuerter** Speicher ohne
+   bestätigte Rückmeldung bleibt gesperrt: er folgt dem Sollwert der Box statt dem Haus und kann in einer erzwungenen
+   Ladung stehen. Offen: Der Optimierer plant einen nicht gesteuerten Speicher noch als gesteuert (Handels-Viertelstunden
+   ohne Untergrenze), und die Box liest den Arbeitsmodus des Wechselrichters nicht.
 
 Fachlich verbindlich ist [Verbrauchssteuerung](../../verbrauchssteuerung.md#sonne--speicher).
