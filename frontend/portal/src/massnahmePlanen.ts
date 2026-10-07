@@ -159,15 +159,51 @@ export function terminSatz(termin: string, heute: string): string {
 
 // ------------------------------------------------------------------ Vorher (Ausgangslage)
 
-/** Höchstens zwölf abgeschlossene Monate vor heute (wie die Route, `MassnahmeService.AUSGANGSLAGE_HOECHSTENS_MONATE`). */
+/** Höchstens zwölf Monate am Stück, alle abgeschlossen (wie die Route, `MassnahmeService.AUSGANGSLAGE_HOECHSTENS_MONATE`). */
 export const AUSGANGSLAGE_HOECHSTENS = AUSGANGSLAGE_HOECHSTENS_MONATE;
+/** So weit zurück bietet der Planer den ersten Monat an (wie der Dialog vor dem Planer). */
+const VORHER_ZURUECK = 36;
 
-export function vorherMonate(heute: string): { value: string; label: string }[] {
+/** Monate von `von` bis `bis` einschließlich. */
+export const monateZwischen = (von: string, bis: string) =>
+  (Number(bis.slice(0, 4)) - Number(von.slice(0, 4))) * 12 + Number(bis.slice(5, 7)) - Number(von.slice(5, 7)) + 1;
+
+const monatsWahl = (m: string) => ({ value: m, label: monatWort(m) });
+
+/**
+ * Der erste Monat ist frei: die abgeschlossenen Monate der letzten drei Jahre, jüngster zuerst. Der gewählte Monat - etwa
+ * der aus einer Abweichung vorbelegte - steht immer dabei, auch wenn er älter ist.
+ */
+export function vorherVonMonate(heute: string, von?: string): { value: string; label: string }[] {
   const letzter = letzterAbgeschlossenerMonat(heute);
-  return Array.from({ length: AUSGANGSLAGE_HOECHSTENS }, (_, i) => {
-    const m = plusMonate(letzter, -i);
-    return { value: m, label: monatWort(m) };
-  });
+  const monate = Array.from({ length: VORHER_ZURUECK }, (_, i) => plusMonate(letzter, -i));
+  if (von && !monate.includes(von)) monate.push(von);
+  return monate.sort((a, b) => b.localeCompare(a)).map(monatsWahl);
+}
+
+/** Der späteste letzte Monat: höchstens zwölf Monate ab dem ersten, nie nach dem letzten abgeschlossenen. */
+export function vorherEnde(von: string, heute: string): string {
+  const letzter = letzterAbgeschlossenerMonat(heute);
+  const ende = plusMonate(von, AUSGANGSLAGE_HOECHSTENS - 1);
+  return ende < letzter ? ende : letzter;
+}
+
+/**
+ * Der letzte Monat: vom ersten bis höchstens elf Monate danach, abgeschlossen, jüngster zuerst. Ein vorbelegter letzter
+ * Monat außerhalb steht trotzdem da - die Prüfung sagt dann, was nicht passt.
+ */
+export function vorherBisMonate(heute: string, von: string, bis?: string): { value: string; label: string }[] {
+  const ende = vorherEnde(von, heute);
+  const monate = von > ende ? [] : Array.from({ length: monateZwischen(von, ende) }, (_, i) => plusMonate(ende, -i));
+  if (bis && !monate.includes(bis)) monate.push(bis);
+  return monate.sort((a, b) => b.localeCompare(a)).map(monatsWahl);
+}
+
+/** Ein neuer erster Monat: der letzte bleibt, wenn er passt, sonst rückt er in die Spannweite. */
+export function bisZu(von: string, bis: string, heute: string): string {
+  if (bis < von) return von;
+  const ende = vorherEnde(von, heute);
+  return bis > ende ? ende : bis;
 }
 
 export const vorherText = (e: Pick<Entwurf, 'von' | 'bis'>) => monateText(e.von, e.bis);
@@ -198,10 +234,10 @@ export function pruefen(e: Entwurf, schritt: Schritt, heute: string): Fehler {
     }
     if (e.art === 'gemessen') {
       const letzter = letzterAbgeschlossenerMonat(heute);
-      const erlaubt = new Set(vorherMonate(heute).map((m) => m.value));
       if (e.von > e.bis) f.monate = 'Der erste Monat liegt vor dem letzten.';
-      else if (!erlaubt.has(e.von) || !erlaubt.has(e.bis) || e.bis > letzter) {
-        f.monate = `Vorher sind abgeschlossene Monate, höchstens ${AUSGANGSLAGE_HOECHSTENS}.`;
+      else if (e.bis > letzter) f.monate = `Vorher sind abgeschlossene Monate, spätestens ${monatWort(letzter)}.`;
+      else if (monateZwischen(e.von, e.bis) > AUSGANGSLAGE_HOECHSTENS) {
+        f.monate = `Vorher sind höchstens ${AUSGANGSLAGE_HOECHSTENS} Monate. Wählen Sie einen späteren ersten Monat.`;
       }
     }
   }

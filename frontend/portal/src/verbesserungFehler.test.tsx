@@ -79,29 +79,45 @@ describe('Befund 2: eine Uhr — „heute“ ist der Tag der Route', () => {
 });
 
 describe('Ausgangslage höchstens zwölf Monate', () => {
-  it('„Maßnahme planen“ bietet als Vorher nur die zwölf abgeschlossenen Monate vor dem Tag der Route', () => {
-    expect(P.vorherMonate('2029-04-30')).toHaveLength(12);
-    expect(P.vorherMonate('2029-04-30')[0]).toEqual({ value: '2029-03', label: 'März 2029' });
-    expect(P.vorherMonate('2029-04-30')[11]).toEqual({ value: '2028-04', label: 'April 2028' });
+  it('„Maßnahme planen“: der erste Monat ist frei, der letzte höchstens elf Monate danach und abgeschlossen', () => {
+    const von = P.vorherVonMonate('2029-04-30');
+    expect(von).toHaveLength(36);
+    expect(von[0]).toEqual({ value: '2029-03', label: 'März 2029' });
+    expect(von[35]).toEqual({ value: '2026-04', label: 'April 2026' });
+    // Ein älterer vorbelegter Monat bleibt wählbar.
+    expect(P.vorherVonMonate('2029-04-30', '2025-06').map((m) => m.value).at(-1)).toBe('2025-06');
+    expect(P.vorherBisMonate('2029-04-30', '2027-12').map((m) => m.value)).toEqual([
+      '2028-11', '2028-10', '2028-09', '2028-08', '2028-07', '2028-06', '2028-05', '2028-04', '2028-03', '2028-02', '2028-01', '2027-12',
+    ]);
+    expect(P.vorherBisMonate('2029-04-30', '2028-10').map((m) => m.value)).toEqual(['2029-03', '2029-02', '2029-01', '2028-12', '2028-11', '2028-10']);
+    // Ein neuer erster Monat zieht den letzten in die Spannweite.
+    expect(P.bisZu('2027-12', '2029-03', '2029-04-30')).toBe('2028-11');
+    expect(P.bisZu('2028-06', '2028-01', '2029-04-30')).toBe('2028-06');
+    expect(P.bisZu('2028-06', '2028-09', '2029-04-30')).toBe('2028-09');
   });
-  it('mehr als zwölf Monate meldet das Formular, bevor die Route ablehnt', () => {
+  it('mehr als zwölf Monate oder ein offener Monat meldet das Formular, bevor die Route ablehnt; ein alter Monat ist kein Fehler', () => {
     const e = {
       ...P.entwurfAus({ herkunft: 'von_hand', kennzahl: 'kz' }, '2029-04-30'),
       titel: 'T', prozent: '3', wortlaut: 'W', verantwortlich: 'MD', termin: '2029-06-30', von: '2028-01', bis: '2029-01',
     };
-    expect(P.pruefen(e, 2, '2029-04-30').monate).toBe('Vorher sind abgeschlossene Monate, höchstens 12.');
+    expect(P.pruefen(e, 2, '2029-04-30').monate).toBe('Vorher sind höchstens 12 Monate. Wählen Sie einen späteren ersten Monat.');
+    expect(P.pruefen({ ...e, von: '2029-04', bis: '2029-04' }, 2, '2029-04-30').monate).toBe('Vorher sind abgeschlossene Monate, spätestens März 2029.');
     expect(P.pruefen({ ...e, von: '2028-04', bis: '2029-03' }, 2, '2029-04-30').monate).toBeUndefined();
+    // Die Abweichung zu Dezember 2027 bleibt am 30.04.2029 der Anlass - wie an der Route.
+    expect(P.pruefen({ ...e, von: '2027-12', bis: '2027-12' }, 2, '2029-04-30').monate).toBeUndefined();
   });
-  it('der Dialog bietet als letzten Monat höchstens zwölf Monate an', async () => {
+  it('aus einer Abweichung zu Dezember 2027 steht der Monat vorbelegt und wählbar, der letzte höchstens bis November 2028', async () => {
     Object.assign(api, bezugsbasisBuehne('modell'), energiezielBuehne('juli'), massnahmeBuehne('r5', '2028-11-15', 'Ines Kaltenbach'));
     Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
-    render(<MassnahmeAnlegenDialog vorbelegung={{ herkunft: 'energieziel', kennzahl: m1().messgrundlage!.kennzahl.id, energieziel: 'ez', monate: '2027-12' }} onClose={() => {}} onAngelegt={() => {}} tagHeute="2029-04-30" />);
+    render(<MassnahmeAnlegenDialog vorbelegung={{ herkunft: 'abweichung', herkunftKennung: 'AW-2028-0001', kennzahl: m1().messgrundlage!.kennzahl.id, monate: '2027-12' }} onClose={() => {}} onAngelegt={() => {}} tagHeute="2029-04-30" />);
     await act(async () => {});
     fireEvent.click(await screen.findByTestId('planen-anderer-monat'));
+    expect(screen.getByLabelText(/Vorher: erster Monat/).textContent).toContain('Dezember 2027');
+    expect(screen.getByLabelText(/Vorher: letzter Monat/).textContent).toContain('Dezember 2027');
     fireEvent.click(screen.getByLabelText(/Vorher: letzter Monat/));
     const optionen = screen.getAllByRole('option').map((o) => o.textContent);
-    expect(optionen[0]).toBe('März 2029');
-    expect(optionen[optionen.length - 1]).toBe('April 2028');
+    expect(optionen[0]).toBe('November 2028');
+    expect(optionen[optionen.length - 1]).toBe('Dezember 2027');
     expect(optionen).toHaveLength(12);
   });
 });
