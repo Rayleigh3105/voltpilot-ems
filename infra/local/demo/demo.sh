@@ -133,6 +133,28 @@ einsicht_anlegen() {
 
 # Der Rundgang (Captain 27.09.2026): die Welt 1.10 legt „Messen & Auswerten“ nie an - ohne messenden Standort blendet
 # das Portal alle UEMS-Bereiche aus (ebenenNav.ts, ebenenBereiche). Dazu Messwerte und Bezugsgrößen ab 10/2024.
+api_gesund() { # wartet höchstens 15 Minuten, bis die api antwortet
+  local i
+  for i in $(seq 1 90); do
+    if curl -fsS "$API/health" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 10
+  done
+  echo "Demo: die api antwortet nach 15 Minuten nicht." >&2
+  exit 1
+}
+
+# Die api mit ein- oder ausgeschalteter Auffälligkeits-Naht neu starten (nur dieser Dienst), dann nginx frisch
+# verbinden - es löst `api` beim Start auf.
+api_naht() { # api_naht true|false
+  VOLTPILOT_UEMS_VERBESSERUNG_ENABLED="$1" compose up -d --no-deps api
+  api_gesund
+  if docker inspect voltpilot-portal >/dev/null 2>&1; then
+    docker restart voltpilot-portal >/dev/null
+  fi
+}
+
 rundgang_anlegen() {
   local admin t body
   # Messen-Bau m2: die Mess-Seite der Box Halle 1, aus der MS-03 automatisch liest - vor dem Rundgang gestartet,
@@ -140,8 +162,16 @@ rundgang_anlegen() {
   # in `start` läuft sie schon mit LIVE).
   compose up -d --build --no-deps edge-mess-ahrenberg-halle1
   jdk21
+  # Demo-Füllung Verbessern: der Rundgang rechnet die Bühne bis 03/2029 mit stummer Naht und vermerkt die
+  # Auffälligkeiten danach mit ihrem Tag. Die Demo-API läuft so lange ebenfalls mit stummer Naht - ihr Takt (Kaskade alle
+  # fünf Minuten) rechnet die Ablesungen des Rundgangs sonst nebenher und vermerkt jeden Monat mit der Bühnen-Uhr; sie
+  # bleibt aber erreichbar (die Mess-Box Halle 1 lernt MS-03 von ihr).
+  api_naht false
+  trap 'api_naht true' EXIT
   (cd "$WURZEL/services/api" && ./mvnw -q test -Dtest=DemoRundgangAufbau -Dsurefire.failIfNoSpecifiedTests=false \
     -Drundgang.jdbc="jdbc:postgresql://localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-voltpilot}")
+  trap - EXIT
+  api_naht true
   admin="$(kc_admin_token)"
   if [ -n "$(kc_user_id "$admin" rundgang)" ]; then
     return
