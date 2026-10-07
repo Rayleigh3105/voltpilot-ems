@@ -15272,7 +15272,8 @@ paths:
         freigegebene Fassung, die am letzten Tag des Monats gilt, P4): gemessen = gespeicherter Zähler der Kennzahl
         mit Version, `bedingung` = jede Variable mit Wert und Fassung, erwartet, Δ, Band = max(Toleranz, Streuung),
         Urteil oder Grund, Kennzeichen nach G5. `zeitraum` = Operation `zeitraum` gegen die Fassung am letzten Tag
-        von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel (U5). Gerechnet wird in BezugsbasisRegeln; nichts wird
+        des letzten Monats mit Fassung - Σ gemessen ÷ Σ erwartet über die Monate mit Fassung, nie ein Mittel (U5, P4
+        je Monat). Gerechnet wird in BezugsbasisRegeln; nichts wird
         gespeichert. Ein unbekannter oder falsch geformter Parameter ist 400 `anfrage_ungueltig` mit `feld`.
       responses:
         "200":
@@ -31230,7 +31231,7 @@ components:
         vormonat: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen den Monat davor; null ohne beide Werte." }
         monate: { type: array, minItems: 12, maxItems: 12, items: { $ref: "#/components/schemas/KennzahlAuswertungMonat" }, description: "Die zwölf Monate bis `monat`, der älteste zuerst." }
         vergleich: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungVergleich" }], nullable: true, description: "null ohne freigegebene Bezugsbasis." }
-        zeitraum: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZeitraum" }], nullable: true, description: "Der Vergleich gegen die Fassung am letzten Tag von `monat` (P4) über die Monate der zwölf, für die genau diese Fassung gilt (§10.6) - nach einem Fassungswechsel also erst ab dem Wechsel; null ohne Bezugsbasis oder solange noch keine gilt." }
+        zeitraum: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZeitraum" }], nullable: true, description: "Der Vergleich gegen die Fassung am letzten Tag von `monat` (P4) über die Monate der zwölf, für die genau diese Fassung gilt (§10.6) - nach einem Fassungswechsel also erst ab dem Wechsel; endete die Basis vor `monat`, gegen ihre letzte Fassung bis zu deren letztem Monat; null ohne Bezugsbasis oder solange noch keine gilt." }
         energieziel: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZiel" }], nullable: true, description: "Das offene Energieziel (bei mehreren das mit der frühesten Zielperiode) mit Stand; null ohne." }
     KennzahlAuswertungWert:
       type: object
@@ -32488,7 +32489,12 @@ components:
         zustand: { type: string, nullable: true }
     BezugsbasisVergleichZeitraum:
       type: object
-      description: Operation `zeitraum` (U5) gegen die Fassung am letzten Tag von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel.
+      description: >
+        Operation `zeitraum` (U5) gegen die Fassung am letzten Tag des letzten Monats mit Fassung (endet die Basis im
+        Zeitraum, die letzte, die galt) - Σ gemessen ÷ Σ erwartet, nie ein Mittel. Ein Monat, für den an seinem letzten
+        Tag keine Fassung gilt, zählt nicht mit (P4 je Monat, Entscheid 07.10.2026): Zahl und Urteil stehen über die
+        Monate mit Fassung, `monate` nennt „x von y“ über alle Monate des Zeitraums. Bei einem Fassungswechsel rechnet
+        jeder gezählte Monat gegen die Fassung des Kopfs; `erwartet` ist dann nicht die Summe der Zeilen.
       required: [fassung, gemessen, erwartet, delta_prozent, band_prozent, richtung, urteil, grund, monate, kennzeichen, satz]
       properties:
         fassung: { type: integer, nullable: true }

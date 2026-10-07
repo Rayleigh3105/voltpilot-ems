@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
 import { UEMS_NORMGRENZE } from '../glossar';
-import { vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../test/bezugsbasisVergleichFixtures';
+import { vergleichAbNovember, vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../test/bezugsbasisVergleichFixtures';
 import { BezugsbasisVergleich } from './BezugsbasisVergleich';
 
 const KZ1 = 'c0de0000-0000-4000-8000-00000000a001';
@@ -78,6 +78,21 @@ describe('AP-17 IP-20 · Reiter „Vergleich mit Bezugsbasis“', () => {
     const kopf = screen.getByTestId('vergleich-zeitraum');
     expect(within(kopf).getByTestId('zeitraum-monate').textContent).toBe('4 von 5 Monaten');
     expect(within(kopf).getByTestId('urteil').textContent).toBe('ohne Urteil (± 2 %)');
+  });
+
+  it('P4 je Monat: der Kopf-Satz nennt „4 von 6 Monaten bewertbar“ neben dem Urteil; die Monate ohne Fassung sagen ihren Grund', async () => {
+    leser(vergleichAbNovember());
+    render(<BezugsbasisVergleich kennzahlId={KZ1} />);
+    const september = await screen.findByTestId('monat-2027-09');
+    expect(within(september).getByTestId('grund').textContent).toContain(
+      'September 2027: nicht bewertbar — für diesen Monat gilt noch keine Fassung der Bezugsbasis BB-0001.',
+    );
+    const kopf = screen.getByTestId('vergleich-zeitraum');
+    expect(within(kopf).getByTestId('urteil').textContent).toBe('im Rahmen (± 2 %)');
+    expect(within(kopf).queryByTestId('zeitraum-monate')).toBeNull();
+    expect(within(kopf).getByTestId('zeitraum-satz').textContent).toContain(
+      '4 von 6 Monaten bewertbar, die Bezugsbasis gilt erst ab November 2027.',
+    );
   });
 
   it('S5: mit Stand „Stand Nr. 1 vom 12.01.2028“', async () => {
