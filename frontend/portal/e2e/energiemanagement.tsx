@@ -165,7 +165,11 @@ if (mbLage) {
 const MAPPE_LAGEN: MappeLage[] = ['leer', 'r6'];
 const mp = mappeBuehne(MAPPE_LAGEN.find((l) => l === params.get('mp')) ?? 'leer', () => new Date().toISOString(), { name: me.name! });
 Object.assign(api, mp.routen);
+// Die Konten der Maßnahme (`al`) bleiben in der Liste; die Mappen-Bühne bringt nur ihr vorhandenes Konto dazu (Review
+// r2, N-6.1) - sonst fände „Maßnahme planen“ keine Person mehr.
+const kontenVorher = auditLage ? benutzerApi.liste : null;
 Object.assign(benutzerApi, mp.benutzer);
+if (kontenVorher) benutzerApi.liste = async () => [...(await kontenVorher()), ...(await mp.benutzer.liste())];
 (window as unknown as { __mpGesendet: unknown }).__mpGesendet = mp.gesendet;
 const MAPPE: Record<string, string> = { '1': MAPPE_IDS.abrufbar, alt: MAPPE_IDS.abgelaufen };
 
