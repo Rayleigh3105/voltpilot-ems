@@ -30,6 +30,14 @@ export function letzterTag(heute: string, tage: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Die laufende „Einsicht“ eines Kontos (die Liste nennt nur wirksame und künftige): die am weitesten reichende. */
+function laufendeEinsicht(konto: BenutzerEintrag): { id: string; bis: string | null } | null {
+  const einsicht = konto.zuweisungen.filter((z) => z.rolle === 'einsicht');
+  if (!einsicht.length) return null;
+  const weiteste = einsicht.reduce((a, b) => (a.gueltig_bis === null ? a : b.gueltig_bis === null || b.gueltig_bis > a.gueltig_bis ? b : a));
+  return { id: weiteste.id, bis: weiteste.gueltig_bis };
+}
+
 /** „Vor- und Nachname“ → Vorname(n) und Nachname: das letzte Wort ist der Nachname. */
 export function namensTeile(name: string): { vorname: string; nachname: string } {
   const teile = name.trim().split(/\s+/u).filter(Boolean);
@@ -47,8 +55,9 @@ export function namensTeile(name: string): { vorname: string; nachname: string }
  * jemand das Passwort sieht, Review P6-5).
  *
  * Gibt es für die E-Mail-Adresse schon ein Konto (409, etwa die prüfende Person vom letzten Audit), gibt das Blatt
- * diesem Konto die Einsicht bis zum gewählten Tag - neu zugewiesen oder, wenn sie noch läuft, mit neuer Frist - und
- * verweist auf die Benutzerverwaltung (Review P6-7).
+ * diesem Konto die Einsicht bis zum gewählten Tag - neu zugewiesen oder, wenn sie noch läuft, verlängert - und
+ * verweist auf die Benutzerverwaltung (Review P6-7). Der Kasten nennt die laufende Einsicht; eine, die ohne Ende oder
+ * länger läuft, kürzt das Blatt nie (Review r2, N-6.1) - das geht ausdrücklich in der Benutzerverwaltung.
  *
  * `heute` ist der Tag der Route (Befund 3): „2 Wochen“ endet am 14. Tag danach.
  */
@@ -68,6 +77,9 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
   const [kopiert, setKopiert] = useState(false);
 
   const bis = frist === 'zwei_wochen' ? letzterTag(heute, 14) : frist === 'vier_wochen' ? letzterTag(heute, 28) : anderer;
+  // Die laufende Einsicht des vorhandenen Kontos: die, die am weitesten reicht (ohne Ende vor jedem Tag).
+  const laufend = vorhanden ? laufendeEinsicht(vorhanden) : null;
+  const wahl = P.einsichtWahl(laufend, bis);
   const fertig = angelegt !== null || gegeben !== null;
   const schliessen = () => {
     if (!busy) onClose();
@@ -118,11 +130,13 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
   async function einsichtGeben(konto: BenutzerEintrag) {
     const tag = pruefen();
     if (!tag) return;
+    const lauf = laufendeEinsicht(konto);
+    // Nie still kürzen (Review r2, N-6.1): ohne Ende oder länger als gewählt bleibt die laufende Einsicht.
+    if (P.einsichtWahl(lauf, tag) === 'bleibt') return;
     setBusy(true);
     setSatz(null);
     try {
-      const laufend = konto.zuweisungen.find((z) => z.rolle === 'einsicht') ?? null;
-      if (laufend) await benutzerApi.wechseln(konto.sub, [laufend.id], 'einsicht', [], tag);
+      if (lauf) await benutzerApi.wechseln(konto.sub, [lauf.id], 'einsicht', [], tag);
       else await benutzerApi.einsichtZuweisen(konto.sub, tag, null);
       setGegeben({ name: konto.anzeigename, bis: tag });
     } catch (e) {
@@ -150,9 +164,17 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
     </div>
   ) : (
     <div className="vp-nw-blatt-fuss">
-      {vorhanden && !darfZuweisen ? null : (
+      {vorhanden && (!darfZuweisen || wahl === 'bleibt') ? null : (
         <Button type="submit" form="einsicht-form" disabled={busy} aria-busy={busy || undefined} data-testid="einsicht-anlegen">
-          {vorhanden ? (bis ? `Einsicht bis ${E.tagText(bis)} geben` : 'Einsicht geben') : 'Zugang anlegen'}
+          {vorhanden
+            ? wahl === 'verlaengern'
+              ? bis
+                ? `Einsicht bis ${E.tagText(bis)} verlängern`
+                : 'Einsicht verlängern'
+              : bis
+                ? `Einsicht bis ${E.tagText(bis)} geben`
+                : 'Einsicht geben'
+            : 'Zugang anlegen'}
         </Button>
       )}
       <Button variant="ghost" onClick={schliessen} disabled={busy}>
@@ -196,7 +218,8 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
           <>
             {/* Review P6-3: der Umfang ohne Aufklappen - nicht nur diese Mappe, sondern alles, nur lesend, befristet. */}
             <p className="vp-nw-einsicht-umfang" data-testid="einsicht-umfang">
-              {P.einsichtUmfang(bis)}
+              {/* Bleibt die laufende Einsicht, gilt ihr Ende, nicht der gewählte Tag (Review r2, N-6.1). */}
+              {P.einsichtUmfang(wahl === 'bleibt' && laufend ? laufend.bis : bis)}
             </p>
             <NwTextfeld label="Name" wert={name} onWert={setName} platzhalter="Vor- und Nachname" hoechstens={200} fehler={fehler.name} testid="einsicht-name" />
             <NwTextfeld
@@ -220,6 +243,9 @@ export function EinsichtBlatt({ heute, onClose }: { heute: string; onClose: () =
               <div className="vp-nw-einsicht-vorhanden" data-testid="einsicht-vorhanden">
                 <p>
                   Schon ein Zugang: <b>{vorhanden.anzeigename}</b>
+                </p>
+                <p className="vp-nw-leise" data-testid="einsicht-stand">
+                  {P.einsichtStand(laufend, wahl)}
                 </p>
                 <a href={hashForRoute(pageRoute('kunden-benutzer'))} className="vp-nw-link-knopf" data-testid="einsicht-benutzerverwaltung">
                   Benutzerverwaltung

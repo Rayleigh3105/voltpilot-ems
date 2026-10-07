@@ -1,5 +1,5 @@
 import { ApiError, type EnergiemanagementMappe, type EnergiemanagementMappeAnlegen } from '../api';
-import type { BenutzerAngelegt, BenutzerAnlage } from '../benutzer';
+import type { BenutzerAngelegt, BenutzerAnlage, BenutzerEintrag } from '../benutzer';
 import { VOKABULARE, WOERTER } from '../energiemanagement';
 
 /**
@@ -120,14 +120,33 @@ export function mappeBuehne(lage: MappeLage, jetzt: () => string, wer: { name: s
     },
   };
 
-  /** „Einsicht geben“: `POST /api/v1/benutzer` mit Rolle `einsicht` und `gueltig_bis`; das Startpasswort einmal. */
+  /**
+   * „Einsicht geben“: `POST /api/v1/benutzer` mit Rolle `einsicht` und `gueltig_bis`; das Startpasswort einmal. Die
+   * Prüferin vom letzten Audit hat schon ein Konto mit Einsicht ohne Ende (Review r2, N-6.1): ihre Adresse antwortet
+   * 409, die Liste nennt das Konto, Wechsel und Zuweisung landen in `gesendet`.
+   */
+  const vorhanden: BenutzerEintrag = {
+    sub: 'hb-buehne', anzeigename: 'Helga Brenner', email: 'helga.brenner@zert.example', zustand: 'aktiv',
+    zuweisungen: [{ id: 'z-einsicht-hb', rolle: 'einsicht', standort_id: null, standort_name: null, gueltig_ab: '2029-01-02', gueltig_bis: null }],
+  };
   const benutzer = {
     anlegen: async (anlage: BenutzerAnlage): Promise<BenutzerAngelegt> => {
       gesendet.push({ route: 'POST /benutzer', body: anlage });
+      if (anlage.email.toLowerCase() === vorhanden.email) {
+        throw new ApiError(409, 'Für diese E-Mail-Adresse gibt es schon ein Konto.', { code: 'konflikt', message: 'Für diese E-Mail-Adresse gibt es schon ein Konto.' });
+      }
       return {
         benutzer: { sub: 'einsicht-buehne', anzeigename: [anlage.vorname, anlage.nachname].filter(Boolean).join(' '), email: anlage.email, zustand: 'angelegt' },
         startpasswort: 'Buehne-Start-7Kq2',
       };
+    },
+    liste: async (): Promise<BenutzerEintrag[]> => [vorhanden],
+    wechseln: async (sub: string, bisher: string[], rolle: string, standorte: string[], gueltigBis?: string | null): Promise<void> => {
+      gesendet.push({ route: `PUT /benutzer/${sub}/zugriff`, body: { bisher, rolle, standorte, gueltig_bis: gueltigBis ?? null } });
+    },
+    einsichtZuweisen: async (sub: string, gueltigBis: string | null): Promise<unknown> => {
+      gesendet.push({ route: 'POST /zugriff', body: { benutzer_sub: sub, rolle: 'einsicht', gueltig_bis: gueltigBis } });
+      return {};
     },
   };
 

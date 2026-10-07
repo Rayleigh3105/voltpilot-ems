@@ -327,6 +327,62 @@ describe('Review r1 (PR 6)', () => {
     expect(wechseln).toHaveBeenCalledWith('pp-1', ['z-1'], 'einsicht', [], '2029-05-14');
   });
 
+  /** Ein Konto mit laufender Einsicht bis `bis` (null = ohne Ende): das Blatt nach dem 409. */
+  const mitLaufenderEinsicht = async (bis: string | null) => {
+    const wechseln = vi.fn(async () => undefined);
+    const zuweisen = vi.fn(async () => ({}));
+    Object.assign(benutzerApi, {
+      anlegen: async () => {
+        throw new ApiError(409, 'vergeben', { code: 'konflikt', message: 'vergeben' });
+      },
+      liste: async () => [
+        {
+          sub: 'rf-1', anzeigename: 'Robert Falk', email: ADRESSE, zustand: 'aktiv',
+          zuweisungen: [{ id: 'z-9', rolle: 'einsicht', standort_id: null, standort_name: null, gueltig_ab: '2029-01-01', gueltig_bis: bis }],
+        },
+      ],
+      wechseln,
+      einsichtZuweisen: zuweisen,
+    });
+    render(<EinsichtBlatt heute="2029-04-30" onClose={vi.fn()} />);
+    ausfuellen();
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    await act(async () => {});
+    return { wechseln, zuweisen };
+  };
+
+  it('Review r2, N-6.1: läuft die Einsicht ohne Ende, sagt der Kasten es und das Blatt kürzt sie nicht', async () => {
+    const { wechseln, zuweisen } = await mitLaufenderEinsicht(null);
+    expect(screen.getByTestId('einsicht-stand').textContent).toBe('Einsicht läuft ohne Ende · bleibt so');
+    // Der Umfang sagt, was gilt: ohne Ende kein Tag - nicht der gewählte.
+    expect(screen.getByTestId('einsicht-umfang').textContent).toBe('Sieht alle Daten aller Standorte, nur lesend.');
+    expect(screen.queryByTestId('einsicht-anlegen')).toBeNull();
+    // Auch ein Absenden (Enter im Feld) ändert nichts.
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('einsicht-email').closest('form')!);
+    });
+    expect(wechseln).not.toHaveBeenCalled();
+    expect(zuweisen).not.toHaveBeenCalled();
+  });
+
+  it('Review r2, N-6.1: läuft sie länger als gewählt, bleibt sie und es gibt nichts abzusenden', async () => {
+    const { wechseln } = await mitLaufenderEinsicht('2029-06-30');
+    expect(screen.getByTestId('einsicht-stand').textContent).toBe('Einsicht läuft bis\u00a030.06.2029 · bleibt so');
+    expect(screen.getByTestId('einsicht-umfang').textContent).toBe('Sieht alle Daten aller Standorte, nur lesend, bis\u00a030.06.2029.');
+    expect(screen.queryByTestId('einsicht-anlegen')).toBeNull();
+    expect(wechseln).not.toHaveBeenCalled();
+  });
+
+  it('Review r2, N-6.1: läuft sie kürzer, nennt der Kasten ihr Ende und der Knopf verlängert', async () => {
+    const { wechseln } = await mitLaufenderEinsicht('2029-05-02');
+    expect(screen.getByTestId('einsicht-stand').textContent).toBe('Einsicht läuft bis\u00a002.05.2029');
+    expect(screen.getByTestId('einsicht-anlegen').textContent).toBe('Einsicht bis 14.05.2029 verlängern');
+    fireEvent.click(screen.getByTestId('einsicht-anlegen'));
+    await act(async () => {});
+    expect(wechseln).toHaveBeenCalledWith('rf-1', ['z-9'], 'einsicht', [], '2029-05-14');
+  });
+
   it('P6-6: „Einsicht“ sieht an einer abgelaufenen Mappe kein „Neu zusammenstellen“', async () => {
     setSelbstauskunft(rechteSeed('RF').me);
     render(<MappeSeite id={MAPPE_IDS.abgelaufen} onZurueck={vi.fn()} />);
