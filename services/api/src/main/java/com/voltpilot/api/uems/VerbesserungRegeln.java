@@ -38,6 +38,7 @@ public final class VerbesserungRegeln {
             Map.entry("messgrundlage", "Messgrundlage: {kennzahl}, Bezugsbasis {bezugsbasis}, Fassung {fassung} — bereinigt um {bereinigt_um} ({methode}). Ausgangslage {ausgangslage_monat}: {ausgangslage_prozent} als erwartet (Version {version}, Kopie vom {kopiert_am}). Erwartete Wirkung: {erwartete_wirkung} — ‚{wortlaut}‘"),
             Map.entry("ohne_messgrundlage", "{kennzeichen} · {titel} · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht {einsatz} eine Energieleistungskennzahl ({hinweis})."),
             Map.entry("wirkung_vorlaeufig", "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}) — erwartet waren {erwartete_wirkung}. Ob die Maßnahme das bewirkt hat, sagt eine Person."),
+            Map.entry("wirkung_ohne_erwartung", "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}). Eine erwartete Wirkung ist nicht genannt. Ob die Maßnahme das bewirkt hat, sagt eine Person."),
             Map.entry("wirkung_umsetzungsmonat", "{monat}: Umsetzungsmonat — nicht gezählt."),
             Map.entry("wirkung_nicht_bewertbar", "{monat}: nicht bewertbar — {grund}."),
             Map.entry("wirkung_basis_nach_umsetzung", "{monat}: nicht bewertbar — die Bezugsbasis {bezugsbasis}, Fassung {fassung} hat eine Referenzperiode ({referenzperiode}), die nach der Umsetzung endet; sie enthielte die Maßnahme."),
@@ -71,6 +72,7 @@ public final class VerbesserungRegeln {
         m.put("massnahme_zustand", List.of("geplant", "umgesetzt", "bewertet", "verworfen"));
         m.put("massnahme_herkunft", List.of("abweichung", "energieziel", "einsatz", "von_hand", "nichtkonformitaet", "audit",
                 "managementbewertung"));
+        m.put("massnahme_art", List.of("gemessen", "nicht_gemessen", "organisatorisch"));
         m.put("abweichung_zustand", List.of("offen", "abgeschlossen"));
         m.put("abweichung_ergebnis", List.of("massnahme", "erklaert", "keine_abweichung", "nicht_bewertbar"));
         m.put("abweichung_eintrag_art", List.of("kommentar", "ursache_aussage"));
@@ -84,6 +86,7 @@ public final class VerbesserungRegeln {
         m.put("anstoss_antwort", List.of("bleibt", "neu_kopiert", "neu_bewertet"));
         m.put("frist_art", List.of("massnahme", "abweichung", "energieziel"));
         m.put("frist_faellig", List.of("ueberfaellig", "bewertung_faellig"));
+        m.put("kurs_lage", List.of("auf_kurs", "knapp_dahinter", "nicht_auf_kurs", "noch_keine_aussage"));
         return m;
     }
     private static String plus(String monat, int n) { return YearMonth.parse(monat).plusMonths(n).toString(); }
@@ -190,6 +193,45 @@ public final class VerbesserungRegeln {
         aus.put("nicht_gezaehlt", nichtGezaehlt);
         aus.put("vorschlag", vorschlag);
         aus.putAll(summe);
+        return aus;
+    }
+
+    /**
+     * K1–K3: der Zwischenstand eines laufenden Energieziels über die bisher bewertbaren Monate ({@link #zielstand}). Auf
+     * Kurs nach der Regel des Vorschlags (Z4), knapp dahinter weniger als erwartet und höchstens das Band vom Zielwert
+     * entfernt; {@code hoechstens} und {@code luecke} in der Einheit der Summe; {@code noetig_prozent} der Schnitt der noch
+     * offenen Monate, genähert mit gleich großen Monaten ({@code roh} der Bezugsbasis rundet, wie jede Veränderung).
+     */
+    public static Map<String, Object> kurs(ZielstandEingang e) {
+        var s = zielstand(e);
+        if (s.containsKey("fehler")) return s;
+        int b = (int) s.get("monate_bewertbar"), offen = (int) s.get("monate_soll") - (int) s.get("monate_endgueltig");
+        var aus = new LinkedHashMap<String, Object>();
+        aus.put("lage", "noch_keine_aussage");
+        aus.put("monate_bewertbar", b);
+        aus.put("monate_offen", offen);
+        for (var k : List.of("hoechstens", "luecke", "noetig_prozent", "noetig_richtung")) aus.put(k, null);
+        if (b == 0) return aus;
+        var g = BezugsbasisRegeln.Q.of((String) s.get("gemessen"));
+        var erw = BezugsbasisRegeln.Q.of((String) s.get("erwartet"));
+        var ziel = BezugsbasisRegeln.Q.of(e.zielwert_prozent());
+        var band = BezugsbasisRegeln.Q.of((String) s.get("band_prozent"));
+        var hundert = BezugsbasisRegeln.Q.of(100);
+        var hoechstens = erw.times(hundert.plus(ziel)).div(hundert);
+        var abstand = g.minus(erw).times(hundert);
+        String lage = abstand.compareTo(ziel.times(erw)) <= 0 ? "auf_kurs"
+                : g.compareTo(erw) < 0 && abstand.compareTo(ziel.plus(band).times(erw)) <= 0 ? "knapp_dahinter"
+                : "nicht_auf_kurs";
+        aus.put("lage", lage);
+        aus.put("hoechstens", BezugsbasisRegeln.exakt(hoechstens));
+        aus.put("luecke", BezugsbasisRegeln.exakt(g.minus(hoechstens)));
+        if (offen > 0) {
+            var noetig = BezugsbasisRegeln.roh(
+                    BezugsbasisRegeln.exakt(hoechstens.times(BezugsbasisRegeln.Q.of(b + offen)).minus(g.times(BezugsbasisRegeln.Q.of(b)))),
+                    BezugsbasisRegeln.exakt(erw.times(BezugsbasisRegeln.Q.of(offen))));
+            aus.put("noetig_prozent", noetig.get("delta_prozent"));
+            aus.put("noetig_richtung", noetig.get("richtung"));
+        }
         return aus;
     }
 

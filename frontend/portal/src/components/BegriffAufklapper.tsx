@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { BEGRIFFE, type BegriffSchluessel } from '../begriffe';
+import { BEGRIFFE, fachwortZeile, type BegriffSchluessel } from '../begriffe';
 import './BegriffAufklapper.css';
 
 /**
@@ -10,7 +10,8 @@ import './BegriffAufklapper.css';
  * Hinweis-Kasten, kein Ton von „Achtung“. Stufe 1 ist der Satz unter dem Titel, Stufe 3 das Alltagswort im Inhalt.
  *
  * Die Texte stehen in `begriffe.ts`; `beispiel` ersetzt das allgemeine Beispiel durch eines aus den eigenen Daten
- * („Bei Ihnen zum Beispiel Hauptzähler Halle 1 und Zähler Druckluft“), `mehr` ergänzt einen Satz der Fläche.
+ * („Bei Ihnen zum Beispiel Hauptzähler Halle 1 und Zähler Druckluft“), `mehr` ergänzt einen Satz der Fläche. Das
+ * Fachwort steht zuletzt (Konzept Verbessern v1 §7, Auswerten a1 §7): für Berater, die das Wort der Norm suchen.
  */
 export function BegriffAufklapper({
   begriff,
@@ -40,6 +41,7 @@ export function BegriffAufklapper({
         {b.mehr && <p>{b.mehr}</p>}
         {mehr && <p>{mehr}</p>}
         {b.abgrenzung && <p className="vp-begriff-auf-abgrenzung">{b.abgrenzung}</p>}
+        {b.fachwort && <p className="vp-begriff-auf-fachwort">{fachwortZeile(b.fachwort)}</p>}
       </div>
     </details>
   );

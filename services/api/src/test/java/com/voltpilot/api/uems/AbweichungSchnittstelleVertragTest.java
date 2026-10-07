@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.web.AbweichungController;
 import com.voltpilot.api.web.AuffaelligkeitController;
+import com.voltpilot.api.web.AuffaelligkeitenController;
 import com.voltpilot.api.web.dto.AbweichungDto;
 import com.voltpilot.api.zugriff.Recht;
 import java.io.InputStream;
@@ -63,7 +64,7 @@ class AbweichungSchnittstelleVertragTest {
                 "AbweichungAbschluss", AbweichungDto.Abschluss.class, "AbweichungAussage", AbweichungDto.Aussage.class,
                 "AbweichungVerweis", AbweichungDto.Verweis.class, "Auffaelligkeit", AbweichungDto.Vermerk.class,
                 "AuffaelligkeitListe", AbweichungDto.Vermerke.class, "AuffaelligkeitBeantwortet",
-                AbweichungDto.Beantwortet.class);
+                AbweichungDto.Beantwortet.class, "AuffaelligkeitenAlle", AbweichungDto.AlleVermerke.class);
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
@@ -122,7 +123,10 @@ class AbweichungSchnittstelleVertragTest {
         assertThat(aufzaehlung(eintrag, "art")).isEqualTo(v.get("abweichung_eintrag_art"));
     }
 
-    /** Die Routen und ihre Methoden — KennzahlSchnittstelleVertragTest lässt {@code …/auffaelligkeiten} hierher. */
+    /**
+     * Die Routen und ihre Methoden - KennzahlSchnittstelleVertragTest lässt {@code …/auffaelligkeiten} hierher; dazu die
+     * Liste über alle Kennzahlen (Verbessern, Entscheid 4).
+     */
     @Test
     @SuppressWarnings("unchecked")
     void dieRoutenStehenInOpenApi() throws Exception {
@@ -135,17 +139,20 @@ class AbweichungSchnittstelleVertragTest {
                 "/api/v1/abweichungen/{id}/eintraege", List.of("parameters", "post"),
                 "/api/v1/abweichungen/{id}/frist", List.of("parameters", "put"),
                 "/api/v1/abweichungen/{id}/verantwortlicher", List.of("parameters", "put"),
-                "/api/v1/abweichungen/{id}/abschliessen", List.of("parameters", "post"));
+                "/api/v1/abweichungen/{id}/abschliessen", List.of("parameters", "post"),
+                "/api/v1/auffaelligkeiten", List.of("get"));
         erwartet.forEach((pfad, methoden) -> assertThat(((Map<String, Object>) pfade.get(pfad)).keySet()).as(pfad)
                 .containsExactlyInAnyOrderElementsOf(methoden));
         assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/abweichungen")
-                || p.startsWith("/api/v1/kennzahlen/{id}/auffaelligkeiten")).toList())
+                || p.startsWith("/api/v1/kennzahlen/{id}/auffaelligkeiten") || p.startsWith("/api/v1/auffaelligkeiten"))
+                .toList())
                 .containsExactlyInAnyOrderElementsOf(erwartet.keySet());
     }
 
     @Test
     void leseRoutenTragenKeinRecht() {
-        for (Class<?> c : List.of(AbweichungController.class, AuffaelligkeitController.class)) {
+        for (Class<?> c : List.of(AbweichungController.class, AuffaelligkeitController.class,
+                AuffaelligkeitenController.class)) {
             for (Method m : c.getDeclaredMethods()) {
                 if (m.isAnnotationPresent(GetMapping.class)) {
                     assertThat(m.isAnnotationPresent(Recht.class)).as(c.getSimpleName() + "#" + m.getName()).isFalse();

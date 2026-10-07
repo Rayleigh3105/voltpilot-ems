@@ -322,9 +322,13 @@ class RechtMatrixApiTest {
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}", "eee333333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}/verantwortlicher",
                 "eee333333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee333333"));
+        // Verbessern v1 Entscheid 8: die Vorprüfung nimmt auch eigene_massnahme (BD S, LE S); ob die Maßnahme die eigene
+        // ist, entscheidet der Dienst an der Zeile (MassnahmeApiTest).
+        z.add(new Zeile("verbesserung.verwalten|verbesserung.eigene_massnahme", HttpMethod.POST,
+                "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee3ee333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/verwerfen", "eee333333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/eintraege", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten|verbesserung.eigene_massnahme", HttpMethod.POST,
+                "/api/v1/massnahmen/{FREMD}/eintraege", "eee3ee333"));
         // AP-18 IP-7: Energieziel bewerten — Zellen wie bezugsbasis.freigeben (KA U · EM U).
         z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/energieziele/{FREMD}/bewerten",
                 "ee3333333"));

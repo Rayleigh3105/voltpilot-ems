@@ -26,6 +26,7 @@ class VerbesserungVectorsTest {
         return switch (fall.get("operation").asText()) {
             case "wirkung" -> VerbesserungRegeln.wirkung(M.treeToValue(e, VerbesserungRegeln.WirkungEingang.class));
             case "zielstand" -> VerbesserungRegeln.zielstand(M.treeToValue(e, VerbesserungRegeln.ZielstandEingang.class));
+            case "kurs" -> VerbesserungRegeln.kurs(M.treeToValue(e, VerbesserungRegeln.ZielstandEingang.class));
             case "frist" -> VerbesserungRegeln.frist(M.treeToValue(e, VerbesserungRegeln.FristEingang.class));
             case "satz" -> VerbesserungRegeln.satz(e.get("schluessel").asText(),
                     M.convertValue(e.get("werte"), new TypeReference<Map<String, String>>() {}));
