@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.3"
+      "const": "1.4"
     },
     "herkunft": {
       "type": "string",
@@ -905,8 +905,10 @@
         "ueberpruefung",
         "geprueft_bleibt",
         "bekanntmachung",
+        "bekanntmachung_durch",
         "anwendungsbereich_deckungsgleich",
         "anwendungsbereich_unterschied",
+        "anwendungsbereich_nur_im_umfang",
         "freigabe_ohne_leitung",
         "aufgabe_ohne_person",
         "person_ohne_konto",
@@ -977,11 +979,19 @@
           "type": "string",
           "minLength": 1
         },
+        "bekanntmachung_durch": {
+          "type": "string",
+          "minLength": 1
+        },
         "anwendungsbereich_deckungsgleich": {
           "type": "string",
           "minLength": 1
         },
         "anwendungsbereich_unterschied": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anwendungsbereich_nur_im_umfang": {
           "type": "string",
           "minLength": 1
         },

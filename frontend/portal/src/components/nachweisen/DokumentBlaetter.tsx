@@ -86,14 +86,18 @@ const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, ''
 // ------------------------------------------------------------------ gemeinsame Teile
 
 /** Die Personen, die entscheiden können: bei Energiepolitik, Anwendungsbereich und Bestellung die Leitung am Tag (PA3). */
-function useEntscheider(leitung: boolean, tag: string, neu: number) {
+/**
+ * Wer zur Wahl steht: mit Leitungs-Pflicht die Leitung am Tag - aus `…/leitung` im Zaun des Freigaberechts, nicht aus
+ * den Aufgaben, die nur unternehmensweit gelesen werden (Befund A4); sonst jede aktive Person.
+ */
+function useEntscheider(leitung: boolean, tag: string, standort: string | null, neu: number) {
   const [personen, setPersonen] = useState<EnergiemanagementPersonKurz[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   useEffect(() => {
     let aktiv = true;
     setPersonen(null);
     const laden = leitung
-      ? api.energiemanagementAufgaben(tag || undefined).then((a) => a.leitung)
+      ? api.energiemanagementLeitung(tag || null, standort).then((a) => a.leitung)
       : api.energiemanagementPersonen().then((p) =>
           p.personen.filter((x) => x.zustand === 'aktiv').map((x) => ({ id: x.id, name: x.name, funktion: x.funktion, kuerzel: x.kuerzel, mit_konto: !!x.konto })),
         );
@@ -104,7 +108,7 @@ function useEntscheider(leitung: boolean, tag: string, neu: number) {
     return () => {
       aktiv = false;
     };
-  }, [leitung, tag, neu]);
+  }, [leitung, tag, standort, neu]);
   return { leitung, personen, fehler };
 }
 
@@ -112,6 +116,7 @@ function useEntscheider(leitung: boolean, tag: string, neu: number) {
 export function EntscheiderWahl({
   id,
   leitung: nurLeitung,
+  standort = null,
   tag,
   wert,
   setze,
@@ -121,6 +126,8 @@ export function EntscheiderWahl({
   id: string;
   /** Nur die Leitung am Tag (Freigabe von Energiepolitik, Anwendungsbereich, Bestellung - PA3). */
   leitung: boolean;
+  /** Der Standort des Bezugs: dort prüft `…/leitung` das Freigaberecht (ohne: am Unternehmen). */
+  standort?: string | null;
   tag: string;
   wert: string;
   setze: (id: string) => void;
@@ -129,7 +136,7 @@ export function EntscheiderWahl({
 }) {
   const [neu, setNeu] = useState(0);
   const [anlegen, setAnlegen] = useState(false);
-  const { leitung, personen, fehler: ladefehler } = useEntscheider(nurLeitung, tag, neu);
+  const { leitung, personen, fehler: ladefehler } = useEntscheider(nurLeitung, tag, standort, neu);
   useEffect(() => {
     if (!personen) return;
     if (wert && personen.some((p) => p.id === wert)) return;
@@ -812,13 +819,22 @@ export function FreigebenBlatt({
             testid="freigeben-personen"
           />
         )}
-        <EntscheiderWahl id={`${basis}-person`} leitung={E.leitungsPflicht(dokument.art)} tag={tag} wert={von} setze={setVon} fehler={fehler.entschiedenVon} />
+        <EntscheiderWahl
+          id={`${basis}-person`}
+          leitung={E.leitungsPflicht(dokument.art)}
+          standort={dokument.bezug.standort?.id ?? null}
+          tag={tag}
+          wert={von}
+          setze={setVon}
+          fehler={fehler.entschiedenVon}
+        />
         {/* Bei zwei Personen ist der Antrag heute (Konzept §6.10); sonst „Wann?“ mit Heute, Gestern, Anderer Tag. */}
         {!beantragen && <TagWahl heute={heute} wert={tag} setze={setTag} />}
         {grundAendern ? (
           <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} mehrzeilig fehler={fehler.begruendung} hoechstens={500} testid="freigeben-begruendung" />
         ) : (
-          <PruefZeilen zeilen={[{ etikett: 'Grund', wert: begruendung, onAendern: () => setGrundAendern(true) }]} testid="freigeben-grund" />
+          // Der Grund kurz wie in der Fußnote der Seite (höchstens vier Wörter, Text-Grenze 35 je Blatt); „Ändern“ zeigt ihn ganz.
+          <PruefZeilen zeilen={[{ etikett: 'Grund', wert: N.grundKurz({ beschluss_kennung: null, begruendung }) ?? '', onAendern: () => setGrundAendern(true) }]} testid="freigeben-grund" />
         )}
         {fassung.form === 'wortlaut' &&
           (mitOriginal ? (
@@ -1248,7 +1264,8 @@ export function OriginalBlatt({ original, onClose }: { original: N.OriginalBild;
 
 /**
  * Die Geltung des Anwendungsbereichs (DK7): Standorte, Energieträger, Ausschlüsse - und daneben der Betrachtungsumfang
- * der energetischen Bewertung (W5), ohne Urteil: „deckungsgleich“ oder die Sätze der Route, wo sie abweichen.
+ * der energetischen Bewertung (W5), ohne Urteil: „deckungsgleich“, sonst je Richtung eine Zeile mit dem, was nur auf
+ * einer Seite steht (Befund A21: auch die Gegenrichtung; Zeilen statt der langen Sätze der Route).
  */
 export function GeltungBlatt({ dokument, fassung, onClose }: { dokument: EnergiemanagementDokument; fassung: EnergiemanagementFassung; onClose: () => void }) {
   const [v, setV] = useState<Awaited<ReturnType<typeof api.energiemanagementVergleich>> | null>(null);
@@ -1267,6 +1284,8 @@ export function GeltungBlatt({ dokument, fassung, onClose }: { dokument: Energie
   if (!a) return null;
   const orte = (liste: { name: string | null; kurzzeichen: string | null }[]) => liste.map((s) => s.name ?? s.kurzzeichen ?? '').join(', ');
   const name = new Map(a.standorte.map((s) => [s.id, s.name ?? s.kurzzeichen ?? '']));
+  const nurAb = v?.vergleich ? [...v.vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? s.kurzzeichen ?? ''), ...v.vergleich.traeger_nur_im_anwendungsbereich] : [];
+  const nurUm = v?.vergleich ? [...v.vergleich.standorte_nur_im_betrachtungsumfang.map((s) => s.name ?? s.kurzzeichen ?? ''), ...v.vergleich.traeger_nur_im_betrachtungsumfang] : [];
   return (
     <NwBlatt open titel="Geltung" onClose={onClose} testId="geltung-blatt">
       <div className="vp-nw-schritt-inhalt">
@@ -1276,14 +1295,11 @@ export function GeltungBlatt({ dokument, fassung, onClose }: { dokument: Energie
             { etikett: 'Energieträger', wert: a.traeger.join(', ') },
             { etikett: 'Ausschlüsse', wert: a.ausschluesse.length ? a.ausschluesse.map((x) => `${name.get(x.verweis) ?? 'Standort'}: ${x.begruendung}`).join(' · ') : 'keine' },
             ...(v?.vergleich ? [{ etikett: 'Betrachtungsumfang', wert: v.vergleich.deckungsgleich ? 'deckungsgleich' : 'weicht ab' }] : []),
+            ...(v?.vergleich && nurAb.length ? [{ etikett: 'Nur im Anwendungsbereich', wert: nurAb.join(', ') }] : []),
+            ...(v?.vergleich && nurUm.length ? [{ etikett: 'Nur im Betrachtungsumfang', wert: nurUm.join(', ') }] : []),
           ]}
           testid="geltung-zeilen"
         />
-        {v?.vergleich && !v.vergleich.deckungsgleich && v.saetze.map((t) => (
-          <p key={t} className="vp-nw-leise">
-            {t}
-          </p>
-        ))}
         {fehler && <p className="vp-nw-leise">{fehler}</p>}
       </div>
     </NwBlatt>

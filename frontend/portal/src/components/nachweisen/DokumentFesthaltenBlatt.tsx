@@ -324,7 +324,15 @@ export function DokumentFesthaltenBlatt({
             )}
             {weiter === 'freigeben' && darfFreigeben && (aendern || (personen !== null && !von)) && (
               <>
-                <EntscheiderWahl id={`${basis}-person`} leitung={leitung} tag={tag || heute || ''} wert={von} setze={setVon} fehler={fehler.entschiedenVon} />
+                <EntscheiderWahl
+                  id={`${basis}-person`}
+                  leitung={leitung}
+                  standort={ort === 'unternehmen' ? null : ort}
+                  tag={tag || heute || ''}
+                  wert={von}
+                  setze={setVon}
+                  fehler={fehler.entschiedenVon}
+                />
                 <VpDatePicker label="Wann?" value={tag || heute || null} onChange={setTag} max={heute ?? undefined} />
                 <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} fehler={fehler.begruendung} hoechstens={500} testid="festhalten-begruendung" />
               </>

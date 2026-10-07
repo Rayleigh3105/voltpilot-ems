@@ -8593,6 +8593,11 @@ export interface EnergiemanagementAufgaben {
   aufgaben: { aufgabe: string; wort: string; laufend: EnergiemanagementZuordnung[]; satz: string | null }[];
   zuordnungen: EnergiemanagementZuordnung[];
 }
+/** Die Leitung am Tag (PA3) für wen am Standort bzw. am Unternehmen freigibt (Konzept Nachweisen n1, Befund A4). */
+export interface EnergiemanagementLeitung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+}
 export interface EnergiemanagementAufgabeZuordnen {
   aufgabe: string;
   aufgabe_wortlaut?: string | null;
@@ -11361,6 +11366,17 @@ export const api = {
   /** IP-6 (PA2, PA3): die Aufgaben am Tag mit der Leitung — nur unternehmensweit. */
   energiemanagementAufgaben: (tag?: string) =>
     request<EnergiemanagementAufgaben>(`/api/v1/energiemanagement/aufgaben${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /**
+   * PA3, DK3: die Leitung am Tag für die Freigabe mit Leitungs-Pflicht - Recht `energiemanagement.freigeben` am Standort
+   * (ohne Standort am Unternehmen), auch ohne die Aufgaben unternehmensweit zu lesen (Konzept Nachweisen n1, Befund A4).
+   */
+  energiemanagementLeitung: (tag?: string | null, standort?: string | null) => {
+    const q = new URLSearchParams();
+    if (tag) q.set('tag', tag);
+    if (standort) q.set('standort', standort);
+    const s = q.toString();
+    return request<EnergiemanagementLeitung>(`/api/v1/energiemanagement/leitung${s ? `?${s}` : ''}`);
+  },
   /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
   energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
     request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),

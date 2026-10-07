@@ -188,10 +188,16 @@ public class EnergiemanagementNachweise {
                     : WEG_WORT.get(e.weg())).filter(Objects::nonNull).distinct().toList();
             String wegeWort = aufzaehlung(worte);
             PersonKurz person = erster.person();
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person ist, wer bekannt gemacht hat; ohne sie
+            // steht keine, nie ein Platzhalter-Strich.
+            Map<String, String> werte = new LinkedHashMap<>(Map.of("am", erster.am().format(TAG),
+                    "kreis", erster.kreis(), "weg", wegeWort));
+            if (person != null) {
+                werte.put("person", person.name());
+            }
             aus.add(new Kommunikationsnachweis(d.id(), d.kennzeichen(), d.titel(), d.art(), erster.fassung(),
-                    erster.am(), erster.kreis(), wege, wegeWort, person, satz("bekanntmachung", Map.of("am",
-                            erster.am().format(TAG), "kreis", erster.kreis(), "weg", wegeWort, "person",
-                            person == null ? "—" : person.name()))));
+                    erster.am(), erster.kreis(), wege, wegeWort, person,
+                    satz(person == null ? "bekanntmachung" : "bekanntmachung_durch", werte)));
         }
         return aus;
     }

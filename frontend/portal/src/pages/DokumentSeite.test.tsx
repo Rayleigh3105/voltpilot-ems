@@ -98,8 +98,10 @@ describe('Seite eines Dokuments (Konzept Nachweisen n1, Runde 2, §6.5)', () => 
 
     const blatt = await screen.findByTestId('freigeben-blatt');
     expect(within(blatt).getByTestId('freigeben-personen').textContent).toContain('Eine Person gibt frei');
-    // Der Grund der Fassung steht als Prüfzeile vorbelegt - „Ändern“ öffnet das Feld.
-    expect(within(blatt).getByTestId('freigeben-grund').textContent).toContain('Hinweis aus dem internen Audit 2029 zur Einarbeitung.');
+    // Der Grund der Fassung steht kurz als Prüfzeile vorbelegt - „Ändern“ öffnet das Feld mit dem ganzen Text.
+    expect(within(blatt).getByTestId('freigeben-grund').textContent).toContain('Hinweis aus dem internen …');
+    await klick(within(within(blatt).getByTestId('freigeben-grund')).getByRole('button', { name: 'Grund ändern' }));
+    expect((screen.getByTestId('freigeben-begruendung') as HTMLTextAreaElement).value).toBe('Hinweis aus dem internen Audit 2029 zur Einarbeitung.');
     await klick(screen.getByTestId('freigeben-senden'));
     // Bei der Energiepolitik entscheidet die Leitung - sie ist die einzige Person zur Wahl und schon gewählt.
     expect(buehne.gesendet.find((g) => g.route.endsWith('/fassungen/2/freigeben'))?.koerper).toEqual({
@@ -119,6 +121,43 @@ describe('Seite eines Dokuments (Konzept Nachweisen n1, Runde 2, §6.5)', () => 
     ]);
     expect(screen.getByTestId('dokument-stufen').textContent).toContain('Bekannt12.02.2029');
     expect(screen.getByTestId('dokument-wortlaut').querySelector('mark')?.textContent).toBe('Wer neu bei uns anfängt, lernt diese Energiepolitik in der Einarbeitung kennen.');
+  });
+
+  it('die Leitung kommt aus `…/leitung`, nicht aus den Aufgaben: wer sie nicht unternehmensweit liest, gibt trotzdem frei (Befund A4)', async () => {
+    // So antwortet `GET …/aufgaben` Lesern ohne unternehmensweites Recht: ohne Zeile, ohne Leitung.
+    const aufgaben = api.energiemanagementAufgaben;
+    api.energiemanagementAufgaben = async (tag?: string) => ({ ...(await aufgaben(tag)), leitung: [], aufgaben: [], zuordnungen: [] });
+    await zeige(EM_IDS.d1);
+    await klick(screen.getByTestId('dokument-neu-fassen'));
+    await klick(screen.getByRole('radio', { name: 'Eigener Grund' }));
+    fireEvent.change(screen.getByTestId('neu-fassen-begruendung'), { target: { value: 'Hinweis aus dem internen Audit 2029 zur Einarbeitung.' } });
+    await klick(screen.getByTestId('neu-fassen-weiter'));
+    await klick(screen.getByRole('radio', { name: 'Gleich freigeben' }));
+    await klick(screen.getByTestId('neu-fassen-speichern'));
+    const blatt = await screen.findByTestId('freigeben-blatt');
+    expect(within(blatt).queryByTestId('freigabe-ohne-leitung')).toBeNull();
+    await klick(screen.getByTestId('freigeben-senden'));
+    expect(buehne.gesendet.find((g) => g.route.endsWith('/fassungen/2/freigeben'))?.koerper).toMatchObject({ entschieden_von: EM_IDS.RF });
+  });
+
+  it('Geltung: was nur auf einer Seite steht, in beiden Richtungen als Zeile - ohne die langen Sätze der Route (Befund A21)', async () => {
+    const vergleich = api.energiemanagementVergleich;
+    api.energiemanagementVergleich = async (id: string) => {
+      const v = await vergleich(id);
+      return {
+        ...v,
+        vergleich: { ...v.vergleich!, deckungsgleich: false, traeger_nur_im_anwendungsbereich: ['Fernwärme'], standorte_nur_im_betrachtungsumfang: [{ id: 'st-3', kurzzeichen: 'ST-3', name: 'Werk Kaltenbrunn' }] },
+        saetze: ['Werk Kaltenbrunn gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung 1), aber nicht zum Anwendungsbereich.'],
+      };
+    };
+    await zeige(EM_IDS.d2);
+    await klick(screen.getByTestId('zeile-geltung'));
+    const zeilen = await screen.findByTestId('geltung-zeilen');
+    await act(async () => {});
+    expect(zeilen.textContent).toContain('Betrachtungsumfangweicht ab');
+    expect(zeilen.textContent).toContain('Nur im AnwendungsbereichFernwärme');
+    expect(zeilen.textContent).toContain('Nur im BetrachtungsumfangWerk Kaltenbrunn');
+    expect(screen.getByTestId('geltung-blatt').textContent).not.toContain('gehört zum');
   });
 
   it('Vier-Augen steht VORAB im Blatt: „Freigabe beantragen“ mit „Zwei Personen prüfen“ - ohne roten Fehlversuch (Befund 6)', async () => {

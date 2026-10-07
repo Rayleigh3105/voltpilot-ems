@@ -14,6 +14,7 @@
 import {
   ApiError,
   type EnergiemanagementAufgaben,
+  type EnergiemanagementLeitung,
   type EnergiemanagementAufheben,
   type EnergiemanagementBekanntmachen,
   type EnergiemanagementDokument,
@@ -263,7 +264,8 @@ export function energiemanagementBuehne(
       }, [])
       .map((b) => {
         const wege_wort = b.wege.map((w) => ({ aushang: 'Aushang', intranet: 'Intranet', unterweisung: 'Unterweisung', besprechung: 'Besprechung', e_mail: 'E-Mail' } as Record<string, string>)[w] ?? w).join(' und ');
-        return { ...b, wege_wort, satz: satzText('bekanntmachung', { am: tagText(b.am), kreis: b.kreis, weg: wege_wort, person: b.person?.name ?? '' }) };
+        const werte = { am: tagText(b.am), kreis: b.kreis, weg: wege_wort };
+        return { ...b, wege_wort, satz: b.person ? satzText('bekanntmachung_durch', { ...werte, person: b.person.name }) : satzText('bekanntmachung', werte) };
       });
     return {
       id: a.id, kennzeichen: a.kennzeichen, art: a.art, art_wort: a.art_wort, klasse: a.klasse, titel: a.titel, bezug: a.bezug, zustand: a.zustand,
@@ -327,7 +329,9 @@ export function energiemanagementBuehne(
     const p = personen.find((x) => x.id === b.entschieden_von);
     const tag = b.entschieden_am ?? am.slice(0, 10);
     if (['energiepolitik', 'anwendungsbereich', 'bestellung'].includes(d.art) && !leitungAm(tag).some((l) => l.id === p?.id)) {
-      throw new ApiError(422, SAETZE.freigabe_ohne_leitung, { code: 'leitung_fehlt', message: SAETZE.freigabe_ohne_leitung });
+      if (leitungAm(tag).length === 0) throw new ApiError(422, SAETZE.freigabe_ohne_leitung, { code: 'leitung_fehlt', message: SAETZE.freigabe_ohne_leitung });
+      const satz = `Über ${d.art_wort} entscheidet die Leitung des Unternehmens.`;
+      throw new ApiError(422, satz, { code: 'nicht_die_leitung', message: satz, leitung: leitungAm(tag).map((l) => l.id) });
     }
     const kopie = {
       nr: f.nr, form: f.form, wortlaut: f.wortlaut, verweis: f.verweis,
@@ -483,6 +487,11 @@ export function energiemanagementBuehne(
       const t = tag ?? heute();
       return { tag: t, leitung: leitungAm(t), aufgaben: aufgabenAm(t), zuordnungen: structuredClone(zuordnungen) };
     },
+    energiemanagementLeitung: async (tag?: string | null): Promise<EnergiemanagementLeitung> => {
+      await bereit;
+      const t = tag ?? heute();
+      return { tag: t, leitung: leitungAm(t) };
+    },
     energiemanagementAufgabeZuordnen: async (b: EnergiemanagementAufgabeZuordnen) => {
       merke('POST /api/v1/energiemanagement/aufgaben', b);
       if (b.aufgabe !== 'unternehmensleitung' && !b.entschieden_von) {
@@ -593,7 +602,12 @@ export function energiemanagementBuehne(
       vergleich.deckungsgleich = !vergleich.standorte_nur_im_anwendungsbereich.length && !vergleich.standorte_nur_im_betrachtungsumfang.length && !nurAb.length && !vergleich.traeger_nur_im_betrachtungsumfang.length;
       const saetze = vergleich.deckungsgleich
         ? [satzText('anwendungsbereich_deckungsgleich', { fassung: '1', ab: tagText(umfang.gueltig_ab) })]
-        : [...vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? ''), ...nurAb].map((was) => satzText('anwendungsbereich_unterschied', { was, fassung: '1' }));
+        : [
+            ...[...vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? ''), ...nurAb].map((was) => satzText('anwendungsbereich_unterschied', { was, fassung: '1' })),
+            ...[...vergleich.standorte_nur_im_betrachtungsumfang.map((s) => s.name ?? ''), ...vergleich.traeger_nur_im_betrachtungsumfang].map((was) =>
+              satzText('anwendungsbereich_nur_im_umfang', { was, fassung: '1' }),
+            ),
+          ];
       return { abruf: heute(), fassung: f!.nr, anwendungsbereich: ab, betrachtungsumfang: umfang, vergleich, saetze };
     },
     energiemanagementNachweiseAmEinsatz: async (id: string): Promise<EnergiemanagementNachweiseAmEinsatz> => {

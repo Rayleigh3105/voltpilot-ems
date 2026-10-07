@@ -41,6 +41,7 @@ public class EnergiemanagementPersonenService {
 
     static final String LEITUNG = "unternehmensleitung";
     static final String WEITERE = "weitere";
+    private static final String FREIGEBEN = "energiemanagement.freigeben";
     private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
     private static final Pattern BESCHLUSS = Pattern.compile("^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$");
 
@@ -163,6 +164,35 @@ public class EnergiemanagementPersonenService {
                 .map(id -> kurz(personen.get(id))).toList();
         return new EnergiemanagementPersonenDto.Aufgaben(am, leitung, aufgaben,
                 alle.stream().map(z -> zuordnung(z, personen)).toList());
+    }
+
+    /**
+     * Die Leitung am {@code tag} (Vorgabe heute) für wen am Standort (ohne Standort: am Unternehmen) freigeben darf -
+     * die Freigabe mit Leitungs-Pflicht (DK3) braucht sie als „entschieden von“. {@link #aufgaben} antwortet Lesern
+     * ohne unternehmensweites Recht leer; liest die Freigabe dort, sperrt sie, obwohl eine Leitung festgelegt ist
+     * (Konzept Nachweisen n1, Befund A4). Heute tragen das Freigaberecht nur Rollen am Unternehmen; diese Route hängt
+     * nicht davon ab. Ohne Recht 403 {@code recht_fehlt}, ein fremder Standort 422 {@code standort_unbekannt}.
+     */
+    public EnergiemanagementPersonenDto.Leitung leitung(LocalDate tag, UUID standort) {
+        if (standort == null) {
+            rechte.pruefen(FREIGEBEN, RechtZiel.UNTERNEHMEN, null, () -> standortUnbekannt());
+        } else {
+            rechte.pruefen(FREIGEBEN, RechtZiel.STANDORT, standort, () -> standortUnbekannt());
+            // Ein unsichtbarer Standort geht durch die Prüfung (die Route antwortet selbst) - wie ein fremder.
+            if (!repo.standortSichtbar(standort)) {
+                throw standortUnbekannt();
+            }
+        }
+        LocalDate am = tag == null ? heute() : tag;
+        Map<UUID, EnergiemanagementPersonenRepository.Person> personen = repo.personen().stream()
+                .collect(Collectors.toMap(EnergiemanagementPersonenRepository.Person::id, Function.identity()));
+        return new EnergiemanagementPersonenDto.Leitung(am,
+                leitungAm(am).stream().map(id -> kurz(personen.get(id))).toList());
+    }
+
+    private static EnergiemanagementAbgelehnt standortUnbekannt() {
+        return EnergiemanagementAbgelehnt.fachlich("standort_unbekannt",
+                "Bitte wählen Sie einen Standort Ihres Kundenbereichs.", Map.of("feld", "standort"));
     }
 
     /**

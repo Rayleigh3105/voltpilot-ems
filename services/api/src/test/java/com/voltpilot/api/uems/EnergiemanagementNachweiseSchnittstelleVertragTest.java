@@ -136,8 +136,12 @@ class EnergiemanagementNachweiseSchnittstelleVertragTest {
         var k = EnergiemanagementNachweise.kommunikation(dokument("energiepolitik", null, eintraege));
         assertThat(k).hasSize(2);
         assertThat(k.get(0).wege()).containsExactly("aushang", "intranet");
-        assertThat(k.get(0).satz()).isEqualTo(vektor("§5.8 bekanntmachung").at("/erwartet/satz").asText());
+        // Mit Person der Satz „bekanntmachung_durch“, ohne Person „bekanntmachung“ (Vertrag 1.4, Befund A14).
+        assertThat(k.get(0).satz()).isEqualTo(vektor("§5.8 bekanntmachung_durch").at("/erwartet/satz").asText());
         assertThat(k.get(1).wegeWort()).isEqualTo("Betriebsversammlung");
+        var ohne = EnergiemanagementNachweise.kommunikation(dokument("energiepolitik", null,
+                List.of(eintrag(4, am, kreis, "aushang", null, null), eintrag(5, am, kreis, "intranet", null, null))));
+        assertThat(ohne.get(0).satz()).isEqualTo(vektor("§5.8 bekanntmachung").at("/erwartet/satz").asText());
         assertThat(EnergiemanagementNachweise.aufzaehlung(List.of("Aushang", "Intranet", "Besprechung")))
                 .isEqualTo("Aushang, Intranet und Besprechung");
     }

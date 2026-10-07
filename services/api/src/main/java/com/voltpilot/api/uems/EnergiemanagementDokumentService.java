@@ -234,15 +234,20 @@ public class EnergiemanagementDokumentService {
             saetze.add(satz("anwendungsbereich_deckungsgleich", Map.of("fassung", String.valueOf(lauf.nummer()),
                     "ab", lauf.inhalt().gueltigAb().format(TAG))));
         } else {
-            // §5.8 nennt nur die Richtung „gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang“;
-            // die Gegenrichtung steht in den Feldern (Vertrag §9).
+            // Beide Richtungen mit Satz: §5.8 „gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang“ und
+            // seit Vertrag 1.4 die Gegenrichtung (Konzept Nachweisen n1, Befund A21); die Felder tragen dieselben Mengen.
+            String fassung = String.valueOf(lauf.nummer());
             for (var s : nurAb) {
-                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", s.name(),
-                        "fassung", String.valueOf(lauf.nummer()))));
+                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", s.name(), "fassung", fassung)));
             }
             for (String t : trAb) {
-                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", t,
-                        "fassung", String.valueOf(lauf.nummer()))));
+                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", t, "fassung", fassung)));
+            }
+            for (var s : nurUm) {
+                saetze.add(satz("anwendungsbereich_nur_im_umfang", Map.of("was", s.name(), "fassung", fassung)));
+            }
+            for (String t : trUm) {
+                saetze.add(satz("anwendungsbereich_nur_im_umfang", Map.of("was", t, "fassung", fassung)));
             }
         }
         return new EnergiemanagementDokumentDto.Vergleich(heute, gilt.nr(), ab, um,
@@ -562,7 +567,8 @@ public class EnergiemanagementDokumentService {
     /**
      * DK3/PA3: bei Energiepolitik, Anwendungsbereich und Bestellung entscheidet die Person mit der am Tag laufenden
      * Aufgabe „Leitung des Unternehmens“ — ohne Leitung der Satz des Vertrags; die Fläche erfindet keine (422
-     * {@code leitung_fehlt}, bevor der Trigger es täte).
+     * {@code leitung_fehlt}, bevor der Trigger es täte). Eine andere Person als die Leitung: 422
+     * {@code nicht_die_leitung} mit der Leitung am Tag.
      */
     private void leitungPruefen(EnergiemanagementDokumentRepository.Dokument d, Entscheidung e) {
         if (!leitungsPflicht(d.art())) {
@@ -574,7 +580,9 @@ public class EnergiemanagementDokumentService {
                     Map.of("art", d.art(), "tag", e.tag().toString()));
         }
         if (!am.contains(e.von())) {
-            throw EnergiemanagementAbgelehnt.fachlich("leitung_fehlt",
+            // Befund A11 (Konzept Nachweisen n1): „keine Leitung festgelegt“ und „diese Person ist nicht die Leitung“
+            // sind zwei Ablehnungen mit zwei Codes.
+            throw EnergiemanagementAbgelehnt.fachlich("nicht_die_leitung",
                     "Über " + artWort(d.art()) + " entscheidet die Leitung des Unternehmens.",
                     Map.of("art", d.art(), "tag", e.tag().toString(),
                             "leitung", am.stream().map(UUID::toString).toList()));

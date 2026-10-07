@@ -12334,6 +12334,33 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/leitung:
+    get:
+      tags: [energiemanagement]
+      summary: Die Leitung des Unternehmens am Tag - für die Freigabe mit Leitungs-Pflicht (PA3, DK3).
+      description: >
+        Recht `energiemanagement.freigeben` am `standort` (ohne Standort am Unternehmen; sonst 403 `recht_fehlt`, ein
+        fremder Standort 422 `standort_unbekannt`). `tag` (Vorgabe heute in der Zeitzone des Unternehmens, sonst 400).
+        `leitung` sind die Personen mit laufender Aufgabe `unternehmensleitung` - dieselben wie in
+        `GET …/aufgaben`, aber auch für wen nur an einem Standort freigibt und die Aufgaben nicht unternehmensweit
+        liest (Konzept Nachweisen n1, Befund A4). Leer heißt, Freigaben mit Leitungs-Pflicht sind gesperrt.
+      parameters:
+        - in: query
+          name: tag
+          schema: { type: string, format: date }
+        - in: query
+          name: standort
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementLeitung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/aufgaben/{id}/beenden:
     parameters:
       - in: path
@@ -12706,8 +12733,8 @@ paths:
         Energiemanagement (422 `entschieden_von_fehlt`, `person_unbekannt`), `entschieden_am` ein Tag bis heute
         (Vorgabe heute, 422 `tag_in_der_zukunft`), Begründung 10-500 Zeichen (422 `begruendung_fehlt`). Bei
         Energiepolitik, Anwendungsbereich und Bestellung ist es die Person mit der am Tag laufenden Aufgabe „Leitung
-        des Unternehmens“ (422 `leitung_fehlt`). Kopie und Prüfsumme entstehen mit dem Antrag. Protokoll
-        `fassung_beantragt`.
+        des Unternehmens“ (ohne Leitung am Tag 422 `leitung_fehlt`, eine andere Person 422 `nicht_die_leitung` mit
+        `leitung`). Kopie und Prüfsumme entstehen mit dem Antrag. Protokoll `fassung_beantragt`.
       requestBody:
         required: true
         content:
@@ -12734,7 +12761,8 @@ paths:
       summary: Fassung freigeben - mit „entschieden von“, bei Vier-Augen durch eine zweite Person (DK3, DK4).
       description: >
         Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Ohne Vier-Augen der Entwurf
-        mit „entschieden von“, Tag und Begründung wie beim Antrag (Leitungs-Pflicht 422 `leitung_fehlt`); mit
+        mit „entschieden von“, Tag und Begründung wie beim Antrag (Leitungs-Pflicht 422 `leitung_fehlt` bzw.
+        `nicht_die_leitung`); mit
         Vier-Augen ist ein Entwurf 409 `vieraugen_beantragen`, und den Antrag bestätigt eine zweite Person - nie, wer
         die Fassung entworfen oder beantragt hat (422 `vieraugen_urheber`), mit Rolle Kundenadministrator oder
         Energiemanager (403 `vieraugen_rolle`); sie schickt höchstens eine Begründung (ein „entschieden von“ 422
@@ -18709,6 +18737,14 @@ components:
         zuordnungen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+    EnergiemanagementLeitung:
+      type: object
+      required: [tag, leitung]
+      properties:
+        tag: { type: string, format: date }
+        leitung:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
     EnergiemanagementVerantwortlich:
       type: object
       required: [sub, name]
