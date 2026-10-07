@@ -100,9 +100,11 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(m, 'leer');
       await ablegen(page, `leer-${breite}`, true);
       await page.getByTestId('verbesserung-reiter-abweichungen').click();
-      // IP-18: das Register „Abweichungen“ — ohne Abweichung der Leer-Satz, ohne Knopf (eröffnet wird an der Kennzahl).
+      // IP-18: das Register „Abweichungen“ — ohne Abweichung der Leer-Satz, kein Knopf (eröffnet wird an der Kennzahl);
+      // „Was ist eine Abweichung?“ ist der Aufklapper der Begriffe (Verbessern PR3/PR4).
       await expect(page.getByTestId('abweichungen-leer')).toBeVisible();
       await expect(page.getByTestId('abweichungen-register').getByRole('button')).toHaveCount(0);
+      await expect(page.getByTestId('begriff-auf-abweichung')).toContainText('Was ist eine Abweichung?');
       expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/verbesserung/abweichungen');
     });
 
@@ -116,7 +118,8 @@ for (const breite of [375, 1440]) {
       const dialog = page.getByTestId('energieziel-setzen');
       await expect(dialog.getByTestId('energieziel-basis-zeile')).toContainText('Bezugsbasis BB-0001 · Fassung 2');
       await expect(dialog.getByText('Januar bis Dezember 2028 — ganze Monate, frühestens ab dem nächsten Monat.')).toBeVisible();
-      await expect(dialog.getByText(GRENZE)).toBeVisible();
+      // Konzept Verbessern v1, PR 4: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Dialog.
+      await expect(dialog.getByText(GRENZE)).toHaveCount(0);
       await ablegen(page, `dialog-${breite}`);
       await page.locator('.vp-modal').getByLabel(/Zielwert in % weniger/).fill('5');
       await page.locator('.vp-modal').getByLabel('Wortlaut').fill('Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt — Jahresziel 2028.');

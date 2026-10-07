@@ -186,6 +186,14 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     expect(screen.queryByTestId('massnahmen-tafel')).toBeNull();
     expect(register.textContent).not.toContain('ohne Messgrundlage — Wirkung nicht messbar');
   });
+  it('„Was ist eine Maßnahme?“ ist der Aufklapper der Begriffe - mit den Fachwörtern zuletzt (Entscheid 14; Review r2 S-r2-2)', async () => {
+    render(<VerbesserungBereich reiter="massnahmen" energiezielId={null} onReiter={() => {}} onOeffnen={() => {}} onListe={() => {}} />);
+    const auf = await screen.findByTestId('begriff-auf-massnahme');
+    expect(auf.textContent).toContain('Was ist eine Maßnahme?');
+    expect(auf.textContent).toContain('Fachwörter: Aktionsplan (die Liste Ihrer Maßnahmen), Korrekturmaßnahme (eine Maßnahme aus einer Feststellung)');
+    expect(screen.getAllByText('Was ist eine Maßnahme?')).toHaveLength(1);
+    expect(screen.queryByTestId('massnahmen-was-ist')).toBeNull();
+  });
   it('Chips filtern nach Stufe; ein Klick auf die Karte öffnet die Seite', async () => {
     const oeffnen = vi.fn();
     render(<VerbesserungBereich reiter="massnahmen" energiezielId={null} onReiter={() => {}} onOeffnen={() => {}} onListe={() => {}} onMassnahme={oeffnen} />);
@@ -291,7 +299,8 @@ describe('Maßnahme planen (§6.9, Entscheide 6, 12, 13)', () => {
     fireEvent.change(screen.getByTestId('planen-wortlaut'), { target: { value: 'Alle Beschäftigten kennen die Energiepolitik.' } });
     expect(screen.queryByTestId('planen-prozent')).toBeNull();
     expect(screen.queryByTestId('planen-kwh')).toBeNull();
-    expect(dialog.textContent).toContain(UEMS_NORMGRENZE);
+    // Konzept Verbessern v1, PR 4: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Dialog.
+    expect(dialog.textContent).not.toContain(UEMS_NORMGRENZE);
   });
   it('mit Kennzahl rechnet die Route die Prozent in kWh im Jahr um; fehlen Monate, steht der Grund da', async () => {
     const schaetzung = vi.spyOn(api, 'massnahmeSchaetzung').mockResolvedValue({

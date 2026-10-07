@@ -274,7 +274,8 @@ export function energiezielBuehne(lage: EnergiezielLage, vieraugen = false, sub 
   return {
     // Konzept Verbessern, Entscheid 5: an der Bühne ohne Maßnahmen und ohne offene Auffälligkeit.
     massnahmenZumEnergieziel: async () => ({ abruf: '2028-07-10', massnahmen: [], im_stand_enthalten: [] }),
-    auffaelligkeiten: async (k) => ({ kennzahl: { id: k, kennzeichen: 'KZ-0004', name: 'Stromeinsatz Spritzguss je kg' }, abruf: '2028-07-10', offen: 0, vermerke: [] }),
+    // Der Hinweis am Energieziel liest die Sammelroute `GET /api/v1/auffaelligkeiten` (Review r1 M-3.1).
+    alleAuffaelligkeiten: async () => ({ abruf: '2028-07-10', offen: 0, vermerke: [] }),
     energieziele: async () => ({ energieziele: [...ziele.values()].map((ez) => ({ ...ez, anstoesse: null, verlauf: null })) }),
     energieziel: async (id) => holen(id),
     energiezielStand: async (id) => stand(holen(id)),

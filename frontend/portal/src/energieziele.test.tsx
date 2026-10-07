@@ -147,13 +147,27 @@ describe('die Flächen gegen R4/R10', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Energieziele');
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
-  it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf', async () => {
+  it('„Was ist ein Energieziel?“ steht im Reiter - leer und mit Energiezielen (Review r2 S-r2-2)', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    Object.assign(api, energiezielBuehne('leer'));
+    const { unmount } = bereich();
+    const leer = await screen.findByTestId('begriff-auf-energieziel');
+    expect(leer.textContent).toContain('Was ist ein Energieziel?');
+    expect(leer.textContent).toContain('Nicht die Bezugsbasis');
+    unmount();
+    Object.assign(api, energiezielBuehne('juli'));
+    bereich();
+    await screen.findByTestId('energieziele-antwort');
+    expect(screen.getAllByTestId('begriff-auf-energieziel')).toHaveLength(1);
+  });
+  it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf zum Eröffnen', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, abweichungBuehne('leer', '2028-01-15'));
     bereich('abweichungen');
     const register = await screen.findByTestId('abweichungen-register');
     expect(within(register).getByTestId('abweichungen-leer')).toBeTruthy();
-    expect(within(register).queryByRole('button')).toBeNull();
+    // Eröffnet wird an der Kennzahl (aus einer Auffälligkeit oder von Hand) — der Reiter erklärt nur „Was ist …?“.
+    expect(within(register).queryByRole('button', { name: /eröffnen/i })).toBeNull();
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
   it('Reiter R4: die Antwort zuerst, die Karte mit Skala, Lage, Monaten, Lücke in kWh und dem nächsten Schritt (§6.3)', async () => {

@@ -24,7 +24,6 @@ export const KNOPF_WIRKUNG = 'Wirkung prüfen';
 export const KNOPF_ABSCHLIESSEN = 'Abschließen';
 export const KNOPF_ANSEHEN = 'Ansehen';
 export const KNOPF_NEU_PRUEFEN = 'Neu prüfen';
-export const WAS_IST = `Was ist eine ${UEMS_MASSNAHME}?`;
 export const SO_LAEUFT = `So läuft eine ${UEMS_MASSNAHME}`;
 export const SO_LAEUFT_SATZ =
   'Ab dem Monat nach der Umsetzung vergleicht VoltPilot zwölf Monate lang mit der Bezugsbasis. Maßnahmen ohne Kennzahl schließen Sie nach der Umsetzung mit einem Satz ab.';

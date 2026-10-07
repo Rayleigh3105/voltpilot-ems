@@ -9,10 +9,11 @@ import { grenzHinweisZeigt } from './grenzHinweis';
  * ECHTEN Bereich „Ziele und Maßnahmen“; die Routen gespielt aus dem Referenzunternehmen 1.9
  * (`src/test/abweichungFixtures.ts`, R1/R2/R8/R11, dazu `massnahmeFixtures.ts` für die neue Maßnahme).
  *
- * Fälle: Vermerk → Abweichung → Ursache-Aussage → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog
+ * Fälle: Vermerk → Abweichung → Aussage festhalten → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog
  * „Maßnahme anlegen“ (R1/R2, 15.01.2028) · „zur Kenntnis nehmen“ mit Pflicht-Begründung (R11) und „Abweichung eröffnen“
- * von Hand an einer Zeile „im Rahmen“ (A3) · Register am 10.02.2028 (überfällig zuerst, abgeschlossen mit Ergebnis) und
- * die abgeschlossene AW-2026-0001 mit geerbtem Vorbehalt (R8).
+ * von Hand an einer Zeile „im Rahmen“ (A3) · der Reiter mit „Zu beantworten“ und dem Antwort-Blatt (Verbessern-Konzept
+ * v1, PR3) · Reiter am 10.02.2028 (in Arbeit überfällig, abgeschlossen mit Ergebnis) und die abgeschlossene AW-2026-0001
+ * mit geerbtem Vorbehalt (R8).
  *
  * GEMESSEN: Querlauf des Dokuments und überstehende Elemente je Fall. Mit `ABWEICHUNGEN_BILDER=<Ordner>` legt der Lauf
  * je Fall ein Bild ab — die Ansicht. Die Spec importiert keine Fixtures.
@@ -54,6 +55,8 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 
 async function ablegen(page: Page, name: string, ganz = false) {
   if (!BILDER) return;
+  // Der Zeiger bleibt sonst über einer Reihe stehen, die sich nach dem letzten Klick verschoben hat (Hover im Bild).
+  await page.mouse.move(0, 0);
   mkdirSync(BILDER, { recursive: true });
   const path = join(BILDER, `${name}.png`);
   const vp = page.viewportSize();
@@ -92,6 +95,9 @@ async function waehleTag(page: Page, feld: Locator, iso: string) {
 }
 
 const modal = (page: Page) => page.locator('.vp-modal');
+/** Das Antwort-Blatt: am Telefon ein Blatt von unten, am Rechner der Dialog in der Mitte. */
+const blatt = (page: Page) => page.locator('.vp-bs, .vp-modal');
+const ohneNbsp = (t: string | null) => (t ?? '').replace(/\u00a0/g, ' ');
 const combo = (page: Page, name: string) => modal(page).getByRole('combobox', { name, exact: true });
 
 /** Konzept Auswerten a1 §6.6: der Vergleich je Monat (mit den Vermerken) steht auf der Ebene der Bezugsbasis. */
@@ -108,7 +114,9 @@ for (const breite of [375, 1440]) {
     if (breite < 720) await modal(page).getByTestId('planen-weiter').click();
   };
   test.describe(`Abweichungen bei ${breite} px`, () => {
-    test('Vermerk → Abweichung → Ursache-Aussage → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog (R1/R2)', async ({ page }) => {
+    test('Vermerk → Abweichung → Aussage festhalten → Abschluss „Maßnahme“ mit Sprung in den vorbelegten Dialog (R1/R2)', async ({ page }) => {
+      // Der längste Fluss der Bühne: fünf Dialoge über drei Seiten.
+      test.slow();
       await oeffne(page, 'lage=vermerk&seite=kennzahl', breite, AM_15_01_2028);
       await vergleich(page);
       const dez = page.getByTestId('monat-2027-12');
@@ -132,27 +140,26 @@ for (const breite of [375, 1440]) {
       await page.getByTestId('auffaelligkeit-antwort-senden').click();
 
       const seite = page.getByTestId('abweichung-seite');
-      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Abweichung AW-2028-0001');
+      await expect(seite.getByTestId('abweichung-titel')).toHaveText(/^Dezember 2027: 12,9.% mehr als erwartet\s*AW-2028-0001$/);
       expect(await page.evaluate(() => location.hash)).toMatch(/^#\/portfolio\/verbesserung\/abweichungen\/[0-9a-f-]{36}$/);
-      await expect(page.getByTestId('abweichung-kopf')).toHaveText(
-        'Abweichung AW-2028-0001 · KZ-0004 Stromeinsatz Spritzguss je kg, Dezember 2027: 12,9 % mehr als die Bezugsbasis erwarten lässt · Verantwortlich Ines Kaltenbach · Frist 14.02.2028 · offen.',
-      );
-      await expect(page.getByTestId('anlass-satz')).toHaveText(
-        'Dezember 2027: 78 000 kWh gemessen, 69 098 kWh erwartet bei 250 000 kg — 12,9 % mehr als die Bezugsbasis erwarten lässt: schlechter.',
-      );
+      await expect(page.getByTestId('abweichung-meta')).toHaveText('Stromeinsatz Spritzguss je kg · verantwortlich Ines Kaltenbach · Frist 14.02.2028');
+      await expect(page.getByTestId('abweichung-satz')).toHaveText('In Arbeit: Ines Kaltenbach klärt bis 14.02.2028, woran es lag.');
+      expect(ohneNbsp(await page.getByTestId('abweichung-delta').textContent())).toBe('12,9 % mehr als erwartet; im Rahmen wären ± 2 %.');
+      await page.getByTestId('abweichung-kopie-knopf').click();
       await expect(page.getByTestId('abweichung-pruefsumme')).toHaveText(/^Prüfsumme sha256:[0-9a-f]{64}$/);
-      await expect(page.getByTestId('abweichung-vergleich').getByTestId('monat-2027-12')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('abweichung-kopie')).toHaveCount(0);
 
-      // Ursache-Aussage: Murat Demirci sagt aus, Ines Kaltenbach trägt ein (R2) — nie ein Satz des Systems (U1–U3).
+      // Aussage festhalten: Murat Demirci sagt aus, Ines Kaltenbach trägt ein (R2) — nie ein Satz des Systems (U1–U3).
       await page.getByTestId('abweichung-aussage-knopf').click();
       await waehle(page, combo(page, 'Aussage von …'), /^Murat Demirci/);
       await waehleTag(page, combo(page, 'Tag der Aussage'), '2028-01-14');
       await modal(page).getByLabel('Wortlaut der Aussage').fill(AUSSAGE);
       await page.getByTestId('ursache-aussage-senden').click();
-      const zeile = page.getByTestId('verlauf-ursache_aussage');
-      await expect(zeile.getByTestId('ursache-aussage-satz')).toHaveText(`Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚${AUSSAGE}‘`);
-      await expect(zeile.getByTestId('ursache-aussage-kennzeichen')).toHaveText('Aussage von Murat Demirci, 14.01.2028 — keine Messung');
-      await expect(zeile).toContainText('Ursache-Aussage eingetragen · Ines Kaltenbach · 15.01.2028');
+      // Die Aussage steht mit ihrem eigenen Tag (14.01.) unter dem Eröffnen (15.01.) - neueste zuerst nach dem Tag, der dasteht.
+      const zeile = page.getByTestId('verlauf-eintrag').filter({ hasText: 'Aussage von Murat Demirci' });
+      await expect(zeile).toContainText('14.01.2028');
+      await expect(zeile).toContainText(`‚${AUSSAGE}‘ · keine Messung · eingetragen von Ines Kaltenbach`);
       ohneQuerlauf(await messe(page), 'Seite offen');
       await ablegen(page, `seite-offen-${breite}`, true);
 
@@ -181,10 +188,8 @@ for (const breite of [375, 1440]) {
       await modal(page).getByLabel('Begründung').fill('Aussage von Murat Demirci erklärt die Ursache plausibel; Dezember-Werte bleiben.');
       await ablegenDialog(page, `abschluss-dialog-${breite}`);
       await page.getByTestId('abweichung-abschliessen-senden').click();
-      await expect(page.getByTestId('abschluss-satz')).toHaveText(
-        'Abgeschlossen am 15.01.2028 von Ines Kaltenbach: Maßnahme M-2028-0001 — ‚Aussage von Murat Demirci erklärt die Ursache plausibel; Dezember-Werte bleiben.‘',
-      );
-      await expect(seite.getByRole('heading', { level: 1 }).locator('..')).toContainText('abgeschlossen');
+      await expect(page.getByTestId('abweichung-satz')).toHaveText('Abgeschlossen mit einer Maßnahme: Werkzeugheizungen in Betriebspausen abschalten.');
+      await expect(page.getByTestId('abweichung-stufen').locator('li.is-erledigt')).toHaveCount(3);
       await expect(page.getByTestId('abweichung-abschliessen-knopf')).toHaveCount(0);
       await expect(page.getByTestId('abweichung-aussage-knopf')).toHaveCount(0);
       ohneQuerlauf(await messe(page), 'Seite abgeschlossen');
@@ -216,31 +221,75 @@ for (const breite of [375, 1440]) {
       await modal(page).getByLabel('Warum').fill('Februar trotz Umsetzung kaum weniger — prüfen, ob die Zeitschaltung greift.');
       await waehle(page, combo(page, 'Verantwortlich'), /^Murat Demirci/);
       await page.getByTestId('von-hand-senden').click();
-      await expect(page.getByTestId('abweichung-herkunft')).toContainText('von Hand eröffnet');
-      await expect(page.getByTestId('abweichung-wortlaut')).toHaveText('‚Februar trotz Umsetzung kaum weniger — prüfen, ob die Zeitschaltung greift.‘');
+      await expect(page.getByTestId('abweichung-herkunft')).toHaveText('von Hand: ‚Februar trotz Umsetzung kaum weniger — prüfen, ob die Zeitschaltung greift.‘');
+      await expect(page.getByTestId('abweichung-stufen').locator('li').first()).toContainText('Von Hand eröffnet');
       ohneQuerlauf(await messe(page), 'von Hand');
     });
 
-    test('Register am 10.02.2028: offen und überfällig zuerst, abgeschlossen mit Ergebnis; AW-2026-0001 mit Vorbehalt (R8)', async ({ page }) => {
-      await oeffne(page, 'lage=register', breite, AM_10_02_2028);
-      const tafel = page.getByTestId('abweichungen-tafel');
-      await expect(tafel).toBeVisible();
-      const zeilen = tafel.locator('tbody tr');
-      await expect(zeilen).toHaveCount(2);
-      await expect(zeilen.nth(0)).toHaveAttribute('data-testid', 'abweichung-zeile-AW-2028-0001');
-      await expect(zeilen.nth(0).getByTestId('frist')).toContainText('überfällig seit 10 Tagen');
-      await expect(zeilen.nth(1).getByTestId('ergebnis')).toHaveText('erklärt');
-      await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
-      ohneQuerlauf(await messe(page), 'Register');
-      await ablegen(page, `register-${breite}`, true);
-      await page.getByTestId('abweichungen-filter-ueberfaellig').check();
-      await expect(zeilen).toHaveCount(1);
-      await page.getByTestId('abweichungen-filter-ueberfaellig').uncheck();
+    test('Reiter „Abweichungen“: zu beantworten zuerst, das Antwort-Blatt eröffnet die Abweichung (PR3)', async ({ page }) => {
+      await oeffne(page, 'lage=vermerk', breite, AM_15_01_2028);
+      const reiter = page.getByTestId('abweichungen-register');
+      await expect(reiter.getByRole('heading', { level: 1 })).toHaveText('Abweichungen');
+      expect(ohneNbsp(await page.getByTestId('abweichungen-satz').textContent())).toBe(
+        '1 Monat wartet auf Ihre Antwort: Stromeinsatz Spritzguss je kg lag im Dezember 2027 12,9 % über der Erwartung.',
+      );
+      const zu = page.getByTestId('abweichungen-zu-beantworten');
+      expect(ohneNbsp(await zu.textContent())).toContain('78.000 kWh statt 69.098 bei 250.000 kg');
+      ohneQuerlauf(await messe(page), 'Reiter zu beantworten');
+      await ablegen(page, `reiter-zu-beantworten-${breite}`, true);
 
-      await zeilen.nth(1).getByRole('button', { name: 'AW-2026-0001' }).click();
+      await zu.getByTestId('auffaelligkeit-beantworten').click();
+      const b = blatt(page);
+      await expect(b.getByTestId('auffaelligkeit-blatt')).toBeVisible();
+      await expect(b.getByTestId('auffaelligkeit-frist-vorgabe')).toHaveText('in 30 Tagen, 14.02.');
+      await b.getByTestId('auffaelligkeit-blatt-senden').click();
+      await expect(b.getByText('Bitte wählen Sie, wer das klärt.')).toBeVisible();
+      await waehle(page, b.getByRole('combobox', { name: 'Wer klärt das?' }), /^Murat Demirci/);
+      ohneQuerlauf(await messe(page), 'Antwort-Blatt');
+      if (BILDER) await b.first().screenshot({ path: join(BILDER, `antwort-blatt-${breite}.png`) });
+      await b.getByTestId('auffaelligkeit-blatt-senden').click();
+
+      await expect(page.getByTestId('abweichung-seite')).toBeVisible();
+      await expect(page.getByTestId('abweichung-meta')).toHaveText('Stromeinsatz Spritzguss je kg · verantwortlich Murat Demirci · Frist 14.02.2028');
+      await expect(page.locator('[data-entscheid="abweichung_frist"]').getByTestId('abweichung-abschliessen-knopf')).toBeVisible();
+    });
+
+    test('Tipp auf „Abschließen“ bzw. „Ansehen“ öffnet die Seite - das sichtbare Wort ist kein toter Klick', async ({ page }) => {
+      for (const [bereich, zeile, wort, satz] of [
+        ['abweichungen-in-arbeit', 'AW-2028-0001', 'Abschließen', /^Die Frist ist vorbei/],
+        ['abweichungen-abgeschlossen', 'AW-2026-0001', 'Ansehen', /^Abgeschlossen/],
+      ] as const) {
+        await oeffne(page, 'lage=register', breite, AM_10_02_2028);
+        // Das sichtbare Zeichen des Schritts: das Wort, am Telefon bei Abgeschlossenen der Pfeil.
+        const zeichen = page.getByTestId(bereich).getByTestId(`abweichung-zeile-${zeile}`).locator('.vp-abw-schritt:visible, .vp-abw-chev:visible');
+        await expect(zeichen).toHaveCount(1);
+        if (await zeichen.evaluate((e) => e.classList.contains('vp-abw-schritt'))) await expect(zeichen).toHaveText(wort);
+        // In die Mitte holen: am Telefon liegt die feste Leiste unten über dem Seitenende, ein Tipp dort träfe sie.
+        await zeichen.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+        const box = (await zeichen.boundingBox())!;
+        // Genau dort, wo der Finger das Zeichen trifft - nicht auf den Titel-Link daneben.
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await expect(page.getByTestId('abweichung-seite')).toContainText(zeile);
+        await expect(page.getByTestId('abweichung-satz')).toHaveText(satz);
+      }
+    });
+
+    test('Reiter am 10.02.2028: in Arbeit überfällig, abgeschlossen mit Ergebnis; AW-2026-0001 mit Vorbehalt (R8)', async ({ page }) => {
+      await oeffne(page, 'lage=register', breite, AM_10_02_2028);
+      const arbeit = page.getByTestId('abweichungen-in-arbeit');
+      await expect(arbeit).toBeVisible();
+      await expect(arbeit.getByTestId('abweichung-zeile-AW-2028-0001').getByTestId('frist')).toHaveText('überfällig seit 10 Tagen');
+      const zu = page.getByTestId('abweichungen-abgeschlossen');
+      await expect(zu.getByTestId('ergebnis').first()).toContainText('erklärt: Baustellenstrom');
+      await expect(page.getByTestId('abweichungen-satz')).toHaveText('Nichts wartet auf eine Antwort; 1 Abweichung ist in Arbeit, 1 davon überfällig.');
+      await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
+      ohneQuerlauf(await messe(page), 'Reiter');
+      await ablegen(page, `reiter-${breite}`, true);
+
+      await zu.getByTestId('abweichung-zeile-AW-2026-0001').getByText(/^November 2026/).click();
       await expect(page.getByTestId('abweichung-vorbehalte')).toContainText('Bezugsbasis vorläufig (1 von 12 Monaten)');
-      await expect(page.getByTestId('ursache-aussage-satz')).toContainText('Ursache — Aussage von Jonas Wendlinger, 10.12.2026 (keine Messung)');
-      await expect(page.getByTestId('abschluss-satz')).toContainText('Abgeschlossen am 20.12.2026 von Ines Kaltenbach: erklärt');
+      await expect(page.getByTestId('verlauf-eintrag').nth(1)).toContainText('Aussage von Jonas Wendlinger');
+      await expect(page.getByTestId('abweichung-satz')).toHaveText('Abgeschlossen: Die Abweichung ist erklärt.');
       ohneQuerlauf(await messe(page), 'Seite R8');
       await ablegen(page, `seite-r8-${breite}`, true);
     });

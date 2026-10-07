@@ -5,7 +5,7 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Massnahme, type MassnahmeBewertung, type MassnahmeErgebnis, type MassnahmeWirkung, type VorgangAnstoss } from '../api';
 import * as Z from '../energieziele';
 import { NBSP } from '../format';
-import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE } from '../glossar';
 import * as B from '../massnahmenBild';
 import * as W from '../massnahmeWirkung';
 import { Ablehnung } from './EnergiezielDialoge';
@@ -485,7 +485,6 @@ export function MassnahmeBewertenDialog({
           testid="massnahme-bewerten-text"
         />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );

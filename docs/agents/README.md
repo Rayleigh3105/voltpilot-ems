@@ -250,6 +250,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verlauf-Sprache P2b: EIN Aufklapper, und Zustände, die ihren Platz reservieren](portal/verlauf-sprache-p2b-ein-aufklapper-und-z.md)
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)
 - [VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr](portal/vppicker-ein-picker-fuer-die-ganze-platt.md)
+- [Verbessern: eine Uhr, der Grund eines offenen Monats und die Wörter](portal/verbessern-woerter-und-eine-uhr.md)
 
 ## `edge/` — aus `edge-app/AGENTS.md` (91 Einträge)
 
