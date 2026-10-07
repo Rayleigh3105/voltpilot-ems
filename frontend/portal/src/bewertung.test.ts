@@ -74,8 +74,23 @@ describe('Rechte aus /me (R14)', () => {
 });
 
 describe('Rangliste, Einstufung und Kriterien (IP-12)', () => {
-  it('nimmt den letzten vollen Monat und zeigt UEMS-Zahlen nur gerundet an', () => {
-    expect(bewertungZeitraum(new Date('2026-11-20T12:00:00Z'))).toEqual({ von: '2026-10-01', bis: '2026-10-31', label: 'Oktober 2026' });
+  it('liest Rangliste und Messabdeckung über die Datengrundlage, nie über einen Monat (Konzept Auswerten a1, Befund 2)', () => {
+    // Mit Bewertung: deren Datengrundlage, wie sie der Bericht führt.
+    expect(bewertungZeitraum({ zeitraum_art: 'datengrundlage', zeitraum: '2028-04/2029-03', zeitraum_text: 'April 2028 bis März 2029' }))
+      .toEqual({ von: '2028-04-01', bis: '2029-03-31', label: 'April 2028 bis März 2029' });
+    expect(bewertungZeitraum({ zeitraum_art: 'datengrundlage', zeitraum: '2028-02', zeitraum_text: 'Februar 2028' }))
+      .toEqual({ von: '2028-02-01', bis: '2028-02-29', label: 'Februar 2028' });
+    // Ohne Bewertung wie der Server beim Anlegen: die zwölf vollen Monate bis zum Vormonat in Europe/Berlin.
+    expect(bewertungZeitraum(null, new Date('2026-11-20T12:00:00Z'))).toEqual({ von: '2025-11-01', bis: '2026-10-31', label: 'November 2025 bis Oktober 2026' });
+    expect(bewertungZeitraum(undefined, new Date('2027-01-15T12:00:00Z'))).toEqual({ von: '2026-01-01', bis: '2026-12-31', label: 'Januar 2026 bis Dezember 2026' });
+    expect(bewertungZeitraum(null, new Date('2028-03-10T12:00:00Z'))).toMatchObject({ von: '2027-03-01', bis: '2028-02-29' });
+    // Silvesternacht: in Berlin ist schon Januar, also endet die Datengrundlage im Dezember.
+    expect(bewertungZeitraum(null, new Date('2026-12-31T23:30:00Z'))).toMatchObject({ von: '2026-01-01', bis: '2026-12-31' });
+    // Ein Monats- oder Jahresbericht ist keine Datengrundlage.
+    expect(bewertungZeitraum({ zeitraum_art: 'monat', zeitraum: '2026-10', zeitraum_text: 'Oktober 2026' }, new Date('2026-11-20T12:00:00Z')).von).toBe('2025-11-01');
+  });
+
+  it('zeigt UEMS-Zahlen nur gerundet an', () => {
     expect(zahlMitEinheit('185380', 'kWh')).toBe('185.380 kWh');
     expect(prozentText('67.8')).toBe('67,8 %');
     expect(vorschlagText('ueber_schwelle')).toBe('über Schwelle');

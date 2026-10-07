@@ -26,6 +26,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -95,6 +96,7 @@ public class KostenstelleEnergieService {
         this.uhr = uhr;
     }
 
+    @Transactional(readOnly = true)
     public KostenstelleEnergieDto.Energie energie(UUID id, String periodeWort, LocalDate am, String versionText) {
         return energie(id, periodeWort, am, versionText, k -> { });
     }
@@ -102,7 +104,11 @@ public class KostenstelleEnergieService {
     /**
      * Wie {@link #energie(UUID, String, LocalDate, String)}; {@code zaun} prüft die Kennung genau dort, wo sie nachgeschlagen
      * wird — nach Periode und Version — und wirft außerhalb dieselbe 404 wie für eine unbekannte.
+     *
+     * <p>Eine lesende Transaktion: alle Abfragen der Sicht teilen EINE Verbindung (und den Kundenbereich, der ihr einmal
+     * gesetzt wird), statt je Abfrage eine eigene zu holen.
      */
+    @Transactional(readOnly = true)
     public KostenstelleEnergieDto.Energie energie(UUID id, String periodeWort, LocalDate am, String versionText,
             Consumer<UUID> zaun) {
         String periode = periodeWort == null || periodeWort.isBlank() ? VORGABE_PERIODE : periodeWort.strip();
@@ -194,18 +200,39 @@ public class KostenstelleEnergieService {
             lesen.monatsversionen(tenant, ablesungsQuellen.keySet(), von, bis, version).forEach(v -> monatsversionen
                     .computeIfAbsent(v.messstelleId(), x -> new HashMap<>()).put(v.tag(), v));
         }
-        for (Messstelle m : tenant == null ? messstellen.alle() : messstellen.alle(tenant)) {
-            List<KostenstelleEnergieRepository.Anteil> eigene = anteile.getOrDefault(m.id(), List.of());
+        List<Messstelle> alle = tenant == null ? messstellen.alle() : messstellen.alle(tenant);
+        // Die Monate aller Messstellen aus Ablesungen zuerst: reicht ein Ablesezeitraum über die Periode hinaus, kommen
+        // die Anteile seiner Tage für ALLE in einem Zug (Prüfung r4 S15), nicht je Messstelle.
+        Map<UUID, KostenstelleEnergieRegeln.Ablesung> abgelesen = new HashMap<>();
+        Map<UUID, Map<LocalDate, String>> ablesungsAnlaesse = new HashMap<>();
+        LocalDate frueh = von;
+        LocalDate spaet = bis;
+        for (Messstelle m : alle) {
             UUID ablesung = MessstelleRegeln.BERECHNET.equals(m.art()) ? null : ablesungsQuellen.get(m.id());
-            if (ablesung != null) {
-                Map<LocalDate, String> anlass = new HashMap<>();
-                KostenstelleEnergieRegeln.Ablesung a = monate(tenant, m, staende.getOrDefault(ablesung, List.of()),
-                        monatsversionen.getOrDefault(m.id(), Map.of()), von, bis, anlass);
+            if (ablesung == null) {
+                continue;
+            }
+            Map<LocalDate, String> anlass = new HashMap<>();
+            KostenstelleEnergieRegeln.Ablesung a = monate(tenant, m, staende.getOrDefault(ablesung, List.of()),
+                    monatsversionen.getOrDefault(m.id(), Map.of()), von, bis, anlass);
+            abgelesen.put(m.id(), a);
+            ablesungsAnlaesse.put(m.id(), anlass);
+            LocalDate[] tage = tageDerAblesezeitraeume(a, von, bis);
+            frueh = tage[0].isBefore(frueh) ? tage[0] : frueh;
+            spaet = tage[1].isAfter(spaet) ? tage[1] : spaet;
+        }
+        List<KostenstelleEnergieRepository.Anteil> weit = frueh.equals(von) && spaet.equals(bis) ? List.of()
+                : tenant == null ? lesen.anteile(frueh, spaet) : lesen.anteile(tenant, frueh, spaet);
+        for (Messstelle m : alle) {
+            List<KostenstelleEnergieRepository.Anteil> eigene = anteile.getOrDefault(m.id(), List.of());
+            KostenstelleEnergieRegeln.Ablesung a = abgelesen.get(m.id());
+            if (a != null) {
+                Map<LocalDate, String> anlass = ablesungsAnlaesse.get(m.id());
                 if (eigene.isEmpty() && a.monate().isEmpty()) {
                     continue;
                 }
-                List<KostenstelleEnergieRepository.Anteil> zeilen = zeilenDerAblesezeitraeume(tenant, m, eigene, a,
-                        von, bis);
+                List<KostenstelleEnergieRepository.Anteil> zeilen = zeilenDerAblesezeitraeume(m, eigene, a, von, bis,
+                        weit);
                 nachKennzeichen.put(m.kennzeichen(), m);
                 tageswerte.put(m.kennzeichen(), Map.of());
                 monatswerte.put(m.kennzeichen(), a);
@@ -296,10 +323,25 @@ public class KostenstelleEnergieService {
     /**
      * Die Anteile, die die Tage der Ablesezeiträume brauchen: reicht ein Zeitraum über die Periode hinaus (28.08. bis
      * 03.10., dem September zugeordnet), gelten auch die Zeilen seiner Tage davor und danach - sonst sähe ein Anteil,
-     * der am 31.08. endete, wie „nicht verteilt“ aus.
+     * der am 31.08. endete, wie „nicht verteilt“ aus. {@code weit} sind die Zeilen ALLER Messstellen über die Tage aller
+     * Ablesezeiträume (ein Zug); hier bleiben die dieser Messstelle, die ihre eigenen Tage berühren.
      */
-    private List<KostenstelleEnergieRepository.Anteil> zeilenDerAblesezeitraeume(UUID tenant, Messstelle m,
+    private static List<KostenstelleEnergieRepository.Anteil> zeilenDerAblesezeitraeume(Messstelle m,
             List<KostenstelleEnergieRepository.Anteil> eigene, KostenstelleEnergieRegeln.Ablesung a, LocalDate von,
+            LocalDate bis, List<KostenstelleEnergieRepository.Anteil> weit) {
+        LocalDate[] tage = tageDerAblesezeitraeume(a, von, bis);
+        if (tage[0].equals(von) && tage[1].equals(bis)) {
+            return eigene;
+        }
+        return weit.stream()
+                .filter(x -> x.messstelleId().equals(m.id()))
+                .filter(x -> !x.gueltigAb().isAfter(tage[1])
+                        && (x.gueltigBis() == null || !x.gueltigBis().isBefore(tage[0])))
+                .toList();
+    }
+
+    /** Der erste und der letzte Tag, den die Periode oder einer der Ablesezeiträume berührt. */
+    private static LocalDate[] tageDerAblesezeitraeume(KostenstelleEnergieRegeln.Ablesung a, LocalDate von,
             LocalDate bis) {
         LocalDate frueh = von;
         LocalDate spaet = bis;
@@ -311,11 +353,7 @@ public class KostenstelleEnergieService {
                 spaet = letzter.isAfter(spaet) ? letzter : spaet;
             }
         }
-        if (frueh.equals(von) && spaet.equals(bis)) {
-            return eigene;
-        }
-        return (tenant == null ? lesen.anteile(frueh, spaet) : lesen.anteile(tenant, frueh, spaet)).stream()
-                .filter(x -> x.messstelleId().equals(m.id())).toList();
+        return new LocalDate[] {frueh, spaet};
     }
 
     // ------------------------------------------------------------------------------ Doppelzählung
