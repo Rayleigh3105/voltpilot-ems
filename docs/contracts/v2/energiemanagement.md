@@ -30,7 +30,7 @@ aber nicht zum Betrachtungsumfang“. Ein Urteil fällt keine dieser Regeln.
 > AP-16 S5, AP-17 F5, AP-12 E7, `faellig[]` des Übersichts-Lesers von AP-18 samt Messbedarf; MG7 seit IP-23:
 > `ManagementbewertungWiedervorlage`, letzte Sitzung einer freigegebenen Managementbewertung + Rhythmus);
 > `anwendungsbereich_vergleich` der Leser `…/dokumente/{id}/vergleich` (IP-7); `verzeichnis_zeile` jede Quelle des
-> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`; IP-23: `ManagementbewertungVerzeichnis`); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
+> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`; IP-23: `ManagementbewertungVerzeichnis`; Nachweisen n1: `TeilVermerkVerzeichnis`, Art `teil_vermerk` in der Gruppe des Teils); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
 
 ## 1. Vokabulare, Startwerte, Wörter (geschlossen, in `energiemanagement-vectors.json`)
 
