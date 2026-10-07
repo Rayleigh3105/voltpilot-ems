@@ -839,6 +839,37 @@ public final class RechteAbleitung {
         return d;
     }
 
+    // ------------------------------------------- Verantwortliche (Verbessern v1, Entscheid 8)
+
+    /** Wer Maßnahmen verwaltet (AP-18 §4.9). */
+    public static final String VERBESSERUNG_VERWALTEN = "verbesserung.verwalten";
+
+    /** Die eigene Maßnahme als umgesetzt melden und kommentieren (Verbessern-Konzept v1, Entscheid 8). */
+    public static final String EIGENE_MASSNAHME = "verbesserung.eigene_massnahme";
+
+    /**
+     * Darf {@code b} diese Maßnahme als umgesetzt melden oder kommentieren? (Verbessern v1 Entscheid 8, eng gefasst -
+     * Familie {@code verantwortung}.) Erst {@link #darf} mit {@code verbesserung.verwalten}: erlaubt es, gilt es; liegt
+     * das Ziel außerhalb des Geltungsbereichs (404), bleibt es dabei. Sonst trägt {@code verbesserung.eigene_massnahme}
+     * - aber nur, wenn {@code b} die verantwortliche Person ist; in jedem anderen Fall bleibt die Ablehnung von
+     * {@code verwalten} (403 {@code recht_fehlt} mit {@code rolle_noetig}). Ändern, Verwerfen und Bewerten fragen
+     * diese Funktion nie.
+     *
+     * @param verantwortlich die Kennung der verantwortlichen Person der Maßnahme
+     */
+    public static DarfErgebnis eigeneMassnahme(
+            Matrix m, Benutzer b, Kundenbereich k, Ziel ziel, Instant jetzt, String verantwortlich) {
+        DarfErgebnis v = darf(m, b, k, VERBESSERUNG_VERWALTEN, ziel, jetzt);
+        if (v.darf() || v.http() == 404) {
+            return v;
+        }
+        if (verantwortlich == null || !verantwortlich.equals(b.kennung())) {
+            return v;
+        }
+        DarfErgebnis e = darf(m, b, k, EIGENE_MASSNAHME, ziel, jetzt);
+        return e.darf() ? e : v;
+    }
+
     // -------------------------------------------------------- sichtbare Standorte
 
     /** Ein sichtbarer Standort mit den Rollen, die dort wirken, und dem Unterstützungs-Umfang. */

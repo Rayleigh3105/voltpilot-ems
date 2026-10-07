@@ -14338,7 +14338,8 @@ paths:
       summary: Setzt den Verantwortlichen der Maßnahme (Benutzer + Schnappschuss) mit Begründung.
       description: >
         Recht `verbesserung.verwalten`, solange geplant (409 `massnahme_nicht_geplant`); `benutzer` ist ein aktives
-        Konto des Kundenbereichs (422 `benutzer_unbekannt`) - Verantwortung verleiht kein Recht (RE3). Protokoll
+        Konto des Kundenbereichs (422 `benutzer_unbekannt`) - Verantwortung verleiht kein Recht (RE3), mit der einen
+        engen Ausnahme `verbesserung.eigene_massnahme` (umgesetzt melden, kommentieren; Verbessern v1 Entscheid 8). Protokoll
         `verantwortlicher_geaendert`.
       requestBody:
         required: true
@@ -14370,7 +14371,8 @@ paths:
       tags: [kennzahlen]
       summary: Meldet die Maßnahme als umgesetzt (Tag, Begründung) - einmalig.
       description: >
-        Recht `verbesserung.verwalten` (M6). Nur geplant, einmalig (409 `massnahme_nicht_geplant`); `am` nie nach
+        Recht `verbesserung.verwalten`, für die verantwortliche Person auch `verbesserung.eigene_massnahme` (Verbessern
+        v1 Entscheid 8; eine fremde Maßnahme bleibt 403 wie ohne Recht) (M6). Nur geplant, einmalig (409 `massnahme_nicht_geplant`); `am` nie nach
         heute in der Zeitzone des Unternehmens (422 `umgesetzt_in_der_zukunft`); `begruendung` 10–500 Zeichen.
         Protokoll `massnahme_umgesetzt`.
       requestBody:
@@ -14434,7 +14436,8 @@ paths:
       tags: [kennzahlen]
       summary: Ein Kommentar im Verlauf der Maßnahme.
       description: >
-        Recht `verbesserung.verwalten` (M7, §5.7). An einer geplanten oder umgesetzten Maßnahme (sonst 409
+        Recht `verbesserung.verwalten`, für die verantwortliche Person auch `verbesserung.eigene_massnahme` (Verbessern
+        v1 Entscheid 8; eine fremde Maßnahme bleibt 403 wie ohne Recht) (M7, §5.7). An einer geplanten oder umgesetzten Maßnahme (sonst 409
         `massnahme_nicht_geplant`); `text` 1–2 000 Zeichen (422 `text_ungueltig`); `art` nur `kommentar`. Eine
         Protokollzeile mit Person, Zeit und Text - nichts wird geändert, nichts gelöscht.
       requestBody:

@@ -144,9 +144,12 @@ public class MassnahmeController {
         return massnahmen.verantwortlicher(id, lies(body, MassnahmeDto.Verantwortlicher.class), akteur(auth));
     }
 
-    /** Recht: {@code verbesserung.verwalten}. Umgesetzt am Tag (nie in der Zukunft) mit Begründung — einmalig. */
+    /**
+     * Recht: {@code verbesserung.verwalten}, für die verantwortliche Person auch {@code verbesserung.eigene_massnahme}
+     * (Verbessern v1 Entscheid 8). Umgesetzt am Tag (nie in der Zukunft) mit Begründung - einmalig.
+     */
     @PostMapping("/{id}/umgesetzt")
-    @Recht(value = "verbesserung.verwalten", ziel = RechtZiel.DIENST)
+    @Recht(value = {"verbesserung.verwalten", "verbesserung.eigene_massnahme"}, ziel = RechtZiel.DIENST)
     public MassnahmeDto.Massnahme umgesetzt(@PathVariable UUID id, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
         return massnahmen.umgesetzt(id, lies(body, MassnahmeDto.Umgesetzt.class), akteur(auth));
@@ -160,9 +163,12 @@ public class MassnahmeController {
         return massnahmen.verwerfen(id, lies(body, MassnahmeDto.Verwerfen.class), akteur(auth));
     }
 
-    /** Recht: {@code verbesserung.verwalten}. Ein Kommentar im Verlauf (geplant oder umgesetzt). */
+    /**
+     * Recht: {@code verbesserung.verwalten}, für die verantwortliche Person auch {@code verbesserung.eigene_massnahme}
+     * (Verbessern v1 Entscheid 8). Ein Kommentar im Verlauf (geplant oder umgesetzt).
+     */
     @PostMapping("/{id}/eintraege")
-    @Recht(value = "verbesserung.verwalten", ziel = RechtZiel.DIENST)
+    @Recht(value = {"verbesserung.verwalten", "verbesserung.eigene_massnahme"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<MassnahmeDto.Massnahme> eintrag(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return ResponseEntity.status(HttpStatus.CREATED)

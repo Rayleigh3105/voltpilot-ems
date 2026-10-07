@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Massnahme, type MassnahmeListe } from '../api';
+import * as M from '../massnahmen';
 import * as B from '../massnahmenBild';
 import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
@@ -34,7 +35,7 @@ function Eintrag({ m, onOeffnen }: { m: Massnahme; onOeffnen: (id: string) => vo
   const datum = B.datumBild(m);
   const bringt = B.bringtBild(m);
   const schritt = B.naechsterSchritt(m, {
-    melden: rollen.darf('verbesserung.verwalten', m.standort_id),
+    melden: M.darfMeldenUndKommentieren(rollen.darf, m, rollen.selbst?.kennung ?? null),
     abschliessen: rollen.darf('verbesserung.abschliessen', m.standort_id),
   });
   const woher = B.woherZeile(m);
