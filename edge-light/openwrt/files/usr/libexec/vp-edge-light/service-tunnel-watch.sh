@@ -1,11 +1,13 @@
 #!/bin/sh
-# Waechter fuer den Wartungstunnel (cron, alle 5 min). Gehoert zum
+# Waechter fuer einen Wartungstunnel (cron, alle 5 min). Gehoert zum
 # Betriebssystem, NICHT zu vp-edge-light: ein Update, ein Absturz oder ein
 # falsches Programm beruehren ihn nicht.
 #
+#   service-tunnel-watch.sh [schnittstelle]   (Vorgabe wg_service)
+#
 # Ohne Handshake seit MAX_AGE Sekunden wird die Schnittstelle neu gestartet;
-# netifd loest dabei auch den Servernamen neu auf (neue IP des VPN-Servers).
-IFACE=wg_service
+# netifd loest dabei auch den Servernamen neu auf (neue IP des Servers).
+IFACE="${1:-wg_service}"
 MAX_AGE=600
 
 hs="$(wg show "$IFACE" latest-handshakes 2>/dev/null | awk 'NR==1 {print $2}')"
