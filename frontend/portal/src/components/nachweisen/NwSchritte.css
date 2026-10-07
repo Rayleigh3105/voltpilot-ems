@@ -57,6 +57,12 @@
   font: 600 0.8125rem/1.35 var(--vp-c-font);
   color: var(--vp-c-fg);
 }
+/* Im Blatt fragt jedes Feld gleich: die Beschriftung von VpPicker und VpDatePicker wie „An wen?“ und das Textfeld
+   (vorher 14,4 statt 13 px - „Standorte“ stand größer als „Ausschlüsse“). */
+.vp-nw-schritt-inhalt .vp-picker-label {
+  font: 600 0.8125rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
 
 .vp-nw-fehler {
   margin: 0;

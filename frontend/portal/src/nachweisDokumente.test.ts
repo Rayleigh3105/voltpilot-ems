@@ -15,6 +15,7 @@ import {
   saetze,
   seitenStatus,
   stufen,
+  verlauf,
   vorigeFassung,
   wegeText,
   wortlautMitNeuem,
@@ -256,5 +257,32 @@ describe('Erklär-Blätter (Entscheid 24, Text-Grenze 45 Wörter)', () => {
     expect(e.beiIhnen).toBe('Vorgabe: Energiepolitik. Nachweis: Unterweisung Zeitschaltung Werkzeugheizungen.');
     expect(erklaerWoerter(e)).toBeLessThanOrEqual(45);
     expect(woerter(e.klartext)).toBeLessThanOrEqual(25);
+  });
+});
+
+describe('Review r1 (Nachweisen PR 2)', () => {
+  it('P2-7: ein Zeitpunkt kurz nach Mitternacht zählt mit seinem Tag in Berlin, nicht mit dem UTC-Tag', () => {
+    // 23:30 UTC am 19.03. ist 00:30 Uhr am 20.03. in Berlin - der Entwurf entstand am 20.03.
+    const d = politik({ gueltige_fassung: null, zustand: 'entwurf', fassungen: [fassung(1, 'entwurf', { eingetragen: eingetragen('2029-03-19T23:30:00Z') })], eintraege: [] });
+    expect(stufen(d)[0]).toEqual({ titel: 'Entwurf', datum: '20.03.2029', zustand: 'an' });
+    expect(fassungsZeitleiste(d)[0].datum).toBe('20.03.2029');
+  });
+
+  it('P2-6: der Verlauf führt Freigaben, Bekanntmachungen (je Tag und Kreis eine Zeile), „geprüft, bleibt“, Ablehnung und Aufheben - neueste zuerst', () => {
+    const d = politik();
+    d.fassungen.push(fassung(3, 'abgelehnt', { ablehnung_begruendung: 'Halle 2 ist noch nicht in Betrieb.', zweite_person: eingetragen('2029-04-02T22:30:00Z', { ...IK, name: 'Jonas Wendlinger' }) }));
+    d.eintraege.push(
+      { ...d.eintraege[0], id: 4, art: 'geprueft_bleibt', fassung: 2, am: '2029-04-10', entschieden_von: RF, kreis: null, weg: null, begruendung: 'Mit der Jahresplanung durchgesehen.' },
+      { ...d.eintraege[0], id: 5, art: 'aufgehoben', fassung: null, am: '2029-04-20', entschieden_von: { ...RF, name: 'Ines Kaltenbach' }, kreis: null, weg: null, begruendung: 'Ersetzt durch die Politik der Gruppe.' },
+    );
+    expect(verlauf(d).map((z) => `${z.tag} ${z.text}`)).toEqual([
+      '2029-04-20 Aufgehoben · Ines Kaltenbach · Ersetzt durch die Politik der Gruppe.',
+      '2029-04-10 Geprüft, bleibt · Robert Falk · Mit der Jahresplanung durchgesehen.',
+      '2029-04-03 Fassung 3 abgelehnt · Jonas Wendlinger · Halle 2 ist noch nicht in Betrieb.',
+      '2029-03-25 Fassung 2 bekannt gemacht · alle Mitarbeitenden beider Werke · Aushang und Intranet',
+      '2029-03-20 Fassung 2 freigegeben · Robert Falk',
+      '2026-12-18 Fassung 1 bekannt gemacht · alle Mitarbeitenden beider Werke · Aushang',
+      '2026-12-15 Fassung 1 freigegeben · Robert Falk',
+    ]);
   });
 });
