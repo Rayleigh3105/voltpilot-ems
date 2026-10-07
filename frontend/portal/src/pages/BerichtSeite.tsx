@@ -56,6 +56,7 @@ import { TRENNER } from '../uemsErgebnis';
 import { merkeAugenblick } from '../routenUhr';
 import { useBerichtRechte } from '../useBerichtRechte';
 import { ausgabeAbgerufen, ausgabeFehler, istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht';
+import { seitenLink, teilen, TEILEN_SATZ } from '../components/nachweisen/teilen';
 import { ErklaerKnopf } from '../components/nachweisen/ErklaerKnopf';
 
 /**
@@ -221,6 +222,13 @@ export function BerichtSeite({
       setLaeuft(false);
     }
   };
+  // Konzept Nachweisen n1, PR 6: „Teilen“ an jedem Stand - über das Teilen-Menü des Telefons, sonst „Link kopieren“.
+  // Geteilt wird der Link auf diese Seite, nie die Datei: wer ihn öffnet, braucht Zugang.
+  const teile = async () => {
+    const ergebnis = await teilen({ titel: berichtTitel(b), url: seitenLink(window.location.hash) });
+    const satz = TEILEN_SATZ[ergebnis];
+    setDateiAbruf(satz ? { wahl, satz, fehler: ergebnis === 'fehler' } : null);
+  };
   const kundenadministratoren = (rollen.selbst?.kundenadministratoren ?? []).map((p) => p.name);
   const verlauf = verlaufDerStaende(detail);
   // Solange die Selbstauskunft fehlt, keine schreibenden Hebel; unbekannte Rechte geben keine Handlung frei.
@@ -356,6 +364,11 @@ export function BerichtSeite({
                     {k.text}
                   </button>
                 ))}
+                {nr !== null && (
+                  <button type="button" className="vp-br-knopf" disabled={laeuft} onClick={() => void teile()} data-testid="bericht-teilen">
+                    Teilen
+                  </button>
+                )}
               </div>
             )}
             {dateiAbruf?.wahl === wahl && (

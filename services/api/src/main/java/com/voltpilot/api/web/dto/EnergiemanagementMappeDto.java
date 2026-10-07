@@ -11,7 +11,8 @@ import java.util.UUID;
 /**
  * Konzept Nachweisen n1, Entscheid 7: die Antworten der Routen {@code …/energiemanagement/mappen} (openapi
  * {@code EnergiemanagementMappe…}). Eine Mappe nennt, wofür und was hineinging, ihre beiden Dateien mit Prüfsumme und
- * wie lange sie noch abrufbar ist ({@code abrufbar_tage}, gezählt in echter Zeit; 0 = abgelaufen).
+ * wie lange sie noch abrufbar ist ({@code abrufbar_tage}, gezählt in echter Zeit; 0 = abgelaufen); {@code abruf} ist der
+ * Augenblick des Abrufs auf der Uhr der Route (Befund 3: „heute“ für Fristen im Portal, etwa bei „Einsicht geben“).
  */
 public final class EnergiemanagementMappeDto {
     private EnergiemanagementMappeDto() {}
@@ -27,7 +28,8 @@ public final class EnergiemanagementMappeDto {
     public record Mappe(UUID id, String titel, String anlass, String anlassWort, LocalDate von, LocalDate bis,
             OffsetDateTime stichtag, List<String> gruppen, List<String> gruppenWoerter, List<String> offen,
             List<String> offenWoerter, int eintraege, int gilt, String dateiTitel, String dateiName, String pdfPruefsumme,
-            String csvPruefsumme, boolean abrufbar, int abrufbarTage, int aufbewahrungTage, int abrufe, Erstellt erstellt) {}
+            String csvPruefsumme, boolean abrufbar, int abrufbarTage, int aufbewahrungTage, int abrufe, Erstellt erstellt,
+            OffsetDateTime abruf) {}
 
     public record Mappen(List<Mappe> mappen) {}
 }

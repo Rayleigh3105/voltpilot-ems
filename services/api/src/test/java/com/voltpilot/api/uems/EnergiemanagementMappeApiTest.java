@@ -152,7 +152,9 @@ class EnergiemanagementMappeApiTest {
                 "offen", List.of("kontext", "beschaffung")), 201);
         assertThat(felder(m)).containsExactly("id", "titel", "anlass", "anlass_wort", "von", "bis", "stichtag", "gruppen",
                 "gruppen_woerter", "offen", "offen_woerter", "eintraege", "gilt", "datei_titel", "datei_name",
-                "pdf_pruefsumme", "csv_pruefsumme", "abrufbar", "abrufbar_tage", "aufbewahrung_tage", "abrufe", "erstellt");
+                "pdf_pruefsumme", "csv_pruefsumme", "abrufbar", "abrufbar_tage", "aufbewahrung_tage", "abrufe", "erstellt",
+                "abruf");
+        assertThat(m.path("abruf").asText()).as("die Uhr der Route").startsWith("2029-04-30T10:20");
         assertThat(m.path("titel").asText()).isEqualTo("Unterlagen für das Audit");
         assertThat(m.path("anlass_wort").asText()).isEqualTo("Audit von außen");
         assertThat(m.path("von").asText()).isEqualTo("2028-05-01");

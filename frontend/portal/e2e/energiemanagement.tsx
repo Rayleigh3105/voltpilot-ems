@@ -13,6 +13,7 @@ import {
   feststellungRoute,
   hashForRoute,
   managementbewertungRoute,
+  mappeRoute,
   pageRoute,
   parseRoute,
   personRoute,
@@ -25,6 +26,7 @@ import { AppShell } from '../src/shell/AppShell';
 import { AF_IDS, auditFeststellungBuehne, R10_MASSNAHME, type AuditLage } from '../src/test/auditFeststellungFixtures';
 import { EM_IDS, energiemanagementBuehne, type EnergiemanagementLage } from '../src/test/energiemanagementFixtures';
 import { MB_KENNUNG, managementbewertungBuehne, type MbLage } from '../src/test/managementbewertungFixtures';
+import { MAPPE_IDS, mappeBuehne, type MappeLage } from '../src/test/mappeFixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
 import { kontenAhrenberg, massnahmeBuehne } from '../src/test/massnahmeFixtures';
@@ -57,6 +59,8 @@ import '../src/index.css';
  * IP-24: `&mb=leer|r13|r13f` spielt die Berichte-Routen der Managementbewertung und die Wiedervorlage R12
  * (`managementbewertungBuehne`, Körper in `window.__mbGesendet`); `&seite=wiedervorlage|managementbewertung` · `&br=1`
  * öffnet BR-2029-0001. Ohne `mb` bleibt die Bühne, wie sie war.
+ * Nachweisen PR 6: `&mp=leer|r6` spielt die Mappen-Routen und das Anlegen eines Zugangs (`mappeBuehne`, Körper in
+ * `window.__mpGesendet`; Vorgabe leer); `&mappe=1|alt` öffnet die abrufbare oder die abgelaufene Mappe aus R6.
  * Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
@@ -135,6 +139,15 @@ if (mbLage) {
   (window as unknown as { __mbGesendet: unknown }).__mbGesendet = mb.gesendet;
 }
 
+// Nachweisen PR 6: Unterlagen zusammenstellen und Einsicht geben. Der Überblick fragt immer nach den Mappen - ohne `mp`
+// spielt die Bühne eine leere Liste, damit keine Anfrage ins Netz geht.
+const MAPPE_LAGEN: MappeLage[] = ['leer', 'r6'];
+const mp = mappeBuehne(MAPPE_LAGEN.find((l) => l === params.get('mp')) ?? 'leer', () => new Date().toISOString(), { name: me.name! });
+Object.assign(api, mp.routen);
+Object.assign(benutzerApi, mp.benutzer);
+(window as unknown as { __mpGesendet: unknown }).__mpGesendet = mp.gesendet;
+const MAPPE: Record<string, string> = { '1': MAPPE_IDS.abrufbar, alt: MAPPE_IDS.abgelaufen };
+
 const lesemodell: EbenenLesemodell = {
   standorte: [werkAhrenberg(), werkLindach()],
   funktionen: ahrenbergFunktionen(),
@@ -148,6 +161,7 @@ if (!location.hash.startsWith('#/portfolio/')) {
   const seite = params.get('seite');
   const dok = DOK[params.get('dok') ?? ''];
   const ps = EM_IDS[(params.get('ps') ?? '') as keyof typeof EM_IDS];
+  const mappe = MAPPE[params.get('mappe') ?? ''];
   const ziel = dok
     ? dokumentRoute(dok)
     : ps
@@ -162,7 +176,7 @@ if (!location.hash.startsWith('#/portfolio/')) {
                 seite === 'feststellungen' || seite === 'wiedervorlage' || seite === 'managementbewertung' || seite === 'verzeichnis'
               ? energiemanagementRoute(seite)
               : energiemanagementRoute();
-  history.replaceState(null, '', hashForRoute(ziel));
+  history.replaceState(null, '', hashForRoute(mappe ? mappeRoute(mappe) : ziel));
   if (params.get('m') === '1') {
     void massnahmeR10.then((id) => {
       if (id) location.hash = `#/portfolio/verbesserung/massnahmen/${id}`;
@@ -239,6 +253,7 @@ function Ansicht() {
           auditId={route.auditId ?? null}
           feststellungId={route.feststellungId ?? null}
           managementbewertungKennung={route.managementbewertungKennung ?? null}
+          mappeId={route.mappeId ?? null}
           reiterOben={kacheln.length > 0}
           onReiter={(r) => navigate(energiemanagementRoute(r))}
           onDokument={(id) => navigate(dokumentRoute(id))}

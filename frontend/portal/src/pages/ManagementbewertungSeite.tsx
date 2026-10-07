@@ -17,12 +17,13 @@ import { NwSymbol } from '../components/nachweisen/NwSymbol';
 import { NwZeichen } from '../components/nachweisen/NwZeichen';
 import { Fakt, Kuerzel, Nummer, NwKarte, NwZeile, NwZeilen, ZeilenZustand } from '../components/nachweisen/NwZeilen';
 import { Stufen } from '../components/nachweisen/Stufen';
+import { seitenLink } from '../components/nachweisen/teilen';
 import { Weitergeben } from '../components/nachweisen/Weitergeben';
 import { RowMenu } from '../components/RowMenu';
 import * as E from '../energiemanagementPortal';
 import * as M from '../managementbewertung';
 import * as B from '../managementbewertungBild';
-import { auditRoute, dokumentRoute, hashForRoute, massnahmeRoute } from '../nav';
+import { auditRoute, dokumentRoute, hashForRoute, managementbewertungRoute, massnahmeRoute } from '../nav';
 import { merkeAugenblick, routenHeute, tagDesAugenblicks } from '../routenUhr';
 import { useIsPhone } from '../useIsPhone';
 import '../components/nachweisen/NwZeilen.css';
@@ -195,6 +196,7 @@ export function ManagementbewertungSeite({
     <>
       <Weitergeben
         knoepfe={[{ symbol: 'speichern', text: M.KNOPF_PDF, onClick: () => void pdf(gueltig.nr), laeuft: laeuft !== null, testId: `mb-pdf-${gueltig.nr}` }]}
+        teilenLink={{ titel: `Managementbewertung ${b.zeitraum}`, url: seitenLink(hashForRoute(managementbewertungRoute(kennung))) }}
         testId="mb-weitergeben"
       />
       {abruf && (

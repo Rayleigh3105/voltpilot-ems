@@ -374,7 +374,8 @@ button.vp-nw-zchip::before {
 .vp-nw-ub-raster {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'links' 'teile' 'demnaechst';
+  /* „Prüfung von außen“ (PR 6) am Telefon zuletzt, am Rechner links unter „Als Nächstes“ (Konzept §6.3). */
+  grid-template-areas: 'links' 'teile' 'demnaechst' 'aussen';
   gap: var(--vp-c-space-4, 16px);
   min-width: 0;
 }
@@ -595,7 +596,7 @@ button.vp-nw-zchip::before {
   }
   .vp-nw-ub-raster {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: 'links demnaechst' 'teile teile';
+    grid-template-areas: 'links demnaechst' 'aussen demnaechst' 'teile teile';
     column-gap: 18px;
   }
   .vp-nw-ub-teile .vp-nw-tgl {

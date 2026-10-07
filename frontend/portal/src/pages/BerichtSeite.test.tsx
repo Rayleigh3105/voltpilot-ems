@@ -67,7 +67,8 @@ describe('Berichtsseite: Rechte-Satz und Dateien (Konzept Nachweisen n1, Befund 
     setSelbstauskunft(selbst(['bericht.standort_abrufen']));
     render(<BerichtSeite kennung="BR-2026-0001" onListe={() => {}} />);
     const dateien = await screen.findByTestId('bericht-dateien');
-    expect(within(dateien).getAllByRole('button').map((k) => k.textContent)).toEqual(['PDF']);
+    // Konzept Nachweisen n1, PR 6: „Teilen“ an jedem Stand (den Link, nie die Datei).
+    expect(within(dateien).getAllByRole('button').map((k) => k.textContent)).toEqual(['PDF', 'Teilen']);
     expect(document.body.textContent).not.toContain('Dafür fehlt Ihnen das Recht');
     expect(screen.queryByTestId('bericht-freigeben-ohne-recht')).toBeNull();
     fireEvent.click(within(dateien).getByRole('button', { name: 'PDF' }));
@@ -79,7 +80,7 @@ describe('Berichtsseite: Rechte-Satz und Dateien (Konzept Nachweisen n1, Befund 
     setSelbstauskunft(selbst(['bericht.standort_abrufen', 'export.standort']));
     render(<BerichtSeite kennung="BR-2026-0001" onListe={() => {}} />);
     const dateien = await screen.findByTestId('bericht-dateien');
-    expect(within(dateien).getAllByRole('button').map((k) => k.textContent)).toEqual(['PDF', 'CSV']);
+    expect(within(dateien).getAllByRole('button').map((k) => k.textContent)).toEqual(['PDF', 'CSV', 'Teilen']);
   });
 
   it('am Entwurf ohne Recht: „Freigeben: Jonas Wendlinger“ mit i-Knopf, das Blatt nennt Grund und Weg', async () => {

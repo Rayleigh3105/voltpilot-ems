@@ -780,3 +780,221 @@ textarea.vp-nw-feld-in {
   gap: 12px;
   min-width: 0;
 }
+/* Haken-Liste (Mock MP2): natives Kontrollkästchen, gezeichnet als gefülltes Quadrat mit Haken. */
+.vp-nw-haken {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.vp-nw-hk {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-nw-haken > legend + .vp-nw-hk {
+  border-top: 0;
+}
+.vp-nw-hk input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.vp-nw-hk-box {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border: 1.5px solid #94a3b8;
+  border-radius: 5px;
+  background: var(--vp-c-card, #fff);
+  color: #fff;
+}
+.vp-nw-hk input:checked + .vp-nw-hk-box {
+  border-color: var(--vp-navy-1, #1e3a5f);
+  background: var(--vp-navy-1, #1e3a5f);
+}
+.vp-nw-hk input:not(:checked) + .vp-nw-hk-box svg {
+  visibility: hidden;
+}
+.vp-nw-hk input:focus-visible + .vp-nw-hk-box {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-nw-hk-text {
+  display: grid;
+  min-width: 0;
+}
+.vp-nw-hk-text b {
+  font: 500 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: break-word;
+}
+.vp-nw-hk-text span {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Unterlagen zusammenstellen am Rechner (Mock r2d-dlg-mp): links die Fragen, rechts der Kasten „Die Mappe · Grenze“. */
+.vp-nw-mappe-kurz {
+  margin: -6px 0 12px;
+}
+/* Mock r2d-dlg-mp: 840 Pixel breit, der Kasten 240 - so brechen die drei Antwort-Karten höchstens zweizeilig. */
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt.is-breit .vp-nw-mappe-dialog) {
+  width: min(840px, 100%);
+}
+.vp-nw-mappe-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 240px);
+  gap: 20px;
+  align-items: start;
+  min-width: 0;
+}
+.vp-nw-mappe-dialog .vp-nw-wahl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* Zwischen Telefon und 960 Pixeln reicht die Breite nicht für beide Spalten: der Kasten rückt unter die Fragen. */
+@media (max-width: 960px) {
+  .vp-nw-mappe-dialog {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.vp-nw-mappe-kasten {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-c-muted, #f8fafc);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-mappe-kasten p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.vp-nw-mappe-kasten span {
+  font: 600 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Einsicht geben (Mock EI): „Vorschau“ als Link-Knopf, das Startpasswort einmal sichtbar. */
+.vp-nw-link-knopf {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 0.875rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
+  cursor: pointer;
+}
+.vp-nw-link-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-nw-einsicht-vorschau {
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-c-muted, #f8fafc);
+  font-size: 0.8125rem;
+}
+.vp-nw-passwort {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-c-muted, #f8fafc);
+  font: 600 1rem var(--vp-font-mono, ui-monospace, monospace);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/* Das Passwort und „Kopieren“ nebeneinander; wird es zu eng, rückt der Knopf darunter. */
+.vp-nw-passwort-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-nw-passwort-zeile > .vp-nw-passwort {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+/* Seite einer Mappe (Mock MP3): „Die Mappe ist fertig“ grün hinterlegt; die Datei mit Ordner-Zeichen. Am Rechner in
+   Lesebreite - die Datei, „Öffnen“ und der Zeitraum bleiben beieinander. */
+@media (min-width: 721px) {
+  .vp-nw-mappe-seite > * {
+    max-width: 640px;
+  }
+}
+.vp-nw-fertig {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--vp-flow-batt, #16a34a) 35%, transparent);
+  border-radius: var(--vp-radius-lg, 16px);
+  background: color-mix(in srgb, var(--vp-flow-batt, #16a34a) 10%, var(--vp-c-card, #fff));
+  color: var(--vp-flow-batt, #15803d);
+}
+.vp-nw-fertig span {
+  display: grid;
+  gap: 2px;
+  font-size: 0.875rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-fertig b {
+  font: 600 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-ordner {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 8%, var(--vp-c-card, #fff));
+  color: var(--vp-navy-1, #1e3a5f);
+}
+/* Prüfung von außen im Überblick (Mock r2-U): zwei ruhige Knöpfe untereinander, am Rechner nebeneinander. */
+.vp-nw-aussen-knoepfe {
+  min-width: 0;
+}
+.vp-nw-aussen-knoepfe > * {
+  max-width: 100%;
+}
+.vp-nw-ub-aussen > .vp-nw-zeilen {
+  margin-top: 8px;
+}
+.vp-nw-ub-aussen {
+  grid-area: aussen;
+}
+
+.vp-nw-hk-text {
+  flex: 1 1 auto;
+}
+.vp-nw-hk-rechts {
+  flex: 0 0 auto;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}

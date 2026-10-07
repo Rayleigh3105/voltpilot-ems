@@ -18970,7 +18970,7 @@ components:
       type: object
       required: [id, titel, anlass, anlass_wort, von, bis, stichtag, gruppen, gruppen_woerter, offen, offen_woerter,
         eintraege, gilt, datei_titel, datei_name, pdf_pruefsumme, csv_pruefsumme, abrufbar, abrufbar_tage,
-        aufbewahrung_tage, abrufe, erstellt]
+        aufbewahrung_tage, abrufe, erstellt, abruf]
       properties:
         id: { type: string, format: uuid }
         titel: { type: string, description: „Unterlagen für das Audit“, „… für die Behörde“, „… für die eigene Ablage“. }
@@ -18999,6 +18999,7 @@ components:
           properties:
             name: { type: string }
             am: { type: string, format: date-time }
+        abruf: { type: string, format: date-time, description: Der Augenblick des Abrufs auf der Uhr der Route (wie der Stichtag des Verzeichnisses). }
     EnergiemanagementMappen:
       type: object
       required: [mappen]

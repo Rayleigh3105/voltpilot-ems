@@ -209,7 +209,7 @@ public class EnergiemanagementMappeService {
                 m.offen(), m.offen().stream().map(x -> EnergiemanagementRegeln.WOERTER.get("teil").get(x)).toList(),
                 m.eintraege(), m.gilt(), dateiTitel(m.bis()), dateiName(m.bis()), m.pdfSha256(), m.csvSha256(),
                 m.abrufbar(), m.abrufbar() ? m.abrufbarTage() : 0, AUFBEWAHRUNG_TAGE, repo.abrufe(m.id()),
-                new EnergiemanagementMappeDto.Erstellt(m.akteur().name(), m.angelegtAm()));
+                new EnergiemanagementMappeDto.Erstellt(m.akteur().name(), m.angelegtAm()), verzeichnis.jetzt());
     }
 
     private java.time.ZoneId zone() {
