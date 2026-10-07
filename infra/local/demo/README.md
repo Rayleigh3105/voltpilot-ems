@@ -46,6 +46,8 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   Die Kennzahlen rechnet die Bühne (K1): der Rundgang leert die Kaskade der eingetragenen Ablesungen und rechnet danach einmal auf der Bühne.
 - Demo-Füllung Nachweisen (Runde 4): jeder offene Anstoß an einem Bericht, dessen Entwurf keine Abweichung zum Stand zeigt, wird mit Grund verworfen.
   Solche Anstöße entstehen nur, wenn der Takt der Demo-API eine Korrektur des Bühnen-Bestands vor dem Rundgang abholt (siehe Reihenfolge).
+- Demo-Füllung Nachweisen (Runde 5): eine Mappe „Unterlagen für das Audit“ über alle Gruppen des Verzeichnisses, damit „Weitergeben“ (PR 6) nicht leer bleibt.
+  Idempotent über die Liste `…/energiemanagement/mappen`: gibt es schon eine, legt der Lauf keine zweite an (eine Mappe ändert sich nie).
 
 ## Reihenfolge des Aufbaus
 

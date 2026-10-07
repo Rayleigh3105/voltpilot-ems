@@ -227,6 +227,7 @@ class DemoRundgangAufbau {
         // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
         anlaesse += kaskadeLeeren();
         nachweisenReferenz(root);
+        mappeWeitergeben();
         KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
         bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
         bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
@@ -280,6 +281,25 @@ class DemoRundgangAufbau {
         }
         System.out.println("Rundgang Runde 4 (Nachweisen): " + verworfen + " Anstöße ohne geänderten Wert verworfen, "
                 + offen + " offen.");
+    }
+
+    /**
+     * Runde 5 - Demo-Füllung Nachweisen (Konzept n1, Runde 2, Entscheid 7): eine Mappe „Unterlagen für das Audit“
+     * über alle Gruppen des Verzeichnisses bis zum Stichtag, damit „Weitergeben“ (PR 6) für {@code rundgang} nicht
+     * leer bleibt. Ohne {@code offen}: das Portal selbst stellt zusammen, welche Teile es beim Zusammenstellen als
+     * offen zeigt (Entscheid 4) - dieser Lauf kennt den Stand der Seite nicht und nennt bewusst keinen. Idempotent:
+     * eine Mappe ändert sich nie (Entscheid 7); gibt es schon eine, legt der Lauf keine zweite an.
+     */
+    private void mappeWeitergeben() throws Exception {
+        if (!lies("/api/v1/energiemanagement/mappen").path("mappen").isEmpty()) {
+            return;
+        }
+        List<String> gruppen = List.of("grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation",
+                "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen",
+                "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte");
+        JsonNode mappe = post("/api/v1/energiemanagement/mappen", m("anlass", "audit_von_aussen", "gruppen", gruppen));
+        System.out.println("Rundgang Runde 5 (Nachweisen): Mappe " + mappe.path("id").asText() + " ("
+                + mappe.path("eintraege").asInt() + " Einträge, " + mappe.path("gilt").asInt() + " gültig).");
     }
 
     /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */
