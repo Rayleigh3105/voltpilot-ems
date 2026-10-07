@@ -139,6 +139,7 @@ AW (so kopiert ihn das Produkt, die Prüfsummen stimmen überein).
 ⚠ **„vermerkt am“ ist die Uhr des Laufs** und danach eingefroren: wer Monatswerte nachträglich auf der Bühne rechnet,
 schaltet die Naht ab (`voltpilot.uems.verbesserung.enabled=false`, so der Demo-Rundgang) und vermerkt danach mit
 `new VerbesserungNaht(…).vermerken(con, tenant, werte, tagDesLaufs)`; läuft daneben eine API mit eingeschalteter Naht,
-vermerkt sie mit ihrer Bühnen-Uhr (`demo.sh rundgang` hält die Demo-API darum an). Nachweis:
+vermerkt sie mit ihrer Bühnen-Uhr (`demo.sh rundgang` startet die Demo-API darum mit
+`VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false` neu, danach wieder mit Naht). Nachweis:
 `UemsEnergiemanagementAbnahmeTest#verlaeufeUndAuffaelligkeitenWieDieReferenz`, `DemoVerbessernReferenz` (bricht ab, wenn
 KZ-0004 in anderen Monaten als 12/2027, 07/2028, 03/2029 „schlechter“ liegt oder ein Vermerk einen anderen Tag trägt).

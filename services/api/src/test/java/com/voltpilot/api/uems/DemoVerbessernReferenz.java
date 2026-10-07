@@ -55,8 +55,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * - steht ein weiterer Monat, ist die Monatsreihe nicht die der Referenz, und der Rundgang bricht ab, statt ihn
  * wegzubeantworten. Dann vermerkt die Naht selbst ({@link VerbesserungNaht#vermerken}) den März an dem Tag, an dem ihr
  * Lauf ihn vermerkt hätte ({@link #MAERZ_2029_VERMERKT}). Damit das trägt, schweigt die Naht während des Rundgangs
- * (sonst vermerkte sie jeden Monat mit der Bühnen-Uhr - Falle „Naht“), und {@code demo.sh rundgang} hält die Demo-API
- * so lange an, damit ihr Takt die Kaskade nicht nebenher mit eingeschalteter Naht rechnet.
+ * (sonst vermerkte sie jeden Monat mit der Bühnen-Uhr - Falle „Naht“), und {@code demo.sh rundgang} startet die
+ * Demo-API so lange mit stummer Naht ({@code VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false}), damit ihr Takt nicht nebenher
+ * vermerkt.
  */
 final class DemoVerbessernReferenz {
     private static final UUID TENANT = AhrenbergWelt.AHRENBERG;
@@ -458,7 +459,7 @@ final class DemoVerbessernReferenz {
         if (!ist.equals(soll)) {
             throw new IllegalStateException("Die Auffälligkeiten von KZ-0004/KZ-0005 sind nicht die der Referenz: " + ist
                     + " statt " + soll + " - ein Vermerk mit dem Tag eines Laufs ist nicht mehr änderbar; die Demo neu "
-                    + "aufbauen und den Rundgang ohne laufende Demo-API fahren (demo.sh rundgang).");
+                    + "aufbauen und den Rundgang mit stummer Naht der Demo-API fahren (demo.sh rundgang).");
         }
     }
 

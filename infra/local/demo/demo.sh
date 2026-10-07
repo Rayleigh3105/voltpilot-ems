@@ -145,6 +145,16 @@ api_gesund() { # wartet höchstens 15 Minuten, bis die api antwortet
   exit 1
 }
 
+# Die api mit ein- oder ausgeschalteter Auffälligkeits-Naht neu starten (nur dieser Dienst), dann nginx frisch
+# verbinden - es löst `api` beim Start auf.
+api_naht() { # api_naht true|false
+  VOLTPILOT_UEMS_VERBESSERUNG_ENABLED="$1" compose up -d --no-deps api
+  api_gesund
+  if docker inspect voltpilot-portal >/dev/null 2>&1; then
+    docker restart voltpilot-portal >/dev/null
+  fi
+}
+
 rundgang_anlegen() {
   local admin t body
   # Messen-Bau m2: die Mess-Seite der Box Halle 1, aus der MS-03 automatisch liest - vor dem Rundgang gestartet,
@@ -153,19 +163,15 @@ rundgang_anlegen() {
   compose up -d --build --no-deps edge-mess-ahrenberg-halle1
   jdk21
   # Demo-Füllung Verbessern: der Rundgang rechnet die Bühne bis 03/2029 mit stummer Naht und vermerkt die
-  # Auffälligkeiten danach mit ihrem Tag. Die Demo-API hält so lange an - ihr Takt (Kaskade alle fünf Minuten) rechnete
-  # die Ablesungen des Rundgangs sonst nebenher mit eingeschalteter Naht und vermerkte jeden Monat mit der Bühnen-Uhr.
-  docker stop voltpilot-api >/dev/null
-  trap 'docker start voltpilot-api >/dev/null' EXIT
+  # Auffälligkeiten danach mit ihrem Tag. Die Demo-API läuft so lange ebenfalls mit stummer Naht - ihr Takt (Kaskade alle
+  # fünf Minuten) rechnet die Ablesungen des Rundgangs sonst nebenher und vermerkt jeden Monat mit der Bühnen-Uhr; sie
+  # bleibt aber erreichbar (die Mess-Box Halle 1 lernt MS-03 von ihr).
+  api_naht false
+  trap 'api_naht true' EXIT
   (cd "$WURZEL/services/api" && ./mvnw -q test -Dtest=DemoRundgangAufbau -Dsurefire.failIfNoSpecifiedTests=false \
     -Drundgang.jdbc="jdbc:postgresql://localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-voltpilot}")
-  docker start voltpilot-api >/dev/null
   trap - EXIT
-  api_gesund
-  # nginx löst `api` beim Start auf - nach dem neu gestarteten api-Container frisch verbinden.
-  if docker inspect voltpilot-portal >/dev/null 2>&1; then
-    docker restart voltpilot-portal >/dev/null
-  fi
+  api_naht true
   admin="$(kc_admin_token)"
   if [ -n "$(kc_user_id "$admin" rundgang)" ]; then
     return
