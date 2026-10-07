@@ -14,7 +14,9 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „Edge-Updates: EIN Schritt" und
   entfallen (Code, nicht nur Vorgaben). Was ein Anwenden noch verhindern kann,
   sind ausschliesslich Eigenschaften des SIGNIERTEN Release - Kette,
   Anti-Rollback-Boden, `compat.backends`, `state_schema` - und die physische
-  Plattengrenze. Das Sicherheits-Argument: der bis dahin gesegnete Handpfad
+  Plattengrenze. Ein gueltig signiertes Release einer anderen Box-Art (Edge
+  Light) oder mit Bestandteilen, die compose nicht anwendet, ist `deferred` mit
+  Sperre `backend` - nie `failed`, und es wird kein Teil davon angewandt. Das Sicherheits-Argument: der bis dahin gesegnete Handpfad
   `update.sh --from-target` tauscht **roh**, ohne Selbsttest und ohne Ruecknahme;
   der autonome Pfad ist strikt sicherer als das.
 - **Der Sidecar glaubt dem Kern NICHTS.** Er liest die Manifest-Bytes selbst
