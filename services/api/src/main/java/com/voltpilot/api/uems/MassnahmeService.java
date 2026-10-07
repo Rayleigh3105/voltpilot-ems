@@ -769,19 +769,18 @@ public class MassnahmeService {
      * Maßnahme, eine Rolle ohne Zelle) bleibt die von {@code verwalten}; Ändern, Verwerfen und Bewerten fragen nie hier.
      */
     private Map<String, Object> eigeneOderSchreibbar(UUID id, ProtokollAkteur wer) {
-        try {
-            return schreibbar(id, wer);
-        } catch (KennzahlAbgelehnt verwalten) {
-            if (verwalten.status() != 403 || wer == null
-                    || !Objects.equals(wer.sub(), sichtbar(id).get("verantwortlich_sub"))) {
-                throw verwalten;
-            }
-            try {
-                return zeile(id, RechteAbleitung.EIGENE_MASSNAHME, wer);
-            } catch (KennzahlAbgelehnt eigene) {
-                throw verwalten;
-            }
+        Map<String, Object> z = sichtbar(id);
+        // Der geprüfte Zwilling entscheidet (Review r2 SOLLTE-1), an derselben Geltung wie {@link #zeile}.
+        String verantwortlich = (String) z.get("verantwortlich_sub");
+        UUID kz = (UUID) z.get("kennzahl_id");
+        if (kz != null) {
+            kennzahlen.eigeneMassnahmeAnKennzahl(kz, wer, verantwortlich);
+        } else {
+            standortSichtbar((UUID) z.get("standort_id"));
+            kennzahlen.darfEigeneMassnahme(wer, geltungAm((UUID) z.get("standort_id"), VERWALTEN), kennzahlen.jetzt(),
+                    verantwortlich);
         }
+        return z;
     }
 
     /**
@@ -824,14 +823,22 @@ public class MassnahmeService {
      * bzw. am Unternehmen ({@code null}).
      */
     private void darfAm(UUID standort, ProtokollAkteur wer, String recht) {
+        standortSichtbar(standort);
+        kennzahlen.darf(wer, geltungAm(standort, recht), kennzahlen.jetzt());
+    }
+
+    /** RLS: ein Standort außerhalb der eigenen Sicht ist derselbe wie einer, den es nicht gibt (Zaun, 404). */
+    private void standortSichtbar(UUID standort) {
         if (standort != null && jdbc.queryForList("SELECT 1 FROM standort WHERE id = ?", standort).isEmpty()) {
-            // RLS: ein Standort außerhalb der eigenen Sicht ist derselbe wie einer, den es nicht gibt (Zaun, 404).
             throw new VerbesserungAbgelehnt(404, "standort_unbekannt", "Diesen Standort gibt es in Ihrem "
                     + "Kundenbereich nicht.", Map.of("feld", "standort"));
         }
-        ZoneId zone = zone();
-        kennzahlen.darf(wer, new KennzahlService.Geltung(standort == null ? "unternehmen" : "standort", standort, null,
-                null, standort, null, recht, zone), kennzahlen.jetzt());
+    }
+
+    /** Die Geltung einer Maßnahme ohne Kennzahl: ihr Standort, ohne ihn das Unternehmen. */
+    private KennzahlService.Geltung geltungAm(UUID standort, String recht) {
+        return new KennzahlService.Geltung(standort == null ? "unternehmen" : "standort", standort, null, null, standort,
+                null, recht, zone());
     }
 
     /** Ein sichtbarer Energieeinsatz des Kundenbereichs, sonst 422 {@code einsatz_unbekannt}. */

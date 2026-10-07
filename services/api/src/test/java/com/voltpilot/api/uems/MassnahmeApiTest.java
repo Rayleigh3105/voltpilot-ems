@@ -512,6 +512,63 @@ class MassnahmeApiTest {
                 .isEqualTo("geplant");
     }
 
+    /**
+     * Entscheid 8 an den Grenzen (Review r2 SOLLTE-2, Anhang C): der Kennzahl-Pfad trägt wie der Standort-Pfad; eine
+     * Maßnahme außerhalb der eigenen Sicht (an ST-2, am Unternehmen) bleibt 404, auch als Verantwortlicher - es wird
+     * nichts geschrieben; wer nicht mehr verantwortlich ist, verliert beide Schritte (403); Vier-Augen bleibt bei
+     * {@code verbesserung.abschliessen}, auch an der eigenen Maßnahme. Entschieden wird über den geprüften Zwilling
+     * {@code RechteAbleitung.eigeneMassnahme} (Vektoren {@code e8-*}).
+     */
+    @Test
+    void eigeneMassnahmeKennzahlPfadStandortZaunUnternehmenWechselUndVierAugen() throws Exception {
+        Welt w = welt();
+        // (a) Kennzahl-Pfad: R3 an KZ-0004 (Geltung ST-1), verantwortlich Murat (bedienberechtigt an ST-1).
+        String r3 = anlegen(w, mitMessgrundlage(w, RU.get("M-2028-0001")), "murat");
+        Antwort k = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + r3 + "/eintraege", Map.of("text", "Zeitschaltuhren bestellt."));
+        assertThat(k.status()).as(k.text()).isEqualTo(201);
+
+        // (b) Standort-Zaun: an ST-2 sieht Murat nichts - dieselbe Antwort wie für eine unbekannte Kennung.
+        String st2 = anlegen(w, vonHand(w, w.st2()), "murat");
+        // (c) Am Unternehmen (ohne Standort) ebenso: Murat hat nur ST-1.
+        String firma = anlegen(w, vonHand(w, null), "murat");
+        for (String id : List.of(st2, firma)) {
+            for (String schritt : List.of("umgesetzt", "eintraege")) {
+                Antwort x = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + id + "/" + schritt,
+                        koerper("Murat außerhalb seiner Sicht.").get(schritt));
+                assertThat(x.status()).as(schritt + " " + x.text()).isEqualTo(404);
+            }
+            assertThat(root.queryForObject("SELECT zustand FROM massnahme WHERE id = ?::uuid", String.class, id))
+                    .isEqualTo("geplant");
+            assertThat(root.queryForObject("SELECT count(*) FROM massnahme_aenderung WHERE massnahme_id = ?::uuid "
+                    + "AND art = 'kommentar'", Integer.class, id)).isZero();
+        }
+
+        // (d) Wechsel des Verantwortlichen: danach hat Murat an der R3 keinen der beiden Schritte mehr.
+        Antwort wechsel = ruf(w, "ines", HttpMethod.PUT, PFAD + "/" + r3 + "/verantwortlicher", Map.of("benutzer",
+                sub(w, "peter"), "begruendung", "Peter übernimmt die Werkzeugheizungen."));
+        assertThat(wechsel.status()).as(wechsel.text()).isEqualTo(200);
+        for (String schritt : List.of("umgesetzt", "eintraege")) {
+            Antwort x = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + r3 + "/" + schritt,
+                    koerper("Murat ist nicht mehr verantwortlich.").get(schritt));
+            assertThat(x.status()).as(schritt + " " + x.text()).isEqualTo(403);
+            assertThat(x.body().get("code").asText()).isEqualTo("recht_fehlt");
+        }
+
+        // (e) Vier-Augen an der eigenen, umgesetzten Maßnahme: beantragen, freigeben, ablehnen bleiben 403.
+        String eigene = anlegen(w, mitMessgrundlage(w, RU.get("M-2028-0001")), "murat");
+        uhr(UMGESETZT);
+        Antwort um = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/umgesetzt", Map.of("am", "2028-01-22",
+                "begruendung", "Zeitschaltung an den Maschinen 3 bis 6 eingebaut."));
+        assertThat(um.status()).as(um.text()).isEqualTo(200);
+        Map<String, Object> belegt = Map.of("ergebnis", "belegt", "begruendung", "Der Verantwortliche will selbst belegen.");
+        for (var x : List.of(ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen/beantragen", belegt),
+                ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen/freigeben", Map.of()),
+                ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen/ablehnen",
+                        Map.of("begruendung", "Der Verantwortliche lehnt ab.")))) {
+            assertThat(x.status()).as(x.text()).isEqualTo(403);
+        }
+    }
+
     /** Eine weitere Person mit einer Rolle (am Standort bzw. unternehmensweit), aktiv seit 2024. */
     private void person(Welt w, String person, String rolle, UUID standort) {
         root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
