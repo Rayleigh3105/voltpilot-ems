@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Der Weg vom Entwurf zum Berichtsstand (UEMS AP-12 IP-14, §5.1–§5.3; seit Konzept Nachweisen n1, Runde 2, §6.4 mit
  * „Erstellen“ in Schritten, „Prüfen“ und Bestätigung und EINER Entscheidung nach einer Korrektur) auf der Bühne
- * `startansicht` — die ECHTE Schale, die ECHTE Berichtsseite und die ECHTEN Blätter; die Antworten folgen der Zeitachse des Referenzunternehmens
+ * `startansicht` - die ECHTE Schale, die ECHTE Berichtsseite und die ECHTEN Blätter; die Antworten folgen der Zeitachse des Referenzunternehmens
  * (`src/test/berichtFixtures.ts`: 10.11.2026 08:55 angelegt · 09:02 Nr. 1 · 12.11. K-2026-0007 · 16.11. 14:20 Nr. 2).
  * Die Uhr der Bühne steht je Schritt auf dem Zeitpunkt der Referenzdatei — auch zwischen Öffnen und Klick.
  *
@@ -166,7 +166,7 @@ test.describe('Bericht erstellen (§5.1, Nachweisen n1 §6.4)', () => {
   });
 
   // AP-17 IP-24 (S1): der Leistungsvergleich gilt für Unternehmen ODER Standort — Peter bekommt ihn über Werk Lindach.
-  test('Peter (Bearbeiter Lindach): Monats-, Jahresbericht und Leistungsvergleich, nur Werk Lindach — September sagt den Satz der Route', async ({ page }) => {
+  test('Peter (Bearbeiter Lindach): Monats-, Jahresbericht und Leistungsvergleich, nur Werk Lindach - September sagt den Satz der Route', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte&berichte=leer&person=PH', 375, AM_10_11_0855);
     await page.getByTestId('bericht-anlegen-knopf').click();
     await expect(page.getByTestId('bericht-erstellen-art').getByRole('radio')).toHaveCount(3);
@@ -221,7 +221,7 @@ test.describe('Stand freigeben (§5.2, Nachweisen n1 §6.4)', () => {
     expect((await aufrufe(page)).freigeben).toEqual(['2026-11-10T07:55:00Z']);
   });
 
-  test('20.10.2026: der Oktober läuft — „Freigeben“ ist aus und sagt warum (B4 a)', async ({ page }) => {
+  test('20.10.2026: der Oktober läuft - „Freigeben“ ist aus und sagt warum (B4 a)', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001&person=IK', 375, AM_20_10);
     await seite(page);
     await expect(page.getByTestId('bericht-freigeben')).toBeDisabled();
@@ -270,7 +270,7 @@ test.describe('Nach einer Korrektur: eine Entscheidung mit zwei Antworten (§5.3
     expect((await aufrufe(page)).freigeben).toEqual(['2026-11-12T09:05:33Z']);
   });
 
-  test('13.11.2026: „Nein, Stand 1 behalten“ — ohne Grund am Feld abgelehnt, mit Grund „Änderung nicht übernommen“', async ({ page }) => {
+  test('13.11.2026: „Nein, Stand 1 behalten“ - ohne Grund am Feld abgelehnt, mit Grund „Änderung nicht übernommen“', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001&person=IK', 375, AM_13_11);
     await seite(page);
     const karte = page.getByTestId('bericht-entscheid');

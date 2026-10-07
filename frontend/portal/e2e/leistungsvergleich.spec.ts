@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * UEMS AP-17 IP-24 (R8) auf der Bühne `leistungsvergleich`: Ines Kaltenbach legt am 12.01.2028 den Leistungsvergleich
  * Dezember 2027 für KZ-0004 an (Kennzahl ist Pflicht), sieht den Entwurf mit den acht Abschnitten (seit Nachweisen n1
- * einen Tipp tiefer, „Alle Werte“), gibt ihn als Stand Nr. 1 frei (Prüfen, Bestätigung) und ruft das PDF ab — bei 375
+ * einen Tipp tiefer, „Alle Werte“), gibt ihn als Stand Nr. 1 frei (Prüfen, Bestätigung) und ruft das PDF ab - bei 375
  * und 1440 px, ohne Querlauf. Die Spec importiert keine Fixtures (sie laden
  * `api.ts`, dem im Node-Lauf `import.meta.env` fehlt); die Sätze stehen wörtlich.
  */

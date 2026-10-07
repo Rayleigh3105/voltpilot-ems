@@ -166,7 +166,7 @@ test.describe('Berichte — die Liste', () => {
   });
 });
 
-test.describe('Berichte — die Berichtsseite (§5.1–§5.6, Nachweisen n1 §6.4)', () => {
+test.describe('Berichte - die Berichtsseite (§5.1–§5.6, Nachweisen n1 §6.4)', () => {
   test('bei 375 px am 20.11.2026: „Stand 2 gilt“, Stufen, Kasten „Stand“, PDF und CSV; „Geändert ggü. Stand 1“; alle Werte mit Nachweis einen Tipp tiefer', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 375, AM_20_11);
     await warteAufSeite(page);
@@ -282,7 +282,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6, Nachweisen n1 §6.
     await expect(quelle).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=1');
     await expect(page.getByTestId('bericht-quellen').locator('a', { hasText: /^BZ-6$/ })).toHaveCount(0);
 
-    // „heutigen Wert zeigen“: heute steht Version 2 — Stand 1 bleibt, wie er ist.
+    // „heutigen Wert zeigen“: heute steht Version 2 - Stand 1 bleibt, wie er ist.
     await n.zeile.getByRole('button', { name: 'heutigen Wert zeigen' }).click();
     await expect(n.zeile.getByTestId('bericht-heutiger-wert')).toHaveText(`heute: 6.040${NB}kWh · vollständig · Version 2 · korrigiert (Version 2)`);
   });
@@ -300,7 +300,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6, Nachweisen n1 §6.
     await ablegen(page, 'b10-heute-375', m);
   });
 
-  test('am 02.11.2036 (B16): Stand 1 erklärt weiter 6.100 kWh — „heutigen Wert zeigen“ sagt ehrlich „nicht mehr gespeichert“', async ({ page }) => {
+  test('am 02.11.2036 (B16): Stand 1 erklärt weiter 6.100 kWh - „heutigen Wert zeigen“ sagt ehrlich „nicht mehr gespeichert“', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 375, AM_2036);
     await warteAufSeite(page);
     await page.getByTestId('bericht-stand-1').click();
