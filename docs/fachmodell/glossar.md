@@ -978,6 +978,15 @@ Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufu
 
 **Abgrenzung.** Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt.
 
+**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts).
+
 ## Messbedarf
 
 *Sicht: Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)*

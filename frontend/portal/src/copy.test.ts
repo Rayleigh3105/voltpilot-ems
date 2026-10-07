@@ -2626,6 +2626,19 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
       UEMS_NORMGRENZE,
     ]);
   });
+
+  it('die Ergebnis-Seite nennt kein Kürzel K1 bis K8, kein „Roh“ und kein „Urteil (Band)“ (Konzept Auswerten a1 §10.10)', () => {
+    // Die Kürzel stehen nur im Dialog „Kriterien ändern“ (Wort und Kürzel, `bewertungErgebnis.KRITERIEN_FELDER`).
+    const kuerzel = /(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)|(^|[^\p{L}])Roh([^\p{L}]|$)|Urteil \(Band\)/u;
+    // Die Seitenhülle und der Bewertungsstand; die Sätze aus `bewertungErgebnis.ts` prüft `bewertungErgebnis.test.ts`
+    // an ihrem Ergebnis (jeder Text der Ergebnis-Seite ohne Kürzel).
+    for (const datei of ['pages/BewertungPage.tsx', 'components/BewertungStand.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8'));
+      expect(texte.length, datei).toBeGreaterThan(5);
+      expect(texte.filter((t) => kuerzel.test(t)), datei).toEqual([]);
+    }
+    expect(kuerzel.test('Er braucht mindestens 10 % des Stroms (K1).')).toBe(true);
+  });
 });
 
 describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1–SP3)', () => {

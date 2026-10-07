@@ -12,7 +12,8 @@
     "anlageEnergiebilanz ./glossar:uemsGeteiltSatz (AP-07 IP-18b Summen-Wächter): reiht nur die gelieferten Kennzeichen zu einem Satz; keine Menge.",
     "anlageEnergiebilanz ./uemsBewertung:nenner und :prozent (Konzept Auswerten a1 §6.9, Entscheid 5): das Ganze der Karte (Zufluss − Abfluss) und jeder Anteil kommen aus dem Vertrags-Zwilling der Bewertung (AP-16 KR4) - dieselbe Regel, mit der die Bewertung „x % der Anlage“ nennt; ./dez:dez/dezVon nur zur Übergabe der gelieferten Mengen an den Zwilling, ./dez:dezVergleich nur zur Sortierung der Unterzähler nach gelieferter Menge, ./bewertung:prozentText nur zur Anzeige.",
     "verbrauch ./uemsBewertung:nenner und :prozent, ./uemsBericht:vergleich (Konzept Auswerten a1 §6.3, Review r3 zu #1417): den Hauptzähler je Monat summiert der Zwilling der Bewertung über ALLE Anlagen der Rangliste (fehlt einer die Zeile oder der Wert, ist der Monat ohne Zahl), den Anteil des Rests ohne Messabdeckung ebenso (AP-16 KR4); das Δ gegen das Vorjahr und zwischen zwei Monaten bildet der Zwilling des Vergleichs (DA1). ./dez:dez/dezVergleich nur für Vorzeichen, Schwelle 0,5 % und Reihenfolge gelieferter Beträge, ./uemsErgebnis:zahlMitStellen nur zur Anzeige. Number(menge) nur für toLocaleString und Balken-/Säulengeometrie; mengeImSatz skaliert nur die Anzeige („2,5 Millionen kWh“).",
-    "einsatzSeite ./uemsBewertung:menge (Konzept Auswerten a1 §6.8, Review r3 zu #1417): die Monatslinie eines Bereichs summiert der Zwilling über seine Zähler (dieselbe B3-Regel wie die Menge der Rangliste; ein fehlender oder unvollständiger Zähler macht den Monat zur Lücke); ./dez:dez/dezVergleich nur zum Abgleich dieser Summe mit der gelieferten Menge des Bereichs, ./uemsErgebnis:zahl nur zur Anzeige der vereinbarten Schwellen, ./verbrauch nur Wörter, Kalender und der Vorjahresvergleich über den Zwilling. Number(menge) nur zur Anzeige und Liniengeometrie."
+    "einsatzSeite ./uemsBewertung:menge (Konzept Auswerten a1 §6.8, Review r3 zu #1417): die Monatslinie eines Bereichs summiert der Zwilling über seine Zähler (dieselbe B3-Regel wie die Menge der Rangliste; ein fehlender oder unvollständiger Zähler macht den Monat zur Lücke); ./dez:dez/dezVergleich nur zum Abgleich dieser Summe mit der gelieferten Menge des Bereichs, ./uemsErgebnis:zahl nur zur Anzeige der vereinbarten Schwellen, ./verbrauch nur Wörter, Kalender und der Vorjahresvergleich über den Zwilling. Number(menge) nur zur Anzeige und Liniengeometrie.",
+    "bewertungErgebnis ./uemsBewertung:menge und :prozent (Konzept Auswerten a1 §6.7, Review r3 zu #1415): die Menge der wesentlichen Bereiche summiert der Zwilling der Bewertung (B3, nie eine Summe gerundeter Anteile), ihren Anteil und den Anteil des Rests am Hauptzähler bildet uemsBewertung.prozent (KR4); wie viel zugeordnet ist, kommt als abdeckung_prozent von der Route, ein negativer Rest steht als eigener Satz. ./dez:dez/dezVergleich nur für Reihenfolge und den Vergleich gelieferter Schwellen, ./uemsErgebnis:zahl/zahlMitStellen nur zur Anzeige. Number(menge) nur für toLocaleString und die Balkenbreite, Number(kennzeichen) nur zur Reihenfolge."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -995,6 +996,64 @@
         "zahl: Number.isFinite(n)"
       ],
       "grund": "Konzept Auswerten a1 §6.8, Review r3 zu #1417: Kalender, Listenindex und Anzeige; die Monatslinie summiert der Vertrags-Zwilling."
+    },
+    "bewertungErgebnis.ts": {
+      "importe": [
+        "./bewertung:OHNE_VERANTWORTLICH",
+        "./bewertung:laeuft",
+        "./bewertung:tag",
+        "./bewertung:verantwortlichText",
+        "./bewertungFrist:tagText",
+        "./bewertungStand:bewertungJahr",
+        "./bewertungStand:bewertungWaehlen",
+        "./bezugsPeriode:iso",
+        "./dez:dez",
+        "./dez:dezVergleich",
+        "./glossar:UEMS_BEWERTUNG_SAETZE",
+        "./glossar:UEMS_EINSTUFUNGEN",
+        "./glossar:UEMS_NICHT_WESENTLICHE_BEREICHE",
+        "./glossar:UEMS_NOCH_NICHT_EINGESTUFT",
+        "./glossar:UEMS_NOCH_OHNE_WERTE",
+        "./glossar:UEMS_WESENTLICHE_BEREICHE",
+        "./kostenstellenUebersicht:prozessSummeHinweisSatz",
+        "./uemsBewertung:STARTWERTE",
+        "./uemsBewertung:menge as mengeDerBereiche",
+        "./uemsBewertung:prozent as anteilAmGanzen",
+        "./uemsErgebnis:KWH",
+        "./uemsErgebnis:PROZENT",
+        "./uemsErgebnis:VOLLSTAENDIG",
+        "./uemsErgebnis:VOR_EINHEIT",
+        "./uemsErgebnis:zahl as zahlText",
+        "./uemsErgebnis:zahlMitStellen",
+        "./uemsMessstelle:MEDIEN_WAEHLBAR"
+      ],
+      "operationen": [
+        "aufzaehlung: -1",
+        "aufzaehlung: teile.length - 1",
+        "bewertungErgebnis: (menge / groesste) * 1000",
+        "bewertungErgebnis: -1",
+        "bewertungErgebnis: Math.max(0, ...laufend.map((x) => zeilen.get(x.id)).filter((z) => z?.traeger === 'Strom' && z.menge !== null).map((z) => Number(z!.menge)))",
+        "bewertungErgebnis: Math.round((menge / groesste) * 1000)",
+        "bewertungErgebnis: Math.round((menge / groesste) * 1000) / 10",
+        "bewertungErgebnis: Number(kz.replace(/\\D/g, ''))",
+        "bewertungErgebnis: Number(z!.menge)",
+        "bewertungErgebnis: Number(z.menge)",
+        "bewertungErgebnis: menge / groesste",
+        "bewertungErgebnis: nr(a.reihe.kennzeichen) - nr(b.reihe.kennzeichen)",
+        "kriterienSaetze: Number(w.K3)",
+        "monatText: Number(m[2])",
+        "monatText: Number(m[2]) - 1",
+        "nachMenge: -1",
+        "schwelle: Number(wert)",
+        "schwelle: Number.isInteger(n)",
+        "vorbehaltSaetze: Number(r.datenlage_prozent)",
+        "vorbehaltSaetze: Number(r.ersatz_prozent)",
+        "vorschlagBild: Number(k.K3)",
+        "vorschlagBild: Number(r.anteil_prozent)",
+        "vorschlagBild: Number(r.menge)",
+        "wertMitEinheit: Number(wert)"
+      ],
+      "grund": "Konzept Auswerten a1 §6.7, Review r3 zu #1415: Anzeige, Balkengeometrie, Reihenfolge, Kalender und Listenindex; Summe und Anteile ausschließlich über die Vertrags-Zwillinge."
     }
   }
 }

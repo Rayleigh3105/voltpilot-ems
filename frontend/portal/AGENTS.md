@@ -62,7 +62,7 @@ Historische UI-Implementierungen nicht als aktuelle Architektur dokumentieren. D
   Der laufende Monat hat noch keine Monatsmengen (Rangliste leer), darum endet die Zeitleiste am letzten vollen Monat.
   Die Seite eines Energieeinsatzes wohnt unter `…/verbrauch/{id}`; `#/portfolio/bewertung/{id}` leitet mit Parametern weiter (`canonicalVerbrauchHash`).
   Ihre Kriterien gelten für die Datengrundlage der Bewertung, ihr Verbrauch für den letzten vollen Monat (in der Demo zwei Uhren).
-  Summen je Monat, Rest-Anteil und Δ bilden nur die Zwillinge (`uemsBewertung.nenner`/`menge`/`prozent`, `uemsBericht.vergleich`; beide Module stehen im Q5-Wächter); ein Vorjahresvergleich nur zwischen vollständigen Seiten (Ersatz zählt), sonst „Vorjahr unvollständig“; nicht belastbare/anwendbare Kriterien nie als „nicht erfüllt“.
+  Summen je Monat, Rest-Anteil und Δ bilden nur die Zwillinge (`uemsBewertung.nenner`/`menge`/`prozent`, `uemsBericht.vergleich`; `verbrauch.ts`, `einsatzSeite.ts` und `bewertungErgebnis.ts` stehen im Q5-Wächter); ein Vorjahresvergleich nur zwischen vollständigen Seiten (Ersatz zählt), sonst „Vorjahr unvollständig“; nicht belastbare/anwendbare Kriterien nie als „nicht erfüllt“.
 - Bewegungsregeln: `src/motionPresets.ts` und [Bewegung](../../docs/agents/portal/bewegung.md). `prefers-reduced-motion` zentral beachten.
 - Browserprüfung bei 1440 und 375 Pixeln: kein horizontaler Überlauf, keine überstehenden Elemente oder Konsolenfehler. Weitere Regeln gezielt über den [Themenindex](../../docs/agents/README.md) suchen.
 

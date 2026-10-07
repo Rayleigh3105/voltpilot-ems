@@ -11,15 +11,12 @@ import {
   einsatzAnfrage,
   einsatzOk,
   einsatzPruefen,
-  einsatzZeile,
-  LEER,
   leererEntwurf,
   messstelleOrt,
   protokollZeile,
   prozessOptionen,
   umfangAnfrage,
   umfangEntwurf,
-  umfangKarte,
   umfangOk,
   umfangPruefen,
   verantwortlichText,
@@ -29,13 +26,11 @@ import {
   zustandText,
   prozentText,
   zahlMitEinheit,
-  vorschlagText,
 } from './bewertung';
 import { ebenenBereiche, ebenenLeiste, EBENEN_SEITEN, ebenenAktiv, type EbenenLesemodell } from './ebenenNav';
-import { UEMS_BEWERTUNG_SAETZE } from './glossar';
 import { energieeinsatzRoute, hashForRoute, pageRoute, parseRoute } from './nav';
 import { benutzerFixture } from './test/benutzerFixtures';
-import { ahrenbergEinsaetze, ahrenbergRangliste, ahrenbergUmfang, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
+import { ahrenbergEinsaetze, ahrenbergRangliste, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { ahrenbergProzesse } from './test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
@@ -93,7 +88,6 @@ describe('Rangliste, Einstufung und Kriterien (IP-12)', () => {
   it('zeigt UEMS-Zahlen nur gerundet an', () => {
     expect(zahlMitEinheit('185380', 'kWh')).toBe('185.380 kWh');
     expect(prozentText('67.8')).toBe('67,8 %');
-    expect(vorschlagText('ueber_schwelle')).toBe('über Schwelle');
   });
 
   it('bildet R2 mit sechs Stromzeilen, Rest je Anlage und Gas unter „Weitere Träger“ ab', () => {
@@ -159,23 +153,6 @@ describe('der Bereich „Bewertung“ erscheint nach der Berichte-Regel und nur 
 });
 
 describe('Umfang (U1/U2) — nur die Zahl der Route, kein Nenner', () => {
-  it('ohne Fassung: Vorschlag alle Standorte, Strom; die Anlagenzahl ist y', () => {
-    const k = umfangKarte(ahrenbergUmfangVorgabe('2026-11-04'));
-    expect(k.gespeichert).toBe(false);
-    expect(k.kopf).toBe('Noch nicht festgelegt — Vorschlag: alle Standorte, Träger Strom.');
-    expect(k.standorte.map((s) => `${s.name}: ${s.anlagen}`)).toEqual(['Werk Ahrenberg: 2 Anlagen', 'Werk Lindach: 1 Anlage']);
-    expect(k.anlagen).toBe('am 04.11.2026 im Umfang: 3 Anlagen');
-    expect(k.traeger).toEqual(['Strom (mit Anteil)']);
-  });
-
-  it('Fassung 1 (R1): beide Werke, Strom mit Anteil, Gas im Umfang ohne Anteil — kein kWh, kein „x von y“', () => {
-    const k = umfangKarte(ahrenbergUmfang('2026-11-20'));
-    expect(k.kopf).toBe('Fassung 1 · gültig ab 04.11.2026');
-    expect(k.traeger).toEqual(['Strom (mit Anteil)', 'Gas (im Umfang, ohne Anteil)']);
-    expect(k.akteur).toMatch(/^Ines Kaltenbach · 04\.11\.2026/);
-    expect(JSON.stringify(k)).not.toMatch(/kWh| von \d/);
-  });
-
   it('ein Ausschluss braucht eine Begründung; ein leerer Träger- oder Standortsatz wird nicht gesendet', () => {
     const e = umfangEntwurf(ahrenbergUmfangVorgabe('2026-11-04'), '2026-11-04');
     expect(e).toMatchObject({ gueltigAb: '2026-11-04', traeger: ['Strom'] });
@@ -197,27 +174,7 @@ describe('Umfang (U1/U2) — nur die Zahl der Route, kein Nenner', () => {
 });
 
 describe('Liste und Seite der Einsätze', () => {
-  const [ee1, ee2, , ee4, , , ee7] = ahrenbergEinsaetze();
-
-  it('die Karte nennt Prozess, Träger, Messstellen, Verantwortlichen und Zustand — ohne Zahl', () => {
-    expect(einsatzZeile(ee1)).toMatchObject({
-      kennzeichen: 'EE-1',
-      prozess: 'P-1 Spritzguss',
-      traeger: 'Strom',
-      verantwortlich: 'Verantwortlich: Murat Demirci',
-      zustand: 'läuft seit 04.11.2026',
-      messstellen: '3 Messstellen',
-      keineWerte: false,
-    });
-    expect(einsatzZeile(ee2).verantwortlich).toBe('Verantwortlich: Peter Hollerbach');
-    // R12: Gas trägt „keine Werte“ statt einer Null.
-    expect(einsatzZeile(ee7)).toMatchObject({ traeger: 'Gas', messstellen: '1 Messstelle', keineWerte: true });
-  });
-
-  it('der Leerzustand ist der Satz aus §5.7', () => {
-    expect(LEER).toBe(UEMS_BEWERTUNG_SAETZE.leer());
-    expect(LEER.startsWith('Noch keine Energieeinsätze.')).toBe(true);
-  });
+  const [ee1, , , ee4] = ahrenbergEinsaetze();
 
   it('Messstellen tragen ihren Ort; Einflussgrößen ihre Bezugsgröße oder den Wortlaut', () => {
     const ms06 = ee1.messstellen.find((m) => m.kennzeichen === 'MS-06')!;

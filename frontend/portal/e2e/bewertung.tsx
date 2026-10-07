@@ -39,7 +39,8 @@ import '../src/index.css';
  * Adresse: `?person=IK|PH|JW` (Vorgabe IK, Ines Kaltenbach) · `&stand=leer|voll` (Vorgabe leer: kein Umfang, kein
  * Einsatz — R11) · `&ee=EE-2` öffnet die Seite dieses Einsatzes · `&messplanung=1|mb1` (IP-20) mit EE-8 und den Routen von
  * Messbedarf und Messstellen-Dialog · `&bewertungsstand=keine|entwurf|nr1|revision|nr2|faellig` (IP-25, Vorgabe keine:
- * kein Bericht der Vorlage `energetische_bewertung`) mit den Bericht-Routen aus `src/test/bewertungStandBuehne.ts`. Eigene Bühne, damit `startansicht` (25 Specs) unberührt
+ * kein Bericht der Vorlage `energetische_bewertung`) mit den Bericht-Routen aus `src/test/bewertungStandBuehne.ts` ·
+ * `&kriterienvieraugen=1` bzw. `&kriterienantrag=IK` (Vier-Augen-Kriterien, Konzept Auswerten a1 Befund 6). Eigene Bühne, damit `startansicht` (25 Specs) unberührt
  * bleibt. Seit AP-19 IP-15 spielt sie immer auch die Energiemanagement-Routen (Lage `ahrenberg`: D-0001 … D-0003 am
  * Unternehmen, kein Nachweis an einem Einsatz) für den Abschnitt „Nachweise“; `window.__emGesendet` hält die Körper.
  */
@@ -57,8 +58,11 @@ setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
 
+// Konzept Auswerten a1, Befund 6: `&kriterienvieraugen=1` legt neue Kriterien als beantragt an; `&kriterienantrag=IK` beginnt mit
+// einer beantragten Fassung dieser Person (für die zweite Person: `&person=JW`).
+const kriterienLage = { vieraugen: params.get('kriterienvieraugen') === '1', antragVon: params.get('kriterienantrag') ?? undefined };
 const buehne = bewertungBuehne(stand, person, messplanung ? '2026-11-27' : stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen, historieR13,
-  messplanung ? { bedarfe: messplanung === 'mb1' ? [mb1()] : [] } : false);
+  messplanung ? { bedarfe: messplanung === 'mb1' ? [mb1()] : [] } : false, kriterienLage);
 const em = energiemanagementBuehne('ahrenberg', { kennung: me.kennung!, name: me.name! }, () => new Date().toISOString(),
   [...ahrenbergEinsaetze(), ee8()].map((e) => ({ id: e.id, kennzeichen: e.kennzeichen, name: e.name })));
 (window as unknown as { __emGesendet: unknown }).__emGesendet = em.gesendet;
