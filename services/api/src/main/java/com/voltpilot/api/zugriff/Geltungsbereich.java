@@ -90,6 +90,17 @@ public class Geltungsbereich {
                 standort == null ? Ziel.unternehmen() : Ziel.standort(standort), jetzt);
     }
 
+    /**
+     * Verbessern-Konzept v1, Entscheid 8 (eng gefasst): {@code verbesserung.verwalten} oder die eigene Maßnahme an
+     * derselben Geltung - entschieden vom geprüften Zwilling {@link RechteAbleitung#eigeneMassnahme} (Vektoren
+     * {@code e8-*}), nie nachgebaut. Ein Nein ist das von {@code verwalten}.
+     */
+    public static DarfErgebnis eigeneMassnahme(Benutzer wer, Kundenbereich kundenbereich, String standort, Instant jetzt,
+            String verantwortlich) {
+        return RechteAbleitung.eigeneMassnahme(RechteMatrixDatei.matrix(), wer, kundenbereich,
+                standort == null ? Ziel.unternehmen() : Ziel.standort(standort), jetzt, verantwortlich);
+    }
+
     /** Bestehende Routen behalten ihr Fehlerformat: fremdes Objekt 404, fehlendes Unternehmensrecht 403. */
     public static DarfErgebnis requireScope(Benutzer wer, Kundenbereich kundenbereich, String recht, String standort,
             Instant jetzt, Function<DarfErgebnis, ? extends RuntimeException> ablehnung) {

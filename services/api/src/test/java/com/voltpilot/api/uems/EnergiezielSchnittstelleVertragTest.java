@@ -50,7 +50,8 @@ class EnergiezielSchnittstelleVertragTest {
                 "EnergiezielEintrag", EnergiezielDto.Eintrag.class, "EnergiezielListe", EnergiezielDto.Liste.class,
                 "EnergiezielStand", EnergiezielDto.Stand.class, "EnergiezielFrist", EnergiezielDto.Frist.class,
                 "EnergiezielBewertung", EnergiezielDto.Bewertung.class, "EnergiezielAnstoss",
-                EnergiezielDto.Anstoss.class);
+                EnergiezielDto.Anstoss.class, "EnergiezielKurs", EnergiezielDto.Kurs.class,
+                "EnergiezielFestgehaltenerStand", EnergiezielDto.FestgehaltenerStand.class);
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
@@ -77,6 +78,8 @@ class EnergiezielSchnittstelleVertragTest {
         assertThat(aufzaehlung(bewertung, "status")).containsExactly("beantragt", "bewertet", "abgelehnt");
         assertThat(VerbesserungRegeln.VOKABULARE.get("frist_faellig"))
                 .containsAll(aufzaehlung(schema("EnergiezielFrist"), "faellig").stream().map(String::valueOf).toList());
+        // Konzept Verbessern, Entscheid 3: die Lage des Zwischenstands spricht das Vokabular `kurs_lage`.
+        assertThat(aufzaehlung(schema("EnergiezielKurs"), "lage")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("kurs_lage"));
         Map<String, Object> anstoss = schema("EnergiezielAnstoss");
         assertThat(aufzaehlung(anstoss, "art")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_art"));
         assertThat(aufzaehlung(anstoss, "zustand")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_zustand"));

@@ -8,7 +8,7 @@ import { verantwortlichOptionen } from '../bewertung';
 import { routenHeute } from '../routenUhr';
 import { monatWort } from '../bezugsbasisVergleich';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
+import { UEMS_VERANTWORTLICH } from '../glossar';
 import { abweichungRoute, hashForRoute } from '../nav';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
 import { Recht } from './Recht';
@@ -35,7 +35,22 @@ export function useAktiveKonten(): { geladen: boolean; konten: { value: string; 
 }
 
 /** Wahl des Verantwortlichen aus den aktiven Konten; ohne lesbare Konten ein ehrlicher Satz. */
-export function VerantwortlichWahl({ id, wert, setze, fehler }: { id: string; wert: string; setze: (v: string) => void; fehler: string | null }) {
+export function VerantwortlichWahl({
+  id,
+  wert,
+  setze,
+  fehler,
+  label = UEMS_VERANTWORTLICH,
+  hint = 'Aus den aktiven Konten Ihres Kundenbereichs. Verantwortung verleiht kein Recht.',
+}: {
+  id: string;
+  wert: string;
+  setze: (v: string) => void;
+  fehler: string | null;
+  /** Die Frage über der Wahl (im Antwort-Blatt „Wer klärt das?“). */
+  label?: string;
+  hint?: string;
+}) {
   const { geladen, konten } = useAktiveKonten();
   if (konten === null) {
     return <p className="vp-ez-fehler">{`Die Konten Ihres Kundenbereichs sind gerade nicht abrufbar — ohne ${UEMS_VERANTWORTLICH} lässt sich nichts eröffnen.`}</p>;
@@ -43,12 +58,12 @@ export function VerantwortlichWahl({ id, wert, setze, fehler }: { id: string; we
   return (
     <VpPicker
       id={id}
-      label={UEMS_VERANTWORTLICH}
+      label={label}
       options={konten}
       loading={!geladen}
       value={wert || null}
       onChange={(v) => setze(v ?? '')}
-      hint="Aus den aktiven Konten Ihres Kundenbereichs. Verantwortung verleiht kein Recht."
+      hint={hint}
       error={fehler}
     />
   );
@@ -154,7 +169,6 @@ export function AuffaelligkeitAntwortDialog({
           </>
         )}
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -322,14 +336,25 @@ export function AbweichungVonHand({
               <label className="vp-ez-label" htmlFor={`${basis}-wortlaut`}>
                 Warum
               </label>
-              <textarea id={`${basis}-wortlaut`} rows={3} value={wortlaut} onChange={(x) => setWortlaut(x.target.value)} aria-invalid={!!zeigen.wortlaut} />
-              <p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{A.WORTLAUT_HINWEIS}</p>
+              <textarea
+                id={`${basis}-wortlaut`}
+                rows={3}
+                value={wortlaut}
+                placeholder={A.WORTLAUT_BEISPIEL}
+                onChange={(x) => setWortlaut(x.target.value)}
+                aria-invalid={!!zeigen.wortlaut}
+                aria-describedby={zeigen.wortlaut ? `${basis}-wortlaut-fehler` : undefined}
+              />
+              {zeigen.wortlaut && (
+                <p id={`${basis}-wortlaut-fehler`} className="vp-ez-fehler">
+                  {zeigen.wortlaut}
+                </p>
+              )}
             </div>
             <VerantwortlichWahl id={`${basis}-verantwortlich`} wert={verantwortlich} setze={setVerantwortlich} fehler={zeigen.verantwortlich ?? null} />
             <VpDatePicker id={`${basis}-frist`} label={`${A.FRIST} (wahlfrei)`} value={frist} onChange={setFrist} min={tagHeute} />
             <p className="vp-ez-leise">{A.FRIST_HINWEIS}</p>
             <Ablehnung satz={satz} />
-            <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
           </form>
         </Modal>
       )}
