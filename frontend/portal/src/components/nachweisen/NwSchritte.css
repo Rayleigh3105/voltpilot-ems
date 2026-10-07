@@ -245,9 +245,13 @@
   color: var(--vp-c-fg);
   overflow-wrap: anywhere;
 }
-.vp-nw-aendern {
+/* „Ändern“ rechts in der Prüfzeile; außerhalb einer Prüfzeile (ein leises blaues Wort im Blatt) ohne Platzierung -
+   sonst legte `grid-column: 2` im umgebenden Formular eine zweite Spalte an. */
+.vp-nw-pz > .vp-nw-aendern {
   grid-column: 2;
   grid-row: 1 / span 2;
+}
+.vp-nw-aendern {
   min-height: 44px;
   padding: 0 2px;
   border: 0;

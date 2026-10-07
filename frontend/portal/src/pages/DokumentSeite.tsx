@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { ApiError, api, type EnergiemanagementDokument, type Feststellung } from '../api';
-import { AnwendungsbereichVergleich } from '../components/AnwendungsbereichVergleich';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import {
   AufhebenBlatt,
@@ -10,6 +9,7 @@ import {
   BestaetigenBlatt,
   FassungenBlatt,
   FreigebenBlatt,
+  GeltungBlatt,
   GrundBlatt,
   NeuFassenBlatt,
   OriginalBlatt,
@@ -18,7 +18,6 @@ import {
   WortlautBlatt,
 } from '../components/nachweisen/DokumentBlaetter';
 import { ErklaerKnopf } from '../components/nachweisen/ErklaerKnopf';
-import { NwBlatt } from '../components/nachweisen/NwBlatt';
 import { NwKopf } from '../components/nachweisen/NwKopf';
 import { StatusZeile } from '../components/nachweisen/NwStatus';
 import { Wortlaut } from '../components/nachweisen/NwSchritte';
@@ -30,6 +29,7 @@ import { Weitergeben } from '../components/nachweisen/Weitergeben';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { ErrorState, Skeleton } from '../components/States';
 import * as E from '../energiemanagementPortal';
+import { entscheidAus } from '../entscheid';
 import * as N from '../nachweisDokumente';
 import { dokumentRoute, hashForRoute } from '../nav';
 import { useRollen } from '../rollen';
@@ -59,6 +59,8 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
   const [feststellungen, setFeststellungen] = useState<Feststellung[]>([]);
   const [blatt, setBlatt] = useState<Blatt | null>(null);
   const [freigabeNr, setFreigabeNr] = useState<number | null>(null);
+  // Geöffnet aus der Wiedervorlage („Bestätigen oder neu fassen“): dann steht „Prüfen“ als Knopf da, auch vor der Frist.
+  const [ausWiedervorlage] = useState(() => entscheidAus(window.location.hash)?.art === 'dokument_ueberpruefung');
 
   useEffect(() => {
     let aktiv = true;
@@ -178,7 +180,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
     ) : null;
   // Der Entscheid der Wiedervorlage (Konzept w1): „Prüfen“ ist der erste Knopf im Block.
   const pruefKnopf =
-    !aufgehoben && d.klasse === 'vorgabe' && g ? (
+    !aufgehoben && d.klasse === 'vorgabe' && g && (anlass?.art === 'pruefen' || ausWiedervorlage) ? (
       darfFreigeben ? (
         <Button variant={anlass?.art === 'pruefen' ? 'primary' : 'outline'} onClick={() => setBlatt('pruefen')} data-testid="dokument-pruefen">
           Prüfen
@@ -247,7 +249,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
 
   return (
     <GrenzSatzBereich>
-      <div className="vp-nw-seite vp-nw-dok" data-testid="dokument-seite">
+      <div className={`vp-nw-seite vp-nw-dok${d.titel.length > 40 ? ' vp-nw-lang' : ''}`} data-testid="dokument-seite">
         <NwKopf
           zurueck={zurueck}
           titel={d.titel}
@@ -264,7 +266,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
             {(anlassKnopf || pruefKnopf) && (
               <div className="vp-nw-aktionen" data-entscheid="dokument_ueberpruefung" data-testid="dokument-aktionen">
                 {anlass?.art === 'pruefen' ? pruefKnopf : anlassKnopf}
-                {anlass?.art !== 'pruefen' && !isPhone && pruefKnopf}
+                {anlass?.art !== 'pruefen' && pruefKnopf}
               </div>
             )}
             <Weitergeben
@@ -303,18 +305,7 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
       {blatt === 'fassungen' && <FassungenBlatt dokument={d} onClose={() => setBlatt(null)} />}
       {blatt === 'original' && original && <OriginalBlatt original={original} onClose={() => setBlatt(null)} />}
       {blatt === 'grund' && gezeigt && <GrundBlatt fassung={gezeigt} onClose={() => setBlatt(null)} />}
-      {blatt === 'geltung' && gezeigt?.anwendungsbereich && (
-        <NwBlatt open titel="Geltung" onClose={() => setBlatt(null)} breit testId="geltung-blatt">
-          <div className="vp-nw-schritt-inhalt">
-            <NwZeilen>
-              <NwZeile titel="Standorte" unter={gezeigt.anwendungsbereich.standorte.map((s) => s.name ?? s.kurzzeichen).join(', ')} />
-              <NwZeile titel="Energieträger" unter={gezeigt.anwendungsbereich.traeger.join(', ')} />
-              <NwZeile titel="Ausschlüsse" unter={gezeigt.anwendungsbereich.ausschluesse.length ? gezeigt.anwendungsbereich.ausschluesse.map((a) => a.begruendung).join(' · ') : 'keine'} />
-            </NwZeilen>
-            {g && <AnwendungsbereichVergleich dokumentId={d.id} stand={g.nr} />}
-          </div>
-        </NwBlatt>
-      )}
+      {blatt === 'geltung' && gezeigt?.anwendungsbereich && <GeltungBlatt dokument={d} fassung={gezeigt} onClose={() => setBlatt(null)} />}
     </GrenzSatzBereich>
   );
 }

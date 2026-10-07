@@ -15,6 +15,7 @@ import * as E from '../../energiemanagementPortal';
 import { SAETZE } from '../../energiemanagement';
 import * as N from '../../nachweisDokumente';
 import { useRollen } from '../../rollen';
+import { useIsPhone } from '../../useIsPhone';
 import { pruefsummeLokal } from '../../uemsMessmittel';
 import { PersonAnlegenDialog } from '../DokumentDialoge';
 import { GrenzSatz } from '../GrenzSatz';
@@ -108,7 +109,7 @@ function useEntscheider(leitung: boolean, tag: string, neu: number) {
 }
 
 /** Wer hat entschieden? - eine Person im Energiemanagement, auch ohne Konto; ohne Leitung der Weg „Person anlegen“. */
-function EntscheiderWahl({
+export function EntscheiderWahl({
   id,
   leitung: nurLeitung,
   tag,
@@ -506,7 +507,7 @@ export function NeuFassenBlatt({
       }
     >
       <BlattFormular id={`${basis}-form`} testid="neu-fassen-form" onSenden={() => (schritt === 1 ? pruefen() && setSchritt(2) : void speichern())}>
-        <p className="vp-nw-leise">Fassung {nr}</p>
+        {schritt === 1 && <p className="vp-nw-leise vp-nw-blatt-sub">Fassung {nr}</p>}
         <SchrittAnzeige nr={schritt} von={2} />
         {schritt === 1 ? (
           <>
@@ -637,11 +638,14 @@ export function FreigebenBlatt({
   onGespeichert: (d: EnergiemanagementDokument) => void;
 }) {
   const basis = basisId('fg', useId());
+  const isPhone = useIsPhone();
   const heute = N.heuteDerRoute(dokument, fassung.eingetragen.am.slice(0, 10));
   const [beantragen, setBeantragen] = useState(!!vierAugen);
   const [von, setVon] = useState('');
   const [tag, setTag] = useState(heute);
-  const [begruendung, setBegruendung] = useState(fassung.begruendung && fassung.begruendung.trim().length >= 10 ? fassung.begruendung : '');
+  const vorbelegt = fassung.begruendung && fassung.begruendung.trim().length >= 10 ? fassung.begruendung : '';
+  const [begruendung, setBegruendung] = useState(vorbelegt);
+  const [grundAendern, setGrundAendern] = useState(!vorbelegt);
   const [mitOriginal, setMitOriginal] = useState(false);
   const [original, setOriginal] = useState<E.VerweisEntwurf>(() => verweisEntwurf(fassung.original ?? null));
   const [fehler, setFehler] = useState<E.Feldfehler>({});
@@ -653,7 +657,10 @@ export function FreigebenBlatt({
     const f: E.Feldfehler = {};
     if (!von) f.entschiedenVon = 'Bitte wählen Sie, wer entschieden hat.';
     const b = E.begruendungFehler(begruendung);
-    if (b) f.begruendung = b;
+    if (b) {
+      f.begruendung = b;
+      setGrundAendern(true);
+    }
     const orig = mitOriginal ? belegAus(original) : null;
     if (mitOriginal && !orig && (original.kennung || original.sha256)) f.original = 'Bitte nennen Sie, wo das Original liegt.';
     setFehler(f);
@@ -677,15 +684,42 @@ export function FreigebenBlatt({
   }
 
   const titel = beantragen ? 'Freigabe beantragen' : `Fassung ${fassung.nr} freigeben`;
+  // Am Rechner rechts drei Stichworte statt Sätzen (Konzept §6.10): Neu, Danach, Freigabe.
+  const g = N.gueltigeFassung(dokument);
+  const neue = fassung.form === 'wortlaut' ? N.wortlautMitNeuem(g?.form === 'wortlaut' ? (g.wortlaut ?? null) : null, fassung.wortlaut ?? '').neueSaetze.length : 0;
+  const stichworte = (
+    <dl className="vp-nw-dlg-info" data-testid="freigeben-stichworte">
+      {fassung.form === 'verweis' ? (
+        <>
+          <dt>Neu</dt>
+          <dd>ein Verweis</dd>
+        </>
+      ) : (
+        g && (
+          <>
+            <dt>Neu</dt>
+            <dd>{neue === 1 ? 'ein Satz' : `${neue} Sätze`}</dd>
+          </>
+        )
+      )}
+      <dt>Danach</dt>
+      <dd>{`Fassung ${fassung.nr} gilt${g ? `, Fassung ${g.nr} ist überholt` : ''}`}</dd>
+      <dt>Freigabe</dt>
+      <dd>{beantragen ? 'zwei Personen' : 'eine Person'}</dd>
+    </dl>
+  );
   return (
     <NwBlatt
       open
       titel={titel}
       onClose={onClose}
+      breit={!isPhone}
       testId="freigeben-blatt"
       fuss={<Fuss form={`${basis}-form`} primaer={titel} busy={busy} sekundaer={ABBRECHEN} onSekundaer={onClose} testid="freigeben-senden" />}
     >
+      <div className={isPhone ? undefined : 'vp-nw-dlg-zwei'}>
       <BlattFormular id={`${basis}-form`} testid="freigeben-form" onSenden={() => void senden()}>
+        {!isPhone && <p className="vp-nw-leise vp-nw-blatt-sub">{dokument.titel}</p>}
         {beantragen && (
           <Stufen
             stufen={[
@@ -695,26 +729,45 @@ export function FreigebenBlatt({
             ]}
           />
         )}
-        <HinweisZeile
-          icon="users"
-          titel={beantragen ? 'Zwei Personen prüfen' : 'Eine Person gibt frei'}
-          knopf={<ErklaerKnopf klein erklaerung={beantragen ? ZWEI_PERSONEN_ERKLAERUNG : FREIGEBEN_ERKLAERUNG} />}
-          testid="freigeben-personen"
-        />
+        {isPhone && (
+          <HinweisZeile
+            icon="users"
+            titel={beantragen ? 'Zwei Personen prüfen' : 'Eine Person gibt frei'}
+            knopf={<ErklaerKnopf klein erklaerung={beantragen ? ZWEI_PERSONEN_ERKLAERUNG : FREIGEBEN_ERKLAERUNG} />}
+            testid="freigeben-personen"
+          />
+        )}
         <EntscheiderWahl id={`${basis}-person`} leitung={E.leitungsPflicht(dokument.art)} tag={tag} wert={von} setze={setVon} fehler={fehler.entschiedenVon} />
-        <TagWahl heute={heute} wert={tag} setze={setTag} />
-        <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} mehrzeilig fehler={fehler.begruendung} hoechstens={500} testid="freigeben-begruendung" />
+        {/* Bei zwei Personen ist der Antrag heute (Konzept §6.10); sonst „Wann?“ mit Heute, Gestern, Anderer Tag. */}
+        {!beantragen && <TagWahl heute={heute} wert={tag} setze={setTag} />}
+        {grundAendern ? (
+          <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} mehrzeilig fehler={fehler.begruendung} hoechstens={500} testid="freigeben-begruendung" />
+        ) : (
+          <PruefZeilen zeilen={[{ etikett: 'Grund', wert: begruendung, onAendern: () => setGrundAendern(true) }]} testid="freigeben-grund" />
+        )}
         {fassung.form === 'wortlaut' &&
           (mitOriginal ? (
             <OrtFelder basis={`${basis}-original`} wert={original} setze={setOriginal} mitStand={false} fehler={fehler.original} />
           ) : (
             <button type="button" className="vp-nw-aendern vp-nw-links" onClick={() => setMitOriginal(true)} data-testid="freigeben-original">
-              Original festhalten · wahlfrei
+              Original festhalten
             </button>
           ))}
         <Ablehnung satz={satz} />
         <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
+      {!isPhone && (
+        <aside className="vp-nw-dlg-seite">
+          {stichworte}
+          <HinweisZeile
+            icon="users"
+            titel={beantragen ? 'Zwei Personen prüfen' : 'Eine Person gibt frei'}
+            knopf={<ErklaerKnopf klein erklaerung={beantragen ? ZWEI_PERSONEN_ERKLAERUNG : FREIGEBEN_ERKLAERUNG} />}
+            testid="freigeben-personen"
+          />
+        </aside>
+      )}
+      </div>
     </NwBlatt>
   );
 }
@@ -1113,6 +1166,50 @@ export function OriginalBlatt({ original, onClose }: { original: N.OriginalBild;
           </p>
         )}
         <GrenzSatz className="vp-nw-leise" verantwortung />
+      </div>
+    </NwBlatt>
+  );
+}
+
+/**
+ * Die Geltung des Anwendungsbereichs (DK7): Standorte, Energieträger, Ausschlüsse - und daneben der Betrachtungsumfang
+ * der energetischen Bewertung (W5), ohne Urteil: „deckungsgleich“ oder die Sätze der Route, wo sie abweichen.
+ */
+export function GeltungBlatt({ dokument, fassung, onClose }: { dokument: EnergiemanagementDokument; fassung: EnergiemanagementFassung; onClose: () => void }) {
+  const [v, setV] = useState<Awaited<ReturnType<typeof api.energiemanagementVergleich>> | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    api.energiemanagementVergleich(dokument.id).then(
+      (r) => aktiv && setV(r),
+      (e) => aktiv && setFehler(E.ablehnungSatz(e)),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [dokument.id, fassung.nr]);
+  const a = fassung.anwendungsbereich;
+  if (!a) return null;
+  const orte = (liste: { name: string | null; kurzzeichen: string | null }[]) => liste.map((s) => s.name ?? s.kurzzeichen ?? '').join(', ');
+  const name = new Map(a.standorte.map((s) => [s.id, s.name ?? s.kurzzeichen ?? '']));
+  return (
+    <NwBlatt open titel="Geltung" onClose={onClose} testId="geltung-blatt">
+      <div className="vp-nw-schritt-inhalt">
+        <PruefZeilen
+          zeilen={[
+            { etikett: 'Standorte', wert: orte(a.standorte) },
+            { etikett: 'Energieträger', wert: a.traeger.join(', ') },
+            { etikett: 'Ausschlüsse', wert: a.ausschluesse.length ? a.ausschluesse.map((x) => `${name.get(x.verweis) ?? 'Standort'}: ${x.begruendung}`).join(' · ') : 'keine' },
+            ...(v?.vergleich ? [{ etikett: 'Betrachtungsumfang', wert: v.vergleich.deckungsgleich ? 'deckungsgleich' : 'weicht ab' }] : []),
+          ]}
+          testid="geltung-zeilen"
+        />
+        {v?.vergleich && !v.vergleich.deckungsgleich && v.saetze.map((t) => (
+          <p key={t} className="vp-nw-leise">
+            {t}
+          </p>
+        ))}
+        {fehler && <p className="vp-nw-leise">{fehler}</p>}
       </div>
     </NwBlatt>
   );

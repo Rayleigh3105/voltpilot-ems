@@ -98,7 +98,8 @@ describe('Seite eines Dokuments (Konzept Nachweisen n1, Runde 2, §6.5)', () => 
 
     const blatt = await screen.findByTestId('freigeben-blatt');
     expect(within(blatt).getByTestId('freigeben-personen').textContent).toContain('Eine Person gibt frei');
-    expect((within(blatt).getByTestId('freigeben-begruendung') as HTMLTextAreaElement).value).toBe('Hinweis aus dem internen Audit 2029 zur Einarbeitung.');
+    // Der Grund der Fassung steht als Prüfzeile vorbelegt - „Ändern“ öffnet das Feld.
+    expect(within(blatt).getByTestId('freigeben-grund').textContent).toContain('Hinweis aus dem internen Audit 2029 zur Einarbeitung.');
     await klick(screen.getByTestId('freigeben-senden'));
     // Bei der Energiepolitik entscheidet die Leitung - sie ist die einzige Person zur Wahl und schon gewählt.
     expect(buehne.gesendet.find((g) => g.route.endsWith('/fassungen/2/freigeben'))?.koerper).toEqual({

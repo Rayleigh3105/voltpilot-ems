@@ -228,8 +228,6 @@
 /* Ein leises blaues Wort im Blatt („Original festhalten · wahlfrei“, „Weiteren Ausschluss“). */
 .vp-nw-links {
   justify-self: start;
-  grid-row: auto;
-  min-height: 44px;
   text-align: left;
 }
 .vp-nw-ausschluss {
@@ -242,5 +240,47 @@
 }
 .vp-nw-ausschluss > .vp-nw-aendern {
   justify-self: end;
-  grid-row: auto;
+}
+/* Die Unterzeile eines Blatts („Fassung 3“) rückt an den Titel, wie `.sheet .sub` des Konzepts. */
+.vp-nw-blatt-sub {
+  margin-top: -8px;
+}
+
+/* ---------- Dialog am Rechner: links die Fragen, rechts drei Stichworte statt Sätzen (Konzept §6.10, `.ddlg .pruef`) - */
+.vp-nw-dlg-zwei {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 15rem);
+  gap: 20px;
+  align-items: start;
+}
+.vp-nw-dlg-seite {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-nw-dlg-info {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-c-bg);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.vp-nw-dlg-info dt {
+  margin-top: 8px;
+  font: 700 0.6875rem var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-nw-dlg-info dt:first-child {
+  margin-top: 0;
+}
+.vp-nw-dlg-info dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--vp-c-fg);
 }

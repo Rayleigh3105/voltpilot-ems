@@ -9,6 +9,7 @@ import { pruefsummeLokal } from '../../uemsMessmittel';
 import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { VpPicker } from '../VpPicker';
+import { EntscheiderWahl } from './DokumentBlaetter';
 import { NwBlatt } from './NwBlatt';
 import { AntwortKarten, PruefZeilen, SchrittAnzeige, WahlChips } from './NwSchritte';
 import { NwTextfeld } from './NwTextfeld';
@@ -300,7 +301,7 @@ export function DokumentFesthaltenBlatt({
                 wo === 'verweis'
                   ? { etikett: 'Original', wert: [verweis.ablage, verweis.kennung].filter(Boolean).join(' · '), onAendern: () => setSchritt(2) }
                   : { etikett: 'Text', wert: wortlaut.length > 60 ? `${wortlaut.slice(0, 57)} …` : wortlaut, onAendern: () => setSchritt(2) },
-                ...(weiter === 'freigeben' && darfFreigeben && !aendern ? [{ etikett: 'Entschieden', wert: `${personWort} · ${tagWort}`, onAendern: () => setAendern(true) }] : []),
+                ...(weiter === 'freigeben' && darfFreigeben && !aendern && von ? [{ etikett: 'Entschieden', wert: `${personWort} · ${tagWort}`, onAendern: () => setAendern(true) }] : []),
               ]}
               testid="festhalten-pruefen"
             />
@@ -316,18 +317,9 @@ export function DokumentFesthaltenBlatt({
                 testid="festhalten-weiter-wahl"
               />
             )}
-            {weiter === 'freigeben' && darfFreigeben && aendern && (
+            {weiter === 'freigeben' && darfFreigeben && (aendern || (personen !== null && !von)) && (
               <>
-                <VpPicker
-                  id={`${basis}-person`}
-                  label="Wer hat entschieden?"
-                  options={(personen ?? []).map((p) => ({ value: p.id, label: p.label }))}
-                  value={von || null}
-                  onChange={setVon}
-                  placeholder="Person wählen"
-                  loading={personen === null}
-                  error={fehler.entschiedenVon ?? null}
-                />
+                <EntscheiderWahl id={`${basis}-person`} leitung={leitung} tag={tag || heute || ''} wert={von} setze={setVon} fehler={fehler.entschiedenVon} />
                 <VpDatePicker label="Wann?" value={tag || heute || null} onChange={setTag} max={heute ?? undefined} />
                 <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} fehler={fehler.begruendung} hoechstens={500} testid="festhalten-begruendung" />
               </>
