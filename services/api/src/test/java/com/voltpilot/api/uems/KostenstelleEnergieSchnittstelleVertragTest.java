@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.voltpilot.api.web.dto.KostenstelleEnergieDto;
 import java.io.InputStream;
@@ -10,8 +11,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
@@ -48,6 +51,8 @@ class KostenstelleEnergieSchnittstelleVertragTest {
         formen.put("KostenstelleEnergiePosten", KostenstelleEnergieDto.Posten.class);
         formen.put("KostenstelleEnergieMessstelle", KostenstelleEnergieDto.MessstelleRef.class);
         formen.put("KostenstelleEnergieTag", KostenstelleEnergieDto.Tag.class);
+        formen.put("KostenstelleEnergieMonat", KostenstelleEnergieDto.Monat.class);
+        formen.put("KostenstelleEnergieAblesezeitraum", KostenstelleEnergieDto.Ablesezeitraum.class);
         formen.put("KostenstelleEnergieDoppelzaehlung", KostenstelleEnergieDto.Doppelzaehlung.class);
         formen.put("KostenstelleEnergieEnthalten", KostenstelleEnergieDto.Enthalten.class);
         formen.put("KostenstelleEnergieZeitraum", KostenstelleEnergieDto.Zeitraum.class);
@@ -56,8 +61,14 @@ class KostenstelleEnergieSchnittstelleVertragTest {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
                     PropertyNamingStrategies.SnakeCaseStrategy.INSTANCE.translate(c.getName())));
+            // Ein Feld, das nur in seinem Fall erscheint (NON_NULL, Posten.monate aus Ablesungen), ist nicht Pflicht.
+            List<String> pflicht = new ArrayList<>();
+            Arrays.stream(dto.getRecordComponents())
+                    .filter(c -> c.getAccessor().getAnnotation(JsonInclude.class) == null
+                            || c.getAccessor().getAnnotation(JsonInclude.class).value() != JsonInclude.Include.NON_NULL)
+                    .forEach(c -> pflicht.add(PropertyNamingStrategies.SnakeCaseStrategy.INSTANCE.translate(c.getName())));
             assertThat(new ArrayList<>(eigenschaften(schema).keySet())).as(schema).containsExactlyElementsOf(felder);
-            assertThat(required(schema)).as(schema + " · jedes Feld steht immer da").containsExactlyElementsOf(felder);
+            assertThat(required(schema)).as(schema + " · jedes Feld steht immer da").containsExactlyElementsOf(pflicht);
         });
     }
 
@@ -69,11 +80,19 @@ class KostenstelleEnergieSchnittstelleVertragTest {
                 (List<Object>) ((Map<String, Object>) eigenschaften("KostenstelleEnergieBlock").get("grund")).get("enum"));
         List<Object> tag = new ArrayList<>(
                 (List<Object>) ((Map<String, Object>) eigenschaften("KostenstelleEnergieTag").get("grund")).get("enum"));
+        List<Object> monat = new ArrayList<>(
+                (List<Object>) ((Map<String, Object>) eigenschaften("KostenstelleEnergieMonat").get("grund")).get("enum"));
         block.remove(null);
         tag.remove(null);
-        List<Object> alle = new ArrayList<>(block);
+        monat.remove(null);
+        Set<Object> alle = new LinkedHashSet<>(block);
         alle.addAll(tag);
+        alle.addAll(monat);
         assertThat(alle).containsExactlyInAnyOrderElementsOf(KostenstelleEnergieRegeln.GRUENDE);
+        // Messen PR4: die Gründe eines Monats aus Ablesungen - ohne Tageswert gibt es dort keinen „kein_tageswert“.
+        assertThat(monat).containsExactly(VerteilungRegeln.GRUND_QUELLE_KEINE_WERTE,
+                VerteilungRegeln.GRUND_REST_UNPLAUSIBEL, VerteilungRegeln.GRUND_ANTEIL_WECHSELT,
+                KostenstelleEnergieRegeln.GRUND_KEINE_ABLESUNG);
     }
 
     /** Umfang und Kreis-Gründe der Warnung vor doppelter Zählung sind die der Regel — ein neues Wort braucht beide Stellen. */
