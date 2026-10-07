@@ -58,7 +58,13 @@ func DialMQTT(addr, clientID string) (*MQTTBus, error) {
 		SetConnectRetryInterval(time.Second).
 		SetMaxReconnectInterval(10 * time.Second).
 		SetCleanSession(true).
-		SetOrderMatters(false).
+		// In order, per topic: a retained config is a STATE, and the latest
+		// one must win. With OrderMatters(false) paho runs every handler in its
+		// own goroutine, so the retained edge/sources/config delivered on
+		// subscribe could overtake the newer one published right after it and
+		// leave Layer 1 on the stale list until the next change. The handlers
+		// do not block (the Bus contract), so in-order dispatch is safe.
+		SetOrderMatters(true).
 		SetKeepAlive(30 * time.Second)
 	// Re-subscribe on EVERY (re)connect: a clean session forgets subscriptions,
 	// and the retained config must reach us again after a broker restart.

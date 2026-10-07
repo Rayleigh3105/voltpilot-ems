@@ -13472,7 +13472,7 @@ components:
       type: object
       description: A device that enrolled (uploaded a CSR) but has no claimed device row.
       properties:
-        externalRef: { type: string, example: edge-k7m2xqp }
+        externalRef: { type: string, example: edge-k7m2xq3 }
         deviceInfo: { type: string, nullable: true, description: Free-form device info from the CSR upload. }
         csrUpdatedAt: { type: string, format: date-time, description: When the pending CSR was last (re)uploaded. }
         everIssued:

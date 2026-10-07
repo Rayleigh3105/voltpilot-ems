@@ -282,7 +282,7 @@ public class DeviceController {
      * Canonicalize a typed Geräte-ID so the same physical device never becomes
      * two rows and so the typo gates see a normalized form. Sticker IDs are
      * printed uppercase ({@code VP-1234-ABCD}) and self-generated edge refs are
-     * lowercase ({@code edge-k7m2xqp}); both are case-folded to their canonical
+     * lowercase ({@code edge-k7m2xq3}); both are case-folded to their canonical
      * form (a mobile keyboard's {@code autoCapitalize} must not matter). Other
      * free-form refs pass through untouched apart from trimming.
      */

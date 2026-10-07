@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildMastrApply,
@@ -115,7 +117,7 @@ describe('normalizeDeviceIdInput (mirrors the api claim canonicalization as you 
   });
 
   it('lowercases self-generated edge references (mobile autoCapitalize)', () => {
-    expect(normalizeDeviceIdInput('Edge-K7M2XQP')).toBe('edge-k7m2xqp');
+    expect(normalizeDeviceIdInput('Edge-K7M2XQ3')).toBe('edge-k7m2xq3');
   });
 
   it('leaves other refs alone', () => {
@@ -259,5 +261,31 @@ describe('device-ID field copy (one voice across flow and Geräte drawer)', () =
     expect(all).not.toMatch(/Standort/);
     expect(all).not.toMatch(/beanspruch/i);
     expect(all).not.toMatch(/Mandant/);
+  });
+
+  // The example must be a reference the api ACCEPTS: "edge-" + six body
+  // characters + the check character of refCheckChar (edge-app/core/internal/
+  // agent/agent.go) / EdgeRef.isValid - a wrong one is rejected with 422.
+  it('shows an example reference with a valid check character', () => {
+    const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+    const ref = /edge-[a-z0-9]{7}/.exec(DEVICE_ID_FIELD.placeholder)?.[0] ?? '';
+    const body = ref.slice(5, 11);
+    let sum = 0;
+    for (let i = 0; i < body.length; i++) sum += (i + 1) * alphabet.indexOf(body[i]);
+    expect(ref).toHaveLength(12);
+    expect(ref[11]).toBe(alphabet[sum % alphabet.length]);
+  });
+
+  // The help names the box web app's REAL path to the reference, in the
+  // box's own words - no menu entry the box does not have.
+  it('points to the labels the box web app really shows', () => {
+    const box = readFileSync(
+      join(process.cwd(), '../../edge-app/core/internal/web/static/einrichten.html'),
+      'utf8',
+    );
+    for (const label of ['Einrichten', 'Kopplung mit dem VoltPilot-Portal', 'Referenz-ID dieses Geräts']) {
+      expect(DEVICE_ID_FIELD.help).toContain(`„${label}"`);
+      expect(box).toContain(label);
+    }
   });
 });
