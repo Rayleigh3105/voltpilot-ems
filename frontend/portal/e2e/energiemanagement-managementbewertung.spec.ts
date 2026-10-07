@@ -97,7 +97,7 @@ for (const breite of [375, 1440]) {
       // N1: die Gruppen stehen am Rechner in der Seitenleiste, am Telefon in der Leiste.
       await expect(page.getByTestId('energiemanagement-bereich').locator('.vp-bereich-tabs')).toHaveCount(0);
       const reiter = page.getByRole('tablist', { name: 'Reiter der Gruppe Nachweisen' }).getByRole('tab');
-      await expect(reiter).toHaveText(['Überblick', 'Berichte', 'Dokumente', 'Audits', 'Feststellungen', 'Managementbewertung', 'Aufgaben']);
+      await expect(reiter).toHaveText(['Überblick', 'Berichte', 'Dokumente', 'Audits', 'Managementbewertung', 'Aufgaben']);
       if (breite < 720) await page.locator('.vp-bottombar').getByRole('button', { name: 'Übersicht', exact: true }).click();
       else await page.getByTestId('seitenleiste-uebersicht').click();
       await page.getByTestId('energiemanagement-reiter-wiedervorlage').click();
