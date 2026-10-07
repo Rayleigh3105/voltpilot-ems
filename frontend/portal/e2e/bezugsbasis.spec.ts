@@ -2,7 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
- * Reiter „Bezugsbasis“ an der Kennzahl (UEMS AP-17 IP-9, NW-4) bei 375 px und 1440 px auf der eigenen Bühne
+ * Die Bezugsbasis eine Ebene unter der Kennzahl (UEMS AP-17 IP-9, NW-4; Konzept Auswerten a1 §6.6) bei 375 px und 1440 px
+ * auf der eigenen Bühne
  * `e2e/bezugsbasis.html` — die ECHTE Kennzahl-Seite von KZ-0004, die Routen im Speicher gespielt.
  *
  * Fälle: der leere Zustand (§5.8 „Leer“) für Ines Kaltenbach (mit Knopf) und Claudia Berger (nur der Satz), und R1 —
@@ -18,8 +19,7 @@ const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
 const LEER =
   'Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen werden soll — der Vergleich entsteht aus den gespeicherten Werten.';
-const ZEILE_R1 =
-  'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig (1 von 12 Monaten) · freigegeben von Ines Kaltenbach am 12.11.2026.';
+const ANTWORT_R1 = 'VoltPilot erwartet 0,2837 kWh je kg - so viel wie im Oktober 2026.Fassung 1 · Verhältnis · Vergleichszeitraum Oktober 2026';
 
 async function oeffne(page: Page, query: string, breite: number) {
   await page.clock.setFixedTime(AM_12_11);
@@ -56,30 +56,26 @@ async function waehleMonat(page: Page, feld: string, monat: string) {
   await page.getByRole('listbox', { name: feld, exact: true }).getByRole('option', { name: monat, exact: true }).click();
 }
 
-/** „Bezugsbasis“ ohne `exact` träfe auch „Vergleich mit Bezugsbasis“ (IP-20). */
-const reiterBezugsbasis = (page: Page) => page.getByRole('tab', { name: 'Bezugsbasis', exact: true });
 const anlegenKnopf = (page: Page) => page.getByRole('button', { name: 'Bezugsbasis anlegen', exact: true });
 
 for (const breite of [375, 1440]) {
   test.describe(`Bezugsbasis (${breite} px)`, () => {
     test(`leerer Zustand: Satz, Knopf nur mit Recht, Grenz-Satz (${breite} px)`, async ({ page }) => {
-      await oeffne(page, 'person=IK', breite);
-      await reiterBezugsbasis(page).click();
+      // Konzept Auswerten a1 §6.6: die Bezugsbasis steht eine Ebene unter der Kennzahl (`…/kennzahlen/{id}/bezugsbasis`).
+      await oeffne(page, 'person=IK&ebene=bezugsbasis', breite);
       await expect(page.getByText(LEER)).toBeVisible();
       await expect(anlegenKnopf(page)).toBeVisible();
       await grenzHinweisZeigt(page, GRENZE);
       await ohneQuerlauf(page);
 
-      await oeffne(page, 'person=CB', breite);
-      await reiterBezugsbasis(page).click();
+      await oeffne(page, 'person=CB&ebene=bezugsbasis', breite);
       await expect(page.getByText(LEER)).toBeVisible();
       await expect(anlegenKnopf(page)).toHaveCount(0);
       await ohneQuerlauf(page);
     });
 
     test(`R1: Ines legt BB-0001 Oktober 2026 vorläufig an und beantragt die Freigabe (${breite} px)`, async ({ page }) => {
-      await oeffne(page, 'person=IK', breite);
-      await reiterBezugsbasis(page).click();
+      await oeffne(page, 'person=IK&ebene=bezugsbasis', breite);
       await anlegenKnopf(page).click();
       const dialog = page.getByTestId('bezugsbasis-assistent');
       await expect(dialog).toBeVisible();
@@ -114,15 +110,20 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page);
 
       await page.getByTestId('bezugsbasis-fertig').click();
-      await expect(page.getByTestId('bezugsbasis-zeile')).toHaveText(ZEILE_R1);
+      // Die Ebene antwortet zuerst: womit verglichen wird und seit wann, mit dem Hinweis „vorläufig“.
+      await expect(page.getByTestId('bezugsbasis-antwort')).toHaveText(ANTWORT_R1);
+      await expect(page.getByTestId('bezugsbasis-status')).toHaveText('Gilt seit 01.11.2026');
+      await expect(page.getByTestId('bezugsbasis-vorlaeufig-hinweis')).toContainText('gebildet aus 1 von 12 Monaten');
       await ohneQuerlauf(page);
     });
 
-    test(`Register: Kennzeichen „Energieleistungskennzahl“ und Filter (${breite} px)`, async ({ page }) => {
+    // Konzept Auswerten a1 §6.4: zwei Gruppen statt Kennzeichen und Filter; die Fassung gilt erst ab 01.11.2026.
+    test(`Register: „Mit Bezugsbasis“ mit „Vergleich ab Dezember 2026“ (${breite} px)`, async ({ page }) => {
       await oeffne(page, 'person=IK&lage=freigegeben&seite=register', breite);
-      await expect(page.getByTestId('kennzahl-energieleistung')).toHaveText('Energieleistungskennzahl — Bezugsbasis BB-0001 · vorläufig.');
-      await page.getByLabel('nur Energieleistungskennzahlen', { exact: true }).check();
-      await expect(page.getByTestId('kennzahl-karte')).toHaveCount(1);
+      const gruppe = page.getByTestId('kennzahlen-mit');
+      await expect(gruppe.getByTestId('kennzahl-karte')).toHaveCount(1);
+      await expect(gruppe.getByText('Vergleich ab Dezember 2026', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('nur Energieleistungskennzahlen', { exact: true })).toHaveCount(0);
       await ohneQuerlauf(page);
     });
   });

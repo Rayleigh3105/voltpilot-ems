@@ -16,7 +16,7 @@ import { energieleistung } from './bezugsbasisAnlegen';
 import {
   deZahl,
   referenzperiodeText,
-  VERGLEICH_ZUM_REITER_BEZUGSBASIS,
+  VERGLEICH_WEG_ZUR_BEZUGSBASIS,
   type BezugsbasisVergleich,
   type BezugsbasisVergleichMonat,
   type BezugsbasisVergleichZeitraum,
@@ -127,7 +127,7 @@ export const KENNZAHL_WAHL_TITEL = UEMS_ENERGIELEISTUNGSKENNZAHL;
 export const KENNZAHL_WAHL_HINWEIS = `Nur Kennzahlen mit freigegebener ${UEMS_BEZUGSBASIS}. Der Bericht zitiert die Fassung, die am letzten Tag des Zeitraums gilt.`;
 export const FEHLT_KENNZAHL = 'Wählen Sie die Kennzahl.';
 /** S5 — ohne freigegebene Basis gibt es nichts zu sichern; der Satz des Konzepts und der Weg dorthin. */
-export const KEINE_ENERGIELEISTUNG = `${B.SAETZE.leistungsvergleich_ohne_stand}: für diese Geltung gibt es keine Kennzahl mit freigegebener ${UEMS_BEZUGSBASIS}. ${VERGLEICH_ZUM_REITER_BEZUGSBASIS}`;
+export const KEINE_ENERGIELEISTUNG = `${B.SAETZE.leistungsvergleich_ohne_stand}: für diese Geltung gibt es keine Kennzahl mit freigegebener ${UEMS_BEZUGSBASIS}. ${VERGLEICH_WEG_ZUR_BEZUGSBASIS}`;
 export const GELTUNG_ART_TITEL = 'Geltung';
 export const ZEITRAUM_ART_TITEL = 'Art des Zeitraums';
 export const ZEITRAUM_ART_WORT: Record<Bericht['zeitraum_art'], string> = { monat: 'Monat', jahr: 'Jahr', datengrundlage: 'Datengrundlage (zwölf Monate)' };

@@ -86,12 +86,12 @@ describe('AP-17 IP-20 · Reiter „Vergleich mit Bezugsbasis“', () => {
     expect((await screen.findByTestId('vergleich-stand')).textContent).toBe('Stand Nr. 1 vom 12.01.2028');
   });
 
-  it('R10: ohne Bezugsbasis nur der Leer-Satz mit Verweis auf den Reiter „Bezugsbasis“ — keine Tafel, kein Urteil', async () => {
+  it('R10: ohne Bezugsbasis nur der Leer-Satz mit dem Weg zur Bezugsbasis (Seite der Kennzahl) — keine Tafel, kein Urteil', async () => {
     leser(vergleichLeer());
     render(<BezugsbasisVergleich kennzahlId={KZ1} />);
     const leer = await screen.findByTestId('vergleich-leer');
     expect(leer.textContent).toContain('Noch keine Bezugsbasis.');
-    expect(leer.textContent).toContain('Reiter „Bezugsbasis“');
+    expect(leer.textContent).toContain('auf der Seite der Kennzahl fest („Bezugsbasis festlegen“)');
     expect(screen.queryByTestId('vergleich-monate')).toBeNull();
     expect(screen.queryByTestId('urteil')).toBeNull();
     expect(screen.queryByTestId('vergleich-stand')).toBeNull();

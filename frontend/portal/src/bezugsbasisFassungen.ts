@@ -49,8 +49,12 @@ export const grundWort = (g: string): string => ANPASSUNGSGRUND_WORT[g] ?? g;
 export type FassungZustand = 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt' | 'beendet';
 export const ZUSTAND_WORT: Record<FassungZustand, string> = { ...B.FREIGABE_WORT, beendet: 'beendet' };
 
-export const fassungZustand = (f: Pick<BezugsbasisFassung, 'freigabe_status' | 'gilt_bis'>): FassungZustand =>
-  f.freigabe_status === 'freigegeben' && f.gilt_bis ? 'beendet' : f.freigabe_status;
+/**
+ * Mit Stichtag `tag` ist eine freigegebene Fassung erst „beendet“, wenn ihr letzter Tag vor ihm liegt - eine, die noch
+ * gilt oder erst künftig gilt (mit schon bekanntem Ende), steht nie blass als beendet da (Review r3).
+ */
+export const fassungZustand = (f: Pick<BezugsbasisFassung, 'freigabe_status' | 'gilt_bis'>, tag?: string): FassungZustand =>
+  f.freigabe_status === 'freigegeben' && f.gilt_bis && (tag === undefined || f.gilt_bis < tag) ? 'beendet' : f.freigabe_status;
 
 export const zustandTon = (z: FassungZustand): 'ok' | 'warn' | 'tint' | 'off' =>
   z === 'freigegeben' ? 'ok' : z === 'abgelehnt' ? 'tint' : z === 'beendet' ? 'off' : 'warn';

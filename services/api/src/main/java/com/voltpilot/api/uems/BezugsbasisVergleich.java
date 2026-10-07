@@ -122,6 +122,37 @@ public class BezugsbasisVergleich {
     }
 
     /**
+     * Konzept Auswerten a1 (PR1): der erste Tag, an dem eine freigegebene Fassung der Bezugsbasis gilt, die der Leser ohne
+     * {@code basis} liest (die laufende, sonst die zuletzt beendete) - für „Vergleich ab …“, solange noch kein Monat
+     * verglichen wird. {@code null} ohne Bezugsbasis oder ohne freigegebene Fassung. Ohne Sichtprüfung: der Aufrufer hat
+     * die Kennzahl eben über {@link #vergleich} gelesen.
+     */
+    LocalDate ersteGeltung(UUID kennzahl) {
+        Basis basis = basis(kennzahl, null);
+        if (basis == null) {
+            return null;
+        }
+        return jdbc.queryForObject("SELECT min(gilt_ab) FROM bezugsbasis_fassung WHERE bezugsbasis_id = ? "
+                + "AND freigabe_status = 'freigegeben'", LocalDate.class, basis.id());
+    }
+
+    /**
+     * Konzept Auswerten a1 (PR2, Review r3 zu §10.6): der erste Tag der freigegebenen Fassung, die am Tag {@code tag} gilt
+     * (P4, dieselbe Wahl wie {@link #fassungAm}) - an ihm beginnt ein Zeitraum, der gegen diese eine Fassung rechnet.
+     * {@code null} ohne Bezugsbasis oder ohne Fassung an dem Tag. Ohne Sichtprüfung wie {@link #ersteGeltung}.
+     */
+    LocalDate geltungAm(UUID kennzahl, LocalDate tag) {
+        Basis basis = basis(kennzahl, null);
+        if (basis == null) {
+            return null;
+        }
+        return jdbc.query("SELECT gilt_ab FROM bezugsbasis_fassung WHERE bezugsbasis_id = ? "
+                + "AND freigabe_status = 'freigegeben' AND gilt_ab <= ? AND (gilt_bis IS NULL OR gilt_bis >= ?) "
+                + "ORDER BY fassung DESC LIMIT 1", (rs, i) -> rs.getDate(1).toLocalDate(), basis.id(), Date.valueOf(tag),
+                Date.valueOf(tag)).stream().findFirst().orElse(null);
+    }
+
+    /**
      * Ein Monat für die Auffälligkeits-Naht (AP-18 IP-15, A1): die Vergleichszeile des Lesers gegen die Fassung am letzten
      * Tag des Monats (P4), die zitierte Bezugsbasis und die Nummer dieser Fassung ({@code null}, wenn keine gilt).
      */
@@ -167,9 +198,24 @@ public class BezugsbasisVergleich {
 
     private ZielVergleich lesen(UUID id, KennzahlService.BasisKennzahl k, String basisText, YearMonth von,
             YearMonth bis) {
-        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
         KennzahlDto.Werte gelesen = werte.werte(id, Set.of("periode", "von", "bis"), "monat",
                 von.minusMonths(1).atDay(1).toString(), bis.atEndOfMonth().toString(), null);
+        return lesen(id, k, gelesen, basisText, von, bis);
+    }
+
+    /**
+     * Konzept Auswerten a1 (PR1): derselbe Vergleich wie {@link #vergleich} ohne Parameterprüfung, über Monatswerte, die
+     * der Aufrufer für die Kennzahl {@code k} schon gelesen hat ({@code gelesen} deckt {@code von − 1} … {@code bis}) -
+     * die Auswertung der Liste liest so je Kennzahl einmal statt dreimal.
+     */
+    BezugsbasisVergleichDto.Vergleich vergleichUeber(KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen,
+            YearMonth von, YearMonth bis) {
+        return lesen(k.zeile().id(), k, gelesen, null, von, bis).vergleich();
+    }
+
+    private ZielVergleich lesen(UUID id, KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen, String basisText,
+            YearMonth von, YearMonth bis) {
+        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
         Map<String, KennzahlDto.Wert> jeMonat = new HashMap<>();
         gelesen.werte().forEach(w -> jeMonat.put(w.schluessel(), w));
         Einheiten einheiten = einheiten(k, gelesen.kennzahl().einheit());

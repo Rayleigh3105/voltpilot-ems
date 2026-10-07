@@ -10,7 +10,10 @@
  * Kachel ohne Grundlage trägt einen ehrlichen Satz (kein Tarif, keine Lastdaten).
  */
 import type { PortfolioKpi } from './api';
+import { urteilAnsicht } from './bezugsbasisUrteil';
 import { fmtNum } from './format';
+import { zielStandSatz } from './kennzahlListe';
+import { einheitWort } from './uemsKennzahl';
 
 /** Der Strich für einen fehlenden Wert (U+2013), ohne Einheit - überall gleich. */
 const STRICH = '–';
@@ -52,6 +55,8 @@ export interface LeitKachel {
   leer: boolean;
   stand: string;
   ziel: string | null;
+  /** Der Stand des Energieziels über seine Zielperiode, getrennt vom Urteil des Monats (Konzept Auswerten a1 §10.8). */
+  zielStand: string | null;
   trend: Trend | null;
   urteil: Urteil | null;
 }
@@ -130,18 +135,7 @@ function trend(jetzt: number | null, frueher: number | null, bezug: string): Tre
   return { prozent: fmtNum(Math.abs(delta), '', 0), richtung: delta > 0 ? 'rauf' : 'runter', bezug };
 }
 
-function urteilAnsicht(u: string | null | undefined): Urteil | null {
-  switch (u) {
-    case 'besser':
-      return { wort: 'besser als die Bezugsbasis', ton: 'ok' };
-    case 'schlechter':
-      return { wort: 'über der Bezugsbasis', ton: 'warn' };
-    case 'im_rahmen':
-      return { wort: 'im Rahmen der Bezugsbasis', ton: 'neutral' };
-    default:
-      return null;
-  }
-}
+const grossAnfang = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
 
 function leitKachel(l: PortfolioKpi['leit']): LeitKachel | null {
   if (!l) {
@@ -156,11 +150,15 @@ function leitKachel(l: PortfolioKpi['leit']): LeitKachel | null {
     kennzeichen: l.kennzeichen,
     name: l.name,
     wert: l.wert == null ? STRICH : fmtNum(l.wert, '', 2),
-    einheit: l.wert == null ? '' : (l.einheit ?? ''),
+    // Dieselben Wörter wie die Karte der Kennzahl (§6.1 Regel 9): „kWh je kg“, nicht „kWh/kg“.
+    einheit: l.wert == null || !l.einheit ? '' : einheitWort(l.einheit),
     leer: l.wert == null,
     stand: `Stand ${periodeWort(l.jahr, l.monat)}`,
     ziel,
+    // Unter der Ziel-Zeile: „Bisher 2,2 % mehr (1 von 10 Monaten)“ - der Satz der Kennzahl-Karte, groß begonnen.
+    zielStand: l.ziel_stand ? grossAnfang(zielStandSatz(l.ziel_stand)) : null,
     trend: vormonatsTrend(l),
+    // Das Urteil des Monats - dieselbe Ableitung und dieselben Wörter wie die Karte der Kennzahl (§10.8).
     urteil: urteilAnsicht(l.urteil),
   };
 }

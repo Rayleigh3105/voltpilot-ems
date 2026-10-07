@@ -2775,6 +2775,110 @@ export interface Kennzahl {
     freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
     vorlaeufig: boolean;
   } | null;
+  /**
+   * Konzept Auswerten a1 §6.4 (PR1, `kennzahl.md` „Die Auswertung an der Liste“): nur mit `api.kennzahlen('auswertung')`,
+   * nur an einer nicht archivierten Kennzahl mit Monatswerten. Dieselbe Ableitung trägt die Leitkachel der Übersicht.
+   */
+  auswertung?: KennzahlAuswertung;
+  /**
+   * Nur an `GET /api/v1/kennzahlen/{id}?mit=auswertung`: ob sie die Leitkennzahl der Übersicht ist - dieselbe Wahl wie
+   * `leit` der Übersicht und `leitkennzahl` der Liste (§10.8).
+   */
+  leitkennzahl?: boolean;
+}
+
+/** Das Urteil der Operation `vergleich` (bezugsbasis.md §8, U1–U6). */
+export type BezugsbasisUrteil = 'besser' | 'schlechter' | 'im_rahmen' | 'ohne_urteil' | 'nicht_anwendbar';
+/** Warum ein Monat kein Urteil trägt (bezugsbasis.md §9 `grund`). */
+export type BezugsbasisGrund =
+  | 'basis_fehlt' | 'basis_beendet' | 'zu_wenig_perioden' | 'variable_fehlt' | 'variable_ausserhalb'
+  | 'variablen_abhaengig' | 'keine_werte' | 'periode_nicht_zu_ende';
+export type BezugsbasisRichtung = 'mehr' | 'weniger' | 'gleich';
+
+/** OpenAPI `KennzahlAuswertung`: wie eine Kennzahl steht - gerechnet ist alles auf dem Server. */
+export interface KennzahlAuswertung {
+  /** Der letzte abgeschlossene Monat `JJJJ-MM` in der Zone der Geltung - für ihn gilt das Urteil. */
+  monat: string;
+  /** Der jüngste Monatswert der zwölf Monate bis `monat`; kann älter sein als `monat`. */
+  wert: { periode: string; wert: string; einheit: string | null; zustand: string | null; richtung: string | null } | null;
+  /** Operation `roh` gegen denselben Monat ein Jahr davor - nie ein Urteil. */
+  vorjahr: KennzahlAuswertungRoh | null;
+  /** PR2: Operation `roh` gegen den Monat davor - nie ein Urteil. */
+  vormonat: KennzahlAuswertungRoh | null;
+  /** Die zwölf Monate bis `monat`, der älteste zuerst. */
+  monate: KennzahlAuswertungMonat[];
+  /** `null` ohne freigegebene Bezugsbasis. */
+  vergleich: {
+    bezugsbasis: string | null;
+    urteil: BezugsbasisUrteil;
+    delta_prozent: string | null;
+    band_prozent: string | null;
+    richtung: BezugsbasisRichtung | null;
+    grund: BezugsbasisGrund | null;
+    satz: string | null;
+    /** Solange für `monat` noch keine Fassung gilt: der erste Monat, dessen letzter Tag sie trägt. */
+    erster_monat: string | null;
+  } | null;
+  /**
+   * PR2 (§10.6): der Vergleich über die Monate der zwölf, für die schon eine Fassung gilt (Operation `zeitraum`,
+   * Σ ÷ Σ) - nie davor. `null` ohne Bezugsbasis oder solange noch keine Fassung gilt.
+   */
+  zeitraum: KennzahlAuswertungZeitraum | null;
+  energieziel: KennzahlAuswertungZiel | null;
+}
+
+/** OpenAPI `KennzahlAuswertungRoh`: die rohe Veränderung gegen den Monat `periode` - nie ein Urteil (VG3). */
+export interface KennzahlAuswertungRoh {
+  periode: string;
+  wert: string;
+  delta_prozent: string;
+  richtung: BezugsbasisRichtung;
+}
+
+/** OpenAPI `KennzahlAuswertungMonat`: ein Monat der zwölf. Die Mengen rechnet der Server exakt (ungerundeter Text). */
+export interface KennzahlAuswertungMonat {
+  periode: string;
+  wert: string | null;
+  delta_prozent: string | null;
+  urteil: BezugsbasisUrteil | null;
+  grund: BezugsbasisGrund | null;
+  /** PR2: der erwartete Kennzahlwert (erwartet ÷ Nenner). */
+  erwartet_wert: string | null;
+  /** PR2: gemessen − erwartet in der Einheit des Zählers; positiv = mehr als erwartet. */
+  abweichung: string | null;
+  /** PR2: die Abweichungen der Monate mit Urteil bis hierher zusammengezählt; `null` an einem Monat ohne Urteil. */
+  zusammen: string | null;
+  /** PR2: derselbe Monat ein Jahr davor mit der rohen Veränderung (nie ein Urteil); `null` ohne beide Werte. */
+  vorjahr: KennzahlAuswertungRoh | null;
+}
+
+/** OpenAPI `KennzahlAuswertungZeitraum`: der Vergleich über `von` … `bis` (Σ gemessen ÷ Σ erwartet, U5). */
+export interface KennzahlAuswertungZeitraum {
+  von: string;
+  bis: string;
+  delta_prozent: string | null;
+  band_prozent: string | null;
+  richtung: BezugsbasisRichtung | null;
+  urteil: BezugsbasisUrteil;
+  grund: BezugsbasisGrund | null;
+  /** „x von y“ Monaten mit Vergleich. */
+  monate: string | null;
+  satz: string;
+}
+
+/** OpenAPI `KennzahlAuswertungZiel`: das offene Energieziel mit dem Stand seiner Summe (Z3). */
+export interface KennzahlAuswertungZiel {
+  id: string;
+  kennzeichen: string;
+  /** Dezimaltext, negativ = weniger als erwartet. */
+  zielwert_prozent: string;
+  /** `JJJJ-MM/JJJJ-MM`. */
+  zielperiode: string;
+  delta_prozent: string | null;
+  richtung: BezugsbasisRichtung | null;
+  urteil: BezugsbasisUrteil | null;
+  monate_bewertbar: number;
+  monate_soll: number;
 }
 
 // ---------------------------------------------------------------------------------------- Maßnahmen (UEMS AP-18)
@@ -5919,6 +6023,26 @@ export interface MessstelleRegisterZeile {
   berechnung: MessstelleRegisterBerechnung | null;
   /** UEMS AP-16 IP-19: eingelöste Messbedarfe — die Messstelle ist „geplant für EE-…“. Ältere Antworten ohne Feld = keiner. */
   geplant_fuer_einsaetze?: { id: string; kennzeichen: string; name: string }[];
+  /**
+   * Messen PR5: NUR mit `letzterMonat: true` in der Anfrage - der letzte vollständige Monat und sein Wert, genau der
+   * Schritt von `…/werte?raster=monat`. Ohne die Anfrage fehlt das Feld.
+   */
+  letzter_monat?: MessstelleRegisterMonat;
+}
+
+/**
+ * Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2): der Monat vor dem des Stichtags in
+ * der Zone ihres Standorts. `wert` ist der Schritt, den `GET …/{kennzeichen}/werte?raster=monat` für ihn zeigt - eine
+ * Fläche spricht ihn wie jeden anderen Schritt (Zustand, Kennzeichen, Grund) und rechnet nichts nach; `menge: null` ist
+ * nie 0. `wert` ist `null` NUR mit `ausserhalb_zugriff` (ein Eingang einer berechneten Messstelle liegt außerhalb).
+ */
+export interface MessstelleRegisterMonat {
+  /** JJJJ-MM, z. B. `2026-09`. */
+  monat: string;
+  /** Die Zone, in der `wert.von`/`wert.bis` den Monat schneiden. */
+  zeitzone: string;
+  wert: MessstelleWerteWert | null;
+  ausserhalb_zugriff?: string;
 }
 
 export interface MessstelleRegisterFakt {
@@ -5991,6 +6115,11 @@ export interface MessstellenRegisterAnfrage {
   geplantFuerEinsatz?: boolean;
   /** Ein Tag (`2026-11-20`); fehlt = jetzt. */
   stichtag?: string;
+  /**
+   * Messen PR5: jede Zeile trägt `letzter_monat` (kein Filter). Kostet einen Lesezug je Messstelle - nur setzen, wo der
+   * Monatswert gezeigt wird.
+   */
+  letzterMonat?: boolean;
 }
 
 /**
@@ -9137,8 +9266,13 @@ export interface PortfolioLeitkennzahl {
   ziel_wortlaut: string | null;
   /** Trend des jüngsten Werts zum Vormonat in Prozent; fehlt ohne Vormonat. */
   trend_prozent?: number | null;
-  /** Urteil gegen die Bezugsbasis: besser · schlechter · im_rahmen · …; fehlt ohne Vergleich. */
+  /**
+   * Urteil gegen die Bezugsbasis im letzten abgeschlossenen Monat: besser · schlechter · im_rahmen · …; fehlt ohne
+   * Vergleich. Dieselbe Ableitung wie die Karte der Kennzahl (Konzept Auswerten a1 §10.8).
+   */
   urteil?: string | null;
+  /** Der Stand des Energieziels über seine Zielperiode - getrennt vom Urteil des Monats (§10.8). */
+  ziel_stand?: KennzahlAuswertungZiel | null;
 }
 
 export const api = {
@@ -10949,8 +11083,17 @@ export const api = {
     request<BezugsdatenVorlage>('/api/v1/bezugsdaten/vorlagen', { method: 'POST', body: JSON.stringify(body) }),
 
   /** Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen (AP-11 IP-5); Ablehnungen tragen `KennzahlFehlerCode`. */
-  kennzahlen: () => request<{ kennzahlen: Kennzahl[]; ausserhalb_zugriff?: { anzahl: number; text: string } }>(`/api/v1/kennzahlen`),
-  kennzahl: (id: string) => request<Kennzahl>(`/api/v1/kennzahlen/${id}`),
+  /** Mit `'auswertung'` trägt jede auswertbare Kennzahl ihre `auswertung` (Konzept Auswerten a1, PR1). */
+  kennzahlen: (mit?: 'auswertung') =>
+    request<{
+      kennzahlen: Kennzahl[];
+      ausserhalb_zugriff?: { anzahl: number; text: string };
+      /** Nur mit `mit=auswertung`: die Kennzahl der Leitkachel der Übersicht (§10.8); fehlt ohne eine. */
+      leitkennzahl?: string;
+    }>(`/api/v1/kennzahlen${mit ? `?mit=${mit}` : ''}`),
+  /** Konzept Auswerten a1 (PR2): mit `mit = 'auswertung'` trägt die Kennzahl dieselbe Auswertung wie in der Liste. */
+  kennzahl: (id: string, mit?: 'auswertung') =>
+    request<Kennzahl>(`/api/v1/kennzahlen/${id}${mit ? `?mit=${mit}` : ''}`),
   /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an. */
   kennzahlAnlegen: (body: KennzahlAnfrage) =>
     request<Kennzahl>(`/api/v1/kennzahlen`, { method: 'POST', body: JSON.stringify(body) }),

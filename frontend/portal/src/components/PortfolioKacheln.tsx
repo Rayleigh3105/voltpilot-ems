@@ -57,6 +57,7 @@ function Leit({ leit, datenlage }: { leit: LeitKachel | null; datenlage: Datenla
     <Kachel id="pk-leit" name={leit.name} icon="activity" ton="neutral" groesse="breit" lead>
       <Gross wert={leit.wert} einheit={leit.einheit || undefined} />
       {leit.ziel && <p className="vp-k-sub">{leit.ziel}</p>}
+      {leit.zielStand && <p className="vp-k-sub">{leit.zielStand}</p>}
       <p className="vp-k-sub">{leit.stand}</p>
       <div className="vp-pk-marken">
         {leit.urteil && <Marke art={leit.urteil.ton}>{leit.urteil.wort}</Marke>}

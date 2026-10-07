@@ -115,7 +115,8 @@ describe('Wiedervorlage w1 · Einträge: Aufgabe, Grund aus der Herleitung, Bere
   it('der Schritt öffnet das Objekt mit offenem Entscheid, auch Audit, Managementbewertung und Messbedarf', () => {
     const l = arbeitsliste(wvR12());
     const hash = (kz: string) => [...l.ueberfaellig, ...l.bald].find((e) => e.kennzeichen === kz)!.sprung!.hash;
-    expect(hash('BB-0002')).toBe(`#/portfolio/kennzahlen/${KZ.stromMontageHalle2}?entscheid=bezugsbasis_ueberpruefung`);
+    // Konzept Auswerten a1 §6.6: „Bestätigen oder neu fassen“ öffnet die Bezugsbasis eine Ebene unter der Kennzahl.
+    expect(hash('BB-0002')).toBe(`#/portfolio/kennzahlen/${KZ.stromMontageHalle2}/bezugsbasis?entscheid=bezugsbasis_ueberpruefung`);
     expect(hash('D-0001')).toBe(`#/portfolio/energiemanagement/dokumente/${DOK.d1}?entscheid=dokument_ueberpruefung`);
     expect(hash('BR-2028-0001')).toBe('#/portfolio/berichte/BR-2028-0001?entscheid=bericht_anstoss');
     expect(hash('BR-2027-0001')).toBe('#/portfolio/bewertung?entscheid=bewertung_ueberpruefung');

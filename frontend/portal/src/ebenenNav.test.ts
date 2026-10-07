@@ -1038,6 +1038,13 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
     }
     expect(hashForRoute(kennzahlRoute('KZ-0001', st))).toBe(`#/standort/${st}/kennzahlen/KZ-0001`);
     expect(parseRoute(`#/standort/${st}/kennzahlen/KZ-0001`)).toEqual(kennzahlRoute('KZ-0001', st));
+    // Konzept Auswerten a1 §6.6: die Bezugsbasis eine Ebene unter der Kennzahl - am Unternehmen und am Standort.
+    expect(hashForRoute(kennzahlRoute('KZ-0001', st, 'bezugsbasis'))).toBe(`#/standort/${st}/kennzahlen/KZ-0001/bezugsbasis`);
+    expect(parseRoute(`#/standort/${st}/kennzahlen/KZ-0001/bezugsbasis`)).toEqual(kennzahlRoute('KZ-0001', st, 'bezugsbasis'));
+    expect(hashForRoute(kennzahlRoute('KZ-0001', null, 'bezugsbasis'))).toBe('#/portfolio/kennzahlen/KZ-0001/bezugsbasis');
+    expect(parseRoute('#/portfolio/kennzahlen/KZ-0001/bezugsbasis')).toEqual(kennzahlRoute('KZ-0001', null, 'bezugsbasis'));
+    // Ein unbekannter dritter Abschnitt bleibt die Seite der Kennzahl.
+    expect(parseRoute('#/portfolio/kennzahlen/KZ-0001/unbekannt')).toEqual(kennzahlRoute('KZ-0001'));
     expect(hashForRoute(berichtRoute('BR-2026-0001', st))).toBe(`#/standort/${st}/berichte/BR-2026-0001`);
     expect(parseRoute(`#/standort/${st}/berichte/BR-2026-0001`)).toEqual(berichtRoute('BR-2026-0001', st));
     // Die Aliase: die Welten des Unternehmens bleiben, wo sie waren — niemandes Lesezeichen bricht.

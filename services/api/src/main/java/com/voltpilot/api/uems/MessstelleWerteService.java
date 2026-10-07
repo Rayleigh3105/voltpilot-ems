@@ -241,10 +241,42 @@ public class MessstelleWerteService {
         return werte(lesen(tenant, m, form, versionen), form);
     }
 
+    /**
+     * Der Wert eines Monats, wie ihn eine Fläche neben anderen Angaben zeigt (Messen PR5, Konzept §10.2): GENAU der
+     * Schritt, den {@code GET …/werte?raster=monat} für diesen Monat in der neuesten Version zeigt - dieselbe Regel,
+     * dieselben Kennzeichen, dieselbe Herkunft. Ohne {@code zuordnung} (sie sagt etwas über die Box im Zeitraum, nicht
+     * über die Zahl) und ohne die Frist der Route: ein Monat jenseits der Aufbewahrung ist hier „keine Werte“ wie für
+     * jeden Leser im Haus. {@code wert} ist {@code null} NUR, wenn ein Eingang einer berechneten Messstelle im Monat
+     * außerhalb des Zugriffs liegt (AP-03 R-A3) - dann fehlt die Zahl ganz und {@code ausserhalbZugriff} ist gesetzt.
+     */
+    public record Monatswert(String zeitzone, MessstelleWerteDto.Wert wert, String ausserhalbZugriff) {}
+
+    /**
+     * Der {@link Monatswert} der Messstelle {@code m} im Monat {@code monat} (Tage in der Zone, die die Werte-Regel für
+     * sie wählt) im Kundenbereich des Aufrufers. {@code eingaenge} ist der Zaun der Routen über die Eingänge einer
+     * berechneten Messstelle.
+     */
+    public Monatswert monatswert(Messstelle m, YearMonth monat, EingaengeImZugriff eingaenge) {
+        UUID tenant = TenantContext.get();
+        Form form = pruefe(() -> MessstelleWerteRegeln.form(Raster.MONAT.wort(), monat.atDay(1).toString(),
+                monat.atEndOfMonth().toString(), null));
+        Lesung l = lesen(tenant, m, form, versionen);
+        if (ausserhalb(l, eingaenge)) {
+            return new Monatswert(l.zone().id().getId(), null, RechtPruefung.AUSSERHALB_ZUGRIFF);
+        }
+        return new Monatswert(l.zone().id().getId(), schritte(l, form).get(0), null);
+    }
+
     private MessstelleWerteDto.Werte werte(Lesung l, Form form) {
         Zeitraum z = l.z();
         Zone zone = l.zone();
+        return new MessstelleWerteDto.Werte(messstelle(l), z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
+                MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
+                quellen(l), schritte(l, form), l.ablesung() != null ? null : zuordnung(l.imZeitraum(), z));
+    }
 
+    /** Die Schritte des Zeitraums in der angefragten Version, je mit Herkunft. */
+    private List<MessstelleWerteDto.Wert> schritte(Lesung l, Form form) {
         // Eine Version, die es an keinem Schritt gibt, ist eine benannte Ablehnung — nie leer, nie die höchste.
         int hoechste = 1;
         for (Map.Entry<Schritt, Deckung> e : l.deckung().entrySet()) {
@@ -261,10 +293,7 @@ public class MessstelleWerteService {
         for (Map.Entry<Schritt, Deckung> e : l.deckung().entrySet()) {
             werte.add(schritt(l, e.getKey(), e.getValue(), form.version(), herkuenfte));
         }
-
-        return new MessstelleWerteDto.Werte(messstelle(l), z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
-                MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
-                quellen(l), List.copyOf(werte), l.ablesung() != null ? null : zuordnung(l.imZeitraum(), z));
+        return List.copyOf(werte);
     }
 
     /**
@@ -688,7 +717,7 @@ public class MessstelleWerteService {
                 }
             }
             return ohneReihe(r, OhneZahl.KEINE_QUELLE, ohneZuordnung
-                    ? List.of("Ablesezeitraum ohne Monatszuordnung") : List.of());
+                    ? List.of(ErgebnisZustand.ABLESEZEITRAUM_OHNE_MONAT) : List.of());
         }
         if (l.spur() != null) {
             return berechnet(r, l.spur().get(s.von()), l.spurVersionen().getOrDefault(s.von(), List.of()), z, version,
