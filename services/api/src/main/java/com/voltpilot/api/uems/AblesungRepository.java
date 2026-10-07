@@ -7,7 +7,11 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -64,6 +68,25 @@ public class AblesungRepository {
                 rs.getTimestamp("zeitpunkt").toInstant(), rs.getInt("fassung"), rs.getBigDecimal("stand"),
                 rs.getObject("zuordnung_monat", LocalDate.class), rs.getString("woher"), json(rs.getString("urheber")),
                 rs.getString("korrektur"), rs.getTimestamp("eingetragen_am").toInstant()), tenant, quelle);
+    }
+
+    /**
+     * Wie {@link #werte(UUID, UUID)} für viele Quellen in EINEM Zug (Kostenstellen-Sicht, Messen PR4): je Quelle die
+     * Ablesungen in ihrer neuesten Fassung, nach Zeitpunkt.
+     */
+    public Map<UUID, List<Wert>> werte(UUID tenant, Collection<UUID> quellen) {
+        Map<UUID, List<Wert>> raus = new HashMap<>();
+        if (quellen.isEmpty()) return raus;
+        jdbc.query("SELECT DISTINCT ON (quelle_id, zeitpunkt) * FROM messstelle_ablesung_fassung "
+                + "WHERE tenant_id = ? AND quelle_id = ANY(?) ORDER BY quelle_id, zeitpunkt, fassung DESC", rs -> {
+                    UUID quelle = rs.getObject("quelle_id", UUID.class);
+                    raus.computeIfAbsent(quelle, q -> new ArrayList<>()).add(new Wert(quelle,
+                            rs.getTimestamp("zeitpunkt").toInstant(), rs.getInt("fassung"), rs.getBigDecimal("stand"),
+                            rs.getObject("zuordnung_monat", LocalDate.class), rs.getString("woher"),
+                            json(rs.getString("urheber")), rs.getString("korrektur"),
+                            rs.getTimestamp("eingetragen_am").toInstant()));
+                }, tenant, quellen.toArray(UUID[]::new));
+        return raus;
     }
 
     public List<Wert> fassungen(UUID tenant, UUID quelle) {

@@ -302,6 +302,56 @@ class AblesungApiTest {
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' AND bis IS NOT NULL",Integer.class,w.mandant())).isEqualTo(1);
     }
 
+    /**
+     * Stichtag-Grenze (Auswerten a4): Ablesungen-Liste und Werte der Route zeigen nie eine Ablesung nach heute; steht die
+     * Uhr wieder danach, ist alles da. Schreiben lässt sich eine solche Ablesung nicht - hier entsteht sie, weil die Uhr
+     * beim Schreiben später steht als beim Lesen (wie der Bühnen-Bestand der Prüfumgebung).
+     */
+    @Test
+    void nachHeuteZeigenListeUndWerteKeineAblesung() throws Exception {
+        Welt w=welt(); anfang(w);
+        var zwischen=java.time.Clock.fixed(java.time.Instant.parse("2026-10-20T10:00:00Z"),java.time.ZoneOffset.UTC);
+        ablesungen.uhrStellen(zwischen); werte.uhrStellen(zwischen);
+        JsonNode liste=ok(ruf(w.jonas(),HttpMethod.GET,PFAD,null),200).body();
+        assertThat(liste).hasSize(1);
+        assertThat(liste.get(0).path("stand").decimalValue()).isEqualByComparingTo("48211");
+        JsonNode oktober=monat(w,"2026-10-01","2026-10-31",null);
+        assertThat(oktober.path("menge").isNull()).isTrue();
+        assertThat(oktober.path("zustand").asText()).isEqualTo("keine Werte");
+        uhren();
+        assertThat(ok(ruf(w.jonas(),HttpMethod.GET,PFAD,null),200).body()).hasSize(2);
+        assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("1240");
+    }
+
+    /**
+     * Stichtag-Grenze (Review r3 zu #1425): in Produktion verbirgt sie nichts. Ein Ablesezeitraum im laufenden Monat ist
+     * dem laufenden Monat zugeordnet - Monat und Jahr zeigen ihn sofort, nicht erst nach dem Monatsende.
+     */
+    @Test
+    void derLaufendeMonatEinerAblesungBleibtSichtbar() throws Exception {
+        var heute=java.time.Clock.fixed(java.time.Instant.parse("2026-10-26T12:00:00Z"),java.time.ZoneOffset.UTC);
+        ablesungen.uhrStellen(heute); werte.uhrStellen(heute); messstellen.uhrStellen(heute);
+        Welt w=welt();
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","48.211")),200);
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2026-10-25T08:00:00+02:00","stand","48.900")),200);
+        assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("689");
+        JsonNode jahr=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=jahr&von=2026-01-01"
+                +"&bis=2026-12-31",null),200).body().path("werte").get(0);
+        assertThat(jahr.path("menge").decimalValue()).isEqualByComparingTo("689");
+    }
+
+    /** Stichtag-Grenze (Auswerten a4): eine Ablesung nach dem Lauf beendet keine Lücke, die zum Lauf offen ist. */
+    @Test
+    void eineAblesungNachDemLaufBeendetKeineLuecke() throws Exception {
+        Welt w=welt(); anfang(w);
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2027-02-05T08:00:00+01:00","stand","51.000")),200);
+        luecken.lauf(java.time.Instant.parse("2027-01-10T00:00:00Z"));
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' "
+                + "AND bis IS NULL",Integer.class,w.mandant())).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' "
+                + "AND bis IS NOT NULL",Integer.class,w.mandant())).isZero();
+    }
+
     @Test
     void zweiZuordnungenSummierenDenMonatOhneTagesverteilung() throws Exception {
         Welt w=welt(); anfang(w);
