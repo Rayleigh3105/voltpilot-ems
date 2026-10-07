@@ -53,8 +53,8 @@ function Wirt() {
       bereichDa
       messstelleId={route.messstelleId ?? null}
       werte={parseMessstelleWerte(hash)}
-      onOeffnen={(m) => zu(hashForRoute(messstelleRoute(m)))}
-      onWerte={(m, periode) => zu(sprungziel({ art: 'messstelle', id: m, periode })!.hash)}
+      // Wie `App.tsx`: die Reihe öffnet die Seite - mit „Stand am …“ an genau diesem Tag.
+      onOeffnen={(m, periode) => zu(periode ? sprungziel({ art: 'messstelle', id: m, periode })!.hash : hashForRoute(messstelleRoute(m)))}
       onWerteZeitraum={(periode) => {
         if (!route.messstelleId) return;
         const jetzt = parseMessstelleWerte(window.location.hash);

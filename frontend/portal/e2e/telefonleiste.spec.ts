@@ -127,7 +127,7 @@ test('Telefon, heute: die Kachel „Messen" führt auf „Unternehmen › Messst
   await page.locator('.vp-bottombar').getByRole('button', { name: 'Messen' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
   await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Messen');
-  await expect(page.locator('[data-testid="messstellen"] .vp-ms-karte')).toHaveCount(22);
+  await expect(page.locator('[data-testid="messstellen"] [data-testid="messstelle-reihe"]')).toHaveCount(22);
   // N5: Kostenstellen und Prozesse stehen in derselben Reihe, sobald ihre Kataloge da sind.
   await expect.poll(() => sichtbareReiter(page)).toEqual(['Messstellen', 'Kostenstellen', 'Prozesse', 'Bezugsgrößen']);
 });
