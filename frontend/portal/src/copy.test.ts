@@ -103,6 +103,7 @@ import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE
 import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
+import * as NB from './nachweisBerichte';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
 import * as BD from './berichtDialoge';
 import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
@@ -1835,8 +1836,12 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
     'berichtDialoge.ts',
     'components/BerichtAnlegenDialog.tsx',
     'components/BerichtFreigebenDialog.tsx',
+    // Der Vergleich bleibt der Dialog der energetischen Bewertung (BewertungStand); die Berichte selbst vergleichen in der Karte.
     'components/BerichtVergleichDialog.tsx',
-    'components/AnstossVerwerfenDialog.tsx',
+    // Konzept Nachweisen n1, Runde 2 (§6.4): Liste, Seite und Blätter der Berichte in Nachweisen.
+    'nachweisBerichte.ts',
+    'components/nachweisen/BerichteListe.tsx',
+    'components/nachweisen/BerichtBlaetter.tsx',
   ];
   const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
   const da = (t: string | null | undefined): t is string => typeof t === 'string';
@@ -1888,6 +1893,20 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
         }
       }
       for (const v of BS.verlaufDerStaende(detail)) out.push(v.titel, v.zeile, ...[v.anlass, v.ersetzt].filter(da), ...v.anstoesse);
+      // Konzept Nachweisen n1 (PR 3): was die Liste, die Seite und die Blätter der Berichte heute zeigen (Review r1, P3-9:
+      // geprüft wurden sonst nur die alten Ausgaben von `berichtSeite.ts`).
+      const bild = NB.berichteBild([berichtAm(jetzt)]);
+      for (const z of [...bild.wartet, ...bild.gelten, ...bild.abgeloest, ...bild.archiviert]) out.push(z.titel, z.stand, ...[z.unter, z.verb].filter(da));
+      const status = NB.seitenStatus(detail, null);
+      out.push(status.text, ...[status.sub].filter(da));
+      out.push(...NB.stufen(detail).flatMap((x) => [x.titel, x.datum].filter(da)));
+      out.push(...NB.korrekturZeilen(detail.anstoesse, 'Europe/Berlin').flatMap((z) => [z.etikett, z.wert]));
+      const grund = NB.aenderungsGruende(NB.offeneAnstoesse(detail), entwurfAm(jetzt).abzug as Record<string, unknown>, 'Europe/Berlin');
+      if (grund) out.push(grund.kurz, grund.titel, ...grund.zeilen.flatMap((z) => [z.etikett, z.wert]));
+      for (const s of detail.staende) {
+        out.push(NB.jaAntwort(s.nr + 1), NB.neinAntwort(s.nr));
+        for (const w of NB.entscheidWerte(standAm(s.nr, jetzt), entwurfAm(jetzt))) out.push(w.name, ...[w.alt, w.neu, w.einheit].filter(da));
+      }
     }
     const spaet = Date.parse('2036-11-02T10:00:00+01:00');
     try {
@@ -1912,6 +1931,9 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
   it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
     const alle = laufzeit();
     expect(alle.length).toBeGreaterThan(300);
+    // Die Ausgaben von Nachweisen (PR 3) stehen mit darin.
+    expect(alle).toContain('Daten geändert');
+    expect(alle).toContain('Nein, Stand 1 behalten');
     expect(alle).toContain('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
     expect(alle).toContain('heute: Montage Linie M1 (Halle 2)');
@@ -1997,6 +2019,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
+  'components/nachweisen/BerichtBlaetter.tsx', // neu: „Bericht erstellen“ wählt Kennzahlen ab bzw. die eine Kennzahl des Leistungsvergleichs (Nachweisen n1, §6.4)
   'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)

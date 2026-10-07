@@ -2874,5 +2874,33 @@
         ]
       }
     }
-  }
+  },
+  "umbauten": [
+    {
+      "entscheid": "Konzept Nachweisen n1, Runde 2, §6.4, Entscheide 15 und 16 (freigegeben 07.10.2026): die Berichte sind eine Fläche von Nachweisen - Liste mit Zählern und einer Zeile je Bericht, Seite mit Status-Zeile, Stufen und Weitergeben, nach einer Korrektur EINE Entscheidung mit zwei Antworten statt Banner, Vergleich und Verwerfen je Anstoß.",
+      "commit": "fm/vp-nachweisen-n2b-pr3",
+      "ersetzt": "die Fortschreibungen von pages/BerichtSeite.tsx aus Wiedervorlage w1 (Entwurf vergleichen) und Nachweisen PR0 (PDF und CSV am Stand)",
+      "dateien": {
+        "pages/BerichtSeite.tsx": {
+          "nachher": [
+            "7b8e4723f1fd98ad1ba255e992571ece8a8a86b86bf0e52e89dbf3b21763ae30",
+            "b22408f2002143b9f6bd547c6b7a682b8dc9bb5daec08beae98935bef2d69e50",
+            "c2264c51208c2a065a6fdd612a8e3b49151553122b3f2fe358f528d04bc84fed",
+            "8befd4c1a7137d2ff2590e767dbf7f38afe6d11a65489b7ccc87ddb4c29b1bc8",
+            "b22408f2002143b9f6bd547c6b7a682b8dc9bb5daec08beae98935bef2d69e50",
+            "1196431c4a589296fc706e0c2510eec94b8b90bb9dd9c3f3d4f70f60242e72aa"
+          ],
+          "wohin": "Rückweg im Kopf (NwKopf), PDF/CSV in Weitergeben, Vergleich und Verwerfen in der Karte „Neuen Stand freigeben?“ und den Blättern (components/nachweisen/BerichtBlaetter.tsx)"
+        },
+        "pages/BerichtePage.tsx": {
+          "nachher": [],
+          "wohin": "die Liste ist components/nachweisen/BerichteListe.tsx („Erstellen“, eine Zeile je Bericht mit „PDF“)"
+        },
+        "components/AnstossVerwerfenDialog.tsx": {
+          "entfaellt": true,
+          "wohin": "Blatt „Stand n behalten“ (BerichtBehaltenBlatt): ein Grund für alle offenen Anstöße"
+        }
+      }
+    }
+  ]
 }

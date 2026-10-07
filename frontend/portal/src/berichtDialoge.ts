@@ -108,7 +108,7 @@ export const rechteAus = (s: Pick<Selbstauskunft, 'standorte' | 'unternehmen_rec
 /** Solange die Selbstauskunft fehlt: keine schreibenden Hebel (kein Aufblitzen für einen Leser). */
 export const KEINE_RECHTE: BerichtRechte = { standorte: new Map(), unternehmen: [] };
 
-export type Handlung = 'anlegen' | 'freigeben' | 'verwerfen';
+export type Handlung = 'anlegen' | 'freigeben' | 'verwerfen' | 'archivieren';
 
 /** AP-16: Vorlage und Kennung der energetischen Bewertung (Rechte-Matrix AP-16 §6.1). */
 export const BEWERTUNG_VORLAGE = 'energetische_bewertung';

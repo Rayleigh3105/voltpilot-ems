@@ -170,23 +170,26 @@ describe('AP-17 IP-24 · Berichtsseite mit Leistungsvergleich', () => {
     const zustand = { nr: null as number | null, anlegen: [], dateien: [] };
     Object.entries(lvBuehne(zustand)).forEach(([k, f]) => vi.spyOn(api, k as keyof typeof api).mockImplementation(f as never));
     const { unmount } = render(<BerichtSeite kennung="BR-2028-0001" onListe={() => undefined} jetzt={() => JETZT} />);
+    // Seit Konzept Nachweisen n1, Runde 2 (§6.4): die acht Abschnitte stehen einen Tipp tiefer („Alle Werte“).
+    fireEvent.click(await screen.findByTestId('bericht-alle-werte'));
     expect(await screen.findByTestId('leistungsvergleich')).toBeTruthy();
     expect(screen.getByTestId('leistungsvergleich-stand').textContent).toBe('ungesichert — noch kein Stand');
-    expect(within(screen.getByTestId('bericht-hebel')).getByRole('button', { name: /freigeben/ })).toBeTruthy();
     const abschnitte = [...screen.getByTestId('leistungsvergleich').querySelectorAll('section.vp-br-block')].map((s) => s.getAttribute('aria-label'));
     expect(abschnitte).toEqual([
       'Kopf', 'Kennzahl', 'Bezugsbasis', 'Vergleich je Periode', 'Urteil', 'Grenzen und Vorbehalte', 'Statische Faktoren', 'Quellenverzeichnis',
     ]);
-    // Wie die Spec: der Hebel heißt genau so, und der Knopf im Dialog ist frei (F1 am 12.01.2028).
-    fireEvent.click(within(screen.getByTestId('bericht-hebel')).getByRole('button', { name: 'Als Berichtsstand freigeben' }));
-    const knopf = await screen.findByTestId('bericht-freigeben-knopf');
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    // Der Hebel am Entwurf heißt „Freigeben“; „Prüfen“ ist frei (F1 am 12.01.2028), danach die Bestätigung.
+    fireEvent.click(within(await screen.findByTestId('bericht-hebel')).getByRole('button', { name: 'Freigeben' }));
+    const knopf = await screen.findByTestId('bericht-freigeben-senden');
     expect((knopf as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(knopf);
-    expect(await screen.findByTestId('bericht-pruefsumme')).toBeTruthy();
+    expect((await screen.findByTestId('bericht-bestaetigung')).textContent).toContain('Stand 1 ist freigegeben');
     expect(zustand.nr).toBe(1);
     unmount();
     render(<BerichtSeite kennung="BR-2028-0001" onListe={() => undefined} jetzt={() => JETZT} />);
-    expect(await screen.findByTestId('bericht-pruefsumme')).toBeTruthy();
+    expect(await screen.findByTestId('bericht-zeile-pruefsumme')).toBeTruthy();
+    fireEvent.click(await screen.findByTestId('bericht-alle-werte'));
     expect((await screen.findByTestId('leistungsvergleich-stand')).textContent).toMatch(/^Leistungsvergleich Stromeinsatz Spritzguss je kg, Dezember 2027 · Stand Nr\. 1 vom 12\.01\.2028/);
     expect(screen.getByTestId('leistungsvergleich-dateien')).toBeTruthy();
   });

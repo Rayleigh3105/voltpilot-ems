@@ -65,7 +65,7 @@ export function BlattFormular({ id, testid, onSenden, children }: { id: string; 
   );
 }
 
-function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: string; primaer: string; busy: boolean; sekundaer: string; onSekundaer: () => void; testid: string }) {
+export function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: string; primaer: string; busy: boolean; sekundaer: string; onSekundaer: () => void; testid: string }) {
   return (
     <div className="vp-nw-blatt-fuss">
       <Button type="submit" form={form} disabled={busy} aria-busy={busy || undefined} data-testid={testid}>
@@ -78,7 +78,7 @@ function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: s
   );
 }
 
-function Ablehnung({ satz }: { satz: string | null }) {
+export function Ablehnung({ satz }: { satz: string | null }) {
   return satz ? (
     <p className="vp-nw-fehler" role="alert" data-testid="blatt-ablehnung">
       {satz}
@@ -86,7 +86,7 @@ function Ablehnung({ satz }: { satz: string | null }) {
   ) : null;
 }
 
-const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, '')}`;
+export const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, '')}`;
 
 /**
  * Die Vier-Augen-Einstellung ist nicht geladen (Review r1, P2-4): unbekannt ist nicht „eine Person gibt frei“ - bis

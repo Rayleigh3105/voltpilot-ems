@@ -4009,6 +4009,10 @@ export interface Bericht {
   wiedervorlage_monate?: number | null;
   /** AP-16 S5/S6 (IP-24): beim Abruf abgeleitet — nur an einer energetischen Bewertung mit freigegebenem Stand. */
   ueberpruefung?: BerichtUeberpruefung | null;
+  /** Die Freigabe des gültigen Stands; ohne Stand `null` (Konzept Nachweisen n1, §6.4: Datumsblock „frei“). */
+  freigegeben_am: string | null;
+  /** Der früheste offene Anstoß am gültigen Stand (`revision_noetig`), sonst `null` (Datumsblock „seit“). */
+  anstoss_seit: string | null;
 }
 
 /**
@@ -11527,7 +11531,8 @@ export const api = {
    * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
    * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
    */
-  berichte: () => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte`),
+  /** Mit `archiviert: true` auch die archivierten Berichte (Konzept Nachweisen n1, C8: die Zeile „Archiviert · n“). */
+  berichte: (o: { archiviert?: boolean } = {}) => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte${o.archiviert ? '?archiviert=true' : ''}`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
@@ -11580,6 +11585,15 @@ export const api = {
     request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {
       method: 'POST',
       body: JSON.stringify({ begruendung }),
+    }),
+  /**
+   * „Nein, Stand n behalten“ (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen Anstöße mit EINEM Grund in
+   * einer Transaktion - alle oder keiner (409 `anstoss_nicht_offen` mit `anstoss_id`).
+   */
+  berichtAnstoesseVerwerfen: (kennung: string, anstossIds: readonly string[], begruendung: string) =>
+    request<{ anstoesse: BerichtAnstoss[] }>(`/api/v1/berichte/${kennung}/anstoesse/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ anstoss_ids: anstossIds, begruendung }),
     }),
   berichtArchivieren: (kennung: string) =>
     request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),
