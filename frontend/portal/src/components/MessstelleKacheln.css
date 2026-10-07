@@ -75,3 +75,12 @@
   background: linear-gradient(90deg, var(--vp-c-muted, #e9eff8), var(--vp-c-card, #fff), var(--vp-c-muted, #e9eff8));
   background-size: 200% 100%;
 }
+
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche (Review r4 S23). */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-msk-weg {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

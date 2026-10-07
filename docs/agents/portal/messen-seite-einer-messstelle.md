@@ -11,7 +11,8 @@ Stand: Messen-Bau m2, PR2 (Konzept `data/vp-messen-konzept-m1` §6.4/§6.5, Capt
 - Monat und Jahr stehen als zwölf Balken (`MonatsBalken`, EINE Anfrage im Raster Monat für das Fenster) mit der Zeile des Monats (`WerteZusammenfassung`).
 - Der Verlauf (`MessstellenVerlauf`) erscheint im Monat und im Jahr nur mit gewähltem Vergleich, weil erst er die zweite Reihe zeichnet; der Vergleich selbst ist zugeklappt, bis jemand vergleichen will.
 - Am Tag und in der Woche stehen Zeile und Verlauf; die Liste der Schritte liegt unter „Alle Werte des Zeitraums“ (zu).
-- Ein Ablesezähler kennt nur Monat und Jahr.
+- Ein Ablesezähler kennt nur Monat und Jahr; eine Woche oder ein Tag der Adresse öffnet dann ihren Monat (`isoMonat` des Montags).
+- Aus „Stand an einem Tag ansehen“ geöffnet (`?periode=T&stand=T`, `parseMessstelleWerte().stand`) liest die Seite das Register an diesem Tag, die Leitkachel nennt den letzten vollen Monat davor, und es gibt keinen Schreibweg (kein Schritt, kein „Ändern“, keine Formel, kein Berichtigen, Menü nur Protokoll); Marke „Stand … · Nur lesen“ mit „Zurück zu heute“.
 - Die Zeitzone steht einmal am Fuß (`werte-zone`, `fussSatz`), nicht im Werte-Abschnitt; am Uhrzeitfeld eines Dialogs steht nur ihr Kürzel (`VpZeitpunktPicker` mit `kopf`).
 
 ## Ablesen
@@ -24,7 +25,9 @@ Stand: Messen-Bau m2, PR2 (Konzept `data/vp-messen-konzept-m1` §6.4/§6.5, Capt
 
 ## Kacheln
 
-- Die Leitkachel nennt den letzten vollständigen Monat; der Vorjahresvergleich geht über `uemsBericht.vergleich` (Zwilling), nie über eine eigene Prozentrechnung.
+- Die Leitkachel nennt den letzten vollständigen Monat; der Vorjahresvergleich geht über `uemsBericht.vergleich` (Zwilling) und wird mit `zahlMitStellen` des Ergebnis-Vertrags gesprochen, nie über eine eigene Prozentrechnung oder Rundung.
+- Ein unvollständiger Monat darf eine Zahl tragen; dann steht die Marke „unvollständig“, und einen Vorjahrespfeil gibt es nur zwischen zwei ganzen Monaten (vollständig oder mit Ersatzwert).
+- Ein negativer Monat (saldiert) bleibt negativ: im Verlauf mit seiner Zahl, als Balken mit Betrag und `negativ` (gestrichelt), nie als 0-Balken.
 - Ein Monat ohne Wert ist „—“, nie 0; bei einem Ablesezähler nennt die Kachel die fehlende Ablesung mit dem Schritt.
 
 ## Zuordnung
@@ -34,9 +37,21 @@ Stand: Messen-Bau m2, PR2 (Konzept `data/vp-messen-konzept-m1` §6.4/§6.5, Capt
 - Ohne Änderung steht im Dialog grau „Heute gilt: …“ (`zuordnung-gilt-schon`) und der Knopf wartet; ein roter Fehler erscheint erst beim Eintragen.
 - Darf jemand die Aktion, aber nicht rückwirkend, nennt `rollen.rueckwirkendGrund()` den Satz `recht_rueckwirkend` aus `rechte-vectors.json` und die Kundenadministratoren aus `/me`.
 
+## Berechnete Messstelle
+
+- „Zusammengesetzt aus“ nennt die Terme von heute; ein Messwert heißt nach seiner Komponente im Aufbau der Anlage (`siteEntities`), nie nach ihrer Kennung.
+- „Formel ändern“ öffnet den `SummenwertFormelDialog` (Recht `messstelle.formel`, rückwirkend zusätzlich `aenderung.rueckwirkend`), nicht den Messstellen-Dialog; er braucht die Anlage der elektrischen Stellung.
+- Ein Ladefehler der Formel steht mit „Erneut versuchen“; liegen alle Terme außerhalb des Zugriffs, spricht der Hinweis des Servers statt „Noch keine Formel“.
+
+## Wörter
+
+- Ohne Quelle heißt es überall „Noch keine Quelle“ (Kopf statt des Server-Satzes „Keine Datenquelle“, Werte-Karte `ohneQuelle`, Herkunft, Liste).
+- Die Zeile „Im Stromnetz“ ändert der Dialog „Stellung im Stromnetz ändern“ (Glossar: Fachwort elektrische Stellung).
+- Verbotene Wörter prüft zusätzlich der gerenderte Text (`MessstelleSeite.test.tsx`, „Wörter, wie sie gerendert stehen“).
+
 ## Zahlen
 
-- `werteEingabe.betrag` schreibt Tausenderpunkt, Komma und echtes Minus (AP-08 E11); der Q5-Wächter (`src/test/oberflaechenArithmetik.json`) führt das als Textformatierung.
+- `werteEingabe.betrag` schreibt Tausenderpunkt, Komma und echtes Minus (AP-08 E11); der Q5-Wächter (`src/test/oberflaechenArithmetik.json`) führt das als Textformatierung und prüft auch `messstelleSeite.ts`.
 
 ## Prüfen
 

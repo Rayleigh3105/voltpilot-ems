@@ -573,19 +573,27 @@ export function parseSektion(hash: string): string | null {
 
 /**
  * Periode, Version und Vergleich der Werte einer Messstelle aus dem Hash (UEMS AP-13 IP-3/IP-5, E9/E6):
- * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode`. `parseRoute` schneidet den Query-Teil ab — die
+ * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode` (aus „Stand am …“ dazu `&stand=2029-04-30`). `parseRoute` schneidet den Query-Teil ab — die
  * Route bleibt die Messstellen-Seite; geschrieben wird die Adresse über `uemsOberflaechen.sprungziel`. Die
  * Periode kommt roh (die Sektion prüft sie, `uemsWerteKarte.periodeAus`), die Version nur als ganze Zahl ab 1, und
  * `v` ebenfalls roh — welche Wahl der Zeitraum überhaupt anbietet, weiß `uemsVergleich.wahlAus`.
  */
-export function parseMessstelleWerte(hash: string): { periode: string | null; version: number | null; vergleich: string | null } {
+export function parseMessstelleWerte(hash: string): {
+  periode: string | null;
+  version: number | null;
+  vergleich: string | null;
+  stand: string | null;
+} {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   const params = new URLSearchParams(rest.join('?'));
   const version = params.get('version')?.trim() ?? '';
+  const stand = params.get('stand')?.trim() ?? '';
   return {
     periode: params.get('periode')?.trim() || null,
     version: /^[1-9]\d{0,5}$/.test(version) ? Number(version) : null,
     vergleich: params.get('v')?.trim() || null,
+    // Messen m1 (Review r4 S4): aus „Stand an einem Tag ansehen“ geöffnet - die Seite liest diesen Tag, nur lesend.
+    stand: /^\d{4}-\d{2}-\d{2}$/.test(stand) ? stand : null,
   };
 }
 

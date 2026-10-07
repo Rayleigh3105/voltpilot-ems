@@ -397,8 +397,11 @@ Der Kopf nennt Name und Kennzeichen, darunter Medium, Ort und Standort; der Lebe
 Die Zustandszeile sagt mit dem Satz des Servers, ob Werte kommen („Abgelesen am 01.10.2026“); bei einem Ablesezähler steht oben genau ein Schritt: „Ablesung eintragen“.
 Die Leitkachel nennt die Menge des letzten vollständigen Monats in der Rolle der Messstelle („Verbrauch September 2026“, „Erzeugung …“, „Einspeisung …“) mit dem Vergleich zum Vorjahresmonat; daneben stehen „Zählerstand“ und bei einem Ablesezähler „Nächste Ablesung“ mit „im Plan“ oder „überfällig“.
 Die Werte heißen nach der Rolle: „Verbrauch je Monat“ (zwölf Monate als Balken), „Verbrauch am Tag“, „Verbrauch in der Woche“; ein Ablesezähler kennt nur Monat und Jahr.
-„Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“.
+„Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“; der Dialog der zweiten Zeile heißt „Stellung im Stromnetz ändern“.
 Ohne Änderung steht im Dialog grau „Heute gilt: …“, und der Knopf wartet, bis etwas anders ist; das ist kein Fehler.
+Ohne Quelle sagt auch die Zustandszeile „Noch keine Quelle“, nie „Keine Datenquelle“; ein unvollständiger Monat trägt in der Leitkachel die Marke „unvollständig“ und keinen Vergleich zum Vorjahr.
+Eine berechnete Messstelle zeigt „Zusammengesetzt aus“ mit ihren Termen; „Formel ändern“ öffnet den Formel-Dialog des Summenwerts.
+Aus „Stand an einem Tag ansehen“ geöffnet zeigt die Seite diesen Tag mit der Marke „Stand … · Nur lesen“ und „Zurück zu heute“ und bietet keinen Schreibweg.
 Eine Ablesung „zählt zum“ Monat ihres Zeitraums: „Zählt zum Oktober 2026 – dem Zeitraum seit der letzten Ablesung am 01.10.“; die Wahl des Monats steht nur, wenn der Zeitraum mehr als einen Monat berührt.
 Die Zeitzone steht einmal am Fuß („Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 06.10.2026, 17:42“), am Uhrzeitfeld nur ihr Kürzel („MESZ“, „MEZ“).
 Kundenwörter: `UEMS_ZUORDNUNG`, `UEMS_IM_STROMNETZ`, `UEMS_NAECHSTE_ABLESUNG`, `UEMS_ABLESUNG_EINTRAGEN` (PORTAL/glossar.ts).

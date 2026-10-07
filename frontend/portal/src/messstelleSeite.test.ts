@@ -20,7 +20,7 @@ import {
   zahlUndEinheit,
 } from './messstelleSeite';
 import { ahrenbergRegister } from './test/messstellenRegisterFixtures';
-import { antwort, MS_21, schritt, voll } from './test/werteKarteFixtures';
+import { ANFANG_NICHT_GEMESSEN, antwort, MS_21, schritt, voll } from './test/werteKarteFixtures';
 import { betrag, zaehltSatz } from './werteEingabe';
 
 /**
@@ -132,11 +132,51 @@ describe('die Leitkachel (§6.4 Punkt 4)', () => {
     expect(k.fehlt).toBeNull();
   });
 
-  it('der Vergleich rechnet der Bericht-Zwilling; die Kachel nennt nur Pfeil und ganze Prozent', () => {
+  it('der Vergleich rechnet der Bericht-Zwilling; die Kachel nennt nur Pfeil und ganze Prozent (E11, Schreibweise des Vertrags)', () => {
     const mehr = leitKachel({ serie: serie({ '2025-09': 8000, '2026-09': 8240 }), monat: '2026-09', rolle: r, herkunft: 'ablesung', ablesenMoeglich: true });
-    expect(mehr.marke?.text).toBe('▲ 3 % ggü. Vorjahr');
+    expect(mehr.marke?.text).toBe(`▲ 3${NBSP}% ggü. Vorjahr`);
     const weniger = leitKachel({ serie: serie({ '2025-09': 8000, '2026-09': 7600 }), monat: '2026-09', rolle: r, herkunft: 'ablesung', ablesenMoeglich: true });
-    expect(weniger.marke?.text).toBe('▼ 5 % ggü. Vorjahr');
+    expect(weniger.marke?.text).toBe(`▼ 5${NBSP}% ggü. Vorjahr`);
+    // Unter einem halben Prozent ist es „unverändert“ - in beide Richtungen.
+    const kaum = leitKachel({ serie: serie({ '2025-09': 8000, '2026-09': 7980 }), monat: '2026-09', rolle: r, herkunft: 'ablesung', ablesenMoeglich: true });
+    expect(kaum.marke?.text).toBe('unverändert ggü. Vorjahr');
+  });
+
+  // Ein unvollständiger Monat mit Zahl (z. B. MS-03 der Demo im Monat der Bindung): Anfang nicht gemessen.
+  const unvollstaendig = (abdeckung: number) => ({
+    zustand: 'unvollständig',
+    erhalten: abdeckung,
+    erwartet: 100,
+    abdeckung_prozent: abdeckung,
+    kennzeichen: [ANFANG_NICHT_GEMESSEN],
+  });
+
+  it('ein unvollständiger Monat sagt es und vergleicht nicht mit dem Vorjahr (Review r4 S3)', () => {
+    const s = serie({ '2025-09': 8000, '2026-09': 6100 });
+    s.werte = s.werte.map((w) => (w.von.startsWith('2026-09') ? { ...w, ...unvollstaendig(72) } : w));
+    const k = leitKachel({ serie: s, monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: false });
+    expect(k.wert).not.toBe('—');
+    expect(k.marke).toEqual({ text: 'unvollständig', ton: 'warn' });
+    // Ein unvollständiger Vorjahresmonat: keine Marke, und die Zeile darunter sagt es.
+    const v = serie({ '2025-09': 5000, '2026-09': 8000 });
+    v.werte = v.werte.map((w) => (w.von.startsWith('2025-09') ? { ...w, ...unvollstaendig(60) } : w));
+    const kv = leitKachel({ serie: v, monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: false });
+    expect(kv.marke).toBeNull();
+    expect(kv.unter).toContain('unvollständig');
+  });
+
+  it('ein negativer Monat (saldiert) bleibt negativ: im Verlauf mit seiner Zahl, als Balken mit Betrag und `negativ` (Review r4 S5)', () => {
+    const leer = Object.fromEntries(Array.from({ length: 13 }, (_, i) => [monatPlus('2025-09', i), null]));
+    const s = serie({ ...leer, '2026-08': 1200, '2026-09': -600 });
+    const k = leitKachel({ serie: s, monat: '2026-09', rolle: r, herkunft: 'geraet', ablesenMoeglich: false });
+    expect(k.verlauf.at(-1)).toBe(-600);
+    const b = balken(s, '2026-09');
+    const sep = b.find((x) => x.monat === '2026-09')!;
+    const aug = b.find((x) => x.monat === '2026-08')!;
+    expect(sep.negativ).toBe(true);
+    expect(sep.hoehe).toBeCloseTo(0.5);
+    expect(aug.negativ).toBe(false);
+    expect(aug.hoehe).toBe(1);
   });
 
   it('fehlt die Ablesung des Monats: „–“ mit Grund und Schritt - nie eine 0; ohne Vorjahr kein Vergleich', () => {

@@ -7,6 +7,9 @@ import {
   gruppenZahl,
   liste,
   marken,
+  markeAus,
+  markiert,
+  mitParameter,
   messstelleBeispiel,
   mitSuche,
   monatKurz,
@@ -15,6 +18,7 @@ import {
   NOCH_KEINE_QUELLE,
   ohneParameter,
   passtZurSuche,
+  standAus,
   standWann,
   standZahl,
   status,
@@ -56,11 +60,53 @@ function mitUeberfaelligerAblesung(): MessstellenRegister {
 }
 
 describe('Suche (Konzept §6.3)', () => {
-  it('jedes Wort muss passen; eine Ziffer am Wortanfang gehört zum Wort davor', () => {
-    expect(suchTerme('  Halle 1 ')).toEqual(['halle1']);
-    expect(suchTerme('az 3')).toEqual(['az3']);
+  it('jedes Wort muss passen; eine Zahl ist ein eigener Begriff, gleich wie geschrieben', () => {
+    expect(suchTerme('  Halle 1 ')).toEqual(['halle', '1']);
+    expect(suchTerme('Halle-1')).toEqual(['halle', '1']);
+    expect(suchTerme('az 3')).toEqual(['az', '3']);
+    expect(suchTerme('MS-06')).toEqual(['ms', '6']);
     expect(suchTerme('druck luft')).toEqual(['druck', 'luft']);
     expect(suchTerme('')).toEqual([]);
+  });
+
+  it('eine Zahl trifft nur als ganze Zahl und gehört zum Wort davor (Review r4 S1)', () => {
+    const z = ahrenbergRegister().register[0];
+    const mit = (name: string, kennzeichen: string, ortName: string, standort = 'ST-9') => ({
+      ...z,
+      name,
+      kennzeichen,
+      quelle: { ...z.quelle, fuehrend: null },
+      ort: { ...z.ort, name: ortName, kennzeichen: 'G-9', pfad: [standort, 'G-9'], standort, standort_name: 'Werk X' },
+    });
+    const passt = (zeile: ReturnType<typeof mit>, suche: string) => passtZurSuche(zeile, suchTerme(suche));
+    expect(passt(mit('Lüftung', 'MS-90', 'Halle 1'), 'halle 1')).toBe(true);
+    expect(passt(mit('Lüftung', 'MS-90', 'Halle 10'), 'halle 1')).toBe(false);
+    expect(passt(mit('Lüftung', 'MS-90', 'Halle 10'), 'halle 10')).toBe(true);
+    expect(passt(mit('Kompressor', 'AZ-3', 'Halle 3'), 'az 3')).toBe(true);
+    expect(passt(mit('Kompressor', 'AZ-30', 'Halle 3'), 'az 3')).toBe(false);
+    // Die Zahl darf im selben Feld weiter hinten stehen …
+    expect(passt(mit('Spritzguss Halle 2', 'MS-91', 'Halle 2'), 'spritzguss 2')).toBe(true);
+    // … oder in einem anderen Feld, wenn das Wort dort keine eigene Zahl trägt.
+    expect(passt(mit('Lüftung', 'MS-92', 'Halle 2'), 'lüftung 2')).toBe(true);
+    expect(passt(mit('Druckluft', 'MS-93', 'Halle 3'), 'druck 3')).toBe(true);
+    // „Halle 2“ am Standort ST-1 ist nicht „halle 1“ - die 1 von ST-1 hilft nicht.
+    expect(passt(mit('Lüftung', 'MS-94', 'Halle 2', 'ST-1'), 'halle 1')).toBe(false);
+    // Führende Nullen zählen nicht, eine andere Zahl schon.
+    expect(passt(mit('Lüftung', 'MS-06', 'Halle 2'), 'ms 6')).toBe(true);
+    expect(passt(mit('Lüftung', 'MS-06', 'Halle 2'), 'ms6')).toBe(true);
+    expect(passt(mit('Lüftung', 'MS-16', 'Halle 2'), 'ms 6')).toBe(false);
+    expect(passt(mit('Lüftung', 'MS-60', 'Halle 2'), 'ms 6')).toBe(false);
+  });
+
+  it('die Markierung folgt derselben Zahlgrenze: „Halle 1“ ganz, an „Halle 10“ nichts von der 10', () => {
+    const teile = (text: string, suche: string) =>
+      markiert(text, suchTerme(suche))
+        .filter((t) => t.treffer)
+        .map((t) => t.text);
+    expect(teile('Halle 1', 'halle 1')).toEqual(['Halle 1']);
+    expect(teile('Halle 10', 'halle 1')).toEqual(['Halle']);
+    expect(teile('AZ-30', 'az 3')).toEqual(['AZ']);
+    expect(teile('MS-06', 'ms 6')).toEqual(['MS-06']);
   });
 
   it('gesucht wird in Name, Kennzeichen, Ort und dem Gerät der führenden Quelle - nie in der Anlage', () => {
@@ -84,10 +130,24 @@ describe('Suche (Konzept §6.3)', () => {
     expect(ohneParameter('#/portfolio/messstellen?ort=G-1&suche=druck', 'ort')).toBe('#/portfolio/messstellen?suche=druck');
   });
 
+  it('Marke und Stichtag stehen in der Adresse; Unbekanntes gilt nicht', () => {
+    expect(markeAus('#/portfolio/messstellen?marke=ohneQuelle')).toBe('ohneQuelle');
+    expect(markeAus('#/portfolio/messstellen?marke=alles')).toBeNull();
+    expect(standAus('#/portfolio/messstellen?stand=2029-04-30')).toBe('2029-04-30');
+    expect(standAus('#/portfolio/messstellen?stand=morgen')).toBeNull();
+    expect(mitParameter('#/portfolio/messstellen?suche=druck', 'marke', 'ohneQuelle')).toBe(
+      '#/portfolio/messstellen?suche=druck&marke=ohneQuelle',
+    );
+    expect(mitParameter('#/portfolio/messstellen?stand=2029-04-30', 'stand', null)).toBe('#/portfolio/messstellen');
+  });
+
   it('der Rückweg führt in dieselbe Trefferliste - nur, wenn die gemerkte Liste zur selben Ebene gehört', () => {
     merkeListe('#/portfolio/messstellen?suche=druck');
     expect(listeZurueck('#/portfolio/messstellen')).toBe('#/portfolio/messstellen?suche=druck');
     expect(listeZurueck('#/standort/st-1/messstellen')).toBeNull();
+    // Der Sprung der Wiedervorlage gilt einmal; Ort, Marke und Stichtag bleiben.
+    merkeListe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung&marke=ablesungFehlt&stand=2029-04-30');
+    expect(listeZurueck('#/portfolio/messstellen')).toBe('#/portfolio/messstellen?ort=G-1&marke=ablesungFehlt&stand=2029-04-30');
   });
 });
 
@@ -164,6 +224,16 @@ describe('Liste, Gruppen und Reihen', () => {
 });
 
 describe('Marken und Statuszeile', () => {
+  it('überfällige Ablesungen zählen im Plural richtig', () => {
+    const r = mitUeberfaelligerAblesung();
+    const ms22 = r.register.find((x) => x.kennzeichen === 'MS-22')!;
+    const ms21 = r.register.find((x) => x.kennzeichen === 'MS-21')!;
+    ms22.quelle = structuredClone(ms21.quelle);
+    ms22.lebenszyklus = 'aktiv';
+    ms22.beobachtung = structuredClone(ms21.beobachtung);
+    expect(marken(aus(r).reihen).map((m) => m.text)).toContain('2 Ablesungen überfällig');
+  });
+
   it('Marken nur, was es gibt - nie „0 ohne Quelle“', () => {
     expect(marken(aus(ahrenbergRegister()).reihen).map((m) => m.text)).toEqual(['1 ohne Quelle']);
     expect(marken(aus(mitUeberfaelligerAblesung()).reihen)).toEqual([

@@ -556,3 +556,11 @@
   color: var(--vp-action, #2563eb);
   cursor: pointer;
 }
+
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche für die Aufklapper (Review r4 S23). */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-wk-alle > summary,
+  .vp-wk-vergleich-auf > summary {
+    padding-block: 12px;
+  }
+}

@@ -464,7 +464,7 @@ describe('uemsWerteKarte — die Anzahl der Lücken an der Karte (Captain 15.09.
 describe('uemsWerteKarte — eine Messstelle aus Ablesungen (Demo-Befund 27.09.2026)', () => {
   it('der leere Tag nennt die Ablesungen mit dem letzten Tag, nie „Keine Datenquelle“', () => {
     const tag = ohneQuelleTag();
-    expect(ohneQuelle(tag)?.titel).toBe('Keine Datenquelle');
+    expect(ohneQuelle(tag)?.titel).toBe('Noch keine Quelle');
     const quelle = { stand: 'ablesung', ablesung: { zuletzt: '2026-09-01T00:00:00+02:00' } };
     expect(ausAblesungen(quelle, tag)).toEqual({ titel: 'Ablesungen · zuletzt am 01.09.2026', satz: ABLESUNG_OHNE_WERT });
     expect(ausAblesungen({ stand: 'keine_datenquelle' }, tag)).toBeNull();
@@ -687,8 +687,8 @@ describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer
 });
 
 describe('uemsWerteKarte — Z4 · Werte ohne Datenquelle und ihr nächster Schritt (UEMS AP-13 IP-6)', () => {
-  it('der ganze Zeitraum ohne Bindung: Titel „Keine Datenquelle“ und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
-    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Keine Datenquelle', satz: grundBeispiel('keine_quelle') });
+  it('der ganze Zeitraum ohne Bindung: Titel „Noch keine Quelle“ (Review r4 S7) und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
+    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Noch keine Quelle', satz: grundBeispiel('keine_quelle') });
     expect(ohneQuelle(ohneQuelleTag())).not.toBeNull();
     // Lindach im Oktober: 14 Tage ohne Quelle, aber die Bindung berührt den Monat — die Tage sprechen selbst.
     expect(ohneQuelle(ms16OktoberTage())).toBeNull();
