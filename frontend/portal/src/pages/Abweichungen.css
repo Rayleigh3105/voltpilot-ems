@@ -326,10 +326,14 @@
 .vp-abw-ziel:focus-visible {
   outline: none;
 }
-.vp-abw-fuss .vp-abw-schritt,
-.vp-abw-eintrag .vp-abw-schritt {
+/* Nur ein echter Knopf („Beantworten“) liegt über dem Link. Das Wort „Abschließen“/„Ansehen“ ist nur Beschriftung
+   (aria-hidden): ein Tipp darauf fällt durch auf den Link der Zeile und öffnet die Seite. */
+.vp-abw-eintrag button.vp-abw-schritt {
   position: relative;
   z-index: 1;
+}
+.vp-abw-schritt[aria-hidden] {
+  pointer-events: none;
 }
 
 /* Abgeschlossen: am Telefon eine leise Reihe in einer Liste, ohne Datumsblock, mit Pfeil. */
@@ -500,7 +504,8 @@
     text-underline-offset: 2px;
   }
   .vp-abw-link:hover,
-  .vp-abw-schritt:hover {
+  .vp-abw-schritt:hover,
+  .vp-abw-eintrag.is-ziel:hover .vp-abw-schritt[aria-hidden] {
     text-decoration: underline;
     text-underline-offset: 2px;
   }

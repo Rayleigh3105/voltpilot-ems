@@ -244,6 +244,24 @@ for (const breite of [375, 1440]) {
       await expect(page.locator('[data-entscheid="abweichung_frist"]').getByTestId('abweichung-abschliessen-knopf')).toBeVisible();
     });
 
+    test('Tipp auf „Abschließen“ bzw. „Ansehen“ öffnet die Seite - das sichtbare Wort ist kein toter Klick', async ({ page }) => {
+      for (const [bereich, zeile, wort, satz] of [
+        ['abweichungen-in-arbeit', 'AW-2028-0001', 'Abschließen', /^Die Frist ist vorbei/],
+        ['abweichungen-abgeschlossen', 'AW-2026-0001', 'Ansehen', /^Abgeschlossen/],
+      ] as const) {
+        await oeffne(page, 'lage=register', breite, AM_10_02_2028);
+        // Das sichtbare Zeichen des Schritts: das Wort, am Telefon bei Abgeschlossenen der Pfeil.
+        const zeichen = page.getByTestId(bereich).getByTestId(`abweichung-zeile-${zeile}`).locator('.vp-abw-schritt:visible, .vp-abw-chev:visible');
+        await expect(zeichen).toHaveCount(1);
+        if (await zeichen.evaluate((e) => e.classList.contains('vp-abw-schritt'))) await expect(zeichen).toHaveText(wort);
+        const box = (await zeichen.boundingBox())!;
+        // Genau dort, wo der Finger das Zeichen trifft - nicht auf den Titel-Link daneben.
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await expect(page.getByTestId('abweichung-seite')).toContainText(zeile);
+        await expect(page.getByTestId('abweichung-satz')).toHaveText(satz);
+      }
+    });
+
     test('Reiter am 10.02.2028: in Arbeit überfällig, abgeschlossen mit Ergebnis; AW-2026-0001 mit Vorbehalt (R8)', async ({ page }) => {
       await oeffne(page, 'lage=register', breite, AM_10_02_2028);
       const arbeit = page.getByTestId('abweichungen-in-arbeit');
