@@ -19,9 +19,10 @@
     "1.8 (Katalog-Einheiten, additiv, firstmate 14.09.2026): Scheinarbeit hat eine EIGENE Anzeige-Einheit — VAh und kVAh werden kVAh (Stellen wie kWh), nie als kWh getarnt: Scheinarbeit ist nicht in Wirkarbeit umrechenbar. Wmin (Wirkarbeit in Wattminuten, Shelly Gen1) wird kWh mit dem neuen, optionalen teiler 60000 — 1/60000 ist kein endlicher Dezimalfaktor, darum rechnet menge() wert × faktor ÷ teiler und rundet den EXAKTEN Quotienten kaufmännisch. „0,1 kWh“ ist KEINE Einheit, sondern eine Einheit mit eingebackenem Faktor; der Faktor gehört an die Skalierung des Katalogs und die Einheit bleibt einheit_unbekannt.",
     "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert.",
     "Seit 1.9 (AP-11 IP-1): der Block `kennzahl_kennzeichen` — die Kennzeichen-Sätze eines KENNZAHL-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge (kennzahl.md). Die Verbrauchs-Liste `kennzeichen` bleibt Satz für Satz, wie sie ist.",
-    "Seit 1.11 (AP-13 IP-1, E11 = A): der Block `grund` — je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz, warum eine Zahl fehlt; die Karte zeigt „—“ UND den Satz. Keine Regel: wann ein Grund gilt, entscheidet die Route. Gesprochen von ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz; alle übrigen Blöcke bleiben Satz für Satz, wie sie sind."
+    "Seit 1.11 (AP-13 IP-1, E11 = A): der Block `grund` - je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz, warum eine Zahl fehlt; die Karte zeigt „—“ UND den Satz. Keine Regel: wann ein Grund gilt, entscheidet die Route. Gesprochen von ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz; alle übrigen Blöcke bleiben Satz für Satz, wie sie sind.",
+    "1.13 (AP-09 F17, Messen-Bau, additiv): „Ablesezeitraum“ ist kein vorgesehenes Wort mehr, sondern zwei Kennzeichen - der Wortlaut, den AP-09 seit den Ablesungen spricht (AblesungRegeln ⟷ bezugsdaten-vectors.json B8): ablesezeitraum „Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden)“ an jedem Monat (und Jahr), dessen Menge aus einem Ablesezeitraum stammt, und ablesezeitraum_ohne_monat „Ablesezeitraum ohne Monatszuordnung“ an einem Monat ohne Zahl, dessen Ablesezeitraum der Kunde keinem Monat zugeordnet hat. Rang 60 wie die andere Herkunft (aus Leistung integriert), kein Fehlbestand; ein Jahr nennt jeden seiner Ablesezeiträume (nicht einmalig). Neuer Platzhalter tag_uhr „01.10. 07:15“ - Tag und Uhrzeit ohne Jahr, die Uhrzeit nach E10 mit dem Zusatz der doppelten Stunde. Ein Jahr mit weniger als zwölf abgelesenen Monaten ist unvollständig und sagt es mit dem Kennzeichen der fehlenden Intervallmengen (I2, „3 von 12 Intervallmengen fehlen …“) - bis 1.12 stand es ohne Grund da (unvollstaendig_ohne_grund) und wurde nicht gesprochen."
   ],
-  "schema_version": "1.12",
+  "schema_version": "1.13",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -63,7 +64,8 @@
     "dezimal_klartext": "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
     "menge": "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9] (?:kWh|kvarh|kVAh|m³)",
     "ersatzwert_methode": "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)",
-    "ersatzwert_kennung": "EW-[0-9]{4}-[0-9]{4,}"
+    "ersatzwert_kennung": "EW-[0-9]{4}-[0-9]{4,}",
+    "tag_uhr": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\. (?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?"
   },
   "kennzeichen": [
     {
@@ -301,6 +303,32 @@
       "fall": "F3"
     },
     {
+      "schluessel": "ablesezeitraum",
+      "muster": "Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden)",
+      "platzhalter": {"von": "tag_uhr", "bis": "tag_uhr"},
+      "wort": "Ablesezeitraum",
+      "rang": 60,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)",
+      "fall": "F17"
+    },
+    {
+      "schluessel": "ablesezeitraum_ohne_monat",
+      "muster": "Ablesezeitraum ohne Monatszuordnung",
+      "platzhalter": {},
+      "wort": "Ablesezeitraum",
+      "rang": 60,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Ablesezeitraum ohne Monatszuordnung",
+      "fall": "F17"
+    },
+    {
       "schluessel": "mit_ersatzwert",
       "muster": "mit Ersatzwert (Methode „{methode}“, {kennung})",
       "platzhalter": {
@@ -381,11 +409,6 @@
       "wort": "nachgeliefert",
       "anfang": "nachgeliefert",
       "wortlaut_mit": "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"
-    },
-    {
-      "wort": "Ablesezeitraum",
-      "anfang": "Ablesezeitraum",
-      "wortlaut_mit": "AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)"
     }
   ],
   "kennzahl_kennzeichen": {
@@ -2204,6 +2227,46 @@
       "erwartet": {"verstoesse": ["kennzeichen_vorgesehen"], "satz": null}
     },
     {
+      "name": "Monat aus einem Ablesezeitraum (seit 1.13)",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "MS-20 Spritzguss, September 2026, so wie die Route „Werte je Messstelle“ ihn liefert: die Menge stammt aus den Ablesungen am 01.09. und 01.10.; der Kunde hat den Ablesezeitraum dem September zugeordnet. Bis 1.12 war das ein vorgesehenes Wort - die Karte zeigte „—“.",
+      "eingang": {"wert": "88200.000", "einheit": "kWh", "ebene": "monat", "zustand": "vollständig", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)", "endgültig"]},
+      "erwartet": {"verstoesse": [], "satz": "88.200 kWh · vollständig · Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden) · endgültig"}
+    },
+    {
+      "name": "Jahr mit drei abgelesenen Monaten (seit 1.13)",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "MS-20 im Jahr 2024: abgelesen wird erst seit 01.10.2024. Das Jahr nennt jeden seiner Ablesezeiträume und sagt mit I2, dass neun Monatsmengen fehlen - die Zahl ist die Summe der abgelesenen.",
+      "eingang": {"wert": "252910.000", "einheit": "kWh", "ebene": "jahr", "zustand": "unvollständig", "abdeckung_prozent": null, "kennzeichen": ["9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen", "Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.12. 00:00 – 01.01. 00:00 (Zuordnung durch den Kunden)"]},
+      "erwartet": {"verstoesse": [], "satz": "252.910 kWh · unvollständig · 9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen · Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden) · Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden) · Ablesezeitraum 01.12. 00:00 – 01.01. 00:00 (Zuordnung durch den Kunden)"}
+    },
+    {
+      "name": "Gegenprobe: ein unvollständiges Ablese-Jahr ohne Grund",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "So speicherte AP-09 ein Jahr mit weniger als zwölf abgelesenen Monaten bis 1.12: unvollständig, aber kein Satz sagt, was fehlt. Es wird nicht gesprochen; eine neue Ablesung bildet das Jahr mit I2 neu.",
+      "eingang": {"wert": "252910.000", "einheit": "kWh", "ebene": "jahr", "zustand": "unvollständig", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.12. 00:00 – 01.01. 00:00 (Zuordnung durch den Kunden)"]},
+      "erwartet": {"verstoesse": ["unvollstaendig_ohne_grund"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: der Ablesezeitraum steht nach den fehlenden Intervallmengen",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "Rang 60 nach Rang 50: erst was fehlt, dann woher die Menge stammt.",
+      "eingang": {"wert": "252910.000", "einheit": "kWh", "ebene": "jahr", "zustand": "unvollständig", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)", "9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen"]},
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Monat ohne Zuordnung (seit 1.13)",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "Der Kunde hat den Ablesezeitraum keinem Monat zugeordnet: der Monat hat keine Zahl (nie 0) und sagt, warum (bezugsdaten-vectors.json B8).",
+      "eingang": {"wert": null, "einheit": "kWh", "ebene": "monat", "zustand": "keine Werte", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum ohne Monatszuordnung"]},
+      "erwartet": {"verstoesse": [], "satz": "— · keine Werte · Ablesezeitraum ohne Monatszuordnung"}
+    },
+    {
       "name": "Gegenprobe: das Kennzeichen „korrigiert“ steht nur einmal",
       "familie": "ergebnis",
       "fall": "F21",
@@ -2510,6 +2573,38 @@
       "fall": "F10",
       "why": "Wann eine Zahl endgültig wurde, sagt die Route (endgueltig_ab), nicht der Satz. Der alte Anfang macht einen längeren Satz nicht mehr vorgesehen — er ist fremd.",
       "eingang": {"satz": "endgültig seit 10.11.2026"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Ablesezeitraum (seit 1.13)",
+      "familie": "erkennen",
+      "fall": "F17",
+      "why": "Seit 1.13 ein Kennzeichen des Vertrags, nicht mehr vorgesehen - der Satz, den AblesungRegeln spricht.",
+      "eingang": {"satz": "Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)"},
+      "erwartet": {"schluessel": "ablesezeitraum", "werte": {"von": "01.09. 00:00", "bis": "01.10. 00:00"}, "vorgesehen": false}
+    },
+    {
+      "name": "Ablesezeitraum in der doppelten Stunde",
+      "familie": "erkennen",
+      "fall": "F13",
+      "why": "E10: 02:30 gibt es am 25.10.2026 zweimal - die Uhrzeit trägt den Zusatz, wie in jedem Kennzeichen.",
+      "eingang": {"satz": "Ablesezeitraum 25.10. 02:30 MEZ – 02.11. 07:40 (Zuordnung durch den Kunden)"},
+      "erwartet": {"schluessel": "ablesezeitraum", "werte": {"von": "25.10. 02:30 MEZ", "bis": "02.11. 07:40"}, "vorgesehen": false}
+    },
+    {
+      "name": "Ablesezeitraum ohne Monatszuordnung (seit 1.13)",
+      "familie": "erkennen",
+      "fall": "F17",
+      "why": "Seit 1.13 ein Kennzeichen des Vertrags.",
+      "eingang": {"satz": "Ablesezeitraum ohne Monatszuordnung"},
+      "erwartet": {"schluessel": "ablesezeitraum_ohne_monat", "werte": {}, "vorgesehen": false}
+    },
+    {
+      "name": "Gegenprobe: der Ablesezeitraum ohne seine Zuordnung",
+      "familie": "erkennen",
+      "fall": "F17",
+      "why": "„gilt für Oktober 2026 · Ablesezeitraum 01.10. 07:15 – 02.11. 07:40“ ist der Satz AN der Ablesung (B8), kein Kennzeichen einer Zahl. Seit 1.13 ist der Anfang nicht mehr vorgesehen - ein solcher Satz ist fremd.",
+      "eingang": {"satz": "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40"},
       "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
     },
     {

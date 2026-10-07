@@ -107,6 +107,12 @@ async function listeVon(page: Page, feld: Locator): Promise<Locator> {
 
 const weiter = (dialog: Locator) => dialog.getByRole('button', { name: 'Weiter', exact: true });
 
+/** Ein Eintrag des Menüs ⋯ im Kopf der Kennzahl-Seite (Konzept Auswerten a1 §6.5: Werkzeuge ins Menü). */
+async function menue(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
 for (const breite of [375, 1440]) {
   test(`${breite} px — K17 am 01.04.2027: KZ-0004 ab 01.03.2027 mit MS-24, neu und bisher nebeneinander, vor „Speichern“ nichts gespeichert`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0004&welt=k17&person=IK', breite, AM_1_APRIL);
@@ -115,7 +121,7 @@ for (const breite of [375, 1440]) {
     await expect(page.getByTestId('werte-karte')).toContainText(`0,29${NB}kWh je kg`);
     await pruefeUndFotografiere(page, breite, 'k17-seite-vorher', { seite: true });
 
-    await page.getByTestId('berechnung-aendern-knopf').click();
+    await menue(page, 'Berechnung ändern ab …');
     const dialog = page.getByRole('dialog', { name: /^(Berechnung ändern|Fertig)$/ });
     await expect(dialog.getByText('Schritt 1 von 4 · Gilt ab')).toBeVisible();
     await expect(dialog.getByTestId('kennzahl-heute-gilt')).toHaveText('Heute gilt: Menge je Bezugsgröße · Prozess Spritzguss gesamt (MS-20) je Produktionsmenge Spritzguss (BZ-1) · Fassung 1 gilt seit Beginn');
@@ -178,6 +184,8 @@ for (const breite of [375, 1440]) {
     await expect(berechnung).toContainText('rückwirkend (31 Tage)');
     await expect(berechnung.locator('.vp-kz-fassung')).toHaveCount(2);
     await expect(berechnung.locator('.vp-kz-fassung').first()).toContainText(`„${K17_BEGRUENDUNG}“`);
+    // Die Berechnung steht im Aufklapper „Wie wird gerechnet?“ (Konzept Auswerten a1 §6.5) - für das Bild aufgeklappt.
+    await page.getByTestId('kennzahl-rechenweg').locator('summary').click();
     await pruefeUndFotografiere(page, breite, 'k17-seite-nachher', { element: 'kennzahl-berechnung', auch1440: true });
   });
 
@@ -190,7 +198,7 @@ for (const breite of [375, 1440]) {
     await expect(page.getByTestId('werte-karte')).toContainText(`0,30${NB}kWh je kg`);
     await pruefeUndFotografiere(page, breite, 'k17-karte', { seite: true, auch1440: true });
 
-    await page.getByTestId('berechnung-aendern-knopf').click();
+    await menue(page, 'Berechnung ändern ab …');
     const dialog = page.getByRole('dialog', { name: 'Berechnung ändern' });
     await expect(dialog.getByTestId('kennzahl-gilt-ab')).toHaveText('Fassung 3 gilt ab heute — Fassung 2 endet am 19.03.2027.');
     await dialog.getByRole('combobox', { name: 'Gilt ab', exact: true }).click();
@@ -219,7 +227,7 @@ for (const breite of [375, 1440]) {
 
   test(`${breite} px — Stammdaten ändern an KZ-0001: ohne Fassung, der Kopf zeigt den neuen Verantwortlichen`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001&person=IK', breite, DEZEMBER);
-    await page.getByTestId('stammdaten-aendern-knopf').click();
+    await menue(page, 'Stammdaten ändern');
     const dialog = page.getByRole('dialog', { name: 'Stammdaten ändern' });
     const speichern = dialog.getByRole('button', { name: 'Speichern', exact: true });
     await expect(speichern).toBeDisabled();
@@ -228,21 +236,19 @@ for (const breite of [375, 1440]) {
     await pruefeUndFotografiere(page, breite, 'stammdaten');
     await speichern.click();
     await expect(page.locator('.vp-modal')).toHaveCount(0);
-    await expect(page.getByText('Gebäude Halle 2 · verantwortlich Peter Hollerbach')).toBeVisible();
+    // Exakt: „Über diese Kennzahl“ nennt dieselben Wörter im Satz „Gilt für das Gebäude Halle 2 · verantwortlich …“.
+    await expect(page.getByText('Gebäude Halle 2 · verantwortlich Peter Hollerbach', { exact: true })).toBeVisible();
     const a = await aufrufe(page);
     expect([a.stammdaten, a.fassung]).toEqual([1, 0]);
   });
 
   test(`${breite} px — KZ-0001 archivieren: Löschen gesperrt, die Folgen nennen KZ-0003; danach „archiviert“ in der Liste und „Eingang archiviert (KZ-0001)“ an KZ-0003`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001&person=IK', breite, DEZEMBER);
-    const zyklus = page.getByTestId('kennzahl-lebenszyklus');
-    await expect(zyklus).toContainText('KZ-0001 hat Werte — archivieren Sie sie.');
-    await expect(zyklus.getByRole('button', { name: 'Kennzahl löschen' })).toHaveCount(0);
-    // In die Mitte geholt — sonst verdeckt die feste Leiste am unteren Rand das Bild, nicht die Seite.
-    await zyklus.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Konzept Auswerten a1 §6.5: die Werkzeuge im Menü ⋯ - mit Werten kein „Löschen“ (V5), Archivieren ist der Weg.
+    await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+    await expect(page.getByRole('menuitem')).toHaveText(['Kopieren', 'Berechnung ändern ab …', 'Stammdaten ändern', 'Archivieren']);
     await pruefeUndFotografiere(page, breite, 'lebenszyklus', { ganz: false });
-
-    await page.getByTestId('archivieren-knopf').click();
+    await page.getByRole('menuitem', { name: 'Archivieren', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Kennzahl archivieren' });
     await expect(dialog.getByTestId('confirm-consequences')).toContainText(
       'KZ-0003 Stromeinsatz Montage je Stück — Unternehmen liest KZ-0001 und zeigt danach „Eingang archiviert (KZ-0001)“.',
@@ -251,24 +257,31 @@ for (const breite of [375, 1440]) {
     await dialog.getByRole('button', { name: 'Archivieren', exact: true }).click();
     await expect(page.locator('.vp-modal')).toHaveCount(0);
     await expect(page.getByTestId('kennzahl-archiviert')).toHaveText('Archiviert am 03.12.2026 — die Werte bleiben lesbar, VoltPilot rechnet sie nicht mehr.');
-    await expect(page.getByTestId('stammdaten-aendern-knopf')).toHaveCount(0);
-    await expect(page.getByTestId('berechnung-aendern-knopf')).toHaveCount(0);
+    // Archiviert: im Menü ⋯ bleibt nur „Kopieren“.
+    await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+    await expect(page.getByRole('menuitem')).toHaveText(['Kopieren']);
+    await page.keyboard.press('Escape');
     expect((await aufrufe(page)).archivieren).toBe(1);
     await pruefeUndFotografiere(page, breite, 'archiviert-seite', { seite: true });
 
     await page.getByRole('button', { name: 'Alle Kennzahlen' }).click();
-    const karte = page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0001' });
-    await expect(karte).toContainText('archiviert');
-    await expect(page.locator('[data-testid="kennzahl-zahl"], [data-testid="kennzahl-hinweis"]')).toHaveCount(5);
+    // Konzept Auswerten a1 §6.4: die archivierte steht zugeklappt unter „Archiviert“, die anderen vier bleiben in der Liste.
+    const archiv = page.getByTestId('kennzahlen-archiv');
+    await expect(archiv.locator('summary')).toHaveText('Archiviert · 1 Kennzahl');
+    await archiv.locator('summary').click();
+    await expect(archiv.locator('[data-kennzeichen="KZ-0001"]')).toBeVisible();
+    await expect(page.locator('[data-testid="kennzahlen-ohne"] [data-kennzeichen]')).toHaveCount(4);
     await pruefeUndFotografiere(page, breite, 'liste-archiviert', { seite: true });
-    await page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0003' }).click();
+    await page.locator('[data-kennzeichen="KZ-0003"]').click();
     await expect(page.getByTestId('kennzahl-eingang-archiviert')).toHaveText('Eingang archiviert (KZ-0001)');
-    await pruefeUndFotografiere(page, breite, 'eingang-archiviert', { element: 'kennzahl-berechnung' });
+    await pruefeUndFotografiere(page, breite, 'eingang-archiviert', { element: 'kennzahl-eingang-archiviert' });
   });
 
   test(`${breite} px — eine Kennzahl ohne einen einzigen Wert löschen: bestätigen, dann zurück zur Liste`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen&frisch=1&person=IK', breite, DEZEMBER);
-    await page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0009' }).click();
+    await page.locator('[data-kennzeichen="KZ-0009"]').click();
+    // Ohne einen einzigen Wert steht „Kennzahl löschen“ im Menü ⋯ und öffnet die Bestätigung.
+    await menue(page, 'Kennzahl löschen');
     const zyklus = page.getByTestId('kennzahl-lebenszyklus');
     await zyklus.getByRole('button', { name: 'Kennzahl löschen' }).click();
     await expect(zyklus).toContainText('KZ-0009 Stromeinsatz je Stück — Halle 2 verschwindet aus der Liste.');
@@ -276,7 +289,7 @@ for (const breite of [375, 1440]) {
     await pruefeUndFotografiere(page, breite, 'loeschen', { ganz: false });
     await zyklus.getByRole('button', { name: 'Endgültig löschen' }).click();
     await expect(page.getByTestId('kennzahlen')).toBeVisible();
-    await expect(page.getByTestId('kennzahl-karte').filter({ hasText: 'KZ-0009' })).toHaveCount(0);
+    await expect(page.locator('[data-kennzeichen="KZ-0009"]')).toHaveCount(0);
     expect((await aufrufe(page)).loeschen).toBe(1);
   });
 }

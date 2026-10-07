@@ -1338,13 +1338,6 @@
       "grund": "Paket vp-uems-baukasten-messwert-groesse (Schnitt 2): „Jetzt aufzeichnen“ im Formular „Eigenen Messwert hinzufügen“ wartet zusätzlich auf die Antwort auf „Was misst dieser Wert?“ und auf eine dazu passende Einheit. Beschriftung, Handler und die bisherigen Sperren (Prüfung, harte Grenze, busy) bleiben erhalten; die neue Frage ist ein VpPicker, kein geschütztes Element."
     },
     {
-      "datei": "components/KennzahlListe.tsx",
-      "vorher": "d30f45c1bca2d02e988be705600f77d23480d7d73cba72483ef2ed03921b42fd",
-      "nachher": "206c81b91252c7ccc0c9b325406ad004f3a34a8f831029fa9247459de492da51",
-      "commit": "35303a45ab431af96607b22dc0efb738d7709203",
-      "grund": "UEMS AP-17 IP-9 (Basis origin/uems 35303a45): die Register-Karte trägt additiv das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (optionaler `zusatz`, nur im Register und nur bei freigegebener Bezugsbasis). Typ, Klasse, Test-Kennung, Handler und alle bisherigen Inhalte der Karte bleiben erhalten."
-    },
-    {
       "datei": "App.tsx",
       "vorher": "8f1f2cb5fc471743695a7def4442e37cf157b3354ad9d327988be79b9da396d9",
       "nachher": "9a995467c4d9ab9c6fca5564b9ac673ebee114e48df6e3bf5a8ba19e531659d2",
@@ -1399,6 +1392,45 @@
       "nachher": "a4c865c22fa3e6fc92c29eba152374037380d440efcf3d54b9152b9cc094f406",
       "commit": "uems · Wiedervorlage als Arbeitsliste (Konzept w1, PR1)",
       "grund": "Entscheid 8: der Schritt „Entwurf vergleichen“ der Wiedervorlage öffnet den Bericht mit offenem Entscheid; data-entscheid-schritt sagt dem Fokus-Haken, welcher Knopf der Schritt ist (vor „Anstoß verwerfen“). Wortlaut, Ziel und Handler unverändert."
+    },
+    {
+      "datei": "pages/KennzahlenPage.tsx",
+      "vorher": "7d1d0ab0191922f96b8911b854d262e76c3adc04655e3f795388556297c22816",
+      "nachher": "c287447ef1afd33e8bfba18d6573238e0444266268e0761c1383e49ac1a7067e",
+      "commit": "fm/vp-auswerten-bau-a1-pr1",
+      "grund": "Konzept Auswerten a1 §6.4: „Kennzahl anlegen“ ist am Rechner ein Rahmenknopf im Kopf (variant outline), am Handy steht er im Menü ⋯; Beschriftung, Recht und Handler bleiben."
+    },
+    {
+      "datei": "pages/KennzahlSeite.tsx",
+      "vorher": "601747584093f2148548368bf1113d4a0cc2f143f53618174998bccef4e583c6",
+      "menue": "{ label: KNOPF_KOPIEREN, recht, standort: k.standort_id, onClick: () => onKopieren({ kennzahl: k, fassungen: stamm.fassungen }) }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
+      "commit": "fm/vp-auswerten-bau-a1-pr2",
+      "grund": "Konzept Auswerten a1 §6.5: Werkzeuge ins Menü ⋯ - „Kopieren“ ist ein Eintrag des RowMenu im Kopf der Seite; Beschriftung, Recht (kennzahl.*_definieren am Geltungsbereich) und Handler bleiben."
+    },
+    {
+      "datei": "pages/KennzahlSeite.tsx",
+      "vorher": "5bfa68b64135e18339ee72c4cefbf3a71e44ac20a7e482420cba5ba94357bd0b",
+      "menue": "{ label: E.KNOPF_BERECHNUNG_AENDERN, recht, standort: k.standort_id, onClick: () => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen }) }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
+      "commit": "fm/vp-auswerten-bau-a1-pr2",
+      "grund": "Konzept Auswerten a1 §6.5: „Berechnung ändern ab …“ steht im Menü ⋯ (nur an einer nicht archivierten Kennzahl); Beschriftung, Recht und Handler bleiben."
+    },
+    {
+      "datei": "pages/KennzahlSeite.tsx",
+      "vorher": "bebcdf5235c1f22f838b706f3aa1755502fc42105011854d1817f81b122bb469",
+      "menue": "{ label: E.KNOPF_STAMMDATEN, recht, standort: k.standort_id, onClick: () => setDialog('stammdaten') }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
+      "commit": "fm/vp-auswerten-bau-a1-pr2",
+      "grund": "Konzept Auswerten a1 §6.5: „Stammdaten ändern“ steht im Menü ⋯ und öffnet denselben KennzahlStammdatenDialog; Beschriftung und Recht bleiben."
+    },
+    {
+      "datei": "pages/KennzahlSeite.tsx",
+      "vorher": "eb728bccb64376d0fe9c404963e6a261253e6157567287f00ff4e25a344168e8",
+      "menue": "{ label: E.KNOPF_ARCHIVIEREN, recht, standort: k.standort_id, onClick: () => { setArchiv({ laeuft: false, fehler: null }); setDialog('archivieren'); } }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
+      "commit": "fm/vp-auswerten-bau-a1-pr2",
+      "grund": "Konzept Auswerten a1 §6.5: „Archivieren“ steht im Menü ⋯ und öffnet denselben Bestätigungsdialog mit den Lesern der Kennzahl; Beschriftung, Recht und Handler bleiben."
     },
     {
       "datei": "pages/BerichtSeite.tsx",

@@ -222,7 +222,7 @@ class MessstelleApiTest {
             Map<String, Object> e = eintraege.get(0);
             assertThat(e.get("art")).isEqualTo("angelegt");
             assertThat(e.get("actor_sub")).isEqualTo(admin.get("sub").asText());
-            assertThat(e.get("actor_name")).isEqualTo("admin");
+            assertThat(e.get("actor_name")).isEqualTo("Platform Admin");
             assertThat(e.get("actor_rolle")).isEqualTo(RechteAbleitung.Rolle.VOLTPILOT_BETRIEB.code());
             assertThat(e.get("actor_art")).isEqualTo("voltpilot");
             assertThat(e.get("rueckwirkend")).isEqualTo(false);
@@ -723,7 +723,8 @@ class MessstelleApiTest {
         for (Map<String, Object> e : eintraege) {
             // AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator.
             assertThat(e.get("actor_sub")).isEqualTo(demo.get("sub").asText());
-            assertThat(e.get("actor_name")).isEqualTo("demo");
+            // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
+            assertThat(e.get("actor_name")).isEqualTo("Demo Operator");
             assertThat(e.get("actor_rolle")).isEqualTo(RechteAbleitung.Rolle.KUNDENADMINISTRATOR.code());
             assertThat(e.get("actor_art")).isEqualTo("kunde");
             assertThat(e.get("tenant_id")).isEqualTo(UUID.fromString("00000000-0000-0000-0000-000000000001"));

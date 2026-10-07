@@ -413,6 +413,48 @@ describe('uemsErgebnis — die Fassung „vorläufig“ · „endgültig“ (sei
   });
 });
 
+describe('uemsErgebnis - das Kennzeichen „Ablesezeitraum“ (seit 1.13, AP-09 F17)', () => {
+  it('ist ein Kennzeichen mit Rang 60, kein vorgesehenes Wort mehr', () => {
+    const satz = 'Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)';
+    const e = erkenne(satz);
+    expect(e?.muster.schluessel).toBe('ablesezeitraum');
+    expect(e?.werte).toEqual({ von: '01.09. 00:00', bis: '01.10. 00:00' });
+    expect(e?.muster.rang).toBe(60);
+    expect(e?.muster.fehlbestand).toBe(false);
+    expect(vorgesehen(satz)).toBe(false);
+    expect(erkenne('Ablesezeitraum ohne Monatszuordnung')?.muster.schluessel).toBe('ablesezeitraum_ohne_monat');
+    expect(VORGESEHEN.map((v) => v.wort)).not.toContain('Ablesezeitraum');
+    // Das Wort ist das des Vokabulars der Verbrauchsregel - kein neues Wort.
+    expect(lies('verbrauch-vectors.json').kennzeichen as string[]).toContain(e?.muster.wort);
+  });
+
+  it('ist derselbe Satz, den die Bezugsdaten für den Kalendermonat festhalten (B8)', () => {
+    const saetze: string[] = [];
+    for (const fall of lies('bezugsdaten-vectors.json').cases as Json[]) {
+      for (const monat of Object.values(fall.beschreibend?.kalendermonat ?? {}) as Json[]) {
+        if (typeof monat.kennzeichen === 'string') saetze.push(monat.kennzeichen);
+      }
+    }
+    expect(saetze.length).toBeGreaterThan(0);
+    for (const k of saetze) expect(erkenne(k)?.muster.schluessel, k).toBe('ablesezeitraum');
+  });
+
+  it('ein Monat und ein Jahr aus Ablesungen werden gesprochen - wie die Route sie liefert', () => {
+    const sep = 'Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)';
+    const monat: Ergebnis = {
+      wert: 88200, einheit: 'kWh', ebene: 'monat', zustand: 'vollständig', abdeckungProzent: null,
+      kennzeichen: [sep, 'endgültig'],
+    };
+    expect(pruefe(monat)).toEqual([]);
+    expect(satz(monat)).toBe(`88.200 kWh · vollständig · ${sep} · endgültig`);
+    // Bis 1.12 stand ein Ablese-Jahr mit fehlenden Monaten ohne Grund da - der Vertrag spricht es nicht.
+    const jahr: Ergebnis = { ...monat, ebene: 'jahr', zustand: 'unvollständig', kennzeichen: [sep] };
+    expect(pruefe(jahr)).toEqual(['unvollstaendig_ohne_grund']);
+    expect(pruefe({ ...jahr, kennzeichen: ['11 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen', sep] }))
+      .toEqual([]);
+  });
+});
+
 describe('uemsErgebnis — der Grund einer fehlenden Zahl (seit 1.11, AP-13 IP-1)', () => {
   const block = vektoren.grund;
   const roh = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

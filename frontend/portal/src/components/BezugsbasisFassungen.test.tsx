@@ -73,8 +73,22 @@ describe('Anstoß-Kasten mit drei Antworten und Rechte-Sicht (A2–A4, R5)', () 
     reiter(basisMit([fassung1()], { anstoesse: [anstossR5()], frist: fristR13(false) }));
     const kasten = await screen.findByTestId('bezugsbasis-anstoss');
     expect(within(kasten).getByText(ANSTOSS_SATZ_R5)).toBeTruthy();
-    for (const name of ['Neue Fassung bilden', 'Beenden', 'Geprüft, bleibt']) expect(within(kasten).getByRole('button', { name })).toBeTruthy();
+    // Konzept Auswerten a1 §6.6: der Anstoß steht in der Karte „Überprüfung“, ihre Antworten darunter.
+    const pruefung = screen.getByTestId('bezugsbasis-ueberpruefung');
+    expect(pruefung.contains(kasten)).toBe(true);
+    for (const name of ['Neue Fassung bilden', 'Beenden', 'Geprüft, bleibt']) expect(within(pruefung).getByRole('button', { name })).toBeTruthy();
     expect(screen.queryByTestId('bezugsbasis-frist')).toBeNull();
+  });
+  it('viele Anstöße: drei stehen offen, die übrigen hinter „Alle … Anstöße“', async () => {
+    mitFassungen([fassung1()]);
+    const fuenf = [1, 2, 3, 4, 5].map((n) => anstossR5({ anlass_kennung: `korrektur:K-2026-00${10 + n}`, zeitpunkt: `2027-01-0${n}T03:00:00+01:00` }));
+    reiter(basisMit([fassung1()], { anstoesse: fuenf }));
+    const kasten = await screen.findByTestId('bezugsbasis-anstoss');
+    expect(within(kasten).getAllByRole('listitem')).toHaveLength(3);
+    fireEvent.click(within(kasten).getByRole('button', { name: 'Alle 5 Anstöße' }));
+    expect(within(kasten).getAllByRole('listitem')).toHaveLength(5);
+    fireEvent.click(within(kasten).getByRole('button', { name: 'Weniger zeigen' }));
+    expect(within(kasten).getAllByRole('listitem')).toHaveLength(3);
   });
   it('Claudia (Leserin) sieht den Kasten ohne Knöpfe', async () => {
     mitFassungen([fassung1()]);

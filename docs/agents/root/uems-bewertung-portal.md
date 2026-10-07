@@ -25,10 +25,44 @@ reinen Modul `frontend/portal/src/bewertung.ts`; Flächen `BewertungPage`, `Ener
   `energiemanagement.ansehen`); die Bühne spielt dafür immer die Energiemanagement-Routen — wer `e2e/bewertung.tsx`
   ändert, fährt auch `e2e/nachweise.spec.ts` · [Portal Energiemanagement](uems-energiemanagement-portal.md).
 
+## Ergebnis-Seite (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026)
+
+`#/portfolio/bewertung` zeigt das Ergebnis statt der Rohdaten; jede Ableitung steht im reinen Modul
+`src/bewertungErgebnis.ts` (Antwortsatz, Kacheln, Gruppen, Statuszeile, Kriterien in Worten, Umfang, Datumsblöcke), die
+Seite rendert nur. Kopf „Energetische Bewertung“ mit Satz und „Was ist die energetische Bewertung?“
+(`components/BegriffAufklapper.tsx`, Begriff `energetische_bewertung`), Statuszeile „Gilt · Stand Nr. 1 vom …“ (fällig:
+Hinweiskarte, „Neuen Stand freigeben“ führt per `zumEntscheid` zum Bewertungsstand), Antwortsatz, Kacheln, links die
+Bereiche (Wesentlich · Nicht wesentlich · Noch nicht eingestuft · Noch ohne Werte), rechts Bewertungsstand,
+„Wie VoltPilot vorschlägt“ (`KriterienKarte`) und Umfang; Grenz-Satz einmal am Fuß („Was VoltPilot leistet“).
+
+- Gruppen folgen der geltenden Einstufung einer Person, nie dem Vorschlag; „Noch ohne Werte“ = `keine_werte` UND keine
+  Menge im Zeitraum - außer „wesentlich“: der bleibt unter „Wesentliche Bereiche“, sonst zählte die Antwort ihn und die
+  Karte nicht. Strom steht vor Trägern ohne Anteil (m³ ist kein kWh).
+- Wächter Q5: `bewertungErgebnis.ts` rechnet keine Menge. Die Menge der wesentlichen Bereiche summiert
+  `uemsBewertung.menge` (nie eine Summe gerundeter Anteile), ihren Anteil und den des Rests bildet `uemsBewertung.prozent`;
+  „x % zugeordnet“ ist `abdeckung_prozent` der Route (eine Stelle, damit 79,6 % nicht wie 80 % aussehen). Ein negativer
+  Rest (Doppelzählung) ist nie „0 % · ausreichend“, sondern „passt nicht“ mit Satz.
+- Entscheidet eine dritte Person zuerst, antwortet die Route 409 `bereits_entschieden`; die Kriterien-Karte lädt dann
+  neu und sagt das, statt veraltete Knöpfe stehen zu lassen. Ohne Vorschlag ist im Einstufen-Dialog nichts vorgewählt.
+- ⚠ Ein Vorschlag zählt nur mit Messwerten: ohne Menge sagt die Route „unter Schwelle“ (alle Kriterien „nicht
+  anwendbar“) - das ist kein Vorschlag, „weicht vom Vorschlag ab“ erscheint dann nie (`vorschlagBild`).
+- ⚠ Zwei Uhren der Demo: die Datengrundlage der gültigen Bewertung (Bühne, April 2028 bis März 2029) hat keine
+  Messwerte; die Seite sagt das als Verlässlichkeits-Satz, Anteile und Balken fehlen, die Einstufungen bleiben.
+- Keine Kürzel K1 bis K8 auf der Seite (§10.10): nur der Dialog „Kriterien ändern“ zeigt Wort und Kürzel
+  (`KRITERIEN_FELDER`); R16-Hinweise zitieren Kundennamen („Kompressoren K1+K2“) und sind vom Wächter ausgenommen.
+- Vier-Augen-Kriterien (Befund 6): `KriterienKarte` liest `…/kriterien` und `…/kriterien/fassungen`; eine beantragte
+  Fassung zeigt Änderung, Person und „Freigeben“/„Ablehnen“ (Begründung Pflicht) nur einer zweiten Person mit
+  `bewertung.kriterien`; „Kriterien ändern“ fehlt solange (sonst 409 `freigabe_offen`). Die Meldung nach dem Speichern
+  folgt `freigabe_status` (`kriterienMeldung`).
+- Weg von der Seite: Ranglisten-Tabelle, Messabdeckung je Einsatz/Ort (Kachel „Keinem Bereich zugeordnet“ statt dessen),
+  Prüfaufgaben (stehen am Einsatz), zweite Liste der Einsätze und die Messplanung (zieht nach Messen, §10.9).
+- Bühne: `e2e/bewertung.html?…&kriterienvieraugen=1|kriterienantrag=IK` (mit `person=JW`); Nachweis
+  `src/bewertungErgebnis.test.ts`, `src/pages/BewertungPage.test.tsx`, `e2e/bewertung.spec.ts`, `e2e/bewertungsstand.spec.ts`.
+
 ## Rangliste und Einstufung (AP-16 IP-12, Meilenstein M2)
 
-Die bestehende Seite `#/portfolio/bewertung` liest für den letzten vollen Monat `…/bewertung/rangliste` und zeigt
-Rang, Menge, Anteil, Balken, K1–K3, K5/K6, Vorschlag, Anlagenrest und weitere Träger. Die Einsatzseite liest
+Die Seite liest `…/bewertung/rangliste` über die Datengrundlage der gültigen Bewertung (sonst zwölf volle Monate,
+`useBewertungZeitraum`) und zeigt seit a1 nur noch das Ergebnis (siehe oben); Einstufen geschieht an der Einsatzseite. Die Einsatzseite liest
 `…/{id}/einstufungen`; frühere Fassungen bleiben auch nach einer Rückstufung sichtbar. Einstufen sendet den
 vollständigen Herkunftsentwurf der Rangliste unverändert. `energieeinsatz.einstufen` und `bewertung.kriterien` kommen
 ausschließlich aus `/me`; ohne sie bleiben alle Angaben lesbar, aber ohne Schreibknöpfe.
@@ -42,8 +76,8 @@ ausschließlich aus `/me`; ohne sie bleiben alle Angaben lesbar, aber ohne Schre
 
 ## Messabdeckung, Messmittel und Toleranz (AP-16 IP-18, Meilenstein M3)
 
-`#/portfolio/bewertung` zeigt unter der Rangliste die Abdeckungs-Tabelle (`components/MessabdeckungTabelle.tsx`, reines
-Modul `src/uemsMessabdeckung.ts`) aus `…/bewertung/messabdeckung`: je Einsatz und je Ort gemessen · geplant · Ersatz ·
+Die Abdeckungs-Tabelle (`components/MessabdeckungTabelle.tsx`, reines Modul `src/uemsMessabdeckung.ts`, seit a1 nicht
+mehr auf der Bewertung) liest `…/bewertung/messabdeckung`: je Einsatz und je Ort gemessen · geplant · Ersatz ·
 ungemessen, Rest-Zeilen je Anlage, Summe mit K8. Darüber die Prüfaufgaben-Zeile, auf der Einsatzseite die Karte
 „Messmittel“ (`components/EinsatzMessmittel.tsx`: Messstelle → führende Quelle der Hauptgröße → `…/geraete/{id}/messmittel`).
 Die Geräteseite trägt das Messmittel-Blatt mit Dialog (`components/MessmittelBlatt.tsx`, reines Modul `src/uemsMessmittel.ts`);
@@ -86,7 +120,8 @@ der Anlage) und unter der Abdeckung die Liste je Standort. Die Messstellen-Seite
 ## Bewertungsstand (AP-16 IP-25, §5.5, R7/R10, Meilenstein M4)
 
 `#/portfolio/bewertung` trägt die Karte „Bewertungsstand“ (`components/BewertungStand.tsx`, reines Modul
-`src/bewertungStand.ts`) und im Kopf die Frist-Zeile (derselbe Satz wie `BewertungBaustein`). Sie liest NUR die
+`src/bewertungStand.ts`; seit a1 Datumsblöcke aus `bewertungErgebnis.standBild/entwurfBild`, „Unterschiede ansehen“ =
+`BerichtVergleichDialog` in einer `Fehlergrenze`) und über der Antwort die Statuszeile. Sie liest NUR die
 Bericht-Routen (`GET /api/v1/berichte`, `…/{kennung}`, `…/entwurf`, `…/staende/{nr}/pdf|csv`) — keine zweite Maschine:
 Anlegen ist `BerichtAnlegenDialog` mit `nurVorlage`, Freigeben `BerichtFreigebenDialog`, der Vermerk `revisionBanner`.
 
@@ -99,6 +134,8 @@ Anlegen ist `BerichtAnlegenDialog` mit `nurVorlage`, Freigeben `BerichtFreigeben
   Monate (`2025-11/2026-10`), keiner „läuft“. Eine in „Berichte“ angelegte Bewertung öffnet die Seite „Bewertung“
   (`BerichtePage.onBewertung`); die Berichtsseite kennt die acht Bewertungs-Abschnitte nicht.
 - PDF/CSV hängen hier ein (`api.berichtDatei` → Blob → Download); seit Konzept Nachweisen n1 PR 0 auch an jedem Stand der allgemeinen Berichtsseite (`darfAusgabe`).
+  ⚠ Ersetzte Stände klappen unter „Frühere Stände“ auf der Karte auf (mit PDF/CSV), damit die Seite „Bewertung“ ihre
+  Dateien selbst trägt.
 - ⚠ Kein Feld „Name“ am Anlegen (§5.5 Schritt 1): `BerichtAnlegen` kennt nur Vorlage, Geltung, Zeitraum — Befund, nicht
   nachgebaut; der Stand-Satz nennt „Bewertung <Jahr>“ aus dem letzten Monat der Datengrundlage.
 - Bühne: `e2e/bewertung.html?stand=voll&bewertungsstand=keine|entwurf|nr1|revision|nr2|faellig` (Routen in

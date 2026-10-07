@@ -3,6 +3,7 @@ import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Bezugsbasis, type BezugsbasisFassung, type Kennzahl } from '../api';
 import * as B from '../bezugsbasisAnlegen';
+import * as Bz from '../bezugsbasisEbene';
 import { useRollen } from '../rollen';
 import { BezugsbasisAssistent } from './BezugsbasisAssistent';
 import { BezugsbasisFassungen, type NeueFassung } from './BezugsbasisFassungen';
@@ -15,13 +16,27 @@ export type BezugsbasisLage =
   | { art: 'laedt' }
   | { art: 'fehler' }
   | { art: 'keine' }
-  | { art: 'da'; basis: Bezugsbasis; fassung: BezugsbasisFassung | null };
+  | {
+      art: 'da';
+      basis: Bezugsbasis;
+      /** Die Fassung am Stichtag - die, die heute gilt (Energieziel setzen, Ebene). */
+      fassung: BezugsbasisFassung | null;
+      /** Die Fassung am Tag des Urteils (P4), falls eine andere - sie steht neben dem Urteil der Seite. */
+      urteilsFassung?: BezugsbasisFassung | null;
+    };
 
 /**
  * Liest die laufende Bezugsbasis einer Kennzahl (UEMS AP-17 IP-9) über die EINE Naht `api.kennzahlBezugsbasen` und
- * dazu die Fassung, die die Basis-Zeile nennt (`GET …/fassungen/{n}`). `an = false` fragt nichts ab (Anteil, B2).
+ * dazu die Fassung, die die Basis-Zeile nennt (`GET …/fassungen/{n}`) - mit `stichtag` die an diesem Tag geltende bzw.
+ * nächste (`fassungAm`). `an = false` fragt nichts ab (Anteil, B2).
  */
-export function useBezugsbasis(kennzahlId: string, an: boolean, versuch: number): BezugsbasisLage {
+export function useBezugsbasis(
+  kennzahlId: string,
+  an: boolean,
+  versuch: number,
+  stichtag?: string,
+  urteilsTag?: string,
+): BezugsbasisLage {
   const [lage, setLage] = useState<BezugsbasisLage>({ art: 'laedt' });
   useEffect(() => {
     if (!an) return;
@@ -32,32 +47,28 @@ export function useBezugsbasis(kennzahlId: string, an: boolean, versuch: number)
       .then(async ({ bezugsbasen }) => {
         const basis = B.laufende(bezugsbasen);
         if (!basis) return aktiv && setLage({ art: 'keine' });
-        const kurz = B.zeilenFassung(basis);
+        const kurz = stichtag ? Bz.fassungAm(basis, stichtag) : B.zeilenFassung(basis);
         const fassung = kurz
           ? await api.bezugsbasisFassung(kennzahlId, basis.id, kurz.fassung).catch(() => null)
           : null;
-        if (aktiv) setLage({ art: 'da', basis, fassung });
+        // Die Fassung des Urteils nur dann eigens lesen, wenn sie eine andere ist (Fassungswechsel am Stichtag).
+        const amUrteil = urteilsTag ? Bz.fassungAm(basis, urteilsTag) : kurz;
+        const urteilsFassung = amUrteil && amUrteil.fassung !== kurz?.fassung
+          ? await api.bezugsbasisFassung(kennzahlId, basis.id, amUrteil.fassung).catch(() => null)
+          : fassung;
+        if (aktiv) setLage({ art: 'da', basis, fassung, urteilsFassung });
       })
       .catch(() => aktiv && setLage({ art: 'fehler' }));
     return () => {
       aktiv = false;
     };
-  }, [kennzahlId, an, versuch]);
+  }, [kennzahlId, an, versuch, stichtag, urteilsTag]);
   return lage;
 }
 
-/** Die Basis-Zeile oben an der Kennzahl (§5.8) — nur, wenn es eine Fassung gibt. */
-export function BezugsbasisZeile({ lage, einheit }: { lage: BezugsbasisLage; einheit: string | null }) {
-  if (lage.art !== 'da' || !lage.fassung) return null;
-  return (
-    <p className="vp-bb-zeile" data-testid="bezugsbasis-zeile">
-      {B.basisZeile(lage.basis, lage.fassung, einheit)}
-    </p>
-  );
-}
-
 /**
- * Der Reiter „Bezugsbasis“ an der Kennzahl (UEMS AP-17 IP-9, §5.1, §6.3; AP-13-Ebenen-Regel: eine Fläche, eine Welt).
+ * Die Bezugsbasis an der Kennzahl (UEMS AP-17 IP-9, §5.1, §6.3) - seit Konzept Auswerten a1 §6.6 der Inhalt der Ebene
+ * `…/kennzahlen/{id}/bezugsbasis` (`pages/BezugsbasisEbene.tsx`), die Titel, Status und Antwort trägt.
  * Ohne Basis der leere Zustand (§5.8) — der Knopf „Bezugsbasis anlegen“ nur mit `bezugsbasis.verwalten`, sonst nur der
  * Satz. Mit Basis ihre Fassungen mit Zustand; ein Entwurf wird bearbeitet (Recht `bezugsbasis.verwalten`) und — mit
  * `bezugsbasis.freigeben` — freigegeben bzw. bei Vier-Augen beantragt; einen Antrag gibt eine zweite Person frei oder
@@ -68,11 +79,14 @@ export function BezugsbasisReiter({
   lage,
   zone,
   onNeu,
+  stichtag,
 }: {
   kennzahl: Kennzahl;
   lage: BezugsbasisLage;
   zone: string;
   onNeu: () => void;
+  /** Der Tag, an dem „seit“, „ab“ und „bis“ der Fassungen gemessen werden; ohne Angabe heute in der Zone. */
+  stichtag?: string;
 }) {
   const rollen = useRollen();
   const verwalten = rollen.darf('bezugsbasis.verwalten', kennzahl.standort_id);
@@ -101,16 +115,16 @@ export function BezugsbasisReiter({
         </div>
       )}
       {lage.art === 'da' && (
-        <div className="vp-bb-basis">
-          <h2>
-            {B.REITER_BEZUGSBASIS} {lage.basis.kennzeichen}
-          </h2>
-          <p className="vp-kz-leise">
-            Verantwortlich: {lage.basis.verantwortlich_name}
-            {lage.basis.zweck ? ` · ${lage.basis.zweck}` : ''}
-          </p>
+        <div className="vp-bb-ebene">
+          {/* Konzept Auswerten a1 §6.6: Titel und Status trägt der Kopf der Ebene; hier der Zweck, falls es einen gibt. */}
+          {lage.basis.zweck && (
+            <p className="vp-kzs-text vp-bb-zweck" data-testid="bezugsbasis-zweck">
+              <span className="vp-kz-leise">{Bz.ZWECK}</span> {lage.basis.zweck}
+            </p>
+          )}
           {lage.basis.fassungen.length === 0 ? (
-            <>
+            <div className="vp-bb-basis">
+              <p className="vp-kz-leise">{`Verantwortlich: ${lage.basis.verantwortlich_name}`}</p>
               <p>Noch keine Fassung gebildet.</p>
               {verwalten && aenderbar && (
                 <div className="vp-kz-aktionen">
@@ -119,7 +133,7 @@ export function BezugsbasisReiter({
                   </Button>
                 </div>
               )}
-            </>
+            </div>
           ) : (
             // IP-18: Zeitleiste, Anstoß, Frist, Faktoren und die Antworten — eigene Datei, hier nur der Einhängepunkt.
             <BezugsbasisFassungen
@@ -130,10 +144,15 @@ export function BezugsbasisReiter({
               freigeben={freigeben}
               onNeu={onNeu}
               onAssistent={(neu) => setAssistent({ basis: lage.basis, neu: neu ?? undefined })}
+              stichtag={stichtag}
             />
           )}
           {/* IP-14: die Fassung der Basis-Zeile im Einzelnen — Modell mit Punkten und Gerade, oder Basiswert und Monate. */}
-          {lage.fassung && <BezugsbasisModellAnFassung kennzahl={kennzahl} fassung={lage.fassung} />}
+          {lage.fassung && (
+            <section className="vp-kz-block vp-kzs-karte vp-bb-modell-karte" data-testid="bezugsbasis-modell-karte">
+              <BezugsbasisModellAnFassung kennzahl={kennzahl} fassung={lage.fassung} />
+            </section>
+          )}
         </div>
       )}
       <GrenzSatz className="vp-bb-grenze" />
