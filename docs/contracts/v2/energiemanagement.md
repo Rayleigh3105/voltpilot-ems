@@ -1,11 +1,12 @@
 # Energiemanagement: Überprüfung, Wiedervorlage, Vergleich, Verzeichnis-Zeile, Prüfsumme (UEMS AP-19)
 
-Stand 07.10.2026 · Vertrag 1.4 · Konzept `data/vp-uems-ap19-fundament` §4.2–4.9, §5.8, §7 R1–R3, R7–R14, §8 IP-2;
+Stand 07.10.2026 · Vertrag 1.5 · Konzept `data/vp-uems-ap19-fundament` §4.2–4.9, §5.8, §7 R1–R3, R7–R14, §8 IP-2;
 Entscheide E1–E10 = A, W1–W15 übernommen (24.09.2026).
 Vertrag 1.1 (Konzept Wiedervorlage w1, freigegeben 05.10.2026): `wiedervorlage` liefert additiv den Jahresplan und die Zählung nach Dringlichkeit (§3); der Satz `baustein` zählt Einträge nach Dringlichkeit (§7).
 Vertrag 1.2 (Konzept Wiedervorlage w1, Entscheid 7): `wiedervorlage_art` ist um `zaehlerablesung` geweitet, die zwölfte Art (§1, §3); `energiemanagement_vokabular()` trägt sie seit `V20261005220000`.
 Vertrag 1.3 (Konzept Nachweisen n1, Runde 2, Entscheide 5 und 23, freigegeben 07.10.2026): das Vokabular `teil` nennt die 18 Teile des Überblicks von Nachweisen, `woerter.teil` ihren Namen und `woerter.teil_kurz` ihr Kurzwort für Chips (§1); `energiemanagement_vokabular()` trägt `teil` seit `V20261007004500`, die Tabelle `energiemanagement_teil_vermerk` („Trifft bei uns zurzeit nicht zu“) prüft ihre Teile daran.
 Vertrag 1.4 (Konzept Nachweisen n1, Befunde A14 und A21): `bekanntmachung` nennt keine Person mehr, `bekanntmachung_durch` nennt die Person, die bekannt gemacht hat (nie „eingetragen von“, nie ein Platzhalter-Strich); `anwendungsbereich_nur_im_umfang` ist der Satz der Gegenrichtung des Vergleichs (§4, §7).
+Vertrag 1.5 (Konzept Nachweisen n1, Runde 2, Entscheid 23): `woerter.aufgabe_kurz` nennt je Aufgabe das Kurzwort für Zeilen am Handy („Leitung“, „Bezugsbasen“, „Energetische Bewertung“); der lange Name (`woerter.aufgabe`) bleibt im Blatt der Aufgabe. Nur Wörter, keine Spalte und keine Migration.
 
 Die Abnahme des Captains: **„Die erforderlichen Entscheidungen und Nachweise sind auffindbar; die Verantwortung des
 Kunden bleibt ausdrücklich erkennbar.“** VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das
@@ -53,7 +54,7 @@ Wo §4.2 ein Wort mit Zusatz nennt, ist der Zusatz eine Pflicht des Schreibwegs,
 Bestellung). `kennzeichen_muster`: `D-nnnn` ohne Jahr (`^D-[0-9]{4,13}$`, Muster BB-), `AU-JJJJ-nnnn`, `F-JJJJ-nnnn`
 (`[0-9]{4,9}` wie Maßnahme und Abweichung) und die Kennung eines Beschlusses `BR-JJJJ-nnnn/Bn` (die Herkunft
 `managementbewertung` der Maßnahme). `woerter` trägt die Kundenwörter von Dokument-Art, Aufgabe, Verzeichnis-Gruppe und Ort, seit 1.3 dazu je Teil den Namen
-(`teil`, im Blatt einer Gruppe und im Verzeichnis) und das Kurzwort (`teil_kurz`, „Kontext“, „Bezugsbasen“: in Chips am Handy).
+(`teil`, im Blatt einer Gruppe und im Verzeichnis) und das Kurzwort (`teil_kurz`, „Kontext“, „Bezugsbasen“: in Chips am Handy), seit 1.5 je Aufgabe das Kurzwort (`aufgabe_kurz`, in den Zeilen des Reiters „Aufgaben“).
 Die geweiteten fremden Vokabulare (`massnahme_herkunft`, `bericht.vorlage`, `bericht.quelle_art`, Rolle `einsicht`) stehen
 in ihren eigenen Verträgen.
 

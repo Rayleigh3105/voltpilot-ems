@@ -1,4 +1,4 @@
-import { merkeAbruf, tagDesAugenblicks } from '../routenUhr';
+import { merkeAbruf, routenHeute, tagDesAugenblicks } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, ApiError, type Feststellung, type InternesAuditMitVerlauf, type Massnahme } from '../api';
@@ -14,7 +14,8 @@ import {
   HinweisDialog,
   ablehnung,
 } from '../components/InternesAuditDialoge';
-import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
+import { MassnahmeAnlegenDialog } from '../components/MassnahmeDialoge';
+import { Recht } from '../components/Recht';
 import { NwBlatt } from '../components/nachweisen/NwBlatt';
 import { NwKopf } from '../components/nachweisen/NwKopf';
 import { PruefZeilen } from '../components/nachweisen/NwSchritte';
@@ -46,6 +47,8 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
   const [feststellungen, setFeststellungen] = useState<Feststellung[] | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [blatt, setBlatt] = useState<Blatt>(null);
+  /** Der Wortlaut des Hinweises, aus dem eine Maßnahme angelegt wird (Dialog auf Seitenebene, nie über dem Blatt). */
+  const [massnahmeAus, setMassnahmeAus] = useState<string | null>(null);
   const [versuch, setVersuch] = useState(0);
   const [kopiert, setKopiert] = useState(false);
 
@@ -284,16 +287,22 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
                 ]}
               />
               {!offeneMassnahme && a.zustand !== 'abgesagt' && (
-                <div className="vp-nw-blatt-zeile">
-                  <MassnahmeAnlegen
-                    vorbelegung={{ herkunft: 'audit', herkunftKennung: a.kennzeichen, titel: offenesBlatt.wortlaut.slice(0, 120) }}
-                    standort={null}
-                    onAngelegt={() => {
-                      setBlatt(null);
-                      setVersuch((v) => v + 1);
-                    }}
-                  />
-                </div>
+                <Recht aktion="verbesserung.verwalten" standort={null}>
+                  <div className="vp-nw-blatt-zeile">
+                    {/* Ein Dialog aus einem Blatt läge am Telefon unter dem Blatt: das Blatt geht zu, der Dialog auf. */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setBlatt(null);
+                        setMassnahmeAus(offenesBlatt.wortlaut);
+                      }}
+                      data-testid="massnahme-anlegen-knopf"
+                    >
+                      Maßnahme anlegen
+                    </Button>
+                  </div>
+                </Recht>
               )}
             </>
           )}
@@ -309,6 +318,17 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
           </ul>
         </NwBlatt>
 
+        {massnahmeAus !== null && (
+          <MassnahmeAnlegenDialog
+            vorbelegung={{ herkunft: 'audit', herkunftKennung: a.kennzeichen, titel: massnahmeAus.slice(0, 120) }}
+            tagHeute={routenHeute()}
+            onClose={() => setMassnahmeAus(null)}
+            onAngelegt={() => {
+              setMassnahmeAus(null);
+              setVersuch((v) => v + 1);
+            }}
+          />
+        )}
         {dialog === 'durchgefuehrt' && <AuditDurchgefuehrtDialog id={a.id} termin={a.termin} onClose={() => setDialog(null)} onFertig={fertig} />}
         {dialog === 'absagen' && <AuditAbsagenDialog id={a.id} onClose={() => setDialog(null)} onFertig={fertig} />}
         {dialog === 'hinweis' && (

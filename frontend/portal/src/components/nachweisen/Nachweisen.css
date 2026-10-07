@@ -157,14 +157,20 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+/* Der i-Knopf steht im Textfluss hinter dem letzten Wort, auch wenn der Titel umbricht (Mock r2-M2: „Management-
+   bewertung 2028 ⓘ“); die Schriftgröße des Rahmens ist die des Titels, damit „middle“ an dessen Zeile ausrichtet. */
 .vp-nw-kopf-titel {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   min-width: 0;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.2;
+}
+.vp-nw-kopf-titel > .vp-nw-ikn {
+  margin-left: 8px;
+  vertical-align: middle;
 }
 /* Wie der Kopf der Wiedervorlage und der Übersicht: Reiter und Seitentitel tragen dasselbe Wort. */
 .vp-nw-kopf-titel h1 {
+  display: inline;
   min-width: 0;
   margin: 0;
   font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);

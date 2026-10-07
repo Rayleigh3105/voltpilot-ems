@@ -8,6 +8,11 @@ import { grenzHinweisZeigt } from './grenzHinweis';
  * (UEMS AP-19 IP-13, §5.2, R5, R6, R11) bei 375 px und 1440 px auf der Bühne von IP-9 `e2e/energiemanagement.html` —
  * die ECHTE Schale, die ECHTEN Reiter, die Routen von IP-6/IP-10 gespielt aus dem Referenzunternehmen 1.10.
  *
+ * Seit Konzept Nachweisen n1 Runde 2 (§6.8, Entscheid 23, PR 5): „Wer macht was · Stand …“, die Status-Zeile, je
+ * Aufgabe eine Zeile mit Kurzwort und Kürzeln (am Rechner mit Namen), Name, Vertretung, seit wann, Beleg und Beschluss im
+ * Blatt der Aufgabe; die Personen am Rechner rechts, am Telefon hinter „Personen“; „Stand an einem anderen Tag“ und
+ * „Wer ist wofür verantwortlich“ im Menü „…“.
+ *
  * Fälle: Aufgabe zuordnen mit „entschieden von“ (R11: Bezugsbasen ab 01.03.2029, Vertretung, Beschluss B4) · Wer ist
  * wofür verantwortlich und die Personen-Seite (R5) · als „Einsicht“ kein Schreib-Knopf, an seiner Stelle der Leer-Satz (R6).
  *
@@ -22,6 +27,10 @@ const GRENZE =
 const VERANTWORTUNG =
   'Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.';
 const OHNE_PERSON = 'Bezugsbasen pflegen und freigeben — keine Person festgelegt.';
+const AUFGABEN_KURZ = [
+  'Leitung', 'Energiemanagement leiten', 'Energieteam', 'Bezugsbasen', 'Ziele und Maßnahmen', 'Energetische Bewertung', 'Interne Audits',
+  'Managementbewertung', 'Dokumente',
+];
 const EINSICHT_ROLLE = 'Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern.';
 const EINSICHT_LEER = 'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.';
 /** Jede Beschriftung eines Schreib-Knopfs im Bereich (IP-9, IP-13, IP-15 „Nachweis festhalten“ und IP-20 Audits/Feststellungen). */
@@ -96,29 +105,64 @@ async function waehle(page: Page, name: string, option: RegExp) {
   await page.locator(`[id="${id}-liste"]`).getByRole('option', { name: option }).click();
 }
 
+const blatt = (page: Page) => page.locator('.vp-bs-wrap, .vp-modal').last();
+async function blattZu(page: Page) {
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
+}
+async function menue(page: Page, eintrag: string) {
+  await page.getByTestId('aufgaben-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+  await page.getByRole('menuitem', { name: eintrag }).click();
+}
+
 for (const breite of [375, 1440]) {
   test.describe(`Energiemanagement › Aufgaben bei ${breite} px`, () => {
     test('R5/R11: Aufgabe zuordnen mit „entschieden von“ — Bezugsbasen ab 01.03.2029, Vertretung, Beschluss B4', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&seite=aufgaben', breite);
       await expect(page.getByTestId('energiemanagement-reiter-aufgaben')).toHaveAttribute('aria-selected', 'true');
-      const reiter = page.getByTestId('aufgaben-reiter');
-      await expect(reiter.getByRole('heading', { level: 2 })).toHaveText('Aufgaben im Energiemanagement');
-      // R5: zehn laufende Zuordnungen am 22.01.2029 — und am 12.02.2029 dieselben; Bezugsbasen als Satz, keine Warnung.
-      await expect(reiter.locator('.vp-em-zuordnung')).toHaveCount(10);
-      await expect(reiter.getByTestId('zuordnung-beenden')).toHaveCount(10);
-      await expect(page.getByTestId('aufgabe-bezugsbasen').getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
-      await expect(page.getByTestId('aufgabe-unternehmensleitung')).toContainText('Robert Falk seit 01.10.2026.');
-      await expect(page.getByTestId('zuordnung-energiemanagement_leiten-IK')).toContainText(
-        'Ines Kaltenbach seit 01.10.2026, Vertretung Jonas Wendlinger, entschieden von Robert Falk.',
-      );
-      await expect(page.getByTestId('zuordnung-energiemanagement_leiten-IK')).toContainText('Beleg: Bestellung Energiemanagement vom 28.09.2026, unterschrieben · Personalakte (Personalabteilung)');
-      await expect(page.getByTestId('personen-liste').getByTestId('person-zeile-RF')).toContainText('ohne Konto');
+      const kopf = page.getByTestId('aufgaben-kopf');
+      await expect(kopf.getByRole('heading', { level: 1 })).toHaveText('Aufgaben');
+      await expect(kopf.locator('.vp-nw-kurz')).toHaveText('Wer macht was · Stand 12.02.2029');
+      // R5: am 12.02.2029 hat „Bezugsbasen“ keine Person - die Status-Zeile zählt sie, ohne Warnton (keine Frist).
+      await expect(page.getByTestId('aufgaben-status')).toHaveText('1 Aufgabe ohne Person');
+      const liste = page.getByTestId('aufgaben-liste');
+      await expect(liste.locator('[data-testid^="aufgabe-"] .vp-nw-zl-titel')).toHaveText(AUFGABEN_KURZ);
+      await expect(page.getByTestId('aufgabe-bezugsbasen')).toContainText('keine Person');
+      await expect(page.getByTestId('aufgabe-bezugsbasen')).toContainText('Zuordnen');
+      await expect(page.getByTestId('aufgabe-unternehmensleitung').getByRole('img', { name: 'Robert Falk' })).toHaveText('RF');
+      await expect(page.getByTestId('aufgabe-energieteam').getByRole('img')).toHaveText('IKPHMD');
+      if (breite >= 720) {
+        // Am Rechner: der Name neben dem Kürzel, „3 Personen“ beim Energieteam, rechts die Personen mit ihrer Zahl.
+        await expect(page.getByTestId('aufgabe-unternehmensleitung')).toContainText('Robert Falk');
+        await expect(page.getByTestId('aufgabe-energieteam')).toContainText('3 Personen');
+        await expect(page.getByTestId('personen-liste').getByTestId('person-zeile-RF')).toContainText('1 Aufgabe');
+        await expect(page.getByTestId('aufgaben-zuordnen')).toBeVisible();
+      } else {
+        await expect(page.getByTestId('aufgabe-unternehmensleitung').locator('.vp-nw-nur-breit')).toBeHidden();
+        await page.getByTestId('aufgaben-personen').click();
+        await expect(blatt(page).getByTestId('person-zeile-RF')).toContainText('Robert Falk');
+        await blattZu(page);
+      }
       await grenzHinweisZeigt(page, GRENZE, VERANTWORTUNG);
       await ohneQuerlauf(page, 'Aufgaben 12.02.2029');
       await ablegen(page, `a-aufgaben-${breite}`, true);
 
-      // Aus der Zeile zuordnen: die Aufgabe ist vorbelegt; ohne „entschieden von“ nimmt der Dialog nicht an (PA2).
-      await page.getByTestId('aufgabe-bezugsbasen').getByTestId('aufgabe-zeile-zuordnen').click();
+      // Name, Vertretung, seit wann, entschieden von und Beleg stehen im Blatt der Aufgabe.
+      await page.getByTestId('aufgabe-energiemanagement_leiten').click();
+      const leiten = blatt(page).getByTestId('zuordnung-energiemanagement_leiten-IK');
+      await expect(leiten).toContainText('Ines Kaltenbach');
+      await expect(leiten).toContainText('Jonas Wendlinger');
+      await expect(leiten).toContainText('seit 01.10.2026');
+      await expect(leiten).toContainText('Robert Falk');
+      await expect(leiten).toContainText('Bestellung Energiemanagement vom 28.09.2026, unterschrieben · Personalakte (Personalabteilung)');
+      await expect(blatt(page).getByTestId('zuordnung-beenden')).toHaveCount(1);
+      await ohneQuerlauf(page, 'Blatt Energiemanagement leiten');
+      await blattZu(page);
+
+      // Aus dem Blatt zuordnen: die Aufgabe ist vorbelegt; ohne „entschieden von“ nimmt der Dialog nicht an (PA2).
+      await page.getByTestId('aufgabe-bezugsbasen').click();
+      await expect(blatt(page).getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
+      await blatt(page).getByTestId('aufgabe-zeile-zuordnen').click();
       await expect(modal(page).getByRole('combobox', { name: 'Aufgabe', exact: true })).toContainText('Bezugsbasen pflegen und freigeben');
       await waehle(page, 'Person', /^Ines Kaltenbach/);
       await modal(page).getByRole('combobox', { name: 'gilt ab', exact: true }).click();
@@ -135,13 +179,15 @@ for (const breite of [375, 1440]) {
       await page.getByTestId('zuordnen-senden').click();
       await expect(page.locator('.vp-modal')).toHaveCount(0);
 
-      // Am 12.02.2029 bleibt der Satz — darunter die künftige Zuordnung mit „ab“.
-      const zeile = page.getByTestId('aufgabe-bezugsbasen');
-      await expect(zeile.getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
-      await expect(zeile.getByTestId('zuordnung-bezugsbasen-IK')).toContainText(
-        'Ines Kaltenbach ab 01.03.2029, Vertretung Jonas Wendlinger, entschieden von Robert Falk.',
-      );
-      await expect(zeile.getByTestId('zuordnung-bezugsbasen-IK')).toContainText('Beschluss BR-2029-0001/B4');
+      // Am 12.02.2029 bleibt „keine Person“ - im Blatt darunter die künftige Zuordnung mit „ab“.
+      await expect(page.getByTestId('aufgaben-status')).toHaveText('1 Aufgabe ohne Person');
+      await page.getByTestId('aufgabe-bezugsbasen').click();
+      await expect(blatt(page).getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
+      const kuenftig = blatt(page).getByTestId('zuordnung-bezugsbasen-IK');
+      await expect(kuenftig).toContainText('ab 01.03.2029');
+      await expect(kuenftig).toContainText('Jonas Wendlinger');
+      await expect(kuenftig).toContainText('BR-2029-0001/B4');
+      await blattZu(page);
       const koerper = (await gesendet(page)).filter((g) => g.route === 'POST /api/v1/energiemanagement/aufgaben');
       expect(koerper).toEqual([
         {
@@ -153,21 +199,24 @@ for (const breite of [375, 1440]) {
         },
       ]);
 
-      // Stand am 01.03.2029: die Zuordnung läuft, der Satz ist weg (R11).
-      await reiter.getByRole('combobox', { name: 'Stand am', exact: true }).click();
+      // Stand am 01.03.2029 (Menü „…“): die Zuordnung läuft, jede Aufgabe hat eine Person (R11).
+      await menue(page, 'Stand an einem anderen Tag');
+      await blatt(page).getByRole('combobox', { name: 'Tag', exact: true }).click();
       await page.getByRole('button', { name: 'Nächster Monat' }).click();
       await page.getByRole('gridcell', { name: '1', exact: true }).first().click();
-      await expect(zeile.getByTestId('aufgabe-ohne-person')).toHaveCount(0);
-      await expect(zeile.getByTestId('zuordnung-bezugsbasen-IK')).toContainText(
-        'Ines Kaltenbach seit 01.03.2029, Vertretung Jonas Wendlinger, entschieden von Robert Falk.',
-      );
+      await expect(kopf.locator('.vp-nw-kurz')).toHaveText('Wer macht was · Stand 01.03.2029');
+      await expect(page.getByTestId('aufgaben-status')).toHaveText('jede Aufgabe hat eine Person');
+      await expect(page.getByTestId('aufgabe-bezugsbasen').getByRole('img', { name: 'Ines Kaltenbach' })).toHaveText('IK');
+      await page.getByTestId('aufgabe-bezugsbasen').click();
+      await expect(blatt(page).getByTestId('aufgabe-ohne-person')).toHaveCount(0);
+      await expect(blatt(page).getByTestId('zuordnung-bezugsbasen-IK')).toContainText('seit 01.03.2029');
       await ohneQuerlauf(page, 'Aufgaben 01.03.2029');
       await ablegen(page, `c-aufgaben-0103-${breite}`);
     });
 
     test('R5: Wer ist wofür verantwortlich — gelesen, ohne Urteil — und die Personen-Seite der Leitung ohne Konto', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&seite=aufgaben', breite);
-      await page.getByTestId('verantwortung-link').click();
+      await menue(page, 'Wer ist wofür verantwortlich');
       expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/energiemanagement/verantwortung');
       await expect(page.getByTestId('energiemanagement-reiter-aufgaben')).toHaveAttribute('aria-selected', 'true');
       const v = page.getByTestId('verantwortung-ansicht');
@@ -229,13 +278,19 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('dokument-pruefen')).toHaveCount(0);
       await ohneSchreiben('Einsicht: Dokument D-0001');
 
+      // Aufgaben: lesen ja, kein Schreib-Knopf; im Blatt der Aufgabe steht der Leer-Satz an der Stelle von „Aufgabe zuordnen“.
       await oeffne(page, 'person=RF&lage=ahrenberg&seite=aufgaben', breite);
-      await expect(page.getByTestId('aufgabe-bezugsbasen').getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
-      await expect(page.getByTestId('aufgaben-reiter').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
+      await expect(page.getByTestId('aufgaben-status')).toHaveText('1 Aufgabe ohne Person');
+      await expect(page.getByTestId('aufgabe-bezugsbasen')).not.toContainText('Zuordnen');
       await ohneSchreiben('Einsicht: Aufgaben');
       await ablegen(page, `g-einsicht-aufgaben-${breite}`, true);
+      await page.getByTestId('aufgabe-bezugsbasen').click();
+      await expect(blatt(page).getByTestId('aufgabe-ohne-person')).toHaveText(OHNE_PERSON);
+      await expect(blatt(page).getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
+      await ohneSchreiben('Einsicht: Blatt Bezugsbasen');
+      await blattZu(page);
 
-      await page.getByTestId('verantwortung-link').click();
+      await menue(page, 'Wer ist wofür verantwortlich');
       await expect(page.getByTestId('verantwortung-freigaben-satz')).toBeVisible();
       await ohneSchreiben('Einsicht: Wer ist wofür verantwortlich');
 

@@ -107,6 +107,21 @@ export const WOERTER: Record<string, Record<string, string>> = {
     managementbewertung: 'Managementbewertung',
     berichte: 'Berichte',
   },
+  // Vertrag 1.5 (Konzept Nachweisen n1, Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name
+  // (`aufgabe`) bleibt im Blatt der Aufgabe. „Energetische Bewertung“ statt „Bewertung und Messplanung“: das Wort
+  // „Bewertung“ allein gehört Auswerten (Sprach-Wächter SP3).
+  aufgabe_kurz: {
+    unternehmensleitung: 'Leitung',
+    energiemanagement_leiten: 'Energiemanagement leiten',
+    energieteam: 'Energieteam',
+    bezugsbasen: 'Bezugsbasen',
+    energieziele_massnahmen: 'Ziele und Maßnahmen',
+    bewertung_messplanung: 'Energetische Bewertung',
+    interne_audits: 'Interne Audits',
+    managementbewertung: 'Managementbewertung',
+    dokumente: 'Dokumente',
+    weitere: 'Weitere Aufgabe',
+  },
 };
 /** Die Kundensätze (Report §5.8) als Schablonen; {name} füllt die Operation `satz`. */
 export const SAETZE: Record<string, string> = {

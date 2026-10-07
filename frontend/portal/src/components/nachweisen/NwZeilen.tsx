@@ -105,6 +105,7 @@ export function NwZeile({
   verb,
   warn = false,
   leise = false,
+  kurz = false,
   pfeil,
   label,
   testId,
@@ -112,6 +113,8 @@ export function NwZeile({
 }: Ziel & {
   vorn?: ReactNode;
   titel: ReactNode;
+  /** Ein langer Titel (ein Wortlaut) wird auf zwei Zeilen gekürzt; der volle steht im Blatt. */
+  kurz?: boolean;
   unter?: ReactNode;
   rechts?: ReactNode;
   /** Das Verb des Zustands („Festhalten“, „Planen“) statt des Pfeils. */
@@ -128,7 +131,7 @@ export function NwZeile({
     <ZielHuelle ziel={ziel} className={`vp-nw-zl${warn ? ' is-warn' : ''}${leise ? ' is-leise' : ''}`} label={label} testId={testId}>
       {vorn}
       <span className="vp-nw-zl-text">
-        <span className="vp-nw-zl-titel">{titel}</span>
+        <span className={`vp-nw-zl-titel${kurz ? ' is-kurz' : ''}`}>{titel}</span>
         {unter && <span className="vp-nw-zl-unter">{unter}</span>}
       </span>
       {rechts}

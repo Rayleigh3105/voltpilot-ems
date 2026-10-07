@@ -120,10 +120,10 @@ describe('Zeilen', () => {
 });
 
 describe('Folgen-Balken', () => {
-  it('ein Segment je Beschluss, Legende in Zahl und Wort', () => {
-    render(<FolgenBalken testId="fb" zustaende={['done', 'done', 'done', 'laeuft', 'laeuft', 'ohne']} />);
+  it('ein Segment je Beschluss, nach Zustand gruppiert wie die Legende; Legende in Zahl und Wort', () => {
+    render(<FolgenBalken testId="fb" zustaende={['laeuft', 'done', 'ohne', 'done', 'laeuft', 'done']} />);
     const fb = screen.getByTestId('fb');
-    expect(fb.querySelectorAll('.vp-nw-segbar > i')).toHaveLength(6);
+    expect([...fb.querySelectorAll('.vp-nw-segbar > i')].map((i) => i.className)).toEqual(['is-done', 'is-done', 'is-done', 'is-laeuft', 'is-laeuft', 'is-ohne']);
     expect(screen.getByRole('img', { name: 'Folgen der Beschlüsse: 3 erledigt, 2 laufen, 1 ohne Folge' })).toBeTruthy();
     expect(fb.querySelector('.vp-nw-seglg')?.textContent).toBe('3erledigt2laufen1ohne Folge');
   });
