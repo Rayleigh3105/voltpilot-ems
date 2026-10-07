@@ -37,6 +37,9 @@ Die Umgebung für die Fachperson erreichbar machen (Adresse, Portal, Zugangsweg)
   Bühne: ohne `tag` nennt die Route den Tag der Bühne, und das Portal übernimmt ihn (`routenUhr.ts`). Wer eine neue
   Route mit „heute“ baut, stellt ihre Uhr in `PruefumgebungUhr.stellen(Clock)` mit - sonst nennt eine Seite 2026
   neben dem Stichtag 2029. Die Bericht-Routen tragen dafür `abruf` (Augenblick der Route).
+- Seit K1 (#1428) rechnen auch `KennzahlLauf` und die Bericht-Naht der Kaskade (`BerichtKaskade`) auf der Bühne; die Bühne beginnt nie vor dem jüngsten `kennzahl_wert.berechnet_am`.
+  ⚠ Kennzahlwerte mit Bühnenzeit neben einer API, die in echter Zeit rechnet, halten die Kaskade aller Mandanten an: jede neue Ablesung kaskadiert über die ganze Reihe („liegt nicht nach der neuesten Zeile“, an der Bericht-Naht D2).
+  ⚠ Im Testlauf ist die Bericht-Naht aus (surefire `voltpilot.uems.berichte.enabled=false`); ihr Verhalten zeigt nur eine laufende API, z. B. auf einer Kopie der Demo-DB.
 
 ## Bedienen
 
