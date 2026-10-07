@@ -14,6 +14,9 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -91,6 +94,21 @@ class VerteilungVectorsTest {
         assertThat(r.path("ziel_art").asText()).isEqualTo("kostenstelle");
         assertThat(texte(vektoren().path("vokabulare").path("verteilung_zustand")))
                 .containsExactly(VerteilungRegeln.VERTEILT, VerteilungRegeln.NICHT_VERTEILT);
+    }
+
+    /**
+     * Messen PR4: die Gründe der Kostenstellen-Sicht und der Satz eines Anteils, der mitten im Ablesezeitraum wechselt,
+     * stehen in der Datei - dieselben Wörter wie im Modul.
+     */
+    @Test
+    void dieGruendeUndDerSatzDesAblesezeitraumsStehenInDerDatei() throws Exception {
+        JsonNode v = vektoren();
+        assertThat(texte(v.path("vokabulare").path("kostenstelle_grund")))
+                .containsExactlyElementsOf(KostenstelleEnergieRegeln.GRUENDE);
+        assertThat(v.path("saetze").path("erbe_anteil_wechselt").asText())
+                .isEqualTo(VerteilungRegeln.ERBE_ANTEIL_WECHSELT);
+        assertThat(v.path("saetze").path("erbe_rest_unplausibel").asText())
+                .isEqualTo(VerteilungRegeln.ERBE_REST_UNPLAUSIBEL);
     }
 
     /**
@@ -321,6 +339,37 @@ class VerteilungVectorsTest {
                         .as(why + " · der Satz hält bilanzwert-herkunft.schema.json")
                         .isEmpty();
             }
+            case "ablesezeitraum" -> {
+                List<VerteilungRegeln.Ablesezeitraum> zeitraeume = new ArrayList<>();
+                ein.path("zeitraeume").forEach(z -> zeitraeume.add(zeitraum(z)));
+                VerteilungRegeln.AblesezeitraumUrteil ist = VerteilungRegeln.ablesezeitraum(
+                        ZoneId.of(ein.path("zone").asText()), zeitraeume, bd(ein.path("menge")),
+                        bestand(ein.path("zeilen")), ziele(ein.path("ziele")));
+                assertThat(ist.ersterTag()).as(why + " · erster Tag").isEqualTo(tag(soll.path("erster_tag")));
+                assertThat(ist.letzterTag()).as(why + " · letzter Tag").isEqualTo(tag(soll.path("letzter_tag")));
+                assertThat(ist.ziele().stream().map(VerteilungRegeln.AblesezeitraumZiel::kostenstelle).toList())
+                        .as(why + " · Ziele").isEqualTo(sollNamenVon(soll.path("ziele"), "kostenstelle"));
+                for (int i = 0; i < ist.ziele().size(); i++) {
+                    VerteilungRegeln.AblesezeitraumZiel z = ist.ziele().get(i);
+                    JsonNode zs = soll.path("ziele").get(i);
+                    String hier = why + " · " + z.kostenstelle();
+                    betragGleich(z.anteilProzent(), zs.path("anteil_prozent"), hier + " · Anteil");
+                    betragGleich(z.menge(), zs.path("menge"), hier + " · Menge");
+                    assertThat(z.grund()).as(hier + " · Grund").isEqualTo(str(zs.path("grund")));
+                    assertThat(z.geaendertAm()).as(hier + " · geändert am").isEqualTo(tag(zs.path("geaendert_am")));
+                }
+                JsonNode offen = soll.path("nicht_verteilt");
+                if (offen.isNull()) {
+                    assertThat(ist.nichtVerteilt()).as(why + " · nicht verteilt").isNull();
+                } else {
+                    assertThat(ist.nichtVerteilt()).as(why + " · nicht verteilt").isNotNull();
+                    betragGleich(ist.nichtVerteilt().menge(), offen.path("menge"), why + " · nicht verteilt · Menge");
+                    assertThat(ist.nichtVerteilt().grund()).as(why + " · nicht verteilt · Grund")
+                            .isEqualTo(str(offen.path("grund")));
+                    assertThat(ist.nichtVerteilt().geaendertAm()).as(why + " · nicht verteilt · geändert am")
+                            .isEqualTo(tag(offen.path("geaendert_am")));
+                }
+            }
             case "kostenstelle" -> {
                 List<KostenstelleEnergieRegeln.Quelle> quellen = quellen(ein.path("quellen"));
                 KostenstelleEnergieRegeln.Urteil ist = KostenstelleEnergieRegeln.energie(
@@ -401,7 +450,50 @@ class VerteilungVectorsTest {
                 betragGleich(tagIst.menge(), stichprobe.path("menge"), hier + " · Tagesanteil " + t);
                 assertThat(tagIst.grund()).as(hier + " · Grund " + t).isEqualTo(str(stichprobe.path("grund")));
             }
+            if (s.has("monate_stichproben")) {
+                assertThat(p.monate()).as(hier + " · Monate").hasSize(s.path("monate_stichproben").size());
+                assertThat(p.tage()).as(hier + " · ein Posten aus Ablesungen hat keine Tage").isEmpty();
+            } else {
+                assertThat(p.monate()).as(hier + " · ein Posten aus Tagen hat keine Monate").isEmpty();
+            }
+            for (JsonNode stichprobe : s.path("monate_stichproben")) {
+                YearMonth m = YearMonth.parse(stichprobe.path("monat").asText());
+                KostenstelleEnergieRegeln.Monat monatIst = p.monate().stream().filter(x -> x.monat().equals(m))
+                        .findFirst().orElseThrow(() -> new AssertionError(hier + " · kein Monat " + m));
+                betragGleich(monatIst.anteilProzent(), stichprobe.path("anteil_prozent"), hier + " · Anteil " + m);
+                betragGleich(monatIst.menge(), stichprobe.path("menge"), hier + " · Monatsanteil " + m);
+                assertThat(monatIst.grund()).as(hier + " · Grund " + m).isEqualTo(str(stichprobe.path("grund")));
+                assertThat(monatIst.geaendertAm()).as(hier + " · geändert am " + m)
+                        .isEqualTo(tag(stichprobe.path("geaendert_am")));
+            }
         }
+    }
+
+    private static VerteilungRegeln.Ablesezeitraum zeitraum(JsonNode z) {
+        return new VerteilungRegeln.Ablesezeitraum(OffsetDateTime.parse(z.path("von").asText()).toInstant(),
+                OffsetDateTime.parse(z.path("bis").asText()).toInstant());
+    }
+
+    private static List<String> sollNamenVon(JsonNode liste, String feld) {
+        List<String> raus = new ArrayList<>();
+        liste.forEach(x -> raus.add(x.path(feld).asText()));
+        return raus;
+    }
+
+    /** Die Monate einer Messstelle aus Ablesungen ({@code ablesung}); ohne das Feld {@code null}. */
+    private static KostenstelleEnergieRegeln.Ablesung ablesung(JsonNode a) {
+        if (a.isMissingNode() || a.isNull()) {
+            return null;
+        }
+        List<KostenstelleEnergieRegeln.Monatswert> monate = new ArrayList<>();
+        for (JsonNode m : a.path("monate")) {
+            List<VerteilungRegeln.Ablesezeitraum> zeitraeume = new ArrayList<>();
+            m.path("ablesezeitraeume").forEach(z -> zeitraeume.add(zeitraum(z)));
+            monate.add(new KostenstelleEnergieRegeln.Monatswert(YearMonth.parse(m.path("monat").asText()),
+                    zeitraeume, bd(m.path("menge")), m.path("zustand").asText(), ganz(m.path("abdeckung_prozent")),
+                    m.path("version").asInt(), texte(m.path("kennzeichen"))));
+        }
+        return new KostenstelleEnergieRegeln.Ablesung(ZoneId.of(a.path("zone").asText()), monate);
     }
 
     private static List<KostenstelleEnergieRegeln.Quelle> quellen(JsonNode n) {
@@ -421,7 +513,7 @@ class VerteilungVectorsTest {
             }
             quellen.add(new KostenstelleEnergieRegeln.Quelle(q.path("messstelle").asText(),
                     q.path("art").asText(), q.path("groesse").asText(), q.path("richtung").asText(),
-                    q.path("einheit").asText(), anteile, tage));
+                    q.path("einheit").asText(), anteile, tage, ablesung(q.path("ablesung"))));
         }
         return quellen;
     }
