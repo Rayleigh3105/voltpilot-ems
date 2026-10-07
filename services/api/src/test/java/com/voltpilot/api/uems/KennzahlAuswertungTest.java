@@ -1,6 +1,8 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.web.dto.BezugsbasisVergleichDto;
 import com.voltpilot.api.web.dto.EnergiezielDto;
@@ -213,6 +215,37 @@ class KennzahlAuswertungTest {
         assertThat(KennzahlAuswertung.auswertung(MAERZ_2029, Map.of(), zwoelf, null, null, null).zeitraum()).isNull();
     }
 
+    /**
+     * Review r3: welches offene Energieziel an der Kennzahl steht, hängt am Monat des Urteils. Ein abgelaufenes Ziel
+     * bleibt „offen“, bis eine Person es bewertet - es darf das laufende nicht verdrängen.
+     */
+    @Test
+    void dasLaufendeZielStehtVorDemFaelligenUndDemNaechsten() {
+        EnergiezielDto.Energieziel ez2028 = ziel(UUID.randomUUID(), "EZ-2028-0001", "2028-01/2028-12");
+        EnergiezielDto.Energieziel ez2029 = ziel(UUID.randomUUID(), "EZ-2029-0001", "2029-03/2029-12");
+        EnergiezielDto.Energieziel ez2030 = ziel(UUID.randomUUID(), "EZ-2030-0001", "2030-01/2030-12");
+        List<EnergiezielDto.Energieziel> alle = List.of(ez2030, ez2028, ez2029);
+
+        // März 2029 liegt in der Zielperiode 2029 - das fällige 2028 (frühere Zielperiode) verdrängt es nicht.
+        assertThat(KennzahlAuswertungService.zielFuer(alle, MAERZ_2029)).isSameAs(ez2029);
+        assertThat(KennzahlAuswertungService.zielFuer(alle, YearMonth.of(2029, 12))).isSameAs(ez2029);
+        // Zwischen zwei Zielperioden: das zuletzt abgelaufene, es wartet auf seine Bewertung.
+        assertThat(KennzahlAuswertungService.zielFuer(alle, YearMonth.of(2029, 2))).isSameAs(ez2028);
+        // Vor jeder Zielperiode: das nächste.
+        assertThat(KennzahlAuswertungService.zielFuer(alle, YearMonth.of(2027, 6))).isSameAs(ez2028);
+        assertThat(KennzahlAuswertungService.zielFuer(List.of(ez2030, ez2029), YearMonth.of(2028, 6))).isSameAs(ez2029);
+        // Nach allen: das zuletzt abgelaufene.
+        assertThat(KennzahlAuswertungService.zielFuer(alle, YearMonth.of(2031, 1))).isSameAs(ez2030);
+        assertThat(KennzahlAuswertungService.zielFuer(List.of(), MAERZ_2029)).isNull();
+    }
+
+    @Test
+    void zweiLaufendeZieleWaehltDieFruehereZielperiode() {
+        EnergiezielDto.Energieziel lang = ziel(UUID.randomUUID(), "EZ-2029-0002", "2029-01/2030-12");
+        EnergiezielDto.Energieziel kurz = ziel(UUID.randomUUID(), "EZ-2029-0001", "2029-03/2029-12");
+        assertThat(KennzahlAuswertungService.zielFuer(List.of(kurz, lang), MAERZ_2029)).isSameAs(lang);
+    }
+
     // ------------------------------------------------------------------ Fakes (nur was die Ableitung liest)
 
     private static KennzahlDto.Wert wert(String periode, String wert) {
@@ -245,11 +278,24 @@ class KennzahlAuswertungTest {
                 null, null), null, null, "Europe/Berlin", List.of(monate), null, List.of(), null, null);
     }
 
+    /**
+     * Der Stand eines Energieziels mit nur dem, was die Ableitung liest - als Attrappe statt über den Konstruktor, damit
+     * ein neues Feld am Stand (z. B. {@code kurs} aus Verbessern PR1) diesen Test nicht bricht.
+     */
     private static EnergiezielDto.Stand stand(UUID id, int bewertbar, int soll, EnergiezielDto.Summe summe) {
-        EnergiezielDto.Energieziel z = new EnergiezielDto.Energieziel(id, "EZ-2029-0001",
+        EnergiezielDto.Stand stand = mock(EnergiezielDto.Stand.class);
+        when(stand.energieziel()).thenReturn(ziel(id, "EZ-2029-0001", "2029-03/2029-12"));
+        when(stand.zielperiode()).thenReturn("2029-03/2029-12");
+        when(stand.zielwertProzent()).thenReturn("-4.0");
+        when(stand.monateBewertbar()).thenReturn(bewertbar);
+        when(stand.monateSoll()).thenReturn(soll);
+        when(stand.summe()).thenReturn(summe);
+        return stand;
+    }
+
+    private static EnergiezielDto.Energieziel ziel(UUID id, String kennzeichen, String zielperiode) {
+        return new EnergiezielDto.Energieziel(id, kennzeichen,
                 new EnergiezielDto.Kennzahl(UUID.randomUUID(), "KZ-0004", "Stromeinsatz Spritzguss je kg"), null, "-4.0",
-                "2029-03/2029-12", null, null, null, null, "offen", null, null, null, null, null, null, List.of(), List.of());
-        return new EnergiezielDto.Stand(z, null, "2029-03/2029-12", "-4.0", List.of(), bewertbar, bewertbar, soll,
-                bewertbar + " von " + soll, false, List.of(), summe, null, null, null);
+                zielperiode, null, null, null, null, "offen", null, null, null, null, null, null, List.of(), List.of());
     }
 }

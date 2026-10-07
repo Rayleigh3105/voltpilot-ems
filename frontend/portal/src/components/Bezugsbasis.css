@@ -135,19 +135,6 @@
 .vp-kz-reiter {
   margin: var(--vp-c-space-3) 0;
 }
-.vp-kz-elk {
-  font-size: var(--vp-c-fs-12);
-  color: var(--vp-c-primary);
-  font-weight: var(--vp-c-fw-700);
-  overflow-wrap: anywhere;
-}
-.vp-kz-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--vp-c-fs-14);
-  margin: 0 0 var(--vp-c-space-3);
-}
 
 /* IP-18: Fassungen, Anstoß, Frist, Faktoren und die Vorschau alt/neu. 375 px: Karten untereinander; die Tafel alt/neu
  * stapelt je Zeile (Beschriftung aus `data-label`); 1440 px: drei Spalten. */

@@ -95,10 +95,19 @@ export function zielJahre(z: Pick<KennzahlAuswertungZiel, 'zielperiode'>): strin
 /** „Energieziel 2029“. */
 export const zielKopf = (z: Pick<KennzahlAuswertungZiel, 'zielperiode'>): string => `Energieziel ${zielJahre(z)}`;
 
-/** „4 % weniger“ aus dem Zielwert (negativ = weniger als erwartet). */
+/** Die Nachkommastellen, die ein Dezimaltext des Servers trägt - ohne Nullen am Ende („2.50“ → 1, „4.0“ → 0). */
+const stellenVon = (t: string): number => (t.split('.')[1] ?? '').replace(/0+$/, '').length;
+
+/** Ein Prozent ohne Vorzeichen mit genau den Stellen, die es trägt: „4 %“, „2,5 %“ - nie auf ganze Prozent gerundet. */
+export const prozentGenau = (t: string): string => prozentText(t.trim(), stellenVon(t.trim()));
+
+/** „4 % weniger“ · „2,5 % weniger“ aus dem Zielwert (negativ = weniger als erwartet) - wie auf der Seite des Ziels. */
 export function zielWert(z: Pick<KennzahlAuswertungZiel, 'zielwert_prozent'>): string {
-  return `${prozentText(z.zielwert_prozent, 0)} ${z.zielwert_prozent.trim().startsWith('-') ? 'weniger' : 'mehr'}`;
+  return `${prozentGenau(z.zielwert_prozent)} ${z.zielwert_prozent.trim().startsWith('-') ? 'weniger' : 'mehr'}`;
 }
+
+/** „± 2 %“ · „± 2,5 %“ - das Band des Urteils. */
+export const bandText = (band: string): string => `± ${prozentGenau(band)}`;
 
 /** „bisher 2,2 % mehr (1 von 10 Monaten)“ · „noch kein Monat bewertbar (0 von 10)“ - der Stand über die Zielperiode (Z3). */
 export function zielStandSatz(z: KennzahlAuswertungZiel): string {
@@ -155,9 +164,11 @@ export interface ReiheOhneBasis extends Basis {
   art: 'ohne';
   /** „unverändert ggü. Vorjahr“, „▲ 3 % ggü. Vorjahr“ - ohne Farbe; `null` ohne Vorjahreswert. */
   vorjahr: string | null;
-  /** „Bezugsbasis BB-0003 im Entwurf“ oder `null` = keine. */
+  /** „BB-0003 im Entwurf“ · „BB-0003 zur Freigabe“ · „BB-0003 abgelehnt“ oder `null` = keine. */
   bezugsbasis: string | null;
   linie: MiniLinie;
+  /** Was die kleine Linie zeigt, für den Vorleser: „12 Monate, 10 davon mit Wert.“ */
+  linieText: string;
 }
 
 export type HinweisKarte =
@@ -190,15 +201,6 @@ const basisVon = (k: Kennzahl, a: KennzahlAuswertung | undefined): Basis => {
   };
 };
 
-/**
- * Die Leitkennzahl der Übersicht: unter den Kennzahlen mit offenem Energieziel die mit dem kleinsten Kennzeichen -
- * dieselbe Wahl wie `PortfolioKpiService.leitkennzahl`.
- */
-export function leitkennzahl(liste: readonly Kennzahl[]): string | null {
-  const mitZiel = liste.filter((k) => k.auswertung?.energieziel).map((k) => k.kennzeichen);
-  return mitZiel.length === 0 ? null : [...mitZiel].sort()[0];
-}
-
 export function karteMitBasis(k: Kennzahl, leit: boolean): KarteMitBasis {
   const a = k.auswertung as KennzahlAuswertung;
   const v = a.vergleich;
@@ -216,7 +218,7 @@ export function karteMitBasis(k: Kennzahl, leit: boolean): KarteMitBasis {
     abweichungKurz: mitZahl
       ? abweichungKurz(delta, v?.richtung ?? null)
       : v?.urteil === 'im_rahmen' && delta !== null
-        ? `${prozentText(delta)}${TRENNER}Band ± ${prozentText(v.band_prozent ?? '2', 0)}`
+        ? `${prozentText(delta)}${TRENNER}Band ${bandText(v.band_prozent ?? '2')}`
         : null,
     ohneUrteil: urteil
       ? null
@@ -224,7 +226,7 @@ export function karteMitBasis(k: Kennzahl, leit: boolean): KarteMitBasis {
         ? `${abweichungKurz(delta, v.richtung)}${TRENNER}${OHNE_URTEIL}, Werte unvollständig`
         : grundKurz(v?.grund ?? null, a.monat, v?.erster_monat ?? null),
     vorlaeufig: k.bezugsbasis?.vorlaeufig === true,
-    band: v?.band_prozent ? `± ${prozentText(v.band_prozent, 0)}` : null,
+    band: v?.band_prozent ? bandText(v.band_prozent) : null,
     mini: miniAbweichung(a.monate, v?.band_prozent ?? null),
     ziel: a.energieziel
       ? { kopf: zielKopf(a.energieziel), jahre: zielJahre(a.energieziel), wert: zielWert(a.energieziel), stand: zielStandSatz(a.energieziel) }
@@ -232,15 +234,31 @@ export function karteMitBasis(k: Kennzahl, leit: boolean): KarteMitBasis {
   };
 }
 
+/** Der Stand einer Bezugsbasis ohne freigegebene Fassung, kurz neben ihrem Kennzeichen. */
+const BASIS_STAND: Record<NonNullable<Kennzahl['bezugsbasis']>['freigabe_status'], string> = {
+  entwurf: 'im Entwurf',
+  beantragt: 'zur Freigabe',
+  abgelehnt: 'abgelehnt',
+  freigegeben: 'freigegeben',
+};
+
+/** „12 Monate, 10 davon mit Wert.“ - der Satz zur kleinen Linie (sie selbst ist nur ein Bild). */
+export function linieSatz(werte: readonly (string | null)[]): string {
+  const mitWert = werte.filter((w) => w !== null).length;
+  return `${werte.length} Monate, ${mitWert === werte.length ? 'alle' : `${mitWert} davon`} mit Wert.`;
+}
+
 export function reiheOhneBasis(k: Kennzahl): ReiheOhneBasis {
   const a = k.auswertung;
   const b = k.bezugsbasis;
+  const werte = (a?.monate ?? []).map((m) => m.wert);
   return {
     ...basisVon(k, a),
     art: 'ohne',
     vorjahr: vorjahrText(a?.vorjahr ?? null),
-    bezugsbasis: b ? `${b.kennzeichen} ${b.freigabe_status === 'beantragt' ? 'zur Freigabe' : 'im Entwurf'}` : null,
-    linie: miniLinie((a?.monate ?? []).map((m) => m.wert)),
+    bezugsbasis: b ? `${b.kennzeichen} ${BASIS_STAND[b.freigabe_status]}` : null,
+    linie: miniLinie(werte),
+    linieText: linieSatz(werte),
   };
 }
 
@@ -292,15 +310,18 @@ export function miniZusammenfassung(mini: MiniAbweichung): string {
 const aufzaehlung = (teile: readonly string[]): string =>
   teile.length <= 1 ? (teile[0] ?? '') : `${teile.slice(0, -1).join(', ')} und ${teile[teile.length - 1]}`;
 
-/** Die ganze Liste: nicht archivierte mit Auswertung in zwei Gruppen, Archivierte zugeklappt (nach Kennzeichen). */
-export function kennzahlenListe(liste: readonly Kennzahl[]): KennzahlenListe {
-  const leit = leitkennzahl(liste);
+/**
+ * Die ganze Liste: nicht archivierte mit Auswertung in zwei Gruppen, Archivierte zugeklappt (nach Kennzeichen).
+ * `leit` ist die Leitkennzahl, wie der Server sie nennt (`leitkennzahl`, dieselbe Wahl wie die Leitkachel der Übersicht,
+ * §10.8) - nie hier abgeleitet, auch nicht aus einer nach Standort gefilterten Liste.
+ */
+export function kennzahlenListe(liste: readonly Kennzahl[], leit: string | null = null): KennzahlenListe {
   const aktiv = liste.filter((k) => k.archiviert_am === null);
   // Handlungsbedarf zuerst (über der Bezugsbasis), sonst nach Kennzeichen - wie die Hinweiskarte darüber sie nennt.
   const mit = aktiv
     .filter((k) => k.auswertung?.vergleich)
     .sort((a, b) => Number(b.auswertung?.vergleich?.urteil === 'schlechter') - Number(a.auswertung?.vergleich?.urteil === 'schlechter'))
-    .map((k) => karteMitBasis(k, k.kennzeichen === leit));
+    .map((k) => karteMitBasis(k, k.id === leit));
   const ohne = aktiv.filter((k) => k.auswertung && !k.auswertung.vergleich).map(reiheOhneBasis);
   return {
     mit,

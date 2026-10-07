@@ -137,6 +137,22 @@ public class BezugsbasisVergleich {
     }
 
     /**
+     * Konzept Auswerten a1 (PR2, Review r3 zu §10.6): der erste Tag der freigegebenen Fassung, die am Tag {@code tag} gilt
+     * (P4, dieselbe Wahl wie {@link #fassungAm}) - an ihm beginnt ein Zeitraum, der gegen diese eine Fassung rechnet.
+     * {@code null} ohne Bezugsbasis oder ohne Fassung an dem Tag. Ohne Sichtprüfung wie {@link #ersteGeltung}.
+     */
+    LocalDate geltungAm(UUID kennzahl, LocalDate tag) {
+        Basis basis = basis(kennzahl, null);
+        if (basis == null) {
+            return null;
+        }
+        return jdbc.query("SELECT gilt_ab FROM bezugsbasis_fassung WHERE bezugsbasis_id = ? "
+                + "AND freigabe_status = 'freigegeben' AND gilt_ab <= ? AND (gilt_bis IS NULL OR gilt_bis >= ?) "
+                + "ORDER BY fassung DESC LIMIT 1", (rs, i) -> rs.getDate(1).toLocalDate(), basis.id(), Date.valueOf(tag),
+                Date.valueOf(tag)).stream().findFirst().orElse(null);
+    }
+
+    /**
      * Ein Monat für die Auffälligkeits-Naht (AP-18 IP-15, A1): die Vergleichszeile des Lesers gegen die Fassung am letzten
      * Tag des Monats (P4), die zitierte Bezugsbasis und die Nummer dieser Fassung ({@code null}, wenn keine gilt).
      */

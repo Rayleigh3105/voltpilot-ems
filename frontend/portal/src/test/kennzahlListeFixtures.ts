@@ -241,6 +241,17 @@ const monatMinus = (periode: string, n: number): string => {
  * Die Auswertung einer Kennzahl der Bühne aus ihren eigenen Monatswerten (`werte` liefert `…/werte?periode=monat`) - die
  * Welt von 2026 hat keine Bezugsbasis, also kein Urteil; ohne Monatsperiode bleibt die Kennzahl ohne Auswertung.
  */
+/**
+ * Die Leitkennzahl, wie der Server sie an der Liste nennt (`leitkennzahl`, `KennzahlAuswertungService.leit`) - nur für
+ * Bühnen und Fixtures, das Portal leitet sie nie selbst ab: unter den Kennzahlen mit Auswertung, Energieziel und Wert das
+ * kleinste Kennzeichen.
+ */
+export function leitkennzahlWieDerServer(liste: readonly Kennzahl[]): string | undefined {
+  return liste
+    .filter((k) => k.auswertung?.energieziel && k.auswertung.wert)
+    .sort((a, b) => a.kennzeichen.localeCompare(b.kennzeichen))[0]?.id;
+}
+
 export function mitAuswertungAus(
   k: Kennzahl,
   heute: string,

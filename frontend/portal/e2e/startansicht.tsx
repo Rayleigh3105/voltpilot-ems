@@ -85,6 +85,7 @@ import {
   type KennzahlFassung,
   type KennzahlPeriodeArt,
   type KennzahlWerte,
+  type PortfolioKpi,
 } from '../src/api';
 import { iso } from '../src/bezugsPeriode';
 import { UEMS_VERANTWORTUNG } from '../src/glossar';
@@ -151,7 +152,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
-import { mitAuswertungAus, referenzListe } from '../src/test/kennzahlListeFixtures';
+import { leitkennzahlWieDerServer, mitAuswertungAus, referenzListe } from '../src/test/kennzahlListeFixtures';
 import {
   anlegenAm,
   detailAm,
@@ -230,7 +231,8 @@ if (ORGANISATION_REITER) {
  * AP-13 IP-8: `&ansicht=bilanz&an=AN-2` öffnet Anlage › Verlauf › Energiebilanz (Vorgabe AN-2); `&bilanz=ohne-hz`
  * antwortet ohne Hauptzähler (Leerzustand, kein Reiter), `&rest=vorschlag` ohne Rest-Messstelle (Vorschlag „Rest
  * anlegen“ — der Klick legt sie in der Bühne an, `window.__restAnlegen` zählt ihn), `&live=veraltet` lässt MS-14 veralten
- * (O8). Die Werte gelten zur Uhr der Bühne (`page.clock`); die Momentaufnahme O8 steht eine Minute vor ihr.
+ * (O8), `&ausserhalb=MS-20,…` nennt Abzweige außerhalb der Bilanz. Die Werte gelten zur Uhr der Bühne (`page.clock`); die
+ * Momentaufnahme O8 steht eine Minute vor ihr.
  */
 const ANLAGE_KZ: Record<string, string> = { 'AN-1': an1, 'AN-2': an2, 'AN-3': an3 };
 const bilanzAn = ANLAGE_KZ[params.get('an') ?? ''] ?? an2;
@@ -243,6 +245,7 @@ const bilanzDerBuehne = (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?
     live: params.get('live') === 'veraltet' ? 'veraltet' : 'frisch',
     ohneHauptzaehler: messenArt === 'bestand' || params.get('bilanz') === 'ohne-hz',
     restVorschlag,
+    ausserhalb: (params.get('ausserhalb') ?? '').split(',').filter(Boolean),
   });
 
 /**
@@ -853,13 +856,12 @@ Object.assign(api, {
     const sichtbar = welt.filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
       || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id)));
     const heute = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
-    return {
-      kennzahlen: mit === 'auswertung'
-        // R-A7: eine Kennzahl, deren Werte die Route ablehnt, trägt auch keine Auswertung (wie der Server).
-        ? sichtbar.map((k) => (k.auswertung || k.id === kzAusserhalb ? k : mitAuswertungAus(k, heute, (id, periode, von, bis) =>
-          istAngelegt(id) ? ohneWerte(id, periode, von, bis) : kennzahlWerteAntwort(id, periode, von, bis, Date.now()))))
-        : sichtbar.map(({ auswertung: _ohne, ...k }) => k),
-    };
+    if (mit !== 'auswertung') return { kennzahlen: sichtbar.map(({ auswertung: _ohne, ...k }) => k) };
+    // R-A7: eine Kennzahl, deren Werte die Route ablehnt, trägt auch keine Auswertung (wie der Server).
+    const kennzahlen = sichtbar.map((k) => (k.auswertung || k.id === kzAusserhalb ? k : mitAuswertungAus(k, heute, (id, periode, von, bis) =>
+      istAngelegt(id) ? ohneWerte(id, periode, von, bis) : kennzahlWerteAntwort(id, periode, von, bis, Date.now()))));
+    // Die Leitkennzahl nennt der Server (§10.8); die Bühne nennt sie nach seiner Regel.
+    return { kennzahlen, leitkennzahl: leitkennzahlWieDerServer(kennzahlen) };
   },
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
   // AP-17 IP-20: der Vergleich-Leser (IP-19) — `&vergleich=r2|maerz|stand`; ohne Angabe die Kennzahl ohne Bezugsbasis (R10).
@@ -1190,6 +1192,26 @@ Object.assign(consumersApi, {
 const ohneAntwortDerMomentaufnahme = async (): Promise<never> => {
   throw new Error('Die Rechte-Momentaufnahme hat dafür keine Antwort.');
 };
+// Die UEMS-Übersicht nach #1403 lädt dazu das Kachelraster (`GET /portfolio/kpis`) und je Anlagen-Karte die
+// Tages-Historie (`GET /sites/{id}/history`). Die Momentaufnahme kennt keine Messreihe: das Raster bekommt die
+// Antwort des Servers ohne Grundlage (jeder Wert leer, Zeitraum der letzte volle Monat - wie `LEERE_KPIS` in
+// `EbenenCockpit.test.tsx`), die Historie dieselbe Absage wie oben. Ohne diese Zeilen gingen beide Aufrufe echt
+// an localhost:8090 (Konsolenfehler in `weg`/`uebersicht`, WebKit-Seitenfehler in `portal-rechte`).
+const kpisOhneGrundlage = async (): Promise<PortfolioKpi> => {
+  const heute = new Date();
+  const ersterDesMonats = new Date(Date.UTC(heute.getUTCFullYear(), heute.getUTCMonth(), 1));
+  const bis = new Date(ersterDesMonats.getTime() - 86_400_000);
+  const von = new Date(Date.UTC(bis.getUTCFullYear(), bis.getUTCMonth(), 1));
+  return {
+    periode: { von: von.toISOString().slice(0, 10), bis: bis.toISOString().slice(0, 10), jahr: bis.getUTCFullYear(), monat: bis.getUTCMonth() + 1 },
+    verbrauch: { kwh: null, kwh_vorjahr: null, vollstaendig: true },
+    kosten: { eur: null, eur_vorjahr: null, tarif_hinterlegt: false },
+    lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null, zeitpunkt: null, zeitraum: null },
+    datenlage: null,
+    leit: null,
+  };
+};
+Object.assign(api, { portfolioKpis: kpisOhneGrundlage, history: ohneAntwortDerMomentaufnahme });
 if (rechteAnsicht && params.get('person') === 'MD') {
   Object.assign(api, {
     schedule: async () => ({ deviceId: 'E-1', slots: [] }),

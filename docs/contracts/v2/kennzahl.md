@@ -239,23 +239,32 @@ unbekannter oder leerer Parameter ist 400 `anfrage_ungueltig` mit `feld`. Die Ro
 ohne `mit` fehlt es, die Antwort bleibt Byte für Byte gleich, ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
 Die Liste braucht damit keine Werte-Anfrage je Kennzahl mehr.
 
-- `monat` ist der letzte abgeschlossene Monat in der Zone der Geltung; für ihn gilt das Urteil.
+- `monat` ist der letzte abgeschlossene Monat in der Zone der Geltung, auf der Uhr der Kennzahlen (nie der Uhr oder Zone
+  des Aufrufers); für ihn gilt das Urteil.
 - `wert` ist der jüngste Monatswert der zwölf Monate bis `monat` (Form wie `…/werte`); er kann älter sein als `monat`.
 - `vorjahr` ist die Veränderung von `wert` gegen denselben Monat ein Jahr davor, `vormonat` die gegen den Monat davor:
   Operation `roh`, nie ein Urteil (VG3).
 - `monate` sind die zwölf Monate bis `monat` mit Wert und, mit Bezugsbasis, der bereinigten Abweichung, Urteil und Grund.
 - `vergleich` ist die Zeile des Bezugsbasis-Lesers für `monat` (`bezugsbasis.md` §16) mit Kundensatz, nur mit freigegebener
   Fassung; solange für `monat` noch keine gilt, nennt `erster_monat` den ersten Monat, dessen letzter Tag sie trägt (P4).
-- `zeitraum` ist der Vergleich (Operation `zeitraum`, Σ ÷ Σ) über die Monate der zwölf, für die schon eine Fassung gilt:
-  er beginnt nie vor dem ersten Monat mit Fassung (Konzept Auswerten a1 §10.6), sonst rechnete P4 die Fassung auch auf
-  Monate, für die sie noch nicht galt.
-- `energieziel` ist das offene Energieziel (bei mehreren das mit der frühesten Zielperiode) mit dem Stand seiner Summe (Z3).
+- `zeitraum` ist der Vergleich (Operation `zeitraum`, Σ ÷ Σ) gegen die Fassung am letzten Tag von `monat` (P4). Er beginnt
+  mit dem Monat, ab dem genau diese Fassung gilt (Konzept Auswerten a1 §10.6): nach einem Fassungswechsel mitten in den
+  zwölf Monaten also erst mit dem Wechsel - nie rechnet er eine Fassung auf Monate, für die sie noch nicht galt. Die Monate
+  davor stehen mit ihrem Urteil gegen ihre eigene Fassung in `monate`. Gilt am letzten Tag keine Fassung mehr (Basis
+  beendet), beginnt er mit der ersten.
+- `energieziel` ist ein offenes Energieziel mit dem Stand seiner Summe (Z3): das, dessen Zielperiode `monat` enthält
+  (bei mehreren das mit der frühesten Zielperiode); sonst das zuletzt abgelaufene, noch nicht bewertete; sonst das nächste.
+  Ein fälliges Ziel verdrängt das laufende nicht.
 
-Dieselbe Ableitung trägt die Leitkachel der Übersicht (`GET /api/v1/portfolio/kpis`, `leit.urteil` und `leit.ziel_stand`):
-ein Urteil, eine Ableitung (Konzept Auswerten a1 §10.8).
+Dieselbe Ableitung trägt die Leitkachel der Übersicht (`GET /api/v1/portfolio/kpis`, `leit`): Kennzahl, Wert und Monat
+(`wert`), Urteil (`vergleich.urteil`) und `ziel_stand` sind die der Karte - ein Urteil, eine Ableitung (Konzept Auswerten
+a1 §10.8). Es führt unter den Kennzahlen mit Auswertung und offenem Energieziel die mit dem kleinsten Kennzeichen, die
+einen Monatswert trägt; die Liste nennt sie als `leitkennzahl`. Gerechnet wird nichts Neues (`KennzahlAuswertung`,
+`KennzahlAuswertungTest`, `BezugsbasisVergleichApiTest`).
 
 **Die Seite einer Kennzahl (PR2).** `GET /api/v1/kennzahlen/{id}?mit=auswertung` trägt dieselbe Auswertung an EINER
-Kennzahl. Für ihre Kacheln und „Zusammengezählt“ rechnet der Server je Monat drei Mengen exakt aus der Zeile des Vergleichs
+Kennzahl, dazu `leitkennzahl` (`true`/`false`): ob sie die Leitkennzahl der Übersicht ist - dieselbe Wahl wie an Liste und
+Leitkachel (Stern der Seite). Für ihre Kacheln und „Zusammengezählt“ rechnet der Server je Monat drei Mengen exakt aus der Zeile des Vergleichs
 (das Portal rundet nur zur Anzeige, U4/M5):
 
 - `erwartet_wert` = erwartet ÷ Nenner des Monats, gerundet wie der Kennzahlwert (zehn Stellen) - „erwartet 0,28 kWh je kg“;
@@ -267,6 +276,9 @@ Dazu trägt jeder Monat sein `vorjahr` wie `auswertung.vorjahr` (Operation `roh`
 Infozeile und Spalte „ggü. Vorjahr“ der Seite lesen es, ohne selbst zu teilen; ohne beide Werte oder mit 0 davor `null`.
 
 Sonst wird nichts gerechnet (`KennzahlAuswertung`, `KennzahlAuswertungTest`, `BezugsbasisVergleichApiTest`).
+
+Lehnt eine Lesung die Auswertung einer Kennzahl ab oder scheitert sie unerwartet, trägt nur diese Kennzahl keine
+`auswertung` (das Portal liest sie dann über `…/werte`); die übrigen Kennzahlen behalten ihre.
 
 ### Der Auslöser aus der Ortsstruktur (IP-9, nachgetragen)
 

@@ -6,8 +6,8 @@ import {
   archivTitel,
   grundKurz,
   karteMitBasis,
+  bandText,
   kennzahlenListe,
-  leitkennzahl,
   miniZusammenfassung,
   ortText,
   reiheOhneBasis,
@@ -37,7 +37,7 @@ describe('Konzept Auswerten a1 §6.4 · die Liste „Kennzahlen“', () => {
   });
 
   it('die Karte spricht das Urteil mit den Wörtern der Übersicht und die Zahl als Satz', () => {
-    const [kz4, kz23, kz21] = kennzahlenListe(referenzListe()).mit;
+    const [kz4, kz23, kz21] = kennzahlenListe(referenzListe(), REFERENZ.kz4).mit;
     expect(kz4.zahl).toBe('0,29');
     expect(kz4.einheit).toBe('kWh je kg');
     expect(kz4.per).toBe('März 2029 · Prozess Spritzguss');
@@ -134,9 +134,30 @@ describe('Konzept Auswerten a1 §6.4 · die Liste „Kennzahlen“', () => {
     );
   });
 
-  it('die Leitkennzahl ist die mit offenem Energieziel und dem kleinsten Kennzeichen - wie die Leitkachel', () => {
-    expect(leitkennzahl(referenzListe())).toBe('KZ-0004');
-    expect(leitkennzahl(referenzListe().map((k) => ({ ...k, auswertung: k.auswertung ? { ...k.auswertung, energieziel: null } : undefined })))).toBeNull();
+  it('Zielwert und Band mit genau den Stellen, die sie tragen - nie auf ganze Prozent gerundet (Review r3)', () => {
+    expect(zielWert({ zielwert_prozent: '-2.5' })).toBe(`2,5${NB}% weniger`);
+    expect(zielWert({ zielwert_prozent: '3.0' })).toBe(`3${NB}% mehr`);
+    expect(bandText('2.0')).toBe(`± 2${NB}%`);
+    expect(bandText('2.5')).toBe(`± 2,5${NB}%`);
+    const welt = referenzListe().map((k) =>
+      k.id === REFERENZ.kz21 && k.auswertung?.vergleich
+        ? { ...k, auswertung: { ...k.auswertung, vergleich: { ...k.auswertung.vergleich, band_prozent: '2.5' } } }
+        : k,
+    );
+    const kz21 = kennzahlenListe(welt).mit.find((k) => k.id === REFERENZ.kz21);
+    expect(kz21?.band).toBe(`± 2,5${NB}%`);
+    expect(kz21?.abweichungKurz).toBe(`0,0${NB}% · Band ± 2,5${NB}%`);
+  });
+
+  it('den Stern trägt die Leitkennzahl, die der Server nennt - nie eine hier abgeleitete (§10.8, Review r3)', () => {
+    // Ohne Nennung (der Server hat keine Leitkennzahl, etwa weil ihr jeder Wert fehlt) trägt keine Karte den Stern.
+    expect(kennzahlenListe(referenzListe()).mit.filter((k) => k.leit)).toEqual([]);
+    // Nennt der Server eine andere Kennzahl, trägt nur sie ihn - auch wenn KZ-0004 ein offenes Ziel hat.
+    const mit = kennzahlenListe(referenzListe(), REFERENZ.kz21).mit;
+    expect(mit.filter((k) => k.leit).map((k) => k.kennzeichen)).toEqual(['KZ-0021']);
+    // Am Standort ohne die Leitkennzahl: kein Stern - keine Ersatz-Leitkennzahl aus der gefilterten Liste.
+    const amStandort = referenzListe().filter((k) => k.id !== REFERENZ.kz4);
+    expect(kennzahlenListe(amStandort, REFERENZ.kz4).mit.some((k) => k.leit)).toBe(false);
   });
 
   it('die Mini-Grafik in Worten für den Vorleser', () => {

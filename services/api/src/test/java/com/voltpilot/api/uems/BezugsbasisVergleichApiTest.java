@@ -1,8 +1,12 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -33,6 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -113,6 +118,10 @@ class BezugsbasisVergleichApiTest {
 
     @Autowired
     KennzahlService kennzahlen;
+
+    /** Nur beobachtet: wie oft ein Leser den Katalog des Mandanten lädt (Review r3, Aufwand je Kennzahl). */
+    @SpyBean
+    KennzahlRepository kennzahlRepo;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -551,9 +560,12 @@ class BezugsbasisVergleichApiTest {
         assertThat(monate).allMatch(m -> m.has("vorjahr"));
         assertThat(mar.get("vorjahr")).isEqualTo(kz4.get("vorjahr"));
         assertThat(mar.get("vorjahr").has("urteil")).isFalse();
-        // Die Fassung gilt seit November 2024 - der Zeitraum umfasst alle zwölf Monate.
-        assertThat(kz4.at("/zeitraum/von").asText()).isEqualTo("2025-04");
+        // Review r3 (§10.6 mit P4): Fassung 1 galt bis 31.10.2025, Fassung 2 ab 01.11.2025. Der Zeitraum rechnet gegen die
+        // Fassung am letzten Tag des März - Fassung 2 - und beginnt darum im November, nicht im April: April bis Oktober
+        // stehen mit ihrem Urteil gegen Fassung 1 in `monate`, zählen aber nicht gegen Fassung 2.
+        assertThat(kz4.at("/zeitraum/von").asText()).isEqualTo("2025-11");
         assertThat(kz4.at("/zeitraum/bis").asText()).isEqualTo("2026-03");
+        assertThat(okt.get("urteil").asText()).isEqualTo("im_rahmen");
 
         Antwort falsch = ruf(w, PFAD + "/" + w.kz4() + "?mit=werte");
         assertThat(falsch.status()).isEqualTo(400);
@@ -588,6 +600,80 @@ class BezugsbasisVergleichApiTest {
         assertThat(kz7.at("/monate/7/periode").asText()).isEqualTo("2025-11");
         assertThat(kz7.at("/monate/7/grund").asText()).isEqualTo("basis_fehlt");
         assertThat(kz7.at("/monate/7/zusammen").isNull()).isTrue();
+    }
+
+    /**
+     * Review r3 (Aufwand je Kennzahl): die Auswertung der Liste lädt den Katalog des Mandanten einmal - nicht je Kennzahl
+     * und je Dienst neu; ebenso die Leitkachel.
+     */
+    @Test
+    void auswertungDerListeLaedtDenKatalogEinmal() throws Exception {
+        Welt w = welt();
+        clearInvocations(kennzahlRepo);
+        assertThat(ruf(w, PFAD + "?mit=auswertung").status()).isEqualTo(200);
+        verify(kennzahlRepo, times(1)).alle();
+        verify(kennzahlRepo, times(1)).alleFassungen();
+        verify(kennzahlRepo, times(1)).alleEingaenge();
+    }
+
+    /**
+     * Review r3 (§10.8 „ein Urteil, eine Ableitung“): die Leitkachel der Übersicht urteilt auf der Uhr der Kennzahlen -
+     * hier gestellt auf den 15.04.2026 wie die Bühne der Prüfumgebung - über denselben Monat wie die Karte, nicht über
+     * den letzten Monat der echten Zeit. Das fällige, noch nicht bewertete Energieziel 2025 verdrängt das laufende 2026
+     * weder an der Karte noch an der Kachel, und die Liste nennt dieselbe Leitkennzahl.
+     */
+    @Test
+    void leitkachelUndKarteUrteilenAufDerUhrDerKennzahlenUeberDasLaufendeZiel() throws Exception {
+        Welt w = welt();
+        UUID bb1 = root.queryForObject("SELECT id FROM bezugsbasis WHERE kennzahl_id = ?", UUID.class, w.kz4());
+        ziel(w, w.kz4(), bb1, "EZ-2025-0001", "-3.0", "2025-11/2025-12");
+        ziel(w, w.kz4(), bb1, "EZ-2026-0001", "-2.5", "2026-01/2026-12");
+
+        Antwort liste = ruf(w, PFAD + "?mit=auswertung");
+        assertThat(liste.status()).as(liste.text()).isEqualTo(200);
+        JsonNode karte = kennzahlIn(liste.body(), "KZ-0004").get("auswertung");
+        Antwort kpis = ruf(w, "/api/v1/portfolio/kpis");
+        assertThat(kpis.status()).as(kpis.text()).isEqualTo(200);
+        JsonNode leit = kpis.body().get("leit");
+
+        assertThat(liste.body().get("leitkennzahl").asText()).isEqualTo(w.kz4().toString());
+        assertThat(leit.get("kennzeichen").asText()).isEqualTo("KZ-0004");
+        // März 2026: der letzte abgeschlossene Monat auf der Uhr der Kennzahlen (die echte Zeit läge Monate später).
+        assertThat(karte.get("monat").asText()).isEqualTo("2026-03");
+        assertThat(String.format("%d-%02d", leit.get("jahr").asInt(), leit.get("monat").asInt()))
+                .isEqualTo(karte.at("/wert/periode").asText()).isEqualTo("2026-03");
+        // Die Kachel trägt den Wert als JSON-Zahl (der Test liest sie als double), die Karte als exakten Text.
+        assertThat(zahl(leit.get("wert"))).isCloseTo(zahl(karte.at("/wert/wert")), within(new BigDecimal("1e-12")));
+        assertThat(leit.get("urteil").asText()).isEqualTo(karte.at("/vergleich/urteil").asText())
+                .isEqualTo("nicht_anwendbar");
+        // Das laufende Ziel 2026 steht an Karte und Kachel - nicht das fällige 2025 mit der früheren Zielperiode.
+        assertThat(karte.at("/energieziel/kennzeichen").asText()).isEqualTo("EZ-2026-0001");
+        assertThat(leit.at("/ziel_stand/kennzeichen").asText()).isEqualTo("EZ-2026-0001");
+        assertThat(zahl(leit.get("ziel_prozent"))).isEqualByComparingTo("-2.5");
+        assertThat(leit.get("ziel_wortlaut").asText()).isEqualTo("EZ-2026-0001: 2,5 % weniger");
+        // Trend des März (100.000 / 390.000) gegen den Februar (81.500 / 305.000): −4,0 %.
+        assertThat(zahl(leit.get("trend_prozent"))).isEqualByComparingTo("-4.0");
+        // Die Seite der Kennzahl nennt dieselbe Leitkennzahl (Stern) - KZ-0006 hat kein Ziel und führt nicht.
+        assertThat(ruf(w, PFAD + "/" + w.kz4() + "?mit=auswertung").body().get("leitkennzahl").asBoolean()).isTrue();
+        JsonNode kz6 = ruf(w, PFAD + "/" + w.kz6() + "?mit=auswertung").body();
+        assertThat(kz6.get("leitkennzahl").asBoolean()).isFalse();
+        assertThat(ruf(w, PFAD + "/" + w.kz4()).body().has("leitkennzahl")).isFalse();
+    }
+
+    /**
+     * Ein offenes Energieziel an der Kennzahl, direkt geschrieben (Muster {@code ManagementbewertungVorlageApiTest}) -
+     * angelegt am 15.10.2025, vor beiden Zielperioden und vor dem Beginn von Fassung 2.
+     */
+    private static void ziel(Welt w, UUID kennzahl, UUID basis, String kennzeichen, String prozent, String periode) {
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, 'IK', 'benutzer', "
+                + "'Ines Kaltenbach', 'aktiv') ON CONFLICT DO NOTHING", w.mandant());
+        root.update("INSERT INTO energieziel (tenant_id, kennzeichen, kennzahl_id, bezugsbasis_id, fassung, "
+                + "zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich_sub, verantwortlich_name, "
+                + "verantwortlich_konto, actor_sub, actor_name, actor_rolle, actor_art, angelegt_am) VALUES (?, ?, ?, ?, 2, "
+                + "?, ?, ?, 'Beschluss der Managementbewertung.', 'IK', 'Ines Kaltenbach', 'benutzer', 'IK', "
+                + "'Ines Kaltenbach', 'energiemanager', 'kunde', '2025-10-15T09:00:00Z')", w.mandant(), kennzeichen,
+                kennzahl, basis, new BigDecimal(prozent), periode,
+                kennzeichen + ": " + prozent.substring(1).replace('.', ',') + " % weniger");
     }
 
     private static JsonNode kennzahlIn(JsonNode liste, String kennzeichen) {

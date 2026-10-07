@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 16.09.2026 · Vertrag 1.12 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 06.10.2026 · Vertrag 1.13 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -65,6 +65,8 @@ heute spricht — beide Zwillinge beweisen es an jeder Erwartung von `verbrauch-
 | 50 | 1 von {erwartet} Intervallmengen fehlt / {fehlend ≥ 2} von {erwartet} … fehlen — … | — | ja |
 | 50 | gemessene Zeit {minuten}:{sekunden} min von {periode_min} min | — | ja |
 | 60 | aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit) | aus Leistung integriert | nein |
+| 60 | Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden) - die Menge stammt aus zwei Ablesungen, der Kunde hat den Zeitraum dem Monat zugeordnet; `{von}`/`{bis}` sind `tag_uhr` („01.10. 07:15“, an der doppelten Stunde mit MESZ/MEZ); ein Jahr nennt jeden seiner Zeiträume (nicht einmalig). Gesprochen von `AblesungRegeln` (seit 1.13, AP-09 F17) | Ablesezeitraum | nein |
+| 60 | Ablesezeitraum ohne Monatszuordnung - ein Monat ohne Zahl, dessen Ablesezeitraum keinem Monat gilt (seit 1.13) | Ablesezeitraum | nein |
 | 70 | mit Ersatzwert (Methode „{methode}“, {kennung}) — `{methode}` ist der Name in Kundensprache (`vokabular.ersatzwert_methode[].name` der Ereignis-Vektoren), `{kennung}` EW-<Jahr>-<Nr.>; zuletzt, nach allem, was gemessen ist (seit 1.4, AP-08 IP-13) | mit Ersatzwert (Methode …) | nein |
 | 80 | korrigiert (Version {version}) — `{version}` ≥ 2 (Version 1 ist das Original); danach nur noch die Fassung, die Version sagt etwas über die ganze Zahl. Gesprochen von der Korrektur-Kaskade an jeder Stufe, deren Version sie schreibt; kein Datum im Satz (die Versions-Historie, IP-18); derselbe Wortlaut wie in `bilanz-vectors.json` F14 (seit 1.5, AP-08 IP-17) | korrigiert (Version n) | nein |
 | 90 | vorläufig · endgültig — die Fassung der Periode, ob die ganze Zahl sich noch ändern kann; ganz zuletzt, nach der Version. Aus `fassung` der Route, höchstens EINE je Liste; nie gespeichert, gesprochen von der Tages- und Monatskarte (seit 1.7, AP-08 IP-11, §5) | vorläufig · endgültig | nein |
@@ -86,10 +88,20 @@ endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände�
 {von}–{bis}: Zuwachs {zuwachs} gemessen, …“ mit `dezimal_punkt` („Zuwachs 337.600“, bis 1.2) — gleicher
 Text, anderer Platzhalter: das heutige Muster nimmt „337.600“ nicht an.
 
-**Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert · Ablesezeitraum
-(„korrigiert (Version n)“ bis 1.4, seit 1.5 Kennzeichen; „vorläufig“ und „endgültig“ bis 1.6, seit 1.7 Kennzeichen). Ihren Wortlaut legt das
+**Vorgesehen** ist das übrige Wort des Vokabulars - nachgeliefert
+(„korrigiert (Version n)“ bis 1.4, seit 1.5 Kennzeichen; „vorläufig“ und „endgültig“ bis 1.6, seit 1.7 Kennzeichen;
+„Ablesezeitraum“ bis 1.12, seit 1.13 Kennzeichen). Ihren Wortlaut legt das
 Paket fest, das sie erzeugt (`kennzeichen_vorgesehen.wortlaut_mit`); bis dahin ist ein solcher
 Satz `kennzeichen_vorgesehen`, kein Kennzeichen.
+
+**Ablesungen (seit 1.13, AP-09 F17).** Ein Monat aus Ablesungen trägt den Satz seines Ablesezeitraums
+und ist vollständig; bis 1.12 war „Ablesezeitraum“ ein vorgesehenes Wort, und keine Fläche sprach einen
+Monat oder ein Jahr eines Ablesezählers (die Karte zeigte „—“, obwohl die Route die Menge lieferte). Ein
+**Jahr** ist die Summe seiner Monate mit Zahl und nennt deren Ablesezeiträume; fehlt ein Monat, ist es
+unvollständig und sagt es zuerst mit dem Kennzeichen der fehlenden Intervallmengen (Rang 50,
+„3 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen“) - `AblesungRegeln.jahr`. Jahre,
+die AP-09 vor 1.13 ohne diesen Satz gespeichert hat, bleiben `unvollstaendig_ohne_grund` und werden nicht
+gesprochen, bis die nächste Ablesung die Perioden mit einer K-Fassung neu bildet.
 
 Die Sprech-Funktionen (`geraetegrenze`, `neustart`, …) prüfen die eingesetzten Werte **nicht**:
 sie liegen im Rechenweg der Verdichtung, und ein Satz darf dort nie eine Menge kosten.

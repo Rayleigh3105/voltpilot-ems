@@ -147,21 +147,30 @@ function KennzahlenListe({
   const telefon = useIsPhone();
   const rollen = useRollen();
   const recht = standortId ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';
-  // Konzept Auswerten a1 (PR1): EINE Anfrage mit Auswertung je Kennzahl statt einer Werte-Anfrage je Karte.
-  const [lage, setLage] = useState<{ liste: Kennzahl[]; ausserhalb: string | null } | 'fehler' | null>(null);
+  // Konzept Auswerten a1 (PR1): EINE Anfrage mit Auswertung je Kennzahl statt einer Werte-Anfrage je Karte. Scheitert
+  // sie, steht die Liste ohne Auswertung da (jede Karte liest dann ihr Fenster wie bisher über `…/werte`) - ein Fehler
+  // der Auswertung leert nie die ganze Liste. Die Leitkennzahl nennt der Server (`leitkennzahl`), für das Unternehmen;
+  // am Standort trägt sie den Stern nur, wenn sie dort steht.
+  const [lage, setLage] = useState<{ liste: Kennzahl[]; ausserhalb: string | null; leit: string | null } | 'fehler' | null>(null);
   useEffect(() => {
     let aktiv = true;
     setLage(null);
-    api.kennzahlen('auswertung').then(
-      ({ kennzahlen, ausserhalb_zugriff }) =>
-        aktiv && setLage({ liste: standortId ? amStandort(kennzahlen, standortId) : kennzahlen, ausserhalb: ausserhalb_zugriff?.text ?? null }),
-      () => aktiv && setLage('fehler'),
-    );
+    const zeigen = ({ kennzahlen, ausserhalb_zugriff, leitkennzahl }: Awaited<ReturnType<typeof api.kennzahlen>>) =>
+      aktiv &&
+      setLage({
+        liste: standortId ? amStandort(kennzahlen, standortId) : kennzahlen,
+        ausserhalb: ausserhalb_zugriff?.text ?? null,
+        leit: leitkennzahl ?? null,
+      });
+    api
+      .kennzahlen('auswertung')
+      .catch(() => api.kennzahlen())
+      .then(zeigen, () => aktiv && setLage('fehler'));
     return () => {
       aktiv = false;
     };
   }, [versuch, standortId]);
-  const modell = useMemo(() => (lage && lage !== 'fehler' ? kennzahlenListe(lage.liste) : null), [lage]);
+  const modell = useMemo(() => (lage && lage !== 'fehler' ? kennzahlenListe(lage.liste, lage.leit) : null), [lage]);
   const [archivOffen, setArchivOffen] = useState(false);
   // Archivierte lesen ihre Werte erst beim Aufklappen; Kennzahlen ohne Monatswerte (selten) wie bisher je Karte.
   const archivWerte = useListenWerte(archivOffen && modell ? modell.archiviert : null, zone);

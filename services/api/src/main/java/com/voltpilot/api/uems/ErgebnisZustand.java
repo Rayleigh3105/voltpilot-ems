@@ -82,22 +82,27 @@ public final class ErgebnisZustand {
 
     // ------------------------------------------------------------------ Kennzeichen
 
+    private static final String TAG_UHR = "tag_uhr";
+
     /** Je Platzhalter-Art der Ausdruck, der den eingesetzten Text erkennt (ohne fangende Gruppe). */
-    public static final Map<String, String> PLATZHALTER = Map.of(
-            "uhr", "(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?",
-            "text", ".+",
-            "ganzzahl", "(?:0|[1-9][0-9]*)",
-            "ganzzahl_ab_2", "(?:[2-9]|[1-9][0-9]+)",
-            "sekunden", "[0-5][0-9]",
-            "dezimal_punkt", "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
-            "dezimal_klartext", "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
+    public static final Map<String, String> PLATZHALTER = Map.ofEntries(
+            Map.entry("uhr", "(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?"),
+            Map.entry("text", ".+"),
+            Map.entry("ganzzahl", "(?:0|[1-9][0-9]*)"),
+            Map.entry("ganzzahl_ab_2", "(?:[2-9]|[1-9][0-9]+)"),
+            Map.entry("sekunden", "[0-5][0-9]"),
+            Map.entry("dezimal_punkt", "(?:0|[1-9][0-9]*)\\.[0-9]{3}"),
+            Map.entry("dezimal_klartext", "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?"),
             // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
-            "menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|kVAh|m³)",
+            Map.entry("menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|kVAh|m³)"),
             // Seit 1.4 (AP-08 IP-13): der Name einer Ersatzwert-Methode in Kundensprache und die Kennung.
-            "ersatzwert_methode", "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen"
+            Map.entry("ersatzwert_methode", "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen"
                     + "|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen"
-                    + "|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)",
-            "ersatzwert_kennung", "EW-[0-9]{4}-[0-9]{4,}");
+                    + "|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)"),
+            Map.entry("ersatzwert_kennung", "EW-[0-9]{4}-[0-9]{4,}"),
+            // Seit 1.13 (AP-09 F17): Tag und Uhrzeit ohne Jahr („01.10. 07:15“), die Uhrzeit nach E10 wie `uhr`.
+            Map.entry(TAG_UHR, "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\. (?:[01][0-9]|2[0-3]):[0-5][0-9]"
+                    + "(?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?"));
 
     /**
      * Ein Kennzeichen-Satz der geschlossenen Liste.
@@ -170,6 +175,12 @@ public final class ErgebnisZustand {
             new Muster("aus_leistung_integriert",
                     "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)", Map.of(),
                     "aus Leistung integriert", 60, false, true, null, null),
+            // Seit 1.13 (AP-09 F17): woher die Menge eines Monats stammt - aus einem Ablesezeitraum, den der Kunde dem
+            // Monat zugeordnet hat; ein Jahr nennt jeden. Ohne Zuordnung hat der Monat keine Zahl und sagt es.
+            new Muster("ablesezeitraum", "Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden)",
+                    Map.of("von", TAG_UHR, "bis", TAG_UHR), "Ablesezeitraum", 60, false, false, null, null),
+            new Muster("ablesezeitraum_ohne_monat", "Ablesezeitraum ohne Monatszuordnung", Map.of(), "Ablesezeitraum",
+                    60, false, true, null, null),
             // Seit 1.4 (AP-08 IP-13): zuletzt, was ein Mensch gesetzt hat — nach allem, was gemessen ist.
             new Muster("mit_ersatzwert", "mit Ersatzwert (Methode „{methode}“, {kennung})",
                     Map.of("methode", "ersatzwert_methode", "kennung", "ersatzwert_kennung"),
@@ -203,9 +214,7 @@ public final class ErgebnisZustand {
     public record Vorgesehen(String wort, String anfang, String wortlautMit) {}
 
     public static final List<Vorgesehen> VORGESEHEN = List.of(
-            new Vorgesehen("nachgeliefert", "nachgeliefert", "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"),
-            new Vorgesehen("Ablesezeitraum", "Ablesezeitraum",
-                    "AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)"));
+            new Vorgesehen("nachgeliefert", "nachgeliefert", "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"));
 
     private static final Pattern PLATZ = Pattern.compile("\\{([a-z_]+)\\}");
 
@@ -279,10 +288,27 @@ public final class ErgebnisZustand {
     public static final String NUR_EIN_STAND = sprich("nur_ein_stand", Map.of());
     public static final String ZUWACHS_NICHT_MESSBAR = sprich("zuwachs_nicht_messbar", Map.of());
     public static final String AUS_LEISTUNG_INTEGRIERT = sprich("aus_leistung_integriert", Map.of());
+    /** „Ablesezeitraum ohne Monatszuordnung“ - ein Monat ohne Zahl, dessen Ablesezeitraum keinem Monat gilt (seit 1.13). */
+    public static final String ABLESEZEITRAUM_OHNE_MONAT = sprich("ablesezeitraum_ohne_monat", Map.of());
 
     /** „positiver Anteil von K-3 · Wirkleistung“ — steht vor allen anderen (Rang 10). */
     public static String anteil(boolean positiv, String quelle) {
         return sprich(positiv ? "anteil_positiv" : "anteil_negativ", Map.of("quelle", quelle));
+    }
+
+    /**
+     * „Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)“ - Rang 60, seit 1.13 (AP-09 F17): die Menge
+     * stammt aus zwei Ablesungen, die Zuordnung zum Monat hat der Kunde getroffen. Tag und Uhrzeit in der Zone des
+     * Standorts; die Uhrzeit nach E10 wie {@link #uhr} („25.10. 02:30 MEZ“ an der doppelten Stunde).
+     */
+    public static String ablesezeitraum(Instant von, Instant bis, ZoneId zone) {
+        return sprich("ablesezeitraum", Map.of("von", tagUhr(von, zone), "bis", tagUhr(bis, zone)));
+    }
+
+    private static final DateTimeFormatter TAG_OHNE_JAHR = DateTimeFormatter.ofPattern("dd.MM.", Locale.GERMANY);
+
+    private static String tagUhr(Instant zeit, ZoneId zone) {
+        return TAG_OHNE_JAHR.format(zeit.atZone(zone)) + " " + uhr(zeit, zone);
     }
 
     /** „Gerätegrenze 10:40 mit Ableseständen“ bzw. „… ohne Ablesestände“. */

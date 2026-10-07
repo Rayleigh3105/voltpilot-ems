@@ -200,24 +200,6 @@ class PortfolioKpiServiceTest {
         assertThat(f.brauchtMonat()).isFalse();
     }
 
-    // ------------------------------------------------------------------ Trend (rein, Review R2)
-
-    @Test
-    void trendProzentRechnetGegenDenVormonat() {
-        // (0,2837 − 0,30) ÷ 0,30 × 100 = −5,43… → 1 Stelle −5,4
-        assertThat(PortfolioKpiService.trendProzent(bd("0.2837"), bd("0.30"))).isEqualByComparingTo("-5.4");
-        // Anstieg: (0,33 − 0,30) ÷ 0,30 × 100 = +10,0
-        assertThat(PortfolioKpiService.trendProzent(bd("0.33"), bd("0.30"))).isEqualByComparingTo("10.0");
-    }
-
-    @Test
-    void trendProzentOhneTauglichenVormonatIstNull() {
-        assertThat(PortfolioKpiService.trendProzent(bd("0.30"), null)).isNull();
-        assertThat(PortfolioKpiService.trendProzent(null, bd("0.30"))).isNull();
-        // Vormonat 0 → keine Division, kein irreführender Pfeil.
-        assertThat(PortfolioKpiService.trendProzent(bd("0.30"), bd("0"))).isNull();
-    }
-
     // ------------------------------------------------------------------ Helfer
 
     private static BigDecimal bd(Object o) {

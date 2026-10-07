@@ -5,12 +5,16 @@ import com.voltpilot.api.web.dto.EnergiezielDto;
 import com.voltpilot.api.web.dto.KennzahlDto;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.BinaryOperator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,6 +22,11 @@ import org.springframework.stereotype.Service;
  * und die Leitkachel der Übersicht ({@link PortfolioKpiService}) fragen hier - ein Urteil, eine Ableitung. Je Kennzahl
  * die Monatswerte der letzten 24 Monate, der Vergleich der letzten zwölf (nur mit freigegebener Bezugsbasis) und der
  * Stand des offenen Energieziels; gerechnet wird nichts, die reine {@link KennzahlAuswertung} ordnet.
+ *
+ * <p>Der Monat des Urteils hängt nur an der Uhr der Kennzahlen ({@link KennzahlService#jetzt()}) und der Zone ihrer
+ * Geltung - nie an der Uhr oder Zone des Aufrufers. Welche Kennzahl die Leitkachel zeigt und welches offene Energieziel an
+ * einer Kennzahl steht, entscheidet allein dieser Dienst ({@link #leit()}, {@link #zielFuer}); die Liste nennt dieselbe
+ * Leitkennzahl ({@code leitkennzahl}).
  *
  * <p>Reiner Leser mit der Sicht des Aufrufers: die Liste nimmt nur die Kennzahlen, die {@link KennzahlService#liste()}
  * zeigt; jede weitere Lesung geht über dieselben Dienste wie ihre Routen.
@@ -29,6 +38,7 @@ public class KennzahlAuswertungService {
     static final String MIT_AUSWERTUNG = "auswertung";
     private static final String MONAT = "monat";
     private static final Set<String> WERTE_PARAMETER = Set.of("periode", "von", "bis");
+    private static final Logger LOG = LoggerFactory.getLogger(KennzahlAuswertungService.class);
 
     private final KennzahlService kennzahlen;
     private final KennzahlWerteService werte;
@@ -52,25 +62,81 @@ public class KennzahlAuswertungService {
         if (mit != null && !MIT_AUSWERTUNG.equals(mit)) {
             throw KennzahlAbgelehnt.anfrage("mit");
         }
-        KennzahlDto.Liste liste = kennzahlen.liste();
         if (mit == null) {
-            return liste;
+            return kennzahlen.liste();
         }
-        Map<UUID, EnergiezielDto.Energieziel> ziele = offeneZiele();
-        return new KennzahlDto.Liste(liste.kennzahlen().stream()
-                .map(k -> auswertbar(k) ? mitAuswertung(k, ziele.get(k.id())) : k)
-                .toList(), liste.ausserhalbZugriff());
+        // Ein Katalog für die ganze Liste: jede Auswertung läse ihn sonst mehrfach neu (Review r3, Aufwand je Kennzahl).
+        return kennzahlen.mitEinemKatalog(this::listeMitAuswertung);
+    }
+
+    private KennzahlDto.Liste listeMitAuswertung() {
+        KennzahlDto.Liste liste = kennzahlen.liste();
+        Map<UUID, List<EnergiezielDto.Energieziel>> ziele = offeneZiele();
+        List<KennzahlDto.Kennzahl> mitAuswertung = liste.kennzahlen().stream()
+                .map(k -> auswertbar(k) ? mitAuswertung(k, ziele.getOrDefault(k.id(), List.of())) : k)
+                .toList();
+        UUID leit = mitAuswertung.stream()
+                .filter(k -> ziele.containsKey(k.id()) && fuehrt(k))
+                .min(LEIT_FOLGE)
+                .map(KennzahlDto.Kennzahl::id)
+                .orElse(null);
+        return new KennzahlDto.Liste(mitAuswertung, liste.ausserhalbZugriff(), leit);
+    }
+
+    /** Die Leitkennzahl mit ihrer Auswertung und dem Energieziel, das an ihr steht (Wortlaut für die Kachel). */
+    public record Leit(KennzahlDto.Kennzahl kennzahl, EnergiezielDto.Energieziel ziel) {}
+
+    /**
+     * Die Leitkennzahl der Übersicht (§10.8): unter den Kennzahlen mit Auswertung und offenem Energieziel die mit dem
+     * kleinsten Kennzeichen, die einen Monatswert trägt - dieselbe Wahl wie {@code leitkennzahl} der Liste, über dieselbe
+     * Auswertung (Uhr der Kennzahlen, Zone der Geltung). Leer ohne eine solche Kennzahl. Gelesen wird nur, bis eine
+     * Kennzahl führt.
+     */
+    public Optional<Leit> leit() {
+        return kennzahlen.mitEinemKatalog(this::leitImKatalog);
+    }
+
+    private Optional<Leit> leitImKatalog() {
+        return leitIn(offeneZiele(), Map.of());
+    }
+
+    /** {@link #leit()} über die schon gelesenen offenen Ziele; {@code bekannt} sind schon ausgewertete Kennzahlen. */
+    private Optional<Leit> leitIn(Map<UUID, List<EnergiezielDto.Energieziel>> ziele,
+            Map<UUID, KennzahlDto.Kennzahl> bekannt) {
+        if (ziele.isEmpty()) {
+            return Optional.empty();
+        }
+        return kennzahlen.liste().kennzahlen().stream()
+                .filter(k -> auswertbar(k) && ziele.containsKey(k.id()))
+                .sorted(LEIT_FOLGE)
+                .map(k -> bekannt.containsKey(k.id()) ? bekannt.get(k.id()) : mitAuswertung(k, ziele.get(k.id())))
+                .filter(KennzahlAuswertungService::fuehrt)
+                .findFirst()
+                .map(k -> new Leit(k, ziele.get(k.id()).stream()
+                        .filter(z -> z.id().equals(k.auswertung().energieziel().id()))
+                        .findFirst()
+                        .orElseThrow()));
+    }
+
+    /** Führen kann eine Kennzahl mit Auswertung, Energieziel und einem Monatswert der zwölf. */
+    private static boolean fuehrt(KennzahlDto.Kennzahl k) {
+        return k.auswertung() != null && k.auswertung().energieziel() != null && k.auswertung().wert() != null;
     }
 
     /**
      * R-A7: lehnt eine Lesung einer gelisteten Kennzahl ab (Sicht, Bezugsbasis, Energieziel), trägt sie keine Auswertung -
-     * die Liste bleibt, und das Portal liest diese eine Kennzahl wie bisher über {@code …/werte}. Ein anderer Fehler ist
-     * ein Fehler und bricht die Antwort ab.
+     * die Liste bleibt, und das Portal liest diese eine Kennzahl wie bisher über {@code …/werte}. Ein unerwarteter Fehler
+     * einer Kennzahl nimmt nur ihr die Auswertung (mit Warnung im Log) - die übrigen Karten bleiben stehen. Jede Lesung
+     * läuft ohne gemeinsame Transaktion, ein Fehler vergiftet die nächste nicht.
      */
-    private KennzahlDto.Kennzahl mitAuswertung(KennzahlDto.Kennzahl k, EnergiezielDto.Energieziel ziel) {
+    private KennzahlDto.Kennzahl mitAuswertung(KennzahlDto.Kennzahl k, List<EnergiezielDto.Energieziel> ziele) {
         try {
-            return k.mitAuswertung(auswertung(k.id(), null, ziel));
+            return k.mitAuswertung(auswertung(k.id(), null, ziele));
         } catch (KennzahlAbgelehnt | BezugsbasisAbgelehnt | VerbesserungAbgelehnt e) {
+            LOG.debug("Kennzahl {}: keine Auswertung ({})", k.kennzeichen(), e.getMessage());
+            return k;
+        } catch (RuntimeException e) {
+            LOG.warn("Kennzahl {}: Auswertung gescheitert, die Liste zeigt sie ohne", k.kennzeichen(), e);
             return k;
         }
     }
@@ -78,19 +144,31 @@ public class KennzahlAuswertungService {
     /**
      * {@code GET /api/v1/kennzahlen/{id}[?mit=auswertung]}: ohne {@code mit} die Kennzahl wie bisher; mit
      * {@code mit=auswertung} trägt sie - wie in der Liste - ihre Auswertung (Konzept Auswerten a1 §6.5, die Seite einer
-     * Kennzahl), mit dem Stand ihres offenen Energieziels. Ein anderer Wert ist 400 {@code anfrage_ungueltig}.
+     * Kennzahl), mit dem Stand des Energieziels, das {@link #zielFuer} wählt, und {@code leitkennzahl}: ob sie die
+     * Leitkennzahl der Übersicht ist (dieselbe Wahl wie {@link #leit()}). Ein anderer Wert ist 400
+     * {@code anfrage_ungueltig}.
      */
     public KennzahlDto.Kennzahl eine(UUID id, String mit) {
         if (mit != null && !MIT_AUSWERTUNG.equals(mit)) {
             throw KennzahlAbgelehnt.anfrage("mit");
         }
+        if (mit == null) {
+            return kennzahlen.eine(id);
+        }
+        return kennzahlen.mitEinemKatalog(() -> eineMitAuswertung(id));
+    }
+
+    private KennzahlDto.Kennzahl eineMitAuswertung(UUID id) {
         KennzahlDto.Kennzahl k = kennzahlen.eine(id);
-        if (mit == null || !auswertbar(k)) {
+        if (!auswertbar(k)) {
             return k;
         }
-        EnergiezielDto.Energieziel ziel = energieziele.liste(Set.of(), null, "offen").energieziele().stream()
-                .filter(z -> z.kennzahl().id().equals(id)).min(ZIEL_FOLGE).orElse(null);
-        return mitAuswertung(k, ziel);
+        Map<UUID, List<EnergiezielDto.Energieziel>> ziele = offeneZiele();
+        KennzahlDto.Kennzahl mit = mitAuswertung(k, ziele.getOrDefault(id, List.of()));
+        // Führen kann nur eine Kennzahl mit Ziel und Wert; dann entscheidet dieselbe Wahl wie an Liste und Kachel.
+        boolean leit = ziele.containsKey(id) && fuehrt(mit)
+                && leitIn(ziele, Map.of(id, mit)).map(l -> l.kennzahl().id().equals(id)).orElse(false);
+        return mit.alsLeitkennzahl(leit);
     }
 
     /** Eine Auswertung braucht Monatswerte; eine archivierte Kennzahl trägt keine (die Liste klappt sie zu). */
@@ -100,10 +178,11 @@ public class KennzahlAuswertungService {
 
     /**
      * Die Auswertung der Kennzahl {@code id} bis zum Monat {@code bis} - ohne {@code bis} der letzte abgeschlossene Monat
-     * in der Zone ihrer Geltung. {@code ziel} ist das offene Energieziel, dessen Stand mitkommt ({@code null} ohne).
-     * Sichtbarkeit wie die Routen der Kennzahl (404 außerhalb der Sicht).
+     * in der Zone ihrer Geltung, auf der Uhr der Kennzahlen. Von den offenen Energiezielen {@code ziele} der Kennzahl
+     * kommt das mit, das {@link #zielFuer} für diesen Monat wählt. Sichtbarkeit wie die Routen der Kennzahl (404
+     * außerhalb der Sicht).
      */
-    public KennzahlDto.Auswertung auswertung(UUID id, YearMonth bis, EnergiezielDto.Energieziel ziel) {
+    public KennzahlDto.Auswertung auswertung(UUID id, YearMonth bis, List<EnergiezielDto.Energieziel> ziele) {
         KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(id, null, null, null);
         YearMonth monat = bis != null ? bis : KennzahlAuswertung.letzterMonat(LocalDate.ofInstant(k.jetzt(), k.zone()));
         KennzahlDto.Werte gelesen = werte.werte(id, WERTE_PARAMETER, MONAT,
@@ -117,22 +196,26 @@ public class KennzahlAuswertungService {
         YearMonth von = monat.minusMonths(KennzahlAuswertung.MONATE - 1);
         BezugsbasisVergleichDto.Vergleich v = ersteGeltung == null ? null
                 : vergleich.vergleichUeber(k, gelesen, von, monat);
+        EnergiezielDto.Energieziel ziel = zielFuer(ziele, monat);
         EnergiezielDto.Stand stand = ziel == null ? null : energieziele.stand(ziel.id());
         return KennzahlAuswertung.auswertung(monat, jeMonat, v, ersteGeltung, seitGeltung(k, gelesen, v, ersteGeltung,
                 von, monat), stand);
     }
 
     /**
-     * §10.6: der Zeitraum beginnt mit dem ersten der zwölf Monate, für dessen letzten Tag eine Fassung gilt (P4) - die
-     * Monate davor hätte der Zeitraum sonst gegen eine Fassung gerechnet, die für sie noch gar nicht galt. Gilt sie für
-     * alle zwölf, ist es der Vergleich selbst; gilt sie für keinen, gibt es keinen Zeitraum.
+     * §10.6 mit P4: der Zeitraum rechnet jeden seiner Monate gegen die Fassung am letzten Tag von {@code bis} - er beginnt
+     * darum mit dem Monat, ab dem genau diese Fassung gilt (bei einem Fassungswechsel mitten in den zwölf also mit dem
+     * Wechsel), nie mit Monaten, für die sie noch nicht galt; die früheren Monate stehen mit ihrem eigenen Urteil in
+     * {@code monate}. Gilt am letzten Tag keine Fassung (die Basis endete), zählt die erste. Gilt sie für alle zwölf, ist
+     * es der Vergleich selbst; gilt sie für keinen, gibt es keinen Zeitraum.
      */
     private BezugsbasisVergleichDto.Vergleich seitGeltung(KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen,
             BezugsbasisVergleichDto.Vergleich v, LocalDate ersteGeltung, YearMonth von, YearMonth bis) {
         if (v == null) {
             return null;
         }
-        YearMonth erster = YearMonth.from(ersteGeltung);
+        LocalDate ab = vergleich.geltungAm(k.zeile().id(), bis.atEndOfMonth());
+        YearMonth erster = YearMonth.from(ab != null ? ab : ersteGeltung);
         if (erster.isAfter(bis)) {
             return null;
         }
@@ -140,19 +223,62 @@ public class KennzahlAuswertungService {
     }
 
     /**
-     * Das offene Energieziel je Kennzahl; hat eine mehrere, das mit der frühesten Zielperiode (das laufende vor dem
-     * nächsten) - dieselbe Wahl für jede Kennzahl, deterministisch über das Kennzeichen.
+     * Welches offene Energieziel an der Kennzahl steht, wenn ihr Urteil für {@code monat} gilt - REIN: zuerst das, dessen
+     * Zielperiode den Monat enthält; sonst das zuletzt abgelaufene (es ist fällig und wartet auf seine Bewertung); sonst
+     * das nächste. Ein Ziel bleibt „offen“, bis es bewertet ist - ein fälliges darf das laufende nicht verdrängen.
+     * {@code null} ohne offenes Ziel.
      */
-    private Map<UUID, EnergiezielDto.Energieziel> offeneZiele() {
-        BinaryOperator<EnergiezielDto.Energieziel> frueher = (a, b) -> ZIEL_FOLGE.compare(a, b) <= 0 ? a : b;
-        Map<UUID, EnergiezielDto.Energieziel> je = new HashMap<>();
+    static EnergiezielDto.Energieziel zielFuer(List<EnergiezielDto.Energieziel> ziele, YearMonth monat) {
+        if (ziele == null || ziele.isEmpty()) {
+            return null;
+        }
+        List<EnergiezielDto.Energieziel> laufend = new ArrayList<>();
+        List<EnergiezielDto.Energieziel> abgelaufen = new ArrayList<>();
+        List<EnergiezielDto.Energieziel> kommend = new ArrayList<>();
+        for (EnergiezielDto.Energieziel z : ziele) {
+            if (monat.isBefore(beginn(z))) {
+                kommend.add(z);
+            } else if (monat.isAfter(ende(z))) {
+                abgelaufen.add(z);
+            } else {
+                laufend.add(z);
+            }
+        }
+        if (!laufend.isEmpty()) {
+            return laufend.stream().min(ZIEL_FOLGE).orElseThrow();
+        }
+        if (!abgelaufen.isEmpty()) {
+            return abgelaufen.stream()
+                    .max(Comparator.comparing(KennzahlAuswertungService::ende)
+                            .thenComparing(Comparator.comparing(EnergiezielDto.Energieziel::kennzeichen).reversed()))
+                    .orElseThrow();
+        }
+        return kommend.stream().min(ZIEL_FOLGE).orElseThrow();
+    }
+
+    /** {@code JJJJ-MM/JJJJ-MM} - die Form der Zielperiode sichert {@code energieziel_zielperiode_chk}. */
+    private static YearMonth beginn(EnergiezielDto.Energieziel z) {
+        return YearMonth.parse(z.zielperiode().substring(0, 7));
+    }
+
+    private static YearMonth ende(EnergiezielDto.Energieziel z) {
+        return YearMonth.parse(z.zielperiode().substring(8, 15));
+    }
+
+    /** Die offenen Energieziele je Kennzahl (jedes Ziel wählt {@link #zielFuer} erst mit dem Monat). */
+    private Map<UUID, List<EnergiezielDto.Energieziel>> offeneZiele() {
+        Map<UUID, List<EnergiezielDto.Energieziel>> je = new HashMap<>();
         for (EnergiezielDto.Energieziel z : energieziele.liste(Set.of(), null, "offen").energieziele()) {
-            je.merge(z.kennzahl().id(), z, frueher);
+            je.computeIfAbsent(z.kennzahl().id(), x -> new ArrayList<>()).add(z);
         }
         return je;
     }
 
+    /** Mehrere laufende oder kommende Ziele: das mit der frühesten Zielperiode, deterministisch über das Kennzeichen. */
     static final Comparator<EnergiezielDto.Energieziel> ZIEL_FOLGE = Comparator
             .comparing(EnergiezielDto.Energieziel::zielperiode)
             .thenComparing(EnergiezielDto.Energieziel::kennzeichen);
+
+    /** Die Leitkennzahl: das kleinste Kennzeichen führt. */
+    static final Comparator<KennzahlDto.Kennzahl> LEIT_FOLGE = Comparator.comparing(KennzahlDto.Kennzahl::kennzeichen);
 }

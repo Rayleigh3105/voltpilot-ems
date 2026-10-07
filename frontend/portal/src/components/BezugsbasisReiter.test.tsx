@@ -252,15 +252,13 @@ describe('Register: zwei Gruppen statt Kennzeichen und Filter (B3, Konzept Auswe
     vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new ApiError(500, 'x'));
     render(<KennzahlenPage onOeffnen={() => undefined} onListe={() => undefined} zone={ZONE} />);
   };
-  it('ohne freigegebene Basis steht alles „Zum Beobachten“ - kein Filter, keine Gruppe „Mit Bezugsbasis“', async () => {
+  it('ohne freigegebene Basis steht alles „Zum Beobachten“ - keine Gruppe „Mit Bezugsbasis“', async () => {
     register([
       kz4({ auswertung: auswertung(false) }),
       kz4({ id: 'x2', kennzeichen: 'KZ-0005', bezugsbasis: { kennzeichen: 'BB-0002', fassung: 1, freigabe_status: 'entwurf', vorlaeufig: true }, auswertung: auswertung(false) }),
     ]);
     await waitFor(() => expect(screen.getAllByTestId('kennzahl-reihe')).toHaveLength(2));
     expect(screen.queryByTestId('kennzahlen-mit')).toBeNull();
-    expect(screen.queryByTestId('kennzahl-filter-elk')).toBeNull();
-    expect(screen.queryByTestId('kennzahl-energieleistung')).toBeNull();
     // Die Basis im Entwurf ist genannt, nicht als Urteil.
     expect(screen.getAllByTestId('kennzahl-reihe')[1].textContent).toContain('BB-0002 im Entwurf');
   });
@@ -274,7 +272,6 @@ describe('Register: zwei Gruppen statt Kennzeichen und Filter (B3, Konzept Auswe
     expect(within(mit).getByText('im Rahmen der Bezugsbasis')).toBeTruthy();
     expect(mit.textContent).toContain('Bezugsbasis vorläufig');
     expect(within(screen.getByTestId('kennzahlen-ohne')).getAllByTestId('kennzahl-reihe')).toHaveLength(1);
-    expect(screen.queryByTestId('kennzahl-filter-elk')).toBeNull();
   });
 });
 

@@ -118,7 +118,8 @@ public final class KennzahlDto {
             OffsetDateTime archiviertAm,
             OffsetDateTime angelegtAm,
             Bezugsbasis bezugsbasis,
-            @JsonInclude(JsonInclude.Include.NON_NULL) Auswertung auswertung) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) Auswertung auswertung,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Boolean leitkennzahl) {
 
         /** Die Kennzahl ohne Auswertung - so antwortet jede Route außer {@code GET …?mit=auswertung}. */
         public Kennzahl(UUID id, String kennzeichen, String name, String rechenform, String geltungArt, UUID geltungId,
@@ -128,14 +129,24 @@ public final class KennzahlDto {
                 Bezugsbasis bezugsbasis) {
             this(id, kennzeichen, name, rechenform, geltungArt, geltungId, geltungName, rechteGeltung, standortId, kennung,
                     verantwortlichName, zweck, fassung, einheit, einheitAnzeige, grundperiode, perioden, hatWerte,
-                    archiviertAm, angelegtAm, bezugsbasis, null);
+                    archiviertAm, angelegtAm, bezugsbasis, null, null);
         }
 
         /** Dieselbe Kennzahl mit ihrer Auswertung. */
         public Kennzahl mitAuswertung(Auswertung a) {
             return new Kennzahl(id, kennzeichen, name, rechenform, geltungArt, geltungId, geltungName, rechteGeltung,
                     standortId, kennung, verantwortlichName, zweck, fassung, einheit, einheitAnzeige, grundperiode, perioden,
-                    hatWerte, archiviertAm, angelegtAm, bezugsbasis, a);
+                    hatWerte, archiviertAm, angelegtAm, bezugsbasis, a, leitkennzahl);
+        }
+
+        /**
+         * Nur an {@code GET …/{id}?mit=auswertung} (die Seite einer Kennzahl): ob sie die Leitkennzahl der Übersicht ist
+         * (Konzept Auswerten a1 §10.8) - die Liste nennt sie stattdessen als {@code leitkennzahl} der Liste.
+         */
+        public Kennzahl alsLeitkennzahl(boolean leit) {
+            return new Kennzahl(id, kennzeichen, name, rechenform, geltungArt, geltungId, geltungName, rechteGeltung,
+                    standortId, kennung, verantwortlichName, zweck, fassung, einheit, einheitAnzeige, grundperiode, perioden,
+                    hatWerte, archiviertAm, angelegtAm, bezugsbasis, auswertung, leit);
         }
     }
 
@@ -150,10 +161,21 @@ public final class KennzahlDto {
     /** Nur Anzahl und Kundensatz, keine Identität einer verborgenen Kennzahl. */
     public record ZugriffHinweis(int anzahl, String text) {}
 
-    /** {@code GET /api/v1/kennzahlen}: archivierte eingeschlossen, nach Kennzeichen (ein Objekt, additiv erweiterbar). */
+    /**
+     * {@code GET /api/v1/kennzahlen}: archivierte eingeschlossen, nach Kennzeichen (ein Objekt, additiv erweiterbar).
+     *
+     * @param leitkennzahl nur mit {@code mit=auswertung}: die Kennzahl, die die Leitkachel der Übersicht zeigt (Konzept
+     *     Auswerten a1 §10.8, dieselbe Wahl wie {@code GET /api/v1/portfolio/kpis}); fehlt ohne eine
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(List<Kennzahl> kennzahlen,
-            @JsonInclude(JsonInclude.Include.NON_NULL) ZugriffHinweis ausserhalbZugriff) {}
+            @JsonInclude(JsonInclude.Include.NON_NULL) ZugriffHinweis ausserhalbZugriff,
+            @JsonInclude(JsonInclude.Include.NON_NULL) UUID leitkennzahl) {
+
+        public Liste(List<Kennzahl> kennzahlen, ZugriffHinweis ausserhalbZugriff) {
+            this(kennzahlen, ausserhalbZugriff, null);
+        }
+    }
 
     // ============================================================================ Auswertung (Konzept Auswerten a1, PR1)
 

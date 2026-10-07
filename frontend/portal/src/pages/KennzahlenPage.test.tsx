@@ -10,7 +10,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../test/kennzahlWerteFixtures';
-import { referenzListe } from '../test/kennzahlListeFixtures';
+import { referenzListe, REFERENZ } from '../test/kennzahlListeFixtures';
 import { KennzahlenPage } from './KennzahlenPage';
 
 /** Geschütztes Leerzeichen (U+00A0) zwischen Zahl und Einheit. */
@@ -128,6 +128,45 @@ describe('KennzahlenPage — die Liste', () => {
     archiv.open = true;
     fireEvent(archiv, new Event('toggle'));
     await waitFor(() => expect(werte).toHaveBeenCalledTimes(5));
+  });
+
+  it('den Stern trägt die Leitkennzahl, die der Server nennt (§10.8) - ohne Nennung keine', async () => {
+    verdrahte('2029-04-30T10:00:00+02:00');
+    const liste = vi
+      .spyOn(api, 'kennzahlen')
+      .mockImplementation(async () => ({ kennzahlen: referenzListe(), leitkennzahl: REFERENZ.kz4 }));
+    const { unmount } = render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    const mit = await screen.findByTestId('kennzahlen-mit');
+    const sterne = () => within(mit).queryAllByTitle('Leitkennzahl - sie steht auf der Übersicht');
+    expect(sterne()).toHaveLength(1);
+    expect(sterne()[0].closest('[data-testid="kennzahl-karte"]')?.getAttribute('data-kennzeichen')).toBe('KZ-0004');
+    unmount();
+
+    liste.mockImplementation(async () => ({ kennzahlen: referenzListe() }));
+    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    const ohneLeit = await screen.findByTestId('kennzahlen-mit');
+    expect(within(ohneLeit).queryAllByTitle('Leitkennzahl - sie steht auf der Übersicht')).toEqual([]);
+  });
+
+  it('scheitert die Auswertung, steht die Liste ohne sie da - jede Karte liest ihr Fenster wie bisher (Review r3)', async () => {
+    const { werte } = verdrahte('2026-12-03T09:00:00+01:00');
+    const liste = vi.spyOn(api, 'kennzahlen').mockImplementation(async (mit) => {
+      if (mit) throw new ApiError(500, 'Serverfehler');
+      return { kennzahlen: kennzahlenDerWelt() };
+    });
+    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByTestId('kennzahl-reihe')).toHaveLength(5));
+    expect(liste).toHaveBeenNthCalledWith(1, 'auswertung');
+    expect(liste).toHaveBeenNthCalledWith(2);
+    expect(screen.queryByText('Die Kennzahlen ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.')).toBeNull();
+    await waitFor(() => expect(werte).toHaveBeenCalled());
+  });
+
+  it('scheitern beide Abrufe, sagt die Seite es mit „Erneut versuchen“', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    vi.spyOn(api, 'kennzahlen').mockRejectedValue(new ApiError(503, 'nicht erreichbar'));
+    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    expect(await screen.findByText('Die Kennzahlen ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.')).toBeTruthy();
   });
 });
 
