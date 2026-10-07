@@ -54,9 +54,12 @@ export const achsenText = (n: number): string => dezimal(String(Number(n.toFixed
 
 // ------------------------------------------------------------------------------------------------ Einheiten und Größen
 
-/** „kWh/kg“ → Energie „kWh“ und Einheit der Einflussgröße 1 „kg“. */
+/**
+ * „kWh/kg“ → Energie „kWh“ und Einheit der Einflussgröße 1 „kg“. Die Route liefert `einheit_anzeige` als Wort
+ * („kWh je kg“, `KennzahlService.einheitAnzeige`) - beide Schreibweisen trennen gleich.
+ */
 export function einheiten(einheit: string | null): { energie: string; bezug: string } {
-  const [energie = '', bezug = ''] = (einheit ?? '').split('/');
+  const [energie = '', bezug = ''] = (einheit ?? '').split(/\/| je /);
   return { energie: energie.trim(), bezug: bezug.trim() };
 }
 

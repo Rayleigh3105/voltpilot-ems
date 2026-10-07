@@ -289,7 +289,8 @@ class ZaehlerwechselApiTest {
         assertThat(protokoll).hasSize(1);
         Map<String, Object> eintrag = protokoll.get(0);
         assertThat(eintrag.get("rueckwirkend")).isEqualTo(true);
-        assertThat(eintrag.get("actor_name")).isEqualTo("admin");
+        // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
+        assertThat(eintrag.get("actor_name")).isEqualTo("Platform Admin");
         assertThat(eintrag.get("actor_art")).isEqualTo("voltpilot");
         assertThat(eintrag.get("grund")).isEqualTo("Zähler defekt");
         assertThat(((Timestamp) eintrag.get("created_at")).toInstant()).isEqualTo(zeitpunkt(EINGETRAGEN));

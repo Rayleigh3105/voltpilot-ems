@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.core.annotation.Order;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
@@ -62,14 +61,14 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
     private final MassnahmeBewertung massnahmeBewertung;
     private final AbweichungService abweichungen;
     private final UnternehmenRepository unternehmen;
-    private final JdbcTemplate jdbc;
+    private final PersonenNamen personen;
 
     public VerzeichnisBestand(BewertungUmfangService umfang, BewertungKriterienService kriterien,
             EnergieeinsatzService einsaetze, EnergieeinsatzEinstufungService einstufungen,
             MessbedarfService messbedarfe, MessmittelService messmittel, KennzahlService kennzahlen,
             BezugsbasisService bezugsbasen, BerichtService berichte, EnergiezielService energieziele,
             MassnahmeService massnahmen, MassnahmeBewertung massnahmeBewertung, AbweichungService abweichungen,
-            UnternehmenRepository unternehmen, JdbcTemplate jdbc) {
+            UnternehmenRepository unternehmen, PersonenNamen personen) {
         this.umfang = umfang;
         this.kriterien = kriterien;
         this.einsaetze = einsaetze;
@@ -84,7 +83,7 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         this.massnahmeBewertung = massnahmeBewertung;
         this.abweichungen = abweichungen;
         this.unternehmen = unternehmen;
-        this.jdbc = jdbc;
+        this.personen = personen;
     }
 
     @Override
@@ -92,25 +91,11 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         ZoneId zone = ZoneId.of(unternehmen.desKundenbereichs().map(UnternehmenRepository.Unternehmen::zeitzone)
                 .orElse("Europe/Berlin"));
         var aus = new ArrayList<Map<String, Object>>();
-        Map<String, String> namen = personenNamen();
+        Map<String, String> namen = personen.jeKennung();
         bewertung(aus, zone, stichtag, namen);
         kennzahlen(aus, zone, namen);
         berichte(aus, zone);
         verbesserung(aus, zone);
-        return aus;
-    }
-
-    /**
-     * Konzept Nachweisen n1, Befund 4: wer eine Entscheidung trägt, heißt wie die Person im Kundenbereich
-     * ({@code benutzer.anzeigename}), nicht wie ihr Anmeldename, den ältere Einträge gespeichert haben („ines“). Gelesen
-     * mit dem Zaun des Aufrufers (RLS); fehlt die Person, bleibt der gespeicherte Name.
-     */
-    private Map<String, String> personenNamen() {
-        Map<String, String> aus = new HashMap<>();
-        jdbc.query("SELECT sub, btrim(anzeigename) AS name FROM benutzer WHERE nullif(btrim(anzeigename), '') IS NOT NULL",
-                rs -> {
-                    aus.put(rs.getString("sub"), rs.getString("name"));
-                });
         return aus;
     }
 
@@ -173,17 +158,8 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         var basen = new ArrayList<Map<String, Object>>();
         // Befund 4: die Leser der Kennzahlen und Bezugsbasen nennen nur den gespeicherten Namen; die Kennung der Person
         // steht an der Fassung. Gefragt wird nur nach Fassungen, die die Leser oben schon gezeigt haben (ihr Zaun).
-        Map<String, String> kennzahlSub = new HashMap<>();
-        jdbc.query("SELECT kennzahl_id, nummer, actor_sub FROM kennzahl_fassung",
-                rs -> {
-                    kennzahlSub.put(rs.getString("kennzahl_id") + "/" + rs.getInt("nummer"), rs.getString("actor_sub"));
-                });
-        Map<String, String[]> basisSub = new HashMap<>();
-        jdbc.query("SELECT bezugsbasis_id, fassung, freigabe_sub, entscheidung_sub FROM bezugsbasis_fassung",
-                rs -> {
-                    basisSub.put(rs.getString("bezugsbasis_id") + "/" + rs.getInt("fassung"),
-                            new String[] {rs.getString("freigabe_sub"), rs.getString("entscheidung_sub")});
-                });
+        Map<String, String> kennzahlSub = personen.kennzahlFassungen();
+        Map<String, String[]> basisSub = personen.bezugsbasisFassungen();
         for (var k : kennzahlen.liste().kennzahlen()) {
             for (var f : kennzahlen.fassungen(k.id()).fassungen()) {
                 // Tag ist der Eintrag der Fassung — die erste gilt „von Anfang an“ und trägt kein gilt ab.
@@ -330,9 +306,8 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         return a == null ? null : person(a.sub(), a.name(), namen);
     }
 
-    /** Der Name der Person zu ihrer Kennung, sonst der gespeicherte (Befund 4, Konzept Nachweisen n1). */
     private static String person(String sub, String gespeichert, Map<String, String> namen) {
-        return sub == null ? gespeichert : namen.getOrDefault(sub, gespeichert);
+        return PersonenNamen.name(sub, gespeichert, namen);
     }
 
     private static LocalDate tag(Instant am, ZoneId zone) {

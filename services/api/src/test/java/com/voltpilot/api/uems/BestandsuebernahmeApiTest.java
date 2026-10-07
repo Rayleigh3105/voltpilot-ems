@@ -491,7 +491,8 @@ class BestandsuebernahmeApiTest {
         Map<String, Object> eintrag = admin.queryForMap("SELECT art, actor_name, actor_sub, gilt_ab, "
                 + "rueckwirkend FROM ort_aenderung WHERE objekt_art = 'anlage' AND objekt_id = ?::uuid", site);
         assertThat(eintrag.get("art")).isEqualTo("verschoben");
-        assertThat(eintrag.get("actor_name")).as("die Person, nicht VoltPilot").isEqualTo("demo2");
+        // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
+        assertThat(eintrag.get("actor_name")).as("die Person, nicht VoltPilot").isEqualTo("Nordwind Operator");
         assertThat(eintrag.get("actor_sub")).isNotNull();
         assertThat(eintrag.get("rueckwirkend")).isEqualTo(false);
 
@@ -513,7 +514,7 @@ class BestandsuebernahmeApiTest {
         assertThat(alt.path("gueltig_bis").isNull()).isTrue();
         assertThat(json(grabsteinEintrag.get("neu")).path("gueltig_bis").asText())
                 .isEqualTo(heute.toString());
-        assertThat(grabsteinEintrag.get("actor_name")).isEqualTo("demo2");
+        assertThat(grabsteinEintrag.get("actor_name")).isEqualTo("Nordwind Operator");
     }
 
     /** Ohne Standort im Kundenbereich bleibt alles, wie es war: keine Zuordnung, kein Protokoll. */

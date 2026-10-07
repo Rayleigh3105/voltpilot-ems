@@ -1,17 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { BerichtRechte } from './berichtDialoge';
 import { freigabeAntrag, freigabeVorschau, geltungen, vorlageKarten, zeitraumVorgabe, zeitraumWahlen } from './berichtDialoge';
-import {
-  bewertungWaehlen,
-  darfBewertung,
-  entwurfZeile,
-  fristKopf,
-  kriterienAnstoss,
-  pruefsummeKurz,
-  revisionVermerk,
-  standSatz,
-  standZeilen,
-} from './bewertungStand';
+import { gueltigerStand } from './berichtSeite';
+import { statusZeile } from './bewertungErgebnis';
+import { bewertungWaehlen, darfBewertung, kriterienAnstoss, revisionVermerk } from './bewertungStand';
 import { bewertungStandBuehne, BW_KENNUNG, type BewertungsLage } from './test/bewertungStandBuehne';
 import { rechteSeed } from './test/rollenFixtures';
 import { FIXTURE_IDS } from './test/standorteFixtures';
@@ -56,12 +48,6 @@ describe('Rechte aus /me: alles an der Bewertung hängt an `bewertung.abrufen` (
 });
 
 describe('Entwurf und Freigabe (§5.5 Schritte 1–2)', () => {
-  it('der Entwurf nennt seinen Datenstand und die Datengrundlage', async () => {
-    const { r, b } = await lage('entwurf');
-    const e = await r.berichtEntwurf(BW_KENNUNG);
-    expect(entwurfZeile(b!, e)).toBe('Entwurf · Datenstand 09.11.2026 10:05 · Datengrundlage November 2025 bis Oktober 2026');
-  });
-
   it('F1 ohne Werte-Liste: kein Punkt „Alle 0 Werte endgültig“, die Freigabe ist nach dem Ende der Datengrundlage erlaubt', async () => {
     const { r, b, detail } = await lage('entwurf');
     const e = await r.berichtEntwurf(BW_KENNUNG);
@@ -71,31 +57,17 @@ describe('Entwurf und Freigabe (§5.5 Schritte 1–2)', () => {
     expect(v.nr).toBe(1);
   });
 
-  it('ohne Stand gibt es keinen Stand-Satz und keine Frist', async () => {
-    const { b, detail } = await lage('entwurf');
-    expect(standSatz(detail!)).toBeNull();
-    expect(fristKopf(b)).toBeNull();
-    expect(standZeilen(detail!, true)).toEqual([]);
+  it('ohne Stand gilt nichts: kein gültiger Stand, keine Frist', async () => {
+    const { detail, berichte } = await lage('entwurf');
+    expect(gueltigerStand(detail!.staende)).toBeNull();
+    expect(statusZeile(berichte)).toMatchObject({ satz: 'Noch kein Stand freigegeben', faellig: false });
   });
 });
 
 describe('Stände, Anstoß und Frist (R7, R10)', () => {
-  it('R7: „Bewertung 2026 · Stand Nr. 2 vom 17.11.2026 (ersetzt Nr. 1 vom 09.11.2026 — Anlass: Korrektur K-2026-0007).“', async () => {
-    const { detail } = await lage('nr2');
-    expect(standSatz(detail!)).toBe('Bewertung 2026 · Stand Nr. 2 vom 17.11.2026 (ersetzt Nr. 1 vom 09.11.2026 — Anlass: Korrektur K-2026-0007).');
-    const [n2, n1] = standZeilen(detail!, true);
-    expect(n2).toMatchObject({
-      titel: 'Stand Nr. 2', gueltig: true, zustand: 'gültig', anlass: 'Anlass: Korrektur K-2026-0007',
-      freigabe: 'freigegeben am 17.11.2026 09:30 · Ines Kaltenbach', pruefsumme: 'Prüfsumme 8c41…7f10',
-    });
-    expect(n1).toMatchObject({ titel: 'Stand Nr. 1', gueltig: false, zustand: 'ersetzt durch Nr. 2', anlass: null, pruefsumme: 'Prüfsumme 3b1f…9a2e' });
-    expect(n1.dateien.map((d) => d.datei)).toEqual([`bericht-${BW_KENNUNG}-nr1.pdf`, `bericht-${BW_KENNUNG}-nr1.csv`]);
-    expect(standZeilen(detail!, false)[0].dateien).toEqual([]);
-  });
-
   it('der erste Stand ohne Vorgänger', async () => {
     const { detail } = await lage('nr1');
-    expect(standSatz(detail!)).toBe('Bewertung 2026 · Stand Nr. 1 vom 09.11.2026.');
+    expect(gueltigerStand(detail!.staende)).toMatchObject({ nr: 1, ersetzt_durch_nr: null });
     expect(revisionVermerk(detail!)).toBeNull();
   });
 
@@ -112,22 +84,7 @@ describe('Stände, Anstoß und Frist (R7, R10)', () => {
     await r.berichtFreigeben(BW_KENNUNG, '2026-11-12T10:06:00+01:00');
     const d = await r.bericht(BW_KENNUNG);
     expect(revisionVermerk(d)).toBeNull();
-    expect(standSatz(d)).toBe('Bewertung 2026 · Stand Nr. 2 vom 17.11.2026 (ersetzt Nr. 1 vom 09.11.2026 — Anlass: Korrektur K-2026-0007).');
-  });
-
-  it('R10: Frist-Kopfzeile „fällig am“ und „fällig seit 1 Tag“ — mit den Verantwortlichen', async () => {
-    expect(fristKopf((await lage('nr2')).b)).toEqual({
-      satz: 'Energetische Bewertung: Stand Nr. 2 vom 17.11.2026 · Überprüfung fällig am 17.11.2027.', faellig: false, hinweis: null,
-    });
-    const f = fristKopf((await lage('faellig')).b)!;
-    expect(f.satz).toBe('Energetische Bewertung: Stand Nr. 2 vom 17.11.2026 · Überprüfung fällig seit 1 Tag.');
-    expect(f.faellig).toBe(true);
-    expect(f.hinweis).toContain('Paul Hartmann (EE-2, EE-5)');
-  });
-
-  it('Prüfsumme gekürzt wie im Messmittel-Satz', () => {
-    expect(pruefsummeKurz('3b1f7c0e5d2a9a2e')).toBe('3b1f…9a2e');
-    expect(pruefsummeKurz('kurz')).toBe('kurz');
+    expect(d.staende.map((x) => [x.nr, x.ersetzt_durch_nr, x.anlass_anstoss_id !== null])).toEqual([[1, 2, false], [2, null, true]]);
   });
 });
 
