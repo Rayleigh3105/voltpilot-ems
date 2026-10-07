@@ -11560,6 +11560,11 @@ export interface Messbedarf {
   begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
   /** Ältere Antworten ohne die Felder = keine Struktur. */
   ort_ziel?: MessbedarfOrtZiel | null; messgroesse?: string | null; richtung?: string | null;
+  /**
+   * Review r4 M4: `zitiert_von` = die freigegebenen Berichtsstände, die den Bedarf zitieren (wie `berichtsstaende` der
+   * 409 `berichts_belege`); `einloesbar` = offen und von keinem Stand zitiert. Eine ältere API lässt beide weg.
+   */
+  einloesbar?: boolean; zitiert_von?: { kennung: string; nr: number }[];
 }
 /** Ein Protokolleintrag: `alt`/`neu` sind die Schnappschüsse der Zeile (snake_case-Spalten). */
 export interface MessbedarfAenderung {

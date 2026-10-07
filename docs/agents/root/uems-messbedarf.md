@@ -13,6 +13,8 @@ außerhalb des Zauns bleibt eine 404, eine nicht eingerichtete Messstelle ist 42
 RLS; Offboarding löscht sie vor Energieeinsatz und Messstelle. Die Laufzeitrolle darf
 nicht löschen.
 
+Jeder `Bedarf` nennt `zitiert_von` (zitierende freigegebene Stände, je Liste eine Abfrage über `BerichtsBelege.derObjekte`, dieselbe Quelle wie die 409 von `pruefeObjekt`) und `einloesbar` (offen und unzitiert).
+
 Ort und Größe sind Wortlaut (`ort`, `groesse`) und optional Struktur
 (`V20260923234500`): `standort_id` ODER `ort_id` (Gebäude/Bereich, höchstens einer, FK mit
 Mandant) und `messgroesse`/`richtung`, geprüft gegen `MessstelleRegeln.GROESSEN_KATALOG`.

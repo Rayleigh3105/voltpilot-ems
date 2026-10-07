@@ -19866,7 +19866,7 @@ components:
         Ohne Struktur (`ort_ziel`, `messgroesse` null) bleibt der Wortlaut führend für die Anzeige — so liest sich jeder
         Bedarf aus der Fassung vor der Struktur unverändert.
       required: [id, kennzeichen, energieeinsatz_id, wortlaut, ort, groesse, frist, zustand, messstelle,
-        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung]
+        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung, zitiert_von, einloesbar]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: '^MB-[1-9][0-9]*$' }
@@ -19900,6 +19900,19 @@ components:
           nullable: true
         messgroesse: { type: string, nullable: true }
         richtung: { type: string, nullable: true }
+        zitiert_von:
+          type: array
+          items: { $ref: "#/components/schemas/BerichtStandRef" }
+          description: >-
+            Die freigegebenen Berichtsstände, die diesen Bedarf zitieren (`uems_berichts_belege`), nach `kennung` und
+            `nr` - dieselbe Liste wie `berichtsstaende` der 409 `berichts_belege`; leer, wenn keiner zitiert. In jedem
+            Zustand gefüllt.
+        einloesbar:
+          type: boolean
+          description: >-
+            `true` genau dann, wenn der Bedarf `offen` ist und `zitiert_von` leer ist. Ein zitierter offener Bedarf
+            ist nicht einlösbar (Einlösen, Bearbeiten und Verwerfen antworten 409 `berichts_belege`); eingelöste und
+            verworfene sind es nie.
     MessbedarfListe:
       type: object
       required: [messbedarfe]
