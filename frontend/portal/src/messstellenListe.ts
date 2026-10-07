@@ -13,7 +13,7 @@ import {
 } from './messstellen';
 import { MONATE } from './picker/datum';
 import { datumText, lokalerTag } from './uemsOrtsbaum';
-import { OHNE_ZAHL } from './uemsErgebnis';
+import { OHNE_ZAHL, UNVOLLSTAENDIG } from './uemsErgebnis';
 import { anzeige, monatTitel } from './uemsWerteKarte';
 
 /**
@@ -258,7 +258,7 @@ export interface Reihe {
    * Der Wert rechts: der Verbrauch des letzten vollständigen Monats („25.650 kWh · Sep 2026“), bei einer Hauptgröße ohne
    * Menge der letzte Stand mit seinem Zeitpunkt („Stand 01.10.“); `null` = der Strich (`OHNE_ANGABE`), nie 0.
    */
-  wert: { zahl: string; einheit: string | null; wann: string; monat?: true } | null;
+  wert: { zahl: string; einheit: string | null; wann: string; monat?: true; hinweis?: string } | null;
   /** Hauptzähler stehen in ihrem Ort zuerst. */
   hauptzaehler: boolean;
   /** Archiviert: in der zugeklappten Gruppe am Ende. */
@@ -302,9 +302,12 @@ export function monatWert(z: MessstelleRegisterZeile): Reihe['wert'] {
     false,
   );
   const i = a.zahl.lastIndexOf('\u00a0');
+  // Review r4 S3: ein unvollständiger Monat darf eine Zahl tragen - dann sagt die Reihe es, statt wie ein ganzer Monat
+  // auszusehen.
+  const hinweis = a.zahl !== OHNE_ZAHL && lm.wert.zustand === UNVOLLSTAENDIG ? { hinweis: UNVOLLSTAENDIG } : {};
   return i < 0
-    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true }
-    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true };
+    ? { zahl: a.zahl, einheit: null, wann: monatKurz(lm.monat), monat: true, ...hinweis }
+    : { zahl: a.zahl.slice(0, i), einheit: a.zahl.slice(i + 1), wann: monatKurz(lm.monat), monat: true, ...hinweis };
 }
 
 /** Stellen je Einheit wie E11 (kW 1, kWh 1, m³ 1); ganze Werte stehen ganz („970.680 kWh“, nicht „970.680,0 kWh“). */

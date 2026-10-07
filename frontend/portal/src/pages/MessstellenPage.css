@@ -565,6 +565,13 @@ a.vp-ms-reihe:focus-visible {
   color: var(--vp-c-muted-fg, #475569);
   white-space: nowrap;
 }
+/* Ein unvollständiger Monat mit Zahl (Review r4 S3): leise im Warnton unter der Zahl, an jeder Breite sichtbar. */
+.vp-ms-reihe-hinweis {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
+  white-space: nowrap;
+}
 .vp-ms-reihe-chev {
   grid-area: chev;
   display: inline-flex;

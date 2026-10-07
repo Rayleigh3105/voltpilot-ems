@@ -182,6 +182,17 @@ describe('Liste, Gruppen und Reihen', () => {
     const ms06 = r.register.find((x) => x.kennzeichen === 'MS-06')!;
     ms06.letzter_monat = z('HZ-1').letzter_monat;
     expect(aus(r).reihen.find((x) => x.kennzeichen === 'MS-06')!.wert).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    // Ein unvollständiger Monat mit Zahl sieht nicht wie ein ganzer aus: die Reihe sagt „unvollständig“ (Review r4 S3).
+    const hz1 = z('HZ-1');
+    const teil = {
+      ...hz1,
+      letzter_monat: {
+        ...hz1.letzter_monat!,
+        wert: { ...hz1.letzter_monat!.wert!, zustand: 'unvollständig', abdeckung_prozent: 72, erhalten: 72, erwartet: 100, kennzeichen: ['Anfang nicht gemessen (kein Stand an der Periodengrenze)'] },
+      },
+    };
+    expect(monatWert(teil)).toMatchObject({ zahl: '199.500', einheit: 'kWh', hinweis: 'unvollständig' });
+    expect(monatWert(z('MS-20'))?.hinweis).toBeUndefined();
     expect(monatKurz('2026-09')).toBe('Sep 2026');
     expect(monatKurz('2027-03')).toBe('Mär 2027');
     expect(monatLang('2026-09')).toBe('September 2026');

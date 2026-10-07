@@ -995,6 +995,7 @@ function ReiheLink({
             </b>
             {/* Der Monat steht am Rechner im Kopf der Spalte; in der Reihe bleibt er für Vorlesende. */}
             <span className={r.wert.monat ? 'is-monat' : undefined}>{r.wert.wann}</span>
+            {r.wert.hinweis && <small className="vp-ms-reihe-hinweis">{r.wert.hinweis}</small>}
           </>
         ) : (
           <b className="is-leer">{OHNE_ANGABE}</b>
