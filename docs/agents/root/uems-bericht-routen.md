@@ -6,7 +6,7 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 
 | Was | Wo |
 |---|---|
-| Routen | `web/BerichtController` (OpenAPI Tag `berichte`): `GET`/`POST /api/v1/berichte`, `GET …/{kennung}`, `GET …/entwurf`, `GET …/entwurf/vergleich?gegen=`, `POST …/freigeben`, `GET …/staende/{nr}`, `POST …/anstoesse/{id}/verwerfen`, `POST …/archivieren` |
+| Routen | `web/BerichtController` (OpenAPI Tag `berichte`): `GET`/`POST /api/v1/berichte`, `GET …/{kennung}`, `GET …/entwurf`, `GET …/entwurf/vergleich?gegen=`, `POST …/freigeben`, `GET …/staende/{nr}`, `POST …/anstoesse/{id}/verwerfen`, `POST …/anstoesse/verwerfen` (Konzept Nachweisen n1, Entscheid 16: die gesehenen Anstöße mit EINEM Grund in einer Transaktion, alle oder keiner), `POST …/archivieren`; `GET /api/v1/berichte?archiviert=true` nimmt die archivierten dazu (C8) |
 | Dienst | `uems/BerichtService` (Reihenfolge, Sperren, D4, F1–F5), `uems/BerichtRepository` (SQL), Ablehnungen `uems/BerichtAbgelehnt` |
 | Rechte | `uems/BerichtRechte` → `BerichtRegeln.kennung` (G1) + `RechteAbleitung.darf` (G2) + `BerichtRegeln.teilansicht` (G3); der Aufrufer kommt aus `KennzahlAufrufer` (die EINE Naht für AP-03) |
 | Portal | `api.ts`: `Bericht*`-Typen und `api.berichte`, `api.berichtFreigeben` … — noch keine Fläche (IP-13/IP-14) |

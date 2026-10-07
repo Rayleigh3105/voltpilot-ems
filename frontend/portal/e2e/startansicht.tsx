@@ -93,7 +93,7 @@ import { ABLEHNUNG_SATZ, fassungEintrag, naechsteNummer, wirksame } from '../src
 import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { BerichtePage } from '../src/pages/BerichtePage';
 import { BezugsgroessenPage } from '../src/pages/BezugsgroessenPage';
-import type { BezugsgroesseAnfrage } from '../src/api';
+import type { BerichtDetail, BezugsgroesseAnfrage } from '../src/api';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
@@ -351,7 +351,10 @@ const weltLeer = params.get('welt') === 'leer';
  */
 let berichtDa = params.get('berichte') !== 'leer';
 let verworfen: Verworfen | null = null;
-const berichtAufrufe = { anlegen: [] as unknown[], freigeben: [] as string[], verwerfen: [] as string[] };
+const berichtAufrufe = { anlegen: [] as unknown[], freigeben: [] as string[], verwerfen: [] as string[], verwerfenIds: [] as string[][], archivieren: 0 };
+// Konzept Nachweisen n1, C8: archiviert verlässt der Bericht die Liste - nur `?archiviert=true` nennt ihn noch.
+let archiviertAm: string | null = null;
+const mitArchiv = (d: BerichtDetail): BerichtDetail => (archiviertAm ? { ...d, bericht: { ...d.bericht, archiviert_am: archiviertAm } } : d);
 (window as unknown as Record<string, unknown>).__berichtAufrufe = berichtAufrufe;
 const angelegt: Kennzahl[] = [];
 // AP-11 IP-15: `&frisch=1` beginnt mit einer eben angelegten Kennzahl OHNE einen Wert (KZ-0009, MS-12 je BZ-6) — die
@@ -1044,10 +1047,18 @@ Object.assign(api, {
   // AP-12 IP-13: die Berichte der Referenzdatei (BR-2026-0001) — gelesen zur Uhr der Bühne.
   // AP-12 IP-14: dazu die Selbstauskunft (B13 je Person) und die schreibenden Wege Anlegen, Freigeben, Verwerfen.
   selbstauskunft: async () => structuredClone(rollenMoment),
-  berichte: async () => ({ berichte: berichtDa ? [mitVerworfen(detailAm(Date.now()), verworfen).bericht] : [] }),
+  berichte: async (o: { archiviert?: boolean } = {}) => ({
+    berichte: berichtDa && (!archiviertAm || o.archiviert) ? [mitArchiv(mitVerworfen(detailAm(Date.now()), verworfen)).bericht] : [],
+    abruf: new Date(Date.now()).toISOString(),
+  }),
   bericht: async (kennung: string) => {
     if (kennung !== 'BR-2026-0001' || !berichtDa) throw new ApiError(404, 'Diesen Bericht gibt es nicht.');
-    return mitVerworfen(detailAm(Date.now()), verworfen);
+    return mitArchiv(mitVerworfen(detailAm(Date.now()), verworfen));
+  },
+  berichtArchivieren: async () => {
+    berichtAufrufe.archivieren += 1;
+    archiviertAm ??= new Date(Date.now()).toISOString();
+    return mitArchiv(mitVerworfen(detailAm(Date.now()), verworfen)).bericht;
   },
   berichtAnlegen: async (a: Parameters<typeof api.berichtAnlegen>[0]) => {
     berichtAufrufe.anlegen.push(structuredClone(a));
@@ -1062,6 +1073,18 @@ Object.assign(api, {
     return freigabeAm(datenstand, Date.now());
   },
   berichtStand: async (_kennung: string, nr: number) => mitTagesverlauf(standAm(nr, Date.now())),
+  // Konzept Nachweisen n1, Entscheid 16: „Stand n behalten“ verwirft die gesehenen Anstöße in EINER Route.
+  berichtAnstoesseVerwerfen: async (_kennung: string, ids: readonly string[], begruendung: string) => {
+    berichtAufrufe.verwerfen.push(begruendung);
+    berichtAufrufe.verwerfenIds.push([...ids]);
+    const vorher = detailAm(Date.now());
+    if (ids.some((id) => !vorher.anstoesse.some((a) => a.id === id && a.zustand === 'offen'))) {
+      throw new ApiError(409, 'Dieser Anstoß ist nicht mehr offen.', { code: 'anstoss_nicht_offen', message: 'Dieser Anstoß ist nicht mehr offen.' });
+    }
+    verworfen = { begruendung, am: new Date(Date.now()).toISOString(), von: person ?? 'Jonas Wendlinger' };
+    const d = mitVerworfen(vorher, verworfen);
+    return { anstoesse: ids.map((id) => d.anstoesse.find((x) => x.id === id)!) };
+  },
   berichtAnstossVerwerfen: async (_kennung: string, id: string, begruendung: string) => {
     berichtAufrufe.verwerfen.push(begruendung);
     verworfen = { begruendung, am: new Date(Date.now()).toISOString(), von: person ?? 'Jonas Wendlinger' };

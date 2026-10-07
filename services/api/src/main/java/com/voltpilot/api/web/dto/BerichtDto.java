@@ -35,6 +35,13 @@ public final class BerichtDto {
     /** {@code POST …/anstoesse/{id}/verwerfen}: die Begründung ist Pflicht (R4, 10 bis 500 Zeichen). */
     public record Verwerfen(String begruendung) {}
 
+    /** {@code POST …/anstoesse/verwerfen}: die gesehenen offenen Anstöße mit EINEM Grund (Konzept Nachweisen n1, Entscheid 16). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VerwerfenAlle(List<String> anstossIds, String begruendung) {}
+
+    /** Die verworfenen Anstöße einer gebündelten Entscheidung, in der Reihenfolge der Anfrage. */
+    public record Verworfene(List<Anstoss> anstoesse) {}
+
     /** Wer etwas tat: der Name und — wo sie gespeichert ist — die Rolle, die das Recht gab ({@code actor_*}-Muster). */
     public record Person(String name, String rolle) {}
 

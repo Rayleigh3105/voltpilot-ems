@@ -176,6 +176,8 @@ export function PruefZeilen({ zeilen, testid }: { zeilen: readonly PruefZeile[];
 
 export interface WertAltNeu {
   name: string;
+  /** Das Kennzeichen der Quelle - eindeutig auch bei gleichen Namen (React-Schlüssel, Review r1 P3-8). */
+  schluessel?: string;
   /** Schon formatiert („6.100“); `null` = es gab keinen Wert (steht als „–“, nie als Null). */
   alt: string | null;
   neu: string | null;
@@ -189,8 +191,8 @@ export interface WertAltNeu {
 export function WerteAltNeu({ werte, testid }: { werte: readonly WertAltNeu[]; testid?: string }) {
   return (
     <ul className="vp-nw-wdl" data-testid={testid}>
-      {werte.map((w) => (
-        <li key={w.name} className="vp-nw-wd">
+      {werte.map((w, i) => (
+        <li key={`${w.schluessel ?? w.name}-${i}`} className="vp-nw-wd">
           <span className="vp-nw-wdn">{w.name}</span>
           <span className="vp-nw-unsichtbar">{`vorher ${w.alt ?? 'kein Wert'}, jetzt ${w.neu ?? 'kein Wert'}${w.einheit ? ` ${w.einheit}` : ''}`}</span>
           <span className="vp-nw-wdw" aria-hidden="true">

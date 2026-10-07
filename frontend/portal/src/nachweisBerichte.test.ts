@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Bericht } from './api';
-import { vergleichZeilen } from './berichtDialoge';
+import { vergleichZeilen, type VergleichZeile } from './berichtDialoge';
 import { abzugAus } from './berichtSeite';
 import * as N from './nachweisBerichte';
+import * as B from './uemsBericht';
 import { ABZUG_NR1, ABZUG_NR2, berichtAm, detailAm, entwurfAm, vergleichAm, ZEIT } from './test/berichtFixtures';
 
 const t = (iso: string) => Date.parse(iso);
@@ -180,3 +181,38 @@ describe('Berichte in Nachweisen (Konzept n1, Runde 2, §6.4)', () => {
     expect(berichtAm(nach(ZEIT.nr2)).freigegeben_am).toBe(ZEIT.nr2);
   });
 });
+
+describe('Review r1 (Nachweisen PR 3)', () => {
+  const zeile = (teil: Partial<VergleichZeile>): VergleichZeile => ({ quelle: 'MS-03', name: 'Spritzguss Halle 1', vorher: '6.100 kWh', nachher: '6.040 kWh', version: '1 → 2', anlass: null, beleg: null, ...teil });
+
+  it('P3-1: fehlt ein Wert, steht „–“ und die Einheit genau einmal - auf beiden Seiten', () => {
+    expect(N.werteAltNeu([zeile({ vorher: B.OHNE_ZAHL })])).toEqual([{ name: 'Spritzguss Halle 1', schluessel: 'MS-03', alt: null, neu: '6.040', einheit: 'kWh' }]);
+    expect(N.werteAltNeu([zeile({ nachher: B.OHNE_ZAHL })])).toEqual([{ name: 'Spritzguss Halle 1', schluessel: 'MS-03', alt: '6.100', neu: null, einheit: 'kWh' }]);
+    // Gleiche Einheit hinten, verschiedene an der Zahl; nur eine Seite mit Einheit: keine doppelte.
+    expect(N.werteAltNeu([zeile({})])[0]).toMatchObject({ alt: '6.100', neu: '6.040', einheit: 'kWh' });
+    expect(N.werteAltNeu([zeile({ nachher: '6,04 MWh' })])[0]).toMatchObject({ alt: '6.100 kWh', neu: '6,04 MWh', einheit: null });
+    expect(N.werteAltNeu([zeile({ vorher: '6.100' })])[0]).toMatchObject({ alt: '6.100', neu: '6.040 kWh', einheit: null });
+    expect(N.werteAltNeu([zeile({ vorher: B.OHNE_ZAHL, nachher: B.OHNE_ZAHL })])).toEqual([]);
+  });
+
+  it('P3-8: gleichnamige Quellen tragen ihr Kennzeichen - und jede Zeile einen eigenen Schlüssel', () => {
+    const w = N.werteAltNeu([
+      zeile({ quelle: 'MS-03', name: 'Druckluft' }),
+      zeile({ quelle: 'MS-21', name: 'Druckluft' }),
+      zeile({ quelle: 'MS-12', name: 'Trockner' }),
+    ]);
+    expect(w.map((x) => [x.name, x.schluessel])).toEqual([
+      ['Druckluft · MS-03', 'MS-03'],
+      ['Druckluft · MS-21', 'MS-21'],
+      ['Trockner', 'MS-12'],
+    ]);
+  });
+
+  it('P3-4: die Werte der Entscheidung kommen aus genau dem Entwurf und dem gültigen Stand (R1-Zwilling)', () => {
+    const entwurf = entwurfAm(nach(ZEIT.korrektur));
+    const stand = { abzug: ABZUG_NR1 } as Parameters<typeof N.entscheidWerte>[0];
+    expect(N.entscheidWerte(stand, entwurf)).toEqual(N.werteAltNeu(N.standVergleich(ABZUG_NR1 as Record<string, unknown>, entwurf.abzug as Record<string, unknown>)));
+    expect(N.abgerufenSatz('pdf', 2)).toBe('PDF von Stand 2 abgerufen · protokolliert');
+  });
+});
+

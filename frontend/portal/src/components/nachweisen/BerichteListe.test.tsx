@@ -28,7 +28,7 @@ vi.mock('../../api', async (importOriginal) => {
   return { ...echt, api };
 });
 
-import type { Bericht, BerichtAnlegen, Selbstauskunft } from '../../api';
+import { ApiError, type Bericht, type BerichtAnlegen, type Selbstauskunft } from '../../api';
 import { setSelbstauskunft } from '../../rollen';
 import { anlegenAm, detailAm, entwurfAm, freigabeAm, ZEIT } from '../../test/berichtFixtures';
 import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS } from '../../test/standorteFixtures';
@@ -138,6 +138,33 @@ describe('Reiter „Berichte“ (Konzept Nachweisen n1, Runde 2, §6.4)', () => 
     expect(screen.queryByTestId('bericht-anlegen-knopf')).toBeNull();
   });
 
+  it('Review r1, P3-5: „wartet auf Sie“ zählt nur, was die Person entscheiden darf - die übrigen „warten“', async () => {
+    // Ein zweiter Bericht wartet - an Werk Lindach, wo Ines nur lesen darf.
+    const lindach = bericht({
+      kennung: 'BR-2026-0002', vorlage: 'monatsbericht_standort', geltung_art: 'standort', geltung_id: FIXTURE_IDS.st2, geltung_name: 'Werk Lindach',
+      stand_zeichen: 'revision_noetig', neueste_nr: 1, anstoss_seit: '2028-04-03T08:00:00Z',
+    });
+    mocks.berichte.mockResolvedValue({ berichte: [...LISTE, lindach], abruf: '2029-04-30T20:10:00Z' });
+    setSelbstauskunft(selbst(['bericht.standort_abrufen', 'bericht.standort_freigeben']));
+    await zeige();
+    expect(screen.getByTestId('zaehler-wartet').textContent).toBe('1wartet auf Sie');
+    expect(screen.getByTestId('zaehler-wartet-andere').textContent).toBe('1wartet');
+  });
+
+  it('Review r1, P3-7 (C8): die Liste lädt die archivierten mit und zeigt sie als eine Zeile „Archiviert · n“, nie gezählt', async () => {
+    const archiviert = bericht({ kennung: 'BR-2026-0009', vorlage: 'jahresbericht_unternehmen', zeitraum_art: 'jahr', zeitraum_text: '2026', archiviert_am: '2029-03-01T09:00:00Z' });
+    mocks.berichte.mockResolvedValue({ berichte: [...LISTE, archiviert], abruf: '2029-04-30T20:10:00Z' });
+    setSelbstauskunft(selbst(['bericht.standort_abrufen']));
+    const ruf = await zeige();
+    expect(mocks.berichte).toHaveBeenCalledWith({ archiviert: true });
+    expect(screen.getByTestId('zaehler-gelten').textContent).toBe('4gelten');
+    expect(screen.getByTestId('berichte-archiviert').textContent).toContain('1');
+    fireEvent.click(screen.getByTestId('berichte-archiviert'));
+    const blatt = await screen.findByTestId('berichte-blatt');
+    fireEvent.click(within(blatt).getByTestId('bericht-zeile-BR-2026-0009'));
+    expect(ruf.onOeffnen).toHaveBeenCalledWith('BR-2026-0009');
+  });
+
   it('Bewertung und Managementbewertung öffnen ihre Seite, andere die Berichtsseite; „PDF“ lädt den gültigen Stand', async () => {
     setSelbstauskunft(selbst(['bericht.standort_abrufen']));
     const ruf = await zeige();
@@ -184,5 +211,49 @@ describe('Reiter „Berichte“ (Konzept Nachweisen n1, Runde 2, §6.4)', () => 
     expect((await screen.findByTestId('bericht-bestaetigung')).textContent).toContain('Stand 1 ist freigegeben');
     fireEvent.click(screen.getByTestId('bericht-fertig'));
     expect(ruf.onOeffnen).toHaveBeenCalledWith('BR-2026-0001');
+  });
+
+  it('Review r1, P3-9: „Erstellen“ - ist der Entwurf veraltet (409), lädt „Entwurf neu laden“ ihn statt einer Sackgasse', async () => {
+    const ANGELEGT = Date.parse(ZEIT.angelegt) + 60_000;
+    mocks.berichte.mockResolvedValue({ berichte: LISTE, abruf: new Date(ANGELEGT).toISOString() });
+    mocks.standorte.mockResolvedValue(ahrenbergHeute());
+    mocks.unternehmen.mockResolvedValue(ahrenbergUnternehmen());
+    mocks.kennzahlen.mockResolvedValue({ kennzahlen: [] });
+    mocks.berichtAnlegen.mockImplementation(async (a: BerichtAnlegen) => anlegenAm(a, false, ANGELEGT));
+    mocks.bericht.mockImplementation(async () => detailAm(ANGELEGT));
+    mocks.berichtEntwurf.mockImplementation(async () => entwurfAm(ANGELEGT));
+    const neu = { ...entwurfAm(ANGELEGT), datenstand: '2026-11-10T08:58:00Z' };
+    mocks.berichtFreigeben
+      .mockRejectedValueOnce(new ApiError(409, 'Der Entwurf ist nicht mehr aktuell.', { code: 'entwurf_veraltet', message: 'Der Entwurf ist nicht mehr aktuell.' }))
+      // Die Bühne kennt nur ihren Datenstand - der Stand, den sie herausgibt, ist hier nebensächlich.
+      .mockImplementation(async () => freigabeAm(entwurfAm(ANGELEGT).datenstand, Date.parse(ZEIT.nr1) + 60_000));
+    const erstellen = async () => {
+      fireEvent.click(screen.getByTestId('bericht-anlegen-knopf'));
+      await screen.findByTestId('bericht-erstellen-art');
+      fireEvent.click(screen.getByRole('radio', { name: /^Monatsbericht/ }));
+      fireEvent.click(screen.getByTestId('bericht-erstellen-weiter'));
+      const fuer = await screen.findByTestId('bericht-erstellen-fuer');
+      fireEvent.click(within(fuer).getByRole('radio', { name: 'Werk Ahrenberg' }));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('bericht-erstellen-weiter'));
+      });
+      await screen.findByTestId('bericht-pruefen');
+    };
+    setSelbstauskunft(selbst(['bericht.standort_abrufen', 'bericht.standort_freigeben']));
+    await zeige();
+    await erstellen();
+    expect(screen.queryByTestId('bericht-erstellen-ohne-recht')).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-erstellen-freigeben'));
+    });
+    mocks.berichtEntwurf.mockResolvedValue(neu);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-erstellen-neu-laden'));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bericht-erstellen-freigeben'));
+    });
+    expect(mocks.berichtFreigeben).toHaveBeenLastCalledWith('BR-2026-0001', '2026-11-10T08:58:00Z');
+    expect(await screen.findByTestId('bericht-bestaetigung')).toBeTruthy();
   });
 });

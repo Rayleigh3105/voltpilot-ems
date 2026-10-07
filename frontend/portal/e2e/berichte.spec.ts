@@ -166,6 +166,33 @@ test.describe('Berichte — die Liste', () => {
   });
 });
 
+test.describe('Berichte - Archivieren (Konzept Nachweisen n1, C8; Review r1, P3-7)', () => {
+  for (const breite of [375, 1440]) {
+    test(`bei ${breite} px am 20.11.2026: „Archivieren“ im Menü - danach „archiviert“, in der Liste unter „Archiviert · 1“`, async ({ page }) => {
+      await oeffne(page, 'ansicht=bericht&br=BR-2026-0001&person=IK', breite, AM_20_11);
+      await warteAufSeite(page);
+      await page.getByTestId('bericht-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Archivieren' }).click();
+      const blatt = page.getByTestId('bericht-archivieren-blatt');
+      await expect(blatt).toContainText('Stände bleiben lesbar');
+      await expect(blatt).toContainText('PDF und Prüfsumme bleiben');
+      ohneQuerlauf(await messe(page), `archivieren-${breite}`);
+      await ablegen(page, `archivieren-${breite}`, await messe(page));
+      await page.getByTestId('bericht-archivieren-senden').click();
+      await expect(blatt).toHaveCount(0);
+      await expect(page.getByTestId('bericht-status')).toHaveText('archiviert· Stand 2 bleibt lesbar');
+      // Der Stand bleibt lesbar: PDF und Teilen stehen weiter da.
+      await expect(page.getByTestId('bericht-dateien')).toContainText('PDF');
+      await page.getByRole('button', { name: 'Alle Berichte' }).click();
+      await expect(page.getByTestId('berichte-archiviert')).toContainText('1');
+      await expect(page.getByTestId('berichte-gelten')).toHaveCount(0);
+      await page.getByTestId('berichte-archiviert').click();
+      await expect(page.getByTestId('berichte-blatt').getByTestId('bericht-zeile-BR-2026-0001')).toHaveCount(1);
+      ohneQuerlauf(await messe(page), `archiviert-liste-${breite}`);
+    });
+  }
+});
+
 test.describe('Berichte - die Berichtsseite (§5.1–§5.6, Nachweisen n1 §6.4)', () => {
   test('bei 375 px am 20.11.2026: „Stand 2 gilt“, Stufen, Kasten „Stand“, PDF und CSV; „Geändert ggü. Stand 1“; alle Werte mit Nachweis einen Tipp tiefer', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 375, AM_20_11);

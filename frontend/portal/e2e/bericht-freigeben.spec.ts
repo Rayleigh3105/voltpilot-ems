@@ -106,7 +106,9 @@ async function waehle(page: Page, feld: string, option: string) {
 }
 
 const aufrufe = (page: Page) =>
-  page.evaluate(() => (window as unknown as { __berichtAufrufe: { anlegen: unknown[]; freigeben: string[]; verwerfen: string[] } }).__berichtAufrufe);
+  page.evaluate(
+    () => (window as unknown as { __berichtAufrufe: { anlegen: unknown[]; freigeben: string[]; verwerfen: string[]; verwerfenIds: string[][]; archivieren: number } }).__berichtAufrufe,
+  );
 
 /** Konzept Nachweisen n1, Runde 2 (§6.4): „Erstellen“ in Schritten - Welcher? · Für wo und wann? · Prüfen. */
 async function erstellen(page: Page, art: 'monat' | 'jahr') {
@@ -291,6 +293,8 @@ test.describe('Nach einer Korrektur: eine Entscheidung mit zwei Antworten (§5.3
     await page.getByTestId('bericht-korrekturen').click();
     await expect(page.getByTestId('bericht-grund-blatt')).toContainText(`nicht übernommen: ${BEGRUENDUNG}`);
     expect((await aufrufe(page)).verwerfen).toEqual([BEGRUENDUNG]);
+    // Review r1, P3-2: eine Route für alle gesehenen Anstöße - nie Anstoß für Anstoß.
+    expect((await aufrufe(page)).verwerfenIds).toHaveLength(1);
   });
 
   test('Claudia (Leser): kein „Erstellen“, keine Antworten - an ihrer Stelle, wer freigibt', async ({ page }) => {

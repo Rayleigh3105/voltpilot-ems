@@ -59,7 +59,8 @@ export function BerichteListe({
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
-    api.berichte().then(
+    // Mit den archivierten (Konzept Nachweisen n1, C8): sie stehen als eine Zeile „Archiviert · n“, nie gezählt.
+    api.berichte({ archiviert: true }).then(
       ({ berichte, abruf: zeitpunkt }) => {
         merkeAugenblick(zeitpunkt);
         if (!aktiv) return;
@@ -76,11 +77,14 @@ export function BerichteListe({
 
   const bild = liste ? N.berichteBild(liste) : null;
   const nachKennung = new Map((liste ?? []).map((b) => [b.kennung, b]));
-  // „wartet auf Sie“ nur, wo die Person entscheiden darf; sonst „wartet“.
-  const aufSie = !!bild && bild.wartet.some((z) => {
-    const b = nachKennung.get(z.kennung);
-    return !!b && !!rechte && darf(rechte, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage);
-  });
+  // „wartet auf Sie“ zählt nur, wo die Person entscheiden darf; die übrigen „warten“ (Review r1, P3-5).
+  const aufSie = !bild
+    ? 0
+    : bild.wartet.filter((z) => {
+        const b = nachKennung.get(z.kennung);
+        return !!b && !!rechte && darf(rechte, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage);
+      }).length;
+  const andere = bild ? bild.zaehler.wartet - aufSie : 0;
 
   const oeffne = (z: N.BerichtZeile) => {
     if (z.ziel === 'managementbewertung' && onManagementbewertung) onManagementbewertung(z.kennung);
@@ -173,8 +177,9 @@ export function BerichteListe({
             {(bild.zaehler.gelten > 0 || bild.zaehler.wartet > 0) && (
               <div className="vp-nw-zchips" data-testid="berichte-zaehler">
                 {bild.zaehler.gelten > 0 && <ZaehlerChip anzahl={bild.zaehler.gelten} wort={N.geltenWort(bild.zaehler.gelten)} zeichen="festgehalten" ton="still" testId="zaehler-gelten" />}
-                {bild.zaehler.wartet > 0 && (
-                  <ZaehlerChip anzahl={bild.zaehler.wartet} wort={N.wartetWort(bild.zaehler.wartet, aufSie)} zeichen="ueber" testId="zaehler-wartet" />
+                {aufSie > 0 && <ZaehlerChip anzahl={aufSie} wort={N.wartetWort(aufSie, true)} zeichen="ueber" testId="zaehler-wartet" />}
+                {andere > 0 && (
+                  <ZaehlerChip anzahl={andere} wort={N.wartetWort(andere, false)} zeichen="ueber" testId={aufSie > 0 ? 'zaehler-wartet-andere' : 'zaehler-wartet'} />
                 )}
               </div>
             )}

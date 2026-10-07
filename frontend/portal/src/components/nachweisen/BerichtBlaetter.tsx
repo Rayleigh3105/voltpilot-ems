@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
-import { api, type Bericht, type BerichtAnstoss, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../../api';
+import { api, ApiError, type Bericht, type BerichtAnstoss, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Kennzahl, type StandortAmStichtag, type Unternehmen } from '../../api';
 import {
   anlegenAnfrage,
   anlegenFehler,
@@ -15,6 +15,8 @@ import {
   freigabeAntrag,
   freigabeFehler,
   freigabeVorschau,
+  freigebenErklaerung,
+  freigebenWer,
   geltungen,
   kennzahlenDerGeltung,
   verwerfenFehler,
@@ -29,6 +31,7 @@ import { abzugAus, gueltigerStand } from '../../berichtSeite';
 import { KEINE_ENERGIELEISTUNG, kennzahlWahlen, LEISTUNGSVERGLEICH, ZEITRAUM_ART_WORT, ausgabeFehler } from '../../leistungsvergleichBericht';
 import * as N from '../../nachweisBerichte';
 import { berichtRoute, hashForRoute } from '../../nav';
+import { useRollen } from '../../rollen';
 import { VpPicker } from '../VpPicker';
 import { dateiSpeichern } from './datei';
 import { ErklaerKnopf } from './ErklaerKnopf';
@@ -122,23 +125,32 @@ const vorschauAus = (detail: BerichtDetail, entwurf: BerichtEntwurf, jetzt: numb
 /**
  * Freigeben am Entwurf und nach einer Korrektur („Ja, Stand 2 freigeben“): Prüfen, dann die Bestätigung mit PDF. Freigegeben
  * wird genau der Entwurf, den die Person sieht (F2); hat die Kaskade ihn neu gebildet (409 `entwurf_veraltet`), lädt
- * „Entwurf neu laden“ ihn, und die Prüfung gilt für den neuen Datenstand.
+ * „Entwurf neu laden“ ihn und das Blatt zeigt seine Werte gegen den gültigen Stand, bevor er freigegeben wird (Review r1,
+ * P3-4: sonst würde ein Datenstand freigegeben, dessen Werte niemand sah).
  */
 export function BerichtFreigebenBlatt({
   detail,
   entwurf: gesehen,
+  gegen = null,
   jetzt,
   onClose,
+  onEntwurf,
   onFertig,
 }: {
   detail: BerichtDetail;
   entwurf: BerichtEntwurf;
+  /** Der gültige Stand, gegen den die Werte stehen (nach einer Korrektur); am ersten Entwurf `null`. */
+  gegen?: BerichtStand | null;
   jetzt: () => number;
   onClose: () => void;
+  /** Ein neu geladener Entwurf - die Seite bildet ihre Karte mit ihm neu. */
+  onEntwurf?: (e: BerichtEntwurf) => void;
   /** Nach der Bestätigung (oder dem Schließen danach): die Seite lädt den neuen Stand. */
   onFertig: (stand: BerichtStand | null) => void;
 }) {
   const [entwurf, setEntwurf] = useState(gesehen);
+  // Der Datenstand, den die Person beim Öffnen sah - auch wenn die Seite den neu geladenen Entwurf hereinreicht.
+  const [gesehenAm] = useState(gesehen.datenstand);
   const [stand, setStand] = useState<BerichtStand | null>(null);
   const [fehler, setFehler] = useState<{ satz: string; neuLaden: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -161,7 +173,9 @@ export function BerichtFreigebenBlatt({
   async function neuLaden() {
     setBusy(true);
     try {
-      setEntwurf(await api.berichtEntwurf(detail.bericht.kennung));
+      const neu = await api.berichtEntwurf(detail.bericht.kennung);
+      setEntwurf(neu);
+      onEntwurf?.(neu);
       setFehler(null);
     } catch {
       setFehler({ satz: ENTWURF_LADEFEHLER, neuLaden: true });
@@ -208,6 +222,12 @@ export function BerichtFreigebenBlatt({
     >
       <BlattFormular id={`${basis}-form`} testid="bericht-freigeben-form" onSenden={() => void freigeben()}>
         <FreigabePruefen detail={detail} entwurf={entwurf} jetzt={jetzt()} />
+        {entwurf.datenstand !== gesehenAm && (
+          <>
+            <HinweisZeile icon="info" titel={N.ENTWURF_NEU_GEBILDET} zusatz={gegen ? `gegen Stand ${gegen.nr}` : null} testid="bericht-freigeben-neu" />
+            {gegen && <WerteAltNeu werte={N.entscheidWerte(gegen, entwurf)} testid="bericht-freigeben-werte" />}
+          </>
+        )}
         {fehler && (
           <>
             <Ablehnung satz={fehler.satz} />
@@ -232,11 +252,14 @@ export function BerichtBehaltenBlatt({
   anstoesse,
   onClose,
   onFertig,
+  onNeuLaden,
 }: {
   detail: BerichtDetail;
   anstoesse: readonly BerichtAnstoss[];
   onClose: () => void;
   onFertig: () => void;
+  /** Hat inzwischen jemand anders entschieden (409): die Seite lädt den Bericht neu, das Blatt sagt warum. */
+  onNeuLaden?: () => void;
 }) {
   const [grund, setGrund] = useState('');
   const [fehler, setFehler] = useState<string | null>(null);
@@ -253,11 +276,13 @@ export function BerichtBehaltenBlatt({
     setBusy(true);
     setSatz(null);
     try {
-      // Gebündelt: ein Grund für jeden offenen Anstoß; ein schon entschiedener (409) bricht ab und sagt seinen Satz.
-      for (const a of anstoesse) await api.berichtAnstossVerwerfen(detail.bericht.kennung, a.id, grund.trim());
+      // Eine Entscheidung, eine Route (Review r1, P3-2): alle gesehenen Anstöße mit einem Grund in EINER Transaktion -
+      // alle oder keiner. Ist einer inzwischen entschieden (409), lädt die Seite neu und zeigt, was jetzt offen ist.
+      await api.berichtAnstoesseVerwerfen(detail.bericht.kennung, anstoesse.map((a) => a.id), grund.trim());
       onFertig();
     } catch (e) {
       setSatz(verwerfenFehler(e));
+      if (e instanceof ApiError && e.status === 409) onNeuLaden?.();
     } finally {
       setBusy(false);
     }
@@ -275,6 +300,44 @@ export function BerichtBehaltenBlatt({
         <div ref={feld}>
           <NwTextfeld label="Warum?" wert={grund} onWert={setGrund} mehrzeilig fehler={fehler} hoechstens={500} testid="bericht-behalten-grund" />
         </div>
+        <Ablehnung satz={satz} />
+      </BlattFormular>
+    </NwBlatt>
+  );
+}
+
+/**
+ * Archivieren (Konzept Nachweisen n1, C8; V4): der Bericht verlässt die Liste und steht unter „Archiviert“; seine Stände
+ * bleiben lesbar - PDF und Prüfsumme bleiben gleich. Die Route nimmt keinen Grund; ein zweites Mal ändert nichts.
+ */
+export function BerichtArchivierenBlatt({ bericht, onClose, onFertig }: { bericht: Bericht; onClose: () => void; onFertig: () => void }) {
+  const [satz, setSatz] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const basis = basisId('ba', useId());
+  async function senden() {
+    setBusy(true);
+    setSatz(null);
+    try {
+      await api.berichtArchivieren(bericht.kennung);
+      onFertig();
+    } catch (e) {
+      setSatz(e instanceof ApiError && e.body !== undefined ? e.message : N.ARCHIVIEREN_FEHLER);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <NwBlatt
+      open
+      titel={N.ARCHIVIEREN}
+      onClose={onClose}
+      testId="bericht-archivieren-blatt"
+      fuss={<Fuss form={`${basis}-form`} primaer={N.ARCHIVIEREN} busy={busy} sekundaer={ABBRECHEN} onSekundaer={onClose} testid="bericht-archivieren-senden" />}
+    >
+      <BlattFormular id={`${basis}-form`} testid="bericht-archivieren-form" onSenden={() => void senden()}>
+        <p className="vp-nw-leise vp-nw-blatt-sub">{N.berichtName(bericht).titel}</p>
+        <HinweisZeile icon="lock" titel="Stände bleiben lesbar" zusatz="PDF und Prüfsumme bleiben" />
+        <HinweisZeile icon="info" titel="Aus der Liste" zusatz={`unter „${N.ARCHIVIERT}“`} />
         <Ablehnung satz={satz} />
       </BlattFormular>
     </NwBlatt>
@@ -355,6 +418,9 @@ export function BerichtErstellenBlatt({
   const [angelegt, setAngelegt] = useState<{ detail: BerichtDetail; entwurf: BerichtEntwurf } | null>(null);
   const [stand, setStand] = useState<BerichtStand | null>(null);
   const [freigabeSatz, setFreigabeSatz] = useState<string | null>(null);
+  // 409 `entwurf_veraltet`: wie im Freigeben-Blatt „Entwurf neu laden“ statt einer Sackgasse (Review r1, P3-9).
+  const [freigabeNeuLaden, setFreigabeNeuLaden] = useState(false);
+  const kundenadministratoren = (useRollen().selbst?.kundenadministratoren ?? []).map((p) => p.name);
 
   useEffect(() => {
     let aktiv = true;
@@ -423,7 +489,23 @@ export function BerichtErstellenBlatt({
     try {
       setStand(await api.berichtFreigeben(angelegt.detail.bericht.kennung, angelegt.entwurf.datenstand));
     } catch (e) {
-      setFreigabeSatz(freigabeFehler(e).satz);
+      const f = freigabeFehler(e);
+      setFreigabeSatz(f.satz);
+      setFreigabeNeuLaden(f.neuLaden);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function entwurfNeuLaden() {
+    if (!angelegt) return;
+    setBusy(true);
+    try {
+      const entwurf = await api.berichtEntwurf(angelegt.detail.bericht.kennung);
+      setAngelegt({ detail: angelegt.detail, entwurf });
+      setFreigabeSatz(null);
+      setFreigabeNeuLaden(false);
+    } catch {
+      setFreigabeSatz(ENTWURF_LADEFEHLER);
     } finally {
       setBusy(false);
     }
@@ -454,7 +536,8 @@ export function BerichtErstellenBlatt({
   if (angelegt) {
     const b = angelegt.detail.bericht;
     const v = vorschauAus(angelegt.detail, angelegt.entwurf, jetztMs);
-    const darfFreigeben = darf(rechte, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage) && v.erlaubt;
+    const hatRecht = darf(rechte, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage);
+    const darfFreigeben = hatRecht && v.erlaubt;
     return (
       <NwBlatt
         open
@@ -483,7 +566,21 @@ export function BerichtErstellenBlatt({
         <div className="vp-nw-schritt-inhalt">
           <SchrittAnzeige nr={3} von={3} />
           <FreigabePruefen detail={angelegt.detail} entwurf={angelegt.entwurf} jetzt={jetztMs} />
+          {/* Ohne Recht: wer freigibt - wie auf der Seite, statt still nur „Entwurf öffnen“ (Review r1, P3-9). */}
+          {!hatRecht && (
+            <HinweisZeile
+              icon="users"
+              titel={freigebenWer(kundenadministratoren)}
+              knopf={<ErklaerKnopf klein erklaerung={freigebenErklaerung(kundenadministratoren)} />}
+              testid="bericht-erstellen-ohne-recht"
+            />
+          )}
           <Ablehnung satz={freigabeSatz} />
+          {freigabeNeuLaden && (
+            <Button variant="outline" size="sm" onClick={() => void entwurfNeuLaden()} disabled={busy} data-testid="bericht-erstellen-neu-laden">
+              {ENTWURF_NEU_LADEN}
+            </Button>
+          )}
         </div>
       </NwBlatt>
     );

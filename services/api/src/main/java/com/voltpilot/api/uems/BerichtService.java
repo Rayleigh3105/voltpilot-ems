@@ -180,12 +180,17 @@ public class BerichtService {
      * Unterstützer), ist das 403 — kein leeres „es gibt keine“.
      */
     public List<Uebersicht> liste(ProtokollAkteur wer) {
+        return liste(wer, false);
+    }
+
+    /** Wie {@link #liste(ProtokollAkteur)}, mit {@code mitArchivierten} auch die archivierten (Nachweisen n1, C8). */
+    public List<Uebersicht> liste(ProtokollAkteur wer, boolean mitArchivierten) {
         UUID tenant = kundenbereich();
         Instant jetzt = jetzt();
         Benutzer b = aufrufer.benutzer(wer);
         Kundenbereich k = rechteKundenbereich();
         List<Uebersicht> raus = new ArrayList<>();
-        for (Kopf x : repo.berichte()) {
+        for (Kopf x : repo.berichte(mitArchivierten)) {
             if (darf(b, k, BerichtRechte.ABRUFEN, x, jetzt).darf()) {
                 raus.add(uebersicht(tenant, x));
             }
@@ -704,6 +709,54 @@ public class BerichtService {
                     text(Map.of("anstoss_id", id.toString(), "zustand", VERWORFEN)), begruendung, wer, rolle, z.jetzt());
         });
         return new Verworfen(kopf, repo.anstoss(kopf.tenant(), kopf.id(), id).orElseThrow());
+    }
+
+    /**
+     * {@code POST …/anstoesse/verwerfen} (Konzept Nachweisen n1, Entscheid 16; Review r1, P3-2): „Nein, Stand n behalten“
+     * verwirft die offenen Anstöße, die die Person gesehen hat, mit EINEM Grund in EINER Transaktion - alle oder keiner.
+     * Reihenfolge wie beim einzelnen Anstoß: Kennungen (400) → jede ein Anstoß dieses Berichts (404) → Begründung (422) →
+     * jeder offen (409 mit Zustand und Kennung des ersten, der es nicht ist). Ein neuer Anstoß, den die Person nicht sah,
+     * bleibt offen.
+     */
+    public List<AnstossZeile> verwerfenAlle(String kennung, List<String> anstossIds, String begruendung, ProtokollAkteur wer) {
+        Zugriff z = zugriff(kennung, wer, BerichtRechte.VERWERFEN);
+        Kopf kopf = z.kopf();
+        if (anstossIds == null || anstossIds.isEmpty() || anstossIds.size() > ANSTOESSE_HOECHSTENS
+                || new HashSet<>(anstossIds).size() != anstossIds.size()) {
+            throw BerichtAbgelehnt.anfrage("anstoss_ids");
+        }
+        List<AnstossZeile> alle = new ArrayList<>();
+        for (String text : anstossIds) {
+            UUID id = uuid(text).orElseThrow(() -> BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            alle.add(repo.anstoss(kopf.tenant(), kopf.id(), id).orElseThrow(() -> BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN)));
+        }
+        pruefeBegruendung(begruendung);
+        for (AnstossZeile a : alle) {
+            if (!OFFEN.equals(a.zustand())) {
+                throw nichtOffen(a);
+            }
+        }
+        String rolle = rolle(z.darf(), wer);
+        transaktion.executeWithoutResult(tx -> {
+            repo.sperren(kopf.tenant(), kopf.id());
+            for (AnstossZeile a : alle) {
+                if (!repo.verwerfen(kopf.tenant(), a.id(), begruendung, wer, z.jetzt())) {
+                    // Inzwischen entschieden: die ganze Transaktion fällt zurück, kein Anstoß ist verworfen.
+                    throw nichtOffen(repo.anstoss(kopf.tenant(), kopf.id(), a.id()).orElseThrow());
+                }
+                repo.protokoll(kopf.tenant(), kopf.id(), a.nr(), BerichtRechte.VERWERFEN,
+                        text(Map.of("anstoss_id", a.id().toString(), "zustand", OFFEN)),
+                        text(Map.of("anstoss_id", a.id().toString(), "zustand", VERWORFEN)), begruendung, wer, rolle, z.jetzt());
+            }
+        });
+        return alle.stream().map(a -> repo.anstoss(kopf.tenant(), kopf.id(), a.id()).orElseThrow()).toList();
+    }
+
+    /** Wie die Abwahl am Anlegen: höchstens 200 Kennungen in einer Anfrage (`BerichtController.texte`). */
+    private static final int ANSTOESSE_HOECHSTENS = 200;
+
+    private static BerichtAbgelehnt nichtOffen(AnstossZeile a) {
+        return BerichtAbgelehnt.von(Ablehnung.ANSTOSS_NICHT_OFFEN, Map.of("zustand", a.zustand(), "anstoss_id", a.id().toString()));
     }
 
     /** {@code POST …/archivieren}: verbirgt den Bericht in der Liste, die Stände bleiben lesbar (V4); ein zweites Mal ändert nichts. */

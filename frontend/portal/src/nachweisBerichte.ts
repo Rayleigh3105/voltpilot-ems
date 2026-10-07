@@ -4,7 +4,7 @@
  * den Bericht-Routen, die Zahlen schreibt `berichtDialoge.vergleichZeilen` (DA1); dieses Modul sortiert, benennt und
  * kürzt sie auf die Text-Grenzen (§0.4).
  */
-import type { Bericht, BerichtAbweichung, BerichtAnstoss, BerichtDetail, BerichtStandKurz } from './api';
+import type { Bericht, BerichtAbweichung, BerichtAnstoss, BerichtDetail, BerichtEntwurf, BerichtStand, BerichtStandKurz } from './api';
 import { vergleichZeilen, type VergleichZeile } from './berichtDialoge';
 import { abzugAus, gueltigerStand } from './berichtSeite';
 import type { Erklaerung } from './components/nachweisen/erklaerung';
@@ -35,6 +35,13 @@ export const ALLE_AENDERUNGEN = 'Alle Änderungen';
 export const KEINE_ZAHL_AENDERT_SICH = 'Keine Zahl ändert sich';
 export const NEUER_STAND_FRAGE = 'Neuen Stand freigeben?';
 export const WEITER = 'Weiter';
+export const ARCHIVIEREN = 'Archivieren';
+export const ARCHIVIEREN_FEHLER = 'Der Bericht ließ sich gerade nicht archivieren.';
+export const ENTWURF_NEU_GEBILDET = 'Entwurf neu gebildet';
+export const WERTE_LADEFEHLER = 'Die Werte ließen sich gerade nicht laden.';
+
+/** Nach einem Abruf (PDF, CSV): „PDF von Stand 1 abgerufen · protokolliert“ - „Stand n“ wie überall in Nachweisen. */
+export const abgerufenSatz = (format: 'pdf' | 'csv', nr: number): string => `${format.toUpperCase()} von Stand ${nr} abgerufen · protokolliert`;
 export const ZUR_SEITE_BEWERTUNG = 'Energetische Bewertung öffnen';
 export const ZUR_SEITE_MANAGEMENTBEWERTUNG = 'Managementbewertung öffnen';
 /** Auf der Karte stehen höchstens drei Werte; der Rest eine Zeile tiefer (Konzept §6.4: „drei Werte alt → neu“). */
@@ -204,25 +211,50 @@ function teile(text: string): { zahl: string; einheit: string | null } {
   return m ? { zahl: m[1], einheit: m[2] } : { zahl: text, einheit: null };
 }
 
+/** Eine Seite alt → neu mit der Einheit der Zeile: fehlt der Wert, steht „–“ und die Einheit kommt von der anderen Seite. */
+function zahlUndEinheit(vorher: string, nachher: string): Pick<WertAltNeu, 'alt' | 'neu' | 'einheit'> {
+  const altFehlt = vorher === B.OHNE_ZAHL;
+  const neuFehlt = nachher === B.OHNE_ZAHL;
+  // Fehlend ist keine Null (Review r1, P3-1): die Seite mit Zahl trägt die Einheit, und sie steht genau einmal da -
+  // „– → 6.040 kWh“, nie „– → 6.040 kWh kWh“.
+  if (altFehlt || neuFehlt) {
+    const da = teile(altFehlt ? nachher : vorher);
+    return { alt: altFehlt ? null : da.zahl, neu: neuFehlt ? null : da.zahl, einheit: da.einheit };
+  }
+  const alt = teile(vorher);
+  const neu = teile(nachher);
+  // Gleiche Einheit: einmal hinten. Verschiedene (oder nur eine Seite mit Einheit): jede Seite behält ihre.
+  if (alt.einheit === neu.einheit) return { alt: alt.zahl, neu: neu.zahl, einheit: alt.einheit };
+  return { alt: vorher, neu: nachher, einheit: null };
+}
+
 /**
  * Werte alt → neu (Entscheid 16: nur Zahlen, ohne Version und Anlass): aus den Zeilen des Vergleichs. Eine Zeile ohne
  * Zahl auf beiden Seiten (nur die Version änderte sich) zeigt nichts und entfällt; eine Zeile ohne Namen trägt ihr
- * Kennzeichen; Einheiten, die sich unterscheiden, bleiben an der Zahl.
+ * Kennzeichen. Tragen zwei Zeilen denselben Namen (gleichnamige Messstellen zweier Standorte im Unternehmensbericht),
+ * steht das Kennzeichen dahinter (Review r1, P3-8); `schluessel` ist das Kennzeichen der Quelle.
  */
 export function werteAltNeu(zeilen: readonly VergleichZeile[]): WertAltNeu[] {
-  return zeilen.filter((z) => z.vorher !== B.OHNE_ZAHL || z.nachher !== B.OHNE_ZAHL).map((z) => {
-    const alt = teile(z.vorher);
-    const neu = teile(z.nachher);
-    const gleich = alt.einheit !== null && alt.einheit === neu.einheit;
-    const einheit = gleich ? alt.einheit : (neu.einheit ?? alt.einheit);
+  const mitZahl = zeilen.filter((z) => z.vorher !== B.OHNE_ZAHL || z.nachher !== B.OHNE_ZAHL);
+  const anzahl = new Map<string, number>();
+  for (const z of mitZahl) anzahl.set(z.name ?? z.quelle, (anzahl.get(z.name ?? z.quelle) ?? 0) + 1);
+  return mitZahl.map((z) => {
+    const name = z.name ?? z.quelle;
     return {
-      name: z.name ?? z.quelle,
-      alt: z.vorher === B.OHNE_ZAHL ? null : gleich || alt.einheit === null ? alt.zahl : z.vorher,
-      neu: z.nachher === B.OHNE_ZAHL ? null : gleich || neu.einheit === null ? neu.zahl : z.nachher,
-      einheit: gleich || (alt.einheit === null) !== (neu.einheit === null) ? einheit : null,
+      name: (anzahl.get(name) ?? 0) > 1 && name !== z.quelle ? `${name} · ${z.quelle}` : name,
+      schluessel: z.quelle,
+      ...zahlUndEinheit(z.vorher, z.nachher),
     };
   });
 }
+
+/**
+ * Die Werte einer Entscheidung: der Entwurf gegen den gültigen Stand, gerechnet aus genau den beiden Abzügen, die die
+ * Seite zeigt und freigibt (R1-Zwilling; Review r1, P3-4 - nie ein zweiter Abruf, der einem anderen Datenstand gelten
+ * könnte).
+ */
+export const entscheidWerte = (stand: Pick<BerichtStand, 'abzug'>, entwurf: Pick<BerichtEntwurf, 'abzug'>): WertAltNeu[] =>
+  werteAltNeu(standVergleich(stand.abzug as Record<string, unknown>, entwurf.abzug as Record<string, unknown>));
 
 /** Die Werte zwischen zwei Abzügen (Stand gegen Stand, R1-Zwilling) als Zeilen wie im Vergleich der Route. */
 export function standVergleich(alt: Record<string, unknown>, neu: Record<string, unknown>): VergleichZeile[] {

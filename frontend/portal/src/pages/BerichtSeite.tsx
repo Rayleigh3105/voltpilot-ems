@@ -3,7 +3,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type BerichtDetail, type BerichtEntwurf, type BerichtStand } from '../api';
-import { darf, freigabeAntrag, freigabeVorschau, freigebenErklaerung, freigebenWer, KEINE_RECHTE, vergleichZeilen } from '../berichtDialoge';
+import { darf, freigabeAntrag, freigabeVorschau, freigebenErklaerung, freigebenWer, KEINE_RECHTE } from '../berichtDialoge';
 import {
   abschnitte,
   abzugAus,
@@ -30,7 +30,7 @@ import {
   type QuellenZahl,
 } from '../berichtSeite';
 import { ErklaerKnopf } from '../components/nachweisen/ErklaerKnopf';
-import { BerichtAenderungenBlatt, BerichtBehaltenBlatt, BerichtFreigebenBlatt, BerichtGrundBlatt } from '../components/nachweisen/BerichtBlaetter';
+import { BerichtAenderungenBlatt, BerichtArchivierenBlatt, BerichtBehaltenBlatt, BerichtFreigebenBlatt, BerichtGrundBlatt } from '../components/nachweisen/BerichtBlaetter';
 import { dateiSpeichern } from '../components/nachweisen/datei';
 import { NwBlatt } from '../components/nachweisen/NwBlatt';
 import { NwKopf } from '../components/nachweisen/NwKopf';
@@ -48,7 +48,7 @@ import { LeistungsvergleichBericht } from '../components/LeistungsvergleichBeric
 import { MiniBarSpark } from '../components/MiniChart';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteKarte } from '../components/WerteKarte';
-import { ausgabeAbgerufen, ausgabeFehler, istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht';
+import { ausgabeFehler, istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht';
 import * as N from '../nachweisBerichte';
 import { berichtRoute, hashForRoute } from '../nav';
 import { useRollen } from '../rollen';
@@ -96,13 +96,16 @@ export function BerichtSeite({
   const [ansicht, setAnsicht] = useState<{ id: string; ansicht: Ansicht } | null>(null);
   const [ansichtFehler, setAnsichtFehler] = useState<{ id: string; satz: string } | null>(null);
   const [vorher, setVorher] = useState<{ id: string; stand: BerichtStand } | null>(null);
-  const [entscheid, setEntscheid] = useState<{ entwurf: BerichtEntwurf; werte: WertAltNeu[] } | null>(null);
+  const [entscheid, setEntscheid] = useState<{ entwurf: BerichtEntwurf; stand: BerichtStand; werte: WertAltNeu[] } | null>(null);
+  // Nicht geladen ist kein ewiges Skelett (Review r1, P3-3): die Karte sagt es und lädt auf Antippen neu.
+  const [entscheidFehler, setEntscheidFehler] = useState(false);
+  const [entscheidVersuch, setEntscheidVersuch] = useState(0);
   const [namen, setNamen] = useState<ReadonlyMap<string, string>>(new Map());
   const [versuch, setVersuch] = useState(0);
   const [dateiAbruf, setDateiAbruf] = useState<{ wahl: string; satz: string; fehler: boolean } | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const [antwort, setAntwort] = useState<'ja' | 'nein' | null>(null);
-  const [blatt, setBlatt] = useState<'freigeben' | 'behalten' | 'grund' | 'aenderungen' | 'werte' | 'korrekturen' | null>(null);
+  const [blatt, setBlatt] = useState<'freigeben' | 'behalten' | 'grund' | 'aenderungen' | 'werte' | 'korrekturen' | 'archivieren' | null>(null);
   const rechte = useBerichtRechte();
   const rollen = useRollen();
   const isPhone = useIsPhone();
@@ -164,7 +167,8 @@ export function BerichtSeite({
     };
   }, [kennung, wahl, versuch, detail]);
 
-  // Nach einer Korrektur: der neu gebildete Entwurf gegen den gültigen Stand - die Werte der Entscheidung (R1).
+  // Nach einer Korrektur: der neu gebildete Entwurf gegen den gültigen Stand - die Werte der Entscheidung (R1), gerechnet
+  // aus genau dem Entwurf, den „Ja“ freigibt (Review r1, P3-4: kein zweiter Abruf eines vielleicht neueren Vergleichs).
   useEffect(() => {
     if (!detail) return;
     const g = gueltigerStand(detail.staende);
@@ -173,17 +177,19 @@ export function BerichtSeite({
       return;
     }
     let aktiv = true;
-    Promise.all([api.berichtEntwurf(kennung), api.berichtVergleich(kennung, g.nr), api.berichtStand(kennung, g.nr)]).then(
-      ([entwurf, vergleich, stand]) => {
+    setEntscheidFehler(false);
+    Promise.all([api.berichtEntwurf(kennung), api.berichtStand(kennung, g.nr)]).then(
+      ([entwurf, stand]) => aktiv && setEntscheid({ entwurf, stand, werte: N.entscheidWerte(stand, entwurf) }),
+      () => {
         if (!aktiv) return;
-        setEntscheid({ entwurf, werte: N.werteAltNeu(vergleichZeilen(vergleich.abweichungen, abzugAus(entwurf.abzug), abzugAus(stand.abzug))) });
+        setEntscheid(null);
+        setEntscheidFehler(true);
       },
-      () => aktiv && setEntscheid(null),
     );
     return () => {
       aktiv = false;
     };
-  }, [kennung, detail]);
+  }, [kennung, detail, entscheidVersuch]);
 
   const zurueck = { label: zurListe, onClick: onListe };
 
@@ -219,6 +225,7 @@ export function BerichtSeite({
   const archiviert = b.archiviert_am !== null;
   const darfFreigeben = !archiviert && darf(rechteJetzt, 'freigeben', b.geltung_art, b.geltung_id, b.vorlage);
   const darfBehalten = !archiviert && darf(rechteJetzt, 'verwerfen', b.geltung_art, b.geltung_id, b.vorlage);
+  const darfArchivieren = !archiviert && darf(rechteJetzt, 'archivieren', b.geltung_art, b.geltung_id, b.vorlage);
   const eigene = N.eigeneSeite(b);
   // AP-17 IP-24: der Leistungsvergleich trägt seine eigenen acht Abschnitte (`LeistungsvergleichBericht`).
   const lv = istLeistungsvergleich(b);
@@ -239,7 +246,7 @@ export function BerichtSeite({
     setDateiAbruf(null);
     try {
       dateiSpeichern(await api.berichtDatei(b.kennung, nr, k.handlung), k.datei);
-      setDateiAbruf({ wahl, satz: ausgabeAbgerufen(k.handlung, nr), fehler: false });
+      setDateiAbruf({ wahl, satz: N.abgerufenSatz(k.handlung, nr), fehler: false });
     } catch (e) {
       setDateiAbruf({ wahl, satz: ausgabeFehler(e), fehler: true });
     } finally {
@@ -265,10 +272,19 @@ export function BerichtSeite({
     aktuell?.art === 'stand' && vorher?.id === wahl && offen.length === 0
       ? { gegen: vorher.stand.nr, werte: N.werteAltNeu(N.standVergleich(vorher.stand.abzug as Record<string, unknown>, aktuell.stand.abzug as Record<string, unknown>)) }
       : null;
-  const anlassDesStands = aktuell?.art === 'stand' ? detail.anstoesse.find((a) => a.id === detail.staende.find((s) => s.nr === aktuell.stand.nr)?.anlass_anstoss_id) ?? null : null;
+  // Die Anlässe des gezeigten Stands: gebündelt freigegeben erledigt er ALLE offenen Anstöße (Review r1, P3-6) - nicht
+  // nur den einen, den `anlass_anstoss_id` nennt; ältere Stände ohne `erledigt_durch_nr` nennen ihren einen.
+  const anlaesseDesStands = aktuell?.art === 'stand'
+    ? (() => {
+        const erledigt = detail.anstoesse.filter((a) => a.erledigt_durch_nr === aktuell.stand.nr);
+        if (erledigt.length > 0) return erledigt;
+        const id = detail.staende.find((s) => s.nr === aktuell.stand.nr)?.anlass_anstoss_id;
+        return detail.anstoesse.filter((a) => a.id === id);
+      })()
+    : [];
   // Gebündelt (Entscheid 16): alle offenen Anstöße eine Entscheidung, also ein Grund „10 Korrekturen“ mit allen im Blatt.
   const grund = geaendert
-    ? N.aenderungsGruende(anlassDesStands ? [anlassDesStands] : [], aktuell?.art === 'stand' ? (aktuell.stand.abzug as Record<string, unknown>) : null, b.zeitzone)
+    ? N.aenderungsGruende(anlaesseDesStands, aktuell?.art === 'stand' ? (aktuell.stand.abzug as Record<string, unknown>) : null, b.zeitzone)
     : offen.length > 0
       ? N.aenderungsGruende(offen, entscheid ? (entscheid.entwurf.abzug as Record<string, unknown>) : null, b.zeitzone)
       : null;
@@ -286,7 +302,18 @@ export function BerichtSeite({
     offen.length > 0 && g && !archiviert ? (
       <NwKarte titel={N.NEUER_STAND_FRAGE} zahl={entscheid && entscheid.werte.length > 0 ? entscheid.werte.length : null} className="vp-nw-br-entscheid" testId="bericht-entscheid">
         <div data-entscheid="bericht_anstoss" className="vp-nw-br-entscheid-innen">
-          {!entscheid ? (
+          {entscheidFehler ? (
+            <HinweisZeile
+              icon="info"
+              titel={N.WERTE_LADEFEHLER}
+              knopf={
+                <button type="button" className="vp-nw-aendern" onClick={() => setEntscheidVersuch((v) => v + 1)} data-testid="bericht-entscheid-erneut">
+                  Erneut versuchen
+                </button>
+              }
+              testid="bericht-entscheid-fehler"
+            />
+          ) : !entscheid ? (
             <Skeleton height={72} />
           ) : entscheid.werte.length > 0 ? (
             <WerteAltNeu werte={entscheid.werte.slice(0, N.KARTE_HOECHSTENS)} testid="bericht-entscheid-werte" />
@@ -323,7 +350,8 @@ export function BerichtSeite({
                 </Button>
               </div>
             </>
-          ) : (
+          ) : rechte === undefined ? null : (
+            // Erst mit der Selbstauskunft: solange sie lädt, blitzt kein Rechte-Satz auf (Review r1, P3-9).
             ohneRecht
           )}
         </div>
@@ -418,7 +446,11 @@ export function BerichtSeite({
     ) : eigene === 'bewertung' && onBewertung ? (
       <NwZeile titel={N.ZUR_SEITE_BEWERTUNG} onClick={onBewertung} testId="bericht-eigene-seite" />
     ) : null;
-  const menue: RowMenuItem[] = [{ label: `Kennung ${b.kennung} kopieren`, icon: 'link', onClick: () => void navigator.clipboard?.writeText(b.kennung) }];
+  const menue: RowMenuItem[] = [
+    { label: `Kennung ${b.kennung} kopieren`, icon: 'link', onClick: () => void navigator.clipboard?.writeText(b.kennung) },
+    // Konzept Nachweisen n1, C8: Archivieren - der Bericht verlässt die Liste, seine Stände bleiben lesbar.
+    ...(darfArchivieren ? [{ label: N.ARCHIVIEREN, icon: 'eye-off' as const, onClick: () => setBlatt('archivieren') }] : []),
+  ];
 
   return (
     <>
@@ -517,8 +549,10 @@ export function BerichtSeite({
         <BerichtFreigebenBlatt
           detail={detail}
           entwurf={(entscheid?.entwurf ?? (aktuell?.art === 'entwurf' ? aktuell.entwurf : null))!}
+          gegen={entscheid?.stand ?? null}
           jetzt={jetzt}
           onClose={() => setBlatt(null)}
+          onEntwurf={(e) => setEntscheid((alt) => (alt ? { entwurf: e, stand: alt.stand, werte: N.entscheidWerte(alt.stand, e) } : alt))}
           onFertig={(stand) => {
             setBlatt(null);
             setAntwort(null);
@@ -532,9 +566,20 @@ export function BerichtSeite({
           detail={detail}
           anstoesse={offen}
           onClose={() => setBlatt(null)}
+          onNeuLaden={() => setVersuch((v) => v + 1)}
           onFertig={() => {
             setBlatt(null);
             setAntwort(null);
+            setVersuch((v) => v + 1);
+          }}
+        />
+      )}
+      {blatt === 'archivieren' && (
+        <BerichtArchivierenBlatt
+          bericht={b}
+          onClose={() => setBlatt(null)}
+          onFertig={() => {
+            setBlatt(null);
             setVersuch((v) => v + 1);
           }}
         />
