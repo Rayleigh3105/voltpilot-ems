@@ -44,6 +44,28 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   BB-0001 Fassung 2 trägt die Regression der Referenzwelt, KZ-0021 bis KZ-0023 rechnen mit passenden Zählern.
   Die Flächen der echten Uhr zeigen davon nichts vor seiner Zeit (Stichtag-Grenze an Bezugswerten, Werten einer Messstelle, Ablesungen und Lückenlauf).
   Die Kennzahlen rechnet die Bühne (K1): der Rundgang leert die Kaskade der eingetragenen Ablesungen und rechnet danach einmal auf der Bühne.
+- Demo-Füllung Nachweisen (Runde 4): jeder offene Anstoß an einem Bericht, dessen Entwurf keine Abweichung zum Stand zeigt, wird mit Grund verworfen.
+  Solche Anstöße entstehen nur, wenn der Takt der Demo-API eine Korrektur des Bühnen-Bestands vor dem Rundgang abholt (siehe Reihenfolge).
+
+## Reihenfolge des Aufbaus
+
+Der frische Weg (`demo.sh zuruecksetzen`, danach `demo.sh rundgang`) ergibt die Referenzwelt für Nachweisen nur in dieser Reihenfolge:
+
+1. Die API ist gesund (Flyway durch), dann spielt `demo-seed` den Seed 1.4 ein.
+   Die API braucht K1 (Kennzahl-Lauf auf der Bühne) und die Berichts-Naht (`VOLTPILOT_UEMS_BERICHTE_ENABLED`, Vorgabe an).
+2. Die Welt (`PruefumgebungAhrenbergAufbau`) liest Stammdaten und MS-20 aus dem Seed.
+   Sie trägt die Ablesungen an MS-20 vom 01.10.2024 bis 01.11.2026 auf der Bühne ein (am 02.11.2026), bildet danach den Monatsbericht Oktober 2026 (Nr. 1 am 10.11., Korrektur des Ablesefehlers am 12.11., Nr. 2 am 16.11.2026) und erst dann die Fassungen der Bezugsbasen.
+   Die Korrektur liegt in der Referenzperiode von BB-0001; vor den Fassungen stößt sie keine Bezugsbasis an.
+   In diesem Lauf ist die Berichts-Naht an (Surefire schaltet sie sonst ab), damit der Anstoß an Nr. 1 nicht vom Takt der API abhängt.
+3. Der Rundgang (`DemoRundgangAufbau`) trägt dieselbe Reihe an MS-20 noch einmal ein: bis Oktober 2026 sind das Wiederholungen, die nichts schreiben.
+   Die Reihe hat eine Quelle, `DemoRundgangAufbau.reihe` mit dem Startstand 1.250.000; die Welt liest sie mit.
+   Wer Reihe oder Startstand ändert, bekommt sonst wieder Korrekturen in echter Zeit mit Anstößen am Monatsbericht.
+4. Das Konto `rundgang` entsteht nach dem Rundgang (`POST /api/v1/benutzer`).
+
+Der Takt der Demo-API (Korrektur-Kaskade alle 5 Minuten) läuft während Welt und Rundgang mit.
+Der Rundgang verarbeitet die Kaskade ohne Berichts-Naht; holt die API eine Korrektur zuerst ab, stößt sie Berichte an.
+Eine Ablesung trägt als Zeitraum ganze Jahre, darum trifft jede spätere Ablesung an MS-20 den Monatsbericht Oktober 2026, auch wenn sein Wert bleibt (Befund für Messen und Berichte).
+Runde 4 verwirft diese Anstöße; einer mit echter Abweichung bleibt offen.
 
 ## Was die Datei `docker-compose.demo.yml` ändert
 

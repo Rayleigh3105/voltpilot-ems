@@ -110,6 +110,9 @@ class PruefumgebungAhrenbergTest {
         r.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://127.0.0.1:9/realms/voltpilot");
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         r.add("voltpilot.uems.kennzahlen.enabled", () -> "false");
+        // Nachweisen PR 8: die Berichts-Naht wie in der API (Surefire schaltet sie ab) - die Korrektur der Welt am
+        // 12.11.2026 stößt den Monatsbericht an, unabhängig davon, ob der Takt der API sie zuerst abholt.
+        r.add("voltpilot.uems.berichte.enabled", () -> "true");
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
     }
 
@@ -184,6 +187,29 @@ class PruefumgebungAhrenbergTest {
         JsonNode mb = ruf("GET", BASIS + "/managementbewertungen/BR-2029-0001", fachperson, null, 200);
         assertThat(mb.toString()).contains("Robert Falk");
         ruf("GET", "/api/v1/berichte/BR-2029-0001/staende/1", fachperson, null, 200);
+    }
+
+    /**
+     * Nachweisen PR 8 (Konzept n1 §4.10): der Monatsbericht Oktober 2026 trägt Werte und die Geschichte der Referenz -
+     * Nr. 1 am 10.11.2026 mit dem Ablesefehler (88.690 kWh), eine Korrektur, die Nr. 1 einen Anstoß gibt, Nr. 2 am
+     * 16.11.2026 mit dem berichtigten Wert (88.630 kWh, die Zahl der Referenz) erledigt ihn. Kein Anstoß an BB-0001.
+     */
+    @Test
+    @Order(1)
+    void monatsberichtOktober2026MitWertenUndEinerKorrektur() {
+        List<String> werte = root.queryForList("SELECT s.nr || ' ' || to_char(s.freigegeben_am AT TIME ZONE "
+                + "'Europe/Berlin', 'YYYY-MM-DD') || ' ' || (w ->> 'menge') FROM bericht_stand s JOIN bericht r "
+                + "ON r.id = s.bericht_id, jsonb_array_elements(s.abzug::jsonb -> 'werte') w WHERE r.tenant_id = ? "
+                + "AND r.kennung = 'BR-2026-0001' AND w ->> 'quelle' = 'MS-20' ORDER BY s.nr", String.class, AHRENBERG);
+        assertThat(werte).containsExactly("1 2026-11-10 88690", "2 2026-11-16 88630");
+        List<Map<String, Object>> anstoesse = root.queryForList("SELECT a.zustand, a.erledigt_durch_nr, s.nr "
+                + "FROM bericht_revision_anstoss a JOIN bericht_stand s ON s.id = a.stand_id JOIN bericht r "
+                + "ON r.id = s.bericht_id WHERE r.tenant_id = ? AND r.kennung = 'BR-2026-0001'", AHRENBERG);
+        assertThat(anstoesse).hasSize(1);
+        assertThat(anstoesse.get(0)).containsEntry("nr", 1).containsEntry("erledigt_durch_nr", 2);
+        assertThat(anstoesse.get(0).get("zustand")).isNotEqualTo("offen");
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_anstoss WHERE tenant_id = ?", Integer.class,
+                AHRENBERG)).as("die Korrektur liegt vor den Fassungen der Bezugsbasen").isZero();
     }
 
     @Test

@@ -14,11 +14,15 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -77,6 +81,9 @@ final class AhrenbergWelt {
             "bezeichnung", "Bericht internes Audit 2029, unterschrieben",
             "ablage", "QM-Laufwerk, Ordner Energiemanagement/Audits", "kennung", "IA-2029",
             "sha256", "761d45606a2ed3511c91e2a61bf4ba3287dac583b70f43ead3f3d8716233fdeb");
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
+    /** Der erste Zählerstand von MS-20 am 01.10.2024 - derselbe wie im Rundgang ({@link DemoRundgangAufbau}). */
+    private static final long MS20_START = 1_250_000;
     private static final String SHA_GR2 = "3b1f4d86f164c8e54eaa3a9c335975dd54dcbd68b42bbb9c7b24d2195e2a9a2e";
     private static final String SHA_Z5B = "c07dd7a33d2b17df6fece484ec4e08bb50c93326653576cfb1b8dd8dcf8a41f0";
     /**
@@ -363,6 +370,102 @@ final class AhrenbergWelt {
                 "massnahme", "M-2029-0002"))), 200);
     }
 
+    /**
+     * Nachweisen PR 8 (Konzept n1 §4.10, Entscheid 20): der Monatsbericht Oktober 2026 (BR-2026-0001) wie in der
+     * Referenz - Stand Nr. 1 am 10.11.2026, eine Korrektur am 12.11.2026 (Ablesefehler 60 kWh), Stand Nr. 2 am
+     * 16.11.2026. Im Ziel {@link Ziel#SEED} mit Werten: die Ablesungen an MS-20 vom 01.10.2024 bis 01.11.2026, dieselbe
+     * Reihe wie {@link DemoRundgangAufbau#reihe} (der Rundgang trägt sie danach noch einmal ein - eine Wiederholung, die
+     * nichts schreibt, statt zehn Korrekturen in echter Zeit mit Anstößen am Bericht); MS-12 der Referenz gibt es im
+     * Seed nicht, die Geschichte trägt darum MS-20. Die Kennung der Korrektur zählt nach den Ablesungen weiter
+     * (Referenz K-2026-0007). Vor den Fassungen der Bezugsbasen: die Korrektur liegt in der Referenzperiode von
+     * BB-0001, die Referenz kennt dort keinen Anstoß. Im Ziel {@link Ziel#NEU} (ohne MS-20) bildet Nr. 2 den Entwurf neu.
+     */
+    private void monatsberichtOktober2026() throws Exception {
+        boolean mitWerten = ziel == Ziel.SEED;
+        if (mitWerten) {
+            ablesungenMs20("2026-11-02T08:00:00Z", YearMonth.of(2026, 10), 60);
+            kaskadeLeeren("2026-11-02T08:30:00Z");
+        }
+        berichtAnlegen("2026-11-10T07:55:00Z", "BR-2026-0001", Map.of("vorlage", "monatsbericht_standort",
+                "geltung_id", s1.toString(), "zeitraum", "2026-10"));
+        berichtFreigeben("BR-2026-0001", "2026-11-10T08:02:00Z", false);
+        if (mitWerten) {
+            JsonNode k = referenz.at("/korrekturen/0");
+            AblesungService ablesungen = bean(AblesungService.class);
+            ablesungen.uhrStellen(Clock.fixed(Instant.parse("2026-11-12T09:05:00Z"), ZoneOffset.UTC));
+            try {
+                String zeit = YearMonth.of(2026, 11).atDay(1).atStartOfDay(BERLIN).toOffsetDateTime().toString();
+                // Der Zeitpunkt roh im Pfad (wie AblesungApiTest) - MockMvc kodiert die Vorlage selbst.
+                ruf("POST", "/api/v1/messstellen/MS-20/ablesungen/" + zeit + "/berichtigung", "IK", Map.of("stand", zahl(ms20Stand(YearMonth.of(2026, 10))), "begruendung",
+                        k.path("begruendung").asText()), 200);
+            } finally {
+                ablesungen.uhrStellen(Clock.systemUTC());
+            }
+            kaskadeLeeren("2026-11-12T09:05:33Z");
+        }
+        // Nr. 2: der Entwurf neu gebildet nach der Korrektur (Referenz: Datenstand 12.11.2026 10:05:33), freigegeben am
+        // 16.11.2026; die Freigabe erledigt den Anstoß an Nr. 1.
+        entwurfNeuBilden("BR-2026-0001", mitWerten ? "2026-11-12T09:05:33Z" : "2026-11-16T13:20:00Z");
+        berichtFreigeben("BR-2026-0001", "2026-11-16T13:20:00Z", false);
+    }
+
+    /**
+     * Die Ablesungen an MS-20 bis zum Ende des Monats {@code bis} über die Route, eingetragen am {@code am}; die letzte
+     * mit {@code fehler} kWh zu viel (der Ablesefehler, den die Korrektur danach berichtigt).
+     */
+    private void ablesungenMs20(String am, YearMonth bis, long fehler) throws Exception {
+        AblesungService ablesungen = bean(AblesungService.class);
+        ablesungen.uhrStellen(Clock.fixed(Instant.parse(am), ZoneOffset.UTC));
+        try {
+            ablesungMs20(YearMonth.of(2024, 10).atDay(1), MS20_START);
+            for (YearMonth m : DemoRundgangAufbau.reihe(bis).keySet()) {
+                ablesungMs20(m.plusMonths(1).atDay(1), ms20Stand(m) + (m.equals(bis) ? fehler : 0));
+            }
+        } finally {
+            ablesungen.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    private void ablesungMs20(LocalDate tag, long stand) throws Exception {
+        String zeit = tag.atStartOfDay(BERLIN).toOffsetDateTime().toString();
+        var r = mvc.perform(request(HttpMethod.POST, "/api/v1/messstellen/MS-20/ablesungen").with(authentication(token("IK")))
+                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("zeitpunkt", zeit,
+                        "stand", zahl(stand))))).andReturn().getResponse();
+        assertThat(r.getStatus()).as("Ablesung MS-20 " + zeit + " " + r.getContentAsString(StandardCharsets.UTF_8))
+                .isIn(200, 201);
+    }
+
+    /** Der Zählerstand von MS-20 am Ende des Monats {@code m} - die Reihe des Rundgangs ab 1.250.000 am 01.10.2024. */
+    private static long ms20Stand(YearMonth m) {
+        long stand = MS20_START;
+        for (var e : DemoRundgangAufbau.reihe(m).entrySet()) {
+            stand += e.getValue()[0];
+        }
+        return stand;
+    }
+
+    private static String zahl(long n) {
+        return String.format(Locale.GERMANY, "%,d", n);
+    }
+
+    /** Wie ein Takt der Kaskade, bis kein Anlass mehr offen ist - am Augenblick {@code am} der Bühne. */
+    private void kaskadeLeeren(String am) {
+        uhr(am);
+        KorrekturKaskade kaskade = bean(KorrekturKaskade.class);
+        for (int i = 0; i < 100; i++) {
+            KorrekturKaskade.Lauf l = kaskade.lauf(Instant.parse(am));
+            assertThat(l.abgelehnt()).as("Kaskade am " + am).isEmpty();
+            if (l.anlaesse() == 0) {
+                return;
+            }
+        }
+        throw new IllegalStateException("die Kaskade wird nicht leer");
+    }
+
+    private <T> T bean(Class<T> typ) {
+        return mvc.getDispatcherServlet().getWebApplicationContext().getBean(typ);
+    }
+
     /** AP-11/12/16/17/18 der Referenzdatei 1.9 — nur, was das Verzeichnis und die Managementbewertung lesen. */
     private void leistung() throws Exception {
         String[][] kz = {{"KZ-0004", "Stromeinsatz Spritzguss je kg"}, {"KZ-0001", "Stromeinsatz Montage je Stück"},
@@ -378,6 +481,7 @@ final class AhrenbergWelt {
             JsonNode b = ruf("POST", "/api/v1/kennzahlen/" + id + "/bezugsbasen", "IK", null, 201);
             basis.put(b.path("kennzeichen").asText(), UUID.fromString(b.path("id").asText()));
         }
+        monatsberichtOktober2026();
         bezugsbasisFassung(basis.get("BB-0001"), 1, "2026-11-01", "2027-10-31", "2026-11-02T10:00:00Z");
         bezugsbasisFassung(basis.get("BB-0001"), 2, "2027-11-01", null, "2027-11-25T10:00:00Z");
         bezugsbasisFassung(basis.get("BB-0002"), 1, "2026-11-01", "2026-11-30", "2026-11-02T10:00:00Z");
@@ -396,13 +500,9 @@ final class AhrenbergWelt {
         // für Dezember 2027 keine; die Zahlen der Referenzdatei sind Annahmen (VB-2028-0001 „annahme“).
         // Die erste Bewertung am 01.12.2026 (alte Welt 24.11.2026, Referenz 09.11.2026). Die Rangliste liest die Fassung
         // des Betrachtungsumfangs, die „heute“ gilt (ab 04.11.2026) — auf der Bühne über die Uhr des Umfangs.
-        berichtAnlegen("2026-11-05T09:50:00Z", "BR-2026-0001", Map.of("vorlage", "monatsbericht_standort",
-                "geltung_id", s1.toString(), "zeitraum", "2026-10"));
-        berichtFreigeben("BR-2026-0001", "2026-11-05T10:00:00Z", false);
         berichtAnlegen("2026-12-01T09:50:00Z", "BR-2026-0002", Map.of("vorlage", "energetische_bewertung",
                 "geltung_id", unternehmen.toString()));
         berichtFreigeben("BR-2026-0002", "2026-12-01T10:00:00Z", false);
-        berichtFreigeben("BR-2026-0001", "2026-12-20T10:00:00Z", true);
         berichtFreigeben("BR-2026-0002", "2027-02-10T10:00:00Z", true);
         berichtAnlegen("2027-11-24T09:50:00Z", "BR-2027-0001", Map.of("vorlage", "energetische_bewertung",
                 "geltung_id", unternehmen.toString()));
@@ -760,26 +860,32 @@ final class AhrenbergWelt {
         assertThat(ruf("POST", "/api/v1/berichte", "IK", anfrage, 201).path("kennung").asText()).isEqualTo(kennung);
     }
 
+    /** Den Entwurf zum Augenblick {@code am} neu bilden ({@link BerichtAbzugBildung#bilden}, wie die Kaskade). */
+    private void entwurfNeuBilden(String kennung, String am) throws Exception {
+        uhr(am);
+        UUID bericht = root.queryForObject("SELECT id FROM bericht WHERE tenant_id = ? AND kennung = ?", UUID.class,
+                tenant, kennung);
+        BerichtAbzugBildung bildung = mvc.getDispatcherServlet().getWebApplicationContext()
+                .getBean(BerichtAbzugBildung.class);
+        // Wie ein Lauf der Kaskade: der Kundenbereich im Kontext, die Bildung auf einer eigenen Verbindung.
+        com.voltpilot.api.tenant.TenantContext.set(tenant);
+        try (java.sql.Connection con = root.getDataSource().getConnection()) {
+            bildung.bilden(con, bericht, Instant.parse(am), "kaskade");
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
+    }
+
     /**
      * Ein Berichtsstand über Entwurf und {@code POST …/freigeben} am Tag {@code am}. {@code neuBilden}: vorher den
      * Entwurf zum Tag neu bilden ({@link BerichtAbzugBildung#bilden}, wie die Kaskade nach einer Korrektur) — ohne
      * geänderte Quelle bliebe der Entwurf der von Nr. 1, und die Freigabe gäbe Nr. 1 zurück statt Nr. 2.
      */
     private void berichtFreigeben(String kennung, String am, boolean neuBilden) throws Exception {
-        uhr(am);
         if (neuBilden) {
-            UUID bericht = root.queryForObject("SELECT id FROM bericht WHERE tenant_id = ? AND kennung = ?", UUID.class,
-                    tenant, kennung);
-            BerichtAbzugBildung bildung = mvc.getDispatcherServlet().getWebApplicationContext()
-                    .getBean(BerichtAbzugBildung.class);
-            // Wie ein Lauf der Kaskade: der Kundenbereich im Kontext, die Bildung auf einer eigenen Verbindung.
-            com.voltpilot.api.tenant.TenantContext.set(tenant);
-            try (java.sql.Connection con = root.getDataSource().getConnection()) {
-                bildung.bilden(con, bericht, Instant.parse(am), "kaskade");
-            } finally {
-                com.voltpilot.api.tenant.TenantContext.clear();
-            }
+            entwurfNeuBilden(kennung, am);
         }
+        uhr(am);
         String datenstand = ruf("/api/v1/berichte/" + kennung + "/entwurf", "IK", 200).path("datenstand").asText();
         ruf("POST", "/api/v1/berichte/" + kennung + "/freigeben", "IK", Map.of("entwurf_datenstand", datenstand), 201);
     }

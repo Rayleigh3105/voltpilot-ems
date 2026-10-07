@@ -218,11 +218,43 @@ class DemoRundgangAufbau {
         // Jede eingetragene Ablesung ist ein Anlass der Kaskade über die ganze Reihe (auch 10/2026 bis 03/2027, vor dem
         // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
         anlaesse += kaskadeLeeren();
+        nachweisenReferenz();
         KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
         bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
         bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
         System.out.println("Rundgang Runde 3: passende Zähler, Bühnen-Bestand bis 03/2029, BB-0001 Fassung 2 "
                 + "(Referenzwelt). Kaskade: " + anlaesse + " Anlässe, Kennzahlen auf der Bühne: " + buehne);
+    }
+
+    /**
+     * Runde 4 - Demo-Füllung Nachweisen (Konzept n1 §4.10, Entscheid 20): die Berichte der Welt tragen nach dem Rundgang
+     * keine Anstöße, die nichts ändern. Diese Laufzeit verarbeitet die Kaskade ohne Berichts-Naht (Surefire); holt der Takt
+     * der Demo-API eine Korrektur des Bühnen-Bestands zuerst ab, stößt er Berichte an, deren Werte gleich bleiben - eine
+     * Ablesung nach dem Oktober 2026 trägt den Zeitraum ganzer Jahre und trifft den Monatsbericht Oktober 2026. Je offenem
+     * Anstoß vergleicht der Schritt den Entwurf mit dem gültigen Stand; ohne Abweichung verwirft Ines Kaltenbach ihn mit
+     * Grund (die Antwort, die das Portal dafür hat). Ein Anstoß mit Abweichung bleibt offen. Idempotent: danach ist keiner
+     * mehr offen, der nichts ändert.
+     */
+    private void nachweisenReferenz() throws Exception {
+        int verworfen = 0;
+        for (JsonNode b : lies("/api/v1/berichte?stichtag=2029-04-30").path("berichte")) {
+            String kennung = b.path("kennung").asText();
+            JsonNode detail = lies("/api/v1/berichte/" + kennung);
+            for (JsonNode a : detail.path("anstoesse")) {
+                if (!a.path("zustand").asText().equals("offen")) {
+                    continue;
+                }
+                JsonNode vergleich = lies("/api/v1/berichte/" + kennung + "/entwurf/vergleich?gegen=" + a.path("nr").asInt());
+                if (!vergleich.path("abweichungen").isArray() || !vergleich.path("abweichungen").isEmpty()) {
+                    continue;
+                }
+                post("/api/v1/berichte/" + kennung + "/anstoesse/" + a.path("id").asText() + "/verwerfen", m("begruendung",
+                        "Nachgetragene Ablesung ändert keinen Wert dieses Berichts - der Vergleich mit Stand Nr. "
+                                + a.path("nr").asInt() + " zeigt keine Abweichung."));
+                verworfen++;
+            }
+        }
+        System.out.println("Rundgang Runde 4 (Nachweisen): " + verworfen + " Anstöße ohne Abweichung verworfen.");
     }
 
     /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */

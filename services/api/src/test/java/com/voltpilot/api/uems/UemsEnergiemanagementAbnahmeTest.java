@@ -296,8 +296,9 @@ class UemsEnergiemanagementAbnahmeTest {
     @Test
     void jederBerichtsstandDerWeltTraegtDenVollstaendigenAbzug() throws Exception {
         record S(String kennung, int nr, String vorlage, String tag) { }
-        for (S s : List.of(new S("BR-2026-0001", 1, "monatsbericht_standort", "2026-11-05"),
-                new S("BR-2026-0001", 2, "monatsbericht_standort", "2026-12-20"),
+        // Nachweisen PR 8: der Monatsbericht an den Tagen der Referenz (Nr. 1 am 10.11., Nr. 2 am 16.11.2026).
+        for (S s : List.of(new S("BR-2026-0001", 1, "monatsbericht_standort", "2026-11-10"),
+                new S("BR-2026-0001", 2, "monatsbericht_standort", "2026-11-16"),
                 new S("BR-2026-0002", 1, "energetische_bewertung", "2026-12-01"),
                 new S("BR-2026-0002", 2, "energetische_bewertung", "2027-02-10"),
                 new S("BR-2027-0001", 1, "energetische_bewertung", "2027-11-24"),
