@@ -4,13 +4,13 @@
     "Kalenderarithmetik und Sortierung von Zeitpunkten: keine Energiemenge.",
     "Textpositionen, Listenindizes und Kennzeichen: keine Energiemenge.",
     "uemsVerlauf: Number(menge) nur zur Bildhöhe; skalaOben/bild nur SVG-Koordinaten und Achsen, keine fachliche Summe oder Δ.",
-    "anlageEnergiebilanz.teilBild: Math.max(0, e.menge) / zufluss nur MiniShareBar-Breite; Beschriftung bleibt die gelieferte Menge, keine Prozentzahl.",
     "kennzahlKarte.verlauf: Betrag/größter Betrag ausschließlich als Balkenbreite; kennzahlKarte/berichtSeite: Anzeige, Versionsnummern und Sortierung; die Fachwerte bilden die Vertrags-Zwillinge.",
     "uemsWerteCache: TTL und LRU-Indizes, keine Menge.",
     "kostenstellenUebersicht ./rechte:ROLLE_KUNDENWORT (PR 1014, Kostenstelle B): nur die Kundenwörter der Rollen für den Satz, wer die Mengen sieht; keine Menge.",
     "kostenstellenUebersicht ./rechte:TEXTE (PR 1014, Kostenstelle B): nur die Satzbausteine weg_ein_kundenadministrator/weg_kundenadministratoren mit den Namen aus /me; keine Menge.",
     "kostenstellenUebersicht ./glossar:UEMS_BEWERTUNG_SAETZE (AP-16 IP-14): formatiert nur den gelieferten Prozess-Summen-Hinweis; keine Menge.",
-    "anlageEnergiebilanz ./glossar:uemsGeteiltSatz (AP-07 IP-18b Summen-Wächter): reiht nur die gelieferten Kennzeichen zu einem Satz; keine Menge."
+    "anlageEnergiebilanz ./glossar:uemsGeteiltSatz (AP-07 IP-18b Summen-Wächter): reiht nur die gelieferten Kennzeichen zu einem Satz; keine Menge.",
+    "anlageEnergiebilanz ./uemsBewertung:nenner und :prozent (Konzept Auswerten a1 §6.9, Entscheid 5): das Ganze der Karte (Zufluss − Abfluss) und jeder Anteil kommen aus dem Vertrags-Zwilling der Bewertung (AP-16 KR4) - dieselbe Regel, mit der die Bewertung „x % der Anlage“ nennt; ./dez:dez/dezVon nur zur Übergabe der gelieferten Mengen an den Zwilling, ./dez:dezVergleich nur zur Sortierung der Unterzähler nach gelieferter Menge, ./bewertung:prozentText nur zur Anzeige."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -264,8 +264,11 @@
     },
     "anlageEnergiebilanz.ts": {
       "importe": [
+        "./bewertung:prozentText",
+        "./dez:dez",
+        "./dez:dezVergleich",
+        "./dez:dezVon",
         "./glossar:UEMS_HAUPTZAEHLER",
-        "./glossar:UEMS_NOCH_NICHT_GERECHNET_SATZ",
         "./glossar:uemsGeteiltSatz",
         "./nav:anlageRoute",
         "./nav:hashForRoute",
@@ -274,6 +277,8 @@
         "./uebersichtBausteine:laeuftNoch",
         "./uebersichtBausteine:letzterGebildeter",
         "./uebersichtBausteine:zeitraumText",
+        "./uemsBewertung:nenner",
+        "./uemsBewertung:prozent",
         "./uemsBilanz:BERECHNET_DIFFERENZ",
         "./uemsBilanz:BERECHNET_SUMME",
         "./uemsBilanz:NICHT_ZUGEORDNET",
@@ -289,8 +294,6 @@
         "hauptzaehlerBild: h.abschnitte.length - 1",
         "mitKostenstelle: von + kennzeichen.length",
         "restHerkunft: Number.isNaN(Date.parse(satz.berechnet_am))",
-        "teilBild: Math.max(0, e.menge)",
-        "teilBild: Math.max(0, e.menge) / zufluss",
         "zeitraumAus: Number.isNaN(Date.parse(`${am}T00:00:00Z`))"
       ]
     },

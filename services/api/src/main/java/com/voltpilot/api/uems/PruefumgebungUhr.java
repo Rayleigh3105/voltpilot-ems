@@ -2,14 +2,20 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.zugriff.ZugriffBuehnenUhr;
 import jakarta.annotation.PostConstruct;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -43,6 +49,9 @@ class PruefumgebungUhr {
     private final ZugriffBuehnenUhr zugriffe;
     private final BewertungUmfangService umfang;
     private final BewertungKriterienService kriterien;
+    private final KennzahlLauf kennzahlLauf;
+    private final ObjectProvider<BerichtKaskade> berichtKaskade;
+    private final JdbcTemplate adminJdbc;
     private final EnergiemanagementPersonenService personen;
 
     PruefumgebungUhr(@Value("${voltpilot.pruefumgebung.buehnen-uhr}") String buehne,
@@ -50,7 +59,8 @@ class PruefumgebungUhr {
             FeststellungService feststellungen, KennzahlService kennzahlen, BerichtService berichte,
             EnergiemanagementVerzeichnisService verzeichnis, EnergiemanagementWiedervorlageService wiedervorlage,
             ZugriffBuehnenUhr zugriffe, BewertungUmfangService umfang, BewertungKriterienService kriterien,
-            EnergiemanagementPersonenService personen) {
+            KennzahlLauf kennzahlLauf, ObjectProvider<BerichtKaskade> berichtKaskade,
+            @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, EnergiemanagementPersonenService personen) {
         this.buehne = Instant.parse(buehne);
         this.dokumente = dokumente;
         this.audits = audits;
@@ -62,17 +72,40 @@ class PruefumgebungUhr {
         this.zugriffe = zugriffe;
         this.umfang = umfang;
         this.kriterien = kriterien;
+        this.kennzahlLauf = kennzahlLauf;
+        this.berichtKaskade = berichtKaskade;
+        this.adminJdbc = adminJdbc;
         this.personen = personen;
     }
 
     /**
-     * Ab jetzt steht die Bühne auf dem eingestellten Augenblick und läuft in echter Zeit weiter. Kein Start-Lauf
-     * (kein Läufer im Sinn von {@code UemsLaeuferMelder}): nur Uhren, keine Arbeit, keine Datenbank.
+     * Ab jetzt steht die Bühne auf ihrem Start ({@link #start()}) und läuft in echter Zeit weiter. Kein Start-Lauf
+     * (kein Läufer im Sinn von {@code UemsLaeuferMelder}): nur Uhren und eine Lesung, keine Arbeit.
      */
     @PostConstruct
     void stellen() {
-        stellen(Clock.offset(Clock.systemUTC(), Duration.between(Instant.now(), buehne)));
-        LOG.warn("Prüfumgebung: Energiemanagement und Zuweisungen laufen ab {} (Bühnen-Uhr, nur Profil local)", buehne);
+        Instant start = start();
+        stellen(Clock.offset(Clock.systemUTC(), Duration.between(Instant.now(), start)));
+        LOG.warn("Prüfumgebung: Energiemanagement und Zuweisungen laufen ab {} (Bühnen-Uhr, nur Profil local)", start);
+    }
+
+    /**
+     * Wo die Bühne beginnt: an ihrem Augenblick - oder direkt nach dem jüngsten Kennzahlwert, wenn ein früherer Start
+     * (oder ein Seed-Lauf daneben) schon später auf der Bühne gerechnet hat. Seit der Kennzahl-Lauf auf der Bühne rechnet
+     * (Befund Auswerten a4, K1), läge ein Neustart sonst hinter diesen Werten: Kaskade und Bericht-Entwurf (D2) liefen
+     * gegen „spätere“ Zeilen, bis die Bühne sie wieder eingeholt hätte.
+     */
+    Instant start() {
+        try {
+            Timestamp juengster = adminJdbc.queryForObject("SELECT max(berechnet_am) FROM kennzahl_wert", Timestamp.class);
+            if (juengster != null && juengster.toInstant().isAfter(buehne)) {
+                return juengster.toInstant().truncatedTo(ChronoUnit.SECONDS).plusSeconds(1);
+            }
+        } catch (DataAccessException e) {
+            LOG.warn("Prüfumgebung: der jüngste Kennzahlwert ist nicht lesbar ({}) - die Bühne beginnt an ihrem Augenblick",
+                    e.toString());
+        }
+        return buehne;
     }
 
     /** Die Uhren der Abnahme und die der Zuweisungen — auch für den Aufbau der Welt. */
@@ -88,6 +121,11 @@ class PruefumgebungUhr {
         // (ab 01.10.2026) in echter Zeit davor keinen Umfang, und die Rangliste bleibt leer (Demo-Befund 27.09.2026).
         umfang.uhrStellen(uhr);
         kriterien.uhrStellen(uhr);
+        // Der Kennzahl-Lauf rechnet auf der Uhr seiner Leser: eine Periode der Bühne bekäme sonst ein berechnet_am nach
+        // jeder Kaskade der echten Uhr, und die erste Ablesung hielte die Kaskade an (Befund Auswerten a4, 06.10.2026).
+        kennzahlLauf.uhrStellen(uhr);
+        // Ebenso die Bericht-Naht der Kaskade: ihr Datenstand liegt sonst vor den Kennzahlwerten, die sie zitiert (D2).
+        berichtKaskade.ifAvailable(k -> k.uhrStellen(uhr));
         // Der Reiter „Aufgaben“ liest „heute“ von seiner Route; ohne die Bühne nennte er den echten Tag neben dem
         // Stichtag des Verzeichnisses (Konzept Nachweisen n1, Befund 3).
         personen.uhrStellen(uhr);
