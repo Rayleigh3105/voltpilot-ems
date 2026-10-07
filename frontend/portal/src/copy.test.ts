@@ -103,6 +103,7 @@ import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE
 import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
+import * as NB from './nachweisBerichte';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
 import * as BD from './berichtDialoge';
 import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
@@ -162,6 +163,23 @@ import {
   kennzahlWertVersionenAntwort,
 } from './test/kennzahlWerteFixtures';
 import { HERKUNFT_WORT as MASSNAHME_HERKUNFT_WORT } from './massnahmen';
+import {
+  ERKLAERUNG_WIRKSAMKEIT,
+  NORMWORT_FESTSTELLUNG,
+  NORMWORT_WIRKSAMKEIT,
+  auditStatus,
+  auditorenZeile,
+  auditsKurzzeile,
+  auditsStatus,
+  erklaerungFeststellung,
+  feststellungHerkunft,
+  feststellungStatus,
+} from './auditBild';
+import { ERKLAER_WOERTER_HOECHSTENS, NORMWORT, erklaerWoerter, erklaerZeilen, woerter } from './components/nachweisen/erklaerung';
+import * as ND from './nachweisDokumente';
+import { mbKurzzeile, mbStatus } from './managementbewertungBild';
+import { aufgabenStatus } from './aufgabenBild';
+import type { EnergiemanagementDokument, Feststellung, FeststellungStand, InternesAudit } from './api';
 import { BEGRIFFE, fachwortZeile, NORMWOERTER_IM_FACHWORT, type BegriffSchluessel } from './begriffe';
 import {
   UEMS_AUF_KURS,
@@ -1835,8 +1853,12 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
     'berichtDialoge.ts',
     'components/BerichtAnlegenDialog.tsx',
     'components/BerichtFreigebenDialog.tsx',
+    // Der Vergleich bleibt der Dialog der energetischen Bewertung (BewertungStand); die Berichte selbst vergleichen in der Karte.
     'components/BerichtVergleichDialog.tsx',
-    'components/AnstossVerwerfenDialog.tsx',
+    // Konzept Nachweisen n1, Runde 2 (§6.4): Liste, Seite und Blätter der Berichte in Nachweisen.
+    'nachweisBerichte.ts',
+    'components/nachweisen/BerichteListe.tsx',
+    'components/nachweisen/BerichtBlaetter.tsx',
   ];
   const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
   const da = (t: string | null | undefined): t is string => typeof t === 'string';
@@ -1888,6 +1910,20 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
         }
       }
       for (const v of BS.verlaufDerStaende(detail)) out.push(v.titel, v.zeile, ...[v.anlass, v.ersetzt].filter(da), ...v.anstoesse);
+      // Konzept Nachweisen n1 (PR 3): was die Liste, die Seite und die Blätter der Berichte heute zeigen (Review r1, P3-9:
+      // geprüft wurden sonst nur die alten Ausgaben von `berichtSeite.ts`).
+      const bild = NB.berichteBild([berichtAm(jetzt)]);
+      for (const z of [...bild.wartet, ...bild.gelten, ...bild.abgeloest, ...bild.archiviert]) out.push(z.titel, z.stand, ...[z.unter, z.verb].filter(da));
+      const status = NB.seitenStatus(detail, null);
+      out.push(status.text, ...[status.sub].filter(da));
+      out.push(...NB.stufen(detail).flatMap((x) => [x.titel, x.datum].filter(da)));
+      out.push(...NB.korrekturZeilen(detail.anstoesse, 'Europe/Berlin').flatMap((z) => [z.etikett, z.wert]));
+      const grund = NB.aenderungsGruende(NB.offeneAnstoesse(detail), entwurfAm(jetzt).abzug as Record<string, unknown>, 'Europe/Berlin');
+      if (grund) out.push(grund.kurz, grund.titel, ...grund.zeilen.flatMap((z) => [z.etikett, z.wert]));
+      for (const s of detail.staende) {
+        out.push(NB.jaAntwort(s.nr + 1), NB.neinAntwort(s.nr));
+        for (const w of NB.entscheidWerte(standAm(s.nr, jetzt), entwurfAm(jetzt))) out.push(w.name, ...[w.alt, w.neu, w.einheit].filter(da));
+      }
     }
     const spaet = Date.parse('2036-11-02T10:00:00+01:00');
     try {
@@ -1912,6 +1948,9 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
   it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
     const alle = laufzeit();
     expect(alle.length).toBeGreaterThan(300);
+    // Die Ausgaben von Nachweisen (PR 3) stehen mit darin.
+    expect(alle).toContain('Daten geändert');
+    expect(alle).toContain('Nein, Stand 1 behalten');
     expect(alle).toContain('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
     expect(alle).toContain('heute: Montage Linie M1 (Halle 2)');
@@ -1997,15 +2036,17 @@ const KENNZAHL_BESTAND: string[] = [
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
+  'components/nachweisen/BerichtBlaetter.tsx', // neu: „Bericht erstellen“ wählt Kennzahlen ab bzw. die eine Kennzahl des Leistungsvergleichs (Nachweisen n1, §6.4)
+  'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
   'energiezielBild.ts', // neu: ein Energieziel entsteht an einer Kennzahl mit Bezugsbasis (Konzept Verbessern §6.3)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
-  'fahrplan.ts', // neu: der Fahrplan „Ihr Energiemanagement“ nennt den Schritt „Kennzahlen mit Vergleichszeitraum“ (Konzept K2)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'mappeBild.ts', // neu: „Was gehört hinein?“ bündelt die Verzeichnis-Gruppen, eine davon Kennzahlen (Nachweisen n1, Entscheid 7)
   'massnahmePlanen.ts', // neu: „Maßnahme planen“ fragt, ob an einer Kennzahl gemessen wird (Verbessern v1 PR 2, Entscheid 6)
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
@@ -2021,6 +2062,7 @@ const KENNZAHL_BESTAND: string[] = [
   'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
   'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
+  'verzeichnisMonate.ts', // neu: das Verzeichnis bündelt Kennzahl-Fassungen eines Tages zu „Kennzahlen“ (Nachweisen n1, §6.9)
   'wiedervorlage.ts', // neu: eine Bezugsbasis ist die Vergleichsgrundlage einer Kennzahl (Konzept Wiedervorlage w1)
 ];
 
@@ -2914,7 +2956,9 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
 /**
  * AP-18 SP2: die Norm- und Kausal-Wörter des Bereichs „Ziele und Maßnahmen“ — auf Modul-Ebene, damit der Block
  * „Energiemanagement“ (AP-19 SP5, W3) an genau diesen Regeln zeigt, dass die Maßnahmen-Seite „Feststellung“ sagen darf
- * und „Nichtkonformität“ nicht. Der AP-18-Wächter bleibt, wie er ist: keine Ausnahme, kein Wort weniger.
+ * und „Nichtkonformität“ nicht. Der AP-18-Wächter bleibt, wie er ist: keine Ausnahme, kein Wort weniger — außer der
+ * einen aus Nachweisen Entscheid 18 (siehe `NACHWEISEN_FACHWORT_AUSNAHMEN`), die dieselbe Form hat wie die spätere
+ * Ausnahme aus Verbessern Entscheid 14.
  */
 const VERBESSERUNG_VERBOTEN = [
   /Nicht[-\s]?konformit(?:ä|ae)t/iu,
@@ -2927,9 +2971,18 @@ const VERBESSERUNG_VERBOTEN = [
 ];
 
 /**
- * Konzept Verbessern v1, Entscheid 14 (Captain-Freigabe 06.10.2026): Berater suchen die Normwörter. Sie stehen darum in
- * der letzten Zeile von „Was ist …?“ - nur im Feld `fachwort` der Begriffe aus `NORMWOERTER_IM_FACHWORT`. Genau diese
- * Texte in `begriffe.ts` lässt der Wächter durch; jede andere Stelle bleibt verboten. Die einzige Ausnahme.
+ * Konzept Nachweisen n1, Entscheid 18: Berater suchen die Normwörter. Sie stehen darum in der letzten Zeile von „Was
+ * ist …?“ - nur im Feld `fachwort` der Erklärungen aus `auditBild.ts` (NORMWORT_FESTSTELLUNG, NORMWORT_WIRKSAMKEIT).
+ * Genau diese Texte lässt jeder Wächter nur in `auditBild.ts` durch; jede andere Fläche bleibt verboten.
+ */
+const NACHWEISEN_FACHWORT_AUSNAHMEN = new Set([NORMWORT_FESTSTELLUNG, NORMWORT_WIRKSAMKEIT]);
+const nachweisenFachwortAusnahme = (datei: string | undefined, text: string) =>
+  datei === 'auditBild.ts' && NACHWEISEN_FACHWORT_AUSNAHMEN.has(text);
+
+/**
+ * Konzept Verbessern v1, Entscheid 14 (Captain-Freigabe 06.10.2026): dieselbe Form wie Entscheid 18 oben, für die
+ * Begriffe aus `NORMWOERTER_IM_FACHWORT`. Genau diese Texte in `begriffe.ts` lässt der Wächter durch; jede andere
+ * Stelle bleibt verboten.
  */
 const FACHWORT_AUSNAHMEN = new Set<string>([
   ...Object.values(NORMWOERTER_IM_FACHWORT).flatMap((woerter) => woerter ?? []),
@@ -3250,11 +3303,12 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     expect(LAENGE_ALS_HILFE.test("setFehler({ text: 'Bitte mindestens zehn Zeichen.' })")).toBe(false);
   });
 
-  it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {
+  it('findet die verbotenen Wörter auf keiner Kundenfläche — außer den Ausnahmen aus Nachweisen Entscheid 18 und Verbessern Entscheid 14', () => {
     const funde = customerFiles().flatMap((file) => {
       const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
       return visibleTexts(readFileSync(file, 'utf8'))
         .filter(isKundentext)
+        .filter((text) => !nachweisenFachwortAusnahme(wo, text))
         .filter((text) => !fachwortAusnahme(wo, text))
         .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
     });
@@ -3338,6 +3392,48 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
     }
   });
+
+  /**
+   * Konzept Verbessern v1 §8.2 „Kennzeichen statt Name“ (Regel V6, Zusage aus PR 4): eine Überschrift und ein
+   * Dialogtitel beginnen mit dem Namen des Vorgangs, das Kennzeichen (EZ-, M-, AW-) steht danach - nie vorn.
+   */
+  // `title` am Modal, `titel` als Prop eines Rahmens (AbweichungDialoge) oder als Konstante davor.
+  const KENNZEICHEN_VORN = [
+    /<h1\b[^>]*>\s*(?:\{[^{}]*\bkennzeichen\b[^{}]*\}|(?:EZ|M|AW)-)/u,
+    /\b(?:title|titel)=\{\s*(?:[\w.?]*\.)?kennzeichen\b/u,
+    /\b(?:title|titel)=\{\s*`\$\{[^{}]*\bkennzeichen\b/u,
+    /\b(?:title|titel)="(?:EZ|M|AW)-/u,
+    /\b(?:title|titel)\s*=\s*`\$\{[^{}]*\bkennzeichen\b/u,
+  ];
+  const kennzeichenVorn = (code: string) => KENNZEICHEN_VORN.some((re) => re.test(code));
+  it('Überschrift und Dialogtitel beginnen mit dem Namen, nie mit dem Kennzeichen', () => {
+    for (const datei of verbesserungFlaechen()) {
+      expect(kennzeichenVorn(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
+    }
+    for (const probe of [
+      '<h1 data-testid="massnahme-titel">{m.kennzeichen} {m.titel}</h1>',
+      '<h1>\n  {ez.kennzeichen}\n</h1>',
+      '<h1>EZ-2028-0001</h1>',
+      '<Modal open title={a.kennzeichen} onClose={zu}>',
+      '<Modal open title={`${m.kennzeichen} umgesetzt melden`} onClose={zu}>',
+      '<Modal open title="AW-2028-0001 abschließen" onClose={zu}>',
+      'const titel = `${ez.kennzeichen} bewerten`;',
+      '<Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_AUSSAGE}`} basis={basis}>',
+      '<Rahmen titel={`${abweichung.kennzeichen} ${A.KNOPF_ABSCHLIESSEN}`} basis={basis}>',
+      '<Rahmen titel={abweichung.kennzeichen} basis={basis}>',
+    ]) {
+      expect(kennzeichenVorn(probe), probe).toBe(true);
+    }
+    for (const gut of [
+      '<h1 data-testid="massnahme-titel">\n  {m.titel}\n  <span className="vp-mn-kz">{m.kennzeichen}</span>\n</h1>',
+      '<h1>{A.abweichungTitel(a)} <span className="vp-abw-kz">{a.kennzeichen}</span></h1>',
+      'title={`${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEENDEN}`}',
+      'const titel = `${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEWERTEN}`;',
+      '<Rahmen titel={A.KNOPF_AUSSAGE} abweichung={abweichung} basis={basis}>',
+    ]) {
+      expect(kennzeichenVorn(gut), gut).toBe(false);
+    }
+  });
 });
 
 describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
@@ -3371,12 +3467,13 @@ describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
     }
   });
 
-  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche', () => {
+  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche — außer der Ausnahme aus Nachweisen Entscheid 18', () => {
     const funde = customerFiles().flatMap((file) => {
       const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
       if (wo === 'begriffe.ts') return [];
       return visibleTexts(readFileSync(file, 'utf8'))
         .filter(isKundentext)
+        .filter((text) => !nachweisenFachwortAusnahme(wo, text))
         .filter((text) => verboteIn(text).length > 0)
         .map((text) => `${wo}: „${text}“`);
     });
@@ -3385,6 +3482,9 @@ describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
     expect(fachwortAusnahme('begriffe.ts', BEGRIFFE.massnahme.fachwort!)).toBe(true);
     expect(fachwortAusnahme('components/MassnahmeDialoge.tsx', BEGRIFFE.massnahme.fachwort!)).toBe(false);
     expect(fachwortAusnahme('begriffe.ts', 'Aktionsplan 2029')).toBe(false);
+    // Die Gegenstelle aus Nachweisen Entscheid 18 greift nur in `auditBild.ts`.
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_FESTSTELLUNG)).toBe(true);
+    expect(nachweisenFachwortAusnahme('begriffe.ts', NORMWORT_FESTSTELLUNG)).toBe(false);
   });
 
   it('die letzte Zeile von „Was ist …?“ sagt „Fachwort“ oder bei mehreren „Fachwörter“', () => {
@@ -3434,10 +3534,8 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     // IP-9: Bereich (mit Reiter „Dokumente“), Verzeichnis, Dokument-Seite, Dialoge (Anlegen, Fassung/Verweis, Freigabe,
     // Person anlegen), Vergleich Anwendungsbereich ⟷ Betrachtungsumfang, Zuschnitt-Hilfe.
     'pages/EnergiemanagementBereich.tsx',
-    'components/VerzeichnisTabelle.tsx',
     'pages/DokumentSeite.tsx',
     'components/DokumentDialoge.tsx',
-    'components/AnwendungsbereichVergleich.tsx',
     'components/ZuschnittHilfe.tsx',
     // IP-13: Reiter „Aufgaben“ mit Personen, „Wer ist wofür verantwortlich“, Personen-Seite, Dialoge Zuordnen/Beenden/
     // Angaben ändern.
@@ -3447,9 +3545,11 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'components/EnergiemanagementAufgabeDialoge.tsx',
     // IP-15: der Abschnitt „Nachweise“ an der Einsatz-Seite (AP-16) und an der Personen-Seite, mit „Nachweis festhalten“.
     'components/Nachweise.tsx',
-    // IP-20: Reiter „Audits“ (Auditprogramm) und „Feststellungen“, Audit-Seite, Feststellungs-Seite, ihre Dialoge.
+    // IP-20: Reiter „Audits“ (seit Nachweisen n1 Entscheid 17 mit den Feststellungen), Audit-Seite, Feststellungs-Seite,
+    // ihre Dialoge und Blätter (Audit planen, Wirksamkeit prüfen).
     'components/EnergiemanagementAudits.tsx',
-    'components/EnergiemanagementFeststellungen.tsx',
+    'components/AuditBlaetter.tsx',
+    'components/FeststellungBlaetter.tsx',
     'pages/AuditSeite.tsx',
     'pages/FeststellungSeite.tsx',
     'components/InternesAuditDialoge.tsx',
@@ -3531,12 +3631,14 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
       [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])].filter(isKundentext),
     ),
   ];
-  const wortFehler = (code: string) =>
-    kundenTexte(code).flatMap((text) => [
-      ...verstoesse(text).map((re) => `SP2 ${re} in „${text}“`),
-      ...normNummern(text).map((re) => `Norm-Nummer ${re} in „${text}“`),
-      ...doppelt(text).map((re) => `SP3 ${re} in „${text}“`),
-    ]);
+  const wortFehler = (code: string, datei?: string) =>
+    kundenTexte(code)
+      .filter((text) => !nachweisenFachwortAusnahme(datei, text))
+      .flatMap((text) => [
+        ...verstoesse(text).map((re) => `SP2 ${re} in „${text}“`),
+        ...normNummern(text).map((re) => `Norm-Nummer ${re} in „${text}“`),
+        ...doppelt(text).map((re) => `SP3 ${re} in „${text}“`),
+      ]);
   /** Alles, was eine Fläche falsch machen kann — leer heißt: die Fläche besteht den Wächter. */
   const flaechenFehler = (code: string) => {
     const sichtbar = stripComments(code);
@@ -3547,7 +3649,11 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     ];
   };
 
-  /** Die 37 Sätze der Energiemanagement-Flächen aus AP-19 §5.8, wörtlich (ohne die Herkunft-Zeile der Maßnahmen-Seite). */
+  /**
+   * Die 37 Sätze der Energiemanagement-Flächen aus AP-19 §5.8, wörtlich (ohne die Herkunft-Zeile der Maßnahmen-Seite),
+   * und seit Vertrag 1.4 die Bekanntmachung ohne und mit Person und die Gegenrichtung des Vergleichs (Konzept
+   * Nachweisen n1, Befunde A14 und A21): 39.
+   */
   const SAETZE = [
     UEMS_VERANTWORTUNG,
     UEMS_NORMGRENZE,
@@ -3558,9 +3664,11 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
     'Überprüfung fällig seit 64 Tagen.',
     'Geprüft, bleibt — entschieden von Robert Falk am 10.12.2027: ‚Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.‘',
-    'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet — eingetragen von Ines Kaltenbach.',
+    'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.',
+    'Bekannt gemacht von Ines Kaltenbach am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.',
     'Der Betrachtungsumfang der energetischen Bewertung (Fassung 1, ab 04.11.2026) umfasst dieselben Standorte und Energieträger.',
     'Gas gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung 1).',
+    'Werk Lindach gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung 2), aber nicht zum Anwendungsbereich.',
     'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
     'Bezugsbasen pflegen und freigeben — keine Person festgelegt.',
     'Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘.',
@@ -3653,7 +3761,7 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
       expect(flaechenFehler(readFileSync(join(SRC, datei), 'utf8')), datei).toEqual([]);
     }
     for (const datei of energiemanagementModule()) {
-      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toEqual([]);
+      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8')), datei), datei).toEqual([]);
     }
     for (const datei of ENERGIEMANAGEMENT_FLAECHEN) {
       expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
@@ -3748,8 +3856,8 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     }
   });
 
-  it('die 37 Sätze aus §5.8 bestehen den Wächter — einzeln und als Fläche (NW-4)', () => {
-    expect(SAETZE).toHaveLength(37);
+  it('die 39 Sätze aus §5.8 und Vertrag 1.4 bestehen den Wächter - einzeln und als Fläche (NW-4)', () => {
+    expect(SAETZE).toHaveLength(39);
     expect(new Set(SAETZE).size).toBe(SAETZE.length);
     for (const satz of SAETZE) {
       expect(verstoesse(satz), satz).toEqual([]);
@@ -3857,7 +3965,6 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
         'Was außerhalb von VoltPilot bei Ihnen bleibt, steht bei jeder Funktion dabei.',
         'Was VoltPilot festhält',
         'VoltPilot misst, rechnet Kennzahlen und vergleicht mit Ihrer Bezugsbasis; was die Zahlen bedeuten, entscheiden Sie.',
-        'Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.',
         'Was bei Ihnen bleibt',
         // Alle neun Kundenaufgaben wie in der Beschreibung: der Satz aus §5.8, sonst der Text der Kundenaufgabe.
         'Ihr Energiemanagement als Ganzes einführen, mit Mitteln ausstatten, aufrechterhalten und verbessern.',
@@ -3908,6 +4015,284 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
       expect(artikelFehler(verbogen)).toContain('ohne Grenz-Satz (E8)');
       expect(artikelFehler(verbogen).some((f) => f.startsWith('SP2 /konform/iu'))).toBe(true);
     });
+  });
+
+  it('Nachweisen n1: die Bausteine unter components/nachweisen tragen kein verbotenes Wort und keine Norm-Nummer (SP2, SP3)', () => {
+    // Sie stehen in einer Fläche, die beide Sätze trägt (dem Bereich), und tragen sie darum nicht selbst; die Wörter
+    // prüft dieser Fall für jede Datei des Ordners - auch für die Bausteine der übrigen Nachweisen-PRs.
+    const bausteine = customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.startsWith('components/nachweisen/'));
+    expect(bausteine).toEqual(expect.arrayContaining(['components/nachweisen/Ueberblick.tsx', 'components/nachweisen/VerzeichnisMonate.tsx']));
+    for (const datei of bausteine) {
+      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toEqual([]);
+    }
+  });
+
+  it('Entscheid 18, PR 7: die Normwörter stehen nur in der letzten Zeile von „Was ist …?“ in auditBild.ts', () => {
+    // Die Ausnahme greift nur in auditBild.ts und nur für genau diese zwei Texte.
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_FESTSTELLUNG)).toBe(true);
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_WIRKSAMKEIT)).toBe(true);
+    expect(nachweisenFachwortAusnahme('pages/FeststellungSeite.tsx', NORMWORT_FESTSTELLUNG)).toBe(false);
+    expect(nachweisenFachwortAusnahme('auditBild.ts', 'Nichtkonformität 2029')).toBe(false);
+    expect(nachweisenFachwortAusnahme(undefined, NORMWORT_FESTSTELLUNG)).toBe(false);
+    // Ohne die Ausnahme wären beide Normwörter verboten - der Wächter kennt sie, gerade weil sie Normwörter sind.
+    expect(verstoesse(NORMWORT_FESTSTELLUNG)).not.toEqual([]);
+    expect(verstoesse(NORMWORT_WIRKSAMKEIT)).not.toEqual([]);
+    // Die Erklärungen tragen das Normwort tatsächlich, als letzte Zeile, unter der Wortgrenze (§0.4).
+    for (const e of [erklaerungFeststellung(null), ERKLAERUNG_WIRKSAMKEIT]) {
+      expect(e.fachwort).not.toBeNull();
+      expect(erklaerZeilen(e).at(-1)).toBe(`${NORMWORT} ${e.fachwort}`);
+      expect(erklaerWoerter(e)).toBeLessThanOrEqual(ERKLAER_WOERTER_HOECHSTENS);
+    }
+    // Außerhalb von auditBild.ts steht keines der beiden Normwörter auf einer Energiemanagement-Fläche.
+    for (const datei of [...energiemanagementFlaechen(), ...energiemanagementModule()]) {
+      if (datei === 'auditBild.ts') continue;
+      const texte = kundenTexte(stripComments(readFileSync(join(SRC, datei), 'utf8')));
+      expect(texte.filter((t) => t === NORMWORT_FESTSTELLUNG || t === NORMWORT_WIRKSAMKEIT), datei).toEqual([]);
+    }
+  });
+});
+
+/**
+ * Konzept Nachweisen n1, Runde 2, PR 7 (Wörter): die Flächen, die `NwKopf` zeigen - erkannt an der Schreibweise des
+ * Bausteins selbst, nicht an einer gepflegten Liste, damit eine neue Fläche den Block automatisch erreicht.
+ */
+const nachweisenKopfFlaechen = () =>
+  customerFiles()
+    .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+    .filter((datei) => /<NwKopf\b/.test(readFileSync(join(SRC, datei), 'utf8')));
+
+describe('Konzept Nachweisen n1 · Wörter (PR 7, Entscheide 1, 18, 25)', () => {
+  it('findet die Kopf-Flächen und prüft die Mechanik am Prüfling', () => {
+    const flaechen = nachweisenKopfFlaechen();
+    expect(flaechen).toEqual(
+      expect.arrayContaining(['pages/AuditSeite.tsx', 'pages/DokumentSeite.tsx', 'pages/BerichtSeite.tsx', 'components/nachweisen/Ueberblick.tsx']),
+    );
+    expect(/<NwKopf\b/.test("<NwKopf titel={d.titel} kennzeichen={d.kennzeichen} />")).toBe(true);
+    expect(/<NwKopf\b/.test('<NwKarte titel="Werte">')).toBe(false);
+  });
+
+  /**
+   * Entscheid 25 (NwKopf.tsx): der Titel ist der Name der Fläche oder der Name, den die Person vergeben hat - nie ein
+   * Kennzeichen. Das Kennzeichen hat seinen eigenen, leisen Platz (`kennzeichen=`), nie im Feld `titel`.
+   */
+  const NW_KOPF_TITEL = /<NwKopf\b[^>]*?\btitel=\{([^}]*)\}/gsu;
+  const kennzeichenAlsTitel = (titelAusdruck: string) => /\bkenn(?:zeichen|ung)\b/u.test(titelAusdruck);
+
+  it('Entscheid 25: kein Kennzeichen im Feld `titel` von NwKopf', () => {
+    const funde: string[] = [];
+    for (const datei of nachweisenKopfFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      for (const m of code.matchAll(NW_KOPF_TITEL)) {
+        if (kennzeichenAlsTitel(m[1])) funde.push(`${datei}: titel={${m[1].trim()}}`);
+      }
+    }
+    expect(funde, funde.join('\n')).toEqual([]);
+    // Mechanik: die Probe schlägt wirklich an, ein echter Titel (Name oder Konstante) lässt sie unberührt.
+    expect(kennzeichenAlsTitel('d.kennzeichen')).toBe(true);
+    expect(kennzeichenAlsTitel('b.kennung')).toBe(true);
+    expect(kennzeichenAlsTitel("fehler ? 'Feststellung' : 'Wird geladen …'")).toBe(false);
+    expect(kennzeichenAlsTitel('N.DOKUMENTE_TITEL')).toBe(false);
+    expect([...'<NwKopf titel={d.kennzeichen} />'.matchAll(NW_KOPF_TITEL)].map((m) => m[1])).toEqual(['d.kennzeichen']);
+  });
+
+  /**
+   * Befund 8 (Rohe Werte im Verzeichnis, behoben in PR 1): Vokabular-Schlüssel wie `nicht_wesentlich` oder ein roher
+   * ISO-Zeitraum wie „2028-04/2029-03“ sind nie Kundentext - nur die übersetzten Wörter aus den Vokabularen. Die
+   * umlautlose Schreibweise (`zurueckgenommen`, `eingeloest`) ist dabei selbst schon das Erkennungsmerkmal: das
+   * richtige deutsche Wort trägt immer ein Ü/Ö.
+   */
+  const ROHE_WERTE = [
+    /\bnicht_wesentlich\b/u,
+    /\bnicht_wirksam\b/u,
+    /\bohne_massnahme\b/u,
+    /\bzurueckgenommen\b/u,
+    /\beingeloest\b/u,
+    /\b\d{4}-\d{2}\/\d{4}-\d{2}\b/u,
+  ];
+  const roheWerte = (text: string) => ROHE_WERTE.filter((re) => re.test(text));
+
+  /**
+   * N-7.2 (Review r2, SOLLTE): `isKundentext` verwirft genau die Treffer, auf die es hier ankommt - `nicht_wesentlich`
+   * und `2028-04/2029-03` haben weder ein Leerzeichen noch einen großen Anfangsbuchstaben, gelten der allgemeinen
+   * Regel nach also nicht als Kundentext. Darum lesen wir die reinen Bild-Module roh: jeder Treffer ist verboten,
+   * außer an den zwei Stellen, die keinen Anzeige-Text bauen - ein Vergleich (`=== '…'`/`!== '…'`) und ein
+   * unquotiertes Wörterbuch-Schlüsselwort (`wort: '…'`, siehe `ERGEBNIS_WORT` & Co. in `auditBild.ts`).
+   */
+  const NACHWEISEN_REINE_MODULE = ['auditBild.ts', 'nachweisDokumente.ts', 'nachweisBerichte.ts', 'managementbewertungBild.ts', 'aufgabenBild.ts'];
+  const roheWerteImCode = (code: string) => {
+    const funde: { re: RegExp; text: string }[] = [];
+    for (const re of ROHE_WERTE) {
+      const global = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+      for (const m of code.matchAll(global)) {
+        const vor = code.slice(Math.max(0, m.index - 12), m.index);
+        const nach = code.slice(m.index + m[0].length, m.index + m[0].length + 3);
+        if (/(?:===|!==)\s*['"]?$/u.test(vor)) continue; // Vergleich, kein Anzeige-Text
+        if (/^['"]?\s*:/u.test(nach)) continue; // Wörterbuch-Schlüssel, kein Wert
+        funde.push({ re, text: m[0] });
+      }
+    }
+    return funde;
+  };
+
+  it('Befund 8: kein roher Vokabular-Schlüssel und kein roher ISO-Zeitraum auf einer Nachweisen-Fläche', () => {
+    for (const probe of ['nicht_wesentlich', 'Wirksamkeit: nicht_wirksam', 'ohne_massnahme', 'zurueckgenommen', 'eingeloest', '2028-04/2029-03']) {
+      expect(roheWerte(probe), probe).not.toEqual([]);
+    }
+    for (const probe of ['nicht wesentlich', 'nicht wirksam', 'zurückgenommen', 'eingelöst', 'April 2028 bis März 2029', 'wesentlich']) {
+      expect(roheWerte(probe), probe).toEqual([]);
+    }
+    const funde = [...nachweisenKopfFlaechen(), ...customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.startsWith('components/nachweisen/') || datei === 'verzeichnisMonate.ts')]
+      .flatMap((datei) => {
+        const texte = visibleTexts(stripComments(readFileSync(join(SRC, datei), 'utf8'))).filter(isKundentext);
+        return texte.flatMap((text) => roheWerte(text).map((re) => `${datei}: ${re} in „${text}“`));
+      });
+    expect(funde, funde.join('\n')).toEqual([]);
+
+    // Mechanik: ein Vergleich und ein Wörterbuch-Schlüssel bleiben unberührt, ein Anzeige-Text schlägt an.
+    expect(roheWerteImCode("if (f.ergebnis === 'zurueckgenommen') return { text: 'zurückgenommen' };")).toEqual([]);
+    expect(roheWerteImCode("nicht_wirksam: 'nicht wirksam', zurueckgenommen: 'zurückgenommen',")).toEqual([]);
+    expect(roheWerteImCode("text: 'nicht_wesentlich'")).toHaveLength(1);
+    expect(roheWerteImCode("text: 'Wirksamkeit: nicht_wirksam'")).toHaveLength(1);
+    expect(roheWerteImCode("sub: '2028-04/2029-03'")).toHaveLength(1);
+
+    const codeFunde = NACHWEISEN_REINE_MODULE.flatMap((datei) =>
+      roheWerteImCode(stripComments(readFileSync(join(SRC, datei), 'utf8'))).map(({ re, text }) => `${datei}: ${re} im Code „${text}“`),
+    );
+    expect(codeFunde, codeFunde.join('\n')).toEqual([]);
+  });
+
+  /**
+   * N-7.3 (Review r2, SOLLTE): `nachweisenFachwortAusnahme` kennt nur Datei und Text - sie ließe das Normwort auch in
+   * einem ANDEREN Feld von `auditBild.ts` durch (M6) oder den Bezeichner `NORMWORT_…` auf einer fremden Fläche
+   * durchreichen (M4). Zwei engere Proben schließen das, ohne die generischen Wächter anzufassen: Der Text steht in
+   * `auditBild.ts` nur in seiner eigenen `export const NORMWORT_… = '…'`-Zeile; der Bezeichner wird außerhalb von
+   * `auditBild.ts` nirgends referenziert (Kundenflächen - Testdateien bringen ihre eigenen Festwerte mit).
+   */
+  it('N-7.3: die Normwort-Ausnahme ist eng - nur die eigene Deklaration, der Bezeichner nirgends sonst', () => {
+    const normwortAusserhalbDeklaration = (code: string, konstante: string, wort: string) => {
+      const funde: string[] = [];
+      const re = new RegExp(wort.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu');
+      const deklaration = new RegExp(`${konstante}\\s*=\\s*['"]$`, 'u');
+      for (const m of code.matchAll(re)) {
+        const vor = code.slice(Math.max(0, m.index - 40), m.index);
+        if (!deklaration.test(vor)) funde.push(`„${wort}“ außerhalb seiner Deklaration`);
+      }
+      return funde;
+    };
+    // Mechanik: die eigene Deklaration bleibt unberührt, ein zweites Vorkommen (M6: als Status-Text) schlägt an.
+    expect(normwortAusserhalbDeklaration("export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität';", 'NORMWORT_FESTSTELLUNG', 'Nichtkonformität')).toEqual([]);
+    expect(
+      normwortAusserhalbDeklaration("export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität'; const s = { text: 'Nichtkonformität' };", 'NORMWORT_FESTSTELLUNG', 'Nichtkonformität'),
+    ).toHaveLength(1);
+
+    const auditBildCode = stripComments(readFileSync(join(SRC, 'auditBild.ts'), 'utf8'));
+    const texteFunde = [
+      ...normwortAusserhalbDeklaration(auditBildCode, 'NORMWORT_FESTSTELLUNG', NORMWORT_FESTSTELLUNG),
+      ...normwortAusserhalbDeklaration(auditBildCode, 'NORMWORT_WIRKSAMKEIT', NORMWORT_WIRKSAMKEIT),
+    ];
+    expect(texteFunde, texteFunde.join('\n')).toEqual([]);
+
+    // Der Bezeichner selbst steht auf keiner Kundenfläche außer seiner eigenen Datei.
+    const bezeichnerFunde = customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei !== 'auditBild.ts')
+      .flatMap((datei) => {
+        const code = readFileSync(join(SRC, datei), 'utf8');
+        return ['NORMWORT_FESTSTELLUNG', 'NORMWORT_WIRKSAMKEIT']
+          .filter((id) => new RegExp(`\\b${id}\\b`, 'u').test(code))
+          .map((id) => `${datei}: ${id}`);
+      });
+    expect(bezeichnerFunde, bezeichnerFunde.join('\n')).toEqual([]);
+  });
+
+  /**
+   * N-7.1 (Review r2, MUSS): „höchstens acht Wörter“ prüft die ECHTEN Status- und Kurzzeilen-Funktionen der reinen
+   * Module (`auditBild.ts`, `managementbewertungBild.ts`, `nachweisBerichte.ts`, `nachweisDokumente.ts`,
+   * `aufgabenBild.ts`) mit eigenen, minimalen Festwerten (`audit`/`feststellung`/`dokument` unten, Muster
+   * `auditBild.test.ts`) - keine getippte Liste mehr: eine Änderung an einer dieser Funktionen, die ihren Satz länger
+   * macht, lässt diesen Fall rot werden. Gezählt wird `text` + `sub` zusammen (die Status-Zeile zeigt beides).
+   */
+  const PERSON_CB = { id: 'cb', name: 'Claudia Berger', funktion: 'Controlling', kuerzel: 'CB', mit_konto: true };
+  const PERSON_RF = { id: 'rf', name: 'Robert Falk', funktion: 'Geschäftsführer', kuerzel: 'RF', mit_konto: true };
+  const WOERTER_EINGETRAGEN = { akteur: { sub: 'IK', name: 'Ines Kaltenbach', rolle: 'energiemanager', art: 'kunde' as const }, am: '2029-01-10T09:00:00+01:00' };
+  const woerterAudit = (over: Partial<InternesAudit> = {}): InternesAudit => ({
+    id: 'au', kennzeichen: 'AU-2029-0001', titel: 'Internes Audit 2029', termin: '2029-01-22',
+    auditoren: [PERSON_CB], unabhaengigkeit: 'gehört nicht zum Energieteam', was: 'Grundlagen', woran: 'Energiepolitik',
+    verantwortlich: { sub: 'IK', name: 'Ines Kaltenbach' }, standort_ids: [], zustand: 'abgeschlossen', durchgefuehrt_am: '2029-01-22',
+    abgesagt_begruendung: null, hinweise: 0, feststellungen: [], abschluss: null, eingetragen: WOERTER_EINGETRAGEN, ...over,
+  });
+  const woerterFeststellung = (over: Partial<Feststellung> = {}): Feststellung => ({
+    id: 'f1', kennzeichen: 'F-2029-0001', quelle: { art: 'internes_audit', audit_id: 'au', kennung: 'AU-2029-0001', wortlaut: null },
+    wortlaut: 'Wer die Bezugsbasen pflegt und freigibt, ist nicht festgelegt.',
+    vorgabe: { dokument_id: null, dokument: null, fassung: null, wortlaut: null },
+    bezug: { standort_id: null, aufgabe: null, dokument_id: null, dokument: null, objekte: [] },
+    festgestellt_von: PERSON_CB, festgestellt_am: '2029-01-22', verantwortlich: { sub: 'JW', name: 'Jonas Wendlinger' }, frist: '2029-04-22',
+    zustand: 'abgeschlossen', lage: { abruf: '2029-04-30', faellig_am: null, tage: null, satz: null, grund: 'abgeschlossen' },
+    ergebnis: 'wirksam', abgeschlossen_am: '2029-04-15', eintraege: 0, massnahmen: [], eingetragen: WOERTER_EINGETRAGEN, ...over,
+  });
+  const woerterDokument = (over: Partial<EnergiemanagementDokument> = {}): EnergiemanagementDokument => ({
+    id: 'd1', kennzeichen: 'D-0001', art: 'energiepolitik', art_wort: 'Energiepolitik', klasse: 'vorgabe', titel: 'Energiepolitik',
+    bezug: { art: 'unternehmen', standort: null }, zustand: 'gueltig', gueltige_fassung: 1,
+    ueberpruefung: { abruf: '2029-04-30', faellig_am: '2030-03-20', basis: '2029-03-20', fassung: 1, tage: -324, satz: 'fällig in 324 Tagen', grund: null },
+    eingetragen: WOERTER_EINGETRAGEN, ueberpruefung_monate: 12, beleg: null,
+    fassungen: [{
+      nr: 1, form: 'wortlaut', wortlaut: 'Wortlaut der Energiepolitik.', verweis: null, anwendungsbereich: null, status: 'freigegeben',
+      begruendung: null, beschluss_kennung: null, pruefsumme: 'sha256:00', vieraugen: false, entschieden_von: PERSON_RF,
+      entschieden_am: '2026-12-15', freigabe_begruendung: null, freigabe: WOERTER_EINGETRAGEN, zweite_person: null,
+    }],
+    eintraege: [], saetze: { kopf: null, ueberpruefung: null, freigabe_gesperrt: null }, verlauf: [], ...over,
+  });
+  /** `text` + `sub` zusammen, wie die Status-Zeile sie zeigt (`NwKopf`/`StatusZeile`). */
+  const statusWoerter = (s: { text: string; sub?: string | null }) => woerter(s.sub ? `${s.text} ${s.sub}` : s.text);
+
+  it('N-7.1: Status- und Kurzzeilen der reinen Nachweisen-Module bleiben unter acht Wörtern', () => {
+    const status: { name: string; ergebnis: { text: string; sub?: string | null } }[] = [
+      { name: 'auditsStatus (keine offen)', ergebnis: auditsStatus([]) },
+      { name: 'auditsStatus (eine offen)', ergebnis: auditsStatus([{ zustand: 'offen', lage: { abruf: '2029-04-30', faellig_am: '2029-05-01', tage: -1, satz: null, grund: null } }]) },
+      { name: 'auditStatus (abgeschlossen)', ergebnis: auditStatus(woerterAudit({ zustand: 'abgeschlossen' })) },
+      { name: 'auditStatus (durchgeführt)', ergebnis: auditStatus(woerterAudit({ zustand: 'durchgefuehrt' })) },
+      { name: 'auditStatus (geplant)', ergebnis: auditStatus(woerterAudit({ zustand: 'geplant' })) },
+      { name: 'feststellungStatus (behoben und wirksam)', ergebnis: feststellungStatus(woerterFeststellung(), []) },
+      { name: 'feststellungStatus (ohne Maßnahme abgeschlossen)', ergebnis: feststellungStatus(woerterFeststellung({ ergebnis: 'ohne_massnahme' }), []) },
+      { name: 'feststellungStatus (überfällig)', ergebnis: feststellungStatus(woerterFeststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-04-22', tage: 8, satz: null, grund: null } }), []) },
+      {
+        name: 'feststellungStatus (beantragt)',
+        ergebnis: feststellungStatus(
+          woerterFeststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-05-01', tage: -1, satz: null, grund: null } }),
+          [{ status: 'beantragt', ergebnis: 'nicht_wirksam', eingetragen: WOERTER_EINGETRAGEN } as Pick<FeststellungStand, 'status' | 'ergebnis' | 'eingetragen'>],
+        ),
+      },
+      { name: 'mbStatus (gilt)', ergebnis: mbStatus({ freigegeben: true, stand_nr: 1 }) },
+      { name: 'mbStatus (Entwurf)', ergebnis: mbStatus({ freigegeben: false, stand_nr: null }) },
+      { name: 'aufgabenStatus (alle besetzt)', ergebnis: aufgabenStatus([{ ohnePerson: false }]) ?? { text: '' } },
+      { name: 'aufgabenStatus (3 ohne Person)', ergebnis: aufgabenStatus([{ ohnePerson: true }, { ohnePerson: true }, { ohnePerson: true }, { ohnePerson: false }]) ?? { text: '' } },
+      { name: 'ND.listenStatus (gelten)', ergebnis: ND.listenStatus({ gelten: 5, ueberfaellig: 0, entwuerfe: 0 }) },
+      { name: 'ND.listenStatus (überfällig)', ergebnis: ND.listenStatus({ gelten: 5, ueberfaellig: 2, entwuerfe: 0 }) },
+      { name: 'ND.seitenStatus (gilt)', ergebnis: ND.seitenStatus(woerterDokument()) },
+      { name: 'ND.seitenStatus (wartet auf Freigabe)', ergebnis: ND.seitenStatus(woerterDokument({ fassungen: [{ ...woerterDokument().fassungen[0], nr: 2, status: 'entwurf' }, woerterDokument().fassungen[0]] })) },
+      { name: 'NB.seitenStatus (gilt)', ergebnis: NB.seitenStatus(detailAm(Date.parse('2029-04-30T09:00:00+01:00')), null) },
+    ];
+    for (const { name, ergebnis } of status) expect(statusWoerter(ergebnis), `${name}: „${ergebnis.text}${ergebnis.sub ? ` ${ergebnis.sub}` : ''}“`).toBeLessThanOrEqual(8);
+
+    const kurzzeilen: { name: string; text: string }[] = [
+      { name: 'auditorenZeile (eine Person)', text: auditorenZeile(woerterAudit()) },
+      { name: 'auditsKurzzeile (jährlich)', text: auditsKurzzeile(12) },
+      { name: 'auditsKurzzeile (alle 18 Monate)', text: auditsKurzzeile(18) },
+      { name: 'mbKurzzeile (freigegeben)', text: mbKurzzeile({ freigegeben: true, sitzung: { tag: '2029-02-12', leitung: { name: 'Robert Falk' } } }) },
+      { name: 'mbKurzzeile (Entwurf)', text: mbKurzzeile({ freigegeben: false, sitzung: null }) },
+      { name: 'feststellungHerkunft (internes Audit)', text: feststellungHerkunft({ quelle: { art: 'internes_audit' } }, woerterAudit()) },
+      { name: 'feststellungHerkunft (Managementbewertung)', text: feststellungHerkunft({ quelle: { art: 'managementbewertung' } }, null) },
+      { name: 'ND.kurzzeile (Fassung 2)', text: ND.kurzzeile(woerterDokument({ gueltige_fassung: 2, fassungen: [{ ...woerterDokument().fassungen[0], nr: 2 }] })) },
+      { name: 'ND.kurzzeile (Entwurf)', text: ND.kurzzeile(woerterDokument({ gueltige_fassung: null, fassungen: [] })) },
+    ];
+    for (const { name, text } of kurzzeilen) expect(woerter(text), `${name}: „${text}“`).toBeLessThanOrEqual(8);
+
+    // Mechanik: der Zähler selbst schlägt bei neun Wörtern an.
+    expect(woerter('eins zwei drei vier fünf sechs sieben acht neun')).toBe(9);
   });
 });
 

@@ -40,9 +40,13 @@ public final class EnergiemanagementRegeln {
             Map.entry("verweis_keine_datei", "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist."),
             Map.entry("ueberpruefung", "Überprüfung fällig seit {tage} Tagen."),
             Map.entry("geprueft_bleibt", "Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘"),
-            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}."),
+            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg}."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+            Map.entry("bekanntmachung_durch", "Bekannt gemacht von {person} am {am} an {kreis} über {weg}."),
             Map.entry("anwendungsbereich_deckungsgleich", "Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger."),
             Map.entry("anwendungsbereich_unterschied", "{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung})."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+            Map.entry("anwendungsbereich_nur_im_umfang", "{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich."),
             Map.entry("freigabe_ohne_leitung", "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt."),
             Map.entry("aufgabe_ohne_person", "{aufgabe} — keine Person festgelegt."),
             Map.entry("person_ohne_konto", "{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘."),
@@ -114,6 +118,10 @@ public final class EnergiemanagementRegeln {
         m.put("verzeichnis_gruppe", List.of("grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation", "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen", "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte"));
         m.put("ueberpruefung_art", List.of("dokument", "internes_audit", "managementbewertung", "feststellung"));
         m.put("ueberpruefung_grund", List.of("nachweis", "keine_fassung", "kein_audit", "keine_managementbewertung", "abgeschlossen"));
+        // Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
+        m.put("teil", List.of("energiepolitik", "anwendungsbereich", "rechtliche_anforderungen", "kontext", "risiken_chancen", "aufgaben", "kompetenz", "kommunikation", "betrieb", "auslegung", "beschaffung", "energetische_bewertung", "bezugsbasen", "massnahmen", "interne_audits", "feststellungen", "managementbewertung", "berichte"));
+        // Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+        m.put("mappe_anlass", List.of("audit_von_aussen", "anfrage_behoerde", "eigene_ablage"));
         return m;
     }
 
@@ -142,6 +150,27 @@ public final class EnergiemanagementRegeln {
                 "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
         m.put("verzeichnis_ort", geordnet("in_voltpilot", "in VoltPilot", "wortlaut_original_beim_kunden", "Wortlaut in VoltPilot, Original bei Ihnen",
                 "verweis", "Geführt in Ihrem System"));
+        // Vertrag 1.3: Name und Kurzwort je Teil (Entscheid 23).
+        m.put("teil", geordnet("energiepolitik", "Energiepolitik", "anwendungsbereich", "Anwendungsbereich", "rechtliche_anforderungen", "Rechtliche Anforderungen",
+                "kontext", "Kontext und interessierte Parteien", "risiken_chancen", "Risiken und Chancen", "aufgaben", "Aufgaben im Energiemanagement",
+                "kompetenz", "Kompetenz", "kommunikation", "Kommunikation", "betrieb", "Betrieb und Instandhaltung",
+                "auslegung", "Auslegung", "beschaffung", "Beschaffung", "energetische_bewertung", "Energetische Bewertung und Messplanung",
+                "bezugsbasen", "Kennzahlen und Bezugsbasen", "massnahmen", "Energieziele und Maßnahmen", "interne_audits", "Interne Audits",
+                "feststellungen", "Feststellungen", "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
+        m.put("teil_kurz", geordnet("energiepolitik", "Energiepolitik", "anwendungsbereich", "Anwendungsbereich", "rechtliche_anforderungen", "Rechtliche Anforderungen",
+                "kontext", "Kontext", "risiken_chancen", "Risiken und Chancen", "aufgaben", "Aufgaben",
+                "kompetenz", "Kompetenz", "kommunikation", "Kommunikation", "betrieb", "Betrieb und Instandhaltung",
+                "auslegung", "Auslegung", "beschaffung", "Beschaffung", "energetische_bewertung", "Energetische Bewertung",
+                "bezugsbasen", "Bezugsbasen", "massnahmen", "Maßnahmen", "interne_audits", "Interne Audits",
+                "feststellungen", "Feststellungen", "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
+        // Vertrag 1.5 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name bleibt im Blatt.
+        m.put("aufgabe_kurz", geordnet("unternehmensleitung", "Leitung", "energiemanagement_leiten", "Energiemanagement leiten",
+                "energieteam", "Energieteam", "bezugsbasen", "Bezugsbasen", "energieziele_massnahmen", "Ziele und Maßnahmen",
+                "bewertung_messplanung", "Energetische Bewertung", "interne_audits", "Interne Audits",
+                "managementbewertung", "Managementbewertung", "dokumente", "Dokumente", "weitere", "Weitere Aufgabe"));
+        // Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+        m.put("mappe_anlass", geordnet("audit_von_aussen", "Audit von außen", "anfrage_behoerde", "Anfrage einer Behörde",
+                "eigene_ablage", "Eigene Ablage"));
         return m;
     }
 

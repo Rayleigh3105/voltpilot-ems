@@ -41,6 +41,10 @@ Die Umgebung für die Fachperson erreichbar machen (Adresse, Portal, Zugangsweg)
   Zuweisungen und Bühnen-Uhr für die Leser war die echte Frist auf der Bühne längst vorbei → `KennzahlAbgelehnt`
   (500) im Verzeichnis (über `EnergiezielService.liste`). Darum zählt die Frist auf der Bühne: letzter Tag =
   Bühnen-Heute + Tage; weil die Bühne in echter Zeit läuft, endet der Zugang nach genau so vielen echten Tagen.
+- Seit Konzept Nachweisen n1 (PR 0) läuft auch `EnergiemanagementPersonenService` (Aufgaben, Verantwortung) auf der
+  Bühne: ohne `tag` nennt die Route den Tag der Bühne, und das Portal übernimmt ihn (`routenUhr.ts`). Wer eine neue
+  Route mit „heute“ baut, stellt ihre Uhr in `PruefumgebungUhr.stellen(Clock)` mit - sonst nennt eine Seite 2026
+  neben dem Stichtag 2029. Die Bericht-Routen tragen dafür `abruf` (Augenblick der Route).
 - Seit K1 (#1428) rechnen auch `KennzahlLauf` und die Bericht-Naht der Kaskade (`BerichtKaskade`) auf der Bühne; die Bühne beginnt nie vor dem jüngsten `kennzahl_wert.berechnet_am`.
   ⚠ Kennzahlwerte mit Bühnenzeit neben einer API, die in echter Zeit rechnet, halten die Kaskade aller Mandanten an: jede neue Ablesung kaskadiert über die ganze Reihe („liegt nicht nach der neuesten Zeile“, an der Bericht-Naht D2).
   ⚠ Im Testlauf ist die Bericht-Naht aus (surefire `voltpilot.uems.berichte.enabled=false`); ihr Verhalten zeigt nur eine laufende API, z. B. auf einer Kopie der Demo-DB.

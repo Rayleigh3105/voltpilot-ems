@@ -514,10 +514,13 @@
 }
 
 /* --- Telefon: BOTTOM-SHEET (Captain-Entscheid 2). ------------------------- */
+/* Dieselbe Ebene wie das Bottom-Sheet (`.vp-bs-wrap`, 1200): ein Picker IN einem Blatt (Nachweisen-Blätter) öffnet
+   später und liegt deshalb darüber - Tippen daneben schließt den Picker, nicht das Blatt darunter. Mit 1190 lag der
+   Hintergrund unter dem Blatt, und der Tipp traf dessen Schleier. */
 .vp-picker-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1190;
+  z-index: 1200;
   background: rgba(15, 23, 42, 0.42);
 }
 .vp-picker-panel.is-sheet {

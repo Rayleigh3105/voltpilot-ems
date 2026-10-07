@@ -205,9 +205,11 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     beispiel: null,
     fachwort: 'internes Audit',
   },
+  // Befund A19 (Konzept Nachweisen n1): nicht nur aus einem Audit - auch eigene, von außen oder aus einer
+  // Managementbewertung (Vertrag `feststellung_quelle`).
   feststellung: {
     wort: UEMS_FESTSTELLUNG,
-    klartext: 'Etwas, das bei einem Audit aufgefallen ist — mit dem, was Sie dazu tun.',
+    klartext: 'Etwas läuft nicht wie geplant - festgestellt bei einem Audit, von Ihnen selbst, von außen oder aus einer Managementbewertung.',
     beispiel: null,
     fachwort: null,
   },

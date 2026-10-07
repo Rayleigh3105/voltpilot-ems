@@ -73,15 +73,26 @@ public final class ZugriffContext {
      *     abgelaufen (IP-9). Sie geben nichts frei; sie sind der Grund, aus dem eine Ablehnung
      *     {@code zugriff_beendet} heißt statt „gibt es nicht". Eine KÜNFTIGE Zuweisung steht in keiner der
      *     beiden Listen: an ihr ist nichts beendet.
+     * @param anzeigename der Name des Kundenkontos aus dem Spiegel {@code benutzer.anzeigename} - von der
+     *     Kundenadministration angelegt, vom Konto nicht änderbar; {@code null} ohne Spiegelzeile und für Partner und
+     *     Plattform. Der Urheber im Protokoll trägt diesen Namen, nie den Claim {@code name}, den jedes Konto in Keycloak
+     *     selbst setzen darf (Review Nachweisen r1, P0-1).
      */
     public record Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
             List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean bestandskonto,
-            List<ZugriffRepository.Zeile> beendete) {
+            List<ZugriffRepository.Zeile> beendete, String anzeigename) {
 
         public Zugriff {
             Objects.requireNonNull(kundenbereich, "kundenbereich");
             zuweisungen = List.copyOf(zuweisungen);
             beendete = beendete == null ? List.of() : List.copyOf(beendete);
+        }
+
+        /** Ohne Spiegelnamen — Partner, Plattform und jeder Aufbau vor P0-1. */
+        public Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
+                List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean bestandskonto,
+                List<ZugriffRepository.Zeile> beendete) {
+            this(sub, konto, kundenbereich, zugang, zuweisungen, stand, bestandskonto, beendete, null);
         }
 
         /** Ohne beendete Zuweisungen — der Zugang eines Dritten und jeder Aufbau vor IP-9. */

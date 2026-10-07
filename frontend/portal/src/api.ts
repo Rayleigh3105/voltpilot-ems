@@ -4009,6 +4009,10 @@ export interface Bericht {
   wiedervorlage_monate?: number | null;
   /** AP-16 S5/S6 (IP-24): beim Abruf abgeleitet — nur an einer energetischen Bewertung mit freigegebenem Stand. */
   ueberpruefung?: BerichtUeberpruefung | null;
+  /** Die Freigabe des gültigen Stands; ohne Stand `null` (Konzept Nachweisen n1, §6.4: Datumsblock „frei“). */
+  freigegeben_am: string | null;
+  /** Der früheste offene Anstoß am gültigen Stand (`revision_noetig`), sonst `null` (Datumsblock „seit“). */
+  anstoss_seit: string | null;
 }
 
 /**
@@ -4071,6 +4075,8 @@ export interface BerichtDetail {
   bericht: Bericht;
   staende: BerichtStandKurz[];
   anstoesse: BerichtAnstoss[];
+  /** Der Augenblick der Route (ihre Uhr): daran misst die Seite „Zeitraum läuft“, nie an der Uhr des Browsers. */
+  abruf: string;
 }
 
 /** Ein Abzug: `docs/contracts/v2/bericht.schema.json` `$defs/abzug` — gelesen über `uemsBericht.ts`. */
@@ -7725,6 +7731,16 @@ export function vergissGemerkte(): void {
   gemerkt.clear();
 }
 
+/**
+ * Welcher Kundenbereich gemeint ist: `X-Kundenbereich` (Partner und Plattform in einer Unterstützung, Kunden ohnehin),
+ * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
+ * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
+ */
+function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
+  return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
+    : mandant ? { 'X-Tenant-Id': mandant } : {};
+}
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   const angefragterMandant = tenantOverride;
   const angefragterKundenbereich = kundenbereich;
@@ -7743,8 +7759,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(angefragterKundenbereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': angefragterKundenbereich }
-        : angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
+      ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
   });
@@ -7794,7 +7809,7 @@ export async function downloadMeasurementExport(
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf(path),
     },
   });
   if (!response.ok) throw new ApiError(response.status, 'Der Export konnte nicht erstellt werden.');
@@ -7821,7 +7836,7 @@ export async function ladeGesamtabzug(): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/unternehmen/abzug`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf('/api/v1/unternehmen/abzug'),
     },
   });
   if (!res.ok) {
@@ -8874,6 +8889,11 @@ export interface EnergiemanagementAufgaben {
   aufgaben: { aufgabe: string; wort: string; laufend: EnergiemanagementZuordnung[]; satz: string | null }[];
   zuordnungen: EnergiemanagementZuordnung[];
 }
+/** Die Leitung am Tag (PA3) für wen am Standort bzw. am Unternehmen freigibt (Konzept Nachweisen n1, Befund A4). */
+export interface EnergiemanagementLeitung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+}
 export interface EnergiemanagementAufgabeZuordnen {
   aufgabe: string;
   aufgabe_wortlaut?: string | null;
@@ -8974,6 +8994,74 @@ export interface EnergiemanagementVerzeichnisFilter {
   bis?: string | null;
   person?: string | null;
 }
+/**
+ * Konzept Nachweisen n1, Entscheid 5 (Vertrag energiemanagement 1.3): „Trifft bei uns zurzeit nicht zu“ für einen Teil
+ * des Überblicks - mit Satz und der Person, die es entschieden hat; höchstens ein geltender Vermerk je Teil.
+ */
+export interface EnergiemanagementTeilVermerk {
+  id: string;
+  /** Vokabular `teil`. */
+  teil: string;
+  teil_wort: string;
+  satz: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  entschieden_am: string;
+  eingetragen: EnergiemanagementEingetragen;
+  /** Gesetzt, sobald der Vermerk aufgehoben ist; er bleibt dann lesbar. */
+  aufgehoben: { akteur: EnergiemanagementEingetragen['akteur']; am: string } | null;
+}
+export interface EnergiemanagementTeilVermerke {
+  stichtag: string;
+  vermerke: EnergiemanagementTeilVermerk[];
+}
+/**
+ * Nachweisen n1, Entscheid 7: die Mappe „Unterlagen zusammenstellen“ (`…/energiemanagement/mappen`, openapi
+ * `EnergiemanagementMappe…`). `abrufbar_tage` zählt die Datenbank in echter Zeit; 0 nach der Frist von 30 Tagen.
+ */
+export interface EnergiemanagementMappe {
+  id: string;
+  titel: string;
+  /** Vokabular `mappe_anlass` (Vertrag energiemanagement 1.6). */
+  anlass: string;
+  anlass_wort: string;
+  von: string | null;
+  bis: string;
+  stichtag: string;
+  gruppen: string[];
+  gruppen_woerter: string[];
+  offen: string[];
+  offen_woerter: string[];
+  eintraege: number;
+  gilt: number;
+  datei_titel: string;
+  datei_name: string;
+  pdf_pruefsumme: string;
+  csv_pruefsumme: string;
+  abrufbar: boolean;
+  abrufbar_tage: number;
+  aufbewahrung_tage: number;
+  abrufe: number;
+  erstellt: { name: string; am: string };
+  /** Der Augenblick des Abrufs auf der Uhr der Route (Befund 3). */
+  abruf: string;
+}
+export interface EnergiemanagementMappeAnlegen {
+  anlass: string;
+  /** Ab welchem Tag; ohne alles bis zum Stichtag. */
+  von?: string | null;
+  /** Gruppen des Verzeichnisses (Vokabular `verzeichnis_gruppe`), mindestens eine. */
+  gruppen: string[];
+  /** Die Teile, die der Überblick als offen zeigt (Vokabular `teil`). */
+  offen?: string[];
+}
+export interface EnergiemanagementTeilVermerkAnlegen {
+  teil: string;
+  satz: string;
+  /** ID einer Person im Energiemanagement. */
+  entschieden_von: string;
+  /** Ohne Angabe: heute nach der Uhr des Unternehmens. */
+  entschieden_am?: string | null;
+}
 export interface EnergiemanagementStandortKurz {
   id: string;
   kurzzeichen: string | null;
@@ -9017,6 +9105,11 @@ export interface EnergiemanagementFassung {
   ablehnung_begruendung: string | null;
   freigegeben_am: string | null;
   eingetragen: EnergiemanagementEingetragen;
+  /**
+   * Additiv (Konzept Nachweisen n1, Entscheid 10): wo das unterschriebene Original DIESER Fassung liegt - nur an einem
+   * Wortlaut, sonst `null`. Eine API vor dieser Version liefert das Feld nicht (dann gilt das Original am Dokument).
+   */
+  original?: EnergiemanagementBeleg | null;
 }
 export interface EnergiemanagementDokumentEintrag {
   id: number;
@@ -9143,11 +9236,35 @@ export interface EnergiemanagementFassungEntwerfen {
   anwendungsbereich?: { standort_ids: string[]; traeger: string[]; ausschluesse?: EnergiemanagementAusschluss[] } | null;
   begruendung?: string | null;
   beschluss_kennung?: string | null;
+  /** Entscheid 10: das Original dieser Fassung - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
 }
 export interface EnergiemanagementEntscheid {
   entschieden_von?: string | null;
   entschieden_am?: string | null;
   begruendung?: string | null;
+  /** Entscheid 10: das Original beim Übergang aus dem Entwurf (Antrag, Freigabe) - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
+}
+/** DK6: bekannt machen - an wen, am (leer = heute beim Server), über welchen Weg, durch welche Person. */
+export interface EnergiemanagementBekanntmachen {
+  kreis: string;
+  am?: string | null;
+  weg: string;
+  weg_wortlaut?: string | null;
+  person_id?: string | null;
+}
+/** DK8: aufheben - wer entschieden hat, am, warum; das Dokument bleibt lesbar. */
+export interface EnergiemanagementAufheben {
+  entschieden_von: string;
+  am?: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
+/** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens (`vorgabe` = nie eingestellt, dann gilt aus). */
+export interface UnternehmenVierAugen {
+  vieraugen: boolean;
+  vorgabe: boolean;
 }
 /** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
 export interface EnergiemanagementGeprueft {
@@ -9308,6 +9425,8 @@ export interface Feststellung {
   /** Vertrag `ueberpruefung` (Art `feststellung`) am Abruf-Tag — „seit n Tagen fällig“; abgeschlossen ohne Frist. */
   lage: { abruf: string; faellig_am: string | null; tage: number | null; satz: string | null; grund: string | null };
   ergebnis: 'wirksam' | 'ohne_massnahme' | 'zurueckgenommen' | null;
+  /** Der Tag des schließenden Stands („wirksam seit …“); offen `null`. */
+  abgeschlossen_am: string | null;
   eintraege: number;
   massnahmen: string[];
   eingetragen: EnergiemanagementEingetragen;
@@ -11450,8 +11569,12 @@ export const api = {
    * welche Hebel sie zeigen; entscheiden tut weiter die Route.
    */
   selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
-  /** Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. */
-  berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
+  /**
+   * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
+   * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
+   */
+  /** Mit `archiviert: true` auch die archivierten Berichte (Konzept Nachweisen n1, C8: die Zeile „Archiviert · n“). */
+  berichte: (o: { archiviert?: boolean } = {}) => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte${o.archiviert ? '?archiviert=true' : ''}`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
@@ -11490,7 +11613,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/berichte/${kennung}/staende/${nr}/${format}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf(`/api/v1/berichte/${kennung}/staende/${nr}/${format}`),
       },
     });
     if (!res.ok) {
@@ -11504,6 +11627,15 @@ export const api = {
     request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {
       method: 'POST',
       body: JSON.stringify({ begruendung }),
+    }),
+  /**
+   * „Nein, Stand n behalten“ (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen Anstöße mit EINEM Grund in
+   * einer Transaktion - alle oder keiner (409 `anstoss_nicht_offen` mit `anstoss_id`).
+   */
+  berichtAnstoesseVerwerfen: (kennung: string, anstossIds: readonly string[], begruendung: string) =>
+    request<{ anstoesse: BerichtAnstoss[] }>(`/api/v1/berichte/${kennung}/anstoesse/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ anstoss_ids: anstossIds, begruendung }),
     }),
   berichtArchivieren: (kennung: string) =>
     request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),
@@ -11625,6 +11757,17 @@ export const api = {
   /** IP-6 (PA2, PA3): die Aufgaben am Tag mit der Leitung — nur unternehmensweit. */
   energiemanagementAufgaben: (tag?: string) =>
     request<EnergiemanagementAufgaben>(`/api/v1/energiemanagement/aufgaben${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /**
+   * PA3, DK3: die Leitung am Tag für die Freigabe mit Leitungs-Pflicht - Recht `energiemanagement.freigeben` am Standort
+   * (ohne Standort am Unternehmen), auch ohne die Aufgaben unternehmensweit zu lesen (Konzept Nachweisen n1, Befund A4).
+   */
+  energiemanagementLeitung: (tag?: string | null, standort?: string | null) => {
+    const q = new URLSearchParams();
+    if (tag) q.set('tag', tag);
+    if (standort) q.set('standort', standort);
+    const s = q.toString();
+    return request<EnergiemanagementLeitung>(`/api/v1/energiemanagement/leitung${s ? `?${s}` : ''}`);
+  },
   /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
   energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
     request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),
@@ -11652,7 +11795,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/verzeichnis?${q}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf(`/api/v1/energiemanagement/verzeichnis?${q}`),
       },
     });
     if (!res.ok) {
@@ -11661,6 +11804,34 @@ export const api = {
     }
     return res.blob();
   },
+  /** Nachweisen n1, Entscheid 7: die Mappen, die jüngste zuerst (nur unternehmensweit). */
+  energiemanagementMappen: () => request<{ mappen: EnergiemanagementMappe[] }>('/api/v1/energiemanagement/mappen'),
+  energiemanagementMappe: (id: string) =>
+    request<EnergiemanagementMappe>(`/api/v1/energiemanagement/mappen/${encodeURIComponent(id)}`),
+  /** Nachweisen n1, Entscheid 7: Unterlagen zusammenstellen - PDF mit Inhaltsverzeichnis und Verzeichnis-CSV. */
+  energiemanagementMappeAnlegen: (body: EnergiemanagementMappeAnlegen) =>
+    request<EnergiemanagementMappe>('/api/v1/energiemanagement/mappen', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 7: eine Datei der Mappe - jeder Abruf protokolliert, nach 30 Tagen 410. */
+  energiemanagementMappeDatei: async (id: string, format: 'pdf' | 'csv'): Promise<Blob> => {
+    const pfad = `/api/v1/energiemanagement/mappen/${encodeURIComponent(id)}/${format}`;
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}${pfad}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...bereichKopf(pfad) },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** Nachweisen n1, Entscheid 5: die Vermerke „Trifft bei uns zurzeit nicht zu“, geltende zuerst. */
+  energiemanagementTeilVermerke: () => request<EnergiemanagementTeilVermerke>('/api/v1/energiemanagement/teil-vermerke'),
+  /** Nachweisen n1, Entscheid 5: einen Teil als „trifft bei uns zurzeit nicht zu“ festhalten (409 `vermerk_besteht`). */
+  energiemanagementTeilVermerkAnlegen: (body: EnergiemanagementTeilVermerkAnlegen) =>
+    request<EnergiemanagementTeilVermerk>('/api/v1/energiemanagement/teil-vermerke', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 5: einen Vermerk aufheben; er bleibt lesbar. */
+  energiemanagementTeilVermerkAufheben: (id: string) =>
+    request<EnergiemanagementTeilVermerk>(`/api/v1/energiemanagement/teil-vermerke/${encodeURIComponent(id)}/aufheben`, { method: 'POST' }),
   /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
   energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
   /** Konzept Wiedervorlage w1: „Zuletzt erledigt“, die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben. */
@@ -11671,7 +11842,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/wiedervorlage?format=ics`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf('/api/v1/energiemanagement/wiedervorlage?format=ics'),
       },
     });
     if (!res.ok) {
@@ -11732,6 +11903,17 @@ export const api = {
   /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
   energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK3 (Entscheid 11): die zweite Person lehnt einen Antrag mit Begründung ab; danach ist ein neuer Entwurf möglich. */
+  energiemanagementFassungAblehnen: (id: string, nr: number, begruendung: string) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/ablehnen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** DK6 (Entscheid 12): bekannt gemacht an einem Kreis über EINEN Weg - mehrere Wege sind mehrere Einträge. */
+  energiemanagementBekanntmachen: (id: string, body: EnergiemanagementBekanntmachen) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK8 (Entscheid 12): aufheben - Recht `energiemanagement.freigeben`; das Dokument bleibt mit allen Fassungen lesbar. */
+  energiemanagementDokumentAufheben: (id: string, body: EnergiemanagementAufheben) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/aufheben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** AP-08 E8 (Entscheid 11): ob bei diesem Unternehmen zwei Personen freigeben - das Blatt zeigt es vorab. */
+  unternehmenVierAugen: () => request<UnternehmenVierAugen>('/api/v1/unternehmen/vieraugen'),
   /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
   energiemanagementAudits: (tag?: string) =>
     request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),

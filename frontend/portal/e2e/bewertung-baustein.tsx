@@ -55,6 +55,8 @@ const bewertung: Bericht = {
   entwurf_datenstand: null,
   wiedervorlage_monate: 12,
   ueberpruefung,
+  freigegeben_am: null,
+  anstoss_seit: null,
 };
 const bild = bewertungFristBaustein([bewertung]);
 

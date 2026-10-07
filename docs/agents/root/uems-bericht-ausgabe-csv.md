@@ -9,7 +9,7 @@ Bestand-Exports: `uems-lesepfad-verlauf-herkunft-rueckfall.md`.
 | Berichts-CSV | `GET /api/v1/berichte/{kennung}/staende/{nr}/csv` in `web/BerichtController` → `uems/BerichtService.csv` → rein `uems/BerichtCsv` (Kopf und Zeile aus `BerichtRegeln.csvKopf`/`csvZeile`) |
 | Abruf-Protokoll | `BerichtRepository.abruf` (`bericht_abruf`) + Meldung `bericht_abgerufen` (Kennung = die des Abrufs), EINE Transaktion |
 | Bestand-Geräte-CSV | `web/DeviceMeasurementSelectionController.export` → `uems/BestandGeraeteCsv.erzeugung` (Recht, Standort, Unternehmen) → `MeasurementHistoryService.csv(History, Erzeugung)` |
-| Portal-Naht (nicht eingehängt) | `berichtSeite.ts`: `AUSGABE_EINGEHAENGT.csv` auf `true`, `darfNachLesen` kennt `export.*` noch nicht (antwortet `null` → kein Knopf); `pages/BerichtSeite.tsx`: `onAbruf` hereinreichen; `api.ts`: ein Download wie `downloadMeasurementExport` |
+| Portal-Naht (eingehängt, Konzept Nachweisen n1 PR 0) | `berichtSeite.ts`: `AUSGABE_EINGEHAENGT.csv = true`, `darfAusgabe` prüft `export.*` an der Geltung; `pages/BerichtSeite.tsx` ruft `api.berichtDatei` ab (mit `X-Kundenbereich` wie jeder Abruf, `bereichKopf` in `api.ts`) |
 | Tests | `BerichtCsvTest` · `BestandGeraeteCsvTest` (Vorher-Datei) · `BerichtApiTest` (`b14…`, `derBestandGeraeteCsv…`) · `UemsLesepfadTest` · `UemsLesepfadMengenTest` (md5-Karte) · `MeasurementSelectionApiTest` · `BerichtSchnittstelleVertragTest` |
 
 ```bash

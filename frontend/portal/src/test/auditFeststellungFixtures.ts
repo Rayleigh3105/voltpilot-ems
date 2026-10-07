@@ -130,8 +130,13 @@ export function auditFeststellungBuehne(
     const u = ueberpruefung({ art: 'feststellung', festgestellt_am: f.festgestellt_am, frist: f.frist, frist_tage: STARTWERTE.feststellung_frist_tage, zustand: f.zustand, abruf });
     const lage = 'fehler' in u ? f.lage : { abruf, faellig_am: u.faellig_am, tage: u.tage, satz: u.satz, grund: u.grund };
     const ms = await fsMassnahmen(f);
-    const beteiligt = [f.verantwortlich.sub];
-    const zweite = ['IK', 'JW'].filter((s) => !beteiligt.includes(s) && s !== ich.kennung).map(verantwortlich);
+    // Wie `FeststellungService#vierAugen`: Urheberin ist, wer den offenen Antrag gestellt hat, sonst ich (wenn berechtigt);
+    // zweite Person ist jede Berechtigte außer der Urheberin und der Verantwortlichen.
+    const berechtigt = ['IK', 'JW'];
+    const antrag = (staende.get(id) ?? []).find((s) => s.status === 'beantragt');
+    const urheberin = antrag ? antrag.eingetragen.akteur.sub : berechtigt.includes(ich.kennung) ? ich.kennung : null;
+    const zweite =
+      urheberin === null && berechtigt.length < 2 ? [] : berechtigt.filter((s) => s !== urheberin && s !== f.verantwortlich.sub).map(verantwortlich);
     return structuredClone({
       feststellung: { ...f, lage, eintraege: (eintraege.get(id) ?? []).length, massnahmen: ms.map((m) => m.kennzeichen) },
       eintraege: eintraege.get(id) ?? [],
@@ -182,7 +187,7 @@ export function auditFeststellungBuehne(
       vorgabe: { dokument_id: EM_IDS.d1, dokument: 'D-0001', fassung: 1, wortlaut: '„Wir legen fest, wer im Energiemanagement wofür zuständig ist.“' },
       bezug: { standort_id: null, aufgabe: 'bezugsbasen', dokument_id: null, dokument: null, objekte: ['BB-0001', 'BB-0002', 'BB-0003', 'BB-0004', 'BB-0005'] },
       festgestellt_von: P.CB, festgestellt_am: '2029-01-22', verantwortlich: verantwortlich('JW'), frist: '2029-04-22', zustand: 'offen',
-      lage: { abruf: heute(), faellig_am: '2029-04-22', tage: null, satz: null, grund: null }, ergebnis: null, eintraege: 3, massnahmen: [],
+      lage: { abruf: heute(), faellig_am: '2029-04-22', tage: null, satz: null, grund: null }, ergebnis: null, abgeschlossen_am: null, eintraege: 3, massnahmen: [],
       eingetragen: eingetragen('Ines Kaltenbach', '2029-01-23T08:30:00+01:00'),
     };
     feststellungen.push(f);
@@ -199,6 +204,7 @@ export function auditFeststellungBuehne(
       await standFesthalten(f, 'wirksam', 'Aufgabe seit 01.03.2029 festgelegt, Vertretung benannt; die Freigaben seit März nennen beide.', P.IK.id, '2029-04-15', 'freigegeben');
       f.zustand = 'abgeschlossen';
       f.ergebnis = 'wirksam';
+      f.abgeschlossen_am = '2029-04-15';
       fsLog(f.id, 'feststellung_abgeschlossen', '2029-04-15T11:00:00+02:00', null, 'Ines Kaltenbach');
     }
   })();
@@ -305,7 +311,7 @@ export function auditFeststellungBuehne(
         bezug: { standort_id: null, aufgabe: b.bezug?.aufgabe ?? null, dokument_id: null, dokument: null, objekte: b.bezug?.objekte ?? [] },
         festgestellt_von: person(b.festgestellt_von), festgestellt_am: am, verantwortlich: verantwortlich(b.verantwortlich),
         frist: b.frist ?? plusTage(am, STARTWERTE.feststellung_frist_tage), zustand: 'offen', lage: { abruf: heute(), faellig_am: null, tage: null, satz: null, grund: null },
-        ergebnis: null, eintraege: 0, massnahmen: [], eingetragen: eingetragen(ich.name, jetzt()),
+        ergebnis: null, abgeschlossen_am: null, eintraege: 0, massnahmen: [], eingetragen: eingetragen(ich.name, jetzt()),
       });
       fsLog(id, 'feststellung_erfasst', jetzt());
       return fsLesen(id);
@@ -342,6 +348,7 @@ export function auditFeststellungBuehne(
       if (status === 'freigegeben' && schliesst(b.ergebnis)) {
         f.zustand = 'abgeschlossen';
         f.ergebnis = b.ergebnis as Feststellung['ergebnis'];
+        f.abgeschlossen_am = b.am ?? heute();
         fsLog(id, 'feststellung_abgeschlossen', jetzt());
       } else fsLog(id, status === 'beantragt' ? 'wirksamkeit_beantragt' : 'wirksamkeit_geprueft', jetzt());
       return fsLesen(id);
@@ -354,14 +361,18 @@ export function auditFeststellungBuehne(
       if (s.eingetragen.akteur.name === ich.name) throw fehler(422, 'vieraugen_urheber');
       if (f.verantwortlich.sub === ich.kennung) throw fehler(422, 'vieraugen_verantwortlich');
       Object.assign(s, { status: 'freigegeben', zweite_person: eingetragen(ich.name, jetzt()) });
-      if (schliesst(s.ergebnis)) Object.assign(f, { zustand: 'abgeschlossen', ergebnis: s.ergebnis });
+      if (schliesst(s.ergebnis)) Object.assign(f, { zustand: 'abgeschlossen', ergebnis: s.ergebnis, abgeschlossen_am: s.am });
       fsLog(id, schliesst(s.ergebnis) ? 'feststellung_abgeschlossen' : 'wirksamkeit_geprueft', jetzt());
       return fsLesen(id);
     },
     energiemanagementFeststellungAblehnen: async (id, begruendung) => {
       merke(`POST /api/v1/energiemanagement/feststellungen/${id}/wirksamkeit/ablehnen`, { begruendung });
+      const f = fsFinden(id);
       const s = (staende.get(id) ?? []).find((x) => x.status === 'beantragt');
       if (!s) throw fehler(409, 'kein_antrag');
+      // Wie der Server: auch Ablehnen ist der zweiten Person vorbehalten (FS6).
+      if (s.eingetragen.akteur.name === ich.name) throw fehler(422, 'vieraugen_urheber');
+      if (f.verantwortlich.sub === ich.kennung) throw fehler(422, 'vieraugen_verantwortlich');
       Object.assign(s, { status: 'abgelehnt', zweite_person: eingetragen(ich.name, jetzt()), ablehnung_begruendung: begruendung });
       fsLog(id, 'wirksamkeit_abgelehnt', jetzt(), begruendung);
       return fsLesen(id);

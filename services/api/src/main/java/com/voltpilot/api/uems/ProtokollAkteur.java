@@ -30,7 +30,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
  *   <li>Ohne Zugriff-Kontext (OIDC aus, Token ohne Kontoart): die Festlegung von vor IP-7 —
  *       Plattform-Admin → {@code voltpilot}, sonst {@code kundenadministrator}/{@code kunde}.</li>
  * </ul>
- * Der NAME bleibt, was er war: {@code preferred_username}, sonst {@code name}, sonst das Subject.
+ * Der NAME ist der der Person: {@code name} (Vor- und Nachname aus dem Konto), sonst {@code preferred_username}, sonst das
+ * Subject. Bis Konzept Nachweisen n1 (Befund 4) stand der Anmeldename vorn; dann hieß es im Verlauf, im Kopf eines
+ * Berichtsstands und im PDF „freigegeben von ines“ statt „Ines Kaltenbach“.
  */
 public record ProtokollAkteur(String sub, String name, String rolle, String art) {
 
@@ -75,20 +77,28 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
         return new ProtokollAkteur(null, "Vorbehalt aus Messwerten", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
     }
 
-    /** Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). */
+    /**
+     * Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). Der Name kommt aus dem
+     * Spiegel {@code benutzer.anzeigename} des eigenen Subjects (Konzept Nachweisen n1, Befund 4: „Ines Kaltenbach“
+     * statt „ines“), sonst aus {@code preferred_username} - nie vor ihm aus dem Claim {@code name}: den darf jedes Konto
+     * in Keycloak selbst ändern, und jede Freigabe stünde dann unter einem gewählten Namen (Review Nachweisen r1, P0-1).
+     * Nur ein Token ganz ohne {@code preferred_username} fällt wie bisher auf {@code name} zurück; Keycloak stellt
+     * {@code preferred_username} in jedes Token (auch Servicekonten), der Rückfall trifft nur Test-Fixtures.
+     */
     public static Optional<ProtokollAkteur> aus(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)
                 || jwt.getSubject() == null || jwt.getSubject().isBlank()) {
             return Optional.empty();
         }
-        Object name = jwt.getClaims().get("preferred_username");
+        Zugriff z = ZugriffContext.get();
+        String spiegel = z != null && jwt.getSubject().equals(z.sub()) ? z.anzeigename() : null;
+        Object name = spiegel != null && !spiegel.isBlank() ? spiegel : jwt.getClaims().get("preferred_username");
         if (name == null) {
             name = jwt.getClaims().get("name");
         }
         boolean plattformAdmin = auth.getAuthorities().stream()
                 .anyMatch(a -> PLATTFORM_ADMIN.equals(a.getAuthority()));
-        return Optional.of(fuer(ZugriffContext.get(), jwt.getSubject(), name == null ? null : name.toString(),
-                plattformAdmin));
+        return Optional.of(fuer(z, jwt.getSubject(), name == null ? null : name.toString(), plattformAdmin));
     }
 
     /**
@@ -108,7 +118,7 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
      * Ohne Zugriff-Kontext — die Festlegung von vor IP-7.
      *
      * @param sub das JWT-Subject — die maschinenstabile Identität
-     * @param anzeigename {@code preferred_username} bzw. {@code name}; leer → das Subject, damit
+     * @param anzeigename der Spiegelname bzw. {@code preferred_username}; leer → das Subject, damit
      *     der Eintrag immer einen Namen trägt
      * @param plattformAdmin trägt der Aufrufer die Realm-Rolle {@code platform-admin}?
      */

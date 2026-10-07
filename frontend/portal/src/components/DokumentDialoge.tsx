@@ -11,7 +11,8 @@ import {
   type EnergiemanagementPersonKurz,
   type StandortAmStichtag,
 } from '../api';
-import { heute } from '../bewertung';
+// Befund 3 (Konzept Nachweisen n1): „entschieden am“ und „vom“ enden am Tag der Route, nie am Tag des Browsers.
+import { routenHeute as heute } from '../routenUhr';
 import { SAETZE, WOERTER } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_WORTLAUT, UEMS_VERWEIS } from '../glossar';
@@ -158,15 +159,18 @@ export function DokumentAnlegenDialog({
   onClose,
   onAngelegt,
   fest = null,
+  vorArt = null,
 }: {
   onClose: () => void;
   onAngelegt: (d: EnergiemanagementDokument) => void;
   fest?: E.NachweisBezug | null;
+  /** Die vorgewählte Art, wenn der Überblick einen offenen Teil festhält (Konzept Nachweisen n1, §6.10). */
+  vorArt?: string | null;
 }) {
   const basis = `dk-${useId().replace(/:/g, '')}`;
   const standorte = useStandorte();
   const [e, setE] = useState<E.AnlegenEntwurf>(() => {
-    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : '';
+    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : (vorArt ?? '');
     return { art, titel: art ? WOERTER.dokument_art[art] : '', bezug: 'unternehmen', standortId: '', original: E.LEERER_VERWEIS };
   });
   const [fehler, setFehler] = useState<E.Feldfehler>({});
@@ -425,12 +429,13 @@ export function FreigabeDialog({
   const [busy, setBusy] = useState(false);
   const setze = (t: Partial<E.FreigabeEntwurf>) => setE((alt) => ({ ...alt, ...t }));
 
-  // Bei Energiepolitik, Anwendungsbereich und Bestellung entscheidet die Leitung am Tag der Entscheidung (PA3).
+  // Bei Energiepolitik, Anwendungsbereich und Bestellung entscheidet die Leitung am Tag der Entscheidung (PA3) - aus
+  // `…/leitung` im Zaun des Freigaberechts, nicht aus den Aufgaben, die nur unternehmensweit lesbar sind (Befund A4).
   useEffect(() => {
     if (zweitePerson) return;
     let aktiv = true;
     const laden = leitungNoetig
-      ? api.energiemanagementAufgaben(e.entschiedenAm || undefined).then((a) => a.leitung)
+      ? api.energiemanagementLeitung(e.entschiedenAm || null, dokument.bezug.standort?.id ?? null).then((a) => a.leitung)
       : api.energiemanagementPersonen().then((p) =>
           p.personen.filter((x: EnergiemanagementPerson) => x.zustand === 'aktiv').map((x) => ({ id: x.id, name: x.name, funktion: x.funktion, kuerzel: x.kuerzel, mit_konto: !!x.konto })),
         );
@@ -528,139 +533,6 @@ export function FreigabeDialog({
       {personDialog && (
         <PersonAnlegenDialog
           leitung={leitungNoetig}
-          ab={e.entschiedenAm || heute()}
-          onClose={() => setPersonDialog(false)}
-          onAngelegt={(p) => {
-            setPersonDialog(false);
-            setE((alt) => ({ ...alt, entschiedenVon: p.id }));
-            setNeu((n) => n + 1);
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-// ------------------------------------------------------------------ Geprüft, bleibt (DK5), mit „entschieden von“
-
-/**
- * DK5 „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe: die Fassung bleibt, die Überprüfung beginnt neu. Eine
- * Person im Energiemanagement (auch ohne Konto) hat entschieden, an einem Tag ab der Freigabe der gültigen Fassung, mit
- * Begründung; eingetragen wird unter dem Konto (G2). Der Schritt der Wiedervorlage „Bestätigen oder neu fassen“
- * öffnet die Seite mit diesem Knopf im Blick (Konzept Wiedervorlage w1, Entscheid 8).
- */
-export function GeprueftBleibtDialog({
-  dokument,
-  onClose,
-  onGespeichert,
-}: {
-  dokument: EnergiemanagementDokument;
-  onClose: () => void;
-  onGespeichert: (d: EnergiemanagementDokument) => void;
-}) {
-  const basis = `gb-${useId().replace(/:/g, '')}`;
-  const gilt = dokument.fassungen.find((f) => f.nr === dokument.gueltige_fassung) ?? null;
-  const ab = gilt?.entschieden_am ?? null;
-  // Leer heißt „heute“ am Tag des Servers (Zeitzone des Unternehmens); ein früherer Tag wird ausdrücklich gewählt.
-  const [e, setE] = useState<E.FreigabeEntwurf>({ entschiedenVon: '', entschiedenAm: '', begruendung: '' });
-  const [personen, setPersonen] = useState<EnergiemanagementPersonKurz[] | null>(null);
-  const [personDialog, setPersonDialog] = useState(false);
-  const [neu, setNeu] = useState(0);
-  const [fehler, setFehler] = useState<E.Feldfehler>({});
-  const [satz, setSatz] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const setze = (t: Partial<E.FreigabeEntwurf>) => setE((alt) => ({ ...alt, ...t }));
-
-  useEffect(() => {
-    let aktiv = true;
-    api.energiemanagementPersonen().then(
-      (p) => {
-        if (!aktiv) return;
-        const liste = p.personen
-          .filter((x: EnergiemanagementPerson) => x.zustand === 'aktiv')
-          .map((x) => ({ id: x.id, name: x.name, funktion: x.funktion, kuerzel: x.kuerzel, mit_konto: !!x.konto }));
-        setPersonen(liste);
-        setE((alt) => ({ ...alt, entschiedenVon: liste.some((x) => x.id === alt.entschiedenVon) ? alt.entschiedenVon : liste.length === 1 ? liste[0].id : '' }));
-      },
-      (err) => aktiv && setSatz(E.ablehnungSatz(err)),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [neu]);
-
-  async function senden() {
-    const r = E.geprueftKoerper(e);
-    if ('fehler' in r) return setFehler(r.fehler ?? {});
-    setFehler({});
-    setBusy(true);
-    setSatz(null);
-    try {
-      onGespeichert(await api.energiemanagementDokumentGeprueft(dokument.id, r.koerper));
-    } catch (err) {
-      setSatz(E.ablehnungSatz(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <Modal
-        open={!personDialog}
-        onClose={onClose}
-        title={E.KNOPF_GEPRUEFT}
-        footer={
-          <>
-            <Button variant="ghost" onClick={onClose}>
-              {ABBRECHEN}
-            </Button>
-            <Button type="submit" form={`${basis}-form`} disabled={busy} data-testid="geprueft-senden">
-              {E.KNOPF_GEPRUEFT}
-            </Button>
-          </>
-        }
-      >
-        <Formular id={`${basis}-form`} testid="geprueft-dialog" onSubmit={() => void senden()}>
-          <p className="vp-ez-leise">
-            {dokument.art_wort} {dokument.kennzeichen} · {dokument.titel}
-          </p>
-          <p className="vp-ez-satz">
-            {gilt
-              ? `Fassung ${gilt.nr} bleibt gültig. Die nächste Überprüfung rechnet ab dem Tag, den Sie hier festhalten.`
-              : 'Die gültige Fassung bleibt. Die nächste Überprüfung rechnet ab dem Tag, den Sie hier festhalten.'}
-          </p>
-          <VpPicker
-            id={`${basis}-person`}
-            label={UEMS_ENTSCHIEDEN_VON}
-            options={(personen ?? []).map((p) => ({ value: p.id, label: p.name, sub: `${p.funktion}${p.mit_konto ? '' : ' · ohne Konto'}` }))}
-            value={e.entschiedenVon || null}
-            onChange={(entschiedenVon) => setze({ entschiedenVon })}
-            placeholder="Person wählen"
-            loading={personen === null}
-            hint="Eine Person im Energiemanagement, auch ohne Konto."
-            error={fehler.entschiedenVon ?? null}
-          />
-          <Button variant="ghost" onClick={() => setPersonDialog(true)} data-testid="geprueft-person-anlegen">
-            {E.KNOPF_PERSON}
-          </Button>
-          <VpDatePicker
-            label="entschieden am"
-            value={e.entschiedenAm || null}
-            onChange={(entschiedenAm) => setze({ entschiedenAm })}
-            min={ab}
-            max={heute()}
-            placeholder="heute"
-            hint={ab ? `Leer heißt heute; frühestens am ${E.tagText(ab)}, dem Tag der Freigabe der gültigen Fassung.` : 'Leer heißt heute.'}
-          />
-          <Begruendung id={`${basis}-begruendung`} wert={e.begruendung} setze={(begruendung) => setze({ begruendung })} fehler={fehler.begruendung} pflicht />
-          <p className="vp-ez-leise">Eingetragen wird unter Ihrem Konto; „eingetragen von“ steht neben „entschieden von“.</p>
-          <Fuss satz={satz} />
-        </Formular>
-      </Modal>
-      {personDialog && (
-        <PersonAnlegenDialog
-          leitung={false}
           ab={e.entschiedenAm || heute()}
           onClose={() => setPersonDialog(false)}
           onAngelegt={(p) => {

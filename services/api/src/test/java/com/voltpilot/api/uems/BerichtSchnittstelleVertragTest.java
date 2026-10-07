@@ -64,6 +64,8 @@ class BerichtSchnittstelleVertragTest {
         formen.put("BerichtFreigeben", BerichtDto.Freigeben.class);
         formen.put("BerichtWiedervorlage", BerichtDto.Wiedervorlage.class);
         formen.put("BerichtAnstossVerwerfen", BerichtDto.Verwerfen.class);
+        formen.put("BerichtAnstoesseVerwerfen", BerichtDto.VerwerfenAlle.class);
+        formen.put("BerichtAnstoesseVerworfen", BerichtDto.Verworfene.class);
         formen.put("BerichtPerson", BerichtDto.Person.class);
         formen.put("Bericht", BerichtDto.Bericht.class);
         formen.put("BerichtUeberpruefung", BerichtDto.Ueberpruefung.class);
@@ -95,13 +97,14 @@ class BerichtSchnittstelleVertragTest {
     }
 
     /**
-     * Elf Pfade, zwölf Routen — keine löscht (F6: eine Freigabe wird nie zurückgenommen, ein Stand nie gelöscht): die neun
-     * aus IP-7, seit AP-12 IP-9 die lesende Folgen-Zeile {@code /berichte/betroffen}, seit AP-12 IP-10 der Berichts-CSV und
-     * seit AP-12 IP-11 das PDF eines Stands.
+     * Dreizehn Pfade, vierzehn Routen — keine löscht (F6: eine Freigabe wird nie zurückgenommen, ein Stand nie gelöscht):
+     * die aus IP-7, seit AP-12 IP-9 die lesende Folgen-Zeile {@code /berichte/betroffen}, seit AP-12 IP-10 der
+     * Berichts-CSV, seit AP-12 IP-11 das PDF eines Stands, die Wiedervorlage der Bewertung und seit Konzept Nachweisen n1
+     * (Entscheid 16) das gebündelte Verwerfen.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void dieRoutenSindDieZwoelfDerPakete() {
+    void dieRoutenSindDieDerPakete() {
         Map<String, List<String>> soll = new LinkedHashMap<>();
         soll.put("/api/v1/berichte", List.of("get", "post"));
         soll.put("/api/v1/berichte/betroffen", List.of("get"));
@@ -114,6 +117,8 @@ class BerichtSchnittstelleVertragTest {
         soll.put("/api/v1/berichte/{kennung}/staende/{nr}/csv", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/staende/{nr}/pdf", List.of("parameters", "get"));
         soll.put("/api/v1/berichte/{kennung}/anstoesse/{id}/verwerfen", List.of("parameters", "post"));
+        // Konzept Nachweisen n1, Entscheid 16 (Review r1, P3-2): alle gesehenen Anstöße mit einem Grund.
+        soll.put("/api/v1/berichte/{kennung}/anstoesse/verwerfen", List.of("parameters", "post"));
         soll.put("/api/v1/berichte/{kennung}/archivieren", List.of("parameters", "post"));
         soll.forEach((p, methoden) -> assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p)
                 .containsExactlyInAnyOrderElementsOf(methoden));

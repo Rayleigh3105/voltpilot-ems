@@ -84,4 +84,11 @@ public final class EnergiemanagementPersonenDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Aufgaben(LocalDate tag, List<PersonKurz> leitung, List<Aufgabe> aufgaben,
             List<Zuordnung> zuordnungen) {}
+
+    /**
+     * Die Leitung des Unternehmens am {@code tag} (PA3) für die Freigabe mit Leitungs-Pflicht (DK3), auch für wen
+     * nur an einem Standort freigibt und die Aufgaben nicht liest (Konzept Nachweisen n1, Befund A4).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Leitung(LocalDate tag, List<PersonKurz> leitung) {}
 }

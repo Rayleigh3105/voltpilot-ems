@@ -1669,6 +1669,7 @@ function UnifiedPortal() {
               onOeffnen={(kennung) => navigate(berichtRoute(kennung))}
               onListe={() => navigate(pageRoute('portfolio-berichte'))}
               onBewertung={() => navigate(pageRoute('portfolio-bewertung'))}
+              onManagementbewertung={(kennung) => navigate(managementbewertungRoute(kennung))}
             />
           )}
           {/* UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (Umfang, Energieeinsätze) und die Seite eines Einsatzes. */}
@@ -1705,12 +1706,13 @@ function UnifiedPortal() {
               Person, eines Audits, einer Feststellung, einer Managementbewertung. */}
           {page === 'portfolio-energiemanagement' && (
             <EnergiemanagementBereich
-              reiter={route.energiemanagementReiter ?? 'verzeichnis'}
+              reiter={route.energiemanagementReiter ?? 'ueberblick'}
               dokumentId={route.dokumentId ?? null}
               personId={route.personId ?? null}
               auditId={route.auditId ?? null}
               feststellungId={route.feststellungId ?? null}
               managementbewertungKennung={route.managementbewertungKennung ?? null}
+              mappeId={route.mappeId ?? null}
               reiterOben={gruppenHier.length > 0}
               onReiter={(r) => navigate(energiemanagementRoute(r))}
               onDokument={(id) => navigate(dokumentRoute(id))}

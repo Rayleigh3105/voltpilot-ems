@@ -293,6 +293,10 @@ class FeststellungApiTest {
                 UUID.fromString(id))).isEqualTo(vektor.at("/erwartet/kanonisch").asText());
         assertThat(zu.at("/feststellung/zustand").asText()).isEqualTo("abgeschlossen");
         assertThat(zu.at("/feststellung/ergebnis").asText()).isEqualTo("wirksam");
+        // Nachweisen n1 (Reiter „Audits“): der Tag des schließenden Stands, „wirksam seit 15.04.2029“ - auch in der Liste.
+        assertThat(zu.at("/feststellung/abgeschlossen_am").asText()).isEqualTo("2029-04-15");
+        assertThat(ruf("GET", FESTSTELLUNGEN, "IK", null, 200).path("feststellungen").findValuesAsText("abgeschlossen_am"))
+                .contains("2029-04-15");
         assertThat(zu.at("/feststellung/lage/grund").asText()).isEqualTo("abgeschlossen");
         assertThat(zu.at("/vieraugen/an").asBoolean()).isFalse();
         assertThat(werte(zu.path("verlauf"), "art")).endsWith("feststellung_abgeschlossen");
@@ -328,6 +332,7 @@ class FeststellungApiTest {
                 stand("nicht_wirksam", "Stichprobe: zwei von fünf kennen die Zeitschaltung nicht.", "IK"), 201);
         assertThat(offen.at("/feststellung/zustand").asText()).isEqualTo("offen");
         assertThat(offen.at("/feststellung/ergebnis").isNull()).isTrue();
+        assertThat(offen.at("/feststellung/abgeschlossen_am").isNull()).isTrue();
         assertThat(offen.at("/wirksamkeit/0/ergebnis").asText()).isEqualTo("nicht_wirksam");
         assertThat(werte(offen.path("verlauf"), "art")).endsWith("wirksamkeit_geprueft");
         JsonNode dann = ruf("POST", FESTSTELLUNGEN + "/" + zweite + "/wirksamkeit", "IK",

@@ -337,13 +337,17 @@ public class TenantRepository {
                 // Fassung, Dokument, Person, Standort and Benutzer, a Hinweis its Audit (RESTRICT): before IP-5.
                 // AP-19 IP-23: a Folge names its Beschluss and the linked Energieziel, Fassung, Aufgabe or Audit,
                 // Sitzung and Beschluss name their Personen (RESTRICT) and their Bericht by value: before all of them.
+                // Nachweisen n1: a Teil-Vermerk names its Person (RESTRICT): before energiemanagement_person.
+                // Nachweisen n1 PR 6: an Abruf names its Mappe (RESTRICT): the protocol before the Mappe.
                 // Current repository code also runs against older migration fixtures.
                 for (String table : new String[] {"managementbewertung_folge", "managementbewertung_beschluss",
                         "managementbewertung_sitzung", "feststellung_wirksamkeit", "feststellung_eintrag", "feststellung",
                         "internes_audit_eintrag", "internes_audit",
                         "energiemanagement_aenderung", "energiemanagement_dokument_eintrag",
                         "energiemanagement_anwendungsbereich", "energiemanagement_dokument_fassung",
-                        "energiemanagement_dokument", "energiemanagement_aufgabe", "energiemanagement_person",
+                        "energiemanagement_dokument", "energiemanagement_aufgabe", "energiemanagement_teil_vermerk",
+                        "energiemanagement_mappe_abruf", "energiemanagement_mappe",
+                        "energiemanagement_person",
                         "energiemanagement_einstellung", "energiemanagement_kennung_seq",
                         "auffaelligkeit", "abweichung_aenderung", "abweichung",
                         "vorgang_anstoss", "massnahme_bewertung", "massnahme_aenderung", "massnahme",

@@ -701,7 +701,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       'Läuft alles? Was steht an?',
       'Wird alles erfasst?',
       'Wo geht die Energie hin, wird es besser?',
-      'Können wir es belegen?',
+      'Können wir belegen, was wir tun?',
     ]);
   });
 
@@ -718,7 +718,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(leiste.find((k) => k.key === 'verbessern')?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
     // Konzept Verbessern v1, Entscheid 1: die Gruppe fragt nach dem Zweck, nicht „Was tun wir dagegen?“.
     expect(leiste.find((k) => k.key === 'verbessern')?.frage).toBe('Was tun wir, um Energie zu sparen?');
-    // „Nachweisen“ öffnet das Verzeichnis des Energiemanagements, die Berichte stehen daneben.
+    // „Nachweisen“ öffnet den Überblick des Energiemanagements (Nachweisen n1), die Berichte stehen daneben.
     expect(leiste.find((k) => k.key === 'nachweisen')?.bereiche).toEqual(['energiemanagement', 'berichte']);
     expect(leiste.find((k) => k.key === 'nachweisen')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));
     // Am Telefon stehen über der Seite nur die Reiter der offenen Gruppe.

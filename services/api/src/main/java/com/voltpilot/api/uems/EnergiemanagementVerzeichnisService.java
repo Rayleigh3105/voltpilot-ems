@@ -88,6 +88,14 @@ public class EnergiemanagementVerzeichnisService {
     }
 
     /**
+     * Der Augenblick des Abrufs in der Zeitzone des Unternehmens, auf die Minute - dieselbe Uhr wie der Stichtag (auch
+     * die Bühnen-Uhr der Prüfumgebung). Andere Routen, die „heute“ aus dem Verzeichnis nehmen (die Mappe), lesen ihn hier.
+     */
+    public OffsetDateTime jetzt() {
+        return OffsetDateTime.ofInstant(uhr.instant(), zone()).truncatedTo(ChronoUnit.MINUTES);
+    }
+
+    /**
      * Das Verzeichnis am Abruf: alle elf Gruppen, mit {@code gruppe} nur diese; {@code person} ist die ID einer Person
      * im Energiemanagement (404 {@code person_fehlt}). 400 bei unbekannter Gruppe oder {@code von} nach {@code bis}.
      */

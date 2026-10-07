@@ -361,7 +361,8 @@ const DOKUMENT_TITEL = /\s+[—-]\s+Überprüfung$/;
 const ANSTOSS_TITEL = /^(.*?)\s+[—-]\s+Revision angestoßen \(([^)]+)\)$/;
 
 const dokumentGegenstand = (z: WiedervorlageZeile) => z.titel.replace(DOKUMENT_TITEL, '').trim() || ART_WORT[z.art];
-const berichtName = (z: WiedervorlageZeile) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
+/** Der Name eines Berichts mit Anstoß (aus `bezug`, sonst aus dem Titel der Route) - auch für den Überblick von Nachweisen. */
+export const berichtName = (z: Pick<WiedervorlageZeile, 'bezug' | 'titel' | 'kennzeichen'>) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
 
 const STAND_BLEIBT = 'Der freigegebene Stand bleibt, bis Sie entscheiden.';
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -411,7 +412,8 @@ const tagWort = (iso: string | null) => (iso ? standTag(iso) : null);
  * Ein Rhythmus in Monaten: Zahl und Einheit brechen nie auseinander (geschütztes Leerzeichen vor der Einheit, AP-08
  * E11); „+ 2 Monate“ hinter einem Tag bricht nur als Ganzes um, nie „+ 2“ am Zeilenende und „Monate“ darunter.
  */
-const monateText = (n: number) => `${n}\u00a0Monate`;
+// Nachweisen n1, Befund B8: „1 Monat“, nie „1 Monate“.
+const monateText = (n: number) => `${n}\u00a0${n === 1 ? 'Monat' : 'Monate'}`;
 const plusMonate = (n: number | null) => (n ? ` +\u00a0${monateText(n)}` : '');
 
 /**

@@ -163,6 +163,9 @@ class PruefumgebungAhrenbergTest {
     void dieBuehneZeigtD0001AuditFeststellungUndManagementbewertungMitEntschiedenVon() throws Exception {
         JsonNode v = ruf("GET", BASIS + "/verzeichnis", fachperson, null, 200);
         assertThat(v.path("stichtag").asText()).startsWith("2029-04-30");
+        // Konzept Nachweisen n1, Befund 3: Aufgaben und Verantwortung nennen ohne Tag denselben Tag wie das Verzeichnis.
+        assertThat(ruf("GET", BASIS + "/aufgaben", fachperson, null, 200).path("tag").asText()).isEqualTo("2029-04-30");
+        assertThat(ruf("GET", BASIS + "/verantwortung", fachperson, null, 200).path("tag").asText()).isEqualTo("2029-04-30");
         // Dieselben Personen wie in der Abnahme (R1, R14 B3, R9, R11, R13) — die Bühne ist deren Welt.
         assertThat(entschiedenVon(v, "energiepolitik", "D-0001")).containsOnly("Robert Falk").hasSize(2);
         assertThat(entschiedenVon(v, "internes_audit", "AU-2029-0001")).containsExactly("Ines Kaltenbach");
@@ -256,6 +259,18 @@ class PruefumgebungAhrenbergTest {
         } finally {
             buehnenUhr.stellen();
         }
+    }
+
+    /**
+     * Demo-Füllung Verbessern (PR 6): die frische Welt steht schon so da, wie der Rundgang einen alten Bestand angleicht
+     * ({@link DemoVerbessernReferenz#angleichen}) - Demo-Korrektur, Geplantes, Verläufe, Auffälligkeiten schreiben keine
+     * Zeile, auch beim zweiten Mal. Bricht, wenn Welt und Rundgang einen Augenblick oder Inhalt verschieden schreiben.
+     */
+    @Test
+    @Order(5)
+    void dieWeltStehtWieDerRundgangEinenAltenBestandAngleicht() throws Exception {
+        assertThat(DemoVerbessernReferenz.angleichen(mvc, root)).as("erster Lauf auf der frischen Welt").isZero();
+        assertThat(DemoVerbessernReferenz.angleichen(mvc, root)).as("zweiter Lauf").isZero();
     }
 
     // ================================================================================ Helfer

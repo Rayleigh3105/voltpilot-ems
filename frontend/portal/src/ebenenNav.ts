@@ -544,7 +544,7 @@ export interface EbenenLeistenKachel {
   icon: IconName;
   ziel: Route;
   bereiche: readonly EbenenBereichId[];
-  /** K1: die Arbeitsfrage einer Unternehmens-Gruppe („Können wir es belegen?“); am Standort keine. */
+  /** K1: die Arbeitsfrage einer Unternehmens-Gruppe („Können wir belegen, was wir tun?“); am Standort keine. */
   frage?: string;
   /**
    * N3: Einträge der Flotte meinen SEITEN — „Energie“ und „Erlöse“ wohnen im Bereich „Übersicht“. Sie leuchten nach
@@ -829,7 +829,8 @@ export const UNTERNEHMEN_GRUPPEN: readonly {
   { key: 'messen', label: 'Messen', icon: 'activity', frage: 'Wird alles erfasst?', bereiche: ['messstellen', 'bezugsgroessen'] },
   { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', frage: 'Wo geht die Energie hin, wird es besser?', bereiche: ['verbrauch', 'kennzahlen', 'bewertung'] },
   { key: 'verbessern', label: 'Verbessern', icon: 'list', frage: 'Was tun wir, um Energie zu sparen?', bereiche: ['verbesserung'] },
-  { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', frage: 'Können wir es belegen?', bereiche: ['energiemanagement', 'berichte'] },
+  // Konzept Nachweisen n1, Entscheid 1: statt „Können wir es belegen?“ - „es“ blieb offen.
+  { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', frage: 'Können wir belegen, was wir tun?', bereiche: ['energiemanagement', 'berichte'] },
 ];
 
 /** Kürzere Telefon-Beschriftungen am Standort; Seitenleiste, Reiter und Überschriften behalten die vollen Wörter. */
@@ -943,7 +944,7 @@ export function istDetailseite(route: Route): boolean {
   return Boolean(
     route.kennzahlId || route.berichtKennung || route.energieeinsatzId || route.energiezielId || route.massnahmeId ||
       route.abweichungId || route.dokumentId || route.personId || route.auditId || route.feststellungId ||
-      route.managementbewertungKennung || route.messstelleId || route.bezugsgroesseId,
+      route.managementbewertungKennung || route.mappeId || route.messstelleId || route.bezugsgroesseId,
   );
 }
 

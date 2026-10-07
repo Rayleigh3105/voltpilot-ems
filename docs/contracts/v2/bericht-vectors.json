@@ -199,6 +199,9 @@
     "bericht_gibt_es_schon": "Diesen Bericht gibt es schon: {kennung} ({vorlage} {geltung}, {zeitraum}).",
     "vorlage_monat": "Monatsbericht",
     "vorlage_jahr": "Jahresbericht",
+    "vorlage_energetische_bewertung": "Energetische Bewertung",
+    "vorlage_leistungsvergleich": "Leistungsvergleich",
+    "vorlage_managementbewertung": "Managementbewertung",
     "stand_gibt_es_nicht": "Berichtsstand Nr. {nr} gibt es nicht — der neueste ist Nr. {neueste} vom {datum}.",
     "stand_gibt_es_nicht_keiner": "Berichtsstand Nr. {nr} gibt es nicht — der Bericht hat noch keinen freigegebenen Berichtsstand.",
     "wert_nicht_mehr_gespeichert": "Der Wert {zeitraum} wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. {nr} vom {datum} hält ihn fest.",
@@ -1210,6 +1213,23 @@
       "Zeile": "Zeile 1\nTab\t\"Zitat\" \\ Rück — Ä \u0001 /",
       "10": "Schlüssel aus Ziffern",
       "ä": ""
+    },
+    "r1_ohne_zahl/alt": {
+      "qualitaet": {"korrekturen": []},
+      "werte": [{"quelle": "MS-01", "menge": 128400, "version": 1}],
+      "kennzahlen": [{"quelle": "KZ-0001", "wert": 0.1488, "version": 1}]
+    },
+    "r1_ohne_zahl/neu": {
+      "qualitaet": {"korrekturen": []},
+      "werte": [
+        {"quelle": "MS-01", "menge": 128400, "version": 1},
+        {"quelle": "MS-20", "menge": null, "version": null},
+        {"quelle": "MS-21", "menge": 510, "version": 1}
+      ],
+      "kennzahlen": [
+        {"quelle": "KZ-0001", "wert": 0.1488, "version": 1},
+        {"quelle": "KZ-0009", "wert": null, "version": null}
+      ]
     }
   },
   "cases": [
@@ -1763,6 +1783,7 @@
             "code": "bericht_gibt_es_schon",
             "werte": {
               "kennung": "BR-2026-0001",
+              "vorlage": "monatsbericht_standort",
               "geltung": "Werk Ahrenberg",
               "zeitraum": {"art": "monat", "schluessel": "2026-10"}
             }
@@ -1952,6 +1973,23 @@
           "name": "Nr. 1 gegen sich selbst: keine Abweichung",
           "eingang": {"alt": "BR-2026-0001/1", "neu": "BR-2026-0001/1"},
           "ergebnis": {"abweichungen": []}
+        },
+        {
+          "regel": "abweichungen",
+          "name": "Quellen nur im Entwurf und dort ohne Zahl und Version sind keine Abweichung; eine neue Quelle mit Zahl schon, ihre Version ohne „null“ (Nachweisen n1, Befund 5)",
+          "eingang": {"alt": "r1_ohne_zahl/alt", "neu": "r1_ohne_zahl/neu"},
+          "ergebnis": {
+            "abweichungen": [
+              {
+                "quelle": "MS-21",
+                "menge_art": null,
+                "vorher": null,
+                "nachher": "510",
+                "version": "— → 1",
+                "anlass": null
+              }
+            ]
+          }
         },
         {
           "regel": "kennzeichen",
@@ -5460,11 +5498,67 @@
           "name": "Randfall: Jahresbericht schon angelegt",
           "eingang": {
             "code": "bericht_gibt_es_schon",
-            "werte": {"kennung": "BR-2027-0002", "geltung": "Werk Lindach", "zeitraum": {"art": "jahr", "schluessel": "2026"}}
+            "werte": {
+              "kennung": "BR-2027-0002",
+              "vorlage": "jahresbericht_standort",
+              "geltung": "Werk Lindach",
+              "zeitraum": {"art": "jahr", "schluessel": "2026"}
+            }
           },
           "ergebnis": {
             "status": 409,
             "kundensatz": "Diesen Bericht gibt es schon: BR-2027-0002 (Jahresbericht Werk Lindach, 2026)."
+          }
+        },
+        {
+          "regel": "satz",
+          "name": "Randfall (Nachweisen n1, C6/C7): energetische Bewertung schon angelegt - Wort der Vorlage, Datengrundlage als Monate",
+          "eingang": {
+            "code": "bericht_gibt_es_schon",
+            "werte": {
+              "kennung": "BR-2026-0003",
+              "vorlage": "energetische_bewertung",
+              "geltung": "Kunststoffwerk Ahrenberg GmbH",
+              "zeitraum": {"art": "datengrundlage", "schluessel": "2025-10/2026-09"}
+            }
+          },
+          "ergebnis": {
+            "status": 409,
+            "kundensatz": "Diesen Bericht gibt es schon: BR-2026-0003 (Energetische Bewertung Kunststoffwerk Ahrenberg GmbH, Oktober 2025 bis September 2026)."
+          }
+        },
+        {
+          "regel": "satz",
+          "name": "Randfall (Nachweisen n1, C6/C7): Leistungsvergleich über eine Datengrundlage aus einem Monat",
+          "eingang": {
+            "code": "bericht_gibt_es_schon",
+            "werte": {
+              "kennung": "BR-2028-0001",
+              "vorlage": "leistungsvergleich",
+              "geltung": "Spritzguss",
+              "zeitraum": {"art": "datengrundlage", "schluessel": "2027-12"}
+            }
+          },
+          "ergebnis": {
+            "status": 409,
+            "kundensatz": "Diesen Bericht gibt es schon: BR-2028-0001 (Leistungsvergleich Spritzguss, Dezember 2027)."
+          }
+        },
+        {
+          "regel": "satz",
+          "name": "Randfall (Nachweisen n1, B10): die Managementbewertung heißt nicht „Jahresbericht“",
+          "eingang": {
+            "code": "bericht_gibt_es_schon",
+            "werte": {
+              "kennung": "BR-2029-0001",
+              "vorlage": "managementbewertung",
+              "geltung": "Kunststoffwerk Ahrenberg GmbH",
+              "zeitraum": {"art": "jahr", "schluessel": "2028"}
+            }
+          },
+          "ergebnis": {
+            "status": 409,
+            "kundensatz": "Diesen Bericht gibt es schon: BR-2029-0001 (Managementbewertung Kunststoffwerk Ahrenberg GmbH, 2028)."
           }
         }
       ]
