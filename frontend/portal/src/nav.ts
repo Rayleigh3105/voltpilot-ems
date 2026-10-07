@@ -184,7 +184,8 @@ export interface Route {
   abweichungId?: string;
   /**
    * Nur bei `page === 'portfolio-energiemanagement'` (UEMS AP-19 IP-9): der Reiter des Bereichs „Energiemanagement“
-   * (`#/portfolio/energiemanagement/dokumente`, `…/zuschnitt` die Zuschnitt-Hilfe; absent = Verzeichnis) und WELCHES
+   * (`#/portfolio/energiemanagement/dokumente`, `…/zuschnitt` die Zuschnitt-Hilfe; absent = Überblick, seit Konzept
+   * Nachweisen n1; `…/verzeichnis` das Verzeichnis eine Ebene tiefer) und WELCHES
    * Dokument die Seite zeigt (`#/portfolio/energiemanagement/dokumente/{id}`). Seit IP-13 die Reiter `aufgaben` und
    * `verantwortung` („Wer ist wofür verantwortlich“, eine Ansicht unter „Aufgaben“) und WELCHE Person die Seite zeigt
    * (`#/portfolio/energiemanagement/personen/{id}`). Seit IP-20 die Reiter `audits` und `feststellungen` und WELCHES
@@ -206,6 +207,11 @@ export interface Route {
    * Absent = das Register.
    */
   messstelleId?: string;
+  /**
+   * Nur bei `portfolio-bezugsgroessen`: WELCHE Bezugsgröße die Seite zeigt (Konzept Messen m1 §6.8, Entscheid 9,
+   * `#/portfolio/bezugsgroessen/{id}`). Absent = die Liste.
+   */
+  bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -584,19 +590,27 @@ export function parseSektion(hash: string): string | null {
 
 /**
  * Periode, Version und Vergleich der Werte einer Messstelle aus dem Hash (UEMS AP-13 IP-3/IP-5, E9/E6):
- * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode`. `parseRoute` schneidet den Query-Teil ab — die
+ * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode` (aus „Stand am …“ dazu `&stand=2029-04-30`). `parseRoute` schneidet den Query-Teil ab — die
  * Route bleibt die Messstellen-Seite; geschrieben wird die Adresse über `uemsOberflaechen.sprungziel`. Die
  * Periode kommt roh (die Sektion prüft sie, `uemsWerteKarte.periodeAus`), die Version nur als ganze Zahl ab 1, und
  * `v` ebenfalls roh — welche Wahl der Zeitraum überhaupt anbietet, weiß `uemsVergleich.wahlAus`.
  */
-export function parseMessstelleWerte(hash: string): { periode: string | null; version: number | null; vergleich: string | null } {
+export function parseMessstelleWerte(hash: string): {
+  periode: string | null;
+  version: number | null;
+  vergleich: string | null;
+  stand: string | null;
+} {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   const params = new URLSearchParams(rest.join('?'));
   const version = params.get('version')?.trim() ?? '';
+  const stand = params.get('stand')?.trim() ?? '';
   return {
     periode: params.get('periode')?.trim() || null,
     version: /^[1-9]\d{0,5}$/.test(version) ? Number(version) : null,
     vergleich: params.get('v')?.trim() || null,
+    // Messen m1 (Review r4 S4): aus „Stand an einem Tag ansehen“ geöffnet - die Seite liest diesen Tag, nur lesend.
+    stand: /^\d{4}-\d{2}-\d{2}$/.test(stand) ? stand : null,
   };
 }
 
@@ -716,13 +730,15 @@ export function parseRoute(hash: string): Route {
       if (segments[2] === 'managementbewertung' && segments[3]) return managementbewertungRoute(decodeURIComponent(segments[3]));
       if (
         segments[2] === 'dokumente' || segments[2] === 'zuschnitt' || segments[2] === 'aufgaben' || segments[2] === 'verantwortung' ||
-        segments[2] === 'audits' || segments[2] === 'feststellungen' || segments[2] === 'wiedervorlage' || segments[2] === 'managementbewertung'
+        segments[2] === 'audits' || segments[2] === 'feststellungen' || segments[2] === 'wiedervorlage' || segments[2] === 'managementbewertung' ||
+        segments[2] === 'verzeichnis'
       ) {
         return energiemanagementRoute(segments[2]);
       }
       return energiemanagementRoute();
     }
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'bezugsgroessen' && segments[2]) return bezugsgroesseRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
@@ -860,6 +876,8 @@ export function hashForRoute(route: Route): string {
         : '';
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    const bezugsgroesse =
+      route.page === 'portfolio-bezugsgroessen' && route.bezugsgroesseId ? `/${encodeURIComponent(route.bezugsgroesseId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     const einsatz =
       route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
@@ -888,10 +906,10 @@ export function hashForRoute(route: Route): string {
             ? `/feststellungen/${encodeURIComponent(route.feststellungId)}`
             : route.managementbewertungKennung
             ? `/managementbewertung/${encodeURIComponent(route.managementbewertungKennung)}`
-            : route.energiemanagementReiter && route.energiemanagementReiter !== 'verzeichnis'
+            : route.energiemanagementReiter && route.energiemanagementReiter !== 'ueberblick'
             ? `/${route.energiemanagementReiter}`
             : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -1063,7 +1081,8 @@ export function abweichungRoute(abweichungId: string): Route {
 }
 
 /**
- * Die Reiter des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, §6.3) — Verzeichnis, Wiedervorlage (IP-24), Dokumente,
+ * Die Reiter des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, §6.3) — seit Konzept Nachweisen n1 der Überblick zuerst
+ * (Entscheid 2), das Verzeichnis eine Ebene darunter; Wiedervorlage (IP-24), Dokumente,
  * Aufgaben (IP-13), Audits und Feststellungen (IP-20), Managementbewertung (IP-24); `zuschnitt` ist die Zuschnitt-Hilfe „Was VoltPilot führt — was
  * bei Ihnen liegt.“, eine Seite ohne eigenen Reiter; `verantwortung` („Wer ist wofür verantwortlich“, IP-13) eine
  * Ansicht unter dem Reiter „Aufgaben“.
@@ -1077,11 +1096,16 @@ export type EnergiemanagementReiter =
   | 'audits'
   | 'feststellungen'
   | 'managementbewertung'
-  | 'zuschnitt';
+  | 'zuschnitt'
+  | 'ueberblick';
 
-/** Route des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9/IP-13/IP-24): `#/portfolio/energiemanagement[/wiedervorlage|/dokumente|/aufgaben|/verantwortung|/audits|/feststellungen|/managementbewertung|/zuschnitt]`. */
-export function energiemanagementRoute(reiter: EnergiemanagementReiter = 'verzeichnis'): Route {
-  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, ...(reiter === 'verzeichnis' ? {} : { energiemanagementReiter: reiter }) };
+/**
+ * Route des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9/IP-13/IP-24): `#/portfolio/energiemanagement[/wiedervorlage|/dokumente|/aufgaben|/verantwortung|/audits|/feststellungen|/managementbewertung|/zuschnitt|/verzeichnis]`.
+ * Seit Konzept Nachweisen n1 (Entscheid 2) öffnet die Adresse ohne Reiter den Überblick; das Verzeichnis liegt eine Ebene
+ * tiefer unter `…/verzeichnis`.
+ */
+export function energiemanagementRoute(reiter: EnergiemanagementReiter = 'ueberblick'): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, ...(reiter === 'ueberblick' ? {} : { energiemanagementReiter: reiter }) };
 }
 
 /** Route der Seite einer Person im Energiemanagement (UEMS AP-19 IP-13): `#/portfolio/energiemanagement/personen/{id}`. */
@@ -1136,6 +1160,11 @@ export function messstelleRoute(messstelleId: string, standortId?: string | null
   return standortId
     ? { ...standortMessstellenRoute(standortId), messstelleId }
     : { page: 'portfolio-messstellen', siteId: null, sub: null, messstelleId };
+}
+
+/** Route der Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9): `#/portfolio/bezugsgroessen/{id}`. */
+export function bezugsgroesseRoute(bezugsgroesseId: string): Route {
+  return { page: 'portfolio-bezugsgroessen', siteId: null, sub: null, bezugsgroesseId };
 }
 
 /* =========================================================================

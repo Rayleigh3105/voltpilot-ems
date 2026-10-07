@@ -25,6 +25,7 @@ import { AppShell } from '../src/shell/AppShell';
 import { AF_IDS, auditFeststellungBuehne, R10_MASSNAHME, type AuditLage } from '../src/test/auditFeststellungFixtures';
 import { EM_IDS, energiemanagementBuehne, type EnergiemanagementLage } from '../src/test/energiemanagementFixtures';
 import { MB_KENNUNG, managementbewertungBuehne, type MbLage } from '../src/test/managementbewertungFixtures';
+import { wvLeer } from '../src/test/wiedervorlageFixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
 import { kontenAhrenberg, massnahmeBuehne } from '../src/test/massnahmeFixtures';
@@ -48,7 +49,7 @@ import '../src/index.css';
  * (`src/test/energiemanagementFixtures.ts`); jeder Schreib-Körper steht in `window.__emGesendet` (Netzwerk-Probe).
  *
  * Adresse: `?person=IK|JW|CB|RF` (Vorgabe IK; RF = Robert Falk mit der Rolle „Einsicht“, IP-13) · `&lage=start|ahrenberg`
- * (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 … D-0003 der Lage `ahrenberg` · `&seite=dokumente|aufgaben|verantwortung|zuschnitt`
+ * (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 … D-0003 der Lage `ahrenberg` · `&seite=dokumente|aufgaben|verantwortung|zuschnitt|verzeichnis`
  * · `&ps=RF|IK|…` öffnet die Seite dieser Person (IP-13). Die Uhr stellt die Spec (`page.clock`).
  * IP-20: `&al=leer|r10|r11` spielt dazu die Routen des internen Audits und der Feststellung (`auditFeststellungBuehne`)
  * und die der Maßnahme (`massnahmeBuehne`, AP-18), die Konten der Maßnahme und die Maßnahmen-Seite unter
@@ -56,7 +57,7 @@ import '../src/index.css';
  * F-2029-0001 · `&m=1` die Maßnahme aus F-2029-0001 · `&vieraugen=1`. Ohne `al` bleibt die Bühne, wie sie war.
  * IP-24: `&mb=leer|r13|r13f` spielt die Berichte-Routen der Managementbewertung und die Wiedervorlage R12
  * (`managementbewertungBuehne`, Körper in `window.__mbGesendet`); `&seite=wiedervorlage|managementbewertung` · `&br=1`
- * öffnet BR-2029-0001. Ohne `mb` bleibt die Bühne, wie sie war.
+ * öffnet BR-2029-0001. Ohne `mb` steht eine leere Wiedervorlage am Tag der Uhr da; `&wv=fehler` spielt ihren Ladefehler.
  * Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
@@ -70,6 +71,14 @@ Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => 
 const buehne = energiemanagementBuehne(lage, { kennung: me.kennung!, name: me.name! });
 Object.assign(api, buehne.routen);
 (window as unknown as { __emGesendet: unknown }).__emGesendet = buehne.gesendet;
+// Der Überblick liest die Wiedervorlage; ohne sie gibt es kein „Als Nächstes“ und keine Ruhe-Zeile (Review Nachweisen
+// r1, P1-2: ein Ladefehler ist kein „nichts fällig“). Ohne `mb` steht die Bühne ohne Frist am Tag ihrer Uhr - so
+// zeigte der Überblick hier vorher stets den Ladefehler. `mb` ersetzt sie unten durch R12/R13.
+// `&wv=fehler` spielt ihren Ladefehler (der Überblick sagt „Fristen nicht geladen“).
+Object.assign(api, {
+  energiemanagementWiedervorlage: async () =>
+    params.get('wv') === 'fehler' ? Promise.reject(new Error('Wiedervorlage nicht erreichbar')) : { ...wvLeer(), stichtag: new Date().toISOString() },
+});
 
 // IP-20: Audits, Feststellungen und die Maßnahme aus AP-18 — nur mit `al`, sonst bleibt die Bühne byte-gleich.
 const AUDIT_LAGEN: AuditLage[] = ['leer', 'r10', 'r11'];
@@ -159,7 +168,7 @@ if (!location.hash.startsWith('#/portfolio/')) {
           : params.get('br') === '1'
             ? managementbewertungRoute(MB_KENNUNG)
             : seite === 'dokumente' || seite === 'zuschnitt' || seite === 'aufgaben' || seite === 'verantwortung' || seite === 'audits' ||
-                seite === 'feststellungen' || seite === 'wiedervorlage' || seite === 'managementbewertung'
+                seite === 'feststellungen' || seite === 'wiedervorlage' || seite === 'managementbewertung' || seite === 'verzeichnis'
               ? energiemanagementRoute(seite)
               : energiemanagementRoute();
   history.replaceState(null, '', hashForRoute(ziel));
@@ -233,7 +242,7 @@ function Ansicht() {
       />
       {route.page === 'portfolio-energiemanagement' ? (
         <EnergiemanagementBereich
-          reiter={route.energiemanagementReiter ?? 'verzeichnis'}
+          reiter={route.energiemanagementReiter ?? 'ueberblick'}
           dokumentId={route.dokumentId ?? null}
           personId={route.personId ?? null}
           auditId={route.auditId ?? null}

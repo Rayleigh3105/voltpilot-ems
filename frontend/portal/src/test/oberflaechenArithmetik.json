@@ -39,9 +39,9 @@
         "./glossar:UEMS_FASSUNG",
         "./glossar:UEMS_LUECKE",
         "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NOCH_KEINE_QUELLE",
         "./glossar:UEMS_NOCH_NICHT_GERECHNET",
         "./glossar:UEMS_VERSION",
-        "./messstellen:KEINE_DATENQUELLE",
         "./messstellen:ablesungenText",
         "./messstellen:zeitpunktText",
         "./picker/datum:MONATE",
@@ -304,7 +304,8 @@
       "importe": [
         "./glossar:UEMS_BEWERTUNG_SAETZE",
         "./glossar:UEMS_KOSTENSTELLE",
-        "./glossar:UEMS_PROZESS_SUMME",
+        "./glossar:UEMS_MESSSTELLE",
+        "./messstellenListe:woherDerZeile",
         "./nav:hashForRoute",
         "./nav:pageRoute",
         "./rechte:ROLLE_KUNDENWORT",
@@ -313,10 +314,13 @@
         "./uebersichtBausteine:ende",
         "./uebersichtBausteine:zeitraumText",
         "./uemsErgebnis:KWH",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:VOR_EINHEIT",
         "./uemsErgebnis:zahl",
         "./uemsOberflaechen:periodeSchluessel",
         "./uemsOberflaechen:sprungziel",
-        "./uemsVerteilung:NICHT_VERTEILT"
+        "./uemsVerteilung:ERBE_ANTEIL_WECHSELT",
+        "./uemsVerteilung:GRUND_ANTEIL_WECHSELT"
       ],
       "operationen": [
         "spanne: mit.length - 1"
@@ -540,15 +544,17 @@
         "./bezugsPeriode:tagPlus",
         "./bezugsdaten:istGanzzahlig",
         "./bezugsdaten:zuordnung",
+        "./uemsOrtsbaum:lokalerTag",
         "./zahl:zahlText"
       ],
       "operationen": [
-        "betrag: g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '\\u00a0') + (b ? `,${b}` : '')",
+        "betrag: (negativ ? '\\u2212' : '') + g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.')",
+        "betrag: (negativ ? '\\u2212' : '') + g.replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.') + (b ? `,${b}` : '')",
         "letzteFreiePeriode: -1",
         "monatsZuordnung: -1",
         "periodenFehler: Number.isFinite(Date.parse(von))"
       ],
-      "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung."
+      "grund": "AP-09 IP-10: geprüfte Kalenderarithmetik, Textformatierung und Eingabevalidierung; Monatsanteile ausschließlich über den Vertragszwilling, keine Mengenrechnung. Messen m2 PR2: Tausenderpunkt und echtes Minus (AP-08 E11) sowie der Tag der letzten Ablesung im Satz „Zählt zum …“ sind Textformatierung."
     },
     "picker/zeitpunkt.ts": {
       "importe": [
@@ -1054,6 +1060,149 @@
         "wertMitEinheit: Number(wert)"
       ],
       "grund": "Konzept Auswerten a1 §6.7, Review r3 zu #1415: Anzeige, Balkengeometrie, Reihenfolge, Kalender und Listenindex; Summe und Anteile ausschließlich über die Vertrags-Zwillinge."
+    },
+    "bezugsgroessenUebersicht.ts": {
+      "importe": [
+        "./bezugsPeriode:schluesselVon",
+        "./bezugsPeriode:spanneVon",
+        "./bezugsPeriode:tagPlus",
+        "./bezugsgroesseListe:PERIODE",
+        "./bezugsgroesseListe:ortKey",
+        "./glossar:UEMS_TEMPERATUR_BEZOGEN"
+      ],
+      "operationen": [
+        "faelligePeriode: -1",
+        "vorjahr: Number(schluessel)",
+        "vorjahr: Number(schluessel) - 1",
+        "vorjahr: Number(schluessel.slice(0, 4))",
+        "vorjahr: Number(schluessel.slice(0, 4)) - 1",
+        "zwoelfPerioden: -1"
+      ]
+    },
+    "messstellenListe.ts": {
+      "importe": [
+        "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NOCH_KEINE_QUELLE",
+        "./glossar:UEMS_UNTERNEHMEN",
+        "./glossar:UEMS_WOHER_DIE_WERTE",
+        "./messstellen:KEIN_ORT",
+        "./messstellen:TITEL",
+        "./messstellen:ablesungsZiele",
+        "./messstellen:zeitpunktText",
+        "./picker/datum:MONATE",
+        "./picker/suche:alleFundstellen",
+        "./picker/suche:hervorheben",
+        "./picker/suche:normalisiereSuche",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:UNVOLLSTAENDIG",
+        "./uemsOrtsbaum:datumText",
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsWerteKarte:anzeige",
+        "./uemsWerteKarte:monatTitel"
+      ],
+      "operationen": [
+        "gruppen: out.length - 1",
+        "imOrt: -1",
+        "liste: g.gesamt += 1",
+        "liste: n + g.geplant.length",
+        "liste: n + g.reihen.length",
+        "monatKurz: Number(monat.slice(5, 7))",
+        "monatKurz: Number(monat.slice(5, 7)) - 1",
+        "monatWert: i + 1",
+        "namenListe: -1",
+        "namenListe: namen.length - 1",
+        "standAus: Number.isNaN(Date.parse(`${t}T00:00:00Z`))",
+        "stellungUnter: standort.length + 3",
+        "zahlFundstellen: begriff.length - 1",
+        "zahlFundstellen: von - 1",
+        "zahlFundstellen: von -= 1"
+      ],
+      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert. Monat der Reihe (#1424): der gelieferte Schritt `letzter_monat.wert`, gesprochen mit `anzeige()` (monatWert trennt Zahl und Einheit an der Textposition, monatKurz ist der Monatsname); „unvollständig“ ist sein Zustand, nicht gerechnet. Geplante Messstellen (#1430): `liste` zählt sie je Ort (Anzahl, keine Menge)."
+    },
+    "messstelleSeite.ts": {
+      "importe": [
+        "./glossar:UEMS_ABLESUNG_EINTRAGEN",
+        "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NAECHSTE_ABLESUNG",
+        "./glossar:UEMS_WEG_GERAET",
+        "./glossar:UEMS_ZUORDNUNG",
+        "./messstellen:lebenszyklusWort",
+        "./messstellenListe:standWann",
+        "./messstellenListe:standZahl",
+        "./picker/datum:MONATE",
+        "./uemsBericht:vergleich as berichtVergleich",
+        "./uemsErgebnis:ANZEIGE_EINHEITEN",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:PROZENT",
+        "./uemsErgebnis:UNVOLLSTAENDIG",
+        "./uemsErgebnis:pruefeMenge",
+        "./uemsErgebnis:zahlMitStellen",
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsWerteKarte:NOCH_KEINE_QUELLE_TITEL as KEINE_QUELLE_TITEL",
+        "./uemsWerteKarte:anzeige",
+        "./uemsWerteKarte:karte",
+        "./uemsWerteKarte:monatTitel",
+        "export:export { hatMenge } from './messstellenListe';"
+      ],
+      "operationen": [
+        "balken: Math.abs(z)",
+        "balken: Math.abs(z) / max",
+        "balken: Math.max(0, ...zahlen.filter((z): z is number => z !== null).map((z) => Math.abs(z)))",
+        "balken: Number(monat.slice(5, 7))",
+        "balken: Number(monat.slice(5, 7)) - 1",
+        "leitKachel: -12",
+        "leitKachel: Number(monat.slice(5, 7))",
+        "leitKachel: Number(monat.slice(5, 7)) - 1",
+        "leitKachel: i - 11",
+        "letzterVollerMonat: -1",
+        "monatPlus: (z % 12) + 1",
+        "monatPlus: Math.floor(z / 12)",
+        "monatPlus: j * 12",
+        "monatPlus: j * 12 + (m - 1)",
+        "monatPlus: j * 12 + (m - 1) + n",
+        "monatPlus: m - 1",
+        "monatPlus: z % 12",
+        "monatPlus: z / 12",
+        "zahlUndEinheit: i + 1"
+      ],
+      "grund": "Messen PR2 (Review r4 S5): balken skaliert die gelieferten Monatsmengen nur zur Balkenhöhe (Betrag/größter Betrag, ein negativer Monat mit Betrag und Kennzeichen, nie 0); leitKachel/monatPlus/letzterVollerMonat sind Kalenderarithmetik der Monate, zahlUndEinheit eine Textposition. Der Vorjahresvergleich ist das Prozent des Bericht-Zwillings (uemsBericht.vergleich), gesprochen mit zahlMitStellen des Ergebnis-Vertrags - keine eigene Rundung."
+    },
+    "ableseRunde.ts": {
+      "importe": [
+        "./bezugsdaten:zuordnung",
+        "./glossar:UEMS_ABLESEN",
+        "./messstellenListe:ableseortVon",
+        "./messstellenListe:abzulesen",
+        "./messstellenListe:standZahl",
+        "./uemsOrtsbaum:lokalerTag",
+        "./werteEingabe:betrag",
+        "./werteEingabe:wertFehler",
+        "./werteEingabe:zaehltSatz",
+        "./werteEingabe:zeitText",
+        "./zahl:zahlText"
+      ],
+      "operationen": [
+        "rundeAus: -1",
+        "rundeAus: tage.length - 1"
+      ],
+      "grund": "Messen PR3 (Review r4 S5): Sortierung und Listenindex der Ablesetage, keine Menge. Der Monat einer Ablesung kommt aus dem Vertrags-Zwilling (bezugsdaten.zuordnung), die Menge seit der letzten Ablesung aus der Antwort des Servers; die Fläche formatiert nur (betrag, standZahl, zahlText)."
+    },
+    "geplanteMessstellen.ts": {
+      "importe": [
+        "./glossar:UEMS_GEPLANTE_MESSSTELLE",
+        "./messstellen:KEIN_ORT",
+        "./messstellenListe:ortKopf",
+        "./messstellenListe:ortReihenfolge",
+        "./uemsMessplanung:groesseText",
+        "./uemsOrtsbaum:datumText"
+      ],
+      "operationen": [
+        "geplantHinweis: -1",
+        "geplantHinweis: orte.length - 1",
+        "geplanteAus: nr(a.kennzeichen) - nr(b.kennzeichen)",
+        "nr: Number(kennzeichen.replace(/^MB-/, ''))"
+      ],
+      "grund": "Messen PR4 (Review r4 S5): Sortierung nach der Nummer des Kennzeichens (MB-n) und Listenindex für den Ortssatz, keine Menge; die Frist ist ein Datumsvergleich der Antwort."
     }
   }
 }

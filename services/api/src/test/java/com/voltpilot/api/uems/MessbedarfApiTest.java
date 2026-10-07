@@ -269,6 +269,92 @@ class MessbedarfApiTest {
                 .path("messbedarfe")).isEmpty();
     }
 
+    /**
+     * Review r4 M4: jede Antwort nennt {@code zitiert_von} und {@code einloesbar}, damit das Portal VOR dem Anlegen einer
+     * Messstelle weiß, dass ein freigegebener Stand den Bedarf zitiert. {@code zitiert_von} ist die Liste der 409
+     * {@code berichts_belege} (nach Kennung und Nr.) und in jedem Zustand gefüllt; einlösbar ist nur offen und unzitiert.
+     */
+    @Test void zitiertVonUndEinloesbarNennenDenBelegschutzVorDemEinrichten() throws Exception {
+        String basis = ENERGIE + "/" + einsatz + "/messbedarf";
+        JsonNode frei = ruf("POST", basis, "IK", Map.of("wortlaut", "Druckluft Halle 2"), 201);
+        assertThat(frei.path("einloesbar").isBoolean()).isTrue();
+        assertThat(frei.path("einloesbar").asBoolean()).isTrue();
+        assertThat(frei.path("zitiert_von").isArray()).isTrue();
+        assertThat(frei.path("zitiert_von")).isEmpty();
+        UUID zitiert = id(ruf("POST", basis, "IK", Map.of("wortlaut", "Abwärme der Kompressoren"), 201));
+        UUID erledigt = id(ruf("POST", basis, "IK", Map.of("wortlaut", "Hauptzähler Druckluft"), 201));
+        UUID verworfen = id(ruf("POST", basis, "IK", Map.of("wortlaut", "Leckage-Ortung"), 201));
+        JsonNode eingeloest = ruf("POST", basis + "/" + erledigt + "/einloesen", "IK", Map.of("messstelle_id", ms23), 200);
+        assertThat(eingeloest.path("einloesbar").asBoolean(true)).isFalse();
+        assertThat(eingeloest.path("zitiert_von")).isEmpty();
+        ruf("POST", basis + "/" + verworfen + "/verwerfen", "IK", Map.of("begruendung", "Doppelt erfasst"), 200);
+
+        // Freigegeben, in umgekehrter Reihenfolge angelegt: BR-2026-0002 Nr. 1 zitiert MB-2 und den verworfenen MB-4,
+        // BR-2026-0001 Nr. 1 und Nr. 2 zitieren MB-2. Ein Entwurf schützt nichts.
+        UUID zweiter = bewertung("BR-2026-0002", "2025-10/2026-09");
+        stand(zweiter, 1, zitiert, verworfen);
+        UUID erster = bewertung("BR-2026-0001", "2025-01/2025-12");
+        stand(erster, 1, zitiert);
+        stand(erster, 2, zitiert);
+        quelle(bewertung("BR-2026-0003", "2026-01/2026-09"), null, id(frei));
+
+        List<Map<String, Object>> staende = List.of(Map.of("kennung", "BR-2026-0001", "nr", 1),
+                Map.of("kennung", "BR-2026-0001", "nr", 2), Map.of("kennung", "BR-2026-0002", "nr", 1));
+        for (String pfad : List.of(basis, "/api/v1/unternehmen/messbedarf")) {
+            Map<String, JsonNode> je = new java.util.HashMap<>();
+            ruf("GET", pfad, "IK", null, 200).path("messbedarfe").forEach(b -> je.put(b.path("kennzeichen").asText(), b));
+            assertThat(je.keySet()).as(pfad).containsExactlyInAnyOrder("MB-1", "MB-2", "MB-3", "MB-4");
+            assertThat(je.get("MB-1").path("einloesbar").asBoolean()).as(pfad).isTrue();
+            assertThat(je.get("MB-1").path("zitiert_von")).as(pfad).isEmpty();
+            assertThat(je.get("MB-2").path("einloesbar").asBoolean(true)).as(pfad).isFalse();
+            assertThat(JSON.convertValue(je.get("MB-2").path("zitiert_von"), List.class)).as(pfad).isEqualTo(staende);
+            assertThat(je.get("MB-3").path("einloesbar").asBoolean(true)).as(pfad).isFalse();
+            assertThat(je.get("MB-3").path("zitiert_von")).as(pfad).isEmpty();
+            assertThat(je.get("MB-4").path("einloesbar").asBoolean(true)).as(pfad).isFalse();
+            assertThat(JSON.convertValue(je.get("MB-4").path("zitiert_von"), List.class)).as(pfad)
+                    .isEqualTo(List.of(Map.of("kennung", "BR-2026-0002", "nr", 1)));
+        }
+        // Die Regel des Belegschutzes bleibt: Einlösen scheitert, und die 409 nennt dieselbe Liste.
+        JsonNode abgelehnt = ruf("POST", basis + "/" + zitiert + "/einloesen", "IK", Map.of("messstelle_id", ms23), 409);
+        assertThat(abgelehnt.path("code").asText()).isEqualTo("berichts_belege");
+        assertThat(JSON.convertValue(abgelehnt.path("berichtsstaende"), List.class)).isEqualTo(staende);
+        // Bearbeiten eines unzitierten Bedarfs antwortet mit denselben Feldern.
+        JsonNode bearbeitet = ruf("PUT", basis + "/" + id(frei), "IK", Map.of("wortlaut", "Druckluft Halle 2 und 3"), 200);
+        assertThat(bearbeitet.path("einloesbar").asBoolean()).isTrue();
+        assertThat(bearbeitet.path("zitiert_von")).isEmpty();
+    }
+
+    private static UUID id(JsonNode bedarf) {
+        return UUID.fromString(bedarf.path("id").asText());
+    }
+
+    /** Eine energetische Bewertung, wie das Anlegen sie schreibt, ohne Stand; je Datengrundlage eine. */
+    private UUID bewertung(String kennung, String datengrundlage) {
+        return root.queryForObject("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, geltung_art, "
+                + "unternehmen_id, zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_name) VALUES (?, ?, "
+                + "'energetische_bewertung', 1, 'unternehmen', ?, 'datengrundlage', ?, 'Europe/Berlin', 'Ines Kaltenbach') "
+                + "RETURNING id", UUID.class, tenant, kennung, unternehmen, datengrundlage);
+    }
+
+    /** Ein freigegebener Stand, der die Bedarfe unmittelbar zitiert (Muster {@code EnergiemanagementWiedervorlageApiTest}). */
+    private void stand(UUID bericht, int nr, UUID... bedarfe) {
+        String abzug = "{\"bericht\":\"" + bericht + "\",\"nr\":" + nr + "}";
+        root.update("INSERT INTO bericht_stand (tenant_id, bericht_id, nr, abzug, pruefsumme, datenstand, freigegeben_am, "
+                + "freigeber_sub, freigeber_name, freigeber_rolle, darstellung, regelwerk, vorlage_fassung) VALUES "
+                + "(?, ?, ?, ?, ?, '2026-10-01T08:00:00Z', '2026-10-01T08:05:00Z', 'IK', 'Ines Kaltenbach', "
+                + "'energiemanager', '{}'::jsonb, '{}'::jsonb, 1)", tenant, bericht, nr, abzug,
+                BerichtRegeln.pruefsumme(abzug));
+        for (UUID b : bedarfe) quelle(bericht, nr, b);
+    }
+
+    /** {@code nr = null}: die Quelle des Entwurfs. */
+    private void quelle(UUID bericht, Integer nr, UUID bedarf) {
+        root.update("INSERT INTO bericht_quelle (tenant_id, bericht_id, stand_nr, art, kennzeichen, objekt_id, bezug, "
+                + "erster_tag, letzter_tag, version, fassung, name_zum_datenstand) SELECT ?, ?, ?, 'messbedarf', "
+                + "kennzeichen, id, 'unmittelbar', '2026-01-01', '2026-09-30', NULL, NULL, wortlaut FROM messbedarf "
+                + "WHERE id = ?", tenant, bericht, nr, bedarf);
+    }
+
     private static List<String> kennzeichen(JsonNode liste) {
         List<String> aus = new java.util.ArrayList<>();
         liste.path("messbedarfe").forEach(b -> aus.add(b.path("kennzeichen").asText()));

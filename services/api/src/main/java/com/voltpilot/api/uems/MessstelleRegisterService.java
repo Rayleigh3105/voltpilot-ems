@@ -337,7 +337,7 @@ public class MessstelleRegisterService {
         }
         return new MessstelleDto.RegisterZeile(m.id(), m.kennzeichen(), m.name(), m.art(), m.medium(),
                 new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt, abgelesen ? ablesung : null),
+                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt, abgelesen ? ablesung : null, zone),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
                 List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null, List.of(), null);
@@ -530,7 +530,7 @@ public class MessstelleRegisterService {
      * zuletzt VOR ihr (bzw. vor dem Zeitpunkt) endete; die Zahl der laufenden Vergleichsquellen.
      */
     private MessstelleDto.RegisterQuelle quelle(Bestand b, Instant zeitpunkt,
-            MessstelleRegisterRepository.Ablesung ablesung) {
+            MessstelleRegisterRepository.Ablesung ablesung, ZoneId zone) {
         Groesse h = b.messstelle().hauptgroesse();
         List<QuelleZeile> derHaupt = b.quellen().stream()
                 .filter(z -> z.quelle().groesse().equals(h.groesse()) && z.quelle().richtung().equals(h.richtung()))
@@ -549,7 +549,8 @@ public class MessstelleRegisterService {
                 : gilt != null ? GEBUNDEN : ablesung != null ? ABLESUNG : KEINE_DATENQUELLE;
         return new MessstelleDto.RegisterQuelle(stand, bindung(gilt), bindung(davor), vergleich,
                 ablesung == null ? null : new MessstelleDto.RegisterAblesung(MessstelleService.zeit(ablesung.seit()),
-                        MessstelleService.zeit(ablesung.zuletzt())));
+                        MessstelleService.zeit(ablesung.zuletzt()), MessstelleService.zeit(ablesung.zuletzt() == null
+                                ? ablesung.seit() : AblesungRegeln.ueberfaelligAb(ablesung.zuletzt(), zone))));
     }
 
     private MessstelleDto.RegisterBindung bindung(QuelleZeile z) {

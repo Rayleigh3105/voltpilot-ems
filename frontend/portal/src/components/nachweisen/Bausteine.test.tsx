@@ -151,6 +151,12 @@ describe('Seitenkopf', () => {
     expect(zurueck).toHaveBeenCalledOnce();
   });
 
+  it('das Kennzeichen steht leise im Titel (am Telefon blendet es die Breite aus, Entscheid 25)', () => {
+    render(<NwKopf titel="Energiepolitik" kennzeichen="D-0001" />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('EnergiepolitikD-0001');
+    expect(screen.getByText('D-0001')).toHaveClass('vp-nw-kopf-kz');
+  });
+
   it('ohne Erklärung kein Knopf, ohne Kurzzeile keine leere Zeile', () => {
     const { container } = render(<NwKopf titel="Berichte" />);
     expect(screen.queryByRole('button')).toBeNull();
@@ -180,16 +186,18 @@ describe('Zeichen und Zähler-Chips', () => {
     const tippen = vi.fn();
     render(
       <>
-        <ZaehlerChip anzahl={6} wort="Fristen überfällig" zeichen="ueber" ton="warn" onClick={tippen} />
+        <ZaehlerChip anzahl={6} wort="Fristen überfällig" zeichen="ueber" ton="warn" onClick={tippen} blatt />
         <ZaehlerChip anzahl={4} wort="Teile offen" zeichen="offen" testId="still" />
       </>,
     );
     const chip = screen.getByRole('button', { name: '6 Fristen überfällig' });
     expect(chip).toHaveClass('vp-nw-zchip', 'is-warn');
+    expect(chip).toHaveAttribute('aria-haspopup', 'dialog');
     fireEvent.click(chip);
     expect(tippen).toHaveBeenCalledOnce();
     expect(screen.getByTestId('still').tagName).toBe('SPAN');
-    expect(screen.getByTestId('still')).toHaveTextContent('4Teile offen');
+    // Mit Leerzeichen im Text, nicht nur im Abstand der Reihe (Review r1, P1-8): Vorleser und Kopieren lesen „4 Teile offen“.
+    expect(screen.getByTestId('still').textContent).toBe('4 Teile offen');
   });
 });
 

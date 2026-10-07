@@ -4227,6 +4227,38 @@ export interface KostenstelleEnergiePosten {
   tage: KostenstelleEnergieTag[];
   /** Art `verteilt`; bei „nicht verteilt“ `null`. */
   herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat`/`jahr` - je Monat der Anteil der Ablesezeiträume,
+   * die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld.
+   */
+  monate?: KostenstelleEnergieMonat[];
+}
+
+/** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung (`bis` ausschließlich), mit Versatz. */
+export interface KostenstelleEnergieAblesezeitraum {
+  von: string;
+  bis: string;
+}
+
+/**
+ * Ein Monat eines Postens aus Ablesungen (Messen PR4, Konzept §10.3): `quelle_menge` ist die Menge des Monats an der
+ * Messstelle (dieselbe Zahl wie `…/werte?raster=monat`), `anteil_prozent` der Anteil, der an JEDEM Tag ihrer
+ * Ablesezeiträume galt, `menge` der Teil daraus. Wechselt der Anteil mitten im Zeitraum, sind Anteil und Menge `null`
+ * (`grund` `anteil_wechselt_im_ablesezeitraum`, `geaendert_am` der Tag); ohne Ablesung `keine_ablesung`. Nie 0.
+ */
+export interface KostenstelleEnergieMonat {
+  /** JJJJ-MM */
+  monat: string;
+  ablesezeitraeume: KostenstelleEnergieAblesezeitraum[];
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: 'quelle_keine_werte' | 'rest_unplausibel' | 'anteil_wechselt_im_ablesezeitraum' | 'keine_ablesung' | null;
+  /** Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt. */
+  geaendert_am: string | null;
 }
 
 /**
@@ -5948,7 +5980,11 @@ export interface MessstelleRegisterQuelle {
   davor: MessstelleRegisterBindung | null;
   vergleichsquellen: number;
   /** Nur bei `stand = ablesung`: die Werte kommen aus Ablesungen — seit wann und wann zuletzt (`null` = noch nie). */
-  ablesung?: { seit: string; zuletzt: string | null };
+  /**
+   * `faellig_ab` (Messen-Bau m2, additiv): ab wann die nächste Ablesung fehlt - letzte Ablesung + zwei Kalendermonate,
+   * ohne Ablesung der Beginn der Quelle; derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung.
+   */
+  ablesung?: { seit: string; zuletzt: string | null; faellig_ab: string };
 }
 
 /**
@@ -7517,10 +7553,14 @@ export function setTenantOverride(tenantId: string | null): void {
  * 30-s-Takt holt also weiterhin wirklich neu - eine zwischengespeicherte
  * Antwort wäre genau die stille Veraltung, die dieses Portal nirgends duldet.
  *
- * Zwei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
- * werden) und der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
+ * Drei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
+ * werden), der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
  * ein Admin, der mitten im Flug umschaltet, die Antwort des vorherigen
- * Mandanten bekommen.
+ * Mandanten bekommen - und **Lesen nach Schreiben**: sobald eine Änderung
+ * geantwortet hat, teilt kein neuer Leser mehr eine Lese-Anfrage, die vor
+ * dieser Antwort losging. Sonst bekäme, wer nach „eingelöst“ neu liest, den
+ * Stand von davor (Messen m2: die geplante Messstelle blieb nach dem
+ * Einrichten stehen, weil das Schließen des Dialogs schon gelesen hatte).
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
@@ -7536,13 +7576,18 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (key != null) {
     const running = inFlight.get(key);
     if (running) return running as Promise<T>;
-    const p = requestUncoalesced<T>(path, init).finally(() => {
-      inFlight.delete(key);
+    const p: Promise<T> = requestUncoalesced<T>(path, init).finally(() => {
+      // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
+      if (inFlight.get(key) === p) inFlight.delete(key);
     });
     inFlight.set(key, p);
     return p;
   }
-  return requestUncoalesced<T>(path, init);
+  const antwort = requestUncoalesced<T>(path, init);
+  if ((init.method ?? 'GET').toUpperCase() === 'GET') return antwort;
+  // Eine Änderung hat geantwortet (oder ist gescheitert - ob sie schrieb, weiß nur der Server): wer jetzt liest, fragt
+  // neu. Wer schon wartet, behält seine Antwort.
+  return antwort.finally(() => inFlight.clear());
 }
 
 /**
@@ -8832,6 +8877,34 @@ export interface EnergiemanagementVerzeichnisFilter {
   von?: string | null;
   bis?: string | null;
   person?: string | null;
+}
+/**
+ * Konzept Nachweisen n1, Entscheid 5 (Vertrag energiemanagement 1.3): „Trifft bei uns zurzeit nicht zu“ für einen Teil
+ * des Überblicks - mit Satz und der Person, die es entschieden hat; höchstens ein geltender Vermerk je Teil.
+ */
+export interface EnergiemanagementTeilVermerk {
+  id: string;
+  /** Vokabular `teil`. */
+  teil: string;
+  teil_wort: string;
+  satz: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  entschieden_am: string;
+  eingetragen: EnergiemanagementEingetragen;
+  /** Gesetzt, sobald der Vermerk aufgehoben ist; er bleibt dann lesbar. */
+  aufgehoben: { akteur: EnergiemanagementEingetragen['akteur']; am: string } | null;
+}
+export interface EnergiemanagementTeilVermerke {
+  stichtag: string;
+  vermerke: EnergiemanagementTeilVermerk[];
+}
+export interface EnergiemanagementTeilVermerkAnlegen {
+  teil: string;
+  satz: string;
+  /** ID einer Person im Energiemanagement. */
+  entschieden_von: string;
+  /** Ohne Angabe: heute nach der Uhr des Unternehmens. */
+  entschieden_am?: string | null;
 }
 export interface EnergiemanagementStandortKurz {
   id: string;
@@ -11509,6 +11582,14 @@ export const api = {
     }
     return res.blob();
   },
+  /** Nachweisen n1, Entscheid 5: die Vermerke „Trifft bei uns zurzeit nicht zu“, geltende zuerst. */
+  energiemanagementTeilVermerke: () => request<EnergiemanagementTeilVermerke>('/api/v1/energiemanagement/teil-vermerke'),
+  /** Nachweisen n1, Entscheid 5: einen Teil als „trifft bei uns zurzeit nicht zu“ festhalten (409 `vermerk_besteht`). */
+  energiemanagementTeilVermerkAnlegen: (body: EnergiemanagementTeilVermerkAnlegen) =>
+    request<EnergiemanagementTeilVermerk>('/api/v1/energiemanagement/teil-vermerke', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 5: einen Vermerk aufheben; er bleibt lesbar. */
+  energiemanagementTeilVermerkAufheben: (id: string) =>
+    request<EnergiemanagementTeilVermerk>(`/api/v1/energiemanagement/teil-vermerke/${encodeURIComponent(id)}/aufheben`, { method: 'POST' }),
   /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
   energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
   /** Konzept Wiedervorlage w1: „Zuletzt erledigt“, die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben. */
@@ -11691,6 +11772,11 @@ export interface Messbedarf {
   begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
   /** Ältere Antworten ohne die Felder = keine Struktur. */
   ort_ziel?: MessbedarfOrtZiel | null; messgroesse?: string | null; richtung?: string | null;
+  /**
+   * Review r4 M4: `zitiert_von` = die freigegebenen Berichtsstände, die den Bedarf zitieren (wie `berichtsstaende` der
+   * 409 `berichts_belege`); `einloesbar` = offen und von keinem Stand zitiert. Eine ältere API lässt beide weg.
+   */
+  einloesbar?: boolean; zitiert_von?: { kennung: string; nr: number }[];
 }
 /** Ein Protokolleintrag: `alt`/`neu` sind die Schnappschüsse der Zeile (snake_case-Spalten). */
 export interface MessbedarfAenderung {

@@ -1,429 +1,926 @@
 /*
- * „Messstellen“ (UEMS AP-04 IP-5). Nur diese Seite; Klassen mit `vp-ms-`, damit
- * nichts in Portfolio-Tabellen oder -KPIs greift.
- * ⚠ 1440 px: die Tabelle scrollt LOKAL (`vp-ms-rahmen`), nie das Dokument.
- * ⚠ `overflow-wrap: break-word`, nie `anywhere`: `anywhere` senkt die Mindestbreite einer
- *   Tabellenspalte auf ein Zeichen, und der Ort bricht mitten im Wort („Werk Ahrenber g“, Vorschau).
- * ⚠ 375 px: Karten; lange Namen („Zähler Energiekarte EK-1 (Hauptmessung Halle 2)“) brechen um.
+ * „Messstellen“ (UEMS AP-04 IP-5; Konzept Messen m1, Captain-Freigabe 05.10.2026). Nur diese Seite; Klassen mit
+ * `vp-ms-`, damit nichts in Portfolio-Tabellen oder -KPIs greift. Dieselbe Familie wie die Übersicht (Statuszeile,
+ * Hinweiskarte) und die Wiedervorlage (Kopf, Menü, Karten, Reihen, Marken), nur aus Haus-Tokens: keine neue Farbe,
+ * kein neuer Radius, keine neue Schrift.
+ *
+ *   .vp-ms-kopf      Kopf wie `.vp-wv-kopf` (Titel navy, Satz darunter, Menü ⋯)
+ *   .vp-ms-status    die ruhige Statuszeile wie `.vp-portfolio-satz` (Punkt + Satz des Servers)
+ *   .vp-ms-hinweis   die Hinweiskarte bei Handlungsbedarf wie `.vp-portfolio-hinweis`
+ *   .vp-ms-suche     das Suchfeld wie `.vp-auf-suche` (Feldrand, Radius des Knopfs); am Telefon 48 px
+ *   .vp-ms-chip      Marken wie `.vp-wv-chip`
+ *   .vp-ms-ort       je Ort eine Karte (Radius 24 wie `.vp-wv-karte`), darin Reihen
+ *   .vp-ms-reihe     am Telefon Name · Satz · Wert · Chevron; ab 760 px Breite der Liste vier Spalten wie die
+ *                    Frist-Reihe der Wiedervorlage - keine breite Tabelle, kein Querscrollen.
  */
 
 .vp-ms {
+  container: vp-ms / inline-size;
   display: flex;
   flex-direction: column;
-  gap: var(--vp-c-space-4);
+  gap: var(--vp-c-space-4, 16px);
   min-width: 0;
   font-family: var(--vp-c-font);
   color: var(--vp-c-fg);
 }
 
-/* Kopf: Titel und Zeile links, „Messstelle anlegen“ (AP-04 IP-6) rechts — am Telefon darunter. */
+/* ---------- Kopf ------------------------------------------------------------ */
 .vp-ms-kopf {
   display: flex;
-  flex-wrap: wrap;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vp-c-space-3);
+  gap: 6px 14px;
   min-width: 0;
 }
-
 .vp-ms-kopf-text {
-  flex: 1 1 16rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
-
+/* Wie der Kopf der Wiedervorlage und der Übersicht: Reiter und Seitentitel tragen dasselbe Wort. */
 .vp-ms-kopf h1 {
   margin: 0;
-  font-size: var(--vp-c-fs-24);
-  font-weight: var(--vp-c-fw-800);
-  line-height: var(--vp-c-lh-title);
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
 }
-
-.vp-ms-kopf p {
-  margin: 4px 0 0;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-14);
-  line-height: var(--vp-c-lh-text);
-  overflow-wrap: break-word;
+.vp-ms-meta {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
 }
-
-/* --- Filter ------------------------------------------------------------- */
-
-.vp-ms-filter {
+/* Rechts im Kopf: am Rechner „Messstelle anlegen“ als Rahmen-Knopf, daneben das Menü ⋯ - auf einer Linie. */
+.vp-ms-aktionen {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--vp-c-space-3);
-  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
-
-.vp-ms-feld {
-  flex: 1 1 11rem;
-  min-width: 0;
-  max-width: 16rem;
+.vp-ms-menue {
+  display: inline-flex;
+  flex: 0 0 auto;
 }
-
-.vp-ms-schalter {
-  min-height: 44px;
-  padding: 0 var(--vp-c-space-4);
-  border: 1px solid var(--vp-c-border);
-  border-radius: 999px;
-  background: var(--vp-c-card);
-  color: var(--vp-c-fg);
-  font: inherit;
-  font-size: var(--vp-c-fs-14);
-  font-weight: var(--vp-c-fw-600);
+.vp-ms-menue-knopf {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-muted-fg, #475569);
   cursor: pointer;
-  white-space: nowrap;
 }
-
-.vp-ms-schalter[aria-pressed='true'] {
-  border-color: var(--vp-c-primary);
-  background: var(--vp-c-muted);
-  box-shadow: inset 0 0 0 1px var(--vp-c-primary);
+/* Die Tippfläche wächst unsichtbar auf 44 px, ohne den Kopf auseinanderzuziehen (Muster `.vp-portfolio-aktionen`). */
+.vp-ms-menue-knopf::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
 }
-
-.vp-ms-schalter:focus-visible {
-  outline: 2px solid var(--vp-c-primary);
+.vp-ms-menue-knopf:focus-visible,
+.vp-ms-link:focus-visible,
+.vp-ms-chip:focus-visible,
+.vp-ms-hinweis:focus-visible,
+.vp-ms-suche-leeren:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
   outline-offset: 2px;
 }
 
-/* --- Zustände der Fläche ------------------------------------------------ */
-
-.vp-ms-laedt,
-.vp-ms-leer p {
-  margin: 0;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-14);
-  line-height: var(--vp-c-lh-text);
-}
-
-.vp-ms-leer {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--vp-c-space-3);
-  padding: var(--vp-c-space-4);
-  border: 1px dashed var(--vp-c-border);
-  border-radius: var(--vp-c-radius);
-  background: var(--vp-c-card);
-}
-
-.vp-ms-leer p {
-  color: var(--vp-c-fg);
-  font-size: var(--vp-c-fs-16, 1rem);
-}
-
-/* --- Bausteine einer Zeile ---------------------------------------------- */
-
-.vp-ms-kz {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--vp-c-muted);
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-12);
-  font-weight: var(--vp-c-fw-600);
-  white-space: nowrap;
-}
-
-.vp-ms-block {
-  display: block;
-  overflow-wrap: break-word;
-}
-
-.vp-ms-neben {
-  display: block;
-  margin-top: 2px;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-12);
-  line-height: var(--vp-c-lh-text);
-  overflow-wrap: break-word;
-}
-
-.vp-ms-ohne {
-  color: var(--vp-c-muted-fg);
-}
-
-.vp-ms-beob {
-  display: flex;
+/* Ein leiser Verweis im Satz („Zurück zu heute“, „Suche leeren“, „Erneut versuchen“). */
+.vp-ms-link {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-12);
-  line-height: var(--vp-c-lh-text);
-}
-
-.vp-ms-punkt {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--vp-text-subtle, #ced4da);
-}
-
-/* Schweigen ist nie ein Fehlschlag: grün, gelb oder still — nie rot. */
-.vp-ms-beob.is-gut .vp-ms-punkt {
-  background: var(--vp-flow-batt, #2e9e5b);
-}
-
-.vp-ms-beob.is-hinweis {
-  color: var(--vp-warn-ink, #b45309);
-}
-
-.vp-ms-beob.is-hinweis .vp-ms-punkt {
-  background: var(--vp-warn, #f59e0b);
-}
-
-.vp-ms-zahl {
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--vp-c-fw-600);
-  white-space: nowrap;
-}
-
-.vp-ms-groesse,
-.vp-ms-zeit {
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-12);
-}
-
-/* „Wirkleistung“ steht über ihrem Wert, nicht davor — sonst bricht die Zeile mitten im Wert. */
-.vp-ms-groesse {
-  display: block;
-}
-
-/* „10:15 Uhr“ bleibt beisammen — nie „Uhr“ allein in der nächsten Zeile (Vorschau 1440 px). */
-.vp-ms-zeit {
-  white-space: nowrap;
-}
-
-.vp-ms-satz {
-  margin: 0;
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-14);
-  line-height: var(--vp-c-lh-text);
-}
-
-/* --- 1440 px: Tabelle --------------------------------------------------- */
-
-.vp-ms-rahmen {
-  min-width: 0;
-  overflow-x: auto;
-  border: 1px solid var(--vp-c-border);
-  border-radius: var(--vp-c-radius);
-  background: var(--vp-c-card);
-}
-
-.vp-ms-tabelle {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--vp-c-fs-14);
-  line-height: var(--vp-c-lh-text);
-}
-
-.vp-ms-tabelle th {
-  padding: var(--vp-c-space-3) var(--vp-c-space-3);
-  border-bottom: 1px solid var(--vp-c-border);
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-12);
-  font-weight: var(--vp-c-fw-700);
-  letter-spacing: 0.04em;
-  text-align: left;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.vp-ms-tabelle td {
-  padding: var(--vp-c-space-3);
-  border-bottom: 1px solid var(--vp-c-border);
-  vertical-align: top;
-}
-
-.vp-ms-tabelle tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.vp-ms-tabelle td:last-child {
-  min-width: 9.5rem;
-}
-
-.vp-ms-name {
-  min-width: 9rem;
-  font-weight: var(--vp-c-fw-600);
-  overflow-wrap: break-word;
-}
-
-.vp-ms-tabelle tr.vp-ms-still td,
-.vp-ms-karte.vp-ms-still {
-  background: var(--vp-c-muted);
-}
-
-.vp-ms-still .vp-ms-kz {
-  background: var(--vp-c-card);
-}
-
-/* --- 375 px: Karten ----------------------------------------------------- */
-
-.vp-ms-karten {
-  list-style: none;
-  margin: 0;
+  gap: 2px;
+  min-height: 32px;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-c-space-3);
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.8125rem var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
 }
-
-.vp-ms-karte {
-  min-width: 0;
-  padding: var(--vp-c-space-4);
-  border: 1px solid var(--vp-c-border);
-  border-radius: var(--vp-c-radius);
-  background: var(--vp-c-card);
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche. */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-ms-link {
+    min-height: 44px;
+  }
 }
-
-.vp-ms-karte-kopf {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px var(--vp-c-space-2);
-  min-width: 0;
-}
-
-.vp-ms-karte-name {
-  margin: 0;
-  min-width: 0;
-  font-size: var(--vp-c-fs-16, 1rem);
-  font-weight: var(--vp-c-fw-700);
-  line-height: var(--vp-c-lh-title);
-  overflow-wrap: break-word;
-}
-
-.vp-ms-karte .vp-ms-satz {
-  margin-top: var(--vp-c-space-2);
-}
-
-.vp-ms-fakten {
-  display: grid;
-  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr);
-  gap: var(--vp-c-space-2) var(--vp-c-space-3);
-  margin: var(--vp-c-space-3) 0 0;
-  font-size: var(--vp-c-fs-14);
-  line-height: var(--vp-c-lh-text);
-}
-
-.vp-ms-fakten dt {
-  color: var(--vp-c-muted-fg);
-  font-size: var(--vp-c-fs-12);
-  font-weight: var(--vp-c-fw-600);
-  overflow-wrap: break-word;
-}
-
-.vp-ms-fakten dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-
-@media (max-width: 720px) {
-  .vp-ms-feld {
-    flex: 1 1 calc(50% - var(--vp-c-space-3));
-    max-width: none;
+@media (hover: hover) {
+  .vp-ms-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 }
 
-/* Der Name öffnet die Messstellen-Seite (AP-04 IP-8) — ein Knopf in Linkform, bricht wie Text um. */
-.vp-ms-oeffnen {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--vp-c-primary);
-  font: inherit;
-  text-align: left;
-  overflow-wrap: break-word;
+/* ---------- Stand an einem Tag ------------------------------------------------ */
+.vp-ms-stand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: -6px;
+}
+button.vp-ms-stand-marke {
+  gap: 6px;
   cursor: pointer;
+  font-family: var(--vp-font-heading);
 }
-
-.vp-ms-oeffnen:hover {
-  text-decoration: underline;
+.vp-ms-standwahl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 16px;
 }
-
-.vp-ms-oeffnen:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: 2px;
-}
-
-/* --- Einstiege in die Werte (UEMS AP-13 IP-3) ------------------------------------------------------ */
-
-/* Der letzte Wert führt in den Abschnitt „Werte“ der Seite — ein Knopf, der wie der Wert aussieht. */
-.vp-ms-werte {
-  display: block;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  overflow-wrap: break-word;
-  cursor: pointer;
-}
-
-.vp-ms-werte .vp-ms-zahl {
-  color: var(--vp-c-primary);
-}
-
-.vp-ms-werte:hover .vp-ms-zahl {
-  text-decoration: underline;
-}
-
-.vp-ms-werte:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: 2px;
-}
-
-/* Mit Zeilenmenü ist der Wert nicht mehr die letzte Spalte — er behält seine Breite, das Menü nimmt keine. */
-.vp-ms-tabelle td.vp-ms-wertzelle {
-  min-width: 9.5rem;
-}
-
-.vp-ms-tabelle td.vp-ms-menue {
+.vp-ms-standwahl > :first-child {
+  flex: 0 1 260px;
   min-width: 0;
-  width: 1%;
 }
 
-/* Am Telefon ist die ganze Karte der Einstieg: der Knopf am Namen deckt sie ab. */
-.vp-ms-karte.is-werte {
+/* ---------- „Was ist eine Messstelle?“, Statuszeile und Hinweiskarten ------------- */
+.vp-ms-lage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin-top: -6px;
+  min-width: 0;
+}
+.vp-ms-lage.has-hinweise {
+  gap: 8px;
+}
+
+/* Der Satz des Servers mit seinem Punkt - EINE Zeile wie die Flotten-Aussage der Übersicht. */
+.vp-ms-status {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+.vp-ms-status-punkt {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  align-self: center;
+  background: var(--vp-text-subtle, #ced4da);
+}
+.vp-ms-status.is-ok .vp-ms-status-punkt {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+/* Bei Handlungsbedarf: Hinweiskarten wie die Statuszeile der Übersicht (1-px-Rahmen, Radius 16, toniger Akzent links). */
+.vp-ms-hinweise {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+.vp-ms-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--vp-space-4, 16px) var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid var(--vp-text-subtle, #ced4da);
+  border-radius: 16px;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+button.vp-ms-hinweis {
+  cursor: pointer;
+  transition: background var(--vp-motion-fast) var(--vp-ease-inout);
+}
+@media (hover: hover) {
+  button.vp-ms-hinweis:hover {
+    background: #f8fafc;
+  }
+}
+.vp-ms-hinweis.is-warn {
+  border-left-color: var(--vp-warn, #f59e0b);
+}
+.vp-ms-hinweis-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-warn-ink, #b45309);
+}
+.vp-ms-hinweis.is-off .vp-ms-hinweis-icon {
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-ms-hinweis-text {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-ms-hinweis-text b {
+  font: 600 0.9375rem/1.4 var(--vp-c-font);
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+.vp-ms-hinweis-text span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ms-hinweis-schritt {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
+  white-space: nowrap;
+}
+
+/* ---------- Die Suche ------------------------------------------------------------ */
+.vp-ms-suchzeile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-ms-suche {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  height: 48px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-gray, #66717c);
+  transition: var(--vp-motion-chrome);
+}
+.vp-ms-suche:focus-within {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring, rgba(149, 185, 255, 0.15));
+}
+.vp-ms-suche > svg {
+  flex: 0 0 auto;
+}
+/* Am Telefon 16 px: ein kleineres Eingabefeld ließe iOS beim Tippen die ganze Seite vergrößern. */
+.vp-ms-suche input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: 500 1rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ms-suche input::placeholder {
+  color: var(--vp-text-gray, #66717c);
+  font-weight: 400;
+}
+.vp-ms-suche-leeren {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vp-text-gray, #66717c);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .vp-ms-suche-leeren:hover {
+    background: var(--vp-bg-light, #f8f9fa);
+    color: var(--vp-text-dark, #1a1a1a);
+  }
+}
+.vp-ms-treffer {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-treffer.is-gefiltert {
+  display: flex;
+}
+
+/* ---------- Marken ---------------------------------------------------------------- */
+.vp-ms-marken {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-ms-chip {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 11px;
+  border: 0;
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+  font: 600 0.75rem/1.3 var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--vp-motion-chrome);
 }
-
-.vp-ms-karte.is-werte:hover {
-  border-color: var(--vp-c-primary);
-}
-
-.vp-ms-karte-werte::after {
+/* Die Tippfläche reicht über die sichtbare Marke hinaus (44 px Höhe), ohne sie größer zu zeichnen. */
+.vp-ms-chip::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  inset: -10px -2px;
+}
+.vp-ms-chip.is-warn {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-chip[aria-pressed='true'],
+.vp-ms-chip.is-adresse {
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 12%, var(--vp-c-card, #fff));
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-ms-chip.is-warn[aria-pressed='true'] {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  box-shadow: inset 0 0 0 1.5px currentColor;
 }
 
-.vp-ms-karte-werte:focus-visible {
-  outline: none;
+/* ---------- Je Ort eine Karte --------------------------------------------------------- */
+.vp-ms-ort {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
 }
-
-.vp-ms-karte.is-werte:has(.vp-ms-karte-werte:focus-visible) {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: 2px;
+.vp-ms-ort-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
-
-/* UEMS AP-13 IP-11 (D1): die Quelle im Register führt zur Komponente auf der Geräte-Seite. */
-a.vp-ms-quelle-sprung {
+.vp-ms-ort-kopf h2 {
+  margin: 0;
+  min-width: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-ms-ort-zahl {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+/* Mit „Ablesen ›“ steht die Zahl am Namen (wie am Rechner) und der Weg rechts. */
+.vp-ms-ort-kopf.mit-ablesen {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.vp-ms-ort-kopf.mit-ablesen .vp-ms-ort-zahl::before {
+  content: '· ';
+}
+.vp-ms-ablesen {
+  display: inline-flex;
+  align-items: center;
+  /* Tippfläche 44 px, ohne den Kopf höher zu machen. */
+  min-height: 44px;
+  margin: -12px 0 -12px auto;
+  font: 600 0.875rem/1.3 var(--vp-font-heading);
   color: var(--vp-action);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vp-ms-ablesen:hover {
+  text-decoration: underline;
+}
+.vp-ms-ablesen:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-ms-ort.is-still .vp-ms-ort-kopf h2 {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-archiv > summary {
+  list-style: none;
+  cursor: pointer;
+  align-items: center;
+}
+.vp-ms-archiv > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-ms-archiv > summary svg {
+  flex: 0 0 auto;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-archiv[open] > summary svg {
+  transform: rotate(180deg);
+}
+.vp-ms-archiv:not([open]) {
+  gap: 0;
+}
+
+/* Der Kopf der Spalten - nur ab 760 px. */
+.vp-ms-spalten {
+  display: none;
+}
+
+/* ---------- Eine Reihe ----------------------------------------------------------------- */
+.vp-ms-reihen {
+  display: grid;
+  margin: -4px 0 -4px;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-ms-reihen > li {
+  min-width: 0;
+}
+.vp-ms-reihen > li + li > .vp-ms-reihe,
+.vp-ms-reihen > li.vp-ms-reihe + li.vp-ms-reihe {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ms-reihe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'name wert chev'
+    'satz wert chev';
+  column-gap: 12px;
+  row-gap: 3px;
+  align-items: center;
+  min-height: 56px;
+  padding: 12px 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0;
+}
+a.vp-ms-reihe:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+.vp-ms-reihe.is-ohne-link {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'name' 'satz';
+}
+.vp-ms-reihe-name {
+  grid-area: name;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font: 600 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ms-reihe-titel {
+  min-width: 0;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.vp-ms-kz {
+  font: 500 0.75rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-ms-reihe mark {
+  background: color-mix(in srgb, var(--vp-solar, #ff9800) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.vp-ms-punkt {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-text-gray, #66717c);
+}
+.vp-ms-punkt.is-name {
+  margin-top: 7px;
+}
+.vp-ms-punkt.is-satz {
+  display: none;
+  /* (0.8125rem × 1.35 − 8 px) / 2: mittig zur ersten Zeile. */
+  margin-top: 4.8px;
+}
+.vp-ms-reihe.is-gut .vp-ms-punkt {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-ms-reihe.is-hinweis .vp-ms-punkt {
+  background: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-reihe-unter {
+  display: none;
+}
+.vp-ms-reihe-satz {
+  grid-area: satz;
+  display: flex;
+  /* Der Punkt steht an der ersten Zeile, auch wenn der Satz umbricht oder eine Tatsache darunter steht. */
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+/* Eine festgehaltene Tatsache der Quelle (A4) - leise unter dem Satz, nie als Zustand. */
+.vp-ms-reihe-fakt {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-reihe.is-hinweis .vp-ms-reihe-satz {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+/* Ein zitierter Messbedarf (Review r4 M4): statt „Einrichten“ der Satz mit den Berichtsständen - leise, ganz lesbar,
+   und Ziel des Wiedervorlage-Schritts (Fokus ohne Tab-Halt). */
+.vp-ms-reihe-beleg {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ms-reihe-beleg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.vp-ms-reihe.is-hinweis .vp-ms-weg {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-reihe-woher {
+  display: none;
+}
+.vp-ms-reihe-wert {
+  grid-area: wert;
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  text-align: right;
+}
+.vp-ms-reihe-wert b {
+  font: 700 1rem var(--vp-font-heading);
+  color: var(--vp-navy, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ms-reihe-wert b small {
+  margin-left: 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-reihe-wert b.is-leer {
+  color: var(--vp-text-gray, #66717c);
+}
+.vp-ms-reihe-wert > span {
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+/* Ein unvollständiger Monat mit Zahl (Review r4 S3): leise im Warnton unter der Zahl, an jeder Breite sichtbar. */
+.vp-ms-reihe-hinweis {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-c-warn-fg, #9a3412);
+  white-space: nowrap;
+}
+.vp-ms-reihe-chev {
+  grid-area: chev;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+/*
+ * Eine geplante Messstelle (ein offener Messbedarf): der hohle Punkt sagt „noch nicht da“. Am Telefon steht
+ * „Einrichten“ unter dem Satz, damit der Name die ganze Breite hat; ab 760 px rechts in der Spalte des Werts.
+ */
+.vp-ms-reihe.is-geplant {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'name' 'satz' 'wert';
+}
+.vp-ms-reihe.is-geplant .vp-ms-reihe-wert {
+  justify-items: start;
+  margin-top: 6px;
+}
+.vp-ms-reihe.is-geplant .vp-ms-reihe-wert.is-ohne-schritt {
+  display: none;
+}
+.vp-ms-reihe.is-geplant .vp-ms-punkt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vp-text-gray, #66717c);
+}
+.vp-ms-reihe.is-geplant.is-hinweis .vp-ms-punkt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-einsatz {
+  color: var(--vp-action, #2c5282);
+  text-decoration: none;
+}
+.vp-ms-einsatz:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-
-a.vp-ms-quelle-sprung:focus-visible {
-  outline: 2px solid var(--vp-action);
+.vp-ms-einsatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 4px;
+}
+.vp-ms-reihe.is-geplant.is-hinweis .vp-ms-frist {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz,
+.vp-ms-plan-fehler {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+/* Der Satz nach „Einrichten“ oder „Messbedarf erfassen“: Haken (bzw. Warnung) und Satz, wie eine ruhige Statuszeile. */
+.vp-ms-plansatz {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-ms-plansatz > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--vp-flow-batt, #2e9e5b);
+}
+.vp-ms-plansatz.is-fehler > svg {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz.is-fehler,
+.vp-ms-plan-fehler {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-plansatz:focus {
+  outline: none;
+}
+.vp-ms-plansatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 3px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+@media (hover: hover) {
+  a.vp-ms-reihe:hover .vp-ms-reihe-titel {
+    color: var(--vp-action, #2c5282);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+/* ---------- Karten der Zustände (leer, Fehler, kein Treffer) -------------------------------- */
+.vp-ms-karte {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-ms-karte h2 {
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-ms-karte.is-fehler {
+  border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 22%, var(--vp-c-card, #fff));
+  background: var(--vp-c-warn-bg, #fff7ed);
+}
+.vp-ms-karte.is-fehler h2 {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ms-karte .vp-ms-link {
+  justify-self: start;
+}
+.vp-ms-leer-satz {
+  margin: 0;
+  font: 600 0.9375rem/1.4 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-ms-leise {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ms-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.vp-ms-knoepfe:empty {
+  display: none;
+}
+.vp-ms-laedt {
+  margin: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-c-fs-14, 0.875rem);
+}
+
+/* ---------- Laden: Skelette in der Höhe des Gezeigten ----------------------------------------- */
+.vp-ms-skelett {
+  display: grid;
+  gap: 12px;
+}
+.vp-ms-skelett .is-zeile {
+  width: 45%;
+  height: 12px;
+}
+.vp-ms-skelett .is-suche {
+  height: 48px;
+  border-radius: var(--vp-radius-btn, 12px);
+}
+.vp-ms-skelett .is-karte {
+  height: 196px;
+  border-radius: var(--vp-radius-lg, 24px);
+}
+
+/* ---------- Ab 760 px Breite der Liste: Reihen in Spalten ------------------------------------------ */
+@container vp-ms (min-width: 760px) {
+  /* Statuszeile links, „Was ist eine Messstelle?“ rechts; aufgeklappt steht die Erklärung in voller Breite darunter. */
+  .vp-ms-lage:not(.has-hinweise) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 16px;
+    row-gap: 12px;
+  }
+  .vp-ms-lage:not(.has-hinweise) > .vp-ms-status {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .vp-ms-lage:not(.has-hinweise) > .vp-begriff-auf {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+  }
+  .vp-ms-lage:not(.has-hinweise) > .vp-begriff-auf[open] {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  .vp-ms-suchzeile {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 16px;
+  }
+  .vp-ms-suche {
+    flex: 1 1 360px;
+    max-width: 440px;
+    height: 40px;
+  }
+  .vp-ms-suche input {
+    font-size: 0.9375rem;
+  }
+  .vp-ms-treffer {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .vp-ms-ort {
+    padding: 16px 22px;
+  }
+  .vp-ms-ort-kopf {
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .vp-ms-ort-kopf .vp-ms-ort-zahl::before {
+    content: '· ';
+  }
+  .vp-ms-ort-zahl {
+    font-size: 0.75rem;
+  }
+  .vp-ms-spalten,
+  .vp-ms-reihe {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.05fr) minmax(0, 1fr) 128px 18px;
+    column-gap: 16px;
+  }
+  .vp-ms-spalten {
+    display: grid;
+    margin-bottom: -6px;
+    font: 700 11px var(--vp-c-font);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--vp-c-muted-fg, #475569);
+  }
+  .vp-ms-spalten .is-wert {
+    justify-self: end;
+  }
+  .vp-ms-reihe {
+    grid-template-areas:
+      'name satz woher wert chev'
+      'unter satz woher wert chev';
+    row-gap: 2px;
+    min-height: 52px;
+    padding: 11px 0;
+  }
+  .vp-ms-reihe.is-ohne-link {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 2.05fr);
+    grid-template-areas: 'name satz';
+  }
+  .vp-ms-reihe.is-geplant {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1.05fr) minmax(0, 1fr) 128px 18px;
+    grid-template-areas:
+      'name satz woher wert chev'
+      'unter satz woher wert chev';
+  }
+  .vp-ms-reihe.is-geplant .vp-ms-reihe-wert {
+    justify-items: end;
+    margin-top: 0;
+  }
+  .vp-ms-reihe.is-geplant .vp-ms-reihe-wert.is-ohne-schritt {
+    display: grid;
+  }
+  .vp-ms-reihe-name {
+    font-size: 0.9375rem;
+  }
+  .vp-ms-reihe-titel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 7px;
+  }
+  .vp-ms-punkt.is-name {
+    display: none;
+  }
+  .vp-ms-punkt.is-satz {
+    display: inline-block;
+  }
+  .vp-ms-reihe-unter {
+    display: block;
+    grid-area: unter;
+    min-width: 0;
+    font-size: 0.8125rem;
+    color: var(--vp-c-muted-fg, #475569);
+    overflow-wrap: anywhere;
+  }
+  .vp-ms-reihe-satz {
+    color: var(--vp-c-fg, #1e293b);
+  }
+  .vp-ms-weg {
+    display: none;
+  }
+  .vp-ms-reihe-woher {
+    grid-area: woher;
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--vp-c-muted-fg, #475569);
+    overflow-wrap: anywhere;
+  }
+  .vp-ms-reihe-woher small {
+    font-size: 0.72rem;
+  }
+  .vp-ms-reihe-wert b {
+    font-size: 0.9375rem;
+  }
+  /* Der Monat der Reihen steht im Kopf der Spalte („September 2026“) - in der Reihe nur für Vorlesende. */
+  .vp-ms-reihe-wert > span.is-monat {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }

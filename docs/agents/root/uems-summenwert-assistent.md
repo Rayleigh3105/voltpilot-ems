@@ -68,7 +68,8 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   Intervallmengen bleiben Referenz-/Saldo-Vorschauen `null`; Zählerstände werden
   nicht als Periodenmengen verrechnet. Saldo leitet `Wirkenergie · saldiert · kWh`
   ab; Rollen für Momentanleistung bleiben ausgeschlossen.
-- `SummenwertRegisterEinstieg.tsx` öffnet vom Register aus denselben Hook.
+- Unter Messen gibt es seit Konzept Messen m1 (§6.10) keinen eigenen Einstieg mehr; angelegt wird an der Anlage
+  (Energie › Messwerte), an der Gerätekarte und an der Kennzahl.
   `SummenwertFormelDialog.tsx` erhält vorhandene Referenzen beim Fortschreiben ab
   Tag. Schreiben und Geräteprüfung: [Saldo-Schreibweg](uems-saldo-schreibweg.md).
 - Ergänzende Nachweise: `formelAssistent.test.ts`, `e2e/formel-assistent.spec.ts`

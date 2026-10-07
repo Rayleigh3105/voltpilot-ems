@@ -50,6 +50,7 @@ export function ZaehlerChip({
   zeichen,
   ton = 'normal',
   onClick,
+  blatt = false,
   testId,
 }: {
   anzahl: number;
@@ -58,18 +59,20 @@ export function ZaehlerChip({
   /** `warn` nur für Abgelaufenes; `still` für einen Zähler ohne Handlungsbedarf. */
   ton?: 'normal' | 'warn' | 'still';
   onClick?: () => void;
+  /** Der Chip öffnet ein Blatt (sonst springt er zu einer Stelle der Seite). */
+  blatt?: boolean;
   testId?: string;
 }) {
   const klasse = `vp-nw-zchip${ton === 'normal' ? '' : ` is-${ton}`}`;
   const inhalt = (
     <>
       {zeichen && <NwZeichen art={zeichen} stumm />}
-      <b>{anzahl}</b>
-      {wort}
+      {/* Das Leerzeichen trägt der Text („4 Teile offen“), nicht nur der Abstand der Flex-Reihe. */}
+      <b>{anzahl}</b> {wort}
     </>
   );
   return onClick ? (
-    <button type="button" className={klasse} onClick={onClick} aria-haspopup="dialog" data-testid={testId}>
+    <button type="button" className={klasse} onClick={onClick} aria-haspopup={blatt ? 'dialog' : undefined} data-testid={testId}>
       {inhalt}
     </button>
   ) : (
