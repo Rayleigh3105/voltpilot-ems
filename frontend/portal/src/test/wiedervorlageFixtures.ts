@@ -302,7 +302,7 @@ export function zuletztDemo(): WiedervorlageZuletzt {
     stichtag: '2029-04-30T14:53:00+02:00',
     tage: 90,
     eintraege: [
-      erledigt('berichtsstand', 'bewertung_messplanung', 'BR-2029-0002', 'Kunststoffwerk Ahrenberg GmbH · 2028-04/2029-03', 1, '2029-04-30', null, IK),
+      erledigt('berichtsstand', 'bewertung_messplanung', 'BR-2029-0002', 'Energetische Bewertung April 2028 bis März 2029', 1, '2029-04-30', null, IK),
       erledigt('bezugsbasis_geprueft_bleibt', null, 'BB-0001', 'Bezugsbasis BB-0001 (KZ-0004 Stromeinsatz Spritzguss je kg)', 2, '2029-04-30', null, IK),
       erledigt('wirksamkeit', 'audits_feststellungen', 'F-2029-0001', 'Wirksamkeit: wirksam', 1, '2029-04-15', IK, IK),
       erledigt('energiepolitik', 'grundlagen', 'D-0001', 'Energiepolitik', 2, '2029-03-20', 'Robert Falk', IK),

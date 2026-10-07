@@ -58,6 +58,7 @@ class PruefumgebungUhrWiringTest {
             .withBean(ZugriffBuehnenUhr.class, () -> mock(ZugriffBuehnenUhr.class))
             .withBean(BewertungUmfangService.class, () -> mock(BewertungUmfangService.class))
             .withBean(BewertungKriterienService.class, () -> mock(BewertungKriterienService.class))
+            .withBean(EnergiemanagementTeilVermerkService.class, () -> mock(EnergiemanagementTeilVermerkService.class))
             .withUserConfiguration(PruefumgebungUhr.class);
     }
 
