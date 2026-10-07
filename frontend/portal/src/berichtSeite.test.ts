@@ -8,6 +8,7 @@ import {
   abzugAus,
   AUSGABE_EINGEHAENGT,
   ausgabeKnoepfe,
+  berichtTitel,
   darfNachLesen,
   heuteAnfrage,
   heutigerWert,
@@ -323,6 +324,13 @@ describe('Liste und Entwurf entlang der Zeitachse (R5)', () => {
       archiviert: null,
     });
     expect(listenKarte(berichtAm(AM_20_11)).stand).toBe('Berichtsstand Nr. 2');
+    // Nur Monats- und Jahresbericht heißen nach ihrem Zeitraum; jede andere Vorlage nach ihrem Namen, auch wenn ihr
+    // Zeitraum ein Jahr ist oder kein eigenes Wort hat (Nachweisen n1, Befund 8: dieselbe Regel wie das Verzeichnis).
+    const titel = (vorlage: string, zeitraum_art: string) => berichtTitel({ vorlage, zeitraum_art, geltung_name: 'Kunststoffwerk Ahrenberg GmbH', zeitraum_text: 'Z' });
+    expect(titel('jahresbericht_unternehmen', 'jahr')).toBe('Jahresbericht Kunststoffwerk Ahrenberg GmbH Z');
+    expect(titel('energetische_bewertung', 'datengrundlage')).toBe('Energetische Bewertung Kunststoffwerk Ahrenberg GmbH Z');
+    expect(titel('leistungsvergleich', 'monat')).toBe('Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Z');
+    expect(titel('managementbewertung', 'jahr')).toBe('Managementbewertung Kunststoffwerk Ahrenberg GmbH Z');
     // Der offene Anstoß steht am 13.11. am gültigen Stand Nr. 1 und im Verlauf.
     const detail = detailAm(AM_13_11);
     expect(seitenKopf(detail, stand(1, AM_13_11), AM_13_11).abzeichen).toEqual([{ text: revision, ton: 'warn' }]);
