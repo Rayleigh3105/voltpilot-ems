@@ -229,6 +229,8 @@
 .vp-nw-links {
   justify-self: start;
   text-align: left;
+  /* Die Trefferfläche bleibt 44 px hoch, sie ragt nur in den Abstand: das Wort steht so nah wie ein Wert. */
+  margin-block: -10px;
 }
 .vp-nw-ausschluss {
   display: grid;

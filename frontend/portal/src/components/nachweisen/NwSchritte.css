@@ -230,6 +230,10 @@
   border-top: 0;
   padding-top: 2px;
 }
+/* Unten wie oben: die Liste endet an ihrem letzten Wert, nicht an einer leeren Zeile. */
+.vp-nw-pz:last-child {
+  padding-bottom: 2px;
+}
 .vp-nw-pz dt {
   grid-column: 1;
   font: 700 0.6875rem var(--vp-c-font);
