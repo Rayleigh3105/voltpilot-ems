@@ -224,7 +224,7 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 	batt, haveBatt := t.battKw, t.haveBatt
 	t.mu.Unlock()
 
-	fresh := seen && !at.IsZero() && now.Sub(at) <= BudgetFreshWindow && !now.Before(at)
+	fresh := seen && measurementFresh(now, at)
 	// ⚠ A charge point that is still ramping after its own start or stop is a
 	// KNOWN gap with working meters (Measurement.Settling): the lane keeps the
 	// surplus it last measured instead of calling it unprovable - which under
@@ -277,6 +277,24 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 	return out
 }
 
+// measurementFresh: the newest sample drives the decision for
+// BudgetFreshWindow. A sample stamped AFTER now is the newest one, not a stale
+// one - the executor takes now at the start of its pass, and the telemetry
+// keeps arriving while the pass runs (a pass that talks to the charge points
+// can take seconds). Its age is 0, exactly as in Budget and in the feed-in
+// watchdog (guards.ExportLimiter); calling it "no measurement" withdrew the
+// release (keine_messung) and paused „Nur Sonnenstrom" for that pass.
+func measurementFresh(now, at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
+	age := now.Sub(at)
+	if age < 0 {
+		age = 0
+	}
+	return age <= BudgetFreshWindow
+}
+
 // ReleaseFacts are the measured terms „Sonne + Speicher" decides from
 // (release.go): the house DEFICIT the battery already has to cover before a
 // vehicle takes anything (max(0, house without vehicles − PV), the trailing
@@ -290,7 +308,7 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 func (t *BudgetTracker) ReleaseFacts(now time.Time) (deficitKw, gridKw float64, ok bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	fresh := t.seen && !t.at.IsZero() && now.Sub(t.at) <= BudgetFreshWindow && !now.Before(t.at)
+	fresh := t.seen && measurementFresh(now, t.at)
 	if !fresh || !t.haveBatt {
 		return 0, 0, false
 	}

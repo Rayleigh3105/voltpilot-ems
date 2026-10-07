@@ -137,7 +137,7 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
  *
  * Die Muster sind bewusst GROSS-/KLEINSCHREIBUNGS-EMPFINDLICH, wo das Wort
  * auch klein als Kennung vorkommt (`Edge` vs. die Beispiel-Kennung
- * „edge-k7m2xqp", `Slot` vs. `plan.slots`): ein deutscher Kundensatz schreibt
+ * „edge-k7m2xq3", `Slot` vs. `plan.slots`): ein deutscher Kundensatz schreibt
  * das Substantiv groß, eine Kennung nicht.
  */
 const FORBIDDEN_INTERN: Array<{ re: RegExp; why: string }> = [

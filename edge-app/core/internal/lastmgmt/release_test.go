@@ -254,6 +254,20 @@ func TestBelowStorageIsAFreshReadingOfTheSameMeasurement(t *testing.T) {
 	}
 }
 
+// The executor takes now at the start of its pass; a sample that arrives while
+// the pass runs is stamped AFTER it. It is the newest measurement, not none:
+// release and surplus decide from it, like Budget does (age 0).
+func TestASampleNewerThanThePassIsFreshNotMissing(t *testing.T) {
+	tr := NewBudgetTracker()
+	obs(tr, t0.Add(1500*time.Millisecond), -2, 0, 3)
+	if _, _, ok := tr.ReleaseFacts(t0); !ok {
+		t.Fatal("a sample newer than the pass must not read as „keine Messung\"")
+	}
+	if v := tr.Surplus(t0, PolicySolarOnly, CarsBeforeStorage); v.Blind {
+		t.Fatalf("„Nur Sonnenstrom\" must not pause on the newest sample: %+v", v)
+	}
+}
+
 // --- the OBSERVED battery (Kapitän 07.10.2026) ------------------------------
 
 // observedBattery is ready() for a battery VoltPilot does not command: the

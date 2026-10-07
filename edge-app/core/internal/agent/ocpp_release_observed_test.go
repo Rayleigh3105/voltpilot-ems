@@ -173,8 +173,7 @@ func TestAnObservedReleaseIsWithdrawnWhenTheSiteImports(t *testing.T) {
 // Under the global stop the box writes nothing - neither the battery nor the
 // wallboxes (ocppControlAllowed) - so nothing is observed or released.
 func TestTheGlobalStopIsNoObservedBattery(t *testing.T) {
-	a, _ := releaseCoverAgent(t)
-	a.Cfg.ControlEnabled = false
+	a, _ := releaseCoverAgent(t, func(a *Agent) { a.Cfg.ControlEnabled = false })
 	now := time.Now().UTC()
 	floor := 30.0
 	a.mu.Lock()

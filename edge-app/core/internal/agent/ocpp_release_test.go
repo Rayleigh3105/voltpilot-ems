@@ -186,13 +186,19 @@ func TestASiteWithoutTheSourceReportsNothing(t *testing.T) {
 
 // --- the battery side: the release cover in applySetpoint -------------------
 
-func releaseCoverAgent(t *testing.T) (*Agent, *setpointSubscriber) {
+// configure runs before startOcpp: once the OCPP loop runs, it reads a.Cfg
+// (ocppControlAllowed), and Cfg is fixed at start-up - a test that needs a
+// different configuration sets it here, never on the running agent.
+func releaseCoverAgent(t *testing.T, configure ...func(a *Agent)) (*Agent, *setpointSubscriber) {
 	t.Helper()
 	a, addr := followAgentAddr(t)
 	a.Cfg.ControlEnabled = true
 	a.Cfg.OcppEnabled = true
 	a.Cfg.OcppPort = 0
 	a.Cfg.ConsumerControlEnabled = true
+	for _, c := range configure {
+		c(a)
+	}
 	if err := a.startOcpp(context.Background()); err != nil {
 		t.Fatalf("startOcpp: %v", err)
 	}
