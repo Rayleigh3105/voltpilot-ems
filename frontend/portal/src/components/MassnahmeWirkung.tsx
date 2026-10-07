@@ -61,10 +61,10 @@ export function WirkungKacheln({ m, w }: { m: Massnahme; w: MassnahmeWirkung }) 
 
 /**
  * „Je Monat nach der Umsetzung“ (§6.6): die Grafik der Route, darunter in Worten, wie viele Monate unter der
- * Erwartung lagen, und die Gründe der nicht bewertbaren; dieselben Werte als Liste dahinter (Regel 6.11). Laden,
- * Fehler mit „Erneut versuchen“, noch kein Monat.
+ * Erwartung lagen, und die Gründe der nicht bewertbaren; dieselben Werte als Liste dahinter (Regel 6.11). Laden und
+ * noch kein Monat; einen Fehler sagt die Antwort oben mit „Erneut versuchen“ (`antwortBild`).
  */
-export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungLage; erneut: () => void }) {
+export function WirkungKarte({ m, lage }: { m: Massnahme; lage: Exclude<WirkungLage, { art: 'fehler' }> }) {
   if (lage.art === 'laedt') {
     return (
       <section className="vp-mn-karte is-wirkung" aria-busy="true" data-testid="massnahme-wirkung">
@@ -72,19 +72,6 @@ export function WirkungKarte({ m, lage, erneut }: { m: Massnahme; lage: WirkungL
           <h2>Je Monat nach der Umsetzung</h2>
         </div>
         <Skeleton height={190} />
-      </section>
-    );
-  }
-  if (lage.art === 'fehler') {
-    return (
-      <section className="vp-wv-karte is-fehler is-wirkung" role="alert" data-testid="massnahme-wirkung">
-        <div className="vp-wv-blockkopf">
-          <h2>Je Monat nach der Umsetzung</h2>
-        </div>
-        <p className="vp-wv-leise">{W.WIRKUNG_LADEFEHLER} Ihre Daten sind nicht betroffen.</p>
-        <button type="button" className="vp-wv-link" onClick={erneut}>
-          {B.ERNEUT_VERSUCHEN}
-        </button>
       </section>
     );
   }

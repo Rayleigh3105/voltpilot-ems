@@ -309,7 +309,7 @@ export function MassnahmeSeite({
   const w = wirkung?.art === 'da' ? wirkung.w : null;
   const darfMelden = rollen.darf('verbesserung.verwalten', m.standort_id);
   const darfAbschliessen = rollen.darf('verbesserung.abschliessen', m.standort_id);
-  const antwort = B.antwortBild(m, w, darfAbschliessen);
+  const antwort = B.antwortBild(m, w, darfAbschliessen, wirkung?.art === 'laedt' || wirkung?.art === 'fehler' ? wirkung.art : 'da');
   const stufen = B.stufenBild(m);
   const neu = (x: Massnahme) => {
     setDialog(null);
@@ -372,10 +372,22 @@ export function MassnahmeSeite({
         </ol>
         <div className="vp-mn-spalten">
           <div className="vp-mn-spalte">
-            <div className="vp-mn-antwort" data-testid="massnahme-antwort">
-              <p className={`vp-mn-satz${m.frist.faellig === 'ueberfaellig' ? ' is-warn' : ''}`}>{antwort.satz}</p>
-              {antwort.formal && <p className="vp-mn-formal">{antwort.formal}</p>}
-            </div>
+            {antwort.laedt ? (
+              <div className="vp-mn-antwort" aria-busy="true" data-testid="massnahme-antwort">
+                <Skeleton height={22} />
+                <Skeleton width="60%" height={14} />
+              </div>
+            ) : (
+              <div className="vp-mn-antwort" role={antwort.fehler ? 'alert' : undefined} data-testid="massnahme-antwort">
+                <p className={`vp-mn-satz${m.frist.faellig === 'ueberfaellig' ? ' is-warn' : ''}`}>{antwort.satz}</p>
+                {antwort.formal && <p className="vp-mn-formal">{antwort.formal}</p>}
+                {antwort.fehler && (
+                  <button type="button" className="vp-wv-link" onClick={wirkungErneut} data-testid="massnahme-wirkung-erneut">
+                    {B.ERNEUT_VERSUCHEN}
+                  </button>
+                )}
+              </div>
+            )}
             {gross && (
               <Button
                 className="vp-mn-gross"
@@ -387,7 +399,7 @@ export function MassnahmeSeite({
               </Button>
             )}
             {zeigeWirkung && w && <WirkungKacheln m={m} w={w} />}
-            {zeigeWirkung && wirkung && <WirkungKarte m={m} lage={wirkung} erneut={wirkungErneut} />}
+            {zeigeWirkung && wirkung && wirkung.art !== 'fehler' && <WirkungKarte m={m} lage={wirkung} />}
             {(m.zustand === 'geplant' || m.art !== 'gemessen') && (
               <WasEsBringenSoll
                 m={m}

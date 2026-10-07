@@ -120,6 +120,18 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     expect(B.antwortBild(umgesetzt, null, false).satz).toBe(
       'Umgesetzt am 10.03.2028 - abschließen kann, wer im Energiemanagement Maßnahmen bewertet.',
     );
+    // Lädt die Wirkung noch oder fehlt sie, behauptet die Antwort nichts über bewertbare Monate (ein Fehler ist keine Null).
+    expect(B.antwortBild(m1Umgesetzt(), null, true, 'laedt')).toEqual({ satz: '', formal: null, laedt: true });
+    expect(B.antwortBild(m1Umgesetzt(), null, true, 'fehler')).toEqual({
+      satz: 'Umgesetzt am 22.01.2028 - die Wirkung ließ sich nicht laden.',
+      formal: 'Ihre Daten sind nicht betroffen.',
+      fehler: true,
+    });
+    expect(nn(B.antwortBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand }), null, true, 'fehler'))).toEqual({
+      satz: 'Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.',
+      formal: 'Die Wirkung von heute ließ sich nicht laden; Stand Nr. 1 bleibt, wie er festgehalten wurde.',
+      fehler: true,
+    });
     // Die Seite: ohne Live-Monate ist die Antwort das Urteil mit dem Stand, nie „noch kein Monat bewertbar“.
     expect(nn(B.antwortBild(mit(m1Umgesetzt(), { zustand: 'bewertet', bewertung: stand }), null))).toEqual({
       satz: 'Wirkung geprüft am 15.11.2028 von Ines Kaltenbach: belegt - damals 2,4 % weniger als erwartet nach 8 von 12 Monaten.',
