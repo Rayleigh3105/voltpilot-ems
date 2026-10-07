@@ -62,3 +62,4 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **Test-Personen:** `BerichtApiTest` setzt die B13-Personen als `@MockBean KennzahlAufrufer`; die Entwürfe sind die
   kanonisch geschriebenen Vektor-Abzüge `BR-2026-0001/1` und `/2` (Prüfsumme `sha256:b113527d…`), die Uhr über
   `BerichtService.uhrStellen`.
+- **Anfrage-Formen brauchen `@JsonNaming(SnakeCaseStrategy)`:** `BerichtController.lies` liest mit einem strengen Mapper (unbekannte Felder 400); ein Record ohne die Annotation kennt `anstoss_ids` nicht und antwortet 400 `anfrage_ungueltig` mit dem Feld. Ein Listen-Feld muss zusätzlich in `lies` zugelassen sein (wie `kennzahlen_abgewaehlt`).
