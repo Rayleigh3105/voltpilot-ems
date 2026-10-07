@@ -55,6 +55,15 @@ Ein Tag-Push mit einem ungeeigneten Actions-Token kann den nächsten Workflow ni
 
 Das Dienstkonto `edge-release-publisher` darf Releases und das öffentliche Trust-Set veröffentlichen, aber keine Geräteziele oder Rollouts setzen. Die Serverprüfung ist kein Ersatz für die kryptografische Verifikation auf der Box.
 
+## Box-Arten: Docker-Box und Edge Light
+
+Es gibt ein Manifest je Box-Art. Ein Docker-Release (`edge-JJJJ.MM.N`) trägt `oci-image`-Artefakte für das Backend `compose`. Ein Edge-Light-Release (`edge-light-JJJJ.MM.N`, eigene Linie) trägt nur `binary`-Artefakte, je Architektur eines, und nur das Backend `light`. Beide nutzen denselben Release-Schlüssel und dasselbe Trust-Set; `release_seq` bleibt eine Ordnung über beide Linien. Vertrag: [Manifest-Schema](contracts/ota-release-manifest.schema.json), [geteilte Vektoren](contracts/ota-release-manifest-vectors.json).
+
+- Nach gültiger Signatur stellt eine Box ein Release einer anderen Box-Art zurück: `deferred` mit Grund, Sperre `backend`. Dasselbe gilt für einen Bestandteil, den ihr Backend nicht anwendet, etwa einen unbekannten Typ. Eine ungültige Signatur bleibt `rejected`, die Box meldet `failed`.
+- Vorlauf: Diese Toleranz muss als Docker-Release auf den Boxen sein, bevor das erste Edge-Light-Release ins Register kommt. Eine ältere Docker-Box lehnt ein Edge-Light-Manifest als „Form kaputt“ ab und meldet `failed`.
+- `vp-ota manifest`, `sign` und `register` prüfen streng (`ParseManifestStrict`): nur bekannte Typen und Backends, ein Manifest je Box-Art.
+- Der Docker-Workflow startet nie für einen `edge-light-*`-Tag, und sein manueller Weg legt keinen solchen Namen an (`ota_check_docker_release`).
+
 ## Manueller Signierpfad
 
 Ein Manifest mit `vp-ota manifest --help` aus **unveränderlichen Image-Digests**, korrekter Sequenz und `state_schema` erzeugen. Anschließend:

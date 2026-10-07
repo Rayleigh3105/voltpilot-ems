@@ -4,7 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from './VpPicker';
-import { actorLabel, eventLabel, type EdgeUpdatesRelease } from '../adminEdgeUpdates';
+import { actorLabel, eventLabel, type ZuweisbareReleases } from '../adminEdgeUpdates';
 import type { GeraetView, Zeile } from '../adminGeraet';
 import type { Tone } from '../adminFleet';
 
@@ -44,6 +44,11 @@ export function AdminGeraetKarten({
         <Sektion titel="Software" icon="refresh-cw">
           {software.verbunden ? (
             <>
+              <p className="vp-text-sm" data-testid="geraet-box-art">
+                <Badge variant={software.boxArt.art ? 'tint' : 'off'} title={software.boxArt.detail}>
+                  {software.boxArt.label}
+                </Badge>
+              </p>
               <Zeilen zeilen={software.zeilen} />
               {software.grund && (
                 <p className="vp-muted vp-text-sm" data-testid="geraet-grund">
@@ -57,7 +62,7 @@ export function AdminGeraetKarten({
               )}
               {onAssign && (
                 <ZuweisungsForm
-                  releases={software.signierteReleases}
+                  releases={software.releases}
                   sollSeq={view.device.sollSeq}
                   hatSoll={view.device.soll != null}
                   busy={busy}
@@ -260,16 +265,27 @@ function ZuweisungsForm({
   onAssign,
   onRevert,
 }: {
-  releases: EdgeUpdatesRelease[];
+  releases: ZuweisbareReleases;
   sollSeq: number | null;
   hatSoll: boolean;
   busy: boolean;
   onAssign: (releaseSeq: number) => Promise<void>;
   onRevert?: () => Promise<void>;
 }) {
-  const [seq, setSeq] = useState<number | null>(sollSeq ?? releases[0]?.releaseSeq ?? null);
+  const passend = releases.passend;
+  const [seq, setSeq] = useState<number | null>(
+    passend.find((r) => r.releaseSeq === sollSeq)?.releaseSeq ?? passend[0]?.releaseSeq ?? null,
+  );
+  // Eine bestehende Zuweisung bleibt zurücknehmbar, auch wenn heute kein
+  // passendes Release da ist (etwa ein Docker-Release auf einer Edge-Light-Box
+  // aus der Zeit vor der Box-Art-Sperre).
+  const zuruecknehmen = hatSoll && onRevert && (
+    <Button variant="outline" disabled={busy} onClick={() => void onRevert()}>
+      Zuweisung zurücknehmen
+    </Button>
+  );
 
-  if (releases.length === 0) {
+  if (releases.signiert === 0) {
     return (
       <p className="vp-muted">
         Kein signiertes Release im Register – ohne signiertes Manifest hat ein Gerät nichts, was
@@ -277,15 +293,31 @@ function ZuweisungsForm({
       </p>
     );
   }
+  if (passend.length === 0) {
+    return (
+      <>
+        <h3>Release zuweisen</h3>
+        <p className="vp-muted vp-text-sm" data-testid="geraet-keine-passenden">
+          {releases.hinweis}
+        </p>
+        {zuruecknehmen && <div className="vp-row-gap">{zuruecknehmen}</div>}
+      </>
+    );
+  }
   return (
     <>
       <h3>Release zuweisen</h3>
       <VpPicker
         label="Release"
-        options={releases.map((r) => ({ value: String(r.releaseSeq), label: r.version }))}
+        options={passend.map((r) => ({ value: String(r.releaseSeq), label: r.version }))}
         value={seq == null ? '' : String(seq)}
         onChange={(v) => setSeq(Number(v))}
       />
+      {releases.hinweis && (
+        <p className="vp-muted vp-text-sm" data-testid="geraet-gesperrte-releases">
+          {releases.hinweis}
+        </p>
+      )}
       <p className="vp-muted vp-text-sm">
         Das Gerät lädt und tauscht danach von selbst. Es ist kein weiterer Schritt nötig.
       </p>
@@ -297,11 +329,7 @@ function ZuweisungsForm({
         >
           Aktualisieren
         </Button>
-        {hatSoll && onRevert && (
-          <Button variant="outline" disabled={busy} onClick={() => void onRevert()}>
-            Zuweisung zurücknehmen
-          </Button>
-        )}
+        {zuruecknehmen}
       </div>
     </>
   );

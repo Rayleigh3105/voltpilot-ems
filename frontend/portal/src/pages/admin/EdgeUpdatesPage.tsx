@@ -12,6 +12,7 @@ import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
 import type { Route } from '../../nav';
 import { BoxVersions } from './BoxVersions';
+import { BoxArtChip } from './BoxArtChip';
 import { AdminPageHead } from './AdminPageHead';
 import { GeraeteDrawer, UpdateActionError } from './GeraeteDrawer';
 import {
@@ -24,6 +25,7 @@ import {
   freshnessLabel,
   loudBanner,
   progressBackbone,
+  releaseBoxArt,
   restingLine,
   rolloutDeviceName,
   rolloutStateLabel,
@@ -241,6 +243,7 @@ export function EdgeUpdatesPage({
                 <thead>
                   <tr>
                     <th>Version</th>
+                    <th>Box-Art</th>
                     <th>Commit</th>
                     <th>Signatur</th>
                     <th>Läuft auf</th>
@@ -257,6 +260,9 @@ export function EdgeUpdatesPage({
                           {r.notes && (
                             <div className="vp-muted vp-text-sm">{r.notes}</div>
                           )}
+                        </td>
+                        <td data-label="Box-Art">
+                          <BoxArtChip boxArt={releaseBoxArt(r)} />
                         </td>
                         <td data-label="Commit" className="vp-muted">
                           {r.targetCommit ?? '–'}
@@ -536,10 +542,14 @@ function RolloutDeviceRow({
 /**
  * Der EINE Schritt: Geräte ankreuzen, „Aktualisieren".
  *
- * Es gibt keine Welle, keinen Canary, keinen Kanal und keine Vorbedingung, die
- * der Betreiber erst erfüllen müsste. Ein Einwand an einem Gerät ist ein
- * HINWEIS: ein offline gegangenes Gerät holt die Zuweisung beim nächsten
- * Verbindungsaufbau selbst ab (sie liegt retained beim Broker).
+ * Es gibt keine Welle, keinen Canary, keinen Kanal und keine Vorbedingung über
+ * den Zustand eines Geräts. Ein Einwand an einem Gerät ist ein HINWEIS: ein
+ * offline gegangenes Gerät holt die Zuweisung beim nächsten Verbindungsaufbau
+ * selbst ab (sie liegt retained beim Broker).
+ *
+ * Die eine Sperre ist die Box-Art: ein Gerät, auf das dieses Release nicht
+ * passt, steht ausgegraut mit Grund in der Liste („Alle passenden Geräte"
+ * wählt es nicht mit) - die API würde es mit 409 ablehnen.
  */
 function StartRolloutDrawer({
   release,
@@ -556,10 +566,12 @@ function StartRolloutDrawer({
   onClose: () => void;
   onStart: (devices: string[]) => Promise<void>;
 }) {
-  const cands = useMemo(() => candidates(fleet), [fleet]);
+  const cands = useMemo(() => candidates(fleet, release), [fleet, release]);
+  const passend = useMemo(() => cands.filter((c) => !c.sperre), [cands]);
+  const gesperrt = cands.length - passend.length;
   const [chosen, setChosen] = useState<string[]>([]);
   const summary = useMemo(() => startSummary(chosen, fleet), [chosen, fleet]);
-  const allChosen = cands.length > 0 && chosen.length === cands.length;
+  const allChosen = passend.length > 0 && chosen.length === passend.length;
 
   return (
     <Modal open title={`Aktualisieren auf ${release.version}`} onClose={onClose}>
@@ -568,25 +580,41 @@ function StartRolloutDrawer({
         Die gewählten Geräte bekommen das Release sofort zugewiesen und aktualisieren sich
         selbst. Es gibt keinen zweiten Schritt - niemand muss an ein Gerät.
       </p>
+      <p className="vp-text-sm" data-testid="release-box-art">
+        Release für <BoxArtChip boxArt={releaseBoxArt(release)} />
+        {gesperrt > 0 && (
+          <span className="vp-muted">
+            {' '}· {gesperrt === 1
+              ? '1 Gerät passt nicht dazu und ist ausgegraut.'
+              : `${gesperrt} Geräte passen nicht dazu und sind ausgegraut.`}
+          </span>
+        )}
+      </p>
 
       <label className="vp-check-row" data-testid="choose-all">
         <input
           type="checkbox"
           checked={allChosen}
+          disabled={passend.length === 0}
           onChange={(e) =>
-            setChosen(e.target.checked ? cands.map((c) => c.deviceId) : [])
+            setChosen(e.target.checked ? passend.map((c) => c.deviceId) : [])
           }
         />{' '}
-        <strong>Alle Geräte ({cands.length})</strong>
+        <strong>
+          {gesperrt > 0 ? 'Alle passenden Geräte' : 'Alle Geräte'} ({passend.length})
+        </strong>
       </label>
 
       <fieldset style={{ border: 0, padding: 0 }}>
         <legend className="vp-text-sm" style={{ fontWeight: 600 }}>Geräte</legend>
         {cands.map((c) => (
-          <label key={c.deviceId} className="vp-check-row vp-candidate">
+          <label key={c.deviceId}
+            className={`vp-check-row vp-candidate${c.sperre ? ' vp-candidate-gesperrt' : ''}`}
+            data-testid={c.sperre ? 'candidate-gesperrt' : 'candidate'}>
             <input
               type="checkbox"
               checked={chosen.includes(c.deviceId)}
+              disabled={!!c.sperre}
               onChange={(e) =>
                 setChosen((prev) =>
                   e.target.checked
@@ -598,14 +626,18 @@ function StartRolloutDrawer({
             <span className="vp-cell-main">
               <span>
                 {c.name} <span className="vp-muted">· {c.tenantName}</span>{' '}
+                <BoxArtChip boxArt={c.boxArt} />{' '}
                 <span className={`vp-ustate vp-ustate-${c.cls}`}>
                   <i className="vp-ustate-dot" aria-hidden="true" />
                   {c.state}
                 </span>
               </span>
+              {/* Die Box-Art ist eine SPERRE (die API lehnt mit 409 ab) und
+                  steht deshalb mit Grund an der ausgegrauten Zeile. */}
+              {c.sperre && <span className="vp-cell-sub">{c.sperre}</span>}
               {/* Ein Einwand ist ein HINWEIS, nie eine Sperre - die Checkbox
                   bleibt wählbar. */}
-              {c.caveat && <span className="vp-cell-sub vp-lever">{c.caveat}</span>}
+              {!c.sperre && c.caveat && <span className="vp-cell-sub vp-lever">{c.caveat}</span>}
             </span>
           </label>
         ))}

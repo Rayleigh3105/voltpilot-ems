@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   actorLabel,
   blockerLever,
+  boxArtLabel,
   canRollOut,
   candidates,
   crossoverHint,
@@ -15,6 +16,8 @@ import {
   kpiUnknownNote,
   loudBanner,
   progressBackbone,
+  releaseBoxArt,
+  releaseSperre,
   restingLine,
   rolloutDeviceName,
   rolloutStateLabel,
@@ -24,6 +27,7 @@ import {
   stateLabel,
   trustSetSpread,
   visibleJournal,
+  zuweisbareReleases,
   type DeviceTrust,
   type EdgeUpdates,
   type EdgeUpdatesRelease,
@@ -138,6 +142,18 @@ describe('Hebel einer Sperre', () => {
   it('nennt den Hebel zum maschinenlesbaren Namen', () => {
     expect(blockerLever('platte')).toContain('Platz');
     expect(blockerLever('kette')).toContain('Signaturkette');
+  });
+
+  it('schickt bei einer anderen Box-Art zum passenden Release, nicht zur Signatur', () => {
+    // Die Sperre `backend` meldet eine Box, die ein gültig signiertes Release
+    // einer anderen Box-Art bekommen hat (Edge Light auf der Docker-Box oder
+    // umgekehrt). Das ist kein Vorfall: der Hebel ist ein Release der eigenen
+    // Box-Art - nicht die Signaturkette und nicht der Anti-Rollback-Boden.
+    const lever = blockerLever('backend')!;
+    expect(lever).toContain('Box-Art');
+    expect(lever).toContain('Edge Light');
+    expect(lever).not.toContain('Signatur');
+    expect(blockerLever('politik')).not.toContain('Box-Art');
   });
 
   it('schickt zu einem ENTFALLENEN Tor nicht auf den alten Handgriff', () => {
@@ -559,5 +575,106 @@ describe('Aktualisieren: Geräte-Auswahl + Zusammenfassung', () => {
 
   it('behauptet ohne Auswahl gar nichts', () => {
     expect(startSummary([], [row()])).toEqual([]);
+  });
+});
+
+describe('Box-Art: Docker-Box und Edge Light (Edge Light Stufe 2, A3)', () => {
+  const pilotTrust: DeviceTrust = {
+    rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+    trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.',
+  };
+  const rel = (over: Partial<EdgeUpdatesRelease>): EdgeUpdatesRelease => ({
+    releaseSeq: 40, version: 'edge-2026.10.0', targetCommit: null, notes: null, signed: true,
+    signingKeyId: 'rel-2026-a', createdAt: '2026-10-01T08:00:00Z', runningOnDevices: 0, ...over,
+  });
+
+  it('übersetzt die Box-Art und lässt Unbekanntes unbekannt', () => {
+    expect(boxArtLabel('docker').label).toBe('Docker-Box');
+    expect(boxArtLabel('light').label).toBe('Edge Light');
+    expect(boxArtLabel(null).label).toBe('Box-Art unbekannt');
+    expect(boxArtLabel(undefined).art).toBeNull();
+    // Ein Wort, das dieser Portal-Stand nicht kennt, wird NICHT zur Docker-Box.
+    expect(boxArtLabel('ostree').label).toBe('Box-Art unbekannt');
+  });
+
+  it('nimmt ein Release ohne Kennzeichnung als Docker-Release (wie die API)', () => {
+    expect(releaseBoxArt(rel({}))).toBe('docker');
+    expect(releaseBoxArt(rel({ boxArt: 'light' }))).toBe('light');
+  });
+
+  it('sperrt mit denselben Sätzen wie BoxArt.sperrgrund in der API', () => {
+    // Wortgleich mit BoxArtTest.assignmentRule - die beiden laufen nicht auseinander.
+    expect(releaseSperre(rel({}), 'light')).toBe(
+      'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
+      + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.');
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'docker'))
+      .toBe('Release für Edge Light – diese Box ist eine Docker-Box.');
+    expect(releaseSperre(rel({ boxArt: 'light' }), null)).toBe(
+      'Release für Edge Light – die Box-Art dieses Geräts ist unbekannt. Ein '
+      + 'Edge-Light-Release geht nur an eine Box, die sich als Edge Light gemeldet hat.');
+    expect(releaseSperre(rel({}), 'docker')).toBeNull();
+    expect(releaseSperre(rel({}), null)).toBeNull();
+    expect(releaseSperre(rel({ boxArt: 'light' }), 'light')).toBeNull();
+  });
+
+  it('zeigt Edge Light ohne Vertrauens-Set RUHIG als „Updates von Hand", nie als Fehler', () => {
+    const got = crossoverState(pilotTrust, 'light');
+    expect(got.state).toBe('von_hand');
+    expect(got.tone).toBe('off');
+    expect(got.label).toBe('Updates von Hand (Edge Light, Stufe 1)');
+    expect(got.detail).toContain('Wartungstunnel');
+    // Auch ganz ohne Vertrauens-Block: die Bauart sagt genug.
+    expect(crossoverState(null, 'light').state).toBe('von_hand');
+    // Die Docker-Box behält ihre laute Regel.
+    expect(crossoverState(pilotTrust, 'docker').state).toBe('fehler');
+    expect(crossoverState(pilotTrust).state).toBe('fehler');
+    // Mit Stufe 2 (geprüftes Set) gilt dieselbe Regel wie für Docker.
+    expect(crossoverState({ ...pilotTrust, trustSetKeyIds: ['rel-2026-a'] }, 'light').state)
+      .toBe('gekreuzt');
+  });
+
+  it('zählt Edge Light im Hinweis getrennt und nicht als Fehler', () => {
+    const hint = crossoverHint([
+      row({ deviceId: '1', trust: pilotTrust, boxArt: 'light' }),
+      row({ deviceId: '2', trust: pilotTrust, boxArt: 'docker' }),
+    ]);
+    expect(hint).toContain('1 Gerät hat kein gültiges Vertrauens-Set');
+    expect(hint).toContain('1 Edge-Light-Box bekommt Updates von Hand (Stufe 1)');
+  });
+
+  it('bietet je Gerät nur passende Releases an und nennt den Rest', () => {
+    const docker = rel({});
+    const light = rel({ releaseSeq: 41, version: 'edge-2026.10.1', boxArt: 'light' });
+    const unsigned = rel({ releaseSeq: 39, signed: false });
+
+    const mango = zuweisbareReleases([docker, unsigned], 'light');
+    expect(mango.passend).toEqual([]);
+    expect(mango.signiert).toBe(1);
+    expect(mango.hinweis).toBe('Das signierte Release passt nicht zu dieser Box. '
+      + 'Release für die Docker-Box – diese Box ist eine Edge Light. Updates von Hand '
+      + '(Edge Light, Stufe 1): Aktualisierung über den Wartungstunnel.');
+
+    const box = zuweisbareReleases([light, docker], 'docker');
+    expect(box.passend.map((r) => r.releaseSeq)).toEqual([40]);
+    expect(box.hinweis).toBe('1 weiteres signiertes Release ist hier nicht zuweisbar: '
+      + 'Release für Edge Light – diese Box ist eine Docker-Box.');
+
+    expect(zuweisbareReleases([docker], null).hinweis).toBeNull();
+    expect(zuweisbareReleases([light, docker], null).passend.map((r) => r.releaseSeq))
+      .toEqual([40]);
+  });
+
+  it('graut im Rollout-Dialog unpassende Geräte aus - mit Grund, am Ende der Liste', () => {
+    const fleet = [
+      row({ deviceId: 'mango', siteName: 'Hof Linde', state: 'fehlgeschlagen', boxArt: 'light' }),
+      row({ deviceId: 'box', siteName: 'Pilsting', boxArt: 'docker' }),
+    ];
+    const c = candidates(fleet, rel({}));
+    expect(c.map((x) => x.deviceId)).toEqual(['box', 'mango']);
+    expect(c[0].sperre).toBeNull();
+    expect(c[1].sperre).toContain('diese Box ist eine Edge Light');
+    expect(c[1].boxArt).toBe('light');
+    // Ohne Release-Bezug gibt es keine Sperre (und die alte Ordnung bleibt).
+    expect(candidates(fleet).map((x) => x.sperre)).toEqual([null, null]);
   });
 });

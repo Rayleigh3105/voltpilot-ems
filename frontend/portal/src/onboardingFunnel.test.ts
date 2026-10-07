@@ -150,6 +150,20 @@ describe('Funnel-Stufe 4 „Vertrauen gekreuzt"', () => {
     expect(trust.attention).toBe(false);
   });
 
+  it('nennt Edge Light ohne Stufe 2 ruhig - weder offen noch Aufmerksamkeit', () => {
+    const stages = funnelStages([], [], [
+      fleetRow({ deviceId: 'a', externalRef: 'a', trust: crossed }),
+      fleetRow({ deviceId: 'm', externalRef: 'm', boxArt: 'light', trust: {
+        rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+        trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' } }),
+    ]);
+    const trust = stages.find((s) => s.id === 'vertrauen')!;
+    expect(trust.count).toBe(1);
+    expect(trust.attention).toBe(false);
+    expect(trust.note).toBe(
+      'Diese Geräte können Releases anwenden. 1 Edge-Light-Box bekommt Updates von Hand (Stufe 1).');
+  });
+
   it('erscheint GAR NICHT ohne Flotte - eine „0 von 0"-Kachel ist kein Befund', () => {
     expect(funnelStages([], [], []).map((s) => s.id)).toEqual([
       'registriert', 'wartet', 'verbunden',

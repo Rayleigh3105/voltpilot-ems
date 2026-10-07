@@ -137,6 +137,8 @@ export interface AdminDeviceRow {
   note: string | null;
   provisionedAt: string | null;
   trust?: DeviceTrust | null;
+  /** Box-Art aus der API (`ota.BoxArt`); `null` = unbekannt oder noch kein Gerät. */
+  boxArt?: string | null;
 }
 
 export interface ProvisionDeviceInput {

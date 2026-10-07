@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "release": "edge-light-2026.10.1",
+  "release_seq": 140,
+  "target_commit": "5b28311b4c0d",
+  "artifacts": [
+    {
+      "type": "binary",
+      "name": "vp-edge-light",
+      "arch": "linux/mipsle",
+      "size": 14614743,
+      "gz_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "gz_size": 4679121
+    },
+    {
+      "type": "binary",
+      "name": "vp-edge-light",
+      "arch": "linux/arm64",
+      "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+      "size": 13893816,
+      "gz_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+      "gz_size": 4475301
+    },
+    {
+      "type": "binary",
+      "name": "vp-edge-light",
+      "arch": "linux/amd64",
+      "sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "size": 14753976,
+      "gz_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "gz_size": 4720556
+    }
+  ],
+  "min_from_seq": 0,
+  "allow_downgrade": false,
+  "state_schema": 1,
+  "compat": {
+    "backends": ["light"]
+  },
+  "signing_key_id": "rel-2026-a",
+  "notes": "Ungueltig: dem Programm fuer linux/mipsle fehlt die Pruefsumme der rohen Datei."
+}

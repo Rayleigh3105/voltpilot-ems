@@ -1053,6 +1053,32 @@ func TestWithoutAnInjectedRootTheBakedAnchorIsUsed(t *testing.T) {
 	}
 }
 
+// Die Docker-Toleranz (Plan Edge Light Stufe 2, B1): ein gueltig signiertes
+// Edge-Light-Release ist hier „nicht fuer mich". Der Sidecar stellt es mit der
+// Sperre backend zurueck, meldet KEIN failed und fasst das System nicht an.
+func TestAnEdgeLightReleaseIsDeferredWithTheBackendBlockerAndTouchesNothing(t *testing.T) {
+	r := newRig(t)
+	r.assign(func(m *otaverify.Manifest) {
+		m.Release, m.ReleaseSeq, m.StateSchema = "edge-light-2026.10.1", 14, 1
+		m.Compat.Backends = []string{otaverify.BackendLight}
+		m.Artifacts = []otaverify.Artifact{{Type: otaverify.ArtifactBinary, Name: "vp-edge-light",
+			Arch: "linux/mipsle", SHA256: strings.Repeat("a", 64), Size: 14614743,
+			GzSHA256: strings.Repeat("b", 64), GzSize: 4679121}}
+	})
+	r.tick()
+
+	st := r.state()
+	if st.State != otaapply.StateDeferred || st.Blocker != otaapply.BlockerBackend {
+		t.Fatalf("Edge-Light-Release = deferred/backend, ist %+v", st)
+	}
+	if !strings.Contains(st.Reason, "Box-Art") || st.Release != "edge-light-2026.10.1" {
+		t.Fatalf("der Grund nennt die Box-Art, das Ziel das signierte Release: %+v", st)
+	}
+	if len(r.fd.log) != 0 {
+		t.Fatalf("ein Release der anderen Box-Art darf nichts am System bewegen: %v", r.fd.log)
+	}
+}
+
 // Und die Kehrseite: mit leerer Wurzel wird ein sonst einwandfreies Release
 // ABGELEHNT - nie stillschweigend angewandt.
 func TestAnEmptyTrustAnchorRefusesEveryRelease(t *testing.T) {

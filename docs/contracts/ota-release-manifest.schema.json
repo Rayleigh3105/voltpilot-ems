@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/ota-release-manifest.schema.json",
   "title": "VoltPilot OTA release manifest (release.json)",
-  "description": "Der EINE Soll-Stand eines Edge-Releases (Scout vp-ota-rollout-h4 §5, OTA Stufe 1 „Vertrauen\"). SIGNIERT WIRD DIESE DATEI ALS ROHE BYTES - es gibt in dieser Datei bewusst KEIN signature-Feld, weil ein eingebettetes Feld die Signatur ueber sich selbst rechnen muesste und damit eine Re-Serialisierung erzwaenge. Die Signatur liegt DANEBEN (release.json.sig, siehe ota-signature.schema.json), und die zu signierenden Bytes sind exakt die Bytes dieser Datei, Byte fuer Byte, inklusive jedes Leerzeichens und eines etwaigen abschliessenden Zeilenumbruchs. Vollstaendige Herleitung + Zeremonie: docs/ota-signing.md.",
+  "description": "Der EINE Soll-Stand eines Edge-Releases (Scout vp-ota-rollout-h4 §5, OTA Stufe 1 „Vertrauen\"). SIGNIERT WIRD DIESE DATEI ALS ROHE BYTES - es gibt in dieser Datei bewusst KEIN signature-Feld, weil ein eingebettetes Feld die Signatur ueber sich selbst rechnen muesste und damit eine Re-Serialisierung erzwaenge. Die Signatur liegt DANEBEN (release.json.sig, siehe ota-signature.schema.json), und die zu signierenden Bytes sind exakt die Bytes dieser Datei, Byte fuer Byte, inklusive jedes Leerzeichens und eines etwaigen abschliessenden Zeilenumbruchs. Vollstaendige Herleitung + Zeremonie: docs/ota-signing.md. Es gibt EIN MANIFEST JE BOX-ART: ein Docker-Release (edge-JJJJ.MM.N) traegt oci-images fuer compose, ein Edge-Light-Release (edge-light-JJJJ.MM.N) nur binary-Artefakte und nur das Backend light (siehe allOf). Was ein Geraet mit einem gueltig signierten Manifest tut, legen die geteilten Vektoren docs/contracts/ota-release-manifest-vectors.json fest.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -25,8 +25,8 @@
     },
     "release": {
       "type": "string",
-      "pattern": "^edge-\\d{4}\\.\\d{2}\\.\\d+$",
-      "description": "Das menschenlesbare Release-Tag (Captain-Entscheid D5), identisch mit dem Git-Tag im voltpilot-ems-Repo. NIE die Ordnung - dafuer ist release_seq da."
+      "pattern": "^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$",
+      "description": "Das menschenlesbare Release-Tag (Captain-Entscheid D5), identisch mit dem Git-Tag im voltpilot-ems-Repo. Zwei Linien mit eigener Kadenz: edge-JJJJ.MM.N fuer die Docker-Box, edge-light-JJJJ.MM.N fuer Edge Light (Entscheid E7). Die Box-Art steht in compat.backends; der Name folgt ihr (siehe allOf). NIE die Ordnung - dafuer ist release_seq da; sie ist EINE Ordnung ueber beide Linien, und jede Box vergleicht nur gegen ihre eigene."
     },
     "release_seq": {
       "type": "integer",
@@ -41,28 +41,12 @@
     "artifacts": {
       "type": "array",
       "minItems": 1,
-      "description": "Was dieses Release AUSMACHT, typisiert. Der einzige backend-spezifische Teil des Manifests: ein Apply-Backend wendet nur Artefakt-Typen an, die es versteht. Heute zwei OCI-Images; spaeter moeglich sind os-image (Mender-Slot) oder quadlet-bundle, ohne dass irgendein anderes Feld sich aendert.",
+      "description": "Was dieses Release AUSMACHT, typisiert. Der einzige backend-spezifische Teil des Manifests: ein Apply-Backend wendet nur Artefakt-Typen an, die es versteht (compose: oci-image, light: binary). Die Docker-Box traegt zwei OCI-Images, Edge Light ein Programm je Architektur; spaeter moeglich sind os-image (Mender-Slot) oder quadlet-bundle, ohne dass irgendein anderes Feld sich aendert. Traegt ein gueltig signiertes Release einen Typ, den das Backend eines Geraets nicht anwendet (unbekannt oder einer anderen Box-Art), wendet das Geraet NICHTS davon an und stellt zurueck (deferred + Grund) - es lehnt nicht ab. Die Felder eines BEKANNTEN Typs prueft jedes Geraet voll.",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["type", "name", "ref"],
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["oci-image"],
-            "description": "Heute nur oci-image. Ein Geraet, das einen Typ nicht kennt, LEHNT AB (deferred + Grund) statt zu raten."
-          },
-          "name": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9-]{0,31}$",
-            "description": "Die Rolle im Deployment (core, nodered) - der Schluessel, unter dem ein Backend das Artefakt einsetzt."
-          },
-          "ref": {
-            "type": "string",
-            "pattern": "^[^\\s@]+@sha256:[0-9a-f]{64}$",
-            "description": "VOLL digest-gepinnte OCI-Referenz. Ein Tag waere kein Pin: die Integritaet dieses Releases haengt daran, dass die Bytes durch den Digest festgenagelt sind (eine manipulierte Ebene scheitert schon beim Pull)."
-          }
-        }
+        "oneOf": [
+          { "$ref": "#/$defs/ociImage" },
+          { "$ref": "#/$defs/binary" }
+        ]
       }
     },
     "min_from_seq": {
@@ -92,8 +76,8 @@
         "backends": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "enum": ["compose", "quadlet", "mender"] },
-          "description": "Fuer welche Apply-Backends dieses Release bestimmt ist. Ein Geraet, dessen Backend hier NICHT steht, lehnt ab (deferred + Grund) - nie ein Rateversuch."
+          "items": { "type": "string", "enum": ["compose", "quadlet", "mender", "light"] },
+          "description": "Fuer welche Apply-Backends dieses Release bestimmt ist - zugleich die Box-Art: compose = Docker-Box, light = Edge Light. Ein Geraet, dessen Backend hier NICHT steht, wendet nicht an und stellt nach gueltiger Signatur zurueck (deferred + Grund, Sperre backend) - nie ein Rateversuch, nie ein Vorfall. Ein Backend, das ein Geraet nicht kennt, ist fuer es kein Formfehler."
         },
         "inverter_families": {
           "type": "array",
@@ -115,6 +99,73 @@
       "type": "boolean",
       "default": false,
       "description": "ADDITIV (Stufe 3, schema_version bleibt 1.0). Der Eil-Pfad: der 'nicht mitten im Schreiben'-Interlock verschiebt einen autonomen Tausch, solange ein von neutral abweichender Sollwert ausgefuehrt wird - auf einer dauerhaft arbitrierenden Anlage hiesse das 'nie'. Ein eiliges Release verschiebt nicht, sondern laesst die Anlage ZUERST bewusst neutral stellen und tauscht in diesem Fenster. Weil das eine Anweisung an eine laufende Kundenanlage ist, wohnt der Schalter im SIGNIERTEN Manifest und nicht im unsignierten Umschlag. Fehlt das Feld, gilt der gewoehnliche geduldige Weg - ein aelterer Geraetestand ignoriert es und verschiebt weiter (die sichere Richtung)."
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "EIN MANIFEST JE BOX-ART: edge-light-JJJJ.MM.N gilt nur fuer light und traegt nur binary; jedes andere Release traegt weder das Backend light noch ein binary.",
+      "if": { "required": ["release"], "properties": { "release": { "pattern": "^edge-light-" } } },
+      "then": {
+        "properties": {
+          "compat": { "properties": { "backends": { "items": { "const": "light" } } } },
+          "artifacts": { "items": { "properties": { "type": { "const": "binary" } } } }
+        }
+      },
+      "else": {
+        "properties": {
+          "compat": { "properties": { "backends": { "items": { "not": { "const": "light" } } } } },
+          "artifacts": { "items": { "properties": { "type": { "not": { "const": "binary" } } } } }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "artifactName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "Die Rolle im Deployment (core, nodered, vp-edge-light) - der Schluessel, unter dem ein Backend das Artefakt einsetzt."
+    },
+    "ociImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "ref"],
+      "description": "Ein digest-gepinntes Container-Image (Docker-Box, Backend compose). name ist eindeutig.",
+      "properties": {
+        "type": { "type": "string", "const": "oci-image" },
+        "name": { "$ref": "#/$defs/artifactName" },
+        "ref": {
+          "type": "string",
+          "pattern": "^[^\\s@]+@sha256:[0-9a-f]{64}$",
+          "description": "VOLL digest-gepinnte OCI-Referenz. Ein Tag waere kein Pin: die Integritaet dieses Releases haengt daran, dass die Bytes durch den Digest festgenagelt sind (eine manipulierte Ebene scheitert schon beim Pull)."
+        }
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "arch", "sha256", "size", "gz_sha256", "gz_size"],
+      "description": "Ein einzelnes Programm fuer EINE Plattform (Edge Light, Backend light; Plan Edge Light Stufe 2 §2.2). Je Architektur ein Eintrag unter demselben name; (name, arch) ist eindeutig. Kein ref: die Bytes sind ueber die Pruefsummen gepinnt.",
+      "properties": {
+        "type": { "type": "string", "const": "binary" },
+        "name": { "$ref": "#/$defs/artifactName" },
+        "arch": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+/[a-z0-9]+(/[a-z0-9]+)?$",
+          "description": "Zielplattform als GOOS/GOARCH, etwa linux/mipsle (GL.iNet Mango), linux/arm64, linux/amd64. Das Geraet waehlt den Eintrag seiner eigenen Plattform."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 der ROHEN Programmdatei (hex, klein). Geprueft vor jedem Start."
+        },
+        "size": { "type": "integer", "minimum": 1, "description": "Groesse der rohen Programmdatei in Byte." },
+        "gz_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 der GEPACKTEN Lieferung (gzip). Damit laesst sich der Download schon vor dem Entpacken und vor dem Neustart pruefen."
+        },
+        "gz_size": { "type": "integer", "minimum": 1, "description": "Groesse der gepackten Lieferung in Byte." }
+      }
     }
   }
 }

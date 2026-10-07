@@ -154,6 +154,19 @@ fails "fuehrende Null in N: abgelehnt (zwei Namen fuer eine Zahl)" ota_check_rel
 fails "fremdes Praefix: abgelehnt" ota_check_release v1.2.3
 fails "leerer Name: abgelehnt" ota_check_release ''
 
+# Edge Light ist eine EIGENE Linie mit eigenem Lauf (Entscheid E7, Plan Edge
+# Light Stufe 2 A4): der manuelle Docker-Weg legt nie einen edge-light-Namen
+# an, und ein edge-light-Tag zaehlt in der Docker-Nummerierung nicht mit.
+ota_check_docker_release edge-2026.10.4 && ok "ein Docker-Name geht durch den Docker-Weg"
+fails "ein Edge-Light-Name bricht im Docker-Weg ab" ota_check_docker_release edge-light-2026.10.1
+fails "auch ein krummer Edge-Light-Name bricht ab" ota_check_docker_release edge-light-x
+fails "der Docker-Weg prueft weiter das Schema" ota_check_docker_release edge-2026.8.1
+eq "…und die Absage nennt die Edge-Light-Linie" "1" \
+	"$( (ota_check_docker_release edge-light-2026.10.1) 2>&1 | grep -c 'Edge-Light-Linie')"
+eq "ein Edge-Light-Tag zaehlt in der Docker-Nummerierung nicht mit" \
+	"edge-2026.10.4" \
+	"$(printf 'edge-2026.10.3\nedge-light-2026.10.9\nedge-light-2026.10.12\n' | ota_next_release 2026.10)"
+
 # Der Push-Header MUSS `Basic` sein: Forgejos Basic-Methode feuert auf
 # Git-Pfaden und nimmt den Token als PASSWORT (services/auth/basic.go);
 # `token <t>` ist dort keine gueltige Form - das ist der API-Weg daneben.
