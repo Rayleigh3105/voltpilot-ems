@@ -1054,6 +1054,37 @@
         "wertMitEinheit: Number(wert)"
       ],
       "grund": "Konzept Auswerten a1 §6.7, Review r3 zu #1415: Anzeige, Balkengeometrie, Reihenfolge, Kalender und Listenindex; Summe und Anteile ausschließlich über die Vertrags-Zwillinge."
+    },
+    "messstellenListe.ts": {
+      "importe": [
+        "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NOCH_KEINE_QUELLE",
+        "./glossar:UEMS_UNTERNEHMEN",
+        "./glossar:UEMS_WOHER_DIE_WERTE",
+        "./messstellen:KEIN_ORT",
+        "./messstellen:TITEL",
+        "./messstellen:ablesungsZiele",
+        "./messstellen:zeitpunktText",
+        "./picker/suche:alleFundstellen",
+        "./picker/suche:hervorheben",
+        "./picker/suche:normalisiereSuche",
+        "./uemsOrtsbaum:datumText",
+        "./uemsOrtsbaum:lokalerTag"
+      ],
+      "operationen": [
+        "gruppen: out.length - 1",
+        "imOrt: -1",
+        "liste: g.gesamt += 1",
+        "liste: n + g.reihen.length",
+        "namenListe: -1",
+        "namenListe: namen.length - 1",
+        "standAus: Number.isNaN(Date.parse(`${t}T00:00:00Z`))",
+        "stellungUnter: standort.length + 3",
+        "zahlFundstellen: begriff.length - 1",
+        "zahlFundstellen: von - 1",
+        "zahlFundstellen: von -= 1"
+      ],
+      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert."
     }
   }
 }
