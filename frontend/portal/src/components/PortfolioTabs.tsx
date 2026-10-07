@@ -167,11 +167,13 @@ export function PortfolioTabs({
         : energiemanagementReiter === 'zuschnitt' || energiemanagementReiter === 'verzeichnis'
           ? 'ueberblick'
           : (energiemanagementReiter ?? 'ueberblick');
+    // Entscheid 17 (Konzept Nachweisen n1): eine Feststellung zeigt den Reiter „Audits“ als offen.
+    const emReiterOffen: EnergiemanagementReiter = emReiter === 'feststellungen' ? 'audits' : emReiter;
     const emDa = welten.some((p) => p.id === 'portfolio-energiemanagement');
     const emReiterEintrag = (r: { key: EnergiemanagementReiter; label: string }): GruppenEintrag => ({
       key: `energiemanagement-${r.key}`,
       label: r.label,
-      aktiv: emOffen && emReiter === r.key,
+      aktiv: emOffen && emReiterOffen === r.key,
       testId: `energiemanagement-reiter-${r.key}`,
       onOpen: () => onOpenBereich?.(energiemanagementRoute(r.key)),
     });

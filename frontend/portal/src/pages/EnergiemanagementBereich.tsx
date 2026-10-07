@@ -7,7 +7,6 @@ import { DokumentAnlegenDialog } from '../components/DokumentDialoge';
 import { EinsichtRecht } from '../components/EinsichtRecht';
 import { EnergiemanagementAudits } from '../components/EnergiemanagementAudits';
 import { EnergiemanagementAufgaben } from '../components/EnergiemanagementAufgaben';
-import { EnergiemanagementFeststellungen } from '../components/EnergiemanagementFeststellungen';
 import { EnergiemanagementManagementbewertung } from '../components/EnergiemanagementManagementbewertung';
 import { EnergiemanagementVerantwortung } from '../components/EnergiemanagementVerantwortung';
 import { EnergiemanagementWiedervorlage } from '../components/EnergiemanagementWiedervorlage';
@@ -33,7 +32,13 @@ import './Verbesserung.css';
  * steht der Name des Reiters übergangsweise nur als Überschrift für Vorleser da, bis ihr PR den Kopf liefert (Dokumente
  * und Berichte PR 2/3, Audits, Feststellungen, Managementbewertung und Aufgaben PR 4/5) - je Reiter eine Zeile hier.
  */
-const EIGENER_KOPF: ReadonlySet<EnergiemanagementReiter> = new Set<EnergiemanagementReiter>(['ueberblick', 'verzeichnis']);
+const EIGENER_KOPF: ReadonlySet<EnergiemanagementReiter> = new Set<EnergiemanagementReiter>([
+  'ueberblick',
+  'verzeichnis',
+  // PR 4: der Reiter „Audits“, auch über `…/feststellungen` geöffnet (Entscheid 17).
+  'audits',
+  'feststellungen',
+]);
 
 /**
  * Der Bereich „Energiemanagement“ (UEMS AP-19 IP-9, §5.1, §6.3; `#/portfolio/energiemanagement`, nur mit
@@ -91,14 +96,15 @@ export function EnergiemanagementBereich({
   if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} />;
   if (personId) return <EnergiemanagementPersonSeite id={personId} onListe={() => onReiter('aufgaben')} />;
   const zumAudit = onAudit ?? (() => onReiter('audits'));
-  const zurFeststellung = onFeststellung ?? (() => onReiter('feststellungen'));
+  const zurFeststellung = onFeststellung ?? (() => onReiter('audits'));
   if (auditId) return <AuditSeite id={auditId} onListe={() => onReiter('audits')} onFeststellung={zurFeststellung} />;
-  if (feststellungId) return <FeststellungSeite id={feststellungId} onListe={() => onReiter('feststellungen')} onAudit={zumAudit} />;
+  if (feststellungId) return <FeststellungSeite id={feststellungId} onListe={() => onReiter('audits')} onAudit={zumAudit} />;
   if (managementbewertungKennung) return <ManagementbewertungSeite kennung={managementbewertungKennung} onListe={() => onReiter('managementbewertung')} />;
   const zurManagementbewertung = onManagementbewertung ?? (() => onReiter('managementbewertung'));
   if (reiter === 'zuschnitt') return <ZuschnittHilfe onZurueck={() => onReiter('ueberblick')} />;
   // „Wer ist wofür verantwortlich“ steht unter dem Reiter „Aufgaben“ (§6.3 nennt sieben Reiter, diese Ansicht ist keiner).
-  const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter;
+  // Entscheid 17 (Konzept Nachweisen n1): die Feststellungen stehen unter „Audits“, ihre Adresse bleibt.
+  const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter === 'feststellungen' ? 'audits' : reiter;
   const reiterLeiste = !reiterOben && (
     <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
       {E.REITER.map((r) => (
@@ -138,10 +144,8 @@ export function EnergiemanagementBereich({
           <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
         ) : reiter === 'verantwortung' ? (
           <EnergiemanagementVerantwortung onPerson={onPerson} onZurueck={() => onReiter('aufgaben')} />
-        ) : reiter === 'audits' ? (
-          <EnergiemanagementAudits onAudit={zumAudit} />
-        ) : reiter === 'feststellungen' ? (
-          <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
+        ) : reiter === 'audits' || reiter === 'feststellungen' ? (
+          <EnergiemanagementAudits onAudit={zumAudit} onFeststellung={zurFeststellung} feststellungenZeigen={reiter === 'feststellungen'} />
         ) : reiter === 'managementbewertung' ? (
           <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
         ) : reiter === 'verzeichnis' ? (
