@@ -688,7 +688,7 @@ public class MessstelleWerteService {
                 }
             }
             return ohneReihe(r, OhneZahl.KEINE_QUELLE, ohneZuordnung
-                    ? List.of("Ablesezeitraum ohne Monatszuordnung") : List.of());
+                    ? List.of(ErgebnisZustand.ABLESEZEITRAUM_OHNE_MONAT) : List.of());
         }
         if (l.spur() != null) {
             return berechnet(r, l.spur().get(s.von()), l.spurVersionen().getOrDefault(s.von(), List.of()), z, version,
