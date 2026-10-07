@@ -42,7 +42,7 @@ flowchart LR
 | Aufgabe ohne Fortschritt | Messkanal, Frische und bestätigter Verbrauch |
 | Frist gefährdet/verpasst | Restbedarf, gültiges Zeitfenster, Grenzen und Fallbackgrund |
 | Regel bleibt nach Stop aktiv | Retained Artefaktrücknahme und Empfang an der Box |
-| „Sonne + Speicher“ gibt nichts frei | `ev_release_reason` im Fahrplan, `storage_release_mode`/`_note` im Herzschlag der Box (Portal: Erklärzeile am Ladepunkt) |
+| „Sonne + Speicher“ gibt nichts frei | `ev_release_reason` im Fahrplan, `storage_release_mode`/`_note` im Herzschlag der Box (Portal: Erklärzeile am Ladepunkt). `speicherpfad` mit „ohne bestätigte Rückmeldung“: gesteuerter Speicher, Rücklesung prüfen. `wirkung` bei `frei_beobachtet` davor: der nicht gesteuerte Wechselrichter deckt die Wallbox nicht (Arbeitsmodus am Gerät prüfen) |
 
 ## Beobachtung und Rücknahme
 

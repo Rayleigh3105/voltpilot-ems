@@ -244,7 +244,7 @@ func TestTheReleaseCoverStopsAPlannedChargeWhileTheCarDrawsTheBattery(t *testing
 	if snap.ReleaseCoverKw == nil || *snap.ReleaseCoverKw != -6 {
 		t.Fatalf("the correction is named: %+v", snap.ReleaseCoverKw)
 	}
-	if ready, _ := a.releaseReady.get(now, a.releaseReadyWindow()); !ready {
+	if ready, _, _ := a.releaseReady.get(now, a.releaseReadyWindow()); !ready {
 		t.Fatal("this tick's battery path is ready for a release")
 	}
 }

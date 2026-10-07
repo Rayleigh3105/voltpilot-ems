@@ -174,7 +174,9 @@ export function installSteuerungFixtures() {
   const charging = { budget: { deviceId: 'help-box', enabled: true, controlEnabled: true, connectorCount: 2, gridLimitKw: 22,
     effLimitKw: 22, marginPct: 10, minPowerKw: 1.4, budgetKw: 17.2, allocatedKw: KW.wb[J], measuredKw: KW.wb[J], reservedKw: 0,
     siteLoadKw: 0.6, siteGridKw: netz[J], budgetMode: 'metered', surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', reportedAt: JETZT,
-    storageRelease: { active: true, kw: 2.4, floorSocPct: 15, socPct: soc[J], mode: 'frei',
+    // `?speicher=beobachtet`: dieselbe Freigabe aus einem Speicher, den VoltPilot nicht steuert (07.10.2026).
+    storageRelease: { active: true, kw: 2.4, floorSocPct: 15, socPct: soc[J],
+      mode: new URLSearchParams(location.search).get('speicher') === 'beobachtet' ? 'frei_beobachtet' : 'frei',
       note: 'Der Speicher gibt bis 2,4 kW für das Auto frei und darf bis 15 % entladen.' } },
   chargers: [
     { deviceId: 'help-box', chargePointId: 'CP-WERKSTATT', entityId: eid('wb'), label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true, vendor: 'go-e', model: 'Charger', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('wb', true)] },

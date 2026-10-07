@@ -24,9 +24,16 @@ import (
 // ⚠ NO NEW WRITE PATH. The battery receives the same kind of setpoint through
 // the same certified, guarded path it always does (Clamp, SoC floor, BMS,
 // §14a, export watchdog, peak guard); the only new value is "less charge /
-// more discharge toward grid = 0", bounded by the cloud's floor. A battery
-// the box may not command (uncertified family, kill switch, no held
-// readback) is NOT ready - and then nothing is released at all.
+// more discharge toward grid = 0", bounded by the cloud's floor.
+//
+// ⚠ A BATTERY THE BOX DOES NOT COMMAND (no model/device approval, so
+// control_enabled=false on edge/setpoint) is reported OBSERVED (Kapitän
+// 07.10.2026): its inverter covers the wallbox by its own regulation, the
+// release rests on the measurement and the effect check, and the release
+// cover never acts (it needs the held readback). A COMMANDED battery without
+// a held readback is NOT ready, and neither is any battery under the global
+// stop (VP_CONTROL_ENABLED=false stops the wallboxes too) - then nothing is
+// released at all (release.go, file doc).
 
 // releaseReadyWindow is how long the battery executor's readiness report is
 // believed. Twice its own measurement window: one missed tick is jitter, two
@@ -38,27 +45,29 @@ const releaseReadyMin = 30 * time.Second
 const releaseInUseWindow = time.Minute
 
 // releaseReadiness is the battery executor's last word on whether it covers a
-// vehicle's draw.
+// vehicle's draw: ok for a commanded battery whose path is ready, observed
+// for a battery VoltPilot does not command at all.
 type releaseReadiness struct {
-	mu   sync.Mutex
-	at   time.Time
-	ok   bool
-	note string
+	mu       sync.Mutex
+	at       time.Time
+	ok       bool
+	observed bool
+	note     string
 }
 
-func (r *releaseReadiness) set(now time.Time, ok bool, note string) {
+func (r *releaseReadiness) set(now time.Time, ok, observed bool, note string) {
 	r.mu.Lock()
-	r.at, r.ok, r.note = now, ok, note
+	r.at, r.ok, r.observed, r.note = now, ok, observed, note
 	r.mu.Unlock()
 }
 
-func (r *releaseReadiness) get(now time.Time, window time.Duration) (bool, string) {
+func (r *releaseReadiness) get(now time.Time, window time.Duration) (ok, observed bool, note string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.at.IsZero() || now.Before(r.at) || now.Sub(r.at) > window {
-		return false, "Der Speicherpfad meldet sich gerade nicht"
+		return false, false, "Der Speicherpfad meldet sich gerade nicht"
 	}
-	return r.ok, r.note
+	return r.ok, r.observed, r.note
 }
 
 // releaseReadyWindow is the freshness of a readiness report.
@@ -72,7 +81,14 @@ func (a *Agent) releaseReadyWindow() time.Duration {
 
 // noteReleaseReadiness is called by applySetpoint once its gates are known.
 func (a *Agent) noteReleaseReadiness(now time.Time, ok bool, note string) {
-	a.releaseReady.set(now, ok, note)
+	a.releaseReady.set(now, ok, false, note)
+}
+
+// noteReleaseObserved is called by applySetpoint for a battery VoltPilot does
+// not command: no hold reason stands, and its readiness is the measurement's
+// to prove (release.go).
+func (a *Agent) noteReleaseObserved(now time.Time) {
+	a.releaseReady.set(now, false, true, "")
 }
 
 // anyStorageRelease reports whether some registered station runs the source.
@@ -105,7 +121,7 @@ func (a *Agent) ocppReleaseInput(now time.Time) lastmgmt.ReleaseInput {
 		in.SocPct = &soc
 	}
 	in.DeficitKw, _, in.Measured = a.ocpp.budget.ReleaseFacts(now)
-	in.BatteryReady, in.BatteryNote = a.releaseReady.get(now, window)
+	in.BatteryReady, in.BatteryObserved, in.BatteryNote = a.releaseReady.get(now, window)
 	in.RatedDischargeKw = a.Cfg.MaxDischargeKw
 	if env := a.bmsEnvelope(a.batteryEntityID()); env != nil {
 		in.BmsDischargeKw, in.BmsBlocked = env.DischargeKw, env.DischargeBlocked

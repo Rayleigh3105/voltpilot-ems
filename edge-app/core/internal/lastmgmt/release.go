@@ -21,6 +21,30 @@ import (
 //	no battery measurement / battery path not ready / BMS blocks discharge
 //	=> no release; the vehicle charges exactly like „Nur Sonne".
 //
+// ⚠ TWO WAYS A BATTERY CAN BE READY (Kapitän 07.10.2026). The box need not
+// command the battery for this source: it only commands the wallbox.
+//
+//   - COMMANDED (ReleaseActive): VoltPilot drives the battery (model/device
+//     approved) and its readback is held. Its in-slot corrections make it
+//     follow the house, and a planned charge yields to the cars
+//     (agent.applySetpoint, release cover).
+//   - OBSERVED (ReleaseObserved): VoltPilot does NOT command the battery (no
+//     model/device approval, so control_enabled=false on edge/setpoint -
+//     Edge Light today, or a Docker box whose approval is missing). Its
+//     inverter runs its own regulation and, in self-consumption, covers the
+//     wallbox like any house load (Edge-Light-Pilot 04.10.2026: 5,3 kW from
+//     the Deye into the car, no command from VoltPilot). Readiness then rests
+//     on the measurement alone - fresh SoC, fresh battery power (Measured),
+//     no BMS block, a battery the cloud computed a floor for - and on the
+//     effect check below. There is no write lever, so a planned charge is
+//     never lowered on this way.
+//
+// A COMMANDED battery whose readback is missing or wrong is neither: it does
+// not regulate itself, it follows the box's setpoint, and without a held
+// readback the box switches off exactly the corrections that would make it
+// follow the house - so it may sit at the plan's 0 kW or in a forced charge
+// while the car draws from the grid. It stays „speicherpfad".
+//
 // ⚠ THE RELEASE IS A POWER, NOT AN ENERGY, AND IT IS SHARED ONCE. While the
 // measured SoC is above the floor the cars on the source may draw
 //
@@ -54,6 +78,10 @@ const (
 	ReleaseOff ReleaseMode = "aus"
 	// ReleaseActive: battery energy above the floor goes to the cars.
 	ReleaseActive ReleaseMode = "frei"
+	// ReleaseObserved: the same release from a battery VoltPilot does not
+	// command - the box watches SoC and battery power, the inverter covers
+	// the cars by its own regulation (see the file doc).
+	ReleaseObserved ReleaseMode = "frei_beobachtet"
 	// ReleaseAtFloor: the floor is known and the battery is at or below it.
 	ReleaseAtFloor ReleaseMode = "an_der_grenze"
 	// ReleaseNoPlan: no fresh plan, or a plan that computed no floor.
@@ -122,10 +150,15 @@ type ReleaseInput struct {
 	// DeficitKw / Measured come from BudgetTracker.ReleaseFacts.
 	DeficitKw float64
 	Measured  bool
-	// BatteryReady says the battery path covers a vehicle's draw right now
-	// (agent.applySetpoint); BatteryNote is its German reason when not.
+	// BatteryReady says the COMMANDED battery path covers a vehicle's draw
+	// right now (agent.applySetpoint); BatteryNote is its German reason when
+	// not.
 	BatteryReady bool
 	BatteryNote  string
+	// BatteryObserved says VoltPilot does not command the battery at all, so
+	// the release may rest on the measurement (see the file doc). It only
+	// counts when BatteryReady is false.
+	BatteryObserved bool
 	// RatedDischargeKw is the box's own rated band (0 = no statement);
 	// BmsDischargeKw the BMS envelope (NaN = no statement); BmsBlocked its
 	// hard stop.
@@ -229,7 +262,11 @@ func (g *ReleaseGate) decideLocked(in ReleaseInput) ReleaseVerdict {
 		return off(ReleaseNoMeasurement, "Ohne frische Messung am Netzanschluss und am Speicher lässt sich "+
 			"nicht belegen, was der Speicher schon für das Haus liefert – nur Sonnenstrom.")
 	}
-	if !in.BatteryReady {
+	// An OBSERVED battery has passed every measured condition above (fresh
+	// SoC, fresh battery power, a floor for this site); the BMS, the effect
+	// latch and the power below bind it exactly like a commanded one.
+	observed := !in.BatteryReady && in.BatteryObserved
+	if !in.BatteryReady && !in.BatteryObserved {
 		note := strings.TrimSpace(in.BatteryNote)
 		if note == "" {
 			note = "Der Speicher kann die Ladung gerade nicht übernehmen"
@@ -260,6 +297,13 @@ func (g *ReleaseGate) decideLocked(in ReleaseInput) ReleaseVerdict {
 	v.Reason = fmt.Sprintf("Der Speicher gibt bis %s kW für das Auto frei und darf bis %s %% entladen – "+
 		"darüber braucht das Haus laut Prognose bis zur nächsten Sonne nichts (jetzt %s %%).",
 		kwText(kw), pctText(floor), pctText(soc))
+	if observed {
+		v.Mode = ReleaseObserved
+		v.Reason = fmt.Sprintf("VoltPilot steuert den Speicher nicht, die Box beobachtet ihn: Das Auto darf "+
+			"bis %s kW aus dem Speicher ziehen, bis er bei %s %% steht (jetzt %s %%) – sein Wechselrichter "+
+			"deckt die Wallbox selbst wie jede Hauslast. Kommt dabei Strom aus dem Netz, nimmt die Box die "+
+			"Freigabe zurück.", kwText(kw), pctText(floor), pctText(soc))
+	}
 	return v
 }
 

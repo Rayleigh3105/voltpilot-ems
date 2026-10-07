@@ -14,6 +14,7 @@
   "box_modes": [
     "aus",
     "frei",
+    "frei_beobachtet",
     "an_der_grenze",
     "kein_plan",
     "plan_handelt",
@@ -96,6 +97,26 @@
       "name": "Die Prognose ist veraltet (Grund der Cloud)",
       "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": null, "cloud_reason": "prognose_veraltet", "soc_pct": 80, "deficit_kw": 0, "measured": true, "battery_ready": true},
       "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "prognose_veraltet"}
+    },
+    {
+      "name": "Beobachteter Speicher (VoltPilot steuert ihn nicht): Freigabe aus der Messung, Entladeleistung minus Hausdefizit",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 80, "deficit_kw": 1.2, "measured": true, "battery_ready": false, "battery_observed": true},
+      "expect": {"active": true, "kw": 3.8, "storage_first": false, "mode": "frei_beobachtet"}
+    },
+    {
+      "name": "Beobachteter Speicher an der Untergrenze: der Speicher zuerst",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 31, "deficit_kw": 0, "measured": true, "battery_ready": false, "battery_observed": true},
+      "expect": {"active": false, "kw": 0, "storage_first": true, "mode": "an_der_grenze"}
+    },
+    {
+      "name": "Beobachteter Speicher ohne frisch gemessene Speicherleistung: keine Freigabe",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 80, "deficit_kw": 0, "measured": false, "battery_ready": false, "battery_observed": true},
+      "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "keine_messung"}
+    },
+    {
+      "name": "Gesteuerter Speicher ohne bestätigte Rückmeldung: keine Freigabe",
+      "input": {"plan_fresh": true, "max_discharge_kw": 5, "floor_pct": 30, "soc_pct": 80, "deficit_kw": 0, "measured": true, "battery_ready": false, "battery_observed": false},
+      "expect": {"active": false, "kw": 0, "storage_first": false, "mode": "speicherpfad"}
     }
   ]
 }

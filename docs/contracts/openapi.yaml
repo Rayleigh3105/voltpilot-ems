@@ -14359,8 +14359,8 @@ components:
             socPct: { type: number, nullable: true, description: "Der gemessene Ladestand, gegen den die Box entschied." }
             mode:
               type: string
-              enum: [frei, an_der_grenze, kein_plan, plan_handelt, ladestand_unbekannt, keine_messung, speicherpfad, bms_sperrt, keine_leistung, wirkung, kein_ladestand, speicher_gehalten, prognose_veraltet, nachtbedarf_ueber_kapazitaet, reserve_ueber_kapazitaet, prognose_zu_kurz]
-              description: "Die Stufe der Box (Vokabular: docs/contracts/v2/sonne-speicher-vectors.json)."
+              enum: [frei, frei_beobachtet, an_der_grenze, kein_plan, plan_handelt, ladestand_unbekannt, keine_messung, speicherpfad, bms_sperrt, keine_leistung, wirkung, kein_ladestand, speicher_gehalten, prognose_veraltet, nachtbedarf_ueber_kapazitaet, reserve_ueber_kapazitaet, prognose_zu_kurz]
+              description: "Die Stufe der Box (Vokabular: docs/contracts/v2/sonne-speicher-vectors.json). `frei` gibt ein von VoltPilot gesteuerter Speicher frei, `frei_beobachtet` einer, den die Box nur beobachtet (Freigabe aus Messung und Wirkungsprüfung)."
             note: { type: string, nullable: true, description: "Der deutsche Satz der Box, unverändert." }
     ChargePoint:
       type: object

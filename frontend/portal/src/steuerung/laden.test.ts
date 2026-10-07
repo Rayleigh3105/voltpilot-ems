@@ -100,6 +100,25 @@ describe('Sonne + Speicher: die Erklärzeile zeigt nur Belegtes', () => {
     expect(z).not.toMatch(/\b0 %/);
   });
 
+  it('beobachteter Speicher: dieselben Zahlen, und ehrlich, dass VoltPilot ihn nicht steuert', () => {
+    const z = speicherZeile({ active: true, kw: 3.8, floorSocPct: 30, socPct: 80, mode: 'frei_beobachtet', note: 'Satz der Box' }, 30, frisch, NOW_MS);
+    expect(z).toContain('bis 3,8 kW');
+    expect(z).toContain('bei 30 %');
+    expect(z).toContain('(jetzt 80 %)');
+    expect(z).toContain('steuert den Speicher dabei nicht, sondern beobachtet ihn');
+    expect(z).toContain('nimmt die Box die Freigabe zurück');
+    // Die Zeile des GESTEUERTEN Speichers behauptet das nicht.
+    const gesteuert = speicherZeile({ active: true, kw: 3.8, floorSocPct: 30, socPct: 80, mode: 'frei' }, 30, frisch, NOW_MS);
+    expect(gesteuert).not.toContain('beobachtet');
+    // Ohne Zahlen der Satz des Vokabulars - nie eine erfundene Leistung.
+    expect(speicherZeile({ active: true, mode: 'frei_beobachtet' }, null, frisch, NOW_MS)).toBe(FREIGABE_STUFE_TEXT.frei_beobachtet);
+  });
+
+  it('gesteuerter Speicher ohne bestätigte Rückmeldung: der Satz der Box', () => {
+    const satz = 'VoltPilot steuert den Speicher, aber ohne bestätigte Rückmeldung des Wechselrichters ist offen, was er gerade ausführt – es lädt nur mit Sonnenstrom.';
+    expect(speicherZeile({ active: false, mode: 'speicherpfad', note: satz }, 30, frisch, NOW_MS)).toBe(satz);
+  });
+
   it('20:00: an der Untergrenze bleibt der Speicher für das Haus', () => {
     const z = speicherZeile({ active: false, floorSocPct: 64.5, socPct: 64, mode: 'an_der_grenze' }, 64.5, frisch, NOW_MS);
     expect(z).toContain('Untergrenze von 64,5 %');
