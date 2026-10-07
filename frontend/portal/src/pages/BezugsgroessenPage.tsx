@@ -454,6 +454,12 @@ function BzReiheLink({ r }: { r: U.BzReihe }) {
       <span className="vp-ms-reihe-wert">
         {r.abruf === 'unterwegs' ? (
           <span className="vp-skeleton is-zeile vp-bz-skelett is-wert" aria-hidden="true" />
+        ) : r.abruf === 'fehler' ? (
+          <>
+            {/* Am Telefon fehlt die Zustand-Spalte: dort sagt die Wert-Spalte es, statt eines Strichs, der „kein Wert“ hieße. */}
+            <b className="is-leer vp-bz-strich" aria-hidden="true">—</b>
+            <span className="vp-bz-nicht-abrufbar">{U.ZUSTAND.nichtAbrufbar}</span>
+          </>
         ) : r.wert ? (
           <>
             <b>

@@ -171,6 +171,9 @@ for (const breite of [375, 1440]) {
     const kaputt = reihen.filter({ hasText: 'BZ-2' });
     await expect(kaputt).toHaveAttribute('data-abruf', 'fehler');
     await expect(kaputt).toContainText('gerade nicht abrufbar');
+    // Sichtbar an jeder Breite: am Telefon in der Wert-Spalte (dort gibt es keine Zustand-Spalte), sonst im Zustand.
+    await expect(kaputt.getByText('gerade nicht abrufbar').filter({ visible: true })).toHaveCount(1);
+    if (breite === 375) await expect(kaputt.locator('.vp-bz-strich')).toBeHidden();
     await expect(kaputt).not.toContainText('Eintragen');
     await expect(page.getByTestId('bezugsgroessen-status')).toHaveCount(0);
     const lage = page.getByTestId('bezugsgroessen-nicht-abrufbar');

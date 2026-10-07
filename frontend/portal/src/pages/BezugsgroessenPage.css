@@ -451,6 +451,22 @@ a.vp-bz-kachel:focus-visible {
 .vp-bz-skelett.is-wert {
   width: 4.5em;
 }
+/* Eine nicht abrufbare Reihe: am Telefon (ohne Zustand-Spalte) steht es in der Wert-Spalte, ab 760 px der Strich. */
+.vp-bz-reihe .vp-bz-strich {
+  display: none;
+}
+.vp-bz-reihe .vp-ms-reihe-wert > .vp-bz-nicht-abrufbar {
+  font-size: 0.8125rem;
+  white-space: normal;
+}
+@container vp-ms (min-width: 760px) {
+  .vp-bz-reihe .vp-bz-strich {
+    display: inline;
+  }
+  .vp-bz-reihe .vp-ms-reihe-wert > .vp-bz-nicht-abrufbar {
+    display: none;
+  }
+}
 /* „Erneut versuchen“ in der Lage, wenn Werte nicht abrufbar sind: am Telefon 44 px Tippfläche. */
 .vp-bz-erneut {
   margin-left: 4px;
