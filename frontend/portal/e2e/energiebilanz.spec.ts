@@ -246,8 +246,44 @@ for (const breite of BREITEN) {
       ['AZ-7', 1, 'nowrap'],
       ['AZ-8', 1, 'nowrap'],
     ]);
+    // Der Satz fließt als EIN Satz: die Kennzeichen-Stücke stehen nicht je in einer eigenen Zeile der Karte.
+    const hoehen = await satz.evaluate((p) => {
+      const zeile = parseFloat(getComputedStyle(p).lineHeight);
+      const innen = p.getBoundingClientRect().height - parseFloat(getComputedStyle(p).paddingTop) - parseFloat(getComputedStyle(p).paddingBottom);
+      return Math.round(innen / zeile);
+    });
+    expect(hoehen, `${breite}: Zeilen des Satzes`).toBeLessThanOrEqual(breite < 721 ? 3 : 1);
     const m = await pruefeRahmen(page, 'ausserhalb-halle1', breite, fehler);
     await ablegen(page, 'ausserhalb-halle1', breite, m);
+  });
+
+  /**
+   * Review r3 zu #1419: der laufende Zeitraum hat noch keine Zahlen, nennt aber weiter den Weg des Teils ohne eigenen
+   * Zähler (geführte Messstelle oder „Als eigene Messstelle führen“), die Live-Zeile und die Abzweige der Stellung.
+   */
+  test(`Laufender Monat bei ${breite} px: Satz, geführte Messstelle, Live-Zeile und Abzweige`, async ({ page }) => {
+    const fehler: string[] = [];
+    await oeffne(page, 'an=AN-2&ausserhalb=AZ-7', breite, fehler);
+    await page.getByRole('button', { name: 'Nächster Zeitraum' }).click();
+    await expect(page.getByTestId('energiebilanz-zeitraum')).toHaveText('November 2026');
+    await expect(page.getByTestId('energiebilanz-laeuft')).toHaveText('November 2026 läuft noch - die Bilanz steht, sobald der Monat abgeschlossen ist.');
+    await expect(page.getByTestId('energiebilanz-karte')).toHaveCount(0);
+    await expect(page.getByTestId('energiebilanz-restweg')).toContainText('ohne eigenen Zähler');
+    await expect(page.getByTestId('energiebilanz-rest-messstelle')).toHaveText('geführt als Messstelle Halle 2 nicht zugeordnet (MS-15)');
+    await expect(page.getByTestId('energiebilanz-live')).toHaveText(/^jetzt 1,6.kW ohne eigenen Zähler · Stand \d\d:\d\d$/);
+    await expect(page.getByTestId('energiebilanz-ausserhalb')).toHaveText('1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: AZ-7.');
+    const m = await pruefeRahmen(page, 'laufender-monat', breite, fehler);
+    await ablegen(page, 'laufender-monat', breite, m);
+  });
+
+  test(`Laufender Monat ohne Rest-Messstelle bei ${breite} px: „Als eigene Messstelle führen“ bleibt`, async ({ page }) => {
+    const fehler: string[] = [];
+    await oeffne(page, 'an=AN-2&rest=vorschlag', breite, fehler);
+    await page.getByRole('button', { name: 'Nächster Zeitraum' }).click();
+    await expect(page.getByTestId('energiebilanz-laeuft')).toBeVisible();
+    await expect(page.getByTestId('rest-vorschlag').getByRole('button', { name: 'Als eigene Messstelle führen' })).toBeVisible();
+    const m = await pruefeRahmen(page, 'laufender-monat-vorschlag', breite, fehler);
+    await ablegen(page, 'laufender-monat-vorschlag', breite, m);
   });
 
   test(`Als eigene Messstelle führen ohne Recht bei ${breite} px: kein Knopf, der Satz sagt, wer es darf`, async ({ page }) => {

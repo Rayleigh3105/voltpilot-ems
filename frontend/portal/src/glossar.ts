@@ -469,6 +469,15 @@ export const UEMS_BEWERTUNG_ABDECKUNG = {
 } as const;
 
 /**
+ * Konzept Auswerten a1 §6.1 (9): dieselben Wörter auf Verbrauch, Bewertung und Energiebilanz — der Anteil, den die
+ * Bereiche (Energieeinsätze) messen, die Rest-Reihe und der Ort ohne eigenen Zähler.
+ * Glossar: `docs/fachmodell/glossar.md` › Energieeinsatz (Abschnitt „Verbrauch“).
+ */
+export const UEMS_EINEM_BEREICH_ZUGEORDNET = 'einem Bereich zugeordnet';
+export const UEMS_KEINEM_BEREICH_ZUGEORDNET = 'Keinem Bereich zugeordnet';
+export const UEMS_OHNE_EIGENEN_ZAEHLER = 'ohne eigenen Zähler';
+
+/**
  * AP-16 IP-18 (G5, AP-04 E3): der Satz der Quelle-Karte über der Befund-Zeile. Die Karte stellt weiter nebeneinander
  * und ersetzt nichts; seit IP-17 steht darunter die Monatsabweichung gegen die Toleranz, die der Kunde selbst setzt —
  * nie eine Ursache. Nebengrößen ohne Monatsmenge bekommen keine Zeile, darum „liefern beide eine Monatsmenge“.
@@ -555,6 +564,22 @@ export const UEMS_BEWERTUNG_SAETZE = {
   leer: () => 'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
   grenze: () => UEMS_NORMGRENZE,
 } as const;
+
+/**
+ * Konzept Auswerten a1 §6.7 (Captain-Freigabe 06.10.2026): die energetische Bewertung als Ergebnis-Seite - welche
+ * Bereiche wesentlich sind, welche nicht, welche noch ohne Werte; Kriterien in Worten statt Kürzeln. „Bereich“ ist das
+ * kurze Kundenwort für den Energieeinsatz; die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und Kriterien-Dialog.
+ * Glossar: `docs/fachmodell/glossar.md` › Einstufung (Abschnitt „Die Bewertung als Ergebnis“).
+ */
+export const UEMS_ENERGETISCHE_BEWERTUNG = 'Energetische Bewertung';
+export const UEMS_ENERGETISCHE_BEWERTUNG_WORT = 'energetische Bewertung';
+export const UEMS_WESENTLICHE_BEREICHE = 'Wesentliche Bereiche';
+export const UEMS_NICHT_WESENTLICHE_BEREICHE = 'Nicht wesentlich';
+export const UEMS_NOCH_NICHT_EINGESTUFT = 'Noch nicht eingestuft';
+export const UEMS_NOCH_OHNE_WERTE = 'Noch ohne Werte';
+export const UEMS_WEICHT_VOM_VORSCHLAG_AB = 'weicht vom Vorschlag ab';
+export const UEMS_WIE_VOLTPILOT_VORSCHLAEGT = 'Wie VoltPilot vorschlägt';
+// „Keinem Bereich zugeordnet“ steht einmal oben bei den Wörtern von Verbrauch, Bewertung und Energiebilanz (§6.1).
 
 /**
  * UEMS AP-17 IP-4 (SP1–SP3) — Kundenwörter der Bezugsbasis. Die Norm-Wörter des Konzepts stehen nur dort und in

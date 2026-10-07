@@ -52,10 +52,17 @@ public class AblesungService {
 
     public record Antwort(String urteil, String korrektur, Wert ablesung, AblesungRegeln.Zeitraum ablesezeitraum) {}
 
+    /**
+     * Die Ablesungen-Liste der Route - Stichtag-Grenze: nie eine Ablesung nach heute. Schreiben lässt sich eine solche
+     * nicht ({@code ZEITPUNKT_UNGUELTIG}); steht sie dennoch da (Bühnen-Bestand der Prüfumgebung), zeigt die Liste sie
+     * erst, wenn ihr Zeitpunkt erreicht ist.
+     */
     public List<Wert> lesen(String kz) {
         Messstelle m = finde(kz);
         UUID q = werte.quelle(TenantContext.get(),m.id());
-        return q == null ? List.of() : werte.fassungen(TenantContext.get(),q);
+        Instant heute = uhr.instant();
+        return q == null ? List.of() : werte.fassungen(TenantContext.get(),q).stream()
+                .filter(w -> !w.zeitpunkt().isAfter(heute)).toList();
     }
 
     public Antwort eingeben(String kz, String zeitText, String standText, String monatText, boolean monatGesetzt,

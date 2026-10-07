@@ -169,7 +169,8 @@ function Ansicht() {
       ) : route.page === 'portfolio-kennzahlen' ? (
         <KennzahlenPage
           kennzahlId={route.kennzahlId ?? null}
-          onOeffnen={(id) => navigate(kennzahlRoute(id))}
+          ebene={route.kennzahlEbene ?? null}
+          onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, null, ebene))}
           onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
           zone="Europe/Berlin"
         />
