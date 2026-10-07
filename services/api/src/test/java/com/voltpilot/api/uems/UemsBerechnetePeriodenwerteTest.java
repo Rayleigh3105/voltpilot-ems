@@ -10,10 +10,12 @@ import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -103,6 +105,9 @@ class UemsBerechnetePeriodenwerteTest {
     @Autowired
     BerechnetePeriodenRepository speicher;
 
+    @Autowired
+    MessstelleWerteService werteDienst;
+
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
     private static final AtomicInteger SEQ = new AtomicInteger();
@@ -116,6 +121,7 @@ class UemsBerechnetePeriodenwerteTest {
     @AfterEach
     void aufraeumen() {
         TenantContext.clear();
+        werteDienst.uhrStellen(Clock.systemUTC());
     }
 
     // ============================================================================ F1–F7 als Periodenwerte
@@ -140,6 +146,7 @@ class UemsBerechnetePeriodenwerteTest {
 
         BerechnetePeriodenLauf.Lauf l = lauf.lauf(Instant.parse("2026-10-27T12:00:00Z"));
         assertThat(l.geschrieben()).isPositive();
+        routeLiestUm(Instant.parse("2026-10-27T12:00:00Z"));
 
         Map<String, Object> t = tagZeile(w, rest, tag);
         assertThat((BigDecimal) t.get("menge")).isEqualByComparingTo("10");
@@ -184,6 +191,88 @@ class UemsBerechnetePeriodenwerteTest {
     }
 
     /**
+     * Stichtag-Grenze (Review r3 zu #1425): die Grenze der Route ändert in Produktion nichts. Der Lauf rechnet zur
+     * echten Uhr; den LAUFENDEN Tag und den LAUFENDEN Monat der berechneten Messstelle zeigt die Route vorläufig mit
+     * ihrer Zahl wie bisher - nie „noch nicht gebildet“, nur weil die Periode noch nicht zu Ende ist.
+     */
+    @Test
+    void derLaufendeTagUndMonatEinerBerechnetenMessstelleBleibenUeberDieRouteLesbar() throws Exception {
+        Instant jetzt = Instant.now();
+        LocalDate tag = LocalDate.ofInstant(jetzt, ZONE);
+        LocalDate monat = tag.withDayOfMonth(1);
+        Welt w = lindach("2026-01-01");
+        tageswert(w, "MS-16", tag, "100", VOLL, 100, List.of(), false);
+        tageswert(w, "MS-17", tag, "60", VOLL, 100, List.of(), false);
+        tageswert(w, "MS-18", tag, "30", VOLL, 100, List.of(), false);
+        monatswert(w, "MS-16", monat, "3000", List.of());
+        monatswert(w, "MS-17", monat, "1800", List.of());
+        monatswert(w, "MS-18", monat, "900", List.of());
+        UUID rest = rest(w, "MS-22", "MS-16");
+
+        lauf.lauf(jetzt);
+        assertThat((BigDecimal) tagZeile(w, rest, tag).get("menge")).as("die Zeile des laufenden Tags ist gespeichert")
+                .isEqualByComparingTo("10");
+        assertThat((BigDecimal) monatZeile(w, rest, monat).get("menge")).isEqualByComparingTo("300");
+
+        JsonNode heute = werte(w, "MS-22", "tag", tag, tag).get("werte").get(0);
+        assertThat(heute.get("menge").isNull()).as("die Route zeigt den laufenden Tag: " + heute).isFalse();
+        assertThat(heute.get("menge").decimalValue()).isEqualByComparingTo("10");
+        assertThat(heute.get("fassung").asText()).isEqualTo(VORLAEUFIG);
+        JsonNode dieserMonat = werte(w, "MS-22", "monat", monat, monat.plusMonths(1).minusDays(1)).get("werte").get(0);
+        assertThat(dieserMonat.get("menge").isNull()).as("und den laufenden Monat: " + dieserMonat).isFalse();
+        assertThat(dieserMonat.get("menge").decimalValue()).isEqualByComparingTo("300");
+    }
+
+    /**
+     * Stichtag-Grenze (Auswerten a4, Bühnen-Bestand der Prüfumgebung): steht die Uhr der Route vor dem, was der Lauf
+     * gebildet hat, zeigt die Route eine Periode erst, sobald sie begonnen hat - die laufende mit ihrer Zahl, die
+     * nächste „noch nicht gebildet“. Eine Viertelstunde darf im Spielraum der Messzeit (E13, 5 Minuten) beginnen. Die
+     * Versions-Historie verbirgt dasselbe.
+     */
+    @Test
+    void dieRouteZeigtKeinePeriodeDieZuIhrerUhrNochNichtBegonnenHat() throws Exception {
+        LocalDate tag = LocalDate.parse("2026-10-18");
+        LocalDate morgen = tag.plusDays(1);
+        Welt w = lindach("2026-01-01");
+        for (LocalDate t : List.of(tag, morgen)) {
+            tageswert(w, "MS-16", t, "100", VOLL, 100, List.of(), true);
+            tageswert(w, "MS-17", t, "60", VOLL, 100, List.of(), true);
+            tageswert(w, "MS-18", t, "30", VOLL, 100, List.of(), true);
+        }
+        Instant zehnUhr = tag.atTime(10, 0).atZone(ZONE).toInstant();
+        for (Instant q : List.of(zehnUhr, zehnUhr.plus(Duration.ofMinutes(15)), zehnUhr.plus(Duration.ofMinutes(30)))) {
+            viertelstunde(w, "MS-16", q, "2.5", true);
+            viertelstunde(w, "MS-17", q, "1.5", true);
+            viertelstunde(w, "MS-18", q, "0.75", true);
+        }
+        rest(w, "MS-22", "MS-16");
+        lauf.lauf(Instant.parse("2026-10-27T12:00:00Z"));
+
+        routeLiestUm(zehnUhr.plus(Duration.ofMinutes(11)));
+        JsonNode tage = werte(w, "MS-22", "tag", tag, morgen).get("werte");
+        assertThat(tage.get(0).get("menge").decimalValue()).as("der laufende Tag").isEqualByComparingTo("10");
+        assertThat(tage.get(1).get("menge").isNull()).as("der nächste Tag: " + tage.get(1)).isTrue();
+        assertThat(tage.get(1).get("grund").asText()).isEqualTo("noch_nicht_gebildet");
+        assertThat(tage.get(1).get("herkunft").isNull()).as("ohne Zahl keine Herkunft").isTrue();
+
+        JsonNode vs = werte(w, "MS-22", "viertelstunde", tag, tag).get("werte");
+        assertThat(vs.get(40).get("menge").decimalValue()).as("10:00 hat begonnen").isEqualByComparingTo("0.25");
+        assertThat(vs.get(41).get("menge").decimalValue()).as("10:15 beginnt im Spielraum der Messzeit")
+                .isEqualByComparingTo("0.25");
+        assertThat(vs.get(42).get("grund").asText()).as("10:30 hat noch nicht begonnen")
+                .isEqualTo("noch_nicht_gebildet");
+
+        JsonNode historie = versionen(w, "MS-22", "tag", morgen);
+        assertThat(historie.get("versionen")).as("die Historie zeigt nichts, was die Werte verbergen").isEmpty();
+        assertThat(historie.get("grund").asText()).isEqualTo("noch_nicht_gebildet");
+        assertThat(versionen(w, "MS-22", "tag", tag).get("versionen")).hasSize(1);
+
+        routeLiestUm(Instant.parse("2026-10-27T12:00:00Z"));
+        assertThat(werte(w, "MS-22", "tag", morgen, morgen).get("werte").get(0).get("menge").decimalValue())
+                .as("steht die Uhr danach, ist der Tag da").isEqualByComparingTo("10");
+    }
+
+    /**
      * AP-10 IP-12: die HERKUNFT des gespeicherten Rests. Der Lauf rechnet F1 am 19.10.2026 um 00:12 (MESZ) — genau der
      * Rechenzeitpunkt der Vorlage —, und die Route „Werte je Messstelle“ liefert den Satz Zeichen für Zeichen wie die
      * Prüfung {@code herkunft} von F1 in {@code bilanz-vectors.json}: Formel-Fassung 1, drei Eingänge aus
@@ -204,6 +293,7 @@ class UemsBerechnetePeriodenwerteTest {
         rest(w, "MS-22", "MS-16");
 
         lauf.lauf(Instant.parse("2026-10-18T22:12:00Z"));
+        routeLiestUm(Instant.parse("2026-10-18T22:12:00Z"));
 
         JsonNode schritt = werte(w, "MS-22", "tag", tag, tag).get("werte").get(0);
         assertThat(schritt.get("menge").decimalValue()).isEqualByComparingTo("10");
@@ -616,6 +706,7 @@ class UemsBerechnetePeriodenwerteTest {
         Map<String, String> gemessenVorher = gemessen();
 
         lauf.lauf(Instant.parse("2026-10-27T12:00:00Z"));
+        routeLiestUm(Instant.parse("2026-10-27T12:00:00Z"));
 
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, spurTabellen)))
                 .as("der Lauf schreibt nur in die Spur berechnet").isEmpty();
@@ -838,9 +929,22 @@ class UemsBerechnetePeriodenwerteTest {
         return out;
     }
 
+    /** Die Uhr der Routen …/werte und …/werte/versionen (ihre Stichtag-Grenze); {@link #aufraeumen} stellt sie zurück. */
+    private void routeLiestUm(Instant jetzt) {
+        werteDienst.uhrStellen(Clock.fixed(jetzt, ZoneOffset.UTC));
+    }
+
     private JsonNode werte(Welt w, String kennzeichen, String raster, LocalDate von, LocalDate bis) throws Exception {
-        MvcResult r = mvc.perform(get("/api/v1/messstellen/" + kennzeichen + "/werte?raster=" + raster + "&von=" + von
-                        + "&bis=" + bis)
+        return lies(w, "/api/v1/messstellen/" + kennzeichen + "/werte?raster=" + raster + "&von=" + von + "&bis=" + bis);
+    }
+
+    private JsonNode versionen(Welt w, String kennzeichen, String raster, LocalDate tag) throws Exception {
+        return lies(w, "/api/v1/messstellen/" + kennzeichen + "/werte/versionen?raster=" + raster + "&von=" + tag
+                + "&bis=" + tag);
+    }
+
+    private JsonNode lies(Welt w, String pfad) throws Exception {
+        MvcResult r = mvc.perform(get(pfad)
                 .with(jwt().jwt(j -> {
                     j.subject("sub-" + w.mandant());
                     j.claim("name", "Claudia Test");
