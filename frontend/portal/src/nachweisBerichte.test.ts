@@ -139,6 +139,30 @@ describe('Berichte in Nachweisen (Konzept n1, Runde 2, §6.4)', () => {
     expect(g!.ganz.startsWith('Korrektur K-2026-0007')).toBe(true);
     expect(N.aenderungsGrund(null, null, 'Europe/Berlin')).toBeNull();
     expect([N.jaAntwort(2), N.neinAntwort(1)]).toEqual(['Ja, Stand 2 freigeben', 'Nein, Stand 1 behalten']);
+    // Gebündelt (Entscheid 16): eine Korrektur mit ihrem Warum, mehrere als Zahl - im Blatt je Korrektur eine Zeile.
+    const eine = N.aenderungsGruende([anstoss], ABZUG_NR2 as Record<string, unknown>, 'Europe/Berlin')!;
+    expect(eine.kurz).toBe(g!.kurz);
+    const zwei = N.aenderungsGruende([anstoss, { ...anstoss, anlass_kennung: 'K-2026-0008', anlass_text: 'Korrektur K-2026-0008' }], null, 'Europe/Berlin')!;
+    expect([zwei.kurz, zwei.titel]).toEqual(['2 Korrekturen', '2 Korrekturen']);
+    expect(zwei.zeilen.map((z) => z.etikett)).toEqual(['K-2026-0007', 'K-2026-0008']);
+    expect(zwei.zeilen[1].wert).toBe('12.11.2026');
+    expect(eine.titel).toBe('Grund');
+    expect(eine.zeilen[0].etikett).toBe('Korrektur K-2026-0007');
+    expect(N.aenderungsGruende([], null, 'Europe/Berlin')).toBeNull();
+  });
+
+  it('was die Freigabe hält, in höchstens vier Wörtern - der Satz der Route steht hinter dem i-Knopf', () => {
+    const p = (z: boolean, w: boolean, e: boolean) => [
+      { schluessel: 'zeitraum' as const, erfuellt: z },
+      { schluessel: 'werte' as const, erfuellt: w },
+      { schluessel: 'entwurf' as const, erfuellt: e },
+    ];
+    expect([N.freigabeKurz(p(true, true, true)), N.freigabeKurz(p(false, false, true)), N.freigabeKurz(p(true, false, true)), N.freigabeKurz(p(true, true, false))]).toEqual([
+      'endgültig',
+      'Zeitraum läuft noch',
+      'Werte noch vorläufig',
+      'Entwurf nicht aktuell',
+    ]);
   });
 
   it('Bewertung und Managementbewertung öffnen ihre Seite, eine abgelöste Bewertung die Berichtsseite', () => {

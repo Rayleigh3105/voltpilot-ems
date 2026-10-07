@@ -28,7 +28,11 @@ export const ENTSCHEIDEN = 'Entscheiden';
 export const FREIGEBEN = 'Freigeben';
 export const PDF = 'PDF';
 export const ALLE_WERTE = 'Alle Werte';
+export const GANZER_BERICHT = 'Ganzer Bericht';
+/** Am Rechner stehen links höchstens acht Werte als Zeilen; alle stehen im ganzen Bericht. */
+export const WERTE_RECHNER = 8;
 export const ALLE_AENDERUNGEN = 'Alle Änderungen';
+export const KEINE_ZAHL_AENDERT_SICH = 'Keine Zahl ändert sich';
 export const NEUER_STAND_FRAGE = 'Neuen Stand freigeben?';
 export const WEITER = 'Weiter';
 export const ZUR_SEITE_BEWERTUNG = 'Auf der Seite Bewertung lesen';
@@ -109,7 +113,7 @@ function zeile(b: Bericht): BerichtZeile {
   if (b.neueste_nr === null) {
     return { kennung: b.kennung, titel: name.titel, unter: name.unter ?? ENTWURF, datum: { wort: 'seit', tag: tagIn(b.angelegt_am, b.zeitzone), ton: 'bald' }, verb: FREIGEBEN, ziel, pdfNr: null, stand };
   }
-  return { kennung: b.kennung, titel: name.titel, unter: name.unter, datum: { wort: 'frei', tag: tagIn(b.freigegeben_am, b.zeitzone), ton: 'plan' }, verb: null, ziel, pdfNr: b.neueste_nr, stand };
+  return { kennung: b.kennung, titel: name.titel, unter: name.unter, datum: { wort: 'frei', tag: tagIn(b.freigegeben_am, b.zeitzone), ton: 'erledigt' }, verb: null, ziel, pdfNr: b.neueste_nr, stand };
 }
 
 const neuesteZuerst = (a: Bericht, b: Bericht) => (b.freigegeben_am ?? b.angelegt_am).localeCompare(a.freigegeben_am ?? a.angelegt_am);
@@ -202,10 +206,11 @@ function teile(text: string): { zahl: string; einheit: string | null } {
 
 /**
  * Werte alt → neu (Entscheid 16: nur Zahlen, ohne Version und Anlass): aus den Zeilen des Vergleichs. Eine Zeile ohne
- * Namen trägt ihr Kennzeichen; Einheiten, die sich unterscheiden, bleiben an der Zahl.
+ * Zahl auf beiden Seiten (nur die Version änderte sich) zeigt nichts und entfällt; eine Zeile ohne Namen trägt ihr
+ * Kennzeichen; Einheiten, die sich unterscheiden, bleiben an der Zahl.
  */
 export function werteAltNeu(zeilen: readonly VergleichZeile[]): WertAltNeu[] {
-  return zeilen.map((z) => {
+  return zeilen.filter((z) => z.vorher !== B.OHNE_ZAHL || z.nachher !== B.OHNE_ZAHL).map((z) => {
     const alt = teile(z.vorher);
     const neu = teile(z.nachher);
     const gleich = alt.einheit !== null && alt.einheit === neu.einheit;
@@ -244,6 +249,43 @@ export function aenderungsGrund(
     ganz: warum ? `${anstoss.anlass_text}: ${warum}` : anstoss.anlass_text,
     wer: k ? `${k.wer}, ${zeitText(k.freigegeben, zone) ?? ''}`.replace(/, $/, '') : `erkannt ${zeitText(anstoss.erkannt_am, zone) ?? ''}`.trim(),
   };
+}
+
+/**
+ * Die Gründe einer Entscheidung, gebündelt (Entscheid 16): eine Korrektur mit ihrem Warum („Ablesung korrigiert“), mehrere
+ * als Zahl („10 Korrekturen“); im Blatt je Korrektur eine Zeile mit Warum oder dem Tag, an dem sie erkannt wurde.
+ */
+export function aenderungsGruende(
+  anstoesse: readonly Pick<BerichtAnstoss, 'anlass_kennung' | 'anlass_text' | 'erkannt_am'>[],
+  abzug: Record<string, unknown> | null,
+  zone: string,
+): { kurz: string; titel: string; zeilen: { etikett: string; wert: string }[] } | null {
+  if (anstoesse.length === 0) return null;
+  const einzeln = anstoesse.map((a) => ({ a, g: aenderungsGrund(a, abzug, zone)! }));
+  if (einzeln.length === 1) {
+    const { a, g } = einzeln[0];
+    const warum = g.ganz.includes(': ') ? g.ganz.slice(g.ganz.indexOf(': ') + 2) : null;
+    return { kurz: g.kurz, titel: 'Grund', zeilen: [{ etikett: a.anlass_text, wert: [warum, g.wer].filter(Boolean).join(' · ') }] };
+  }
+  // Mehrere: je Korrektur ihr Kennzeichen und ihr Warum oder der Tag - das Blatt bleibt bei 35 Wörtern (§0.4).
+  return {
+    kurz: `${anstoesse.length} Korrekturen`,
+    titel: `${anstoesse.length} Korrekturen`,
+    zeilen: einzeln.map(({ a, g }) => ({
+      etikett: a.anlass_kennung,
+      wert: g.ganz.includes(': ') ? g.ganz.slice(g.ganz.indexOf(': ') + 2) : (tagText(a.erkannt_am, zone) ?? ''),
+    })),
+  };
+}
+
+/**
+ * Was die Freigabe noch hält, in höchstens vier Wörtern (Konzept §6.4: „März 2029 ist endgültig“ im Blatt) - der Satz
+ * der Route (F1) steht hinter dem i-Knopf. Die Punkte kommen aus `freigabeVorschau`, in ihrer Reihenfolge.
+ */
+export function freigabeKurz(punkte: readonly { schluessel: 'zeitraum' | 'werte' | 'entwurf'; erfuellt: boolean }[]): string {
+  const offen = punkte.find((p) => !p.erfuellt);
+  if (!offen) return 'endgültig';
+  return offen.schluessel === 'zeitraum' ? 'Zeitraum läuft noch' : offen.schluessel === 'werte' ? 'Werte noch vorläufig' : 'Entwurf nicht aktuell';
 }
 
 /** „Stand 3 freigeben“ / „Stand 2 behalten“ - die zwei Antworten nach einer Korrektur (Entscheid 16). */
