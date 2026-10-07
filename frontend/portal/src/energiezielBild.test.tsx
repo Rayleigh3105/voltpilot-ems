@@ -176,6 +176,42 @@ describe('Monate: Grafik und Liste mit Grund (§6.4, Befund 1)', () => {
     s.monate[0] = { periode: '2029-03', endgueltig: false, vergleich: monat('2029-03', { g: '88740', grund: 'basis_fehlt', satz: '' }) };
     expect(B.monatsPunkte(s)[0]).toMatchObject({ art: 'vorlaeufig', grund: 'nicht bewertbar' });
   });
+  it('Kopfsatz und Hinweis erfinden für einen beendeten Monat kein vergangenes „etwa ab“ (Review r2 S-r2-1, Anhang B)', () => {
+    // März ist zu Ende, die Produktionsmenge fehlt; Tag der Route 30.04.2029.
+    const maerzOffen = monat('2029-03', { g: '88740', grund: 'variable_fehlt', satz: 'März 2029: nicht bewertbar \u2014 die Produktionsmenge fehlt.' });
+    const ohneAussage: EnergiezielStand = {
+      ...standMaerz(),
+      monate: standMaerz().monate.map((m) => (m.periode === '2029-03' ? { ...m, endgueltig: false, vergleich: maerzOffen } : m)),
+      monate_bewertbar: 0, monate_endgueltig: 0, monate_text: '0 von 10', summe: standLeer(ez2029()).summe, kurs: undefined,
+    };
+    expect(B.monatsPunkte(ohneAussage)[0]).toMatchObject({ art: 'vorlaeufig', laeuftNoch: false, grund: 'die Produktionsmenge fehlt' });
+    const satz = B.seitenAntwort(ohneAussage, ohneAussage.energieziel).satz;
+    expect(satz).toBe('Noch keine Aussage: März 2029 ist noch offen - die Produktionsmenge fehlt.');
+    expect(satz).not.toContain('etwa ab');
+    // Der laufende Monat (April, Monat des Abruf-Tags) behält sein „etwa ab“.
+    expect(B.monatsPunkte(ohneAussage)[1]).toMatchObject({ art: 'vorlaeufig', laeuftNoch: true, grund: 'läuft noch - endgültig etwa ab 07.05.2029' });
+    // „Erst ein Monat …“: der nächste offene Monat mit dem Grund der Route, nicht mit einem geratenen Tag.
+    const einer: EnergiezielStand = {
+      ...standMaerz(),
+      monate: [
+        standMaerz().monate[0],
+        { periode: '2029-04', endgueltig: false, vergleich: monat('2029-04', { g: '86000', grund: 'variable_fehlt', satz: 'April 2029: nicht bewertbar \u2014 die Produktionsmenge fehlt.' }) },
+        ...standMaerz().monate.slice(2),
+      ],
+      abruf: '2029-05-20',
+    };
+    expect(B.wenigeMonateHinweis(einer)).toBe(
+      'Erst ein Monat der Zielperiode ist abgeschlossen; der Stand ändert sich mit jedem Monat. April 2029 ist noch offen - die Produktionsmenge fehlt.',
+    );
+  });
+  it('genau wie erwartet heißt auch im Fälligkeits-Satz „so viel wie erwartet“ (Review r2 K-r2-8)', () => {
+    const s = { ...standMaerz(), vorschlag: 'erreicht' as const, summe: { ...standMaerz().summe, delta_prozent: '0.0', richtung: 'gleich' as const } };
+    const satz = B.bewertungFaelligSatz(s, s.energieziel);
+    expect(satz).toContain('so viel wie erwartet');
+    expect(satz).not.toMatch(/gleich als erwartet|\s{2}/);
+    const ohneRichtung = { ...s, summe: { ...s.summe, delta_prozent: '-2.7', richtung: null } };
+    expect(B.bewertungFaelligSatz(ohneRichtung, s.energieziel)).toContain(`2,7${NB}% weniger als erwartet`);
+  });
   it('zwölf Monate ohne Wert stehen in einer Zeile - nicht zwölfmal derselbe Satz', () => {
     const s = { ...standLeer(ez2028()), abruf: '2029-04-30' };
     s.monate = s.monate.map((m) => ({ ...m, vergleich: monat(m.periode, { grund: 'keine_werte' }) }));
