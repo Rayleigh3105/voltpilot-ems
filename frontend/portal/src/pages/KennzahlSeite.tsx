@@ -67,6 +67,7 @@ import {
 } from '../kennzahlKarte';
 import { kennzahlMitAuswertung } from '../kennzahlMitAuswertung';
 import * as S from '../kennzahlSeite';
+import { merkeAbruf, useRoutenHeute } from '../routenUhr';
 import { TRENNER } from '../uemsErgebnis';
 import { energiezielRoute, hashForRoute } from '../nav';
 import { useRollen } from '../rollen';
@@ -334,7 +335,7 @@ export function KennzahlSeite({
         {bbAn && <GrenzHinweis />}
 
         {dialog === 'ziel' && basisDa?.fassung && (
-          <EnergiezielSetzenDialog
+          <EnergiezielSetzenAmTagDerRoute
             kennzahl={k}
             basisZeile={basisZeile(basisDa.basis, basisDa.fassung, k.einheit_anzeige)}
             onClose={() => setDialog(null)}
@@ -394,6 +395,16 @@ export function KennzahlSeite({
   );
 }
 
+/**
+ * „Energieziel setzen“ mit dem Tag der Route (Konzept Verbessern v1, Befund 2): Vorgabe und Grenzen der Zielperiode
+ * rechnen vom Tag, an dem die Route prüft - nie von der Uhr des Browsers. Meist hat ihn die Auffälligkeiten-Route der
+ * Seite schon gemerkt; sonst holt `useRoutenHeute` ihn einmal, und der Dialog öffnet, sobald er da ist.
+ */
+function EnergiezielSetzenAmTagDerRoute(props: Omit<Parameters<typeof EnergiezielSetzenDialog>[0], 'tagHeute'>) {
+  const tagHeute = useRoutenHeute();
+  return tagHeute ? <EnergiezielSetzenDialog {...props} tagHeute={tagHeute} /> : null;
+}
+
 // ================================================================================== die Auswertung (Antwort zuerst)
 
 /** `JJJJ-MM` plus `n` Monate (n darf negativ sein) - Kalender, keine Menge. */
@@ -433,6 +444,8 @@ function Auswertung({
   const [werte, setWerte] = useState<KennzahlWerte | null>(null);
   const [ziele, setZiele] = useState<Energieziel[] | null>(null);
   const [vermerke, setVermerke] = useState<Auffaelligkeit[] | null>(null);
+  // Der Tag der Route aus derselben Antwort - „heute“ für die Frist im Antwort-Dialog (eine Uhr, Befund 2).
+  const [vermerkAbruf, setVermerkAbruf] = useState<string | undefined>(undefined);
   const [vermerkStand, setVermerkStand] = useState(0);
   const [versuch, setVersuch] = useState(0);
   const [gewaehlt, setGewaehlt] = useState<string>(a.monat);
@@ -487,7 +500,12 @@ function Auswertung({
     let aktiv = true;
     // Ohne Antwort der Route (kein Recht, kein Vermerk-Weg) fehlt nur die Karte der Auffälligkeit.
     api.auffaelligkeiten(k.id).then(
-      (l) => aktiv && setVermerke(l.vermerke),
+      (l) => {
+        merkeAbruf(l.abruf);
+        if (!aktiv) return;
+        setVermerkAbruf(l.abruf);
+        setVermerke(l.vermerke);
+      },
       () => aktiv && setVermerke(null),
     );
     return () => {
@@ -874,6 +892,7 @@ function Auswertung({
         <VermerkZeile
           vermerke={vermerke.filter((v) => v.id === auffaelligkeit.id)}
           alle={vermerke}
+          tagHeute={vermerkAbruf}
           onNeu={() => {
             setAntworten(false);
             setVermerkStand((x) => x + 1);
