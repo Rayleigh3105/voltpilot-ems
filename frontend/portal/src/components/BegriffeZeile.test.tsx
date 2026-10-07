@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { BEGRIFFE } from '../begriffe';
+import { BEGRIFFE, NORMWOERTER_IM_FACHWORT } from '../begriffe';
 import { BegriffeZeile } from './BegriffeZeile';
 
 describe('K3 · Begriffe einer Seite in Alltagssprache', () => {
@@ -25,7 +25,10 @@ describe('K3 · Begriffe einer Seite in Alltagssprache', () => {
     for (const [schluessel, b] of Object.entries(BEGRIFFE)) {
       expect(b.wort.length, schluessel).toBeGreaterThan(0);
       expect(b.klartext.endsWith('.'), schluessel).toBe(true);
-      for (const text of [b.klartext, b.beispiel ?? '', b.fachwort ?? '']) {
+      // Entscheid 14 (Konzept Verbessern v1): die genannten Normwörter dürfen im Fachwort stehen, sonst nichts davon.
+      const normwoerter = NORMWOERTER_IM_FACHWORT[schluessel as keyof typeof NORMWOERTER_IM_FACHWORT] ?? [];
+      const fachwort = normwoerter.reduce((rest, wort) => rest.replaceAll(wort, ' '), b.fachwort ?? '');
+      for (const text of [b.klartext, b.beispiel ?? '', fachwort]) {
         expect(text, schluessel).not.toMatch(/(^|[^\p{L}])(ISO|EnPI|EnB|SEU|KPI)([^\p{L}]|$)|\d+\.\d+\s*$|konform|zertifizier/iu);
       }
     }

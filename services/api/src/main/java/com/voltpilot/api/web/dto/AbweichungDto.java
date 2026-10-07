@@ -110,6 +110,14 @@ public final class AbweichungDto {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Vermerke(Verweis kennzahl, LocalDate abruf, int offen, List<Vermerk> vermerke) {}
 
+    /**
+     * {@code GET /api/v1/auffaelligkeiten} (Verbessern, Entscheid 4): die Vermerke über alle sichtbaren Kennzahlen;
+     * die Kennzahl steht an jedem Vermerk, {@code offen} zählt alle sichtbaren offenen.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record AlleVermerke(LocalDate abruf, int offen, List<Vermerk> vermerke) {}
+
     /** Die Antwort auf einen Vermerk: der beantwortete Vermerk und bei {@code abweichung} die eröffnete Abweichung. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)

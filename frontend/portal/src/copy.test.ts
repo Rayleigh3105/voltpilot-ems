@@ -162,6 +162,16 @@ import {
   kennzahlWertVersionenAntwort,
 } from './test/kennzahlWerteFixtures';
 import { HERKUNFT_WORT as MASSNAHME_HERKUNFT_WORT } from './massnahmen';
+import { BEGRIFFE, fachwortZeile, NORMWOERTER_IM_FACHWORT, type BegriffSchluessel } from './begriffe';
+import {
+  UEMS_AUF_KURS,
+  UEMS_EINSPARUNG,
+  UEMS_GEMESSEN_AN,
+  UEMS_KNAPP_DAHINTER,
+  UEMS_NICHT_AUF_KURS,
+  UEMS_VORHER,
+  UEMS_ZWEITE_PERSON,
+} from './glossar';
 import {
   UEMS_AEHNLICHE_FAELLE,
   UEMS_ANWENDUNGSBEREICH,
@@ -230,6 +240,22 @@ const SRC = join(process.cwd(), 'src');
 const GRENZ_BAUSTEIN = /<GrenzSatz(?![\w])(?![^>]*\sgrenze=\{false\})[^>]*\/>/;
 const VERANTWORTUNG_BAUSTEIN = /<GrenzSatz(?![\w])[^>]*\sverantwortung[\s/>]/;
 const GRENZ_HINWEIS = /<GrenzHinweis[\s/>]/;
+/**
+ * Bereiche, die nur Reiter legen (Verbessern-Konzept v1, Entscheid 2; Review r1 S-X.1): jeder Reiter trägt Titel, Satz
+ * und „Was VoltPilot leistet“ selbst, der Bereich keinen eigenen Kopf. Er gilt als „mit Hinweis“, wenn er jedes seiner
+ * Register wirklich zeigt und jedes davon den Hinweis trägt - ein neuer Reiter ohne Hinweis fällt so weiter auf.
+ */
+const REITER_MIT_HINWEIS: Record<string, string[]> = {
+  'pages/VerbesserungBereich.tsx': ['components/EnergiezieleRegister.tsx', 'components/MassnahmenRegister.tsx', 'components/AbweichungenRegister.tsx'],
+};
+function reiterTragenDenHinweis(datei: string, code: string): boolean {
+  const register = REITER_MIT_HINWEIS[datei];
+  if (!register) return false;
+  return register.every((r) => {
+    const name = r.split('/').pop()!.replace(/\.tsx$/, '');
+    return new RegExp(`<${name}[\\s/>]`).test(code) && GRENZ_HINWEIS.test(readFileSync(join(SRC, r), 'utf8'));
+  });
+}
 const traegtGrenzBaustein = (text: string) => GRENZ_HINWEIS.test(text) || GRENZ_BAUSTEIN.test(text);
 const traegtVerantwortungBaustein = (text: string) => GRENZ_HINWEIS.test(text) || VERANTWORTUNG_BAUSTEIN.test(text);
 
@@ -1952,15 +1978,20 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
   'abweichungen.ts', // neu: eine Abweichung zitiert genau eine Kennzahl (AP-18 IP-18, A3; Spalte, Filter, Ablehnungen)
+  'begriffe.ts', // neu: „Was ist eine Maßnahme?“ und „gemessen an“ nennen die Kennzahl, an der die Wirkung gemessen wird (Konzept Verbessern v1 §7)
   'berichtDialoge.ts', // neu: „Bericht anlegen“ wählt Kennzahlen ab (AP-12 IP-14, V3)
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
   'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
+  'components/AbweichungenRegister.tsx', // neu: der Reiter nennt die Kennzahl jeder Auffälligkeit und Abweichung (Verbessern-Konzept v1, PR3)
+  'components/AuffaelligkeitBlatt.tsx', // neu: „Keine Antwort ändert eine Zahl“ nennt Kennzahl und Bezugsbasis (Verbessern-Konzept v1, PR3)
   'components/AuthScreen.tsx', // neu: die Anmelde-Bühne zeigt die Flächen des Portals als Kacheln, eine davon „Kennzahlen“ (Login-Konzept C)
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
   'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
+  'components/EnergiezielSetzenFuehrung.tsx', // neu: „Energieziel setzen“ geführt wählt zuerst die Kennzahl (Konzept Verbessern §6.9)
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
+  'components/MassnahmeWirkung.tsx', // neu: ohne Kennzahl misst VoltPilot nichts - Abschließen mit einem Satz (Verbessern v1 PR 2, Entscheid 6)
   'components/PortfolioCockpit.tsx', // alt
   'components/PortfolioKacheln.tsx', // neu: das Kennzahl-Kachelraster der Unternehmens-Übersicht (PR2, §4.2 — Leitkennzahl, Verbrauch, Lastspitze, Kosten)
   'components/VerlaufExplorer.tsx', // alt
@@ -1969,15 +2000,21 @@ const KENNZAHL_BESTAND: string[] = [
   'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
+  'energiezielBild.ts', // neu: ein Energieziel entsteht an einer Kennzahl mit Bezugsbasis (Konzept Verbessern §6.3)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'massnahmePlanen.ts', // neu: „Maßnahme planen“ fragt, ob an einer Kennzahl gemessen wird (Verbessern v1 PR 2, Entscheid 6)
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
+  'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
+  'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
   'pages/DataPages.tsx', // alt
+  'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
+  'pages/MassnahmeSeite.tsx', // neu: „Wofür und woran gemessen“ nennt die Kennzahl der Messgrundlage (Verbessern v1 PR 2, §6.6)
   'portfolioCockpit.ts', // alt
   'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
   'test/kennzahlAnlegenFixtures.ts', // neu: die Fixture spiegelt genau diese Ablehnung
@@ -2890,6 +2927,17 @@ const VERBESSERUNG_VERBOTEN = [
   /(^|[^\p{L}\p{N}])Einsparung(?:en)?\s+durch([^\p{L}\p{N}]|$)/iu,
 ];
 
+/**
+ * Konzept Verbessern v1, Entscheid 14 (Captain-Freigabe 06.10.2026): Berater suchen die Normwörter. Sie stehen darum in
+ * der letzten Zeile von „Was ist …?“ - nur im Feld `fachwort` der Begriffe aus `NORMWOERTER_IM_FACHWORT`. Genau diese
+ * Texte in `begriffe.ts` lässt der Wächter durch; jede andere Stelle bleibt verboten. Die einzige Ausnahme.
+ */
+const FACHWORT_AUSNAHMEN = new Set<string>([
+  ...Object.values(NORMWOERTER_IM_FACHWORT).flatMap((woerter) => woerter ?? []),
+  ...(Object.keys(NORMWOERTER_IM_FACHWORT) as BegriffSchluessel[]).map((k) => BEGRIFFE[k].fachwort ?? ''),
+]);
+const fachwortAusnahme = (datei: string, text: string) => datei === 'begriffe.ts' && FACHWORT_AUSNAHMEN.has(text);
+
 describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwörter (SP1–SP4)', () => {
   /**
    * IP-8/IP-13/IP-18/IP-20 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren Dateiname
@@ -2917,6 +2965,11 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     // Antwort-Knöpfen (Maßnahme und Energieziel). Das reine Modul `massnahmeWirkung.ts` prüft der Wörter-Wächter unten.
     'components/MassnahmeWirkung.tsx',
     'components/VerbesserungAnstoesse.tsx',
+    // Konzept Verbessern v1: das geführte „Energieziel setzen“ (PR 1), der Hinweis am Energieziel und das Antwort-Blatt
+    // einer Auffälligkeit (PR 3).
+    'components/EnergiezielSetzenFuehrung.tsx',
+    'components/AuffaelligkeitHinweis.tsx',
+    'components/AuffaelligkeitBlatt.tsx',
   ];
   const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
   const verbesserungFlaechen = () => [
@@ -2936,6 +2989,52 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
   };
   const traegtGrenze = (text: string) =>
     text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
+
+  /**
+   * Konzept Verbessern v1, PR 4 (Muster `BEZUGSBASIS_TEILE`): Dialoge, Blätter und Abschnitte, die nur INNERHALB einer
+   * Seite mit Grenz-Satz stehen. Der Satz steht einmal am Fuß der Seite, nicht am Fuß jedes Dialogs. Ein Teil gilt weiter
+   * als Fläche für Wörter, Ursachen und Pfeile. Seine Eltern sind JEDE Datei, die ihn importiert (Review r1 S-4.1 a): jede
+   * trägt den Grenz-Satz selbst oder ist selbst ein Teil, dessen Eltern ihn tragen - eine neue Eltern-Seite ohne Satz fällt
+   * so auf, ohne dass jemand eine Liste nachführt.
+   */
+  const VERBESSERUNG_TEILE: string[] = [
+    'components/EnergiezielDialoge.tsx',
+    'components/EnergiezielSetzenFuehrung.tsx',
+    'components/MassnahmeDialoge.tsx',
+    'components/AbweichungDialoge.tsx',
+    'components/AuffaelligkeitZeile.tsx',
+    'components/AuffaelligkeitBlatt.tsx',
+    'components/AuffaelligkeitHinweis.tsx',
+    'components/MassnahmeWirkung.tsx',
+    'components/VerbesserungAnstoesse.tsx',
+  ];
+  const istTeil = (datei: string) => VERBESSERUNG_TEILE.includes(datei);
+  /** Der Importpfad von `eltern` nach `teil` (`./X`, `../components/X`, `./components/X`). */
+  const importPfad = (eltern: string, teil: string) => {
+    const von = eltern.split('/').slice(0, -1);
+    const nach = teil.replace(/\.tsx$/, '').split('/');
+    let i = 0;
+    while (i < von.length && i < nach.length - 1 && von[i] === nach[i]) i++;
+    return [...(von.length > i ? Array<string>(von.length - i).fill('..') : ['.']), ...nach.slice(i)].join('/');
+  };
+  const importiertTeil = (eltern: string, teil: string) =>
+    existsSync(join(SRC, eltern)) && readFileSync(join(SRC, eltern), 'utf8').includes(`from '${importPfad(eltern, teil)}'`);
+  const quellen = () =>
+    walk()
+      .map((datei) => datei.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.endsWith('.tsx') && !datei.endsWith('.test.tsx') && !datei.startsWith('test/'));
+  const elternVon = (teil: string) => quellen().filter((datei) => datei !== teil && importiertTeil(datei, teil));
+  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean => {
+    const eltern = elternVon(teil);
+    return (
+      eltern.length > 0 &&
+      eltern.every((e) => {
+        if (gesehen.includes(e)) return false;
+        const code = stripComments(readFileSync(join(SRC, e), 'utf8'));
+        return traegtGrenze(code) || reiterTragenDenHinweis(e, code) || (istTeil(e) && grenzeUeberEltern(e, [...gesehen, teil]));
+      })
+    );
+  };
 
   /**
    * U1–U3: eine Ursache ist die Aussage einer Person. „Ursache“ steht nur in der Nähe von „Aussage von“ (auch als
@@ -3059,7 +3158,12 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
       const texte = kundenTexte(code);
       expect(texte.flatMap(verstoesse), datei).toEqual([]);
-      expect(traegtGrenze(code), datei).toBe(true);
+      if (istTeil(datei)) {
+        expect(grenzeUeberEltern(datei), `${datei}: eine Eltern-Seite trägt keinen Grenz-Satz`).toBe(true);
+        expect(traegtGrenze(code), `${datei}: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Teil`).toBe(false);
+      } else {
+        expect(traegtGrenze(code) || reiterTragenDenHinweis(datei, code), datei).toBe(true);
+      }
       expect(ursacheOhnePerson(code), `${datei}: „Ursache“ ohne „Aussage von“`).toBe(false);
       expect(texte.filter(verbesserungOhneBedingung), `${datei}: „Verbesserung“ ohne Bedingung`).toEqual([]);
       expect(texte.filter((text) => ZIEL_ALLEIN.test(text)), `${datei}: „Ziel“ allein`).toEqual([]);
@@ -3088,6 +3192,63 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     for (const datei of VERBESSERUNG_FLAECHEN) {
       expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
     }
+    // PR 4: ein Teil ohne Eltern trägt keinen Grenz-Satz; die Eltern kommen aus den Imports (S-4.1 a).
+    expect(grenzeUeberEltern('components/MassnahmeDialoge.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/VerbesserungUnbekannt.tsx')).toBe(false);
+    expect(importPfad('pages/EnergiezielSeite.tsx', 'components/MassnahmeDialoge.tsx')).toBe('../components/MassnahmeDialoge');
+    expect(importPfad('components/EnergiezieleRegister.tsx', 'components/MassnahmeDialoge.tsx')).toBe('./MassnahmeDialoge');
+    expect(importPfad('App.tsx', 'components/MassnahmeDialoge.tsx')).toBe('./components/MassnahmeDialoge');
+    expect(importPfad('components/kacheln/Kachel.tsx', 'components/MassnahmeDialoge.tsx')).toBe('../MassnahmeDialoge');
+    expect(elternVon('components/AuffaelligkeitZeile.tsx')).toEqual(
+      expect.arrayContaining(['components/BezugsbasisVergleich.tsx', 'pages/KennzahlSeite.tsx']),
+    );
+    for (const teil of VERBESSERUNG_TEILE) {
+      expect(VERBESSERUNG_FLAECHEN, teil).toContain(teil);
+      expect(elternVon(teil), `${teil} hat Eltern`).not.toEqual([]);
+    }
+  });
+
+  /** Konzept Verbessern v1, Befund 1: ein offener Monat nennt den Grund der Route; nur ohne Grund „noch nicht endgültig“. */
+  it('„noch nicht endgültig“ steht nur ohne Grund der Route - nie als fester Text einer Fläche', () => {
+    const NOCH_NICHT = /NOCH_NICHT_ENDGUELTIG|noch nicht endgültig/u;
+    // Mit den reinen Bildern der Seiten (Review r1 S-4.1 c): auch sie raten keinen Grund.
+    for (const datei of [...verbesserungFlaechen(), 'massnahmeWirkung.ts', 'massnahmen.ts', 'abweichungen.ts', 'energiezielBild.ts', 'massnahmenBild.ts']) {
+      expect(NOCH_NICHT.test(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
+    }
+    // Im Modul: nur die Konstante selbst und der Rückfall in `offenGrund`.
+    const modul = stripComments(readFileSync(join(SRC, 'energieziele.ts'), 'utf8'));
+    expect(modul.match(/NOCH_NICHT_ENDGUELTIG/g)).toHaveLength(2);
+    expect(modul).toMatch(/export function offenGrund[\s\S]*?return NOCH_NICHT_ENDGUELTIG;\n\}/u);
+  });
+
+  /**
+   * Konzept Verbessern v1 §8.4: die Länge einer Begründung („10 bis 500 Zeichen“) steht erst da, wenn sie nicht passt -
+   * als Fehler am Feld, nie als Dauertext darunter. Der Platzhalter zeigt stattdessen ein Beispiel.
+   */
+  const LAENGE_ALS_DAUERTEXT = />\s*\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b[^{}]*\}\s*</u;
+  /** Dieselbe Länge als Hilfe-Text eines Felds (`hint=`/`hilfe=`, Review r1 S-4.1 b) - steht ebenso dauerhaft da. */
+  const LAENGE_ALS_HILFE =
+    /\b(?:hint|hilfe)=(?:\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b|(?:"|\{\s*['`"])[^"'`]*\b(?:mindestens|höchstens)\s+(?:\d+|zehn|zwanzig|fünfzig|hundert)\s+Zeichen)/iu;
+  it('die Länge einer Begründung steht nur als Fehler da, nie als Dauertext', () => {
+    for (const datei of verbesserungFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      expect(LAENGE_ALS_DAUERTEXT.test(code), datei).toBe(false);
+      expect(LAENGE_ALS_HILFE.test(code), `${datei}: Länge als Hilfe-Text`).toBe(false);
+      expect(kundenTexte(code).filter((t) => /\d+\s+bis\s+[\d.]+\s+Zeichen/u.test(t)), datei).toEqual([]);
+    }
+    for (const probe of [
+      "<p className={fehler ? 'vp-ez-fehler' : 'vp-ez-leise'}>{fehler ?? Z.BEGRUENDUNG_HINWEIS}</p>",
+      "<p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{A.WORTLAUT_HINWEIS}</p>",
+    ]) {
+      expect(LAENGE_ALS_DAUERTEXT.test(probe), probe).toBe(true);
+    }
+    expect(LAENGE_ALS_DAUERTEXT.test("{fehler && <p className=\"vp-ez-fehler\">{fehler}</p>}")).toBe(false);
+    expect(LAENGE_ALS_DAUERTEXT.test("setze({ begruendung: Z.BEGRUENDUNG_HINWEIS });")).toBe(false);
+    for (const probe of ['hint={Z.BEGRUENDUNG_HINWEIS}', 'hilfe="Ein Satz, den jeder versteht. Mindestens zehn Zeichen."', "hilfe={'Mindestens 10 Zeichen'}"]) {
+      expect(LAENGE_ALS_HILFE.test(probe), probe).toBe(true);
+    }
+    expect(LAENGE_ALS_HILFE.test('hint="Eine Stelle nach dem Komma."')).toBe(false);
+    expect(LAENGE_ALS_HILFE.test("setFehler({ text: 'Bitte mindestens zehn Zeichen.' })")).toBe(false);
   });
 
   it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {
@@ -3095,6 +3256,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
       return visibleTexts(readFileSync(file, 'utf8'))
         .filter(isKundentext)
+        .filter((text) => !fachwortAusnahme(wo, text))
         .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
     });
     expect(funde, funde.join('\n')).toEqual([]);
@@ -3176,6 +3338,88 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       expect(verbesserungOhneBedingung(wort), wort).toBe(false);
       expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
     }
+  });
+});
+
+describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
+  /** Die Normwörter aus Entscheid 14 samt den übrigen Verboten des AP-18-Blocks - auf jeder Kundenfläche. */
+  const NORMWORT = [...VERBESSERUNG_VERBOTEN, /Energieleistungsverbesserung/iu];
+  const verboteIn = (text: string) => NORMWORT.filter((re) => re.test(text));
+  /** In `begriffe.ts` zusätzlich kein Wort, das Konformität verspricht (Kopf der Datei). */
+  const begriffVerbote = (text: string) => [...NORMWORT, /konform/iu].filter((re) => re.test(text));
+  const verbesserungsBegriffe: BegriffSchluessel[] = [
+    'energieziel', 'massnahme', 'abweichung', 'auf_kurs', 'erwartete_wirkung', 'beobachtet', 'belegt', 'vorher',
+    'gemessen_an', 'auffaelligkeit', 'wirksamkeit', 'zweite_person', 'einsparung',
+  ];
+
+  it('Entscheid 14: die Normwörter stehen nur im Feld `fachwort` der genannten Begriffe', () => {
+    expect(NORMWOERTER_IM_FACHWORT).toEqual({
+      massnahme: ['Aktionsplan', 'Korrekturmaßnahme'],
+      abweichung: ['Nichtkonformität'],
+      einsparung: ['Energieleistungsverbesserung'],
+    });
+    for (const [k, woerter] of Object.entries(NORMWOERTER_IM_FACHWORT) as [BegriffSchluessel, readonly string[]][]) {
+      const fachwort = BEGRIFFE[k].fachwort ?? '';
+      for (const wort of woerter) expect(fachwort, k).toContain(wort);
+      // Außer den genannten Wörtern trägt das Fachwort kein verbotenes.
+      expect(begriffVerbote(woerter.reduce((rest, wort) => rest.replaceAll(wort, ' '), fachwort)), k).toEqual([]);
+    }
+    for (const [k, b] of Object.entries(BEGRIFFE) as [BegriffSchluessel, (typeof BEGRIFFE)[BegriffSchluessel]][]) {
+      for (const text of [b.wort, b.klartext, b.beispiel ?? '', b.frage ?? '', b.mehr ?? '', b.abgrenzung ?? '']) {
+        expect(begriffVerbote(text), `${k}: ${text}`).toEqual([]);
+      }
+      if (!(k in NORMWOERTER_IM_FACHWORT)) expect(begriffVerbote(b.fachwort ?? ''), k).toEqual([]);
+    }
+  });
+
+  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (wo === 'begriffe.ts') return [];
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .filter((text) => verboteIn(text).length > 0)
+        .map((text) => `${wo}: „${text}“`);
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+    // Die Ausnahme greift nur in `begriffe.ts` und nur für genau diese Texte.
+    expect(fachwortAusnahme('begriffe.ts', BEGRIFFE.massnahme.fachwort!)).toBe(true);
+    expect(fachwortAusnahme('components/MassnahmeDialoge.tsx', BEGRIFFE.massnahme.fachwort!)).toBe(false);
+    expect(fachwortAusnahme('begriffe.ts', 'Aktionsplan 2029')).toBe(false);
+  });
+
+  it('die letzte Zeile von „Was ist …?“ sagt „Fachwort“ oder bei mehreren „Fachwörter“', () => {
+    expect(fachwortZeile('Vier-Augen-Prinzip')).toBe('Fachwort: Vier-Augen-Prinzip');
+    expect(fachwortZeile(BEGRIFFE.massnahme.fachwort!)).toBe(
+      'Fachwörter: Aktionsplan (die Liste Ihrer Maßnahmen), Korrekturmaßnahme (eine Maßnahme aus einer Feststellung)',
+    );
+    // Ein Komma in der Klammer trennt keine zwei Wörter.
+    expect(fachwortZeile('Ausgangslage (Monat, festgehalten)')).toBe('Fachwort: Ausgangslage (Monat, festgehalten)');
+  });
+
+  it('jeder Begriff unter Verbessern erklärt sich mit Frage, Klartext und Abgrenzung - in den Wörtern des Bereichs', () => {
+    const ZIEL_ALLEIN = /(?<![\p{L}])Ziel(?![\p{L}])/u;
+    const URSACHE = /(?<![\p{L}])Ursache(?![\p{L}])/u;
+    for (const k of verbesserungsBegriffe) {
+      const b = BEGRIFFE[k];
+      expect(b.frage, k).toMatch(/^Was (?:ist|heißt) .+\?$/u);
+      expect(b.klartext.endsWith('.'), k).toBe(true);
+      expect(b.abgrenzung, k).toBeTruthy();
+      for (const text of [b.klartext, b.beispiel ?? '', b.abgrenzung ?? '']) {
+        expect(ZIEL_ALLEIN.test(text), `${k}: „Ziel“ allein in „${text}“`).toBe(false);
+        expect(URSACHE.test(text), `${k}: „Ursache“ ohne Person in „${text}“`).toBe(false);
+        expect(/verbesserung/iu.test(text), `${k}: „Verbesserung“ in „${text}“`).toBe(false);
+      }
+    }
+  });
+
+  it('die Alltagswörter stehen als Konstanten im Glossar (§7)', () => {
+    expect([UEMS_AUF_KURS, UEMS_KNAPP_DAHINTER, UEMS_NICHT_AUF_KURS, UEMS_VORHER, UEMS_GEMESSEN_AN, UEMS_ZWEITE_PERSON, UEMS_EINSPARUNG])
+      .toEqual(['auf Kurs', 'knapp dahinter', 'nicht auf Kurs', 'Vorher', 'gemessen an', 'zweite Person', 'Einsparung']);
+    expect(BEGRIFFE.vorher.fachwort).toBe(UEMS_AUSGANGSLAGE);
+    expect(BEGRIFFE.gemessen_an.fachwort).toBe(UEMS_MESSGRUNDLAGE);
+    expect(BEGRIFFE.zweite_person.fachwort).toBe('Vier-Augen-Prinzip');
+    for (const k of verbesserungsBegriffe) expect(BEGRIFFE[k].wort.length, k).toBeGreaterThan(0);
   });
 });
 
@@ -3953,7 +4197,7 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
   it('jeder Bereich, der die Sätze seiner Teile schweigen lässt, zeigt den Hinweis', () => {
     const ohne = alle
       .map((datei) => [rel(datei), stripComments(readFileSync(datei, 'utf8'))] as const)
-      .filter(([, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code))
+      .filter(([datei, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code) && !reiterTragenDenHinweis(datei, code))
       .map(([datei]) => datei);
     expect(ohne).toEqual([]);
   });
@@ -3977,6 +4221,11 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
     expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
+    // Ein Bereich mit Reitern gilt nur, wenn er jedes Register zeigt - fehlt eins, trägt er den Hinweis nicht.
+    const bereich = '<EnergiezieleRegister onOeffnen={x} /> <MassnahmenRegister /> <AbweichungenRegister grenze={false} />';
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich)).toBe(true);
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich.replace('<MassnahmenRegister />', ''))).toBe(false);
+    expect(reiterTragenDenHinweis('pages/KennzahlSeite.tsx', bereich)).toBe(false);
   });
 });
 

@@ -16,6 +16,7 @@ Dialoge `AbweichungDialoge.tsx`, reines Modul `abweichungen.ts`, Bühne `e2e/abw
 | Route | Recht | Was |
 |---|---|---|
 | `GET /api/v1/kennzahlen/{id}/auffaelligkeiten?zustand=` | `verbesserung.ansehen` (Kommentar) | Vermerke der Kennzahl (Zaun über `fuerBezugsbasis` + RLS `standort_id`); `offen` zählt immer alle offenen |
+| `GET /api/v1/auffaelligkeiten?zustand=` | `verbesserung.ansehen` (Kommentar) | Verbessern (Konzept v1, Entscheid 4): Vermerke ALLER sichtbaren Kennzahlen (`AuffaelligkeitenController` → `AbweichungService.alleVermerke`); Zaun wie an der Kennzahl (RLS + `lesbareKennzahlOderNichts`), Fremdes fehlt still (kein 404); ältester Monat zuerst; `offen` zählt alle sichtbaren offenen |
 | `POST …/auffaelligkeiten/{aid}/antwort` | `@Recht verbesserung.verwalten`, DIENST | einmalig (409 `auffaelligkeit_beantwortet`); `abweichung` → AW-… mit ALLEN offenen Vermerken derselben Kennzahl × Fassung (201); `zur_kenntnis` nur mit Begründung 10–500 (200, sonst 422) |
 | `GET/POST /api/v1/abweichungen` | ansehen · verwalten | Register (`zustand`, `ueberfaellig` über `VerbesserungRegeln.frist`, `kennzahl`); von Hand: Anlass = Kopie von `BezugsbasisVergleich.fuerZiel` über abgeschlossene `monate` gegen EINE Fassung, `wortlaut` 10–500 |
 | `GET …/{id}` | ansehen | mit `vermerke` und `verlauf`; Sätze `abweichung_kopf`, `ursache_aussage(_mit_beleg)`, `abschluss_massnahme`/`_erklaert` |
@@ -33,3 +34,14 @@ auch an einer Abweichung außerhalb seines Zauns.
 (IP-15 legt die Form fest); `kopf_satz` nur für einen Monat mit Δ. Nachweis: `AbweichungApiTest` (R1, R2, R8, R11),
 `AbweichungSchnittstelleVertragTest`, Zeilen in `RechtMatrixApiTest`, `RechtRoutenArchitekturTest.DIENST`,
 `RechteKennungenDerRoutenTest`.
+
+**Verbessern-Konzept v1, PR3 (06.10.2026):** der Reiter `AbweichungenRegister.tsx` liest Abweichungen UND
+`GET /api/v1/auffaelligkeiten` (zuerst „Zu beantworten“, dann „In Arbeit“, „Abgeschlossen“ inkl. zur Kenntnis
+genommener Vermerke); beantwortet wird im Blatt `AuffaelligkeitBlatt.tsx` (Telefon `BottomSheet`, Rechner `Modal`) über
+die Route an der Kennzahl, „heute“ und Frist-Vorgabe aus `abruf`. `AuffaelligkeitHinweis.tsx` steht am Energieziel
+(Reiter und Seite) und zählt nur offene Vermerke derselben Kennzahl in der Zielperiode (`offenAmEnergieziel`).
+⚠ Der Anlass hat drei Formen (Naht: `bereinigt`; Referenzwelt/Demo: flach `gemessen_kwh`/`erwartet_kwh`/`bedingung
+{"BZ-1_kg": …}`; von Hand: `vergleich[]`) — `anlassZahlen` liest alle, mehrere Monate ergeben keine eine Zahl.
+⚠ `data-entscheid="abweichung_frist"` sitzt am Antwort-Block mit „Abschließen“ (`data-entscheid-schritt`).
+⚠ Der Verlauf trägt die Protokollzeit (`created_at`, echte Uhr), Stufen und Frist die Uhr der Kennzahlen — in der Demo
+(Bühne 30.04.2029) stehen darum Verlaufstage von 2026 neben Bühnentagen; im Betrieb gibt es nur eine Uhr.
