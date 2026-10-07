@@ -112,7 +112,8 @@ export const VERGLEICH_REITER = `Vergleich mit ${UEMS_BEZUGSBASIS}`;
 export { REITER_KENNZAHL } from './bezugsbasisAnlegen';
 /** B2: eine Bezugsbasis — und damit ein Vergleich — gibt es nur an Quotient und Zusammenfassung, nie an einem Anteil. */
 export const kannVergleich = kannBezugsbasis;
-export const VERGLEICH_ROH = 'Roh';
+/** Konzept Auswerten a1 §8.3: die unbereinigte Veränderung heißt nach dem, womit sie vergleicht - nie „Roh“. */
+export const VERGLEICH_ROH = 'ggü. Vormonat';
 export const VERGLEICH_BEREINIGT = UEMS_BEREINIGT;
 export const VERGLEICH_OHNE_URTEIL = 'ohne Urteil';
 export const VERGLEICH_ZEITRAUM = 'Zeitraum';
@@ -122,15 +123,16 @@ export const VERGLEICH_BASIS_WAHL = UEMS_BEZUGSBASIS;
 export const VERGLEICH_SPALTEN = {
   monat: 'Monat',
   gemessen: 'gemessen',
-  vormonat: 'zum Vormonat',
+  vormonat: 'Veränderung',
   bedingung: 'Bedingung',
   erwartet: UEMS_ERWARTET,
   delta: 'Δ',
-  urteil: 'Urteil (Band)',
+  urteil: 'Urteil',
   kennzeichen: 'Kennzeichen',
 } as const;
 export const VERGLEICH_LADEFEHLER = 'Der Vergleich konnte nicht geladen werden.';
-export const VERGLEICH_ZUM_REITER_BEZUGSBASIS = `Die ${UEMS_BEZUGSBASIS} legen Sie im Reiter „${UEMS_BEZUGSBASIS}“ fest.`;
+/** Der Weg zur Bezugsbasis seit PR2 (kein Reiter mehr): die Seite der Kennzahl mit „Bezugsbasis festlegen“ (Review r3). */
+export const VERGLEICH_WEG_ZUR_BEZUGSBASIS = `Die ${UEMS_BEZUGSBASIS} legen Sie auf der Seite der Kennzahl fest („${UEMS_BEZUGSBASIS} festlegen“).`;
 export const VERGLEICH_ZEITRAUM_UNGUELTIG = 'Der erste Monat muss vor dem letzten liegen.';
 
 const METHODE_WORT: Record<string, string> = Object.fromEntries(
@@ -324,7 +326,7 @@ function zeitraumBild(v: BezugsbasisVergleich): ZeitraumBild {
 /** Das Bild des Reiters; ohne Bezugsbasis nur der Leer-Satz des Lesers (R10: kein Vergleich, kein Urteil). */
 export function vergleichBild(v: BezugsbasisVergleich): VergleichBild {
   if (v.bezugsbasis === null) {
-    return { art: 'leer', satz: v.satz ?? v.monate[0]?.satz ?? '', hinweis: VERGLEICH_ZUM_REITER_BEZUGSBASIS, standSatz: standSatz(v) };
+    return { art: 'leer', satz: v.satz ?? v.monate[0]?.satz ?? '', hinweis: VERGLEICH_WEG_ZUR_BEZUGSBASIS, standSatz: standSatz(v) };
   }
   return {
     art: 'vergleich',
