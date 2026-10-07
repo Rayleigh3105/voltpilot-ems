@@ -56,7 +56,7 @@
   gap: 6px;
   min-width: 0;
 }
-/* Ein Blätter-Knopf: sichtbar das Quadrat des Konzepts (34 px), getippt 44 px hoch. */
+/* Ein Blätter-Knopf: sichtbar das Quadrat des Konzepts (34 px), am Telefon 44 × 44 px Tippfläche um dieselbe Mitte. */
 .vp-ks-schritt {
   position: relative;
   display: inline-grid;
@@ -72,11 +72,11 @@
 .vp-ks-schritt::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: 50%;
   top: 50%;
   width: 34px;
   height: 34px;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   box-sizing: border-box;
   border: 1px solid var(--vp-c-border, #e2e8f0);
   border-radius: var(--vp-radius-sm, 10px);
@@ -96,6 +96,7 @@
 }
 @media (pointer: coarse), (max-width: 720px) {
   .vp-ks-schritt {
+    width: 44px;
     height: 44px;
   }
 }

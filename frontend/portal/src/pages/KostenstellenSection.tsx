@@ -39,6 +39,7 @@ import {
   prozesseBild,
   registerWert,
   werteAnfrage,
+  zuordnungsTag,
   type EnergieAntwort,
   type KarteBild,
   type MessstellenWert,
@@ -301,7 +302,7 @@ function KostenstelleKarte({
           )}
           <ul className="vp-ks-posten">
             {k.posten.map((p) => (
-              <Posten key={p.id} p={p} />
+              <Posten key={p.schluessel} p={p} />
             ))}
           </ul>
         </>
@@ -644,17 +645,18 @@ function ProzessZeile({ r }: { r: ProzessReihe }) {
 /** Der Reiter „Prozesse“ (Konzept §6.7): je Prozess die Messstellen, die ihn messen, mit Wert - keine Summe über Prozesse. */
 export function ProzesseReiter({ katalog, ...zeit }: ReiterProps & { katalog: Prozess[] }) {
   const { periode, am } = zeit.wahl;
+  const heute = zeit.heute;
   const [zuordnungen, setZuordnungen] = useState<{ am: string; map: ReadonlyMap<string, ZuordnungAntwort> }>({ am: '', map: new Map() });
   const [versuch, setVersuch] = useState(0);
   const registerAntwort = useRegister();
   const register = registerAntwort === 'fehler' ? null : registerAntwort;
 
-  // Die Zuordnung gilt am ersten Tag des Zeitraums (die Route kennt einen Tag, keinen Zeitraum).
+  // Die Zuordnung je Prozess am letzten Tag von Zeitraum ∩ Gültigkeit, nicht nach heute (die Route kennt einen Tag).
   useEffect(() => {
     let aktiv = true;
     setZuordnungen({ am, map: new Map() });
     for (const p of katalog) {
-      api.prozessMessstellen(p.id, am).then(
+      api.prozessMessstellen(p.id, zuordnungsTag(p, periode, am, heute)).then(
         (a) => aktiv && setZuordnungen((alt) => ({ am, map: new Map(alt.am === am ? alt.map : []).set(p.id, a) })),
         () => aktiv && setZuordnungen((alt) => ({ am, map: new Map(alt.am === am ? alt.map : []).set(p.id, 'fehler') })),
       );
@@ -662,7 +664,7 @@ export function ProzesseReiter({ katalog, ...zeit }: ReiterProps & { katalog: Pr
     return () => {
       aktiv = false;
     };
-  }, [katalog, am, versuch]);
+  }, [katalog, periode, am, heute, versuch]);
 
   const map = zuordnungen.am === am ? zuordnungen.map : new Map<string, ZuordnungAntwort>();
   // Was das Register (PR5) schon trägt, fragt die Fläche nicht noch einmal.

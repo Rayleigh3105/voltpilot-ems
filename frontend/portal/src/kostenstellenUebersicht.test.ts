@@ -325,6 +325,77 @@ describe('Ablesezeiträume auf Kostenstellen (Messen PR4, Verteilung 1.5): Monat
     expect(n(p.herkunft)).toBe('30 % · für Nov 2026 noch keine Ablesung');
     expect(p.zahl).toBe('—');
   });
+  it('im Jahr: ein Wechsel in EINEM Monat nimmt nur ihm die Zahl - der Anteil und die übrigen Monate bleiben (Prüfung r4 S19)', () => {
+    const roh = ahrenbergKostenstelleEnergie(k.id, 'jahr', '2026-01-01');
+    const wechsel = monat({ monat: '2026-11', anteil_prozent: null, menge: null, zustand: 'keine Werte', grund: 'anteil_wechselt_im_ablesezeitraum', geaendert_am: '2026-11-15' });
+    const posten = { ...basis, menge: 52920, zustand: 'unvollständig', kennzeichen: ['Verteilung geändert am 15.11.2026', 'keine Werte (Verteilung im Ablesezeitraum geändert)'], tage: [], monate: [monat({ monat: '2026-10' }), wechsel, monat({ monat: '2026-12' })] };
+    const a: KostenstelleEnergie = { ...mitPosten(posten, 52920), periode: 'jahr', am: '2026-01-01', von: roh.von, bis: roh.bis };
+    const b = kostenstellenBild({ katalog: [k], antworten: new Map([[k.id, a]]), register: ablesezaehler, werte: new Map(), periode: 'jahr', am: '2026-01-01' });
+    const p = karte(b, '4200').posten[0];
+    expect(n(p.herkunft)).toBe('30 % · ab Okt 2026 · Anteil am 15.11.2026 geändert · für Nov 2026 keine Menge');
+    expect(p.zahl).not.toBe('—');
+    expect(p.woerter).toEqual([]);
+  });
+
+  it('im Jahr: der Teil eines Postens nennt seine Monate und keine Menge „von“ (Prüfung r4 S18)', () => {
+    const roh = ahrenbergKostenstelleEnergie(k.id, 'jahr', '2026-01-01');
+    const ganz = { ...basis, menge: 529200, zustand: 'vollständig', kennzeichen: [], tage: [], monate: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'].map((m) => monat({ monat: m, anteil_prozent: 100 })) };
+    const teil = { ...basis, menge: 370440, zustand: 'vollständig', kennzeichen: [], tage: [], monate: ['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'].map((m) => monat({ monat: m, anteil_prozent: 70 })) };
+    const a: KostenstelleEnergie = {
+      ...mitPosten(teil, 370440),
+      periode: 'jahr',
+      am: '2026-01-01',
+      von: roh.von,
+      bis: roh.bis,
+      gemessen: { menge: 529200, einheit: 'kWh', zustand: 'vollständig', grund: null, summen: [], posten: [ganz] },
+    };
+    const werte = new Map<string, WerteAntwort>([[basis.messstelle.kennzeichen, werteVon(basis.messstelle.kennzeichen, 1058400, '2026-01-01', '2026-12-31')]]);
+    const b = kostenstellenBild({ katalog: [k], antworten: new Map([[k.id, a]]), register: ablesezaehler, werte, periode: 'jahr', am: '2026-01-01' });
+    const ps = karte(b, '4200').posten;
+    expect(ps.map((p) => n(p.herkunft))).toEqual(['ganz · bis Jun 2026', '70 % · ab Jul 2026']);
+    // Dieselbe Messstelle in zwei Herkünften: zwei Posten, zwei Schlüssel - nie derselbe React-Key.
+    expect(new Set(ps.map((p) => p.schluessel)).size).toBe(2);
+    expect(ps.map((p) => p.id)).toEqual([basis.messstelle.id, basis.messstelle.id]);
+    // Wer keine Menge „von“ nennt, braucht die Werte-Route dafür nicht.
+    expect(MODUL.anteiligeQuellen(new Map([[k.id, a]]))).toEqual([]);
+  });
+});
+
+describe('Prüfung r4: Herkunft eines Postens aus Tagen und der Tag der Prozess-Zuordnung', () => {
+  it('S18: MS-07 bis 14.10. ganz, ab 15.10. zu 70 % - zwei Posten mit eigenem Schlüssel, „70 %“ ohne „von 15.500 kWh“', () => {
+    const k = KATALOG.find((x) => x.kennzeichen === '4200')!;
+    const roh = ahrenbergKostenstelleEnergie(k.id, 'monat', '2026-10-01');
+    const vorlage = roh.verteilt.posten[0];
+    const tage = (von: number, bis: number, anteil: number) =>
+      Array.from({ length: 31 }, (_, i) => i + 1)
+        .filter((d) => d >= von && d <= bis)
+        .map((d) => ({ ...vorlage.tage[0], tag: `2026-10-${String(d).padStart(2, '0')}`, anteil_prozent: anteil }));
+    const ms07 = { ...vorlage, monate: undefined, kennzeichen: [] };
+    const a: KostenstelleEnergie = {
+      ...roh,
+      gemessen: { ...roh.gemessen, posten: [{ ...ms07, menge: 7000, tage: tage(1, 14, 100) }] },
+      verteilt: { ...roh.verteilt, posten: [{ ...ms07, menge: 5950, tage: tage(15, 31, 70) }] },
+      berechnet: { ...roh.berechnet, posten: [] },
+    };
+    const werte = new Map<string, WerteAntwort>([[ms07.messstelle.kennzeichen, werteVon(ms07.messstelle.kennzeichen, 15500)]]);
+    const b = kostenstellenBild({ katalog: [k], antworten: new Map([[k.id, a]]), register: REGISTER, werte, periode: 'monat', am: '2026-10-01' });
+    const ps = karte(b, '4200').posten;
+    expect(ps.map((p) => n(p.herkunft))).toEqual(['ganz · bis 14.10.2026', '70 % · ab 15.10.2026']);
+    expect(new Set(ps.map((p) => p.schluessel)).size).toBe(2);
+    expect(MODUL.anteiligeQuellen(new Map([[k.id, a]]))).toEqual([]);
+  });
+
+  it('S20: ein Prozess zeigt die Zuordnung am letzten Tag von Zeitraum ∩ Gültigkeit, nicht nach heute', () => {
+    const ab = (gueltig_ab: string, gueltig_bis: string | null = null) => ({ gueltig_ab, gueltig_bis });
+    // Referenzwelt: Prozesse ab 01.10.2026 - das Jahr 2026 zeigt sie am 31.12., nicht am 01.01. (dann ohne Messstelle).
+    expect(MODUL.zuordnungsTag(ab('2026-10-01'), 'jahr', '2026-01-01', '2027-02-10')).toBe('2026-12-31');
+    // Der laufende Monat: heute, nicht das Monatsende.
+    expect(MODUL.zuordnungsTag(ab('2026-10-01'), 'monat', '2026-10-01', '2026-10-20')).toBe('2026-10-20');
+    // Ein Prozess, der im Zeitraum endet: sein letzter Tag.
+    expect(MODUL.zuordnungsTag(ab('2026-01-01', '2026-10-10'), 'monat', '2026-10-01', '2026-11-05')).toBe('2026-10-10');
+    // Beginnt er erst nach heute im Zeitraum: sein erster Tag.
+    expect(MODUL.zuordnungsTag(ab('2026-10-25'), 'monat', '2026-10-01', '2026-10-20')).toBe('2026-10-25');
+  });
 });
 
 describe('Monatsmenge im Register (Messen PR5): der Standard-Zeitraum braucht keine Werte-Abfrage', () => {

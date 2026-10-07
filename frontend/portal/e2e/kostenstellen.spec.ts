@@ -46,8 +46,9 @@ async function messe(page: Page, testid: string) {
     const flaeche = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
     const kleine = [...(flaeche?.querySelectorAll<HTMLElement>('button, a, summary') ?? [])]
       .filter((el) => el.getBoundingClientRect().width > 0)
-      .map((el) => ({ text: el.textContent?.trim() ?? el.getAttribute('aria-label'), h: Math.round(el.getBoundingClientRect().height) }))
-      .filter((x) => x.h < 44);
+      .map((el) => ({ text: el.textContent?.trim() || el.getAttribute('aria-label'), h: Math.round(el.getBoundingClientRect().height), w: Math.round(el.getBoundingClientRect().width) }))
+      // Höhe UND Breite (Prüfung r4 S23: die Blätter-Knöpfe waren 34 × 44 px).
+      .filter((x) => x.h < 44 || x.w < 44);
     // N5 (Konzept „Navigation aus einem Guss“): Kostenstellen und Prozesse stehen in der Reihe der Gruppe „Messen“.
     const reiter = [...document.querySelectorAll('[role="tablist"][aria-label="Reiter der Gruppe Messen"] [role="tab"]')].map((el) =>
       el.textContent?.trim(),
