@@ -1,99 +1,199 @@
 import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
-import { GrenzSatz } from './GrenzSatz';
-import { Button } from '../../designsystem/components/core/Button';
-import { api, type InternesAuditprogramm } from '../api';
+import { api, type Feststellung, type InternesAuditprogramm } from '../api';
+import * as B from '../auditBild';
 import * as A from '../auditFeststellung';
-import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { EinsichtRecht } from './EinsichtRecht';
-import { AuditPlanenDialog, ablehnung } from './InternesAuditDialoge';
+import { auditRoute, feststellungRoute, hashForRoute } from '../nav';
+import { useRollen } from '../rollen';
+import { GrenzSatz } from './GrenzSatz';
+import { FeststellungErfassenDialog } from './FeststellungDialoge';
+import { AuditPlanenBlatt } from './AuditBlaetter';
+import { AlsNaechstes } from './nachweisen/AlsNaechstes';
+import { datumsblock } from './nachweisen/nwBild';
+import { NwKopf } from './nachweisen/NwKopf';
+import { StatusZeile, ZustandsZeichen } from './nachweisen/NwStatus';
+import { NwSymbol } from './nachweisen/NwSymbol';
+import { NwFristZeile, NwFristZeilen, Unterkopf } from './nachweisen/NwZeilen';
+import { RowMenu } from './RowMenu';
+
+/** Wo der Reiter die Feststellungen zeigt; `…/feststellungen` springt dorthin (Entscheid 17). */
+export const FESTSTELLUNGEN_ANKER = 'audits-feststellungen';
 
 /**
- * Reiter „Audits“ (UEMS AP-19 IP-20, §5.4, IA4): das Auditprogramm — geplante, durchgeführte, abgeschlossene und
- * abgesagte interne Audits und „nächstes internes Audit fällig am …“, gerechnet an der Route beim Abruf (ohne
- * durchgeführtes Audit keine Frist). „Audit planen“ nur mit `energiemanagement.verwalten`; „Einsicht“ liest den Leer-Satz.
- * `saetze` zeigt Grenz- und Verantwortungs-Satz, wo der Reiter allein steht (im Bereich stehen sie am Fuß).
+ * Reiter „Audits“ (Konzept Nachweisen n1 Runde 2, §6.6, Entscheid 17; vorher IP-20 „Auditprogramm“ und der eigene Reiter
+ * „Feststellungen“): oben die Antwort als Status-Zeile („✓ keine Feststellung offen“), dann genau ein nächster Schritt
+ * („Als Nächstes“: das nächste interne Audit mit Frist und der Person der Aufgabe, Knopf „Planen“), darunter die Audits
+ * und die Feststellungen je als Zeile mit Datumsblock und einem Fakt. Erklärt wird nur auf Antippen (i-Knopf).
+ * Frist, Reihenfolge und „überfällig“ kommen von der Route (IA4, FS1); gezählt wird nur Offenes (G4).
+ * „Audit planen“ und „Feststellung erfassen“ nur mit `energiemanagement.verwalten` (im Menü und als Knopf).
  */
-export function EnergiemanagementAudits({ onAudit, saetze = false }: { onAudit: (id: string) => void; saetze?: boolean }) {
+export function EnergiemanagementAudits({
+  onAudit,
+  onFeststellung,
+  feststellungenZeigen = false,
+}: {
+  onAudit: (id: string) => void;
+  onFeststellung: (id: string) => void;
+  /** Über die Adresse `…/feststellungen` geöffnet: der Reiter rollt zu den Feststellungen. */
+  feststellungenZeigen?: boolean;
+}) {
+  const rollen = useRollen();
+  const verwalten = rollen.darf(E.RECHT_VERWALTEN, null);
   const [programm, setProgramm] = useState<InternesAuditprogramm | null>(null);
+  const [feststellungen, setFeststellungen] = useState<Feststellung[] | null>(null);
+  const [zustaendig, setZustaendig] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  // Review P4-1: die Feststellungen haben ihren eigenen Fehler - ein Ladefehler ist nie „keine Feststellung offen“.
+  const [festFehler, setFestFehler] = useState<string | null>(null);
   const [planen, setPlanen] = useState(false);
+  const [erfassen, setErfassen] = useState(false);
+
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementAudits().then(
       (p) => {
         merkeAbruf(p.tag); // Befund 3: „Audit planen“ und „durchgeführt am“ nehmen den Tag der Route
-        if (aktiv) setProgramm(p);
+        if (!aktiv) return;
+        setProgramm(p);
+        // Wer das nächste Audit plant: die Person der Aufgabe „Interne Audits“ am Tag der Route.
+        api.energiemanagementAufgaben(p.tag).then(
+          (r) => aktiv && setZustaendig(r.aufgaben.find((x) => x.aufgabe === 'interne_audits')?.laufend[0]?.person.name ?? null),
+          () => undefined,
+        );
       },
-      (e) => aktiv && setFehler(ablehnung(e)),
+      (e) => aktiv && setFehler(A.ABLEHNUNG[E.ablehnungCode(e) ?? ''] ?? E.ablehnungSatz(e)),
+    );
+    api.energiemanagementFeststellungen().then(
+      (r) => {
+        merkeAbruf(r.tag);
+        if (aktiv) setFeststellungen(r.feststellungen);
+      },
+      (e) => aktiv && setFestFehler(A.ABLEHNUNG[E.ablehnungCode(e) ?? ''] ?? E.ablehnungSatz(e)),
     );
     return () => {
       aktiv = false;
     };
   }, []);
-  const n = programm?.naechstes ?? null;
+
+  // Erst rollen, wenn beide Abschnitte stehen (geladen oder mit Fehlersatz) - sonst verschiebt der spätere den Anker.
+  const programmDa = programm !== null || fehler !== null;
+  const feststellungenDa = feststellungen !== null || festFehler !== null;
+  useEffect(() => {
+    if (!feststellungenZeigen || !programmDa || !feststellungenDa) return;
+    document.getElementById(FESTSTELLUNGEN_ANKER)?.scrollIntoView({ block: 'start' });
+  }, [feststellungenZeigen, programmDa, feststellungenDa]);
+
+  // Die Antwort im Kopf nur aus einer geladenen Liste (Fehlend ist keine Null).
+  const status = feststellungen && !festFehler ? B.auditsStatus(feststellungen) : null;
+  const naechstes = programm ? B.auditNaechstes(programm, zustaendig) : null;
+  const menue = (
+    <RowMenu
+      label="Weitere Aktionen"
+      items={[
+        { label: A.KNOPF_AUDIT_PLANEN, recht: E.RECHT_VERWALTEN, standort: null, onClick: () => setPlanen(true) },
+        { label: A.KNOPF_FESTSTELLUNG, recht: E.RECHT_VERWALTEN, standort: null, onClick: () => setErfassen(true) },
+      ]}
+    />
+  );
+
   return (
-    <section className="vp-ez-karte" aria-label={A.AUDITPROGRAMM} data-testid="audits-register">
-      <div className="vp-em-kopf" data-entscheid="internes_audit">
-        <h2>{A.AUDITPROGRAMM}</h2>
-        <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-          <Button onClick={() => setPlanen(true)} data-testid="audit-planen">
-            {A.KNOPF_AUDIT_PLANEN}
-          </Button>
-        </EinsichtRecht>
-      </div>
-      {n && (
-        <p className="vp-ez-satz" data-testid="audit-naechstes">
-          {n.faellig_am
-            ? `Nächstes internes Audit fällig am ${E.tagText(n.faellig_am)}${n.satz ? ` — ${n.satz}` : ''} (Rhythmus ${n.rhythmus_monate} Monate).`
-            : 'Noch kein internes Audit durchgeführt — ohne Durchführung nennt VoltPilot keine Frist.'}
-        </p>
-      )}
+    <div className="vp-nw-seite is-reiter" data-testid="audits-register">
+      <NwKopf
+        titel={B.AUDITS}
+        erklaerung={B.erklaerungAudit(programm?.audits ?? [])}
+        kurzzeile={programm ? B.auditsKurzzeile(programm.naechstes.rhythmus_monate) : undefined}
+        status={status && <StatusZeile zeichen={<ZustandsZeichen art={status.zeichen} />} text={status.text} sub={status.sub} warn={status.warn} testId="audits-status" />}
+        menue={verwalten ? menue : undefined}
+        testId="audits-kopf"
+      />
       {fehler ? (
-        <p className="vp-ez-fehler" role="alert">{fehler}</p>
-      ) : programm === null ? (
+        <p className="vp-ez-fehler" role="alert">
+          {fehler}
+        </p>
+      ) : !programm ? (
         <p className="vp-ez-leise">Wird geladen …</p>
-      ) : programm.audits.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="audits-leer">{SAETZE.verzeichnis_leer}</p>
       ) : (
-        <div className="vp-ez-tafel-rahmen">
-          <table className="vp-ez-tafel">
-            <thead>
-              <tr>
-                <th scope="col">Internes Audit</th>
-                <th scope="col">Termin</th>
-                <th scope="col">Wer prüft</th>
-                <th scope="col">Zustand</th>
-                <th scope="col">Ergebnisse</th>
-              </tr>
-            </thead>
-            <tbody>
-              {programm.audits.map((a) => (
-                <tr key={a.id} data-testid={`audit-zeile-${a.kennzeichen}`}>
-                  <td>
-                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onAudit(a.id)}>
-                      {a.kennzeichen} {a.titel}
-                    </button>
-                  </td>
-                  <td data-label="Termin" className="vp-em-tag">
-                    {E.tagText(a.durchgefuehrt_am ?? a.termin)}
-                  </td>
-                  <td data-label="Wer prüft">{a.auditoren.map((p) => p.name).join(', ')}</td>
-                  <td data-label="Zustand">{A.AUDIT_ZUSTAND_WORT[a.zustand]}</td>
-                  <td data-label="Ergebnisse">
-                    {a.zustand === 'geplant' || a.zustand === 'abgesagt'
-                      ? '—'
-                      : `${a.hinweise === 1 ? '1 Hinweis' : `${a.hinweise} Hinweise`} · ${a.feststellungen.length ? a.feststellungen.join(', ') : 'keine Feststellung'}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {naechstes && (
+            <AlsNaechstes
+              testId="audit-naechstes"
+              frist={naechstes.frist ? { ...datumsblock(naechstes.frist.wort, naechstes.frist.tag)!, ton: naechstes.frist.ton } : null}
+              titel={naechstes.titel}
+              warum={naechstes.warum}
+              knopf={
+                naechstes.knopf === 'planen'
+                  ? verwalten
+                    ? { label: B.KNOPF_PLANEN, onClick: () => setPlanen(true) }
+                    : null
+                  : { label: B.KNOPF_OEFFNEN, onClick: () => onAudit(naechstes.auditId!) }
+              }
+            />
+          )}
+          <section className="vp-nw-abschnitt" aria-label={B.AUDITS}>
+            <Unterkopf>{B.AUDITS}</Unterkopf>
+            {programm.audits.length === 0 ? (
+              <p className="vp-ez-leise" data-testid="audits-leer">
+                {B.NOCH_KEIN_AUDIT}
+              </p>
+            ) : (
+              <NwFristZeilen>
+                {programm.audits.map((a) => {
+                  const z = B.auditZeile(a);
+                  return (
+                    <NwFristZeile
+                      key={a.id}
+                      datum={z.datum}
+                      titel={z.titel}
+                      unter={z.unter}
+                      href={hashForRoute(auditRoute(a.id))}
+                      onClick={() => onAudit(a.id)}
+                      testId={`audit-zeile-${a.kennzeichen}`}
+                    />
+                  );
+                })}
+              </NwFristZeilen>
+            )}
+          </section>
+        </>
       )}
-      {planen && (
-        <AuditPlanenDialog
+      {/* Unabhängig vom Auditprogramm: scheitert dessen Route, stehen die Feststellungen trotzdem da (und umgekehrt). */}
+      <section className="vp-nw-abschnitt" id={FESTSTELLUNGEN_ANKER} aria-label={B.FESTSTELLUNGEN} data-testid="feststellungen-register">
+        <Unterkopf>{B.FESTSTELLUNGEN}</Unterkopf>
+        {festFehler ? (
+          <p className="vp-ez-fehler" role="alert" data-testid="feststellungen-fehler">
+            {festFehler}
+          </p>
+        ) : feststellungen === null ? (
+          <p className="vp-ez-leise">Wird geladen …</p>
+        ) : feststellungen.length === 0 ? (
+          <p className="vp-ez-leise" data-testid="feststellungen-leer">
+            {B.NOCH_KEINE_FESTSTELLUNG}
+          </p>
+        ) : (
+          <NwFristZeilen>
+            {feststellungen.map((f) => {
+              const z = B.feststellungZeile(f);
+              return (
+                <NwFristZeile
+                  key={f.id}
+                  datum={z.datum}
+                  symbol={z.zeichen === 'done' ? <NwSymbol name="check" size={18} /> : z.zeichen === 'ohne' ? <ZustandsZeichen art="ohne" /> : undefined}
+                  titel={z.titel}
+                  kurz
+                  unter={z.unter}
+                  href={hashForRoute(feststellungRoute(f.id))}
+                  onClick={() => onFeststellung(f.id)}
+                  testId={`feststellung-zeile-${f.kennzeichen}`}
+                />
+              );
+            })}
+          </NwFristZeilen>
+        )}
+      </section>
+      {planen && programm && (
+        <AuditPlanenBlatt
+          programm={programm}
           onClose={() => setPlanen(false)}
           onGeplant={(a) => {
             setPlanen(false);
@@ -101,11 +201,18 @@ export function EnergiemanagementAudits({ onAudit, saetze = false }: { onAudit: 
           }}
         />
       )}
-      {saetze && (
-        <div className="vp-em-saetze">
-          <GrenzSatz className="vp-ez-grenze" verantwortung />
-        </div>
+      {erfassen && (
+        <FeststellungErfassenDialog
+          audit={null}
+          onClose={() => setErfassen(false)}
+          onErfasst={(f) => {
+            setErfassen(false);
+            onFeststellung(f.feststellung.id);
+          }}
+        />
       )}
-    </section>
+      {/* Grenz- und Verantwortungs-Satz stehen einmal am Fuß des Bereichs („Was VoltPilot leistet“, K7/D5). */}
+      <GrenzSatz verantwortung />
+    </div>
   );
 }

@@ -1,0 +1,9 @@
+# Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits
+
+- Die Runde-2-Bausteine liegen unter `frontend/portal/src/components/nachweisen/`, je Baustein-Gruppe eine eigene CSS-Datei (`Nachweisen.css` Kopf/i-Knopf/Blatt/Zähler, `NwSchritte.css` Blatt-Schritte, `NwZeilen.css` Zeilen/Stufen/Kürzel/Folgen-Balken/Weitergeben), Präfix `vp-nw-`.
+  `.vp-nw-liste`, `.vp-nw-zeile`, `.vp-nw-titel`, `.vp-nw-kz`, `.vp-nw-adresse` gehören dem alten Abschnitt „Nachweise am Einsatz“ (`pages/Energiemanagement.css`, IP-15): neue Klassen nie so nennen (die Zeile heißt `.vp-nw-zl`, der Kopf-Titel `.vp-nw-kopf-titel`).
+- Ein reines Modul neben einem gleichnamigen Baustein bricht auf macOS (Dateisystem ohne Groß-/Kleinschreibung): `./NwZeilen` fand `nwZeilen.ts` vor `NwZeilen.tsx`. Reine Teile heißen deshalb anders (`nwBild.ts`).
+- `VpPicker` im `NwBlatt` (Telefon: Bottom-Sheet): der Hintergrund des Pickers liegt seit PR 4 auf derselben Ebene wie das Blatt (`.vp-picker-backdrop` z 1200); mit 1190 traf ein Tipp daneben den Schleier des Blatts und schloss das ganze Blatt.
+- Text-Grenzen (Entscheid 22) am echten Portal messen: Playwright 390 × 844, sichtbarer Text unter dem Seitenkopf ohne Kopf-, Reiter- und Navigationsleiste, ein Wort = Stück mit Buchstabe oder Ziffer, „erstes Bild“ = Oberkante < 844 px; Blätter je Schritt. Der Wortlaut eines Kunden zählt mit - eine lange Feststellung frisst das Budget, deshalb Kennzeichen, Verlauf und Stände ins Menü „…“.
+- Audits (PR 4, Entscheid 17): Reiter „Audits“ trägt die Feststellungen; `…/feststellungen` öffnet ihn (Reiter aktiv „Audits“, `feststellungenZeigen` rollt hin). „Als Nächstes“ und Zeilen kommen aus `auditBild.ts`; die Feststellung liefert `abgeschlossen_am` (Tag des schließenden Stands) für „wirksam seit …“.
+- In der Demo liegen manche Tage auf der echten Uhr (Audit „Geplant 05.10.2026“ vor „Durchgeführt 22.01.2029“): Datenlücke der Demo-Füllung, kein Fehler der Fläche.

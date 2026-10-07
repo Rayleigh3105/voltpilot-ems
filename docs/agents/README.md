@@ -251,6 +251,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)
 - [VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr](portal/vppicker-ein-picker-fuer-die-ganze-platt.md)
 - [Verbessern: eine Uhr, der Grund eines offenen Monats und die Wörter](portal/verbessern-woerter-und-eine-uhr.md)
+- [Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits](portal/nachweisen-zeilen-blaetter-audits.md)
 
 ## `edge/` — aus `edge-app/AGENTS.md` (91 Einträge)
 

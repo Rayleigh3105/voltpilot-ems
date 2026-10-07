@@ -3511,9 +3511,11 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'components/EnergiemanagementAufgabeDialoge.tsx',
     // IP-15: der Abschnitt „Nachweise“ an der Einsatz-Seite (AP-16) und an der Personen-Seite, mit „Nachweis festhalten“.
     'components/Nachweise.tsx',
-    // IP-20: Reiter „Audits“ (Auditprogramm) und „Feststellungen“, Audit-Seite, Feststellungs-Seite, ihre Dialoge.
+    // IP-20: Reiter „Audits“ (seit Nachweisen n1 Entscheid 17 mit den Feststellungen), Audit-Seite, Feststellungs-Seite,
+    // ihre Dialoge und Blätter (Audit planen, Wirksamkeit prüfen).
     'components/EnergiemanagementAudits.tsx',
-    'components/EnergiemanagementFeststellungen.tsx',
+    'components/AuditBlaetter.tsx',
+    'components/FeststellungBlaetter.tsx',
     'pages/AuditSeite.tsx',
     'pages/FeststellungSeite.tsx',
     'components/InternesAuditDialoge.tsx',

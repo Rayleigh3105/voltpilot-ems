@@ -88,7 +88,6 @@ describe('N1 · über der Seite nur die Reiter der offenen Gruppe', () => {
       ['Berichte', 'false'],
       ['Dokumente', 'true'],
       ['Audits', 'false'],
-      ['Feststellungen', 'false'],
       ['Managementbewertung', 'false'],
       ['Aufgaben', 'false'],
     ]);
@@ -101,6 +100,12 @@ describe('N1 · über der Seite nur die Reiter der offenen Gruppe', () => {
   it('„Wer ist wofür verantwortlich“ gehört zu den Aufgaben', () => {
     zeige('portfolio-energiemanagement', 'verantwortung');
     expect(screen.getByTestId('energiemanagement-reiter-aufgaben').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('die Feststellungen gehören zu den Audits - ihre Adresse bleibt (Nachweisen n1, Entscheid 17)', () => {
+    zeige('portfolio-energiemanagement', 'feststellungen');
+    expect(screen.getByTestId('energiemanagement-reiter-audits').getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByTestId('energiemanagement-reiter-feststellungen')).toBeNull();
   });
 
   it('das Verzeichnis und die Zuschnitt-Hilfe liegen eine Ebene unter dem Überblick (Entscheid 2)', () => {

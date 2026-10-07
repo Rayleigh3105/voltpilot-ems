@@ -18,7 +18,7 @@ describe('UEMS AP-19 IP-9 · Energiemanagement im Portal', () => {
     expect(mit[mit.length - 1]).toBe('energiemanagement');
     expect(EBENEN_SEITEN({ art: 'unternehmen' }).energiemanagement).toEqual(pageRoute('portfolio-energiemanagement'));
     expect(E.darfAnsehen(rechteSeed('IK').me)).toBe(true);
-    expect(E.REITER.map((r) => r.label)).toEqual(['Überblick', 'Wiedervorlage', 'Dokumente', 'Audits', 'Feststellungen', 'Managementbewertung', 'Aufgaben']);
+    expect(E.REITER.map((r) => r.label)).toEqual(['Überblick', 'Wiedervorlage', 'Dokumente', 'Audits', 'Managementbewertung', 'Aufgaben']);
   });
 
   it('Routen: Überblick ohne Zusatz (Nachweisen n1, Entscheid 2), Verzeichnis, Dokumente, Zuschnitt-Hilfe und ein Dokument hin und zurück', () => {
@@ -107,7 +107,7 @@ describe('UEMS AP-19 IP-13 · Aufgaben, Wer ist wofür verantwortlich, Einsicht'
   });
 
   it('Reiter „Aufgaben“ zuletzt (Nachweisen n1 §6.2); Routen für Aufgaben, Verantwortung und Person', () => {
-    expect(E.REITER.map((r) => r.key)).toEqual(['ueberblick', 'wiedervorlage', 'dokumente', 'audits', 'feststellungen', 'managementbewertung', 'aufgaben']);
+    expect(E.REITER.map((r) => r.key)).toEqual(['ueberblick', 'wiedervorlage', 'dokumente', 'audits', 'managementbewertung', 'aufgaben']);
     for (const r of ['aufgaben', 'verantwortung', 'audits', 'feststellungen', 'wiedervorlage', 'managementbewertung'] as const) {
       expect(hashForRoute(energiemanagementRoute(r))).toBe(`#/portfolio/energiemanagement/${r}`);
       expect(parseRoute(`#/portfolio/energiemanagement/${r}`)).toEqual(energiemanagementRoute(r));
