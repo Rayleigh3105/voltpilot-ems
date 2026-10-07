@@ -12364,6 +12364,75 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/teil-vermerke:
+    get:
+      tags: [energiemanagement]
+      summary: „Trifft bei uns zurzeit nicht zu“ je Teil des Überblicks (Konzept Nachweisen n1, Entscheid 5).
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit - wer nur Standorte liest, bekommt keinen Vermerk,
+        ohne Hinweis. `stichtag` ist der Abruf in der Zeitzone des Unternehmens (wie das Verzeichnis). `vermerke`
+        nennt geltende Vermerke zuerst in der Folge des Vokabulars `teil` (Vertrag energiemanagement 1.3), dann
+        aufgehobene, die zuletzt aufgehobene zuerst. Im Verzeichnis steht jeder Vermerk als Zeile der Art
+        `teil_vermerk` in der Gruppe seines Teils. Kein Urteil: welcher Teil zutrifft, entscheidet der Kunde.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerke" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Vermerken, dass ein Teil zurzeit nicht zutrifft - mit Satz und „entschieden von“.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (auch „Einsicht“ 403 `recht_fehlt`). `teil` aus dem
+        Vokabular `teil` (400 `anfrage_ungueltig`, `feld` `teil`), `satz` 10 bis 500 Zeichen (400
+        `anfrage_ungueltig`, `feld` `satz`, mit `min`/`max`), `entschieden_von` eine Person im Energiemanagement
+        (fehlt 422 `entschieden_von_fehlt`, unbekannt 404 `nicht_gefunden`, ihr `bis` vor dem Tag 422
+        `person_beendet`), `entschieden_am` wahlfrei (Vorgabe heute in der Zeitzone des Unternehmens, nie in der
+        Zukunft: 422 `tag_in_zukunft`). Ein geltender Vermerk für denselben Teil 409 `vermerk_besteht` (mit `teil`).
+        Nur anhängen; der Vermerk trägt, wer ihn eingetragen hat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerkAnlegen" }
+      responses:
+        "201":
+          description: Der Vermerk.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/teil-vermerke/{id}/aufheben:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Vermerk aufheben - einmal, jetzt; danach ist er endgültig.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Ohne Körper. Setzt den Zeitpunkt des Aufhebens und wer es
+        eingetragen hat; unbekannt 404 `nicht_gefunden`, schon aufgehoben 409 `vermerk_aufgehoben` (mit
+        `aufgehoben_am`). Danach kann der Teil wieder vermerkt werden, als neuer Vermerk. Keine Löschroute.
+      responses:
+        "200":
+          description: Der aufgehobene Vermerk.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/verantwortung:
     get:
       tags: [energiemanagement]
@@ -18709,6 +18778,35 @@ components:
         zuordnungen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+    EnergiemanagementTeilVermerkAnlegen:
+      type: object
+      additionalProperties: false
+      required: [teil, satz, entschieden_von]
+      properties:
+        teil: { type: string, enum: [energiepolitik, anwendungsbereich, rechtliche_anforderungen, kontext, risiken_chancen, aufgaben, kompetenz, kommunikation, betrieb, auslegung, beschaffung, energetische_bewertung, bezugsbasen, massnahmen, interne_audits, feststellungen, managementbewertung, berichte] }
+        satz: { type: string, minLength: 10, maxLength: 500, description: Die Begründung in einem Satz. }
+        entschieden_von: { type: string, format: uuid, description: Eine Person im Energiemanagement, auch ohne Konto. }
+        entschieden_am: { type: string, format: date, nullable: true, description: Vorgabe heute; nie in der Zukunft. }
+    EnergiemanagementTeilVermerk:
+      type: object
+      required: [id, teil, teil_wort, satz, entschieden_von, entschieden_am, eingetragen, aufgehoben]
+      properties:
+        id: { type: string, format: uuid }
+        teil: { type: string }
+        teil_wort: { type: string, description: Der Name des Teils (Vertrag `woerter.teil`). }
+        satz: { type: string }
+        entschieden_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        entschieden_am: { type: string, format: date }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+        aufgehoben: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementEingetragen" }], nullable: true, description: Wer aufgehoben hat und wann; `null`, solange der Vermerk gilt. }
+    EnergiemanagementTeilVermerke:
+      type: object
+      required: [stichtag, vermerke]
+      properties:
+        stichtag: { type: string, format: date-time }
+        vermerke:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
     EnergiemanagementVerantwortlich:
       type: object
       required: [sub, name]
