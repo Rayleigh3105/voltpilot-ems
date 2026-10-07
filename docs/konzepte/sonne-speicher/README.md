@@ -45,7 +45,16 @@ Verbrauchsprognose bis zur nächsten Erzeugung ohne Netzbezug braucht. Alles dar
    Eigenverbrauch selbst; die Box nimmt an der Untergrenze zurück, und gemessener Netzbezug sperrt die Freigabe. Die
    Absenkung einer geplanten Ladung entfällt, weil es keinen Schreibhebel gibt. Ein **gesteuerter** Speicher ohne
    bestätigte Rückmeldung bleibt gesperrt: er folgt dem Sollwert der Box statt dem Haus und kann in einer erzwungenen
-   Ladung stehen. Offen: Der Optimierer plant einen nicht gesteuerten Speicher noch als gesteuert (Handels-Viertelstunden
-   ohne Untergrenze), und die Box liest den Arbeitsmodus des Wechselrichters nicht.
+   Ladung stehen. Offen: die Box liest den Arbeitsmodus des Wechselrichters nicht. Den Optimierer schließt
+   Entscheidung 10.
+
+10. **Steuerstand im Fahrplan (Auftrag Kapitän, 07.10.2026).** Die Box meldet in jedem Herzschlag `battery_control`
+    (`gesteuert`, `beobachtet`, `not_aus`), unabhängig von der Rücklesung
+    ([Vertrag](../../contracts/speicher-steuerstand.md)); die API speichert es in `device_battery_control`. Einen frisch
+    als nicht gesteuert gemeldeten Speicher plant der Optimierer als **reinen Eigenverbrauch** (die Regel des sturen
+    Speichers, keine Handels-Viertelstunden, keine Vollmachten) und rechnet seine Untergrenze ohne Handelsprüfung und
+    ohne Verkaufsentnahme. Verworfen: nur die Untergrenze ohne Handelsprüfung zu rechnen und den Handelsplan zu
+    behalten. Das ließe den Fahrplan Handel zeigen, den niemand ausführt, und wäre nach einem Wechsel auf gesteuert
+    unsicher (Untergrenze in einem Netzlade-Slot). Fehlende oder veraltete Meldung (über 10 min): gesteuert wie bisher.
 
 Fachlich verbindlich ist [Verbrauchssteuerung](../../verbrauchssteuerung.md#sonne--speicher).
