@@ -1,15 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * Konzept „Energiemanagement ohne Fachsprache“ K2/K6/K8 auf der Bühne `startansicht` (Unternehmen Ahrenberg, `&rechte`
- * mit der Selbstauskunft der Person): oben auf der Übersicht steht, was die Rolle zuerst fragt — ohne neue Rechte.
+ * Die Unternehmens-Übersicht nach Konzept §5.1 (#1403) auf der Bühne `startansicht` (Unternehmen Ahrenberg, `&rechte`
+ * mit der Selbstauskunft der Person): JEDE Rolle sieht dieselbe feste Struktur - Kopf, Kachelraster „Kennzahlen Ihrer
+ * Anlagen“, „Anlagen nach Standort“, „Tiefer einsteigen“ (dazwischen „Was steht an“, sobald eine Frist ansteht; die
+ * Bühne hat keine).
  *
- * - Energiemanager (IK): der Fahrplan „Ihr Energiemanagement“ — sechs Schritte, je ein Satz und eine Handlung, keine
- *   Zahl über das Ganze (G4).
- * - Leser (CB) und „Einsicht“ (RF): „Belege finden“.
- * - Kundenadministrator (JW): am Rechner wie bisher; am Telefon steht die Datenlage zuerst (K8).
+ * Die rollenabhängigen Einstiege des Konzepts „Energiemanagement ohne Fachsprache“ - K2 Fahrplan „Ihr
+ * Energiemanagement“ für den Energiemanager, K6 „Belege finden“ für Leser und „Einsicht“, K8 Datenlage zuerst am
+ * Telefon - sind mit der festen Struktur entfallen (uems ac5fda37c, Review C8: `einstiegFuer`/`obenBausteine`
+ * entfernt). Der Weg zu den Belegen ist „Tiefer einsteigen › Nachweisen“.
  */
 const JETZT = new Date('2026-10-20T10:00:00+02:00');
+const PERSONEN = ['IK', 'CB', 'RF', 'JW'] as const;
 
 async function oeffne(page: Page, person: string, breite: number) {
   await page.clock.setFixedTime(JETZT);
@@ -19,69 +22,40 @@ async function oeffne(page: Page, person: string, breite: number) {
   await page.waitForLoadState('networkidle');
 }
 
-const oben = (page: Page) =>
-  page.evaluate(() => [...document.querySelectorAll('[data-testid="uebersicht-oben"] > *')].map((e) => e.getAttribute('data-testid')));
 const querlauf = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const oberkante = async (page: Page, name: string) => {
+  const flaeche = page.getByRole('region', { name, exact: true });
+  await expect(flaeche).toBeVisible();
+  return (await flaeche.boundingBox())!.y;
+};
 
 for (const breite of [375, 1440]) {
-  test(`K2 · Energiemanager bei ${breite} px: der Fahrplan steht oben — je Schritt ein Satz und eine Handlung, keine Zahl über das Ganze`, async ({ page }) => {
-    const konsole: string[] = [];
-    page.on('console', (m) => m.type() === 'error' && konsole.push(m.text()));
-    await oeffne(page, 'IK', breite);
-    const fahrplan = page.getByTestId('baustein-fahrplan');
-    await expect(fahrplan.getByRole('heading', { level: 2 })).toHaveText('Ihr Energiemanagement');
-    await expect(fahrplan.locator('.vp-fp-titel')).toHaveText([
-      'Messen einrichten',
-      'Energieeinsätze bewerten',
-      'Kennzahlen mit Vergleichszeitraum',
-      'Ziele und Maßnahmen',
-      'Nachweise führen',
-      'Jährlicher Rückblick',
-    ]);
-    await expect(page.getByTestId('fahrplan-messen-stand')).toHaveText('Gemessen wird an: Werk Ahrenberg, Werk Lindach.');
-    await expect(page.getByTestId('fahrplan-bewerten-stand')).toHaveText('Der Umfang ist noch nicht festgelegt.');
-    await expect(page.getByTestId('fahrplan-kennzahlen-stand')).toHaveText('5 Kennzahlen, noch ohne Bezugsbasis.');
-    await expect(page.getByTestId('fahrplan-rueckblick-stand')).toHaveText('Noch keine Managementbewertung angelegt.');
-    await expect(fahrplan).not.toContainText(/von\s+6|erledigt|vollständig|konform|Nicht abrufbar/);
-    // Der Fahrplan steht vor den Kennzahlen der Anlagen; am Telefon folgt ihm die Datenlage (K8).
-    expect(await oben(page)).toEqual(breite < 720 ? ['baustein-fahrplan', 'baustein-messstellen'] : ['baustein-fahrplan']);
-    // Die Sätze stehen einmal auf der Seite, im Hinweis „Was VoltPilot leistet“ (K7).
-    await expect(page.getByTestId('grenzhinweis')).toHaveCount(1);
-    expect(await querlauf(page)).toBe(0);
-    expect(konsole).toEqual([]);
-    // Eine Handlung führt dorthin, wo der Schritt entsteht.
-    await page.getByTestId('fahrplan-bewerten-handlung').click();
-    await expect(page).toHaveURL(/#\/portfolio\/bewertung$/);
-  });
-
-  test(`K6 · Leser und „Einsicht“ bei ${breite} px: „Belege finden“ führt zu Berichten, Dokumenten und Managementbewertung`, async ({ page }) => {
-    for (const person of ['CB', 'RF']) {
+  test(`§5.1 · jede Rolle bei ${breite} px: dieselbe feste Struktur, kein Rollen-Einstieg oben`, async ({ page }) => {
+    for (const person of PERSONEN) {
+      const konsole: string[] = [];
+      const hoeren = (m: { type(): string; text(): string }) => m.type() === 'error' && konsole.push(m.text());
+      page.on('console', hoeren);
       await oeffne(page, person, breite);
-      const belege = page.getByTestId('baustein-belege');
-      await expect(belege.getByRole('heading', { level: 2 })).toHaveText('Belege finden');
-      await expect(belege.locator('.vp-ub-name')).toHaveText(['Berichte', 'Dokumente', 'Managementbewertung']);
-      await expect(page.getByTestId('baustein-fahrplan')).toHaveCount(0);
-      expect(await querlauf(page)).toBe(0);
+      const kacheln = await oberkante(page, 'Kennzahlen Ihrer Anlagen');
+      const anlagen = await oberkante(page, 'Anlagen nach Standort');
+      const tiefer = await oberkante(page, 'Tiefer einsteigen');
+      expect(kacheln, `${person}: Kachelraster vor den Anlagen`).toBeLessThan(anlagen);
+      expect(anlagen, `${person}: Anlagen vor „Tiefer einsteigen“`).toBeLessThan(tiefer);
+      for (const weg of ['Messen', 'Auswerten', 'Verbessern', 'Nachweisen']) {
+        await expect(page.getByRole('region', { name: 'Tiefer einsteigen' }).getByRole('button', { name: new RegExp(`^${weg} `) })).toBeVisible();
+      }
+      for (const alt of ['baustein-fahrplan', 'baustein-belege', 'uebersicht-bausteine', 'funktionen-karte']) {
+        await expect(page.getByTestId(alt), `${person}: „${alt}“ steht nicht mehr auf der Unternehmens-Übersicht`).toHaveCount(0);
+      }
+      expect(await querlauf(page), `${person}: Querlauf`).toBe(0);
+      expect(konsole, `${person}: Konsolenfehler`).toEqual([]);
+      page.off('console', hoeren);
     }
-    await page.getByTestId('belege-berichte').click();
-    await expect(page).toHaveURL(/#\/portfolio\/berichte$/);
   });
 
-  test(`K6/K8 · Kundenadministrator bei ${breite} px: am Rechner wie bisher, am Telefon die Datenlage zuerst`, async ({ page }) => {
-    await oeffne(page, 'JW', breite);
-    await expect(page.getByTestId('uebersicht-bausteine')).toBeVisible();
-    if (breite < 720) {
-      expect(await oben(page)).toEqual(['baustein-messstellen']);
-      const vorTabelle = await page.evaluate(() => {
-        const o = document.querySelector('[data-testid="uebersicht-oben"]');
-        const t = document.querySelector('.vp-portfolio-anlagen');
-        return !!o && !!t && Boolean(o.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING);
-      });
-      expect(vorTabelle).toBe(true);
-    } else {
-      await expect(page.getByTestId('uebersicht-oben')).toHaveCount(0);
-    }
-    await expect(page.getByTestId('baustein-fahrplan')).toHaveCount(0);
-    await expect(page.getByTestId('baustein-belege')).toHaveCount(0);
+  test(`§5.1 · Leser bei ${breite} px: „Tiefer einsteigen › Nachweisen“ führt zu den Belegen`, async ({ page }) => {
+    await oeffne(page, 'CB', breite);
+    await page.getByRole('region', { name: 'Tiefer einsteigen' }).getByRole('button', { name: /^Nachweisen / }).click();
+    await expect(page).toHaveURL(/#\/portfolio\/energiemanagement$/);
   });
 }

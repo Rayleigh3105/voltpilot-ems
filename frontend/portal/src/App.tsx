@@ -1657,7 +1657,8 @@ function UnifiedPortal() {
           {page === 'portfolio-kennzahlen' && (
             <KennzahlenPage
               kennzahlId={route.kennzahlId ?? null}
-              onOeffnen={(id) => navigate(kennzahlRoute(id))}
+              ebene={route.kennzahlEbene ?? null}
+              onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, null, ebene))}
               onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
             />
           )}
@@ -1836,7 +1837,8 @@ function UnifiedPortal() {
               standort={{ id: standortOffen.id, name: standortOffen.name }}
               zone={standortOffen.zeitzone}
               kennzahlId={route.kennzahlId ?? null}
-              onOeffnen={(id) => navigate(kennzahlRoute(id, standortOffen.id))}
+              ebene={route.kennzahlEbene ?? null}
+              onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, standortOffen.id, ebene))}
               onListe={() => navigate(standortBereichRoute(standortOffen.id, 'kennzahlen'))}
             />
           )}

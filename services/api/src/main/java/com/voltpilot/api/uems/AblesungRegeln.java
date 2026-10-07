@@ -6,9 +6,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /** AP-09 Z6/E5: die Auswahl eines Monats verteilt keinen gemessenen Betrag. */
 public final class AblesungRegeln {
@@ -23,9 +22,38 @@ public final class AblesungRegeln {
                 "zaehlerstand", List.of(new VerbrauchRegeln.Rohwert(von, anfang),
                         new VerbrauchRegeln.Rohwert(bis, ende)), von, bis, Duration.between(von, bis),
                 List.of(), BigDecimal.ONE, null, null, false);
-        DateTimeFormatter datum = DateTimeFormatter.ofPattern("dd.MM. HH:mm", Locale.GERMANY).withZone(zone);
-        return new Zeitraum(wert.menge(), wert.zustand(), "Ablesezeitraum " + datum.format(von) + " – "
-                + datum.format(bis) + " (Zuordnung durch den Kunden)", BezugsdatenRegeln.zuordnung(von, bis, zone));
+        return new Zeitraum(wert.menge(), wert.zustand(), ErgebnisZustand.ablesezeitraum(von, bis, zone),
+                BezugsdatenRegeln.zuordnung(von, bis, zone));
+    }
+
+    /** Die Summe der Ablesezeiträume eines Monats oder Jahres: Menge, Zustand und Kennzeichen, wie sie gespeichert werden. */
+    public record Summe(BigDecimal menge, String zustand, List<String> kennzeichen) {}
+
+    /** Ein Jahr hat zwölf Monatsmengen; jede fehlende nennt das Kennzeichen I2 (ergebnis-zustand 1.13). */
+    public static final int MONATE_JE_JAHR = 12;
+
+    /**
+     * Das Jahr aus den Monaten mit Zahl (Z6, ergebnis-zustand 1.13): die Menge ist ihre Summe, die Kennzeichen sind
+     * ihre Ablesezeiträume in zeitlicher Folge. Fehlt ein Monat, ist das Jahr unvollständig und sagt es zuerst
+     * („3 von 12 Intervallmengen fehlen — …“, Rang 50 vor der Herkunft) - ohne diesen Satz verletzt es den Vertrag
+     * ({@code unvollstaendig_ohne_grund}) und keine Fläche spricht es. Ohne einen Monat mit Zahl: keine Werte.
+     *
+     * @param monate die Monate des Jahres, die eine Zahl tragen, in zeitlicher Folge
+     */
+    public static Summe jahr(List<Summe> monate) {
+        if (monate.isEmpty()) return new Summe(null, ErgebnisZustand.KEINE_WERTE, List.of());
+        BigDecimal menge = BigDecimal.ZERO;
+        List<String> kennzeichen = new ArrayList<>();
+        for (Summe m : monate) {
+            if (m.menge() == null) throw new IllegalArgumentException("ein Monat ohne Zahl zählt nicht zum Jahr");
+            menge = menge.add(m.menge());
+            kennzeichen.addAll(m.kennzeichen());
+        }
+        int fehlend = MONATE_JE_JAHR - monate.size();
+        if (fehlend < 0) throw new IllegalArgumentException("ein Jahr hat höchstens zwölf Monate");
+        if (fehlend == 0) return new Summe(menge, ErgebnisZustand.VOLLSTAENDIG, List.copyOf(kennzeichen));
+        kennzeichen.add(0, ErgebnisZustand.intervallmengenFehlen(fehlend, MONATE_JE_JAHR));
+        return new Summe(menge, ErgebnisZustand.UNVOLLSTAENDIG, List.copyOf(kennzeichen));
     }
 
     /** Nach so vielen Kalendermonaten ohne neue Ablesung fehlt sie (Z7); die Wiedervorlage nennt die Zahl im Grund. */

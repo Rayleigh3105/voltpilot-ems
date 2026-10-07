@@ -793,3 +793,42 @@ describe('uemsWerteKarte — die Herkunft einer berechneten Zahl (UEMS AP-13 IP-
     expect(h).toEqual({ zeilen: [], eingaenge: [], fehlt: null });
   });
 });
+
+describe('uemsWerteKarte - ein Monat aus Ablesungen (ergebnis-zustand 1.13, Befund 1 des Messen-Konzepts)', () => {
+  // Die echte Antwort der Route für MS-20 Spritzguss, September 2026 (Demo „rundgang“, Kunststoffwerk Ahrenberg,
+  // 05.10.2026) - dieselbe Anfrage, die die Seite der Messstelle stellt. Bis 1.12 zeigte die Karte „—“.
+  const antwort = JSON.parse(
+    readFileSync(resolve(process.cwd(), 'src/test/fixtures/ms20-september-2026.werte.json'), 'utf8'),
+  ) as MessstelleWerte;
+
+  it('die Karte spricht die Menge des Ablesezeitraums, ihren Zustand und ihre Fassung', () => {
+    const k = karte(antwort);
+    expect(k).toMatchObject({
+      titel: 'September 2026',
+      zahl: `88.200${NB}kWh`,
+      zustand: 'vollständig',
+      abdeckung: null,
+      kennzeichen: ['Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)'],
+      fassung: 'endgültig',
+      grund: null,
+    });
+  });
+
+  it('ein Jahr mit fehlenden Monaten spricht nur mit dem Satz, der sagt, was fehlt', () => {
+    const w = antwort.werte[0];
+    const jahr = (kennzeichen: string[]): MessstelleWerte => ({
+      ...antwort,
+      raster: 'jahr',
+      werte: [{ ...w, von: '2024-01-01T00:00:00+01:00', bis: '2025-01-01T00:00:00+01:00', menge: 252910, zustand: 'unvollständig', kennzeichen }],
+    });
+    const okt = 'Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)';
+    // So hat AP-09 das Jahr bis 1.12 gespeichert: unvollständig ohne Grund - kein Wert wird behauptet.
+    expect(karte(jahr([okt]))).toMatchObject({ titel: '2024', zahl: OHNE_ZAHL, zustand: null });
+    // Seit 1.13 nennt das Jahr die fehlenden Monate zuerst.
+    expect(karte(jahr(['9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen', okt]))).toMatchObject({
+      titel: '2024',
+      zahl: `252.910${NB}kWh`,
+      zustand: 'unvollständig',
+    });
+  });
+});
