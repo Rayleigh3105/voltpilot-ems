@@ -312,6 +312,15 @@ for (const breite of [375, 1440]) {
       await seite.getByTestId('mb-beschluss-1').click();
       await expect(blatt(page).getByTestId('mb-folge-1-D-0002/1')).toContainText('freigegeben');
       await blattZu(page);
+
+      // „Maßnahme anlegen“ aus dem Blatt: das Blatt geht zu, der Dialog liegt obenauf und nimmt Klicks an (am Telefon
+      // läge ein Dialog über einem Blatt sonst darunter).
+      await seite.getByTestId('mb-beschluss-2').click();
+      await blatt(page).getByTestId('massnahme-anlegen-knopf').click();
+      await expect(page.locator('.vp-bs-wrap')).toHaveCount(0);
+      await expect(modal(page)).toBeVisible();
+      await modal(page).getByRole('button', { name: 'Abbrechen' }).click();
+      await expect(page.locator('.vp-modal')).toHaveCount(0);
       expect((await gesendet(page)).map((g) => [g.route, g.body])).toEqual([
         ['POST /api/v1/berichte', { vorlage: 'managementbewertung', geltung_id: 'u0190000-0000-4000-8000-000000000001', zeitraum: '2028' }],
         ['PUT /api/v1/energiemanagement/managementbewertungen/BR-2029-0001/sitzung', {

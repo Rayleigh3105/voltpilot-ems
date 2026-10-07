@@ -6,7 +6,8 @@ import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSa
 import { ManagementbewertungEingaben } from '../components/ManagementbewertungEingaben';
 import { FolgeDialog } from '../components/ManagementbewertungDialoge';
 import { ManagementbewertungVorbereiten } from '../components/ManagementbewertungVorbereiten';
-import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
+import { MassnahmeAnlegenDialog } from '../components/MassnahmeDialoge';
+import { Recht } from '../components/Recht';
 import { FolgenBalken } from '../components/nachweisen/FolgenBalken';
 import { NwBlatt } from '../components/nachweisen/NwBlatt';
 import { NwKopf } from '../components/nachweisen/NwKopf';
@@ -22,7 +23,6 @@ import * as E from '../energiemanagementPortal';
 import * as M from '../managementbewertung';
 import * as B from '../managementbewertungBild';
 import { auditRoute, dokumentRoute, hashForRoute, massnahmeRoute } from '../nav';
-import { useRollen } from '../rollen';
 import { merkeAugenblick, routenHeute, tagDesAugenblicks } from '../routenUhr';
 import { useIsPhone } from '../useIsPhone';
 import '../components/nachweisen/NwZeilen.css';
@@ -52,9 +52,7 @@ export function ManagementbewertungSeite({
   /** Nur für Tests; sonst der Tag der Route (Konzept Nachweisen n1, Befund 3), den die Seite beim Laden merkt. */
   heute?: () => string;
 }) {
-  const rollen = useRollen();
   const isPhone = useIsPhone();
-  const verwalten = rollen.darf(E.RECHT_VERWALTEN, null);
   const [detail, setDetail] = useState<BerichtDetail | null>(null);
   const [entwurf, setEntwurf] = useState<BerichtEntwurf | null>(null);
   const [stand, setStand] = useState<BerichtStand | null>(null);
@@ -65,6 +63,8 @@ export function ManagementbewertungSeite({
   const [blatt, setBlatt] = useState<Blatt>(null);
   const [vorbereiten, setVorbereiten] = useState<B.VorbereitenSchritt | null>(null);
   const [folge, setFolge] = useState<ManagementbewertungBeschluss | null>(null);
+  // Ein Dialog aus einem Blatt läge am Telefon unter dem Blatt: das Blatt geht zu, der Dialog auf Seitenebene auf.
+  const [massnahmeAus, setMassnahmeAus] = useState<ManagementbewertungBeschluss | null>(null);
   const [abruf, setAbruf] = useState<{ satz: string; fehler: boolean } | null>(null);
   const [laeuft, setLaeuft] = useState<number | null>(null);
   const [kopiert, setKopiert] = useState(false);
@@ -385,16 +385,19 @@ export function ManagementbewertungSeite({
                         {M.KNOPF_FOLGE}
                       </Button>
                     </EinsichtRecht>
-                    {verwalten && (
-                      <MassnahmeAnlegen
-                        vorbelegung={{ herkunft: 'managementbewertung', herkunftKennung: offen.kennung, titel: offen.wortlaut.slice(0, 120) }}
-                        standort={null}
-                        onAngelegt={() => {
+                    <Recht aktion="verbesserung.verwalten" standort={null}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
                           setBlatt(null);
-                          setVersuch((v) => v + 1);
+                          setMassnahmeAus(offen);
                         }}
-                      />
-                    )}
+                        data-testid="massnahme-anlegen-knopf"
+                      >
+                        Maßnahme anlegen
+                      </Button>
+                    </Recht>
                   </div>
                 </>
               )}
@@ -546,6 +549,17 @@ export function ManagementbewertungSeite({
               setVersuch((v) => v + 1);
             }}
             onClose={() => setVorbereiten(null)}
+          />
+        )}
+        {massnahmeAus && (
+          <MassnahmeAnlegenDialog
+            vorbelegung={{ herkunft: 'managementbewertung', herkunftKennung: massnahmeAus.kennung, titel: massnahmeAus.wortlaut.slice(0, 120) }}
+            tagHeute={heute()}
+            onClose={() => setMassnahmeAus(null)}
+            onAngelegt={() => {
+              setMassnahmeAus(null);
+              setVersuch((v) => v + 1);
+            }}
           />
         )}
         {folge && (
