@@ -73,7 +73,7 @@ const freigegebeneFassung = (fassungen: readonly EnergieeinsatzEinstufungFassung
 const oderNull = <T,>(p: Promise<T>): Promise<T | null> => p.then((x) => x, () => null);
 
 interface Verbrauchsdaten {
-  /** Der Monat selbst muss laden — sonst wäre „keine Werte“ eine falsche Fachaussage über einen Netzfehler. */
+  /** Der Monat selbst muss laden - sonst wäre „keine Werte“ eine falsche Fachaussage über einen Netzfehler. */
   imMonat: BewertungRangliste;
   vorjahr: BewertungRangliste | null;
   zwoelf: BewertungRangliste | null;
@@ -413,7 +413,7 @@ function sparkStrecken(verlauf: NonNullable<EinsatzVerbrauch['verlauf']>, min: n
     }
     strecken[strecken.length - 1].push(`${((i / Math.max(1, n - 1)) * 100).toFixed(2)},${(36 - ((x.wert - min) / spanne) * 30).toFixed(2)}`);
   });
-  // Ein einzelner Punkt wird als Strecke der Länge null gezeichnet — die runde Linienkappe macht ihn sichtbar.
+  // Ein einzelner Punkt wird als Strecke der Länge null gezeichnet - die runde Linienkappe macht ihn sichtbar.
   return strecken.filter((p) => p.length > 0).map((p) => (p.length === 1 ? `${p[0]} ${p[0]}` : p.join(' ')));
 }
 
@@ -462,7 +462,7 @@ function VerbrauchKachel({ v }: { v: EinsatzVerbrauch }) {
   );
 }
 
-/** ✓ erfüllt · ✗ nicht erfüllt · ? nicht prüfbar (mit dem Wort der Regel und dem Grund) — nie ein falsches ✗. */
+/** ✓ erfüllt · ✗ nicht erfüllt · ? nicht prüfbar (mit dem Wort der Regel und dem Grund) - nie ein falsches ✗. */
 const KRITERIUM_ZEICHEN: Record<KriteriumZeile['stand'], { icon: 'check' | 'x' | 'help-circle'; klasse: string | undefined }> = {
   erfuellt: { icon: 'check', klasse: undefined },
   nicht_erfuellt: { icon: 'x', klasse: 'is-nein' },

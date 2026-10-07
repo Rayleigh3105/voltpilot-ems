@@ -42,7 +42,7 @@ import './BewertungPage.css';
 
 /**
  * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`). Die Seite eines Energieeinsatzes wohnt seit dem
- * Konzept Auswerten a1 unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`, die alte Adresse leitet dorthin) — Meilenstein M1: Umfang und Einsätze lassen sich anlegen, sehen und zuordnen; nichts
+ * Konzept Auswerten a1 unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`, die alte Adresse leitet dorthin) - Meilenstein M1: Umfang und Einsätze lassen sich anlegen, sehen und zuordnen; nichts
  * rechnet, nichts stuft selbst ein. IP-12 ergänzt Rangliste, Kriterien und die begründete Einstufung durch eine Person.
  * Die Welt erscheint nach der Berichte-Regel (ein Standort misst) und nur mit
  * `energieeinsatz.ansehen` (`ebenenNav.ts`).

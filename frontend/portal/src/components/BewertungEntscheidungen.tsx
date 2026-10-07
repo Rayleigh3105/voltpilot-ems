@@ -222,7 +222,7 @@ export function EinstufungHistorie({ einsatzId, fassungen, darfBestaetigen, onBe
   einsatzId: string; fassungen: EnergieeinsatzEinstufungFassung[]; darfBestaetigen: boolean; onBestaetigt?: (f: EnergieeinsatzEinstufungFassung) => void;
 }) {
   const [fehler, setFehler] = useState<string | null>(null);
-  // Die Karte steht auf der Einsatzseite UND im Änderungsprotokoll — die Überschrift braucht je Ort eine eigene Kennung.
+  // Die Karte steht auf der Einsatzseite UND im Änderungsprotokoll - die Überschrift braucht je Ort eine eigene Kennung.
   const kopf = useId();
   const offen = fassungen.find((f) => f.freigabe_status === 'beantragt');
   return <section className="vp-bw-karte" aria-labelledby={kopf} data-testid="einstufung-historie">

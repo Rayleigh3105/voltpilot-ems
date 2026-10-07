@@ -27,7 +27,7 @@ function verdrahte(rangliste: (von: string, bis: string) => Promise<BewertungRan
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  // Letzter voller Monat: Oktober 2026 — der Monat der Ahrenberg-Rangliste.
+  // Letzter voller Monat: Oktober 2026 - der Monat der Ahrenberg-Rangliste.
   vi.setSystemTime(new Date('2026-11-05T09:00:00+01:00'));
   setSelbstauskunft(rechteSeed('IK').me);
 });
@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('EnergieeinsatzSeite', () => {
-  it('scheitert der Abruf des Monats, steht der Fehler mit „Erneut versuchen“ — nie „keine Werte“ (Review r3)', async () => {
+  it('scheitert der Abruf des Monats, steht der Fehler mit „Erneut versuchen“ - nie „keine Werte“ (Review r3)', async () => {
     let kaputt = true;
     const { ee } = verdrahte(async (von) => {
       if (kaputt && von === '2026-10-01') throw new ApiError(500, 'kaputt');

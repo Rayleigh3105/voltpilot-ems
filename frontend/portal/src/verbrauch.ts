@@ -4,13 +4,13 @@
  * Messstelle) und die Messabdeckung (Ort je Messstelle, Rest je Anlage) des gewählten Zeitraums; das Vorjahr ist ein
  * zweiter Abruf desselben Zeitraums ein Jahr früher. Dieses Modul bildet daraus Antwortsatz, Kachel, Balkenreihen und
  * den Monatsverlauf; es rechnet keine Menge selbst, es ordnet, vergleicht und formuliert. Summen, Anteile und das Δ
- * gegen das Vorjahr bilden die Vertrags-Zwillinge (`uemsBewertung.nenner`/`prozent`, `uemsBericht.vergleich`) — der
+ * gegen das Vorjahr bilden die Vertrags-Zwillinge (`uemsBewertung.nenner`/`prozent`, `uemsBericht.vergleich`) - der
  * Wächter Q5 (`test/oberflaechenArithmetik.json`) hält das fest; Zahlen dienen hier nur der Anzeige und der Geometrie.
  *
  * ⚠ Fehlend ist keine Null: ein Bereich ohne Werte bleibt ohne Balken und sagt warum; ein Monat ohne Hauptzähler-Wert
  * bleibt eine leere, gestrichelte Säule. Ein Vorjahresvergleich ist roh (Produktion und Wetter sind nicht
  * herausgerechnet) und bekommt darum nie eine Urteilsfarbe; Pfeile erst ab 0,5 % wie die Kacheln der Übersicht.
- * Verglichen wird nur, wenn BEIDE Seiten vollständig sind (Ersatz ist Teil der Menge) — ein Vorjahr, in dem ein Zähler
+ * Verglichen wird nur, wenn BEIDE Seiten vollständig sind (Ersatz ist Teil der Menge) - ein Vorjahr, in dem ein Zähler
  * erst später dazukam, ist eine Teilsumme und sagt „Vorjahr unvollständig“ statt „▲ 200 %“.
  */
 import type {
@@ -75,7 +75,7 @@ export function mengeImSatz(n: number): string {
   return kwhText(n);
 }
 
-/** Ein Dezimaltext der Route als Zahl — NUR zur Anzeige (`toLocaleString`) und für Balken- und Säulengeometrie. */
+/** Ein Dezimaltext der Route als Zahl - NUR zur Anzeige (`toLocaleString`) und für Balken- und Säulengeometrie. */
 const zahl = (s: string | null | undefined): number | null => {
   if (s === null || s === undefined || s === '') return null;
   const n = Number(s);
@@ -196,7 +196,7 @@ export function zeitraumAdresse(basis: string, z: VerbrauchZeitraum, letzter: st
 /** Der rohe Vergleich mit dem Vorjahr — ohne Farbe, Pfeil erst ab 0,5 % (wie `portfolioKacheln.ts`). */
 export interface VorjahrVergleich {
   text: string;
-  /** `null`: nicht vergleichbar (kein oder ein unvollständiges Vorjahr) — dann sagt `text`, warum. */
+  /** `null`: nicht vergleichbar (kein oder ein unvollständiges Vorjahr) - dann sagt `text`, warum. */
   richtung: 'rauf' | 'runter' | 'gleich' | null;
 }
 
@@ -214,7 +214,7 @@ export const vollstaendigeMenge = (s: VergleichSeite | null | undefined): s is V
   !!s && s.menge !== null && (s.zustand === VOLLSTAENDIG || s.zustand === MIT_ERSATZWERT);
 
 /**
- * Das Δ einer Menge gegen eine andere in ganzen Prozent und seine Richtung — gebildet vom Zwilling
+ * Das Δ einer Menge gegen eine andere in ganzen Prozent und seine Richtung - gebildet vom Zwilling
  * (`uemsBericht.vergleich`, DA1: Differenz und Prozent exakt); „gleich“ unter 0,5 %. `null`, wenn die Vergleichsmenge
  * nicht über 0 liegt. Die Einheit braucht der Zwilling nur für seine eigene Anzeige der Differenz, die hier nicht
  * gelesen wird.
@@ -231,7 +231,7 @@ function delta(jetzt: string, frueher: string): { betrag: string; richtung: 'rau
 
 /**
  * Jetzt gegen das Vorjahr. `null`, solange die eigene Menge fehlt oder unvollständig ist (dann sagt die Reihe das
- * schon); ein fehlendes Vorjahr heißt „noch nicht verfügbar“, ein unvollständiges „Vorjahr unvollständig“ — nie ein Pfeil.
+ * schon); ein fehlendes Vorjahr heißt „noch nicht verfügbar“, ein unvollständiges „Vorjahr unvollständig“ - nie ein Pfeil.
  */
 export function vorjahrVergleich(jetzt: VergleichSeite | null, vorjahr: VergleichSeite | null): VorjahrVergleich | null {
   if (!vollstaendigeMenge(jetzt)) return null;
@@ -260,7 +260,7 @@ export interface NennerMonat {
   monat: string;
   /** Der Hauptzähler-Wert des Monats als Dezimaltext, vom Zwilling summiert; `null`, sobald einer Anlage ein Wert fehlt. */
   menge: string | null;
-  /** Dieselbe Menge als Zahl — nur für Säulenhöhe und Anzeige. */
+  /** Dieselbe Menge als Zahl - nur für Säulenhöhe und Anzeige. */
   wert: number | null;
   zustand: string;
   /** Vollständig oder mit Ersatzwert (Ersatz ist Teil der Menge). */
@@ -271,7 +271,7 @@ export interface NennerMonat {
  * Der Hauptzähler-Wert (Nenner) je Monat — so, wie die Rangliste ihn als Herkunft jedes Einsatzes mitliefert
  * (`herkunft.nenner.bilanzwerte`: je Anlage, Hauptzähler und Abschnitt eine Zeile). Je Monat zählt JEDE Anlage der
  * Rangliste mit allen ihren Zeilen (eine Stellungsänderung liefert mehrere Abschnitte); fehlt einer Anlage die Zeile
- * oder einer Zeile der Wert, ist der Monat ohne Zahl — nie eine Teilsumme als Gesamtwert. Die Summe bildet der Zwilling
+ * oder einer Zeile der Wert, ist der Monat ohne Zahl - nie eine Teilsumme als Gesamtwert. Die Summe bildet der Zwilling
  * der Bewertung (`uemsBewertung.nenner`, dieselbe Regel wie der Nenner der Rangliste).
  */
 export function nennerJeMonat(r: BewertungRangliste): Map<string, NennerMonat> {
@@ -327,7 +327,7 @@ export interface BereichZeile {
   /** Breite des Balkens in % des größten Bereichs; `null` ohne Menge. */
   balken: number | null;
   unterzeile: Teil[];
-  /** Ein Hinweis an der Reihe („unvollständig“, „keine Werte“, „mit Ersatzwert“) — nie stumm. */
+  /** Ein Hinweis an der Reihe („unvollständig“, „keine Werte“, „mit Ersatzwert“) - nie stumm. */
   marke: { text: string; ton: 'warn' | 'neutral' } | null;
 }
 
@@ -466,7 +466,7 @@ function hinweise(d: VerbrauchDaten): Hinweis[] {
   const r = d.rangliste;
   const out: Hinweis[] = [];
   const wann = zeitraumLang(d.zeitraum);
-  // Ohne den Wert EINER Anlage gibt es kein Gesamt (der Nenner ist dann `null`, nie eine Teilsumme) — und keine Anteile.
+  // Ohne den Wert EINER Anlage gibt es kein Gesamt (der Nenner ist dann `null`, nie eine Teilsumme) - und keine Anteile.
   if (r.nenner.wert === null && r.nenner.vorhanden > 0 && r.nenner.vorhanden < r.nenner.gesamt) {
     out.push({
       ton: 'warn',
@@ -539,7 +539,7 @@ export function verbrauchBild(d: VerbrauchDaten): VerbrauchBild {
   const restNegativ = negativ(r.rest);
   const restPositiv = positiv(r.rest);
   const sortiert = [...r.einsaetze].sort((a, b) => absteigend(a.menge, b.menge));
-  // Der größte Bereich (oder der größere Rest) setzt den Maßstab der Balken — reine Zeichnungsgeometrie.
+  // Der größte Bereich (oder der größere Rest) setzt den Maßstab der Balken - reine Zeichnungsgeometrie.
   const groesste = Math.max(0, ...sortiert.map((e) => zahl(e.menge) ?? 0), restPositiv ? (zahl(r.rest) ?? 0) : 0);
   const balken = (menge: number) => (groesste > 0 ? Math.max(0, Math.min(100, (menge / groesste) * 100)) : 0);
 
@@ -580,7 +580,7 @@ export function verbrauchBild(d: VerbrauchDaten): VerbrauchBild {
 
   const top = sortiert.find((e) => e.menge !== null);
   const abdeckung = r.abdeckung_prozent;
-  // Ergeben die Bereiche mehr als der Hauptzähler, ist „102 % zugeordnet“ keine Auskunft — der Hinweis sagt, was los ist.
+  // Ergeben die Bereiche mehr als der Hauptzähler, ist „102 % zugeordnet“ keine Auskunft - der Hinweis sagt, was los ist.
   const zugeordnetSatz =
     abdeckung === null ? null : restNegativ ? 'die Bereiche ergeben mehr Strom, als der Hauptzähler gemessen hat' : `${prozentGanz(abdeckung)} des Stroms sind ${UEMS_EINEM_BEREICH_ZUGEORDNET}`;
   let antwort: string | null = null;
@@ -594,7 +594,7 @@ export function verbrauchBild(d: VerbrauchDaten): VerbrauchBild {
       topAnteil !== null
         ? `${top.name} braucht mit ${prozentGanz(topAnteil)} den größten Teil des Stroms`
         : `${top.name} braucht mit ${topMenge === null ? '–' : mengeMitEinheit(topMenge, top.einheit)} den meisten Strom`;
-    // Ist der Rest größer als jeder Bereich, steht ER vorn — sonst wäre „den größten Teil“ falsch.
+    // Ist der Rest größer als jeder Bereich, steht ER vorn - sonst wäre „den größten Teil“ falsch.
     if (restPositiv && absteigend(r.rest, top.menge) < 0 && restAnteil !== null) {
       const kern = `${prozentGanz(restAnteil)} des Stroms sind ${kleinAnfang(UEMS_KEINEM_BEREICH_ZUGEORDNET)}${NBSP}– von den Bereichen braucht ${top.name}${topAnteil !== null ? ` mit ${prozentGanz(topAnteil)}` : ''} am meisten`;
       antwort = `${kern}.`;
@@ -727,11 +727,11 @@ export function verlaufBild(r: BewertungRangliste, vorjahr: BewertungRangliste |
   };
 }
 
-/** „Vorjahr 199.500 kWh“, bei einem unvollständigen Vorjahr mit diesem Wort — nie als ganzer Vorjahreswert. */
+/** „Vorjahr 199.500 kWh“, bei einem unvollständigen Vorjahr mit diesem Wort - nie als ganzer Vorjahreswert. */
 const vorjahrZeile = (s: VerlaufSaeule) =>
   s.vorjahr === null ? null : `Vorjahr ${kwhText(s.vorjahr)}${s.vorjahrVollstaendig ? '' : ` (${UNVOLLSTAENDIG})`}`;
 
-/** Die Infozeile eines Monats: Wert, Vorjahr und der rohe Vergleich — ohne Urteilsfarbe, nur zwischen vollständigen Monaten. */
+/** Die Infozeile eines Monats: Wert, Vorjahr und der rohe Vergleich - ohne Urteilsfarbe, nur zwischen vollständigen Monaten. */
 export function infozeile(s: VerlaufSaeule): { monat: string; wert: string; vorjahr: string | null; vergleich: string | null } {
   const vergleich = vorjahrVergleich(
     { menge: s.menge, zustand: s.zustand },
@@ -761,7 +761,7 @@ export const verlaufListe = (v: VerlaufBild) =>
 
 /**
  * Eine Textzelle der CSV: ein Name, der mit `=`, `+`, `-`, `@`, Tab oder Wagenrücklauf beginnt, bekäme in einer
- * Tabellenkalkulation sonst eine Formel (CSV-Formel-Injektion) — davor ein Apostroph. Zahlen bleiben, wie sie sind
+ * Tabellenkalkulation sonst eine Formel (CSV-Formel-Injektion) - davor ein Apostroph. Zahlen bleiben, wie sie sind
  * (sie dürfen mit „-“ beginnen); Trenner, Anführungszeichen und Zeilenumbrüche stehen in Anführungszeichen.
  */
 const textZelle = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
