@@ -115,6 +115,12 @@ public class SecurityConfig {
                 // weiter zu), sie schließt nur die Rückfallebene.
                 .requestMatchers("/api/v1/admin/**")
                         .hasAnyRole("platform-admin", "edge-release-publisher")
+                // Dieselbe Rückfallebene für die Leseroute des Tunnel-Dienstes
+                // (FernwartungSollController): nur das Dienstkonto mit der
+                // Rolle tunnel-dienst, kein Kunden- und kein Admin-Token.
+                // Bewusst ein EIGENER Baum statt unter /api/v1/admin/**, damit
+                // die Rolle dort nichts erreicht.
+                .requestMatchers("/api/v1/fernwartung/**").hasRole("tunnel-dienst")
                 .anyRequest().authenticated())
             // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.

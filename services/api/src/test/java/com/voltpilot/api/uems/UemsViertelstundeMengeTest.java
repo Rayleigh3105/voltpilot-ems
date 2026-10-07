@@ -844,6 +844,12 @@ class UemsViertelstundeMengeTest {
                         // … ebenso Monat und Jahr aus AP-08 IP-5 (V20260912205000).
                         + "AND table_name NOT LIKE 'messreihe_periode%' "
                         + "AND table_name <> 'messreihe_korrektur_vorschlag' "
+                        // … ebenso die Szenen (V20260929120000), die Speichersteuerung
+                        // (V20261007120000) und die Fernwartung (V20261007163700):
+                        // alle ohne Bezug zu Messreihen.
+                        + "AND table_name <> 'site_scene' "
+                        + "AND table_name <> 'device_battery_control' "
+                        + "AND table_name NOT LIKE 'fernwartung%' "
                         + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
                 String.class);
         Map<String, String> aus = new LinkedHashMap<>();
