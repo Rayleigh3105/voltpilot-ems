@@ -27,6 +27,7 @@ export type PageId =
   | 'portfolio-kennzahlen'
   | 'portfolio-berichte'
   | 'portfolio-bewertung'
+  | 'portfolio-verbrauch'
   | 'portfolio-verbesserung'
   | 'portfolio-energiemanagement'
   | 'portfolio-messwerte'
@@ -153,6 +154,11 @@ export interface Route {
    */
   kennzahlId?: string;
   /**
+   * Nur mit `kennzahlId`: die Ebene unter der Kennzahl-Seite (Konzept Auswerten a1 §6.6) -
+   * `bezugsbasis` = `…/kennzahlen/{id}/bezugsbasis` (Fassungen, Freigaben, Überprüfung). Absent = die Seite.
+   */
+  kennzahlEbene?: 'bezugsbasis';
+  /**
    * Nur bei `page === 'portfolio-berichte'` oder am Standort mit
    * `standortBereich: 'berichte'`: WELCHER Bericht die Seite zeigt (UEMS
    * AP-12 IP-13 `#/portfolio/berichte/{kennung}`, AP-13 IP-2
@@ -160,8 +166,9 @@ export interface Route {
    */
   berichtKennung?: string;
   /**
-   * Nur bei `page === 'portfolio-bewertung'`: WELCHER Energieeinsatz die Seite zeigt (UEMS AP-16 IP-6
-   * `#/portfolio/bewertung/{id}`). Absent = Umfang und Liste.
+   * Nur bei `page === 'portfolio-verbrauch'`: WELCHER Energieeinsatz die Seite zeigt (Konzept Auswerten a1, Entscheid
+   * 10.1: `#/portfolio/verbrauch/{id}`; bis dahin UEMS AP-16 IP-6 `#/portfolio/bewertung/{id}`, das weiterleitet).
+   * Absent = die Verteilung.
    */
   energieeinsatzId?: string;
   /**
@@ -200,6 +207,11 @@ export interface Route {
    * Absent = das Register.
    */
   messstelleId?: string;
+  /**
+   * Nur bei `portfolio-bezugsgroessen`: WELCHE Bezugsgröße die Seite zeigt (Konzept Messen m1 §6.8, Entscheid 9,
+   * `#/portfolio/bezugsgroessen/{id}`). Absent = die Liste.
+   */
+  bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -287,6 +299,10 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // Kennzahl unter `…/kennzahlen/{id}`), bis AP-13 die Ebenen-Navigation bringt.
   // Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showKennzahlen`).
   { id: 'portfolio-bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
+  // Konzept Auswerten a1 (Richtungsfrage 1 = A, Entscheid 10.1): „Unternehmen › Verbrauch“ (`#/portfolio/verbrauch`,
+  // ein Energieeinsatz unter `…/verbrauch/{id}`) — der erste Reiter von „Auswerten“, vor Kennzahlen und Bewertung.
+  // Der Reiter steht nach der Regel der Bewertung (`PortfolioTabs.showVerbrauch`).
+  { id: 'portfolio-verbrauch', label: 'Verbrauch', icon: 'zap' },
   { id: 'portfolio-kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   // UEMS AP-12 IP-13: „Unternehmen › Berichte“ (`#/portfolio/berichte`, ein Bericht unter
   // `…/berichte/{kennung}`), bis AP-13 die Ebenen-Navigation bringt. Der Reiter steht
@@ -574,19 +590,27 @@ export function parseSektion(hash: string): string | null {
 
 /**
  * Periode, Version und Vergleich der Werte einer Messstelle aus dem Hash (UEMS AP-13 IP-3/IP-5, E9/E6):
- * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode`. `parseRoute` schneidet den Query-Teil ab — die
+ * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode` (aus „Stand am …“ dazu `&stand=2029-04-30`). `parseRoute` schneidet den Query-Teil ab — die
  * Route bleibt die Messstellen-Seite; geschrieben wird die Adresse über `uemsOberflaechen.sprungziel`. Die
  * Periode kommt roh (die Sektion prüft sie, `uemsWerteKarte.periodeAus`), die Version nur als ganze Zahl ab 1, und
  * `v` ebenfalls roh — welche Wahl der Zeitraum überhaupt anbietet, weiß `uemsVergleich.wahlAus`.
  */
-export function parseMessstelleWerte(hash: string): { periode: string | null; version: number | null; vergleich: string | null } {
+export function parseMessstelleWerte(hash: string): {
+  periode: string | null;
+  version: number | null;
+  vergleich: string | null;
+  stand: string | null;
+} {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   const params = new URLSearchParams(rest.join('?'));
   const version = params.get('version')?.trim() ?? '';
+  const stand = params.get('stand')?.trim() ?? '';
   return {
     periode: params.get('periode')?.trim() || null,
     version: /^[1-9]\d{0,5}$/.test(version) ? Number(version) : null,
     vergleich: params.get('v')?.trim() || null,
+    // Messen m1 (Review r4 S4): aus „Stand an einem Tag ansehen“ geöffnet - die Seite liest diesen Tag, nur lesend.
+    stand: /^\d{4}-\d{2}-\d{2}$/.test(stand) ? stand : null,
   };
 }
 
@@ -683,9 +707,14 @@ export function parseRoute(hash: string): Route {
   if (head === 'unternehmen' && segments[1] === 'einstellungen' && segments[2] === 'benutzer')
     return pageRoute('kunden-benutzer');
   if (head === 'portfolio') {
-    if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'kennzahlen' && segments[2]) {
+      return kennzahlRoute(decodeURIComponent(segments[2]), null, segments[3] === 'bezugsbasis' ? 'bezugsbasis' : undefined);
+    }
     if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
-    if (segments[1] === 'bewertung' && segments[2]) return energieeinsatzRoute(decodeURIComponent(segments[2]));
+    // Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“; die frühere Adresse unter „Bewertung“ führt dorthin.
+    if ((segments[1] === 'verbrauch' || segments[1] === 'bewertung') && segments[2]) {
+      return energieeinsatzRoute(decodeURIComponent(segments[2]));
+    }
     if (segments[1] === 'verbesserung') {
       if (segments[2] === 'energieziele' && segments[3]) return energiezielRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'massnahmen' && segments[3]) return massnahmeRoute(decodeURIComponent(segments[3]));
@@ -709,6 +738,7 @@ export function parseRoute(hash: string): Route {
       return energiemanagementRoute();
     }
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'bezugsgroessen' && segments[2]) return bezugsgroesseRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
@@ -725,7 +755,7 @@ export function parseRoute(hash: string): Route {
     // AP-13 IP-2: die übrigen Seiten des Standorts; Kennzahl und Bericht bleiben im Standort, aus dem sie geöffnet werden.
     if (segments[1] && segments[2] === 'kennzahlen') {
       return segments[3]
-        ? kennzahlRoute(decodeURIComponent(segments[3]), segments[1])
+        ? kennzahlRoute(decodeURIComponent(segments[3]), segments[1], segments[4] === 'bezugsbasis' ? 'bezugsbasis' : undefined)
         : standortBereichRoute(segments[1], 'kennzahlen');
     }
     if (segments[1] && segments[2] === 'berichte') {
@@ -834,17 +864,23 @@ export function hashForRoute(route: Route): string {
           : route.standortBereich === 'berichte'
             ? route.berichtKennung
             : undefined;
-    const unter = objekt ? `/${encodeURIComponent(objekt)}` : '';
+    const ebene = route.standortBereich === 'kennzahlen' && route.kennzahlId && route.kennzahlEbene ? `/${route.kennzahlEbene}` : '';
+    const unter = objekt ? `/${encodeURIComponent(objekt)}${ebene}` : '';
     return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}${unter}`;
   }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
-    const kennzahl = route.page === 'portfolio-kennzahlen' && route.kennzahlId ? `/${encodeURIComponent(route.kennzahlId)}` : '';
+    const kennzahl =
+      route.page === 'portfolio-kennzahlen' && route.kennzahlId
+        ? `/${encodeURIComponent(route.kennzahlId)}${route.kennzahlEbene ? `/${route.kennzahlEbene}` : ''}`
+        : '';
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    const bezugsgroesse =
+      route.page === 'portfolio-bezugsgroessen' && route.bezugsgroesseId ? `/${encodeURIComponent(route.bezugsgroesseId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     const einsatz =
-      route.page === 'portfolio-bewertung' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
+      route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
     const verbesserung =
       route.page !== 'portfolio-verbesserung'
         ? ''
@@ -873,7 +909,7 @@ export function hashForRoute(route: Route): string {
             : route.energiemanagementReiter && route.energiemanagementReiter !== 'ueberblick'
             ? `/${route.energiemanagementReiter}`
             : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -964,6 +1000,41 @@ export function canonicalStandortHash(hash: string): string | null {
   return `#/standort/${segments[1]}/aufbau${query}`;
 }
 
+/**
+ * Die kanonische Adresse der früheren Seite eines Energieeinsatzes (Konzept Auswerten a1, Entscheid 10.1):
+ * `#/portfolio/bewertung/{id}` steht jetzt unter `#/portfolio/verbrauch/{id}`. Die Parameter reisen mit (der Sprung der
+ * Wiedervorlage trägt `?entscheid=…`); sonst null.
+ */
+export function canonicalVerbrauchHash(hash: string): string | null {
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pathPart.split('/').filter((s) => s.length > 0);
+  if (segments[0] !== 'portfolio' || segments[1] !== 'bewertung' || !segments[2] || segments.length !== 3) return null;
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  return `#/portfolio/verbrauch/${segments[2]}${query}`;
+}
+
+/** Die Wahl der Liste „Verbrauch“ (`zeitraum`, `bis`) aus einer Adresse - als Query, sonst leer. */
+function verbrauchWahl(hash: string): string {
+  const q = new URLSearchParams(hash.split('?').slice(1).join('?'));
+  const wahl = new URLSearchParams();
+  for (const k of ['zeitraum', 'bis']) {
+    const v = q.get(k);
+    if (v) wahl.set(k, v);
+  }
+  const s = wahl.toString();
+  return s ? `?${s}` : '';
+}
+
+/**
+ * Die Seite eines Energieeinsatzes, geöffnet aus der Liste „Verbrauch“: die Wahl der Liste reist mit, damit der
+ * Rückweg „Verbrauch“ denselben Zeitraum zeigt (Queryparameter bei Rückwegen erhalten).
+ */
+export const verbrauchEinsatzHash = (energieeinsatzId: string, listeHash: string): string =>
+  `#/portfolio/verbrauch/${encodeURIComponent(energieeinsatzId)}${verbrauchWahl(listeHash)}`;
+
+/** Der Rückweg von der Seite eines Energieeinsatzes zur Liste „Verbrauch“ - mit der Wahl, die sie beim Öffnen hatte. */
+export const verbrauchListeHash = (einsatzHash: string): string => `#/portfolio/verbrauch${verbrauchWahl(einsatzHash)}`;
+
 /** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */
 export function standortBereichRoute(standortId: string, standortBereich: StandortBereich): Route {
   return { page: 'standort', siteId: null, sub: null, standortId, standortBereich };
@@ -976,12 +1047,14 @@ export function standortMessstellenRoute(standortId: string): Route {
 
 /**
  * Route einer Kennzahl-Seite (UEMS AP-11 IP-13): ohne Standort `#/portfolio/kennzahlen/{id}`, aus
- * „Kennzahlen dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/kennzahlen/{id}`.
+ * „Kennzahlen dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/kennzahlen/{id}`. Mit `ebene` `bezugsbasis` die Ebene
+ * darunter (Konzept Auswerten a1 §6.6): `…/kennzahlen/{id}/bezugsbasis`.
  */
-export function kennzahlRoute(kennzahlId: string, standortId?: string | null): Route {
+export function kennzahlRoute(kennzahlId: string, standortId?: string | null, ebene?: 'bezugsbasis'): Route {
+  const unter = ebene ? { kennzahlEbene: ebene } : {};
   return standortId
-    ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId }
-    : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+    ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId, ...unter }
+    : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId, ...unter };
 }
 
 /** Die drei Reiter des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8, §6.3). */
@@ -1060,9 +1133,13 @@ export function dokumentRoute(dokumentId: string): Route {
   return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'dokumente', dokumentId };
 }
 
-/** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */
+/**
+ * Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6) — nur am Unternehmen. Seit dem Konzept Auswerten a1
+ * (Entscheid 10.1) unter „Verbrauch“: `#/portfolio/verbrauch/{id}`; `#/portfolio/bewertung/{id}` leitet dorthin
+ * ({@link canonicalVerbrauchHash}).
+ */
 export function energieeinsatzRoute(energieeinsatzId: string): Route {
-  return { page: 'portfolio-bewertung', siteId: null, sub: null, energieeinsatzId };
+  return { page: 'portfolio-verbrauch', siteId: null, sub: null, energieeinsatzId };
 }
 
 /**
@@ -1083,6 +1160,11 @@ export function messstelleRoute(messstelleId: string, standortId?: string | null
   return standortId
     ? { ...standortMessstellenRoute(standortId), messstelleId }
     : { page: 'portfolio-messstellen', siteId: null, sub: null, messstelleId };
+}
+
+/** Route der Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9): `#/portfolio/bezugsgroessen/{id}`. */
+export function bezugsgroesseRoute(bezugsgroesseId: string): Route {
+  return { page: 'portfolio-bezugsgroessen', siteId: null, sub: null, bezugsgroesseId };
 }
 
 /* =========================================================================

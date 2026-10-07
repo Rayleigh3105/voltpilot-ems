@@ -51,28 +51,32 @@ for (const breite of [375, 1440]) {
     if (breite === 375) await leiste.getByRole('button', { name: 'Messen', exact: true }).click();
     else await page.getByTestId('seitenleiste-messen').click();
     await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).first().click();
-    const karten = page.getByTestId('bezugsgroesse-karte');
-    await expect(karten).toHaveCount(2);
+    // Konzept Messen m1 §6.8: jede Reihe öffnet die Seite ihrer Bezugsgröße - dort steht der Abschnitt „Wetter“.
+    const reihen = page.getByTestId('bezugsgroesse-reihe');
+    await expect(reihen).toHaveCount(2);
 
-    const werk = karten.filter({ hasText: 'Gradtagzahl Werk Ahrenberg' });
+    await reihen.filter({ hasText: 'Gradtagzahl Werk Ahrenberg' }).click();
+    const werk = page.getByTestId('bezugsgroesse-seite');
     await werk.getByText('Wetter', { exact: true }).click();
     await werk.getByRole('button', { name: 'Wetter beziehen', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Wetter beziehen', exact: true }).click();
     await expect(werk.getByTestId('wetter-zustand')).toHaveText('bezogen aus Open-Meteo-Archiv, zuletzt am 03.04.2027 06:10, März 2027: 27 von 31 Tagen');
     await expect(werk.getByText('Temperatur von VoltPilot bezogen (Wetter-Archiv), nicht am Standort gemessen.')).toBeVisible();
-
-    const lindach = karten.filter({ hasText: 'Gradtagzahl Lindach' });
-    await lindach.getByText('Wetter', { exact: true }).click();
-    await expect(lindach.getByTestId('wetter-koordinaten-fehlen')).toHaveText(LINDACH);
-    await expect(lindach.getByRole('button', { name: 'Wetter beziehen', exact: true })).toHaveCount(0);
-
     await werk.getByRole('button', { name: 'Bezug lösen', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Bezug lösen', exact: true }).click();
     await expect(werk.getByRole('button', { name: 'Wetter beziehen', exact: true })).toBeVisible();
     const aufrufe = await page.evaluate(() => (window as unknown as { wetterAufrufe: string[] }).wetterAufrufe);
     expect(aufrufe[0]).toMatch(/^PUT bz-8 \d{4}-\d{2}-01$/);
     expect(aufrufe[1]).toBe('DELETE bz-8');
+
+    await page.getByRole('link', { name: 'Alle Bezugsgrößen' }).click();
+    await reihen.filter({ hasText: 'Gradtagzahl Lindach' }).click();
+    const lindach = page.getByTestId('bezugsgroesse-seite');
+    await expect(lindach).toContainText('Gradtagzahl Lindach');
+    await lindach.getByText('Wetter', { exact: true }).click();
+    await expect(lindach.getByTestId('wetter-koordinaten-fehlen')).toHaveText(LINDACH);
+    await expect(lindach.getByRole('button', { name: 'Wetter beziehen', exact: true })).toHaveCount(0);
 
     await page.evaluate(() => document.fonts.ready);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);

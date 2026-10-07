@@ -25,8 +25,13 @@ async function oeffne(page: Page, vergleich: string | null, breite: number) {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
   await page.goto(`/e2e/startansicht.html?bild=unternehmen&ansicht=kennzahl&kz=KZ-0001${vergleich ? `&vergleich=${vergleich}` : ''}`);
   await expect(page.getByTestId('kennzahl-seite')).toBeVisible();
-  await page.getByTestId('kennzahl-reiter-vergleich').click();
-  await expect(page.getByTestId('bezugsbasis-vergleich')).toBeVisible();
+  // Konzept Auswerten a1 §6.6: der Vergleich je Monat mit freier Wahl steht auf der Ebene der Bezugsbasis.
+  await page.getByTestId('alle-fassungen').click();
+  await expect(page.getByTestId('bezugsbasis-ebene')).toBeVisible();
+  if (vergleich) {
+    await page.getByTestId('bezugsbasis-vergleich-aufklapp').locator('summary').click();
+    await expect(page.getByTestId('bezugsbasis-vergleich')).toBeVisible();
+  }
   await page.evaluate(() => document.fonts.ready);
 }
 
@@ -93,7 +98,8 @@ for (const breite of [375, 1440]) {
 
     test('R10: ohne Bezugsbasis nur der Leer-Satz, keine Tafel, kein Urteil', async ({ page }) => {
       await oeffne(page, null, breite);
-      await expect(page.getByTestId('vergleich-leer')).toContainText('Noch keine Bezugsbasis.');
+      await expect(page.getByTestId('bezugsbasis-leer')).toContainText('Noch keine Bezugsbasis.');
+      await expect(page.getByTestId('bezugsbasis-vergleich-aufklapp')).toHaveCount(0);
       await expect(page.getByTestId('vergleich-monate')).toHaveCount(0);
       await expect(page.getByTestId('urteil')).toHaveCount(0);
       await grenzHinweisZeigt(page, GRENZE);

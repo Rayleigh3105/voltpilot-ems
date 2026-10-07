@@ -516,7 +516,8 @@ export type EbenenBereichId =
   | 'berichte'
   | 'bewertung'
   | 'verbesserung'
-  | 'energiemanagement';
+  | 'energiemanagement'
+  | 'verbrauch';
 
 export interface EbenenBereich {
   key: EbenenBereichId;
@@ -601,6 +602,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   bewertung: { key: 'bewertung', label: 'Bewertung', icon: 'list' },
   verbesserung: { key: 'verbesserung', label: UEMS_ZIELE_UND_MASSNAHMEN, icon: 'list' },
   energiemanagement: { key: 'energiemanagement', label: UEMS_ENERGIEMANAGEMENT, icon: 'file-text' },
+  verbrauch: { key: 'verbrauch', label: 'Verbrauch', icon: 'zap' },
 };
 
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
@@ -649,6 +651,9 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
     const irgendwoGemessen = lebend.some((s) => misst(lm, s.id));
     if (lebend.length >= 2) out.push('standorte');
     if (irgendwoGemessen) out.push('messstellen', 'bezugsgroessen');
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ liest Rangliste und Messabdeckung — dieselbe Regel und dasselbe
+    // Recht wie die Bewertung (`energieeinsatz.ansehen`); er steht vor den Kennzahlen wie in der Gruppe „Auswerten“.
+    if (irgendwoGemessen && lm.bewertung === true) out.push('verbrauch');
     if (irgendwoGemessen && (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null)) out.push('kennzahlen');
     if (irgendwoGemessen) out.push('berichte');
     // AP-16 IP-6 (§5.1/§6.3): „Bewertung“ nach der Berichte-Regel — und nur, wer Energieeinsätze sehen darf.
@@ -702,6 +707,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
         bewertung: pageRoute('portfolio-bewertung'),
         verbesserung: pageRoute('portfolio-verbesserung'),
         energiemanagement: pageRoute('portfolio-energiemanagement'),
+        verbrauch: pageRoute('portfolio-verbrauch'),
       }
     : {
         uebersicht: standortRoute(ort.standortId),
@@ -821,7 +827,7 @@ export const UNTERNEHMEN_GRUPPEN: readonly {
 }[] = [
   { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', frage: 'Läuft alles? Was steht an?', bereiche: ['uebersicht', 'standorte'] },
   { key: 'messen', label: 'Messen', icon: 'activity', frage: 'Wird alles erfasst?', bereiche: ['messstellen', 'bezugsgroessen'] },
-  { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', frage: 'Wo geht die Energie hin, wird es besser?', bereiche: ['kennzahlen', 'bewertung'] },
+  { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', frage: 'Wo geht die Energie hin, wird es besser?', bereiche: ['verbrauch', 'kennzahlen', 'bewertung'] },
   { key: 'verbessern', label: 'Verbessern', icon: 'list', frage: 'Was tun wir dagegen?', bereiche: ['verbesserung'] },
   { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', frage: 'Können wir es belegen?', bereiche: ['energiemanagement', 'berichte'] },
 ];
@@ -937,7 +943,7 @@ export function istDetailseite(route: Route): boolean {
   return Boolean(
     route.kennzahlId || route.berichtKennung || route.energieeinsatzId || route.energiezielId || route.massnahmeId ||
       route.abweichungId || route.dokumentId || route.personId || route.auditId || route.feststellungId ||
-      route.managementbewertungKennung || route.messstelleId,
+      route.managementbewertungKennung || route.messstelleId || route.bezugsgroesseId,
   );
 }
 
@@ -994,6 +1000,7 @@ export function ebenenAktiv(
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';
   if (page === 'portfolio-berichte') return 'berichte';
   if (page === 'portfolio-bewertung') return 'bewertung';
+  if (page === 'portfolio-verbrauch') return 'verbrauch';
   if (page === 'portfolio-verbesserung') return 'verbesserung';
   if (page === 'portfolio-energiemanagement') return 'energiemanagement';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;

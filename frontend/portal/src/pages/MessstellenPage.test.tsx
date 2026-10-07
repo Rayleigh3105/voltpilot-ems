@@ -1,23 +1,31 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
-import type { MessstellenEbene } from '../messstellen';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { api, ApiError, type Messbedarf, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
+import { OHNE_ANGABE, type MessstellenEbene } from '../messstellen';
+import { KOPF_SATZ, NOCH_KEINE_QUELLE, SUCHE_WORIN } from '../messstellenListe';
 import { messstelleAngelegt, VORSCHLAG } from '../test/messstelleDialogFixtures';
-import { ahrenbergRegister, leeresRegister } from '../test/messstellenRegisterFixtures';
+import { ahrenbergRegister, leeresRegister, REGISTER_ORT_IDS } from '../test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../test/standorteFixtures';
+import { ee8, mb1, messplanungRouten } from '../test/messplanungBuehne';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { MessstellenPage } from './MessstellenPage';
+import { zumEntscheid } from '../useEntscheidFokus';
 
 /**
- * Die Fläche „Messstellen“ (UEMS AP-04 IP-5) gegen die gestellte Route
- * `GET /api/v1/messstellen` (Referenzunternehmen, heute = 20.10.2026):
- * Tabelle (Rechner) und Karten (Telefon), „Stand am …“ mit dem benannten
- * „gab es noch nicht“, der Filter „ohne Quelle“ und die Leerzustände.
+ * Die Liste „Messstellen“ (Konzept Messen m1, §6.2/§6.3/§6.11) gegen die gestellte Route `GET /api/v1/messstellen`
+ * (Referenzunternehmen, heute = 20.10.2026): Kopf mit erklärendem Satz und Menü ⋯, Statuszeile mit dem Satz des
+ * Servers, die EINE Suche (in der Adresse), Marken, die nur erscheinen, wenn es sie gibt, Gruppen je Ort mit Reihen als
+ * Verweis, „Woher die Werte kommen“, „Stand an einem Tag ansehen“ und die Leerzustände.
  */
 
 const UNTERNEHMEN: MessstellenEbene = { art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH' };
 const WERK: MessstellenEbene = { art: 'standort', id: FIXTURE_IDS.st1, name: 'Werk Ahrenberg' };
 const WARTEN = { timeout: 3000 };
+const MS06 = '3e000000-0000-4000-8000-000000000006';
 
 function verdrahte(antwort: (a: MessstellenRegisterAnfrage) => MessstellenRegister = ahrenbergRegister) {
   return vi.spyOn(api, 'messstellenRegister').mockImplementation(async (a = {}) => antwort(a));
@@ -32,19 +40,35 @@ function telefon(ja: boolean) {
   }));
 }
 
+beforeEach(() => {
+  window.history.replaceState(null, '', '#/portfolio/messstellen');
+  // Die Ausfälle der Standorte sind ein eigener Lesezug; ohne Antwort zeigt die Liste keinen.
+  vi.spyOn(api, 'standortAusfall').mockRejectedValue(new Error('nicht gestellt'));
+  // Die geplanten Messstellen (offene Messbedarfe) - ohne Bedarf keine.
+  vi.spyOn(api, 'messbedarfeAlle').mockResolvedValue({ messbedarfe: [] });
+  vi.spyOn(api, 'energieeinsaetze').mockResolvedValue({ energieeinsaetze: [] });
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-const zeilen = () => screen.getAllByRole('row').slice(1);
+const reihen = () => screen.getAllByTestId('messstelle-reihe');
+const reiheVon = (kz: string) => reihen().find((r) => within(r).queryByText(kz, { exact: true }))!;
+const orte = () => screen.getAllByTestId('messstellen-ort').map((s) => within(s).getByRole('heading', { level: 2 }).textContent);
+const suchfeld = () => screen.getByRole('searchbox', { name: 'Messstellen suchen' });
 
-/** Wählt im Datumsfeld „Stand am“ einen Tag (wie `StandortePageStandAm.test.tsx`). */
+async function menue(eintrag: RegExp) {
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: eintrag }));
+}
+
+/** Wählt im offenen Kalender von „Stand am“ einen Tag (wie `StandortePageStandAm.test.tsx`). */
 async function waehleTag(iso: string) {
-  const feld = screen.getByRole('combobox', { name: 'Stand am' });
-  const vorher = feld.textContent ?? '';
-  fireEvent.click(feld);
-  const [t, m, j] = vorher.match(/\d{2}\.\d{2}\.\d{4}/)![0].split('.');
+  const feld = await screen.findByRole('combobox', { name: 'Stand am' });
+  if (!document.querySelector('.vp-kal-tag')) fireEvent.click(feld);
+  const [t, m, j] = (feld.textContent ?? '').match(/\d{2}\.\d{2}\.\d{4}/)![0].split('.');
   const richtung = iso < `${j}-${m}-${t}` ? 'Voriger Monat' : 'Nächster Monat';
   for (let i = 0; i < 24; i++) {
     const tag = document.querySelector<HTMLButtonElement>(`.vp-kal-tag[data-iso="${iso}"]:not(.is-rand)`);
@@ -57,176 +81,397 @@ async function waehleTag(iso: string) {
   throw new Error(`Tag ${iso} nicht erreicht`);
 }
 
-describe('MessstellenPage · Register', () => {
-  it('am Rechner eine Tabelle mit den Spalten des Registers und dem „x von y“ im Kopf', async () => {
+describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
+  it('am Rechner: Titel mit erklärendem Satz, „Messstelle anlegen“ als Knopf, Seltenes im Menü ⋯', async () => {
     telefon(false);
     const register = verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
-      'Kennzeichen',
-      'Name',
-      'Ort',
-      'Elektrische Stellung',
-      'Quelle (führend)',
-      'Zustand',
-      'Letzter Wert',
-    ]);
-    expect(zeilen()).toHaveLength(22);
+    await screen.findAllByTestId('messstelle-reihe');
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Messstellen');
-    expect(screen.getByText('21 von 22 Messstellen liefern Daten')).toBeInTheDocument();
-    const ms06 = zeilen()[5];
-    expect(ms06).toHaveTextContent('MS-06');
-    expect(ms06).toHaveTextContent('Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a');
-    expect(ms06).toHaveTextContent('führend seit 12.03.2024');
-    // `toHaveTextContent` fasst Leerraum (auch U+00A0) zu einem Leerzeichen zusammen — das U+00A0 prüft `messstellen.test.ts`.
-    expect(ms06).toHaveTextContent('Wirkleistung 148,6 kW 10:15 Uhr');
+    expect(screen.getByText(KOPF_SATZ)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument();
+    // „Summenwert anlegen“ gibt es unter Messen nicht mehr (Konzept §6.10).
+    expect(screen.queryByRole('button', { name: /Summenwert/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    const eintraege = (await screen.findAllByRole('menuitem')).map((m) => m.textContent);
+    expect(eintraege).toEqual(['Stand an einem Tag ansehenNur lesen, z. B. für eine Prüfung']);
     // EINE Abfrage ohne Filter.
     expect(register).toHaveBeenCalledTimes(1);
-    expect(register).toHaveBeenCalledWith({});
-    // Der Schreibweg der Fläche: „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6); „Vorschläge“ fehlt, bis es die Liste gibt (AP-01 IP-9b).
-    expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Vorschläge/ })).toBeNull();
+    // Messen PR5: die Liste fragt den letzten Monat mit - nur sie zeigt ihn.
+    expect(register).toHaveBeenCalledWith({ letzterMonat: true });
   });
 
-  it('am Telefon Karten mit denselben Wörtern — keine Tabelle', async () => {
+  it('am Telefon steht „Messstelle anlegen“ im Menü, nicht als Knopf im Kopf', async () => {
     telefon(true);
     verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    const karten = await screen.findAllByRole('listitem');
-    expect(karten).toHaveLength(22);
-    expect(screen.queryByRole('table')).toBeNull();
-    const ms21 = karten[20];
-    expect(within(ms21).getByRole('heading', { level: 2 })).toHaveTextContent('Gas Heizung Verwaltung');
-    expect(ms21).toHaveTextContent('Quelle (führend)Keine Datenquelle');
-    expect(ms21).toHaveTextContent('Letzter Wert—');
+    await screen.findAllByTestId('messstelle-reihe');
+    expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
+      'Messstelle anlegen',
+      'Stand an einem Tag ansehenNur lesen, z. B. für eine Prüfung',
+    ]);
   });
 
-  it('„Standort › Messstellen“ fragt mit seinem Standort und nennt ihn im Kopf; kein Standort-Filter', async () => {
+  it('die Statuszeile ist der Satz des Servers; die Reihen stehen je Ort in der Reihenfolge des Ortsbaums', async () => {
     telefon(false);
-    const register = verdrahte();
-    render(<MessstellenPage ebene={WERK} bereichDa />);
-    await screen.findByRole('table');
-    expect(register).toHaveBeenCalledWith({ standort: FIXTURE_IDS.st1 });
-    // MS-19 (am Unternehmen), MS-20 und MS-22 (ohne Ort) und Lindach gehören nicht zu Werk Ahrenberg.
-    expect(zeilen().map((z) => z.cells[0].textContent)).toEqual(
-      ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '21'].map((n) => `MS-${n}`),
-    );
-    expect(screen.getByText('Werk Ahrenberg · 15 von 16 Messstellen liefern Daten')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Standort' })).toBeNull();
-    expect(screen.getByRole('combobox', { name: 'Ort' })).toBeInTheDocument();
+    verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    // Eine Messstelle ohne Quelle liefert nicht - aber nichts davon ist überfällig: ein ruhiger Hinweis ohne Schritt.
+    expect(screen.getByText('21 von 22 Messstellen liefern Daten')).toBeInTheDocument();
+    expect(orte()).toEqual([
+      'Unternehmen',
+      'Werk Ahrenberg',
+      'Halle 1',
+      'Halle 1 Nord',
+      'Halle 1 Süd',
+      'Halle 2',
+      'Halle 2 Montage',
+      'Halle 2 Spritzguss',
+      'Halle 2 Lager',
+      'Verwaltung',
+      'Werk Lindach',
+      'Lagerhalle Lindach',
+      'Montagehalle Lindach',
+      'Kein Ort zugeordnet',
+    ]);
+    expect(reihen()).toHaveLength(22);
+    expect(screen.getByText('22 Messstellen an 14 Orten')).toBeInTheDocument();
+    // Im Ort der Hauptzähler zuerst; über einem Gebäude steht sein Standort.
+    const werk = screen.getAllByTestId('messstellen-ort')[1];
+    expect(within(werk).getAllByTestId('messstelle-reihe').map((r) => r.textContent?.match(/MS-\d+/)?.[0])).toEqual([
+      'MS-01',
+      'MS-02',
+      'MS-14',
+    ]);
+    expect(within(screen.getAllByTestId('messstellen-ort')[2]).getByText('Werk Ahrenberg · 2')).toBeInTheDocument();
   });
 
-  it('Wiedervorlage w1, Entscheid 7: eine Messstelle, deren Ablesung fehlt, ist Ziel von „Ablesungen eintragen“, am Rechner und am Telefon', async () => {
-    // Fehlt keine Ablesung, zeigt der Schritt auf die Messstellen aus Ablesungen (`messstellen.test.ts`, `ablesungsZiele`).
-    const mitAblesung = () => {
-      const a = ahrenbergRegister();
-      const z = a.register.find((r) => r.kennzeichen === 'MS-21')!;
-      z.quelle = { stand: 'ablesung', fuehrend: null, davor: null, vergleichsquellen: 0,
-        ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-08-01T00:00:00+02:00' } };
+  it('Messen PR5: rechts der Verbrauch des letzten Monats, am Rechner unter dem Kopf „September 2026“', async () => {
+    telefon(false);
+    // Die Antwort mit `letzterMonat=true`: jede Zeile trägt den Monat (hier der Schritt von HZ-1 aus der echten Antwort).
+    const echt = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures/register-letzter-monat-2026-09.json'), 'utf8')) as {
+      register: MessstellenRegister['register'];
+    };
+    const monat = echt.register.find((z) => z.kennzeichen === 'HZ-1')!.letzter_monat;
+    verdrahte(() => {
+      const r = ahrenbergRegister();
+      return { ...r, register: r.register.map((z) => (z.kennzeichen === 'MS-06' ? { ...z, letzter_monat: monat } : z)) };
+    });
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    expect(document.querySelector('.vp-ms-spalten')).toHaveTextContent('September 2026');
+    const ms06 = reiheVon('MS-06');
+    expect(ms06.textContent).toContain('199.500');
+    expect(ms06).toHaveTextContent('Sep 2026');
+  });
+
+  it('Messen m2 (§6.5, Variante 3A): „Ablesen ›“ im Kopf eines Orts mit Ablesezählern öffnet seine Ablese-Runde', async () => {
+    telefon(false);
+    verdrahte(() => {
+      const r = ahrenbergRegister();
+      // MS-21 in der Verwaltung (G-3) wird von Hand abgelesen.
+      return {
+        ...r,
+        register: r.register.map((z) =>
+          z.kennzeichen === 'MS-21'
+            ? {
+                ...z,
+                lebenszyklus: 'aktiv' as const,
+                quelle: { stand: 'ablesung' as const, fuehrend: null, davor: null, vergleichsquellen: 0, ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-10-01T00:00:00+02:00', faellig_ab: '2026-12-01T00:00:00+01:00' } },
+                letzter_wert: { wert: 49_451, text: null, einheit: 'm³', zeitpunkt: '2026-10-01T00:00:00+02:00' },
+              }
+            : z,
+        ),
+      };
+    });
+    window.location.hash = '#/portfolio/messstellen';
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    const links = screen.getAllByTestId('messstellen-ablesen');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '#/portfolio/messstellen?ablesen=G-3');
+    expect(links[0]).toHaveTextContent('Ablesen ›');
+    // Die Adresse wechselt innerhalb derselben Route: die Runde steht statt der Liste.
+    window.location.hash = '#/portfolio/messstellen?ablesen=G-3';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(await screen.findByRole('heading', { level: 1, name: /ablesen$/ }, WARTEN)).toBeInTheDocument();
+    expect(screen.getByTestId('ablese-runde')).toBeInTheDocument();
+    expect(screen.queryByTestId('messstellen-ablesen')).toBeNull();
+    window.location.hash = '';
+  });
+
+  it('jede Reihe ist der Verweis auf ihre Messstelle; „Woher die Werte kommen“ sagt Gerät oder noch keine Quelle', async () => {
+    telefon(false);
+    verdrahte();
+    const onOeffnen = vi.fn();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onOeffnen={onOeffnen} />);
+    await screen.findAllByTestId('messstelle-reihe');
+    const ms06 = reiheVon('MS-06');
+    expect(ms06.tagName).toBe('A');
+    expect(ms06).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}`);
+    expect(ms06).toHaveTextContent('Unterzähler von MS-01 in Halle 1 · Strom');
+    expect(ms06).toHaveTextContent('Liefert Daten');
+    expect(ms06).toHaveTextContent('automatisch vom Gerät');
+    expect(ms06).toHaveTextContent('Unterzähler Spritzguss SG01–SG06 · Wirkenergie Bezug');
+    fireEvent.click(ms06);
+    expect(onOeffnen).toHaveBeenCalledWith(MS06, null);
+    // Mit Strg/⌘ bleibt es ein gewöhnlicher Verweis (neuer Tab), die Seite öffnet nicht selbst.
+    fireEvent.click(ms06, { ctrlKey: true });
+    expect(onOeffnen).toHaveBeenCalledTimes(1);
+    const ms21 = reiheVon('MS-21');
+    expect(ms21).toHaveTextContent(NOCH_KEINE_QUELLE);
+    expect(ms21).toHaveTextContent('noch keine Quelle');
+    // Fehlt ein Wert, steht der Strich - nie eine 0.
+    expect(within(ms21).getByText(OHNE_ANGABE)).toBeInTheDocument();
+  });
+
+  it('eine Ablesestelle: „von Hand abgelesen, monatlich“; fehlt die Ablesung, eine Hinweiskarte mit „Ablesen“ und das Ziel der Wiedervorlage', async () => {
+    const mitAblesung = (a: MessstellenRegisterAnfrage) => {
+      const r = ahrenbergRegister(a);
+      const z = r.register.find((x) => x.kennzeichen === 'MS-21')!;
+      z.quelle = {
+        stand: 'ablesung',
+        fuehrend: null,
+        davor: null,
+        vergleichsquellen: 0,
+        ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-08-01T00:00:00+02:00' },
+      };
       z.lebenszyklus = 'aktiv';
-      z.beobachtung = { ...z.beobachtung!, zustand: 'liefert_nicht_seit', text: 'Ablesung überfällig seit 01.10.2026' };
-      return a;
+      z.beobachtung = { ...z.beobachtung!, zustand: 'liefert_nicht_seit', seit: '2026-10-01T00:00:00+02:00', text: 'Ablesung überfällig seit 01.10.2026' };
+      return r;
     };
     telefon(false);
     verdrahte(mitAblesung);
-    const { unmount } = render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    const ziele = [...document.querySelectorAll<HTMLElement>('[data-entscheid="zaehlerablesung"]')];
-    expect(ziele.map((z) => z.tagName)).toEqual(['TR']);
-    expect(ziele[0]).toHaveTextContent('MS-21');
-    unmount();
-    telefon(true);
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findAllByRole('listitem');
-    const karten = [...document.querySelectorAll<HTMLElement>('[data-entscheid="zaehlerablesung"]')];
-    expect(karten.map((z) => z.tagName)).toEqual(['LI']);
-    expect(karten[0]).toHaveTextContent('MS-21');
+    await screen.findAllByTestId('messstelle-reihe');
+    const ms21 = reiheVon('MS-21');
+    expect(ms21).toHaveTextContent('von Hand abgelesen, monatlich');
+    expect(ms21).toHaveTextContent('Ablesung überfällig seit 01.10.2026');
+    expect(ms21).toHaveAttribute('data-entscheid', 'zaehlerablesung');
+    expect([...document.querySelectorAll('[data-entscheid="zaehlerablesung"]')]).toHaveLength(1);
+    // Handlungsbedarf: die Hinweiskarte tritt an die Stelle der ruhigen Zeile und filtert auf ihre Marke.
+    const karte = screen.getByRole('button', { name: /Gas Heizung Verwaltung \(MS-21\) ist die Ablesung überfällig/ });
+    expect(karte).toHaveTextContent('Seit 01.10.2026 · Verwaltung');
+    expect(karte).toHaveTextContent('Ablesen');
+    fireEvent.click(karte);
+    await waitFor(() => expect(reihen()).toHaveLength(1));
+    expect(screen.getByRole('button', { name: '1 Ablesung überfällig' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
 
-describe('MessstellenPage · „Stand am …“', () => {
-  it('ein Stichtag, an dem es eine Messstelle noch nicht gab: benannt an ihrem Platz, Zustand „heute“, kein „x von y“', async () => {
-    telefon(false);
-    const register = verdrahte();
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    await waehleTag('2026-10-10');
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Sie sehen den Stand am 10.10.2026'), WARTEN);
-    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Zustand (heute)' })).toBeInTheDocument(), WARTEN);
-    expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10' });
-    expect(zeilen()).toHaveLength(22);
-    const ms16 = zeilen()[15];
-    expect(ms16).toHaveTextContent('MS-16');
-    expect(ms16).toHaveTextContent('Am 10.10.2026 gab es MS-16 „Netzbezug Lindach“ im Portal noch nicht.');
-    expect(ms16.cells).toHaveLength(3);
-    expect(screen.queryByText(/von 22 Messstellen liefern Daten/)).toBeNull();
-    // Zurück zu heute: die Liste von heute, ohne Banner.
-    fireEvent.click(screen.getByRole('button', { name: 'Zurück zu heute' }));
-    await waitFor(() => expect(screen.getByText('21 von 22 Messstellen liefern Daten')).toBeInTheDocument(), WARTEN);
+describe('Messstellen · Wörter, wie sie gerendert stehen (Review r4 S6)', () => {
+  // Die Wächter in `copy.test.ts` lesen den Quelltext; die Wörter kommen aber oft über Konstanten anderer Module. Hier
+  // zählt, was tatsächlich auf dem Schirm steht - mit offenem Menü, am Rechner und am Telefon.
+  const VERBOTEN = /Quelle \(führend\)|Keine Datenquelle|Summenwert|Elektrische Stellung/;
+
+  it.each([false, true])('Telefon %s: kein Datenmodell-Wort in der Liste und im Menü ⋯', async (ja) => {
+    telefon(ja);
+    verdrahte();
+    render(<MessstellenPage ebene={WERK} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    await screen.findAllByRole('menuitem');
+    expect(document.body.textContent).not.toMatch(VERBOTEN);
   });
 });
 
-describe('MessstellenPage · Filter und Leerzustände', () => {
-  it('„Nur ohne Quelle“ fragt dieselbe Route mit dem Filter und zeigt MS-21', async () => {
+describe('Messstellen · die EINE Suche', () => {
+  it('sucht sofort und tolerant in Name, Kennzeichen, Ort und Gerät; die Fundstelle ist markiert, die Suche steht in der Adresse', async () => {
     telefon(false);
     const register = verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Nur ohne Quelle (1)' }));
-    await waitFor(() => expect(zeilen()).toHaveLength(1), WARTEN);
-    expect(register).toHaveBeenLastCalledWith({ ohneQuelle: true });
-    expect(zeilen()[0]).toHaveTextContent('MS-21');
-    expect(screen.getByRole('button', { name: 'Nur ohne Quelle (1)' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
-    await waitFor(() => expect(zeilen()).toHaveLength(22), WARTEN);
+    await screen.findAllByTestId('messstelle-reihe');
+    fireEvent.change(suchfeld(), { target: { value: 'druck' } });
+    expect(reihen()).toHaveLength(1);
+    expect(reihen()[0]).toHaveTextContent('Druckluft Kompressoren K1+K2');
+    expect(reihen()[0].querySelector('mark')?.textContent).toBe('Druck');
+    expect(screen.getByText('1 von 22 Messstellen')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/portfolio/messstellen?suche=druck');
+    // Gesucht wird in der geladenen Antwort - keine Anfrage je Taste.
+    expect(register).toHaveBeenCalledTimes(1);
+
+    // „ms 06“ findet MS-06 über das Kennzeichen (wie „az 3“ den Aufkleber AZ-3), „Z-5a“ über das Gerät der Quelle.
+    fireEvent.change(suchfeld(), { target: { value: 'ms 06' } });
+    expect(reihen().map((r) => r.textContent?.match(/MS-\d+/)?.[0])).toEqual(['MS-06']);
+    fireEvent.change(suchfeld(), { target: { value: 'z-5a' } });
+    expect(reihen().map((r) => r.textContent?.match(/MS-\d+/)?.[0])).toEqual(['MS-06']);
+    // „halle 2“ sucht „Halle 2“ - nie „Halle“ und irgendeine 2.
+    fireEvent.change(suchfeld(), { target: { value: 'halle 2' } });
+    expect(new Set(screen.getAllByTestId('messstellen-ort').map((s) => s.querySelector('h2')?.textContent))).not.toContain('Halle 1');
+
+    // Escape leert die Suche.
+    fireEvent.keyDown(suchfeld(), { key: 'Escape' });
+    expect(suchfeld()).toHaveValue('');
+    expect(reihen()).toHaveLength(22);
+    expect(window.location.hash).toBe('#/portfolio/messstellen');
   });
 
-  it('UEMS AP-16 IP-19: „Nur geplant für einen Energieeinsatz“ fragt `geplantFuerEinsatz=true` — der Schalter nur, wenn es solche gibt', async () => {
-    telefon(false);
-    const mitPlan = (a: MessstellenRegisterAnfrage) => {
-      const r = ahrenbergRegister(a);
-      const register = r.register.map((z) =>
-        z.kennzeichen === 'MS-21' ? { ...z, geplant_fuer_einsaetze: [{ id: 'ee-8', kennzeichen: 'EE-8', name: 'Gebäudetechnik Halle 1' }] } : z,
-      );
-      const gefiltert = a.geplantFuerEinsatz ? register.filter((z) => (z.geplant_fuer_einsaetze ?? []).length > 0) : register;
-      return { ...r, register: gefiltert, messstellen: r.messstellen.filter((m) => gefiltert.some((z) => z.id === m.id)) };
-    };
-    const register = verdrahte(mitPlan);
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Nur geplant für einen Energieeinsatz (1)' }));
-    await waitFor(() => expect(zeilen()).toHaveLength(1), WARTEN);
-    expect(register).toHaveBeenLastCalledWith({ geplantFuerEinsatz: true });
-    expect(zeilen()[0]).toHaveTextContent('MS-21');
-    fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
-    await waitFor(() => expect(zeilen()).toHaveLength(22), WARTEN);
-  });
-
-  it('ohne eingelösten Messbedarf kein Schalter „geplant für …“', async () => {
+  it('kein Treffer: der Begriff, worin gesucht wird, und „Suche leeren“', async () => {
     telefon(false);
     verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    expect(screen.queryByRole('button', { name: /Nur geplant für einen Energieeinsatz/ })).toBeNull();
+    await screen.findAllByTestId('messstelle-reihe');
+    fireEvent.change(suchfeld(), { target: { value: 'Wärmepumpe ' } });
+    expect(await screen.findByText('Keine Messstelle passt zu „Wärmepumpe“.')).toBeInTheDocument();
+    expect(screen.getByText(SUCHE_WORIN)).toBeInTheDocument();
+    expect(screen.queryAllByTestId('messstelle-reihe')).toHaveLength(0);
+    fireEvent.click(within(screen.getByTestId('messstellen-kein-treffer')).getByRole('button', { name: 'Suche leeren' }));
+    expect(reihen()).toHaveLength(22);
   });
 
-  it('„ohne Quelle“ ohne Treffer nennt, wie viele eine Quelle haben', async () => {
+  it('die Suche aus der Adresse steht beim Öffnen schon da (Rückweg von einer Messstelle)', async () => {
+    window.history.replaceState(null, '', '#/portfolio/messstellen?suche=lindach');
     telefon(false);
-    verdrahte((a) => {
-      const b = ahrenbergRegister(a);
-      b.register = b.register.filter((z) => z.kennzeichen !== 'MS-21');
-      b.messstellen = b.messstellen.filter((m) => m.kennzeichen !== 'MS-21');
-      return b;
+    verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    expect(suchfeld()).toHaveValue('lindach');
+    expect(reihen().map((r) => r.textContent?.match(/MS-\d+/)?.[0])).toEqual(['MS-16', 'MS-17', 'MS-18', 'MS-22']);
+  });
+});
+
+describe('Messstellen · Marken und Filter der Adresse', () => {
+  it('Marken erscheinen nur, wenn es sie gibt, und filtern; noch einmal getippt ist alles wieder da', async () => {
+    telefon(false);
+    verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    const marken = within(screen.getByRole('group', { name: 'Nur diese zeigen' }));
+    expect(marken.getAllByRole('button').map((b) => b.textContent)).toEqual(['1 ohne Quelle']);
+    fireEvent.click(marken.getByRole('button', { name: '1 ohne Quelle' }));
+    expect(reihen()).toHaveLength(1);
+    expect(reihen()[0]).toHaveTextContent('MS-21');
+    expect(marken.getByRole('button', { name: '1 ohne Quelle' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('1 von 22 Messstellen')).toBeInTheDocument();
+    // Die Marke steht in der Adresse - der Rückweg von einer Messstelle findet sie wieder (Konzept §6.4).
+    expect(window.location.hash).toBe('#/portfolio/messstellen?marke=ohneQuelle');
+    fireEvent.click(marken.getByRole('button', { name: '1 ohne Quelle' }));
+    expect(reihen()).toHaveLength(22);
+    expect(window.location.hash).toBe('#/portfolio/messstellen');
+  });
+
+  it('Rückweg: Marke und Stichtag aus der Adresse stehen beim Öffnen schon da (Review r4 S2)', async () => {
+    window.history.replaceState(null, '', '#/portfolio/messstellen?marke=ohneQuelle&stand=2026-10-10');
+    telefon(false);
+    const register = verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10', letzterMonat: true }), WARTEN);
+    await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
+    await waitFor(() => expect(reihen()).toHaveLength(1), WARTEN);
+    expect(screen.getByRole('button', { name: '1 ohne Quelle' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück zu heute' }));
+    await waitFor(() => expect(screen.queryByTestId('stand-am')).toBeNull(), WARTEN);
+    expect(window.location.hash).toBe('#/portfolio/messstellen?marke=ohneQuelle');
+  });
+
+  it('`?ort=G-1`: wird das Kurzzeichen zur ID des Orts, bleiben die Reihen stehen - kein zweites Skelett', async () => {
+    window.history.replaceState(null, '', '#/portfolio/messstellen?ort=G-1');
+    telefon(false);
+    const register = verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    const erste = reihen()[0];
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'], letzterMonat: true }), WARTEN);
+    await waitFor(() => expect(register.mock.results.every((r) => r.type === 'return')).toBe(true));
+    expect(screen.queryByTestId('messstellen-laedt')).toBeNull();
+    // Dieselbe Reihe, dasselbe Element: der Blick der Wiedervorlage bliebe auf ihr.
+    expect(reihen()[0]).toBe(erste);
+  });
+
+  it('`?ort=` aus der Wiedervorlage fragt dieselbe Route mit dem Ort; die Marke „×“ nimmt ihn heraus', async () => {
+    window.history.replaceState(null, '', '#/portfolio/messstellen?ort=G-1');
+    telefon(false);
+    const register = verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'], letzterMonat: true }), WARTEN);
+    const marke = await screen.findByRole('button', { name: 'Halle 1 – Filter entfernen' });
+    fireEvent.click(marke);
+    await waitFor(() => expect(reihen()).toHaveLength(22), WARTEN);
+    expect(window.location.hash).toBe('#/portfolio/messstellen');
+  });
+});
+
+describe('Messstellen · Filter `?anlage=` ohne Messstelle (Review r4 S9)', () => {
+  const ANLAGE = '9f2c0000-0000-4000-8000-0000000000aa';
+  const ohneTreffer = (a: MessstellenRegisterAnfrage) => (a.anlage ? leeresRegister() : ahrenbergRegister());
+
+  it('der Name der Anlage kommt aus der Liste der Anlagen - nie die Kennung', async () => {
+    window.history.replaceState(null, '', `#/portfolio/messstellen?anlage=${ANLAGE}`);
+    telefon(false);
+    verdrahte(ohneTreffer);
+    vi.spyOn(api, 'listSites').mockResolvedValue({
+      eintraege: [{ id: ANLAGE, name: 'Halle 3 Dach' } as Awaited<ReturnType<typeof api.listSites>>['eintraege'][number]],
+      teilansicht: { sichtbar: 1, gesamt: 1 },
     });
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Nur ohne Quelle (0)' }));
-    expect(await screen.findByText('Alle 16 gemessenen Messstellen haben eine Quelle.', {}, WARTEN)).toBeInTheDocument();
-    expect(screen.queryByRole('table')).toBeNull();
+    expect(await screen.findByText('An der Anlage Halle 3 Dach hängt keine Messstelle.', {}, WARTEN)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(ANLAGE);
   });
 
-  it('ohne „Messen & Auswerten“: der Satz und der Weg zur Übersicht — kein Datumsfeld, keine Filter', async () => {
+  it('ohne Antwort heißt sie „diese Anlage“', async () => {
+    window.history.replaceState(null, '', `#/portfolio/messstellen?anlage=${ANLAGE}`);
+    telefon(false);
+    verdrahte(ohneTreffer);
+    vi.spyOn(api, 'listSites').mockRejectedValue(new Error('nicht erreichbar'));
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    expect(await screen.findByText('An dieser Anlage hängt keine Messstelle.', {}, WARTEN)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(ANLAGE);
+  });
+});
+
+describe('Messstellen · „Stand an einem Tag ansehen“', () => {
+  it('aus dem Menü ein Tag: die Plan-Marke „Stand …“, die Reihen dieses Tags, benannt was es noch nicht gab - und kein Schreibweg', async () => {
+    telefon(false);
+    const register = verdrahte();
+    const onOeffnen = vi.fn();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onOeffnen={onOeffnen} />);
+    await screen.findAllByTestId('messstelle-reihe');
+    await menue(/^Stand an einem Tag ansehen/);
+    await waehleTag('2026-10-10');
+    await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
+    expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10', letzterMonat: true });
+    expect(window.location.hash).toBe('#/portfolio/messstellen?stand=2026-10-10');
+    // Eine Reihe öffnet die Messstelle an genau diesem Tag (AP-13 IP-3) - als Verweis und als Klick.
+    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10&stand=2026-10-10`), WARTEN);
+    fireEvent.click(reiheVon('MS-06'));
+    expect(onOeffnen).toHaveBeenCalledWith(MS06, '2026-10-10');
+    const nochNicht = await screen.findByTestId('messstellen-noch-nicht', {}, WARTEN);
+    expect(nochNicht).toHaveTextContent('Am 10.10.2026 noch nicht im Portal');
+    expect(nochNicht).toHaveTextContent('Am 10.10.2026 gab es MS-16 „Netzbezug Lindach“ im Portal noch nicht.');
+    expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück zu heute' }));
+    await waitFor(() => expect(screen.queryByTestId('stand-am')).toBeNull(), WARTEN);
+    expect(window.location.hash).toBe('#/portfolio/messstellen');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument(), WARTEN);
+  });
+
+  it('am Standort stehen im Menü auch die Korrekturen', async () => {
+    telefon(false);
+    const register = verdrahte();
+    render(<MessstellenPage ebene={WERK} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    expect(register).toHaveBeenCalledWith({ standort: FIXTURE_IDS.st1, letzterMonat: true });
+    expect(screen.getByText(`Werk Ahrenberg · ${KOPF_SATZ}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
+      'Stand an einem Tag ansehenNur lesen, z. B. für eine Prüfung',
+      'Korrekturen am Standort',
+    ]);
+    // Escape schließt den Dialog; der Fokus kehrt zum Menü ⋯ zurück, nicht auf `body` (Review r4 S23).
+    vi.spyOn(api, 'korrekturen').mockResolvedValue([]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Korrekturen am Standort' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Korrekturen am Standort' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weitere Aktionen' })).toHaveFocus());
+  });
+});
+
+describe('Messstellen · Leerzustände', () => {
+  it('ohne „Messen & Auswerten“: der Satz und der Weg zur Übersicht - keine Suche, kein Anlegen', async () => {
     telefon(false);
     verdrahte(() => leeresRegister());
     const zurUebersicht = vi.fn();
@@ -234,35 +479,35 @@ describe('MessstellenPage · Filter und Leerzustände', () => {
     expect(
       await screen.findByText('Messstellen gibt es, sobald ein Standort „Messen & Auswerten“ eingerichtet hat.'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Stand am' })).toBeNull();
-    expect(screen.queryByRole('group', { name: 'Filter' })).toBeNull();
-    // E6: ohne „Messen & Auswerten“ keine Messstellen — also auch kein Anlegen.
+    expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Zur Übersicht' }));
     expect(zurUebersicht).toHaveBeenCalledTimes(1);
   });
 
-  it('eingerichtet, aber noch keine Messstelle: der Satz und „Messstelle anlegen“ (§5.11) — sonst kein Knopf ohne Ziel', async () => {
+  it('eingerichtet, aber noch keine Messstelle: der Satz, was eine Messstelle ist, und „Messstelle anlegen“', async () => {
     telefon(false);
     verdrahte(() => leeresRegister());
     render(<MessstellenPage ebene={{ art: 'standort', id: FIXTURE_IDS.st2, name: 'Werk Lindach' }} bereichDa />);
     expect(await screen.findByText('Noch keine Messstelle in Werk Lindach.')).toBeInTheDocument();
-    // Die Begriffs-Erklärungen (K3) sind ⓘ-Knöpfe mit eigenem Ziel — gezählt werden die Handlungen der Seite.
-    expect(screen.getAllByRole('button').filter((b) => !b.closest('[data-testid="begriffe"]')).map((b) => b.textContent)).toEqual(['Messstelle anlegen']);
+    expect(
+      screen.getByText('Eine Messstelle ist jeder Zähler, den Sie auswerten wollen – automatisch von einem Gerät oder zum Ablesen von Hand.'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Messstelle anlegen']);
   });
 
-  it('ein Ladefehler wird genannt und lässt sich wiederholen', async () => {
+  it('ein Ladefehler sagt, dass die Daten nicht betroffen sind, und lässt sich wiederholen', async () => {
     telefon(false);
     const register = vi.spyOn(api, 'messstellenRegister').mockRejectedValueOnce(new Error('503'));
     register.mockImplementation(async (a = {}) => ahrenbergRegister(a));
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Die Messstellen konnten nicht geladen werden.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Die Messstellen ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.');
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
-    await screen.findByRole('table');
+    await screen.findAllByTestId('messstelle-reihe');
   });
 });
 
-describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6)', () => {
+describe('Messstellen · „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6)', () => {
   function dialogGestellt() {
     vi.spyOn(api, 'kennzeichenVorschlag').mockResolvedValue({ kennzeichen: VORSCHLAG });
     vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
@@ -271,13 +516,13 @@ describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 
     );
   }
 
-  it('der Kopf öffnet den Dialog mit dem Standort als Vorgabe; hat ein Schritt gespeichert, liest das Register nach dem Schließen neu', async () => {
+  it('der Kopf öffnet den Dialog mit dem Standort als Vorgabe; hat ein Schritt gespeichert, liest die Liste nach dem Schließen neu', async () => {
     telefon(false);
     const register = verdrahte();
     dialogGestellt();
     const anlegen = vi.spyOn(api, 'messstelleAnlegen').mockResolvedValue(messstelleAngelegt());
     render(<MessstellenPage ebene={WERK} bereichDa />);
-    await screen.findByRole('table', {}, WARTEN);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
 
     fireEvent.click(screen.getByRole('button', { name: 'Messstelle anlegen' }));
     const dialog = await screen.findByRole('dialog', { name: 'Messstelle anlegen' });
@@ -293,13 +538,13 @@ describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 
     }
     fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter: Zuordnung' }));
     await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
-    // §5.1 „Vorgabe: Standort“ — die Seite ist Werk Ahrenberg.
+    // §5.1 „Vorgabe: Standort“ - die Seite ist Werk Ahrenberg.
     await waitFor(() => expect(within(dialog).getByRole('combobox', { name: 'Ort' }).textContent).toContain('Werk Ahrenberg'));
 
     const vorher = register.mock.calls.length;
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(register.mock.calls.length).toBeGreaterThan(vorher));
-    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1 });
+    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1, letzterMonat: true });
   });
 
   it('ohne Speichern geschlossen: kein neues Lesen', async () => {
@@ -307,7 +552,7 @@ describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 
     const register = verdrahte();
     dialogGestellt();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table', {}, WARTEN);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
     fireEvent.click(screen.getByRole('button', { name: 'Messstelle anlegen' }));
     await screen.findByRole('dialog', { name: 'Messstelle anlegen' });
     await waitFor(() => expect(api.kennzeichenVorschlag).toHaveBeenCalled());
@@ -316,76 +561,156 @@ describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Messstelle anlegen' })).toBeNull());
     expect(register.mock.calls.length).toBe(vorher);
   });
-
-  it('mit „Stand am“ gibt es keinen Schreibweg — der Knopf verschwindet', async () => {
-    telefon(false);
-    verdrahte();
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await screen.findByRole('table', {}, WARTEN);
-    expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument();
-    await waehleTag('2026-10-10');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Zurück zu heute' })).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
-  });
 });
 
-describe('MessstellenPage · Einstieg in die Werte (UEMS AP-13 IP-3, O13)', () => {
-  const MS06 = '3e000000-0000-4000-8000-000000000006';
-  const zeileVon = (kz: string) => zeilen().find((z) => z.querySelector('td')?.textContent === kz)!;
+describe('Messstellen · geplante Messstellen (Konzept Auswerten a1, Entscheid 9)', () => {
+  /** MB-1 an Halle 1 (Struktur, Frist 31.03.2027) an EE-8 - wie die Bühne der Messplanung. */
+  const halle1 = (over: Partial<Messbedarf> = {}): Messbedarf =>
+    mb1({
+      ort_ziel: { id: REGISTER_ORT_IDS['G-1'], art: 'gebaeude', kurzzeichen: 'G-1', name: 'Halle 1', standort_id: FIXTURE_IDS.st1, standort_name: 'Werk Ahrenberg' },
+      messgroesse: 'Wirkenergie',
+      richtung: 'Bezug',
+      ...over,
+    });
+  function plan(bedarfe: Messbedarf[]) {
+    vi.spyOn(api, 'messbedarfeAlle').mockResolvedValue({ messbedarfe: bedarfe });
+    vi.spyOn(api, 'energieeinsaetze').mockResolvedValue({ energieeinsaetze: [ee8()] });
+  }
+  const geplante = () => screen.getAllByTestId('geplante-messstelle');
+  const karteVon = (ort: string) => screen.getAllByTestId('messstellen-ort').find((k) => within(k).getByRole('heading', { level: 2 }).textContent === ort)!;
 
-  it('am Rechner: der letzte Wert und das Zeilenmenü „Werte“ öffnen die Seite mit dem Vortag (heute 20.10.2026)', async () => {
+  it('ein offener Messbedarf steht an seinem Ort nach den Messstellen: Einsatz, Frist, „Einrichten“ - und das Ziel der Wiedervorlage', async () => {
     telefon(false);
     verdrahte();
-    const onWerte = vi.fn();
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onWerte={onWerte} />);
-    await screen.findByRole('table');
-    // Die Spalte des Zeilenmenüs hat keinen sichtbaren Kopf, nur einen für Vorleser.
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
-      'Kennzeichen',
-      'Name',
-      'Ort',
-      'Elektrische Stellung',
-      'Quelle (führend)',
-      'Zustand',
-      'Letzter Wert',
-      'Aktionen',
-    ]);
-    const ms06 = zeileVon('MS-06');
-    fireEvent.click(within(ms06).getByRole('button', { name: /^Werte MS-06: Wirkleistung/ }));
-    expect(onWerte).toHaveBeenLastCalledWith(MS06, '2026-10-19');
-    fireEvent.click(within(ms06).getByRole('button', { name: 'Aktionen' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Werte' }));
-    expect(onWerte).toHaveBeenCalledTimes(2);
-    expect(onWerte).toHaveBeenLastCalledWith(MS06, '2026-10-19');
-    // Ohne Wert kein Knopf am Strich — das Zeilenmenü bleibt der Weg.
-    expect(within(zeileVon('MS-21')).queryByRole('button', { name: /^Werte / })).toBeNull();
-    expect(within(zeileVon('MS-21')).getByRole('button', { name: 'Aktionen' })).toBeInTheDocument();
+    plan([halle1(), halle1({ id: 'mb-9', kennzeichen: 'MB-9', zustand: 'verworfen', begruendung: 'nicht nötig' })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(geplante()).toHaveLength(1);
+    const karte = karteVon('Halle 1');
+    expect(within(karte).getAllByRole('listitem').at(-1)).toContainElement(mb);
+    expect(within(karte).getByText(/Werk Ahrenberg · 2 · 1 geplant/)).toBeInTheDocument();
+    expect(mb.textContent).toContain('Lüftung, Beleuchtung und Allgemeinstrom Halle 1');
+    expect(mb.querySelector('.vp-ms-reihe-satz')?.textContent).toBe('Geplant für EE-8 Gebäudetechnik Halle 1Frist 31.03.2027');
+    expect(mb.querySelector('.vp-ms-frist')?.textContent).toBe('Frist 31.03.2027');
+    expect(mb.textContent).toContain('Noch nicht eingerichtet');
+    expect(within(mb).getByRole('link', { name: 'EE-8 Gebäudetechnik Halle 1' })).toHaveAttribute('href', `#/portfolio/verbrauch/${ee8().id}`);
+    expect(mb).toHaveAttribute('data-entscheid', 'messbedarf_frist');
+    expect(mb).toHaveAttribute('data-entscheid-kennzeichen', 'MB-1');
+    expect(within(mb).getByRole('button', { name: 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1 (MB-1) einrichten' })).toHaveAttribute('data-entscheid-schritt');
+    // Geplante zählen nicht zu den Messstellen; die Marke filtert auf sie.
+    expect(document.querySelector('.vp-ms-treffer')?.textContent).toMatch(/Messstellen an \d+ Orten · 1 geplant$/);
+    fireEvent.click(within(screen.getByTestId('messstellen-marken')).getByRole('button', { name: '1 geplant' }));
+    expect(screen.queryAllByTestId('messstelle-reihe')).toHaveLength(0);
+    expect(geplante()).toHaveLength(1);
+    expect(document.querySelector('.vp-ms-treffer')?.textContent).toBe('1 geplante Messstelle');
+    expect(within(karteVon('Halle 1')).getByText('Werk Ahrenberg · 1 geplant')).toBeInTheDocument();
   });
 
-  it('mit „Stand am 10.10.2026“ öffnet der Einstieg diesen Tag', async () => {
+  it('ein zitierter Bedarf (Review r4 M4): statt „Einrichten“ der Satz mit den Ständen - und der Blick der Wiedervorlage landet darauf', async () => {
     telefon(false);
     verdrahte();
-    const onWerte = vi.fn();
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onWerte={onWerte} />);
-    await screen.findByRole('table');
-    await waehleTag('2026-10-10');
-    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Zustand (heute)' })).toBeInTheDocument(), WARTEN);
-    await waitFor(() => expect(zeileVon('MS-06')).toBeTruthy(), WARTEN);
-    fireEvent.click(within(zeileVon('MS-06')).getByRole('button', { name: 'Aktionen' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Werte' }));
-    expect(onWerte).toHaveBeenLastCalledWith(MS06, '2026-10-10');
+    plan([halle1({ einloesbar: false, zitiert_von: [{ kennung: 'BR-2026-0002', nr: 1 }, { kennung: 'BR-2029-0002', nr: 1 }] })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(within(mb).queryByRole('button')).toBeNull();
+    const satz = within(mb).getByTestId('geplante-zitiert');
+    expect(satz.textContent).toBe('2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2029-0002 Nr. 1) - er bleibt, wie er ist.');
+    zumEntscheid(mb);
+    expect(satz).toHaveFocus();
   });
 
-  it('am Telefon: die ganze Karte ist der Einstieg — nicht der Weg auf die Seite ohne Periode', async () => {
-    telefon(true);
+  it('eine überschrittene Frist: die Hinweiskarte nennt sie und filtert auf die geplanten', async () => {
+    telefon(false);
     verdrahte();
-    const onWerte = vi.fn();
-    const onOeffnen = vi.fn();
-    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onOeffnen={onOeffnen} onWerte={onWerte} />);
-    const karten = await screen.findAllByRole('listitem');
-    expect(karten[5]).toHaveClass('is-werte');
-    fireEvent.click(within(karten[5]).getByRole('button', { name: 'Spritzguss SG01–SG06' }));
-    expect(onWerte).toHaveBeenCalledWith(MS06, '2026-10-19');
-    expect(onOeffnen).not.toHaveBeenCalled();
+    plan([halle1({ frist: '2026-09-30' })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const karte = await screen.findByRole('button', { name: /MB-1\) ist noch nicht eingerichtet/ }, WARTEN);
+    expect(karte.textContent).toContain('Frist 30.09.2026 überschritten · Halle 1');
+    fireEvent.click(karte);
+    expect(screen.queryAllByTestId('messstelle-reihe')).toHaveLength(0);
+    expect(geplante()[0].textContent).toContain('Frist 30.09.2026 überschritten');
+    expect(geplante()[0]).toHaveClass('is-hinweis');
+  });
+
+  it('ohne Recht, Energieeinsätze zu verwalten: lesen ja, „Einrichten“ und „Messbedarf erfassen“ nein', async () => {
+    telefon(false);
+    setSelbstauskunft(rechteSeed('PH').me);
+    verdrahte();
+    plan([halle1()]);
+    render(<MessstellenPage ebene={WERK} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(within(mb).queryByRole('button')).toBeNull();
+    expect(mb.textContent).toContain(OHNE_ANGABE);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(await screen.findAllByRole('menuitem')).not.toHaveLength(0);
+    expect(screen.queryByRole('menuitem', { name: /Messbedarf erfassen/ })).toBeNull();
+  });
+
+  it('ohne Recht, Energieeinsätze zu sehen, fragt die Liste keinen Plan; 403 oder 404 heißt „nichts geplant“, anderes sagt sie', async () => {
+    telefon(false);
+    setSelbstauskunft({ ...rechteSeed('MD').me, standorte: rechteSeed('MD').me.standorte.map((st) => ({ ...st, rechte: st.rechte.filter((r) => !r.startsWith('energieeinsatz')) })) });
+    verdrahte();
+    const { unmount } = render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
+    expect(api.messbedarfeAlle).not.toHaveBeenCalled();
+    unmount();
+
+    setSelbstauskunft(rechteSeed('JW').me);
+    vi.spyOn(api, 'messbedarfeAlle').mockRejectedValue(new ApiError(404, 'nicht gefunden', { code: 'nicht_gefunden' }));
+    const zweit = render(<MessstellenPage ebene={WERK} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
+    await waitFor(() => expect(api.messbedarfeAlle).toHaveBeenCalledWith(FIXTURE_IDS.st1));
+    expect(screen.queryByTestId('geplante-fehler')).toBeNull();
+    zweit.unmount();
+
+    const fehlt = vi.spyOn(api, 'messbedarfeAlle').mockRejectedValueOnce(new Error('Netz weg')).mockResolvedValue({ messbedarfe: [halle1()] });
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    expect(await screen.findByTestId('geplante-fehler', {}, WARTEN)).toHaveTextContent('Die geplanten Messstellen ließen sich gerade nicht laden.');
+    fireEvent.click(within(screen.getByTestId('geplante-fehler')).getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await screen.findByTestId('geplante-messstelle', {}, WARTEN)).toBeInTheDocument();
+    expect(fehlt).toHaveBeenCalledTimes(2);
+  });
+
+  it('„Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs (derselbe Weg wie am Einsatz)', async () => {
+    telefon(false);
+    verdrahte();
+    plan([halle1()]);
+    const routen = messplanungRouten('2026-10-20', 'JW', [halle1()]);
+    vi.spyOn(api, 'kennzeichenVorschlag').mockImplementation(routen.kennzeichenVorschlag);
+    vi.spyOn(api, 'standorte').mockImplementation(routen.standorte);
+    vi.spyOn(api, 'standortOrte').mockImplementation(routen.standortOrte);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    fireEvent.click(within(mb).getByRole('button', { name: /einrichten$/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Messstelle anlegen' });
+    await waitFor(() => expect((within(dialog).getByLabelText('Kennzeichen') as HTMLInputElement).value).toBe('MS-23'));
+    expect(within(dialog).getByRole('combobox', { name: 'Hauptgröße *' }).textContent).toContain('Wirkenergie');
+    expect(within(dialog).getByRole('combobox', { name: 'Richtung *' }).textContent).toContain('Bezug');
+  });
+
+  it('„Messbedarf erfassen“ im Menü: an einem laufenden Einsatz; danach steht der Bedarf als geplante Messstelle in der Liste', async () => {
+    telefon(false);
+    verdrahte();
+    plan([]);
+    const routen = messplanungRouten('2026-10-20', 'JW', []);
+    vi.spyOn(api, 'standorte').mockImplementation(routen.standorte);
+    vi.spyOn(api, 'standortOrte').mockImplementation(routen.standortOrte);
+    const erfassen = vi.spyOn(api, 'messbedarfErfassen').mockImplementation(routen.messbedarfErfassen);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
+    await waitFor(() => expect(api.energieeinsaetze).toHaveBeenCalled());
+    await menue(/^Messbedarf erfassen/);
+    const dialog = await screen.findByRole('dialog', { name: 'Messbedarf erfassen' });
+    // Nur ein laufender Einsatz: er steht fest.
+    expect(dialog.textContent).toContain('EE-8 Gebäudetechnik Halle 1');
+    fireEvent.change(within(dialog).getByLabelText('Was soll gemessen werden?'), { target: { value: 'Druckluft Halle 2' } });
+    vi.spyOn(api, 'messbedarfeAlle').mockImplementation(routen.messbedarfeAlle);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Messbedarf erfassen' }));
+    await waitFor(() => expect(erfassen).toHaveBeenCalledWith(ee8().id, expect.objectContaining({ wortlaut: 'Druckluft Halle 2' })));
+    expect(await screen.findByTestId('geplante-satz', {}, WARTEN)).toHaveTextContent(
+      'Messbedarf MB-1 ist erfasst und steht als geplante Messstelle in der Liste.',
+    );
+    expect((await screen.findAllByTestId('geplante-messstelle', {}, WARTEN))[0].textContent).toContain('Druckluft Halle 2');
+    expect(within(karteVon('Kein Ort zugeordnet')).getAllByTestId('geplante-messstelle')).toHaveLength(1);
   });
 });

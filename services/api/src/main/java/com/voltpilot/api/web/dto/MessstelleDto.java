@@ -288,10 +288,13 @@ public final class MessstelleDto {
 
     /**
      * {@code stand = ablesung}: die Werte kommen aus Ablesungen (AP-09 IP-8) — seit wann die Ablesungs-Quelle führt und
-     * wann zuletzt abgelesen wurde ({@code null} = noch nie). Bei jedem anderen Stand fehlt das Feld.
+     * wann zuletzt abgelesen wurde ({@code null} = noch nie). {@code faellig_ab} (Messen-Bau m2, additiv): ab wann die
+     * nächste Ablesung fehlt — derselbe Zeitpunkt wie in der Beobachtung, die letzte Ablesung plus zwei Kalendermonate
+     * ({@link com.voltpilot.api.uems.AblesungRegeln#ueberfaelligAb}), ohne Ablesung der Beginn der Quelle. Das Portal
+     * nennt damit „Nächste Ablesung“, ohne die Regel selbst zu rechnen. Bei jedem anderen Stand fehlt das Feld.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record RegisterAblesung(OffsetDateTime seit, OffsetDateTime zuletzt) {}
+    public record RegisterAblesung(OffsetDateTime seit, OffsetDateTime zuletzt, OffsetDateTime faelligAb) {}
 
     /**
      * Eine führende Bindung, wie das Register sie nennt: Komponente, Messwert (Kanal und sein

@@ -68,12 +68,37 @@ public final class KostenstelleEnergieDto {
      * @param herkunft die Hülle {@code {satz, fehlt}} nach {@code bilanzwert-herkunft.schema.json} (Art
      *     {@code verteilt}); bei {@code nicht_verteilt} {@code null} — dort gibt es keine Verteilung; die Rechnung
      *     einer berechneten Messstelle steht je Tag an {@code tage[].herkunft}
+     * @param monate NUR an einer Messstelle aus Ablesungen über Monat oder Jahr (Messen PR4): je Monat der Anteil der
+     *     Ablesezeiträume, die ihm zugeordnet sind - {@code tage} ist dann leer. Sonst fehlt das Feld, und die Antwort
+     *     bleibt Zeichen für Zeichen die von vorher.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Posten(MessstelleRef messstelle, String groesse, String richtung, String einheit, BigDecimal menge,
             String zustand, Integer abdeckungProzent, int version, List<String> kennzeichen, List<Integer> fassungen,
-            List<String> fehlend, List<Tag> tage, Map<String, Object> herkunft) {}
+            List<String> fehlend, List<Tag> tage, Map<String, Object> herkunft,
+            @JsonInclude(JsonInclude.Include.NON_NULL) List<Monat> monate) {}
+
+    /**
+     * Ein Monat eines Postens aus Ablesungen (Messen PR4, Konzept §10.3): die Menge des Monats ({@code quelle_menge},
+     * aus den Ablesezeiträumen, die der Kunde ihm zugeordnet hat), der Anteil, der an JEDEM Tag dieser Zeiträume galt,
+     * und der Teil daraus. Wechselt der Anteil mitten in einem Zeitraum, sind {@code anteil_prozent} und {@code menge}
+     * {@code null}, {@code grund} {@code anteil_wechselt_im_ablesezeitraum} und {@code geaendert_am} der Tag des
+     * Wechsels; ohne gespeicherten Monat {@code keine_ablesung}.
+     *
+     * @param monat JJJJ-MM
+     * @param ablesezeitraeume die Zeiträume des Monats, halboffen, als Zeitpunkte mit Versatz in der Zone der Messstelle
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Monat(String monat, List<Ablesezeitraum> ablesezeitraeume, BigDecimal anteilProzent,
+            BigDecimal quelleMenge, BigDecimal menge, String zustand, Integer abdeckungProzent, int version,
+            String grund, LocalDate geaendertAm) {}
+
+    /** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung, {@code bis} ausschließlich. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Ablesezeitraum(String von, String bis) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)

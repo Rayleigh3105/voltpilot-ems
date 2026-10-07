@@ -104,7 +104,8 @@ for (const breite of [375, 390, 1440]) {
       await oeffne(page, 'fall=demo', breite);
       await expect(page.getByTestId('wiedervorlage-ueberfaellig').locator('.vp-wv-eintrag')).toHaveCount(7);
       await expect(page.getByTestId('wiedervorlage-eintrag-BR-2026-0001')).toContainText('10 Korrekturen nach der Freigabe');
-      // Entscheid 7: eine Runde je Ort; ihr Schritt führt ins Register des Orts, bei einem Zähler zu seiner Messstelle.
+      // Entscheid 7: eine Runde je Ort; ihr Schritt führt in die Ablese-Runde des Orts (Messen m2), bei einem Zähler zu
+      // seiner Messstelle.
       await expect(page.getByTestId('wiedervorlage-eintrag-G-1')).toContainText('8 Zähler in Halle 1 ablesen');
       await expect(page.getByTestId('wiedervorlage-eintrag-G-1')).toContainText('Zuletzt abgelesen am 01.10.2026 + 2 Monate');
       await expect(page.getByTestId('wiedervorlage-ziel-G-2')).toHaveAttribute('aria-label', 'Zähler MS-20 in Halle 2 ablesen: Ablesung eintragen');
@@ -113,7 +114,7 @@ for (const breite of [375, 390, 1440]) {
       await ablegen(page, `wiedervorlage-demo-${breite}`);
       await page.getByTestId('wiedervorlage-ziel-G-1').click();
       expect(await page.evaluate(() => (window as unknown as { __sprung: string[] }).__sprung)).toEqual([
-        '#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung',
+        '#/portfolio/messstellen?ablesen=G-1&entscheid=zaehlerablesung',
       ]);
     });
 

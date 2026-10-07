@@ -197,6 +197,27 @@ const PATHS = {
   star: (
     <path d="m12 3 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9Z" />
   ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M3 3v18h18" />
+      <path d="m7 15 4-4 3 3 5-6" />
+    </>
+  ),
+  hand: (
+    <>
+      <path d="M18 11V6a2 2 0 0 0-4 0v1" />
+      <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+      <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+    </>
+  ),
   'chevron-left': <path d="m15 18-6-6 6-6" />,
   'chevron-right': <path d="m9 18 6-6-6-6" />,
   'chevron-down': <path d="m6 9 6 6 6-6" />,
@@ -377,6 +398,21 @@ const PATHS = {
     <>
       <polyline points="16 18 22 12 16 6" />
       <polyline points="8 6 2 12 8 18" />
+    </>
+  ),
+  // Messen m1 (Bezugsgrößen, Menü ⋯): „Werte importieren“ und „Archivierte zeigen“ (Lucide "upload", "archive").
+  upload: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" x2="12" y1="3" y2="15" />
+    </>
+  ),
+  archive: (
+    <>
+      <rect width="20" height="5" x="2" y="3" rx="1" />
+      <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+      <path d="M10 12h4" />
     </>
   ),
 };

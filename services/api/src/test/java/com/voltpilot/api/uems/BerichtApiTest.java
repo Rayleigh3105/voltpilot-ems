@@ -115,6 +115,9 @@ class BerichtApiTest {
                 () -> "http://127.0.0.1:9/realms/voltpilot");
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
                 () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
+        // Die Kaskaden-Naht der Berichte (im Testlauf sonst aus): eine Berichtigung stößt einen Stand an. Sie läuft nur,
+        // wenn ein Test die Kaskade ruft; der Strukturänderungs-Läufer bleibt aus.
+        registry.add("voltpilot.uems.berichte.enabled", () -> "true");
     }
 
     @Autowired
@@ -125,6 +128,18 @@ class BerichtApiTest {
 
     @MockBean
     KennzahlAufrufer aufrufer;
+
+    @Autowired
+    AblesungService ablesungen;
+
+    @Autowired
+    MessstelleWerteService werteDienst;
+
+    @Autowired
+    MessstelleService messstellenDienst;
+
+    @Autowired
+    KorrekturKaskade kaskade;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -162,6 +177,9 @@ class BerichtApiTest {
     @AfterEach
     void uhrZurueck() {
         dienst.uhrStellen(Clock.systemUTC());
+        ablesungen.uhrStellen(Clock.systemUTC());
+        werteDienst.uhrStellen(Clock.systemUTC());
+        messstellenDienst.uhrStellen(Clock.systemUTC());
     }
 
     // =========================================================================== IP-9: die Folgen-Zeile
@@ -1119,6 +1137,84 @@ class BerichtApiTest {
         assertThat(kostenstelleIm(nachher.body().get("abzug"), "4200").path("summe").path("menge").decimalValue())
                 .as("B3 nachher").isEqualByComparingTo("14410");
         assertThat(nachher.body().get("pruefsumme").asText()).isNotEqualTo(vorher.body().get("pruefsumme").asText());
+    }
+
+    /**
+     * Messen PR4 (Verteilung 1.5, Prüfung r4 M1) über die echten Routen: MS-21 Gas Verwaltung wird abgelesen (01.10. 07:15
+     * und 02.11. 07:40, dem Oktober zugeordnet) und gehört zu 100 % der Kostenstelle 9100. Ihr Posten trägt Monate statt
+     * Tage - der Abzug zitiert MS-21 trotzdem mittelbar über die Tage des Ablesezeitraums in der Periode und nennt den
+     * Verteilungs-Satz „100 % 01.10.–31.10.“. Darum stößt die Berichtigung der Ablesung vom 02.11. den freigegebenen Stand an
+     * (B1: Zeitraum × Quellenverzeichnis).
+     */
+    @Test
+    void unternehmensberichtZitiertDenAblesezaehlerSeinerKostenstelle_dieBerichtigungStoesstDenStandAn()
+            throws Exception {
+        Welt w = welt();
+        unternehmenOktober(w);
+        // Die Freigabe braucht endgültige Werte des Berichts: der Oktober von MS-01, wie der Monatslauf ihn speichert.
+        root.update("INSERT INTO messreihe_periode (tag, art, tenant_id, entity_id, messkanal, zeitzone, zeitzone_herkunft, "
+                + "beginn, ende, stunden, teile_erwartet, teile_vorhanden, teile_endgueltig, wertart, menge, menge_zustand, "
+                + "kennzeichen, erhalten, erwartet, abdeckung_prozent, zustand, endgueltig_ab, version, berechnet_am) "
+                + "VALUES (DATE '2026-10-01', 'monat', ?, (SELECT q.entity_id FROM messstelle_quelle q JOIN messstelle m "
+                + "ON m.id = q.messstelle_id WHERE m.tenant_id = ? AND m.kennzeichen = 'MS-01'), 'energy_kwh', "
+                + "'Europe/Berlin', 'standort', ?, ?, 745, 31, 31, 31, 'counter', 128400, 'vollständig', '[]'::jsonb, "
+                + "44700, 44700, 100, 'endgueltig', ?, 1, ?)", w.mandant(), w.mandant(),
+                Timestamp.from(t("2026-10-01T00:00:00+02:00")), Timestamp.from(t("2026-11-01T00:00:00+01:00")),
+                Timestamp.from(t("2026-11-08T00:00:00+01:00")), Timestamp.from(t("2026-11-01T00:20:00+01:00")));
+        UUID ms21 = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, 'MS-21', 'Gas Heizung Verwaltung', 'gemessen', 'Gas', 'Volumen', "
+                + "'Bezug', 'm³', 'Zählerstand') RETURNING id", UUID.class, w.mandant());
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "DATE '2026-01-01')", w.mandant(), ms21, w.st1());
+        UUID k9100 = kostenstelleAnlegen(w, "9100", "Verwaltung");
+        root.update("INSERT INTO messstelle_verteilung (tenant_id, messstelle_id, kostenstelle_id, anteil_prozent, "
+                + "gueltig_ab, created_by) VALUES (?, ?, ?, 100, DATE '2026-10-01', 'test')", w.mandant(), ms21, k9100);
+        String ablesungen = "/api/v1/messstellen/MS-21/ablesungen";
+        ablesungsUhr("2026-11-10T08:00:00+01:00");
+        ok(ruf(w.jonas(), HttpMethod.POST, ablesungen, Map.of("zeitpunkt", "2026-10-01T07:15:00+02:00", "stand",
+                "48.211")), 200);
+        ok(ruf(w.jonas(), HttpMethod.POST, ablesungen, Map.of("zeitpunkt", "2026-11-02T07:40:00+01:00", "stand",
+                "49.451")), 200);
+
+        uhr("2026-11-10T08:57:00+01:00");
+        String kennung = ok(ruf(w.jonas(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(),
+                "2026-10")), 201).body().get("kennung").asText();
+        JsonNode entwurf = ok(ruf(w.jonas(), HttpMethod.GET, PFAD + "/" + kennung + "/entwurf", null), 200).body();
+        JsonNode posten = kostenstelleIm(entwurf.get("abzug"), "9100").path("gemessen").path("posten");
+        assertThat(posten).hasSize(1);
+        assertThat(posten.get(0).path("quelle").asText()).isEqualTo("MS-21");
+        assertThat(posten.get(0).path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(posten.get(0).path("saetze").toString()).as("der Satz des Ablesezeitraums in der Periode")
+                .isEqualTo("[{\"anteil_prozent\":100,\"bis\":\"2026-10-31\",\"von\":\"2026-10-01\"}]");
+        assertThat(entwurf.get("abzug").path("kopf").path("quellenverzeichnis")).extracting(JsonNode::asText)
+                .contains("9100", "MS-21");
+        assertThat(root.queryForList("SELECT bezug || ' ' || erster_tag || '…' || letzter_tag || ' v' || version "
+                + "FROM bericht_quelle WHERE tenant_id = ? AND objekt_id = ? AND stand_nr IS NULL", String.class,
+                w.mandant(), ms21)).containsExactly("mittelbar 2026-10-01…2026-10-31 v1");
+
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, PFAD + "/" + kennung + "/freigeben",
+                datenstand(entwurf.get("datenstand").asText())), 201);
+        assertThat(liste(w.ines()).get("stand_text").asText()).isEqualTo("Berichtsstand Nr. 1");
+
+        ablesungsUhr("2026-11-12T10:00:00+01:00");
+        ok(ruf(w.jonas(), HttpMethod.POST, ablesungen + "/2026-11-02T07:40:00+01:00/berichtigung", Map.of("stand",
+                "49.500", "begruendung", "Ablesefehler - eine Ziffer vertauscht (Foto vom 02.11.)")), 200);
+        kaskade.lauf(t("2026-11-12T10:05:00+01:00"));
+        uhr("2026-11-12T11:00:00+01:00");
+        JsonNode eintrag = liste(w.ines());
+        assertThat(eintrag.get("stand_zeichen").asText()).as("der freigegebene Stand zitiert MS-21")
+                .isEqualTo("revision_noetig");
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht_revision_anstoss a JOIN bericht_stand s "
+                + "ON s.id = a.stand_id WHERE a.tenant_id = ? AND s.nr = 1", Long.class, w.mandant())).isEqualTo(1);
+    }
+
+    /** Die Uhr der Ablesungen und ihres Lese-Modells - eine Ablesung aus der Zukunft wird abgelehnt. */
+    private void ablesungsUhr(String zeit) {
+        Clock uhr = Clock.fixed(t(zeit), ZoneOffset.UTC);
+        ablesungen.uhrStellen(uhr);
+        werteDienst.uhrStellen(uhr);
+        messstellenDienst.uhrStellen(uhr);
     }
 
     /**

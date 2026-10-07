@@ -34,6 +34,9 @@ export type IconName =
   | 'eye'
   | 'eye-off'
   | 'star'
+  | 'target'
+  | 'chart'
+  | 'hand'
   | 'chevron-left'
   | 'chevron-right'
   | 'chevron-down'
@@ -54,7 +57,9 @@ export type IconName =
   | 'layers'
   | 'sliders'
   | 'smartphone'
-  | 'code';
+  | 'code'
+  | 'upload'
+  | 'archive';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   name: IconName;

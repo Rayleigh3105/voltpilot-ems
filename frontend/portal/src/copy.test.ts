@@ -1598,7 +1598,19 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'pages/KennzahlenPage.tsx',
     // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
     'components/KennzahlListe.tsx',
+    // Konzept Auswerten a1 (PR1): die Liste mit Urteil, Gruppen und Mini-Grafiken - ihr reines Modell, ihre Bausteine,
+    // ihre Bühnen-Welt und die geteilten Urteils-Wörter.
+    'kennzahlListe.ts',
+    'components/KennzahlenAuswertung.tsx',
+    'test/kennzahlListeFixtures.ts',
+    'bezugsbasisUrteil.ts',
     'pages/KennzahlSeite.tsx',
+    // Konzept Auswerten a1 (PR2): die Seite einer Kennzahl ohne Reiter, ihre Bezugsbasis eine Ebene tiefer, ihr reines
+    // Modell und ihre Bühnen-Welt.
+    'kennzahlSeite.ts',
+    'test/kennzahlSeiteFixtures.ts',
+    'pages/BezugsbasisEbene.tsx',
+    'bezugsbasisEbene.ts',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',
     // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl (eine Welt) und seine Leser-Antworten der Bühne.
@@ -1650,7 +1662,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
       for (const e of v.entscheidungen) out.push(e.vorgang, ...[e.fassung?.wer, e.fassung?.warum, e.angelegt?.wer].filter(da));
     }
     out.push(
-      KK.TITEL, KK.LADEN, KK.LADEFEHLER, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
+      KK.TITEL, KK.LADEN, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
       KK.AUSSERHALB_ZUGRIFF, KK.KARTE_VERLAUF, KK.KARTE_HERKUNFT, KK.KARTE_BERECHNUNG, KK.KARTE_STAMMDATEN, KK.FASSUNGEN_TITEL,
       KK.PERIODE_WAHL, KK.OHNE_ZWECK, KK.SEIT_BEGINN, KK.HERKUNFT_FEHLT,
       ...Object.values(KK.PERIODEN_NAME), ...Object.values(KK.GELTUNG_WORT), ...Object.values(KK.FEHLT_WORT),
@@ -1695,6 +1707,17 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
     expect(texte.filter((t) => MITTEL_VERBOTEN.test(t))).toEqual([]);
     expect(texte.filter((t) => ROLLEN_VERBOTEN.test(t))).toEqual([]);
+  });
+
+  it('Konzept Auswerten a1 (Wörter): Seite einer Kennzahl und Bezugsbasis sprechen ohne „Roh“, „Urteil (Band)“ und K1-K8', () => {
+    // §8.3: „Roh · Urteil (Band)“ wird „ggü. Vormonat“ und „Urteil“; Kriterien heißen in Worten, nie K1 bis K8 (§10.10).
+    const auswerten = ['kennzahlSeite.ts', 'pages/KennzahlSeite.tsx', 'bezugsbasisEbene.ts', 'pages/BezugsbasisEbene.tsx', 'bezugsbasisVergleich.ts', 'kennzahlListe.ts', 'components/KennzahlenAuswertung.tsx'];
+    const verbotenAuswerten = /(^|[^\p{L}])(Roh|K[1-8])([^\p{L}\p{N}]|$)|Urteil \(Band\)/u;
+    const treffer = auswerten.flatMap((rel) =>
+      // Jede sichtbare Zeichenkette, auch ein einzelnes Wort („Roh“ ist kurz genug, um den Kundentext-Filter zu umgehen).
+      visibleTexts(readFileSync(join(SRC, rel), 'utf8')).filter((t) => verbotenAuswerten.test(t)).map((t) => `${rel}: ${t}`),
+    );
+    expect(treffer).toEqual([]);
   });
 
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
@@ -1954,7 +1977,6 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
-  'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
   'portfolioCockpit.ts', // alt
   'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
@@ -2146,6 +2168,7 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       ...Object.values(EB.AUSSERHALB_SATZ),
       EB.KEIN_UNTERZAEHLER,
       EB.HILFE_NEGATIV,
+      EB.HILFE_NEGATIV_VERBRAUCH,
       EB.LIVE_JETZT,
       EB.LIVE_STAND,
       EB.FUSS_ZONE,
@@ -2505,6 +2528,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/BewertungBaustein.tsx',
     // IP-25: der Bewertungsstand — Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV.
     'components/BewertungStand.tsx',
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ liest Rangliste und Messabdeckung — der Satz steht am Fuß.
+    'pages/VerbrauchPage.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,
@@ -2601,6 +2626,19 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
       'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
       UEMS_NORMGRENZE,
     ]);
+  });
+
+  it('die Ergebnis-Seite nennt kein Kürzel K1 bis K8, kein „Roh“ und kein „Urteil (Band)“ (Konzept Auswerten a1 §10.10)', () => {
+    // Die Kürzel stehen nur im Dialog „Kriterien ändern“ (Wort und Kürzel, `bewertungErgebnis.KRITERIEN_FELDER`).
+    const kuerzel = /(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)|(^|[^\p{L}])Roh([^\p{L}]|$)|Urteil \(Band\)/u;
+    // Die Seitenhülle und der Bewertungsstand; die Sätze aus `bewertungErgebnis.ts` prüft `bewertungErgebnis.test.ts`
+    // an ihrem Ergebnis (jeder Text der Ergebnis-Seite ohne Kürzel).
+    for (const datei of ['pages/BewertungPage.tsx', 'components/BewertungStand.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8'));
+      expect(texte.length, datei).toBeGreaterThan(5);
+      expect(texte.filter((t) => kuerzel.test(t)), datei).toEqual([]);
+    }
+    expect(kuerzel.test('Er braucht mindestens 10 % des Stroms (K1).')).toBe(true);
   });
 });
 
@@ -3934,5 +3972,80 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
     expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
+  });
+});
+
+describe('Konzept Messen m1 · „Woher die Werte kommen“: Liste und Dialog sprechen dieselben Glossarwörter', () => {
+  it('die Spalte der Liste, die zwei Wege des Dialogs und das Wort ohne Weg kommen aus dem Glossar', async () => {
+    const g = await import('./glossar');
+    const liste = await import('./messstellenListe');
+    const dialog = await import('./messstelleDialog');
+    expect(g.UEMS_WOHER_DIE_WERTE).toBe('Woher die Werte kommen');
+    expect(liste.SPALTE.woher).toBe(g.UEMS_WOHER_DIE_WERTE);
+    expect(dialog.WEG.geraet.titel).toBe(g.UEMS_WEG_GERAET);
+    expect(dialog.WEG.ablesen.titel).toBe(g.UEMS_WEG_ABLESEN);
+    expect(dialog.ABLESERHYTHMUS.label).toBe(g.UEMS_ABLESERHYTHMUS);
+    expect(liste.WEG_WORT.ohne).toBe(g.UEMS_NOCH_KEINE_QUELLE);
+    expect(liste.NOCH_KEINE_QUELLE).toBe('Noch keine Quelle · zuordnen');
+  });
+
+  it('die Seite einer Messstelle spricht dieselben Glossarwörter: Karte „Zuordnung“, „Im Stromnetz“, „Nächste Ablesung“, ein Schritt', async () => {
+    const g = await import('./glossar');
+    const seite = await import('./messstelleSeite');
+    const zuordnung = await import('./messstelleZuordnung');
+    expect(seite.ZUORDNUNG).toBe(g.UEMS_ZUORDNUNG);
+    expect(seite.NAECHSTE_ABLESUNG).toBe(g.UEMS_NAECHSTE_ABLESUNG);
+    expect(seite.ABLESUNG_EINTRAGEN).toBe(g.UEMS_ABLESUNG_EINTRAGEN);
+    expect(zuordnung.ZEILE_ETIKETT).toEqual({ ort: 'Ort', stellung: g.UEMS_IM_STROMNETZ, prozesse: g.UEMS_PROZESS, verteilung: 'Kostenstellen' });
+    // Die Karte heißt nicht mehr „Ort · Elektrisch · Organisation“, und „Ändern ab …“ ist ein „Ändern“.
+    const texte = visibleTexts(readFileSync(join(SRC, 'pages/MessstelleSeite.tsx'), 'utf8')).filter(isKundentext);
+    expect(texte.filter((t) => /^(Elektrisch|Organisation)$|Ändern ab …|Keine Datenquelle/.test(t))).toEqual([]);
+  });
+
+  it('die Ablese-Runde je Gebäude spricht das Glossarwort: „Ablesen ›“ in der Liste, „Halle 1 ablesen“ als Titel', async () => {
+    const g = await import('./glossar');
+    const runde = await import('./ableseRunde');
+    expect(runde.ABLESEN).toBe(g.UEMS_ABLESEN);
+    expect(g.UEMS_ABLESEN).toBe('Ablesen');
+  });
+
+  it('die Liste zeigt keine Datenmodell-Wörter mehr: kein „Quelle (führend)“, kein „Keine Datenquelle“, kein „Summenwert anlegen“', () => {
+    for (const datei of ['pages/MessstellenPage.tsx', 'messstellenListe.ts']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.filter((t) => /Quelle \(führend\)|Keine Datenquelle|Summenwert anlegen|Elektrische Stellung/.test(t)), datei).toEqual([]);
+    }
+  });
+});
+
+describe('Konzept Messen m1 · Kostenstellen, Prozesse, Bezugsgrößen: „Antwort zuerst“ (§8.2)', () => {
+  const DATEIEN = [
+    'kostenstellenUebersicht.ts',
+    'pages/KostenstellenSection.tsx',
+    'bezugsgroessenUebersicht.ts',
+    'pages/BezugsgroessenPage.tsx',
+    'pages/BezugsgroesseSeite.tsx',
+  ];
+
+  it('kein Satz über das, was es nicht gibt, kein Datenmodell-Wort, keine Zeitzonen-Kennung im Satz', () => {
+    for (const datei of DATEIEN) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.length, datei).toBeGreaterThan(3);
+      expect(
+        texte.filter((t) => /nicht summierbar|Keine Prozess-Summe|Art nicht angegeben|Nicht verteilt|Datenquelle|kein_tageswert|Europe\/[A-Z]/.test(t)),
+        datei,
+      ).toEqual([]);
+    }
+  });
+
+  it('die Fachwörter erklärt ein Satz unter dem Titel und der Aufklapper „Was ist …?“ (Kostenstelle, Prozess, Bezugsgröße)', async () => {
+    const { BEGRIFFE } = await import('./begriffe');
+    const g = await import('./glossar');
+    expect(BEGRIFFE.kostenstelle).toMatchObject({ wort: g.UEMS_KOSTENSTELLE, frage: 'Was ist eine Kostenstelle?' });
+    expect(BEGRIFFE.prozess).toMatchObject({ wort: g.UEMS_PROZESS, frage: 'Was ist ein Prozess?' });
+    expect(BEGRIFFE.bezugsgroesse.frage).toBe('Was ist eine Bezugsgröße?');
+    for (const b of [BEGRIFFE.kostenstelle, BEGRIFFE.prozess, BEGRIFFE.bezugsgroesse]) {
+      expect(b.klartext.length).toBeGreaterThan(20);
+      expect(b.abgrenzung).toMatch(/^(Nicht dasselbe wie|Erst mit ihr)/);
+    }
   });
 });
