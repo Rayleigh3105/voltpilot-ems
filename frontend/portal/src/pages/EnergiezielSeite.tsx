@@ -57,7 +57,6 @@ export function EnergiezielSeite({
   const [versuch, setVersuch] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [anstoss, setAnstoss] = useState<VorgangAnstoss | null>(null);
-  const [beobachtet, setBeobachtet] = useState<Record<string, string>>({});
   const [verlaufOffen, setVerlaufOffen] = useState(false);
   const rollen = useRollen();
   const sub = rollen.selbst?.kennung ?? null;
@@ -93,27 +92,6 @@ export function EnergiezielSeite({
       aktiv = false;
     };
   }, [id, versuch]);
-
-  // Was eine umgesetzte Maßnahme an derselben Kennzahl beobachtet - die Wirkung der Route, je Maßnahme einmal.
-  useEffect(() => {
-    if (lage.art !== 'da' || !lage.massnahmen) return;
-    let aktiv = true;
-    const umgesetzt = [...lage.massnahmen.fuer, ...lage.massnahmen.imStand].filter((m) => m.messgrundlage && m.umgesetzt_am);
-    for (const m of umgesetzt) {
-      api.massnahmeWirkung(m.id).then(
-        (w) => {
-          const summe = w.summe;
-          if (!aktiv || !summe || summe.delta_prozent === null) return;
-          const text = summe.richtung === 'gleich' ? 'wie erwartet' : `${B.prozent(summe.delta_prozent)} ${summe.richtung}`;
-          setBeobachtet((b) => ({ ...b, [m.id]: text }));
-        },
-        () => undefined,
-      );
-    }
-    return () => {
-      aktiv = false;
-    };
-  }, [lage]);
 
   const zurueck = (
     <button type="button" className="vp-ezl-zurueck" onClick={onListe}>
@@ -298,7 +276,7 @@ export function EnergiezielSeite({
           ) : (
             <div className="vp-ezl-liste">
               {lage.massnahmen.fuer.map((m) => (
-                <MassnahmeReihe key={m.id} m={m} beobachtet={beobachtet[m.id] ?? null} onMassnahme={onMassnahme} />
+                <MassnahmeReihe key={m.id} m={m} onMassnahme={onMassnahme} />
               ))}
             </div>
           )}
@@ -317,7 +295,7 @@ export function EnergiezielSeite({
               <p className="vp-ezl-label">Schon umgesetzt, im Stand enthalten</p>
               <div className="vp-ezl-liste">
                 {lage.massnahmen.imStand.map((m) => (
-                  <MassnahmeReihe key={m.id} m={m} beobachtet={beobachtet[m.id] ?? null} onMassnahme={onMassnahme} />
+                  <MassnahmeReihe key={m.id} m={m} onMassnahme={onMassnahme} />
                 ))}
               </div>
             </>
@@ -693,11 +671,11 @@ function WerteJeMonat({ punkte, onMonat }: { punkte: B.MonatsPunkt[]; onMonat?: 
   );
 }
 
-function MassnahmeReihe({ m, beobachtet, onMassnahme }: { m: Massnahme; beobachtet: string | null; onMassnahme?: (id: string) => void }) {
+function MassnahmeReihe({ m, onMassnahme }: { m: Massnahme; onMassnahme?: (id: string) => void }) {
   const inhalt = (
     <span className="lead">
       <span className="nm">{m.titel}</span>
-      <span className={`st${m.frist.faellig === 'ueberfaellig' ? ' is-warn' : ''}`}>{B.massnahmeUnterzeile(m, beobachtet)}</span>
+      <span className={`st${m.frist.faellig === 'ueberfaellig' ? ' is-warn' : ''}`}>{B.massnahmeUnterzeile(m)}</span>
     </span>
   );
   return onMassnahme ? (
