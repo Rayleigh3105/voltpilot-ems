@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,25 +38,22 @@ public class AblesungPerioden {
         // Eine entfernte Zuordnung bekommt eine weitere Version „keine Werte“; Version 1 bleibt.
         jdbc.queryForList("SELECT tag FROM messreihe_periode WHERE tenant_id = ? AND messstelle_id = ? "
                 + "AND ablesung = true AND art = 'monat'", LocalDate.class, tenant, m.id())
-                .forEach(tag -> monate.putIfAbsent(tag, new Summe(null, List.of("Ablesezeitraum ohne Monatszuordnung"))));
-        Map<LocalDate, Summe> jahre = new TreeMap<>();
-        Map<LocalDate, Integer> anzahl = new LinkedHashMap<>();
+                .forEach(tag -> monate.putIfAbsent(tag, new Summe(null,
+                        List.of(ErgebnisZustand.ABLESEZEITRAUM_OHNE_MONAT))));
+        // Je Jahr die Monate mit Zahl, in zeitlicher Folge (TreeMap) - das Jahr bildet AblesungRegeln.jahr.
+        Map<LocalDate, List<AblesungRegeln.Summe>> jahre = new TreeMap<>();
         for (var e : monate.entrySet()) {
-            speichern(tenant, m.id(), "monat", e.getKey(), zone, e.getValue(), e.getValue().menge() == null
-                    ? "keine Werte" : "vollständig", korrektur, korrekturFassung, jetzt);
-            LocalDate jahr = e.getKey().withDayOfYear(1);
-            jahre.putIfAbsent(jahr, new Summe(null, new ArrayList<>()));
-            if (e.getValue().menge() != null) {
-                Summe a = jahre.get(jahr);
-                List<String> k = new ArrayList<>(a.kennzeichen());
-                k.addAll(e.getValue().kennzeichen());
-                jahre.put(jahr, new Summe((a.menge() == null ? BigDecimal.ZERO : a.menge()).add(e.getValue().menge()), k));
-                anzahl.merge(jahr, 1, Integer::sum);
-            }
+            Summe monat = e.getValue();
+            String zustand = monat.menge() == null ? ErgebnisZustand.KEINE_WERTE : ErgebnisZustand.VOLLSTAENDIG;
+            speichern(tenant, m.id(), "monat", e.getKey(), zone, monat, zustand, korrektur, korrekturFassung, jetzt);
+            List<AblesungRegeln.Summe> imJahr = jahre.computeIfAbsent(e.getKey().withDayOfYear(1), j -> new ArrayList<>());
+            if (monat.menge() != null) imJahr.add(new AblesungRegeln.Summe(monat.menge(), zustand, monat.kennzeichen()));
         }
-        jahre.forEach((tag, s) -> speichern(tenant, m.id(), "jahr", tag, zone, s,
-                s.menge() == null ? "keine Werte" : anzahl.getOrDefault(tag, 0) == 12 ? "vollständig" : "unvollständig",
-                korrektur, korrekturFassung, jetzt));
+        jahre.forEach((tag, imJahr) -> {
+            AblesungRegeln.Summe jahr = AblesungRegeln.jahr(imJahr);
+            speichern(tenant, m.id(), "jahr", tag, zone, new Summe(jahr.menge(), jahr.kennzeichen()), jahr.zustand(),
+                    korrektur, korrekturFassung, jetzt);
+        });
     }
 
     private void speichern(UUID tenant, UUID m, String art, LocalDate tag, AblesungRepository.Zone zone,

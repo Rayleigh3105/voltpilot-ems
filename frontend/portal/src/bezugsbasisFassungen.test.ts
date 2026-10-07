@@ -14,6 +14,10 @@ describe('Zeitleiste: Zustand, Gültigkeit, Freigeber, Anpassungsgründe', () =>
     expect(F.geltungText(f1)).toBe('gilt ab 01.11.2026');
     const f1b = fassung1({ gilt_bis: '2026-12-31' });
     expect(F.fassungZustand(f1b)).toBe('beendet');
+    // Am Stichtag: vor ihrem letzten Tag gilt sie noch - nie blass „beendet“ (Review r3); danach ist sie es.
+    expect(F.fassungZustand(f1b, '2026-12-15')).toBe('freigegeben');
+    expect(F.fassungZustand(f1b, '2026-12-31')).toBe('freigegeben');
+    expect(F.fassungZustand(f1b, '2027-01-01')).toBe('beendet');
     expect(F.ZUSTAND_WORT.beendet).toBe('beendet');
     expect(F.geltungText(f1b)).toBe('gilt vom 01.11.2026 bis 31.12.2026');
     expect(F.zeitleiste([f1b, fassung2()]).map((f) => f.fassung)).toEqual([2, 1]);

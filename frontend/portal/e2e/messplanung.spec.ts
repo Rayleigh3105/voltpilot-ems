@@ -15,8 +15,8 @@ import { verschiebe } from '../src/picker/datum';
  * - Bühne `e2e/bewertung.html?stand=voll&messplanung=…` (die ECHTE Schale, `BewertungPage`, `EnergieeinsatzSeite` und
  *   der ECHTE Messstellen-Dialog; Routen aus `src/test/messplanungBuehne.ts`): an EE-8 den Bedarf MB-1 erfassen,
  *   „Messstelle einrichten“ → Dialog mit G-1 und Wirkenergie · Bezug vorbelegt → MS-23 eingerichtet, „Später binden“ →
- *   der Bedarf ist eingelöst, „keine Datenquelle seit 27.11.2026“ (nie 0); verwerfen mit Pflicht-Begründung; aus der
- *   Rest-Zeile erfassen; die Liste je Standort.
+ *   der Bedarf ist eingelöst, „keine Datenquelle seit 27.11.2026“ (nie 0); verwerfen mit Pflicht-Begründung. Rest-Zeile
+ *   und Liste je Standort standen auf der Bewertung; sie ziehen mit der Messplanung nach Messen (Konzept Auswerten a1 §10.9).
  * - Bühne `e2e/messstelle-seite.html?id=<MS-23>` (die ECHTE `MessstelleSeite`, Cloud per `page.route`): „geplant für
  *   EE-8 Gebäudetechnik Halle 1“ unter „Keine Datenquelle“.
  * - AP-16 P1 (Befund IP-20): einen offenen Bedarf bearbeiten (Struktur: Ort als ID, Größe aus dem Katalog), sein
@@ -164,8 +164,9 @@ for (const breite of [375, 1440]) {
       await ablegen(page, `ip20-einloesen-ort-${breite}`);
       await ohneQuerlauf(page, `einloesen-ort-${breite}`);
       await modal(page).getByRole('button', { name: 'Weiter: Quelle' }).click();
-      await modal(page).getByRole('button', { name: 'Später binden' }).click();
-      await expect(modal(page)).toContainText('keine Datenquelle');
+      // Schritt „Woher kommen die Werte?“: noch kein Weg - die Messstelle bleibt ohne Quelle, nie 0.
+      await modal(page).getByRole('button', { name: 'Später festlegen' }).click();
+      await expect(modal(page)).toContainText('noch keine Quelle');
       await modal(page).getByRole('button', { name: 'Schließen' }).first().click();
 
       // Das Kennzeichen kommt zurück: eingelöst durch MS-23, keine Datenquelle seit …, keine Zahl.
@@ -196,26 +197,6 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page, `verworfen-${breite}`);
     });
 
-    test('Rest-Zeile und Liste je Standort: aus „Rest Halle 1“ einen Bedarf an EE-8 erfassen; beide stehen unter Werk Ahrenberg', async ({ page }) => {
-      await oeffne(page, '/e2e/bewertung.html?stand=voll&messplanung=mb1', breite);
-      const liste = page.getByTestId('messplanung-standorte');
-      await expect(liste.getByTestId('messbedarf-MB-1')).toBeVisible();
-      await expect(liste.getByTestId('messplanung-standort-Werk Ahrenberg')).toContainText('EE-8 Gebäudetechnik Halle 1');
-      await liste.scrollIntoViewIfNeeded();
-      await ablegen(page, `ip20-liste-standort-${breite}`);
-
-      await page.getByTestId('messabdeckung-einsaetze').getByTestId('messabdeckung-rest-erfassen').first().click();
-      await expect(modal(page).getByLabel('Was soll gemessen werden?')).toHaveValue(/^Rest Halle 1: 54\.580\s?kWh \(39,2\s?% der Anlage\) — keinem Energieeinsatz zugeordnet$/);
-      await expect(picker(page, 'Ort (optional)')).toContainText('Werk Ahrenberg');
-      await waehle(page, 'Energieeinsatz', /^EE-8 Gebäudetechnik Halle 1/);
-      await ablegen(page, `ip20-rest-erfassen-${breite}`);
-      await ohneQuerlauf(page, `rest-erfassen-${breite}`);
-      await modal(page).getByRole('button', { name: 'Messbedarf erfassen' }).click();
-      await expect(liste.getByTestId('messbedarf-MB-2')).toContainText('Rest Halle 1');
-      await expect(liste.getByTestId('messplanung-standort-Werk Ahrenberg').getByTestId('messbedarf-zum-einsatz')).toHaveCount(2);
-      await ohneQuerlauf(page, `liste-standort-${breite}`);
-    });
-
     test('AP-16 P1: MB-1 bearbeiten — vorbelegt aus dem Wortlaut, gespeichert mit Struktur; das Protokoll nennt vorher → nachher', async ({ page }) => {
       await oeffne(page, '/e2e/bewertung.html?stand=voll&messplanung=mb1&ee=EE-8', breite);
       const karte = page.getByTestId('messplanung-einsatz');
@@ -242,20 +223,15 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page, `protokoll-${breite}`);
     });
 
-    test('AP-16 P1: im Register „Nur geplant für einen Energieeinsatz“ — nur MS-23, die Adresse fragt geplantFuerEinsatz=true', async ({ page }) => {
+    test('AP-16 P1: die Marke „1 geplant für einen Energieeinsatz“ in der Liste zeigt nur MS-23 (Konzept Messen m1: Marken filtern)', async ({ page }) => {
       await cloudMs23(page);
-      const anfragen: string[] = [];
-      page.on('request', (r) => {
-        if (new URL(r.url()).pathname === '/api/v1/messstellen') anfragen.push(new URL(r.url()).search);
-      });
       await oeffne(page, '/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen', breite);
-      const schalter = page.getByTestId('register-filter-geplant');
-      await expect(schalter).toHaveText('Nur geplant für einen Energieeinsatz (1)');
-      await schalter.click();
-      await expect(schalter).toHaveAttribute('aria-pressed', 'true');
-      await expect.poll(() => anfragen.some((q) => q.includes('geplantFuerEinsatz=true'))).toBe(true);
-      await expect(page.getByText('MS-23').first()).toBeVisible();
-      await expect(page.getByText('MS-21')).toHaveCount(0);
+      const marke = page.getByRole('group', { name: 'Nur diese zeigen' }).getByRole('button', { name: '1 geplant für einen Energieeinsatz' });
+      await expect(marke).toBeVisible();
+      await marke.click();
+      await expect(marke).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('messstelle-reihe')).toHaveCount(1);
+      await expect(page.getByTestId('messstelle-reihe')).toContainText('MS-23');
       await ablegen(page, `ap16-register-geplant-${breite}`);
       await ohneQuerlauf(page, `register-geplant-${breite}`);
     });

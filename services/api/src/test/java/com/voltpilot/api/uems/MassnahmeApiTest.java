@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +46,8 @@ import org.testcontainers.utility.DockerImageName;
  * (R7, R9).
  *
  * <p>Personen: Ines Kaltenbach und Jonas Wendlinger nie zugewiesen (Kundenadministrator), Peter Hollerbach Bearbeiter
- * an ST-1, Murat Demirci Bedienberechtigter an ST-1, Olga Alt mit beendetem Konto. Die Uhr der Kennzahlen ist gestellt.
+ * an ST-1, Petra Lindner Bearbeiterin an ST-2, Murat Demirci Bedienberechtigter an ST-1, Olga Alt mit beendetem Konto.
+ * Die Uhr der Kennzahlen ist gestellt.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -221,6 +223,61 @@ class MassnahmeApiTest {
                 Map.of("begruendung", "Noch einmal verworfen.")).status()).isEqualTo(409);
         assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + zweiteId + "/eintraege",
                 Map.of("text", "Nach dem Verwerfen")).status()).isEqualTo(409);
+    }
+
+    /**
+     * Konzept Verbessern, Entscheid 5: {@code ?energieziel=} liefert die Maßnahmen für das Energieziel und die, deren
+     * Wirkung schon im Stand enthalten ist - M-2028-0001 (umgesetzt am 22.01.2028, nach der Referenzperiode der Fassung
+     * 2) an derselben Kennzahl steht zusätzlich in {@code im_stand_enthalten}; eine geplante Maßnahme ohne Bezug nicht.
+     * Ein unbekanntes Energieziel ist 404, ein Text statt einer ID 400; ohne Filter bleibt die Liste leer. Der Zaun
+     * (Review r1 S-1.3): ein Energieziel außerhalb der eigenen Standorte (Petra an ST-2, KZ-0004 an ST-1) und eines aus
+     * einem fremden Kundenbereich antworten wie ein unbekanntes - 404, ohne eine Maßnahmen-ID.
+     */
+    @Test
+    void energiezielFilterMitImStandEnthalten() throws Exception {
+        Welt w = welt();
+        String enthalten = umgesetzteMassnahme(w)[0];
+        Map<String, Object> ez = new LinkedHashMap<>();
+        ez.put("kennzahl", w.kz4().toString());
+        ez.put("zielwert_prozent", -4.0);
+        ez.put("zielperiode", "2028-02/2028-12");
+        ez.put("wortlaut", "Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt.");
+        ez.put("begruendung", "Beschluss der Managementbewertung zum Spritzguss.");
+        Antwort z = ruf(w, "ines", HttpMethod.POST, "/api/v1/energieziele", ez);
+        assertThat(z.status()).as(z.text()).isEqualTo(201);
+        String ziel = z.body().get("id").asText();
+
+        Map<String, Object> fuer = vonHand(w, w.st1());
+        fuer.put("titel", "Kühlwasserpumpen drehzahlgeregelt betreiben");
+        fuer.put("herkunft", "energieziel");
+        fuer.put("energieziel", ziel);
+        Antwort f = ruf(w, "ines", HttpMethod.POST, PFAD, fuer);
+        assertThat(f.status()).as(f.text()).isEqualTo(201);
+        Antwort ohne = ruf(w, "ines", HttpMethod.POST, PFAD, vonHand(w, w.st1()));
+        assertThat(ohne.status()).as(ohne.text()).isEqualTo(201);
+
+        Antwort a = ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null);
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        List<String> ids = new ArrayList<>();
+        a.body().get("massnahmen").forEach(m -> ids.add(m.get("id").asText()));
+        assertThat(ids).containsExactly(enthalten, f.body().get("id").asText());
+        assertThat(a.body().get("im_stand_enthalten").toString()).isEqualTo("[\"" + enthalten + "\"]");
+
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD, null).body().get("im_stand_enthalten")).isEmpty();
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=" + UUID.randomUUID(), null).status())
+                .isEqualTo(404);
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "?energieziel=EZ-2028-0001", null).status()).isEqualTo(400);
+
+        // Der Zaun: Peter (ST-1) sieht es, Petra (nur ST-2) und ein fremder Kundenbereich bekommen dasselbe 404 wie
+        // für ein unbekanntes Energieziel - keine Maßnahme, kein Hinweis, dass es existiert.
+        assertThat(ruf(w, "peter", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null).status()).isEqualTo(200);
+        Welt fremd = welt();
+        for (var x : List.of(ruf(w, "petra", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null),
+                ruf(fremd, "ines", HttpMethod.GET, PFAD + "?energieziel=" + ziel, null))) {
+            assertThat(x.status()).as(x.text()).isEqualTo(404);
+            assertThat(x.text()).doesNotContain(enthalten).doesNotContain(f.body().get("id").asText());
+            assertThat(x.body().get("massnahmen")).isNull();
+        }
     }
 
     /**

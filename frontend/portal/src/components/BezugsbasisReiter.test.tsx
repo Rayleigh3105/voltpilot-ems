@@ -1,12 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Kennzahl } from '../api';
+import { api, ApiError, type Kennzahl, type KennzahlAuswertung } from '../api';
 import { LEER_SATZ, OHNE_BASISWERT } from '../bezugsbasisAnlegen';
 import { OHNE_GRUNDLAGE } from '../bezugsbasisModell';
 import { FEHLER_IM_BEREICH } from './Fehlergrenze';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { KennzahlenPage } from '../pages/KennzahlenPage';
-import { KennzahlSeite } from '../pages/KennzahlSeite';
 import { setSelbstauskunft } from '../rollen';
 import { bb1, bb1Fassung, BB_IDS, faktorenVorschlag, kz4, variablenVorschlag } from '../test/bezugsbasisFixtures';
 import { rechteSeed } from '../test/rollenFixtures';
@@ -194,90 +193,85 @@ describe('Freigabe einer beantragten Fassung (F1/F2, Vier-Augen)', () => {
   });
 });
 
-describe('an der Kennzahl-Seite: Reiter und Basis-Zeile', () => {
-  const seite = (k: Kennzahl, basen: ReturnType<typeof bb1>[]) => {
+describe('an der Kennzahl-Seite: keine Reiter, die Bezugsbasis eine Ebene tiefer (Konzept Auswerten a1 §6.6)', () => {
+  const seite = (k: Kennzahl, basen: ReturnType<typeof bb1>[], ebene: 'bezugsbasis' | null = null) => {
     vi.spyOn(api, 'kennzahl').mockResolvedValue(k);
     vi.spyOn(api, 'kennzahlen').mockResolvedValue({ kennzahlen: [k] });
     vi.spyOn(api, 'kennzahlFassungen').mockResolvedValue({ kennzahl_id: k.id, kennzeichen: k.kennzeichen, fassungen: [] });
     vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new ApiError(500, 'x'));
     const liste = vi.spyOn(api, 'kennzahlBezugsbasen').mockResolvedValue({ bezugsbasen: basen });
     vi.spyOn(api, 'bezugsbasisFassung').mockResolvedValue(bb1Fassung('freigegeben'));
-    render(<KennzahlSeite id={k.id} zone={ZONE} onListe={() => undefined} />);
-    return { liste };
+    const onOeffnen = vi.fn();
+    render(<KennzahlenPage kennzahlId={k.id} ebene={ebene} zone={ZONE} onOeffnen={onOeffnen} onListe={() => undefined} />);
+    return { liste, onOeffnen };
   };
-  it('KZ-0004 mit BB-0001: die Basis-Zeile von R1 im Kopf, der Reiter „Bezugsbasis“ daneben', async () => {
+  it('KZ-0004 mit BB-0001: die Seite hat keine Reiter; Fassungen und Freigabe stehen auf der Ebene der Bezugsbasis', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     seite(kz4(), [bb1('freigegeben')]);
-    expect((await screen.findByTestId('bezugsbasis-zeile')).textContent).toBe(
-      'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig (1 von 12 Monaten) · freigegeben von Ines Kaltenbach am 12.11.2026.',
-    );
-    const tabs = within(screen.getByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).getAllByRole('tab');
-    expect(tabs.map((t) => [t.textContent, t.getAttribute('aria-selected')])).toEqual([
-      ['Kennzahl', 'true'],
-      ['Bezugsbasis', 'false'],
-      ['Vergleich mit Bezugsbasis', 'false'],
-    ]);
-    fireEvent.click(tabs[1]);
-    expect(screen.getByTestId('bezugsbasis-reiter')).toBeTruthy();
-    expect(screen.queryByTestId('kennzahl-stammdaten')).toBeNull();
-  });
-  it('Nachprüfung PR 1173 (`e2e/kennzahlen.spec.ts` K1 1440): der neue Reiter ist der einzige Unterschied — Überschriften und Abschnitte des Vorgabe-Reiters bleiben', async () => {
-    setSelbstauskunft(rechteSeed('IK').me);
-    // Die Messung der Bestands-Spec: jeder gewählte Reiter der Seite außer dem Perioden-Umschalter.
-    const gewaehlt = (ohneKennzahlReiter: boolean) =>
-      [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"][aria-selected="true"]')]
-        .filter((t) => !t.closest('.vp-kz-perioden') && !(ohneKennzahlReiter && t.closest('.vp-kz-reiter')))
-        .map((t) => t.textContent);
-    const bau = () => ({
-      ueberschriften: [...document.querySelectorAll('h1, h2, h3')].map((h) => `${h.tagName} ${h.textContent}`),
-      abschnitte: [...document.querySelectorAll('section[aria-label]')].map((x) => x.getAttribute('aria-label')),
-    });
-    // Ein Anteil hat keinen Reiter (B2) — seine Seite ist der Bestand.
-    seite(kz4({ rechenform: 'anteil' }), []);
     await screen.findByTestId('kennzahl-stammdaten');
-    const vorher = bau();
-    expect(gewaehlt(false)).toEqual([]);
+    expect(screen.queryByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).toBeNull();
+    expect(screen.queryByTestId('bezugsbasis-reiter')).toBeNull();
     cleanup();
     vi.restoreAllMocks();
-    seite(kz4(), []);
-    await screen.findByTestId('kennzahl-stammdaten');
-    await screen.findByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' });
-    expect(gewaehlt(false)).toEqual(['Kennzahl']);
-    expect(gewaehlt(true)).toEqual([]);
-    expect(bau()).toEqual(vorher);
+    seite(kz4(), [bb1('freigegeben')], 'bezugsbasis');
+    expect(await screen.findByTestId('bezugsbasis-reiter')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Bezugsbasis BB-0001');
+    expect((await screen.findByTestId('bezugsbasis-antwort')).textContent).toBe(
+      'VoltPilot erwartet 0,2837 kWh je kg - so viel wie im Oktober 2026.Fassung 1 · Verhältnis · Vergleichszeitraum Oktober 2026',
+    );
   });
-  it('ein Anteil hat weder Reiter noch Basis-Zeile und fragt nichts ab (B2)', async () => {
+  it('ein Anteil fragt keine Bezugsbasis ab (B2) - auch nicht auf der Ebene darunter', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     const { liste } = seite(kz4({ rechenform: 'anteil' }), []);
     await screen.findByTestId('kennzahl-stammdaten');
-    expect(screen.queryByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).toBeNull();
-    expect(screen.queryByTestId('bezugsbasis-zeile')).toBeNull();
+    cleanup();
+    seite(kz4({ rechenform: 'anteil' }), [], 'bezugsbasis');
+    expect(await screen.findByText('Ein Anteil hat keine Bezugsbasis - VoltPilot vergleicht ihn nur mit dem Vorjahr.')).toBeTruthy();
     expect(liste).not.toHaveBeenCalled();
   });
 });
 
-describe('Register: Kennzeichen „Energieleistungskennzahl“ und Filter (B3, R10)', () => {
+/**
+ * Konzept Auswerten a1 §6.4 (PR1): das Register ordnet in zwei Gruppen statt mit Kennzeichen und Filter - „Mit
+ * Bezugsbasis“ trägt, wer eine freigegebene Fassung hat (der Server legt dann `auswertung.vergleich` an), alles andere
+ * steht „Zum Beobachten“. Eine Bezugsbasis im Entwurf macht keine Energieleistungskennzahl (B3).
+ */
+describe('Register: zwei Gruppen statt Kennzeichen und Filter (B3, Konzept Auswerten a1 §6.4)', () => {
+  const auswertung = (mitVergleich: boolean): KennzahlAuswertung => ({
+    monat: '2026-10',
+    wert: { periode: '2026-10', wert: '0.2837', einheit: 'kWh/kg', zustand: 'vollständig', richtung: null },
+    vorjahr: null,
+    monate: Array.from({ length: 12 }, (_, i) => ({ periode: `2026-${String(i + 1).padStart(2, '0')}`, wert: null, delta_prozent: null, urteil: null, grund: null })),
+    vergleich: mitVergleich
+      ? { bezugsbasis: 'BB-0001', urteil: 'im_rahmen', delta_prozent: '0.4', band_prozent: '2.0', richtung: 'mehr', grund: null, satz: null, erster_monat: null }
+      : null,
+    energieziel: null,
+  });
   const register = (kennzahlen: Kennzahl[]) => {
     vi.spyOn(api, 'kennzahlen').mockResolvedValue({ kennzahlen });
     vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new ApiError(500, 'x'));
     render(<KennzahlenPage onOeffnen={() => undefined} onListe={() => undefined} zone={ZONE} />);
   };
-  it('ohne freigegebene Basis kein Kennzeichen und kein Filter — Bestandskunden merken nichts', async () => {
-    register([kz4(), kz4({ id: 'x2', kennzeichen: 'KZ-0005', bezugsbasis: { kennzeichen: 'BB-0002', fassung: 1, freigabe_status: 'entwurf', vorlaeufig: true } })]);
-    await waitFor(() => expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(2));
-    expect(screen.queryByTestId('kennzahl-energieleistung')).toBeNull();
-    expect(screen.queryByTestId('kennzahl-filter-elk')).toBeNull();
-  });
-  it('mit freigegebener Basis steht das Kennzeichen; der Filter zeigt nur Energieleistungskennzahlen', async () => {
+  it('ohne freigegebene Basis steht alles „Zum Beobachten“ - keine Gruppe „Mit Bezugsbasis“', async () => {
     register([
-      kz4({ bezugsbasis: { kennzeichen: 'BB-0001', fassung: 1, freigabe_status: 'freigegeben', vorlaeufig: true } }),
-      kz4({ id: 'x3', kennzeichen: 'KZ-0003', name: 'Unternehmen je Stück' }),
+      kz4({ auswertung: auswertung(false) }),
+      kz4({ id: 'x2', kennzeichen: 'KZ-0005', bezugsbasis: { kennzeichen: 'BB-0002', fassung: 1, freigabe_status: 'entwurf', vorlaeufig: true }, auswertung: auswertung(false) }),
     ]);
-    await waitFor(() => expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(2));
-    expect(screen.getByTestId('kennzahl-energieleistung').textContent).toBe('Energieleistungskennzahl — Bezugsbasis BB-0001 · vorläufig.');
-    fireEvent.click(screen.getByLabelText('nur Energieleistungskennzahlen'));
-    expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(1);
-    expect(screen.getByText('Spritzguss je kg')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByTestId('kennzahl-reihe')).toHaveLength(2));
+    expect(screen.queryByTestId('kennzahlen-mit')).toBeNull();
+    // Die Basis im Entwurf ist genannt, nicht als Urteil.
+    expect(screen.getAllByTestId('kennzahl-reihe')[1].textContent).toContain('BB-0002 im Entwurf');
+  });
+  it('mit freigegebener Basis steht die Kennzahl „Mit Bezugsbasis“, mit Urteil und „Bezugsbasis vorläufig“', async () => {
+    register([
+      kz4({ bezugsbasis: { kennzeichen: 'BB-0001', fassung: 1, freigabe_status: 'freigegeben', vorlaeufig: true }, auswertung: auswertung(true) }),
+      kz4({ id: 'x3', kennzeichen: 'KZ-0003', name: 'Unternehmen je Stück', auswertung: auswertung(false) }),
+    ]);
+    const mit = await screen.findByTestId('kennzahlen-mit');
+    expect(within(mit).getAllByTestId('kennzahl-karte')).toHaveLength(1);
+    expect(within(mit).getByText('im Rahmen der Bezugsbasis')).toBeTruthy();
+    expect(mit.textContent).toContain('Bezugsbasis vorläufig');
+    expect(within(screen.getByTestId('kennzahlen-ohne')).getAllByTestId('kennzahl-reihe')).toHaveLength(1);
   });
 });
 
@@ -296,49 +290,41 @@ describe('eine Fassung ohne Grundlage (Welt 1.10, Referenzdatei BB-0003 Fassung 
     vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new ApiError(500, 'x'));
     vi.spyOn(api, 'kennzahlBezugsbasen').mockResolvedValue({ bezugsbasen: [bb1('freigegeben')] });
     vi.spyOn(api, 'bezugsbasisFassung').mockResolvedValue(fassung);
-    render(<KennzahlSeite id={k.id} zone={ZONE} onListe={() => undefined} />);
+    const onOeffnen = vi.fn();
+    render(<KennzahlenPage kennzahlId={k.id} ebene="bezugsbasis" zone={ZONE} onOeffnen={onOeffnen} onListe={() => undefined} />);
+    return { onOeffnen };
   };
-  const zumReiter = async () => {
-    await screen.findByTestId('bezugsbasis-zeile');
-    fireEvent.click(within(screen.getByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).getAllByRole('tab')[1]);
-    return screen.getByTestId('bezugsbasis-reiter');
-  };
+  const zurEbene = () => screen.findByTestId('bezugsbasis-reiter');
 
-  it('der Reiter zeichnet: Basiswert und Datenlage der Fassung, dazu der Satz — keine Monate, keine erfundene 0', async () => {
+  it('die Ebene zeichnet: Basiswert und Datenlage der Fassung, dazu der Satz — keine Monate, keine erfundene 0', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     seite(bb1Fassung('freigegeben', ohneGrundlage));
-    expect((await screen.findByTestId('bezugsbasis-zeile')).textContent).toBe(
-      'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig · freigegeben von Ines Kaltenbach am 12.11.2026.',
-    );
-    const r = await zumReiter();
-    expect(within(r).getByTestId('bezugsbasis-ohne-grundlage').textContent).toBe(OHNE_GRUNDLAGE);
+    const r = await zurEbene();
+    expect((await within(r).findByTestId('bezugsbasis-ohne-grundlage')).textContent).toBe(OHNE_GRUNDLAGE);
     expect(within(r).getByTestId('bezugsbasis-modell-basiswert').textContent).toBe('Verhältnis 0,2837 kWh je kg.');
     expect(within(r).getByTestId('bezugsbasis-modell-datenlage').textContent).toBe('vorläufig');
     expect(within(r).queryByTestId('bezugsbasis-modell-monate')).toBeNull();
     expect(r.textContent).not.toMatch(/\b0 (von 12 )?Monat/);
+    // Ohne Grundlage (`monate` 0 heißt „unbekannt“) sagt der Hinweis nie „aus 0 Monaten“.
+    expect(screen.getByTestId('bezugsbasis-vorlaeufig-hinweis').textContent).toContain('gebildet aus weniger Monaten als vorgesehen');
     expect(screen.queryByTestId('fehlergrenze')).toBeNull();
   });
 
   it('ohne Basiswert (Referenzdatei: „leer, nie 0“) steht das Wort statt einer Zahl', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     seite(bb1Fassung('freigegeben', { ...ohneGrundlage, basiswert: null }));
-    expect((await screen.findByTestId('bezugsbasis-zeile')).textContent).toBe(
-      `Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis ${OHNE_BASISWERT} · vorläufig · freigegeben von Ines Kaltenbach am 12.11.2026.`,
-    );
-    const r = await zumReiter();
-    expect(within(r).getByTestId('bezugsbasis-modell-basiswert').textContent).toBe(`Verhältnis ${OHNE_BASISWERT}.`);
+    const r = await zurEbene();
+    expect((await within(r).findByTestId('bezugsbasis-modell-basiswert')).textContent).toBe(`Verhältnis ${OHNE_BASISWERT}.`);
+    expect(screen.getByTestId('bezugsbasis-antwort').textContent).toContain('Diese Fassung hat keinen Basiswert');
   });
 
-  it('scheitert ein Reiter trotzdem, bleibt der Fehler im Reiter: Kopf und Reiter „Kennzahl“ bleiben erreichbar', async () => {
+  it('scheitert die Ebene trotzdem, bleibt der Fehler in ihr: Kopf und Rückweg zur Kennzahl bleiben erreichbar', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     // Eine kaputte Antwort (keine Variablen-Liste) — steht für jeden künftigen Fehler dieser Art.
-    seite(bb1Fassung('freigegeben', { variablen: null as never }));
-    await zumReiter().catch(() => undefined);
+    const { onOeffnen } = seite(bb1Fassung('freigegeben', { variablen: null as never }));
     expect((await screen.findByTestId('fehlergrenze')).textContent).toBe(FEHLER_IM_BEREICH);
-    const tabs = within(screen.getByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).getAllByRole('tab');
-    fireEvent.click(tabs[0]);
-    expect(await screen.findByTestId('kennzahl-stammdaten')).toBeTruthy();
-    expect(screen.queryByTestId('fehlergrenze')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: kz4().name }));
+    expect(onOeffnen).toHaveBeenCalledWith(kz4().id);
   });
 });

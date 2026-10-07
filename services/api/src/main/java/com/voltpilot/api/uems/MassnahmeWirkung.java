@@ -153,7 +153,7 @@ public class MassnahmeWirkung {
             BezugsbasisVergleich.ZielVergleich zv = gelesen.get(schluessel(m));
             aus.add(m.mitWirkungKurz(zv == null ? null : kurzAus(m, rechnen(m, n, energie, zv))));
         }
-        return new MassnahmeDto.Liste(liste.abruf(), List.copyOf(aus));
+        return new MassnahmeDto.Liste(liste.abruf(), List.copyOf(aus), liste.imStandEnthalten());
     }
 
     private static String schluessel(MassnahmeDto.Massnahme m) {

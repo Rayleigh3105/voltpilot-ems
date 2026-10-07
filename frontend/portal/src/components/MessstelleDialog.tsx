@@ -18,6 +18,11 @@ import { jetztEingabe, kanalZeile, zeitpunktAus } from '../geraetEinstellungen';
 import { UEMS_HAUPTGROESSE, UEMS_NEBENGROESSE } from '../glossar';
 import {
   ablehnung,
+  abgelesenSatz,
+  ABLESERHYTHMUS,
+  ABLESERHYTHMUS_GRUND,
+  ablesungAblehnung,
+  ablesungPruefen,
   abschlussSatz,
   anlageOptionen,
   anlageWahlen,
@@ -25,6 +30,8 @@ import {
   bearbeitenAnfrage,
   DIALOG_TITEL,
   einheitVon,
+  ERSTE_ABLESUNG,
+  ERSTE_ABLESUNG_GRUND,
   ersterIdentitaetFehler,
   groesseAus,
   groesseOptionen,
@@ -51,7 +58,7 @@ import {
   leereIdentitaet,
   LEERER_BESTAND,
   MEDIUM,
-  OHNE_ANLAGE,
+  OHNE_QUELLE_WEITER,
   ortAnfrage,
   ortHinweis,
   ortOptionen,
@@ -67,17 +74,26 @@ import {
   tagHinweis,
   unterzaehlerOptionen,
   vorschlagKnopf,
+  WEG,
+  WEG_FRAGE,
+  WEG_VORSPANN,
+  wegBestand,
+  WEGE,
+  wegGesperrt,
   wertartOptionen,
   ZUORDNUNG_REIHENFOLGE,
   zuordnungAus,
   zuordnungBestandAus,
   zuordnungPruefen,
+  type AblesungEingabe,
   type DialogFeld,
+  type Fassung,
   type GroesseEingabe,
   type Identitaet,
   type KomponenteWahl,
   type QuelleEingabe,
   type Schritt,
+  type WerteWeg,
   type Zuordnung,
   type ZuordnungBestand,
 } from '../messstelleDialog';
@@ -99,10 +115,14 @@ const LEER_KANAELE = () => 'Diese Komponente meldet keine Messwerte.';
  * zentrierten `Modal` (am Telefon Vollbild), drei Schritte — Identität · Zuordnung · Quelle.
  * Render-only: jede Regel, jeder Satz und jede Anfrage entsteht in `src/messstelleDialog.ts`.
  *
+ * Schritt 3 fragt „Woher kommen die Werte?“ (Messen m2) mit zwei gleichwertigen Wegen: „Automatisch von einem
+ * Gerät“ bindet je Größe einen Messwert einer Komponente, „Von Hand ablesen“ trägt die erste Ablesung ein
+ * (`POST …/ablesungen`; mit ihr entsteht die Ablesungsquelle, der Rhythmus ist fest monatlich).
+ *
  * ⚠ JEDER SCHRITT SPEICHERT SEINEN TEIL über die Route, die es dafür gibt: „Weiter: Zuordnung“
  * legt die Messstelle an (ohne Ort ein ehrlicher Entwurf) bzw. schreibt Kennzeichen · Name ·
  * Notiz; „Weiter: Quelle“ schreibt Ort und Stellung ab dem Tag; „Fertigstellen“ bindet die
- * Quellen. Lehnt die Schnittstelle ab (zweiter Hauptzähler 409, Kennzeichen belegt 409 …), bleibt
+ * Quellen bzw. trägt die erste Ablesung ein. Lehnt die Schnittstelle ab (zweiter Hauptzähler 409, Kennzeichen belegt 409 …), bleibt
  * der Dialog im Schritt, der Satz der FEHLER-Tabelle steht am Feld, und von DIESEM Schritt ist
  * nichts gespeichert. Nach dem ersten Speichern sind Art, Medium und Hauptgröße fest.
  *
@@ -143,7 +163,7 @@ export function MessstelleDialog({
   /** Ein Schritt hat gespeichert — der Wirt lädt das Register neu. Kommt je Schritt. */
   onGespeichert?: (m: Messstelle) => void;
 }) {
-  const fassung = messstelleId ? 'bearbeiten' : 'anlegen';
+  const fassung: Fassung = messstelleId ? 'bearbeiten' : 'anlegen';
   const basis = `vp-msd-${useId().replace(/:/g, '')}`;
   const feldId = (f: string) => `${basis}-${f}`;
 
@@ -161,6 +181,9 @@ export function MessstelleDialog({
   const [ortBeruehrt, setOrtBeruehrt] = useState(false);
   const [quelle, setQuelle] = useState<QuelleEingabe>(() => ({ komponente: '', kanaele: {}, ...jetztEingabe(uhr.jetzt) }));
   const [gebunden, setGebunden] = useState<string[]>([]);
+  const [weg, setWeg] = useState<WerteWeg | null>(null);
+  const [ablesung, setAblesung] = useState<AblesungEingabe>(() => ({ ...jetztEingabe(uhr.jetzt), stand: '' }));
+  const [abgelesen, setAbgelesen] = useState(false);
   const [versucht, setVersucht] = useState<Record<Schritt, boolean>>({ 1: false, 2: false, 3: false });
   const [serverFehler, setServerFehler] = useState<Partial<Record<DialogFeld, string>>>({});
   const [allgemein, setAllgemein] = useState<string | null>(null);
@@ -192,6 +215,9 @@ export function MessstelleDialog({
     setOrtBeruehrt(false);
     setQuelle({ komponente: '', kanaele: {}, ...jetztEingabe(t) });
     setGebunden([]);
+    setWeg(null);
+    setAblesung({ ...jetztEingabe(t), stand: '' });
+    setAbgelesen(false);
     setVersucht({ 1: false, 2: false, 3: false });
     setServerFehler({});
     setAllgemein(null);
@@ -272,6 +298,13 @@ export function MessstelleDialog({
   const anlage = alleAnlagen.find((a) => a.id === zuordnung.anlage) ?? null;
   const anlageName = (id: string) => alleAnlagen.find((a) => a.id === id)?.name ?? null;
 
+  // Schritt 3: welcher Weg schon gilt (beim Bearbeiten) und welcher gewählt ist.
+  const registerZeile = gespeichert ? (register.find((r) => r.id === gespeichert.id) ?? null) : null;
+  const ziele = quellZiele(identitaet, gespeichert, uhr.jetzt);
+  const bestandWeg = wegBestand(ziele, registerZeile?.quelle.stand ?? null);
+  const wegJetzt = bestandWeg ?? weg;
+  const hauptEinheit = gespeichert?.hauptgroesse?.einheit ?? einheitVon(identitaet.hauptgroesse.groesse) ?? 'kWh';
+
   // Die Komponenten des Schritts Quelle: die Anlage der Stellung, sonst die des Standorts vom Ort.
   const quellAnlagen = anlage ? [anlage] : ortWahl ? anlagen.filter((a) => a.standortId === ortWahl.standortId) : [];
   const quellAnlagenSchluessel = quellAnlagen.map((a) => a.id).join(',');
@@ -340,6 +373,11 @@ export function MessstelleDialog({
 
   function setzeQuelle(patch: Partial<QuelleEingabe>, ...felder: DialogFeld[]) {
     setQuelle((q) => ({ ...q, ...patch }));
+    loesche(...felder);
+  }
+
+  function setzeAblesung(patch: Partial<AblesungEingabe>, ...felder: DialogFeld[]) {
+    setAblesung((a) => ({ ...a, ...patch }));
     loesche(...felder);
   }
 
@@ -428,6 +466,14 @@ export function MessstelleDialog({
     if (busy || !gespeichert) return;
     setVersucht((v) => ({ ...v, 3: true }));
     setAllgemein(null);
+    if (wegJetzt === 'ablesen') {
+      await ersteAblesung();
+      return;
+    }
+    if (wegJetzt !== 'geraet') {
+      setAnsicht('fertig');
+      return;
+    }
     const offen = {
       ...quelle,
       kanaele: Object.fromEntries(Object.entries(quelle.kanaele).filter(([s]) => !gebunden.includes(s))),
@@ -452,6 +498,37 @@ export function MessstelleDialog({
       setAnsicht('fertig');
     } catch (err) {
       abgelehnt(err, 3);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Weg „Von Hand ablesen“: die erste Ablesung eintragen - mit ihr entsteht die Ablesungsquelle (AP-09). */
+  async function ersteAblesung() {
+    if (!gespeichert) return;
+    if (bestandWeg === 'ablesen') {
+      setAnsicht('fertig');
+      return;
+    }
+    const u = ablesungPruefen(ablesung, jetzt ?? new Date().toISOString(), hauptEinheit);
+    if (!u.anfrage) {
+      fokus(u.fehler.ablesezeit ? 'ablesezeit' : 'stand');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.ablesungEintragen(gespeichert.kennzeichen, u.anfrage);
+      setAbgelesen(true);
+      onGespeichert?.(gespeichert);
+      setAnsicht('fertig');
+    } catch (err) {
+      const a = ablesungAblehnung(err instanceof ApiError ? err : null);
+      if (a.feld) {
+        setServerFehler((s) => ({ ...s, [a.feld!]: a.satz }));
+        fokus(a.feld);
+      } else {
+        setAllgemein(a.satz);
+      }
     } finally {
       setBusy(false);
     }
@@ -751,7 +828,57 @@ export function MessstelleDialog({
   }
 
   function schrittQuelle() {
-    const ziele = quellZiele(identitaet, gespeichert, uhr.jetzt);
+    const gesperrt = (w: WerteWeg) =>
+      wegGesperrt(w, {
+        bestand: bestandWeg,
+        wertart: gespeichert?.hauptgroesse?.wertart ?? identitaet.hauptgroesse.wertart,
+        quellAnlagen: quellAnlagen.length,
+        komponenten: komponenten === null ? null : komponenten.length,
+      });
+    return (
+      <div className="vp-msd-stapel">
+        <fieldset className="vp-msd-weg">
+          <legend className="vp-msd-weg-frage">{WEG_FRAGE}</legend>
+          {bestandWeg === null && <p className="vp-msd-vorspann">{WEG_VORSPANN}</p>}
+          <div className="vp-msd-wege">
+            {WEGE.map((w) => {
+              const grund = gesperrt(w);
+              const gewaehlt = wegJetzt === w;
+              return (
+                <label
+                  key={w}
+                  className={`vp-msd-wegkarte${grund ? ' is-gesperrt' : ''}${gewaehlt ? ' is-gewaehlt' : ''}`}
+                  data-testid={`messstelle-weg-${w}`}
+                >
+                  <input
+                    type="radio"
+                    name={feldId('weg')}
+                    value={w}
+                    checked={gewaehlt}
+                    disabled={grund !== null || busy}
+                    onChange={() => {
+                      setWeg(w);
+                      loesche('kanal', 'zeitpunkt', 'ablesezeit', 'stand');
+                    }}
+                  />
+                  <span className="vp-msd-wegkarte-text">
+                    <b>{WEG[w].titel}</b>
+                    <small>{WEG[w].zeile}</small>
+                    {grund && <em className="vp-msd-wegkarte-grund">{grund}</em>}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+        {wegJetzt === 'geraet' && wegGeraet()}
+        {wegJetzt === 'ablesen' && wegAblesen()}
+      </div>
+    );
+  }
+
+  /** Weg „Automatisch von einem Gerät“: Komponente, je Größe ein Messwert und ab wann (D3). */
+  function wegGeraet() {
     const offen = ziele.filter((z) => !z.laufend && !gebunden.includes(z.schluessel));
     const lokal = versucht[3]
       ? quellePruefen(
@@ -776,8 +903,8 @@ export function MessstelleDialog({
           })
         : null;
     return (
-      <div className="vp-msd-stapel">
-        <p className="vp-msd-vorspann">{QUELLE_VORSPANN}</p>
+      <div className="vp-msd-weg-felder" data-testid="messstelle-weg-geraet-felder">
+        {offen.length > 0 && <p className="vp-msd-vorspann">{QUELLE_VORSPANN}</p>}
         {ziele
           .filter((z) => z.laufend || gebunden.includes(z.schluessel))
           .map((z) => (
@@ -788,71 +915,121 @@ export function MessstelleDialog({
               </span>
             </div>
           ))}
-        {offen.length > 0 &&
-          (quellAnlagen.length === 0 ? (
-            <p className="vp-msd-grund">{OHNE_ANLAGE}</p>
-          ) : (
-            <>
-              <VpPicker
-                id={feldId('komponente')}
-                label="Komponente"
-                placeholder="Komponente wählen"
-                options={komponenteOptionen(komponenten ?? [])}
-                loading={komponenten === null}
-                emptyText={LEER_KOMPONENTEN}
-                value={quelle.komponente || null}
-                onChange={(v) => setzeQuelle({ komponente: v, kanaele: {} }, 'kanal')}
+        {offen.length > 0 && quellAnlagen.length > 0 && (
+          <>
+            <VpPicker
+              id={feldId('komponente')}
+              label="Komponente"
+              placeholder="Komponente wählen"
+              options={komponenteOptionen(komponenten ?? [])}
+              loading={komponenten === null}
+              emptyText={LEER_KOMPONENTEN}
+              value={quelle.komponente || null}
+              onChange={(v) => setzeQuelle({ komponente: v, kanaele: {} }, 'kanal')}
+            />
+            {quelle.komponente &&
+              offen.map((z, i) => (
+                <VpPicker
+                  key={z.schluessel}
+                  id={feldId(i === 0 ? 'kanal' : `kanal-${i}`)}
+                  label={z.label}
+                  placeholder="Messwert wählen"
+                  options={kanaele ? kanalOptionen(kanaele, z.groesse, kennzeichen || null, z.rolle) : []}
+                  loading={kanaele === null}
+                  emptyText={LEER_KANAELE}
+                  value={quelle.kanaele[z.schluessel] || null}
+                  onChange={(v) => setzeQuelle({ kanaele: { ...quelle.kanaele, [z.schluessel]: v } }, 'kanal')}
+                  error={i === 0 ? (serverFehler.kanal ?? lokal.kanal) : undefined}
+                />
+              ))}
+            {quelle.komponente && (
+              <div className="vp-msd-zeit">
+                <VpDatePicker
+                  id={feldId('zeitpunkt')}
+                  label="Gilt ab *"
+                  value={quelle.datum}
+                  onChange={(v) => setzeQuelle({ datum: v }, 'zeitpunkt')}
+                  error={serverFehler.zeitpunkt ?? lokal.zeitpunkt}
+                />
+                <VpTimePicker
+                  label="Uhrzeit *"
+                  value={quelle.uhrzeit}
+                  onChange={(v) => setzeQuelle({ uhrzeit: v }, 'zeitpunkt')}
+                />
+              </div>
+            )}
+            {folgen && (
+              <p className="vp-msd-folgen" data-testid="messstelle-folgen">
+                <span className="vp-msd-folgen-titel">Was geschieht</span>
+                {folgen}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  /** Weg „Von Hand ablesen“: der feste Rhythmus und die erste Ablesung (Tag, Uhrzeit, Zählerstand). */
+  function wegAblesen() {
+    const lokal = versucht[3] ? ablesungPruefen(ablesung, jetzt ?? new Date().toISOString(), hauptEinheit).fehler : {};
+    const laufend = registerZeile?.quelle.ablesung ?? null;
+    return (
+      <div className="vp-msd-weg-felder" data-testid="messstelle-weg-ablesen-felder">
+        <div className="vp-msd-fest">
+          <span className="vp-msd-fest-label">{ABLESERHYTHMUS.label}</span>
+          <span className="vp-msd-fest-wert">{ABLESERHYTHMUS.wert}</span>
+          <span className="vp-msd-grund">{ABLESERHYTHMUS_GRUND}</span>
+        </div>
+        {bestandWeg === 'ablesen' ? (
+          laufend && <p className="vp-msd-vorspann">{abgelesenSatz(laufend)}</p>
+        ) : (
+          <>
+            <p className="vp-msd-weg-teil">{ERSTE_ABLESUNG}</p>
+            <div className="vp-msd-zeit">
+              <VpDatePicker
+                id={feldId('ablesezeit')}
+                label="Abgelesen am *"
+                value={ablesung.datum}
+                onChange={(v) => setzeAblesung({ datum: v }, 'ablesezeit')}
+                error={serverFehler.ablesezeit ?? lokal.ablesezeit}
               />
-              {quelle.komponente &&
-                offen.map((z, i) => (
-                  <VpPicker
-                    key={z.schluessel}
-                    id={feldId(i === 0 ? 'kanal' : `kanal-${i}`)}
-                    label={z.label}
-                    placeholder="Messwert wählen"
-                    options={kanaele ? kanalOptionen(kanaele, z.groesse, kennzeichen || null, z.rolle) : []}
-                    loading={kanaele === null}
-                    emptyText={LEER_KANAELE}
-                    value={quelle.kanaele[z.schluessel] || null}
-                    onChange={(v) => setzeQuelle({ kanaele: { ...quelle.kanaele, [z.schluessel]: v } }, 'kanal')}
-                    error={i === 0 ? (serverFehler.kanal ?? lokal.kanal) : undefined}
-                  />
-                ))}
-              {quelle.komponente && (
-                <div className="vp-msd-zeit">
-                  <VpDatePicker
-                    id={feldId('zeitpunkt')}
-                    label="Gilt ab *"
-                    value={quelle.datum}
-                    onChange={(v) => setzeQuelle({ datum: v }, 'zeitpunkt')}
-                    error={serverFehler.zeitpunkt ?? lokal.zeitpunkt}
-                  />
-                  <VpTimePicker
-                    label="Uhrzeit *"
-                    value={quelle.uhrzeit}
-                    onChange={(v) => setzeQuelle({ uhrzeit: v }, 'zeitpunkt')}
-                  />
-                </div>
-              )}
-              {folgen && (
-                <p className="vp-msd-folgen" data-testid="messstelle-folgen">
-                  <span className="vp-msd-folgen-titel">Was geschieht</span>
-                  {folgen}
-                </p>
-              )}
-            </>
-          ))}
+              <VpTimePicker
+                label="Uhrzeit *"
+                value={ablesung.uhrzeit}
+                onChange={(v) => setzeAblesung({ uhrzeit: v }, 'ablesezeit')}
+              />
+            </div>
+            <Input
+              id={feldId('stand')}
+              label={`Zählerstand (${hauptEinheit}) *`}
+              inputMode="decimal"
+              autoComplete="off"
+              value={ablesung.stand}
+              onChange={(e) => setzeAblesung({ stand: e.target.value }, 'stand')}
+              error={serverFehler.stand ?? lokal.stand}
+            />
+            <p className="vp-msd-grund">{ERSTE_ABLESUNG_GRUND}</p>
+          </>
+        )}
       </div>
     );
   }
 
   function fertig() {
     if (!gespeichert) return null;
-    const vorhanden = laufendeQuelle(gespeichert.fuehrende_quelle, uhr.jetzt) !== null;
+    const vorhanden =
+      laufendeQuelle(gespeichert.fuehrende_quelle, uhr.jetzt) !== null || bestandWeg !== null;
+    const e = { fassung, quelleGebunden: gebunden.length > 0, quelleVorhanden: vorhanden, abgelesen };
+    const ohneQuelle =
+      fassung === 'anlegen' && gespeichert.lebenszyklus === 'aktiv' && !e.quelleGebunden && !abgelesen && !vorhanden;
     return (
       <div className="vp-msd-fertig" role="status">
         <Icon name="check" size={20} />
-        <span>{abschlussSatz(gespeichert, { fassung, quelleGebunden: gebunden.length > 0, quelleVorhanden: vorhanden })}</span>
+        <span>
+          {abschlussSatz(gespeichert, e)}
+          {ohneQuelle && <span className="vp-msd-fertig-weiter">{OHNE_QUELLE_WEITER}</span>}
+        </span>
       </div>
     );
   }
@@ -896,12 +1073,20 @@ export function MessstelleDialog({
         )}
         {ansicht === 3 && (
           <>
-            <Button variant="ghost" onClick={() => setAnsicht('fertig')} disabled={busy}>
-              {KNOPF.spaeter}
-            </Button>
-            <Recht aktion="messstelle.quelle" rueckwirkend={Boolean(quelle.datum) && quelle.datum < uhr.heute}><Button onClick={() => void fertigstellen()} disabled={busy}>
-              {busy ? KNOPF.speichert : KNOPF.fertig}
-            </Button></Recht>
+            {bestandWeg !== 'ablesen' && (
+              <Button variant="ghost" onClick={() => setAnsicht('fertig')} disabled={busy}>
+                {wegJetzt === 'ablesen' ? KNOPF.spaeterAblesen : wegJetzt === 'geraet' ? KNOPF.spaeter : KNOPF.spaeterFestlegen}
+              </Button>
+            )}
+            {wegJetzt === 'ablesen' ? (
+              <Recht aktion="ablesung.erfassen"><Button onClick={() => void fertigstellen()} disabled={busy}>
+                {busy ? KNOPF.speichert : KNOPF.fertig}
+              </Button></Recht>
+            ) : (
+              <Recht aktion="messstelle.quelle" rueckwirkend={wegJetzt === 'geraet' && Boolean(quelle.datum) && quelle.datum < uhr.heute}><Button onClick={() => void fertigstellen()} disabled={busy}>
+                {busy ? KNOPF.speichert : KNOPF.fertig}
+              </Button></Recht>
+            )}
           </>
         )}
       </>

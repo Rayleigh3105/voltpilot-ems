@@ -61,7 +61,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class MassnahmeService {
 
     static final String VERWALTEN = "verbesserung.verwalten";
-    static final Set<String> LISTE_PARAMETER = Set.of("zustand", "ueberfaellig", "kennzahl", "einsatz");
+    static final Set<String> LISTE_PARAMETER = Set.of("zustand", "ueberfaellig", "kennzahl", "einsatz", "energieziel");
     /** Die Ausgangslage umfasst höchstens ein Jahr. */
     static final int AUSGANGSLAGE_HOECHSTENS_MONATE = 12;
     static final String OHNE_KENNZEICHEN = "ohne Messgrundlage — Wirkung nicht messbar";
@@ -110,6 +110,17 @@ public class MassnahmeService {
     /** Das Register im Zaun; Filter Zustand, überfällig (Operation {@code frist}), Kennzahl, Einsatz. */
     public MassnahmeDto.Liste liste(Collection<String> parameter, String zustand, String ueberfaellig,
             String kennzahlText, String einsatzText) {
+        return liste(parameter, zustand, ueberfaellig, kennzahlText, einsatzText, null);
+    }
+
+    /**
+     * Wie oben, dazu {@code energieziel} (Konzept Verbessern, Entscheid 5): die Maßnahmen für dieses Energieziel und die,
+     * deren Wirkung schon im Stand enthalten ist - an derselben Kennzahl umgesetzt, nach dem Ende der Referenzperiode
+     * seiner Bezugsbasis-Fassung (sonst steckte sie in „erwartet“, WK4) und spätestens am letzten Tag der Zielperiode.
+     * Diese stehen zusätzlich in {@code im_stand_enthalten}. Ein unbekanntes oder nicht sichtbares Energieziel ist 404.
+     */
+    public MassnahmeDto.Liste liste(Collection<String> parameter, String zustand, String ueberfaellig,
+            String kennzahlText, String einsatzText, String energiezielText) {
         parameter.stream().filter(p -> !LISTE_PARAMETER.contains(p)).findFirst().ifPresent(p -> {
             throw VerbesserungAbgelehnt.anfrage(p);
         });
@@ -139,6 +150,25 @@ public class MassnahmeService {
             sql.append("AND m.einsatz_id = ? ");
             args.add(uuid(einsatzText, "einsatz"));
         }
+        UUID ziel = null;
+        if (energiezielText != null) {
+            ziel = uuid(energiezielText, "energieziel");
+            Map<String, Object> ez = jdbc.queryForList("SELECT e.kennzahl_id, e.zielperiode, f.referenzperiode "
+                    + "FROM energieziel e LEFT JOIN bezugsbasis_fassung f ON f.bezugsbasis_id = e.bezugsbasis_id "
+                    + "AND f.tenant_id = e.tenant_id AND f.fassung = e.fassung WHERE e.id = ?", ziel).stream().findFirst()
+                    .orElseThrow(VerbesserungAbgelehnt::nichtGefunden);
+            UUID kz = (UUID) ez.get("kennzahl_id");
+            if (kennzahlen.lesbareKennzahlOderNichts(kz) == null) {
+                throw VerbesserungAbgelehnt.nichtGefunden();
+            }
+            String referenzperiode = (String) ez.get("referenzperiode");
+            LocalDate ende = YearMonth.parse(((String) ez.get("zielperiode")).substring(8)).atEndOfMonth();
+            sql.append("AND (m.energieziel_id = ? OR (m.kennzahl_id = ? AND m.energieziel_id IS DISTINCT FROM ? "
+                    + "AND m.zustand IN ('umgesetzt', 'bewertet') AND m.umgesetzt_am <= ? "
+                    + "AND to_char(m.umgesetzt_am, 'YYYY-MM') > ?)) ");
+            args.addAll(List.of(ziel, kz, ziel, Date.valueOf(ende),
+                    referenzperiode == null ? "9999-12" : referenzperiode.substring(8)));
+        }
         sql.append("ORDER BY m.kennzeichen");
         ZoneId zone = zone();
         LocalDate abruf = LocalDate.ofInstant(kennzahlen.jetzt(), zone);
@@ -155,7 +185,11 @@ public class MassnahmeService {
             }
             aus.add(m);
         }
-        return new MassnahmeDto.Liste(abruf, List.copyOf(aus));
+        UUID fuer = ziel;
+        List<UUID> enthalten = fuer == null ? List.of() : aus.stream()
+                .filter(m -> m.energieziel() == null || !fuer.equals(m.energieziel().id())).map(MassnahmeDto.Massnahme::id)
+                .toList();
+        return new MassnahmeDto.Liste(abruf, List.copyOf(aus), enthalten);
     }
 
     /** Die Maßnahme mit Verlauf; Sichtbarkeit über RLS ({@code site_scope}) und über ihre Kennzahl — sonst 404. */

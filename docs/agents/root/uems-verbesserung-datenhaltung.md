@@ -11,7 +11,7 @@ nach demselben Muster daneben. Vertrag: [`verbesserung.md`](../../contracts/v2/v
 | `energieziel_ein_laufendes_uq` | je Kennzahl × Zielperiode höchstens ein Ziel mit `zustand = 'offen'` (genau gleicher Text; überlappende Perioden prüft der Schreibweg) |
 | Anlege-Trigger `energieziel_anlegen` | Fassung freigegeben, nicht beendet, Basis nicht beendet, Basis der Kennzahl (`…_fassung_freigegeben_chk`, `…_basis_der_kennzahl_chk`); Beginn ≥ Monat von `gilt_ab` und > Monat von `angelegt_am` in der Zeitzone des Unternehmens; Standort = Standort der Kennzahl bei Geltung Standort, NULL bei Unternehmen (andere Geltungen leitet IP-6 ab); entsteht `offen` und unbewertet |
 | `energieziel_aenderung` | Protokoll nur anhängen, ohne FK auf das Ziel (§8.1 Nr. 12); Wörter `energieziel_protokoll` |
-| Vokabulare | `verbesserung_vokabular()` + `verbesserung_wort()`: alle 18 Listen aus `verbesserung-vectors.json` zeilengleich, dazu nur `kennung_art`, `energieziel_bewertung_status`, `energieziel_protokoll` (IP-9: `massnahme_bewertung_status`, `massnahme_protokoll`). Weiten = `CREATE OR REPLACE` der Funktion mit der ganzen Liste, kein CHECK |
+| Vokabulare | `verbesserung_vokabular()` + `verbesserung_wort()`: alle Listen aus `verbesserung-vectors.json` zeilengleich (20 seit Vertrag 1.1: `kurs_lage`, weitet `V20261006213000`, nie gespeichert; `massnahme_art`, weitet `V20261007120000`), dazu nur `kennung_art`, `energieziel_bewertung_status`, `energieziel_protokoll` (IP-9: `massnahme_bewertung_status`, `massnahme_protokoll`). Weiten = `CREATE OR REPLACE` der Funktion mit der ganzen Liste, kein CHECK |
 | Zaun | RLS + FORCE; RESTRICTIVE `site_scope` auf `energieziel` (über `standort_id`) und `energieziel_aenderung` (über sein Ziel); im engen Zaun ist ein Ziel am Unternehmen nie sichtbar (RE2) |
 | Rechte · Ereignisse | `verbesserung.verwalten/abschliessen/ansehen` (Gruppe `kennzahlen`, Zellen wie `bezugsbasis.*`, reserviert in `RechtMatrixApiTest.OHNE_SCHREIBROUTE`); Reservierungen `auffaelligkeit_vermerkt`/`abweichung_eroeffnet` (Bezug `kennzahl`), `massnahme_umgesetzt`/`massnahme_bewertet` (Bezug `massnahme`) — Anlage offen |
 
@@ -63,17 +63,18 @@ Nachweis: `UemsMassnahmeHerkunftMigrationTest`, `UemsMassnahmeMigrationTest`.
 
 ## Art und Einsparung der Maßnahme (Verbessern-Konzept v1, PR 2)
 
-`V20261006213000__uems_massnahme_art.sql` (06.10.2026, Entscheide 6 und 13): `massnahme.art` (`gemessen` genau mit
+`V20261007120000__uems_massnahme_art.sql` (06.10.2026, Entscheide 6 und 13; am 07.10.2026 vor dem Merge von `V20261006213000` umnummeriert, die Version hatte PR 1 schon): `massnahme.art` (`gemessen` genau mit
 Messgrundlage · `nicht_gemessen` · `organisatorisch`) und `erwartete_einsparung_kwh_jahr` samt Grundlage (Menge, Monate).
 Bestand: mit Kennzahl `gemessen`, Herkunft Feststellung/Audit `organisatorisch`, sonst `nicht_gemessen`.
 ⚠ **Direkte SQL-Inserts ohne `art`** (Seeds, ältere Tests): der BEFORE-INSERT-Trigger `massnahme_art_vorgabe` leitet die
 Art genauso ab - `art` ist NOT NULL, ohne Trigger bräche jeder Altschreiber.
 ⚠ **Eingefroren:** `art` nie (`massnahme_art_eingefroren`, App-Rolle ohne UPDATE-Recht auf die Spalte); die drei
 Einsparungs-Spalten nur, solange die Maßnahme geplant ist (Schreibweg „Ändern“ rechnet mit Kennzahl neu).
-⚠ **Vokabular = Vereinigung** wie oben, plus `massnahme_art`; AM ENDE der Funktion, damit Präfix-Vergleiche halten.
-⚠ **Späte Ankunft:** `20261006213000` steht in `BAUEN_DARAUF_AUF` aller acht Migrationstests, die eine Verbesserungs-
-Migration spät ankommen lassen; `UemsMassnahmeHerkunftMigrationTest` lässt sie MIT der Herkunft spät ankommen
-(`List.of(DIESE, "20261006213000")`), sonst schriebe die späte Herkunft das Vokabular ohne `massnahme_art` zurück.
+⚠ **Vokabular = Vereinigung** wie oben: alle Wörter bis `massnahme_herkunft`, dann `kurs_lage` (PR 1), dann `massnahme_art`; AM ENDE der Funktion, damit Präfix-Vergleiche halten.
+Weiten zwei offene Branches die Funktion, nimmt der zweite eine NEUE, höhere Version und schreibt die Vereinigung beider Blöcke (sonst doppelte Version oder, out-of-order, eine späte niedrigere Migration ohne die Wörter der höheren).
+⚠ **Späte Ankunft:** `20261006213000` (PR 1) und `20261007120000` (PR 2) stehen in `BAUEN_DARAUF_AUF` aller acht
+Migrationstests, die eine Verbesserungs-Migration spät ankommen lassen; `UemsMassnahmeHerkunftMigrationTest` lässt beide MIT
+der Herkunft spät ankommen, sonst schriebe die späte Herkunft das Vokabular ohne `kurs_lage` und `massnahme_art` zurück.
 Nachweis: `UemsMassnahmeArtMigrationTest`.
 ⚠ **Kurzform in der Liste (`wirkung_kurz`):** `MassnahmeWirkung#mitKurzform` liest den Vergleich je Kennzahl × Bezugsbasis
 EINMAL über die Vereinigung der Nachher-Zeiträume und schneidet je Maßnahme zu (Monatszeilen hängen nicht am Fenster).

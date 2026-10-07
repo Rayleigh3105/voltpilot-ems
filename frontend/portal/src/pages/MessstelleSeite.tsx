@@ -371,8 +371,18 @@ function MessstelleSeiteMitId({
           {/* AP-16 IP-20 (R5): ein eingelöster Messbedarf — „geplant für EE-8 …“; ersetzt weder Quelle noch Wert. */}
           {geplantFuerText(zeile) && <p className="vp-mss-geplant" data-testid="messstelle-geplant-fuer">{geplantFuerText(zeile)}</p>}
           {w?.quelle.art === 'gebunden' && (
+            // AP-13 IP-11 (D1): das Gerät der Quelle führt auf seine Komponente im Aufbau der Anlage - seit der Liste
+            // nach Konzept Messen m1 (die ganze Reihe ist ein Verweis) steht dieser Weg hier.
             <p className="vp-mss-quelle">
-              Quelle: {[w.quelle.geraet, w.quelle.messwert, w.quelle.seit].join(' · ')}
+              Quelle:{' '}
+              {w.quelle.sprung ? (
+                <a className="vp-mss-quelle-sprung" href={w.quelle.sprung.hash}>
+                  {w.quelle.geraet}
+                </a>
+              ) : (
+                w.quelle.geraet
+              )}
+              {[w.quelle.messwert, w.quelle.seit].map((t) => ` · ${t}`).join('')}
             </p>
           )}
           {w?.quelle.art === 'ablesung' && <p className="vp-mss-quelle">Quelle: {w.quelle.text}</p>}

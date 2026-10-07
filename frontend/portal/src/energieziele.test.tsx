@@ -1,15 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
-import { EnergiezielBewertenDialog, EnergiezielSetzen } from './components/EnergiezielDialoge';
+import { EnergiezielBewertenDialog } from './components/EnergiezielDialoge';
 import { ebenenAktiv, ebenenBereiche, EBENEN_SEITEN, type EbenenLesemodell } from './ebenenNav';
+import * as B from './energiezielBild';
 import * as Z from './energieziele';
 import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE, UEMS_ZIELE_UND_MASSNAHMEN } from './glossar';
 import { energiezielRoute, hashForRoute, pageRoute, parseRoute, verbesserungRoute } from './nav';
 import { EnergiezielSeite } from './pages/EnergiezielSeite';
 import { VerbesserungBereich } from './pages/VerbesserungBereich';
 import { setSelbstauskunft } from './rollen';
-import { bb1, bb1Fassung, kz4 } from './test/bezugsbasisFixtures';
 import { abweichungBuehne } from './test/abweichungFixtures';
 import { energiezielBuehne, EZ_IDS, ez2028, STAND_SATZ_JULI, standEnde, standJuli, standLeer } from './test/energiezielFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
@@ -138,11 +138,13 @@ describe('die Flächen gegen R4/R10', () => {
   const bereich = (reiter: 'energieziele' | 'massnahmen' | 'abweichungen' = 'energieziele') =>
     render(<VerbesserungBereich reiter={reiter} energiezielId={null} onReiter={() => undefined} onOeffnen={() => undefined} onListe={() => undefined} />);
 
-  it('leer: der Satz aus §5.9 und der Grenz-Satz (R13)', async () => {
+  it('leer: ein Satz mit Beispiel, „Energieziel setzen“ und der Grenz-Satz (R13, Konzept Verbessern §6.12)', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, energiezielBuehne('leer'));
     bereich();
-    expect(await screen.findByText(UEMS_VERBESSERUNG_SAETZE.leer())).toBeTruthy();
+    expect(await screen.findByText(B.LEER)).toBeTruthy();
+    expect(screen.getByTestId('energieziel-setzen-leer').textContent).toBe('Energieziel setzen');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Energieziele');
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
   it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf', async () => {
@@ -154,27 +156,46 @@ describe('die Flächen gegen R4/R10', () => {
     expect(within(register).queryByRole('button')).toBeNull();
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
-  it('Register R4: Kennzahl, Zielwert, Zielperiode, Stand, Verantwortlich, Zustand', async () => {
+  it('Reiter R4: die Antwort zuerst, die Karte mit Skala, Lage, Monaten, Lücke in kWh und dem nächsten Schritt (§6.3)', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, energiezielBuehne('juli'));
     bereich();
-    const zeile = await screen.findByTestId('energieziel-zeile-EZ-2028-0001');
-    expect(await within(zeile).findByText('2,9 % weniger nach 5 von 12 Monaten')).toBeTruthy();
-    expect(within(zeile).getByText('5 % weniger')).toBeTruthy();
-    expect(within(zeile).getByText('Januar bis Dezember 2028')).toBeTruthy();
-    expect(within(zeile).getByText('Ines Kaltenbach')).toBeTruthy();
-    expect(within(zeile).getByTestId('zustand').textContent).toBe('offen');
+    expect((await screen.findByTestId('energieziele-antwort')).textContent).toContain(
+      'Das Energieziel 2028 ist bisher nicht auf Kurs: Von Januar bis Juni wurde 2,9\u00a0% weniger Energie gebraucht als erwartet, vorgenommen sind 5\u00a0% weniger.',
+    );
+    expect(screen.getByTestId('energieziele-antwort').textContent).toContain('1 laufendes Energieziel · Stand 10.07.2028 · gemessen gegen die Bezugsbasis');
+    const karte = screen.getByTestId('energieziel-karte-EZ-2028-0001');
+    expect(within(karte).getByText('Energieziel 2028')).toBeTruthy();
+    expect(within(karte).getByTestId('energieziel-lage').textContent).toBe('nicht auf Kurs');
+    expect(within(karte).getByText('5 von 12 Monaten')).toBeTruthy();
+    expect(within(karte).getByText('Bisher 8.731 kWh über dem Energieziel')).toBeTruthy();
+    expect(within(karte).getByRole('img').getAttribute('aria-label')).toContain('nicht auf Kurs');
+    expect(within(karte).getByTestId('energieziel-massnahmen').textContent).toBe('Noch keine Maßnahme geplant');
+    expect(within(karte).getByTestId('energieziel-planen').textContent).toBe('Maßnahme planen');
   });
-  it('Seite R4: der Satz des Lesers wörtlich, März mit Grund, Summenzeile — noch kein „bewerten“', async () => {
+  it('Seite R4: Antwort mit Bedingung, Stand in kWh, was noch nötig ist, März mit Grund - noch kein „bewerten“ (§6.4)', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, energiezielBuehne('juli'));
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);
-    expect(await screen.findByText(STAND_SATZ_JULI)).toBeTruthy();
-    expect(within(screen.getByTestId('monat-2028-03')).getByTestId('grund').textContent).toContain('außerhalb der Bezugsbasis');
-    expect(within(screen.getByTestId('energieziel-summe')).getByText('5 von 12 Monaten')).toBeTruthy();
-    expect(screen.queryByTestId('energieziel-vorschlag')).toBeNull();
+    const antwort = await screen.findByTestId('energieziel-antwort');
+    expect(antwort.textContent).toContain(
+      'Bisher nicht auf Kurs: Von Januar bis Juni wurde 2,9\u00a0% weniger Energie gebraucht als erwartet - vorgenommen sind 5\u00a0% weniger.',
+    );
+    expect(antwort.textContent).toContain('Stand nach 5 von 12 Monaten · Januar bis Dezember 2028 · gegen die Bezugsbasis BB-0001');
+    const stand = screen.getByTestId('energieziel-stand');
+    expect(within(stand).getByText('410.400')).toBeTruthy();
+    expect(within(stand).getByText('statt 422.809 erwartet')).toBeTruthy();
+    expect(within(stand).getByText('401.669')).toBeTruthy();
+    expect(within(stand).getByText('8.731 kWh')).toBeTruthy();
+    expect(screen.getByTestId('energieziel-noetig').textContent).toBe(
+      'Was noch nötig ist: In den übrigen sechs Monaten im Schnitt rund 6,7\u00a0% weniger als erwartet. Näherung bei gleich großen Monaten.',
+    );
+    const werte = screen.getByTestId('energieziel-werte');
+    expect(within(werte).getAllByTestId('monat-2028-03')[0].textContent).toContain('außerhalb der Bezugsbasis');
+    expect(within(werte).getAllByTestId('monat-2028-06')[0].textContent).toContain('−3,4\u00a0%unter der Bezugsbasis');
+    expect(screen.getByTestId('monatsgrafik-info').textContent).toContain('Juni 2028');
     expect(screen.queryByTestId('energieziel-bewerten')).toBeNull();
-    expect(screen.getByTestId('energieziel-beenden')).toBeTruthy();
+    expect(screen.getByTestId('energieziel-menue')).toBeTruthy();
     expect(screen.getAllByText(UEMS_NORMGRENZE).length).toBeGreaterThan(0);
   });
   it('Seite R10: „Bewertung fällig seit 15 Tagen“, „bewerten“ ohne Vorschlag; der Leser (CB) bekommt keinen Knopf', async () => {
@@ -238,7 +259,7 @@ describe('die Flächen gegen R4/R10', () => {
       }),
     });
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);
-    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.');
+    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Ines Kaltenbach · 15.01.2029 · ohne Vorschlag, weil März 2028 nicht bewertbar war');
     expect(screen.getByTestId('energieziel-bestaetigt').textContent).toBe('Bestätigt von Jonas Wendlinger am 15.01.2029.');
     expect(screen.getByTestId('energieziel-anstoesse').textContent).toContain('Bezugsbasis neu gefasst · BB-0001/3 · 02.11.2028 · offen');
   });
@@ -246,36 +267,9 @@ describe('die Flächen gegen R4/R10', () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, energiezielBuehne('bewertet'));
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);
-    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.');
+    expect((await screen.findByTestId('energieziel-bewertet')).textContent).toBe('Ines Kaltenbach · 15.01.2029 · ohne Vorschlag, weil März 2028 nicht bewertbar war');
     expect(screen.getByText(/^Prüfsumme sha256:/)).toBeTruthy();
     expect(screen.queryByTestId('energieziel-bewerten')).toBeNull();
     expect(screen.queryByTestId('energieziel-beenden')).toBeNull();
-  });
-});
-
-describe('„Energieziel setzen“ an der Kennzahl (§5.1)', () => {
-  const k = kz4();
-  it('nur bei freigegebener Bezugsbasis und mit `verbesserung.verwalten`; der Dialog zeigt die Basis-Zeile und die Vorgabe', async () => {
-    setSelbstauskunft(rechteSeed('IK').me);
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'da', basis: bb1('freigegeben'), fassung: bb1Fassung('freigegeben') }} />);
-    fireEvent.click(screen.getByTestId('energieziel-setzen-knopf'));
-    const dialog = await screen.findByTestId('energieziel-setzen');
-    expect(within(dialog).getByTestId('energieziel-basis-zeile').textContent).toContain('Bezugsbasis BB-0001');
-    expect(within(dialog).getByText(UEMS_NORMGRENZE)).toBeTruthy();
-    const senden = vi.spyOn(api, 'energiezielAnlegen');
-    await act(async () => fireEvent.click(screen.getByTestId('energieziel-setzen-senden')));
-    expect(senden).not.toHaveBeenCalled();
-    cleanup();
-
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'da', basis: bb1(null), fassung: bb1Fassung('entwurf') }} />);
-    expect(screen.queryByTestId('energieziel-setzen-knopf')).toBeNull();
-    cleanup();
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'keine' }} />);
-    expect(screen.queryByTestId('energieziel-setzen-einstieg')).toBeNull();
-    cleanup();
-
-    setSelbstauskunft(rechteSeed('CB').me);
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'da', basis: bb1('freigegeben'), fassung: bb1Fassung('freigegeben') }} />);
-    expect(screen.queryByTestId('energieziel-setzen-knopf')).toBeNull();
   });
 });

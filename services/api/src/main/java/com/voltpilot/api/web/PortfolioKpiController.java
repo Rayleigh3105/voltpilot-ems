@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
  * Mandant und die sichtbaren Anlagen kommen aus RLS/Zugriffs-Zaun (wie
  * {@code /overview}), nie aus dem Request. Die Aggregation macht
  * {@link PortfolioKpiService}; dieser Controller reicht nur die echte Uhr durch
- * (die Mengen laufen auf der echten Zeit, nicht auf einer Bühne).
+ * (die Mengen laufen auf der echten Zeit, nicht auf einer Bühne). Die
+ * Leitkennzahl hängt nicht an ihr: sie urteilt auf der Uhr der Kennzahlen wie
+ * ihre Karte (Konzept Auswerten a1 §10.8).
  */
 @RestController
 @RequestMapping("/api/v1/portfolio/kpis")
@@ -25,8 +27,10 @@ public class PortfolioKpiController {
         this.service = service;
     }
 
-    // Rechte: lesendes Aggregat, keine eigene Kennung (wie GET /overview, AP-03 §4.5 R-A2).
-    // authenticated() plus Mandanten-/Standort-RLS: nur die sichtbaren Anlagen, nie aus dem Request.
+    /**
+     * Recht: keine eigene Kennung - lesend für jede angemeldete Person; Mandant und sichtbare Anlagen begrenzen RLS und
+     * Zugriffs-Zaun wie bei {@code /overview}.
+     */
     @GetMapping
     public PortfolioKpiDto kpis() {
         return service.kpis(Instant.now());

@@ -33,7 +33,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Verbessern-Konzept v1, PR 2 (Entscheide 6 und 13): {@code V20261006213000} gibt der Maßnahme ihre Art
+ * Verbessern-Konzept v1, PR 2 (Entscheide 6 und 13): {@code V20261007120000} gibt der Maßnahme ihre Art
  * ({@code gemessen · nicht_gemessen · organisatorisch}) und die erwartete Einsparung in kWh im Jahr. Der Bestand bekommt
  * seine Art aus dem, was die Zeile schon sagt - auch eine verworfene Maßnahme -, sonst bleibt jede Spalte jeder Zeile
  * zeichengleich; das Vokabular wird nur geweitet; die Art ist nie änderbar, die Einsparung nur solange geplant; und die
@@ -42,7 +42,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsMassnahmeArtMigrationTest {
 
-    private static final String DIESE = "20261006213000";
+    private static final String DIESE = "20261007120000";
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "vb_v1_pr2_test_pw";
     private static final OffsetDateTime AM_15_01_2028 = OffsetDateTime.parse("2028-01-15T10:00:00+01:00");
     private static final List<String> NEU = List.of("massnahme_art:1:gemessen", "massnahme_art:2:nicht_gemessen",
