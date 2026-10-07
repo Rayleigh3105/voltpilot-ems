@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { vermerkeJeMonat } from '../abweichungen';
 import { api, type Auffaelligkeit } from '../api';
+import { merkeAbruf } from '../routenUhr';
 import {
   monatsOptionen,
   VERGLEICH_BASIS_WAHL,
@@ -60,7 +61,10 @@ export function BezugsbasisVergleich({ kennzahlId, standort }: { kennzahlId: str
     Promise.resolve()
       .then(() => api.auffaelligkeiten(kennzahlId))
       .then(
-        (l) => aktiv && setVermerke(l.vermerke),
+        (l) => {
+          merkeAbruf(l.abruf);
+          if (aktiv) setVermerke(l.vermerke);
+        },
         () => aktiv && setVermerke(null),
       );
     return () => {

@@ -5,7 +5,8 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Energieeinsatz, type Energieziel, type Kennzahl, type Massnahme, type StandortAmStichtag } from '../api';
 import { herkunftSatz } from '../auditFeststellung';
 import { benutzerApi, type BenutzerEintrag } from '../benutzer';
-import { heute, verantwortlichOptionen } from '../bewertung';
+import { verantwortlichOptionen } from '../bewertung';
+import { routenHeute, useRoutenHeute } from '../routenUhr';
 import { basisZeile, monatsOptionen, type BezugsbasisVergleich } from '../bezugsbasisVergleich';
 import * as Z from '../energieziele';
 import { UEMS_AUSGANGSLAGE, UEMS_ENERGIEZIEL, UEMS_ENERGIEZIELE, UEMS_ERWARTETE_WIRKUNG, UEMS_MASSNAHME, UEMS_MESSGRUNDLAGE, UEMS_NORMGRENZE, UEMS_TERMIN, UEMS_VERANTWORTLICH } from '../glossar';
@@ -88,7 +89,7 @@ export function MassnahmeAnlegenDialog({
   vorbelegung,
   onClose,
   onAngelegt,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   vorbelegung: M.MassnahmeVorbelegung;
   onClose: () => void;
@@ -150,7 +151,11 @@ export function MassnahmeAnlegenDialog({
   }
 
   const kennzahlen = (daten?.kennzahlen ?? []).filter((k) => mitBasis(k) || k.id === vorbelegung.kennzahl);
-  const monate = monatsOptionen(M.letzterAbgeschlossenerMonat(tagHeute), 36);
+  const letzterMonat = M.letzterAbgeschlossenerMonat(tagHeute);
+  const monate = monatsOptionen(letzterMonat, 36);
+  // Der letzte Monat höchstens zwölf Monate nach dem ersten (die Route lehnt mehr ab).
+  const bisEnde = M.ausgangslageEnde(e.von, letzterMonat);
+  const bisMonate = e.von <= bisEnde ? monatsOptionen(bisEnde, M.monateZwischen(e.von, bisEnde)) : monate;
   const einsaetze = (daten?.einsaetze ?? []).filter((x) => !x.beendet_am || x.id === vorbelegung.einsatz);
   // AP-19 IP-20 (SP5): aus dem Energiemanagement der Satz aus §5.8 — „Herkunft: Feststellung F-2029-0001.“
   const herkunft =
@@ -226,8 +231,8 @@ export function MassnahmeAnlegenDialog({
                 hint="Nur Kennzahlen mit freigegebener Bezugsbasis. Der Standort ist der der Kennzahl."
                 error={zeigen.kennzahl ?? null}
               />
-              <VpPicker id={`${basis}-monate`} label={`${UEMS_AUSGANGSLAGE}: erster Monat`} options={monate} value={e.von} onChange={(v) => setze({ von: v ?? e.von })} />
-              <VpPicker id={`${basis}-bis`} label={`${UEMS_AUSGANGSLAGE}: letzter Monat`} options={monate} value={e.bis} onChange={(v) => setze({ bis: v ?? e.bis })} error={zeigen.monate ?? null} />
+              <VpPicker id={`${basis}-monate`} label={`${UEMS_AUSGANGSLAGE}: erster Monat`} options={monate} value={e.von} onChange={(v) => setze(v ? { von: v, bis: M.bisZu(v, e.bis, letzterMonat) } : {})} />
+              <VpPicker id={`${basis}-bis`} label={`${UEMS_AUSGANGSLAGE}: letzter Monat`} options={bisMonate} value={e.bis} onChange={(v) => setze({ bis: v ?? e.bis })} error={zeigen.monate ?? null} />
               <AusgangslageVorschau vorschau={vorschau} von={e.von} bis={e.bis} />
             </>
           ) : (
@@ -322,6 +327,7 @@ export function MassnahmeAnlegen({
 }) {
   const [offen, setOffen] = useState(false);
   const [angelegt, setAngelegt] = useState<Massnahme | null>(null);
+  const tagHeute = useRoutenHeute();
   return (
     <div className="vp-ez-aktionen" data-testid={`massnahme-anlegen-einstieg-${vorbelegung.herkunft}`}>
       <Recht aktion="verbesserung.verwalten" standort={standort}>
@@ -335,9 +341,10 @@ export function MassnahmeAnlegen({
           <a href={hashForRoute(massnahmeRoute(angelegt.id))}>{`${UEMS_MASSNAHME} ${angelegt.kennzeichen} öffnen`}</a>
         </p>
       )}
-      {offen && (
+      {offen && tagHeute && (
         <MassnahmeAnlegenDialog
           vorbelegung={vorbelegung}
+          tagHeute={tagHeute}
           onClose={() => setOffen(false)}
           onAngelegt={(m) => {
             setOffen(false);
@@ -355,7 +362,7 @@ export function MassnahmeUmgesetztDialog({
   massnahme,
   onClose,
   onFertig,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   massnahme: Massnahme;
   onClose: () => void;
@@ -479,7 +486,7 @@ export function MassnahmeAendernDialog({ massnahme, onClose, onFertig }: { massn
   const basis = `mae-${useId().replace(/:/g, '')}`;
   const daten = useKataloge();
   const zahlErlaubt = massnahme.messgrundlage !== null;
-  const zahlVorher = massnahme.erwartete_wirkung_prozent === null ? '' : Z.zielwertText(massnahme.erwartete_wirkung_prozent).split(' ')[0];
+  const zahlVorher = M.wirkungEingabe(massnahme.erwartete_wirkung_prozent);
   const [titel, setTitel] = useState(massnahme.titel);
   const [termin, setTermin] = useState(massnahme.termin);
   const [verantwortlich, setVerantwortlich] = useState(massnahme.verantwortlich.sub);
