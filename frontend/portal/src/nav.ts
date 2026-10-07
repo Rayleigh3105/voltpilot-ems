@@ -28,6 +28,7 @@ export type PageId =
   | 'mandanten'
   | 'geraete-registry'
   | 'edge-updates'
+  | 'fernwartung'
   | 'optimizer'
   | 'vorlagen'
   | 'komponenten-flotte'
@@ -305,6 +306,9 @@ export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
   tabs: [
     { id: 'edge-updates', label: 'Updates' },
     { id: 'geraete-registry', label: 'Registrierung' },
+    // Wartungstunnel der Boxen (Entscheid E5): Fenster, Techniker-Zugänge,
+    // Protokoll. Nur Plattform-Admins; der Kunde sieht davon nichts (O3).
+    { id: 'fernwartung', label: 'Fernwartung' },
   ],
 };
 
@@ -317,6 +321,7 @@ export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
 export const PLATFORM_TAB_PAGES: PageDef[] = [
   // Existing registration links remain valid, including ?geraet= references.
   { id: 'geraete-registry', label: 'Registrierung', icon: 'plus', adminOnly: true },
+  { id: 'fernwartung', label: 'Fernwartung', icon: 'lock', adminOnly: true },
 ];
 
 /**
@@ -822,6 +827,23 @@ export function parseKomponente(hash: string): string | null {
  * Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also überlebt auch
  * das Lesezeichen.
  */
+/**
+ * Die Fernwartung mit einer gewählten Box: `#/fernwartung?box=<referenz>`.
+ * Dasselbe Hash-Parameter-Muster wie `?geraet=`: die Route bleibt die Seite,
+ * ein Lesezeichen öffnet dieselbe Box wieder.
+ */
+export function fernwartungHash(ref?: string | null): string {
+  return ref && ref.trim() ? `#/fernwartung?box=${encodeURIComponent(ref.trim())}` : '#/fernwartung';
+}
+
+/** Die Box aus einem `?box=`-Hash, oder null. */
+export function parseFernwartungBox(hash: string): string | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('box');
+  return value && value.trim() ? value.trim() : null;
+}
+
 export function parseGeraetRef(hash: string): string | null {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   if (rest.length === 0) return null;
