@@ -150,8 +150,9 @@ for (const breite of [375, 1440]) {
       await waehleTag(page, combo(page, 'Tag der Aussage'), '2028-01-14');
       await modal(page).getByLabel('Wortlaut der Aussage').fill(AUSSAGE);
       await page.getByTestId('ursache-aussage-senden').click();
-      const zeile = page.getByTestId('verlauf-eintrag').first();
-      await expect(zeile).toContainText('Aussage von Murat Demirci');
+      // Die Aussage steht mit ihrem eigenen Tag (14.01.) unter dem Eröffnen (15.01.) - neueste zuerst nach dem Tag, der dasteht.
+      const zeile = page.getByTestId('verlauf-eintrag').filter({ hasText: 'Aussage von Murat Demirci' });
+      await expect(zeile).toContainText('14.01.2028');
       await expect(zeile).toContainText(`‚${AUSSAGE}‘ · keine Messung · eingetragen von Ines Kaltenbach`);
       ohneQuerlauf(await messe(page), 'Seite offen');
       await ablegen(page, `seite-offen-${breite}`, true);
