@@ -913,6 +913,12 @@ class UemsEndgueltigkeitTagesklasseTest {
                         // Nachzuegler NACH der ersten Messung. Dass keine BESTEHENDE Rohzeile
                         // sich aendert, prueft rohwerteFinger() eigens.
                         + "AND table_name <> 'device_measurement_sample' "
+                        // Was eine SPAETERE Migration anlegt, gehoert nicht in diese Messung:
+                        // die Szenen (V20260929120000), die Speichersteuerung
+                        // (V20261007120000) und die Fernwartung (V20261007163700).
+                        + "AND table_name <> 'site_scene' "
+                        + "AND table_name <> 'device_battery_control' "
+                        + "AND table_name NOT LIKE 'fernwartung%' "
                         + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
                 String.class);
         Map<String, String> aus = new LinkedHashMap<>();
