@@ -4,6 +4,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Massnahme, type MassnahmeHerkunft, type VorgangAnstoss } from '../api';
+import { merkeAbruf } from '../routenUhr';
 import { herkunftSatz } from '../auditFeststellung';
 import { MassnahmeAendernDialog, MassnahmeUmgesetztDialog, MassnahmeVerwerfenDialog } from '../components/MassnahmeDialoge';
 import { MassnahmeBewertenDialog, MassnahmeWirkungBewertung } from '../components/MassnahmeWirkung';
@@ -118,7 +119,10 @@ export function MassnahmeSeite({
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahme(id).then(
-      (m) => aktiv && setLage({ art: 'da', m }),
+      (m) => {
+        merkeAbruf(m.frist.abruf);
+        if (aktiv) setLage({ art: 'da', m });
+      },
       (e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }),
     );
     return () => {

@@ -3,14 +3,10 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Energieziel, type EnergiezielErgebnis, type EnergiezielStand, type Kennzahl, type VorgangAnstoss } from '../api';
-import { heute } from '../bewertung';
-import { basisZeile as bezugsbasisZeile, zeilenFassung } from '../bezugsbasisAnlegen';
+import { routenHeute } from '../routenUhr';
 import * as Z from '../energieziele';
 import { anstossZeile } from '../massnahmeWirkung';
 import { UEMS_ENERGIEZIEL, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH, UEMS_ZIELPERIODE, UEMS_ZIELWERT } from '../glossar';
-import { energiezielRoute, hashForRoute } from '../nav';
-import type { BezugsbasisLage } from './BezugsbasisReiter';
-import { Recht } from './Recht';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
@@ -48,7 +44,7 @@ export function EnergiezielSetzenDialog({
   basisZeile,
   onClose,
   onGesetzt,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   kennzahl: Pick<Kennzahl, 'id' | 'kennzeichen' | 'name'>;
   basisZeile: string;
@@ -156,50 +152,6 @@ export function EnergiezielSetzenDialog({
         <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
-  );
-}
-
-/**
- * Der Einstieg an der Kennzahl-Seite (§5.1): „Energieziel setzen“ nur bei einer Energieleistungskennzahl — einer
- * laufenden Bezugsbasis mit freigegebener Fassung (AP-17 IP-8) — und mit `verbesserung.verwalten`. Nach dem Setzen
- * führt ein Sprung zur Seite des neuen Energieziels.
- */
-export function EnergiezielSetzen({
-  kennzahl,
-  lage,
-}: {
-  kennzahl: Pick<Kennzahl, 'id' | 'kennzeichen' | 'name' | 'standort_id' | 'einheit_anzeige'>;
-  lage: BezugsbasisLage;
-}) {
-  const [offen, setOffen] = useState(false);
-  const [gesetzt, setGesetzt] = useState<Energieziel | null>(null);
-  if (lage.art !== 'da' || !lage.fassung || lage.basis.beendet_zum !== null) return null;
-  if (zeilenFassung(lage.basis)?.freigabe_status !== 'freigegeben') return null;
-  return (
-    <div className="vp-ez-aktionen" data-testid="energieziel-setzen-einstieg">
-      <Recht aktion="verbesserung.verwalten" standort={kennzahl.standort_id}>
-        <Button variant="outline" size="sm" onClick={() => setOffen(true)} data-testid="energieziel-setzen-knopf">
-          {Z.KNOPF_SETZEN}
-        </Button>
-      </Recht>
-      {gesetzt && (
-        <p className="vp-ez-leise" role="status" data-testid="energieziel-gesetzt">
-          {`${UEMS_ENERGIEZIEL} ${gesetzt.kennzeichen} gesetzt — `}
-          <a href={hashForRoute(energiezielRoute(gesetzt.id))}>{`${UEMS_ENERGIEZIEL} ${gesetzt.kennzeichen} öffnen`}</a>
-        </p>
-      )}
-      {offen && (
-        <EnergiezielSetzenDialog
-          kennzahl={kennzahl}
-          basisZeile={bezugsbasisZeile(lage.basis, lage.fassung, kennzahl.einheit_anzeige)}
-          onClose={() => setOffen(false)}
-          onGesetzt={(ez) => {
-            setOffen(false);
-            setGesetzt(ez);
-          }}
-        />
-      )}
-    </div>
   );
 }
 
@@ -338,7 +290,7 @@ export function EnergiezielBeendenDialog({
   ez,
   onClose,
   onBeendet,
-  tagHeute = heute(),
+  tagHeute = routenHeute(),
 }: {
   ez: Energieziel;
   onClose: () => void;

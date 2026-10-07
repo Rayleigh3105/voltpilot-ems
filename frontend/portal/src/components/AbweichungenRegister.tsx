@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import * as A from '../abweichungen';
 import { api, type Abweichung } from '../api';
+import { merkeAbruf } from '../routenUhr';
 import * as Z from '../energieziele';
 import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import { ErrorState, Skeleton } from './States';
@@ -32,7 +33,10 @@ export function AbweichungenRegister({
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.abweichungen().then(
-      ({ abweichungen }) => aktiv && setLage({ art: 'da', liste: A.ordnen(abweichungen) }),
+      ({ abruf, abweichungen }) => {
+        merkeAbruf(abruf);
+        if (aktiv) setLage({ art: 'da', liste: A.ordnen(abweichungen) });
+      },
       () => aktiv && setLage({ art: 'fehler' }),
     );
     return () => {

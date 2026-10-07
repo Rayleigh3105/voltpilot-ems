@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
-import { EnergiezielBewertenDialog, EnergiezielSetzen } from './components/EnergiezielDialoge';
+import { EnergiezielBewertenDialog } from './components/EnergiezielDialoge';
 import { ebenenAktiv, ebenenBereiche, EBENEN_SEITEN, type EbenenLesemodell } from './ebenenNav';
 import * as Z from './energieziele';
 import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE, UEMS_ZIELE_UND_MASSNAHMEN } from './glossar';
@@ -9,7 +9,6 @@ import { energiezielRoute, hashForRoute, pageRoute, parseRoute, verbesserungRout
 import { EnergiezielSeite } from './pages/EnergiezielSeite';
 import { VerbesserungBereich } from './pages/VerbesserungBereich';
 import { setSelbstauskunft } from './rollen';
-import { bb1, bb1Fassung, kz4 } from './test/bezugsbasisFixtures';
 import { abweichungBuehne } from './test/abweichungFixtures';
 import { energiezielBuehne, EZ_IDS, ez2028, STAND_SATZ_JULI, standEnde, standJuli, standLeer } from './test/energiezielFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
@@ -250,32 +249,5 @@ describe('die Flächen gegen R4/R10', () => {
     expect(screen.getByText(/^Prüfsumme sha256:/)).toBeTruthy();
     expect(screen.queryByTestId('energieziel-bewerten')).toBeNull();
     expect(screen.queryByTestId('energieziel-beenden')).toBeNull();
-  });
-});
-
-describe('„Energieziel setzen“ an der Kennzahl (§5.1)', () => {
-  const k = kz4();
-  it('nur bei freigegebener Bezugsbasis und mit `verbesserung.verwalten`; der Dialog zeigt die Basis-Zeile und die Vorgabe', async () => {
-    setSelbstauskunft(rechteSeed('IK').me);
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'da', basis: bb1('freigegeben'), fassung: bb1Fassung('freigegeben') }} />);
-    fireEvent.click(screen.getByTestId('energieziel-setzen-knopf'));
-    const dialog = await screen.findByTestId('energieziel-setzen');
-    expect(within(dialog).getByTestId('energieziel-basis-zeile').textContent).toContain('Bezugsbasis BB-0001');
-    expect(within(dialog).getByText(UEMS_NORMGRENZE)).toBeTruthy();
-    const senden = vi.spyOn(api, 'energiezielAnlegen');
-    await act(async () => fireEvent.click(screen.getByTestId('energieziel-setzen-senden')));
-    expect(senden).not.toHaveBeenCalled();
-    cleanup();
-
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'da', basis: bb1(null), fassung: bb1Fassung('entwurf') }} />);
-    expect(screen.queryByTestId('energieziel-setzen-knopf')).toBeNull();
-    cleanup();
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'keine' }} />);
-    expect(screen.queryByTestId('energieziel-setzen-einstieg')).toBeNull();
-    cleanup();
-
-    setSelbstauskunft(rechteSeed('CB').me);
-    render(<EnergiezielSetzen kennzahl={k} lage={{ art: 'da', basis: bb1('freigegeben'), fassung: bb1Fassung('freigegeben') }} />);
-    expect(screen.queryByTestId('energieziel-setzen-knopf')).toBeNull();
   });
 });
