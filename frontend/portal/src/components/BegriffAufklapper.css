@@ -19,6 +19,12 @@
   list-style: none;
   cursor: pointer;
 }
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche. */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-begriff-auf summary {
+    min-height: 44px;
+  }
+}
 .vp-begriff-auf summary::-webkit-details-marker {
   display: none;
 }

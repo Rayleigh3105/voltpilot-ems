@@ -42,14 +42,31 @@ export function suchBegriffe(query: string): string[] {
     .filter((t) => t !== '');
 }
 
+/** Die Fundstellen eines Begriffs in der normalisierten Fassung, je als halboffener Bereich `[von, bis)`. */
+export type Fundstellen = (flach: string, begriff: string) => Array<[number, number]>;
+
+/** Jedes Vorkommen des Begriffs (die Regel des Pickers). */
+export const alleFundstellen: Fundstellen = (flach, begriff) => {
+  const out: Array<[number, number]> = [];
+  if (begriff === '') return out;
+  let from = 0;
+  for (;;) {
+    const at = flach.indexOf(begriff, from);
+    if (at === -1) return out;
+    out.push([at, at + begriff.length]);
+    from = at + begriff.length;
+  }
+};
+
 /**
  * Die Fundstellen eines Begriffs IM ORIGINALTEXT.
  *
  * ⚠ Gesucht wird auf der normalisierten Fassung, hervorgehoben im ORIGINAL -
  * die zwei haben verschiedene Längen (aus „SUN-30K" wird „sun30k"), deshalb
  * trägt jede Original-Position ihren Index in der normalisierten Fassung.
+ * `fundstellen` ersetzt die Regel, wo eine Fläche strenger sucht (die Liste der Messstellen mit Zahlgrenze).
  */
-export function hervorheben(text: string, begriffe: string[]): TextTeil[] {
+export function hervorheben(text: string, begriffe: string[], fundstellen: Fundstellen = alleFundstellen): TextTeil[] {
   if (begriffe.length === 0 || text === '') return [{ text, treffer: false }];
   // Position je Zeichen der NORMALISIERTEN Fassung → Position im Original.
   const norm: string[] = [];
@@ -64,12 +81,8 @@ export function hervorheben(text: string, begriffe: string[]): TextTeil[] {
   const flach = norm.join('');
   const markiert = new Array<boolean>(text.length).fill(false);
   for (const b of begriffe) {
-    let from = 0;
-    for (;;) {
-      const at = flach.indexOf(b, from);
-      if (at === -1) break;
-      for (let k = at; k < at + b.length; k += 1) markiert[pos[k]] = true;
-      from = at + b.length;
+    for (const [von, bis] of fundstellen(flach, b)) {
+      for (let k = von; k < bis; k += 1) markiert[pos[k]] = true;
     }
   }
   // ⚠ Ein Trennzeichen INNERHALB einer Fundstelle wird mit markiert: es kommt
