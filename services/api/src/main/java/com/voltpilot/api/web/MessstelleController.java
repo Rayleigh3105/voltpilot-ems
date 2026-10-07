@@ -110,7 +110,9 @@ public class MessstelleController {
      * {@code berechnung} einer sichtbaren berechneten Messstelle urteilt nur über Eingänge im Zugriff — Messstellen wie
      * Messkanäle ({@link MessstelleFormelService#komponenteSichtbar}, AP-03 R-A3/R-A6/R-A7).
      * Ein Stichtag ist ein Tag ({@code 2026-11-20}, dann gilt sein Beginn) oder ein Zeitpunkt mit
-     * Versatz; fehlend = jetzt.
+     * Versatz; fehlend = jetzt. Mit {@code letzterMonat=true} trägt jede Zeile {@code letzter_monat}: den Monat vor dem
+     * des Stichtags und seinen Wert, wie {@code …/werte?raster=monat} ihn zeigt (Messen PR5) - bei einer berechneten
+     * Messstelle mit einem Eingang außerhalb des Zugriffs ohne Zahl, wie an der Werte-Route.
      */
     @GetMapping
     public MessstelleDto.Liste alle(
@@ -120,12 +122,24 @@ public class MessstelleController {
             @RequestParam(required = false) String zustand,
             @RequestParam(required = false) String ohneQuelle,
             @RequestParam(required = false) String geplantFuerEinsatz,
-            @RequestParam(required = false) String stichtag) {
-        return register.liste(stichtag(stichtag), new MessstelleRegisterService.Filter(
+            @RequestParam(required = false) String stichtag,
+            @RequestParam(required = false) String letzterMonat) {
+        MessstelleRegisterService.Filter filter = new MessstelleRegisterService.Filter(
                 leer(standort) ? null : standort.strip(), leer(ort) ? null : ort.strip(),
                 anlage(anlage), zustand(zustand), wahrFalsch(ohneQuelle, "ohneQuelle", "ohne Quelle"),
-                wahrFalsch(geplantFuerEinsatz, "geplantFuerEinsatz", "geplant für Einsatz")),
-                id -> rechte.lesbar(RechtZiel.MESSSTELLE, id), formeln::komponenteSichtbar);
+                wahrFalsch(geplantFuerEinsatz, "geplantFuerEinsatz", "geplant für Einsatz"));
+        boolean mitMonat = wahrFalsch(letzterMonat, "letzterMonat", "letzter Monat");
+        return register.liste(stichtag(stichtag), filter, id -> rechte.lesbar(RechtZiel.MESSSTELLE, id),
+                formeln::komponenteSichtbar, mitMonat ? this::eingaengeImZugriff : null);
+    }
+
+    /**
+     * Liegt jeder Eingang einer berechneten Messstelle im Zeitraum im Zugriff (AP-03 R-A3)? Derselbe Zaun wie an
+     * {@code …/werte} ({@link MessstelleWerteController}).
+     */
+    private boolean eingaengeImZugriff(UUID messstelle, LocalDate von, LocalDate bis) {
+        return formeln.imZugriff(formeln.eingaenge(messstelle, von, bis),
+                ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
     }
 
     /**

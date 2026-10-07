@@ -11,11 +11,14 @@ import type {
   Funktionen,
 } from './api';
 import type { BerichtRechte } from './berichtDialoge';
-import { UEMS_HAUPTZAEHLER, UEMS_NOCH_NICHT_GERECHNET_SATZ, uemsGeteiltSatz } from './glossar';
+import { prozentText } from './bewertung';
+import { dez, dezVergleich, dezVon, type Dez } from './dez';
+import { UEMS_HAUPTZAEHLER, uemsGeteiltSatz } from './glossar';
 import { anlageRoute, hashForRoute } from './nav';
 import { datumZeit } from './rechte';
 import type { AnlageSurface } from './surface';
 import { beginn, laeuftNoch, letzterGebildeter, zeitraumText, type BilanzPeriode } from './uebersichtBausteine';
+import { nenner, prozent } from './uemsBewertung';
 import { BERECHNET_DIFFERENZ, BERECHNET_SUMME, NICHT_ZUGEORDNET, VOLLSTAENDIG } from './uemsBilanz';
 import { zahl } from './uemsErgebnis';
 import {
@@ -30,32 +33,80 @@ import {
 } from './uemsOberflaechen';
 
 /**
- * Die Energiebilanz je Anlage (UEMS AP-13 IP-8 = AP-10 IP-14, E7 = A, B1/B2) — der Reiter „Energiebilanz“ im Bereich
- * „Verlauf“ einer Anlage, rein abgeleitet aus `GET /api/v1/sites/{id}/bilanz` (AP-10 IP-9/IP-12).
+ * Die Energiebilanz je Anlage (UEMS AP-13 IP-8 = AP-10 IP-14; Konzept Auswerten a1 §6.9) - der Reiter „Energiebilanz“
+ * im Bereich „Verlauf“ einer Anlage, rein abgeleitet aus `GET /api/v1/sites/{id}/bilanz` (AP-10 IP-9/IP-12). Die Fläche
+ * beantwortet EINE Frage: Erfassen die Zähler den ganzen Bezug dieser Anlage? Zuerst der Antwortsatz, dann der
+ * Zwei-Teile-Balken mit drei Zeilen (Bezug laut Hauptzähler · durch Zähler erfasst · ohne eigenen Zähler), dann die
+ * Unterzähler nach Menge, zuletzt „Woraus gerechnet“ mit der Herkunft.
  *
- * ⚠ **Keine Rechnung.** Jede Zahl ist ein Feld der Route: Zufluss/Abfluss/zugeordnet sind `werte.*.menge` (und
- * „mindestens …“ ist `anzeige` wörtlich), „nicht zugeordnet“ ist `rest.menge` mit `rest.kundensatz`. Das Portal
- * formatiert nur über `uemsErgebnis.zahl` (E11). Die einzige Division ist die LÄNGE eines Anteils-Balkens gegen den
- * Zufluss (B2) — Zeichnung, nie eine angezeigte Zahl, nie eine Prozentzahl.
+ * ⚠ **Keine eigene Rechnung.** Jede Menge ist ein Feld der Route: Bezug/Zufluss/Abfluss/erfasst sind `werte.*.menge` (und
+ * „mindestens …“ ist `anzeige` wörtlich), „ohne eigenen Zähler“ ist `rest.menge` mit `rest.kundensatz`. Der Verbrauch der
+ * Anlage (Zufluss − Abfluss) und jeder Anteil kommen aus dem Vertrags-Zwilling der Bewertung (`uemsBewertung.nenner` und
+ * `.prozent`, AP-16 KR4) - dieselbe Regel, mit der die Bewertung „x % der Anlage“ nennt; so sagen Energiebilanz,
+ * Verbrauch und Bewertung dieselbe Zahl (Konzept a1, Entscheid 5). Formatiert wird über `uemsErgebnis.zahl` (E11) und
+ * `bewertung.prozentText`.
  *
- * ⚠ **„Nicht zugeordnet“ ist eine Aussage, keine Fehlerzeile:** die Zeile steht IMMER, auch mit 0 kWh, negativ mit dem
- * Satz der Route, ohne Zahl als „— keine Werte“ mit dem fehlenden Eingang (AP-10 §4.9 Punkt 2–4).
+ * ⚠ **„Ohne eigenen Zähler“ ist eine Aussage, keine Fehlerzeile:** die Zeile steht IMMER, auch mit 0 kWh, negativ mit dem
+ * Satz der Route, ohne Zahl als „—“ mit dem fehlenden Eingang (AP-10 §4.9 Punkt 2–4). Fehlend ist keine Null.
  *
  * ⚠ **Stellungswechsel:** die Route liefert dann Abschnitte Tag für Tag (`raster = tag`). Sie stehen untereinander,
- * jeder Tag für sich — nie zusammengerechnet, nie gemittelt (AP-13 B1, AP-10 IP-9 Falle 2).
+ * jeder Tag für sich - nie zusammengerechnet, nie gemittelt (AP-13 B1, AP-10 IP-9 Falle 2).
  */
 
 export const ENERGIEBILANZ_SUB = 'energiebilanz' as const;
 
 // ------------------------------------------------------------------------------------------------ Wörter
 
+/** Konzept a1 §6.9: die Unterzeile unter dem Titel - sie sagt, welche Frage die Fläche beantwortet. */
+export const ENERGIEBILANZ_UNTERZEILE = 'Ob die Zähler den ganzen Bezug dieser Anlage erfassen - und was ohne eigenen Zähler bleibt.';
+
+/** Die Wörter der vier Zeilen der Route - in „Woraus gerechnet“ und an jedem Eingang der Herkunft. */
 export const ZEILE_WORT = {
-  zufluss: 'Zufluss',
-  abfluss: 'Abfluss',
-  zugeordnet: 'Zugeordnet',
-  rest: 'Nicht zugeordnet',
+  zufluss: 'Hinein',
+  abfluss: 'Hinaus',
+  zugeordnet: 'Durch Zähler erfasst',
+  rest: 'Ohne eigenen Zähler',
 } as const;
 export type ZeileArt = keyof typeof ZEILE_WORT;
+
+/**
+ * Die drei Zeilen der Karte (Konzept a1 §6.9) - dieselben Wörter wie Verbrauch und Bewertung. „Bezug laut Hauptzähler“,
+ * wenn nur der Hauptzähler hineinzählt; mit Erzeugung, Speicher oder Einspeisung ist das Ganze der Verbrauch in der Anlage.
+ */
+export const KARTE_WORT = {
+  bezug: 'Bezug laut Hauptzähler',
+  verbrauch: 'Verbrauch in der Anlage',
+  erfasst: { keiner: 'durch Zähler erfasst', singular: 'durch 1 Zähler erfasst', plural: 'durch {n} Zähler erfasst' },
+  ohne: 'ohne eigenen Zähler',
+} as const;
+/** „41,4 % des Bezugs“ · „41,4 % des Verbrauchs“ - der Anteil eines Unterzählers am Ganzen der Karte. */
+export const ANTEIL_AM = { bezug: 'des Bezugs', verbrauch: 'des Verbrauchs' } as const;
+/** Was das Ganze ist, wenn mehr als der Hauptzähler hinein- oder hinauszählt. */
+export const VERBRAUCH_AUS = 'was hineinkommt ({zufluss}) minus was hinausgeht ({abfluss})';
+export const KEIN_UNTERZAEHLER = 'Diesem Hauptzähler ist kein Unterzähler zugeordnet.';
+
+/** Der Antwortsatz (Konzept a1 §6.9, Copy-Prinzip „Antwort zuerst“). */
+export const ANTWORT = {
+  erfasst: '{prozent} {am} messen eigene Zähler; {rest} laufen ohne eigenen Zähler.',
+  alles: 'Eigene Zähler messen den ganzen {ganz}; nichts läuft ohne eigenen Zähler.',
+  keinUnterzaehler: 'Kein Unterzähler misst einen Teil {am}: alle {rest} laufen ohne eigenen Zähler.',
+  ohneAnteil: '{rest} laufen ohne eigenen Zähler.',
+  fehlt: 'Für {zeitraum} fehlen Werte von {namen} - darum bleibt offen, wie viel ohne eigenen Zähler läuft.',
+  fehltViele: 'Für {zeitraum} fehlen Werte von {n} Zählern - darum bleibt offen, wie viel ohne eigenen Zähler läuft.',
+  keinZaehler: 'Für {zeitraum} liegt von keinem Zähler dieser Anlage ein Wert vor - darum bleibt offen, wie viel ohne eigenen Zähler läuft.',
+  keineWerte: 'Für {zeitraum} liegen keine Werte vor - darum bleibt offen, wie viel ohne eigenen Zähler läuft.',
+} as const;
+/**
+ * Konzept a1 §6.13 („April läuft noch - …“): ein Zeitraum ohne Abschluss hat noch keine Bilanz - nie eine Hochrechnung
+ * (E11). Ein Zeitraum nach heute hat noch gar keine Werte.
+ */
+export const OFFEN_SATZ = {
+  laeuft: '{zeitraum} läuft noch - die Bilanz steht, sobald {einheit} abgeschlossen ist.',
+  kommt: '{zeitraum} hat noch nicht begonnen - dafür gibt es noch keine Werte.',
+} as const;
+const EINHEIT_IM_SATZ: Record<BilanzPeriode, string> = { tag: 'der Tag', monat: 'der Monat', jahr: 'das Jahr' };
+/** Der Wortteil des Ganzen im Satz „Eigene Zähler messen den ganzen …“. */
+const GANZ_IM_SATZ = { bezug: 'Bezug', verbrauch: 'Verbrauch' } as const;
 
 /** Die Herkunfts-Art einer Messstelle, wie das Register sie nennt (`MessstelleRegisterZeile.art`). */
 export type MessstellenArt = 'gemessen' | 'berechnet';
@@ -63,31 +114,34 @@ export type MessstellenArt = 'gemessen' | 'berechnet';
 /** Speicher-Anteile als zwei Zeilen (AP-10 E4): das Wort des Anteils, nie eine saldierte Zahl. */
 export const ANTEIL_WORT: Record<BilanzEingang['anteil'], string | null> = {
   gesamt: null,
-  positiv: 'positiver Anteil',
-  negativ: 'negativer Anteil',
+  positiv: 'Speicher laden',
+  negativ: 'Speicher entladen',
 };
 
-export const UNTERZAEHLER_ANZAHL = '{n} Unterzähler';
-export const MESSSTELLEN_ANZAHL = { singular: '{n} Messstelle', plural: '{n} Messstellen' } as const;
-export const KEIN_UNTERZAEHLER = 'kein Unterzähler in der Stellung';
-/** AP-10 §5.2 (F6): der Hilfe-Satz zum negativen Rest — er nennt keine Ursache. */
+/** Die Unterzähler-Karte: „Die 7 Unterzähler“ · „Der Unterzähler“. */
+export const UNTERZAEHLER_TITEL = { singular: 'Der Unterzähler', plural: 'Die {n} Unterzähler' } as const;
+/**
+ * Konzept Auswerten a1, Befund 3 - der Bilanz-Vertrag: „Abzweig ohne Vorgänger = außerhalb der Bilanz (benannt)“. Gemessene
+ * Abzweige desselben Systems zählen in dieser Bilanz nicht mit; die Seite nennt sie, statt still nur den Rest zu melden.
+ */
+export const AUSSERHALB_SATZ = {
+  singular: '1 Zähler hängt als Abzweig neben dem Hauptzähler und zählt hier nicht mit: {namen}.',
+  plural: '{n} Zähler hängen als Abzweig neben dem Hauptzähler und zählen hier nicht mit: {namen}.',
+} as const;
+/** AP-10 §5.2 (F6): der Hilfe-Satz zum negativen Rest - er nennt keine Ursache. */
 export const HILFE_NEGATIV = 'Die Unterzähler zählen mehr als der Hauptzähler. VoltPilot nennt keine Ursache.';
 
-export const LIVE_JETZT = 'jetzt: {zahl} nicht zugeordnet';
-export const LIVE_OHNE_ZAHL = 'jetzt: —';
+/** Die Live-Zeile steht nur mit einer Zahl - ein Strich mit Gerätegründen ist kein Teil der Antwort (Konzept a1 §6.9). */
+export const LIVE_JETZT = 'jetzt {zahl} ohne eigenen Zähler';
 export const LIVE_STAND = 'Stand {stand}';
-/** AP-13 §5.8: der Grund-Satz je `fehlende[].grund` der Live-Zeile, mit dem Namen der Messstelle. */
-export const LIVE_GRUND: Record<BilanzLive['fehlende'][number]['grund'], string> = {
-  kein_geraet: '{name} hat kein Gerät',
-  kein_wert: '{name} hat noch keinen Wert',
-  veraltet: '{name} meldet sich gerade nicht',
-};
 
-/** Die Route nennt die Zone, aber nicht, woher sie kommt — darum ohne Klammer (Befund, siehe Wegweiser). */
-export const ZONE_SATZ = 'Zeiten in {zone}';
+/** Der Fuß der Fläche: die Zeitzone steht einmal, mit dem Standort (Messen m1, Entscheid 6). */
+export const FUSS_ZONE = 'Zeiten: {zone}';
+export const FUSS_ZONE_STANDORT = 'Zeiten: {zone} ({standort})';
 export const STELLUNG_GEAENDERT =
-  'Die Stellung hat sich in diesem Zeitraum geändert. Jeder Abschnitt steht für sich, Tag für Tag — nie zusammengerechnet.';
+  'Die Zuordnung der Zähler hat sich in diesem Zeitraum geändert. VoltPilot rechnet darum jeden Tag für sich - nie zusammengerechnet.';
 
+export const WORAUS = 'Woraus gerechnet';
 export const HERKUNFT = 'Herkunft';
 export const HERKUNFT_FORMEL = 'Formel: {formel}';
 export const HERKUNFT_FASSUNG = 'Fassung {n}';
@@ -99,16 +153,20 @@ export const HERKUNFT_VERTEILT = 'verteilt {anteil} % an Kostenstelle {ziel}';
 export const HERKUNFT_UNVOLLSTAENDIG = 'Zu dieser Zahl liegt keine vollständige Herkunft vor.';
 export const HERKUNFT_EINGAENGE = 'Eingänge';
 
-export const REST_VORSCHLAG = 'Für „nicht zugeordnet“ gibt es noch keine eigene Messstelle. Vorschlag: „{name}“ anlegen.';
-export const REST_ANLEGEN = 'Rest anlegen';
-export const REST_OHNE_RECHT = 'Eine Messstelle für den Rest legt an, wer berechnete Messstellen anlegen darf.';
+/** E18 in Worten (Konzept a1 §6.9): was es bedeutet, den Teil ohne eigenen Zähler als Messstelle zu führen. */
+export const REST_VORSCHLAG = 'Als Messstelle „{name}“ bekommt dieser Teil eine eigene Zeile in Verbrauch und lässt sich einem Bereich zuordnen.';
+export const REST_ANLEGEN = 'Als eigene Messstelle führen';
+export const REST_GEFUEHRT = 'geführt als Messstelle {name}';
+export const REST_OHNE_RECHT = 'Eine eigene Messstelle für diesen Teil legt an, wer berechnete Messstellen anlegen darf.';
 export const REST_ANGELEGT = '{kennzeichen} „{name}“ ist angelegt.';
 export const REST_GAB_ES_SCHON = '{kennzeichen} „{name}“ gab es schon.';
-export const REST_NICHT_ANGELEGT = 'Der Rest konnte nicht angelegt werden.';
-/** AP-10 §5.9 — die Ablehnung `rest_ohne_hauptzaehler` von `POST …/bilanz/rest`. */
-export const REST_OHNE_HAUPTZAEHLER_SATZ = 'Für diese Anlage gibt es keinen Hauptzähler — ohne ihn keine Bilanz.';
+export const REST_NICHT_ANGELEGT = 'Die Messstelle für diesen Teil ließ sich gerade nicht anlegen. Ihre Daten sind nicht betroffen.';
+/** AP-10 §5.9 - die Ablehnung `rest_ohne_hauptzaehler` von `POST …/bilanz/rest`. */
+export const REST_OHNE_HAUPTZAEHLER_SATZ = 'Für diese Anlage gibt es keinen Hauptzähler - ohne ihn keine Bilanz.';
+/** Das Menü ⋯ des Kopfs: der Weg zur Zuordnung der Zähler (Standort › Messstellen). */
+export const ZAEHLER_ZUORDNEN = 'Zähler zuordnen';
 
-/** Seit AP-03 IP-6 trägt jede Schreibroute ihre Kennung — das Portal fragt sie, statt zu raten. */
+/** Seit AP-03 IP-6 trägt jede Schreibroute ihre Kennung - das Portal fragt sie, statt zu raten. */
 export const RECHT_REST_ANLEGEN = 'messstelle.formel';
 export const RECHT_STELLUNG = 'messstelle.bearbeiten';
 
@@ -120,16 +178,16 @@ const einmal = (xs: string[]): string[] => [...new Set(xs)];
 
 // ------------------------------------------------------------------------------------ Reiter und Adresse
 
-/** Der Reiter erscheint nur mit Hauptzähler in der Stellung (AP-13 §5.5) — sonst bleibt der Verlauf zeichengleich. */
+/** Der Reiter erscheint nur mit Hauptzähler in der Stellung (AP-13 §5.5) - sonst bleibt der Verlauf zeichengleich. */
 export const hatHauptzaehler = (b: Bilanz | null | undefined): boolean => (b?.hauptzaehler.length ?? 0) > 0;
 
-/** Die Projektion mit dem Reiter — derselbe Fakt in `useAnlageSurface` und auf der Bühne. */
+/** Die Projektion mit dem Reiter - derselbe Fakt in `useAnlageSurface` und auf der Bühne. */
 export const mitEnergiebilanz = (surface: AnlageSurface, bilanz: Bilanz | null): AnlageSurface =>
   hatHauptzaehler(bilanz) ? { ...surface, energiebilanz: true } : surface;
 
 const PERIODEN: readonly BilanzPeriode[] = ['tag', 'monat', 'jahr'];
 
-/** `#/anlage/{id}/energiebilanz?periode=monat&am=2026-10-01` — ein Lesezeichen hält den Zeitraum. */
+/** `#/anlage/{id}/energiebilanz?periode=monat&am=2026-10-01` - ein Lesezeichen hält den Zeitraum. */
 export const energiebilanzHash = (siteId: string, periode: BilanzPeriode, am: string): string =>
   `${hashForRoute(anlageRoute(siteId, ENERGIEBILANZ_SUB))}?periode=${periode}&am=${am}`;
 
@@ -145,7 +203,7 @@ export function zeitraumAus(hash: string, heute: string): { periode: BilanzPerio
 
 // ----------------------------------------------------------------------------------------------- Rechte
 
-/** Der Standort einer Anlage aus `GET /funktionen` — dieselbe Zuordnung wie `anlageGeld.anlageAufEbene`. */
+/** Der Standort einer Anlage aus `GET /funktionen` - dieselbe Zuordnung wie `anlageGeld.anlageAufEbene`. */
 export const standortDerAnlage = (funktionen: Funktionen | null, siteId: string): string | null =>
   funktionen?.standorte.find((st) => st.steuern.anlagen.some((a) => a.id === siteId))?.id ?? null;
 
@@ -164,16 +222,21 @@ export function darf(rechte: BerichtRechte | null | undefined, standortId: strin
 
 export type Ton = 'ok' | 'warn' | 'off';
 
-/** Ein Eingang unter seiner Zeile (Unterzähler, Erzeuger, Speicher-Anteil). */
+/** Ein Eingang einer Zeile (Unterzähler, Erzeuger, Speicher-Anteil). */
 export interface TeilBild {
   key: string;
   kennzeichen: string;
+  /** „Spritzguss (MS-20)“ - die Namensform der Herkunft und der Zeilen „hinein/hinaus“. */
   name: string;
+  /** Nur der Name („Spritzguss“), ohne Kennzeichen; ohne Namen das Kennzeichen. */
+  nurName: string;
   zahl: string;
+  /** Anteil-Wort und Zustand, wenn er nicht „vollständig“ ist - was die Reihe sagen muss. Die Kennzeichen des Eingangs
+   * („ab 15.10.2026“, „Ablesezeitraum …“) stehen mit seiner Version in „Woraus gerechnet“ ({@link eingangText}). */
   woerter: string[];
   keineWerte: boolean;
-  /** B2: Länge gegen den Zufluss (0 … 1) — nur zugeordnet, nur mit Werten; `null` = kein Balken, sondern das Wort. */
-  balken: number | null;
+  /** Konzept a1 §6.9: „41,4 % des Bezugs“ - der Anteil am Ganzen der Karte (Zwilling `prozent`); `null` ohne Wert. */
+  anteil: string | null;
   /** AP-13 IP-11 (D1): der Weg zu dieser Messstelle, mit der Periode der Bilanz (D2). */
   sprung: Sprung | null;
 }
@@ -183,7 +246,7 @@ export interface HerkunftBild {
   zeilen: string[];
   eingaenge: string[];
   /**
-   * AP-13 IP-11 (D1/D2): dieselben Zeilen in Stücken — die Messstelle eines Eingangs springt auf ihre
+   * AP-13 IP-11 (D1/D2): dieselben Zeilen in Stücken - die Messstelle eines Eingangs springt auf ihre
    * Seite MIT der Periode der Bilanz und der Version DIESES Eingangs, die Kostenstelle einer Verteilung
    * auf ihre Karte. Zusammengefügt ergeben die Stücke wieder `zeilen` bzw. `eingaenge`.
    */
@@ -191,6 +254,7 @@ export interface HerkunftBild {
   eingaengeStuecke: Stueck[][];
 }
 
+/** Eine der vier Zeilen der Route - die Grundlage der Karte und von „Woraus gerechnet“. */
 export interface ZeileBild {
   art: ZeileArt;
   wort: string;
@@ -203,13 +267,38 @@ export interface ZeileBild {
   herkunft: HerkunftBild;
 }
 
+/** Eine Zeile der Karte (Konzept a1 §6.9): das Ganze, das Erfasste, der Teil ohne eigenen Zähler. */
+export interface KartenZeile {
+  art: 'ganz' | 'erfasst' | 'ohne';
+  wort: string;
+  zahl: string;
+  ton: Ton;
+  /** Leise Sätze unter der Zeile (Zustand, Grund, Satz der Route). */
+  unter: string[];
+}
+
+export interface AntwortBild {
+  satz: string;
+  ton: Ton;
+}
+
 export interface TagBild {
   key: string;
   /** Nur bei Stellungswechsel: der Tag über seinen Zeilen. */
   titel: string | null;
-  /** Tag für Tag ohne Teile — die Eingänge stehen in der Herkunft. */
+  /** Tag für Tag ohne Unterzähler-Karte - die Eingänge stehen in „Woraus gerechnet“. */
   kompakt: boolean;
+  /** Bezug laut Hauptzähler (nur der Hauptzähler hinein, nichts hinaus) oder Verbrauch in der Anlage. */
+  einfach: boolean;
+  antwort: AntwortBild;
+  karte: KartenZeile[];
+  /** Der Zwei-Teile-Balken: die Anteile des Zwillings als Dezimaltext (`88.6`); `null` = kein ehrlicher Balken. */
+  balken: { erfasst: string; ohne: string } | null;
+  /** Die Unterzähler nach Menge absteigend; ohne Wert am Ende. */
+  unterzaehler: TeilBild[];
   zeilen: ZeileBild[];
+  /** Alle Kennzeichen dieses Zeitraums - die Fläche setzt sie in Sätzen ohne Umbruch ({@link kennzeichenTeile}). */
+  kennzeichen: string[];
 }
 
 export interface AbschnittBild {
@@ -218,11 +307,18 @@ export interface AbschnittBild {
   tage: TagBild[];
   /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): je Fund ein Satz; leer ohne Fund. */
   geteilt: string[];
+  /** Die Abzweige außerhalb dieser Bilanz, benannt (Bilanz-Vertrag); `null` ohne Abzweig. */
+  ausserhalb: AusserhalbBild | null;
+}
+
+/** Der Satz zu den Abzweigen außerhalb der Bilanz, in Stücke geteilt: ein Kennzeichen bricht nie am Bindestrich um. */
+export interface AusserhalbBild {
+  satz: string;
+  teile: { text: string; kennzeichen: boolean }[];
 }
 
 export interface LiveBild {
   text: string;
-  ton: Ton;
 }
 
 export interface VorschlagBild {
@@ -233,17 +329,24 @@ export interface VorschlagBild {
 
 export interface HauptzaehlerBild {
   key: string;
+  /** „Hauptzähler Halle 1 (HZ-1)“ - nie zweimal „Hauptzähler“. */
   titel: string;
-  live: LiveBild;
+  kennzeichen: string;
+  /** Nur mit Zahl; ohne Zahl steht keine Live-Zeile. */
+  live: LiveBild | null;
   vorschlag: VorschlagBild | null;
+  /** Die schon geführte Messstelle des Teils ohne eigenen Zähler; `teile` halten ihr Kennzeichen am Stück. */
+  restMessstelle: { text: string; teile: { text: string; kennzeichen: boolean }[]; sprung: Sprung | null } | null;
+  /** Stellungswechsel: statt eines Antwortsatzes der Satz, dass jeder Tag für sich steht. */
   hinweis: string | null;
   abschnitte: AbschnittBild[];
 }
 
 export interface EnergiebilanzBild {
   zeitraum: string;
+  /** Die Zone der Route (`Europe/Berlin`) - einmal am Fuß. */
   zone: string;
-  /** Ein laufender Zeitraum: dieser Satz statt der Zeilen — nie eine Hochrechnung (E11). */
+  /** Ein laufender Zeitraum: dieser Satz statt der Zeilen - nie eine Hochrechnung (E11). */
   laeuft: string | null;
   leer: Leerzustand | null;
   hauptzaehler: HauptzaehlerBild[];
@@ -252,23 +355,26 @@ export interface EnergiebilanzBild {
 export interface BilanzKontext {
   /** Heute in der Zone der Anlage (`JJJJ-MM-TT`). */
   heute: string;
-  /** Die Herkunfts-Art je Kennzeichen aus dem Register — fehlt eine, steht kein Wort (nie geraten). */
+  /** Die Herkunfts-Art je Kennzeichen aus dem Register - fehlt eine, steht kein Wort (nie geraten). */
   arten: ReadonlyMap<string, MessstellenArt>;
+  /** Der Name je Kennzeichen aus dem Register - fehlt einer, steht nur das Kennzeichen. */
+  namen?: ReadonlyMap<string, string>;
   /**
-   * AP-13 IP-11 (D2): die Periode DIESER Fläche. Jeder Sprung einer Zeile nimmt sie mit — ohne sie
+   * AP-13 IP-11 (D2): die Periode DIESER Fläche. Jeder Sprung einer Zeile nimmt sie mit - ohne sie
    * landet der Kunde auf der Messstelle bei einer anderen Zahl als der, auf die er geklickt hat.
    * `energiebilanzBild` setzt sie aus der Antwort; fehlt sie, springt die Zeile ohne Periode.
    */
   periode?: { art: 'tag' | 'monat' | 'jahr'; am: string } | null;
 }
 
+const periodeDes = (ctx: BilanzKontext): string | null => (ctx.periode ? periodeSchluessel(ctx.periode.art, ctx.periode.am) : null);
+
 /**
- * AP-13 IP-11 (D1/D2): wohin ein Kennzeichen einer Bilanz-Zeile springt — eine Messstelle auf ihre Seite
- * im Abschnitt „Werte“ mit der Periode der Bilanz. Eine VERSION steht an einer Bilanz-Zeile nur in der
- * Herkunft je Eingang; der Sprung nimmt sie dort mit ({@link eingangsZiel}).
+ * AP-13 IP-11 (D1/D2): jeder Eingang einer Bilanz IST eine Messstelle - er springt auf ihre Seite im Abschnitt „Werte“
+ * mit der Periode der Bilanz, gleich welches Kennzeichen-Präfix sie trägt (auch „AZ-2“, „HZ-1“).
  */
-const zielDerZeile = (ctx: BilanzKontext) => (kennzeichen: string) =>
-  kennzeichenSprung(kennzeichen, { periode: ctx.periode ? periodeSchluessel(ctx.periode.art, ctx.periode.am) : null });
+const messstellenSprung = (ctx: BilanzKontext, kennzeichen: string, version: number | null = null): Sprung | null =>
+  sprungziel({ art: 'messstelle', id: kennzeichen, periode: periodeDes(ctx), version });
 
 type Terme = BilanzAbschnitt['terme'];
 
@@ -281,7 +387,7 @@ const benannt = (name: string | null, kennzeichen: string, zusatz?: string): str
   return name ? `${name} (${klammer})` : zusatz ? `${kennzeichen} (${zusatz})` : kennzeichen;
 };
 
-/** „(MS-14 fehlt)“ — dieselbe Form wie `anzeige` der Summe (`saetze.summe_mindestens`). */
+/** „(MS-14 fehlt)“ - dieselbe Form wie `anzeige` der Summe (`saetze.summe_mindestens`). */
 const fehltText = (fehlend: string[]): string => `(${fehlend.join(', ')} ${fehlend.length === 1 ? 'fehlt' : 'fehlen'})`;
 
 const tagText = (tag: string): string => {
@@ -296,7 +402,7 @@ export function spanneText(von: string, bis: string): string {
   return `${tagText(von)}–${tagText(bis)}`;
 }
 
-/** „10:15“ am selben Tag, sonst „19.10.2026 10:15“ — die Uhr in der Zone der Route. */
+/** „10:15“ am selben Tag, sonst „19.10.2026 10:15“ - die Uhr in der Zone der Route. */
 export function standText(stand: string, zone: string, heute: string): string {
   const dz = datumZeit(stand, zone);
   const [datum, uhr] = dz.split(' ');
@@ -311,7 +417,7 @@ const periodeWort = (schluessel: string): string => {
 };
 
 /**
- * Der Auslöser einer Version (`BilanzwertHerkunft.ausloeser`: „correction MS-17 2026-10-18 Version 2“) in Worten —
+ * Der Auslöser einer Version (`BilanzwertHerkunft.ausloeser`: „correction MS-17 2026-10-18 Version 2“) in Worten -
  * die Werkstatt-Form erreicht nie den Bildschirm. Eine unbekannte Form bleibt weg, statt roh zu erscheinen.
  */
 export function ausloeserText(ausloeser: string | null): string | null {
@@ -323,7 +429,7 @@ export function ausloeserText(ausloeser: string | null): string | null {
   });
 }
 
-/** F3: „verteilt 100 % an Kostenstelle 4300“ — nur, wenn die Route eine Verteilung der ganzen Periode nennt. */
+/** F3: „verteilt 100 % an Kostenstelle 4300“ - nur, wenn die Route eine Verteilung der ganzen Periode nennt. */
 function verteilungText(v: unknown): string | null {
   if (!v || typeof v !== 'object') return null;
   const { ziel, anteil_prozent } = v as { ziel?: unknown; anteil_prozent?: unknown };
@@ -357,7 +463,7 @@ function eingangText(e: EingangZeile, terme: Terme, ebene: string, ctx: BilanzKo
 }
 
 /**
- * AP-10 §5.6 — die Herkunfts-Karte des Rests aus `rest.herkunft {satz, fehlt}` (AP-10 IP-12): Formel-Fassung,
+ * AP-10 §5.6 - die Herkunfts-Karte des Rests aus `rest.herkunft {satz, fehlt}` (AP-10 IP-12): Formel-Fassung,
  * Eingänge in ihrer Version, Rechenzeitpunkt, Version und Auslöser. Ohne Satz stehen die Eingänge der Route selbst da
  * (dieselben Zahlen), und der Satz sagt, dass die Herkunft nicht vollständig ist.
  */
@@ -404,7 +510,7 @@ export function restHerkunft(
   );
 }
 
-/** Ein Eingang des Herkunfts-Satzes in der Form, die {@link eingangText} liest — jedes Feld geprüft, nie geraten. */
+/** Ein Eingang des Herkunfts-Satzes in der Form, die {@link eingangText} liest - jedes Feld geprüft, nie geraten. */
 function eingangDesSatzes(e: Record<string, unknown>): EingangZeile {
   return {
     messstelle: String(e.messstelle),
@@ -417,7 +523,7 @@ function eingangDesSatzes(e: Record<string, unknown>): EingangZeile {
   };
 }
 
-/** Das Ziel einer Verteilung (`verteilung.ziel`) — die Kostenstelle, auf deren Karte die Zeile springt (D1). */
+/** Das Ziel einer Verteilung (`verteilung.ziel`) - die Kostenstelle, auf deren Karte die Zeile springt (D1). */
 function kostenstelleDerVerteilung(v: unknown): string | null {
   if (v === null || typeof v !== 'object') return null;
   const ziel = (v as { ziel?: unknown }).ziel;
@@ -426,7 +532,7 @@ function kostenstelleDerVerteilung(v: unknown): string | null {
 
 /**
  * AP-13 IP-11 (D1/D2): dieselben Zeilen mit ihren Kanten. Eine Messstelle springt mit der Periode der
- * Bilanz und ihrer eigenen Version; die Kostenstelle einer Verteilung steht als Zahl im Satz — sie hat
+ * Bilanz und ihrer eigenen Version; die Kostenstelle einer Verteilung steht als Zahl im Satz - sie hat
  * kein MS-/KZ-Kennzeichen und bekommt darum ihr Ziel gesagt, statt es aus dem Text zu lesen.
  */
 function herkunftMitStuecken(
@@ -436,7 +542,7 @@ function herkunftMitStuecken(
   versionen: ReadonlyMap<string, number>,
   kostenstelle: string | null = null,
 ): HerkunftBild {
-  const periode = ctx.periode ? periodeSchluessel(ctx.periode.art, ctx.periode.am) : null;
+  const periode = periodeDes(ctx);
   const ziel = (kennzeichen: string) => kennzeichenSprung(kennzeichen, { periode, version: versionen.get(kennzeichen) ?? null });
   const ksSprung = kostenstelle
     ? sprungziel({ art: 'kostenstelle', kennzeichen: kostenstelle, periode: ctx.periode?.art ?? null, am: ctx.periode?.am ?? null })
@@ -460,21 +566,34 @@ function mitKostenstelle(text: string, kennzeichen: string, sprung: Sprung, ziel
   ]);
 }
 
-function teilBild(e: BilanzEingang, terme: Terme, hauptzaehler: string, zufluss: number | null, ebene: string, ctx: BilanzKontext): TeilBild {
+/** Eine Menge der Route als Dezimalbetrag für den Zwilling; was kein Dezimaltext ist, bleibt `null` (nie geraten). */
+function alsDez(menge: number | null): Dez | null {
+  if (menge === null) return null;
+  try {
+    return dezVon(menge);
+  } catch {
+    return null;
+  }
+}
+
+/** Der Anteil am Ganzen als Text des Zwillings („41.4“) - `null`, wenn Teil oder Ganzes fehlt oder das Ganze ≤ 0 ist. */
+const anteilVon = (teil: number | null, ganz: Dez | null): string | null => prozent(alsDez(teil), ganz);
+
+function teilBild(e: BilanzEingang, terme: Terme, hauptzaehler: string, ebene: string, ctx: BilanzKontext, ganz: Dez | null, am: string): TeilBild {
   const keineWerte = e.menge === null;
+  const name = nameVon(terme, e.messstelle) ?? ctx.namen?.get(e.messstelle) ?? null;
+  const anteil = e.rolle === 'zugeordnet' ? anteilVon(e.menge, ganz) : null;
   return {
     key: `${e.rolle}-${e.messstelle}-${e.anteil}`,
     kennzeichen: e.messstelle,
-    name: benannt(nameVon(terme, e.messstelle), e.messstelle, e.messstelle === hauptzaehler ? UEMS_HAUPTZAEHLER : undefined),
+    name: benannt(name, e.messstelle, e.messstelle === hauptzaehler ? UEMS_HAUPTZAEHLER : undefined),
+    nurName: name ?? e.messstelle,
     zahl: zahl(e.menge, 'kWh', ebene),
-    woerter: einmal(
-      ohneLeere([ctx.arten.get(e.messstelle), ANTEIL_WORT[e.anteil], e.zustand !== VOLLSTAENDIG ? e.zustand : null, ...e.kennzeichen]),
-    ),
+    woerter: einmal(ohneLeere([ANTEIL_WORT[e.anteil], e.zustand !== VOLLSTAENDIG ? e.zustand : null])),
     keineWerte,
-    // B2: Zeichnung gegen den Zufluss — ein negativer oder übergroßer Wert füllt höchstens die Bahn (MiniShareBar klemmt).
-    balken: e.rolle === 'zugeordnet' && e.menge !== null && zufluss !== null && zufluss > 0 ? Math.max(0, e.menge) / zufluss : null,
-    // AP-13 IP-11 (D1/D2): der Unterzähler führt auf seine Seite — im Zeitraum, den die Bilanz-Leiste zeigt.
-    sprung: zielDerZeile(ctx)(e.messstelle),
+    anteil: anteil === null ? null : `${prozentText(anteil)} ${am}`,
+    // AP-13 IP-11 (D1/D2): der Unterzähler führt auf seine Seite - im Zeitraum, den die Bilanz-Leiste zeigt.
+    sprung: messstellenSprung(ctx, e.messstelle),
   };
 }
 
@@ -486,9 +605,11 @@ function summenZeile(
   hauptzaehler: string,
   ebene: string,
   ctx: BilanzKontext,
+  ganz: Dez | null,
+  am: string,
 ): ZeileBild | null {
-  const teile = w.eingaenge.filter((e) => e.rolle === art).map((e) => teilBild(e, terme, hauptzaehler, w.zufluss.menge, ebene, ctx));
   const eigene = w.eingaenge.filter((e) => e.rolle === art);
+  const teile = eigene.map((e) => teilBild(e, terme, hauptzaehler, ebene, ctx, ganz, am));
   const herkunft: HerkunftBild = herkunftMitStuecken(
     [],
     eigene.map((e) => eingangText(e, terme, ebene, ctx)),
@@ -496,26 +617,20 @@ function summenZeile(
     new Map(eigene.map((e) => [e.messstelle, e.version])),
   );
   if (teile.length === 0) {
-    // Ein Abfluss ohne Messstelle in der Stellung existiert nicht (Halle 2 hat keinen) — er FEHLT nicht, er ist keiner.
+    // Ein Abfluss ohne Messstelle in der Stellung existiert nicht (Halle 2 hat keinen) - er FEHLT nicht, er ist keiner.
     if (art === 'abfluss') return null;
-    return { art, wort: ZEILE_WORT[art], zahl: zahl(null, 'kWh', ebene), zusatz: KEIN_UNTERZAEHLER, woerter: [], ton: 'off', saetze: [], teile, herkunft };
+    return { art, wort: ZEILE_WORT[art], zahl: zahl(null, 'kWh', ebene), zusatz: null, woerter: [], ton: 'off', saetze: [], teile, herkunft };
   }
   const arten = new Set(teile.map((t) => ctx.arten.get(t.kennzeichen) ?? null));
   const herkunftWort = arten.size === 1 ? [...arten][0] : null;
-  const anzahl =
-    teile.length === 1
-      ? teile[0].name
-      : art === 'zugeordnet'
-        ? fuelle(UNTERZAEHLER_ANZAHL, { n: teile.length })
-        : fuelle(MESSSTELLEN_ANZAHL.plural, { n: teile.length });
-  // Hat KEIN Eingang einen Wert, sagt die Route „keine Werte“ (Menge 0 der leeren Summe) — ein Strich, nie „mindestens 0“.
+  // Hat KEIN Eingang einen Wert, sagt die Route „keine Werte“ (Menge 0 der leeren Summe) - ein Strich, nie „mindestens 0“.
   const ohneZahl = s.menge === null || s.mit_werten === 0;
   return {
     art,
     wort: ZEILE_WORT[art],
-    // „mindestens 1.055 kWh (MS-14 fehlt)“ ist `anzeige` der Route — wörtlich, nie nachgebaut.
+    // „mindestens 1.055 kWh (MS-14 fehlt)“ ist `anzeige` der Route - wörtlich, nie nachgebaut.
     zahl: ohneZahl ? zahl(null, 'kWh', ebene) : s.anzeige ?? zahl(s.menge, 'kWh', ebene),
-    zusatz: ohneZahl && s.fehlend.length > 0 ? fehltText(s.fehlend) : s.anzeige && !ohneZahl ? null : anzahl,
+    zusatz: ohneZahl && s.fehlend.length > 0 ? fehltText(s.fehlend) : null,
     // „berechnet (Summe)“ trägt jede Summe der Route; die Zeile nennt statt dessen die Herkunft ihrer Eingänge (O5).
     woerter: einmal(ohneLeere([herkunftWort, s.zustand && s.zustand !== VOLLSTAENDIG ? s.zustand : null, ...s.kennzeichen.filter((k) => k !== BERECHNET_SUMME)])),
     ton: ohneZahl ? 'off' : s.anzeige || (s.zustand && s.zustand !== VOLLSTAENDIG) ? 'warn' : 'ok',
@@ -533,7 +648,7 @@ function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | nul
     wort: ZEILE_WORT.rest,
     zahl: zahl(r.menge, r.einheit, ebene),
     zusatz: r.menge === null && r.fehlend.length > 0 ? fehltText(r.fehlend) : rest ? benannt(rest.name, rest.kennzeichen) : null,
-    // „nicht zugeordnet“ steht als Kennzeichen am Rest UND ist das Wort der Zeile — einmal genügt.
+    // „nicht zugeordnet“ steht als Kennzeichen am Rest; die Zeile heißt „ohne eigenen Zähler“ - einmal genügt.
     woerter: einmal(ohneLeere([...r.kennzeichen.filter((k) => k !== NICHT_ZUGEORDNET), r.zustand !== VOLLSTAENDIG ? r.zustand : null])),
     ton: r.menge === null ? 'off' : negativ || r.zustand !== VOLLSTAENDIG ? 'warn' : 'ok',
     saetze: negativ ? ohneLeere([r.kundensatz, HILFE_NEGATIV]) : [],
@@ -542,72 +657,235 @@ function restZeile(w: BilanzWerte, terme: Terme, rest: BilanzMessstelleRef | nul
   };
 }
 
-/** Die vier Zeilen eines Zeitraums — „nicht zugeordnet“ steht immer (auch 0, negativ oder ohne Zahl). */
+/** Nur der Hauptzähler zählt hinein, nichts hinaus: das Ganze ist der Bezug laut Hauptzähler. */
+const istEinfach = (w: BilanzWerte, hauptzaehler: string): boolean =>
+  w.eingaenge.every((e) => e.rolle !== 'abfluss' && (e.rolle !== 'zufluss' || (e.messstelle === hauptzaehler && e.anteil === 'gesamt')));
+
+/** Eine Summe der Route ist nur dann ein Teil des Ganzen, wenn ihr kein Eingang fehlt. */
+const vollstaendig = (s: BilanzSumme): boolean => s.menge !== null && s.fehlend.length === 0 && s.mit_werten === s.gesamt;
+
+/**
+ * Das Ganze der Karte als Dezimaltext: der Verbrauch der Anlage = Zufluss − Abfluss, gebildet vom Zwilling der Bewertung
+ * (`nenner`, AP-16: Zufluss − Abgabe − Laden; die Route liefert Abgabe und Laden zusammen als Abfluss). Ohne Abfluss in
+ * der Stellung ist der Abfluss keiner (0), nicht „fehlt“. `null`, sobald ein Eingang fehlt.
+ */
+function ganzesDer(w: BilanzWerte): string | null {
+  const ohneAbfluss = w.abfluss.gesamt === 0;
+  if (!vollstaendig(w.zufluss) || (!ohneAbfluss && !vollstaendig(w.abfluss))) return null;
+  const abgabe = ohneAbfluss ? '0' : String(w.abfluss.menge);
+  return nenner([{ kennung: 'anlage', hauptzaehler: true, zufluss: String(w.zufluss.menge), abgabe, laden: '0' }]).wert;
+}
+
+/** Die Unterzähler nach Menge absteigend (Vergleich der gelieferten Beträge, keine Rechnung); ohne Wert am Ende. */
+function absteigend(teile: TeilBild[], w: BilanzWerte): TeilBild[] {
+  const menge = new Map(w.eingaenge.filter((e) => e.rolle === 'zugeordnet').map((e) => [e.messstelle, alsDez(e.menge)]));
+  const mit = teile.filter((t) => menge.get(t.kennzeichen));
+  const ohne = teile.filter((t) => !menge.get(t.kennzeichen));
+  return [...mit.sort((a, b) => dezVergleich(menge.get(b.kennzeichen) as Dez, menge.get(a.kennzeichen) as Dez)), ...ohne];
+}
+
+/** Die vier Zeilen eines Zeitraums - „ohne eigenen Zähler“ steht immer (auch 0, negativ oder ohne Zahl). */
 export function zeilenBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext): ZeileBild[] {
   const hz = h.messstelle.kennzeichen;
   const ebene = ab.raster;
+  const ganz = ganzesDer(w);
+  const am = istEinfach(w, hz) ? ANTEIL_AM.bezug : ANTEIL_AM.verbrauch;
+  const g = ganz === null ? null : dez(ganz);
   return ohneLeere([
-    summenZeile('zufluss', w.zufluss, w, ab.terme, hz, ebene, ctx),
-    summenZeile('abfluss', w.abfluss, w, ab.terme, hz, ebene, ctx),
-    summenZeile('zugeordnet', w.zugeordnet, w, ab.terme, hz, ebene, ctx),
+    summenZeile('zufluss', w.zufluss, w, ab.terme, hz, ebene, ctx, g, am),
+    summenZeile('abfluss', w.abfluss, w, ab.terme, hz, ebene, ctx, g, am),
+    summenZeile('zugeordnet', w.zugeordnet, w, ab.terme, hz, ebene, ctx, g, am),
     restZeile(w, ab.terme, h.rest_messstelle, ebene, zone, ctx),
   ]);
 }
 
-/** O8 — „jetzt: 1,6 kW nicht zugeordnet · Stand 10:15“; ohne Zahl ein Strich mit dem Grund je fehlendem Term, nie 0. */
-export function liveBild(live: BilanzLive, terme: Terme, zone: string, ctx: BilanzKontext): LiveBild {
-  if (live.wert !== null) {
-    return {
-      text: ohneLeere([
-        fuelle(LIVE_JETZT, { zahl: zahl(live.wert, live.einheit, null) }),
-        live.stand ? fuelle(LIVE_STAND, { stand: standText(live.stand, zone, ctx.heute) }) : null,
-      ]).join(' · '),
-      ton: 'ok',
-    };
+/** Der Antwortsatz eines Zeitraums (Konzept a1 §6.9) - Richtung, Größe, Zeitraum; fehlend und negativ mit Grund. */
+function antwortBild(w: BilanzWerte, zeilen: ZeileBild[], ganz: Dez | null, einfach: boolean, zeitraum: string, namen: (k: string) => string): AntwortBild {
+  const r = w.rest;
+  const rest = zeilen.find((z) => z.art === 'rest');
+  const am = einfach ? ANTEIL_AM.bezug : ANTEIL_AM.verbrauch;
+  if (r.menge === null) {
+    // Ein, zwei fehlende Zähler beim Namen; mehr als zwei als Anzahl - die Namen stehen in den Zeilen darunter.
+    if (w.eingaenge.length > 0 && w.eingaenge.every((e) => e.menge === null)) return { satz: fuelle(ANTWORT.keinZaehler, { zeitraum }), ton: 'off' };
+    if (r.fehlend.length > 2) return { satz: fuelle(ANTWORT.fehltViele, { zeitraum, n: r.fehlend.length }), ton: 'off' };
+    return r.fehlend.length > 0
+      ? { satz: fuelle(ANTWORT.fehlt, { zeitraum, namen: r.fehlend.map(namen).join(', ') }), ton: 'off' }
+      : { satz: fuelle(ANTWORT.keineWerte, { zeitraum }), ton: 'off' };
   }
-  const gruende = live.fehlende.map((f) => fuelle(LIVE_GRUND[f.grund] ?? LIVE_GRUND.kein_wert, { name: nameVon(terme, f.term) ?? f.term }));
-  return { text: [LIVE_OHNE_ZAHL, ...gruende].join(' · '), ton: 'off' };
+  if (r.menge < 0) return { satz: HILFE_NEGATIV, ton: 'warn' };
+  const restZahl = rest?.zahl ?? zahl(r.menge, r.einheit, null);
+  if (w.zugeordnet.gesamt === 0) return { satz: fuelle(ANTWORT.keinUnterzaehler, { am, rest: restZahl }), ton: 'ok' };
+  if (r.menge === 0) return { satz: fuelle(ANTWORT.alles, { ganz: einfach ? GANZ_IM_SATZ.bezug : GANZ_IM_SATZ.verbrauch }), ton: 'ok' };
+  const erfasst = anteilVon(w.zugeordnet.menge, ganz);
+  return erfasst === null
+    ? { satz: fuelle(ANTWORT.ohneAnteil, { rest: restZahl }), ton: 'ok' }
+    : { satz: fuelle(ANTWORT.erfasst, { prozent: prozentText(erfasst), am, rest: restZahl }), ton: 'ok' };
 }
 
-function hauptzaehlerBild(h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext): HauptzaehlerBild {
+/** Die drei Zeilen der Karte aus den vier Zeilen der Route. */
+function kartenZeilen(w: BilanzWerte, zeilen: ZeileBild[], ganzText: string | null, einfach: boolean, ebene: string): KartenZeile[] {
+  const zeile = (art: ZeileArt) => zeilen.find((z) => z.art === art);
+  const zufluss = zeile('zufluss');
+  const abfluss = zeile('abfluss');
+  const erfasst = zeile('zugeordnet');
+  const rest = zeile('rest');
+  const n = w.zugeordnet.gesamt;
+  const ganz: KartenZeile = einfach
+    ? { art: 'ganz', wort: KARTE_WORT.bezug, zahl: zufluss?.zahl ?? zahl(null, 'kWh', ebene), ton: zufluss?.ton ?? 'off', unter: ohneLeere([zufluss?.zusatz]) }
+    : {
+        art: 'ganz',
+        wort: KARTE_WORT.verbrauch,
+        zahl: zahl(ganzText, 'kWh', ebene),
+        ton: ganzText === null ? 'off' : 'ok',
+        unter: [fuelle(VERBRAUCH_AUS, { zufluss: zufluss?.zahl ?? zahl(null, 'kWh', ebene), abfluss: abfluss?.zahl ?? zahl(0, 'kWh', ebene) })],
+      };
+  return [
+    ganz,
+    {
+      art: 'erfasst',
+      wort: n === 0 ? KARTE_WORT.erfasst.keiner : n === 1 ? KARTE_WORT.erfasst.singular : fuelle(KARTE_WORT.erfasst.plural, { n }),
+      zahl: erfasst?.zahl ?? zahl(null, 'kWh', ebene),
+      ton: erfasst?.ton ?? 'off',
+      unter: n === 0 ? [KEIN_UNTERZAEHLER] : ohneLeere([erfasst?.zusatz, ...(erfasst?.woerter ?? []).filter((x) => x !== 'gemessen' && x !== 'berechnet')]),
+    },
+    {
+      art: 'ohne',
+      wort: KARTE_WORT.ohne,
+      zahl: rest?.zahl ?? zahl(null, 'kWh', ebene),
+      ton: rest?.ton ?? 'off',
+      // „berechnet (Differenz)“ steht in „Woraus gerechnet“; unter der Zeile nur, was der Kunde wissen muss.
+      unter: ohneLeere([
+        w.rest.menge === null && w.rest.fehlend.length > 0 ? fehltText(w.rest.fehlend) : null,
+        ...(rest?.woerter ?? []).filter((x) => x !== BERECHNET_DIFFERENZ),
+        ...(rest?.saetze ?? []).filter((x) => x !== HILFE_NEGATIV),
+      ]),
+    },
+  ];
+}
+
+function tagBild(w: BilanzWerte, ab: BilanzAbschnitt, h: BilanzHauptzaehler, zone: string, ctx: BilanzKontext, titel: string | null, kompakt: boolean, zeitraum: string): TagBild {
+  const zeilen = zeilenBild(w, ab, h, zone, ctx);
+  const hz = h.messstelle.kennzeichen;
+  const einfach = istEinfach(w, hz);
+  const ganzText = ganzesDer(w);
+  const ganz = ganzText === null ? null : dez(ganzText);
+  const erfasst = w.zugeordnet.gesamt === 0 ? '0.0' : vollstaendig(w.zugeordnet) ? anteilVon(w.zugeordnet.menge, ganz) : null;
+  const ohne = w.rest.menge !== null && w.rest.menge >= 0 ? anteilVon(w.rest.menge, ganz) : null;
+  const namen = (k: string) => {
+    const n = nameVon(ab.terme, k) ?? ctx.namen?.get(k) ?? null;
+    return n ? `${n} (${k})` : k;
+  };
+  return {
+    key: w.von,
+    titel,
+    kompakt,
+    einfach,
+    antwort: antwortBild(w, zeilen, ganz, einfach, zeitraum, namen),
+    karte: kartenZeilen(w, zeilen, ganzText, einfach, ab.raster),
+    balken: erfasst !== null && ohne !== null ? { erfasst, ohne } : null,
+    unterzaehler: absteigend(zeilen.find((z) => z.art === 'zugeordnet')?.teile ?? [], w),
+    zeilen,
+    kennzeichen: einmal([hz, ...ab.terme.map((t) => t.messstelle), ...w.eingaenge.map((e) => e.messstelle)]),
+  };
+}
+
+/** „jetzt 1,6 kW ohne eigenen Zähler · Stand 10:15“ - nur mit Zahl; ohne Zahl keine Zeile, nie 0 (O8). */
+export function liveBild(live: BilanzLive, zone: string, ctx: Pick<BilanzKontext, 'heute'>): LiveBild | null {
+  if (live.wert === null) return null;
+  return {
+    text: ohneLeere([
+      fuelle(LIVE_JETZT, { zahl: zahl(live.wert, live.einheit, null) }),
+      live.stand ? fuelle(LIVE_STAND, { stand: standText(live.stand, zone, ctx.heute) }) : null,
+    ]).join(' · '),
+  };
+}
+
+/** „Hauptzähler Halle 1 (HZ-1)“ - trägt der Name das Wort schon, steht es nicht zweimal davor. */
+export function hauptzaehlerTitel(name: string | null, kennzeichen: string): string {
+  const b = benannt(name, kennzeichen);
+  return name && name.toLocaleLowerCase('de-DE').startsWith(UEMS_HAUPTZAEHLER.toLocaleLowerCase('de-DE')) ? b : `${UEMS_HAUPTZAEHLER} ${b}`;
+}
+
+function hauptzaehlerBild(h: BilanzHauptzaehler, b: Bilanz, ctx: BilanzKontext): HauptzaehlerBild {
+  const zone = b.zeitzone;
   const heutigeTerme = h.abschnitte[h.abschnitte.length - 1]?.terme ?? [];
   const mehrere = h.stellung_geaendert || h.abschnitte.length > 1;
+  const zeitraum = zeitraumText(b.periode, b.von);
+  const rest = h.rest_messstelle;
   return {
     key: h.messstelle.id,
-    titel: `${UEMS_HAUPTZAEHLER} ${benannt(nameVon(heutigeTerme, h.messstelle.kennzeichen) ?? h.messstelle.name, h.messstelle.kennzeichen)}`,
-    live: liveBild(h.live, heutigeTerme, zone, ctx),
+    kennzeichen: h.messstelle.kennzeichen,
+    titel: hauptzaehlerTitel(nameVon(heutigeTerme, h.messstelle.kennzeichen) ?? h.messstelle.name, h.messstelle.kennzeichen),
+    live: liveBild(h.live, zone, ctx),
     vorschlag: h.vorschlag
       ? { hauptzaehlerId: h.vorschlag.hauptzaehler_id, name: h.vorschlag.name, satz: fuelle(REST_VORSCHLAG, { name: h.vorschlag.name }) }
       : null,
+    restMessstelle: rest ? restMessstelleBild(rest, ctx) : null,
     hinweis: mehrere ? STELLUNG_GEAENDERT : null,
     abschnitte: h.abschnitte.map((ab, i) => ({
       key: `${ab.von}-${i}`,
       titel: mehrere ? spanneText(ab.von, ab.bis) : null,
-      tage: ab.werte.map((w) => ({
-        key: w.von,
-        titel: mehrere || ab.werte.length > 1 ? spanneText(w.von, w.bis) : null,
-        kompakt: ab.werte.length > 1,
-        zeilen: zeilenBild(w, ab, h, zone, ctx),
-      })),
+      tage: ab.werte.map((w) => {
+        const eigenerTitel = mehrere || ab.werte.length > 1;
+        return tagBild(w, ab, h, zone, ctx, eigenerTitel ? spanneText(w.von, w.bis) : null, ab.werte.length > 1, eigenerTitel ? spanneText(w.von, w.bis) : zeitraum);
+      }),
       geteilt: (ab.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen)),
+      ausserhalb: ausserhalbSatz(ab.ausserhalb ?? [], ctx),
     })),
   };
 }
 
-/** Die ganze Fläche einer Antwort: Kopf, Leerzustand ohne Hauptzähler, je Hauptzähler Live-Zeile, Vorschlag, Abschnitte. */
+function restMessstelleBild(rest: BilanzMessstelleRef, ctx: BilanzKontext): NonNullable<HauptzaehlerBild['restMessstelle']> {
+  const text = fuelle(REST_GEFUEHRT, { name: benannt(rest.name, rest.kennzeichen) });
+  return { text, teile: kennzeichenTeile(text, [rest.kennzeichen]), sprung: messstellenSprung(ctx, rest.kennzeichen) };
+}
+
+/** Die Abzweige außerhalb der Bilanz als ein Satz mit Namen und Kennzeichen; `null` ohne Abzweig. */
+export function ausserhalbSatz(kennzeichen: readonly string[], ctx: Pick<BilanzKontext, 'namen'>): AusserhalbBild | null {
+  if (kennzeichen.length === 0) return null;
+  const namen = kennzeichen.map((k) => {
+    const name = ctx.namen?.get(k);
+    return name && name !== k ? `${name} (${k})` : k;
+  });
+  const satz = fuelle(kennzeichen.length === 1 ? AUSSERHALB_SATZ.singular : AUSSERHALB_SATZ.plural, { n: kennzeichen.length, namen: namen.join(', ') });
+  return { satz, teile: kennzeichenTeile(satz, kennzeichen) };
+}
+
+/**
+ * Teilt einen Satz an den genannten Kennzeichen; die Fläche setzt jedes Kennzeichen-Stück ohne Umbruch. Ein Kennzeichen
+ * zählt nur als ganzes Wort: „MS-2“ trifft nicht den Anfang von „MS-20“.
+ */
+export function kennzeichenTeile(satz: string, kennzeichen: readonly string[]): { text: string; kennzeichen: boolean }[] {
+  const muster = [...new Set(kennzeichen)].filter(Boolean);
+  if (muster.length === 0) return [{ text: satz, kennzeichen: false }];
+  const trenner = new RegExp(`(?<![\\p{L}\\p{N}-])(${muster.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![\\p{L}\\p{N}-])`, 'u');
+  return satz
+    .split(trenner)
+    .filter((t) => t !== '')
+    .map((text) => ({ text, kennzeichen: muster.includes(text) }));
+}
+
+/** Der Satz für einen Zeitraum ohne Abschluss: läuft noch, oder hat (nach der Uhr des Browsers) noch nicht begonnen. */
+function offenSatz(b: Bilanz, heute: string): string | null {
+  if (!laeuftNoch(b.periode, b.von, heute)) return null;
+  const zeitraum = zeitraumText(b.periode, b.von);
+  return b.von > heute ? fuelle(OFFEN_SATZ.kommt, { zeitraum }) : fuelle(OFFEN_SATZ.laeuft, { zeitraum, einheit: EINHEIT_IM_SATZ[b.periode] });
+}
+
+/** Die ganze Fläche einer Antwort: Leerzustand ohne Hauptzähler, je Hauptzähler Antwort, Karte, Unterzähler, Herkunft. */
 export function energiebilanzBild(b: Bilanz, ctx: BilanzKontext): EnergiebilanzBild {
-  // AP-13 IP-11 (D2): die Periode der ANTWORT — nicht die der Leiste, die schon weitergeklickt sein kann.
+  // AP-13 IP-11 (D2): die Periode der ANTWORT - nicht die der Leiste, die schon weitergeklickt sein kann.
   // Sie hängt an jedem Sprung dieser Fläche, damit die Messstelle dieselbe Zahl zeigt wie die Zeile.
   const mitPeriode: BilanzKontext = { ...ctx, periode: { art: b.periode, am: b.am } };
   return {
     zeitraum: zeitraumText(b.periode, b.von),
-    zone: fuelle(ZONE_SATZ, { zone: b.zeitzone }),
-    laeuft: laeuftNoch(b.periode, b.von, ctx.heute) ? UEMS_NOCH_NICHT_GERECHNET_SATZ : null,
+    zone: b.zeitzone,
+    laeuft: offenSatz(b, ctx.heute),
     leer: b.hauptzaehler.length === 0 ? OHNE_HAUPTZAEHLER : null,
-    hauptzaehler: b.hauptzaehler.map((h) => hauptzaehlerBild(h, b.zeitzone, mitPeriode)),
+    hauptzaehler: b.hauptzaehler.map((h) => hauptzaehlerBild(h, b, mitPeriode)),
   };
 }
 
-/** Die Rückmeldung nach „Rest anlegen“ — `neu = false` sagt, dass es ihn schon gab (nie ein zweiter). */
+/** Die Rückmeldung nach „Als eigene Messstelle führen“ - `neu = false` sagt, dass es sie schon gab (nie eine zweite). */
 export const restAngelegtSatz = (neu: boolean, kennzeichen: string, name: string | null): string =>
   fuelle(neu ? REST_ANGELEGT : REST_GAB_ES_SCHON, { kennzeichen, name: name ?? kennzeichen });

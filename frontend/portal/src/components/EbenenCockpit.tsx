@@ -72,6 +72,7 @@ import { useMessenEinstieg } from '../messenEinstieg';
 import { NochNichtZugeordnetKarte, StandortVorschau } from './StandortVorschau';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { EmptyState, ErrorState, Skeleton } from './States';
+import { useReportFirstPaint } from '../bootReady';
 import './PortfolioCockpit.css';
 import './EbenenCockpit.css';
 // LIVE: die Kennzahlen-Leiste zeigt gemessene Ist-Werte (PV jetzt, Netz).
@@ -172,6 +173,10 @@ export function EbenenCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
+  // Boot-Cover: die Übersicht der Ebene hat ihr erstes echtes Bild, sobald die Übersicht steht, der Fehlerzustand
+  // greift oder es (leer) gar keine Anlage gibt - wie im Portfolio-Cockpit. Ohne die Meldung hing der Lader bei jeder
+  // Anmeldung eines UEMS-Kunden bis zur 3-s-Grenze über fertigem Inhalt.
+  useReportFirstPaint(overview != null || failed || sites.length === 0);
   const [steuernStandort, setSteuernStandort] = useState<string | null>(null);
   const [offen, setOffen] = useState<string | null>(null);
   /** `undefined` = lädt noch, `null` = nicht abrufbar (fail-soft). */

@@ -15,11 +15,13 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -371,6 +373,32 @@ class UemsBerichtKaskadeTest {
                 con.rollback();
             }
         }
+    }
+
+    /**
+     * Die Prüfumgebung (Befund Auswerten a4, K1): dort stehen Berichte und Kennzahlen auf der Bühne. Die Naht bildet den
+     * Entwurf zum Datenstand der Bühne neu und stößt dort an - nicht zum echten Zeitpunkt der Kaskade, der vor den
+     * Kennzahlwerten der Bühne läge (D2). Ohne Bühne (Produktion) bleibt es der Zeitpunkt der Kaskade (B1-B3 oben).
+     */
+    @Test
+    void inDerPruefumgebungBildetDieNahtZumDatenstandDerBuehne() throws Exception {
+        Welt w = welt();
+        anlegen(w, "BR-2026-0001", MONATSBERICHT, "monat", "2026-10", w.st1());
+        freigeben(w, "BR-2026-0001", 1, DATENSTAND_NR1, FREIGABE_NR1);
+        Instant buehne = Instant.parse("2029-04-30T08:05:00Z");
+        naht.uhrStellen(Clock.fixed(buehne, ZoneOffset.UTC));
+        try {
+            inDerKaskade(con -> {
+                ms12Version(con, w, 2, "6040", List.of(K7), 2);
+                KorrekturKaskade.berichteBenachrichtigen(con, naht, k7(w, 2, KorrekturKaskade.FREIGEGEBEN, T_KASKADE));
+            });
+        } finally {
+            naht.uhrStellen(null);
+        }
+        assertThat(((Timestamp) entwurf(w, "BR-2026-0001").get("datenstand")).toInstant()).as("der Entwurf")
+                .isEqualTo(buehne);
+        assertThat(meldungen(w, BerichtKaskade.ANGESTOSSEN)).extracting(m -> m.path("zeit").asText())
+                .as("der Anstoß an Nr. 1").containsExactly(buehne.toString());
     }
 
     // ================================================================ Vertrag und Grenze
