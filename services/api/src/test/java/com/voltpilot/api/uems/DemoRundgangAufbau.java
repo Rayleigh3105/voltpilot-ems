@@ -140,6 +140,9 @@ class DemoRundgangAufbau {
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         // Die Zuweisungen des Seeds beginnen am 01.10.2026 — Ines Kaltenbach hat ihre Rechte auf der Bühne.
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
+        // Demo-Füllung Verbessern (PR 6): die Naht schweigt, solange der Rundgang Monate rechnet - sonst vermerkte sie
+        // jeden Monat bis 03/2029 mit der Bühnen-Uhr; die Vermerke schreibt DemoVerbessernReferenz mit ihrem Tag.
+        r.add(VerbesserungNaht.SCHALTER, () -> "false");
     }
 
     @Autowired MockMvc mvc;
@@ -231,6 +234,9 @@ class DemoRundgangAufbau {
         bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
         System.out.println("Rundgang Runde 3: passende Zähler, Bühnen-Bestand bis 03/2029, BB-0001 Fassung 2 "
                 + "(Referenzwelt). Kaskade: " + anlaesse + " Anlässe, Kennzahlen auf der Bühne: " + buehne);
+
+        // Runde 4 - Demo-Füllung Verbessern (Konzept v1 §4.8, Entscheid 16): braucht die Monatswerte von Runde 3.
+        DemoVerbessernReferenz.fuellen(mvc, root);
     }
 
     /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */
