@@ -191,9 +191,10 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)](root/zusaetzliche-messwerte-bibliothek-und-hi.md)
 - [Zusätzliche Messwerte: Desired State bis Timescale (Slices 6–8)](root/zusaetzliche-messwerte-desired-state-bis.md)
 
-## `portal/` — aus `frontend/portal/AGENTS.md` (47 Einträge)
+## `portal/` — aus `frontend/portal/AGENTS.md` (48 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
+- [Messen: die Liste der Messstellen und „Woher kommen die Werte?“](portal/messen-liste-und-woher-die-werte.md)
 - [Build & test](portal/build-test/README.md) *(Sammlung, 95 Punkte)*
 - [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
@@ -245,7 +246,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verlauf-Sprache P2b: EIN Aufklapper, und Zustände, die ihren Platz reservieren](portal/verlauf-sprache-p2b-ein-aufklapper-und-z.md)
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)
 - [VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr](portal/vppicker-ein-picker-fuer-die-ganze-platt.md)
-- [Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben](portal/nachweisen-zeilen-blaetter-audits.md)
+- [Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben, Mappe](portal/nachweisen-zeilen-blaetter-audits.md)
 
 ## `edge/` — aus `edge-app/AGENTS.md` (91 Einträge)
 

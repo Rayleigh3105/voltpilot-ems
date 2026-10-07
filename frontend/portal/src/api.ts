@@ -8862,6 +8862,46 @@ export interface EnergiemanagementTeilVermerke {
   stichtag: string;
   vermerke: EnergiemanagementTeilVermerk[];
 }
+/**
+ * Nachweisen n1, Entscheid 7: die Mappe „Unterlagen zusammenstellen“ (`…/energiemanagement/mappen`, openapi
+ * `EnergiemanagementMappe…`). `abrufbar_tage` zählt die Datenbank in echter Zeit; 0 nach der Frist von 30 Tagen.
+ */
+export interface EnergiemanagementMappe {
+  id: string;
+  titel: string;
+  /** Vokabular `mappe_anlass` (Vertrag energiemanagement 1.6). */
+  anlass: string;
+  anlass_wort: string;
+  von: string | null;
+  bis: string;
+  stichtag: string;
+  gruppen: string[];
+  gruppen_woerter: string[];
+  offen: string[];
+  offen_woerter: string[];
+  eintraege: number;
+  gilt: number;
+  datei_titel: string;
+  datei_name: string;
+  pdf_pruefsumme: string;
+  csv_pruefsumme: string;
+  abrufbar: boolean;
+  abrufbar_tage: number;
+  aufbewahrung_tage: number;
+  abrufe: number;
+  erstellt: { name: string; am: string };
+  /** Der Augenblick des Abrufs auf der Uhr der Route (Befund 3). */
+  abruf: string;
+}
+export interface EnergiemanagementMappeAnlegen {
+  anlass: string;
+  /** Ab welchem Tag; ohne alles bis zum Stichtag. */
+  von?: string | null;
+  /** Gruppen des Verzeichnisses (Vokabular `verzeichnis_gruppe`), mindestens eine. */
+  gruppen: string[];
+  /** Die Teile, die der Überblick als offen zeigt (Vokabular `teil`). */
+  offen?: string[];
+}
 export interface EnergiemanagementTeilVermerkAnlegen {
   teil: string;
   satz: string;
@@ -11581,6 +11621,26 @@ export const api = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...bereichKopf(`/api/v1/energiemanagement/verzeichnis?${q}`),
       },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** Nachweisen n1, Entscheid 7: die Mappen, die jüngste zuerst (nur unternehmensweit). */
+  energiemanagementMappen: () => request<{ mappen: EnergiemanagementMappe[] }>('/api/v1/energiemanagement/mappen'),
+  energiemanagementMappe: (id: string) =>
+    request<EnergiemanagementMappe>(`/api/v1/energiemanagement/mappen/${encodeURIComponent(id)}`),
+  /** Nachweisen n1, Entscheid 7: Unterlagen zusammenstellen - PDF mit Inhaltsverzeichnis und Verzeichnis-CSV. */
+  energiemanagementMappeAnlegen: (body: EnergiemanagementMappeAnlegen) =>
+    request<EnergiemanagementMappe>('/api/v1/energiemanagement/mappen', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 7: eine Datei der Mappe - jeder Abruf protokolliert, nach 30 Tagen 410. */
+  energiemanagementMappeDatei: async (id: string, format: 'pdf' | 'csv'): Promise<Blob> => {
+    const pfad = `/api/v1/energiemanagement/mappen/${encodeURIComponent(id)}/${format}`;
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}${pfad}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...bereichKopf(pfad) },
     });
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);

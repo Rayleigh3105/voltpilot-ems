@@ -25,6 +25,8 @@ import type { AnlagenSub, PageId, Route, TransitionKind } from './nav';
 interface ViewTransitionLike {
   finished: Promise<void>;
   updateCallbackDone: Promise<void>;
+  /** Lehnt ab („Transition was skipped“), wenn ein Nachfolger den Übergang überspringt, bevor er bereit ist. */
+  ready?: Promise<void>;
   skipTransition: () => void;
 }
 
@@ -81,6 +83,10 @@ export function runPageTransition(kind: TransitionKind, apply: () => void): void
   // Ein Fehler im Rückruf lehnt diese Zusage ab; ohne Fänger wäre es eine
   // unbehandelte Ablehnung in der Konsole des Kunden.
   transition.updateCallbackDone.catch(() => {});
+  // Überspringt ein schneller zweiter Wechsel diesen Übergang, bevor er bereit
+  // ist, lehnt `ready` mit „Transition was skipped“ ab - gewollt (der Neue
+  // gewinnt), also kein Fehler in der Konsole.
+  transition.ready?.catch(() => {});
 }
 
 /* -------------------------------------------------------------------------

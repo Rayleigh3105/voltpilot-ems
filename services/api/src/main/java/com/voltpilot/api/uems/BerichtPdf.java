@@ -134,13 +134,13 @@ public final class BerichtPdf {
     private static final float UNTEN = RAND + 44f;
     private static final float TITEL = 16f;
     private static final float UEBERSCHRIFT = 11f;
-    private static final float NORMAL = 8.5f;
-    private static final float KLEIN = 7f;
+    static final float NORMAL = 8.5f;
+    static final float KLEIN = 7f;
     private static final float ZEILE = 1.35f;
     private static final float POLSTER = 2.5f;
     private static final float ETIKETT = 118f;
-    private static final float SCHWARZ = 0f;
-    private static final float GRAU = 0.38f;
+    static final float SCHWARZ = 0f;
+    static final float GRAU = 0.38f;
     private static final float LINIE = 0.72f;
     private static final float WASSERZEICHEN = 0.86f;
 
@@ -1208,6 +1208,39 @@ public final class BerichtPdf {
         doc.getDocument().getTrailer().setItem(COSName.ID, id);
     }
 
+    /** Ein Inhalt für {@link #dokument}: setzt mit demselben Setzer (Schrift, Seitenmaß, Tabellen, Fußzeilen). */
+    @FunctionalInterface
+    interface Inhalt {
+        void setzen(Setzer s) throws IOException;
+    }
+
+    /**
+     * Ein weiteres Dokument im Aussehen der Berichte (Konzept Nachweisen n1, PR 6: die Mappe): ein neuer PDF-Satz mit
+     * der eingebetteten Schrift; der Inhalt setzt Abschnitte und Fußzeilen selbst. Titel und Tag stehen in den
+     * Eigenschaften, Erzeuger wie bei den Berichten.
+     */
+    static byte[] dokument(String titel, Instant am, ZoneId zone, Inhalt inhalt) {
+        try (TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(SCHRIFT_DATEI));
+                PDDocument doc = new PDDocument()) {
+            Setzer s = new Setzer(doc, PDType0Font.load(doc, ttf, true), ttf.getUnicodeCmapLookup(), null);
+            s.seite();
+            inhalt.setzen(s);
+            PDDocumentInformation info = new PDDocumentInformation();
+            info.setTitle(titel);
+            info.setCreator(ERZEUGER);
+            info.setProducer(ERZEUGER);
+            Calendar tag = GregorianCalendar.from(am.atZone(zone));
+            info.setCreationDate(tag);
+            info.setModificationDate(tag);
+            doc.setDocumentInformation(info);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.save(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException("PDF „" + titel + "“", e);
+        }
+    }
+
     private static byte[] sha256(String text) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
@@ -1237,10 +1270,10 @@ public final class BerichtPdf {
     }
 
     /** Eine Tabellenspalte; Breite 0 = der Rest der Zeile. */
-    private record Spalte(String titel, float breite, boolean rechts) {}
+    record Spalte(String titel, float breite, boolean rechts) {}
 
     /** Setzt Text von oben nach unten auf A4-Seiten, bricht Zeilen und Seiten um und schreibt am Ende die Füße. */
-    private static final class Setzer {
+    static final class Setzer {
 
         private final PDDocument doc;
         private final PDType0Font schrift;
@@ -1272,6 +1305,11 @@ public final class BerichtPdf {
                 text(RAND + BREITE - breite(wasserzeichen, KLEIN), grundlinie(KLEIN), KLEIN, GRAU, wasserzeichen);
                 abstand(4);
             }
+        }
+
+        /** Die Zahl der Seiten bisher - die laufende ist die letzte (Inhaltsverzeichnis der Mappe). */
+        int seitenzahl() {
+            return seiten.size();
         }
 
         /** Reicht der Platz nicht, beginnt eine neue Seite ({@code true}). */

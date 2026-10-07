@@ -20,6 +20,7 @@ import { DokumentSeite } from './DokumentSeite';
 import { EnergiemanagementPersonSeite } from './EnergiemanagementPersonSeite';
 import { FeststellungSeite } from './FeststellungSeite';
 import { ManagementbewertungSeite } from './ManagementbewertungSeite';
+import { MappeSeite } from './MappeSeite';
 import './Energiemanagement.css';
 import './Verbesserung.css';
 
@@ -63,6 +64,7 @@ export function EnergiemanagementBereich({
   auditId = null,
   feststellungId = null,
   managementbewertungKennung = null,
+  mappeId = null,
   onReiter,
   onDokument,
   onPerson,
@@ -78,6 +80,8 @@ export function EnergiemanagementBereich({
   auditId?: string | null;
   feststellungId?: string | null;
   managementbewertungKennung?: string | null;
+  /** Konzept Nachweisen n1, Entscheid 7: die Seite einer Mappe „Unterlagen zusammenstellen“ (unter dem Überblick). */
+  mappeId?: string | null;
   onReiter: (r: EnergiemanagementReiter) => void;
   onDokument: (id: string) => void;
   onPerson: (id: string) => void;
@@ -100,6 +104,7 @@ export function EnergiemanagementBereich({
   const zurFeststellung = onFeststellung ?? (() => onReiter('audits'));
   if (auditId) return <AuditSeite id={auditId} onListe={() => onReiter('audits')} onFeststellung={zurFeststellung} />;
   if (feststellungId) return <FeststellungSeite id={feststellungId} onListe={() => onReiter('audits')} onAudit={zumAudit} />;
+  if (mappeId) return <MappeSeite id={mappeId} onZurueck={() => onReiter('ueberblick')} />;
   if (managementbewertungKennung) return <ManagementbewertungSeite kennung={managementbewertungKennung} onListe={() => onReiter('managementbewertung')} />;
   const zurManagementbewertung = onManagementbewertung ?? (() => onReiter('managementbewertung'));
   if (reiter === 'zuschnitt') return <ZuschnittHilfe onZurueck={() => onReiter('ueberblick')} />;

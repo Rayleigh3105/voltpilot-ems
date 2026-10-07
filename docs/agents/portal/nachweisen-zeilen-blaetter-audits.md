@@ -1,4 +1,4 @@
-# Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben
+# Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben, Mappe
 
 - Die Runde-2-Bausteine liegen unter `frontend/portal/src/components/nachweisen/`, je Baustein-Gruppe eine eigene CSS-Datei (`Nachweisen.css` Kopf/i-Knopf/Blatt/Zähler, `NwSchritte.css` Blatt-Schritte, `NwZeilen.css` Zeilen/Stufen/Kürzel/Folgen-Balken/Weitergeben), Präfix `vp-nw-`.
   `.vp-nw-liste`, `.vp-nw-zeile`, `.vp-nw-titel`, `.vp-nw-kz`, `.vp-nw-adresse` gehören dem alten Abschnitt „Nachweise am Einsatz“ (`pages/Energiemanagement.css`, IP-15): neue Klassen nie so nennen (die Zeile heißt `.vp-nw-zl`, der Kopf-Titel `.vp-nw-kopf-titel`).
@@ -13,3 +13,8 @@
 - Das geführte Blatt „Vorbereiten“ (`ManagementbewertungVorbereiten.tsx`) ersetzt Sitzungs- und Beschluss-Dialog; Freigeben ruft dieselbe Route wie die Freigabe der Berichte (`entwurf_datenstand`, 409 `entwurf_veraltet` → „Entwurf neu laden“).
 - Wechselt ein Blatt seinen Inhalt (Liste ↔ Abschnitt), muss der Fokus mitwandern: das Bottom-Sheet hört Escape und Tab nur, solange der Fokus in ihm liegt.
 - Aufgaben (PR 5, Entscheid 23): Zeilen mit `woerter.aufgabe_kurz` (Vertrag, Zwillinge TS/Java/Python) und Kürzeln; `bewertung_messplanung` heißt „Energetische Bewertung“, weil „Bewertung“ allein dem Sprach-Wächter SP3 gehört.
+- Mappe „Unterlagen zusammenstellen“ (PR 6, Entscheid 7): `…/energiemanagement/mappen` (Vertrag 1.6 `mappe_anlass`), Anlegen mit `energiemanagement.verwalten`, Lesen und Abrufen unternehmensweit (auch „Einsicht“); PDF und CSV liegen 30 Tage in `energiemanagement_mappe`, danach 410 `mappe_abgelaufen` und Leeren beim nächsten Anlegen, die Angaben bleiben (Trigger erlaubt nur das einmalige Leeren).
+  Fristen in SQL als `now() + ? * interval '24 hours'`: `interval '30 days'` überquert die Zeitumstellung und ergab 31 Resttage.
+- `merkeAbruf` nimmt nur einen Tag (`YYYY-MM-DD`) und verwirft einen Augenblick still; ein `abruf` mit Versatz des Unternehmens über `slice(0, 10)` oder `merkeAugenblick` merken, sonst rechnet ein Dialog („Einsicht geben … 2 Wochen“) mit der Uhr des Browsers.
+- „Einsicht geben“ (Entscheid 8) legt über `benutzerApi.anlegen` einen Zugang mit Rolle `einsicht` und `gueltig_bis` an und zeigt das Startpasswort einmal; VoltPilot verschickt keine Einladung. Nur mit `benutzer.verwalten` (Kundenadministrator).
+- Bühne: `e2e/energiemanagement.html?…&mp=leer|r6&mappe=1|alt` (`src/test/mappeFixtures.ts`); der Überblick fragt immer nach Mappen, die Bühne spielt ohne `mp` eine leere Liste. Knöpfe in „Prüfung von außen“ sind `.vp-nw-wg-k` wie „Weitergeben“ (Mock `.wg`), nicht `Button variant="outline"`.

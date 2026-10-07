@@ -120,6 +120,8 @@ public final class EnergiemanagementRegeln {
         m.put("ueberpruefung_grund", List.of("nachweis", "keine_fassung", "kein_audit", "keine_managementbewertung", "abgeschlossen"));
         // Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
         m.put("teil", List.of("energiepolitik", "anwendungsbereich", "rechtliche_anforderungen", "kontext", "risiken_chancen", "aufgaben", "kompetenz", "kommunikation", "betrieb", "auslegung", "beschaffung", "energetische_bewertung", "bezugsbasen", "massnahmen", "interne_audits", "feststellungen", "managementbewertung", "berichte"));
+        // Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+        m.put("mappe_anlass", List.of("audit_von_aussen", "anfrage_behoerde", "eigene_ablage"));
         return m;
     }
 
@@ -166,6 +168,9 @@ public final class EnergiemanagementRegeln {
                 "energieteam", "Energieteam", "bezugsbasen", "Bezugsbasen", "energieziele_massnahmen", "Ziele und Maßnahmen",
                 "bewertung_messplanung", "Energetische Bewertung", "interne_audits", "Interne Audits",
                 "managementbewertung", "Managementbewertung", "dokumente", "Dokumente", "weitere", "Weitere Aufgabe"));
+        // Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+        m.put("mappe_anlass", geordnet("audit_von_aussen", "Audit von außen", "anfrage_behoerde", "Anfrage einer Behörde",
+                "eigene_ablage", "Eigene Ablage"));
         return m;
     }
 

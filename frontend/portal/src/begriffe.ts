@@ -88,9 +88,12 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
   },
   messstelle: {
     wort: UEMS_MESSSTELLE,
-    klartext: 'Ein Punkt, an dem Energie gemessen oder aus anderen Messstellen berechnet wird.',
-    beispiel: 'Zum Beispiel der Hauptzähler eines Werks oder der Unterzähler einer Maschine.',
+    klartext: 'Eine Stelle, an der Ihr Verbrauch gemessen, abgelesen oder aus anderen Messstellen berechnet wird.',
+    beispiel: 'Zum Beispiel der Hauptzähler eines Werks oder der Zähler einer Maschine.',
     fachwort: null,
+    frage: 'Was ist eine Messstelle?',
+    mehr: 'Die Werte kommen automatisch von einem Gerät, aus Ablesungen von Hand oder werden aus anderen Messstellen berechnet.',
+    abgrenzung: 'Nicht dasselbe wie das Gerät: Wird ein Zähler getauscht, bleibt die Messstelle mit ihrer Geschichte.',
   },
   bezugsgroesse: {
     wort: UEMS_BEZUGSGROESSE,

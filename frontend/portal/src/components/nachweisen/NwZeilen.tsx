@@ -247,3 +247,59 @@ export function Kuerzel({ personen, testId }: { personen: KuerzelPerson[]; testI
     </span>
   );
 }
+
+export interface HakenOption {
+  wert: string;
+  titel: string;
+  /** Höchstens ein Fakt unter dem Titel. */
+  unter?: string | null;
+  /** Rechts eine Zahl („12“), leise - wie „Personen · 6“. */
+  rechts?: string | null;
+}
+
+/**
+ * Eine Liste zum Abhaken (Mock MP2 „Was gehört hinein?“): je Zeile ein natives Kontrollkästchen mit Titel und höchstens
+ * einem Fakt. Tastatur und Vorleser gehen über das Kästchen; das Bild ist ein gefülltes Quadrat mit Haken.
+ */
+export function HakenListe({
+  frage,
+  verborgen = false,
+  optionen,
+  werte,
+  onWerte,
+  testId,
+}: {
+  frage: string;
+  /** Die Frage nur für Vorleser (am Telefon trägt der Titel des Blatts sie schon). */
+  verborgen?: boolean;
+  optionen: readonly HakenOption[];
+  werte: readonly string[];
+  onWerte: (werte: string[]) => void;
+  testId?: string;
+}) {
+  return (
+    <fieldset className="vp-nw-haken" data-testid={testId}>
+      <legend className={verborgen ? 'vp-nw-unsichtbar' : 'vp-nw-frage'}>{frage}</legend>
+      {optionen.map((o) => {
+        const an = werte.includes(o.wert);
+        return (
+          <label key={o.wert} className={`vp-nw-hk${an ? ' an' : ''}`} data-testid={testId ? `${testId}-${o.wert}` : undefined}>
+            <input
+              type="checkbox"
+              checked={an}
+              onChange={() => onWerte(an ? werte.filter((w) => w !== o.wert) : [...werte, o.wert])}
+            />
+            <span className="vp-nw-hk-box" aria-hidden="true">
+              <NwSymbol name="check" size={14} />
+            </span>
+            <span className="vp-nw-hk-text">
+              <b>{o.titel}</b>
+              {o.unter && <span>{o.unter}</span>}
+            </span>
+            {o.rechts && <span className="vp-nw-hk-rechts">{o.rechts}</span>}
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}

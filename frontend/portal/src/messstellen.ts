@@ -353,10 +353,9 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
         ? [{ groesse: n.groesse.groesse, text: nt, zeit: `${zeitpunktText(n.letzter_wert.zeitpunkt, k.zone, k.zeitpunkt)} Uhr` }]
         : [];
     }),
-    fakten: (z.fakten ?? []).map((f) =>
-      f.art === 'einstellung_geaendert'
-        ? `${EINSTELLUNG_GEAENDERT} ${zeitpunktText(f.gilt_ab, k.zone)}`
-        : f.art,
+    // Ein Kundenwort je Tatsache oder nichts - nie der rohe Code (Konzept Messen m1, Befund 4.4).
+    fakten: (z.fakten ?? []).flatMap((f) =>
+      f.art === 'einstellung_geaendert' ? [`${EINSTELLUNG_GEAENDERT} ${zeitpunktText(f.gilt_ab, k.zone)}`] : [],
     ),
   };
 }
@@ -393,7 +392,8 @@ export function ablesungsZiele(zeilen: readonly ZeileWoerter[]): Set<string> {
 }
 
 export type RegisterEintrag =
-  | { art: 'messstelle'; woerter: ZeileWoerter }
+  /** Die Wörter der Zeile und die Zeile selbst (die Liste sucht und gruppiert darin, `messstellenListe.ts`). */
+  | { art: 'messstelle'; woerter: ZeileWoerter; zeile: MessstelleRegisterZeile }
   /** Gab es am Stichtag noch nicht: an ihrem Platz benannt (Satz wie auf der Liste „Standorte“), nie weggelassen. */
   | { art: 'gab_es_noch_nicht'; id: string; kennzeichen: string; name: string; satz: string };
 
@@ -419,7 +419,7 @@ export function registerEintraege(antwort: MessstellenRegister, stichtag: Tag | 
         satz: bestandSatz('gab_es_noch_nicht', `${z.kennzeichen} „${name}“`, stichtag),
       };
     }
-    return { art: 'messstelle', woerter: zeileWoerter(z, k) };
+    return { art: 'messstelle', woerter: zeileWoerter(z, k), zeile: z };
   });
 }
 
