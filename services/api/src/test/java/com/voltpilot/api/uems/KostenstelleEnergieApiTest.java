@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -67,6 +68,7 @@ import org.testcontainers.utility.DockerImageName;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("local")
+@Import(AbfragenZaehlwerk.class)
 class KostenstelleEnergieApiTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -850,6 +852,64 @@ class KostenstelleEnergieApiTest {
         assertThat(pn.path("menge").isNull()).isTrue();
         assertThat(nov.path("nicht_verteilt").path("posten")).as("die Oktobertage gehörten 4300, nicht niemandem")
                 .isEmpty();
+    }
+
+    /**
+     * Prüfung r4 S15: mit Ablesungen am Morgen reicht jeder Ablesezeitraum über seinen Monat hinaus (01.10. 07:15 bis
+     * 02.11. 07:40). Die Anteile dieser Tage kommen für ALLE Messstellen aus Ablesungen in einem Zug - drei Zähler lesen
+     * die Verteilung so oft wie einer -, und die Sicht holt für alle ihre Abfragen EINE Verbindung.
+     */
+    @Test
+    void dieAnteileDerAblesezeitraeumeKommenInEinemZug_dieSichtHoltEineVerbindung() throws Exception {
+        Welt eine = abgelesenMit("Verwaltung (S15, einer)", 1);
+        Welt drei = abgelesenMit("Verwaltung (S15, drei)", 3);
+        UUID kEine = eine.kostenstellen().get("9100");
+        UUID kDrei = drei.kostenstellen().get("9100");
+        assertThat(energie(drei, kDrei, "periode=monat&am=2026-10-15").path("gemessen").path("posten")).hasSize(3);
+
+        AbfragenZaehlwerk.Gezaehlt einer = AbfragenZaehlwerk.zaehle(() -> lies(eine, kEine));
+        AbfragenZaehlwerk.Gezaehlt dreier = AbfragenZaehlwerk.zaehle(() -> lies(drei, kDrei));
+        List<String> verteilungEiner = einer.abfragen().stream().filter(a -> a.contains("FROM messstelle_verteilung v"))
+                .toList();
+        List<String> verteilungDreier = dreier.abfragen().stream()
+                .filter(a -> a.contains("FROM messstelle_verteilung v")).toList();
+        assertThat(verteilungDreier).as("die Periode und die Tage aller Ablesezeiträume - je ein Zug")
+                .hasSize(2).hasSameSizeAs(verteilungEiner);
+        assertThat(dreier.verbindungen()).as("eine lesende Transaktion").isEqualTo(1);
+    }
+
+    /** {@code n} Gaszähler MS-21 … aus Ablesungen (01.10. 07:15, 02.11. 07:40), jeder zu 100 % an 9100. */
+    private Welt abgelesenMit(String name, int n) throws Exception {
+        Welt w = welt(name);
+        UUID st = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), w.unternehmen());
+        kostenstelle(w, "9100", "Verwaltung", "2026-10-01", null);
+        for (int i = 0; i < n; i++) {
+            String kz = "MS-" + (21 + i);
+            UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                    + "richtung, einheit, wertart) VALUES (?, ?, 'Gas Heizung Verwaltung', 'gemessen', 'Gas', 'Volumen', "
+                    + "'Bezug', 'm³', 'Zählerstand') RETURNING id", UUID.class, w.mandant(), kz);
+            root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                    + "'2026-01-01')", w.mandant(), ms, st);
+            w.messstellen().put(kz, ms);
+            verteilung(w, kz, List.of(new Anteil("9100", "100", "2026-10-01", null)));
+            mitUhr(() -> {
+                schreiben(w, "/api/v1/messstellen/" + kz + "/ablesungen", Map.of("zeitpunkt", ABLESUNG_1, "stand",
+                        "48.211"));
+                schreiben(w, "/api/v1/messstellen/" + kz + "/ablesungen", Map.of("zeitpunkt", ABLESUNG_2, "stand",
+                        "49.451"));
+            });
+        }
+        return w;
+    }
+
+    private void lies(Welt w, UUID kostenstelle) {
+        try {
+            energie(w, kostenstelle, "periode=monat&am=2026-10-15");
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** MS-21 Gas Verwaltung - gemessen, ohne Gerät, an einem Standort (wie AblesungApiTest). */

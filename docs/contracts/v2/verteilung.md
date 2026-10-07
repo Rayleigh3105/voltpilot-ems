@@ -119,6 +119,9 @@ Tagesmenge.
    Wechselt er, auch von keiner Zeile zu einer, gibt es für sie keine Zahl: Grund `anteil_wechselt_im_ablesezeitraum`, Satz „keine Werte (Verteilung im Ablesezeitraum geändert)“ und „Verteilung geändert am …“ - nie ein Stichtag-Anteil, nie eine Aufteilung nach Tagen.
    Anders als `mengen` urteilt die Regel JE Kostenstelle: ändert sich der Satz nur für eine andere, bleibt diese Zahl exakt (744 m³ = 60 % × 1 240).
    Die Tage sind halboffen in der Zone der Messstelle: eine Ablesung am 01.12. 00:00 schließt mit dem 30.11., eine um 07:40 am 02.11. berührt den 02.11.
+   Benannte Grenze: der Tag einer Ablesung, die nicht um 00:00 liegt, gehört beiden Zeiträumen, die sie trennt.
+   Darum kostet jeder Wechsel der Verteilung genau einen Ablesezeitraum seine Zahl - gleich, ob er am Tag der Ablesung oder am Tag danach gilt (Ablesungen 01.09. und 01.10. um 07:15, 02.11. um 07:40; 70/30 bis 30.09., ab 01.10. 60/40: der September hat keine Zahl; ab 02.10.: der Oktober).
+   Nur eine Ablesung um 00:00 am Tag des Wechsels trennt ohne Verlust; ob ein Wechsel an einer Ablesung ausgerichtet werden darf, ist ein offener Produktentscheid (Prüfung r4 S13).
    „Nicht verteilt“: an ALLEN Tagen ohne Zeile die ganze Menge, an nur einigen keine Zahl.
    Die Kostenstellen-Sicht liest eine Messstelle aus Ablesungen über Monat und Jahr in MONATEN statt Tagen (`posten[].monate`): je Monat die gespeicherte Menge (dieselbe Zahl wie `…/werte?raster=monat`) mit den Ablesezeiträumen, die der Kunde ihm zugeordnet hat; ein Monat mit Zeile, aber ohne Ablesung ist `keine_ablesung`.
    Ein Tag bekommt nie einen Anteil eines Ablesezeitraums.

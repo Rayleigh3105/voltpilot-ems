@@ -75,8 +75,13 @@ Seit Vertrag 1.5 (Regel `ablesezeitraum`, Java `VerteilungRegeln.ablesezeitraum`
 - `monate` steht NUR an solchen Posten (`NON_NULL`); jede andere Antwort ist Zeichen für Zeichen die von vorher (`dieZahlenSindZeichengleich`).
 - Die Herkunft eines solchen Postens nennt den Anteil des letzten Monats mit Anteil; wechselt er in jedem Monat, sagt sie `fehlt: [verteilung]`, statt einen zu erfinden.
 - Der Monat ist die Einheit, weil nur er gespeichert und versioniert ist: hat ein Monat zwei Ablesezeiträume mit verschiedenen Anteilen, gibt es keine Zahl, obwohl die einzelnen Zeiträume rechenbar wären (benannte Grenze).
+- Benannte Grenze (Prüfung r4 S13, Produktentscheid offen): der Tag einer Ablesung, die nicht um 00:00 liegt, gehört beiden Zeiträumen; jeder Wechsel der Verteilung kostet dann genau einen Ablesezeitraum seine Zahl - auch „ab dem Tag nach der Ablesung“ (dann eben den folgenden). Vertrag `verteilung.md` Regel 14.
+- `version=n` liest die Monatsmenge der Version n, aber die Ablesezeiträume der neuesten Fassung (Prüfung r4 S14, offen): ordnet eine Berichtigung einen Zeitraum einem anderen Monat zu, prüft Version 1 den alten Monat gegen andere Tage. Kein Portal-Leser fragt `version` an dieser Route; der Bericht liest die neueste.
 - Beweise: `VerteilungVectorsTest` (F17), `uemsVerteilung.test.ts`, `KostenstelleEnergieApiTest.einAblesezeitraumGehtAlsGanzesAnDieKostenstelle` und `einWechselMittenImAblesezeitraumHatKeineZahl` (echte Routen: Ablesen, Berichtigen, `version=1`), `KostenstelleEnergieSchnittstelleVertragTest`.
 - Der Berichts-Abzug (`BerichtAbzugBildung`, Mandant ausdrücklich) liest dieselben Monate.
+  Quellenverzeichnis (Q6) und Verteilungs-Sätze bildet er aus `tage` UND `monate` (`BerichtUnternehmen.anteileJeTag`: die Tage der Ablesezeiträume, ohne Zeitraum der Kalendermonat, beschnitten auf die Periode) - sonst fehlt der Ablesezähler im Verzeichnis, und die Berichtigung seiner Ablesung stößt keinen Stand an (Prüfung r4 M1, `BerichtApiTest.unternehmensberichtZitiertDenAblesezaehlerSeinerKostenstelle_…`).
+- Die Anteile über die Periode hinausreichender Zeiträume liest die Sicht für alle Ablesezähler in EINEM Zug, die Route läuft in einer lesenden Transaktion (eine Verbindung); Budget-Beweis `KostenstelleEnergieApiTest.dieAnteileDerAblesezeitraeumeKommenInEinemZug_…` über `AbfragenZaehlwerk` (Prüfung r4 S15).
+  Offen bleibt der Lesezug des Lese-Modells je Messstelle (Tage wie Monate, vorbestehend seit AP-10).
 
 ## Befunde (benannt, nicht still gelöst)
 
