@@ -262,7 +262,8 @@ describe('„Energieziel setzen“ an der Kennzahl - eine Uhr (Konzept Verbesser
     const dialog = await zielDialog();
     expect(zielperiode(dialog)).toEqual(['Januar 2030', 'Dezember 2030']);
     expect(within(dialog).getByTestId('energieziel-basis-zeile').textContent).toContain('Bezugsbasis BB-0001');
-    expect(within(dialog).getByText(UEMS_NORMGRENZE)).toBeTruthy();
+    // Konzept Verbessern v1, PR 4: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Dialog.
+    expect(within(dialog).queryByText(UEMS_NORMGRENZE)).toBeNull();
     expect(uebersicht).not.toHaveBeenCalled();
     // Ohne Wortlaut und Begründung geht nichts an die Route.
     const senden = vi.spyOn(api, 'energiezielAnlegen');

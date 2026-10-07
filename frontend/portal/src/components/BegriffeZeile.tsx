@@ -1,4 +1,4 @@
-import { BEGRIFFE, BEGRIFFE_LABEL, begriffFrage, type BegriffSchluessel } from '../begriffe';
+import { BEGRIFFE, BEGRIFFE_LABEL, begriffFrage, fachwortZeile, type BegriffSchluessel } from '../begriffe';
 import { InfoTip } from './InfoTip';
 import './BegriffeZeile.css';
 
@@ -20,7 +20,7 @@ export function BegriffeZeile({ begriffe }: { begriffe: readonly BegriffSchluess
             <InfoTip title={b.wort} label={begriffFrage(b.wort)}>
               <span className="vp-begriff-klartext">{b.klartext}</span>
               {b.beispiel && <span className="vp-begriff-beispiel">{b.beispiel}</span>}
-              {b.fachwort && <span className="vp-begriff-fachwort">Fachwort: {b.fachwort}</span>}
+              {b.fachwort && <span className="vp-begriff-fachwort">{fachwortZeile(b.fachwort)}</span>}
             </InfoTip>
           </span>
         );

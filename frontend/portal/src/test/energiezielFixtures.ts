@@ -148,6 +148,8 @@ export function standJuli(ez: Energieziel = ez2028()): EnergiezielStand {
     vorschlag: null,
     satz: STAND_SATZ_JULI,
     vorschlag_satz: null,
+    // Konzept Verbessern, Entscheid 3: der Vektor „K1 Juli 2028 gegen 5 % weniger“.
+    kurs: { lage: 'nicht_auf_kurs', monate_bewertbar: 5, monate_offen: 6, hoechstens: '401668.55', luecke: '8731.45', noetig_prozent: '-6.7', noetig_richtung: 'weniger' },
   };
 }
 
@@ -162,6 +164,7 @@ export function standEnde(ez: Energieziel = ez2028()): EnergiezielStand {
     monate_text: '11 von 12',
     summe: { gemessen: '922100', erwartet: '947700', delta_prozent: '-2.7', band_prozent: '2.0', richtung: 'weniger', urteil: 'besser', kennzeichen: [...KENNZEICHEN_BASIS, '11 von 12 Monaten'] },
     satz: STAND_SATZ_ENDE,
+    kurs: { lage: 'nicht_auf_kurs', monate_bewertbar: 11, monate_offen: 0, hoechstens: '900315', luecke: '21785', noetig_prozent: null, noetig_richtung: null },
   };
 }
 
@@ -186,6 +189,7 @@ export function standLeer(ez: Energieziel): EnergiezielStand {
     vorschlag: null,
     satz: null,
     vorschlag_satz: null,
+    kurs: { lage: 'noch_keine_aussage', monate_bewertbar: 0, monate_offen: 12, hoechstens: null, luecke: null, noetig_prozent: null, noetig_richtung: null },
   };
 }
 
@@ -199,7 +203,15 @@ function bewertung(over: Partial<NonNullable<Energieziel['bewertung']>> = {}): N
   return {
     status: 'bewertet', ergebnis: 'verfehlt', begruendung: BEGRUENDUNG_R10, vorschlag: null, vieraugen: false,
     person: IK, am: '2029-01-15T10:00:00+01:00', entscheidung: null, entschieden_am: null, entscheidungs_begruendung: null,
-    kopie: KOPIE, pruefsumme: PRUEFSUMME, ...over,
+    kopie: KOPIE, pruefsumme: PRUEFSUMME,
+    // Konzept Verbessern, Entscheid 11: derselbe Stand lesbar.
+    stand: {
+      abruf: '2029-01-15', gemessen: '922100', erwartet: '947700', einheit: 'kWh', delta_prozent: '-2.7', richtung: 'weniger',
+      urteil: 'besser', band_prozent: '2', monate_bewertbar: 11, monate_gesamt: 12,
+      ausgeschlossen: [{ monat: '2028-03', grund: 'variable_ausserhalb' }],
+      grund_kein_vorschlag: 'Zielperiode nicht vollständig bewertbar (11 von 12 Monaten: März 2028 variable_ausserhalb)',
+    },
+    ...over,
   };
 }
 
@@ -260,6 +272,10 @@ export function energiezielBuehne(lage: EnergiezielLage, vieraugen = false, sub 
     art, alt: null, neu: null, begruendung, person: name, am: '2029-01-15T10:00:00+01:00',
   });
   return {
+    // Konzept Verbessern, Entscheid 5: an der Bühne ohne Maßnahmen und ohne offene Auffälligkeit.
+    massnahmenZumEnergieziel: async () => ({ abruf: '2028-07-10', massnahmen: [], im_stand_enthalten: [] }),
+    // Der Hinweis am Energieziel liest die Sammelroute `GET /api/v1/auffaelligkeiten` (Review r1 M-3.1).
+    alleAuffaelligkeiten: async () => ({ abruf: '2028-07-10', offen: 0, vermerke: [] }),
     energieziele: async () => ({ energieziele: [...ziele.values()].map((ez) => ({ ...ez, anstoesse: null, verlauf: null })) }),
     energieziel: async (id) => holen(id),
     energiezielStand: async (id) => stand(holen(id)),

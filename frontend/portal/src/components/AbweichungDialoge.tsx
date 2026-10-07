@@ -6,7 +6,7 @@ import * as A from '../abweichungen';
 import { api, type Abweichung, type AbweichungErgebnis, type Massnahme } from '../api';
 import { routenHeute } from '../routenUhr';
 import * as Z from '../energieziele';
-import { UEMS_AUSSAGE_VON, UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_AUSSAGE_VON } from '../glossar';
 import { useAktiveKonten, VerantwortlichWahl } from './AuffaelligkeitZeile';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
 import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
@@ -106,11 +106,10 @@ export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute =
             Wortlaut der Aussage
           </label>
           <textarea id={`${basis}-wortlaut`} rows={3} value={e.wortlaut} onChange={(x) => setze({ wortlaut: x.target.value })} aria-invalid={!!zeigen.wortlaut} />
-          <p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{zeigen.wortlaut ?? '10 bis 500 Zeichen, so wie die Person es gesagt hat.'}</p>
+          <p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{zeigen.wortlaut ?? A.AUSSAGE_WIE_GESAGT}</p>
         </div>
         <Input id={`${basis}-beleg`} label="Beleg (wahlfrei)" value={e.beleg} onChange={(x) => setze({ beleg: x.target.value })} hint={A.BELEG_HINWEIS} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
@@ -150,7 +149,6 @@ export function FristDialog({ abweichung, onClose, onFertig }: Props) {
         <VpDatePicker id={`${basis}-frist`} label={A.FRIST} value={frist} onChange={setFrist} min={abweichung.eroeffnet_am} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
@@ -193,7 +191,6 @@ export function VerantwortlicherDialog({ abweichung, onClose, onFertig }: Props)
         <VerantwortlichWahl id={`${basis}-verantwortlich`} wert={wer} setze={setWer} fehler={zeigen.verantwortlich ?? null} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
@@ -317,9 +314,59 @@ export function AbschliessenDialog({ abweichung, onClose, onFertig }: Props) {
         )}
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
 }
 
+
+/** „Kommentar schreiben“ (A4): 1 bis 2.000 Zeichen im Verlauf, nur offen; nichts wird geändert oder gelöscht. */
+export function KommentarDialog({ abweichung, onClose, onFertig }: Props) {
+  const basis = `ak-${useId().replace(/:/g, '')}`;
+  const [text, setText] = useState('');
+  const [zeigen, setZeigen] = useState<string | null>(null);
+  const [satz, setSatz] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function senden(ev: FormEvent) {
+    ev.preventDefault();
+    const t = text.trim();
+    if (!t || t.length > A.KOMMENTAR_MAX) {
+      setZeigen(A.ABLEHNUNG.text_ungueltig);
+      document.getElementById(`${basis}-text`)?.focus();
+      return;
+    }
+    setZeigen(null);
+    setBusy(true);
+    setSatz(null);
+    try {
+      onFertig(await api.abweichungEintrag(abweichung.id, { art: 'kommentar', text: t }));
+    } catch (x) {
+      setSatz(A.ablehnungSatz(x));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Rahmen titel={A.KNOPF_KOMMENTAR_SCHREIBEN} basis={basis} busy={busy} knopf={A.KNOPF_KOMMENTAR_SCHREIBEN} testid="abweichung-kommentar" onClose={onClose}>
+      <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-kommentar">
+        <div className="vp-ez-feld">
+          <label className="vp-ez-label" htmlFor={`${basis}-text`}>
+            {A.KNOPF_KOMMENTAR}
+          </label>
+          <textarea
+            id={`${basis}-text`}
+            rows={4}
+            value={text}
+            placeholder="Zum Beispiel: Produktion 21,9 % unter November, Strom nur 8,8 % - bitte Halle 1 prüfen."
+            onChange={(x) => setText(x.target.value)}
+            aria-invalid={!!zeigen}
+          />
+          {zeigen && <p className="vp-ez-fehler">{zeigen}</p>}
+        </div>
+        <Ablehnung satz={satz} />
+      </form>
+    </Rahmen>
+  );
+}
