@@ -15,7 +15,9 @@ async function bild(page: Page, name: string) {
 }
 async function korrektur(page: Page, params = '') {
   await page.goto(`/e2e/korrekturen.html?liste=1${params}`);
-  await page.getByRole('button', { name: 'Korrekturen', exact: true }).click();
+  // Konzept Messen m1 §6.2: Seltenes steht im Menü ⋯ der Liste - am Standort „Korrekturen am Standort“.
+  await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+  await page.getByRole('menuitem', { name: 'Korrekturen am Standort' }).click();
   await expect(page.getByRole('dialog')).toContainText('K-2026-0007');
   await bild(page, 'liste');
   await page.getByRole('button', { name: /K-2026-0007/ }).click();
