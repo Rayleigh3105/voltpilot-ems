@@ -233,6 +233,32 @@ Gruppe ihrer Rechenform und Einheit — genau die Gleichheit, die das Anlegen ve
 Gruppen nach Rechenform, dann Einheit; Kennzahlen nach Kennzeichen, in der Form von `GET /api/v1/kennzahlen`. Ein
 unbekannter oder leerer Parameter ist 400 `anfrage_ungueltig` mit `feld`. Die Route rechnet nichts und schreibt nichts.
 
+### Die Auswertung an der Liste (Konzept Auswerten a1, PR1)
+
+`GET /api/v1/kennzahlen?mit=auswertung` legt an jede nicht archivierte Kennzahl mit Monatswerten ein Feld `auswertung`;
+ohne `mit` fehlt es, die Antwort bleibt Byte für Byte gleich, ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
+Die Liste braucht damit keine Werte-Anfrage je Kennzahl mehr.
+
+- `monat` ist der letzte abgeschlossene Monat in der Zone der Geltung, auf der Uhr der Kennzahlen (nie der Uhr oder Zone
+  des Aufrufers); für ihn gilt das Urteil.
+- `wert` ist der jüngste Monatswert der zwölf Monate bis `monat` (Form wie `…/werte`); er kann älter sein als `monat`.
+- `vorjahr` ist die Veränderung von `wert` gegen denselben Monat ein Jahr davor: Operation `roh`, nie ein Urteil (VG3).
+- `monate` sind die zwölf Monate bis `monat` mit Wert und, mit Bezugsbasis, der bereinigten Abweichung, Urteil und Grund.
+- `vergleich` ist die Zeile des Bezugsbasis-Lesers für `monat` (`bezugsbasis.md` §16) mit Kundensatz, nur mit freigegebener
+  Fassung; solange für `monat` noch keine gilt, nennt `erster_monat` den ersten Monat, dessen letzter Tag sie trägt (P4).
+- `energieziel` ist ein offenes Energieziel mit dem Stand seiner Summe (Z3): das, dessen Zielperiode `monat` enthält
+  (bei mehreren das mit der frühesten Zielperiode); sonst das zuletzt abgelaufene, noch nicht bewertete; sonst das nächste.
+  Ein fälliges Ziel verdrängt das laufende nicht.
+
+Dieselbe Ableitung trägt die Leitkachel der Übersicht (`GET /api/v1/portfolio/kpis`, `leit`): Kennzahl, Wert und Monat
+(`wert`), Urteil (`vergleich.urteil`) und `ziel_stand` sind die der Karte - ein Urteil, eine Ableitung (Konzept Auswerten
+a1 §10.8). Es führt unter den Kennzahlen mit Auswertung und offenem Energieziel die mit dem kleinsten Kennzeichen, die
+einen Monatswert trägt; die Liste nennt sie als `leitkennzahl`. Gerechnet wird nichts Neues (`KennzahlAuswertung`,
+`KennzahlAuswertungTest`, `BezugsbasisVergleichApiTest`).
+
+Lehnt eine Lesung die Auswertung einer Kennzahl ab oder scheitert sie unerwartet, trägt nur diese Kennzahl keine
+`auswertung` (das Portal liest sie dann über `…/werte`); die übrigen Kennzahlen behalten ihre.
+
 ### Der Auslöser aus der Ortsstruktur (IP-9, nachgetragen)
 
 Ändert sich die **Bezugsfläche** eines Orts **rückwirkend** (`ort_aenderung` / `flaeche_geaendert`, `rueckwirkend`),

@@ -31,7 +31,6 @@ export const LADEFEHLER = 'Die Bezugsbasis konnte nicht geladen werden.';
 export const AKTION_FEHLER = 'Das hat nicht geklappt. Bitte versuchen Sie es erneut.';
 export const TITEL_ASSISTENT = `${UEMS_BEZUGSBASIS} anlegen`;
 export const SCHRITTE = [UEMS_REFERENZPERIODE, 'Methode', 'Einflussgrößen', 'Statische Faktoren', 'Vorschau'] as const;
-export const FILTER_NUR = `nur ${UEMS_ENERGIELEISTUNGSKENNZAHL}en`;
 export const KNOPF_ENTWURF = 'Als Entwurf speichern';
 export const KNOPF_BEANTRAGEN = 'Zur Freigabe beantragen';
 export const KNOPF_FREIGEBEN = 'Freigeben';

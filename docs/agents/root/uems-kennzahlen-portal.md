@@ -51,3 +51,19 @@ Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versio
 - **Seit IP-15 gebaut:** „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und Löschen — `uems-kennzahl-aendern.md`
   (kein Wiederherstellen: keine Route, also kein Knopf). Die Paare einer Jahres-Zusammenfassung (K14) zeigt die Herkunfts-Karte seit IP-11 (`kennzahlKarte.herkunft` → `paare`). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
   Kopf von Liste und Seite: `uems-kennzahl-anlegen.md`.
+- **Liste seit Konzept Auswerten a1 (PR1):** `KennzahlenPage` liest EINE Anfrage `GET /api/v1/kennzahlen?mit=auswertung`
+  (`kennzahl.md` „Die Auswertung an der Liste“) und ordnet in `kennzahlListe.ts` (rein): „Mit Bezugsbasis“ =
+  `auswertung.vergleich` vorhanden (freigegebene Fassung), sonst „Zum Beobachten“; Archivierte zugeklappt, ihre Werte
+  (`useListenWerte`) erst beim Aufklappen. Nur Kennzahlen ohne Auswertung (ohne Monatswerte, älterer Server, R-A7) lesen
+  noch `…/werte` je Kennzahl. Urteils-Wörter nur aus `bezugsbasisUrteil.ts` - dieselben wie die Leitkachel der Übersicht,
+  deren Urteil seit §10.8 aus derselben Ableitung kommt (`KennzahlAuswertungService`, nicht mehr aus dem Ziel-Stand).
+  Urteils-Farben: `--vp-c-urteil-*` in `index.css`. Bühnen: `startansicht.html?…&ansicht=kennzahlen&liste=referenz` (Welt
+  des Konzepts, 30.04.2029); die Bezugsbasis-Bühne zeigt „Vergleich ab Dezember 2026“.
+- **Ein Urteil, eine Ableitung (Review r3):** die Leitkachel (`PortfolioKpiService.leitkennzahl`) nimmt Kennzahl, Wert,
+  Monat, Urteil und Ziel-Stand aus `KennzahlAuswertungService.leit()` - auf der Uhr der Kennzahlen (`KennzahlService.jetzt`,
+  die Bühne der Prüfumgebung) und in der Zone der Geltung, nie aus `Instant.now()`/Berlin der Route. Welches offene
+  Energieziel an einer Kennzahl steht, wählt allein `KennzahlAuswertungService.zielFuer` (laufend vor fällig vor nächstem).
+  Den Stern der Leitkennzahl setzt das Portal nur nach `leitkennzahl` der Liste - nie selbst abgeleitet (auch nicht aus der
+  Standort-Liste). Scheitert `?mit=auswertung`, fällt die Liste auf die Anfrage ohne `mit` zurück; serverseitig verliert
+  bei einem Fehler nur die eine Kennzahl ihre Auswertung. Die Liste läuft in `KennzahlService.mitEinemKatalog` (ein
+  Katalog statt mehrerer je Kennzahl).

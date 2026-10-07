@@ -151,6 +151,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
+import { leitkennzahlWieDerServer, mitAuswertungAus, referenzListe } from '../src/test/kennzahlListeFixtures';
 import {
   anlegenAm,
   detailAm,
@@ -846,9 +847,21 @@ Object.assign(api, {
     return id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg();
   },
   versorgung: async (id: string) => id === werkLindach().id ? versorgungLindach() : versorgungAhrenberg(),
-  // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
-  kennzahlen: async () => ({ kennzahlen: (messenArt === 'bestand' ? [] : kennzahlenDerBuehne()).filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
-    || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id))) }),
+  // AP-11 IP-13: die Kennzahlen der Welt - gelesen zur Uhr der Bühne. Konzept Auswerten a1 (PR1): mit `'auswertung'`
+  // trägt jede Kennzahl ihre Auswertung - aus den Monatswerten der Bühne (ohne Bezugsbasis), oder mit `&liste=referenz`
+  // die Welt des Konzepts zum 30.04.2029 (§6.4: über der Bezugsbasis, im Rahmen, zum Beobachten, archiviert).
+  kennzahlen: async (mit?: 'auswertung') => {
+    const welt = params.get('liste') === 'referenz' ? referenzListe() : messenArt === 'bestand' ? [] : kennzahlenDerBuehne();
+    const sichtbar = welt.filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
+      || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id)));
+    const heute = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+    if (mit !== 'auswertung') return { kennzahlen: sichtbar.map(({ auswertung: _ohne, ...k }) => k) };
+    // R-A7: eine Kennzahl, deren Werte die Route ablehnt, trägt auch keine Auswertung (wie der Server).
+    const kennzahlen = sichtbar.map((k) => (k.auswertung || k.id === kzAusserhalb ? k : mitAuswertungAus(k, heute, (id, periode, von, bis) =>
+      istAngelegt(id) ? ohneWerte(id, periode, von, bis) : kennzahlWerteAntwort(id, periode, von, bis, Date.now()))));
+    // Die Leitkennzahl nennt der Server (§10.8); die Bühne nennt sie nach seiner Regel.
+    return { kennzahlen, leitkennzahl: leitkennzahlWieDerServer(kennzahlen) };
+  },
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
   // AP-17 IP-20: der Vergleich-Leser (IP-19) — `&vergleich=r2|maerz|stand`; ohne Angabe die Kennzahl ohne Bezugsbasis (R10).
   bezugsbasisVergleich: async () =>

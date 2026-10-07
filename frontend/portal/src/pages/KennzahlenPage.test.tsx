@@ -10,6 +10,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../test/kennzahlWerteFixtures';
+import { referenzListe, REFERENZ } from '../test/kennzahlListeFixtures';
 import { KennzahlenPage } from './KennzahlenPage';
 
 /** Geschütztes Leerzeichen (U+00A0) zwischen Zahl und Einheit. */
@@ -56,43 +57,101 @@ describe('die Adresse der Welt', () => {
 });
 
 describe('KennzahlenPage — die Liste', () => {
-  it('am 03.12.2026: je Kennzahl der letzte Wert mit Zustand und Periode — K8 als „—“, K10 mit „mindestens“, K11 mit „höchstens“', async () => {
+  it('ohne Auswertung (älterer Server): je Kennzahl der letzte Wert wie bisher - K8 als „—“, K10 mit „mindestens“, K11 mit „höchstens“', async () => {
     verdrahte('2026-12-03T09:00:00+01:00');
     render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
-    await waitFor(() => expect(screen.getAllByTestId('kennzahl-zahl')).toHaveLength(5));
-    const karten = screen.getAllByTestId('kennzahl-karte');
-    const text = (i: number) => karten[i].textContent ?? '';
+    await waitFor(() => expect(screen.getAllByTestId('kennzahl-reihe').filter((r) => r.textContent?.includes('·'))).toHaveLength(5));
+    const reihen = screen.getAllByTestId('kennzahl-reihe');
+    const text = (i: number) => reihen[i].textContent ?? '';
+    // Alle stehen „Zum Beobachten“ - ohne Auswertung gibt es kein Urteil.
+    expect(screen.getByTestId('kennzahlen-ohne').textContent).toContain('Zum Beobachten');
+    expect(screen.queryByTestId('kennzahlen-mit')).toBeNull();
     expect(text(0)).toContain('KZ-0001');
     expect(text(0)).toContain('Stromeinsatz Montage je Stück — Halle 2');
     expect(text(0)).toContain('—');
     expect(text(0)).toContain('keine Werte');
     expect(text(0)).toContain('November 2026');
-    expect(text(0)).toContain('Gebäude Halle 2 · verantwortlich Ines Kaltenbach');
     expect(text(2)).toContain(`0,20${NB}kWh je Stück`);
     expect(text(2)).toContain('Oktober 2026 · endgültig');
     expect(text(3)).toContain(`mindestens 30,83${NB}kWh je Person`);
     expect(text(3)).toContain('05.11.2026 · vorläufig');
     expect(text(4)).toContain(`höchstens 10,55${NB}kWh je h`);
-    expect(text(4)).toContain('Messstelle Ladepunkt Parkplatz Halle 2');
   });
 
   it('R-A7: kennt die Werte-Route eine gelistete Kennzahl nicht (404), steht die Hinweiszeile — ohne Wert', async () => {
     verdrahte('2026-11-10T09:00:00+01:00', [KZ.kz3]);
-    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
-    const hinweis = await screen.findByTestId('kennzahl-hinweis');
-    expect(hinweis.textContent).toBe('umfasst Standorte außerhalb Ihres Zugriffs');
-    const karte = hinweis.closest('[data-testid="kennzahl-karte"]') as HTMLElement;
-    expect(karte.textContent).toContain('Stromeinsatz Montage je Stück — Unternehmen');
-    expect(within(karte).queryByTestId('kennzahl-zahl')).toBeNull();
+    const { container } = render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    await waitFor(() => expect(container.querySelector('[data-kennzeichen="KZ-0003"]')?.textContent).toContain('umfasst Standorte außerhalb Ihres Zugriffs'));
+    const reihe = container.querySelector('[data-kennzeichen="KZ-0003"]') as HTMLElement;
+    expect(reihe.textContent).toContain('Stromeinsatz Montage je Stück — Unternehmen');
+    expect(reihe.querySelector('.vp-kzl-reihe-zahl')).toBeNull();
   });
 
-  it('ein Tipp auf die Karte öffnet die Kennzahl', async () => {
+  it('ein Tipp auf die Reihe öffnet die Kennzahl', async () => {
     verdrahte('2026-11-10T09:00:00+01:00');
     const onOeffnen = vi.fn();
     render(<KennzahlenPage onOeffnen={onOeffnen} onListe={vi.fn()} />);
-    const karten = await screen.findAllByTestId('kennzahl-karte');
-    fireEvent.click(karten[0]);
+    const reihen = await screen.findAllByTestId('kennzahl-reihe');
+    fireEvent.click(reihen[0]);
     expect(onOeffnen).toHaveBeenCalledWith(KZ.kz1);
+  });
+
+  it('mit Auswertung (Konzept Auswerten a1 §6.4): eine Anfrage, keine Werte-Anfrage je Karte; Hinweiskarte und Gruppen', async () => {
+    const { werte } = verdrahte('2029-04-30T10:00:00+02:00');
+    const liste = vi.spyOn(api, 'kennzahlen').mockImplementation(async () => ({ kennzahlen: referenzListe() }));
+    const onOeffnen = vi.fn();
+    render(<KennzahlenPage onOeffnen={onOeffnen} onListe={vi.fn()} />);
+    const mit = await screen.findByTestId('kennzahlen-mit');
+    expect(liste).toHaveBeenCalledWith('auswertung');
+    // Archivierte sind zu, alle anderen tragen ihre Auswertung: keine einzige Werte-Anfrage.
+    expect(werte).not.toHaveBeenCalled();
+    expect(within(mit).getAllByTestId('kennzahl-karte').map((k) => k.dataset.kennzeichen)).toEqual(['KZ-0004', 'KZ-0023', 'KZ-0021']);
+    expect(screen.getByTestId('kennzahlen-hinweis').textContent).toContain('2 Kennzahlen liegen über der Bezugsbasis');
+    expect(within(screen.getByTestId('kennzahlen-ohne')).getAllByTestId('kennzahl-reihe')).toHaveLength(3);
+    // Aufklappen lädt die Werte der Archivierten.
+    const archiv = screen.getByTestId('kennzahlen-archiv') as HTMLDetailsElement;
+    archiv.open = true;
+    fireEvent(archiv, new Event('toggle'));
+    await waitFor(() => expect(werte).toHaveBeenCalledTimes(5));
+  });
+
+  it('den Stern trägt die Leitkennzahl, die der Server nennt (§10.8) - ohne Nennung keine', async () => {
+    verdrahte('2029-04-30T10:00:00+02:00');
+    const liste = vi
+      .spyOn(api, 'kennzahlen')
+      .mockImplementation(async () => ({ kennzahlen: referenzListe(), leitkennzahl: REFERENZ.kz4 }));
+    const { unmount } = render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    const mit = await screen.findByTestId('kennzahlen-mit');
+    const sterne = () => within(mit).queryAllByTitle('Leitkennzahl - sie steht auf der Übersicht');
+    expect(sterne()).toHaveLength(1);
+    expect(sterne()[0].closest('[data-testid="kennzahl-karte"]')?.getAttribute('data-kennzeichen')).toBe('KZ-0004');
+    unmount();
+
+    liste.mockImplementation(async () => ({ kennzahlen: referenzListe() }));
+    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    const ohneLeit = await screen.findByTestId('kennzahlen-mit');
+    expect(within(ohneLeit).queryAllByTitle('Leitkennzahl - sie steht auf der Übersicht')).toEqual([]);
+  });
+
+  it('scheitert die Auswertung, steht die Liste ohne sie da - jede Karte liest ihr Fenster wie bisher (Review r3)', async () => {
+    const { werte } = verdrahte('2026-12-03T09:00:00+01:00');
+    const liste = vi.spyOn(api, 'kennzahlen').mockImplementation(async (mit) => {
+      if (mit) throw new ApiError(500, 'Serverfehler');
+      return { kennzahlen: kennzahlenDerWelt() };
+    });
+    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByTestId('kennzahl-reihe')).toHaveLength(5));
+    expect(liste).toHaveBeenNthCalledWith(1, 'auswertung');
+    expect(liste).toHaveBeenNthCalledWith(2);
+    expect(screen.queryByText('Die Kennzahlen ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.')).toBeNull();
+    await waitFor(() => expect(werte).toHaveBeenCalled());
+  });
+
+  it('scheitern beide Abrufe, sagt die Seite es mit „Erneut versuchen“', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    vi.spyOn(api, 'kennzahlen').mockRejectedValue(new ApiError(503, 'nicht erreichbar'));
+    render(<KennzahlenPage onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    expect(await screen.findByText('Die Kennzahlen ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.')).toBeTruthy();
   });
 });
 

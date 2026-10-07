@@ -17,11 +17,9 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -31,7 +29,7 @@ import org.springframework.stereotype.Service;
  * Anlagen des Mandanten (RLS, via {@link SiteRepository#findAll()}) die vier
  * Leitkacheln - Leitkennzahl (EnPI gegen Ziel), Energieverbrauch (Netzbezug)
  * gegen Vorjahr, Lastspitze gegen vereinbarte Leistung und Energiekosten gegen
- * Vorjahr - für den LETZTEN ABGESCHLOSSENEN Berliner Monat.
+ * Vorjahr - Verbrauch und Kosten für den LETZTEN ABGESCHLOSSENEN Berliner Monat.
  *
  * <p><b>Jede Quelle an ihrem Ort (AGENTS.md „Quelle je Fläche"):</b>
  * <ul>
@@ -42,9 +40,11 @@ import org.springframework.stereotype.Service;
  *   <li>Die Lastspitze (15-min-Leistung) kommt aus der maßgeblichen 15-min-Quelle
  *       ({@link PortfolioKpiRepository}, Telemetrie-Netzbezug); fehlt sie, bleibt
  *       {@code kw} null (ehrlicher Leerzustand, nie 0).</li>
- *   <li>Die Leitkennzahl ist der EnPI mit freigegebener Bezugsbasis UND offenem
- *       Energieziel ({@link EnergiezielService}); gibt es keinen, ist {@code leit}
- *       null und das Portal zeigt den Datenlage-Fallback.</li>
+ *   <li>Die Leitkennzahl ist der EnPI mit offenem Energieziel, Wahl, Wert, Urteil
+ *       und Ziel-Stand aus {@link KennzahlAuswertungService#leit()} - derselben
+ *       Auswertung wie die Karte der Kennzahl (Konzept Auswerten a1 §10.8), auf
+ *       der Uhr der Kennzahlen und in der Zone ihrer Geltung; gibt es keinen, ist
+ *       {@code leit} null und das Portal zeigt den Datenlage-Fallback.</li>
  * </ul>
  *
  * <p><b>Rein getrennt:</b> die DB-Lesungen sammeln je Anlage {@link AnlageKpiRoh};
@@ -65,22 +65,19 @@ public class PortfolioKpiService {
 
     private final SiteRepository sites;
     private final BilanzService bilanz;
-    private final EnergiezielService energieziele;
-    private final KennzahlWerteService kennzahlWerte;
     private final NetzanschlussRepository netzanschluss;
     private final PortfolioKpiRepository spitzen;
     private final MessstelleRegisterService messstellen;
+    private final KennzahlAuswertungService auswertung;
 
-    public PortfolioKpiService(SiteRepository sites, BilanzService bilanz, EnergiezielService energieziele,
-            KennzahlWerteService kennzahlWerte, NetzanschlussRepository netzanschluss, PortfolioKpiRepository spitzen,
-            MessstelleRegisterService messstellen) {
+    public PortfolioKpiService(SiteRepository sites, BilanzService bilanz, NetzanschlussRepository netzanschluss,
+            PortfolioKpiRepository spitzen, MessstelleRegisterService messstellen, KennzahlAuswertungService auswertung) {
         this.sites = sites;
         this.bilanz = bilanz;
-        this.energieziele = energieziele;
-        this.kennzahlWerte = kennzahlWerte;
         this.netzanschluss = netzanschluss;
         this.spitzen = spitzen;
         this.messstellen = messstellen;
+        this.auswertung = auswertung;
     }
 
     /**
@@ -113,7 +110,7 @@ public class PortfolioKpiService {
 
         PortfolioKpiDto.Periode periode = new PortfolioKpiDto.Periode(
                 aktuell.atDay(1), aktuell.atEndOfMonth(), aktuell.getYear(), aktuell.getMonthValue());
-        return aggregiere(periode, roh, datenlage(), leitkennzahl(aktuell));
+        return aggregiere(periode, roh, datenlage(), leitkennzahl());
     }
 
     /** Die Abrechnungszeitraum-Fenster der Lastspitze: Grenzen (Berlin), Labels und welche Fenster überhaupt gebraucht werden. */
@@ -272,52 +269,43 @@ public class PortfolioKpiService {
     }
 
     /**
-     * Die führende Kennzahl: der EnPI mit offenem Energieziel (das Ziel macht die
-     * „Leitkennzahl gegen Ziel" erst möglich). Gibt es mehrere, entscheidet das
-     * Kennzeichen deterministisch. Ohne Energieziel: {@code null} (Datenlage-Fallback).
+     * Die führende Kennzahl (Konzept Auswerten a1 §10.8: ein Urteil, eine Ableitung). Welche Kennzahl führt, ihr Wert,
+     * das Urteil und der Stand des Energieziels kommen aus {@link KennzahlAuswertungService#leit()} - derselben Auswertung
+     * wie die Karte der Kennzahl, auf der Uhr der Kennzahlen und in der Zone ihrer Geltung, nie auf der Uhr dieser Route.
+     * Der Trend ist die Veränderung des jüngsten Werts gegen den Monat davor. Ohne führende Kennzahl {@code null}
+     * (Datenlage-Fallback).
      */
-    PortfolioKpiDto.Leitkennzahl leitkennzahl(YearMonth aktuell) {
-        EnergiezielDto.Liste ziele = energieziele.liste(Set.of(), null, "offen");
-        EnergiezielDto.Energieziel ziel = ziele.energieziele().stream()
-                .min(Comparator.comparing(z -> z.kennzahl().kennzeichen()))
+    PortfolioKpiDto.Leitkennzahl leitkennzahl() {
+        return auswertung.leit().map(PortfolioKpiService::leitkachel).orElse(null);
+    }
+
+    /** Die Leitkachel aus der Auswertung der führenden Kennzahl - REIN. */
+    static PortfolioKpiDto.Leitkennzahl leitkachel(KennzahlAuswertungService.Leit leit) {
+        KennzahlDto.Kennzahl k = leit.kennzahl();
+        EnergiezielDto.Energieziel ziel = leit.ziel();
+        KennzahlDto.Auswertung a = k.auswertung();
+        KennzahlDto.AuswertungWert w = a.wert();
+        YearMonth monat = YearMonth.parse(w.periode());
+        BigDecimal wert = dezimal(w.wert());
+        String davor = a.monate().stream()
+                .filter(m -> m.periode().equals(monat.minusMonths(1).toString()))
+                .map(KennzahlDto.AuswertungMonat::wert)
+                .findFirst()
                 .orElse(null);
-        if (ziel == null) {
-            return null;
-        }
-        UUID kennzahlId = ziel.kennzahl().id();
-        // Jüngster Wert + Vormonat für den Trend: die letzten beiden Monate lesen.
-        String von = aktuell.minusMonths(1).atDay(1).toString();
-        String bis = aktuell.atEndOfMonth().toString();
-        KennzahlDto.Werte werte = kennzahlWerte.werte(kennzahlId, Set.of(), "monat", von, bis, null);
-        List<KennzahlDto.Wert> mitWert = werte.werte().stream()
-                .filter(w -> w.wert() != null)
-                .sorted(Comparator.comparing(KennzahlDto.Wert::von))
-                .toList();
-        if (mitWert.isEmpty()) {
-            return null;
-        }
-        KennzahlDto.Wert juengster = mitWert.get(mitWert.size() - 1);
-        BigDecimal wert = dezimal(juengster.wert());
-        BigDecimal trend = mitWert.size() >= 2
-                ? trendProzent(wert, dezimal(mitWert.get(mitWert.size() - 2).wert()))
-                : null;
-        EnergiezielDto.Stand stand = energieziele.stand(ziel.id());
-        String urteil = stand.summe() != null ? stand.summe().urteil() : null;
-        String einheit = juengster.einheit() != null ? juengster.einheit()
-                : (werte.kennzahl() != null ? werte.kennzahl().einheit() : null);
         return new PortfolioKpiDto.Leitkennzahl(
-                ziel.kennzahl().kennzeichen(),
-                ziel.kennzahl().name(),
+                k.kennzeichen(),
+                k.name(),
                 wert,
-                einheit,
-                juengster.von().getYear(),
-                juengster.von().getMonthValue(),
-                juengster.zustand(),
+                w.einheit() != null ? w.einheit() : k.einheit(),
+                monat.getYear(),
+                monat.getMonthValue(),
+                w.zustand(),
                 dezimal(ziel.zielwertProzent()),
                 ziel.zielperiode(),
                 ziel.wortlaut(),
-                trend,
-                urteil);
+                trendProzent(wert, dezimal(davor)),
+                a.vergleich() != null ? a.vergleich().urteil() : null,
+                a.energieziel());
     }
 
     // ------------------------------------------------------------------ Helfer
