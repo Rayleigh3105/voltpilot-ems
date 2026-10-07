@@ -3902,6 +3902,10 @@ export interface Bericht {
   wiedervorlage_monate?: number | null;
   /** AP-16 S5/S6 (IP-24): beim Abruf abgeleitet — nur an einer energetischen Bewertung mit freigegebenem Stand. */
   ueberpruefung?: BerichtUeberpruefung | null;
+  /** Die Freigabe des gültigen Stands; ohne Stand `null` (Konzept Nachweisen n1, §6.4: Datumsblock „frei“). */
+  freigegeben_am: string | null;
+  /** Der früheste offene Anstoß am gültigen Stand (`revision_noetig`), sonst `null` (Datumsblock „seit“). */
+  anstoss_seit: string | null;
 }
 
 /**
@@ -4227,6 +4231,38 @@ export interface KostenstelleEnergiePosten {
   tage: KostenstelleEnergieTag[];
   /** Art `verteilt`; bei „nicht verteilt“ `null`. */
   herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat`/`jahr` - je Monat der Anteil der Ablesezeiträume,
+   * die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld.
+   */
+  monate?: KostenstelleEnergieMonat[];
+}
+
+/** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung (`bis` ausschließlich), mit Versatz. */
+export interface KostenstelleEnergieAblesezeitraum {
+  von: string;
+  bis: string;
+}
+
+/**
+ * Ein Monat eines Postens aus Ablesungen (Messen PR4, Konzept §10.3): `quelle_menge` ist die Menge des Monats an der
+ * Messstelle (dieselbe Zahl wie `…/werte?raster=monat`), `anteil_prozent` der Anteil, der an JEDEM Tag ihrer
+ * Ablesezeiträume galt, `menge` der Teil daraus. Wechselt der Anteil mitten im Zeitraum, sind Anteil und Menge `null`
+ * (`grund` `anteil_wechselt_im_ablesezeitraum`, `geaendert_am` der Tag); ohne Ablesung `keine_ablesung`. Nie 0.
+ */
+export interface KostenstelleEnergieMonat {
+  /** JJJJ-MM */
+  monat: string;
+  ablesezeitraeume: KostenstelleEnergieAblesezeitraum[];
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: 'quelle_keine_werte' | 'rest_unplausibel' | 'anteil_wechselt_im_ablesezeitraum' | 'keine_ablesung' | null;
+  /** Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt. */
+  geaendert_am: string | null;
 }
 
 /**
@@ -5948,7 +5984,11 @@ export interface MessstelleRegisterQuelle {
   davor: MessstelleRegisterBindung | null;
   vergleichsquellen: number;
   /** Nur bei `stand = ablesung`: die Werte kommen aus Ablesungen — seit wann und wann zuletzt (`null` = noch nie). */
-  ablesung?: { seit: string; zuletzt: string | null };
+  /**
+   * `faellig_ab` (Messen-Bau m2, additiv): ab wann die nächste Ablesung fehlt - letzte Ablesung + zwei Kalendermonate,
+   * ohne Ablesung der Beginn der Quelle; derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung.
+   */
+  ablesung?: { seit: string; zuletzt: string | null; faellig_ab: string };
 }
 
 /**
@@ -7517,10 +7557,14 @@ export function setTenantOverride(tenantId: string | null): void {
  * 30-s-Takt holt also weiterhin wirklich neu - eine zwischengespeicherte
  * Antwort wäre genau die stille Veraltung, die dieses Portal nirgends duldet.
  *
- * Zwei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
- * werden) und der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
+ * Drei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
+ * werden), der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
  * ein Admin, der mitten im Flug umschaltet, die Antwort des vorherigen
- * Mandanten bekommen.
+ * Mandanten bekommen - und **Lesen nach Schreiben**: sobald eine Änderung
+ * geantwortet hat, teilt kein neuer Leser mehr eine Lese-Anfrage, die vor
+ * dieser Antwort losging. Sonst bekäme, wer nach „eingelöst“ neu liest, den
+ * Stand von davor (Messen m2: die geplante Messstelle blieb nach dem
+ * Einrichten stehen, weil das Schließen des Dialogs schon gelesen hatte).
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
@@ -7536,13 +7580,18 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (key != null) {
     const running = inFlight.get(key);
     if (running) return running as Promise<T>;
-    const p = requestUncoalesced<T>(path, init).finally(() => {
-      inFlight.delete(key);
+    const p: Promise<T> = requestUncoalesced<T>(path, init).finally(() => {
+      // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
+      if (inFlight.get(key) === p) inFlight.delete(key);
     });
     inFlight.set(key, p);
     return p;
   }
-  return requestUncoalesced<T>(path, init);
+  const antwort = requestUncoalesced<T>(path, init);
+  if ((init.method ?? 'GET').toUpperCase() === 'GET') return antwort;
+  // Eine Änderung hat geantwortet (oder ist gescheitert - ob sie schrieb, weiß nur der Server): wer jetzt liest, fragt
+  // neu. Wer schon wartet, behält seine Antwort.
+  return antwort.finally(() => inFlight.clear());
 }
 
 /**
@@ -8733,6 +8782,11 @@ export interface EnergiemanagementAufgaben {
   aufgaben: { aufgabe: string; wort: string; laufend: EnergiemanagementZuordnung[]; satz: string | null }[];
   zuordnungen: EnergiemanagementZuordnung[];
 }
+/** Die Leitung am Tag (PA3) für wen am Standort bzw. am Unternehmen freigibt (Konzept Nachweisen n1, Befund A4). */
+export interface EnergiemanagementLeitung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+}
 export interface EnergiemanagementAufgabeZuordnen {
   aufgabe: string;
   aufgabe_wortlaut?: string | null;
@@ -8904,6 +8958,11 @@ export interface EnergiemanagementFassung {
   ablehnung_begruendung: string | null;
   freigegeben_am: string | null;
   eingetragen: EnergiemanagementEingetragen;
+  /**
+   * Additiv (Konzept Nachweisen n1, Entscheid 10): wo das unterschriebene Original DIESER Fassung liegt - nur an einem
+   * Wortlaut, sonst `null`. Eine API vor dieser Version liefert das Feld nicht (dann gilt das Original am Dokument).
+   */
+  original?: EnergiemanagementBeleg | null;
 }
 export interface EnergiemanagementDokumentEintrag {
   id: number;
@@ -9030,11 +9089,35 @@ export interface EnergiemanagementFassungEntwerfen {
   anwendungsbereich?: { standort_ids: string[]; traeger: string[]; ausschluesse?: EnergiemanagementAusschluss[] } | null;
   begruendung?: string | null;
   beschluss_kennung?: string | null;
+  /** Entscheid 10: das Original dieser Fassung - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
 }
 export interface EnergiemanagementEntscheid {
   entschieden_von?: string | null;
   entschieden_am?: string | null;
   begruendung?: string | null;
+  /** Entscheid 10: das Original beim Übergang aus dem Entwurf (Antrag, Freigabe) - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
+}
+/** DK6: bekannt machen - an wen, am (leer = heute beim Server), über welchen Weg, durch welche Person. */
+export interface EnergiemanagementBekanntmachen {
+  kreis: string;
+  am?: string | null;
+  weg: string;
+  weg_wortlaut?: string | null;
+  person_id?: string | null;
+}
+/** DK8: aufheben - wer entschieden hat, am, warum; das Dokument bleibt lesbar. */
+export interface EnergiemanagementAufheben {
+  entschieden_von: string;
+  am?: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
+/** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens (`vorgabe` = nie eingestellt, dann gilt aus). */
+export interface UnternehmenVierAugen {
+  vieraugen: boolean;
+  vorgabe: boolean;
 }
 /** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
 export interface EnergiemanagementGeprueft {
@@ -11329,7 +11412,8 @@ export const api = {
    * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
    * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
    */
-  berichte: () => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte`),
+  /** Mit `archiviert: true` auch die archivierten Berichte (Konzept Nachweisen n1, C8: die Zeile „Archiviert · n“). */
+  berichte: (o: { archiviert?: boolean } = {}) => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte${o.archiviert ? '?archiviert=true' : ''}`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
@@ -11382,6 +11466,15 @@ export const api = {
     request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {
       method: 'POST',
       body: JSON.stringify({ begruendung }),
+    }),
+  /**
+   * „Nein, Stand n behalten“ (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen Anstöße mit EINEM Grund in
+   * einer Transaktion - alle oder keiner (409 `anstoss_nicht_offen` mit `anstoss_id`).
+   */
+  berichtAnstoesseVerwerfen: (kennung: string, anstossIds: readonly string[], begruendung: string) =>
+    request<{ anstoesse: BerichtAnstoss[] }>(`/api/v1/berichte/${kennung}/anstoesse/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ anstoss_ids: anstossIds, begruendung }),
     }),
   berichtArchivieren: (kennung: string) =>
     request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),
@@ -11503,6 +11596,17 @@ export const api = {
   /** IP-6 (PA2, PA3): die Aufgaben am Tag mit der Leitung — nur unternehmensweit. */
   energiemanagementAufgaben: (tag?: string) =>
     request<EnergiemanagementAufgaben>(`/api/v1/energiemanagement/aufgaben${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /**
+   * PA3, DK3: die Leitung am Tag für die Freigabe mit Leitungs-Pflicht - Recht `energiemanagement.freigeben` am Standort
+   * (ohne Standort am Unternehmen), auch ohne die Aufgaben unternehmensweit zu lesen (Konzept Nachweisen n1, Befund A4).
+   */
+  energiemanagementLeitung: (tag?: string | null, standort?: string | null) => {
+    const q = new URLSearchParams();
+    if (tag) q.set('tag', tag);
+    if (standort) q.set('standort', standort);
+    const s = q.toString();
+    return request<EnergiemanagementLeitung>(`/api/v1/energiemanagement/leitung${s ? `?${s}` : ''}`);
+  },
   /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
   energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
     request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),
@@ -11618,6 +11722,17 @@ export const api = {
   /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
   energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK3 (Entscheid 11): die zweite Person lehnt einen Antrag mit Begründung ab; danach ist ein neuer Entwurf möglich. */
+  energiemanagementFassungAblehnen: (id: string, nr: number, begruendung: string) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/ablehnen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** DK6 (Entscheid 12): bekannt gemacht an einem Kreis über EINEN Weg - mehrere Wege sind mehrere Einträge. */
+  energiemanagementBekanntmachen: (id: string, body: EnergiemanagementBekanntmachen) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK8 (Entscheid 12): aufheben - Recht `energiemanagement.freigeben`; das Dokument bleibt mit allen Fassungen lesbar. */
+  energiemanagementDokumentAufheben: (id: string, body: EnergiemanagementAufheben) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/aufheben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** AP-08 E8 (Entscheid 11): ob bei diesem Unternehmen zwei Personen freigeben - das Blatt zeigt es vorab. */
+  unternehmenVierAugen: () => request<UnternehmenVierAugen>('/api/v1/unternehmen/vieraugen'),
   /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
   energiemanagementAudits: (tag?: string) =>
     request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
@@ -11729,6 +11844,11 @@ export interface Messbedarf {
   begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
   /** Ältere Antworten ohne die Felder = keine Struktur. */
   ort_ziel?: MessbedarfOrtZiel | null; messgroesse?: string | null; richtung?: string | null;
+  /**
+   * Review r4 M4: `zitiert_von` = die freigegebenen Berichtsstände, die den Bedarf zitieren (wie `berichtsstaende` der
+   * 409 `berichts_belege`); `einloesbar` = offen und von keinem Stand zitiert. Eine ältere API lässt beide weg.
+   */
+  einloesbar?: boolean; zitiert_von?: { kennung: string; nr: number }[];
 }
 /** Ein Protokolleintrag: `alt`/`neu` sind die Schnappschüsse der Zeile (snake_case-Spalten). */
 export interface MessbedarfAenderung {

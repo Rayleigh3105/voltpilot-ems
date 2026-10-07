@@ -119,9 +119,13 @@ export const SAETZE: Record<string, string> = {
   verweis_keine_datei: 'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
   ueberpruefung: 'Überprüfung fällig seit {tage} Tagen.',
   geprueft_bleibt: 'Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘',
-  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.',
+  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg}.',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+  bekanntmachung_durch: 'Bekannt gemacht von {person} am {am} an {kreis} über {weg}.',
   anwendungsbereich_deckungsgleich: 'Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.',
   anwendungsbereich_unterschied: '{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+  anwendungsbereich_nur_im_umfang: '{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.',
   freigabe_ohne_leitung: 'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
   aufgabe_ohne_person: '{aufgabe} — keine Person festgelegt.',
   person_ohne_konto: '{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.',

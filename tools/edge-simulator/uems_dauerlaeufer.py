@@ -487,7 +487,7 @@ def _mqtt_client(konf: Konfiguration, box: BoxZugang,
 
     client_id = f"dauerlaeufer-{box.device_id}"
     try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=False)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=False)
     except AttributeError:  # paho-mqtt 1.6.x
         client = mqtt.Client(client_id=client_id, clean_session=False)
     if konf.tls:
@@ -495,8 +495,9 @@ def _mqtt_client(konf: Konfiguration, box: BoxZugang,
     client.max_queued_messages_set(MAX_WARTESCHLANGE)
     client.reconnect_delay_set(min_delay=1, max_delay=60)
 
-    def verbunden(c, _userdata, _flags, rc):
-        # Nach jeder (Neu-)Verbindung abonnieren: die gehaltene Auswahl kommt dann sofort.
+    def verbunden(c, _userdata, _flags, rc, _eigenschaften=None):
+        # Nach jeder (Neu-)Verbindung abonnieren: die gehaltene Auswahl kommt dann sofort. paho 2 reicht einen
+        # ReasonCode und Eigenschaften, paho 1.6 eine Zahl - beide sind bei Erfolg gleich 0.
         if rc == 0:
             c.subscribe([(auswahl_topic(konf.tenant_id, box), 1), (probe_topic(konf.tenant_id, box), 1)])
 

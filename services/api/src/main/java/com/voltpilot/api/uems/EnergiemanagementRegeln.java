@@ -40,9 +40,13 @@ public final class EnergiemanagementRegeln {
             Map.entry("verweis_keine_datei", "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist."),
             Map.entry("ueberpruefung", "Überprüfung fällig seit {tage} Tagen."),
             Map.entry("geprueft_bleibt", "Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘"),
-            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}."),
+            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg}."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+            Map.entry("bekanntmachung_durch", "Bekannt gemacht von {person} am {am} an {kreis} über {weg}."),
             Map.entry("anwendungsbereich_deckungsgleich", "Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger."),
             Map.entry("anwendungsbereich_unterschied", "{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung})."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+            Map.entry("anwendungsbereich_nur_im_umfang", "{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich."),
             Map.entry("freigabe_ohne_leitung", "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt."),
             Map.entry("aufgabe_ohne_person", "{aufgabe} — keine Person festgelegt."),
             Map.entry("person_ohne_konto", "{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘."),

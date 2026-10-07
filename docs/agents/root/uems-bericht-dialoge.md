@@ -7,7 +7,8 @@ Neu am 15.09.2026, Meilenstein 5 „Abnahme im Portal“. Die Welt „Berichte�
 | Datei (`frontend/portal/…`) | Was |
 |---|---|
 | `src/berichtDialoge.ts` | reine Ableitung: Rechte (G1 über `uemsBericht.kennung`), Vorlage-Karten, Geltungen, Zeiträume, Voraussetzungs-Vorschau, Kennzahlen der Geltung (Q4), Freigabe-Voraussetzungen (F1), Vergleichszeilen (R1), Banner, Seiten-Hebel |
-| `src/components/BerichtAnlegenDialog.tsx`, `BerichtFreigebenDialog.tsx`, `BerichtVergleichDialog.tsx`, `AnstossVerwerfenDialog.tsx`, `BerichtDialoge.css` | die vier Dialoge im zentrierten `Modal` |
+| `src/components/BerichtAnlegenDialog.tsx`, `BerichtFreigebenDialog.tsx`, `BerichtVergleichDialog.tsx`, `BerichtDialoge.css` | die Dialoge im zentrierten `Modal`, seit Nachweisen n1 PR 3 nur noch an der energetischen Bewertung (`BewertungStand`) |
+| `src/components/nachweisen/BerichtBlaetter.tsx` | die Berichte in Nachweisen: Erstellen, Freigeben (Prüfen → Bestätigung), „Stand n behalten“ (ein Grund verwirft jeden offenen Anstoß; `AnstossVerwerfenDialog` entfällt), Grund und Änderungen als Blatt (`uems-berichte-portal.md`) |
 | `src/useBerichtRechte.ts` | Selbstauskunft → `BerichtRechte` |
 | `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx` | Knopf „Bericht anlegen“; Hebel am Entwurf; Banner „Revision nötig“ |
 | `src/berichtDialoge.test.ts` | jede `freigabe`-Prüfung der Vektoren (B4) als Satz unter den Voraussetzungen; B2-Abweichungen als Zeilen |

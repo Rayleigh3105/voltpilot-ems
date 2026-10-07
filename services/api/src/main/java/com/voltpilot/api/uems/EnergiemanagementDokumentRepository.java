@@ -48,12 +48,18 @@ public class EnergiemanagementDokumentRepository {
             String beschlussKennung, boolean vieraugen, String status, UUID entschiedenVon, LocalDate entschiedenTag,
             String freigabeBegruendung, ProtokollAkteur freigabe, Instant freigabeAm, ProtokollAkteur entscheidung,
             Instant entschiedenAm, String entscheidungsBegruendung, Instant freigegebenAm, ProtokollAkteur akteur,
-            Instant angelegtAm) {}
+            Instant angelegtAm, Original original) {}
 
-    /** Der Inhalt eines Entwurfs: Wortlaut ODER Verweis (G3), wahlfrei Begründung und Beschluss. */
+    /**
+     * Konzept Nachweisen n1, Entscheid 10: wo das unterschriebene Original EINER Fassung liegt (nur an einem Wortlaut;
+     * ohne Ablage keiner seiner Teile). Geschrieben mit dem Entwurf oder beim Übergang aus ihm, danach eingefroren.
+     */
+    public record Original(String bezeichnung, String ablage, String kennung, String adresse, String sha256) {}
+
+    /** Der Inhalt eines Entwurfs: Wortlaut ODER Verweis (G3), wahlfrei Begründung, Beschluss und Original. */
     public record Inhalt(String form, String wortlaut, String verweisBezeichnung, String verweisAblage,
             String verweisKennung, String verweisAdresse, String verweisFassungsangabe, LocalDate verweisDatum,
-            String verweisSha256, String begruendung, String beschlussKennung) {}
+            String verweisSha256, String begruendung, String beschlussKennung, Original original) {}
 
     public record Bereich(List<UUID> standortIds, List<String> traeger, String ausschluesse) {}
 
@@ -85,7 +91,10 @@ public class EnergiemanagementDokumentRepository {
             rs.getString("freigabe_name") == null ? null : akteur(rs, "freigabe"), instant(rs, "freigabe_am"),
             rs.getString("entscheidung_name") == null ? null : akteur(rs, "entscheidung"),
             instant(rs, "entschieden_am"), rs.getString("entscheidungs_begruendung"), instant(rs, "freigegeben_am"),
-            akteur(rs, "actor"), instant(rs, "created_at"));
+            akteur(rs, "actor"), instant(rs, "created_at"), rs.getString("original_ablage") == null ? null
+                    : new Original(rs.getString("original_bezeichnung"), rs.getString("original_ablage"),
+                            rs.getString("original_kennung"), rs.getString("original_adresse"),
+                            rs.getString("original_sha256")));
 
     private static final RowMapper<Eintrag> EINTRAG = (rs, n) -> new Eintrag(rs.getLong("id"), rs.getString("art"),
             (Integer) rs.getObject("fassung"), rs.getObject("am", LocalDate.class),
@@ -163,13 +172,15 @@ public class EnergiemanagementDokumentRepository {
         UUID id = jdbc.queryForObject("""
                 INSERT INTO energiemanagement_dokument_fassung (tenant_id, dokument_id, fassung, form, wortlaut,
                     verweis_bezeichnung, verweis_ablage, verweis_kennung, verweis_adresse, verweis_fassungsangabe,
-                    verweis_datum, verweis_sha256, begruendung, beschluss_kennung,
+                    verweis_datum, verweis_sha256, begruendung, beschluss_kennung, original_bezeichnung,
+                    original_ablage, original_kennung, original_adresse, original_sha256,
                     actor_sub, actor_name, actor_rolle, actor_art)
-                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
                 """, UUID.class, tenant(), dokument, i.form(), i.wortlaut(), i.verweisBezeichnung(),
                 i.verweisAblage(), i.verweisKennung(), i.verweisAdresse(), i.verweisFassungsangabe(),
-                i.verweisDatum(), i.verweisSha256(), i.begruendung(), i.beschlussKennung(), wer.sub(), wer.name(),
-                wer.rolle(), wer.art());
+                i.verweisDatum(), i.verweisSha256(), i.begruendung(), i.beschlussKennung(), o(i.original()).bezeichnung(),
+                o(i.original()).ablage(), o(i.original()).kennung(), o(i.original()).adresse(),
+                o(i.original()).sha256(), wer.sub(), wer.name(), wer.rolle(), wer.art());
         if (b != null) {
             bereichSchreiben(id, b, false);
         }
@@ -184,21 +195,28 @@ public class EnergiemanagementDokumentRepository {
         jdbc.update("""
                 UPDATE energiemanagement_dokument_fassung SET form = ?, wortlaut = ?, verweis_bezeichnung = ?,
                     verweis_ablage = ?, verweis_kennung = ?, verweis_adresse = ?, verweis_fassungsangabe = ?,
-                    verweis_datum = ?, verweis_sha256 = ?, begruendung = ?, beschluss_kennung = ?
+                    verweis_datum = ?, verweis_sha256 = ?, begruendung = ?, beschluss_kennung = ?,
+                    original_bezeichnung = ?, original_ablage = ?, original_kennung = ?, original_adresse = ?,
+                    original_sha256 = ?
                  WHERE id = ?
                 """, i.form(), i.wortlaut(), i.verweisBezeichnung(), i.verweisAblage(), i.verweisKennung(),
                 i.verweisAdresse(), i.verweisFassungsangabe(), i.verweisDatum(), i.verweisSha256(), i.begruendung(),
-                i.beschlussKennung(), f.id());
+                i.beschlussKennung(), o(i.original()).bezeichnung(), o(i.original()).ablage(),
+                o(i.original()).kennung(), o(i.original()).adresse(), o(i.original()).sha256(), f.id());
         if (b != null) {
             bereichSchreiben(f.id(), b, bereich(f.id()).isPresent());
         }
         protokoll(dokument, "fassung_entworfen", alt, fassungSchnappschuss(f.id()), i.begruendung(), wer);
     }
 
-    /** Antrag (Vier-Augen): Kopie, Prüfsumme, „entschieden von“ und das beantragende Konto. */
+    /**
+     * Antrag (Vier-Augen): Kopie, Prüfsumme, „entschieden von“ und das beantragende Konto; ein {@code original} (nicht
+     * {@code null}) ersetzt das des Entwurfs im selben Schritt, sonst bleibt es.
+     */
     public void beantragen(UUID dokument, Fassung f, String kopie, String pruefsumme, UUID entschiedenVon,
-            LocalDate tag, String begruendung, String freigabeRolle, ProtokollAkteur wer) {
+            LocalDate tag, String begruendung, String freigabeRolle, Original original, ProtokollAkteur wer) {
         String alt = fassungSchnappschuss(f.id());
+        originalSetzen(f.id(), original);
         jdbc.update("""
                 UPDATE energiemanagement_dokument_fassung SET kopie = ?, pruefsumme = ?, vieraugen = true,
                     freigabe_status = 'beantragt', entschieden_von = ?, entschieden_tag = ?, freigabe_begruendung = ?,
@@ -209,10 +227,14 @@ public class EnergiemanagementDokumentRepository {
         protokoll(dokument, "fassung_beantragt", alt, fassungSchnappschuss(f.id()), begruendung, wer);
     }
 
-    /** Freigabe ohne Vier-Augen: direkt aus dem Entwurf; Protokoll {@code fassung_freigegeben}. */
+    /**
+     * Freigabe ohne Vier-Augen: direkt aus dem Entwurf; ein {@code original} (nicht {@code null}) ersetzt das des
+     * Entwurfs im selben Schritt. Protokoll {@code fassung_freigegeben}.
+     */
     public void freigeben(UUID dokument, Fassung f, String kopie, String pruefsumme, UUID entschiedenVon,
-            LocalDate tag, String begruendung, String freigabeRolle, ProtokollAkteur wer) {
+            LocalDate tag, String begruendung, String freigabeRolle, Original original, ProtokollAkteur wer) {
         String alt = fassungSchnappschuss(f.id());
+        originalSetzen(f.id(), original);
         jdbc.update("""
                 UPDATE energiemanagement_dokument_fassung SET kopie = ?, pruefsumme = ?, freigabe_status = 'freigegeben',
                     entschieden_von = ?, entschieden_tag = ?, freigabe_begruendung = ?, freigabe_sub = ?,
@@ -251,6 +273,26 @@ public class EnergiemanagementDokumentRepository {
     public void abgeloest(UUID dokument, int alt, int neu, ProtokollAkteur wer) {
         protokoll(dokument, "fassung_abgeloest", "{\"fassung\":" + alt + "}",
                 "{\"fassung\":" + alt + ",\"abgeloest_durch\":" + neu + "}", null, wer);
+    }
+
+    /**
+     * Entscheid 10: das Original einer Fassung, solange sie ein Entwurf ist (der Trigger hält sie danach fest); im
+     * Übergang aus dem Entwurf dieselbe Transaktion und dieselbe Protokoll-Zeile wie der Übergang.
+     */
+    private void originalSetzen(UUID fassung, Original original) {
+        if (original == null) {
+            return;
+        }
+        jdbc.update("""
+                UPDATE energiemanagement_dokument_fassung SET original_bezeichnung = ?, original_ablage = ?,
+                    original_kennung = ?, original_adresse = ?, original_sha256 = ?
+                 WHERE id = ? AND freigabe_status = 'entwurf'
+                """, original.bezeichnung(), original.ablage(), original.kennung(), original.adresse(),
+                original.sha256(), fassung);
+    }
+
+    private static Original o(Original original) {
+        return original == null ? new Original(null, null, null, null, null) : original;
     }
 
     // ------------------------------------------------------------------ Anwendungsbereich

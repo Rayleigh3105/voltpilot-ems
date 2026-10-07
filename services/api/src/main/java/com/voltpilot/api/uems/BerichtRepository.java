@@ -103,8 +103,16 @@ public class BerichtRepository {
 
     /** Die nicht archivierten Berichte, neueste zuerst (V4: Archivieren verbirgt in der Liste). */
     public List<Kopf> berichte() {
-        return jdbc.query(KOPF + "WHERE b.archiviert_am IS NULL ORDER BY b.angelegt_am DESC, b.kennung DESC",
-                BerichtRepository::kopf);
+        return berichte(false);
+    }
+
+    /**
+     * Die Berichte, neueste zuerst; mit {@code mitArchivierten} auch die archivierten (Konzept Nachweisen n1, C8: die
+     * Liste zeigt sie als eine Zeile „Archiviert · n“).
+     */
+    public List<Kopf> berichte(boolean mitArchivierten) {
+        return jdbc.query(KOPF + (mitArchivierten ? "" : "WHERE b.archiviert_am IS NULL ")
+                + "ORDER BY b.angelegt_am DESC, b.kennung DESC", BerichtRepository::kopf);
     }
 
     /** V4 — der Bericht zu Vorlage × Geltung × Zeitraum, auch ein archivierter. */

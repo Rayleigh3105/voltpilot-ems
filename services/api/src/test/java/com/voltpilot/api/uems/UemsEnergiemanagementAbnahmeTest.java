@@ -366,6 +366,21 @@ class UemsEnergiemanagementAbnahmeTest {
                 .startsWith("Geführt in Ihrem System: Personalsystem");
         assertThat(zeile(v, "internes_audit", "AU-2029-0001", 0).path("ort_satz").asText())
                 .startsWith("Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Audits");
+        // Befund 8 (Nachweisen n1): ein Titel spricht Kundenwörter, nie einen rohen Wert; das Kennzeichen steht daneben.
+        assertThat(zeile(v, "wirksamkeit", "F-2029-0001", 1).path("titel").asText()).isEqualTo("Wirksamkeit: wirksam");
+        assertThat(zeile(v, "einstufung_fassung", "EE-1", 1).path("titel").asText()).isEqualTo("Spritzguss: wesentlich");
+        assertThat(zeile(v, "einstufung_fassung", "EE-3", 3).path("titel").asText())
+                .isEqualTo("Druckluft: nicht wesentlich");
+        assertThat(zeile(v, "messbedarf", "MB-1", 0).path("titel").asText()).isEqualTo("Messbedarf MB-1 (EE-8): offen");
+        assertThat(zeile(v, "berichtsstand", "BR-2026-0001", 2).path("titel").asText())
+                .isEqualTo("Monatsbericht Werk Ahrenberg Oktober 2026");
+        assertThat(zeile(v, "berichtsstand", "BR-2027-0001", 1).path("titel").asText())
+                .isEqualTo("Energetische Bewertung November 2026 bis Oktober 2027");
+        assertThat(zeile(v, "berichtsstand", "BR-2028-0001", 1).path("titel").asText())
+                .isEqualTo("Leistungsvergleich Dezember 2027");
+        assertThat(alle(v)).allSatisfy(z -> assertThat(z.path("titel").asText()).as(z.toString())
+                .doesNotContain("nicht_wesentlich", "eingeloest", "nicht_wirksam", "ohne_massnahme", "zurueckgenommen")
+                .doesNotContainPattern("[0-9]{4}-[0-9]{2}/[0-9]{4}-[0-9]{2}"));
 
         // R5, R14 B4: elf laufende Zuordnungen am 30.04.2029, die zehn mit „entschieden von“ Robert Falk.
         List<JsonNode> aufgaben = alle(v).stream().filter(z -> z.path("art").asText().equals("aufgabe")).toList();
@@ -428,7 +443,7 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(glossar.replaceAll("'\\s*\\+\\s*'", "")).contains(VERANTWORTUNG);
         List<String> flaechen = energiemanagementFlaechen(src);
         assertThat(flaechen).hasSizeGreaterThanOrEqualTo(18).contains("pages/EnergiemanagementBereich.tsx",
-                "components/VerzeichnisTabelle.tsx", "pages/AuditSeite.tsx", "pages/FeststellungSeite.tsx");
+                "components/nachweisen/VerzeichnisMonate.tsx", "pages/AuditSeite.tsx", "pages/FeststellungSeite.tsx");
         // Der Kopf-Hinweis des Bereichs spricht beide Sätze aus ihrer einen Quelle, ohne Bedingung davor.
         String baustein = Files.readString(src.resolve("components/GrenzSatz.tsx"), StandardCharsets.UTF_8);
         String hinweis = baustein.substring(baustein.indexOf("export function GrenzHinweis"));
@@ -615,7 +630,8 @@ class UemsEnergiemanagementAbnahmeTest {
             "DokumentVerzeichnis", "AufgabenVerzeichnis", "AuditVerzeichnis", "FeststellungVerzeichnis",
             "ManagementbewertungVerzeichnis", "VerzeichnisBestand", "DokumentWiedervorlage", "AuditWiedervorlage",
             "FeststellungWiedervorlage", "ManagementbewertungWiedervorlage", "WiedervorlageBestand", "AuditVerantwortung",
-            "FeststellungVerantwortung", "EnergiemanagementAbgelehnt");
+            "FeststellungVerantwortung", "EnergiemanagementAbgelehnt", "EnergiemanagementTeilVermerkService",
+            "TeilVermerkVerzeichnis");
 
     /**
      * SP2 (R4) und G4: die Konformitäts-, Zertifizierungs- und Vollständigkeits-Wörter — dieselbe Liste wie der

@@ -20,11 +20,11 @@ import {
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import {
   UEMS_DOKUMENTE,
-  UEMS_GEPRUEFT_BLEIBT_KNOPF,
   UEMS_MANAGEMENTBEWERTUNG,
   UEMS_WIEDERVORLAGE,
 } from './glossar';
 import type { EnergiemanagementReiter } from './nav';
+import { lokalerTag } from './uemsOrtsbaum';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
 
@@ -81,8 +81,6 @@ export const KNOPF_BEENDEN = 'Zuordnung beenden';
 export const KNOPF_PERSON_AENDERN = 'Angaben ändern';
 export const KNOPF_VERANTWORTUNG = 'Wer ist wofür verantwortlich';
 export const KNOPF_NACHWEIS = 'Nachweis festhalten';
-/** DK5: die gültige Fassung einer Vorgabe bleibt; die Überprüfung beginnt neu (Konzept Wiedervorlage w1, Entscheid 8). */
-export const KNOPF_GEPRUEFT = UEMS_GEPRUEFT_BLEIBT_KNOPF;
 /** Der Abschnitt an der Seite eines Energieeinsatzes und einer Person (IP-15, §5.3). */
 export const NACHWEISE = 'Nachweise';
 export const BEGRUENDUNG_HINWEIS = `${STARTWERTE.begruendung_zeichen_mindestens} bis ${STARTWERTE.begruendung_zeichen_hoechstens} Zeichen.`;
@@ -126,8 +124,30 @@ export const WEG_WORT: Record<string, string> = {
   aushang: 'Aushang', intranet: 'Intranet', unterweisung: 'Unterweisung', besprechung: 'Besprechung', e_mail: 'E-Mail', weiterer: 'weiterer Weg',
 };
 
-/** „2026-12-15“ → „15.12.2026“; ein Zeitpunkt wird auf seinen Tag gekürzt. */
-export const tagText = (iso: string | null | undefined) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '');
+/** Die Vier-Augen-Einstellung ließ sich nicht laden - dann gibt das Portal nicht frei (Review r1, P2-4). */
+export const VIERAUGEN_UNBEKANNT = 'Freigabe-Regel nicht geladen';
+
+/** Die Prüfsumme einer Datei entsteht im Browser; ohne sicheren Kontext oder bei zu großen Dateien geht das nicht. */
+export const PRUEFSUMME_FEHLT = 'Diese Datei ließ sich hier nicht prüfen.';
+
+/** Die Zone, in der Nachweisen einen Augenblick zum Kalendertag macht (wie `tagDesAugenblicks` in Nachweisen PR 0). */
+export const TAG_ZONE = 'Europe/Berlin';
+
+/**
+ * „2026-12-15“ → „15.12.2026“. Ein Zeitpunkt („2029-03-19T23:30:00Z“) zählt mit seinem Kalendertag in Berlin, nie mit
+ * dem UTC-Tag seiner ersten zehn Zeichen (Review r1, P2-7: zwischen 0 und 2 Uhr stand sonst der Vortag).
+ */
+export const tagText = (iso: string | null | undefined) => {
+  const tag = tagIso(iso);
+  return tag ? `${tag.slice(8, 10)}.${tag.slice(5, 7)}.${tag.slice(0, 4)}` : '';
+};
+
+/** Der Tag („2029-03-20“) eines Tags oder Zeitpunkts - ein Zeitpunkt mit seinem Kalendertag in Berlin (siehe `tagText`). */
+export function tagIso(iso: string): string;
+export function tagIso(iso: string | null | undefined): string | null | undefined;
+export function tagIso(iso: string | null | undefined): string | null | undefined {
+  return iso && iso.length > 10 && !Number.isNaN(Date.parse(iso)) ? lokalerTag(iso, TAG_ZONE) : iso;
+}
 
 /** „Robert Falk (Geschäftsführer)“ — so steht eine Person hinter „entschieden von“. */
 export const personWort = (p: EnergiemanagementPersonKurz | null | undefined) => (p ? `${p.name} (${p.funktion})` : '');

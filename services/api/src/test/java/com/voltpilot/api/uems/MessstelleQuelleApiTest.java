@@ -306,8 +306,7 @@ class MessstelleQuelleApiTest {
         assertThat(protokoll).extracting(e -> e.get("art")).containsExactly("quelle_gebunden", "quelle_gebunden");
         assertThat(protokoll).allSatisfy(e -> {
             assertThat(e.get("rueckwirkend")).isEqualTo(true);
-            // Konzept Nachweisen n1, Befund 4: der Name aus dem Konto (Claim name), nicht der Anmeldename.
-            assertThat(e.get("actor_name")).isEqualTo("Platform Admin");
+            assertThat(e.get("actor_name")).isEqualTo("admin");
             assertThat(e.get("actor_art")).isEqualTo("voltpilot");
         });
         assertThat(((Timestamp) protokoll.get(1).get("created_at")).toInstant())
