@@ -769,6 +769,12 @@ export const UEMS_ZUORDNUNG = 'Zuordnung';
 export const UEMS_IM_STROMNETZ = 'Im Stromnetz';
 export const UEMS_NAECHSTE_ABLESUNG = 'Nächste Ablesung';
 export const UEMS_ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
+/**
+ * Konzept Messen m1 §6.5, Variante 3A (Messen-Bau m2): die Ablese-Runde je Gebäude - „Ablesen ›“ im Kopf der Ortskarte
+ * öffnet „Halle 1 ablesen“. Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Ablese-Runde je
+ * Gebäude“).
+ */
+export const UEMS_ABLESEN = 'Ablesen';
 /** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
 export const UEMS_JAHRESPLAN = 'Jahresplan';
 /**

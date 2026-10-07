@@ -35,6 +35,12 @@ describe('Sprung mit offenem Entscheid (Konzept Wiedervorlage w1, Entscheid 8)',
       .toBe(seitenSprung(dokumentRoute('d1')).hash);
   });
 
+  it('die Ablese-Runde eines Orts ist ein Schreibweg: angesehen wird das Register desselben Orts (Messen m2)', () => {
+    const s = entscheidSprung(pageRoute('portfolio-messstellen'), 'zaehlerablesung', null, { ablesen: 'G-1' });
+    expect(s.hash).toBe('#/portfolio/messstellen?ablesen=G-1&entscheid=zaehlerablesung');
+    expect(ansehenSprung(s).hash).toBe('#/portfolio/messstellen?ort=G-1');
+  });
+
   it('ohne Entscheid: andere Parameter bleiben, eine Adresse ohne Parameter bleibt gleich', () => {
     expect(ohneEntscheid('#/portfolio/bewertung?entscheid=messbedarf_frist&kennzeichen=MB-1')).toBe('#/portfolio/bewertung');
     expect(ohneEntscheid('#/portfolio/x?periode=monat&entscheid=a')).toBe('#/portfolio/x?periode=monat');

@@ -316,7 +316,7 @@ describe('Wiedervorlage w1 · Zählerablesung (Entscheid 7, Vertrag 1.2)', () =>
     expect(halle1.frist.satz).toBe('fällig seit 01.12.2026');
     expect(halle1.bereich).toBe('messen');
     expect(halle1.schritt).toBe('Ablesungen eintragen');
-    expect(halle1.sprung!.hash).toBe('#/portfolio/messstellen?ort=G-1&entscheid=zaehlerablesung');
+    expect(halle1.sprung!.hash).toBe('#/portfolio/messstellen?ablesen=G-1&entscheid=zaehlerablesung');
     expect(halle1.zustaendig).toEqual({ name: 'Ines Kaltenbach', herkunft: 'aufgabe', ich: true });
     // Ein Zähler: genau seine Messstelle, der Schritt heißt wie ihr Knopf.
     expect(text(halle2)).toBe('Zähler MS-20 in Halle 2 ablesen | Zuletzt abgelesen am 01.10.2026 + 2 Monate');
@@ -356,7 +356,7 @@ describe('Wiedervorlage w1 · Zählerablesung (Entscheid 7, Vertrag 1.2)', () =>
     expect(wiedervorlageStatus(wvDemo())!.satz).toBe('Älteste seit 05.10.2026 · Bericht, Zählerablesungen, Messbedarf, Bezugsbasen');
     const ohne = arbeitsliste({ ...wvLeer(), faellig: [wvZeile('zaehlerablesung', 'G-9', 'Zählerablesung Lager (MS-9 Pumpe)', '2029-01-01', 5)] });
     expect(text(ohne.ueberfaellig[0])).toBe('Zählerablesung Lager (MS-9 Pumpe) | Werte aus Ablesungen');
-    expect(ohne.ueberfaellig[0].sprung!.hash).toBe('#/portfolio/messstellen?ort=G-9&entscheid=zaehlerablesung');
+    expect(ohne.ueberfaellig[0].sprung!.hash).toBe('#/portfolio/messstellen?ablesen=G-9&entscheid=zaehlerablesung');
   });
 });
 

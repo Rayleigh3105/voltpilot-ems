@@ -439,6 +439,16 @@ export interface OrtGruppe {
   key: string;
   /** „Halle 1“ - der Ort, an dem die Messstellen stehen. */
   titel: string;
+  /**
+   * Das Kurzzeichen der Ablese-Runde (`?ablesen=G-1`), wenn an dem Ort ein Zähler von Hand abgelesen wird (Konzept
+   * §6.2: „Ablesen ›“ im Kopf der Karte): sein Ableseort (`ableseortVon`), bei einem Bereich also sein Gebäude; sonst
+   * `null`.
+   */
+  ablesen: string | null;
+  /** Die Runde ist die des Orts selbst (Gebäude, Standort) - nicht die seines Gebäudes (Bereich). */
+  ablesenHier: boolean;
+  /** Der Standort des Orts (für das Recht „ablesung.erfassen“); `null` am Unternehmen. */
+  standortId: string | null;
   /** Der Standort darüber (nur am Unternehmen und nur, wenn der Ort nicht selbst der Standort ist). */
   standort: string | null;
   reihen: Reihe[];
@@ -461,6 +471,31 @@ function ortReihenfolge(z: MessstelleRegisterZeile): string {
     default:
       return '3';
   }
+}
+
+/** Ein Ablesezähler: wird von Hand abgelesen, misst einen Zählerstand und ist weder archiviert noch im Entwurf. */
+export function abzulesen(z: MessstelleRegisterZeile): boolean {
+  return (
+    z.quelle.stand === 'ablesung' &&
+    z.hauptgroesse?.wertart === 'Zählerstand' &&
+    (z.lebenszyklus === 'aktiv' || z.lebenszyklus === 'eingerichtet')
+  );
+}
+
+/**
+ * Wo man eine Messstelle abliest - dieselbe Regel wie der Server (`MessstelleRegisterService.ableseort`, Wiedervorlage
+ * „Zählerablesung“): das erste Gebäude auf dem Pfad von ihrem Ort hinauf, ohne Gebäude ihr Standort, am Unternehmen
+ * `U`. Der Pfad läuft vom Ort hinauf; ein Gebäude hängt immer am Standort, ein Bereich an einem Gebäude oder am Standort
+ * und nie in einem Bereich - das Gebäude ist also der Ort selbst oder der Elternteil eines Bereichs. `null` = an keinem
+ * Ort.
+ */
+export function ableseortVon(z: MessstelleRegisterZeile): string | null {
+  const o = z.ort;
+  if (o.kennzeichen === 'U' || o.ort_art === 'unternehmen') return 'U';
+  if (o.grund !== 'verortet' || !o.standort || !o.kennzeichen) return null;
+  if (o.ort_art === 'gebaeude') return o.kennzeichen;
+  if (o.ort_art === 'bereich' && o.pfad.length >= 3) return o.pfad[1];
+  return o.standort;
 }
 
 function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
@@ -653,8 +688,21 @@ export function liste(
   const je = new Map<string, OrtGruppe & { ordnung: string }>();
   for (const r of offen) {
     const k = ortKopf(r.zeile, i.ebene);
-    const g = je.get(k.key) ?? { ...k, reihen: [], gesamt: 0, ordnung: ortReihenfolge(r.zeile) };
+    const g = je.get(k.key) ?? {
+      ...k,
+      ablesen: null,
+      ablesenHier: false,
+      standortId: r.zeile.ort.standort_id,
+      reihen: [],
+      gesamt: 0,
+      ordnung: ortReihenfolge(r.zeile),
+    };
     g.gesamt += 1;
+    // Die Runde gilt dem Ableseort der Zähler der Karte (ihr Gebäude, ohne Gebäude ihr Standort) - wie die Wiedervorlage.
+    if (!g.ablesen && abzulesen(r.zeile)) {
+      g.ablesen = ableseortVon(r.zeile);
+      g.ablesenHier = g.ablesen !== null && g.ablesen === r.zeile.ort.kennzeichen;
+    }
     if (passt(r)) g.reihen.push(r);
     je.set(k.key, g);
   }

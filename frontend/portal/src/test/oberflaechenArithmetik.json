@@ -1143,6 +1143,26 @@
         "zahlUndEinheit: i + 1"
       ],
       "grund": "Messen PR2 (Review r4 S5): balken skaliert die gelieferten Monatsmengen nur zur Balkenhöhe (Betrag/größter Betrag, ein negativer Monat mit Betrag und Kennzeichen, nie 0); leitKachel/monatPlus/letzterVollerMonat sind Kalenderarithmetik der Monate, zahlUndEinheit eine Textposition. Der Vorjahresvergleich ist das Prozent des Bericht-Zwillings (uemsBericht.vergleich), gesprochen mit zahlMitStellen des Ergebnis-Vertrags - keine eigene Rundung."
+    },
+    "ableseRunde.ts": {
+      "importe": [
+        "./bezugsdaten:zuordnung",
+        "./glossar:UEMS_ABLESEN",
+        "./messstellenListe:ableseortVon",
+        "./messstellenListe:abzulesen",
+        "./messstellenListe:standZahl",
+        "./uemsOrtsbaum:lokalerTag",
+        "./werteEingabe:betrag",
+        "./werteEingabe:wertFehler",
+        "./werteEingabe:zaehltSatz",
+        "./werteEingabe:zeitText",
+        "./zahl:zahlText"
+      ],
+      "operationen": [
+        "rundeAus: -1",
+        "rundeAus: tage.length - 1"
+      ],
+      "grund": "Messen PR3 (Review r4 S5): Sortierung und Listenindex der Ablesetage, keine Menge. Der Monat einer Ablesung kommt aus dem Vertrags-Zwilling (bezugsdaten.zuordnung), die Menge seit der letzten Ablesung aus der Antwort des Servers; die Fläche formatiert nur (betrag, standZahl, zahlText)."
     }
   }
 }

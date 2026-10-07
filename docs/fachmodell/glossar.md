@@ -406,6 +406,15 @@ Eine Ablesung „zählt zum“ Monat ihres Zeitraums: „Zählt zum Oktober 2026
 Die Zeitzone steht einmal am Fuß („Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 06.10.2026, 17:42“), am Uhrzeitfeld nur ihr Kürzel („MESZ“, „MEZ“).
 Kundenwörter: `UEMS_ZUORDNUNG`, `UEMS_IM_STROMNETZ`, `UEMS_NAECHSTE_ABLESUNG`, `UEMS_ABLESUNG_EINTRAGEN` (PORTAL/glossar.ts).
 
+**Ablese-Runde je Gebäude (Konzept Messen m1 §6.5, Variante 3A, Messen-Bau m2).**
+„Halle 1 ablesen“ trägt alle Zähler eines Orts ein, die von Hand abgelesen werden - dieselben, die die Wiedervorlage als „8 Zähler in Halle 1 ablesen“ bündelt.
+Ein Zeitpunkt („Abgelesen am“) gilt für alle; je Zähler steht der letzte Stand („zuletzt 647.760 kWh“) neben einem Feld.
+„Weiter“ speichert die Reihe und springt zum nächsten Zähler; die Antwort bestätigt grün („gespeichert · 216.300 kWh seit 01.10.“), „3 von 8 eingetragen“ zeigt den Fortschritt.
+Eine Ablesung der Runde ist dieselbe wie an der Messstelle (gleiche Route, gleiche Rechte, gleiche Prüfung); der Monat ist die Vorgabe mit dem größten Anteil, und ein Zeitraum über drei oder mehr Monate wird an der Messstelle eingetragen.
+Der Satz einer Prüfung steht am Zähler, die Runde läuft weiter; „Fertig“ führt zurück in die Liste.
+Einstieg: „Ablesen ›“ im Kopf der Ortskarte in der Liste und der Schritt „Ablesungen eintragen“ der Wiedervorlage; „Öffnen“ im Jahresplan zeigt die Liste des Orts.
+Kundenwort: `UEMS_ABLESEN` (PORTAL/glossar.ts).
+
 ## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
