@@ -37,6 +37,15 @@ export const NEUER_STAND_FRAGE = 'Neuen Stand freigeben?';
 export const WEITER = 'Weiter';
 export const ARCHIVIEREN = 'Archivieren';
 export const ARCHIVIEREN_FEHLER = 'Der Bericht ließ sich gerade nicht archivieren.';
+/**
+ * Was Archivieren endgültig macht (Review r2, N-3.1): die Route kennt kein Zurückholen, und Vorlage × Geltung × Zeitraum
+ * bekommt keinen neuen Bericht mehr (`bericht_gibt_es_schon` zählt archivierte mit).
+ */
+export const ARCHIVIEREN_ENDGUELTIG = { titel: 'Nicht rückgängig', zusatz: 'für diesen Zeitraum kein neuer Bericht' } as const;
+/** Ohne Stand: die Seite gibt einen archivierten Bericht nicht mehr frei. */
+export const ARCHIVIEREN_OHNE_STAND = { titel: 'Ohne Stand', zusatz: 'freigeben geht danach nicht mehr' } as const;
+/** Offene Korrekturen: sie verschwinden aus „wartet“ und aus der Wiedervorlage - die Entscheidung entfällt. */
+export const archivierenKorrekturen = (n: number) => ({ titel: `${n} ${n === 1 ? 'Korrektur wartet' : 'Korrekturen warten'}`, zusatz: 'die Entscheidung entfällt' });
 export const ENTWURF_NEU_GEBILDET = 'Entwurf neu gebildet';
 export const WERTE_LADEFEHLER = 'Die Werte ließen sich gerade nicht laden.';
 
@@ -123,6 +132,17 @@ function zeile(b: Bericht): BerichtZeile {
   return { kennung: b.kennung, titel: name.titel, unter: name.unter, datum: { wort: 'frei', tag: tagIn(b.freigegeben_am, b.zeitzone), ton: 'erledigt' }, verb: null, ziel, pdfNr: b.neueste_nr, stand };
 }
 
+/**
+ * Eine archivierte Zeile (Review r2, N-3.2): kein Verb - die Seite lässt an einem archivierten Bericht nichts mehr
+ * entscheiden -, kein Warnton, und sie öffnet immer den archivierten Bericht selbst (eine Bewertung sonst die Seite der
+ * aktuellen). Der Tag ist der der Freigabe, ohne Stand der des Entwurfs.
+ */
+function archivZeile(b: Bericht): BerichtZeile {
+  const name = berichtName(b);
+  const datum = b.neueste_nr === null ? { wort: 'seit', tag: tagIn(b.angelegt_am, b.zeitzone), ton: 'erledigt' as const } : { wort: 'frei', tag: tagIn(b.freigegeben_am, b.zeitzone), ton: 'erledigt' as const };
+  return { kennung: b.kennung, titel: name.titel, unter: name.unter, datum, verb: null, ziel: 'bericht', pdfNr: b.neueste_nr, stand: b.neueste_nr === null ? ENTWURF : `Stand ${b.neueste_nr}` };
+}
+
 const neuesteZuerst = (a: Bericht, b: Bericht) => (b.freigegeben_am ?? b.angelegt_am).localeCompare(a.freigegeben_am ?? a.angelegt_am);
 
 /**
@@ -139,7 +159,7 @@ export function berichteBild(liste: readonly Bericht[]): BerichteBild {
     wartet: w.map(zeile),
     gelten: g.map(zeile),
     abgeloest: a.map(zeile),
-    archiviert: arch.map(zeile),
+    archiviert: arch.map(archivZeile),
     zaehler: { gelten: offen.filter((b) => b.neueste_nr !== null && !abgeloest(b)).length, wartet: w.length },
   };
 }

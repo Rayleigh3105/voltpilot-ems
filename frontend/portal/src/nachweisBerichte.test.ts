@@ -82,6 +82,23 @@ describe('Berichte in Nachweisen (Konzept n1, Runde 2, §6.4)', () => {
     expect([N.geltenWort(1), N.geltenWort(4), N.wartetWort(1, true), N.wartetWort(2, false)]).toEqual(['gilt', 'gelten', 'wartet auf Sie', 'warten']);
   });
 
+  it('Review r2, N-3.2: archivierte Zeilen tragen kein Verb und öffnen immer den archivierten Bericht selbst', () => {
+    const bild = N.berichteBild([
+      // Daten geändert, dann archiviert: die Entscheidung entfällt.
+      bericht({ kennung: 'BR-2026-0004', vorlage: 'monatsbericht_standort', geltung_art: 'standort', geltung_name: 'Werk Ahrenberg', stand_zeichen: 'revision_noetig', neueste_nr: 2, anstoss_seit: '2027-03-02T09:00:00Z', archiviert_am: '2027-04-01T09:00:00Z' }),
+      // Ein Entwurf ohne Stand, archiviert: freigeben lässt die Seite nicht mehr zu.
+      bericht({ kennung: 'BR-2026-0005', vorlage: 'monatsbericht_unternehmen', zeitraum_text: 'November 2026', neueste_nr: null, stand_zeichen: 'entwurf', freigegeben_am: null, angelegt_am: '2026-12-02T08:00:00Z', archiviert_am: '2027-04-01T09:00:00Z' }),
+      // Eine archivierte, nicht abgelöste Bewertung: nicht die Seite der aktuellen Bewertung.
+      bericht({ kennung: 'BR-2027-0002', vorlage: 'energetische_bewertung', zeitraum_art: 'datengrundlage', zeitraum_text: 'November 2026 bis Oktober 2027', freigegeben_am: '2027-11-24T09:00:00Z', ueberpruefung: ueberpruefung(null), archiviert_am: '2028-01-10T09:00:00Z' }),
+    ]);
+    expect(bild.archiviert.map((z) => [z.kennung, z.unter, z.datum, z.verb, z.ziel, z.stand])).toEqual([
+      ['BR-2027-0002', 'November 2026 bis Oktober 2027', { wort: 'frei', tag: '2027-11-24', ton: 'erledigt' }, null, 'bericht', 'Stand 1'],
+      ['BR-2026-0005', null, { wort: 'seit', tag: '2026-12-02', ton: 'erledigt' }, null, 'bericht', 'Entwurf'],
+      ['BR-2026-0004', 'Werk Ahrenberg', { wort: 'frei', tag: '2026-11-10', ton: 'erledigt' }, null, 'bericht', 'Stand 2'],
+    ]);
+    expect(bild.zaehler).toEqual({ gelten: 0, wartet: 0 });
+  });
+
   it('der Tag des Datumsblocks ist der Tag in der Zone des Berichts, nicht der UTC-Tag', () => {
     expect(N.tagIn('2028-04-02T22:30:00Z', 'Europe/Berlin')).toBe('2028-04-03');
     expect(N.tagText('2026-11-10T08:02:00Z', 'Europe/Berlin')).toBe('10.11.2026');
