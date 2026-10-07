@@ -71,6 +71,17 @@ button.vp-mb-balken:hover .vp-mb-saeule {
 button.vp-mb-balken.is-gewaehlt:hover .vp-mb-saeule {
   background: var(--vp-mb-hue);
 }
+/* Ein negativer Monat (saldiert): derselbe Betrag auf der Skala, aber hohl und gestrichelt - die Zahl trägt das Minus. */
+.vp-mb-saeule.is-negativ,
+button.vp-mb-balken:hover .vp-mb-saeule.is-negativ {
+  background: repeating-linear-gradient(135deg, var(--vp-mb-blass) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px var(--vp-mb-hue);
+}
+.vp-mb-balken.is-gewaehlt .vp-mb-saeule.is-negativ,
+button.vp-mb-balken.is-gewaehlt:hover .vp-mb-saeule.is-negativ {
+  background: repeating-linear-gradient(135deg, var(--vp-mb-hue) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 2px var(--vp-mb-hue);
+}
 /* Kein Wert: kein Balken - nur eine feine Grundlinie, damit der Monat seinen Platz behält. */
 .vp-mb-saeule.is-leer {
   height: 2px;

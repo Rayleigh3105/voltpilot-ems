@@ -116,7 +116,7 @@ export function MessstellenPage({
   /** Die Messstelle der Adresse (AP-04 IP-8) - dann steht ihre Seite statt des Registers. */
   messstelleId?: string | null;
   /** Periode und Version der Adresse für den Abschnitt „Werte“ der Seite (AP-13 IP-3). */
-  werte?: { periode: string | null; version: number | null; vergleich: string | null } | null;
+  werte?: { periode: string | null; version: number | null; vergleich: string | null; stand?: string | null } | null;
   /** Die neu gewählte Periode im Abschnitt „Werte“ - der Wirt schreibt die Adresse nach. */
   onWerteZeitraum?: (periode: string) => void;
   /** AP-13 IP-5: eine neue Wahl des Vergleichs-Umschalters (`v=` der Adresse). */
@@ -144,6 +144,11 @@ export function MessstellenPage({
       if (hash) springeUeberHash({ route: parseRoute(hash), hash });
       else onListe();
     };
+    // „Zurück zu heute“ einer aus „Stand am …“ geöffneten Messstelle: dieselbe Seite ohne Tag und ohne dessen Periode.
+    const heute = () => {
+      const hash = mitParameter(mitParameter(window.location.hash, 'stand', null), 'periode', null);
+      springeUeberHash({ route: parseRoute(hash), hash });
+    };
     return (
       <MessstelleSeite
         key={messstelleId}
@@ -153,6 +158,7 @@ export function MessstellenPage({
         onWerteZeitraum={onWerteZeitraum}
         onWerteVergleich={onWerteVergleich}
         onListe={zurueck}
+        onHeute={heute}
       />
     );
   }
@@ -922,7 +928,8 @@ function ReiheLink({
   onOeffnen?: (id: string, periode: string | null) => void;
 }) {
   const pfad = window.location.hash.split('?')[0] || '#/portfolio/messstellen';
-  const href = `${pfad}/${encodeURIComponent(r.id)}${periode ? `?periode=${periode}` : ''}`;
+  // Mit „Stand am …“ öffnet die Messstelle an diesem Tag - nur lesend wie die Liste (`stand=`).
+  const href = `${pfad}/${encodeURIComponent(r.id)}${periode ? `?periode=${periode}&stand=${periode}` : ''}`;
   const klick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
     if (!onOeffnen || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();

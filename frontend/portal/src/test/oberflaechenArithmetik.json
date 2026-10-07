@@ -36,9 +36,9 @@
         "./glossar:UEMS_FASSUNG",
         "./glossar:UEMS_LUECKE",
         "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NOCH_KEINE_QUELLE",
         "./glossar:UEMS_NOCH_NICHT_GERECHNET",
         "./glossar:UEMS_VERSION",
-        "./messstellen:KEINE_DATENQUELLE",
         "./messstellen:ablesungenText",
         "./messstellen:zeitpunktText",
         "./picker/datum:MONATE",
@@ -592,6 +592,53 @@
         "zahlFundstellen: von -= 1"
       ],
       "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert."
+    },
+    "messstelleSeite.ts": {
+      "importe": [
+        "./glossar:UEMS_ABLESUNG_EINTRAGEN",
+        "./glossar:UEMS_MESSSTELLE",
+        "./glossar:UEMS_NAECHSTE_ABLESUNG",
+        "./glossar:UEMS_WEG_GERAET",
+        "./glossar:UEMS_ZUORDNUNG",
+        "./messstellen:lebenszyklusWort",
+        "./messstellenListe:standWann",
+        "./messstellenListe:standZahl",
+        "./picker/datum:MONATE",
+        "./uemsBericht:vergleich as berichtVergleich",
+        "./uemsErgebnis:ANZEIGE_EINHEITEN",
+        "./uemsErgebnis:OHNE_ZAHL",
+        "./uemsErgebnis:PROZENT",
+        "./uemsErgebnis:UNVOLLSTAENDIG",
+        "./uemsErgebnis:pruefeMenge",
+        "./uemsErgebnis:zahlMitStellen",
+        "./uemsOrtsbaum:lokalerTag",
+        "./uemsWerteKarte:NOCH_KEINE_QUELLE_TITEL as KEINE_QUELLE_TITEL",
+        "./uemsWerteKarte:anzeige",
+        "./uemsWerteKarte:karte",
+        "./uemsWerteKarte:monatTitel"
+      ],
+      "operationen": [
+        "balken: Math.abs(z)",
+        "balken: Math.abs(z) / max",
+        "balken: Math.max(0, ...zahlen.filter((z): z is number => z !== null).map((z) => Math.abs(z)))",
+        "balken: Number(monat.slice(5, 7))",
+        "balken: Number(monat.slice(5, 7)) - 1",
+        "leitKachel: -12",
+        "leitKachel: Number(monat.slice(5, 7))",
+        "leitKachel: Number(monat.slice(5, 7)) - 1",
+        "leitKachel: i - 11",
+        "letzterVollerMonat: -1",
+        "monatPlus: (z % 12) + 1",
+        "monatPlus: Math.floor(z / 12)",
+        "monatPlus: j * 12",
+        "monatPlus: j * 12 + (m - 1)",
+        "monatPlus: j * 12 + (m - 1) + n",
+        "monatPlus: m - 1",
+        "monatPlus: z % 12",
+        "monatPlus: z / 12",
+        "zahlUndEinheit: i + 1"
+      ],
+      "grund": "Messen PR2 (Review r4 S5): balken skaliert die gelieferten Monatsmengen nur zur Balkenhöhe (Betrag/größter Betrag, ein negativer Monat mit Betrag und Kennzeichen, nie 0); leitKachel/monatPlus/letzterVollerMonat sind Kalenderarithmetik der Monate, zahlUndEinheit eine Textposition. Der Vorjahresvergleich ist das Prozent des Bericht-Zwillings (uemsBericht.vergleich), gesprochen mit zahlMitStellen des Ergebnis-Vertrags - keine eigene Rundung."
     }
   }
 }
