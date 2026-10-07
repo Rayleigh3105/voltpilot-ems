@@ -1,13 +1,19 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
+import { api, ApiError, type Messbedarf, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
 import { OHNE_ANGABE, type MessstellenEbene } from '../messstellen';
 import { KOPF_SATZ, NOCH_KEINE_QUELLE, SUCHE_WORIN } from '../messstellenListe';
 import { messstelleAngelegt, VORSCHLAG } from '../test/messstelleDialogFixtures';
 import { ahrenbergRegister, leeresRegister, REGISTER_ORT_IDS } from '../test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../test/standorteFixtures';
+import { ee8, mb1, messplanungRouten } from '../test/messplanungBuehne';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 import { MessstellenPage } from './MessstellenPage';
+import { zumEntscheid } from '../useEntscheidFokus';
 
 /**
  * Die Liste „Messstellen“ (Konzept Messen m1, §6.2/§6.3/§6.11) gegen die gestellte Route `GET /api/v1/messstellen`
@@ -38,6 +44,9 @@ beforeEach(() => {
   window.history.replaceState(null, '', '#/portfolio/messstellen');
   // Die Ausfälle der Standorte sind ein eigener Lesezug; ohne Antwort zeigt die Liste keinen.
   vi.spyOn(api, 'standortAusfall').mockRejectedValue(new Error('nicht gestellt'));
+  // Die geplanten Messstellen (offene Messbedarfe) - ohne Bedarf keine.
+  vi.spyOn(api, 'messbedarfeAlle').mockResolvedValue({ messbedarfe: [] });
+  vi.spyOn(api, 'energieeinsaetze').mockResolvedValue({ energieeinsaetze: [] });
 });
 
 afterEach(() => {
@@ -88,7 +97,8 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
     expect(eintraege).toEqual(['Stand an einem Tag ansehenNur lesen, z. B. für eine Prüfung']);
     // EINE Abfrage ohne Filter.
     expect(register).toHaveBeenCalledTimes(1);
-    expect(register).toHaveBeenCalledWith({});
+    // Messen PR5: die Liste fragt den letzten Monat mit - nur sie zeigt ihn.
+    expect(register).toHaveBeenCalledWith({ letzterMonat: true });
   });
 
   it('am Telefon steht „Messstelle anlegen“ im Menü, nicht als Knopf im Kopf', async () => {
@@ -137,6 +147,60 @@ describe('Messstellen · Kopf, Statuszeile und Gruppen je Ort', () => {
       'MS-14',
     ]);
     expect(within(screen.getAllByTestId('messstellen-ort')[2]).getByText('Werk Ahrenberg · 2')).toBeInTheDocument();
+  });
+
+  it('Messen PR5: rechts der Verbrauch des letzten Monats, am Rechner unter dem Kopf „September 2026“', async () => {
+    telefon(false);
+    // Die Antwort mit `letzterMonat=true`: jede Zeile trägt den Monat (hier der Schritt von HZ-1 aus der echten Antwort).
+    const echt = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures/register-letzter-monat-2026-09.json'), 'utf8')) as {
+      register: MessstellenRegister['register'];
+    };
+    const monat = echt.register.find((z) => z.kennzeichen === 'HZ-1')!.letzter_monat;
+    verdrahte(() => {
+      const r = ahrenbergRegister();
+      return { ...r, register: r.register.map((z) => (z.kennzeichen === 'MS-06' ? { ...z, letzter_monat: monat } : z)) };
+    });
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    expect(document.querySelector('.vp-ms-spalten')).toHaveTextContent('September 2026');
+    const ms06 = reiheVon('MS-06');
+    expect(ms06.textContent).toContain('199.500');
+    expect(ms06).toHaveTextContent('Sep 2026');
+  });
+
+  it('Messen m2 (§6.5, Variante 3A): „Ablesen ›“ im Kopf eines Orts mit Ablesezählern öffnet seine Ablese-Runde', async () => {
+    telefon(false);
+    verdrahte(() => {
+      const r = ahrenbergRegister();
+      // MS-21 in der Verwaltung (G-3) wird von Hand abgelesen.
+      return {
+        ...r,
+        register: r.register.map((z) =>
+          z.kennzeichen === 'MS-21'
+            ? {
+                ...z,
+                lebenszyklus: 'aktiv' as const,
+                quelle: { stand: 'ablesung' as const, fuehrend: null, davor: null, vergleichsquellen: 0, ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-10-01T00:00:00+02:00', faellig_ab: '2026-12-01T00:00:00+01:00' } },
+                letzter_wert: { wert: 49_451, text: null, einheit: 'm³', zeitpunkt: '2026-10-01T00:00:00+02:00' },
+              }
+            : z,
+        ),
+      };
+    });
+    window.location.hash = '#/portfolio/messstellen';
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe');
+    const links = screen.getAllByTestId('messstellen-ablesen');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '#/portfolio/messstellen?ablesen=G-3');
+    expect(links[0]).toHaveTextContent('Ablesen ›');
+    // Die Adresse wechselt innerhalb derselben Route: die Runde steht statt der Liste.
+    window.location.hash = '#/portfolio/messstellen?ablesen=G-3';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(await screen.findByRole('heading', { level: 1, name: /ablesen$/ }, WARTEN)).toBeInTheDocument();
+    expect(screen.getByTestId('ablese-runde')).toBeInTheDocument();
+    expect(screen.queryByTestId('messstellen-ablesen')).toBeNull();
+    window.location.hash = '';
   });
 
   it('jede Reihe ist der Verweis auf ihre Messstelle; „Woher die Werte kommen“ sagt Gerät oder noch keine Quelle', async () => {
@@ -294,7 +358,7 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     telefon(false);
     const register = verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10' }), WARTEN);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ stichtag: '2026-10-10', letzterMonat: true }), WARTEN);
     await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
     await waitFor(() => expect(reihen()).toHaveLength(1), WARTEN);
     expect(screen.getByRole('button', { name: '1 ohne Quelle' })).toHaveAttribute('aria-pressed', 'true');
@@ -310,7 +374,7 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
     await screen.findAllByTestId('messstelle-reihe');
     const erste = reihen()[0];
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'] }), WARTEN);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'], letzterMonat: true }), WARTEN);
     await waitFor(() => expect(register.mock.results.every((r) => r.type === 'return')).toBe(true));
     expect(screen.queryByTestId('messstellen-laedt')).toBeNull();
     // Dieselbe Reihe, dasselbe Element: der Blick der Wiedervorlage bliebe auf ihr.
@@ -322,7 +386,7 @@ describe('Messstellen · Marken und Filter der Adresse', () => {
     telefon(false);
     const register = verdrahte();
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
-    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'] }), WARTEN);
+    await waitFor(() => expect(register).toHaveBeenCalledWith({ ort: REGISTER_ORT_IDS['G-1'], letzterMonat: true }), WARTEN);
     const marke = await screen.findByRole('button', { name: 'Halle 1 – Filter entfernen' });
     fireEvent.click(marke);
     await waitFor(() => expect(reihen()).toHaveLength(22), WARTEN);
@@ -368,10 +432,10 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     await menue(/^Stand an einem Tag ansehen/);
     await waehleTag('2026-10-10');
     await waitFor(() => expect(screen.getByTestId('stand-am')).toHaveTextContent('Stand 10.10.2026'), WARTEN);
-    expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10' });
+    expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10', letzterMonat: true });
     expect(window.location.hash).toBe('#/portfolio/messstellen?stand=2026-10-10');
     // Eine Reihe öffnet die Messstelle an genau diesem Tag (AP-13 IP-3) - als Verweis und als Klick.
-    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10`), WARTEN);
+    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10&stand=2026-10-10`), WARTEN);
     fireEvent.click(reiheVon('MS-06'));
     expect(onOeffnen).toHaveBeenCalledWith(MS06, '2026-10-10');
     const nochNicht = await screen.findByTestId('messstellen-noch-nicht', {}, WARTEN);
@@ -389,7 +453,7 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     const register = verdrahte();
     render(<MessstellenPage ebene={WERK} bereichDa />);
     await screen.findAllByTestId('messstelle-reihe');
-    expect(register).toHaveBeenCalledWith({ standort: FIXTURE_IDS.st1 });
+    expect(register).toHaveBeenCalledWith({ standort: FIXTURE_IDS.st1, letzterMonat: true });
     expect(screen.getByText(`Werk Ahrenberg · ${KOPF_SATZ}`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
     expect((await screen.findAllByRole('menuitem')).map((m) => m.textContent)).toEqual([
@@ -480,7 +544,7 @@ describe('Messstellen · „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6
     const vorher = register.mock.calls.length;
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(register.mock.calls.length).toBeGreaterThan(vorher));
-    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1 });
+    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1, letzterMonat: true });
   });
 
   it('ohne Speichern geschlossen: kein neues Lesen', async () => {
@@ -496,5 +560,157 @@ describe('Messstellen · „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Messstelle anlegen' })).toBeNull());
     expect(register.mock.calls.length).toBe(vorher);
+  });
+});
+
+describe('Messstellen · geplante Messstellen (Konzept Auswerten a1, Entscheid 9)', () => {
+  /** MB-1 an Halle 1 (Struktur, Frist 31.03.2027) an EE-8 - wie die Bühne der Messplanung. */
+  const halle1 = (over: Partial<Messbedarf> = {}): Messbedarf =>
+    mb1({
+      ort_ziel: { id: REGISTER_ORT_IDS['G-1'], art: 'gebaeude', kurzzeichen: 'G-1', name: 'Halle 1', standort_id: FIXTURE_IDS.st1, standort_name: 'Werk Ahrenberg' },
+      messgroesse: 'Wirkenergie',
+      richtung: 'Bezug',
+      ...over,
+    });
+  function plan(bedarfe: Messbedarf[]) {
+    vi.spyOn(api, 'messbedarfeAlle').mockResolvedValue({ messbedarfe: bedarfe });
+    vi.spyOn(api, 'energieeinsaetze').mockResolvedValue({ energieeinsaetze: [ee8()] });
+  }
+  const geplante = () => screen.getAllByTestId('geplante-messstelle');
+  const karteVon = (ort: string) => screen.getAllByTestId('messstellen-ort').find((k) => within(k).getByRole('heading', { level: 2 }).textContent === ort)!;
+
+  it('ein offener Messbedarf steht an seinem Ort nach den Messstellen: Einsatz, Frist, „Einrichten“ - und das Ziel der Wiedervorlage', async () => {
+    telefon(false);
+    verdrahte();
+    plan([halle1(), halle1({ id: 'mb-9', kennzeichen: 'MB-9', zustand: 'verworfen', begruendung: 'nicht nötig' })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(geplante()).toHaveLength(1);
+    const karte = karteVon('Halle 1');
+    expect(within(karte).getAllByRole('listitem').at(-1)).toContainElement(mb);
+    expect(within(karte).getByText(/Werk Ahrenberg · 2 · 1 geplant/)).toBeInTheDocument();
+    expect(mb.textContent).toContain('Lüftung, Beleuchtung und Allgemeinstrom Halle 1');
+    expect(mb.querySelector('.vp-ms-reihe-satz')?.textContent).toBe('Geplant für EE-8 Gebäudetechnik Halle 1Frist 31.03.2027');
+    expect(mb.querySelector('.vp-ms-frist')?.textContent).toBe('Frist 31.03.2027');
+    expect(mb.textContent).toContain('Noch nicht eingerichtet');
+    expect(within(mb).getByRole('link', { name: 'EE-8 Gebäudetechnik Halle 1' })).toHaveAttribute('href', `#/portfolio/verbrauch/${ee8().id}`);
+    expect(mb).toHaveAttribute('data-entscheid', 'messbedarf_frist');
+    expect(mb).toHaveAttribute('data-entscheid-kennzeichen', 'MB-1');
+    expect(within(mb).getByRole('button', { name: 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1 (MB-1) einrichten' })).toHaveAttribute('data-entscheid-schritt');
+    // Geplante zählen nicht zu den Messstellen; die Marke filtert auf sie.
+    expect(document.querySelector('.vp-ms-treffer')?.textContent).toMatch(/Messstellen an \d+ Orten · 1 geplant$/);
+    fireEvent.click(within(screen.getByTestId('messstellen-marken')).getByRole('button', { name: '1 geplant' }));
+    expect(screen.queryAllByTestId('messstelle-reihe')).toHaveLength(0);
+    expect(geplante()).toHaveLength(1);
+    expect(document.querySelector('.vp-ms-treffer')?.textContent).toBe('1 geplante Messstelle');
+    expect(within(karteVon('Halle 1')).getByText('Werk Ahrenberg · 1 geplant')).toBeInTheDocument();
+  });
+
+  it('ein zitierter Bedarf (Review r4 M4): statt „Einrichten“ der Satz mit den Ständen - und der Blick der Wiedervorlage landet darauf', async () => {
+    telefon(false);
+    verdrahte();
+    plan([halle1({ einloesbar: false, zitiert_von: [{ kennung: 'BR-2026-0002', nr: 1 }, { kennung: 'BR-2029-0002', nr: 1 }] })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(within(mb).queryByRole('button')).toBeNull();
+    const satz = within(mb).getByTestId('geplante-zitiert');
+    expect(satz.textContent).toBe('2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2029-0002 Nr. 1) - er bleibt, wie er ist.');
+    zumEntscheid(mb);
+    expect(satz).toHaveFocus();
+  });
+
+  it('eine überschrittene Frist: die Hinweiskarte nennt sie und filtert auf die geplanten', async () => {
+    telefon(false);
+    verdrahte();
+    plan([halle1({ frist: '2026-09-30' })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const karte = await screen.findByRole('button', { name: /MB-1\) ist noch nicht eingerichtet/ }, WARTEN);
+    expect(karte.textContent).toContain('Frist 30.09.2026 überschritten · Halle 1');
+    fireEvent.click(karte);
+    expect(screen.queryAllByTestId('messstelle-reihe')).toHaveLength(0);
+    expect(geplante()[0].textContent).toContain('Frist 30.09.2026 überschritten');
+    expect(geplante()[0]).toHaveClass('is-hinweis');
+  });
+
+  it('ohne Recht, Energieeinsätze zu verwalten: lesen ja, „Einrichten“ und „Messbedarf erfassen“ nein', async () => {
+    telefon(false);
+    setSelbstauskunft(rechteSeed('PH').me);
+    verdrahte();
+    plan([halle1()]);
+    render(<MessstellenPage ebene={WERK} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(within(mb).queryByRole('button')).toBeNull();
+    expect(mb.textContent).toContain(OHNE_ANGABE);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(await screen.findAllByRole('menuitem')).not.toHaveLength(0);
+    expect(screen.queryByRole('menuitem', { name: /Messbedarf erfassen/ })).toBeNull();
+  });
+
+  it('ohne Recht, Energieeinsätze zu sehen, fragt die Liste keinen Plan; 403 oder 404 heißt „nichts geplant“, anderes sagt sie', async () => {
+    telefon(false);
+    setSelbstauskunft({ ...rechteSeed('MD').me, standorte: rechteSeed('MD').me.standorte.map((st) => ({ ...st, rechte: st.rechte.filter((r) => !r.startsWith('energieeinsatz')) })) });
+    verdrahte();
+    const { unmount } = render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
+    expect(api.messbedarfeAlle).not.toHaveBeenCalled();
+    unmount();
+
+    setSelbstauskunft(rechteSeed('JW').me);
+    vi.spyOn(api, 'messbedarfeAlle').mockRejectedValue(new ApiError(404, 'nicht gefunden', { code: 'nicht_gefunden' }));
+    const zweit = render(<MessstellenPage ebene={WERK} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
+    await waitFor(() => expect(api.messbedarfeAlle).toHaveBeenCalledWith(FIXTURE_IDS.st1));
+    expect(screen.queryByTestId('geplante-fehler')).toBeNull();
+    zweit.unmount();
+
+    const fehlt = vi.spyOn(api, 'messbedarfeAlle').mockRejectedValueOnce(new Error('Netz weg')).mockResolvedValue({ messbedarfe: [halle1()] });
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    expect(await screen.findByTestId('geplante-fehler', {}, WARTEN)).toHaveTextContent('Die geplanten Messstellen ließen sich gerade nicht laden.');
+    fireEvent.click(within(screen.getByTestId('geplante-fehler')).getByRole('button', { name: 'Erneut versuchen' }));
+    expect(await screen.findByTestId('geplante-messstelle', {}, WARTEN)).toBeInTheDocument();
+    expect(fehlt).toHaveBeenCalledTimes(2);
+  });
+
+  it('„Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs (derselbe Weg wie am Einsatz)', async () => {
+    telefon(false);
+    verdrahte();
+    plan([halle1()]);
+    const routen = messplanungRouten('2026-10-20', 'JW', [halle1()]);
+    vi.spyOn(api, 'kennzeichenVorschlag').mockImplementation(routen.kennzeichenVorschlag);
+    vi.spyOn(api, 'standorte').mockImplementation(routen.standorte);
+    vi.spyOn(api, 'standortOrte').mockImplementation(routen.standortOrte);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    fireEvent.click(within(mb).getByRole('button', { name: /einrichten$/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Messstelle anlegen' });
+    await waitFor(() => expect((within(dialog).getByLabelText('Kennzeichen') as HTMLInputElement).value).toBe('MS-23'));
+    expect(within(dialog).getByRole('combobox', { name: 'Hauptgröße *' }).textContent).toContain('Wirkenergie');
+    expect(within(dialog).getByRole('combobox', { name: 'Richtung *' }).textContent).toContain('Bezug');
+  });
+
+  it('„Messbedarf erfassen“ im Menü: an einem laufenden Einsatz; danach steht der Bedarf als geplante Messstelle in der Liste', async () => {
+    telefon(false);
+    verdrahte();
+    plan([]);
+    const routen = messplanungRouten('2026-10-20', 'JW', []);
+    vi.spyOn(api, 'standorte').mockImplementation(routen.standorte);
+    vi.spyOn(api, 'standortOrte').mockImplementation(routen.standortOrte);
+    const erfassen = vi.spyOn(api, 'messbedarfErfassen').mockImplementation(routen.messbedarfErfassen);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findAllByTestId('messstelle-reihe', {}, WARTEN);
+    await waitFor(() => expect(api.energieeinsaetze).toHaveBeenCalled());
+    await menue(/^Messbedarf erfassen/);
+    const dialog = await screen.findByRole('dialog', { name: 'Messbedarf erfassen' });
+    // Nur ein laufender Einsatz: er steht fest.
+    expect(dialog.textContent).toContain('EE-8 Gebäudetechnik Halle 1');
+    fireEvent.change(within(dialog).getByLabelText('Was soll gemessen werden?'), { target: { value: 'Druckluft Halle 2' } });
+    vi.spyOn(api, 'messbedarfeAlle').mockImplementation(routen.messbedarfeAlle);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Messbedarf erfassen' }));
+    await waitFor(() => expect(erfassen).toHaveBeenCalledWith(ee8().id, expect.objectContaining({ wortlaut: 'Druckluft Halle 2' })));
+    expect(await screen.findByTestId('geplante-satz', {}, WARTEN)).toHaveTextContent(
+      'Messbedarf MB-1 ist erfasst und steht als geplante Messstelle in der Liste.',
+    );
+    expect((await screen.findAllByTestId('geplante-messstelle', {}, WARTEN))[0].textContent).toContain('Druckluft Halle 2');
+    expect(within(karteVon('Kein Ort zugeordnet')).getAllByTestId('geplante-messstelle')).toHaveLength(1);
   });
 });

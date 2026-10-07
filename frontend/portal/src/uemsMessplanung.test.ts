@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from './api';
+import { ApiError, type Messbedarf } from './api';
 import { UEMS_BEWERTUNG_SAETZE } from './glossar';
 import { ortWahlen } from './messstelleDialog';
 import { ahrenbergEinsaetze } from './test/bewertungFixtures';
@@ -24,9 +24,13 @@ import {
   leererBedarf,
   messbedarfAblehnung,
   nachStandort,
+  nichtEinloesbar,
+  nichtEinloesbarSatz,
   ortText,
   protokollZeilen,
   restVorbelegung,
+  zitiertSatz,
+  zuordnenText,
 } from './uemsMessplanung';
 
 const orte = ortWahlen(ahrenbergHeute(), { [FIXTURE_IDS.st1]: ortsbaumAhrenberg(), [FIXTURE_IDS.st2]: ortsbaumLindach() });
@@ -182,5 +186,36 @@ describe('Messplanung (AP-16 IP-20, §5.3, R5)', () => {
     expect(messbedarfAblehnung(new ApiError(409, 'Dieser Messbedarf ist Beleg in BER-1 Stand 1.', { code: 'berichts_belege' }))).toBe(
       'Dieser Messbedarf ist Beleg in BER-1 Stand 1.',
     );
+    // Mit der Liste der Stände spricht das Portal den Satz des Messbedarfs - der des Servers ist der einer Komponente.
+    const komponente = 'Dieser Messbedarf ist Beleg in 2 freigegebenen Berichtsständen (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1). Löschen ist nicht möglich — beenden Sie die Bindung stattdessen.';
+    const beleg = (staende: Array<{ kennung: string; nr: number }>) =>
+      new ApiError(409, komponente, { code: 'berichts_belege', codes: ['berichts_belege'], berichtsstaende: staende, messstellen: [] });
+    expect(messbedarfAblehnung(beleg([{ kennung: 'BR-2026-0002', nr: 1 }, { kennung: 'BR-2027-0001', nr: 1 }]))).toBe(
+      '2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1) - er bleibt, wie er ist.',
+    );
+    expect(messbedarfAblehnung(beleg([{ kennung: 'BR-2026-0002', nr: 2 }]))).toBe(
+      'Ein freigegebener Berichtsstand zitiert diesen Messbedarf (BR-2026-0002 Nr. 2) - er bleibt, wie er ist.',
+    );
+  });
+});
+
+describe('Review r4 M4 · zitierter Messbedarf', () => {
+  const b = (over: Partial<Messbedarf>): Messbedarf => ({ ...mb1(), ...over });
+  it('nicht einlösbar nur, wenn die API es sagt; eine ältere API ohne Feld gilt als einlösbar', () => {
+    expect(nichtEinloesbar(b({ einloesbar: false, zitiert_von: [{ kennung: 'BR-2026-0002', nr: 1 }] }))).toBe(true);
+    expect(nichtEinloesbar(b({ einloesbar: true, zitiert_von: [] }))).toBe(false);
+    expect(nichtEinloesbar(b({}))).toBe(false);
+    expect(nichtEinloesbar(b({ zustand: 'eingeloest', einloesbar: false }))).toBe(false);
+  });
+
+  it('derselbe Satz wie die 409: mit den Ständen, einer oder mehrere', () => {
+    expect(zitiertSatz([])).toBeNull();
+    expect(zitiertSatz([{ kennung: 'BR-2026-0002', nr: 1 }])).toBe(
+      'Ein freigegebener Berichtsstand zitiert diesen Messbedarf (BR-2026-0002 Nr. 1) - er bleibt, wie er ist.',
+    );
+    expect(nichtEinloesbarSatz(b({ einloesbar: false, zitiert_von: [{ kennung: 'BR-2026-0002', nr: 1 }, { kennung: 'BR-2027-0001', nr: 1 }] }))).toBe(
+      '2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1) - er bleibt, wie er ist.',
+    );
+    expect(zuordnenText({ kennzeichen: 'MS-24' })).toBe('MS-24 zuordnen');
   });
 });

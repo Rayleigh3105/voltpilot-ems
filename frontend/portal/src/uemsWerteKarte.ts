@@ -42,8 +42,8 @@ import type {
   MessstelleWerteRaster,
   MessstelleWerteWert,
 } from './api';
-import { UEMS_FASSUNG, UEMS_LUECKE, UEMS_MESSSTELLE, UEMS_NOCH_NICHT_GERECHNET, UEMS_VERSION } from './glossar';
-import { KEINE_DATENQUELLE, ablesungenText, zeitpunktText, type ZeileWoerter } from './messstellen';
+import { UEMS_FASSUNG, UEMS_LUECKE, UEMS_MESSSTELLE, UEMS_NOCH_KEINE_QUELLE, UEMS_NOCH_NICHT_GERECHNET, UEMS_VERSION } from './glossar';
+import { ablesungenText, zeitpunktText, type ZeileWoerter } from './messstellen';
 import { MONATE, WOCHENTAGE, datumVon, isoWoche } from './picker/datum';
 import { BERECHNET_DIFFERENZ, BERECHNET_SALDO, BERECHNET_SUMME } from './uemsBilanz';
 import { zahlText } from './uemsEreignis';
@@ -369,14 +369,17 @@ export interface BindungsNamen {
 export type QuellenNamen = Readonly<Record<string, BindungsNamen>>;
 
 /**
- * Die Namen der Bindungen, die das Register heute kennt: die führende und die davor. Eine Bindung ohne Namen der
- * Komponente oder des Messwerts fehlt — ein Satz mit einer Kennung statt eines Namens wäre keiner des Vertrags.
+ * Die Namen der Bindungen, die das Register heute kennt: die führende und die davor. Eine Bindung ohne Namen des
+ * Messwerts fehlt — ein Satz mit einer Kennung statt eines Namens wäre keiner des Vertrags. Trägt die Komponente keinen
+ * eigenen Namen (im Bestand häufig: ein Gerät ohne Bezeichnung), steht der Name des Messwerts für sie, mit dem Gerät.
  */
 export const quellenNamen = (quelle: MessstelleRegisterZeile['quelle'] | null | undefined): QuellenNamen => {
   const namen: Record<string, BindungsNamen> = {};
   for (const b of [quelle?.fuehrend, quelle?.davor]) {
-    if (!b?.komponente_name || !b.kanal_name) continue;
-    namen[b.id] = { quelle: `${b.komponente_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.komponente_name})` };
+    if (!b?.kanal_name) continue;
+    namen[b.id] = b.komponente_name
+      ? { quelle: `${b.komponente_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.komponente_name})` }
+      : { quelle: `${b.kanal_name} (${b.geraet.geraet})`, kanal: `${b.kanal_name} (${b.geraet.geraet})` };
   }
   return namen;
 };
@@ -432,6 +435,9 @@ export interface OhneQuelle {
   satz: string;
 }
 
+/** „Noch keine Quelle“ als Titel - das Glossarwort, das auch „Woher die Werte kommen“ und die Liste sprechen. */
+export const NOCH_KEINE_QUELLE_TITEL = `${UEMS_NOCH_KEINE_QUELLE.charAt(0).toUpperCase()}${UEMS_NOCH_KEINE_QUELLE.slice(1)}`;
+
 /**
  * Z4 · Werte ohne Datenquelle: im GANZEN Zeitraum führt keine Quelle — keine Bindung in der Antwort, jeder Schritt
  * `keine_quelle`. Eine Liste voller Striche ist dann keine Auskunft; die Sektion zeigt stattdessen Titel und Satz des
@@ -441,7 +447,8 @@ export const ohneQuelle = (antwort: MessstelleWerte | null): OhneQuelle | null =
   if (!antwort || antwort.messstelle.art === 'berechnet' || antwort.quellen.length > 0 || antwort.werte.length === 0) return null;
   if (!antwort.werte.every((w) => w.grund === 'keine_quelle')) return null;
   const satz = grundDes(antwort, antwort.werte[0]);
-  return satz === null ? null : { titel: KEINE_DATENQUELLE, satz };
+  // Review r4 S7: dasselbe Wort wie „Woher die Werte kommen“ und die Liste - „Noch keine Quelle“, nicht „Keine Datenquelle“.
+  return satz === null ? null : { titel: NOCH_KEINE_QUELLE_TITEL, satz };
 };
 
 /** Der Satz, wenn eine Messstelle aus Ablesungen im gewählten Zeitraum keinen Wert hat (Tag, Woche, laufender Monat). */

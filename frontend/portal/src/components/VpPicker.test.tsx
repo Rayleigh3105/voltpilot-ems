@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BottomSheet } from './BottomSheet';
 import { VpPicker } from './VpPicker';
 import type { VpOption } from '../picker/optionen';
 
@@ -168,6 +169,20 @@ describe('DER TASTATUR-DURCHSTICH: alles ohne Maus', () => {
     expect(screen.getByRole('button', { name: 'Neu anlegen' })).toBe(document.activeElement);
     fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
     expect(document.activeElement).toBe(feld);
+  });
+
+  it('hält den Fokus im Panel auch in einem Blatt - Tab springt nicht in dessen Fokusfalle (Review Nachweisen r1, Q-2)', () => {
+    render(
+      <BottomSheet open title="Wer hat entschieden?" onClose={() => {}}>
+        <button type="button">Im Blatt</button>
+        <VpPicker ariaLabel="Gerät" options={VIELE} value="v0" onChange={() => {}} createLabel="Neu anlegen" onCreate={() => {}} />
+      </BottomSheet>,
+    );
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Gerät' }), { key: 'Enter' });
+    const feld = screen.getByRole('combobox', { name: /durchsuchen/ });
+    expect(document.activeElement).toBe(feld);
+    fireEvent.keyDown(feld, { key: 'Tab' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Neu anlegen' }));
   });
 });
 

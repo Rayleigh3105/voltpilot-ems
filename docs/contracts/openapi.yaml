@@ -11603,6 +11603,10 @@ paths:
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. Die Liste enthält nur, was die Person lesen darf; darf sie
         nirgends einen Bericht lesen, ist das 403. Neueste zuerst. UEMS AP-12 IP-7.
+        Mit `archiviert=true` (Konzept Nachweisen n1, C8) auch die archivierten - die Liste zeigt sie als eine
+        Zeile „Archiviert · n“.
+      parameters:
+        - { name: archiviert, in: query, required: false, schema: { type: string, enum: ["true", "false"] }, description: "`true` nimmt die archivierten Berichte dazu (ihr `archiviert_am` ist gesetzt); anderes als `true`/`false` ist 400 `anfrage_ungueltig`." }
       responses:
         "200":
           description: Die Berichte.
@@ -11935,6 +11939,39 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BerichtAnstoss" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/anstoesse/verwerfen:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+    post:
+      tags: [berichte]
+      summary: Verwirft die gesehenen offenen Anstöße mit EINEM Grund in einer Transaktion - „Nein, Stand n behalten“.
+      description: >
+        Konzept Nachweisen n1, Entscheid 16 (Review r1, P3-2): eine Entscheidung für alle offenen Anstöße, die
+        die Person gesehen hat - alle oder keiner. Recht wie `POST …/anstoesse/{id}/verwerfen`. Reihenfolge:
+        Kennungen (400 `anfrage_ungueltig`: leer, doppelt, mehr als 200) → jede ein Anstoß dieses Berichts (404
+        `nicht_gefunden`) → Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`) → jeder offen (409
+        `anstoss_nicht_offen` mit `zustand` und `anstoss_id` des ersten, der es nicht ist; dann ist keiner
+        verworfen). Ein neuer Anstoß, der nicht in der Anfrage steht, bleibt offen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BerichtAnstoesseVerwerfen" }
+            example:
+              anstoss_ids: ["0b5c3f0e-1c2d-4e5f-8a9b-0c1d2e3f4a5b", "1c6d4a1f-2d3e-4f60-9b0c-1d2e3f4a5b6c"]
+              begruendung: "Die Korrekturen betreffen keine Zahl dieses Berichts."
+      responses:
+        "200":
+          description: Verworfen - die Anstöße in der Reihenfolge der Anfrage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtAnstoesseVerworfen" }
         "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
@@ -12391,6 +12428,75 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/teil-vermerke:
+    get:
+      tags: [energiemanagement]
+      summary: „Trifft bei uns zurzeit nicht zu“ je Teil des Überblicks (Konzept Nachweisen n1, Entscheid 5).
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit - wer nur Standorte liest, bekommt keinen Vermerk,
+        ohne Hinweis. `stichtag` ist der Abruf in der Zeitzone des Unternehmens (wie das Verzeichnis). `vermerke`
+        nennt geltende Vermerke zuerst in der Folge des Vokabulars `teil` (Vertrag energiemanagement 1.3), dann
+        aufgehobene, die zuletzt aufgehobene zuerst. Im Verzeichnis steht jeder Vermerk als Zeile der Art
+        `teil_vermerk` in der Gruppe seines Teils. Kein Urteil: welcher Teil zutrifft, entscheidet der Kunde.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerke" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Vermerken, dass ein Teil zurzeit nicht zutrifft - mit Satz und „entschieden von“.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (auch „Einsicht“ 403 `recht_fehlt`). `teil` aus dem
+        Vokabular `teil` (400 `anfrage_ungueltig`, `feld` `teil`), `satz` 10 bis 500 Zeichen (400
+        `anfrage_ungueltig`, `feld` `satz`, mit `min`/`max`), `entschieden_von` eine Person im Energiemanagement
+        (fehlt 422 `entschieden_von_fehlt`, unbekannt 404 `nicht_gefunden`, ihr `bis` vor dem Tag 422
+        `person_beendet`), `entschieden_am` wahlfrei (Vorgabe heute in der Zeitzone des Unternehmens, nie in der
+        Zukunft: 422 `tag_in_zukunft`). Ein geltender Vermerk für denselben Teil 409 `vermerk_besteht` (mit `teil`).
+        Nur anhängen; der Vermerk trägt, wer ihn eingetragen hat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerkAnlegen" }
+      responses:
+        "201":
+          description: Der Vermerk.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/teil-vermerke/{id}/aufheben:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Vermerk aufheben - einmal, jetzt; danach ist er endgültig.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Ohne Körper. Setzt den Zeitpunkt des Aufhebens und wer es
+        eingetragen hat; unbekannt 404 `nicht_gefunden`, schon aufgehoben 409 `vermerk_aufgehoben` (mit
+        `aufgehoben_am`). Danach kann der Teil wieder vermerkt werden, als neuer Vermerk. Keine Löschroute.
+      responses:
+        "200":
+          description: Der aufgehobene Vermerk.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
@@ -15658,6 +15764,13 @@ paths:
         der Zeitpunkt dieser Sicht. Liest nur. `doppelzaehlung` (Captain-Entscheid 14.09.2026) warnt,
         welcher Posten in welchem bereits enthalten ist (Regel `doppelzaehlung`, Formeln je Tag, rekursiv,
         Kreis benannt) - und ändert keine Zahl: kein Posten fehlt, keine Summe wird bereinigt.
+        Messen PR4 (Regel `ablesezeitraum`, Vertrag 1.5): eine Messstelle aus Ablesungen hat keine
+        Tageswerte. Über `monat` und `jahr` trägt ihr Posten `monate` statt `tage`: je Monat die Menge
+        aus den Ablesezeiträumen, die der Kunde ihm zugeordnet hat - als Ganzes an die Kostenstelle,
+        wenn ihr Anteil an JEDEM Tag dieser Zeiträume gilt; wechselt er mitten darin, keine Zahl
+        (`anteil_wechselt_im_ablesezeitraum`, Satz „keine Werte (Verteilung im Ablesezeitraum
+        geändert)“ und „Verteilung geändert am …“). Ein Monat mit Zeile, aber noch ohne Ablesung:
+        `keine_ablesung`. Ein Tag bekommt nie einen Anteil eines Ablesezeitraums.
       parameters:
         - { name: periode, in: query, required: false, schema: { type: string, enum: [tag, monat, jahr] } }
         - { name: am, in: query, required: false, schema: { type: string, format: date } }
@@ -18770,6 +18883,35 @@ components:
         leitung:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+    EnergiemanagementTeilVermerkAnlegen:
+      type: object
+      additionalProperties: false
+      required: [teil, satz, entschieden_von]
+      properties:
+        teil: { type: string, enum: [energiepolitik, anwendungsbereich, rechtliche_anforderungen, kontext, risiken_chancen, aufgaben, kompetenz, kommunikation, betrieb, auslegung, beschaffung, energetische_bewertung, bezugsbasen, massnahmen, interne_audits, feststellungen, managementbewertung, berichte] }
+        satz: { type: string, minLength: 10, maxLength: 500, description: Die Begründung in einem Satz. }
+        entschieden_von: { type: string, format: uuid, description: Eine Person im Energiemanagement, auch ohne Konto. }
+        entschieden_am: { type: string, format: date, nullable: true, description: Vorgabe heute; nie in der Zukunft. }
+    EnergiemanagementTeilVermerk:
+      type: object
+      required: [id, teil, teil_wort, satz, entschieden_von, entschieden_am, eingetragen, aufgehoben]
+      properties:
+        id: { type: string, format: uuid }
+        teil: { type: string }
+        teil_wort: { type: string, description: Der Name des Teils (Vertrag `woerter.teil`). }
+        satz: { type: string }
+        entschieden_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        entschieden_am: { type: string, format: date }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+        aufgehoben: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementEingetragen" }], nullable: true, description: Wer aufgehoben hat und wann; `null`, solange der Vermerk gilt. }
+    EnergiemanagementTeilVermerke:
+      type: object
+      required: [stichtag, vermerke]
+      properties:
+        stichtag: { type: string, format: date-time }
+        vermerke:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
     EnergiemanagementVerantwortlich:
       type: object
       required: [sub, name]
@@ -19926,7 +20068,7 @@ components:
         Ohne Struktur (`ort_ziel`, `messgroesse` null) bleibt der Wortlaut führend für die Anzeige — so liest sich jeder
         Bedarf aus der Fassung vor der Struktur unverändert.
       required: [id, kennzeichen, energieeinsatz_id, wortlaut, ort, groesse, frist, zustand, messstelle,
-        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung]
+        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung, zitiert_von, einloesbar]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: '^MB-[1-9][0-9]*$' }
@@ -19960,6 +20102,19 @@ components:
           nullable: true
         messgroesse: { type: string, nullable: true }
         richtung: { type: string, nullable: true }
+        zitiert_von:
+          type: array
+          items: { $ref: "#/components/schemas/BerichtStandRef" }
+          description: >-
+            Die freigegebenen Berichtsstände, die diesen Bedarf zitieren (`uems_berichts_belege`), nach `kennung` und
+            `nr` - dieselbe Liste wie `berichtsstaende` der 409 `berichts_belege`; leer, wenn keiner zitiert. In jedem
+            Zustand gefüllt.
+        einloesbar:
+          type: boolean
+          description: >-
+            `true` genau dann, wenn der Bedarf `offen` ist und `zitiert_von` leer ist. Ein zitierter offener Bedarf
+            ist nicht einlösbar (Einlösen, Bearbeiten und Verwerfen antworten 409 `berichts_belege`); eingelöste und
+            verworfene sind es nie.
     MessbedarfListe:
       type: object
       required: [messbedarfe]
@@ -29123,10 +29278,14 @@ components:
         ablesung:
           type: object
           description: "Nur bei stand = ablesung: seit wann die Ablesungs-Quelle führt und wann zuletzt abgelesen wurde (null = noch nie). Die Beobachtung sagt dann „Abgelesen am …“ bzw. nach der Frist der überfälligen Ablesung „Ablesung überfällig seit …“."
-          required: [seit, zuletzt]
+          required: [seit, zuletzt, faellig_ab]
           properties:
             seit: { type: string, format: date-time }
             zuletzt: { type: string, format: date-time, nullable: true }
+            faellig_ab:
+              type: string
+              format: date-time
+              description: "Ab wann die nächste Ablesung fehlt (additiv, Messen-Bau m2): die letzte Ablesung plus zwei Kalendermonate in der Zeitzone des Standorts, ohne Ablesung der Beginn der Quelle - derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung."
         fuehrend:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]
@@ -30890,6 +31049,37 @@ components:
           nullable: true
           description: "{satz, fehlt} nach bilanzwert-herkunft.schema.json (Art verteilt); bei nicht_verteilt null — die Rechnung einer berechneten Messstelle steht je Tag an tage[].herkunft."
           additionalProperties: true
+        monate:
+          type: array
+          description: "Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat` oder `jahr` - je Monat der Anteil der Ablesezeiträume, die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld."
+          items: { $ref: "#/components/schemas/KostenstelleEnergieMonat" }
+    KostenstelleEnergieMonat:
+      type: object
+      description: >
+        Ein Monat eines Postens aus Ablesungen (Messen PR4): die Menge des Monats an der Messstelle
+        (`quelle_menge`, dieselbe Zahl wie `…/werte?raster=monat`), der Anteil, der an JEDEM Tag ihrer
+        Ablesezeiträume galt, und der Teil daraus. Ein Ablesezeitraum wird nie auf Tage verteilt.
+      required: [monat, ablesezeitraeume, anteil_prozent, quelle_menge, menge, zustand, abdeckung_prozent, version, grund, geaendert_am]
+      properties:
+        monat: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$", example: "2026-10" }
+        ablesezeitraeume:
+          type: array
+          description: "Die Ablesezeiträume, die der Kunde dem Monat zugeordnet hat; leer ohne gespeicherten Monat."
+          items: { $ref: "#/components/schemas/KostenstelleEnergieAblesezeitraum" }
+        anteil_prozent: { type: number, nullable: true, description: "Der Anteil an jedem Tag der Ablesezeiträume; null, wenn er mitten darin wechselt, und bei nicht_verteilt." }
+        quelle_menge: { type: number, nullable: true }
+        menge: { type: number, nullable: true, description: "Anteil × Menge des Monats; null = keine Zahl (siehe grund), nie 0." }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        version: { type: integer }
+        grund: { type: string, nullable: true, enum: [quelle_keine_werte, rest_unplausibel, anteil_wechselt_im_ablesezeitraum, keine_ablesung, null] }
+        geaendert_am: { type: string, format: date, nullable: true, description: "Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt." }
+    KostenstelleEnergieAblesezeitraum:
+      type: object
+      required: [von, bis]
+      properties:
+        von: { type: string, format: date-time, example: "2026-10-01T07:15:00+02:00" }
+        bis: { type: string, format: date-time, description: "ausschließlich", example: "2026-11-02T07:40:00+01:00" }
     KostenstelleEnergieMessstelle:
       type: object
       required: [id, kennzeichen, name, art]
@@ -34620,6 +34810,23 @@ components:
       required: [begruendung]
       properties:
         begruendung: { type: string, minLength: 10, maxLength: 500 }
+    BerichtAnstoesseVerwerfen:
+      type: object
+      description: >
+        Der Körper von `POST …/anstoesse/verwerfen` (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen
+        Anstöße und EIN Grund für alle.
+      additionalProperties: false
+      required: [anstoss_ids, begruendung]
+      properties:
+        anstoss_ids: { type: array, minItems: 1, maxItems: 200, uniqueItems: true, items: { type: string, format: uuid } }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    BerichtAnstoesseVerworfen:
+      type: object
+      required: [anstoesse]
+      properties:
+        anstoesse:
+          type: array
+          items: { $ref: "#/components/schemas/BerichtAnstoss" }
     BerichtPerson:
       type: object
       description: >
@@ -34634,7 +34841,7 @@ components:
         Ein Bericht in der Liste und im Kopf: `stand_zeichen` ist der Vermerk aus R5 als Wort,
         `stand_text` sein Kundensatz („Entwurf · Datenstand …“, „Berichtsstand Nr. 1“, „Revision nötig —
         Korrektur K-2026-0007“, „Anstoß verworfen (…)“).
-      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung]
+      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung, freigegeben_am, anstoss_seit]
       properties:
         kennung: { type: string }
         vorlage: { type: string }
@@ -34658,6 +34865,16 @@ components:
           allOf: [{ $ref: "#/components/schemas/BerichtUeberpruefung" }]
           nullable: true
           description: "AP-16 S5/S6 (IP-24): nur an einer energetischen Bewertung mit freigegebenem Stand, sonst null."
+        freigegeben_am:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Die Freigabe des gültigen Stands; ohne Stand null (Konzept Nachweisen n1, §6.4: Datumsblock „frei“)."
+        anstoss_seit:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Der früheste offene Anstoß am gültigen Stand (`stand_zeichen` revision_noetig), sonst null (Datumsblock „seit“)."
     BerichtUeberpruefung:
       type: object
       description: >

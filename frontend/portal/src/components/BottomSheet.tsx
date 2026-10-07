@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { fokussierbare } from './VpPanel';
 import { useAusblenden } from '../../designsystem/components/shell/ausblenden';
+import { fokusFalle, useUeberlagerung } from '../../designsystem/components/shell/ueberlagerung';
 // Die Sheet-Stile (`.vp-bs*`) wohnen in `Verlauf.css`; ohne diesen Import stand
 // das Blatt auf jeder Seite ohne Explorer ungestylt da.
 import './Verlauf.css';
@@ -19,11 +19,14 @@ import './Verlauf.css';
  * Beides sind Zusagen, die eine Fläche entweder hält oder nicht — deshalb
  * wohnen sie ab jetzt an EINER Stelle statt zweimal halb.
  *
- * ⚠ ES IST EIN BAUSTEIN, KEIN ZWEITER DIALOG-STAPEL. Die Fokus-Falle,
- * der Scroll-Sperrer und die Fokus-Rückgabe sind wörtlich das Muster des
- * Hauses (`CenteredConfirmDialog` + `fokussierbare` aus `VpPanel`) — ein
- * zweiter Mechanismus für dieselbe Zusage wäre genau die Uneinheitlichkeit,
- * die dieses Paket abstellt.
+ * ⚠ ES IST EIN BAUSTEIN, KEIN ZWEITER DIALOG-STAPEL. Fokus-Falle,
+ * Scroll-Sperre, Escape und Fokus-Rückgabe kommen aus DEMSELBEN Stapel wie im
+ * `Modal` (`ueberlagerung.js`): ein gezählter Sperrer und ein Stapel für das
+ * ganze Haus. Blätter folgen aufeinander (Gruppe → Teil, Blatt → Modal) und
+ * stecken ineinander (Erklär-Blatt im Teil-Blatt); mit einem eigenen „vorher
+ * gemerkten" `overflow` blieb die Seite nach Gruppe → Teil → Schließen
+ * gesperrt, und Escape im inneren Blatt schloss auch das äußere (Review
+ * Nachweisen r1, Q-1/Q-2).
  *
  * ⚠ ES BLENDET AUS, NICHT NUR EIN (Bewegungs-Programm P6, Konzept §6 Zeile
  * „Bottom-Sheet / Picker"): das Blatt federt in `--vp-motion-page` von unten
@@ -65,40 +68,15 @@ export function BottomSheet({
   const titleId = useId();
   const { sichtbar, schliessend } = useAusblenden(open, panelRef);
 
-  /* Scroll-Sperre + Fokus hinein und beim Schließen ZURÜCK auf den Auslöser.
-     Der Auslöser wird beim Öffnen gemerkt, nicht beim Schließen gesucht: zu
-     dem Zeitpunkt liegt der Fokus im Sheet, das gleich verschwindet. */
-  useEffect(() => {
-    if (!sichtbar) return undefined;
-    const vorherigerFokus = document.activeElement as HTMLElement | null;
-    const vorherigerOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    panelRef.current?.focus();
-    return () => {
-      document.body.style.overflow = vorherigerOverflow;
-      vorherigerFokus?.focus();
-    };
-  }, [sichtbar]);
+  /* Scroll-Sperre, Fokus hinein, Escape für das oberste Blatt und beim
+     Schließen der Fokus ZURÜCK auf den Auslöser - gemerkt beim Öffnen, nicht
+     beim Schließen gesucht: zu dem Zeitpunkt liegt der Fokus im Sheet, das
+     gleich verschwindet. */
+  useUeberlagerung(sichtbar, panelRef, onClose);
 
   if (!sichtbar) return null;
 
-  const tastatur = (event: ReactKeyboardEvent) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const elemente = fokussierbare(panelRef.current);
-    if (elemente.length === 0) return;
-    const aktuell = document.activeElement as HTMLElement | null;
-    const index = aktuell ? elemente.indexOf(aktuell) : -1;
-    const ziel = event.shiftKey
-      ? elemente[(index <= 0 ? elemente.length : index) - 1]
-      : elemente[(index + 1) % elemente.length];
-    event.preventDefault();
-    ziel?.focus();
-  };
+  const tastatur = (event: ReactKeyboardEvent) => fokusFalle(event, panelRef.current);
 
   return createPortal(
     <div className={schliessend ? 'vp-bs-wrap is-closing' : 'vp-bs-wrap'}>

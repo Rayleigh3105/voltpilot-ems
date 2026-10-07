@@ -117,6 +117,9 @@
   outline: none;
   background: transparent;
   font: inherit;
+  /* So hoch wie der Text des Datums-Knopfs daneben (ein Knopf erbt die Zeilenhöhe nicht) - sonst ist das Uhrzeit-Feld
+     zwölf Pixel höher als das Datum. */
+  line-height: normal;
   color: inherit;
   padding: 0;
 }
@@ -127,6 +130,8 @@
   justify-content: center;
   width: 32px;
   height: 32px;
+  /* Die Tippfläche bleibt 32 px, das Feld wächst nicht über die Höhe des Datums-Knopfs. */
+  margin-block: -8px;
   border: 0;
   background: transparent;
   border-radius: var(--vp-radius-sm);

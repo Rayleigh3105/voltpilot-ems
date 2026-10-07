@@ -273,6 +273,10 @@ button.vp-nw-zchip {
   position: relative;
   cursor: pointer;
 }
+/* „Fristen nicht geladen · Erneut versuchen“: der Weg steht in der Farbe eines Links. */
+.vp-nw-zchip-weg {
+  color: var(--vp-c-primary, #2563eb);
+}
 /* 40 px sichtbar, 44 px zum Tippen. */
 button.vp-nw-zchip::before {
   content: '';
@@ -435,6 +439,11 @@ button.vp-nw-zchip::before {
   align-items: center;
   justify-self: start;
   min-height: 32px;
+  /* Auch als Knopf („Zeitraum löschen“) ohne Rahmen und Fläche des Browsers. */
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
   color: var(--vp-c-primary, #2563eb);
   font: 600 0.85rem var(--vp-c-font);
   text-decoration: none;
@@ -558,8 +567,12 @@ button.vp-nw-zchip::before {
   outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
   outline-offset: 2px;
 }
+/* Ein Chip ohne Ziel (der Ort ist für die Person nicht zu sehen) ist nur Zeichen und Wort. */
+span.vp-nw-lchip {
+  cursor: default;
+}
 @media (hover: hover) {
-  .vp-nw-lchip:hover {
+  button.vp-nw-lchip:hover {
     border-color: color-mix(in srgb, var(--vp-navy, #1e3a5f) 30%, var(--vp-c-border, #e2e8f0));
   }
 }
@@ -676,8 +689,11 @@ button.vp-nw-zchip::before {
   display: inline-flex;
   color: var(--vp-c-muted-fg, #475569);
 }
+div.vp-nw-tz {
+  cursor: default;
+}
 @media (hover: hover) {
-  .vp-nw-tz:hover .vp-nw-tz-name {
+  button.vp-nw-tz:hover .vp-nw-tz-name {
     color: var(--vp-action, #2c5282);
   }
 }

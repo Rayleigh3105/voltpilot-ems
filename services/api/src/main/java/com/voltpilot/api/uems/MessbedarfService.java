@@ -169,15 +169,23 @@ public class MessbedarfService {
         einsatz(einsatzId);
         return repo.finde(id).filter(b -> b.einsatzId().equals(einsatzId)).orElseThrow(EnergieeinsatzAbgelehnt::fehlt);
     }
+    /** Standorte und zitierende Stände je eine Abfrage für die ganze Liste. */
     private Liste liste(List<MessbedarfRepository.Zeile> zeilen) {
         var standorte=repo.standorteDerOrte(zeilen.stream().map(MessbedarfRepository.Zeile::ortId)
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet()), heute());
-        return new Liste(zeilen.stream().map(b -> dto(b,standorte)).toList());
+        var zitiert=berichtsBelege.derObjekte(zeilen.stream().map(MessbedarfRepository.Zeile::id).toList());
+        return new Liste(zeilen.stream().map(b -> dto(b,standorte,zitiert)).toList());
     }
     private Bedarf dto(MessbedarfRepository.Zeile b) {
-        return dto(b,b.ortId()==null?Map.of():repo.standorteDerOrte(Set.of(b.ortId()),heute()));
+        return dto(b,b.ortId()==null?Map.of():repo.standorteDerOrte(Set.of(b.ortId()),heute()),
+                berichtsBelege.derObjekte(List.of(b.id())));
     }
-    private Bedarf dto(MessbedarfRepository.Zeile b, Map<UUID,MessbedarfRepository.StandortRef> standorte) {
+    /**
+     * Review r4 M4: {@code zitiert_von} nennt die Stände, an denen Bearbeiten, Einlösen und Verwerfen mit 409
+     * {@code berichts_belege} scheitern; {@code einloesbar} sagt dem Portal vorher, ob „Einrichten“ zum Ziel führt.
+     */
+    private Bedarf dto(MessbedarfRepository.Zeile b, Map<UUID,MessbedarfRepository.StandortRef> standorte,
+            Map<UUID,List<BerichtRegeln.StandBezeichnung>> zitiert) {
         OrtZiel ort=null;
         if (b.standortId()!=null) ort=new OrtZiel(b.standortId(),"standort",b.standortKurzzeichen(),b.standortName(),
                 b.standortId(),b.standortName());
@@ -185,9 +193,11 @@ public class MessbedarfService {
             var s=standorte.get(b.ortId());
             ort=new OrtZiel(b.ortId(),b.ortArt(),b.ortKurzzeichen(),b.ortName(),s==null?null:s.id(),s==null?null:s.name());
         }
+        var zitiertVon=zitiert.getOrDefault(b.id(),List.of());
         return new Bedarf(b.id(),b.kennzeichen(),b.einsatzId(),b.wortlaut(),b.ort(),b.groesse(),b.frist(),b.zustand(),
                 b.messstelleId()==null?null:new Messstelle(b.messstelleId(),b.messstelleKennzeichen(),b.messstelleName()),
-                b.begruendung(),b.akteur(),b.createdAt(),b.updatedAt(),ort,b.messgroesse(),b.richtung());
+                b.begruendung(),b.akteur(),b.createdAt(),b.updatedAt(),ort,b.messgroesse(),b.richtung(),
+                zitiertVon,"offen".equals(b.zustand()) && zitiertVon.isEmpty());
     }
     private void melde(String art,String bedarf,String messstelle) {
         ObjectNode e=json.createObjectNode().put("ereignis_id",UUID.randomUUID().toString()).put("art",art)

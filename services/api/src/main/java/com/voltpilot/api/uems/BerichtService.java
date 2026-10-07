@@ -144,8 +144,12 @@ public class BerichtService {
      * Ein Bericht mit seinem Vermerk aus R5 und — nur an einer energetischen Bewertung mit freigegebenem Stand — der beim
      * Abruf abgeleiteten Überprüfung (AP-16 S5/S6, IP-24); sonst {@code null}.
      */
+    /**
+     * Ein Bericht in der Liste und im Kopf; {@code freigegebenAm} ist die Freigabe des gültigen Stands, {@code anstossSeit}
+     * der früheste offene Anstoß an ihm (Konzept Nachweisen n1, §6.4: Datumsblöcke „frei“ und „seit“).
+     */
     public record Uebersicht(Kopf kopf, Integer neuesteNr, Instant entwurfDatenstand, String standZeichen,
-            String standText, Ueberpruefung ueberpruefung) {}
+            String standText, Ueberpruefung ueberpruefung, Instant freigegebenAm, Instant anstossSeit) {}
 
     /** AP-16 S5/S6: die Frist am Abruftag und die laufenden Einsätze des Unternehmens mit wirksamer Einstufung. */
     public record Ueberpruefung(BewertungFrist.Frist frist, List<BerichtRepository.EinsatzLage> einsaetze) {}
@@ -176,12 +180,17 @@ public class BerichtService {
      * Unterstützer), ist das 403 — kein leeres „es gibt keine“.
      */
     public List<Uebersicht> liste(ProtokollAkteur wer) {
+        return liste(wer, false);
+    }
+
+    /** Wie {@link #liste(ProtokollAkteur)}, mit {@code mitArchivierten} auch die archivierten (Nachweisen n1, C8). */
+    public List<Uebersicht> liste(ProtokollAkteur wer, boolean mitArchivierten) {
         UUID tenant = kundenbereich();
         Instant jetzt = jetzt();
         Benutzer b = aufrufer.benutzer(wer);
         Kundenbereich k = rechteKundenbereich();
         List<Uebersicht> raus = new ArrayList<>();
-        for (Kopf x : repo.berichte()) {
+        for (Kopf x : repo.berichte(mitArchivierten)) {
             if (darf(b, k, BerichtRechte.ABRUFEN, x, jetzt).darf()) {
                 raus.add(uebersicht(tenant, x));
             }
@@ -702,6 +711,54 @@ public class BerichtService {
         return new Verworfen(kopf, repo.anstoss(kopf.tenant(), kopf.id(), id).orElseThrow());
     }
 
+    /**
+     * {@code POST …/anstoesse/verwerfen} (Konzept Nachweisen n1, Entscheid 16; Review r1, P3-2): „Nein, Stand n behalten“
+     * verwirft die offenen Anstöße, die die Person gesehen hat, mit EINEM Grund in EINER Transaktion - alle oder keiner.
+     * Reihenfolge wie beim einzelnen Anstoß: Kennungen (400) → jede ein Anstoß dieses Berichts (404) → Begründung (422) →
+     * jeder offen (409 mit Zustand und Kennung des ersten, der es nicht ist). Ein neuer Anstoß, den die Person nicht sah,
+     * bleibt offen.
+     */
+    public List<AnstossZeile> verwerfenAlle(String kennung, List<String> anstossIds, String begruendung, ProtokollAkteur wer) {
+        Zugriff z = zugriff(kennung, wer, BerichtRechte.VERWERFEN);
+        Kopf kopf = z.kopf();
+        if (anstossIds == null || anstossIds.isEmpty() || anstossIds.size() > ANSTOESSE_HOECHSTENS
+                || new HashSet<>(anstossIds).size() != anstossIds.size()) {
+            throw BerichtAbgelehnt.anfrage("anstoss_ids");
+        }
+        List<AnstossZeile> alle = new ArrayList<>();
+        for (String text : anstossIds) {
+            UUID id = uuid(text).orElseThrow(() -> BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            alle.add(repo.anstoss(kopf.tenant(), kopf.id(), id).orElseThrow(() -> BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN)));
+        }
+        pruefeBegruendung(begruendung);
+        for (AnstossZeile a : alle) {
+            if (!OFFEN.equals(a.zustand())) {
+                throw nichtOffen(a);
+            }
+        }
+        String rolle = rolle(z.darf(), wer);
+        transaktion.executeWithoutResult(tx -> {
+            repo.sperren(kopf.tenant(), kopf.id());
+            for (AnstossZeile a : alle) {
+                if (!repo.verwerfen(kopf.tenant(), a.id(), begruendung, wer, z.jetzt())) {
+                    // Inzwischen entschieden: die ganze Transaktion fällt zurück, kein Anstoß ist verworfen.
+                    throw nichtOffen(repo.anstoss(kopf.tenant(), kopf.id(), a.id()).orElseThrow());
+                }
+                repo.protokoll(kopf.tenant(), kopf.id(), a.nr(), BerichtRechte.VERWERFEN,
+                        text(Map.of("anstoss_id", a.id().toString(), "zustand", OFFEN)),
+                        text(Map.of("anstoss_id", a.id().toString(), "zustand", VERWORFEN)), begruendung, wer, rolle, z.jetzt());
+            }
+        });
+        return alle.stream().map(a -> repo.anstoss(kopf.tenant(), kopf.id(), a.id()).orElseThrow()).toList();
+    }
+
+    /** Wie die Abwahl am Anlegen: höchstens 200 Kennungen in einer Anfrage (`BerichtController.texte`). */
+    private static final int ANSTOESSE_HOECHSTENS = 200;
+
+    private static BerichtAbgelehnt nichtOffen(AnstossZeile a) {
+        return BerichtAbgelehnt.von(Ablehnung.ANSTOSS_NICHT_OFFEN, Map.of("zustand", a.zustand(), "anstoss_id", a.id().toString()));
+    }
+
     /** {@code POST …/archivieren}: verbirgt den Bericht in der Liste, die Stände bleiben lesbar (V4); ein zweites Mal ändert nichts. */
     public Uebersicht archivieren(String kennung, ProtokollAkteur wer) {
         Zugriff z = zugriff(kennung, wer, BerichtRechte.ARCHIVIEREN);
@@ -847,23 +904,27 @@ public class BerichtService {
         Instant datenstand = repo.entwurfDatenstand(tenant, x.id()).orElse(null);
         if (staende.isEmpty()) {
             return new Uebersicht(x, null, datenstand, ZEICHEN_ENTWURF,
-                    datenstand == null ? null : BerichtRegeln.entwurf(datenstand, x.zone()), null);
+                    datenstand == null ? null : BerichtRegeln.entwurf(datenstand, x.zone()), null, null, null);
         }
         StandZeile gueltig = staende.get(staende.size() - 1);
         Ueberpruefung ueberpruefung = ueberpruefung(tenant, x, gueltig);
         List<AnstossZeile> anstoesse = repo.anstoesse(tenant, x.id()).stream().filter(a -> a.nr() == gueltig.nr()).toList();
         Optional<AnstossZeile> offen = anstoesse.stream().filter(a -> OFFEN.equals(a.zustand())).findFirst();
         if (offen.isPresent()) {
+            Instant seit = anstoesse.stream().filter(a -> OFFEN.equals(a.zustand())).map(AnstossZeile::erkanntAm)
+                    .min(Instant::compareTo).orElse(null);
             return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_REVISION,
-                    BerichtRegeln.revisionNoetig(BerichtRegeln.anlass(offen.get().anlassKennung())), ueberpruefung);
+                    BerichtRegeln.revisionNoetig(BerichtRegeln.anlass(offen.get().anlassKennung())), ueberpruefung,
+                    gueltig.freigegebenAm(), seit);
         }
         AnstossZeile letzter = anstoesse.isEmpty() ? null : anstoesse.get(anstoesse.size() - 1);
         if (letzter != null && VERWORFEN.equals(letzter.zustand())) {
             return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_VERWORFEN,
-                    BerichtRegeln.anstossVerworfen(letzter.verworfenBegruendung()), ueberpruefung);
+                    BerichtRegeln.anstossVerworfen(letzter.verworfenBegruendung()), ueberpruefung, gueltig.freigegebenAm(),
+                    null);
         }
         return new Uebersicht(x, gueltig.nr(), datenstand, ZEICHEN_STAND, BerichtRegeln.berichtsstand(gueltig.nr()),
-                ueberpruefung);
+                ueberpruefung, gueltig.freigegebenAm(), null);
     }
 
     /**

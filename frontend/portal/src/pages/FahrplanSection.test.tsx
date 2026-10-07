@@ -359,6 +359,9 @@ describe('FahrplanSection · die Stationen zeigen den ganzen Tag', () => {
       Promise.resolve(mode === 'day' ? dayPlan() : plan()),
     );
   });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('holt den ganzen Tag und hakt die gelaufenen Phasen ab', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);

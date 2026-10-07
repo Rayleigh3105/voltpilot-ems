@@ -1,15 +1,16 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { api, type EnergiemanagementDokument, type EnergiemanagementPerson, type StandortAmStichtag } from '../../api';
+import { api, type EnergiemanagementAusschluss, type EnergiemanagementDokument, type EnergiemanagementPerson, type StandortAmStichtag } from '../../api';
 import { WOERTER } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';
+import * as N from '../../nachweisDokumente';
 import { useRollen } from '../../rollen';
 import { pruefsummeLokal } from '../../uemsMessmittel';
 import { GrenzSatz } from '../GrenzSatz';
 import { VpDatePicker } from '../VpDatePicker';
 import { VpPicker } from '../VpPicker';
-import { belegAus, EntscheiderWahl, OrtFelder } from './DokumentBlaetter';
+import { AusschlussFelder, belegAus, EntscheiderWahl, OrtFelder, VierAugenUnbekannt } from './DokumentBlaetter';
 import { NwBlatt } from './NwBlatt';
 import { AntwortKarten, PruefZeilen, SchrittAnzeige, WahlChips } from './NwSchritte';
 import { NwTextfeld } from './NwTextfeld';
@@ -30,8 +31,10 @@ const ERSTE_BEGRUENDUNG = 'Erste Fassung festgehalten.';
 /**
  * „Festhalten“ (Konzept Nachweisen n1, Runde 2, §6.10 „Einen offenen Teil festhalten“): ein Dokument in drei Schritten -
  * 1 was und wo es geführt wird (eigenes System, kurzer Text hier, oder - nur mit `onTrifftNichtZu` - „trifft zurzeit
- * nicht zu“), 2 wo das Original liegt bzw. der Text, 3 prüfen und gleich freigeben oder als Entwurf speichern. Es legt
- * das Dokument an, entwirft Fassung 1 und gibt sie frei (bei Vier-Augen: beantragt) - drei Routen, eine Führung.
+ * nicht zu“), 2 wo das Original liegt bzw. der Text, 3 prüfen und gleich freigeben oder als Entwurf speichern. Der
+ * Anwendungsbereich fragt davor „Wofür gilt es?“ (Standorte, Energieträger, Ausschlüsse - die Route verlangt sie schon
+ * für den Entwurf, Review r1 P2-2). Es legt das Dokument an, entwirft Fassung 1 und gibt sie frei (bei Vier-Augen:
+ * beantragt) - drei Routen, eine Führung.
  *
  * Mit `art` steht die Art fest (Überblick: der offene Teil), sonst fragt Schritt 1 nach ihr. „Entschieden“ ist
  * vorbelegt (die Leitung bei Energiepolitik und Anwendungsbereich, sonst die eigene Person) und mit „Ändern“ wählbar.
@@ -68,33 +71,53 @@ export function DokumentFesthaltenBlatt({
   const [original, setOriginal] = useState<E.VerweisEntwurf>(E.LEERER_VERWEIS);
   const [heute, setHeute] = useState<string | null>(null);
   const [vierAugen, setVierAugen] = useState<boolean | null>(null);
+  const [vierAugenFehler, setVierAugenFehler] = useState(false);
+  const [vierAugenVersuch, setVierAugenVersuch] = useState(0);
   const [personen, setPersonen] = useState<{ id: string; label: string; konto: string | null }[] | null>(null);
+  // Neu angelegte Person („Person anlegen“ ohne Leitung): die Liste kennt sie erst nach einem neuen Abruf.
+  const [personenNeu, setPersonenNeu] = useState(0);
   const [standorte, setStandorte] = useState<StandortAmStichtag[]>([]);
+  // Anwendungsbereich (Review r1, P2-2): ohne Wahl gelten alle Standorte; Energieträger wählt man selbst.
+  const [standortIds, setStandortIds] = useState<string[] | null>(null);
+  const [traeger, setTraeger] = useState<string[]>([]);
+  const [ausschluesse, setAusschluesse] = useState<EnergiemanagementAusschluss[]>([]);
   const [angelegt, setAngelegt] = useState<EnergiemanagementDokument | null>(null);
   const [fehler, setFehler] = useState<E.Feldfehler>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rechnet, setRechnet] = useState(false);
+  const [dateiFehler, setDateiFehler] = useState<string | null>(null);
   const leitung = !!art && E.leitungsPflicht(art);
   const darfFreigeben = rollen.darf(E.RECHT_FREIGEBEN, null);
+  const mitGeltung = art === 'anwendungsbereich';
+  const letzter = mitGeltung ? 4 : 3;
+  const orte = standortIds ?? standorte.map((s) => s.id);
 
-  // „Heute“ ist der Tag der Route (die Aufgaben antworten mit ihm, auch ohne ein einziges Dokument), dazu Vier-Augen
-  // und die Standorte.
+  // „Heute“ ist der Tag der Route (die Aufgaben antworten mit ihm, auch ohne ein einziges Dokument) und die Standorte.
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementAufgaben().then(
       (r) => aktiv && setHeute(r.tag),
       () => undefined,
     );
-    api.unternehmenVierAugen().then(
-      (v) => aktiv && setVierAugen(v.vieraugen),
-      () => aktiv && setVierAugen(false),
-    );
     api.standorte().then((s) => aktiv && setStandorte(s.standorte.filter((x) => x.zustand !== 'archiviert')), () => undefined);
     return () => {
       aktiv = false;
     };
   }, []);
+
+  // Vier-Augen: unbekannt ist nicht „aus“ (Review r1, P2-4) - bis die Einstellung da ist, gibt das Blatt nicht frei.
+  useEffect(() => {
+    let aktiv = true;
+    setVierAugenFehler(false);
+    api.unternehmenVierAugen().then(
+      (v) => aktiv && setVierAugen(v.vieraugen),
+      () => aktiv && setVierAugenFehler(true),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [vierAugenVersuch]);
 
   // Wer entscheidet: die Leitung am Tag (PA3, aus `…/leitung` im Zaun des Freigaberechts - Befund A4) oder jede aktive
   // Person; vorbelegt die Leitung bzw. die eigene Person.
@@ -118,7 +141,7 @@ export function DokumentFesthaltenBlatt({
     return () => {
       aktiv = false;
     };
-  }, [art, leitung, tag, heute, ort, rollen.selbst?.kennung]);
+  }, [art, leitung, tag, heute, ort, rollen.selbst?.kennung, personenNeu]);
 
   const artWort = art ? WOERTER.dokument_art[art] : '';
   const kopf = festeArt ? `${artWort} festhalten` : 'Dokument festhalten';
@@ -144,16 +167,31 @@ export function DokumentFesthaltenBlatt({
     return !Object.keys(f).length;
   }
 
+  /** Wofür der Anwendungsbereich gilt - dieselben Regeln wie „Neu fassen“ und die Route (`anwendungsbereich_fehlt`). */
+  function geltungPruefen(): boolean {
+    const f: E.Feldfehler = {};
+    if (!orte.length) f.standorte = 'Bitte wählen Sie mindestens einen Standort.';
+    if (!traeger.length) f.traeger = 'Bitte wählen Sie mindestens einen Energieträger.';
+    const aus = ausschluesse.filter((a) => a.verweis || a.begruendung.trim());
+    if (aus.some((a) => !a.verweis || E.begruendungFehler(a.begruendung))) f.ausschluesse = 'Bitte nennen Sie je Ausschluss den Standort und begründen Sie mit 10 bis 500 Zeichen.';
+    setFehler(f);
+    return !Object.keys(f).length;
+  }
+
   async function festhalten() {
     const freigeben = weiter === 'freigeben' && darfFreigeben;
-    if (freigeben && personen === null) return; // die Wahl lädt noch - der Knopf wartet sichtbar (aria-busy)
+    // Die Wahl der Person oder die Vier-Augen-Einstellung lädt noch - der Knopf wartet sichtbar (aria-busy).
+    if (freigeben && (personen === null || vierAugen === null)) return;
     const f: E.Feldfehler = {};
     if (freigeben && !von) f.entschiedenVon = 'Bitte wählen Sie, wer entschieden hat.';
     const b = freigeben ? E.begruendungFehler(begruendung) : null;
     if (b) f.begruendung = b;
+    // Entscheid 10: das Original braucht einen Ort - Kennung oder Prüfsumme allein gehen sonst still verloren (P2-8).
+    const orig = freigeben && wo === 'wortlaut' && mitOriginal ? belegAus(original) : null;
+    if (freigeben && wo === 'wortlaut' && mitOriginal && !orig && (original.kennung.trim() || original.sha256)) f.original = 'Bitte nennen Sie, wo das Original liegt.';
     setFehler(f);
     if (Object.keys(f).length) {
-      setAendern(true);
+      if (!f.original) setAendern(true);
       return;
     }
     setBusy(true);
@@ -170,20 +208,31 @@ export function DokumentFesthaltenBlatt({
       }
       if (!d.fassungen.length) {
         const v = E.verweisKoerper(verweis, true);
+        const geltung = mitGeltung
+          ? {
+              anwendungsbereich: {
+                standort_ids: orte,
+                traeger,
+                ausschluesse: ausschluesse.filter((a) => a.verweis || a.begruendung.trim()).map((a) => ({ ...a, begruendung: a.begruendung.trim() })),
+              },
+            }
+          : {};
         d = await api.energiemanagementFassungEntwerfen(
           d.id,
-          wo === 'verweis' ? { form: 'verweis', verweis: v && !('fehler' in v) ? v : null } : { form: 'wortlaut', wortlaut },
+          wo === 'verweis' ? { form: 'verweis', verweis: v && !('fehler' in v) ? v : null, ...geltung } : { form: 'wortlaut', wortlaut, ...geltung },
         );
         setAngelegt(d);
       }
       if (freigeben) {
         // Entscheid 10: das unterschriebene Original gehört zur Fassung - festgehalten mit ihrer Freigabe.
-        const orig = wo === 'wortlaut' && mitOriginal ? belegAus(original) : null;
         const koerper = { entschieden_von: von, entschieden_am: tag || null, begruendung: begruendung.trim(), ...(orig ? { original: orig } : {}) };
         d = vierAugen ? await api.energiemanagementFassungBeantragen(d.id, 1, koerper) : await api.energiemanagementFassungFreigeben(d.id, 1, koerper);
       }
       onFertig(d);
     } catch (err) {
+      // Hat sich die Vier-Augen-Einstellung geändert, sagt es die Route: das Blatt stellt um, der nächste Klick passt.
+      if (E.ablehnungCode(err) === 'vieraugen_beantragen') setVierAugen(true);
+      else if (E.ablehnungCode(err) === 'vieraugen_aus') setVierAugen(false);
       setSatz(E.ablehnungSatz(err));
     } finally {
       setBusy(false);
@@ -194,17 +243,25 @@ export function DokumentFesthaltenBlatt({
     const datei = liste?.[0];
     if (!datei) return;
     setRechnet(true);
+    setDateiFehler(null);
     try {
       const sha256 = await pruefsummeLokal(datei);
       setVerweis((v) => ({ ...v, sha256, bezeichnung: v.bezeichnung || datei.name }));
+    } catch {
+      // Ohne sicheren Kontext (kein `crypto.subtle`) oder bei einer zu großen Datei sagt es das Blatt (Review r1, P2-8).
+      setDateiFehler(E.PRUEFSUMME_FEHLT);
     } finally {
       setRechnet(false);
     }
   }
 
-  // Bis die Personen zur Wahl da sind, wartet „Festhalten“ - sonst stünde ein Fehler, bevor die Vorbelegung kommt.
-  const laedt = schritt === 3 && weiter === 'freigeben' && darfFreigeben && personen === null;
-  const titelSchritt = schritt === 1 ? kopf : schritt === 2 ? (wo === 'verweis' ? 'Wo liegt das Original?' : 'Ihr Text') : 'Prüfen';
+  // Bis die Personen zur Wahl und die Vier-Augen-Einstellung da sind, wartet „Festhalten“ - sonst stünde ein Fehler,
+  // bevor die Vorbelegung kommt, oder es würde ohne Vier-Augen freigegeben.
+  const freigebenGewaehlt = schritt === letzter && weiter === 'freigeben' && darfFreigeben;
+  const laedt = freigebenGewaehlt && (personen === null || (vierAugen === null && !vierAugenFehler));
+  const gesperrt = freigebenGewaehlt && vierAugenFehler && vierAugen === null;
+  const titelSchritt =
+    schritt === 1 ? kopf : schritt === 2 ? (wo === 'verweis' ? 'Wo liegt das Original?' : 'Ihr Text') : schritt < letzter ? 'Wofür gilt es?' : 'Prüfen';
   const personWort = personen?.find((p) => p.id === von)?.label.split(',')[0] ?? '-';
   const tagWort = E.tagText(tag || heute || '') || 'heute';
 
@@ -217,8 +274,8 @@ export function DokumentFesthaltenBlatt({
       testId="festhalten-blatt"
       fuss={
         <div className="vp-nw-blatt-fuss">
-          <Button type="submit" form={`${basis}-form`} disabled={busy || laedt} aria-busy={busy || laedt || undefined} data-testid="festhalten-weiter">
-            {schritt < 3 ? 'Weiter' : 'Festhalten'}
+          <Button type="submit" form={`${basis}-form`} disabled={busy || laedt || gesperrt} aria-busy={busy || laedt || undefined} data-testid="festhalten-weiter">
+            {schritt < letzter ? 'Weiter' : 'Festhalten'}
           </Button>
           <Button variant="ghost" onClick={schritt === 1 ? onClose : () => setSchritt(schritt - 1)}>
             {schritt === 1 ? 'Abbrechen' : 'Zurück'}
@@ -232,13 +289,19 @@ export function DokumentFesthaltenBlatt({
         noValidate
         data-testid="festhalten-form"
         onSubmit={(e: FormEvent) => {
+          // Wie `BlattFormular`: das Absenden bleibt in diesem Blatt (Review r1, P2-1).
           e.preventDefault();
-          if (schritt === 1 && schritt1()) setSchritt(2);
-          else if (schritt === 2 && schritt2()) setSchritt(3);
-          else if (schritt === 3) void festhalten();
+          e.stopPropagation();
+          if (schritt === 1) {
+            if (schritt1()) setSchritt(2);
+          } else if (schritt === 2) {
+            if (schritt2()) setSchritt(3);
+          } else if (schritt < letzter) {
+            if (geltungPruefen()) setSchritt(letzter);
+          } else void festhalten();
         }}
       >
-        <SchrittAnzeige nr={schritt} von={3} />
+        <SchrittAnzeige nr={schritt} von={letzter} />
         {schritt === 1 && (
           <>
             {!festeArt && (
@@ -299,11 +362,42 @@ export function DokumentFesthaltenBlatt({
                 </span>
                 <input id={`${basis}-datei`} type="file" className="vp-nw-unsichtbar" onChange={(e) => void datei(e.target.files)} />
               </label>
+              {dateiFehler && (
+                <p className="vp-nw-fehler" role="alert" data-testid="datei-fehler">
+                  {dateiFehler}
+                </p>
+              )}
             </>
           ) : (
             <NwTextfeld label="Text" wert={wortlaut} onWert={setWortlaut} mehrzeilig fehler={fehler.wortlaut} hoechstens={20000} testid="festhalten-text" />
           ))}
-        {schritt === 3 && (
+        {schritt === 3 && mitGeltung && (
+          <>
+            <VpPicker
+              id={`${basis}-standorte`}
+              label="Standorte"
+              options={standorte.map((x) => ({ value: x.id, label: x.name, sub: x.kurzzeichen }))}
+              values={orte}
+              onChangeMany={setStandortIds}
+              error={fehler.standorte ?? null}
+            />
+            <VpPicker
+              id={`${basis}-traeger`}
+              label="Energieträger"
+              options={E.TRAEGER.map((t) => ({ value: t, label: t }))}
+              values={traeger}
+              onChangeMany={setTraeger}
+              error={fehler.traeger ?? null}
+            />
+            <AusschlussFelder basis={basis} standorte={standorte} wert={ausschluesse} setze={setAusschluesse} />
+            {fehler.ausschluesse && (
+              <p className="vp-nw-fehler" role="alert">
+                {fehler.ausschluesse}
+              </p>
+            )}
+          </>
+        )}
+        {schritt === letzter && (
           <>
             <PruefZeilen
               zeilen={[
@@ -311,6 +405,9 @@ export function DokumentFesthaltenBlatt({
                 wo === 'verweis'
                   ? { etikett: 'Original', wert: [verweis.ablage, verweis.kennung].filter(Boolean).join(' · '), onAendern: () => setSchritt(2) }
                   : { etikett: 'Text', wert: wortlaut.length > 60 ? `${wortlaut.slice(0, 57)} …` : wortlaut, onAendern: () => setSchritt(2) },
+                ...(mitGeltung
+                  ? [{ etikett: 'Geltung', wert: N.geltungText(orte.length, traeger), onAendern: () => setSchritt(3) }]
+                  : []),
                 ...(weiter === 'freigeben' && darfFreigeben && !aendern && von ? [{ etikett: 'Entschieden', wert: `${personWort} · ${tagWort}`, onAendern: () => setAendern(true) }] : []),
               ]}
               testid="festhalten-pruefen"
@@ -327,6 +424,7 @@ export function DokumentFesthaltenBlatt({
                 testid="festhalten-weiter-wahl"
               />
             )}
+            {gesperrt && <VierAugenUnbekannt onErneut={() => setVierAugenVersuch((v) => v + 1)} />}
             {weiter === 'freigeben' && darfFreigeben && (aendern || (personen !== null && !von)) && (
               <>
                 <EntscheiderWahl
@@ -337,6 +435,7 @@ export function DokumentFesthaltenBlatt({
                   wert={von}
                   setze={setVon}
                   fehler={fehler.entschiedenVon}
+                  onAngelegt={() => setPersonenNeu((n) => n + 1)}
                 />
                 <VpDatePicker label="Wann?" value={tag || heute || null} onChange={setTag} max={heute ?? undefined} />
                 <NwTextfeld label="Warum?" wert={begruendung} onWert={setBegruendung} fehler={fehler.begruendung} hoechstens={500} testid="festhalten-begruendung" />
@@ -344,7 +443,7 @@ export function DokumentFesthaltenBlatt({
             )}
             {weiter === 'freigeben' && darfFreigeben && wo === 'wortlaut' &&
               (mitOriginal ? (
-                <OrtFelder basis={`${basis}-original`} wert={original} setze={setOriginal} mitStand={false} />
+                <OrtFelder basis={`${basis}-original`} wert={original} setze={setOriginal} mitStand={false} fehler={fehler.original} />
               ) : (
                 <button type="button" className="vp-nw-aendern vp-nw-links" onClick={() => setMitOriginal(true)} data-testid="festhalten-original">
                   Original festhalten

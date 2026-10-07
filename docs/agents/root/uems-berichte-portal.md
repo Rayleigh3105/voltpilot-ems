@@ -9,7 +9,8 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
 | Datei (`frontend/portal/…`) | Was |
 |---|---|
 | `src/berichtSeite.ts` | reine Ableitung: Listen-Karte, Reiter der Stände, Seitenkopf, Abschnitte nach Vorlage mit Nachweis je Zahl (Form `uemsWerteKarte.Karte`), Tagesverlauf, Verlauf der Stände, PDF/CSV-Ableitung, „heutigen Wert zeigen“ |
-| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Liste und Seite; `WerteKarte`, `ZeitSegment` und `MiniBarSpark` wiederverwendet, Aufklappen als natives `<details>` |
+| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Seite (Kopf, Status-Zeile, Stufen, Weitergeben, Kasten „Stand“, Entscheidung) und die Abschnitte des Abzugs; `WerteKarte` und `MiniBarSpark` wiederverwendet, Aufklappen als natives `<details>` |
+| `src/nachweisBerichte.ts`, `src/components/nachweisen/BerichteListe.tsx`, `BerichtBlaetter.tsx`, `NwBerichte.css` | Konzept Nachweisen n1, Runde 2 (§6.4): Liste mit Zählern, Status-Zeile und Stufen, Werte alt → neu, Gründe; Blätter Erstellen, Prüfen/Bestätigung, Behalten, Grund, Archivieren (C8) |
 | `src/test/berichtFixtures.ts`, `src/test/berichtAbzuege.json` | Antworten entlang der Zeitachse der Referenzdatei 1.4 (10.11. Nr. 1 · 12.11. K-2026-0007 · 16.11. Nr. 2); die Abzüge sind die Vektor-Abzüge BR-2026-0001/1 und /2, byte-gleich |
 | `src/berichtSeite.test.ts` | B1 Nr. 1/Nr. 2, B10 („heute: …“), B16 (nach den Fristen) gegen `bericht-vectors.json`; beweist auch die Gleichheit der Fixture-Kopie |
 | `e2e/berichte.spec.ts` | Bühne `startansicht`: `ansicht=berichte`, `ansicht=bericht&br=BR-2026-0001`, `heute=b10`, `tagesverlauf=gefuellt`; vier Uhren (13.11., 20.11., 03.12.2026, 02.11.2036) |
@@ -39,14 +40,16 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
   Leistungsvergleich trägt seine Knöpfe weiter selbst. Offen: „zuletzt abgerufen …“ und die Spalte „letzter Abruf“.
 - **Eine Uhr.** Liste und Seite tragen `abruf` (Augenblick der Route, `BerichtService.jetzt()`); „Zeitraum läuft“, die
   Freigabe-Vorschau und die Zeitraum-Wahl beim Anlegen messen daran, nie an `Date.now()`.
-- **Name der Person, nicht der Anmeldename.** `ProtokollAkteur` nimmt den Claim `name` vor `preferred_username`;
+- **Name der Person, nicht der Anmeldename.** `ProtokollAkteur` nimmt den Spiegel `benutzer.anzeigename` des eigenen
+  Subjects (über `ZugriffContext.Zugriff.anzeigename`), sonst `preferred_username` - nie den Claim `name`: den ändert jedes
+  Konto über die Kontoseite selbst (Review r1, P0-1; im Realm sind `firstName`/`lastName` darum nur für admin editierbar);
   `BerichtRepository` (und `ManagementbewertungVerzeichnis`) lesen `angelegt_von_name`, `freigeber_name` und
   `verworfen_von_name` über `benutzer.anzeigename` - ein freigegebener Stand wird nie geändert (E13 S1), der Bestand
   mit „ines“ zeigt so trotzdem „Ines Kaltenbach“. Das Verzeichnis löst Kriterien, Einstufungen, Messbedarfe,
   Kennzahl- und Bezugsbasis-Fassungen über `PersonenNamen` auf (eigene Komponente: `VerzeichnisBestand` darf laut
   `EnergiemanagementVerzeichnisSchnittstelleVertragTest` keine eigene Abfrage tragen). Test-Fixtures, die
-  `preferred_username` = voller Name setzen, verdecken den Unterschied; Tests mit echtem Keycloak sehen den Namen aus
-  dem Realm („Platform Admin“, „Demo Operator“, „Nordwind Operator“).
+  `preferred_username` = voller Name setzen, verdecken den Unterschied; Tests mit echtem Keycloak sehen ohne Spiegelzeile
+  den Anmeldenamen („admin“, „demo“), nie den Realm-Namen („Platform Admin“).
 - **Rechte-Satz nur, wo etwas zu tun wäre.** Am freigegebenen Stand steht nichts; am Entwurf ohne Freigabe-Recht
   „Freigeben: <Kundenadministratoren>“ mit i-Knopf (`seitenHebel().ohneRecht`, `freigebenErklaerung`); die Liste trägt
   keinen Satz im Kopf.
@@ -69,3 +72,15 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
   Banner „Revision nötig“ — `uems-bericht-dialoge.md`. Die Liste zeigt die 403 der Unterstützung weiter mit dem Satz der
   Route (Rechte-Ableitung, nicht §5.8), ohne „Erneut versuchen“ und ohne „Bericht anlegen“.
 - **`.vp-br-hebel` ist der Knopf „heutigen Wert zeigen“** (IP-13) — die Hebel-Leisten von IP-14 heißen `.vp-br-aktionen`.
+- **Seit Konzept Nachweisen n1, Runde 2 (§6.4)** ist die Welt eine Fläche von Nachweisen: Liste mit „● n gelten“ und
+  „● n wartet auf Sie“, die Entscheidung zuerst (Datumsblock „seit“ aus `anstoss_seit`), sonst „frei“ (`freigegeben_am`)
+  und „PDF“; Bewertung und Managementbewertung öffnen ihre Seite (Entscheid 15). Die Seite zeigt die Abschnitte des Abzugs
+  am Handy hinter „Alle Werte“, am Rechner links als Werte-Zeilen mit „Ganzer Bericht“ (Text-Grenzen §0.4). Nach einer
+  Korrektur EINE Entscheidung für alle offenen Anstöße (Entscheid 16): Werte alt → neu nur mit Zahl, „Ja, Stand n+1
+  freigeben“ (Prüfen → Bestätigung mit PDF) oder „Nein, Stand n behalten“ (ein Grund, `POST …/anstoesse/verwerfen` in
+  EINER Transaktion; 409 lädt die Seite neu). Die Werte der Entscheidung rechnet `N.entscheidWerte` aus genau dem Entwurf
+  und dem gültigen Stand, die freigegeben bzw. gezeigt werden - kein zweiter Abruf des Vergleichs. `darf()` immer
+  mit der Vorlage aufrufen (Bewertung und Managementbewertung haben eigene Kennungen). Die Bedienelemente dieser Flächen
+  stehen in `kundenBestand-vor-ip12.json` unter `umbauten` (`migration.test.ts`): bei jeder Änderung neu aufnehmen.
+- Archivieren (Konzept Nachweisen n1, C8): im Menü der Seite mit dem Recht wie Freigeben; die Liste lädt `?archiviert=true`
+  und zeigt die archivierten als eine Zeile „Archiviert · n“ (nie gezählt). Zurückholen gibt es nicht (V4).

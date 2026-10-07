@@ -49,6 +49,8 @@ const bericht = (kennung: string, vorlage: string, ueberpruefung: BerichtUeberpr
   stand_text: 'Berichtsstand Nr. 2',
   neueste_nr: ueberpruefung ? ueberpruefung.stand_nr : null,
   entwurf_datenstand: null,
+  freigegeben_am: null,
+  anstoss_seit: null,
   wiedervorlage_monate: vorlage === 'energetische_bewertung' ? 12 : null,
   ueberpruefung,
 });

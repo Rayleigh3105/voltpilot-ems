@@ -103,6 +103,7 @@ import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE
 import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
+import * as NB from './nachweisBerichte';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
 import * as BD from './berichtDialoge';
 import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
@@ -1809,8 +1810,12 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
     'berichtDialoge.ts',
     'components/BerichtAnlegenDialog.tsx',
     'components/BerichtFreigebenDialog.tsx',
+    // Der Vergleich bleibt der Dialog der energetischen Bewertung (BewertungStand); die Berichte selbst vergleichen in der Karte.
     'components/BerichtVergleichDialog.tsx',
-    'components/AnstossVerwerfenDialog.tsx',
+    // Konzept Nachweisen n1, Runde 2 (§6.4): Liste, Seite und Blätter der Berichte in Nachweisen.
+    'nachweisBerichte.ts',
+    'components/nachweisen/BerichteListe.tsx',
+    'components/nachweisen/BerichtBlaetter.tsx',
   ];
   const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
   const da = (t: string | null | undefined): t is string => typeof t === 'string';
@@ -1862,6 +1867,20 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
         }
       }
       for (const v of BS.verlaufDerStaende(detail)) out.push(v.titel, v.zeile, ...[v.anlass, v.ersetzt].filter(da), ...v.anstoesse);
+      // Konzept Nachweisen n1 (PR 3): was die Liste, die Seite und die Blätter der Berichte heute zeigen (Review r1, P3-9:
+      // geprüft wurden sonst nur die alten Ausgaben von `berichtSeite.ts`).
+      const bild = NB.berichteBild([berichtAm(jetzt)]);
+      for (const z of [...bild.wartet, ...bild.gelten, ...bild.abgeloest, ...bild.archiviert]) out.push(z.titel, z.stand, ...[z.unter, z.verb].filter(da));
+      const status = NB.seitenStatus(detail, null);
+      out.push(status.text, ...[status.sub].filter(da));
+      out.push(...NB.stufen(detail).flatMap((x) => [x.titel, x.datum].filter(da)));
+      out.push(...NB.korrekturZeilen(detail.anstoesse, 'Europe/Berlin').flatMap((z) => [z.etikett, z.wert]));
+      const grund = NB.aenderungsGruende(NB.offeneAnstoesse(detail), entwurfAm(jetzt).abzug as Record<string, unknown>, 'Europe/Berlin');
+      if (grund) out.push(grund.kurz, grund.titel, ...grund.zeilen.flatMap((z) => [z.etikett, z.wert]));
+      for (const s of detail.staende) {
+        out.push(NB.jaAntwort(s.nr + 1), NB.neinAntwort(s.nr));
+        for (const w of NB.entscheidWerte(standAm(s.nr, jetzt), entwurfAm(jetzt))) out.push(w.name, ...[w.alt, w.neu, w.einheit].filter(da));
+      }
     }
     const spaet = Date.parse('2036-11-02T10:00:00+01:00');
     try {
@@ -1886,6 +1905,9 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
   it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
     const alle = laufzeit();
     expect(alle.length).toBeGreaterThan(300);
+    // Die Ausgaben von Nachweisen (PR 3) stehen mit darin.
+    expect(alle).toContain('Daten geändert');
+    expect(alle).toContain('Nein, Stand 1 behalten');
     expect(alle).toContain('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
     expect(alle).toContain('heute: Montage Linie M1 (Halle 2)');
@@ -1966,6 +1988,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
+  'components/nachweisen/BerichtBlaetter.tsx', // neu: „Bericht erstellen“ wählt Kennzahlen ab bzw. die eine Kennzahl des Leistungsvergleichs (Nachweisen n1, §6.4)
   'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
@@ -1977,7 +2000,6 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
-  'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
   'portfolioCockpit.ts', // alt
   'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
@@ -3997,10 +4019,63 @@ describe('Konzept Messen m1 · „Woher die Werte kommen“: Liste und Dialog sp
     expect(liste.NOCH_KEINE_QUELLE).toBe('Noch keine Quelle · zuordnen');
   });
 
+  it('die Seite einer Messstelle spricht dieselben Glossarwörter: Karte „Zuordnung“, „Im Stromnetz“, „Nächste Ablesung“, ein Schritt', async () => {
+    const g = await import('./glossar');
+    const seite = await import('./messstelleSeite');
+    const zuordnung = await import('./messstelleZuordnung');
+    expect(seite.ZUORDNUNG).toBe(g.UEMS_ZUORDNUNG);
+    expect(seite.NAECHSTE_ABLESUNG).toBe(g.UEMS_NAECHSTE_ABLESUNG);
+    expect(seite.ABLESUNG_EINTRAGEN).toBe(g.UEMS_ABLESUNG_EINTRAGEN);
+    expect(zuordnung.ZEILE_ETIKETT).toEqual({ ort: 'Ort', stellung: g.UEMS_IM_STROMNETZ, prozesse: g.UEMS_PROZESS, verteilung: 'Kostenstellen' });
+    // Die Karte heißt nicht mehr „Ort · Elektrisch · Organisation“, und „Ändern ab …“ ist ein „Ändern“.
+    const texte = visibleTexts(readFileSync(join(SRC, 'pages/MessstelleSeite.tsx'), 'utf8')).filter(isKundentext);
+    expect(texte.filter((t) => /^(Elektrisch|Organisation)$|Ändern ab …|Keine Datenquelle/.test(t))).toEqual([]);
+  });
+
+  it('die Ablese-Runde je Gebäude spricht das Glossarwort: „Ablesen ›“ in der Liste, „Halle 1 ablesen“ als Titel', async () => {
+    const g = await import('./glossar');
+    const runde = await import('./ableseRunde');
+    expect(runde.ABLESEN).toBe(g.UEMS_ABLESEN);
+    expect(g.UEMS_ABLESEN).toBe('Ablesen');
+  });
+
   it('die Liste zeigt keine Datenmodell-Wörter mehr: kein „Quelle (führend)“, kein „Keine Datenquelle“, kein „Summenwert anlegen“', () => {
     for (const datei of ['pages/MessstellenPage.tsx', 'messstellenListe.ts']) {
       const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
       expect(texte.filter((t) => /Quelle \(führend\)|Keine Datenquelle|Summenwert anlegen|Elektrische Stellung/.test(t)), datei).toEqual([]);
+    }
+  });
+});
+
+describe('Konzept Messen m1 · Kostenstellen, Prozesse, Bezugsgrößen: „Antwort zuerst“ (§8.2)', () => {
+  const DATEIEN = [
+    'kostenstellenUebersicht.ts',
+    'pages/KostenstellenSection.tsx',
+    'bezugsgroessenUebersicht.ts',
+    'pages/BezugsgroessenPage.tsx',
+    'pages/BezugsgroesseSeite.tsx',
+  ];
+
+  it('kein Satz über das, was es nicht gibt, kein Datenmodell-Wort, keine Zeitzonen-Kennung im Satz', () => {
+    for (const datei of DATEIEN) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.length, datei).toBeGreaterThan(3);
+      expect(
+        texte.filter((t) => /nicht summierbar|Keine Prozess-Summe|Art nicht angegeben|Nicht verteilt|Datenquelle|kein_tageswert|Europe\/[A-Z]/.test(t)),
+        datei,
+      ).toEqual([]);
+    }
+  });
+
+  it('die Fachwörter erklärt ein Satz unter dem Titel und der Aufklapper „Was ist …?“ (Kostenstelle, Prozess, Bezugsgröße)', async () => {
+    const { BEGRIFFE } = await import('./begriffe');
+    const g = await import('./glossar');
+    expect(BEGRIFFE.kostenstelle).toMatchObject({ wort: g.UEMS_KOSTENSTELLE, frage: 'Was ist eine Kostenstelle?' });
+    expect(BEGRIFFE.prozess).toMatchObject({ wort: g.UEMS_PROZESS, frage: 'Was ist ein Prozess?' });
+    expect(BEGRIFFE.bezugsgroesse.frage).toBe('Was ist eine Bezugsgröße?');
+    for (const b of [BEGRIFFE.kostenstelle, BEGRIFFE.prozess, BEGRIFFE.bezugsgroesse]) {
+      expect(b.klartext.length).toBeGreaterThan(20);
+      expect(b.abgrenzung).toMatch(/^(Nicht dasselbe wie|Erst mit ihr)/);
     }
   });
 });

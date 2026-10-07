@@ -550,12 +550,12 @@ export function energiemanagementBuehne(
     },
     energiemanagementTeilVermerkAnlegen: async (b: EnergiemanagementTeilVermerkAnlegen) => {
       merke('POST /api/v1/energiemanagement/teil-vermerke', b);
-      if (!VOKABULARE.teil.includes(b.teil)) throw new ApiError(400, 'Teil unbekannt', { code: 'anfrage', message: 'Diesen Teil gibt es nicht.', feld: 'teil' });
+      if (!VOKABULARE.teil.includes(b.teil)) throw new ApiError(400, 'Anfrage ungültig', { code: 'anfrage_ungueltig', message: 'Die Anfrage ist ungültig.', feld: 'teil' });
       if (vermerke.some((v) => v.teil === b.teil && !v.aufgehoben)) {
-        throw new ApiError(409, 'Vermerk besteht', { code: 'vermerk_besteht', message: 'Für diesen Teil ist schon festgehalten, dass er zurzeit nicht zutrifft.' });
+        throw new ApiError(409, 'Vermerk besteht', { code: 'vermerk_besteht', message: 'Für diesen Teil gilt schon ein Vermerk. Heben Sie ihn zuerst auf.', teil: b.teil });
       }
       const p = personen.find((x) => x.id === b.entschieden_von);
-      if (!p) throw new ApiError(404, 'Person unbekannt', { code: 'person_fehlt', message: 'Diese Person gibt es nicht.' });
+      if (!p) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Diese Person gibt es nicht.' });
       const v: EnergiemanagementTeilVermerk = {
         id: `a1b00000-0000-4000-8000-${String(vermerke.length + 1).padStart(12, '0')}`, teil: b.teil, teil_wort: WOERTER.teil[b.teil], satz: b.satz,
         entschieden_von: kurz(p), entschieden_am: b.entschieden_am ?? heute(), eingetragen: eingetragen(ich.name, jetzt()), aufgehoben: null,
@@ -566,8 +566,8 @@ export function energiemanagementBuehne(
     energiemanagementTeilVermerkAufheben: async (id: string) => {
       merke(`POST /api/v1/energiemanagement/teil-vermerke/${id}/aufheben`, null);
       const v = vermerke.find((x) => x.id === id);
-      if (!v) throw new ApiError(404, 'Vermerk unbekannt', { code: 'vermerk_unbekannt', message: 'Diesen Vermerk gibt es nicht.' });
-      if (v.aufgehoben) throw new ApiError(409, 'aufgehoben', { code: 'vermerk_aufgehoben', message: 'Der Vermerk ist schon aufgehoben.' });
+      if (!v) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Diesen Vermerk gibt es nicht.' });
+      if (v.aufgehoben) throw new ApiError(409, 'aufgehoben', { code: 'vermerk_aufgehoben', message: 'Dieser Vermerk ist bereits aufgehoben.', aufgehoben_am: v.aufgehoben.am });
       v.aufgehoben = { akteur: eingetragen(ich.name, jetzt()).akteur, am: jetzt() };
       return structuredClone(v);
     },
@@ -636,6 +636,16 @@ export function energiemanagementBuehne(
     energiemanagementFassungEntwerfen: async (id: string, b: EnergiemanagementFassungEntwerfen) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen`, b);
       const d = finde(id);
+      // Wie `EnergiemanagementDokumentService.bereich`: nur der Anwendungsbereich trägt Standorte und Träger - und er
+      // braucht beide schon im Entwurf (Review r1, P2-2).
+      const ab = b.anwendungsbereich;
+      if (d.art === 'anwendungsbereich' && (!ab || !ab.standort_ids.length || !ab.traeger.length)) {
+        const message = 'Bitte nennen Sie die Standorte und Energieträger des Anwendungsbereichs.';
+        throw new ApiError(422, message, { code: 'anwendungsbereich_fehlt', message, feld: 'anwendungsbereich' });
+      }
+      if (d.art !== 'anwendungsbereich' && ab) {
+        throw new ApiError(400, 'Anfrage ungültig', { code: 'anfrage_ungueltig', message: 'Standorte und Energieträger trägt nur der Anwendungsbereich.', feld: 'anwendungsbereich' });
+      }
       entwerfen(d, b);
       return abgerufen(d);
     },
@@ -681,9 +691,14 @@ export function energiemanagementBuehne(
     energiemanagementBekanntmachen: async (id: string, b: EnergiemanagementBekanntmachen) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, b);
       const d = finde(id);
-      const ik = personen.find((x) => x.name === ich.name) ?? personen[1];
+      // Wie der Dienst: die genannte Person, sonst die Person des eigenen Kontos, sonst 422 `person_fehlt`.
+      const wer = b.person_id ? personen.find((x) => x.id === b.person_id) : personen.find((x) => x.konto?.sub === ich.kennung);
+      if (!wer) {
+        const message = 'Bitte nennen Sie, wer das Dokument bekannt gemacht hat.';
+        throw new ApiError(422, message, { code: 'person_fehlt', message, feld: 'person_id' });
+      }
       d.eintraege.push({
-        id: d.eintraege.length + 200, art: 'bekannt_gemacht', fassung: d.gueltige_fassung, am: b.am ?? heute(), person: kurz(ik), entschieden_von: null,
+        id: d.eintraege.length + 200, art: 'bekannt_gemacht', fassung: d.gueltige_fassung, am: b.am ?? heute(), person: kurz(wer), entschieden_von: null,
         kreis: b.kreis, weg: b.weg, weg_wortlaut: b.weg_wortlaut ?? null, begruendung: null, beschluss_kennung: null, kommentar: null, satz: null,
         eingetragen: eingetragen(ich.name, jetzt()),
       });

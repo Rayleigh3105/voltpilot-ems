@@ -471,7 +471,7 @@ public class BerichtAbzugBildung {
             // Die Kostenstellen-Sicht (AP-10 IP-11) auf DER Verbindung des Aufrufers, Mandant ausdrücklich; die Warnung
             // vor doppelter Zählung liest sie hier nicht (kein BerechnetePeriodenLauf).
             KostenstelleEnergieService sicht = new KostenstelleEnergieService(new KostenstelleProzessRepository(j),
-                    new KostenstelleEnergieRepository(j), messstellen, lesemodell, null);
+                    new KostenstelleEnergieRepository(j), messstellen, lesemodell, null, new AblesungRepository(j));
             kostenstellen = BerichtUnternehmen.kostenstellen(j, json, tenant, sicht, z, zone, jetzt, tage.keySet(),
                     quellen);
         }

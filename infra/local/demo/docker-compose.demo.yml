@@ -150,6 +150,38 @@ services:
       EDGE_SIM_NOISE: "0.05"
       EDGE_SIM_SEED: "1101"
 
+  # Die Mess-Seite der Box Halle 1 (Messen-Bau m2, Captain-Punkt „Geräte vs. Eintragung“): neben der
+  # v1-Box oben liest DIESELBE Box (Gerät …0701) den PV-Ertragszähler des Hybrid-Wechselrichters
+  # und spricht die Mess-Verträge v2 (`measurement-config` lernen und quittieren,
+  # `measurement-samples` senden). Daraus liest MS-03 „PV-Erzeugung Dach Halle 1“ automatisch
+  # (angelegt vom Rundgang über die Routen). Eigenes Image, eigener Client - die v1-Box bleibt,
+  # wie sie ist.
+  edge-mess-ahrenberg-halle1:
+    build:
+      context: ./tools/edge-simulator
+      dockerfile: Dockerfile.messbox
+    container_name: voltpilot-edge-mess-ahrenberg-halle1
+    profiles: ["demo"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+    mem_limit: 64m
+    environment:
+      VP_MESSBOX_BROKER: emqx
+      VP_MESSBOX_PORT: "1883"
+      VP_MESSBOX_CLIENT_ID: "edge-mess-ahrenberg-halle1"
+      VP_MESSBOX_TENANT: "20000000-0000-0000-0000-000000000001"
+      VP_MESSBOX_SITE: "20000000-0000-0000-0000-000000000501"
+      VP_MESSBOX_DEVICE: "20000000-0000-0000-0000-000000000701"
+      VP_MESSBOX_PV_PEAK_KW: "200"     # wie EDGE_SIM_PV_PEAK_KW der v1-Box: 240 kWp, AC-seitig wirksam
+    healthcheck:
+      test: ["CMD", "python", "uems_messbox.py", "--probe"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
   edge-sim-ahrenberg-halle2:
     build: ./tools/edge-simulator
     container_name: voltpilot-edge-sim-ahrenberg-halle2
