@@ -150,7 +150,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
-import { mitAuswertungAus, referenzListe } from '../src/test/kennzahlListeFixtures';
+import { leitkennzahlWieDerServer, mitAuswertungAus, referenzListe } from '../src/test/kennzahlListeFixtures';
 import {
   anlegenAm,
   detailAm,
@@ -854,13 +854,12 @@ Object.assign(api, {
     const sichtbar = welt.filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
       || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id)));
     const heute = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
-    return {
-      kennzahlen: mit === 'auswertung'
-        // R-A7: eine Kennzahl, deren Werte die Route ablehnt, trägt auch keine Auswertung (wie der Server).
-        ? sichtbar.map((k) => (k.auswertung || k.id === kzAusserhalb ? k : mitAuswertungAus(k, heute, (id, periode, von, bis) =>
-          istAngelegt(id) ? ohneWerte(id, periode, von, bis) : kennzahlWerteAntwort(id, periode, von, bis, Date.now()))))
-        : sichtbar.map(({ auswertung: _ohne, ...k }) => k),
-    };
+    if (mit !== 'auswertung') return { kennzahlen: sichtbar.map(({ auswertung: _ohne, ...k }) => k) };
+    // R-A7: eine Kennzahl, deren Werte die Route ablehnt, trägt auch keine Auswertung (wie der Server).
+    const kennzahlen = sichtbar.map((k) => (k.auswertung || k.id === kzAusserhalb ? k : mitAuswertungAus(k, heute, (id, periode, von, bis) =>
+      istAngelegt(id) ? ohneWerte(id, periode, von, bis) : kennzahlWerteAntwort(id, periode, von, bis, Date.now()))));
+    // Die Leitkennzahl nennt der Server (§10.8); die Bühne nennt sie nach seiner Regel.
+    return { kennzahlen, leitkennzahl: leitkennzahlWieDerServer(kennzahlen) };
   },
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
   // AP-17 IP-20: der Vergleich-Leser (IP-19) — `&vergleich=r2|maerz|stand`; ohne Angabe die Kennzahl ohne Bezugsbasis (R10).

@@ -150,10 +150,21 @@ public final class KennzahlDto {
     /** Nur Anzahl und Kundensatz, keine Identität einer verborgenen Kennzahl. */
     public record ZugriffHinweis(int anzahl, String text) {}
 
-    /** {@code GET /api/v1/kennzahlen}: archivierte eingeschlossen, nach Kennzeichen (ein Objekt, additiv erweiterbar). */
+    /**
+     * {@code GET /api/v1/kennzahlen}: archivierte eingeschlossen, nach Kennzeichen (ein Objekt, additiv erweiterbar).
+     *
+     * @param leitkennzahl nur mit {@code mit=auswertung}: die Kennzahl, die die Leitkachel der Übersicht zeigt (Konzept
+     *     Auswerten a1 §10.8, dieselbe Wahl wie {@code GET /api/v1/portfolio/kpis}); fehlt ohne eine
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(List<Kennzahl> kennzahlen,
-            @JsonInclude(JsonInclude.Include.NON_NULL) ZugriffHinweis ausserhalbZugriff) {}
+            @JsonInclude(JsonInclude.Include.NON_NULL) ZugriffHinweis ausserhalbZugriff,
+            @JsonInclude(JsonInclude.Include.NON_NULL) UUID leitkennzahl) {
+
+        public Liste(List<Kennzahl> kennzahlen, ZugriffHinweis ausserhalbZugriff) {
+            this(kennzahlen, ausserhalbZugriff, null);
+        }
+    }
 
     // ============================================================================ Auswertung (Konzept Auswerten a1, PR1)
 

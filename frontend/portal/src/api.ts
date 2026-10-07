@@ -11015,9 +11015,12 @@ export const api = {
   /** Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen (AP-11 IP-5); Ablehnungen tragen `KennzahlFehlerCode`. */
   /** Mit `'auswertung'` trägt jede auswertbare Kennzahl ihre `auswertung` (Konzept Auswerten a1, PR1). */
   kennzahlen: (mit?: 'auswertung') =>
-    request<{ kennzahlen: Kennzahl[]; ausserhalb_zugriff?: { anzahl: number; text: string } }>(
-      `/api/v1/kennzahlen${mit ? `?mit=${mit}` : ''}`,
-    ),
+    request<{
+      kennzahlen: Kennzahl[];
+      ausserhalb_zugriff?: { anzahl: number; text: string };
+      /** Nur mit `mit=auswertung`: die Kennzahl der Leitkachel der Übersicht (§10.8); fehlt ohne eine. */
+      leitkennzahl?: string;
+    }>(`/api/v1/kennzahlen${mit ? `?mit=${mit}` : ''}`),
   kennzahl: (id: string) => request<Kennzahl>(`/api/v1/kennzahlen/${id}`),
   /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an. */
   kennzahlAnlegen: (body: KennzahlAnfrage) =>

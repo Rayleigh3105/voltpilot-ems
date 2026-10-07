@@ -67,15 +67,23 @@ export function MiniAbweichungBild({ mini, testId }: { mini: MiniAbweichung; tes
 }
 
 /** Der Verlauf einer Kennzahl zum Beobachten: eine Linie in der Rolle Verbrauch, der jüngste Punkt markiert. */
-export function MiniLinieBild({ linie }: { linie: MiniLinie }) {
+export function MiniLinieBild({ linie, text }: { linie: MiniLinie; text: string }) {
   return (
-    <svg className="vp-kzl-mini-bild" viewBox={`0 0 ${linie.breite} ${linie.hoehe}`} width={linie.breite} height={linie.hoehe} aria-hidden="true">
-      {linie.strecken.map((p, i) => (
-        <polyline key={i} className="vp-kzl-linie" points={p} />
-      ))}
-      {linie.letzter && <circle className="vp-kzl-linie-punkt" cx={linie.letzter.x} cy={linie.letzter.y} r="3.2" />}
-    </svg>
+    <>
+      <svg className="vp-kzl-mini-bild" viewBox={`0 0 ${linie.breite} ${linie.hoehe}`} width={linie.breite} height={linie.hoehe} aria-hidden="true">
+        {linie.strecken.map((p, i) => (
+          <polyline key={i} className="vp-kzl-linie" points={p} />
+        ))}
+        {linie.letzter && <circle className="vp-kzl-linie-punkt" cx={linie.letzter.x} cy={linie.letzter.y} r="3.2" />}
+      </svg>
+      <span className="vp-sr-only">{text}</span>
+    </>
   );
+}
+
+/** Die Spaltenüberschrift für den Vorleser: die Kopfzeile ist nur Bild, jede Reihe ist ein Knopf (§6.14). */
+function SpaltenWort({ wort }: { wort: string }) {
+  return <span className="vp-sr-only">{wort}: </span>;
 }
 
 function Marken({ k }: { k: KarteMitBasis }) {
@@ -192,12 +200,14 @@ export function TabelleMitBasis({ karten, onOeffnen }: { karten: readonly KarteM
                 {k.wertMonat && <span>{k.wertMonat}</span>}
               </span>
               <span className="vp-kzl-z-urteil">
+                <SpaltenWort wort={SPALTEN_MIT[2]} />
                 {k.urteil ? <Marke art={k.urteil.ton}>{k.urteil.wort}</Marke> : k.ohneUrteil && <Marke art="ohne">{k.ohneUrteil}</Marke>}
                 {(k.abweichungKurz || k.vorlaeufig) && (
                   <small>{[k.abweichungKurz, k.vorlaeufig ? BEZUGSBASIS_VORLAEUFIG : null].filter(Boolean).join(TRENNER)}</small>
                 )}
               </span>
               <span className="vp-kzl-z-ziel">
+                <SpaltenWort wort={SPALTEN_MIT[3]} />
                 {k.ziel ? (
                   <>
                     {k.ziel.jahre}: {k.ziel.wert}
@@ -272,15 +282,17 @@ export function TabelleOhneBasis({
                 {r.wertMonat && <span>{r.wertMonat}</span>}
               </span>
               <span className="vp-kzl-z-urteil">
+                <SpaltenWort wort={SPALTEN_OHNE[2]} />
                 {r.vorjahr ? <Marke art="neutral">{r.vorjahr}</Marke> : <Marke art="ohne">{OHNE_VORJAHR}</Marke>}
                 <small>{OHNE_URTEIL}</small>
               </span>
               <span className="vp-kzl-z-ziel">
+                <SpaltenWort wort={SPALTEN_OHNE[3]} />
                 {r.bezugsbasis ?? KEINE_BEZUGSBASIS}
                 {!r.bezugsbasis && darfBasisFestlegen && <small>{BEZUGSBASIS_FESTLEGEN}</small>}
               </span>
               <span className="vp-kzl-z-mini">
-                <MiniLinieBild linie={r.linie} />
+                <MiniLinieBild linie={r.linie} text={r.linieText} />
               </span>
               <span className="vp-kzl-pfeil" aria-hidden="true">
                 <Icon name="chevron-right" size={18} />

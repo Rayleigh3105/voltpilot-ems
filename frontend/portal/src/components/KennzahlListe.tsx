@@ -107,8 +107,7 @@ export function useListenWerte(kennzahlen: readonly Kennzahl[] | null, zone: str
   return werte;
 }
 
-/** `zusatz`: AP-17 IP-9 — das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (nur im Register). */
-export function KennzahlKarte({ karte, onOeffnen, zusatz = null }: { karte: ListenKarte; onOeffnen: () => void; zusatz?: string | null }) {
+export function KennzahlKarte({ karte, onOeffnen }: { karte: ListenKarte; onOeffnen: () => void }) {
   return (
     <button type="button" className="vp-kz-karte" data-testid="kennzahl-karte" onClick={onOeffnen}>
       <span className="vp-kz-karte-kopf">
@@ -119,11 +118,6 @@ export function KennzahlKarte({ karte, onOeffnen, zusatz = null }: { karte: List
         </span>
       </span>
       <span className="vp-kz-name">{karte.name}</span>
-      {zusatz && (
-        <span className="vp-kz-elk" data-testid="kennzahl-energieleistung">
-          {zusatz}
-        </span>
-      )}
       {karte.hinweis ? (
         <span className="vp-kz-hinweis" data-testid="kennzahl-hinweis">
           {karte.hinweis}

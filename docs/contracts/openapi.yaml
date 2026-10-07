@@ -31596,6 +31596,10 @@ components:
         kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
         ausserhalb_zugriff:
           $ref: "#/components/schemas/KennzahlZugriffHinweis"
+        leitkennzahl:
+          type: string
+          format: uuid
+          description: "Nur mit `mit=auswertung`: die Kennzahl, die die Leitkachel der Übersicht zeigt (`GET /api/v1/portfolio/kpis` `leit`) - dieselbe Wahl über dieselbe Auswertung (Konzept Auswerten a1 §10.8): unter den Kennzahlen mit Auswertung und offenem Energieziel die mit dem kleinsten Kennzeichen, die einen Monatswert trägt. Fehlt ohne eine."
     KennzahlZugriffHinweis:
       type: object
       description: "Nur die Anzahl unsichtbarer standortübergreifender Kennzahlen; niemals Kennung, Name, Formel oder Wert. Fehlt bei voller Sicht (AP-03 IP-11, R-A1 und R-A6)."
