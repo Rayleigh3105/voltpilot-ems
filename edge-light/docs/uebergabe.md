@@ -57,13 +57,13 @@ Ein **anderer GL.iNet-Router** nutzt ebenfalls 192.168.1.1 (WLAN „VoltPilot En
 - Einige Anlagen sind heute über **Home-Assistant-VMs auf eigenen Servern** angebunden. Beim Kunden steht ein **GL.iNet Mango (GL-MT300N-V2)**, der sich per **WireGuard** mit dem eigenen VPN verbindet und Zugriff auf die Geräte im Kundennetz gibt: **Deye-Datenlogger** und **go-e-Wallbox**.
 - Gewünscht: **Anlagenmonitoring und PV-Überschussladen mit der go-e** über das VoltPilot-Portal, mit dem Mango als Edge-Gerät.
 - Problem: Die Docker-Box (Go-Core + Node-RED + Updater, nur amd64/arm64) läuft nicht auf dem Mango (MIPS, 128 MB RAM, 16 MB Flash).
-- **Entscheidung:** Edge Light – die Box als ein Programm ohne Docker und Node-RED. **Ziel ist volle Gleichwertigkeit**, danach soll auch die Docker-Box darauf umgestellt werden ([paritaet.md](paritaet.md)).
+- **Entscheidung:** Edge Light – die Box als ein Programm ohne Docker und Node-RED. Seit 07.10.2026 (Produktentscheid) bestehen Edge Light und die Docker-Box **vorerst nebeneinander**, je nach Anwendungsfall: Edge Light für kleine Hardware und einfachere Anlagen, die Docker-Box für komplexere Anforderungen vor Ort. Die [Paritätsliste](paritaet.md) bleibt der Maßstab für den Funktionsumfang; ob die Docker-Box je umgestellt wird, ist offen.
 
 ## Entscheidungen
 
 | Entscheidung | Begründung |
 |---|---|
-| Edge Light ist der **Nachfolger** der Docker-Box, kein Sonderbau | Eine dauerhaft zweite Variante wäre doppelte Pflege |
+| Edge Light und die Docker-Box bestehen **vorerst nebeneinander** (07.10.2026; bis dahin: Edge Light als Nachfolger) | Je nach Anwendungsfall: kleine Hardware und einfachere Anlagen gegenüber komplexeren Anforderungen vor Ort. Edge Light bleibt der unveränderte Core plus Go-Schicht 1, also kein Sonderbau mit eigener Logik |
 | **Ein Programm = unveränderter Core + Go-Schicht 1** | Alle Schutzregeln und Verträge des Cores gelten weiter |
 | Die Go-Schicht 1 spricht über den **lokalen Bus** (dieselben Topics wie Node-RED) | Funktionen können einzeln von Node-RED nach Go umziehen ([architektur.md](architektur.md)) |
 | Der Go-Code liegt in **`edge-app/core`**, nicht in `edge-light/` | Go erlaubt `internal/`-Pakete nur innerhalb des Moduls; eine Kopie wäre eine zweite Wahrheit |

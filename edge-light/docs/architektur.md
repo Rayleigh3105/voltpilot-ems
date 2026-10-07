@@ -34,7 +34,7 @@ Daraus folgt alles Weitere:
 
 - **Der Core bleibt unverändert.** Jede Schutzregel, jeder Vertrag, jede Prüfung gilt auf Edge Light genauso. Die einzige Änderung am Core war, den Programmstart in `internal/edgemain` auszulagern, damit beide Programme denselben Rahmen nutzen.
 - **Migration Funktion für Funktion.** Jede Node-RED-Funktion bekommt einen Go-Zwilling hinter demselben Topic. Was portiert ist, steht in der [Paritätsliste](paritaet.md).
-- **Die Docker-Box kann später dieselben Go-Bausteine nutzen.** Läuft eine Funktion in Go zuverlässig, kann sie auch auf der Docker-Box Node-RED ablösen. Ist die Liste vollständig, entfällt Node-RED.
+- **Die Docker-Box kann später dieselben Go-Bausteine nutzen.** Läuft eine Funktion in Go zuverlässig, kann sie auch auf der Docker-Box Node-RED ablösen. Ob Node-RED dort ganz entfällt, ist offen: beide Edge-Arten bestehen vorerst nebeneinander ([Paritätsliste](paritaet.md)).
 
 Die Go-Schicht 1 verbindet sich über MQTT auf `127.0.0.1` mit dem Bus, nicht über einen internen Funktionsaufruf. Damit kommen retained Nachrichten exakt so an wie bei Node-RED, und die Schicht könnte auch als eigener Prozess laufen.
 
