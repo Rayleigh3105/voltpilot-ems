@@ -1,3 +1,4 @@
+import { merkeAugenblick, routenHeute } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -19,10 +20,11 @@ import { ManagementbewertungAnlegenDialog } from './ManagementbewertungDialoge';
  */
 export function EnergiemanagementManagementbewertung({
   onOeffnen,
-  heute = () => new Date().toISOString().slice(0, 10),
+  heute = routenHeute,
   saetze = false,
 }: {
   onOeffnen: (kennung: string) => void;
+  /** Nur für Tests; sonst der Tag der Route (Befund 3: das Jahr einer neuen Managementbewertung nie aus dem Browser). */
   heute?: () => string;
   saetze?: boolean;
 }) {
@@ -33,7 +35,10 @@ export function EnergiemanagementManagementbewertung({
   useEffect(() => {
     let aktiv = true;
     api.berichte().then(
-      (r) => aktiv && setListe(M.managementbewertungen(r.berichte)),
+      (r) => {
+        merkeAugenblick(r.abruf);
+        if (aktiv) setListe(M.managementbewertungen(r.berichte));
+      },
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
     );
     api.energiemanagementWiedervorlage().then(

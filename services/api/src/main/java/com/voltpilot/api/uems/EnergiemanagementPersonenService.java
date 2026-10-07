@@ -11,6 +11,7 @@ import com.voltpilot.api.web.dto.EnergiemanagementPersonenDto.PersonAnlegen;
 import com.voltpilot.api.web.dto.EnergiemanagementPersonenDto.PersonKurz;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ public class EnergiemanagementPersonenService {
     private final RechtPruefung rechte;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
+    private volatile Clock uhr = Clock.systemUTC();
 
     public EnergiemanagementPersonenService(EnergiemanagementPersonenRepository repo,
             UnternehmenRepository unternehmen, RechtPruefung rechte, ObjectMapper json, PlatformTransactionManager tm) {
@@ -449,9 +451,17 @@ public class EnergiemanagementPersonenService {
         return s == null || s.isBlank() ? null : s.strip();
     }
 
+    /**
+     * Die Uhr, an der „heute“ der Aufgaben hängt - in der Prüfumgebung die Bühnen-Uhr ({@link PruefumgebungUhr}), damit
+     * Aufgaben, Verantwortung und Verzeichnis denselben Tag nennen (Konzept Nachweisen n1, Befund 3).
+     */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
+    }
+
     private LocalDate heute() {
-        return LocalDate.now(ZoneId.of(unternehmen.desKundenbereichs().map(UnternehmenRepository.Unternehmen::zeitzone)
-                .orElse("Europe/Berlin")));
+        return LocalDate.now(uhr.withZone(ZoneId.of(unternehmen.desKundenbereichs()
+                .map(UnternehmenRepository.Unternehmen::zeitzone).orElse("Europe/Berlin"))));
     }
 
     private JsonNode baum(String s) {

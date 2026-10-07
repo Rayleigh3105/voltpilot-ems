@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
   api,
+  ApiError,
   type EnergiemanagementDokumentKurz,
   type EnergiemanagementTeilVermerk,
   type EnergiemanagementVerzeichnis,
 } from '../../api';
-import { sprungKlick, springeUeberHash, seitenSprung, type Sprung } from '../../entscheid';
+import { ansehenSprung, sprungKlick, springeUeberHash, seitenSprung, type Sprung } from '../../entscheid';
 import * as E from '../../energiemanagementPortal';
 import { UEMS_KEINE_FRIST_UEBERFAELLIG, UEMS_WIEDERVORLAGE } from '../../glossar';
 import { energiemanagementRoute, type Route } from '../../nav';
@@ -16,15 +17,16 @@ import {
   nachweisStand,
   offenWort,
   TEILE,
-  TRIFFT_NICHT_ZU_KURZ,
+  teilZiel,
   ueberfaelligWort,
   WIEDERVORLAGE_LINK,
   type NachweisStand,
   type TeilGruppe,
   type TeilStand,
+  type TeilZiel,
   type TeilZustand,
 } from '../../nachweisStand';
-import type { Wiedervorlage } from '../../wiedervorlage';
+import { ANSEHEN, type Wiedervorlage } from '../../wiedervorlage';
 import { FristDatum, Kennzeichentext } from '../FristDatum';
 import { RowMenu } from '../RowMenu';
 import { AlsNaechstes } from './AlsNaechstes';
@@ -40,6 +42,8 @@ export const ERNEUT_VERSUCHEN = 'Erneut versuchen';
 export const MENUE_VERZEICHNIS = 'Verzeichnis';
 export const MENUE_CSV = 'Verzeichnis als CSV';
 export const MENUE_ZUSCHNITT = 'Was VoltPilot führt';
+export const FRISTEN_NICHT_GELADEN = 'Fristen nicht geladen';
+export const CSV_FEHLER = 'Die CSV-Datei ließ sich gerade nicht erstellen. Ihre Daten sind nicht betroffen.';
 
 const ZEICHEN: Record<TeilZustand, ZeichenArt> = { festgehalten: 'festgehalten', offen: 'offen', entwurf: 'entwurf', ueber: 'ueber' };
 
@@ -71,8 +75,12 @@ export function Ueberblick({
   const rollen = useRollen();
   // Festhalten verspricht nur, wer das Energiemanagement bearbeitet; „Einsicht“ und Leser sehen den Stand ohne Knopf.
   const darfFesthalten = rollen.darf(E.RECHT_VERWALTEN, null);
+  // Wer nur Einsicht hat, öffnet eine Frist zum Ansehen, ohne Entscheid - die Regel der Wiedervorlage (P1-4).
+  const einsicht = E.mitEinsicht(rollen.selbst);
+  const zumZiel = (s: Sprung) => (einsicht ? ansehenSprung(s) : s);
   const [daten, setDaten] = useState<Daten | null>(null);
   const [fehler, setFehler] = useState(false);
+  const [csvFehler, setCsvFehler] = useState<string | null>(null);
   const [versuch, setVersuch] = useState(0);
   // Ein Blatt behält seinen Inhalt, solange es ausblendet: offen/zu und welches getrennt.
   const [gruppeKey, setGruppeKey] = useState<TeilGruppe['key'] | null>(null);
@@ -89,7 +97,12 @@ export function Ueberblick({
       api.energiemanagementVerzeichnis(),
       api.energiemanagementDokumente(),
       api.energiemanagementWiedervorlage().catch(() => null),
-      api.energiemanagementTeilVermerke().catch(() => ({ stichtag: '', vermerke: [] })),
+      // Nur ein älterer Server ohne die Route (404) hat keine Vermerke. Jeder andere Fehler macht den Stand jedes Teils
+      // unbekannt - dann steht der Ladefehler da, nicht „offen“ an jedem vermerkten Teil (Review Nachweisen r1, P1-1).
+      api.energiemanagementTeilVermerke().catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 404) return { stichtag: '', vermerke: [] };
+        throw e;
+      }),
     ]).then(
       ([verzeichnis, dokumente, wiedervorlage, vermerke]) =>
         aktiv && setDaten({ verzeichnis, dokumente: dokumente.dokumente, wiedervorlage, vermerke: vermerke.vermerke }),
@@ -100,7 +113,7 @@ export function Ueberblick({
     };
   }, [versuch]);
 
-  const stand: NachweisStand | null = useMemo(() => (daten ? nachweisStand(daten) : null), [daten]);
+  const stand: NachweisStand | null = useMemo(() => (daten ? nachweisStand({ ...daten, rechte: rollen.selbst }) : null), [daten, rollen.selbst]);
   const neu = () => setVersuch((v) => v + 1);
 
   // Ein Blatt zeigt den Teil mit dem Stand von jetzt (nach einem Vermerk neu geladen).
@@ -123,10 +136,12 @@ export function Ueberblick({
     />
   );
 
+  const zielVon = (t: TeilStand) => teilZiel(t, darfFesthalten);
   const oeffneTeil = (t: TeilStand) => {
-    if (t.zustand === 'ueber' && t.fristSprung) return springe(t.fristSprung);
-    if (t.zustand === 'offen' || (t.vermerk && t.zustand === 'festgehalten' && t.fakt === TRIFFT_NICHT_ZU_KURZ)) return zeigeTeil(t);
-    onNavigate(t.ort);
+    const ziel = zielVon(t);
+    if (ziel === 'frist' && t.fristSprung) return springe(zumZiel(t.fristSprung));
+    if (ziel === 'festhalten' || ziel === 'vermerk') return zeigeTeil(t);
+    if (ziel === 'ort') onNavigate(t.ort);
   };
 
   return (
@@ -164,7 +179,14 @@ export function Ueberblick({
                   testId="zaehler-offen"
                 />
               )}
-              {stand.ueberfaellig.length > 0 ? (
+              {!daten?.wiedervorlage ? (
+                // Ohne Wiedervorlage ist unbekannt, was überfällig ist: das steht da, nicht „Keine Frist überfällig“ (P1-2).
+                <button type="button" className="vp-nw-zchip is-still" onClick={neu} data-testid="zaehler-fristen-fehler">
+                  <Icon name="alert-triangle" size={15} />
+                  {FRISTEN_NICHT_GELADEN}
+                  <span className="vp-nw-zchip-weg">{` · ${ERNEUT_VERSUCHEN}`}</span>
+                </button>
+              ) : stand.ueberfaellig.length > 0 ? (
                 <ZaehlerChip
                   anzahl={stand.ueberfaellig.length}
                   wort={ueberfaelligWort(stand.ueberfaellig.length)}
@@ -175,12 +197,10 @@ export function Ueberblick({
                   testId="zaehler-ueberfaellig"
                 />
               ) : (
-                daten?.wiedervorlage && (
-                  <span className="vp-nw-zchip is-still" data-testid="zaehler-ruhig">
-                    <Icon name="check" size={15} />
-                    {UEMS_KEINE_FRIST_UEBERFAELLIG}
-                  </span>
-                )
+                <span className="vp-nw-zchip is-still" data-testid="zaehler-ruhig">
+                  <Icon name="check" size={15} />
+                  {UEMS_KEINE_FRIST_UEBERFAELLIG}
+                </span>
               )}
             </div>
             {stand.naechstes && (
@@ -188,19 +208,29 @@ export function Ueberblick({
                 testId="ueberblick-naechstes"
                 frist={stand.naechstes.art === 'frist' ? { ...stand.naechstes.eintrag.frist, ton: 'ueber' } : null}
                 titel={<Kennzeichentext text={stand.naechstes.titel} />}
+                // Mit Einsicht steht statt des Verbs, wer es erledigt (§6.13), und der Knopf heißt „Ansehen“.
+                warum={einsicht && stand.naechstes.art === 'frist' ? (stand.naechstes.eintrag.zustaendig?.name ?? null) : null}
                 knopf={
                   stand.naechstes.art === 'festhalten' && !darfFesthalten
                     ? null
                     : {
-                        label: stand.naechstes.knopf,
+                        label: einsicht ? ANSEHEN : stand.naechstes.knopf,
                         onClick: () => {
                           const n = stand.naechstes!;
                           if (n.art === 'festhalten') zeigeTeil(n.teil);
-                          else if (n.sprung) springe(n.sprung);
+                          else if (n.sprung) springe(zumZiel(n.sprung));
                         },
                       }
                 }
               />
+            )}
+            {csvFehler && (
+              <section className="vp-wv-karte is-fehler" role="alert" data-testid="ueberblick-csv-fehler">
+                <p className="vp-wv-leise">{csvFehler}</p>
+                <button type="button" className="vp-wv-link" onClick={() => void verzeichnisCsv()}>
+                  {ERNEUT_VERSUCHEN}
+                </button>
+              </section>
             )}
           </div>
           <section className="vp-nw-karte vp-nw-ub-demnaechst" aria-labelledby="vp-nw-demnaechst" data-testid="ueberblick-demnaechst">
@@ -240,10 +270,11 @@ export function Ueberblick({
                       </span>
                     </>
                   );
+                  const ziel = x.sprung ? zumZiel(x.sprung) : null;
                   return (
                     <li key={x.key}>
-                      {x.sprung ? (
-                        <a className="vp-fz" href={x.sprung.hash} onClick={sprungKlick(x.sprung, springe)} data-testid={`demnaechst-${x.key}`}>
+                      {ziel ? (
+                        <a className="vp-fz" href={ziel.hash} onClick={sprungKlick(ziel, springe)} data-testid={`demnaechst-${x.key}`}>
                           {inhalt}
                         </a>
                       ) : (
@@ -257,8 +288,9 @@ export function Ueberblick({
           </section>
           <section ref={teileRef} className="vp-nw-karte vp-nw-ub-teile" aria-labelledby="vp-nw-teile" data-testid="ueberblick-teile">
             <div className="vp-nw-blockkopf">
-              <h2 id="vp-nw-teile">
-                {TEILE}
+              <h2>
+                {/* Die Region heißt „Teile“, nicht „Teile Was ist ein Teil?“: der i-Knopf steht neben dem Namen. */}
+                <span id="vp-nw-teile">{TEILE}</span>
                 <ErklaerKnopf erklaerung={{ ...TEIL, beiIhnen: teilBeiIhnen(stand) }} klein testId="teile-erklaeren" />
               </h2>
             </div>
@@ -285,7 +317,7 @@ export function Ueberblick({
                       <Icon name="chevron-right" size={16} />
                     </span>
                   </button>
-                  <TeilChips gruppe={g} onTeil={oeffneTeil} />
+                  <TeilChips gruppe={g} zielVon={zielVon} onTeil={oeffneTeil} />
                 </div>
               ))}
             </div>
@@ -298,6 +330,7 @@ export function Ueberblick({
           gruppe={gruppeJetzt}
           offen={gruppeOffen}
           darfFesthalten={darfFesthalten}
+          zielVon={zielVon}
           onClose={() => setGruppeOffen(false)}
           onTeil={(t) => {
             setGruppeOffen(false);
@@ -309,6 +342,7 @@ export function Ueberblick({
         <FristenBlatt
           offen={fristen}
           eintraege={stand.ueberfaellig}
+          zumZiel={zumZiel}
           onClose={() => setFristen(false)}
           springe={(s) => {
             setFristen(false);
@@ -332,7 +366,9 @@ export function Ueberblick({
     </div>
   );
 
+  // Ein Fehler der CSV steht als eigene Zeile da und versucht die CSV erneut - die Fläche bleibt (P1-6).
   async function verzeichnisCsv() {
+    setCsvFehler(null);
     try {
       const datei = await api.energiemanagementVerzeichnisCsv({});
       const url = URL.createObjectURL(datei);
@@ -341,29 +377,44 @@ export function Ueberblick({
       a.download = `verzeichnis-energiemanagement-${(daten?.verzeichnis.stichtag ?? '').slice(0, 10) || 'abruf'}.csv`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
-    } catch {
-      setFehler(true);
+    } catch (e) {
+      // Eine Ablehnung des Servers nennt ihren Grund; ein Netz- oder Serverfehler ohne Code den Satz der Familie.
+      setCsvFehler(E.ablehnungCode(e) ? E.ablehnungSatz(e) : CSV_FEHLER);
     }
   }
 }
 
 /** Die Chips einer Gruppe: am Telefon nur Teile, die etwas brauchen; am Rechner alle (die festgehaltenen still, §6.11). */
-function TeilChips({ gruppe, onTeil }: { gruppe: TeilGruppe; onTeil: (t: TeilStand) => void }) {
+function TeilChips({
+  gruppe,
+  zielVon,
+  onTeil,
+}: {
+  gruppe: TeilGruppe;
+  zielVon: (t: TeilStand) => TeilZiel | null;
+  onTeil: (t: TeilStand) => void;
+}) {
   return (
     <span className="vp-nw-tg-chips">
-      {gruppe.teile.map((t) => (
-        <button
-          key={t.teil}
-          type="button"
-          className={`vp-nw-lchip is-${t.zustand}`}
-          onClick={() => onTeil(t)}
-          data-testid={`teil-chip-${t.teil}`}
-        >
-          <NwZeichen art={ZEICHEN[t.zustand]} />
-          {t.kurz}
-          {t.ueberfaellig.length > 1 && <span className="vp-nw-lchip-n">{t.ueberfaellig.length}</span>}
-        </button>
-      ))}
+      {gruppe.teile.map((t) => {
+        const inhalt = (
+          <>
+            <NwZeichen art={ZEICHEN[t.zustand]} />
+            {t.kurz}
+            {t.ueberfaellig.length > 1 && <span className="vp-nw-lchip-n">{t.ueberfaellig.length}</span>}
+          </>
+        );
+        // Ohne Ziel (der Ort ist für die Person nicht zu sehen) ist der Chip nur Zeichen und Wort, kein Knopf (P1-5).
+        return zielVon(t) ? (
+          <button key={t.teil} type="button" className={`vp-nw-lchip is-${t.zustand}`} onClick={() => onTeil(t)} data-testid={`teil-chip-${t.teil}`}>
+            {inhalt}
+          </button>
+        ) : (
+          <span key={t.teil} className={`vp-nw-lchip is-${t.zustand} is-still`} data-testid={`teil-chip-${t.teil}`}>
+            {inhalt}
+          </span>
+        );
+      })}
     </span>
   );
 }

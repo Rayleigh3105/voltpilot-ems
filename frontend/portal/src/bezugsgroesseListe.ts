@@ -2,7 +2,7 @@
  * Die Art wird gespeichert; fehlender Bestand wird niemals aus Namen oder Einheit geraten.
  * Der geprüfte Katalog enthält nur Vokabular, keine Referenzdaten oder Testfälle.
  */
-import type { Bezugsgroesse, BezugsgroessenListe, BezugsgroesseAnfrage, Bezugsflaeche, Unternehmen, StandortAmStichtag, OrtsbaumAmStichtag, Prozess, Kostenstelle, MessstelleRegisterZeile } from './api';
+import type { Bezugsgroesse, BezugsgroessenListe, BezugsgroesseAnfrage, Unternehmen, StandortAmStichtag, OrtsbaumAmStichtag, Prozess, Kostenstelle, MessstelleRegisterZeile } from './api';
 import { einheitenDer, geltungDer, periodenDer, type Art, type Vokabular } from './bezugsArt';
 import katalog from './bezugsArtKatalog.json';
 import { ABLEHNUNGEN } from './bezugsgroesse';
@@ -75,21 +75,6 @@ export function pruefen(e: Entwurf, orte: Ort[], darf: (standort: string | null)
 }
 export function anfrage(e: Entwurf, o: Ort): BezugsgroesseAnfrage {
   return { art: e.art, name: e.name.trim(), ...(e.kennzeichen.trim() ? { kennzeichen: e.kennzeichen.trim() } : {}), wertart: ARTEN[e.art].wertart as Bezugsgroesse['wertart'], einheit: e.einheit, periode_art: e.periode as Bezugsgroesse['periode_art'], geltung_art: o.art, geltung_id: o.id };
-}
-export type Zeile = { art: string; key: string; name: string; kennzeichen: string | null; einheit: string; geltung: string; status: string; archiviert: boolean; standort: string | null | undefined; original: Bezugsgroesse | null; flaeche: Bezugsflaeche | null };
-export function zeilen(liste: Liste, orte: Ort[]): Zeile[] {
-  const standort = (b: Bezugsgroesse | Bezugsflaeche) => {
-    if (b.geltung_art === 'standort') return b.geltung_id;
-    if (['unternehmen', 'prozess', 'kostenstelle'].includes(b.geltung_art)) return null;
-    return orte.find(o => o.key === ortKey(b.geltung_art, b.geltung_id))?.standort;
-  };
-  return [
-    ...liste.bezugsgroessen.map((b): Zeile => ({ art: b.art && ARTEN[b.art] ? ARTEN[b.art].name : 'Art nicht angegeben', key: b.id, name: b.name, kennzeichen: b.kennzeichen, einheit: b.periode_art ? `${b.einheit} je ${PERIODE[b.periode_art]}` : b.wertart === 'stand' ? `${b.einheit} · Zählerstand` : `${b.einheit} · gültig ab einem Tag`, geltung: `${GELTUNG[b.geltung_art]} · ${b.geltung_name}`, status: b.archiviert_am ? 'Archiviert' : b.hat_werte ? 'Werte vorhanden' : 'Noch keine Werte', archiviert: b.archiviert_am !== null, standort: standort(b), original: b, flaeche: null })),
-    ...liste.bezugsflaechen.map((b): Zeile => ({ art: ARTEN.bezugsflaeche.name, key: ortKey(b.geltung_art, b.geltung_id), name: b.name, kennzeichen: b.geltung_kennzeichen, einheit: b.einheit, geltung: `${GELTUNG[b.geltung_art]} · ${b.geltung_name}`, status: 'Aus der Struktur', archiviert: false, standort: standort(b), original: null, flaeche: b })),
-  ];
-}
-export function filtern(alle: Zeile[], f: { standort: string | null; prozess: string | null; archiviert: boolean }): Zeile[] {
-  return alle.filter(z => z.archiviert === f.archiviert && (f.standort === null || z.standort === f.standort) && (f.prozess === null || z.original?.geltung_art === 'prozess' && z.original.geltung_id === f.prozess));
 }
 export function fehlerSatz(e: unknown): string {
   const body = e && typeof e === 'object' && 'body' in e ? e.body : null;

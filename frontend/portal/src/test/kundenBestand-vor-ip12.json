@@ -1431,6 +1431,132 @@
       "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
       "commit": "fm/vp-auswerten-bau-a1-pr2",
       "grund": "Konzept Auswerten a1 §6.5: „Archivieren“ steht im Menü ⋯ und öffnet denselben Bestätigungsdialog mit den Lesern der Kennzahl; Beschriftung, Recht und Handler bleiben."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "3ca97a0fab9e217ef50e208e8cb4816494289ec19c6a8b6726063c96f770686d",
+      "nachher": "046a547ece4f1039908f88241dec4f19935b7a7fcbc5895a2331d21c765c2094",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.2/§10 Entscheid 6: „Messstelle anlegen“ steht am Rechner als Rahmen-Knopf mit Plus im Kopf (am Telefon im Menü ⋯). Wortlaut („Messstelle anlegen“), Ziel (der Messstellen-Dialog mit dem Standort als Vorgabe) und Recht messstelle.bearbeiten unverändert."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "2cc79cef5374ff943411defe6f9bd41b8b7cd892694b4a0e64f43a25e701664d",
+      "nachher": "1021a66522ab4cbf11d65f6515fb64180a6f6e749c2b94aee3c5bd089016cb55",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11 „Noch keine Messstelle“: derselbe Knopf im Leerzustand, jetzt mit Plus wie im Kopf. Wortlaut, Ziel und Recht unverändert."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "492c31c04d20b9934c25c4ca793007ed7be87d0bc2f066175d0c78bb039f963a",
+      "nachher": "89efe5e314e8572786065236748857db16b938a040bd12654fd215fdbc824ada",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11: „Erneut versuchen“ steht als Verweis in der ruhigen Fehlerzeile der Liste statt als Rahmen-Knopf. Wortlaut und Handler (Register neu lesen) unverändert."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "765a75e02fc253a77d8974f36540048aa654aa9859053e818f06e4e25d15e52d",
+      "nachher": "0d23de83f836440bef66ce536829c09896661f9fa34d1f1ad3d4443824e2b221",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.2 „Marken“: der Schalter „Nur ohne Quelle (n)“ wird eine Marke „n ohne Quelle“, die nur erscheint, wenn es solche gibt, und zugleich filtert (aria-pressed). Gefiltert wird in der geladenen Antwort; die Marken teilen sich EIN Bedienelement."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "c4a7b345c696dcdd25dbabd15d9238b94d2f9641f4cd2dbf4182d8b1da23ceec",
+      "nachher": "71fda418c205aaab9ae3376d486f33585b165a993c7b74b99e4f40f2c8d7b062",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.3 „Leer“: statt „Filter zurücksetzen“ steht unter „Keine Messstelle passt zu …“ der Knopf „Suche leeren“ (eine Marke nimmt „Auch in allen Messstellen suchen“ heraus). Der Ausweg aus der leeren Liste bleibt ein Klick."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "54fa154965fae7c6169926e8b4455204b50aff1c69770f44c9dc443c45f920b0",
+      "nachher": null,
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.2 „Reihen“: die ganze Reihe ist ein Verweis auf die Seite der Messstelle (<a href>, Tastatur und Mittelklick inklusive) statt eines Namens-Knopfs in einer Tabellenzelle."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "5a903c07b3d797542540b656bbfa431b03d3eab645290cf173b8bd4b9b276632",
+      "nachher": null,
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.2 „Reihen“: auch am Telefon ist die ganze Reihe der Verweis auf die Seite der Messstelle; der eigene Namens-Knopf der Karte entfällt."
+    },
+    {
+      "datei": "pages/MessstellenPage.tsx",
+      "vorher": "3b38b37e17b40456cdffcb94dceb68487a2b0d20293aee6afcba427d1d6095da",
+      "nachher": null,
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.2/§6.4: der Einstieg „Werte“ (letzter Wert als Knopf) entfällt - die Reihe öffnet die Seite der Messstelle, und dort stehen die Werte (Karte „Verbrauch je Monat“). Der Wert rechts bleibt sichtbar, nur nicht als zweites Ziel."
+    },
+    {
+      "datei": "components/RowMenu.tsx",
+      "vorher": "e672f844877af663d97834540bf10b94e00b73d57e2c8af5414a3e70f06a19cd",
+      "nachher": "23c062af4d6c88cc76adac51534a47e0edc76049b8b8254705ed278435b60866",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.2 „Aktionen“: ein Menüeintrag darf eine leise zweite Zeile tragen („Stand an einem Tag ansehen · Nur lesen, z. B. für eine Prüfung“). Ohne Hinweis rendert er wie bisher; Rolle unverändert. Der Handler wählt über `waehle(it)`: er schließt das Menü wie bisher, gibt den Fokus an den Auslöser ⋯ zurück und ruft dann denselben `it.onClick()` (Review r4 S23: ein Dialog aus dem Menü kehrt beim Schließen auf den Auslöser zurück statt auf `body`)."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "9aedfdb41fa3d3ba180f9cbff06a896a91f83ecf9ac03c6e53d2cce9021b2ddf",
+      "nachher": "7a8fae790a235301afb2c8fee26491a34505c0efd36ca2796ee492788dc31a65",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.6: „‹ September 2026 ›“ als Blätter-Knopf der Familie (Quadrat 34 px, am Telefon 44 px Tippfläche, Zeichen 16 statt 18 px). Handler, Beschriftung und Rolle unverändert."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "a7bf69c8e34a4a517ca543604417f7c8b40d54c40174ab4147dde2e8fc9e836a",
+      "nachher": "5e6e1d575fefd977f9d608dc18481a299942f20c455a602a84817212cfbaac8b",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.6: „›“ ist am letzten gebildeten Zeitraum aus (im Konzept-Bild ausgegraut bei September 2026) - ein laufender Monat hat keine Zahl (E11), also blättert die Fläche nicht in ihn hinein. Handler und Beschriftung unverändert, Zeichen 16 px."
+    },
+    {
+      "datei": "pages/KostenstellenSection.tsx",
+      "vorher": "4fc5f4ec013e54e2f9d149bbbc892aafa33c294ade05be1a908fb3991c07ab28",
+      "nachher": "89efe5e314e8572786065236748857db16b938a040bd12654fd215fdbc824ada",
+      "commit": "uems · Messen PR3: Kostenstellen, Prozesse und Bezugsgrößen (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11 (Zustand „Fehler“ wie Wiedervorlage): „Erneut versuchen“ ist der leise Verweis der Fehlerkarte (`vp-ms-link`) mit dem Wort aus `ERNEUT`. Handler unverändert."
+    },
+    {
+      "datei": "components/MessstelleDialog.tsx",
+      "vorher": "6be15e79a17431492bbe83464ceb2ab1efd0c941fd8ec95bf5fad1d7b946e28e",
+      "nachher": "d7beab1bff86d010fa4d0067207751f8b7ac9e81ded1974fd8dc7d616170d387",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Captain-Punkt zu Konzept Messen m1: Schritt 3 fragt „Woher kommen die Werte?“ mit den Wegen „Automatisch von einem Gerät“ und „Von Hand ablesen“. Der Ausweg heißt je Weg „Später binden“, „Später eintragen“ oder ohne Wahl „Später festlegen“; Handler (Fertig-Ansicht ohne Quelle) unverändert."
+    },
+    {
+      "datei": "pages/MessstelleSeite.tsx",
+      "vorher": "d04353402791a087dd39083b67fc86bb8bfe9b3c61fa7b4f658511a4a094b542",
+      "nachher": null,
+      "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.1 Punkt 2 und §6.4 Punkt 2: „Bearbeiten“ ist Seltenes und steht im Menü ⋯ des Kopfs (neben „Korrekturen und Ersatzwerte“ und „Änderungsprotokoll“); oben steht der eine Schritt („Ablesung eintragen“). Derselbe Handler (Messstellen-Dialog ab Schritt 1), dasselbe Recht `messstelle.bearbeiten`, nur als Menüeintrag statt als Knopf."
+    },
+    {
+      "datei": "pages/MessstelleSeite.tsx",
+      "vorher": "72317721bfbe7e3a7ac65893637aaba52b0cd628bce6766e682b8450d457aae9",
+      "nachher": "f338343bff31c190c83a53b12aebc53b6e363ec8665d51c407028bb1e8ac5c63",
+      "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.4 Punkt 7 und §8.1: EINE Karte „Zuordnung“ (Ort · Im Stromnetz · Prozess · Kostenstellen) mit „Ändern“ je Zeile statt „Ändern ab …“ in drei Karten. Derselbe Dialog mit „Gilt ab“, dasselbe Recht; der Vorlese-Name nennt die Zeile („Ort ändern“)."
+    },
+    {
+      "datei": "components/ZuordnungAendernDialog.tsx",
+      "vorher": "5087915e57f49076e9e24fc9270a1d4e1b4c51b30a993bce7f530098ca030a05",
+      "nachher": "c7a91d16173eb2ac9e6019334f814ba6d575a7a6135e4f78482037a8fcda35a9",
+      "commit": "uems · Messen PR2: Seite einer Messstelle (Konzept Messen m1)",
+      "grund": "Konzept Messen m1 §6.11 „Dialog ohne Änderung“ und §8.1: gilt am gewählten Tag schon, was im Formular steht, sagt ein grauer Satz „Heute gilt: …“ und der Knopf wartet auf eine Änderung - statt beim Öffnen rot „Es gibt nichts zu ändern“ am Feld. Senden und Prüfung sonst unverändert."
+    },
+    {
+      "datei": "components/RowMenu.tsx",
+      "vorher": "bf85f09f03404888c72d1f3aa6121d8fdf3f3313902d5a8fc5a828387dfa3cb7",
+      "nachher": "101ec6e531f5d1db7450b5b2e781f8fafce0aca07a65369cf557ab29bfbde2e9",
+      "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
+      "grund": "Review r4 S23: der gefährliche Menüeintrag wählt wie die übrigen über `waehle(it)` - Menü schließen wie bisher, Fokus an den Auslöser ⋯ zurück, dann derselbe `it.onClick()`; ein Bestätigungsdialog kehrt beim Schließen auf den Auslöser zurück statt auf `body`. Text, Klasse und Rolle unverändert."
+    },
+    {
+      "datei": "pages/BerichtSeite.tsx",
+      "vorher": "adbd0313ee745697dbf00cad76a292f001396269b66ae6ba46e6a193da318cc4",
+      "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
+      "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
+      "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

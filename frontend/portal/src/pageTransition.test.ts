@@ -96,6 +96,33 @@ describe('Latest navigation wins while a page chunk is loading', () => {
   });
 });
 
+describe('Bewegung P5 · ein übersprungener Übergang ist kein Fehler in der Konsole', () => {
+  it('`ready` lehnt beim Überspringen ab („Transition was skipped“) - die Ablehnung ist gefangen', async () => {
+    const unbehandelt: unknown[] = [];
+    const merken = (grund: unknown) => unbehandelt.push(grund);
+    process.on('unhandledRejection', merken);
+    try {
+      (document as unknown as Record<string, unknown>).startViewTransition = (cb: () => void) => {
+        let ablehnen: (e: Error) => void = () => {};
+        const ready = new Promise<void>((_, nein) => { ablehnen = nein; });
+        cb();
+        return {
+          finished: Promise.resolve(),
+          updateCallbackDone: Promise.resolve(),
+          ready,
+          skipTransition: () => ablehnen(new DOMException('Transition was skipped', 'AbortError')),
+        };
+      };
+      runPageTransition('push', () => {});
+      runPageTransition('pop', () => {});
+      await new Promise((r) => setTimeout(r, 0));
+      expect(unbehandelt).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', merken);
+    }
+  });
+});
+
 describe('Bewegung P5 · mit der Browser-API läuft GENAU EIN Übergang', () => {
   it('stempelt die Richtung, bevor der Browser das alte Bild aufnimmt', () => {
     fakeApi();

@@ -251,6 +251,9 @@ public final class BerichtRegeln {
             "bericht_gibt_es_schon", "Diesen Bericht gibt es schon: {kennung} ({vorlage} {geltung}, {zeitraum}).",
             "vorlage_monat", "Monatsbericht",
             "vorlage_jahr", "Jahresbericht",
+            "vorlage_energetische_bewertung", "Energetische Bewertung",
+            "vorlage_leistungsvergleich", "Leistungsvergleich",
+            "vorlage_managementbewertung", "Managementbewertung",
             "stand_gibt_es_nicht", "Berichtsstand Nr. {nr} gibt es nicht — der neueste ist Nr. {neueste} vom {datum}.",
             "stand_gibt_es_nicht_keiner", "Berichtsstand Nr. {nr} gibt es nicht — der Bericht hat noch keinen freigegebenen Berichtsstand.",
             "wert_nicht_mehr_gespeichert", "Der Wert {zeitraum} wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. {nr} vom {datum} hält ihn fest.",
@@ -421,14 +424,37 @@ public final class BerichtRegeln {
             vergleiche.add(vergleichszeitraum(VORJAHR, spanne[0].minusYears(1), JAHR, zone));
         }
         Instant bis = TagRegeln.beginn(spanne[1].plusDays(1), zone);
-        String bezeichnung = DATENGRUNDLAGE.equals(art)
-                ? KennzahlRegeln.periodeText(MONAT, java.time.YearMonth.from(spanne[0]).toString())
-                        + (java.time.YearMonth.from(spanne[0]).equals(java.time.YearMonth.from(spanne[1])) ? ""
-                                : " bis " + KennzahlRegeln.periodeText(MONAT,
-                                        java.time.YearMonth.from(spanne[1]).toString()))
-                : KennzahlRegeln.periodeText(art, schluessel);
         return new Zeitraum(art, schluessel, spanne[0], spanne[1], TagRegeln.beginn(spanne[0], zone), bis,
-                TagRegeln.endgueltigAb(bis), bezeichnung, List.copyOf(vergleiche));
+                TagRegeln.endgueltigAb(bis), bezeichnung(art, schluessel, spanne), List.copyOf(vergleiche));
+    }
+
+    /**
+     * Der Zeitraum in Kundenwörtern: „Oktober 2026“, „2026“, die Datengrundlage „Oktober 2025 bis September 2026“. Jeder
+     * Satz über einen Bericht nimmt diese Regel, nie {@link KennzahlRegeln#periodeText} allein - die kennt keine
+     * Datengrundlage (Konzept Nachweisen n1, Inventur C7: „Diesen Bericht gibt es schon“ endete dort mit einer 500).
+     */
+    public static String zeitraumName(String art, String schluessel) {
+        return zeitraum(art, schluessel, java.time.ZoneOffset.UTC).bezeichnung();
+    }
+
+    private static String bezeichnung(String art, String schluessel, LocalDate[] spanne) {
+        if (!DATENGRUNDLAGE.equals(art)) {
+            return KennzahlRegeln.periodeText(art, schluessel);
+        }
+        java.time.YearMonth von = java.time.YearMonth.from(spanne[0]);
+        java.time.YearMonth bis = java.time.YearMonth.from(spanne[1]);
+        return KennzahlRegeln.periodeText(MONAT, von.toString())
+                + (von.equals(bis) ? "" : " bis " + KennzahlRegeln.periodeText(MONAT, bis.toString()));
+    }
+
+    /**
+     * Das Wort für den Bericht in Titel und Sätzen: die Monats- und Jahresberichte nach ihrem Zeitraum („Monatsbericht“,
+     * „Jahresbericht“), jede andere Vorlage nach ihrem Namen („Energetische Bewertung“, „Leistungsvergleich“,
+     * „Managementbewertung“) - nie „Jahresbericht“ für eine Managementbewertung (Konzept Nachweisen n1, Inventur C6, B10).
+     */
+    public static String titelwort(String vorlage, String zeitraumArt) {
+        String eigenes = SAETZE.get("vorlage_" + vorlage);
+        return eigenes != null ? eigenes : SAETZE.get("vorlage_" + zeitraumArt);
     }
 
     private static Vergleichszeitraum vergleichszeitraum(String art, LocalDate tag, String periodeArt, ZoneId zone) {
@@ -783,11 +809,17 @@ public final class BerichtRegeln {
         return raus;
     }
 
+    /**
+     * Eine Seite ohne Zeile zählt wie eine Zeile ohne Zahl und ohne Version: eine Quelle, die nur ein Abzug nennt und die
+     * dort keine Zahl hat, ist keine Abweichung (Konzept Nachweisen n1, Befund 5: „10 Abweichungen“, jede „– → null“).
+     */
     private static void zeile(List<String> k, JsonNode a, JsonNode n, String feld, String anlass, Set<String> reihen,
             List<Abweichung> raus) {
         BigDecimal vorher = a == null ? null : betrag(a.path(feld));
         BigDecimal nachher = n == null ? null : betrag(n.path(feld));
-        if (a != null && n != null && gleich(vorher, nachher) && a.path("version").asInt() == n.path("version").asInt()) {
+        String versionVorher = version(a);
+        String versionNachher = version(n);
+        if (gleich(vorher, nachher) && java.util.Objects.equals(versionVorher, versionNachher)) {
             return;
         }
         JsonNode w = n != null ? n : a;
@@ -795,9 +827,14 @@ public final class BerichtRegeln {
                 : "wert".equals(feld) ? fuelle(SAETZE.get("ueber_kennzahl"), Map.of("anlass", anlass))
                 : reihen.contains(k.get(0)) ? anlass
                 : w.has("formel") ? fuelle(SAETZE.get("ueber_formel"), Map.of("anlass", anlass)) : anlass;
-        String version = (a == null ? OHNE_ZAHL : a.path("version").asText()) + " → "
-                + (n == null ? OHNE_ZAHL : n.path("version").asText());
+        String version = (versionVorher == null ? OHNE_ZAHL : versionVorher) + " → "
+                + (versionNachher == null ? OHNE_ZAHL : versionNachher);
         raus.add(new Abweichung(k.get(0), k.get(1), vorher, nachher, version, grund));
+    }
+
+    /** Die Version einer Zeile als Text, {@code null} ohne Zeile oder ohne Version - nie das Wort „null“. */
+    private static String version(JsonNode zeile) {
+        return zeile == null || !zeile.hasNonNull("version") ? null : zeile.path("version").asText();
     }
 
     private static BigDecimal betrag(JsonNode n) {
@@ -1132,9 +1169,10 @@ public final class BerichtRegeln {
                         "datum", OrtsbaumAbleitung.datumText(bestehtSeit)));
     }
 
-    public static String berichtGibtEsSchon(String kennung, String geltung, String zeitraumArt, String schluessel) {
-        return fuelle(SAETZE.get(BERICHT_GIBT_ES_SCHON), Map.of("kennung", kennung, "vorlage", SAETZE.get("vorlage_" + zeitraumArt),
-                "geltung", geltung, "zeitraum", KennzahlRegeln.periodeText(zeitraumArt, schluessel)));
+    public static String berichtGibtEsSchon(String kennung, String vorlage, String geltung, String zeitraumArt,
+            String schluessel) {
+        return fuelle(SAETZE.get(BERICHT_GIBT_ES_SCHON), Map.of("kennung", kennung, "vorlage",
+                titelwort(vorlage, zeitraumArt), "geltung", geltung, "zeitraum", zeitraumName(zeitraumArt, schluessel)));
     }
 
     public static String standGibtEsNicht(int nr, Integer neuesteNr, Instant neuesteAm, ZoneId zone) {

@@ -10,9 +10,12 @@ import {
   FESTHALTEN,
   IN_DER_WIEDERVORLAGE,
   TRIFFT_NICHT_ZU,
+  TRIFFT_NICHT_ZU_KURZ,
+  teilZiel,
   ueberfaelligWort,
   type TeilGruppe,
   type TeilStand,
+  type TeilZiel,
   type TeilZustand,
 } from '../../nachweisStand';
 import { buendel, standTag, type Eintrag } from '../../wiedervorlage';
@@ -40,6 +43,7 @@ export const TRIFFT_NICHT_ZU_ZUSATZ = 'mit Grund';
 export const WARUM = 'Warum trifft es zurzeit nicht zu?';
 export const WER = 'Wer hat entschieden?';
 export const WIE_FESTHALTEN = 'Wie halten Sie es fest?';
+export const EBENFALLS_FESTGEHALTEN = 'Ebenfalls festgehalten:';
 
 /** Wohin ein Teil führt, der an seinem Ort entsteht: das Wort dieses Orts (höchstens drei Wörter). */
 const ORT_WORT: Readonly<Record<string, string>> = {
@@ -55,12 +59,14 @@ const ORT_WORT: Readonly<Record<string, string>> = {
 
 /**
  * Das Blatt einer Gruppe (§6.3, Mock `r2-U-teil`): ein Fakt je Teil („Energiepolitik · Fassung 2“), offene mit
- * „Festhalten“. Eine Zeile führt zu ihrem Teil: ein überfälliger zur Frist, ein offener ins Festhalten.
+ * „Festhalten“. Eine Zeile führt zu ihrem Teil (`teilZiel`): ein überfälliger zur Frist, ein offener ins Festhalten
+ * (nur mit Recht), sonst an seinen Ort; ohne Ziel ist die Zeile nur Zeichen, Name und Fakt.
  */
 export function GruppenBlatt({
   gruppe,
   offen,
   darfFesthalten = true,
+  zielVon = (t) => teilZiel(t, darfFesthalten),
   onClose,
   onTeil,
 }: {
@@ -68,30 +74,48 @@ export function GruppenBlatt({
   offen: boolean;
   /** Ohne das Recht zu bearbeiten steht an einem offenen Teil kein Verb, nur sein Zeichen. */
   darfFesthalten?: boolean;
+  /** Wohin eine Zeile führt; dieselbe Regel wie die Chips des Überblicks. */
+  zielVon?: (t: TeilStand) => TeilZiel | null;
   onClose: () => void;
   onTeil: (t: TeilStand) => void;
 }) {
   return (
     <NwBlatt open={offen} titel={gruppe.wort} onClose={onClose} testId="gruppen-blatt">
       <ul className="vp-nw-tzl">
-        {gruppe.teile.map((t) => (
-          <li key={t.teil}>
-            <button type="button" className={`vp-nw-tz is-${t.zustand}`} onClick={() => onTeil(t)} data-testid={`gruppen-teil-${t.teil}`}>
+        {gruppe.teile.map((t) => {
+          const ziel = zielVon(t);
+          const inhalt = (
+            <>
               <NwZeichen art={ZEICHEN[t.zustand]} />
               <span className="vp-nw-tz-name">{t.wort}</span>
-              {t.zustand === 'offen' && darfFesthalten ? (
+              {ziel === 'festhalten' ? (
                 <span className="vp-nw-tz-verb">{FESTHALTEN}</span>
               ) : (
                 <>
                   {t.fakt && <span className="vp-nw-tz-fakt">{t.fakt}</span>}
-                  <span className="vp-nw-tz-chev" aria-hidden="true">
-                    <Icon name="chevron-right" size={16} />
-                  </span>
+                  {ziel && (
+                    <span className="vp-nw-tz-chev" aria-hidden="true">
+                      <Icon name="chevron-right" size={16} />
+                    </span>
+                  )}
                 </>
               )}
-            </button>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={t.teil}>
+              {ziel ? (
+                <button type="button" className={`vp-nw-tz is-${t.zustand}`} onClick={() => onTeil(t)} data-testid={`gruppen-teil-${t.teil}`}>
+                  {inhalt}
+                </button>
+              ) : (
+                <div className={`vp-nw-tz is-${t.zustand} is-still`} data-testid={`gruppen-teil-${t.teil}`}>
+                  {inhalt}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </NwBlatt>
   );
@@ -104,11 +128,14 @@ export function GruppenBlatt({
 export function FristenBlatt({
   offen,
   eintraege,
+  zumZiel = (s) => s,
   onClose,
   springe,
 }: {
   offen: boolean;
   eintraege: readonly Eintrag[];
+  /** Der Sprung, wie die Person ihn nehmen darf: mit Einsicht ohne Entscheid (`ansehenSprung`). */
+  zumZiel?: (s: Sprung) => Sprung;
   onClose: () => void;
   springe: (s: Sprung) => void;
 }) {
@@ -117,6 +144,7 @@ export function FristenBlatt({
     <NwBlatt open={offen} titel={`${eintraege.length} ${ueberfaelligWort(eintraege.length)}`} onClose={onClose} testId="fristen-blatt">
       <ul className="vp-fzl vp-nw-fristen">
         {buendel(eintraege).map((b) => {
+          const ziel = b.sprung ? zumZiel(b.sprung) : null;
           const inhalt = (
             <>
               <FristDatum {...b.frist} ton="ueber" />
@@ -132,8 +160,8 @@ export function FristenBlatt({
           );
           return (
             <li key={b.key}>
-              {b.sprung ? (
-                <a className="vp-fz" href={b.sprung.hash} onClick={sprungKlick(b.sprung, springe)} data-testid={`frist-${b.key}`}>
+              {ziel ? (
+                <a className="vp-fz" href={ziel.hash} onClick={sprungKlick(ziel, springe)} data-testid={`frist-${b.key}`}>
                   {inhalt}
                 </a>
               ) : (
@@ -176,7 +204,7 @@ export function TeilBlatt({
   heute: string;
 }) {
   if (teil.vermerk && teil.zustand !== 'offen') {
-    return <VermerkBlatt teil={teil} offen={offen} onClose={onClose} onGeaendert={onGeaendert} />;
+    return <VermerkBlatt teil={teil} offen={offen} onClose={onClose} onNavigate={onNavigate} onGeaendert={onGeaendert} />;
   }
   return <FesthaltenBlatt teil={teil} offen={offen} onClose={onClose} onNavigate={onNavigate} onGeaendert={onGeaendert} heute={heute} />;
 }
@@ -232,10 +260,13 @@ function FesthaltenBlatt({
     lang < STARTWERTE.begruendung_zeichen_mindestens || lang > STARTWERTE.begruendung_zeichen_hoechstens ? E.BEGRUENDUNG_HINWEIS : null;
   const personName = personen?.find((p) => p.id === person)?.name ?? '';
 
+  // „Dort festhalten“ nur, wo die Person den Ort sehen darf (P1-5) - sonst bleibt der Vermerk.
   const optionen = [
-    teil.dokumentArt
-      ? { wert: 'dokument' as const, titel: ALS_DOKUMENT, zusatz: ALS_DOKUMENT_ZUSATZ }
-      : { wert: 'ort' as const, titel: DORT_FESTHALTEN, zusatz: ORT_WORT[teil.teil] ?? null },
+    ...(teil.dokumentArt
+      ? [{ wert: 'dokument' as const, titel: ALS_DOKUMENT, zusatz: ALS_DOKUMENT_ZUSATZ }]
+      : teil.ortSichtbar
+        ? [{ wert: 'ort' as const, titel: DORT_FESTHALTEN, zusatz: ORT_WORT[teil.teil] ?? null }]
+        : []),
     { wert: 'vermerk' as const, titel: TRIFFT_NICHT_ZU_KARTE, zusatz: TRIFFT_NICHT_ZU_ZUSATZ },
   ];
 
@@ -355,15 +386,22 @@ function FesthaltenBlatt({
   );
 }
 
+/**
+ * Ein Teil mit Vermerk: Grund, Person, ab wann, und „Aufheben“ mit Recht. Hält der Teil daneben schon etwas anderes
+ * fest (eine Fassung, Einträge im Verzeichnis), führt eine Zeile dorthin - sonst wäre der Vermerk nicht mehr zu
+ * erreichen, sobald der Teil eine Fassung bekommt (Review Nachweisen r1, P1-8).
+ */
 function VermerkBlatt({
   teil,
   offen,
   onClose,
+  onNavigate,
   onGeaendert,
 }: {
   teil: TeilStand;
   offen: boolean;
   onClose: () => void;
+  onNavigate: (r: Route) => void;
   onGeaendert: () => void;
 }) {
   const [fehler, setFehler] = useState<string | null>(null);
@@ -406,6 +444,11 @@ function VermerkBlatt({
           { etikett: 'Ab', wert: standTag(v.entschieden_am) },
         ]}
       />
+      {teil.fakt && teil.fakt !== TRIFFT_NICHT_ZU_KURZ && teil.ortSichtbar && (
+        <button type="button" className="vp-wv-link" onClick={() => onNavigate(teil.ort)} data-testid="vermerk-ort">
+          {`${EBENFALLS_FESTGEHALTEN} ${teil.fakt}`}
+        </button>
+      )}
       {fehler && (
         <p className="vp-nw-fehler" role="alert">
           {fehler}

@@ -207,6 +207,11 @@ export interface Route {
    * Absent = das Register.
    */
   messstelleId?: string;
+  /**
+   * Nur bei `portfolio-bezugsgroessen`: WELCHE Bezugsgröße die Seite zeigt (Konzept Messen m1 §6.8, Entscheid 9,
+   * `#/portfolio/bezugsgroessen/{id}`). Absent = die Liste.
+   */
+  bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -585,19 +590,27 @@ export function parseSektion(hash: string): string | null {
 
 /**
  * Periode, Version und Vergleich der Werte einer Messstelle aus dem Hash (UEMS AP-13 IP-3/IP-5, E9/E6):
- * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode`. `parseRoute` schneidet den Query-Teil ab — die
+ * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode` (aus „Stand am …“ dazu `&stand=2029-04-30`). `parseRoute` schneidet den Query-Teil ab — die
  * Route bleibt die Messstellen-Seite; geschrieben wird die Adresse über `uemsOberflaechen.sprungziel`. Die
  * Periode kommt roh (die Sektion prüft sie, `uemsWerteKarte.periodeAus`), die Version nur als ganze Zahl ab 1, und
  * `v` ebenfalls roh — welche Wahl der Zeitraum überhaupt anbietet, weiß `uemsVergleich.wahlAus`.
  */
-export function parseMessstelleWerte(hash: string): { periode: string | null; version: number | null; vergleich: string | null } {
+export function parseMessstelleWerte(hash: string): {
+  periode: string | null;
+  version: number | null;
+  vergleich: string | null;
+  stand: string | null;
+} {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   const params = new URLSearchParams(rest.join('?'));
   const version = params.get('version')?.trim() ?? '';
+  const stand = params.get('stand')?.trim() ?? '';
   return {
     periode: params.get('periode')?.trim() || null,
     version: /^[1-9]\d{0,5}$/.test(version) ? Number(version) : null,
     vergleich: params.get('v')?.trim() || null,
+    // Messen m1 (Review r4 S4): aus „Stand an einem Tag ansehen“ geöffnet - die Seite liest diesen Tag, nur lesend.
+    stand: /^\d{4}-\d{2}-\d{2}$/.test(stand) ? stand : null,
   };
 }
 
@@ -725,6 +738,7 @@ export function parseRoute(hash: string): Route {
       return energiemanagementRoute();
     }
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'bezugsgroessen' && segments[2]) return bezugsgroesseRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
@@ -862,6 +876,8 @@ export function hashForRoute(route: Route): string {
         : '';
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    const bezugsgroesse =
+      route.page === 'portfolio-bezugsgroessen' && route.bezugsgroesseId ? `/${encodeURIComponent(route.bezugsgroesseId)}` : '';
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     const einsatz =
       route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
@@ -893,7 +909,7 @@ export function hashForRoute(route: Route): string {
             : route.energiemanagementReiter && route.energiemanagementReiter !== 'ueberblick'
             ? `/${route.energiemanagementReiter}`
             : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -1144,6 +1160,11 @@ export function messstelleRoute(messstelleId: string, standortId?: string | null
   return standortId
     ? { ...standortMessstellenRoute(standortId), messstelleId }
     : { page: 'portfolio-messstellen', siteId: null, sub: null, messstelleId };
+}
+
+/** Route der Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9): `#/portfolio/bezugsgroessen/{id}`. */
+export function bezugsgroesseRoute(bezugsgroesseId: string): Route {
+  return { page: 'portfolio-bezugsgroessen', siteId: null, sub: null, bezugsgroesseId };
 }
 
 /* =========================================================================

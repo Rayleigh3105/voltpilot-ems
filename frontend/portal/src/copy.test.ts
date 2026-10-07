@@ -1977,7 +1977,6 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
-  'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
   'portfolioCockpit.ts', // alt
   'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
@@ -3978,5 +3977,80 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
     expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
+  });
+});
+
+describe('Konzept Messen m1 · „Woher die Werte kommen“: Liste und Dialog sprechen dieselben Glossarwörter', () => {
+  it('die Spalte der Liste, die zwei Wege des Dialogs und das Wort ohne Weg kommen aus dem Glossar', async () => {
+    const g = await import('./glossar');
+    const liste = await import('./messstellenListe');
+    const dialog = await import('./messstelleDialog');
+    expect(g.UEMS_WOHER_DIE_WERTE).toBe('Woher die Werte kommen');
+    expect(liste.SPALTE.woher).toBe(g.UEMS_WOHER_DIE_WERTE);
+    expect(dialog.WEG.geraet.titel).toBe(g.UEMS_WEG_GERAET);
+    expect(dialog.WEG.ablesen.titel).toBe(g.UEMS_WEG_ABLESEN);
+    expect(dialog.ABLESERHYTHMUS.label).toBe(g.UEMS_ABLESERHYTHMUS);
+    expect(liste.WEG_WORT.ohne).toBe(g.UEMS_NOCH_KEINE_QUELLE);
+    expect(liste.NOCH_KEINE_QUELLE).toBe('Noch keine Quelle · zuordnen');
+  });
+
+  it('die Seite einer Messstelle spricht dieselben Glossarwörter: Karte „Zuordnung“, „Im Stromnetz“, „Nächste Ablesung“, ein Schritt', async () => {
+    const g = await import('./glossar');
+    const seite = await import('./messstelleSeite');
+    const zuordnung = await import('./messstelleZuordnung');
+    expect(seite.ZUORDNUNG).toBe(g.UEMS_ZUORDNUNG);
+    expect(seite.NAECHSTE_ABLESUNG).toBe(g.UEMS_NAECHSTE_ABLESUNG);
+    expect(seite.ABLESUNG_EINTRAGEN).toBe(g.UEMS_ABLESUNG_EINTRAGEN);
+    expect(zuordnung.ZEILE_ETIKETT).toEqual({ ort: 'Ort', stellung: g.UEMS_IM_STROMNETZ, prozesse: g.UEMS_PROZESS, verteilung: 'Kostenstellen' });
+    // Die Karte heißt nicht mehr „Ort · Elektrisch · Organisation“, und „Ändern ab …“ ist ein „Ändern“.
+    const texte = visibleTexts(readFileSync(join(SRC, 'pages/MessstelleSeite.tsx'), 'utf8')).filter(isKundentext);
+    expect(texte.filter((t) => /^(Elektrisch|Organisation)$|Ändern ab …|Keine Datenquelle/.test(t))).toEqual([]);
+  });
+
+  it('die Ablese-Runde je Gebäude spricht das Glossarwort: „Ablesen ›“ in der Liste, „Halle 1 ablesen“ als Titel', async () => {
+    const g = await import('./glossar');
+    const runde = await import('./ableseRunde');
+    expect(runde.ABLESEN).toBe(g.UEMS_ABLESEN);
+    expect(g.UEMS_ABLESEN).toBe('Ablesen');
+  });
+
+  it('die Liste zeigt keine Datenmodell-Wörter mehr: kein „Quelle (führend)“, kein „Keine Datenquelle“, kein „Summenwert anlegen“', () => {
+    for (const datei of ['pages/MessstellenPage.tsx', 'messstellenListe.ts']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.filter((t) => /Quelle \(führend\)|Keine Datenquelle|Summenwert anlegen|Elektrische Stellung/.test(t)), datei).toEqual([]);
+    }
+  });
+});
+
+describe('Konzept Messen m1 · Kostenstellen, Prozesse, Bezugsgrößen: „Antwort zuerst“ (§8.2)', () => {
+  const DATEIEN = [
+    'kostenstellenUebersicht.ts',
+    'pages/KostenstellenSection.tsx',
+    'bezugsgroessenUebersicht.ts',
+    'pages/BezugsgroessenPage.tsx',
+    'pages/BezugsgroesseSeite.tsx',
+  ];
+
+  it('kein Satz über das, was es nicht gibt, kein Datenmodell-Wort, keine Zeitzonen-Kennung im Satz', () => {
+    for (const datei of DATEIEN) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.length, datei).toBeGreaterThan(3);
+      expect(
+        texte.filter((t) => /nicht summierbar|Keine Prozess-Summe|Art nicht angegeben|Nicht verteilt|Datenquelle|kein_tageswert|Europe\/[A-Z]/.test(t)),
+        datei,
+      ).toEqual([]);
+    }
+  });
+
+  it('die Fachwörter erklärt ein Satz unter dem Titel und der Aufklapper „Was ist …?“ (Kostenstelle, Prozess, Bezugsgröße)', async () => {
+    const { BEGRIFFE } = await import('./begriffe');
+    const g = await import('./glossar');
+    expect(BEGRIFFE.kostenstelle).toMatchObject({ wort: g.UEMS_KOSTENSTELLE, frage: 'Was ist eine Kostenstelle?' });
+    expect(BEGRIFFE.prozess).toMatchObject({ wort: g.UEMS_PROZESS, frage: 'Was ist ein Prozess?' });
+    expect(BEGRIFFE.bezugsgroesse.frage).toBe('Was ist eine Bezugsgröße?');
+    for (const b of [BEGRIFFE.kostenstelle, BEGRIFFE.prozess, BEGRIFFE.bezugsgroesse]) {
+      expect(b.klartext.length).toBeGreaterThan(20);
+      expect(b.abgrenzung).toMatch(/^(Nicht dasselbe wie|Erst mit ihr)/);
+    }
   });
 });

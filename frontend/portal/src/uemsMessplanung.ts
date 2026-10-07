@@ -37,7 +37,7 @@ export const MESSPLANUNG = {
   nurLesen: 'Messbedarf erfassen, einlösen und verwerfen dürfen Kundenadministratoren und Energiemanager.',
   beendet: 'Der Energieeinsatz ist beendet — neue Messbedarfe entstehen an einem laufenden Einsatz.',
   verwerfenSatz: 'Der Bedarf bleibt mit Ihrer Begründung lesbar; er erscheint nicht mehr unter „geplant“.',
-  erfassenSatz: 'Der Bedarf steht danach in der Messabdeckung unter „geplant“ — ohne Menge, bis eine Messstelle Werte liefert.',
+  erfassenSatz: 'Der Bedarf steht danach unter Messen als geplante Messstelle - ohne Wert, bis eine Messstelle eingerichtet ist und Werte liefert.',
   einloesenHinweis: 'Ort und Größe sind aus dem Messbedarf vorbelegt. Sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst.',
   ohneOrt: 'ohne Ort',
   bearbeiten: 'Bearbeiten',
@@ -321,6 +321,47 @@ export function geplantFuerText(z: MessstelleRegisterZeile | null | undefined): 
   return `geplant für ${e.map((x) => `${x.kennzeichen} ${x.name}`).join(', ')}`;
 }
 
+/**
+ * Der Belegschutz am Messbedarf (Vertrag `bewertung.md`: Bearbeiten, Einlösen und Verwerfen treffen ihn): zitieren
+ * freigegebene Berichtsstände den Bedarf, bleibt er, wie er ist. Der Satz des Servers ist der einer Komponente („Löschen
+ * ist nicht möglich — beenden Sie die Bindung“) und passt hier nicht; die Stände kommen aus `berichtsstaende`. Ohne
+ * Liste bleibt der Satz des Servers.
+ */
+function belegSatz(e: ApiError): string | null {
+  const roh = (e.body as { berichtsstaende?: unknown } | null)?.berichtsstaende;
+  const staende = (Array.isArray(roh) ? roh : []).filter((s: unknown): s is { kennung: string; nr: number } => {
+    const x = s as { kennung?: unknown; nr?: unknown } | null;
+    return typeof x?.kennung === 'string' && typeof x?.nr === 'number';
+  });
+  return zitiertSatz(staende);
+}
+
+/**
+ * „4 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, …) - er bleibt, wie er ist.“ - aus der
+ * 409 `berichts_belege` und, schon vorher, aus `zitiert_von` am Bedarf (Review r4 M4); `null` ohne Stand.
+ */
+export function zitiertSatz(staende: readonly { kennung: string; nr: number }[]): string | null {
+  if (staende.length === 0) return null;
+  const liste = staende.map((s) => `${s.kennung} Nr. ${s.nr}`).join(', ');
+  return staende.length === 1
+    ? `Ein freigegebener Berichtsstand zitiert diesen Messbedarf (${liste}) - er bleibt, wie er ist.`
+    : `${staende.length} freigegebene Berichtsstände zitieren diesen Messbedarf (${liste}) - er bleibt, wie er ist.`;
+}
+
+/**
+ * Review r4 M4 (Entscheid b): ein offener Bedarf, den freigegebene Berichtsstände zitieren, ist nicht einlösbar - die API
+ * sagt es vorher (`einloesbar: false`), statt dass erst eine angelegte Messstelle am Belegschutz scheitert. Eine ältere API
+ * ohne das Feld gilt als einlösbar; dann fängt `zuordnen` die Ablehnung auf (Entscheid c).
+ */
+export const nichtEinloesbar = (b: Messbedarf): boolean => b.zustand === 'offen' && b.einloesbar === false;
+
+/** Der Satz eines nicht einlösbaren Bedarfs - mit den Ständen, die ihn zitieren. */
+export const nichtEinloesbarSatz = (b: Messbedarf): string =>
+  zitiertSatz(b.zitiert_von ?? []) ?? 'Ein freigegebener Berichtsstand zitiert diesen Messbedarf - er bleibt, wie er ist.';
+
+/** „MS-24 zuordnen“: nach einer Ablehnung des Einlösens löst derselbe Bedarf mit der schon angelegten Messstelle ein. */
+export const zuordnenText = (m: { kennzeichen: string }): string => `${m.kennzeichen} zuordnen`;
+
 const code = (e: unknown): string | null =>
   e instanceof ApiError && e.body && typeof e.body === 'object' && typeof (e.body as { code?: unknown }).code === 'string'
     ? (e.body as { code: string }).code
@@ -337,8 +378,8 @@ export function messbedarfAblehnung(e: unknown): string {
   if (c === 'ort_unbekannt') return 'Diesen Ort gibt es nicht mehr — bitte wählen Sie einen anderen oder keinen Ort.';
   if (c === 'groesse_ungueltig') return 'Diese Größe oder Richtung kennt der Katalog nicht — bitte wählen Sie sie aus der Liste.';
   if (c === 'berichts_belege')
-    return e instanceof ApiError && e.message
-      ? e.message
+    return e instanceof ApiError
+      ? (belegSatz(e) ?? (e.message || 'Ein freigegebener Berichtsstand zitiert diesen Messbedarf — er bleibt, wie er ist.'))
       : 'Ein freigegebener Berichtsstand zitiert diesen Messbedarf — er bleibt, wie er ist.';
   if (c === 'einsatz_beendet') return MESSPLANUNG.beendet;
   if (c === 'recht_fehlt' || (e instanceof ApiError && e.status === 403)) return 'Das dürfen Kundenadministratoren und Energiemanager.';

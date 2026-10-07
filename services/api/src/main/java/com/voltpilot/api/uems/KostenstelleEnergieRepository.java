@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,21 @@ public class KostenstelleEnergieRepository {
         return raus;
     }
 
+    /**
+     * Messen PR4: je Messstelle aus Ablesungen die führende Ablesungs-Quelle (die jüngste, wie
+     * {@link AblesungRepository#quelle}) - ein Zug für den Kundenbereich ({@code tenant} {@code null} = allein die RLS).
+     */
+    public Map<UUID, UUID> ablesungsQuellen(UUID tenant) {
+        Map<UUID, UUID> raus = new HashMap<>();
+        jdbc.query("SELECT DISTINCT ON (messstelle_id) messstelle_id, id FROM messstelle_quelle "
+                + "WHERE art = 'ablesung' AND rolle = 'fuehrend'" + (tenant == null ? "" : " AND tenant_id = ?")
+                + " ORDER BY messstelle_id, gueltig_ab DESC",
+                rs -> {
+                    raus.put(rs.getObject("messstelle_id", UUID.class), rs.getObject("id", UUID.class));
+                }, tenant == null ? new Object[0] : new Object[] {tenant});
+        return raus;
+    }
+
     /** Die Zeitzone des Unternehmens — {@code null} ohne Unternehmen. */
     public String zeitzone() {
         return jdbc.queryForList("SELECT zeitzone FROM unternehmen ORDER BY created_at, id LIMIT 1", String.class)
@@ -134,6 +151,34 @@ public class KostenstelleEnergieRepository {
                         (Integer) rs.getObject("abdeckung_prozent"), rs.getString("kennzeichen"),
                         rs.getString("anlass_kennung"), zeit(rs.getTimestamp("created_at"))),
                 args);
+    }
+
+    /**
+     * Die Monate ab Version 2 der Messstellen aus Ablesungen (Messen PR4; {@code tag} = der Erste des Monats) in EINEM
+     * Zug, je Monat alle Versionen bis {@code hoechstens} - die Auswahl der neuesten trifft der Dienst.
+     */
+    public List<Version> monatsversionen(UUID tenant, Collection<UUID> messstellen, LocalDate von, LocalDate bis,
+            Integer hoechstens) {
+        if (messstellen.isEmpty()) {
+            return List.of();
+        }
+        List<Object> args = new ArrayList<>();
+        if (tenant != null) {
+            args.add(tenant);
+        }
+        args.addAll(List.of(messstellen.toArray(UUID[]::new), von, bis,
+                hoechstens == null ? Integer.MAX_VALUE : hoechstens));
+        return jdbc.query("SELECT entity_id, messkanal, messstelle_id, tag, version, menge, menge_zustand, "
+                + "abdeckung_prozent, kennzeichen::text AS kennzeichen, anlass_kennung, created_at "
+                + "FROM messreihe_periode_version WHERE ebene = 'monat' AND "
+                + (tenant == null ? "" : "tenant_id = ? AND ")
+                + "messstelle_id = ANY(?) AND tag BETWEEN ? AND ? AND version <= ? ORDER BY messstelle_id, tag, version",
+                (rs, n) -> new Version(rs.getObject("entity_id", UUID.class), rs.getString("messkanal"),
+                        rs.getObject("messstelle_id", UUID.class), rs.getObject("tag", LocalDate.class),
+                        rs.getInt("version"), rs.getBigDecimal("menge"), rs.getString("menge_zustand"),
+                        (Integer) rs.getObject("abdeckung_prozent"), rs.getString("kennzeichen"),
+                        rs.getString("anlass_kennung"), zeit(rs.getTimestamp("created_at"))),
+                args.toArray());
     }
 
     private static Instant zeit(Timestamp t) {

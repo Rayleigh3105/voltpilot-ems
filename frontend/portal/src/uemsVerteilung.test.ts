@@ -6,9 +6,12 @@ import { dez, dezVergleich, type Dez } from './bezugsdaten';
 import { MENGE_NACHKOMMASTELLEN } from './uemsBilanz';
 import {
   ANTEIL_NACHKOMMASTELLEN,
+  ERBE_ANTEIL_WECHSELT,
+  GRUND_ANTEIL_WECHSELT,
   NICHT_VERTEILT,
   SUMME_PROZENT,
   VERTEILT,
+  ablesezeitraum,
   amTag,
   erbe,
   fassung,
@@ -113,6 +116,11 @@ describe('Verteilungs-Vertrag: Form der Vektor-Datei', () => {
         expect(vectors.zwillinge_grund[regel], `Grund, warum ${regel} keinen TS-Zwilling hat`).toBeTruthy();
       }
     }
+  });
+
+  it('der Grund und der Satz eines Anteils, der mitten im Ablesezeitraum wechselt, stehen in der Datei (Messen PR4)', () => {
+    expect(vectors.vokabulare.kostenstelle_grund).toContain(GRUND_ANTEIL_WECHSELT);
+    expect(vectors.saetze.erbe_anteil_wechselt).toBe(ERBE_ANTEIL_WECHSELT);
   });
 
   it('jede Abweichung und jede ungeprüfte Erwartung ist benannt', () => {
@@ -236,6 +244,33 @@ describe('Verteilungs-Vertrag: die Vektoren', () => {
         expect(ist.version, `${why} · Version`).toBe(soll.version);
         expect(ist.kennzeichen, `${why} · Kennzeichen`).toEqual(soll.kennzeichen);
         expect(ist.grund, `${why} · Grund`).toBe(soll.grund);
+        break;
+      }
+      case 'ablesezeitraum': {
+        const ist = ablesezeitraum(ein.zone, ein.zeitraeume, betrag(ein.menge), bestand(ein.zeilen), ziele(ein.ziele));
+        expect(ist.erster_tag, `${why} · erster Tag`).toBe(soll.erster_tag);
+        expect(ist.letzter_tag, `${why} · letzter Tag`).toBe(soll.letzter_tag);
+        expect(
+          ist.ziele.map((z) => z.kostenstelle),
+          `${why} · Ziele`,
+        ).toEqual(soll.ziele.map((z: Json) => z.kostenstelle));
+        ist.ziele.forEach((z, i) => {
+          const s = soll.ziele[i];
+          betragGleich(z.anteil_prozent, s.anteil_prozent, `${why} · ${z.kostenstelle} · Anteil`);
+          betragGleich(z.menge, s.menge, `${why} · ${z.kostenstelle} · Menge`);
+          expect(z.grund, `${why} · ${z.kostenstelle} · Grund`).toBe(s.grund);
+          expect(z.geaendert_am, `${why} · ${z.kostenstelle} · geändert am`).toBe(s.geaendert_am);
+        });
+        if (soll.nicht_verteilt === null) {
+          expect(ist.nicht_verteilt, `${why} · nicht verteilt`).toBeNull();
+        } else {
+          expect(ist.nicht_verteilt, `${why} · nicht verteilt`).not.toBeNull();
+          betragGleich(ist.nicht_verteilt!.menge, soll.nicht_verteilt.menge, `${why} · nicht verteilt · Menge`);
+          expect(ist.nicht_verteilt!.grund, `${why} · nicht verteilt · Grund`).toBe(soll.nicht_verteilt.grund);
+          expect(ist.nicht_verteilt!.geaendert_am, `${why} · nicht verteilt · geändert am`).toBe(
+            soll.nicht_verteilt.geaendert_am,
+          );
+        }
         break;
       }
       case 'term': {

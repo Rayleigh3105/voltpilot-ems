@@ -196,7 +196,8 @@ describe('Zeichen und Zähler-Chips', () => {
     fireEvent.click(chip);
     expect(tippen).toHaveBeenCalledOnce();
     expect(screen.getByTestId('still').tagName).toBe('SPAN');
-    expect(screen.getByTestId('still')).toHaveTextContent('4Teile offen');
+    // Mit Leerzeichen im Text, nicht nur im Abstand der Reihe (Review r1, P1-8): Vorleser und Kopieren lesen „4 Teile offen“.
+    expect(screen.getByTestId('still').textContent).toBe('4 Teile offen');
   });
 });
 

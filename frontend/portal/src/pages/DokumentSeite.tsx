@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { merkeAbruf } from '../routenUhr';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { ApiError, api, type EnergiemanagementDokument, type Feststellung } from '../api';
@@ -76,7 +77,10 @@ export function DokumentSeite({ id, onListe, onFeststellung }: { id: string; onL
     let aktiv = true;
     setFehler(null);
     api.energiemanagementDokument(id).then(
-      (r) => aktiv && setD(r),
+      (r) => {
+        merkeAbruf(r.ueberpruefung?.abruf); // eine Uhr (Befund 3): auch die alten Dialoge enden am Tag der Route
+        if (aktiv) setD(r);
+      },
       (e) => aktiv && setFehler(e instanceof ApiError && e.status === 404 ? { satz: N.DOKUMENT_FEHLT, erneut: false } : { satz: N.DOKUMENT_LADEFEHLER, erneut: true }),
     );
     return () => {

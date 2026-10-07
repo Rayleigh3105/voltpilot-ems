@@ -3964,6 +3964,8 @@ export interface BerichtDetail {
   bericht: Bericht;
   staende: BerichtStandKurz[];
   anstoesse: BerichtAnstoss[];
+  /** Der Augenblick der Route (ihre Uhr): daran misst die Seite „Zeitraum läuft“, nie an der Uhr des Browsers. */
+  abruf: string;
 }
 
 /** Ein Abzug: `docs/contracts/v2/bericht.schema.json` `$defs/abzug` — gelesen über `uemsBericht.ts`. */
@@ -4225,6 +4227,38 @@ export interface KostenstelleEnergiePosten {
   tage: KostenstelleEnergieTag[];
   /** Art `verteilt`; bei „nicht verteilt“ `null`. */
   herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat`/`jahr` - je Monat der Anteil der Ablesezeiträume,
+   * die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld.
+   */
+  monate?: KostenstelleEnergieMonat[];
+}
+
+/** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung (`bis` ausschließlich), mit Versatz. */
+export interface KostenstelleEnergieAblesezeitraum {
+  von: string;
+  bis: string;
+}
+
+/**
+ * Ein Monat eines Postens aus Ablesungen (Messen PR4, Konzept §10.3): `quelle_menge` ist die Menge des Monats an der
+ * Messstelle (dieselbe Zahl wie `…/werte?raster=monat`), `anteil_prozent` der Anteil, der an JEDEM Tag ihrer
+ * Ablesezeiträume galt, `menge` der Teil daraus. Wechselt der Anteil mitten im Zeitraum, sind Anteil und Menge `null`
+ * (`grund` `anteil_wechselt_im_ablesezeitraum`, `geaendert_am` der Tag); ohne Ablesung `keine_ablesung`. Nie 0.
+ */
+export interface KostenstelleEnergieMonat {
+  /** JJJJ-MM */
+  monat: string;
+  ablesezeitraeume: KostenstelleEnergieAblesezeitraum[];
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: 'quelle_keine_werte' | 'rest_unplausibel' | 'anteil_wechselt_im_ablesezeitraum' | 'keine_ablesung' | null;
+  /** Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt. */
+  geaendert_am: string | null;
 }
 
 /**
@@ -5946,7 +5980,11 @@ export interface MessstelleRegisterQuelle {
   davor: MessstelleRegisterBindung | null;
   vergleichsquellen: number;
   /** Nur bei `stand = ablesung`: die Werte kommen aus Ablesungen — seit wann und wann zuletzt (`null` = noch nie). */
-  ablesung?: { seit: string; zuletzt: string | null };
+  /**
+   * `faellig_ab` (Messen-Bau m2, additiv): ab wann die nächste Ablesung fehlt - letzte Ablesung + zwei Kalendermonate,
+   * ohne Ablesung der Beginn der Quelle; derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung.
+   */
+  ablesung?: { seit: string; zuletzt: string | null; faellig_ab: string };
 }
 
 /**
@@ -7515,10 +7553,14 @@ export function setTenantOverride(tenantId: string | null): void {
  * 30-s-Takt holt also weiterhin wirklich neu - eine zwischengespeicherte
  * Antwort wäre genau die stille Veraltung, die dieses Portal nirgends duldet.
  *
- * Zwei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
- * werden) und der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
+ * Drei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
+ * werden), der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
  * ein Admin, der mitten im Flug umschaltet, die Antwort des vorherigen
- * Mandanten bekommen.
+ * Mandanten bekommen - und **Lesen nach Schreiben**: sobald eine Änderung
+ * geantwortet hat, teilt kein neuer Leser mehr eine Lese-Anfrage, die vor
+ * dieser Antwort losging. Sonst bekäme, wer nach „eingelöst“ neu liest, den
+ * Stand von davor (Messen m2: die geplante Messstelle blieb nach dem
+ * Einrichten stehen, weil das Schließen des Dialogs schon gelesen hatte).
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
@@ -7534,13 +7576,18 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (key != null) {
     const running = inFlight.get(key);
     if (running) return running as Promise<T>;
-    const p = requestUncoalesced<T>(path, init).finally(() => {
-      inFlight.delete(key);
+    const p: Promise<T> = requestUncoalesced<T>(path, init).finally(() => {
+      // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
+      if (inFlight.get(key) === p) inFlight.delete(key);
     });
     inFlight.set(key, p);
     return p;
   }
-  return requestUncoalesced<T>(path, init);
+  const antwort = requestUncoalesced<T>(path, init);
+  if ((init.method ?? 'GET').toUpperCase() === 'GET') return antwort;
+  // Eine Änderung hat geantwortet (oder ist gescheitert - ob sie schrieb, weiß nur der Server): wer jetzt liest, fragt
+  // neu. Wer schon wartet, behält seine Antwort.
+  return antwort.finally(() => inFlight.clear());
 }
 
 /**
@@ -7573,6 +7620,16 @@ export function vergissGemerkte(): void {
   gemerkt.clear();
 }
 
+/**
+ * Welcher Kundenbereich gemeint ist: `X-Kundenbereich` (Partner und Plattform in einer Unterstützung, Kunden ohnehin),
+ * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
+ * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
+ */
+function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
+  return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
+    : mandant ? { 'X-Tenant-Id': mandant } : {};
+}
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   const angefragterMandant = tenantOverride;
   const angefragterKundenbereich = kundenbereich;
@@ -7591,8 +7648,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(angefragterKundenbereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': angefragterKundenbereich }
-        : angefragterMandant ? { 'X-Tenant-Id': angefragterMandant } : {}),
+      ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
   });
@@ -7642,7 +7698,7 @@ export async function downloadMeasurementExport(
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf(path),
     },
   });
   if (!response.ok) throw new ApiError(response.status, 'Der Export konnte nicht erstellt werden.');
@@ -7669,7 +7725,7 @@ export async function ladeGesamtabzug(): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/unternehmen/abzug`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf('/api/v1/unternehmen/abzug'),
     },
   });
   if (!res.ok) {
@@ -11346,8 +11402,11 @@ export const api = {
    * welche Hebel sie zeigen; entscheiden tut weiter die Route.
    */
   selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
-  /** Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. */
-  berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
+  /**
+   * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
+   * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
+   */
+  berichte: () => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
@@ -11386,7 +11445,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/berichte/${kennung}/staende/${nr}/${format}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf(`/api/v1/berichte/${kennung}/staende/${nr}/${format}`),
       },
     });
     if (!res.ok) {
@@ -11559,7 +11618,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/verzeichnis?${q}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf(`/api/v1/energiemanagement/verzeichnis?${q}`),
       },
     });
     if (!res.ok) {
@@ -11586,7 +11645,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/wiedervorlage?format=ics`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+        ...bereichKopf('/api/v1/energiemanagement/wiedervorlage?format=ics'),
       },
     });
     if (!res.ok) {
@@ -11769,6 +11828,11 @@ export interface Messbedarf {
   begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
   /** Ältere Antworten ohne die Felder = keine Struktur. */
   ort_ziel?: MessbedarfOrtZiel | null; messgroesse?: string | null; richtung?: string | null;
+  /**
+   * Review r4 M4: `zitiert_von` = die freigegebenen Berichtsstände, die den Bedarf zitieren (wie `berichtsstaende` der
+   * 409 `berichts_belege`); `einloesbar` = offen und von keinem Stand zitiert. Eine ältere API lässt beide weg.
+   */
+  einloesbar?: boolean; zitiert_von?: { kennung: string; nr: number }[];
 }
 /** Ein Protokolleintrag: `alt`/`neu` sind die Schnappschüsse der Zeile (snake_case-Spalten). */
 export interface MessbedarfAenderung {

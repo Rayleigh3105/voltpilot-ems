@@ -200,7 +200,7 @@ describe('„rückwirkend“ und „geplant“ — der gewählte Tag gegen heute
     expect(gespeichertSatz('prozesse', '2026-10-01', SEITE_HEUTE, ZONE)).toBe(
       'Prozesse ab 01.10.2026 eingetragen · rückwirkend (19 Tage).',
     );
-    expect(gespeichertSatz('stellung', SEITE_HEUTE, SEITE_HEUTE, ZONE)).toBe('Elektrische Stellung ab 20.10.2026 eingetragen.');
+    expect(gespeichertSatz('stellung', SEITE_HEUTE, SEITE_HEUTE, ZONE)).toBe('Stellung im Stromnetz ab 20.10.2026 eingetragen.');
   });
 });
 
@@ -401,7 +401,7 @@ describe('Kostenstellen ändern — die 100 % ruft den Vertrag (`uemsVerteilung.
   it('am Beginn des laufenden Satzes ist es eine Berichtigung, und derselbe Satz ist „nichts zu ändern“', () => {
     const same = f([{ kostenstelle: KOSTENSTELLE_IDS.k4100, anteil: '100' }], '2026-10-01');
     expect(aendernPruefen('verteilung', same, b, kataloge())).toEqual({
-      anteile: `Am 01.10.2026 gilt schon: 4100 Spritzguss · 100${NBSP}%. Es gibt nichts zu ändern.`,
+      anteile: `Am 01.10.2026 gilt schon: 100${NBSP}% Spritzguss. Es gibt nichts zu ändern.`,
     });
     const neu = f([{ kostenstelle: KOSTENSTELLE_IDS.k4200, anteil: '100' }], '2026-10-01');
     expect(verteilungAbTagAnfrage(neu, b).korrektur).toBe(true);

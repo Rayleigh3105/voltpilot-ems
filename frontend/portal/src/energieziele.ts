@@ -68,6 +68,9 @@ export const MONAT_SPALTEN = {
 
 export const SUMME = 'Summe';
 export const NOCH_NICHT_ENDGUELTIG = 'noch nicht endgültig';
+/** Befund 1 (Konzept Verbessern v1): ein offener Monat nennt den Grund der Route statt nur „noch nicht endgültig“. */
+export const MONAT_LAEUFT = 'läuft noch';
+export const MONAT_OHNE_WERT = 'kein gemessener Wert';
 export const VERLAUF = 'Verlauf';
 export const VORSCHLAG = 'Vorschlag';
 export const LADEFEHLER = `Die ${UEMS_ENERGIEZIELE} konnten nicht geladen werden.`;
@@ -127,20 +130,35 @@ export function standSpalte(s: Pick<EnergiezielStand, 'summe' | 'monate_text'>):
 }
 
 export type MonatZeile =
-  | { art: 'offen'; periode: string; beschriftung: string }
+  | { art: 'offen'; periode: string; beschriftung: string; grund: string }
   | { art: 'gezaehlt'; periode: string; beschriftung: string; gemessen: string; erwartet: string; delta: string | null;
       urteil: string; band: string | null; urteilKlasse: string }
   | { art: 'ausgeschlossen'; periode: string; beschriftung: string; gemessen: string; satz: string };
 
 /**
- * Je Monat der Zielperiode eine Zeile: noch nicht endgültig · gezählt (gemessen, erwartet, Δ, Urteil mit Band) ·
+ * Der Grund eines nicht endgültigen Monats aus der Route (`bereinigt.grund`, sonst der Satz der Route): „läuft noch“,
+ * „kein gemessener Wert“ — nur ohne Grund (Wert da, aber noch nicht endgültig) bleibt „noch nicht endgültig“.
+ */
+export function offenGrund(v: { satz: string; bereinigt: { grund: string | null } }): string {
+  const g = v.bereinigt.grund;
+  if (g === 'periode_nicht_zu_ende') return MONAT_LAEUFT;
+  if (g === 'keine_werte') return MONAT_OHNE_WERT;
+  if (g) {
+    const i = v.satz.indexOf(' — ');
+    return (i >= 0 ? v.satz.slice(i + 3) : v.satz).replace(/\.$/, '');
+  }
+  return NOCH_NICHT_ENDGUELTIG;
+}
+
+/**
+ * Je Monat der Zielperiode eine Zeile: offen mit Grund der Route · gezählt (gemessen, erwartet, Δ, Urteil mit Band) ·
  * nicht gezählt mit dem Satz des Lesers als Grund (Z3). Zählt ein Monat, entscheidet der Leser über `nicht_gezaehlt`.
  */
 export function monatZeilen(s: Pick<EnergiezielStand, 'monate' | 'nicht_gezaehlt'>): MonatZeile[] {
   const aus = new Set(s.nicht_gezaehlt.map((n) => n.monat));
   return s.monate.map(({ periode, endgueltig, vergleich: v }) => {
     const beschriftung = v.beschriftung;
-    if (!endgueltig) return { art: 'offen', periode, beschriftung };
+    if (!endgueltig) return { art: 'offen', periode, beschriftung, grund: offenGrund(v) };
     const b = v.bereinigt;
     if (aus.has(periode) || b.erwartet === null) {
       return { art: 'ausgeschlossen', periode, beschriftung, gemessen: menge(b.gemessen.wert, b.gemessen.einheit), satz: v.satz };

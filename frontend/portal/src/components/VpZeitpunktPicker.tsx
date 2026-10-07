@@ -2,7 +2,12 @@ import { VpDatePicker } from './VpDatePicker';
 import { VpTimePicker } from './VpTimePicker';
 import { VpPicker } from './VpPicker';
 import { lesen, zonenName, type ZeitpunktEingabe } from '../picker/zeitpunkt';
-export function VpZeitpunktPicker({ value, zone, onChange, disabled, error }: { value: ZeitpunktEingabe; zone: string; onChange: (v: ZeitpunktEingabe) => void; disabled?: boolean; error?: string }) {
+import './WerteEingabe.css';
+/**
+ * Datum und Uhrzeit mit der Zone des Standorts. Mit `kopf` (Konzept Messen m1, §6.5: „Abgelesen am“ mit „MESZ“ am Feld)
+ * steht die Frage über den Feldern und das Kürzel der Zone am Uhrzeit-Feld - ohne die Zeile „Zeitzone: Europe/Berlin“.
+ */
+export function VpZeitpunktPicker({ value, zone, onChange, disabled, error, kopf }: { value: ZeitpunktEingabe; zone: string; onChange: (v: ZeitpunktEingabe) => void; disabled?: boolean; error?: string; kopf?: string }) {
   const z = lesen(value, zone);
   return <div className="vp-wert-zeitpunkt" onChangeCapture={e => {
     // VpTimePicker behält bei unlesbarem Text seinen letzten gültigen Wert. Ein neuer
@@ -10,10 +15,11 @@ export function VpZeitpunktPicker({ value, zone, onChange, disabled, error }: { 
     const feld = e.target;
     if (feld instanceof HTMLInputElement && feld.id === 'wert-zeit') onChange({ ...value, zeit: feld.value, variante: null });
   }}>
-    <p>Zeitzone: {zone}{z.wert ? ` · ${zonenName(z.wert, zone)}` : ''}</p>
+    {kopf ? <p className="vp-wert-zeitpunkt-kopf">{kopf}</p> : <p>Zeitzone: {zone}{z.wert ? ` · ${zonenName(z.wert, zone)}` : ''}</p>}
     <div className="vp-bz-felder">
       <VpDatePicker id="wert-tag" label="Datum" value={value.tag} onChange={tag => onChange({ ...value, tag, variante: null })} disabled={disabled} />
       <VpTimePicker id="wert-zeit" label="Uhrzeit" value={value.zeit} onChange={zeit => onChange({ ...value, zeit, variante: null })} disabled={disabled} />
+      {kopf && <span className="vp-wert-zone" title={zone}>{zonenName(z.wert ?? new Date().toISOString(), zone)}</span>}
     </div>
     {z.varianten.length > 0 && <VpPicker id="wert-variante" label="Welche Stunde?" value={value.variante} placeholder="Stunde wählen …" options={z.varianten} onChange={variante => onChange({ ...value, variante })} disabled={disabled} />}
     {(error || z.fehler) && <p role="alert">{error || z.fehler}</p>}
