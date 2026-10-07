@@ -140,6 +140,9 @@ class DemoRundgangAufbau {
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         // Die Zuweisungen des Seeds beginnen am 01.10.2026 — Ines Kaltenbach hat ihre Rechte auf der Bühne.
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
+        // Nachweisen PR 8: die Berichts-Naht wie in der API (Surefire schaltet sie ab) - ob ein Bericht nach einer
+        // Ablesung angestoßen wird, hängt sonst davon ab, wer die Korrektur zuerst abholt: dieser Lauf oder der Takt der API.
+        r.add("voltpilot.uems.berichte.enabled", () -> "true");
     }
 
     @Autowired MockMvc mvc;
@@ -226,7 +229,7 @@ class DemoRundgangAufbau {
         // Jede eingetragene Ablesung ist ein Anlass der Kaskade über die ganze Reihe (auch 10/2026 bis 03/2027, vor dem
         // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
         anlaesse += kaskadeLeeren();
-        nachweisenReferenz();
+        nachweisenReferenz(root);
         KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
         bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
         bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
@@ -235,34 +238,48 @@ class DemoRundgangAufbau {
     }
 
     /**
-     * Runde 4 - Demo-Füllung Nachweisen (Konzept n1 §4.10, Entscheid 20): die Berichte der Welt tragen nach dem Rundgang
-     * keine Anstöße, die nichts ändern. Diese Laufzeit verarbeitet die Kaskade ohne Berichts-Naht (Surefire); holt der Takt
-     * der Demo-API eine Korrektur des Bühnen-Bestands zuerst ab, stößt er Berichte an, deren Werte gleich bleiben - eine
-     * Ablesung nach dem Oktober 2026 trägt den Zeitraum ganzer Jahre und trifft den Monatsbericht Oktober 2026. Je offenem
-     * Anstoß vergleicht der Schritt den Entwurf mit dem gültigen Stand; ohne Abweichung verwirft Ines Kaltenbach ihn mit
-     * Grund (die Antwort, die das Portal dafür hat). Ein Anstoß mit Abweichung bleibt offen. Idempotent: danach ist keiner
+     * Runde 4 - Demo-Füllung Nachweisen (Konzept n1 §4.10, Entscheid 20): jeder offene Anstoß wird beantwortet, wie es
+     * eine sorgfältige Energiemanagerin täte. Eine Ablesung trägt als Zeitraum ganze Jahre (Befund für Messen und
+     * Berichte): jede Ablesung des Bühnen-Bestands stößt den Monatsbericht Oktober 2026 an, obwohl sein Wert bleibt. Ändert
+     * die Korrektur den Wert ihrer Messstelle in diesem Bericht nicht (Vergleich Entwurf gegen gültigen Stand, nur die
+     * Quellen des Stands), verwirft Ines Kaltenbach den Anstoß mit Grund („Änderung nicht übernommen“). Ändert sie ihn,
+     * bleibt die Entscheidung offen - wie die Referenz es am Leistungsvergleich zeigt. Idempotent: danach ist kein Anstoß
      * mehr offen, der nichts ändert.
      */
-    private void nachweisenReferenz() throws Exception {
+    private void nachweisenReferenz(JdbcTemplate root) throws Exception {
         int verworfen = 0;
+        int offen = 0;
         for (JsonNode b : lies("/api/v1/berichte?stichtag=2029-04-30").path("berichte")) {
             String kennung = b.path("kennung").asText();
-            JsonNode detail = lies("/api/v1/berichte/" + kennung);
-            for (JsonNode a : detail.path("anstoesse")) {
-                if (!a.path("zustand").asText().equals("offen")) {
-                    continue;
-                }
-                JsonNode vergleich = lies("/api/v1/berichte/" + kennung + "/entwurf/vergleich?gegen=" + a.path("nr").asInt());
-                if (!vergleich.path("abweichungen").isArray() || !vergleich.path("abweichungen").isEmpty()) {
+            List<JsonNode> anstoesse = new ArrayList<>();
+            lies("/api/v1/berichte/" + kennung).path("anstoesse").forEach(a -> {
+                if (a.path("zustand").asText().equals("offen")) anstoesse.add(a);
+            });
+            if (anstoesse.isEmpty()) {
+                continue;
+            }
+            // Geändert ist eine Quelle, die der Stand schon trägt und deren Wert der Entwurf anders nennt.
+            Set<String> geaendert = new java.util.HashSet<>();
+            lies("/api/v1/berichte/" + kennung + "/entwurf/vergleich?gegen=" + anstoesse.get(0).path("nr").asInt())
+                    .path("abweichungen").forEach(w -> {
+                        if (!w.path("vorher").isNull()) geaendert.add(w.path("quelle").asText());
+                    });
+            for (JsonNode a : anstoesse) {
+                List<String> messstelle = root.queryForList("SELECT m.kennzeichen FROM messreihe_korrektur k "
+                        + "JOIN messstelle m ON m.tenant_id = k.tenant_id AND m.id = (k.vorschau -> 0 ->> 'messstelle_id')::uuid "
+                        + "WHERE k.tenant_id = ? AND k.kennung = ? AND k.fassung = 1", String.class, TENANT,
+                        a.path("anlass_kennung").asText());
+                if (messstelle.size() != 1 || geaendert.contains(messstelle.get(0))) {
+                    offen++;
                     continue;
                 }
                 post("/api/v1/berichte/" + kennung + "/anstoesse/" + a.path("id").asText() + "/verwerfen", m("begruendung",
-                        "Nachgetragene Ablesung ändert keinen Wert dieses Berichts - der Vergleich mit Stand Nr. "
-                                + a.path("nr").asInt() + " zeigt keine Abweichung."));
+                        "Die Ablesung an " + messstelle.get(0) + " ändert den Wert dieses Berichts nicht."));
                 verworfen++;
             }
         }
-        System.out.println("Rundgang Runde 4 (Nachweisen): " + verworfen + " Anstöße ohne Abweichung verworfen.");
+        System.out.println("Rundgang Runde 4 (Nachweisen): " + verworfen + " Anstöße ohne geänderten Wert verworfen, "
+                + offen + " offen.");
     }
 
     /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */

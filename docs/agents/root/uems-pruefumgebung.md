@@ -40,6 +40,8 @@ Die Umgebung für die Fachperson erreichbar machen (Adresse, Portal, Zugangsweg)
 - Seit K1 (#1428) rechnen auch `KennzahlLauf` und die Bericht-Naht der Kaskade (`BerichtKaskade`) auf der Bühne; die Bühne beginnt nie vor dem jüngsten `kennzahl_wert.berechnet_am`.
   ⚠ Kennzahlwerte mit Bühnenzeit neben einer API, die in echter Zeit rechnet, halten die Kaskade aller Mandanten an: jede neue Ablesung kaskadiert über die ganze Reihe („liegt nicht nach der neuesten Zeile“, an der Bericht-Naht D2).
   ⚠ Im Testlauf ist die Bericht-Naht aus (surefire `voltpilot.uems.berichte.enabled=false`); ihr Verhalten zeigt nur eine laufende API, z. B. auf einer Kopie der Demo-DB.
+  Ausnahme seit Nachweisen PR 8: `PruefumgebungAhrenbergAufbau` und `PruefumgebungAhrenbergTest` schalten sie an, weil die Welt den Monatsbericht Oktober 2026 mit einer Korrektur baut; sonst entschiede der Takt der API, ob Nr. 1 den Anstoß bekommt.
+  Die Welt trägt dafür MS-20 bis 01.11.2026 ein, aus derselben Reihe wie der Rundgang (`DemoRundgangAufbau.reihe`); Reihenfolge und Wettlauf stehen in `infra/local/demo/README.md`.
 
 ## Bedienen
 
