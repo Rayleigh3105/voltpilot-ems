@@ -1,4 +1,5 @@
 import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
+import type { GeplanteReihe } from './geplanteMessstellen';
 import { UEMS_MESSSTELLE, UEMS_NOCH_KEINE_QUELLE, UEMS_UNTERNEHMEN, UEMS_WOHER_DIE_WERTE } from './glossar';
 import { alleFundstellen, hervorheben, normalisiereSuche, type Fundstellen, type TextTeil } from './picker/suche';
 import {
@@ -272,8 +273,8 @@ export interface Reihe {
   archiviert: boolean;
   /** Der Schritt „Ablesungen eintragen“ der Wiedervorlage zeigt auf diese Reihe (`data-entscheid`). */
   ablesungsZiel: boolean;
-  /** Für die Marken: welche Lage die Reihe hat. */
-  lage: { ablesungFehlt: boolean; liefertNicht: boolean; ohneQuelle: boolean; entwurf: boolean; angehalten: boolean; geplant: boolean };
+  /** Für die Marken: welche Lage die Reihe hat („geplant“ ist keine Lage einer Messstelle, sondern die Reihen der Bedarfe). */
+  lage: Record<Exclude<MarkeSchluessel, 'geplant'>, boolean>;
   /** Die Zeile des Registers - Suche und Gruppen lesen daraus. */
   zeile: MessstelleRegisterZeile;
 }
@@ -427,7 +428,6 @@ export function reiheAus(w: ZeileWoerter, z: MessstelleRegisterZeile, zone: stri
       ohneQuelle: z.art === 'gemessen' && weg === 'ohne' && z.lebenszyklus !== 'archiviert',
       entwurf: z.lebenszyklus === 'entwurf',
       angehalten: z.lebenszyklus === 'angehalten',
-      geplant: (z.geplant_fuer_einsaetze ?? []).length > 0,
     },
     zeile: z,
   };
@@ -454,12 +454,14 @@ export interface OrtGruppe {
   reihen: Reihe[];
   /** So viele hat der Ort ohne Suche und Marke - „1 von 8“. */
   gesamt: number;
+  /** Die geplanten Messstellen des Orts (offene Messbedarfe), die Suche und Marke zeigen - nach den Messstellen. */
+  geplant: GeplanteReihe[];
 }
 
 const nachZiffern = (a: string, b: string) => a.localeCompare(b, 'de-DE', { numeric: true });
 
 /** Der Schlüssel, nach dem die Orte stehen: der Pfad von oben (Standort, Gebäude, Bereich) - wie der Ortsbaum. */
-function ortReihenfolge(z: MessstelleRegisterZeile): string {
+export function ortReihenfolge(z: MessstelleRegisterZeile): string {
   const o = z.ort;
   switch (o.grund) {
     case 'am_unternehmen':
@@ -498,7 +500,7 @@ export function ableseortVon(z: MessstelleRegisterZeile): string | null {
   return o.standort;
 }
 
-function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
+export function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
   const o = z.ort;
   switch (o.grund) {
     case 'am_unternehmen':
@@ -548,15 +550,18 @@ function markeText(s: MarkeSchluessel, n: number): string {
     case 'angehalten':
       return `${n} angehalten`;
     case 'geplant':
-      return `${n} geplant für einen Energieeinsatz`;
+      return `${n} geplant`;
   }
 }
 
-/** Die Marken - nur, was es gibt (nie „0 ohne Quelle“); sie zählen die Messstellen ohne die archivierten. */
-export function marken(reihen: readonly Reihe[]): Marke[] {
+/**
+ * Die Marken - nur, was es gibt (nie „0 ohne Quelle“); sie zählen die Messstellen ohne die archivierten, „geplant“ die
+ * geplanten Messstellen (offene Messbedarfe).
+ */
+export function marken(reihen: readonly Reihe[], geplant = 0): Marke[] {
   const aktiv = reihen.filter((r) => !r.archiviert);
   return MARKE_REIHENFOLGE.flatMap((s) => {
-    const n = aktiv.filter((r) => r.lage[s]).length;
+    const n = s === 'geplant' ? geplant : aktiv.filter((r) => r.lage[s]).length;
     return n > 0 ? [{ schluessel: s, text: markeText(s, n), ton: s === 'ablesungFehlt' || s === 'liefertNicht' ? ('warn' as const) : ('neutral' as const), anzahl: n }] : [];
   });
 }
@@ -607,7 +612,13 @@ function seitVon(reihen: readonly Reihe[], zone: string, zeitpunkt: string): str
 export function status(
   antwort: MessstellenRegister,
   reihen: readonly Reihe[],
-  i: { ebene: MessstellenEbene; zone: string; stichtag: string | null },
+  i: {
+    ebene: MessstellenEbene;
+    zone: string;
+    stichtag: string | null;
+    /** Die Karte der geplanten Messstellen mit überschrittener Frist (`geplantHinweis`) - nach denen der Messstellen. */
+    geplant?: Hinweis | null;
+  },
 ): Status {
   const aktiv = reihen.filter((r) => !r.archiviert);
   const hinweise: Hinweis[] = [];
@@ -639,6 +650,7 @@ export function status(
       schritt: 'Ansehen',
     });
   }
+  if (i.geplant) hinweise.push(i.geplant);
   const a = antwort.aggregat?.unternehmen;
   if (!a || a.gesamt === 0) return { zeile: null, hinweise };
   if (hinweise.length > 0) return { zeile: null, hinweise };
@@ -661,6 +673,8 @@ export interface Liste {
   reihen: Reihe[];
   /** So viele zeigt die Liste gerade (Suche und Marke). */
   treffer: number;
+  /** So viele geplante Messstellen zeigt sie gerade - sie zählen nicht zu den Messstellen. */
+  geplant: number;
   /** So viele gäbe es ohne Suche und Marke. */
   gesamt: number;
   /** An wie vielen Orten die gezeigten stehen. */
@@ -669,11 +683,20 @@ export interface Liste {
 
 /**
  * Die Liste aus den Einträgen des Registers (`registerEintraege`): Reihen, nach Ort gruppiert, gefiltert durch Suche
- * und Marke. Leere Gruppen fallen weg; jede Gruppe zählt ihre Treffer gegen ihren ganzen Bestand („1 von 8“).
+ * und Marke. Leere Gruppen fallen weg; jede Gruppe zählt ihre Treffer gegen ihren ganzen Bestand („1 von 8“). Die
+ * geplanten Messstellen (`geplanteAus`) stehen an ihrem Ort nach den Messstellen - ein Ort nur mit geplanten bekommt
+ * eine eigene Gruppe; die Marke „geplant“ zeigt nur sie, jede andere Marke nur Messstellen.
  */
 export function liste(
   eintraege: readonly RegisterEintrag[],
-  i: { ebene: MessstellenEbene; zone: string; zeitpunkt: string; suche: string; marke: MarkeSchluessel | null },
+  i: {
+    ebene: MessstellenEbene;
+    zone: string;
+    zeitpunkt: string;
+    suche: string;
+    marke: MarkeSchluessel | null;
+    geplante?: readonly GeplanteReihe[];
+  },
 ): Liste {
   const ziele = ablesungsZiele(eintraege.flatMap((e) => (e.art === 'messstelle' ? [e.woerter] : [])));
   const reihen: Reihe[] = [];
@@ -683,7 +706,8 @@ export function liste(
     else reihen.push(reiheAus(e.woerter, e.zeile, i.zone, i.zeitpunkt, ziele.has(e.woerter.id)));
   }
   const terme = suchTerme(i.suche);
-  const passt = (r: Reihe) => passtZurSuche(r.zeile, terme) && (i.marke === null || r.lage[i.marke]);
+  const passt = (r: Reihe) => passtZurSuche(r.zeile, terme) && (i.marke === null || (i.marke !== 'geplant' && r.lage[i.marke]));
+  const passtGeplant = (g: GeplanteReihe) => (i.marke === null || i.marke === 'geplant') && geplantPasstZurSuche(g, terme);
   const offen = reihen.filter((r) => !r.archiviert);
   const je = new Map<string, OrtGruppe & { ordnung: string }>();
   for (const r of offen) {
@@ -695,6 +719,7 @@ export function liste(
       standortId: r.zeile.ort.standort_id,
       reihen: [],
       gesamt: 0,
+      geplant: [],
       ordnung: ortReihenfolge(r.zeile),
     };
     g.gesamt += 1;
@@ -706,8 +731,15 @@ export function liste(
     if (passt(r)) g.reihen.push(r);
     je.set(k.key, g);
   }
+  for (const p of i.geplante ?? []) {
+    if (!passtGeplant(p)) continue;
+    const { key, titel, standort, standortId, ordnung } = p.ort;
+    const g = je.get(key) ?? { key, titel, standort, standortId, ablesen: null, ablesenHier: false, reihen: [], gesamt: 0, geplant: [], ordnung };
+    g.geplant.push(p);
+    je.set(key, g);
+  }
   const gruppen = [...je.values()]
-    .filter((g) => g.reihen.length > 0)
+    .filter((g) => g.reihen.length > 0 || g.geplant.length > 0)
     .sort((a, b) => nachZiffern(a.ordnung, b.ordnung))
     .map(({ ordnung: _o, ...g }) => ({ ...g, reihen: [...g.reihen].sort(imOrt) }));
   const treffer = gruppen.reduce((n, g) => n + g.reihen.length, 0);
@@ -717,9 +749,17 @@ export function liste(
     nochNicht,
     reihen: offen,
     treffer,
+    geplant: gruppen.reduce((n, g) => n + g.geplant.length, 0),
     gesamt: offen.length,
-    orte: gruppen.length,
+    orte: gruppen.filter((g) => g.reihen.length > 0).length,
   };
+}
+
+/** Eine geplante Messstelle wird wie eine Messstelle gesucht: in Name (Wortlaut), Kennzeichen, Ort und Einsatz. */
+function geplantPasstZurSuche(g: GeplanteReihe, terme: readonly string[]): boolean {
+  if (terme.length === 0) return true;
+  const felder = [g.name, g.kennzeichen, g.ort.titel, g.ort.standort ?? '', g.einsatz?.text ?? ''].map(normalisiereSuche);
+  return terme.every((t) => felder.some((f) => f.includes(t)));
 }
 
 /**

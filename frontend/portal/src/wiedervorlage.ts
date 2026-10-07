@@ -21,6 +21,7 @@ import {
   UEMS_EINGETRAGEN_VON,
   UEMS_ENTSCHIEDEN_VON,
   UEMS_ENERGIEZIEL,
+  UEMS_GEPLANTE_MESSSTELLE,
   UEMS_JAHRESPLAN,
   UEMS_LAUT_AUFGABE,
   UEMS_MASSNAHME,
@@ -32,7 +33,6 @@ import {
   auditRoute,
   berichtRoute,
   dokumentRoute,
-  energieeinsatzRoute,
   energiemanagementRoute,
   energiezielRoute,
   feststellungRoute,
@@ -501,7 +501,7 @@ function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): s
     case 'abweichung_frist':
       return `An der Kennzahl ${z.bezug ?? z.titel}`;
     case 'messbedarf_frist':
-      return z.bezug ?? 'Aus der Messplanung der energetischen Bewertung';
+      return z.bezug ?? `${UEMS_GEPLANTE_MESSSTELLE.charAt(0).toUpperCase()}${UEMS_GEPLANTE_MESSSTELLE.slice(1)} unter Messen`;
     case 'bericht_anstoss': {
       // Seit Vertrag 1.1 ist ein Bericht EINE Zeile ab der ersten Korrektur; ältere Zeilen kamen je Korrektur.
       const anzahl = h?.anzahl ?? zeilen.length;
@@ -558,8 +558,9 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
 
 /**
  * Entscheid 8: der Schritt öffnet das Objekt dort, wo die Entscheidung fällt. Audit und Managementbewertung legt man
- * im Reiter neu an; der Messbedarf wird an seinem Energieeinsatz eingelöst (dort steht „Messstelle einrichten“), ohne
- * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen). Eine Ablesung trägt man an der
+ * im Reiter neu an; der Messbedarf ist seit Messen PR4 eine geplante Messstelle unter Messen und wird dort eingerichtet
+ * („Einrichten“, `?entscheid=messbedarf_frist&kennzeichen=MB-1`; ein zitierter Bedarf trägt statt dessen den Satz mit
+ * den Berichtsständen). Eine Ablesung trägt man an der
  * Messstelle ein: bei einem Zähler direkt dort, bei mehreren in der Ablese-Runde ihres Orts (`?ablesen=G-1`, Konzept
  * Messen m1 §6.5 Variante 3A) - das erste offene Feld der Runde trägt den Entscheid.
  */
@@ -573,7 +574,9 @@ export function eintragSprung(
     case 'managementbewertung':
       return entscheidSprung(energiemanagementRoute('managementbewertung'), z.art);
     case 'messbedarf_frist':
-      return entscheidSprung(z.einsatz_id ? energieeinsatzRoute(z.einsatz_id) : pageRoute('portfolio-bewertung'), z.art, z.kennzeichen);
+      // Konzept Auswerten a1, Entscheid 9: ein offener Messbedarf steht unter Messen als geplante Messstelle - der Schritt
+      // „Messstelle anlegen“ öffnet die Liste bei ihm („Einrichten“), nicht mehr den Energieeinsatz.
+      return entscheidSprung(pageRoute('portfolio-messstellen'), z.art, z.kennzeichen);
     case 'zaehlerablesung':
       return z.herleitung?.anzahl === 1 && z.id
         ? entscheidSprung(messstelleRoute(z.id), z.art)

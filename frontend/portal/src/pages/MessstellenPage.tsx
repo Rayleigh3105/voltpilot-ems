@@ -6,11 +6,22 @@ import { useCallback, useEffect, useId, useRef, useState, type MouseEvent as Rea
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { zeitraumAus } from '../anlageEnergiebilanz';
-import { api, type KostenstelleEnergiePeriode, type MessstellenRegister, type StandortAusfall } from '../api';
+import {
+  api,
+  ApiError,
+  type Energieeinsatz,
+  type KostenstelleEnergiePeriode,
+  type Messbedarf,
+  type Messstelle,
+  type MessstellenRegister,
+  type StandortAusfall,
+} from '../api';
+import { darfAnsehen, darfVerwalten, laeuft } from '../bewertung';
 import '../components/BereichTabs.css';
 import '../components/kacheln/Kacheln.css';
 import { BegriffAufklapper } from '../components/BegriffAufklapper';
 import { MessstelleDialog } from '../components/MessstelleDialog';
+import { MessbedarfEinloesen, MessbedarfErfassenDialog } from '../components/Messplanung';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { VpDatePicker } from '../components/VpDatePicker';
 import { heuteIn } from '../kennzahlKarte';
@@ -60,6 +71,7 @@ import {
   mitSuche,
   monatLang,
   ohneParameter,
+  ortKopf,
   status as statusAus,
   suchTerme,
   standAus,
@@ -77,7 +89,23 @@ import { listeZurueck, merkeListe } from '../messstellenRueckweg';
 import { DIALOG_TITEL } from '../messstelleDialog';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { springeUeberHash } from '../entscheid';
-import { parseRoute } from '../nav';
+import { energieeinsatzRoute, hashForRoute, parseRoute } from '../nav';
+import {
+  EINRICHTEN,
+  ERFASSEN_HINWEIS,
+  GEPLANT,
+  NOCH_NICHT_EINGERICHTET,
+  PLAN_FEHLER,
+  eingeloestSatz,
+  einloesenAbgelehntSatz,
+  erfasstSatz,
+  geplanteAus,
+  geplanteSatz,
+  geplantHinweis,
+  geplantZahl,
+  type GeplanteReihe,
+} from '../geplanteMessstellen';
+import { MESSPLANUNG, messbedarfAblehnung, nichtEinloesbar, nichtEinloesbarSatz, zuordnenText } from '../uemsMessplanung';
 import { ZURUECK_ZU_HEUTE, stichtagAus } from '../standAm';
 import { VORGABE_ZEITZONE, datumText } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
@@ -359,6 +387,20 @@ function RegisterFlaeche({
   const angelegt = useRef(false);
   const anfrage = useRef(0);
   const basisMerker = useRef<{ tag: string; antwort: MessstellenRegister } | null>(null);
+  const rollen = useRollen();
+  // Konzept Auswerten a1, Entscheid 9: die offenen Messbedarfe stehen hier als geplante Messstellen - nur mit dem Recht,
+  // Energieeinsätze zu sehen, und nur heute (an einem vergangenen Tag gibt es keinen Plan).
+  const planSichtbar = darfAnsehen(rollen.selbst);
+  const [plan, setPlan] = useState<{ bedarfe: Messbedarf[]; einsaetze: Energieeinsatz[] } | 'fehler' | null>(null);
+  const [planVersuch, setPlanVersuch] = useState(0);
+  const [einrichten, setEinrichten] = useState<GeplanteReihe | null>(null);
+  // Review r4 M4 (Entscheid c): scheitert das Einlösen, ist die Messstelle schon angelegt - die Reihe bietet dann
+  // „MS-24 zuordnen“ statt eines neuen „Einrichten“, damit wiederholtes Klicken nie weitere Messstellen anlegt.
+  const [zuordnen, setZuordnen] = useState<Record<string, Messstelle>>({});
+  const [ordnetZu, setOrdnetZu] = useState<string | null>(null);
+  const [erfassen, setErfassen] = useState(false);
+  const [planSatz, setPlanSatz] = useState<{ text: string; ton: 'ok' | 'fehler' } | null>(null);
+  const planSatzRef = useRef<HTMLParagraphElement>(null);
 
   const ebeneId = ebene.art === 'standort' ? ebene.id : null;
   const tagSchluessel = `${ebeneId ?? 'unternehmen'}|${stichtag ?? 'heute'}`;
@@ -403,6 +445,35 @@ function RegisterFlaeche({
       },
     );
   }, [ebeneId, stichtag, filter, tagSchluessel, schluessel, versuch]);
+
+  useEffect(() => {
+    if (!planSichtbar || stichtag) {
+      setPlan(null);
+      return;
+    }
+    let aktiv = true;
+    Promise.all([api.messbedarfeAlle(ebeneId ?? undefined), api.energieeinsaetze()]).then(
+      ([b, e]) => aktiv && setPlan({ bedarfe: b?.messbedarfe ?? [], einsaetze: e?.energieeinsaetze ?? [] }),
+      // Kein Recht oder kein Plan an diesem Standort (403/404) heißt: nichts geplant. Alles andere sagt die Liste.
+      (e) => aktiv && setPlan(e instanceof ApiError && (e.status === 403 || e.status === 404) ? { bedarfe: [], einsaetze: [] } : 'fehler'),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [planSichtbar, stichtag, ebeneId, planVersuch]);
+
+  // Nach „Einrichten“ oder „Messbedarf erfassen“: Register und Plan neu lesen; der Satz dazu trägt den Blick.
+  const neuLesen = () => {
+    basisMerker.current = null;
+    setVersuch((v) => v + 1);
+    setPlanVersuch((v) => v + 1);
+  };
+  // Erst, wenn kein Dialog mehr offen ist: „Einrichten“ löst schon mitten im Messstellen-Dialog ein (nach dem Ort), und
+  // der Fokus gehört bis zum Schließen dem Dialog. Danach steht der Satz dort, wo der Knopf war - der ist mit dem
+  // Bedarf verschwunden.
+  useEffect(() => {
+    if (planSatz && !einrichten && !erfassen) planSatzRef.current?.focus();
+  }, [planSatz, einrichten, erfassen]);
 
   // Die Liste merkt sich ihre Adresse (Suche, Filter, Marke, Stichtag) - der Rückweg einer Messstelle führt genau
   // hierher zurück.
@@ -454,14 +525,23 @@ function RegisterFlaeche({
     aktuell && !leer
       ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, ausfaelle: ausfallKarte })
       : [];
+  // Die geplanten Messstellen gelten heute; mit dem Filter einer Anlage keine (ein Bedarf hängt an keiner Anlage), mit
+  // dem eines Orts die an den Orten der Antwort.
+  const orteDerAntwort = new Set(aktuell && filter.ort ? aktuell.liste.register.map((z) => ortKopf(z, ebene).key) : []);
+  const geplante =
+    aktuell && !leer && !stichtag && heute && plan && plan !== 'fehler' && !filter.anlage
+      ? geplanteAus(plan.bedarfe, { register: aktuell.basis.register, einsaetze: plan.einsaetze, ebene, heute }).filter(
+          (g) => !filter.ort || orteDerAntwort.has(g.ort.key) || g.ort.key === filter.ort,
+        )
+      : [];
   const listeMit = (k: MarkeSchluessel | null): Liste | null =>
-    aktuell && !leer ? listeAus(eintraege, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, suche, marke: k }) : null;
+    aktuell && !leer ? listeAus(eintraege, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt, suche, marke: k, geplante }) : null;
   const l = listeMit(null);
-  const m = l ? markenAus(l.reihen) : [];
+  const m = l ? markenAus(l.reihen, geplante.length) : [];
   // Eine Marke, die es (am neuen Tag) nicht mehr gibt, filtert nicht still weiter.
   const markeDa = marke !== null && m.some((x) => x.schluessel === marke) ? marke : null;
   const sichtbar = markeDa ? listeMit(markeDa) : l;
-  const st = aktuell && l ? statusAus(aktuell.liste, l.reihen, { ebene, zone, stichtag }) : null;
+  const st = aktuell && l ? statusAus(aktuell.liste, l.reihen, { ebene, zone, stichtag, geplant: geplantHinweis(geplante) }) : null;
   // Am Rechner steht über den Werten der Monat der Reihen; ohne Monat (eine ältere Antwort) der letzte Stand.
   const reihenMonat = aktuell?.liste.register.find((z) => z.letzter_monat)?.letzter_monat?.monat ?? null;
   const wertKopf = reihenMonat ? monatLang(reihenMonat) : SPALTE.stand;
@@ -499,6 +579,36 @@ function RegisterFlaeche({
   if (aktuell && !ohneRegister && ebene.art === 'standort' && bereichDa !== false) {
     menue.push({ label: KORREKTUREN_AM_STANDORT, icon: 'history', onClick: () => setKorrekturen(true) });
   }
+  // Eine Messstelle planen, die noch fehlt: der Messbedarf entsteht an einem laufenden Energieeinsatz (wie am Einsatz).
+  const laufende = plan && plan !== 'fehler' ? plan.einsaetze.filter(laeuft) : [];
+  if (aktuell && !ohneRegister && !stichtag && darfVerwalten(rollen.selbst) && laufende.length > 0) {
+    menue.splice(anlegbar && isPhone ? 1 : 0, 0, {
+      label: MESSPLANUNG.erfassen,
+      hinweis: ERFASSEN_HINWEIS,
+      icon: 'map-pin',
+      onClick: () => setErfassen(true),
+    });
+  }
+  const darfEinrichten = (g: GeplanteReihe) =>
+    !stichtag && darfVerwalten(rollen.selbst) && rollen.darf('messstelle.bearbeiten', g.ort.standortId ?? ebeneId);
+  // „MS-24 zuordnen“: derselbe Bedarf, die schon angelegte Messstelle - ohne Dialog, ohne neue Messstelle.
+  const ordneZu = (g: GeplanteReihe, m: Messstelle) => {
+    if (ordnetZu) return;
+    setOrdnetZu(g.id);
+    setPlanSatz(null);
+    api.messbedarfEinloesen(g.bedarf.energieeinsatz_id, g.bedarf.id, m.id).then(
+      (b) => {
+        setOrdnetZu(null);
+        setZuordnen(({ [g.id]: _weg, ...rest }) => rest);
+        setPlanSatz({ text: eingeloestSatz(b), ton: 'ok' });
+        neuLesen();
+      },
+      (e) => {
+        setOrdnetZu(null);
+        setPlanSatz({ text: messbedarfAblehnung(e), ton: 'fehler' });
+      },
+    );
+  };
 
   const ortName = (id: string | null) =>
     id ? (aktuell?.basis.register.find((z) => z.ort.id === id || z.ort.kennzeichen === id)?.ort.name ?? id) : null;
@@ -602,7 +712,11 @@ function RegisterFlaeche({
             <Suchzeile
               suche={suche}
               onSuche={neueSuche}
-              treffer={trefferSatz(sichtbar, gefiltert)}
+              treffer={
+                markeDa === 'geplant'
+                  ? geplanteSatz(sichtbar.geplant)
+                  : [trefferSatz(sichtbar, gefiltert), sichtbar.geplant > 0 ? geplantZahl(sichtbar.geplant) : null].filter(Boolean).join(' · ')
+              }
               gefiltert={suchTerme(suche).length > 0}
             />
             <MarkenLeiste
@@ -613,7 +727,27 @@ function RegisterFlaeche({
               anlage={filter.anlage ? (anlageName ? `Anlage ${anlageName}` : GEWAEHLTE_ANLAGE) : null}
               onOhne={ohneAdressFilter}
             />
-            {sichtbar.treffer === 0 && sichtbar.archiviert.length === 0 ? (
+            {plan === 'fehler' && (
+              <p className="vp-ms-plan-fehler" role="status" data-testid="geplante-fehler">
+                {PLAN_FEHLER}{' '}
+                <button type="button" className="vp-ms-link" onClick={() => setPlanVersuch((v) => v + 1)}>
+                  {ERNEUT}
+                </button>
+              </p>
+            )}
+            {planSatz && (
+              <p
+                ref={planSatzRef}
+                tabIndex={-1}
+                className={`vp-ms-plansatz is-${planSatz.ton}`}
+                role={planSatz.ton === 'fehler' ? 'alert' : 'status'}
+                data-testid="geplante-satz"
+              >
+                <Icon name={planSatz.ton === 'ok' ? 'check' : 'alert-triangle'} size={16} aria-hidden="true" />
+                <span>{planSatz.text}</span>
+              </p>
+            )}
+            {sichtbar.treffer === 0 && sichtbar.geplant === 0 && sichtbar.archiviert.length === 0 ? (
               <KeinTreffer
                 suche={suche}
                 weitere={markeDa !== null || filter.ort !== null || filter.anlage !== null}
@@ -631,6 +765,14 @@ function RegisterFlaeche({
                     periode={stichtag}
                     wertKopf={wertKopf}
                     onOeffnen={onOeffnen}
+                    darfEinrichten={darfEinrichten}
+                    onEinrichten={(r) => {
+                      setPlanSatz(null);
+                      setEinrichten(r);
+                    }}
+                    zuordnen={zuordnen}
+                    ordnetZu={ordnetZu}
+                    onZuordnen={ordneZu}
                   />
                 ))}
                 {sichtbar.archiviert.length > 0 && (
@@ -649,6 +791,40 @@ function RegisterFlaeche({
           onClose={() => {
             setKorrekturen(false);
             requestAnimationFrame(() => menueAusloeser.current?.focus());
+          }}
+        />
+      )}
+      {einrichten && (
+        <MessbedarfEinloesen
+          bedarf={einrichten.bedarf}
+          standortId={einrichten.ort.standortId ?? ebeneId}
+          onClose={() => {
+            setEinrichten(null);
+            neuLesen();
+          }}
+          onEingeloest={(b) => {
+            setPlanSatz({ text: eingeloestSatz(b), ton: 'ok' });
+            // Das Einlösen kann noch unterwegs sein, wenn der Dialog schon zu ist (und neu gelesen hat): erst seine
+            // Antwort macht aus der geplanten die eingerichtete Messstelle - also danach noch einmal lesen.
+            neuLesen();
+          }}
+          onFehler={(satz, m) => {
+            setPlanSatz({ text: einloesenAbgelehntSatz(satz, m.kennzeichen, einrichten.kennzeichen), ton: 'fehler' });
+            setZuordnen((z) => ({ ...z, [einrichten.id]: m }));
+          }}
+        />
+      )}
+      {erfassen && (
+        <MessbedarfErfassenDialog
+          einsaetze={laufende}
+          onClose={() => {
+            setErfassen(false);
+            requestAnimationFrame(() => menueAusloeser.current?.focus());
+          }}
+          onErfasst={(b) => {
+            setErfassen(false);
+            setPlanSatz({ text: erfasstSatz(b, ebene), ton: 'ok' });
+            setPlanVersuch((v) => v + 1);
           }}
         />
       )}
@@ -927,7 +1103,11 @@ function Spalten({ wertKopf }: { wertKopf: string }) {
   );
 }
 
-/** Je Ort eine Karte: der Ort mit Standort und Zahl, darunter die Reihen. */
+/**
+ * Je Ort eine Karte: der Ort mit Standort und Zahl, darunter die Reihen - nach den Messstellen die geplanten (Konzept
+ * Auswerten a1, Entscheid 9). Zeigt eine Karte nur geplante (die Marke „geplant“, ein Ort ohne Messstelle), zählt ihr
+ * Kopf nur sie.
+ */
 function OrtKarte({
   gruppe,
   gefiltert,
@@ -935,6 +1115,11 @@ function OrtKarte({
   periode,
   wertKopf,
   onOeffnen,
+  darfEinrichten,
+  onEinrichten,
+  zuordnen,
+  ordnetZu,
+  onZuordnen,
 }: {
   gruppe: OrtGruppe;
   gefiltert: boolean;
@@ -942,6 +1127,12 @@ function OrtKarte({
   periode: string | null;
   wertKopf: string;
   onOeffnen?: (id: string, periode: string | null) => void;
+  darfEinrichten: (g: GeplanteReihe) => boolean;
+  onEinrichten: (g: GeplanteReihe) => void;
+  /** Je Bedarf die schon angelegte Messstelle nach einer Ablehnung des Einlösens. */
+  zuordnen: Readonly<Record<string, Messstelle>>;
+  ordnetZu: string | null;
+  onZuordnen: (g: GeplanteReihe, m: Messstelle) => void;
 }) {
   const titelId = `vp-ms-ort-${useId().replace(/:/g, '')}`;
   const rollen = useRollen();
@@ -952,7 +1143,14 @@ function OrtKarte({
     <section className="vp-ms-ort" aria-labelledby={titelId} data-testid="messstellen-ort">
       <div className={`vp-ms-ort-kopf${ablesen ? ' mit-ablesen' : ''}`}>
         <h2 id={titelId}>{gruppe.titel}</h2>
-        <span className="vp-ms-ort-zahl">{gruppenZahl(gruppe, gefiltert)}</span>
+        <span className="vp-ms-ort-zahl">
+          {[
+            gruppe.reihen.length > 0 ? gruppenZahl(gruppe, gefiltert) : gruppe.standort,
+            gruppe.geplant.length > 0 ? geplantZahl(gruppe.geplant.length) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
         {ablesen && (
           <a
             className="vp-ms-ablesen"
@@ -972,8 +1170,121 @@ function OrtKarte({
             <ReiheLink r={r} suche={suche} periode={periode} onOeffnen={onOeffnen} />
           </li>
         ))}
+        {gruppe.geplant.map((g) => (
+          <li key={g.id}>
+            <GeplanteZeile
+              g={g}
+              suche={suche}
+              darfEinrichten={darfEinrichten(g)}
+              onEinrichten={() => onEinrichten(g)}
+              zuordnen={zuordnen[g.id] ?? null}
+              ordnetZu={ordnetZu === g.id}
+              onZuordnen={(m) => onZuordnen(g, m)}
+            />
+          </li>
+        ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Eine geplante Messstelle (ein offener Messbedarf): der Wortlaut als Name, „Geplant für EE-8 …“ mit Frist, „Noch nicht
+ * eingerichtet“ - und rechts „Einrichten“ (der Messstellen-Dialog mit Ort und Größe des Bedarfs). Keine Fläche zum
+ * Öffnen: es gibt noch keine Messstelle; der Bedarf selbst steht am Energieeinsatz (der Link im Satz). Sie trägt das Ziel
+ * des Schritts „Messstelle anlegen“ der Wiedervorlage (`data-entscheid="messbedarf_frist"` mit ihrem Kennzeichen).
+ */
+function GeplanteZeile({
+  g,
+  suche,
+  darfEinrichten,
+  onEinrichten,
+  zuordnen,
+  ordnetZu,
+  onZuordnen,
+}: {
+  g: GeplanteReihe;
+  suche: string;
+  darfEinrichten: boolean;
+  onEinrichten: () => void;
+  /** Nach einer Ablehnung des Einlösens: die schon angelegte Messstelle („MS-24 zuordnen“ statt „Einrichten“). */
+  zuordnen: Messstelle | null;
+  ordnetZu: boolean;
+  onZuordnen: (m: Messstelle) => void;
+}) {
+  // Review r4 M4 (Entscheid b): zitieren freigegebene Berichtsstände den Bedarf, gibt es keinen Weg zum Anlegen - der Satz
+  // nennt die Stände; er ist auch das Ziel des Wiedervorlage-Schritts, nie ein „Einrichten“.
+  const zitiert = nichtEinloesbar(g.bedarf);
+  const schritt = darfEinrichten && !zitiert;
+  return (
+    <div
+      className={`vp-ms-reihe is-geplant${g.frist?.ueberschritten ? ' is-hinweis' : ''}`}
+      data-testid="geplante-messstelle"
+      data-entscheid="messbedarf_frist"
+      data-entscheid-kennzeichen={g.kennzeichen}
+    >
+      <span className="vp-ms-reihe-name">
+        <span className="vp-ms-punkt is-name" aria-hidden="true" />
+        <span className="vp-ms-reihe-titel">
+          <Markiert text={g.name} suche={suche} />{' '}
+          <span className="vp-ms-kz">
+            <Markiert text={g.kennzeichen} suche={suche} />
+          </span>
+        </span>
+      </span>
+      {g.unter && <span className="vp-ms-reihe-unter">{g.unter}</span>}
+      <span className="vp-ms-reihe-satz">
+        <span className="vp-ms-punkt is-satz" aria-hidden="true" />
+        <span>
+          {GEPLANT}
+          {g.einsatz && (
+            <>
+              {' für '}
+              <a className="vp-ms-einsatz" href={hashForRoute(energieeinsatzRoute(g.einsatz.id))}>
+                <Markiert text={g.einsatz.text} suche={suche} />
+              </a>
+            </>
+          )}
+          {g.frist && <small className="vp-ms-reihe-fakt vp-ms-frist">{g.frist.text}</small>}
+          {zitiert && (
+            <small className="vp-ms-reihe-beleg" tabIndex={-1} data-testid="geplante-zitiert" data-entscheid-schritt>
+              {nichtEinloesbarSatz(g.bedarf)}
+            </small>
+          )}
+        </span>
+      </span>
+      <span className="vp-ms-reihe-woher">{NOCH_NICHT_EINGERICHTET}</span>
+      <span className={`vp-ms-reihe-wert${schritt ? '' : ' is-ohne-schritt'}`}>
+        {schritt && zuordnen ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="vp-ms-einrichten"
+            onClick={() => onZuordnen(zuordnen)}
+            disabled={ordnetZu}
+            aria-label={`${zuordnen.kennzeichen} ${g.name} (${g.kennzeichen}) zuordnen`}
+            data-testid="geplante-zuordnen"
+            data-entscheid-schritt
+          >
+            {zuordnenText(zuordnen)}
+          </Button>
+        ) : schritt ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="vp-ms-einrichten"
+            onClick={onEinrichten}
+            aria-label={`${g.name} (${g.kennzeichen}) einrichten`}
+            data-testid="geplante-einrichten"
+            data-entscheid-schritt
+          >
+            {EINRICHTEN}
+          </Button>
+        ) : (
+          <b className="is-leer">{OHNE_ANGABE}</b>
+        )}
+      </span>
+    </div>
   );
 }
 

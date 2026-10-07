@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -44,6 +45,14 @@ public class BerichtsBelege {
               FROM unnest(?::uuid[]) AS m(id)
              CROSS JOIN LATERAL uems_berichts_belege(m.id) b
              ORDER BY b.kennung, b.nr
+            """;
+
+    /** Je Objekt die Stände, die es zitieren, in der Reihenfolge der 409-Liste ({@code kennung}, {@code nr}). */
+    private static final String DER_OBJEKTE = """
+            SELECT m.id, b.kennung, b.nr
+              FROM unnest(?::uuid[]) AS m(id)
+             CROSS JOIN LATERAL uems_berichts_belege(m.id) b
+             ORDER BY m.id, b.kennung, b.nr
             """;
 
     private static final String DER_KOMPONENTE = """
@@ -110,11 +119,32 @@ public class BerichtsBelege {
         }
     }
 
+    /**
+     * Je Objekt die freigegebenen Stände, die es direkt zitieren, für eine ganze Liste in EINER Abfrage (Review r4 M4:
+     * der Messbedarf nennt sie als {@code zitiert_von}, bevor ein Weg an {@link #pruefeObjekt} scheitert). Dieselbe
+     * Regel und Reihenfolge wie die 409-Liste; ein Objekt, das kein Stand zitiert, fehlt in der Antwort.
+     */
+    public Map<UUID, List<BerichtRegeln.StandBezeichnung>> derObjekte(Collection<UUID> objekte) {
+        if (objekte.isEmpty()) {
+            return Map.of();
+        }
+        UUID[] ids = objekte.stream().distinct().toArray(UUID[]::new);
+        Map<UUID, List<BerichtRegeln.StandBezeichnung>> aus = new LinkedHashMap<>();
+        jdbc.query(con -> {
+            PreparedStatement ps = con.prepareStatement(DER_OBJEKTE);
+            ps.setArray(1, con.createArrayOf("uuid", ids));
+            return ps;
+        }, rs -> {
+            aus.computeIfAbsent(rs.getObject("id", UUID.class), id -> new ArrayList<>())
+                    .add(new BerichtRegeln.StandBezeichnung(rs.getString("kennung"), rs.getInt("nr")));
+        });
+        aus.replaceAll((id, staende) -> List.copyOf(staende));
+        return aus;
+    }
+
     /** AP-16 S4 — eine direkt zitierte Bewertungsquelle darf nicht still überschrieben werden. */
     public void pruefeObjekt(UUID objekt, BelegeImWeg.Gegenstand gegenstand) {
-        List<BerichtRegeln.StandBezeichnung> staende = jdbc.query(
-                "SELECT kennung, nr FROM uems_berichts_belege(?) ORDER BY kennung, nr",
-                (rs, n) -> new BerichtRegeln.StandBezeichnung(rs.getString(1), rs.getInt(2)), objekt);
+        List<BerichtRegeln.StandBezeichnung> staende = derObjekte(List.of(objekt)).getOrDefault(objekt, List.of());
         if (!staende.isEmpty()) {
             throw new BelegeImWeg(gegenstand, List.of(), staende);
         }

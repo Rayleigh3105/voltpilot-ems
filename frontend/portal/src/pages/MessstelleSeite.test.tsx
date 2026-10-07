@@ -53,6 +53,9 @@ import { MessstellenPage } from './MessstellenPage';
  */
 
 const WARTEN = { timeout: 3000 };
+// Die Dialog-Fälle gehen mehrere Schritte mit je bis zu WARTEN; im vollen Lauf (621 Dateien parallel) reichen dafür die
+// 5 s der Vorgabe nicht. `vi.setConfig` gilt nur für diese Datei.
+vi.setConfig({ testTimeout: 15_000 });
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', (q: string) => ({
