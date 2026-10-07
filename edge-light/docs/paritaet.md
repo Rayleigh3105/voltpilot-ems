@@ -16,6 +16,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | Arbitrierung der Wünsche, Entitäten-Registry, Topologie | ✅ |
 | **OCPP-Server, Lastmanagement, PV-Überschussladen „Nur Sonnenstrom", „Jetzt voll laden"** | ✅ 🔒 (Ladesäulen-Typ noch `simulator_only`) |
 | go-e **steuern** (HTTP-API v2, Phasenumschaltung) | ✅ 🔒 (Typ `wallbox` noch `simulator_only`) |
+| „Sonne + Speicher“ (Speicherenergie über der Untergrenze fürs Auto) | 🟡 Untergrenze und „Speicher zuerst“ an der Grenze wirken · ⬜ die Freigabe braucht eine gehaltene Rücklesung des Speicherpfads, also die Wechselrichter-Steuerung (C); bis dahin `speicherpfad` = „Nur Sonne“ |
 | Shelly lesen und schalten | ✅ |
 | eByte-IO-Modul | ✅ |
 | Lokale Web-App `:8484` (Betrieb, Einrichten) | ✅ |
