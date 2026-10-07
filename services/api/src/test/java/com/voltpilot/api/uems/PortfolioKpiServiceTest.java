@@ -124,7 +124,7 @@ class PortfolioKpiServiceTest {
     void reichtDieLeitkennzahlDurch() {
         PortfolioKpiDto.Leitkennzahl leit = new PortfolioKpiDto.Leitkennzahl("KZ-0004",
                 "Stromeinsatz Spritzguss je kg", bd("0.2837"), "kWh/kg", 2026, 9, "vollständig",
-                bd("5"), "2028-01/2028-12", "5 % unter Bezugsbasis", bd("-3.4"), "besser");
+                bd("5"), "2028-01/2028-12", "5 % unter Bezugsbasis", bd("-3.4"), "besser", null);
 
         PortfolioKpiDto dto = PortfolioKpiService.aggregiere(SEPTEMBER, List.of(), null, leit);
 
@@ -198,24 +198,6 @@ class PortfolioKpiServiceTest {
         PortfolioKpiService.Fenster f = PortfolioKpiService.fenster(List.of(), LocalDate.parse("2026-10-05"));
         assertThat(f.brauchtJahr()).isFalse();
         assertThat(f.brauchtMonat()).isFalse();
-    }
-
-    // ------------------------------------------------------------------ Trend (rein, Review R2)
-
-    @Test
-    void trendProzentRechnetGegenDenVormonat() {
-        // (0,2837 − 0,30) ÷ 0,30 × 100 = −5,43… → 1 Stelle −5,4
-        assertThat(PortfolioKpiService.trendProzent(bd("0.2837"), bd("0.30"))).isEqualByComparingTo("-5.4");
-        // Anstieg: (0,33 − 0,30) ÷ 0,30 × 100 = +10,0
-        assertThat(PortfolioKpiService.trendProzent(bd("0.33"), bd("0.30"))).isEqualByComparingTo("10.0");
-    }
-
-    @Test
-    void trendProzentOhneTauglichenVormonatIstNull() {
-        assertThat(PortfolioKpiService.trendProzent(bd("0.30"), null)).isNull();
-        assertThat(PortfolioKpiService.trendProzent(null, bd("0.30"))).isNull();
-        // Vormonat 0 → keine Division, kein irreführender Pfeil.
-        assertThat(PortfolioKpiService.trendProzent(bd("0.30"), bd("0"))).isNull();
     }
 
     // ------------------------------------------------------------------ Helfer

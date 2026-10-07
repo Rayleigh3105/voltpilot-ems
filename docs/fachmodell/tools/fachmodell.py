@@ -836,6 +836,14 @@ VERFEINERUNGEN = {
 # wörtlich ins Glossar kommen: Summenwert (PR 855), Ersatzwert/Korrektur/Widerruf (PR 909).
 # ---------------------------------------------------------------------------------------------
 ABSCHNITTE_NACH = {
+    "einstufung": ["""**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts)."""],
     "wiedervorlage": ["""**Arbeitsliste (Konzept Wiedervorlage w1, 05.10.2026).**
 Der Name bleibt; darunter sagt ein Satz, was er meint: „Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst.“
 Die Liste ordnet nach Dringlichkeit: „Überfällig“ (die Frist ist abgelaufen; „fällig“ allein hieße umgangssprachlich „jetzt dran“), „In den nächsten 30 Tagen“, „Jahresplan“, „Zuletzt erledigt“.
@@ -905,6 +913,13 @@ eine zweite Person kann der Ersteller nicht selbst freigeben.
 Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
 eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
 Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md)."""],
+    "energieeinsatz": ["""**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts)."""],
     "energieleistungskennzahl": ["""**Leitkennzahl (Portfolio-Übersicht, Konzept `data/vp-portfolio-konzept2-p2` §4.2).**
 Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: die Energieleistungskennzahl mit offenem Energieziel, die das Kachelraster als erste, breite Kachel anführt.
 Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.

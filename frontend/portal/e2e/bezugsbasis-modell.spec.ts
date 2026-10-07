@@ -24,7 +24,8 @@ const GUETE = 'Güte 0,991 — das Modell erklärt 99,1 % der Schwankung der Mon
 async function oeffne(page: Page, query: string, breite: number) {
   await page.clock.setFixedTime(AM_24_11_2027);
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
-  await page.goto(`/e2e/bezugsbasis.html?${query}`);
+  // Konzept Auswerten a1 §6.6: die Bezugsbasis steht eine Ebene unter der Kennzahl.
+  await page.goto(`/e2e/bezugsbasis.html?${query}&ebene=bezugsbasis`);
   await page.evaluate(() => document.fonts.ready);
 }
 
@@ -68,7 +69,6 @@ for (const breite of [375, 1440]) {
   test.describe(`Bezugsbasis: Modell-Ansicht (${breite} px)`, () => {
     test(`Modell bilden: zwölf Monate, Modell mit einer Einflussgröße, Punkte und Gerade (${breite} px)`, async ({ page }) => {
       await oeffne(page, 'person=IK', breite);
-      await page.getByRole('tab', { name: 'Bezugsbasis', exact: true }).click();
       await page.getByRole('button', { name: 'Bezugsbasis anlegen' }).click();
       const dialog = page.getByTestId('bezugsbasis-assistent');
       await expect(dialog).toBeVisible();
@@ -108,7 +108,6 @@ for (const breite of [375, 1440]) {
 
     test(`Ablehnung (R9): Betriebsstunden nicht aufgenommen, Güte, Spannweite, ein Grenz-Satz (${breite} px)`, async ({ page }) => {
       await oeffne(page, 'person=CB&lage=modell', breite);
-      await page.getByRole('tab', { name: 'Bezugsbasis', exact: true }).click();
       const ansicht = page.getByTestId('bezugsbasis-reiter').getByTestId('bezugsbasis-modell-ansicht');
       await expect(ansicht.getByTestId('bezugsbasis-modell-kopf')).toHaveText(KOPF_R4);
       await expect(ansicht.getByTestId('bezugsbasis-abgelehnt')).toHaveText(ABGELEHNT_R9);

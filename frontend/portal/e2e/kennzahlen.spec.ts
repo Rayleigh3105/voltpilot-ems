@@ -37,10 +37,6 @@ async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
   await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
 }
 
-async function warteAufListe(page: Page) {
-  await expect(page.locator('[data-testid="kennzahl-zahl"], [data-testid="kennzahl-hinweis"]')).toHaveCount(5);
-}
-
 async function warteAufKarte(page: Page) {
   await expect(page.locator('[data-testid="werte-karte"]')).toBeVisible();
   await expect(page.locator('[data-testid="kennzahl-verlauf"]')).toBeVisible();
@@ -85,8 +81,10 @@ async function messe(page: Page) {
         (t) => `${text(t)}${t.getAttribute('aria-selected') === 'true' ? ' (gewählt)' : ''}`,
       ),
       karten: [...document.querySelectorAll('[data-testid="kennzahl-karte"]')].map((k) => text(k)),
-      titel: text(document.querySelector('.vp-kz-kopf h1')),
-      unter: text(document.querySelector('.vp-kz-kopf p')),
+      // Die Reihen zum Beobachten - ohne die zugeklappten Archivierten.
+      reihen: [...document.querySelectorAll('[data-testid="kennzahl-reihe"]')].filter((k) => !k.closest('details:not([open])')).map((k) => text(k)),
+      titel: text(document.querySelector('.vp-kzs-kopf h1, .vp-kzl-kopf-zeile h1')),
+      unter: text(document.querySelector('.vp-kzs-meta, .vp-kzl-unterzeile')),
       perioden: [...document.querySelectorAll('.vp-kz-perioden [role="tab"]')].map((t) => text(t)),
       kartenKopf: text(karte?.querySelector('.vp-wk-kopf') ?? null),
       zahl: text(karte?.querySelector('.vp-wk-zahl') ?? null),
@@ -94,9 +92,13 @@ async function messe(page: Page) {
       kennzeichen: [...(karte?.querySelectorAll('.vp-wk-kennzeichen li') ?? [])].map((a) => text(a)),
       grund: text(document.querySelector('[data-testid="werte-grund"]')),
       versionen: text(document.querySelector('[data-testid="werte-versionen"]')),
-      herkunft: [...document.querySelectorAll('[data-testid="kennzahl-herkunft"] p, [data-testid="kennzahl-herkunft"] li')].map((p) => text(p)),
+      // Die Herkunft ohne die Berechnung, die im selben Aufklapper „Wie wird gerechnet?“ steht (Konzept Auswerten a1 §6.5).
+      herkunft: [...document.querySelectorAll('[data-testid="kennzahl-herkunft"] p, [data-testid="kennzahl-herkunft"] li')]
+        .filter((p) => !p.closest('[data-testid="kennzahl-berechnung"]'))
+        .map((p) => text(p)),
       berechnung: [...document.querySelectorAll('[data-testid="kennzahl-berechnung"] p')].map((p) => text(p)),
-      stammdaten: [...document.querySelectorAll('[data-testid="kennzahl-stammdaten"] dd')].map((p) => text(p)),
+      // „Über diese Kennzahl“ (Konzept Auswerten a1 §6.5): Zweck und Geltung als Sätze.
+      stammdaten: [...document.querySelectorAll('[data-testid="kennzahl-stammdaten"] p')].map((p) => text(p)),
       balken: [...document.querySelectorAll('[data-testid="verlauf-balken"]')].map((b) => b.getAttribute('aria-label')),
     };
   });
@@ -114,53 +116,118 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
   expect(m.ueberstehend, `${fall}: überstehende Elemente`).toEqual([]);
 }
 
-test.describe('Kennzahlen — die Liste', () => {
-  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Auswerten“ offen', async ({ page }) => {
-    await oeffne(page, 'ansicht=kennzahlen', 375, DEZEMBER);
-    await warteAufListe(page);
+/** Die Welt des Konzepts Auswerten a1 (§6.4) zur Bühnen-Uhr 30.04.2029: Urteile für März 2029 (`&liste=referenz`). */
+const REFERENZ_UHR = new Date('2029-04-30T08:00:00Z');
+
+test.describe('Kennzahlen - die Liste (Konzept Auswerten a1 §6.4)', () => {
+  test('bei 375 px: Hinweiskarte, „Mit Bezugsbasis“ als Karten mit Urteil, „Zum Beobachten“ als Reihen, Archiv zugeklappt', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahlen&liste=referenz', 375, REFERENZ_UHR);
+    await expect(page.getByTestId('kennzahl-karte')).toHaveCount(3);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/kennzahlen');
     expect(m.titel).toBe('Kennzahlen');
-    // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); über der Seite stehen am Telefon
-    // nur die Reiter der offenen Gruppe.
+    expect(m.unter).toBe('Wie effizient Sie Energie einsetzen - je kg, je Stück oder je m², verglichen mit dem, was zu erwarten war.');
     expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.leisteAktiv).toBe('Auswerten');
-    // K1/D2: „Auswerten“ trägt hier nur die Kennzahlen (die Berichte stehen in „Nachweisen“) — keine zweite Reihe.
     expect(m.reiter).toEqual([]);
-    expect(m.karten).toHaveLength(5);
-    expect(m.karten[0]).toContain('keine Werte');
-    expect(m.karten[3]).toContain(`mindestens 30,83${NB}kWh je Person`);
-    expect(m.karten[4]).toContain(`höchstens 10,55${NB}kWh je h`);
+    // Handlungsbedarf zuerst: die zwei über der Bezugsbasis, dann die im Rahmen.
+    await expect(page.getByTestId('kennzahlen-hinweis')).toContainText('2 Kennzahlen liegen über der Bezugsbasis');
+    expect(m.karten.map((k) => k.match(/KZ-\d{4}/)?.[0])).toEqual(['KZ-0004', 'KZ-0023', 'KZ-0021']);
+    expect(m.karten[0]).toContain('0,29 kWh je kg');
+    expect(m.karten[0]).toContain('März 2029 · Prozess Spritzguss');
+    expect(m.karten[0]).toContain('über der Bezugsbasis');
+    expect(m.karten[0]).toContain(`2,2${NB}% mehr als erwartet`);
+    expect(m.karten[0]).toContain(`Energieziel 2029: 4${NB}% weniger · bisher 2,2${NB}% mehr (1 von 10 Monaten)`);
+    expect(m.karten[1]).toContain('Bezugsbasis vorläufig');
+    expect(m.karten[2]).toContain('im Rahmen der Bezugsbasis');
+    // Die Leitkennzahl (dieselbe wie die Leitkachel der Übersicht) trägt den Stern.
+    await expect(page.getByTestId('kennzahl-karte').first().locator('.vp-kzl-stern')).toHaveCount(1);
+    expect(m.reihen).toHaveLength(3);
+    expect(m.reihen[1]).toContain('Netzbezug je m²');
+    expect(m.reihen[1]).toContain('unverändert ggü. Vorjahr · März 2029');
+    // Keine Farbe ohne Bezugsbasis: Reihen zum Beobachten tragen keine Urteils-Marke.
+    await expect(page.getByTestId('kennzahlen-ohne').locator('.vp-k-marke')).toHaveCount(0);
+    await expect(page.getByTestId('kennzahlen-archiv').locator('summary')).toHaveText('Archiviert · 5 Kennzahlen');
+    // Am Handy steht „Kennzahl anlegen“ im Menü ⋯ des Kopfs (§6.4: Werkzeuge ins Menü).
+    await expect(page.getByTestId('kennzahl-anlegen-knopf')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Kennzahl anlegen' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    // Mini-Grafik: zwölf Säulen, die Farbe folgt dem Urteil des Servers.
+    const arten = await page.getByTestId('kennzahl-mini').first().locator('path').evaluateAll((p) => p.map((e) => e.getAttribute('data-art')));
+    expect(arten).toEqual(['schlechter', 'im_rahmen', 'schlechter', 'schlechter', 'schlechter', 'schlechter', 'im_rahmen',
+      'schlechter', 'schlechter', 'schlechter', 'schlechter', 'schlechter']);
     await ablegen(page, 'liste-375', m);
     await ablegen(page, 'liste-375-ganz', m, true);
   });
 
-  test('bei 1440 px: Gruppe „Auswerten“ offen, Karten im Raster; ein Klick öffnet die Kennzahl', async ({ page }) => {
-    await oeffne(page, 'ansicht=kennzahlen', 1440, NOVEMBER);
-    await warteAufListe(page);
+  test('bei 1440 px: zwei Gruppen mit Spalten statt Karten; ein Klick öffnet die Kennzahl', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahlen&liste=referenz', 1440, REFERENZ_UHR);
+    await expect(page.getByTestId('kennzahl-karte')).toHaveCount(3);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    // N1: am Rechner die Gruppen in der Seitenleiste; „Auswerten“ ist offen und trägt hier nur die Kennzahlen — keine Reihe.
     expect(m.seite).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.seiteAktiv).toBe('Auswerten');
-    expect(m.reiter).toEqual([]);
     expect(m.leiste).toBeNull();
-    expect(m.karten[0]).toContain(`0,15${NB}kWh je Stück`);
-    expect(m.karten[0]).toContain('Oktober 2026 · endgültig');
+    await expect(page.getByTestId('kennzahlen-mit').locator('.vp-kzl-spalten')).toHaveText(
+      'KennzahlWertGegen die BezugsbasisEnergieziel12 Monate',
+    );
+    await expect(page.getByTestId('kennzahlen-ohne').locator('.vp-kzl-spalten')).toHaveText(
+      'KennzahlWertGegen das VorjahrBezugsbasis12 Monate',
+    );
+    expect(m.karten[0]).toContain(`2029: 4${NB}% weniger`);
+    expect(m.karten[1]).toContain(`6,5${NB}% mehr · Bezugsbasis vorläufig`);
+    expect(m.karten[2]).toContain(`0,0${NB}% · Band ± 2${NB}%`);
+    // Am Rechner ein Knopf statt des Menüs ⋯.
+    await expect(page.getByTestId('kennzahl-anlegen-knopf')).toBeVisible();
     await ablegen(page, 'liste-1440', m);
     await page.getByTestId('kennzahl-karte').first().click();
-    await expect(page.locator('body')).toHaveAttribute('data-route', `#/portfolio/kennzahlen/${KZ.kz1}`);
-    await warteAufKarte(page);
+    await expect(page.locator('body')).toHaveAttribute('data-route', /#\/portfolio\/kennzahlen\/c0de0000-0000-4000-8000-00000000a004$/);
+  });
+
+  test('bei 1100 px: die Spalte „12 Monate“ entfällt, nichts läuft quer (§6.14)', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahlen&liste=referenz', 1100, REFERENZ_UHR);
+    await expect(page.getByTestId('kennzahl-karte')).toHaveCount(3);
+    await expect(page.getByTestId('kennzahl-mini').first()).toBeHidden();
+    ohneQuerlauf(await messe(page), 'liste-1100');
+  });
+
+  test('Archiviert: die Werte erst beim Aufklappen', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahlen&liste=referenz', 375, REFERENZ_UHR);
+    await expect(page.getByTestId('kennzahl-karte')).toHaveCount(3);
+    const archiv = page.getByTestId('kennzahlen-archiv');
+    await expect(archiv.getByTestId('kennzahl-reihe').first()).toBeHidden();
+    await archiv.locator('summary').click();
+    await expect(archiv.getByTestId('kennzahl-reihe')).toHaveCount(5);
+    await expect(archiv.getByTestId('kennzahl-reihe').first()).toContainText('KZ-0001');
+  });
+
+  test('„Ansehen“ an der Hinweiskarte: bei zwei Kennzahlen zur ersten Karte über der Bezugsbasis', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahlen&liste=referenz', 375, REFERENZ_UHR);
+    await page.getByTestId('kennzahlen-hinweis').click();
+    await expect(page.getByTestId('kennzahl-karte').first()).toBeFocused();
+  });
+
+  test('die Welt von 2026 bei 375 px am 03.12.2026: ohne Bezugsbasis alles zum Beobachten, mit den Monatswerten', async ({ page }) => {
+    await oeffne(page, 'ansicht=kennzahlen', 375, DEZEMBER);
+    await expect(page.getByTestId('kennzahl-reihe').first()).toBeVisible();
+    const m = await messe(page);
+    ohneQuerlauf(m, 'liste-2026-375');
+    expect(m.karten).toEqual([]);
+    await expect(page.getByTestId('kennzahlen-hinweis')).toHaveCount(0);
+    expect(m.reihen[0]).toContain('KZ-0001');
+    expect(m.reihen[0]).toContain('0,15 kWh je Stück');
+    expect(m.reihen[0]).toContain('Oktober 2026');
   });
 
   test('R-A7 bei 375 px: eine Kennzahl über fremde Standorte steht ohne Wert, mit der Hinweiszeile', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen&ausserhalb=KZ-0003', 375, NOVEMBER);
-    await warteAufListe(page);
-    await expect(page.getByTestId('kennzahl-hinweis')).toHaveText('umfasst Standorte außerhalb Ihres Zugriffs');
+    const reihe = page.locator('[data-testid="kennzahl-reihe"][data-kennzeichen="KZ-0003"]');
+    await expect(reihe).toContainText('umfasst Standorte außerhalb Ihres Zugriffs');
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-ra7-375');
-    await page.getByTestId('kennzahl-hinweis').scrollIntoViewIfNeeded();
+    await reihe.scrollIntoViewIfNeeded();
     await ablegen(page, 'liste-ra7-375', m);
   });
 });
@@ -190,20 +257,17 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
       'Version: ein Rechenstand des Werts einer Periode. Er wird neu gebildet, wenn sich ein Eingang ändert, etwa nach einer Korrektur.',
     ]);
     expect(m.berechnung[0]).toBe('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
-    expect(m.stammdaten).toEqual([
-      'Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.',
-      'Ines Kaltenbach',
-      'Gebäude Halle 2',
-    ]);
+    expect(m.stammdaten[0]).toBe('Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.');
+    expect(m.stammdaten[1]).toMatch(/^Gilt für das Gebäude Halle 2 · verantwortlich Ines Kaltenbach · berechnet seit \d{2}\.\d{2}\.\d{4}$/);
     await ablegen(page, 'k1-375', m);
     await ablegen(page, 'k1-375-ganz', m, true);
-    // Unter der Karte: Herkunft, Berechnung, Stammdaten — ein Bild im Sichtfenster (das ganze Bild legt die Leiste in die Mitte).
+    // Unter der Karte: Rechenweg und „Über diese Kennzahl“ — ein Bild im Sichtfenster (das ganze Bild legt die Leiste in die Mitte).
     await page.getByTestId('kennzahl-herkunft').evaluate((e) => e.scrollIntoView({ block: 'start' }));
     await page.evaluate(() => window.scrollBy(0, -72));
     await ablegen(page, 'k1-375-unten', m);
   });
 
-  test('K1 bei 1440 px: Werte-Karte und Verlauf links, Herkunft, Berechnung und Stammdaten rechts', async ({ page }) => {
+  test('K1 bei 1440 px: Werte-Karte, Verlauf, Rechenweg und „Über diese Kennzahl“ ohne Reiter', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0001', 1440, NOVEMBER);
     await warteAufKarte(page);
     const m = await messe(page);
@@ -211,9 +275,8 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     // N1/R4: „Auswerten“ leuchtet in der Seitenleiste; die Kennzahl zeigt ihren Rückweg statt der Reihe der Gruppe.
     expect(m.seiteAktiv).toBe('Auswerten');
     expect(m.reiterAktiv).toEqual([]);
-    // AP-17 IP-9/IP-20 (§5.1, §6.3): an einer Quotient-Kennzahl stehen „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ —
-    // vorgewählt bleibt „Kennzahl“ mit dem Inhalt von vorher.
-    expect(m.kennzahlReiter).toEqual(['Kennzahl (gewählt)', 'Bezugsbasis', 'Vergleich mit Bezugsbasis']);
+    // Konzept Auswerten a1 §6.5: die Seite hat keine Reiter mehr - die Bezugsbasis steht eine Ebene tiefer.
+    expect(m.kennzahlReiter).toEqual([]);
     expect(m.zahl).toBe(`0,15${NB}kWh je Stück`);
     await ablegen(page, 'k1-1440', m);
   });

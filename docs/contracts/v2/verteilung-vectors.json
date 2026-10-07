@@ -22,9 +22,10 @@
     "Periode bekommt (gemessen · verteilt · berechnet) und was daneben NIEMANDEM gehört (nicht verteilt),",
     "je Tag mit seinem Anteil; Fall F14 (Korrektur eines Eingangs, Version 1 bleibt lesbar).",
     "Fassung 1.3 (AP-10 IP-12, 14.09.2026): die Herkunft steht in allen drei Routen; jeder Herkunfts-Satz trägt `periode_ende` und Beträge ohne nachgestellte Nullen (`_abweichungen`). Die Ableitung aus gespeicherten Zeilen prüft `bilanzwert-herkunft-vectors.json`.",
-    "Fassung 1.4 (Captain-Entscheid 14.09.2026, „Warnen — die Sicht sagt, welcher Posten in welchem enthalten ist, und ändert keine Zahl.“): Regel `doppelzaehlung` — welcher Posten einer Kostenstelle an welchen Tagen bereits in einem anderen enthalten ist (aus den Formeln je Tag, rekursiv über die Abhängigkeitsordnung, Kreis benannt), ganz oder zum Teil, nie mit einer Menge; Sätze `doppelt_*`. Die Regel `kostenstelle` und jede ihrer Erwartungen bleiben zeichengleich."
+    "Fassung 1.4 (Captain-Entscheid 14.09.2026, „Warnen — die Sicht sagt, welcher Posten in welchem enthalten ist, und ändert keine Zahl.“): Regel `doppelzaehlung` — welcher Posten einer Kostenstelle an welchen Tagen bereits in einem anderen enthalten ist (aus den Formeln je Tag, rekursiv über die Abhängigkeitsordnung, Kreis benannt), ganz oder zum Teil, nie mit einer Menge; Sätze `doppelt_*`. Die Regel `kostenstelle` und jede ihrer Erwartungen bleiben zeichengleich.",
+    "Fassung 1.5 (Messen PR4, Konzept vp-messen-konzept-m1 §10.3, Entscheid 3 vom 05.10.2026): Regel `ablesezeitraum` - ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt; gilt der Anteil einer Kostenstelle an JEDEM Tag, den er berührt (halboffen, in der Zone der Messstelle), unverändert, bekommt sie Anteil × Menge als Ganzes, sonst keine Zahl (`anteil_wechselt_im_ablesezeitraum`). Die Regel `kostenstelle` liest eine Messstelle aus Ablesungen über Monat und Jahr in MONATEN statt Tagen (Fall F17, MS-21 Gas Verwaltung). Alle Erwartungen der Fassung 1.4 bleiben zeichengleich."
   ],
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "$schema_datei": "./verteilung.schema.json",
   "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
@@ -41,7 +42,8 @@
     "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14).",
     "Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`): jeder Anteil in (0, 100] mit höchstens einer Nachkommastelle, jedes Ziel besteht am Tag, die Summe ist 100 %; eine neue Zeile endet mit ihrem Ziel, und an keinem Tag danach bleibt ein Rest ≠ 100 %; derselbe Satz noch einmal ändert nichts; ein Satz am Tag der laufenden Fassung ist nur als Korrektur erlaubt (aufheben + neu); ein leerer Satz heißt ab dem Tag „nicht verteilt“.",
     "Die Kostenstellen-Sicht (`kostenstelle`, AP-10 IP-11) nennt vier Herkünfte nebeneinander: gemessen (eine gemessene Messstelle zu 100 %), verteilt (zu einem Anteil unter 100 %), berechnet (eine berechnete Messstelle, gleich zu welchem Anteil) und nicht verteilt (ein Tageswert ohne Verteilungszeile) — nicht verteilt gehört keiner Kostenstelle, wird nie aufgeteilt und nie weggelassen; jeder Tag mit seinem Anteil, die Periode ist die Summe der Tage; ohne Zuordnung keine Menge, nie 0.",
-    "Die Kostenstellen-Sicht warnt vor doppelter Zählung (`doppelzaehlung`, Captain-Entscheid 14.09.2026) und ändert keine Zahl: je Tag ist ein Posten in einer berechneten Messstelle derselben Kostenstelle enthalten, wenn beide an diesem Tag eine Zeile an sie haben und die Formel des Tages ihn trägt — auch über Stufen. Ganz, wenn Anteil der Summe × Beitrag des Terms ≥ 100 % ist, sonst zum Teil; ein Term „Anteil 4200 von MS-07“ trägt einen anderen Teil als der Posten MS-07 an 4100, ein abgezogener Term ist nicht enthalten. Ein Kreis wird benannt, nie aufgelöst."
+    "Die Kostenstellen-Sicht warnt vor doppelter Zählung (`doppelzaehlung`, Captain-Entscheid 14.09.2026) und ändert keine Zahl: je Tag ist ein Posten in einer berechneten Messstelle derselben Kostenstelle enthalten, wenn beide an diesem Tag eine Zeile an sie haben und die Formel des Tages ihn trägt — auch über Stufen. Ganz, wenn Anteil der Summe × Beitrag des Terms ≥ 100 % ist, sonst zum Teil; ein Term „Anteil 4200 von MS-07“ trägt einen anderen Teil als der Posten MS-07 an 4100, ein abgezogener Term ist nicht enthalten. Ein Kreis wird benannt, nie aufgelöst.",
+    "Ein Ablesezeitraum (`ablesezeitraum`, Messen PR4) hat keine Tagesmengen: gilt der Anteil einer Kostenstelle an jedem Tag, den er berührt, unverändert, ist Anteil × Menge genau die Summe der Tagesanteile und geht als Ganzes an sie; wechselt er (auch von keiner Zeile zu einer), gibt es für sie keine Zahl - nie ein Stichtag-Anteil, nie eine Aufteilung nach Tagen. Was an keinem Tag eine Zeile hat, ist ganz „nicht verteilt“; an nur einigen Tagen ohne Zahl. Die Kostenstellen-Sicht liest eine Messstelle aus Ablesungen über Monat und Jahr in Monaten."
   ],
   "vokabulare": {
     "term_art": [
@@ -95,7 +97,9 @@
       "groessen_gemischt",
       "kein_tageswert",
       "quelle_keine_werte",
-      "rest_unplausibel"
+      "rest_unplausibel",
+      "anteil_wechselt_im_ablesezeitraum",
+      "keine_ablesung"
     ],
     "doppelzaehlung_umfang": [
       "ganz",
@@ -138,7 +142,8 @@
     "doppelt_enthalten": "{teil} ist bereits in {summe} enthalten",
     "doppelt_enthalten_teilweise": "{teil} ist zum Teil bereits in {summe} enthalten",
     "doppelt_kreis": "Ob {messstelle} einen anderen Posten enthält, ist nicht prüfbar: ihre Formel führt im Kreis ({kette})",
-    "doppelt_haengt_an_kreis": "Ob {messstelle} einen anderen Posten enthält, ist nicht prüfbar: sie baut auf einer Formel auf, die im Kreis führt ({kette})"
+    "doppelt_haengt_an_kreis": "Ob {messstelle} einen anderen Posten enthält, ist nicht prüfbar: sie baut auf einer Formel auf, die im Kreis führt ({kette})",
+    "erbe_anteil_wechselt": "keine Werte (Verteilung im Ablesezeitraum geändert)"
   },
   "zwillinge": {
     "satz": [
@@ -166,6 +171,10 @@
       "ts"
     ],
     "term": [
+      "java",
+      "ts"
+    ],
+    "ablesezeitraum": [
       "java",
       "ts"
     ],
@@ -383,6 +392,13 @@
         "10000"
       ],
       "grund": "Ein Betrag reist im Herkunfts-Satz ohne nachgestellte Nullen (`BilanzwertHerkunft.betrag`, dieselbe Form wie die Kostenstellen-Sicht seit IP-11). Numerisch gleich; byte-gleich zum Vektor ist die Route nur mit EINER Form."
+    },
+    {
+      "fall": "F17 · Verteilungen und Mengen außerhalb der Vorlage",
+      "feld": "ablesezeitraum.eingang.zeilen, kostenstelle.eingang.quellen[].anteile",
+      "vorlage": null,
+      "statt": "Wechsel am 20.10., 15.10., 02.11., 01.12.; November 1 500 m³; Zwischenablesung 16.10. 07:00",
+      "grund": "Die Vorlage kennt für MS-21 nur 100 % an 9100 ab 01.10.2026 und den einen Oktober-Zeitraum. Die Zahlen tragen nur die Form der Prüfung (gleich an jedem Tag → Anteil × Menge, Wechsel → keine Zahl, halboffen, nur zum Teil nicht verteilt); der Grundfall nimmt die Zahlen der Vorlage unverändert."
     }
   ],
   "_nicht_geprueft": [
@@ -6437,6 +6453,1386 @@
       },
       "annahmen": [
         "Regel `doppelzaehlung`: MS-22 zu 100 % an 4300 ab 15.10.2026 ist eine Annahme (wie F3/F6); die Terme des Rests kommen aus der Stellung (Zufluss +, zugeordnet −)."
+      ]
+    },
+    {
+      "name": "f17-ablesezeitraum-geht-als-ganzes-an-die-kostenstelle",
+      "id": "F17",
+      "familie": "ablesung",
+      "abnahme": null,
+      "titel": "Gas Verwaltung (MS-21) wird abgelesen - der Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (1 240 m³) geht als Ganzes an 9100, solange ihr Anteil an jedem seiner Tage gilt",
+      "why": "Messen-Konzept §10.3 (Entscheid 3, 05.10.2026): ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt (Glossar „Ablesezeitraum“). Die Tagesregel E12 verlangt je Tag seinen Anteil; gilt er an jedem Tag des Zeitraums unverändert, ist Anteil × Menge genau die Summe der Tagesanteile - sonst gibt es keine Zahl, die nicht erfunden wäre.",
+      "periode": "Monat 2026-10",
+      "einheit": "m³",
+      "schritte": [
+        "MS-21 Oktober 2026 = 49 451 − 48 211 = 1 240 m³ aus dem Ablesezeitraum 01.10. 07:15 – 02.11. 07:40, vom Kunden dem Oktober zugeordnet (AP-09 F17).",
+        "Der Zeitraum berührt die Tage 01.10. bis 02.11. (halboffen: die letzte Sekunde vor 07:40 am 02.11.). 9100 hat an jedem 100 % → gemessen 1 240 m³ (100 %).",
+        "Gegenprobe Wechsel am 20.10. (100 → 60/40): ein Stichtag-Anteil ergäbe 744 m³ für 9100, eine Aufteilung nach Tagen (19 von 33 Tagen zu 100 %, 14 zu 60 %) 1 029,6 m³ - beide erfunden; der Vertrag nennt keine Zahl und den Tag des Wechsels.",
+        "Je Kostenstelle: bleiben 60 % an 9100, während 4300 seinen Teil mit 4200 teilt, bekommt 9100 genau 60 % × 1 240 = 744 m³ - dieselbe Zahl wie die Summe ihrer Tagesanteile."
+      ],
+      "pruefungen": [
+        {
+          "regel": "ablesezeitraum",
+          "name": "Der Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 berührt die Tage 01.10. bis 02.11.; 9100 hat an jedem 100 % - 1 240 m³ gehen als Ganzes an 9100",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "menge": "1240",
+                "grund": null,
+                "geaendert_am": null
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Wechselt die Verteilung am 20.10. (100 % → 60 % an 9100, 40 % an 4300), haben beide für diesen Zeitraum keine Zahl - nie 60 % von 1 240 (Stichtag), nie eine Aufteilung nach Tagen",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-10-19",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2026-10-20",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2026-10-20",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-10-20"
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-10-20"
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Je Kostenstelle: bleiben 60 % an 9100, während 4300 seine 40 % ab 20.10. mit 4200 teilt (30/10), bekommt 9100 genau 744 m³",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-10-19",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-20",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "10",
+                "gueltig_ab": "2026-10-20",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-10-20"
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-10-20"
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "60",
+                "menge": "744",
+                "grund": null,
+                "geaendert_am": null
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Halboffen: eine Ablesung am 01.12. 00:00 schließt mit dem 30.11. - eine Verteilung ab 01.12. ändert den Zeitraum nicht",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-11-02T07:40:00+01:00",
+                "bis": "2026-12-01T00:00:00+01:00"
+              }
+            ],
+            "menge": "1500",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-11-30",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "50",
+                "gueltig_ab": "2026-12-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "50",
+                "gueltig_ab": "2026-12-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-11-02",
+            "letzter_tag": "2026-11-30",
+            "ziele": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "menge": "1500",
+                "grund": null,
+                "geaendert_am": null
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Der Tag der schließenden Ablesung zählt mit: eine Verteilung ab 02.11. (Ablesung um 07:40) wechselt mitten im Zeitraum",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-11-01",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "50",
+                "gueltig_ab": "2026-11-02",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "50",
+                "gueltig_ab": "2026-11-02",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-11-02"
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-11-02"
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Ohne jede Zeile gehört der ganze Zeitraum niemandem - 1 240 m³ „nicht verteilt“, nie aufgeteilt",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [],
+            "nicht_verteilt": {
+              "menge": "1240",
+              "grund": null,
+              "geaendert_am": null
+            }
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Beginnt die Verteilung erst am 15.10., gehört ein Teil des Zeitraums niemandem - wie viel, sagt kein Tageswert: keine Zahl für 9100 und keine für „nicht verteilt“",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": null,
+                "menge": null,
+                "grund": "anteil_wechselt_im_ablesezeitraum",
+                "geaendert_am": "2026-10-15"
+              }
+            ],
+            "nicht_verteilt": {
+              "menge": null,
+              "grund": "anteil_wechselt_im_ablesezeitraum",
+              "geaendert_am": "2026-10-15"
+            }
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Ohne Menge („keine Werte“) steht der Anteil, die Menge bleibt aus - nie 0",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": null,
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "100",
+                "menge": null,
+                "grund": "quelle_keine_werte",
+                "geaendert_am": null
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "ablesezeitraum",
+          "name": "Zwei Ablesezeiträume eines Monats: der Anteil gilt an jedem Tag beider - die Menge des Monats geht als Ganzes",
+          "eingang": {
+            "zone": "Europe/Berlin",
+            "zeitraeume": [
+              {
+                "von": "2026-10-01T07:15:00+02:00",
+                "bis": "2026-10-16T07:00:00+02:00"
+              },
+              {
+                "von": "2026-10-16T07:00:00+02:00",
+                "bis": "2026-11-02T07:40:00+01:00"
+              }
+            ],
+            "menge": "1240",
+            "zeilen": [
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "erster_tag": "2026-10-01",
+            "letzter_tag": "2026-11-02",
+            "ziele": [
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "30",
+                "menge": "372",
+                "grund": null,
+                "geaendert_am": null
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "70",
+                "menge": "868",
+                "grund": null,
+                "geaendert_am": null
+              }
+            ],
+            "nicht_verteilt": null
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Kostenstelle 9100 · Oktober 2026: gemessen 1 240 m³ aus dem Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 als Ganzes - 100 % an jedem seiner Tage",
+          "eingang": {
+            "kostenstelle": "9100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-21",
+                "art": "gemessen",
+                "groesse": "Volumen",
+                "richtung": "Bezug",
+                "einheit": "m³",
+                "anteile": [
+                  {
+                    "kostenstelle": "9100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [],
+                "ablesung": {
+                  "zone": "Europe/Berlin",
+                  "monate": [
+                    {
+                      "monat": "2026-10",
+                      "ablesezeitraeume": [
+                        {
+                          "von": "2026-10-01T07:15:00+02:00",
+                          "bis": "2026-11-02T07:40:00+01:00"
+                        }
+                      ],
+                      "menge": "1240",
+                      "zustand": "vollständig",
+                      "abdeckung_prozent": null,
+                      "version": 1,
+                      "kennzeichen": [
+                        "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": "1240",
+              "einheit": "m³",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-21",
+                  "art": "gemessen",
+                  "menge": "1240",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-21)",
+                    "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "monate_stichproben": [
+                    {
+                      "monat": "2026-10",
+                      "anteil_prozent": "100",
+                      "menge": "1240",
+                      "grund": null,
+                      "geaendert_am": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": "1240",
+              "einheit": "m³",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Kostenstelle 9100 · Oktober 2026 mit Wechsel am 20.10.: keine Zahl - „keine Werte (Verteilung im Ablesezeitraum geändert)“ mit dem Tag des Wechsels",
+          "eingang": {
+            "kostenstelle": "9100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-21",
+                "art": "gemessen",
+                "groesse": "Volumen",
+                "richtung": "Bezug",
+                "einheit": "m³",
+                "anteile": [
+                  {
+                    "kostenstelle": "9100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-10-19",
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "9100",
+                    "anteil_prozent": "60",
+                    "gueltig_ab": "2026-10-20",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  },
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "40",
+                    "gueltig_ab": "2026-10-20",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  }
+                ],
+                "tage": [],
+                "ablesung": {
+                  "zone": "Europe/Berlin",
+                  "monate": [
+                    {
+                      "monat": "2026-10",
+                      "ablesezeitraeume": [
+                        {
+                          "von": "2026-10-01T07:15:00+02:00",
+                          "bis": "2026-11-02T07:40:00+01:00"
+                        }
+                      ],
+                      "menge": "1240",
+                      "zustand": "vollständig",
+                      "abdeckung_prozent": null,
+                      "version": 1,
+                      "kennzeichen": [
+                        "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": "m³",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-21",
+                  "art": "gemessen",
+                  "menge": null,
+                  "zustand": "keine Werte",
+                  "version": 1,
+                  "kennzeichen": [
+                    "Verteilung geändert am 20.10.2026",
+                    "keine Werte (Verteilung im Ablesezeitraum geändert)"
+                  ],
+                  "fassungen": [
+                    1,
+                    2
+                  ],
+                  "monate_stichproben": [
+                    {
+                      "monat": "2026-10",
+                      "anteil_prozent": null,
+                      "menge": null,
+                      "grund": "anteil_wechselt_im_ablesezeitraum",
+                      "geaendert_am": "2026-10-20"
+                    }
+                  ]
+                }
+              ]
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": null,
+              "einheit": "m³",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Kostenstelle 9100 · Jahr 2026: Oktober 1 240 m³; November und Dezember haben eine Zeile, aber noch keine Ablesung - der Posten ist „unvollständig“ und zählt wie jeder unvollständige Posten nicht in der Summe, nie 0",
+          "eingang": {
+            "kostenstelle": "9100",
+            "von": "2026-01-01",
+            "bis": "2026-12-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-21",
+                "art": "gemessen",
+                "groesse": "Volumen",
+                "richtung": "Bezug",
+                "einheit": "m³",
+                "anteile": [
+                  {
+                    "kostenstelle": "9100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [],
+                "ablesung": {
+                  "zone": "Europe/Berlin",
+                  "monate": [
+                    {
+                      "monat": "2026-10",
+                      "ablesezeitraeume": [
+                        {
+                          "von": "2026-10-01T07:15:00+02:00",
+                          "bis": "2026-11-02T07:40:00+01:00"
+                        }
+                      ],
+                      "menge": "1240",
+                      "zustand": "vollständig",
+                      "abdeckung_prozent": null,
+                      "version": 1,
+                      "kennzeichen": [
+                        "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": "m³",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-21",
+                  "art": "gemessen",
+                  "menge": "1240",
+                  "zustand": "unvollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-21)",
+                    "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "monate_stichproben": [
+                    {
+                      "monat": "2026-10",
+                      "anteil_prozent": "100",
+                      "menge": "1240",
+                      "grund": null,
+                      "geaendert_am": null
+                    },
+                    {
+                      "monat": "2026-11",
+                      "anteil_prozent": "100",
+                      "menge": null,
+                      "grund": "keine_ablesung",
+                      "geaendert_am": null
+                    },
+                    {
+                      "monat": "2026-12",
+                      "anteil_prozent": "100",
+                      "menge": null,
+                      "grund": "keine_ablesung",
+                      "geaendert_am": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": null,
+              "einheit": "m³",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Ohne Verteilung gehört der Oktober niemandem: „nicht verteilt“ 1 240 m³ in jeder Kostenstellen-Sicht, nie aufgeteilt",
+          "eingang": {
+            "kostenstelle": "9100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-21",
+                "art": "gemessen",
+                "groesse": "Volumen",
+                "richtung": "Bezug",
+                "einheit": "m³",
+                "anteile": [],
+                "tage": [],
+                "ablesung": {
+                  "zone": "Europe/Berlin",
+                  "monate": [
+                    {
+                      "monat": "2026-10",
+                      "ablesezeitraeume": [
+                        {
+                          "von": "2026-10-01T07:15:00+02:00",
+                          "bis": "2026-11-02T07:40:00+01:00"
+                        }
+                      ],
+                      "menge": "1240",
+                      "zustand": "vollständig",
+                      "abdeckung_prozent": null,
+                      "version": 1,
+                      "kennzeichen": [
+                        "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": "1240",
+              "einheit": "m³",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-21",
+                  "art": "gemessen",
+                  "menge": "1240",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "nicht verteilt",
+                    "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)"
+                  ],
+                  "fassungen": [],
+                  "monate_stichproben": [
+                    {
+                      "monat": "2026-10",
+                      "anteil_prozent": null,
+                      "menge": "1240",
+                      "grund": null,
+                      "geaendert_am": null
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Ein Tag bekommt nie einen Anteil eines Ablesezeitraums: 9100 am 20.10.2026 - der Tag hat keinen Tageswert (unverändert seit 1.2)",
+          "eingang": {
+            "kostenstelle": "9100",
+            "von": "2026-10-20",
+            "bis": "2026-10-20",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-21",
+                "art": "gemessen",
+                "groesse": "Volumen",
+                "richtung": "Bezug",
+                "einheit": "m³",
+                "anteile": [
+                  {
+                    "kostenstelle": "9100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": "m³",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-21",
+                  "art": "gemessen",
+                  "menge": null,
+                  "zustand": "keine Werte",
+                  "version": 1,
+                  "kennzeichen": [],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-20",
+                      "anteil_prozent": "100",
+                      "menge": null,
+                      "grund": "kein_tageswert"
+                    }
+                  ]
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": null,
+              "einheit": "m³",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Kostenstelle 9100 Verwaltung · Oktober 2026 · gemessen 1 240 m³ (Gas Heizung Verwaltung MS-21, abgelesen 01.10. 07:15 – 02.11. 07:40)"
+      },
+      "annahmen": [
+        "Die Verteilungen ab 20.10., ab 15.10., ab 02.11. und ab 01.12. sowie die Novembermenge 1 500 m³ und die Zwischenablesung am 16.10. sind Annahmen; die Vorlage verteilt MS-21 ab 01.10.2026 zu 100 % an 9100."
       ]
     }
   ]

@@ -30,10 +30,8 @@ async function buehne(lage: 'anstoss' | 'frist', person: string, uhr = '2027-01-
   vi.setSystemTime(new Date(uhr));
   setSelbstauskunft(rechteSeed(person).me);
   Object.assign(api, fassungenBuehne(lage));
-  render(<KennzahlenPage kennzahlId={BB_IDS.kz4} onOeffnen={() => undefined} onListe={() => undefined} zone="Europe/Berlin" />);
-  const tab = await screen.findAllByRole('tab', { name: 'Bezugsbasis' });
-  eins(tab, 'tab Bezugsbasis (exact)');
-  fireEvent.click(tab[0]);
+  // Wie `e2e/bezugsbasis.html?…&ebene=bezugsbasis`: die Bezugsbasis eine Ebene unter der Kennzahl (Konzept Auswerten a1 §6.6).
+  render(<KennzahlenPage kennzahlId={BB_IDS.kz4} ebene="bezugsbasis" onOeffnen={() => undefined} onListe={() => undefined} zone="Europe/Berlin" />);
   await screen.findByTestId('bezugsbasis-fassung-1');
 }
 const testid = (id: string) => {
@@ -58,8 +56,9 @@ describe('e2e/bezugsbasis-fassungen.spec.ts — jeder Locator trifft genau ein E
     const kasten = await waitFor(() => testid('bezugsbasis-anstoss'));
     eins(within(kasten).getAllByText(ANSTOSS), 'kasten getByText(ANSTOSS)');
     await waitFor(() => expect(testid('bezugsbasis-fassung-1').textContent).toContain('Statischer Faktor: Fläche G-2 3 100 m² (Stand 12.11.2026)'));
-    const neu = within(kasten).getAllByRole('button', { name: 'Neue Fassung bilden' });
-    eins(neu, 'kasten button Neue Fassung bilden');
+    // Konzept Auswerten a1 §6.6: die Antworten stehen in der Karte „Überprüfung“ unter dem Anstoß.
+    const neu = within(testid('bezugsbasis-antworten')).getAllByRole('button', { name: 'Neue Fassung bilden' });
+    eins(neu, 'antworten button Neue Fassung bilden');
     fireEvent.click(neu[0]);
     const anpassung = await screen.findByTestId('bezugsbasis-neue-fassung');
     const grund = within(anpassung).getAllByRole('checkbox', { name: 'Struktur geändert' });
@@ -101,9 +100,9 @@ describe('e2e/bezugsbasis-fassungen.spec.ts — jeder Locator trifft genau ein E
 
   it('Beenden', async () => {
     await buehne('anstoss', 'IK');
-    const kasten = await waitFor(() => testid('bezugsbasis-anstoss'));
-    const b = within(kasten).getAllByRole('button', { name: 'Beenden' });
-    eins(b, 'kasten button Beenden');
+    await waitFor(() => testid('bezugsbasis-anstoss'));
+    const b = within(testid('bezugsbasis-antworten')).getAllByRole('button', { name: 'Beenden' });
+    eins(b, 'antworten button Beenden');
     fireEvent.click(b[0]);
     const dialog = await screen.findByTestId('bezugsbasis-beenden');
     await waehle('Grund', 'Struktur geändert');

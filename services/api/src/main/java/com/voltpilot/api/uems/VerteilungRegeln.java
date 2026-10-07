@@ -2,12 +2,15 @@ package com.voltpilot.api.uems;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 
 /**
  * Die FESTE VERTEILUNG einer Messstelle auf Kostenstellen (UEMS AP-10 §4.6, E11/E12) als reine
@@ -52,8 +55,16 @@ public final class VerteilungRegeln {
     /** Der Satz, den ein Ziel bekommt, dessen Quelle ein unplausibler Rest ist. */
     public static final String ERBE_REST_UNPLAUSIBEL = "keine Werte (Rest unplausibel)";
 
+    /**
+     * Der Satz, den ein Ziel bekommt, dessen Anteil sich mitten in einem Ablesezeitraum ändert (Messen PR4): der
+     * Zeitraum hat keine Tagesmengen, sein Anteil wäre erfunden.
+     */
+    public static final String ERBE_ANTEIL_WECHSELT = "keine Werte (Verteilung im Ablesezeitraum geändert)";
+
     public static final String GRUND_REST_UNPLAUSIBEL = "rest_unplausibel";
     public static final String GRUND_QUELLE_KEINE_WERTE = "quelle_keine_werte";
+    /** Der Anteil (oder „nicht verteilt“) ändert sich innerhalb eines Ablesezeitraums - keine Zahl (Messen PR4). */
+    public static final String GRUND_ANTEIL_WECHSELT = "anteil_wechselt_im_ablesezeitraum";
 
     // ------------------------------------------------------------------------------- Bausteine
 
@@ -380,6 +391,113 @@ public final class VerteilungRegeln {
         return new MengenUrteil(fertig, summe.stripTrailingZeros(), offen.stripTrailingZeros(), null);
     }
 
+    // ------------------------------------------------------------------------------- Ablesezeitraum
+
+    /** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung - halboffen, [von, bis). */
+    public record Ablesezeitraum(Instant von, Instant bis) {}
+
+    /**
+     * Was EINE Kostenstelle aus der Menge der Ablesezeiträume bekommt. Gilt ihr Anteil an JEDEM Tag derselbe:
+     * {@code anteilProzent} und {@code menge} (Anteil × Menge; ohne Menge {@code null} mit
+     * {@link #GRUND_QUELLE_KEINE_WERTE}). Sonst beide {@code null}, {@code grund} {@link #GRUND_ANTEIL_WECHSELT} und
+     * {@code geaendertAm} der erste Tag, an dem ihr Anteil anders ist als am ersten Tag.
+     */
+    public record AblesezeitraumZiel(String kostenstelle, BigDecimal anteilProzent, BigDecimal menge, String grund,
+            LocalDate geaendertAm) {}
+
+    /**
+     * Was an keinem Tag eine Zeile hat, gehört niemandem: an ALLEN Tagen ohne Zeile die ganze Menge, an nur EINIGEN
+     * keine Zahl ({@link #GRUND_ANTEIL_WECHSELT}, {@code geaendertAm} der erste Tag mit anderem Stand).
+     */
+    public record AblesezeitraumOffen(BigDecimal menge, String grund, LocalDate geaendertAm) {}
+
+    /**
+     * @param ersterTag der Tag der öffnenden Ablesung in der Zone
+     * @param letzterTag der Tag der letzten Sekunde vor der schließenden Ablesung (halboffen)
+     * @param ziele jede Kostenstelle, die an mindestens einem Tag eine Zeile hat, nach Kennzeichen
+     * @param nichtVerteilt {@code null}, wenn jeder Tag eine Zeile hat
+     */
+    public record AblesezeitraumUrteil(LocalDate ersterTag, LocalDate letzterTag, List<AblesezeitraumZiel> ziele,
+            AblesezeitraumOffen nichtVerteilt) {}
+
+    /**
+     * Messen PR4 (Konzept §10.3, Entscheid 3): ein Ablesezeitraum hat KEINE Tagesmengen - er wird nie auf Tage verteilt.
+     * Die Tagesregel (E12) verlangt aber je Tag seinen Anteil. Gilt der Anteil einer Kostenstelle an JEDEM Tag, den die
+     * Ablesezeiträume berühren, unverändert, ist Anteil × Menge genau die Summe, die die Tagesregel aus den (unbekannten)
+     * Tagesmengen ergäbe - keine erfundene Zahl. Wechselt er (auch von keiner Zeile zu einer), gibt es für diese
+     * Kostenstelle keine Zahl: einen Zeitraum anteilig auf die Abschnitte zu teilen hieße, die Tagesmengen zu erfinden.
+     *
+     * <p>Anders als {@link #mengen} (Periodenbetrag nur, wenn GENAU EIN Abschnitt die Periode deckt) urteilt die Regel je
+     * Kostenstelle: ändert sich der Satz nur für eine andere, bleibt die Zahl dieser exakt.
+     *
+     * <p>Die Tage: vom Tag der öffnenden Ablesung bis zum Tag der letzten Sekunde davor, je Zeitraum, in {@code zone}
+     * (die Zone, in der die Messstelle ihre Monate schneidet). Eine Ablesung am 01.10. 00:00 schließt mit dem 30.09.;
+     * eine am 02.11. 07:40 berührt den 02.11.
+     */
+    public static AblesezeitraumUrteil ablesezeitraum(ZoneId zone, List<Ablesezeitraum> zeitraeume, BigDecimal menge,
+            List<Bestandszeile> zeilen, List<Ziel> ziele) {
+        TreeSet<LocalDate> tage = new TreeSet<>();
+        for (Ablesezeitraum z : zeitraeume) {
+            LocalDate von = LocalDate.ofInstant(z.von(), zone);
+            LocalDate bis = LocalDate.ofInstant(z.bis().minusNanos(1), zone);
+            for (LocalDate d = von; !d.isAfter(bis); d = d.plusDays(1)) {
+                tage.add(d);
+            }
+        }
+        if (tage.isEmpty()) {
+            throw new IllegalArgumentException("ein Ablesezeitraum berührt mindestens einen Tag");
+        }
+        Map<LocalDate, Map<String, BigDecimal>> jeTag = new LinkedHashMap<>();
+        TreeSet<String> kostenstellen = new TreeSet<>();
+        for (LocalDate d : tage) {
+            Map<String, BigDecimal> anteile = new LinkedHashMap<>();
+            amTag(d, zeilen, ziele).zeilen().forEach(z -> anteile.put(z.kostenstelle(), z.anteilProzent()));
+            jeTag.put(d, anteile);
+            kostenstellen.addAll(anteile.keySet());
+        }
+        LocalDate erster = tage.first();
+        List<AblesezeitraumZiel> raus = new ArrayList<>();
+        for (String k : kostenstellen) {
+            BigDecimal anteil = jeTag.get(erster).get(k);
+            LocalDate geaendert = null;
+            for (LocalDate d : tage) {
+                BigDecimal heute = jeTag.get(d).get(k);
+                if (!gleich(heute, anteil)) {
+                    geaendert = d;
+                    break;
+                }
+            }
+            if (geaendert != null) {
+                raus.add(new AblesezeitraumZiel(k, null, null, GRUND_ANTEIL_WECHSELT, geaendert));
+            } else if (menge == null) {
+                raus.add(new AblesezeitraumZiel(k, anteil.stripTrailingZeros(), null, GRUND_QUELLE_KEINE_WERTE, null));
+            } else {
+                raus.add(new AblesezeitraumZiel(k, anteil.stripTrailingZeros(), anteilVon(menge, anteil), null, null));
+            }
+        }
+        AblesezeitraumOffen offen = null;
+        boolean ersterOhne = jeTag.get(erster).isEmpty();
+        LocalDate wechsel = tage.stream().filter(d -> jeTag.get(d).isEmpty() != ersterOhne).findFirst().orElse(null);
+        if (wechsel != null) {
+            offen = new AblesezeitraumOffen(null, GRUND_ANTEIL_WECHSELT, wechsel);
+        } else if (ersterOhne) {
+            offen = new AblesezeitraumOffen(menge == null ? null : menge.stripTrailingZeros(),
+                    menge == null ? GRUND_QUELLE_KEINE_WERTE : null, null);
+        }
+        return new AblesezeitraumUrteil(erster, tage.last(), List.copyOf(raus), offen);
+    }
+
+    private static boolean gleich(BigDecimal a, BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
+    }
+
+    /** {@code menge × anteil ÷ 100}, auf {@link #MENGE_NACHKOMMASTELLEN} gerundet - wie {@link #erbe}. */
+    private static BigDecimal anteilVon(BigDecimal menge, BigDecimal anteilProzent) {
+        return menge.multiply(anteilProzent)
+                .divide(SUMME_PROZENT, MENGE_NACHKOMMASTELLEN, RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+    }
+
     // ------------------------------------------------------------------------------- Erbe
 
     /** Die Quelle einer Verteilung: der Wert, der aufgeteilt wird. */
@@ -420,10 +538,7 @@ public final class VerteilungRegeln {
             return new ErbeUrteil(null, BilanzAbleitung.KEINE_WERTE, quelle.abdeckungProzent(),
                     quelle.version(), List.of(ERBE_REST_UNPLAUSIBEL), GRUND_REST_UNPLAUSIBEL);
         }
-        BigDecimal menge = quelle.menge()
-                .multiply(anteilProzent)
-                .divide(SUMME_PROZENT, MENGE_NACHKOMMASTELLEN, RoundingMode.HALF_UP)
-                .stripTrailingZeros();
+        BigDecimal menge = anteilVon(quelle.menge(), anteilProzent);
         List<String> kennzeichen = new ArrayList<>(List.of(kennzeichenVerteilt));
         kennzeichen.addAll(quelle.kennzeichen());
         return new ErbeUrteil(menge, quelle.zustand(), quelle.abdeckungProzent(), quelle.version(),

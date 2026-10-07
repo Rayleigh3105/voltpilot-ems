@@ -541,8 +541,9 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
       return z.id ? energiezielRoute(z.id) : null;
     case 'abweichung_frist':
       return z.id ? abweichungRoute(z.id) : null;
+    // Konzept Auswerten a1 §6.6: „Bestätigen oder neu fassen“ öffnet die Bezugsbasis eine Ebene unter der Kennzahl.
     case 'bezugsbasis_ueberpruefung':
-      return z.kennzahl_id ? kennzahlRoute(z.kennzahl_id) : null;
+      return z.kennzahl_id ? kennzahlRoute(z.kennzahl_id, null, 'bezugsbasis') : null;
     case 'bewertung_ueberpruefung':
       return pageRoute('portfolio-bewertung');
     case 'bericht_anstoss':

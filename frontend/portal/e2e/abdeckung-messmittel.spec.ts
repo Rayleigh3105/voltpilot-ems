@@ -1,14 +1,13 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * UEMS AP-16 IP-18 (M3 „Messabdeckung sichtbar“) bei 375 und 1440 px auf den ECHTEN Flächen:
  *
- * - Bewertung (`e2e/bewertung.html?stand=voll`): Abdeckungs-Tabelle je Einsatz und je Ort mit vier Spalten,
- *   Rest-Zeilen und Summe mit K8 — „geplant“ nie als 0 — und die Prüfaufgaben-Zeile (EE-3 Druckluft ist wesentlich,
- *   sein Zähler GR-5 ohne Angabe, R8).
+ * - Seite des wesentlichen Einsatzes EE-3 Druckluft (`e2e/bewertung.html?stand=voll&ee=EE-3`): die Prüfaufgaben-Zeile
+ *   (sein Zähler GR-5 ohne Angabe, R8). Die Abdeckungs-Tabelle je Einsatz und je Ort steht seit dem Konzept Auswerten a1
+ *   (§6.7) nicht mehr auf der Bewertung: dort sagt die Kachel „Keinem Bereich zugeordnet“ die Messabdeckung als Satz.
  * - Geräteseite (`e2e/geraet-herkunft.html?…&messmittel=1`): Messmittel-Blatt „nicht erhoben“, Angaben eintragen mit
  *   Datei → Prüfsumme im Browser (gesendet wird nur sie), danach das Blatt mit Beleg und Wandler-Klasse.
  *
@@ -44,46 +43,6 @@ async function bild(page: Page, name: string, ziel?: ReturnType<Page['getByTestI
   });
   await page.screenshot({ path: join(BILDER, `${name}.png`), fullPage: true, clip: r });
 }
-
-test('IP-18 · Abdeckungs-Tabelle je Einsatz und Ort: vier Spalten, Rest-Zeilen, Summe mit K8 — geplant nie 0', async ({ page }, info) => {
-  const breite = breiteFuer(info.project.name);
-  await page.clock.setFixedTime(new Date('2026-11-30T09:00:00Z'));
-  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
-  await page.goto('/e2e/bewertung.html?stand=voll');
-  const karte = page.getByTestId('messabdeckung');
-  await expect(karte).toBeVisible();
-
-  await expect(page.getByTestId('messabdeckung-k8')).toHaveText('K8 · Messabdeckung: unter Schwelle');
-  const summe = page.getByTestId('messabdeckung-summe');
-  await expect(summe).toContainText('185.380 kWh aus 3 von 3 Anlagen');
-  await expect(summe).toContainText('125.740 kWh = 67,8 %');
-  await expect(summe).toContainText('MS-23 — noch keine Werte');
-  await expect(summe).toContainText('59.640 kWh = 32,2 %');
-
-  const einsaetze = page.getByTestId('messabdeckung-einsaetze');
-  if (breite === 1440) {
-    await expect(einsaetze.locator('thead th')).toHaveText(['Energieeinsatz', 'gemessen', 'geplant', 'Ersatz', 'ungemessen', 'Menge']);
-  }
-  const ee8 = page.getByTestId('messabdeckung-zeile-EE-8');
-  await expect(ee8).toContainText('MS-23 (G-1 Halle 1) — keine Datenquelle seit 27.11.2026 · für MB-1');
-  await expect(ee8).toContainText('geplant — keine Werte');
-  await expect(ee8).not.toContainText(/(^|[^0-9.])0 kWh/);
-  await expect(ee8).toContainText('Rest Halle 1: 54.580 kWh (39,2 % der Anlage)');
-  await expect(page.getByTestId('messabdeckung-zeile-EE-1')).toContainText('MS-06 (B-1 Halle 1 Nord): 55.100 kWh');
-  await expect(einsaetze.locator('tr.is-rest')).toHaveCount(3);
-  await expect(page.getByTestId('messabdeckung-orte')).toContainText('Gas — ohne Anteil');
-  // K7: der Grenz-Satz steht einmal im Kopf der Bewertung („Was VoltPilot leistet“), nicht unter jeder Karte.
-  await expect(karte).not.toContainText('Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.');
-  await grenzHinweisZeigt(page, 'Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.');
-
-  // Prüfaufgaben-Zeile (G3, R8): EE-3 Druckluft ist wesentlich, GR-5 trägt keine Angabe.
-  await expect(page.getByTestId('pruefaufgaben')).toHaveText(
-    'Prüfaufgabe · EE-3 Druckluft (wesentlich): Messmittel-Angaben fehlen — MS-07 · GR-5: Klasse und Prüfung nicht erhoben. Nichts wird geschätzt; die Angaben stehen am Gerät.');
-
-  expect(await querlauf(page)).toEqual({ dokument: 0, ueberstehend: [] });
-  await bild(page, `abdeckung-${breite}`, karte);
-  await bild(page, `pruefaufgaben-${breite}`, page.getByTestId('pruefaufgaben'));
-});
 
 test('IP-18 · Prüfaufgabe und Messmittel an der Seite des wesentlichen Einsatzes EE-3', async ({ page }, info) => {
   const breite = breiteFuer(info.project.name);
