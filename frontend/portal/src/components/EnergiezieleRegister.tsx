@@ -7,6 +7,7 @@ import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
 import { useIsPhone } from '../useIsPhone';
 import { AuffaelligkeitHinweis } from './AuffaelligkeitHinweis';
+import { BegriffAufklapper } from './BegriffAufklapper';
 import { EnergiezielSetzenFuehrung } from './EnergiezielSetzenFuehrung';
 import { GrenzHinweis } from './GrenzSatz';
 import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
@@ -128,6 +129,7 @@ export function EnergiezieleRegister({
               {B.KNOPF_SETZEN}
             </Button>
           )}
+          <BegriffAufklapper begriff="energieziel" />
         </section>
       ) : (
         <Inhalt
@@ -207,6 +209,8 @@ function Inhalt({
           <p className="vp-ezl-formal">{formal.join(' · ')}</p>
         </div>
       )}
+      {/* „Was ist ein Energieziel?“ wie jeder Begriff (Konzept Verbessern v1 §7; Review r2 S-r2-2). */}
+      <BegriffAufklapper begriff="energieziel" />
       <div className="vp-ezl-raster">
         <div className="vp-ezl-haupt">
           {lage.laufend.map((l) => (

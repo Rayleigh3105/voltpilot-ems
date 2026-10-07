@@ -16,12 +16,12 @@ Stand: Verbessern-Bau v1, PR 0 bis PR 4 nach Review r1 (Konzept `data/vp-verbess
 
 - `offenGrund` in `energieziele.ts` bildet `bereinigt.grund` ab: `periode_nicht_zu_ende` → „läuft noch“, `keine_werte` → „kein gemessener Wert“, jeder andere Grund → der Satz der Route nach dem Gedankenstrich.
 - „noch nicht endgültig“ steht nur ohne Grund; der Wächter in `copy.test.ts` hält die Konstante von jeder Fläche und von den reinen Bildern (`energiezielBild.ts`, `massnahmenBild.ts`) fern.
-- Die Monate am Energieziel (`monatsPunkte`) nehmen denselben Grund; das geschätzte „endgültig etwa ab“ nur bei `periode_nicht_zu_ende`.
+- Die Monate am Energieziel (`monatsPunkte`) nehmen denselben Grund; das geschätzte „endgültig etwa ab“ nur, wenn der Monat läuft (`laeuftNoch`: Grund `periode_nicht_zu_ende` oder der Monat des Abruf-Tags) - auch im Kopfsatz („Noch keine Aussage …“) und im Hinweis „Erst ein Monat …“; sonst „März 2029 ist noch offen - die Produktionsmenge fehlt.“
 
 ## Wörter (PR 4)
 
 - Gruppenfrage „Was tun wir, um Energie zu sparen?“ (`ebenenNav.ts`, Entscheid 1).
-- Klartext, Frage und Abgrenzung der Verbessern-Begriffe stehen in `begriffe.ts`; Alltagswörter („auf Kurs“, „Vorher“, „gemessen an“, „zweite Person“, „Einsparung“) in `glossar.ts`, Fachmodell über `docs/fachmodell/tools/fachmodell.py`.
+- Klartext, Frage und Abgrenzung der Verbessern-Begriffe stehen in `begriffe.ts`; jeder Reiter zeigt seinen als `BegriffAufklapper` unter dem Antwortsatz („Was ist ein Energieziel?“, „Was ist eine Maßnahme?“ mit den Fachwörtern, „Was ist eine Abweichung?“), nie einen eigenen Nachbau; Alltagswörter („auf Kurs“, „Vorher“, „gemessen an“, „zweite Person“, „Einsparung“) in `glossar.ts`, Fachmodell über `docs/fachmodell/tools/fachmodell.py`.
 - Entscheid 14: Aktionsplan, Korrekturmaßnahme, Nichtkonformität und Energieleistungsverbesserung stehen nur im Feld `fachwort` der Begriffe aus `NORMWOERTER_IM_FACHWORT`, sichtbar als letzte Zeile von „Was ist …?“ (`fachwortZeile`: „Fachwort:“ / „Fachwörter:“).
   Der Sprach-Wächter lässt genau diese Texte in `begriffe.ts` durch und sonst nirgends.
 - Der Grenz-Satz steht einmal an der Seite („Was VoltPilot leistet“), nicht im Dialog: die Dialoge, Blätter und Hinweise unter Verbessern sind `VERBESSERUNG_TEILE` (Muster `BEZUGSBASIS_TEILE`) und dürfen ihn nicht tragen.
