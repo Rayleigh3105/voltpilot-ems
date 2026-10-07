@@ -156,6 +156,8 @@ class UemsKorrekturKaskadeTest {
     private static int monatVersionenNachDemWachsen;
     private static Map<String, String> vorDerKaskade;
     private static KorrekturKaskade.Lauf lauf;
+    /** Offene Anlässe des Kundenbereichs vor und nach der Kaskade, und die eines fremden ({@link KorrekturKaskade#offen}). */
+    private static int offenVorher, offenNachher, offenFremd, offenUnterFremderSperre;
     private static Map<String, String> nachDerKaskade;
     private static String bestandNachDerKaskade;
     private static KorrekturKaskade.Lauf nochmal;
@@ -255,7 +257,17 @@ class UemsKorrekturKaskadeTest {
         nachAbbruch = Bestandsschutz.fingerabdruck(root, List.of());
 
         // ---- Die Kaskade ----------------------------------------------------------------------------------------
+        offenVorher = kaskade.offen(KB);
+        offenFremd = kaskade.offen(UUID.fromString("4e0e0000-0000-0000-0000-0000000000ff"));
+        // Hält ein anderer (etwa eine zweite API) die Sperre des Kundenbereichs, überspringt ein Lauf dessen Anlässe;
+        // `offen` liest ohne Sperre und zählt sie trotzdem. (Kein Lauf hier: er rechnete andere Kundenbereiche.)
+        try (java.sql.Connection fremd = root.getDataSource().getConnection()) {
+            fremd.createStatement().execute("SELECT pg_advisory_lock(hashtextextended('uems-kaskade:" + KB + "', 0))");
+            offenUnterFremderSperre = kaskade.offen(KB);
+            fremd.createStatement().execute("SELECT pg_advisory_unlock_all()");
+        }
         lauf = kaskade.lauf(T_KASKADE);
+        offenNachher = kaskade.offen(KB);
         // AP-10 IP-11: die Meldungen der Neuberechnung und die Kostenstellen-Sicht direkt nach der Kaskade.
         bilanzMeldungen = root.queryForList("SELECT kennungen ->> 'messstelle' AS messstelle, nutzlast ->> 'ausloeser' "
                 + "AS ausloeser, urheber, von, bis, messstelle_id FROM messreihe_ereignis WHERE tenant_id = ? "
@@ -530,6 +542,19 @@ class UemsKorrekturKaskadeTest {
     }
 
     /** Dieselbe Freigabe zweimal: der zweite Lauf findet nichts und schreibt nichts. */
+    /**
+     * {@link KorrekturKaskade#offen}: dieselbe Auswahl wie der Lauf, je Kundenbereich - vor der Kaskade offen, danach
+     * nicht mehr, ein fremder Kundenbereich hat keine; auch unter einer fremd gehaltenen Sperre, unter der ein Lauf die
+     * Anlässe überspringt (Demo-Füllung Verbessern wartet darum auf {@code offen == 0}, nicht auf einen leeren Lauf).
+     */
+    @Test
+    void offenZaehltDieAnlaesseDesKundenbereichsAuchUnterFremderSperre() {
+        assertThat(offenVorher).isPositive();
+        assertThat(offenUnterFremderSperre).isEqualTo(offenVorher);
+        assertThat(offenNachher).isZero();
+        assertThat(offenFremd).isZero();
+    }
+
     @Test
     void zweimalVerarbeitetSchreibtBeimZweitenMalNichts() {
         assertThat(lauf.anlaesse()).isEqualTo(2);

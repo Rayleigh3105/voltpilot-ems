@@ -13,14 +13,20 @@ import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
+import '../pages/Abweichungen.css';
 
 const ABBRECHEN = 'Abbrechen';
 const OHNE_KONTO = '__ohne_konto';
 
 type Props = { abweichung: Abweichung; onClose: () => void; onFertig: (a: Abweichung) => void; tagHeute?: string };
 
-function Rahmen({ titel, basis, busy, knopf, testid, onClose, children }: {
-  titel: string; basis: string; busy: boolean; knopf: string; testid: string; onClose: () => void; children: ReactNode;
+/**
+ * Konzept Verbessern v1 §8.2 (Regel V6): der Titel ist die Handlung, die Abweichung steht leise darunter - ihr Name,
+ * das Kennzeichen dahinter, wie im Kopf ihrer Seite; nie das Kennzeichen vorn.
+ */
+function Rahmen({ titel, abweichung, basis, busy, knopf, testid, onClose, children }: {
+  titel: string; abweichung: Abweichung; basis: string; busy: boolean; knopf: string; testid: string; onClose: () => void;
+  children: ReactNode;
 }) {
   return (
     <Modal
@@ -38,6 +44,9 @@ function Rahmen({ titel, basis, busy, knopf, testid, onClose, children }: {
         </>
       }
     >
+      <p className="vp-abw-dlg-unter" data-testid={`${testid}-vorgang`}>
+        {A.abweichungTitel(abweichung)} <span className="vp-abw-kz">{abweichung.kennzeichen}</span>
+      </p>
       {children}
     </Modal>
   );
@@ -87,7 +96,7 @@ export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute =
   }
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_AUSSAGE}`} basis={basis} busy={busy} knopf={A.KNOPF_AUSSAGE} testid="ursache-aussage" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_AUSSAGE} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_AUSSAGE} testid="ursache-aussage" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="ursache-aussage">
         <p className="vp-ez-basis">{A.AUSSAGE_HINWEIS}</p>
         <VpPicker
@@ -144,7 +153,7 @@ export function FristDialog({ abweichung, onClose, onFertig }: Props) {
   }
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_FRIST}`} basis={basis} busy={busy} knopf={A.KNOPF_FRIST} testid="abweichung-frist" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_FRIST} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_FRIST} testid="abweichung-frist" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-frist">
         <VpDatePicker id={`${basis}-frist`} label={A.FRIST} value={frist} onChange={setFrist} min={abweichung.eroeffnet_am} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen} />
@@ -186,7 +195,7 @@ export function VerantwortlicherDialog({ abweichung, onClose, onFertig }: Props)
   }
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_VERANTWORTLICH}`} basis={basis} busy={busy} knopf={A.KNOPF_VERANTWORTLICH} testid="abweichung-verantwortlich" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_VERANTWORTLICH} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_VERANTWORTLICH} testid="abweichung-verantwortlich" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-verantwortlich">
         <VerantwortlichWahl id={`${basis}-verantwortlich`} wert={wer} setze={setWer} fehler={zeigen.verantwortlich ?? null} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
@@ -270,7 +279,7 @@ export function AbschliessenDialog({ abweichung, onClose, onFertig }: Props) {
     .map((m) => ({ value: m.id, label: `${m.kennzeichen} ${m.titel}` }));
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen} ${A.KNOPF_ABSCHLIESSEN}`} basis={basis} busy={busy} knopf={A.KNOPF_ABSCHLIESSEN} testid="abweichung-abschliessen" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_ABSCHLIESSEN} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_ABSCHLIESSEN} testid="abweichung-abschliessen" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-abschliessen">
         <p className="vp-ez-leise">{A.ABSCHLUSS_HINWEIS}</p>
         <fieldset className="vp-ez-periode" data-testid="abschluss-ergebnis">
@@ -349,7 +358,7 @@ export function KommentarDialog({ abweichung, onClose, onFertig }: Props) {
   }
 
   return (
-    <Rahmen titel={A.KNOPF_KOMMENTAR_SCHREIBEN} basis={basis} busy={busy} knopf={A.KNOPF_KOMMENTAR_SCHREIBEN} testid="abweichung-kommentar" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_KOMMENTAR_SCHREIBEN} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_KOMMENTAR_SCHREIBEN} testid="abweichung-kommentar" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-kommentar">
         <div className="vp-ez-feld">
           <label className="vp-ez-label" htmlFor={`${basis}-text`}>
