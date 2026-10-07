@@ -231,8 +231,9 @@ const MENGEN: Record<number, { menge: string; anteil: string; rang: number; ms: 
   5: { menge: '7800', anteil: '4.2', rang: 5, ms: [['MS-13', '3500'], ['MS-17', '4300']] },
   4: { menge: '6200', anteil: '3.3', rang: 6, ms: [['MS-08', '6200']] },
 };
+/** Hauptzähler je Anlage im Oktober - `anlage` ist wie auf der Route der NAME der Anlage (`BewertungRanglisteService.bilanzwerte`). */
 const BILANZEN = [
-  [FIXTURE_IDS.an1, '139380'], [FIXTURE_IDS.an2, '36900'], [FIXTURE_IDS.an3, '9100'],
+  ['Halle 1', '139380'], ['Halle 2', '36900'], ['Werk Lindach', '9100'],
 ] as const;
 
 export function ahrenbergRangliste(leer = false, kriterien = kriterienFassung()): BewertungRangliste {

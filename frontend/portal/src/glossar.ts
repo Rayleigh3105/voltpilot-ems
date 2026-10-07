@@ -469,6 +469,15 @@ export const UEMS_BEWERTUNG_ABDECKUNG = {
 } as const;
 
 /**
+ * Konzept Auswerten a1 §6.1 (9): dieselben Wörter auf Verbrauch, Bewertung und Energiebilanz — der Anteil, den die
+ * Bereiche (Energieeinsätze) messen, die Rest-Reihe und der Ort ohne eigenen Zähler.
+ * Glossar: `docs/fachmodell/glossar.md` › Energieeinsatz (Abschnitt „Verbrauch“).
+ */
+export const UEMS_EINEM_BEREICH_ZUGEORDNET = 'einem Bereich zugeordnet';
+export const UEMS_KEINEM_BEREICH_ZUGEORDNET = 'Keinem Bereich zugeordnet';
+export const UEMS_OHNE_EIGENEN_ZAEHLER = 'ohne eigenen Zähler';
+
+/**
  * AP-16 IP-18 (G5, AP-04 E3): der Satz der Quelle-Karte über der Befund-Zeile. Die Karte stellt weiter nebeneinander
  * und ersetzt nichts; seit IP-17 steht darunter die Monatsabweichung gegen die Toleranz, die der Kunde selbst setzt —
  * nie eine Ursache. Nebengrößen ohne Monatsmenge bekommen keine Zeile, darum „liefern beide eine Monatsmenge“.

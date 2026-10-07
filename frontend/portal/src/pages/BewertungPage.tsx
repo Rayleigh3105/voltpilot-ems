@@ -38,12 +38,11 @@ import { ErrorState, Skeleton } from '../components/States';
 import { UmfangDialog } from '../components/UmfangDialog';
 import { useRollen } from '../rollen';
 import { useBewertungZeitraum } from '../useBewertungZeitraum';
-import { EnergieeinsatzSeite } from './EnergieeinsatzSeite';
 import './BewertungPage.css';
 
 /**
- * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`) und die Seite eines Energieeinsatzes
- * (`#/portfolio/bewertung/{id}`) — Meilenstein M1: Umfang und Einsätze lassen sich anlegen, sehen und zuordnen; nichts
+ * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, `#/portfolio/bewertung`). Die Seite eines Energieeinsatzes wohnt seit dem
+ * Konzept Auswerten a1 unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`, die alte Adresse leitet dorthin) - Meilenstein M1: Umfang und Einsätze lassen sich anlegen, sehen und zuordnen; nichts
  * rechnet, nichts stuft selbst ein. IP-12 ergänzt Rangliste, Kriterien und die begründete Einstufung durch eine Person.
  * Die Welt erscheint nach der Berichte-Regel (ein Standort misst) und nur mit
  * `energieeinsatz.ansehen` (`ebenenNav.ts`).
@@ -51,16 +50,7 @@ import './BewertungPage.css';
  * Die Fläche liest nur ihre eigene Welt (W11): `…/bewertung/umfang` und `…/energieeinsaetze`. Jede Ableitung steht im
  * reinen Modul `bewertung.ts`; der Grenz-Satz steht auf jeder Bewertungs-Fläche (SP3, `copy.test.ts`).
  */
-export function BewertungPage({
-  einsatzId = null,
-  onOeffnen,
-  onListe,
-}: {
-  einsatzId?: string | null;
-  onOeffnen: (id: string) => void;
-  onListe: () => void;
-}) {
-  if (einsatzId) return <EnergieeinsatzSeite key={einsatzId} id={einsatzId} onListe={onListe} />;
+export function BewertungPage({ onOeffnen }: { onOeffnen: (id: string) => void }) {
   return <BewertungUebersicht onOeffnen={onOeffnen} />;
 }
 
