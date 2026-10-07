@@ -230,6 +230,22 @@ const SRC = join(process.cwd(), 'src');
 const GRENZ_BAUSTEIN = /<GrenzSatz(?![\w])(?![^>]*\sgrenze=\{false\})[^>]*\/>/;
 const VERANTWORTUNG_BAUSTEIN = /<GrenzSatz(?![\w])[^>]*\sverantwortung[\s/>]/;
 const GRENZ_HINWEIS = /<GrenzHinweis[\s/>]/;
+/**
+ * Bereiche, die nur Reiter legen (Verbessern-Konzept v1, Entscheid 2; Review r1 S-X.1): jeder Reiter trägt Titel, Satz
+ * und „Was VoltPilot leistet“ selbst, der Bereich keinen eigenen Kopf. Er gilt als „mit Hinweis“, wenn er jedes seiner
+ * Register wirklich zeigt und jedes davon den Hinweis trägt - ein neuer Reiter ohne Hinweis fällt so weiter auf.
+ */
+const REITER_MIT_HINWEIS: Record<string, string[]> = {
+  'pages/VerbesserungBereich.tsx': ['components/EnergiezieleRegister.tsx', 'components/MassnahmenRegister.tsx', 'components/AbweichungenRegister.tsx'],
+};
+function reiterTragenDenHinweis(datei: string, code: string): boolean {
+  const register = REITER_MIT_HINWEIS[datei];
+  if (!register) return false;
+  return register.every((r) => {
+    const name = r.split('/').pop()!.replace(/\.tsx$/, '');
+    return new RegExp(`<${name}[\\s/>]`).test(code) && GRENZ_HINWEIS.test(readFileSync(join(SRC, r), 'utf8'));
+  });
+}
 const traegtGrenzBaustein = (text: string) => GRENZ_HINWEIS.test(text) || GRENZ_BAUSTEIN.test(text);
 const traegtVerantwortungBaustein = (text: string) => GRENZ_HINWEIS.test(text) || VERANTWORTUNG_BAUSTEIN.test(text);
 
@@ -1956,6 +1972,8 @@ const KENNZAHL_BESTAND: string[] = [
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
   'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
+  'components/AbweichungenRegister.tsx', // neu: der Reiter nennt die Kennzahl jeder Auffälligkeit und Abweichung (Verbessern-Konzept v1, PR3)
+  'components/AuffaelligkeitBlatt.tsx', // neu: „Keine Antwort ändert eine Zahl“ nennt Kennzahl und Bezugsbasis (Verbessern-Konzept v1, PR3)
   'components/AuthScreen.tsx', // neu: die Anmelde-Bühne zeigt die Flächen des Portals als Kacheln, eine davon „Kennzahlen“ (Login-Konzept C)
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
   'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
@@ -1982,6 +2000,7 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
+  'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
   'pages/DataPages.tsx', // alt
   'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
   'pages/MassnahmeSeite.tsx', // neu: „Wofür und woran gemessen“ nennt die Kennzahl der Messgrundlage (Verbessern v1 PR 2, §6.6)
@@ -3065,7 +3084,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
       const texte = kundenTexte(code);
       expect(texte.flatMap(verstoesse), datei).toEqual([]);
-      expect(traegtGrenze(code), datei).toBe(true);
+      expect(traegtGrenze(code) || reiterTragenDenHinweis(datei, code), datei).toBe(true);
       expect(ursacheOhnePerson(code), `${datei}: „Ursache“ ohne „Aussage von“`).toBe(false);
       expect(texte.filter(verbesserungOhneBedingung), `${datei}: „Verbesserung“ ohne Bedingung`).toEqual([]);
       expect(texte.filter((text) => ZIEL_ALLEIN.test(text)), `${datei}: „Ziel“ allein`).toEqual([]);
@@ -3943,7 +3962,7 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
   it('jeder Bereich, der die Sätze seiner Teile schweigen lässt, zeigt den Hinweis', () => {
     const ohne = alle
       .map((datei) => [rel(datei), stripComments(readFileSync(datei, 'utf8'))] as const)
-      .filter(([, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code))
+      .filter(([datei, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code) && !reiterTragenDenHinweis(datei, code))
       .map(([datei]) => datei);
     expect(ohne).toEqual([]);
   });
@@ -3967,6 +3986,11 @@ describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
     expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
     expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
+    // Ein Bereich mit Reitern gilt nur, wenn er jedes Register zeigt - fehlt eins, trägt er den Hinweis nicht.
+    const bereich = '<EnergiezieleRegister onOeffnen={x} /> <MassnahmenRegister /> <AbweichungenRegister grenze={false} />';
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich)).toBe(true);
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich.replace('<MassnahmenRegister />', ''))).toBe(false);
+    expect(reiterTragenDenHinweis('pages/KennzahlSeite.tsx', bereich)).toBe(false);
   });
 });
 

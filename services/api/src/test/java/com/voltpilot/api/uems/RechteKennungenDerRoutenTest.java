@@ -63,7 +63,7 @@ class RechteKennungenDerRoutenTest {
             "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController", "KorrekturPortalController",
             "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
             "KennzahlVorlagenController", "EnergiezielController", "MassnahmeController", "AbweichungController",
-            "AuffaelligkeitController", "EnergiemanagementPersonenController", "EnergiemanagementDokumentController",
+            "AuffaelligkeitController", "AuffaelligkeitenController", "EnergiemanagementPersonenController", "EnergiemanagementDokumentController",
             "EnergiemanagementVerzeichnisController", "EnergiemanagementWiedervorlageController",
             "InternesAuditController", "FeststellungController",
             "BerichtController", "MeController",

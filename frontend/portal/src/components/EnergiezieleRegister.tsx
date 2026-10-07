@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Auffaelligkeit, type Energieziel, type EnergiezielStand, type Massnahme } from '../api';
+import { api, type Energieziel, type EnergiezielStand, type Massnahme } from '../api';
 import * as B from '../energiezielBild';
 import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
 import { useIsPhone } from '../useIsPhone';
+import { AuffaelligkeitHinweis } from './AuffaelligkeitHinweis';
 import { EnergiezielSetzenFuehrung } from './EnergiezielSetzenFuehrung';
 import { GrenzHinweis } from './GrenzSatz';
 import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
@@ -22,7 +23,7 @@ type Laufend = {
 type Lage =
   | { art: 'laedt' }
   | { art: 'fehler' }
-  | { art: 'da'; laufend: Laufend[]; abgeschlossen: Energieziel[]; vermerke: Auffaelligkeit[]; abruf: string | null };
+  | { art: 'da'; laufend: Laufend[]; abgeschlossen: Energieziel[]; abruf: string | null };
 
 const VERWALTEN = 'verbesserung.verwalten';
 
@@ -37,11 +38,9 @@ const laufendZuerst = (a: Energieziel, b: Energieziel) => a.zielperiode.localeCo
  */
 export function EnergiezieleRegister({
   onOeffnen,
-  onKennzahl,
   onMassnahme,
 }: {
   onOeffnen: (id: string) => void;
-  onKennzahl?: (kennzahlId: string) => void;
   onMassnahme?: (id: string) => void;
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
@@ -63,32 +62,18 @@ export function EnergiezieleRegister({
         const abgeschlossen = energieziele
           .filter((ez) => ez.zustand !== 'offen')
           .sort((a, b) => b.zielperiode.localeCompare(a.zielperiode));
-        const kennzahlen = [...new Set(offen.map((ez) => ez.kennzahl.id))];
-        const [laufend, vermerke] = await Promise.all([
-          Promise.all(
-            offen.map(async (ez): Promise<Laufend> => {
-              const [stand, liste] = await Promise.all([
-                api.energiezielStand(ez.id).catch(() => null),
-                api.massnahmenZumEnergieziel(ez.id).catch(() => null),
-              ]);
-              return { ez, stand, massnahmen: liste ? B.massnahmenAmZiel(liste) : null };
-            }),
-          ),
-          Promise.all(kennzahlen.map((k) => api.auffaelligkeiten(k).then((l) => l.vermerke, () => [] as Auffaelligkeit[]))),
-        ]);
+        const laufend = await Promise.all(
+          offen.map(async (ez): Promise<Laufend> => {
+            const [stand, liste] = await Promise.all([
+              api.energiezielStand(ez.id).catch(() => null),
+              api.massnahmenZumEnergieziel(ez.id).catch(() => null),
+            ]);
+            return { ez, stand, massnahmen: liste ? B.massnahmenAmZiel(liste) : null };
+          }),
+        );
         const abruf = laufend.find((l) => l.stand)?.stand?.abruf ?? null;
         merkeAbruf(abruf);
-        const zeitraum = (v: Auffaelligkeit) =>
-          offen.some((ez) => ez.kennzahl.id === v.kennzahl.id && v.periode >= ez.zielperiode.slice(0, 7) && v.periode <= ez.zielperiode.slice(8));
-        if (aktiv) {
-          setLage({
-            art: 'da',
-            laufend,
-            abgeschlossen,
-            vermerke: vermerke.flat().filter((v) => v.zustand === 'offen' && zeitraum(v)),
-            abruf,
-          });
-        }
+        if (aktiv) setLage({ art: 'da', laufend, abgeschlossen, abruf });
       })
       .catch(() => aktiv && setLage({ art: 'fehler' }));
     return () => {
@@ -148,7 +133,6 @@ export function EnergiezieleRegister({
         <Inhalt
           lage={lage}
           onOeffnen={onOeffnen}
-          onKennzahl={onKennzahl}
           onPlanen={setPlanen}
           darfSetzen={darfSetzen}
           onSetzen={() => setSetzen(true)}
@@ -186,14 +170,12 @@ export function EnergiezieleRegister({
 function Inhalt({
   lage,
   onOeffnen,
-  onKennzahl,
   onPlanen,
   darfSetzen,
   onSetzen,
 }: {
   lage: Extract<Lage, { art: 'da' }>;
   onOeffnen: (id: string) => void;
-  onKennzahl?: (kennzahlId: string) => void;
   onPlanen: (ez: Energieziel) => void;
   darfSetzen: boolean;
   onSetzen: () => void;
@@ -205,27 +187,6 @@ function Inhalt({
     lage.abruf ? `Stand ${B.tag(lage.abruf)}` : null,
     'gemessen gegen die Bezugsbasis',
   ].filter(Boolean);
-  const vermerk = lage.vermerke[0];
-  const hinweis = vermerk && (
-    <div className="vp-ezl-hinweis" data-testid="energieziele-auffaelligkeit">
-      <span className="vp-ezl-hinweis-i">
-        <Icon name="info" size={16} />
-      </span>
-      <span className="vp-ezl-hinweis-t">
-        <b>Auffälligkeit zu {B.monatLang(vermerk.periode)} · offen.</b>{' '}
-        {B.auffaelligkeitDelta(vermerk.anlass_inhalt)
-          ? `Der Monat lag ${B.auffaelligkeitDelta(vermerk.anlass_inhalt)}. `
-          : 'VoltPilot hat den Monat vermerkt, weil er über der Bezugsbasis liegt. '}
-        Klären Sie zuerst, woran es lag - dann wissen Sie, welche Maßnahme hilft.
-        {lage.vermerke.length > 1 ? ` Dazu ${lage.vermerke.length - 1} weitere.` : ''}{' '}
-        {onKennzahl && (
-          <button type="button" className="vp-ezl-link is-im-satz" onClick={() => onKennzahl(vermerk.kennzahl.id)}>
-            Beantworten
-          </button>
-        )}
-      </span>
-    </div>
-  );
   const soEntsteht = (
     <section className="vp-ezl-karte" data-testid="energieziele-so-entsteht">
       <h2 className="vp-ezl-h2">{B.SO_ENTSTEHT}</h2>
@@ -265,7 +226,12 @@ function Inhalt({
           )}
         </div>
         <div className="vp-ezl-seite">
-          {hinweis && <div className="vp-ezl-o-hinweis">{hinweis}</div>}
+          {/* Verbessern-Konzept v1 (Entscheid 4): offene Auffälligkeiten an Kennzahlen laufender Energieziele zuerst -
+              über die Sammelroute, „Beantworten“ öffnet das Blatt an Ort und Stelle. */}
+          <AuffaelligkeitHinweis
+            ziele={lage.laufend.map((l) => ({ kennzahl: l.ez.kennzahl.id, zielperiode: l.ez.zielperiode }))}
+            art="reiter"
+          />
           <div className="vp-ezl-o-entsteht">{soEntsteht}</div>
         </div>
       </div>
