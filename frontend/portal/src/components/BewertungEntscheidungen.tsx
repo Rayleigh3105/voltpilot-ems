@@ -51,7 +51,10 @@ export function RanglisteBereich({ rangliste, zeitraum, historien, darfEinstufen
       {rangliste.nenner.wert === null ? `Stromeinsatz ${zeitraum}: ohne vollständigen Nenner · ${rangliste.nenner.anlagen} Anlagen.` :
         `Stromeinsatz ${zeitraum}: ${zahlMitEinheit(rangliste.nenner.wert, 'kWh')} aus ${rangliste.nenner.anlagen} Anlagen · ${prozentText(rangliste.abdeckung_prozent)} Energieeinsätzen zugeordnet.`}
     </p>
-    <p className="vp-bw-vorlaeufig">{urteilText(rangliste.urteil.K7)} · {rangliste.monate} von {rangliste.kriterien.werte.K7} Monaten</p>
+    {/* Konzept Auswerten a1, Befund 2: über die ganze Datengrundlage gelesen ist K7 meist erfüllt - dann kein „12 von 6“. */}
+    <p className="vp-bw-vorlaeufig">{rangliste.urteil.K7 === 'vorlaeufig'
+      ? `${urteilText(rangliste.urteil.K7)} · ${rangliste.monate} von ${rangliste.kriterien.werte.K7} Monaten`
+      : `Datengrundlage ${rangliste.monate} Monate · ${urteilText(rangliste.urteil.K7)} (mindestens ${rangliste.kriterien.werte.K7})`}</p>
     {rangliste.urteil.K7 === 'vorlaeufig' && <p className="vp-bw-leise">Datengrundlage {rangliste.monate} von {rangliste.kriterien.werte.K7} Monaten — vorläufig.</p>}
     {rangliste.einsaetze.length ? <div className="vp-bw-rang-scroll"><table className="vp-bw-rang-tabelle">
       <thead><tr><th>Rang</th><th>Energieeinsatz</th><th>Menge</th><th>Anteil</th><th>K1</th><th>K2</th><th>K3</th><th>K5</th><th>K6</th><th>Vorschlag</th><th>Einstufung</th></tr></thead>

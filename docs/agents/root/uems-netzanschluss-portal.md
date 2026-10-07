@@ -18,15 +18,14 @@ Der Standort trägt den Reiter `#/standort/{id}/netzanschluesse`, mit Liste, Anl
   Bindungen. Die Prüfung verwendet `uemsNetzanschluss.bindung`: zwei Exklusionen, Vortag-Ende
   beim Wechsel, keine Überschreibung einer späteren Bindung. Der Picker nennt nur Anlagen
   dieses Standorts. Die API verlangt selbst keinen gleichen Standort (siehe API-Wegweiser).
-- **Bilanzkopf:** die Bilanzroute trägt keinen Anschluss. `NetzanschlussBilanzKopf` liest
+- **Bilanzfuß:** die Bilanzroute trägt keinen Anschluss. `EnergiebilanzFuss` (Konzept Auswerten a1 §6.9) liest
   `GET /standorte?stichtag=<bilanz.am>` und das dort gelieferte `anlage.netzanschluss`, dann
-  `GET /standorte/{id}/netzanschluesse?stichtag=`. „Stand am …“ gilt ausdrücklich nur für
-  diesen Tag, nicht für die gesamte Bilanzperiode. `null` heißt „nicht angelegt“;
-  fehlende/fehlerhafte Antworten heißen nicht „kein Anschluss“. Bei Umzug kann der Anschluss
-  am alten Standort bleiben: sein bekannter Bezug bleibt sichtbar, fehlende Details werden
-  benannt. Die Bilanzroute liefert als Live-Wert den Rest, nicht die Momentanleistung des
-  Netzanschlusses; der Kopf deutet ihn deshalb nicht als Anschlussleistung um. Ein solcher
-  Momentanwert steht mangels Fakt im verwendeten Lesemodell nicht im Kopf.
+  `GET /standorte/{id}/netzanschluesse?stichtag=` und nennt nur Kennzeichen, vereinbarte Leistung und die Zeitzone mit
+  dem Standort („Netzanschluss NA-1 · vereinbart 550 kW · Zeiten: Europe/Berlin (Werk Ahrenberg)“). MaLo, Netzbetreiber
+  und Anschluss-kVA stehen auf der Liste der Netzanschlüsse; vom Grenz-Nachweis (AP-15 IP-31) steht am Fuß nur
+  „überschritten“. `null` heißt „nicht angelegt“; fehlende/fehlerhafte Antworten heißen nicht „kein Anschluss“. Bei
+  Umzug kann der Anschluss am alten Standort bleiben: sein bekanntes Kennzeichen bleibt sichtbar. Die Bilanzroute
+  liefert als Live-Wert den Rest, nicht die Momentanleistung des Netzanschlusses; der Fuß deutet ihn nicht um.
 - **Eine Formatierstelle:** `netzanschlussListe.leistung` ruft `uemsNetzanschluss.kopfzeile`
   und damit `uemsErgebnis.zahl` auf. Liste und Bilanz teilen sie. Seit Ergebnis-Vertrag 1.12
   tragen vereinbarte kW und Anschluss-kVA den Wertbezug `vereinbart`: ganze Werte ohne
@@ -35,7 +34,7 @@ Der Standort trägt den Reiter `#/standort/{id}/netzanschluesse`, mit Liste, Anl
   Kein Preisumzug, keine Versorgung-Route und kein Formel-Assistent.
 
 Prüfen: `netzanschlussListe.test.ts`, `apiNetzanschluss.test.ts`,
-`components/NetzanschlussBilanzKopf.test.tsx`, `uemsNetzanschluss.test.ts`, `copy.test.ts`,
+`components/EnergiebilanzFuss.test.tsx`, `uemsNetzanschluss.test.ts`, `copy.test.ts`,
 `uemsKeineRechnung.test.ts` (neue Ableitung aufgenommen), Navigation und Bestandsschutz.
 Browser: `e2e/netzanschluesse.spec.ts` bei 375/1440, dazu `standort-ebenen.spec.ts`,
 `energiebilanz.spec.ts` und `telefonleiste.spec.ts`; Wiederholung mit `--repeat-each=2`.
