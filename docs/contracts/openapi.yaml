@@ -12465,6 +12465,110 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen:
+    get:
+      tags: [energiemanagement]
+      summary: Die Mappen „Unterlagen zusammenstellen“, die jüngste zuerst (Konzept Nachweisen n1, Entscheid 7).
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit - wer nur Standorte liest, bekommt keine Mappe, ohne
+        Hinweis; „Einsicht“ liest. Leert dabei die Dateien abgelaufener Mappen (Aufbewahrung 30 Tage); die Angaben
+        bleiben.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementMappen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Unterlagen zusammenstellen - ein PDF mit Inhaltsverzeichnis und die Verzeichnis-CSV für einen Anlass.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (auch „Einsicht“ 403 `recht_fehlt`). `anlass` aus dem
+        Vokabular `mappe_anlass` (Vertrag energiemanagement 1.6), `gruppen` mindestens eine aus `verzeichnis_gruppe`,
+        `offen` die Teile (Vokabular `teil`), die das Portal beim Zusammenstellen als offen zeigt (Entscheid 4: der
+        Stand je Teil lebt im Portal; sie stehen als offen in der Mappe, ohne Urteil), `von` wahlfrei (ohne: alles bis
+        zum Stichtag; nach dem Stichtag 400). Jede Ablehnung 400 `anfrage_ungueltig` mit `feld`. Der Stichtag ist der
+        des Verzeichnisses. Das PDF nennt „Was am Stichtag gilt“ (je Dokument die jüngste freigegebene Fassung,
+        laufende Aufgaben, geltende Vermerke) und „Was im Zeitraum festgehalten wurde“ (die Zeilen des Verzeichnisses);
+        die CSV ist das Verzeichnis des Zeitraums. Beide mit Prüfsumme, 30 Tage abrufbar. Der Mandant kommt nie aus dem
+        Körper.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementMappeAnlegen" }
+      responses:
+        "201":
+          description: Die Mappe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementMappe" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Eine Mappe - wofür, was hineinging, Prüfsummen und wie lange sie noch abrufbar ist.
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit; unbekannt, fremd oder im Standort-Zaun 404
+        `nicht_gefunden`. `abrufbar_tage` zählt die Datenbank in echter Zeit (angebrochene als ganze), 0 nach der Frist.
+      responses:
+        "200":
+          description: Die Mappe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementMappe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen/{id}/pdf:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Das PDF der Mappe; jeder Abruf protokolliert.
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit. Erst die Datei, dann der Abruf im Protokoll, in einer
+        Transaktion. Nach 30 Tagen 410 `mappe_abgelaufen`; ein verwehrter Abruf steht nicht im Protokoll.
+      responses:
+        "200":
+          description: Das PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "410": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen/{id}/csv:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Die Verzeichnis-CSV der Mappe; jeder Abruf protokolliert.
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit. Die CSV des Verzeichnisses für den Zeitraum der Mappe,
+        mit einer ersten Zeile, wofür und von wem. Nach 30 Tagen 410 `mappe_abgelaufen`.
+      responses:
+        "200":
+          description: Die CSV.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "410": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/verantwortung:
     get:
       tags: [energiemanagement]
@@ -18848,6 +18952,60 @@ components:
         vermerke:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+    EnergiemanagementMappeAnlegen:
+      type: object
+      additionalProperties: false
+      required: [anlass, gruppen]
+      properties:
+        anlass: { type: string, enum: [audit_von_aussen, anfrage_behoerde, eigene_ablage] }
+        von: { type: string, format: date, nullable: true, description: Ab welchem Tag; ohne alles bis zum Stichtag. }
+        gruppen:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [grundlagen, verantwortung, risiken_chancen, kompetenz_kommunikation, betrieb_auslegung_beschaffung, bewertung_messplanung, kennzahlen_bezugsbasen, ziele_massnahmen_abweichungen, audits_feststellungen, managementbewertung, berichte] }
+        offen:
+          type: array
+          items: { type: string, enum: [energiepolitik, anwendungsbereich, rechtliche_anforderungen, kontext, risiken_chancen, aufgaben, kompetenz, kommunikation, betrieb, auslegung, beschaffung, energetische_bewertung, bezugsbasen, massnahmen, interne_audits, feststellungen, managementbewertung, berichte] }
+    EnergiemanagementMappe:
+      type: object
+      required: [id, titel, anlass, anlass_wort, von, bis, stichtag, gruppen, gruppen_woerter, offen, offen_woerter,
+        eintraege, gilt, datei_titel, datei_name, pdf_pruefsumme, csv_pruefsumme, abrufbar, abrufbar_tage,
+        aufbewahrung_tage, abrufe, erstellt]
+      properties:
+        id: { type: string, format: uuid }
+        titel: { type: string, description: „Unterlagen für das Audit“, „… für die Behörde“, „… für die eigene Ablage“. }
+        anlass: { type: string }
+        anlass_wort: { type: string, description: Das Wort des Vertrags `woerter.mappe_anlass`. }
+        von: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, description: Der Stichtag des Verzeichnisses. }
+        stichtag: { type: string, format: date-time }
+        gruppen: { type: array, items: { type: string } }
+        gruppen_woerter: { type: array, items: { type: string } }
+        offen: { type: array, items: { type: string } }
+        offen_woerter: { type: array, items: { type: string } }
+        eintraege: { type: integer, description: Zeilen des Verzeichnisses im Zeitraum. }
+        gilt: { type: integer, description: Was am Stichtag gilt (Fassungen, Aufgaben, Vermerke). }
+        datei_titel: { type: string, description: „Nachweise Ahrenberg, 30.04.2029“. }
+        datei_name: { type: string, description: Der Dateiname ohne Endung. }
+        pdf_pruefsumme: { type: string, description: SHA-256 des PDF, hexadezimal. }
+        csv_pruefsumme: { type: string, description: SHA-256 der CSV, hexadezimal. }
+        abrufbar: { type: boolean }
+        abrufbar_tage: { type: integer, description: Noch so viele Tage abrufbar; 0 nach der Frist. }
+        aufbewahrung_tage: { type: integer, description: Entscheid 7, 30. }
+        abrufe: { type: integer, description: Wie oft eine Datei abgerufen wurde. }
+        erstellt:
+          type: object
+          required: [name, am]
+          properties:
+            name: { type: string }
+            am: { type: string, format: date-time }
+    EnergiemanagementMappen:
+      type: object
+      required: [mappen]
+      properties:
+        mappen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementMappe" }
     EnergiemanagementVerantwortlich:
       type: object
       required: [sub, name]

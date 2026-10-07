@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.5"
+      "const": "1.6"
     },
     "herkunft": {
       "type": "string",
@@ -116,7 +116,8 @@
         "verzeichnis_gruppe",
         "ueberpruefung_art",
         "ueberpruefung_grund",
-        "teil"
+        "teil",
+        "mappe_anlass"
       ],
       "properties": {
         "dokument_art": {
@@ -326,6 +327,14 @@
             "pattern": "^[a-z_]+$"
           },
           "minItems": 1
+        },
+        "mappe_anlass": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
         }
       }
     },
@@ -479,7 +488,8 @@
         "verzeichnis_ort",
         "teil",
         "teil_kurz",
-        "aufgabe_kurz"
+        "aufgabe_kurz",
+        "mappe_anlass"
       ],
       "properties": {
         "dokument_art": {
@@ -943,6 +953,29 @@
               "minLength": 1
             },
             "weitere": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "mappe_anlass": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "audit_von_aussen",
+            "anfrage_behoerde",
+            "eigene_ablage"
+          ],
+          "properties": {
+            "audit_von_aussen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anfrage_behoerde": {
+              "type": "string",
+              "minLength": 1
+            },
+            "eigene_ablage": {
               "type": "string",
               "minLength": 1
             }
