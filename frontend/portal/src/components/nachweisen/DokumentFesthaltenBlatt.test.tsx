@@ -136,6 +136,8 @@ describe('Blatt „Festhalten“ (Review r1, P2-2, P2-4, P2-8)', () => {
     await klick(screen.getByTestId('festhalten-weiter'));
     await waitFor(() => expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Robert Falk'));
     await klick(screen.getByTestId('festhalten-weiter'));
+    // Anlegen, Entwurf und die gescheiterte Freigabe sind eine Kette von Abrufen - abwarten, was die Person sieht.
+    await screen.findByTestId('blatt-ablehnung');
     expect(zaehler.versuche).toBe(1);
     expect(fertig).not.toHaveBeenCalled();
 
@@ -146,8 +148,8 @@ describe('Blatt „Festhalten“ (Review r1, P2-2, P2-4, P2-8)', () => {
     expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Neuer Text');
     await klick(screen.getByTestId('festhalten-weiter'));
 
+    await waitFor(() => expect(fertig).toHaveBeenCalledTimes(1));
     expect(zaehler.versuche).toBe(2);
-    expect(fertig).toHaveBeenCalledTimes(1);
     expect(fertig.mock.calls[0][0].fassungen[0].wortlaut).toBe('Neuer Text der Energiepolitik, der gelten soll.');
     // Der offene Entwurf derselben Nummer wird überschrieben, bevor die Leitung entscheidet (die gescheiterte erste
     // Freigabe erreicht die Bühne nicht).
@@ -164,6 +166,8 @@ describe('Blatt „Festhalten“ (Review r1, P2-2, P2-4, P2-8)', () => {
     await klick(screen.getByTestId('festhalten-weiter'));
     await waitFor(() => expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Robert Falk'));
     await klick(screen.getByTestId('festhalten-weiter'));
+    // Anlegen, Entwurf und die gescheiterte Freigabe sind eine Kette von Abrufen - abwarten, was die Person sieht.
+    await screen.findByTestId('blatt-ablehnung');
     expect(zaehler.versuche).toBe(1);
 
     await klick(within(screen.getByTestId('festhalten-pruefen')).getByRole('button', { name: 'Geltung ändern' }));
@@ -172,7 +176,7 @@ describe('Blatt „Festhalten“ (Review r1, P2-2, P2-4, P2-8)', () => {
     expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Strom, Gas');
     await klick(screen.getByTestId('festhalten-weiter'));
 
-    expect(fertig).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(fertig).toHaveBeenCalledTimes(1));
     const entwuerfe = buehne.gesendet.filter((g) => g.route.endsWith('/fassungen'));
     expect(entwuerfe).toHaveLength(2);
     expect((entwuerfe[1].koerper as { anwendungsbereich: { traeger: string[] } }).anwendungsbereich.traeger).toEqual(['Strom', 'Gas']);
@@ -189,6 +193,8 @@ describe('Blatt „Festhalten“ (Review r1, P2-2, P2-4, P2-8)', () => {
     await klick(screen.getByTestId('festhalten-weiter'));
     await waitFor(() => expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Ines Kaltenbach'));
     await klick(screen.getByTestId('festhalten-weiter'));
+    // Anlegen, Entwurf und die gescheiterte Freigabe sind eine Kette von Abrufen - abwarten, was die Person sieht.
+    await screen.findByTestId('blatt-ablehnung');
     expect(zaehler.versuche).toBe(1);
 
     await klick(screen.getByRole('button', { name: 'Zurück' }));
