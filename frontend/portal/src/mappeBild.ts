@@ -27,6 +27,24 @@ export const MAPPEN = 'Mappen';
 export const einsichtUmfang = (bis: string | null) =>
   `Sieht alle Daten aller Standorte, nur lesend${bis ? `, bis\u00a0${tagText(bis)}` : ''}.`;
 
+/**
+ * „Einsicht geben“ an einem vorhandenen Konto (Review r2, N-6.1): das Blatt gibt sie, wenn keine läuft, und verlängert
+ * eine laufende nur - es kürzt nie still. Läuft sie ohne Ende oder mindestens bis zum gewählten Tag, bleibt sie; kürzen
+ * geht ausdrücklich in der Benutzerverwaltung. Ohne gewählten Tag sagt erst das Absenden, dass er fehlt.
+ */
+export type EinsichtWahl = 'geben' | 'verlaengern' | 'bleibt';
+export function einsichtWahl(laufend: { bis: string | null } | null, gewaehlt: string | null): EinsichtWahl {
+  if (!laufend) return 'geben';
+  if (laufend.bis === null) return 'bleibt';
+  return gewaehlt === null || gewaehlt > laufend.bis ? 'verlaengern' : 'bleibt';
+}
+/** Der heutige Stand im Kasten „Schon ein Zugang“ - ohne ihn sah niemand, was „Einsicht bis … geben“ ersetzt. */
+export function einsichtStand(laufend: { bis: string | null } | null, wahl: EinsichtWahl): string {
+  if (!laufend) return 'Noch keine Einsicht';
+  const lauf = laufend.bis === null ? 'Einsicht läuft ohne Ende' : `Einsicht läuft bis\u00a0${tagText(laufend.bis)}`;
+  return wahl === 'bleibt' ? `${lauf} · bleibt so` : lauf;
+}
+
 /** Der Zusatz je Anlass (Recherche Q13, Q14): wann so eine Prüfung meist kommt. */
 const ANLASS_ZUSATZ: Readonly<Record<string, string | null>> = {
   audit_von_aussen: 'meist 6 Wochen vorher',

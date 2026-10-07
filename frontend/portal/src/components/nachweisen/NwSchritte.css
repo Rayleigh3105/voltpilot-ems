@@ -191,6 +191,12 @@
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
 }
+.vp-nw-chip.aus {
+  cursor: default;
+}
+.vp-nw-chip.aus:not(.an) {
+  background: var(--vp-c-bg);
+}
 
 /* ---------- Hinweis-Zeile ----------------------------------------------------- */
 .vp-nw-hz {

@@ -65,6 +65,19 @@
   white-space: nowrap;
   vertical-align: middle;
 }
+/* Die leise Zeile unter dem Titel eines Abweichungs-Dialogs: Name, das Kennzeichen dahinter (Regel V6). */
+.vp-abw-dlg-unter {
+  margin: -4px 0 12px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-abw-dlg-unter .vp-abw-kz {
+  margin-left: 2px;
+  font: 500 0.75rem var(--vp-c-font);
+  white-space: nowrap;
+}
 .vp-abw-meta {
   margin: 3px 0 0;
   font-size: 0.875rem;
