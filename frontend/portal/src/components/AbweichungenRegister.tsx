@@ -4,11 +4,11 @@ import * as A from '../abweichungen';
 import { api, type Abweichung, type Auffaelligkeit, type AuffaelligkeitenAlle } from '../api';
 import { BEGRIFFE } from '../begriffe';
 import { UEMS_ABWEICHUNGEN, UEMS_AUFFAELLIGKEIT, UEMS_VERANTWORTLICH } from '../glossar';
-import { abweichungRoute, hashForRoute } from '../nav';
+import { abweichungRoute, hashForRoute, kennzahlRoute } from '../nav';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
 import { FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
-import { Recht } from './Recht';
+import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
 import './kacheln/Kacheln.css';
 import './Wiedervorlage.css';
@@ -51,6 +51,7 @@ export function AbweichungenRegister({
   const [versuch, setVersuch] = useState(0);
   const [begriff, setBegriff] = useState(false);
   const [blatt, setBlatt] = useState<Auffaelligkeit | null>(null);
+  const rollen = useRollen();
 
   useEffect(() => {
     let aktiv = true;
@@ -102,7 +103,8 @@ export function AbweichungenRegister({
 
   const vermerke = lage.vermerke === 'fehler' ? null : lage.vermerke.vermerke;
   const abruf = lage.vermerke === 'fehler' ? lage.abruf : lage.vermerke.abruf;
-  const bild = A.reiterBild(lage.abweichungen, vermerke, abruf);
+  // Die Sätze passen zu den Rechten: „Ihre Antwort“ nur mit `verbesserung.verwalten` am Standort des Monats.
+  const bild = A.reiterBild(lage.abweichungen, vermerke, abruf, (v) => rollen.darf('verbesserung.verwalten', v.standort_id));
   const leer = vermerke !== null && bild.zuBeantworten.length === 0 && bild.inArbeit.length === 0 && bild.abgeschlossen.length === 0;
 
   return (
@@ -112,6 +114,11 @@ export function AbweichungenRegister({
         <p className="vp-abw-satz" data-testid="abweichungen-satz">
           {bild.satz}
         </p>
+        {bild.wer && (
+          <p className="vp-abw-formal" data-testid="abweichungen-wer">
+            {bild.wer}
+          </p>
+        )}
         <p className="vp-abw-formal">
           <span data-testid="abweichungen-formal">{bild.formal}</span>
           {/* Der Punkt bleibt am Stand, nie allein am Zeilenanfang. */}
@@ -150,7 +157,7 @@ export function AbweichungenRegister({
             ) : (
               <Eintraege>
                 {bild.zuBeantworten.map((v) => (
-                  <ZuBeantworten key={v.id} v={v} onBeantworten={() => setBlatt(v)} />
+                  <ZuBeantworten key={v.id} v={v} darfAntworten={rollen.darf('verbesserung.verwalten', v.standort_id)} onBeantworten={() => setBlatt(v)} />
                 ))}
               </Eintraege>
             )}
@@ -159,7 +166,7 @@ export function AbweichungenRegister({
             <Abschnitt titel="In Arbeit" n={bild.inArbeit.length} testid="abweichungen-in-arbeit">
               <Eintraege>
                 {bild.inArbeit.map((a) => (
-                  <InArbeit key={a.id} a={a} onOeffnen={onOeffnen} />
+                  <InArbeit key={a.id} a={a} onOeffnen={onOeffnen} darfAbschliessen={rollen.darf('verbesserung.abschliessen', a.standort_id)} />
                 ))}
               </Eintraege>
             </Abschnitt>
@@ -239,7 +246,7 @@ function Kennzeichen({ text }: { text: string | null }) {
 }
 
 /** Eine offene Auffälligkeit: vermerkt am …, was auffiel in Zahlen, noch niemand, „Beantworten“. */
-function ZuBeantworten({ v, onBeantworten }: { v: Auffaelligkeit; onBeantworten: () => void }) {
+function ZuBeantworten({ v, darfAntworten, onBeantworten }: { v: Auffaelligkeit; darfAntworten: boolean; onBeantworten: () => void }) {
   const t = A.tagBlock(v.vermerkt_am);
   const zahlen = A.zahlenZeile(A.anlassZahlen(v.anlass_inhalt));
   return (
@@ -261,19 +268,24 @@ function ZuBeantworten({ v, onBeantworten }: { v: Auffaelligkeit; onBeantworten:
           noch niemand
           <small>wird beim Antworten bestimmt</small>
         </span>
-        <Recht aktion="verbesserung.verwalten" standort={v.standort_id}>
+        {/* Ohne das Recht kein Knopf und kein Satz je Zeile - wer antwortet, sagt der Reiter einmal oben. */}
+        {darfAntworten && (
           <button type="button" className="vp-abw-schritt" onClick={onBeantworten} data-testid="auffaelligkeit-beantworten">
             {A.KNOPF_BEANTWORTEN}
           </button>
-        </Recht>
+        )}
       </span>
     </div>
   );
 }
 
-/** Eine offene Abweichung: Frist als Datumsblock (überfällig im Warnton), wer klärt, „Abschließen“ auf der Seite. */
-function InArbeit({ a, onOeffnen }: { a: Abweichung; onOeffnen: (id: string) => void }) {
+/**
+ * Eine offene Abweichung: Frist als Datumsblock (überfällig im Warnton), wer klärt, „Abschließen“ auf der Seite - nur mit
+ * `verbesserung.abschliessen`, sonst leise „Ansehen“ (wer abschließt, sagt die Seite).
+ */
+function InArbeit({ a, onOeffnen, darfAbschliessen }: { a: Abweichung; onOeffnen: (id: string) => void; darfAbschliessen: boolean }) {
   const f = A.fristBlock(a);
+  const schritt = A.schrittInArbeit(darfAbschliessen);
   const ueber = A.ueberfaelligText(a);
   return (
     <div className="vp-abw-eintrag is-ziel" data-testid={`abweichung-zeile-${a.kennzeichen}`}>
@@ -303,8 +315,8 @@ function InArbeit({ a, onOeffnen }: { a: Abweichung; onOeffnen: (id: string) => 
           {a.verantwortlich.name}
           <small>{`${A.FRIST} ${f.tag}${f.jahr}`}</small>
         </span>
-        <span className="vp-abw-schritt" aria-hidden="true">
-          {A.KNOPF_ABSCHLIESSEN}
+        <span className={`vp-abw-schritt${schritt.leise ? ' is-leise' : ''}`} aria-hidden="true">
+          {schritt.wort}
         </span>
       </span>
     </div>
@@ -329,7 +341,7 @@ function Abgeschlossen({
   const wer = e.art === 'abweichung' ? e.a.abschluss!.person : (e.v.beantwortet_von ?? '');
   const wann = e.art === 'abweichung' ? A.nachTagen(A.tageZwischen(e.a.eroeffnet_am, e.a.abschluss!.am)) : 'ohne Abweichung';
   const oeffnen = e.art === 'abweichung' ? () => onOeffnen(e.a.id) : onKennzahl ? () => onKennzahl(e.v.kennzahl.id) : null;
-  const href = e.art === 'abweichung' ? hashForRoute(abweichungRoute(e.a.id)) : null;
+  const href = e.art === 'abweichung' ? hashForRoute(abweichungRoute(e.a.id)) : hashForRoute(kennzahlRoute(e.v.kennzahl.id));
   return (
     <div className={`vp-abw-eintrag is-reihe${oeffnen ? ' is-ziel' : ''}`} data-testid={e.art === 'abweichung' ? `abweichung-zeile-${e.a.kennzeichen}` : `kenntnis-${e.v.periode}`}>
       <FristDatum wort="" tag={t.tag} jahr={t.jahr} satz={`abgeschlossen am ${t.tag}${t.jahr}`} ton="erledigt" />
@@ -337,7 +349,7 @@ function Abgeschlossen({
         {oeffnen ? (
           <a
             className="vp-abw-titel vp-abw-ziel"
-            href={href ?? '#'}
+            href={href}
             onClick={(ev) => {
               ev.preventDefault();
               oeffnen();

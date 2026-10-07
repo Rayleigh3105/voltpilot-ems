@@ -50,7 +50,7 @@ export function AuffaelligkeitHinweis({
   if (offen.length === 0) return null;
   const v = offen[offen.length - 1];
   const z = A.anlassZahlen(v.anlass_inhalt);
-  const ueber = z?.delta && Number(z.delta) > 0 ? `${A.kennzahlName(v.kennzahl)} lag ${A.zahlDe(z.delta, 1)} % über der Erwartung.` : null;
+  const ueber = z?.delta && Number(z.delta) > 0 ? `${A.kennzahlName(v.kennzahl)} lag ${A.deltaBetrag(z.delta)} % über der Erwartung.` : null;
   const kopf = offen.length === 1 ? `Auffälligkeit zu ${monatWort(v.periode)} · offen.` : `${offen.length} Auffälligkeiten offen, zuletzt ${monatWort(v.periode)}.`;
   const satz =
     art === 'reiter'

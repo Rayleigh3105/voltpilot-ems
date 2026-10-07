@@ -124,6 +124,34 @@ describe('Verbessern-Konzept v1 (PR3): das reine Bild von Reiter und Seite', () 
     expect(A.reiterBild([], [offen, { ...offen, id: 'v-feb', periode: '2028-02' }], '2028-03-10').satz).toBe(
       '2 Monate warten auf Ihre Antwort - der älteste ist Januar 2028 (Stromeinsatz Spritzguss je kg).',
     );
+    expect(bild.wer).toBeNull();
+  });
+
+  it('die Sätze passen zu den Rechten: „Ihre Antwort“ nur, wer antworten darf; „Abschließen“ nur, wer abschließen darf', () => {
+    const jan = vermerkDez({ id: 'v-jan', periode: '2028-01', vermerkt_am: '2028-02-07T05:12:00Z' });
+    const feb = { ...jan, id: 'v-feb', periode: '2028-02' };
+    // Ohne `verbesserung.verwalten` wartet der Monat auf eine Antwort - und der Reiter sagt, wer antwortet.
+    const lesend = A.reiterBild([aw1('2028-02-10')], [jan], '2028-02-10', () => false);
+    expect(ohneNbsp(lesend.satz)).toBe('1 Monat wartet auf eine Antwort: Stromeinsatz Spritzguss je kg lag im Januar 2028 12,9 % über der Erwartung.');
+    expect(lesend.wer).toBe('Antworten können Kundenadministratoren, Energiemanager und Bearbeiter am Standort.');
+    expect(A.reiterBild([], [jan, feb], '2028-03-10', () => false).satz).toBe(
+      '2 Monate warten auf eine Antwort - der älteste ist Januar 2028 (Stromeinsatz Spritzguss je kg).',
+    );
+    // Darf die Person einen von zwei Monaten beantworten, zählt der Satz nur ihn.
+    const gemischt = A.reiterBild([], [jan, feb], '2028-03-10', (v) => v.id === 'v-feb');
+    expect(ohneNbsp(gemischt.satz)).toBe('1 Monat wartet auf Ihre Antwort: Stromeinsatz Spritzguss je kg lag im Februar 2028 12,9 % über der Erwartung.');
+    expect(gemischt.wer).toBeNull();
+    expect(gemischt.formal).toBe('2 zu beantworten · keine offene Abweichung · Stand 10.03.2028');
+    expect(A.schrittInArbeit(true)).toEqual({ wort: 'Abschließen', leise: false });
+    expect(A.schrittInArbeit(false)).toEqual({ wort: 'Ansehen', leise: true });
+  });
+
+  it('der Betrag einer Abweichung steht überall mit einer Stelle - „2,0 %“, nie einmal „2 %“ und einmal „2,0 %“', () => {
+    const zwei = vermerkDez({ anlass_inhalt: { ...vermerkDez().anlass_inhalt, bereinigt: { ...vermerkDez().anlass_inhalt.bereinigt, delta_prozent: '2.0' } } });
+    expect(A.anlassZahlen(zwei.anlass_inhalt)?.delta).toBe('2.0');
+    expect(ohneNbsp(A.reiterBild([], [zwei], '2028-01-15').satz)).toContain('lag im Dezember 2027 2,0 % über der Erwartung.');
+    expect(ohneNbsp(A.deltaWort('2.0'))).toBe('2,0 % mehr');
+    expect(A.deltaBetrag('-12.94')).toBe('12,9');
   });
 
   it('die Seite: Stufen mit Datum, Ergebnis oben, Verlauf neueste zuerst — eine Aussage immer „Aussage von …“', () => {
@@ -152,8 +180,8 @@ describe('Verbessern-Konzept v1 (PR3): das reine Bild von Reiter und Seite', () 
 
 describe('Reiter „Abweichungen“', () => {
   const OFFEN = vermerkDez({ id: 'a9000000-0000-4000-8000-000000202801', periode: '2028-01', vermerkt_am: '2028-02-07T05:12:00Z' });
-  function reiter(heute = '2028-02-10') {
-    setSelbstauskunft(rechteSeed('IK').me);
+  function reiter(heute = '2028-02-10', person = 'IK') {
+    setSelbstauskunft(rechteSeed(person).me);
     Object.assign(api, abweichungBuehne('register', heute), {
       alleAuffaelligkeiten: async () => ({ abruf: heute, offen: 1, vermerke: [OFFEN, vermerkJuli()] }),
     });
@@ -189,6 +217,26 @@ describe('Reiter „Abweichungen“', () => {
     fireEvent.click(within(screen.getByTestId('kenntnis-2028-07')).getByText(/^Juli 2028:/));
     expect(kennzahl).toHaveBeenCalledWith(BB_IDS.kz4);
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
+  });
+
+  it('wer nur liest (Claudia Berger, Leserin): der Satz wartet auf eine Antwort anderer, „Ansehen“ statt „Abschließen“', async () => {
+    reiter('2028-02-10', 'CB');
+    expect(ohneNbsp((await screen.findByTestId('abweichungen-satz')).textContent)).toBe(
+      '1 Monat wartet auf eine Antwort: Stromeinsatz Spritzguss je kg lag im Januar 2028 12,9 % über der Erwartung.',
+    );
+    expect(screen.getByTestId('abweichungen-wer').textContent).toBe('Antworten können Kundenadministratoren, Energiemanager und Bearbeiter am Standort.');
+    expect(screen.queryByTestId('auffaelligkeit-beantworten')).toBeNull();
+    // Wer antwortet, steht einmal oben - nicht je Zeile noch einmal „Dafür fehlt Ihnen das Recht“.
+    expect(screen.getByTestId('abweichungen-zu-beantworten').textContent).not.toContain('Dafür fehlt Ihnen das Recht');
+    const zeile = within(screen.getByTestId('abweichungen-in-arbeit')).getByTestId('abweichung-zeile-AW-2028-0001');
+    expect(zeile.querySelector('.vp-abw-schritt')!.textContent).toBe('Ansehen');
+    expect(zeile.querySelector('.vp-abw-schritt')!.classList.contains('is-leise')).toBe(true);
+    expect(screen.getByTestId('abweichungen-register').textContent).not.toContain('Abschließen');
+    cleanup();
+    // Mit beiden Rechten (Ines Kaltenbach, Energiemanagerin) bleibt alles wie gehabt.
+    reiter('2028-02-10', 'IK');
+    expect(within(await screen.findByTestId('abweichungen-in-arbeit')).getByTestId('abweichung-zeile-AW-2028-0001').querySelector('.vp-abw-schritt')!.textContent).toBe('Abschließen');
+    expect(screen.queryByTestId('abweichungen-wer')).toBeNull();
   });
 
   it('das Antwort-Blatt: „Zur Kenntnis nehmen“ braucht eine Begründung, „Untersuchen“ eine Person; die Frist steht auf der Vorgabe', async () => {
@@ -264,8 +312,8 @@ describe('Hinweis am Energieziel (Entscheid 4)', () => {
 });
 
 describe('Seite einer Abweichung', () => {
-  function seite(lage: 'offen' | 'register', id: string = AW_IDS.aw1, heute = HEUTE) {
-    setSelbstauskunft(rechteSeed('IK').me);
+  function seite(lage: 'offen' | 'register', id: string = AW_IDS.aw1, heute = HEUTE, person = 'IK') {
+    setSelbstauskunft(rechteSeed(person).me);
     Object.assign(api, abweichungBuehne(lage, heute), { bezugsbasisVergleich: async (_id: string, w: { von?: string; bis?: string } = {}) => vergleichKz4(w.von ?? '2027-12', w.bis ?? '2027-12') });
     Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
     const kennzahl = vi.fn();
@@ -300,6 +348,20 @@ describe('Seite einer Abweichung', () => {
     fireEvent.click(screen.getByTestId('abweichung-kopie-knopf'));
     expect((await screen.findByTestId('abweichung-pruefsumme')).textContent).toBe(`Prüfsumme ${PRUEFSUMME_R1}`);
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
+  });
+
+  it('ohne das Recht zum Abschließen sagt die Seite, wer abschließt - einmal, ohne „Dafür fehlt Ihnen das Recht“', async () => {
+    seite('offen', AW_IDS.aw1, HEUTE, 'CB');
+    expect((await screen.findByTestId('abweichung-wer-schliesst')).textContent).toBe('Abschließen können Kundenadministratoren und Energiemanager.');
+    expect(screen.queryByTestId('abweichung-abschliessen-knopf')).toBeNull();
+    expect(screen.queryByTestId('abweichung-aussage-knopf')).toBeNull();
+    expect(screen.getByTestId('abweichung-seite').textContent).not.toContain('Dafür fehlt Ihnen das Recht');
+    expect(screen.getByTestId('abweichung-seite').textContent).toContain('Noch offen. Wird die Abweichung mit einer Maßnahme abgeschlossen, steht sie hier.');
+    expect(screen.getByTestId('abweichung-seite').textContent).not.toContain('Schließen Sie');
+    cleanup();
+    seite('offen');
+    expect(await screen.findByTestId('abweichung-abschliessen-knopf')).toBeTruthy();
+    expect(screen.queryByTestId('abweichung-wer-schliesst')).toBeNull();
   });
 
   it('abgeschlossen „erklärt“: Ergebnis oben, der geerbte Vorbehalt, die Aussage mit Person — ohne Knöpfe und Menü', async () => {

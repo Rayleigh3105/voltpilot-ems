@@ -370,10 +370,13 @@ export function anlassZahlen(inhalt: unknown): AnlassZahlen | null {
 export const zahlDe = (wert: string, stellen = 0) =>
   Number(wert).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: stellen });
 export const mengeText = (m: Menge) => `${zahlDe(m.wert)} ${m.einheit}`.trimEnd();
+/** Der Betrag einer Abweichung in Prozent, immer mit einer Stelle: `2.0` → „2,0“, `-12.94` → „12,9“. */
+export const deltaBetrag = (delta: string) =>
+  Math.abs(Number(delta)).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 /** `12.9` → „12,9 % mehr“, `-2.7` → „2,7 % weniger“. */
 export function deltaWort(delta: string): string {
   const d = Number(delta);
-  return `${Math.abs(d).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % ${d < 0 ? 'weniger' : 'mehr'}`;
+  return `${deltaBetrag(delta)} % ${d < 0 ? 'weniger' : 'mehr'}`;
 }
 /** `2.0` → „± 2 %“. */
 export const bandText = (band: string) => `± ${zahlDe(band, 1)} %`;
@@ -448,7 +451,18 @@ export interface ReiterBild {
   /** Neueste zuerst. */
   abgeschlossen: AbgeschlossenEintrag[];
   satz: string;
+  /** Wartet etwas, das die Person nicht beantworten darf: wer antwortet (sonst `null`). */
+  wer: string | null;
   formal: string;
+}
+
+/** Wer handelt, wenn die angemeldete Person es selbst nicht darf (`verbesserung.verwalten` bzw. `.abschliessen`). */
+export const WER_ANTWORTET = 'Antworten können Kundenadministratoren, Energiemanager und Bearbeiter am Standort.';
+export const WER_ABSCHLIESST = 'Abschließen können Kundenadministratoren und Energiemanager.';
+
+/** Der nächste Schritt einer offenen Abweichung in ihrer Reihe: „Abschließen“ nur mit dem Recht dazu, sonst „Ansehen“. */
+export function schrittInArbeit(darfAbschliessen: boolean): { wort: string; leise: boolean } {
+  return darfAbschliessen ? { wort: KNOPF_ABSCHLIESSEN, leise: false } : { wort: KNOPF_ANSEHEN, leise: true };
 }
 
 const anzahl = (n: number, eins: string, viele: string) => `${n} ${n === 1 ? eins : viele}`;
@@ -456,8 +470,15 @@ const anzahl = (n: number, eins: string, viele: string) => `${n} ${n === 1 ? ein
 /**
  * Der Reiter aus beiden Listen. `vermerke` darf fehlen (`null`: die Liste lädt nicht) - dann sagt der Satz nur, was die
  * Abweichungen wissen. Eine mit „Abweichung eröffnen“ beantwortete Auffälligkeit steht als ihre Abweichung da.
+ * „wartet auf Ihre Antwort“ zählt nur, was die Person beantworten darf (`darfAntworten`); sonst wartet es auf eine
+ * Antwort, und `wer` sagt, wer antwortet.
  */
-export function reiterBild(abweichungen: readonly Abweichung[], vermerke: readonly Auffaelligkeit[] | null, abruf: string): ReiterBild {
+export function reiterBild(
+  abweichungen: readonly Abweichung[],
+  vermerke: readonly Auffaelligkeit[] | null,
+  abruf: string,
+  darfAntworten: (v: Auffaelligkeit) => boolean = () => true,
+): ReiterBild {
   const zuBeantworten = (vermerke ?? []).filter((v) => v.zustand === 'offen').sort((a, b) => a.periode.localeCompare(b.periode) || kennzahlName(a.kennzahl).localeCompare(kennzahlName(b.kennzahl), 'de'));
   const inArbeit = ordnen(abweichungen.filter((a) => a.zustand === 'offen'));
   const abgeschlossen: AbgeschlossenEintrag[] = [
@@ -468,15 +489,19 @@ export function reiterBild(abweichungen: readonly Abweichung[], vermerke: readon
   const n = zuBeantworten.length;
   const k = inArbeit.length;
   const ueber = inArbeit.filter((a) => ueberfaelligText(a) !== null).length;
+  const eigene = zuBeantworten.filter(darfAntworten);
+  // Mit eigenen offenen Monaten zählt der Satz nur sie; sonst wartet alles auf eine Antwort anderer.
+  const wartend = eigene.length > 0 ? eigene : zuBeantworten;
+  const auf = eigene.length > 0 ? 'Ihre' : 'eine';
   let satz: string;
-  if (n === 1) {
-    const v = zuBeantworten[0];
+  if (wartend.length === 1) {
+    const v = wartend[0];
     const z = anlassZahlen(v.anlass_inhalt);
     satz = z?.delta && istMehr(z)
-      ? `1 Monat wartet auf Ihre Antwort: ${kennzahlName(v.kennzahl)} lag im ${monatWort(v.periode)} ${zahlDe(z.delta, 1)} % über der Erwartung.`
-      : `1 Monat wartet auf Ihre Antwort: ${monatWort(v.periode)}, ${kennzahlName(v.kennzahl)}.`;
-  } else if (n > 1) {
-    satz = `${n} Monate warten auf Ihre Antwort - der älteste ist ${monatWort(zuBeantworten[0].periode)} (${kennzahlName(zuBeantworten[0].kennzahl)}).`;
+      ? `1 Monat wartet auf ${auf} Antwort: ${kennzahlName(v.kennzahl)} lag im ${monatWort(v.periode)} ${deltaBetrag(z.delta)} % über der Erwartung.`
+      : `1 Monat wartet auf ${auf} Antwort: ${monatWort(v.periode)}, ${kennzahlName(v.kennzahl)}.`;
+  } else if (wartend.length > 1) {
+    satz = `${wartend.length} Monate warten auf ${auf} Antwort - der älteste ist ${monatWort(wartend[0].periode)} (${kennzahlName(wartend[0].kennzahl)}).`;
   } else if (k > 0) {
     satz = `Nichts wartet auf eine Antwort; ${anzahl(k, 'Abweichung ist', 'Abweichungen sind')} in Arbeit${ueber ? `, ${ueber} davon überfällig` : ''}.`;
   } else if (abgeschlossen.length > 0) {
@@ -489,7 +514,7 @@ export function reiterBild(abweichungen: readonly Abweichung[], vermerke: readon
     k === 0 ? 'keine offene Abweichung' : anzahl(k, 'offene Abweichung', 'offene Abweichungen'),
     `Stand ${tag(abruf)}`,
   ];
-  return { zuBeantworten, inArbeit, abgeschlossen, satz, formal: teile.join(' · ') };
+  return { zuBeantworten, inArbeit, abgeschlossen, satz, wer: n > 0 && eigene.length === 0 ? WER_ANTWORTET : null, formal: teile.join(' · ') };
 }
 
 /** Das Ergebnis in einer Reihe: „Maßnahme: Werkzeugheizungen …“, „erklärt: Baustellenstrom …“. */

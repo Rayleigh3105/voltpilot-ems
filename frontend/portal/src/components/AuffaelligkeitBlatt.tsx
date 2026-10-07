@@ -64,6 +64,8 @@ export function AuffaelligkeitBlatt({
 
   async function senden(ev?: FormEvent) {
     ev?.preventDefault();
+    // Ein zweites Enter während der Anfrage schickt nichts doppelt.
+    if (busy) return;
     const fehler =
       antwort === 'abweichung'
         ? {

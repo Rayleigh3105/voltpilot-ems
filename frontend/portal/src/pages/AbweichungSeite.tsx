@@ -8,8 +8,8 @@ import { type BezugsbasisVergleich } from '../bezugsbasisVergleich';
 import { AbschliessenDialog, FristDialog, KommentarDialog, UrsacheAussageDialog, VerantwortlicherDialog } from '../components/AbweichungDialoge';
 import { FristDatum } from '../components/FristDatum';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
-import { Recht } from '../components/Recht';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
+import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
 import * as Z from '../energieziele';
 import { UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE, UEMS_VERANTWORTLICH } from '../glossar';
@@ -24,6 +24,8 @@ const LADEFEHLER = 'Die Abweichung ließ sich gerade nicht laden. Ihre Daten sin
 const ERNEUT = 'Erneut versuchen';
 const KEIN_EINTRAG = (tag: string) => `Noch kein Eintrag seit dem Eröffnen am ${tag}.`;
 const OFFEN_DARAUS = `Noch offen. Schließen Sie die Abweichung mit einer ${UEMS_MASSNAHME} ab, steht sie hier.`;
+/** Ohne das Recht zum Abschließen ohne Aufforderung (S-3.1). */
+const OFFEN_DARAUS_LESEND = `Noch offen. Wird die Abweichung mit einer ${UEMS_MASSNAHME} abgeschlossen, steht sie hier.`;
 
 /** Der Stand der Maßnahme, die aus der Abweichung wurde: „umgesetzt am 22.01.2028 · belegt“. */
 function massnahmeZeile(m: Massnahme): string {
@@ -57,6 +59,7 @@ export function AbweichungSeite({
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
+  const rollen = useRollen();
   const [vergleich, setVergleich] = useState<BezugsbasisVergleich | null>(null);
   const [massnahme, setMassnahme] = useState<Massnahme | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -141,6 +144,8 @@ export function AbweichungSeite({
   }
 
   const offen = A.offen(a);
+  const darfAbschliessen = rollen.darf('verbesserung.abschliessen', a.standort_id);
+  const darfVerwalten = rollen.darf('verbesserung.verwalten', a.standort_id);
   const neu = (x: Abweichung) => {
     setDialog(null);
     setLage({ art: 'da', a: x });
@@ -201,19 +206,25 @@ export function AbweichungSeite({
             {antwort.satz}
           </p>
           <p className="vp-abw-formal">{antwort.formal}</p>
-          {offen && (
+          {offen && (darfAbschliessen || darfVerwalten) && (
             <div className="vp-abw-aktionen">
-              <Recht aktion="verbesserung.abschliessen" standort={a.standort_id}>
+              {darfAbschliessen && (
                 <Button onClick={() => setDialog('abschliessen')} data-testid="abweichung-abschliessen-knopf" data-entscheid-schritt>
                   {A.KNOPF_ABSCHLIESSEN}
                 </Button>
-              </Recht>
-              <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
+              )}
+              {darfVerwalten && (
                 <Button variant="outline" onClick={() => setDialog('aussage')} data-testid="abweichung-aussage-knopf">
                   {A.KNOPF_AUSSAGE}
                 </Button>
-              </Recht>
+              )}
             </div>
+          )}
+          {/* Ohne das Recht zum Abschließen sagt die Seite, wer abschließt - statt zweimal „Dafür fehlt Ihnen das Recht“. */}
+          {offen && !darfAbschliessen && (
+            <p className="vp-abw-formal" data-testid="abweichung-wer-schliesst">
+              {A.WER_ABSCHLIESST}
+            </p>
           )}
         </div>
 
@@ -337,7 +348,7 @@ export function AbweichungSeite({
                   <small>{`${a.abschluss.person} · ${Z.tag(a.abschluss.am)}`}</small>
                 </p>
               ) : (
-                <p className="vp-abw-zeile">{OFFEN_DARAUS}</p>
+                <p className="vp-abw-zeile">{darfAbschliessen ? OFFEN_DARAUS : OFFEN_DARAUS_LESEND}</p>
               )}
             </section>
 
