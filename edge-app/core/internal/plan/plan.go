@@ -102,6 +102,13 @@ type Slot struct {
 	// byte-for-byte pre-feature behavior. Inferring the duty would be the
 	// price-blind "just charge the surplus" logic the price-aware plan replaced.
 	ChargeSurplusToBattery bool `json:"charge_surplus_to_battery,omitempty"`
+	// ReleaseFloorSocPct is the OPTIONAL „Sonne + Speicher" battery floor of
+	// the slot (2026-10-06, percent 0..100): a charge point on that source may
+	// receive battery energy only while the MEASURED SoC lies above it. nil =
+	// no release in this slot (the plan trades here, or the site does not run
+	// the source) - FAIL-CLOSED, unlike the economic duties above: an absent
+	// floor never releases anything.
+	ReleaseFloorSocPct *float64 `json:"ev_release_floor_soc_pct,omitempty"`
 }
 
 // Plan is the parsed, validated schedule payload.
@@ -148,6 +155,14 @@ type Plan struct {
 	// a wallbox being unplugged. nil = no limit configured - byte-for-byte
 	// pre-feature behavior; a limit is NEVER invented.
 	GridExportLimitKw *float64 `json:"grid_export_limit_kw,omitempty"`
+	// ReleaseMaxDischargeKw is the OPTIONAL „Sonne + Speicher" run fact
+	// (2026-10-06): present when the cloud computed the battery floor for this
+	// site - the battery's rated discharge power. nil = the site does not run
+	// the source (or an older cloud): no release at all.
+	ReleaseMaxDischargeKw *float64 `json:"ev_release_max_discharge_kw,omitempty"`
+	// ReleaseReason is why the run carries no floor in ANY slot
+	// (mqtt-schedule ev_release_reason), "" otherwise.
+	ReleaseReason string `json:"ev_release_reason,omitempty"`
 }
 
 // SolarOnlyCharge reports whether the plan demands the EEG solar-only-charge
@@ -226,6 +241,8 @@ type wire struct {
 	PeakReserveSocPct    *float64 `json:"peak_reserve_soc_pct"`
 	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct"`
 	GridExportLimitKw    *float64 `json:"grid_export_limit_kw"`
+	ReleaseMaxDischarge  *float64 `json:"ev_release_max_discharge_kw"`
+	ReleaseReason        string   `json:"ev_release_reason"`
 	Slots                []struct {
 		Start                  string   `json:"start"`
 		BatterySetpointKw      float64  `json:"battery_setpoint_kw"`
@@ -235,6 +252,7 @@ type wire struct {
 		UnplannedLoadDischarge *bool    `json:"unplanned_load_discharge"`
 		LimitDischargeToLoad   *bool    `json:"limit_discharge_to_load"`
 		ChargeSurplusToBattery *bool    `json:"charge_surplus_to_battery"`
+		ReleaseFloorSocPct     *float64 `json:"ev_release_floor_soc_pct"`
 	} `json:"slots"`
 }
 
@@ -294,6 +312,15 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		v := *w.EffectiveFloorSocPct
 		p.EffectiveFloorSocPct = &v
 	}
+	// „Sonne + Speicher": keep only a valid, finite, non-negative discharge
+	// power and a reason from the closed vocabulary. Garbage releases nothing.
+	if v := w.ReleaseMaxDischarge; v != nil && !math.IsNaN(*v) && !math.IsInf(*v, 0) && *v >= 0 {
+		m := *v
+		p.ReleaseMaxDischargeKw = &m
+		if knownReleaseReason(w.ReleaseReason) {
+			p.ReleaseReason = w.ReleaseReason
+		}
+	}
 	if t, err := time.Parse(time.RFC3339, w.GeneratedAt); err == nil {
 		p.GeneratedAt = t
 	}
@@ -343,6 +370,12 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		if s.PvLimitKw != nil && !math.IsNaN(*s.PvLimitKw) && !math.IsInf(*s.PvLimitKw, 0) && *s.PvLimitKw >= 0 {
 			v := *s.PvLimitKw
 			slot.PvLimitKw = &v
+		}
+		// A floor outside 0..100 is no floor - and no floor releases nothing.
+		if f := s.ReleaseFloorSocPct; f != nil && p.ReleaseMaxDischargeKw != nil &&
+			!math.IsNaN(*f) && !math.IsInf(*f, 0) && *f >= 0 && *f <= 100 {
+			v := *f
+			slot.ReleaseFloorSocPct = &v
 		}
 		p.Slots = append(p.Slots, slot)
 	}
@@ -492,6 +525,47 @@ func (p *Plan) ActiveChargeSurplusToBattery(now time.Time) bool {
 		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
 			return s.ChargeSurplusToBattery
 		}
+	}
+	return false
+}
+
+// ActiveReleaseFloor returns the „Sonne + Speicher" floor of the slot active
+// at now. ok=false when the plan is nil, STALE, has no active slot or the slot
+// carries no floor - never a staleness survivor: the floor is a forecast fact
+// about THIS quarter hour, and an old one could release energy the night
+// needs.
+func (p *Plan) ActiveReleaseFloor(now time.Time) (float64, bool) {
+	if !p.Fresh(now) {
+		return 0, false
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			if s.ReleaseFloorSocPct == nil {
+				return 0, false
+			}
+			return *s.ReleaseFloorSocPct, true
+		}
+	}
+	return 0, false
+}
+
+// ReleaseFacts are the run-level „Sonne + Speicher" facts of a FRESH plan:
+// the battery's rated discharge power (nil = the site was not computed) and
+// the cloud's reason for a run without any floor.
+func (p *Plan) ReleaseFacts(now time.Time) (*float64, string) {
+	if !p.Fresh(now) || p.ReleaseMaxDischargeKw == nil {
+		return nil, ""
+	}
+	v := *p.ReleaseMaxDischargeKw
+	return &v, p.ReleaseReason
+}
+
+func knownReleaseReason(r string) bool {
+	switch r {
+	case "kein_ladestand", "speicher_gehalten", "prognose_veraltet",
+		"nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet", "prognose_zu_kurz":
+		return true
 	}
 	return false
 }

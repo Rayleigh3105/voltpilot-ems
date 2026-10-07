@@ -99,6 +99,9 @@ type ocppRuntime struct {
 	// phaseDwell / phasePause shorten the switch pacing for the rig only
 	// (0 = lastmgmt's defaults).
 	phaseDwell, phasePause time.Duration
+	// release is the „Sonne + Speicher" gate (hysteresis + effect latch,
+	// internal/lastmgmt/release.go). The zero value is ready to use.
+	release lastmgmt.ReleaseGate
 }
 
 // startOcpp brings up the charge-point server and its executor. With the flag
@@ -399,6 +402,9 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		SourceBlind:         surplus.Blind,
 		Previous:            rt.previousPlan(), Now: now,
 	}
+	// „Sonne + Speicher" (ocpp_release.go): one more reading of the same
+	// lane, and only at a site where a station runs the source.
+	a.ocppDecideRelease(now, snap, surplus, allocKw, &input)
 	plan := lastmgmt.Decide(input)
 	// A switch the pacing does not allow yet: decide again with those plugs
 	// held in their active band (the sessions are shared with the input).
@@ -406,6 +412,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		plan = lastmgmt.Decide(input)
 	}
 	rt.setPlan(&plan)
+	a.ocppObserveReleaseEffect(now, plan)
 
 	// P6: the wallbox allocations are published for the consumer executor
 	// BEFORE the OCPP write, so a cap and its station profile are formed from
@@ -777,6 +784,9 @@ func ocppSessions(snap csms.Snapshot, budgetKw float64, set lastmgmt.Settings) (
 				Rank: c.Rank,
 				BeforeStorage: lastmgmt.BeforeStorage(
 					c.Rank, set.StorageRank, set.StoragePriority),
+				// „Sonne + Speicher" (release.go): only meaningful next to the
+				// lane word nur_sonne, which csms already enforces.
+				StorageRelease: c.StorageRelease,
 			}
 			if con.Session != nil {
 				s.Since = con.Session.StartedAt
@@ -968,6 +978,19 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 	if plan != nil {
 		info.AllocatedKw = plan.AllocatedKw
 		info.SourceAllocatedKw = plan.SourceAllocatedKw
+		info.StorageReleaseUsedKw = plan.StorageReleaseUsedKw
+	}
+	// „Sonne + Speicher": the LAST executor verdict, never a fresh one.
+	if rv, at := rt.release.Last(); !at.IsZero() {
+		info.StorageReleaseActive = rv.Active
+		if rv.Active {
+			kw := rv.Kw
+			info.StorageReleaseKw = &kw
+		}
+		info.StorageReleaseFloorPct = rv.FloorPct
+		info.StorageReleaseSocPct = rv.SocPct
+		info.StorageReleaseMode = string(rv.Mode)
+		info.StorageReleaseNote = rv.Reason
 	}
 
 	var measured float64

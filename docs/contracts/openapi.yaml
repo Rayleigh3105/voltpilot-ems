@@ -2081,6 +2081,36 @@ paths:
               schema: { $ref: "#/components/schemas/ChargingConfig" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen (deutscher Grund im Körper). }
+  /api/v1/sites/{siteId}/charging-config/storage-release:
+    put:
+      tags: [sites]
+      summary: Die Reserve von „Sonne + Speicher“ setzen (06.10.2026).
+      description: >
+        Die Energie in kWh, die der Speicher über seinem Reservestapel
+        (technisch, Notstrom, Lastspitze) zusätzlich für die Nacht behält, wenn
+        ein Ladepunkt auf „Sonne + Speicher“ lädt. `reserveKwh: null` nimmt die
+        eigene Angabe zurück - dann gilt die Vorgabe (1,0 kWh). Die Zahl reist
+        nicht zur Box: der Optimierer rechnet mit ihr die Untergrenze, die der
+        Fahrplan je Viertelstunde mitbringt. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reserveKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Reserve außerhalb von 0..100 kWh (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage unbekannt. }
   /api/v1/sites/{siteId}/charging-config/charge-points/{chargePointId}/source:
     put:
       tags: [sites]
@@ -2739,7 +2769,12 @@ paths:
                   enum: ["", sofort, ueberschuss]
                   description: >
                     Abwesend = nichts ändern, "" = Profil zurücknehmen.
-                ueberschussModus: { type: string, enum: [pausieren, mindestleistung] }
+                ueberschussModus:
+                  type: string
+                  enum: [pausieren, mindestleistung]
+                  description: >
+                    „speicher“ (Sonne + Speicher) gibt es je Ladepunkt, nicht je
+                    Karte - es wird mit einem benannten Grund abgelehnt (400).
                 mindestleistungKw: { type: number, minimum: 0, maximum: 1000 }
       responses:
         "200":
@@ -13687,6 +13722,7 @@ components:
               unplannedLoadDischarge: { type: boolean, nullable: true, description: "Additive idle-slot authority: true permits fresh measured load coverage to START from a 0-kW plan slot when full marginal economics favor discharge. It never redefines coverLoadFromBattery and never applies to a planned charge or sale. Null = pre-feature/not evaluated; false = evaluated and intentionally held." }
               whyNextBest: { type: string, nullable: true, description: "Erklaerbarkeit Stufe 1 (schedule.why_next_best, migration V20260824000000): the best action this RESTING slot REJECTED - decken | verkaufen | solar_speichern | netzladen. Only physically ADMISSIBLE alternatives are named (charging needs SoC headroom and, in EEG mode, real PV surplus; netzladen needs the grid-charge permission), so a margin never describes an impossible action. Null on ACTIVE slots (the chosen action's marginal benefit is 0 at the optimum), when nothing else was possible, and on runs whose explain layer was off." }
               whyNextBestMarginCt: { type: number, nullable: true, description: "Erklaerbarkeit Stufe 1 (schedule.why_next_best_margin_ct): how much WORSE that rejected alternative would have been, in ct/kWh - always <= 0. |margin| <= 0.05 is a TIE and the surface must say so ('beides waere gerade fast gleich gut') instead of dressing an abwaegung up as certainty; on 17.08.2026 it was algebraically exactly 0,000 ct/kWh. Null exactly where whyNextBest is null - name and margin are ONE statement." }
+              evReleaseFloorSocPct: { type: number, nullable: true, description: "„Sonne + Speicher“ (schedule.ev_release_floor_soc_pct, 06.10.2026): die Speicheruntergrenze dieses Slots in % - bis dahin darf ein Ladepunkt auf dieser Quelle den Speicher leeren (dieselbe Zahl, die der MQTT-Fahrplan als ev_release_floor_soc_pct trägt). null = in diesem Slot keine Freigabe (der Plan handelt, oder die Anlage fährt die Quelle nicht)." }
               chargeFromSurplusOnly: { type: boolean, nullable: true, description: "Duty-Vorschau, charge-side mirror (schedule.charge_from_surplus_only, migration V20260802010000): true = in THIS slot the device clamps the commanded CHARGE to the measured solar surplus max(pv - load, 0) because buying the shortfall would be uneconomic - the plan's batteryKw is a forecast here too. Same tri-state discipline as coverLoadFromBattery." }
     ControlStatus:
       type: object
@@ -13904,6 +13940,8 @@ components:
             ganzen Überschuss greifen darf - nie 0.
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
+        storageReleaseReserveKwh: { type: number, nullable: true, description: "„Sonne + Speicher“: die Reserve dieser Anlage in kWh über dem Reservestapel des Speichers. null = keine eigene Angabe, es gilt storageReleaseReserveStandardKwh. Reist NICHT zur Box - der Optimierer rechnet damit die Untergrenze." }
+        storageReleaseReserveStandardKwh: { type: number, description: "Die Vorgabe des Optimierers (1,0 kWh; docs/contracts/v2/sonne-speicher-vectors.json)." }
     LadeparkRahmen:
       type: object
       description: >
@@ -13946,6 +13984,7 @@ components:
             Box wechselt zwischen ihnen weiter im Takt ab (Rotation).
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
+        storageRelease: { type: boolean, nullable: true, description: "„Sonne + Speicher“ (06.10.2026): auf der Bahn nur_sonne darf diese Säule zusätzlich Speicherenergie oberhalb der Untergrenze des Fahrplans bekommen (charge_points[].storage_release). Gesetzt über die Steuerart (ueberschussModus speicher), nie über diese Liste." }
     Steuerart:
       type: object
       description: >
@@ -13971,7 +14010,13 @@ components:
         ueberschussModus:
           type: string
           nullable: true
-          enum: [pausieren, mindestleistung, null]
+          enum: [pausieren, mindestleistung, speicher, null]
+          description: >
+            NUR am Ladepunkt: was bei zu wenig Überschuss geschieht.
+            `pausieren` = „Nur Sonne“, `mindestleistung` = „Sonne + Minimum“,
+            `speicher` = „Sonne + Speicher“ (06.10.2026): die Säule fährt die
+            Bahn `nur_sonne` mit `storage_release` und bekommt zusätzlich
+            Speicherenergie oberhalb der Untergrenze des Fahrplans.
         mindestleistungKw: { type: number, nullable: true }
         fenster: { $ref: "#/components/schemas/SteuerartFenster" }
         ziel:
@@ -14039,6 +14084,18 @@ components:
         zielEnergieKwh: { type: number, nullable: true }
         zielLaufzeitMinuten: { type: integer, nullable: true }
         zielAmStueck: { type: boolean, nullable: true }
+        ueberschussModus:
+          type: string
+          nullable: true
+          enum: [pausieren, mindestleistung, speicher, null]
+          description: >
+            NUR am Ladepunkt und nur zu `quelle: ueberschuss`. Ein anderes Wort
+            ist eine benannte Ablehnung (400). `speicher` („Sonne + Speicher“)
+            ist nur an einer OCPP-Säule einer Anlage mit PV und Speicher samt
+            gepflegter Kapazität wählbar - sonst trägt die Karte
+            `ueberschuss_speicher` in `optionen.quellen` den Grund, und der
+            Schreibpfad lehnt mit genau ihm ab.
+        mindestleistungKw: { type: number, nullable: true, description: "Zu `ueberschussModus: mindestleistung` - ab welcher Leistung die Säule lädt." }
     SteuerartErgebnis:
       type: object
       properties:
@@ -14287,6 +14344,24 @@ components:
             antwortet, ist die schlechtere Auskunft als gar keine.
         ocppUrlPath: { type: string, nullable: true, description: "Der Pfad des OCPP-Servers (z. B. `/ocpp`); null wie oben." }
         reportedAt: { type: string, format: date-time }
+        storageRelease:
+          type: object
+          nullable: true
+          description: >
+            „Sonne + Speicher“ (06.10.2026): was die BOX gerade aus der
+            Untergrenze des Fahrplans macht. null = eine ältere Box, oder keine
+            Säule fährt die Quelle. Jede Zahl nullable - kein Messwert ist nie
+            eine 0.
+          properties:
+            active: { type: boolean, description: "Die Box gibt gerade Speicherenergie an Autos auf dieser Quelle." }
+            kw: { type: number, nullable: true, description: "Die freigegebene Speicherleistung über dem Sonnenüberschuss (nur aktiv)." }
+            floorSocPct: { type: number, nullable: true, description: "Die Untergrenze der laufenden Viertelstunde." }
+            socPct: { type: number, nullable: true, description: "Der gemessene Ladestand, gegen den die Box entschied." }
+            mode:
+              type: string
+              enum: [frei, an_der_grenze, kein_plan, plan_handelt, ladestand_unbekannt, keine_messung, speicherpfad, bms_sperrt, keine_leistung, wirkung, kein_ladestand, speicher_gehalten, prognose_veraltet, nachtbedarf_ueber_kapazitaet, reserve_ueber_kapazitaet, prognose_zu_kurz]
+              description: "Die Stufe der Box (Vokabular: docs/contracts/v2/sonne-speicher-vectors.json)."
+            note: { type: string, nullable: true, description: "Der deutsche Satz der Box, unverändert." }
     ChargePoint:
       type: object
       description: >

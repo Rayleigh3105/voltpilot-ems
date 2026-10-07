@@ -119,6 +119,26 @@ test('Laden: Ladepunkte, Womit laden und Ladeziel ohne Überlauf', async ({ page
   expect(fehler).toEqual([]);
 });
 
+test('Laden: Sonne + Speicher mit Erklärzeile, Untergrenze im Ladeplan und Reserve ohne Überlauf', async ({ page }) => {
+  const fehler = await oeffnen(page, LADEN);
+  const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
+  const womit = wb.getByRole('group', { name: 'Womit laden' });
+  await expect(womit.getByRole('button')).toHaveText(['Nur Sonne', 'Sonne + Minimum', 'Sonne + Speicher', 'Günstig']);
+  await womit.getByRole('button', { name: 'Sonne + Speicher' }).click();
+  await expect(page.getByRole('status')).toContainText('übernommen');
+  await expect(womit.getByRole('button', { name: 'Sonne + Speicher' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(wb).toContainText('Der Speicher gibt gerade bis 2,4 kW frei und darf bis 15 % entladen');
+  await expect(wb).toContainText('Gestrichelt: bis dorthin darf der Speicher für das Auto entladen.');
+  const reserve = page.getByRole('region', { name: 'Reserve für Sonne + Speicher' });
+  await expect(reserve.getByRole('button', { name: '1 kWh · Vorgabe' })).toHaveAttribute('aria-pressed', 'true');
+  await reserve.getByRole('button', { name: '2 kWh' }).click();
+  await expect(page.getByRole('status')).toContainText('Die Reserve ist gespeichert');
+  await expect(reserve.getByRole('button', { name: '2 kWh' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+});
+
 test('Regeln: Satzbaukasten mit Probelauf, Folgen und Aktivieren', async ({ page }) => {
   const fehler = await oeffnen(page, REGELN);
   await expect(page.locator('article.rule')).toHaveCount(2);

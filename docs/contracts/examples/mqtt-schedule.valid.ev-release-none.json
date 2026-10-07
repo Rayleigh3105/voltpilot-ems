@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "c2f9a6b4-1d37-4e8a-b5c0-93e7d1f2a684",
+  "generated_at": "2026-10-06T18:05:00Z",
+  "horizon_slots": 2,
+  "slot_minutes": 15,
+  "grid_charge_allowed": false,
+  "effective_floor_soc_pct": 5.0,
+  "ev_release_max_discharge_kw": 5.0,
+  "ev_release_reason": "nachtbedarf_ueber_kapazitaet",
+  "slots": [
+    { "start": "2026-10-06T18:00:00Z", "battery_setpoint_kw": -1.1 },
+    { "start": "2026-10-06T18:15:00Z", "battery_setpoint_kw": -1.2 }
+  ]
+}

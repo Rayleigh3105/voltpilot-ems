@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -64,7 +65,17 @@ func (a *Agent) chargersSummary() *cloud.ChargersSummary {
 		SurplusBatteryKw:  info.SurplusBatteryKw,
 		SourceAllocatedKw: info.SourceAllocatedKw,
 
+		StorageReleaseActive:   info.StorageReleaseActive,
+		StorageReleaseKw:       info.StorageReleaseKw,
+		StorageReleaseFloorPct: info.StorageReleaseFloorPct,
+		StorageReleaseSocPct:   info.StorageReleaseSocPct,
+		StorageReleaseNote:     info.StorageReleaseNote,
+
 		Chargers: make([]cloud.ChargerEntry, 0, len(info.Chargers)),
+	}
+	// „aus" is the absence of the feature, not a stage worth a column.
+	if info.StorageReleaseMode != string(lastmgmt.ReleaseOff) {
+		out.StorageReleaseMode = info.StorageReleaseMode
 	}
 	for _, c := range info.Chargers {
 		out.Chargers = append(out.Chargers, chargerEntry(c))
