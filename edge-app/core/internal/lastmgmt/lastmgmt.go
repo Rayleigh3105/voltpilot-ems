@@ -210,6 +210,17 @@ type Session struct {
 	// between one and three phases (phases.go). The zero value = one
 	// continuous band [minimum, MaxKw], byte-for-byte the behaviour before.
 	Ranges Bands
+
+	// --- „Sonne + Speicher" (06.10.2026, release.go) --------------------
+	//
+	// StorageRelease says THIS session runs „Sonne + Speicher"
+	// (`charge_points[].storage_release` on top of the lane word
+	// `nur_sonne`). It only matters while the input carries a release
+	// verdict: with Input.StorageReleaseKw it may reach the WHOLE surplus plus
+	// the released battery power, with Input.StorageFirst it is served after
+	// the battery; with neither it is exactly the „Nur Sonne" session its lane
+	// word says - byte-for-byte the behaviour of a box without this file.
+	StorageRelease bool
 }
 
 // boosted reports whether this session's „Jetzt voll laden" is still running.
@@ -460,6 +471,12 @@ type Plan struct {
 	// not labelled at the hub). 0 without a source lane.
 	SourceAllocatedKw float64      `json:"source_allocated_kw,omitempty"`
 	Allocations       []Allocation `json:"allocations"`
+	// StorageReleaseKw is the battery power the decision offered to
+	// „Sonne + Speicher" sessions beyond the whole surplus (nil = no release),
+	// StorageReleaseUsedKw how much of it the allocation actually handed out -
+	// a STANDORT figure like SourceAllocatedKw, never a per-vehicle quota.
+	StorageReleaseKw     *float64 `json:"storage_release_kw,omitempty"`
+	StorageReleaseUsedKw float64  `json:"storage_release_used_kw,omitempty"`
 }
 
 // Get returns the allocation for a key.
@@ -541,7 +558,21 @@ type Input struct {
 	// there it is what lets a `sonne_zuerst` station on the SAME site keep
 	// failing open, exactly as it does today when it is the only policy.
 	SourceBlind bool
-	Now         time.Time
+	// --- „Sonne + Speicher" (release.go) --------------------------------
+	//
+	// StorageReleaseKw is the battery power a StorageRelease session may take
+	// BEYOND the whole surplus (ReleaseVerdict.Kw while Active). nil = no
+	// release. It is the FOURTH reading of the ONE lane - every source-bound
+	// allocation decrements it like the other three, so the release is
+	// handed out at most once across all sessions.
+	StorageReleaseKw *float64
+	// StorageFirst: the battery floor is known and the SoC is at or below it
+	// - StorageRelease sessions read the lane BELOW the battery
+	// (SourceBudgetBelowStorageKw), whatever the site's priority.
+	StorageFirst bool
+	// SourceBudgetBelowStorageKw is that reading (SurplusVerdict.BelowStorageKw).
+	SourceBudgetBelowStorageKw *float64
+	Now                        time.Time
 }
 
 // Decide is THE allocation. Deterministic: the same input yields the same plan,
@@ -573,6 +604,21 @@ func Decide(in Input) Plan {
 		}
 		a := aboveBudget
 		plan.SourceBudgetAboveStorageKw = &a
+	}
+	// „Sonne + Speicher": two more readings of the same lane. The one BELOW
+	// the battery can never exceed the site reading, the one WITH the battery
+	// release never falls below the whole surplus - a document that says
+	// otherwise is clamped rather than believed, like the above reading.
+	var belowBudget, storageBudget float64
+	releaseActive := srcActive && in.StorageReleaseKw != nil && *in.StorageReleaseKw > 0
+	storageFirst := srcActive && in.StorageFirst && in.SourceBudgetBelowStorageKw != nil
+	if storageFirst {
+		belowBudget = round3(math.Min(srcBudget, math.Max(0, *in.SourceBudgetBelowStorageKw)))
+	}
+	if releaseActive {
+		storageBudget = round3(aboveBudget + *in.StorageReleaseKw)
+		r := round3(*in.StorageReleaseKw)
+		plan.StorageReleaseKw = &r
 	}
 	if len(in.Sessions) == 0 {
 		return plan
@@ -640,21 +686,48 @@ func Decide(in Input) Plan {
 	exemptOf := map[string]bool{}
 	boostOf := map[string]bool{}
 	rest, srcRest, aboveRest := budget, srcBudget, aboveBudget
+	belowRest, storageRest := belowBudget, storageBudget
 
 	// sourceRest is the lane a session may reach into: the site reading, or -
 	// for a station the customer put ABOVE the battery - the whole surplus.
+	// A „Sonne + Speicher" session reaches the whole surplus PLUS the battery
+	// release while there is one, and only the reading below the battery
+	// while it sits at its floor (release.go).
 	sourceRest := func(s Session) float64 {
+		if s.StorageRelease && releaseActive {
+			return storageRest
+		}
+		if s.StorageRelease && storageFirst {
+			return belowRest
+		}
 		if s.BeforeStorage {
 			return aboveRest
 		}
 		return srcRest
 	}
-	// takeSource books a source-bound allocation. ⚠ It decrements BOTH
-	// counters: the two are one physical quantity read twice, so the vehicles
-	// together can never take more than the whole surplus.
+	// takeSource books a source-bound allocation. ⚠ It decrements EVERY
+	// counter: they are one physical quantity read several times, so the
+	// vehicles together can never take more than the whole surplus - plus,
+	// with a release, the released battery power once.
 	takeSource := func(kw float64) {
 		srcRest = math.Max(0, srcRest-kw)
 		aboveRest = math.Max(0, aboveRest-kw)
+		belowRest = math.Max(0, belowRest-kw)
+		storageRest = math.Max(0, storageRest-kw)
+	}
+	// lanesDiffer reports whether a group mixes sessions with different
+	// lanes BECAUSE of „Sonne + Speicher". Only then does fill() serve the
+	// group in tiers; every other group is filled exactly as before.
+	lanesDiffer := func(adm []Session) bool {
+		if !releaseActive && !storageFirst {
+			return false
+		}
+		for _, s := range adm[1:] {
+			if sourceRest(s) != sourceRest(adm[0]) {
+				return true
+			}
+		}
+		return false
 	}
 
 	// admit hands each session in a group its MINIMUM, or names why not.
@@ -746,6 +819,48 @@ func Decide(in Input) Plan {
 		if len(adm) == 0 {
 			return
 		}
+		if !exempt && srcActive && lanesDiffer(adm) {
+			// ⚠ TIERS („Sonne + Speicher"): the group is first filled under the
+			// SMALLEST lane any member may reach - exactly the rule below -
+			// and then every member whose lane reaches further gets the rest
+			// of ITS lane. A release session never takes a „Nur Sonne"
+			// neighbour's share of the sun (both draw from the same counters),
+			// and the neighbour never reaches into the battery.
+			members := adm
+			for len(members) > 0 {
+				lane := math.Inf(1)
+				for _, s := range members {
+					lane = math.Min(lane, sourceRest(s))
+				}
+				spare := math.Min(rest, lane)
+				if spare <= 1e-9 {
+					var next []Session
+					for _, s := range members {
+						if sourceRest(s) > lane+1e-9 {
+							next = append(next, s)
+						}
+					}
+					members = next
+					continue
+				}
+				left := waterFill(members, give, spare)
+				left = snapBands(members, give, left, in)
+				moved := spare - left
+				rest -= moved
+				takeSource(moved)
+				if moved <= 1e-9 {
+					break
+				}
+				var next []Session
+				for _, s := range members {
+					if sourceRest(s) > 1e-9 {
+						next = append(next, s)
+					}
+				}
+				members = next
+			}
+			return
+		}
 		spare := rest
 		if !exempt && srcActive {
 			// ⚠ One fill pass, one lane: a group is filled under the SMALLEST
@@ -754,7 +869,10 @@ func Decide(in Input) Plan {
 			// the customer split across the storage does not exist - the
 			// storage IS a position - so this is the rare defensive case, and
 			// being conservative there is the correct direction.
-			lane := aboveRest
+			// Starting from +Inf is byte-identical to the old start at
+			// aboveRest for every pre-release session (each reading is <=
+			// aboveRest) and lets a lone release session reach its own lane.
+			lane := math.Inf(1)
 			for _, s := range adm {
 				if l := sourceRest(s); l < lane {
 					lane = l
@@ -848,6 +966,13 @@ func Decide(in Input) Plan {
 		// (Mockups §1a: electricity is not labelled at the hub), never a
 		// per-vehicle solar quota, and it can never exceed the lane itself.
 		plan.SourceAllocatedKw = round3(math.Min(sourceTotal, srcBudget))
+		// What the battery release is covering: everything source-bound
+		// beyond the WHOLE surplus. Without a release nobody can reach past
+		// the surplus, so this stays 0.
+		if releaseActive {
+			plan.StorageReleaseUsedKw = round3(math.Min(math.Max(0, sourceTotal-aboveBudget),
+				*plan.StorageReleaseKw))
+		}
 	}
 	return plan
 }

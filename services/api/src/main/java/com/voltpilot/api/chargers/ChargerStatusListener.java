@@ -1,5 +1,6 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.web.dto.SiteChargingDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
@@ -95,6 +96,18 @@ public class ChargerStatusListener {
     private static final Set<String> STORAGE = Set.of("speicher_vor_auto", "auto_vor_speicher");
 
     private static final Set<String> SURPLUS_MODES = Set.of("aus", "gemessen", "nicht_belegbar");
+
+    /**
+     * „Sonne + Speicher" (06.10.2026): die Stufen der Box
+     * ({@code internal/lastmgmt/release.go}) samt der Gruende, die der
+     * Fahrplan mitbringt ({@code ev_release_reason}). Ein Wort ausserhalb wird
+     * verworfen - dann meldet die Zeile gar keine Stufe.
+     */
+    static final Set<String> RELEASE_MODES = Set.of("frei", "an_der_grenze", "kein_plan",
+            "plan_handelt", "ladestand_unbekannt", "keine_messung", "speicherpfad", "bms_sperrt",
+            "keine_leistung", "wirkung", "kein_ladestand", "speicher_gehalten",
+            "prognose_veraltet", "nachtbedarf_ueber_kapazitaet", "reserve_ueber_kapazitaet",
+            "prognose_zu_kurz");
 
     /**
      * WO eine Säule hängt (Cockpit Phase 1 / C1). Wie jedes andere Vokabular
@@ -398,7 +411,21 @@ public class ChargerStatusListener {
                 // der eine Box sagt "ich lausche nicht") wird VERWORFEN statt
                 // gespeichert - eine Adresse, auf der niemand antwortet, waere
                 // die schlechtere Auskunft als gar keine.
-                optPort(b, "ocpp_port"), textOrNull(b, "url_path"));
+                optPort(b, "ocpp_port"), textOrNull(b, "url_path"),
+                storageRelease(b));
+    }
+
+    /** „Sonne + Speicher": nur mit einer Stufe aus dem Vokabular eine Aussage. */
+    private static SiteChargingDto.StorageReleaseDto storageRelease(JsonNode b) {
+        String mode = vocabulary(b, "storage_release_mode", RELEASE_MODES);
+        if (mode == null) {
+            return null;
+        }
+        return new SiteChargingDto.StorageReleaseDto(
+                b.path("storage_release_active").asBoolean(false),
+                optDouble(b, "storage_release_kw"), optDouble(b, "storage_release_floor_soc_pct"),
+                optDouble(b, "storage_release_soc_pct"), mode,
+                textOrNull(b, "storage_release_note"));
     }
 
     /** Ein Port, den eine Saeule wirklich anwaehlen kann - sonst nichts. */

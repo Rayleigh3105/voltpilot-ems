@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -795,5 +796,119 @@ func TestAMalformedFeedInLimitIsDroppedNotGuessed(t *testing.T) {
 	}
 	if p.ExportLimit() != nil {
 		t.Fatalf("a negative limit must be dropped, got %v", *p.ExportLimit())
+	}
+}
+
+// „Sonne + Speicher" (2026-10-06): the committed fixtures, read BY PATH - the
+// floor rides only the slots the plan does not trade, and every invalid or
+// unknown piece releases nothing.
+func TestTheReleaseFixturesAreReadVerbatim(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples")
+	raw, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.ev-release.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen := time.Date(2026, 10, 6, 10, 5, 0, 0, time.UTC)
+	p, err := Parse(raw, gen.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	max, reason := p.ReleaseFacts(gen.Add(2 * time.Minute))
+	if max == nil || *max != 5 || reason != "" {
+		t.Fatalf("run facts: %v %q", max, reason)
+	}
+	if f, ok := p.ActiveReleaseFloor(time.Date(2026, 10, 6, 10, 7, 0, 0, time.UTC)); !ok || f != 11.7 {
+		t.Fatalf("slot 1 floor = %v %v", f, ok)
+	}
+	// The same document, received again a little later (retained redelivery
+	// inside the freshness window), for the later slots.
+	p2, err := Parse(raw, gen.Add(25*time.Minute))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, ok := p2.ActiveReleaseFloor(time.Date(2026, 10, 6, 10, 31, 0, 0, time.UTC)); ok {
+		t.Fatal("the planned sale slot carries no floor")
+	}
+	if f, ok := p2.ActiveReleaseFloor(time.Date(2026, 10, 6, 10, 46, 0, 0, time.UTC)); !ok || f != 34.2 {
+		t.Fatalf("slot 4 floor = %v %v", f, ok)
+	}
+	// A stale plan releases nothing - neither the floor nor the run facts.
+	late := gen.Add(StaleAfter + 2*time.Minute)
+	if _, ok := p.ActiveReleaseFloor(late); ok {
+		t.Fatal("a stale floor must not survive")
+	}
+	if max, _ := p.ReleaseFacts(late); max != nil {
+		t.Fatal("stale run facts must not survive")
+	}
+
+	none, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.ev-release-none.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen = time.Date(2026, 10, 6, 18, 5, 0, 0, time.UTC)
+	pn, err := Parse(none, gen.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("parse none: %v", err)
+	}
+	if _, reason := pn.ReleaseFacts(gen.Add(2 * time.Minute)); reason != "nachtbedarf_ueber_kapazitaet" {
+		t.Fatalf("reason = %q", reason)
+	}
+
+	// The out-of-range fixture parses (the edge ignores garbage it can
+	// ignore), but its floor is dropped.
+	bad, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.invalid.ev-release-floor-out-of-range.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen = time.Date(2026, 10, 6, 10, 5, 0, 0, time.UTC)
+	pb, err := Parse(bad, gen.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("parse bad: %v", err)
+	}
+	if _, ok := pb.ActiveReleaseFloor(time.Date(2026, 10, 6, 10, 7, 0, 0, time.UTC)); ok {
+		t.Fatal("a floor of 117 % is no floor")
+	}
+}
+
+func TestAFloorWithoutTheRunFactOrAnUnknownReasonIsDropped(t *testing.T) {
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	p, err := Parse([]byte(`{"schema_version":"1.0","plan_id":"x","generated_at":"2026-10-06T12:00:00Z",
+		"slot_minutes":15,"ev_release_reason":"mondschein",
+		"slots":[{"start":"2026-10-06T12:00:00Z","battery_setpoint_kw":0,"ev_release_floor_soc_pct":20}]}`), now)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if _, ok := p.ActiveReleaseFloor(now.Add(time.Minute)); ok {
+		t.Fatal("without ev_release_max_discharge_kw a floor releases nothing")
+	}
+	if max, reason := p.ReleaseFacts(now); max != nil || reason != "" {
+		t.Fatalf("no facts: %v %q", max, reason)
+	}
+}
+
+// The cloud's reasons are the SHARED vocabulary (docs/contracts/v2/
+// sonne-speicher-vectors.json): every word is kept, anything else dropped.
+func TestTheReleaseReasonsAreTheSharedVocabulary(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"sonne-speicher-vectors.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		CloudReasons []string `json:"cloud_reasons"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.CloudReasons) != 6 {
+		t.Fatalf("vectors: %v", v.CloudReasons)
+	}
+	for _, r := range v.CloudReasons {
+		if !knownReleaseReason(r) {
+			t.Fatalf("reason %q unknown", r)
+		}
+	}
+	if knownReleaseReason("mondschein") || knownReleaseReason("") {
+		t.Fatal("an unknown reason must be dropped")
 	}
 }

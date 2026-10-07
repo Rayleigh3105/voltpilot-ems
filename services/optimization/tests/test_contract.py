@@ -232,6 +232,8 @@ def test_committed_fixtures_match_the_schema_both_ways():
         "mqtt-schedule.valid.absorb-surplus.json",
         "mqtt-schedule.valid.export-limit.json",
         "mqtt-schedule.valid.limit-discharge.json",
+        "mqtt-schedule.valid.ev-release.json",
+        "mqtt-schedule.valid.ev-release-none.json",
     ):
         payload = json.loads((EXAMPLES / name).read_text())
         errors = list(validator.iter_errors(payload))
@@ -249,11 +251,18 @@ def test_committed_fixtures_match_the_schema_both_ways():
             "mqtt-schedule.invalid.limit-discharge-not-boolean.json",
             "limit_discharge_to_load",
         ),
+        (
+            "mqtt-schedule.invalid.ev-release-floor-out-of-range.json",
+            "ev_release_floor_soc_pct",
+        ),
     ):
         bad = json.loads((EXAMPLES / name).read_text())
         messages = [e.message for e in validator.iter_errors(bad)]
         assert messages, f"{name}: the invalid fixture must be rejected"
-        assert any(field in m or "boolean" in m or "minimum" in m for m in messages), (
+        assert any(
+            field in m or "boolean" in m or "minimum" in m or "maximum" in m
+            for m in messages
+        ), (
             name,
             messages,
         )
@@ -523,3 +532,62 @@ def test_the_export_limit_fixture_is_what_the_publisher_actually_emits():
     plan = dataclasses.replace(make_plan(slots=1), max_feed_in_kw=30.0)
     emitted = build_schedule_payload(plan)
     assert emitted["grid_export_limit_kw"] == fixture["grid_export_limit_kw"]
+
+
+def _with_release(plan, floors, grund=None):
+    import dataclasses
+
+    from voltpilot_optimization.storage_release import StorageRelease
+
+    release = StorageRelease(
+        floor_soc_pct=tuple(floors),
+        floor_kwh=tuple(None if f is None else f / 10.0 for f in floors),
+        max_discharge_kw=plan.battery.max_discharge_kw,
+        reserve_kwh=1.0,
+        reserve_standard=True,
+        unsicherheit=None,
+        grund=grund,
+    )
+    return dataclasses.replace(plan, storage_release=release)
+
+
+def test_the_ev_release_fixture_is_what_the_publisher_actually_emits():
+    """„Sonne + Speicher" (06.10.2026): the committed fixture is the publisher's
+    own shape - the top-level max discharge, the per-slot floor only where the
+    plan does not trade, and every other payload byte-identical."""
+    import dataclasses
+
+    fixture = json.loads((EXAMPLES / "mqtt-schedule.valid.ev-release.json").read_text())
+    plan = make_plan(slots=4)
+    slots = [
+        dataclasses.replace(plan.slots[0], battery_kw=2.4, curtail_kw=0.0),
+        dataclasses.replace(plan.slots[1], battery_kw=2.6, curtail_kw=0.0),
+        dataclasses.replace(plan.slots[2], battery_kw=-5.0, curtail_kw=0.0),
+        dataclasses.replace(plan.slots[3], battery_kw=-0.8, curtail_kw=0.0,
+                            cover_load_from_battery=True),
+    ]
+    released = _with_release(dataclasses.replace(plan, slots=slots), [11.7, 11.7, None, 34.2])
+    payload = build_schedule_payload(released)
+    assert errors_of(payload) == []
+    assert payload["ev_release_max_discharge_kw"] == fixture["ev_release_max_discharge_kw"]
+    assert "ev_release_reason" not in payload
+    for emitted, committed in zip(payload["slots"], fixture["slots"]):
+        assert set(emitted) == set(committed)
+        assert emitted.get("ev_release_floor_soc_pct") == committed.get("ev_release_floor_soc_pct")
+    # Ohne die Quelle an der Anlage: kein einziges neues Feld.
+    plain = build_schedule_payload(dataclasses.replace(plan, slots=slots))
+    assert not any(k.startswith("ev_release") for k in plain)
+    assert not any("ev_release_floor_soc_pct" in s for s in plain["slots"])
+
+
+def test_a_run_without_release_says_why():
+    fixture = json.loads((EXAMPLES / "mqtt-schedule.valid.ev-release-none.json").read_text())
+    plan = _with_release(make_plan(slots=2), [None, None], grund="nachtbedarf_ueber_kapazitaet")
+    payload = build_schedule_payload(plan)
+    assert errors_of(payload) == []
+    assert payload["ev_release_reason"] == fixture["ev_release_reason"]
+    assert all("ev_release_floor_soc_pct" not in s for s in payload["slots"])
+
+
+def errors_of(payload):
+    return [e.message for e in load_validator().iter_errors(payload)]

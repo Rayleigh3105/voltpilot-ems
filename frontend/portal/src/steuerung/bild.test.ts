@@ -73,6 +73,26 @@ describe('reihen', () => {
     expect(rh.pv[20]).toBeNull();
   });
 
+  it('trägt die Speicheruntergrenze von „Sonne + Speicher“ nur, wo der Fahrplan eine hat', () => {
+    const ohne = reihen({ raster: r, plan: { slots: [{ start: iso(60), pvKw: 5, loadKw: 1, socPct: 80 }] } as never });
+    // Ein Fahrplan ohne Untergrenze (jede Anlage ohne die Quelle) trägt keine Reihe.
+    expect(ohne.speicherGrenze).toBeUndefined();
+    const mit = reihen({
+      raster: r,
+      plan: { slots: [
+        { start: iso(60), socPct: 80, evReleaseFloorSocPct: 35 },
+        { start: iso(61), socPct: 79, evReleaseFloorSocPct: null },
+        { start: iso(62), socPct: 78, evReleaseFloorSocPct: 0 },
+      ] } as never,
+    });
+    expect(mit.speicherGrenze?.[60]).toBe(35);
+    // Keine Untergrenze in einem Slot (der Plan handelt) bleibt null - nie 0.
+    expect(mit.speicherGrenze?.[61]).toBeNull();
+    // Eine echte 0 % bleibt eine Zahl.
+    expect(mit.speicherGrenze?.[62]).toBe(0);
+    expect(mit.speicherGrenze?.[59]).toBeNull();
+  });
+
   it('nimmt nur frische Telemetrie als jetzt und rechnet den Speicher aus der Bilanz', () => {
     const p = [{ ts: new Date(NOW.getTime() - 60_000).toISOString(), powerKw: -1, socPct: 70, pvPowerKw: 6, loadKw: 3, gridLimitKw: null }];
     expect(jetztWerte(p, NOW.getTime())).toMatchObject({ pv: 6, bat: 2, soc: 70 });
@@ -133,6 +153,8 @@ describe('Wörter', () => {
     expect(auftragSatz({ quelle: 'feste_zeiten', herkunft: 'policy', fenster: { tage: 'weekdays', von: '06:30', bis: '08:30' } }, g)).toBe('06:30–08:30 werktags');
     expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'policy', ziel: 'laufzeit_bis', zielLaufzeitMinuten: 360, zielFenster: { tage: 'daily', von: '', bis: '20:00' } }, g)).toBe('6 Std bis 20:00, Sonne zuerst');
     expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, { form: 'stufenlos', ladepunkt: true })).toBe('Nur Sonnenstrom');
+    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'speicher' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Speicher');
+    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'mindestleistung' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Mindestleistung');
     expect(auftragSatz({ quelle: 'freigabe_ueberschuss', herkunft: 'policy' }, { form: 'freigabe', ladepunkt: false })).toBe('Anheben bei Sonne');
   });
 

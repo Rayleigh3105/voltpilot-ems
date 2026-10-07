@@ -111,6 +111,18 @@ describe('Neu in der Anlage', () => {
     // Ohne Schwellen-Vorgabe geht Sonnenstrom nicht - der Vorschlag nimmt günstig.
     expect(vorschlag(g)?.wunsch).toEqual({ quelle: 'guenstig', preisgrenzeCtKwh: 9 });
   });
+
+  it('schlägt die Karte „Sonne + Speicher“ nie als Quelle vor', () => {
+    const g = geraet({
+      eintrag: {
+        entityId: 'x', name: 'X', typ: 'generic-load', typLabel: 'Last', ladepunkt: false, regeln: 0,
+        steuerart: { quelle: 'eigene_regel', herkunft: 'ohne' },
+        optionen: { schreibbar: true, quellen: [{ id: 'ueberschuss', gesperrt: false }, { id: 'ueberschuss_speicher', gesperrt: false }], ziele: [], vorgaben: {} },
+      },
+    });
+    // Sonnenstrom ohne Schwellen-Vorgabe geht nicht; die Karte ist keine Quelle.
+    expect(vorschlag(g)).toBeNull();
+  });
 });
 
 describe('Laden', () => {

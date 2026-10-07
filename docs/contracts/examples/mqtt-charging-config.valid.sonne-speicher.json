@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "grid_limit_kw": 35,
+  "surplus_policy": "nur_sonne",
+  "storage_priority": "speicher_vor_auto",
+  "charge_points": [
+    {
+      "id": "wallbox-carport",
+      "source": "nur_sonne",
+      "storage_release": true
+    },
+    {
+      "id": "wallbox-garage",
+      "source": "nur_sonne"
+    }
+  ],
+  "published_at": "2026-10-06T10:15:00Z"
+}

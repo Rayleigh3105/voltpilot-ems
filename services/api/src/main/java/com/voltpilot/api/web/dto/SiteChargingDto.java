@@ -50,7 +50,47 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
             // "der Server lauscht gerade nicht" - nie Port 0. Die Flaeche faellt
             // dann auf ihren ehrlichen Vorgabe-Satz zurueck.
             Integer ocppPort, String ocppUrlPath,
-            Instant reportedAt) {}
+            Instant reportedAt,
+            // --- „Sonne + Speicher" (06.10.2026) ------------------------------
+            //
+            // Was die BOX gerade aus der Untergrenze des Fahrplans macht. null
+            // = eine aeltere Box, oder keine Saeule faehrt die Quelle.
+            StorageReleaseDto storageRelease) {
+
+        /** Das Budget ohne „Sonne + Speicher" (jeder Aufrufer vor 06.10.2026). */
+        public ChargingBudgetDto(UUID deviceId, boolean enabled, boolean controlEnabled,
+                String controlNote, Double gridLimitKw, Double marginPct, Double minPowerKw,
+                Double budgetKw, Double allocatedKw, Double reservedKw, Double measuredKw,
+                Double siteLoadKw, Double siteGridKw, String budgetMode, String budgetNote,
+                boolean budgetBlind, Double effLimitKw, Double safeDefaultKw,
+                String safeDefaultNote, Boolean safeDefaultHolds, Double safeWorstCaseKw,
+                Double maxHouseLoadKw, int connectorCount, String surplusPolicy,
+                String storagePriority, boolean surplusActive, Double surplusKw,
+                String surplusMode, String surplusNote, boolean surplusBlind,
+                Double surplusTotalKw, Double surplusBatteryKw, Double sourceAllocatedKw,
+                Integer ocppPort, String ocppUrlPath, Instant reportedAt) {
+            this(deviceId, enabled, controlEnabled, controlNote, gridLimitKw, marginPct,
+                    minPowerKw, budgetKw, allocatedKw, reservedKw, measuredKw, siteLoadKw,
+                    siteGridKw, budgetMode, budgetNote, budgetBlind, effLimitKw, safeDefaultKw,
+                    safeDefaultNote, safeDefaultHolds, safeWorstCaseKw, maxHouseLoadKw,
+                    connectorCount, surplusPolicy, storagePriority, surplusActive, surplusKw,
+                    surplusMode, surplusNote, surplusBlind, surplusTotalKw, surplusBatteryKw,
+                    sourceAllocatedKw, ocppPort, ocppUrlPath, reportedAt, null);
+        }
+    }
+
+    /**
+     * „Sonne + Speicher": die Freigabe der Box. Jede Zahl NULLABLE - kein
+     * Messwert ist nie eine 0. {@code mode} ist das geschlossene Vokabular der
+     * Box ({@code internal/lastmgmt/release.go}), {@code note} ihr Satz.
+     *
+     * @param active      gibt die Box gerade Speicherenergie an Autos?
+     * @param kw          die freigegebene Speicherleistung (nur aktiv)
+     * @param floorSocPct die Untergrenze der laufenden Viertelstunde
+     * @param socPct      der gemessene Ladestand, gegen den sie entschied
+     */
+    public record StorageReleaseDto(boolean active, Double kw, Double floorSocPct,
+            Double socPct, String mode, String note) {}
 
     /**
      * Eine Ladesäule. {@code entityId} ist die Komponente, die die Plattform für

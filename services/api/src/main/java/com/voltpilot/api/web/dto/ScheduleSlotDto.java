@@ -139,7 +139,30 @@ public record ScheduleSlotDto(
         Boolean unplannedLoadDischarge,
         Boolean chargeFromSurplusOnly,
         String whyNextBest,
-        BigDecimal whyNextBestMarginCt) {
+        BigDecimal whyNextBestMarginCt,
+        /*
+         * „Sonne + Speicher" (V20261006120000): die Speicheruntergrenze dieses
+         * Slots in % - bis dahin darf ein Ladepunkt auf dieser Quelle den
+         * Speicher leeren. null = in diesem Slot keine Freigabe (der Plan
+         * handelt, oder die Anlage faehrt die Quelle nicht).
+         */
+        BigDecimal evReleaseFloorSocPct) {
+
+    /** The slot without a „Sonne + Speicher" floor (every caller before 06.10.2026). */
+    public ScheduleSlotDto(Instant start, BigDecimal batteryKw, BigDecimal gridKw,
+            BigDecimal socPct, BigDecimal priceEurMwh, BigDecimal costEur,
+            BigDecimal baselineCostEur, BigDecimal curtailKw, BigDecimal pvKw, BigDecimal loadKw,
+            String slotRole, List<String> slotFlags, BigDecimal storedValueCtKwh,
+            BigDecimal gridValueCtKwh, BigDecimal peakPressureEurKw, BigDecimal importPriceCtKwh,
+            BigDecimal exportValueCtKwh, String importPriceSource, BigDecimal measuredLoadKw,
+            BigDecimal measuredPvKw, Boolean coverLoadFromBattery, Boolean unplannedLoadDischarge,
+            Boolean chargeFromSurplusOnly, String whyNextBest, BigDecimal whyNextBestMarginCt) {
+        this(start, batteryKw, gridKw, socPct, priceEurMwh, costEur, baselineCostEur, curtailKw,
+                pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh, gridValueCtKwh,
+                peakPressureEurKw, importPriceCtKwh, exportValueCtKwh, importPriceSource,
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, unplannedLoadDischarge,
+                chargeFromSurplusOnly, whyNextBest, whyNextBestMarginCt, null);
+    }
 
     /** The same slot with its decision prices filled in (P0 Textwahrheit). */
     public ScheduleSlotDto withPrices(
@@ -150,7 +173,7 @@ public record ScheduleSlotDto(
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
                 measuredLoadKw, measuredPvKw, coverLoadFromBattery, unplannedLoadDischarge,
                 chargeFromSurplusOnly,
-                whyNextBest, whyNextBestMarginCt);
+                whyNextBest, whyNextBestMarginCt, evReleaseFloorSocPct);
     }
 
     /**
@@ -165,6 +188,6 @@ public record ScheduleSlotDto(
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
                 measuredLoadKw, measuredPvKw, coverLoadFromBattery, unplannedLoadDischarge,
                 chargeFromSurplusOnly,
-                whyNextBest, whyNextBestMarginCt);
+                whyNextBest, whyNextBestMarginCt, evReleaseFloorSocPct);
     }
 }

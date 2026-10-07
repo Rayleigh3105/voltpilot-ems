@@ -1,5 +1,6 @@
 package com.voltpilot.api.verbraucher;
 
+import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.consumers.SgReady;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -68,6 +69,23 @@ public final class SteuerartSatz {
     /** Ein Ziel neben „Sofort" ist immer schon erfuellt (§3, Regel). */
     public static final String GRUND_ZIEL_BEI_SOFORT =
             "Bei Sofort ist das Ziel immer erfüllt.";
+    /**
+     * „Sonne + Speicher" (06.10.2026) ist eine Wahl der Quellen-Bahn der BOX -
+     * eine Wallbox ohne OCPP faehrt ihre Quelle ueber eine Regel, die eine
+     * Speicherfreigabe nicht ausdruecken kann.
+     */
+    public static final String GRUND_SPEICHER_NUR_OCPP =
+            "„Sonne + Speicher“ gibt es an OCPP-Ladepunkten — diese Wallbox lädt über ihre Regel.";
+    /** Ohne Speicher gibt es nichts freizugeben. */
+    public static final String GRUND_OHNE_SPEICHER =
+            "An dieser Anlage ist kein Speicher hinterlegt — ohne Speicher gibt es nichts freizugeben.";
+    /** Ohne Kapazitaet laesst sich die Nachtreserve nicht rechnen. */
+    public static final String GRUND_SPEICHER_OHNE_KAPAZITAET =
+            "Die Kapazität des Speichers ist nicht hinterlegt — ohne sie lässt sich nicht rechnen, "
+            + "was er bis zur nächsten Sonne braucht.";
+    /** Ein Ueberschuss-Modus ausserhalb des Vokabulars. */
+    public static final String GRUND_MODUS_UNBEKANNT =
+            "Diese Art, mit zu wenig Überschuss umzugehen, kennt VoltPilot nicht.";
     /** Die SG-Ready-Waermepumpe kennt gar kein Ziel (P8/E9). */
     public static final String GRUND_KEIN_ZIEL_SGREADY =
             "Für eine SG-Ready-Wärmepumpe gibt es kein Ziel: VoltPilot gibt die Freigabe, "
@@ -105,6 +123,14 @@ public final class SteuerartSatz {
     /** Die Tage-Woerter des Vertrags ({@code consumer-policy.schema.json}). */
     public static final Set<String> TAGE = Set.of("daily", "weekdays", "weekend");
 
+    /**
+     * Die Karte „Sonne + Speicher" in {@code optionen.quellen} (06.10.2026). Sie
+     * ist KEINE eigene Quelle: geschrieben wird {@code quelle=ueberschuss} mit
+     * {@code ueberschussModus=speicher}. Die Karte traegt nur die Sperre samt
+     * Grund - eine aeltere Flaeche, die die Id nicht kennt, laesst sie weg.
+     */
+    public static final String OPTION_SONNE_SPEICHER = "ueberschuss_speicher";
+
     private SteuerartSatz() {}
 
     /**
@@ -123,7 +149,21 @@ public final class SteuerartSatz {
      */
     public record Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
             String confirmationChannel, String tarifArt, boolean hatPv,
-            BigDecimal preisgrenzeVorgabeCtKwh) {}
+            BigDecimal preisgrenzeVorgabeCtKwh,
+            /*
+             * „Sonne + Speicher": hat die Anlage einen Speicher, und welche
+             * Kapazitaet ist gepflegt? null = keine gepflegt (nie 0).
+             */
+            boolean hatSpeicher, BigDecimal speicherKapazitaetKwh) {
+
+        /** Der Kontext ohne Speicher-Fakten (jeder Aufrufer vor 06.10.2026). */
+        public Kontext(String entityType, BigDecimal ratedPowerKw, BigDecimal minPowerKw,
+                String confirmationChannel, String tarifArt, boolean hatPv,
+                BigDecimal preisgrenzeVorgabeCtKwh) {
+            this(entityType, ratedPowerKw, minPowerKw, confirmationChannel, tarifArt, hatPv,
+                    preisgrenzeVorgabeCtKwh, false, null);
+        }
+    }
 
     /** Eine anbietbare Wahl - gesperrt heisst: sichtbar MIT Grund. */
     public record Option(String id, boolean gesperrt, String grund) {
@@ -207,14 +247,53 @@ public final class SteuerartSatz {
         return List.of();
     }
 
-    /** Die Quellen-Karten des Dialogs, jede frei oder gesperrt MIT Grund. */
+    /**
+     * Die Quellen-Karten des Dialogs, jede frei oder gesperrt MIT Grund.
+     *
+     * <p>Am Ladepunkt steht hinter „Überschuss" die Karte „Sonne + Speicher"
+     * ({@link #OPTION_SONNE_SPEICHER}) - keine eigene Quelle, sondern der
+     * Überschuss-Modus {@code speicher}, der hier seine Sperre zeigt.
+     */
     public static List<Option> quellen(Kontext k) {
         List<Option> out = new ArrayList<>();
         for (String id : quellenIds(k.entityType())) {
             String grund = quelleGesperrt(k, id);
             out.add(grund == null ? Option.frei(id) : Option.gesperrt(id, grund));
+            if (SteuerartProjektion.QUELLE_UEBERSCHUSS.equals(id)
+                    && VerbraucherService.istLadepunkt(k.entityType())) {
+                String speicher = speicherGesperrt(k);
+                out.add(speicher == null ? Option.frei(OPTION_SONNE_SPEICHER)
+                        : Option.gesperrt(OPTION_SONNE_SPEICHER, speicher));
+            }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Der Sperrgrund von „Sonne + Speicher", oder {@code null}. Die
+     * strukturellen Grenzen (keine PV, keine OCPP-Saeule, kein Speicher) stehen
+     * vor der Pflege-Luecke (keine Kapazitaet).
+     *
+     * <p><b>⚠ Was hier NICHT steht, prueft die Box laufend</b>: ob der Speicher
+     * an dieser Anlage von VoltPilot gefuehrt wird (Zertifizierung, Not-Aus,
+     * bestaetigte Rueckmeldung), ob ein frischer Fahrplan mit Untergrenze
+     * vorliegt und ob der Ladestand gemessen ist. Fehlt eines davon, laedt die
+     * Saeule wie „Nur Sonne" und die Box nennt den Grund.
+     */
+    static String speicherGesperrt(Kontext k) {
+        if (!k.hatPv()) {
+            return GRUND_OHNE_PV;
+        }
+        if (!ChargerComponentComposer.TYPE_EV_CHARGER.equals(k.entityType())) {
+            return GRUND_SPEICHER_NUR_OCPP;
+        }
+        if (!k.hatSpeicher()) {
+            return GRUND_OHNE_SPEICHER;
+        }
+        if (k.speicherKapazitaetKwh() == null || k.speicherKapazitaetKwh().signum() <= 0) {
+            return GRUND_SPEICHER_OHNE_KAPAZITAET;
+        }
+        return null;
     }
 
     /** Die Ziel-Karten des Dialogs; {@code quelle} entscheidet den Sofort-Fall. */
@@ -362,6 +441,23 @@ public final class SteuerartSatz {
                 || SgReady.QUELLE_UEBERSCHUSS.equals(w.quelle())) {
             if (w.schwelleKw() != null && w.schwelleKw().signum() <= 0) {
                 out.add("Die Überschuss-Schwelle muss größer als 0 sein.");
+            }
+        }
+        // „Sonne + Speicher" und das Vokabular des Ueberschuss-Modus - nur am
+        // Ladepunkt, nur dort gibt es den Modus (er beschreibt die Bahn der Box).
+        if (SteuerartProjektion.QUELLE_UEBERSCHUSS.equals(w.quelle())
+                && VerbraucherService.istLadepunkt(k.entityType())
+                && w.ueberschussModus() != null && !w.ueberschussModus().isBlank()) {
+            if (!SteuerartProjektion.MODI.contains(w.ueberschussModus())) {
+                out.add(GRUND_MODUS_UNBEKANNT);
+                return out;
+            }
+            if (SteuerartProjektion.MODUS_SPEICHER.equals(w.ueberschussModus())) {
+                String sperre2 = speicherGesperrt(k);
+                if (sperre2 != null) {
+                    out.add(sperre2);
+                    return out;
+                }
             }
         }
         if (w.mindestlaufzeitMinuten() != null
