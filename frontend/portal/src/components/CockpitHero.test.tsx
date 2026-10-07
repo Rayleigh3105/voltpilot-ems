@@ -1,9 +1,16 @@
 import { fireEvent, render, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { CockpitHero } from './CockpitHero';
 import { ControlStrip } from './ControlStrip';
 import type { LiveSnapshot } from '../live';
 import type { SiteTopology } from '../api';
+
+// Die Bühne lädt `EnergieBuehne` nach (React.lazy). Unter Last dauerte der erste Import länger als die Frist eines
+// `waitFor` (1 s) und der erste Fall scheiterte zufällig; vorgewärmt löst `lazy` sofort auf — geprüft wird das Bild,
+// nicht die Ladezeit des Testlaufs.
+beforeAll(async () => {
+  await import('./EnergieBuehne');
+});
 
 /**
  * **Die Bühne** (abgenommenes Konzept `data/vp-cockpit-konzept-f4`, Richtung A).

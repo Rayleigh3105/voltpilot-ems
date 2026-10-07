@@ -10,8 +10,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.voltpilot.api.tenant.TenantContext;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -96,6 +99,8 @@ class BezugswertEingabeApiTest {
 
     @Autowired
     MockMvc mvc;
+    @Autowired
+    BezugsgroesseService bezugsgroessen;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -393,6 +398,31 @@ class BezugswertEingabeApiTest {
         assertThat(freigabe.status()).isEqualTo(404);
         assertThat(freigabe.body().get("code").asText()).isEqualTo("nicht_gefunden");
         assertThat(vorgaenge(w)).containsExactly(kennung + " 1 vorschlag true null");
+    }
+
+    /**
+     * Stichtag-Grenze (Auswerten a4): die Werte-Route zeigt einen Periodenwert erst, wenn seine Periode zu Ende ist -
+     * nie einen Wert nach heute. Hier steht die Uhr der Route VOR dem Ende der Periode eines gespeicherten Werts.
+     */
+    @Test
+    void dieWerteRouteZeigtNieEinenWertNachHeute() throws Exception {
+        Welt w = welt();
+        UUID bz = bezugsgroesse(w, "BZ-2", "Gutteile Montage", "Stück", "standort", w.standort());
+        String werte = PFAD + "/" + bz + "/werte";
+        ok(ruf(w.ines(), HttpMethod.POST, werte, Map.of("periode", "2025-09", "wert", "4.700")), 201);
+        ok(ruf(w.ines(), HttpMethod.POST, werte, Map.of("periode", "2025-10", "wert", "4.820")), 201);
+        try {
+            // 31.10.2025 23:00 Berlin: der Oktober läuft noch, der September ist zu Ende.
+            bezugsgroessen.uhrStellen(Clock.fixed(Instant.parse("2025-10-31T22:59:00Z"), ZoneOffset.UTC));
+            JsonNode vorher = ok(ruf(w.ines(), HttpMethod.GET, werte + "?fassungen=alle", null), 200).body();
+            assertThat(vorher.path("werte")).hasSize(1);
+            assertThat(vorher.at("/werte/0/periode_von").asText()).isEqualTo("2025-09-01");
+            // Mitternacht nach dem letzten Tag: der Oktober ist da.
+            bezugsgroessen.uhrStellen(Clock.fixed(Instant.parse("2025-10-31T23:00:00Z"), ZoneOffset.UTC));
+            assertThat(ok(ruf(w.ines(), HttpMethod.GET, werte, null), 200).body().path("werte")).hasSize(2);
+        } finally {
+            bezugsgroessen.uhrStellen(Clock.systemUTC());
+        }
     }
 
     // ================================================================ Gerüst

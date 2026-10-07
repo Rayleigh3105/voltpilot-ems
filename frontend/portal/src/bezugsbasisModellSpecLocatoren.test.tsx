@@ -32,7 +32,8 @@ afterEach(() => {
 const buehne = (lage: 'keine' | 'modell', person: string) => {
   setSelbstauskunft(rechteSeed(person).me);
   Object.assign(api, bezugsbasisBuehne(lage));
-  render(<KennzahlenPage kennzahlId={BB_IDS.kz4} onOeffnen={() => undefined} onListe={() => undefined} zone="Europe/Berlin" />);
+  // Wie `e2e/bezugsbasis.html?…&ebene=bezugsbasis`: die Bezugsbasis eine Ebene unter der Kennzahl (Konzept Auswerten a1 §6.6).
+  render(<KennzahlenPage kennzahlId={BB_IDS.kz4} ebene="bezugsbasis" onOeffnen={() => undefined} onListe={() => undefined} zone="Europe/Berlin" />);
 };
 
 async function waehleMonat(feld: string, monat: string) {
@@ -49,9 +50,6 @@ async function waehleMonat(feld: string, monat: string) {
 describe('e2e/bezugsbasis-modell.spec.ts — jeder Locator trifft', () => {
   it('Ablehnung (R9) an BB-0001 Fassung 2 für die Leserin', async () => {
     buehne('modell', 'CB');
-    const tab = await screen.findAllByRole('tab', { name: 'Bezugsbasis' });
-    eins(tab, 'tab Bezugsbasis (exact)');
-    fireEvent.click(tab[0]);
     const reiter = await screen.findByTestId('bezugsbasis-reiter');
     const ansicht = await within(reiter).findAllByTestId('bezugsbasis-modell-ansicht');
     eins(ansicht, 'bezugsbasis-modell-ansicht im Reiter');
@@ -73,7 +71,6 @@ describe('e2e/bezugsbasis-modell.spec.ts — jeder Locator trifft', () => {
 
   it('Modell bilden: zwölf Monate, Modell mit einer Einflussgröße, Vorschau nach dem Speichern', async () => {
     buehne('keine', 'IK');
-    fireEvent.click(await screen.findByRole('tab', { name: 'Bezugsbasis' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Bezugsbasis anlegen' }));
     const dialog = await screen.findByTestId('bezugsbasis-assistent');
     await waehleMonat('Erster Monat', 'November 2026');

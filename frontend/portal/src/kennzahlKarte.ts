@@ -104,7 +104,6 @@ import {
 
 export const TITEL = UEMS_KENNZAHLEN;
 export const LADEN = 'Kennzahlen werden geladen …';
-export const LADEFEHLER = 'Die Kennzahlen konnten nicht geladen werden.';
 export const WERTE_FEHLER = 'Die Werte konnten nicht geladen werden.';
 export const LEER = 'Es gibt noch keine Kennzahl.';
 /** AP-13 IP-2: „Kennzahlen dieses Standorts“ ohne Eintrag — am Unternehmen kann es trotzdem welche geben. */

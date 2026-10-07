@@ -1,0 +1,338 @@
+/*
+ * Die Grafiken der Seite einer Kennzahl (Konzept Auswerten a1 §6.12). Nur diese Bausteine - Klassen mit `vp-graf-`,
+ * `vp-skala-`, `vp-info`, `vp-legende`. Farben sind Tokens: das Urteil `--vp-c-urteil-*`, Verbrauch
+ * `--vp-c-chart-load`, das Vorjahr `--vp-navy`; Text trägt Text-Token, nie die Reihenfarbe.
+ * ⚠ Schrift in einer 340 px breiten Grafik nie unter 9,5 px; Säulen höchstens 16 px (Verlauf 18 px).
+ */
+
+.vp-graf {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 6px;
+  container-type: inline-size;
+  margin: 4px 0 2px;
+  min-width: 0;
+  border-radius: 8px;
+}
+.vp-graf.is-wahl {
+  cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.vp-graf.is-wahl:focus-visible {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 4px;
+}
+.vp-graf-y {
+  position: relative;
+  align-self: stretch;
+}
+.vp-graf-mass {
+  display: block;
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
+  font: 500 10px/1 var(--vp-font-heading);
+  white-space: nowrap;
+}
+.vp-graf-mass.is-wort {
+  font: 600 9.5px/1 var(--vp-font-heading);
+}
+.vp-graf-at {
+  position: absolute;
+  right: 0;
+  white-space: nowrap;
+  font: 500 10px/1 var(--vp-font-heading);
+  color: var(--vp-c-muted-fg);
+}
+.vp-graf-at.is-m {
+  transform: translateY(-50%);
+}
+.vp-graf-at.is-u {
+  transform: translateY(-100%);
+}
+.vp-graf-at.is-wort {
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.vp-graf-p {
+  position: relative;
+  min-width: 0;
+}
+.vp-graf-p > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.vp-graf-x,
+.vp-graf-j {
+  grid-column: 2;
+  display: grid;
+}
+.vp-graf-x {
+  margin-top: 5px;
+}
+.vp-graf-x > span {
+  min-width: 0;
+  text-align: center;
+  font: 500 9.5px/1.2 var(--vp-font-heading);
+  color: var(--vp-c-muted-fg);
+  white-space: nowrap;
+}
+.vp-graf-x > span.is-wahl {
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-graf-mk {
+  display: none;
+}
+@container (max-width: 300px) {
+  .vp-graf-ml {
+    display: none;
+  }
+  .vp-graf-mk {
+    display: inline;
+  }
+}
+.vp-graf-j {
+  margin-top: 1px;
+}
+.vp-graf-j > span {
+  min-width: 0;
+  padding-left: 3px;
+  font: 500 9px/1.2 var(--vp-font-heading);
+  color: var(--vp-c-muted-fg);
+  white-space: nowrap;
+}
+
+/* --- Marken ---------------------------------------------------------------------------------------------------------- */
+
+.vp-graf-band {
+  fill: var(--vp-c-urteil-band);
+}
+.vp-graf-linie {
+  stroke: var(--vp-c-border);
+  stroke-width: 1;
+}
+.vp-graf-null {
+  stroke: var(--vp-c-urteil-leer);
+  stroke-width: 1;
+}
+.vp-graf-leer {
+  fill: none;
+  stroke: var(--vp-c-urteil-leer);
+  stroke-dasharray: 3 2;
+}
+.vp-graf-s.is-schlechter {
+  fill: var(--vp-c-urteil-mehr);
+}
+.vp-graf-s.is-besser {
+  fill: var(--vp-c-urteil-weniger);
+}
+.vp-graf-s.is-im_rahmen {
+  fill: var(--vp-c-urteil-rahmen);
+}
+.vp-graf-s.is-ohne_urteil {
+  fill: none;
+  stroke: var(--vp-c-urteil-rahmen);
+  stroke-width: 1.5;
+}
+.vp-graf-s.is-wert {
+  fill: color-mix(in srgb, var(--vp-c-chart-load) 32%, #fff);
+}
+.vp-graf-s.is-wert.is-gewaehlt {
+  fill: var(--vp-c-chart-load);
+}
+.vp-graf-vorjahr {
+  fill: var(--vp-navy, #1e3a5f);
+  stroke: var(--vp-c-card);
+  stroke-width: 2;
+}
+.vp-graf-wahl {
+  fill: none;
+  stroke: var(--vp-navy, #1e3a5f);
+  stroke-width: 1.5;
+  opacity: 0.55;
+}
+.vp-graf.is-zusammen.is-warn {
+  --vp-graf-ton: var(--vp-c-urteil-mehr);
+}
+.vp-graf.is-zusammen.is-ok {
+  --vp-graf-ton: var(--vp-c-urteil-weniger);
+}
+.vp-graf-flaeche {
+  fill: var(--vp-graf-ton);
+  opacity: 0.1;
+}
+.vp-graf-kurve {
+  fill: none;
+  stroke: var(--vp-graf-ton);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.vp-graf-ende {
+  fill: var(--vp-graf-ton);
+  stroke: var(--vp-c-card);
+  stroke-width: 2;
+}
+.vp-graf-notiz {
+  position: absolute;
+  white-space: nowrap;
+  font: 700 11px/1 var(--vp-font-heading);
+  color: var(--vp-c-fg);
+  transform: translate(-100%, -170%);
+}
+
+/* --- Ziel-Skala ------------------------------------------------------------------------------------------------------ */
+
+.vp-skala {
+  margin: 6px 0 4px;
+  min-width: 0;
+}
+.vp-skala > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.vp-skala-o,
+.vp-skala-m {
+  position: relative;
+  height: 14px;
+}
+.vp-skala-o span,
+.vp-skala-m span {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+  font: 500 9.5px/14px var(--vp-font-heading);
+  color: var(--vp-c-muted-fg);
+}
+.vp-skala-o span {
+  font: 700 10px/14px var(--vp-font-heading);
+  color: var(--vp-c-fg);
+}
+.vp-skala-m .is-ziel {
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-skala .is-m {
+  transform: translateX(-50%);
+}
+.vp-skala .is-e {
+  transform: translateX(-100%);
+}
+.vp-skala-u {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  font: 500 9.5px/1.3 var(--vp-font-heading);
+  color: var(--vp-c-muted-fg);
+}
+.vp-skala-spur {
+  fill: var(--vp-flow-base, #e3e9f1);
+}
+.vp-skala-weg {
+  fill: var(--vp-flow-batt-soft, #e7f6ec);
+}
+.vp-skala-mitte {
+  stroke: var(--vp-c-muted-fg);
+  stroke-width: 1.5;
+}
+.vp-skala-ziel {
+  stroke: var(--vp-navy, #1e3a5f);
+  stroke-width: 2.5;
+}
+.vp-skala-jetzt {
+  stroke: var(--vp-c-card);
+  stroke-width: 2.5;
+  fill: var(--vp-c-urteil-rahmen);
+}
+.vp-skala-jetzt.is-warn {
+  fill: var(--vp-c-urteil-mehr);
+}
+.vp-skala-jetzt.is-ok {
+  fill: var(--vp-c-urteil-weniger);
+}
+
+/* --- Infozeile und Legende ------------------------------------------------------------------------------------------- */
+
+.vp-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 9px;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-bg);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg);
+}
+.vp-info b {
+  font: 700 0.875rem var(--vp-font-heading);
+  color: var(--vp-c-fg);
+}
+.vp-info-w {
+  font: 700 0.875rem var(--vp-font-heading);
+  color: var(--vp-navy, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-info-u {
+  font-weight: 600;
+  color: var(--vp-c-fg);
+}
+.vp-info-u.is-warn {
+  color: var(--vp-c-warn-fg);
+}
+.vp-info-u.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-info-u.is-leise {
+  font-weight: 400;
+  color: var(--vp-c-muted-fg);
+}
+.vp-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.72rem;
+  color: var(--vp-c-muted-fg);
+}
+.vp-legende span {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.vp-legende i {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+}
+.vp-legende i.is-mehr {
+  background: var(--vp-c-urteil-mehr);
+}
+.vp-legende i.is-rahmen {
+  background: var(--vp-c-urteil-rahmen);
+}
+.vp-legende i.is-weniger {
+  background: var(--vp-c-urteil-weniger);
+}
+.vp-legende i.is-jahr {
+  background: var(--vp-c-chart-load);
+}
+.vp-legende i.is-vorjahr {
+  border-radius: 50%;
+  background: var(--vp-navy, #1e3a5f);
+}

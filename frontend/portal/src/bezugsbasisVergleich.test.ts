@@ -104,7 +104,7 @@ describe('AP-17 IP-20 · das Bild des Vergleichs (nur Anzeige, nichts gerechnet)
     expect(bild.satz).toBe(
       'Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen werden soll — der Vergleich entsteht aus den gespeicherten Werten.',
     );
-    expect(bild.hinweis).toContain('Reiter „Bezugsbasis“');
+    expect(bild.hinweis).toContain('auf der Seite der Kennzahl fest („Bezugsbasis festlegen“)');
   });
 
   it('Zahlen: Anzeige-Rundung M5, Dezimalkomma, Tausender mit Leerzeichen, Band ohne Null am Ende', () => {
