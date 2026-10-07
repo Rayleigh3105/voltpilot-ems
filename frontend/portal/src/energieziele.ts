@@ -71,6 +71,7 @@ export const NOCH_NICHT_ENDGUELTIG = 'noch nicht endgültig';
 /** Befund 1 (Konzept Verbessern v1): ein offener Monat nennt den Grund der Route statt nur „noch nicht endgültig“. */
 export const MONAT_LAEUFT = 'läuft noch';
 export const MONAT_OHNE_WERT = 'kein gemessener Wert';
+export const NICHT_BEWERTBAR = 'nicht bewertbar';
 export const VERLAUF = 'Verlauf';
 export const VORSCHLAG = 'Vorschlag';
 export const LADEFEHLER = `Die ${UEMS_ENERGIEZIELE} konnten nicht geladen werden.`;
@@ -145,7 +146,8 @@ export function offenGrund(v: { satz: string; bereinigt: { grund: string | null 
   if (g === 'keine_werte') return MONAT_OHNE_WERT;
   if (g) {
     const i = v.satz.indexOf(' — ');
-    return (i >= 0 ? v.satz.slice(i + 3) : v.satz).replace(/\.$/, '');
+    // Ohne Satz der Route (etwa `basis_fehlt` ohne Bezugsbasis) bleibt die Zelle nicht leer.
+    return (i >= 0 ? v.satz.slice(i + 3) : v.satz).replace(/\.$/, '').trim() || NICHT_BEWERTBAR;
   }
   return NOCH_NICHT_ENDGUELTIG;
 }
@@ -252,6 +254,8 @@ export const BEGRUENDUNG_MIN = 10;
 export const BEGRUENDUNG_MAX = 500;
 export const begruendungOk = (t: string) => t.trim().length >= BEGRUENDUNG_MIN && t.trim().length <= BEGRUENDUNG_MAX;
 export const BEGRUENDUNG_HINWEIS = `Begründung mit ${BEGRUENDUNG_MIN} bis ${BEGRUENDUNG_MAX} Zeichen.`;
+/** Konzept Verbessern v1 §8.4: der Platzhalter einer Begründung - ein Beispiel statt der Länge. */
+export const BEGRUENDUNG_BEISPIEL = 'Zum Beispiel: was Sie geprüft haben und was Sie daraus schließen.';
 
 /**
  * Der Zielwert im Dialog: „Prozent weniger als erwartet“, eine Stelle; gesendet wird er wie im Vertrag (weniger

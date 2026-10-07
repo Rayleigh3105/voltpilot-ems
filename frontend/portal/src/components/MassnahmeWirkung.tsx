@@ -1,272 +1,31 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Massnahme, type MassnahmeBewertung, type MassnahmeErgebnis, type MassnahmeWirkung, type VorgangAnstoss } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_MASSNAHME, UEMS_NORMGRENZE } from '../glossar';
+import { NBSP } from '../format';
+import { UEMS_MASSNAHME, UEMS_MASSNAHME_ERGEBNISSE } from '../glossar';
+import * as B from '../massnahmenBild';
 import * as W from '../massnahmeWirkung';
-import * as M from '../massnahmen';
-import { Ablehnung, Begruendung } from './EnergiezielDialoge';
+import { Ablehnung } from './EnergiezielDialoge';
+import { BringtMarke } from './MassnahmenRegister';
+import { TextFeld, Wahl } from './MassnahmeDialoge';
 import { Recht } from './Recht';
-import { ErrorState, Skeleton } from './States';
-import { VpPicker } from './VpPicker';
+import { Skeleton } from './States';
+import { fazit, nachherMonate, URTEIL_WORT, WirkungsGrafik } from './WirkungsGrafik';
 import '../pages/Verbesserung.css';
+import '../pages/Massnahmen.css';
 
-type Lage = { art: 'laedt' } | { art: 'fehler' } | { art: 'da'; w: MassnahmeWirkung };
+export type WirkungLage = { art: 'laedt' } | { art: 'fehler' } | { art: 'da'; w: MassnahmeWirkung };
 
-/**
- * Abschnitt „Wirkung“ (AP-18 IP-20, §5.5, WK1–WK5): der Satz des Lesers, darunter die Nachher-Monate mit Urteil und
- * Band (Umsetzungsmonat und nicht bewertbare Monate mit dem Satz des Lesers), die Summenzeile Σ ÷ Σ mit „x von 12“,
- * „vorläufig“ aus dem Feld der Route, daneben Ausgangslage und erwartete Wirkung, und die rohe Kennzahl ohne Wort.
- * Ohne Messgrundlage nur der Satz (M4). Das Portal rechnet nichts.
- */
-function WirkungKarte({ m, w }: { m: Massnahme; w: MassnahmeWirkung }) {
-  const zeilen = W.wirkungZeilen(w);
-  const summe = W.wirkungSumme(w);
-  const vorlaeufig = W.vorlaeufigText(w);
-  const mg = m.messgrundlage;
-  return (
-    <section className="vp-ez-karte" aria-labelledby="ma-wirkung" data-testid="massnahme-wirkung">
-      <div className="vp-ez-kopf-zeile">
-        <h2 id="ma-wirkung">{W.WIRKUNG}</h2>
-        {vorlaeufig && (
-          <Badge variant="tint" data-testid="massnahme-wirkung-vorlaeufig">
-            {vorlaeufig}
-          </Badge>
-        )}
-      </div>
-      {w.satz && (
-        <p className="vp-ez-satz" data-testid="massnahme-wirkung-satz">
-          {w.satz}
-        </p>
-      )}
-      {w.grund === null && (
-        <>
-          <div className="vp-ma-daneben" data-testid="massnahme-wirkung-daneben">
-            <p className="vp-ez-label">{W.ZUM_VERGLEICH}</p>
-            <p className="vp-ez-leise">{mg?.satz ?? M.erwarteteWirkungText(m)}</p>
-          </div>
-          <div className="vp-ma-tafel-rahmen">
-            <table className="vp-ez-tafel" data-testid="massnahme-wirkung-monate">
-              <thead>
-                <tr>
-                  <th scope="col">{Z.MONAT_SPALTEN.monat}</th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {Z.MONAT_SPALTEN.gemessen}
-                  </th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {Z.MONAT_SPALTEN.erwartet}
-                  </th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {Z.MONAT_SPALTEN.delta}
-                  </th>
-                  <th scope="col">{Z.MONAT_SPALTEN.urteil}</th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {W.ROH_SPALTE}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((z) =>
-                  z.art === 'gezaehlt' ? (
-                    <tr key={z.periode} data-testid={`wirkung-${z.periode}`}>
-                      <th scope="row">{z.beschriftung}</th>
-                      <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
-                        {z.gemessen}
-                        {z.version !== null && <span className="vp-ez-unter">{`Version ${z.version}`}</span>}
-                      </td>
-                      <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.erwartet}>
-                        {z.erwartet}
-                      </td>
-                      <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.delta}>
-                        {z.delta ?? '—'}
-                      </td>
-                      <td data-label={Z.MONAT_SPALTEN.urteil} data-testid="urteil">
-                        {z.urteil}
-                        {z.band && ` (${z.band})`}
-                      </td>
-                      <td className="vp-ez-zahl vp-ez-leise" data-label={W.ROH_SPALTE} data-testid="roh">
-                        {z.roh ?? '—'}
-                      </td>
-                    </tr>
-                  ) : z.art === 'nicht_gezaehlt' ? (
-                    <tr key={z.periode} className="vp-ez-aus" data-testid={`wirkung-${z.periode}`}>
-                      <th scope="row">{z.beschriftung}</th>
-                      <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
-                        {z.gemessen}
-                      </td>
-                      <td colSpan={3} data-label={Z.MONAT_SPALTEN.grund} data-testid="grund">
-                        {z.satz}
-                      </td>
-                      <td className="vp-ez-zahl vp-ez-leise" data-label={W.ROH_SPALTE}>
-                        {z.roh ?? '—'}
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={z.periode} className="vp-ez-offen" data-testid={`wirkung-${z.periode}`}>
-                      <th scope="row">{z.beschriftung}</th>
-                      <td colSpan={5} data-testid="grund">{z.grund}</td>
-                    </tr>
-                  ),
-                )}
-                {summe && (
-                  <tr className="vp-ez-summe" data-testid="massnahme-wirkung-summe">
-                    <th scope="row">
-                      {Z.SUMME}
-                      <span className="vp-ez-unter">{summe.monate}</span>
-                    </th>
-                    <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
-                      {summe.gemessen}
-                    </td>
-                    <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.erwartet}>
-                      {summe.erwartet}
-                    </td>
-                    <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.delta}>
-                      {summe.delta ?? '—'}
-                    </td>
-                    <td data-label={Z.MONAT_SPALTEN.urteil}>
-                      {summe.urteil}
-                      {summe.band && ` (${summe.band})`}
-                    </td>
-                    <td />
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {w.summe && w.summe.kennzeichen.length > 0 && (
-            <ul className="vp-ez-leise" data-testid="massnahme-wirkung-kennzeichen">
-              {w.summe.kennzeichen.map((k) => (
-                <li key={k}>{k}</li>
-              ))}
-            </ul>
-          )}
-          <p className="vp-ez-leise">{W.ROH_HINWEIS}</p>
-        </>
-      )}
-    </section>
-  );
-}
-
-/** Ein Stand Nr. n: der Satz der Route (Person, Datum, Begründung, Prüfsumme kurz), Vier-Augen und die volle Prüfsumme. */
-function Stand({ b, testid }: { b: MassnahmeBewertung; testid?: string }) {
-  const bestaetigt = W.bestaetigtSatz(b);
-  return (
-    <div className="vp-ma-stand" data-testid={testid}>
-      <p className="vp-ez-satz">{b.status === 'abgelehnt' ? W.abgelehntSatz(b) : b.status === 'beantragt' ? W.beantragtSatz(b) : W.standSatz(b)}</p>
-      {b.status !== 'bewertet' && <p>‚{b.begruendung}‘</p>}
-      {b.status === 'bewertet' && bestaetigt && <p className="vp-ez-leise">{bestaetigt}</p>}
-      <p className="vp-ez-pruefsumme">{W.standZeile(b)}</p>
-    </div>
-  );
-}
-
-/** „Alle Stände“: frühere, beantragte und abgelehnte Stände — erst beim Aufklappen gelesen, nie zurückgenommen. */
-function AlleStaende({ m }: { m: Massnahme }) {
-  const [liste, setListe] = useState<MassnahmeBewertung[] | null | 'fehler'>(null);
-  const [offen, setOffen] = useState(false);
-  useEffect(() => {
-    if (!offen || liste !== null) return;
-    api.massnahmeBewertungen(m.id).then(
-      (r) => setListe(r.bewertungen),
-      () => setListe('fehler'),
-    );
-  }, [offen, liste, m.id]);
-  return (
-    <details className="vp-ez-kopie" data-testid="massnahme-staende" onToggle={(e) => {
-        const auf = (e.target as HTMLDetailsElement).open;
-        setOffen(auf);
-        if (auf && liste === 'fehler') setListe(null);
-      }}>
-      <summary>{W.ALLE_STAENDE}</summary>
-      {liste === 'fehler' ? (
-        <>
-          <p className="vp-ez-leise" role="alert">{W.STAENDE_LADEFEHLER}</p>
-          <Button variant="outline" size="sm" onClick={() => setListe(null)} data-testid="massnahme-staende-erneut">
-            Erneut versuchen
-          </Button>
-        </>
-      ) : liste === null ? (
-        offen && <Skeleton height={60} />
-      ) : (
-        <ol className="vp-ez-verlauf">
-          {[...liste].reverse().map((b) => (
-            <li key={b.stand_nr}>
-              <Stand b={b} />
-            </li>
-          ))}
-        </ol>
-      )}
-    </details>
-  );
-}
-
-/**
- * Spalte „Bewertung“ (§5.5, WK6, E6 = A): ohne bewerteten Stand „beobachtet — nicht belegt“; sonst der Stand Nr. n
- * mit Person, Datum, Begründung und Prüfsumme; ein offener Antrag (Vier-Augen) mit „bestätigen“/„ablehnen“ für eine
- * zweite Person; „bewerten“ mit Recht `verbesserung.abschliessen`. Frühere Stände aufklappbar.
- */
-function BewertungKarte({ m, sub, onDialog }: { m: Massnahme; sub: string | null; onDialog: (s: 'bewerten' | 'freigeben' | 'ablehnen') => void }) {
-  const b = m.bewertung;
-  const antrag = m.bewertung_antrag;
-  return (
-    <section className="vp-ez-karte" aria-labelledby="ma-bewertung" data-testid="massnahme-bewertung">
-      <h2 id="ma-bewertung">{W.BEWERTUNG}</h2>
-      {b ? (
-        <Stand b={b} testid="massnahme-stand" />
-      ) : (
-        <p className="vp-ez-satz" data-testid="massnahme-beobachtet">
-          {W.bewertungOffenSatz()}
-        </p>
-      )}
-      {antrag && (
-        <>
-          <Stand b={antrag} testid="massnahme-antrag" />
-          {W.eigenerAntrag(m, sub) ? (
-            <p className="vp-ez-leise">{W.EIGENER_ANTRAG}</p>
-          ) : (
-            <Recht aktion="verbesserung.abschliessen" standort={m.standort_id}>
-              <div className="vp-ez-aktionen">
-                <Button size="sm" onClick={() => onDialog('freigeben')} data-testid="massnahme-freigeben">
-                  {W.KNOPF_FREIGEBEN}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => onDialog('ablehnen')} data-testid="massnahme-ablehnen">
-                  {W.KNOPF_ABLEHNEN}
-                </Button>
-              </div>
-            </Recht>
-          )}
-        </>
-      )}
-      {W.bewertbar(m) && (
-        <Recht aktion="verbesserung.abschliessen" standort={m.standort_id}>
-          <div className="vp-ez-aktionen">
-            <Button size="sm" onClick={() => onDialog('bewerten')} data-testid="massnahme-bewerten">
-              {W.KNOPF_BEWERTEN}
-            </Button>
-          </div>
-        </Recht>
-      )}
-      {(b || antrag) && <AlleStaende key={`${b?.stand_nr ?? 0}-${antrag?.stand_nr ?? 0}`} m={m} />}
-    </section>
-  );
-}
-
-/** Wirkung und Bewertung nebeneinander (1440) bzw. untereinander (375); der Dialog gehört der Seite. */
-export function MassnahmeWirkungBewertung({
-  m,
-  sub,
-  onDialog,
-}: {
-  m: Massnahme;
-  sub: string | null;
-  onDialog: (s: 'bewerten' | 'freigeben' | 'ablehnen') => void;
-}) {
-  const [lage, setLage] = useState<Lage>({ art: 'laedt' });
+/** Die Wirkung der Maßnahme - ein Leser der Route (`…/wirkung`), erneut bei jeder Umsetzung und auf Wunsch. */
+export function useWirkung(m: Pick<Massnahme, 'id' | 'umgesetzt_am' | 'zustand' | 'art'>): [WirkungLage | null, () => void] {
+  const [lage, setLage] = useState<WirkungLage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
-  // Ein neuer Stand ändert die Wirkung nicht (ein Leser) — gelesen wird sie je Maßnahme und Umsetzung.
+  const lesen = m.art === 'gemessen' && (m.zustand === 'umgesetzt' || m.zustand === 'bewertet');
   useEffect(() => {
+    if (!lesen) return;
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahmeWirkung(m.id).then(
@@ -276,71 +35,360 @@ export function MassnahmeWirkungBewertung({
     return () => {
       aktiv = false;
     };
-  }, [m.id, m.umgesetzt_am, versuch]);
+  }, [m.id, m.umgesetzt_am, lesen, versuch]);
+  return [lesen ? lage : null, () => setVersuch((v) => v + 1)];
+}
+
+/** Beobachtet neben erwartet, nie summiert (V2/V4): Weniger als erwartet · Erwartet waren · Vorher. */
+export function WirkungKacheln({ m, w }: { m: Massnahme; w: MassnahmeWirkung }) {
+  const k = w.massnahme.wirkung_kurz;
+  if (!k) return null;
   return (
-    <div className="vp-ma-wirkung">
-      {lage.art === 'laedt' ? (
-        <section className="vp-ez-karte" aria-busy="true" data-testid="massnahme-wirkung">
-          <h2>{W.WIRKUNG}</h2>
-          <Skeleton height={200} />
-        </section>
-      ) : lage.art === 'fehler' ? (
-        <section className="vp-ez-karte" data-testid="massnahme-wirkung">
-          <h2>{W.WIRKUNG}</h2>
-          <ErrorState message={W.WIRKUNG_LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />
-        </section>
-      ) : (
-        <WirkungKarte m={m} w={lage.w} />
-      )}
-      <BewertungKarte m={m} sub={sub} onDialog={onDialog} />
+    <div className="vp-mn-kacheln" data-testid="massnahme-kacheln">
+      {B.kachelnBild(m, k).map((x) => (
+        <div key={x.titel} className="vp-mn-k" data-testid={`massnahme-kachel-${x.titel}`}>
+          <span className="vp-mn-k-titel">{x.titel}</span>
+          <span className="vp-mn-k-wert">
+            {x.wert}
+            <small>{x.einheit}</small>
+          </span>
+          <p className="vp-mn-k-unter">{x.unter}</p>
+        </div>
+      ))}
     </div>
   );
 }
 
 /**
- * „bewerten“ (WK6, §5.7): Ergebnis `belegt · nicht belegt · nicht messbar` (ohne Messgrundlage nur „nicht messbar“)
- * und Begründung einer Person. Mit Vier-Augen folgt der Dialog der Route (409 `vieraugen_beantragen` → Antrag), eine
- * ZWEITE Person bestätigt oder lehnt ab (`schritt` `freigeben` · `ablehnen`). Aus einem Anstoß („neu bewerten“) geht
- * die Antwort an `…/anstoesse/{aid}/antwort` (IP-17-NAHT) — die Route setzt dann Stand Nr. n + 1 bzw. den Antrag.
+ * „Je Monat nach der Umsetzung“ (§6.6): die Grafik der Route, darunter in Worten, wie viele Monate unter der
+ * Erwartung lagen, und die Gründe der nicht bewertbaren; dieselben Werte als Liste dahinter (Regel 6.11). Laden und
+ * noch kein Monat; einen Fehler sagt die Antwort oben mit „Erneut versuchen“ (`antwortBild`).
+ */
+export function WirkungKarte({ m, lage }: { m: Massnahme; lage: Exclude<WirkungLage, { art: 'fehler' }> }) {
+  if (lage.art === 'laedt') {
+    return (
+      <section className="vp-mn-karte is-wirkung" aria-busy="true" data-testid="massnahme-wirkung">
+        <div className="vp-wv-blockkopf">
+          <h2>Je Monat nach der Umsetzung</h2>
+        </div>
+        <Skeleton height={190} />
+      </section>
+    );
+  }
+  const w = lage.w;
+  const monate = nachherMonate(w);
+  const f = fazit(monate);
+  const ausschluesse = monate.filter((x) => !x.gezaehlt && x.grund !== null && x.satz).map((x) => x.satz!);
+  const zeilen = monate.some((x) => x.vergleich.bereinigt.gemessen.wert !== null)
+    ? monate
+        .filter((x) => x.vergleich.bereinigt.gemessen.wert !== null || x.grund !== null)
+        .map((x) => {
+          const b = x.vergleich.bereinigt;
+          return {
+            periode: x.periode,
+            gezaehlt: x.gezaehlt,
+            monat: x.vergleich.beschriftung,
+            gemessen: b.gemessen.wert === null ? '-' : `${B.ganz(b.gemessen.wert)}${NBSP}${b.gemessen.einheit}`,
+            erwartet: b.erwartet === null ? '-' : `${B.ganz(b.erwartet)}${NBSP}${b.gemessen.einheit}`,
+            prozent: x.gezaehlt && b.delta_prozent !== null ? `${B.prozentBetrag(b.delta_prozent)} ${B.richtungWort(b.delta_prozent)}` : null,
+            wort: x.gezaehlt && b.delta_prozent !== null ? (URTEIL_WORT[b.urteil] ?? b.urteil) : x.grund !== null ? 'nicht bewertbar' : Z.offenGrund(x.vergleich),
+            urteil:
+              x.gezaehlt && b.delta_prozent !== null
+                ? `${B.prozentBetrag(b.delta_prozent)} ${B.richtungWort(b.delta_prozent)}${b.urteil === 'im_rahmen' ? ` · ${URTEIL_WORT[b.urteil]}` : ' als erwartet'}`
+                : x.grund !== null
+                  ? 'nicht bewertbar'
+                  : Z.offenGrund(x.vergleich),
+            roh: W.rohText(x.kennzahl_roh) ?? '-',
+          };
+        })
+    : [];
+  return (
+    <section className="vp-mn-karte is-wirkung" aria-labelledby="ma-je-monat" data-testid="massnahme-wirkung">
+      <div className="vp-wv-blockkopf">
+        <h2 id="ma-je-monat">Je Monat nach der Umsetzung</h2>
+        {w.monate_text && <span className="vp-wv-abschnitt-m is-immer">{`${w.monate_text} Monaten`}</span>}
+      </div>
+      {w.monate_bewertbar ? (
+        <WirkungsGrafik w={w} erwartetProzent={m.erwartete_wirkung_prozent} />
+      ) : (
+        <p className="vp-mn-text" data-testid="massnahme-wirkung-leer">
+          {B.ohneMonatSatz(w)}
+        </p>
+      )}
+      {(f || ausschluesse.length > 0) && (
+        <p className="vp-mn-fazit" data-testid="massnahme-wirkung-fazit">
+          {f && (
+            <>
+              <b>{f.kopf}</b>
+              {f.rest}
+            </>
+          )}
+          {ausschluesse.length > 0 && ` ${ausschluesse.join(' ')}`}
+        </p>
+      )}
+      {w.satz && (
+        <p className="vp-mn-leise" data-testid="massnahme-wirkung-satz">
+          {w.satz}
+        </p>
+      )}
+      {zeilen.length > 0 && (
+        <details className="vp-mn-details vp-mn-werte" data-testid="massnahme-wirkung-monate">
+          <summary>
+            Werte je Monat
+            <Icon name="chevron-down" size={14} />
+          </summary>
+          {/* Am Telefon Reihen (wie „Werte je Monat“ am Energieziel), ab 560 px eine Tabelle - dieselben Zeilen. */}
+          <ul className="vp-mn-werte-liste">
+            {zeilen.map((z) => (
+              <li key={z.periode} className={z.gezaehlt ? undefined : 'is-aus'}>
+                <b>{z.monat}</b>
+                <span className="vp-mn-wl-prozent">{z.prozent ?? z.wort}</span>
+                <span className="vp-mn-wl-werte">
+                  {z.gemessen === '-' ? 'kein Wert' : z.erwartet === '-' ? z.gemessen : `${z.gemessen}, erwartet ${z.erwartet}`}
+                </span>
+                <span className="vp-mn-wl-wort">{z.prozent ? z.wort : ''}</span>
+                {z.roh !== '-' && <span className="vp-mn-wl-roh">{`${W.ROH_SPALTE} ${z.roh}`}</span>}
+              </li>
+            ))}
+          </ul>
+          <div className="vp-mn-werte-rahmen">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Monat</th>
+                  <th scope="col" className="is-zahl">
+                    gemessen
+                  </th>
+                  <th scope="col" className="is-zahl">
+                    erwartet
+                  </th>
+                  <th scope="col">Urteil</th>
+                  <th scope="col" className="is-zahl">
+                    {W.ROH_SPALTE}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {zeilen.map((z) => (
+                  <tr key={z.periode} className={z.gezaehlt ? undefined : 'is-aus'} data-testid={`wirkung-${z.periode}`}>
+                    <th scope="row">{z.monat}</th>
+                    <td className="is-zahl">{z.gemessen}</td>
+                    <td className="is-zahl">{z.erwartet}</td>
+                    <td data-testid="urteil">{z.urteil}</td>
+                    <td className="is-zahl" data-testid="roh">
+                      {z.roh}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="vp-mn-leise">{W.ROH_HINWEIS}</p>
+        </details>
+      )}
+    </section>
+  );
+}
+
+/** „Alle Stände der Bewertung“ - erst beim Aufklappen gelesen; nach einem Fehler mit „Erneut versuchen“. */
+function AlleStaende({ m }: { m: Massnahme }) {
+  const [liste, setListe] = useState<MassnahmeBewertung[] | null | 'fehler'>(null);
+  const [offen, setOffen] = useState(false);
+  const [versuch, setVersuch] = useState(0);
+  useEffect(() => {
+    if (!offen || (liste !== null && liste !== 'fehler')) return;
+    let aktiv = true;
+    setListe(null);
+    api.massnahmeBewertungen(m.id).then(
+      (r) => aktiv && setListe(r.bewertungen),
+      () => aktiv && setListe('fehler'),
+    );
+    return () => {
+      aktiv = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offen, m.id, versuch]);
+  return (
+    <details className="vp-mn-details" data-testid="massnahme-staende" onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}>
+      <summary>
+        {W.ALLE_STAENDE}
+        <Icon name="chevron-down" size={14} />
+      </summary>
+      {liste === 'fehler' ? (
+        <p className="vp-mn-leise" role="alert">
+          {W.STAENDE_LADEFEHLER}{' '}
+          <button type="button" className="vp-mn-sprung" onClick={() => setVersuch((v) => v + 1)} data-testid="massnahme-staende-erneut">
+            {B.ERNEUT_VERSUCHEN}
+          </button>
+        </p>
+      ) : liste === null ? (
+        offen && <Skeleton height={60} />
+      ) : (
+        <ol className="vp-mn-verlauf">
+          {[...liste].reverse().map((b) => (
+            <li key={b.stand_nr}>
+              <div className="vp-mn-verlauf-text">
+                <b>{`Stand Nr. ${b.stand_nr} · ${UEMS_MASSNAHME_ERGEBNISSE[b.ergebnis]}${b.status !== 'bewertet' ? ` (${b.status})` : ''}`}</b>
+                <span>{`${b.person.name} · ${Z.tag(b.am)} · ‚${b.begruendung}‘`}</span>
+                <span>{W.standZeile(b)}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
+  );
+}
+
+export type BewertungSchritt = 'bewerten' | 'freigeben' | 'ablehnen';
+
+/**
+ * „Kommt der Unterschied von der Maßnahme?“ (§6.6, WK6, E6 = A): das Urteil einer Person mit Zitat, Person, Datum und
+ * dem damaligen Stand - „beobachtet“ ist das Wort des Systems, „belegt“ das einer Person. Ein offener Antrag wartet
+ * auf eine zweite Person; „Neu prüfen“, wenn seit dem Stand mehr Monate bewertbar sind.
+ */
+export function UrteilKarte({
+  m,
+  w,
+  sub,
+  onDialog,
+  darfAbschliessen = true,
+}: {
+  m: Massnahme;
+  w: MassnahmeWirkung | null;
+  sub: string | null;
+  onDialog: (s: BewertungSchritt) => void;
+  /** Ohne `verbesserung.abschliessen` sagt die Karte, wer abschließt, statt die Person dazu aufzufordern. */
+  darfAbschliessen?: boolean;
+}) {
+  const b = m.bewertung;
+  const antrag = m.bewertung_antrag;
+  const kopie = b ? B.standKopie(b) : null;
+  const jetzt = w?.monate_text ?? null;
+  // „Neu prüfen“ nur, wenn heute mehr Monate bewertbar sind als im festgehaltenen Stand.
+  const neuPruefen = b && kopie && jetzt && (w?.monate_bewertbar ?? 0) > kopie.anzahl && W.bewertbar(m);
+  const ohneMessung = m.art !== 'gemessen';
+  return (
+    <section className="vp-mn-karte is-urteil" aria-labelledby="ma-urteil" data-testid="massnahme-bewertung">
+      <div className="vp-wv-blockkopf">
+        <h2 id="ma-urteil">{ohneMessung ? 'Was daraus geworden ist' : `Kommt der Unterschied von der ${UEMS_MASSNAHME}?`}</h2>
+      </div>
+      {b ? (
+        <>
+          <BringtMarke marke={B.ergebnisMarke(b)} />
+          <blockquote className="vp-mn-zitat" data-testid="massnahme-stand">
+            ‚{b.begruendung}‘
+            <small>
+              {`${b.person.name} · ${Z.tag(b.am)}${kopie ? ` · nach ${kopie.monate} Monaten (damals ${kopie.prozent})` : ''}`}
+              {W.bestaetigtSatz(b) ? ` · ${W.bestaetigtSatz(b)}` : ''}
+            </small>
+          </blockquote>
+          {neuPruefen && (
+            <Recht aktion="verbesserung.abschliessen" standort={m.standort_id}>
+              <button type="button" className="vp-mn-sprung" onClick={() => onDialog('bewerten')} data-testid="massnahme-neu-pruefen">
+                {`${B.KNOPF_NEU_PRUEFEN} mit ${jetzt} Monaten`}
+              </button>
+            </Recht>
+          )}
+        </>
+      ) : !antrag ? (
+        <p className="vp-mn-text" data-testid="massnahme-beobachtet">
+          {ohneMessung
+            ? m.zustand === 'umgesetzt'
+              ? darfAbschliessen
+                ? 'Ohne Kennzahl misst VoltPilot nichts. Ob die Maßnahme hält, sagen Sie mit einem Satz - damit ist sie abgeschlossen.'
+                : `Ohne Kennzahl misst VoltPilot nichts. Was daraus geworden ist, sagt ein Satz beim Abschließen - ${B.WER_ABSCHLIESST}.`
+              : 'Nach der Umsetzung schließen Sie die Maßnahme mit einem Satz ab.'
+            : W.bewertungOffenSatz()}
+        </p>
+      ) : null}
+      {antrag && (
+        <div className="vp-mn-hinweis" data-testid="massnahme-antrag">
+          <Icon name="info" size={16} />
+          <span>
+            {`${antrag.person.name} hat „${UEMS_MASSNAHME_ERGEBNISSE[antrag.ergebnis]}“ beantragt (${Z.tag(antrag.am)}): ‚${antrag.begruendung}‘ Bestätigen oder ablehnen kann eine zweite Person.`}
+          </span>
+        </div>
+      )}
+      {antrag && !W.eigenerAntrag(m, sub) && (
+        <Recht aktion="verbesserung.abschliessen" standort={m.standort_id}>
+          <div className="vp-ez-aktionen">
+            <Button size="sm" onClick={() => onDialog('freigeben')} data-testid="massnahme-freigeben">
+              {W.KNOPF_FREIGEBEN}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onDialog('ablehnen')} data-testid="massnahme-ablehnen">
+              {W.KNOPF_ABLEHNEN}
+            </Button>
+          </div>
+        </Recht>
+      )}
+      {antrag && W.eigenerAntrag(m, sub) && <p className="vp-mn-leise">{W.EIGENER_ANTRAG}</p>}
+      {(b || antrag) && <AlleStaende key={`${b?.stand_nr ?? 0}-${antrag?.stand_nr ?? 0}`} m={m} />}
+    </section>
+  );
+}
+
+/** Die Antwort-Karten von „Wirkung prüfen“ (§6.9): was jedes Ergebnis bedeutet. */
+const ERGEBNIS_KARTE: Record<MassnahmeErgebnis, { wort: string; satz: string }> = {
+  belegt: { wort: 'Ja, belegt', satz: 'Sie können begründen, dass die Maßnahme den Unterschied macht.' },
+  nicht_belegt: { wort: 'Nicht belegt', satz: 'Der Unterschied hat andere Gründe - oder es gibt keinen.' },
+  nicht_messbar: { wort: 'Nicht messbar', satz: 'Die Zahl sagt hier nichts, zum Beispiel weil sich der Prozess geändert hat.' },
+};
+
+/**
+ * „Wirkung prüfen“ (§6.9, WK6) bzw. ohne Messung „Abschließen“ (Entscheid 6: ein Satz, Ergebnis „nicht messbar“) -
+ * ein Blatt. Oben die beobachtete Zahl der Route, darunter die Antwort-Karten und ein Satz Begründung; „Wird als Stand
+ * Nr. n festgehalten“. Mit Vier-Augen folgt der Dialog der Route (409 `vieraugen_beantragen` → Antrag); eine ZWEITE
+ * Person bestätigt oder lehnt ab. Aus einem Anstoß („neu bewerten“) geht die Antwort an `…/anstoesse/{aid}/antwort`.
  */
 export function MassnahmeBewertenDialog({
   m,
+  w,
   schritt,
   anstoss,
   onClose,
   onFertig,
 }: {
   m: Massnahme;
-  schritt: 'bewerten' | 'freigeben' | 'ablehnen';
+  w?: MassnahmeWirkung | null;
+  schritt: BewertungSchritt;
   anstoss?: VorgangAnstoss | null;
   onClose: () => void;
   onFertig: (m: Massnahme) => void;
 }) {
   const basis = `mab-${useId().replace(/:/g, '')}`;
+  const ohneMessung = m.art !== 'gemessen' || !m.messgrundlage;
   const optionen = W.ergebnisOptionen(m);
-  const [ergebnis, setErgebnis] = useState<MassnahmeErgebnis | null>(optionen.length === 1 ? optionen[0].value : null);
+  const [ergebnis, setErgebnis] = useState<MassnahmeErgebnis | null>(ohneMessung ? 'nicht_messbar' : null);
   const [begruendung, setBegruendung] = useState('');
   const [zeigen, setZeigen] = useState<{ ergebnis?: string; begruendung?: string }>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const titel =
     schritt === 'bewerten'
-      ? `${UEMS_MASSNAHME} ${m.kennzeichen} ${anstoss ? W.ANTWORT_KNOPF.neu_bewertet : W.KNOPF_BEWERTEN}`
+      ? ohneMessung
+        ? B.KNOPF_ABSCHLIESSEN
+        : anstoss
+          ? W.ANTWORT_KNOPF.neu_bewertet
+          : B.KNOPF_WIRKUNG
       : schritt === 'freigeben'
         ? W.KNOPF_FREIGEBEN
         : W.KNOPF_ABLEHNEN;
+  const naechsteNr = Math.max(m.bewertung?.stand_nr ?? 0, m.bewertung_antrag?.stand_nr ?? 0) + 1;
+  const k = w?.massnahme.wirkung_kurz ?? null;
 
   async function senden(ev: FormEvent) {
     ev.preventDefault();
     const fehler = {
-      ...(schritt === 'bewerten' && !ergebnis ? { ergebnis: 'Bitte wählen Sie ein Ergebnis.' } : {}),
+      ...(schritt === 'bewerten' && !ergebnis ? { ergebnis: 'Bitte wählen Sie eine Antwort.' } : {}),
       // Beim Bestätigen ist die Begründung wahlfrei (IP-12); steht eine da, gilt dieselbe Länge.
-      ...(!Z.begruendungOk(begruendung) && !(schritt === 'freigeben' && !begruendung.trim()) ? { begruendung: Z.BEGRUENDUNG_HINWEIS } : {}),
+      ...(!Z.begruendungOk(begruendung) && !(schritt === 'freigeben' && !begruendung.trim())
+        ? { begruendung: 'Ein Satz mit mindestens zehn Zeichen.' }
+        : {}),
     };
     setZeigen(fehler);
-    const erstes = Object.keys(fehler)[0];
-    if (erstes) {
-      document.getElementById(`${basis}-${erstes}`)?.focus();
+    if (Object.keys(fehler).length) {
+      document.getElementById(fehler.ergebnis ? `${basis}-ergebnis` : `${basis}-begruendung`)?.focus();
       return;
     }
     setBusy(true);
@@ -372,6 +420,7 @@ export function MassnahmeBewertenDialog({
   return (
     <Modal
       open
+      blatt
       onClose={onClose}
       title={titel}
       footer={
@@ -380,36 +429,62 @@ export function MassnahmeBewertenDialog({
             Abbrechen
           </Button>
           <Button type="submit" form={`${basis}-form`} disabled={busy} data-testid="massnahme-bewerten-senden">
-            {schritt === 'bewerten' ? W.KNOPF_BEWERTEN : titel}
+            {schritt === 'bewerten' ? (ohneMessung ? B.KNOPF_ABSCHLIESSEN : 'Wirkung festhalten') : titel}
           </Button>
         </>
       }
     >
-      <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(e) => void senden(e)} data-testid="massnahme-bewerten-dialog">
-        {anstoss && <p className="vp-ez-leise">{W.anstossZeile(anstoss)}</p>}
-        {schritt === 'bewerten' ? (
-          <>
-            <p className="vp-ez-satz">{m.messgrundlage ? W.bewertungOffenSatz() : m.ohne_messgrundlage?.satz}</p>
-            <VpPicker
-              id={`${basis}-ergebnis`}
-              label="Ergebnis"
-              options={optionen}
-              value={ergebnis}
-              onChange={(v) => setErgebnis(v as MassnahmeErgebnis)}
-              placeholder="Ergebnis wählen"
-              error={zeigen.ergebnis ?? null}
-            />
-            <p className="vp-ez-leise" data-testid="massnahme-bewerten-hinweis">
-              {m.messgrundlage ? W.BELEGT_HINWEIS : W.NUR_NICHT_MESSBAR}
-            </p>
-          </>
-        ) : (
-          m.bewertung_antrag && <p className="vp-ez-leise">{W.beantragtSatz(m.bewertung_antrag)}</p>
+      <form id={`${basis}-form`} className="vp-mn-blatt vp-k-farben" noValidate onSubmit={(e) => void senden(e)} data-testid="massnahme-bewerten-dialog">
+        <p className="vp-mn-unter">{m.titel}</p>
+        {anstoss && <p className="vp-mn-leise">{W.anstossZeile(anstoss)}</p>}
+        {schritt === 'bewerten' && !ohneMessung && k && (
+          <div className="vp-mn-danach" data-testid="massnahme-bewerten-beobachtet">
+            <span>Beobachtet</span>
+            <span>
+              <b>{`${B.prozentBetrag(k.delta_prozent)} ${B.richtungWort(k.delta_prozent)}`}</b>
+              {` als erwartet · ${k.monate_text} Monaten`}
+              {m.erwartete_wirkung_prozent ? ` · erwartet waren ${B.personProzent(m.erwartete_wirkung_prozent)}` : ''}
+            </span>
+          </div>
         )}
-        <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
-        <p className="vp-ez-leise">{W.ENDGUELTIG_HINWEIS}</p>
+        {schritt === 'bewerten' && ohneMessung && (
+          <p className="vp-mn-text">Ohne Kennzahl misst VoltPilot nichts. Ihr Satz schließt die Maßnahme ab; als Ergebnis steht „nicht messbar“.</p>
+        )}
+        {schritt === 'bewerten' && !ohneMessung && (
+          <div id={`${basis}-ergebnis`} tabIndex={-1}>
+            <Wahl
+              name={`${basis}-wahl`}
+              legende={`Kommt der Unterschied von der ${UEMS_MASSNAHME}?`}
+              wert={ergebnis}
+              setze={setErgebnis}
+              optionen={optionen.map((o) => ({ wert: o.value, wort: ERGEBNIS_KARTE[o.value].wort, satz: ERGEBNIS_KARTE[o.value].satz }))}
+              testid="massnahme-bewerten-wahl"
+            />
+            {zeigen.ergebnis && <p className="vp-mn-fehler">{zeigen.ergebnis}</p>}
+          </div>
+        )}
+        {schritt !== 'bewerten' && m.bewertung_antrag && <p className="vp-mn-leise">{W.beantragtSatz(m.bewertung_antrag)}</p>}
+        <TextFeld
+          id={`${basis}-begruendung`}
+          label={schritt === 'bewerten' ? (ohneMessung ? 'Was ist daraus geworden?' : 'Woran sehen Sie das?') : schritt === 'freigeben' ? 'Begründung (wahlfrei)' : 'Warum lehnen Sie ab?'}
+          wert={begruendung}
+          setze={setBegruendung}
+          platzhalter={
+            schritt === 'bewerten' && !ohneMessung
+              ? 'Zum Beispiel: Laufzeit laut Steuerung 18 % niedriger, keine andere Änderung im Zeitraum.'
+              : schritt === 'bewerten'
+                ? 'Zum Beispiel: Die Zuständigkeit ist festgelegt und wird bei jeder Freigabe genannt.'
+                : undefined
+          }
+          hilfe={
+            schritt === 'bewerten'
+              ? `Wird als Stand Nr. ${naechsteNr} festgehalten${m.bewertung ? `; Stand Nr. ${m.bewertung.stand_nr} vom ${Z.tag(m.bewertung.am)} bleibt lesbar` : ''}.`
+              : 'Steht im Verlauf.'
+          }
+          fehler={zeigen.begruendung}
+          testid="massnahme-bewerten-text"
+        />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );

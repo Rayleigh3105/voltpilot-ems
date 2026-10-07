@@ -21,6 +21,7 @@ def rechnen(fall):
     match fall['operation']:
         case 'wirkung': return v.wirkung(e)
         case 'zielstand': return v.zielstand(e)
+        case 'kurs': return v.kurs(e)
         case 'frist': return v.frist(e)
         case 'satz': return v.satz(e['schluessel'], e['werte'])
     raise AssertionError(f"Ungeprüfte Operation: {fall['operation']}")
