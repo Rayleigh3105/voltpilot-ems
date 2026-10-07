@@ -13,6 +13,7 @@ export function NwTextfeld({
   platzhalter,
   fehler,
   hoechstens,
+  gesperrt = false,
   testid,
 }: {
   label: string;
@@ -22,6 +23,8 @@ export function NwTextfeld({
   platzhalter?: string;
   fehler?: string | null;
   hoechstens?: number;
+  /** Steht fest (z. B. der Titel eines schon angelegten Dokuments): sichtbar, nicht änderbar. */
+  gesperrt?: boolean;
   testid?: string;
 }) {
   const id = `nw-feld-${useId().replace(/:/g, '')}`;
@@ -30,6 +33,7 @@ export function NwTextfeld({
     value: wert,
     placeholder: platzhalter,
     maxLength: hoechstens,
+    disabled: gesperrt || undefined,
     'aria-invalid': fehler ? true : undefined,
     'aria-describedby': fehler ? `${id}-fehler` : undefined,
     'data-testid': testid,
