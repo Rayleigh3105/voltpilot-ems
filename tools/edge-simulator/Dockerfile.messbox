@@ -1,0 +1,22 @@
+# Messen-Bau m2: die Mess-Seite der Demo-Box Halle 1 (uems_messbox.py) - neben der simulierten
+# v1-Box derselben Anlage. Bauen aus diesem Verzeichnis:
+#
+#   docker build -f Dockerfile.messbox -t voltpilot-messbox .
+#
+# Kein root, feste Abhängigkeit (dieselbe wie der Dauerläufer), keine Zugangsdaten im Image.
+FROM python:3.12.7-slim-bookworm
+
+RUN useradd --create-home --uid 10001 messbox
+WORKDIR /app
+
+COPY requirements-dauerlaeufer.txt ./
+RUN pip install --no-cache-dir -r requirements-dauerlaeufer.txt
+
+COPY uems_messbox.py ./
+
+USER 10001
+ENV PYTHONUNBUFFERED=1 \
+    VP_MESSBOX_LEBENSZEICHEN=/tmp/messbox-lebenszeichen
+
+# Probe: `python uems_messbox.py --probe` (Exit 0 = Lebenszeichen jünger als drei Takte).
+ENTRYPOINT ["python", "uems_messbox.py"]
