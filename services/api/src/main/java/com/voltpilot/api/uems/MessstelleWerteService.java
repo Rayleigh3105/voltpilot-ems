@@ -38,6 +38,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -126,7 +127,8 @@ public class MessstelleWerteService {
     public MessstelleWerteDto.Werte werteDerRoute(String kennzeichen, String raster, String von, String bis,
             String version, Consumer<UUID> zaun, EingaengeImZugriff eingaenge) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
-        Lesung l = lesen(kennzeichen, form, versionen, zaun);
+        // Stichtag-Grenze: die Route zeigt nie einen Wert nach heute (Bühnen-Bestand der Prüfumgebung, siehe grenze).
+        Lesung l = lesen(kennzeichen, form, versionen, zaun, uhr.instant());
         if (ausserhalb(l, eingaenge)) {
             Zone zone = l.zone();
             return new MessstelleWerteDto.Werte(messstelle(l), l.z().raster().wort(),
@@ -352,7 +354,8 @@ public class MessstelleWerteService {
     public MessstelleWerteDto.Historie historie(String kennzeichen, String raster, String von, String bis,
             Consumer<UUID> zaun, EingaengeImZugriff eingaenge) {
         Form form = pruefe(() -> MessstelleWerteRegeln.historieForm(raster, von, bis));
-        Lesung l = lesen(kennzeichen, form, versionen, zaun);
+        // Dieselbe Stichtag-Grenze wie an …/werte: die Historie zeigt keine Version, die die Werte-Route verbirgt.
+        Lesung l = lesen(kennzeichen, form, versionen, zaun, uhr.instant());
         Schritt s = pruefe(() -> MessstelleWerteRegeln.einePeriode(l.z()));
         Deckung d = l.deckung().get(s);
         ZoneId zone = l.zone().id();
@@ -421,14 +424,28 @@ public class MessstelleWerteService {
 
     /** {@code zaun} ist der Leseweg der Route (wirft außerhalb die 404 einer unbekannten Kennung), intern leer. */
     private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun) {
+        return lesen(kennzeichen, form, versionen, zaun, null);
+    }
+
+    private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen, Consumer<UUID> zaun,
+            Instant grenze) {
         UUID tenant = TenantContext.get();
         Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
         zaun.accept(m.id());
-        return lesen(tenant, m, form, versionen);
+        return lesen(tenant, m, form, versionen, grenze);
     }
 
     private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen) {
+        return lesen(tenant, m, form, versionen, null);
+    }
+
+    /**
+     * {@code grenze} (nur die Routen …/werte und …/werte/versionen): nur, was bis dahin vorliegen konnte ({@link
+     * #grenze}). In Produktion verbirgt sie nichts; der Bühnen-Bestand der Prüfumgebung trägt Werte bis zum Bühnen-Tag.
+     * Die Leser im Haus (Kennzahl, Bilanz, Bewertung) rechnen ungezäunt mit ihrer eigenen Uhr ({@code null}).
+     */
+    private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen, Instant grenze) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
         List<Quelle> fuehrend = fuehrend(m);
         AblesungRepository ablesungen = new AblesungRepository(jdbc);
@@ -461,8 +478,56 @@ public class MessstelleWerteService {
         Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z, ablesung != null);
         Map<Instant, List<WertVersionenLeser.Version>> spurVersionen = spur == null ? Map.of()
                 : versionen.perioden(tenant, z.raster().wort(), null, null, m.id(), z.von(), z.bis());
+        List<AblesungRepository.Wert> abgelesen = ablesung == null ? List.of() : ablesungen.werte(tenant, ablesung);
+        if (grenze != null) {
+            Predicate<Instant> vorhanden = grenze(ablesung != null, abgelesen, z, grenze);
+            spur = spur == null ? null : bis(spur, vorhanden);
+            spurVersionen = bis(spurVersionen, vorhanden);
+            abgelesen = abgelesen.stream().filter(w -> !w.zeitpunkt().isAfter(grenze)).toList();
+        }
         return new Lesung(tenant, m, haupt, zone, z, jetzt, imZeitraum, deckung, gelesen, spur, spurVersionen,
-                new Beschriftung(z), ablesung, ablesung == null ? List.of() : ablesungen.werte(tenant, ablesung));
+                new Beschriftung(z), ablesung, abgelesen);
+    }
+
+    /**
+     * Die Stichtag-Grenze der gespeicherten Spur: welche Periode (Schlüssel = Beginn) zur {@code grenze} schon vorliegen
+     * konnte. Sie verbirgt nur, was es zu dieser Uhr noch nicht geben kann - in Produktion nichts, denn dort entsteht
+     * eine Zeile nie vor ihren Eingängen:
+     * <ul>
+     *   <li>Berechnete Messstelle: eine Periode, sobald sie begonnen hat - die laufende (Tag, Monat, Jahr) bleibt
+     *       vorläufig sichtbar. Der Lauf bildet Tage bis heute und deren Monate/Jahre, eine Viertelstunde nur aus
+     *       Eingängen mit Werten, deren Messzeit höchstens {@link MesswertHerkunft#ZUKUNFT_HOECHSTENS_S} Sekunden
+     *       vor der Uhr liegen darf (E13) - dieser Spielraum gilt auch hier.</li>
+     *   <li>Ablesung (Monat, Jahr): eine Periode, solange keine Ablesung, deren Zeitraum ihr zugeordnet ist ({@link
+     *       AblesungPerioden#bilden}), nach der Grenze liegt. Der Zuordnungsmonat ist frei wählbar (auch der laufende
+     *       oder ein späterer) - Beginn oder Ende der Periode sagen darum nichts; eine Ablesung nach jetzt wird beim
+     *       Schreiben abgelehnt ({@code ZEITPUNKT_UNGUELTIG}).</li>
+     * </ul>
+     */
+    private static Predicate<Instant> grenze(boolean ablesung, List<AblesungRepository.Wert> abgelesen, Zeitraum z,
+            Instant grenze) {
+        if (!ablesung) {
+            Instant spaetesterBeginn = grenze.plusSeconds(MesswertHerkunft.ZUKUNFT_HOECHSTENS_S);
+            return beginn -> !beginn.isAfter(spaetesterBeginn);
+        }
+        Set<LocalDate> spaeter = abgelesen.stream().filter(w -> w.monat() != null && w.zeitpunkt().isAfter(grenze))
+                .map(AblesungRepository.Wert::monat).collect(Collectors.toSet());
+        return beginn -> {
+            LocalDate periode = beginn.atZone(z.zone()).toLocalDate();
+            return spaeter.stream().noneMatch(monat -> z.raster() == Raster.JAHR
+                    ? monat.getYear() == periode.getYear() : monat.equals(periode));
+        };
+    }
+
+    /** Die Einträge, deren Periode (Schlüssel = Beginn) zur Grenze vorliegt. */
+    private static <V> Map<Instant, V> bis(Map<Instant, V> je, Predicate<Instant> vorhanden) {
+        Map<Instant, V> out = new HashMap<>();
+        je.forEach((b, v) -> {
+            if (vorhanden.test(b)) {
+                out.put(b, v);
+            }
+        });
+        return out;
     }
 
     private static List<MessstelleWerteDto.Quelle> quellen(Lesung l) {

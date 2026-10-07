@@ -1,4 +1,4 @@
-import type { api, Bezugsbasis, BezugsbasisFassung, FaktorenVorschlag, Kennzahl, VariablenVorschlag } from '../api';
+import type { api, Bezugsbasis, BezugsbasisFassung, FaktorenVorschlag, Kennzahl, KennzahlAuswertung, VariablenVorschlag } from '../api';
 
 /**
  * Referenzfall R1 (UEMS AP-17, Kunststoffwerk Ahrenberg, `uems-referenzunternehmen.json` 1.8): Ines Kaltenbach bindet
@@ -175,8 +175,25 @@ export function bezugsbasisBuehne(lage: 'keine' | 'freigegeben' | 'modell'): Par
         ? { bezugsbasis: { kennzeichen: basis.kennzeichen, fassung: fassung.fassung, freigabe_status: fassung.freigabe_status, vorlaeufig: fassung.datenlage === 'vorlaeufig' } }
         : { bezugsbasis: null },
     );
+  // Konzept Auswerten a1 (PR1): mit `'auswertung'` wie der Server - am 12.11.2026 ist Oktober der letzte volle Monat; die
+  // freigegebene Fassung gilt erst ab 01.11.2026, also kein Urteil, aber „Vergleich ab …“ (erster Monat November).
+  const auswertung = (): KennzahlAuswertung => ({
+    monat: '2026-10',
+    wert: null,
+    vorjahr: null,
+    monate: Array.from({ length: 12 }, (_, i) => {
+      const m = i + 11;
+      const periode = `${m > 12 ? 2026 : 2025}-${String(m > 12 ? m - 12 : m).padStart(2, '0')}`;
+      return { periode, wert: null, delta_prozent: null, urteil: basis ? 'nicht_anwendbar' : null, grund: basis ? 'basis_fehlt' : null };
+    }),
+    vergleich: basis && fassung?.freigabe_status === 'freigegeben'
+      ? { bezugsbasis: basis.kennzeichen, urteil: 'nicht_anwendbar', delta_prozent: null, band_prozent: null, richtung: null,
+          grund: 'basis_fehlt', satz: null, erster_monat: '2026-11' }
+      : null,
+    energieziel: null,
+  });
   return {
-    kennzahlen: async () => ({ kennzahlen: [kennzahl()] }),
+    kennzahlen: async (mit?: 'auswertung') => ({ kennzahlen: [mit === 'auswertung' ? { ...kennzahl(), auswertung: auswertung() } : kennzahl()] }),
     kennzahl: async () => kennzahl(),
     kennzahlFassungen: async () => ({ kennzahl_id: BB_IDS.kz4, kennzeichen: 'KZ-0004', fassungen: [] }),
     kennzahlWerte: async (_id, periode, von, bis) => ({

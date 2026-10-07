@@ -12,6 +12,7 @@ import {
   UEMS_ABWEICHUNG,
   UEMS_BEZUGSBASIS,
   UEMS_BEZUGSGROESSE,
+  UEMS_ENERGETISCHE_BEWERTUNG_WORT,
   UEMS_ENERGIEEINSATZ,
   UEMS_ENERGIEZIEL,
   UEMS_FESTSTELLUNG,
@@ -40,17 +41,27 @@ export type BegriffSchluessel =
   | 'wiedervorlage'
   | 'audit'
   | 'feststellung'
-  | 'managementbewertung';
+  | 'managementbewertung'
+  | 'energetische_bewertung';
 
 export interface Begriff {
   /** Das Wort, wie das Portal es zeigt. */
   wort: string;
   /** Ein Satz in Alltagssprache. */
   klartext: string;
-  /** Ein Beispiel, wo der Satz allein zu abstrakt bleibt. */
+  /** Ein Beispiel, wo der Satz allein zu abstrakt bleibt; wo es geht, ersetzt die Fläche es durch eines aus der eigenen Firma. */
   beispiel: string | null;
   /** Das Wort, unter dem Berater und Normtexte dasselbe kennen — ohne Nummer und ohne Kürzel. */
   fachwort: string | null;
+  /**
+   * Konzept Messen m1 §7: die Frage des Aufklappers „Was ist …?“ (mit Artikel), nur für die Begriffe, die eine Fläche
+   * mit Satz unter dem Titel und Aufklapper erklärt statt mit der Zeile „Begriffe:“.
+   */
+  frage?: string;
+  /** Ein Satz, der zum Beispiel gehört: was man mit dem Ding tut oder woher es kommt. */
+  mehr?: string;
+  /** Die Abgrenzung: womit man es nicht verwechseln soll. */
+  abgrenzung?: string;
 }
 
 export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
@@ -59,6 +70,9 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     klartext: 'Ein Bereich oder Prozess, in dem Ihr Betrieb Energie einsetzt.',
     beispiel: 'Zum Beispiel Druckluft, Spritzguss oder die Beleuchtung einer Halle.',
     fachwort: null,
+    // Konzept Auswerten a1 §7: „Verbrauch“ erklärt den Begriff mit dem Aufklapper; im Portal heißt er dort „Bereich“.
+    frage: 'Was ist ein Energieeinsatz?',
+    abgrenzung: 'Nicht der Zähler: Ein Bereich kann von mehreren Zählern gemessen werden.',
   },
   wesentlich: {
     wort: 'wesentlich',
@@ -74,9 +88,12 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
   },
   messstelle: {
     wort: UEMS_MESSSTELLE,
-    klartext: 'Ein Punkt, an dem Energie gemessen oder aus anderen Messstellen berechnet wird.',
-    beispiel: 'Zum Beispiel der Hauptzähler eines Werks oder der Unterzähler einer Maschine.',
+    klartext: 'Eine Stelle, an der Ihr Verbrauch gemessen, abgelesen oder aus anderen Messstellen berechnet wird.',
+    beispiel: 'Zum Beispiel der Hauptzähler eines Werks oder der Zähler einer Maschine.',
     fachwort: null,
+    frage: 'Was ist eine Messstelle?',
+    mehr: 'Die Werte kommen automatisch von einem Gerät, aus Ablesungen von Hand oder werden aus anderen Messstellen berechnet.',
+    abgrenzung: 'Nicht dasselbe wie das Gerät: Wird ein Zähler getauscht, bleibt die Messstelle mit ihrer Geschichte.',
   },
   bezugsgroesse: {
     wort: UEMS_BEZUGSGROESSE,
@@ -150,6 +167,16 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     klartext: UEMS_MANAGEMENTBEWERTUNG_WOZU,
     beispiel: null,
     fachwort: null,
+  },
+  // Konzept Auswerten a1 §6.7/§7: die Seite „Energetische Bewertung“ erklärt das Wort mit Satz und Aufklapper; das Beispiel
+  // setzt die Seite aus dem gültigen Stand ein („Bewertung 2029, Stand Nr. 1 vom 30.04.2029: 4 von 8 Bereichen wesentlich.“).
+  energetische_bewertung: {
+    wort: UEMS_ENERGETISCHE_BEWERTUNG_WORT,
+    klartext: 'Einmal im Jahr festgestellt: wofür Ihr Unternehmen Energie einsetzt und welche Bereiche wesentlich sind - als freigegebener Stand.',
+    beispiel: 'Zum Beispiel: 4 von 8 Bereichen sind wesentlich, festgestellt mit Stand Nr. 1.',
+    fachwort: null,
+    frage: 'Was ist die energetische Bewertung?',
+    abgrenzung: 'Nicht verwechseln mit dem Monatsbericht: der Bericht zählt, die Bewertung ordnet.',
   },
 };
 

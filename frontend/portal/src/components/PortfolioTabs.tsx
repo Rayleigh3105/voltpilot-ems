@@ -68,6 +68,7 @@ export function PortfolioTabs({
   showBewertung = false,
   showVerbesserung = false,
   showEnergiemanagement = false,
+  showVerbrauch = false,
   leiste = [],
   leisteSeiten = [],
   telefonReiter = null,
@@ -97,6 +98,8 @@ export function PortfolioTabs({
   showVerbesserung?: boolean;
   /** Ein Standort misst UND die Person darf `energiemanagement.ansehen` — der Bereich „Energiemanagement“ (AP-19 IP-9). */
   showEnergiemanagement?: boolean;
+  /** Ein Standort misst UND die Person darf Energieeinsätze sehen — der Bereich „Verbrauch“ (Konzept Auswerten a1). */
+  showVerbrauch?: boolean;
   /** Die Bereiche, die Seitenleiste und Telefon-Leiste dieser Ebene tragen (leer = keine Leiste). */
   leiste?: readonly EbenenBereichId[];
   /** N3: die SEITEN, die die Einträge der Flotte tragen (Übersicht, Standorte, Energie, Erlöse). */
@@ -141,7 +144,8 @@ export function PortfolioTabs({
       (p.id !== 'portfolio-berichte' || showBerichte || page === p.id) &&
       (p.id !== 'portfolio-bewertung' || showBewertung || page === p.id) &&
       (p.id !== 'portfolio-verbesserung' || showVerbesserung || page === p.id) &&
-      (p.id !== 'portfolio-energiemanagement' || showEnergiemanagement || page === p.id),
+      (p.id !== 'portfolio-energiemanagement' || showEnergiemanagement || page === p.id) &&
+      (p.id !== 'portfolio-verbrauch' || showVerbrauch || page === p.id),
   );
   const open = (target: PageId) => {
     const hash = portfolioTabHash(target, page, window.location.hash);

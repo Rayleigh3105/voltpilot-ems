@@ -231,20 +231,15 @@ class BerichtAbzugUnternehmenTest {
         assertThat(kostenstelle(abzug, "4300").path("summe").path("grund").asText()).as("keine Zuordnung, nie 0")
                 .isEqualTo("keine_zuordnung");
 
-        // Oktober und Lindach halten $defs/abzug 1.1 ganz. Jahr 2026 und Januar 2027 haben Messstellen ohne Zahl in der
-        // Periode — Befund aus IP-5, nicht aus IP-6: ein Wert „keine Werte“ trägt weder Version noch berechnet_am, $defs/wert
-        // verlangt beide. Als Ist-Zustand behauptet; alles, was IP-6 dazulegt (standorte, kostenstellen, kennzahlen), hält.
+        // Alle vier halten $defs/abzug ganz. Jahr 2026 und Januar 2027 haben Messstellen ohne Zahl in der Periode: ein Wert
+        // „keine Werte“ trägt weder Version noch berechnet_am - der IP-5-Befund; seit Konzept Nachweisen n1 (Befund 5)
+        // erlaubt $defs/wert dafür ausdrücklich null.
         for (UUID b : List.of(oktober, jahr, lindach, januar)) {
             Instant datenstand = b.equals(oktober) ? DATENSTAND_OKTOBER : b.equals(januar) ? DATENSTAND_JANUAR
                     : DATENSTAND_JAHR;
             BerichtAbzugBildung.Ergebnis e = alsVerwaltung(con -> bildung.zusammentragen(con, b, datenstand));
             List<String> verstoesse = UemsSchemaLaeufer.verstoesse(e.abzug(), schemaAbzug());
-            if (b.equals(oktober) || b.equals(lindach)) {
-                assertThat(verstoesse).as("$defs/abzug 1.1 " + e.kennung()).isEmpty();
-            } else {
-                assertThat(verstoesse).as("nur der benannte IP-5-Befund " + e.kennung()).isNotEmpty()
-                        .allMatch(v -> v.matches("\\$\\.werte\\[\\d+\\]\\.(version|berechnet_am): Typ null passt nicht zu .*"));
-            }
+            assertThat(verstoesse).as("$defs/abzug " + e.kennung()).isEmpty();
         }
     }
 
