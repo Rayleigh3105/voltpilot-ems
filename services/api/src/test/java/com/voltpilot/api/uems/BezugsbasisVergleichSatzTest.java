@@ -105,7 +105,8 @@ class BezugsbasisVergleichSatzTest {
                 List.of(oktober, november)));
         assertThat(e).containsEntry("urteil", "schlechter").containsEntry("delta_prozent", "4.1")
                 .containsEntry("monate", "1 von 2");
-        String ab = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "November 2026", "kWh", 2, 1, "November 2026");
+        String ab = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "November 2026", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(1, "November 2026", false, null));
         assertThat(ab).isEqualTo("Oktober 2026 bis November 2026: 1 von 2 Monaten bewertbar, die Bezugsbasis gilt erst "
                 + "ab November 2026. 38 400 kWh gemessen, 36 900 kWh erwartet — 4,1 % mehr: schlechter (Summe über einen "
                 + "Monat). Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
@@ -114,14 +115,15 @@ class BezugsbasisVergleichSatzTest {
         Map<String, Object> luecke = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(flaeche, false, 3,
                 List.of(oktober, november, dezember)));
         assertThat(luecke).containsEntry("urteil", "ohne_urteil").containsEntry("monate", "1 von 3");
-        String ohneUrteil = BezugsbasisVergleichSatz.zeitraum(luecke, "Oktober 2026", "Dezember 2026", "kWh", 3, 2,
-                "November 2026");
+        String ohneUrteil = BezugsbasisVergleichSatz.zeitraum(luecke, "Oktober 2026", "Dezember 2026", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(2, "November 2026", false, null));
         assertThat(ohneUrteil).isEqualTo("Oktober 2026 bis Dezember 2026: 1 von 3 Monaten bewertbar, die Bezugsbasis gilt "
                 + "erst ab November 2026. 38 400 kWh gemessen, 36 900 kWh erwartet — 4,1 % mehr; ohne Urteil: 1 von 2 "
                 + "Monaten mit Vergleich. Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
 
-        // Liegen Monate ohne Fassung nicht alle vorn (die Basis war dazwischen beendet), nennt der Satz nur ihre Zahl.
-        String zwischen = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "November 2026", "kWh", 2, 1, null);
+        // Liegt eine Lücke zwischen Monaten mit Fassung, nennt der Satz nur die Zahl der Monate ohne Fassung.
+        String zwischen = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "November 2026", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(1, null, false, null));
         assertThat(zwischen).startsWith("Oktober 2026 bis November 2026: 1 von 2 Monaten bewertbar, in 1 Monat gilt "
                 + "keine Fassung der Bezugsbasis. 38 400 kWh gemessen");
 
@@ -130,10 +132,60 @@ class BezugsbasisVergleichSatzTest {
                 List.of(oktober, oktober, oktober)));
         assertThat(keiner).containsEntry("urteil", "nicht_anwendbar").containsEntry("grund", "basis_fehlt")
                 .containsEntry("monate", "0 von 3");
-        assertThat(BezugsbasisVergleichSatz.zeitraum(keiner, "August 2026", "Oktober 2026", "kWh", 3, 0, "November 2026"))
-                .isEqualTo("August 2026 bis Oktober 2026: nicht bewertbar — kein Monat mit Vergleich. Die Bezugsbasis gilt "
-                        + "erst ab November 2026.");
-        saetze.addAll(List.of(ab, ohneUrteil, zwischen));
+        String vorDemBeginn = BezugsbasisVergleichSatz.zeitraum(keiner, "August 2026", "Oktober 2026", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(0, "November 2026", false, null));
+        assertThat(vorDemBeginn).isEqualTo("August 2026 bis Oktober 2026: nicht bewertbar — kein Monat mit Vergleich. Die "
+                + "Bezugsbasis gilt erst ab November 2026.");
+        saetze.addAll(List.of(ab, ohneUrteil, zwischen, vorDemBeginn));
+        keineUrsacheKeinNormwort();
+    }
+
+    /**
+     * Review #1446 S2 (a): endet die Basis im Zeitraum, rechnet der Kopf gegen die Fassung des letzten Monats mit Fassung,
+     * die Monate danach zählen nicht - „endete am“; nach einem Ende „gilt wieder ab“ statt „gilt erst ab“ (R5: Fassung 1
+     * beendet 31.12.2026, Fassung 2 ab 01.03.2027).
+     */
+    @Test
+    void p4BasisEndetUndGiltWieder() {
+        BezugsbasisRegeln.Fassung flaeche = new BezugsbasisRegeln.Fassung("BB-0003", 1, "verhaeltnis", 1, "11.9032", null,
+                null, "2.0", null, List.of(new BezugsbasisRegeln.Variable("Bezugsfläche", "m²", "flaeche")));
+        BezugsbasisRegeln.Monat nachDemEnde = new BezugsbasisRegeln.Monat(true, wert("40100"), List.of(), true);
+        Map<String, Object> e = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(flaeche, false, 3,
+                List.of(new BezugsbasisRegeln.Monat(true, wert("38400"), List.of(wert("3100"))),
+                        new BezugsbasisRegeln.Monat(true, wert("37500"), List.of(wert("3100"))), nachDemEnde)));
+        assertThat(e).containsEntry("urteil", "schlechter").containsEntry("delta_prozent", "2.8")
+                .containsEntry("monate", "2 von 3");
+        String endete = BezugsbasisVergleichSatz.zeitraum(e, "November 2026", "Januar 2027", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(2, null, false, LocalDate.of(2026, 12, 31)));
+        assertThat(endete).isEqualTo("November 2026 bis Januar 2027: 2 von 3 Monaten bewertbar, die Bezugsbasis endete am "
+                + "31.12.2026. 75 900 kWh gemessen, 73 800 kWh erwartet — 2,8 % mehr: schlechter (Summe über zwei Monate). "
+                + "Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
+
+        // Vorn ein Beginn, hinten ein Ende: in der Folge der Zeit.
+        String beides = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "Januar 2027", "kWh", 4,
+                new BezugsbasisVergleichSatz.Geltung(2, "November 2026", false, LocalDate.of(2026, 12, 31)));
+        assertThat(beides).startsWith("Oktober 2026 bis Januar 2027: 2 von 4 Monaten bewertbar, die Bezugsbasis gilt erst "
+                + "ab November 2026 und endete am 31.12.2026. 75 900 kWh gemessen");
+
+        // Der Zeitraum beginnt in der Lücke nach dem Ende: „gilt wieder ab“.
+        String wieder = BezugsbasisVergleichSatz.zeitraum(e, "Januar 2027", "März 2027", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(2, "März 2027", true, null));
+        assertThat(wieder).startsWith("Januar 2027 bis März 2027: 2 von 3 Monaten bewertbar, die Bezugsbasis gilt wieder "
+                + "ab März 2027. ");
+
+        // Kein Monat bewertbar, alle nach dem Ende: Ende und neuer Beginn, in der Folge der Zeit.
+        Map<String, Object> keiner = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(null, true, 2,
+                List.of(nachDemEnde, nachDemEnde)));
+        assertThat(keiner).containsEntry("urteil", "nicht_anwendbar").containsEntry("grund", "basis_beendet")
+                .containsEntry("monate", "0 von 2");
+        String inDerLuecke = BezugsbasisVergleichSatz.zeitraum(keiner, "Januar 2027", "Februar 2027", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(0, "März 2027", true, LocalDate.of(2026, 12, 31)));
+        assertThat(inDerLuecke).isEqualTo("Januar 2027 bis Februar 2027: nicht bewertbar — kein Monat mit Vergleich. Die "
+                + "Bezugsbasis endete am 31.12.2026 und gilt wieder ab März 2027.");
+        String nurEnde = BezugsbasisVergleichSatz.zeitraum(keiner, "Januar 2027", "Februar 2027", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(0, null, true, LocalDate.of(2026, 12, 31)));
+        assertThat(nurEnde).endsWith("kein Monat mit Vergleich. Die Bezugsbasis endete am 31.12.2026.");
+        saetze.addAll(List.of(endete, beides, wieder, inDerLuecke, nurEnde));
         keineUrsacheKeinNormwort();
     }
 

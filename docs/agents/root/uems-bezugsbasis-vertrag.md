@@ -52,7 +52,10 @@ Wegweiser `uems-bezugsbasis-datenhaltung.md`, `-grundlage.md`, `-freigabe.md`, `
 - **Zeitraum zählt nur Monate mit Fassung (P4 je Monat, Entscheid 07.10.2026):** der Leser gibt jeden Monat, an dessen
   letztem Tag keine Fassung gilt, mit `ohne_fassung` in die Operation `zeitraum`; er zählt weder als Null noch als
   fehlender Monat (U5 nur über die Monate mit Fassung), `monate` bleibt „x von y“ über alle Monate.
-  Die Fassung des Kopfs bleibt die am letzten Tag von `bis`.
+  Die Fassung des Kopfs ist die am letzten Tag des letzten Monats mit Fassung (endet die Basis im Zeitraum, zählen die
+  Monate danach nicht: „endete am“; Review #1446 S2 a).
+  Kopf und Zeilen zählen dieselben Monate; bei einem Fassungswechsel rechnet der Kopf aber alle gegen seine Fassung,
+  „erwartet“ ist dann nicht die Summe der Zeilen.
   Ein neuer Aufrufer von `zeitraum` muss das Flag setzen, sonst rechnet er die Fassung auf Monate ohne Basis (KZ-0023:
   „12 von 12 · 4,5 %“ statt „6 von 12 · 11,0 %“).
 

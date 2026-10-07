@@ -43,8 +43,12 @@ und nennt einen oder mehrere Anpassungsgründe (Vokabular `anpassungsgrund`; `so
   `basis_beendet`.
   Ein Zeitraum zählt nur Monate, für die je Monat eine Fassung gilt (Entscheid 07.10.2026, ISO 50006/IPMVP: verglichen
   wird nur, wo eine gültige Basis gilt).
-  Ein Monat ohne geltende Fassung (`ohne_fassung`) zählt weder als Null noch als fehlender Monat; „x von y“ nennt ihn
-  (y = alle Monate des Zeitraums), §8 U5.
+  Ein Monat ohne geltende Fassung (`ohne_fassung`: vor dem Beginn, in einer Lücke, nach dem Ende) zählt weder als Null
+  noch als fehlender Monat; „x von y“ nennt ihn (y = alle Monate des Zeitraums), §8 U5.
+  Der Zeitraum liest die Fassung am letzten Tag seines letzten Monats mit Fassung (endet die Basis im Zeitraum, die
+  letzte, die galt; Review #1446 S2 a) und rechnet jeden gezählten Monat gegen sie.
+  Bei einem Fassungswechsel im Zeitraum zählen Kopf und Zeilen darum dieselben Monate, „erwartet“ im Kopf weicht aber
+  von der Summe der Zeilen ab (jede Zeile rechnet gegen ihre eigene Fassung).
 
 ## 3. Variablen und statische Faktoren (V1–V5, E3, E6)
 
@@ -172,6 +176,7 @@ SP1, nie „EnPI“, „EnB“, „Baseline“, „Normalisierung“, „KPI“ 
 | Vergleich, im Rahmen | „Februar 2028: 81 500 kWh gemessen, 81 985 kWh erwartet bei 305 000 kg — 0,6 % weniger: im Rahmen (± 2 %).“ | R2 Februar, M5 81 984,5 |
 | Zeitraum | „November 2027 bis Februar 2028: 323 000 kWh gemessen, 317 395 kWh erwartet — 1,8 %: im Rahmen der Bezugsbasis (Summe über vier Monate).“ | R11 |
 | Zeitraum, Basis gilt erst ab | „Oktober 2026 bis November 2026: 1 von 2 Monaten bewertbar, die Bezugsbasis gilt erst ab November 2026. 38 400 kWh gemessen, 36 900 kWh erwartet — 4,1 % mehr: schlechter (Summe über einen Monat). …“ · ohne Monat mit Fassung: „August 2026 bis Oktober 2026: nicht bewertbar — kein Monat mit Vergleich. Die Bezugsbasis gilt erst ab November 2026.“ | P4 Basis ab Mitte · kein Monat bewertbar |
+| Zeitraum, Basis endete | „November 2026 bis Januar 2027: 2 von 3 Monaten bewertbar, die Bezugsbasis endete am 31.12.2026. 75 900 kWh gemessen, 73 800 kWh erwartet — 2,8 % mehr: schlechter (Summe über zwei Monate). …“ · nach einem Ende: „… die Bezugsbasis gilt wieder ab März 2027.“ · ohne Monat mit Fassung: „Januar 2027 bis Februar 2027: nicht bewertbar — kein Monat mit Vergleich. Die Bezugsbasis endete am 31.12.2026 und gilt wieder ab März 2027.“ · Lücke zwischen Monaten mit Fassung: „… in 2 Monaten gilt keine Fassung der Bezugsbasis.“ | P4 Basis endet im Zeitraum · alle Monate nach dem Ende · Monate ohne Fassung in der Mitte |
 | Vorläufig | „März 2027: 88 265 kWh bei 331 000 kg — 6,0 % weniger als die Bezugsbasis Oktober 2026 erwarten lässt: besser. Die Bezugsbasis ist vorläufig (1 von 12 Monaten).“ | R6 |
 | Nicht anwendbar, Spannweite | „Modell nicht anwendbar: die Produktionsmenge im März 2028 (390 000 kg) liegt außerhalb der Bezugsbasis (254 000–341 000 kg).“ | R4/G3 |
 | Nicht anwendbar, Perioden | „Modell nicht möglich: 1 von 12 Monaten in der Referenzperiode. Das Verhältnis ist vorläufig.“ | R4/G1 |
@@ -189,8 +194,12 @@ zeitraum · runden`. Pflichtfälle aus §8 IP-2: „Dezember 2027: roh ohne Urte
 über Gradtage sagt besser, Modell im Rahmen“ (Januar 2028: −5,3 % gegen −0,8 %) sind eigene Vektoren. Fassungen mit
 `BB-0001 … BB-0005` sind wörtlich die der Referenzdatei 1.8 (geprüft in `test_bezugsbasis.py`); `BB-9001` ist eine
 konstruierte Rundungsprobe, ebenso der Fall „zwei unabhängige Einflussgrößen“ (Spritzguss-Reihe mit der Gradtagzahl).
-Die Fälle „P4 …“ des Zeitraums (Entscheid 07.10.2026) stehen auf R5 (BB-0003 Fassung 1 gilt ab 01.11.2026): Basis ab
-Mitte des Zeitraums, dazu ein fehlender Monat mit Fassung (U5) und zweimal kein Monat bewertbar.
+Die Fälle „P4 …“ des Zeitraums (Entscheid 07.10.2026) stehen auf R5 (BB-0003 Fassung 1 gilt vom 01.11.2026 bis
+31.12.2026, Fassung 2 ab 01.03.2027): Basis ab Mitte des Zeitraums, dazu ein fehlender Monat mit Fassung (U5), Basis
+endet im Zeitraum, Monate ohne Fassung in der Mitte (konstruiert) und dreimal kein Monat bewertbar (vor dem Beginn,
+der einzige Monat mit Fassung läuft noch, alle Monate nach dem Ende).
+Randfall ohne Vektor: eine leere Monatsliste ohne Fassung ergibt `basis_fehlt` (bzw. `basis_beendet`), nicht
+`keine_werte`; kein Aufrufer erreicht ihn (der Leser hat immer mindestens einen Monat, Verbessern kehrt vorher zurück).
 
 ## 12. Abweichungen und Grenzen
 
@@ -414,7 +423,7 @@ Controller `BezugsbasisVergleichController`, DTO `BezugsbasisVergleichDto`, Open
 | `…gemessen` | `kennzahl_wert` der neuesten Version: `zaehler` (die Energie), `version`, `zustand` = `menge_zustand`, Kennzeichen des Werts (G5 Nr. 6) | „unvollständig“ → Regel-Zustand `unvollstaendig` (G2: Zahl mit Richtung, `ohne_urteil`) |
 | `…bedingung[]` | je `bezugsbasis_variable` der Periodenwert der Bezugsgröße über den Kennzahl-Eingangsleser (wirksame Fassung, nie verteilt; `quelle` `bezugsgroesse`, `fassung`); ohne Bezugsgröße an Position 1 — Stammdatum-Nenner (V3) oder Zusammenfassung (Σ ÷ Σ der Paare, B2/U5) — der gespeicherte `nenner` der Kennzahl mit `version` (`quelle` `kennzahl`) | U4; Kennzeichen der Bezugsgrößen-Fassung (etwa „Temperatur von VoltPilot bezogen …“) erben nach G5 |
 | `…erwartet · delta_prozent · band_prozent · richtung · urteil · grund · kennzeichen` | Operation `vergleich` | U2, U3 (Band = max(Toleranz, Streuung)), G2, G3, G5 |
-| `zeitraum` | Operation `zeitraum` über alle Monate gegen die Fassung am letzten Tag von `bis` (der Zeitraum ist eine Periode, P4); ein Monat, für den an seinem letzten Tag keine Fassung gilt, geht mit `ohne_fassung` hinein und zählt nicht (Kopf und Zeilen sagen dasselbe) | U5: Σ ÷ Σ, nie ein Mittel; fehlt ein Monat mit Fassung, `ohne_urteil` mit „x von y Monaten“; Monate ohne Fassung nennt der Satz vorn („x von y Monaten bewertbar, die Bezugsbasis gilt erst ab {Monat}.“, liegen sie nicht alle vorn: „in n Monaten gilt keine Fassung der Bezugsbasis.“) |
+| `zeitraum` | Operation `zeitraum` über alle Monate gegen die Fassung am letzten Tag des letzten Monats mit Fassung (der Zeitraum ist eine Periode, P4; endet die Basis im Zeitraum, die letzte, die galt); ein Monat, für den an seinem letzten Tag keine Fassung gilt, geht mit `ohne_fassung` hinein und zählt nicht. Kopf und Zeilen zählen dieselben Monate; gerechnet wird jeder gegen die Fassung des Kopfs (bei einem Fassungswechsel weicht „erwartet“ darum von der Summe der Zeilen ab) | U5: Σ ÷ Σ, nie ein Mittel; fehlt ein Monat mit Fassung, `ohne_urteil` mit „x von y Monaten“; Monate ohne Fassung nennt der Satz vorn: „x von y Monaten bewertbar, die Bezugsbasis gilt erst ab {Monat}.“ (vor ihrer ersten Fassung) · „… gilt wieder ab {Monat}.“ (nach einem Ende) · „… endete am {Tag}.“ (Monate nach dem Ende) · beides in der Folge der Zeit · eine Lücke zwischen Monaten mit Fassung: „in n Monaten gilt keine Fassung der Bezugsbasis.“ |
 | `staende` · `stand_satz` | Leistungsvergleichs-Stände (S5) | die freigegebenen Leistungsvergleichs-Stände, die die Basis zitieren (Quellenart `bezugsbasis`, AP-17 IP-21b), der jüngste vorn — „Stand Nr. 1 vom 12.01.2028“; ohne Stand leer und „ungesichert — noch kein Stand“ |
 
 Die G3-Spannweite wird aus `spannweite_von/_bis` wie in `modell` toleriert: [min × 0,9, max × 1,1] (Startwert ± 10 %), exakt.

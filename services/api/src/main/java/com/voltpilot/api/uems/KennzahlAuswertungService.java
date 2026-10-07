@@ -206,8 +206,10 @@ public class KennzahlAuswertungService {
      * §10.6 mit P4: der Zeitraum rechnet jeden seiner Monate gegen die Fassung am letzten Tag von {@code bis} - er beginnt
      * darum mit dem Monat, ab dem genau diese Fassung gilt (bei einem Fassungswechsel mitten in den zwölf also mit dem
      * Wechsel), nie mit Monaten, für die sie noch nicht galt; die früheren Monate stehen mit ihrem eigenen Urteil in
-     * {@code monate}. Gilt am letzten Tag keine Fassung (die Basis endete), zählt die erste. Gilt sie für alle zwölf, ist
-     * es der Vergleich selbst; gilt sie für keinen, gibt es keinen Zeitraum.
+     * {@code monate}. Gilt am letzten Tag keine Fassung (die Basis endete), endet der Zeitraum mit dem letzten Monat, für
+     * den eine gilt, und beginnt mit deren Geltung (P4 je Monat, Review S2 a: derselbe Kopf wie der Vergleich); gilt
+     * für keinen der zwölf eine, zählt die erste. Gilt sie für alle zwölf, ist es der Vergleich selbst; gilt sie für
+     * keinen, gibt es keinen Zeitraum.
      */
     private BezugsbasisVergleichDto.Vergleich seitGeltung(KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen,
             BezugsbasisVergleichDto.Vergleich v, LocalDate ersteGeltung, YearMonth von, YearMonth bis) {
@@ -215,6 +217,20 @@ public class KennzahlAuswertungService {
             return null;
         }
         LocalDate ab = vergleich.geltungAm(k.zeile().id(), bis.atEndOfMonth());
+        if (ab == null) {
+            BezugsbasisVergleichDto.Monat zuletzt = null;
+            for (BezugsbasisVergleichDto.Monat m : v.monate()) {
+                if (m.bereinigt().fassung() != null) {
+                    zuletzt = m;
+                }
+            }
+            if (zuletzt != null) {
+                YearMonth ende = YearMonth.parse(zuletzt.periode());
+                YearMonth beginn = YearMonth.from(zuletzt.bereinigt().fassung().giltAb());
+                YearMonth erster = beginn.isAfter(von) ? beginn : von;
+                return vergleich.vergleichUeber(k, gelesen, erster, ende);
+            }
+        }
         YearMonth erster = YearMonth.from(ab != null ? ab : ersteGeltung);
         if (erster.isAfter(bis)) {
             return null;

@@ -605,8 +605,9 @@ class BezugsbasisVergleichApiTest {
     /**
      * P4 je Monat (Entscheid 07.10.2026, Auswerten Befund 5): gilt die erste Fassung erst ab Dezember 2025, zählt der
      * Kopf des Vergleichs Oktober 2025 bis März 2026 nur Dezember bis März. Oktober und November tragen Werte, aber keine
-     * Fassung - sie zählen weder als Null noch gegen die Fassung des März; Kopf und Zeilen sagen dasselbe. Liegt der
-     * ganze Zeitraum vor der ersten Fassung, ist kein Monat bewertbar, und der Satz sagt, ab wann sie gilt.
+     * Fassung - sie zählen weder als Null noch gegen die Fassung des März; mit einer Fassung sagen Kopf und Zeilen
+     * dasselbe (dieselben Monate, dieselben Summen; zum Fassungswechsel {@link #derKopfEinerBasisDieImZeitraumEndet}).
+     * Liegt der ganze Zeitraum vor der ersten Fassung, ist kein Monat bewertbar, und der Satz sagt, ab wann sie gilt.
      */
     @Test
     void derKopfZaehltNurMonateMitGeltenderFassung() throws Exception {
@@ -635,7 +636,7 @@ class BezugsbasisVergleichApiTest {
         assertThat(z.get("satz").asText()).isEqualTo("Oktober 2025 bis März 2026: 4 von 6 Monaten bewertbar, die "
                 + "Bezugsbasis gilt erst ab Dezember 2025. 337 500 kWh gemessen, 353 207 kWh erwartet — 4,4 % weniger: "
                 + "besser (Summe über vier Monate). Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
-        // Kopf und Zeilen sagen dasselbe: dieselben Monate, dieselben Summen.
+        // Eine Fassung trägt alle gezählten Monate: Kopf und Zeilen nennen dieselben Monate und dieselben Summen.
         BigDecimal gemessen = BigDecimal.ZERO, erwartet = BigDecimal.ZERO;
         int bewertbar = 0;
         for (JsonNode m : monate) {
@@ -657,6 +658,76 @@ class BezugsbasisVergleichApiTest {
         assertThat(vorher.get("gemessen").isNull()).isTrue();
         assertThat(vorher.get("satz").asText()).isEqualTo("Oktober 2025 bis November 2025: nicht bewertbar — kein Monat "
                 + "mit Vergleich. Die Bezugsbasis gilt erst ab Dezember 2025.");
+    }
+
+    /**
+     * Review #1446 S2 (a): endet die Basis im Zeitraum, liest der Kopf die Fassung des letzten Monats mit Fassung; die
+     * Monate nach dem Ende zählen nicht („endete am“). Gilt danach wieder eine Fassung, sagt der Satz „gilt wieder ab“;
+     * liegt die Lücke in der Mitte, nennt er nur ihre Zahl und rechnet gegen die Fassung des letzten Monats - dann zählen
+     * Kopf und Zeilen dieselben Monate, „erwartet“ weicht aber von der Summe der Zeilen ab (S1). Die Seite der Kennzahl
+     * endet ihren Zeitraum mit dem letzten Monat der Fassung.
+     */
+    @Test
+    void derKopfEinerBasisDieImZeitraumEndet() throws Exception {
+        Welt w = welt();
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        TenantContext.set(w.mandant());
+        UUID bb = basis(w, w.ohneBasis());
+        TenantContext.clear();
+        fassung(w.mandant(), bb, 1, bz1, "verhaeltnis", "2024-10/2024-10", "2025-10-01", "2025-12-31", "0.2837", null,
+                null, null, null);
+
+        Antwort a = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2025-10&bis=2026-03");
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        assertThat(a.body().at("/monate/3/bereinigt/grund").asText()).isEqualTo("basis_beendet");
+        JsonNode z = a.body().get("zeitraum");
+        // Oktober bis Dezember gegen Fassung 1: 251 500 kWh gegen 0,2837 × 880 000 kg = 249 656 kWh.
+        assertThat(z.get("fassung").asInt()).isEqualTo(1);
+        assertThat(zahl(z.get("gemessen"))).isEqualByComparingTo("251500");
+        assertThat(zahl(z.get("erwartet"))).isEqualByComparingTo("249656");
+        assertThat(z.get("urteil").asText()).isEqualTo("im_rahmen");
+        assertThat(z.get("monate").asText()).isEqualTo("3 von 6");
+        assertThat(z.get("satz").asText()).isEqualTo("Oktober 2025 bis März 2026: 3 von 6 Monaten bewertbar, die "
+                + "Bezugsbasis endete am 31.12.2025. 251 500 kWh gemessen, 249 656 kWh erwartet — 0,7 %: im Rahmen der "
+                + "Bezugsbasis (Summe über drei Monate). Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
+        // Die Seite der Kennzahl: ihr Zeitraum endet mit dem letzten Monat der Fassung - dieselben Summen wie der Kopf.
+        JsonNode seite = ruf(w, PFAD + "/" + w.ohneBasis() + "?mit=auswertung").body().at("/auswertung/zeitraum");
+        assertThat(seite.get("von").asText()).isEqualTo("2025-10");
+        assertThat(seite.get("bis").asText()).isEqualTo("2025-12");
+        assertThat(seite.get("monate").asText()).isEqualTo("3 von 3");
+        assertThat(seite.get("delta_prozent").asText()).isEqualTo(z.get("delta_prozent").asText());
+
+        // Fassung 2 gilt wieder ab März 2026 (Verhältnis 0,26).
+        fassung(w.mandant(), bb, 2, bz1, "verhaeltnis", "2025-01/2025-12", "2026-03-01", null, "0.26", null, null, null,
+                null);
+        JsonNode wieder = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2026-01&bis=2026-03").body()
+                .get("zeitraum");
+        assertThat(wieder.get("monate").asText()).isEqualTo("1 von 3");
+        assertThat(wieder.get("satz").asText()).isEqualTo("Januar 2026 bis März 2026: 1 von 3 Monaten bewertbar, die "
+                + "Bezugsbasis gilt wieder ab März 2026. 100 000 kWh gemessen, 101 400 kWh erwartet — 1,4 %: im Rahmen der "
+                + "Bezugsbasis (Summe über einen Monat).");
+        JsonNode luecke = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2026-01&bis=2026-02").body()
+                .get("zeitraum");
+        assertThat(luecke.get("grund").asText()).isEqualTo("basis_beendet");
+        assertThat(luecke.get("monate").asText()).isEqualTo("0 von 2");
+        assertThat(luecke.get("satz").asText()).isEqualTo("Januar 2026 bis Februar 2026: nicht bewertbar — kein Monat "
+                + "mit Vergleich. Die Bezugsbasis endete am 31.12.2025 und gilt wieder ab März 2026.");
+
+        // Die Lücke in der Mitte: vier Monate zählen, alle gegen Fassung 2 (0,26 × 1 270 000 kg = 330 200 kWh).
+        Antwort mitte = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2025-10&bis=2026-03");
+        JsonNode zm = mitte.body().get("zeitraum");
+        assertThat(zm.get("fassung").asInt()).isEqualTo(2);
+        assertThat(zm.get("monate").asText()).isEqualTo("4 von 6");
+        assertThat(zahl(zm.get("erwartet"))).isEqualByComparingTo("330200");
+        assertThat(zm.get("satz").asText()).isEqualTo("Oktober 2025 bis März 2026: 4 von 6 Monaten bewertbar, in 2 "
+                + "Monaten gilt keine Fassung der Bezugsbasis. 351 500 kWh gemessen, 330 200 kWh erwartet — 6,5 % mehr: "
+                + "schlechter (Summe über vier Monate).");
+        int mitErwartet = 0;
+        for (JsonNode m : mitte.body().get("monate")) {
+            mitErwartet += m.at("/bereinigt/erwartet").isNull() ? 0 : 1;
+        }
+        assertThat(mitErwartet + " von 6").isEqualTo(zm.get("monate").asText());
     }
 
     /**
