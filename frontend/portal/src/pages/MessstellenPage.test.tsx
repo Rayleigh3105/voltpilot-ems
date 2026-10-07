@@ -593,7 +593,7 @@ describe('Messstellen · geplante Messstellen (Konzept Auswerten a1, Entscheid 9
     expect(mb.querySelector('.vp-ms-reihe-satz')?.textContent).toBe('Geplant für EE-8 Gebäudetechnik Halle 1Frist 31.03.2027');
     expect(mb.querySelector('.vp-ms-frist')?.textContent).toBe('Frist 31.03.2027');
     expect(mb.textContent).toContain('Noch nicht eingerichtet');
-    expect(within(mb).getByRole('link', { name: 'EE-8 Gebäudetechnik Halle 1' })).toHaveAttribute('href', `#/portfolio/bewertung/${ee8().id}`);
+    expect(within(mb).getByRole('link', { name: 'EE-8 Gebäudetechnik Halle 1' })).toHaveAttribute('href', `#/portfolio/verbrauch/${ee8().id}`);
     expect(mb).toHaveAttribute('data-entscheid', 'messbedarf_frist');
     expect(mb).toHaveAttribute('data-entscheid-kennzeichen', 'MB-1');
     expect(within(mb).getByRole('button', { name: 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1 (MB-1) einrichten' })).toHaveAttribute('data-entscheid-schritt');
