@@ -542,7 +542,8 @@ class UemsEnergiemanagementAbnahmeTest {
         JsonNode m = antwort("massnahme M-2029-0001");
         assertThat(m.at("/herkunft/art").asText()).isEqualTo("nichtkonformitaet");
         assertThat(m.at("/herkunft/kennung").asText()).isEqualTo("F-2029-0001");
-        assertThat(m.path("zustand").asText()).isEqualTo("umgesetzt");
+        // Seit der Demo-Füllung Verbessern (PR 6) wie massnahmen_1_10: am 15.04.2029 „nicht messbar“ abgeschlossen.
+        assertThat(m.path("zustand").asText()).isEqualTo(referenz.at("/massnahmen_1_10/0/zustand").asText()).isEqualTo("bewertet");
         assertThat(m.toString()).doesNotContain("Nichtkonformität");
         assertThat(root.queryForObject("SELECT herkunft_art FROM massnahme WHERE tenant_id = ? AND kennzeichen = "
                 + "'M-2029-0002'", String.class, tenant)).isEqualTo("audit");

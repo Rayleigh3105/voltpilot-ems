@@ -175,6 +175,10 @@ final class DemoVerbessernReferenz {
         n += root.update("UPDATE massnahme_aenderung a SET created_at = m.umgesetzt_gemeldet_am FROM massnahme m WHERE m.id = "
                 + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen LIKE 'M-2029-000_' AND a.art = 'massnahme_umgesetzt' "
                 + "AND a.created_at <> m.umgesetzt_gemeldet_am", TENANT);
+        // Die Zeile `massnahme_umgesetzt` nennt die Begründung der Maßnahme (nach der Demo-Korrektur von M-2029-0001).
+        n += root.update("UPDATE massnahme_aenderung a SET begruendung = m.umgesetzt_begruendung FROM massnahme m WHERE m.id = "
+                + "a.massnahme_id AND m.tenant_id = ? AND m.kennzeichen LIKE 'M-2029-000_' AND a.art = 'massnahme_umgesetzt' "
+                + "AND a.begruendung IS DISTINCT FROM m.umgesetzt_begruendung", TENANT);
 
         JsonNode ez = referenz.at("/energieziele/0");
         Map<String, Object> ziel = zielInhalt(ez.path("wortlaut").asText(), "-5.0", "2028-01/2028-12");
