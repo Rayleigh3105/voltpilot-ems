@@ -592,22 +592,6 @@ export function bewertungFaelligSatz(stand: EnergiezielStand | null, ez: Energie
   return `Das ${name} ist zu Ende. VoltPilot schlägt vor: ${v} - ${zahlTeil}. Bewerten Sie es; mit Begründung auch anders.`;
 }
 
-// ------------------------------------------------------------------ Auffälligkeit (Hinweis)
-
-/** Δ eines Vermerks aus seiner Kopie (`anlass_inhalt`), wo sie eine trägt: „2,2 % über der Erwartung“. */
-export function auffaelligkeitDelta(inhalt: Record<string, unknown> | null | undefined): string | null {
-  const suche = (x: unknown): { delta_prozent?: unknown; richtung?: unknown } | null => {
-    if (!x || typeof x !== 'object') return null;
-    const o = x as Record<string, unknown>;
-    if (o.bereinigt && typeof o.bereinigt === 'object') return o.bereinigt as { delta_prozent?: unknown };
-    if (Array.isArray(o.vergleich)) return suche(o.vergleich[0]);
-    return null;
-  };
-  const b = suche(inhalt);
-  if (!b || typeof b.delta_prozent !== 'string') return null;
-  return `${prozent(b.delta_prozent)} ${b.delta_prozent.startsWith('-') ? 'unter' : 'über'} der Erwartung`;
-}
-
 /** Monate der Zielperiode, nur `JJJJ-MM` zwischen `von` und `bis` (für die Grafik ohne Stand). */
 export function monateZwischen(von: string, bis: string): string[] {
   const aus: string[] = [];
