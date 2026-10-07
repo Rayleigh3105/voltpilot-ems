@@ -515,8 +515,10 @@ class UemsMassnahmeMigrationTest {
                 kennungen.add(kennung);
             }
         });
+        // Einzige spätere Zeile: der Nachtrag Verbessern v1 §10.8 (Entscheid 8) - die eigene Maßnahme melden und
+        // kommentieren, nur für die verantwortliche Person; dieses Paket bringt weiterhin keine Kennung.
         assertThat(kennungen).containsExactlyInAnyOrder("verbesserung.verwalten", "verbesserung.abschliessen",
-                "verbesserung.ansehen");
+                "verbesserung.ansehen", "verbesserung.eigene_massnahme");
     }
 
     /** Die Funktion wird nur geweitet: jede Zeile von IP-5 bleibt, dazu genau die zwei Listen der Tabellen (IP-14 dahinter). */
