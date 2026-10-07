@@ -39,6 +39,14 @@ ohne Zustand, Abdeckung und Kennzeichen.** Keine Migration, keine Rechenregel: g
 Und die fünfte, die das Paket definiert: **nur die Rolle `fuehrend` der Hauptgröße** liefert — eine
 Vergleichsquelle nie, auch nicht, wo die führende schweigt (Test: MS-10 am 25.10.).
 
+## Stichtag-Grenze der Routen (Auswerten a4, Review r3 zu #1425)
+
+`…/werte` und `…/werte/versionen` zeigen nur, was zur Uhr der Route schon vorliegen konnte; die Leser im Haus bleiben ungezäunt.
+In Produktion verbirgt das nichts - es hält nur den Bühnen-Bestand der Prüfumgebung (Werte bis 2029) von der echten Uhr fern.
+Berechnete Spur: eine Periode ab ihrem BEGINN, nie erst ab ihrem Ende - die laufende (Tag, Monat, Jahr) bleibt vorläufig sichtbar; die Viertelstunde mit dem Messzeit-Spielraum E13 (5 Minuten).
+Ablese-Spur: solange keine ihr zugeordnete Ablesung nach der Uhr liegt - der Zuordnungsmonat ist frei wählbar, Periodengrenzen sagen dort nichts.
+⚠ Ein Test, der berechnete Perioden an festen künftigen Tagen über die Route liest, stellt die Route-Uhr (`MessstelleWerteService.uhrStellen`) auf den Lauf-Zeitpunkt, sonst ist er bis zu diesem Tag rot.
+
 ## Welche Reihe einen Schritt beantwortet (`MessstelleWerteRegeln.deckung`)
 
 Die Reihe ist Komponente + Messkanal (AP-07 E2). Ein Schritt gehört der Messstelle nur, wenn ihre

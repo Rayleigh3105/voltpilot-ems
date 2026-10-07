@@ -1598,7 +1598,19 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'pages/KennzahlenPage.tsx',
     // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
     'components/KennzahlListe.tsx',
+    // Konzept Auswerten a1 (PR1): die Liste mit Urteil, Gruppen und Mini-Grafiken - ihr reines Modell, ihre Bausteine,
+    // ihre Bühnen-Welt und die geteilten Urteils-Wörter.
+    'kennzahlListe.ts',
+    'components/KennzahlenAuswertung.tsx',
+    'test/kennzahlListeFixtures.ts',
+    'bezugsbasisUrteil.ts',
     'pages/KennzahlSeite.tsx',
+    // Konzept Auswerten a1 (PR2): die Seite einer Kennzahl ohne Reiter, ihre Bezugsbasis eine Ebene tiefer, ihr reines
+    // Modell und ihre Bühnen-Welt.
+    'kennzahlSeite.ts',
+    'test/kennzahlSeiteFixtures.ts',
+    'pages/BezugsbasisEbene.tsx',
+    'bezugsbasisEbene.ts',
     'components/KennzahlAnlegenDialog.tsx',
     'components/KennzahlStammdatenDialog.tsx',
     // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl (eine Welt) und seine Leser-Antworten der Bühne.
@@ -1650,7 +1662,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
       for (const e of v.entscheidungen) out.push(e.vorgang, ...[e.fassung?.wer, e.fassung?.warum, e.angelegt?.wer].filter(da));
     }
     out.push(
-      KK.TITEL, KK.LADEN, KK.LADEFEHLER, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
+      KK.TITEL, KK.LADEN, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
       KK.AUSSERHALB_ZUGRIFF, KK.KARTE_VERLAUF, KK.KARTE_HERKUNFT, KK.KARTE_BERECHNUNG, KK.KARTE_STAMMDATEN, KK.FASSUNGEN_TITEL,
       KK.PERIODE_WAHL, KK.OHNE_ZWECK, KK.SEIT_BEGINN, KK.HERKUNFT_FEHLT,
       ...Object.values(KK.PERIODEN_NAME), ...Object.values(KK.GELTUNG_WORT), ...Object.values(KK.FEHLT_WORT),
@@ -1695,6 +1707,17 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
     expect(texte.filter((t) => MITTEL_VERBOTEN.test(t))).toEqual([]);
     expect(texte.filter((t) => ROLLEN_VERBOTEN.test(t))).toEqual([]);
+  });
+
+  it('Konzept Auswerten a1 (Wörter): Seite einer Kennzahl und Bezugsbasis sprechen ohne „Roh“, „Urteil (Band)“ und K1-K8', () => {
+    // §8.3: „Roh · Urteil (Band)“ wird „ggü. Vormonat“ und „Urteil“; Kriterien heißen in Worten, nie K1 bis K8 (§10.10).
+    const auswerten = ['kennzahlSeite.ts', 'pages/KennzahlSeite.tsx', 'bezugsbasisEbene.ts', 'pages/BezugsbasisEbene.tsx', 'bezugsbasisVergleich.ts', 'kennzahlListe.ts', 'components/KennzahlenAuswertung.tsx'];
+    const verbotenAuswerten = /(^|[^\p{L}])(Roh|K[1-8])([^\p{L}\p{N}]|$)|Urteil \(Band\)/u;
+    const treffer = auswerten.flatMap((rel) =>
+      // Jede sichtbare Zeichenkette, auch ein einzelnes Wort („Roh“ ist kurz genug, um den Kundentext-Filter zu umgehen).
+      visibleTexts(readFileSync(join(SRC, rel), 'utf8')).filter((t) => verbotenAuswerten.test(t)).map((t) => `${rel}: ${t}`),
+    );
+    expect(treffer).toEqual([]);
   });
 
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
@@ -2004,7 +2027,7 @@ const CHART_FILES_OBERFLAECHEN: string[] = [
   // AP-11 IP-13: der Kennzahl-Balken (Funktion `Verlauf` der Kennzahl-Seite) und seine Ableitung `kennzahlKarte.verlauf`.
   'pages/KennzahlSeite.tsx',
   'kennzahlKarte.ts',
-  // AP-13 IP-8: die Anteils-Balken der Energiebilanz (kWh je Unterzähler, keine Prozentzahl) — Render und Ableitung.
+  // AP-13 IP-8 / Konzept Auswerten a1 §6.9: der Zwei-Teile-Balken der Energiebilanz (ohne Etikett) - Render und Ableitung.
   'pages/EnergiebilanzSection.tsx',
   'anlageEnergiebilanz.ts',
 ];
@@ -2029,7 +2052,7 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     'netzanschlussListe.ts',
     'pages/StandortNetzanschluessePage.tsx',
     'components/NetzanschlussDialog.tsx',
-    'components/NetzanschlussBilanzKopf.tsx',
+    'components/EnergiebilanzFuss.tsx',
     // AP-13 IP-9: Kostenstellen und Prozesse nebeneinander (reines Modul und Render).
     'kostenstellenUebersicht.ts',
     'pages/KostenstellenSection.tsx',
@@ -2133,18 +2156,28 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     }
     // AP-13 IP-8: die Wörter der Energiebilanz und alles, was sie an O5/O6/O7/O8 und im Vorschlag wirklich sagt.
     for (const t of [
+      EB.ENERGIEBILANZ_UNTERZEILE,
       ...Object.values(EB.ZEILE_WORT),
+      EB.KARTE_WORT.bezug,
+      EB.KARTE_WORT.verbrauch,
+      ...Object.values(EB.KARTE_WORT.erfasst),
+      EB.KARTE_WORT.ohne,
+      ...Object.values(EB.ANTEIL_AM),
+      EB.VERBRAUCH_AUS,
+      ...Object.values(EB.ANTWORT),
+      ...Object.values(EB.OFFEN_SATZ),
       ...Object.values(EB.ANTEIL_WORT).filter((w): w is string => w !== null),
-      ...Object.values(EB.LIVE_GRUND),
-      EB.UNTERZAEHLER_ANZAHL,
-      ...Object.values(EB.MESSSTELLEN_ANZAHL),
+      ...Object.values(EB.UNTERZAEHLER_TITEL),
+      ...Object.values(EB.AUSSERHALB_SATZ),
       EB.KEIN_UNTERZAEHLER,
       EB.HILFE_NEGATIV,
+      EB.HILFE_NEGATIV_VERBRAUCH,
       EB.LIVE_JETZT,
-      EB.LIVE_OHNE_ZAHL,
       EB.LIVE_STAND,
-      EB.ZONE_SATZ,
+      EB.FUSS_ZONE,
+      EB.FUSS_ZONE_STANDORT,
       EB.STELLUNG_GEAENDERT,
+      EB.WORAUS,
       EB.HERKUNFT,
       EB.HERKUNFT_EINGAENGE,
       EB.HERKUNFT_FORMEL,
@@ -2157,6 +2190,8 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       EB.HERKUNFT_UNVOLLSTAENDIG,
       EB.REST_VORSCHLAG,
       EB.REST_ANLEGEN,
+      EB.REST_GEFUEHRT,
+      EB.ZAEHLER_ZUORDNEN,
       EB.REST_OHNE_RECHT,
       EB.REST_ANGELEGT,
       EB.REST_GAB_ES_SCHON,
@@ -2172,7 +2207,7 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
       [FIXTURE_IDS.an2, 'tag', '2026-11-04', { live: 'veraltet' }],
     ] as const) {
       const bild = EB.energiebilanzBild(ahrenbergBilanz(siteId, periode, am, b), ctxEB);
-      const texte = [bild.zeitraum, bild.zone, ...bild.hauptzaehler.flatMap((h) => [h.titel, h.live.text, h.vorschlag?.satz ?? '', ...h.abschnitte.flatMap((ab) => ab.tage.flatMap((tag) => tag.zeilen.flatMap((z) => [z.wort, z.zahl, z.zusatz ?? '', ...z.woerter, ...z.saetze, ...z.herkunft.zeilen, ...z.herkunft.eingaenge, ...z.teile.flatMap((x) => [x.name, ...x.woerter])])))])];
+      const texte = [bild.zeitraum, bild.zone, ...bild.hauptzaehler.flatMap((h) => [h.titel, h.live?.text ?? '', h.vorschlag?.satz ?? '', h.restMessstelle?.text ?? '', ...h.abschnitte.flatMap((ab) => ab.tage.flatMap((tag) => [tag.antwort.satz, ...tag.karte.flatMap((k) => [k.wort, k.zahl, ...k.unter]), ...tag.unterzaehler.flatMap((x) => [x.nurName, x.anteil ?? '']), ...tag.zeilen.flatMap((z) => [z.wort, z.zahl, z.zusatz ?? '', ...z.woerter, ...z.saetze, ...z.herkunft.zeilen, ...z.herkunft.eingaenge, ...z.teile.flatMap((x) => [x.name, ...x.woerter])])]))])];
       for (const text of texte.filter(Boolean)) out.push({ wo: `Energiebilanz ${periode} ${am}`, text });
     }
     return out;
@@ -2496,6 +2531,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/BewertungBaustein.tsx',
     // IP-25: der Bewertungsstand — Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV.
     'components/BewertungStand.tsx',
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ liest Rangliste und Messabdeckung — der Satz steht am Fuß.
+    'pages/VerbrauchPage.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,
@@ -2592,6 +2629,19 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
       'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
       UEMS_NORMGRENZE,
     ]);
+  });
+
+  it('die Ergebnis-Seite nennt kein Kürzel K1 bis K8, kein „Roh“ und kein „Urteil (Band)“ (Konzept Auswerten a1 §10.10)', () => {
+    // Die Kürzel stehen nur im Dialog „Kriterien ändern“ (Wort und Kürzel, `bewertungErgebnis.KRITERIEN_FELDER`).
+    const kuerzel = /(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)|(^|[^\p{L}])Roh([^\p{L}]|$)|Urteil \(Band\)/u;
+    // Die Seitenhülle und der Bewertungsstand; die Sätze aus `bewertungErgebnis.ts` prüft `bewertungErgebnis.test.ts`
+    // an ihrem Ergebnis (jeder Text der Ergebnis-Seite ohne Kürzel).
+    for (const datei of ['pages/BewertungPage.tsx', 'components/BewertungStand.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8'));
+      expect(texte.length, datei).toBeGreaterThan(5);
+      expect(texte.filter((t) => kuerzel.test(t)), datei).toEqual([]);
+    }
+    expect(kuerzel.test('Er braucht mindestens 10 % des Stroms (K1).')).toBe(true);
   });
 });
 

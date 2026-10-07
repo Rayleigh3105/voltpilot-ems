@@ -5,7 +5,7 @@ import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * Auffälligkeiten und Abweichungen (UEMS AP-18 IP-18) bei 375 px und 1440 px auf der eigenen Bühne
- * `e2e/abweichungen.html` — die ECHTE Schale mit der ECHTEN Kennzahl-Seite (Reiter „Vergleich mit Bezugsbasis“) und dem
+ * `e2e/abweichungen.html` — die ECHTE Schale mit der ECHTEN Kennzahl-Seite (Vergleich je Monat auf der Ebene der Bezugsbasis) und dem
  * ECHTEN Bereich „Ziele und Maßnahmen“; die Routen gespielt aus dem Referenzunternehmen 1.9
  * (`src/test/abweichungFixtures.ts`, R1/R2/R8/R11, dazu `massnahmeFixtures.ts` für die neue Maßnahme).
  *
@@ -94,9 +94,11 @@ async function waehleTag(page: Page, feld: Locator, iso: string) {
 const modal = (page: Page) => page.locator('.vp-modal');
 const combo = (page: Page, name: string) => modal(page).getByRole('combobox', { name, exact: true });
 
+/** Konzept Auswerten a1 §6.6: der Vergleich je Monat (mit den Vermerken) steht auf der Ebene der Bezugsbasis. */
 async function vergleich(page: Page) {
   await expect(page.getByTestId('kennzahl-seite')).toBeVisible();
-  await page.getByTestId('kennzahl-reiter-vergleich').click();
+  await page.getByTestId('alle-fassungen').click();
+  await page.getByTestId('bezugsbasis-vergleich-aufklapp').locator('summary').click();
   await expect(page.getByTestId('bezugsbasis-vergleich')).toBeVisible();
 }
 

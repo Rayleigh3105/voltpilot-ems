@@ -108,10 +108,11 @@ for (const breite of [375, 1440]) {
 
     test('Anlegen an KZ-0004 (R4): Basis-Zeile, Vorgabe Januar bis Dezember 2028, danach die Seite des Energieziels', async ({ page }) => {
       await oeffne(page, 'lage=leer&seite=kennzahl', breite, AM_20_12_2027);
-      const knopf = page.getByTestId('energieziel-setzen-knopf');
-      await expect(knopf).toBeVisible();
+      // Konzept Auswerten a1 §6.5: „Energieziel setzen“ steht im Menü ⋯ der Kennzahl, solange keines gilt.
+      await expect(page.getByTestId('kennzahl-seite')).toBeVisible();
       await ablegen(page, `kennzahl-${breite}`);
-      await knopf.click();
+      await page.getByRole('button', { name: 'Weitere Aktionen', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Energieziel setzen', exact: true }).click();
       const dialog = page.getByTestId('energieziel-setzen');
       await expect(dialog.getByTestId('energieziel-basis-zeile')).toContainText('Bezugsbasis BB-0001 · Fassung 2');
       await expect(dialog.getByText('Januar bis Dezember 2028 — ganze Monate, frühestens ab dem nächsten Monat.')).toBeVisible();

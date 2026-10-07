@@ -16,6 +16,7 @@ import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -71,6 +72,8 @@ public class BezugsgroesseService {
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private final RechtPruefung rechte;
+    /** Die Uhr der Stichtag-Grenze an der Route (Tests stellen sie). */
+    private volatile Clock uhr = Clock.systemUTC();
 
     public BezugsgroesseService(BezugsgroesseRepository repo, BezugsflaecheLesemodell bezugsflaechen,
             BezugswertRepository berichtigungen, PlatformTransactionManager transactionManager, ObjectMapper json,
@@ -95,13 +98,35 @@ public class BezugsgroesseService {
                 .map(BezugsgroesseService::darstellung).toList(), bezugsflaechen.alle());
     }
 
+    /**
+     * Liegt der Wert zur {@code grenze} schon vor? Ein Periodenwert, wenn seine Periode in ihrer Zone zu Ende ist
+     * (Mitternacht nach dem letzten Tag) - dieselbe Regel wie {@code bezugsgroesse_wert_abgeschlossen_chk}; ein Stand
+     * ab seinem Zeitpunkt.
+     */
+    static boolean erreicht(WertZeile w, Instant grenze) {
+        if (w.periodeBis() != null) {
+            return !w.periodeBis().plusDays(1).atStartOfDay(ZoneId.of(w.zeitzone())).toInstant().isAfter(grenze);
+        }
+        return w.zeitpunkt() == null || !w.zeitpunkt().isAfter(grenze);
+    }
+
     public BezugsgroesseDto.Bezugsgroesse eine(UUID id) {
         return darstellung(sichtbar(id));
     }
 
-    /** Die Route: {@link #werte} im Geltungsbereich des Aufrufers — außerhalb wie eine unbekannte Kennung. */
+    /** Nur für Tests: die Uhr der Stichtag-Grenze. */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
+    }
+
+    /**
+     * Die Route: {@link #werte} im Geltungsbereich des Aufrufers — außerhalb wie eine unbekannte Kennung. Stichtag-Grenze:
+     * nie ein Wert nach heute - ein Periodenwert erst, wenn seine Periode zu Ende ist, ein Stand erst ab seinem
+     * Zeitpunkt. Erfassen lässt sich ein solcher Wert nicht ({@code bezugsgroesse_wert_abgeschlossen_chk}); steht er
+     * dennoch da (Bühnen-Bestand der Prüfumgebung), zeigt die Route ihn erst, wenn die Zeit ihn erreicht.
+     */
     public BezugsgroesseDto.Werte werteImGeltungsbereich(UUID id, LocalDate von, LocalDate bis, String lesart) {
-        return werte(this::sichtbar, id, von, bis, lesart);
+        return werte(this::sichtbar, id, von, bis, lesart, uhr.instant());
     }
 
     /**
@@ -110,17 +135,21 @@ public class BezugsgroesseService {
      * mit ihrer Herkunft; {@code alle}: die ganze Kette. Ungezäunt, für interne Leser.
      */
     public BezugsgroesseDto.Werte werte(UUID id, LocalDate von, LocalDate bis, String lesart) {
-        return werte(this::finde, id, von, bis, lesart);
+        return werte(this::finde, id, von, bis, lesart, null);
     }
 
+    /** {@code grenze}: nur Werte, die bis dahin vorliegen konnten ({@link #erreicht}); {@code null} = ungezäunt. */
     private BezugsgroesseDto.Werte werte(Function<UUID, Zeile> lies, UUID id, LocalDate von, LocalDate bis,
-            String lesart) {
+            String lesart, Instant grenze) {
         if (von != null && bis != null && bis.isBefore(von)) {
             throw BezugsgroesseAbgelehnt.von(Ablehnung.ZEITRAUM_UNGUELTIG);
         }
         Zeile b = lies.apply(id);
         Map<String, List<WertZeile>> jeSchluessel = new LinkedHashMap<>();
         for (WertZeile w : repo.werte(id, von, bis)) {
+            if (grenze != null && !erreicht(w, grenze)) {
+                continue;
+            }
             jeSchluessel.computeIfAbsent(w.periodeVon() + "|" + w.zeitpunkt(), k -> new ArrayList<>()).add(w);
         }
         // AP-09 IP-7: der offene Vorschlag gehört zum Wert, ist aber noch keine Fassung.

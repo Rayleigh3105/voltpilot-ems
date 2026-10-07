@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { FahrplanSection } from './DataPages';
 import type { ControlStatus, SchedulePlan, ScheduleSlot, Site, TelemetryPoint } from '../api';
@@ -127,6 +127,18 @@ function dayPlan(): SchedulePlan {
   };
 }
 
+/**
+ * Die Fälle mit `dayPlan()` laufen zur Tagesmitte: kurz nach Mitternacht
+ * lägen seine gelaufenen Viertelstunden am Vortag und fehlten im Tagesbild.
+ * Nur `Date` steht still - die Timer von `waitFor` bleiben echt.
+ */
+function zurTagesmitte() {
+  const mittag = new Date();
+  mittag.setHours(12, 0, 0, 0);
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(mittag);
+}
+
 const CONTROL: ControlStatus = {
   deviceId: 'dev-1',
   commandedKw: -6.1,
@@ -164,6 +176,10 @@ beforeEach(() => {
   siteEarnings.mockRejectedValue(new Error('404'));
   tenantCockpitLayout.mockResolvedValue({ vorgabe: null, eigen: null });
   saveTenantCockpitLayout.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('FahrplanSection · das Seitengerüst', () => {
@@ -338,6 +354,7 @@ describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', 
  */
 describe('FahrplanSection · die Stationen zeigen den ganzen Tag', () => {
   beforeEach(() => {
+    zurTagesmitte();
     schedule.mockImplementation((_id: unknown, mode?: unknown) =>
       Promise.resolve(mode === 'day' ? dayPlan() : plan()),
     );
@@ -686,6 +703,7 @@ describe('FahrplanSection · das Tagesbild', () => {
   });
 
   it('zeigt die Stationen des Tages offen im Tagesbild, unter den Antworten', async () => {
+    zurTagesmitte();
     schedule.mockImplementation((_id: unknown, mode?: unknown) =>
       Promise.resolve(mode === 'day' ? dayPlan() : plan()),
     );

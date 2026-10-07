@@ -51,3 +51,47 @@ Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versio
 - **Seit IP-15 gebaut:** „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und Löschen — `uems-kennzahl-aendern.md`
   (kein Wiederherstellen: keine Route, also kein Knopf). Die Paare einer Jahres-Zusammenfassung (K14) zeigt die Herkunfts-Karte seit IP-11 (`kennzahlKarte.herkunft` → `paare`). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
   Kopf von Liste und Seite: `uems-kennzahl-anlegen.md`.
+- **Liste seit Konzept Auswerten a1 (PR1):** `KennzahlenPage` liest EINE Anfrage `GET /api/v1/kennzahlen?mit=auswertung`
+  (`kennzahl.md` „Die Auswertung an der Liste“) und ordnet in `kennzahlListe.ts` (rein): „Mit Bezugsbasis“ =
+  `auswertung.vergleich` vorhanden (freigegebene Fassung), sonst „Zum Beobachten“; Archivierte zugeklappt, ihre Werte
+  (`useListenWerte`) erst beim Aufklappen. Nur Kennzahlen ohne Auswertung (ohne Monatswerte, älterer Server, R-A7) lesen
+  noch `…/werte` je Kennzahl. Urteils-Wörter nur aus `bezugsbasisUrteil.ts` - dieselben wie die Leitkachel der Übersicht,
+  deren Urteil seit §10.8 aus derselben Ableitung kommt (`KennzahlAuswertungService`, nicht mehr aus dem Ziel-Stand).
+  Urteils-Farben: `--vp-c-urteil-*` in `index.css`. Bühnen: `startansicht.html?…&ansicht=kennzahlen&liste=referenz` (Welt
+  des Konzepts, 30.04.2029); die Bezugsbasis-Bühne zeigt „Vergleich ab Dezember 2026“.
+- **Ein Urteil, eine Ableitung (Review r3):** die Leitkachel (`PortfolioKpiService.leitkennzahl`) nimmt Kennzahl, Wert,
+  Monat, Urteil und Ziel-Stand aus `KennzahlAuswertungService.leit()` - auf der Uhr der Kennzahlen (`KennzahlService.jetzt`,
+  die Bühne der Prüfumgebung) und in der Zone der Geltung, nie aus `Instant.now()`/Berlin der Route. Welches offene
+  Energieziel an einer Kennzahl steht, wählt allein `KennzahlAuswertungService.zielFuer` (laufend vor fällig vor nächstem).
+  Den Stern der Leitkennzahl setzt das Portal nur nach `leitkennzahl` der Liste - nie selbst abgeleitet (auch nicht aus der
+  Standort-Liste). Scheitert `?mit=auswertung`, fällt die Liste auf die Anfrage ohne `mit` zurück; serverseitig verliert
+  bei einem Fehler nur die eine Kennzahl ihre Auswertung. Die Liste läuft in `KennzahlService.mitEinemKatalog` (ein
+  Katalog statt mehrerer je Kennzahl).
+- **Seite seit Konzept Auswerten a1 (PR2): ohne Reiter, Antwort zuerst.** `KennzahlSeite` liest
+  `GET /api/v1/kennzahlen/{id}?mit=auswertung` (dieselbe Ableitung wie Liste und Leitkachel), mit Bezugsbasis die zwölf
+  Zeilen von `…/vergleich` (gemessen und erwartet je Monat), die Monatswerte der zwölf Monate (Rechenweg, Versionen), die
+  offenen Energieziele (Verantwortliche) und mit `verbesserung.ansehen` die Auffälligkeiten; den Stern setzt nur
+  `leitkennzahl` der Route. Scheitert die Auswertung (nicht 404), lesen Seite und Ebene die Kennzahl ohne `mit`
+  (`kennzahlMitAuswertung.ts`). Sätze,
+  Kacheln, Fazit und Monatsliste bildet `kennzahlSeite.ts` (rein, im Q5-Wächter); die Grafiken (`AuswertenGrafik.tsx`)
+  tragen nur Marken, Achse und Monate stehen als HTML, die Geometrie ist `auswertenGrafik.ts`. Die Mengen der Kacheln
+  (`erwartet_wert`, `abweichung`, `zusammen`) und das Vorjahr je Monat (`monate[].vorjahr`, Operation `roh`) rechnet der
+  Server (`KennzahlAuswertung`), nie das Portal - kein zweiter Abruf für Vorjahrespunkt, Infozeile und Spalte.
+- **Stichtag statt Browser-Tag:** „seit“, „ab“, „gilt künftig“ und welche Fassung die Ebene zeigt
+  (`bezugsbasisEbene.ts` `fassungAm`: die geltende, vor der ersten die nächste) misst `kennzahlSeite.ts` `stichtag` am
+  Monat der Auswertung. Neben dem Urteil der Seite (Karte „Bezugsbasis“, „vorläufig“) steht die Fassung am
+  `urteilsTag` (letzter Tag des Monats, P4) - nach einer Überprüfung am Stichtag ist das die alte („galt … bis …“).
+  „Woraus gerechnet“ sagt „… aus der Bezugsbasis mal …“ nur beim Verhältnis; ein Modell „nach dem Modell der
+  Bezugsbasis“. Zwei Uhren der Demo: zur Bühnen-Uhr gilt BB-0001 Fassung 2, zur echten Uhr erst Fassung 1 „ab“.
+- **Ohne Auswertung** (archiviert, ohne Monatswerte, ohne Monat als Periode) bleibt die bisherige Werte-Karte mit
+  Perioden, Verlauf und Versionen; die Bezugsbasis-Karte führt trotzdem eine Ebene tiefer.
+- **Werkzeuge im Menü ⋯** (Energieziel setzen, Kopieren, Berechnung ändern ab …, Stammdaten ändern, Archivieren, Löschen nur
+  ohne Werte). `migration.test.ts` kennt dafür Fortschreibungen mit `menue`: der Menüeintrag muss Beschriftung, Recht und
+  Handler wörtlich tragen, sonst gilt der alte Knopf als verloren.
+- **Bezugsbasis eine Ebene tiefer:** `#/portfolio/kennzahlen/{id}/bezugsbasis` (am Standort ebenso, `kennzahlRoute(id,
+  sid, 'bezugsbasis')`); `pages/BezugsbasisEbene.tsx` mit Kopf, Status, Antwort, Fassungen als Datumsblöcken
+  (`bezugsbasisEbene.ts`), der Karte „Überprüfung“ (Marke `bezugsbasis_ueberpruefung`, die Wiedervorlage springt hierher)
+  und dem Vergleich je Monat mit freier Wahl (aufgeklappt). Alte Adressen `…/{id}?entscheid=bezugsbasis_ueberpruefung`
+  leitet `KennzahlenPage` auf die Ebene um. `copy.test.ts` verbietet auf diesen Flächen „Roh“, „Urteil (Band)“ und K1-K8.
+  Bühnen: `kennzahl-seite.html` (`?kz=4|24&lage=ueber|besser|noch_kein_vergleich&ebene=bezugsbasis`) und
+  `bezugsbasis.html?…&ebene=bezugsbasis`.

@@ -125,6 +125,20 @@ class AblesungApiTest {
         assertThat(oktober.path("menge").decimalValue()).isEqualByComparingTo("1240");
         assertThat(oktober.path("zustand").asText()).isEqualTo("vollständig");
         assertThat(oktober.path("kennzeichen").get(0).asText()).contains("01.10. 07:15", "02.11. 07:40", "Zuordnung durch den Kunden");
+        // Seit ergebnis-zustand 1.13 ist der gespeicherte Monat ein gültiges Ergebnis des Vertrags - die Karte spricht ihn.
+        assertThat(ErgebnisZustand.pruefe(new ErgebnisZustand.Ergebnis(oktober.path("menge").decimalValue(), "m³", "monat",
+                oktober.path("zustand").asText(), null, List.of(oktober.path("kennzeichen").get(0).asText())))).isEmpty();
+        // Das Jahr hat einen von zwölf Monaten: unvollständig, und es sagt zuerst, was fehlt.
+        JsonNode jahr=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=jahr&von=2026-01-01&bis=2026-12-31",
+                null),200).body().path("werte").get(0);
+        assertThat(jahr.path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(jahr.path("zustand").asText()).isEqualTo("unvollständig");
+        List<String> jahrKennzeichen=new ArrayList<>();
+        jahr.path("kennzeichen").forEach(k -> jahrKennzeichen.add(k.asText()));
+        assertThat(jahrKennzeichen).containsExactly("11 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen",
+                oktober.path("kennzeichen").get(0).asText());
+        assertThat(ErgebnisZustand.pruefe(new ErgebnisZustand.Ergebnis(jahr.path("menge").decimalValue(), "m³", "jahr",
+                jahr.path("zustand").asText(), null, jahrKennzeichen))).isEmpty();
         assertThat(monat(w,"2026-11-01","2026-11-30",null).path("zustand").asText()).isEqualTo("keine Werte");
         Antwort tag=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=tag&von=2026-10-20&bis=2026-10-20",null),200);
         assertThat(tag.body().path("werte").get(0).path("menge").isNull()).isTrue();
@@ -241,6 +255,31 @@ class AblesungApiTest {
         assertThat(ohne.path("register").size()).isZero();
     }
 
+    /**
+     * Messen PR5: mit letzterMonat=true trägt die Zeile den Monat vor dem Stichtag mit GENAU dem Schritt der Werte-Route
+     * - der Oktober aus dem Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (1.240 m³), ein Monat ohne Ablesung „keine Werte“.
+     */
+    @Test
+    void registerNenntDenLetztenVollstaendigenMonatAusDerWerteRegel() throws Exception {
+        Welt w=welt(); anfang(w);
+        JsonNode z=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?letzterMonat=true&stichtag=2026-11-20",null),200)
+                .body().path("register").get(0);
+        assertThat(z.path("letzter_monat").path("monat").asText()).isEqualTo("2026-10");
+        assertThat(z.path("letzter_monat").path("zeitzone").asText()).isEqualTo("Europe/Berlin");
+        assertThat(z.path("letzter_monat").path("wert")).isEqualTo(monat(w,"2026-10-01","2026-10-31",null));
+        assertThat(z.path("letzter_monat").path("wert").path("menge").decimalValue()).isEqualByComparingTo("1240");
+        assertThat(z.path("letzter_monat").path("wert").path("kennzeichen").get(0).asText())
+                .contains("01.10. 07:15", "02.11. 07:40", "Zuordnung durch den Kunden");
+        JsonNode spaeter=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?letzterMonat=true&stichtag=2026-12-01",null),200)
+                .body().path("register").get(0).path("letzter_monat");
+        assertThat(spaeter.path("monat").asText()).isEqualTo("2026-11");
+        assertThat(spaeter.path("wert")).isEqualTo(monat(w,"2026-11-01","2026-11-30",null));
+        assertThat(spaeter.path("wert").path("menge").isNull()).isTrue();
+        assertThat(spaeter.path("wert").path("zustand").asText()).isEqualTo("keine Werte");
+        assertThat(registerZeile(w,"2026-11-20").has("letzter_monat")).isFalse();
+        ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?letzterMonat=ja",null),400);
+    }
+
     private JsonNode registerZeile(Welt w,String stichtag) throws Exception {
         JsonNode r=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?stichtag="+stichtag,null),200).body().path("register");
         assertThat(r.size()).isEqualTo(1);
@@ -259,6 +298,56 @@ class AblesungApiTest {
         ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2027-01-03T07:40:00+01:00","stand","50.000")),200);
         luecken.lauf(grenze.plusSeconds(172800));
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' AND bis IS NOT NULL",Integer.class,w.mandant())).isEqualTo(1);
+    }
+
+    /**
+     * Stichtag-Grenze (Auswerten a4): Ablesungen-Liste und Werte der Route zeigen nie eine Ablesung nach heute; steht die
+     * Uhr wieder danach, ist alles da. Schreiben lässt sich eine solche Ablesung nicht - hier entsteht sie, weil die Uhr
+     * beim Schreiben später steht als beim Lesen (wie der Bühnen-Bestand der Prüfumgebung).
+     */
+    @Test
+    void nachHeuteZeigenListeUndWerteKeineAblesung() throws Exception {
+        Welt w=welt(); anfang(w);
+        var zwischen=java.time.Clock.fixed(java.time.Instant.parse("2026-10-20T10:00:00Z"),java.time.ZoneOffset.UTC);
+        ablesungen.uhrStellen(zwischen); werte.uhrStellen(zwischen);
+        JsonNode liste=ok(ruf(w.jonas(),HttpMethod.GET,PFAD,null),200).body();
+        assertThat(liste).hasSize(1);
+        assertThat(liste.get(0).path("stand").decimalValue()).isEqualByComparingTo("48211");
+        JsonNode oktober=monat(w,"2026-10-01","2026-10-31",null);
+        assertThat(oktober.path("menge").isNull()).isTrue();
+        assertThat(oktober.path("zustand").asText()).isEqualTo("keine Werte");
+        uhren();
+        assertThat(ok(ruf(w.jonas(),HttpMethod.GET,PFAD,null),200).body()).hasSize(2);
+        assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("1240");
+    }
+
+    /**
+     * Stichtag-Grenze (Review r3 zu #1425): in Produktion verbirgt sie nichts. Ein Ablesezeitraum im laufenden Monat ist
+     * dem laufenden Monat zugeordnet - Monat und Jahr zeigen ihn sofort, nicht erst nach dem Monatsende.
+     */
+    @Test
+    void derLaufendeMonatEinerAblesungBleibtSichtbar() throws Exception {
+        var heute=java.time.Clock.fixed(java.time.Instant.parse("2026-10-26T12:00:00Z"),java.time.ZoneOffset.UTC);
+        ablesungen.uhrStellen(heute); werte.uhrStellen(heute); messstellen.uhrStellen(heute);
+        Welt w=welt();
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","48.211")),200);
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2026-10-25T08:00:00+02:00","stand","48.900")),200);
+        assertThat(monat(w,"2026-10-01","2026-10-31",null).path("menge").decimalValue()).isEqualByComparingTo("689");
+        JsonNode jahr=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen/MS-21/werte?raster=jahr&von=2026-01-01"
+                +"&bis=2026-12-31",null),200).body().path("werte").get(0);
+        assertThat(jahr.path("menge").decimalValue()).isEqualByComparingTo("689");
+    }
+
+    /** Stichtag-Grenze (Auswerten a4): eine Ablesung nach dem Lauf beendet keine Lücke, die zum Lauf offen ist. */
+    @Test
+    void eineAblesungNachDemLaufBeendetKeineLuecke() throws Exception {
+        Welt w=welt(); anfang(w);
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt","2027-02-05T08:00:00+01:00","stand","51.000")),200);
+        luecken.lauf(java.time.Instant.parse("2027-01-10T00:00:00Z"));
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' "
+                + "AND bis IS NULL",Integer.class,w.mandant())).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id=? AND art='data_gap' "
+                + "AND bis IS NOT NULL",Integer.class,w.mandant())).isZero();
     }
 
     @Test

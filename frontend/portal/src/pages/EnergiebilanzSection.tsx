@@ -1,51 +1,61 @@
-import { NetzanschlussBilanzKopf } from '../components/NetzanschlussBilanzKopf';
+import { EnergiebilanzFuss } from '../components/EnergiebilanzFuss';
 import { Recht } from '../components/Recht';
-import { useEffect, useMemo, useState } from 'react';
+import { RowMenu, type RowMenuItem } from '../components/RowMenu';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Bilanz, type Funktionen, type Site } from '../api';
 import {
-  HERKUNFT,
+  ENERGIEBILANZ_UNTERZEILE,
   HERKUNFT_EINGAENGE,
+  KARTE_WORT,
   RECHT_REST_ANLEGEN,
   RECHT_STELLUNG,
   REST_ANLEGEN,
   REST_NICHT_ANGELEGT,
   REST_OHNE_HAUPTZAEHLER_SATZ,
   REST_OHNE_RECHT,
+  UNTERZAEHLER_TITEL,
+  WORAUS,
+  ZAEHLER_ZUORDNEN,
   darf,
   energiebilanzBild,
+  kennzeichenTeile,
   energiebilanzHash,
   restAngelegtSatz,
   standortDerAnlage,
   zeitraumAus,
+  type AbschnittBild,
+  type AusserhalbBild,
   type HauptzaehlerBild,
+  type KartenZeile,
   type MessstellenArt,
+  type TagBild,
+  type TeilBild,
   type Ton,
   type VorschlagBild,
   type ZeileBild,
 } from '../anlageEnergiebilanz';
 import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
-import { MiniShareBar } from '../components/MiniChart';
 import { ZeitSegment } from '../components/HistorieWelt';
 import { UEMS_ENERGIEBILANZ } from '../glossar';
 import { heuteIn } from '../kennzahlKarte';
 import { hashForRoute, standortMessstellenRoute } from '../nav';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { BILANZ_PERIODEN, NICHT_ABRUFBAR, blaettere, laeuftNoch, letzterGebildeter, zeitraumText, type BilanzPeriode } from '../uebersichtBausteine';
-import { KEINE_WERTE } from '../uemsBilanz';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { useBerichtRechte } from '../useBerichtRechte';
 import './EnergiebilanzSection.css';
 
 /**
- * Anlage › Verlauf › **Energiebilanz** (UEMS AP-13 IP-8 = AP-10 IP-14, E7 = A, B1/B2): je Hauptzähler die Zeilen
- * Zufluss · Abfluss · zugeordnet · nicht zugeordnet mit ihrer Herkunft, Anteils-Balken je Unterzähler in kWh (keine
- * Prozentzahl), die Live-Zeile mit Stand und Grund, der Vorschlag „Rest anlegen“ nur mit Recht. Geldfrei.
+ * Anlage › Verlauf › **Energiebilanz** (UEMS AP-13 IP-8 = AP-10 IP-14; Konzept Auswerten a1 §6.9): erfassen die Zähler den
+ * ganzen Bezug dieser Anlage? Kopf mit Unterzeile und Menü ⋯, Zeitwahl, Antwortsatz, Zwei-Teile-Balken mit drei Zeilen,
+ * die Unterzähler nach Menge, die Abzweige benannt, „Woraus gerechnet“ zugeklappt, Netzanschluss und Zeitzone am Fuß.
+ * Geldfrei.
  *
- * Die Ableitung ist `anlageEnergiebilanz.ts` — hier wird nur gerendert und geladen: die Bilanz-Route je Zeitraum, das
- * Register der Anlage (gemessen/berechnet je Messstelle), die Funktionen (Standort der Anlage) und die Selbstauskunft
- * (Rechte). Die Herkunft je Zeile ist zugeklappt (Variante A der Vorschau): die Zeilen bleiben am Telefon lesbar.
+ * Die Ableitung ist `anlageEnergiebilanz.ts` - hier wird nur gerendert und geladen: die Bilanz-Route je Zeitraum, das
+ * Register der Anlage (gemessen/berechnet und Name je Messstelle), die Funktionen (Standort der Anlage) und die
+ * Selbstauskunft (Rechte).
  */
 export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'> }) {
   const [zone, setZone] = useState(VORGABE_ZEITZONE);
@@ -54,6 +64,7 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   const [bilanz, setBilanz] = useState<Bilanz | 'fehler' | null>(null);
   const [neuLaden, setNeuLaden] = useState(0);
   const [arten, setArten] = useState<ReadonlyMap<string, MessstellenArt>>(() => new Map());
+  const [namen, setNamen] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [funktionen, setFunktionen] = useState<Funktionen | null>(null);
   const [rueckmeldung, setRueckmeldung] = useState<{ text: string; ton: Ton } | null>(null);
   const [legtAn, setLegtAn] = useState(false);
@@ -62,7 +73,11 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   useEffect(() => {
     let aktiv = true;
     api.messstellenRegister({ anlage: site.id }).then(
-      (r) => aktiv && setArten(new Map(r.register.map((z) => [z.kennzeichen, z.art]))),
+      (r) => {
+        if (!aktiv) return;
+        setArten(new Map(r.register.map((z) => [z.kennzeichen, z.art])));
+        setNamen(new Map(r.register.filter((z) => z.name).map((z) => [z.kennzeichen, z.name as string])));
+      },
       () => undefined,
     );
     api.funktionen().then(
@@ -91,10 +106,14 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   }, [site.id, wahl.periode, wahl.am, neuLaden]);
 
   const bild = useMemo(
-    () => (bilanz && bilanz !== 'fehler' ? energiebilanzBild(bilanz, { heute: heuteIn(bilanz.zeitzone, Date.now()), arten }) : null),
-    [bilanz, arten],
+    () => (bilanz && bilanz !== 'fehler' ? energiebilanzBild(bilanz, { heute: heuteIn(bilanz.zeitzone, Date.now()), arten, namen }) : null),
+    [bilanz, arten, namen],
   );
   const standortId = standortDerAnlage(funktionen, site.id);
+  const zuordnen = standortId && darf(rechte, standortId, RECHT_STELLUNG) ? hashForRoute(standortMessstellenRoute(standortId)) : null;
+  const menue: RowMenuItem[] = zuordnen
+    ? [{ label: ZAEHLER_ZUORDNEN, icon: 'link', onClick: () => window.location.assign(zuordnen) }]
+    : [];
 
   const waehle = (periode: BilanzPeriode, am: string) => {
     setWahl({ periode, am });
@@ -119,63 +138,68 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
   };
 
   return (
-    <section className="vp-eb" aria-labelledby="vp-eb-titel" data-testid="energiebilanz">
-      <div className="vp-eb-kopf">
-        <div className="vp-eb-kopf-text">
-          <h2 id="vp-eb-titel" className="vp-eb-titel">
+    <section className="vp-bil" aria-labelledby="vp-eb-titel" data-testid="energiebilanz">
+      <div className="vp-bil-kopf">
+        <div className="vp-bil-kopf-text">
+          <h2 id="vp-eb-titel" className="vp-bil-titel">
             {UEMS_ENERGIEBILANZ}
           </h2>
-          {bild && (
-            <p className="vp-eb-zone" data-testid="energiebilanz-zone">
-              {bild.zone}
-            </p>
-          )}
+          <p className="vp-bil-meta">{ENERGIEBILANZ_UNTERZEILE}</p>
         </div>
-        <div className="vp-eb-zeitwahl" role="group" aria-label="Zeitraum">
-          <ZeitSegment label="Zeitraum" optionen={BILANZ_PERIODEN} wert={wahl.periode} onWert={(p) => waehle(p, letzterGebildeter(p, heute))} />
-          <div className="vp-eb-datumzeile">
-            <button type="button" className="vp-eb-schritt" aria-label="Vorheriger Zeitraum" onClick={() => waehle(wahl.periode, blaettere(wahl.periode, wahl.am, -1))}>
-              <Icon name="chevron-left" size={18} />
-            </button>
-            <span className="vp-eb-zeitraum" aria-live="polite" data-testid="energiebilanz-zeitraum">
-              {zeitraumText(wahl.periode, wahl.am)}
-            </span>
-            <button
-              type="button"
-              className="vp-eb-schritt"
-              aria-label="Nächster Zeitraum"
-              disabled={laeuftNoch(wahl.periode, wahl.am, heute)}
-              onClick={() => waehle(wahl.periode, blaettere(wahl.periode, wahl.am, 1))}
-            >
-              <Icon name="chevron-right" size={18} />
-            </button>
-          </div>
+        {menue.length > 0 && (
+          <span className="vp-bil-menue" data-testid="energiebilanz-menue">
+            <RowMenu label="Weitere Aktionen" buttonClassName="vp-bil-menue-knopf" items={menue} />
+          </span>
+        )}
+      </div>
+
+      <div className="vp-bil-zeitleiste" role="group" aria-label="Zeitraum">
+        <ZeitSegment label="Zeitraum" optionen={BILANZ_PERIODEN} wert={wahl.periode} onWert={(p) => waehle(p, letzterGebildeter(p, heute))} />
+        <div className="vp-bil-zeitnav">
+          <button type="button" className="vp-eb-schritt" aria-label="Vorheriger Zeitraum" onClick={() => waehle(wahl.periode, blaettere(wahl.periode, wahl.am, -1))}>
+            <Icon name="chevron-left" size={18} />
+          </button>
+          <span className="vp-bil-zeitraum" aria-live="polite" data-testid="energiebilanz-zeitraum">
+            {zeitraumText(wahl.periode, wahl.am)}
+          </span>
+          <button
+            type="button"
+            className="vp-eb-schritt"
+            aria-label="Nächster Zeitraum"
+            disabled={laeuftNoch(wahl.periode, wahl.am, heute)}
+            onClick={() => waehle(wahl.periode, blaettere(wahl.periode, wahl.am, 1))}
+          >
+            <Icon name="chevron-right" size={18} />
+          </button>
         </div>
       </div>
 
-      {bilanz && bilanz !== 'fehler' && <NetzanschlussBilanzKopf anlage={site.id} am={bilanz.am} />}
-
       {rueckmeldung && (
-        <p className={`vp-eb-rueckmeldung is-${rueckmeldung.ton}`} role="status" data-testid="energiebilanz-rueckmeldung">
+        <p className={`vp-bil-rueckmeldung is-${rueckmeldung.ton}`} role="status" data-testid="energiebilanz-rueckmeldung">
           {rueckmeldung.text}
         </p>
       )}
 
       {bilanz === null ? (
-        <p className="vp-eb-hinweis">Wird geladen …</p>
+        <div className="vp-bil-laedt" role="status" aria-busy="true">
+          <span className="vp-sr-only">Wird geladen …</span>
+          <span className="vp-bil-skelett is-satz" aria-hidden="true" />
+          <span className="vp-bil-skelett is-karte" aria-hidden="true" />
+          <span className="vp-bil-skelett is-liste" aria-hidden="true" />
+        </div>
       ) : bilanz === 'fehler' || !bild ? (
-        <div className="vp-eb-karte" role="alert">
-          <p className="vp-eb-hinweis">{NICHT_ABRUFBAR}</p>
+        <div className="vp-bil-karte" role="alert">
+          <p className="vp-bil-leise">{NICHT_ABRUFBAR}</p>
           <button type="button" className="vp-eb-knopf" onClick={() => setNeuLaden((n) => n + 1)}>
             Erneut versuchen
           </button>
         </div>
       ) : bild.leer ? (
-        <div className="vp-eb-karte vp-eb-leer" data-testid="energiebilanz-leer">
-          <p className="vp-eb-leer-titel">{bild.leer.titel}</p>
-          <p className="vp-eb-satz">{bild.leer.satz}</p>
+        <div className="vp-bil-karte vp-bil-leer" data-testid="energiebilanz-leer">
+          <p className="vp-bil-leer-titel">{bild.leer.titel}</p>
+          <p className="vp-bil-leise">{bild.leer.satz}</p>
           {bild.leer.schritt && standortId && darf(rechte, standortId, RECHT_STELLUNG) && (
-            <a className="vp-eb-knopf" href={hashForRoute(standortMessstellenRoute(standortId))}>
+            <a className="vp-bil-knopf" href={hashForRoute(standortMessstellenRoute(standortId))}>
               {bild.leer.schritt}
             </a>
           )}
@@ -185,6 +209,7 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
           <Hauptzaehler
             key={hz.key}
             hz={hz}
+            zeitraum={bild.zeitraum}
             laeuft={bild.laeuft}
             darfAnlegen={darf(rechte, standortId, RECHT_REST_ANLEGEN)}
             legtAn={legtAn}
@@ -192,142 +217,354 @@ export function EnergiebilanzSection({ site }: { site: Pick<Site, 'id' | 'name'>
           />
         ))
       )}
+
+      {bilanz && bilanz !== 'fehler' && bild && <EnergiebilanzFuss anlage={site.id} am={bilanz.am} zone={bild.zone} />}
     </section>
   );
 }
 
 function Hauptzaehler({
   hz,
+  zeitraum,
   laeuft,
   darfAnlegen,
   legtAn,
   onAnlegen,
 }: {
   hz: HauptzaehlerBild;
+  zeitraum: string;
   laeuft: string | null;
   darfAnlegen: boolean;
   legtAn: boolean;
   onAnlegen: (v: VorschlagBild) => void;
 }) {
+  const formal = `${hz.titel} · ${zeitraum}`;
+  // Ein Zeitraum ohne Stellungswechsel hat genau einen Abschnitt mit genau einem Tag: er trägt die ganze Antwort.
+  const einzeln = !hz.hinweis && hz.abschnitte.length === 1 && hz.abschnitte[0].tage.length === 1 ? hz.abschnitte[0] : null;
+  const tag = einzeln?.tage[0] ?? null;
   return (
-    <article className="vp-eb-karte vp-eb-hz" data-testid="energiebilanz-hauptzaehler" aria-label={hz.titel}>
-      <h3 className="vp-eb-hz-titel">{hz.titel}</h3>
-      <p className={`vp-eb-live is-${hz.live.ton}`} data-testid="energiebilanz-live">
-        <span className="vp-eb-punkt" aria-hidden="true" />
-        {hz.live.text}
-      </p>
-      {hz.vorschlag && (
-        <div className="vp-eb-vorschlag" data-testid="rest-vorschlag">
-          <p className="vp-eb-satz">{hz.vorschlag.satz}</p>
-          {darfAnlegen ? (
-            <Recht aktion="messstelle.formel"><button type="button" className="vp-eb-knopf" disabled={legtAn} onClick={() => hz.vorschlag && onAnlegen(hz.vorschlag)}>
-              {REST_ANLEGEN}
-            </button></Recht>
-          ) : (
-            <p className="vp-eb-hinweis">{REST_OHNE_RECHT}</p>
-          )}
-        </div>
-      )}
-      {hz.hinweis && <p className="vp-eb-hinweis vp-eb-stellung">{hz.hinweis}</p>}
+    <article className="vp-bil-hz" data-testid="energiebilanz-hauptzaehler" aria-label={hz.titel}>
       {laeuft ? (
-        <p className="vp-eb-hinweis" data-testid="energiebilanz-laeuft">
-          {laeuft}
-        </p>
-      ) : (
-        hz.abschnitte.map((ab) => (
-          <div key={ab.key} className="vp-eb-abschnitt">
-            {ab.titel && <h4 className="vp-eb-abschnitt-titel">{ab.titel}</h4>}
-            <GeteiltesRegisterHinweis saetze={ab.geteilt} />
-            {ab.tage.map((tag) => (
-              <div key={tag.key} className="vp-eb-tag">
-                {tag.titel && tag.titel !== ab.titel && <h5 className="vp-eb-tag-titel">{tag.titel}</h5>}
-                <ul className="vp-eb-zeilen">
-                  {tag.zeilen.map((z) => (
-                    <Zeile key={z.art} z={z} kompakt={tag.kompakt} />
-                  ))}
-                </ul>
-              </div>
-            ))}
+        <>
+          {/* Der laufende Zeitraum hat noch keine Zahlen - der Weg des Teils ohne eigenen Zähler (mit der Live-Zeile)
+              und die Abzweige der heutigen Stellung gelten trotzdem. */}
+          <Antwort satz={laeuft} ton="off" formal={formal} testid="energiebilanz-laeuft" kennzeichen={[hz.kennzeichen]} />
+          <RestWegKarte hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />
+          <Ausserhalb ab={hz.abschnitte[hz.abschnitte.length - 1]?.ausserhalb ?? null} />
+        </>
+      ) : tag && einzeln ? (
+        <>
+          <Antwort satz={tag.antwort.satz} ton={tag.antwort.ton} formal={formal} testid="energiebilanz-antwort" kennzeichen={tag.kennzeichen} />
+          <GeteiltesRegisterHinweis saetze={einzeln.geteilt} />
+          <div className="vp-bil-raster">
+            <BilanzKarte tag={tag} hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />
+            <Unterzaehler teile={tag.unterzaehler} zeitraum={zeitraum} />
           </div>
-        ))
+          <Ausserhalb ab={einzeln.ausserhalb} />
+          <Woraus zeilen={tag.zeilen} />
+        </>
+      ) : (
+        <>
+          <Antwort satz={hz.hinweis ?? zeitraum} ton="off" formal={formal} testid="energiebilanz-antwort" kennzeichen={[hz.kennzeichen]} />
+          {hz.abschnitte.map((ab) => (
+            <Abschnitt key={ab.key} ab={ab} />
+          ))}
+          <RestWegKarte hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />
+        </>
       )}
     </article>
   );
 }
 
-function Zeile({ z, kompakt }: { z: ZeileBild; kompakt: boolean }) {
-  const woerter = [...z.woerter, z.zusatz].filter((w): w is string => !!w);
-  // Unter „Zugeordnet“ steht jeder Unterzähler mit Balken (B2); unter Zufluss/Abfluss die Teile erst ab zweien —
-  // einer allein steht schon als Name in der Zeile.
-  const teile = kompakt ? [] : z.art === 'zugeordnet' ? z.teile : z.teile.length > 1 ? z.teile : [];
+function Antwort({ satz, ton, formal, testid, kennzeichen }: { satz: string; ton: Ton; formal: string; testid: string; kennzeichen: string[] }) {
   return (
-    <li className={`vp-eb-zeile is-${z.ton}`} data-testid={`zeile-${z.art}`}>
-      <div className="vp-eb-zeile-kopf">
-        <span className="vp-eb-wort">
-          <span className="vp-eb-punkt" aria-hidden="true" />
-          {z.wort}
-        </span>
-        <span className="vp-eb-zahl" data-testid={`zahl-${z.art}`}>
-          {z.zahl}
-        </span>
+    <div className="vp-bil-antwort">
+      <p className={`vp-bil-satz is-${ton}`} data-testid={testid}>
+        <MitKennzeichen teile={kennzeichenTeile(satz, kennzeichen)} />
+      </p>
+      <p className="vp-bil-formal">
+        <MitKennzeichen teile={kennzeichenTeile(formal, kennzeichen)} />
+      </p>
+    </div>
+  );
+}
+
+/** Der Zwei-Teile-Balken mit den drei Zeilen (Konzept a1 §6.9). */
+function BilanzKarte({
+  tag,
+  hz,
+  darfAnlegen,
+  legtAn,
+  onAnlegen,
+}: {
+  tag: TagBild;
+  hz: HauptzaehlerBild;
+  darfAnlegen: boolean;
+  legtAn: boolean;
+  onAnlegen: (v: VorschlagBild) => void;
+}) {
+  return (
+    <div className="vp-bil-karte vp-bil-bilanz" data-testid="energiebilanz-karte">
+      {tag.balken && (
+        <div className="vp-bil-stack" role="img" aria-label={tag.antwort.satz} data-testid="energiebilanz-balken">
+          {tag.balken.erfasst !== '0.0' && <i className="is-erfasst" style={{ flex: `${tag.balken.erfasst} 1 0` }} />}
+          {tag.balken.ohne !== '0.0' && <i className="is-ohne" style={{ flex: `${tag.balken.ohne} 1 0` }} />}
+        </div>
+      )}
+      <div className="vp-bil-zeilen">
+        {tag.karte.map((z) => (
+          <KartenZeileView key={z.art} z={z} kennzeichen={tag.kennzeichen}>
+            {z.art === 'ohne' && <RestWeg hz={hz} darfAnlegen={darfAnlegen} legtAn={legtAn} onAnlegen={onAnlegen} />}
+          </KartenZeileView>
+        ))}
       </div>
-      {woerter.length > 0 && <p className="vp-eb-woerter">{woerter.join(' · ')}</p>}
-      {z.saetze.map((s) => (
-        <p key={s} className="vp-eb-satz">
-          {s}
-        </p>
-      ))}
-      {teile.length > 0 && (
-        <ul className="vp-eb-teile">
-          {teile.map((t) => {
-            const eigene = t.woerter.filter((w) => !z.woerter.includes(w) && !(z.art === 'zugeordnet' && w === KEINE_WERTE));
-            return (
-              <li key={t.key} className={`vp-eb-teil${t.keineWerte ? ' is-off' : ''}`} data-testid={`teil-${t.kennzeichen}`}>
-                {/* AP-13 IP-11 (D1/D2): der Unterzähler führt auf seine Seite, mit der Periode der Bilanz. */}
-                {t.sprung ? (
-                  <a className="vp-eb-teil-name vp-eb-teil-sprung" href={t.sprung.hash}>
-                    {t.name}
-                  </a>
-                ) : (
-                  <span className="vp-eb-teil-name">{t.name}</span>
-                )}
-                {z.art === 'zugeordnet' &&
-                  (t.balken !== null ? (
-                    <MiniShareBar fraction={t.balken} className="vp-eb-balken" />
-                  ) : (
-                    <span className="vp-eb-balken-wort">{t.keineWerte ? KEINE_WERTE : ''}</span>
-                  ))}
-                <span className="vp-eb-teil-zahl">{t.zahl}</span>
-                {eigene.length > 0 && <span className="vp-eb-teil-woerter">{eigene.join(' · ')}</span>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {(z.herkunft.zeilen.length > 0 || z.herkunft.eingaenge.length > 0) && (
-        <details className="vp-eb-herkunft" data-testid={`herkunft-${z.art}`}>
-          <summary>{HERKUNFT}</summary>
-          {/* AP-13 IP-11 (D1): die Kostenstelle einer Verteilung führt auf ihre Karte. */}
-          {z.herkunft.zeilen.map((l, i) => (
-            <p key={l} className="vp-eb-herkunft-zeile">
-              <HerkunftsZeile stuecke={z.herkunft.zeilenStuecke[i] ?? [{ text: l, sprung: null }]} />
-            </p>
-          ))}
-          {z.herkunft.eingaenge.length > 0 && (
-            <>
-              <p className="vp-eb-herkunft-titel">{HERKUNFT_EINGAENGE}</p>
-              <ul className="vp-eb-herkunft-eingaenge">
-                {/* AP-13 IP-11 (D2): jeder Eingang mit SEINER Version — nicht mit der der Zeile. */}
-                {z.herkunft.eingaenge.map((e, i) => (
-                  <li key={e}>
-                    <HerkunftsZeile stuecke={z.herkunft.eingaengeStuecke[i] ?? [{ text: e, sprung: null }]} />
-                  </li>
-                ))}
-              </ul>
-            </>
+    </div>
+  );
+}
+
+function KartenZeileView({ z, kennzeichen, children }: { z: KartenZeile; kennzeichen: string[]; children?: ReactNode }) {
+  return (
+    <div className={`vp-bil-zeile is-${z.art} ton-${z.ton}`} data-testid={`zeile-${z.art}`}>
+      <span className="vp-bil-swatch" aria-hidden="true" />
+      <span className="vp-bil-wort">{z.wort}</span>
+      <b className="vp-bil-zahl" data-testid={`zahl-${z.art}`}>
+        {z.zahl}
+      </b>
+      {(z.unter.length > 0 || children) && (
+        <span className="vp-bil-unter">
+          {z.unter.length > 0 && (
+            <span className="vp-bil-unter-text">
+              <MitKennzeichen teile={kennzeichenTeile(z.unter.join(' · '), kennzeichen)} />
+            </span>
           )}
-        </details>
+          {children}
+        </span>
       )}
-    </li>
+    </div>
+  );
+}
+
+/**
+ * Der Weg des Teils ohne eigenen Zähler: schon als Messstelle geführt (Sprung), sonst „Als eigene Messstelle führen“ mit
+ * dem Satz, was das bedeutet (E18) - nur mit Recht; dazu die Live-Zeile, wenn sie eine Zahl hat.
+ */
+function RestWeg({ hz, darfAnlegen, legtAn, onAnlegen }: { hz: HauptzaehlerBild; darfAnlegen: boolean; legtAn: boolean; onAnlegen: (v: VorschlagBild) => void }) {
+  if (!hz.restMessstelle && !hz.vorschlag && !hz.live) return null;
+  return (
+    <span className="vp-bil-restweg">
+      {hz.restMessstelle &&
+        (hz.restMessstelle.sprung ? (
+          <a className="vp-bil-link" href={hz.restMessstelle.sprung.hash} data-testid="energiebilanz-rest-messstelle">
+            <MitKennzeichen teile={hz.restMessstelle.teile} />
+          </a>
+        ) : (
+          <span data-testid="energiebilanz-rest-messstelle">
+            <MitKennzeichen teile={hz.restMessstelle.teile} />
+          </span>
+        ))}
+      {hz.vorschlag && (
+        <span className="vp-bil-vorschlag" data-testid="rest-vorschlag">
+          {darfAnlegen ? (
+            <Recht aktion="messstelle.formel"><button type="button" className="vp-eb-knopf" disabled={legtAn} onClick={() => hz.vorschlag && onAnlegen(hz.vorschlag)}>
+              {REST_ANLEGEN}
+            </button></Recht>
+          ) : null}
+          <span className="vp-bil-unter-text">{darfAnlegen ? hz.vorschlag.satz : REST_OHNE_RECHT}</span>
+        </span>
+      )}
+      {hz.live && (
+        <span className="vp-bil-unter-text vp-bil-live" data-testid="energiebilanz-live">
+          {hz.live.text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Der Weg des Teils ohne eigenen Zähler, wo keine Bilanz-Karte steht (laufender Zeitraum, Abschnitte nach einem
+ * Stellungswechsel): als Zeile „ohne eigenen Zähler“ wie in der Karte, nur ohne Zahl.
+ */
+function RestWegKarte(props: { hz: HauptzaehlerBild; darfAnlegen: boolean; legtAn: boolean; onAnlegen: (v: VorschlagBild) => void }) {
+  const { hz } = props;
+  if (!hz.restMessstelle && !hz.vorschlag && !hz.live) return null;
+  return (
+    <div className="vp-bil-karte vp-bil-bilanz" data-testid="energiebilanz-restweg">
+      <div className="vp-bil-zeilen">
+        <div className="vp-bil-zeile is-ohne ton-off">
+          <span className="vp-bil-swatch" aria-hidden="true" />
+          <span className="vp-bil-wort">{KARTE_WORT.ohne}</span>
+          <span className="vp-bil-unter">
+            <RestWeg {...props} />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Die Unterzähler nach Menge, mit ihrem Anteil am Ganzen; jede Reihe führt auf ihre Messstelle (AP-13 IP-11). */
+function Unterzaehler({ teile, zeitraum }: { teile: TeilBild[]; zeitraum: string }) {
+  if (teile.length === 0) return null;
+  const titel = teile.length === 1 ? UNTERZAEHLER_TITEL.singular : UNTERZAEHLER_TITEL.plural.replace('{n}', String(teile.length));
+  return (
+    <section className="vp-bil-karte vp-bil-unterzaehler" aria-label={titel} data-testid="energiebilanz-unterzaehler">
+      <div className="vp-bil-blockkopf">
+        <h3>{titel}</h3>
+        <span className="vp-bil-blockkopf-m">{zeitraum}</span>
+      </div>
+      <ul className="vp-bil-reihen">
+        {teile.map((t) => (
+          <li key={t.key} className={t.keineWerte ? 'is-ohne-wert' : undefined} data-testid={`teil-${t.kennzeichen}`}>
+            {t.sprung ? (
+              <a className="vp-bil-reihe" href={t.sprung.hash}>
+                <ReiheInhalt t={t} />
+                <span className="vp-bil-chev" aria-hidden="true">
+                  <Icon name="chevron-right" size={18} />
+                </span>
+              </a>
+            ) : (
+              <span className="vp-bil-reihe">
+                <ReiheInhalt t={t} />
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ReiheInhalt({ t }: { t: TeilBild }) {
+  const unter = [t.anteil, ...t.woerter].filter((x): x is string => !!x);
+  return (
+    <>
+      <span className="vp-bil-reihe-text">
+        <span className="vp-bil-reihe-name">
+          {t.nurName}
+          {t.nurName !== t.kennzeichen && <span className="vp-bil-kz"> {t.kennzeichen}</span>}
+        </span>
+        {unter.length > 0 && <span className="vp-bil-reihe-unter">{unter.join(' · ')}</span>}
+      </span>
+      <span className="vp-bil-reihe-wert">{t.zahl}</span>
+    </>
+  );
+}
+
+/** Ein Satz in Stücken: jedes Kennzeichen („AZ-8“) steht am Stück und bricht nie am Bindestrich um. */
+function MitKennzeichen({ teile }: { teile: AusserhalbBild['teile'] }) {
+  return (
+    <>
+      {teile.map((t, i) =>
+        t.kennzeichen ? (
+          <span key={i} className="vp-bil-kz">
+            {t.text}
+          </span>
+        ) : (
+          t.text
+        ),
+      )}
+    </>
+  );
+}
+
+/** Konzept a1, Befund 3: die Abzweige neben dem Hauptzähler, benannt - ein Kennzeichen bricht nie am Bindestrich um. */
+function Ausserhalb({ ab }: { ab: AusserhalbBild | null }) {
+  if (!ab) return null;
+  return (
+    <p className="vp-bil-karte vp-bil-hinweis" data-testid="energiebilanz-ausserhalb">
+      {/* Ein Satz ist EIN Rasterelement der Karte - sonst stünde jedes Kennzeichen-Stück in einer eigenen Zeile. */}
+      <span>
+        <MitKennzeichen teile={ab.teile} />
+      </span>
+    </p>
+  );
+}
+
+/** Stellungswechsel: jeder Abschnitt mit seinen Tagen, jeder Tag für sich - nie zusammengerechnet. */
+function Abschnitt({ ab }: { ab: AbschnittBild }) {
+  return (
+    <section className="vp-bil-karte vp-bil-abschnitt" aria-label={ab.titel ?? undefined}>
+      {ab.titel && (
+        <div className="vp-bil-blockkopf">
+          <h3>{ab.titel}</h3>
+        </div>
+      )}
+      <GeteiltesRegisterHinweis saetze={ab.geteilt} />
+      <ul className="vp-bil-tage">
+        {ab.tage.map((tag) => (
+          <li key={tag.key}>
+            <details className="vp-bil-tag">
+              <summary>
+                <span className="vp-bil-tag-titel">{tag.titel}</span>
+                <span className="vp-bil-tag-zahlen">
+                  {tag.karte.map((z) => (
+                    <span key={z.art} className={`vp-bil-tag-zahl is-${z.art}`} data-testid={`zahl-${z.art}`}>
+                      {z.wort} {z.zahl}
+                    </span>
+                  ))}
+                </span>
+              </summary>
+              <WorausInhalt zeilen={tag.zeilen} />
+            </details>
+          </li>
+        ))}
+      </ul>
+      <Ausserhalb ab={ab.ausserhalb} />
+    </section>
+  );
+}
+
+/** „Woraus gerechnet“: die vier Zeilen der Route mit ihren Eingängen und der Herkunft - zugeklappt (AP-10 §5.6). */
+function Woraus({ zeilen }: { zeilen: ZeileBild[] }) {
+  return (
+    <details className="vp-bil-karte vp-bil-woraus" data-testid="energiebilanz-woraus">
+      <summary>{WORAUS}</summary>
+      <WorausInhalt zeilen={zeilen} />
+    </details>
+  );
+}
+
+function WorausInhalt({ zeilen }: { zeilen: ZeileBild[] }) {
+  return (
+    <ul className="vp-bil-woraus-zeilen">
+      {zeilen.map((z) => {
+        // Was die Herkunft schon sagt („berechnet (Differenz)“), steht nicht noch einmal darüber; die Eingänge stehen
+        // einmal, mit Version und Kennzeichen, unter „Eingänge“.
+        const woerter = [...z.woerter, z.zusatz].filter((w): w is string => !!w && !z.herkunft.zeilen.some((l) => l.startsWith(w)));
+        return (
+          <li key={z.art} className={`ton-${z.ton}`} data-testid={`herkunft-${z.art}`}>
+            <p className="vp-bil-woraus-kopf">
+              <span>{z.wort}</span>
+              <b>{z.zahl}</b>
+            </p>
+            {woerter.length > 0 && <p className="vp-bil-woraus-text">{woerter.join(' · ')}</p>}
+            {z.saetze.map((s) => (
+              <p key={s} className="vp-bil-woraus-text">
+                {s}
+              </p>
+            ))}
+            {z.herkunft.zeilen.map((l, i) => (
+              <p key={l} className="vp-bil-woraus-text">
+                <HerkunftsZeile stuecke={z.herkunft.zeilenStuecke[i] ?? [{ text: l, sprung: null }]} />
+              </p>
+            ))}
+            {z.herkunft.eingaenge.length > 0 && (
+              <>
+                <p className="vp-bil-woraus-titel">{HERKUNFT_EINGAENGE}</p>
+                <ul className="vp-bil-woraus-eingaenge">
+                  {/* AP-13 IP-11 (D2): jeder Eingang mit SEINER Version - nicht mit der der Zeile. */}
+                  {z.herkunft.eingaenge.map((e, i) => (
+                    <li key={e}>
+                      <HerkunftsZeile stuecke={z.herkunft.eingaengeStuecke[i] ?? [{ text: e, sprung: null }]} />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
