@@ -50,12 +50,14 @@ interface Fall {
 
 const FAELLE: Fall[] = [
   {
+    // Seit #1403 (Konzept p2 §5.1) lebt die Karte „Funktionen“ nicht mehr auf der Unternehmens-Übersicht: der Zustand
+    // steht je Standort-Gruppe, „aufnehmen“ und „Standort anhalten“ trägt die Standort-Übersicht (Fall karte-werk).
     name: 'karte-unternehmen',
     query: 'bild=unternehmen',
-    ziel: '[data-testid="funktionen-karte"]',
-    sichtbar: ['Läuft an 2 von 2 Standorten', 'Läuft an 1 von 2 Standorten', 'Werk Ahrenberg – Halle 2 aufnehmen'],
-    knoepfe: ['Werk Ahrenberg – Halle 2 aufnehmen', 'Standort anhalten'],
-    nie: ['Steuern & Optimieren für Werk Lindach einrichten', 'Noch nicht eingerichtet'],
+    ziel: '[data-testid="standort-gruppe"]',
+    sichtbar: ['Läuft mit Werk Ahrenberg – Halle 1'],
+    nie: ['Steuern & Optimieren für Werk Lindach einrichten', 'Noch nicht eingerichtet', 'Werk Ahrenberg – Halle 2 aufnehmen',
+      'Läuft an 2 von 2 Standorten'],
     ohneGeld: false,
   },
   {
