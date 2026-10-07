@@ -339,11 +339,12 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   mockSurface(MULTI);
   const view = renderSeite();
   await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-  // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter.
-  await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull());
+  // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter. Ein Stück,
+  // das erst übersetzt wird, braucht unter Last mehr als die Sekunde von `waitFor` (rot im Dateilauf, grün allein).
+  await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull(), { timeout: 5000 });
   // Die Kacheln laden ebenfalls nach (Suspense-Platzhalter `vp-k-platz` mit aria-hidden); unter Last kam der
   // Schnappschuss sonst vor ihnen und hielt leere Plätze fest.
-  await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull());
+  await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull(), { timeout: 5000 });
   await bestandSnapshot('cockpit', view);
 });
 
