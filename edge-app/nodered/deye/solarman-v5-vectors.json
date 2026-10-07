@@ -1,0 +1,391 @@
+{
+  "_comment": [
+    "GENERIERT von solarman-v5-vectors.gen.js aus solarman-v5.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: solarman-v5-vectors.test.js (JS) und edge-app/core/internal/solarmanv5 (Go, Edge Light).",
+    "Alle Bytefolgen als Hex; Fehlerfaelle tragen nur \"error\": true (Wortlaut darf abweichen, die Entscheidung nicht)."
+  ],
+  "crc16": [
+    {
+      "bytes": "",
+      "crc": 65535
+    },
+    {
+      "bytes": "01",
+      "crc": 32894
+    },
+    {
+      "bytes": "0103024b007a",
+      "crc": 34741
+    },
+    {
+      "bytes": "ffffff",
+      "crc": 16448
+    },
+    {
+      "bytes": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "crc": 2265
+    }
+  ],
+  "logger_serial": [
+    {
+      "input": 2985159064,
+      "value": 2985159064
+    },
+    {
+      "input": "2985159064",
+      "value": 2985159064
+    },
+    {
+      "input": " 42 ",
+      "value": 42
+    },
+    {
+      "input": "0x10",
+      "value": 16
+    },
+    {
+      "input": 0,
+      "value": 0
+    },
+    {
+      "input": 4294967295,
+      "value": 4294967295
+    },
+    {
+      "input": 4294967296,
+      "error": true
+    },
+    {
+      "input": -1,
+      "error": true
+    },
+    {
+      "input": 1.5,
+      "error": true
+    },
+    {
+      "input": "abc",
+      "error": true
+    }
+  ],
+  "read_requests": [
+    {
+      "serial": 2985159064,
+      "seq": 1,
+      "slave": 1,
+      "start": 0,
+      "count": 1,
+      "frame": "a517001045010098e9edb1020000000000000000000000000000010300000001840a2115"
+    },
+    {
+      "serial": 2985159064,
+      "seq": 2,
+      "slave": 1,
+      "start": 587,
+      "count": 122,
+      "frame": "a517001045020098e9edb10200000000000000000000000000000103024b007ab5879615"
+    },
+    {
+      "serial": 2985159064,
+      "seq": 65535,
+      "slave": 1,
+      "start": 210,
+      "count": 14,
+      "frame": "a517001045ffff98e9edb1020000000000000000000000000000010300d2000e64370a15"
+    },
+    {
+      "serial": 4294967295,
+      "seq": 0,
+      "slave": 247,
+      "start": 65535,
+      "count": 125,
+      "frame": "a5170010450000ffffffff020000000000000000000000000000f703ffff007d9159c915"
+    }
+  ],
+  "write_single_requests": [
+    {
+      "serial": 2985159064,
+      "seq": 3,
+      "slave": 1,
+      "reg": 146,
+      "value": 255,
+      "frame": "a517001045030098e9edb10200000000000000000000000000000106009200ff6867f715"
+    },
+    {
+      "serial": 2985159064,
+      "seq": 4,
+      "slave": 1,
+      "reg": 40,
+      "value": 65535,
+      "frame": "a517001045040098e9edb102000000000000000000000000000001060028ffff08723815"
+    }
+  ],
+  "write_multiple_requests": [
+    {
+      "serial": 2985159064,
+      "seq": 5,
+      "slave": 1,
+      "start": 154,
+      "values": [
+        3000,
+        80
+      ],
+      "frame": "a51c001045050098e9edb10200000000000000000000000000000110009a0002040bb80050f881d415"
+    }
+  ],
+  "responses": [
+    {
+      "name": "gueltige Leseantwort",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15",
+      "opts": {
+        "expectLoggerSerial": 2985159064,
+        "expectSequence": 7
+      },
+      "expect": {
+        "regs": [
+          5,
+          4660,
+          65535,
+          0,
+          32768
+        ]
+      }
+    },
+    {
+      "name": "gueltige Leseantwort ohne Erwartungen",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15",
+      "opts": {},
+      "expect": {
+        "regs": [
+          5,
+          4660,
+          65535,
+          0,
+          32768
+        ]
+      }
+    },
+    {
+      "name": "gueltige Antwort + Folgebytes (naechstes TCP-Segment)",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15a501",
+      "opts": {},
+      "expect": {
+        "regs": [
+          5,
+          4660,
+          65535,
+          0,
+          32768
+        ]
+      }
+    },
+    {
+      "name": "falsche Logger-Seriennummer",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15",
+      "opts": {
+        "expectLoggerSerial": 2985159065
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "falsche Sequenznummer",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15",
+      "opts": {
+        "expectSequence": 8
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "V5-Pruefsumme falsch",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0e15",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Endbyte falsch",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f16",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Frame kuerzer als Laengenfeld",
+      "frame": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Frametyp 0x01 (Datenlogger-Stick)",
+      "frame": "a51d001015010098e9edb1010140e20100d21e00000000000001030a00051234ffff000080008f2b0815",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "falscher Controlcode",
+      "frame": "a51d001045010098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b3915",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Modbus-Ausnahme 0x02",
+      "frame": "a513001015010098e9edb1020140e20100d21e000000000000018302c0f1a515",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Modbus-Ausnahme 0x0B als verkuerzte Antwort",
+      "frame": "a511001015010098e9edb1020140e20100d21e00000000000001830bfb15",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "leere Modbus-Nutzlast",
+      "frame": "a50e001015010098e9edb1020140e20100d21e0000000000006915",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Modbus-CRC falsch",
+      "frame": "a51d001015010098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008fd4b215",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "unerwartete Modbus-Funktion 0x04",
+      "frame": "a515001015010098e9edb1020140e20100d21e000000000000010402000178f0e015",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Bytezahl groesser als Nutzlast",
+      "frame": "a515001015010098e9edb1020140e20100d21e000000000000010308000159865c15",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Startbyte falsch",
+      "frame": "a41d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    }
+  ],
+  "write_responses": [
+    {
+      "name": "fn 0x06 Echo",
+      "modbus": "0106009200ff6867",
+      "opts": {},
+      "expect": {
+        "fn": 6,
+        "reg": 146,
+        "value": 255
+      }
+    },
+    {
+      "name": "fn 0x10 Bestaetigung",
+      "modbus": "0110009a000261e7",
+      "opts": {},
+      "expect": {
+        "fn": 16,
+        "startReg": 154,
+        "count": 2
+      }
+    },
+    {
+      "name": "fn 0x06 erwartet, 0x10 erhalten",
+      "modbus": "0110009a000261e7",
+      "opts": {
+        "expectFn": 6
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Schreib-Ausnahme",
+      "modbus": "0186030261",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "name": "Schreibantwort CRC falsch",
+      "modbus": "0106009200ff6967",
+      "opts": {},
+      "expect": {
+        "error": true
+      }
+    }
+  ],
+  "frame_length": [
+    {
+      "name": "leer",
+      "prefix": "",
+      "expect": {
+        "incomplete": true
+      }
+    },
+    {
+      "name": "nur Startbyte",
+      "prefix": "a5",
+      "expect": {
+        "incomplete": true
+      }
+    },
+    {
+      "name": "Startbyte + halbes Laengenfeld",
+      "prefix": "a51d",
+      "expect": {
+        "incomplete": true
+      }
+    },
+    {
+      "name": "Kopf mit Laengenfeld",
+      "prefix": "a51d00",
+      "expect": {
+        "length": 42
+      }
+    },
+    {
+      "name": "ganzer Rahmen",
+      "prefix": "a51d001015070098e9edb1020140e20100d21e00000000000001030a00051234ffff000080008f2b0f15",
+      "expect": {
+        "length": 42
+      }
+    },
+    {
+      "name": "falsches Startbyte",
+      "prefix": "150000",
+      "expect": {
+        "error": true
+      }
+    }
+  ]
+}

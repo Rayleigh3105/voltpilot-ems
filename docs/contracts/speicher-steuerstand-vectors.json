@@ -1,0 +1,123 @@
+{
+  "$comment": "Steuerstand des Speichers im Status-Herzschlag (Block `battery_control`, 07.10.2026): steuert VoltPilot den Speicher dieser Box, oder beobachtet die Box ihn nur? Vertrag: speicher-steuerstand.md. DREI Seiten lesen diese Datei PER PFAD: die Box schreibt den Block (edge-app/core/internal/agent/battery_control_test.go, Abschnitt `box`), die API prüft und speichert ihn (services/api .../control/ControlStatusListenerTest.java, Abschnitt `api`), der Optimierer liest die gespeicherte Zeile mit Frische-Regel (services/optimization/tests/test_battery_control.py, Abschnitt `optimierer`). Wer ein Wort, eine Bedingung oder die Frist ändert, ändert alle drei Seiten und diese Datei zusammen.",
+
+  "$regel": "gesteuert = Steuerschalter (VP_CONTROL_ENABLED) an UND Modell-/Gerätefreigabe: die Box schreibt den Speicher. beobachtet = Steuerschalter an, aber keine Freigabe: die Box schreibt nichts, der Wechselrichter regelt selbst. not_aus = Steuerschalter aus: die Box schreibt weder Speicher noch Wallbox. Ohne gewählten Wechselrichter schickt die Box KEINEN Block (unbekannt ist nicht beobachtet). control_enabled und certified haben dieselbe Bedeutung wie im `control`-Block und auf edge/setpoint: control_enabled = Schalter UND Freigabe.",
+
+  "block": "battery_control",
+  "states": ["gesteuert", "beobachtet", "not_aus"],
+
+  "box": [
+    {
+      "name": "Docker-Box mit freigegebenem Speicher",
+      "steuerschalter": true,
+      "certified": true,
+      "wechselrichter": true,
+      "block": {"state": "gesteuert", "control_enabled": true, "certified": true}
+    },
+    {
+      "name": "Edge Light oder Docker-Box ohne Modell-/Gerätefreigabe",
+      "steuerschalter": true,
+      "certified": false,
+      "wechselrichter": true,
+      "block": {"state": "beobachtet", "control_enabled": false, "certified": false}
+    },
+    {
+      "name": "Not-Aus mit Freigabe",
+      "steuerschalter": false,
+      "certified": true,
+      "wechselrichter": true,
+      "block": {"state": "not_aus", "control_enabled": false, "certified": true}
+    },
+    {
+      "name": "Not-Aus ohne Freigabe",
+      "steuerschalter": false,
+      "certified": false,
+      "wechselrichter": true,
+      "block": {"state": "not_aus", "control_enabled": false, "certified": false}
+    },
+    {
+      "name": "Kein Wechselrichter gewählt: kein Block",
+      "steuerschalter": true,
+      "certified": false,
+      "wechselrichter": false,
+      "block": null
+    }
+  ],
+
+  "api": [
+    {
+      "name": "gesteuert",
+      "block": {"state": "gesteuert", "control_enabled": true, "certified": true},
+      "gespeichert": {"state": "gesteuert", "control_enabled": true, "certified": true}
+    },
+    {
+      "name": "beobachtet",
+      "block": {"state": "beobachtet", "control_enabled": false, "certified": false},
+      "gespeichert": {"state": "beobachtet", "control_enabled": false, "certified": false}
+    },
+    {
+      "name": "Not-Aus mit Freigabe",
+      "block": {"state": "not_aus", "control_enabled": false, "certified": true},
+      "gespeichert": {"state": "not_aus", "control_enabled": false, "certified": true}
+    },
+    {
+      "name": "Zusätzliche Felder einer späteren Box stören nicht",
+      "block": {"state": "beobachtet", "control_enabled": false, "certified": false, "mode_read": "selfconsumption"},
+      "gespeichert": {"state": "beobachtet", "control_enabled": false, "certified": false}
+    },
+    {
+      "name": "Unbekanntes Wort: verworfen",
+      "block": {"state": "halb", "control_enabled": false, "certified": false},
+      "gespeichert": null
+    },
+    {
+      "name": "Widerspruch: gesteuert ohne control_enabled",
+      "block": {"state": "gesteuert", "control_enabled": false, "certified": true},
+      "gespeichert": null
+    },
+    {
+      "name": "Widerspruch: gesteuert ohne Freigabe",
+      "block": {"state": "gesteuert", "control_enabled": true, "certified": false},
+      "gespeichert": null
+    },
+    {
+      "name": "Widerspruch: beobachtet trotz Freigabe",
+      "block": {"state": "beobachtet", "control_enabled": false, "certified": true},
+      "gespeichert": null
+    },
+    {
+      "name": "Widerspruch: Not-Aus mit control_enabled",
+      "block": {"state": "not_aus", "control_enabled": true, "certified": true},
+      "gespeichert": null
+    },
+    {
+      "name": "Fehlende Flags: verworfen, nicht als false gelesen",
+      "block": {"state": "beobachtet"},
+      "gespeichert": null
+    },
+    {
+      "name": "Flag als Text: verworfen",
+      "block": {"state": "beobachtet", "control_enabled": "false", "certified": false},
+      "gespeichert": null
+    },
+    {
+      "name": "Block ist kein Objekt",
+      "block": "beobachtet",
+      "gespeichert": null
+    }
+  ],
+
+  "optimierer": {
+    "$regel": "Beobachtet plant der Optimierer nur bei einer frischen Zeile mit state beobachtet oder not_aus. Alter = Planzeitpunkt minus reported_at (Uhr der API beim Empfang). Frisch heißt Alter <= max_alter_minuten. Keine Zeile, eine veraltete Zeile oder ein unbekanntes Wort: gesteuert, wie vor diesem Vertrag.",
+    "max_alter_minuten": 10,
+    "faelle": [
+      {"name": "Keine Zeile (ältere Box oder ältere API)", "zeile": null, "beobachtet": false},
+      {"name": "gesteuert, frisch", "zeile": {"state": "gesteuert", "alter_minuten": 0.25}, "beobachtet": false},
+      {"name": "beobachtet, frisch", "zeile": {"state": "beobachtet", "alter_minuten": 0.25}, "beobachtet": true},
+      {"name": "Not-Aus, frisch", "zeile": {"state": "not_aus", "alter_minuten": 3}, "beobachtet": true},
+      {"name": "beobachtet, genau an der Frist", "zeile": {"state": "beobachtet", "alter_minuten": 10}, "beobachtet": true},
+      {"name": "beobachtet, veraltet: die Box meldet nicht mehr", "zeile": {"state": "beobachtet", "alter_minuten": 10.5}, "beobachtet": false},
+      {"name": "Unbekanntes Wort", "zeile": {"state": "halb", "alter_minuten": 0.25}, "beobachtet": false}
+    ]
+  }
+}

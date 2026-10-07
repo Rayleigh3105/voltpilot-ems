@@ -268,12 +268,15 @@ public class RolloutRepository {
      *
      * <p>Alles ab {@code reportedVersion} kann {@code null} sein - dann hat das
      * Gerät (noch) nichts gemeldet und heißt „unbekannt", NIE „veraltet".
+     * {@code reportedBackend} ist {@code update.backend} verbatim; daraus und aus
+     * dem Stempel leitet {@code ota.BoxArt} die Box-Art ab.
      * {@code controlCheckedAt}/{@code controlConfirmed}/{@code controlCertified}
      * kommen aus {@code device_control_status} - reine Diagnose.
      */
     public record FleetDeviceRow(UUID deviceId, String externalRef, String deviceName,
             UUID siteId, String siteName, UUID tenantId, String tenantName,
-            String reportedVersion, String reportedCurrent, String reportedTarget,
+            String reportedVersion, String reportedBackend, String reportedCurrent,
+            String reportedTarget,
             String reportedState, String reportedVerdict, String reportedReason,
             String reportedBlocker, Instant reportedAt, Instant lastSeenAt,
             Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
@@ -290,7 +293,8 @@ public class RolloutRepository {
         return jdbc.query("""
                 SELECT d.id AS device_id, d.external_ref, d.name AS device_name,
                        d.site_id, s.name AS site_name, s.tenant_id, t.name AS tenant_name,
-                       u.version, u.current_version, u.target_version, u.state, u.target_verdict,
+                       u.version, u.backend, u.current_version, u.target_version, u.state,
+                       u.target_verdict,
                        u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error,
@@ -315,6 +319,7 @@ public class RolloutRepository {
                         rs.getObject("tenant_id", UUID.class),
                         rs.getString("tenant_name"),
                         rs.getString("version"),
+                        rs.getString("backend"),
                         rs.getString("current_version"),
                         rs.getString("target_version"),
                         rs.getString("state"),

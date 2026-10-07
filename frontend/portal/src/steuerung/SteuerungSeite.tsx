@@ -56,7 +56,7 @@ import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
 import { FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
-import { smartSchritte, type LadeQuelle } from './laden';
+import { UEBERSCHUSS_MODUS, smartSchritte, type LadeQuelle } from './laden';
 import { nurMessenKey, vorschlag } from './neu';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
 import { bezugAus, greift, neuerEntwurf, regelKarten, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
@@ -364,7 +364,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       ? { quelle: 'guenstig', preisgrenzeCtKwh: s?.preisgrenzeCtKwh ?? v?.preisgrenzeCtKwh ?? null, ...ziel }
       : {
           quelle: 'ueberschuss',
-          ueberschussModus: q === 'min' ? 'mindestleistung' : 'pausieren',
+          ueberschussModus: UEBERSCHUSS_MODUS[q],
           ...(q === 'min' ? { mindestleistungKw: s?.mindestleistungKw ?? daten.verbraucher?.ladepunkte.rahmen?.mindestleistungKw ?? 1.4 } : {}),
           ...ziel,
         };
@@ -520,6 +520,17 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         })}
         onLadevorgaenge={() => onOpenSub('ladevorgaenge')}
         zuGeraete={() => onOpenSub('steuerung')}
+        release={daten.charging?.budget?.storageRelease ?? null}
+        releaseGemeldet={daten.charging?.budget?.reportedAt ?? null}
+        onReserve={(kwh) => void lauf('reserve', async () => {
+          try {
+            const c = await api.saveStorageReleaseReserve(site.id, kwh);
+            setze('chargingConfig', c);
+            meldung(kwh == null ? 'Die Reserve steht wieder auf der Vorgabe.' : 'Die Reserve ist gespeichert. Sie gilt ab dem nächsten Fahrplan.');
+          } catch (e) {
+            meldung(fehlerText(e, 'Die Reserve konnte nicht gespeichert werden.'), true);
+          }
+        })}
       />
     );
   } else if (reiter === 'regeln') {

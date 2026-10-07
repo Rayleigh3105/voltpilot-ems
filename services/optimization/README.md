@@ -37,6 +37,7 @@ flowchart TD
 | Tarif und Bewertung | `pricing.py`, `config.py` |
 | Solver | `solver.py`, `co_solver.py` |
 | Planzeitkorrektur | `nowcast.py` |
+| „Sonne + Speicher“: Speicheruntergrenze | `storage_release.py` |
 | Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
 | Laufzeit / CLI | `cli.py`, `runtime.py` |
 
@@ -69,3 +70,7 @@ pytest -m 'not slow'
 Bei Abregelung darf PV-Nowcast die Prognose nur anheben; die Nachtgrenze bleibt wirksam. Schalter: `OPTIMIZER_PV_NOWCAST_ENABLED` (true), `…_DECAY_SLOTS` (2), `…_MAX_AGE_SECONDS` (30), `…_LOOKBACK_SECONDS` (120). Fehler lassen die ursprüngliche Prognose bestehen.
 
 `night_reserve.py` bewertet Energie am ersten PV-Überschussslot nach der Nacht anhand der eigenen historischen Nachtfehler. Das ist ein ökonomischer Wertterm, keine zusätzliche harte SoC-Reserve. Ohne geeignete Daten, Preisdifferenz oder Sonnenaufgang im Horizont entsteht kein Term; `OPTIMIZER_NIGHT_RESERVE_ENABLED=false` schaltet ihn ab. Begründungsfelder: `why_night_reserve_kwh` und `why_night_reserve_q`.
+
+`storage_release.py` rechnet für Anlagen mit einem Ladepunkt auf „Sonne + Speicher“ nach dem Lösen die Speicheruntergrenze je Slot (Rückwärtsrechnung bis zur nächsten Erzeugung, vorsichtige Last/PV aus gemessenen Fehlerquantilen, Reserve je Anlage, Vorgabe 1,0 kWh). Sie verändert weder Zielfunktion noch Slots: Handels-Slots tragen keine Untergrenze, geplante Verkäufe heben sie. Endet der Plan vor der nächsten Erzeugung (vor der Day-Ahead-Veröffentlichung um Mitternacht), läuft die Rechnung über die frische gespeicherte Prognose weiter. Schalter: `OPTIMIZER_STORAGE_RELEASE_ENABLED` (true; ohne Ladepunkt auf der Quelle wirkungslos), `OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES` (120). Fehler kosten die Freigabe, nie den Plan. Fachregel: [Sonne + Speicher](../../docs/verbrauchssteuerung.md#sonne--speicher).
+
+Den Steuerstand je Speicher liest der Takt einmal aus `device_battery_control` (`inputs.load_battery_controls`, Herzschlag-Block `battery_control`, [Vertrag](../../docs/contracts/speicher-steuerstand.md)). Meldet die Box über `asset.device_id` frisch `beobachtet` oder `not_aus`, steuert VoltPilot den Speicher nicht: `battery_observed` legt Laden und Entladen auf die Eigenverbrauchsbahn des sturen Speichers (`stur.eigenverbrauch_dispatch`, als Bound), ohne Vollmachten und Nacht-Wertfunktion, und `storage_release.py` rechnet die Untergrenze ohne Handelsprüfung und Verkaufsentnahme. Keine, veraltete oder unbekannte Meldung: gesteuert wie bisher. Schalter: `OPTIMIZER_BATTERY_CONTROL_ENABLED` (true), `OPTIMIZER_BATTERY_CONTROL_MAX_AGE_MINUTES` (10). Fachregel: [Fahrplan und Steuerstand](../../docs/verbrauchssteuerung.md#sonne--speicher).

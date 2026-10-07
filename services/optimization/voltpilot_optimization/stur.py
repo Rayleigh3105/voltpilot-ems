@@ -128,6 +128,35 @@ def stur_dispatch(inp: OptimizationInput) -> GreedyResult:
     )
 
 
+def eigenverbrauch_dispatch(inp: OptimizationInput) -> GreedyResult:
+    """Die Bahn eines Speichers, den VoltPilot NICHT steuert (Steuerstand
+    ``beobachtet``/``not_aus``, 07.10.2026).
+
+    Er folgt seiner eigenen Eigenverbrauchsregelung - genau der Regel des
+    sturen Speichers: jeden Ueberschuss sofort laden, jedes Defizit sofort
+    decken, nie aus dem Netz, nie ins Netz. Der Solver legt Laden und Entladen
+    eines solchen Speichers auf diese Bahn fest
+    (:attr:`OptimizationInput.battery_observed`), statt fuer ihn zu handeln.
+
+    Anders als :func:`stur_dispatch` laeuft sie im PLANUNGSband der Batterie,
+    nicht im geweiteten Messlatten-Band: die SoC-Grenzen des Modells sind dieses
+    Band, und eine Bahn ausserhalb machte das Modell unloesbar. Der echte
+    Wechselrichter mag tiefer oder hoeher fahren - die Plan-Prognose seines
+    Ladestands ist dann etwas vorsichtig, die Freigabe misst ohnehin den
+    echten Ladestand.
+    """
+    battery = inp.battery
+    soc0 = battery.clamp_soc_kwh(inp.initial_soc_kwh)
+    return greedy_dispatch(
+        battery,
+        load_kw=list(inp.load_kw),
+        pv_kw=list(inp.pv_kw),
+        initial_soc_kwh=soc0,
+        soc_floor_kwh=battery.soc_floor_kwh(soc0),
+        slot_hours=inp.slot_hours,
+    )
+
+
 def stur_cost_eur(inp: OptimizationInput) -> list[float]:
     """Je Slot der projizierte Cashflow des STUREN Speichers (EUR, negativ =
     Erloes) - die Messlatte, gegen die ``steuerungPlannedEur`` rechnet.

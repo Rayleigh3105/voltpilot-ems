@@ -63,7 +63,7 @@ Nachweis: `UemsMassnahmeHerkunftMigrationTest`, `UemsMassnahmeMigrationTest`.
 
 ## Art und Einsparung der Maßnahme (Verbessern-Konzept v1, PR 2)
 
-`V20261007120000__uems_massnahme_art.sql` (06.10.2026, Entscheide 6 und 13; am 07.10.2026 vor dem Merge von `V20261006213000` umnummeriert, die Version hatte PR 1 schon): `massnahme.art` (`gemessen` genau mit
+`V20261007120100__uems_massnahme_art.sql` (06.10.2026, Entscheide 6 und 13; am 07.10.2026 zweimal umnummeriert: vor dem Merge von `V20261006213000`, dessen Version PR 1 schon hatte, und beim Nachzug main → uems, weil main `V20261007120000__device_battery_control.sql` ausgeliefert hat): `massnahme.art` (`gemessen` genau mit
 Messgrundlage · `nicht_gemessen` · `organisatorisch`) und `erwartete_einsparung_kwh_jahr` samt Grundlage (Menge, Monate).
 Bestand: mit Kennzahl `gemessen`, Herkunft Feststellung/Audit `organisatorisch`, sonst `nicht_gemessen`.
 ⚠ **Direkte SQL-Inserts ohne `art`** (Seeds, ältere Tests): der BEFORE-INSERT-Trigger `massnahme_art_vorgabe` leitet die
@@ -72,7 +72,7 @@ Art genauso ab - `art` ist NOT NULL, ohne Trigger bräche jeder Altschreiber.
 Einsparungs-Spalten nur, solange die Maßnahme geplant ist (Schreibweg „Ändern“ rechnet mit Kennzahl neu).
 ⚠ **Vokabular = Vereinigung** wie oben: alle Wörter bis `massnahme_herkunft`, dann `kurs_lage` (PR 1), dann `massnahme_art`; AM ENDE der Funktion, damit Präfix-Vergleiche halten.
 Weiten zwei offene Branches die Funktion, nimmt der zweite eine NEUE, höhere Version und schreibt die Vereinigung beider Blöcke (sonst doppelte Version oder, out-of-order, eine späte niedrigere Migration ohne die Wörter der höheren).
-⚠ **Späte Ankunft:** `20261006213000` (PR 1) und `20261007120000` (PR 2) stehen in `BAUEN_DARAUF_AUF` aller acht
+⚠ **Späte Ankunft:** `20261006213000` (PR 1) und `20261007120100` (PR 2) stehen in `BAUEN_DARAUF_AUF` aller acht
 Migrationstests, die eine Verbesserungs-Migration spät ankommen lassen; `UemsMassnahmeHerkunftMigrationTest` lässt beide MIT
 der Herkunft spät ankommen, sonst schriebe die späte Herkunft das Vokabular ohne `kurs_lage` und `massnahme_art` zurück.
 Nachweis: `UemsMassnahmeArtMigrationTest`.

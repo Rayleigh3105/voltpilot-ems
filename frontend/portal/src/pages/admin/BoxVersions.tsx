@@ -11,6 +11,7 @@ import { crossoverState, stateLabel,
 import { versionDisplay } from '../../edgeVersionLabel';
 import { fmtRelative } from '../../format';
 import { boxVersionOverview, filterBoxVersions } from '../../boxVersions';
+import { BoxArtChip } from './BoxArtChip';
 import './BoxVersions.css';
 
 /** Version and update status answer different questions: a confirmed target
@@ -25,10 +26,12 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [version, setVersion] = useState('all');
-  const { releases, latest, sorted, versions, runningLatest, filters } = useMemo(
+  const [boxArt, setBoxArt] = useState('all');
+  const { releases, latest, sorted, versions, runningLatest, filters, boxArten } = useMemo(
     () => boxVersionOverview(data), [data],
   );
-  const rows = filterBoxVersions(sorted, releases, { search, filter, version });
+  const rows = filterBoxVersions(sorted, releases, { search, filter, version, boxArt });
+  const filtered = filter !== 'all' || version !== 'all' || boxArt !== 'all' || !!search;
 
   return (
     <div className="vp-box-versions">
@@ -63,12 +66,14 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
         {sorted.length === 0 ? <EmptyState title="Noch keine Box verbunden"
           description="Sobald eine Box einem Kundenkonto zugeordnet ist, erscheint sie hier mit ihrem Software-Stand." /> : <>
           <details className="vp-box-filter-panel">
-          <summary>Suche & Filter <span>{filter !== 'all' || version !== 'all' || search ? `${rows.length} von ${sorted.length} Boxen` : 'Alle Boxen'}</span></summary>
+          <summary>Suche & Filter <span>{filtered ? `${rows.length} von ${sorted.length} Boxen` : 'Alle Boxen'}</span></summary>
           <div className="vp-box-tools">
             <Input type="search" aria-label="Boxen durchsuchen" placeholder="Box, Anlage, Kunde oder Version suchen …"
               value={search} onChange={(e) => setSearch(e.target.value)} />
             <VpPicker label={<span className="vp-sr-only">Installierte Version</span>} value={version} onChange={setVersion}
               options={[{ value: 'all', label: 'Alle Versionen' }, ...versions.map((v) => ({ value: v, label: v }))]} />
+            <VpPicker label={<span className="vp-sr-only">Box-Art</span>} value={boxArt} onChange={setBoxArt}
+              options={boxArten} />
           </div>
           <div className="vp-box-filters" role="group" aria-label="Boxen nach Update-Status filtern">
             {filters.map((f) => <button key={f.id} type="button" aria-pressed={filter === f.id}
@@ -80,19 +85,20 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
           <span className="vp-sr-only" role="status">{rows.length} von {sorted.length} Boxen angezeigt</span>
           {rows.length === 0 ? <EmptyState title="Keine passende Box"
             description="Ändern Sie die Suche oder setzen Sie die Filter zurück."
-            action={<Button variant="outline" onClick={() => { setSearch(''); setFilter('all'); setVersion('all'); }}>Filter zurücksetzen</Button>} /> :
+            action={<Button variant="outline" onClick={() => { setSearch(''); setFilter('all'); setVersion('all'); setBoxArt('all'); }}>Filter zurücksetzen</Button>} /> :
             <div className="vp-table-scroll">
               <table className="vp-table responsive vp-box-table" data-testid="box-versions">
                 <caption className="vp-sr-only">Software-Version und Update-Status aller verbundenen Boxen</caption>
                 <thead><tr><th>Box / Anlage</th><th>Installierte Version</th><th>Zielversion</th><th>Update-Status</th><th><span className="vp-sr-only">Aktionen</span></th></tr></thead>
                 <tbody>{rows.map((r) => {
-                  const cross = crossoverState(r.trust);
+                  const cross = crossoverState(r.trust, r.boxArt);
                   const status = stateLabel(r.state);
                   return <tr key={r.deviceId}>
                     <td data-label="Box / Anlage">
                       <span className="vp-cell-main"><strong>{r.siteName}</strong>
                         <span className="vp-cell-sub">{r.tenantName}</span>
                         <span className="vp-box-ref">{r.label !== r.externalRef ? `${r.label} · ` : ''}{r.externalRef}</span>
+                        <span className="vp-box-art"><BoxArtChip boxArt={r.boxArt} /></span>
                       </span>
                     </td>
                     <td data-label="Installierte Version" className="vp-box-installed">
@@ -105,7 +111,9 @@ export function BoxVersions({ data, busy, onUpdate, onOpen }: {
                         <i className="vp-ustate-dot" aria-hidden="true" />{status.label}
                       </span>
                       {r.reason && <span className="vp-cell-sub">{r.reason}</span>}
-                      {cross.tone === 'warn' && <span className="vp-cell-sub" title={cross.detail ?? undefined}>{cross.label}</span>}
+                      {/* Laut nur, was ein Vorfall ist; Edge Light ohne Stufe 2 wird ruhig BENANNT (E10). */}
+                      {(cross.tone === 'warn' || cross.state === 'von_hand') &&
+                        <span className="vp-cell-sub" title={cross.detail ?? undefined}>{cross.label}</span>}
                     </td>
                     <td data-label="Aktionen"><Button variant="outline" size="sm" aria-label={`Update verwalten für ${r.siteName} · ${r.externalRef}`}
                       onClick={() => onOpen(r.deviceId)}>Update verwalten</Button></td>

@@ -55,7 +55,8 @@ public class ChargingConfigRepository {
         List<Object[]> head = jdbc.query(
                 "SELECT grid_limit_kw, surplus_policy, storage_priority, house_reserve_kw, "
                         + "margin_pct, min_power_kw, rotation_minutes, max_house_load_kw, "
-                        + "static_budget, storage_rank, updated_at, updated_by "
+                        + "static_budget, storage_rank, storage_release_reserve_kwh, "
+                        + "updated_at, updated_by "
                         + "FROM site_charging_config WHERE site_id = ?",
                 (rs, n) -> new Object[] {rs.getObject("grid_limit_kw"),
                         rs.getTimestamp("updated_at"), rs.getString("updated_by"),
@@ -65,7 +66,8 @@ public class ChargingConfigRepository {
                                 (Integer) rs.getObject("rotation_minutes"),
                                 dbl(rs.getObject("max_house_load_kw")),
                                 (Boolean) rs.getObject("static_budget")),
-                        (Integer) rs.getObject("storage_rank")},
+                        (Integer) rs.getObject("storage_rank"),
+                        dbl(rs.getObject("storage_release_reserve_kwh"))},
                 siteId);
         List<String> priorities = jdbc.query(
                 "SELECT charge_point_id FROM site_charge_point_priority WHERE site_id = ? "
@@ -88,7 +90,8 @@ public class ChargingConfigRepository {
                 // sagt dazu nichts" ist eine Aussage, sechs leere Felder sind
                 // eine Behauptung ueber sechs Zahlen.
                 frame.leer() ? null : frame, (Integer) row[6], wallboxes,
-                at == null ? null : at.toInstant(), (String) row[2]);
+                at == null ? null : at.toInstant(), (String) row[2], (Double) row[7],
+                ChargingConfigDto.STORAGE_RELEASE_RESERVE_STANDARD_KWH);
     }
 
     /** Die eingetragenen Kennungen dieser Anlage (aelteste zuerst). */
@@ -99,7 +102,7 @@ public class ChargingConfigRepository {
                 // die Reihenfolge - eine Zeile hier anzulegen, weil jemand
                 // sortiert hat, waere eine Zulassung als Nebenwirkung.
                 "SELECT a.charge_point_id, a.label, a.rated_kw, a.connectors, a.source, "
-                        + "a.min_kw, a.connection, r.rank, a.added_at, a.added_by "
+                        + "a.min_kw, a.connection, r.rank, a.added_at, a.added_by, a.storage_release "
                         + "FROM site_charge_point_allowlist a "
                         + "LEFT JOIN site_charge_point_rank r "
                         + "ON r.site_id = a.site_id AND r.charge_point_id = a.charge_point_id "
@@ -112,7 +115,7 @@ public class ChargingConfigRepository {
                         (Integer) rs.getObject("rank"),
                         rs.getTimestamp("added_at") == null ? null
                                 : rs.getTimestamp("added_at").toInstant(),
-                        rs.getString("added_by")),
+                        rs.getString("added_by"), rs.getBoolean("storage_release")),
                 siteId));
     }
 
@@ -232,10 +235,37 @@ public class ChargingConfigRepository {
     @Transactional
     public boolean saveChargePointSource(UUID siteId, String chargePointId, String source,
             Double minKw) {
+        return saveChargePointSource(siteId, chargePointId, source, minKw, null);
+    }
+
+    /**
+     * Wie {@link #saveChargePointSource(UUID, String, String, Double)}, mit der
+     * Speicherfreigabe „Sonne + Speicher". {@code storageRelease == null} =
+     * dazu sagt der Aufrufer nichts.
+     */
+    @Transactional
+    public boolean saveChargePointSource(UUID siteId, String chargePointId, String source,
+            Double minKw, Boolean storageRelease) {
         return jdbc.update("UPDATE site_charge_point_allowlist SET "
-                + "source = COALESCE(?, source), min_kw = COALESCE(?, min_kw) "
+                + "source = COALESCE(?, source), min_kw = COALESCE(?, min_kw), "
+                + "storage_release = COALESCE(?, storage_release) "
                 + "WHERE site_id = ? AND charge_point_id = ? AND removed_at IS NULL",
-                source, minKw, siteId, chargePointId) > 0;
+                source, minKw, storageRelease, siteId, chargePointId) > 0;
+    }
+
+    /**
+     * Setzt die Reserve von „Sonne + Speicher" (06.10.2026). {@code null}
+     * nimmt die eigene Angabe ZURUECK - dann gilt wieder die Vorgabe.
+     */
+    @Transactional
+    public void saveStorageReleaseReserve(UUID tenantId, UUID siteId, Double reserveKwh,
+            String actor) {
+        jdbc.update("INSERT INTO site_charging_config (site_id, tenant_id, "
+                + "storage_release_reserve_kwh, updated_at, updated_by) VALUES (?, ?, ?, ?, ?) "
+                + "ON CONFLICT (site_id) DO UPDATE SET "
+                + "storage_release_reserve_kwh = EXCLUDED.storage_release_reserve_kwh, "
+                + "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
+                siteId, tenantId, reserveKwh, Timestamp.from(Instant.now()), actor);
     }
 
     /**

@@ -22,6 +22,7 @@ import { liste } from './liste';
 import type { SuggestionStates } from '../api';
 import { entwurfAus, fehlt, wunschAus, type SteuerartEntwurf, type SteuerartWunsch } from '../steuerartDialog';
 import type { GeraetBild } from './bild';
+import { OPTION_SONNE_SPEICHER } from './laden';
 
 /** Der Schlüssel, unter dem „nur messen“ gemerkt wird. */
 export const nurMessenKey = (id: string) => `steuerung-nur-messen:${id}`;
@@ -65,7 +66,9 @@ const STANDARD_VORZUG = ['ueberschuss', 'guenstig', 'feste_zeiten', 'sofort'];
  */
 export function vorschlag(g: GeraetBild): { entwurf: SteuerartEntwurf; wunsch: SteuerartWunsch } | null {
   const optionen = g.eintrag.optionen;
-  const frei = liste(optionen?.quellen).filter((q) => !q.gesperrt).map((q) => q.id);
+  // „Sonne + Speicher“ ist eine Karte, keine Quelle (Überschuss mit Modus
+  // `speicher`) - als `quelle` geschrieben lehnte der Server sie ab.
+  const frei = liste(optionen?.quellen).filter((q) => !q.gesperrt && q.id !== OPTION_SONNE_SPEICHER).map((q) => q.id);
   if (!frei.length) return null;
   const vorzug = VORZUG[g.typ] ?? STANDARD_VORZUG;
   const reihe = [...vorzug.filter((q) => frei.includes(q)), ...frei.filter((q) => !vorzug.includes(q))];

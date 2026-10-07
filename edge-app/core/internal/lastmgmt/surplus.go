@@ -190,6 +190,13 @@ type SurplusVerdict struct {
 	// BatteryKw is the power the battery was MEASURED taking, when it was
 	// reported. nil = the site has no battery measurement on this path.
 	BatteryKw *float64 `json:"battery_kw,omitempty"`
+	// BelowStorageKw is the lane read BELOW the battery - what the vehicles
+	// get when the battery is served first (the „Speicher zuerst" reading),
+	// whatever the site's own priority. „Sonne + Speicher" needs it at and
+	// below its battery floor: the floor is computed on the assumption that
+	// the forecast surplus refills the battery, so there the battery comes
+	// first even on an „Autos zuerst" site. nil without a fresh measurement.
+	BelowStorageKw *float64 `json:"below_storage_kw,omitempty"`
 	// Blind is true whenever the verdict was NOT formed from a fresh
 	// measurement.
 	Blind bool `json:"blind,omitempty"`
@@ -217,7 +224,7 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 	batt, haveBatt := t.battKw, t.haveBatt
 	t.mu.Unlock()
 
-	fresh := seen && !at.IsZero() && now.Sub(at) <= BudgetFreshWindow && !now.Before(at)
+	fresh := seen && measurementFresh(now, at)
 	// ⚠ A charge point that is still ramping after its own start or stop is a
 	// KNOWN gap with working meters (Measurement.Settling): the lane keeps the
 	// surplus it last measured instead of calling it unprovable - which under
@@ -253,6 +260,8 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 	}
 
 	out.Active, out.Mode = true, SurplusMeasured
+	below := round3(math.Min(math.Max(0, -restHold), total))
+	out.BelowStorageKw = &below
 	switch storage {
 	case CarsBeforeStorage:
 		out.Kw = total
@@ -261,11 +270,49 @@ func (t *BudgetTracker) Surplus(now time.Time, policy SurplusPolicy, storage Sto
 		// is left is `max(0, −rest)` - but never more than the whole surplus:
 		// a DISCHARGING battery makes −rest exceed S by exactly its discharge,
 		// and that is the house battery, not the sun.
-		out.Kw = round3(math.Min(math.Max(0, -restHold), total))
+		out.Kw = below
 	}
 	out.AllowMinimum = policy == PolicySolarFirst
 	out.Reason = surplusReason(out)
 	return out
+}
+
+// measurementFresh: the newest sample drives the decision for
+// BudgetFreshWindow. A sample stamped AFTER now is the newest one, not a stale
+// one - the executor takes now at the start of its pass, and the telemetry
+// keeps arriving while the pass runs (a pass that talks to the charge points
+// can take seconds). Its age is 0, exactly as in Budget and in the feed-in
+// watchdog (guards.ExportLimiter); calling it "no measurement" withdrew the
+// release (keine_messung) and paused „Nur Sonnenstrom" for that pass.
+func measurementFresh(now, at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
+	age := now.Sub(at)
+	if age < 0 {
+		age = 0
+	}
+	return age <= BudgetFreshWindow
+}
+
+// ReleaseFacts are the measured terms „Sonne + Speicher" decides from
+// (release.go): the house DEFICIT the battery already has to cover before a
+// vehicle takes anything (max(0, house without vehicles − PV), the trailing
+// MAXIMUM of the window - conservative like the surplus) and the grid power of
+// the newest sample (+ import), for the effect check.
+//
+// ok=false without a fresh measurement OR without a battery measurement: the
+// deficit is only knowable when the battery's own power can be taken back out
+// of the grid reading, and a battery that is not measured must never read as
+// one that is idle (the house-consumption standard).
+func (t *BudgetTracker) ReleaseFacts(now time.Time) (deficitKw, gridKw float64, ok bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	fresh := t.seen && measurementFresh(now, t.at)
+	if !fresh || !t.haveBatt {
+		return 0, 0, false
+	}
+	return round3(math.Max(0, t.restNoBattHoldLocked())), round3(t.gridKw), true
 }
 
 // StorageChargeCap is the OTHER half of „Auto vor Speicher": how much the
