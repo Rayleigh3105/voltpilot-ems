@@ -560,6 +560,21 @@ a.vp-ms-reihe:focus-visible {
 .vp-ms-reihe.is-hinweis .vp-ms-reihe-satz {
   color: var(--vp-c-warn-fg, #9a3412);
 }
+/* Ein zitierter Messbedarf (Review r4 M4): statt „Einrichten“ der Satz mit den Berichtsständen - leise, ganz lesbar,
+   und Ziel des Wiedervorlage-Schritts (Fokus ohne Tab-Halt). */
+.vp-ms-reihe-beleg {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ms-reihe-beleg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .vp-ms-reihe.is-hinweis .vp-ms-weg {
   color: var(--vp-c-muted-fg, #475569);
 }

@@ -557,8 +557,9 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
 
 /**
  * Entscheid 8: der Schritt öffnet das Objekt dort, wo die Entscheidung fällt. Audit und Managementbewertung legt man
- * im Reiter neu an; der Messbedarf wird an seinem Energieeinsatz eingelöst (dort steht „Messstelle einrichten“), ohne
- * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen). Eine Ablesung trägt man an der
+ * im Reiter neu an; der Messbedarf ist seit Messen PR4 eine geplante Messstelle unter Messen und wird dort eingerichtet
+ * („Einrichten“, `?entscheid=messbedarf_frist&kennzeichen=MB-1`; ein zitierter Bedarf trägt statt dessen den Satz mit
+ * den Berichtsständen). Eine Ablesung trägt man an der
  * Messstelle ein: bei einem Zähler direkt dort, bei mehreren in der Ablese-Runde ihres Orts (`?ablesen=G-1`, Konzept
  * Messen m1 §6.5 Variante 3A) - das erste offene Feld der Runde trägt den Entscheid.
  */

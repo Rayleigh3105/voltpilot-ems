@@ -12,6 +12,7 @@ import {
   type Energieeinsatz,
   type KostenstelleEnergiePeriode,
   type Messbedarf,
+  type Messstelle,
   type MessstellenRegister,
   type StandortAusfall,
 } from '../api';
@@ -104,7 +105,7 @@ import {
   geplantZahl,
   type GeplanteReihe,
 } from '../geplanteMessstellen';
-import { MESSPLANUNG } from '../uemsMessplanung';
+import { MESSPLANUNG, messbedarfAblehnung, nichtEinloesbar, nichtEinloesbarSatz, zuordnenText } from '../uemsMessplanung';
 import { ZURUECK_ZU_HEUTE, stichtagAus } from '../standAm';
 import { VORGABE_ZEITZONE, datumText } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
@@ -393,6 +394,10 @@ function RegisterFlaeche({
   const [plan, setPlan] = useState<{ bedarfe: Messbedarf[]; einsaetze: Energieeinsatz[] } | 'fehler' | null>(null);
   const [planVersuch, setPlanVersuch] = useState(0);
   const [einrichten, setEinrichten] = useState<GeplanteReihe | null>(null);
+  // Review r4 M4 (Entscheid c): scheitert das Einlösen, ist die Messstelle schon angelegt - die Reihe bietet dann
+  // „MS-24 zuordnen“ statt eines neuen „Einrichten“, damit wiederholtes Klicken nie weitere Messstellen anlegt.
+  const [zuordnen, setZuordnen] = useState<Record<string, Messstelle>>({});
+  const [ordnetZu, setOrdnetZu] = useState<string | null>(null);
   const [erfassen, setErfassen] = useState(false);
   const [planSatz, setPlanSatz] = useState<{ text: string; ton: 'ok' | 'fehler' } | null>(null);
   const planSatzRef = useRef<HTMLParagraphElement>(null);
@@ -586,6 +591,24 @@ function RegisterFlaeche({
   }
   const darfEinrichten = (g: GeplanteReihe) =>
     !stichtag && darfVerwalten(rollen.selbst) && rollen.darf('messstelle.bearbeiten', g.ort.standortId ?? ebeneId);
+  // „MS-24 zuordnen“: derselbe Bedarf, die schon angelegte Messstelle - ohne Dialog, ohne neue Messstelle.
+  const ordneZu = (g: GeplanteReihe, m: Messstelle) => {
+    if (ordnetZu) return;
+    setOrdnetZu(g.id);
+    setPlanSatz(null);
+    api.messbedarfEinloesen(g.bedarf.energieeinsatz_id, g.bedarf.id, m.id).then(
+      (b) => {
+        setOrdnetZu(null);
+        setZuordnen(({ [g.id]: _weg, ...rest }) => rest);
+        setPlanSatz({ text: eingeloestSatz(b), ton: 'ok' });
+        neuLesen();
+      },
+      (e) => {
+        setOrdnetZu(null);
+        setPlanSatz({ text: messbedarfAblehnung(e), ton: 'fehler' });
+      },
+    );
+  };
 
   const ortName = (id: string | null) =>
     id ? (aktuell?.basis.register.find((z) => z.ort.id === id || z.ort.kennzeichen === id)?.ort.name ?? id) : null;
@@ -747,6 +770,9 @@ function RegisterFlaeche({
                       setPlanSatz(null);
                       setEinrichten(r);
                     }}
+                    zuordnen={zuordnen}
+                    ordnetZu={ordnetZu}
+                    onZuordnen={ordneZu}
                   />
                 ))}
                 {sichtbar.archiviert.length > 0 && (
@@ -782,7 +808,10 @@ function RegisterFlaeche({
             // Antwort macht aus der geplanten die eingerichtete Messstelle - also danach noch einmal lesen.
             neuLesen();
           }}
-          onFehler={(satz, m) => setPlanSatz({ text: einloesenAbgelehntSatz(satz, m.kennzeichen, einrichten.kennzeichen), ton: 'fehler' })}
+          onFehler={(satz, m) => {
+            setPlanSatz({ text: einloesenAbgelehntSatz(satz, m.kennzeichen, einrichten.kennzeichen), ton: 'fehler' });
+            setZuordnen((z) => ({ ...z, [einrichten.id]: m }));
+          }}
         />
       )}
       {erfassen && (
@@ -1088,6 +1117,9 @@ function OrtKarte({
   onOeffnen,
   darfEinrichten,
   onEinrichten,
+  zuordnen,
+  ordnetZu,
+  onZuordnen,
 }: {
   gruppe: OrtGruppe;
   gefiltert: boolean;
@@ -1097,6 +1129,10 @@ function OrtKarte({
   onOeffnen?: (id: string, periode: string | null) => void;
   darfEinrichten: (g: GeplanteReihe) => boolean;
   onEinrichten: (g: GeplanteReihe) => void;
+  /** Je Bedarf die schon angelegte Messstelle nach einer Ablehnung des Einlösens. */
+  zuordnen: Readonly<Record<string, Messstelle>>;
+  ordnetZu: string | null;
+  onZuordnen: (g: GeplanteReihe, m: Messstelle) => void;
 }) {
   const titelId = `vp-ms-ort-${useId().replace(/:/g, '')}`;
   const rollen = useRollen();
@@ -1136,7 +1172,15 @@ function OrtKarte({
         ))}
         {gruppe.geplant.map((g) => (
           <li key={g.id}>
-            <GeplanteZeile g={g} suche={suche} darfEinrichten={darfEinrichten(g)} onEinrichten={() => onEinrichten(g)} />
+            <GeplanteZeile
+              g={g}
+              suche={suche}
+              darfEinrichten={darfEinrichten(g)}
+              onEinrichten={() => onEinrichten(g)}
+              zuordnen={zuordnen[g.id] ?? null}
+              ordnetZu={ordnetZu === g.id}
+              onZuordnen={(m) => onZuordnen(g, m)}
+            />
           </li>
         ))}
       </ul>
@@ -1155,12 +1199,23 @@ function GeplanteZeile({
   suche,
   darfEinrichten,
   onEinrichten,
+  zuordnen,
+  ordnetZu,
+  onZuordnen,
 }: {
   g: GeplanteReihe;
   suche: string;
   darfEinrichten: boolean;
   onEinrichten: () => void;
+  /** Nach einer Ablehnung des Einlösens: die schon angelegte Messstelle („MS-24 zuordnen“ statt „Einrichten“). */
+  zuordnen: Messstelle | null;
+  ordnetZu: boolean;
+  onZuordnen: (m: Messstelle) => void;
 }) {
+  // Review r4 M4 (Entscheid b): zitieren freigegebene Berichtsstände den Bedarf, gibt es keinen Weg zum Anlegen - der Satz
+  // nennt die Stände; er ist auch das Ziel des Wiedervorlage-Schritts, nie ein „Einrichten“.
+  const zitiert = nichtEinloesbar(g.bedarf);
+  const schritt = darfEinrichten && !zitiert;
   return (
     <div
       className={`vp-ms-reihe is-geplant${g.frist?.ueberschritten ? ' is-hinweis' : ''}`}
@@ -1191,11 +1246,29 @@ function GeplanteZeile({
             </>
           )}
           {g.frist && <small className="vp-ms-reihe-fakt vp-ms-frist">{g.frist.text}</small>}
+          {zitiert && (
+            <small className="vp-ms-reihe-beleg" tabIndex={-1} data-testid="geplante-zitiert" data-entscheid-schritt>
+              {nichtEinloesbarSatz(g.bedarf)}
+            </small>
+          )}
         </span>
       </span>
       <span className="vp-ms-reihe-woher">{NOCH_NICHT_EINGERICHTET}</span>
-      <span className={`vp-ms-reihe-wert${darfEinrichten ? '' : ' is-ohne-schritt'}`}>
-        {darfEinrichten ? (
+      <span className={`vp-ms-reihe-wert${schritt ? '' : ' is-ohne-schritt'}`}>
+        {schritt && zuordnen ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="vp-ms-einrichten"
+            onClick={() => onZuordnen(zuordnen)}
+            disabled={ordnetZu}
+            aria-label={`${zuordnen.kennzeichen} ${g.name} (${g.kennzeichen}) zuordnen`}
+            data-testid="geplante-zuordnen"
+            data-entscheid-schritt
+          >
+            {zuordnenText(zuordnen)}
+          </Button>
+        ) : schritt ? (
           <Button
             variant="outline"
             size="sm"

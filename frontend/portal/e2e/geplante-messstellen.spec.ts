@@ -162,8 +162,45 @@ for (const breite of [375, 1440]) {
       await expect(satz).toBeFocused();
       await expect(geplant(page, 'MB-1')).toHaveCount(1);
       await expect(karte(page, 'Halle 1').getByTestId('messstelle-reihe').filter({ hasText: 'MS-23' })).toContainText('Noch keine Quelle');
+      // Review r4 M4 (Entscheid c): die Reihe bietet jetzt „MS-23 zuordnen“ - kein zweites „Einrichten“, keine MS-24.
+      const zuordnen = geplant(page, 'MB-1').getByRole('button', { name: /^MS-23 .*zuordnen$/ });
+      await expect(zuordnen).toBeVisible();
+      await expect(geplant(page, 'MB-1').getByRole('button', { name: /einrichten$/ })).toHaveCount(0);
       await ablegen(page, `geplant-beleg-${breite}`);
       await ohneQuerlauf(page, `beleg-${breite}`);
+      await zuordnen.click();
+      await expect(satz).toHaveText('2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1) - er bleibt, wie er ist.');
+      await expect(geplant(page, 'MB-1').getByRole('button', { name: /^MS-23 .*zuordnen$/ })).toBeVisible();
+      await expect(page.getByTestId('messstelle-reihe').filter({ hasText: 'MS-24' })).toHaveCount(0);
+    });
+
+    test('scheitert nur das erste Einlösen, löst „MS-23 zuordnen“ mit derselben Messstelle ein (Review r4 M4)', async ({ page }) => {
+      await oeffne(page, '/e2e/geplante-messstellen.html?beleg=einmal#/portfolio/messstellen', breite);
+      await geplant(page, 'MB-1').getByRole('button', { name: /einrichten$/ }).click();
+      await expect(modal(page).getByLabel('Kennzeichen')).toHaveValue('MS-23');
+      await modal(page).getByLabel('Name *').fill('Halle 1 Allgemein');
+      await waehle(page, 'Wertart *', /^Zählerstand/);
+      await modal(page).getByRole('button', { name: 'Weiter: Zuordnung' }).click();
+      await modal(page).getByRole('button', { name: 'Weiter: Quelle' }).click();
+      await modal(page).getByRole('button', { name: 'Später festlegen' }).click();
+      await modal(page).getByRole('button', { name: 'Schließen' }).first().click();
+      await geplant(page, 'MB-1').getByRole('button', { name: /^MS-23 .*zuordnen$/ }).click();
+      await expect(page.getByTestId('geplante-satz')).toHaveText('Messbedarf MB-1 ist eingelöst - MS-23 Halle 1 Allgemein steht jetzt in der Liste.');
+      await expect(geplant(page, 'MB-1')).toHaveCount(0);
+      await expect(page.getByTestId('messstelle-reihe').filter({ hasText: 'MS-23' })).toHaveCount(1);
+      await expect(page.getByTestId('messstelle-reihe').filter({ hasText: 'MS-24' })).toHaveCount(0);
+    });
+
+    test('sagt die API vorher, dass Berichtsstände den Bedarf zitieren: der Satz statt „Einrichten“, der Blick der Wiedervorlage darauf (Review r4 M4)', async ({ page }) => {
+      await oeffne(page, '/e2e/geplante-messstellen.html?zitiert=1#/portfolio/messstellen?entscheid=messbedarf_frist&kennzeichen=MB-1', breite);
+      const mb1 = geplant(page, 'MB-1');
+      const satz = mb1.getByTestId('geplante-zitiert');
+      await expect(satz).toHaveText('2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1) - er bleibt, wie er ist.');
+      await expect(satz).toBeFocused();
+      await expect(mb1.getByRole('button')).toHaveCount(0);
+      await expect(page).toHaveURL(/#\/portfolio\/messstellen$/);
+      await ablegen(page, `geplant-zitiert-${breite}`);
+      await ohneQuerlauf(page, `zitiert-${breite}`);
     });
 
     test('der Schritt „Messstelle anlegen“ der Wiedervorlage führt den Blick auf „Einrichten“ genau dieses Bedarfs', async ({ page }) => {

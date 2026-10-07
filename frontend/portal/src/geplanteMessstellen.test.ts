@@ -81,7 +81,7 @@ describe('geplante Messstellen aus den Messbedarfen', () => {
     expect(g[1].frist).toEqual({ tag: '2026-09-30', text: 'Frist 30.09.2026 überschritten', ueberschritten: true });
     expect(geplantHinweis(g)).toEqual({
       titel: 'Druckluft-Leckage Halle 2 (MB-2) ist noch nicht eingerichtet',
-      satz: 'Frist seit 30.09.2026 überschritten · Kein Ort zugeordnet',
+      satz: 'Frist 30.09.2026 überschritten · Kein Ort zugeordnet',
       ton: 'warn',
       marke: 'geplant',
       schritt: 'Ansehen',
@@ -89,7 +89,7 @@ describe('geplante Messstellen aus den Messbedarfen', () => {
     expect(geplantHinweis([g[0]])).toBeNull();
     const zwei = geplant(bedarfe().map((b) => ({ ...b, frist: '2026-09-30' })));
     expect(geplantHinweis(zwei)?.titel).toBe('2 geplante Messstellen sind noch nicht eingerichtet');
-    expect(geplantHinweis(zwei)?.satz).toBe('Frist seit 30.09.2026 überschritten · Halle 1 und Kein Ort zugeordnet');
+    expect(geplantHinweis(zwei)?.satz).toBe('Frist 30.09.2026 überschritten · Halle 1 und Kein Ort zugeordnet');
   });
 
   it('ein Einsatz, den die Person nicht sieht, fehlt im Satz statt zu raten', () => {

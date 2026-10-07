@@ -120,8 +120,8 @@ export function geplanteAus(
 
 /**
  * Die Hinweiskarte, wenn eine Frist überschritten ist - wie eine überfällige Ablesung: „Lüftung … (MB-1) ist noch nicht
- * eingerichtet“, darunter „Frist seit 31.03.2027 überschritten · Halle 1“; sie filtert auf die Marke „geplant“. Eine
- * Frist, die noch läuft, ist kein Handlungsbedarf der Liste (die Wiedervorlage nennt sie).
+ * eingerichtet“, darunter „Frist 31.03.2027 überschritten · Halle 1“ (der Fristtag selbst zählt noch); sie filtert auf die
+ * Marke „geplant“. Eine Frist, die noch läuft, ist kein Handlungsbedarf der Liste (die Wiedervorlage nennt sie).
  */
 export function geplantHinweis(geplante: readonly GeplanteReihe[]): Hinweis | null {
   const ueber = geplante.filter((g) => g.frist?.ueberschritten);
@@ -134,7 +134,7 @@ export function geplantHinweis(geplante: readonly GeplanteReihe[]): Hinweis | nu
       ueber.length === 1
         ? `${ueber[0].name} (${ueber[0].kennzeichen}) ist noch nicht eingerichtet`
         : `${geplanteSatz(ueber.length)} sind noch nicht eingerichtet`,
-    satz: [`Frist seit ${datumText(frueheste)} überschritten`, ortText].filter(Boolean).join(' · '),
+    satz: [`Frist ${datumText(frueheste)} überschritten`, ortText].filter(Boolean).join(' · '),
     ton: 'warn',
     marke: 'geplant',
     schritt: 'Ansehen',

@@ -1022,6 +1022,8 @@ Die Liste „Messstellen“ zeigt sie an ihrem Ort nach dessen Messstellen, mit 
 „Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs; sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst, und an ihrer Stelle steht die Messstelle selbst (bis zum Zähler mit „noch keine Quelle“, nie 0).
 Die Marke „1 geplant“ zeigt nur die geplanten Messstellen; ist eine Frist überschritten, nennt eine Hinweiskarte sie wie eine überfällige Ablesung.
 Der Schritt „Messstelle anlegen“ der Wiedervorlage öffnet die Liste bei genau diesem Bedarf.
+Zitieren freigegebene Berichtsstände einen Bedarf, bleibt er, wie er ist: statt „Einrichten“ nennt ein Satz die Stände („2 freigegebene Berichtsstände zitieren diesen Messbedarf (…) - er bleibt, wie er ist.“).
+Scheitert das Einlösen nach dem Anlegen, bietet die Reihe „MS-23 zuordnen“ mit der schon angelegten Messstelle an, nie ein zweites Anlegen.
 Erfasst, bearbeitet und verworfen wird ein Messbedarf weiter am Energieeinsatz; unter Messen steht dazu „Messbedarf erfassen“ im Menü der Liste.
 Kundenwort: `UEMS_GEPLANTE_MESSSTELLE` (PORTAL/glossar.ts).
 

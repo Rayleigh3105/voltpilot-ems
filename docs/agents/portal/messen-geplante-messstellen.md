@@ -22,7 +22,10 @@ Stand: Messen-Bau m2, PR4 (Konzept `data/vp-auswerten-konzept-a1`, Entscheid 9 �
 - Belegschutz (Vertrag `bewertung.md`): zitieren freigegebene Berichtsstände den Bedarf, lehnt der Server das Einlösen mit 409 `berichts_belege` ab.
   Die Messstelle ist dann schon eingerichtet (der Dialog speichert Schritt für Schritt) und bleibt; der Satz nennt die Stände, die Messstelle und dass der Bedarf geplant bleibt (`messbedarfAblehnung`, `einloesenAbgelehntSatz`).
   Der Satz des Servers ist der einer Komponente („Löschen ist nicht möglich — beenden Sie die Bindung“) und wird hier nie gezeigt, solange `berichtsstaende` kommt.
-  ⚠ In der Demo zitieren vier Stände MB-1 (in der Referenzwelt ist MB-1 längst durch MS-23 eingelöst): dort endet „Einrichten“ von MB-1 immer mit diesem Satz.
+- Review r4 M4 (Entscheid b): die API nennt am Bedarf vorher `einloesbar` und `zitiert_von`; ein zitierter offener Bedarf (`nichtEinloesbar`) hat kein „Einrichten“, sondern den Satz mit den Ständen (`nichtEinloesbarSatz`, derselbe wie die 409), am Einsatz ebenso statt Einrichten, Bearbeiten und Verwerfen.
+  Der Satz trägt `data-entscheid-schritt` (mit `tabIndex=-1`): der Schritt der Wiedervorlage landet auf ihm, nie auf „Einrichten“.
+- Entscheid c (Sicherheitsnetz, auch für eine ältere API ohne die Felder): scheitert das Einlösen, merkt sich die Seite die schon angelegte Messstelle, und die Reihe bietet „MS-23 zuordnen“ statt „Einrichten“ (`zuordnenText`); der Knopf löst ohne Dialog mit derselben Messstelle ein - wiederholtes Klicken legt nie eine weitere an.
+  ⚠ In der Demo zitieren vier Stände MB-1 (in der Referenzwelt ist MB-1 längst durch MS-23 eingelöst); mit einer Demo-API, die `einloesbar` kennt, steht dort der Satz statt „Einrichten“, mit einer älteren das Sicherheitsnetz.
 - Eingelöst wird oft erst, wenn der Dialog schon zu ist (die Antwort kommt nach dem Schließen): die Liste liest beim Schließen UND nach der Antwort des Einlösens neu.
   Damit das zweite Lesen nicht die Anfrage vom Schließen teilt, bündelt `request` (`api.ts`) nach jeder Änderung keine vorher gestartete GET-Anfrage mehr (Lesen nach Schreiben, `apiCoalesce.test.ts`).
 - „Einrichten“ braucht `energieeinsatz.verwalten` am Unternehmen UND `messstelle.bearbeiten` am Standort des Orts; ohne beides steht rechts der Strich, am Telefon nichts.
@@ -34,10 +37,10 @@ Stand: Messen-Bau m2, PR4 (Konzept `data/vp-auswerten-konzept-a1`, Entscheid 9 �
 ## Wiedervorlage
 
 - Der Schritt „Messstelle anlegen“ (`messbedarf_frist`) springt auf `#/portfolio/messstellen?entscheid=messbedarf_frist&kennzeichen=MB-1` (`eintragSprung` in `wiedervorlage.ts`).
-- Ziel ist die Reihe mit `data-entscheid="messbedarf_frist"` und `data-entscheid-kennzeichen`; `useEntscheidFokus` fokussiert „Einrichten“ (`data-entscheid-schritt`), ohne Recht den Verweis auf den Einsatz.
+- Ziel ist die Reihe mit `data-entscheid="messbedarf_frist"` und `data-entscheid-kennzeichen`; `useEntscheidFokus` fokussiert „Einrichten“ bzw. „MS-23 zuordnen“ (`data-entscheid-schritt`), bei einem zitierten Bedarf den Satz mit den Ständen, ohne Recht den Verweis auf den Einsatz.
 - Die Messplanung am Einsatz trägt kein Ziel mehr.
 
 ## Prüfen
 
 - `src/geplanteMessstellen.test.ts` (rein, mit der Liste), `src/pages/MessstellenPage.test.tsx` (Abschnitt „geplante Messstellen“), `src/wiedervorlage.test.ts`.
-- `e2e/geplante-messstellen.spec.ts` auf der Bühne `e2e/geplante-messstellen.html` (`?person=JW|PH`, `&plan=zwei|leer`; Routen aus `src/test/messplanungBuehne.ts`); `GEPLANT_BILDER=<Ordner>` legt die Bilder ab.
+- `e2e/geplante-messstellen.spec.ts` auf der Bühne `e2e/geplante-messstellen.html` (`?person=JW|PH`, `&plan=zwei|leer`, `&beleg=1|einmal`, `&zitiert=1`, `&langsam=1`; Routen aus `src/test/messplanungBuehne.ts`); `GEPLANT_BILDER=<Ordner>` legt die Bilder ab.

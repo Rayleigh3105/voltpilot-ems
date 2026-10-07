@@ -13,6 +13,7 @@ import { ee8, mb1, messplanungRouten } from '../test/messplanungBuehne';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { MessstellenPage } from './MessstellenPage';
+import { zumEntscheid } from '../useEntscheidFokus';
 
 /**
  * Die Liste „Messstellen“ (Konzept Messen m1, §6.2/§6.3/§6.11) gegen die gestellte Route `GET /api/v1/messstellen`
@@ -605,13 +606,26 @@ describe('Messstellen · geplante Messstellen (Konzept Auswerten a1, Entscheid 9
     expect(within(karteVon('Halle 1')).getByText('Werk Ahrenberg · 1 geplant')).toBeInTheDocument();
   });
 
+  it('ein zitierter Bedarf (Review r4 M4): statt „Einrichten“ der Satz mit den Ständen - und der Blick der Wiedervorlage landet darauf', async () => {
+    telefon(false);
+    verdrahte();
+    plan([halle1({ einloesbar: false, zitiert_von: [{ kennung: 'BR-2026-0002', nr: 1 }, { kennung: 'BR-2029-0002', nr: 1 }] })]);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    const [mb] = await screen.findAllByTestId('geplante-messstelle', {}, WARTEN);
+    expect(within(mb).queryByRole('button')).toBeNull();
+    const satz = within(mb).getByTestId('geplante-zitiert');
+    expect(satz.textContent).toBe('2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2029-0002 Nr. 1) - er bleibt, wie er ist.');
+    zumEntscheid(mb);
+    expect(satz).toHaveFocus();
+  });
+
   it('eine überschrittene Frist: die Hinweiskarte nennt sie und filtert auf die geplanten', async () => {
     telefon(false);
     verdrahte();
     plan([halle1({ frist: '2026-09-30' })]);
     render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
     const karte = await screen.findByRole('button', { name: /MB-1\) ist noch nicht eingerichtet/ }, WARTEN);
-    expect(karte.textContent).toContain('Frist seit 30.09.2026 überschritten · Halle 1');
+    expect(karte.textContent).toContain('Frist 30.09.2026 überschritten · Halle 1');
     fireEvent.click(karte);
     expect(screen.queryAllByTestId('messstelle-reihe')).toHaveLength(0);
     expect(geplante()[0].textContent).toContain('Frist 30.09.2026 überschritten');

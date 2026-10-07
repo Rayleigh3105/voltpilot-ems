@@ -27,17 +27,24 @@ import '../src/index.css';
  * (heute 20.10.2026).
  *
  * Adresse: `?person=JW|PH|MD` (Vorgabe JW) · `&plan=zwei|leer` (Vorgabe zwei: MB-1 an Halle 1 mit Struktur, Frist
- * 31.03.2027; MB-2 ohne Ort, Frist 30.09.2026 überschritten) · `&beleg=1` (das Einlösen trifft den Belegschutz) ·
- * `&langsam=1` (das Einlösen antwortet erst nach dem Schließen) · der Hash ist die Route (`#/portfolio/messstellen`, mit
- * `?entscheid=messbedarf_frist&kennzeichen=MB-2` wie der Schritt der Wiedervorlage).
+ * 31.03.2027; MB-2 ohne Ort, Frist 30.09.2026 überschritten) · `&beleg=1` (das Einlösen trifft den Belegschutz, eine
+ * ältere API ohne `einloesbar`) · `&beleg=einmal` (nur das erste Einlösen trifft ihn) · `&zitiert=1` (die API sagt
+ * vorher `einloesbar: false` und die Stände, Review r4 M4) · `&langsam=1` (das Einlösen antwortet erst nach dem
+ * Schließen) · der Hash ist die Route (`#/portfolio/messstellen`, mit `?entscheid=messbedarf_frist&kennzeichen=MB-2` wie
+ * der Schritt der Wiedervorlage).
  */
 const q = new URLSearchParams(window.location.search);
 const halle1 = { id: REGISTER_ORT_IDS['G-1'], art: 'gebaeude' as const, kurzzeichen: 'G-1', name: 'Halle 1', standort_id: FIXTURE_IDS.st1, standort_name: 'Werk Ahrenberg' };
+const STAENDE = [
+  { kennung: 'BR-2026-0002', nr: 1 },
+  { kennung: 'BR-2027-0001', nr: 1 },
+];
+const zitiert: Partial<Messbedarf> = q.get('zitiert') ? { einloesbar: false, zitiert_von: STAENDE } : {};
 const bedarfe: Messbedarf[] =
   q.get('plan') === 'leer'
     ? []
     : [
-        mb1({ ort_ziel: halle1, messgroesse: 'Wirkenergie', richtung: 'Bezug' }),
+        mb1({ ort_ziel: halle1, messgroesse: 'Wirkenergie', richtung: 'Bezug', ...zitiert }),
         mb1({
           id: 'mb000000-0000-4000-8000-000000000002',
           kennzeichen: 'MB-2',
@@ -50,13 +57,17 @@ const bedarfe: Messbedarf[] =
 const routen = messplanungRouten('2026-10-20', q.get('person') ?? 'JW', bedarfe);
 // `&beleg=1`: zwei freigegebene Berichtsstände zitieren die Bedarfe - der Server lehnt das Einlösen ab (Belegschutz,
 // Vertrag `bewertung.md`), mit dem Satz einer Komponente, wie er heute kommt.
+// `&beleg=einmal`: nur das erste Einlösen scheitert - danach löst „MS-23 zuordnen“ ein.
+let eingeloest = 0;
 const beleg = q.get('beleg')
   ? {
-      messbedarfEinloesen: async () => {
+      messbedarfEinloesen: async (...a: Parameters<typeof routen.messbedarfEinloesen>) => {
+        eingeloest += 1;
+        if (q.get('beleg') === 'einmal' && eingeloest > 1) return routen.messbedarfEinloesen(...a);
         throw new ApiError(409, 'Dieser Messbedarf ist Beleg in 2 freigegebenen Berichtsständen (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1). Löschen ist nicht möglich — beenden Sie die Bindung stattdessen.', {
           code: 'berichts_belege',
           codes: ['berichts_belege'],
-          berichtsstaende: [{ kennung: 'BR-2026-0002', nr: 1 }, { kennung: 'BR-2027-0001', nr: 1 }],
+          berichtsstaende: STAENDE,
           messstellen: [],
         });
       },

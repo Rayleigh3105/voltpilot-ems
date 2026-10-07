@@ -33,8 +33,11 @@ import {
   messbedarfAblehnung,
   MESSPLANUNG,
   nachStandort,
+  nichtEinloesbar,
+  nichtEinloesbarSatz,
   protokollZeilen,
   restVorbelegung,
+  zuordnenText,
   type BedarfEingabe,
 } from '../uemsMessplanung';
 import { MessstelleDialog } from './MessstelleDialog';
@@ -87,6 +90,10 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
   const [register, setRegister] = useState<MessstelleRegisterZeile[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState<string | null>(null);
+  // Review r4 M4 (Entscheid c): scheitert das Einlösen, ist die Messstelle schon angelegt - dann „MS-24 zuordnen“ statt
+  // eines neuen „Messstelle einrichten“; wiederholtes Klicken legt nie weitere Messstellen an.
+  const [zuordnen, setZuordnen] = useState<Record<string, Messstelle>>({});
+  const [ordnetZu, setOrdnetZu] = useState<string | null>(null);
   const [dialog, setDialog] = useState<
     { art: 'erfassen' } | { art: 'einrichten' | 'verwerfen' | 'bearbeiten' | 'protokoll'; bedarf: Messbedarf } | null
   >(null);
@@ -115,6 +122,22 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
     setBedarfe((alt) => [...(alt ?? []).filter((x) => x.id !== b.id), b]);
     setVersuch((v) => v + 1);
   };
+  const ordneZu = (b: Messbedarf, m: Messstelle) => {
+    if (ordnetZu) return;
+    setOrdnetZu(b.id);
+    api.messbedarfEinloesen(b.energieeinsatz_id, b.id, m.id).then(
+      (neu) => {
+        setOrdnetZu(null);
+        setHinweis(null);
+        setZuordnen(({ [b.id]: _weg, ...rest }) => rest);
+        ersetze(neu);
+      },
+      (e) => {
+        setOrdnetZu(null);
+        setHinweis(messbedarfAblehnung(e));
+      },
+    );
+  };
 
   return (
     <section className="vp-bw-karte vp-mp" aria-labelledby="ee-messplanung" data-testid="messplanung-einsatz">
@@ -142,11 +165,24 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
           {bedarfeSortiert(bedarfe).map((b) => (
             <BedarfZeile key={b.id} bedarf={b} orte={orte} register={register}>
               <span className="vp-bw-aktionen">
-                {schreiben && b.zustand === 'offen' && (
+                {/* Review r4 M4 (Entscheid b): zitieren freigegebene Berichtsstände den Bedarf, scheitern Einrichten, Bearbeiten
+                    und Verwerfen am Belegschutz - der Satz nennt die Stände, statt Wege anzubieten, die nicht gehen. */}
+                {schreiben && nichtEinloesbar(b) && (
+                  <span className="vp-bw-leise" data-testid="messbedarf-zitiert">
+                    {nichtEinloesbarSatz(b)}
+                  </span>
+                )}
+                {schreiben && b.zustand === 'offen' && !nichtEinloesbar(b) && (
                   <>
-                    <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf">
-                      {MESSPLANUNG.einrichten}
-                    </Button>
+                    {zuordnen[b.id] ? (
+                      <Button size="sm" onClick={() => ordneZu(b, zuordnen[b.id])} disabled={ordnetZu === b.id} data-testid="messbedarf-zuordnen-knopf">
+                        {zuordnenText(zuordnen[b.id])}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf">
+                        {MESSPLANUNG.einrichten}
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'bearbeiten', bedarf: b })} data-testid="messbedarf-bearbeiten-knopf">
                       {MESSPLANUNG.bearbeiten}
                     </Button>
@@ -208,7 +244,11 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
             setHinweis(null);
             ersetze(b);
           }}
-          onFehler={setHinweis}
+          onFehler={(satz, m) => {
+            const id = dialog.bedarf.id;
+            setHinweis(satz);
+            setZuordnen((z) => ({ ...z, [id]: m }));
+          }}
         />
       )}
     </section>

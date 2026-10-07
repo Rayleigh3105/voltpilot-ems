@@ -587,6 +587,7 @@
         "gruppen: out.length - 1",
         "imOrt: -1",
         "liste: g.gesamt += 1",
+        "liste: n + g.geplant.length",
         "liste: n + g.reihen.length",
         "monatKurz: Number(monat.slice(5, 7))",
         "monatKurz: Number(monat.slice(5, 7)) - 1",
@@ -599,7 +600,7 @@
         "zahlFundstellen: von - 1",
         "zahlFundstellen: von -= 1"
       ],
-      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert. Monat der Reihe (#1424): der gelieferte Schritt `letzter_monat.wert`, gesprochen mit `anzeige()` (monatWert trennt Zahl und Einheit an der Textposition, monatKurz ist der Monatsname); „unvollständig“ ist sein Zustand, nicht gerechnet."
+      "grund": "Messen PR1 (Review r4 S5): Anzahlen von Messstellen je Ort und Treffer (keine Menge), Textpositionen der Suche und Listenindizes, Datumsprüfung der Adresse; jede Zahl einer Reihe ist der gelieferte Wert, nur formatiert. Monat der Reihe (#1424): der gelieferte Schritt `letzter_monat.wert`, gesprochen mit `anzeige()` (monatWert trennt Zahl und Einheit an der Textposition, monatKurz ist der Monatsname); „unvollständig“ ist sein Zustand, nicht gerechnet. Geplante Messstellen (#1430): `liste` zählt sie je Ort (Anzahl, keine Menge)."
     },
     "messstelleSeite.ts": {
       "importe": [
@@ -668,6 +669,23 @@
         "rundeAus: tage.length - 1"
       ],
       "grund": "Messen PR3 (Review r4 S5): Sortierung und Listenindex der Ablesetage, keine Menge. Der Monat einer Ablesung kommt aus dem Vertrags-Zwilling (bezugsdaten.zuordnung), die Menge seit der letzten Ablesung aus der Antwort des Servers; die Fläche formatiert nur (betrag, standZahl, zahlText)."
+    },
+    "geplanteMessstellen.ts": {
+      "importe": [
+        "./glossar:UEMS_GEPLANTE_MESSSTELLE",
+        "./messstellen:KEIN_ORT",
+        "./messstellenListe:ortKopf",
+        "./messstellenListe:ortReihenfolge",
+        "./uemsMessplanung:groesseText",
+        "./uemsOrtsbaum:datumText"
+      ],
+      "operationen": [
+        "geplantHinweis: -1",
+        "geplantHinweis: orte.length - 1",
+        "geplanteAus: nr(a.kennzeichen) - nr(b.kennzeichen)",
+        "nr: Number(kennzeichen.replace(/^MB-/, ''))"
+      ],
+      "grund": "Messen PR4 (Review r4 S5): Sortierung nach der Nummer des Kennzeichens (MB-n) und Listenindex für den Ortssatz, keine Menge; die Frist ist ein Datumsvergleich der Antwort."
     }
   }
 }
