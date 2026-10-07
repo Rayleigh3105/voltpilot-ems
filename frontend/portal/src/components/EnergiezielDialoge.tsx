@@ -6,21 +6,51 @@ import { api, type Energieziel, type EnergiezielErgebnis, type EnergiezielStand,
 import { routenHeute } from '../routenUhr';
 import * as Z from '../energieziele';
 import { anstossZeile } from '../massnahmeWirkung';
-import { UEMS_ENERGIEZIEL, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH, UEMS_ZIELPERIODE, UEMS_ZIELWERT } from '../glossar';
+import { UEMS_ENERGIEZIEL, UEMS_VERANTWORTLICH, UEMS_ZIELPERIODE, UEMS_ZIELWERT } from '../glossar';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
 
 const ABBRECHEN = 'Abbrechen';
 
-export function Begruendung({ id, wert, setze, fehler }: { id: string; wert: string; setze: (t: string) => void; fehler: string | null }) {
+/**
+ * Die Begründung eines Schritts. Konzept Verbessern v1 §8.4: ein Beispiel steht als Platzhalter im Feld; die Länge
+ * („10 bis 500 Zeichen“) erst, wenn sie nicht passt - als Fehler, nie als Dauertext darunter.
+ */
+export function Begruendung({
+  id,
+  wert,
+  setze,
+  fehler,
+  beispiel = Z.BEGRUENDUNG_BEISPIEL,
+}: {
+  id: string;
+  wert: string;
+  setze: (t: string) => void;
+  fehler: string | null;
+  /** Ein Beispiel aus dem Betrieb, passend zum Schritt; ohne: das allgemeine. */
+  beispiel?: string;
+}) {
+  const fehlerId = `${id}-fehler`;
   return (
     <div className="vp-ez-feld">
       <label className="vp-ez-label" htmlFor={id}>
         Begründung
       </label>
-      <textarea id={id} rows={3} value={wert} onChange={(e) => setze(e.target.value)} aria-invalid={!!fehler} />
-      <p className={fehler ? 'vp-ez-fehler' : 'vp-ez-leise'}>{fehler ?? Z.BEGRUENDUNG_HINWEIS}</p>
+      <textarea
+        id={id}
+        rows={3}
+        value={wert}
+        placeholder={beispiel}
+        onChange={(e) => setze(e.target.value)}
+        aria-invalid={!!fehler}
+        aria-describedby={fehler ? fehlerId : undefined}
+      />
+      {fehler && (
+        <p id={fehlerId} className="vp-ez-fehler">
+          {fehler}
+        </p>
+      )}
     </div>
   );
 }
@@ -149,7 +179,6 @@ export function EnergiezielSetzenDialog({
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <p className="vp-ez-leise">{UEMS_VERANTWORTLICH}: wer für die Kennzahl verantwortlich ist.</p>
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -279,7 +308,6 @@ export function EnergiezielBewertenDialog({
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <p className="vp-ez-leise">Die Bewertung ist endgültig: eine Kopie des Stands mit Prüfsumme, nie zurückgenommen.</p>
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );
@@ -346,7 +374,6 @@ export function EnergiezielBeendenDialog({
         <VpDatePicker label="Beendet zum" value={zum} onChange={setZum} min={ez.angelegt_am} max={tagHeute} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Modal>
   );

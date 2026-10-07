@@ -291,7 +291,8 @@ describe('Maßnahme planen (§6.9, Entscheide 6, 12, 13)', () => {
     fireEvent.change(screen.getByTestId('planen-wortlaut'), { target: { value: 'Alle Beschäftigten kennen die Energiepolitik.' } });
     expect(screen.queryByTestId('planen-prozent')).toBeNull();
     expect(screen.queryByTestId('planen-kwh')).toBeNull();
-    expect(dialog.textContent).toContain(UEMS_NORMGRENZE);
+    // Konzept Verbessern v1, PR 4: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Dialog.
+    expect(dialog.textContent).not.toContain(UEMS_NORMGRENZE);
   });
   it('mit Kennzahl rechnet die Route die Prozent in kWh im Jahr um; fehlen Monate, steht der Grund da', async () => {
     const schaetzung = vi.spyOn(api, 'massnahmeSchaetzung').mockResolvedValue({

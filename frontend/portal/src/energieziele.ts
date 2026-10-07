@@ -254,6 +254,8 @@ export const BEGRUENDUNG_MIN = 10;
 export const BEGRUENDUNG_MAX = 500;
 export const begruendungOk = (t: string) => t.trim().length >= BEGRUENDUNG_MIN && t.trim().length <= BEGRUENDUNG_MAX;
 export const BEGRUENDUNG_HINWEIS = `Begründung mit ${BEGRUENDUNG_MIN} bis ${BEGRUENDUNG_MAX} Zeichen.`;
+/** Konzept Verbessern v1 §8.4: der Platzhalter einer Begründung - ein Beispiel statt der Länge. */
+export const BEGRUENDUNG_BEISPIEL = 'Zum Beispiel: was Sie geprüft haben und was Sie daraus schließen.';
 
 /**
  * Der Zielwert im Dialog: „Prozent weniger als erwartet“, eine Stelle; gesendet wird er wie im Vertrag (weniger

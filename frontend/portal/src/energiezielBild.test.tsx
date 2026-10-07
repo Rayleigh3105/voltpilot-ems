@@ -4,9 +4,12 @@ import { api, type Energieziel, type EnergiezielStand, type Kennzahl } from './a
 import { EnergiezielSetzenFuehrung, fruehesterBeginn, zeitraumWahl } from './components/EnergiezielSetzenFuehrung';
 import * as B from './energiezielBild';
 import * as Z from './energieziele';
+import { UEMS_NORMGRENZE } from './glossar';
 import { EnergiezielSeite } from './pages/EnergiezielSeite';
+import { VerbesserungBereich } from './pages/VerbesserungBereich';
 import { setSelbstauskunft } from './rollen';
 import { merkeAbruf, vergissAbruf } from './routenUhr';
+import { vermerkDez } from './test/abweichungFixtures';
 import { kz4 } from './test/bezugsbasisFixtures';
 import { energiezielBuehne, ez2028, EZ_IDS, standJuli, standLeer } from './test/energiezielFixtures';
 import { m1, m1Umgesetzt, wirkungR5 } from './test/massnahmeFixtures';
@@ -326,6 +329,33 @@ describe('„Energieziel setzen“ geführt (§6.9)', () => {
       begruendung: 'Neue Druckluftleitung in der Montage.',
     });
     expect(gesetzt).toHaveBeenCalled();
+  });
+});
+
+describe('offene Auffälligkeit am Energieziel: ein Hinweis (Review r1 M-3.1, M-3.2)', () => {
+  it('Seite und Reiter zeigen ihn genau einmal, aus der Sammelroute, ohne zweiten Grenz-Satz', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    const maerz = vermerkDez({ id: 'a9000000-0000-4000-8000-000000202803', periode: '2028-03' });
+    const jeKennzahl = vi.fn();
+    Object.assign(api, energiezielBuehne('juli'), {
+      alleAuffaelligkeiten: async () => ({ abruf: '2028-07-10', offen: 1, vermerke: [maerz] }),
+      auffaelligkeiten: jeKennzahl,
+    });
+    const grenzSaetze = () => (document.body.textContent ?? '').split(UEMS_NORMGRENZE).length - 1;
+
+    render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);
+    const seite = await screen.findByTestId('auffaelligkeit-hinweis-seite');
+    expect(seite.textContent).toContain('Auffälligkeit zu März 2028 · offen.');
+    expect(screen.getAllByTestId(/^auffaelligkeit-hinweis-(seite|reiter)$/)).toHaveLength(1);
+    // Der Grenz-Satz steht nur in „Was VoltPilot leistet“ am Fuß, nicht noch einmal unter dem Hinweis.
+    expect(grenzSaetze()).toBe(1);
+    cleanup();
+
+    render(<VerbesserungBereich reiter="energieziele" energiezielId={null} onReiter={() => undefined} onOeffnen={() => undefined} onListe={() => undefined} />);
+    expect(await screen.findByTestId('auffaelligkeit-hinweis-reiter')).toBeTruthy();
+    expect(screen.getAllByTestId(/^auffaelligkeit-hinweis-(seite|reiter)$/)).toHaveLength(1);
+    expect(grenzSaetze()).toBe(1);
+    expect(jeKennzahl).not.toHaveBeenCalled();
   });
 });
 

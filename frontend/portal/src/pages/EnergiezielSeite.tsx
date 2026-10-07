@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Auffaelligkeit, type Energieziel, type EnergiezielStand, type Massnahme, type VorgangAnstoss } from '../api';
+import { api, ApiError, type Energieziel, type EnergiezielStand, type Massnahme, type VorgangAnstoss } from '../api';
+import { AuffaelligkeitHinweis } from '../components/AuffaelligkeitHinweis';
 import { EnergiezielBeendenDialog, EnergiezielBewertenDialog } from '../components/EnergiezielDialoge';
-import { GrenzHinweis } from '../components/GrenzSatz';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { MassnahmeAnlegenDialog } from '../components/MassnahmeDialoge';
 import { MonatsGrafik } from '../components/MonatsGrafik';
 import { Recht } from '../components/Recht';
@@ -21,7 +22,6 @@ type Daten = {
   ez: Energieziel;
   stand: EnergiezielStand | null;
   massnahmen: B.MassnahmenAmZiel | null;
-  vermerke: Auffaelligkeit[];
   nachfolger: Energieziel | null;
 };
 type Lage = { art: 'laedt' } | { art: 'fehlt' } | { art: 'fehler' } | ({ art: 'da' } & Daten);
@@ -71,21 +71,14 @@ export function EnergiezielSeite({
     ])
       .then(async ([ez, stand, liste]) => {
         merkeAbruf(stand?.abruf);
-        const [vermerke, nachfolger] = await Promise.all([
-          ez.zustand === 'offen'
-            ? api.auffaelligkeiten(ez.kennzahl.id).then(
-                (l) => l.vermerke.filter((v) => v.zustand === 'offen' && v.periode >= ez.zielperiode.slice(0, 7) && v.periode <= ez.zielperiode.slice(8)),
-                () => [] as Auffaelligkeit[],
-              )
-            : Promise.resolve([] as Auffaelligkeit[]),
+        const nachfolger =
           ez.zustand !== 'offen'
-            ? api.energieziele({ kennzahl: ez.kennzahl.id }).then(
+            ? await api.energieziele({ kennzahl: ez.kennzahl.id }).then(
                 (l) => l.energieziele.filter((x) => x.zielperiode.slice(0, 7) > ez.zielperiode.slice(8)).sort((a, b) => a.zielperiode.localeCompare(b.zielperiode))[0] ?? null,
                 () => null,
               )
-            : Promise.resolve(null),
-        ]);
-        if (aktiv) setLage({ art: 'da', ez, stand, massnahmen: liste ? B.massnahmenAmZiel(liste) : null, vermerke, nachfolger });
+            : null;
+        if (aktiv) setLage({ art: 'da', ez, stand, massnahmen: liste ? B.massnahmenAmZiel(liste) : null, nachfolger });
       })
       .catch((e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }));
     return () => {
@@ -164,7 +157,6 @@ export function EnergiezielSeite({
 
   // ------------------------------------------------------------------ Bausteine
   const hinweisWenige = offen && stand ? B.wenigeMonateHinweis(stand) : null;
-  const vermerk = lage.vermerke[0];
   const kopf = (
     <header className="vp-ezl-kopf">
       <div className="vp-ezl-kopf-text">
@@ -212,18 +204,6 @@ export function EnergiezielSeite({
   ) : null;
 
   const heute = fest ? B.heuteGelesen(ez.bewertung?.stand, stand) : null;
-  const vermerkHinweis = vermerk && (
-    <Hinweis testId="energieziel-auffaelligkeit">
-      <b>Auffälligkeit zu {B.monatLang(vermerk.periode)} · offen.</b> VoltPilot hat den Monat vermerkt, weil er über der
-      Bezugsbasis liegt. Ob das eine Abweichung ist, sagt eine Person.{' '}
-      {onKennzahl && (
-        <button type="button" className="vp-ezl-link is-im-satz" onClick={() => onKennzahl(ez.kennzahl.id)}>
-          Beantworten
-        </button>
-      )}
-    </Hinweis>
-  );
-
   const grafik = stand && begonnen && (offen || hatMonatswert) && (
     <section className="vp-ezl-karte" aria-labelledby="ez-monate" data-testid="energieziel-grafik">
       <div className="vp-ezl-blockkopf">
@@ -453,87 +433,92 @@ export function EnergiezielSeite({
     </section>
   );
 
+  // Ein Bereich mit „Was VoltPilot leistet“ am Fuß: die Teile darin (der Hinweis auf eine Auffälligkeit) tragen den
+  // Grenz-Satz nicht noch einmal (Review r1 M-3.2).
   return (
-    <div className="vp-ezl vp-k-farben" data-testid="energieziel-seite">
-      {zurueck}
-      {kopf}
-      {antwort && (
-        <div className="vp-ezl-antwort" data-testid="energieziel-antwort">
-          <p className="vp-ezl-satz">{antwort.satz}</p>
-          <p className="vp-ezl-formal">{antwort.formal}</p>
-          {fest && ez.ergebnis && (
-            <div className="vp-ezl-marken">
-              <span className="vp-k-marke">{B.ERGEBNIS_WORT[ez.ergebnis]}</span>
-              <span className="vp-k-marke is-ok">
-                <Icon name="check" size={12} />
-                festgehalten
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-      {faellig && (
-        <Hinweis testId="energieziel-faellig" warn>
-          {B.bewertungFaelligSatz(stand, ez)}
-        </Hinweis>
-      )}
+    <GrenzSatzBereich>
+      <div className="vp-ezl vp-k-farben" data-testid="energieziel-seite">
+        {zurueck}
+        {kopf}
+        {antwort && (
+          <div className="vp-ezl-antwort" data-testid="energieziel-antwort">
+            <p className="vp-ezl-satz">{antwort.satz}</p>
+            <p className="vp-ezl-formal">{antwort.formal}</p>
+            {fest && ez.ergebnis && (
+              <div className="vp-ezl-marken">
+                <span className="vp-k-marke">{B.ERGEBNIS_WORT[ez.ergebnis]}</span>
+                <span className="vp-k-marke is-ok">
+                  <Icon name="check" size={12} />
+                  festgehalten
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        {faellig && (
+          <Hinweis testId="energieziel-faellig" warn>
+            {B.bewertungFaelligSatz(stand, ez)}
+          </Hinweis>
+        )}
 
-      <div className="vp-ezl-seitenraster" style={{ gridTemplateAreas: flaechen }}>
-        <div className="vp-ezl-r-grafik">{grafik}</div>
-        <div className="vp-ezl-r-rechts">
-          {hinweisWenige && <Hinweis testId="energieziel-wenige">{hinweisWenige}</Hinweis>}
-          {standKarte}
-          {heute && <Hinweis testId="energieziel-heute">{heute}</Hinweis>}
-          {vermerkHinweis}
+        <div className="vp-ezl-seitenraster" style={{ gridTemplateAreas: flaechen }}>
+          <div className="vp-ezl-r-grafik">{grafik}</div>
+          <div className="vp-ezl-r-rechts">
+            {hinweisWenige && <Hinweis testId="energieziel-wenige">{hinweisWenige}</Hinweis>}
+            {standKarte}
+            {heute && <Hinweis testId="energieziel-heute">{heute}</Hinweis>}
+            {/* Verbessern-Konzept v1 (Entscheid 4): eine offene Auffälligkeit an der Kennzahl steht am Energieziel. */}
+            {offen && <AuffaelligkeitHinweis ziele={[{ kennzahl: ez.kennzahl.id, zielperiode: ez.zielperiode }]} art="seite" />}
+          </div>
+          <div className="vp-ezl-r-werte">{werte}</div>
+          <div className="vp-ezl-r-massnahmen">{massnahmenKarte}</div>
+          <div className="vp-ezl-r-ueber">{ueber}</div>
+          <div className={`vp-ezl-r-bewertung${bewertungBreit ? '' : ' vp-ezl-nur-schmal'}${offen ? '' : ' is-oben'}`}>{bewertungKarte}</div>
         </div>
-        <div className="vp-ezl-r-werte">{werte}</div>
-        <div className="vp-ezl-r-massnahmen">{massnahmenKarte}</div>
-        <div className="vp-ezl-r-ueber">{ueber}</div>
-        <div className={`vp-ezl-r-bewertung${bewertungBreit ? '' : ' vp-ezl-nur-schmal'}${offen ? '' : ' is-oben'}`}>{bewertungKarte}</div>
+
+        {/* IP-20 (§5.6, Z5): die Anstöße mit Antwort-Knöpfen - „beibehalten“ mit Begründung, „neu bewerten“ (IP-17-NAHT). */}
+        <VerbesserungAnstoesse
+          vorgang="energieziel"
+          anstoesse={ez.anstoesse}
+          standort={ez.standort_id}
+          onAntwort={async (a, antwort2, begruendung) =>
+            neu(await api.energiezielAnstossAntwort(ez.id, a.id, { antwort: antwort2, ...(begruendung ? { begruendung } : {}) }))
+          }
+          onNeuBewerten={(a) => {
+            setAnstoss(a);
+            setDialog('bewerten');
+          }}
+        />
+
+        <GrenzHinweis />
+
+        {(dialog === 'bewerten' || dialog === 'freigeben' || dialog === 'ablehnen') && (
+          <EnergiezielBewertenDialog
+            ez={ez}
+            stand={stand}
+            schritt={dialog}
+            anstoss={anstoss}
+            onClose={() => {
+              setDialog(null);
+              setAnstoss(null);
+            }}
+            onFertig={neu}
+          />
+        )}
+        {dialog === 'beenden' && <EnergiezielBeendenDialog ez={ez} onClose={() => setDialog(null)} onBeendet={neu} />}
+        {dialog === 'planen' && (
+          <MassnahmeAnlegenDialog
+            vorbelegung={{ herkunft: 'energieziel', energieziel: ez.id, kennzahl: ez.kennzahl.id }}
+            onClose={() => setDialog(null)}
+            onAngelegt={(m: Massnahme) => {
+              setDialog(null);
+              if (onMassnahme) onMassnahme(m.id);
+              else setVersuch((v) => v + 1);
+            }}
+          />
+        )}
       </div>
-
-      {/* IP-20 (§5.6, Z5): die Anstöße mit Antwort-Knöpfen - „beibehalten“ mit Begründung, „neu bewerten“ (IP-17-NAHT). */}
-      <VerbesserungAnstoesse
-        vorgang="energieziel"
-        anstoesse={ez.anstoesse}
-        standort={ez.standort_id}
-        onAntwort={async (a, antwort2, begruendung) =>
-          neu(await api.energiezielAnstossAntwort(ez.id, a.id, { antwort: antwort2, ...(begruendung ? { begruendung } : {}) }))
-        }
-        onNeuBewerten={(a) => {
-          setAnstoss(a);
-          setDialog('bewerten');
-        }}
-      />
-
-      <GrenzHinweis />
-
-      {(dialog === 'bewerten' || dialog === 'freigeben' || dialog === 'ablehnen') && (
-        <EnergiezielBewertenDialog
-          ez={ez}
-          stand={stand}
-          schritt={dialog}
-          anstoss={anstoss}
-          onClose={() => {
-            setDialog(null);
-            setAnstoss(null);
-          }}
-          onFertig={neu}
-        />
-      )}
-      {dialog === 'beenden' && <EnergiezielBeendenDialog ez={ez} onClose={() => setDialog(null)} onBeendet={neu} />}
-      {dialog === 'planen' && (
-        <MassnahmeAnlegenDialog
-          vorbelegung={{ herkunft: 'energieziel', energieziel: ez.id, kennzahl: ez.kennzahl.id }}
-          onClose={() => setDialog(null)}
-          onAngelegt={(m: Massnahme) => {
-            setDialog(null);
-            if (onMassnahme) onMassnahme(m.id);
-            else setVersuch((v) => v + 1);
-          }}
-        />
-      )}
-    </div>
+    </GrenzSatzBereich>
   );
 }
 
