@@ -358,6 +358,40 @@ class BerichtApiTest {
                 "{\"name\": \"Jonas Wendlinger\", \"rolle\": \"kundenadministrator\"}"));
     }
 
+    /**
+     * Konzept Nachweisen n1, Befund 4: ein Bestand, der den Anmeldenamen gespeichert hat („ines“), liest sich über
+     * {@code benutzer} mit dem Namen der Person - im Verlauf und im Kopf des Stands; der Stand selbst bleibt unverändert.
+     * Dazu Befund 3: Liste und Seite tragen den Augenblick der Route ({@code abruf}), nicht den des Browsers.
+     */
+    @Test
+    void befund4DerBestandMitAnmeldenamenZeigtDenNamenDerPerson() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        uhr("2026-11-10T09:02:00+01:00");
+
+        MockHttpServletRequestBuilder alt = request(HttpMethod.POST, k + "/freigeben")
+                .with(jwt().jwt(j -> j.subject(w.ines().sub()).claim("preferred_username", "ines")
+                        .claim("tenant_id", w.ines().kundenbereich().toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(MAPPER.writeValueAsString(datenstand("2026-11-10T08:55:00+01:00")));
+        assertThat(mvc.perform(alt).andReturn().getResponse().getStatus()).isEqualTo(201);
+        assertThat(root.queryForObject("SELECT freigeber_name FROM bericht_stand WHERE bericht_id = ? AND nr = 1",
+                String.class, st)).as("gespeichert bleibt, was war").isEqualTo("ines");
+        // Der Spiegel des Kontos im Kundenbereich kennt den Namen der Person.
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', "
+                + "'Ines Kaltenbach', 'aktiv') ON CONFLICT DO NOTHING", w.ines().kundenbereich(), w.ines().sub());
+
+        Antwort detail = ok(ruf(w.jonas(), HttpMethod.GET, k, null), 200);
+        assertThat(detail.body().at("/staende/0/freigegeben_von/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(Instant.parse(detail.body().get("abruf").asText())).isEqualTo(t("2026-11-10T09:02:00+01:00"));
+        assertThat(ok(ruf(w.jonas(), HttpMethod.GET, k + "/staende/1", null), 200).body().get("kopf").asText())
+                .endsWith(" von Ines Kaltenbach");
+        Antwort liste = ok(ruf(w.jonas(), HttpMethod.GET, PFAD, null), 200);
+        assertThat(Instant.parse(liste.body().get("abruf").asText())).isEqualTo(t("2026-11-10T09:02:00+01:00"));
+    }
+
     /** Das Recht prüft die Route VOR F1: Peter (Lindach) bekommt am laufenden Ahrenberg-Bericht 404, nie die 422. */
     @Test
     void dasRechtPrueftDieRouteVorDenVoraussetzungen() throws Exception {

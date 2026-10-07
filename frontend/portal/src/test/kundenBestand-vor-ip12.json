@@ -1550,6 +1550,13 @@
       "nachher": "101ec6e531f5d1db7450b5b2e781f8fafce0aca07a65369cf557ab29bfbde2e9",
       "commit": "uems · Messen PR1: Messstellen-Liste und „Woher kommen die Werte?“ (Konzept Messen m1)",
       "grund": "Review r4 S23: der gefährliche Menüeintrag wählt wie die übrigen über `waehle(it)` - Menü schließen wie bisher, Fokus an den Auslöser ⋯ zurück, dann derselbe `it.onClick()`; ein Bestätigungsdialog kehrt beim Schließen auf den Auslöser zurück statt auf `body`. Text, Klasse und Rolle unverändert."
+    },
+    {
+      "datei": "pages/BerichtSeite.tsx",
+      "vorher": "adbd0313ee745697dbf00cad76a292f001396269b66ae6ba46e6a193da318cc4",
+      "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
+      "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
+      "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

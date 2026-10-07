@@ -465,9 +465,10 @@ describe('PDF und CSV — abgeleitet, sichtbar erst mit ihrem Ziel (IP-10, IP-11
   const b = berichtAm(AM_20_11);
   const alle = { pdf: true, csv: true } as const;
 
-  it('heute hat keine Ausgabe ein Ziel: kein Knopf, auch nicht mit jedem Recht', () => {
-    expect(AUSGABE_EINGEHAENGT).toEqual({ pdf: false, csv: false });
-    expect(ausgabeKnoepfe(b, stand(1, AM_20_11), () => true)).toEqual([]);
+  it('beide Routen sind eingehängt (Konzept Nachweisen n1, Befund 1): mit Recht PDF und CSV an jedem Stand', () => {
+    expect(AUSGABE_EINGEHAENGT).toEqual({ pdf: true, csv: true });
+    expect(ausgabeKnoepfe(b, stand(1, AM_20_11), () => true).map((k) => k.text)).toEqual(['PDF', 'CSV']);
+    expect(ausgabeKnoepfe(b, stand(1, AM_20_11), () => true, { pdf: false, csv: false })).toEqual([]);
   });
 
   it('eingehängt: ein Stand bekommt PDF und CSV mit den Kennungen aus G1 und den Dateinamen aus §5.4; ein Entwurf nie (EW4)', () => {

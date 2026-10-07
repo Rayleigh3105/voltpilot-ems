@@ -471,6 +471,7 @@
         "./kennzahlKarte:betragText",
         "./kennzahlKarte:tonVon",
         "./messstellen:zeitpunktText",
+        "./rollen:darfInListen",
         "./uemsBericht:* as B",
         "./uemsErgebnis:OHNE_ZAHL",
         "./uemsErgebnis:PROZENT",
@@ -485,7 +486,7 @@
         "./uemsOrtsbaum:datumText"
       ],
       "operationen": [
-        "abschnitte: Math.max(...werte.map((w) => w.version))",
+        "abschnitte: Math.max(...versionen)",
         "gruppiereZahlen: i++",
         "gueltigerStand: b.nr - a.nr",
         "nrAus: Number(id.slice(3))",
@@ -495,7 +496,7 @@
         "standWahl: a.nr - b.nr",
         "verlaufDerStaende: b.nr - a.nr"
       ],
-      "grund": "Anzeige, Versionsnummern und Sortierung (Ausnahme 5). PR 954 (Tagesverlauf im Bericht) ergänzt RICHTUNGSPAAR aus uemsMessstelle: eine Wort-Tabelle für die Beschriftung laden/entladen, keine Rechnung; i++ ist der Listenindex der Gruppierung (Ausnahme 2). AP-17 IP-24 ergänzt UEMS_LEISTUNGSVERGLEICH aus glossar: ein Wort für den Titel, keine Rechnung."
+      "grund": "Anzeige, Versionsnummern und Sortierung (Ausnahme 5). PR 954 (Tagesverlauf im Bericht) ergänzt RICHTUNGSPAAR aus uemsMessstelle: eine Wort-Tabelle für die Beschriftung laden/entladen, keine Rechnung; i++ ist der Listenindex der Gruppierung (Ausnahme 2). AP-17 IP-24 ergänzte UEMS_LEISTUNGSVERGLEICH für den Titel; seit Konzept Nachweisen n1 (C6) nennt `B.titelwort` das Wort jeder Vorlage. Nachweisen n1 (Befund 1) ergänzt darfInListen aus rollen: das CSV-Recht an der Geltung, keine Rechnung; das Maximum der Versionen nimmt nur gespeicherte (Befund 5)."
     },
     "zaehlerwechsel.ts": {
       "importe": [

@@ -122,7 +122,7 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
      */
     static String berichtName(String vorlage, String geltungName, String zeitraumArt, String schluessel) {
         return BerichtPdf.VORLAGEN.getOrDefault(vorlage, vorlage) + " " + geltungName + " "
-                + KennzahlRegeln.periodeText(zeitraumArt, schluessel);
+                + BerichtRegeln.zeitraumName(zeitraumArt, schluessel);
     }
 
     // ------------------------------------------------------------------ AP-17

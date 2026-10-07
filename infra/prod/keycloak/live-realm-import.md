@@ -44,6 +44,10 @@ Das Skript [`live-realm-anmeldung.sh`](live-realm-anmeldung.sh) setzt dieselben 
 5. **Anmelden und ansehen:** Ein Betriebskonto meldet sich an und richtet die App ein. Ein Kundenkonto meldet sich unverändert an. Beide Anmeldungen stehen unter Realm `voltpilot` › Events › User events, das Beenden der Sitzungen unter Admin events.
 6. **Keycloak-Administrator (Realm `master`):** Dieses Konto gehört ebenfalls zum VoltPilot-Betrieb, steht aber nicht im Import. Unter Realm `master` › Users › Konto › Required user actions: „Configure OTP“.
 
+7. **Vor- und Nachname nur durch die Administration** (Review Nachweisen r1, P0-1): Der Import setzt im User-Profil `firstName` und `lastName` auf `edit: ["admin"]`; das Skript gleicht das User-Profil nicht ab.
+   In der Administration unter Realm `voltpilot` › Realm settings › User profile › `firstName` bzw. `lastName` › Permissions bei „Who can edit“ nur „Admin“ lassen.
+   Der Urheber im Protokoll hängt nicht daran (er kommt aus `benutzer.anzeigename` bzw. dem Anmeldenamen), aber Token und Kontoseite zeigen dann keinen selbst gewählten Namen mehr.
+
 **Zurück**, falls die Anmeldung klemmt: `kcadm.sh update realms/voltpilot -s browserFlow=browser -s 'directGrantFlow=direct grant'` bindet die eingebauten Abläufe wieder, und `-s passwordPolicy=` nimmt die Vorgabe zurück. Die Ereignisse dürfen an bleiben.
 
 ## Bestätigung (Z-017, L-005)

@@ -142,7 +142,13 @@ const anstoesseAm = (jetzt: number): BerichtAnstoss[] =>
 
 export const berichteAm = (jetzt: number): { berichte: Bericht[] } => ({ berichte: [berichtAm(jetzt)] });
 
-export const detailAm = (jetzt: number): BerichtDetail => ({ bericht: berichtAm(jetzt), staende: staendeAm(jetzt), anstoesse: anstoesseAm(jetzt) });
+export const detailAm = (jetzt: number): BerichtDetail => ({
+  bericht: berichtAm(jetzt),
+  staende: staendeAm(jetzt),
+  anstoesse: anstoesseAm(jetzt),
+  // Der Augenblick der Route (Konzept Nachweisen n1, Befund 3): die Fixture antwortet zu `jetzt`.
+  abruf: new Date(jetzt).toISOString(),
+});
 
 export const entwurfAm = (jetzt: number): BerichtEntwurf => {
   const kaskade = ab(jetzt, ZEIT.korrektur);
@@ -276,7 +282,7 @@ export const selbstauskunftFuer = (name: string): Selbstauskunft => {
 export const anlegenAm = (a: BerichtAnlegen, schonDa: boolean, jetzt: number): Bericht => {
   if (a.vorlage === 'monatsbericht_standort' && a.geltung_id === FIXTURE_IDS.st1 && a.zeitraum === '2026-10') {
     if (!schonDa) return berichtAm(jetzt);
-    const satz = B.berichtGibtEsSchon(BR, 'Werk Ahrenberg', { art: 'monat', schluessel: '2026-10' });
+    const satz = B.berichtGibtEsSchon(BR, 'monatsbericht_standort', 'Werk Ahrenberg', { art: 'monat', schluessel: '2026-10' });
     throw new ApiError(409, satz, { code: 'bericht_gibt_es_schon', message: satz, kennung: BR });
   }
   if (a.vorlage === 'monatsbericht_standort' && a.geltung_id === FIXTURE_IDS.st2 && a.zeitraum < '2026-10') {

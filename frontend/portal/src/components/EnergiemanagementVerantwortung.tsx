@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { api, type EnergiemanagementVerantwortung as Verantwortung } from '../api';
-import { heute } from '../bewertung';
+import { merkeAbruf, routenHeute } from '../routenUhr';
 import * as E from '../energiemanagementPortal';
 import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_WER_IST_WOFUER_VERANTWORTLICH } from '../glossar';
 import { VpDatePicker } from './VpDatePicker';
@@ -14,20 +14,26 @@ import { VpDatePicker } from './VpDatePicker';
  * wo die Ansicht allein steht.
  */
 export function EnergiemanagementVerantwortung({ onPerson, onZurueck, saetze = false }: { onPerson: (id: string) => void; onZurueck: () => void; saetze?: boolean }) {
-  const [tag, setTag] = useState(() => heute());
+  // Befund 3 (Konzept Nachweisen n1): ohne gewählten Tag nennt die Route ihren Tag.
+  const [gewaehlt, setGewaehlt] = useState<string | null>(null);
   const [v, setV] = useState<Verantwortung | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
-    api.energiemanagementVerantwortung(tag).then(
-      (r) => aktiv && setV(r),
+    api.energiemanagementVerantwortung(gewaehlt ?? undefined).then(
+      (r) => {
+        if (!aktiv) return;
+        if (gewaehlt === null) merkeAbruf(r.tag);
+        setV(r);
+      },
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
     );
     return () => {
       aktiv = false;
     };
-  }, [tag]);
+  }, [gewaehlt]);
+  const tag = gewaehlt ?? v?.tag ?? routenHeute();
   const freigaben = v ? E.freigabenSatz(v.bezugsbasen_freigaben) : null;
 
   return (
@@ -39,7 +45,7 @@ export function EnergiemanagementVerantwortung({ onPerson, onZurueck, saetze = f
       <p className="vp-ez-leise">
         Die Verantwortlichen stehen so, wie die Register sie heute zeigen; die Aufgaben folgen dem gewählten Tag. Verantwortung verleiht kein Recht.
       </p>
-      <VpDatePicker label="Aufgaben am" value={tag} onChange={(t) => t && setTag(t)} />
+      <VpDatePicker label="Aufgaben am" value={tag} onChange={(t) => t && setGewaehlt(t)} />
       {fehler ? (
         <p className="vp-ez-fehler" role="alert">{fehler}</p>
       ) : v === null ? (

@@ -235,6 +235,22 @@
   gap: var(--vp-c-space-2);
 }
 
+/* Konzept Nachweisen n1, Befund 2: am Entwurf ohne Recht statt des Knopfs, wer freigibt - der i-Knopf steht im
+   Textfluss direkt hinter dem letzten Namen, auch wenn die Zeile umbricht. */
+.vp-br-ohne-recht {
+  margin: 0;
+  min-width: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-br-ohne-recht > .vp-nw-ikn {
+  margin-left: var(--vp-c-space-2);
+  vertical-align: middle;
+}
+
 /* --- Abschnitte ------------------------------------------------------------- */
 
 .vp-br-dl {

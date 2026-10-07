@@ -144,7 +144,8 @@ public class ZugriffKontextLader {
             }
             ZugriffRepository.Stand stand = stand(sub, jetzt);
             Zugriff z = new Zugriff(sub, konto, tenant, Zugang.KONTO, stand.wirksam(), jetzt,
-                    stand.wirksam().isEmpty() && bestandskonto(sub), stand.vorbei());
+                    stand.wirksam().isEmpty() && bestandskonto(sub), stand.vorbei(),
+                    spiegel.map(ZugriffRepository.BenutzerSpiegel::anzeigename).orElse(null));
             // A6: kein wirksamer Zugriff mehr, aber einmal einer da gewesen — der Entzug wirkt mit DIESER Anfrage.
             return z.jederZugriffBeendet() ? Ergebnis.mit(z, ZugriffBeendet.standort(letzterStandort(stand.vorbei())))
                     : Ergebnis.mit(z);

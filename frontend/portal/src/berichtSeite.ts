@@ -48,6 +48,7 @@ import { periodeText } from './uemsKennzahl';
 import { herkunftsZeile, kennzeichenSprung, type Sprung, type Stueck } from './uemsOberflaechen';
 import { datumText } from './uemsOrtsbaum';
 import { RICHTUNGSPAAR } from './uemsMessstelle';
+import { darfInListen } from './rollen';
 import type { Karte, Ton } from './uemsWerteKarte';
 
 // ------------------------------------------------------------------ Wörter
@@ -148,8 +149,9 @@ export interface AbzugWert {
   kennzeichen: string[];
   fassung: 'vorläufig' | 'endgültig' | null;
   endgueltig_ab: string | null;
-  version: number;
-  berechnet_am: string;
+  /** `null` bei „keine Werte“: eine Quelle ohne gespeicherten Wert hat keine Version und keine Berechnung. */
+  version: number | null;
+  berechnet_am: string | null;
   zeitzone: string;
   formel?: string;
   formel_fassung?: number;
@@ -275,13 +277,10 @@ const STAND_TON: Record<BerichtStandZeichen, BadgeTon> = {
   anstoss_verworfen: 'ok',
 };
 
-/** Monats- und Jahresbericht heißen nach der Art ihres Zeitraums, jede andere Vorlage nach ihrem Namen. */
-const NACH_ZEITRAUM = /^(monats|jahres)bericht_/;
-
 export const berichtTitel = (b: Pick<Bericht, 'zeitraum_art' | 'geltung_name' | 'zeitraum_text'> & Partial<Pick<Bericht, 'vorlage'>>): string =>
-  // AP-17 IP-24: der Leistungsvergleich heißt nach seiner Vorlage, nicht nach der Art des Zeitraums („Monatsbericht“);
-  // ebenso die Energetische Bewertung (Zeitraum „datengrundlage“, ohne eigenes Wort) und die Managementbewertung.
-  [b.vorlage && !NACH_ZEITRAUM.test(b.vorlage) ? vorlageName(b.vorlage) : B.SAETZE[`vorlage_${b.zeitraum_art}`], b.geltung_name, b.zeitraum_text]
+  // Das Wort der Vorlage (`titelwort`, Konzept Nachweisen n1, C6/B10): Monats- und Jahresberichte nach ihrem Zeitraum,
+  // Leistungsvergleich, energetische Bewertung und Managementbewertung nach ihrem Namen.
+  [B.titelwort(b.vorlage ?? '', b.zeitraum_art), b.geltung_name, b.zeitraum_text]
     .filter((t): t is string => !!t)
     .join(' ');
 
@@ -410,7 +409,8 @@ export interface QuellenZahl {
   zahl: string;
   zustand: string;
   zustandTon: Ton;
-  version: string;
+  /** „Version 2“ - `null` ohne gespeicherten Wert (Befund 5: nie „Version null“). */
+  version: string | null;
   kennzeichenSaetze: string[];
   nachweis: Nachweis;
   /** Die Messstelle für „heutigen Wert zeigen“ — `null`, wo es keinen vergleichbaren heutigen Wert gibt. */
@@ -507,7 +507,12 @@ const wertZahl = (w: AbzugWert, kopf: AbzugKopf): QuellenZahl => {
   const endgueltig = fassung === 'endgueltig' && w.endgueltig_ab ? [`endgültig ab ${zeitText(w.endgueltig_ab, zone)}`] : [];
   const herkunft = [
     ...(w.ort_zum_datenstand ? [`Ort zum ${UEMS_DATENSTAND} ${w.ort_zum_datenstand}`] : []),
-    [`${UEMS_VERSION} ${w.version}`, ...endgueltig, `gerechnet ${zeitText(w.berechnet_am, zone)}`].join(TRENNER),
+    // Befund 5 (Konzept Nachweisen n1): eine Quelle ohne Wert hat keine Version - kein „Version null“.
+    ...[[
+      ...(w.version === null ? [] : [`${UEMS_VERSION} ${w.version}`]),
+      ...endgueltig,
+      ...(w.berechnet_am === null ? [] : [`gerechnet ${zeitText(w.berechnet_am, zone)}`]),
+    ].join(TRENNER)].filter((t) => t !== ''),
     ...(w.formel ? [[`${UEMS_BERECHNUNG} ${w.formel}`, ...(w.formel_fassung ? [`${UEMS_FASSUNG} ${w.formel_fassung}`] : [])].join(TRENNER)] : []),
     // RW1 — die Fassung des Regelwerks, nach dem die Zahl entstand: gemessen = verbrauch, berechnet = bilanz.
     ...[regelwerkZeile(kopf, w.formel ? 'bilanz' : 'verbrauch')].filter((t): t is string => t !== null),
@@ -520,7 +525,7 @@ const wertZahl = (w: AbzugWert, kopf: AbzugKopf): QuellenZahl => {
     zahl: zahlText,
     zustand: w.zustand,
     zustandTon: tonVon(w.zustand),
-    version: `${UEMS_VERSION} ${w.version}`,
+    version: w.version === null ? null : `${UEMS_VERSION} ${w.version}`,
     kennzeichenSaetze: saetze,
     // AP-13 IP-11: die Zeilen einer gemessenen Zahl nennen kein fremdes Objekt — ihre Kante hängt an der Zahl
     // selbst (`sprung`). Die Stücke entstehen trotzdem, damit jede Zeile durch dieselbe Form läuft.
@@ -569,7 +574,7 @@ const kennzahlZahl = (k: AbzugKennzahl, kopf: AbzugKopf): QuellenZahl => {
     zahl: zahlText,
     zustand: k.zustand,
     zustandTon: tonVon(k.zustand),
-    version: `${UEMS_VERSION} ${k.version}`,
+    version: k.version == null ? null : `${UEMS_VERSION} ${k.version}`,
     kennzeichenSaetze: [...k.kennzeichen],
     nachweis: nachweisDerKennzahl(k, kopf, karte),
     messstelle: null,
@@ -660,7 +665,10 @@ const kopfZeilen = (kopf: AbzugKopf): Zeile[] => {
   const z = B.zeitraum(kopf.zeitraum.art, kopf.zeitraum.schluessel, kopf.zeitraum.zone);
   return [
     { name: KOPF_WORT.unternehmen, wert: `${kopf.unternehmen}, ${kopf.sitz}` },
-    { name: GELTUNG_WORT[kopf.geltung.art], wert: `${kopf.geltung.name_zum_datenstand} (${kopf.geltung.kennzeichen})` },
+    // Inventur C11 (Konzept Nachweisen n1): ein Unternehmensbericht hat genau eine Zeile „Unternehmen“ - zwei gleiche
+    // Bezeichnungen waren zwei gleiche Schlüssel in der Angaben-Liste.
+    ...(kopf.geltung.art === 'unternehmen' ? []
+      : [{ name: GELTUNG_WORT[kopf.geltung.art], wert: `${kopf.geltung.name_zum_datenstand} (${kopf.geltung.kennzeichen})` }]),
     {
       name: KOPF_WORT.zeitraum,
       wert: `${z.bezeichnung} (${datumText(z.erster_tag)}–${datumText(z.letzter_tag)})`,
@@ -765,7 +773,9 @@ export const abschnitte = (
         const eingang = kennzahlen.flatMap((k) => k.eingaenge).find((e) => e.kennzeichen.split(' ')[0] === kennzeichen);
         const eintrag = verzeichnis.find((q) => q.kennzeichen === kennzeichen);
         const name = werte[0]?.name_zum_datenstand ?? kz?.name_zum_datenstand ?? eintrag?.name_zum_datenstand ?? null;
-        const version = werte.length > 0 ? Math.max(...werte.map((w) => w.version)) : (kz?.version ?? eintrag?.version ?? null);
+        // Eine Quelle ohne Wert hat keine Version (Befund 5): sie steht ohne „Version“, nie mit „Version 0“.
+        const versionen = werte.map((w) => w.version).filter((v): v is number => v !== null);
+        const version = werte.length > 0 ? (versionen.length > 0 ? Math.max(...versionen) : null) : (kz?.version ?? eintrag?.version ?? null);
         const fassung = eingang?.fassung ?? eintrag?.fassung ?? undefined;
         const stand =
           version !== null
@@ -845,10 +855,10 @@ export type Ausgabe = 'pdf' | 'csv';
 
 /**
  * Welche Ausgabe schon ein Ziel hat. Eine Schaltfläche erscheint erst, wenn ihr Ziel eingehängt ist (Captain
- * 14.09.2026, Telefon-Leiste): CSV hängt AP-12 IP-10 ein (`GET …/staende/{nr}/csv`), PDF IP-11
- * (`GET …/staende/{nr}/pdf`) — jeweils hier auf `true` und mit dem Aufruf in `BerichtSeite`.
+ * 14.09.2026, Telefon-Leiste). Beide Routen stehen (`GET …/staende/{nr}/csv`, `…/pdf`); seit Konzept Nachweisen n1,
+ * Befund 1, ruft `BerichtSeite` sie an jedem Stand auf.
  */
-export const AUSGABE_EINGEHAENGT: Readonly<Record<Ausgabe, boolean>> = { pdf: false, csv: false };
+export const AUSGABE_EINGEHAENGT: Readonly<Record<Ausgabe, boolean>> = { pdf: true, csv: true };
 
 export interface AusgabeKnopf {
   handlung: Ausgabe;
@@ -891,6 +901,28 @@ export const darfNachLesen =
   (bericht: Pick<Bericht, 'geltung_art'>) =>
   (recht: string): boolean | null =>
     recht === B.kennung('abrufen', bericht.geltung_art) ? true : null;
+
+/**
+ * Befund 1 (Konzept Nachweisen n1): PDF nach dem Lesen (`darfNachLesen`), CSV mit `export.*` aus der Selbstauskunft an
+ * der Geltung des Berichts - die energetische Bewertung mit `bewertung.abrufen`, die Managementbewertung hat kein CSV
+ * (wie `BerichtService.ausgabe`). Ohne Selbstauskunft bleibt das CSV unbekannt, also ohne Knopf.
+ */
+export const darfAusgabe =
+  (bericht: Pick<Bericht, 'geltung_art' | 'geltung_id' | 'vorlage'>, rechte: BerichtRechteListen | null) =>
+  (recht: string): boolean | null => {
+    const gelesen = darfNachLesen(bericht)(recht);
+    if (gelesen !== null || recht !== B.kennung('csv', bericht.geltung_art)) return gelesen;
+    if (bericht.vorlage === B.MANAGEMENTBEWERTUNG) return false;
+    if (rechte === null) return null;
+    const kennung = bericht.vorlage === 'energetische_bewertung' ? 'bewertung.abrufen' : recht;
+    return darfInListen(rechte, kennung, bericht.geltung_art === 'unternehmen' ? null : bericht.geltung_id);
+  };
+
+/** Die Rechte, wie `darfInListen` sie liest (die Form von `BerichtRechte` in `berichtDialoge.ts`). */
+export interface BerichtRechteListen {
+  unternehmen: readonly string[];
+  standorte: ReadonlyMap<string, readonly string[]>;
+}
 
 // ------------------------------------------------------------------ „heutigen Wert zeigen“ (§5.6)
 
