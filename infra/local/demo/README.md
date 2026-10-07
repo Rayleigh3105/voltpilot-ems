@@ -57,10 +57,11 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
 
 Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf einer Kopie der Demo-Datenbank.
 
-- Kopie: `docker exec voltpilot-timescaledb pg_dump -U voltpilot -Fc voltpilot > demo.dump` liest nur.
-  Ein Wegwerf-Container aus `voltpilot-demo-timescaledb` (eigener Port, `POSTGRES_DB=voltpilot_init`) bekommt die Rollen `voltpilot_app` (ohne BYPASSRLS) und `voltpilot_admin` (BYPASSRLS) mit eigenen Passwörtern, dann `CREATE DATABASE voltpilot`, `timescaledb_pre_restore()`, `pg_restore`, `timescaledb_post_restore()`.
-- ⚠ `pg_restore` setzt `search_path` leer: CHECK-Regeln, die Funktionen ohne Schema rufen (`bezugsarten()`), lassen das Laden von `bezugsgroesse` scheitern, mit ihr die Fremdschlüssel darauf; Trigger-Reihenfolgen lassen `messreihe_korrektur` und die Chunks von `messreihe_ereignis` leer.
-  Diese Daten mit `search_path=public` und `session_replication_role=replica` nachladen, danach Zeilenzahlen und `pg_constraint` mit der Demo vergleichen und fehlende Fremdschlüssel aus `pg_get_constraintdef` anlegen.
+- Kopie als Klartext, die Demo wird nur gelesen: `docker exec voltpilot-timescaledb pg_dump -U voltpilot -Fp voltpilot | sed "/^SELECT pg_catalog.set_config('search_path', '', false);$/d" > demo.sql`.
+  Ein Wegwerf-Container aus `voltpilot-demo-timescaledb` (eigener Port, `POSTGRES_DB=voltpilot_init`) bekommt die Rollen `voltpilot_app` (ohne BYPASSRLS) und `voltpilot_admin` (BYPASSRLS) mit eigenen Passwörtern, dann `CREATE DATABASE voltpilot`, `CREATE EXTENSION timescaledb`, `timescaledb_pre_restore()`, `psql < demo.sql`, `timescaledb_post_restore()` und `ANALYZE`.
+  Das dauert für die Demo rund 15 Sekunden; danach stimmen Zeilenzahlen und `pg_constraint` mit der Demo überein (bis auf die laufende Telemetrie).
+- ⚠ Kein `pg_restore` aus `-Fc`: es setzt `search_path` leer, und CHECK-Regeln, die Funktionen ohne Schema rufen (`bezugsarten()`, `messreihe_ereignis_vokabular()`), lassen das Laden von `bezugsgroesse`, `messreihe_korrektur` und den Chunks von `messreihe_ereignis` scheitern, mit ihnen die Fremdschlüssel darauf.
+  Genau diese eine Zeile entfernt der `sed` oben.
 - Die API vom Host: `POSTGRES_JDBC_URL` auf die Kopie setzen (der Vorgabewert ist die Demo-Datenbank), `MQTT_BROKER_URL` und `KEYCLOAK_ADMIN_BASE_URL` auf einen toten Port, alle `VOLTPILOT_*_MQTT_LISTENER_ENABLED=false` (der Status-Zuhörer der Datenquellen steht sonst auf `true`), `OIDC_ISSUER_URI=http://localhost:8081/realms/voltpilot` mit den Schlüsseln von dort, `VOLTPILOT_PRUEFUMGEBUNG_BUEHNEN_UHR` wie die Demo.
 - Das Portal mit `VITE_API_BASE=` bauen und mit der CSP des Demo-Portals ausliefern; im Test-Browser `http://localhost:5173/**` umleiten (die Anmeldung bei Keycloak bleibt gültig): `/api/` an die eigene API, alles andere an die eigene Vorschau.
 
@@ -79,3 +80,11 @@ Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf ei
   Ablesungen verlangen ab vier Stellen Tausenderpunkte („1.250.000“), sonst 422 „nicht negativer Zählerstand“.
 - Die Container tragen die festen Namen `voltpilot-*`: ein Entwicklungs-Stapel oder die Prüfumgebung daneben geht
   nicht; `demo.sh start` bricht dann ab und fasst nichts an.
+- MS-03 „PV-Erzeugung Dach Halle 1“ ist die eine Messstelle, die automatisch von einem Gerät liest: die Mess-Seite der
+  Box Halle 1 (`edge-mess-ahrenberg-halle1`, `tools/edge-simulator/uems_messbox.py`) liefert den Ertragszähler des
+  Wechselrichters, der Rundgang legt Datenquelle („Vorschlag übernehmen“), eigenen Messwert und Quelle über die Routen an.
+  Ein Wert zählt nur mit vollständiger Herkunft: Komponente mit Datenquelle und zuständiger Box, Gerät zur Messzeit und
+  die Quittung der Auswahl (`MesswertHerkunft`). Werte vor der Quittung gibt es nicht; Tag und Woche füllen sich darum
+  ab dem Tag der Einrichtung Tag für Tag.
+  Die Sequenz eines Umschlags zählt Umschläge (Messzeit ÷ Kadenz), nicht Sekunden: sonst meldet der Writer je Umschlag
+  `sequence_gap`.

@@ -371,7 +371,7 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     expect(register).toHaveBeenLastCalledWith({ stichtag: '2026-10-10' });
     expect(window.location.hash).toBe('#/portfolio/messstellen?stand=2026-10-10');
     // Eine Reihe öffnet die Messstelle an genau diesem Tag (AP-13 IP-3) - als Verweis und als Klick.
-    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10`), WARTEN);
+    await waitFor(() => expect(reiheVon('MS-06')).toHaveAttribute('href', `#/portfolio/messstellen/${MS06}?periode=2026-10-10&stand=2026-10-10`), WARTEN);
     fireEvent.click(reiheVon('MS-06'));
     expect(onOeffnen).toHaveBeenCalledWith(MS06, '2026-10-10');
     const nochNicht = await screen.findByTestId('messstellen-noch-nicht', {}, WARTEN);

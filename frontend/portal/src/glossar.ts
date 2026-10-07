@@ -759,6 +759,16 @@ export const UEMS_WEG_GERAET = 'Automatisch von einem Gerät';
 export const UEMS_WEG_ABLESEN = 'Von Hand ablesen';
 export const UEMS_NOCH_KEINE_QUELLE = 'noch keine Quelle';
 export const UEMS_ABLESERHYTHMUS = 'Ableserhythmus';
+/**
+ * Konzept Messen m1 §6.4/§6.5 (Messen-Bau m2): die Seite einer Messstelle - EINE Karte „Zuordnung“ mit Ort, „Im
+ * Stromnetz“ (Fachwort: elektrische Stellung), Prozess und Kostenstellen; beim Ablesezähler die Kachel „Nächste
+ * Ablesung“ und oben genau ein Schritt. Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Seite
+ * einer Messstelle“).
+ */
+export const UEMS_ZUORDNUNG = 'Zuordnung';
+export const UEMS_IM_STROMNETZ = 'Im Stromnetz';
+export const UEMS_NAECHSTE_ABLESUNG = 'Nächste Ablesung';
+export const UEMS_ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
 /** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
 export const UEMS_JAHRESPLAN = 'Jahresplan';
 /**

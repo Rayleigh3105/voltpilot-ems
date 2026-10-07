@@ -30,6 +30,7 @@ export type BegriffSchluessel =
   | 'wesentlich'
   | 'umfang'
   | 'messstelle'
+  | 'zuordnung'
   | 'bezugsgroesse'
   | 'kennzahl'
   | 'bezugsbasis'
@@ -94,6 +95,16 @@ export const BEGRIFFE: Record<BegriffSchluessel, Begriff> = {
     frage: 'Was ist eine Messstelle?',
     mehr: 'Die Werte kommen automatisch von einem Gerät, aus Ablesungen von Hand oder werden aus anderen Messstellen berechnet.',
     abgrenzung: 'Nicht dasselbe wie das Gerät: Wird ein Zähler getauscht, bleibt die Messstelle mit ihrer Geschichte.',
+  },
+  // Konzept Messen m1 §6.4 Punkt 7: die Karte „Zuordnung“ an der Messstelle erklärt ihre vier Zeilen mit „Was heißt das?“.
+  zuordnung: {
+    wort: 'Zuordnung',
+    klartext: 'Wo die Messstelle hängt und wem ihr Verbrauch gehört - je ab einem Tag.',
+    beispiel:
+      'Ort: das Gebäude oder der Bereich, in dem der Zähler sitzt. Im Stromnetz: am Netzanschluss (Hauptzähler) oder dahinter (Unterzähler). Prozess: der Arbeitsschritt, der die Energie braucht. Kostenstellen: wem der Verbrauch in der Kostenrechnung zugerechnet wird, ganz oder in Anteilen.',
+    fachwort: 'Ort, elektrische Stellung, Prozess und Verteilung',
+    frage: 'Was heißt das?',
+    abgrenzung: 'Eine Änderung gilt ab ihrem Tag; was davor galt, bleibt in der Historie stehen.',
   },
   bezugsgroesse: {
     wort: UEMS_BEZUGSGROESSE,

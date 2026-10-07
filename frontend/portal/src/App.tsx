@@ -1751,8 +1751,9 @@ function UnifiedPortal() {
               // ersetzt nur die Adresse. Die Liste öffnet die Seite selbst (Konzept Messen m1: die ganze Reihe ist der
               // Einstieg) - mit „Stand am …“ an genau diesem Tag.
               onOeffnen={(id, periode) => {
+                // Die Liste nennt eine Periode nur mit „Stand am …“: dann liest die Seite diesen Tag, nur lesend.
                 const s = periode
-                  ? sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode })
+                  ? sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode, stand: periode })
                   : null;
                 if (s) springe(s);
                 else navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id));
@@ -1768,6 +1769,7 @@ function UnifiedPortal() {
                       standortId: page === 'standort' ? route.standortId : null,
                       periode,
                       vergleich: jetzt.vergleich,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
@@ -1783,9 +1785,17 @@ function UnifiedPortal() {
                       periode: jetzt.periode,
                       version: jetzt.version,
                       vergleich: v,
+                      stand: jetzt.stand,
                     })
                   : null;
                 if (s) replaceCurrentNavigation(s.hash);
+              }}
+              // „Zurück zu heute“ aus „Stand am …“: dieselbe Messstelle ohne Tag und ohne dessen Periode.
+              onWerteHeute={() => {
+                const s = route.messstelleId
+                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null })
+                  : null;
+                if (s) springe(s);
               }}
               onListe={() =>
                 navigate(

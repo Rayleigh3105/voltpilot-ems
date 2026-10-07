@@ -304,7 +304,27 @@ function werteDerBuehne(
   if (kennzeichen === 'MS-06' && von === '2026-10-01' && bis === '2026-10-31') {
     return raster === 'monat' ? f16Monat() : raster === 'tag' ? f16Tage() : null;
   }
-  return monatDerBuehne(kennzeichen, raster, von, bis);
+  return monatDerBuehne(kennzeichen, raster, von, bis) ?? monateDerBuehne(kennzeichen, raster, von, bis);
+}
+
+/**
+ * Messen m2 (Seite): mehrere ganze Monate im Raster Monat - die zwölf Balken und die Reihe der Leitkachel. Jeder Monat
+ * ist die Antwort, die die Bühne für ihn allein gibt; ein nicht gestellter Monat bleibt nicht gestellt (`null`).
+ */
+function monateDerBuehne(kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string): MessstelleWerte | null {
+  if (raster !== 'monat' || !von.endsWith('-01') || von.slice(0, 7) >= bis.slice(0, 7)) return null;
+  const naechster = (m: string) => {
+    const [j, mm] = m.split('-').map(Number);
+    return mm === 12 ? `${j + 1}-01` : `${j}-${String(mm + 1).padStart(2, '0')}`;
+  };
+  const antworten: MessstelleWerte[] = [];
+  for (let m = von.slice(0, 7); m <= bis.slice(0, 7); m = naechster(m)) {
+    const ende = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const a = monatDerBuehne(kennzeichen, 'monat', `${m}-01`, ende);
+    if (!a) return null;
+    antworten.push(a);
+  }
+  return { ...antworten[0], bis: antworten[antworten.length - 1].bis, werte: antworten.flatMap((a) => a.werte) };
 }
 
 /** Die Monate, die Karte, Verlauf und Vergleich lesen (O11/O12) — `null` heißt „nicht gestellt“. */
@@ -1357,10 +1377,11 @@ function Vorschau() {
    * Regeln: ein Einstieg aus dem Register setzt die Periode, ein Zeitraum-Wechsel lässt den Vergleich stehen und
    * vergisst die Version, der Weg zurück in die Liste räumt alles ab.
    */
-  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null }>(() => ({
+  const [werte, setWerte] = useState<{ periode: string | null; version: number | null; vergleich: string | null; stand: string | null }>(() => ({
     periode: WEG_ANSICHT ? WEG_PERIODE : null,
     version: WEG_ANSICHT ? WEG_VERSION : null,
     vergleich: WEG_ANSICHT ? WEG_V : null,
+    stand: null,
   }));
   const [route, setRoute] = useState<Route>(() =>
     kanonisch(
@@ -1428,6 +1449,7 @@ function Vorschau() {
     if (route.messstelleId && werte.periode) anhang.set('periode', werte.periode);
     if (route.messstelleId && werte.version != null) anhang.set('version', String(werte.version));
     if (route.messstelleId && werte.vergleich) anhang.set('v', werte.vergleich);
+    if (route.messstelleId && werte.stand) anhang.set('stand', werte.stand);
     const frage = anhang.toString();
     document.body.dataset.route = hashForRoute(route) + (frage ? `?${frage}` : '');
   }, [route, werte]);
@@ -1709,15 +1731,17 @@ function Vorschau() {
           // AP-13 IP-13, wie `App.tsx`: aus dem Register führt der Weg auf die Messstellen-Seite — mit Periode.
           messstelleId={route.messstelleId ?? null}
           onOeffnen={(id, periode) => {
-            setWerte({ periode, version: null, vergleich: null });
+            // Wie `App.tsx`: die Liste nennt eine Periode nur mit „Stand am …“ - dann liest die Seite diesen Tag, nur lesend.
+            setWerte({ periode, version: null, vergleich: null, stand: periode });
             navigate(messstelleRoute(id, messstellenEbene.art === 'standort' ? messstellenEbene.id : null));
           }}
           werte={werte}
           // AP-13 IP-5: der Vergleich überlebt einen Zeitraum-Wechsel; die Version tut es nicht.
-          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich }))}
+          onWerteZeitraum={(periode) => setWerte((w) => ({ periode, version: null, vergleich: w.vergleich, stand: w.stand }))}
           onWerteVergleich={(v) => setWerte((w) => ({ ...w, vergleich: v }))}
+          onWerteHeute={() => setWerte({ periode: null, version: null, vergleich: null, stand: null })}
           onListe={() => {
-            setWerte({ periode: null, version: null, vergleich: null });
+            setWerte({ periode: null, version: null, vergleich: null, stand: null });
             navigate(
               messstellenEbene.art === 'standort'
                 ? standortMessstellenRoute(messstellenEbene.id)

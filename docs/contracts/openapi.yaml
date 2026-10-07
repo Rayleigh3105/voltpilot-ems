@@ -29090,10 +29090,14 @@ components:
         ablesung:
           type: object
           description: "Nur bei stand = ablesung: seit wann die Ablesungs-Quelle führt und wann zuletzt abgelesen wurde (null = noch nie). Die Beobachtung sagt dann „Abgelesen am …“ bzw. nach der Frist der überfälligen Ablesung „Ablesung überfällig seit …“."
-          required: [seit, zuletzt]
+          required: [seit, zuletzt, faellig_ab]
           properties:
             seit: { type: string, format: date-time }
             zuletzt: { type: string, format: date-time, nullable: true }
+            faellig_ab:
+              type: string
+              format: date-time
+              description: "Ab wann die nächste Ablesung fehlt (additiv, Messen-Bau m2): die letzte Ablesung plus zwei Kalendermonate in der Zeitzone des Standorts, ohne Ablesung der Beginn der Quelle - derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung."
         fuehrend:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]
