@@ -37,7 +37,8 @@ const ZUERST = 3;
  * Die Seite EINER Bezugsgröße (`#/portfolio/bezugsgroessen/{id}`, Konzept Messen m1 §6.8, Entscheid 9): oben der eine
  * Schritt „Wert eintragen“, darunter die Kachel mit dem letzten Wert und dem Vorjahr, die Balken über zwölf Perioden,
  * die Werte neueste zuerst (drei, „Alle 24 ›“), woher die Werte kommen (Messkanal, Wetter) - Archivieren im Menü ⋯.
- * Ein Stammdatum (eigene Fläche) zeigt, was heute gilt, und trägt einen Wert ab einem Tag ein.
+ * Ein Stammdatum (eine eigene Angabe wie eine Fläche oder die Zahl der Mitarbeitenden) zeigt, was heute gilt, und trägt
+ * einen Wert ab einem Tag ein.
  *
  * Gerechnet wird nichts: jede Zahl ist der Dezimaltext des Servers mit Tausenderpunkt; die Balken skalieren nur zur
  * Anzeige. Ein fehlender Wert ist eine Lücke, nie 0.
@@ -144,9 +145,10 @@ export function BezugsgroesseSeite({ id }: { id: string }) {
   const standort = standortDer(b, stand.orte);
   const zone = zoneDer(b, stand);
   const archiviert = b.archiviert_am !== null;
-  // Eine Bezugsfläche aus dem Gebäude ist nicht schreibbar: sie wird am Gebäude gepflegt (der Weg steht statt des Knopfs).
-  const ausGebaeude = b.wertart === 'stammdatum' && stamm !== null && !stamm.schreibbar;
-  const erlaubt = standort !== undefined && darf('bezugsgroesse.eingeben', standort) && !archiviert && b.art !== 'betriebszeit_aus_leistung' && !ausGebaeude;
+  // Ein Stammdatum ist nicht mehr schreibbar, sobald die Bezugsgröße archiviert ist (`schreibbar`, OpenAPI) - die Flächen
+  // des Gebäudeplans sind keine Bezugsgrößen und kommen hier nie an.
+  const gesperrt = b.wertart === 'stammdatum' && stamm !== null && !stamm.schreibbar;
+  const erlaubt = standort !== undefined && darf('bezugsgroesse.eingeben', standort) && !archiviert && b.art !== 'betriebszeit_aus_leistung' && !gesperrt;
   const darfVerwalten = standort !== undefined && darf('bezugsgroesse.verwalten', standort) && !archiviert;
   const reihe = U.bzReihe(b, { bezugsgroesse_id: b.id, kennzeichen: b.kennzeichen, wertart: b.wertart, einheit: b.einheit, periode_art: b.periode_art, von: null, bis: null, fassungen: 'alle', werte }, stamm, stand.heute);
   const status = U.bzStatus([reihe]);
@@ -232,12 +234,6 @@ export function BezugsgroesseSeite({ id }: { id: string }) {
           {U.WERT_EINTRAGEN}
         </Button>
       )}
-      {ausGebaeude && standort && (
-        <a className="vp-ks-verweis vp-bzs-gebaeude" href={`#/standort/${encodeURIComponent(standort)}/gebaeude`}>
-          {U.FLAECHEN.aendern}
-          <Icon name="chevron-right" size={14} />
-        </a>
-      )}
       {b.wertart === 'stammdatum' ? (
         <StammdatumKarte b={b} stamm={stamm} heute={stand.heute} />
       ) : (
@@ -247,9 +243,10 @@ export function BezugsgroesseSeite({ id }: { id: string }) {
           <section className="vp-ms-ort vp-bzs-werte" aria-labelledby="vp-bzs-werte" data-testid="bezugsgroesse-werte">
             <div className="vp-ms-ort-kopf">
               <h2 id="vp-bzs-werte">Werte</h2>
-              {U.mitBetrag(werte).length > ZUERST && (
+              {/* Gezählt wird, was die Liste zeigt - auch zurückgenommene Werte; sonst bliebe der älteste unerreichbar. */}
+              {werte.length > ZUERST && (
                 <button type="button" className="vp-ms-link vp-ks-alle" aria-expanded={alle} onClick={() => setAlle((x) => !x)}>
-                  {alle ? 'Weniger zeigen' : `Alle ${U.mitBetrag(werte).length}`}
+                  {alle ? 'Weniger zeigen' : `Alle ${werte.length}`}
                   {!alle && <Icon name="chevron-right" size={14} />}
                 </button>
               )}
@@ -497,7 +494,7 @@ function WertZeile({
   );
 }
 
-/** Ein Stammdatum (eigene Fläche): was heute gilt und seit wann; frühere Angaben darunter. */
+/** Ein Stammdatum (eigene Angabe): was heute gilt und seit wann; frühere Angaben darunter. */
 function StammdatumKarte({ b, stamm, heute }: { b: Bezugsgroesse; stamm: BezugsgroesseStammdatum | null; heute: string }) {
   const jetzt = stamm ? U.stammHeute(stamm, heute) : null;
   const frueher = (stamm?.intervalle ?? []).filter((i) => i !== jetzt).sort((x, y) => y.gueltig_ab.localeCompare(x.gueltig_ab));
@@ -505,7 +502,7 @@ function StammdatumKarte({ b, stamm, heute }: { b: Bezugsgroesse; stamm: Bezugsg
     <section className="vp-bzs-kachel" aria-labelledby="vp-bzs-stamm" data-testid="bezugsgroesse-stammdatum">
       <h2 id="vp-bzs-stamm" className="vp-bzs-kachel-titel">
         <span className="vp-bzs-kachel-icon" aria-hidden="true">
-          <Icon name="building" size={15} />
+          <Icon name={b.art === 'bezugsflaeche' ? 'building' : b.art === 'mitarbeitende' ? 'users' : 'list'} size={15} />
         </span>
         Gilt heute
       </h2>
@@ -515,7 +512,7 @@ function StammdatumKarte({ b, stamm, heute }: { b: Bezugsgroesse; stamm: Bezugsg
             <b>{U.zahlDe(jetzt.wert)}</b>
             <span>{b.einheit}</span>
           </p>
-          <p className="vp-bzs-kachel-fuss">{`seit ${U.periodeText(jetzt.gueltig_ab, 'tag')}${jetzt.gueltig_bis ? ` · bis ${U.periodeText(jetzt.gueltig_bis, 'tag')}` : ''} · ${stamm?.schreibbar === false ? U.WOHER.gebaeude : U.WOHER.eigen}`}</p>
+          <p className="vp-bzs-kachel-fuss">{`seit ${U.periodeText(jetzt.gueltig_ab, 'tag')}${jetzt.gueltig_bis ? ` · bis ${U.periodeText(jetzt.gueltig_bis, 'tag')}` : ''} · ${U.WOHER.eigen}`}</p>
         </>
       ) : (
         <p className="vp-bzs-gross">
@@ -543,11 +540,13 @@ function StammdatumDialog({ b, heute, onClose, onGespeichert }: { b: Bezugsgroes
   const [fehler, setFehler] = useState<{ wert?: string; senden?: string }>({});
   const [busy, setBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
+  // Die Wörter aus Art und Einheit: „Fläche (m²)“, „Mitarbeitende (Personen)“ - nie „Fläche“ für eine andere Angabe.
+  const wort = U.stammWort(b, b.art ? B.ARTEN[b.art]?.name ?? null : null);
   const speichern = async () => {
     if (busy) return;
     const text = zahlText(wert);
     if (!text) {
-      setFehler({ wert: `Bitte geben Sie die Fläche in ${b.einheit} ein, zum Beispiel 4.200.` });
+      setFehler({ wert: `Bitte geben Sie ${b.art === 'bezugsflaeche' ? 'die Fläche' : 'den Wert'} in ${b.einheit} ein, zum Beispiel 4.200.` });
       requestAnimationFrame(() => form.current?.querySelector<HTMLElement>('#stamm-wert')?.focus());
       return;
     }
@@ -582,7 +581,7 @@ function StammdatumDialog({ b, heute, onClose, onGespeichert }: { b: Bezugsgroes
     >
       <form id="stammdatum-form" ref={form} className="vp-bz-form" noValidate onSubmit={(e) => { e.preventDefault(); void speichern(); }}>
         <p>{`${b.kennzeichen} · ${b.name} · ${b.geltung_name}`}</p>
-        <Input id="stamm-wert" label={`Fläche (${b.einheit})`} inputMode="decimal" autoFocus value={wert} onChange={(e) => { setWert(e.target.value); setFehler({}); }} disabled={busy} error={fehler.wert} />
+        <Input id="stamm-wert" label={`${wort} (${b.einheit})`} inputMode="decimal" autoFocus value={wert} onChange={(e) => { setWert(e.target.value); setFehler({}); }} disabled={busy} error={fehler.wert} />
         <VpDatePicker id="stamm-ab" label="Gilt ab" value={ab} onChange={setAb} disabled={busy} />
         {fehler.senden && (
           <p role="alert" tabIndex={-1}>

@@ -32,13 +32,16 @@ export const WERTE_JE: Record<NonNullable<Bezugsgroesse['periode_art']>, string>
 };
 export const SPALTEN = { bezugsgroesse: 'Bezugsgröße', zustand: 'Zustand', woher: 'Woher' } as const;
 export const FLAECHEN = { titel: 'Flächen', unter: 'aus dem Gebäudeplan, heute', aendern: 'Am Gebäude ändern', keine: 'nicht angegeben' } as const;
+/** Eigene Angaben ohne Periode, die keine Fläche sind (Mitarbeitende, Zählerstände) - nie unter „Flächen“. */
+export const WEITERE = { titel: 'Weitere Bezugsgrößen' } as const;
+/** Einige Werte kamen nicht an: ehrlich sagen statt „alles eingetragen“, mit dem Weg zurück. */
+export const NICHT_ALLE_ABRUFBAR = 'Einige Werte sind gerade nicht abrufbar.';
 export const WOHER = {
   eingabe: 'von Hand eingetragen',
   import: 'importiert',
   messkanal: 'aus einem Messkanal',
   wetter: 'aus dem Wetter-Archiv',
   eigen: 'eigene Angabe',
-  gebaeude: 'aus dem Gebäudeplan',
   stand: 'Zählerstand',
 } as const;
 export const ZUSTAND = {
@@ -46,6 +49,8 @@ export const ZUSTAND = {
   fehlt: 'für {kurz} fehlt der Wert',
   keiner: 'noch kein Wert',
   archiviert: 'archiviert',
+  /** Die Werte kamen nicht an - unbekannt, nicht „noch kein Wert“. */
+  nichtAbrufbar: 'gerade nicht abrufbar',
 } as const;
 export const STATUS = {
   ok: 'Werte bis {periode} eingetragen',
@@ -119,6 +124,11 @@ export interface BzReihe {
   /** „Sep 2026“ unter dem Wert, oder „Eintragen“ ohne Wert. */
   wann: string | null;
   eintragen: boolean;
+  /**
+   * Sind die Werte (bzw. das Stammdatum) da? `unterwegs` und `fehler` sagen nichts über den Wert - die Reihe zeigt ein
+   * Skelett bzw. „gerade nicht abrufbar“, nie „noch kein Wert“ und nie „Eintragen“ (unbekannt ist keine Null).
+   */
+  abruf: 'da' | 'unterwegs' | 'fehler';
   /** Fehlt der Wert der fälligen Periode? (Statuszeile, Punkt im Warnton) */
   fehlt: boolean;
   /** Der Schlüssel der fälligen Periode (`2026-09`), wo es eine gibt. */
@@ -157,34 +167,36 @@ export function bzReihe(b: Bezugsgroesse, werte: WerteStand, stamm: StammStand, 
     original: b,
   };
   if (b.wertart === 'stammdatum') {
-    const s = stamm && stamm !== 'fehler' ? stamm : null;
-    const jetzt = s ? stammHeute(s, heute) : null;
-    // Eine Bezugsfläche, die der Server aus dem Gebäude übernimmt, ist nicht schreibbar - sie wird am Gebäude gepflegt.
-    const eigen = s?.schreibbar ?? true;
+    // Ein Stammdatum ist immer eine eigene Angabe: die Flächen des Gebäudeplans sind keine Bezugsgrößen (eigene Liste
+    // `bezugsflaechen`, die Kacheln); `schreibbar` ist hier nur `false`, sobald die Bezugsgröße archiviert ist.
+    if (stamm === null || stamm === 'fehler') return unbekannt(basis, stamm === null ? 'unterwegs' : 'fehler', null);
+    const jetzt = stammHeute(stamm, heute);
     return {
       ...basis,
-      ton: jetzt ? 'gut' : 'still',
-      zustand: jetzt ? fuell(GUELTIG_AB_TAG, { tag: periodeText(jetzt.gueltig_ab, 'tag') }) : ZUSTAND.keiner,
-      woher: eigen ? WOHER.eigen : WOHER.gebaeude,
+      ton: jetzt && !basis.archiviert ? 'gut' : 'still',
+      zustand: basis.archiviert ? ZUSTAND.archiviert : jetzt ? fuell(GUELTIG_AB_TAG, { tag: periodeText(jetzt.gueltig_ab, 'tag') }) : ZUSTAND.keiner,
+      woher: WOHER.eigen,
       wert: jetzt ? { zahl: zahlDe(jetzt.wert), einheit: b.einheit } : null,
       wann: null,
-      eintragen: !jetzt && eigen && !basis.archiviert,
+      eintragen: !jetzt && stamm.schreibbar && !basis.archiviert,
+      abruf: 'da',
       fehlt: false,
       faellig: null,
     };
   }
-  const liste = werte && werte !== 'fehler' ? mitBetrag(werte.werte) : [];
-  const letzter = liste[0] ?? null;
   const art = b.periode_art;
   const faellig = art ? faelligePeriode(art, heute) : null;
+  if (werte === null || werte === 'fehler') return unbekannt(basis, werte === null ? 'unterwegs' : 'fehler', faellig);
+  const liste = mitBetrag(werte.werte);
+  const letzter = liste[0] ?? null;
   // Fällig ist der Wert erst, wenn die Bezugsgröße vor dem Ende der Periode schon bestand.
   const erwartet = faellig !== null && art !== null && b.angelegt_am.slice(0, 10) <= spanneVon(faellig, art)[1] && !basis.archiviert;
   const da = faellig !== null && art !== null && liste.some((w) => w.periode_von === spanneVon(faellig, art)[0]);
-  const fehlt = werte !== null && werte !== 'fehler' && erwartet && !da;
+  const fehlt = erwartet && !da;
   const letzterSchluessel = letzter?.periode_von && art ? schluesselVon(letzter.periode_von, art) : null;
   return {
     ...basis,
-    ton: werte === null ? 'still' : fehlt ? 'hinweis' : letzter ? 'gut' : 'still',
+    ton: fehlt ? 'hinweis' : letzter ? 'gut' : 'still',
     zustand: basis.archiviert
       ? ZUSTAND.archiviert
       : fehlt && faellig && art
@@ -196,17 +208,37 @@ export function bzReihe(b: Bezugsgroesse, werte: WerteStand, stamm: StammStand, 
     wert: letzter?.wirksamer_betrag ? { zahl: zahlDe(letzter.wirksamer_betrag), einheit: b.einheit } : null,
     wann: letzterSchluessel && art ? periodeText(letzterSchluessel, art, true) : null,
     eintragen: !letzter && !basis.archiviert,
+    abruf: 'da',
     fehlt,
+    faellig,
+  };
+}
+
+/** Eine Reihe, deren Werte unterwegs oder nicht abrufbar sind: kein Wert, kein „Eintragen“, kein „fehlt“ - nur der Stand. */
+function unbekannt(basis: Pick<BzReihe, 'id' | 'kennzeichen' | 'name' | 'unter' | 'periodeArt' | 'wertart' | 'archiviert' | 'original'>, abruf: 'unterwegs' | 'fehler', faellig: string | null): BzReihe {
+  return {
+    ...basis,
+    ton: 'still',
+    zustand: basis.archiviert ? ZUSTAND.archiviert : abruf === 'fehler' ? ZUSTAND.nichtAbrufbar : '',
+    woher: '',
+    wert: null,
+    wann: null,
+    eintragen: false,
+    abruf,
+    fehlt: false,
     faellig,
   };
 }
 
 const GUELTIG_AB_TAG = 'gilt seit {tag}';
 
-/** Die Statuszeile: ruhig „Werte bis September 2026 eingetragen“ - oder der Hinweis, was fehlt, mit dem Schritt. */
+/**
+ * Die Statuszeile: ruhig „Werte bis September 2026 eingetragen“ - oder der Hinweis, was fehlt, mit dem Schritt. Solange
+ * die Werte einer fälligen Reihe unterwegs oder nicht abrufbar sind, sagt sie NICHTS: unbekannt ist nie „eingetragen“.
+ */
 export function bzStatus(reihen: readonly BzReihe[]): { ton: 'ok' | 'hinweis'; text: string; satz: string | null; ziel: BzReihe | null } | null {
   const faellige = reihen.filter((r) => !r.archiviert && r.wertart === 'periodenwert' && r.faellig !== null);
-  if (faellige.length === 0) return null;
+  if (faellige.length === 0 || faellige.some((r) => r.abruf !== 'da')) return null;
   const fehlen = faellige.filter((r) => r.fehlt);
   const arten = [...new Set(faellige.map((r) => `${r.periodeArt}|${r.faellig}`))];
   const einePeriode = arten.length === 1 ? { art: faellige[0].periodeArt as string, schluessel: faellige[0].faellig as string } : null;
@@ -243,9 +275,19 @@ export function bzGruppen(reihen: readonly BzReihe[]): { art: NonNullable<Bezugs
     .filter((g) => g.reihen.length > 0);
 }
 
-/** Eigene Flächen-Angaben und Zählerstände: die Reihen ohne Periode (Stammdatum, Stand). */
-export const bzOhnePeriode = (reihen: readonly BzReihe[]): BzReihe[] =>
-  reihen.filter((r) => r.wertart !== 'periodenwert').sort((a, b) => a.kennzeichen.localeCompare(b.kennzeichen, 'de', { numeric: true }));
+const nachKennzeichen = (a: BzReihe, b: BzReihe) => a.kennzeichen.localeCompare(b.kennzeichen, 'de', { numeric: true });
+
+/** Eigene Flächen-Angaben: Bezugsgrößen der Art Bezugsfläche - sie stehen unter den Flächen des Gebäudeplans. */
+export const bzEigeneFlaechen = (reihen: readonly BzReihe[]): BzReihe[] =>
+  reihen.filter((r) => r.wertart !== 'periodenwert' && r.original.art === 'bezugsflaeche').sort(nachKennzeichen);
+
+/** Die übrigen Reihen ohne Periode (Mitarbeitende, Zählerstände): eine eigene Gruppe, nie unter „Flächen“. */
+export const bzWeitere = (reihen: readonly BzReihe[]): BzReihe[] =>
+  reihen.filter((r) => r.wertart !== 'periodenwert' && r.original.art !== 'bezugsflaeche').sort(nachKennzeichen);
+
+/** Wie die Angabe eines Stammdatums im Dialog heißt: „Fläche“, sonst der Name seiner Art („Mitarbeitende“). */
+export const stammWort = (b: Pick<Bezugsgroesse, 'art'>, artName: string | null): string =>
+  b.art === 'bezugsflaeche' ? 'Fläche' : artName ?? 'Wert';
 
 export interface FlaecheKachel {
   key: string;

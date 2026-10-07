@@ -151,6 +151,48 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('alert')).toContainText('ließen sich gerade nicht laden');
     await expect(page.getByText('Noch keine Bezugsgrößen')).toHaveCount(0);
   });
+  test(`${breite}: unbekannt ist nie „eingetragen“ - Werte unterwegs oder nicht abrufbar (Prüfung r4 M3)`, async ({ page }) => {
+    const fehler: string[] = []; page.on('pageerror', e => fehler.push(e.message)); page.on('console', m => { if (m.type() === 'error') fehler.push(m.text()); });
+    const reihen = page.getByTestId('bezugsgroesse-reihe');
+    // Die Werte von BZ-1 kommen nie an: die Reihe ist ein Skelett - kein „noch kein Wert“, kein „Eintragen“, keine Statuszeile.
+    await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
+    await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 1000 });
+    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bezugsgroessen&bezugs=werteunterwegs');
+    const unterwegs = reihen.filter({ hasText: 'BZ-1' });
+    await expect(unterwegs).toHaveAttribute('data-abruf', 'unterwegs');
+    await expect(unterwegs).toHaveAttribute('aria-busy', 'true');
+    await expect(reihen.filter({ hasText: 'BZ-2' })).toContainText('4.820');
+    await expect(unterwegs).not.toContainText('noch kein Wert');
+    await expect(unterwegs).not.toContainText('Eintragen');
+    await expect(page.getByTestId('bezugsgroessen-status')).toHaveCount(0);
+    await expect(page.getByTestId('bezugsgroessen-hinweis')).toHaveCount(0);
+    // Die Werte von BZ-2 sind nicht abrufbar: die Reihe sagt es, die Lage sagt es mit dem Weg zurück - nie grün.
+    await oeffne(page, breite, '&bezugs=wertefehler');
+    const kaputt = reihen.filter({ hasText: 'BZ-2' });
+    await expect(kaputt).toHaveAttribute('data-abruf', 'fehler');
+    await expect(kaputt).toContainText('gerade nicht abrufbar');
+    await expect(kaputt).not.toContainText('Eintragen');
+    await expect(page.getByTestId('bezugsgroessen-status')).toHaveCount(0);
+    const lage = page.getByTestId('bezugsgroessen-nicht-abrufbar');
+    await expect(lage).toContainText('Einige Werte sind gerade nicht abrufbar.');
+    await foto(page, `nicht-abrufbar-${breite}`);
+    if (breite === 375) expect((await lage.getByRole('button', { name: 'Erneut versuchen' }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(fehler).toEqual([]);
+  });
+  test(`${breite}: „Alle N“ zählt, was die Liste zeigt - auch einen zurückgenommenen Wert (Prüfung r4 S22)`, async ({ page }) => {
+    await oeffne(page, breite, '&bezugs=zurueckgenommen');
+    await page.getByTestId('bezugsgroesse-reihe').filter({ hasText: 'BZ-1' }).click();
+    const werte = page.getByTestId('bezugsgroesse-werte');
+    const zeilen = werte.locator('.vp-bzs-liste > li');
+    await expect(zeilen).toHaveCount(3);
+    await expect(zeilen.first()).toContainText('zurückgenommen');
+    const alle = werte.getByRole('button', { name: 'Alle 4' });
+    await expect(alle).toHaveAttribute('aria-expanded', 'false');
+    await alle.click();
+    await expect(zeilen).toHaveCount(4);
+    await expect(zeilen.last()).toContainText('290.000');
+    await foto(page, `seite-alle-${breite}`);
+  });
   test(`${breite}: Variante B nur als E2E-Vorschau unter Messstellen`, async ({ page }) => {
     await oeffne(page, breite, '-b');
     await expect(page.getByRole('tab', { name: 'Bezugsgrößen', exact: true })).toHaveAttribute('aria-selected', 'true');

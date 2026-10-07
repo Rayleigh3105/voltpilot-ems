@@ -11,7 +11,7 @@ import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { useIsPhone } from '../useIsPhone';
 import { normalisiereSuche } from '../picker/suche';
 import { suchTerme } from '../messstellenListe';
-import { ohneUmbruchVorZahl } from '../kostenstellenUebersicht';
+import { ERNEUT, ohneUmbruchVorZahl } from '../kostenstellenUebersicht';
 import { BezugsgroesseSeite } from './BezugsgroesseSeite';
 import { bezugsLaden, type BezugsStand } from '../bezugsStand';
 import * as B from '../bezugsgroesseListe';
@@ -102,8 +102,11 @@ function BezugsgroessenListe() {
   const aktiv = alle.filter((r) => !r.archiviert && passt(r));
   const archiv = alle.filter((r) => r.archiviert && passt(r));
   const gruppen = U.bzGruppen(aktiv);
-  const eigene = U.bzOhnePeriode(aktiv);
+  const eigene = U.bzEigeneFlaechen(aktiv);
+  const weitere = U.bzWeitere(aktiv);
   const status = U.bzStatus(alle);
+  // Kam eine Werte-Abfrage nicht an, sagt die Lage es - statt „eingetragen“ - und bietet den Weg zurück.
+  const nichtAbrufbar = alle.some((r) => !r.archiviert && r.abruf === 'fehler');
   const kacheln = stand ? U.flaechenKacheln(flaechen, stand.orte) : [];
   const standorteDerFlaechen = [...new Set(kacheln.map((k) => k.standort).filter((s): s is string => s !== null))];
   const beispiel = aktiv.find((r) => r.wert && r.wann);
@@ -182,6 +185,15 @@ function BezugsgroessenListe() {
             <p className="vp-ms-status is-ok" data-testid="bezugsgroessen-status">
               <span className="vp-ms-status-punkt" aria-hidden="true" />
               {status.text}
+            </p>
+          )}
+          {nichtAbrufbar && (
+            <p className="vp-ms-status" data-testid="bezugsgroessen-nicht-abrufbar">
+              <span className="vp-ms-status-punkt" aria-hidden="true" />
+              {U.NICHT_ALLE_ABRUFBAR}{' '}
+              <button type="button" className="vp-ms-link vp-bz-erneut" onClick={() => setNeu((n) => n + 1)}>
+                {ERNEUT}
+              </button>
             </p>
           )}
           {status && status.ton === 'hinweis' && status.ziel && (
@@ -316,6 +328,21 @@ function BezugsgroessenListe() {
               )}
             </section>
           )}
+          {weitere.length > 0 && (
+            <section className="vp-ms-ort" aria-labelledby="vp-bz-weitere" data-testid="bezugsgroessen-weitere">
+              <div className="vp-ms-ort-kopf">
+                <h2 id="vp-bz-weitere">{U.WEITERE.titel}</h2>
+                <span className="vp-ms-ort-zahl">{weitere.length === 1 ? '1 Bezugsgröße' : `${weitere.length} Bezugsgrößen`}</span>
+              </div>
+              <ul className="vp-ms-reihen">
+                {weitere.map((r) => (
+                  <li key={r.id}>
+                    <BzReiheLink r={r} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {archivierte && archiv.length > 0 && (
             <section className="vp-ms-ort is-still" aria-labelledby="vp-bz-archiv" data-testid="bezugsgroessen-archiv">
               <div className="vp-ms-ort-kopf">
@@ -404,7 +431,14 @@ function Spalten({ wert }: { wert: string }) {
 /** Eine Bezugsgröße als Reihe: die ganze Reihe öffnet ihre Seite. */
 function BzReiheLink({ r }: { r: U.BzReihe }) {
   return (
-    <a className={`vp-ms-reihe is-${r.ton} vp-bz-reihe`} href={`#/portfolio/bezugsgroessen/${encodeURIComponent(r.id)}`} data-testid="bezugsgroesse-reihe" data-kennzeichen={r.kennzeichen}>
+    <a
+      className={`vp-ms-reihe is-${r.ton} vp-bz-reihe`}
+      href={`#/portfolio/bezugsgroessen/${encodeURIComponent(r.id)}`}
+      data-testid="bezugsgroesse-reihe"
+      data-kennzeichen={r.kennzeichen}
+      data-abruf={r.abruf}
+      aria-busy={r.abruf === 'unterwegs' ? true : undefined}
+    >
       <span className="vp-ms-reihe-name">
         <span className="vp-ms-punkt is-name" aria-hidden="true" />
         <span className="vp-ms-reihe-titel">
@@ -414,11 +448,13 @@ function BzReiheLink({ r }: { r: U.BzReihe }) {
       <span className="vp-ms-reihe-unter">{r.unter}</span>
       <span className="vp-ms-reihe-satz">
         <span className="vp-ms-punkt is-satz" aria-hidden="true" />
-        <span>{r.zustand}</span>
+        {r.abruf === 'unterwegs' && !r.archiviert ? <span className="vp-skeleton is-zeile vp-bz-skelett" aria-hidden="true" /> : <span>{r.zustand}</span>}
       </span>
       <span className="vp-ms-reihe-woher">{r.woher}</span>
       <span className="vp-ms-reihe-wert">
-        {r.wert ? (
+        {r.abruf === 'unterwegs' ? (
+          <span className="vp-skeleton is-zeile vp-bz-skelett is-wert" aria-hidden="true" />
+        ) : r.wert ? (
           <>
             <b>
               {r.wert.zahl}

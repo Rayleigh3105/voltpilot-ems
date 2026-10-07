@@ -925,16 +925,23 @@ Object.assign(api, {
   // Monatswerte bis September 2026 für BZ-1, BZ-2 und BZ-6; BZ-7 Lindach ohne September; Flächen der Gebäude).
   bezugsgroesseWerte: async (id: string) => {
     const b = bzListe.bezugsgroessen.find((x) => x.id === id);
+    // Prüfung r4 M3: die Werte EINER Bezugsgröße kommen nie an (BZ-1) bzw. sind nicht abrufbar (BZ-2).
+    if (params.get('bezugs') === 'werteunterwegs' && b?.kennzeichen === 'BZ-1') return new Promise<never>(() => {});
+    if (params.get('bezugs') === 'wertefehler' && b?.kennzeichen === 'BZ-2') throw new ApiError(503, 'Nicht erreichbar');
     const monate: Record<string, [string, string][]> = {
       'BZ-1': [['2026-08', '298400'], ['2026-09', '305200']],
       'BZ-2': [['2026-08', '4610'], ['2026-09', '4820']],
       'BZ-6': [['2026-09', '2140']],
       'BZ-7': [['2026-08', '1910']],
     };
+    // Prüfung r4 S22: vier Monate, der jüngste zurückgenommen - „Alle 4“ muss den ältesten erreichbar machen.
+    const zurueck = params.get('bezugs') === 'zurueckgenommen';
+    if (zurueck) monate['BZ-1'] = [['2026-06', '290000'], ['2026-07', '295000'], ['2026-08', '298400'], ['2026-09', '305200']];
     const werte = (monate[b?.kennzeichen ?? ''] ?? []).map(([m, betrag]) => {
       const w = bezugswertFixture(betrag);
       const [j, mo] = m.split('-').map(Number);
-      return { ...w, periode_von: `${m}-01`, periode_bis: new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10) };
+      const zurueckgenommen = zurueck && b?.kennzeichen === 'BZ-1' && m === '2026-09';
+      return { ...w, ...(zurueckgenommen ? { wirksamer_betrag: null } : {}), periode_von: `${m}-01`, periode_bis: new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10) };
     });
     return { bezugsgroesse_id: id, kennzeichen: b?.kennzeichen ?? '', wertart: b?.wertart ?? 'periodenwert', einheit: b?.einheit ?? '', periode_art: b?.periode_art ?? null, von: null, bis: null, fassungen: 'wirksam' as const, werte };
   },
