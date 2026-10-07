@@ -14,8 +14,16 @@ Die Umgebung für die Fachperson erreichbar machen (Adresse, Portal, Zugangsweg)
 - Ein SQL-Seed 1.10 hätte Prüfsummen, Abzüge und Kopien von Hand erfinden müssen (§8.5 „gelesen, nicht
   ausprobiert“ — geprüft: nicht ohne Umbau).
 - `SEED` legt nur an, was 1.4 nicht trägt: MS-20, BZ-1, Geräte an AN-1, das Konto von Robert Falk
-  (Subject `…08a6`, ohne Realm-Login) und `zugriffe_1_10`. Es stellt beim Aufbau auch die Uhr von
-  `ZugriffKontextLader` (die Zuweisungen des Seeds beginnen am 01.10.2026), danach steht alles auf der Bühne.
+  (Subject `…08a6`, ohne Realm-Login), `zugriffe_1_10` und (seit Review r4 M4) MS-23 für MB-1. Es stellt beim
+  Aufbau auch die Uhr von `ZugriffKontextLader` (die Zuweisungen des Seeds beginnen am 01.10.2026), danach steht
+  alles auf der Bühne.
+- ⚠ Review r4 M4: MB-1 muss VOR der ersten energetischen Bewertung (BR-2026-0002, 01.12.2026) über MS-23 eingelöst
+  werden (`AhrenbergWelt.mb1DurchMs23Einloesen`, 27.11.2026) — danach zitieren freigegebene Berichtsstände ihn als
+  Quelle, und der Belegschutz (409 `berichts_belege`) lehnt jedes Einlösen über die Route ab. Ohne diesen Schritt
+  blieb MB-1 „geplant“ und die Demo zeigte bei jedem Rundgang den defekten „Einrichten“-Weg aus dem Review (Option a
+  — ein zitierter Bedarf bleibt einlösbar — wurde nicht gewählt; der Belegschutz bleibt für Bearbeiten/Verwerfen
+  bestehen). Eine künftige, frühere Bewertung oder ein früherer Berichtsstand in der Welt muss dieselbe Reihenfolge
+  wahren.
 - Idempotent (`PruefumgebungAhrenberg`): steht `feststellung_wirksamkeit`, geschieht nichts; ein halber Aufbau
   (Robert Falk da, Wirksamkeit nicht) bricht ab — dann abräumen und neu aufbauen.
 - ⚠ Im laufenden Stapel vergibt der Geräte-Bestand der drei Boxen GR-1 … GR-6, bevor die Welt kommt. `SEED` nimmt
