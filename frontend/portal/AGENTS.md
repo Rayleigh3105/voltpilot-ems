@@ -28,6 +28,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 - Flex-/Grid-Kinder müssen schrumpfen und Texte umbrechen können; Tabellen scrollen lokal. Unsichtbare Schaltertexte dürfen die Seite nicht verbreitern.
 - Dialog: Fokusfalle, Escape, Rückkehr zum Auslöser und Erhalt darunterliegender Formulare testen. Fehler nach einem deaktivierten Submit müssen den Fokus sinnvoll wiederherstellen.
 - Auf iOS/Safari wird ein angeklickter Button nicht zwingend fokussiert; den Rückkehr-Auslöser ausdrücklich speichern.
+- Ein Dialog, der aus einem Blatt (`NwBlatt`, am Telefon `BottomSheet` mit z-index 1200) aufgeht, ist selbst ein Blatt: ein `Modal` (z-index 60) läge am Telefon darunter und nähme keine Klicks an (Beispiel `PersonAnlegenBlatt`).
 
 ## Hilfe und Auth
 

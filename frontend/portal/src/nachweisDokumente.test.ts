@@ -163,7 +163,7 @@ describe('Seite eines Dokuments (§6.5)', () => {
 
   it('ein wartender Entwurf ist der Anlass „Freigeben“; ein Antrag wartet auf eine zweite Person - wer beantragt hat, sieht keinen Knopf', () => {
     const entwurf = politik({ fassungen: [...politik().fassungen, fassung(3, 'entwurf', { begruendung: 'Hinweis aus dem Audit 2029' })] });
-    expect(seitenStatus(entwurf)).toMatchObject({ zeichen: 'entwurf', text: 'Fassung 3 wartet auf Freigabe', sub: '· Fassung 2 gilt' });
+    expect(seitenStatus(entwurf)).toMatchObject({ zeichen: 'entwurf', text: 'Fassung 3 wartet auf Freigabe', sub: null });
     expect(anlass(entwurf, 'ik')).toEqual({ art: 'freigeben', fassung: 3 });
     const antrag = politik({ fassungen: [...politik().fassungen, fassung(3, 'beantragt', { vieraugen: true })] });
     expect(seitenStatus(antrag).text).toBe('Fassung 3 wartet auf Bestätigung');

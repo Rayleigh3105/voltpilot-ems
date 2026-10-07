@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../api';
 import { setSelbstauskunft } from '../../rollen';
@@ -61,6 +61,8 @@ describe('Reiter „Dokumente“ (Konzept Nachweisen n1, Runde 2, §6.5)', () =>
     fireEvent.change(screen.getByTestId('festhalten-kennung'), { target: { value: 'RR-2029' } });
     await klick(screen.getByTestId('festhalten-weiter'));
     expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Risiko-Register der Geschäftsführung · RR-2029');
+    // Die Vorbelegung (die eigene Person) lädt nach; bis dahin wartet „Festhalten“.
+    await waitFor(() => expect(screen.getByTestId('festhalten-pruefen').textContent).toContain('Ines Kaltenbach'));
     await klick(screen.getByTestId('festhalten-weiter'));
     expect(buehne.gesendet.map((g) => g.route.replace(/[0-9a-f-]{36}/, '{id}'))).toEqual([
       'POST /api/v1/energiemanagement/dokumente',

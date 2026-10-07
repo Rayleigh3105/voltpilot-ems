@@ -96,12 +96,14 @@ export function DokumentFesthaltenBlatt({
     };
   }, []);
 
-  // Wer entscheidet: die Leitung am Tag (PA3) oder jede aktive Person; vorbelegt die Leitung bzw. die eigene Person.
+  // Wer entscheidet: die Leitung am Tag (PA3, aus `…/leitung` im Zaun des Freigaberechts - Befund A4) oder jede aktive
+  // Person; vorbelegt die Leitung bzw. die eigene Person.
   useEffect(() => {
     if (!art) return;
     let aktiv = true;
+    setPersonen(null);
     const laden = leitung
-      ? api.energiemanagementAufgaben(tag || heute || undefined).then((a) => a.leitung.map((p) => ({ id: p.id, label: `${p.name}, ${p.funktion}`, konto: null })))
+      ? api.energiemanagementLeitung(tag || heute, ort === 'unternehmen' ? null : ort).then((a) => a.leitung.map((p) => ({ id: p.id, label: `${p.name}, ${p.funktion}`, konto: null })))
       : api.energiemanagementPersonen().then((p) =>
           p.personen.filter((x: EnergiemanagementPerson) => x.zustand === 'aktiv').map((x) => ({ id: x.id, label: `${x.name}, ${x.funktion}`, konto: x.konto?.sub ?? null })),
         );
@@ -116,7 +118,7 @@ export function DokumentFesthaltenBlatt({
     return () => {
       aktiv = false;
     };
-  }, [art, leitung, tag, heute, rollen.selbst?.kennung]);
+  }, [art, leitung, tag, heute, ort, rollen.selbst?.kennung]);
 
   const artWort = art ? WOERTER.dokument_art[art] : '';
   const kopf = festeArt ? `${artWort} festhalten` : 'Dokument festhalten';
@@ -144,6 +146,7 @@ export function DokumentFesthaltenBlatt({
 
   async function festhalten() {
     const freigeben = weiter === 'freigeben' && darfFreigeben;
+    if (freigeben && personen === null) return; // die Wahl lädt noch - der Knopf wartet sichtbar (aria-busy)
     const f: E.Feldfehler = {};
     if (freigeben && !von) f.entschiedenVon = 'Bitte wählen Sie, wer entschieden hat.';
     const b = freigeben ? E.begruendungFehler(begruendung) : null;
@@ -199,6 +202,8 @@ export function DokumentFesthaltenBlatt({
     }
   }
 
+  // Bis die Personen zur Wahl da sind, wartet „Festhalten“ - sonst stünde ein Fehler, bevor die Vorbelegung kommt.
+  const laedt = schritt === 3 && weiter === 'freigeben' && darfFreigeben && personen === null;
   const titelSchritt = schritt === 1 ? kopf : schritt === 2 ? (wo === 'verweis' ? 'Wo liegt das Original?' : 'Ihr Text') : 'Prüfen';
   const personWort = personen?.find((p) => p.id === von)?.label.split(',')[0] ?? '-';
   const tagWort = E.tagText(tag || heute || '') || 'heute';
@@ -212,7 +217,7 @@ export function DokumentFesthaltenBlatt({
       testId="festhalten-blatt"
       fuss={
         <div className="vp-nw-blatt-fuss">
-          <Button type="submit" form={`${basis}-form`} disabled={busy} aria-busy={busy || undefined} data-testid="festhalten-weiter">
+          <Button type="submit" form={`${basis}-form`} disabled={busy || laedt} aria-busy={busy || laedt || undefined} data-testid="festhalten-weiter">
             {schritt < 3 ? 'Weiter' : 'Festhalten'}
           </Button>
           <Button variant="ghost" onClick={schritt === 1 ? onClose : () => setSchritt(schritt - 1)}>

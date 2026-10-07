@@ -240,9 +240,9 @@ export function seitenStatus(d: EnergiemanagementDokument): SeitenStatus {
     const auf = d.eintraege.find((e) => e.art === 'aufgehoben');
     return { zeichen: 'offen', text: `aufgehoben${auf?.am ? ` seit ${TAG(auf.am)}` : ''}`, sub: null, warn: false, still: true };
   }
-  const gilt = g ? `· Fassung ${g.nr} gilt` : null;
-  if (o?.status === 'beantragt') return { zeichen: 'entwurf', text: `Fassung ${o.nr} wartet auf Bestätigung`, sub: gilt, warn: false, still: false };
-  if (o) return { zeichen: 'entwurf', text: `Fassung ${o.nr} wartet auf Freigabe`, sub: gilt, warn: false, still: false };
+  // Welche Fassung gilt, sagt schon die Kurzzeile unter dem Titel („Fassung 2“) - die Antwort bleibt ein Fakt (§6.5).
+  if (o?.status === 'beantragt') return { zeichen: 'entwurf', text: `Fassung ${o.nr} wartet auf Bestätigung`, sub: null, warn: false, still: false };
+  if (o) return { zeichen: 'entwurf', text: `Fassung ${o.nr} wartet auf Freigabe`, sub: null, warn: false, still: false };
   if (!g) return { zeichen: 'offen', text: 'noch keine Fassung', sub: null, warn: false, still: false };
   const u = d.ueberpruefung;
   const von = g.entschieden_von?.name ?? null;
