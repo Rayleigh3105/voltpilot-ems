@@ -2780,6 +2780,11 @@ export interface Kennzahl {
    * nur an einer nicht archivierten Kennzahl mit Monatswerten. Dieselbe Ableitung trägt die Leitkachel der Übersicht.
    */
   auswertung?: KennzahlAuswertung;
+  /**
+   * Nur an `GET /api/v1/kennzahlen/{id}?mit=auswertung`: ob sie die Leitkennzahl der Übersicht ist - dieselbe Wahl wie
+   * `leit` der Übersicht und `leitkennzahl` der Liste (§10.8).
+   */
+  leitkennzahl?: boolean;
 }
 
 /** Das Urteil der Operation `vergleich` (bezugsbasis.md §8, U1–U6). */
@@ -2799,7 +2804,7 @@ export interface KennzahlAuswertung {
   /** Operation `roh` gegen denselben Monat ein Jahr davor - nie ein Urteil. */
   vorjahr: KennzahlAuswertungRoh | null;
   /** PR2: Operation `roh` gegen den Monat davor - nie ein Urteil. */
-  vormonat?: KennzahlAuswertungRoh | null;
+  vormonat: KennzahlAuswertungRoh | null;
   /** Die zwölf Monate bis `monat`, der älteste zuerst. */
   monate: KennzahlAuswertungMonat[];
   /** `null` ohne freigegebene Bezugsbasis. */
@@ -2818,7 +2823,7 @@ export interface KennzahlAuswertung {
    * PR2 (§10.6): der Vergleich über die Monate der zwölf, für die schon eine Fassung gilt (Operation `zeitraum`,
    * Σ ÷ Σ) - nie davor. `null` ohne Bezugsbasis oder solange noch keine Fassung gilt.
    */
-  zeitraum?: KennzahlAuswertungZeitraum | null;
+  zeitraum: KennzahlAuswertungZeitraum | null;
   energieziel: KennzahlAuswertungZiel | null;
 }
 
@@ -2838,13 +2843,13 @@ export interface KennzahlAuswertungMonat {
   urteil: BezugsbasisUrteil | null;
   grund: BezugsbasisGrund | null;
   /** PR2: der erwartete Kennzahlwert (erwartet ÷ Nenner). */
-  erwartet_wert?: string | null;
+  erwartet_wert: string | null;
   /** PR2: gemessen − erwartet in der Einheit des Zählers; positiv = mehr als erwartet. */
-  abweichung?: string | null;
+  abweichung: string | null;
   /** PR2: die Abweichungen der Monate mit Urteil bis hierher zusammengezählt; `null` an einem Monat ohne Urteil. */
-  zusammen?: string | null;
+  zusammen: string | null;
   /** PR2: derselbe Monat ein Jahr davor mit der rohen Veränderung (nie ein Urteil); `null` ohne beide Werte. */
-  vorjahr?: KennzahlAuswertungRoh | null;
+  vorjahr: KennzahlAuswertungRoh | null;
 }
 
 /** OpenAPI `KennzahlAuswertungZeitraum`: der Vergleich über `von` … `bis` (Σ gemessen ÷ Σ erwartet, U5). */

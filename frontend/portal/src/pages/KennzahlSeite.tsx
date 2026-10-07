@@ -65,6 +65,7 @@ import {
   ZUR_LISTE,
   type Balken,
 } from '../kennzahlKarte';
+import { kennzahlMitAuswertung } from '../kennzahlMitAuswertung';
 import * as S from '../kennzahlSeite';
 import { TRENNER } from '../uemsErgebnis';
 import { energiezielRoute, hashForRoute } from '../nav';
@@ -122,7 +123,7 @@ export function KennzahlSeite({
   useEffect(() => {
     let aktiv = true;
     setStammFehler(null);
-    Promise.all([api.kennzahl(id, 'auswertung'), api.kennzahlFassungen(id)]).then(
+    Promise.all([kennzahlMitAuswertung(id), api.kennzahlFassungen(id)]).then(
       ([kennzahl, f]) => aktiv && setStamm({ kennzahl, fassungen: f.fassungen }),
       (e) => aktiv && setStammFehler(e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler'),
     );
@@ -151,8 +152,16 @@ export function KennzahlSeite({
   }, [id, versuch]);
 
   const bbAn = stamm !== null && kannBezugsbasis(stamm.kennzahl);
-  // Die Fassung am Stichtag der Auswertung - dieselbe, die die Ebene der Bezugsbasis zeigt.
-  const bbLage = useBezugsbasis(id, bbAn, versuch, stamm ? S.stichtag(stamm.kennzahl.auswertung?.monat, heuteIn(zone, Date.now())) : undefined);
+  // Die Fassung am Stichtag der Auswertung - dieselbe, die die Ebene der Bezugsbasis zeigt - und die am Tag des Urteils
+  // (P4), die neben dem Urteil steht; nach einer Überprüfung sind das zwei (Review r3).
+  const monatDerAuswertung = stamm?.kennzahl.auswertung?.monat;
+  const bbLage = useBezugsbasis(
+    id,
+    bbAn,
+    versuch,
+    stamm ? S.stichtag(monatDerAuswertung, heuteIn(zone, Date.now())) : undefined,
+    stamm ? S.urteilsTag(monatDerAuswertung, heuteIn(zone, Date.now())) : undefined,
+  );
 
   const zurueck = (
     <button type="button" className="vp-kz-zurueck" onClick={onListe}>
@@ -199,6 +208,8 @@ export function KennzahlSeite({
   // Wie weit der Server ist (Monat der Auswertung) - danach heißt eine Fassung „seit“ oder erst „ab“ einem Tag.
   const tag = S.stichtag(k.auswertung?.monat, heuteIn(zone, Date.now()));
   const basisDa = bbLage.art === 'da' ? bbLage : null;
+  // Neben dem Urteil (Antwort, Verlässlichkeit, Karte „Bezugsbasis“) steht die Fassung, die es gerechnet hat.
+  const basisUrteil = basisDa ? { basis: basisDa.basis, fassung: basisDa.urteilsFassung ?? basisDa.fassung } : null;
   const zielMoeglich =
     bbAn && aenderbar && !k.auswertung?.energieziel && basisDa !== null && basisDa.fassung !== null &&
     basisDa.basis.beendet_zum === null && zeilenFassung(basisDa.basis)?.freigabe_status === 'freigegeben';
@@ -275,7 +286,7 @@ export function KennzahlSeite({
               fassungen={stamm.fassungen}
               zone={zone}
               telefon={telefon}
-              lage={basisDa}
+              lage={basisUrteil}
               darfFestlegen={bbAn && aenderbar && rollen.darf('bezugsbasis.verwalten', k.standort_id)}
               darfVerbesserung={rollen.darf('verbesserung.ansehen', k.standort_id)}
               archivierteEingaenge={archivierteEingaenge}
@@ -391,11 +402,6 @@ function monatPlus(periode: string, n: number): string {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
 }
 
-/** Der letzte Tag eines Monats `JJJJ-MM` als `JJJJ-MM-TT`. */
-function letzterTag(periode: string): string {
-  const tage = new Date(Date.UTC(Number(periode.slice(0, 4)), Number(periode.slice(5, 7)), 0)).getUTCDate();
-  return `${periode}-${String(tage).padStart(2, '0')}`;
-}
 
 function Auswertung({
   k,
@@ -450,7 +456,7 @@ function Auswertung({
   // Die Monatswerte der zwölf Monate: Rechenweg, Versionen und geteilte Register (das Vorjahr trägt die Auswertung).
   useEffect(() => {
     let aktiv = true;
-    api.kennzahlWerte(k.id, 'monat', `${monatPlus(a.monat, -11)}-01`, letzterTag(a.monat)).then(
+    api.kennzahlWerte(k.id, 'monat', `${monatPlus(a.monat, -11)}-01`, S.urteilsTag(a.monat, a.monat)).then(
       (w) => aktiv && setWerte(w),
       () => aktiv && setWerte(null),
     );
@@ -459,8 +465,9 @@ function Auswertung({
     };
   }, [k.id, a.monat, versuch]);
 
-  // Die offenen Energieziele: wer für das Ziel dieser Kennzahl verantwortlich ist und ob sie die Leitkennzahl der
-  // Übersicht ist (der Stern). Antwortet die Route nicht, fehlen nur Name und Stern.
+  // Die offenen Energieziele: wer für das Ziel dieser Kennzahl verantwortlich ist. Antwortet die Route nicht, fehlt nur
+  // der Name. Neu gelesen, sobald ein anderes Ziel an der Kennzahl steht (nach „Energieziel setzen“).
+  const zielId = a.energieziel?.id ?? null;
   useEffect(() => {
     let aktiv = true;
     api.energieziele({ zustand: 'offen' }).then(
@@ -470,9 +477,10 @@ function Auswertung({
     return () => {
       aktiv = false;
     };
-  }, [k.id]);
-  const ziel = ziele?.find((z) => z.id === a.energieziel?.id) ?? null;
-  const leit = ziele !== null && S.leitkennzahlAusZielen(ziele) === k.kennzeichen;
+  }, [k.id, zielId]);
+  const ziel = ziele?.find((z) => z.id === zielId) ?? null;
+  // Der Stern: die Leitkennzahl der Übersicht, wie der Server sie nennt (§10.8) - nie hier abgeleitet.
+  const leit = k.leitkennzahl === true;
 
   useEffect(() => {
     if (!mitBasis || !darfVerbesserung) return;
@@ -745,11 +753,9 @@ function Auswertung({
       </div>
       <ZusammenGrafik titel={`${S.TITEL_ZUSAMMEN}: ${zusammenEnde.text} seit ${zusammenEnde.seit}`} monate={monate} endText={zusammenEnde.text} ton={zusammenTon} />
       <p className="vp-kzs-fazit">
-        {`Seit ${zusammenEnde.seit} zusammen `}
-        <b>{zusammenEnde.text}</b>
-        {zusammenTon === 'warn'
-          ? ', als die Bezugsbasis erwarten lässt. Eine steigende Linie heißt: Es wird nicht effizienter.'
-          : ', als die Bezugsbasis erwarten lässt. Eine fallende Linie heißt: Es wird effizienter.'}
+        {zusammenEnde.satz.vor}
+        <b>{zusammenEnde.satz.fett}</b>
+        {zusammenEnde.satz.nach}
       </p>
     </section>
   );
@@ -812,7 +818,20 @@ function Auswertung({
                 const vj = vorjahrVon(x.periode);
                 return (
                   <tr key={x.periode} className={x.periode === gewaehlt ? 'is-wahl' : undefined} onClick={() => setGewaehlt(x.periode)}>
-                    <th scope="row">{x.lang}</th>
+                    {/* Wählbar auch mit der Tastatur (Review r3): der Monat ist ein Knopf, die Zeile bleibt die Mausfläche. */}
+                    <th scope="row">
+                      <button
+                        type="button"
+                        className="vp-kzs-zeilenwahl"
+                        aria-pressed={x.periode === gewaehlt}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setGewaehlt(x.periode);
+                        }}
+                      >
+                        {x.lang}
+                      </button>
+                    </th>
                     {mitVergleich ? (
                       <>
                         <td className="is-n">{x.gemessen ?? '—'}</td>

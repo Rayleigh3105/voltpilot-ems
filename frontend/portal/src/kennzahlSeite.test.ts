@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Kennzahl } from './api';
+import { VERGLEICH_WEG_ZUR_BEZUGSBASIS } from './bezugsbasisVergleich';
 import * as S from './kennzahlSeite';
 import { bb1Seite, ez2029, kz24Seite, kz4Seite, vergleichKz4, vermerkMaerz } from './test/kennzahlSeiteFixtures';
 
@@ -73,6 +74,21 @@ describe('Verlässlichkeit direkt darunter (§6.1 Regel 2)', () => {
     });
   });
 
+  it('fällig bleibt sichtbar, auch wenn der Monat kein Urteil trägt (Review r3: BB-0006/7 auf der Bühnen-Uhr)', () => {
+    const bb = bb1Seite();
+    const faellig = { ...bb.basis, frist: { ueberpruefung_faellig: true, faellig_am: '2027-10-05', faellig_seit_tagen: 570, wiedervorlage_monate: 12 } };
+    const k = kz4Seite();
+    const ohneUrteil = {
+      ...k,
+      auswertung: { ...k.auswertung!, vergleich: { ...k.auswertung!.vergleich!, urteil: 'nicht_anwendbar' as const, grund: 'keine_werte' as const, delta_prozent: null } },
+    };
+    expect(S.vertrauen(ohneUrteil, { basis: faellig, fassung: bb.fassungen[1] }, true)).toMatchObject({
+      fett: 'Bezugsbasis seit 05.10.2027 zur Überprüfung fällig.',
+    });
+    // Ohne Frist bleibt der Grund „kein Urteil“.
+    expect(S.vertrauen(ohneUrteil, { basis: bb.basis, fassung: bb.fassungen[1] }, true)?.fett).toBe('Kein Urteil für diesen Monat:');
+  });
+
   it('ohne Bezugsbasis der Hinweis aufs Vorjahr; „Bezugsbasis festlegen“ nur mit Recht', () => {
     expect(S.vertrauen(kz24Seite(), null, true)?.weg).toEqual({ wort: 'Bezugsbasis festlegen', ziel: 'festlegen' });
     expect(S.vertrauen(kz24Seite(), null, false)?.weg).toBeNull();
@@ -143,6 +159,11 @@ describe('Kacheln, Grafik und Monatsliste', () => {
   it('Zusammengezählt: der Endwert des Servers seit dem ersten Monat mit Urteil, die Linie im Ton ihrer Richtung', () => {
     expect(S.zusammenEnde(monate, 'kWh')).toMatchObject({ seit: 'April 2028', ton: 'warn' });
     expect(S.zusammenEnde(S.seitenMonate(kz4Seite('noch_kein_vergleich'), vergleichKz4('noch_kein_vergleich')), 'kWh')).toBeNull();
+    expect(t(S.zusammenEnde(monate, 'kWh')!.satz.nach)).toBe(', als die Bezugsbasis erwarten lässt. Eine steigende Linie heißt: Es wird nicht effizienter.');
+    // Genau 0: „genau so viel, wie …“ - nie „genau wie erwartet, als …“ (Review r3).
+    const null0 = monate.map((m) => (m.zusammen === null ? m : { ...m, zusammen: '0' }));
+    const satz = S.zusammenEnde(null0, 'kWh')!.satz;
+    expect(`${satz.vor}${satz.fett}${satz.nach}`).toBe('Seit April 2028 zusammen genau so viel, wie die Bezugsbasis erwarten lässt.');
   });
 
   it('ein Monat ohne Vergleich bleibt leer - nie 0 - und nennt seinen Grund', () => {
@@ -189,6 +210,37 @@ describe('Rechenweg, Energieziel, Auffälligkeit, Bezugsbasis', () => {
     });
   });
 
+  it('Woraus gerechnet mit einem Modell: kein „aus der Bezugsbasis mal“ - die Bezugsbasis rechnet keinen Wert je kg (Review r3, BB-0001 F2)', () => {
+    // BB-0001 Fassung 2 der Referenzwelt: 10.523 kWh + 0,2343 kWh je kg. Erwartet ÷ Nenner (0,2764) ist kein Wert der
+    // Bezugsbasis, und 0,2764 × 250.000 ergäbe 69.100 statt 69.098.
+    const mitMethode = (methode: 'regression_eine_variable' | 'regression_zwei_variablen' | 'gradtage') => {
+      const v = vergleichKz4();
+      return {
+        ...v,
+        monate: v.monate.map((z) =>
+          z.bereinigt.fassung ? { ...z, bereinigt: { ...z.bereinigt, fassung: { ...z.bereinigt.fassung, methode } } } : z,
+        ),
+      };
+    };
+    const modell = S.seitenMonate(kz4Seite(), mitMethode('regression_eine_variable'))[11];
+    expect(modell.methode).toBe('regression_eine_variable');
+    const satz = S.erwartetSatz(modell, '0.2764', 'kWh/kg', { wert: '306000', einheit: 'kg' });
+    expect(t(satz!.vor)).toBe('Erwartet bei 306.000 kg Produktionsmenge nach dem Modell der Bezugsbasis: ');
+    expect(satz!.vor).not.toContain('mal');
+    expect(t(satz!.fett)).toBe('86.812 kWh');
+    const zwei = S.seitenMonate(kz4Seite(), mitMethode('regression_zwei_variablen'))[11];
+    expect(S.erwartetSatz(zwei, '0.2764', 'kWh/kg', { wert: '306000', einheit: 'kg' })!.vor).toContain('nach dem Modell der Bezugsbasis');
+    // Gradtage: der Nenner (kg) ist nicht einmal die Einflussgröße - der Satz nennt die Bedingung der Zeile.
+    const gradtage = S.seitenMonate(kz4Seite(), mitMethode('gradtage'))[11];
+    expect(t(S.erwartetSatz(gradtage, '0.2764', 'kWh/kg', { wert: '306000', einheit: 'kg' })!.vor)).toBe(
+      'Erwartet bei 306.000 kg Produktionsmenge nach der Wetterbereinigung der Bezugsbasis: ',
+    );
+    // Ohne Fassung in der Zeile (unbekannte Methode) nur die Bedingung - nie eine erfundene Rechnung.
+    expect(t(S.erwartetSatz({ ...modell, methode: null }, '0.2764', 'kWh/kg', { wert: '306000', einheit: 'kg' })!.vor)).toBe(
+      'Erwartet bei 306.000 kg Produktionsmenge: ',
+    );
+  });
+
   it('die Karte des Energieziels: Satz mit Zeitraum, Skala und Stand nach x von y Monaten mit der verantwortlichen Person', () => {
     const z = S.zielKarte(kz4Seite().auswertung!, ez2029())!;
     expect(z.titel).toBe('Energieziel 2029');
@@ -198,15 +250,32 @@ describe('Rechenweg, Energieziel, Auffälligkeit, Bezugsbasis', () => {
     expect(S.zielKarte(kz24Seite().auswertung!, null)).toBeNull();
   });
 
-  it('die Leitkennzahl aus den offenen Energiezielen: das kleinste Kennzeichen - wie Übersicht und Liste', () => {
-    const ez = ez2029();
-    expect(S.leitkennzahlAusZielen([ez, { ...ez, kennzahl: { ...ez.kennzahl, kennzeichen: 'KZ-0023' } }])).toBe('KZ-0004');
-    expect(S.leitkennzahlAusZielen([{ ...ez, zustand: 'bewertet' }])).toBeNull();
-  });
-
   it('die offene Auffälligkeit des Monats - ohne offene keine Karte', () => {
     expect(S.offeneAuffaelligkeit([vermerkMaerz()], '2029-03')?.titel).toBe('Auffälligkeit zu März 2029 · offen.');
     expect(S.offeneAuffaelligkeit([{ ...vermerkMaerz(), zustand: 'beantwortet' }], '2029-03')).toBeNull();
+  });
+
+  it('der Weg zur Bezugsbasis nennt die Seite der Kennzahl - den Reiter „Bezugsbasis“ gibt es nicht mehr (Review r3)', () => {
+    expect(VERGLEICH_WEG_ZUR_BEZUGSBASIS).not.toContain('Reiter');
+    expect(VERGLEICH_WEG_ZUR_BEZUGSBASIS).toContain(S.BEZUGSBASIS_FESTLEGEN);
+  });
+
+  it('der Tag des Urteils ist der letzte Tag seines Monats; der Stichtag der erste danach', () => {
+    expect(S.urteilsTag('2029-03', '2029-04-30')).toBe('2029-03-31');
+    expect(S.urteilsTag('2028-02', 'x')).toBe('2028-02-29');
+    expect(S.urteilsTag('2028-12', 'x')).toBe('2028-12-31');
+    expect(S.urteilsTag(null, '2026-10-07')).toBe('2026-10-07');
+    expect(S.stichtag('2028-12', 'x')).toBe('2029-01-01');
+  });
+
+  it('eine am Stichtag abgelöste Fassung heißt „galt … bis …“ und nennt ihre Nachfolgerin - nie „seit“ (Review r3)', () => {
+    const bb = bb1Seite();
+    // Fassung 1 galt bis 31.10.2027, Fassung 2 ab 01.11.2027: das Urteil über Oktober 2027 kam aus Fassung 1.
+    const zeilen = S.basisKlartext(bb.basis, bb.fassungen[0], 'kWh je kg', S.stichtag('2027-10', 'x'));
+    const galt = zeilen.find((z) => z.name === 'Galt')!;
+    expect(t(galt.wert)).toBe('01.11.2026 bis 31.10.2027 · Fassung 1');
+    expect(t(galt.leise!)).toContain('seit 01.11.2027 gilt Fassung 2');
+    expect(zeilen.some((z) => z.name === 'Gilt')).toBe(false);
   });
 
   it('die Bezugsbasis in Klartext: Vergleichszeitraum, Erwartung mit Band, Gilt mit Freigabe und Überprüfung', () => {

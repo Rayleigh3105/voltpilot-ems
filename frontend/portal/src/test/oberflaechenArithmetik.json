@@ -858,6 +858,8 @@
         "stichtag: Number(monat.slice(5, 7))",
         "stichtag: j + 1",
         "stichtag: m + 1",
+        "urteilsTag: Number(monat.slice(0, 4))",
+        "urteilsTag: Number(monat.slice(5, 7))",
         "vorjahrNebensatz: Math.abs(d)",
         "vorjahrNebensatz: Number(v.delta_prozent)",
         "vorjahrNebensatz: Number.isFinite(d)",
@@ -870,7 +872,8 @@
         "zielKarte: Number(von.slice(5, 7)) - 1",
         "zusammenEnde: Number(letzter)",
         "zusammenEnde: mit.length - 1"
-      ]
+      ],
+      "grund": "Konzept Auswerten a1 PR2 (Review r3): Kalender (Stichtag, Tag des Urteils, Monatsnamen), Vorzeichen und Pfeil-Schwellen auf gelieferten Δ, Zählen von Monaten - Mengen (erwartet_wert, abweichung, zusammen) und Δ bildet der Server."
     },
     "bezugsbasisEbene.ts": {
       "importe": [

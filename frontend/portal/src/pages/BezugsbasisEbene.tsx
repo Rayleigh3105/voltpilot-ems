@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Kennzahl } from '../api';
+import { ApiError, type Kennzahl } from '../api';
 import { kannBezugsbasis } from '../bezugsbasisAnlegen';
 import { BezugsbasisReiter, useBezugsbasis } from '../components/BezugsbasisReiter';
 import { BezugsbasisVergleich } from '../components/BezugsbasisVergleich';
@@ -9,6 +9,7 @@ import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { ErrorState, Skeleton } from '../components/States';
 import * as Bz from '../bezugsbasisEbene';
 import { heuteIn, NICHT_GEFUNDEN } from '../kennzahlKarte';
+import { kennzahlMitAuswertung } from '../kennzahlMitAuswertung';
 import * as S from '../kennzahlSeite';
 import './KennzahlSeite.css';
 
@@ -27,7 +28,7 @@ export function BezugsbasisEbene({ id, zone, onKennzahl }: { id: string; zone: s
     let aktiv = true;
     setFehler(null);
     // Mit Auswertung: ihr Monat sagt, wie weit der Server ist - danach heißen Fassungen „seit“, „ab“ oder „bis“.
-    api.kennzahl(id, 'auswertung').then(
+    kennzahlMitAuswertung(id).then(
       (x) => aktiv && setK(x),
       (e) => aktiv && setFehler(e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler'),
     );

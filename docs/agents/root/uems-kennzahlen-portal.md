@@ -70,14 +70,19 @@ Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versio
 - **Seite seit Konzept Auswerten a1 (PR2): ohne Reiter, Antwort zuerst.** `KennzahlSeite` liest
   `GET /api/v1/kennzahlen/{id}?mit=auswertung` (dieselbe Ableitung wie Liste und Leitkachel), mit Bezugsbasis die zwölf
   Zeilen von `…/vergleich` (gemessen und erwartet je Monat), die Monatswerte der zwölf Monate (Rechenweg, Versionen), die
-  offenen Energieziele (Verantwortliche und Leitkennzahl-Stern) und mit `verbesserung.ansehen` die Auffälligkeiten. Sätze,
+  offenen Energieziele (Verantwortliche) und mit `verbesserung.ansehen` die Auffälligkeiten; den Stern setzt nur
+  `leitkennzahl` der Route. Scheitert die Auswertung (nicht 404), lesen Seite und Ebene die Kennzahl ohne `mit`
+  (`kennzahlMitAuswertung.ts`). Sätze,
   Kacheln, Fazit und Monatsliste bildet `kennzahlSeite.ts` (rein, im Q5-Wächter); die Grafiken (`AuswertenGrafik.tsx`)
   tragen nur Marken, Achse und Monate stehen als HTML, die Geometrie ist `auswertenGrafik.ts`. Die Mengen der Kacheln
   (`erwartet_wert`, `abweichung`, `zusammen`) und das Vorjahr je Monat (`monate[].vorjahr`, Operation `roh`) rechnet der
   Server (`KennzahlAuswertung`), nie das Portal - kein zweiter Abruf für Vorjahrespunkt, Infozeile und Spalte.
-- **Stichtag statt Browser-Tag:** „seit“, „ab“, „gilt künftig“ und welche Fassung Seite und Ebene zeigen
+- **Stichtag statt Browser-Tag:** „seit“, „ab“, „gilt künftig“ und welche Fassung die Ebene zeigt
   (`bezugsbasisEbene.ts` `fassungAm`: die geltende, vor der ersten die nächste) misst `kennzahlSeite.ts` `stichtag` am
-  Monat der Auswertung. Zwei Uhren der Demo: zur Bühnen-Uhr gilt BB-0001 Fassung 2, zur echten Uhr erst Fassung 1 „ab“.
+  Monat der Auswertung. Neben dem Urteil der Seite (Karte „Bezugsbasis“, „vorläufig“) steht die Fassung am
+  `urteilsTag` (letzter Tag des Monats, P4) - nach einer Überprüfung am Stichtag ist das die alte („galt … bis …“).
+  „Woraus gerechnet“ sagt „… aus der Bezugsbasis mal …“ nur beim Verhältnis; ein Modell „nach dem Modell der
+  Bezugsbasis“. Zwei Uhren der Demo: zur Bühnen-Uhr gilt BB-0001 Fassung 2, zur echten Uhr erst Fassung 1 „ab“.
 - **Ohne Auswertung** (archiviert, ohne Monatswerte, ohne Monat als Periode) bleibt die bisherige Werte-Karte mit
   Perioden, Verlauf und Versionen; die Bezugsbasis-Karte führt trotzdem eine Ebene tiefer.
 - **Werkzeuge im Menü ⋯** (Energieziel setzen, Kopieren, Berechnung ändern ab …, Stammdaten ändern, Archivieren, Löschen nur

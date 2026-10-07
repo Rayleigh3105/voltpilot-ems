@@ -12,7 +12,12 @@ import type {
 import { abweichungKurz, prozentText, urteilAnsicht, type UrteilTon } from './bezugsbasisUrteil';
 import { dezimal, einheitJe, referenzperiodeText } from './bezugsbasisAnlegen';
 import { freigeberText, wertText } from './bezugsbasisFassungen';
-import type { BezugsbasisVergleich, BezugsbasisVergleichBedingung, BezugsbasisVergleichMonat } from './bezugsbasisVergleich';
+import type {
+  BezugsbasisVergleich,
+  BezugsbasisVergleichBedingung,
+  BezugsbasisVergleichFassung,
+  BezugsbasisVergleichMonat,
+} from './bezugsbasisVergleich';
 import { UEMS_BEZUGSBASIS, UEMS_ENERGIEZIEL } from './glossar';
 import { grundKurz, ortText, vorjahrText, zahlUndEinheit, zielJahre, zielWert } from './kennzahlListe';
 import { TRENNER, zahlMitStellen } from './uemsErgebnis';
@@ -94,6 +99,17 @@ export function stichtag(monat: string | null | undefined, ersatz: string): stri
   return m === 12 ? `${j + 1}-01-01` : `${j}-${String(m + 1).padStart(2, '0')}-01`;
 }
 
+/**
+ * Der Tag, an dem sich das Urteil entscheidet (`JJJJ-MM-TT`): der letzte Tag des Monats der Auswertung - die Fassung, die
+ * an ihm gilt, hat das Urteil gerechnet (P4). Beginnt nach einer Überprüfung am Stichtag eine neue Fassung, gehören
+ * Karte und „vorläufig“ neben dem Urteil trotzdem zur alten (Review r3). Ohne Auswertung wie {@link stichtag}.
+ */
+export function urteilsTag(monat: string | null | undefined, ersatz: string): string {
+  if (!monat) return ersatz;
+  const ende = new Date(Date.UTC(Number(monat.slice(0, 4)), Number(monat.slice(5, 7)), 0)).getUTCDate();
+  return `${monat}-${String(ende).padStart(2, '0')}`;
+}
+
 /** „01.11.2027“ aus `JJJJ-MM-TT`. */
 export const tagText = (tag: string): string => `${tag.slice(8, 10)}.${tag.slice(5, 7)}.${tag.slice(0, 4)}`;
 
@@ -170,6 +186,8 @@ export interface SeitenMonat {
   zusammen: string | null;
   /** Die Mengen der Zeile als Dezimaltext des Servers - nur für die Anzeige ohne Einheit. */
   mengen: { gemessen: string | null };
+  /** Wie die Fassung des Monats erwartet (Zeile des Vergleichs): nur das Verhältnis rechnet „Wert mal Bedingung“. */
+  methode: BezugsbasisVergleichFassung['methode'] | null;
 }
 
 /** „+2,2 %“ · „−3,4 %“ · „0,0 %“ - die Abweichung mit Vorzeichen (echtes Minus). */
@@ -212,6 +230,7 @@ export function seitenMonate(k: Kennzahl, vergleich: BezugsbasisVergleich | null
       grundSatz: monatArt(m) === 'schlechter' || monatArt(m) === 'besser' || monatArt(m) === 'im_rahmen' ? null : (z?.satz ?? null),
       zusammen: m.zusammen ?? null,
       mengen: { gemessen: b?.gemessen.wert ?? null },
+      methode: b?.fassung?.methode ?? null,
     };
   });
 }
@@ -352,12 +371,14 @@ export function vertrauen(
   if (v.grund === 'basis_fehlt' && v.erster_monat) {
     return { art: 'info', fett: null, satz: `Die ${UEMS_BEZUGSBASIS} gilt erst ab ${monatLang(v.erster_monat)}; ein Urteil gibt es, sobald dieser Monat abgeschlossen ist.`, weg: ansehen };
   }
-  if (v.urteil === 'ohne_urteil' || v.urteil === 'nicht_anwendbar') {
-    return { art: 'warn', fett: 'Kein Urteil für diesen Monat:', satz: v.satz ? grundOhneMonat(v.satz, monatLang(a.monat)) : 'die Werte reichen nicht für einen Vergleich.', weg: ansehen };
-  }
+  // Eine fällige Überprüfung ist ein Schritt für eine Person - sie steht vor „kein Urteil“, dessen Grund die Marke der
+  // Antwort schon nennt (Review r3: sonst verschwände „fällig“ in jedem Monat ohne Wert).
   const frist = lage?.basis.frist ?? null;
   if (frist?.ueberpruefung_faellig && frist.faellig_am) {
     return { art: 'warn', fett: `${UEMS_BEZUGSBASIS} seit ${tagText(frist.faellig_am)} zur Überprüfung fällig.`, satz: 'Ist sie noch die richtige Messlatte?', weg: { wort: 'Bestätigen oder neu fassen', ziel: 'bezugsbasis' } };
+  }
+  if (v.urteil === 'ohne_urteil' || v.urteil === 'nicht_anwendbar') {
+    return { art: 'warn', fett: 'Kein Urteil für diesen Monat:', satz: v.satz ? grundOhneMonat(v.satz, monatLang(a.monat)) : 'die Werte reichen nicht für einen Vergleich.', weg: ansehen };
   }
   const f = lage?.fassung ?? null;
   if (f && f.datenlage === 'vorlaeufig') {
@@ -463,18 +484,27 @@ export function fazit(z: KennzahlAuswertungZeitraum | null | undefined, monate: 
 
 /**
  * Der Endwert von „Zusammengezählt“: „5.659 kWh mehr“ seit dem ersten Monat mit Urteil; `ton` ist die Farbe der Linie
- * (mehr als erwartet im Warnton, sonst grün). Unter zwei Monaten mit Urteil gibt es keine Linie.
+ * (mehr als erwartet im Warnton, sonst grün). Unter zwei Monaten mit Urteil gibt es keine Linie. `satz` ist der Satz
+ * darunter: „Seit April 2028 zusammen **29.774 kWh mehr**, als die Bezugsbasis erwarten lässt. …“ - bei genau 0 „genau
+ * so viel, wie …“ (Review r3: nie „genau wie erwartet, als …“).
  */
-export function zusammenEnde(monate: readonly SeitenMonat[], einheit: string): { seit: string; text: string; ton: 'warn' | 'ok' } | null {
+export function zusammenEnde(
+  monate: readonly SeitenMonat[],
+  einheit: string,
+): { seit: string; text: string; ton: 'warn' | 'ok'; satz: { vor: string; fett: string; nach: string } } | null {
   const mit = monate.filter((m) => m.zusammen !== null);
   if (mit.length < 2) return null;
   const letzter = mit[mit.length - 1].zusammen as string;
   const n = Number(letzter);
-  return {
-    seit: monatLang(mit[0].periode),
-    text: n === 0 ? 'genau wie erwartet' : `${mengeText(letzter.replace(/^-/, ''), einheit)} ${n > 0 ? 'mehr' : 'weniger'}`,
-    ton: n > 0 ? 'warn' : 'ok',
-  };
+  const seit = monatLang(mit[0].periode);
+  const text = n === 0 ? 'genau wie erwartet' : `${mengeText(letzter.replace(/^-/, ''), einheit)} ${n > 0 ? 'mehr' : 'weniger'}`;
+  const nach =
+    n === 0
+      ? `, wie die ${UEMS_BEZUGSBASIS} erwarten lässt.`
+      : n > 0
+        ? `, als die ${UEMS_BEZUGSBASIS} erwarten lässt. Eine steigende Linie heißt: Es wird nicht effizienter.`
+        : `, als die ${UEMS_BEZUGSBASIS} erwarten lässt. Eine fallende Linie heißt: Es wird effizienter.`;
+  return { seit, text, ton: n > 0 ? 'warn' : 'ok', satz: { vor: `Seit ${seit} zusammen `, fett: n === 0 ? 'genau so viel' : text, nach } };
 }
 
 // ------------------------------------------------------------------ Energieziel
@@ -534,10 +564,22 @@ export function offeneAuffaelligkeit(vermerke: readonly Auffaelligkeit[], monat:
 
 // ------------------------------------------------------------------ Woraus gerechnet
 
+/** Womit ein Modell der Bezugsbasis erwartet - nie „mal“: es rechnet Grundlast und Steigung, keinen Wert je Einheit. */
+const MODELL_WORT: Record<Exclude<BezugsbasisVergleichFassung['methode'], 'verhaeltnis'>, string> = {
+  regression_eine_variable: `dem Modell der ${UEMS_BEZUGSBASIS}`,
+  regression_zwei_variablen: `dem Modell der ${UEMS_BEZUGSBASIS}`,
+  gradtage: `der Wetterbereinigung der ${UEMS_BEZUGSBASIS}`,
+};
+
 /**
  * Der Rechenweg des gewählten Monats in Worten (§6.5 Nr. 8): „März 2029: 88.740 kWh (Zähler Spritzguss MS-20) geteilt
  * durch 306.000 kg (Produktionsmenge BZ-1) = 0,29 kWh je kg.“ und „Erwartet: … = 86.812 kWh.“ - die Zahlen sind die des
  * Servers (Zähler und Nenner des Werts, erwartet aus dem Vergleich); hier wird nur gesetzt.
+ *
+ * „… aus der Bezugsbasis mal …“ nur beim Verhältnis: dort IST der erwartete Kennzahlwert der Wert der Bezugsbasis und
+ * die Bedingung der Nenner. Ein Modell (eine oder zwei Einflussgrößen, Gradtage) erwartet die Menge aus seiner Formel -
+ * „erwartet ÷ Nenner“ ist dort kein Wert der Bezugsbasis, und bei Gradtagen ist der Nenner nicht einmal die Einflussgröße
+ * (Review r3, BB-0001 Fassung 2). Dann steht die Bedingung und woher die Erwartung kommt.
  */
 export function erwartetSatz(
   m: SeitenMonat,
@@ -546,10 +588,13 @@ export function erwartetSatz(
   nenner: { wert: string; einheit: string } | null,
 ): { vor: string; fett: string } | null {
   if (!m.erwartet || !m.bedingung) return null;
-  // Im Rechenweg vier Stellen (wie die Versionen): mit zwei ginge die Rechnung sichtbar nicht auf.
-  if (erwartetWert && nenner) {
+  if (m.methode === 'verhaeltnis' && erwartetWert && nenner) {
+    // Im Rechenweg vier Stellen (wie die Versionen): mit zwei ginge die Rechnung sichtbar nicht auf.
     const je = `${zahlMitStellen(erwartetWert, 4, '').trimEnd()}${einheitKennzahl ? ` ${einheitWort(einheitKennzahl)}` : ''}`;
     return { vor: `Erwartet: ${je} aus der ${UEMS_BEZUGSBASIS} mal ${bedingungZahl(nenner.wert, nenner.einheit)} = `, fett: m.erwartet };
+  }
+  if (m.methode && m.methode !== 'verhaeltnis') {
+    return { vor: `Erwartet bei ${m.bedingung} nach ${MODELL_WORT[m.methode]}: `, fett: m.erwartet };
   }
   return { vor: `Erwartet bei ${m.bedingung}: `, fett: m.erwartet };
 }
@@ -594,6 +639,19 @@ export function basisKlartext(basis: Bezugsbasis, f: BezugsbasisFassung | null, 
   ];
   const frist = basis.frist ?? null;
   const wer = freigeberText(f);
+  // Die Fassung des Urteils kann am Stichtag schon abgelöst sein (Überprüfung): dann „bis …“ und wer danach gilt - nie
+  // „seit“ für eine Fassung, die nicht mehr gilt.
+  if (f.gilt_bis && f.gilt_bis < tag) {
+    const danach = basis.fassungen
+      .filter((x) => x.freigabe_status === 'freigegeben' && x.gilt_ab > (f.gilt_bis as string))
+      .sort((x, y) => x.gilt_ab.localeCompare(y.gilt_ab))[0];
+    zeilen.push({
+      name: 'Galt',
+      wert: `${tagText(f.gilt_ab)} bis ${tagText(f.gilt_bis)}${TRENNER}Fassung ${f.fassung}`,
+      leise: [wer, danach ? `seit ${tagText(danach.gilt_ab)} gilt Fassung ${danach.fassung}` : null].filter(Boolean).join(TRENNER) || null,
+    });
+    return zeilen;
+  }
   zeilen.push({
     name: 'Gilt',
     // Eine Fassung, die erst künftig gilt, heißt „ab …“ - nie „seit“ einem Tag, der noch nicht war.
@@ -617,13 +675,4 @@ export function urteilMarke(u: BezugsbasisUrteil | null, delta: string | null): 
   // „im Rahmen“ ohne „der Bezugsbasis“: in der Liste der Monate steht die Bezugsbasis schon im Titel der Karte.
   if (a) return { text: u === 'im_rahmen' ? 'im Rahmen' : a.wort, art: a.ton === 'neutral' ? 'neutral' : a.ton };
   return delta === null ? null : { text: 'ohne Urteil', art: 'ohne' };
-}
-
-/**
- * Die Leitkennzahl der Übersicht aus den offenen Energiezielen: unter den Kennzahlen mit offenem Ziel die mit dem
- * kleinsten Kennzeichen - dieselbe Wahl wie `PortfolioKpiService.leitkennzahl` und die Liste (`kennzahlListe.ts`).
- */
-export function leitkennzahlAusZielen(ziele: readonly Pick<Energieziel, 'zustand' | 'kennzahl'>[]): string | null {
-  const offen = ziele.filter((z) => z.zustand === 'offen').map((z) => z.kennzahl.kennzeichen);
-  return offen.length === 0 ? null : [...offen].sort()[0];
 }

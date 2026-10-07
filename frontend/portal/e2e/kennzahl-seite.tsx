@@ -20,7 +20,8 @@ import '../src/index.css';
  * Konzepts zur Bühnen-Uhr 30.04.2029 (`src/test/kennzahlSeiteFixtures.ts`), die Routen im Speicher.
  *
  * Adresse: `?kz=4|24` (Vorgabe 4: KZ-0004 Spritzguss gegen BB-0001; 24: Netzbezug Halle 1 ohne Bezugsbasis) ·
- * `&lage=ueber|besser|noch_kein_vergleich` · `&ebene=bezugsbasis` öffnet die Ebene darunter · `&person=IK|CB`.
+ * `&lage=ueber|besser|noch_kein_vergleich` · `&ebene=bezugsbasis` öffnet die Ebene darunter · `&person=IK|CB` ·
+ * `&methode=modell|gradtage` rechnet die Zeilen als Modell (BB-0001 Fassung 2 der Referenzwelt).
  * „Bezugsbasis ansehen“ und der Rückweg wechseln die Ebene in der Bühne selbst.
  */
 const params = new URLSearchParams(location.search);
@@ -29,7 +30,8 @@ setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 
 const lage = (params.get('lage') ?? 'ueber') as SeitenLage;
-Object.assign(api, seitenBuehne(lage));
+const methode = ({ modell: 'regression_eine_variable', gradtage: 'gradtage' } as const)[params.get('methode') ?? ''] ?? 'verhaeltnis';
+Object.assign(api, seitenBuehne(lage, methode));
 const kennzahlId = params.get('kz') === '24' ? SEITE_IDS.kz24 : SEITE_IDS.kz4;
 
 function Ansicht() {

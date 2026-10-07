@@ -1404,6 +1404,7 @@
       "datei": "pages/KennzahlSeite.tsx",
       "vorher": "601747584093f2148548368bf1113d4a0cc2f143f53618174998bccef4e583c6",
       "menue": "{ label: KNOPF_KOPIEREN, recht, standort: k.standort_id, onClick: () => onKopieren({ kennzahl: k, fassungen: stamm.fassungen }) }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
       "commit": "fm/vp-auswerten-bau-a1-pr2",
       "grund": "Konzept Auswerten a1 §6.5: Werkzeuge ins Menü ⋯ - „Kopieren“ ist ein Eintrag des RowMenu im Kopf der Seite; Beschriftung, Recht (kennzahl.*_definieren am Geltungsbereich) und Handler bleiben."
     },
@@ -1411,6 +1412,7 @@
       "datei": "pages/KennzahlSeite.tsx",
       "vorher": "5bfa68b64135e18339ee72c4cefbf3a71e44ac20a7e482420cba5ba94357bd0b",
       "menue": "{ label: E.KNOPF_BERECHNUNG_AENDERN, recht, standort: k.standort_id, onClick: () => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen }) }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
       "commit": "fm/vp-auswerten-bau-a1-pr2",
       "grund": "Konzept Auswerten a1 §6.5: „Berechnung ändern ab …“ steht im Menü ⋯ (nur an einer nicht archivierten Kennzahl); Beschriftung, Recht und Handler bleiben."
     },
@@ -1418,6 +1420,7 @@
       "datei": "pages/KennzahlSeite.tsx",
       "vorher": "bebcdf5235c1f22f838b706f3aa1755502fc42105011854d1817f81b122bb469",
       "menue": "{ label: E.KNOPF_STAMMDATEN, recht, standort: k.standort_id, onClick: () => setDialog('stammdaten') }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
       "commit": "fm/vp-auswerten-bau-a1-pr2",
       "grund": "Konzept Auswerten a1 §6.5: „Stammdaten ändern“ steht im Menü ⋯ und öffnet denselben KennzahlStammdatenDialog; Beschriftung und Recht bleiben."
     },
@@ -1425,6 +1428,7 @@
       "datei": "pages/KennzahlSeite.tsx",
       "vorher": "eb728bccb64376d0fe9c404963e6a261253e6157567287f00ff4e25a344168e8",
       "menue": "{ label: E.KNOPF_ARCHIVIEREN, recht, standort: k.standort_id, onClick: () => { setArchiv({ laeuft: false, fehler: null }); setDialog('archivieren'); } }",
+      "recht": "const recht = k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren';",
       "commit": "fm/vp-auswerten-bau-a1-pr2",
       "grund": "Konzept Auswerten a1 §6.5: „Archivieren“ steht im Menü ⋯ und öffnet denselben Bestätigungsdialog mit den Lesern der Kennzahl; Beschriftung, Recht und Handler bleiben."
     }

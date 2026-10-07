@@ -16,14 +16,27 @@ export type BezugsbasisLage =
   | { art: 'laedt' }
   | { art: 'fehler' }
   | { art: 'keine' }
-  | { art: 'da'; basis: Bezugsbasis; fassung: BezugsbasisFassung | null };
+  | {
+      art: 'da';
+      basis: Bezugsbasis;
+      /** Die Fassung am Stichtag - die, die heute gilt (Energieziel setzen, Ebene). */
+      fassung: BezugsbasisFassung | null;
+      /** Die Fassung am Tag des Urteils (P4), falls eine andere - sie steht neben dem Urteil der Seite. */
+      urteilsFassung?: BezugsbasisFassung | null;
+    };
 
 /**
  * Liest die laufende Bezugsbasis einer Kennzahl (UEMS AP-17 IP-9) über die EINE Naht `api.kennzahlBezugsbasen` und
  * dazu die Fassung, die die Basis-Zeile nennt (`GET …/fassungen/{n}`) - mit `stichtag` die an diesem Tag geltende bzw.
  * nächste (`fassungAm`). `an = false` fragt nichts ab (Anteil, B2).
  */
-export function useBezugsbasis(kennzahlId: string, an: boolean, versuch: number, stichtag?: string): BezugsbasisLage {
+export function useBezugsbasis(
+  kennzahlId: string,
+  an: boolean,
+  versuch: number,
+  stichtag?: string,
+  urteilsTag?: string,
+): BezugsbasisLage {
   const [lage, setLage] = useState<BezugsbasisLage>({ art: 'laedt' });
   useEffect(() => {
     if (!an) return;
@@ -38,13 +51,18 @@ export function useBezugsbasis(kennzahlId: string, an: boolean, versuch: number,
         const fassung = kurz
           ? await api.bezugsbasisFassung(kennzahlId, basis.id, kurz.fassung).catch(() => null)
           : null;
-        if (aktiv) setLage({ art: 'da', basis, fassung });
+        // Die Fassung des Urteils nur dann eigens lesen, wenn sie eine andere ist (Fassungswechsel am Stichtag).
+        const amUrteil = urteilsTag ? Bz.fassungAm(basis, urteilsTag) : kurz;
+        const urteilsFassung = amUrteil && amUrteil.fassung !== kurz?.fassung
+          ? await api.bezugsbasisFassung(kennzahlId, basis.id, amUrteil.fassung).catch(() => null)
+          : fassung;
+        if (aktiv) setLage({ art: 'da', basis, fassung, urteilsFassung });
       })
       .catch(() => aktiv && setLage({ art: 'fehler' }));
     return () => {
       aktiv = false;
     };
-  }, [kennzahlId, an, versuch, stichtag]);
+  }, [kennzahlId, an, versuch, stichtag, urteilsTag]);
   return lage;
 }
 

@@ -15,6 +15,7 @@ import { periodeText } from '../uemsKennzahl';
 import { vermerkDez } from './abweichungFixtures';
 import { bb1Fassung, BB_IDS } from './bezugsbasisFixtures';
 import { ez2028 } from './energiezielFixtures';
+import { leitkennzahlWieDerServer } from './kennzahlListeFixtures';
 import { ORT_IDS } from './ortsbaumFixtures';
 
 /**
@@ -370,15 +371,30 @@ export function kz24Seite(): Kennzahl {
 }
 
 /** Die Routen der Seite im Speicher: Kennzahl, Fassungen, Werte, Vergleich, Bezugsbasis, Energieziel, Auffälligkeit. */
-export function seitenBuehne(lage: SeitenLage = 'ueber'): Partial<typeof api> {
+/**
+ * Die Bühne der Seite; mit `methode` rechnet die Fassung der Zeilen als Modell statt als Verhältnis (Review r3: BB-0001
+ * Fassung 2 der Referenzwelt ist eine Regression) - dieselben Mengen, nur die Methode der Zeile ändert sich.
+ */
+export function seitenBuehne(
+  lage: SeitenLage = 'ueber',
+  methode: 'verhaeltnis' | 'regression_eine_variable' | 'gradtage' = 'verhaeltnis',
+): Partial<typeof api> {
   const bb = bb1Seite(lage);
   const kennzahl = (id: string) => (id === SEITE_IDS.kz24 ? kz24Seite() : kz4Seite(lage));
+  // Mit Auswertung nennt der Server, ob sie die Leitkennzahl ist (§10.8) - die Bühne nach seiner Regel.
+  const leit = leitkennzahlWieDerServer([kz4Seite(lage), kz24Seite()]);
   return {
-    kennzahl: async (id: string) => kennzahl(id),
+    kennzahl: async (id: string, mit?: 'auswertung') => (mit ? { ...kennzahl(id), leitkennzahl: id === leit } : kennzahl(id)),
     kennzahlFassungen: async (id: string) => ({ kennzahl: { id, kennzeichen: kennzahl(id).kennzeichen }, fassungen: fassungenSeite(id) }) as never,
     kennzahlen: async () => ({ kennzahlen: [kz4Seite(lage), kz24Seite()], ausserhalb_zugriff: null }) as never,
     kennzahlWerte: async (id: string) => werteSeite(id, lage),
-    bezugsbasisVergleich: async () => vergleichKz4(lage),
+    bezugsbasisVergleich: async () => {
+      const v = vergleichKz4(lage);
+      return methode === 'verhaeltnis' ? v : {
+        ...v,
+        monate: v.monate.map((z) => (z.bereinigt.fassung ? { ...z, bereinigt: { ...z.bereinigt, fassung: { ...z.bereinigt.fassung, methode } } } : z)),
+      };
+    },
     kennzahlBezugsbasen: async (id: string) => ({ bezugsbasen: id === SEITE_IDS.kz4 ? [bb.basis] : [] }) as never,
     bezugsbasisFassung: async (_k: string, _b: string, n: number) => bb.fassungen[n - 1],
     bezugsbasisUebersicht: async () => ({ faellig: [] }) as never,

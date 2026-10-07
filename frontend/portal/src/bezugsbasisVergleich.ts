@@ -131,7 +131,8 @@ export const VERGLEICH_SPALTEN = {
   kennzeichen: 'Kennzeichen',
 } as const;
 export const VERGLEICH_LADEFEHLER = 'Der Vergleich konnte nicht geladen werden.';
-export const VERGLEICH_ZUM_REITER_BEZUGSBASIS = `Die ${UEMS_BEZUGSBASIS} legen Sie im Reiter „${UEMS_BEZUGSBASIS}“ fest.`;
+/** Der Weg zur Bezugsbasis seit PR2 (kein Reiter mehr): die Seite der Kennzahl mit „Bezugsbasis festlegen“ (Review r3). */
+export const VERGLEICH_WEG_ZUR_BEZUGSBASIS = `Die ${UEMS_BEZUGSBASIS} legen Sie auf der Seite der Kennzahl fest („${UEMS_BEZUGSBASIS} festlegen“).`;
 export const VERGLEICH_ZEITRAUM_UNGUELTIG = 'Der erste Monat muss vor dem letzten liegen.';
 
 const METHODE_WORT: Record<string, string> = Object.fromEntries(
@@ -325,7 +326,7 @@ function zeitraumBild(v: BezugsbasisVergleich): ZeitraumBild {
 /** Das Bild des Reiters; ohne Bezugsbasis nur der Leer-Satz des Lesers (R10: kein Vergleich, kein Urteil). */
 export function vergleichBild(v: BezugsbasisVergleich): VergleichBild {
   if (v.bezugsbasis === null) {
-    return { art: 'leer', satz: v.satz ?? v.monate[0]?.satz ?? '', hinweis: VERGLEICH_ZUM_REITER_BEZUGSBASIS, standSatz: standSatz(v) };
+    return { art: 'leer', satz: v.satz ?? v.monate[0]?.satz ?? '', hinweis: VERGLEICH_WEG_ZUR_BEZUGSBASIS, standSatz: standSatz(v) };
   }
   return {
     art: 'vergleich',

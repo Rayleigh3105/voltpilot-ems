@@ -58,6 +58,16 @@ async function bild(page: Page, name: string) {
 
 for (const breite of [375, 1440]) {
   test.describe(`Seite einer Kennzahl — ${breite} px`, () => {
+    test('Woraus gerechnet mit einem Modell (Review r3, BB-0001 F2): kein „aus der Bezugsbasis mal“, die Bedingung und das Modell', async ({ page }) => {
+      await oeffne(page, 'kz=4&methode=modell', breite);
+      const erwartet = page.getByTestId('kennzahl-erwartet');
+      await expect(erwartet).toHaveText(`Erwartet bei 306.000${NB}kg Produktionsmenge nach dem Modell der Bezugsbasis: 86.812${NB}kWh.`);
+      await expect(erwartet).not.toContainText(' mal ');
+      await erwartet.scrollIntoViewIfNeeded();
+      await ohneQuerlauf(page);
+      await bild(page, `woraus-modell-${breite}`);
+    });
+
     test('Antwort zuerst: Satz, Verlässlichkeit, Kachel, Energieziel, Grafik mit Fazit, Rechenweg', async ({ page }) => {
       await oeffne(page, 'kz=4', breite);
       await expect(page.getByTestId('kennzahl-antwort')).toContainText(

@@ -227,7 +227,7 @@ function FassungKarte({
   onBearbeiten: () => void;
   stichtag: string;
 }) {
-  const zustand = F.fassungZustand(f);
+  const zustand = F.fassungZustand(f, stichtag);
   const wer = f.freigabe !== undefined ? F.freigeberText({ freigabe_status: f.freigabe_status, freigabe: f.freigabe, entscheidung: f.entscheidung, freigegeben_am: f.freigegeben_am }) : null;
   const anpassung = F.anpassungText(f);
   const wert = f.basiswert
