@@ -3,13 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, type Energieziel, type EnergiezielStand, type Kennzahl } from './api';
 import { EnergiezielSetzenFuehrung, fruehesterBeginn, zeitraumWahl } from './components/EnergiezielSetzenFuehrung';
 import * as B from './energiezielBild';
+import * as Z from './energieziele';
 import { EnergiezielSeite } from './pages/EnergiezielSeite';
 import { setSelbstauskunft } from './rollen';
 import { merkeAbruf, vergissAbruf } from './routenUhr';
 import { kz4 } from './test/bezugsbasisFixtures';
 import { energiezielBuehne, ez2028, EZ_IDS, standJuli, standLeer } from './test/energiezielFixtures';
 import { m1, m1Umgesetzt, wirkungR5 } from './test/massnahmeFixtures';
-import { rechteSeed } from './test/rollenFixtures';
+import { rechteSeed, STANDORT_IDS } from './test/rollenFixtures';
 
 /**
  * Konzept Verbessern v1, PR 1 (Energieziele): das reine Bild - Antwort zuerst, Skala, Kacheln in kWh, „Was noch nötig
@@ -153,6 +154,25 @@ describe('Monate: Grafik und Liste mit Grund (§6.4, Befund 1)', () => {
     expect(zeilen.map((z) => z.titel)).toEqual(['April 2029', 'März 2029']);
     expect(spaeter).toBe('Mai bis Dezember 2029 haben noch nicht begonnen.');
   });
+  it('ein beendeter, noch nicht endgültiger Monat nennt den Grund der Route - nie geraten (Review r1 S-1.1)', () => {
+    const s = { ...standMaerz(), abruf: '2029-04-02' };
+    // Kurz nach Monatsende, die Produktionsmenge fehlt noch: der Satz der Route, kein „läuft noch“.
+    s.monate[0] = {
+      periode: '2029-03',
+      endgueltig: false,
+      vergleich: monat('2029-03', { g: '88740', grund: 'variable_fehlt', satz: 'März 2029: nicht bewertbar — die Produktionsmenge fehlt.' }),
+    };
+    expect(B.monatsPunkte(s)[0]).toMatchObject({ art: 'vorlaeufig', grund: 'die Produktionsmenge fehlt' });
+    // Ohne gemessenen Wert, mit Grund der Route: „kein Wert“, der Grund wie die Route ihn sagt.
+    s.monate[0] = { periode: '2029-03', endgueltig: false, vergleich: monat('2029-03', { grund: 'keine_werte', satz: 'März 2029: nicht bewertbar — kein gemessener Wert.' }) };
+    expect(B.monatsPunkte(s)[0]).toMatchObject({ art: 'fehlt', grund: 'kein gemessener Wert' });
+    // Wert da, die Route nennt keinen Grund: nur dann „noch nicht endgültig“, ohne erfundenen Tag.
+    s.monate[0] = { periode: '2029-03', endgueltig: false, vergleich: monat('2029-03', { g: '88740', e: '86812.2', d: '2.2', urteil: 'schlechter' }) };
+    expect(B.monatsPunkte(s)[0]).toMatchObject({ art: 'vorlaeufig', grund: Z.NOCH_NICHT_ENDGUELTIG });
+    // Ein Grund ohne Satz der Route (`basis_fehlt` ohne Bezugsbasis) lässt die Zelle nicht leer.
+    s.monate[0] = { periode: '2029-03', endgueltig: false, vergleich: monat('2029-03', { g: '88740', grund: 'basis_fehlt', satz: '' }) };
+    expect(B.monatsPunkte(s)[0]).toMatchObject({ art: 'vorlaeufig', grund: 'nicht bewertbar' });
+  });
   it('zwölf Monate ohne Wert stehen in einer Zeile - nicht zwölfmal derselbe Satz', () => {
     const s = { ...standLeer(ez2028()), abruf: '2029-04-30' };
     s.monate = s.monate.map((m) => ({ ...m, vergleich: monat(m.periode, { grund: 'keine_werte' }) }));
@@ -219,8 +239,8 @@ describe('Maßnahmen am Energieziel (Entscheid 5)', () => {
 });
 
 describe('„Energieziel setzen“ geführt (§6.9)', () => {
-  const montage = (): Kennzahl =>
-    kz4({ id: 'kz-21', kennzeichen: 'KZ-0021', name: 'Stromeinsatz Montage je Stück', geltung_name: 'Halle 1', bezugsbasis: { kennzeichen: 'BB-0006', fassung: 1, freigabe_status: 'freigegeben', vorlaeufig: false } });
+  const montage = (over: Partial<Kennzahl> = {}): Kennzahl =>
+    kz4({ ...over, id: 'kz-21', kennzeichen: 'KZ-0021', name: 'Stromeinsatz Montage je Stück', geltung_name: 'Halle 1', bezugsbasis: { kennzeichen: 'BB-0006', fassung: 1, freigabe_status: 'freigegeben', vorlaeufig: false } });
   const spritzguss = (): Kennzahl =>
     kz4({ name: 'Stromeinsatz Spritzguss je kg', bezugsbasis: { kennzeichen: 'BB-0001', fassung: 2, freigabe_status: 'freigegeben', vorlaeufig: true } });
 
@@ -232,6 +252,24 @@ describe('„Energieziel setzen“ geführt (§6.9)', () => {
       { wert: '2030-01/2030-12', label: '2030' },
     ]);
     expect(zeitraumWahl('2030-01').map((w) => w.label)).toEqual(['2030', '2031']);
+  });
+
+  it('nur Kennzahlen, an deren Geltung die Person Energieziele setzen darf (Review r1 S-1.5)', async () => {
+    // Peter Hollerbach verwaltet nur an ST-2: KZ-0021 dort ja, KZ-0004 am Unternehmen nicht.
+    setSelbstauskunft(rechteSeed('PH').me);
+    merkeAbruf('2029-04-30');
+    Object.assign(api, {
+      kennzahlen: async () => ({ kennzahlen: [spritzguss(), montage({ standort_id: STANDORT_IDS['ST-2'] })] }),
+      energieziele: async () => ({ energieziele: [] }),
+    });
+    render(<EnergiezielSetzenFuehrung onClose={() => undefined} onGesetzt={vi.fn()} />);
+    expect(await screen.findByTestId('energieziel-setzen-kennzahl-KZ-0021')).toBeTruthy();
+    expect(screen.queryByTestId('energieziel-setzen-kennzahl-KZ-0004')).toBeNull();
+    cleanup();
+
+    Object.assign(api, { kennzahlen: async () => ({ kennzahlen: [spritzguss()] }) });
+    render(<EnergiezielSetzenFuehrung onClose={() => undefined} onGesetzt={vi.fn()} />);
+    expect((await screen.findByTestId('energieziel-setzen-keine-kennzahl')).textContent).toMatch(/^An Ihren Standorten hat noch keine Kennzahl/);
   });
 
   it('Kennzahl wählen, Wert und Zeitraum, prüfen - gesendet wird, was dasteht', async () => {
@@ -257,6 +295,11 @@ describe('„Energieziel setzen“ geführt (§6.9)', () => {
     await act(async () => fireEvent.click(screen.getByTestId('energieziel-setzen-weiter')));
     expect(anlegen).not.toHaveBeenCalled();
     expect(screen.getByText(/Eine Zahl zwischen 0 und 100/)).toBeTruthy();
+    // Unter „Wie viel weniger?“ wird ein eingetipptes Minus nicht still zu „mehr“ (Review r1 S-1.4).
+    fireEvent.change(screen.getByTestId('energieziel-setzen-betrag'), { target: { value: '-4' } });
+    await act(async () => fireEvent.click(screen.getByTestId('energieziel-setzen-weiter')));
+    expect(screen.getByText('Bitte ohne Vorzeichen. Für mehr wählen Sie „Mehr zulassen“.').getAttribute('role')).toBe('alert');
+    expect(screen.queryByTestId('energieziel-setzen-pruefen')).toBeNull();
     fireEvent.change(screen.getByTestId('energieziel-setzen-betrag'), { target: { value: '3' } });
     fireEvent.change(screen.getByTestId('energieziel-setzen-begruendung'), { target: { value: 'Neue Druckluftleitung in der Montage.' } });
     expect(screen.getByRole('button', { name: 'Mai bis Dezember 2029' }).getAttribute('aria-pressed')).toBe('true');

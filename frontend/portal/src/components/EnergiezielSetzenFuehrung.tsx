@@ -6,6 +6,7 @@ import type { BezugsbasisVergleichZeitraum } from '../bezugsbasisVergleich';
 import * as B from '../energiezielBild';
 import * as Z from '../energieziele';
 import { UEMS_NORMGRENZE } from '../glossar';
+import { useRollen } from '../rollen';
 import { useRoutenHeute } from '../routenUhr';
 import { VpPicker } from './VpPicker';
 import '../pages/Energieziele.css';
@@ -109,7 +110,11 @@ export function EnergiezielSetzenFuehrung({
     };
   }, [versuch]);
 
-  const kennzahl = daten.art === 'da' ? (daten.kennzahlen.find((k) => k.id === kz) ?? null) : null;
+  // Nur Kennzahlen, an deren Geltung die Person Energieziele setzen darf - sonst lehnte erst die Route im dritten
+  // Schritt ab (Review r1 S-1.5). Die Route entscheidet weiter selbst.
+  const rollen = useRollen();
+  const waehlbar = daten.art === 'da' ? daten.kennzahlen.filter((k) => rollen.darf('verbesserung.verwalten', k.standort_id ?? null)) : [];
+  const kennzahl = waehlbar.find((k) => k.id === kz) ?? null;
   const laufendHier = daten.art === 'da' && kz ? daten.laufend.filter((ez) => ez.kennzahl.id === kz) : [];
   const start = heute ? fruehesterBeginn(heute, laufendHier) : null;
   const wahl = useMemo(() => (start ? zeitraumWahl(start) : []), [start]);
@@ -141,8 +146,11 @@ export function EnergiezielSetzenFuehrung({
     titelRef.current?.focus();
   }, [schritt]);
 
+  // Die Richtung sagt der Schalter „Mehr zulassen“, nie ein Vorzeichen im Feld: ein eingetipptes Minus würde sonst
+  // still aus „weniger“ ein „mehr“ (Review r1 S-1.4).
+  const mitVorzeichen = /^\s*[-+−]/.test(betrag);
   const zielwert = (() => {
-    const w = Z.zielwertAusEingabe(betrag);
+    const w = mitVorzeichen ? null : Z.zielwertAusEingabe(betrag);
     return w === null ? null : mehr ? -w : w;
   })();
   const zielwertText = zielwert === null ? null : zielwert.toFixed(1);
@@ -162,7 +170,13 @@ export function EnergiezielSetzenFuehrung({
     }
     if (schritt === 2) {
       const f = {
-        ...(zielwert === null ? { betrag: 'Eine Zahl zwischen 0 und 100 mit höchstens einer Nachkommastelle, zum Beispiel 4 oder 2,5.' } : {}),
+        ...(zielwert === null
+          ? {
+              betrag: mitVorzeichen
+                ? `Bitte ohne Vorzeichen. ${mehr ? 'Für weniger wählen Sie „Doch weniger vornehmen“.' : 'Für mehr wählen Sie „Mehr zulassen“.'}`
+                : 'Eine Zahl zwischen 0 und 100 mit höchstens einer Nachkommastelle, zum Beispiel 4 oder 2,5.',
+            }
+          : {}),
         ...(!zpOk ? { periode: start ? `Der Zeitraum beginnt frühestens im ${B.monatLang(start)} und endet nicht vor seinem Beginn.` : 'Bitte wählen Sie einen Zeitraum.' } : {}),
         ...(!Z.begruendungOk(begruendung) ? { begruendung: 'Bitte schreiben Sie in ein bis zwei Sätzen, warum (mindestens zehn Zeichen).' } : {}),
       };
@@ -247,13 +261,15 @@ export function EnergiezielSetzenFuehrung({
           </div>
         ) : schritt === 1 ? (
           <>
-            {daten.kennzahlen.length === 0 ? (
+            {waehlbar.length === 0 ? (
               <p className="vp-ezl-text" data-testid="energieziel-setzen-keine-kennzahl">
-                Noch hat keine Kennzahl eine freigegebene Bezugsbasis. Legen Sie sie unter Auswerten an der Kennzahl fest - dann lässt sich ein Energieziel setzen.
+                {daten.kennzahlen.length === 0
+                  ? 'Noch hat keine Kennzahl eine freigegebene Bezugsbasis. Legen Sie sie unter Auswerten an der Kennzahl fest - dann lässt sich ein Energieziel setzen.'
+                  : 'An Ihren Standorten hat noch keine Kennzahl eine freigegebene Bezugsbasis. Legen Sie sie unter Auswerten an der Kennzahl fest - dann lässt sich ein Energieziel setzen.'}
               </p>
             ) : (
               <div className="vp-ezf-wahl" role="radiogroup" aria-labelledby={`${basis}-kennzahl`} id={`${basis}-kennzahl`} tabIndex={-1}>
-                {daten.kennzahlen.map((k) => {
+                {waehlbar.map((k) => {
                   const belegt = daten.laufend.filter((ez) => ez.kennzahl.id === k.id);
                   const ab = heute ? fruehesterBeginn(heute, belegt) : null;
                   const unter = [k.geltung_name, `Bezugsbasis ${k.bezugsbasis?.kennzeichen ?? ''}${k.bezugsbasis?.vorlaeufig ? ' (vorläufig)' : ''}`];

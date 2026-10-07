@@ -15,6 +15,7 @@ import type {
 } from './api';
 import { runden } from './bezugsbasis';
 import { dez, dezText } from './dez';
+import { MONAT_LAEUFT, MONAT_OHNE_WERT, offenGrund } from './energieziele';
 
 export type Ton = 'ok' | 'warn' | 'rahmen' | 'ohne';
 export type Lage = EnergiezielKurs['lage'];
@@ -167,7 +168,7 @@ export interface MonatsPunkt {
   gemessen: string | null;
   erwartet: string | null;
   hoechstens: string | null;
-  /** Ohne Zahl: warum („läuft noch - endgültig etwa ab 07.05.2029“, „kein gemessener Wert“, Satz der Route). */
+  /** Ohne Zahl: warum - der Grund der Route („läuft noch - endgültig etwa ab 07.05.2029“, „kein gemessener Wert“, ihr Satz). */
   grund: string | null;
 }
 
@@ -207,12 +208,13 @@ export function monatsPunkte(stand: Pick<EnergiezielStand, 'monate' | 'nicht_gez
       };
     }
     if (endgueltig) return { ...leer, art: 'ausgeschlossen', grund: ohneMonat(v.satz) };
-    const ab = endgueltigAb(periode);
-    if (ab > stand.abruf || periode === abrufMonat) {
-      return { ...leer, art: 'vorlaeufig', grund: `läuft noch - endgültig etwa ab ${tag(ab)}` };
+    // Nicht endgültig: der Grund der Route (Befund 1), nie geraten. Nur ein laufender Monat bekommt den geschätzten
+    // Tag dazu - die Route nennt ihn nicht, die Frist danach ist die übliche Woche.
+    if (b.grund === 'periode_nicht_zu_ende') {
+      return { ...leer, art: 'vorlaeufig', grund: `${MONAT_LAEUFT} - endgültig etwa ab ${tag(endgueltigAb(periode))}` };
     }
-    if (b.gemessen.wert === null) return { ...leer, art: 'fehlt', grund: 'kein gemessener Wert' };
-    return { ...leer, art: 'vorlaeufig', grund: 'noch nicht endgültig' };
+    if (b.gemessen.wert === null) return { ...leer, art: 'fehlt', grund: b.grund ? offenGrund(v) : MONAT_OHNE_WERT };
+    return { ...leer, art: 'vorlaeufig', grund: offenGrund(v) };
   });
 }
 
