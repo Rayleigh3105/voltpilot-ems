@@ -106,6 +106,12 @@
   white-space: nowrap;
   cursor: pointer;
 }
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche. */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-ms-link {
+    min-height: 44px;
+  }
+}
 @media (hover: hover) {
   .vp-ms-link:hover {
     text-decoration: underline;
