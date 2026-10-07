@@ -11,7 +11,7 @@ Die VoltPilot-Box als **ein einziges Programm** – ohne Docker, ohne Node-RED. 
 | | |
 |---|---|
 | **Funktioniert** | Alles, was der Go-Core heute schon kann (Kopplung, Cloud-Verbindung, Pufferung, Fahrplan, Schutzgrenzen, OCPP-Lastmanagement inkl. PV-Überschussladen, Shelly, lokale Web-App `:8484`), **plus** Deye lesen über den Solarman-Datenlogger (alle vier Gerätefamilien) und „Verbindung testen" für den Deye |
-| **Noch nicht** | Alle anderen Lesewege, Wechselrichter-Steuerung (und damit die Speicherfreigabe von „Sonne + Speicher“, die Box fährt dort „Nur Sonne“), weitere Energiequellen, Kundenautomationen – siehe [Paritätsliste](docs/paritaet.md). Nicht unterstützte Anbindungen werden **benannt**, nie still übergangen |
+| **Noch nicht** | Alle anderen Lesewege, Wechselrichter-Steuerung (bei „Sonne + Speicher“ gibt die Box den nur gelesenen Speicher als *beobachtet* frei, `frei_beobachtet`; eine Ladungsabsenkung gibt es ohne Steuerung nicht), weitere Energiequellen, Kundenautomationen – siehe [Paritätsliste](docs/paritaet.md). Nicht unterstützte Anbindungen werden **benannt**, nie still übergangen |
 | **Bewiesen** | Gemeinsame Testvektoren mit Node-RED (23 Dekodier- und 50 Protokollfälle), Integrationstest „unveränderter Core + Go-Schicht 1", MIPS-Programm unter Emulation ([Smoke-Test](test/qemu-smoke.sh)) |
 | **Offen vor einem Kundeneinsatz** | Signierte Startkette und Updates ([Stufe 2](docs/boot-und-updates.md)), Pilot auf einem echten Mango ([Mango-Notizen](docs/mango.md)) |
 

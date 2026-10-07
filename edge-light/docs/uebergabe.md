@@ -2,11 +2,16 @@
 
 Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen und für einen KI-Assistenten. Sie fasst zusammen, was seit dem 03.10.2026 entschieden, gebaut und gemessen wurde. Alles Weitere steht in den verlinkten Dokumenten.
 
-## Stand 07.10.2026: `main` zusammengeführt, „Sonne + Speicher“
+## Stand 07.10.2026: Edge Light ist auf `main`
+
+- **Edge Light ist nach `main` gemergt** (ein Merge-Commit, keine Umschreibung). Edge-Light-Arbeit entsteht ab jetzt auf `main`; `feature/edge-light` bleibt stehen, bis er gelöscht wird. Beide Box-Arten bestehen dauerhaft nebeneinander (Entscheid 07.10.2026).
+- **„Sonne + Speicher“ gibt auf Edge Light Speicherenergie frei**, seit #1449 als *beobachteter* Speicher: Der Deye des Piloten hat keine Gerätefreigabe, VoltPilot steuert ihn nicht, die Box beobachtet Ladestand und Speicherleistung. Stufe `frei_beobachtet`, das Auto bekommt Sonne plus Speicher bis zur Untergrenze; an der Untergrenze und bei gemessenem Netzbezug (Wirkungsprüfung) nimmt die Box die Freigabe zurück. Eine geplante Ladung senkt sie dabei nicht ab (kein Schreibhebel). Beleg im Simulator: `agent/ocpp_release_light_test.go` (Pilotfall), die Regeln in `agent/ocpp_release_observed_test.go`. Wirkung am Mango erst mit einem neuen Programm; dort läuft weiter `edge-light-g5af8b452d`. Offen bleibt, dass der Cloud-Fahrplan den Speicher als gesteuert plant (Handels-Viertelstunden geben nichts frei, siehe #1449 „Offener Punkt: Optimierer“).
+
+## Stand 07.10.2026 (vormittags): `main` zusammengeführt, „Sonne + Speicher“
 
 - **`main` ist in `feature/edge-light` gemergt** (ein Merge-Commit, keine Umschreibung). Damit sind die Cherry-Picks #1380, #1382, #1383, #1385 und #1395 erledigt (inhaltsgleich mit `main`), dazu kamen #1409 (Portal) und #1443 „Sonne + Speicher“. Auf dem Mango läuft unverändert `edge-light-g5af8b452d`; nichts eingespielt.
 - **Programm `linux/mipsle`:** 14 614 743 B roh (13,9 MiB, unverändert, weil die Segmente auf 64 KiB aufgerundet werden), gzip -9 4 679 121 B (+14 KB gegenüber `733e5d3a4`). Flash und RAM bleiben im Budget von [mango.md](mango.md#speicherbudget).
-- **„Sonne + Speicher“ gibt auf Edge Light keine Speicherenergie frei.** Die Box meldet `speicherpfad` („VoltPilot führt den Speicher gerade nicht … ohne bestätigte Rückmeldung“), das Auto lädt wie bei „Nur Sonne“. Grund: `BatteryReady` verlangt eine gehaltene Rücklesung (`edge/control/readback`), und die Go-Schicht 1 liest den Deye nur. An der Untergrenze wirkt die Regel trotzdem (Speicher zuerst, auch bei „Autos zuerst“). Das Portal bietet den Chip trotzdem an (Sperrgründe nur: keine PV, keine OCPP-Säule, kein Speicher, keine Kapazität). Beleg: `agent/ocpp_release_light_test.go`. Für eine Freigabe braucht es die Deye-Steuerung ([Paritätsliste](paritaet.md), C) oder eine Produktentscheidung, ob ein Speicher, den VoltPilot nicht steuert, als bereit gelten darf.
+- *(Überholt durch #1449, siehe oben.)* **„Sonne + Speicher“ gab auf Edge Light keine Speicherenergie frei.** Die Box meldete `speicherpfad` („VoltPilot führt den Speicher gerade nicht … ohne bestätigte Rückmeldung“), das Auto lud wie bei „Nur Sonne“. Grund: `BatteryReady` verlangt eine gehaltene Rücklesung (`edge/control/readback`), und die Go-Schicht 1 liest den Deye nur. An der Untergrenze wirkt die Regel trotzdem (Speicher zuerst, auch bei „Autos zuerst“). Das Portal bietet den Chip trotzdem an (Sperrgründe nur: keine PV, keine OCPP-Säule, kein Speicher, keine Kapazität). Beleg: `agent/ocpp_release_light_test.go`. Für eine Freigabe braucht es die Deye-Steuerung ([Paritätsliste](paritaet.md), C) oder eine Produktentscheidung, ob ein Speicher, den VoltPilot nicht steuert, als bereit gelten darf.
 
 ## Stand 05.10.2026: Pilot Anlage Dirolf (`edge-zay5sdd`)
 
@@ -78,7 +83,7 @@ Ein **anderer GL.iNet-Router** nutzt ebenfalls 192.168.1.1 (WLAN „VoltPilot En
 | Überschussladen mit der go-e **über OCPP** (Core-Weg „Nur Sonnenstrom") | Folgt dem Überschuss stromgenau; der HTTP-Weg schaltet nur ab Schwelle mit Nennleistung |
 | Keine Home-Assistant-Brücke | Projektbeschluss: nur eigene Gerätetreiber |
 
-## Gebaut (Stufe 1) – Branch `feature/edge-light`
+## Gebaut (Stufe 1) – damals Branch `feature/edge-light`, jetzt `main`
 
 | Was | Wo |
 |---|---|
@@ -114,7 +119,7 @@ passwd                                  # root-Passwort setzen
 Vom eigenen Rechner aus, der den Mango per SSH erreicht:
 
 ```bash
-git fetch && git checkout feature/edge-light
+git fetch && git checkout main
 edge-light/scripts/test.sh                                   # alles grün?
 edge-light/test/mango-labtest.sh <mango-ip>                   # nur Start + Messung
 edge-light/test/mango-labtest.sh <mango-ip> <deye-ip> <logger-seriennummer> [modell-id]
