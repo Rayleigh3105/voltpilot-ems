@@ -6,7 +6,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type BewertungRanglisteEinsatz, type Energieeinsatz, type EnergieeinsatzAenderung, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ablehnung,
-  bewertungZeitraum,
   BEENDEN_KNOPF,
   darfVerwalten,
   darfEinstufen,
@@ -40,6 +39,7 @@ import { MessbedarfKarte } from '../components/Messplanung';
 import { NachweiseAmEinsatz } from '../components/Nachweise';
 import { ErrorState, Skeleton } from '../components/States';
 import { useRollen } from '../rollen';
+import { useBewertungZeitraum } from '../useBewertungZeitraum';
 
 /**
  * Die Seite eines Energieeinsatzes (UEMS AP-16 IP-6, `#/portfolio/bewertung/{id}`): Prozess, Träger, Verbraucher,
@@ -57,7 +57,8 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
   const { selbst } = useRollen();
   const verwalten = darfVerwalten(selbst);
   const einstufen = darfEinstufen(selbst);
-  const zeitraum = bewertungZeitraum();
+  // Konzept Auswerten a1, Befund 2: dieselbe Datengrundlage wie die Bewertung, nie ein einzelner Monat.
+  const { bereit, zeitraum } = useBewertungZeitraum();
   const [einsatz, setEinsatz] = useState<Energieeinsatz | null>(null);
   const [protokoll, setProtokoll] = useState<EnergieeinsatzAenderung[] | null>(null);
   const [rang, setRang] = useState<BewertungRanglisteEinsatz | null>(null);
@@ -67,6 +68,7 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
   const [dialog, setDialog] = useState<'bearbeiten' | 'beenden' | 'einstufen' | null>(null);
 
   useEffect(() => {
+    if (!bereit) return;
     let aktiv = true;
     setFehler(null);
     Promise.all([api.energieeinsatz(id), api.energieeinsatzProtokoll(id), api.bewertungRangliste(zeitraum.von, zeitraum.bis), api.energieeinsatzEinstufungen(id)]).then(
@@ -82,7 +84,7 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
     return () => {
       aktiv = false;
     };
-  }, [id, versuch, zeitraum.bis, zeitraum.von]);
+  }, [bereit, id, versuch, zeitraum.bis, zeitraum.von]);
 
   const neu = (e: Energieeinsatz) => {
     setEinsatz(e);

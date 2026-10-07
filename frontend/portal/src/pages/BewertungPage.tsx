@@ -4,13 +4,12 @@ import { BegriffeZeile } from '../components/BegriffeZeile';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bericht, type BewertungMessabdeckungOrt, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
+import { api, type BewertungMessabdeckungOrt, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ANLEGEN_KNOPF,
   darfVerwalten,
   darfEinstufen,
   darfKriterienAendern,
-  bewertungZeitraum,
   EINSAETZE_TITEL,
   einsatzZeile,
   ERSTER_EINSATZ_KNOPF,
@@ -28,7 +27,7 @@ import {
   umfangKarte,
   type EinsatzZeile,
 } from '../bewertung';
-import { bewertungWaehlen, darfBewertung, fristKopf, kriterienAnstoss } from '../bewertungStand';
+import { bewertungWaehlen, fristKopf, kriterienAnstoss } from '../bewertungStand';
 import { BewertungStand } from '../components/BewertungStand';
 import { EnergieeinsatzAnlegenDialog } from '../components/EnergieeinsatzDialoge';
 import { RanglisteBereich } from '../components/BewertungEntscheidungen';
@@ -38,6 +37,7 @@ import { MessbedarfErfassenDialog, MessplanungStandorte } from '../components/Me
 import { ErrorState, Skeleton } from '../components/States';
 import { UmfangDialog } from '../components/UmfangDialog';
 import { useRollen } from '../rollen';
+import { useBewertungZeitraum } from '../useBewertungZeitraum';
 import { EnergieeinsatzSeite } from './EnergieeinsatzSeite';
 import './BewertungPage.css';
 
@@ -69,7 +69,6 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
   const verwalten = darfVerwalten(selbst);
   const einstufen = darfEinstufen(selbst);
   const kriterienAendern = darfKriterienAendern(selbst);
-  const zeitraum = useMemo(() => bewertungZeitraum(), []);
   const [liste, setListe] = useState<Energieeinsatz[] | null>(null);
   const [umfang, setUmfang] = useState<BewertungUmfang | null>(null);
   const [rangliste, setRangliste] = useState<BewertungRangliste | null>(null);
@@ -82,23 +81,13 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
   const [planVersion, setPlanVersion] = useState(0);
   // AP-16 IP-25: die Bewertung ist ein Bericht — Stand, Frist und Anstoß-Satz lesen `GET /api/v1/berichte` (nur mit
   // `bewertung.abrufen`); scheitert die Liste, fehlt nur der Bewertungsstand, nie die Seite.
-  const abrufen = darfBewertung(selbst);
-  const [berichte, setBerichte] = useState<Bericht[] | null>(null);
+  // Konzept Auswerten a1, Befund 2: Rangliste und Messabdeckung gelten für die Datengrundlage dieser Bewertung.
   const [berichteVersion, setBerichteVersion] = useState(0);
-  useEffect(() => {
-    if (!abrufen) return;
-    let aktiv = true;
-    api.berichte().then(
-      (r) => aktiv && setBerichte(r.berichte),
-      () => aktiv && setBerichte(null),
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [abrufen, berichteVersion]);
+  const { abrufen, berichte, bereit, zeitraum } = useBewertungZeitraum(berichteVersion);
   const frist = abrufen ? fristKopf(bewertungWaehlen(berichte)) : null;
 
   useEffect(() => {
+    if (!bereit) return;
     let aktiv = true;
     setFehler(null);
     Promise.all([api.energieeinsaetze(), api.bewertungUmfang(), api.bewertungRangliste(zeitraum.von, zeitraum.bis)]).then(
@@ -115,7 +104,7 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
     return () => {
       aktiv = false;
     };
-  }, [versuch, zeitraum.bis, zeitraum.von]);
+  }, [bereit, versuch, zeitraum.bis, zeitraum.von]);
 
   const karte = useMemo(() => {
     if (!umfang) return null;
