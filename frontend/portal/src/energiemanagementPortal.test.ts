@@ -229,3 +229,15 @@ describe('UEMS AP-19 IP-15 · Nachweise am Einsatz und an der Person (§5.3, R7,
   });
 });
 
+describe('Review r1, P2-7: der Tag eines Zeitpunkts', () => {
+  it('ein Tag bleibt der Tag; ein Zeitpunkt zählt mit seinem Kalendertag in Berlin (Winter- und Sommerzeit), nie mit dem UTC-Tag', () => {
+    expect(E.tagText('2029-03-19')).toBe('19.03.2029');
+    expect(E.tagText('2029-03-19T23:30:00Z')).toBe('20.03.2029');
+    expect(E.tagText('2029-07-19T22:30:00Z')).toBe('20.07.2029');
+    expect(E.tagText('2029-07-19T21:30:00Z')).toBe('19.07.2029');
+    expect(E.tagText('2029-03-20T00:30:00+01:00')).toBe('20.03.2029');
+    expect(E.tagText(null)).toBe('');
+    expect(E.tagIso('2029-03-19T23:30:00Z')).toBe('2029-03-20');
+  });
+});
+

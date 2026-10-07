@@ -242,7 +242,9 @@ button.vp-nw-fz {
 }
 .vp-nw-zl:focus-visible,
 .vp-nw-fz:focus-visible,
-.vp-nw-wg-k:focus-visible {
+.vp-nw-wg-k:focus-visible,
+/* „Original prüfen“ ist ein <label> um ein verstecktes Datei-Feld: der Fokus liegt am Feld (Review r1, P2-8). */
+.vp-nw-wg-k:has(input:focus-visible) {
   outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
   outline-offset: 2px;
 }

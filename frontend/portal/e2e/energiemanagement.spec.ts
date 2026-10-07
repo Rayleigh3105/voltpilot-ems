@@ -169,7 +169,9 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(await messe(page), 'Person anlegen');
       await page.getByTestId('person-senden').click();
       await expect(personDialog).toBeHidden();
-      await expect(blatt.getByRole('combobox', { name: 'Wer hat entschieden?' })).toContainText('Robert Falk');
+      // Die neue Person ist gewählt und steht als Prüfzeile „Entschieden“ (Review r1, P2-1: das Absenden von „Person
+      // anlegen“ erreicht das Blatt darunter nicht mehr).
+      await expect(blatt.getByTestId('festhalten-pruefen')).toContainText('Robert Falk · 15.12.2026');
       await page.getByTestId('festhalten-original').click();
       await page.getByTestId(/-original-ablage$/).fill('QM-Laufwerk, Ordner Energiemanagement/Politik');
       await page.getByTestId(/-original-kennung$/).fill('EP-2026');

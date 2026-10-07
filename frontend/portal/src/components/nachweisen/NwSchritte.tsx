@@ -217,7 +217,8 @@ export interface WortlautStueck {
  */
 export function Wortlaut({ absaetze, testid, label }: { absaetze: readonly (readonly WortlautStueck[])[]; testid?: string; label?: string }) {
   return (
-    <div className="vp-nw-wortlaut" data-testid={testid} aria-label={label}>
+    // Mit Namen ein eigener Bereich („Wortlaut der Fassung 2“) - ein `aria-label` ohne Rolle liest niemand vor (Review r1, P2-12).
+    <div className="vp-nw-wortlaut" data-testid={testid} role={label ? 'region' : undefined} aria-label={label}>
       {absaetze.map((a, i) => (
         <p key={i}>
           {a.map((s, j) =>
