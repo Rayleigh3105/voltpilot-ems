@@ -4,6 +4,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Energieziel, type EnergiezielStand, type VorgangAnstoss } from '../api';
+import { merkeAbruf } from '../routenUhr';
 import { EnergiezielBeendenDialog, EnergiezielBewertenDialog } from '../components/EnergiezielDialoge';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { Recht } from '../components/Recht';
@@ -44,7 +45,10 @@ export function EnergiezielSeite({
     let aktiv = true;
     setLage({ art: 'laedt' });
     Promise.all([api.energieziel(id), api.energiezielStand(id).catch(() => null)])
-      .then(([ez, stand]) => aktiv && setLage({ art: 'da', ez, stand }))
+      .then(([ez, stand]) => {
+        merkeAbruf(stand?.abruf);
+        if (aktiv) setLage({ art: 'da', ez, stand });
+      })
       .catch((e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }));
     return () => {
       aktiv = false;
@@ -197,7 +201,7 @@ export function EnergiezielSeite({
                       ) : (
                         <tr key={m.periode} className="vp-ez-offen" data-testid={`monat-${m.periode}`}>
                           <th scope="row">{m.beschriftung}</th>
-                          <td colSpan={4}>{Z.NOCH_NICHT_ENDGUELTIG}</td>
+                          <td colSpan={4} data-testid="grund">{m.grund}</td>
                         </tr>
                       ),
                     )}

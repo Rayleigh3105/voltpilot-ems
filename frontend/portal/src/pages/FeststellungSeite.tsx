@@ -1,3 +1,4 @@
+import { merkeAbruf, tagDesAugenblicks } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -44,7 +45,10 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
         })
       : api.energiemanagementFeststellung(id);
     laden.then(
-      (d) => aktiv && setDaten(d),
+      (d) => {
+        merkeAbruf(d.feststellung.lage.abruf); // Befund 3: die Dialoge rechnen mit dem Tag der Route
+        if (aktiv) setDaten(d);
+      },
       (e) => aktiv && setFehler(ablehnung(e)),
     );
     return () => {
@@ -118,7 +122,7 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
             <dt>Bezug</dt>
             <dd data-testid="feststellung-bezug">{A.bezugWort(f.bezug, (a) => WOERTER.aufgabe[a] ?? a)}</dd>
             <dt>{UEMS_EINGETRAGEN_VON}</dt>
-            <dd>{`${f.eingetragen.akteur.name} am ${E.tagText(f.eingetragen.am.slice(0, 10))}`}</dd>
+            <dd>{`${f.eingetragen.akteur.name} am ${E.tagText(tagDesAugenblicks(f.eingetragen.am) ?? f.eingetragen.am.slice(0, 10))}`}</dd>
           </dl>
         </section>
 
@@ -258,7 +262,7 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
           <ul className="vp-ez-verlauf" data-testid="feststellung-verlauf">
             {verlauf.map((v) => (
               <li key={v.id}>
-                {`${A.FESTSTELLUNG_VERLAUF_WORT[v.art] ?? v.art} — ${v.akteur.name}, ${E.tagText(v.zeit.slice(0, 10))}${v.begruendung ? `: ${v.begruendung}` : ''}`}
+                {`${A.FESTSTELLUNG_VERLAUF_WORT[v.art] ?? v.art} — ${v.akteur.name}, ${E.tagText(tagDesAugenblicks(v.zeit) ?? v.zeit.slice(0, 10))}${v.begruendung ? `: ${v.begruendung}` : ''}`}
               </li>
             ))}
           </ul>

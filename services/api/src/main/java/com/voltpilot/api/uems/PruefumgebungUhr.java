@@ -52,6 +52,7 @@ class PruefumgebungUhr {
     private final KennzahlLauf kennzahlLauf;
     private final ObjectProvider<BerichtKaskade> berichtKaskade;
     private final JdbcTemplate adminJdbc;
+    private final EnergiemanagementPersonenService personen;
 
     PruefumgebungUhr(@Value("${voltpilot.pruefumgebung.buehnen-uhr}") String buehne,
             EnergiemanagementDokumentService dokumente, InternesAuditService audits,
@@ -59,7 +60,7 @@ class PruefumgebungUhr {
             EnergiemanagementVerzeichnisService verzeichnis, EnergiemanagementWiedervorlageService wiedervorlage,
             ZugriffBuehnenUhr zugriffe, BewertungUmfangService umfang, BewertungKriterienService kriterien,
             KennzahlLauf kennzahlLauf, ObjectProvider<BerichtKaskade> berichtKaskade,
-            @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc) {
+            @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, EnergiemanagementPersonenService personen) {
         this.buehne = Instant.parse(buehne);
         this.dokumente = dokumente;
         this.audits = audits;
@@ -74,6 +75,7 @@ class PruefumgebungUhr {
         this.kennzahlLauf = kennzahlLauf;
         this.berichtKaskade = berichtKaskade;
         this.adminJdbc = adminJdbc;
+        this.personen = personen;
     }
 
     /**
@@ -124,6 +126,9 @@ class PruefumgebungUhr {
         kennzahlLauf.uhrStellen(uhr);
         // Ebenso die Bericht-Naht der Kaskade: ihr Datenstand liegt sonst vor den Kennzahlwerten, die sie zitiert (D2).
         berichtKaskade.ifAvailable(k -> k.uhrStellen(uhr));
+        // Der Reiter „Aufgaben“ liest „heute“ von seiner Route; ohne die Bühne nennte er den echten Tag neben dem
+        // Stichtag des Verzeichnisses (Konzept Nachweisen n1, Befund 3).
+        personen.uhrStellen(uhr);
         zugriffe.stellen(uhr);
     }
 }

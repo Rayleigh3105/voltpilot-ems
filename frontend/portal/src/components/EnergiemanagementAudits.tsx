@@ -1,3 +1,4 @@
+import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -21,7 +22,10 @@ export function EnergiemanagementAudits({ onAudit, saetze = false }: { onAudit: 
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementAudits().then(
-      (p) => aktiv && setProgramm(p),
+      (p) => {
+        merkeAbruf(p.tag); // Befund 3: „Audit planen“ und „durchgeführt am“ nehmen den Tag der Route
+        if (aktiv) setProgramm(p);
+      },
       (e) => aktiv && setFehler(ablehnung(e)),
     );
     return () => {

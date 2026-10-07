@@ -11,7 +11,8 @@ import {
   type EnergiemanagementPersonKurz,
   type StandortAmStichtag,
 } from '../api';
-import { heute } from '../bewertung';
+// Befund 3 (Konzept Nachweisen n1): „entschieden am“ und „vom“ enden am Tag der Route, nie am Tag des Browsers.
+import { routenHeute as heute } from '../routenUhr';
 import { SAETZE, WOERTER } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_WORTLAUT, UEMS_VERWEIS } from '../glossar';

@@ -153,7 +153,7 @@ test.describe('Berichte — die Liste', () => {
 });
 
 test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
-  test('bei 375 px am 20.11.2026: Nr. 2 vorgewählt — Kopf, Prüfsumme, Abschnitte der Vorlage, kein PDF/CSV; MS-12 klappt seinen Nachweis auf', async ({ page }) => {
+  test('bei 375 px am 20.11.2026: Nr. 2 vorgewählt — Kopf, Prüfsumme, Abschnitte der Vorlage, PDF und CSV am Stand; MS-12 klappt seinen Nachweis auf', async ({ page }) => {
     await oeffne(page, 'ansicht=bericht&br=BR-2026-0001', 375, AM_20_11);
     await warteAufSeite(page);
     const m = await messe(page);
@@ -167,7 +167,8 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     expect(m.pruefsumme).toBe('sha256:0f0feda03d1979477a2596db5b9723399f227af0226a5397251704384de10d0d');
     expect(m.abschnitte).toEqual(['Kopf', 'Zusammenfassung', 'Verbrauch je Messstelle', 'Tagesverlauf je Messstelle', 'Kennzahlen', 'Qualität', 'Quellenverzeichnis', 'Verlauf der Berichtsstände']);
     expect(m.zahlen).toBe(18);
-    expect(m.knoepfe).toEqual([]);
+    // Konzept Nachweisen n1, Befund 1: an jedem Stand PDF (Recht zum Abrufen) und CSV (export.standort); ein Entwurf hat keine.
+    expect(m.knoepfe).toEqual(['PDF', 'CSV']);
     expect(m.verlauf[0]).toContain('Anlass Korrektur K-2026-0007');
     expect(m.verlauf[1]).toContain('ersetzt durch Nr. 2 (16.11.2026)');
     const paar = page.getByTestId('bericht-richtungspaar');

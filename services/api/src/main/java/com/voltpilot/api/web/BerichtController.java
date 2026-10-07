@@ -85,7 +85,8 @@ public class BerichtController {
      */
     @GetMapping("/berichte")
     public BerichtDto.Liste liste(Authentication auth) {
-        return new BerichtDto.Liste(dienst.liste(OrtAnfrage.akteur(auth)).stream().map(BerichtController::form).toList());
+        return new BerichtDto.Liste(dienst.liste(OrtAnfrage.akteur(auth)).stream().map(BerichtController::form).toList(),
+                utc(dienst.jetzt()));
     }
 
     /**
@@ -144,7 +145,7 @@ public class BerichtController {
     public BerichtDto.Detail detail(@PathVariable String kennung, Authentication auth) {
         BerichtService.Detail d = dienst.detail(kennung(kennung), OrtAnfrage.akteur(auth));
         return new BerichtDto.Detail(form(d.bericht()), d.staende().stream().map(BerichtController::kurz).toList(),
-                d.anstoesse().stream().map(BerichtController::anstoss).toList());
+                d.anstoesse().stream().map(BerichtController::anstoss).toList(), utc(dienst.jetzt()));
     }
 
     /** Recht: {@code bewertung.abrufen}; nur die energetische Bewertung, mit Begründung. */
