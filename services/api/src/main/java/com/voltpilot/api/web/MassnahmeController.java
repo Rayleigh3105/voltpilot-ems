@@ -68,15 +68,29 @@ public class MassnahmeController {
      * Recht: {@code verbesserung.ansehen} (Zaun über Standort und Kennzahl). Das Register; {@code zustand}
      * ({@code geplant · umgesetzt · bewertet · verworfen}), {@code ueberfaellig} ({@code true · false}, Operation
      * {@code frist} beim Abruf), {@code kennzahl} und {@code einsatz} (IDs) filtern; {@code energieziel} (ID) liefert
-     * die Maßnahmen für das Energieziel und die im Stand enthaltenen (Konzept Verbessern, Entscheid 5).
+     * die Maßnahmen für das Energieziel und die im Stand enthaltenen (Konzept Verbessern, Entscheid 5). Je Maßnahme die
+     * beobachtete Wirkung in Kurzform ({@code wirkung_kurz}, Verbessern-Konzept v1 §6.5) - dieselbe Operation
+     * {@code wirkung} wie {@code …/{id}/wirkung}.
      */
     @GetMapping
     public MassnahmeDto.Liste liste(@RequestParam(required = false) String zustand,
             @RequestParam(required = false) String ueberfaellig, @RequestParam(required = false) String kennzahl,
             @RequestParam(required = false) String einsatz, @RequestParam(required = false) String energieziel,
             HttpServletRequest anfrage) {
-        return massnahmen.liste(anfrage.getParameterMap().keySet(), zustand, ueberfaellig, kennzahl, einsatz,
-                energieziel);
+        return wirkung.mitKurzform(massnahmen.liste(anfrage.getParameterMap().keySet(), zustand, ueberfaellig,
+                kennzahl, einsatz, energieziel));
+    }
+
+    /**
+     * Recht: {@code verbesserung.ansehen} (die Kennzahl muss sichtbar sein, sonst 404). Die Umrechnung der erwarteten
+     * Wirkung in kWh im Jahr für „Maßnahme planen“ (Entscheid 13): {@code prozent} (eine Stelle, weniger negativ) mal
+     * die gemessene Menge der zwölf abgeschlossenen Monate vor heute; ohne volle Grundlage keine Zahl, mit Grund. Liest
+     * nur - die Zahl hält erst {@code POST} fest.
+     */
+    @GetMapping("/schaetzung")
+    public MassnahmeDto.Schaetzung schaetzung(@RequestParam(required = false) String kennzahl,
+            @RequestParam(required = false) String prozent, HttpServletRequest anfrage) {
+        return massnahmen.schaetzung(anfrage.getParameterMap().keySet(), kennzahl, prozent);
     }
 
     /**

@@ -4,14 +4,15 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
- * „Unternehmen › Ziele und Maßnahmen › Maßnahmen“ (UEMS AP-18 IP-13) bei 375 px und 1440 px auf der eigenen Bühne
+ * „Verbessern › Maßnahmen“ (Verbessern-Konzept v1 §6.5–§6.9, PR 2) bei 375 px und 1440 px auf der eigenen Bühne
  * `e2e/massnahmen.html` — die ECHTE Schale mit den ECHTEN Reitern, die Routen gespielt aus dem Referenzunternehmen 1.9
- * (`src/test/massnahmeFixtures.ts`, R3/R7/R9).
+ * (`src/test/massnahmeFixtures.ts`, R3/R7/R9, Schätzung wie Entscheid 13).
  *
- * Fälle: Register am 15.03.2028 (R9: M-2028-0002 überfällig seit 15 Tagen zuerst, „ohne Messgrundlage“ in der Zeile,
- * Filter) · Anlegen mit Messgrundlage am 22.01.2028 (R3: KZ-0004, Ausgangslage Dezember 2027 in der Vorschau, 3 %) und
- * „umgesetzt melden“ (kein Tag in der Zukunft) · Anlegen ohne Messgrundlage am Energieeinsatz EE-3 (R7: sichtbare Wahl,
- * Zahl gesperrt) · Einstieg am Energieziel (vorbelegt).
+ * Fälle: Register nach Stufen am 15.03.2028 (R9: „Zu tun“ mit M-2028-0002 überfällig, die Art als Marke statt des
+ * Mangels, Chips) und die Seite der überfälligen Maßnahme · „Maßnahme planen“ am Energieziel (R3: Kennzahl vorbelegt,
+ * Prozent in kWh im Jahr, Prüfen am Ende), Kommentar, „Umsetzung melden“ (Heute vorgewählt) · „Maßnahme planen“ im
+ * Register ohne Kennzahl (Schätzung in kWh, als solche gekennzeichnet) · Einstieg am Energieeinsatz EE-3 · „Ändern“
+ * zeigt die Richtung als Wort (V7).
  *
  * GEMESSEN: Querlauf des Dokuments und überstehende Elemente je Fall. Mit `MASSNAHMEN_BILDER=<Ordner>` legt der Lauf
  * je Fall ein Bild ab — die Ansicht. Die Spec importiert keine Fixtures.
@@ -19,12 +20,13 @@ import { grenzHinweisZeigt } from './grenzHinweis';
 
 const BILDER = process.env.MASSNAHMEN_BILDER;
 const AM_15_03_2028 = new Date('2028-03-15T09:00:00Z');
-const AM_22_01_2028 = new Date('2028-01-22T09:00:00Z');
 const AM_20_01_2028 = new Date('2028-01-20T09:00:00Z');
+/** Der Tag der Energieziel-Route (`energiezielBuehne('juli')`): eine Uhr für Bühne und Route. */
+const AM_10_07_2028 = new Date('2028-07-10T08:00:00Z');
 const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
-const OHNE = 'ohne Messgrundlage — Wirkung nicht messbar';
-const UEBERFAELLIG_R9 = 'M-2028-0002 · geplant · Termin 29.02.2028 · überfällig seit 15 Tagen · Ines Kaltenbach.';
+const WORTLAUT_R3 = 'Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.';
+const WORTLAUT_R7 = 'Leckagen verursachen einen großen Teil des Druckluft-Stroms außerhalb der Produktion.';
 
 async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
   await page.clock.setFixedTime(jetzt);
@@ -82,140 +84,163 @@ async function waehle(page: Page, feld: Locator, option: RegExp) {
   await page.locator(`[id="${id}-liste"]`).getByRole('option', { name: option }).click();
 }
 
-async function waehleTag(page: Page, feld: Locator, iso: string) {
-  await feld.click();
-  const tag = page.locator(`.vp-kal-tag[data-iso="${iso}"]:not(.is-rand)`);
-  for (let i = 0; i < 24 && !(await tag.isVisible()); i++) await page.getByRole('button', { name: 'Nächster Monat' }).click();
-  await tag.click();
-  // Am Telefon gleitet das Kalender-Blatt hinaus — erst danach steht der Dialog wieder frei.
-  await expect(page.locator('.vp-kal-tag').first()).toBeHidden();
-}
-
 const modal = (page: Page) => page.locator('.vp-modal');
 const combo = (page: Page, name: string) => modal(page).getByRole('combobox', { name, exact: true });
+/** Am Rechner stehen Knopf und Zusammenfassung zweimal im Blatt (Spalte rechts, Schritt 4 am Telefon): der sichtbare. */
+const sichtbar = (page: Page, testid: string) => modal(page).locator(`[data-testid="${testid}"]:visible`);
 
 for (const breite of [375, 1440]) {
+  const telefon = breite < 720;
+  /** Am Telefon vier Schritte: „Weiter“ prüft den Schritt; am Rechner stehen alle Fragen in einem Dialog. */
+  const weiter = async (page: Page) => {
+    if (telefon) await modal(page).getByTestId('planen-weiter').click();
+  };
+  const bisWann = (page: Page, wort: string) => modal(page).getByRole('group', { name: 'Bis wann?' }).getByRole('button', { name: wort }).click();
+
   test.describe(`Maßnahmen bei ${breite} px`, () => {
-    test('Register R9: überfällig zuerst, „ohne Messgrundlage“ in der Zeile, Filter „nur überfällige“', async ({ page }) => {
+    test('Register R9 nach Stufen: überfällig in „Zu tun“, die Art als Marke, Chips; die Seite der überfälligen Maßnahme', async ({ page }) => {
       await oeffne(page, 'lage=r9', breite, AM_15_03_2028);
-      const tafel = page.getByTestId('massnahmen-tafel');
-      await expect(tafel).toBeVisible();
-      const zeilen = tafel.locator('tbody tr');
-      await expect(zeilen).toHaveCount(2);
-      await expect(zeilen.nth(0)).toHaveAttribute('data-testid', 'massnahme-zeile-M-2028-0002');
-      await expect(zeilen.nth(0).getByTestId('termin')).toContainText('überfällig seit 15 Tagen');
-      await expect(zeilen.nth(0).getByTestId('messgrundlage')).toHaveText(OHNE);
-      await expect(zeilen.nth(1).getByTestId('messgrundlage')).toHaveText('KZ-0004 Stromeinsatz Spritzguss je kg');
+      const register = page.getByTestId('massnahmen-register');
+      await expect(register.getByRole('heading', { level: 1 })).toHaveText('Maßnahmen');
+      await expect(page.getByTestId('massnahmen-antwort')).toContainText('1 Maßnahme ist seit 15 Tagen überfällig; 1 ist umgesetzt und noch abzuschließen.');
+      const zuTun = page.getByTestId('massnahmen-gruppe-zu_tun');
+      const m2 = zuTun.getByTestId('massnahme-eintrag-M-2028-0002');
+      await expect(m2).toHaveAttribute('data-entscheid', 'massnahme_termin');
+      await expect(m2.getByTestId('massnahme-marke')).toHaveText('nicht gemessen');
+      await expect(m2.getByTestId('massnahme-schritt')).toHaveText('Umsetzung melden');
+      const m1 = page.getByTestId('massnahmen-gruppe-umgesetzt').getByTestId('massnahme-eintrag-M-2028-0001');
+      await expect(m1.getByTestId('massnahme-bringt')).toContainText(/2,4\s%\sweniger/);
+      await expect(m1.getByTestId('massnahme-schritt')).toHaveText('Wirkung prüfen');
+      await expect(register).not.toContainText('ohne Messgrundlage — Wirkung nicht messbar');
       await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       ohneQuerlauf(await messe(page), 'Register');
       await ablegen(page, `register-${breite}`, true);
-      await page.getByTestId('massnahmen-filter-ueberfaellig').check();
-      await expect(zeilen).toHaveCount(1);
-      await zeilen.nth(0).getByRole('button', { name: 'M-2028-0002' }).click();
-      await expect(page.getByTestId('massnahme-frist')).toHaveText(UEBERFAELLIG_R9);
-      await expect(page.getByTestId('massnahme-ohne-messgrundlage')).toContainText('braucht Druckluft eine Energieleistungskennzahl');
+
+      await page.getByTestId('massnahmen-chip-umgesetzt').click();
+      await expect(zuTun).toHaveCount(0);
+      await expect(page.getByTestId('massnahmen-chip-umgesetzt')).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('massnahmen-chip-alle').click();
+      await page.getByTestId('massnahme-oeffnen-M-2028-0002').click();
+      await expect(page.getByTestId('massnahme-titel')).toHaveText('Druckluft-Leckagen orten und beseitigenM-2028-0002');
+      await expect(page.getByTestId('massnahme-antwort')).toContainText('Seit 15 Tagen überfällig - Termin war 29.02.2028.');
+      await expect(page.getByTestId('massnahme-umgesetzt-knopf')).toHaveText('Umsetzung melden');
+      await expect(page.getByTestId('massnahme-erwartete-wirkung')).toContainText('Nicht gemessen:');
+      await expect(page.getByTestId('massnahme-zustand')).toHaveAttribute('data-entscheid', 'massnahme_termin');
       expect(await page.evaluate(() => location.hash)).toMatch(/^#\/portfolio\/verbesserung\/massnahmen\/[0-9a-f-]{36}$/);
-      ohneQuerlauf(await messe(page), 'Seite R7');
-      await ablegen(page, `seite-ohne-${breite}`, true);
+      ohneQuerlauf(await messe(page), 'Seite überfällig');
+      await ablegen(page, `seite-ueberfaellig-${breite}`, true);
     });
 
-    test('Anlegen mit Messgrundlage (R3) und „umgesetzt melden“ — kein Tag in der Zukunft', async ({ page }) => {
-      await oeffne(page, 'lage=leer', breite, AM_22_01_2028);
-      await expect(page.getByTestId('massnahmen-leer')).toBeVisible();
-      await page.getByTestId('massnahme-anlegen-knopf').click();
-      await expect(modal(page).getByTestId('massnahme-wahl-mit')).toBeChecked();
-      await expect(modal(page).getByTestId('massnahme-wirkung-zahl')).toBeDisabled();
-      await modal(page).getByLabel('Titel').fill('Werkzeugheizungen in Betriebspausen abschalten');
-      await waehle(page, combo(page, 'Verantwortlich'), /^Murat Demirci/);
-      await waehleTag(page, combo(page, 'Termin'), '2028-01-31');
-      await waehle(page, combo(page, 'Kennzahl'), /^KZ-0004/);
-      const vorschau = modal(page).getByTestId('massnahme-ausgangslage-vorschau');
-      await expect(vorschau).toContainText('Ausgangslage Dezember 2027:');
-      await expect(vorschau).toContainText('12,9 % mehr als die Bezugsbasis erwarten lässt: schlechter');
-      await expect(vorschau.getByTestId('massnahme-methode')).toContainText('keine Wahl');
-      await expect(modal(page).getByTestId('massnahme-wirkung-zahl')).toBeEnabled();
-      await modal(page).getByTestId('massnahme-wirkung-zahl').fill('3');
-      await modal(page).getByLabel('erwartete Wirkung — Wortlaut').fill('Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.');
-      ohneQuerlauf(await messe(page), 'Dialog mit Messgrundlage');
-      await ablegenDialog(page, `anlegen-mit-${breite}`);
-      await page.getByTestId('massnahme-anlegen-senden').click();
-
-      const seite = page.getByTestId('massnahme-seite');
-      await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Maßnahme M-2028-0001');
-      await expect(page.getByTestId('massnahme-kopf')).toHaveText(
-        'M-2028-0001 · Werkzeugheizungen in Betriebspausen abschalten · Verantwortlich Murat Demirci · Termin 31.01.2028.',
+    test('Planen am Energieziel (R3): Kennzahl vorbelegt, Prozent in kWh im Jahr, Prüfen am Ende; Kommentar und „Umsetzung melden“', async ({ page }) => {
+      await oeffne(page, 'lage=leer&ez=1', breite, AM_10_07_2028);
+      await page.getByTestId('energieziel-planen').click();
+      const blatt = page.getByTestId('massnahme-anlegen');
+      await expect(page.getByTestId('massnahme-herkunft-vorbelegt')).toContainText('für das Energieziel 2028');
+      await expect(blatt.getByTestId('planen-art-gemessen').locator('input')).toBeChecked();
+      // Ohne Titel geht es nicht weiter: der Fehler steht am Feld, nicht erst nach dem Senden.
+      if (telefon) {
+        await weiter(page);
+        await expect(blatt).toContainText('Bitte sagen Sie in einem Satz, was zu tun ist.');
+      }
+      await blatt.getByTestId('planen-titel').fill('Werkzeugheizungen in Betriebspausen abschalten');
+      await weiter(page);
+      await blatt.getByTestId('planen-prozent').fill('3');
+      await expect(blatt.getByTestId('planen-umrechnung')).toHaveText(
+        /^Entspricht rund 30\.500\skWh im Jahr - gerechnet mit 1\.017\.050\skWh in Juli 2027 bis Juni 2028\.$/,
       );
-      await expect(page.getByTestId('massnahme-messgrundlage-satz')).toContainText('Ausgangslage Dezember 2027: 12,9 % mehr als erwartet');
+      await expect(blatt.getByTestId('planen-vorher')).toContainText('Juni 2028');
+      await blatt.getByTestId('planen-wortlaut').fill(WORTLAUT_R3);
+      await weiter(page);
+      await waehle(page, combo(page, 'Wer kümmert sich?'), /^Murat Demirci/);
+      await bisWann(page, 'Ende August');
+      await expect(blatt).toContainText('Termin 31.08.2028 - noch 52 Tage.');
+      await weiter(page);
+      const pruef = sichtbar(page, 'planen-zusammenfassung');
+      await expect(pruef).toContainText('Murat Demirci');
+      await expect(pruef).toContainText('31.08.2028');
+      ohneQuerlauf(await messe(page), 'Planen mit Kennzahl');
+      await ablegenDialog(page, `planen-mit-${breite}`);
+      await sichtbar(page, 'massnahme-anlegen-senden').click();
+
+      // Am Energieziel öffnet das Anlegen gleich die Seite der neuen Maßnahme.
+      await expect(page.getByTestId('massnahme-titel')).toHaveText('Werkzeugheizungen in Betriebspausen abschaltenM-2028-0001');
+      await expect(page.getByTestId('massnahme-antwort')).toContainText('Geplant bis 31.08.2028 - noch 52 Tage.');
+      await expect(page.getByTestId('massnahme-erwartete-wirkung')).toContainText(/3\s%\sweniger als erwartet, rund 30\.500\skWh im Jahr/);
+      await expect(page.getByTestId('massnahme-erwartete-wirkung')).toContainText(WORTLAUT_R3);
       await expect(page.getByTestId('massnahme-pruefsumme')).toHaveText(/^Prüfsumme sha256:[0-9a-f]{64}$/);
-      await expect(page.getByTestId('massnahme-messgrundlage-satz')).toContainText('Erwartete Wirkung: 3 % weniger');
-      await expect(page.getByTestId('massnahme-erwartete-wirkung')).toHaveCount(0);
-      await page.getByTestId('massnahme-kommentar').getByLabel('Kommentar').fill('Zeitschaltung ist bestellt.');
+      await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Kommentar schreiben' }).click();
+      await modal(page).getByTestId('massnahme-kommentar-text').fill('Zeitschaltung ist bestellt.');
       await page.getByTestId('massnahme-kommentar-senden').click();
+      await expect(modal(page)).toHaveCount(0);
       await expect(page.getByTestId('verlauf-kommentar')).toContainText('Zeitschaltung ist bestellt.');
       ohneQuerlauf(await messe(page), 'Seite geplant');
       await ablegen(page, `seite-geplant-${breite}`, true);
 
       await page.getByTestId('massnahme-umgesetzt-knopf').click();
-      const am = combo(page, 'umgesetzt am');
-      await am.click();
-      await expect(page.locator('.vp-kal-tag[data-iso="2028-01-23"]:not(.is-rand)')).toBeDisabled();
-      await page.locator('.vp-kal-tag[data-iso="2028-01-22"]:not(.is-rand)').click();
-      await modal(page).getByLabel('Begründung').fill('Zeitschaltung an den Maschinen 3 bis 6 aktiv, Probelauf ohne Befund.');
-      ohneQuerlauf(await messe(page), 'Dialog umgesetzt');
+      await expect(modal(page).getByRole('button', { name: 'Heute, 10.07.' })).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('massnahme-umgesetzt-text').fill('Zeitschaltung an den Maschinen 3 bis 6 aktiv, Probelauf ohne Befund.');
+      ohneQuerlauf(await messe(page), 'Umsetzung melden');
       await ablegenDialog(page, `umgesetzt-dialog-${breite}`);
       await page.getByTestId('massnahme-umgesetzt-senden').click();
-      await expect(page.getByTestId('massnahme-kopf')).toHaveText(
-        'M-2028-0001 · Werkzeugheizungen in Betriebspausen abschalten · Verantwortlich Murat Demirci · Termin 31.01.2028 · umgesetzt am 22.01.2028.',
-      );
+      await expect(modal(page)).toHaveCount(0);
       await expect(page.getByTestId('massnahme-umgesetzt-knopf')).toHaveCount(0);
-      await expect(page.getByTestId('massnahme-aendern-knopf')).toHaveCount(0);
-      await expect(page.getByTestId('verlauf-massnahme_umgesetzt')).toContainText('umgesetzt gemeldet');
+      await expect(page.getByTestId('verlauf-massnahme_umgesetzt')).toContainText('Umgesetzt');
+      await expect(page.getByTestId('massnahme-wirkung-leer')).toContainText('VoltPilot vergleicht ab August 2028 zwölf Monate lang');
+      await expect(page.getByTestId('massnahme-bewerten')).toHaveText('Wirkung prüfen');
       ohneQuerlauf(await messe(page), 'Seite umgesetzt');
       await ablegen(page, `seite-umgesetzt-${breite}`, true);
     });
 
-    test('Anlegen ohne Messgrundlage am Energieeinsatz EE-3 (R7): sichtbare Wahl, Zahl gesperrt', async ({ page }) => {
+    test('Planen im Register ohne Kennzahl (Entscheid 13): Schätzung in kWh im Jahr, auf der Seite als Schätzung', async ({ page }) => {
+      await oeffne(page, 'lage=leer', breite, AM_20_01_2028);
+      await expect(page.getByTestId('massnahmen-leer')).toBeVisible();
+      ohneQuerlauf(await messe(page), 'Register leer');
+      await ablegen(page, `register-leer-${breite}`);
+      await page.locator('[data-testid^="massnahme-planen-knopf"]:visible').click();
+      const blatt = page.getByTestId('massnahme-anlegen');
+      await blatt.getByTestId('planen-titel').fill('Druckluft-Leckagen orten und beseitigen');
+      await blatt.getByTestId('planen-art-nicht_gemessen').locator('input').check();
+      await weiter(page);
+      await expect(blatt.getByTestId('planen-prozent')).toHaveCount(0);
+      await blatt.getByTestId('planen-kwh').fill('12.000');
+      await blatt.getByTestId('planen-wortlaut').fill(WORTLAUT_R7);
+      await waehle(page, combo(page, 'Wo spart sie? (Energieeinsatz, wahlfrei)'), /Druckluft/);
+      await weiter(page);
+      await waehle(page, combo(page, 'Wer kümmert sich?'), /^Ines Kaltenbach/);
+      await bisWann(page, 'Ende Februar');
+      await weiter(page);
+      await expect(sichtbar(page, 'planen-zusammenfassung')).toContainText(/12\.000\skWh im Jahr/);
+      ohneQuerlauf(await messe(page), 'Planen ohne Kennzahl');
+      await ablegenDialog(page, `planen-ohne-${breite}`);
+      await sichtbar(page, 'massnahme-anlegen-senden').click();
+
+      await expect(page.getByTestId('massnahme-titel')).toHaveText('Druckluft-Leckagen orten und beseitigenM-2028-0001');
+      await expect(page.getByTestId('massnahme-erwartete-wirkung')).toContainText(/rund 12\.000\skWh im Jahr, geschätzt/);
+      await expect(page.getByTestId('massnahme-ohne-messgrundlage')).toContainText('misst VoltPilot die Wirkung.');
+      await expect(page.getByTestId('massnahme-pruefsumme')).toHaveCount(0);
+      ohneQuerlauf(await messe(page), 'Seite ohne Kennzahl');
+      await ablegen(page, `seite-ohne-${breite}`, true);
+    });
+
+    test('Einstieg am Energieeinsatz EE-3: „nicht gemessen“ vorbelegt', async ({ page }) => {
       await oeffne(page, 'lage=leer&seite=einsatz', breite, AM_20_01_2028);
       const einstieg = page.getByTestId('massnahme-anlegen-einstieg-einsatz');
       await expect(einstieg).toBeVisible();
-      ohneQuerlauf(await messe(page), 'Energieeinsatz');
-      await ablegen(page, `einsatz-${breite}`);
       await einstieg.getByTestId('massnahme-anlegen-knopf').click();
-      await expect(modal(page).getByTestId('massnahme-herkunft-vorbelegt')).toHaveText('am Energieeinsatz');
-      await expect(modal(page).getByTestId('massnahme-wahl-ohne')).toBeChecked();
-      await expect(modal(page).getByTestId('massnahme-ohne-satz')).toContainText(OHNE);
-      await expect(modal(page).getByTestId('massnahme-wirkung-zahl')).toBeDisabled();
-      await expect(combo(page, 'Energieeinsatz (wahlfrei)')).toContainText('EE-3');
-      await modal(page).getByLabel('Titel').fill('Druckluft-Leckagen orten und beseitigen');
-      await waehle(page, combo(page, 'Verantwortlich'), /^Ines Kaltenbach/);
-      await waehleTag(page, combo(page, 'Termin'), '2028-02-29');
-      await modal(page).getByLabel('erwartete Wirkung — Wortlaut').fill('Leckagen verursachen einen großen Teil des Druckluft-Stroms außerhalb der Produktion.');
-      ohneQuerlauf(await messe(page), 'Dialog ohne Messgrundlage');
-      await ablegenDialog(page, `anlegen-ohne-${breite}`);
-      await page.getByTestId('massnahme-anlegen-senden').click();
-      const angelegt = page.getByTestId('massnahme-angelegt');
-      await expect(angelegt).toContainText('Maßnahme M-2028-0001 angelegt');
-      await angelegt.getByRole('link').click();
-      await expect(page.getByTestId('massnahme-ohne-messgrundlage')).toHaveText(
-        'M-2028-0001 · Druckluft-Leckagen orten und beseitigen · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht Druckluft eine Energieleistungskennzahl (zum Beispiel Stromeinsatz je Betriebsstunde mit einer Bezugsbasis).',
-      );
-      await expect(page.getByTestId('massnahme-herkunft')).toContainText('am Energieeinsatz EE-3');
-      await expect(page.getByTestId('massnahme-pruefsumme')).toHaveCount(0);
-      await expect(page.getByTestId('massnahme-erwartete-wirkung')).toHaveText(
-        'erwartete Wirkung: ‚Leckagen verursachen einen großen Teil des Druckluft-Stroms außerhalb der Produktion.‘',
-      );
-      ohneQuerlauf(await messe(page), 'Seite ohne Messgrundlage');
+      await expect(page.getByTestId('massnahme-herkunft-vorbelegt')).toContainText('am Energieeinsatz');
+      await expect(page.getByTestId('planen-art-nicht_gemessen').locator('input')).toBeChecked();
+      ohneQuerlauf(await messe(page), 'Planen am Energieeinsatz');
     });
 
-    test('Einstieg am Energieziel: vorbelegt mit Kennzahl und Energieziel', async ({ page }) => {
-      await oeffne(page, 'lage=leer&ez=1', breite, AM_22_01_2028);
-      // Konzept Verbessern §6.4: am Energieziel heißt der nächste Schritt „Maßnahme planen“.
-      await page.getByTestId('energieziel-planen').click();
-      await expect(modal(page).getByTestId('massnahme-herkunft-vorbelegt')).toHaveText('aus dem Energieziel');
-      await expect(combo(page, 'Kennzahl')).toContainText('KZ-0004');
-      await expect(combo(page, 'Energieziel (wahlfrei)')).toContainText('EZ-2028-0001');
-      await expect(modal(page).getByTestId('massnahme-ausgangslage-vorschau')).toContainText('12,9 % mehr');
-      ohneQuerlauf(await messe(page), 'Dialog am Energieziel');
+    test('„Ändern“ zeigt die Richtung als Wort (V7) und steht im Menü', async ({ page }) => {
+      await oeffne(page, 'lage=geplant&m=1', breite, AM_20_01_2028);
+      await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Ändern' }).click();
+      await expect(page.getByTestId('massnahme-aendern-zahl')).toHaveValue('3');
+      await expect(modal(page).getByRole('button', { name: 'weniger' })).toHaveAttribute('aria-pressed', 'true');
+      ohneQuerlauf(await messe(page), 'Ändern');
+      await ablegenDialog(page, `aendern-${breite}`);
     });
   });
 }

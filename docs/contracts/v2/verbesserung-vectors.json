@@ -36,6 +36,11 @@
       "audit",
       "managementbewertung"
     ],
+    "massnahme_art": [
+      "gemessen",
+      "nicht_gemessen",
+      "organisatorisch"
+    ],
     "abweichung_zustand": [
       "offen",
       "abgeschlossen"
@@ -122,6 +127,7 @@
     "messgrundlage": "Messgrundlage: {kennzahl}, Bezugsbasis {bezugsbasis}, Fassung {fassung} — bereinigt um {bereinigt_um} ({methode}). Ausgangslage {ausgangslage_monat}: {ausgangslage_prozent} als erwartet (Version {version}, Kopie vom {kopiert_am}). Erwartete Wirkung: {erwartete_wirkung} — ‚{wortlaut}‘",
     "ohne_messgrundlage": "{kennzeichen} · {titel} · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht {einsatz} eine Energieleistungskennzahl ({hinweis}).",
     "wirkung_vorlaeufig": "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}) — erwartet waren {erwartete_wirkung}. Ob die Maßnahme das bewirkt hat, sagt eine Person.",
+    "wirkung_ohne_erwartung": "Wirkung von {massnahme}, beobachtet: {prozent} {energie} als die Bezugsbasis erwarten lässt ({zeitraum}, {monate} Monaten; {ausschluesse}). Eine erwartete Wirkung ist nicht genannt. Ob die Maßnahme das bewirkt hat, sagt eine Person.",
     "wirkung_umsetzungsmonat": "{monat}: Umsetzungsmonat — nicht gezählt.",
     "wirkung_nicht_bewertbar": "{monat}: nicht bewertbar — {grund}.",
     "wirkung_basis_nach_umsetzung": "{monat}: nicht bewertbar — die Bezugsbasis {bezugsbasis}, Fassung {fassung} hat eine Referenzperiode ({referenzperiode}), die nach der Umsetzung endet; sie enthielte die Maßnahme.",
@@ -6465,6 +6471,47 @@
       },
       "erwartet": {
         "satz": "Wirkung von M-2028-0001, beobachtet: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt (Februar bis Oktober 2028, 8 von 12 Monaten; März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis) — erwartet waren 3 % weniger. Ob die Maßnahme das bewirkt hat, sagt eine Person."
+      }
+    },
+    {
+      "name": "Entscheid 12 Wirkung ohne erwartete Zahl („Weiß ich noch nicht“)",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Verbessern-Konzept v1 §10 Entscheid 12, Befund 6",
+      "rechnung": "Schablone gefüllt; ohne erwartete Zahl kein „erwartet waren …“, die Bedingung (x von 12) bleibt",
+      "eingang": {
+        "schluessel": "wirkung_ohne_erwartung",
+        "werte": {
+          "massnahme": "M-2029-0004",
+          "prozent": "1,8 % weniger",
+          "energie": "Strom",
+          "zeitraum": "Mai bis September 2029",
+          "monate": "5 von 12",
+          "ausschluesse": "kein Monat ausgeschlossen"
+        }
+      },
+      "erwartet": {
+        "satz": "Wirkung von M-2029-0004, beobachtet: 1,8 % weniger Strom als die Bezugsbasis erwarten lässt (Mai bis September 2029, 5 von 12 Monaten; kein Monat ausgeschlossen). Eine erwartete Wirkung ist nicht genannt. Ob die Maßnahme das bewirkt hat, sagt eine Person."
+      }
+    },
+    {
+      "name": "Entscheid 12 ohne erwartete Zahl: ein Wert fehlt",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Verbessern-Konzept v1 §10 Entscheid 12",
+      "rechnung": "kein {ausschluesse} übergeben → wert_fehlt",
+      "eingang": {
+        "schluessel": "wirkung_ohne_erwartung",
+        "werte": {
+          "massnahme": "M-2029-0004",
+          "prozent": "1,8 % weniger",
+          "energie": "Strom",
+          "zeitraum": "Mai bis September 2029",
+          "monate": "5 von 12"
+        }
+      },
+      "erwartet": {
+        "fehler": "wert_fehlt:ausschluesse"
       }
     },
     {

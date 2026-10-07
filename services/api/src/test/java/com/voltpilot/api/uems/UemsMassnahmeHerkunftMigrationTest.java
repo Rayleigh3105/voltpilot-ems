@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -47,10 +48,12 @@ class UemsMassnahmeHerkunftMigrationTest {
             "massnahme_herkunft:7:managementbewertung");
     /** Spätere Migrationen, die das Vokabular als Vereinigung fortschreiben: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20261006213000"); // Konzept Verbessern PR 1: weitet das Vokabular um kurs_lage.
+            "20261006213000", // Konzept Verbessern PR 1: weitet das Vokabular um kurs_lage.
+            "20261007120000"); // Verbessern v1 PR 2: weitet das Vokabular um massnahme_art.
     /** Ihre Wörter stehen nach denen dieser Migration. */
     private static final List<String> SPAETER = List.of("kurs_lage:1:auf_kurs", "kurs_lage:2:knapp_dahinter",
-            "kurs_lage:3:nicht_auf_kurs", "kurs_lage:4:noch_keine_aussage");
+            "kurs_lage:3:nicht_auf_kurs", "kurs_lage:4:noch_keine_aussage", "massnahme_art:1:gemessen",
+            "massnahme_art:2:nicht_gemessen", "massnahme_art:3:organisatorisch");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -144,7 +147,11 @@ class UemsMassnahmeHerkunftMigrationTest {
         }
     }
 
-    /** Out-of-order: auf einer Datenbank mit ALLEN anderen Migrationen kommt diese zuletzt an und trägt genauso. */
+    /**
+     * Out-of-order: auf einer Datenbank mit allen anderen Migrationen kommt diese zuletzt an und trägt genauso - mit den
+     * späteren Migrationen, die das Vokabular als Vereinigung weiterschreiben ({@link #BAUEN_DARAUF_AUF}): ohne sie
+     * überschriebe diese Migration deren Wörter.
+     */
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
         root.execute("CREATE DATABASE voltpilot_spaet");

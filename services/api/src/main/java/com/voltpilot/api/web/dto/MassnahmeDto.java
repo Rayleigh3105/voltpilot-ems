@@ -23,16 +23,25 @@ public final class MassnahmeDto {
      * {@code abweichung} (AW-…), bei {@code energieziel}/{@code einsatz} folgt sie dem Verweis. Messgrundlage: eine
      * Kennzahl mit freigegebener Bezugsbasis und die Monate der Ausgangslage ({@code JJJJ-MM} oder
      * {@code JJJJ-MM/JJJJ-MM}; ohne: der letzte abgeschlossene Monat). {@code standort} nur ohne Kennzahl.
+     * {@code art} (Verbessern-Konzept v1, Entscheid 6) {@code gemessen · nicht_gemessen · organisatorisch} - fehlt sie,
+     * gilt {@code gemessen} mit Kennzahl, aus Feststellung oder Audit {@code organisatorisch}, sonst
+     * {@code nicht_gemessen}. {@code erwartete_einsparung_kwh_jahr}
+     * (Entscheid 13) nur ohne Kennzahl und nur bei {@code nicht_gemessen}: die Schätzung einer Person, weniger Energie;
+     * mit Kennzahl rechnet die Route die erwartete Wirkung in kWh im Jahr um.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Anlegen(String titel, String verantwortlich, LocalDate termin, String herkunft,
             String herkunftKennung, UUID kennzahl, String monate, UUID einsatz, Integer einstufungFassung,
-            UUID energieziel, UUID standort, BigDecimal erwarteteWirkungProzent, String erwarteteWirkungWortlaut) {}
+            UUID energieziel, UUID standort, BigDecimal erwarteteWirkungProzent, String erwarteteWirkungWortlaut,
+            String art, BigDecimal erwarteteEinsparungKwhJahr) {}
 
-    /** {@code PUT …/{id}}: Titel, Termin, erwartete Wirkung — solange geplant, immer mit Begründung. */
+    /**
+     * {@code PUT …/{id}}: Titel, Termin, erwartete Wirkung - solange geplant, immer mit Begründung. Die Schätzung in kWh
+     * im Jahr ändert die Person nur ohne Kennzahl ({@code nicht_gemessen}); mit Kennzahl folgt sie der Zahl in Prozent.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Aendern(String titel, LocalDate termin, BigDecimal erwarteteWirkungProzent,
-            String erwarteteWirkungWortlaut, String begruendung) {}
+            String erwarteteWirkungWortlaut, String begruendung, BigDecimal erwarteteEinsparungKwhJahr) {}
 
     /** {@code PUT …/{id}/verantwortlicher}: ein aktiver Benutzer des Kundenbereichs ({@code sub}) mit Begründung. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -106,6 +115,30 @@ public final class MassnahmeDto {
     public record Eintrag(long nr, String art, Map<String, Object> alt, Map<String, Object> neu, String begruendung,
             String kommentar, String person, Instant am) {}
 
+    /**
+     * Die erwartete Einsparung in kWh im Jahr (Verbessern-Konzept v1, Entscheid 13): eine Schätzung, nie mit beobachteten
+     * Werten summiert. {@code kwh_jahr} weniger Energie positiv (mit Kennzahl: −Prozent × Grundlage, auch „mehr“ als
+     * negative Zahl); {@code grundlage_kwh}/{@code grundlage_monate} nur mit Kennzahl - die gemessene Menge der letzten
+     * zwölf abgeschlossenen Monate beim Anlegen bzw. Ändern; ohne Kennzahl {@code null} (eine Person hat geschätzt).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Einsparung(String kwhJahr, String grundlageKwh, String grundlageMonate) {}
+
+    /**
+     * Die beobachtete Wirkung in Kurzform für die Liste (Verbessern-Konzept v1 §6.5): dieselbe Operation {@code wirkung}
+     * wie {@code …/{id}/wirkung}, nur die Summe - in der Liste je Maßnahme und in {@code …/wirkung} an ihrer Maßnahme,
+     * an der einzelnen Maßnahme {@code null}. Nur an umgesetzten und bewerteten Maßnahmen mit Messgrundlage und
+     * mindestens einem bewertbaren Monat, sonst {@code null}. Mengen als Dezimaltexte in {@code einheit};
+     * {@code differenz} = Σ gemessen − Σ erwartet (weniger negativ), {@code erwartete_wirkung} = Prozent der Person ×
+     * Σ erwartet über dieselben Monate (ohne Zahl der Person {@code null}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record WirkungKurz(String deltaProzent, String richtung, String urteil, int monateBewertbar, int monateSoll,
+            String monateText, boolean vorlaeufig, String zeitraumVon, String zeitraumBis, String gemessen,
+            String erwartet, String differenz, String erwarteteWirkung, String einheit, String energie) {}
+
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Massnahme(UUID id, String kennzeichen, String titel, Person verantwortlich, LocalDate termin,
@@ -114,7 +147,28 @@ public final class MassnahmeDto {
             String erwarteteWirkungProzent, String erwarteteWirkungWortlaut, LocalDate angelegtAm,
             LocalDate umgesetztAm, String umgesetztBegruendung, Instant verworfenAm, String verworfenGrund,
             Frist frist, String kopfSatz, Bewertung bewertung, Bewertung bewertungAntrag, List<Anstoss> anstoesse,
-            List<Eintrag> verlauf) {}
+            List<Eintrag> verlauf, String art, Einsparung erwarteteEinsparung, WirkungKurz wirkungKurz) {
+
+        /** Dieselbe Maßnahme mit der Wirkung in Kurzform (die Liste, {@code MassnahmeWirkung#mitKurzform}). */
+        public Massnahme mitWirkungKurz(WirkungKurz kurz) {
+            return new Massnahme(id, kennzeichen, titel, verantwortlich, termin, standortId, zustand, herkunft,
+                    messgrundlage, ohneMessgrundlage, einsatz, einstufungFassung, energieziel, erwarteteWirkungProzent,
+                    erwarteteWirkungWortlaut, angelegtAm, umgesetztAm, umgesetztBegruendung, verworfenAm,
+                    verworfenGrund, frist, kopfSatz, bewertung, bewertungAntrag, anstoesse, verlauf, art,
+                    erwarteteEinsparung, kurz);
+        }
+    }
+
+    /**
+     * {@code GET /api/v1/massnahmen/schaetzung?kennzahl=&prozent=} (Entscheid 13): die Umrechnung der erwarteten Wirkung
+     * in kWh im Jahr, wie {@code POST} sie beim Anlegen festhält - über die gemessene Menge der Kennzahl in den letzten
+     * zwölf abgeschlossenen Monaten. Ohne volle Grundlage {@code kwh_jahr} {@code null} und {@code grund}
+     * ({@code monate_fehlen} mit {@code monate_mit_wert}, {@code einheit_nicht_kwh}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Schaetzung(UUID kennzahl, String prozent, String kwhJahr, String grundlageKwh,
+            String grundlageMonate, int monateMitWert, String grund) {}
 
     /**
      * Ein Anstoß an der Maßnahme ({@code vorgang_anstoss}, M5, IP-17): Ausgangslage oder Bewertungs-Stand zitiert eine
@@ -171,11 +225,13 @@ public final class MassnahmeDto {
      * {@code ohne_messgrundlage} (nur {@code satz}, keine Zahl) oder {@code nicht_umgesetzt} (noch keine Nachher-Monate,
      * kein Satz) — sonst {@code null} und die Nachher-Monate mit Summe, „x von N“, {@code vorlaeufig} und den
      * Ausschlüssen; die erwartete Wirkung und die Ausgangslage (Kopie, byte-gleich) stehen in {@code massnahme}.
+     * {@code satz} ist {@code wirkung_vorlaeufig}, ohne Zahl der Person {@code wirkung_ohne_erwartung} (Entscheid 12);
+     * {@code energie} der Energieträger des Zählers („Strom“, sonst „Energie“) - ohne Nachher-Monate {@code null}.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Wirkung(Massnahme massnahme, LocalDate abruf, String grund, String umsetzungsmonat,
             String nachherVon, String nachherBis, List<WirkungMonat> monate, Integer monateBewertbar,
             Integer monateEndgueltig, Integer monateSoll, String monateText, Boolean vorlaeufig,
-            List<WirkungAusschluss> nichtGezaehlt, WirkungSumme summe, String satz) {}
+            List<WirkungAusschluss> nichtGezaehlt, WirkungSumme summe, String satz, String energie) {}
 }

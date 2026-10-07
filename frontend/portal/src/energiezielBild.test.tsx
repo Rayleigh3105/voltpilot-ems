@@ -259,18 +259,20 @@ describe('Maßnahmen am Energieziel (Entscheid 5)', () => {
   it('die Maßnahmen für das Energieziel und, getrennt, was schon im Stand enthalten ist - mit beobachteter Wirkung', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     const geplant = m1('2028-07-10', { id: 'm-neu', kennzeichen: 'M-2028-0009', titel: 'Kühlwasserpumpen drehzahlgeregelt betreiben', termin: '2028-09-30', messgrundlage: null, energieziel: { id: EZ_IDS.ez1, kennzeichen: 'EZ-2028-0001', name: null } });
-    const umgesetzt = { ...m1Umgesetzt('2028-07-10'), zustand: 'bewertet' as const, energieziel: null };
+    const umgesetzt = { ...m1Umgesetzt('2028-07-10'), zustand: 'bewertet' as const, energieziel: null, wirkung_kurz: wirkungR5(m1Umgesetzt()).massnahme.wirkung_kurz };
     umgesetzt.bewertung = { stand_nr: 1, status: 'bewertet', ergebnis: 'belegt', begruendung: 'Laufzeit 18 % niedriger.', vieraugen: false, person: { sub: 'IK', name: 'Ines Kaltenbach' }, am: '2028-11-15T10:00:00+01:00', entscheidung: null, entschieden_am: null, entscheidungs_begruendung: null, kopie: null, pruefsumme: null, satz: null };
     Object.assign(api, energiezielBuehne('juli'), {
       massnahmenZumEnergieziel: async () => ({ abruf: '2028-07-10', massnahmen: [umgesetzt, geplant], im_stand_enthalten: [umgesetzt.id] }),
-      massnahmeWirkung: async () => wirkungR5(umgesetzt),
     });
+    // Was beobachtet ist, steht in der Liste (`wirkung_kurz`) - kein Abruf je Maßnahme (Review r1 S-1.6).
+    const einzeln = vi.spyOn(api, 'massnahmeWirkung');
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} onMassnahme={() => undefined} />);
     const karte = await screen.findByTestId('energieziel-massnahmen');
     expect(within(karte).getByTestId('massnahme-M-2028-0009').textContent).toContain('geplant bis 30.09.2028 · Murat Demirci');
     expect(within(karte).getByText('Schon umgesetzt, im Stand enthalten')).toBeTruthy();
     expect(await within(karte).findByText(`seit 22.01.2028 · 2,4${NB}% weniger beobachtet · belegt`.replace(NB, ' '))).toBeTruthy();
     expect(within(karte).getByTestId('energieziel-planen').textContent).toBe('Weitere Maßnahme planen');
+    expect(einzeln).not.toHaveBeenCalled();
   });
   it('der Fuß der Karte im Reiter zählt nur die Maßnahmen für das Energieziel', () => {
     expect(B.massnahmenFuss([])).toBe('Noch keine Maßnahme geplant');

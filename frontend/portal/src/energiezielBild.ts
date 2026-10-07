@@ -558,8 +558,18 @@ export function massnahmenAmZiel(liste: { massnahmen: Massnahme[]; im_stand_enth
 
 const ERGEBNIS_MASSNAHME: Record<string, string> = { belegt: 'belegt', nicht_belegt: 'nicht belegt', nicht_messbar: 'nicht messbar' };
 
+/**
+ * Was eine umgesetzte Maßnahme beobachtet: die Kurzform der Liste (`wirkung_kurz`, dieselbe Operation `wirkung` wie
+ * `…/{id}/wirkung`) - kein Abruf je Maßnahme (Review r1 S-1.6). Ohne Kurzform keine Zahl.
+ */
+export function beobachtetAus(m: Pick<Massnahme, 'wirkung_kurz'>): string | null {
+  const k = m.wirkung_kurz;
+  if (!k) return null;
+  return k.richtung === 'gleich' ? 'wie erwartet' : `${prozent(k.delta_prozent)} ${k.richtung}`;
+}
+
 /** Die Zeile einer Maßnahme am Energieziel: was sie ist, bis wann oder seit wann, wer - und was beobachtet ist. */
-export function massnahmeUnterzeile(m: Massnahme, beobachtet: string | null): string {
+export function massnahmeUnterzeile(m: Massnahme): string {
   if (m.zustand === 'geplant') {
     const frist = m.frist.faellig === 'ueberfaellig' && m.frist.seit_tagen !== null
       ? `seit ${m.frist.seit_tagen} ${m.frist.seit_tagen === 1 ? 'Tag' : 'Tagen'} überfällig`
@@ -567,6 +577,7 @@ export function massnahmeUnterzeile(m: Massnahme, beobachtet: string | null): st
     return `${frist} · ${m.verantwortlich.name}`;
   }
   const teile = [m.umgesetzt_am ? `seit ${tag(m.umgesetzt_am)}` : 'umgesetzt'];
+  const beobachtet = beobachtetAus(m);
   if (beobachtet) teile.push(`${beobachtet} beobachtet`);
   else if (m.erwartete_wirkung_prozent) teile.push(`erwartet ${zielText(m.erwartete_wirkung_prozent)}`);
   if (m.bewertung?.status === 'bewertet') teile.push(ERGEBNIS_MASSNAHME[m.bewertung.ergebnis] ?? m.bewertung.ergebnis);

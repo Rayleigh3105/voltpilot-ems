@@ -59,6 +59,35 @@ export function VerbesserungBereich({
   if (massnahmeId) {
     return <MassnahmeSeite id={massnahmeId} onListe={() => onReiter('massnahmen')} onKennzahl={onKennzahl} onEnergieziel={onOeffnen} />;
   }
+  const reiterReihe = !reiterOben && (
+    <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
+      {Z.REITER.map((r) => (
+        <button
+          key={r.key}
+          type="button"
+          role="tab"
+          aria-selected={reiter === r.key}
+          className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
+          data-testid={`verbesserung-reiter-${r.key}`}
+          onClick={() => onReiter(r.key)}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+  // Verbessern-Konzept v1 §6.5 (Entscheid 2): der Reiter „Maßnahmen“ trägt seinen eigenen Titel mit Klartext-Satz,
+  // Antwort und „Was VoltPilot leistet“ - die gemeinsame Überschrift des Bereichs entfällt dort.
+  if (reiter === 'massnahmen') {
+    return (
+      <GrenzSatzBereich>
+        <div className="vp-ez" data-testid="verbesserung-bereich">
+          {reiterReihe}
+          <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
+        </div>
+      </GrenzSatzBereich>
+    );
+  }
   return (
     <GrenzSatzBereich>
       <div className="vp-ez" data-testid="verbesserung-bereich">
@@ -71,25 +100,9 @@ export function VerbesserungBereich({
             <GrenzHinweis />
           </>
         )}
-        {!reiterOben && <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
-          {Z.REITER.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              role="tab"
-              aria-selected={reiter === r.key}
-              className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
-              data-testid={`verbesserung-reiter-${r.key}`}
-              onClick={() => onReiter(r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>}
+        {reiterReihe}
         {reiter === 'energieziele' ? (
           <EnergiezieleRegister onOeffnen={onOeffnen} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />
-        ) : reiter === 'massnahmen' ? (
-          <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
         ) : (
           <>
             <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} grenze={false} />

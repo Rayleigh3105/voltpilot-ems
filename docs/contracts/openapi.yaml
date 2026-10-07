@@ -13996,7 +13996,12 @@ paths:
         `monate_nicht_abgeschlossen`; ohne: der letzte abgeschlossene Monat), kanonischer Text mit Prüfsumme; der
         Standort ist der der Kennzahl (422 `standort_der_kennzahl`). Ohne `kennzahl` (M4) ist
         `erwartete_wirkung_prozent` 422 `ohne_messgrundlage` mit `kennzeichen` und `hinweis`, welche Kennzahl fehlt.
-        Protokoll `massnahme_angelegt`.
+        `art` (Verbessern-Konzept v1, Entscheid 6) `gemessen · nicht_gemessen · organisatorisch` - `gemessen` genau mit
+        `kennzahl` (422 `art_ohne_kennzahl` bzw. `art_mit_kennzahl`); ohne Angabe `gemessen` mit Kennzahl, aus
+        `nichtkonformitaet` oder `audit` `organisatorisch`, sonst `nicht_gemessen`. `erwartete_einsparung_kwh_jahr` (Entscheid 13) ist die Schätzung einer Person in ganzen kWh im
+        Jahr, weniger Energie (> 0) - nur ohne Kennzahl (422 `einsparung_mit_kennzahl`) und nicht bei `organisatorisch`
+        (422 `einsparung_organisatorisch`); mit Kennzahl und `erwartete_wirkung_prozent` rechnet die Route selbst um wie
+        `GET …/schaetzung`. Protokoll `massnahme_angelegt`.
       requestBody:
         required: true
         content:
@@ -14023,6 +14028,8 @@ paths:
                 standort: { type: string, format: uuid }
                 erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
                 erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
+                art: { type: string, enum: [gemessen, nicht_gemessen, organisatorisch] }
+                erwartete_einsparung_kwh_jahr: { type: integer, minimum: 1, description: "kWh im Jahr, Schätzung einer Person; nur ohne Kennzahl" }
       responses:
         "201":
           description: Angelegt, geplant.
@@ -14035,6 +14042,30 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/schaetzung:
+    get:
+      tags: [kennzahlen]
+      summary: Rechnet eine erwartete Wirkung in Prozent in kWh im Jahr um - für „Maßnahme planen“ (Entscheid 13).
+      description: >
+        Recht `verbesserung.ansehen`; die Kennzahl muss sichtbar sein (sonst 404). `kwh_jahr` = −`prozent` × die
+        gemessene Menge der Kennzahl in den zwölf abgeschlossenen Monaten vor heute (`grundlage_kwh`,
+        `grundlage_monate`), auf ganze kWh gerundet, weniger Energie positiv - dieselbe Rechnung, mit der `POST` die
+        Schätzung festhält. Ohne volle Grundlage `kwh_jahr` null und `grund` (`monate_fehlen` mit `monate_mit_wert`,
+        `einheit_nicht_kwh`, `kennzahl_ohne_bezugsbasis`, `zu_klein`); die Fassung wählt dieselbe Regel wie die
+        Messgrundlage beim Anlegen (freigegeben und heute geltend), sonst `kennzahl_ohne_bezugsbasis` - das Blatt zeigt
+        nie eine Zahl, die `POST` danach ablehnt. Liest nur; fehlender oder anderer Parameter 400.
+      parameters:
+        - { name: kennzahl, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: prozent, in: query, required: true, schema: { type: string, pattern: "^-?[0-9]{1,2}(\\.[0-9])?$" } }
+      responses:
+        "200":
+          description: Die Umrechnung oder der Grund, warum es keine gibt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MassnahmeSchaetzung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/massnahmen/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -14071,6 +14102,7 @@ paths:
                 erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
                 erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
                 begruendung: { type: string, minLength: 10, maxLength: 500 }
+                erwartete_einsparung_kwh_jahr: { type: integer, minimum: 1, description: "nur ohne Kennzahl und nicht organisatorisch; mit Kennzahl folgt sie `erwartete_wirkung_prozent`" }
       responses:
         "200":
           description: Geändert.
@@ -32115,7 +32147,10 @@ components:
       description: >
         Eine Maßnahme (UEMS AP-18 IP-10, M1–M4, M6); `messgrundlage` oder `ohne_messgrundlage` ist gesetzt, nie beide;
         `frist` über die Operation `frist` beim Abruf; `kopf_satz` erst ab umgesetzt; `verlauf` nur an der einzelnen.
-      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf]
+        `art` (Entscheid 6) sagt, wie sich die Wirkung zeigt; `erwartete_einsparung` die Schätzung in kWh im Jahr
+        (Entscheid 13); `wirkung_kurz` die beobachtete Wirkung in Kurzform - in der Liste und an der Maßnahme von
+        `…/wirkung`, an der einzelnen Maßnahme null.
+      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf, art, erwartete_einsparung, wirkung_kurz]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
@@ -32175,6 +32210,57 @@ components:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/MassnahmeEintrag" }
+        art: { type: string, enum: [gemessen, nicht_gemessen, organisatorisch] }
+        erwartete_einsparung: { $ref: "#/components/schemas/MassnahmeEinsparung" }
+        wirkung_kurz: { $ref: "#/components/schemas/MassnahmeWirkungKurz" }
+    MassnahmeEinsparung:
+      type: object
+      nullable: true
+      description: >
+        Die erwartete Einsparung in kWh im Jahr (Entscheid 13) - eine Schätzung, nie mit beobachteten Werten summiert.
+        `kwh_jahr` weniger Energie positiv; mit Kennzahl umgerechnet aus der erwarteten Wirkung über `grundlage_kwh` der
+        Monate `grundlage_monate`, ohne Kennzahl von einer Person geschätzt (Grundlage null).
+      required: [kwh_jahr, grundlage_kwh, grundlage_monate]
+      properties:
+        kwh_jahr: { type: string }
+        grundlage_kwh: { type: string, nullable: true }
+        grundlage_monate: { type: string, nullable: true, description: "JJJJ-MM/JJJJ-MM" }
+    MassnahmeWirkungKurz:
+      type: object
+      nullable: true
+      description: >
+        Die beobachtete Wirkung in Kurzform für die Liste (Verbessern-Konzept v1 §6.5) - die Summe der Operation
+        `wirkung` mit 12 Nachher-Monaten; nur mit Messgrundlage, ab umgesetzt und mit mindestens einem bewertbaren
+        Monat. Mengen in `einheit`; `differenz` = Σ gemessen − Σ erwartet (weniger negativ); `erwartete_wirkung` =
+        Prozent der Person × Σ erwartet derselben Monate (ohne Zahl null).
+      required: [delta_prozent, richtung, urteil, monate_bewertbar, monate_soll, monate_text, vorlaeufig, zeitraum_von, zeitraum_bis, gemessen, erwartet, differenz, erwartete_wirkung, einheit, energie]
+      properties:
+        delta_prozent: { type: string }
+        richtung: { type: string }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, nicht_anwendbar, ohne_urteil] }
+        monate_bewertbar: { type: integer }
+        monate_soll: { type: integer }
+        monate_text: { type: string }
+        vorlaeufig: { type: boolean }
+        zeitraum_von: { type: string }
+        zeitraum_bis: { type: string }
+        gemessen: { type: string }
+        erwartet: { type: string }
+        differenz: { type: string }
+        erwartete_wirkung: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        energie: { type: string }
+    MassnahmeSchaetzung:
+      type: object
+      required: [kennzahl, prozent, kwh_jahr, grundlage_kwh, grundlage_monate, monate_mit_wert, grund]
+      properties:
+        kennzahl: { type: string, format: uuid }
+        prozent: { type: string }
+        kwh_jahr: { type: string, nullable: true }
+        grundlage_kwh: { type: string, nullable: true }
+        grundlage_monate: { type: string }
+        monate_mit_wert: { type: integer }
+        grund: { type: string, nullable: true, enum: [monate_fehlen, einheit_nicht_kwh, kennzahl_ohne_bezugsbasis, zu_klein, null] }
     MassnahmeAnstoss:
       type: object
       description: >
@@ -32283,7 +32369,7 @@ components:
       description: >
         Die Wirkung (WK1–WK5) - Ausgang der Operation `wirkung` und je Monat die Vergleichszeile. Mit `grund`
         (`ohne_messgrundlage`, `nicht_umgesetzt`) sind die Zahlen null und `monate`/`nicht_gezaehlt` leer.
-      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz]
+      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz, energie]
       properties:
         massnahme: { $ref: "#/components/schemas/Massnahme" }
         abruf: { type: string, format: date }
@@ -32301,7 +32387,8 @@ components:
         summe:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MassnahmeWirkungSumme" }]
-        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` bzw. `ohne_messgrundlage` (§5.9)" }
+        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` (ohne Zahl der Person `wirkung_ohne_erwartung`, Entscheid 12) bzw. `ohne_messgrundlage` (§5.9)" }
+        energie: { type: string, nullable: true, description: "Energieträger des Zählers („Strom“, sonst „Energie“); ohne Nachher-Monate null" }
     MassnahmeWirkungMonat:
       type: object
       description: >
