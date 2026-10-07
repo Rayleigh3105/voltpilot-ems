@@ -177,7 +177,9 @@ export function EnergiezielSetzenFuehrung({
             }
           : {}),
         ...(!zpOk ? { periode: start ? `Der Zeitraum beginnt frühestens im ${B.monatLang(start)} und endet nicht vor seinem Beginn.` : 'Bitte wählen Sie einen Zeitraum.' } : {}),
-        ...(!Z.begruendungOk(begruendung) ? { begruendung: 'Bitte schreiben Sie in ein bis zwei Sätzen, warum (mindestens zehn Zeichen).' } : {}),
+        ...(!Z.begruendungOk(begruendung)
+          ? { begruendung: `Bitte schreiben Sie in ein bis zwei Sätzen, warum (${Z.BEGRUENDUNG_MIN} bis ${Z.BEGRUENDUNG_MAX} Zeichen).` }
+          : {}),
       };
       setFehler(f);
       const erstes = Object.keys(f)[0];
@@ -230,7 +232,7 @@ export function EnergiezielSetzenFuehrung({
   return (
     <Modal open onClose={onClose} title={TITEL[schritt]} footer={fuss}>
       <div className="vp-ezf" data-testid="energieziel-setzen">
-        <div className="vp-ezf-schritt" aria-label={`Schritt ${schritt} von 3: ${SCHRITT_NAME[schritt]}`}>
+        <div className="vp-ezf-schritt">
           <div className="st">
             <span>
               <b>Schritt {schritt}</b> von 3
@@ -267,7 +269,7 @@ export function EnergiezielSetzenFuehrung({
                   : 'An Ihren Standorten hat noch keine Kennzahl eine freigegebene Bezugsbasis. Legen Sie sie unter Auswerten an der Kennzahl fest - dann lässt sich ein Energieziel setzen.'}
               </p>
             ) : (
-              <div className="vp-ezf-wahl" role="radiogroup" aria-labelledby={`${basis}-kennzahl`} id={`${basis}-kennzahl`} tabIndex={-1}>
+              <div className="vp-ezf-wahl" role="radiogroup" aria-label={SCHRITT_NAME[1]} id={`${basis}-kennzahl`} tabIndex={-1}>
                 {waehlbar.map((k) => {
                   const belegt = daten.laufend.filter((ez) => ez.kennzahl.id === k.id);
                   const ab = heute ? fruehesterBeginn(heute, belegt) : null;
@@ -359,6 +361,7 @@ export function EnergiezielSetzenFuehrung({
                 rows={3}
                 className={fehler.begruendung ? 'is-fehler' : ''}
                 value={begruendung}
+                maxLength={Z.BEGRUENDUNG_MAX}
                 placeholder="Zum Beispiel: Beschluss der Managementbewertung, neue Druckluftleitung in der Montage."
                 onChange={(e) => setBegruendung(e.target.value)}
                 aria-invalid={!!fehler.begruendung}

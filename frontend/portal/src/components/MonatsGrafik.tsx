@@ -89,7 +89,7 @@ export function MonatsGrafik({
                 <span className="w">{p.gemessen}</span>
                 <span>statt {p.erwartet?.replace(/ \S+$/, '')} erwartet</span>
                 <span className={`u is-${p.ton}`}>
-                  {prozent(String(p.delta))} {p.delta !== null && p.delta < 0 ? 'weniger' : 'mehr'} · {p.urteilWort}
+                  {p.delta === 0 ? 'wie erwartet' : `${prozent(String(p.delta))} ${p.delta !== null && p.delta < 0 ? 'weniger' : 'mehr'}`} · {p.urteilWort}
                 </span>
               </>
             ) : (
