@@ -2965,6 +2965,11 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     // Antwort-Knöpfen (Maßnahme und Energieziel). Das reine Modul `massnahmeWirkung.ts` prüft der Wörter-Wächter unten.
     'components/MassnahmeWirkung.tsx',
     'components/VerbesserungAnstoesse.tsx',
+    // Konzept Verbessern v1: das geführte „Energieziel setzen“ (PR 1), der Hinweis am Energieziel und das Antwort-Blatt
+    // einer Auffälligkeit (PR 3).
+    'components/EnergiezielSetzenFuehrung.tsx',
+    'components/AuffaelligkeitHinweis.tsx',
+    'components/AuffaelligkeitBlatt.tsx',
   ];
   const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
   const verbesserungFlaechen = () => [
@@ -2986,41 +2991,50 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
 
   /**
-   * Konzept Verbessern v1, PR 4 (Muster `BEZUGSBASIS_TEILE`): Dialoge und Abschnitte, die nur INNERHALB einer Seite mit
-   * Grenz-Satz stehen. Der Satz steht einmal am Fuß der Seite, nicht am Fuß jedes Dialogs. Ein Teil gilt weiter als
-   * Fläche für Wörter, Ursachen und Pfeile; jede Eltern-Datei importiert ihn und trägt den Grenz-Satz selbst (oder ist
-   * selbst ein Teil, dessen Eltern ihn tragen).
+   * Konzept Verbessern v1, PR 4 (Muster `BEZUGSBASIS_TEILE`): Dialoge, Blätter und Abschnitte, die nur INNERHALB einer
+   * Seite mit Grenz-Satz stehen. Der Satz steht einmal am Fuß der Seite, nicht am Fuß jedes Dialogs. Ein Teil gilt weiter
+   * als Fläche für Wörter, Ursachen und Pfeile. Seine Eltern sind JEDE Datei, die ihn importiert (Review r1 S-4.1 a): jede
+   * trägt den Grenz-Satz selbst oder ist selbst ein Teil, dessen Eltern ihn tragen - eine neue Eltern-Seite ohne Satz fällt
+   * so auf, ohne dass jemand eine Liste nachführt.
    */
-  const VERBESSERUNG_TEILE: Record<string, string[]> = {
-    'components/EnergiezielDialoge.tsx': ['pages/EnergiezielSeite.tsx', 'pages/KennzahlSeite.tsx'],
-    'components/MassnahmeDialoge.tsx': [
-      'pages/MassnahmeSeite.tsx',
-      'components/MassnahmenRegister.tsx',
-      'pages/EnergiezielSeite.tsx',
-      'pages/EnergieeinsatzSeite.tsx',
-      'pages/AuditSeite.tsx',
-      'pages/FeststellungSeite.tsx',
-      'pages/ManagementbewertungSeite.tsx',
-    ],
-    'components/AbweichungDialoge.tsx': ['pages/AbweichungSeite.tsx'],
-    'components/AuffaelligkeitZeile.tsx': ['components/BezugsbasisVergleich.tsx'],
-    'components/MassnahmeWirkung.tsx': ['pages/MassnahmeSeite.tsx'],
-    'components/VerbesserungAnstoesse.tsx': ['pages/EnergiezielSeite.tsx', 'pages/MassnahmeSeite.tsx'],
+  const VERBESSERUNG_TEILE: string[] = [
+    'components/EnergiezielDialoge.tsx',
+    'components/EnergiezielSetzenFuehrung.tsx',
+    'components/MassnahmeDialoge.tsx',
+    'components/AbweichungDialoge.tsx',
+    'components/AuffaelligkeitZeile.tsx',
+    'components/AuffaelligkeitBlatt.tsx',
+    'components/AuffaelligkeitHinweis.tsx',
+    'components/MassnahmeWirkung.tsx',
+    'components/VerbesserungAnstoesse.tsx',
+  ];
+  const istTeil = (datei: string) => VERBESSERUNG_TEILE.includes(datei);
+  /** Der Importpfad von `eltern` nach `teil` (`./X`, `../components/X`, `./components/X`). */
+  const importPfad = (eltern: string, teil: string) => {
+    const von = eltern.split('/').slice(0, -1);
+    const nach = teil.replace(/\.tsx$/, '').split('/');
+    let i = 0;
+    while (i < von.length && i < nach.length - 1 && von[i] === nach[i]) i++;
+    return [...(von.length > i ? Array<string>(von.length - i).fill('..') : ['.']), ...nach.slice(i)].join('/');
   };
-  const importiertTeil = (eltern: string, teil: string) => {
-    if (!existsSync(join(SRC, eltern))) return false;
-    const name = teil.replace(/^components\//, '').replace(/\.tsx$/, '');
-    const pfad = eltern.startsWith('components/') ? `./${name}` : `../components/${name}`;
-    return readFileSync(join(SRC, eltern), 'utf8').includes(`from '${pfad}'`);
-  };
-  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean =>
-    (VERBESSERUNG_TEILE[teil] ?? []).length > 0 &&
-    VERBESSERUNG_TEILE[teil].every(
-      (eltern) =>
-        !gesehen.includes(eltern) &&
-        importiertTeil(eltern, teil) &&
-        (traegtGrenze(stripComments(readFileSync(join(SRC, eltern), 'utf8'))) || grenzeUeberEltern(eltern, [...gesehen, teil])),
+  const importiertTeil = (eltern: string, teil: string) =>
+    existsSync(join(SRC, eltern)) && readFileSync(join(SRC, eltern), 'utf8').includes(`from '${importPfad(eltern, teil)}'`);
+  const quellen = () =>
+    walk()
+      .map((datei) => datei.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.endsWith('.tsx') && !datei.endsWith('.test.tsx') && !datei.startsWith('test/'));
+  const elternVon = (teil: string) => quellen().filter((datei) => datei !== teil && importiertTeil(datei, teil));
+  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean => {
+    const eltern = elternVon(teil);
+    return (
+      eltern.length > 0 &&
+      eltern.every((e) => {
+        if (gesehen.includes(e)) return false;
+        const code = stripComments(readFileSync(join(SRC, e), 'utf8'));
+        return traegtGrenze(code) || reiterTragenDenHinweis(e, code) || (istTeil(e) && grenzeUeberEltern(e, [...gesehen, teil]));
+      })
     );
+  };
 
   /**
    * U1–U3: eine Ursache ist die Aussage einer Person. „Ursache“ steht nur in der Nähe von „Aussage von“ (auch als
@@ -3144,7 +3158,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
       const texte = kundenTexte(code);
       expect(texte.flatMap(verstoesse), datei).toEqual([]);
-      if (datei in VERBESSERUNG_TEILE) {
+      if (istTeil(datei)) {
         expect(grenzeUeberEltern(datei), `${datei}: eine Eltern-Seite trägt keinen Grenz-Satz`).toBe(true);
         expect(traegtGrenze(code), `${datei}: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Teil`).toBe(false);
       } else {
@@ -3178,19 +3192,27 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     for (const datei of VERBESSERUNG_FLAECHEN) {
       expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
     }
-    // PR 4: ein Teil ohne Eltern oder mit einer Eltern-Datei, die ihn nicht importiert, trägt keinen Grenz-Satz.
+    // PR 4: ein Teil ohne Eltern trägt keinen Grenz-Satz; die Eltern kommen aus den Imports (S-4.1 a).
     expect(grenzeUeberEltern('components/MassnahmeDialoge.tsx')).toBe(true);
     expect(grenzeUeberEltern('components/VerbesserungUnbekannt.tsx')).toBe(false);
-    for (const [teil, eltern] of Object.entries(VERBESSERUNG_TEILE)) {
+    expect(importPfad('pages/EnergiezielSeite.tsx', 'components/MassnahmeDialoge.tsx')).toBe('../components/MassnahmeDialoge');
+    expect(importPfad('components/EnergiezieleRegister.tsx', 'components/MassnahmeDialoge.tsx')).toBe('./MassnahmeDialoge');
+    expect(importPfad('App.tsx', 'components/MassnahmeDialoge.tsx')).toBe('./components/MassnahmeDialoge');
+    expect(importPfad('components/kacheln/Kachel.tsx', 'components/MassnahmeDialoge.tsx')).toBe('../MassnahmeDialoge');
+    expect(elternVon('components/AuffaelligkeitZeile.tsx')).toEqual(
+      expect.arrayContaining(['components/BezugsbasisVergleich.tsx', 'pages/KennzahlSeite.tsx']),
+    );
+    for (const teil of VERBESSERUNG_TEILE) {
       expect(VERBESSERUNG_FLAECHEN, teil).toContain(teil);
-      for (const e of eltern) expect(importiertTeil(e, teil), `${e} importiert ${teil}`).toBe(true);
+      expect(elternVon(teil), `${teil} hat Eltern`).not.toEqual([]);
     }
   });
 
   /** Konzept Verbessern v1, Befund 1: ein offener Monat nennt den Grund der Route; nur ohne Grund „noch nicht endgültig“. */
   it('„noch nicht endgültig“ steht nur ohne Grund der Route - nie als fester Text einer Fläche', () => {
     const NOCH_NICHT = /NOCH_NICHT_ENDGUELTIG|noch nicht endgültig/u;
-    for (const datei of [...verbesserungFlaechen(), 'massnahmeWirkung.ts', 'massnahmen.ts', 'abweichungen.ts']) {
+    // Mit den reinen Bildern der Seiten (Review r1 S-4.1 c): auch sie raten keinen Grund.
+    for (const datei of [...verbesserungFlaechen(), 'massnahmeWirkung.ts', 'massnahmen.ts', 'abweichungen.ts', 'energiezielBild.ts', 'massnahmenBild.ts']) {
       expect(NOCH_NICHT.test(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
     }
     // Im Modul: nur die Konstante selbst und der Rückfall in `offenGrund`.
@@ -3204,10 +3226,14 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
    * als Fehler am Feld, nie als Dauertext darunter. Der Platzhalter zeigt stattdessen ein Beispiel.
    */
   const LAENGE_ALS_DAUERTEXT = />\s*\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b[^{}]*\}\s*</u;
+  /** Dieselbe Länge als Hilfe-Text eines Felds (`hint=`/`hilfe=`, Review r1 S-4.1 b) - steht ebenso dauerhaft da. */
+  const LAENGE_ALS_HILFE =
+    /\b(?:hint|hilfe)=(?:\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b|(?:"|\{\s*['`"])[^"'`]*\b(?:mindestens|höchstens)\s+(?:\d+|zehn|zwanzig|fünfzig|hundert)\s+Zeichen)/iu;
   it('die Länge einer Begründung steht nur als Fehler da, nie als Dauertext', () => {
     for (const datei of verbesserungFlaechen()) {
       const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
       expect(LAENGE_ALS_DAUERTEXT.test(code), datei).toBe(false);
+      expect(LAENGE_ALS_HILFE.test(code), `${datei}: Länge als Hilfe-Text`).toBe(false);
       expect(kundenTexte(code).filter((t) => /\d+\s+bis\s+[\d.]+\s+Zeichen/u.test(t)), datei).toEqual([]);
     }
     for (const probe of [
@@ -3218,6 +3244,11 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     }
     expect(LAENGE_ALS_DAUERTEXT.test("{fehler && <p className=\"vp-ez-fehler\">{fehler}</p>}")).toBe(false);
     expect(LAENGE_ALS_DAUERTEXT.test("setze({ begruendung: Z.BEGRUENDUNG_HINWEIS });")).toBe(false);
+    for (const probe of ['hint={Z.BEGRUENDUNG_HINWEIS}', 'hilfe="Ein Satz, den jeder versteht. Mindestens zehn Zeichen."', "hilfe={'Mindestens 10 Zeichen'}"]) {
+      expect(LAENGE_ALS_HILFE.test(probe), probe).toBe(true);
+    }
+    expect(LAENGE_ALS_HILFE.test('hint="Eine Stelle nach dem Komma."')).toBe(false);
+    expect(LAENGE_ALS_HILFE.test("setFehler({ text: 'Bitte mindestens zehn Zeichen.' })")).toBe(false);
   });
 
   it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {

@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import * as A from '../abweichungen';
 import { api, type Abweichung, type Auffaelligkeit, type AuffaelligkeitenAlle } from '../api';
-import { BEGRIFFE } from '../begriffe';
 import { UEMS_ABWEICHUNGEN, UEMS_AUFFAELLIGKEIT, UEMS_VERANTWORTLICH } from '../glossar';
 import { abweichungRoute, hashForRoute, kennzahlRoute } from '../nav';
 import { AuffaelligkeitBlatt } from './AuffaelligkeitBlatt';
+import { BegriffAufklapper } from './BegriffAufklapper';
 import { FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
 import { useRollen } from '../rollen';
@@ -20,8 +20,6 @@ type Lage =
   | { art: 'da'; abweichungen: Abweichung[]; abruf: string; vermerke: AuffaelligkeitenAlle | 'fehler' };
 
 const UNTERZEILE = 'Wo es anders lief als erwartet - und was Sie dazu wissen.';
-const WAS_IST = 'Was ist eine Abweichung?';
-const NICHT_VERWECHSELN = `Nicht verwechseln: Eine ${UEMS_AUFFAELLIGKEIT} vermerkt VoltPilot, wenn ein Monat über der Bezugsbasis liegt. Eine Abweichung entsteht erst, wenn eine Person ihn untersucht.`;
 const NICHTS_ZU_BEANTWORTEN = 'Nichts zu beantworten. Liegt ein Monat über der Bezugsbasis, vermerkt VoltPilot ihn und er steht hier.';
 const NOCH_KEINE = `Noch keine Abweichung. Sie entsteht, wenn Sie eine ${UEMS_AUFFAELLIGKEIT} untersuchen - oder von Hand an einer Kennzahl unter Auswerten.`;
 const LADEFEHLER = 'Die Abweichungen ließen sich gerade nicht laden. Ihre Daten sind nicht betroffen.';
@@ -49,7 +47,6 @@ export function AbweichungenRegister({
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
-  const [begriff, setBegriff] = useState(false);
   const [blatt, setBlatt] = useState<Auffaelligkeit | null>(null);
   const rollen = useRollen();
 
@@ -121,22 +118,11 @@ export function AbweichungenRegister({
         )}
         <p className="vp-abw-formal">
           <span data-testid="abweichungen-formal">{bild.formal}</span>
-          {/* Der Punkt bleibt am Stand, nie allein am Zeilenanfang. */}
-          {'\u00a0· '}
-          <button type="button" className="vp-abw-link" aria-expanded={begriff} onClick={() => setBegriff((b) => !b)} data-testid="abweichungen-was-ist">
-            <Icon name="info" size={14} />
-            {WAS_IST}
-          </button>
         </p>
       </div>
-      {begriff && (
-        <div className="vp-abw-hinweis" data-testid="abweichungen-begriff">
-          <Icon name="info" size={16} />
-          <span>
-            {BEGRIFFE.abweichung.klartext} {NICHT_VERWECHSELN}
-          </span>
-        </div>
-      )}
+      {/* „Was ist eine Abweichung?“ wie jeder Begriff (Konzept Verbessern v1 §7; Review r1 S-3.2): Klartext, Beispiel und
+          die Abgrenzung zur Auffälligkeit stehen in `begriffe.ts`, nicht ein zweites Mal hier. */}
+      <BegriffAufklapper begriff="abweichung" />
 
       {leer ? (
         <p className="vp-abw-leer" data-testid="abweichungen-leer">
