@@ -15,7 +15,7 @@ import type {
 } from './api';
 import { runden } from './bezugsbasis';
 import { dez, dezText } from './dez';
-import { MONAT_LAEUFT, MONAT_OHNE_WERT, offenGrund } from './energieziele';
+import { MONAT_LAEUFT, MONAT_OHNE_WERT, NICHT_BEWERTBAR, offenGrund } from './energieziele';
 
 export type Ton = 'ok' | 'warn' | 'rahmen' | 'ohne';
 export type Lage = EnergiezielKurs['lage'];
@@ -170,6 +170,8 @@ export interface MonatsPunkt {
   hoechstens: string | null;
   /** Ohne Zahl: warum - der Grund der Route („läuft noch - endgültig etwa ab 07.05.2029“, „kein gemessener Wert“, ihr Satz). */
   grund: string | null;
+  /** Der Monat läuft noch (Grund `periode_nicht_zu_ende` oder der Monat des Abruf-Tags): nur dann gilt „etwa ab“. */
+  laeuftNoch: boolean;
 }
 
 /** Der Satz der Route ohne den Monat davor: „März 2028: nicht bewertbar - …“ → „nicht bewertbar - …“. */
@@ -199,6 +201,7 @@ export function monatsPunkte(stand: Pick<EnergiezielStand, 'monate' | 'nicht_gez
       erwartet: b.erwartet === null ? null : menge(b.erwartet, einheit),
       hoechstens: b.erwartet === null ? null : menge(hoechstensVon(b.erwartet, stand.zielwert_prozent), einheit),
       grund: null,
+      laeuftNoch: false,
     };
     if (periode > abrufMonat) return leer;
     if (endgueltig && !aus.has(periode) && b.delta_prozent !== null && (b.urteil === 'besser' || b.urteil === 'schlechter' || b.urteil === 'im_rahmen')) {
@@ -209,9 +212,9 @@ export function monatsPunkte(stand: Pick<EnergiezielStand, 'monate' | 'nicht_gez
     }
     if (endgueltig) return { ...leer, art: 'ausgeschlossen', grund: ohneMonat(v.satz) };
     // Nicht endgültig: der Grund der Route (Befund 1), nie geraten. Nur ein laufender Monat bekommt den geschätzten
-    // Tag dazu - die Route nennt ihn nicht, die Frist danach ist die übliche Woche.
-    if (b.grund === 'periode_nicht_zu_ende') {
-      return { ...leer, art: 'vorlaeufig', grund: `${MONAT_LAEUFT} - endgültig etwa ab ${tag(endgueltigAb(periode))}` };
+    // Tag dazu - die Route nennt ihn nicht, die Frist danach ist die übliche Woche. Der Monat des Abruf-Tags läuft immer.
+    if (b.grund === 'periode_nicht_zu_ende' || periode === abrufMonat) {
+      return { ...leer, art: 'vorlaeufig', laeuftNoch: true, grund: `${MONAT_LAEUFT} - endgültig etwa ab ${tag(endgueltigAb(periode))}` };
     }
     if (b.gemessen.wert === null) return { ...leer, art: 'fehlt', grund: b.grund ? offenGrund(v) : MONAT_OHNE_WERT };
     return { ...leer, art: 'vorlaeufig', grund: offenGrund(v) };
@@ -273,6 +276,16 @@ function wann(stand: Pick<EnergiezielStand, 'monate' | 'nicht_gezaehlt' | 'zielp
   return von.slice(0, 4) === bis.slice(0, 4) ? `Von ${monatName(von)} bis ${name(bis)}` : `Von ${monatLang(von)} bis ${monatLang(bis)}`;
 }
 
+/**
+ * Ein offener Monat in einem Satz: läuft er noch, wann er etwa endgültig ist; sonst der Grund der Route („März 2029 ist noch
+ * offen - die Produktionsmenge fehlt.“) - nie ein geschätzter Tag für einen Monat, der schon zu Ende ist (Review r2 S-r2-1).
+ */
+function offenerMonatSatz(p: MonatsPunkt): string {
+  return p.laeuftNoch
+    ? `Der ${monatName(p.periode)} ist etwa ab ${tag(endgueltigAb(p.periode))} endgültig.`
+    : `${monatLang(p.periode)} ist noch offen - ${p.grund ?? NICHT_BEWERTBAR}.`;
+}
+
 /** Warum es noch keine Aussage gibt - mit Tag oder Weg, nie nur „0 von 10“ (§6.12). */
 export function keineAussageGrund(stand: Pick<EnergiezielStand, 'monate' | 'nicht_gezaehlt' | 'abruf' | 'zielperiode' | 'zielwert_prozent'>): string {
   const [von] = zp(stand.zielperiode);
@@ -283,7 +296,7 @@ export function keineAussageGrund(stand: Pick<EnergiezielStand, 'monate' | 'nich
   const aus = punkte.find((p) => p.art === 'ausgeschlossen');
   const laeuft = punkte.find((p) => p.art === 'vorlaeufig');
   if (laeuft) {
-    const satz = `Der ${monatName(laeuft.periode)} ist etwa ab ${tag(endgueltigAb(laeuft.periode))} endgültig.`;
+    const satz = offenerMonatSatz(laeuft);
     return aus ? `${monatLang(aus.periode)} ist nicht bewertbar. ${satz}` : satz;
   }
   if (aus) return `${monatLang(aus.periode)}: ${aus.grund}.`;
@@ -442,7 +455,7 @@ export function wenigeMonateHinweis(stand: EnergiezielStand): string | null {
   if (b === 0 || b >= 3 || stand.monate_endgueltig >= stand.monate_soll) return null;
   const naechster = monatsPunkte(stand).find((p) => p.art === 'vorlaeufig');
   const teil = b === 1 ? 'Erst ein Monat der Zielperiode ist abgeschlossen' : 'Erst zwei Monate der Zielperiode sind abgeschlossen';
-  const ab = naechster ? ` Der ${monatName(naechster.periode)} ist etwa ab ${tag(endgueltigAb(naechster.periode))} endgültig.` : '';
+  const ab = naechster ? ` ${offenerMonatSatz(naechster)}` : '';
   return `${teil}; der Stand ändert sich mit jedem Monat.${ab}`;
 }
 
@@ -506,6 +519,15 @@ export function festKacheln(ez: Energieziel): { kacheln: Kachel[]; fuss: string 
   };
 }
 
+/**
+ * „2,7 % weniger als erwartet“; genau gleich „so viel wie erwartet“, nie „0,0 % gleich als erwartet“ (Review r1 K-1,
+ * r2 K-r2-8). Fehlt die Richtung, sagt das Vorzeichen der Zahl der Route, welche.
+ */
+function gegenErwartet(delta: string, richtung: string | null): string {
+  const r = richtung ?? (Number(delta) === 0 ? 'gleich' : delta.startsWith('-') ? 'weniger' : 'mehr');
+  return r === 'gleich' ? 'so viel wie erwartet' : `${prozent(delta)} ${r} als erwartet`;
+}
+
 /** „Heute gelesen: …“ - nur, wenn der Live-Stand vom festgehaltenen abweicht (Entscheid 11). */
 export function heuteGelesen(fest: EnergiezielFestgehaltenerStand | undefined, live: EnergiezielStand | null): string | null {
   if (!fest || !live) return null;
@@ -516,8 +538,7 @@ export function heuteGelesen(fest: EnergiezielFestgehaltenerStand | undefined, l
   if (live.monate_bewertbar === 0 || live.summe.delta_prozent === null) {
     return `Heute gelesen: kein Monat der Zielperiode ist bewertbar. Festgehalten bleibt der Stand${am}.`;
   }
-  const wie = live.summe.richtung === 'gleich' ? 'so viel wie erwartet' : `${prozent(live.summe.delta_prozent)} ${live.summe.richtung ?? ''} als erwartet`;
-  return `Heute gelesen: ${wie} nach ${live.monate_text} Monaten. Festgehalten bleibt der Stand${am}.`;
+  return `Heute gelesen: ${gegenErwartet(live.summe.delta_prozent, live.summe.richtung)} nach ${live.monate_text} Monaten. Festgehalten bleibt der Stand${am}.`;
 }
 
 // ------------------------------------------------------------------ Maßnahmen am Energieziel (Entscheid 5)
@@ -585,7 +606,7 @@ export function bewertungAnkuendigung(zielperiode: string): string {
 export function bewertungFaelligSatz(stand: EnergiezielStand | null, ez: Energieziel): string {
   const name = energiezielName(ez);
   if (!stand || stand.summe.delta_prozent === null) return `Das ${name} ist zu Ende. Bewerten Sie es mit Begründung.`;
-  const zahlTeil = `${prozent(stand.summe.delta_prozent)} ${stand.summe.richtung ?? ''} als erwartet, vorgenommen waren ${zielText(ez.zielwert_prozent)}`;
+  const zahlTeil = `${gegenErwartet(stand.summe.delta_prozent, stand.summe.richtung)}, vorgenommen waren ${zielText(ez.zielwert_prozent)}`;
   if (stand.vorschlag === null) {
     return `Das ${name} ist zu Ende: ${zahlTeil}. Einen Vorschlag gibt es nicht, weil nur ${stand.monate_text} Monaten bewertbar sind - bewerten Sie es mit Begründung.`;
   }
