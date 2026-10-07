@@ -308,6 +308,15 @@ export function jahreZurWahl(heute: string, anzahl = 5): { id: string; label: st
   return jahre.map((j) => ({ id: String(j), label: j === jahr ? `${j} (läuft)` : String(j) }));
 }
 
+/**
+ * Welches Jahr das Anlegen-Blatt vorwählt (Review P5-3): das erste freie Jahr NACH der jüngsten vorhandenen - nie ein Jahr
+ * davor (wie `mbNaechstes`: keine vor der jüngsten); gibt es keines, wählt das Blatt nichts vor.
+ */
+export function vorgewaehltesJahr(jahre: readonly { id: string }[], vorhanden: readonly string[]): string | null {
+  const juengste = vorhanden.length ? Math.max(...vorhanden.map(Number)) : null;
+  return jahre.find((j) => !vorhanden.includes(j.id) && (juengste === null || Number(j.id) > juengste))?.id ?? null;
+}
+
 // ------------------------------------------------------------------ Kopf und Stand (§5.8)
 
 /** Der gültige Stand: der jüngste, den keiner ersetzt hat. */

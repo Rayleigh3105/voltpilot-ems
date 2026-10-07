@@ -35,7 +35,7 @@ export function ManagementbewertungAnlegenBlatt({
   onAngelegt: (kennung: string) => void;
 }) {
   const jahre = M.jahreZurWahl(heute).filter((j) => Number(j.id) < Number(heute.slice(0, 4)));
-  const [jahr, setJahr] = useState<string | null>(jahre.find((j) => !schonDa.includes(j.id))?.id ?? null);
+  const [jahr, setJahr] = useState<string | null>(M.vorgewaehltesJahr(jahre, schonDa));
   const [unternehmen, setUnternehmen] = useState<string | null>(null);
   const [satz, setSatz] = useState<string | null>(null);
   const [vorhanden, setVorhanden] = useState<string | null>(null);
