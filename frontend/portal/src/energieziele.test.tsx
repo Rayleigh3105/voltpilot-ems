@@ -147,6 +147,19 @@ describe('die Flächen gegen R4/R10', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Energieziele');
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
+  it('„Was ist ein Energieziel?“ steht im Reiter - leer und mit Energiezielen (Review r2 S-r2-2)', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    Object.assign(api, energiezielBuehne('leer'));
+    const { unmount } = bereich();
+    const leer = await screen.findByTestId('begriff-auf-energieziel');
+    expect(leer.textContent).toContain('Was ist ein Energieziel?');
+    expect(leer.textContent).toContain('Nicht die Bezugsbasis');
+    unmount();
+    Object.assign(api, energiezielBuehne('juli'));
+    bereich();
+    await screen.findByTestId('energieziele-antwort');
+    expect(screen.getAllByTestId('begriff-auf-energieziel')).toHaveLength(1);
+  });
   it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf zum Eröffnen', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
     Object.assign(api, abweichungBuehne('leer', '2028-01-15'));

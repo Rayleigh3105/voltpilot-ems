@@ -12,7 +12,7 @@ import {
   zeitraumGueltig,
 } from './bezugsbasisVergleich';
 import { UEMS_BEZUGSBASIS_URTEILE } from './glossar';
-import { vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from './test/bezugsbasisVergleichFixtures';
+import { vergleichAbNovember, vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from './test/bezugsbasisVergleichFixtures';
 
 /** VG3 (E8 = A): an einer rohen Zahl steht kein Urteil-Wort und kein Pfeil. */
 const URTEIL_ODER_PFEIL = /besser|schlechter|im Rahmen|nicht bewertbar|[↑↓▲▼⬆⬇]/u;
@@ -79,6 +79,26 @@ describe('AP-17 IP-20 · das Bild des Vergleichs (nur Anzeige, nichts gerechnet)
       'Modell nicht anwendbar: Produktionsmenge im März 2028 (390 000 kg) liegt außerhalb der Bezugsbasis (254 000–341 000 kg).',
     );
     expect(bild.zeitraum).toMatchObject({ urteil: 'ohne Urteil', monate: '4 von 5 Monaten' });
+  });
+
+  it('P4 je Monat: Monate ohne Fassung zählen im Kopf nicht - das Urteil bleibt, „4 von 6 Monaten bewertbar“ sagt der Satz', () => {
+    const bild = vergleichBild(vergleichAbNovember());
+    if (bild.art !== 'vergleich') throw new Error('Vergleich erwartet');
+    expect(bild.monate.slice(0, 2).map((m) => m.bereinigt)).toEqual([
+      { art: 'grund', grund: 'basis_fehlt', kennzeichen: [] },
+      { art: 'grund', grund: 'basis_fehlt', kennzeichen: [] },
+    ]);
+    expect(bild.zeitraum).toMatchObject({
+      titel: 'September 2027 bis Februar 2028',
+      gemessen: '323 000 kWh',
+      erwartet: '317 395 kWh',
+      urteil: 'im Rahmen',
+      // Keine eigene Zeile neben dem Urteil: der Satz beginnt damit (am Handy nicht dreimal dasselbe).
+      monate: null,
+    });
+    expect(bild.zeitraum.satz).toMatch(/^September 2027 bis Februar 2028: 4 von 6 Monaten bewertbar, die Bezugsbasis gilt erst ab November 2027\./);
+    // Die Basis-Zeile nennt die Fassung, gegen die der Kopf rechnet - nicht die fehlende der ersten Monate.
+    expect(bild.basisZeile).toContain('Bezugsbasis BB-0001 · Fassung 2');
   });
 
   it('Basis-Zeile: Kennzeichen, Fassung, Methode als Kundenwort, Referenzperiode', () => {

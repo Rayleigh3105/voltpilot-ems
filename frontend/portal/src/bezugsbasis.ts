@@ -28,8 +28,9 @@ export interface Fassung {
 }
 export interface Wert { wert: string | null; zustand?: string; kennzeichen?: string[] }
 export interface VergleichEingang { fassung: Fassung | null; basis_beendet?: boolean; abgeschlossen: boolean; gemessen: Wert; variablen: Wert[] }
+/** Je Monat `ohne_fassung`: für ihn gilt keine Fassung der Bezugsbasis (P4 je Monat). */
 export interface ZeitraumEingang { fassung: Fassung | null; basis_beendet?: boolean; soll_monate: number;
-  monate: { abgeschlossen: boolean; gemessen: Wert; variablen: Wert[] }[] }
+  monate: { abgeschlossen: boolean; gemessen: Wert; variablen: Wert[]; ohne_fassung?: boolean }[] }
 export interface Ergebnis {
   urteil: string; grund: string | null; gemessen: string | null; erwartet: string | null; delta_prozent: string | null;
   band_prozent: string | null; richtung: string | null; kennzeichen: string[]; monate?: string;
@@ -282,15 +283,20 @@ export function vergleich(e: VergleichEingang): Ergebnis {
     fest(band(f), 1), richtung(g, erwartet), kennzeichen);
 }
 
-/** U5: Σ gemessen ÷ Σ erwartet über die Monate — nie ein Mittel der Monats-Δ; fehlt ein Monat: „x von y Monaten“. */
+/**
+ * U5: Σ gemessen ÷ Σ erwartet über die Monate — nie ein Mittel der Monats-Δ; fehlt ein Monat: „x von y Monaten“.
+ * P4 je Monat: ein Monat ohne geltende Fassung (`ohne_fassung`) zählt nicht mit, weder als Null noch als fehlender
+ * Monat; „x von y“ nennt ihn (y = alle Monate des Zeitraums).
+ */
 export function zeitraum(e: ZeitraumEingang): Ergebnis {
   const f = e.fassung;
-  const einzeln = e.monate.map(m => vergleich({ fassung: f, basis_beendet: e.basis_beendet, ...m }));
+  const einzeln = e.monate.filter(m => !m.ohne_fassung).map(m => vergleich({ fassung: f, basis_beendet: e.basis_beendet, ...m }));
   const nutzbar = einzeln.filter(x => x.urteil !== NA);
   const y = e.soll_monate;
-  if (!nutzbar.length) return { ...ergebnis(NA, einzeln.length && f === null ? einzeln[0].grund : 'keine_werte'), monate: `0 von ${y}` };
+  const mitFassung = y - e.monate.filter(m => m.ohne_fassung).length;
+  if (!nutzbar.length) return { ...ergebnis(NA, f === null ? (e.basis_beendet ? 'basis_beendet' : 'basis_fehlt') : 'keine_werte'), monate: `0 von ${y}` };
   const g = summe(nutzbar.map(x => q(x.gemessen!))), erw = summe(nutzbar.map(x => q(x.erwartet!)));
-  const unvollstaendig = nutzbar.length < y || nutzbar.some(x => x.urteil === OHNE);
+  const unvollstaendig = nutzbar.length < mitFassung || nutzbar.some(x => x.urteil === OHNE);
   const kennzeichen = basisKennzeichen(f!);
   for (const x of nutzbar) dazu(kennzeichen, x.kennzeichen);
   if (nutzbar.length < y) dazu(kennzeichen, [`${nutzbar.length} von ${y} Monaten`]);

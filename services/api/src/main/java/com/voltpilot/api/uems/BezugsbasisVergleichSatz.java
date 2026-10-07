@@ -112,27 +112,78 @@ public final class BezugsbasisVergleichSatz {
         return satz + vorlaeufig(e);
     }
 
-    /** Der Zeitraum-Satz (U5, §10 „Zeitraum“). */
+    /**
+     * Wie viele Monate des Zeitraums eine geltende Fassung haben (P4 je Monat) und was der Satz über die übrigen sagt:
+     * {@code ab} (Monat) mit {@code wieder} = „gilt wieder ab“ nach einem Ende, sonst „gilt erst ab“; {@code endete} (Tag)
+     * = „endete am“. Ohne beides nennt der Satz nur die Zahl der Monate ohne Fassung (eine Lücke zwischen Monaten mit
+     * Fassung).
+     */
+    public record Geltung(int mitFassung, String ab, boolean wieder, LocalDate endete) {
+
+        /** Jeder der {@code soll} Monate hat eine Fassung. */
+        public static Geltung voll(int soll) {
+            return new Geltung(soll, null, false, null);
+        }
+    }
+
+    /** Der Zeitraum-Satz (U5, §10 „Zeitraum“), jeder Monat mit geltender Fassung. */
     public static String zeitraum(Map<String, Object> e, String von, String bis, String einheit, int soll) {
+        return zeitraum(e, von, bis, einheit, soll, Geltung.voll(soll));
+    }
+
+    /**
+     * Der Zeitraum-Satz (U5, §10 „Zeitraum“) mit P4 je Monat: nur {@code g.mitFassung()} der {@code soll} Monate haben
+     * eine geltende Fassung, die übrigen zählen nicht mit. Dann sagt der Satz vorn, wie viele Monate bewertbar sind und
+     * warum die übrigen nicht: „6 von 12 Monaten bewertbar, die Bezugsbasis gilt erst ab April 2026.“ · „3 von 6 Monaten
+     * bewertbar, die Bezugsbasis endete am 31.12.2025.“
+     */
+    public static String zeitraum(Map<String, Object> e, String von, String bis, String einheit, int soll, Geltung g) {
         String kopf = von + " bis " + bis + ": ";
         String urteil = (String) e.get("urteil");
+        String geltung = geltung(g);
         if ("nicht_anwendbar".equals(urteil)) {
-            return kopf + "nicht bewertbar — kein Monat mit Vergleich.";
+            return kopf + "nicht bewertbar — kein Monat mit Vergleich."
+                    + (geltung == null ? "" : " " + Character.toUpperCase(geltung.charAt(0)) + geltung.substring(1)
+                            + ".");
+        }
+        int x = Integer.parseInt(((String) e.get("monate")).split(" ", 2)[0]);
+        int mitFassung = g.mitFassung();
+        if (mitFassung < soll) {
+            int ohne = soll - mitFassung;
+            kopf += x + " von " + soll + " Monaten bewertbar, " + (geltung != null ? geltung
+                    : "in " + ohne + (ohne == 1 ? " Monat" : " Monaten") + " gilt keine Fassung der Bezugsbasis") + ". ";
         }
         String d = prozent((String) e.get("delta_prozent"));
         String richtung = "mehr".equals(e.get("richtung")) ? "mehr" : "weniger";
         String zahlen = kopf + menge((String) e.get("gemessen")) + " " + einheit + " gemessen, "
                 + menge((String) e.get("erwartet")) + " " + einheit + " erwartet — ";
-        String summe = "(Summe über " + (soll < ZAHLWORT.size() ? ZAHLWORT.get(soll) : soll + " Monate") + ")";
+        String summe = "(Summe über " + (x < ZAHLWORT.size() ? ZAHLWORT.get(x) : x + " Monate") + ")";
         String satz = switch (urteil) {
             case "im_rahmen" -> zahlen + d + " %: im Rahmen der Bezugsbasis " + summe + ".";
             case "besser", "schlechter" -> zahlen + d + " % " + richtung + ": " + urteil + " " + summe + ".";
-            // G2 (IP-13): hat jeder Monat einen Vergleich, fehlt das Urteil, weil ein Wert unvollständig ist.
-            default -> (soll + " von " + soll).equals(e.get("monate"))
+            // G2 (IP-13): hat jeder Monat mit Fassung einen Vergleich, fehlt das Urteil, weil ein Wert unvollständig ist.
+            default -> x == mitFassung
                     ? zahlen + d + " % " + richtung + "; ohne Urteil, die Werte sind unvollständig."
-                    : zahlen + d + " % " + richtung + "; ohne Urteil: " + e.get("monate") + " Monaten mit Vergleich.";
+                    : zahlen + d + " % " + richtung + "; ohne Urteil: " + x + " von " + mitFassung
+                            + " Monaten mit Vergleich.";
         };
         return satz + vorlaeufig(e);
+    }
+
+    /**
+     * „die Bezugsbasis gilt erst ab April 2026“ · „… gilt wieder ab März 2027“ · „… endete am 31.12.2025“, beides in der
+     * Folge der Zeit verbunden (ohne Monat mit Fassung liegt das Ende vor dem neuen Beginn); ohne beides {@code null}.
+     */
+    private static String geltung(Geltung g) {
+        String ab = g.ab() == null ? null : "gilt " + (g.wieder() ? "wieder" : "erst") + " ab " + g.ab();
+        String endete = g.endete() == null ? null : "endete am " + g.endete().format(TAG);
+        if (ab == null && endete == null) {
+            return null;
+        }
+        if (ab == null || endete == null) {
+            return "die Bezugsbasis " + (ab == null ? endete : ab);
+        }
+        return "die Bezugsbasis " + (g.mitFassung() == 0 ? endete + " und " + ab : ab + " und " + endete);
     }
 
     /** P2: eine vorläufige Fassung nennt es im Satz, nicht nur im Kennzeichen. */

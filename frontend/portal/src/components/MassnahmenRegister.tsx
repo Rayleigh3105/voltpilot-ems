@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Massnahme, type MassnahmeListe } from '../api';
-import { BEGRIFFE } from '../begriffe';
+import * as M from '../massnahmen';
 import * as B from '../massnahmenBild';
 import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
+import { BegriffAufklapper } from './BegriffAufklapper';
 import { FristDatum, Kennzeichentext } from './FristDatum';
 import { GrenzHinweis, GrenzSatz } from './GrenzSatz';
 import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
@@ -34,7 +35,7 @@ function Eintrag({ m, onOeffnen }: { m: Massnahme; onOeffnen: (id: string) => vo
   const datum = B.datumBild(m);
   const bringt = B.bringtBild(m);
   const schritt = B.naechsterSchritt(m, {
-    melden: rollen.darf('verbesserung.verwalten', m.standort_id),
+    melden: M.darfMeldenUndKommentieren(rollen.darf, m, rollen.selbst?.kennung ?? null),
     abschliessen: rollen.darf('verbesserung.abschliessen', m.standort_id),
   });
   const woher = B.woherZeile(m);
@@ -87,32 +88,6 @@ function Eintrag({ m, onOeffnen }: { m: Massnahme; onOeffnen: (id: string) => vo
   );
 }
 
-/** „Was ist eine Maßnahme?“ - Klartext aus `begriffe.ts`, dazu was sie nicht ist (§7). */
-function WasIst({ offen, setOffen, refEl }: { offen: boolean; setOffen: (o: boolean) => void; refEl: React.RefObject<HTMLDetailsElement> }) {
-  return (
-    <details
-      ref={refEl}
-      className="vp-mn-tipp"
-      open={offen}
-      onToggle={(e) => setOffen((e.target as HTMLDetailsElement).open)}
-      data-testid="massnahmen-was-ist"
-    >
-      <summary>
-        <Icon name="info" size={16} />
-        {B.WAS_IST}
-        <span className="vp-mn-tipp-zu" aria-hidden="true">
-          <Icon name="chevron-down" size={16} />
-        </span>
-      </summary>
-      <p>{BEGRIFFE.massnahme.klartext}</p>
-      <p className="is-leise">
-        <b>Nicht verwechseln:</b> Nicht die Wirkung: was eine Maßnahme gebracht hat, beobachtet VoltPilot an einer Kennzahl -
-        ob sie es bewirkt hat, sagt eine Person.
-      </p>
-    </details>
-  );
-}
-
 /** „So läuft eine Maßnahme“: die drei Stufen mit einem Satz (§6.5). */
 function SoLaeuft() {
   return (
@@ -155,8 +130,6 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
   const [versuch, setVersuch] = useState(0);
   const [filter, setFilter] = useState<Filter>('alle');
   const [planen, setPlanen] = useState(false);
-  const [wasIst, setWasIst] = useState(false);
-  const wasIstRef = useRef<HTMLDetailsElement>(null);
   const rollen = useRollen();
   const darfPlanen = rollen.darf('verbesserung.verwalten', null) || (rollen.selbst?.standorte ?? []).some((s) => rollen.darf('verbesserung.verwalten', s.id));
 
@@ -175,11 +148,6 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
       aktiv = false;
     };
   }, [versuch]);
-
-  const zeigeWasIst = () => {
-    setWasIst(true);
-    requestAnimationFrame(() => wasIstRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  };
 
   const kopf = (
     <header className="vp-wv-kopf vp-mn-kopf">
@@ -216,7 +184,6 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
 
   const fuss = (
     <>
-      <WasIst offen={wasIst} setOffen={setWasIst} refEl={wasIstRef} />
       <SoLaeuft />
       <GrenzHinweis />
       <GrenzSatz className="vp-ez-grenze" />
@@ -253,6 +220,7 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
             {B.KNOPF_PLANEN}
           </Button>
         )}
+        <BegriffAufklapper begriff="massnahme" />
       </section>
     );
   } else {
@@ -263,14 +231,10 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
       <>
         <div className="vp-mn-antwort" data-testid="massnahmen-antwort">
           <p className="vp-mn-satz">{B.antwortSatz(liste)}</p>
-          <p className="vp-mn-formal">
-            {B.formalZeile(liste, lage.l.abruf)} ·{' '}
-            <button type="button" className="vp-mn-wasist" onClick={zeigeWasIst}>
-              <Icon name="info" size={13} />
-              {B.WAS_IST}
-            </button>
-          </p>
+          <p className="vp-mn-formal">{B.formalZeile(liste, lage.l.abruf)}</p>
         </div>
+        {/* „Was ist eine Maßnahme?“ wie jeder Begriff, mit den Fachwörtern zuletzt (Entscheid 14; Review r2 S-r2-2). */}
+        <BegriffAufklapper begriff="massnahme" />
         <div className="vp-wv-filter" role="group" aria-label="Nach Stufe zeigen" data-testid="massnahmen-chips">
           {B.chips(liste).map((c) => (
             <button

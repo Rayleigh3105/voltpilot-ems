@@ -434,6 +434,157 @@ class MassnahmeApiTest {
                 "begruendung", "Bedienberechtigter will ändern.")).status()).isEqualTo(403);
     }
 
+    /**
+     * Verbessern-Konzept v1, Entscheid 8 (eng gefasst): wer für eine Maßnahme verantwortlich ist, meldet SIE als
+     * umgesetzt und kommentiert SIE - auch ohne {@code verbesserung.verwalten} (Murat Demirci, bedienberechtigt; eine
+     * Leserin). Eine fremde Maßnahme bleibt 403, ein anderer Kundenbereich 404; Ändern, Verwerfen und Bewerten bleiben
+     * 403; Einsicht schreibt nie, auch als Verantwortliche.
+     */
+    @Test
+    void verantwortlicheMeldenUndKommentierenNurDieEigeneMassnahme() throws Exception {
+        Welt w = welt();
+        Welt fremd = welt();
+        person(w, "lena", "leser", w.st1());
+        person(w, "robert", "einsicht", null);
+        String eigene = anlegen(w, vonHand(w, w.st1()), "murat");
+        String fremde = anlegen(w, vonHand(w, w.st1()), "ines");
+        String vonLena = anlegen(w, vonHand(w, w.st1()), "lena");
+        String vonRobert = anlegen(w, vonHand(w, w.st1()), "robert");
+
+        // Murat: die eigene Maßnahme kommentieren und als umgesetzt melden - genau diese zwei Schritte.
+        Antwort k = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/eintraege", Map.of("text", "Angebot liegt vor."));
+        assertThat(k.status()).as(k.text()).isEqualTo(201);
+        assertThat(k.body().at("/verlauf/1/art").asText()).isEqualTo("kommentar");
+        assertThat(k.body().at("/verlauf/1/person").asText()).isEqualTo("Murat Demirci");
+        Antwort aendern = ruf(w, "murat", HttpMethod.PUT, PFAD + "/" + eigene, Map.of("titel", "Murat ändert",
+                "begruendung", "Der Verantwortliche will den Titel ändern."));
+        assertThat(aendern.status()).as(aendern.text()).isEqualTo(403);
+        assertThat(aendern.body().get("code").asText()).isEqualTo("recht_fehlt");
+        assertThat(ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/verwerfen",
+                Map.of("begruendung", "Der Verantwortliche will verwerfen.")).status()).isEqualTo(403);
+        assertThat(ruf(w, "murat", HttpMethod.PUT, PFAD + "/" + eigene + "/verantwortlicher", Map.of("benutzer",
+                sub(w, "peter"), "begruendung", "Der Verantwortliche gibt ab.")).status()).isEqualTo(403);
+
+        // Eine fremde Maßnahme bleibt, wie sie war: 403 mit der nötigen Rolle von verwalten.
+        for (var r : koerper("Murat meldet eine fremde Maßnahme.").entrySet()) {
+            if (r.getKey().equals("verwerfen")) {
+                continue;
+            }
+            Antwort x = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + fremde + "/" + r.getKey(), r.getValue());
+            assertThat(x.status()).as(r.getKey() + " " + x.text()).isEqualTo(403);
+            assertThat(x.body().get("code").asText()).isEqualTo("recht_fehlt");
+        }
+        // Ein anderer Kundenbereich sieht die Maßnahme nicht - auch nicht sein Murat, der dort selbst eigene_massnahme
+        // hat: die Vorprüfung lässt ihn durch, der Dienst antwortet wie für eine unbekannte Kennung (404).
+        for (String schritt : List.of("umgesetzt", "eintraege")) {
+            assertThat(ruf(fremd, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/" + schritt,
+                    koerper("Murat aus einem anderen Kundenbereich.").get(schritt)).status()).as(schritt).isEqualTo(404);
+        }
+
+        uhr(UMGESETZT);
+        Antwort um = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/umgesetzt", Map.of("am", "2028-01-22",
+                "begruendung", "Zeitschaltung an den Maschinen 3 bis 6 eingebaut."));
+        assertThat(um.status()).as(um.text()).isEqualTo(200);
+        assertThat(um.body().get("zustand").asText()).isEqualTo("umgesetzt");
+        // Bewerten bleibt bei verbesserung.abschliessen - auch an der eigenen Maßnahme.
+        assertThat(ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen", Map.of("ergebnis",
+                "nicht_messbar", "begruendung", "Der Verantwortliche will selbst bewerten.")).status()).isEqualTo(403);
+
+        // Leserin am Werk (LE S): dieselben zwei Schritte an ihrer Maßnahme.
+        assertThat(ruf(w, "lena", HttpMethod.POST, PFAD + "/" + vonLena + "/eintraege", Map.of("text",
+                "Leuchten sind bestellt.")).status()).isEqualTo(201);
+        assertThat(ruf(w, "lena", HttpMethod.POST, PFAD + "/" + vonLena + "/umgesetzt", Map.of("am", "2028-01-22",
+                "begruendung", "Halle 1 leuchtet mit LED.")).status()).isEqualTo(200);
+        assertThat(ruf(w, "lena", HttpMethod.POST, PFAD + "/" + fremde + "/eintraege", Map.of("text",
+                "Lena kommentiert fremd.")).status()).isEqualTo(403);
+
+        // Einsicht nie ein Eintrag (AP-19 RE3) - auch als Verantwortliche.
+        for (var r : koerper("Einsicht meldet.").entrySet()) {
+            if (r.getKey().equals("verwerfen")) {
+                continue;
+            }
+            Antwort x = ruf(w, "robert", HttpMethod.POST, PFAD + "/" + vonRobert + "/" + r.getKey(), r.getValue());
+            assertThat(x.status()).as(r.getKey() + " " + x.text()).isEqualTo(403);
+        }
+        assertThat(root.queryForObject("SELECT zustand FROM massnahme WHERE id = ?::uuid", String.class, vonRobert))
+                .isEqualTo("geplant");
+        assertThat(root.queryForObject("SELECT zustand FROM massnahme WHERE id = ?::uuid", String.class, fremde))
+                .isEqualTo("geplant");
+    }
+
+    /**
+     * Entscheid 8 an den Grenzen (Review r2 SOLLTE-2, Anhang C): der Kennzahl-Pfad trägt wie der Standort-Pfad; eine
+     * Maßnahme außerhalb der eigenen Sicht (an ST-2, am Unternehmen) bleibt 404, auch als Verantwortlicher - es wird
+     * nichts geschrieben; wer nicht mehr verantwortlich ist, verliert beide Schritte (403); Vier-Augen bleibt bei
+     * {@code verbesserung.abschliessen}, auch an der eigenen Maßnahme. Entschieden wird über den geprüften Zwilling
+     * {@code RechteAbleitung.eigeneMassnahme} (Vektoren {@code e8-*}).
+     */
+    @Test
+    void eigeneMassnahmeKennzahlPfadStandortZaunUnternehmenWechselUndVierAugen() throws Exception {
+        Welt w = welt();
+        // (a) Kennzahl-Pfad: R3 an KZ-0004 (Geltung ST-1), verantwortlich Murat (bedienberechtigt an ST-1).
+        String r3 = anlegen(w, mitMessgrundlage(w, RU.get("M-2028-0001")), "murat");
+        Antwort k = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + r3 + "/eintraege", Map.of("text", "Zeitschaltuhren bestellt."));
+        assertThat(k.status()).as(k.text()).isEqualTo(201);
+
+        // (b) Standort-Zaun: an ST-2 sieht Murat nichts - dieselbe Antwort wie für eine unbekannte Kennung.
+        String st2 = anlegen(w, vonHand(w, w.st2()), "murat");
+        // (c) Am Unternehmen (ohne Standort) ebenso: Murat hat nur ST-1.
+        String firma = anlegen(w, vonHand(w, null), "murat");
+        for (String id : List.of(st2, firma)) {
+            for (String schritt : List.of("umgesetzt", "eintraege")) {
+                Antwort x = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + id + "/" + schritt,
+                        koerper("Murat außerhalb seiner Sicht.").get(schritt));
+                assertThat(x.status()).as(schritt + " " + x.text()).isEqualTo(404);
+            }
+            assertThat(root.queryForObject("SELECT zustand FROM massnahme WHERE id = ?::uuid", String.class, id))
+                    .isEqualTo("geplant");
+            assertThat(root.queryForObject("SELECT count(*) FROM massnahme_aenderung WHERE massnahme_id = ?::uuid "
+                    + "AND art = 'kommentar'", Integer.class, id)).isZero();
+        }
+
+        // (d) Wechsel des Verantwortlichen: danach hat Murat an der R3 keinen der beiden Schritte mehr.
+        Antwort wechsel = ruf(w, "ines", HttpMethod.PUT, PFAD + "/" + r3 + "/verantwortlicher", Map.of("benutzer",
+                sub(w, "peter"), "begruendung", "Peter übernimmt die Werkzeugheizungen."));
+        assertThat(wechsel.status()).as(wechsel.text()).isEqualTo(200);
+        for (String schritt : List.of("umgesetzt", "eintraege")) {
+            Antwort x = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + r3 + "/" + schritt,
+                    koerper("Murat ist nicht mehr verantwortlich.").get(schritt));
+            assertThat(x.status()).as(schritt + " " + x.text()).isEqualTo(403);
+            assertThat(x.body().get("code").asText()).isEqualTo("recht_fehlt");
+        }
+
+        // (e) Vier-Augen an der eigenen, umgesetzten Maßnahme: beantragen, freigeben, ablehnen bleiben 403.
+        String eigene = anlegen(w, mitMessgrundlage(w, RU.get("M-2028-0001")), "murat");
+        uhr(UMGESETZT);
+        Antwort um = ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/umgesetzt", Map.of("am", "2028-01-22",
+                "begruendung", "Zeitschaltung an den Maschinen 3 bis 6 eingebaut."));
+        assertThat(um.status()).as(um.text()).isEqualTo(200);
+        Map<String, Object> belegt = Map.of("ergebnis", "belegt", "begruendung", "Der Verantwortliche will selbst belegen.");
+        for (var x : List.of(ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen/beantragen", belegt),
+                ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen/freigeben", Map.of()),
+                ruf(w, "murat", HttpMethod.POST, PFAD + "/" + eigene + "/bewertungen/ablehnen",
+                        Map.of("begruendung", "Der Verantwortliche lehnt ab.")))) {
+            assertThat(x.status()).as(x.text()).isEqualTo(403);
+        }
+    }
+
+    /** Eine weitere Person mit einer Rolle (am Standort bzw. unternehmensweit), aktiv seit 2024. */
+    private void person(Welt w, String person, String rolle, UUID standort) {
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
+                + "'aktiv')", w.mandant(), sub(w, person), person.equals("lena") ? "Lena Brandt" : "Robert Fink");
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) "
+                + "VALUES (?, ?, ?, ?, '2024-01-01', 'Europe/Berlin')", w.mandant(), sub(w, person), rolle, standort);
+    }
+
+    /** Legt die Maßnahme als Ines Kaltenbach an, verantwortlich {@code person}; die Kennung. */
+    private String anlegen(Welt w, Map<String, Object> body, String person) throws Exception {
+        body.put("verantwortlich", sub(w, person));
+        Antwort a = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(a.status()).as(a.text()).isEqualTo(201);
+        return a.body().get("id").asText();
+    }
+
     // ================================================================================ Herkunft aus dem Energiemanagement (AP-19 IP-17)
 
     /**

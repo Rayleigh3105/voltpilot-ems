@@ -251,7 +251,8 @@ Die Liste braucht damit keine Werte-Anfrage je Kennzahl mehr.
   mit dem Monat, ab dem genau diese Fassung gilt (Konzept Auswerten a1 §10.6): nach einem Fassungswechsel mitten in den
   zwölf Monaten also erst mit dem Wechsel - nie rechnet er eine Fassung auf Monate, für die sie noch nicht galt. Die Monate
   davor stehen mit ihrem Urteil gegen ihre eigene Fassung in `monate`. Gilt am letzten Tag keine Fassung mehr (Basis
-  beendet), beginnt er mit der ersten.
+  beendet), rechnet er gegen die letzte, die in den zwölf Monaten galt, von ihrem Beginn bis zu ihrem letzten Monat
+  (P4 je Monat, `bezugsbasis.md` §2); gilt in den zwölf keine, beginnt er mit der ersten.
 - `energieziel` ist ein offenes Energieziel mit dem Stand seiner Summe (Z3): das, dessen Zielperiode `monat` enthält
   (bei mehreren das mit der frühesten Zielperiode); sonst das zuletzt abgelaufene, noch nicht bewertete; sonst das nächste.
   Ein fälliges Ziel verdrängt das laufende nicht.

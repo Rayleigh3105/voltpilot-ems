@@ -42,7 +42,10 @@ public final class BezugsbasisRegeln {
                           String streuung_prozent, String toleranz_prozent, List<Spannweite> spannweite, List<Variable> variablen) {}
     public record Wert(String wert, String zustand, List<String> kennzeichen) {}
     public record VergleichEingang(Fassung fassung, boolean basis_beendet, boolean abgeschlossen, Wert gemessen, List<Wert> variablen) {}
-    public record Monat(boolean abgeschlossen, Wert gemessen, List<Wert> variablen) {}
+    /** Ein Monat des Zeitraums; {@code ohne_fassung}: für ihn gilt keine Fassung der Bezugsbasis (P4 je Monat). */
+    public record Monat(boolean abgeschlossen, Wert gemessen, List<Wert> variablen, boolean ohne_fassung) {
+        public Monat(boolean abgeschlossen, Wert gemessen, List<Wert> variablen) { this(abgeschlossen, gemessen, variablen, false); }
+    }
     public record ZeitraumEingang(Fassung fassung, boolean basis_beendet, int soll_monate, List<Monat> monate) {}
     public record Paar(String zaehler, String nenner) {}
     public record Reihe(String zaehler, List<String> variablen) {}
@@ -358,22 +361,27 @@ public final class BezugsbasisRegeln {
                 fest(band(f), 1), richtung(g, erwartet), kennzeichen);
     }
 
-    /** U5: Σ gemessen ÷ Σ erwartet über die Monate — nie ein Mittel der Monats-Δ; fehlt ein Monat: „x von y Monaten“. */
+    /**
+     * U5: Σ gemessen ÷ Σ erwartet über die Monate — nie ein Mittel der Monats-Δ; fehlt ein Monat: „x von y Monaten“.
+     * P4 je Monat: ein Monat ohne geltende Fassung ({@code ohne_fassung}) zählt nicht mit, weder als Null noch als
+     * fehlender Monat; „x von y“ nennt ihn (y = alle Monate des Zeitraums).
+     */
     public static Map<String, Object> zeitraum(ZeitraumEingang e) {
         Fassung f = e.fassung();
-        List<Map<String, Object>> einzeln = e.monate().stream()
+        List<Map<String, Object>> einzeln = e.monate().stream().filter(m -> !m.ohne_fassung())
                 .map(m -> vergleich(new VergleichEingang(f, e.basis_beendet(), m.abgeschlossen(), m.gemessen(), m.variablen()))).toList();
         List<Map<String, Object>> nutzbar = einzeln.stream().filter(x -> !NA.equals(x.get("urteil"))).toList();
         int y = e.soll_monate();
+        int mitFassung = y - (int) e.monate().stream().filter(Monat::ohne_fassung).count();
         if (nutzbar.isEmpty()) {
-            String grund = !einzeln.isEmpty() && f == null ? (String) einzeln.get(0).get("grund") : "keine_werte";
+            String grund = f == null ? (e.basis_beendet() ? "basis_beendet" : "basis_fehlt") : "keine_werte";
             var aus = na(grund, null);
             aus.put("monate", "0 von " + y);
             return aus;
         }
         Q g = summe(nutzbar.stream().map(x -> Q.of((String) x.get("gemessen"))).toList());
         Q erw = summe(nutzbar.stream().map(x -> Q.of((String) x.get("erwartet"))).toList());
-        boolean unvollstaendig = nutzbar.size() < y || nutzbar.stream().anyMatch(x -> OHNE.equals(x.get("urteil")));
+        boolean unvollstaendig = nutzbar.size() < mitFassung || nutzbar.stream().anyMatch(x -> OHNE.equals(x.get("urteil")));
         List<String> kennzeichen = basisKennzeichen(f);
         for (var x : nutzbar) {
             @SuppressWarnings("unchecked") List<String> k = (List<String>) x.get("kennzeichen");

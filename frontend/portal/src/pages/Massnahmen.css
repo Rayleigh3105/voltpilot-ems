@@ -51,19 +51,6 @@
   line-height: 1.45;
   color: var(--vp-c-muted-fg, #475569);
 }
-.vp-mn-wasist {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--vp-c-primary, #2563eb);
-  font: 600 0.75rem var(--vp-c-font);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.vp-mn-wasist:focus-visible,
 .vp-mn-sprung:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
   outline-offset: 2px;
@@ -146,55 +133,6 @@
   color: var(--vp-c-muted-fg, #475569);
 }
 
-/* ---------- Die Begriffs-Karte und „So läuft eine Maßnahme“ ------------------------------------ */
-.vp-mn-tipp {
-  display: grid;
-  gap: 7px;
-  padding: 13px 14px;
-  border: 1px solid color-mix(in srgb, var(--vp-c-primary, #2563eb) 22%, var(--vp-c-border, #e2e8f0));
-  border-radius: var(--vp-radius-md, 16px);
-  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 4%, var(--vp-c-card, #fff));
-  scroll-margin-top: 80px;
-}
-.vp-mn-tipp summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  font: 700 0.9375rem var(--vp-c-font);
-  color: var(--vp-navy, #1e3a5f);
-  list-style: none;
-  cursor: pointer;
-}
-.vp-mn-tipp summary::-webkit-details-marker {
-  display: none;
-}
-.vp-mn-tipp summary > svg:first-child {
-  color: var(--vp-c-primary, #2563eb);
-  flex: 0 0 auto;
-}
-.vp-mn-tipp-zu {
-  margin-left: auto;
-  display: inline-flex;
-  color: var(--vp-c-muted-fg, #475569);
-  transition: transform var(--vp-motion-fast, 120ms);
-}
-.vp-mn-tipp[open] .vp-mn-tipp-zu {
-  transform: rotate(180deg);
-}
-.vp-mn-tipp p {
-  margin: 7px 0 0;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: var(--vp-c-fg, #1e293b);
-}
-.vp-mn-tipp p.is-leise {
-  color: var(--vp-c-muted-fg, #475569);
-}
-.vp-mn-tipp p.is-leise b {
-  color: var(--vp-c-fg, #1e293b);
-  font-weight: 600;
-}
 
 /* ---------- Stufen eines Vorgangs (§6.11) ------------------------------------------------- */
 .vp-mn-stufen {
@@ -1318,8 +1256,7 @@
 }
 
 @media (hover: hover) {
-  .vp-mn-sprung:hover,
-  .vp-mn-wasist:hover {
+  .vp-mn-sprung:hover {
     text-decoration: underline;
     text-underline-offset: 2px;
   }

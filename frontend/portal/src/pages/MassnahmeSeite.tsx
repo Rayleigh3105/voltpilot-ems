@@ -307,7 +307,8 @@ export function MassnahmeSeite({
   }
 
   const w = wirkung?.art === 'da' ? wirkung.w : null;
-  const darfMelden = rollen.darf('verbesserung.verwalten', m.standort_id);
+  // Entscheid 8: die verantwortliche Person meldet und kommentiert ihre Maßnahme auch ohne `verwalten`.
+  const darfMelden = M.darfMeldenUndKommentieren(rollen.darf, m, sub);
   const darfAbschliessen = rollen.darf('verbesserung.abschliessen', m.standort_id);
   const antwort = B.antwortBild(m, w, darfAbschliessen, wirkung?.art === 'laedt' || wirkung?.art === 'fehler' ? wirkung.art : 'da');
   const stufen = B.stufenBild(m);
@@ -328,8 +329,9 @@ export function MassnahmeSeite({
 
   const menue: RowMenuItem[] = [
     ...(M.aenderbar(m) ? [{ label: 'Ändern', icon: 'pencil' as const, recht: 'verbesserung.verwalten', standort: m.standort_id, onClick: () => setDialog('aendern') }] : []),
+    // Ohne Recht bleibt der Eintrag an `verwalten` gebunden: das Menü nennt dann den Grund (RowMenu).
     ...(M.kommentierbar(m)
-      ? [{ label: 'Kommentar schreiben', icon: 'file-text' as const, recht: 'verbesserung.verwalten', standort: m.standort_id, onClick: () => setDialog('kommentar') }]
+      ? [{ label: 'Kommentar schreiben', icon: 'file-text' as const, ...(darfMelden ? {} : { recht: 'verbesserung.verwalten', standort: m.standort_id }), onClick: () => setDialog('kommentar') }]
       : []),
     ...(M.aenderbar(m)
       ? [{ label: 'Verwerfen', icon: 'x' as const, recht: 'verbesserung.verwalten', standort: m.standort_id, danger: true, onClick: () => setDialog('verwerfen') }]

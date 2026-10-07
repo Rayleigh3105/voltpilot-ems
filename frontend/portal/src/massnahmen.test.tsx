@@ -15,7 +15,7 @@ import { merkeAbruf, vergissAbruf } from './routenUhr';
 import { bezugsbasisBuehne } from './test/bezugsbasisFixtures';
 import { energiezielBuehne } from './test/energiezielFixtures';
 import { KURZ_R5, kontenAhrenberg, m1, m1Umgesetzt, m2, M_IDS, massnahmeBuehne, PRUEFSUMME_R3 } from './test/massnahmeFixtures';
-import { rechteSeed } from './test/rollenFixtures';
+import { rechteSeed, STANDORT_IDS } from './test/rollenFixtures';
 
 /**
  * Verbessern-Konzept v1, PR 2: der Reiter „Maßnahmen“ nach Stufen, die Seite einer Maßnahme und die Blätter „Maßnahme
@@ -185,6 +185,14 @@ describe('Liste nach Stufen (§6.5, Richtungsfrage 9.2 A)', () => {
     // Die alte Tabelle und der pauschale Satz „ohne Messgrundlage — Wirkung nicht messbar“ sind fort (Art statt Mangel).
     expect(screen.queryByTestId('massnahmen-tafel')).toBeNull();
     expect(register.textContent).not.toContain('ohne Messgrundlage — Wirkung nicht messbar');
+  });
+  it('„Was ist eine Maßnahme?“ ist der Aufklapper der Begriffe - mit den Fachwörtern zuletzt (Entscheid 14; Review r2 S-r2-2)', async () => {
+    render(<VerbesserungBereich reiter="massnahmen" energiezielId={null} onReiter={() => {}} onOeffnen={() => {}} onListe={() => {}} />);
+    const auf = await screen.findByTestId('begriff-auf-massnahme');
+    expect(auf.textContent).toContain('Was ist eine Maßnahme?');
+    expect(auf.textContent).toContain('Fachwörter: Aktionsplan (die Liste Ihrer Maßnahmen), Korrekturmaßnahme (eine Maßnahme aus einer Feststellung)');
+    expect(screen.getAllByText('Was ist eine Maßnahme?')).toHaveLength(1);
+    expect(screen.queryByTestId('massnahmen-was-ist')).toBeNull();
   });
   it('Chips filtern nach Stufe; ein Klick auf die Karte öffnet die Seite', async () => {
     const oeffnen = vi.fn();
@@ -398,6 +406,40 @@ describe('Seite einer Maßnahme (§6.6)', () => {
     merkeAbruf(null);
     const { routenHeute } = await import('./routenUhr');
     expect(routenHeute()).toBe('2028-03-15');
+  });
+});
+
+describe('Verantwortliche melden die eigene Maßnahme (Entscheid 8, eng gefasst)', () => {
+  it('die Regel: verwalten - oder eigene_massnahme nur an der eigenen Maßnahme', () => {
+    const st = 'st-1';
+    const nurEigene = (aktion: string, standort: string | null) => aktion === 'verbesserung.eigene_massnahme' && standort === st;
+    const eigene = { standort_id: st, verantwortlich: { sub: 'MD', name: 'Murat Demirci' } };
+    expect(M.darfMeldenUndKommentieren(nurEigene, eigene, 'MD')).toBe(true);
+    expect(M.darfMeldenUndKommentieren(nurEigene, eigene, 'IK')).toBe(false);
+    expect(M.darfMeldenUndKommentieren(nurEigene, eigene, null)).toBe(false);
+    expect(M.darfMeldenUndKommentieren(nurEigene, { ...eigene, standort_id: null }, 'MD')).toBe(false);
+    expect(M.darfMeldenUndKommentieren((a) => a === 'verbesserung.verwalten', { ...eigene, verantwortlich: { sub: 'IK', name: 'Ines Kaltenbach' } }, 'MD')).toBe(true);
+  });
+  it('Murat (bedienberechtigt): an der eigenen Maßnahme „Umsetzung melden“ und nur „Kommentar schreiben“ im Menü; an einer fremden nichts', async () => {
+    setSelbstauskunft(rechteSeed('MD').me);
+    const st1 = STANDORT_IDS['ST-1'];
+    Object.assign(api, massnahmeBuehne('geplant', '2028-01-20'));
+    const lesen = vi.spyOn(api, 'massnahme').mockResolvedValue({ ...m1('2028-01-20'), standort_id: st1 });
+    render(<MassnahmeSeite id={M_IDS.m1} onListe={() => {}} />);
+    expect((await screen.findByTestId('massnahme-umgesetzt-knopf')).textContent).toBe('Umsetzung melden');
+    fireEvent.click(within(screen.getByTestId('massnahme-menue')).getByRole('button'));
+    expect(screen.getByText('Kommentar schreiben')).toBeTruthy();
+    expect(screen.queryByText('Ändern')).toBeNull();
+    expect(screen.queryByText('Verwerfen')).toBeNull();
+    cleanup();
+    lesen.mockResolvedValue({ ...m1('2028-01-20'), standort_id: st1, verantwortlich: { sub: 'IK', name: 'Ines Kaltenbach' } });
+    render(<MassnahmeSeite id={M_IDS.m1} onListe={() => {}} />);
+    await screen.findByTestId('massnahme-titel');
+    expect(screen.queryByTestId('massnahme-umgesetzt-knopf')).toBeNull();
+    // Das Menü bleibt und nennt den Grund - kein Eintrag ist für Murat frei.
+    fireEvent.click(within(screen.getByTestId('massnahme-menue')).getByRole('button'));
+    expect(screen.queryByText('Kommentar schreiben')).toBeNull();
+    expect(screen.getByText(/Dafür fehlt Ihnen das Recht/)).toBeTruthy();
   });
 });
 

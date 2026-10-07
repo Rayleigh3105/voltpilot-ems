@@ -517,6 +517,9 @@ class RechteAbleitungVectorsTest {
                     benutzer(in.path("benutzer")), kundenbereich(in.path("kundenbereich")), in.path("aktion").asText(),
                     ziel(in.path("ziel")), instant(in.path("jetzt")), textOderNull(in.path("ersteller")),
                     in.path("vieraugen").asBoolean()));
+            case "eigene_massnahme" -> alsJson(RechteAbleitung.eigeneMassnahme(m, benutzer(in.path("benutzer")),
+                    kundenbereich(in.path("kundenbereich")), ziel(in.path("ziel")), instant(in.path("jetzt")),
+                    textOderNull(in.path("verantwortlich"))));
             case "zuweisung_aendern" -> {
                 JsonNode a = in.path("aenderung");
                 yield alsJson(RechteAbleitung.zuweisungAendern(m, benutzer(in.path("handelnder")),

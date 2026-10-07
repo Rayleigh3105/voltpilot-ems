@@ -56,7 +56,8 @@ final class MassnahmeWelt {
     static final Map<String, JsonNode> FAELLE = nach(REFERENZ.at("/abnahmefaelle_ap18/faelle"), "fall");
     private static final AtomicInteger NR = new AtomicInteger();
     private static final Map<String, String> NAMEN = Map.of("ines", "Ines Kaltenbach", "peter", "Peter Hollerbach",
-            "murat", "Murat Demirci", "olga", "Olga Alt", "jonas", "Jonas Wendlinger", "petra", "Petra Lindner");
+            "murat", "Murat Demirci", "olga", "Olga Alt", "jonas", "Jonas Wendlinger", "petra", "Petra Lindner",
+            "lena", "Lena Brandt", "robert", "Robert Fink");
 
     record Welt(UUID mandant, UUID st1, UUID st2, UUID kz4, UUID ee3) {}
 

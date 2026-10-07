@@ -401,8 +401,10 @@ class UemsVerbesserungMigrationTest {
                 zellen.put(r.path("kennung").asText(), s.toString());
             }
         });
+        // Dazu der Nachtrag Verbessern v1 §10.8 (Entscheid 8): die eigene Maßnahme, nur für die verantwortliche Person.
         assertThat(zellen).containsExactly(Map.entry("verbesserung.verwalten", "UUS-----"),
-                Map.entry("verbesserung.abschliessen", "UU------"), Map.entry("verbesserung.ansehen", "UUSSSA-U"));
+                Map.entry("verbesserung.abschliessen", "UU------"), Map.entry("verbesserung.ansehen", "UUSSSA-U"),
+                Map.entry("verbesserung.eigene_massnahme", "UUSSS---"));
     }
 
     /** Jede Liste des Vertrags (IP-2) steht Zeile für Zeile in der Datenbank; dazu nur Wörter-Listen der Tabellen. */

@@ -52,7 +52,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Kennzahl ist er gewählt (ohne Standort = Unternehmen); das Recht {@code verbesserung.verwalten} prüft
  * {@link KennzahlService#darf} an diesem Standort (BE S am eigenen Standort, BD/LE 403). Sichtbarkeit über RLS
  * {@code site_scope} auf {@code standort_id} und über die Kennzahl — außerhalb 404. Der Kundenbereich kommt nie aus dem
- * Körper. Verantwortung verleiht kein Recht (RE3): der Verantwortliche ist nur ein aktives Konto.
+ * Körper. Verantwortung verleiht kein Recht (RE3): der Verantwortliche ist nur ein aktives Konto - mit der einen engen
+ * Ausnahme aus Verbessern v1 Entscheid 8: die eigene Maßnahme umgesetzt melden und kommentieren
+ * ({@code verbesserung.eigene_massnahme}, {@link #eigeneOderSchreibbar}).
  *
  * <p><b>F1:</b> „überfällig“ ist abgeleitet über die Operation {@code frist} mit der Uhr der Kennzahlen — kein
  * Läufer, kein Zustand.
@@ -413,7 +415,7 @@ public class MassnahmeService {
 
     /** M6: geplant → umgesetzt, einmalig; der Tag nie in der Zukunft (Zeitzone des Unternehmens), mit Begründung. */
     public MassnahmeDto.Massnahme umgesetzt(UUID id, MassnahmeDto.Umgesetzt u, ProtokollAkteur wer) {
-        geplant(schreibbar(id, wer));
+        geplant(eigeneOderSchreibbar(id, wer));
         if (u == null || u.am() == null) {
             throw VerbesserungAbgelehnt.anfrage("am");
         }
@@ -455,7 +457,7 @@ public class MassnahmeService {
 
     /** M7/§5.7: ein Kommentar (1–2 000 Zeichen) an einer geplanten oder umgesetzten Maßnahme — eine Protokollzeile. */
     public MassnahmeDto.Massnahme eintrag(UUID id, MassnahmeDto.NeuerEintrag e, ProtokollAkteur wer) {
-        Map<String, Object> z = schreibbar(id, wer);
+        Map<String, Object> z = eigeneOderSchreibbar(id, wer);
         if (e == null || (e.art() != null && !e.art().equals("kommentar"))) {
             throw VerbesserungAbgelehnt.anfrage("art");
         }
@@ -761,6 +763,27 @@ public class MassnahmeService {
     }
 
     /**
+     * Verbessern-Konzept v1, Entscheid 8 (eng gefasst, {@link RechteAbleitung#eigeneMassnahme}): umgesetzt melden und
+     * kommentieren mit {@code verbesserung.verwalten} - oder als verantwortliche Person mit
+     * {@code verbesserung.eigene_massnahme} an derselben Geltung. Jede andere Ablehnung (außerhalb 404, eine fremde
+     * Maßnahme, eine Rolle ohne Zelle) bleibt die von {@code verwalten}; Ändern, Verwerfen und Bewerten fragen nie hier.
+     */
+    private Map<String, Object> eigeneOderSchreibbar(UUID id, ProtokollAkteur wer) {
+        Map<String, Object> z = sichtbar(id);
+        // Der geprüfte Zwilling entscheidet (Review r2 SOLLTE-1), an derselben Geltung wie {@link #zeile}.
+        String verantwortlich = (String) z.get("verantwortlich_sub");
+        UUID kz = (UUID) z.get("kennzahl_id");
+        if (kz != null) {
+            kennzahlen.eigeneMassnahmeAnKennzahl(kz, wer, verantwortlich);
+        } else {
+            standortSichtbar((UUID) z.get("standort_id"));
+            kennzahlen.darfEigeneMassnahme(wer, geltungAm((UUID) z.get("standort_id"), VERWALTEN), kennzahlen.jetzt(),
+                    verantwortlich);
+        }
+        return z;
+    }
+
+    /**
      * Die Zeile der Maßnahme: sichtbar (404) und — mit {@code recht} — das Recht an der Geltung der Kennzahl bzw. am
      * Standort der Maßnahme (403). Auch für die Bewertung ({@link MassnahmeBewertung}, {@code verbesserung.abschliessen}).
      */
@@ -800,14 +823,22 @@ public class MassnahmeService {
      * bzw. am Unternehmen ({@code null}).
      */
     private void darfAm(UUID standort, ProtokollAkteur wer, String recht) {
+        standortSichtbar(standort);
+        kennzahlen.darf(wer, geltungAm(standort, recht), kennzahlen.jetzt());
+    }
+
+    /** RLS: ein Standort außerhalb der eigenen Sicht ist derselbe wie einer, den es nicht gibt (Zaun, 404). */
+    private void standortSichtbar(UUID standort) {
         if (standort != null && jdbc.queryForList("SELECT 1 FROM standort WHERE id = ?", standort).isEmpty()) {
-            // RLS: ein Standort außerhalb der eigenen Sicht ist derselbe wie einer, den es nicht gibt (Zaun, 404).
             throw new VerbesserungAbgelehnt(404, "standort_unbekannt", "Diesen Standort gibt es in Ihrem "
                     + "Kundenbereich nicht.", Map.of("feld", "standort"));
         }
-        ZoneId zone = zone();
-        kennzahlen.darf(wer, new KennzahlService.Geltung(standort == null ? "unternehmen" : "standort", standort, null,
-                null, standort, null, recht, zone), kennzahlen.jetzt());
+    }
+
+    /** Die Geltung einer Maßnahme ohne Kennzahl: ihr Standort, ohne ihn das Unternehmen. */
+    private KennzahlService.Geltung geltungAm(UUID standort, String recht) {
+        return new KennzahlService.Geltung(standort == null ? "unternehmen" : "standort", standort, null, null, standort,
+                null, recht, zone());
     }
 
     /** Ein sichtbarer Energieeinsatz des Kundenbereichs, sonst 422 {@code einsatz_unbekannt}. */
