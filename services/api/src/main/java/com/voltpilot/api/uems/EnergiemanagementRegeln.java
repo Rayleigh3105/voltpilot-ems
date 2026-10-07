@@ -40,9 +40,13 @@ public final class EnergiemanagementRegeln {
             Map.entry("verweis_keine_datei", "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist."),
             Map.entry("ueberpruefung", "Überprüfung fällig seit {tage} Tagen."),
             Map.entry("geprueft_bleibt", "Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘"),
-            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}."),
+            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg}."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+            Map.entry("bekanntmachung_durch", "Bekannt gemacht von {person} am {am} an {kreis} über {weg}."),
             Map.entry("anwendungsbereich_deckungsgleich", "Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger."),
             Map.entry("anwendungsbereich_unterschied", "{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung})."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+            Map.entry("anwendungsbereich_nur_im_umfang", "{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich."),
             Map.entry("freigabe_ohne_leitung", "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt."),
             Map.entry("aufgabe_ohne_person", "{aufgabe} — keine Person festgelegt."),
             Map.entry("person_ohne_konto", "{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘."),
@@ -157,6 +161,11 @@ public final class EnergiemanagementRegeln {
                 "auslegung", "Auslegung", "beschaffung", "Beschaffung", "energetische_bewertung", "Energetische Bewertung",
                 "bezugsbasen", "Bezugsbasen", "massnahmen", "Maßnahmen", "interne_audits", "Interne Audits",
                 "feststellungen", "Feststellungen", "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
+        // Vertrag 1.5 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name bleibt im Blatt.
+        m.put("aufgabe_kurz", geordnet("unternehmensleitung", "Leitung", "energiemanagement_leiten", "Energiemanagement leiten",
+                "energieteam", "Energieteam", "bezugsbasen", "Bezugsbasen", "energieziele_massnahmen", "Ziele und Maßnahmen",
+                "bewertung_messplanung", "Energetische Bewertung", "interne_audits", "Interne Audits",
+                "managementbewertung", "Managementbewertung", "dokumente", "Dokumente", "weitere", "Weitere Aufgabe"));
         return m;
     }
 

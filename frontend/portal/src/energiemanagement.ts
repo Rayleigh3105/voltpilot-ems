@@ -107,6 +107,21 @@ export const WOERTER: Record<string, Record<string, string>> = {
     managementbewertung: 'Managementbewertung',
     berichte: 'Berichte',
   },
+  // Vertrag 1.5 (Konzept Nachweisen n1, Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name
+  // (`aufgabe`) bleibt im Blatt der Aufgabe. „Energetische Bewertung“ statt „Bewertung und Messplanung“: das Wort
+  // „Bewertung“ allein gehört Auswerten (Sprach-Wächter SP3).
+  aufgabe_kurz: {
+    unternehmensleitung: 'Leitung',
+    energiemanagement_leiten: 'Energiemanagement leiten',
+    energieteam: 'Energieteam',
+    bezugsbasen: 'Bezugsbasen',
+    energieziele_massnahmen: 'Ziele und Maßnahmen',
+    bewertung_messplanung: 'Energetische Bewertung',
+    interne_audits: 'Interne Audits',
+    managementbewertung: 'Managementbewertung',
+    dokumente: 'Dokumente',
+    weitere: 'Weitere Aufgabe',
+  },
 };
 /** Die Kundensätze (Report §5.8) als Schablonen; {name} füllt die Operation `satz`. */
 export const SAETZE: Record<string, string> = {
@@ -119,9 +134,13 @@ export const SAETZE: Record<string, string> = {
   verweis_keine_datei: 'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
   ueberpruefung: 'Überprüfung fällig seit {tage} Tagen.',
   geprueft_bleibt: 'Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘',
-  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.',
+  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg}.',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+  bekanntmachung_durch: 'Bekannt gemacht von {person} am {am} an {kreis} über {weg}.',
   anwendungsbereich_deckungsgleich: 'Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.',
   anwendungsbereich_unterschied: '{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+  anwendungsbereich_nur_im_umfang: '{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.',
   freigabe_ohne_leitung: 'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
   aufgabe_ohne_person: '{aufgabe} — keine Person festgelegt.',
   person_ohne_konto: '{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.',

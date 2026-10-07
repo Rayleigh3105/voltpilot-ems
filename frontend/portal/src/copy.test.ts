@@ -3194,7 +3194,6 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'pages/EnergiemanagementBereich.tsx',
     'pages/DokumentSeite.tsx',
     'components/DokumentDialoge.tsx',
-    'components/AnwendungsbereichVergleich.tsx',
     'components/ZuschnittHilfe.tsx',
     // IP-13: Reiter „Aufgaben“ mit Personen, „Wer ist wofür verantwortlich“, Personen-Seite, Dialoge Zuordnen/Beenden/
     // Angaben ändern.
@@ -3306,7 +3305,11 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     ];
   };
 
-  /** Die 37 Sätze der Energiemanagement-Flächen aus AP-19 §5.8, wörtlich (ohne die Herkunft-Zeile der Maßnahmen-Seite). */
+  /**
+   * Die 37 Sätze der Energiemanagement-Flächen aus AP-19 §5.8, wörtlich (ohne die Herkunft-Zeile der Maßnahmen-Seite),
+   * und seit Vertrag 1.4 die Bekanntmachung ohne und mit Person und die Gegenrichtung des Vergleichs (Konzept
+   * Nachweisen n1, Befunde A14 und A21): 39.
+   */
   const SAETZE = [
     UEMS_VERANTWORTUNG,
     UEMS_NORMGRENZE,
@@ -3317,9 +3320,11 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
     'Überprüfung fällig seit 64 Tagen.',
     'Geprüft, bleibt — entschieden von Robert Falk am 10.12.2027: ‚Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.‘',
-    'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet — eingetragen von Ines Kaltenbach.',
+    'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.',
+    'Bekannt gemacht von Ines Kaltenbach am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.',
     'Der Betrachtungsumfang der energetischen Bewertung (Fassung 1, ab 04.11.2026) umfasst dieselben Standorte und Energieträger.',
     'Gas gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung 1).',
+    'Werk Lindach gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung 2), aber nicht zum Anwendungsbereich.',
     'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
     'Bezugsbasen pflegen und freigeben — keine Person festgelegt.',
     'Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘.',
@@ -3507,8 +3512,8 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     }
   });
 
-  it('die 37 Sätze aus §5.8 bestehen den Wächter — einzeln und als Fläche (NW-4)', () => {
-    expect(SAETZE).toHaveLength(37);
+  it('die 39 Sätze aus §5.8 und Vertrag 1.4 bestehen den Wächter - einzeln und als Fläche (NW-4)', () => {
+    expect(SAETZE).toHaveLength(39);
     expect(new Set(SAETZE).size).toBe(SAETZE.length);
     for (const satz of SAETZE) {
       expect(verstoesse(satz), satz).toEqual([]);

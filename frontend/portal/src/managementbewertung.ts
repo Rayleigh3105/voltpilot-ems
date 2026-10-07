@@ -26,8 +26,6 @@ export const ENTWURF = 'Entwurf';
 export const EINGABEN = 'Eingaben';
 export const JAHR = 'Jahr';
 export const KEIN_STAND = 'Noch kein Stand freigegeben — die Eingaben zeigen den Entwurf von heute.';
-export const ANLEGEN_HINWEIS =
-  'Die Managementbewertung sammelt die Eingaben des Jahres aus VoltPilot. Sitzung und Beschlüsse hält fest, wer das Energiemanagement bearbeitet; entschieden hat die Leitung.';
 export const LADEFEHLER = 'Die Managementbewertung ließ sich gerade nicht laden. Bitte versuchen Sie es noch einmal.';
 export const PDF_FEHLER = 'Das PDF ließ sich gerade nicht abrufen. Bitte versuchen Sie es noch einmal.';
 
@@ -142,9 +140,6 @@ export const WORTLAUT_HOECHSTENS = 2000;
 export const LEER_FOLGE_OBJEKTE = 'Davon ist in VoltPilot noch nichts festgehalten.';
 /** MG4/MG5: die Freigabe verlangt Sitzung, Leitung und einen Beschluss — die Route entscheidet (`sitzung_fehlt` …). */
 export const FREIGABE_VORAUSSETZUNG = 'Freigeben lässt sich, sobald die Sitzung mit der Leitung und mindestens ein Beschluss festgehalten sind.';
-export const SITZUNG_HINWEIS =
-  'Die Leitung ist die Person, die am Tag der Sitzung die Aufgabe ‚Leitung des Unternehmens‘ hat — auch ohne Konto. VoltPilot hält fest, was die Leitung entschieden hat.';
-export const BESCHLUSS_HINWEIS = 'Ein Beschluss ist eine Entscheidung der Leitung in dieser Sitzung; auch „bleibt, wie es ist“ ist ein Beschluss.';
 export const FOLGE_HINWEIS =
   'Eine Folge verknüpft den Beschluss mit dem, was daraus entstanden ist; der Stand ändert sich dadurch nicht. Eine Maßnahme verknüpft sich selbst, wenn Sie sie mit dieser Herkunft anlegen.';
 export const LEITUNG_GILT_NICHT =

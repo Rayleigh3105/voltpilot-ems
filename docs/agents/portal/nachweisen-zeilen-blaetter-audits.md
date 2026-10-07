@@ -1,4 +1,4 @@
-# Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits
+# Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben
 
 - Die Runde-2-Bausteine liegen unter `frontend/portal/src/components/nachweisen/`, je Baustein-Gruppe eine eigene CSS-Datei (`Nachweisen.css` Kopf/i-Knopf/Blatt/Zähler, `NwSchritte.css` Blatt-Schritte, `NwZeilen.css` Zeilen/Stufen/Kürzel/Folgen-Balken/Weitergeben), Präfix `vp-nw-`.
   `.vp-nw-liste`, `.vp-nw-zeile`, `.vp-nw-titel`, `.vp-nw-kz`, `.vp-nw-adresse` gehören dem alten Abschnitt „Nachweise am Einsatz“ (`pages/Energiemanagement.css`, IP-15): neue Klassen nie so nennen (die Zeile heißt `.vp-nw-zl`, der Kopf-Titel `.vp-nw-kopf-titel`).
@@ -7,3 +7,9 @@
 - Text-Grenzen (Entscheid 22) am echten Portal messen: Playwright 390 × 844, sichtbarer Text unter dem Seitenkopf ohne Kopf-, Reiter- und Navigationsleiste, ein Wort = Stück mit Buchstabe oder Ziffer, „erstes Bild“ = Oberkante < 844 px; Blätter je Schritt. Der Wortlaut eines Kunden zählt mit - eine lange Feststellung frisst das Budget, deshalb Kennzeichen, Verlauf und Stände ins Menü „…“.
 - Audits (PR 4, Entscheid 17): Reiter „Audits“ trägt die Feststellungen; `…/feststellungen` öffnet ihn (Reiter aktiv „Audits“, `feststellungenZeigen` rollt hin). „Als Nächstes“ und Zeilen kommen aus `auditBild.ts`; die Feststellung liefert `abgeschlossen_am` (Tag des schließenden Stands) für „wirksam seit …“.
 - In der Demo liegen manche Tage auf der echten Uhr (Audit „Geplant 05.10.2026“ vor „Durchgeführt 22.01.2029“): Datenlücke der Demo-Füllung, kein Fehler der Fläche.
+- Managementbewertung (PR 5): das Bild steht in `managementbewertungBild.ts` (Folge-Zeichen, Kurztitel, „Als Nächstes“, Stufen), die Seite liest Folgen und ihren Zustand von heute nur von der Route (MG6).
+  Ein Kurztitel ist nie ein Kennzeichen (Entscheid 25): er kommt aus der ersten Folge (Energieziel mit Jahr, Titel der Maßnahme, Kurzwort der Aufgabe, Name des Dokuments); ohne bekannten Namen der Wortlaut bis zum ersten Komma außerhalb einer Klammer.
+- „Als Nächstes“ der Managementbewertung rechnet mit der jüngsten vorhandenen: gibt es schon eine spätere als das Vorjahr (Demo mit Echtzeit-Uhr neben Daten von 2029), „kann die nächste noch nicht beginnen“ statt ein Jahr vor der jüngsten anlegen zu lassen.
+- Das geführte Blatt „Vorbereiten“ (`ManagementbewertungVorbereiten.tsx`) ersetzt Sitzungs- und Beschluss-Dialog; Freigeben ruft dieselbe Route wie die Freigabe der Berichte (`entwurf_datenstand`, 409 `entwurf_veraltet` → „Entwurf neu laden“).
+- Wechselt ein Blatt seinen Inhalt (Liste ↔ Abschnitt), muss der Fokus mitwandern: das Bottom-Sheet hört Escape und Tab nur, solange der Fokus in ihm liegt.
+- Aufgaben (PR 5, Entscheid 23): Zeilen mit `woerter.aufgabe_kurz` (Vertrag, Zwillinge TS/Java/Python) und Kürzeln; `bewertung_messplanung` heißt „Energetische Bewertung“, weil „Bewertung“ allein dem Sprach-Wächter SP3 gehört.

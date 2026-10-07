@@ -173,7 +173,8 @@ describe('MessstelleSeite · R2 — MS-06 am 20.10.2026', () => {
     expect(within(dialog).getByText('rückwirkend ab 12.03.2024')).toBeInTheDocument();
     expect(folgenKarte).toHaveTextContent('Für die Tage vom 12.03.2024 bis 30.09.2026 gilt das nachträglich.');
     expect(within(dialog).queryByText('Bisher')).toBeNull();
-  });
+    // Fünf Schritte mit je eigenem Warten (WARTEN = 3 s): im vollen, parallelen Lauf reichten die 5 s je Fall nicht.
+  }, 20_000);
 
   it('eine unbekannte Messstelle sagt es — nie eine leere Seite', async () => {
     verdrahte({ messstelle: ms06, protokoll: protokollMs06 });

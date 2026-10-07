@@ -1,28 +1,46 @@
-import { merkeAugenblick, routenHeute } from '../routenUhr';
-import { useEffect, useState } from 'react';
-import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Managementbewertung, type ManagementbewertungBeschluss } from '../api';
-import { BerichtFreigebenDialog } from '../components/BerichtFreigebenDialog';
 import { EinsichtRecht } from '../components/EinsichtRecht';
+import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { ManagementbewertungEingaben } from '../components/ManagementbewertungEingaben';
-import { BeschlussDialog, FolgeDialog, SitzungDialog } from '../components/ManagementbewertungDialoge';
-import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
+import { FolgeDialog } from '../components/ManagementbewertungDialoge';
+import { ManagementbewertungVorbereiten } from '../components/ManagementbewertungVorbereiten';
+import { MassnahmeAnlegenDialog } from '../components/MassnahmeDialoge';
+import { Recht } from '../components/Recht';
+import { FolgenBalken } from '../components/nachweisen/FolgenBalken';
+import { NwBlatt } from '../components/nachweisen/NwBlatt';
+import { NwKopf } from '../components/nachweisen/NwKopf';
+import { HinweisZeile, PruefZeilen } from '../components/nachweisen/NwSchritte';
+import { StatusZeile, ZustandsZeichen } from '../components/nachweisen/NwStatus';
+import { NwSymbol } from '../components/nachweisen/NwSymbol';
+import { NwZeichen } from '../components/nachweisen/NwZeichen';
+import { Fakt, Kuerzel, Nummer, NwKarte, NwZeile, NwZeilen, ZeilenZustand } from '../components/nachweisen/NwZeilen';
+import { Stufen } from '../components/nachweisen/Stufen';
+import { Weitergeben } from '../components/nachweisen/Weitergeben';
+import { RowMenu } from '../components/RowMenu';
 import * as E from '../energiemanagementPortal';
-import { UEMS_MANAGEMENTBEWERTUNG } from '../glossar';
 import * as M from '../managementbewertung';
+import * as B from '../managementbewertungBild';
+import { auditRoute, dokumentRoute, hashForRoute, massnahmeRoute } from '../nav';
+import { merkeAugenblick, routenHeute, tagDesAugenblicks } from '../routenUhr';
+import { useIsPhone } from '../useIsPhone';
+import '../components/nachweisen/NwZeilen.css';
+import './Energiemanagement.css';
 
-type Dialog = { art: 'sitzung' } | { art: 'beschluss'; beschluss: ManagementbewertungBeschluss | null } | { art: 'folge'; beschluss: ManagementbewertungBeschluss } | { art: 'freigeben' };
+type Blatt = null | 'sitzung' | 'eingaben' | 'staende' | { beschluss: number } | { eingabe: string };
+type Titel = { dokumente: Record<string, string>; massnahmen: Record<string, string> };
 
 /**
- * Die Seite einer Managementbewertung (UEMS AP-19 IP-24, §5.5, MG1–MG7, R13, R14): Kopf (§5.8), die Eingaben — ohne
- * Stand der Entwurf von heute, mit Stand die Eingaben seines Tages und der Satz „Dieser Stand zeigt die Eingaben vom …“ —,
- * „Sitzung festhalten“ und „Beschluss festhalten“ bis zur Freigabe (IP-23, `energiemanagement.verwalten`), „freigeben“
- * über den Freigabe-Dialog der Berichte (AP-12, `energiemanagement.freigeben`; die Route verlangt Sitzung, Leitung und
- * einen Beschluss), danach je Beschluss seine Folgen mit dem Zustand von heute, „Folge verknüpfen“ und „Maßnahme anlegen“
- * mit der Herkunft des Beschlusses; die Stände mit Freigabe, Prüfsumme und PDF auf Abruf (jeder Abruf protokolliert).
- * Die Seite ist ein Bericht der Vorlage `managementbewertung` — nichts ist nachgebaut, nichts wird neu gerechnet.
+ * Die Seite einer Managementbewertung (Konzept Nachweisen n1 Runde 2, §6.7, Mocks r2-M2, r2d-M2, MBV; vorher UEMS AP-19
+ * IP-24, MG1–MG7): Kopf mit „Sitzung 12.02.2029 · Robert Falk“ und „● Stand 1 gilt“, der Folgen-Balken, PDF oben, die
+ * Beschlüsse als Zeilen mit Kurztitel und ihrer Folge (erledigt mit Tag, läuft, ohne Folge) - der Wortlaut, die Folgen,
+ * „Folge verknüpfen“ und „Maßnahme anlegen“ im Blatt des Beschlusses -, dann „Sitzung · 5 Personen“ und „Was die Leitung
+ * sah · 10 Teile“ als Zeilen. Am Rechner links die Beschlüsse, rechts Folgen, Weitergeben und der Kasten „Sitzung“.
+ *
+ * Im Entwurf stehen die Stufen „Eingaben · Sitzung · Beschlüsse · Freigeben“ und „Vorbereiten“ öffnet das geführte Blatt
+ * (`ManagementbewertungVorbereiten`). Die Seite ist ein Bericht der Vorlage `managementbewertung`: der Abzug eines Stands
+ * ist das Dokument, nichts wird nachgebaut oder neu gerechnet; jeder PDF-Abruf wird protokolliert.
  */
 export function ManagementbewertungSeite({
   kennung,
@@ -34,15 +52,26 @@ export function ManagementbewertungSeite({
   /** Nur für Tests; sonst der Tag der Route (Konzept Nachweisen n1, Befund 3), den die Seite beim Laden merkt. */
   heute?: () => string;
 }) {
+  const isPhone = useIsPhone();
   const [detail, setDetail] = useState<BerichtDetail | null>(null);
   const [entwurf, setEntwurf] = useState<BerichtEntwurf | null>(null);
   const [stand, setStand] = useState<BerichtStand | null>(null);
   const [mb, setMb] = useState<Managementbewertung | null>(null);
+  const [titel, setTitel] = useState<Titel>({ dokumente: {}, massnahmen: {} });
   const [fehler, setFehler] = useState<string | null>(null);
   const [versuch, setVersuch] = useState(0);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [blatt, setBlatt] = useState<Blatt>(null);
+  const [vorbereiten, setVorbereiten] = useState<B.VorbereitenSchritt | null>(null);
+  const [folge, setFolge] = useState<ManagementbewertungBeschluss | null>(null);
+  // Ein Dialog aus einem Blatt läge am Telefon unter dem Blatt: das Blatt geht zu, der Dialog auf Seitenebene auf.
+  const [massnahmeAus, setMassnahmeAus] = useState<ManagementbewertungBeschluss | null>(null);
   const [abruf, setAbruf] = useState<{ satz: string; fehler: boolean } | null>(null);
   const [laeuft, setLaeuft] = useState<number | null>(null);
+  const [kopiert, setKopiert] = useState(false);
+  // Im Blatt „Was die Leitung sah“ wechselt der Inhalt zwischen Liste und Abschnitt; der Fokus geht mit (zum Zurück-Knopf,
+  // zurück auf die Zeile des Abschnitts), sonst fiele er aus dem Blatt und Escape und Tab griffen nicht mehr.
+  const eingabenRef = useRef<HTMLDivElement>(null);
+  const [vonEingabe, setVonEingabe] = useState<string | null>(null);
 
   useEffect(() => {
     let aktiv = true;
@@ -62,17 +91,33 @@ export function ManagementbewertungSeite({
         setEntwurf(e);
         setStand(s);
       },
-      (e) => aktiv && setFehler(E.ablehnungSatz(e)),
+      (e) => aktiv && setFehler(E.ablehnungSatz(e) || M.LADEFEHLER),
     );
     return () => {
       aktiv = false;
     };
   }, [kennung, versuch]);
 
-  /** Eine Eingabe (Sitzung, Beschluss, Folge) ist gespeichert — der Entwurf ist neu gebildet, die Seite liest neu. */
+  // Die Namen hinter den Kennzeichen der Folgen (Entscheid 25: ein Kennzeichen ist kein Titel); fehlt ein Recht, bleibt
+  // der Wortlaut des Beschlusses sein Titel.
+  useEffect(() => {
+    let aktiv = true;
+    api.energiemanagementDokumente().then(
+      (r) => aktiv && setTitel((t) => ({ ...t, dokumente: Object.fromEntries(r.dokumente.map((d) => [d.kennzeichen, d.titel])) })),
+      () => undefined,
+    );
+    api.massnahmen().then(
+      (r) => aktiv && setTitel((t) => ({ ...t, massnahmen: Object.fromEntries(r.massnahmen.map((m) => [m.kennzeichen, m.titel])) })),
+      () => undefined,
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [versuch]);
+
+  /** Eine Eingabe (Sitzung, Beschluss, Folge) ist gespeichert - der Entwurf ist neu gebildet, die Seite liest neu. */
   const neu = (m: Managementbewertung) => {
     setMb(m);
-    setDialog(null);
     setVersuch((v) => v + 1);
   };
 
@@ -87,7 +132,7 @@ export function ManagementbewertungSeite({
       a.download = `${kennung}-stand-${nr}.pdf`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(href), 0);
-      setAbruf({ satz: `PDF von Stand Nr. ${nr} abgerufen — der Abruf ist protokolliert.`, fehler: false });
+      setAbruf({ satz: 'PDF abgerufen, der Abruf ist protokolliert.', fehler: false });
     } catch {
       setAbruf({ satz: M.PDF_FEHLER, fehler: true });
     } finally {
@@ -100,208 +145,431 @@ export function ManagementbewertungSeite({
   const gueltig = detail ? M.gueltigerStand(detail.staende) : null;
   const freigegeben = !!gueltig || !!mb?.freigegeben;
   const zeigt = stand ? M.abzug(stand.abzug) : entwurf ? M.abzug(entwurf.abzug) : null;
+  const eingaben = zeigt ? B.eingabenZeilen(zeigt) : null;
   const sitzung = mb?.sitzung ?? null;
+  const personen = sitzung ? B.sitzungPersonen(sitzung) : [];
+  const beschluesse = mb ? [...mb.beschluesse].sort((x, y) => x.nr - y.nr) : [];
+  const offen = blatt && typeof blatt === 'object' && 'beschluss' in blatt ? (beschluesse.find((x) => x.nr === blatt.beschluss) ?? null) : null;
+  const eingabe = blatt && typeof blatt === 'object' && 'eingabe' in blatt ? (eingaben?.find((z) => z.key === blatt.eingabe) ?? null) : null;
 
-  const sitzungTeil = (
-    <div data-testid="mb-sitzung">
-      {sitzung ? (
-        <>
-          <p className="vp-ez-satz" data-testid="mb-sitzung-satz">{M.sitzungSatz(sitzung)}</p>
-          {!sitzung.leitung_gilt && <p className="vp-ez-fehler" data-testid="mb-leitung-gilt-nicht">{M.LEITUNG_GILT_NICHT}</p>}
-          {sitzung.eingetragen_von && <p className="vp-ez-leise">{`eingetragen von ${sitzung.eingetragen_von}${sitzung.eingetragen_am ? ` am ${M.tag(sitzung.eingetragen_am)}` : ''}`}</p>}
-        </>
-      ) : (
-        <p className="vp-ez-leise">{M.LEER.sitzung}</p>
-      )}
-      {!freigegeben && (
-        <div className="vp-ez-aktionen">
-          <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-            <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'sitzung' })} data-testid="mb-sitzung-knopf">
-              {sitzung ? M.KNOPF_SITZUNG_AENDERN : M.KNOPF_SITZUNG}
-            </Button>
-          </EinsichtRecht>
+  useEffect(() => {
+    const wurzel = eingabenRef.current;
+    if (!wurzel) return;
+    if (eingabe) wurzel.querySelector<HTMLElement>('[data-testid="mb-eingaben-zurueck"]')?.focus();
+    else if (blatt === 'eingaben' && vonEingabe) wurzel.querySelector<HTMLElement>(`[data-testid="mb-eingabe-zeile-${vonEingabe}"]`)?.focus();
+  }, [blatt, eingabe, vonEingabe]);
+
+  if (fehler || !detail || !b || !mb) {
+    return (
+      <GrenzSatzBereich>
+        <div className="vp-nw-seite" data-testid="managementbewertung-seite">
+          <NwKopf titel="Managementbewertung" zurueck={{ label: M.ZUR_LISTE, onClick: onListe }} testId="mb-kopf" />
+          {fehler ? (
+            <p className="vp-ez-fehler" role="alert">
+              {fehler}
+            </p>
+          ) : (
+            <p className="vp-ez-leise">Wird geladen …</p>
+          )}
         </div>
-      )}
-    </div>
+      </GrenzSatzBereich>
+    );
+  }
+
+  const status = B.mbStatus({ freigegeben, stand_nr: gueltig?.nr ?? mb.stand_nr });
+  const menue = (
+    <RowMenu
+      label="Weitere Aktionen"
+      items={[
+        {
+          label: kopiert ? `${b.kennung} kopiert` : `Kennzeichen ${b.kennung}`,
+          onClick: () => void navigator.clipboard?.writeText(b.kennung).then(() => setKopiert(true), () => undefined),
+        },
+        ...(detail.staende.length ? [{ label: M.STAENDE, onClick: () => setBlatt('staende') }] : []),
+        ...(!freigegeben ? [{ label: B.KNOPF_VORBEREITEN, recht: E.RECHT_VERWALTEN, standort: null, onClick: () => setVorbereiten(B.vorbereitenStart(mb)) }] : []),
+      ]}
+    />
   );
 
-  const beschluesseTeil = (
-    <div data-testid="mb-beschluesse">
-      {!mb || mb.beschluesse.length === 0 ? (
-        <p className="vp-ez-leise">{M.LEER.beschluesse}</p>
+  const weitergeben = gueltig && (
+    <>
+      <Weitergeben
+        knoepfe={[{ symbol: 'speichern', text: M.KNOPF_PDF, onClick: () => void pdf(gueltig.nr), laeuft: laeuft !== null, testId: `mb-pdf-${gueltig.nr}` }]}
+        testId="mb-weitergeben"
+      />
+      {abruf && (
+        <p className={abruf.fehler ? 'vp-nw-feld-fehler' : 'vp-nw-leise'} role="status" data-testid="mb-abruf">
+          {abruf.satz}
+        </p>
+      )}
+    </>
+  );
+
+  const beschluesseKarte = (
+    <NwKarte titel={M.BESCHLUESSE} zahl={beschluesse.length} testId="mb-beschluesse">
+      {beschluesse.length === 0 ? (
+        <p className="vp-nw-leise">{M.LEER.beschluesse}</p>
       ) : (
-        <ul className="vp-mb-zeilen">
-          {mb.beschluesse.map((x) => (
-            <li key={x.nr} data-testid={`mb-beschluss-${x.nr}`}>
-              <span className="vp-mb-gegenstand">{M.beschlussSatz(x)}</span>
-              <span className="vp-mb-zustand">{M.beschlussAngaben(x)}</span>
-              {freigegeben && (
-                <div className="vp-mb-folgen" data-testid={`mb-folgen-${x.nr}`}>
-                  <span className="vp-mb-folgen-titel">{M.FOLGEN}</span>
-                  {x.folgen.length > 0 ? (
-                    <ul className="vp-em-kurzliste">
-                      {x.folgen.map((f) => (
-                        <li key={`${f.art}/${f.objekt}/${f.wie}`} data-testid={`mb-folge-${x.nr}-${f.objekt}`}>{M.folgeZeile(f)}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="vp-ez-leise" data-testid={`mb-ohne-folge-${x.nr}`}>{x.satz ?? '—'}</span>
-                  )}
-                  <div className="vp-ez-aktionen">
-                    <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-                      <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'folge', beschluss: x })} data-testid={`mb-folge-knopf-${x.nr}`}>
-                        {M.KNOPF_FOLGE}
-                      </Button>
-                    </EinsichtRecht>
-                    <MassnahmeAnlegen
-                      vorbelegung={{ herkunft: 'managementbewertung', herkunftKennung: x.kennung }}
-                      standort={null}
-                      onAngelegt={() => setVersuch((v) => v + 1)}
-                    />
-                  </div>
-                </div>
-              )}
-              {!freigegeben && (
-                <div className="vp-ez-aktionen">
-                  <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-                    <Button size="sm" variant="ghost" onClick={() => setDialog({ art: 'beschluss', beschluss: x })} data-testid={`mb-beschluss-aendern-${x.nr}`}>
-                      {M.KNOPF_BESCHLUSS_AENDERN}
-                    </Button>
-                  </EinsichtRecht>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+        <NwZeilen>
+          {beschluesse.map((x) => {
+            const z = B.beschlussZustand(x);
+            return (
+              <NwZeile
+                key={x.nr}
+                vorn={<Nummer nr={x.nr} />}
+                titel={B.beschlussKurz(x, titel)}
+                kurz
+                rechts={
+                  freigegeben ? (
+                    <ZeilenZustand zeichen={<ZustandsZeichen art={z.art} stumm />} ton={z.art === 'ohne' ? 'leise' : undefined}>
+                      {z.wort}
+                    </ZeilenZustand>
+                  ) : x.zustaendig?.name ? (
+                    // Im Entwurf gibt es noch keine Folge: rechts steht, wer sich kümmert.
+                    <Kuerzel personen={[{ name: x.zustaendig.name }]} />
+                  ) : undefined
+                }
+                onClick={() => setBlatt({ beschluss: x.nr })}
+                testId={`mb-beschluss-${x.nr}`}
+              />
+            );
+          })}
+        </NwZeilen>
       )}
-      {!freigegeben && sitzung && (
-        <div className="vp-ez-aktionen">
-          <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
-            <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'beschluss', beschluss: null })} data-testid="mb-beschluss-knopf">
-              {M.KNOPF_BESCHLUSS}
-            </Button>
-          </EinsichtRecht>
-        </div>
-      )}
-    </div>
+    </NwKarte>
+  );
+
+  const eingabenZeile = (
+    <NwZeile
+      titel={B.WAS_DIE_LEITUNG_SAH}
+      rechts={eingaben ? <Fakt>{B.teileZahl(eingaben.length)}</Fakt> : undefined}
+      onClick={() => setBlatt('eingaben')}
+      testId="mb-eingaben-zeile"
+    />
   );
 
   return (
     <GrenzSatzBereich>
-      <div className="vp-ez" data-testid="managementbewertung-seite">
-        <button type="button" className="vp-em-hilfe" onClick={onListe} data-testid="mb-zur-liste">
-          ← {M.ZUR_LISTE}
-        </button>
-        {fehler ? (
-          <p className="vp-ez-fehler" role="alert">{fehler}</p>
-        ) : !detail || !b ? (
-          <p className="vp-ez-leise">Wird geladen …</p>
-        ) : (
-          <>
-            <div className="vp-em-kopf">
-              <h1>{`${UEMS_MANAGEMENTBEWERTUNG} ${b.zeitraum}`}</h1>
-              <span className="vp-wv-kz">{b.kennung}</span>
-            </div>
-            <GrenzHinweis />
-            <p className="vp-ez-satz" data-testid="mb-kopf">
-              {M.kopfSatz(b.zeitraum, sitzung ? { tag: sitzung.tag, leitung: sitzung.leitung.name ?? '—' } : null, gueltig, zone)}
-            </p>
+      <div className="vp-nw-seite" data-testid="managementbewertung-seite">
+        <NwKopf
+          titel={`Managementbewertung ${b.zeitraum}`}
+          kennzeichen={b.kennung}
+          zurueck={{ label: M.ZUR_LISTE, onClick: onListe }}
+          erklaerung={B.erklaerungManagementbewertung(mb)}
+          kurzzeile={B.mbKurzzeile({ sitzung, freigegeben })}
+          status={freigegeben ? <StatusZeile zeichen={<NwZeichen art={status.zeichen} />} text={status.text} testId="mb-status" /> : undefined}
+          menue={menue}
+          testId="mb-kopf"
+        />
 
-            {gueltig && stand ? (
-              <p className="vp-ez-satz" data-testid="mb-stand-seines-tages">
-                {M.standSeinesTages(stand.datenstand, zone)}
-              </p>
-            ) : (
-              <section className="vp-ez-karte vp-mb-entwurf" aria-label={M.ENTWURF} data-testid="mb-entwurf">
-                <div className="vp-em-kopf">
-                  <p>{entwurf ? M.entwurfZeile(entwurf.datenstand, zone) : M.KEIN_STAND}</p>
-                  {entwurf && (
-                    <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
-                      <Button onClick={() => setDialog({ art: 'freigeben' })} disabled={!M.freigabeBereit(mb)} data-testid="mb-freigeben">
-                        {M.KNOPF_FREIGEBEN}
-                      </Button>
-                    </EinsichtRecht>
-                  )}
-                </div>
-                {!M.freigabeBereit(mb) && (
-                  <p className="vp-ez-leise" data-testid="mb-freigabe-voraussetzung">{M.FREIGABE_VORAUSSETZUNG}</p>
+        <div className="vp-nw-zwei">
+          <div className="vp-nw-spalte-seite">
+            {freigegeben ? (
+              <>
+                {isPhone ? (
+                  <FolgenBalken zustaende={B.folgenZustaende(mb)} testId="mb-folgen" />
+                ) : (
+                  <NwKarte titel={M.FOLGEN} testId="mb-folgen-karte">
+                    <FolgenBalken zustaende={B.folgenZustaende(mb)} testId="mb-folgen" />
+                  </NwKarte>
                 )}
-              </section>
+                {weitergeben}
+              </>
+            ) : (
+              <>
+                <Stufen stufen={B.mbStufen(mb, entwurf ? tagDesAugenblicks(entwurf.datenstand, zone) : null)} testId="mb-stufen" />
+                {!b.archiviert_am && (
+                  <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+                    <div className="vp-nw-aktionen">
+                      <Button onClick={() => setVorbereiten(B.vorbereitenStart(mb))} data-testid="mb-vorbereiten-knopf">
+                        {sitzung ? B.KNOPF_WEITER_VORBEREITEN : B.KNOPF_VORBEREITEN}
+                      </Button>
+                    </div>
+                  </EinsichtRecht>
+                )}
+              </>
             )}
+          </div>
+          <div className="vp-nw-spalte-haupt">{beschluesseKarte}</div>
+          <div className="vp-nw-spalte-mehr">
+            {isPhone ? (
+              <NwZeilen testId="mb-angaben">
+                <NwZeile
+                  titel={M.SITZUNG}
+                  rechts={<Fakt>{sitzung ? B.personenZahl(personen.length) : 'fehlt'}</Fakt>}
+                  onClick={() => setBlatt('sitzung')}
+                  testId="mb-sitzung-zeile"
+                />
+                {eingabenZeile}
+              </NwZeilen>
+            ) : (
+              <NwKarte titel={M.SITZUNG} testId="mb-angaben">
+                <NwZeilen>
+                  <NwZeile titel="Tag" rechts={<Fakt>{sitzung ? E.tagText(sitzung.tag) : 'fehlt'}</Fakt>} onClick={() => setBlatt('sitzung')} testId="mb-sitzung-zeile" />
+                  {sitzung && (
+                    <NwZeile titel={M.LEITUNG} rechts={<Fakt warn={!sitzung.leitung_gilt}>{sitzung.leitung.name ?? '–'}</Fakt>} onClick={() => setBlatt('sitzung')} />
+                  )}
+                  {sitzung && sitzung.teilnehmende.length > 0 && (
+                    <NwZeile
+                      titel={M.TEILNEHMENDE}
+                      rechts={<Kuerzel personen={sitzung.teilnehmende.filter((p) => p.name).map((p) => ({ name: p.name! }))} />}
+                      onClick={() => setBlatt('sitzung')}
+                    />
+                  )}
+                  {eingabenZeile}
+                </NwZeilen>
+              </NwKarte>
+            )}
+          </div>
+        </div>
+        <GrenzSatz verantwortung />
+        <GrenzHinweis />
 
-            {/* Variante A (PR-Ansicht): was die Leitung entschieden hat, steht über den Eingaben — dort wird gehandelt;
-                die Eingaben folgen in der Reihenfolge der Vorlage (das PDF behält alle zwölf Abschnitte in ihrer Reihenfolge). */}
-            <section className="vp-ez-karte" aria-label={M.SITZUNG_UND_BESCHLUESSE} data-testid="mb-sitzung-beschluesse">
-              <h2>{M.SITZUNG_UND_BESCHLUESSE}</h2>
-              <h3 className="vp-wv-titel">{M.SITZUNG}</h3>
-              {sitzungTeil}
-              <h3 className="vp-wv-titel">{M.BESCHLUESSE}</h3>
-              {beschluesseTeil}
-            </section>
-
-            <section className="vp-ez-karte" aria-label={M.EINGABEN}>
-              <h2>{M.EINGABEN}</h2>
-              {zeigt ? (
-                <ManagementbewertungEingaben abzug={zeigt} ohne={['beschluesse', 'sitzung']} />
-              ) : (
-                <p className="vp-ez-leise">Wird geladen …</p>
-              )}
-            </section>
-
-            <section className="vp-ez-karte" aria-label={M.STAENDE} data-testid="mb-staende">
-              <h2>{M.STAENDE}</h2>
-              {detail.staende.length === 0 ? (
-                <p className="vp-ez-leise">{M.KEIN_STAND}</p>
-              ) : (
-                <ul className="vp-mb-zeilen">
-                  {[...detail.staende].sort((x, y) => y.nr - x.nr).map((s) => (
-                    <li key={s.nr} data-testid={`mb-stand-${s.nr}`}>
-                      <span className="vp-mb-gegenstand">{M.standZeile(s, zone)}</span>
-                      <span className="vp-mb-pruef" title={s.pruefsumme}>
-                        Prüfsumme {M.pruefsummeKurz(s.pruefsumme)}
-                      </span>
+        {/* Ein Beschluss: Wortlaut, wer entschieden hat, seine Folgen - und was man daraus macht. */}
+        <NwBlatt open={!!offen} titel={offen ? `Beschluss ${offen.nr}` : ''} onClose={() => setBlatt(null)} testId="mb-beschluss-blatt">
+          {offen && (
+            <div className="vp-nw-schritt-inhalt">
+              <blockquote className="vp-nw-zitat" data-testid="mb-beschluss-wortlaut">
+                {offen.wortlaut}
+              </blockquote>
+              {/* Entschieden hat die Leitung der Sitzung; nur wer davon abweicht, steht hier (Blatt ≤ 35 Wörter). */}
+              <PruefZeilen
+                zeilen={[
+                  ...(offen.entschieden_von.id !== sitzung?.leitung.id ? [{ etikett: 'Entschieden', wert: offen.entschieden_von.name ?? '–' }] : []),
+                  ...(offen.zustaendig?.name ? [{ etikett: 'Wer', wert: offen.zustaendig.name }] : []),
+                  ...(offen.termin ? [{ etikett: 'Bis', wert: E.tagText(offen.termin) }] : []),
+                ]}
+              />
+              {freigegeben && (
+                <>
+                  {offen.folgen.length > 0 ? (
+                    <NwZeilen label={M.FOLGEN} testId={`mb-folgen-${offen.nr}`}>
+                      {offen.folgen.map((f) => {
+                        const ziel = f.objekt_id
+                          ? f.art === 'dokument'
+                            ? dokumentRoute(f.objekt_id)
+                            : f.art === 'massnahme'
+                              ? massnahmeRoute(f.objekt_id)
+                              : f.art === 'audit'
+                                ? auditRoute(f.objekt_id)
+                                : null
+                          : null;
+                        return (
+                          <NwZeile
+                            key={`${f.art}/${f.objekt}/${f.wie}`}
+                            vorn={<ZustandsZeichen art={B.folgeZustand(f)} stumm />}
+                            titel={B.folgeKurz(f, titel)}
+                            rechts={<Fakt>{M.zustandWort(f.zustand)}</Fakt>}
+                            {...(ziel ? { href: hashForRoute(ziel) } : {})}
+                            testId={`mb-folge-${offen.nr}-${f.objekt}`}
+                          />
+                        );
+                      })}
+                    </NwZeilen>
+                  ) : (
+                    <p className="vp-nw-leise" data-testid={`mb-ohne-folge-${offen.nr}`}>
+                      {offen.satz ?? 'Ohne Folge in VoltPilot.'}
+                    </p>
+                  )}
+                  <div className="vp-nw-blatt-zeile vp-nw-aktionen">
+                    <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
                       <Button
                         size="sm"
                         variant="outline"
-                        iconLeft={<Icon name="file-text" size={16} />}
-                        disabled={laeuft !== null}
-                        onClick={() => void pdf(s.nr)}
-                        aria-label={`PDF von Stand Nr. ${s.nr}`}
-                        data-testid={`mb-pdf-${s.nr}`}
+                        onClick={() => {
+                          setBlatt(null);
+                          setFolge(offen);
+                        }}
+                        data-testid={`mb-folge-knopf-${offen.nr}`}
                       >
-                        {M.KNOPF_PDF}
+                        {M.KNOPF_FOLGE}
                       </Button>
-                    </li>
+                    </EinsichtRecht>
+                    <Recht aktion="verbesserung.verwalten" standort={null}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setBlatt(null);
+                          setMassnahmeAus(offen);
+                        }}
+                        data-testid="massnahme-anlegen-knopf"
+                      >
+                        Maßnahme anlegen
+                      </Button>
+                    </Recht>
+                  </div>
+                </>
+              )}
+              {!freigegeben && (
+                <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+                  <div className="vp-nw-blatt-zeile">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setBlatt(null);
+                        setVorbereiten('pruefen');
+                      }}
+                      data-testid={`mb-beschluss-aendern-${offen.nr}`}
+                    >
+                      {M.KNOPF_BESCHLUSS_AENDERN}
+                    </Button>
+                  </div>
+                </EinsichtRecht>
+              )}
+            </div>
+          )}
+        </NwBlatt>
+
+        <NwBlatt open={blatt === 'sitzung'} titel={M.SITZUNG} onClose={() => setBlatt(null)} testId="mb-sitzung-blatt">
+          <div className="vp-nw-schritt-inhalt">
+            {sitzung ? (
+              <PruefZeilen
+                testid="mb-sitzung"
+                zeilen={[
+                  { etikett: 'Tag', wert: E.tagText(sitzung.tag) },
+                  { etikett: M.LEITUNG, wert: sitzung.leitung.name ?? '–' },
+                  ...(sitzung.teilnehmende.length ? [{ etikett: M.TEILNEHMENDE, wert: sitzung.teilnehmende.map((p) => p.name).filter(Boolean).join(', ') }] : []),
+                  ...(sitzung.ort ? [{ etikett: 'Ort', wert: sitzung.ort }] : []),
+                  ...(sitzung.eingetragen_von ? [{ etikett: 'Eingetragen', wert: sitzung.eingetragen_von }] : []),
+                ]}
+              />
+            ) : (
+              <p className="vp-nw-leise">{M.LEER.sitzung}</p>
+            )}
+            {sitzung && !sitzung.leitung_gilt && (
+              <p className="vp-nw-feld-fehler" data-testid="mb-leitung-gilt-nicht">
+                {M.LEITUNG_GILT_NICHT}
+              </p>
+            )}
+            {!freigegeben && (
+              <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+                <div className="vp-nw-blatt-zeile">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setBlatt(null);
+                      setVorbereiten('sitzung');
+                    }}
+                    data-testid="mb-sitzung-knopf"
+                  >
+                    {sitzung ? M.KNOPF_SITZUNG_AENDERN : M.KNOPF_SITZUNG}
+                  </Button>
+                </div>
+              </EinsichtRecht>
+            )}
+          </div>
+        </NwBlatt>
+
+        {/* „Was die Leitung sah“: die Abschnitte als Zeilen; ein Abschnitt öffnet sich im selben Blatt. */}
+        <NwBlatt
+          open={blatt === 'eingaben' || !!eingabe}
+          titel={eingabe ? eingabe.titel : B.WAS_DIE_LEITUNG_SAH}
+          onClose={() => setBlatt(null)}
+          testId="mb-eingaben-blatt"
+        >
+          <div className="vp-nw-schritt-inhalt" ref={eingabenRef}>
+            {eingabe && zeigt ? (
+              <>
+                <button
+                  type="button"
+                  className="vp-nw-zurueck"
+                  onClick={() => {
+                    setVonEingabe(eingabe.key);
+                    setBlatt('eingaben');
+                  }}
+                  data-testid="mb-eingaben-zurueck"
+                >
+                  <NwSymbol name="chevron-left" size={16} />
+                  Alle Teile
+                </button>
+                <ManagementbewertungEingaben abzug={zeigt} nur={eingabe.key} />
+              </>
+            ) : eingaben ? (
+              <>
+                <HinweisZeile
+                  icon="calendar"
+                  titel={`Eingaben vom ${M.zeitpunkt((stand ?? entwurf)!.datenstand, zone)}`}
+                  testid="mb-eingaben-stand"
+                />
+                <NwZeilen testId="mb-eingaben">
+                  {eingaben.map((z) => (
+                    <NwZeile
+                      key={z.key}
+                      titel={z.titel}
+                      rechts={z.zahl !== null ? <Fakt>{z.zahl}</Fakt> : undefined}
+                      onClick={() => {
+                        setVonEingabe(null);
+                        setBlatt({ eingabe: z.key });
+                      }}
+                      testId={`mb-eingabe-zeile-${z.key}`}
+                    />
                   ))}
-                </ul>
-              )}
-              {abruf && (
-                <p className={`vp-alert ${abruf.fehler ? 'vp-alert-err' : 'vp-alert-ok'}`} role="status" data-testid="mb-abruf">
-                  {abruf.satz}
-                </p>
-              )}
-            </section>
-          </>
-        )}
-        {dialog?.art === 'sitzung' && (
-          <SitzungDialog kennung={kennung} heute={heute()} vorher={sitzung} onClose={() => setDialog(null)} onFertig={neu} />
-        )}
-        {dialog?.art === 'beschluss' && mb && (
-          <BeschlussDialog kennung={kennung} mb={mb} beschluss={dialog.beschluss} onClose={() => setDialog(null)} onFertig={neu} />
-        )}
-        {dialog?.art === 'folge' && (
-          <FolgeDialog kennung={kennung} beschluss={dialog.beschluss} onClose={() => setDialog(null)} onFertig={neu} />
-        )}
-        {dialog?.art === 'freigeben' && detail && entwurf && (
-          <BerichtFreigebenDialog
-            open
-            onClose={() => setDialog(null)}
+                </NwZeilen>
+              </>
+            ) : (
+              <p className="vp-nw-leise">Wird geladen …</p>
+            )}
+          </div>
+        </NwBlatt>
+
+        <NwBlatt open={blatt === 'staende'} titel={M.STAENDE} onClose={() => setBlatt(null)} testId="mb-staende">
+          <NwZeilen>
+            {[...detail.staende]
+              .sort((x, y) => y.nr - x.nr)
+              .map((s) => (
+                <NwZeile
+                  key={s.nr}
+                  titel={`Stand ${s.nr}`}
+                  unter={`${E.tagText(tagDesAugenblicks(s.freigegeben_am, zone))} · ${s.freigegeben_von.name} · Prüfsumme ${M.pruefsummeKurz(s.pruefsumme)}`}
+                  rechts={s.ersetzt_durch_nr ? <Fakt>ersetzt</Fakt> : undefined}
+                  verb={M.KNOPF_PDF}
+                  onClick={() => void pdf(s.nr)}
+                  testId={`mb-stand-${s.nr}`}
+                />
+              ))}
+          </NwZeilen>
+        </NwBlatt>
+
+        {vorbereiten && (
+          <ManagementbewertungVorbereiten
+            kennung={kennung}
+            mb={mb}
             detail={detail}
             entwurf={entwurf}
+            start={vorbereiten}
+            heute={heute()}
+            titel={titel}
+            onMb={neu}
             onEntwurf={setEntwurf}
             onFreigegeben={() => {
-              setDialog(null);
+              setVorbereiten(null);
               setVersuch((v) => v + 1);
+            }}
+            onClose={() => setVorbereiten(null)}
+          />
+        )}
+        {massnahmeAus && (
+          <MassnahmeAnlegenDialog
+            vorbelegung={{ herkunft: 'managementbewertung', herkunftKennung: massnahmeAus.kennung, titel: massnahmeAus.wortlaut.slice(0, 120) }}
+            tagHeute={heute()}
+            onClose={() => setMassnahmeAus(null)}
+            onAngelegt={() => {
+              setMassnahmeAus(null);
+              setVersuch((v) => v + 1);
+            }}
+          />
+        )}
+        {folge && (
+          <FolgeDialog
+            kennung={kennung}
+            beschluss={folge}
+            onClose={() => setFolge(null)}
+            onFertig={(m) => {
+              setFolge(null);
+              neu(m);
             }}
           />
         )}

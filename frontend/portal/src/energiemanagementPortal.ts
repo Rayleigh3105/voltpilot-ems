@@ -20,7 +20,6 @@ import {
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import {
   UEMS_DOKUMENTE,
-  UEMS_GEPRUEFT_BLEIBT_KNOPF,
   UEMS_MANAGEMENTBEWERTUNG,
   UEMS_WIEDERVORLAGE,
 } from './glossar';
@@ -81,8 +80,6 @@ export const KNOPF_BEENDEN = 'Zuordnung beenden';
 export const KNOPF_PERSON_AENDERN = 'Angaben ändern';
 export const KNOPF_VERANTWORTUNG = 'Wer ist wofür verantwortlich';
 export const KNOPF_NACHWEIS = 'Nachweis festhalten';
-/** DK5: die gültige Fassung einer Vorgabe bleibt; die Überprüfung beginnt neu (Konzept Wiedervorlage w1, Entscheid 8). */
-export const KNOPF_GEPRUEFT = UEMS_GEPRUEFT_BLEIBT_KNOPF;
 /** Der Abschnitt an der Seite eines Energieeinsatzes und einer Person (IP-15, §5.3). */
 export const NACHWEISE = 'Nachweise';
 export const BEGRUENDUNG_HINWEIS = `${STARTWERTE.begruendung_zeichen_mindestens} bis ${STARTWERTE.begruendung_zeichen_hoechstens} Zeichen.`;
