@@ -8833,6 +8833,34 @@ export interface EnergiemanagementVerzeichnisFilter {
   bis?: string | null;
   person?: string | null;
 }
+/**
+ * Konzept Nachweisen n1, Entscheid 5 (Vertrag energiemanagement 1.3): „Trifft bei uns zurzeit nicht zu“ für einen Teil
+ * des Überblicks - mit Satz und der Person, die es entschieden hat; höchstens ein geltender Vermerk je Teil.
+ */
+export interface EnergiemanagementTeilVermerk {
+  id: string;
+  /** Vokabular `teil`. */
+  teil: string;
+  teil_wort: string;
+  satz: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  entschieden_am: string;
+  eingetragen: EnergiemanagementEingetragen;
+  /** Gesetzt, sobald der Vermerk aufgehoben ist; er bleibt dann lesbar. */
+  aufgehoben: { akteur: EnergiemanagementEingetragen['akteur']; am: string } | null;
+}
+export interface EnergiemanagementTeilVermerke {
+  stichtag: string;
+  vermerke: EnergiemanagementTeilVermerk[];
+}
+export interface EnergiemanagementTeilVermerkAnlegen {
+  teil: string;
+  satz: string;
+  /** ID einer Person im Energiemanagement. */
+  entschieden_von: string;
+  /** Ohne Angabe: heute nach der Uhr des Unternehmens. */
+  entschieden_am?: string | null;
+}
 export interface EnergiemanagementStandortKurz {
   id: string;
   kurzzeichen: string | null;
@@ -11509,6 +11537,14 @@ export const api = {
     }
     return res.blob();
   },
+  /** Nachweisen n1, Entscheid 5: die Vermerke „Trifft bei uns zurzeit nicht zu“, geltende zuerst. */
+  energiemanagementTeilVermerke: () => request<EnergiemanagementTeilVermerke>('/api/v1/energiemanagement/teil-vermerke'),
+  /** Nachweisen n1, Entscheid 5: einen Teil als „trifft bei uns zurzeit nicht zu“ festhalten (409 `vermerk_besteht`). */
+  energiemanagementTeilVermerkAnlegen: (body: EnergiemanagementTeilVermerkAnlegen) =>
+    request<EnergiemanagementTeilVermerk>('/api/v1/energiemanagement/teil-vermerke', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 5: einen Vermerk aufheben; er bleibt lesbar. */
+  energiemanagementTeilVermerkAufheben: (id: string) =>
+    request<EnergiemanagementTeilVermerk>(`/api/v1/energiemanagement/teil-vermerke/${encodeURIComponent(id)}/aufheben`, { method: 'POST' }),
   /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
   energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
   /** Konzept Wiedervorlage w1: „Zuletzt erledigt“, die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben. */

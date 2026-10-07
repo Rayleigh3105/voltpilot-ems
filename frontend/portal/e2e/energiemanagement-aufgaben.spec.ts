@@ -206,8 +206,14 @@ for (const breite of [375, 1440]) {
       };
       await oeffne(page, 'person=RF&lage=ahrenberg', breite);
       await expect(page.getByTestId('einsicht-rolle')).toHaveText(EINSICHT_ROLLE);
-      await expect(page.getByTestId('verzeichnis-zeile-D-0001').first()).toBeVisible();
-      await expect(page.getByTestId('verzeichnis-csv')).toBeVisible();
+      // Der Überblick verspricht „Einsicht“ kein Festhalten (Konzept Nachweisen n1, §6.13).
+      await expect(page.getByTestId('ueberblick-naechstes').getByRole('button')).toHaveCount(0);
+      await ohneSchreiben('Einsicht: Überblick');
+      await oeffne(page, 'person=RF&lage=ahrenberg&seite=verzeichnis', breite);
+      await expect(page.getByTestId('verzeichnis-eintrag').first()).toBeVisible();
+      await page.getByTestId('verzeichnis-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Als CSV abrufen' })).toBeVisible();
+      await page.keyboard.press('Escape');
       await ohneSchreiben('Einsicht: Verzeichnis');
 
       await page.getByTestId('energiemanagement-reiter-dokumente').click();

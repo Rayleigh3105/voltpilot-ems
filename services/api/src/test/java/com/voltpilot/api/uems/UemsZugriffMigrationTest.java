@@ -103,7 +103,8 @@ class UemsZugriffMigrationTest {
             "20260925031500", // AP-19 IP-16: Verantwortlich an Audit und Feststellung verweist auf benutzer(tenant_id, sub).
             "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme.
             "20260925093000", // AP-19 IP-23: Sitzung und Beschluss nennen Personen des Energiemanagements.
-            "20261005220000"); // Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() von 031500 als Vereinigung.
+            "20261005220000", // Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() von 031500 als Vereinigung.
+            "20261007004500"); // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

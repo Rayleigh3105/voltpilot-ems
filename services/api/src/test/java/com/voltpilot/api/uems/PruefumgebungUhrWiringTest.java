@@ -60,6 +60,7 @@ class PruefumgebungUhrWiringTest {
             .withBean(BewertungKriterienService.class, () -> mock(BewertungKriterienService.class))
             // Konzept Nachweisen n1, Befund 3: auch die Aufgaben-Route nennt „heute“ auf der Bühne.
             .withBean(EnergiemanagementPersonenService.class, () -> mock(EnergiemanagementPersonenService.class))
+            .withBean(EnergiemanagementTeilVermerkService.class, () -> mock(EnergiemanagementTeilVermerkService.class))
             .withUserConfiguration(PruefumgebungUhr.class);
     }
 

@@ -9,9 +9,10 @@ import { grenzHinweisZeigt } from './grenzHinweis';
  * `e2e/energiemanagement.html` — die ECHTE Schale mit der ECHTEN Leiste und den ECHTEN Reitern, die Routen von
  * IP-6/IP-7/IP-8 gespielt aus dem Referenzunternehmen 1.10 (`src/test/energiemanagementFixtures.ts`, R1–R3).
  *
- * Fälle: Anlegen → Fassung → Freigabe mit „entschieden von“ → Verzeichnis (R1, mit Person anlegen als Leitung) ·
- * Verweis-Fassung (R7-Muster): nur die Prüfsumme geht hinaus · Stand 12.02.2029 (R1–R3): Verzeichnis, Überprüfung,
- * Vergleich, Filter „in meinem Namen“, CSV, Zuschnitt-Hilfe.
+ * Fälle: Anlegen → Fassung → Freigabe mit „entschieden von“ → Überblick und Verzeichnis (R1, mit Person anlegen als
+ * Leitung) · Verweis-Fassung (R7-Muster): nur die Prüfsumme geht hinaus · Stand 12.02.2029 (R1–R3): Überblick mit dem
+ * Blatt einer Gruppe, Verzeichnis nach Monaten, „Meine“, CSV, Überprüfung, Vergleich, Zuschnitt-Hilfe (Konzept
+ * Nachweisen n1: der Überblick ist der erste Reiter, das Verzeichnis liegt eine Ebene tiefer).
  *
  * NETZWERK-PROBE: jede Anfrage außer GET wird mitgeschrieben, und die Bühne legt jeden Schreib-Körper an der Grenze zur
  * Route in `window.__emGesendet` ab. Geprüft wird: der Datei-Inhalt steht in KEINER Anfrage und in KEINEM Körper; der
@@ -117,22 +118,26 @@ for (const breite of [375, 1440]) {
       });
       await oeffne(page, 'lage=start', breite, AM_15_12_2026);
       const bereich = page.getByTestId('energiemanagement-bereich');
-      await expect(bereich.getByRole('heading', { level: 1 })).toHaveText('Energiemanagement');
-      // Das Verzeichnis ist der erste Reiter (§5.1); eine leere Gruppe sagt es und nennt ihren Zuschnitt (VZ3).
-      await expect(page.getByTestId('energiemanagement-reiter-verzeichnis')).toHaveAttribute('aria-selected', 'true');
-      await expect(page.getByTestId('verzeichnis-gruppe-grundlagen')).toContainText(LEER);
-      await expect(page.getByTestId('verzeichnis-gruppe-grundlagen')).toContainText('Energiepolitik — Wortlaut in VoltPilot, Original bei Ihnen');
+      // Konzept Nachweisen n1 (Entscheid 2): der Überblick ist der erste Reiter; bei einem neuen Kunden ist die Energiepolitik
+      // offen und der nächste Schritt (§6.13).
+      await expect(bereich.getByRole('heading', { level: 1 })).toHaveText('Überblick');
+      await expect(page.getByTestId('energiemanagement-reiter-ueberblick')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('zaehler-offen')).toHaveText(/^\d+Teile offen$/);
+      const offenVorher = Number((await page.getByTestId('zaehler-offen').textContent())!.match(/^\d+/)![0]);
+      await expect(page.getByTestId('teil-chip-energiepolitik')).toHaveClass(/is-offen/);
+      await expect(page.getByTestId('ueberblick-naechstes')).toContainText('Energiepolitik festhalten');
       await grenzHinweisZeigt(page, GRENZE, VERANTWORTUNG);
       const m0 = await messe(page);
-      expect(m0.reiter).toEqual(expect.arrayContaining(['Verzeichnis', 'Dokumente']));
-      expect(m0.reiter.indexOf('Verzeichnis')).toBeLessThan(m0.reiter.indexOf('Dokumente'));
+      expect(m0.reiter).toEqual(expect.arrayContaining(['Überblick', 'Dokumente']));
+      expect(m0.reiter.indexOf('Überblick')).toBeLessThan(m0.reiter.indexOf('Dokumente'));
+      expect(m0.reiter).not.toContain('Verzeichnis');
       // K1/D2: die Reiter der Gruppe „Nachweisen“ sind die des Energiemanagements und die Berichte. N1: die Gruppe selbst
       // steht am Rechner in der Seitenleiste, nicht als Reiter.
       if (breite >= 720) await expect(page.getByTestId('seitenleiste-nachweisen')).toHaveAttribute('aria-current', 'page');
       expect(m0.reiter).not.toContain('Nachweisen');
       expect(m0.reiter).not.toContain('Energiemanagement');
-      ohneQuerlauf(m0, 'Verzeichnis leer');
-      await ablegen(page, `a-verzeichnis-leer-${breite}`);
+      ohneQuerlauf(m0, 'Überblick leer');
+      await ablegen(page, `a-ueberblick-leer-${breite}`);
 
       await page.getByTestId('energiemanagement-reiter-dokumente').click();
       await expect(page.getByTestId('dokumente-leer')).toHaveText(LEER);
@@ -205,19 +210,31 @@ for (const breite of [375, 1440]) {
 
       await page.getByTestId('dokument-zurueck').click();
       await expect(page.getByTestId('dokument-zeile-D-0001')).toContainText('gültig · Fassung 1');
-      await page.getByTestId('energiemanagement-reiter-verzeichnis').click();
-      const grundlagen = page.getByTestId('verzeichnis-gruppe-grundlagen');
-      const zeile = grundlagen.getByTestId('verzeichnis-zeile-D-0001');
-      await expect(zeile).toContainText('D-0001 · Energiepolitik');
-      await expect(zeile).toContainText('Robert Falk');
-      await expect(zeile).toContainText('Ines Kaltenbach');
-      await expect(zeile).toContainText('15.12.2026');
-      await expect(zeile).toContainText('Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik');
-      await expect(page.getByTestId('verzeichnis-gruppe-verantwortung')).toContainText('Leitung des Unternehmens: Robert Falk');
+      // Im Überblick sind Energiepolitik und Aufgaben (die Leitung) festgehalten.
+      await page.getByTestId('energiemanagement-reiter-ueberblick').click();
+      await expect(page.getByTestId('zaehler-offen')).toHaveText(`${offenVorher - 2}Teile offen`);
+      await expect(page.getByTestId('teil-chip-energiepolitik')).toHaveClass(/is-festgehalten/);
+      // Das Verzeichnis liegt eine Ebene tiefer, im Menü des Überblicks.
+      await page.getByTestId('ueberblick-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Verzeichnis', exact: true }).click();
+      expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/energiemanagement/verzeichnis');
+      const dezember = page.getByTestId('verzeichnis-monat-2026-12');
+      await expect(dezember.getByRole('heading', { level: 2 })).toHaveText('Dezember 2026');
+      await expect(dezember).toContainText('Leitung des Unternehmens: Robert Falk');
+      const zeile = dezember.getByTestId('verzeichnis-eintrag').filter({ hasText: /^15\.12\.Energiepolitik/ });
+      await expect(zeile).toContainText('RF');
       ohneQuerlauf(await messe(page), 'Verzeichnis');
       await ablegen(page, `h-verzeichnis-${breite}`, true);
-      // Eine Dokument-Zeile öffnet ihr Dokument.
-      await zeile.getByRole('button').click();
+      // Ein Eintrag zeigt Personen, Tag und Ort - und öffnet sein Dokument.
+      await zeile.click();
+      const eintrag = page.getByTestId('eintrag-blatt');
+      await expect(eintrag).toContainText('Robert Falk');
+      await expect(eintrag).toContainText('Ines Kaltenbach');
+      await expect(eintrag).toContainText('15.12.2026');
+      await expect(eintrag).toContainText('Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik');
+      ohneQuerlauf(await messe(page), 'Eintrag');
+      await ablegen(page, `h2-eintrag-${breite}`);
+      await eintrag.getByRole('button', { name: 'Dokument öffnen' }).click();
       await expect(page.getByTestId('dokument-kopf')).toContainText('Energiepolitik D-0001 · Fassung 1');
 
       // Netzwerk-Probe: der Inhalt stand in keiner Anfrage und in keinem Körper; gesendet wurde nur seine Prüfsumme.
@@ -286,22 +303,34 @@ for (const breite of [375, 1440]) {
       expect(entwurf.verweis).toMatchObject({ ablage: 'Instandhaltungssystem, Arbeitspläne', kennung: 'IH-SG-01', fassungsangabe: 'Rev. 4', sha256: sha256(inhalt) });
     });
 
-    test('Stand 12.02.2029 (R1–R3): Verzeichnis mit leeren Gruppen, Filter „in meinem Namen“, CSV, Überprüfung, Vergleich, Zuschnitt-Hilfe', async ({ page }) => {
+    test('Stand 12.02.2029 (R1–R3): Überblick, Verzeichnis nach Monaten, „Meine“, CSV, Überprüfung, Vergleich, Zuschnitt-Hilfe', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg', breite, AM_12_02_2029);
-      await expect(page.getByTestId('verzeichnis-zeile-D-0001').first()).toBeVisible();
-      await expect(page.getByTestId('verzeichnis-gruppe-risiken_chancen')).toContainText(LEER);
-      await expect(page.getByTestId('verzeichnis-gruppe-managementbewertung')).toContainText(LEER);
-      await expect(page.getByTestId('verzeichnis-gruppe-kompetenz_kommunikation')).toContainText('bekannt gemacht an alle Mitarbeitenden beider Werke');
-      await expect(page.getByTestId('verzeichnis-gruppe-grundlagen').getByTestId('verzeichnis-zeile-D-0003')).toContainText('Geführt in Ihrem System: Rechtskataster-Dienst, Mandant Ahrenberg');
-      ohneQuerlauf(await messe(page), 'Verzeichnis 12.02.2029');
-      await ablegen(page, `k-verzeichnis-ahrenberg-${breite}`, true);
+      // Offen sind die Teile ohne Eintrag; Risiken und Chancen etwa (Konzept n1, §6.3).
+      await expect(page.getByTestId('teil-chip-risiken_chancen')).toHaveClass(/is-offen/);
+      await page.getByRole('button', { name: /^Grundlagen:/ }).click();
+      const grundlagen = page.getByTestId('gruppen-blatt');
+      await expect(grundlagen.getByTestId('gruppen-teil-rechtliche_anforderungen')).toContainText('Fassung 1');
+      await expect(grundlagen.getByTestId('gruppen-teil-risiken_chancen')).toContainText('Festhalten');
+      ohneQuerlauf(await messe(page), 'Blatt Grundlagen');
+      await ablegen(page, `k0-blatt-grundlagen-${breite}`);
+      await page.keyboard.press('Escape');
+      await expect(grundlagen).toBeHidden();
+      ohneQuerlauf(await messe(page), 'Überblick 12.02.2029');
+      await ablegen(page, `k-ueberblick-ahrenberg-${breite}`, true);
 
-      await waehle(page, page.getByRole('combobox', { name: 'Festgehalten im Namen von' }), /in meinem Namen/);
-      await expect(page.getByTestId('verzeichnis-stichtag')).toContainText(/In meinem Namen festgehalten: \d+ Einträge\./);
-      await expect(page.getByTestId('verzeichnis-gruppe-grundlagen')).toContainText('D-0003');
-      await expect(page.getByTestId('verzeichnis-gruppe-grundlagen')).not.toContainText('D-0001 · Energiepolitik');
+      await oeffne(page, 'lage=ahrenberg&seite=verzeichnis', breite, AM_12_02_2029);
+      await expect(page.getByTestId('verzeichnis-eintrag').first()).toBeVisible();
+      await expect(page.getByTestId('verzeichnis-monat-2026-12')).toContainText('Energiepolitik bekannt gemacht');
+      await expect(page.getByTestId('verzeichnis')).toContainText('Rechtskataster');
+      ohneQuerlauf(await messe(page), 'Verzeichnis 12.02.2029');
+      await ablegen(page, `k2-verzeichnis-ahrenberg-${breite}`, true);
+
+      await page.getByRole('button', { name: 'Meine', exact: true }).click();
+      await expect(page.getByTestId('verzeichnis')).toContainText('Rechtskataster');
+      await expect(page.getByTestId('verzeichnis-eintrag').filter({ hasText: /^15\.12\.Energiepolitik$/ })).toHaveCount(0);
       const download = page.waitForEvent('download');
-      await page.getByTestId('verzeichnis-csv').click();
+      await page.getByTestId('verzeichnis-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Als CSV abrufen' }).click();
       const datei = await (await download).path();
       const csv = readFileSync(datei!, 'utf8');
       expect(csv).toContain(VERANTWORTUNG);
@@ -332,7 +361,8 @@ for (const breite of [375, 1440]) {
       await ablegen(page, `m-anwendungsbereich-${breite}`, true);
 
       await oeffne(page, 'lage=ahrenberg', breite, AM_12_02_2029);
-      await page.getByTestId('energiemanagement-zuschnitt-link').click();
+      await page.getByTestId('ueberblick-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Was VoltPilot führt' }).click();
       const hilfe = page.getByTestId('zuschnitt-hilfe');
       await expect(hilfe.getByRole('heading', { level: 1 })).toHaveText('Was VoltPilot führt — was bei Ihnen liegt.');
       await expect(page.getByTestId('zuschnitt-teile').locator('tbody tr')).toHaveCount(16);
@@ -343,7 +373,7 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(await messe(page), 'Zuschnitt-Hilfe');
       await ablegen(page, `n-zuschnitt-${breite}`, true);
       await page.getByTestId('zuschnitt-zurueck').click();
-      await expect(page.getByTestId('energiemanagement-bereich')).toBeVisible();
+      await expect(page.getByTestId('nachweisen-ueberblick')).toBeVisible();
     });
   });
 }

@@ -172,6 +172,9 @@ class UemsEnergiemanagementBestandsschutzTest {
         neu.removeIf(t -> t.startsWith(Bestandsschutz.KATALOG_METADATEN + "@"));
         assertThat(neu).as("AP-19 legt genau diese Tabellen an").containsExactlyInAnyOrderElementsOf(NEUE_TABELLEN);
         assertThat(nachher.keySet()).as("spätere Programme nehmen keine AP-19-Tabelle weg").containsAll(bisAp19.keySet());
+        // Nachweisen n1 (V20261007004500): auch „Trifft bei uns zurzeit nicht zu“ entsteht nie von selbst.
+        assertThat(nachher.get("energiemanagement_teil_vermerk")).as("energiemanagement_teil_vermerk nach dem Rollout")
+                .isEqualTo(Bestandsschutz.LEER);
         assertThat(root.queryForObject("SELECT count(*) FROM zugriff WHERE rolle = 'einsicht'", Integer.class))
                 .as("„Einsicht“ ist eine Wahl, niemandem zugewiesen").isZero();
     }

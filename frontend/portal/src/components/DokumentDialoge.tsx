@@ -159,15 +159,18 @@ export function DokumentAnlegenDialog({
   onClose,
   onAngelegt,
   fest = null,
+  vorArt = null,
 }: {
   onClose: () => void;
   onAngelegt: (d: EnergiemanagementDokument) => void;
   fest?: E.NachweisBezug | null;
+  /** Die vorgewählte Art, wenn der Überblick einen offenen Teil festhält (Konzept Nachweisen n1, §6.10). */
+  vorArt?: string | null;
 }) {
   const basis = `dk-${useId().replace(/:/g, '')}`;
   const standorte = useStandorte();
   const [e, setE] = useState<E.AnlegenEntwurf>(() => {
-    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : '';
+    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : (vorArt ?? '');
     return { art, titel: art ? WOERTER.dokument_art[art] : '', bezug: 'unternehmen', standortId: '', original: E.LEERER_VERWEIS };
   });
   const [fehler, setFehler] = useState<E.Feldfehler>({});
