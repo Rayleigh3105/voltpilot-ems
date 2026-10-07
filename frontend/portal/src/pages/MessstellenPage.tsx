@@ -1119,7 +1119,8 @@ function OrtKarte({
           <a
             className="vp-ms-ablesen"
             href={`${window.location.hash.split('?')[0] || '#/portfolio/messstellen'}?${ABLESEN_PARAMETER}=${encodeURIComponent(ablesen)}`}
-            aria-label={`${gruppe.titel} ablesen`}
+            // Die Karte eines Bereichs öffnet die Runde seines Gebäudes - dann sagt der Name nicht „Bereich ablesen“.
+            aria-label={gruppe.ablesenHier ? `${gruppe.titel} ablesen` : `Ablese-Runde des Gebäudes (${ablesen})`}
             data-testid="messstellen-ablesen"
           >
             {ABLESEN} ›

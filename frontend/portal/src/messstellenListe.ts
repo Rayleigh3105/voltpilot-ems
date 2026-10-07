@@ -433,10 +433,13 @@ export interface OrtGruppe {
   /** „Halle 1“ - der Ort, an dem die Messstellen stehen. */
   titel: string;
   /**
-   * Das Kurzzeichen des Orts für die Ablese-Runde (`?ablesen=G-1`), wenn an ihm ein Zähler von Hand abgelesen wird
-   * (Konzept §6.2: „Ablesen ›“ im Kopf der Karte); sonst `null`.
+   * Das Kurzzeichen der Ablese-Runde (`?ablesen=G-1`), wenn an dem Ort ein Zähler von Hand abgelesen wird (Konzept
+   * §6.2: „Ablesen ›“ im Kopf der Karte): sein Ableseort (`ableseortVon`), bei einem Bereich also sein Gebäude; sonst
+   * `null`.
    */
   ablesen: string | null;
+  /** Die Runde ist die des Orts selbst (Gebäude, Standort) - nicht die seines Gebäudes (Bereich). */
+  ablesenHier: boolean;
   /** Der Standort des Orts (für das Recht „ablesung.erfassen“); `null` am Unternehmen. */
   standortId: string | null;
   /** Der Standort darüber (nur am Unternehmen und nur, wenn der Ort nicht selbst der Standort ist). */
@@ -705,6 +708,7 @@ export function liste(
     const g = je.get(k.key) ?? {
       ...k,
       ablesen: null,
+      ablesenHier: false,
       standortId: r.zeile.ort.standort_id,
       reihen: [],
       gesamt: 0,
@@ -713,14 +717,17 @@ export function liste(
     };
     g.gesamt += 1;
     // Die Runde gilt dem Ableseort der Zähler der Karte (ihr Gebäude, ohne Gebäude ihr Standort) - wie die Wiedervorlage.
-    if (!g.ablesen && abzulesen(r.zeile)) g.ablesen = ableseortVon(r.zeile);
+    if (!g.ablesen && abzulesen(r.zeile)) {
+      g.ablesen = ableseortVon(r.zeile);
+      g.ablesenHier = g.ablesen !== null && g.ablesen === r.zeile.ort.kennzeichen;
+    }
     if (passt(r)) g.reihen.push(r);
     je.set(k.key, g);
   }
   for (const p of i.geplante ?? []) {
     if (!passtGeplant(p)) continue;
     const { key, titel, standort, standortId, ordnung } = p.ort;
-    const g = je.get(key) ?? { key, titel, standort, standortId, ablesen: null, reihen: [], gesamt: 0, geplant: [], ordnung };
+    const g = je.get(key) ?? { key, titel, standort, standortId, ablesen: null, ablesenHier: false, reihen: [], gesamt: 0, geplant: [], ordnung };
     g.geplant.push(p);
     je.set(key, g);
   }
