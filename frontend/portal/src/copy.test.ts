@@ -3183,6 +3183,43 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
     }
   });
+
+  /**
+   * Konzept Verbessern v1 §8.2 „Kennzeichen statt Name“ (Regel V6, Zusage aus PR 4): eine Überschrift und ein
+   * Dialogtitel beginnen mit dem Namen des Vorgangs, das Kennzeichen (EZ-, M-, AW-) steht danach - nie vorn.
+   */
+  const KENNZEICHEN_VORN = [
+    /<h1\b[^>]*>\s*(?:\{[^{}]*\bkennzeichen\b[^{}]*\}|(?:EZ|M|AW)-)/u,
+    /\btitle=\{\s*(?:[\w.?]*\.)?kennzeichen\b/u,
+    /\btitle=\{\s*`\$\{[^{}]*\bkennzeichen\b/u,
+    /\btitle="(?:EZ|M|AW)-/u,
+    /\btitel\s*=\s*`\$\{[^{}]*\bkennzeichen\b/u,
+  ];
+  const kennzeichenVorn = (code: string) => KENNZEICHEN_VORN.some((re) => re.test(code));
+  it('Überschrift und Dialogtitel beginnen mit dem Namen, nie mit dem Kennzeichen', () => {
+    for (const datei of verbesserungFlaechen()) {
+      expect(kennzeichenVorn(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
+    }
+    for (const probe of [
+      '<h1 data-testid="massnahme-titel">{m.kennzeichen} {m.titel}</h1>',
+      '<h1>\n  {ez.kennzeichen}\n</h1>',
+      '<h1>EZ-2028-0001</h1>',
+      '<Modal open title={a.kennzeichen} onClose={zu}>',
+      '<Modal open title={`${m.kennzeichen} umgesetzt melden`} onClose={zu}>',
+      '<Modal open title="AW-2028-0001 abschließen" onClose={zu}>',
+      'const titel = `${ez.kennzeichen} bewerten`;',
+    ]) {
+      expect(kennzeichenVorn(probe), probe).toBe(true);
+    }
+    for (const gut of [
+      '<h1 data-testid="massnahme-titel">\n  {m.titel}\n  <span className="vp-mn-kz">{m.kennzeichen}</span>\n</h1>',
+      '<h1>{A.abweichungTitel(a)} <span className="vp-abw-kz">{a.kennzeichen}</span></h1>',
+      'title={`${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEENDEN}`}',
+      'const titel = `${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEWERTEN}`;',
+    ]) {
+      expect(kennzeichenVorn(gut), gut).toBe(false);
+    }
+  });
 });
 
 describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, Verantwortungs-Satz (SP1–SP5)', () => {

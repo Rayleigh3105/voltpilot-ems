@@ -124,3 +124,21 @@ endgültig). Ein Fehler der Naht rollt den Wert mit zurück; der Regellauf über
 Sichtprüfung) — sonst sähe die Kaskade Version n statt n + 1. Beide Wege schreiben als `voltpilot_admin`:
 `V20260925002000` gibt ihr `INSERT` auf `auffaelligkeit`. Nachweis: `VerbesserungNahtTest` (Takt R1, Schalter, R11,
 `besser`/`im_rahmen`/`nicht_anwendbar`, R13, Kaskade mit Rücklauf, Rechte).
+
+## Welt und Demo nach der Referenz (Konzept Verbessern v1 §4.8, Entscheid 16, PR 6)
+
+`AhrenbergWelt#verbesserung` baut AP-18 in der Reihenfolge der Referenz: direkt nur, was kein Weg des Portals trägt (AW aus
+der Auffälligkeit eröffnet, Anstoß der Kaskade, Bewertung mit Referenz-Kopie, je mit der Verlaufszeile des Dienstes),
+Kommentare, Aussagen, Abschlüsse, Umsetzungen und die Anstoß-Antwort über die Routen mit gestellter Uhr.
+⚠ **Verlauf = `created_at` der DB:** jede Route schreibt ihre `*_aenderung`-Zeile mit `now()` der echten Zeit; die Welt
+setzt sie nach dem Aufruf auf die Bühnen-Uhr (`AhrenbergWelt#verlaufAufDieBuehne`, erkennt die neuen Zeilen über die
+höchste `id` VOR dem Aufruf - nicht über `created_at`, die direkt geschriebenen Bühnen-Zeilen liegen nach dem echten Jetzt).
+⚠ **Vermerk mit AW:** die Antwort `abweichung` der Route eröffnet immer eine NEUE AW; an eine stehende AW hängt man einen
+Vermerk mit der einmaligen Antwort direkt (Trigger prüft Kennzahl, Fassung, Monat). Der Vermerk trägt dann den Anlass der
+AW (so kopiert ihn das Produkt, die Prüfsummen stimmen überein).
+⚠ **„vermerkt am“ ist die Uhr des Laufs** und danach eingefroren: wer Monatswerte nachträglich auf der Bühne rechnet,
+schaltet die Naht ab (`voltpilot.uems.verbesserung.enabled=false`, so der Demo-Rundgang) und vermerkt danach mit
+`new VerbesserungNaht(…).vermerken(con, tenant, werte, tagDesLaufs)`; läuft daneben eine API mit eingeschalteter Naht,
+vermerkt sie mit ihrer Bühnen-Uhr (`demo.sh rundgang` hält die Demo-API darum an). Nachweis:
+`UemsEnergiemanagementAbnahmeTest#verlaeufeUndAuffaelligkeitenWieDieReferenz`, `DemoVerbessernReferenz` (bricht ab, wenn
+KZ-0004 in anderen Monaten als 12/2027, 07/2028, 03/2029 „schlechter“ liegt oder ein Vermerk einen anderen Tag trägt).

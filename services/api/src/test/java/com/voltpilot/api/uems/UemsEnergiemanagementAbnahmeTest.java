@@ -828,6 +828,67 @@ class UemsEnergiemanagementAbnahmeTest {
                 + "'Umgesetzt wie in der Referenzdatei.'", Integer.class, tenant)).isZero();
     }
 
+    /**
+     * Konzept Verbessern v1 §4.8, Entscheid 16 (Demo-Füllung, PR 6): jeder Vorgang trägt seinen Verlauf am Tag der
+     * Referenz - auch, was eine Route schrieb -, die Art der Maßnahme, M-2029-0001 ist „nicht messbar“ abgeschlossen,
+     * der Anstoß K-2028-0001 ist „bleibt“ beantwortet, und die drei Auffälligkeiten der Referenz stehen mit Vermerk,
+     * Anlass und Antwort da.
+     */
+    @Test
+    void verlaeufeUndAuffaelligkeitenWieDieReferenz() {
+        Map<String, List<String>> soll = new LinkedHashMap<>();
+        soll.put("EZ-2028-0001", List.of("energieziel_angelegt 2027-12-20 IK", "energieziel_bewertet 2029-01-15 IK"));
+        soll.put("EZ-2029-0001", List.of("energieziel_angelegt 2029-02-15 IK"));
+        soll.put("AW-2026-0001", List.of("abweichung_eroeffnet 2026-12-09 IK", "ursache_aussage 2026-12-10 IK JW",
+                "abweichung_abgeschlossen 2026-12-20 IK"));
+        soll.put("AW-2028-0001", List.of("abweichung_eroeffnet 2028-01-12 IK", "kommentar 2028-01-12 IK",
+                "ursache_aussage 2028-01-14 IK MD", "kommentar 2028-01-15 IK", "abweichung_abgeschlossen 2028-01-15 IK"));
+        soll.put("M-2028-0001", List.of("massnahme_angelegt 2028-01-15 IK", "massnahme_umgesetzt 2028-01-22 IK",
+                "anstoss_gesetzt 2028-04-03 VoltPilot", "anstoss_beantwortet 2028-04-05 IK", "massnahme_bewertet 2028-11-15 IK"));
+        soll.put("M-2028-0002", List.of("massnahme_angelegt 2028-01-20 IK", "massnahme_umgesetzt 2028-03-28 IK",
+                "massnahme_bewertet 2028-11-20 IK"));
+        soll.put("M-2029-0001", List.of("massnahme_angelegt 2029-01-26 IK", "massnahme_umgesetzt 2029-03-01 JW",
+                "massnahme_bewertet 2029-04-15 IK"));
+        soll.put("M-2029-0002", List.of("massnahme_angelegt 2029-01-29 IK"));
+        soll.put("M-2029-0003", List.of("massnahme_angelegt 2029-02-14 IK"));
+        Map<String, String> kuerzel = new LinkedHashMap<>();
+        AhrenbergWelt.NAMEN.forEach((k, name) -> kuerzel.put(name, k));
+        kuerzel.put(VorgangAnstoss.AKTEUR_KASKADE, "VoltPilot");
+        soll.forEach((k, zeilen) -> {
+            String vorgang = k.startsWith("EZ") ? "energieziel" : k.startsWith("AW") ? "abweichung" : "massnahme";
+            String aussage = vorgang.equals("abweichung") ? "a.aussage_name" : "NULL";
+            List<String> ist = root.query("SELECT a.art, to_char(a.created_at AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') "
+                    + "AS tag, a.actor_name, " + aussage + " AS aussage FROM " + vorgang + "_aenderung a JOIN " + vorgang
+                    + " v ON v.id = a." + vorgang + "_id WHERE v.tenant_id = ? AND v.kennzeichen = ? ORDER BY a.created_at, "
+                    + "a.id", (rs, i) -> rs.getString("art") + " " + rs.getString("tag") + " "
+                    + kuerzel.get(rs.getString("actor_name")) + (rs.getString("aussage") == null ? ""
+                    : " " + kuerzel.get(rs.getString("aussage"))), tenant, k);
+            assertThat(ist).as(k).containsExactlyElementsOf(zeilen);
+        });
+        AhrenbergWelt.ART.forEach((k, art) -> assertThat(root.queryForObject("SELECT art FROM massnahme WHERE tenant_id = ? "
+                + "AND kennzeichen = ?", String.class, tenant, k)).as(k).isEqualTo(art));
+        assertThat(root.queryForList("SELECT ergebnis || ' ' || to_char(freigabe_am AT TIME ZONE 'Europe/Berlin', "
+                + "'YYYY-MM-DD') FROM massnahme_bewertung b JOIN massnahme m ON m.id = b.massnahme_id WHERE m.tenant_id = ? "
+                + "AND m.kennzeichen = 'M-2029-0001'", String.class, tenant)).containsExactly("nicht_messbar 2029-04-15");
+        assertThat(root.queryForList("SELECT s.anlass_kennung || ' ' || s.antwort || ' ' || to_char(s.beantwortet_am AT "
+                + "TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') FROM vorgang_anstoss s JOIN massnahme m ON m.id = s.massnahme_id "
+                + "WHERE m.tenant_id = ?", String.class, tenant)).containsExactly("K-2028-0001 bleibt 2028-04-05");
+
+        List<String> vermerke = new ArrayList<>();
+        for (JsonNode r : referenz.path("auffaelligkeiten")) {
+            vermerke.add(r.path("kennzahl").asText() + " " + r.path("periode").asText() + " "
+                    + r.path("vermerkt_am").asText().substring(0, 10) + " " + r.path("pruefsumme").asText() + " "
+                    + r.at("/antwort/antwort").asText() + " " + r.at("/antwort/am").asText() + " "
+                    + r.at("/antwort/abweichung").asText("-"));
+        }
+        assertThat(root.queryForList("SELECT k.kennzeichen || ' ' || a.periode || ' ' || to_char(a.vermerkt_am AT TIME ZONE "
+                + "'Europe/Berlin', 'YYYY-MM-DD') || ' ' || a.anlass_pruefsumme || ' ' || a.antwort || ' ' || "
+                + "to_char(a.beantwortet_am AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') || ' ' || coalesce(w.kennzeichen, '-') "
+                + "FROM auffaelligkeit a JOIN kennzahl k ON k.id = a.kennzahl_id LEFT JOIN abweichung w ON w.id = "
+                + "a.abweichung_id WHERE a.tenant_id = ? ORDER BY a.periode", String.class, tenant))
+                .containsExactlyElementsOf(vermerke);
+    }
+
     /** Alle Uhren, an denen ein Dienst „heute“ misst, auf denselben Augenblick. */
     private void uhr(String jetzt) {
         uhr(Clock.fixed(Instant.parse(jetzt), ZoneOffset.UTC));
