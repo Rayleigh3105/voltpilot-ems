@@ -505,7 +505,7 @@ button.vp-nw-fz {
   margin-top: 0;
 }
 /* Langer Wortlaut eines Kunden als Titel (Feststellung): kleiner, wie `.pkopf.lang`. */
-.vp-nw-lang .vp-nw-titel h1 {
+.vp-nw-lang .vp-nw-kopf-titel h1 {
   font-size: 1.125rem;
   line-height: 1.35;
   letter-spacing: 0;
@@ -704,5 +704,12 @@ textarea.vp-nw-feld-in {
   .vp-nw-blatt-fuss > .vp-btn {
     width: auto;
     min-height: 44px;
+  }
+}
+/* Ein Reiter am Rechner: „Als Nächstes“ bleibt eine Karte in Lesebreite (wie in der linken Spalte des Überblicks),
+   die Zeilen darunter laufen über die volle Breite. */
+@media (min-width: 721px) {
+  .vp-nw-seite.is-reiter > .vp-nw-naechst {
+    max-width: 560px;
   }
 }

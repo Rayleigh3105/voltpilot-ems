@@ -399,12 +399,6 @@ export function erklaerungFeststellung(f: Pick<Feststellung, 'kennzeichen' | 'fe
   };
 }
 
-export const ERKLAERUNG_HINWEIS: Erklaerung = {
-  frage: 'Was ist ein Hinweis?',
-  klartext: 'Eine Anregung aus einem Audit, ohne Frist.',
-  nichtVerwechseln: 'Keine Feststellung: nichts ist verletzt.',
-  fachwort: 'Empfehlung',
-};
 
 export const ERKLAERUNG_WIRKSAMKEIT: Erklaerung = {
   frage: 'Wann lässt sich die Wirksamkeit prüfen?',

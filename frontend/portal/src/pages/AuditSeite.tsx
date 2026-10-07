@@ -14,7 +14,6 @@ import {
   ablehnung,
 } from '../components/InternesAuditDialoge';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
-import { ErklaerKnopf } from '../components/nachweisen/ErklaerKnopf';
 import { NwBlatt } from '../components/nachweisen/NwBlatt';
 import { NwKopf } from '../components/nachweisen/NwKopf';
 import { PruefZeilen } from '../components/nachweisen/NwSchritte';
@@ -113,6 +112,7 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
     const kz = z.find((h) => h.nr === nr)?.massnahme ?? (a.hinweise === 1 && ausAudit?.length === 1 ? ausAudit[0].kennzeichen : null);
     return kz ? (ausAudit?.find((m) => m.kennzeichen === kz) ?? null) : null;
   };
+  const offeneMassnahme = offenesBlatt ? hinweisMassnahme(offenesBlatt.nr) : null;
 
   const aktionen =
     a.zustand === 'geplant' ? (
@@ -260,14 +260,15 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
               <PruefZeilen
                 zeilen={[
                   { etikett: 'Festgestellt', wert: `${offenesBlatt.festgestellt_von.name} · ${E.tagText(offenesBlatt.am)}` },
-                  { etikett: 'Eingetragen', wert: offenesBlatt.eingetragen.akteur.name },
-                  ...(hinweisMassnahme(offenesBlatt.nr)
+                  // Die Maßnahme mit ihrem Zustand als Weg zu ihrer Seite; Name und Kennzeichen stehen dort (Entscheid 25),
+                  // wer eingetragen hat, im Verlauf - das Blatt bleibt unter 35 Wörtern.
+                  ...(offeneMassnahme
                     ? [
                         {
                           etikett: 'Maßnahme',
                           wert: (
-                            <a href={hashForRoute(massnahmeRoute(hinweisMassnahme(offenesBlatt.nr)!.id))}>
-                              {`${hinweisMassnahme(offenesBlatt.nr)!.kennzeichen} · ${B.massnahmeZustand(hinweisMassnahme(offenesBlatt.nr)!).wort.replace('Maßnahme ', '')}`}
+                            <a href={hashForRoute(massnahmeRoute(offeneMassnahme.id))} data-testid="hinweis-massnahme">
+                              {B.massnahmeZustand(offeneMassnahme).wort.replace('Maßnahme ', '')}
                             </a>
                           ),
                         },
@@ -275,9 +276,8 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
                     : []),
                 ]}
               />
-              <div className="vp-nw-blatt-zeile">
-                <ErklaerKnopf erklaerung={B.ERKLAERUNG_HINWEIS} klein testId="hinweis-erklaeren" />
-                {!hinweisMassnahme(offenesBlatt.nr) && a.zustand !== 'abgesagt' && (
+              {!offeneMassnahme && a.zustand !== 'abgesagt' && (
+                <div className="vp-nw-blatt-zeile">
                   <MassnahmeAnlegen
                     vorbelegung={{ herkunft: 'audit', herkunftKennung: a.kennzeichen, titel: offenesBlatt.wortlaut.slice(0, 120) }}
                     standort={null}
@@ -286,8 +286,8 @@ export function AuditSeite({ id, onListe, onFeststellung }: { id: string; onList
                       setVersuch((v) => v + 1);
                     }}
                   />
-                )}
-              </div>
+                </div>
+              )}
             </>
           )}
         </NwBlatt>

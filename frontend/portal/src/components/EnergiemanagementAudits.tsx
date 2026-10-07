@@ -87,7 +87,7 @@ export function EnergiemanagementAudits({
   );
 
   return (
-    <div className="vp-nw-seite" data-testid="audits-register">
+    <div className="vp-nw-seite is-reiter" data-testid="audits-register">
       <NwKopf
         titel={B.AUDITS}
         erklaerung={B.erklaerungAudit(programm?.audits ?? [])}

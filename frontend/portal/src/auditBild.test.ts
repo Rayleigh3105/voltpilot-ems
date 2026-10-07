@@ -169,7 +169,7 @@ describe('Erklär-Blätter (Entscheid 24): höchstens 45 Wörter, Beispiel nur a
   it('Audit mit dem letzten durchgeführten, ohne Daten ohne Beispiel', () => {
     expect(B.erklaerungAudit([audit()]).beiIhnen).toBe('Claudia Berger (Controlling) am 22.01.2029.');
     expect(B.erklaerungAudit([]).beiIhnen).toBeNull();
-    for (const e of [B.erklaerungAudit([audit()]), B.erklaerungFeststellung(feststellung()), B.ERKLAERUNG_HINWEIS, B.ERKLAERUNG_WIRKSAMKEIT]) {
+    for (const e of [B.erklaerungAudit([audit()]), B.erklaerungFeststellung(feststellung()), B.ERKLAERUNG_WIRKSAMKEIT]) {
       expect(erklaerWoerter(e), e.frage).toBeLessThanOrEqual(ERKLAER_WOERTER_HOECHSTENS);
     }
   });

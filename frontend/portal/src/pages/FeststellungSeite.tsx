@@ -282,7 +282,6 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
               <PruefZeilen
                 zeilen={[
                   { etikett: 'Aussage von', wert: `${eintragBlatt.person.name} · ${E.tagText(eintragBlatt.am)}` },
-                  { etikett: 'Eingetragen', wert: eintragBlatt.eingetragen.akteur.name },
                 ]}
               />
             </>
