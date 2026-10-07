@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { ee8, mb1, messplanungRouten } from '../test/messplanungBuehne';
 import { MS23_ID } from '../test/messplanungFixtures';
 import { MessbedarfKarte, MessplanungStandorte } from './Messplanung';
@@ -62,6 +62,47 @@ describe('MessbedarfKarte (AP-16 IP-20)', () => {
     expect(screen.getByTestId('messbedarf-zustand').textContent).toBe('eingelöst');
     expect(screen.getByTestId('messbedarf-messstelle').textContent).toBe('MS-23');
     expect(screen.queryByRole('button', { name: 'Messstelle einrichten' })).toBeNull();
+  });
+
+  it('ein zitierter Bedarf (Review r4 M4): der Satz nennt die Stände, kein Einrichten, Bearbeiten oder Verwerfen', async () => {
+    const staende = [
+      { kennung: 'BR-2026-0002', nr: 1 },
+      { kennung: 'BR-2027-0001', nr: 1 },
+    ];
+    verdrahte([mb1({ einloesbar: false, zitiert_von: staende })]);
+    render(<MessbedarfKarte einsatz={ee8()} verwalten />);
+    const zeile = await screen.findByTestId('messbedarf-MB-1');
+    expect(within(zeile).getByTestId('messbedarf-zitiert').textContent).toBe(
+      '2 freigegebene Berichtsstände zitieren diesen Messbedarf (BR-2026-0002 Nr. 1, BR-2027-0001 Nr. 1) - er bleibt, wie er ist.',
+    );
+    for (const name of ['Messstelle einrichten', 'Bearbeiten', 'Verwerfen']) expect(within(zeile).queryByRole('button', { name })).toBeNull();
+    expect(within(zeile).getByRole('button', { name: 'Protokoll' })).toBeInTheDocument();
+  });
+
+  it('scheitert das Einlösen (Review r4 M4, Entscheid c), bietet die Reihe „MS-23 zuordnen“ - nie eine zweite Messstelle', async () => {
+    spione.messbedarfEinloesen!.mockImplementationOnce(() =>
+      Promise.reject(new ApiError(409, 'Beleg', { code: 'berichts_belege', berichtsstaende: [{ kennung: 'BR-2026-0002', nr: 1 }] })),
+    );
+    render(<MessbedarfKarte einsatz={ee8()} verwalten />);
+    const zeile = await screen.findByTestId('messbedarf-MB-1');
+    fireEvent.click(within(zeile).getByRole('button', { name: 'Messstelle einrichten' }));
+    await waitFor(() => expect((screen.getByLabelText('Kennzeichen') as HTMLInputElement).value).toBe('MS-23'));
+    fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Halle 1 Allgemein' } });
+    await waehle('Wertart *', /^Zählerstand/);
+    fireEvent.click(knopf('Weiter: Zuordnung'));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Ort' }).textContent).toContain('Halle 1'));
+    fireEvent.click(knopf('Weiter: Quelle'));
+    await waitFor(() => expect(spione.messbedarfEinloesen).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'Später festlegen' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Schließen' }))[0]);
+    expect(await screen.findByTestId('messbedarf-hinweis')).toHaveTextContent('Ein freigegebener Berichtsstand zitiert diesen Messbedarf');
+    const zuordnen = await within(zeile).findByRole('button', { name: 'MS-23 zuordnen' });
+    expect(within(zeile).queryByRole('button', { name: 'Messstelle einrichten' })).toBeNull();
+    const angelegt = spione.messstelleAnlegen?.mock.calls.length ?? 0;
+    fireEvent.click(zuordnen);
+    await waitFor(() => expect(spione.messbedarfEinloesen).toHaveBeenLastCalledWith(ee8().id, mb1().id, MS23_ID));
+    await waitFor(() => expect(screen.getByTestId('messbedarf-zustand').textContent).toBe('eingelöst'));
+    expect(spione.messstelleAnlegen?.mock.calls.length ?? 0).toBe(angelegt);
   });
 
   it('erfassen: Wortlaut ist Pflicht; der neue Bedarf steht offen in der Liste', async () => {

@@ -943,7 +943,7 @@ export function istDetailseite(route: Route): boolean {
   return Boolean(
     route.kennzahlId || route.berichtKennung || route.energieeinsatzId || route.energiezielId || route.massnahmeId ||
       route.abweichungId || route.dokumentId || route.personId || route.auditId || route.feststellungId ||
-      route.managementbewertungKennung || route.messstelleId,
+      route.managementbewertungKennung || route.messstelleId || route.bezugsgroesseId,
   );
 }
 

@@ -182,6 +182,8 @@ export const TEXTE = {
   letzter_kundenadministrator:
     '{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.',
   zweite_person: 'Freigabe durch eine zweite Person.',
+  /** Messen-Bau m2 (Konzept Messen m1, §8.2 Punkt 9): eine vergangene Gültigkeit ohne die Zeile `aenderung.rueckwirkend`. */
+  recht_rueckwirkend: 'Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute können Sie es selbst eintragen.',
 } as const;
 
 function text(schluessel: keyof typeof TEXTE, werte: Record<string, string> = {}): string {

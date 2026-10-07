@@ -110,7 +110,16 @@ export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeit
  * dahin bleibt sie Text.
  */
 export type SprungObjekt =
-  | { art: 'messstelle'; id: string; standortId?: string | null; periode?: string | null; version?: number | null; vergleich?: string | null }
+  | {
+      art: 'messstelle';
+      id: string;
+      standortId?: string | null;
+      periode?: string | null;
+      version?: number | null;
+      vergleich?: string | null;
+      /** Aus „Stand an einem Tag ansehen“: die Seite liest diesen Tag, nur lesend. */
+      stand?: string | null;
+    }
   | { art: 'kennzahl'; id: string }
   | { art: 'bericht'; kennung: string }
   | { art: 'geraet'; siteId: string; ref: string; geraetId?: string | null }
@@ -143,6 +152,7 @@ export function sprungziel(o: SprungObjekt): Sprung | null {
         version: o.version == null ? null : String(o.version),
         // AP-13 IP-5: die Wahl des Umschalters; „aus“ ist die Vorgabe und steht nie in der Adresse.
         v: o.vergleich ?? null,
+        stand: o.stand ?? null,
       });
     case 'kennzahl':
       return sprung(kennzahlRoute(o.id));

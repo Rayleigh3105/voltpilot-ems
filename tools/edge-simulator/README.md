@@ -181,3 +181,28 @@ Einrichtung für den Betreiber:
 ```bash
 PYTHONPATH=. python3 -m pytest test_uems_dauerlaeufer.py -q   # braucht paho-mqtt nicht
 ```
+
+## Demo: die Mess-Seite der Box Halle 1 (Messen-Bau m2)
+
+`uems_messbox.py` steht in der Demo neben der simulierten v1-Box der Anlage Halle 1 (`edge-sim-ahrenberg-halle1`).
+Sie ist die Mess-Seite derselben Box: sie liest den PV-Ertragszähler des Hybrid-Wechselrichters (Dach Halle 1), aus
+dem die Messstelle MS-03 „PV-Erzeugung Dach Halle 1“ automatisch liest.
+Den Weg legt der Rundgang über die Routen an, wie bei einem Messkunden (`docs/rollout/uems-erste-freigabe.md` §14.2):
+„Vorschlag übernehmen“ (Datenquelle des Wechselrichters und Zuständigkeit der Box), „Eigenen Messwert hinzufügen“
+(Register 3000) und MS-03 mit führender Quelle ab der nächsten Mitternacht.
+Die Plattform stellt die Auswahl zu, die Box lernt sie wie eine echte Box, quittiert und sendet genau die zugestellten
+Schlüssel.
+Werte gibt es erst ab der Quittung: Tag und Woche von MS-03 füllen sich ab dem ersten ganzen Tag Tag für Tag.
+
+| Eigenschaft | Umsetzung |
+|---|---|
+| Zähler | Zählerstand in 0,1 kWh (u32, Eingangsregister 3000), Kadenz aus der Auswahl (fünf Minuten) |
+| Leistung | Sonnenstand am Standort (Tageslänge und Höhe je Jahreszeit) × Wetter je Tag; nur eine Funktion der Zeit |
+| Neustart | Zählerstand und Sequenz folgen aus der Zeit: kein Zählersprung, kein Sequenz-Reset |
+| Nachliefern | nach dem Lernen die letzten 160 Stunden (unter der Frist von sieben Tagen): schließt die Lücke eines Ausfalls; Werte vor der Auswahl verwirft der Writer, dieselben Werte noch einmal schreiben nichts |
+| Image | `docker build -f Dockerfile.messbox .`: ohne root, `paho-mqtt==2.1.0`, ohne Zugangsdaten |
+
+```bash
+python3 -m pytest test_uems_messbox.py -q   # braucht paho-mqtt nicht
+VP_MESSBOX_TENANT=… VP_MESSBOX_SITE=… VP_MESSBOX_DEVICE=… python3 uems_messbox.py --tag 2026-10-06
+```
