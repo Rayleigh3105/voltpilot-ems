@@ -42,8 +42,12 @@ const ABBRECHEN = 'Abbrechen';
 const ZURUECK = 'Zurück';
 const WEITER = 'Weiter';
 
-/** Ein Blatt mit Formular: der Hauptknopf im Fuß sendet es ab, Enter auch. */
-function BlattFormular({ id, testid, onSenden, children }: { id: string; testid: string; onSenden: () => void; children: ReactNode }) {
+/**
+ * Ein Blatt mit Formular: der Hauptknopf im Fuß sendet es ab, Enter auch. Ein Blatt über einem Blatt („Person anlegen“
+ * im Freigeben-Blatt) liegt im React-Baum IN dessen Formular - React reicht `submit` durch das Portal nach oben, also
+ * hält jedes Blatt sein Absenden bei sich (Review r1, P2-1: sonst gibt „Person anlegen“ die Fassung mit frei).
+ */
+export function BlattFormular({ id, testid, onSenden, children }: { id: string; testid: string; onSenden: () => void; children: ReactNode }) {
   return (
     <form
       id={id}
@@ -52,6 +56,7 @@ function BlattFormular({ id, testid, onSenden, children }: { id: string; testid:
       data-testid={testid}
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         onSenden();
       }}
     >
@@ -60,7 +65,7 @@ function BlattFormular({ id, testid, onSenden, children }: { id: string; testid:
   );
 }
 
-function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: string; primaer: string; busy: boolean; sekundaer: string; onSekundaer: () => void; testid: string }) {
+export function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: string; primaer: string; busy: boolean; sekundaer: string; onSekundaer: () => void; testid: string }) {
   return (
     <div className="vp-nw-blatt-fuss">
       <Button type="submit" form={form} disabled={busy} aria-busy={busy || undefined} data-testid={testid}>
@@ -73,7 +78,7 @@ function Fuss({ form, primaer, busy, sekundaer, onSekundaer, testid }: { form: s
   );
 }
 
-function Ablehnung({ satz }: { satz: string | null }) {
+export function Ablehnung({ satz }: { satz: string | null }) {
   return satz ? (
     <p className="vp-nw-fehler" role="alert" data-testid="blatt-ablehnung">
       {satz}
@@ -81,7 +86,26 @@ function Ablehnung({ satz }: { satz: string | null }) {
   ) : null;
 }
 
-const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, '')}`;
+export const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, '')}`;
+
+/**
+ * Die Vier-Augen-Einstellung ist nicht geladen (Review r1, P2-4): unbekannt ist nicht „eine Person gibt frei“ - bis
+ * sie da ist, bleibt Freigeben zu; „Erneut laden“ fragt noch einmal.
+ */
+export function VierAugenUnbekannt({ onErneut }: { onErneut: () => void }) {
+  return (
+    <HinweisZeile
+      icon="users"
+      titel={E.VIERAUGEN_UNBEKANNT}
+      knopf={
+        <button type="button" className="vp-nw-aendern" onClick={onErneut} data-testid="vieraugen-erneut">
+          Erneut laden
+        </button>
+      }
+      testid="vieraugen-unbekannt"
+    />
+  );
+}
 
 // ------------------------------------------------------------------ gemeinsame Teile
 
@@ -90,16 +114,22 @@ const basisId = (prefix: string, id: string) => `${prefix}-${id.replace(/:/g, ''
  * Wer zur Wahl steht: mit Leitungs-Pflicht die Leitung am Tag - aus `…/leitung` im Zaun des Freigaberechts, nicht aus
  * den Aufgaben, die nur unternehmensweit gelesen werden (Befund A4); sonst jede aktive Person.
  */
+type Wahlperson = EnergiemanagementPersonKurz & { konto_sub?: string | null };
+
 function useEntscheider(leitung: boolean, tag: string, standort: string | null, neu: number) {
-  const [personen, setPersonen] = useState<EnergiemanagementPersonKurz[] | null>(null);
+  const [personen, setPersonen] = useState<Wahlperson[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   useEffect(() => {
     let aktiv = true;
     setPersonen(null);
-    const laden = leitung
+    // Ein neuer Versuch beginnt ohne den Fehler des letzten (Review r1, P2-12).
+    setFehler(null);
+    const laden: Promise<Wahlperson[]> = leitung
       ? api.energiemanagementLeitung(tag || null, standort).then((a) => a.leitung)
       : api.energiemanagementPersonen().then((p) =>
-          p.personen.filter((x) => x.zustand === 'aktiv').map((x) => ({ id: x.id, name: x.name, funktion: x.funktion, kuerzel: x.kuerzel, mit_konto: !!x.konto })),
+          p.personen
+            .filter((x) => x.zustand === 'aktiv')
+            .map((x) => ({ id: x.id, name: x.name, funktion: x.funktion, kuerzel: x.kuerzel, mit_konto: !!x.konto, konto_sub: x.konto?.sub ?? null })),
         );
     laden.then(
       (liste) => aktiv && setPersonen(liste),
@@ -122,6 +152,9 @@ export function EntscheiderWahl({
   setze,
   fehler,
   vorbelegen = true,
+  label = 'Wer hat entschieden?',
+  eigene = false,
+  onAngelegt,
 }: {
   id: string;
   /** Nur die Leitung am Tag (Freigabe von Energiepolitik, Anwendungsbereich, Bestellung - PA3). */
@@ -133,14 +166,23 @@ export function EntscheiderWahl({
   setze: (id: string) => void;
   fehler?: string | null;
   vorbelegen?: boolean;
+  /** Die Frage des Felds - etwa „Wer hat bekannt gemacht?“. */
+  label?: string;
+  /** Vorbelegt mit der Person des eigenen Kontos (Bekanntmachen, Review r1 P2-5). */
+  eigene?: boolean;
+  /** Eine Person ist hier neu angelegt - wer eine eigene Liste führt, lädt sie neu. */
+  onAngelegt?: (p: EnergiemanagementPerson) => void;
 }) {
   const [neu, setNeu] = useState(0);
   const [anlegen, setAnlegen] = useState(false);
+  const selbst = useRollen().selbst?.kennung ?? null;
   const { leitung, personen, fehler: ladefehler } = useEntscheider(nurLeitung, tag, standort, neu);
   useEffect(() => {
     if (!personen) return;
     if (wert && personen.some((p) => p.id === wert)) return;
-    if (vorbelegen && personen.length === 1) setze(personen[0].id);
+    const meine = eigene && selbst ? personen.find((p) => p.konto_sub === selbst) : undefined;
+    if (meine) setze(meine.id);
+    else if (vorbelegen && personen.length === 1) setze(personen[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personen]);
   const ohneLeitung = leitung && personen !== null && personen.length === 0;
@@ -153,7 +195,7 @@ export function EntscheiderWahl({
       ) : (
         <VpPicker
           id={id}
-          label="Wer hat entschieden?"
+          label={label}
           options={(personen ?? []).map((p) => ({ value: p.id, label: `${p.name}, ${p.funktion}` }))}
           value={wert || null}
           onChange={setze}
@@ -179,6 +221,7 @@ export function EntscheiderWahl({
             setAnlegen(false);
             setze(p.id);
             setNeu((n) => n + 1);
+            onAngelegt?.(p);
           }}
         />
       )}
@@ -293,27 +336,39 @@ function TagWahl({ heute, wert, setze, mitGestern = true, min }: { heute: string
 /** „Datei prüfen · wahlfrei“: die Prüfsumme entsteht im Browser; VoltPilot bekommt nur sie, nie die Datei (Entscheid 9). */
 function DateiPruefen({ id, sha256, setze }: { id: string; sha256: string | null; setze: (sha: string | null, name: string | null) => void }) {
   const [rechnet, setRechnet] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
   async function gewaehlt(liste: FileList | null) {
     const datei = liste?.[0];
     if (!datei) return;
     setRechnet(true);
+    setFehler(null);
     try {
       setze(await pruefsummeLokal(datei), datei.name);
+    } catch {
+      // Ohne sicheren Kontext (kein `crypto.subtle`) oder bei zu großen Dateien - sichtbar, nicht still (Review r1, P2-8).
+      setFehler(E.PRUEFSUMME_FEHLT);
     } finally {
       setRechnet(false);
     }
   }
   return (
-    <label className="vp-nw-hz vp-nw-datei" htmlFor={id} data-testid="datei-pruefen">
-      <span className="vp-nw-hz-i" aria-hidden="true">
-        <Icon name="lock" size={14} />
-      </span>
-      <span className="vp-nw-hz-t">
-        <b>{rechnet ? 'Prüfsumme wird gebildet …' : sha256 ? 'Prüfsumme festgehalten' : 'Datei prüfen'}</b>
-        {!sha256 && !rechnet && <span> · wahlfrei</span>}
-      </span>
-      <input id={id} type="file" className="vp-nw-unsichtbar" onChange={(e) => void gewaehlt(e.target.files)} />
-    </label>
+    <>
+      <label className="vp-nw-hz vp-nw-datei" htmlFor={id} data-testid="datei-pruefen">
+        <span className="vp-nw-hz-i" aria-hidden="true">
+          <Icon name="lock" size={14} />
+        </span>
+        <span className="vp-nw-hz-t">
+          <b>{rechnet ? 'Prüfsumme wird gebildet …' : sha256 ? 'Prüfsumme festgehalten' : 'Datei prüfen'}</b>
+          {!sha256 && !rechnet && <span> · wahlfrei</span>}
+        </span>
+        <input id={id} type="file" className="vp-nw-unsichtbar" onChange={(e) => void gewaehlt(e.target.files)} />
+      </label>
+      {fehler && (
+        <p className="vp-nw-fehler" role="alert" data-testid="datei-fehler">
+          {fehler}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -335,10 +390,19 @@ export function OrtFelder({ basis, wert, setze, mitStand, fehler }: { basis: str
 export const belegAus = (v: E.VerweisEntwurf): EnergiemanagementBeleg | null =>
   v.ablage.trim() ? { ablage: v.ablage.trim(), bezeichnung: v.bezeichnung.trim() || null, kennung: v.kennung.trim() || null, adresse: v.adresse.trim() || null, sha256: v.sha256 } : null;
 
-const verweisEntwurf = (v: { bezeichnung?: string | null; ablage?: string | null; kennung?: string | null; adresse?: string | null; fassungsangabe?: string | null; datum?: string | null; sha256?: string | null } | null | undefined): E.VerweisEntwurf =>
+type VerweisDaten = { bezeichnung?: string | null; ablage?: string | null; kennung?: string | null; adresse?: string | null; fassungsangabe?: string | null; datum?: string | null; sha256?: string | null };
+
+const verweisEntwurf = (v: VerweisDaten | null | undefined): E.VerweisEntwurf =>
   v
     ? { bezeichnung: v.bezeichnung ?? '', ablage: v.ablage ?? '', kennung: v.kennung ?? '', adresse: v.adresse ?? '', fassungsangabe: v.fassungsangabe ?? '', datum: v.datum ?? '', sha256: v.sha256 ?? null }
     : E.LEERER_VERWEIS;
+
+/**
+ * Der Verweis einer NEUEN Fassung aus der gültigen: wo es liegt, bleibt (Ablage, Kennung, Adresse); was die Datei
+ * beschreibt - Prüfsumme, Bezeichnung, Fassungsangabe, Stand vom -, gehört zur alten Datei und beginnt leer (Review r1,
+ * P2-3: sonst trüge die neue, danach eingefrorene Fassung die Prüfsumme der alten Datei).
+ */
+const neuerVerweis = (v: VerweisDaten | null | undefined): E.VerweisEntwurf => ({ ...verweisEntwurf(v), bezeichnung: '', fassungsangabe: '', datum: '', sha256: null });
 
 // ------------------------------------------------------------------ Erklärungen der Blätter (Entscheid 24)
 
@@ -440,7 +504,7 @@ function useStandorte() {
  * Ausschlüsse des Anwendungsbereichs (Entscheid 12): ein Standort mit Begründung (10 bis 500 Zeichen). Die Route prüft,
  * dass der Standort zum Unternehmen gehört; Anlagen und Prozesse bleiben dem Betrachtungsumfang der Bewertung.
  */
-function AusschlussFelder({ basis, standorte, wert, setze }: { basis: string; standorte: StandortAmStichtag[]; wert: EnergiemanagementAusschluss[]; setze: (a: EnergiemanagementAusschluss[]) => void }) {
+export function AusschlussFelder({ basis, standorte, wert, setze }: { basis: string; standorte: StandortAmStichtag[]; wert: EnergiemanagementAusschluss[]; setze: (a: EnergiemanagementAusschluss[]) => void }) {
   return (
     <fieldset className="vp-nw-feldsatz" data-testid={`${basis}-ausschluesse`}>
       <legend className="vp-nw-frage">Ausschlüsse</legend>
@@ -515,7 +579,8 @@ export function NeuFassenBlatt({
   const [s, setS] = useState<FassungStand>(() => ({
     form: vorlage?.form ?? (dokument.klasse === 'nachweis' ? 'verweis' : 'wortlaut'),
     wortlaut: vorlage?.wortlaut ?? '',
-    verweis: verweisEntwurf(vorlage?.verweis),
+    // Ein offener Entwurf wird weiter bearbeitet (mit seiner Datei); eine neue Fassung beginnt ohne die alte Datei.
+    verweis: offen?.status === 'entwurf' ? verweisEntwurf(offen.verweis) : neuerVerweis(vorlage?.verweis),
     standortIds: vorlage?.anwendungsbereich?.standorte.map((x) => x.id) ?? [],
     traeger: vorlage?.anwendungsbereich?.traeger ?? [],
     ausschluesse: vorlage?.anwendungsbereich?.ausschluesse ?? [],
@@ -561,7 +626,7 @@ export function NeuFassenBlatt({
     try {
       const d = await api.energiemanagementFassungEntwerfen(dokument.id, r.koerper);
       const entwurf = N.offeneFassung(d);
-      if (gleich === 'freigeben' && entwurf) onFreigeben(d, entwurf.nr);
+      if (gleich === 'freigeben' && vierAugen !== null && entwurf) onFreigeben(d, entwurf.nr);
       else onGespeichert(d);
     } catch (err) {
       setSatz(E.ablehnungSatz(err));
@@ -584,7 +649,7 @@ export function NeuFassenBlatt({
         schritt === 1 ? (
           <Fuss form={`${basis}-form`} primaer={WEITER} busy={false} sekundaer={ABBRECHEN} onSekundaer={onClose} testid="neu-fassen-weiter" />
         ) : (
-          <Fuss form={`${basis}-form`} primaer={gleich === 'freigeben' ? WEITER : 'Entwurf speichern'} busy={busy} sekundaer={ZURUECK} onSekundaer={() => setSchritt(1)} testid="neu-fassen-speichern" />
+          <Fuss form={`${basis}-form`} primaer={gleich === 'freigeben' && vierAugen !== null ? WEITER : 'Entwurf speichern'} busy={busy} sekundaer={ZURUECK} onSekundaer={() => setSchritt(1)} testid="neu-fassen-speichern" />
         )
       }
     >
@@ -675,7 +740,8 @@ export function NeuFassenBlatt({
               <PruefZeilen zeilen={[{ etikett: 'Original', wert: [s.verweis.ablage, s.verweis.kennung].filter(Boolean).join(' · '), onAendern: () => setSchritt(1) }]} />
             )}
             <PruefZeilen zeilen={grundZeile ? [{ etikett: 'Grund', wert: grundZeile, onAendern: () => setSchritt(1) }] : []} testid="neu-fassen-pruefen" />
-            {darfFreigeben ? (
+            {/* „Gleich freigeben“ nur mit bekannter Vier-Augen-Einstellung (Review r1, P2-4) - sonst bleibt der Entwurf. */}
+            {darfFreigeben && vierAugen !== null ? (
               <AntwortKarten
                 label="Wie weiter?"
                 optionen={[
@@ -686,7 +752,7 @@ export function NeuFassenBlatt({
                 onWahl={setGleich}
                 testid="neu-fassen-weiter-wahl"
               />
-            ) : (
+            ) : darfFreigeben ? null : (
               <HinweisZeile icon="users" titel="Freigeben: eine berechtigte Person" knopf={<ErklaerKnopf klein erklaerung={FREIGEBEN_ERKLAERUNG} />} />
             )}
           </>
@@ -715,14 +781,15 @@ export function FreigebenBlatt({
 }: {
   dokument: EnergiemanagementDokument;
   fassung: EnergiemanagementFassung;
-  vierAugen: boolean | null;
+  /** Bekannt, nie geraten: die Seite öffnet das Blatt erst, wenn die Einstellung geladen ist (Review r1, P2-4). */
+  vierAugen: boolean;
   onClose: () => void;
   onGespeichert: (d: EnergiemanagementDokument) => void;
 }) {
   const basis = basisId('fg', useId());
   const isPhone = useIsPhone();
-  const heute = N.heuteDerRoute(dokument, fassung.eingetragen.am.slice(0, 10));
-  const [beantragen, setBeantragen] = useState(!!vierAugen);
+  const heute = N.heuteDerRoute(dokument, E.tagIso(fassung.eingetragen.am));
+  const [beantragen, setBeantragen] = useState(vierAugen);
   const [von, setVon] = useState('');
   const [tag, setTag] = useState(heute);
   const vorbelegt = fassung.begruendung && fassung.begruendung.trim().length >= 10 ? fassung.begruendung : '';
@@ -733,7 +800,7 @@ export function FreigebenBlatt({
   const [fehler, setFehler] = useState<E.Feldfehler>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setBeantragen(!!vierAugen), [vierAugen]);
+  useEffect(() => setBeantragen(vierAugen), [vierAugen]);
 
   async function senden() {
     const f: E.Feldfehler = {};
@@ -973,6 +1040,9 @@ export function BekanntmachenBlatt({
   const [wege, setWege] = useState<string[]>([]);
   const [wegWortlaut, setWegWortlaut] = useState('');
   const [tag, setTag] = useState(heute);
+  // Wer bekannt gemacht hat (Review r1, P2-5): vorbelegt die Person des Kontos; ein Konto ohne Person wählt sie hier,
+  // statt an `person_fehlt` zu enden.
+  const [von, setVon] = useState('');
   const [fehler, setFehler] = useState<E.Feldfehler>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -984,6 +1054,7 @@ export function BekanntmachenBlatt({
     if (!an) f.kreis = 'Bitte nennen Sie, wem Sie es bekannt gemacht haben.';
     if (!wege.length) f.wege = 'Bitte wählen Sie mindestens einen Weg.';
     if (wege.includes('weiterer') && !wegWortlaut.trim()) f.weg = 'Bitte beschreiben Sie den anderen Weg.';
+    if (!von) f.person = 'Bitte wählen Sie, wer es bekannt gemacht hat.';
     setFehler(f);
     if (Object.keys(f).length) return;
     setBusy(true);
@@ -992,7 +1063,7 @@ export function BekanntmachenBlatt({
     try {
       // Ein Eintrag je Weg (DK6); die Seite liest sie als eine Mitteilung. Bricht einer ab, steht, was schon festgehalten ist.
       for (const weg of wege) {
-        d = await api.energiemanagementBekanntmachen(dokument.id, { kreis: an, weg, am: tag || null, ...(weg === 'weiterer' ? { weg_wortlaut: wegWortlaut.trim() } : {}) });
+        d = await api.energiemanagementBekanntmachen(dokument.id, { kreis: an, weg, am: tag || null, person_id: von, ...(weg === 'weiterer' ? { weg_wortlaut: wegWortlaut.trim() } : {}) });
       }
       if (d) onGespeichert(d);
     } catch (err) {
@@ -1017,6 +1088,7 @@ export function BekanntmachenBlatt({
         <WahlChips frage="Wie?" mehrfach optionen={WEGE} werte={wege} onWahl={setWege} fehler={fehler.wege} testid="bekanntmachen-wege" />
         {wege.includes('weiterer') && <NwTextfeld label="Welcher Weg?" wert={wegWortlaut} onWert={setWegWortlaut} fehler={fehler.weg} hoechstens={200} />}
         <TagWahl heute={heute} wert={tag} setze={setTag} mitGestern={false} min={g?.entschieden_am ?? null} />
+        <EntscheiderWahl id={`${basis}-person`} leitung={false} tag={tag} wert={von} setze={setVon} fehler={fehler.person} vorbelegen={false} label="Wer hat bekannt gemacht?" eigene />
         <Ablehnung satz={satz} />
         <GrenzSatz className="vp-nw-leise" verantwortung />
       </BlattFormular>
@@ -1222,21 +1294,30 @@ type PruefErgebnis = { art: 'gleich' | 'anders' | 'ohne'; name: string } | null;
  * gewählten Datei im Browser und vergleicht sie mit der festgehaltenen - VoltPilot sieht die Datei nie. „Öffnen“ nur bei
  * einer `https:`-Adresse.
  */
-export function OriginalBlatt({ original, onClose }: { original: N.OriginalBild; onClose: () => void }) {
+export function OriginalBlatt({ original, datei: zuerst = null, onClose }: { original: N.OriginalBild; datei?: File | null; onClose: () => void }) {
   const id = basisId('og', useId());
   const [ergebnis, setErgebnis] = useState<PruefErgebnis>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
   const [rechnet, setRechnet] = useState(false);
-  async function pruefe(liste: FileList | null) {
-    const datei = liste?.[0];
+  async function pruefe(datei: File | null | undefined) {
     if (!datei) return;
     setRechnet(true);
+    setErgebnis(null);
+    setFehler(null);
     try {
       const sha = await pruefsummeLokal(datei);
       setErgebnis({ art: !original.sha256 ? 'ohne' : sha === original.sha256 ? 'gleich' : 'anders', name: datei.name });
+    } catch {
+      setFehler(E.PRUEFSUMME_FEHLT);
     } finally {
       setRechnet(false);
     }
   }
+  // Auf der Seite schon gewählt (Karte „Original“): gleich prüfen, nicht noch einmal wählen lassen (Review r1, P2-8).
+  useEffect(() => {
+    void pruefe(zuerst);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zuerst]);
   return (
     <NwBlatt open titel="Original" onClose={onClose} testId="original-blatt">
       <div className="vp-nw-schritt-inhalt">
@@ -1249,7 +1330,12 @@ export function OriginalBlatt({ original, onClose }: { original: N.OriginalBild;
           ]}
           testid="original-zeilen"
         />
-        <OriginalKnoepfe original={original} id={id} rechnet={rechnet} onDatei={(l) => void pruefe(l)} />
+        <OriginalKnoepfe original={original} id={id} rechnet={rechnet} onDatei={(l) => void pruefe(l?.[0])} />
+        {fehler && (
+          <p className="vp-nw-fehler" role="alert" data-testid="original-fehler">
+            {fehler}
+          </p>
+        )}
         {ergebnis && (
           <p className={`vp-nw-status${ergebnis.art === 'anders' ? ' is-warn' : ''}`} role="status" data-testid="original-ergebnis">
             {ergebnis.art === 'gleich' ? 'Dieselbe Datei' : ergebnis.art === 'anders' ? 'Eine andere Datei' : 'Keine Prüfsumme festgehalten'}
@@ -1270,11 +1356,18 @@ export function OriginalBlatt({ original, onClose }: { original: N.OriginalBild;
 export function GeltungBlatt({ dokument, fassung, onClose }: { dokument: EnergiemanagementDokument; fassung: EnergiemanagementFassung; onClose: () => void }) {
   const [v, setV] = useState<Awaited<ReturnType<typeof api.energiemanagementVergleich>> | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  // Ein ausgeschlossener Standort steht gerade NICHT unter den Standorten des Anwendungsbereichs - sein Name kommt aus
+  // allen Standorten des Kundenbereichs, auch archivierten (Review r1, P2-11).
+  const [alle, setAlle] = useState<StandortAmStichtag[]>([]);
   useEffect(() => {
     let aktiv = true;
     api.energiemanagementVergleich(dokument.id).then(
       (r) => aktiv && setV(r),
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
+    );
+    api.standorte().then(
+      (r) => aktiv && setAlle(r.standorte),
+      () => undefined,
     );
     return () => {
       aktiv = false;
@@ -1283,7 +1376,7 @@ export function GeltungBlatt({ dokument, fassung, onClose }: { dokument: Energie
   const a = fassung.anwendungsbereich;
   if (!a) return null;
   const orte = (liste: { name: string | null; kurzzeichen: string | null }[]) => liste.map((s) => s.name ?? s.kurzzeichen ?? '').join(', ');
-  const name = new Map(a.standorte.map((s) => [s.id, s.name ?? s.kurzzeichen ?? '']));
+  const name = new Map([...alle.map((s) => [s.id, s.name ?? s.kurzzeichen ?? ''] as const), ...a.standorte.map((s) => [s.id, s.name ?? s.kurzzeichen ?? ''] as const)]);
   const nurAb = v?.vergleich ? [...v.vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? s.kurzzeichen ?? ''), ...v.vergleich.traeger_nur_im_anwendungsbereich] : [];
   const nurUm = v?.vergleich ? [...v.vergleich.standorte_nur_im_betrachtungsumfang.map((s) => s.name ?? s.kurzzeichen ?? ''), ...v.vergleich.traeger_nur_im_betrachtungsumfang] : [];
   return (
@@ -1322,6 +1415,30 @@ export function OriginalKnoepfe({ original, id, rechnet, onDatei }: { original: 
         </a>
       )}
     </div>
+  );
+}
+
+/**
+ * Der Verlauf eines Dokuments (Review r1, P2-6): Bekanntmachungen, „geprüft, bleibt“, Aufheben und Kommentare mit Grund,
+ * dazu Freigabe, Antrag und Ablehnung der Fassungen - wie der Verlauf an Audit und Feststellung (`.vp-nw-verlauf`).
+ */
+export function VerlaufBlatt({ dokument, onClose }: { dokument: EnergiemanagementDokument; onClose: () => void }) {
+  const zeilen = N.verlauf(dokument);
+  return (
+    <NwBlatt open titel={N.VERLAUF} onClose={onClose} testId="verlauf-blatt">
+      {zeilen.length ? (
+        <ul className="vp-nw-verlauf" data-testid="dokument-verlauf">
+          {zeilen.map((z, i) => (
+            <li key={i}>
+              <b>{E.tagText(z.tag)}</b>
+              {z.text}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="vp-nw-leise">{N.VERLAUF_LEER}</p>
+      )}
+    </NwBlatt>
   );
 }
 

@@ -1,33 +1,8 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../core/Icon';
-import { fokussierbareElemente } from './fokus';
 import { useAusblenden } from './ausblenden';
-
-/*
- * Modals may be stacked (for example the measurement library plus its
- * confirmation). A saved `body.style.overflow` per instance is not enough:
- * if two modals unmount in one commit, the later cleanup can restore the
- * other modal's `hidden` value permanently. Keep one shared lock count and
- * restore the page value only after the last modal has gone.
- */
-let scrollLocks = 0;
-let pageOverflow = '';
-const modalStack = [];
-
-function lockBodyScroll() {
-  if (scrollLocks === 0) pageOverflow = document.body.style.overflow;
-  scrollLocks += 1;
-  document.body.style.overflow = 'hidden';
-
-  return () => {
-    scrollLocks = Math.max(0, scrollLocks - 1);
-    if (scrollLocks === 0) {
-      document.body.style.overflow = pageOverflow;
-      pageOverflow = '';
-    }
-  };
-}
+import { fokusFalle, useUeberlagerung } from './ueberlagerung';
 
 /**
  * **VoltPilot Modal** — die zentrierte Fläche für BEIDES: „anlegen"-Formulare
@@ -70,65 +45,19 @@ export function Modal({
   ...props
 }) {
   const panelRef = React.useRef(null);
-  const closeRef = React.useRef(onClose);
-  const tokenRef = React.useRef(null);
-  closeRef.current = onClose;
-  if (tokenRef.current === null) tokenRef.current = { panelRef };
 
-  // Scroll-Sperre, Fokus-Falle und Escape hängen bewusst an `sichtbar`, nicht
-  // an `open`: solange die Fläche noch ausblendet, steht sie im Baum und darf
-  // die Seite darunter weder scrollen noch den Fokus verlieren lassen.
+  // Scroll-Sperre, Fokus und Escape hängen bewusst an `sichtbar`, nicht an `open`: solange die Fläche noch ausblendet,
+  // steht sie im Baum und darf die Seite darunter weder scrollen noch den Fokus verlieren lassen. Modale dürfen
+  // gestapelt sein (die Messwert-Bibliothek samt Rückfrage, ein Blatt und sein Modal): Sperre, Fokus-Rückgabe und
+  // Escape laufen deshalb über den EINEN Stapel der Überlagerungen (`ueberlagerung.js`), den auch das Bottom-Sheet nutzt.
   const { sichtbar, schliessend } = useAusblenden(open, panelRef);
-
-  React.useEffect(() => {
-    if (!sichtbar) return undefined;
-    const token = tokenRef.current;
-    const unlockBodyScroll = lockBodyScroll();
-    const prevFocus = document.activeElement;
-    modalStack.push(token);
-    panelRef.current?.focus();
-    const onKey = (e) => {
-      if (e.key !== 'Escape' || modalStack.at(-1) !== token) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      closeRef.current();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      const wasTopmost = modalStack.at(-1) === token;
-      const index = modalStack.lastIndexOf(token);
-      if (index >= 0) modalStack.splice(index, 1);
-      unlockBodyScroll();
-      if (wasTopmost && prevFocus?.isConnected && typeof prevFocus.focus === 'function') {
-        prevFocus.focus();
-      } else if (wasTopmost) {
-        modalStack.at(-1)?.panelRef.current?.focus();
-      }
-    };
-    // `onClose` deliberately lives in `closeRef`: controlled fields inside a
-    // modal commonly rerender their owner on every key. An inline callback
-    // must not tear down the modal effect, steal focus, and re-lock scrolling
-    // after each character.
-  }, [sichtbar]);
+  useUeberlagerung(sichtbar, panelRef, onClose);
 
   if (!sichtbar) return null;
 
-  // Die Fokusfalle hält Tab/Shift-Tab in der Fläche. Escape läuft bewusst
-  // NICHT hier, sondern über den Stapel oben: er trifft auch dann noch das
-  // oberste Modal, wenn der Fokus die Fläche verlassen hat.
-  const tastatur = (e) => {
-    if (e.key !== 'Tab') return;
-    const elemente = fokussierbareElemente(panelRef.current);
-    if (elemente.length === 0) return;
-    const aktuell = document.activeElement;
-    const index = aktuell ? elemente.indexOf(aktuell) : -1;
-    const ziel = e.shiftKey
-      ? elemente[(index <= 0 ? elemente.length : index) - 1]
-      : elemente[(index + 1) % elemente.length];
-    e.preventDefault();
-    ziel?.focus();
-  };
+  // Die Fokusfalle hält Tab/Shift-Tab in der Fläche. Escape läuft bewusst NICHT hier, sondern über den Stapel: er
+  // trifft auch dann noch das oberste Modal, wenn der Fokus die Fläche verlassen hat.
+  const tastatur = (e) => fokusFalle(e, panelRef.current);
 
   const modal = (
     <div

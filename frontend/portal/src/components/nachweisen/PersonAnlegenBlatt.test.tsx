@@ -59,4 +59,24 @@ describe('Blatt „Person anlegen“ (Konzept Nachweisen n1, Befund A12)', () =>
     expect(buehne.gesendet.map((g) => g.route)).toEqual(['POST /api/v1/energiemanagement/personen', 'POST /api/v1/energiemanagement/aufgaben']);
     expect(angelegt).toHaveBeenCalledWith(expect.objectContaining({ name: 'Robert Falk' }));
   });
+
+  it('Review r1, P2-1: das Absenden bleibt im Blatt - das Formular darunter (Freigeben, Aufheben) wird nicht mit abgesendet', async () => {
+    const aussen = vi.fn();
+    render(
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          aussen();
+        }}
+      >
+        <PersonAnlegenBlatt leitung ab="2029-02-12" onClose={() => {}} onAngelegt={() => {}} />
+      </form>,
+    );
+    fireEvent.change(screen.getByTestId('person-name'), { target: { value: 'Robert Falk' } });
+    fireEvent.change(screen.getByTestId('person-funktion'), { target: { value: 'Geschäftsführer' } });
+    fireEvent.change(screen.getByTestId('person-begruendung'), { target: { value: 'Geschäftsführer der Kunststoffwerk Ahrenberg GmbH.' } });
+    await klick(screen.getByTestId('person-senden'));
+    expect(buehne.gesendet.map((g) => g.route)).toContain('POST /api/v1/energiemanagement/personen');
+    expect(aussen).not.toHaveBeenCalled();
+  });
 });

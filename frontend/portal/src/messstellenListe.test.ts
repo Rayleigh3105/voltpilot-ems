@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { MessstellenRegister } from './api';
+import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
 import { registerEintraege, type MessstellenEbene } from './messstellen';
 import {
+  ableseortVon,
   gruppenZahl,
   liste,
   marken,
@@ -10,6 +13,9 @@ import {
   mitParameter,
   messstelleBeispiel,
   mitSuche,
+  monatKurz,
+  monatLang,
+  monatWert,
   NOCH_KEINE_QUELLE,
   ohneParameter,
   passtZurSuche,
@@ -163,6 +169,40 @@ describe('Liste, Gruppen und Reihen', () => {
     expect(trefferSatz(l, false)).toBe('22 Messstellen an 14 Orten');
   });
 
+  it('rechts der Verbrauch des letzten Monats (Messen PR5): „88.200 kWh · Sep 2026“ - aus der Antwort, nie gerechnet', () => {
+    // Die echte Antwort der API mit `letzterMonat=true` (Kopie der Demo-Datenbank, Stichtag 05.10.2026).
+    const echt = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/fixtures/register-letzter-monat-2026-09.json'), 'utf8')) as {
+      register: MessstelleRegisterZeile[];
+    };
+    const z = (kz: string) => echt.register.find((x) => x.kennzeichen === kz)!;
+    expect(monatWert(z('MS-20'))).toEqual({ zahl: '88.200', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    expect(monatWert(z('HZ-1'))).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    // Ohne Zahl der Strich mit dem Monat - nie 0.
+    expect(monatWert(z('MS-03'))).toEqual({ zahl: '—', einheit: null, wann: 'Sep 2026', monat: true });
+    // Eine Hauptgröße ohne Menge (Leistung) und eine Antwort ohne Monat: kein Monat, dann steht der letzte Stand.
+    expect(monatWert({ ...z('HZ-1'), hauptgroesse: { ...z('HZ-1').hauptgroesse!, wertart: 'Momentanwert' } })).toBeNull();
+    expect(monatWert({ ...z('HZ-1'), letzter_monat: undefined })).toBeNull();
+    // In der Reihe: der Monat ersetzt den Stand.
+    const r = ahrenbergRegister();
+    const ms06 = r.register.find((x) => x.kennzeichen === 'MS-06')!;
+    ms06.letzter_monat = z('HZ-1').letzter_monat;
+    expect(aus(r).reihen.find((x) => x.kennzeichen === 'MS-06')!.wert).toEqual({ zahl: '199.500', einheit: 'kWh', wann: 'Sep 2026', monat: true });
+    // Ein unvollständiger Monat mit Zahl sieht nicht wie ein ganzer aus: die Reihe sagt „unvollständig“ (Review r4 S3).
+    const hz1 = z('HZ-1');
+    const teil = {
+      ...hz1,
+      letzter_monat: {
+        ...hz1.letzter_monat!,
+        wert: { ...hz1.letzter_monat!.wert!, zustand: 'unvollständig', abdeckung_prozent: 72, erhalten: 72, erwartet: 100, kennzeichen: ['Anfang nicht gemessen (kein Stand an der Periodengrenze)'] },
+      },
+    };
+    expect(monatWert(teil)).toMatchObject({ zahl: '199.500', einheit: 'kWh', hinweis: 'unvollständig' });
+    expect(monatWert(z('MS-20'))?.hinweis).toBeUndefined();
+    expect(monatKurz('2026-09')).toBe('Sep 2026');
+    expect(monatKurz('2027-03')).toBe('Mär 2027');
+    expect(monatLang('2026-09')).toBe('September 2026');
+  });
+
   it('woher die Werte kommen: Gerät mit Komponente und Messwert, berechnet, noch keine Quelle', () => {
     const l = aus(ahrenbergRegister());
     const r = (kz: string) => l.reihen.find((x) => x.kennzeichen === kz)!;
@@ -196,6 +236,26 @@ describe('Liste, Gruppen und Reihen', () => {
     const ohne = aus(ahrenbergRegister(), '', 'ohneQuelle');
     expect(ohne.treffer).toBe(1);
     expect(ohne.gruppen[0].reihen[0].kennzeichen).toBe('MS-21');
+  });
+});
+
+describe('Ableseort einer Reihe (Review r4 S11)', () => {
+  it('die Karte eines Bereichs öffnet die Runde seines Gebäudes, die des Standorts nur die Zähler ohne Gebäude', () => {
+    const r = mitUeberfaelligerAblesung();
+    // MS-06 hängt in B-1 (Halle 1 Nord, in G-1) und wird von Hand abgelesen.
+    const ms06 = r.register.find((x) => x.kennzeichen === 'MS-06')!;
+    const ms21 = r.register.find((x) => x.kennzeichen === 'MS-21')!;
+    ms06.quelle = structuredClone(ms21.quelle);
+    ms06.lebenszyklus = 'aktiv';
+    expect(ableseortVon(ms06)).toBe('G-1');
+    expect(ableseortVon(ms21)).toBe(ms21.ort.kennzeichen);
+    const l = aus(r);
+    expect(l.gruppen.find((g) => g.titel === 'Halle 1 Nord')!.ablesen).toBe('G-1');
+    // Der Name des Verweises sagt dann nicht „Halle 1 Nord ablesen“; an der Verwaltung ist es ihre eigene Runde.
+    expect(l.gruppen.find((g) => g.titel === 'Halle 1 Nord')!.ablesenHier).toBe(false);
+    expect(l.gruppen.find((g) => g.titel === 'Verwaltung')!.ablesenHier).toBe(true);
+    const amStandort = r.register.find((x) => x.ort.kennzeichen === 'ST-1')!;
+    expect(ableseortVon(amStandort)).toBe('ST-1');
   });
 });
 

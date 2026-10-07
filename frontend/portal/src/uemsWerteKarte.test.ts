@@ -464,7 +464,7 @@ describe('uemsWerteKarte — die Anzahl der Lücken an der Karte (Captain 15.09.
 describe('uemsWerteKarte — eine Messstelle aus Ablesungen (Demo-Befund 27.09.2026)', () => {
   it('der leere Tag nennt die Ablesungen mit dem letzten Tag, nie „Keine Datenquelle“', () => {
     const tag = ohneQuelleTag();
-    expect(ohneQuelle(tag)?.titel).toBe('Keine Datenquelle');
+    expect(ohneQuelle(tag)?.titel).toBe('Noch keine Quelle');
     const quelle = { stand: 'ablesung', ablesung: { zuletzt: '2026-09-01T00:00:00+02:00' } };
     expect(ausAblesungen(quelle, tag)).toEqual({ titel: 'Ablesungen · zuletzt am 01.09.2026', satz: ABLESUNG_OHNE_WERT });
     expect(ausAblesungen({ stand: 'keine_datenquelle' }, tag)).toBeNull();
@@ -637,6 +637,19 @@ describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer
     expect(karten.noch_nicht_gebildet!.grund).toBe(UEMS_NOCH_NICHT_GERECHNET_SATZ);
   });
 
+  it('eine Komponente ohne eigenen Namen: der Messwert steht für sie, mit dem Gerät - der Satz bleibt ein Satz aus Namen', () => {
+    const z = zeileVon('MS-16');
+    const ohneName = { ...z.quelle, fuehrend: { ...z.quelle.fuehrend!, komponente_name: null } };
+    const namen = quellenNamen(ohneName);
+    expect(namen[z.quelle.fuehrend!.id]).toEqual({
+      quelle: `${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet})`,
+      kanal: `${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet})`,
+    });
+    expect(karte(ms16Oktober(), namen)!.grund).toContain(`${z.quelle.fuehrend!.kanal_name} (${z.quelle.fuehrend!.geraet.geraet}) gilt seit 15.10.2026`);
+    // Ohne Namen des Messwerts bleibt nur eine Kennung - dann kein Satz.
+    expect(quellenNamen({ ...ohneName, fuehrend: { ...ohneName.fuehrend, kanal_name: null } })).toEqual({});
+  });
+
   it('kein Satz ohne seinen Namen (D5): ohne das Register bleibt `quelle_teilweise` und `anteil_nicht_gespeichert` beim Strich', () => {
     expect(karte(ms16Oktober())).toMatchObject({ zahl: OHNE_ZAHL, grund: null });
     // Eine Bindung, die nicht im Zeitraum BEGINNT (sie endet nur), trägt keinen „gilt seit“-Satz.
@@ -674,8 +687,8 @@ describe('uemsWerteKarte — O15 · unter dem Strich der Satz des Grundes, einer
 });
 
 describe('uemsWerteKarte — Z4 · Werte ohne Datenquelle und ihr nächster Schritt (UEMS AP-13 IP-6)', () => {
-  it('der ganze Zeitraum ohne Bindung: Titel „Keine Datenquelle“ und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
-    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Keine Datenquelle', satz: grundBeispiel('keine_quelle') });
+  it('der ganze Zeitraum ohne Bindung: Titel „Noch keine Quelle“ (Review r4 S7) und der Satz des Grundes; eine Bindung im Zeitraum: kein Leerzustand', () => {
+    expect(ohneQuelle(ohneQuelleStunden())).toEqual({ titel: 'Noch keine Quelle', satz: grundBeispiel('keine_quelle') });
     expect(ohneQuelle(ohneQuelleTag())).not.toBeNull();
     // Lindach im Oktober: 14 Tage ohne Quelle, aber die Bindung berührt den Monat — die Tage sprechen selbst.
     expect(ohneQuelle(ms16OktoberTage())).toBeNull();

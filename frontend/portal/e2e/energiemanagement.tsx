@@ -27,6 +27,7 @@ import { AF_IDS, auditFeststellungBuehne, R10_MASSNAHME, type AuditLage } from '
 import { EM_IDS, energiemanagementBuehne, type EnergiemanagementLage } from '../src/test/energiemanagementFixtures';
 import { MB_KENNUNG, managementbewertungBuehne, type MbLage } from '../src/test/managementbewertungFixtures';
 import { MAPPE_IDS, mappeBuehne, type MappeLage } from '../src/test/mappeFixtures';
+import { wvLeer } from '../src/test/wiedervorlageFixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
 import { kontenAhrenberg, massnahmeBuehne } from '../src/test/massnahmeFixtures';
@@ -58,7 +59,7 @@ import '../src/index.css';
  * F-2029-0001 · `&m=1` die Maßnahme aus F-2029-0001 · `&vieraugen=1`. Ohne `al` bleibt die Bühne, wie sie war.
  * IP-24: `&mb=leer|r13|r13f` spielt die Berichte-Routen der Managementbewertung und die Wiedervorlage R12
  * (`managementbewertungBuehne`, Körper in `window.__mbGesendet`); `&seite=wiedervorlage|managementbewertung` · `&br=1`
- * öffnet BR-2029-0001. Ohne `mb` bleibt die Bühne, wie sie war.
+ * öffnet BR-2029-0001. Ohne `mb` steht eine leere Wiedervorlage am Tag der Uhr da; `&wv=fehler` spielt ihren Ladefehler.
  * Nachweisen PR 6: `&mp=leer|r6` spielt die Mappen-Routen und das Anlegen eines Zugangs (`mappeBuehne`, Körper in
  * `window.__mpGesendet`; Vorgabe leer); `&mappe=1|alt` öffnet die abrufbare oder die abgelaufene Mappe aus R6.
  * Eigene Bühne, keine geteilte Datei wird angefasst.
@@ -74,6 +75,14 @@ Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => 
 const buehne = energiemanagementBuehne(lage, { kennung: me.kennung!, name: me.name! });
 Object.assign(api, buehne.routen);
 (window as unknown as { __emGesendet: unknown }).__emGesendet = buehne.gesendet;
+// Der Überblick liest die Wiedervorlage; ohne sie gibt es kein „Als Nächstes“ und keine Ruhe-Zeile (Review Nachweisen
+// r1, P1-2: ein Ladefehler ist kein „nichts fällig“). Ohne `mb` steht die Bühne ohne Frist am Tag ihrer Uhr - so
+// zeigte der Überblick hier vorher stets den Ladefehler. `mb` ersetzt sie unten durch R12/R13.
+// `&wv=fehler` spielt ihren Ladefehler (der Überblick sagt „Fristen nicht geladen“).
+Object.assign(api, {
+  energiemanagementWiedervorlage: async () =>
+    params.get('wv') === 'fehler' ? Promise.reject(new Error('Wiedervorlage nicht erreichbar')) : { ...wvLeer(), stichtag: new Date().toISOString() },
+});
 
 // IP-20: Audits, Feststellungen und die Maßnahme aus AP-18 — nur mit `al`, sonst bleibt die Bühne byte-gleich.
 const AUDIT_LAGEN: AuditLage[] = ['leer', 'r10', 'r11'];

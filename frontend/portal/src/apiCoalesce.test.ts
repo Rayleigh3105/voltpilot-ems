@@ -77,6 +77,48 @@ describe('request: In-flight-Bündelung', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('Lesen nach Schreiben: nach der Antwort einer Änderung teilt ein neuer Leser keine vorher gestartete Lese-Anfrage', async () => {
+    const vorher = request('/api/v1/unternehmen/messbedarf');
+    await flush();
+    const aenderung = request('/api/v1/unternehmen/energieeinsaetze/e/messbedarf/m/einloesen', { method: 'POST', body: '{}' });
+    await flush();
+    // Die Änderung antwortet zuerst; das Lesen von davor ist noch unterwegs.
+    release[1]();
+    await aenderung;
+    const nachher = request('/api/v1/unternehmen/messbedarf');
+    await flush();
+    expect(calls.map((c) => c.replace(/https?:\/\/[^/]+/, ''))).toEqual([
+      'GET /api/v1/unternehmen/messbedarf',
+      'POST /api/v1/unternehmen/energieeinsaetze/e/messbedarf/m/einloesen',
+      'GET /api/v1/unternehmen/messbedarf',
+    ]);
+    // Die alte Anfrage räumt beim Antworten nicht den Eintrag der neuen weg: ein dritter Leser teilt die neue.
+    release[0]();
+    await vorher;
+    void request('/api/v1/unternehmen/messbedarf');
+    await flush();
+    expect(calls).toHaveLength(3);
+    release[2]();
+    await nachher;
+  });
+
+  it('auch eine gescheiterte Änderung beendet das Teilen - ob sie schrieb, weiß nur der Server', async () => {
+    const lesen = vi.fn((url: string, init?: RequestInit) => {
+      calls.push(`${(init?.method ?? 'GET').toUpperCase()} ${url}`);
+      if (init?.method === 'PUT') return Promise.reject(new Error('offline'));
+      return new Promise((resolve) => {
+        release.push(() => resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: 1 }) } as Response));
+      });
+    });
+    vi.stubGlobal('fetch', lesen);
+    void request('/api/v1/overview');
+    await flush();
+    await expect(request('/api/v1/sites/x', { method: 'PUT', body: '{}' })).rejects.toThrow('offline');
+    void request('/api/v1/overview');
+    await flush();
+    expect(calls.filter((c) => c.startsWith('GET'))).toHaveLength(2);
+  });
+
   it('trennt nach Mandant - ein Umschalten teilt keine fremde Antwort', async () => {
     void request('/api/v1/overview');
     await flush();

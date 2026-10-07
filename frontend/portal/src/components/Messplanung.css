@@ -91,3 +91,29 @@
 .vp-mp-protokoll-feld {
   display: block;
 }
+
+/*
+ * Die Dialoge der Messplanung (erfassen, bearbeiten, verwerfen, Protokoll) öffnen am Energieeinsatz und unter Messen;
+ * ihre Form steht deshalb hier und nicht nur in BewertungPage.css, die unter Messen nicht geladen ist.
+ */
+.vp-mp-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-mp-dialog > p {
+  margin: 0;
+}
+
+.vp-mp-dialog > .vp-mp-protokoll {
+  margin-top: 0;
+}
+
+.vp-mp-dialog .vp-bw-leise {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}

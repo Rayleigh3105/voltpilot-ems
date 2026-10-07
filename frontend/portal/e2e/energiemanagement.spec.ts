@@ -122,7 +122,7 @@ for (const breite of [375, 1440]) {
       // offen und der nächste Schritt (§6.13).
       await expect(bereich.getByRole('heading', { level: 1 })).toHaveText('Überblick');
       await expect(page.getByTestId('energiemanagement-reiter-ueberblick')).toHaveAttribute('aria-selected', 'true');
-      await expect(page.getByTestId('zaehler-offen')).toHaveText(/^\d+Teile offen$/);
+      await expect(page.getByTestId('zaehler-offen')).toHaveText(/^\d+ Teile offen$/);
       const offenVorher = Number((await page.getByTestId('zaehler-offen').textContent())!.match(/^\d+/)![0]);
       await expect(page.getByTestId('teil-chip-energiepolitik')).toHaveClass(/is-offen/);
       await expect(page.getByTestId('ueberblick-naechstes')).toContainText('Energiepolitik festhalten');
@@ -169,7 +169,9 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(await messe(page), 'Person anlegen');
       await page.getByTestId('person-senden').click();
       await expect(personDialog).toBeHidden();
-      await expect(blatt.getByRole('combobox', { name: 'Wer hat entschieden?' })).toContainText('Robert Falk');
+      // Die neue Person ist gewählt und steht als Prüfzeile „Entschieden“ (Review r1, P2-1: das Absenden von „Person
+      // anlegen“ erreicht das Blatt darunter nicht mehr).
+      await expect(blatt.getByTestId('festhalten-pruefen')).toContainText('Robert Falk · 15.12.2026');
       await page.getByTestId('festhalten-original').click();
       await page.getByTestId(/-original-ablage$/).fill('QM-Laufwerk, Ordner Energiemanagement/Politik');
       await page.getByTestId(/-original-kennung$/).fill('EP-2026');
@@ -194,7 +196,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('dokument-zeile-D-0001').getByRole('img')).toHaveAttribute('aria-label', 'bis 15.12.2027');
       // Im Überblick sind Energiepolitik und Aufgaben (die Leitung) festgehalten.
       await page.getByTestId('energiemanagement-reiter-ueberblick').click();
-      await expect(page.getByTestId('zaehler-offen')).toHaveText(`${offenVorher - 2}Teile offen`);
+      await expect(page.getByTestId('zaehler-offen')).toHaveText(`${offenVorher - 2} Teile offen`);
       await expect(page.getByTestId('teil-chip-energiepolitik')).toHaveClass(/is-festgehalten/);
       // Das Verzeichnis liegt eine Ebene tiefer, im Menü des Überblicks.
       await page.getByTestId('ueberblick-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();

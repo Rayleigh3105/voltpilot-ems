@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { BottomSheet } from './BottomSheet';
 
 /**
@@ -163,5 +164,128 @@ describe('BottomSheet · Bewegung P6 (Ausblenden)', () => {
     oeffne();
     fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
     expect(document.querySelector('.vp-bs')).toBeNull();
+  });
+});
+
+/**
+ * **Der EINE Stapel der Überlagerungen** (Review Nachweisen r1, Q-1 und Q-2): Blätter folgen aufeinander (das Blatt
+ * einer Gruppe schließt und öffnet im selben Klick das Blatt eines Teils), stecken ineinander (ein Erklär-Blatt im
+ * Teil-Blatt) und öffnen Modale. Jede Fläche merkte sich früher ihr eigenes „vorher“ - nach Gruppe → Teil →
+ * Schließen blieb die Seite am Handy gesperrt, und Escape im inneren Blatt schloss beide.
+ */
+describe('BottomSheet · ein Stapel mit dem Modal', () => {
+  afterEach(() => {
+    document.documentElement.style.removeProperty('--vp-motion-exit');
+    vi.useRealTimers();
+  });
+
+  /** Gruppe → Teil wie im Überblick von Nachweisen: ein Klick schließt das eine Blatt und öffnet das nächste. */
+  function Wechsel({ zweites = 'blatt' }: { zweites?: 'blatt' | 'modal' }) {
+    const [gruppe, setGruppe] = useState(false);
+    const [teil, setTeil] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setGruppe(true)}>
+          Grundlagen
+        </button>
+        <BottomSheet open={gruppe} title="Grundlagen" onClose={() => setGruppe(false)}>
+          <button
+            type="button"
+            onClick={() => {
+              setGruppe(false);
+              setTeil(true);
+            }}
+          >
+            Kontext
+          </button>
+        </BottomSheet>
+        {zweites === 'blatt' ? (
+          <BottomSheet open={teil} title="Kontext festhalten" onClose={() => setTeil(false)}>
+            <button type="button">Weiter</button>
+          </BottomSheet>
+        ) : (
+          <Modal open={teil} title="Kontext festhalten" onClose={() => setTeil(false)}>
+            <button type="button">Weiter</button>
+          </Modal>
+        )}
+      </>
+    );
+  }
+
+  for (const zweites of ['blatt', 'modal'] as const) {
+    it(`gibt die Seite nach Gruppe → ${zweites === 'blatt' ? 'Teil-Blatt' : 'Modal'} → Schließen wieder frei, auch während das erste ausblendet`, () => {
+      vi.useFakeTimers();
+      document.documentElement.style.setProperty('--vp-motion-exit', '160ms');
+      render(<Wechsel zweites={zweites} />);
+      const ausloeser = screen.getByRole('button', { name: 'Grundlagen' });
+      ausloeser.focus();
+      fireEvent.click(ausloeser);
+      fireEvent.click(screen.getByRole('button', { name: 'Kontext' }));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      expect(document.body.style.overflow).toBe('hidden');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.body.style.overflow).toBe('');
+      // Der Auslöser im ersten Blatt ist fort - der Fokus geht an den Auslöser des ersten Blatts.
+      expect(document.activeElement).toBe(ausloeser);
+    });
+  }
+
+  /** Ein Erklär-Blatt im Blatt eines Teils: React-Kind des äußeren, im DOM ein eigenes Portal. */
+  function Verschachtelt({ aussenZu, innenZu }: { aussenZu: () => void; innenZu: () => void }) {
+    const [innen, setInnen] = useState(false);
+    return (
+      <BottomSheet open title="Kontext festhalten" onClose={aussenZu}>
+        <input aria-label="Grund" />
+        <button type="button" onClick={() => setInnen(true)}>
+          Was heißt das?
+        </button>
+        <BottomSheet
+          open={innen}
+          title="Erklärung"
+          onClose={() => {
+            innenZu();
+            setInnen(false);
+          }}
+        >
+          <button type="button">Verstanden</button>
+        </BottomSheet>
+      </BottomSheet>
+    );
+  }
+
+  it('Escape im inneren Blatt schließt nur das innere', () => {
+    const aussenZu = vi.fn();
+    const innenZu = vi.fn();
+    render(<Verschachtelt aussenZu={aussenZu} innenZu={innenZu} />);
+    const knopf = screen.getByRole('button', { name: 'Was heißt das?' });
+    knopf.focus();
+    fireEvent.click(knopf);
+    const innen = screen.getByRole('dialog', { name: 'Erklärung' });
+    fireEvent.keyDown(innen, { key: 'Escape' });
+    expect(innenZu).toHaveBeenCalledTimes(1);
+    expect(aussenZu).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Erklärung' })).toBeNull();
+    expect(document.activeElement).toBe(knopf);
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+
+  it('Tab bleibt im inneren Blatt, statt ins äußere zu springen', () => {
+    render(<Verschachtelt aussenZu={() => {}} innenZu={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Was heißt das?' }));
+    const innen = screen.getByRole('dialog', { name: 'Erklärung' });
+    const verstanden = screen.getByRole('button', { name: 'Verstanden' });
+    verstanden.focus();
+    fireEvent.keyDown(verstanden, { key: 'Tab' });
+    expect(innen.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Tab' });
+    expect(innen.contains(document.activeElement)).toBe(true);
   });
 });

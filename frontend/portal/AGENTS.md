@@ -27,8 +27,10 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 - Header und technische Zustandszeilen gemeinsam layouten. Sticky-Höhen nicht mit festen Schätzwerten kompensieren.
 - Flex-/Grid-Kinder müssen schrumpfen und Texte umbrechen können; Tabellen scrollen lokal. Unsichtbare Schaltertexte dürfen die Seite nicht verbreitern.
 - Dialog: Fokusfalle, Escape, Rückkehr zum Auslöser und Erhalt darunterliegender Formulare testen. Fehler nach einem deaktivierten Submit müssen den Fokus sinnvoll wiederherstellen.
+- Überlagerungen teilen EINEN gezählten Scroll-Sperrer und Stapel (`designsystem/components/shell/ueberlagerung.js`): `Modal` und `BottomSheet` über `useUeberlagerung` (Escape nur für die oberste, Fokus-Rückgabe durch die Kette), andere Flächen mindestens über `sperreSeitenScroll()`. Nie `body.style.overflow` je Fläche merken und zurückschreiben - nach Blatt → Blatt oder Blatt → Modal blieb die Seite sonst gesperrt. Tab-Fallen enden mit `fokusFalle` (kein Durchreichen an die äußere Fläche).
 - Auf iOS/Safari wird ein angeklickter Button nicht zwingend fokussiert; den Rückkehr-Auslöser ausdrücklich speichern.
 - Ein Dialog, der aus einem Blatt (`NwBlatt`, am Telefon `BottomSheet` mit z-index 1200) aufgeht, ist selbst ein Blatt: ein `Modal` (z-index 60) läge am Telefon darunter und nähme keine Klicks an (Beispiel `PersonAnlegenBlatt`).
+- Ein Formular in einem Blatt ruft im `onSubmit` auch `e.stopPropagation()`: React reicht `submit` durch Portale im Komponentenbaum weiter, ein inneres Blatt sendete sonst das äußere Formular mit ab (`BlattFormular`).
 
 ## Hilfe und Auth
 

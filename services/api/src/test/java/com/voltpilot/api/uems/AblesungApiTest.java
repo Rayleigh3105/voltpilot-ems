@@ -241,6 +241,8 @@ class AblesungApiTest {
         assertThat(z.path("quelle").path("stand").asText()).isEqualTo("ablesung");
         assertThat(z.path("quelle").path("ablesung").path("zuletzt").asText()).startsWith("2026-11-02T07:40");
         assertThat(z.path("quelle").path("ablesung").path("seit").asText()).startsWith("2026-10-01T07:15");
+        // Messen-Bau m2: „Nächste Ablesung“ - die Frist der Beobachtung, letzte Ablesung + zwei Kalendermonate.
+        assertThat(z.path("quelle").path("ablesung").path("faellig_ab").asText()).startsWith("2027-01-02T07:40");
         assertThat(z.path("beobachtung").path("zustand").asText()).isEqualTo("liefert");
         assertThat(z.path("beobachtung").path("text").asText()).isEqualTo("Abgelesen am 02.11.2026");
         assertThat(z.path("letzter_wert").path("wert").decimalValue()).isEqualByComparingTo("49451");

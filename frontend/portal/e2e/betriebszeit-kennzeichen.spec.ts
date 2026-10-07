@@ -44,11 +44,12 @@ for (const breite of [375, 1440]) {
     if (breite === 375) await leiste.getByRole('button', { name: 'Messen', exact: true }).click();
     else await page.getByTestId('seitenleiste-messen').click();
     await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).first().click();
-    const karte = page.getByTestId('bezugsgroesse-karte');
-    await expect(karte).toHaveCount(1);
-    await karte.getByText('Werte und Fassungen', { exact: true }).click();
-    await expect(karte.getByText('384 h · Fassung 1', { exact: true })).toBeVisible();
-    await expect(karte.getByRole('button', { name: 'Wert eingeben', exact: true })).toHaveCount(0);
+    // Konzept Messen m1 §6.8: die Reihe öffnet die Seite der Bezugsgröße - dort stehen Werte, Fassungen und Messkanal.
+    await expect(page.getByTestId('bezugsgroesse-reihe')).toHaveCount(1);
+    await page.getByTestId('bezugsgroesse-reihe').click();
+    const karte = page.getByTestId('bezugsgroesse-seite');
+    await expect(karte.getByTestId('bezugswert-zeile').first()).toContainText(/384\sh/);
+    await expect(karte.getByRole('button', { name: 'Wert eintragen', exact: true })).toHaveCount(0);
     await expect(karte.getByText('aus Leistung über 5 kW (Annahme)', { exact: true }).first()).toBeVisible();
     await expect(karte.getByText('aus Leistung über 2 kW (Annahme)', { exact: true }).first()).toBeVisible();
     await karte.getByText('Messkanal', { exact: true }).click();
@@ -61,7 +62,8 @@ for (const breite of [375, 1440]) {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: join(process.env.BETRIEBSZEIT_BILDER, `betriebszeit-${breite}.png`), fullPage: true });
     }
-    await karte.getByText('Fassungen ansehen (1)', { exact: true }).click();
+    await karte.getByTestId('bezugswert-zeile').first().getByRole('button', { name: /^Aktionen zu/ }).click();
+    await page.getByRole('menuitem', { name: 'Fassungen ansehen (1)' }).click();
     await expect(karte.getByText('aus Leistung über 2 kW (Annahme)', { exact: true }).last()).toBeVisible();
   });
 }

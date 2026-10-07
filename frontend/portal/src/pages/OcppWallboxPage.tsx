@@ -69,6 +69,7 @@ import type { Zeile } from '../geraetSeite';
 import './OcppWallboxPage.css';
 // Uhr: nie seltener als der Live-Takt (sonst behauptet sie ein altes Alter).
 import { LIVE_POLL_MS } from '../pollCadence';
+import { sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 
 const DATA_AREAS = [
   'Verbindung', 'Ereignisse', 'Datenlücken', 'Ladevorgänge', 'Messwerte',
@@ -865,11 +866,11 @@ function ActionDialog({ definition, siteId, chargePointId, connected, connection
   closeRef.current = onClose;
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // The house's single counted scroll lock (`ueberlagerung.js`), never a per-dialog "previous" value.
+    const releaseScroll = sperreSeitenScroll();
     dialogRef.current?.focus();
     return () => {
-      document.body.style.overflow = previousOverflow;
+      releaseScroll();
       previousFocus?.focus();
     };
   }, []);
