@@ -343,7 +343,8 @@ button.vp-nw-fz {
   color: var(--vp-c-fg, #1e293b);
   overflow-wrap: break-word;
 }
-.vp-nw-fz-titel.is-kurz {
+.vp-nw-fz-titel.is-kurz,
+.vp-nw-zl-titel.is-kurz {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -712,4 +713,69 @@ textarea.vp-nw-feld-in {
   .vp-nw-seite.is-reiter > .vp-nw-naechst {
     max-width: 560px;
   }
+}
+
+/* Personen rechts in einer Zeile: am Rechner der Name vor den Kürzeln (Desktop-Mock r2d-T1), am Telefon nur Kürzel. */
+.vp-nw-personen {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.vp-nw-nur-breit {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+}
+@media (max-width: 720px) {
+  .vp-nw-nur-breit {
+    display: none;
+  }
+}
+/* Ein Knopf neben dem Menü „…“ im Kopf (am Rechner, Desktop-Mock r2d-T1). */
+.vp-nw-kopf-knoepfe {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Der Folgen-Balken unter dem Titel einer Zeile (Reiter „Managementbewertung“, Mock r2-M1). */
+.vp-nw-fz-unter > .vp-nw-folgen {
+  margin-top: 6px;
+}
+/* Blatt „Vorbereiten“ der Managementbewertung (Mock MBV): am Telefon der Schritt nach vorn über die ganze Breite,
+   „Zurück“ darunter; am Rechner nebeneinander. „Wer?“ und „Bis?“ stehen in zwei Spalten. */
+.vp-nw-vb-knoepfe {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+@media (min-width: 721px) {
+  .vp-nw-vb-knoepfe {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+.vp-nw-vb-zwei {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.vp-nw-vb-offen {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+/* Die freigegebenen Managementbewertungen als Karten (Mock r2-M1); am Rechner nebeneinander statt über die volle Breite. */
+.vp-nw-mb-karten {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: 12px;
+  min-width: 0;
 }

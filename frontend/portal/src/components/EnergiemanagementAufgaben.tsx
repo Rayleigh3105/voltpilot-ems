@@ -1,71 +1,49 @@
 import { useEffect, useState } from 'react';
-import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type EnergiemanagementAufgaben, type EnergiemanagementPerson, type EnergiemanagementZuordnung } from '../api';
-import { merkeAbruf, routenHeute } from '../routenUhr';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { api, type EnergiemanagementAufgaben as Stand, type EnergiemanagementPerson, type EnergiemanagementZuordnung } from '../api';
+import * as T from '../aufgabenBild';
 import * as E from '../energiemanagementPortal';
-import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT } from '../glossar';
+import { merkeAbruf, routenHeute } from '../routenUhr';
 import { useRollen } from '../rollen';
-import { AufgabeZuordnenDialog, ZuordnungBeendenDialog } from './EnergiemanagementAufgabeDialoge';
-import { EinsichtGruppe } from './EinsichtRecht';
+import { useIsPhone } from '../useIsPhone';
 import { PersonAnlegenDialog } from './DokumentDialoge';
-import { Recht } from './Recht';
+import { AufgabeZuordnenDialog, ZuordnungBeendenDialog } from './EnergiemanagementAufgabeDialoge';
+import { EinsichtRecht } from './EinsichtRecht';
+import { GrenzSatz } from './GrenzSatz';
+import { NwBlatt } from './nachweisen/NwBlatt';
+import { NwKopf } from './nachweisen/NwKopf';
+import { PruefZeilen } from './nachweisen/NwSchritte';
+import { StatusZeile } from './nachweisen/NwStatus';
+import { NwZeichen } from './nachweisen/NwZeichen';
+import { Fakt, Kuerzel, NwKarte, NwZeile, NwZeilen } from './nachweisen/NwZeilen';
+import { RowMenu } from './RowMenu';
 import { VpDatePicker } from './VpDatePicker';
 
-/** Eine Zuordnung: der Name öffnet die Personen-Seite, dahinter seit/ab, Vertretung, „entschieden von“, Beleg, Beschluss. */
-function Zuordnung({ z, tag, onPerson, onBeenden }: { z: EnergiemanagementZuordnung; tag: string; onPerson: (id: string) => void; onBeenden: (() => void) | null }) {
-  return (
-    <div className="vp-em-zuordnung" data-testid={`zuordnung-${z.aufgabe}-${z.person.kuerzel ?? z.person.id}`}>
-      <p className="vp-ez-satz">
-        <button type="button" className="vp-ez-zeile-knopf" onClick={() => onPerson(z.person.id)}>
-          {z.person.name}
-        </button>
-        {E.zuordnungRest(z, tag)}
-      </p>
-      {(z.beleg?.ablage || z.beschluss_kennung) && (
-        <p className="vp-ez-leise">
-          {[z.beleg?.ablage ? `Beleg: ${[z.beleg.bezeichnung, z.beleg.ablage].filter(Boolean).join(' · ')}` : null, z.beschluss_kennung ? `Beschluss ${z.beschluss_kennung}` : null]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-      )}
-      {onBeenden && (
-        <Button variant="ghost" size="sm" onClick={onBeenden} data-testid="zuordnung-beenden">
-          {E.KNOPF_BEENDEN}
-        </Button>
-      )}
-    </div>
-  );
-}
-
 /**
- * Reiter „Aufgaben“ (UEMS AP-19 IP-13, PA1–PA3, §5.2, R5): die Aufgaben des Vokabulars mit ihren laufenden Zuordnungen
- * am gewählten Tag — Person, Vertretung, seit, „entschieden von“, Beleg — und jede Aufgabe ohne Person mit dem Satz der
- * Route („… — keine Person festgelegt.“, ein Satz, keine Warnung); darunter die Personen im Energiemanagement, auch ohne
- * Konto. Zuordnen und Beenden nur mit `energiemanagement.verwalten`; mit „Einsicht“ steht dort der Leer-Satz.
- * `saetze` zeigt Grenz- und Verantwortungs-Satz, wo der Reiter allein steht (im Bereich stehen sie am Fuß).
+ * Reiter „Aufgaben“ (Konzept Nachweisen n1 Runde 2, §6.8, Entscheid 23; vorher IP-13, PA1–PA3): „Wer macht was“ am Tag
+ * der Route, die Status-Zeile „● jede Aufgabe hat eine Person“ (oder wie viele keine haben), je Aufgabe eine Zeile mit
+ * Kurzwort und Kürzeln - am Rechner dazu der Name. Name, Vertretung, seit wann, „entschieden von“, Beleg und Beschluss
+ * stehen im Blatt der Aufgabe; dort auch Zuordnen und Beenden. Die Personen stehen am Rechner rechts, am Telefon hinter
+ * „Personen“. Ohne gewählten Tag fragt der Reiter die Route und nimmt ihren Tag (Befund 3); „Stand an einem anderen Tag“
+ * und „Wer ist wofür verantwortlich“ stehen im Menü „…“. Zuordnen, Beenden und Person anlegen nur mit
+ * `energiemanagement.verwalten`.
  */
-export function EnergiemanagementAufgaben({
-  onPerson,
-  onVerantwortung,
-  saetze = false,
-}: {
-  onPerson: (id: string) => void;
-  onVerantwortung: () => void;
-  saetze?: boolean;
-}) {
+export function EnergiemanagementAufgaben({ onPerson, onVerantwortung }: { onPerson: (id: string) => void; onVerantwortung: () => void }) {
   const rollen = useRollen();
   const darf = rollen.darf(E.RECHT_VERWALTEN, null);
+  const isPhone = useIsPhone();
   // Konzept Nachweisen n1, Befund 3: ohne gewählten Tag fragt der Reiter die Route - „heute“ ist ihr Tag, nie der des
   // Browsers (in der Prüfumgebung lag zwischen beiden das Jahr 2026 neben 2029).
   const [gewaehlt, setGewaehlt] = useState<string | null>(null);
-  const [stand, setStand] = useState<EnergiemanagementAufgaben | null>(null);
+  const [stand, setStand] = useState<Stand | null>(null);
   const [personen, setPersonen] = useState<EnergiemanagementPerson[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [neu, setNeu] = useState(0);
   const [zuordnen, setZuordnen] = useState<{ aufgabe: string | null } | null>(null);
   const [beenden, setBeenden] = useState<EnergiemanagementZuordnung | null>(null);
   const [personDialog, setPersonDialog] = useState(false);
+  const [blatt, setBlatt] = useState<null | 'personen' | 'tag' | { aufgabe: string }>(null);
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
@@ -87,119 +65,183 @@ export function EnergiemanagementAufgaben({
     setZuordnen(null);
     setBeenden(null);
     setPersonDialog(false);
+    setBlatt(null);
     setNeu((n) => n + 1);
   };
 
+  const zeilen = stand ? T.aufgabenZeilen(stand) : [];
+  const status = stand ? T.aufgabenStatus(zeilen) : null;
+  const leute = personen && stand ? T.personenZeilen(personen, stand) : [];
+  const offen = typeof blatt === 'object' && blatt ? (zeilen.find((z) => z.aufgabe === blatt.aufgabe) ?? null) : null;
+
+  // Am Rechner steht „Aufgabe zuordnen“ als Knopf neben dem Menü (Desktop-Mock r2d-T1), am Telefon nur im Menü.
+  const menue = (
+    <span className="vp-nw-kopf-knoepfe">
+      {!isPhone && darf && (
+        <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+          <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setZuordnen({ aufgabe: null })} data-testid="aufgaben-zuordnen">
+            {E.KNOPF_ZUORDNEN}
+          </Button>
+        </EinsichtRecht>
+      )}
+      <RowMenu
+      label="Weitere Aktionen"
+      items={[
+        { label: E.KNOPF_ZUORDNEN, recht: E.RECHT_VERWALTEN, standort: null, onClick: () => setZuordnen({ aufgabe: null }) },
+        { label: E.KNOPF_PERSON, recht: E.RECHT_VERWALTEN, standort: null, onClick: () => setPersonDialog(true) },
+        { label: 'Stand an einem anderen Tag', onClick: () => setBlatt('tag') },
+        { label: E.KNOPF_VERANTWORTUNG, onClick: onVerantwortung },
+      ]}
+      />
+    </span>
+  );
+
+  const personenListe = (
+    <NwZeilen testId="personen-liste">
+      {leute.map((z) => (
+        <NwZeile
+          key={z.person.id}
+          vorn={<Kuerzel personen={[{ name: z.person.name, kuerzel: z.person.kuerzel }]} />}
+          titel={z.person.name}
+          unter={z.person.funktion}
+          rechts={T.personFakt(z) ? <Fakt>{T.personFakt(z)}</Fakt> : undefined}
+          leise={z.person.zustand !== 'aktiv'}
+          onClick={() => onPerson(z.person.id)}
+          testId={`person-zeile-${z.person.kuerzel ?? z.person.id}`}
+        />
+      ))}
+    </NwZeilen>
+  );
+
   return (
-    <>
-      <section className="vp-ez-karte" aria-label={UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT} data-testid="aufgaben-reiter">
-        <div className="vp-em-kopf">
-          <h2>{UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT}</h2>
-          <button type="button" className="vp-em-hilfe" onClick={onVerantwortung} data-testid="verantwortung-link">
-            {E.KNOPF_VERANTWORTUNG}
-          </button>
-        </div>
-        <div className="vp-em-aufgaben-kopf">
-          <VpDatePicker label="Stand am" value={tag} onChange={(t) => t && setGewaehlt(t)} />
-          <div className="vp-ez-aktionen">
-            <EinsichtGruppe aktion={[E.RECHT_VERWALTEN]} standort={null}>
-              <Recht aktion={E.RECHT_VERWALTEN} standort={null}>
-                <Button onClick={() => setZuordnen({ aufgabe: null })} data-testid="aufgabe-zuordnen">
-                  {E.KNOPF_ZUORDNEN}
-                </Button>
-                <Button variant="ghost" onClick={() => setPersonDialog(true)} data-testid="aufgaben-person-anlegen">
-                  {E.KNOPF_PERSON}
-                </Button>
-              </Recht>
-            </EinsichtGruppe>
-          </div>
-        </div>
-        {fehler ? (
-          <p className="vp-ez-fehler" role="alert">{fehler}</p>
-        ) : stand === null ? (
-          <p className="vp-ez-leise">Wird geladen …</p>
-        ) : (
-          <ul className="vp-em-aufgaben" data-testid="aufgaben-liste">
-            {stand.aufgaben
-              .filter((a) => a.aufgabe !== 'weitere' || a.laufend.length > 0 || E.kuenftige(stand.zuordnungen, a.aufgabe, stand.tag).length > 0)
-              .map((a) => {
-                const spaeter = E.kuenftige(stand.zuordnungen, a.aufgabe, stand.tag);
-                return (
-                  <li
-                    key={a.aufgabe}
-                    className="vp-em-aufgabe"
-                    data-testid={`aufgabe-${a.aufgabe}`}
-                    // Konzept Wiedervorlage w1: „Niemand zuständig“ mit „Aufgabe festlegen“ öffnet genau diese Aufgabe ohne Person.
-                    data-entscheid={a.satz ? 'aufgabe_festlegen' : undefined}
-                    data-entscheid-kennzeichen={a.aufgabe}
-                  >
-                    <h3>{a.wort}</h3>
-                    {a.satz && (
-                      <p className="vp-ez-satz" data-testid="aufgabe-ohne-person">
-                        {a.satz}
-                      </p>
-                    )}
-                    {a.laufend.map((z) => (
-                      <Zuordnung key={z.id} z={z} tag={stand.tag} onPerson={onPerson} onBeenden={darf ? () => setBeenden(z) : null} />
-                    ))}
-                    {spaeter.map((z) => (
-                      <Zuordnung key={z.id} z={z} tag={stand.tag} onPerson={onPerson} onBeenden={null} />
-                    ))}
-                    {a.satz && darf && (
-                      <Button variant="ghost" size="sm" onClick={() => setZuordnen({ aufgabe: a.aufgabe })} data-testid="aufgabe-zeile-zuordnen" data-entscheid-schritt>
-                        {E.KNOPF_ZUORDNEN}
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
-          </ul>
-        )}
-      </section>
-      <section className="vp-ez-karte" aria-label="Personen im Energiemanagement" data-testid="personen-liste">
-        <h2>Personen im Energiemanagement</h2>
-        <p className="vp-ez-leise">Wer im System handelt, hat ein Konto; wer außerhalb entscheidet, prüft oder teilnimmt, ist eine Person — auch ohne Konto.</p>
-        {personen && personen.length > 0 && (
-          <div className="vp-ez-tafel-rahmen">
-            <table className="vp-ez-tafel">
-              <thead>
-                <tr>
-                  <th scope="col">Person</th>
-                  <th scope="col">Funktion</th>
-                  <th scope="col">Konto</th>
-                  <th scope="col">Seit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {personen.map((p) => (
-                  <tr key={p.id} data-testid={`person-zeile-${p.kuerzel ?? p.id}`}>
-                    <td>
-                      <button type="button" className="vp-ez-zeile-knopf" onClick={() => onPerson(p.id)}>
-                        {p.name}
-                      </button>
-                      {p.organisation && <span className="vp-ez-unter">{p.organisation}</span>}
-                    </td>
-                    <td data-label="Funktion">{p.funktion}</td>
-                    <td data-label="Konto">{p.konto ? 'mit Konto' : 'ohne Konto'}</td>
-                    <td data-label="Seit">
-                      {E.tagText(p.seit) || '—'}
-                      {p.zustand === 'beendet' ? ` · beendet${p.bis ? ` am ${E.tagText(p.bis)}` : ''}` : ''}
-                    </td>
-                  </tr>
+    <div className="vp-nw-seite is-reiter" data-testid="aufgaben-reiter">
+      <NwKopf
+        titel="Aufgaben"
+        erklaerung={T.erklaerungAufgabe(zeilen, tag)}
+        kurzzeile={stand ? `${T.KURZZEILE} · Stand ${E.tagText(tag)}` : T.KURZZEILE}
+        status={status && <StatusZeile zeichen={<NwZeichen art={status.zeichen} />} text={status.text} testId="aufgaben-status" />}
+        menue={menue}
+        testId="aufgaben-kopf"
+      />
+      {fehler ? (
+        <p className="vp-ez-fehler" role="alert">
+          {fehler}
+        </p>
+      ) : !stand ? (
+        <p className="vp-ez-leise">Wird geladen …</p>
+      ) : (
+        <div className="vp-nw-zwei">
+          <div className="vp-nw-spalte-haupt">
+            <NwKarte titel="Aufgaben" zahl={zeilen.length} testId="aufgaben-liste">
+              <NwZeilen>
+                {zeilen.map((z) => (
+                  <NwZeile
+                    key={z.aufgabe}
+                    titel={z.kurz}
+                    rechts={
+                      z.personen.length ? (
+                        <span className="vp-nw-personen">
+                          <span className="vp-nw-nur-breit">{T.personenWort(z.personen)}</span>
+                          <Kuerzel personen={z.personen} />
+                        </span>
+                      ) : (
+                        <Fakt>keine Person</Fakt>
+                      )
+                    }
+                    verb={!z.personen.length && darf ? 'Zuordnen' : undefined}
+                    onClick={() => setBlatt({ aufgabe: z.aufgabe })}
+                    testId={`aufgabe-${z.aufgabe}`}
+                  />
                 ))}
-              </tbody>
-            </table>
+              </NwZeilen>
+            </NwKarte>
           </div>
-        )}
-      </section>
-      {saetze && (
-        <div className="vp-em-saetze">
-          <GrenzSatz className="vp-ez-grenze" verantwortung />
+          <div className="vp-nw-spalte-seite">
+            {isPhone ? (
+              <NwZeilen>
+                <NwZeile titel={T.PERSONEN} rechts={<Fakt>{leute.filter((z) => z.person.zustand === 'aktiv').length}</Fakt>} onClick={() => setBlatt('personen')} testId="aufgaben-personen" />
+              </NwZeilen>
+            ) : (
+              <NwKarte
+                titel={T.PERSONEN}
+                zahl={leute.filter((z) => z.person.zustand === 'aktiv').length}
+                rechts={
+                  darf ? (
+                    <button type="button" className="vp-nw-kk-verb" onClick={() => setPersonDialog(true)} data-testid="aufgaben-person-anlegen">
+                      {E.KNOPF_PERSON}
+                    </button>
+                  ) : undefined
+                }
+              >
+                {personenListe}
+              </NwKarte>
+            )}
+          </div>
         </div>
       )}
+      {/* Grenz- und Verantwortungs-Satz stehen einmal am Fuß des Bereichs („Was VoltPilot leistet“, K7/D5). */}
+      <GrenzSatz verantwortung />
+
+      <NwBlatt open={!!offen} titel={offen?.wort ?? ''} onClose={() => setBlatt(null)} testId="aufgabe-blatt">
+        {offen && (
+          <div className="vp-nw-schritt-inhalt" data-entscheid={offen.ohnePerson ? 'aufgabe_festlegen' : undefined} data-entscheid-kennzeichen={offen.aufgabe}>
+            {offen.ohnePerson && <p className="vp-nw-leise" data-testid="aufgabe-ohne-person">{offen.ohnePerson}</p>}
+            {[...offen.laufend, ...offen.spaeter].map((z) => (
+              <div key={z.id} className="vp-nw-schritt-inhalt" data-testid={`zuordnung-${z.aufgabe}-${z.person.kuerzel ?? z.person.id}`}>
+                <PruefZeilen
+                  zeilen={[
+                    { etikett: 'Person', wert: <a href="#" onClick={(e) => (e.preventDefault(), onPerson(z.person.id))}>{z.person.name}</a> },
+                    ...(z.vertretung ? [{ etikett: 'Vertretung', wert: z.vertretung.name }] : []),
+                    { etikett: 'Gilt', wert: T.seitWort(z, tag) },
+                    ...(z.entschieden_von ? [{ etikett: 'Entschieden von', wert: z.entschieden_von.name }] : []),
+                    ...(z.beschluss_kennung ? [{ etikett: 'Beschluss', wert: z.beschluss_kennung }] : []),
+                    ...(z.beleg?.ablage ? [{ etikett: 'Beleg', wert: [z.beleg.bezeichnung, z.beleg.ablage].filter(Boolean).join(' · ') }] : []),
+                  ]}
+                />
+                {darf && z.gilt_ab <= tag && (
+                  <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+                    <Button variant="ghost" size="sm" onClick={() => setBeenden(z)} data-testid="zuordnung-beenden">
+                      {E.KNOPF_BEENDEN}
+                    </Button>
+                  </EinsichtRecht>
+                )}
+              </div>
+            ))}
+            {darf && (
+              <EinsichtRecht aktion={E.RECHT_VERWALTEN} standort={null}>
+                <Button variant={offen.ohnePerson ? 'primary' : 'outline'} onClick={() => setZuordnen({ aufgabe: offen.aufgabe })} data-testid="aufgabe-zeile-zuordnen" data-entscheid-schritt>
+                  {E.KNOPF_ZUORDNEN}
+                </Button>
+              </EinsichtRecht>
+            )}
+          </div>
+        )}
+      </NwBlatt>
+      <NwBlatt open={blatt === 'personen'} titel={T.PERSONEN} onClose={() => setBlatt(null)} testId="personen-blatt">
+        {personenListe}
+        {darf && (
+          <div className="vp-nw-blatt-zeile">
+            <Button variant="outline" onClick={() => setPersonDialog(true)} data-testid="aufgaben-person-anlegen">
+              {E.KNOPF_PERSON}
+            </Button>
+          </div>
+        )}
+      </NwBlatt>
+      <NwBlatt open={blatt === 'tag'} titel="Stand am" onClose={() => setBlatt(null)} testId="aufgaben-tag-blatt">
+        <VpDatePicker
+          label="Tag"
+          value={tag}
+          onChange={(t) => {
+            if (!t) return;
+            setGewaehlt(t);
+            setBlatt(null);
+          }}
+        />
+      </NwBlatt>
+
       {zuordnen && <AufgabeZuordnenDialog aufgabe={zuordnen.aufgabe} ab={tag} onClose={() => setZuordnen(null)} onZugeordnet={gespeichert} />}
       {beenden && <ZuordnungBeendenDialog zuordnung={beenden} ab={tag} onClose={() => setBeenden(null)} onBeendet={gespeichert} />}
       {personDialog && <PersonAnlegenDialog leitung={false} ab={tag} onClose={() => setPersonDialog(false)} onAngelegt={gespeichert} />}
-    </>
+    </div>
   );
 }

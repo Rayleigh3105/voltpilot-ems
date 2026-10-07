@@ -38,6 +38,9 @@ const EIGENER_KOPF: ReadonlySet<EnergiemanagementReiter> = new Set<Energiemanage
   // PR 4: der Reiter „Audits“, auch über `…/feststellungen` geöffnet (Entscheid 17).
   'audits',
   'feststellungen',
+  // PR 5: Managementbewertung und Aufgaben.
+  'managementbewertung',
+  'aufgaben',
 ]);
 
 /**

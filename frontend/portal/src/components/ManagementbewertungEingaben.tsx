@@ -14,6 +14,7 @@ export function ManagementbewertungEingaben({
   beschluesse,
   sitzung,
   ohne = [],
+  nur,
   saetze = false,
 }: {
   abzug: M.MbAbzug;
@@ -21,14 +22,16 @@ export function ManagementbewertungEingaben({
   sitzung?: ReactNode;
   /** Abschnitte, die die Seite an anderer Stelle zeigt (Sitzung und Beschlüsse über den Eingaben). */
   ohne?: readonly string[];
+  /** Nur dieser Abschnitt, ohne eigene Überschrift (Konzept Nachweisen n1: im Blatt „Was die Leitung sah“ trägt das Blatt sie). */
+  nur?: string;
   saetze?: boolean;
 }) {
   const a = abzug;
   return (
     <div className="vp-mb-eingaben" data-testid="mb-eingaben">
-      {M.ABSCHNITTE.filter(({ key }) => !ohne.includes(key)).map(({ key, titel }) => (
+      {M.ABSCHNITTE.filter(({ key }) => (nur ? key === nur : !ohne.includes(key))).map(({ key, titel }) => (
         <section key={key} className="vp-mb-abschnitt" aria-label={titel} data-testid={`mb-abschnitt-${key}`}>
-          <h3>{titel}</h3>
+          {!nur && <h3>{titel}</h3>}
           {key === 'vorige_beschluesse' ? (
             <Vorige a={a} />
           ) : key === 'grundlagen' ? (
