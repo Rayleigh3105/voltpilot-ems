@@ -209,7 +209,8 @@ for (const breite of [375, 1440]) {
 
     test('Einstieg am Energieziel: vorbelegt mit Kennzahl und Energieziel', async ({ page }) => {
       await oeffne(page, 'lage=leer&ez=1', breite, AM_22_01_2028);
-      await page.getByTestId('massnahme-anlegen-einstieg-energieziel').getByTestId('massnahme-anlegen-knopf').click();
+      // Konzept Verbessern §6.4: am Energieziel heißt der nächste Schritt „Maßnahme planen“.
+      await page.getByTestId('energieziel-planen').click();
       await expect(modal(page).getByTestId('massnahme-herkunft-vorbelegt')).toHaveText('aus dem Energieziel');
       await expect(combo(page, 'Kennzahl')).toContainText('KZ-0004');
       await expect(combo(page, 'Energieziel (wahlfrei)')).toContainText('EZ-2028-0001');

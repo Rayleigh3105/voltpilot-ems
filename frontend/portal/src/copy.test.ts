@@ -1959,6 +1959,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/AuthScreen.tsx', // neu: die Anmelde-Bühne zeigt die Flächen des Portals als Kacheln, eine davon „Kennzahlen“ (Login-Konzept C)
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
   'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
+  'components/EnergiezielSetzenFuehrung.tsx', // neu: „Energieziel setzen“ geführt wählt zuerst die Kennzahl (Konzept Verbessern §6.9)
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
   'components/PortfolioCockpit.tsx', // alt
@@ -1968,6 +1969,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
+  'energiezielBild.ts', // neu: ein Energieziel entsteht an einer Kennzahl mit Bezugsbasis (Konzept Verbessern §6.3)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'fahrplan.ts', // neu: der Fahrplan „Ihr Energiemanagement“ nennt den Schritt „Kennzahlen mit Vergleichszeitraum“ (Konzept K2)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
@@ -1978,6 +1980,7 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/DataPages.tsx', // alt
+  'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
   'portfolioCockpit.ts', // alt
   'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
   'test/kennzahlAnlegenFixtures.ts', // neu: die Fixture spiegelt genau diese Ablehnung

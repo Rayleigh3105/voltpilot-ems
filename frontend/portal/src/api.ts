@@ -3059,6 +3059,8 @@ export interface VorgangAnstossAntwort {
 export interface MassnahmeListe {
   abruf: string;
   massnahmen: Massnahme[];
+  /** Nur mit `?energieziel=`: die Maßnahmen, deren Wirkung im Stand enthalten ist, ohne für das Energieziel zu sein. */
+  im_stand_enthalten?: string[];
 }
 
 /** `POST /api/v1/massnahmen` — die Zahl der erwarteten Wirkung nur mit `kennzahl` (M4). */
@@ -3269,6 +3271,39 @@ export interface EnergiezielBewertung {
   entscheidungs_begruendung: string | null;
   kopie: string;
   pruefsumme: string;
+  /** Konzept Verbessern, Entscheid 11: derselbe Stand wie `kopie`, lesbar (OpenAPI `EnergiezielFestgehaltenerStand`). */
+  stand?: EnergiezielFestgehaltenerStand;
+}
+
+/** Der Ziel-Stand der Kopie zum Bewertungstag - Σ in `einheit`, Δ mit Richtung, „x von y“, Ausschlüsse mit Grund. */
+export interface EnergiezielFestgehaltenerStand {
+  abruf: string | null;
+  gemessen: string | null;
+  erwartet: string | null;
+  einheit: string | null;
+  delta_prozent: string | null;
+  richtung: 'mehr' | 'weniger' | 'gleich' | null;
+  urteil: string | null;
+  band_prozent: string | null;
+  monate_bewertbar: number;
+  monate_gesamt: number;
+  ausgeschlossen: { monat: string; grund: string }[];
+  grund_kein_vorschlag: string | null;
+}
+
+/**
+ * Operation `kurs` (Vertrag verbesserung.md §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+ * bewertbaren Monate - `hoechstens` und `luecke` (positiv = darüber) in der Einheit der Summe, `noetig_prozent` der
+ * nötige Schnitt der offenen Monate gegen erwartet (Näherung bei gleich großen Monaten).
+ */
+export interface EnergiezielKurs {
+  lage: 'auf_kurs' | 'knapp_dahinter' | 'nicht_auf_kurs' | 'noch_keine_aussage';
+  monate_bewertbar: number;
+  monate_offen: number;
+  hoechstens: string | null;
+  luecke: string | null;
+  noetig_prozent: string | null;
+  noetig_richtung: 'mehr' | 'weniger' | 'gleich' | null;
 }
 
 /** F1 (OpenAPI `EnergiezielFrist`): Termin = letzter Tag der Zielperiode; fällig erst, wenn der letzte Monat endgültig ist. */
@@ -3335,6 +3370,8 @@ export interface EnergiezielStand {
   vorschlag: 'erreicht' | 'nicht_erreicht' | null;
   satz: string | null;
   vorschlag_satz: string | null;
+  /** Konzept Verbessern, Entscheid 3: der Zwischenstand (Operation `kurs`); ältere Antworten ohne. */
+  kurs?: EnergiezielKurs;
 }
 
 // ---------------------------------------------------------------------------------------- Bezugsbasis (UEMS AP-17)
@@ -11238,6 +11275,12 @@ export const api = {
   // ------------------------------------------------------------------ Maßnahmen (UEMS AP-18 IP-10)
   /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
   massnahmen: () => request<MassnahmeListe>('/api/v1/massnahmen'),
+  /**
+   * Konzept Verbessern, Entscheid 5: die Maßnahmen für ein Energieziel und die, deren Wirkung schon im Stand enthalten
+   * ist (an derselben Kennzahl umgesetzt) - diese zusätzlich in `im_stand_enthalten`.
+   */
+  massnahmenZumEnergieziel: (energiezielId: string) =>
+    request<MassnahmeListe>(`/api/v1/massnahmen?energieziel=${encodeURIComponent(energiezielId)}`),
   massnahme: (id: string) => request<Massnahme>(`/api/v1/massnahmen/${id}`),
   massnahmeAnlegen: (body: MassnahmeNeu) =>
     request<Massnahme>('/api/v1/massnahmen', { method: 'POST', body: JSON.stringify(body) }),
