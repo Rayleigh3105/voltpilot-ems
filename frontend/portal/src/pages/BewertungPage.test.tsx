@@ -108,7 +108,7 @@ describe('BewertungPage - Kriterien mit Vier-Augen (Befund 6)', () => {
     expect(await screen.findByText('Er braucht mindestens 10 % des Stroms.')).toBeInTheDocument();
   });
 
-  it('hat eine dritte Person schon entschieden (409), lädt die Karte neu — keine veralteten Knöpfe (Review r3)', async () => {
+  it('hat eine dritte Person schon entschieden (409), lädt die Karte neu - keine veralteten Knöpfe (Review r3)', async () => {
     const { buehne } = verdrahte('JW', 'nr2', { antragVon: 'IK' });
     const antrag = await screen.findByTestId('kriterien-antrag');
     // Während die Karte offen steht, lehnt eine andere Person den Antrag ab.

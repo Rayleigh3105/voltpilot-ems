@@ -144,7 +144,7 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     const x = await eingabe();
     const r = { ...x.rangliste!, rest: '37816', abdeckung_prozent: '79.6', urteil: { ...x.rangliste!.urteil, K8: 'unter_schwelle' as const } };
     const e = bewertungErgebnis({ ...x, rangliste: r });
-    // 37.816 von 185.380 kWh = 20,4 % — die Zahl kommt vom Zwilling, die Zuordnung von der Route.
+    // 37.816 von 185.380 kWh = 20,4 % - die Zahl kommt vom Zwilling, die Zuordnung von der Route.
     expect(e.kacheln.rest).toMatchObject({ wert: '20', marke: { text: 'zu wenig', ton: 'warn' }, sub: `79,6${NB}% zugeordnet, belastbar ab 80${NB}%` });
   });
 
@@ -160,7 +160,7 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     expect(e.vertrauen).toBe('Die Bereiche ergeben mehr Strom, als der Hauptzähler gemessen hat - vermutlich ist ein Zähler doppelt zugeordnet; die Anteile sind darum zu groß.');
   });
 
-  it('ein wesentlicher Bereich ohne Werte bleibt unter „Wesentliche Bereiche“ — Antwort und Karte zählen gleich (Review r3)', async () => {
+  it('ein wesentlicher Bereich ohne Werte bleibt unter „Wesentliche Bereiche“ - Antwort und Karte zählen gleich (Review r3)', async () => {
     const x = await eingabe();
     const r = x.rangliste!;
     const ee3 = ahrenbergEinsaetze()[2];
@@ -169,7 +169,7 @@ describe('die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7)', () => {
     const e = bewertungErgebnis({ ...x, einsaetze, rangliste: ohneEe3 });
     expect(e.antwort).toMatch(/^2 von 7 Bereichen sind wesentlich/);
     expect(e.gruppen.find((g) => g.key === 'wesentlich')?.reihen.map((r) => r.kennzeichen)).toEqual(['EE-1', 'EE-3']);
-    // Ohne seine Menge fehlt der gemeinsame Anteil — die Kachel nennt, wem die Werte fehlen.
+    // Ohne seine Menge fehlt der gemeinsame Anteil - die Kachel nennt, wem die Werte fehlen.
     expect(e.kacheln.anteil).toMatchObject({ wert: null, sub: `${ee3.name} noch ohne Messwerte` });
   });
 

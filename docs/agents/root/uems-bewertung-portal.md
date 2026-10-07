@@ -36,7 +36,7 @@ Bereiche (Wesentlich · Nicht wesentlich · Noch nicht eingestuft · Noch ohne W
 „Wie VoltPilot vorschlägt“ (`KriterienKarte`) und Umfang; Grenz-Satz einmal am Fuß („Was VoltPilot leistet“).
 
 - Gruppen folgen der geltenden Einstufung einer Person, nie dem Vorschlag; „Noch ohne Werte“ = `keine_werte` UND keine
-  Menge im Zeitraum — außer „wesentlich“: der bleibt unter „Wesentliche Bereiche“, sonst zählte die Antwort ihn und die
+  Menge im Zeitraum - außer „wesentlich“: der bleibt unter „Wesentliche Bereiche“, sonst zählte die Antwort ihn und die
   Karte nicht. Strom steht vor Trägern ohne Anteil (m³ ist kein kWh).
 - Wächter Q5: `bewertungErgebnis.ts` rechnet keine Menge. Die Menge der wesentlichen Bereiche summiert
   `uemsBewertung.menge` (nie eine Summe gerundeter Anteile), ihren Anteil und den des Rests bildet `uemsBewertung.prozent`;

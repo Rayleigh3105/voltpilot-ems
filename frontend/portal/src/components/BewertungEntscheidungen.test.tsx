@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe('EinstufungDialog', () => {
-  it('ohne Vorschlag (keine Messwerte) ist nichts vorgewählt — die Person wählt selbst (Review r3)', async () => {
+  it('ohne Vorschlag (keine Messwerte) ist nichts vorgewählt - die Person wählt selbst (Review r3)', async () => {
     const einstufen = vi.spyOn(api, 'energieeinsatzEinstufen').mockResolvedValue({} as never);
     const r = ahrenbergRangliste();
     const ohne = {

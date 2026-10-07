@@ -294,7 +294,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
       abweichung,
       wartet,
     };
-    // Wesentlich eingestuft ist wesentlich — auch ohne Werte (sonst zählte die Antwort ihn, die Karte nicht).
+    // Wesentlich eingestuft ist wesentlich - auch ohne Werte (sonst zählte die Antwort ihn, die Karte nicht).
     const gruppe: GruppenSchluessel = ohneWerte && einstufung !== 'wesentlich' ? 'ohne_werte' : einstufung;
     return { reihe, gruppe, menge, mengeText: z?.menge ?? null, strom };
   });
@@ -312,7 +312,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
   const abweichend = reihen.filter((x) => x.reihe.abweichung).length;
   const vorgeschlagen = reihen.filter((x) => kriterien && vorschlagBild(zeilen.get(x.reihe.id), kriterien)?.wesentlich).length;
 
-  // Menge und Anteil der wesentlichen Bereiche — nur, wenn jeder wesentliche Strom-Bereich eine Menge hat. Die Summe
+  // Menge und Anteil der wesentlichen Bereiche - nur, wenn jeder wesentliche Strom-Bereich eine Menge hat. Die Summe
   // bildet der Zwilling (B3, nie eine Summe gerundeter Anteile), den Anteil am Hauptzähler ebenso (KR4).
   const wesentlichStrom = wesentliche.filter((x) => x.strom);
   const zusammen =
@@ -353,7 +353,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
   const ohneAnteil = (e.umfang?.traeger ?? []).filter((t) => !t.mit_anteil).map((t) => t.name);
   if (ohneAnteil.length > 0) formal.push(`${aufzaehlung(ohneAnteil)} ohne Anteil`);
 
-  // Ergeben die Bereiche mehr als der Hauptzähler (Doppelzählung), ist der Rest negativ — nie „0 % · ausreichend“.
+  // Ergeben die Bereiche mehr als der Hauptzähler (Doppelzählung), ist der Rest negativ - nie „0 % · ausreichend“.
   const restNegativ = !!r?.rest && r.rest.startsWith('-');
   // Wie verlässlich: fehlende Werte zuerst, dann eine Doppelzählung, dann eine zu kurze Datengrundlage.
   let vertrauen: string | null = null;
@@ -369,7 +369,7 @@ export function bewertungErgebnis(e: ErgebnisEingabe): Ergebnis {
     }
   }
 
-  // Der Anteil des Rests vom Zwilling (KR4); wie viel zugeordnet ist, sagt die Route — mit einer Stelle, damit „20 %“ neben
+  // Der Anteil des Rests vom Zwilling (KR4); wie viel zugeordnet ist, sagt die Route - mit einer Stelle, damit „20 %“ neben
   // „belastbar ab 80 %“ nicht wie 80 % zugeordnet aussieht (79,6 % sind es nicht).
   const restProzent = r && r.rest !== null && r.nenner.wert !== null && !restNegativ ? anteilAmGanzen(dez(r.rest), dez(r.nenner.wert)) : null;
   const zugeordnet = r?.abdeckung_prozent ?? null;
@@ -540,7 +540,7 @@ export function kriterienMeldung(f: Pick<BewertungKriterienFassung, 'fassung' | 
 }
 
 /**
- * Der Antrag einer zweiten Person (Vier-Augen): wer, wann, warum — und wer entscheiden darf. `created_at` ist ein
+ * Der Antrag einer zweiten Person (Vier-Augen): wer, wann, warum - und wer entscheiden darf. `created_at` ist ein
  * Zeitpunkt (oft mit `Z`): der Tag gilt in der Zone des Unternehmens, nicht in UTC (00:30 Uhr in Berlin ist schon heute).
  */
 export function kriterienAntrag(
@@ -602,7 +602,7 @@ export function umfangZeilen(u: BewertungUmfang, namen: ReadonlyMap<string, stri
 export const FRUEHERE_STAENDE = 'Frühere Stände';
 export const FRUEHERE_AUSBLENDEN = 'Frühere Stände ausblenden';
 export const FRUEHERE_BEWERTUNGEN = 'Frühere Bewertungen in den Nachweisen';
-/** Ohne ersetzte Stände führt der Kopf nur zu früheren Bewertungen (Berichte) — dann heißt er auch so. */
+/** Ohne ersetzte Stände führt der Kopf nur zu früheren Bewertungen (Berichte) - dann heißt er auch so. */
 export const FRUEHERE_BEWERTUNGEN_KURZ = 'Frühere Bewertungen';
 export const KEINE_BEWERTUNG_SATZ =
   'Noch keine Bewertung festgestellt. Legen Sie eine an - der Entwurf entsteht aus Umfang, Bereichen, Einstufungen und Messwerten; freigegeben gilt er als Stand Nr.\u00a01.';

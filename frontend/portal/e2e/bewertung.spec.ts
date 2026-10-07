@@ -223,7 +223,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('bewertung-vertrauen')).toHaveText('Vorläufig: die Datengrundlage umfasst 1 Monat; belastbar ist der Vorschlag ab 12 Monaten.');
       await expect(page.getByTestId('kachel-rest')).toContainText('32');
       await expect(page.getByTestId('kachel-rest')).toContainText('zu wenig');
-      // Wie viel zugeordnet ist, sagt die Route mit einer Stelle — nie ein stilles „80 %“ neben „zu wenig“.
+      // Wie viel zugeordnet ist, sagt die Route mit einer Stelle - nie ein stilles „80 %“ neben „zu wenig“.
       await expect(page.getByTestId('kachel-rest')).toContainText('67,8 % zugeordnet, belastbar ab 80 %');
       if (breite < 720) await expect(page.getByTestId('kachel-anteil')).toBeHidden();
       else await expect(page.getByTestId('kachel-anteil')).toContainText('93.400 kWh in einem Monat');

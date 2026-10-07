@@ -81,7 +81,7 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
     setFehler(null);
     Promise.all([api.energieeinsaetze(), api.bewertungUmfang(), api.bewertungRangliste(zeitraum.von, zeitraum.bis)]).then(
       async ([l, u, r]) => {
-        // Die Seite zeigt nur laufende Bereiche — die Einstufungen beendeter liest sie nicht.
+        // Die Seite zeigt nur laufende Bereiche - die Einstufungen beendeter liest sie nicht.
         const h = await Promise.all(
           l.energieeinsaetze.filter(laeuft).map(async (e) => [e.id, (await api.energieeinsatzEinstufungen(e.id)).fassungen] as const),
         );

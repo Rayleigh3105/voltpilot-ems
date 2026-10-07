@@ -35,7 +35,7 @@ import { UEMS_WIE_VOLTPILOT_VORSCHLAEGT } from '../glossar';
 import './BewertungErgebnis.css';
 
 const fehlerText = (e: unknown) => e instanceof Error && e.message ? e.message : 'Das hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.';
-/** 409 `bereits_entschieden`: eine dritte Person war schneller — die Karte zeigt dann den neuen Stand statt der alten Knöpfe. */
+/** 409 `bereits_entschieden`: eine dritte Person war schneller - die Karte zeigt dann den neuen Stand statt der alten Knöpfe. */
 const bereitsEntschieden = (e: unknown) => e instanceof ApiError && e.status === 409;
 
 export function EinstufungDialog({
@@ -48,7 +48,7 @@ export function EinstufungDialog({
   onGespeichert: (fassung: EnergieeinsatzEinstufungFassung) => void;
 }) {
   const basis = `be-${useId().replace(/:/g, '')}`;
-  // Ohne Messwerte gibt es keinen Vorschlag: dann weicht keine Wahl davon ab, und vorbelegt ist nichts Erfundenes —
+  // Ohne Messwerte gibt es keinen Vorschlag: dann weicht keine Wahl davon ab, und vorbelegt ist nichts Erfundenes -
   // die Person wählt selbst.
   const bild = vorschlagBild(einsatz);
   const vorschlag = bild?.wesentlich ? 'wesentlich' : 'nicht_wesentlich';
