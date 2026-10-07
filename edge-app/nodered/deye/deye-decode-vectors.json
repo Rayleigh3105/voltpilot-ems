@@ -1,0 +1,1323 @@
+{
+  "_comment": [
+    "GENERIERT von deye-decode-vectors.gen.js aus deye-decode.js - nicht von Hand bearbeiten.",
+    "Gepruefte Seiten: deye-decode-vectors.test.js (JS) und edge-app/core/internal/deyedecode (Go, Edge Light).",
+    "blocks stehen sparsam: {start, count, set:{\"0xADDR\": wort}}; nicht gesetzte Register sind 0."
+  ],
+  "plan_reads": {
+    "string": [
+      {
+        "start": 80,
+        "count": 2
+      }
+    ],
+    "hybrid_1p": [
+      {
+        "start": 169,
+        "count": 22
+      }
+    ],
+    "hybrid_3p": [
+      {
+        "start": 0,
+        "count": 1
+      },
+      {
+        "start": 587,
+        "count": 122
+      },
+      {
+        "start": 210,
+        "count": 14,
+        "optional": true
+      }
+    ],
+    "micro": [
+      {
+        "start": 86,
+        "count": 2
+      }
+    ],
+    "gibt_es_nicht": []
+  },
+  "soc_plausible": [
+    {
+      "value": -1,
+      "plausible": false
+    },
+    {
+      "value": 0,
+      "plausible": false
+    },
+    {
+      "value": 0.1,
+      "plausible": true
+    },
+    {
+      "value": 1,
+      "plausible": true
+    },
+    {
+      "value": 57,
+      "plausible": true
+    },
+    {
+      "value": 100,
+      "plausible": true
+    },
+    {
+      "value": 100.1,
+      "plausible": false
+    },
+    {
+      "value": 1270,
+      "plausible": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "hybrid_3p LV: Entladung und Einspeisung",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      }
+    },
+    {
+      "name": "hybrid_3p HV (SG01HP3): Leistung und Spannung in der HV-Skala",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 8
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 6360,
+            "0x024c": 80,
+            "0x024e": 2500,
+            "0x026b": 53536,
+            "0x028d": 5000,
+            "0x0293": 0,
+            "0x02a0": 1500,
+            "0x02a1": 1400,
+            "0x02a2": 1300,
+            "0x02a3": 0,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 42,
+          "load_kw": 5,
+          "power_kw": -12,
+          "soc_pct": 80
+        },
+        "batt_kw": 25
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 42,
+          "load_kw": 5,
+          "power_kw": -12,
+          "soc_pct": 80
+        },
+        "batt_kw": 25
+      }
+    },
+    {
+      "name": "hybrid_3p: beide Vorzeichen invertiert",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "invert_grid_sign": true,
+        "invert_batt_sign": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": 2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": 1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": 2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": 1.5
+      }
+    },
+    {
+      "name": "hybrid_3p: power_scale 10 schlaegt die LV-Kennung",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "power_scale": 10
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 22,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -15
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 22,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -15
+      }
+    },
+    {
+      "name": "hybrid_3p: unbekannte Geraetekennung faellt auf Skala 1",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 4660
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      }
+    },
+    {
+      "name": "hybrid_3p: 32-Bit-Last ueber 32,7 kW (Hochwort gesetzt)",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 8
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 45000,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 22,
+          "load_kw": 45,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -15
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 22,
+          "load_kw": 45,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -15
+      }
+    },
+    {
+      "name": "hybrid_3p: BMS gekoppelt, das Leitregister liefert den SoC",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 14,
+          "set": {
+            "0x00d2": 5600,
+            "0x00d3": 4800,
+            "0x00d4": 100,
+            "0x00d5": 120,
+            "0x00d6": 58,
+            "0x00d7": 5300,
+            "0x00d8": 65511,
+            "0x00da": 150,
+            "0x00db": 150,
+            "0x00dc": 0,
+            "0x00dd": 0,
+            "0x00df": 0
+          }
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "bms_charge_voltage_v": 56,
+          "bms_discharge_voltage_v": 48,
+          "bms_charge_limit_a": 100,
+          "bms_discharge_limit_a": 120,
+          "bms_soc_pct": 58,
+          "bms_voltage_v": 53,
+          "bms_current_a": -25,
+          "bms_max_charge_limit_a": 150,
+          "bms_max_discharge_limit_a": 150,
+          "bms_alarm": 0,
+          "bms_fault": 0,
+          "bms_type": 0,
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "bms_charge_voltage_v": 56,
+          "bms_discharge_voltage_v": 48,
+          "bms_charge_limit_a": 100,
+          "bms_discharge_limit_a": 120,
+          "bms_soc_pct": 58,
+          "bms_voltage_v": 53,
+          "bms_current_a": -25,
+          "bms_max_charge_limit_a": 150,
+          "bms_max_discharge_limit_a": 150,
+          "bms_alarm": 0,
+          "bms_fault": 0,
+          "bms_type": 0,
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      }
+    },
+    {
+      "name": "hybrid_3p HV: BMS-Strom mit HV-Faktor 0,1",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 8
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 6400,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 14,
+          "set": {
+            "0x00d2": 6800,
+            "0x00d6": 61,
+            "0x00d7": 6400,
+            "0x00d8": 65281,
+            "0x00df": 3
+          }
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "bms_charge_voltage_v": 680,
+          "bms_discharge_voltage_v": 0,
+          "bms_charge_limit_a": 0,
+          "bms_discharge_limit_a": 0,
+          "bms_soc_pct": 61,
+          "bms_voltage_v": 640,
+          "bms_current_a": -25.5,
+          "bms_max_charge_limit_a": 0,
+          "bms_max_discharge_limit_a": 0,
+          "bms_alarm": 0,
+          "bms_fault": 0,
+          "bms_type": 3,
+          "pv_power_kw": 22,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -15
+      },
+      "verbose": {
+        "reading": {
+          "bms_charge_voltage_v": 680,
+          "bms_discharge_voltage_v": 0,
+          "bms_charge_limit_a": 0,
+          "bms_discharge_limit_a": 0,
+          "bms_soc_pct": 61,
+          "bms_voltage_v": 640,
+          "bms_current_a": -25.5,
+          "bms_max_charge_limit_a": 0,
+          "bms_max_discharge_limit_a": 0,
+          "bms_alarm": 0,
+          "bms_fault": 0,
+          "bms_type": 3,
+          "pv_power_kw": 22,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -15
+      }
+    },
+    {
+      "name": "hybrid_3p: SoC fehlt, das gekoppelte BMS meldet ihn (ohne Opt-in)",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 0,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 14,
+          "set": {
+            "0x00d6": 64,
+            "0x00d7": 5310
+          }
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "bms_charge_voltage_v": 0,
+          "bms_discharge_voltage_v": 0,
+          "bms_charge_limit_a": 0,
+          "bms_discharge_limit_a": 0,
+          "bms_soc_pct": 64,
+          "bms_voltage_v": 53.1,
+          "bms_current_a": 0,
+          "bms_max_charge_limit_a": 0,
+          "bms_max_discharge_limit_a": 0,
+          "bms_alarm": 0,
+          "bms_fault": 0,
+          "bms_type": 0,
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 64,
+          "soc_source": "bms"
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "bms_charge_voltage_v": 0,
+          "bms_discharge_voltage_v": 0,
+          "bms_charge_limit_a": 0,
+          "bms_discharge_limit_a": 0,
+          "bms_soc_pct": 64,
+          "bms_voltage_v": 53.1,
+          "bms_current_a": 0,
+          "bms_max_charge_limit_a": 0,
+          "bms_max_discharge_limit_a": 0,
+          "bms_alarm": 0,
+          "bms_fault": 0,
+          "bms_type": 0,
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "missing",
+          "raw": 0,
+          "value": 0,
+          "bms": {
+            "soc_pct": 64
+          }
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: SoC fehlt ohne Opt-in -> Lesung verworfen",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 0,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": null,
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "missing",
+          "raw": 0,
+          "value": 0
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: SoC fehlt mit Opt-in -> Lesung ohne SoC",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 0,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "allow_missing_soc": true
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "missing",
+          "raw": 0,
+          "value": 0
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: SoC fehlt mit Opt-in und Spannungsbereich -> Schaetzung",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 0,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "allow_missing_soc": true,
+        "soc_from_voltage": {
+          "v_empty": 46,
+          "v_full": 54
+        }
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 78.8,
+          "soc_source": "voltage"
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "missing",
+          "raw": 0,
+          "value": 0,
+          "estimate": {
+            "soc_pct": 78.8,
+            "voltage_v": 52.3
+          }
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: Schaetzung wird auf 1 % geklemmt",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 4500,
+            "0x024c": 0,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "allow_missing_soc": true,
+        "soc_from_voltage": {
+          "v_empty": 46,
+          "v_full": 54
+        }
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 1,
+          "soc_source": "voltage"
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "missing",
+          "raw": 0,
+          "value": 0,
+          "estimate": {
+            "soc_pct": 1,
+            "voltage_v": 45
+          }
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: unsinniger Spannungsbereich schaetzt nichts",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 0,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "allow_missing_soc": true,
+        "soc_from_voltage": {
+          "v_empty": 54,
+          "v_full": 46
+        }
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "missing",
+          "raw": 0,
+          "value": 0
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: Leerantwort (alles 0) -> no_answer, auch mit Opt-in",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {}
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "allow_missing_soc": true
+      },
+      "decode": null,
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 0,
+          "load_kw": 0,
+          "power_kw": 0
+        },
+        "batt_kw": 0,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "no_answer",
+          "raw": 0,
+          "value": 0
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: SoC ausserhalb des Bereichs -> out_of_range",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 1270,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 0,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p",
+        "allow_missing_soc": true
+      },
+      "decode": null,
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3
+        },
+        "batt_kw": -1.5,
+        "drop": {
+          "channel": "soc_pct",
+          "rule": "out_of_range",
+          "raw": 1270,
+          "value": 1270
+        }
+      }
+    },
+    {
+      "name": "hybrid_3p: BMS-Block aus 14 Nullen ist keine Kopplung",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 122,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x026b": 63236,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02a1": 1200,
+            "0x02b2": 65535,
+            "0x02c4": 65535
+          }
+        },
+        {
+          "start": 210,
+          "count": 14,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 2.2,
+          "load_kw": 1.8,
+          "power_kw": -2.3,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      }
+    },
+    {
+      "name": "hybrid_3p: schmaler Block ohne externes Hochwort -> Netz aus dem Alias",
+      "blocks": [
+        {
+          "start": 0,
+          "count": 1,
+          "set": {
+            "0x0000": 5
+          }
+        },
+        {
+          "start": 587,
+          "count": 104,
+          "set": {
+            "0x024b": 5230,
+            "0x024c": 57,
+            "0x024e": 64036,
+            "0x0271": 63286,
+            "0x028d": 1800,
+            "0x0293": 0,
+            "0x02a0": 1000,
+            "0x02b2": 65535
+          }
+        }
+      ],
+      "config": {
+        "family": "hybrid_3p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 1,
+          "load_kw": 1.8,
+          "power_kw": -2.25,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 1,
+          "load_kw": 1.8,
+          "power_kw": -2.25,
+          "soc_pct": 57
+        },
+        "batt_kw": -1.5
+      }
+    },
+    {
+      "name": "hybrid_1p: niedrige Karte",
+      "blocks": [
+        {
+          "start": 169,
+          "count": 22,
+          "set": {
+            "0x00a9": 64736,
+            "0x00b2": 900,
+            "0x00b7": 5210,
+            "0x00b8": 66,
+            "0x00ba": 2000,
+            "0x00bb": 1500,
+            "0x00be": 65236
+          }
+        }
+      ],
+      "config": {
+        "family": "hybrid_1p"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 3.5,
+          "load_kw": 0.9,
+          "power_kw": -0.8,
+          "soc_pct": 66
+        },
+        "batt_kw": -0.3
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 3.5,
+          "load_kw": 0.9,
+          "power_kw": -0.8,
+          "soc_pct": 66
+        },
+        "batt_kw": -0.3
+      }
+    },
+    {
+      "name": "string: 32-Bit-AC-Leistung x0,1",
+      "blocks": [
+        {
+          "start": 80,
+          "count": 2,
+          "set": {
+            "0x0050": 57920,
+            "0x0051": 1
+          }
+        }
+      ],
+      "config": {
+        "family": "string"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 12.346
+        }
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 12.346
+        }
+      }
+    },
+    {
+      "name": "string: Nacht (0 W ist eine echte Messung)",
+      "blocks": [
+        {
+          "start": 80,
+          "count": 2,
+          "set": {}
+        }
+      ],
+      "config": {
+        "family": "string"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0
+        }
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 0
+        }
+      }
+    },
+    {
+      "name": "micro: AC-Leistung x0,1",
+      "blocks": [
+        {
+          "start": 86,
+          "count": 2,
+          "set": {
+            "0x0056": 7820,
+            "0x0057": 0
+          }
+        }
+      ],
+      "config": {
+        "family": "micro"
+      },
+      "decode": {
+        "reading": {
+          "pv_power_kw": 0.782
+        }
+      },
+      "verbose": {
+        "reading": {
+          "pv_power_kw": 0.782
+        }
+      }
+    },
+    {
+      "name": "unbekannte Familie",
+      "blocks": [
+        {
+          "start": 80,
+          "count": 2,
+          "set": {
+            "0x0050": 1
+          }
+        }
+      ],
+      "config": {
+        "family": "gibt_es_nicht"
+      },
+      "decode": null,
+      "verbose": null
+    }
+  ]
+}

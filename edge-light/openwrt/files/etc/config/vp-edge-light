@@ -1,0 +1,35 @@
+
+config vp-edge-light 'main'
+	# 1 = Dienst aktiv. Erst einschalten, wenn base_url gesetzt oder die
+	# lokale Kopie aufgespielt ist (install.sh erledigt beides).
+	option enabled '0'
+
+	# Woher das Programm bei jedem Start geladen wird (HTTPS Pflicht).
+	# Erwartet: <base_url>/<channel>/vp-edge-light-linux-<arch>(.sha256)
+	# Leer = nur die lokale Kopie.
+	option base_url ''
+	option channel 'latest'
+	option arch 'mipsle'
+
+	# Lokale Kopie im Flash: <local_dir>/vp-edge-light-linux-<arch>.gz und
+	# .sha256 (Pruefsumme des ungepackten Programms). Startet die Box ohne
+	# Download-Server und nach einem Stromausfall ohne Internet.
+	option local_dir '/usr/share/vp-edge-light'
+
+	# Dauerhafter Zustand (Flash) und fluechtiger Zustand (RAM).
+	option data_dir '/etc/vp-edge-light'
+	option ram_dir '/tmp/vp-edge-light'
+
+	option portal_url 'https://portal.voltpilot.de'
+	# Lokale Web-App. LuCI bzw. die GL-Oberflaeche belegen Port 80/443.
+	option web_addr ':8484'
+	option bus_addr '127.0.0.1:1883'
+
+	# Weiches Speicherlimit fuer Go (128 MB RAM teilen sich Router, WireGuard,
+	# das Programm im tmpfs und der Prozess).
+	option gomemlimit '48MiB'
+	option min_free_kb '40000'
+
+	# Weitere Einstellungen der Box (wie in edge-app/.env.example), z. B.:
+	# list env 'VP_REF=VP-1234'
+	# list env 'VP_CONSUMER_CONTROL_ENABLED=true'
