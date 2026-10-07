@@ -343,6 +343,17 @@ class UemsEnergiemanagementAbnahmeTest {
                 Map.of("wortlaut", "Anderer Wortlaut"), 409);
         assertThat(ablehnung.path("code").asText()).isEqualTo("berichts_belege");
         assertThat(texte(ablehnung.path("berichtsstaende"), "kennung")).contains("BR-2026-0002", "BR-2027-0001");
+
+        // Review #1455 S1: das Protokoll trägt den Tag der Bühne (27.11.2026), nicht den echten Tag des Aufbaus.
+        JsonNode protokoll = ruf(basis + "/" + mb1.path("id").asText() + "/protokoll", "IK", 200).path("aenderungen");
+        JsonNode eingeloest = null;
+        for (JsonNode a : protokoll) {
+            if (a.path("art").asText().equals("eingeloest")) {
+                eingeloest = a;
+            }
+        }
+        assertThat(eingeloest).as("Protokoll-Zeile eingeloest").isNotNull();
+        assertThat(eingeloest.path("zeit").asText()).as("eingeloest am").startsWith("2026-11-27");
     }
 
     /**
@@ -400,7 +411,7 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(zeile(v, "einstufung_fassung", "EE-1", 1).path("titel").asText()).isEqualTo("Spritzguss: wesentlich");
         assertThat(zeile(v, "einstufung_fassung", "EE-3", 3).path("titel").asText())
                 .isEqualTo("Druckluft: nicht wesentlich");
-        assertThat(zeile(v, "messbedarf", "MB-1", 0).path("titel").asText()).isEqualTo("Messbedarf MB-1 (EE-8): offen");
+        assertThat(zeile(v, "messbedarf", "MB-1", 0).path("titel").asText()).isEqualTo("Messbedarf MB-1 (EE-8): eingelöst");
         assertThat(zeile(v, "berichtsstand", "BR-2026-0001", 2).path("titel").asText())
                 .isEqualTo("Monatsbericht Werk Ahrenberg Oktober 2026");
         assertThat(zeile(v, "berichtsstand", "BR-2027-0001", 1).path("titel").asText())

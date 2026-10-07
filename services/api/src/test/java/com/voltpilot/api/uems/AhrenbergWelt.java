@@ -120,7 +120,7 @@ final class AhrenbergWelt {
     /** Der Augenblick der zuletzt gestellten Uhr ({@link #uhr}). */
     private Instant buehne;
     private static final List<String> VERLAEUFE = List.of("massnahme_aenderung", "abweichung_aenderung",
-            "energieziel_aenderung");
+            "energieziel_aenderung", "messbedarf_aenderung");
 
     /**
      * @param root  eine Verbindung als Eigentümer (ohne RLS) für die direkt geschriebenen Stände
