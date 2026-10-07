@@ -12,6 +12,7 @@ import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -237,22 +238,107 @@ class DemoRundgangAufbau {
 
         // Runde 4 - Demo-Füllung Verbessern (Konzept v1 §4.8, Entscheid 16): braucht die Monatswerte von Runde 3.
         DemoVerbessernReferenz.fuellen(mvc, root);
+
+        // Nachweisen läuft erst NACH Verbessern (Review #1454 M2): dessen eigene Wartezeit (KorrekturKaskade#offen)
+        // sorgt dafür, dass die Kaskade hier wirklich leer ist, statt vom Takt der Demo-API abzuhängen.
+        nachweisenReferenz(root);
+        mappeWeitergeben();
     }
 
-    /** Die Kaskade, bis kein Anlass mehr offen ist - in der API erledigt das ihr Takt (je Lauf höchstens 50). */
+    /**
+     * Runde 4 - Demo-Füllung Nachweisen (Konzept n1 §4.10, Entscheid 20): jeder offene Anstoß wird beantwortet, wie es
+     * eine sorgfältige Energiemanagerin täte. Dieser Lauf verarbeitet die Kaskade ohne Berichts-Naht (Surefire; mit ihr
+     * bildete jede der rund 500 Korrekturen des Bühnen-Bestands den Entwurf der Bewertung neu - Stunden); holt der Takt
+     * der Demo-API eine Korrektur zuerst ab, stößt er Berichte an. Eine Ablesung trägt als Zeitraum ganze Jahre (Befund
+     * für Messen und Berichte): jede Ablesung des Bühnen-Bestands trifft den Monatsbericht Oktober 2026, obwohl sein Wert
+     * bleibt. Ändert
+     * die Korrektur den Wert ihrer Messstelle in diesem Bericht nicht (Vergleich Entwurf gegen gültigen Stand, nur die
+     * Quellen des Stands), verwirft Ines Kaltenbach den Anstoß mit Grund („Änderung nicht übernommen“). Ändert sie ihn,
+     * bleibt die Entscheidung offen - wie die Referenz es am Leistungsvergleich zeigt. Idempotent: danach ist kein Anstoß
+     * mehr offen, der nichts ändert.
+     */
+    private void nachweisenReferenz(JdbcTemplate root) throws Exception {
+        int verworfen = 0;
+        int offen = 0;
+        for (JsonNode b : lies("/api/v1/berichte?stichtag=2029-04-30").path("berichte")) {
+            String kennung = b.path("kennung").asText();
+            List<JsonNode> anstoesse = new ArrayList<>();
+            lies("/api/v1/berichte/" + kennung).path("anstoesse").forEach(a -> {
+                if (a.path("zustand").asText().equals("offen")) anstoesse.add(a);
+            });
+            if (anstoesse.isEmpty()) {
+                continue;
+            }
+            // Geändert ist eine Quelle, die der Stand schon trägt und deren Wert der Entwurf anders nennt.
+            Set<String> geaendert = new java.util.HashSet<>();
+            lies("/api/v1/berichte/" + kennung + "/entwurf/vergleich?gegen=" + anstoesse.get(0).path("nr").asInt())
+                    .path("abweichungen").forEach(w -> {
+                        if (!w.path("vorher").isNull()) geaendert.add(w.path("quelle").asText());
+                    });
+            for (JsonNode a : anstoesse) {
+                List<String> messstelle = root.queryForList("SELECT m.kennzeichen FROM messreihe_korrektur k "
+                        + "JOIN messstelle m ON m.tenant_id = k.tenant_id AND m.id = (k.vorschau -> 0 ->> 'messstelle_id')::uuid "
+                        + "WHERE k.tenant_id = ? AND k.kennung = ? AND k.fassung = 1", String.class, TENANT,
+                        a.path("anlass_kennung").asText());
+                if (messstelle.size() != 1 || geaendert.contains(messstelle.get(0))) {
+                    offen++;
+                    continue;
+                }
+                post("/api/v1/berichte/" + kennung + "/anstoesse/" + a.path("id").asText() + "/verwerfen", m("begruendung",
+                        "Die Ablesung an " + messstelle.get(0) + " ändert den Wert dieses Berichts nicht."));
+                verworfen++;
+            }
+        }
+        System.out.println("Rundgang Runde 4 (Nachweisen): " + verworfen + " Anstöße ohne geänderten Wert verworfen, "
+                + offen + " offen.");
+    }
+
+    /**
+     * Runde 5 - Demo-Füllung Nachweisen (Konzept n1, Runde 2, Entscheid 7): eine Mappe „Unterlagen für das Audit“
+     * über alle Gruppen des Verzeichnisses bis zum Stichtag, damit „Weitergeben“ (PR 6) für {@code rundgang} nicht
+     * leer bleibt. Ohne {@code offen}: das Portal selbst stellt zusammen, welche Teile es beim Zusammenstellen als
+     * offen zeigt (Entscheid 4) - dieser Lauf kennt den Stand der Seite nicht und nennt bewusst keinen. Idempotent:
+     * eine Mappe ändert sich nie (Entscheid 7); gibt es schon eine, legt der Lauf keine zweite an.
+     */
+    private void mappeWeitergeben() throws Exception {
+        if (!lies("/api/v1/energiemanagement/mappen").path("mappen").isEmpty()) {
+            return;
+        }
+        List<String> gruppen = List.of("grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation",
+                "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen",
+                "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte");
+        JsonNode mappe = post("/api/v1/energiemanagement/mappen", m("anlass", "audit_von_aussen", "gruppen", gruppen));
+        System.out.println("Rundgang Runde 5 (Nachweisen): Mappe " + mappe.path("id").asText() + " ("
+                + mappe.path("eintraege").asInt() + " Einträge, " + mappe.path("gilt").asInt() + " gültig).");
+    }
+
+    /**
+     * Die Kaskade, bis der Kundenbereich wirklich leer ist (Review #1454 M2): ein Lauf mit {@code anlaesse() == 0}
+     * heißt nur, dass er die Sperre nicht bekam (eine mitlaufende Demo-API hält sie oft) - {@link KorrekturKaskade#offen}
+     * liest ohne Sperre und sagt verlässlich, ob noch etwas offen ist.
+     */
     private int kaskadeLeeren() {
         int summe = 0;
-        for (int i = 0; i < 100; i++) {
+        Instant spaetestens = Instant.now().plus(Duration.ofMinutes(90));
+        int offen;
+        while ((offen = kaskade.offen(TENANT)) > 0) {
+            if (Instant.now().isAfter(spaetestens)) {
+                throw new IllegalStateException("die Kaskade wird nicht leer (" + offen + " Anlässe offen)");
+            }
             KorrekturKaskade.Lauf l = kaskade.lauf(Instant.now());
             if (!l.abgelehnt().isEmpty()) {
                 System.out.println("Rundgang: Kaskade lehnte ab: " + l.abgelehnt());
             }
-            if (l.anlaesse() == 0) {
-                return summe;
-            }
             summe += l.anlaesse();
+            if (l.anlaesse() == 0) {
+                try {
+                    Thread.sleep(5_000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }
-        throw new IllegalStateException("die Kaskade wird nicht leer");
+        return summe;
     }
 
     /** Postleitzahl (Unternehmen und beide Standorte), Lage und Notiz von Werk Lindach — Pflichtfelder, die die Welt leer lässt. */

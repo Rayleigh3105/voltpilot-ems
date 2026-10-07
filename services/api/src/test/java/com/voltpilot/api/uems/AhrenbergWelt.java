@@ -15,12 +15,16 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -97,12 +101,20 @@ final class AhrenbergWelt {
             "bezeichnung", "Bericht internes Audit 2029, unterschrieben",
             "ablage", "QM-Laufwerk, Ordner Energiemanagement/Audits", "kennung", "IA-2029",
             "sha256", "761d45606a2ed3511c91e2a61bf4ba3287dac583b70f43ead3f3d8716233fdeb");
-    private static final Map<String, Object> UNTERWEISUNG = Map.of(
-            "bezeichnung", "Unterweisung Zeitschaltung Werkzeugheizungen, Murat Demirci", "ablage", "Personalsystem",
-            "kennung", "UW-2028-014",
-            "sha256", "5b0d6c3f1e2a4978b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3");
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
+    /** Der erste Zählerstand von MS-20 am 01.10.2024 - derselbe wie im Rundgang ({@link DemoRundgangAufbau}). */
+    private static final long MS20_START = 1_250_000;
     private static final String SHA_GR2 = "3b1f4d86f164c8e54eaa3a9c335975dd54dcbd68b42bbb9c7b24d2195e2a9a2e";
     private static final String SHA_Z5B = "c07dd7a33d2b17df6fece484ec4e08bb50c93326653576cfb1b8dd8dcf8a41f0";
+    /**
+     * Nachweisen PR 8 (Konzept n1, Entscheid 10): das unterschriebene Original von D-0001 Fassung 2. Die Referenzdatei
+     * kennt nur das Original am Dokument (Fassung 1); ohne eigenes Original hieße es unter Fassung 2 „Fassung 1,
+     * unterschrieben“. Annahme wie EP-2026: derselbe Ordner, eigene Kennung.
+     */
+    private static final Map<String, Object> ORIGINAL_F2 = Map.of(
+            "bezeichnung", "Energiepolitik Fassung 2, unterschrieben",
+            "ablage", "QM-Laufwerk, Ordner Energiemanagement/Politik", "kennung", "EP-2029",
+            "sha256", "9d4f3c1a8e6b2d7f0a5c4e3b2d1f0e9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e");
 
     private final MockMvc mvc;
     private final JdbcTemplate root;
@@ -286,13 +298,15 @@ final class AhrenbergWelt {
         // R1, R2: D-0001 und D-0002 am 15.12.2026, entschieden von Robert Falk; bekannt gemacht am 18.12.2026.
         uhr("2026-12-15T10:00:00Z");
         String d1 = dokumentAnlegen("D-0001", "energiepolitik", "Energiepolitik", ORIGINAL, unternehmenBezug());
-        fassung(d1, Map.of("form", "wortlaut", "wortlaut", kopien.get("D-0001").at("/eingang/kopie/wortlaut").asText()));
+        fassung(d1, Map.of("form", "wortlaut", "wortlaut", kopien.get("D-0001").at("/eingang/kopie/wortlaut").asText(),
+                "begruendung", referenzFassung("D-0001", 1).path("begruendung").asText()));
         freigeben(d1, 1, "RF");
         String d2 = dokumentAnlegen("D-0002", "anwendungsbereich", "Anwendungsbereich des Energiemanagements", null,
                 unternehmenBezug());
         fassung(d2, Map.of("form", "wortlaut", "wortlaut", kopien.get("D-0002").at("/eingang/kopie/wortlaut").asText(),
                 "anwendungsbereich", Map.of("standort_ids", List.of(s1.toString(), s2.toString()),
-                        "traeger", List.of("Strom", "Gas"), "ausschluesse", List.of())));
+                        "traeger", List.of("Strom", "Gas"), "ausschluesse", List.of()),
+                "begruendung", referenzFassung("D-0002", 1).path("begruendung").asText()));
         freigeben(d2, 1, "RF");
         uhr("2026-12-18T10:00:00Z");
         for (String weg : List.of("aushang", "intranet")) {
@@ -300,9 +314,9 @@ final class AhrenbergWelt {
                     Map.of("kreis", "alle Mitarbeitenden beider Werke", "weg", weg), 201);
         }
         uhr("2027-12-10T10:00:00Z");
-        for (String d : List.of(d1, d2)) {
-            ruf("POST", BASIS + "/dokumente/" + d + "/geprueft", "IK", Map.of("entschieden_von", rf, "am",
-                    "2027-12-10", "begruendung", "Mit der Jahresplanung 2028 durchgesehen; gilt unverändert."), 200);
+        for (String k : List.of("D-0001", "D-0002")) {
+            ruf("POST", BASIS + "/dokumente/" + dokument.get(k) + "/geprueft", "IK", Map.of("entschieden_von", rf, "am",
+                    "2027-12-10", "begruendung", referenzEintrag(k, "2027-12-10").path("begruendung").asText()), 200);
         }
 
         // AP-11, AP-17, AP-12, AP-18: sechs Kennzahlen, fünf Bezugsbasen mit acht Fassungen, Berichtsstände, die
@@ -311,30 +325,27 @@ final class AhrenbergWelt {
 
         // D-0003 … D-0005 nach der Referenzdatei nummeriert (Anlage-Reihenfolge), freigegeben an ihren Tagen.
         uhr("2028-01-25T09:00:00Z");
-        String d3 = dokumentAnlegen("D-0003", "rechtliche_anforderungen", "Rechtskataster", null, unternehmenBezug());
+        String d3 = dokumentAnlegen("D-0003", "rechtliche_anforderungen", referenzDokument("D-0003").path("titel").asText(),
+                null, unternehmenBezug());
         String d4 = dokumentAnlegen("D-0004", "betrieb", "Kriterien für Betrieb und Instandhaltung — Spritzguss", null,
                 Map.of("art", "energieeinsatz", "energieeinsatz_id", einsatz.get("EE-1").toString()));
-        String d5 = dokumentAnlegen("D-0005", "kompetenz", "Unterweisung Zeitschaltung Werkzeugheizungen",
+        String d5 = dokumentAnlegen("D-0005", "kompetenz", referenzDokument("D-0005").path("titel").asText(),
                 null, Map.of("art", "person", "person_id", person.get("MD")));
         // R8: die Unterweisung von Murat Demirci am 25.01.2028 als Verweis auf das Personalsystem, ohne Überprüfung.
         uhr("2028-01-25T10:00:00Z");
-        fassung(d5, Map.of("form", "verweis", "verweis", UNTERWEISUNG));
+        fassung(d5, verweisFassung("D-0005"));
         freigeben(d5, 1, "IK");
         // R7: D-0004 am Einsatz EE-1 — Verweis auf den Arbeitsplan IH-SG-01 im Instandhaltungssystem.
         uhr("2028-11-10T10:00:00Z");
-        fassung(d4, Map.of("form", "verweis", "verweis", JSON.convertValue(kopien.get("D-0004")
-                .at("/eingang/kopie/verweis"), Map.class)));
+        fassung(d4, verweisFassung("D-0004"));
         freigeben(d4, 1, "IK");
         uhr("2028-11-12T10:00:00Z");
-        ruf("POST", BASIS + "/dokumente/" + d4 + "/bekanntmachungen", "IK",
-                Map.of("kreis", "Schichtführer und Instandhaltung", "weg", "besprechung"), 201);
-        // D-0003 Rechtliche Anforderungen am 05.12.2028 als Verweis auf den Rechtskataster-Dienst.
+        JsonNode unterwiesen = referenzEintrag("D-0004", "2028-11-12");
+        ruf("POST", BASIS + "/dokumente/" + d4 + "/bekanntmachungen", "IK", Map.of("kreis",
+                unterwiesen.path("kreis").asText(), "weg", unterwiesen.path("weg").asText()), 201);
+        // D-0003 Rechtliche Anforderungen am 05.12.2028 als eigener Verweis auf den Rechtskataster-Dienst (RK-AHR).
         uhr("2028-12-05T10:00:00Z");
-        Map<String, Object> kataster = new LinkedHashMap<>(JSON.convertValue(kopien.get("D-0004")
-                .at("/eingang/kopie/verweis"), Map.class));
-        kataster.put("ablage", "Rechtskataster-Dienst");
-        kataster.put("kennung", "RK-2028");
-        fassung(d3, Map.of("form", "verweis", "verweis", kataster));
+        fassung(d3, verweisFassung("D-0003"));
         freigeben(d3, 1, "IK");
 
         // R9, R10: AU-2029-0001 am 22.01.2029 mit Hinweis und Feststellung F-2029-0001; M-2029-0001/-0002; Abschluss
@@ -345,8 +356,8 @@ final class AhrenbergWelt {
         a.put("termin", "2029-01-22");
         a.put("auditor_ids", List.of(person.get("CB")));
         a.put("unabhaengigkeit", "Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.");
-        a.put("was", "Bezugsbasen, Energieziel, Maßnahmen und Grundlagen");
-        a.put("woran", "Energiepolitik D-0001 Fassung 1, Anwendungsbereich D-0002, Aufgaben im Energiemanagement");
+        a.put("was", referenz.at("/audits/0/was").asText());
+        a.put("woran", referenz.at("/audits/0/woran").asText());
         a.put("verantwortlich", sub("IK"));
         audit = ruf("POST", BASIS + "/audits", "IK", a, 201).at("/audit/id").asText();
         uhr("2029-01-22T15:00:00Z");
@@ -357,12 +368,22 @@ final class AhrenbergWelt {
         uhr("2029-01-23T10:00:00Z");
         Map<String, Object> f = new LinkedHashMap<>();
         f.put("quelle", Map.of("art", "internes_audit", "audit_id", audit));
-        f.put("wortlaut", "Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt.");
-        f.put("vorgabe", Map.of("wortlaut", "„Wir legen fest, wer im Energiemanagement wofür zuständig ist.“"));
+        JsonNode rf1 = referenz.at("/feststellungen/0");
+        f.put("wortlaut", rf1.path("wortlaut").asText());
+        f.put("vorgabe", Map.of("dokument_id", dokument.get("D-0001"), "fassung", 1, "wortlaut",
+                rf1.at("/vorgabe/wortlaut").asText()));
+        f.put("bezug", Map.of("aufgabe", rf1.at("/bezug/aufgabe").asText(), "objekte", texte(rf1.at("/bezug/objekte"))));
         f.put("festgestellt_von", person.get("CB"));
         f.put("festgestellt_am", "2029-01-22");
         f.put("verantwortlich", sub("JW"));
         feststellung = ruf("POST", BASIS + "/feststellungen", "IK", f, 201).at("/feststellung/id").asText();
+        // Die drei Einträge der Referenz: sofort behoben (23.01.), Ursache und ähnliche Fälle (beide 25.01.2029).
+        for (JsonNode e : rf1.path("eintraege")) {
+            uhr(e.path("am").asText() + "T11:00:00Z");
+            ruf("POST", BASIS + "/feststellungen/" + feststellung + "/eintraege", "IK", Map.of("art",
+                    e.path("art").asText(), "wortlaut", e.path("text").asText(), "person_id",
+                    person.get(e.path("person").asText()), "am", e.path("am").asText()), 201);
+        }
         uhr("2029-01-26T10:00:00Z");
         massnahme(referenz.at("/massnahmen_1_10/0"));
         uhr("2029-01-29T10:00:00Z");
@@ -372,6 +393,102 @@ final class AhrenbergWelt {
                 "am", "2029-01-31", "bericht", AUDITBERICHT, "zusammenfassung", "Ein Hinweis, eine Feststellung; Bericht "
                 + "unterschrieben von Claudia Berger am 30.01.2029.", "massnahmen", List.of(Map.of("hinweis", 1,
                 "massnahme", "M-2029-0002"))), 200);
+    }
+
+    /**
+     * Nachweisen PR 8 (Konzept n1 §4.10, Entscheid 20): der Monatsbericht Oktober 2026 (BR-2026-0001) wie in der
+     * Referenz - Stand Nr. 1 am 10.11.2026, eine Korrektur am 12.11.2026 (Ablesefehler 60 kWh), Stand Nr. 2 am
+     * 16.11.2026. Im Ziel {@link Ziel#SEED} mit Werten: die Ablesungen an MS-20 vom 01.10.2024 bis 01.11.2026, dieselbe
+     * Reihe wie {@link DemoRundgangAufbau#reihe} (der Rundgang trägt sie danach noch einmal ein - eine Wiederholung, die
+     * nichts schreibt, statt zehn Korrekturen in echter Zeit mit Anstößen am Bericht); MS-12 der Referenz gibt es im
+     * Seed nicht, die Geschichte trägt darum MS-20. Die Kennung der Korrektur zählt nach den Ablesungen weiter
+     * (Referenz K-2026-0007). Vor den Fassungen der Bezugsbasen: die Korrektur liegt in der Referenzperiode von
+     * BB-0001, die Referenz kennt dort keinen Anstoß. Im Ziel {@link Ziel#NEU} (ohne MS-20) bildet Nr. 2 den Entwurf neu.
+     */
+    private void monatsberichtOktober2026() throws Exception {
+        boolean mitWerten = ziel == Ziel.SEED;
+        if (mitWerten) {
+            ablesungenMs20("2026-11-02T08:00:00Z", YearMonth.of(2026, 10), 60);
+            kaskadeLeeren("2026-11-02T08:30:00Z");
+        }
+        berichtAnlegen("2026-11-10T07:55:00Z", "BR-2026-0001", Map.of("vorlage", "monatsbericht_standort",
+                "geltung_id", s1.toString(), "zeitraum", "2026-10"));
+        berichtFreigeben("BR-2026-0001", "2026-11-10T08:02:00Z", false);
+        if (mitWerten) {
+            JsonNode k = referenz.at("/korrekturen/0");
+            AblesungService ablesungen = bean(AblesungService.class);
+            ablesungen.uhrStellen(Clock.fixed(Instant.parse("2026-11-12T09:05:00Z"), ZoneOffset.UTC));
+            try {
+                String zeit = YearMonth.of(2026, 11).atDay(1).atStartOfDay(BERLIN).toOffsetDateTime().toString();
+                // Der Zeitpunkt roh im Pfad (wie AblesungApiTest) - MockMvc kodiert die Vorlage selbst.
+                ruf("POST", "/api/v1/messstellen/MS-20/ablesungen/" + zeit + "/berichtigung", "IK", Map.of("stand", zahl(ms20Stand(YearMonth.of(2026, 10))), "begruendung",
+                        k.path("begruendung").asText()), 200);
+            } finally {
+                ablesungen.uhrStellen(Clock.systemUTC());
+            }
+            kaskadeLeeren("2026-11-12T09:05:33Z");
+        }
+        // Nr. 2: der Entwurf neu gebildet nach der Korrektur (Referenz: Datenstand 12.11.2026 10:05:33), freigegeben am
+        // 16.11.2026; die Freigabe erledigt den Anstoß an Nr. 1.
+        entwurfNeuBilden("BR-2026-0001", mitWerten ? "2026-11-12T09:05:33Z" : "2026-11-16T13:20:00Z");
+        berichtFreigeben("BR-2026-0001", "2026-11-16T13:20:00Z", false);
+    }
+
+    /**
+     * Die Ablesungen an MS-20 bis zum Ende des Monats {@code bis} über die Route, eingetragen am {@code am}; die letzte
+     * mit {@code fehler} kWh zu viel (der Ablesefehler, den die Korrektur danach berichtigt).
+     */
+    private void ablesungenMs20(String am, YearMonth bis, long fehler) throws Exception {
+        AblesungService ablesungen = bean(AblesungService.class);
+        ablesungen.uhrStellen(Clock.fixed(Instant.parse(am), ZoneOffset.UTC));
+        try {
+            ablesungMs20(YearMonth.of(2024, 10).atDay(1), MS20_START);
+            for (YearMonth m : DemoRundgangAufbau.reihe(bis).keySet()) {
+                ablesungMs20(m.plusMonths(1).atDay(1), ms20Stand(m) + (m.equals(bis) ? fehler : 0));
+            }
+        } finally {
+            ablesungen.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    private void ablesungMs20(LocalDate tag, long stand) throws Exception {
+        String zeit = tag.atStartOfDay(BERLIN).toOffsetDateTime().toString();
+        var r = mvc.perform(request(HttpMethod.POST, "/api/v1/messstellen/MS-20/ablesungen").with(authentication(token("IK")))
+                .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(Map.of("zeitpunkt", zeit,
+                        "stand", zahl(stand))))).andReturn().getResponse();
+        assertThat(r.getStatus()).as("Ablesung MS-20 " + zeit + " " + r.getContentAsString(StandardCharsets.UTF_8))
+                .isIn(200, 201);
+    }
+
+    /** Der Zählerstand von MS-20 am Ende des Monats {@code m} - die Reihe des Rundgangs ab 1.250.000 am 01.10.2024. */
+    private static long ms20Stand(YearMonth m) {
+        long stand = MS20_START;
+        for (var e : DemoRundgangAufbau.reihe(m).entrySet()) {
+            stand += e.getValue()[0];
+        }
+        return stand;
+    }
+
+    private static String zahl(long n) {
+        return String.format(Locale.GERMANY, "%,d", n);
+    }
+
+    /** Wie ein Takt der Kaskade, bis kein Anlass mehr offen ist - am Augenblick {@code am} der Bühne. */
+    private void kaskadeLeeren(String am) {
+        uhr(am);
+        KorrekturKaskade kaskade = bean(KorrekturKaskade.class);
+        for (int i = 0; i < 100; i++) {
+            KorrekturKaskade.Lauf l = kaskade.lauf(Instant.parse(am));
+            assertThat(l.abgelehnt()).as("Kaskade am " + am).isEmpty();
+            if (l.anlaesse() == 0) {
+                return;
+            }
+        }
+        throw new IllegalStateException("die Kaskade wird nicht leer");
+    }
+
+    private <T> T bean(Class<T> typ) {
+        return mvc.getDispatcherServlet().getWebApplicationContext().getBean(typ);
     }
 
     /** AP-11/12/16/17/18 der Referenzdatei 1.9 — nur, was das Verzeichnis und die Managementbewertung lesen. */
@@ -389,6 +506,7 @@ final class AhrenbergWelt {
             JsonNode b = ruf("POST", "/api/v1/kennzahlen/" + id + "/bezugsbasen", "IK", null, 201);
             basis.put(b.path("kennzeichen").asText(), UUID.fromString(b.path("id").asText()));
         }
+        monatsberichtOktober2026();
         bezugsbasisFassung(basis.get("BB-0001"), 1, "2026-11-01", "2027-10-31", "2026-11-02T10:00:00Z");
         bezugsbasisFassung(basis.get("BB-0001"), 2, "2027-11-01", null, "2027-11-25T10:00:00Z");
         bezugsbasisFassung(basis.get("BB-0002"), 1, "2026-11-01", "2026-11-30", "2026-11-02T10:00:00Z");
@@ -407,13 +525,9 @@ final class AhrenbergWelt {
         // für Dezember 2027 keine; die Zahlen der Referenzdatei sind Annahmen (VB-2028-0001 „annahme“).
         // Die erste Bewertung am 01.12.2026 (alte Welt 24.11.2026, Referenz 09.11.2026). Die Rangliste liest die Fassung
         // des Betrachtungsumfangs, die „heute“ gilt (ab 04.11.2026) — auf der Bühne über die Uhr des Umfangs.
-        berichtAnlegen("2026-11-05T09:50:00Z", "BR-2026-0001", Map.of("vorlage", "monatsbericht_standort",
-                "geltung_id", s1.toString(), "zeitraum", "2026-10"));
-        berichtFreigeben("BR-2026-0001", "2026-11-05T10:00:00Z", false);
         berichtAnlegen("2026-12-01T09:50:00Z", "BR-2026-0002", Map.of("vorlage", "energetische_bewertung",
                 "geltung_id", unternehmen.toString()));
         berichtFreigeben("BR-2026-0002", "2026-12-01T10:00:00Z", false);
-        berichtFreigeben("BR-2026-0001", "2026-12-20T10:00:00Z", true);
         berichtFreigeben("BR-2026-0002", "2027-02-10T10:00:00Z", true);
         berichtAnlegen("2027-11-24T09:50:00Z", "BR-2027-0001", Map.of("vorlage", "energetische_bewertung",
                 "geltung_id", unternehmen.toString()));
@@ -744,8 +858,8 @@ final class AhrenbergWelt {
         // B6 13.02.2029: „geprüft, bleibt“ an D-0002 mit dem Beschluss.
         uhr("2029-02-13T10:00:00Z");
         ruf("POST", BASIS + "/dokumente/" + dokument.get("D-0002") + "/geprueft", "IK", Map.of("entschieden_von",
-                person.get("RF"), "am", "2029-02-13", "begruendung", "Beschluss B6 der Managementbewertung 2028: bleibt "
-                + "unverändert.", "beschluss_kennung", "BR-2029-0001/B6"), 200);
+                person.get("RF"), "am", "2029-02-13", "begruendung", referenzEintrag("D-0002", "2029-02-13")
+                .path("begruendung").asText(), "beschluss_kennung", "BR-2029-0001/B6"), 200);
         // B2 14.02.2029: M-2029-0003 mit Herkunft `managementbewertung`.
         uhr("2029-02-14T10:00:00Z");
         massnahme(referenz.at("/massnahmen_1_10/2"));
@@ -786,20 +900,29 @@ final class AhrenbergWelt {
                 "2029-03-01", "begruendung", referenz.at("/massnahmen_1_10/0/umgesetzt_begruendung").asText()), 200);
         // B3 10.03./20.03.2029: D-0001 Fassung 2, entschieden von Robert Falk.
         uhr("2029-03-10T10:00:00Z");
-        fassung(dokument.get("D-0001"), Map.of("form", "wortlaut", "wortlaut", "Energiepolitik, ergänzt um Einkauf und "
-                + "Planung.", "begruendung", "Beschluss B3 der Managementbewertung 2028", "beschluss_kennung",
-                "BR-2029-0001/B3"));
+        JsonNode f2 = referenzFassung("D-0001", 2);
+        fassung(dokument.get("D-0001"), Map.of("form", "wortlaut", "wortlaut", f2.path("wortlaut").asText(),
+                "begruendung", f2.path("begruendung").asText(), "beschluss_kennung", f2.path("beschluss").asText(),
+                "original", ORIGINAL_F2));
         uhr("2029-03-20T10:00:00Z");
         freigeben(dokument.get("D-0001"), 2, "RF");
-        // R11 15.04.2029: Wirksamkeit Stand Nr. 1 „wirksam“ — eine Person sagt es. Am selben Tag schließt Ines
-        // Kaltenbach M-2029-0001 ohne Messung ab („nicht messbar“, massnahmen_1_10).
+        // 25.03.2029: Fassung 2 bekannt gemacht wie Fassung 1 - alle Mitarbeitenden beider Werke, Aushang und Intranet.
+        uhr("2029-03-25T10:00:00Z");
+        for (String weg : List.of("aushang", "intranet")) {
+            ruf("POST", BASIS + "/dokumente/" + dokument.get("D-0001") + "/bekanntmachungen", "IK",
+                    Map.of("kreis", referenzEintrag("D-0001", "2029-03-25").path("kreis").asText(), "weg", weg), 201);
+        }
+        // R11 15.04.2029: Wirksamkeit Stand Nr. 1 „wirksam“ — eine Person sagt es.
+        uhr("2029-04-15T10:00:00Z");
+        ruf("POST", BASIS + "/feststellungen/" + feststellung + "/wirksamkeit", "IK", Map.of("ergebnis", "wirksam",
+                "begruendung", referenz.at("/feststellungen/0/wirksamkeit/0/begruendung").asText(), "entschieden_von",
+                person.get("IK")), 201);
+        // Am selben Tag schließt Ines Kaltenbach M-2029-0001 ohne Messung ab („nicht messbar“, massnahmen_1_10) — nach
+        // der Wirksamkeit (Review #1454 M1): die Kopie der Wirksamkeit hält M-2029-0001 noch „umgesetzt“ fest.
         uhr(MASSNAHME_BEWERTET.get("M-2029-0001"));
         JsonNode m29 = referenz.at("/massnahmen_1_10/0/bewertungen/0");
         ruf("POST", "/api/v1/massnahmen/" + id("massnahme", "M-2029-0001") + "/bewertungen", m29.path("person").asText(),
                 Map.of("ergebnis", m29.path("ergebnis").asText(), "begruendung", m29.path("begruendung").asText()), 201);
-        ruf("POST", BASIS + "/feststellungen/" + feststellung + "/wirksamkeit", "IK", Map.of("ergebnis", "wirksam",
-                "begruendung", "Aufgabe seit 01.03.2029 festgelegt (Ines Kaltenbach, Vertretung Jonas Wendlinger); die "
-                + "Freigaben seit März nennen die zuständige Person.", "entschieden_von", person.get("IK")), 201);
     }
 
     // ================================================================================ Welt: Helfer
@@ -822,6 +945,36 @@ final class AhrenbergWelt {
 
     private static Map<String, Object> unternehmenBezug() {
         return Map.of("art", "unternehmen");
+    }
+
+    /** Ein Dokument der Referenzdatei ({@code dokumente}) nach Kennzeichen - Titel, Fassungen und Einträge. */
+    private JsonNode referenzDokument(String kennzeichen) {
+        for (JsonNode d : referenz.path("dokumente")) {
+            if (d.path("kennzeichen").asText().equals(kennzeichen)) return d;
+        }
+        throw new IllegalStateException("Dokument fehlt in der Referenzdatei: " + kennzeichen);
+    }
+
+    private JsonNode referenzFassung(String kennzeichen, int nr) {
+        return referenzDokument(kennzeichen).path("fassungen").get(nr - 1);
+    }
+
+    /** Der Eintrag eines Dokuments der Referenzdatei an einem Tag (bekannt gemacht, geprüft, bleibt). */
+    private JsonNode referenzEintrag(String kennzeichen, String am) {
+        for (JsonNode e : referenzDokument(kennzeichen).path("eintraege")) {
+            if (e.path("am").asText().equals(am)) return e;
+        }
+        throw new IllegalStateException("Eintrag fehlt in der Referenzdatei: " + kennzeichen + " am " + am);
+    }
+
+    /** Fassung 1 als Verweis wie in der Referenzdatei - Verweis und Begründung; die Prüfsumme bildet der Dienst. */
+    private Map<String, Object> verweisFassung(String kennzeichen) {
+        JsonNode f = referenzFassung(kennzeichen, 1);
+        Map<String, Object> verweis = new LinkedHashMap<>();
+        f.path("verweis").fields().forEachRemaining(e -> {
+            if (!e.getValue().isNull()) verweis.put(e.getKey(), e.getValue().asText());
+        });
+        return Map.of("form", "verweis", "verweis", verweis, "begruendung", f.path("begruendung").asText());
     }
 
     private String dokumentAnlegen(String kennzeichen, String art, String titel, Map<String, Object> beleg,
@@ -1022,26 +1175,32 @@ final class AhrenbergWelt {
         assertThat(ruf("POST", "/api/v1/berichte", "IK", anfrage, 201).path("kennung").asText()).isEqualTo(kennung);
     }
 
+    /** Den Entwurf zum Augenblick {@code am} neu bilden ({@link BerichtAbzugBildung#bilden}, wie die Kaskade). */
+    private void entwurfNeuBilden(String kennung, String am) throws Exception {
+        uhr(am);
+        UUID bericht = root.queryForObject("SELECT id FROM bericht WHERE tenant_id = ? AND kennung = ?", UUID.class,
+                tenant, kennung);
+        BerichtAbzugBildung bildung = mvc.getDispatcherServlet().getWebApplicationContext()
+                .getBean(BerichtAbzugBildung.class);
+        // Wie ein Lauf der Kaskade: der Kundenbereich im Kontext, die Bildung auf einer eigenen Verbindung.
+        com.voltpilot.api.tenant.TenantContext.set(tenant);
+        try (java.sql.Connection con = root.getDataSource().getConnection()) {
+            bildung.bilden(con, bericht, Instant.parse(am), "kaskade");
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
+    }
+
     /**
      * Ein Berichtsstand über Entwurf und {@code POST …/freigeben} am Tag {@code am}. {@code neuBilden}: vorher den
      * Entwurf zum Tag neu bilden ({@link BerichtAbzugBildung#bilden}, wie die Kaskade nach einer Korrektur) — ohne
      * geänderte Quelle bliebe der Entwurf der von Nr. 1, und die Freigabe gäbe Nr. 1 zurück statt Nr. 2.
      */
     private void berichtFreigeben(String kennung, String am, boolean neuBilden) throws Exception {
-        uhr(am);
         if (neuBilden) {
-            UUID bericht = root.queryForObject("SELECT id FROM bericht WHERE tenant_id = ? AND kennung = ?", UUID.class,
-                    tenant, kennung);
-            BerichtAbzugBildung bildung = mvc.getDispatcherServlet().getWebApplicationContext()
-                    .getBean(BerichtAbzugBildung.class);
-            // Wie ein Lauf der Kaskade: der Kundenbereich im Kontext, die Bildung auf einer eigenen Verbindung.
-            com.voltpilot.api.tenant.TenantContext.set(tenant);
-            try (java.sql.Connection con = root.getDataSource().getConnection()) {
-                bildung.bilden(con, bericht, Instant.parse(am), "kaskade");
-            } finally {
-                com.voltpilot.api.tenant.TenantContext.clear();
-            }
+            entwurfNeuBilden(kennung, am);
         }
+        uhr(am);
         String datenstand = ruf("/api/v1/berichte/" + kennung + "/entwurf", "IK", 200).path("datenstand").asText();
         ruf("POST", "/api/v1/berichte/" + kennung + "/freigeben", "IK", Map.of("entwurf_datenstand", datenstand), 201);
     }

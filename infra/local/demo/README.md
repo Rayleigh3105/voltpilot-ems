@@ -44,10 +44,34 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   BB-0001 Fassung 2 trägt die Regression der Referenzwelt, KZ-0021 bis KZ-0023 rechnen mit passenden Zählern.
   Die Flächen der echten Uhr zeigen davon nichts vor seiner Zeit (Stichtag-Grenze an Bezugswerten, Werten einer Messstelle, Ablesungen und Lückenlauf).
   Die Kennzahlen rechnet die Bühne (K1): der Rundgang leert die Kaskade der eingetragenen Ablesungen und rechnet danach einmal auf der Bühne.
-- Demo-Füllung Verbessern (`DemoVerbessernReferenz`, letzter Schritt, braucht die Monatswerte davor): Verbessern zeigt die Referenzwelt.
+- Demo-Füllung Verbessern (`DemoVerbessernReferenz`, braucht die Monatswerte von Runde 3, läuft vor Nachweisen): Verbessern zeigt die Referenzwelt.
   Die Welt (`AhrenbergWelt`) trägt schon Verantwortliche, Anker, Energieziel, Art, Verläufe am Tag der Referenz, die Bewertung von M-2029-0001 und die drei Auffälligkeiten der Referenz mit Antwort; der Rundgang prüft mit dem Leser der Naht, dass KZ-0004 genau im Dezember 2027, Juli 2028 und März 2029 „schlechter“ liegt (sonst bricht er ab), und lässt die Naht den März 2029 mit dem 07.04.2029 vermerken (offen, Entscheid 16).
   Einen alten Bestand gleicht derselbe Schritt an: vier eingefrorene Zeilen als Demo-Korrektur (Option A, `session_replication_role = replica`, nur solange sie abweichen), Geplantes per Update, fehlende Verlaufszeilen als Anhang.
-  Ein zweiter Lauf schreibt nichts.
+  Ein zweiter Lauf schreibt nichts. Wartet zuerst, bis die Korrektur-Kaskade des Kundenbereichs wirklich leer ist (`KorrekturKaskade#offen`, nicht nur ein Lauf mit 0 Anlässen - der sagt nur, dass er die Sperre nicht bekam).
+- Demo-Füllung Nachweisen (nach Verbessern): jeder offene Anstoß an einem Bericht, dessen Entwurf keine Abweichung zum Stand zeigt, wird mit Grund verworfen.
+  Läuft erst, nachdem Verbessern fertig ist und dieselbe Prüfung die Kaskade wirklich leer sieht; `demo.sh rundgang` schaltet dafür zusätzlich die Berichts-Naht ab, damit aus den Ablesungen des Rundgangs gar kein Anstoß entsteht.
+- Demo-Füllung Nachweisen: eine Mappe „Unterlagen für das Audit“ über alle Gruppen des Verzeichnisses, damit „Weitergeben“ (PR 6) nicht leer bleibt.
+  Idempotent über die Liste `…/energiemanagement/mappen`: gibt es schon eine, legt der Lauf keine zweite an (eine Mappe ändert sich nie).
+
+## Reihenfolge des Aufbaus
+
+Der frische Weg (`demo.sh zuruecksetzen`, danach `demo.sh rundgang`) ergibt die Referenzwelt für Verbessern und Nachweisen nur in dieser Reihenfolge:
+
+1. Die API ist gesund (Flyway durch), dann spielt `demo-seed` den Seed 1.4 ein.
+   Die API braucht K1 (Kennzahl-Lauf auf der Bühne) und die Berichts-Naht (`VOLTPILOT_UEMS_BERICHTE_ENABLED`, Vorgabe an).
+2. Die Welt (`PruefumgebungAhrenbergAufbau`) liest Stammdaten und MS-20 aus dem Seed.
+   Sie trägt die Ablesungen an MS-20 vom 01.10.2024 bis 01.11.2026 auf der Bühne ein (am 02.11.2026), bildet danach den Monatsbericht Oktober 2026 (Nr. 1 am 10.11., Korrektur des Ablesefehlers am 12.11., Nr. 2 am 16.11.2026) und erst dann die Fassungen der Bezugsbasen.
+   Die Korrektur liegt in der Referenzperiode von BB-0001; vor den Fassungen stößt sie keine Bezugsbasis an.
+   In diesem Lauf ist die Berichts-Naht an (Surefire schaltet sie sonst ab), damit der Anstoß an Nr. 1 nicht vom Takt der API abhängt.
+3. Der Rundgang (`DemoRundgangAufbau`) trägt dieselbe Reihe an MS-20 noch einmal ein: bis Oktober 2026 sind das Wiederholungen, die nichts schreiben.
+   Die Reihe hat eine Quelle, `DemoRundgangAufbau.reihe` mit dem Startstand 1.250.000; die Welt liest sie mit.
+   Wer Reihe oder Startstand ändert, bekommt sonst wieder Korrekturen in echter Zeit mit Anstößen am Monatsbericht.
+4. Verbessern läuft, danach erst Nachweisen - beide warten auf eine wirklich leere Kaskade (`KorrekturKaskade#offen`), Nachweisen zusätzlich auf das Ende von Verbessern.
+5. Das Konto `rundgang` entsteht nach dem Rundgang (`POST /api/v1/benutzer`).
+
+Der Takt der Demo-API (Korrektur-Kaskade alle 5 Minuten) läuft während Welt und Rundgang mit; `demo.sh rundgang` startet die api für ihre Dauer mit stummer Verbesserungs- **und** Berichts-Naht neu (`VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false`, `VOLTPILOT_UEMS_BERICHTE_ENABLED=false`, beide in `docker-compose.pruefumgebung.yml` durchgereicht, Vorgabe an), danach wieder mit beiden Nähten an.
+Ohne die stumme Berichts-Naht holte die API während des Rundgangs sonst Korrekturen des Bühnen-Bestands selbst ab und stieße Berichte an, bevor Verbessern und Nachweisen die Kaskade sehen - ihr Endzustand hinge dann vom Takt ab (M2, Review #1454).
+Eine Ablesung trägt als Zeitraum ganze Jahre, darum träfe jede spätere Ablesung an MS-20 den Monatsbericht Oktober 2026, auch wenn sein Wert bleibt (Befund für Messen und Berichte); mit abgeschalteter Berichts-Naht entsteht daraus während des Rundgangs aber gar kein Anstoß.
 
 ## Was die Datei `docker-compose.demo.yml` ändert
 

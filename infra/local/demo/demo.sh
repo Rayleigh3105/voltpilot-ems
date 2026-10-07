@@ -145,10 +145,10 @@ api_gesund() { # wartet höchstens 15 Minuten, bis die api antwortet
   exit 1
 }
 
-# Die api mit ein- oder ausgeschalteter Auffälligkeits-Naht neu starten (nur dieser Dienst), dann nginx frisch
-# verbinden - es löst `api` beim Start auf.
+# Die api mit ein- oder ausgeschalteter Auffälligkeits- und Berichts-Naht neu starten (nur dieser Dienst), dann
+# nginx frisch verbinden - es löst `api` beim Start auf.
 api_naht() { # api_naht true|false
-  VOLTPILOT_UEMS_VERBESSERUNG_ENABLED="$1" compose up -d --no-deps api
+  VOLTPILOT_UEMS_VERBESSERUNG_ENABLED="$1" VOLTPILOT_UEMS_BERICHTE_ENABLED="$1" compose up -d --no-deps api
   api_gesund
   if docker inspect voltpilot-portal >/dev/null 2>&1; then
     docker restart voltpilot-portal >/dev/null
@@ -162,10 +162,11 @@ rundgang_anlegen() {
   # in `start` läuft sie schon mit LIVE).
   compose up -d --build --no-deps edge-mess-ahrenberg-halle1
   jdk21
-  # Demo-Füllung Verbessern: der Rundgang rechnet die Bühne bis 03/2029 mit stummer Naht und vermerkt die
-  # Auffälligkeiten danach mit ihrem Tag. Die Demo-API läuft so lange ebenfalls mit stummer Naht - ihr Takt (Kaskade alle
-  # fünf Minuten) rechnet die Ablesungen des Rundgangs sonst nebenher und vermerkt jeden Monat mit der Bühnen-Uhr; sie
-  # bleibt aber erreichbar (die Mess-Box Halle 1 lernt MS-03 von ihr).
+  # Demo-Füllung Verbessern und Nachweisen: der Rundgang rechnet die Bühne bis 03/2029 mit stummer Auffälligkeits-Naht
+  # und vermerkt die Auffälligkeiten danach mit ihrem Tag; Nachweisen läuft erst danach. Die Demo-API läuft so lange
+  # ebenfalls mit beiden Nähten stumm (Review #1454 M2) - ihr Takt (Kaskade alle fünf Minuten) rechnete die Ablesungen
+  # des Rundgangs sonst nebenher, vermerkte jeden Monat mit der Bühnen-Uhr und stieße Berichte an, bevor Verbessern
+  # und Nachweisen die Kaskade sehen; sie bleibt aber erreichbar (die Mess-Box Halle 1 lernt MS-03 von ihr).
   api_naht false
   trap 'api_naht true' EXIT
   (cd "$WURZEL/services/api" && ./mvnw -q test -Dtest=DemoRundgangAufbau -Dsurefire.failIfNoSpecifiedTests=false \
