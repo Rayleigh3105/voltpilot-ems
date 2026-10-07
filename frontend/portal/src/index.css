@@ -3457,6 +3457,19 @@ button.vp-cl-item.is-off .vp-cl-label {
    Ladereihenfolge (dieselbe Disziplin wie `.vp-seg.vp-seg-compact`). */
 .vp-seg.vp-bereich-tabs {
   margin-bottom: var(--vp-space-4);
+  /* Seit „Fernwartung" drei Reiter: bei 320 px scrollt die Leiste in sich,
+     statt die Seite zu verbreitern (dieselbe Regel wie `.vp-bereich-tabs`
+     der Anlagen-Bereiche). */
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vp-seg.vp-bereich-tabs::-webkit-scrollbar {
+  display: none;
+}
+.vp-seg.vp-bereich-tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 /* Title + one explaining sentence INSIDE a padding-0 table card (the shared
    .vp-section-head is a flex row for h2 + actions and carries no padding, so it

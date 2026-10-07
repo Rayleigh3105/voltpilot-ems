@@ -38,6 +38,8 @@ import {
   komponenteHash,
   parseKomponente,
   boxSeiteHash,
+  fernwartungHash,
+  parseFernwartungBox,
 } from './nav';
 import { anlageSidebar } from './anlageNav';
 import { anlageSurface } from './surface';
@@ -498,13 +500,16 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     expect(navPageFor('mandanten')).toBe('mandanten');
     expect(isGeraeteBereich('edge-updates')).toBe(true);
     expect(isGeraeteBereich('geraete-registry')).toBe(true);
+    expect(isGeraeteBereich('fernwartung')).toBe(true);
+    expect(navPageFor('fernwartung')).toBe('edge-updates');
     expect(isGeraeteBereich('optimizer')).toBe(false);
   });
 
-  it('nennt die zwei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
+  it('nennt die drei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
     expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
       ['edge-updates', 'Updates'],
       ['geraete-registry', 'Registrierung'],
+      ['fernwartung', 'Fernwartung'],
     ]);
     // Der Wirt IST einer der Tabs - sonst wäre der Bereich ohne Auswahl leer.
     expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
@@ -593,6 +598,14 @@ describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
 
   it('dekodiert eine Referenz, die Sonderzeichen trägt', () => {
     expect(parseGeraetRef('#/geraete-registry?geraet=edge-a%20b')).toBe('edge-a b');
+  });
+
+  it('trägt die gewählte Box der Fernwartung als ?box= und liest sie zurück', () => {
+    expect(fernwartungHash('edge-k7m2xq3')).toBe('#/fernwartung?box=edge-k7m2xq3');
+    expect(fernwartungHash(null)).toBe('#/fernwartung');
+    expect(parseFernwartungBox(fernwartungHash('edge-k7m2xq3'))).toBe('edge-k7m2xq3');
+    expect(parseFernwartungBox('#/fernwartung')).toBeNull();
+    expect(parseRoute('#/fernwartung?box=edge-k7m2xq3')).toEqual(route('fernwartung'));
   });
 
   // ⚠ Der No-Orphan-Wächter: der frühere SCHREIBER ist ersatzlos entfallen.

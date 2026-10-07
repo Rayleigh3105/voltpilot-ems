@@ -48,7 +48,7 @@ Geräteansichten führen über stabile Box-/Gerätereferenzen. Die physische Zie
 
 Die Steuerung hat drei Reiter ([Konzept](konzepte/steuerung/README.md), [Umsetzung](agents/portal/steuerung-neu-drei-reiter.md)): **Geräte** (in einem Satz, was jetzt läuft und warum; das Tagesbild mit Gemessenem, Plan und Erwartung; die Geräte als Reihenfolge für Sonnenstrom; je Gerät Aus · Smart · Ein mit Ende; „Was immer gilt“ mit Speicher und Betriebsmodell), **Laden** (Netzanschluss, je Ladepunkt „Womit laden“ und Ladeziel, Fahrzeuge; nur mit Ladepunkt) und **Regeln** (Satzbaukasten mit Probelauf und Folgen, Vorlagen, Szenen, „Heute passiert“). Geräte legt die Steuerung nicht an: ein neu verbundenes Gerät fragt einmal nach seinem Auftrag oder bleibt auf Wunsch „nur gemessen“. Geräteeigenschaften und Messpunktauswahl gehören an die jeweilige Komponente. Änderungen müssen ihre wirkliche Wirkung und Voraussetzungen nennen; Annahme durch die Box, Geräteantwort und gemessene Wirkung bleiben getrennt.
 
-Die Plattform-Geräteverwaltung öffnet mit Updates; Registrierung ist ein weiterer Reiter. Gemeldete Version, zugewiesenes Ziel und neuestes Release sind unterschiedliche Angaben. Eine bestätigte Installation ist nicht automatisch das neueste verfügbare Release.
+Die Plattform-Geräteverwaltung öffnet mit Updates; Registrierung und Fernwartung sind weitere Reiter. Fernwartung (Tunnel je Box, Fenster, Techniker-Zugänge, Protokoll) sieht nur der Plattform-Admin, auf der Box-Seite als Karte in der Plattform-Sicht; der Kunde sieht sie nicht. [Fernwartung](fernwartung.md) Gemeldete Version, zugewiesenes Ziel und neuestes Release sind unterschiedliche Angaben. Eine bestätigte Installation ist nicht automatisch das neueste verfügbare Release.
 
 ## Hilfe und Abbildungen
 

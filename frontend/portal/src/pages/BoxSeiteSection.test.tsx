@@ -4,6 +4,7 @@ import { BoxSeiteSection } from './BoxSeiteSection';
 import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
 import * as auth from '../auth';
 import { adminApi } from '../admin/adminApi';
+import { ApiError } from '../api';
 import { fleetApi } from '../admin/fleetApi';
 import {
   api,
@@ -418,6 +419,11 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
   });
 
   function stubAdmin() {
+    vi.spyOn(adminApi, 'fernwartungBox').mockRejectedValue(
+      new ApiError(404, 'Für edge-45gz7da ist kein Tunnel-Schlüssel hinterlegt.'),
+    );
+    vi.spyOn(adminApi, 'fernwartung').mockRejectedValue(new Error('nicht gebraucht'));
+    vi.spyOn(adminApi, 'fernwartungTechniker').mockResolvedValue([]);
     vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
       {
         deviceId: 'gw',
@@ -466,8 +472,11 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     expect(screen.queryByTestId('box-admin')).toBeNull();
-    // Und die Admin-Reads werden gar nicht erst geholt.
+    // Und die Admin-Reads werden gar nicht erst geholt - auch die
+    // Fernwartung nicht (O3: der Kunde sieht die Fenster nicht).
     expect(adminApi.listDevices).not.toHaveBeenCalled();
+    expect(adminApi.fernwartungBox).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('fw-karte')).toBeNull();
   });
 
   it('zeigt dem PLATTFORM-ADMIN dieselbe Seite PLUS die Plattform-Sicht', async () => {
@@ -484,6 +493,9 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     const teil = within(technik).getByText('Plattform-Sicht (Admin)').closest('[data-technik]') as HTMLElement;
     expect(teil.getAttribute('data-technik')).toBe('plattform');
     expect(within(teil).getByTestId('box-admin')).toBeTruthy();
+    // Die Fernwartung dieser Box: ohne hinterlegten Schlüssel sagt sie das.
+    expect(await within(teil).findByText(/kein Tunnel-Schlüssel hinterlegt/)).toBeTruthy();
+    expect(adminApi.fernwartungBox).toHaveBeenCalledWith('edge-45gz7da');
   });
 
   it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
