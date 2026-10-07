@@ -44,6 +44,10 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   BB-0001 Fassung 2 trägt die Regression der Referenzwelt, KZ-0021 bis KZ-0023 rechnen mit passenden Zählern.
   Die Flächen der echten Uhr zeigen davon nichts vor seiner Zeit (Stichtag-Grenze an Bezugswerten, Werten einer Messstelle, Ablesungen und Lückenlauf).
   Die Kennzahlen rechnet die Bühne (K1): der Rundgang leert die Kaskade der eingetragenen Ablesungen und rechnet danach einmal auf der Bühne.
+- Demo-Füllung Verbessern (`DemoVerbessernReferenz`, letzter Schritt, braucht die Monatswerte davor): Verbessern zeigt die Referenzwelt.
+  Die Welt (`AhrenbergWelt`) trägt schon Verantwortliche, Anker, Energieziel, Art, Verläufe am Tag der Referenz, die Bewertung von M-2029-0001 und die drei Auffälligkeiten der Referenz mit Antwort; der Rundgang prüft mit dem Leser der Naht, dass KZ-0004 genau im Dezember 2027, Juli 2028 und März 2029 „schlechter“ liegt (sonst bricht er ab), und lässt die Naht den März 2029 mit dem 07.04.2029 vermerken (offen, Entscheid 16).
+  Einen alten Bestand gleicht derselbe Schritt an: vier eingefrorene Zeilen als Demo-Korrektur (Option A, `session_replication_role = replica`, nur solange sie abweichen), Geplantes per Update, fehlende Verlaufszeilen als Anhang.
+  Ein zweiter Lauf schreibt nichts.
 
 ## Was die Datei `docker-compose.demo.yml` ändert
 
@@ -74,6 +78,12 @@ Die laufende Demo bleibt, wie sie ist; eine geänderte API läuft daneben auf ei
 - Der Bühnen-Bestand braucht eine Demo-API mit K1 (der Kennzahl-Lauf rechnet in der Prüfumgebung auf der Bühne, PR #1428).
   Ohne K1 rechnet die API Kennzahlen in echter Zeit; die erste neue Ablesung an MS-20, HZ-1, AZ-* oder MS-21/22 erzeugt eine Kaskade über die ganze Reihe bis 2029, trifft Werte mit `berechnet_am` auf der Bühne und hält die Kaskade aller Mandanten an („liegt nicht nach der neuesten Zeile“).
   Reihenfolge: erst die API neu bauen, dann `demo.sh rundgang`.
+- Auffälligkeiten tragen „vermerkt am“ = Uhr des Laufs, der den Monatswert schrieb (`VerbesserungNaht`); danach ist der Tag nicht mehr änderbar.
+  Darum rechnet der Rundgang mit stummer Naht (`voltpilot.uems.verbesserung.enabled=false` nur in seinem Kontext), und `demo.sh rundgang` startet die Demo-API für die Dauer des Rundgangs mit `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED=false` neu (durchgereicht in `docker-compose.pruefumgebung.yml`, Vorgabe an) und danach wieder mit Naht: ihr Takt (Kaskade alle fünf Minuten) rechnete die Ablesungen des Rundgangs sonst nebenher und vermerkte jeden „schlechten“ Monat mit dem Bühnen-Tag 30.04.2029. Angehalten wird sie nicht - die Mess-Box Halle 1 lernt MS-03 von ihr.
+  Mit der Naht schweigen auch die Anstöße am Vorgang (Pfad 1 und 2) - für die Referenz richtig, sie kennt genau einen (K-2028-0001, von der Welt geschrieben).
+  Die mitlaufende API hält oft die Sperre der Kaskade; ein Lauf meldet dann 0 Anlässe, obwohl welche offen sind. Darum wartet `DemoVerbessernReferenz` vor jedem Schreiben, bis `KorrekturKaskade#offen` für Ahrenberg 0 ist, prüft, dass KZ-0004 jeden Monat von 11/2026 bis 03/2029 hat, und endet erst dann - danach hat die API keinen Rückstand, den sie mit eingeschalteter Naht rechnen könnte.
+  Wer den Rundgang anders startet (direkt über Maven), schaltet die Naht der Demo-API vorher selbst ab; steht ein Vermerk schon mit falschem Tag, bricht der Rundgang ab, und nur ein Neuaufbau ist sauber.
+  Reihenfolge beim Neuaufbau: `zuruecksetzen` (Welt), dann der Rundgang mit dem Bühnen-Bestand und erst danach die Vermerke - genau so läuft `demo.sh start`.
 - `demo.sh start --neu` baut das Portal aus dem aktuellen Arbeitsbaum; `start` ohne `--neu` behält das gebaute Portal.
   Plattform-Konten sehen die Plattform-Seiten erst mit #1294 (seit 27.09.2026 im Sammelzweig).
 - Über die Route gibt es Bezugswerte nur für Monate, die in echter Zeit vorbei sind: `bezugsgroesse_wert_abgeschlossen_chk` verlangt Periodenende ≤ `created_at`, und `created_at` setzt die Datenbank.
