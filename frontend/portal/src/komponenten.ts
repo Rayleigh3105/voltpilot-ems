@@ -67,6 +67,7 @@ import { deviceLiveStatus } from './api';
 import { channelLabel } from './channels';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
+import { EV_CHARGER } from './ladepunkte';
 import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
 import { socHerkunft, SOC_HERKUNFT_KANAL } from './socHerkunft';
@@ -1296,6 +1297,17 @@ export function plantModel(
       c.io = { modulGeraetId: modul.id, kanal: b.ioChannel };
       ioKanal.set(c.id, { modul: modul.label, kanal: b.ioChannel });
     }
+  }
+
+  // L1. A charging point is a device of its OWN. The API composes its
+  //    component at the BOX (`ChargerComponentComposer`), but it is read via
+  //    the charger path (`/chargers`) and the Zentrale gives it its own card.
+  //    Without this step the first inverter took it (2.): the wallbox read
+  //    „gemessen über Deye SUN-12K", and the Deye card carried the WALLBOX's
+  //    name. A charger adopted from its own reported source (1.) keeps it.
+  for (const c of components) {
+    if (assigned.has(c.id)) continue;
+    if (entities.find((e) => e.id === c.entityId)?.entityType === EV_CHARGER) assigned.add(c.id);
   }
 
   // 2. The inverter (gateway) feeds the composed entities — those not adopted

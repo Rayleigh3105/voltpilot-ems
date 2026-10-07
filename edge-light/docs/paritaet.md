@@ -1,6 +1,6 @@
-# Paritätsliste: der Weg zum vollständigen Umstieg
+# Paritätsliste: was Edge Light im Vergleich zur Docker-Box kann
 
-Diese Liste ist der Fahrplan, bis Edge Light alles kann, was die Docker-Box kann. Erst wenn **jede Zeile erledigt** ist und die bestehenden Prüfstände gegen Edge Light grün laufen, kann die Docker-Box umgestellt werden und Node-RED entfallen.
+Diese Liste ist der Maßstab dafür, was Edge Light kann und was ihm gegenüber der Docker-Box noch fehlt. Beide Edge-Arten bestehen vorerst nebeneinander, je nach Anwendungsfall: Edge Light für kleine Hardware und einfachere Anlagen, die Docker-Box für komplexere Anforderungen vor Ort (Produktentscheid 07.10.2026). Ob die Docker-Box je auf Edge Light umgestellt wird und Node-RED entfällt, ist offen; die Stufe 8 und das [Abschlusskriterium](#abschlusskriterium-komplett-umschalten) beschreiben nur, was dafür gelten müsste.
 
 Legende: ✅ läuft in Edge Light · 🟡 teilweise · ⬜ offen · 🔒 braucht Prüfstand mit echter Hardware
 
@@ -16,6 +16,7 @@ Diese Funktionen laufen in Edge Light ab dem ersten Tag, weil sie im Core stecke
 | Arbitrierung der Wünsche, Entitäten-Registry, Topologie | ✅ |
 | **OCPP-Server, Lastmanagement, PV-Überschussladen „Nur Sonnenstrom", „Jetzt voll laden"** | ✅ 🔒 (Ladesäulen-Typ noch `simulator_only`) |
 | go-e **steuern** (HTTP-API v2, Phasenumschaltung) | ✅ 🔒 (Typ `wallbox` noch `simulator_only`) |
+| „Sonne + Speicher“ (Speicherenergie über der Untergrenze fürs Auto) | 🟡 Untergrenze und „Speicher zuerst“ an der Grenze wirken · ⬜ die Freigabe braucht eine gehaltene Rücklesung des Speicherpfads, also die Wechselrichter-Steuerung (C); bis dahin `speicherpfad` = „Nur Sonne“ |
 | Shelly lesen und schalten | ✅ |
 | eByte-IO-Modul | ✅ |
 | Lokale Web-App `:8484` (Betrieb, Einrichten) | ✅ |
@@ -88,7 +89,7 @@ Geordnet nach dem Nutzen für die Anlagen, die heute über den Mango angebunden 
 | **5** | Probe-Kanal, Register schreiben, Messwerte-Bibliothek, Datenspiegel | Werkzeuge des Portals |
 | **6** | Steuerung Deye und Fronius, nur mit Prüfstandsbelegen | Fahrplan wird ausgeführt |
 | **7** | Verbraucher-Regeln, Flow-Laufzeit in Go (Vertragsentscheidung), Code-Knoten-Entscheidung | Automationen |
-| **8** | Docker-Box auf `vp-edge-light` umstellen (ein Container), Node-RED entfernen | ein Programm für alle Boxen |
+| **8** | offen (07.10.2026): Docker-Box auf `vp-edge-light` umstellen (ein Container), Node-RED entfernen | ein Programm für alle Boxen |
 
 ## Abschlusskriterium „komplett umschalten"
 

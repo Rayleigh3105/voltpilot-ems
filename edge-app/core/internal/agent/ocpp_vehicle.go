@@ -61,6 +61,10 @@ func ocppApplyVehicleProfiles(sessions []lastmgmt.Session, byKey map[string]ocpp
 			continue
 		}
 		sessions[i].Source = p.Source
+		// The card brings its WHOLE lane: a profile knows no „Sonne + Speicher"
+		// (yet), so the station's battery release does not ride along on a
+		// card that chose something else.
+		sessions[i].StorageRelease = false
 		// ⚠ Only a profile that NAMES a minimum overrides the station's: 0 is
 		// „das Profil äußert sich nicht", and overwriting a station's floor
 		// with it would silently take a real minimum away.

@@ -205,11 +205,18 @@ class ChargerApiTest {
             assertThat(charging.get("allocatedKw").asDouble()).isEqualTo(41.0);
             assertThat(charging.get("powerKw").asDouble()).isEqualTo(40.0);
             assertThat(charging.get("socPct").asDouble()).isEqualTo(62.0);
+            // Die Bilanz des laufenden Ladevorgangs liegt als NUMERIC in der
+            // Datenbank: sie wird gelesen, statt die Sicht mit 500 zu sprengen.
+            assertThat(charging.get("sessionKwh").asDouble()).isEqualTo(2.85);
             JsonNode waiting = first.get("connectors").get(1);
             assertThat(waiting.get("reasonText").asText())
                     .isEqualTo("wartet - Budget vergeben");
             // Ein Stecker ohne Messung trägt KEINE erfundene 0.
             assertThat(waiting.get("powerKw").isNull()).isTrue();
+
+            // Die Steuerung (Verbraucher-Liste) liest dieselben Stecker - auch
+            // sie muss während eines gemessenen Ladevorgangs antworten.
+            getJson("/api/v1/sites/" + site + "/verbraucher", customer);
 
             // 2 · Beide Säulen sind KOMPONENTEN - ohne einen Klick.
             JsonNode entities = getJson("/api/v1/sites/" + site + "/entities", customer);
@@ -397,6 +404,14 @@ class ChargerApiTest {
             assertThat(budget.get("surplusKw").asDouble()).isEqualTo(65.0);
             // ⚠ Der deutsche Satz kommt aus der BOX und wird nur durchgereicht.
             assertThat(budget.get("surplusNote").asText()).contains("Nur Sonnenstrom");
+            // „Sonne + Speicher" (06.10.2026): die Stufe der Box reist durch.
+            JsonNode release = budget.get("storageRelease");
+            assertThat(release.get("active").asBoolean()).isTrue();
+            assertThat(release.get("kw").asDouble()).isEqualTo(3.8);
+            assertThat(release.get("floorSocPct").asDouble()).isEqualTo(34.2);
+            assertThat(release.get("socPct").asDouble()).isEqualTo(78.0);
+            assertThat(release.get("mode").asText()).isEqualTo("frei");
+            assertThat(release.get("note").asText()).contains("34,2 %");
             JsonNode connectors = charging.get("chargers").get(0).get("connectors");
             assertThat(connectors.get(0).get("boost").asBoolean()).isTrue();
             assertThat(connectors.get(1).get("boost").asBoolean()).isFalse();
@@ -531,6 +546,9 @@ class ChargerApiTest {
             JsonNode budget = getJson("/api/v1/sites/" + site + "/chargers", customer).get("budget");
             assertThat(budget.get("ocppPort").asInt()).isEqualTo(8887);
             assertThat(budget.get("ocppUrlPath").asText()).isEqualTo("/ocpp");
+            // Eine Box ohne „Sonne + Speicher" meldet keine Stufe - nie eine
+            // erfundene „aus"-Zeile.
+            assertThat(budget.get("storageRelease").isNull()).isTrue();
 
             // 6 · Der Mandanten-Zaun gilt auch auf dieser Route.
             ResponseEntity<String> foreign = rest.exchange(
@@ -882,6 +900,10 @@ class ChargerApiTest {
                  "surplus_active":true,"surplus_kw":65,"surplus_mode":"gemessen",
                  "surplus_note":"Ihre Priorität: Nur Sonnenstrom. Für die Fahrzeuge stehen gerade 65,0 kW Sonnenüberschuss zur Verfügung.",
                  "surplus_total_kw":85,"surplus_battery_kw":20,"source_allocated_kw":65,
+                 "storage_release_active":true,"storage_release_kw":3.8,
+                 "storage_release_floor_soc_pct":34.2,"storage_release_soc_pct":78,
+                 "storage_release_mode":"frei",
+                 "storage_release_note":"Der Speicher gibt bis 3,8 kW für das Auto frei und darf bis 34,2 % entladen.",
                  "chargers":[
                    {"id":"saeule-1","label":"Hof Nord","connected":true,"ready":true,
                     "last_seen":"2026-08-20T13:23:55Z",
@@ -994,7 +1016,7 @@ class ChargerApiTest {
                       {"id":1,"status":"Charging","charging":true,"allocated_kw":41,
                        "reason":"laedt","reason_text":"lädt","power_kw":40,"soc_pct":62,
                        "command_status":"Accepted","readback":"ok",
-                       "session_since":"2026-08-20T10:41:00Z"},
+                       "session_since":"2026-08-20T10:41:00Z","session_kwh":2.85},
                       {"id":2,"status":"Preparing","charging":false,"allocated_kw":0,
                        "reason":"wartet_budget","reason_text":"wartet - Budget vergeben",
                        "next_turn":"2026-08-20T11:26:00Z"}]},

@@ -4,14 +4,14 @@
 
 Die VoltPilot-Box als **ein einziges Programm** – ohne Docker, ohne Node-RED. Gebaut für kleine Router wie den GL.iNet Mango (OpenWrt, MIPS, 128 MB RAM, 16 MB Flash), läuft aber auf jedem Linux (arm64, amd64).
 
-**Ziel:** Edge Light deckt schrittweise den gesamten Funktionsumfang der Docker-Box ab. Ist alles gleichwertig, kann die Docker-Box auf dasselbe Programm umgestellt werden und Node-RED entfällt. Der Weg dahin steht in der [Paritätsliste](docs/paritaet.md).
+**Ziel:** Edge Light und die Docker-Box bestehen vorerst nebeneinander, je nach Anwendungsfall (Produktentscheid 07.10.2026): Edge Light für kleine Hardware und einfachere Anlagen, die Docker-Box für komplexere Anforderungen vor Ort, die bessere Hardware brauchen. Was Edge Light kann, misst die [Paritätsliste](docs/paritaet.md); ob die Docker-Box je auf dasselbe Programm umgestellt wird, ist offen.
 
 ## Stand: Stufe 1 (Fundament + Deye-Monitoring)
 
 | | |
 |---|---|
 | **Funktioniert** | Alles, was der Go-Core heute schon kann (Kopplung, Cloud-Verbindung, Pufferung, Fahrplan, Schutzgrenzen, OCPP-Lastmanagement inkl. PV-Überschussladen, Shelly, lokale Web-App `:8484`), **plus** Deye lesen über den Solarman-Datenlogger (alle vier Gerätefamilien) und „Verbindung testen" für den Deye |
-| **Noch nicht** | Alle anderen Lesewege, Wechselrichter-Steuerung, weitere Energiequellen, Kundenautomationen – siehe [Paritätsliste](docs/paritaet.md). Nicht unterstützte Anbindungen werden **benannt**, nie still übergangen |
+| **Noch nicht** | Alle anderen Lesewege, Wechselrichter-Steuerung (und damit die Speicherfreigabe von „Sonne + Speicher“, die Box fährt dort „Nur Sonne“), weitere Energiequellen, Kundenautomationen – siehe [Paritätsliste](docs/paritaet.md). Nicht unterstützte Anbindungen werden **benannt**, nie still übergangen |
 | **Bewiesen** | Gemeinsame Testvektoren mit Node-RED (23 Dekodier- und 50 Protokollfälle), Integrationstest „unveränderter Core + Go-Schicht 1", MIPS-Programm unter Emulation ([Smoke-Test](test/qemu-smoke.sh)) |
 | **Offen vor einem Kundeneinsatz** | Signierte Startkette und Updates ([Stufe 2](docs/boot-und-updates.md)), Pilot auf einem echten Mango ([Mango-Notizen](docs/mango.md)) |
 
@@ -58,7 +58,7 @@ edge-light/
 ├── docs/
 │   ├── uebergabe.md           Stand, Entscheidungen, Messwerte, nächste Schritte (Einstieg)
 │   ├── architektur.md         ein Programm = Core + Go-Schicht 1; der lokale Bus als Vertrag
-│   ├── paritaet.md            was schon in Go läuft, was fehlt, Reihenfolge bis zum Umstieg
+│   ├── paritaet.md            was schon in Go läuft, was fehlt, Reihenfolge
 │   ├── boot-und-updates.md    RAM-Start, signierte Kette (Stufe 2), Updates, Rückfall
 │   └── mango.md               GL.iNet Mango: Speicher, Flash, Ports, WireGuard, Pilotplan
 ├── openwrt/

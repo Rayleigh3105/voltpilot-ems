@@ -756,6 +756,20 @@ type ChargersSummary struct {
 	// labelled at the hub).
 	SourceAllocatedKw float64 `json:"source_allocated_kw,omitempty"`
 
+	// --- „Sonne + Speicher" (2026-10-06, ADDITIVE) ---
+	//
+	// What the box does with the cloud's battery floor right now: whether it
+	// releases battery energy to cars on that source, how much (kW beyond the
+	// sun), against which floor and which MEASURED SoC, and the stage with its
+	// German sentence. Every number is nil when it is not known - never a 0.
+	// Absent mode = an older edge, or no station runs the source.
+	StorageReleaseActive   bool     `json:"storage_release_active,omitempty"`
+	StorageReleaseKw       *float64 `json:"storage_release_kw,omitempty"`
+	StorageReleaseFloorPct *float64 `json:"storage_release_floor_soc_pct,omitempty"`
+	StorageReleaseSocPct   *float64 `json:"storage_release_soc_pct,omitempty"`
+	StorageReleaseMode     string   `json:"storage_release_mode,omitempty"`
+	StorageReleaseNote     string   `json:"storage_release_note,omitempty"`
+
 	// Chargers are the registered charge points, id-sorted. Never nil when the
 	// block is present.
 	Chargers []ChargerEntry `json:"chargers"`

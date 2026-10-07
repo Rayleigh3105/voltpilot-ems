@@ -162,3 +162,18 @@ func TestEndpointRendering(t *testing.T) {
 		t.Fatalf("Endpoint(ipv6) = %q, want %q", got, want)
 	}
 }
+
+// „Sonne + Speicher" is a statement ON TOP OF the sun-only lane: stored next
+// to `nur_sonne`, dropped next to anything else - and it survives an edit.
+func TestStorageReleaseOnlyRidesTheSunOnlyLane(t *testing.T) {
+	on, err := NormalizeAdd(AddRequest{ID: "a", Source: "nur_sonne", StorageRelease: true}, nil, t0)
+	if err != nil || !on.StorageRelease {
+		t.Fatalf("nur_sonne + release: %+v %v", on, err)
+	}
+	for _, src := range []string{"", "sonne_zuerst", "schnell"} {
+		c, err := NormalizeAdd(AddRequest{ID: "b", Source: src, StorageRelease: true}, nil, t0)
+		if err != nil || c.StorageRelease {
+			t.Fatalf("%q + release must be dropped: %+v %v", src, c, err)
+		}
+	}
+}

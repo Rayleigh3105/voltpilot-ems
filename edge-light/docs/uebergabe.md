@@ -1,6 +1,12 @@
-# Übergabe: Stand und nächste Schritte (05.10.2026)
+# Übergabe: Stand und nächste Schritte (07.10.2026)
 
 Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen und für einen KI-Assistenten. Sie fasst zusammen, was seit dem 03.10.2026 entschieden, gebaut und gemessen wurde. Alles Weitere steht in den verlinkten Dokumenten.
+
+## Stand 07.10.2026: `main` zusammengeführt, „Sonne + Speicher“
+
+- **`main` ist in `feature/edge-light` gemergt** (ein Merge-Commit, keine Umschreibung). Damit sind die Cherry-Picks #1380, #1382, #1383, #1385 und #1395 erledigt (inhaltsgleich mit `main`), dazu kamen #1409 (Portal) und #1443 „Sonne + Speicher“. Auf dem Mango läuft unverändert `edge-light-g5af8b452d`; nichts eingespielt.
+- **Programm `linux/mipsle`:** 14 614 743 B roh (13,9 MiB, unverändert, weil die Segmente auf 64 KiB aufgerundet werden), gzip -9 4 679 121 B (+14 KB gegenüber `733e5d3a4`). Flash und RAM bleiben im Budget von [mango.md](mango.md#speicherbudget).
+- **„Sonne + Speicher“ gibt auf Edge Light keine Speicherenergie frei.** Die Box meldet `speicherpfad` („VoltPilot führt den Speicher gerade nicht … ohne bestätigte Rückmeldung“), das Auto lädt wie bei „Nur Sonne“. Grund: `BatteryReady` verlangt eine gehaltene Rücklesung (`edge/control/readback`), und die Go-Schicht 1 liest den Deye nur. An der Untergrenze wirkt die Regel trotzdem (Speicher zuerst, auch bei „Autos zuerst“). Das Portal bietet den Chip trotzdem an (Sperrgründe nur: keine PV, keine OCPP-Säule, kein Speicher, keine Kapazität). Beleg: `agent/ocpp_release_light_test.go`. Für eine Freigabe braucht es die Deye-Steuerung ([Paritätsliste](paritaet.md), C) oder eine Produktentscheidung, ob ein Speicher, den VoltPilot nicht steuert, als bereit gelten darf.
 
 ## Stand 05.10.2026: Pilot Anlage Dirolf (`edge-zay5sdd`)
 
@@ -24,7 +30,7 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
   - Die go-e beantwortet die Rückfrage nach dem Ladeplan (`GetCompositeSchedule`) nicht; die Rücklesung bleibt „unbekannt“, die Wirkung zeigt die gemessene Leistung.
   - Die Statuszeile „Überschuss“ der Box nennt den Standort-Standard, nicht die Quelle des Ladepunkts; gerechnet wird richtig.
   - Nach einer Wahl „Sonne + Mindestleistung“ bleibt deren Wert am Ladepunkt stehen (API: `COALESCE`). Bei Steckern mit Phasenumschaltung zählt er nur noch bei „Sonne zuerst“.
-- `feature/edge-light` trägt #1380, #1382, #1383 und #1385 als Cherry-Picks; ein späterer Merge von `main` bringt dieselben Änderungen.
+- `feature/edge-light` trug #1380, #1382, #1383, #1385 und #1395 als Cherry-Picks; seit dem Merge vom 07.10.2026 kommen sie aus `main`.
 
 ### Zugang zum Pilot-Mango
 
@@ -57,13 +63,13 @@ Ein **anderer GL.iNet-Router** nutzt ebenfalls 192.168.1.1 (WLAN „VoltPilot En
 - Einige Anlagen sind heute über **Home-Assistant-VMs auf eigenen Servern** angebunden. Beim Kunden steht ein **GL.iNet Mango (GL-MT300N-V2)**, der sich per **WireGuard** mit dem eigenen VPN verbindet und Zugriff auf die Geräte im Kundennetz gibt: **Deye-Datenlogger** und **go-e-Wallbox**.
 - Gewünscht: **Anlagenmonitoring und PV-Überschussladen mit der go-e** über das VoltPilot-Portal, mit dem Mango als Edge-Gerät.
 - Problem: Die Docker-Box (Go-Core + Node-RED + Updater, nur amd64/arm64) läuft nicht auf dem Mango (MIPS, 128 MB RAM, 16 MB Flash).
-- **Entscheidung:** Edge Light – die Box als ein Programm ohne Docker und Node-RED. **Ziel ist volle Gleichwertigkeit**, danach soll auch die Docker-Box darauf umgestellt werden ([paritaet.md](paritaet.md)).
+- **Entscheidung:** Edge Light – die Box als ein Programm ohne Docker und Node-RED. Seit 07.10.2026 (Produktentscheid) bestehen Edge Light und die Docker-Box **vorerst nebeneinander**, je nach Anwendungsfall: Edge Light für kleine Hardware und einfachere Anlagen, die Docker-Box für komplexere Anforderungen vor Ort. Die [Paritätsliste](paritaet.md) bleibt der Maßstab für den Funktionsumfang; ob die Docker-Box je umgestellt wird, ist offen.
 
 ## Entscheidungen
 
 | Entscheidung | Begründung |
 |---|---|
-| Edge Light ist der **Nachfolger** der Docker-Box, kein Sonderbau | Eine dauerhaft zweite Variante wäre doppelte Pflege |
+| Edge Light und die Docker-Box bestehen **vorerst nebeneinander** (07.10.2026; bis dahin: Edge Light als Nachfolger) | Je nach Anwendungsfall: kleine Hardware und einfachere Anlagen gegenüber komplexeren Anforderungen vor Ort. Edge Light bleibt der unveränderte Core plus Go-Schicht 1, also kein Sonderbau mit eigener Logik |
 | **Ein Programm = unveränderter Core + Go-Schicht 1** | Alle Schutzregeln und Verträge des Cores gelten weiter |
 | Die Go-Schicht 1 spricht über den **lokalen Bus** (dieselben Topics wie Node-RED) | Funktionen können einzeln von Node-RED nach Go umziehen ([architektur.md](architektur.md)) |
 | Der Go-Code liegt in **`edge-app/core`**, nicht in `edge-light/` | Go erlaubt `internal/`-Pakete nur innerhalb des Moduls; eine Kopie wäre eine zweite Wahrheit |

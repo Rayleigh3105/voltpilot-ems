@@ -177,10 +177,11 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 		source     string
 		minKw      float64
 		rank       int
+		release    bool
 	}
 	known := map[string]stationState{}
 	for _, c := range a.OcppChargers() {
-		known[c.ID] = stationState{c.ConnectionOrHaus(), c.Source, c.MinKw, c.Rank}
+		known[c.ID] = stationState{c.ConnectionOrHaus(), c.Source, c.MinKw, c.Rank, c.StorageRelease}
 	}
 	for _, cp := range wanted {
 		if prev, ok := known[cp.ID]; ok {
@@ -202,6 +203,15 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			if cp.Source != "" && cp.Source != prev.source {
 				src := cp.Source
 				req.Source = &src
+				touched = true
+			}
+			// „Sonne + Speicher" travels WITH the source (chargingcfg): an
+			// entry that names a source states the flag too, absent = false.
+			// That is how „zurück auf Nur Sonne" reaches a station whose lane
+			// word does not change at all.
+			if cp.Source != "" && cp.StorageRelease != prev.release {
+				rel := cp.StorageRelease
+				req.StorageRelease = &rel
 				touched = true
 			}
 			if cp.MinKw > 0 && cp.MinKw != prev.minKw {
@@ -229,7 +239,8 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			}
 			slog.Info("charging config: charge point updated",
 				"charge_point", cp.ID, "connection", cp.Connection,
-				"source", cp.Source, "min_kw", cp.MinKw, "rank", cp.Rank)
+				"source", cp.Source, "min_kw", cp.MinKw, "rank", cp.Rank,
+				"storage_release", cp.StorageRelease)
 			continue
 		}
 		if _, err := a.OcppAddCharger(csms.AddRequest{
@@ -242,6 +253,8 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			Connection: cp.Connection,
 			Source:     cp.Source,
 			Rank:       cp.Rank,
+			// „Sonne + Speicher" (release.go).
+			StorageRelease: cp.StorageRelease,
 		}); err != nil {
 			slog.Warn("charging config: charge point not admitted",
 				"charge_point", cp.ID, "err", err)

@@ -1043,6 +1043,10 @@ export function AnlageSeite({
   rangeRef.current = range;
   const atRef = useRef(at);
   atRef.current = at;
+  // Eine späte Antwort der ZUVOR gewählten Anlage darf die neue nie
+  // überschreiben - der Ersatz für den `active`-Wächter des alten Intervalls.
+  const siteIdRef = useRef(site.id);
+  siteIdRef.current = site.id;
   // Daten-Takt über `useFreshnessPoll` (holt beim Aufwachen SOFORT nach), Uhr
   // daneben - sonst zeigt das Cockpit dem zurückkehrenden Kunden bis zu 30 s
   // lang die Zahlen von vorhin.
@@ -1066,6 +1070,15 @@ export function AnlageSeite({
     );
     api.schedule(site.id).then(
       (p) => setPlan(p),
+      () => {},
+    );
+    // ⚠ Die Ladepunkte gehören in DENSELBEN Takt wie der Hausverbrauch: ohne
+    // ihn stand die Wallbox auf dem Stand beim Öffnen der Seite, und eine
+    // danach gestartete Ladung landete ganz im „übrigen Haushalt", bis die
+    // Seite neu geladen wurde. Ein Fehler behält den letzten Stand.
+    const id = site.id;
+    api.siteChargers(id).then(
+      (c) => id === siteIdRef.current && setCharging(c),
       () => {},
     );
   }, LIVE_POLL_MS);
@@ -1176,10 +1189,7 @@ export function AnlageSeite({
   // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
   // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
   // 20-min window always covers the running quarter; polled on the 30 s cadence.
-  // Eine späte Antwort der ZUVOR gewählten Anlage darf die neue nie
-  // überschreiben - der Ersatz für den `active`-Wächter des alten Intervalls.
-  const siteIdRef = useRef(site.id);
-  siteIdRef.current = site.id;
+  // Späte Antworten einer zuvor gewählten Anlage verwirft `siteIdRef` (oben).
   const peakLoadRef = useRef<() => void>(() => {});
   peakLoadRef.current = () => {
     if (!fetchPeak) return;

@@ -334,6 +334,81 @@ class SteuerartApiTest {
     }
 
     /**
+     * „Sonne + Speicher" (06.10.2026): ohne Speicher gesperrt MIT Grund, mit
+     * Speicher die Bahn {@code nur_sonne} plus Flag - und „zurück auf Nur
+     * Sonne" nimmt das Flag wieder weg. Dazu die Reserve je Anlage.
+     */
+    @Test
+    void sonnePlusSpeicherFaehrtNurSonneMitFlagUndBrauchtEinenSpeicher() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Sonne + Speicher");
+        try {
+            erzeugerAnlegen(site);
+            UUID device = claim(customer, site, "edge-sonne-speicher");
+            UUID saeule = ocppKomponente(site, "Carport");
+            bindeSaeule(site, device, saeule, "WALLBOX-SP");
+            postRaw("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "WALLBOX-SP"));
+            Map<String, Object> speicher = Map.of("quelle", "ueberschuss",
+                    "ueberschussModus", "speicher");
+
+            // (1) Ohne Speicher: die Karte ist gesperrt, und der Schreibpfad
+            // lehnt mit GENAU ihrem Grund ab.
+            JsonNode karte = wahl(eintrag(getJson(zone(site), customer), "Carport")
+                    .path("optionen").path("quellen"), "ueberschuss_speicher");
+            assertThat(karte.path("gesperrt").asBoolean()).isTrue();
+            assertThat(karte.path("grund").asText())
+                    .isEqualTo(com.voltpilot.api.verbraucher.SteuerartSatz.GRUND_OHNE_SPEICHER);
+            ResponseEntity<String> abgelehnt = putRaw(pfad(site, saeule), customer, speicher);
+            assertThat(abgelehnt.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(abgelehnt.getBody()).contains("kein Speicher");
+
+            // (2) Mit Speicher: frei, und die Bahn ist nur_sonne + Flag.
+            exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                    + "max_discharge_kw) VALUES ('" + TENANT_A + "', '" + site
+                    + "', 'battery', 10, 5, 5)");
+            ResponseEntity<String> ok = putRaw(pfad(site, saeule), customer, speicher);
+            assertThat(ok.getStatusCode()).as("%s", ok.getBody()).isEqualTo(HttpStatus.OK);
+            JsonNode cp = getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .path("chargePoints").get(0);
+            assertThat(cp.path("source").asText()).isEqualTo("nur_sonne");
+            assertThat(cp.path("storageRelease").asBoolean()).isTrue();
+            JsonNode zeile = eintrag(getJson(zone(site), customer), "Carport");
+            assertThat(zeile.path("steuerart").path("ueberschussModus").asText())
+                    .isEqualTo("speicher");
+            assertThat(wahl(zeile.path("optionen").path("quellen"), "ueberschuss_speicher")
+                    .path("gesperrt").asBoolean()).isFalse();
+
+            // (3) Zurück auf „Nur Sonne": dasselbe Bahn-Wort, das Flag ist weg.
+            putRaw(pfad(site, saeule), customer,
+                    Map.of("quelle", "ueberschuss", "ueberschussModus", "pausieren"));
+            cp = getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .path("chargePoints").get(0);
+            assertThat(cp.path("source").asText()).isEqualTo("nur_sonne");
+            assertThat(cp.path("storageRelease").asBoolean()).isFalse();
+
+            // (4) Die Reserve je Anlage: setzen, zurücknehmen, Grenze.
+            String reserve = "/api/v1/sites/" + site + "/charging-config/storage-release";
+            JsonNode cfg = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(cfg.path("storageReleaseReserveKwh").isNull()).isTrue();
+            assertThat(cfg.path("storageReleaseReserveStandardKwh").asDouble()).isEqualTo(1.0);
+            assertThat(putRaw(reserve, customer, Map.of("reserveKwh", 2.5)).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .path("storageReleaseReserveKwh").asDouble()).isEqualTo(2.5);
+            Map<String, Object> zurueck = new HashMap<>();
+            zurueck.put("reserveKwh", null);
+            assertThat(putRaw(reserve, customer, zurueck).getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .path("storageReleaseReserveKwh").isNull()).isTrue();
+            assertThat(putRaw(reserve, customer, Map.of("reserveKwh", 150)).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
      * Eine komponierte Säule OHNE eingetragene Kennung nennt den WEG, statt
      * eine Bahn zu behaupten, auf die nichts geschrieben werden kann.
      */
@@ -469,6 +544,14 @@ class SteuerartApiTest {
                     + "entity_type, capabilities) VALUES ('" + UUID.randomUUID() + "', '" + TENANT_A
                     + "', '" + site + "', 'pv-generation', 'Dach', 'producer', "
                     + "'{\"measure\":[{\"channel\":\"pv_power_kw\"}]}'::jsonb)");
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private void exec(String sql) {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute(sql);
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

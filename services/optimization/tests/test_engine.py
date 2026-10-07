@@ -300,3 +300,81 @@ def test_v2_shadow_failure_never_sinks_the_v1_cycle(wired, monkeypatch):
     assert len(summary.planned) == 2
     assert not summary.skipped
     assert len(v1_pub.published) == 1
+
+
+# --- „Sonne + Speicher" (06.10.2026) -----------------------------------------
+
+
+def _release_wired(monkeypatch, wired, settings, fresh=True, tail=((), ())):
+    from voltpilot_optimization.storage_release import ReleaseForecast, ReleaseSetting
+
+    monkeypatch.setattr(
+        engine, "load_release_settings",
+        lambda dsn: {str(s.site_id): ReleaseSetting(reserve_kwh=r) for s, r in settings},
+    )
+    monkeypatch.setattr(engine, "load_model_choices", lambda dsn: None)
+    monkeypatch.setattr(engine, "load_battery_claims", lambda dsn: {})
+    monkeypatch.setattr(
+        engine, "release_forecast",
+        lambda *a, **k: ReleaseForecast(fresh=fresh, tail_load_kw=tail[0], tail_pv_kw=tail[1]),
+    )
+    monkeypatch.setattr(engine, "pv_day_error_quantiles", lambda *a, **k: None)
+    monkeypatch.setattr(engine, "night_error_quantiles", lambda *a, **k: None)
+
+
+def test_only_a_site_running_the_source_gets_a_floor(monkeypatch, wired):
+    with_source, without = wired
+    _release_wired(monkeypatch, wired, [(with_source, 2.0)])
+    repository = InMemoryScheduleRepository()
+    publisher = RecordingSchedulePublisher()
+    engine.run_cycle("dsn://ignored", repository, publisher, now=NOW)
+    plans = {p.site_id: p for p in repository.plans}
+    release = plans[with_source.site_id].storage_release
+    assert release is not None and release.reserve_kwh == 2.0
+    assert plans[without.site_id].storage_release is None
+    _, payload = publisher.published[0]
+    assert payload["ev_release_max_discharge_kw"] == BATTERY.max_discharge_kw
+
+
+def test_a_stale_forecast_publishes_the_reason_and_no_floor(monkeypatch, wired):
+    with_source, _ = wired
+    _release_wired(monkeypatch, wired, [(with_source, None)], fresh=False)
+    publisher = RecordingSchedulePublisher()
+    engine.run_cycle("dsn://ignored", InMemoryScheduleRepository(), publisher, now=NOW)
+    _, payload = publisher.published[0]
+    assert payload["ev_release_reason"] == "prognose_veraltet"
+    assert all("ev_release_floor_soc_pct" not in s for s in payload["slots"])
+
+
+def test_a_failing_release_costs_the_release_never_the_plan(monkeypatch, wired):
+    with_source, _ = wired
+    _release_wired(monkeypatch, wired, [(with_source, None)])
+
+    def boom(*a, **k):
+        raise RuntimeError("history unreadable")
+
+    monkeypatch.setattr(engine, "release_forecast", boom)
+    publisher = RecordingSchedulePublisher()
+    summary = engine.run_cycle("dsn://ignored", InMemoryScheduleRepository(), publisher, now=NOW)
+    assert len(summary.planned) == 2 and not summary.skipped
+    _, payload = publisher.published[0]
+    assert not any(k.startswith("ev_release") for k in payload)
+
+
+def test_the_forecast_tail_reaches_the_release(monkeypatch, wired):
+    """Der Plan endet, wo die Preise enden; die Rechnung läuft über die
+    Prognose-Verlängerung weiter. Der synthetische Plan ist eine einzige Nacht
+    (keine Sonne) - erst die Verlängerung bringt den Morgen, an dem die Sonne
+    das Haus wieder deckt."""
+    with_source, _ = wired
+
+    def grund(tail):
+        _release_wired(monkeypatch, wired, [(with_source, None)], tail=tail)
+        repository = InMemoryScheduleRepository()
+        engine.run_cycle("dsn://ignored", repository, RecordingSchedulePublisher(), now=NOW)
+        return {p.site_id: p for p in repository.plans}[with_source.site_id].storage_release.grund
+
+    # Ohne Morgen weiß niemand, was der Rest der Nacht braucht.
+    assert grund(((), ())) == "prognose_zu_kurz"
+    # Mit Morgen wird gerechnet: 24 h à 4 kW passen in keinen 10-kWh-Speicher.
+    assert grund(([0.5] * 8, [6.0] * 8)) == "nachtbedarf_ueber_kapazitaet"

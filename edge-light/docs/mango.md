@@ -96,7 +96,7 @@ Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
 | Messung | Ergebnis |
 |---|---|
-| Programmgröße `linux/mipsle`, softfloat, ohne Symbole | 13,8 MB (arm64: 12,4 MB) |
+| Programmgröße `linux/mipsle`, softfloat, ohne Symbole | 13,8 MB (arm64: 12,4 MB); 07.10.2026 nach dem Merge von `main`: 13,9 MiB (14 614 743 B), gzip -9 4 679 121 B |
 | … komprimiert | gzip -9: 4,4 MB · xz -9e: 3,0 MB |
 | Start unter MIPS-Emulation | Web-App, lokaler Bus, OCPP-Server, Schlüsselerzeugung laufen; kein Absturz |
 | Arbeitsspeicher des Cores (amd64, Simulator) | ca. 10 MB; Node-RED (entfällt) belegte 80–105 MB |
