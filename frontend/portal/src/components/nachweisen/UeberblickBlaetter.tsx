@@ -60,11 +60,14 @@ const ORT_WORT: Readonly<Record<string, string>> = {
 export function GruppenBlatt({
   gruppe,
   offen,
+  darfFesthalten = true,
   onClose,
   onTeil,
 }: {
   gruppe: TeilGruppe;
   offen: boolean;
+  /** Ohne das Recht zu bearbeiten steht an einem offenen Teil kein Verb, nur sein Zeichen. */
+  darfFesthalten?: boolean;
   onClose: () => void;
   onTeil: (t: TeilStand) => void;
 }) {
@@ -76,7 +79,7 @@ export function GruppenBlatt({
             <button type="button" className={`vp-nw-tz is-${t.zustand}`} onClick={() => onTeil(t)} data-testid={`gruppen-teil-${t.teil}`}>
               <NwZeichen art={ZEICHEN[t.zustand]} />
               <span className="vp-nw-tz-name">{t.wort}</span>
-              {t.zustand === 'offen' ? (
+              {t.zustand === 'offen' && darfFesthalten ? (
                 <span className="vp-nw-tz-verb">{FESTHALTEN}</span>
               ) : (
                 <>

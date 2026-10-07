@@ -174,7 +174,6 @@
   line-height: 1.2;
   color: var(--vp-navy-1, #1e3a5f);
   overflow-wrap: anywhere;
-  hyphens: auto;
 }
 /* Entscheid 25: das Kennzeichen leise hinter dem Titel - nur am Rechner (`.pkopf h1 .kz`). */
 .vp-nw-kopf-kz {
@@ -344,7 +343,6 @@ button.vp-nw-zchip::before {
   font: 600 0.9375rem/1.3 var(--vp-c-font);
   color: var(--vp-c-fg, #1e293b);
   overflow-wrap: anywhere;
-  hyphens: auto;
 }
 .vp-nw-naechst-why {
   margin-top: -6px;
@@ -460,6 +458,7 @@ button.vp-nw-zchip::before {
 }
 .vp-nw-tg {
   display: grid;
+  align-content: start;
   gap: 9px;
   padding: 12px 0;
   border-top: 1px solid var(--vp-c-border, #e2e8f0);
@@ -513,6 +512,8 @@ button.vp-nw-zchip::before {
 .vp-nw-tg-chips {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
   gap: 6px;
   min-width: 0;
 }
@@ -574,7 +575,18 @@ button.vp-nw-zchip::before {
   font: 700 0.6875rem var(--vp-font-heading);
 }
 
+/* Der Link über „Demnächst“: am Telefon „Alle“, am Rechner „Wiedervorlage“ (Konzept r2d-U). */
+.vp-nw-nur-rechner {
+  display: none;
+}
+
 @container vp-nw-ub (min-width: 760px) {
+  .vp-nw-nur-telefon {
+    display: none;
+  }
+  .vp-nw-nur-rechner {
+    display: inline;
+  }
   .vp-nw-ub-raster {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas: 'links demnaechst' 'teile teile';
