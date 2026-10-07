@@ -472,6 +472,22 @@ export function abzulesen(z: MessstelleRegisterZeile): boolean {
   );
 }
 
+/**
+ * Wo man eine Messstelle abliest - dieselbe Regel wie der Server (`MessstelleRegisterService.ableseort`, Wiedervorlage
+ * „Zählerablesung“): das erste Gebäude auf dem Pfad von ihrem Ort hinauf, ohne Gebäude ihr Standort, am Unternehmen
+ * `U`. Der Pfad läuft vom Ort hinauf; ein Gebäude hängt immer am Standort, ein Bereich an einem Gebäude oder am Standort
+ * und nie in einem Bereich - das Gebäude ist also der Ort selbst oder der Elternteil eines Bereichs. `null` = an keinem
+ * Ort.
+ */
+export function ableseortVon(z: MessstelleRegisterZeile): string | null {
+  const o = z.ort;
+  if (o.kennzeichen === 'U' || o.ort_art === 'unternehmen') return 'U';
+  if (o.grund !== 'verortet' || !o.standort || !o.kennzeichen) return null;
+  if (o.ort_art === 'gebaeude') return o.kennzeichen;
+  if (o.ort_art === 'bereich' && o.pfad.length >= 3) return o.pfad[1];
+  return o.standort;
+}
+
 function ortKopf(z: MessstelleRegisterZeile, ebene: MessstellenEbene): { key: string; titel: string; standort: string | null } {
   const o = z.ort;
   switch (o.grund) {
@@ -671,8 +687,8 @@ export function liste(
       ordnung: ortReihenfolge(r.zeile),
     };
     g.gesamt += 1;
-    // Die Runde gilt dem Ort der Karte selbst (nur ein verorteter Ort hat ein Kurzzeichen für die Adresse).
-    if (!g.ablesen && r.zeile.ort.grund === 'verortet' && r.zeile.ort.kennzeichen && abzulesen(r.zeile)) g.ablesen = r.zeile.ort.kennzeichen;
+    // Die Runde gilt dem Ableseort der Zähler der Karte (ihr Gebäude, ohne Gebäude ihr Standort) - wie die Wiedervorlage.
+    if (!g.ablesen && abzulesen(r.zeile)) g.ablesen = ableseortVon(r.zeile);
     if (passt(r)) g.reihen.push(r);
     je.set(k.key, g);
   }

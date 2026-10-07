@@ -117,7 +117,8 @@
   border: 1px solid #858d96;
   border-radius: var(--vp-radius-btn, 10px);
   background: var(--vp-c-card, #fff);
-  font: 600 0.9375rem var(--vp-font-heading);
+  /* 16 px: darunter zoomt iOS beim Antippen jedes Feld heran (Review r4 S12; die Suche der Liste nimmt ebenso 16 px). */
+  font: 600 1rem var(--vp-font-heading);
   font-variant-numeric: tabular-nums;
   color: var(--vp-c-fg, #1e293b);
 }

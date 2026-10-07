@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { MessstelleRegisterZeile, MessstellenRegister } from './api';
 import { registerEintraege, type MessstellenEbene } from './messstellen';
 import {
+  ableseortVon,
   gruppenZahl,
   liste,
   marken,
@@ -231,6 +232,23 @@ describe('Liste, Gruppen und Reihen', () => {
     const ohne = aus(ahrenbergRegister(), '', 'ohneQuelle');
     expect(ohne.treffer).toBe(1);
     expect(ohne.gruppen[0].reihen[0].kennzeichen).toBe('MS-21');
+  });
+});
+
+describe('Ableseort einer Reihe (Review r4 S11)', () => {
+  it('die Karte eines Bereichs öffnet die Runde seines Gebäudes, die des Standorts nur die Zähler ohne Gebäude', () => {
+    const r = mitUeberfaelligerAblesung();
+    // MS-06 hängt in B-1 (Halle 1 Nord, in G-1) und wird von Hand abgelesen.
+    const ms06 = r.register.find((x) => x.kennzeichen === 'MS-06')!;
+    const ms21 = r.register.find((x) => x.kennzeichen === 'MS-21')!;
+    ms06.quelle = structuredClone(ms21.quelle);
+    ms06.lebenszyklus = 'aktiv';
+    expect(ableseortVon(ms06)).toBe('G-1');
+    expect(ableseortVon(ms21)).toBe(ms21.ort.kennzeichen);
+    const l = aus(r);
+    expect(l.gruppen.find((g) => g.titel === 'Halle 1 Nord')!.ablesen).toBe('G-1');
+    const amStandort = r.register.find((x) => x.ort.kennzeichen === 'ST-1')!;
+    expect(ableseortVon(amStandort)).toBe('ST-1');
   });
 });
 
