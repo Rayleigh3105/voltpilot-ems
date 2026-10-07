@@ -46,6 +46,10 @@ export function MappeBlatt({
   const [busy, setBusy] = useState(false);
 
   const von = P.vonFuer(zeitraum, heute, abTag);
+  // Review P6-5: während „Mappe erstellen“ läuft, schließt das Blatt nicht - sonst öffnete danach doch die Mappe.
+  const schliessen = () => {
+    if (!busy) onClose();
+  };
   const optionen = P.BUENDEL.map((b) => ({
     wert: b.key,
     titel: b.titel,
@@ -121,7 +125,7 @@ export function MappeBlatt({
 
   if (isPhone) {
     return (
-      <NwBlatt open titel={schritt === 1 ? P.UNTERLAGEN_ZUSAMMENSTELLEN : P.WAS_GEHOERT_HINEIN} onClose={onClose} testId="mappe-blatt">
+      <NwBlatt open titel={schritt === 1 ? P.UNTERLAGEN_ZUSAMMENSTELLEN : P.WAS_GEHOERT_HINEIN} onClose={schliessen} testId="mappe-blatt">
         <div className="vp-nw-schritt-inhalt">
           <SchrittAnzeige nr={schritt} von={3} />
           {schritt === 1 ? (
@@ -132,7 +136,7 @@ export function MappeBlatt({
                 <Button onClick={() => pruefeSchritt1() && setSchritt(2)} data-testid="mappe-weiter">
                   Weiter
                 </Button>
-                <Button variant="ghost" onClick={onClose}>
+                <Button variant="ghost" onClick={schliessen} disabled={busy}>
                   Abbrechen
                 </Button>
               </div>
@@ -143,7 +147,7 @@ export function MappeBlatt({
               {ablehnung}
               <div className="vp-nw-vb-knoepfe">
                 {erstellenKnopf}
-                <Button variant="ghost" onClick={() => setSchritt(1)}>
+                <Button variant="ghost" onClick={() => setSchritt(1)} disabled={busy}>
                   Zurück
                 </Button>
               </div>
@@ -160,11 +164,11 @@ export function MappeBlatt({
       open
       breit
       titel={P.UNTERLAGEN_ZUSAMMENSTELLEN}
-      onClose={onClose}
+      onClose={schliessen}
       testId="mappe-blatt"
       fuss={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={schliessen} disabled={busy}>
             Abbrechen
           </Button>
           {erstellenKnopf}

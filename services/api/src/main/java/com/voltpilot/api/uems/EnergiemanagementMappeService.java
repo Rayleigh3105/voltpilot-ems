@@ -64,15 +64,17 @@ public class EnergiemanagementMappeService {
 
     private final EnergiemanagementMappeRepository repo;
     private final EnergiemanagementVerzeichnisService verzeichnis;
+    private final EnergiemanagementDokumentRepository dokumente;
     private final UnternehmenRepository unternehmen;
     private final RechtPruefung rechte;
     private final TransactionTemplate tx;
 
     public EnergiemanagementMappeService(EnergiemanagementMappeRepository repo,
-            EnergiemanagementVerzeichnisService verzeichnis, UnternehmenRepository unternehmen, RechtPruefung rechte,
-            PlatformTransactionManager tm) {
+            EnergiemanagementVerzeichnisService verzeichnis, EnergiemanagementDokumentRepository dokumente,
+            UnternehmenRepository unternehmen, RechtPruefung rechte, PlatformTransactionManager tm) {
         this.repo = repo;
         this.verzeichnis = verzeichnis;
+        this.dokumente = dokumente;
         this.unternehmen = unternehmen;
         this.rechte = rechte;
         this.tx = new TransactionTemplate(tm);
@@ -103,11 +105,12 @@ public class EnergiemanagementMappeService {
         if (von != null && von.isAfter(bis)) {
             throw EnergiemanagementAbgelehnt.anfrage("von");
         }
+        Set<String> aufgehoben = aufgehobenBis(bis);
         List<Gruppe> gilt = new ArrayList<>();
         List<Gruppe> imZeitraum = new ArrayList<>();
         for (Gruppe g : alle.gruppen()) {
             if (!gruppen.contains(g.gruppe())) continue;
-            List<Zeile> stand = gilt(g.zeilen());
+            List<Zeile> stand = gilt(g.zeilen(), aufgehoben);
             if (!stand.isEmpty()) gilt.add(new Gruppe(g.gruppe(), g.gruppeWort(), g.zuschnitt(), null, stand));
             List<Zeile> zeitraum = g.zeilen().stream()
                     .filter(z -> z.tag() != null && (von == null || !z.tag().isBefore(von)) && !z.tag().isAfter(bis))
@@ -182,14 +185,32 @@ public class EnergiemanagementMappeService {
     }
 
     /**
-     * Was am Stichtag gilt: je Dokument (Kennzeichen) die Fassung mit der höchsten Nummer, dazu laufende Aufgaben und
-     * geltende Vermerke. Bekanntmachungen und andere Ereignisse gehören in den Zeitraum.
+     * Die Kennzeichen der Dokumente, die am Stichtag aufgehoben sind (Review P6-1): aus den Dokumenten selbst - Zustand
+     * `aufgehoben` und der Tag ihres Eintrags „aufgehoben“ nicht nach dem Stichtag. Das Verzeichnis führt jede
+     * freigegebene Fassung weiter; aufheben ändert nur das Dokument, nicht seine Fassungen.
      */
-    static List<Zeile> gilt(List<Zeile> zeilen) {
+    private Set<String> aufgehobenBis(LocalDate bis) {
+        Set<String> raus = new LinkedHashSet<>();
+        for (var d : dokumente.dokumente()) {
+            if (!"aufgehoben".equals(d.zustand())) continue;
+            LocalDate am = dokumente.eintraege(d.id()).stream().filter(e -> "aufgehoben".equals(e.art()))
+                    .map(EnergiemanagementDokumentRepository.Eintrag::am).findFirst().orElse(null);
+            if (am == null || !am.isAfter(bis)) raus.add(d.kennzeichen());
+        }
+        return raus;
+    }
+
+    /**
+     * Was am Stichtag gilt: je Dokument (Kennzeichen) die Fassung mit der höchsten Nummer - außer es ist bis dahin
+     * aufgehoben -, dazu laufende Aufgaben und geltende Vermerke. Bekanntmachungen und andere Ereignisse gehören in den
+     * Zeitraum.
+     */
+    static List<Zeile> gilt(List<Zeile> zeilen, Set<String> aufgehoben) {
         Map<String, Zeile> juengste = new LinkedHashMap<>();
         List<Zeile> stand = new ArrayList<>();
         for (Zeile z : zeilen) {
             if (DOKUMENT_ARTEN.contains(z.art()) && z.kennzeichen() != null && z.nr() != null) {
+                if (aufgehoben.contains(z.kennzeichen())) continue;
                 juengste.merge(z.kennzeichen(), z, (alt, neu) -> neu.nr() > alt.nr() ? neu : alt);
             } else if (STAND_ARTEN.contains(z.art()) && !z.titel().contains(AUFGEHOBEN)) {
                 // Ein aufgehobener Vermerk bleibt im Verzeichnis eine Entscheidung (Titel „· aufgehoben am …“), gilt aber nicht.
@@ -232,9 +253,22 @@ public class EnergiemanagementMappeService {
     /** Die Verzeichnis-CSV des Zeitraums mit einer ersten Zeile, die sagt, wofür und von wem. */
     private static byte[] csv(Verzeichnis v, String titel, String anlass, ProtokollAkteur wer) {
         String csv = new String(EnergiemanagementVerzeichnisService.csv(v), StandardCharsets.UTF_8);
-        String kopf = "# " + titel + " (" + anlass + "), zusammengestellt von " + wer.name() + "\r\n";
+        String kopf = kopfzeile(titel, anlass, wer.name());
         // Die Datei beginnt mit der BOM; die Kopfzeile steht dahinter.
         return (csv.charAt(0) == '﻿' ? "﻿" + kopf + csv.substring(1) : kopf + csv).getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Die Kopfzeile der CSV ist genau eine Zeile (Review P6-2): Steuer- und Zeilentrennzeichen in Titel, Anlass und Name
+     * (der Name kommt aus dem Konto) werden zu einem Leerzeichen - sonst begänne eine eigene Zeile, etwa mit „=“, die eine
+     * Tabellenkalkulation als Formel liest. Die Zellen darunter schützt die Zell-Regel des Verzeichnisses.
+     */
+    static String kopfzeile(String titel, String anlass, String name) {
+        return "# " + einzeilig(titel) + " (" + einzeilig(anlass) + "), zusammengestellt von " + einzeilig(name) + "\r\n";
+    }
+
+    private static String einzeilig(String wert) {
+        return wert == null ? "" : wert.replaceAll("[\\x00-\\x1F\\x7F-\\x9F\\u2028\\u2029]+", " ").strip();
     }
 
     private static List<String> eindeutig(List<String> werte) {

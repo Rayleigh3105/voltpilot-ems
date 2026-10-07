@@ -77,12 +77,19 @@ class EnergiemanagementMappeSchnittstelleVertragTest {
                 .isEmpty();
     }
 
-    /** Die CHECKs der Migration nennen genau die Wörter des Vertrags (späte Ankunft ohne energiemanagement_vokabular()). */
+    /**
+     * Die Migration nennt genau die Wörter des Vertrags: `mappe_anlass` als Block der Funktion energiemanagement_vokabular()
+     * (Review P6-0: Vertrag und Datenbank-Funktion haben dieselben Blöcke) und den Anlass über energiemanagement_wort();
+     * Gruppen und offene Teile wörtlich in ihren CHECKs.
+     */
     @Test
     void dieMigrationNenntDieWoerterDesVertrags() throws Exception {
         String sql = Files.readString(Path.of("src/main/resources/db/migration/V20261007150000__uems_nachweisen_mappe.sql"));
-        assertThat(sql).contains("anlass IN (" + String.join(", ", EnergiemanagementRegeln.VOKABULARE.get("mappe_anlass")
-                .stream().map(w -> "'" + w + "'").toList()) + ")");
+        List<String> anlaesse = EnergiemanagementRegeln.VOKABULARE.get("mappe_anlass");
+        for (int i = 0; i < anlaesse.size(); i++) {
+            assertThat(sql).contains("('mappe_anlass', " + (i + 1) + ", '" + anlaesse.get(i) + "')");
+        }
+        assertThat(sql).contains("CHECK (coalesce(energiemanagement_wort('mappe_anlass', anlass), false))");
         String kompakt = sql.replaceAll("\\s+", " ");
         assertThat(kompakt).contains("ARRAY[" + String.join(", ", EnergiemanagementRegeln.VOKABULARE.get("verzeichnis_gruppe")
                 .stream().map(w -> "'" + w + "'").toList()) + "]::TEXT[]");

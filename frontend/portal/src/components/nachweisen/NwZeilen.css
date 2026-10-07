@@ -903,6 +903,7 @@ textarea.vp-nw-feld-in {
   background: none;
   font: 500 0.875rem var(--vp-c-font);
   color: var(--vp-c-primary, #2563eb);
+  text-decoration: none;
   cursor: pointer;
 }
 .vp-nw-link-knopf:focus-visible {
@@ -910,11 +911,27 @@ textarea.vp-nw-feld-in {
   outline-offset: 2px;
   border-radius: 4px;
 }
-.vp-nw-einsicht-vorschau {
+/* Review P6-3: der Umfang der Einsicht steht ohne Aufklappen als ruhiger Kasten oben im Blatt. */
+.vp-nw-einsicht-umfang {
+  margin: 0;
   padding: 10px 12px;
   border-radius: var(--vp-radius-md, 12px);
   background: var(--vp-c-muted, #f8fafc);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+/* Review P6-7: die Adresse hat schon ein Konto - wer es ist und der Weg in die Benutzerverwaltung. */
+.vp-nw-einsicht-vorhanden {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  font-size: 0.875rem;
+}
+.vp-nw-einsicht-vorhanden p {
+  margin: 0;
 }
 .vp-nw-passwort {
   display: block;

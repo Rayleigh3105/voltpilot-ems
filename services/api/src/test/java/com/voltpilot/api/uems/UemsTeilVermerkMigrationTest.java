@@ -52,7 +52,8 @@ class UemsTeilVermerkMigrationTest {
     private static final List<String> TABELLEN = List.of("energiemanagement_teil_vermerk");
     private static final String SATZ = "Risiken und Chancen bewerten wir im Jahresgespräch der Geschäftsführung.";
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
-    private static final List<String> BAUEN_DARAUF_AUF = List.of();
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

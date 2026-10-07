@@ -259,6 +259,30 @@ class EnergiemanagementMappeApiTest {
 
     // ------------------------------------------------------------------ Aufbewahrung 30 Tage
 
+    /**
+     * Review r1 P6-1 (Reproduktion aus dem Review, Anhang A.1): ein am 29.04.2029 aufgehobenes Dokument gilt am 30.04.2029
+     * nicht mehr - weder unter „Was am … gilt“ im PDF noch in der Zahl {@code gilt}. Das Verzeichnis führt seine
+     * freigegebene Fassung weiter; aufheben ändert nur das Dokument.
+     */
+    @Test
+    void einAufgehobenesDokumentGiltAmStichtagNicht() throws Exception {
+        heute("2029-04-29T08:00:00Z");
+        String kontext = ruf("POST", BASIS + "/dokumente", "IK", Map.of("art", "kontext", "titel",
+                "Kontext der Organisation", "bezug", Map.of("art", "unternehmen")), 201).path("id").asText();
+        fassung(kontext, 1, "Wir sind ein Kunststoffwerk mit zwei Standorten und drei Energietraegern.");
+        ruf("POST", BASIS + "/dokumente/" + kontext + "/aufheben", "IK", Map.of("entschieden_von", rf,
+                "begruendung", "Der Kontext steht seit April im Anwendungsbereich."), 200);
+        heute("2029-04-30T08:00:00Z");
+        JsonNode m = ruf("POST", MAPPEN, "IK", Map.of("anlass", "audit_von_aussen", "gruppen", List.of("grundlagen")), 201);
+        String text = text(roh("GET", MAPPEN + "/" + m.path("id").asText() + "/pdf", "IK", null).getContentAsByteArray());
+        String gilt = text.substring(text.lastIndexOf("Was am 30.04.2029 gilt"), text.lastIndexOf("Was bis 30.04.2029"));
+        assertThat(gilt).as("aufgehoben gilt nicht").doesNotContain("Kontext der Organisation");
+        assertThat(gilt).as("die Energiepolitik gilt").contains("Energiepolitik");
+        assertThat(m.path("gilt").asInt()).as("nur die Energiepolitik").isOne();
+        // Im Zeitraum bleibt festgehalten, dass es die Fassung gab.
+        assertThat(text.substring(text.lastIndexOf("Was bis 30.04.2029"))).contains("Kontext der Organisation");
+    }
+
     @Test
     void nachDreissigTagenAbgelaufenDieDateienGehenDieAngabenBleiben() throws Exception {
         String id = ruf("POST", MAPPEN, "IK", Map.of("anlass", "audit_von_aussen", "gruppen", List.of("grundlagen")), 201)

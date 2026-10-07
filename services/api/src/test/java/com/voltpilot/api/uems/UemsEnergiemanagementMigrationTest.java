@@ -67,7 +67,8 @@ class UemsEnergiemanagementMigrationTest {
             "20260926001500", // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
             "20261005220000", // Konzept Wiedervorlage w1, PR 3: ersetzt energiemanagement_vokabular() (Zählerablesung).
             "20261007004500", // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
-            "20261007014500"); // Konzept Nachweisen n1, Entscheid 10: Original je Fassung an energiemanagement_dokument_fassung.
+            "20261007014500", // Konzept Nachweisen n1, Entscheid 10: Original je Fassung an energiemanagement_dokument_fassung.
+            "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -576,7 +577,7 @@ class UemsEnergiemanagementMigrationTest {
         JsonNode vertrag = MAPPER.readTree(Path.of("../../docs/contracts/v2/energiemanagement-vectors.json").toFile());
         List<String> bloecke = new ArrayList<>();
         vertrag.path("vokabulare").fieldNames().forEachRemaining(bloecke::add);
-        assertThat(bloecke).hasSize(26); // Vertrag 1.3: dazu `teil`.
+        assertThat(bloecke).hasSize(27); // Vertrag 1.3: dazu `teil`; 1.6: dazu `mappe_anlass` (Review P6-0).
         for (String block : bloecke) {
             List<String> woerter = new ArrayList<>();
             vertrag.path("vokabulare").path(block).forEach(w -> woerter.add(w.asText()));

@@ -20,6 +20,13 @@ export const PDF_MIT_INHALT = 'PDF mit Inhaltsverzeichnis';
 export const MAPPE_ABGELAUFEN = 'Nicht mehr abrufbar';
 export const MAPPEN = 'Mappen';
 
+/**
+ * Was eine Person mit „Einsicht“ sieht, kurz und ohne Aufklappen (Review P6-3, Captain-Entscheid: keine engere Rolle,
+ * aber das Blatt sagt den Umfang): alle Daten aller Standorte, nur lesend, bis zum letzten Tag.
+ */
+export const einsichtUmfang = (bis: string | null) =>
+  `Sieht alle Daten aller Standorte, nur lesend${bis ? `, bis\u00a0${tagText(bis)}` : ''}.`;
+
 /** Der Zusatz je Anlass (Recherche Q13, Q14): wann so eine Prüfung meist kommt. */
 const ANLASS_ZUSATZ: Readonly<Record<string, string | null>> = {
   audit_von_aussen: 'meist 6 Wochen vorher',
@@ -40,14 +47,16 @@ export const ZEITRAUM_CHIPS: readonly { wert: ZeitraumWahl; label: string }[] = 
 ];
 
 /**
- * Ein ISO-Tag minus Jahre plus ein Tag: „12 Monate“ bis zum 30.04.2029 beginnen am 01.05.2028. Der 29. Februar wird im
- * Jahr ohne Schalttag zum 28. (nicht zum 1. März), damit der Zeitraum keinen Tag verliert.
+ * Ein ISO-Tag minus Jahre plus ein Tag: „12 Monate“ bis zum 30.04.2029 beginnen am 01.05.2028. Endet der Tag einen Monat,
+ * sind es ganze Monate: bis 28.02.2029 ab 01.03.2028 (nicht ab dem 29.02.), bis 29.02.2028 ab 01.03.2027; sonst wird ein
+ * 29. Februar im Jahr ohne Schalttag zum 28., damit der Zeitraum keinen Tag verliert.
  */
 function jahreZurueck(heute: string, jahre: number): string {
   const [j, m, t] = heute.split('-').map(Number);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  if (new Date(Date.UTC(j, m, 0)).getUTCDate() === t) return iso(new Date(Date.UTC(j - jahre, m, 1)));
   const letzter = new Date(Date.UTC(j - jahre, m, 0)).getUTCDate();
-  const d = new Date(Date.UTC(j - jahre, m - 1, Math.min(t, letzter) + 1));
-  return d.toISOString().slice(0, 10);
+  return iso(new Date(Date.UTC(j - jahre, m - 1, Math.min(t, letzter) + 1)));
 }
 
 /** Ab welchem Tag die Mappe zählt; `null` = alles. `heute` ist der Tag der Route. */
@@ -100,7 +109,6 @@ export function eintraegeIm(v: Pick<EnergiemanagementVerzeichnis, 'gruppen'>, b:
     .filter((z) => z.tag !== null && (von === null || z.tag >= von) && z.tag <= bis).length;
 }
 
-export const eintraegeWort = (n: number) => (n === 1 ? '1 Eintrag' : `${n} Einträge`);
 export const teileOffenWort = (n: number) => (n === 1 ? '1 Teil offen' : `${n} Teile offen`);
 
 // ------------------------------------------------------------------ Seite einer Mappe (Mock r2-MP3)

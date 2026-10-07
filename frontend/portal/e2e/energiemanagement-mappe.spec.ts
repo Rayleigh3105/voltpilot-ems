@@ -123,6 +123,11 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page, 'Seite der Mappe');
       await ablegen(page, `mp-seite-${breite}`);
 
+      // Review P6-4: „Öffnen“ lädt das PDF (kein Fenster mit einem Blob-Dokument unter der Portal-CSP).
+      const geoeffnet = page.waitForEvent('download');
+      await page.getByTestId('mappe-oeffnen').click();
+      expect((await geoeffnet).suggestedFilename()).toBe('nachweise-2029-04-30.pdf');
+      expect(page.context().pages()).toHaveLength(1);
       const pdf = page.waitForEvent('download');
       await page.getByTestId('mappe-speichern').click();
       expect((await pdf).suggestedFilename()).toBe('nachweise-2029-04-30.pdf');
@@ -131,6 +136,7 @@ for (const breite of [375, 1440]) {
       expect((await csv).suggestedFilename()).toBe('nachweise-2029-04-30.csv');
       await expect(page.getByTestId('mappe-abruf')).toHaveText('Abgerufen, der Abruf ist protokolliert.');
       expect((await gesendet(page)).map((g) => g.route).filter((r) => r.startsWith('GET'))).toEqual([
+        'GET /mappen/6a990000-0000-4000-8000-000000000100/pdf',
         'GET /mappen/6a990000-0000-4000-8000-000000000100/pdf',
         'GET /mappen/6a990000-0000-4000-8000-000000000100/csv',
       ]);
@@ -148,11 +154,11 @@ for (const breite of [375, 1440]) {
 
       // Einsicht geben: bis zum 14. Tag nach dem Tag der Route, das Startpasswort einmal.
       await page.getByTestId('mappe-einsicht').click();
-      await expect(blatt(page)).toContainText('nur lesen, befristet');
+      await expect(blatt(page)).toContainText('Einsicht geben');
       await page.getByTestId('einsicht-name').fill('Petra Prüfer');
       await page.getByTestId('einsicht-email').fill('petra.pruefer@audit.example');
-      await page.getByTestId('einsicht-vorschau').click();
-      await expect(page.getByTestId('einsicht-vorschau-inhalt')).toContainText('kann nichts ändern');
+      // Review P6-3: der Umfang ohne Aufklappen - alle Daten aller Standorte, nur lesend, bis wann.
+      await expect(page.getByTestId('einsicht-umfang')).toHaveText('Sieht alle Daten aller Standorte, nur lesend, bis 14.05.2029.');
       await ohneQuerlauf(page, 'Einsicht geben');
       await ablegen(page, `mp-einsicht-${breite}`);
       await page.getByTestId('einsicht-anlegen').click();
