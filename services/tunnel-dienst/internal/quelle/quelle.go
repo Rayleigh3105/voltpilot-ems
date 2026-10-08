@@ -22,6 +22,12 @@ const SollPfad = "/api/v1/fernwartung/soll"
 // MaxAntwort begrenzt, was der Dienst liest.
 const MaxAntwort = 4 << 20
 
+// ErrAnmeldungAbgelehnt: der Token-Endpunkt hat die Anmeldung des
+// Dienstkontos abgelehnt (HTTP 401 oder 403). Das ist kein Ausfall der API,
+// sondern ein falscher Client oder ein falsches Secret - der Dienst meldet es
+// deshalb mit eigenem Wortlaut.
+var ErrAnmeldungAbgelehnt = errors.New("Anmeldung abgelehnt: Client oder Secret prüfen")
+
 // API holt den Soll-Stand.
 type API struct {
 	Basis        string // z. B. https://portal.voltpilot.de
@@ -132,6 +138,9 @@ func (a *API) holeToken(ctx context.Context, erzwingen bool) (string, error) {
 		return "", fmt.Errorf("Token holen: %w", err)
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
+		return "", fmt.Errorf("%w (Token-Endpunkt: HTTP %d)", ErrAnmeldungAbgelehnt, res.StatusCode)
+	}
 	if res.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("Token holen: HTTP %d", res.StatusCode)
 	}
