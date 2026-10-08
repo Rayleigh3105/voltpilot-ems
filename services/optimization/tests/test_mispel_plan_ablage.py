@@ -218,7 +218,7 @@ def _zyklus(monkeypatch, fz, fz_plan):
     monkeypatch.setenv("VOLTPILOT_MISPEL_FAHRZEUG_SITES", str(nw6.SITE))
     publisher, repo = RecordingPlanV2Publisher(), InMemorySitePlanRepository()
     site = SimpleNamespace(site_id=nw6.SITE, device_id=nw6.E_1, verbund=None)
-    inp = SimpleNamespace(soc_unbekannt=False, fahrzeug=fz,
+    inp = SimpleNamespace(soc_unbekannt=False, battery_observed=False, fahrzeug=fz,
                           slot_starts=[nw6.T0 + timedelta(minutes=15 * i) for i in range(4)])
     engine._shadow_publish_v2("dsn", site, inp, nw6.T0, publisher, frozenset({nw6.SITE}), repo,
                               fahrzeug_plan=fz_plan)
@@ -293,7 +293,7 @@ def test_lauf_mit_beiden_schaltern_und_policy_an_der_saeule(monkeypatch):
     monkeypatch.setenv("VOLTPILOT_MISPEL_FAHRZEUG_SITES", str(nw6.SITE))
     publisher, repo = RecordingPlanV2Publisher(), InMemorySitePlanRepository()
     site = SimpleNamespace(site_id=nw6.SITE, device_id=nw6.E_1, verbund=None)
-    inp = SimpleNamespace(soc_unbekannt=False, fahrzeug=fz, slot_starts=starts, slot_minutes=15,
+    inp = SimpleNamespace(soc_unbekannt=False, battery_observed=False, fahrzeug=fz, slot_starts=starts, slot_minutes=15,
                           prices_eur_mwh=[100.0] * 4)
     engine._shadow_publish_v2("dsn", site, inp, nw6.T0, publisher, frozenset({nw6.SITE}), repo,
                               fahrzeug_plan=fz_plan)

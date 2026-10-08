@@ -283,7 +283,7 @@ def _zyklus(monkeypatch, schalter: str, inp_fahrzeug, fahrzeug_plan):
     monkeypatch.setenv("VOLTPILOT_MISPEL_FAHRZEUG_SITES", schalter)
     publisher, repo = RecordingPlanV2Publisher(), InMemorySitePlanRepository()
     site = SimpleNamespace(site_id=nw6.SITE, device_id=nw6.E_1, verbund=None)
-    inp = SimpleNamespace(soc_unbekannt=False, fahrzeug=inp_fahrzeug,
+    inp = SimpleNamespace(soc_unbekannt=False, battery_observed=False, fahrzeug=inp_fahrzeug,
                           slot_starts=[nw6.T0 + timedelta(minutes=15 * i) for i in range(4)])
     engine._shadow_publish_v2("dsn", site, inp, nw6.T0, publisher, frozenset({nw6.SITE}), repo,
                               fahrzeug_plan=fahrzeug_plan)
