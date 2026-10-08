@@ -6,7 +6,7 @@ Referenzdateien dürfen nicht aus dem UEMS-Lauf neu geschrieben werden.
 
 ## Herkunft der Referenz
 
-- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b` und `308a5cc91`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
+- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, `308a5cc91` und `3a8519f1d`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
 - Schema: genau dessen 168 Produktionsmigrationen, ohne Dev-Seeds.
 - Saat: `main-seed.sql`, direkt auf diesem Schema, keine UEMS-Route. Der alte
   V2-Startmarker ist vorhanden, wie bei einer auf main schon gestarteten Anlage.
@@ -63,6 +63,15 @@ sind unverändert (12 005 → 12 035 Bytes). Aufnahme auf `69e572c1dff031fb7b967
 `main-migrations.txt` jetzt 172) in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse ohne die zwei
 UEMS-Sender, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen. Die aufgenommene Datei ist hierher
 kopiert, `MAIN` nennt seither 69e572c1d. Der UEMS-Lauf schreibt die Referenz weiterhin nie.
+
+## Nachgemessen beim Nachzug main 3a8519f1d (08.10.2026, Fernwartung)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `3a8519f1d34a276c3504edf93440ac581062dd4d` (9 Commits:
+Fernwartung 1-4/4, Tunnel-Dienst, `V20261007163700__fernwartung.sql`, #1458-#1461; `main-migrations.txt` jetzt 173)
+in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwei entfernten UEMS-Sendern,
+`-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu `main-reference.json`
+(12 035 Bytes, alle 13 Einträge). Fernwartung fügt nur neue, von diesem Nachweis ungenutzte Tabellen und Routen
+an; `MAIN` nennt seither 3a8519f1d.
 
 ## Bewusste Differenzen main → uems
 
