@@ -48,6 +48,8 @@ public class FernwartungService {
     public static final String ART_TECHNIKER = "techniker";
     public static final String AKTIV = "aktiv";
     public static final String GESPERRT = "gesperrt";
+    /** Endgültig: aus keiner Liste mehr lesbar, Adresse und Schlüssel bleiben vergeben. */
+    public static final String GELOESCHT = "geloescht";
 
     /** Wie weit ein Fenster im Voraus geplant werden darf. */
     static final Duration MAX_VORLAUF = Duration.ofDays(30);
@@ -178,9 +180,7 @@ public class FernwartungService {
             Optional<Zugang> traeger = repo.zugangMitSchluessel(schluessel);
             if (traeger.isPresent()
                     && (vorhanden.isEmpty() || !traeger.get().id().equals(vorhanden.get().id()))) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Dieser Schlüssel ist schon " + beschreibe(traeger.get())
-                                + " zugeordnet. Jedes Gerät braucht seinen eigenen Schlüssel.");
+                throw new ResponseStatusException(HttpStatus.CONFLICT, schluesselVergeben(traeger.get()));
             }
             if (vorhanden.isEmpty()) {
                 String adresse = freieAdresse(props.boxNetzwerk(), "Box-Netz");
@@ -233,9 +233,7 @@ public class FernwartungService {
         String schluessel = schluesselOder400(publicKey);
         return repo.schreibend(() -> {
             repo.zugangMitSchluessel(schluessel).ifPresent(z -> {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Dieser Schlüssel ist schon " + beschreibe(z)
-                                + " zugeordnet. Jedes Gerät braucht seinen eigenen Schlüssel.");
+                throw new ResponseStatusException(HttpStatus.CONFLICT, schluesselVergeben(z));
             });
             String adresse = freieAdresse(props.technikerNetzwerk(), "Techniker-Netz");
             UUID id = repo.zugangAnlegen(ART_TECHNIKER, null, anzeigename, schluessel, adresse,
@@ -253,6 +251,32 @@ public class FernwartungService {
 
     public Zugang technikerEntsperren(UUID id, Akteur akteur) {
         return entsperren(technikerOder404(id), akteur, "techniker_entsperrt");
+    }
+
+    /**
+     * Einen GESPERRTEN Techniker-Zugang löschen. Er verschwindet aus jeder
+     * Liste und Auswahl und lässt sich nicht mehr entsperren; die Zeile bleibt
+     * als Zustand {@code geloescht} stehen, damit Adresse und Schlüssel nie
+     * wieder vergeben werden und Fenster wie Protokoll ihn weiter beim Namen
+     * nennen.
+     *
+     * <p>Ein aktiver Zugang muss erst gesperrt werden: das Sperren schließt
+     * seine Fenster und nimmt den Peer aus dem Soll-Stand, das Löschen selbst
+     * ändert für den Tunnel-Dienst nichts mehr.
+     */
+    public void technikerLoeschen(UUID id, Akteur akteur) {
+        repo.<Void>schreibend(() -> {
+            Zugang zugang = technikerOder404(id);
+            if (zugang.aktiv()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Der Zugang „" + zugang.name() + "\" ist aktiv. Erst sperren, dann löschen.");
+            }
+            repo.statusSetzen(zugang.id(), GELOESCHT, akteur.sub());
+            repo.protokollieren(akteur.sub(), akteur.name(), "techniker_geloescht", null, zugang.id(), null,
+                    details("name", zugang.name(), "publicKey", WireguardSchluessel.kurz(zugang.publicKey()),
+                            "adresse", zugang.adresse()));
+            return null;
+        });
     }
 
     // ── Fenster ───────────────────────────────────────────────────────────
@@ -358,7 +382,7 @@ public class FernwartungService {
 
     private Zugang sperren(Zugang zugang, String grund, Akteur akteur, String aktion) {
         return repo.schreibend(() -> {
-            Zugang aktuell = repo.zugang(zugang.id()).orElseThrow();
+            Zugang aktuell = vorhandenOder404(zugang.id());
             if (!aktuell.aktiv()) {
                 return aktuell;
             }
@@ -380,7 +404,7 @@ public class FernwartungService {
 
     private Zugang entsperren(Zugang zugang, Akteur akteur, String aktion) {
         return repo.schreibend(() -> {
-            Zugang aktuell = repo.zugang(zugang.id()).orElseThrow();
+            Zugang aktuell = vorhandenOder404(zugang.id());
             if (aktuell.aktiv()) {
                 return aktuell;
             }
@@ -405,10 +429,22 @@ public class FernwartungService {
                 "Für " + edgeRef + " ist kein Tunnel-Schlüssel hinterlegt."));
     }
 
+    /** Ein gelöschter Zugang ist für jede Regel weg: 404 wie ein unbekannter. */
     private Zugang technikerOder404(UUID id) {
-        return repo.zugang(id).filter(z -> ART_TECHNIKER.equals(z.art()))
+        return repo.zugang(id).filter(z -> ART_TECHNIKER.equals(z.art()) && !z.geloescht())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Diesen Techniker-Zugang gibt es nicht."));
+    }
+
+    /**
+     * Der Stand eines Zugangs INNERHALB der Schreib-Transaktion. Wurde er
+     * zwischen der Prüfung und der Sperre gelöscht, endet die Änderung mit
+     * 404 statt einen gelöschten Zugang zurückzugeben oder wieder zuzulassen.
+     */
+    private Zugang vorhandenOder404(UUID id) {
+        return repo.zugang(id).filter(z -> !z.geloescht())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Diesen Zugang gibt es nicht mehr."));
     }
 
     private String freieAdresse(Ipv4Netz netz, String bezeichnung) {
@@ -424,6 +460,20 @@ public class FernwartungService {
                     "Das ist kein öffentlicher WireGuard-Schlüssel (44 Zeichen Base64, endet auf „=\").");
         }
         return schluessel;
+    }
+
+    /**
+     * Warum ein Schlüssel nicht (noch einmal) vergeben wird. Der Schlüssel
+     * eines gelöschten Zugangs bleibt dauerhaft vergeben: das sagt der Satz,
+     * statt auf einen Zugang zu zeigen, den das Portal nicht mehr listet.
+     */
+    private static String schluesselVergeben(Zugang z) {
+        if (z.geloescht()) {
+            return "Dieser Schlüssel gehörte dem gelöschten Zugang „" + z.name() + "\" und wird nicht wieder "
+                    + "vergeben. Bitte auf dem Gerät ein neues Schlüsselpaar erzeugen.";
+        }
+        return "Dieser Schlüssel ist schon " + beschreibe(z)
+                + " zugeordnet. Jedes Gerät braucht seinen eigenen Schlüssel.";
     }
 
     private static String beschreibe(Zugang z) {

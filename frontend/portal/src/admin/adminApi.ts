@@ -576,6 +576,13 @@ export const adminApi = {
       method: 'POST',
     }),
 
+  /**
+   * Endgültig, nur aus dem Zustand gesperrt (409 sonst). Der Zugang fehlt
+   * danach in jeder Liste; Adresse und Schlüssel bleiben vergeben.
+   */
+  fernwartungTechnikerLoeschen: (id: string) =>
+    request<void>(`/api/v1/admin/fernwartung/techniker/${id}`, { method: 'DELETE' }),
+
   fernwartungFensterOeffnen: (input: {
     edgeRef: string;
     technikerId: string;

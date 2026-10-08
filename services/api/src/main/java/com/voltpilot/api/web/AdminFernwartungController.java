@@ -27,6 +27,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -252,6 +253,18 @@ public class AdminFernwartungController {
     @PostMapping("/techniker/{id}/entsperren")
     public TechnikerDto technikerEntsperren(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
         return TechnikerDto.of(service.technikerEntsperren(id, Akteur.aus(caller)));
+    }
+
+    /**
+     * Einen gesperrten Techniker-Zugang löschen: 204. Er fehlt danach in jeder
+     * Liste; Adresse und Schlüssel bleiben vergeben, Fenster und Protokoll
+     * nennen ihn weiter. 409 = der Zugang ist noch aktiv, 404 = unbekannt oder
+     * schon gelöscht.
+     */
+    @DeleteMapping("/techniker/{id}")
+    public ResponseEntity<Void> technikerLoeschen(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
+        service.technikerLoeschen(id, Akteur.aus(caller));
+        return ResponseEntity.noContent().build();
     }
 
     // ── Fenster ───────────────────────────────────────────────────────────
