@@ -48,7 +48,9 @@ public class DeviceChargerStatusRepository {
             // "eine aeltere Box meldet es nicht" ODER "der Server lauscht gerade
             // nicht" - nie Port 0. Eine Flaeche, die einen Port nennt, auf dem
             // niemand antwortet, ist schlimmer als eine, die nichts nennt.
-            Integer ocppPort, String ocppUrlPath) {}
+            Integer ocppPort, String ocppUrlPath,
+            // „Sonne + Speicher" (06.10.2026); null = die Box meldet keine Stufe.
+            SiteChargingDto.StorageReleaseDto storageRelease) {}
 
     /** Eine gemeldete Ladesäule. */
     public record ChargePointRow(String chargePointId, String label, boolean priority,
@@ -126,9 +128,12 @@ public class DeviceChargerStatusRepository {
                         + "surplus_policy, storage_priority, surplus_active, surplus_kw, "
                         + "surplus_mode, surplus_note, surplus_blind, surplus_total_kw, "
                         + "surplus_battery_kw, source_allocated_kw, ocpp_port, ocpp_url_path, "
-                        + "reported_at) "
+                        + "reported_at, storage_release_active, storage_release_kw, "
+                        + "storage_release_floor_soc_pct, storage_release_soc_pct, "
+                        + "storage_release_mode, storage_release_note) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                        + "?, ?, ?, ?, ?, ?)",
                 deviceId, tenantId, siteId, budget.enabled(), budget.controlEnabled(),
                 budget.controlNote(), budget.gridLimitKw(), budget.marginPct(), budget.minPowerKw(),
                 budget.budgetKw(), budget.allocatedKw(), budget.reservedKw(), budget.measuredKw(),
@@ -140,7 +145,13 @@ public class DeviceChargerStatusRepository {
                 budget.surplusMode(), budget.surplusNote(), budget.surplusBlind(),
                 budget.surplusTotalKw(), budget.surplusBatteryKw(), budget.sourceAllocatedKw(),
                 budget.ocppPort(), budget.ocppUrlPath(),
-                Timestamp.from(reportedAt));
+                Timestamp.from(reportedAt),
+                budget.storageRelease() != null && budget.storageRelease().active(),
+                budget.storageRelease() == null ? null : budget.storageRelease().kw(),
+                budget.storageRelease() == null ? null : budget.storageRelease().floorSocPct(),
+                budget.storageRelease() == null ? null : budget.storageRelease().socPct(),
+                budget.storageRelease() == null ? null : budget.storageRelease().mode(),
+                budget.storageRelease() == null ? null : budget.storageRelease().note());
         for (ChargePointRow c : chargers) {
             jdbc.update(
                     "INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, "
@@ -314,7 +325,15 @@ public class DeviceChargerStatusRepository {
                 dbl(rs.getObject("surplus_battery_kw")),
                 dbl(rs.getObject("source_allocated_kw")),
                 (Integer) rs.getObject("ocpp_port"), rs.getString("ocpp_url_path"),
-                instant(rs.getTimestamp("reported_at")));
+                instant(rs.getTimestamp("reported_at")),
+                rs.getString("storage_release_mode") == null ? null
+                        : new SiteChargingDto.StorageReleaseDto(
+                                rs.getBoolean("storage_release_active"),
+                                dbl(rs.getObject("storage_release_kw")),
+                                dbl(rs.getObject("storage_release_floor_soc_pct")),
+                                dbl(rs.getObject("storage_release_soc_pct")),
+                                rs.getString("storage_release_mode"),
+                                rs.getString("storage_release_note")));
     }
 
     private static Timestamp ts(Instant i) {

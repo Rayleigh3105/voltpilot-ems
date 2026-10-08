@@ -38,6 +38,7 @@ import type { Consumer } from '../consumers/types';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { CONSUMER_REASON_TEXT, CONSUMER_STATE_TEXT, STATUS_UNKNOWN_TEXT } from '../consumers/status';
 import type { ManualOverride } from '../consumers/fulfillment';
+import { LADEQUELLE } from '../glossar';
 import type { ChargePoint, ChargeConnector, SiteCharging } from '../ladepunkte';
 import { ladeZustand, aktuelleLeistung } from '../ladepunkte';
 import type {
@@ -85,6 +86,12 @@ export interface Reihen {
   temp: (number | null)[];
   /** Laut Plan abgeregelte PV (kW). */
   abgeregelt: (number | null)[];
+  /**
+   * „Sonne + Speicher“: die Speicheruntergrenze des Fahrplans je Viertelstunde
+   * (%). `null` = in dieser Viertelstunde keine Freigabe. Fehlt ganz bei einer
+   * Anlage, deren Fahrplan keine Untergrenze trägt.
+   */
+  speicherGrenze?: (number | null)[];
   /** Viertelstunden vor diesem Index sind GEMESSEN (bis „jetzt“). */
   gemessenBis: number;
   /** Sind die Börsenpreise für morgen schon da? */
@@ -119,6 +126,8 @@ export function reihen(i: ReihenInput): Reihen {
     out.bat[t] = num(s.batteryKw);
     out.soc[t] = num(s.socPct);
     out.abgeregelt[t] = num(s.curtailKw);
+    const grenze = num(s.evReleaseFloorSocPct);
+    if (grenze != null) (out.speicherGrenze ??= leer<number>())[t] = grenze;
     const p = num(s.priceEurMwh);
     if (p != null) out.preis[t] = p / 10;
   }
@@ -350,7 +359,10 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
     case 'ueberschuss':
     case 'freigabe_ueberschuss':
       if (freigabe || s.quelle === 'freigabe_ueberschuss') satz = 'Anheben bei Sonne';
-      else if (g.ladepunkt) satz = s.ueberschussModus === 'mindestleistung' ? 'Sonne + Mindestleistung' : 'Nur Sonnenstrom';
+      else if (g.ladepunkt) {
+        satz = s.ueberschussModus === 'mindestleistung' ? 'Sonne + Mindestleistung'
+          : s.ueberschussModus === 'speicher' ? LADEQUELLE.speicher : 'Nur Sonnenstrom';
+      }
       else satz = typeof s.schwelleKw === 'number' ? `Mit Sonnenstrom ab ${fKw(s.schwelleKw)}` : 'Mit Sonnenstrom';
       break;
     case 'guenstig':

@@ -603,6 +603,13 @@ export interface ScheduleSlot {
    * `whyNextBest` null ist - Name und Marge sind EINE Aussage.
    */
   whyNextBestMarginCt?: number | null;
+  /**
+   * „Sonne + Speicher“ (06.10.2026): die Speicheruntergrenze dieses Slots in %
+   * - bis dahin darf ein Ladepunkt auf dieser Quelle den Speicher leeren.
+   * `null`/abwesend = in diesem Slot keine Freigabe (der Plan handelt, oder die
+   * Anlage fährt die Quelle nicht) - nie 0.
+   */
+  evReleaseFloorSocPct?: number | null;
 }
 
 export interface SchedulePlan {
@@ -9906,6 +9913,15 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(body),
   }),
+  /**
+   * „Sonne + Speicher“: die Reserve der Anlage in kWh. `null` nimmt die eigene
+   * Angabe zurück - dann gilt die Vorgabe des Optimierers.
+   */
+  saveStorageReleaseReserve: (siteId: string, reserveKwh: number | null) =>
+    request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config/storage-release`, {
+      method: 'PUT',
+      body: JSON.stringify({ reserveKwh }),
+    }),
   /**
    * Speichert den Ladepark-RAHMEN (P5/E10) — Plattform-Admin only.
    *

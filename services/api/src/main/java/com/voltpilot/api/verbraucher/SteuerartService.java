@@ -1,5 +1,7 @@
 package com.voltpilot.api.verbraucher;
 
+import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.web.dto.SiteAssetDto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -103,13 +105,14 @@ public class SteuerartService {
     private final UsageProfileService profiles;
     private final SteuerartPreisVorgabe preise;
     private final ChargingConfigService charging;
+    private final AssetRepository assets;
     private final ObjectMapper mapper;
 
     public SteuerartService(SiteRepository sites, EntityRegistryRepository entities,
             EntityTypeCatalog catalog, ConsumerRepository consumers,
             ConsumerService consumerService, ConsumerPolicyActivationService activation,
             UsageProfileService profiles, SteuerartPreisVorgabe preise,
-            ChargingConfigService charging, ObjectMapper mapper) {
+            ChargingConfigService charging, AssetRepository assets, ObjectMapper mapper) {
         this.sites = sites;
         this.entities = entities;
         this.catalog = catalog;
@@ -119,6 +122,7 @@ public class SteuerartService {
         this.profiles = profiles;
         this.preise = preise;
         this.charging = charging;
+        this.assets = assets;
         this.mapper = mapper;
     }
 
@@ -132,11 +136,44 @@ public class SteuerartService {
      */
     public SteuerartSatz.Kontext kontext(EntityRow row, ConsumerRow profil, SiteDto site,
             boolean hatPv, BigDecimal preisVorgabe) {
+        return kontext(row, profil, site, hatPv, preisVorgabe, Speicher.KEINER);
+    }
+
+    /** Der Kontext MIT den Speicher-Fakten der Anlage („Sonne + Speicher"). */
+    public SteuerartSatz.Kontext kontext(EntityRow row, ConsumerRow profil, SiteDto site,
+            boolean hatPv, BigDecimal preisVorgabe, Speicher speicher) {
         return new SteuerartSatz.Kontext(row.entityType(),
                 profil != null ? profil.ratedPowerKw() : row.capacityKwp(),
                 profil == null ? null : profil.minPowerKw(),
                 profil == null ? null : profil.confirmationChannel(),
-                site == null ? null : site.tarifArt(), hatPv, preisVorgabe);
+                site == null ? null : site.tarifArt(), hatPv, preisVorgabe,
+                speicher.vorhanden(), speicher.kapazitaetKwh());
+    }
+
+    /**
+     * Der Speicher einer Anlage, wie „Sonne + Speicher" ihn braucht: gibt es
+     * einen, und ist seine Kapazitaet gepflegt? {@code kapazitaetKwh == null}
+     * heisst „nicht gepflegt", nie 0.
+     */
+    public record Speicher(boolean vorhanden, BigDecimal kapazitaetKwh) {
+        /** Keine Aussage - der Kontext jedes Aufrufers vor 06.10.2026. */
+        public static final Speicher KEINER = new Speicher(false, null);
+    }
+
+    /** Die Speicher-Fakten der Anlage (die Haupt-Batterie aus {@code asset}). */
+    public Speicher speicher(UUID siteId) {
+        BigDecimal kapazitaet = null;
+        boolean vorhanden = false;
+        for (SiteAssetDto a : assets.findForSite(siteId)) {
+            if (!"battery".equals(a.type())) {
+                continue;
+            }
+            vorhanden = true;
+            if (a.capacityKwh() != null && a.capacityKwh().signum() > 0) {
+                kapazitaet = a.capacityKwh();
+            }
+        }
+        return new Speicher(vorhanden, kapazitaet);
     }
 
     /**
@@ -184,7 +221,8 @@ public class SteuerartService {
         // Nachweiskanal, und beide entscheiden, was ueberhaupt waehlbar ist.
         ConsumerRow profil = consumerService.ensureProfile(siteId, row);
         SiteDto site = sites.findById(siteId);
-        SteuerartSatz.Kontext k = kontext(row, profil, site, hatPv(rows), preisVorgabe(siteId));
+        SteuerartSatz.Kontext k = kontext(row, profil, site, hatPv(rows), preisVorgabe(siteId),
+                ocpp ? speicher(siteId) : Speicher.KEINER);
 
         List<String> fehler = SteuerartSatz.pruefe(k, wunsch);
         if (!fehler.isEmpty()) {
@@ -241,8 +279,11 @@ public class SteuerartService {
         String bahn = SteuerartProjektion.bahnAus(quelle, modus);
         BigDecimal minKw = SteuerartProjektion.POLICY_SONNE_ZUERST.equals(bahn)
                 ? wunsch.mindestleistungKw() : null;
+        // „Sonne + Speicher" reist MIT der Bahn: jede Wahl schreibt das Flag
+        // ausdruecklich, damit „zurueck auf Nur Sonne" die Box erreicht.
         charging.setChargePointSource(siteId, chargePointId, bahn,
-                minKw == null ? null : minKw.doubleValue());
+                minKw == null ? null : minKw.doubleValue(),
+                SteuerartProjektion.speicherFreigabeAus(quelle, modus));
         return !SteuerartProjektion.QUELLE_GUENSTIG.equals(quelle);
     }
 

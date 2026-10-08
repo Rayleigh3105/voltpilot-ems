@@ -49,7 +49,7 @@ class UemsMassnahmeHerkunftMigrationTest {
     /** Spätere Migrationen, die das Vokabular als Vereinigung fortschreiben: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20261006213000", // Konzept Verbessern PR 1: weitet das Vokabular um kurs_lage.
-            "20261007120000"); // Verbessern v1 PR 2: weitet das Vokabular um massnahme_art.
+            "20261007120100"); // Verbessern v1 PR 2: weitet das Vokabular um massnahme_art.
     /** Ihre Wörter stehen nach denen dieser Migration. */
     private static final List<String> SPAETER = List.of("kurs_lage:1:auf_kurs", "kurs_lage:2:knapp_dahinter",
             "kurs_lage:3:nicht_auf_kurs", "kurs_lage:4:noch_keine_aussage", "massnahme_art:1:gemessen",

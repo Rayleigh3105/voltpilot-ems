@@ -1,0 +1,6 @@
+# Immer LF, auch bei core.autocrlf=true (Git for Windows):
+# - edge-light: install.sh kopiert Skripte und UCI-Konfiguration byte-genau
+#   auf OpenWrt; mit CRLF startet dort weder boot.sh noch der procd-Dienst.
+# - die gemeinsamen Vektoren werden byte-genau mit der Erzeugung verglichen.
+edge-light/** text=auto eol=lf
+edge-app/nodered/*/*-vectors.json text eol=lf

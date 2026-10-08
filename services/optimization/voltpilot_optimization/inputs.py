@@ -42,6 +42,8 @@ from zoneinfo import ZoneInfo
 
 from voltpilot_optimization.config import (
     PEAK_SPIKE_FACTOR,
+    battery_control_enabled,
+    battery_control_max_age,
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
     pv_anchor_decay_slots,
@@ -242,6 +244,80 @@ def site_battery_claim(claims, site_id) -> str | None:
     if not claims:
         return None
     return claims.get(str(site_id))
+
+
+#: Die Wörter des Steuerstands (docs/contracts/speicher-steuerstand.md). Nur
+#: die beiden NICHT-gesteuerten Wörter ändern einen Plan; alles andere - auch
+#: ein unbekanntes Wort einer späteren Box - liest sich als gesteuert.
+BATTERY_CONTROL_NOT_COMMANDED = frozenset({"beobachtet", "not_aus"})
+
+
+@dataclass(frozen=True)
+class BatteryControl:
+    """Der zuletzt gemeldete Steuerstand EINER Box (``device_battery_control``)."""
+
+    state: str
+    #: Uhr der API beim Empfang des Herzschlags - die Frische-Regel misst daran.
+    reported_at: datetime
+
+
+def load_battery_controls(dsn: str, env=None) -> dict[str, BatteryControl]:
+    """Der gemeldete Steuerstand je Box, ``{device_id_str: BatteryControl}``.
+
+    Die Box meldet in jedem Herzschlag, ob VoltPilot ihren Speicher steuert
+    oder nur beobachtet (Block ``battery_control``); die api legt ihn in
+    ``device_battery_control`` ab (Migration V20261007120000). Der TAKT liest
+    die Tabelle EINMAL und reicht sie jeder Anlage weiter, wie die Regel-Claims.
+
+    Never raises: a missing table (an optimizer deployed ahead of the api
+    migration), an unreachable DB or the switch
+    ``OPTIMIZER_BATTERY_CONTROL_ENABLED=false`` degrade to "no report" - which
+    plans every battery as commanded, exactly the behaviour before the box
+    reported its steering state.
+    """
+    if not battery_control_enabled(env):
+        return {}
+    import psycopg  # lazy: optional [db] extra
+
+    controls: dict[str, BatteryControl] = {}
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT device_id::text, state, reported_at FROM device_battery_control"
+            )
+            for device_id, state, reported_at in cur.fetchall():
+                if device_id is None or state is None or reported_at is None:
+                    continue
+                controls[device_id] = BatteryControl(
+                    state=str(state), reported_at=ensure_utc(reported_at)
+                )
+    except Exception as exc:  # pragma: no cover - exercised via the unit test
+        logger.warning(
+            "battery_control.unavailable",
+            extra={"context": {"error": str(exc)}},
+        )
+        return {}
+    return controls
+
+
+def battery_observed(controls, device_id, now: datetime, max_age: timedelta | None = None) -> bool:
+    """Ob DIESER Speicher als nicht gesteuert geplant wird.
+
+    Ja nur bei einer FRISCHEN Meldung (Alter = ``now - reported_at`` höchstens
+    ``max_age``, Vorgabe ``OPTIMIZER_BATTERY_CONTROL_MAX_AGE_MINUTES``) mit dem
+    Wort ``beobachtet`` oder ``not_aus``. Keine Meldung, eine veraltete oder ein
+    unbekanntes Wort: gesteuert - der Stand vor dem Steuerstand und damit der
+    sichere Rückfall. Die Regel und ihre Fälle stehen in
+    ``docs/contracts/speicher-steuerstand-vectors.json`` (``optimierer``).
+    """
+    if not controls or device_id is None:
+        return False
+    control = controls.get(str(device_id))
+    if control is None or control.state not in BATTERY_CONTROL_NOT_COMMANDED:
+        return False
+    if max_age is None:
+        max_age = battery_control_max_age()
+    return ensure_utc(now) - ensure_utc(control.reported_at) <= max_age
 
 
 def site_model_choices(choices, site_id) -> dict:
@@ -743,6 +819,7 @@ def gather_inputs(
     horizon_slots: int = SLOTS_24H,
     model_choices=None,
     battery_claims=None,
+    battery_controls=None,
 ) -> OptimizationInput:
     """Assemble the slot-aligned :class:`OptimizationInput` for one site.
 
@@ -762,6 +839,12 @@ def gather_inputs(
     ``None`` = load it here. A claimed battery is planned as HELD - see
     :attr:`~voltpilot_optimization.domain.OptimizationInput.battery_held`.
 
+    ``battery_controls`` is the cycle's ONE read of the reported steering states
+    (:func:`load_battery_controls`), same convention: ``None`` = load it here. A
+    battery its box freshly reports as NOT commanded is planned as
+    self-consumption - see
+    :attr:`~voltpilot_optimization.domain.OptimizationInput.battery_observed`.
+
     **Der Ladestand ist seit P7 eine Bedingung, kein Vorgabewert.** Ohne frische
     ECHTE ``soc_pct``-Messung im Frischefenster traegt das Ergebnis
     ``soc_source = unbekannt``, und der Solver plant den Speicher gar nicht
@@ -772,8 +855,11 @@ def gather_inputs(
     if battery_claims is None:
         battery_claims = load_battery_claims(dsn)
     held_by = site_battery_claim(battery_claims, site.site_id)
+    if battery_controls is None:
+        battery_controls = load_battery_controls(dsn)
     site_choices = site_model_choices(model_choices, site.site_id)
     now = ensure_utc(now)
+    observed = battery_observed(battery_controls, site.device_id, now)
     slot_starts = horizon_slot_starts(now, horizon_slots)
     prices = _load_prices(dsn, site.bidding_zone, slot_starts)
 
@@ -962,6 +1048,9 @@ def gather_inputs(
         # Steuerung Stufe 3: an active customer rule owns this battery, so the
         # plan holds it instead of dispatching it (§3.7 A4).
         battery_held=held_by is not None,
+        # Steuerstand: VoltPilot steuert diesen Speicher nicht (beobachtet oder
+        # Not-Aus) - der Plan folgt seiner Eigenverbrauchsregelung.
+        battery_observed=observed,
         # P3: the site's own night-error distribution (None = no term).
         night_error_quantiles=night_errors,
         # P7: WOHER der Start-Ladestand kam. `unbekannt` ist der Ruhe-Plan.

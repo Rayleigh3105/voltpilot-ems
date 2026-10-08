@@ -1,5 +1,6 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.verbraucher.SteuerartProjektion;
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import com.voltpilot.api.web.dto.ChargingConfigDto.LadeparkRahmenDto;
@@ -353,6 +354,15 @@ public class ChargingConfigPublisher {
         }
         if (cp.minKw() != null) {
             sb.append(",\"min_kw\":").append(trim(cp.minKw()));
+        }
+        // „SONNE + SPEICHER" (06.10.2026) reist NUR neben `nur_sonne` und nur,
+        // wenn es wahr ist: abwesend neben einer Quelle heisst auf der Box
+        // FALSE - so erreicht „zurueck auf Nur Sonne" eine Saeule, deren
+        // Bahn-Wort sich gar nicht aendert. Jedes vorhandene Dokument bleibt
+        // damit zeichengleich.
+        if (Boolean.TRUE.equals(cp.storageRelease())
+                && SteuerartProjektion.POLICY_NUR_SONNE.equals(cp.source())) {
+            sb.append(",\"storage_release\":true");
         }
         // ⚠ Der RANG (P6) reist nur mit, wenn diese Saeule wirklich in der
         // Rangliste des Kunden steht. Abwesend heisst „ungerankt", und die Box

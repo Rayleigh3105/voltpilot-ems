@@ -74,7 +74,36 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
          * nimmt teil": nur so kann eine entfernte wieder herausfallen.
          */
         List<WallboxDto> wallboxes,
-        Instant updatedAt, String updatedBy) {
+        Instant updatedAt, String updatedBy,
+        /*
+         * „Sonne + Speicher" (06.10.2026): die RESERVE dieser Anlage in kWh,
+         * die der Speicher ueber seinem Reservestapel fuer die Nacht behaelt.
+         * null = keine eigene Angabe, es gilt die Vorgabe
+         * {@code storageReleaseReserveStandardKwh}. Sie reist NICHT zur Box -
+         * der Optimierer rechnet mit ihr die Untergrenze.
+         */
+        Double storageReleaseReserveKwh,
+        /* Die Vorgabe des Optimierers (storage_release.DEFAULT_RESERVE_KWH). */
+        Double storageReleaseReserveStandardKwh) {
+
+    /**
+     * Die Reserve-Vorgabe von „Sonne + Speicher" in kWh - dieselbe Zahl wie
+     * {@code DEFAULT_RESERVE_KWH} in
+     * {@code services/optimization/voltpilot_optimization/storage_release.py}
+     * (der Vertragstest {@code SonneSpeicherVorgabeTest} haelt beide gleich).
+     */
+    public static final double STORAGE_RELEASE_RESERVE_STANDARD_KWH = 1.0;
+
+    /** Die Konfiguration ohne Reserve-Angabe (jeder Aufrufer vor 06.10.2026). */
+    public ChargingConfigDto(Double gridLimitKw, List<String> priorityChargePointIds,
+            String surplusPolicy, String storagePriority,
+            List<AllowedChargePointDto> chargePoints, List<String> removedChargePointIds,
+            LadeparkRahmenDto frame, Integer storageRank, List<WallboxDto> wallboxes,
+            Instant updatedAt, String updatedBy) {
+        this(gridLimitKw, priorityChargePointIds, surplusPolicy, storagePriority, chargePoints,
+                removedChargePointIds, frame, storageRank, wallboxes, updatedAt, updatedBy, null,
+                STORAGE_RELEASE_RESERVE_STANDARD_KWH);
+    }
 
     /**
      * Eine im Portal eingetragene Ladesäule. Alles außer der Kennung ist das,
@@ -113,7 +142,22 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
              * hat. Die Box wechselt zwischen ihnen weiter im Takt ab.
              */
             Integer rank,
-            Instant addedAt, String addedBy) {}
+            Instant addedAt, String addedBy,
+            /*
+             * storageRelease = „Sonne + Speicher" (06.10.2026): auf der Bahn
+             * nur_sonne darf diese Saeule zusaetzlich Speicherenergie ueber der
+             * Untergrenze des Fahrplans bekommen. null/false = nein.
+             */
+            Boolean storageRelease) {
+
+        /** Die Zeile ohne Speicherfreigabe (jeder Aufrufer vor 06.10.2026). */
+        public AllowedChargePointDto(String chargePointId, String label, Double ratedKw,
+                Integer connectors, String source, Double minKw, String connection, Integer rank,
+                Instant addedAt, String addedBy) {
+            this(chargePointId, label, ratedKw, connectors, source, minKw, connection, rank,
+                    addedAt, addedBy, null);
+        }
+    }
 
     /**
      * Eine Wallbox, die dem Ladepark-Rahmen beitritt (P6).

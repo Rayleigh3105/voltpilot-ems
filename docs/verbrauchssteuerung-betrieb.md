@@ -10,6 +10,9 @@ Für wirksame Steuerung müssen Datenmodell, Geräteverbindung, Freigaben und Au
 | `VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED` | API: Policy kompilieren und ausrollen | `false` |
 | `OPTIMIZER_CONTROLLABLE_LOADS_ENABLED` | Optimierung: Verbraucher einplanen | `false` |
 | `VP_CONSUMER_CONTROL_ENABLED` | Box: Verbraucherkommandos und Deadline-Fallback | `false` |
+| `OPTIMIZER_STORAGE_RELEASE_ENABLED` | Optimierung: Speicheruntergrenze für „Sonne + Speicher“; aus = alle solchen Ladepunkte fahren „Nur Sonne“ | `true` |
+| `OPTIMIZER_BATTERY_CONTROL_ENABLED` | Optimierung: gemeldeten Steuerstand lesen; nicht gesteuerter Speicher als Eigenverbrauch, Untergrenze ohne Handelsprüfung. Aus = jeder Speicher gesteuert | `true` |
+| `OPTIMIZER_BATTERY_CONTROL_MAX_AGE_MINUTES` | Optimierung: höchstes Alter der Meldung; älter = gesteuert | `10` |
 
 `VP_CONTROL_ENABLED` ist zusätzlich die globale Edge-Freigabe. Bei v2-Planung auch `VOLTPILOT_V2_PLAN_SITES` berücksichtigen. Der **effektive Deploymentwert** kann vom Codedefault abweichen; auf Cloud und Box getrennt prüfen.
 
@@ -41,6 +44,8 @@ flowchart LR
 | Aufgabe ohne Fortschritt | Messkanal, Frische und bestätigter Verbrauch |
 | Frist gefährdet/verpasst | Restbedarf, gültiges Zeitfenster, Grenzen und Fallbackgrund |
 | Regel bleibt nach Stop aktiv | Retained Artefaktrücknahme und Empfang an der Box |
+| „Sonne + Speicher“ gibt nichts frei | `ev_release_reason` im Fahrplan, `storage_release_mode`/`_note` im Herzschlag der Box (Portal: Erklärzeile am Ladepunkt). `speicherpfad` mit „ohne bestätigte Rückmeldung“: gesteuerter Speicher, Rücklesung prüfen. `wirkung` bei `frei_beobachtet` davor: der nicht gesteuerte Wechselrichter deckt die Wallbox nicht (Arbeitsmodus am Gerät prüfen) |
+| Beobachteter Speicher bekommt nachts keine Untergrenze (`plan_handelt`) | Steuerstand: `SELECT state, state_since, reported_at FROM device_battery_control WHERE device_id = …`. Keine Zeile = Box ohne Meldung (älteres Image) oder API ohne Migration; `reported_at` älter als 10 min = Box meldet nicht mehr. Optimierer-Log: `EIGENVERBRAUCH (Speicher nicht gesteuert)` in der Zeile der Anlage, `battery_observed` in `storage_release.planned` |
 
 ## Beobachtung und Rücknahme
 

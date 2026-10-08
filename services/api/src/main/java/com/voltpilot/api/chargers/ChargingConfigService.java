@@ -1,5 +1,6 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.verbraucher.SteuerartProjektion;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.uems.AnlageGrenzen;
 import com.voltpilot.api.uems.AnlageStandortRepository;
@@ -827,6 +828,19 @@ public class ChargingConfigService {
     @Transactional
     public ChargingConfigDto setChargePointSource(UUID siteId, String chargePointId, String source,
             Double minKw) {
+        return setChargePointSource(siteId, chargePointId, source, minKw, null);
+    }
+
+    /**
+     * Wie {@link #setChargePointSource(UUID, String, String, Double)}, mit
+     * „Sonne + Speicher" ({@code storageRelease}). Das Flag reist MIT der Quelle:
+     * eine neue Quelle ohne Angabe setzt es zurueck - sonst lebte eine alte
+     * Speicherfreigabe still unter einer Wahl weiter, die sie nie hatte. Neben
+     * einer anderen Bahn als {@code nur_sonne} ist es nie wahr.
+     */
+    @Transactional
+    public ChargingConfigDto setChargePointSource(UUID siteId, String chargePointId, String source,
+            Double minKw, Boolean storageRelease) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
         String id = chargePointId == null ? "" : chargePointId.trim();
@@ -836,7 +850,12 @@ public class ChargingConfigService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Es wurde weder eine Quelle noch eine Mindestleistung angegeben.");
         }
-        if (!configs.saveChargePointSource(siteId, id, src, minKw)) {
+        Boolean release = storageRelease;
+        if (src != null) {
+            release = Boolean.TRUE.equals(release)
+                    && SteuerartProjektion.POLICY_NUR_SONNE.equals(src);
+        }
+        if (!configs.saveChargePointSource(siteId, id, src, minKw, release)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Diese Anlage führt keine eingetragene Ladepunkt-Kennung \"" + id + "\".");
         }
@@ -844,6 +863,32 @@ public class ChargingConfigService {
         push(tenantId, siteId, saved);
         return saved;
     }
+
+    /**
+     * Setzt die Reserve von „Sonne + Speicher" (06.10.2026) - der KUNDE
+     * entscheidet, wie vorsichtig die Untergrenze seines Speichers ist.
+     *
+     * <p>{@code null} heisst „keine eigene Angabe" und die Vorgabe des
+     * Optimierers gilt ({@link ChargingConfigDto#STORAGE_RELEASE_RESERVE_STANDARD_KWH}).
+     * Die Zahl reist NICHT zur Box: der Optimierer rechnet mit ihr die
+     * Untergrenze, die der Fahrplan mitbringt - deshalb kein Push.
+     */
+    @Transactional
+    public ChargingConfigDto setStorageReleaseReserve(UUID siteId, Double reserveKwh, String actor) {
+        requireSite(siteId);
+        UUID tenantId = TenantContext.get();
+        if (reserveKwh != null && (reserveKwh.isNaN() || reserveKwh.isInfinite()
+                || reserveKwh < 0 || reserveKwh > MAX_STORAGE_RELEASE_RESERVE_KWH)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Die Reserve muss zwischen 0 und " + (int) MAX_STORAGE_RELEASE_RESERVE_KWH
+                    + " kWh liegen.");
+        }
+        configs.saveStorageReleaseReserve(tenantId, siteId, reserveKwh, actor);
+        return configs.forSite(siteId);
+    }
+
+    /** Hoechste Reserve - dieselbe Grenze wie storage_release.MAX_RESERVE_KWH und der CHECK. */
+    static final double MAX_STORAGE_RELEASE_RESERVE_KWH = 100.0;
 
     /**
      * Setzt den Ladepark-RAHMEN (P5/E10).

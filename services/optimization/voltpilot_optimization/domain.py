@@ -561,6 +561,17 @@ class OptimizationInput:
     #: dispatch it, never battery master data. Default False = byte-identical
     #: to every run before Stufe 3.
     battery_held: bool = False
+    #: Steuerstand (07.10.2026, docs/contracts/speicher-steuerstand.md): die Box
+    #: meldet frisch, dass VoltPilot diesen Speicher NICHT steuert (beobachtet
+    #: oder Not-Aus). Er folgt dann seiner eigenen Eigenverbrauchsregelung, und
+    #: der Plan kann ihn nicht ausführen - also plant der Solver ihn genau so:
+    #: Laden und Entladen sind auf die Bahn des sturen Speichers festgelegt
+    #: (jeder Überschuss sofort laden, jedes Defizit sofort decken, nie aus dem
+    #: Netz, nie ins Netz). Keine Handels-Viertelstunden, keine Vollmachten,
+    #: keine Nacht-Wertfunktion, und die „Sonne + Speicher"-Untergrenze entsteht
+    #: ohne Handelsprüfung. Wie ``battery_held`` eine BOUND, kein Constraint;
+    #: Vorgabe False = byte-identisch zu jedem Lauf davor.
+    battery_observed: bool = False
     #: Steuerung Stufe 7 „Vorschau mit Zahlen" (Konzept vp-steuerung-konzept-b3
     #: §3.8): die ersten ``forced_charge_slots`` Viertelstunden MÜSSEN mit
     #: mindestens ``forced_charge_kw`` laden - das Modell des Handeingriffs
@@ -1004,6 +1015,16 @@ class SchedulePlan:
     # ausgewiesen - die Fahrplan-Seite sagt dann „ohne Ladestand keine
     # Speicherplanung", statt eine Zahl zu erfinden oder zu schweigen.
     soc_source: str = SOC_SOURCE_GEMESSEN
+    # „Sonne + Speicher" (06.10.2026): die Speicheruntergrenze je Slot, bis zu
+    # der ein Ladepunkt auf dieser Quelle den Speicher leeren darf
+    # (:class:`voltpilot_optimization.storage_release.StorageRelease`). Nur an
+    # Anlagen gesetzt, an denen ein Ladepunkt die Quelle fährt - jeder andere
+    # Fahrplan bleibt byte-identisch (None = Feld fehlt im MQTT-Fahrplan).
+    storage_release: object | None = None
+    # Steuerstand (07.10.2026): der Lauf hat den Speicher als NICHT gesteuert
+    # geplant (:attr:`OptimizationInput.battery_observed`), also als
+    # Eigenverbrauch. Nur Log und Untergrenze lesen es; nicht persistiert.
+    battery_observed: bool = False
 
     @property
     def cost_eur(self) -> float:

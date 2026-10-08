@@ -435,6 +435,9 @@ type UpdateRequest struct {
 	// Rank: this station's Rangliste position - see Charger.Rank. nil = leave
 	// as is, 0 = unranked.
 	Rank *int `json:"rank,omitempty"`
+	// StorageRelease: „Sonne + Speicher" - see Charger.StorageRelease. nil =
+	// leave as is.
+	StorageRelease *bool `json:"storage_release,omitempty"`
 }
 
 // Update changes the operator-editable fields. Identity (the ChargePointId)
@@ -476,12 +479,16 @@ func (s *Server) Update(id string, req UpdateRequest) (Charger, error) {
 	if req.Rank != nil {
 		next.Rank = *req.Rank
 	}
+	if req.StorageRelease != nil {
+		next.StorageRelease = *req.StorageRelease
+	}
 	// Reuse the ONE validation path: the same rules must hold whether a
 	// charger is created or edited.
 	checked, err := NormalizeAdd(AddRequest{
 		ID: id, Label: next.Label, Priority: next.Priority,
 		RatedKw: next.RatedKw, MinKw: next.MinKw, Connectors: next.Connectors,
 		Connection: next.Connection, Source: next.Source, Rank: next.Rank,
+		StorageRelease: next.StorageRelease,
 	}, nil, next.AddedAt)
 	if err != nil {
 		s.mu.Unlock()

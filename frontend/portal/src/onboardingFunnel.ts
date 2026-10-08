@@ -79,10 +79,14 @@ export function funnelStages(
     : registry.filter((d) => d.claimed).length;
   let crossed = 0;
   let open = 0;
+  let vonHand = 0;
   for (const d of connectedRows) {
-    const s = crossoverState(d.trust).state;
+    const s = crossoverState(d.trust, d.boxArt).state;
     if (s === 'gekreuzt') crossed += 1;
     else if (s === 'offen' || s === 'fehler') open += 1;
+    // Edge Light ohne Stufe 2 ist keine offene Aufgabe, aber auch nicht
+    // update-fähig über das Portal - benannt, nicht mitgezählt.
+    else if (s === 'von_hand') vonHand += 1;
   }
   const stages: FunnelStage[] = [
     {
@@ -124,13 +128,17 @@ export function funnelStages(
       label: 'Vertrauen gekreuzt',
       count: crossed,
       note:
-        open > 0
+        (open > 0
           ? open === 1
             ? '1 Gerät ist noch nicht update-fähig.'
             : `${open} Geräte sind noch nicht update-fähig.`
           : crossed === 0
             ? 'Noch kein Gerät meldet einen geprüften Vertrauensanker.'
-            : 'Diese Geräte können Releases anwenden.',
+            : 'Diese Geräte können Releases anwenden.')
+        + (vonHand === 0 ? ''
+          : vonHand === 1
+            ? ' 1 Edge-Light-Box bekommt Updates von Hand (Stufe 1).'
+            : ` ${vonHand} Edge-Light-Boxen bekommen Updates von Hand (Stufe 1).`),
       // Ein offener Crossover ist eine AUFGABE, kein Fehler - aber er ist der
       // Grund, warum ein Rollout auf dieser Box nichts bewirkt.
       attention: open > 0,

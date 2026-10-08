@@ -227,7 +227,8 @@ describe('geraetView - die sieben Sektionen aus vier Reads', () => {
     // behaupteten zwei Zeilen derselben Seite verschiedene Alter.
     expect(werte['Ist gemeldet']).toBe('vor 5\u00a0Min.');
     // Nur SIGNIERTE Releases sind verteilbar.
-    expect(v.software.signierteReleases.map((r) => r.releaseSeq)).toEqual([14]);
+    expect(v.software.releases.passend.map((r) => r.releaseSeq)).toEqual([14]);
+    expect(v.software.releases.hinweis).toBeNull();
 
     expect(v.vertrauen.state).toBe('gekreuzt');
     expect(v.vertrauen.trustSet).toEqual(['rel-2026-a']);
@@ -243,6 +244,24 @@ describe('geraetView - die sieben Sektionen aus vier Reads', () => {
 
     // Der Verlauf ist der DIESES Geräts, nicht das Flotten-Journal.
     expect(v.verlauf.map((e) => e.id)).toEqual([1]);
+  });
+
+  it('Edge Light: kein Docker-Release angeboten, Grund benannt, Vertrauen ruhig', () => {
+    // Die Pilot-Box: Wurzel eingebacken, aber kein Vertrauens-Set (Stufe 1).
+    const light: AdminDeviceRow = {
+      ...BOX, ist: 'edge-light-g2d2bca1b6', soll: null, sollSeq: null, state: 'aktuell',
+      boxArt: 'light',
+      trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+        trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
+    };
+    const v = geraetView(input({ devices: [light] }), NOW)!;
+    expect(v.software.boxArt.art).toBe('light');
+    expect(v.software.boxArt.label).toBe('Edge Light');
+    expect(v.software.releases.passend).toEqual([]);
+    expect(v.software.releases.hinweis).toContain('Updates von Hand (Edge Light, Stufe 1)');
+    expect(v.vertrauen.state).toBe('von_hand');
+    expect(v.vertrauen.tone).toBe('off');
+    expect(v.vertrauen.label).toBe('Updates von Hand (Edge Light, Stufe 1)');
   });
 
   it('gibt null zurück, wenn die Referenz in keinem Inventar vorkommt', () => {

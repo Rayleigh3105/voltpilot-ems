@@ -82,7 +82,7 @@ def test_nw6_ganzer_zyklus_veroeffentlicht_die_bytes_von_vor_ap15(monkeypatch):
     publisher, repo = RecordingPlanV2Publisher(), InMemorySitePlanRepository()
     site = SimpleNamespace(site_id=SITE, device_id=E_1, verbund=None)
     engine._shadow_publish_v2(
-        "dsn", site, SimpleNamespace(soc_unbekannt=False), T0, publisher, frozenset({SITE}), repo
+        "dsn", site, SimpleNamespace(soc_unbekannt=False, battery_observed=False), T0, publisher, frozenset({SITE}), repo
     )
     ((topic, payload),) = publisher.published
     assert topic == plan_v2_topic(plan)

@@ -35,8 +35,8 @@
     },
     "release": {
       "type": "string",
-      "pattern": "^edge-\\d{4}\\.\\d{2}\\.\\d+$",
-      "description": "Nur zur Anzeige/Zuordnung. Der wirksame Wert steht im signierten Manifest."
+      "pattern": "^edge(-light)?-\\d{4}\\.\\d{2}\\.\\d+$",
+      "description": "Nur zur Anzeige/Zuordnung. Der wirksame Wert steht im signierten Manifest. Beide Release-Linien (edge-JJJJ.MM.N, edge-light-JJJJ.MM.N): eine Box muss die Zuweisung einer anderen Box-Art LESEN koennen, um sie nach gueltiger Signatur zurueckzustellen statt sie als unlesbar zu melden."
     },
     "release_seq": {
       "type": "integer",
