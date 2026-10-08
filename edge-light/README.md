@@ -63,12 +63,13 @@ edge-light/
 │   └── mango.md               GL.iNet Mango: Speicher, Flash, Ports, WireGuard, Pilotplan
 ├── openwrt/
 │   ├── install.sh             Einrichtung über SSH (auch durch den WireGuard-Tunnel)
-│   ├── service-tunnel.sh      Wartungstunnel ins Service-VPN (WireGuard, nur Schlüssel-SSH)
+│   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, nur Schlüssel-SSH)
 │   └── files/                 Loader, procd-Dienst, UCI-Konfiguration
 ├── scripts/                   build.sh, test.sh (lokales Go oder Docker)
 └── test/
     ├── qemu-smoke.sh          MIPS-Programm unter qemu gegen simulierten Logger
-    └── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)
+    ├── mango-labtest.sh       Start + Messung auf einem echten Mango per SSH (ohne Portal)
+    └── service-tunnel-probe.sh  service-tunnel.sh gegen OpenWrt im Container (Wechsel alt → Wartungsserver)
 ```
 
 **Der Go-Code liegt in `edge-app/core`**, nicht hier – aus einem harten Grund: Go erlaubt den Zugriff auf `internal/`-Pakete nur innerhalb des Moduls. Edge Light *ist* der bestehende Core plus neue Pakete; eine Kopie wäre sofort eine zweite Wahrheit. Die neuen Pakete:
