@@ -51,6 +51,7 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Box-Seite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
+import { FernwartungKarte } from '../components/FernwartungKarte';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { geraetView, type GeraetView } from '../adminGeraet';
 import { adminApi } from '../admin/adminApi';
@@ -454,12 +455,12 @@ export function BoxSeiteSection({
 
         // --- Technik & Diagnose -------------------------------------------------
         const technik: TechnikTeil[] = [{ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.technik} /> }];
-        if (showTechnicalLayer() && adminView) {
+        if (showTechnicalLayer() && (adminView || boxDevice)) {
           technik.push({
             id: 'plattform',
             inhalt: (
               <div data-testid="box-admin">
-                <AdminGeraetKarten
+                {adminView && <AdminGeraetKarten
                   view={adminView}
                   busy={adminBusy}
                   onNavigateSteuerung={() => {
@@ -473,8 +474,12 @@ export function BoxSeiteSection({
                     await adminAktion(() => adminApi.revertUpdateTarget(
                       adminView.device.deviceId as string));
                   } : undefined}
-                />
+                />}
                 {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
+                {/* Fernwartung (E5): nur Plattform-Admins - der Kunde sieht
+                    die Fenster nicht (O3). Lädt selbst, unabhängig davon, ob
+                    die übrigen Plattform-Karten geladen sind. */}
+                {boxDevice && <FernwartungKarte edgeRef={boxDevice.externalRef} />}
               </div>
             ),
           });

@@ -47,6 +47,8 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 
 Eingetragene Schlüssel (05.10.2026, am Gerät gelesen): `voltpilot-mango@desktop` (Max' Laptop, `10.10.1.5`) und `claude@CodeServer voltpilot-edge` (CodeServer, `10.10.1.26`, WireGuard im Userspace über `wireproxy`). Einen Zugang entzieht man mit dem Peer in wireguard-ui und der Zeile in `/etc/dropbear/authorized_keys`.
 
+Der Wechsel auf den Wartungsserver aus dem Portal ist beschrieben, aber noch nicht ausgeführt: [mango.md, Wechsel des Piloten](mango.md#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt).
+
 Ohne Freigabe in der Liste erreicht ein Rechner mit SSH-Zugang die Web-App über einen SSH-Tunnel: `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25`, dann `http://localhost:8484`.
 
 **Ein weiterer Rechner** braucht drei Dinge:

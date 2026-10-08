@@ -87,6 +87,53 @@ WireGuard ins Service-VPN `vpn.voltpilot.de:1001` (`10.10.1.0/24`, verwaltet mit
 
 Das Service-VPN ist ein gemeinsames Netz, in dem auch Kundensysteme hängen (HA-VMs, Router). Deshalb im Tunnel nur Schlüssel-SSH; serverseitig sollten Boxen und Kundensysteme einander nicht erreichen.
 
+### Wartungsserver aus dem Portal (Fernwartung, Entscheid E5)
+
+Neue Boxen bekommen ihren Tunnel nicht mehr im alten Service-VPN, sondern auf dem eigenen Wartungsserver (Vorgabe `wartung.voltpilot.de:51820`). Das Portal führt Schlüssel, Adresse und Fernwartungsfenster; der Tunnel-Dienst auf der VM setzt sie um. Techniker erreichen eine Box nur in einem offenen Fenster. Grundlage: [Fernwartung](../../docs/fernwartung.md).
+
+`service-tunnel.sh` richtet standardmäßig diesen Tunnel ein (`VP_SERVICE_ZIEL=wartung`); `VP_SERVICE_ZIEL=alt` bleibt für den Piloten bis zum Wechsel.
+
+| | Wartungsserver (`wartung`) | altes Service-VPN (`alt`) |
+|---|---|---|
+| Schnittstelle, Schlüssel | `wg_wartung`, `/etc/wireguard/vp-wartung.key` (auf der Box erzeugt) | `wg_service`, `/etc/wireguard/vp-service.key` |
+| Gegenstelle | `VP_SERVICE_ENDPOINT` (`wartung.voltpilot.de`), Port 51820, Server-Schlüssel `VP_SERVICE_PUBKEY` aus dem Portal (Pflicht) | `vpn.voltpilot.de:1001`, fester Server-Schlüssel |
+| Adresse | im Portal zugeteilt, Box-Netz `10.10.16.0/20` | in WireGuard UI vergeben, `10.10.1.0/24` |
+| Erlaubtes Netz auf der Box | nur Techniker-Netz `10.10.32.0/24` | `10.10.1.0/24` |
+| SSH | eigene Dropbear-Instanz `vp_wartung`, Port 2222, nur Schlüssel | Instanz `vp_service` |
+
+Für eine neue Box:
+
+1. `edge-light/openwrt/service-tunnel.sh root@192.168.1.1 key` gibt öffentlichen Schlüssel und Box-Referenz aus.
+2. Im Portal unter **Geräte › Fernwartung › Tunnel-Schlüssel hinterlegen** eintragen. Das Portal teilt die Adresse zu und zeigt die fertige Befehlszeile.
+3. Die Befehlszeile ausführen, mit der Box als Ziel.
+
+Beide Tunnel können nebeneinander laufen: Die Zone `service` umfasst alle Tunnel-Schnittstellen, und jede bekommt ihre eigene Dropbear-Instanz und ihren eigenen Wächter. `service-tunnel.sh <ziel> abbauen <schnittstelle>` entfernt einen Tunnel vollständig und verweigert das, solange die SSH-Sitzung über genau diesen Tunnel läuft. `service-tunnel.sh <ziel> status` zeigt beide.
+
+Geprüft mit `edge-light/test/service-tunnel-probe.sh` gegen OpenWrt 24.10 im Container (procd, netifd, fw4, Dropbear, cron, Kernel-WireGuard): Altbestand, neuer Tunnel daneben, Wiederholbarkeit, Schutz beim Abbauen, alten Tunnel abbauen, Web-Freigabe. Der Mango läuft mit 25.12; der Handshake mit einem echten Server ist dort noch nicht belegt.
+
+### Wechsel des Piloten auf den Wartungsserver (beaufsichtigt, noch nicht ausgeführt)
+
+Der Pilot (`edge-zay5sdd`, heute `10.10.1.25` im alten VPN) wechselt erst, wenn der Wartungsserver steht. Der alte Tunnel bleibt bis zum letzten Schritt bestehen, so ist die Box jederzeit über einen Weg erreichbar. „Beaufsichtigt" heißt: ein Mensch führt jeden Schritt aus und prüft das Ergebnis, und jemand kommt im Notfall vor Ort an den Mango (WLAN `VoltPilot.de-zay5sdd`, `root@192.168.1.1`).
+
+**Voraussetzungen:**
+
+- Die VM steht, die API kennt den Server-Schlüssel, und im Portal steht „Tunnel-Dienst holt ab".
+- Für den Rechner des Technikers gibt es einen Zugang im Portal, und er ist als zweites WireGuard-Profil neben dem alten VPN eingerichtet.
+- In `~/.ssh/config` zwei Namen für dieselbe Box: `mango-alt` (`HostName 10.10.1.25`, `Port 2222`, `User root`) und `mango-neu` (die neue Adresse, `Port 2222`, `User root`).
+
+**Schritte:**
+
+1. Über den alten Tunnel den neuen Schlüssel erzeugen: `edge-light/openwrt/service-tunnel.sh mango-alt key`. Der alte Schlüssel bleibt unberührt.
+2. Im Portal Schlüssel und Referenz `edge-zay5sdd` hinterlegen; das Portal nennt die Adresse im Box-Netz.
+3. Über den alten Tunnel den neuen einrichten: die Befehlszeile aus dem Portal, mit `mango-alt` statt `root@<box>`. Danach laufen beide Tunnel.
+4. Im Portal ein Fenster öffnen: Box `edge-zay5sdd`, der eigene Zugang, 1 Stunde, Grund „Wechsel auf den Wartungsserver".
+5. Über den neuen Weg prüfen: `ssh mango-neu`. Der Host-Schlüssel muss `SHA256:9v/vmOZqCxM2vkV0IqYIjD3U3HL/Go44eeU83WTos8o` sein, sonst abbrechen. Dann `edge-light/openwrt/service-tunnel.sh mango-neu status` (Handshake auf `wg_wartung`).
+6. Nur wenn Schritt 5 gelingt: über den **neuen** Weg den alten Tunnel abbauen: `edge-light/openwrt/service-tunnel.sh mango-neu abbauen wg_service`.
+7. Fenster im Portal schließen oder ablaufen lassen. Die Web-App im Tunnel bei Bedarf neu freigeben: `service-tunnel.sh mango-neu web <techniker-adresse>`.
+8. Optional und von Hand durch den Kapitän: den Peer des Piloten in WireGuard UI auf `vpn.voltpilot.de` entfernen. Die Fernwartung ändert dort nichts.
+
+**Rückweg:** Bis Schritt 6 ist nichts verloren. Kommt der neue Tunnel nicht, baut man ihn über den alten wieder ab: `service-tunnel.sh mango-alt abbauen wg_wartung`. Nach Schritt 6 ohne funktionierenden neuen Tunnel hilft nur noch der Zugang vor Ort. Die SSH-Schlüssel in `/etc/dropbear/authorized_keys` bleiben beim Wechsel gleich, sie sind weiterhin die zweite Schranke.
+
 Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
 1. **Firewall:** Die go-e steht im Kundennetz, also auf der WAN-Seite des Mango. Die WAN-Zone weist eingehend alles ab, `install.sh` öffnet 8887 nicht. Nötig ist eine Regel nur für das Kundennetz bzw. die Ladesäule, z. B. `uci add firewall rule` mit `src=wan`, `proto=tcp`, `dest_port=8887`, `src_ip=<kundennetz>/24`, `target=ACCEPT`.
@@ -148,7 +195,7 @@ Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (all
 | 1883 | lokaler Bus | nur `127.0.0.1` sinnvoll; per Firewall nicht ins WAN |
 | 502 | Modbus-Datenspiegel | standardmäßig aus |
 
-WireGuard bleibt unverändert der Servicezugang. Die Box selbst verbindet sich nur **ausgehend** (HTTPS und MQTT-TLS 8883) und braucht den Tunnel für den Betrieb nicht.
+WireGuard bleibt der Servicezugang, künftig zum Wartungsserver (UDP 51820, [oben](#wartungsserver-aus-dem-portal-fernwartung-entscheid-e5)). Die Box selbst verbindet sich nur **ausgehend** (HTTPS, MQTT-TLS 8883 und der Tunnel) und braucht den Tunnel für den Betrieb nicht.
 
 ## Pilotplan auf einem echten Mango
 

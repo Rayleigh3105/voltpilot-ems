@@ -1,9 +1,11 @@
 import { GERAETE_BEREICH, pageRoute, type PageId, type Route } from '../../nav';
 import { GeraeteRegistryPage } from './GeraeteRegistryPage';
 import { EdgeUpdatesPage } from './EdgeUpdatesPage';
+import { FernwartungPage } from './FernwartungPage';
 
 /** Geräte opens on Updates: version overview and rollout actions. Registration
- * is the secondary tab. Both existing routes and device deep links survive. */
+ * is the secondary tab, Fernwartung (Wartungstunnel, E5) the third. All
+ * existing routes and device deep links survive. */
 export function GeraeteBereich({
   page,
   onNavigate,
@@ -17,6 +19,7 @@ export function GeraeteBereich({
     <GeraeteTabs active={page} onSelect={(id) => onNavigate(pageRoute(id))} />
   );
 
+  if (page === 'fernwartung') return <FernwartungPage tabs={tabs} />;
   return page === 'edge-updates' ? (
     <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} onJumpToTenant={onJumpToTenant} tabs={tabs} />
   ) : (

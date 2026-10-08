@@ -349,6 +349,14 @@ tags:
       sagt, wo das Original liegt. IP-6: Personen im Energiemanagement (auch ohne Konto) und Aufgaben mit
       „entschieden von“; die Leitung ist, wer am Tag die Aufgabe „Leitung des Unternehmens“ trägt. IP-10: „Wer ist
       wofür verantwortlich“ liest die Verantwortlichen der Objekte und die Freigaben der Bezugsbasen daneben.
+  - name: fernwartung
+    description: >
+      Fernwartung über das Portal (Entscheid E5): Tunnel-Schlüssel je Box,
+      Techniker-Zugänge, Fernwartungsfenster und Protokoll unter
+      /api/v1/admin/fernwartung (nur `platform-admin`), dazu die nur lesende
+      Route des Tunnel-Dienstes (/api/v1/fernwartung/soll, nur die Rolle
+      `tunnel-dienst`). Der Kunde sieht nichts davon (O3). Siehe
+      docs/fernwartung.md.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -6441,6 +6449,308 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminFleet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung:
+    get:
+      tags: [fernwartung]
+      summary: Übersicht - Server-Seite, Zähler und wann der Tunnel-Dienst zuletzt abgeholt hat.
+      description: >
+        `abrufe` sagt, DASS ein Tunnel-Dienst den Soll-Stand abgeholt hat, nicht
+        ob er wirkt (der Dienst meldet nichts zurück). `server.eingerichtet` ist
+        false, solange der Server-Schlüssel nicht konfiguriert ist.
+      responses:
+        "200":
+          description: Übersicht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungUebersicht" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung/boxen:
+    get:
+      tags: [fernwartung]
+      summary: Alle Boxen mit hinterlegtem Tunnel-Schlüssel, mit laufenden und geplanten Fenstern.
+      responses:
+        "200":
+          description: Boxen nach Tunnel-Adresse.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung/boxen/{ref}:
+    get:
+      tags: [fernwartung]
+      summary: Eine Box; 404, solange kein Tunnel-Schlüssel hinterlegt ist.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string, example: edge-zay5sdd } }
+      responses:
+        "200":
+          description: Die Box.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+        "422": { description: Box-Referenz mit falschem Prüfzeichen. }
+  /api/v1/admin/fernwartung/boxen/{ref}/schluessel:
+    put:
+      tags: [fernwartung]
+      summary: Öffentlichen Tunnel-Schlüssel einer Box hinterlegen (Übergang bis zur Werkstatt-Registrierung D2).
+      description: >
+        Neu: Adresse aus dem Box-Netz zuteilen (201). Derselbe Schlüssel noch
+        einmal: unverändert (200). Ein anderer Schlüssel nur mit
+        `schluesselTausch: true` (200, sonst 409) - die Adresse bleibt der Box.
+        Ein Schlüssel gehört höchstens einem Zugang (409). Die Referenz wird
+        wie bei der Kopplung kanonisiert; `edge-` mit falschem Prüfzeichen oder
+        eine der Plattform unbekannte Referenz ohne Prüfzeichen ist 422. Die
+        Antwort trägt die Server-Seite für service-tunnel.sh.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: Öffentlicher WireGuard-Schlüssel (Base64, 44 Zeichen). }
+                schluesselTausch: { type: boolean }
+                notiz: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Unverändert oder getauscht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSchluesselAntwort" }
+        "201":
+          description: Angelegt, Adresse zugeteilt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSchluesselAntwort" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Anderer Schlüssel ohne Tausch-Markierung, Schlüssel schon vergeben oder Netz voll. }
+        "422": { description: Referenz mit falschem Prüfzeichen oder unbekannt. }
+  /api/v1/admin/fernwartung/boxen/{ref}/sperren:
+    post:
+      tags: [fernwartung]
+      summary: Box sperren - der Tunnel-Dienst entfernt ihren Peer, offene und geplante Fenster werden geschlossen.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { grund: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: Gesperrt (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+  /api/v1/admin/fernwartung/boxen/{ref}/entsperren:
+    post:
+      tags: [fernwartung]
+      summary: Box wieder zulassen (idempotent).
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Aktiv.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+  /api/v1/admin/fernwartung/techniker:
+    get:
+      tags: [fernwartung]
+      summary: Alle Techniker-Zugänge.
+      responses:
+        "200":
+          description: Zugänge nach Tunnel-Adresse.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang anlegen; der Schlüssel entsteht auf dem Gerät des Technikers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, publicKey]
+              properties:
+                name: { type: string, maxLength: 80 }
+                publicKey: { type: string }
+                notiz: { type: string, maxLength: 500 }
+      responses:
+        "201":
+          description: Angelegt, Adresse aus dem Techniker-Netz zugeteilt; mit Server-Seite für die Gerätekonfiguration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  techniker: { $ref: "#/components/schemas/FernwartungTechniker" }
+                  server: { $ref: "#/components/schemas/FernwartungServer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Schlüssel schon vergeben oder Netz voll. }
+  /api/v1/admin/fernwartung/techniker/{id}/sperren:
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang sperren - Peer raus, seine offenen und geplanten Fenster werden geschlossen.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { grund: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: Gesperrt (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter Zugang. }
+  /api/v1/admin/fernwartung/techniker/{id}/entsperren:
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang wieder zulassen (idempotent).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Aktiv.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter Zugang. }
+  /api/v1/admin/fernwartung/fenster:
+    get:
+      tags: [fernwartung]
+      summary: Fernwartungsfenster, neueste zuerst.
+      parameters:
+        - { name: box, in: query, required: false, schema: { type: string } }
+        - { name: techniker, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: Fenster.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungFenster" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [fernwartung]
+      summary: Fenster öffnen - Box, Techniker, Grund und Dauer sind Pflicht.
+      description: >
+        Dauer 1 Minute bis `max-fenster-dauer` (Vorgabe 24 h). `beginn` leer =
+        jetzt, sonst höchstens 30 Tage im Voraus. Ein überlappendes Fenster für
+        dasselbe Paar ist 409 (erst schließen). Gesperrte Box oder gesperrter
+        Zugang ist 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edgeRef, technikerId, grund, dauerMinuten]
+              properties:
+                edgeRef: { type: string }
+                technikerId: { type: string, format: uuid }
+                grund: { type: string, minLength: 3, maxLength: 500 }
+                dauerMinuten: { type: integer, minimum: 1 }
+                beginn: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Geöffnet oder geplant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungFenster" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Box ohne Tunnel-Schlüssel oder unbekannter Zugang. }
+        "409": { description: Gesperrt oder überlappend. }
+  /api/v1/admin/fernwartung/fenster/{id}/schliessen:
+    post:
+      tags: [fernwartung]
+      summary: Ein offenes Fenster vorzeitig schließen bzw. ein geplantes absagen.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Geschlossen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungFenster" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekanntes Fenster. }
+        "409": { description: Nicht mehr offen. }
+  /api/v1/admin/fernwartung/protokoll:
+    get:
+      tags: [fernwartung]
+      summary: Das Protokoll aller Fernwartungs-Änderungen, neueste zuerst (append-only).
+      parameters:
+        - { name: box, in: query, required: false, schema: { type: string } }
+        - { name: techniker, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        "200":
+          description: Einträge.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungProtokollEintrag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/fernwartung/soll:
+    get:
+      tags: [fernwartung]
+      summary: Soll-Stand für den Tunnel-Dienst (nur Rolle `tunnel-dienst`, nur lesen).
+      description: >
+        Alle aktiven Peers (Boxen und Techniker-Zugänge) und die JETZT offenen
+        Fenster, deren Box und Techniker aktiv sind; geplante Fenster stehen
+        nicht darin. Fenster verweisen über `boxId`/`technikerId` auf Peers.
+        Vertragsvektor: docs/contracts/fernwartung-soll-v1.example.json.
+        Antwort mit `Cache-Control: no-store`. Kein Admin- und kein
+        Kunden-Token (403).
+      responses:
+        "200":
+          description: Soll-Stand Version 1.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSoll" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/sites/{siteId}/v2-entities:
@@ -25898,6 +26208,137 @@ components:
           description: >
             Optional cross-check; must equal the key named by the manifest and
             by the signature file.
+    FernwartungServer:
+      type: object
+      properties:
+        endpunkt: { type: string, example: wartung.voltpilot.de }
+        port: { type: integer, example: 51820 }
+        publicKey: { type: string, nullable: true, description: null solange der Server nicht eingerichtet ist. }
+        eingerichtet: { type: boolean }
+        boxNetz: { type: string, example: 10.10.16.0/20 }
+        technikerNetz: { type: string, example: 10.10.32.0/24 }
+        boxServerAdresse: { type: string, example: 10.10.16.1 }
+        technikerServerAdresse: { type: string, example: 10.10.32.1 }
+    FernwartungUebersicht:
+      type: object
+      properties:
+        server: { $ref: "#/components/schemas/FernwartungServer" }
+        maxFensterMinuten: { type: integer }
+        abrufe:
+          type: array
+          items:
+            type: object
+            properties:
+              dienst: { type: string, example: voltpilot-tunnel-dienst }
+              zuletztAm: { type: string, format: date-time }
+              peers: { type: integer }
+              fenster: { type: integer }
+        boxenAktiv: { type: integer }
+        boxenGesperrt: { type: integer }
+        technikerAktiv: { type: integer }
+        technikerGesperrt: { type: integer }
+        fensterOffen: { type: integer }
+        fensterGeplant: { type: integer }
+        stand: { type: string, format: date-time }
+    FernwartungFenster:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string }
+        technikerId: { type: string, format: uuid }
+        technikerName: { type: string }
+        grund: { type: string }
+        beginn: { type: string, format: date-time }
+        ende: { type: string, format: date-time }
+        wirksamesEnde: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, geplant, geschlossen, abgesagt, abgelaufen] }
+        geoeffnetAm: { type: string, format: date-time }
+        geoeffnetVon: { type: string }
+        geschlossenAm: { type: string, format: date-time, nullable: true }
+        geschlossenVon: { type: string, nullable: true }
+    FernwartungBox:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string, example: edge-zay5sdd }
+        publicKey: { type: string }
+        publicKeyKurz: { type: string }
+        adresse: { type: string, example: 10.10.16.2 }
+        status: { type: string, enum: [aktiv, gesperrt] }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        geaendertAm: { type: string, format: date-time }
+        siteId: { type: string, format: uuid, nullable: true, description: Gekoppelte Anlage, sonst null. }
+        siteName: { type: string, nullable: true }
+        tenantId: { type: string, format: uuid, nullable: true }
+        tenantName: { type: string, nullable: true }
+        laufendeFenster:
+          type: array
+          items: { $ref: "#/components/schemas/FernwartungFenster" }
+    FernwartungSchluesselAntwort:
+      type: object
+      properties:
+        ergebnis: { type: string, enum: [angelegt, unveraendert, getauscht] }
+        box: { $ref: "#/components/schemas/FernwartungBox" }
+        server: { $ref: "#/components/schemas/FernwartungServer" }
+    FernwartungTechniker:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        publicKey: { type: string }
+        publicKeyKurz: { type: string }
+        adresse: { type: string, example: 10.10.32.2 }
+        status: { type: string, enum: [aktiv, gesperrt] }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        geaendertAm: { type: string, format: date-time }
+    FernwartungProtokollEintrag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        zeit: { type: string, format: date-time }
+        akteur: { type: string, description: Anmeldename, sonst JWT-Subject. }
+        aktion:
+          type: string
+          enum: [box_schluessel_hinterlegt, box_schluessel_getauscht, box_gesperrt, box_entsperrt,
+                 techniker_angelegt, techniker_gesperrt, techniker_entsperrt, fenster_geoeffnet,
+                 fenster_geschlossen]
+        edgeRef: { type: string, nullable: true }
+        technikerId: { type: string, format: uuid, nullable: true }
+        technikerName: { type: string, nullable: true }
+        fensterId: { type: string, format: uuid, nullable: true }
+        details: { type: object, additionalProperties: true }
+    FernwartungSoll:
+      type: object
+      required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]
+      properties:
+        version: { type: integer, enum: [1] }
+        erzeugtAm: { type: string, format: date-time }
+        boxNetz: { type: string }
+        technikerNetz: { type: string }
+        peers:
+          type: array
+          items:
+            type: object
+            required: [art, id, kennung, publicKey, adresse]
+            properties:
+              art: { type: string, enum: [box, techniker] }
+              id: { type: string, format: uuid }
+              kennung: { type: string, description: Box-Referenz bzw. Name des Zugangs. }
+              publicKey: { type: string }
+              adresse: { type: string, description: IPv4 ohne Präfix; der Peer bekommt genau diese /32. }
+        fenster:
+          type: array
+          items:
+            type: object
+            required: [id, boxId, technikerId, beginn, ende]
+            properties:
+              id: { type: string, format: uuid }
+              boxId: { type: string, format: uuid }
+              technikerId: { type: string, format: uuid }
+              beginn: { type: string, format: date-time }
+              ende: { type: string, format: date-time }
     ProvisionedDevice:
       type: object
       properties:
