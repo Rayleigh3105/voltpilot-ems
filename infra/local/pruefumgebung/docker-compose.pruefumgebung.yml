@@ -11,3 +11,10 @@ services:
   api:
     environment:
       VOLTPILOT_PRUEFUMGEBUNG_BUEHNEN_UHR: "2029-04-30T08:00:00Z"
+      # Die Auffälligkeits-Naht (Vorgabe an). `demo.sh rundgang` startet die api für die Dauer des Rundgangs mit
+      # `false` neu: sonst vermerkte ihr Takt die Monate, die der Rundgang auf der Bühne rechnet, mit dem Bühnen-Tag.
+      VOLTPILOT_UEMS_VERBESSERUNG_ENABLED: "${VOLTPILOT_UEMS_VERBESSERUNG_ENABLED:-true}"
+      # Die Berichts-Naht (Vorgabe an). `demo.sh rundgang` schaltet sie für die Dauer des Rundgangs ebenfalls ab
+      # (Review #1454 M2): sonst holt ihr Takt Korrekturen des Bühnen-Bestands ab und stößt Berichte an, bevor
+      # Verbessern und Nachweisen die Kaskade sehen.
+      VOLTPILOT_UEMS_BERICHTE_ENABLED: "${VOLTPILOT_UEMS_BERICHTE_ENABLED:-true}"

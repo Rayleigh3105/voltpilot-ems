@@ -110,6 +110,9 @@ class PruefumgebungAhrenbergTest {
         r.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://127.0.0.1:9/realms/voltpilot");
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         r.add("voltpilot.uems.kennzahlen.enabled", () -> "false");
+        // Nachweisen PR 8: die Berichts-Naht wie in der API (Surefire schaltet sie ab) - die Korrektur der Welt am
+        // 12.11.2026 stößt den Monatsbericht an, unabhängig davon, ob der Takt der API sie zuerst abholt.
+        r.add("voltpilot.uems.berichte.enabled", () -> "true");
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
     }
 
@@ -163,6 +166,9 @@ class PruefumgebungAhrenbergTest {
     void dieBuehneZeigtD0001AuditFeststellungUndManagementbewertungMitEntschiedenVon() throws Exception {
         JsonNode v = ruf("GET", BASIS + "/verzeichnis", fachperson, null, 200);
         assertThat(v.path("stichtag").asText()).startsWith("2029-04-30");
+        // Konzept Nachweisen n1, Befund 3: Aufgaben und Verantwortung nennen ohne Tag denselben Tag wie das Verzeichnis.
+        assertThat(ruf("GET", BASIS + "/aufgaben", fachperson, null, 200).path("tag").asText()).isEqualTo("2029-04-30");
+        assertThat(ruf("GET", BASIS + "/verantwortung", fachperson, null, 200).path("tag").asText()).isEqualTo("2029-04-30");
         // Dieselben Personen wie in der Abnahme (R1, R14 B3, R9, R11, R13) — die Bühne ist deren Welt.
         assertThat(entschiedenVon(v, "energiepolitik", "D-0001")).containsOnly("Robert Falk").hasSize(2);
         assertThat(entschiedenVon(v, "internes_audit", "AU-2029-0001")).containsExactly("Ines Kaltenbach");
@@ -181,6 +187,29 @@ class PruefumgebungAhrenbergTest {
         JsonNode mb = ruf("GET", BASIS + "/managementbewertungen/BR-2029-0001", fachperson, null, 200);
         assertThat(mb.toString()).contains("Robert Falk");
         ruf("GET", "/api/v1/berichte/BR-2029-0001/staende/1", fachperson, null, 200);
+    }
+
+    /**
+     * Nachweisen PR 8 (Konzept n1 §4.10): der Monatsbericht Oktober 2026 trägt Werte und die Geschichte der Referenz -
+     * Nr. 1 am 10.11.2026 mit dem Ablesefehler (88.690 kWh), eine Korrektur, die Nr. 1 einen Anstoß gibt, Nr. 2 am
+     * 16.11.2026 mit dem berichtigten Wert (88.630 kWh, die Zahl der Referenz) erledigt ihn. Kein Anstoß an BB-0001.
+     */
+    @Test
+    @Order(1)
+    void monatsberichtOktober2026MitWertenUndEinerKorrektur() {
+        List<String> werte = root.queryForList("SELECT s.nr || ' ' || to_char(s.freigegeben_am AT TIME ZONE "
+                + "'Europe/Berlin', 'YYYY-MM-DD') || ' ' || (w ->> 'menge') FROM bericht_stand s JOIN bericht r "
+                + "ON r.id = s.bericht_id, jsonb_array_elements(s.abzug::jsonb -> 'werte') w WHERE r.tenant_id = ? "
+                + "AND r.kennung = 'BR-2026-0001' AND w ->> 'quelle' = 'MS-20' ORDER BY s.nr", String.class, AHRENBERG);
+        assertThat(werte).containsExactly("1 2026-11-10 88690", "2 2026-11-16 88630");
+        List<Map<String, Object>> anstoesse = root.queryForList("SELECT a.zustand, a.erledigt_durch_nr, s.nr "
+                + "FROM bericht_revision_anstoss a JOIN bericht_stand s ON s.id = a.stand_id JOIN bericht r "
+                + "ON r.id = s.bericht_id WHERE r.tenant_id = ? AND r.kennung = 'BR-2026-0001'", AHRENBERG);
+        assertThat(anstoesse).hasSize(1);
+        assertThat(anstoesse.get(0)).containsEntry("nr", 1).containsEntry("erledigt_durch_nr", 2);
+        assertThat(anstoesse.get(0).get("zustand")).isNotEqualTo("offen");
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_anstoss WHERE tenant_id = ?", Integer.class,
+                AHRENBERG)).as("die Korrektur liegt vor den Fassungen der Bezugsbasen").isZero();
     }
 
     @Test
@@ -256,6 +285,18 @@ class PruefumgebungAhrenbergTest {
         } finally {
             buehnenUhr.stellen();
         }
+    }
+
+    /**
+     * Demo-Füllung Verbessern (PR 6): die frische Welt steht schon so da, wie der Rundgang einen alten Bestand angleicht
+     * ({@link DemoVerbessernReferenz#angleichen}) - Demo-Korrektur, Geplantes, Verläufe, Auffälligkeiten schreiben keine
+     * Zeile, auch beim zweiten Mal. Bricht, wenn Welt und Rundgang einen Augenblick oder Inhalt verschieden schreiben.
+     */
+    @Test
+    @Order(5)
+    void dieWeltStehtWieDerRundgangEinenAltenBestandAngleicht() throws Exception {
+        assertThat(DemoVerbessernReferenz.angleichen(mvc, root)).as("erster Lauf auf der frischen Welt").isZero();
+        assertThat(DemoVerbessernReferenz.angleichen(mvc, root)).as("zweiter Lauf").isZero();
     }
 
     // ================================================================================ Helfer

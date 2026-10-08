@@ -20,6 +20,10 @@ import org.springframework.stereotype.Component;
 @Order(95)
 public class FeststellungVerzeichnis implements VerzeichnisQuelle {
 
+    /** Befund 8 (Nachweisen n1): das Ergebnis der Wirksamkeit als Kundenwort, wie das Portal es nennt. */
+    private static final Map<String, String> ERGEBNIS = Map.of("wirksam", "wirksam", "nicht_wirksam", "nicht wirksam",
+            "ohne_massnahme", "ohne Maßnahme abgeschlossen", "zurueckgenommen", "zurückgenommen");
+
     private final FeststellungService feststellungen;
 
     public FeststellungVerzeichnis(FeststellungService feststellungen) {
@@ -39,7 +43,8 @@ public class FeststellungVerzeichnis implements VerzeichnisQuelle {
             for (FeststellungDto.Stand s : feststellungen.staende(f.id())) {
                 if ("freigegeben".equals(s.status()) && !s.am().isAfter(stichtag)) {
                     var eingetragen = s.zweitePerson() != null ? s.zweitePerson() : s.eingetragen();
-                    aus.add(zeile(f.kennzeichen(), "wirksamkeit", "Wirksamkeit: " + s.ergebnis(), s.nr(),
+                    aus.add(zeile(f.kennzeichen(), "wirksamkeit",
+                            "Wirksamkeit: " + ERGEBNIS.getOrDefault(s.ergebnis(), s.ergebnis()), s.nr(),
                             s.entschiedenVon() == null ? null : s.entschiedenVon().name(),
                             eingetragen.akteur().name(), s.am(), s.pruefsumme()));
                 }

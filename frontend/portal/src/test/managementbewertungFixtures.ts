@@ -273,7 +273,7 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
     kennung, vorlage: 'managementbewertung', vorlage_fassung: 1, geltung_art: 'unternehmen', geltung_id: UNTERNEHMEN_ID,
     geltung_name: 'Kunststoffwerk Ahrenberg GmbH', zeitraum_art: 'jahr', zeitraum, zeitraum_text: zeitraum, zeitzone: ZONE,
     angelegt_von: IK, angelegt_am: angelegt, archiviert_am: null, stand_zeichen: 'entwurf', stand_text: null, neueste_nr: null,
-    entwurf_datenstand: angelegt, wiedervorlage_monate: null, ueberpruefung: null,
+    entwurf_datenstand: angelegt, wiedervorlage_monate: null, ueberpruefung: null, freigegeben_am: null, anstoss_seit: null,
   });
   if (lage !== 'leer') berichte.set(MB_KENNUNG, { bericht: neu(MB_KENNUNG, '2028', '2029-02-05T09:00:00Z'), staende: [] });
   let staendeFertig: Promise<void> = Promise.resolve();
@@ -291,7 +291,7 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
       const pruefsumme = PRUEFSUMME_PRAEFIX + (await sha256Hex(kanonisch(abzug)));
       const b = berichte.get(MB_KENNUNG)!;
       b.staende.push({ nr: 1, datenstand: '2029-02-12T13:00:00Z', freigegeben_am: '2029-02-12T13:10:00Z', freigegeben_von: IK, pruefsumme, ersetzt_durch_nr: null, anlass_anstoss_id: null, abzug });
-      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: 1 };
+      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: 1, freigegeben_am: '2029-02-12T13:10:00Z' };
     })();
   }
   const finde = async (kennung: string) => {
@@ -415,8 +415,9 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
       const abzug = r13Abzug(datenstand, ein);
       const pruefsumme = PRUEFSUMME_PRAEFIX + (await sha256Hex(kanonisch(abzug)));
       const nr = b.staende.length + 1;
-      b.staende.push({ nr, datenstand, freigegeben_am: jetzt(), freigegeben_von: IK, pruefsumme, ersetzt_durch_nr: null, anlass_anstoss_id: null, abzug });
-      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: nr };
+      const freigegeben = jetzt();
+      b.staende.push({ nr, datenstand, freigegeben_am: freigegeben, freigegeben_von: IK, pruefsumme, ersetzt_durch_nr: null, anlass_anstoss_id: null, abzug });
+      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: nr, freigegeben_am: freigegeben };
       return stand(kennung, nr);
     },
     berichtStand: stand,

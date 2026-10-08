@@ -1,0 +1,883 @@
+/*
+ * NACHWEISEN, Runde 2 (Konzept n1, Captain-Freigabe 07.10.2026): die gemeinsamen Bausteine für weniger Text am Handy.
+ * Nur Haus-Tokens aus `index.css` (keine neue Farbe, kein neuer Radius, keine neue Schrift); die Bausteine der anderen
+ * Nachweisen-PRs stehen in eigenen Dateien daneben (`NachweisenZeilen.css`, `NwSchritte.css`).
+ *   .vp-nw-ikn        i-Knopf: Erklärung nur auf Antippen (sichtbar 28/24 px, Trefferfläche 44 px)
+ *   .vp-nw-erkl       Erklär-Blatt: Klartext, Bei Ihnen, Nicht verwechseln, Normwort
+ *   .vp-nw-blatt      Blatt von unten (am Rechner: Dialog in der Mitte, `.vp-nw-blatt-inhalt`)
+ *   .vp-nw-kopf       Seitenkopf: Titel + i-Knopf, Kurzzeile, Status-Zeile, Menü
+ *   .vp-nw-zei/.zlg   Zeichen eines Teils und ihre Legende
+ *   .vp-nw-zchip      Zähler-Chip: Zahl groß, Wort kurz, antippbar
+ *   .vp-nw-naechst    Als Nächstes (gestrichelt: Kann noch nicht beginnen)
+ */
+
+/* ---------- i-Knopf ------------------------------------------------------------------------------------------ */
+.vp-nw-ikn {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 9%, var(--vp-c-card, #fff));
+  color: var(--vp-c-primary, #2563eb);
+  cursor: pointer;
+}
+.vp-nw-ikn.is-klein {
+  width: 24px;
+  height: 24px;
+}
+/* Die Trefferfläche reicht über den sichtbaren Kreis hinaus (44 px), ohne ihn größer zu zeichnen. */
+.vp-nw-ikn::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.vp-nw-ikn.is-klein::before {
+  inset: -10px;
+}
+.vp-nw-ikn svg {
+  display: block;
+}
+.vp-nw-ikn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .vp-nw-ikn:hover {
+    background: color-mix(in srgb, var(--vp-c-primary, #2563eb) 16%, var(--vp-c-card, #fff));
+  }
+}
+
+/* ---------- Erklär-Blatt ------------------------------------------------------------------------------------- */
+.vp-nw-erkl {
+  display: grid;
+  gap: 9px;
+  font-family: var(--vp-c-font);
+}
+.vp-nw-erkl p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-nw-erkl p.is-bsp {
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-erkl p.is-bsp b {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: 600;
+}
+.vp-nw-erkl p.is-fw {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Blatt (am Telefon über BottomSheet, am Rechner über das Modal der Schale) ------------------------- */
+/* Wie `.sheet` des Konzepts: Titel in Navy, keine Linie unter dem Kopf, der Inhalt rückt an den Titel. */
+.vp-bs.vp-nw-blatt {
+  border-radius: 22px 22px 0 0;
+}
+.vp-bs.vp-nw-blatt .vp-bs-head {
+  border-bottom: 0;
+  min-height: 40px;
+}
+.vp-bs.vp-nw-blatt .vp-bs-title {
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-bs.vp-nw-blatt .vp-bs-body {
+  padding: 4px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.vp-nw-blatt-inhalt {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+/* Am Rechner: derselbe Inhalt als Dialog in der Mitte, schmal wie das Blatt (`.ddlg` des Konzepts). */
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) {
+  width: min(480px, 100%);
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt.is-breit) {
+  width: min(760px, 100%);
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) > .dhead {
+  border-bottom: 0;
+  padding: var(--vp-space-5, 20px) var(--vp-space-4, 16px) 0 var(--vp-space-6, 24px);
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) > .dhead h2 {
+  margin: 0;
+  font: 700 1.125rem/1.3 var(--vp-c-font);
+  color: var(--vp-navy, #1e3a5f);
+  white-space: normal;
+}
+.vp-modal:has(> .dbody > .vp-nw-blatt-inhalt) > .dbody {
+  padding: var(--vp-space-3, 12px) var(--vp-space-6, 24px) var(--vp-space-6, 24px);
+}
+
+/* ---------- Seitenkopf ----------------------------------------------------------------------------------------- */
+.vp-nw-kopf {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+}
+.vp-nw-zurueck {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  margin: -6px 0 -2px -4px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.875rem var(--vp-c-font);
+  cursor: pointer;
+}
+.vp-nw-zurueck:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-nw-kopf-zeile {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.vp-nw-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Der i-Knopf steht im Textfluss hinter dem letzten Wort, auch wenn der Titel umbricht (Mock r2-M2: „Management-
+   bewertung 2028 ⓘ“); die Schriftgröße des Rahmens ist die des Titels, damit „middle“ an dessen Zeile ausrichtet. */
+.vp-nw-kopf-titel {
+  min-width: 0;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.2;
+}
+.vp-nw-kopf-titel > .vp-nw-ikn {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+/* Wie der Kopf der Wiedervorlage und der Übersicht: Reiter und Seitentitel tragen dasselbe Wort. */
+.vp-nw-kopf-titel h1 {
+  display: inline;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--vp-font-display, 'Inter Tight', 'Inter', sans-serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+/* Entscheid 25: das Kennzeichen leise hinter dem Titel - nur am Rechner (`.pkopf h1 .kz`). */
+.vp-nw-kopf-kz {
+  display: none;
+  margin-left: 7px;
+  font: 500 0.875rem var(--vp-c-font);
+  letter-spacing: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+@media (min-width: 721px) {
+  .vp-nw-kopf-kz {
+    display: inline;
+  }
+}
+.vp-nw-kurz {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-kopf-status {
+  margin-top: 7px;
+}
+.vp-nw-kopf-menue {
+  flex: 0 0 auto;
+}
+
+/* ---------- Zeichen und Legende -------------------------------------------------------------------------------- */
+.vp-nw-zei {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--vp-navy, #1e3a5f);
+  background: var(--vp-navy, #1e3a5f);
+}
+/* Der Ring „offen“ trägt den Feldrand der Familie (#858D96): 3,4 : 1 Kontrast für ein Zeichen ohne Wort daneben (§12). */
+.vp-nw-zei.is-offen {
+  background: var(--vp-c-card, #fff);
+  border-color: #858d96;
+}
+.vp-nw-zei.is-entwurf {
+  background: var(--vp-c-card, #fff);
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: inset 0 0 0 2px var(--vp-c-card, #fff), inset 0 0 0 6px var(--vp-action, #2c5282);
+}
+.vp-nw-zei.is-ueber {
+  background: var(--vp-c-warn-fg, #9a3412);
+  border-color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zlg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-zlg > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ---------- Zähler-Chips --------------------------------------------------------------------------------------- */
+.vp-nw-zchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-nw-zchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: 600 0.8125rem/1.2 var(--vp-c-font);
+  white-space: nowrap;
+}
+button.vp-nw-zchip {
+  position: relative;
+  cursor: pointer;
+}
+/* „Fristen nicht geladen · Erneut versuchen“: der Weg steht in der Farbe eines Links. */
+.vp-nw-zchip-weg {
+  color: var(--vp-c-primary, #2563eb);
+}
+/* 40 px sichtbar, 44 px zum Tippen. */
+button.vp-nw-zchip::before {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+}
+.vp-nw-zchip b {
+  font: 800 1.0625rem/1 var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: inherit;
+}
+.vp-nw-zchip.is-warn {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 22%, var(--vp-c-card, #fff));
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-zchip.is-still {
+  background: var(--vp-c-muted, #e9eff8);
+  border-color: transparent;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-zchip:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  button.vp-nw-zchip:hover {
+    border-color: color-mix(in srgb, var(--vp-navy, #1e3a5f) 30%, var(--vp-c-border, #e2e8f0));
+  }
+  button.vp-nw-zchip.is-warn:hover {
+    border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 45%, var(--vp-c-card, #fff));
+  }
+}
+
+/* ---------- Als Nächstes --------------------------------------------------------------------------------------- */
+.vp-nw-naechst {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-action, #2c5282) 30%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  font-family: var(--vp-c-font);
+}
+.vp-nw-naechst.is-kann-nicht {
+  border-style: dashed;
+  border-color: #cbd5e1;
+}
+.vp-nw-naechst-nl {
+  grid-column: 1 / -1;
+  font: 700 0.6875rem/1.3 var(--vp-c-font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-action, #2c5282);
+}
+.vp-nw-naechst.is-kann-nicht .vp-nw-naechst-nl {
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Ohne Datumsblock steht der Titel über die volle Breite. */
+.vp-nw-naechst-nl + .vp-nw-naechst-nt {
+  grid-column: 1 / -1;
+}
+.vp-nw-naechst-nt {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+.vp-nw-naechst-nt > b {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-nw-naechst-why {
+  margin-top: -6px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* =================================================================================================================
+ * ÜBERBLICK (Konzept Nachweisen n1, Runde 2, §6.3): Zähler, Als Nächstes, Teile als Zeichen je Gruppe, Demnächst.
+ * Am Telefon untereinander; ab 760 px Breite der Fläche oben zwei Spalten (links Antwort, rechts Demnächst), darunter
+ * die Teile über die volle Breite in zwei Spalten mit allen 18 Chips (§6.11).
+ * ================================================================================================================= */
+.vp-nw-ueberblick {
+  container: vp-nw-ub / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-ub-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* „Prüfung von außen“ (PR 6) am Telefon zuletzt, am Rechner links unter „Als Nächstes“ (Konzept §6.3). */
+  grid-template-areas: 'links' 'teile' 'demnaechst' 'aussen';
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+.vp-nw-ub-links {
+  grid-area: links;
+  display: grid;
+  gap: var(--vp-c-space-4, 16px);
+  align-content: start;
+  min-width: 0;
+}
+.vp-nw-ub-teile {
+  grid-area: teile;
+}
+.vp-nw-ub-demnaechst {
+  grid-area: demnaechst;
+}
+.vp-nw-skelett {
+  display: grid;
+  gap: 10px;
+}
+.vp-nw-skelett .is-zeile {
+  width: 45%;
+  height: 12px;
+}
+.vp-nw-skelett .is-karte {
+  height: 112px;
+  border-radius: var(--vp-radius-md, 16px);
+}
+
+/* Karte und Kartenkopf der Familie (`.card`, `.blockkopf`). */
+.vp-nw-karte {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-nw-blockkopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.vp-nw-blockkopf h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font: 700 1rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-link {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 32px;
+  /* Auch als Knopf („Zeitraum löschen“) ohne Rahmen und Fläche des Browsers. */
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.85rem var(--vp-c-font);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vp-nw-link:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .vp-nw-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+.vp-nw-leise {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Teile-Gruppe (`.tgl`/`.tg`) mit Chips (`.lchip`) --------------------------------------------------- */
+.vp-nw-tgl {
+  display: grid;
+  min-width: 0;
+}
+.vp-nw-tg {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  padding: 12px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+.vp-nw-tgl > .vp-nw-tg:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.vp-nw-tg-kopf {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-nw-tg-kopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+.vp-nw-tg-name {
+  min-width: 0;
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-nw-tg-reihe {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vp-nw-tg-chev {
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+@media (hover: hover) {
+  .vp-nw-tg-kopf:hover .vp-nw-tg-name {
+    color: var(--vp-action, #2c5282);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+.vp-nw-tg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+/* Am Telefon nur die Teile, die etwas brauchen; eine Gruppe ohne solche trägt keine leere Zeile. */
+.vp-nw-tg-chips .vp-nw-lchip.is-festgehalten {
+  display: none;
+}
+.vp-nw-tg-chips:not(:has(> .vp-nw-lchip:not(.is-festgehalten))) {
+  display: none;
+}
+.vp-nw-lchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  font: 600 0.78rem/1.2 var(--vp-c-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-nw-lchip.is-ueber {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  border-color: color-mix(in srgb, var(--vp-c-warn-fg, #9a3412) 22%, var(--vp-c-card, #fff));
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-lchip-n {
+  font: 800 0.8125rem var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+}
+.vp-nw-lchip:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+/* Ein Chip ohne Ziel (der Ort ist für die Person nicht zu sehen) ist nur Zeichen und Wort. */
+span.vp-nw-lchip {
+  cursor: default;
+}
+@media (hover: hover) {
+  button.vp-nw-lchip:hover {
+    border-color: color-mix(in srgb, var(--vp-navy, #1e3a5f) 30%, var(--vp-c-border, #e2e8f0));
+  }
+}
+
+/* ---------- Demnächst: Frist-Zeilen der Wiedervorlage, am Rechner mit Kürzel -------------------------------------- */
+.vp-nw-demnaechst > li:nth-child(4) {
+  display: none;
+}
+.vp-nw-kuerzel {
+  display: none;
+  flex: 0 0 auto;
+  align-self: center;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-navy, #1e3a5f);
+  font: 700 0.6875rem var(--vp-font-heading);
+}
+
+/* Der Link über „Demnächst“: am Telefon „Alle“, am Rechner „Wiedervorlage“ (Konzept r2d-U). */
+.vp-nw-nur-rechner {
+  display: none;
+}
+
+@container vp-nw-ub (min-width: 760px) {
+  .vp-nw-nur-telefon {
+    display: none;
+  }
+  .vp-nw-nur-rechner {
+    display: inline;
+  }
+  .vp-nw-ub-raster {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: 'links demnaechst' 'aussen demnaechst' 'teile teile';
+    column-gap: 18px;
+  }
+  .vp-nw-ub-teile .vp-nw-tgl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+  }
+  .vp-nw-ub-teile .vp-nw-tgl > .vp-nw-tg:nth-child(2) {
+    border-top: 0;
+    padding-top: 2px;
+  }
+  .vp-nw-tg-chips,
+  .vp-nw-tg-chips:not(:has(> .vp-nw-lchip:not(.is-festgehalten))) {
+    display: flex;
+  }
+  .vp-nw-tg-chips .vp-nw-lchip.is-festgehalten {
+    display: inline-flex;
+  }
+  .vp-nw-demnaechst > li:nth-child(4) {
+    display: list-item;
+  }
+  .vp-nw-kuerzel {
+    display: inline-grid;
+  }
+}
+
+/* ---------- Zeilen im Blatt einer Gruppe: Zeichen, Name, ein Fakt oder das Verb ---------------------------------- */
+.vp-nw-tzl {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-nw-tzl > li + li > .vp-nw-tz {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-nw-tz {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-nw-tz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-nw-tz-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 600 0.9375rem/1.35 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-nw-tz-fakt {
+  flex: 0 0 auto;
+  font: 600 0.75rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-nw-tz.is-ueber .vp-nw-tz-fakt {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-nw-tz-verb {
+  flex: 0 0 auto;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-primary, #2563eb);
+  white-space: nowrap;
+}
+.vp-nw-tz-chev {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+div.vp-nw-tz {
+  cursor: default;
+}
+@media (hover: hover) {
+  button.vp-nw-tz:hover .vp-nw-tz-name {
+    color: var(--vp-action, #2c5282);
+  }
+}
+
+/* ---------- Geführtes Blatt: Feld und Knöpfe ------------------------------------------------------------------- */
+.vp-nw-feld {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-nw-feld textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-field-border, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: inherit;
+  font: 0.9375rem/1.45 var(--vp-c-font);
+  resize: vertical;
+}
+.vp-nw-feld textarea:focus-visible {
+  outline: 2px solid var(--vp-c-primary, #2563eb);
+  outline-offset: 2px;
+}
+.vp-nw-knoepfe {
+  display: grid;
+  gap: 6px;
+}
+.vp-nw-knoepfe .vp-btn--ghost {
+  justify-self: center;
+}
+
+/* =================================================================================================================
+ * VERZEICHNIS nach Monaten (Konzept Nachweisen n1, Runde 2, §6.9): Suche, Filter-Chips, Monate, je Zeile Datumsblock,
+ * Titel und Kürzel; am Rechner das Kennzeichen als leise Spalte (Entscheid 25).
+ * ================================================================================================================= */
+.vp-nw-verzeichnis {
+  container: vp-nw-vz / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-nw-suche {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--vp-c-field-border, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-suche:focus-within {
+  outline: 2px solid var(--vp-c-primary, #2563eb);
+  outline-offset: 2px;
+}
+.vp-nw-suche input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--vp-c-fg, #1e293b);
+  font: 0.9375rem var(--vp-c-font);
+  outline: none;
+}
+.vp-nw-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-nw-filter .vp-wv-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-nw-monat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin-top: 6px;
+}
+.vp-nw-monat-titel {
+  margin: 0;
+  font: 700 0.72rem/1.3 var(--vp-c-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-vzl {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-nw-vzl > li + li > .vp-nw-vz {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-nw-vz {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 9px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-nw-vz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+.vp-fd.vp-nw-tagblock {
+  min-height: 44px;
+}
+.vp-nw-vz-text {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-nw-vz-titel {
+  font: 600 0.9375rem/1.3 var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+  overflow-wrap: anywhere;
+}
+.vp-nw-vz-unter {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-nw-vz-kz {
+  display: none;
+  flex: 0 0 auto;
+  min-width: 96px;
+  font: 500 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+.vp-nw-kuerzel.is-immer {
+  display: inline-grid;
+}
+.vp-nw-vz-chev {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+@media (hover: hover) {
+  .vp-nw-vz:hover .vp-nw-vz-titel {
+    color: var(--vp-action, #2c5282);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+@container vp-nw-vz (min-width: 760px) {
+  .vp-nw-vz-kz {
+    display: inline;
+  }
+  .vp-nw-suche {
+    max-width: 520px;
+  }
+}
+.vp-nw-pruefsumme {
+  font: 500 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* ---------- Rahmen des Bereichs: Reiter-Kopf oben, „Was VoltPilot leistet“ am Fuß -------------------------------- */
+.vp-nw-bereich {
+  gap: var(--vp-c-space-4, 16px);
+}
+.vp-nw-fuss {
+  margin-top: 4px;
+}

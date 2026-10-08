@@ -195,8 +195,9 @@ class EnergiemanagementNachweiseApiTest {
         assertThat(ort.path("festgehalten_am").asText()).isEqualTo("2028-11-10");
         assertThat(x.at("/ueberpruefung/faellig_am").asText()).isEqualTo("2029-11-10");
         assertThat(x.path("bekanntmachungen")).hasSize(1);
-        assertThat(x.at("/bekanntmachungen/0/satz").asText()).isEqualTo("Bekannt gemacht am 12.11.2028 an "
-                + "Schichtführer und Instandhaltung Halle 1 über Unterweisung — eingetragen von Ines Kaltenbach.");
+        // Vertrag 1.4 (Befund A14): die Person ist, wer bekannt gemacht hat - nicht „eingetragen von“.
+        assertThat(x.at("/bekanntmachungen/0/satz").asText()).isEqualTo("Bekannt gemacht von Ines Kaltenbach am "
+                + "12.11.2028 an Schichtführer und Instandhaltung Halle 1 über Unterweisung.");
         // VoltPilot hält nur den Verweis — kein Inhalt, keine Datei.
         assertThat(root.queryForObject("SELECT wortlaut IS NULL FROM energiemanagement_dokument_fassung "
                 + "WHERE dokument_id = ?::uuid", Boolean.class, id)).isTrue();
@@ -288,8 +289,8 @@ class EnergiemanagementNachweiseApiTest {
         assertThat(b.path("bekanntmachungen")).hasSize(2);
         assertThat(werte(b.path("bekanntmachungen"), "kennzeichen")).containsExactly("D-0001", "D-0004");
         assertThat(b.at("/bekanntmachungen/0/wege").toString()).isEqualTo("[\"aushang\",\"intranet\"]");
-        assertThat(b.at("/bekanntmachungen/0/satz").asText()).isEqualTo("Bekannt gemacht am 18.12.2026 an alle "
-                + "Mitarbeitenden beider Werke über Aushang und Intranet — eingetragen von Ines Kaltenbach.");
+        assertThat(b.at("/bekanntmachungen/0/satz").asText()).isEqualTo("Bekannt gemacht von Ines Kaltenbach am "
+                + "18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.");
         assertThat(b.at("/bekanntmachungen/1/am").asText()).isEqualTo("2028-11-12");
         assertThat(b.at("/bekanntmachungen/1/wege_wort").asText()).isEqualTo("Unterweisung");
         // Die Einträge bleiben je Weg einer; die Tabelle hat keinen „gesendet“- oder „gelesen“-Zustand.

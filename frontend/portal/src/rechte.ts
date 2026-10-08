@@ -182,6 +182,8 @@ export const TEXTE = {
   letzter_kundenadministrator:
     '{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.',
   zweite_person: 'Freigabe durch eine zweite Person.',
+  /** Messen-Bau m2 (Konzept Messen m1, §8.2 Punkt 9): eine vergangene Gültigkeit ohne die Zeile `aenderung.rueckwirkend`. */
+  recht_rueckwirkend: 'Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute können Sie es selbst eintragen.',
 } as const;
 
 function text(schluessel: keyof typeof TEXTE, werte: Record<string, string> = {}): string {
@@ -592,6 +594,36 @@ export function korrekturEntscheiden(
   return d;
 }
 
+
+// ─────────────────────────────────── Verantwortliche (Verbessern v1, Entscheid 8)
+
+/** Wer Maßnahmen verwaltet (AP-18 §4.9). */
+export const VERBESSERUNG_VERWALTEN = 'verbesserung.verwalten';
+/** Die eigene Maßnahme als umgesetzt melden und kommentieren (Verbessern-Konzept v1, Entscheid 8). */
+export const EIGENE_MASSNAHME = 'verbesserung.eigene_massnahme';
+
+/**
+ * Darf `b` diese Maßnahme als umgesetzt melden oder kommentieren? (Verbessern v1 Entscheid 8, eng gefasst - Familie
+ * `verantwortung`.) Erst `darf` mit `verbesserung.verwalten`: erlaubt es, gilt es; außerhalb des Geltungsbereichs
+ * (404) bleibt es dabei. Sonst trägt `verbesserung.eigene_massnahme` - aber nur, wenn `b` die verantwortliche Person
+ * ist; sonst bleibt die Ablehnung von `verwalten`. Ändern, Verwerfen und Bewerten fragen diese Funktion nie.
+ *
+ * @param verantwortlich die Kennung der verantwortlichen Person der Maßnahme
+ */
+export function eigeneMassnahme(
+  m: Matrix,
+  b: Benutzer,
+  k: Kundenbereich,
+  ziel: Ziel,
+  jetzt: string,
+  verantwortlich: string | null,
+): DarfErgebnis {
+  const v = darf(m, b, k, VERBESSERUNG_VERWALTEN, ziel, jetzt);
+  if (v.darf || v.http === 404) return v;
+  if (verantwortlich === null || verantwortlich !== b.kennung) return v;
+  const e = darf(m, b, k, EIGENE_MASSNAHME, ziel, jetzt);
+  return e.darf ? e : v;
+}
 // ────────────────────────────────────────────────────── sichtbare Standorte
 
 export interface StandortSicht {

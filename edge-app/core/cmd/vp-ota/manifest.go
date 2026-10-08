@@ -94,9 +94,10 @@ Beispiel:
 	if err != nil {
 		return err
 	}
-	// Gegenprobe mit dem echten Parser des Geraets - was hier rausgeht, muss
-	// dort einlesbar sein.
-	if _, err := otaverify.ParseManifest(raw); err != nil {
+	// Gegenprobe mit dem Parser des Geraets in seiner STRENGEN Form: was hier
+	// rausgeht, muss dort einlesbar sein, und es darf nur Typen und Backends
+	// tragen, die wir kennen - ein Manifest je Box-Art.
+	if _, err := otaverify.ParseManifestStrict(raw); err != nil {
 		return fmt.Errorf("erzeugtes Manifest ist ungueltig: %w", err)
 	}
 	if err := os.WriteFile(*out, raw, 0o644); err != nil {

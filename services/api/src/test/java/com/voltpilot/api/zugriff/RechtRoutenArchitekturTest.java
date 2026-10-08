@@ -68,7 +68,7 @@ class RechtRoutenArchitekturTest {
         m.put("BezugsbasisController#freigeben", freigabe);
         m.put("BezugsbasisController#ablehnen", freigabe);
         String bericht = "BerichtService — Geltung des Berichts (G1), Aufrufer KennzahlAufrufer";
-        for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen", "wiedervorlage")) {
+        for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen", "verwerfenAlle", "wiedervorlage")) {
             m.put("BerichtController#" + r, bericht);
         }
         for (String r : List.of("erfassen", "ablehnen", "zuruecknehmen")) {

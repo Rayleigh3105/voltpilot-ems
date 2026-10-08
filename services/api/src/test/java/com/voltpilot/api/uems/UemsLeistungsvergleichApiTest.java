@@ -243,6 +243,8 @@ class UemsLeistungsvergleichApiTest {
         Antwort nochmal = schreib(w, HttpMethod.POST, "/api/v1/berichte", kz4);
         assertThat(nochmal.status()).isEqualTo(409);
         assertThat(nochmal.body().get("code").asText()).isEqualTo("bericht_gibt_es_schon");
+        // Konzept Nachweisen n1, Inventur C6: das Wort der Vorlage, nicht das des Zeitraums („Monatsbericht“).
+        assertThat(nochmal.body().get("message").asText()).contains("(Leistungsvergleich ").endsWith(", Dezember 2025).");
         Antwort kz6 = schreib(w, HttpMethod.POST, "/api/v1/berichte", Map.of("vorlage", "leistungsvergleich",
                 "geltung_id", w.unternehmen().toString(), "zeitraum", "2026-01", "kennzahl", w.kz6().toString()));
         assertThat(kz6.status()).as(kz6.text()).isEqualTo(201);

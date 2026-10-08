@@ -12,8 +12,8 @@
 import type { Selbstauskunft } from './api';
 import type { UebersichtBausteinId } from './uebersichtBausteine';
 
-/** Die Bausteine der Übersicht plus die Einstiege, die die Übersicht oben dazulegen kann. */
-export type ObenBaustein = UebersichtBausteinId | 'fahrplan' | 'belege' | 'standort';
+/** Die Bausteine der Übersicht plus der Einstieg „Ihr Standort“ (Fahrplan und Belege übernimmt seit Nachweisen n1 der Überblick). */
+export type ObenBaustein = UebersichtBausteinId | 'standort';
 
 type Rollen = Pick<Selbstauskunft, 'rollen' | 'standorte'>;
 

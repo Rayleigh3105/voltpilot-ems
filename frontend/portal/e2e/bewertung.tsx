@@ -6,8 +6,9 @@ import { benutzerApi } from '../src/benutzer';
 import { darfAnsehen } from '../src/bewertung';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
-import { hashForRoute, parseRoute, pageRoute, energieeinsatzRoute, type Route } from '../src/nav';
+import { hashForRoute, parseRoute, pageRoute, energieeinsatzRoute, verbrauchEinsatzHash, verbrauchListeHash, type Route } from '../src/nav';
 import { BewertungPage } from '../src/pages/BewertungPage';
+import { VerbrauchPage } from '../src/pages/VerbrauchPage';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
 import { benutzerFixture } from '../src/test/benutzerFixtures';
@@ -38,7 +39,8 @@ import '../src/index.css';
  * Adresse: `?person=IK|PH|JW` (Vorgabe IK, Ines Kaltenbach) · `&stand=leer|voll` (Vorgabe leer: kein Umfang, kein
  * Einsatz — R11) · `&ee=EE-2` öffnet die Seite dieses Einsatzes · `&messplanung=1|mb1` (IP-20) mit EE-8 und den Routen von
  * Messbedarf und Messstellen-Dialog · `&bewertungsstand=keine|entwurf|nr1|revision|nr2|faellig` (IP-25, Vorgabe keine:
- * kein Bericht der Vorlage `energetische_bewertung`) mit den Bericht-Routen aus `src/test/bewertungStandBuehne.ts`. Eigene Bühne, damit `startansicht` (25 Specs) unberührt
+ * kein Bericht der Vorlage `energetische_bewertung`) mit den Bericht-Routen aus `src/test/bewertungStandBuehne.ts` ·
+ * `&kriterienvieraugen=1` bzw. `&kriterienantrag=IK` (Vier-Augen-Kriterien, Konzept Auswerten a1 Befund 6). Eigene Bühne, damit `startansicht` (25 Specs) unberührt
  * bleibt. Seit AP-19 IP-15 spielt sie immer auch die Energiemanagement-Routen (Lage `ahrenberg`: D-0001 … D-0003 am
  * Unternehmen, kein Nachweis an einem Einsatz) für den Abschnitt „Nachweise“; `window.__emGesendet` hält die Körper.
  */
@@ -56,8 +58,11 @@ setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
 
+// Konzept Auswerten a1, Befund 6: `&kriterienvieraugen=1` legt neue Kriterien als beantragt an; `&kriterienantrag=IK` beginnt mit
+// einer beantragten Fassung dieser Person (für die zweite Person: `&person=JW`).
+const kriterienLage = { vieraugen: params.get('kriterienvieraugen') === '1', antragVon: params.get('kriterienantrag') ?? undefined };
 const buehne = bewertungBuehne(stand, person, messplanung ? '2026-11-27' : stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen, historieR13,
-  messplanung ? { bedarfe: messplanung === 'mb1' ? [mb1()] : [] } : false);
+  messplanung ? { bedarfe: messplanung === 'mb1' ? [mb1()] : [] } : false, kriterienLage);
 const em = energiemanagementBuehne('ahrenberg', { kennung: me.kennung!, name: me.name! }, () => new Date().toISOString(),
   [...ahrenbergEinsaetze(), ee8()].map((e) => ({ id: e.id, kennzeichen: e.kennzeichen, name: e.name })));
 (window as unknown as { __emGesendet: unknown }).__emGesendet = em.gesendet;
@@ -76,7 +81,8 @@ const lesemodell: EbenenLesemodell = {
 const UNTERNEHMEN = { art: 'unternehmen' } as const;
 
 const ee = params.get('ee');
-if (!location.hash.startsWith('#/portfolio/bewertung')) {
+// Konzept Auswerten a1: die Seite eines Einsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`).
+if (!location.hash.startsWith('#/portfolio/bewertung') && !location.hash.startsWith('#/portfolio/verbrauch')) {
   const ziel = ee ? energieeinsatzRoute(`ee000000-0000-4000-8000-0000000000${ee.slice(3).padStart(2, '0')}`) : pageRoute('portfolio-bewertung');
   history.replaceState(null, '', hashForRoute(ziel));
 }
@@ -124,6 +130,7 @@ function Ansicht() {
         showKennzahlen={bereiche.includes('kennzahlen')}
         showBerichte={bereiche.includes('berichte')}
         showBewertung={bereiche.includes('bewertung')}
+        showVerbrauch={bereiche.includes('verbrauch')}
         // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
         // über der Seite stehen dort nur die Reiter der offenen Gruppe.
         leiste={kacheln.flatMap((k) => k.bereiche)}
@@ -139,10 +146,18 @@ function Ansicht() {
         onNavigate={(p) => navigate(pageRoute(p))}
       />
       {route.page === 'portfolio-bewertung' ? (
-        <BewertungPage
+        <BewertungPage onOeffnen={(id) => navigate(energieeinsatzRoute(id))} />
+      ) : route.page === 'portfolio-verbrauch' ? (
+        <VerbrauchPage
           einsatzId={route.energieeinsatzId ?? null}
-          onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-          onListe={() => navigate(pageRoute('portfolio-bewertung'))}
+          // Wie `App.tsx`: die Wahl der Liste reist zur Seite eines Einsatzes und zurück.
+          onOeffnen={(id) => {
+            location.hash = verbrauchEinsatzHash(id, location.hash);
+          }}
+          onListe={() => {
+            location.hash = verbrauchListeHash(location.hash);
+          }}
+          onNavigate={navigate}
         />
       ) : (
         <p>Diese Bühne zeigt nur die Bewertung.</p>

@@ -21,6 +21,7 @@ import {
   UEMS_EINGETRAGEN_VON,
   UEMS_ENTSCHIEDEN_VON,
   UEMS_ENERGIEZIEL,
+  UEMS_GEPLANTE_MESSSTELLE,
   UEMS_JAHRESPLAN,
   UEMS_LAUT_AUFGABE,
   UEMS_MASSNAHME,
@@ -32,7 +33,6 @@ import {
   auditRoute,
   berichtRoute,
   dokumentRoute,
-  energieeinsatzRoute,
   energiemanagementRoute,
   energiezielRoute,
   feststellungRoute,
@@ -361,7 +361,8 @@ const DOKUMENT_TITEL = /\s+[—-]\s+Überprüfung$/;
 const ANSTOSS_TITEL = /^(.*?)\s+[—-]\s+Revision angestoßen \(([^)]+)\)$/;
 
 const dokumentGegenstand = (z: WiedervorlageZeile) => z.titel.replace(DOKUMENT_TITEL, '').trim() || ART_WORT[z.art];
-const berichtName = (z: WiedervorlageZeile) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
+/** Der Name eines Berichts mit Anstoß (aus `bezug`, sonst aus dem Titel der Route) - auch für den Überblick von Nachweisen. */
+export const berichtName = (z: Pick<WiedervorlageZeile, 'bezug' | 'titel' | 'kennzeichen'>) => z.bezug ?? ANSTOSS_TITEL.exec(z.titel)?.[1] ?? `${UEMS_BERICHT} ${z.kennzeichen}`;
 
 const STAND_BLEIBT = 'Der freigegebene Stand bleibt, bis Sie entscheiden.';
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -411,7 +412,8 @@ const tagWort = (iso: string | null) => (iso ? standTag(iso) : null);
  * Ein Rhythmus in Monaten: Zahl und Einheit brechen nie auseinander (geschütztes Leerzeichen vor der Einheit, AP-08
  * E11); „+ 2 Monate“ hinter einem Tag bricht nur als Ganzes um, nie „+ 2“ am Zeilenende und „Monate“ darunter.
  */
-const monateText = (n: number) => `${n}\u00a0Monate`;
+// Nachweisen n1, Befund B8: „1 Monat“, nie „1 Monate“.
+const monateText = (n: number) => `${n}\u00a0${n === 1 ? 'Monat' : 'Monate'}`;
 const plusMonate = (n: number | null) => (n ? ` +\u00a0${monateText(n)}` : '');
 
 /**
@@ -501,7 +503,7 @@ function grund(zeilen: WiedervorlageZeile[], w: Wiedervorlage, kurz: boolean): s
     case 'abweichung_frist':
       return `An der Kennzahl ${z.bezug ?? z.titel}`;
     case 'messbedarf_frist':
-      return z.bezug ?? 'Aus der Messplanung der energetischen Bewertung';
+      return z.bezug ?? `${UEMS_GEPLANTE_MESSSTELLE.charAt(0).toUpperCase()}${UEMS_GEPLANTE_MESSSTELLE.slice(1)} unter Messen`;
     case 'bericht_anstoss': {
       // Seit Vertrag 1.1 ist ein Bericht EINE Zeile ab der ersten Korrektur; ältere Zeilen kamen je Korrektur.
       const anzahl = h?.anzahl ?? zeilen.length;
@@ -541,8 +543,9 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
       return z.id ? energiezielRoute(z.id) : null;
     case 'abweichung_frist':
       return z.id ? abweichungRoute(z.id) : null;
+    // Konzept Auswerten a1 §6.6: „Bestätigen oder neu fassen“ öffnet die Bezugsbasis eine Ebene unter der Kennzahl.
     case 'bezugsbasis_ueberpruefung':
-      return z.kennzahl_id ? kennzahlRoute(z.kennzahl_id) : null;
+      return z.kennzahl_id ? kennzahlRoute(z.kennzahl_id, null, 'bezugsbasis') : null;
     case 'bewertung_ueberpruefung':
       return pageRoute('portfolio-bewertung');
     case 'bericht_anstoss':
@@ -557,10 +560,11 @@ export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzei
 
 /**
  * Entscheid 8: der Schritt öffnet das Objekt dort, wo die Entscheidung fällt. Audit und Managementbewertung legt man
- * im Reiter neu an; der Messbedarf wird an seinem Energieeinsatz eingelöst (dort steht „Messstelle einrichten“), ohne
- * Einsatz in der Messplanung der Bewertung (sie trägt mehrere, daher das Kennzeichen). Eine Ablesung trägt man an der
- * Messstelle ein: bei einem Zähler direkt dort, bei einer Runde aus dem Register ihres Orts (`?ort=G-1`), das die
- * abzulesenden Zähler markiert (`ablesungsZiele` in `messstellen.ts`).
+ * im Reiter neu an; der Messbedarf ist seit Messen PR4 eine geplante Messstelle unter Messen und wird dort eingerichtet
+ * („Einrichten“, `?entscheid=messbedarf_frist&kennzeichen=MB-1`; ein zitierter Bedarf trägt statt dessen den Satz mit
+ * den Berichtsständen). Eine Ablesung trägt man an der
+ * Messstelle ein: bei einem Zähler direkt dort, bei mehreren in der Ablese-Runde ihres Orts (`?ablesen=G-1`, Konzept
+ * Messen m1 §6.5 Variante 3A) - das erste offene Feld der Runde trägt den Entscheid.
  */
 export function eintragSprung(
   z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'> &
@@ -572,11 +576,13 @@ export function eintragSprung(
     case 'managementbewertung':
       return entscheidSprung(energiemanagementRoute('managementbewertung'), z.art);
     case 'messbedarf_frist':
-      return entscheidSprung(z.einsatz_id ? energieeinsatzRoute(z.einsatz_id) : pageRoute('portfolio-bewertung'), z.art, z.kennzeichen);
+      // Konzept Auswerten a1, Entscheid 9: ein offener Messbedarf steht unter Messen als geplante Messstelle - der Schritt
+      // „Messstelle anlegen“ öffnet die Liste bei ihm („Einrichten“), nicht mehr den Energieeinsatz.
+      return entscheidSprung(pageRoute('portfolio-messstellen'), z.art, z.kennzeichen);
     case 'zaehlerablesung':
       return z.herleitung?.anzahl === 1 && z.id
         ? entscheidSprung(messstelleRoute(z.id), z.art)
-        : entscheidSprung(pageRoute('portfolio-messstellen'), z.art, null, { ort: z.kennzeichen });
+        : entscheidSprung(pageRoute('portfolio-messstellen'), z.art, null, { ablesen: z.kennzeichen });
     default: {
       const ziel = wiedervorlageSprung(z);
       return ziel ? entscheidSprung(ziel, z.art) : null;

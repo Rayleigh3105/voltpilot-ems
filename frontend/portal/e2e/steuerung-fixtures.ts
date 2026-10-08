@@ -44,7 +44,7 @@ interface Def {
 
 const Q_LAST = ['ueberschuss', 'guenstig', 'feste_zeiten', 'sofort'];
 const DEFS: Def[] = [
-  { id: 'wb', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Wallbox Werkstatt', nenn: 11, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, quellen: ['ueberschuss', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
+  { id: 'wb', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Wallbox Werkstatt', nenn: 11, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, quellen: ['ueberschuss', 'ueberschuss_speicher', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
   { id: 'lp', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Ladepunkt Carport', nenn: 11, gemessen: true, steuerart: { quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 9, ziel: 'bis_uhrzeit', zielEnergieKwh: 30, zielFenster: { tage: 'daily', von: '', bis: '07:00' } }, quellen: ['ueberschuss', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
   { id: 'hs', typ: 'heating-rod', typLabel: 'Heizstab', name: 'Heizstab Warmwasser', nenn: 3, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 1 }, quellen: Q_LAST, ziele: ['laufzeit_bis'], levels: [1, 2, 3], hilft: false },
   { id: 'wp', typ: 'heat-pump-sgready', typLabel: 'Wärmepumpe (SG-Ready)', name: 'Wärmepumpe', nenn: 1.5, gemessen: false, steuerart: { quelle: 'freigabe_ueberschuss', herkunft: 'policy', schwelleKw: 2 }, quellen: ['freigabe_ueberschuss', 'freigabe_guenstig', 'sofort'], ziele: [] },
@@ -103,6 +103,12 @@ export function installSteuerungFixtures() {
   const soc = D.soc as number[];
   const preis = D.preis as number[];
 
+  const untergrenze = (i: number) => {
+    const h = (i % 96) / 4;
+    if (h >= 7 && h < 16) return 15;
+    if (h >= 16) return Math.round(15 + (h - 16) * 6);
+    return Math.max(15, Math.round(51 - h * 5));
+  };
   const slots = Array.from({ length: 192 - J }, (_, k) => {
     const i = J + k;
     return {
@@ -110,6 +116,9 @@ export function installSteuerungFixtures() {
       priceEurMwh: preis[i] * 10, curtailKw: D.abgeregelt[i] ?? 0, costEur: 0, baselineCostEur: 0,
       slotRole: null, slotFlags: null, storedValueCtKwh: null, gridValueCtKwh: null, peakPressureEurKw: null,
       importPriceCtKwh: null, exportValueCtKwh: null, importPriceSource: null,
+      // „Sonne + Speicher“: die Untergrenze je Viertelstunde - keine, wo der
+      // Plan Netzstrom bezieht (dort handelt er); abends steigt sie für die Nacht.
+      evReleaseFloorSocPct: netz[i] > 0.05 ? null : untergrenze(i),
     };
   });
   const plan = { planId: 'st-plan', deviceId: 'help-box', generatedAt: JETZT, slotMinutes: 15, savingsEur: 2.1,
@@ -166,7 +175,11 @@ export function installSteuerungFixtures() {
   });
   const charging = { budget: { deviceId: 'help-box', enabled: true, controlEnabled: true, connectorCount: 2, gridLimitKw: 22,
     effLimitKw: 22, marginPct: 10, minPowerKw: 1.4, budgetKw: 17.2, allocatedKw: KW.wb[J], measuredKw: KW.wb[J], reservedKw: 0,
-    siteLoadKw: 0.6, siteGridKw: netz[J], budgetMode: 'metered', surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', reportedAt: JETZT },
+    siteLoadKw: 0.6, siteGridKw: netz[J], budgetMode: 'metered', surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', reportedAt: JETZT,
+    // `?speicher=beobachtet`: dieselbe Freigabe aus einem Speicher, den VoltPilot nicht steuert (07.10.2026).
+    storageRelease: { active: true, kw: 2.4, floorSocPct: 15, socPct: soc[J],
+      mode: new URLSearchParams(location.search).get('speicher') === 'beobachtet' ? 'frei_beobachtet' : 'frei',
+      note: 'Der Speicher gibt bis 2,4 kW für das Auto frei und darf bis 15 % entladen.' } },
   chargers: [
     { deviceId: 'help-box', chargePointId: 'CP-WERKSTATT', entityId: eid('wb'), label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true, vendor: 'go-e', model: 'Charger', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('wb', true)] },
     { deviceId: 'help-box', chargePointId: 'CP-CARPORT', entityId: eid('lp'), label: 'Ladepunkt Carport', priority: false, connected: true, ready: true, vendor: 'KEBA', model: 'P30', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('lp', false)] },
@@ -218,10 +231,13 @@ export function installSteuerungFixtures() {
       rangliste: eintraege.map((e, i) => ({ position: i + 1, art: e.art, entityId: e.entityId ?? null, name: e.art === 'speicher' ? 'Speicher Scheune' : DEFS.find((d) => eid(d.id) === e.entityId)?.name ?? '' })),
     }),
     siteChargers: result(charging),
-    chargingConfig: result({ gridLimitKw: 22, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 } }),
+    chargingConfig: result({ gridLimitKw: 22, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 },
+      storageReleaseReserveKwh: null, storageReleaseReserveStandardKwh: 1 }),
     // Das Rahmen-Blatt prüft die Grenze gegen den heute gebundenen Netzanschluss (AP-01 IP-13); das Haus hat keinen Standort.
     siteDetail: result({ ...site, standort: null }),
     saveCustomerChargingFrame: async (_s: string, body: { gridLimitKw: number }) => ({ gridLimitKw: body.gridLimitKw, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 } }),
+    saveStorageReleaseReserve: async (_s: string, reserveKwh: number | null) => ({ gridLimitKw: 22, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne',
+      storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 }, storageReleaseReserveKwh: reserveKwh, storageReleaseReserveStandardKwh: 1 }),
     consumerSchedule: result(consumerPlan),
     siteInterventions: result({ automationPaused: false, pausedUntil: null, interventions: [] }),
     siteAssets: result([{ id: 'st-batt', type: 'battery', deviceId: 'help-box', capacityKwh: 10, maxChargeKw: 5, maxDischargeKw: 5, roundtripEfficiencyPct: 92, speicherschonung: 'ausgewogen', pvCapacityKwp: null, moduleCount: null, azimuthDeg: null, tiltDeg: null, commissionedOn: null, registry: null, registryUnitId: null, registryFetchedAt: null }]),
@@ -244,7 +260,12 @@ export function installSteuerungFixtures() {
       return { range: 'day', from: ts(0), to: ts(96), bucketMinutes: 15,
         channels: reihe ? { power_kw: Array.from({ length: J }, (_, i) => ({ start: ts(i), avg: reihe[i], min: reihe[i], max: reihe[i], last: reihe[i], n: 15 })) } : {} };
     },
-    setzeSteuerart: async (_s: string, entityId: string, w: Record<string, unknown>) => ({ steuerart: { ...w, herkunft: 'policy' }, aktiv: true, entityId }),
+    setzeSteuerart: async (_s: string, entityId: string, w: Record<string, unknown>) => {
+      // Wie der Server: die Steuerart gilt danach (die Seite liest die Liste neu).
+      const e = verbraucher.find((v) => v.entityId === entityId);
+      if (e) e.steuerart = { ...w, herkunft: e.ladepunkt ? 'saeule' : 'policy' } as typeof e.steuerart;
+      return { steuerart: { ...w, herkunft: 'policy' }, aktiv: true, entityId };
+    },
     setSuggestionState: async (_s: string, key: string, state: string) => ({ key, state, mutedUntil: state === 'nur_messen' ? null : '2099-01-01T00:00:00Z', updatedAt: JETZT }),
     clearSuggestionState: async () => undefined,
     // Die Szene (E6): pausiert die gewählten Geräte, bis sie endet - wie `SzenenService`.

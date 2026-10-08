@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.2",
-  "herkunft": "AP-19 entschieden 24.09.2026 (E1–E10 = A, W1–W15 übernommen), §4.2–4.9, §5.8, §7 R1–R3, R7–R14; Python-Referenz aus k_faelle.py (ueberpruefung, AUDIT_NAECHSTES, MB_NAECHSTE, F1_FRIST, zeile/KANDIDATEN, vergleich_anwendungsbereich, vz); Referenzdatei 1.10 (dokumente[], audits[], feststellungen[], managementbewertungen[]) für die Prüfsummen. Die kanonische Zahlform ist die von bericht.md A1 (−5, nie −5.0) — der Katalog rechnete den Stand BR-2029-0001 über json.dumps (sha256:7db218a7…), gültig ist sha256:0a52c97d….",
+  "schema_version": "1.6",
+  "herkunft": "AP-19 entschieden 24.09.2026 (E1–E10 = A, W1–W15 übernommen), §4.2–4.9, §5.8, §7 R1–R3, R7–R14; Python-Referenz aus k_faelle.py (ueberpruefung, AUDIT_NAECHSTES, MB_NAECHSTE, F1_FRIST, zeile/KANDIDATEN, vergleich_anwendungsbereich, vz); Referenzdatei 1.10 (dokumente[], audits[], feststellungen[], managementbewertungen[]) für die Prüfsummen. Die kanonische Zahlform ist die von bericht.md A1 (−5, nie −5.0) — der Katalog rechnete den Stand BR-2029-0001 über json.dumps (sha256:7db218a7…), gültig ist sha256:0a52c97d…. Vertrag 1.3 (Konzept Nachweisen n1, Runde 2, Entscheide 5 und 23, freigegeben 07.10.2026): das Vokabular `teil` (die 18 Teile des Überblicks) mit `woerter.teil` und dem Kurzwort `woerter.teil_kurz`. Vertrag 1.4 (Konzept Nachweisen n1, Befunde A14 und A21): `bekanntmachung` ohne Person, `bekanntmachung_durch` nennt die Person, die bekannt gemacht hat (nie „eingetragen von“, nie ein Platzhalter-Strich); `anwendungsbereich_nur_im_umfang` ist der Satz der Gegenrichtung des Vergleichs. Vertrag 1.5 (Konzept Nachweisen n1, Runde 2, Entscheid 23): `woerter.aufgabe_kurz`, das Kurzwort je Aufgabe für Zeilen am Handy („Bezugsbasen“); der lange Name bleibt im Blatt der Aufgabe. Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): das Vokabular `mappe_anlass`, wofür Unterlagen zusammengestellt werden, mit `woerter.mappe_anlass`.",
   "startwerte": {
     "ueberpruefung_monate": 12,
     "ueberpruefung_monate_mindestens": 1,
@@ -187,6 +187,31 @@
       "kein_audit",
       "keine_managementbewertung",
       "abgeschlossen"
+    ],
+    "teil": [
+      "energiepolitik",
+      "anwendungsbereich",
+      "rechtliche_anforderungen",
+      "kontext",
+      "risiken_chancen",
+      "aufgaben",
+      "kompetenz",
+      "kommunikation",
+      "betrieb",
+      "auslegung",
+      "beschaffung",
+      "energetische_bewertung",
+      "bezugsbasen",
+      "massnahmen",
+      "interne_audits",
+      "feststellungen",
+      "managementbewertung",
+      "berichte"
+    ],
+    "mappe_anlass": [
+      "audit_von_aussen",
+      "anfrage_behoerde",
+      "eigene_ablage"
     ]
   },
   "dokument_art_klasse": {
@@ -258,6 +283,63 @@
       "in_voltpilot": "in VoltPilot",
       "wortlaut_original_beim_kunden": "Wortlaut in VoltPilot, Original bei Ihnen",
       "verweis": "Geführt in Ihrem System"
+    },
+    "teil": {
+      "energiepolitik": "Energiepolitik",
+      "anwendungsbereich": "Anwendungsbereich",
+      "rechtliche_anforderungen": "Rechtliche Anforderungen",
+      "kontext": "Kontext und interessierte Parteien",
+      "risiken_chancen": "Risiken und Chancen",
+      "aufgaben": "Aufgaben im Energiemanagement",
+      "kompetenz": "Kompetenz",
+      "kommunikation": "Kommunikation",
+      "betrieb": "Betrieb und Instandhaltung",
+      "auslegung": "Auslegung",
+      "beschaffung": "Beschaffung",
+      "energetische_bewertung": "Energetische Bewertung und Messplanung",
+      "bezugsbasen": "Kennzahlen und Bezugsbasen",
+      "massnahmen": "Energieziele und Maßnahmen",
+      "interne_audits": "Interne Audits",
+      "feststellungen": "Feststellungen",
+      "managementbewertung": "Managementbewertung",
+      "berichte": "Berichte"
+    },
+    "teil_kurz": {
+      "energiepolitik": "Energiepolitik",
+      "anwendungsbereich": "Anwendungsbereich",
+      "rechtliche_anforderungen": "Rechtliche Anforderungen",
+      "kontext": "Kontext",
+      "risiken_chancen": "Risiken und Chancen",
+      "aufgaben": "Aufgaben",
+      "kompetenz": "Kompetenz",
+      "kommunikation": "Kommunikation",
+      "betrieb": "Betrieb und Instandhaltung",
+      "auslegung": "Auslegung",
+      "beschaffung": "Beschaffung",
+      "energetische_bewertung": "Energetische Bewertung",
+      "bezugsbasen": "Bezugsbasen",
+      "massnahmen": "Maßnahmen",
+      "interne_audits": "Interne Audits",
+      "feststellungen": "Feststellungen",
+      "managementbewertung": "Managementbewertung",
+      "berichte": "Berichte"
+    },
+    "aufgabe_kurz": {
+      "unternehmensleitung": "Leitung",
+      "energiemanagement_leiten": "Energiemanagement leiten",
+      "energieteam": "Energieteam",
+      "bezugsbasen": "Bezugsbasen",
+      "energieziele_massnahmen": "Ziele und Maßnahmen",
+      "bewertung_messplanung": "Energetische Bewertung",
+      "interne_audits": "Interne Audits",
+      "managementbewertung": "Managementbewertung",
+      "dokumente": "Dokumente",
+      "weitere": "Weitere Aufgabe"
+    },
+    "mappe_anlass": {
+      "audit_von_aussen": "Audit von außen",
+      "anfrage_behoerde": "Anfrage einer Behörde",
+      "eigene_ablage": "Eigene Ablage"
     }
   },
   "saetze": {
@@ -270,9 +352,11 @@
     "verweis_keine_datei": "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.",
     "ueberpruefung": "Überprüfung fällig seit {tage} Tagen.",
     "geprueft_bleibt": "Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘",
-    "bekanntmachung": "Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.",
+    "bekanntmachung": "Bekannt gemacht am {am} an {kreis} über {weg}.",
+    "bekanntmachung_durch": "Bekannt gemacht von {person} am {am} an {kreis} über {weg}.",
     "anwendungsbereich_deckungsgleich": "Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.",
     "anwendungsbereich_unterschied": "{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).",
+    "anwendungsbereich_nur_im_umfang": "{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.",
     "freigabe_ohne_leitung": "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.",
     "aufgabe_ohne_person": "{aufgabe} — keine Person festgelegt.",
     "person_ohne_konto": "{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.",
@@ -3135,10 +3219,28 @@
       "name": "§5.8 bekanntmachung",
       "regel": "SP4",
       "operation": "satz",
-      "quelle": "Report §5.8",
-      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "quelle": "Report §5.8; Vertrag 1.4 (Konzept Nachweisen n1, Befund A14)",
+      "rechnung": "Schablone gefüllt; ohne Person kein „eingetragen von“ mit Platzhalter-Strich",
       "eingang": {
         "schluessel": "bekanntmachung",
+        "werte": {
+          "am": "18.12.2026",
+          "kreis": "alle Mitarbeitenden beider Werke",
+          "weg": "Aushang und Intranet"
+        }
+      },
+      "erwartet": {
+        "satz": "Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet."
+      }
+    },
+    {
+      "name": "§5.8 bekanntmachung_durch",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Vertrag 1.4 (Konzept Nachweisen n1, Befund A14)",
+      "rechnung": "Schablone gefüllt; die Person ist, wer bekannt gemacht hat - nicht das Konto, das es eingetragen hat",
+      "eingang": {
+        "schluessel": "bekanntmachung_durch",
         "werte": {
           "am": "18.12.2026",
           "kreis": "alle Mitarbeitenden beider Werke",
@@ -3147,7 +3249,7 @@
         }
       },
       "erwartet": {
-        "satz": "Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet — eingetragen von Ines Kaltenbach."
+        "satz": "Bekannt gemacht von Ines Kaltenbach am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet."
       }
     },
     {
@@ -3182,6 +3284,23 @@
       },
       "erwartet": {
         "satz": "Gas gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung 1)."
+      }
+    },
+    {
+      "name": "§5.8 anwendungsbereich_nur_im_umfang",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Vertrag 1.4 (Konzept Nachweisen n1, Befund A21)",
+      "rechnung": "Schablone gefüllt; die Gegenrichtung von anwendungsbereich_unterschied",
+      "eingang": {
+        "schluessel": "anwendungsbereich_nur_im_umfang",
+        "werte": {
+          "was": "Werk Lindach",
+          "fassung": "2"
+        }
+      },
+      "erwartet": {
+        "satz": "Werk Lindach gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung 2), aber nicht zum Anwendungsbereich."
       }
     },
     {

@@ -375,6 +375,103 @@ describe('EdgeUpdatesPage', () => {
     expect(screen.queryByTestId('rollout-card')).toBeNull();
   });
 
+  describe('Box-Art (Edge Light, Stufe 1)', () => {
+    /** Die Pilot-Box: meldet sich am Stempel als Edge Light, ohne Vertrauens-Set. */
+    const mitEdgeLight = () => {
+      const d = data({ rollouts: [] });
+      d.fleet[0].boxArt = 'docker';
+      d.fleet.push({
+        deviceId: 'd3', label: 'Mango Hof', externalRef: 'edge-m4ng0q1', siteId: 's3',
+        siteName: 'Hof Linde', tenantId: 't1', tenantName: 'Kunde B',
+        ist: 'edge-light-g2d2bca1b6', soll: null, sollSeq: null, state: 'aktuell', reason: null,
+        since: null, reportedAt: '2026-08-05T09:00:00Z', rolloutId: null, boxArt: 'light',
+        trust: { rootKeyIds: ['root-2026-a'], trustSetKeyIds: [], trustSetGeneratedAt: null,
+          trustSetError: 'Das Vertrauens-Set oder seine Signatur fehlt.' },
+      });
+      return d;
+    };
+
+    it('zeigt die Box-Art als Chip und filtert danach', async () => {
+      edgeUpdates.mockResolvedValue(mitEdgeLight());
+      render(<EdgeUpdatesPage />);
+      const table = await screen.findByTestId('box-versions');
+      const mango = within(table).getByText('Hof Linde').closest('tr')!;
+      expect(within(mango).getByTestId('box-art')).toHaveTextContent('Edge Light');
+      expect(within(table).getByText('Pilsting').closest('tr')).toHaveTextContent('Docker-Box');
+      expect(within(table).getByText('Auernheim').closest('tr'))
+        .toHaveTextContent('Box-Art unbekannt');
+      // Ruhig benannt statt „ohne Vertrauens-Set" als Warnung.
+      expect(mango).toHaveTextContent('Updates von Hand (Edge Light, Stufe 1)');
+      expect(mango).not.toHaveTextContent('ohne Vertrauens-Set');
+      expect(screen.getByTestId('fleet-pointer'))
+        .toHaveTextContent('1 Edge-Light-Box bekommt Updates von Hand (Stufe 1)');
+      expect(screen.getByTestId('fleet-pointer')).not.toHaveTextContent('kein gültiges');
+
+      fireEvent.click(screen.getByText('Suche & Filter'));
+      fireEvent.click(screen.getByRole('combobox', { name: 'Box-Art' }));
+      fireEvent.click(await screen.findByRole('option', { name: 'Edge Light (1)' }));
+      expect(within(table).getAllByRole('row')).toHaveLength(2);
+      expect(table).toHaveTextContent('Hof Linde');
+      expect(table).not.toHaveTextContent('Pilsting');
+    });
+
+    it('graut im Rollout-Dialog die Edge-Light-Box aus und nennt den Grund', async () => {
+      createRollout.mockResolvedValue({ rolloutId: 'r2' });
+      edgeUpdates.mockResolvedValue(mitEdgeLight());
+      render(<EdgeUpdatesPage />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Update verteilen' }));
+      const drawer = await screen.findByRole('dialog');
+      expect(within(drawer).getByTestId('release-box-art')).toHaveTextContent('Docker-Box');
+      expect(within(drawer).getByTestId('release-box-art'))
+        .toHaveTextContent('1 Gerät passt nicht dazu');
+      const gesperrt = within(drawer).getByTestId('candidate-gesperrt');
+      expect(gesperrt).toHaveTextContent('Hof Linde');
+      expect(gesperrt).toHaveTextContent('diese Box ist eine Edge Light');
+      expect(gesperrt.querySelector('input')).toBeDisabled();
+
+      const all = within(drawer).getByTestId('choose-all');
+      expect(all).toHaveTextContent('Alle passenden Geräte (2)');
+      fireEvent.click(all.querySelector('input')!);
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
+      await waitFor(() =>
+        expect(createRollout).toHaveBeenCalledWith({ releaseSeq: 12, devices: ['d2', 'd1'] }),
+      );
+    });
+
+    it('bietet einer Edge-Light-Box kein Docker-Release an und sagt warum', async () => {
+      const d = mitEdgeLight();
+      // Eine Zuweisung aus der Zeit vor der Sperre bleibt zurücknehmbar.
+      d.fleet[2].soll = 'edge-2026.08.0';
+      d.fleet[2].sollSeq = 12;
+      edgeUpdates.mockResolvedValue(d);
+      render(<EdgeUpdatesPage />);
+      const table = await screen.findByTestId('box-versions');
+      fireEvent.click(within(table).getByRole('button', {
+        name: 'Update verwalten für Hof Linde · edge-m4ng0q1',
+      }));
+      const drawer = await screen.findByRole('dialog');
+      expect(within(drawer).getByTestId('box-art')).toHaveTextContent('Edge Light');
+      expect(within(drawer).getByTestId('drawer-keine-passenden'))
+        .toHaveTextContent('Updates von Hand (Edge Light, Stufe 1)');
+      expect(within(drawer).queryByRole('combobox', { name: 'Release' })).toBeNull();
+      expect(within(drawer).queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+      expect(drawer).toHaveTextContent('Diese Box prüft Updates noch nicht gegen die Signaturkette');
+      expect(within(drawer).getByRole('button', { name: 'Zuweisung zurücknehmen' })).toBeEnabled();
+    });
+
+    it('zeigt die Box-Art jedes Releases im Register', async () => {
+      const d = mitEdgeLight();
+      d.releases[0].boxArt = 'docker';
+      d.releases[1].boxArt = 'light';
+      edgeUpdates.mockResolvedValue(d);
+      render(<EdgeUpdatesPage />);
+      const table = await screen.findByTestId('releases');
+      const rows = within(table).getAllByRole('row');
+      expect(rows[1]).toHaveTextContent('Docker-Box');
+      expect(rows[2]).toHaveTextContent('Edge Light');
+    });
+  });
+
   it('trägt den ruhigen Crossover-Hinweis im Verweis auf die Geräte-Seite', async () => {
     const d = data();
     d.fleet[0].trust = {

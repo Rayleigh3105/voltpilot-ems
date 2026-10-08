@@ -66,7 +66,7 @@ kein Wirkpfad auf ihn warten.
 	if err != nil {
 		return err
 	}
-	m, err := otaverify.ParseManifest(doc)
+	m, err := otaverify.ParseManifestStrict(doc)
 	if err != nil {
 		return fmt.Errorf("%s ist kein gueltiges Release-Manifest: %w", *manifest, err)
 	}

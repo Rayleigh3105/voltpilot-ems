@@ -36,7 +36,10 @@ class SteuerartSatzTest {
     void jederTypKenntGenauSeineQuellenUndZiele() {
         assertThat(ids(SteuerartSatz.quellen(
                 k(VerbraucherService.TYPE_WALLBOX, "11", "dynamisch", true, "power_kw"))))
-                .containsExactly("sofort", "ueberschuss", "guenstig");
+                // „Sonne + Speicher" (06.10.2026) steht als eigene KARTE hinter
+                // dem Ueberschuss - an einer Wallbox ohne OCPP gesperrt.
+                .containsExactly("sofort", "ueberschuss", SteuerartSatz.OPTION_SONNE_SPEICHER,
+                        "guenstig");
         // ⚠ Ueberall HINTEN die Ruecknahme `sofort` („VoltPilot steuert das
         // nicht") - ohne sie gaebe es keinen Weg zurueck in den Anfangszustand,
         // den die Projektion fuer eine Komponente ohne Policy zurueckgibt.

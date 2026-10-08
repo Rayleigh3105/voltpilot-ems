@@ -84,6 +84,8 @@ public class KennzahlService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private BerichtsBelege berichtsBelege;
     private volatile Clock uhr = Clock.systemUTC();
+    /** {@link #mitEinemKatalog}: der Katalog des laufenden Lesegangs auf diesem Thread, sonst leer. */
+    private final ThreadLocal<Katalog> gemerkterKatalog = new ThreadLocal<>();
 
     public KennzahlService(KennzahlRepository repo, KennzahlAufrufer aufrufer, BezugsflaecheLesemodell bezugsflaechen,
             BezugsgroesseService bezugsgroessen, PlatformTransactionManager transactionManager, ObjectMapper json,
@@ -553,6 +555,29 @@ public class KennzahlService {
                 g.standort() == null ? null : g.standort().toString(), jetzt, KennzahlAbgelehnt::rechte);
     }
 
+    /**
+     * Verbessern v1 Entscheid 8: umgesetzt melden und kommentieren mit {@code verbesserung.verwalten} oder als
+     * verantwortliche Person ({@link RechteAbleitung#eigeneMassnahme}) am Rechte-Geltungsbereich {@code g} - 403
+     * {@code recht_fehlt} bzw. 404 wie {@link #darf}.
+     */
+    void darfEigeneMassnahme(ProtokollAkteur wer, Geltung g, Instant jetzt, String verantwortlich) {
+        RechteAbleitung.Kundenbereich k = new RechteAbleitung.Kundenbereich("Kundenbereich",
+                repo.standorte().stream().map(s -> new RechteAbleitung.Standort(s.id().toString(), s.name())).toList(),
+                List.of());
+        RechteAbleitung.DarfErgebnis d = Geltungsbereich.eigeneMassnahme(aufrufer.benutzer(wer), k,
+                g.standort() == null ? null : g.standort().toString(), jetzt, verantwortlich);
+        if (!d.darf()) {
+            throw KennzahlAbgelehnt.rechte(d);
+        }
+    }
+
+    /** Wie {@link #fuerBezugsbasis} mit Recht: die Kennzahl lesbar (404), dann {@link #darfEigeneMassnahme} an ihrer Geltung. */
+    void eigeneMassnahmeAnKennzahl(UUID id, ProtokollAkteur wer, String verantwortlich) {
+        Zeile k = lesbar(katalog(), id);
+        Instant jetzt = jetzt();
+        darfEigeneMassnahme(wer, geltungVon(k, jetzt), jetzt, verantwortlich);
+    }
+
     // ================================================================================ Bezugsbasis (AP-17 IP-17)
 
     /** Die Kennzahl, wenn der Aufrufer sie sieht, sonst {@code null} (Übersicht: eine unsichtbare Basis zählt nicht). */
@@ -890,7 +915,29 @@ public class KennzahlService {
         }
     }
 
+    /**
+     * Konzept Auswerten a1 (Review r3): ein Katalog für einen ganzen Lesegang über viele Kennzahlen - die Auswertung der
+     * Liste liest je Kennzahl über mehrere Dienste ({@link #fuerBezugsbasis}, {@link #eine}, {@link #fassungen}, …), die
+     * sonst jeder den ganzen Katalog des Mandanten neu laden. Nur für reine Leser; geschachtelt gilt der äußere Katalog.
+     */
+    <T> T mitEinemKatalog(Supplier<T> lesung) {
+        if (gemerkterKatalog.get() != null) {
+            return lesung.get();
+        }
+        gemerkterKatalog.set(ladeKatalog());
+        try {
+            return lesung.get();
+        } finally {
+            gemerkterKatalog.remove();
+        }
+    }
+
     Katalog katalog() {
+        Katalog gemerkt = gemerkterKatalog.get();
+        return gemerkt != null ? gemerkt : ladeKatalog();
+    }
+
+    private Katalog ladeKatalog() {
         Map<UUID, List<FassungZeile>> fassungen = new LinkedHashMap<>();
         repo.alleFassungen().forEach(f -> fassungen.computeIfAbsent(f.kennzahlId(), x -> new ArrayList<>()).add(f));
         Map<UUID, List<EingangZeile>> eingaenge = new LinkedHashMap<>();

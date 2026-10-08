@@ -171,6 +171,12 @@ type Snapshot struct {
 	// limitation is the whole point: an unnamed one reads as a defect.
 	CarsFirstCapKw *float64 `json:"cars_first_cap_kw,omitempty"`
 
+	// ReleaseCoverKw is the „Sonne + Speicher" release cover currently
+	// lowering a planned CHARGE (agent/ocpp_release.go): cars draw released
+	// battery power, so the battery follows pv - load instead of charging on.
+	// nil = not biting. Named for the same reason as CarsFirstCapKw.
+	ReleaseCoverKw *float64 `json:"release_cover_kw,omitempty"`
+
 	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
 	// on this device: nil when none is in flight or everything is confirmed.
 	DataPurge *DataPurgeInfo `json:"data_purge,omitempty"`
@@ -863,6 +869,19 @@ type OcppInfo struct {
 	// SourceAllocatedKw is how much of the allocation the source lane is
 	// covering - a STANDORT statement, never a per-vehicle solar quota.
 	SourceAllocatedKw float64 `json:"source_allocated_kw,omitempty"`
+
+	// --- „Sonne + Speicher" (internal/lastmgmt/release.go) ---
+	//
+	// The LAST executor verdict - never re-evaluated for a render, so the
+	// surface cannot show a release the stations were not given. Mode "aus"
+	// (and everything else empty) on a box where no station runs the source.
+	StorageReleaseActive   bool     `json:"storage_release_active,omitempty"`
+	StorageReleaseKw       *float64 `json:"storage_release_kw,omitempty"`
+	StorageReleaseUsedKw   float64  `json:"storage_release_used_kw,omitempty"`
+	StorageReleaseFloorPct *float64 `json:"storage_release_floor_soc_pct,omitempty"`
+	StorageReleaseSocPct   *float64 `json:"storage_release_soc_pct,omitempty"`
+	StorageReleaseMode     string   `json:"storage_release_mode,omitempty"`
+	StorageReleaseNote     string   `json:"storage_release_note,omitempty"`
 
 	Chargers []OcppCharger `json:"chargers"`
 }

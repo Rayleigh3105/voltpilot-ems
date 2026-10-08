@@ -26,6 +26,7 @@ import {
   type EdgeUpdates,
 } from '../../adminEdgeUpdates';
 import { geraetLinkAusgang } from '../../adminGeraet';
+import { BoxArtChip } from './BoxArtChip';
 import { parseGeraetRef, type Route } from '../../nav';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
 import './BoxVersions.css';
@@ -323,7 +324,7 @@ function DeviceInventory({
             {rows.map((r) => {
               const d = r.row;
               const connected = r.lifecycle === 'verbunden';
-              const cross = crossoverState(d.trust);
+              const cross = crossoverState(d.trust, d.boxArt);
               const st = stateLabel(d.state);
 
               return (
@@ -339,6 +340,7 @@ function DeviceInventory({
                         {connected ? r.name : <span className="vp-muted">— noch nicht verbunden —</span>}
                       </span>
                       {r.context && <span className="vp-cell-sub">{r.context}</span>}
+                      {connected && <span className="vp-box-art"><BoxArtChip boxArt={d.boxArt} /></span>}
                     </span>
                   </td>
                   <td data-label="Referenz" className="vp-mono">{d.externalRef}</td>

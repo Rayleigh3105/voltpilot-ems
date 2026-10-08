@@ -130,7 +130,12 @@ for (const einstieg of ['messstelle', 'geraet'] as const) {
       await page.getByText('Historie (2)', { exact: true }).click();
       await expect(page.getByTestId('quelle-karte')).toContainText('Z-5a');
       await expect(page.getByTestId('quelle-karte')).toContainText('Z-5b');
-      await expect(page.getByText('Zähler gewechselt: Z-5a → Z-5b', { exact: true })).toBeVisible();
+      // Das Änderungsprotokoll steht hinter seinem Verweis (Konzept Messen m1 §6.4 Punkt 9).
+      await page.getByTestId('protokoll-verweis').click();
+      const protokoll = page.getByRole('dialog', { name: /^Änderungsprotokoll: / });
+      await expect(protokoll.getByText('Zähler gewechselt: Z-5a → Z-5b', { exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(protokoll).toHaveCount(0);
     } else {
       await expect(page.getByTestId('geraet-vorgaenger')).toContainText('Z-5a');
     }

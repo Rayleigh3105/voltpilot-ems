@@ -136,8 +136,12 @@ class EnergiemanagementNachweiseSchnittstelleVertragTest {
         var k = EnergiemanagementNachweise.kommunikation(dokument("energiepolitik", null, eintraege));
         assertThat(k).hasSize(2);
         assertThat(k.get(0).wege()).containsExactly("aushang", "intranet");
-        assertThat(k.get(0).satz()).isEqualTo(vektor("§5.8 bekanntmachung").at("/erwartet/satz").asText());
+        // Mit Person der Satz „bekanntmachung_durch“, ohne Person „bekanntmachung“ (Vertrag 1.4, Befund A14).
+        assertThat(k.get(0).satz()).isEqualTo(vektor("§5.8 bekanntmachung_durch").at("/erwartet/satz").asText());
         assertThat(k.get(1).wegeWort()).isEqualTo("Betriebsversammlung");
+        var ohne = EnergiemanagementNachweise.kommunikation(dokument("energiepolitik", null,
+                List.of(eintrag(4, am, kreis, "aushang", null, null), eintrag(5, am, kreis, "intranet", null, null))));
+        assertThat(ohne.get(0).satz()).isEqualTo(vektor("§5.8 bekanntmachung").at("/erwartet/satz").asText());
         assertThat(EnergiemanagementNachweise.aufzaehlung(List.of("Aushang", "Intranet", "Besprechung")))
                 .isEqualTo("Aushang, Intranet und Besprechung");
     }
@@ -146,7 +150,7 @@ class EnergiemanagementNachweiseSchnittstelleVertragTest {
             List<EnergiemanagementDokumentDto.Eintrag> eintraege) {
         var fassung = new EnergiemanagementDokumentDto.Fassung(1, v == null ? "wortlaut" : "verweis",
                 v == null ? "Wortlaut" : null, v, null, "freigegeben", null, null, "sha256:x", false, null,
-                LocalDate.parse("2028-11-10"), null, null, null, null, null, null);
+                LocalDate.parse("2028-11-10"), null, null, null, null, null, null, null);
         return new EnergiemanagementDokumentDto.Dokument(UUID.randomUUID(), "D-0004", art, art, "vorgabe", "Titel",
                 null, "gueltig", 12, null, 1, List.of(fassung), eintraege, null, null, null, List.of());
     }

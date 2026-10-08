@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -45,6 +46,14 @@ class UemsMassnahmeHerkunftMigrationTest {
     private static final OffsetDateTime AM_26_01_2029 = OffsetDateTime.parse("2029-01-26T10:00:00+01:00");
     private static final List<String> NEU = List.of("massnahme_herkunft:5:nichtkonformitaet", "massnahme_herkunft:6:audit",
             "massnahme_herkunft:7:managementbewertung");
+    /** Spätere Migrationen, die das Vokabular als Vereinigung fortschreiben: sie reisen bei der späten Ankunft mit. */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20261006213000", // Konzept Verbessern PR 1: weitet das Vokabular um kurs_lage.
+            "20261007120100"); // Verbessern v1 PR 2: weitet das Vokabular um massnahme_art.
+    /** Ihre Wörter stehen nach denen dieser Migration. */
+    private static final List<String> SPAETER = List.of("kurs_lage:1:auf_kurs", "kurs_lage:2:knapp_dahinter",
+            "kurs_lage:3:nicht_auf_kurs", "kurs_lage:4:noch_keine_aussage", "massnahme_art:1:gemessen",
+            "massnahme_art:2:nicht_gemessen", "massnahme_art:3:organisatorisch");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -108,7 +117,9 @@ class UemsMassnahmeHerkunftMigrationTest {
     void dasVokabularWirdNurGeweitet() {
         List<String> nachher = vokabular();
         assertThat(nachher.subList(0, vokabularVorher.size())).containsExactlyElementsOf(vokabularVorher);
-        assertThat(nachher.subList(vokabularVorher.size(), nachher.size())).containsExactlyElementsOf(NEU);
+        List<String> neu = new ArrayList<>(NEU);
+        neu.addAll(SPAETER);
+        assertThat(nachher.subList(vokabularVorher.size(), nachher.size())).containsExactlyElementsOf(neu);
         assertThat(root.queryForList("SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'massnahme_herkunft' "
                 + "ORDER BY nr", String.class)).containsExactlyElementsOf(VerbesserungRegeln.VOKABULARE
                 .get("massnahme_herkunft"));
@@ -136,7 +147,11 @@ class UemsMassnahmeHerkunftMigrationTest {
         }
     }
 
-    /** Out-of-order: auf einer Datenbank mit ALLEN anderen Migrationen kommt diese zuletzt an und trägt genauso. */
+    /**
+     * Out-of-order: auf einer Datenbank mit allen anderen Migrationen kommt diese zuletzt an und trägt genauso - mit den
+     * späteren Migrationen, die das Vokabular als Vereinigung weiterschreiben ({@link #BAUEN_DARAUF_AUF}): ohne sie
+     * überschriebe diese Migration deren Wörter.
+     */
     @Test
     void dieMigrationTraegtAuchAlsSpaeteAnkunft() throws IOException {
         root.execute("CREATE DATABASE voltpilot_spaet");
@@ -144,14 +159,17 @@ class UemsMassnahmeHerkunftMigrationTest {
         Path ohneDiese = Files.createTempDirectory("ohne-herkunft");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__") && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String check = "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'massnahme_herkunft_chk'";
         assertThat(spaetDb.queryForObject(check, String.class)).isEqualTo(root.queryForObject(check, String.class));

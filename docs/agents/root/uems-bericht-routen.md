@@ -6,7 +6,7 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 
 | Was | Wo |
 |---|---|
-| Routen | `web/BerichtController` (OpenAPI Tag `berichte`): `GET`/`POST /api/v1/berichte`, `GET …/{kennung}`, `GET …/entwurf`, `GET …/entwurf/vergleich?gegen=`, `POST …/freigeben`, `GET …/staende/{nr}`, `POST …/anstoesse/{id}/verwerfen`, `POST …/archivieren` |
+| Routen | `web/BerichtController` (OpenAPI Tag `berichte`): `GET`/`POST /api/v1/berichte`, `GET …/{kennung}`, `GET …/entwurf`, `GET …/entwurf/vergleich?gegen=`, `POST …/freigeben`, `GET …/staende/{nr}`, `POST …/anstoesse/{id}/verwerfen`, `POST …/anstoesse/verwerfen` (Konzept Nachweisen n1, Entscheid 16: die gesehenen Anstöße mit EINEM Grund in einer Transaktion, alle oder keiner), `POST …/archivieren`; `GET /api/v1/berichte?archiviert=true` nimmt die archivierten dazu (C8) |
 | Dienst | `uems/BerichtService` (Reihenfolge, Sperren, D4, F1–F5), `uems/BerichtRepository` (SQL), Ablehnungen `uems/BerichtAbgelehnt` |
 | Rechte | `uems/BerichtRechte` → `BerichtRegeln.kennung` (G1) + `RechteAbleitung.darf` (G2) + `BerichtRegeln.teilansicht` (G3); der Aufrufer kommt aus `KennzahlAufrufer` (die EINE Naht für AP-03) |
 | Portal | `api.ts`: `Bericht*`-Typen und `api.berichte`, `api.berichtFreigeben` … — noch keine Fläche (IP-13/IP-14) |
@@ -62,3 +62,4 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **Test-Personen:** `BerichtApiTest` setzt die B13-Personen als `@MockBean KennzahlAufrufer`; die Entwürfe sind die
   kanonisch geschriebenen Vektor-Abzüge `BR-2026-0001/1` und `/2` (Prüfsumme `sha256:b113527d…`), die Uhr über
   `BerichtService.uhrStellen`.
+- **Anfrage-Formen brauchen `@JsonNaming(SnakeCaseStrategy)`:** `BerichtController.lies` liest mit einem strengen Mapper (unbekannte Felder 400); ein Record ohne die Annotation kennt `anstoss_ids` nicht und antwortet 400 `anfrage_ungueltig` mit dem Feld. Ein Listen-Feld muss zusätzlich in `lies` zugelassen sein (wie `kennzahlen_abgewaehlt`).

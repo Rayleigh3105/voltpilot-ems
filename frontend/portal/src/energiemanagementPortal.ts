@@ -20,13 +20,11 @@ import {
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import {
   UEMS_DOKUMENTE,
-  UEMS_FESTSTELLUNGEN,
-  UEMS_GEPRUEFT_BLEIBT_KNOPF,
   UEMS_MANAGEMENTBEWERTUNG,
-  UEMS_VERZEICHNIS,
   UEMS_WIEDERVORLAGE,
 } from './glossar';
-import { energiemanagementRoute, pageRoute, type EnergiemanagementReiter, type Route } from './nav';
+import type { EnergiemanagementReiter } from './nav';
+import { lokalerTag } from './uemsOrtsbaum';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
 
@@ -38,43 +36,6 @@ const hat = (s: Rechte | null | undefined, recht: string) =>
 /** `energiemanagement.ansehen` am Unternehmen oder an einem Standort — sonst gibt es den Bereich nicht. */
 export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'energiemanagement.ansehen');
 
-/**
- * Der erste Schritt einer leeren Gruppe des Verzeichnisses (Konzept „Energiemanagement ohne Fachsprache“ K4): der Weg
- * dorthin, wo ihr Inhalt entsteht. Kein Urteil und keine Zahl über das Ganze (G4) — nur der Weg, und nur, wenn die
- * Person die Zielseite sehen darf. Ein Schritt, der etwas anlegt, steht nur mit `energiemanagement.verwalten` da: wer
- * nur liest (etwa mit „Einsicht“), bekommt keinen Knopf, der Schreiben verspricht. `null` = kein eigener Weg.
- */
-export function verzeichnisWeg(gruppe: string, s: Rechte | null | undefined): { text: string; ziel: Route } | null {
-  const schreiben = hat(s, RECHT_VERWALTEN);
-  const dokumente = schreiben ? { text: 'Dokument anlegen', ziel: energiemanagementRoute('dokumente') } : null;
-  switch (gruppe) {
-    case 'grundlagen':
-      return schreiben ? { text: 'Energiepolitik und Anwendungsbereich festhalten', ziel: energiemanagementRoute('dokumente') } : null;
-    case 'risiken_chancen':
-    case 'kompetenz_kommunikation':
-    case 'betrieb_auslegung_beschaffung':
-      return dokumente;
-    case 'verantwortung':
-      return schreiben ? { text: 'Aufgaben verteilen', ziel: energiemanagementRoute('aufgaben') } : null;
-    case 'bewertung_messplanung':
-      return hat(s, 'energieeinsatz.ansehen') ? { text: 'Zur energetischen Bewertung', ziel: pageRoute('portfolio-bewertung') } : null;
-    case 'kennzahlen_bezugsbasen':
-      return { text: 'Zu den Kennzahlen', ziel: pageRoute('portfolio-kennzahlen') };
-    case 'ziele_massnahmen_abweichungen':
-      return hat(s, 'verbesserung.ansehen') ? { text: 'Zu Zielen und Maßnahmen', ziel: pageRoute('portfolio-verbesserung') } : null;
-    case 'audits_feststellungen':
-      return { text: 'Zum Auditprogramm', ziel: energiemanagementRoute('audits') };
-    case 'managementbewertung':
-      return { text: 'Zur Managementbewertung', ziel: energiemanagementRoute('managementbewertung') };
-    case 'berichte':
-      return { text: 'Zu den Berichten', ziel: pageRoute('portfolio-berichte') };
-    default:
-      return null;
-  }
-}
-
-/** Die Frage über den Zeilen des Zuschnitts einer leeren Gruppe. */
-export const ZUSCHNITT_FRAGE = 'Was gehört hierher?';
 export const RECHT_VERWALTEN = 'energiemanagement.verwalten';
 export const RECHT_FREIGEBEN = 'energiemanagement.freigeben';
 
@@ -87,20 +48,24 @@ export const mitEinsicht = (s: Pick<Selbstauskunft, 'rollen' | 'standorte'> | nu
 
 // ------------------------------------------------------------------ Wörter
 
+/** Der erste Reiter von Nachweisen (Konzept n1, Entscheid 2). */
+export const UEBERBLICK = 'Überblick';
+
 /**
- * Die sieben Reiter in der Reihenfolge von §6.3 — IP-9 Verzeichnis und Dokumente, IP-13 Aufgaben, IP-20 Audits und
- * Feststellungen, IP-24 Wiedervorlage (an zweiter Stelle, wie §6.3 sie nennt) und Managementbewertung.
+ * Die Reiter in der Ordnung des Konzepts Nachweisen n1 (§6.2, Entscheid 2): der Überblick zuerst, das Verzeichnis eine
+ * Ebene darunter (kein Reiter), dann Dokumente, Audits, Feststellungen, Managementbewertung und Aufgaben; die Berichte
+ * reiht die Gruppe „Nachweisen“ gleich hinter den Überblick (`PortfolioTabs`). Die Wiedervorlage steht in der Übersicht.
  */
-export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt' | 'verantwortung'>; label: string }[] = [
-  { key: 'verzeichnis', label: UEMS_VERZEICHNIS },
+export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt' | 'verantwortung' | 'verzeichnis'>; label: string }[] = [
+  { key: 'ueberblick', label: UEBERBLICK },
   { key: 'wiedervorlage', label: UEMS_WIEDERVORLAGE },
   { key: 'dokumente', label: UEMS_DOKUMENTE },
+  // §6.3 nennt den Reiter „Audits“ (das Auditprogramm, IA4); darin heißt jedes „internes Audit“.
+  // Konzept Nachweisen n1, Entscheid 17: die Feststellungen stehen im Reiter „Audits“; `…/feststellungen` öffnet ihn dort.
+  { key: 'audits', label: 'Audits' },
+  { key: 'managementbewertung', label: UEMS_MANAGEMENTBEWERTUNG },
   // §6.3 nennt den Reiter „Aufgaben“; die Überschrift darin ist das Glossar-Wort „Aufgaben im Energiemanagement“.
   { key: 'aufgaben', label: 'Aufgaben' },
-  // §6.3 nennt den Reiter „Audits“ (das Auditprogramm, IA4); darin heißt jedes „internes Audit“.
-  { key: 'audits', label: 'Audits' },
-  { key: 'feststellungen', label: UEMS_FESTSTELLUNGEN },
-  { key: 'managementbewertung', label: UEMS_MANAGEMENTBEWERTUNG },
 ];
 
 export const KNOPF_ANLEGEN = 'Dokument anlegen';
@@ -116,8 +81,6 @@ export const KNOPF_BEENDEN = 'Zuordnung beenden';
 export const KNOPF_PERSON_AENDERN = 'Angaben ändern';
 export const KNOPF_VERANTWORTUNG = 'Wer ist wofür verantwortlich';
 export const KNOPF_NACHWEIS = 'Nachweis festhalten';
-/** DK5: die gültige Fassung einer Vorgabe bleibt; die Überprüfung beginnt neu (Konzept Wiedervorlage w1, Entscheid 8). */
-export const KNOPF_GEPRUEFT = UEMS_GEPRUEFT_BLEIBT_KNOPF;
 /** Der Abschnitt an der Seite eines Energieeinsatzes und einer Person (IP-15, §5.3). */
 export const NACHWEISE = 'Nachweise';
 export const BEGRUENDUNG_HINWEIS = `${STARTWERTE.begruendung_zeichen_mindestens} bis ${STARTWERTE.begruendung_zeichen_hoechstens} Zeichen.`;
@@ -161,8 +124,30 @@ export const WEG_WORT: Record<string, string> = {
   aushang: 'Aushang', intranet: 'Intranet', unterweisung: 'Unterweisung', besprechung: 'Besprechung', e_mail: 'E-Mail', weiterer: 'weiterer Weg',
 };
 
-/** „2026-12-15“ → „15.12.2026“; ein Zeitpunkt wird auf seinen Tag gekürzt. */
-export const tagText = (iso: string | null | undefined) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '');
+/** Die Vier-Augen-Einstellung ließ sich nicht laden - dann gibt das Portal nicht frei (Review r1, P2-4). */
+export const VIERAUGEN_UNBEKANNT = 'Freigabe-Regel nicht geladen';
+
+/** Die Prüfsumme einer Datei entsteht im Browser; ohne sicheren Kontext oder bei zu großen Dateien geht das nicht. */
+export const PRUEFSUMME_FEHLT = 'Diese Datei ließ sich hier nicht prüfen.';
+
+/** Die Zone, in der Nachweisen einen Augenblick zum Kalendertag macht (wie `tagDesAugenblicks` in Nachweisen PR 0). */
+export const TAG_ZONE = 'Europe/Berlin';
+
+/**
+ * „2026-12-15“ → „15.12.2026“. Ein Zeitpunkt („2029-03-19T23:30:00Z“) zählt mit seinem Kalendertag in Berlin, nie mit
+ * dem UTC-Tag seiner ersten zehn Zeichen (Review r1, P2-7: zwischen 0 und 2 Uhr stand sonst der Vortag).
+ */
+export const tagText = (iso: string | null | undefined) => {
+  const tag = tagIso(iso);
+  return tag ? `${tag.slice(8, 10)}.${tag.slice(5, 7)}.${tag.slice(0, 4)}` : '';
+};
+
+/** Der Tag („2029-03-20“) eines Tags oder Zeitpunkts - ein Zeitpunkt mit seinem Kalendertag in Berlin (siehe `tagText`). */
+export function tagIso(iso: string): string;
+export function tagIso(iso: string | null | undefined): string | null | undefined;
+export function tagIso(iso: string | null | undefined): string | null | undefined {
+  return iso && iso.length > 10 && !Number.isNaN(Date.parse(iso)) ? lokalerTag(iso, TAG_ZONE) : iso;
+}
 
 /** „Robert Falk (Geschäftsführer)“ — so steht eine Person hinter „entschieden von“. */
 export const personWort = (p: EnergiemanagementPersonKurz | null | undefined) => (p ? `${p.name} (${p.funktion})` : '');

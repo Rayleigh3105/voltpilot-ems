@@ -176,6 +176,24 @@ public class SiteChargingConfigController {
     }
 
     /**
+     * Setzt die Reserve von „Sonne + Speicher" (06.10.2026). {@code reserveKwh
+     * == null} nimmt die eigene Angabe zurueck - dann gilt die Vorgabe.
+     *
+     * <p>Recht {@code betriebsweise.aendern} wie Quellen-Wahl und Speicher-Vorrang im Rumpf von
+     * {@code PUT /charging-config} (Nachzug main → uems 07.10.2026): die Reserve ist Betrieb, kein Rahmen.
+     */
+    @PutMapping("/charging-config/storage-release")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
+    public ChargingConfigDto setStorageReleaseReserve(@PathVariable UUID siteId,
+            @RequestBody StorageReleaseReserveRequest req, @AuthenticationPrincipal Jwt caller) {
+        return service.setStorageReleaseReserve(siteId, req == null ? null : req.reserveKwh(),
+                caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    /** Der Koerper von {@code PUT /charging-config/storage-release}. */
+    public record StorageReleaseReserveRequest(Double reserveKwh) {}
+
+    /**
      * Nimmt EINE Ladepunkt-Kennung zurück (Captain-Order 24.08.2026).
      *
      * <p><b>Es ist ein DELETE auf GENAU EINE Kennung</b>, nie ein Setzen der

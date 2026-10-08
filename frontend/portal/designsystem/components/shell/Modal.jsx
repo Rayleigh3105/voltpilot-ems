@@ -1,40 +1,18 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../core/Icon';
-import { fokussierbareElemente } from './fokus';
 import { useAusblenden } from './ausblenden';
-
-/*
- * Modals may be stacked (for example the measurement library plus its
- * confirmation). A saved `body.style.overflow` per instance is not enough:
- * if two modals unmount in one commit, the later cleanup can restore the
- * other modal's `hidden` value permanently. Keep one shared lock count and
- * restore the page value only after the last modal has gone.
- */
-let scrollLocks = 0;
-let pageOverflow = '';
-const modalStack = [];
-
-function lockBodyScroll() {
-  if (scrollLocks === 0) pageOverflow = document.body.style.overflow;
-  scrollLocks += 1;
-  document.body.style.overflow = 'hidden';
-
-  return () => {
-    scrollLocks = Math.max(0, scrollLocks - 1);
-    if (scrollLocks === 0) {
-      document.body.style.overflow = pageOverflow;
-      pageOverflow = '';
-    }
-  };
-}
+import { fokusFalle, useUeberlagerung } from './ueberlagerung';
 
 /**
  * **VoltPilot Modal** — die zentrierte Fläche für BEIDES: „anlegen"-Formulare
  * und Zeilen-Detailansichten (das wiederholbare Entitäts-Muster). Schleier-
  * Klick, ✕ und Escape schließen; der Seiten-Scroll ist gesperrt, der Fokus
  * liegt in der Fläche und bleibt darin, und am Telefon wird sie ein
- * Vollbild-Blatt (shell.css).
+ * Vollbild-Blatt (shell.css). Mit `blatt` ist sie am Telefon ein Blatt von
+ * unten, so hoch wie sein Inhalt (kurze Abläufe: melden, prüfen, planen -
+ * Verbessern-Konzept v1 §6.9), am Rechner dieselbe zentrierte Fläche; `breit`
+ * gibt ihr am Rechner 840 px (ein Dialog mit Zusammenfassung daneben).
  *
  * ⚠ ES GIBT KEINE SEITENLEISTE MEHR (Captain-Entscheid 04.09.2026: „search for
  * sidebars. I dont want them in my project. Every Sidebar should be a modal.").
@@ -66,80 +44,36 @@ export function Modal({
   title,
   icon = null,
   footer = null,
+  blatt = false,
+  breit = false,
   children,
   ...props
 }) {
   const panelRef = React.useRef(null);
-  const closeRef = React.useRef(onClose);
-  const tokenRef = React.useRef(null);
-  closeRef.current = onClose;
-  if (tokenRef.current === null) tokenRef.current = { panelRef };
 
-  // Scroll-Sperre, Fokus-Falle und Escape hängen bewusst an `sichtbar`, nicht
-  // an `open`: solange die Fläche noch ausblendet, steht sie im Baum und darf
-  // die Seite darunter weder scrollen noch den Fokus verlieren lassen.
+  // Scroll-Sperre, Fokus und Escape hängen bewusst an `sichtbar`, nicht an `open`: solange die Fläche noch ausblendet,
+  // steht sie im Baum und darf die Seite darunter weder scrollen noch den Fokus verlieren lassen. Modale dürfen
+  // gestapelt sein (die Messwert-Bibliothek samt Rückfrage, ein Blatt und sein Modal): Sperre, Fokus-Rückgabe und
+  // Escape laufen deshalb über den EINEN Stapel der Überlagerungen (`ueberlagerung.js`), den auch das Bottom-Sheet nutzt.
   const { sichtbar, schliessend } = useAusblenden(open, panelRef);
-
-  React.useEffect(() => {
-    if (!sichtbar) return undefined;
-    const token = tokenRef.current;
-    const unlockBodyScroll = lockBodyScroll();
-    const prevFocus = document.activeElement;
-    modalStack.push(token);
-    panelRef.current?.focus();
-    const onKey = (e) => {
-      if (e.key !== 'Escape' || modalStack.at(-1) !== token) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      closeRef.current();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      const wasTopmost = modalStack.at(-1) === token;
-      const index = modalStack.lastIndexOf(token);
-      if (index >= 0) modalStack.splice(index, 1);
-      unlockBodyScroll();
-      if (wasTopmost && prevFocus?.isConnected && typeof prevFocus.focus === 'function') {
-        prevFocus.focus();
-      } else if (wasTopmost) {
-        modalStack.at(-1)?.panelRef.current?.focus();
-      }
-    };
-    // `onClose` deliberately lives in `closeRef`: controlled fields inside a
-    // modal commonly rerender their owner on every key. An inline callback
-    // must not tear down the modal effect, steal focus, and re-lock scrolling
-    // after each character.
-  }, [sichtbar]);
+  useUeberlagerung(sichtbar, panelRef, onClose);
 
   if (!sichtbar) return null;
 
-  // Die Fokusfalle hält Tab/Shift-Tab in der Fläche. Escape läuft bewusst
-  // NICHT hier, sondern über den Stapel oben: er trifft auch dann noch das
-  // oberste Modal, wenn der Fokus die Fläche verlassen hat.
-  const tastatur = (e) => {
-    if (e.key !== 'Tab') return;
-    const elemente = fokussierbareElemente(panelRef.current);
-    if (elemente.length === 0) return;
-    const aktuell = document.activeElement;
-    const index = aktuell ? elemente.indexOf(aktuell) : -1;
-    const ziel = e.shiftKey
-      ? elemente[(index <= 0 ? elemente.length : index) - 1]
-      : elemente[(index + 1) % elemente.length];
-    e.preventDefault();
-    ziel?.focus();
-  };
+  // Die Fokusfalle hält Tab/Shift-Tab in der Fläche. Escape läuft bewusst NICHT hier, sondern über den Stapel: er
+  // trifft auch dann noch das oberste Modal, wenn der Fokus die Fläche verlassen hat.
+  const tastatur = (e) => fokusFalle(e, panelRef.current);
 
   const modal = (
     <div
-      className={schliessend ? 'vp-modal-scrim is-closing' : 'vp-modal-scrim'}
+      className={`vp-modal-scrim${blatt ? ' is-blatt' : ''}${schliessend ? ' is-closing' : ''}`}
       role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="vp-modal"
+        className={`vp-modal${blatt ? ' is-blatt' : ''}${breit ? ' is-breit' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}

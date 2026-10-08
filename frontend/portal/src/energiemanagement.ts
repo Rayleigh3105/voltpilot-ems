@@ -38,6 +38,10 @@ export const VOKABULARE: Record<string, string[]> = {
   verzeichnis_gruppe: ['grundlagen', 'verantwortung', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'bewertung_messplanung', 'kennzahlen_bezugsbasen', 'ziele_massnahmen_abweichungen', 'audits_feststellungen', 'managementbewertung', 'berichte'],
   ueberpruefung_art: ['dokument', 'internes_audit', 'managementbewertung', 'feststellung'],
   ueberpruefung_grund: ['nachweis', 'keine_fassung', 'kein_audit', 'keine_managementbewertung', 'abgeschlossen'],
+  // Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
+  teil: ['energiepolitik', 'anwendungsbereich', 'rechtliche_anforderungen', 'kontext', 'risiken_chancen', 'aufgaben', 'kompetenz', 'kommunikation', 'betrieb', 'auslegung', 'beschaffung', 'energetische_bewertung', 'bezugsbasen', 'massnahmen', 'interne_audits', 'feststellungen', 'managementbewertung', 'berichte'],
+  // Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+  mappe_anlass: ['audit_von_aussen', 'anfrage_behoerde', 'eigene_ablage'],
 };
 export const DOKUMENT_ART_KLASSE: Record<string, string> = Object.fromEntries(
   VOKABULARE.dokument_art.map((art) => [art, art === 'auslegung' || art === 'kompetenz' ? 'nachweis' : 'vorgabe']),
@@ -64,6 +68,68 @@ export const WOERTER: Record<string, Record<string, string>> = {
     managementbewertung: 'Managementbewertung', berichte: 'Berichte',
   },
   verzeichnis_ort: { in_voltpilot: 'in VoltPilot', wortlaut_original_beim_kunden: 'Wortlaut in VoltPilot, Original bei Ihnen', verweis: 'Geführt in Ihrem System' },
+  /** Vertrag 1.3: die Teile mit ihrem Namen (Blatt einer Gruppe, Verzeichnis) und ihrem Kurzwort (Chips, Entscheid 23). */
+  teil: {
+    energiepolitik: 'Energiepolitik',
+    anwendungsbereich: 'Anwendungsbereich',
+    rechtliche_anforderungen: 'Rechtliche Anforderungen',
+    kontext: 'Kontext und interessierte Parteien',
+    risiken_chancen: 'Risiken und Chancen',
+    aufgaben: 'Aufgaben im Energiemanagement',
+    kompetenz: 'Kompetenz',
+    kommunikation: 'Kommunikation',
+    betrieb: 'Betrieb und Instandhaltung',
+    auslegung: 'Auslegung',
+    beschaffung: 'Beschaffung',
+    energetische_bewertung: 'Energetische Bewertung und Messplanung',
+    bezugsbasen: 'Kennzahlen und Bezugsbasen',
+    massnahmen: 'Energieziele und Maßnahmen',
+    interne_audits: 'Interne Audits',
+    feststellungen: 'Feststellungen',
+    managementbewertung: 'Managementbewertung',
+    berichte: 'Berichte',
+  },
+  teil_kurz: {
+    energiepolitik: 'Energiepolitik',
+    anwendungsbereich: 'Anwendungsbereich',
+    rechtliche_anforderungen: 'Rechtliche Anforderungen',
+    kontext: 'Kontext',
+    risiken_chancen: 'Risiken und Chancen',
+    aufgaben: 'Aufgaben',
+    kompetenz: 'Kompetenz',
+    kommunikation: 'Kommunikation',
+    betrieb: 'Betrieb und Instandhaltung',
+    auslegung: 'Auslegung',
+    beschaffung: 'Beschaffung',
+    energetische_bewertung: 'Energetische Bewertung',
+    bezugsbasen: 'Bezugsbasen',
+    massnahmen: 'Maßnahmen',
+    interne_audits: 'Interne Audits',
+    feststellungen: 'Feststellungen',
+    managementbewertung: 'Managementbewertung',
+    berichte: 'Berichte',
+  },
+  // Vertrag 1.5 (Konzept Nachweisen n1, Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name
+  // (`aufgabe`) bleibt im Blatt der Aufgabe. „Energetische Bewertung“ statt „Bewertung und Messplanung“: das Wort
+  // „Bewertung“ allein gehört Auswerten (Sprach-Wächter SP3).
+  aufgabe_kurz: {
+    unternehmensleitung: 'Leitung',
+    energiemanagement_leiten: 'Energiemanagement leiten',
+    energieteam: 'Energieteam',
+    bezugsbasen: 'Bezugsbasen',
+    energieziele_massnahmen: 'Ziele und Maßnahmen',
+    bewertung_messplanung: 'Energetische Bewertung',
+    interne_audits: 'Interne Audits',
+    managementbewertung: 'Managementbewertung',
+    dokumente: 'Dokumente',
+    weitere: 'Weitere Aufgabe',
+  },
+  // Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+  mappe_anlass: {
+    audit_von_aussen: 'Audit von außen',
+    anfrage_behoerde: 'Anfrage einer Behörde',
+    eigene_ablage: 'Eigene Ablage',
+  },
 };
 /** Die Kundensätze (Report §5.8) als Schablonen; {name} füllt die Operation `satz`. */
 export const SAETZE: Record<string, string> = {
@@ -76,9 +142,13 @@ export const SAETZE: Record<string, string> = {
   verweis_keine_datei: 'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
   ueberpruefung: 'Überprüfung fällig seit {tage} Tagen.',
   geprueft_bleibt: 'Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘',
-  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.',
+  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg}.',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+  bekanntmachung_durch: 'Bekannt gemacht von {person} am {am} an {kreis} über {weg}.',
   anwendungsbereich_deckungsgleich: 'Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.',
   anwendungsbereich_unterschied: '{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+  anwendungsbereich_nur_im_umfang: '{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.',
   freigabe_ohne_leitung: 'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
   aufgabe_ohne_person: '{aufgabe} — keine Person festgelegt.',
   person_ohne_konto: '{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.',

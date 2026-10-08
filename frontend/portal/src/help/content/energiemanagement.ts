@@ -16,9 +16,11 @@ export const energiemanagementArticles: HelpArticle[] = [
     summary: 'Was außerhalb von VoltPilot bei Ihnen bleibt, steht bei jeder Funktion dabei.',
     keywords: ['Energiemanagement', 'Verantwortung', 'Aufgaben', 'Kennzahl', 'Bezugsbasis', 'Kompetenz', 'Nachweis', 'Gesamtabzug', 'Vertragsende', 'Recht', 'Klimawandel', 'Norm', 'Grenze'],
     sections: [
+      // Befund A20: der Satz über den Begründungs-Satz einer Maßnahme stand hier noch einmal als Hinweis - er gehört
+      // als Kundenaufgabe nur unter „Was bei Ihnen bleibt“.
       { id: 'festhalten', title: 'Was VoltPilot festhält', paragraphs: [
         'VoltPilot misst, rechnet Kennzahlen und vergleicht mit Ihrer Bezugsbasis; was die Zahlen bedeuten, entscheiden Sie.',
-      ], note: 'Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.' },
+      ] },
       { id: 'bei-ihnen', title: 'Was bei Ihnen bleibt', paragraphs: [
         'Ihr Energiemanagement als Ganzes einführen, mit Mitteln ausstatten, aufrechterhalten und verbessern.',
         'Festlegen, welche Kompetenz nötig ist, und sie nachweisen, tun Sie selbst. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.',

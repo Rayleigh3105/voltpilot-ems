@@ -30,7 +30,16 @@ import type {
   StandorteAmStichtag,
 } from './api';
 import { kanalZeile, WERTART_WORT, zeitpunktAus } from './geraetEinstellungen';
-import { UEMS_HAUPTGROESSE, UEMS_HAUPTZAEHLER, UEMS_NEBENGROESSE, UEMS_UNTERZAEHLER_VON } from './glossar';
+import {
+  UEMS_ABLESERHYTHMUS,
+  UEMS_HAUPTGROESSE,
+  UEMS_HAUPTZAEHLER,
+  UEMS_NEBENGROESSE,
+  UEMS_NOCH_KEINE_QUELLE,
+  UEMS_UNTERZAEHLER_VON,
+  UEMS_WEG_ABLESEN,
+  UEMS_WEG_GERAET,
+} from './glossar';
 import type { VpOption } from './picker/optionen';
 import { zeitpunktText } from './uemsEinstellung';
 import {
@@ -49,6 +58,8 @@ import {
   type PassungGrund,
 } from './uemsMessstelle';
 import { datumText } from './uemsOrtsbaum';
+import { wertFehler } from './werteEingabe';
+import { zahlText } from './zahl';
 
 // -------------------------------------------------------------------- Rahmen
 
@@ -74,6 +85,8 @@ export const KNOPF = {
   abbrechen: 'Abbrechen',
   schliessen: 'Schließen',
   spaeter: 'Später binden',
+  spaeterFestlegen: 'Später festlegen',
+  spaeterAblesen: 'Später eintragen',
   fertig: 'Fertigstellen',
   nebengroesse: `${UEMS_NEBENGROESSE} hinzufügen`,
   entfernen: 'Entfernen',
@@ -94,6 +107,7 @@ export const PFLICHT = {
   unterzaehler: 'Ein Unterzähler braucht die Messstelle, von der er Unterzähler ist.',
   tag: 'Bitte wählen Sie den Tag, ab dem das gilt.',
   kanal: 'Bitte wählen Sie mindestens einen Messwert — oder binden Sie die Quelle später.',
+  stand: 'Bitte geben Sie den Zählerstand ein. Sie können ihn auch später eintragen.',
 } as const;
 
 /** Wenn die Schnittstelle nichts Lesbares sagt. */
@@ -109,9 +123,8 @@ export const HAUPTGROESSE_FEST = 'Die Hauptgröße bleibt fest — eine andere G
 /** Neben dem vorbelegten Kennzeichen (D1). */
 export const KENNZEICHEN_CHIP = 'automatisch · änderbar';
 
-/** D3: der Schritt Quelle ist freiwillig (E8). */
-export const QUELLE_VORSPANN =
-  'Aus welchem Messwert liest die Messstelle? Nur passende Messwerte sind wählbar. Eine Quelle ist keine Voraussetzung — Sie können sie später binden.';
+/** D3, Weg „Automatisch von einem Gerät“: welcher Messwert, und dass nur passende wählbar sind. */
+export const QUELLE_VORSPANN = `Aus welchem Messwert liest die Messstelle? Nur Messwerte, die zur ${UEMS_HAUPTGROESSE} passen, sind wählbar.`;
 
 export const KEINE_KOMPONENTE = 'Die gewählte Anlage hat noch keine Komponente mit Messwerten.';
 export const OHNE_ANLAGE = 'Wählen Sie im Schritt Zuordnung einen Ort oder eine Anlage — dann stehen hier ihre Komponenten.';
@@ -974,6 +987,142 @@ export function quellZiele(f: Identitaet, gespeichert: Messstelle | null, jetzt:
   return out;
 }
 
+// ------------------------------------------- Schritt 3 · Woher kommen die Werte? (Messen m2)
+
+/**
+ * Die zwei gleichwertigen Wege einer gemessenen Messstelle (Captain zum Konzept Messen m1): ein Gerät liefert die
+ * Werte, oder jemand liest den Zähler ab. „Aus anderen Messstellen berechnet“ steht hier bewusst nicht: das entsteht
+ * an der Anlage (Summenwert, Konzept §6.10). Beide Wege sind freiwillig (E8) - ohne Weg bleibt die Messstelle ohne
+ * Quelle, bis jemand einen Zähler verbindet oder die erste Ablesung einträgt.
+ */
+export type WerteWeg = 'geraet' | 'ablesen';
+
+export const WEGE: readonly WerteWeg[] = ['geraet', 'ablesen'];
+
+export const WEG_FRAGE = 'Woher kommen die Werte?';
+
+export const WEG_VORSPANN = 'Sie können das auch später festlegen. Bis dahin hat die Messstelle noch keine Werte.';
+
+export const WEG: Readonly<Record<WerteWeg, { titel: string; zeile: string }>> = {
+  geraet: {
+    titel: UEMS_WEG_GERAET,
+    zeile: 'Ein Zähler oder Gerät an einer Anlage liefert die Werte laufend, meist jede Viertelstunde.',
+  },
+  ablesen: {
+    titel: UEMS_WEG_ABLESEN,
+    zeile: 'Sie lesen den Zählerstand selbst ab und tragen ihn ein, einmal im Monat.',
+  },
+};
+
+/** Der Rhythmus der Ablesung ist eine feste Regel (AP-09 Z7, `AblesungRegeln`): monatlich, nicht einstellbar. */
+export const ABLESERHYTHMUS = { label: UEMS_ABLESERHYTHMUS, wert: 'Monatlich' } as const;
+export const ABLESERHYTHMUS_GRUND =
+  'Nach zwei Monaten ohne Ablesung erinnert die Wiedervorlage daran. Jede Ablesung zählt zu einem Monat.';
+
+export const ERSTE_ABLESUNG = 'Erste Ablesung';
+export const ERSTE_ABLESUNG_GRUND =
+  'Der erste Stand ist der Anfangsstand. Den ersten Verbrauch zeigt die Messstelle nach der nächsten Ablesung.';
+
+export const ABLESUNG_ZUKUNFT = 'Eine Ablesung liegt nicht in der Zukunft.';
+
+/** Die Stelle, an der eine Messstelle heute steht (`MessstelleRegisterZeile.quelle.stand`); `null` = noch nie gesehen. */
+export type QuellenStand = MessstelleRegisterZeile['quelle']['stand'];
+
+/**
+ * Der Weg, den die Messstelle beim Bearbeiten schon geht - dann ist er fest und der andere gesperrt: ein Wechsel
+ * vom Ablesen zum Gerät ist eine Quelle mit Anfangsstand und gehört auf die Seite der Messstelle. `null`: noch
+ * keiner, beide stehen offen.
+ */
+export function wegBestand(ziele: QuellZiel[], stand: QuellenStand | null): WerteWeg | null {
+  if (stand === 'ablesung') return 'ablesen';
+  if (stand === 'gebunden' || ziele.some((z) => z.laufend)) return 'geraet';
+  return null;
+}
+
+export const WEG_GESPERRT = {
+  schonAbgelesen: 'Diese Messstelle wird schon von Hand abgelesen. Ein Gerät verbinden Sie auf ihrer Seite.',
+  schonGeraet: 'Diese Messstelle liest schon von einem Gerät.',
+  keinZaehlerstand: `Von Hand ablesen lässt sich nur ein Zählerstand. Die ${UEMS_HAUPTGROESSE} dieser Messstelle ist kein Zählerstand.`,
+} as const;
+
+/**
+ * Warum ein Weg nicht wählbar ist - die Karte bleibt sichtbar und trägt ihren Grund (die Haus-Regel der
+ * Karten-Auswahl); `null` = wählbar. `komponenten`: wie viele Komponenten die Anlagen der Zuordnung haben,
+ * `null` = noch nicht geladen.
+ */
+export function wegGesperrt(
+  weg: WerteWeg,
+  e: { bestand: WerteWeg | null; wertart: string; quellAnlagen: number; komponenten: number | null },
+): string | null {
+  if (weg === 'geraet') {
+    if (e.bestand === 'ablesen') return WEG_GESPERRT.schonAbgelesen;
+    if (e.bestand === 'geraet') return null;
+    if (e.quellAnlagen === 0) return OHNE_ANLAGE;
+    return e.komponenten === 0 ? KEINE_KOMPONENTE : null;
+  }
+  if (e.bestand === 'geraet') return WEG_GESPERRT.schonGeraet;
+  if (e.bestand === 'ablesen') return null;
+  return e.wertart === 'Zählerstand' ? null : WEG_GESPERRT.keinZaehlerstand;
+}
+
+/** „Wird seit 01.10.2024 von Hand abgelesen, zuletzt am 01.10.2026.“ - beim Bearbeiten einer Ablesestelle. */
+export function abgelesenSatz(a: { seit: string; zuletzt: string | null }): string {
+  const tag = (iso: string) => datumText(iso.slice(0, 10));
+  return a.zuletzt
+    ? `Wird seit ${tag(a.seit)} von Hand abgelesen, zuletzt am ${tag(a.zuletzt)}.`
+    : `Wird seit ${tag(a.seit)} von Hand abgelesen. Es gibt noch keine Ablesung.`;
+}
+
+export interface AblesungEingabe {
+  datum: string;
+  uhrzeit: string;
+  /** Wie getippt („1.250.000“, „49.451,5“); gelesen nur über `zahl.ts`. */
+  stand: string;
+}
+
+export interface AblesungUrteil {
+  fehler: Partial<Record<'ablesezeit' | 'stand', string>>;
+  /** Die Anfrage an `POST /messstellen/{kz}/ablesungen` - die erste Ablesung hat keinen Monat (sie schließt keinen Zeitraum). */
+  anfrage: { zeitpunkt: string; stand: string; zuordnung_monat: null } | null;
+}
+
+/**
+ * Die erste Ablesung im Dialog: Tag und Uhrzeit in Ortszeit auf die Minute (`zeitpunktAus`, nie geraten an der
+ * Zeitumstellung), nicht in der Zukunft, der Stand als deutsche Zahl (`wertFehler`/`zahlText`). Ablehnen darf der
+ * Server trotzdem - sein Satz steht dann am Feld ({@link ablesungAblehnung}).
+ */
+export function ablesungPruefen(e: AblesungEingabe, jetzt: string, einheit: string): AblesungUrteil {
+  const fehler: AblesungUrteil['fehler'] = {};
+  const t = zeitpunktAus(e.datum, e.uhrzeit);
+  if ('fehler' in t) fehler.ablesezeit = t.fehler;
+  else if (Date.parse(t.iso) > Date.parse(jetzt)) fehler.ablesezeit = ABLESUNG_ZUKUNFT;
+  if (e.stand.trim() === '') fehler.stand = PFLICHT.stand;
+  else {
+    const f = wertFehler(e.stand, einheit);
+    if (f) fehler.stand = f;
+  }
+  const stand = zahlText(e.stand);
+  if (fehler.ablesezeit || fehler.stand || 'fehler' in t || stand === null) return { fehler, anfrage: null };
+  return { fehler, anfrage: { zeitpunkt: t.iso, stand, zuordnung_monat: null } };
+}
+
+/** Die Ablehnung des Ablesungs-Schreibwegs (`AblesungAbgelehnt`) am Feld der ersten Ablesung - Satz des Servers. */
+export function ablesungAblehnung(err: { message?: string; body?: unknown } | null): {
+  feld: 'ablesezeit' | 'stand' | null;
+  satz: string;
+} {
+  const body = (err?.body && typeof err.body === 'object' ? err.body : {}) as Record<string, unknown>;
+  const code = text(body.code);
+  const satz = text(body.message) ?? text(err?.message) ?? SATZ_ALLGEMEIN;
+  if (code === 'zeitpunkt_ungueltig' || code === 'konflikt' || text(body.feld) === 'zeitpunkt') {
+    return { feld: 'ablesezeit', satz };
+  }
+  if (code === 'zahl_unlesbar' || code === 'wert_ungueltig' || code === 'ruecksprung' || text(body.feld) === 'stand') {
+    return { feld: 'stand', satz };
+  }
+  return { feld: null, satz };
+}
+
 // ------------------------------------------------------------------ Abschluss
 
 export const FEHLT_WORT: Readonly<Record<string, string>> = {
@@ -987,12 +1136,13 @@ export const FEHLT_WORT: Readonly<Record<string, string>> = {
 
 /**
  * 5.1 „Fertig“: „MS-0017 Lagerhalle Lindach gesamt ist eingerichtet und aktiv · wartet auf erste
- * Daten“ — ohne Quelle „· keine Datenquelle“ (E8), mit Lücken „als Entwurf gespeichert — es fehlt: …“.
+ * Daten“ - mit der ersten Ablesung „· wird von Hand abgelesen“, ohne Quelle „· noch keine Quelle“ (E8; Konzept
+ * Messen m1, Anhang A F statt „keine Datenquelle“), mit Lücken „als Entwurf gespeichert — es fehlt: …“.
  * Die Stufe kommt vom Server (`lebenszyklus`, `fehlt`), nie aus dem Dialog.
  */
 export function abschlussSatz(
   m: Pick<Messstelle, 'kennzeichen' | 'name' | 'lebenszyklus' | 'fehlt'>,
-  e: { fassung: Fassung; quelleGebunden: boolean; quelleVorhanden: boolean },
+  e: { fassung: Fassung; quelleGebunden: boolean; quelleVorhanden: boolean; abgelesen?: boolean },
 ): string {
   const wer = nennung(m.kennzeichen, m.name);
   if (m.lebenszyklus === 'entwurf') {
@@ -1000,9 +1150,18 @@ export function abschlussSatz(
   }
   if (m.lebenszyklus === 'angehalten') return `${wer} ist gespeichert · angehalten`;
   if (e.fassung === 'bearbeiten') return `${wer} ist gespeichert`;
-  const beobachtung = e.quelleGebunden ? 'wartet auf erste Daten' : e.quelleVorhanden ? null : 'keine Datenquelle';
+  const beobachtung = e.quelleGebunden
+    ? 'wartet auf erste Daten'
+    : e.abgelesen
+      ? 'wird von Hand abgelesen'
+      : e.quelleVorhanden
+        ? null
+        : UEMS_NOCH_KEINE_QUELLE;
   return `${wer} ist eingerichtet und aktiv${beobachtung ? ` · ${beobachtung}` : ''}`;
 }
+
+/** Unter „· noch keine Quelle“: was als Nächstes geschieht (Konzept Messen m1, Anhang A F). */
+export const OHNE_QUELLE_WEITER = 'Werte kommen, sobald Sie einen Zähler verbinden oder eine Ablesung eintragen.';
 
 // ---------------------------------------------------------------- Ablehnungen
 
@@ -1015,7 +1174,9 @@ export type DialogFeld =
   | 'unterzaehlerVon'
   | 'gueltigAb'
   | 'kanal'
-  | 'zeitpunkt';
+  | 'zeitpunkt'
+  | 'ablesezeit'
+  | 'stand';
 
 export interface Ablehnung {
   code: string | null;

@@ -33,6 +33,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 )
 
 // SchemaVersion ist die Formatversion des Umschlags.
@@ -46,10 +48,7 @@ const EnvelopeType = "update_target"
 // fehlgeleitete retained Nachricht den Speicher des Geraets fuellt.
 const MaxEnvelopeBytes = 64 * 1024
 
-var (
-	releaseRe = regexp.MustCompile(`^edge-\d{4}\.\d{2}\.\d+$`)
-	uuidRe    = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-)
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Envelope ist die geparste Zuweisung.
 //
@@ -112,8 +111,12 @@ func ParseEnvelope(raw []byte) (*Envelope, error) {
 			return nil, fmt.Errorf("%s ist keine UUID", name)
 		}
 	}
-	if !releaseRe.MatchString(w.Release) {
-		return nil, fmt.Errorf("release '%s' folgt nicht dem Schema edge-JJJJ.MM.N", w.Release)
+	// Dieselbe Namensregel wie im Manifest (beide Linien, edge- und
+	// edge-light-). Eine Docker-Box muss die Zuweisung eines Edge-Light-
+	// Release LESEN koennen - sonst waere sie „unlesbar" (failed), bevor der
+	// Verifizierer sie als „nicht fuer diese Box-Art" zurueckstellen kann.
+	if !otaverify.IsReleaseName(w.Release) {
+		return nil, fmt.Errorf("release '%s' folgt nicht dem Schema edge-JJJJ.MM.N oder edge-light-JJJJ.MM.N", w.Release)
 	}
 	if w.ReleaseSeq < 1 {
 		return nil, errors.New("release_seq muss >= 1 sein")

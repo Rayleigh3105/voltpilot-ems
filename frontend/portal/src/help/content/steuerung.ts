@@ -110,7 +110,8 @@ export const controlArticles: HelpArticle[] = [
         "Oben zeigt „Netzanschluss“, wie sich die Grenze auf Haus und Ladepunkte verteilt. Das Lastmanagement bleibt innerhalb dieser Grenze; andere Verbraucher verkleinern den Spielraum. Vorrang beeinflusst die Verteilung, erweitert aber keine physische Grenze.",
       ] },
       { id: 'einzeln', title: 'Einen Ladepunkt genauer prüfen', paragraphs: [
-        "Je Ladepunkt wählen Sie „Womit laden“ – Sonne, Sonne mit Minimum oder günstig – und bei Bedarf ein Ladeziel, etwa „+30 kWh bis 7:00“. Kontrollieren Sie nach einer Aktion Rückmeldung und Messwerte; eine angenommene Vorgabe belegt noch keine Wirkung am Fahrzeug.",
+        "Je Ladepunkt wählen Sie „Womit laden“ – Sonne, Sonne mit Minimum, Sonne mit Speicher oder günstig – und bei Bedarf ein Ladeziel, etwa „+30 kWh bis 7:00“. Kontrollieren Sie nach einer Aktion Rückmeldung und Messwerte; eine angenommene Vorgabe belegt noch keine Wirkung am Fahrzeug.",
+        "„Sonne + Speicher“ gibt dem Auto zum Sonnenstrom, was der Speicher laut vorsichtiger Prognose bis zur nächsten Sonne nicht braucht. Die Untergrenze rechnet der Fahrplan je Viertelstunde neu; fehlt die Prognose oder ein aktueller Ladestand, lädt das Auto nur mit Sonnenstrom. Wie viel Reserve der Speicher zusätzlich behält, stellen Sie unter „Reserve für Sonne + Speicher“ ein. VoltPilot muss Ihren Speicher dafür nicht steuern: Steuert es ihn nicht, beobachtet die Box Ladestand und Speicherleistung, und Ihr Wechselrichter deckt die Wallbox selbst. Kommt dabei Strom aus dem Netz, nimmt die Box die Freigabe zurück.",
       ] },
     ], related: ['ladevorgaenge', 'geraete-steuern', 'probleme'],
   },

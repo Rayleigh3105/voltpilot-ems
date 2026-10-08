@@ -135,6 +135,37 @@ func TestAForeignBackendIsRefusedNeverGuessed(t *testing.T) {
 	}
 }
 
+// Ein gueltig signiertes Release einer anderen Box-Art (Edge Light) ist
+// „nicht fuer mich": zurueckgestellt mit der Sperre backend - nicht politik,
+// deren Hebel ein Boden oder Rueckschritt ist, und schon gar nicht kette.
+func TestAReleaseOfAnotherBoxTypeIsDeferredWithTheBackendBlocker(t *testing.T) {
+	in := baseInput()
+	in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeDeferred, BackendMismatch: true,
+		Reason: "Release edge-light-2026.10.1 ist nicht fuer das Apply-Backend 'compose' bestimmt."}
+	d := Decide(in)
+	if d.Action != ActionRefuse || d.State != StateDeferred || d.Blocker != BlockerBackend {
+		t.Fatalf("andere Box-Art = refuse/deferred/backend, ist %v/%v/%v", d.Action, d.State, d.Blocker)
+	}
+	if d.Reason != in.Verdict.Reason {
+		t.Fatalf("der Grund des Verifizierers ist die Aussage: %q", d.Reason)
+	}
+}
+
+// Doppelt gesichert: selbst ein OK-Urteil laesst keinen Bestandteil durch,
+// den compose nicht anwendet - kein halb angewandtes Release.
+func TestAPartComposeDoesNotApplyIsRefusedEvenAfterAnOKVerdict(t *testing.T) {
+	in := baseInput()
+	m := manifest()
+	m.Artifacts = append(m.Artifacts, otaverify.Artifact{Type: otaverify.ArtifactBinary,
+		Name: "vp-edge-light", Arch: "linux/arm64", SHA256: strings.Repeat("c", 64), Size: 1,
+		GzSHA256: strings.Repeat("d", 64), GzSize: 1})
+	in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeOK, Manifest: m}
+	d := Decide(in)
+	if d.Action != ActionRefuse || d.Blocker != BlockerBackend || !strings.Contains(d.Reason, "binary") {
+		t.Fatalf("binary im compose-Release = refuse/backend mit Grund, ist %v/%v/%q", d.Action, d.Blocker, d.Reason)
+	}
+}
+
 func TestAnOlderStateSchemaIsRefused(t *testing.T) {
 	in := baseInput()
 	in.StateSchemaOnDisk = 4 // das Release kennt nur 3
@@ -245,6 +276,10 @@ func TestEveryNonIdleOutcomeCarriesAGermanReason(t *testing.T) {
 		},
 		"politik": func(in *DecisionInput) {
 			in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeDeferred, Reason: "Boden"}
+		},
+		"backend": func(in *DecisionInput) {
+			in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeDeferred, BackendMismatch: true,
+				Reason: "andere Box-Art"}
 		},
 		"state_schema": func(in *DecisionInput) { in.StateSchemaOnDisk = 9 },
 		"platte":       func(in *DecisionInput) { in.FreeBytes = 1 },

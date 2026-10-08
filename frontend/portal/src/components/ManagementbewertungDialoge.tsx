@@ -1,46 +1,41 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import {
-  api,
-  type Bericht,
-  type Managementbewertung,
-  type ManagementbewertungBeschluss,
-  type ManagementbewertungBeschlussArt,
-  type ManagementbewertungBeschlussFesthalten,
-  type ManagementbewertungFolgeVerknuepfen,
-} from '../api';
+import { api, type Bericht, type Managementbewertung, type ManagementbewertungBeschluss, type ManagementbewertungFolgeVerknuepfen } from '../api';
 import { anlegenFehler } from '../berichtDialoge';
-import { VOKABULARE } from '../energiemanagement';
 import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import * as M from '../managementbewertung';
 import { MANAGEMENTBEWERTUNG } from '../uemsBericht';
 import { Formular } from './DokumentDialoge';
-import { Textfeld, usePersonen } from './InternesAuditDialoge';
-import { VpDatePicker } from './VpDatePicker';
+import { GrenzSatz } from './GrenzSatz';
+import { NwBlatt } from './nachweisen/NwBlatt';
+import { AntwortKarten } from './nachweisen/NwSchritte';
 import { VpPicker } from './VpPicker';
 
 const ABBRECHEN = 'Abbrechen';
 
 /**
- * „Managementbewertung anlegen“ (UEMS AP-19 IP-24, MG1): legt den Bericht der Vorlage `managementbewertung` am
- * Unternehmen für ein Jahr an (`POST /api/v1/berichte`, Recht `energiemanagement.verwalten`). Eine je Jahr — gibt es sie
- * schon, spricht der Dialog den Satz der Route (`bericht_gibt_es_schon`) und bietet sie zum Öffnen an.
+ * „Managementbewertung anlegen“ als Blatt (Konzept Nachweisen n1 Runde 2, §6.7; vorher UEMS AP-19 IP-24, MG1): eine
+ * Frage „Für welches Jahr?“ mit den abgelaufenen Jahren als Antwort-Karten - das laufende Jahr kann noch nicht beginnen,
+ * ein Jahr, das es schon gibt, steht grau mit „gibt es schon“. Legt den Bericht der Vorlage `managementbewertung` am
+ * Unternehmen an (`POST /api/v1/berichte`, Recht `energiemanagement.verwalten`); lehnt die Route ab
+ * (`bericht_gibt_es_schon`), spricht das Blatt ihren Satz und bietet die vorhandene zum Öffnen an.
  */
-export function ManagementbewertungAnlegenDialog({
+export function ManagementbewertungAnlegenBlatt({
   heute,
+  vorhanden: schonDa = [],
   onClose,
   onAngelegt,
 }: {
   heute: string;
+  /** Die Jahre, für die es schon eine gibt. */
+  vorhanden?: readonly string[];
   onClose: () => void;
   /** Angelegt ODER die schon vorhandene geöffnet — die Kennung des Berichts. */
   onAngelegt: (kennung: string) => void;
 }) {
-  const basis = `mb-${useId().replace(/:/g, '')}`;
-  const jahre = M.jahreZurWahl(heute);
-  const [jahr, setJahr] = useState<string | null>(jahre[0].id);
+  const jahre = M.jahreZurWahl(heute).filter((j) => Number(j.id) < Number(heute.slice(0, 4)));
+  const [jahr, setJahr] = useState<string | null>(M.vorgewaehltesJahr(jahre, schonDa));
   const [unternehmen, setUnternehmen] = useState<string | null>(null);
   const [satz, setSatz] = useState<string | null>(null);
   const [vorhanden, setVorhanden] = useState<string | null>(null);
@@ -74,43 +69,42 @@ export function ManagementbewertungAnlegenDialog({
   }
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title={M.KNOPF_MB_ANLEGEN}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            {ABBRECHEN}
-          </Button>
+    <NwBlatt open titel={M.KNOPF_MB_ANLEGEN} onClose={onClose} testId="mb-anlegen-dialog">
+      <div className="vp-nw-schritt-inhalt">
+        <AntwortKarten
+          frage="Für welches Jahr?"
+          optionen={jahre.map((j) => ({ wert: j.id, titel: j.label, zusatz: schonDa.includes(j.id) ? 'gibt es schon' : null, aus: schonDa.includes(j.id) }))}
+          wert={jahr}
+          onWahl={(v) => {
+            setJahr(v);
+            setVorhanden(null);
+            setSatz(null);
+          }}
+          testid="mb-anlegen-jahr"
+        />
+        {satz && (
+          <p className="vp-nw-feld-fehler" role="alert" data-testid="energiemanagement-ablehnung">
+            {satz}
+          </p>
+        )}
+        <div className="vp-nw-vb-knoepfe">
           {vorhanden ? (
             <Button onClick={() => onAngelegt(vorhanden)} data-testid="mb-vorhandene-oeffnen">
               {`${vorhanden} öffnen`}
             </Button>
           ) : (
-            <Button type="submit" form={`${basis}-form`} disabled={busy || !jahr || !unternehmen} data-testid="mb-anlegen-senden">
-              {M.KNOPF_MB_ANLEGEN}
+            <Button onClick={() => void senden()} disabled={busy || !jahr || !unternehmen} data-testid="mb-anlegen-senden">
+              Anlegen
             </Button>
           )}
-        </>
-      }
-    >
-      <Formular id={`${basis}-form`} testid="mb-anlegen-dialog" onSubmit={() => void senden()}>
-        <VpPicker
-          label={M.JAHR}
-          options={jahre.map((j) => ({ value: j.id, label: j.label }))}
-          value={jahr}
-          onChange={(v) => {
-            setJahr(v);
-            setVorhanden(null);
-            setSatz(null);
-          }}
-          search="nie"
-        />
-        <p className="vp-ez-leise">{M.ANLEGEN_HINWEIS}</p>
-        <Fuss satz={satz} />
-      </Formular>
-    </Modal>
+          <Button variant="ghost" onClick={onClose}>
+            {ABBRECHEN}
+          </Button>
+        </div>
+        {/* Grenz- und Verantwortungs-Satz: einmal am Fuß des Bereichs, unter dem das Blatt liegt (K7/D5). */}
+        <GrenzSatz verantwortung />
+      </div>
+    </NwBlatt>
   );
 }
 
@@ -153,140 +147,6 @@ function Rahmen({
     >
       {children}
     </Modal>
-  );
-}
-
-/**
- * „Sitzung festhalten“ (MG4, `PUT …/managementbewertungen/{kennung}/sitzung`): Tag (nie in der Zukunft), Leitung — die
- * Person mit der Aufgabe „Leitung des Unternehmens“ am Tag ist vorgewählt, auch ohne Konto —, Teilnehmende, wahlfrei Ort.
- * Ein zweites Festhalten ersetzt die erste Angabe; bis zur Freigabe.
- */
-export function SitzungDialog({
-  kennung, heute, vorher, onClose, onFertig,
-}: {
-  kennung: string; heute: string; vorher: Managementbewertung['sitzung']; onClose: () => void; onFertig: (mb: Managementbewertung) => void;
-}) {
-  const basis = `ms-${useId().replace(/:/g, '')}`;
-  const { personen, optionen } = usePersonen();
-  const [tag, setTag] = useState(vorher?.tag ?? heute);
-  const [leitung, setLeitung] = useState<string | null>(vorher?.leitung.id ?? null);
-  const [teilnehmende, setTeilnehmende] = useState<string[]>(vorher?.teilnehmende.map((p) => p.id) ?? []);
-  const [ort, setOrt] = useState(vorher?.ort ?? '');
-  const [satz, setSatz] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (vorher || !tag) return;
-    let aktiv = true;
-    // PA3: wer am Tag der Sitzung die Aufgabe „Leitung des Unternehmens“ hat — nur ein Vorschlag, die Route prüft.
-    api.energiemanagementAufgaben(tag).then(
-      (a) => aktiv && a.leitung.length > 0 && setLeitung((l) => l ?? a.leitung[0].id),
-      () => undefined,
-    );
-    return () => {
-      aktiv = false;
-    };
-  }, [tag, vorher]);
-  async function senden() {
-    if (!tag || !leitung) return;
-    setBusy(true);
-    setSatz(null);
-    try {
-      onFertig(
-        await api.managementbewertungSitzung(kennung, {
-          tag,
-          leitung,
-          teilnehmende: teilnehmende.filter((p) => p !== leitung),
-          ...(ort.trim() ? { ort: ort.trim() } : {}),
-        }),
-      );
-    } catch (err) {
-      setSatz(M.ablehnungSatz(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Rahmen titel={vorher ? M.KNOPF_SITZUNG_AENDERN : M.KNOPF_SITZUNG} basis={basis} testid="mb-sitzung" knopf={M.KNOPF_SITZUNG} busy={busy} bereit={!!tag && !!leitung} onClose={onClose}>
-      <Formular id={`${basis}-form`} testid="mb-sitzung-dialog" onSubmit={() => void senden()}>
-        <VpDatePicker label={M.TAG_DER_SITZUNG} value={tag || null} onChange={setTag} max={heute} />
-        <VpPicker id={`${basis}-leitung`} label={M.LEITUNG} options={optionen} value={leitung} onChange={setLeitung} placeholder="Person wählen" loading={personen === null} hint={M.SITZUNG_HINWEIS} />
-        <VpPicker
-          id={`${basis}-teilnehmende`}
-          label={M.TEILNEHMENDE}
-          options={optionen.filter((o) => o.value !== leitung)}
-          values={teilnehmende}
-          onChangeMany={setTeilnehmende}
-          placeholder="Personen wählen"
-          loading={personen === null}
-        />
-        <Input id={`${basis}-ort`} label={M.ORT} value={ort} onChange={(ev) => setOrt(ev.target.value)} maxLength={200} />
-        <Fuss satz={satz} />
-      </Formular>
-    </Rahmen>
-  );
-}
-
-/**
- * „Beschluss festhalten“ und „Beschluss ändern“ (MG5, `POST …/beschluesse`, `PUT …/beschluesse/{nr}`): Art, Wortlaut,
- * entschieden von (die Leitung der Sitzung vorgewählt), wahlfrei zuständig und Termin — bis zur Freigabe.
- */
-export function BeschlussDialog({
-  kennung, mb, beschluss = null, onClose, onFertig,
-}: {
-  kennung: string; mb: Managementbewertung; beschluss?: ManagementbewertungBeschluss | null; onClose: () => void; onFertig: (mb: Managementbewertung) => void;
-}) {
-  const basis = `mbe-${useId().replace(/:/g, '')}`;
-  const { personen, optionen } = usePersonen();
-  const [art, setArt] = useState<string | null>(beschluss?.art ?? null);
-  const [wortlaut, setWortlaut] = useState(beschluss?.wortlaut ?? '');
-  const [entschieden, setEntschieden] = useState<string | null>(beschluss?.entschieden_von.id ?? mb.sitzung?.leitung.id ?? null);
-  const [zustaendig, setZustaendig] = useState<string | null>(beschluss?.zustaendig?.id ?? null);
-  const [termin, setTermin] = useState(beschluss?.termin ?? '');
-  const [fehler, setFehler] = useState<string | undefined>();
-  const [satz, setSatz] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function senden() {
-    const w = wortlaut.trim();
-    if (!art) return;
-    if (!w || w.length > M.WORTLAUT_HOECHSTENS) return setFehler(`1 bis ${M.WORTLAUT_HOECHSTENS} Zeichen.`);
-    setFehler(undefined);
-    setBusy(true);
-    setSatz(null);
-    const body: ManagementbewertungBeschlussFesthalten = {
-      art: art as ManagementbewertungBeschlussArt,
-      wortlaut: w,
-      ...(entschieden ? { entschieden_von: entschieden } : {}),
-      ...(zustaendig ? { zustaendig } : {}),
-      ...(termin ? { termin } : {}),
-    };
-    try {
-      onFertig(beschluss ? await api.managementbewertungBeschlussAendern(kennung, beschluss.nr, body) : await api.managementbewertungBeschluss(kennung, body));
-    } catch (err) {
-      setSatz(M.ablehnungSatz(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-  const titel = beschluss ? `${M.KNOPF_BESCHLUSS_AENDERN} (Beschluss ${beschluss.nr})` : M.KNOPF_BESCHLUSS;
-  return (
-    <Rahmen titel={titel} basis={basis} testid="mb-beschluss" knopf={beschluss ? M.KNOPF_BESCHLUSS_AENDERN : M.KNOPF_BESCHLUSS} busy={busy} bereit={!!art && !!wortlaut.trim()} onClose={onClose}>
-      <Formular id={`${basis}-form`} testid="mb-beschluss-dialog" onSubmit={() => void senden()}>
-        <VpPicker
-          id={`${basis}-art`}
-          label={M.ART}
-          options={VOKABULARE.beschluss_art.map((a) => ({ value: a, label: M.BESCHLUSS_ART_WORT[a] ?? a }))}
-          value={art}
-          onChange={setArt}
-          placeholder="Art wählen"
-          search="nie"
-        />
-        <Textfeld id={`${basis}-wortlaut`} label={M.WORTLAUT} wert={wortlaut} setze={setWortlaut} fehler={fehler} hinweis={M.BESCHLUSS_HINWEIS} />
-        <VpPicker id={`${basis}-entschieden`} label={M.ENTSCHIEDEN_VON} options={optionen} value={entschieden} onChange={setEntschieden} placeholder="Person wählen" loading={personen === null} />
-        <VpPicker id={`${basis}-zustaendig`} label={M.ZUSTAENDIG} options={optionen} value={zustaendig} onChange={setZustaendig} placeholder="Person wählen" loading={personen === null} />
-        <VpDatePicker label={M.TERMIN} value={termin || null} onChange={setTermin} />
-        <Fuss satz={satz} />
-      </Formular>
-    </Rahmen>
   );
 }
 

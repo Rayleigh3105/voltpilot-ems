@@ -1,3 +1,4 @@
+import { merkeAbruf } from '../routenUhr';
 import { useEffect, useState } from 'react';
 import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
@@ -72,7 +73,7 @@ function NachweiseAbschnitt({
   saetze = false,
 }: {
   testid: string;
-  laden: () => Promise<{ nachweise: EnergiemanagementNachweis[] }>;
+  laden: () => Promise<{ nachweise: EnergiemanagementNachweis[]; abruf: string }>;
   fest: E.NachweisBezug;
   karte: string;
   /** Nur der Verantwortungs-Satz — auf einer fremden Fläche (Einsatz-Seite), die den Grenz-Satz schon am Fuß trägt. */
@@ -90,7 +91,10 @@ function NachweiseAbschnitt({
     let aktiv = true;
     setFehler(null);
     laden().then(
-      (r) => aktiv && setListe(r.nachweise),
+      (r) => {
+        merkeAbruf(r.abruf); // Befund 3: „Nachweis festhalten … vom“ endet am Tag der Route
+        if (aktiv) setListe(r.nachweise);
+      },
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
     );
     return () => {

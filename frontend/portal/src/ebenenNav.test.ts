@@ -701,23 +701,29 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       'Läuft alles? Was steht an?',
       'Wird alles erfasst?',
       'Wo geht die Energie hin, wird es besser?',
-      'Können wir es belegen?',
+      'Können wir belegen, was wir tun?',
     ]);
   });
 
-  it('2 · mit allen Rechten neun Bereiche — und doch nur fünf Kacheln, jede ein ganzes Wort', () => {
+  it('2 · mit allen Rechten zehn Bereiche — und doch nur fünf Kacheln, jede ein ganzes Wort', () => {
     const alle: EbenenLesemodell = { ...MESSKUNDE, bewertung: true, verbesserung: true, energiemanagement: true };
-    expect(ebenenBereiche(UNTERNEHMEN, alle)).toHaveLength(9);
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ ist der zehnte Bereich, mit demselben Recht wie die Bewertung.
+    expect(ebenenBereiche(UNTERNEHMEN, alle)).toHaveLength(10);
     const leiste = ebenenLeiste(UNTERNEHMEN, alle);
     expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Nachweisen']);
     expect(leiste.length).toBeLessThanOrEqual(LEISTE_HOECHSTENS);
-    expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['kennzahlen', 'bewertung']);
+    // Drei Fragen, drei Reiter (Richtungsfrage 1 = A): „Auswerten“ öffnet auf „Verbrauch“.
+    expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['verbrauch', 'kennzahlen', 'bewertung']);
+    expect(leiste.find((k) => k.key === 'auswerten')?.ziel).toEqual(pageRoute('portfolio-verbrauch'));
     expect(leiste.find((k) => k.key === 'verbessern')?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
-    // „Nachweisen“ öffnet das Verzeichnis des Energiemanagements, die Berichte stehen daneben.
+    // Konzept Verbessern v1, Entscheid 1: die Gruppe fragt nach dem Zweck, nicht „Was tun wir dagegen?“.
+    expect(leiste.find((k) => k.key === 'verbessern')?.frage).toBe('Was tun wir, um Energie zu sparen?');
+    // „Nachweisen“ öffnet den Überblick des Energiemanagements (Nachweisen n1), die Berichte stehen daneben.
     expect(leiste.find((k) => k.key === 'nachweisen')?.bereiche).toEqual(['energiemanagement', 'berichte']);
     expect(leiste.find((k) => k.key === 'nachweisen')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));
     // Am Telefon stehen über der Seite nur die Reiter der offenen Gruppe.
-    expect(telefonReiterBereiche(leiste, 'kennzahlen')).toEqual(['kennzahlen', 'bewertung']);
+    expect(telefonReiterBereiche(leiste, 'kennzahlen')).toEqual(['verbrauch', 'kennzahlen', 'bewertung']);
+    expect(telefonReiterBereiche(leiste, 'verbrauch')).toEqual(['verbrauch', 'kennzahlen', 'bewertung']);
     expect(telefonReiterBereiche(leiste, 'berichte')).toEqual(['energiemanagement', 'berichte']);
     expect(telefonReiterBereiche(leiste, 'standorte')).toEqual(['uebersicht', 'standorte']);
     expect(telefonReiterBereiche(leiste, null)).toBeNull();
@@ -759,6 +765,8 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       verbesserung: pageRoute('portfolio-verbesserung'),
       // AP-19 IP-9: „Energiemanagement“ — die Kachel nur mit Recht (`EbenenLesemodell.energiemanagement`).
       energiemanagement: pageRoute('portfolio-energiemanagement'),
+      // Konzept Auswerten a1: „Verbrauch“ — die Kachel nur mit dem Recht der Bewertung (`EbenenLesemodell.bewertung`).
+      verbrauch: pageRoute('portfolio-verbrauch'),
     });
     // AP-13 IP-2: der Standort hat jede Seite; Kennzahlen und Berichte stehen als Seiten da, sind aber kein Bereich.
     expect(EBENEN_SEITEN(WERK, MESSKUNDE)).toEqual({
@@ -1032,6 +1040,13 @@ describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)',
     }
     expect(hashForRoute(kennzahlRoute('KZ-0001', st))).toBe(`#/standort/${st}/kennzahlen/KZ-0001`);
     expect(parseRoute(`#/standort/${st}/kennzahlen/KZ-0001`)).toEqual(kennzahlRoute('KZ-0001', st));
+    // Konzept Auswerten a1 §6.6: die Bezugsbasis eine Ebene unter der Kennzahl - am Unternehmen und am Standort.
+    expect(hashForRoute(kennzahlRoute('KZ-0001', st, 'bezugsbasis'))).toBe(`#/standort/${st}/kennzahlen/KZ-0001/bezugsbasis`);
+    expect(parseRoute(`#/standort/${st}/kennzahlen/KZ-0001/bezugsbasis`)).toEqual(kennzahlRoute('KZ-0001', st, 'bezugsbasis'));
+    expect(hashForRoute(kennzahlRoute('KZ-0001', null, 'bezugsbasis'))).toBe('#/portfolio/kennzahlen/KZ-0001/bezugsbasis');
+    expect(parseRoute('#/portfolio/kennzahlen/KZ-0001/bezugsbasis')).toEqual(kennzahlRoute('KZ-0001', null, 'bezugsbasis'));
+    // Ein unbekannter dritter Abschnitt bleibt die Seite der Kennzahl.
+    expect(parseRoute('#/portfolio/kennzahlen/KZ-0001/unbekannt')).toEqual(kennzahlRoute('KZ-0001'));
     expect(hashForRoute(berichtRoute('BR-2026-0001', st))).toBe(`#/standort/${st}/berichte/BR-2026-0001`);
     expect(parseRoute(`#/standort/${st}/berichte/BR-2026-0001`)).toEqual(berichtRoute('BR-2026-0001', st));
     // Die Aliase: die Welten des Unternehmens bleiben, wo sie waren — niemandes Lesezeichen bricht.

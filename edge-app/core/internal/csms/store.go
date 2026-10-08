@@ -189,6 +189,8 @@ type AddRequest struct {
 	Source string `json:"source,omitempty"`
 	// Rank: this station's Rangliste position - see Charger.Rank. 0 = unranked.
 	Rank int `json:"rank,omitempty"`
+	// StorageRelease: „Sonne + Speicher" - see Charger.StorageRelease.
+	StorageRelease bool `json:"storage_release,omitempty"`
 }
 
 // maxRatedKw bounds an operator-declared station rating. 1000 kW per connector
@@ -269,7 +271,10 @@ func NormalizeAdd(req AddRequest, existing []Charger, now time.Time) (Charger, e
 		Connection: conn,
 		Source:     src,
 		Rank:       req.Rank,
-		AddedAt:    now.UTC(),
+		// „Sonne + Speicher" is a statement ON TOP OF the sun-only lane;
+		// next to any other lane it says nothing and is not stored.
+		StorageRelease: req.StorageRelease && src == "nur_sonne",
+		AddedAt:        now.UTC(),
 	}, nil
 }
 

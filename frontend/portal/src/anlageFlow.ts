@@ -81,7 +81,7 @@ export function zoneForCountry(countryCode: string | null | undefined): string {
  * Geräte-IDs come in two shapes and typing case must not matter, so the field
  * mirrors the canonical form as you type (the api canonicalizes the same way on
  * claim): sticker IDs are printed uppercase (VP-1234-ABCD), self-generated edge
- * references lowercase (edge-k7m2xqp). Other refs are left alone.
+ * references lowercase (edge-k7m2xq3). Other refs are left alone.
  */
 export function normalizeDeviceIdInput(value: string): string {
   if (/^\s*vp-/i.test(value)) return value.toUpperCase();
@@ -92,14 +92,17 @@ export function normalizeDeviceIdInput(value: string): string {
 /**
  * Shared claim-field copy so the flow and the Geräte drawer speak with ONE
  * voice about where the Geräte-ID comes from - the device shows it in its
- * own app, and some devices also carry a sticker.
+ * own app, and some devices also carry a sticker. The path and labels are the
+ * box web app's (edge-app/core/internal/web/static/einrichten.html, card
+ * #portal); the box withholds the reference until data arrives
+ * (commissioning.js, claim_unlocked).
  */
 export const DEVICE_ID_FIELD = {
   label: 'Geräte-ID',
-  placeholder: 'z. B. edge-k7m2xqp',
-  // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`);
-  // einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
-  help: 'Die Geräte-ID zeigt Ihre VoltPilot-Box auf ihrer Einrichtungsseite als „Referenz-ID“ an. Manche Boxen tragen sie zusätzlich auf einem Aufkleber.',
+  placeholder: 'z. B. edge-k7m2xq3',
+  // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`,
+  // Karte #portal); einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
+  help: 'Die Geräte-ID zeigt Ihre VoltPilot-Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts" an. Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Manche Boxen tragen sie zusätzlich auf einem Aufkleber.',
 } as const;
 
 /** One 422 message for both gates (unknown sticker OR mistyped edge reference). */

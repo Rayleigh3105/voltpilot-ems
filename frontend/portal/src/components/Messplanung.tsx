@@ -33,8 +33,11 @@ import {
   messbedarfAblehnung,
   MESSPLANUNG,
   nachStandort,
+  nichtEinloesbar,
+  nichtEinloesbarSatz,
   protokollZeilen,
   restVorbelegung,
+  zuordnenText,
   type BedarfEingabe,
 } from '../uemsMessplanung';
 import { MessstelleDialog } from './MessstelleDialog';
@@ -87,6 +90,10 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
   const [register, setRegister] = useState<MessstelleRegisterZeile[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState<string | null>(null);
+  // Review r4 M4 (Entscheid c): scheitert das Einlösen, ist die Messstelle schon angelegt - dann „MS-24 zuordnen“ statt
+  // eines neuen „Messstelle einrichten“; wiederholtes Klicken legt nie weitere Messstellen an.
+  const [zuordnen, setZuordnen] = useState<Record<string, Messstelle>>({});
+  const [ordnetZu, setOrdnetZu] = useState<string | null>(null);
   const [dialog, setDialog] = useState<
     { art: 'erfassen' } | { art: 'einrichten' | 'verwerfen' | 'bearbeiten' | 'protokoll'; bedarf: Messbedarf } | null
   >(null);
@@ -115,6 +122,22 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
     setBedarfe((alt) => [...(alt ?? []).filter((x) => x.id !== b.id), b]);
     setVersuch((v) => v + 1);
   };
+  const ordneZu = (b: Messbedarf, m: Messstelle) => {
+    if (ordnetZu) return;
+    setOrdnetZu(b.id);
+    api.messbedarfEinloesen(b.energieeinsatz_id, b.id, m.id).then(
+      (neu) => {
+        setOrdnetZu(null);
+        setHinweis(null);
+        setZuordnen(({ [b.id]: _weg, ...rest }) => rest);
+        ersetze(neu);
+      },
+      (e) => {
+        setOrdnetZu(null);
+        setHinweis(messbedarfAblehnung(e));
+      },
+    );
+  };
 
   return (
     <section className="vp-bw-karte vp-mp" aria-labelledby="ee-messplanung" data-testid="messplanung-einsatz">
@@ -142,11 +165,24 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
           {bedarfeSortiert(bedarfe).map((b) => (
             <BedarfZeile key={b.id} bedarf={b} orte={orte} register={register}>
               <span className="vp-bw-aktionen">
-                {schreiben && b.zustand === 'offen' && (
+                {/* Review r4 M4 (Entscheid b): zitieren freigegebene Berichtsstände den Bedarf, scheitern Einrichten, Bearbeiten
+                    und Verwerfen am Belegschutz - der Satz nennt die Stände, statt Wege anzubieten, die nicht gehen. */}
+                {schreiben && nichtEinloesbar(b) && (
+                  <span className="vp-bw-leise" data-testid="messbedarf-zitiert">
+                    {nichtEinloesbarSatz(b)}
+                  </span>
+                )}
+                {schreiben && b.zustand === 'offen' && !nichtEinloesbar(b) && (
                   <>
-                    <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf" data-entscheid-schritt>
-                      {MESSPLANUNG.einrichten}
-                    </Button>
+                    {zuordnen[b.id] ? (
+                      <Button size="sm" onClick={() => ordneZu(b, zuordnen[b.id])} disabled={ordnetZu === b.id} data-testid="messbedarf-zuordnen-knopf">
+                        {zuordnenText(zuordnen[b.id])}
+                      </Button>
+                    ) : (
+                      <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf">
+                        {MESSPLANUNG.einrichten}
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'bearbeiten', bedarf: b })} data-testid="messbedarf-bearbeiten-knopf">
                       {MESSPLANUNG.bearbeiten}
                     </Button>
@@ -208,7 +244,11 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
             setHinweis(null);
             ersetze(b);
           }}
-          onFehler={setHinweis}
+          onFehler={(satz, m) => {
+            const id = dialog.bedarf.id;
+            setHinweis(satz);
+            setZuordnen((z) => ({ ...z, [id]: m }));
+          }}
         />
       )}
     </section>
@@ -233,9 +273,6 @@ function BedarfZeile({
     <li
       className={`vp-mp-zeile is-${b.zustand}`}
       data-testid={`messbedarf-${b.kennzeichen}`}
-      // Konzept Wiedervorlage w1: der Schritt „Messstelle anlegen“ öffnet die Messplanung bei genau diesem Bedarf.
-      data-entscheid={b.zustand === 'offen' ? 'messbedarf_frist' : undefined}
-      data-entscheid-kennzeichen={b.kennzeichen}
     >
       <span className="vp-mp-kopf">
         <span className="vp-bw-kz">{b.kennzeichen}</span>
@@ -248,7 +285,7 @@ function BedarfZeile({
       <span className="vp-bw-leise">{bedarfUnter(b, orte)}</span>
       {einsatz && (
         // In der Welt Bewertung führt der Weg zum Einrichten über den Energieeinsatz: er ist dort der Schritt.
-        <button type="button" className="vp-mp-einsatz" onClick={einsatz.onOeffnen} data-testid="messbedarf-zum-einsatz" data-entscheid-schritt>
+        <button type="button" className="vp-mp-einsatz" onClick={einsatz.onOeffnen} data-testid="messbedarf-zum-einsatz">
           {einsatz.text}
           <Icon name="chevron-right" size={14} />
         </button>
@@ -264,18 +301,23 @@ function BedarfZeile({
 /**
  * Der Sprung in den Messstellen-Dialog: angelegt mit Ort und Größe des Bedarfs. Jeder Schritt meldet die Messstelle;
  * die erste EINGERICHTETE (nichts fehlt) löst den Bedarf ein — genau einmal. Schließt jemand vorher, bleibt der Bedarf
- * offen und die angelegte Messstelle ein Entwurf im Register.
+ * offen und die angelegte Messstelle ein Entwurf im Register. Am Einsatz und unter Messen („Einrichten“ einer geplanten
+ * Messstelle) derselbe Weg.
  */
-function MessbedarfEinloesen({
+export function MessbedarfEinloesen({
   bedarf,
+  standortId = null,
   onClose,
   onEingeloest,
   onFehler,
 }: {
   bedarf: Messbedarf;
+  /** Ein Bedarf ohne Ort: der Standort, aus dem geöffnet wird, ist die Vorgabe des Orts (wie „Messstelle anlegen“). */
+  standortId?: string | null;
   onClose: () => void;
   onEingeloest: (b: Messbedarf) => void;
-  onFehler: (satz: string) => void;
+  /** Das Einlösen ist abgelehnt; die Messstelle ist dann schon eingerichtet und bleibt (sie ist, was der Kunde wollte). */
+  onFehler: (satz: string, messstelle: Messstelle) => void;
 }) {
   // Eine Ref, kein State: der Dialog meldet Ort und Stellung im SELBEN Lauf nacheinander (`merke` zweimal).
   const stand = useRef<'offen' | 'laeuft' | 'eingeloest'>('offen');
@@ -291,12 +333,12 @@ function MessbedarfEinloesen({
       },
       (e) => {
         stand.current = 'offen';
-        onFehler(messbedarfAblehnung(e));
+        onFehler(messbedarfAblehnung(e), m);
       },
     );
   }
 
-  return <MessstelleDialog open vorbelegung={vorbelegung} onClose={onClose} onGespeichert={gespeichert} />;
+  return <MessstelleDialog open standortId={standortId} vorbelegung={vorbelegung} onClose={onClose} onGespeichert={gespeichert} />;
 }
 
 // ------------------------------------------------------------------ Erfassen
@@ -386,7 +428,7 @@ export function MessbedarfErfassenDialog({
     >
       <form
         id={`${basis}-form`}
-        className="vp-bw-form"
+        className="vp-bw-form vp-mp-dialog"
         noValidate
         onSubmit={(ev) => void senden(ev)}
         data-testid={bedarf ? 'messbedarf-bearbeiten' : 'messbedarf-erfassen'}
@@ -488,7 +530,7 @@ export function MessbedarfProtokollDialog({ bedarf, onClose }: { bedarf: Messbed
         </Button>
       }
     >
-      <div data-testid="messbedarf-protokoll">
+      <div className="vp-mp-dialog" data-testid="messbedarf-protokoll">
         <p className="vp-mp-wortlaut">{bedarf.wortlaut}</p>
         {fehler ? (
           <p className="vp-alert vp-alert-err" role="alert">
@@ -565,7 +607,7 @@ export function MessbedarfVerwerfenDialog({ bedarf, onClose, onVerworfen }: { be
         </>
       }
     >
-      <form id={`${basis}-form`} className="vp-bw-form" noValidate onSubmit={(ev) => void senden(ev)} data-testid="messbedarf-verwerfen">
+      <form id={`${basis}-form`} className="vp-bw-form vp-mp-dialog" noValidate onSubmit={(ev) => void senden(ev)} data-testid="messbedarf-verwerfen">
         <p className="vp-bw-leise">{bedarf.wortlaut}</p>
         <Input
           id={`${basis}-begruendung`}

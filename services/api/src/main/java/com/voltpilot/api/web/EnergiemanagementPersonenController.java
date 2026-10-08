@@ -111,6 +111,18 @@ public class EnergiemanagementPersonenController {
     }
 
     /**
+     * Recht: {@code energiemanagement.freigeben} am {@code standort} (ohne Standort am Unternehmen; 403
+     * {@code recht_fehlt}, fremder Standort 422 {@code standort_unbekannt}). Die Leitung des Unternehmens am {@code tag}
+     * (Vorgabe heute): wer eine Fassung mit Leitungs-Pflicht freigibt, wählt sie als „entschieden von“, auch ohne die
+     * Aufgaben unternehmensweit zu lesen (Konzept Nachweisen n1, Befund A4).
+     */
+    @GetMapping("/leitung")
+    public EnergiemanagementPersonenDto.Leitung leitung(@RequestParam(required = false) String tag,
+            @RequestParam(required = false) UUID standort) {
+        return dienst.leitung(tag(tag), standort);
+    }
+
+    /**
      * Recht: {@code energiemanagement.verwalten} am Unternehmen. Ordnet eine Aufgabe zu — Aufgabe, Person, gilt ab,
      * Begründung, „entschieden von“ (Pflicht außer bei der Leitung des Unternehmens, sonst 422
      * {@code entschieden_von_fehlt}); wahlfrei Vertretung, Beleg als Verweis, Beschluss.

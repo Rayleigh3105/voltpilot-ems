@@ -9,10 +9,11 @@ import { grenzHinweisZeigt } from './grenzHinweis';
  * IP-18/IP-19 gespielt aus dem Referenzunternehmen 1.10, die Maßnahme über die Routen von AP-18 und die ECHTE
  * Maßnahmen-Seite.
  *
- * Fälle: der ganze Weg Audit planen → durchgeführt → Hinweis → Feststellung → Eintrag → „Maßnahme anlegen“ mit
- * vorbelegter Herkunft → Maßnahmen-Seite („Herkunft: Feststellung F-…“ als Sprung) → umgesetzt → Wirksamkeit →
- * abgeschlossen · R10/R11 gelesen (Auditprogramm mit nächstem Audit, Feststellung mit Einträgen, Stand Nr. 1) · Vier-Augen
- * nicht erfüllbar als Satz · „Einsicht“ ohne Schreib-Knopf.
+ * Fälle: der ganze Weg Audit planen (Blatt in drei Schritten) → durchgeführt → Hinweis → Feststellung → Eintrag →
+ * „Maßnahme anlegen“ mit vorbelegter Herkunft → Maßnahmen-Seite („Herkunft: Feststellung F-…“ als Sprung) → umgesetzt →
+ * Wirksamkeit (Blatt) → abgeschlossen · R10/R11 gelesen (Status zuerst, Als Nächstes, Stufen, Einträge als Datumsblöcke
+ * mit Kürzel) · Vier-Augen nicht erfüllbar als Satz · „Einsicht“ ohne Schreib-Knopf · `…/feststellungen` öffnet den
+ * Reiter „Audits“ (Konzept Nachweisen n1 Runde 2, §6.6, Entscheid 17).
  *
  * GEMESSEN: Querlauf des Dokuments und überstehende Elemente je Schritt. Mit `ENERGIEMANAGEMENT_BILDER=<Ordner>` legt der
  * Lauf je Schritt ein Bild ab — die Ansicht. Die Spec importiert keine Fixtures.
@@ -26,9 +27,8 @@ const GRENZE =
 const VERANTWORTUNG =
   'Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.';
 const EINSICHT_LEER = 'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.';
-const NOCH_NICHT = 'Die Wirksamkeit lässt sich prüfen, sobald jede Maßnahme umgesetzt, bewertet oder verworfen ist.';
 const SCHREIBEN =
-  /^(Audit planen|Durchgeführt melden|Hinweis festhalten|Audit abschließen|Audit absagen|Feststellung erfassen|Eintrag festhalten|Wirksamkeit prüfen|Ohne Maßnahme abschließen|Zurücknehmen)$/;
+  /^(Planen|Audit planen|Durchgeführt melden|Hinweis festhalten|Audit abschließen|Audit absagen|Feststellung erfassen|Eintrag festhalten|Festhalten|Wirksamkeit prüfen|Ohne Maßnahme abschließen|Zurücknehmen)$/;
 const HINWEIS = 'Die Energiepolitik wurde im Dezember 2026 bekannt gemacht; wer seitdem eingestellt wurde, lernt sie in der Einarbeitung nicht kennen.';
 const WORTLAUT = 'Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt.';
 
@@ -98,44 +98,71 @@ async function waehleTag(page: Page, feld: Locator, iso: string) {
   await expect(page.locator('.vp-kal-tag').first()).toBeHidden();
 }
 
+const blatt = (page: Page, testId: string) => page.getByTestId(testId);
+const feldIn = (page: Page, testId: string, name: string) => blatt(page, testId).getByRole('combobox', { name, exact: true });
+
 for (const breite of [375, 1440]) {
+  /** „Maßnahme planen“: am Telefon vier Schritte mit „Weiter“, am Rechner ein Dialog. */
+  const weiter = async (page: Page) => {
+    if (breite < 720) await modal(page).getByTestId('planen-weiter').click();
+  };
   test.describe(`Energiemanagement › Audits und Feststellungen bei ${breite} px`, () => {
     test('Audit → Feststellung → Maßnahme → Wirksamkeit: der ganze Weg mit vorbelegter Herkunft (R9–R11, SP5)', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&al=leer&seite=audits', breite);
       await expect(page.getByTestId('energiemanagement-reiter-audits')).toHaveAttribute('aria-selected', 'true');
-      await expect(page.getByTestId('audits-leer')).toHaveText('Hier ist noch nichts festgehalten.');
-      await expect(page.getByTestId('audit-naechstes')).toHaveText('Noch kein internes Audit durchgeführt — ohne Durchführung nennt VoltPilot keine Frist.');
+      await expect(page.getByTestId('audits-leer')).toHaveText('Noch kein internes Audit');
+      await expect(page.getByTestId('feststellungen-leer')).toHaveText('Keine Feststellung');
+      await expect(page.getByTestId('audits-status')).toHaveText('keine Feststellung offen');
+      // Ohne durchgeführtes Audit nennt VoltPilot keine Frist: „Als Nächstes“ ohne Datumsblock.
+      await expect(page.getByTestId('audit-naechstes')).toContainText('Erstes internes Audit');
+      await expect(page.getByTestId('audit-naechstes').locator('.vp-fd')).toHaveCount(0);
       await grenzHinweisZeigt(page, GRENZE, VERANTWORTUNG);
 
-      // IA1: planen — Auditorin ohne Schreibrecht, Unabhängigkeit als Wortlaut.
-      await page.getByTestId('audit-planen').click();
-      await modal(page).getByLabel('Titel').fill('Internes Audit 2029: Bezugsbasen, Energieziele, Maßnahmen und Grundlagen');
-      await waehleTag(page, combo(page, 'Termin'), '2029-01-22');
-      await waehle(page, combo(page, 'Wer prüft'), /^Claudia Berger/);
+      // IA1 als Blatt in drei Schritten: was und wann, wer prüft und warum unabhängig, Prüfen.
+      await page.getByTestId('audit-naechstes').getByRole('button', { name: 'Planen' }).click();
+      await expect(page.getByTestId('nw-schritt')).toContainText('Schritt 1 von 3');
+      await blatt(page, 'audit-planen-was').fill('Bezugsbasen BB-0001 bis BB-0005, Energieziel EZ-2028-0001, Aufgaben im Energiemanagement');
+      await waehleTag(page, feldIn(page, 'audit-planen-blatt', 'Wann?'), '2029-01-22');
+      await ohneQuerlauf(page, 'Blatt Audit planen, Schritt 1');
+      await ablegen(page, `a-audit-planen-1-${breite}`);
+      await page.getByTestId('audit-planen-weiter').click();
+      await waehle(page, feldIn(page, 'audit-planen-blatt', 'Wer prüft?'), /^Claudia Berger/);
       // Die Mehrfach-Auswahl bleibt offen, bis man daneben tippt (am Telefon ein Blatt mit Hintergrund).
       const hintergrund = page.locator('.vp-picker-backdrop');
       if (await hintergrund.count()) await hintergrund.click({ position: { x: 8, y: 8 } });
-      else await page.keyboard.press('Tab');
+      else await page.getByTestId('nw-schritt').click();
       await expect(hintergrund).toHaveCount(0);
-      await modal(page).getByLabel('Unabhängigkeit').fill('Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.');
-      await modal(page).getByLabel('Was geprüft wird').fill('Bezugsbasen BB-0001 bis BB-0005, Energieziel EZ-2028-0001, Aufgaben im Energiemanagement');
-      await modal(page).getByLabel('Woran geprüft wird').fill('Energiepolitik D-0001 Fassung 1, Aufgaben im Energiemanagement');
-      await waehle(page, combo(page, 'Verantwortlich'), /^Ines Kaltenbach/);
-      await ohneQuerlauf(page, 'Dialog Audit planen');
-      await dialogBild(page, `a-audit-planen-${breite}`);
+      await expect(page.locator('.vp-picker-panel')).toHaveCount(0);
+      // Der Tipp daneben schloss nur den Picker, das Blatt steht noch.
+      await expect(page.getByTestId('audit-planen-blatt')).toBeVisible();
+      await page.getByTestId('audit-planen-unabhaengig-team').click();
+      await ohneQuerlauf(page, 'Blatt Audit planen, Schritt 2');
+      await ablegen(page, `a-audit-planen-2-${breite}`);
+      await page.getByTestId('audit-planen-weiter').click();
+      await expect(page.getByTestId('audit-planen-pruefen')).toContainText('Internes Audit 2029');
+      await page.getByRole('button', { name: 'Woran ändern' }).click();
+      await blatt(page, 'audit-planen-blatt').getByLabel('Woran prüfen Sie?').fill('Energiepolitik D-0001 Fassung 1, Aufgaben im Energiemanagement');
+      await ohneQuerlauf(page, 'Blatt Audit planen, Prüfen');
+      await ablegen(page, `a-audit-planen-3-${breite}`);
       await page.getByTestId('audit-planen-senden').click();
-      await expect(page.locator('.vp-modal')).toHaveCount(0);
-      await expect(page.getByTestId('audit-kopf')).toHaveText('Internes Audit AU-2029-0001 · geplant am 22.01.2029 · Claudia Berger.');
+      await expect(page.getByTestId('audit-planen-blatt')).toHaveCount(0);
+      await expect(page.getByTestId('audit-status')).toHaveText('geplant· am 22.01.2029');
 
       // Durchgeführt am 22.01.2029, ein Hinweis mit „festgestellt von“ der Auditorin (IA2, IA5).
       await page.getByTestId('audit-durchgefuehrt').click();
       await page.getByTestId('audit-durchgefuehrt-senden').click();
-      await expect(page.getByTestId('audit-kopf')).toHaveText('Internes Audit AU-2029-0001 · durchgeführt am 22.01.2029 von Claudia Berger (Controlling).');
+      await expect(page.getByTestId('audit-status')).toHaveText('durchgeführt· noch offen');
+      await expect(page.getByTestId('audit-stufen').locator('li')).toHaveText(['Geplant22.01.2029', 'Durchgeführt22.01.2029', 'Abgeschlossenjetzt']);
       await page.getByTestId('audit-hinweis').click();
       await expect(combo(page, 'Festgestellt von')).toContainText('Claudia Berger');
       await modal(page).getByLabel('Hinweis im Wortlaut').fill(HINWEIS);
       await page.getByTestId('hinweis-senden').click();
-      await expect(page.getByTestId('audit-hinweis-1')).toContainText('Hinweis — festgestellt von Claudia Berger, eingetragen von Ines Kaltenbach am 22.01.2029.');
+      await expect(page.getByTestId('audit-daraus-hinweis-0')).toContainText('Hinweis');
+      await page.getByTestId('audit-daraus-hinweis-0').click();
+      await expect(page.getByTestId('audit-hinweis-1')).toHaveText(HINWEIS);
+      await expect(page.getByTestId('audit-blatt-hinweis')).toContainText('Claudia Berger · 22.01.2029');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
       await ohneQuerlauf(page, 'Audit durchgeführt');
       await ablegen(page, `b-audit-durchgefuehrt-${breite}`);
 
@@ -149,33 +176,35 @@ for (const breite of [375, 1440]) {
       await ohneQuerlauf(page, 'Dialog Feststellung erfassen');
       await dialogBild(page, `c-feststellung-erfassen-${breite}`);
       await page.getByTestId('feststellung-erfassen-senden').click();
-      await expect(page.getByTestId('feststellung-kopf')).toHaveText(
-        'Feststellung F-2029-0001 · aus dem internen Audit AU-2029-0001 · festgestellt von Claudia Berger am 22.01.2029 · Verantwortlich Jonas Wendlinger · Frist 22.04.2029 · offen.',
-      );
-      await expect(page.getByTestId('feststellung-frist')).toHaveText('Frist 22.04.2029: fällig in 90 Tagen');
+      await expect(page.getByTestId('feststellung-kopf').locator('h1')).toHaveText(WORTLAUT);
+      await expect(page.getByTestId('feststellung-status')).toHaveText('offen· bis 22.04.2029');
 
-      // FS2: sofortige Behebung als Aussage einer Person.
+      // FS2: sofortige Behebung als Aussage einer Person - ein Datumsblock mit Kürzel, der Wortlaut auf Antippen.
       await page.getByTestId('feststellung-eintrag').click();
       await waehle(page, combo(page, 'Art'), /^Sofortige Behebung/);
       await modal(page).getByLabel('Wortlaut').fill('Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei.');
       await waehle(page, combo(page, 'Person'), /^Ines Kaltenbach/);
       await page.getByTestId('eintrag-senden').click();
-      await expect(page.getByTestId('feststellung-eintrag-behebung')).toContainText(
-        'Sofortige Behebung — Ines Kaltenbach, 22.01.2029: Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei.',
-      );
-      await expect(page.getByTestId('feststellung-noch-nicht')).toHaveText(NOCH_NICHT);
+      await expect(page.getByTestId('feststellung-eintrag-behebung')).toHaveText('22.01.2029Sofort behobenIK');
+      await expect(page.getByTestId('feststellung-eintrag-behebung').getByRole('img', { name: 'Ines Kaltenbach' })).toBeVisible();
+      await expect(page.getByTestId('feststellung-noch-nicht')).toContainText('Prüfen nach der Umsetzung');
 
       // FS3: „Maßnahme anlegen“ öffnet den AP-18-Dialog mit vorbelegter Herkunft — das Kundenwort, nie das Vertragswort.
-      await page.getByTestId('feststellung-massnahmen').getByTestId('massnahme-anlegen-knopf').click();
+      await page.getByTestId('feststellung-seite').getByTestId('massnahme-anlegen-knopf').click();
       await expect(modal(page).getByTestId('massnahme-herkunft-vorbelegt')).toHaveText('Herkunft: Feststellung F-2029-0001.');
-      await modal(page).getByTestId('massnahme-wahl-ohne').check();
-      await modal(page).getByLabel('Titel').fill('Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen');
-      await waehle(page, combo(page, 'Verantwortlich'), /^Jonas Wendlinger/);
-      await waehleTag(page, combo(page, 'Termin'), '2029-02-28');
-      await modal(page).getByLabel('erwartete Wirkung — Wortlaut').fill('Zuständigkeit festgelegt; jede Freigabe nennt die zuständige Person und ihre Vertretung.');
-      await ohneQuerlauf(page, 'Dialog Maßnahme anlegen');
+      // Entscheid 6: aus einer Feststellung ist die Maßnahme organisatorisch vorbelegt - sie trägt keine Zahl.
+      await expect(modal(page).getByTestId('planen-art-organisatorisch').locator('input')).toBeChecked();
+      await modal(page).getByTestId('planen-titel').fill('Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen');
+      await weiter(page);
+      await expect(modal(page).getByTestId('planen-prozent')).toHaveCount(0);
+      await modal(page).getByTestId('planen-wortlaut').fill('Zuständigkeit festgelegt; jede Freigabe nennt die zuständige Person und ihre Vertretung.');
+      await weiter(page);
+      await waehle(page, combo(page, 'Wer kümmert sich?'), /^Jonas Wendlinger/);
+      await modal(page).getByRole('group', { name: 'Bis wann?' }).getByRole('button', { name: 'Ende Februar' }).click();
+      await weiter(page);
+      await ohneQuerlauf(page, 'Dialog Maßnahme planen');
       await dialogBild(page, `d-massnahme-anlegen-${breite}`);
-      await page.getByTestId('massnahme-anlegen-senden').click();
+      await modal(page).locator('[data-testid="massnahme-anlegen-senden"]:visible').click();
       await expect(page.locator('.vp-modal')).toHaveCount(0);
       const zeile = page.getByTestId('feststellung-massnahme-M-2029-0001');
       await expect(zeile).toContainText('geplant');
@@ -183,32 +212,33 @@ for (const breite of [375, 1440]) {
       await ablegen(page, `e-feststellung-offen-${breite}`);
 
       // SP5/W3: die Maßnahmen-Seite sagt „Herkunft: Feststellung F-2029-0001.“ und springt dorthin zurück.
-      await zeile.getByRole('link').click();
+      await zeile.click();
       const herkunft = page.getByTestId('massnahme-sprung-herkunft');
-      await expect(herkunft).toHaveText('Herkunft: Feststellung F-2029-0001.');
+      await expect(page.getByTestId('massnahme-herkunft')).toContainText('Herkunft: Feststellung F-2029-0001.');
       await expect(page.getByTestId('massnahme-seite')).not.toContainText(/Nichtkonformit/i);
       await page.getByTestId('massnahme-umgesetzt-knopf').click();
-      await page.locator('.vp-kal-tag[data-iso="2029-01-22"]:not(.is-rand)').waitFor({ state: 'detached' }).catch(() => undefined);
-      await modal(page).getByLabel('Begründung').fill('Aufgabe zugeordnet: Ines Kaltenbach, Vertretung Jonas Wendlinger.');
+      await expect(modal(page).getByRole('button', { name: 'Heute, 22.01.' })).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('massnahme-umgesetzt-text').fill('Aufgabe zugeordnet: Ines Kaltenbach, Vertretung Jonas Wendlinger.');
       await page.getByTestId('massnahme-umgesetzt-senden').click();
-      await expect(page.getByTestId('massnahme-umgesetzt-am')).toBeVisible();
+      await expect(page.getByTestId('verlauf-massnahme_umgesetzt')).toBeVisible();
       await ohneQuerlauf(page, 'Maßnahmen-Seite mit Herkunft');
       await ablegen(page, `f-massnahme-herkunft-${breite}`);
       await herkunft.click();
 
-      // FS4: die Wirksamkeit an der Feststellung — Stand Nr. 1 einer Person, mit Prüfsumme; „wirksam“ schließt ab.
-      await expect(page.getByTestId('feststellung-massnahme-M-2029-0001')).toContainText('umgesetzt am 22.01.2029');
+      // FS4 als Blatt: „Behoben, und bleibt es so?“ - vorbelegt die Person des eigenen Kontos und der Tag der Route.
+      await expect(page.getByTestId('feststellung-massnahme-M-2029-0001')).toContainText('umgesetzt');
       await expect(page.getByTestId('feststellung-noch-nicht')).toHaveCount(0);
+      await expect(page.getByTestId('feststellung-stufen').locator('li').last()).toHaveText('Wirksam?jetzt');
       await page.getByTestId('feststellung-wirksamkeit-pruefen').click();
-      await waehle(page, combo(page, 'Ergebnis'), /^wirksam/);
-      await modal(page).getByLabel('Begründung').fill('Aufgabe festgelegt, Vertretung benannt; die Freigaben nennen beide.');
-      await waehle(page, combo(page, 'entschieden von (wer geprüft hat)'), /^Ines Kaltenbach/);
-      await ohneQuerlauf(page, 'Dialog Wirksamkeit');
-      await dialogBild(page, `g-wirksamkeit-${breite}`);
-      await page.getByTestId('stand-senden').click();
-      await expect(page.getByTestId('feststellung-kopf')).toContainText('· abgeschlossen.');
-      await expect(page.getByTestId('feststellung-stand-1')).toContainText('Wirksamkeit geprüft am 22.01.2029 von Ines Kaltenbach: wirksam — Stand Nr. 1 mit Prüfsumme.');
-      await expect(page.getByTestId('feststellung-massnahmen').getByTestId('massnahme-anlegen-knopf')).toHaveCount(0);
+      await expect(page.getByTestId('wirksamkeit-ergebnis-wirksam').locator('input')).toBeChecked();
+      await page.getByTestId('wirksamkeit-begruendung').fill('Aufgabe festgelegt, Vertretung benannt; die Freigaben nennen beide.');
+      await expect(page.getByTestId('wirksamkeit-blatt')).toContainText('Ines Kaltenbach · 22.01.2029');
+      await ohneQuerlauf(page, 'Blatt Wirksamkeit');
+      await ablegen(page, `g-wirksamkeit-${breite}`);
+      await page.getByTestId('wirksamkeit-festhalten').click();
+      await expect(page.getByTestId('feststellung-status')).toHaveText('behoben und wirksam');
+      await expect(page.getByTestId('feststellung-stufen').locator('li').last()).toHaveText('Wirksam22.01.2029');
+      await expect(page.getByTestId('feststellung-seite').getByTestId('massnahme-anlegen-knopf')).toHaveCount(0);
       await ohneQuerlauf(page, 'Feststellung abgeschlossen');
       await ablegen(page, `h-feststellung-abgeschlossen-${breite}`);
 
@@ -222,54 +252,81 @@ for (const breite of [375, 1440]) {
         'POST /api/v1/energiemanagement/feststellungen/{id}/eintraege',
         'POST /api/v1/energiemanagement/feststellungen/{id}/wirksamkeit',
       ]);
+      expect(koerper[0].koerper).toMatchObject({
+        titel: 'Internes Audit 2029', termin: '2029-01-22', auditor_ids: ['a1900000-0000-4000-8000-0000000000a5'],
+        unabhaengigkeit: 'Claudia Berger gehört nicht zum Energieteam und prüft keine eigene Arbeit.', verantwortlich: 'IK',
+      });
       expect(koerper[3].koerper).toMatchObject({ quelle: { art: 'internes_audit' }, festgestellt_von: 'a1900000-0000-4000-8000-0000000000a5', verantwortlich: 'JW' });
-      expect(koerper[5].koerper).toMatchObject({ ergebnis: 'wirksam', entschieden_von: 'a1900000-0000-4000-8000-0000000000a1' });
+      expect(koerper[5].koerper).toMatchObject({ ergebnis: 'wirksam', entschieden_von: 'a1900000-0000-4000-8000-0000000000a1', am: '2029-01-22' });
     });
 
-    test('R9–R11 gelesen: Auditprogramm mit nächstem Audit, Feststellung mit Einträgen, Stand Nr. 1 „wirksam“', async ({ page }) => {
+    test('R9–R11 gelesen: Audits mit nächstem Audit, Feststellung mit Einträgen und Stufen bis „wirksam“', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&al=r11&seite=audits', breite, AM_15_04_2029);
-      await expect(page.getByTestId('audit-naechstes')).toContainText('Nächstes internes Audit fällig am 22.01.2030');
-      await expect(page.getByTestId('audit-zeile-AU-2029-0001')).toContainText('1 Hinweis · F-2029-0001');
-      await ohneQuerlauf(page, 'Auditprogramm R9');
-      await ablegen(page, `i-auditprogramm-${breite}`);
-      await page.getByTestId('audit-zeile-AU-2029-0001').getByRole('button').click();
-      await expect(page.getByTestId('audit-unabhaengigkeit')).toHaveText('Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.');
-      await expect(page.getByTestId('audit-bericht')).toContainText('Geführt in Ihrem System: QM-Laufwerk, Ordner Energiemanagement/Audits');
-      await expect(page.getByTestId('audit-pruefsumme')).toBeVisible();
+      await expect(page.getByTestId('audits-status')).toHaveText('keine Feststellung offen');
+      await expect(page.getByTestId('audit-naechstes')).toContainText('Internes Audit 2030');
+      await expect(page.getByTestId('audit-naechstes').getByRole('img', { name: 'bis 22.01.2030' })).toBeVisible();
+      await expect(page.getByTestId('audit-zeile-AU-2029-0001')).toHaveText(/Internes Audit 2029\s*1 Hinweis · 1 Feststellung/);
+      await expect(page.getByTestId('feststellung-zeile-F-2029-0001')).toContainText('wirksam seit 15.04.2029');
+      await ohneQuerlauf(page, 'Audits R9');
+      await ablegen(page, `i-audits-${breite}`);
+      await page.getByTestId('audit-zeile-AU-2029-0001').click();
+      await expect(page.getByTestId('audit-status')).toHaveText('abgeschlossen');
+      await expect(page.getByTestId('audit-daraus')).toContainText('Feststellung');
+      await page.getByTestId('audit-pruefer').click();
+      await expect(page.getByTestId('audit-blatt-pruefer')).toContainText('Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
+      await page.getByTestId('audit-original').click();
+      await expect(page.getByTestId('audit-blatt-original')).toContainText('QM-Laufwerk, Ordner Energiemanagement/Audits');
+      await expect(page.getByTestId('audit-blatt-original')).toContainText('Prüfsumme');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
       await ohneQuerlauf(page, 'Audit R9 abgeschlossen');
       await ablegen(page, `j-audit-abgeschlossen-${breite}`);
-      await page.getByTestId('audit-sprung-F-2029-0001').click();
-      await expect(page.getByTestId('feststellung-kopf')).toContainText('· abgeschlossen.');
-      await expect(page.getByTestId('feststellung-eintrag-ursache_aussage')).toContainText(
-        'Ursache — Aussage von Ines Kaltenbach, 25.01.2029: Die Aufgabenliste entstand zum Start, bevor es Bezugsbasen gab; sie wurde nicht nachgeführt.',
+      await page.getByTestId('audit-daraus-feststellung-1').click();
+      await expect(page.getByTestId('feststellung-status')).toHaveText('behoben und wirksam');
+      await expect(page.getByTestId('feststellung-stufen').locator('li')).toHaveText([
+        'Festgestellt22.01.2029', /^Maßnahme\d{2}\.\d{2}\.\d{4}$/, 'Umgesetzt01.03.2029', 'Wirksam15.04.2029',
+      ]);
+      await page.getByTestId('feststellung-eintrag-ursache_aussage').click();
+      await expect(page.getByTestId('feststellung-blatt-eintrag')).toContainText(
+        'Die Aufgabenliste entstand zum Start, bevor es Bezugsbasen gab; sie wurde nicht nachgeführt.',
       );
-      await expect(page.getByTestId('feststellung-stand-1')).toContainText('Wirksamkeit geprüft am 15.04.2029 von Ines Kaltenbach: wirksam — Stand Nr. 1 mit Prüfsumme.');
-      await expect(page.getByTestId('feststellung-massnahme-M-2029-0001')).toContainText('umgesetzt am 01.03.2029');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
+      // Stand Nr. 1 mit Begründung und Prüfsumme: einen Tipp tiefer, im Menü „…“.
+      await page.getByTestId('feststellung-kopf').getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Stand 1 · wirksam' }).click();
+      await expect(page.getByTestId('feststellung-blatt-stand')).toContainText('Prüfsumme');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.vp-bs-wrap, .vp-modal')).toHaveCount(0);
       await ohneQuerlauf(page, 'Feststellung R11');
+      await ablegen(page, `k-feststellung-wirksam-${breite}`);
 
-      await page.getByTestId('feststellung-zurueck').click();
-      await expect(page.getByTestId('feststellung-zeile-F-2029-0001')).toContainText('abgeschlossen: wirksam');
+      // Zurück zum Audit, aus dem sie kommt.
+      await page.getByTestId('feststellung-kopf').getByRole('button', { name: 'Internes Audit 2029' }).click();
+      await expect(page.getByTestId('audit-seite')).toBeVisible();
     });
 
-    test('Vier-Augen nicht erfüllbar als Satz (FS6, W15) und „Einsicht“ ohne Schreib-Knopf (R6)', async ({ page }) => {
+    test('Vier-Augen nicht erfüllbar als Satz (FS6, W15), „Einsicht“ ohne Schreib-Knopf (R6), …/feststellungen öffnet Audits (Entscheid 17)', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&al=r10&fs=1&vieraugen=1', breite, AM_15_04_2029);
       await expect(page.getByTestId('feststellung-vieraugen')).toHaveText(
         'Vier-Augen nicht erfüllbar: außer Ines Kaltenbach und Jonas Wendlinger darf niemand freigeben, und beide sind hier beteiligt.',
       );
       await ohneQuerlauf(page, 'Vier-Augen nicht erfüllbar');
-      await ablegen(page, `k-vieraugen-${breite}`);
+      await ablegen(page, `l-vieraugen-${breite}`);
 
       const ohneSchreiben = async (fall: string) => {
         await expect(page.getByRole('button', { name: SCHREIBEN }), fall).toHaveCount(0);
         await ohneQuerlauf(page, fall);
       };
-      await oeffne(page, 'person=RF&lage=ahrenberg&al=r10&seite=audits', breite, AM_15_04_2029);
-      await expect(page.getByTestId('audits-register').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
+      await oeffne(page, 'person=RF&lage=ahrenberg&al=r10&seite=feststellungen', breite, AM_15_04_2029);
+      await expect(page.getByTestId('energiemanagement-reiter-audits')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('energiemanagement-reiter-feststellungen')).toHaveCount(0);
+      await expect(page.getByTestId('feststellungen-register')).toBeInViewport();
+      await expect(page.getByTestId('einsicht-rolle')).toBeVisible();
       await ohneSchreiben('Einsicht: Audits');
-      await page.getByTestId('energiemanagement-reiter-feststellungen').click();
-      await expect(page.getByTestId('feststellungen-register').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
-      await ohneSchreiben('Einsicht: Feststellungen');
-      await page.getByTestId('feststellung-zeile-F-2029-0001').getByRole('button').click();
+      await page.getByTestId('feststellung-zeile-F-2029-0001').click();
       await expect(page.getByTestId('feststellung-seite').getByTestId('einsicht-satz').first()).toHaveText(EINSICHT_LEER);
       await ohneSchreiben('Einsicht: Feststellung F-2029-0001');
       expect(await gesendet(page)).toEqual([]);

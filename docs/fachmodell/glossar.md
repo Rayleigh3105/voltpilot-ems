@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 64 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 65 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -97,6 +97,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Plan von](#plan-von) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 - [Ladestand zuletzt](#ladestand-zuletzt) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 - [Lädt immer sofort](#lädt-immer-sofort) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
+- [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
 
 ## Kundenbereich
 
@@ -390,6 +391,38 @@ Die Messstelle ist das zentrale Objekt des Unternehmens-Energiemanagements. Sie 
 
 > **Verfeinert durch AP-04 IP-1:** Die Regeln der Messstelle sind ein Vertrag mit geteilten Vektoren: `docs/contracts/v2/messstelle.md` (Schema `messstelle.schema.json`, Vektoren `messstelle-vectors.json`). Ein Kennzeichen geht nie an eine ANDERE Messstelle — auch das frühere einer umbenannten bleibt belegt; „genau ein Hauptzähler je Anlage“ heißt: je Anlage und Richtung einer, alle am selben Zähler (MS-01 Bezug und MS-02 Abgabe an K-3); eine neue Quelle beendet die laufende genau zu ihrem Beginn, eine Lücke bleibt als Abschnitt ohne Quelle sichtbar; eine berechnete Messstelle braucht keinen Ort. Zwillinge: `services/api .../uems/MessstelleRegeln` und `frontend/portal/src/uemsMessstelle.ts` — noch ruft niemand an.
 
+**Woher die Werte kommen (Konzept Messen m1, Captain-Freigabe 05.10.2026).**
+Auf den Flächen unter Messen heißt die führende Quelle einer Messstelle „Woher die Werte kommen“; „Quelle“ bleibt das Fachwort im Aufklapper und in den Dialogen.
+Eine gemessene Messstelle hat einen von zwei gleichwertigen Wegen: „Automatisch von einem Gerät“ (ein Messwert einer Komponente, laufend, meist jede Viertelstunde) oder „Von Hand ablesen“ (Zählerstände, die jemand einträgt).
+In der Liste heißen sie „automatisch vom Gerät“ und „von Hand abgelesen, monatlich“; eine berechnete Messstelle ist „berechnet aus anderen Messstellen“, und ohne Weg steht „noch keine Quelle“, nie „Keine Datenquelle“.
+Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesung erinnert die Wiedervorlage; mit der ersten Ablesung entsteht die Ablesungsquelle, und nur eine Messstelle mit einem Zählerstand als Hauptgröße lässt sich ablesen.
+„Aus anderen Messstellen berechnet“ ist kein dritter Weg im Messstellen-Dialog: ein Summenwert entsteht an der Anlage, an der seine Messwerte liegen, und „Summenwert anlegen“ steht unter Messen nicht mehr (Konzept §6.10).
+Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
+Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).
+
+**Seite einer Messstelle (Konzept Messen m1 §6.4/§6.5, Messen-Bau m2).**
+Der Kopf nennt Name und Kennzeichen, darunter Medium, Ort und Standort; der Lebenszyklus steht nur, wenn er nicht „aktiv“ ist.
+Die Zustandszeile sagt mit dem Satz des Servers, ob Werte kommen („Abgelesen am 01.10.2026“); bei einem Ablesezähler steht oben genau ein Schritt: „Ablesung eintragen“.
+Die Leitkachel nennt die Menge des letzten vollständigen Monats in der Rolle der Messstelle („Verbrauch September 2026“, „Erzeugung …“, „Einspeisung …“) mit dem Vergleich zum Vorjahresmonat; daneben stehen „Zählerstand“ und bei einem Ablesezähler „Nächste Ablesung“ mit „im Plan“ oder „überfällig“.
+Die Werte heißen nach der Rolle: „Verbrauch je Monat“ (zwölf Monate als Balken), „Verbrauch am Tag“, „Verbrauch in der Woche“; ein Ablesezähler kennt nur Monat und Jahr.
+„Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“; der Dialog der zweiten Zeile heißt „Stellung im Stromnetz ändern“.
+Ohne Änderung steht im Dialog grau „Heute gilt: …“, und der Knopf wartet, bis etwas anders ist; das ist kein Fehler.
+Ohne Quelle sagt auch die Zustandszeile „Noch keine Quelle“, nie „Keine Datenquelle“; ein unvollständiger Monat trägt in der Leitkachel die Marke „unvollständig“ und keinen Vergleich zum Vorjahr.
+Eine berechnete Messstelle zeigt „Zusammengesetzt aus“ mit ihren Termen; „Formel ändern“ öffnet den Formel-Dialog des Summenwerts.
+Aus „Stand an einem Tag ansehen“ geöffnet zeigt die Seite diesen Tag mit der Marke „Stand … · Nur lesen“ und „Zurück zu heute“ und bietet keinen Schreibweg.
+Eine Ablesung „zählt zum“ Monat ihres Zeitraums: „Zählt zum Oktober 2026 – dem Zeitraum seit der letzten Ablesung am 01.10.“; die Wahl des Monats steht nur, wenn der Zeitraum mehr als einen Monat berührt.
+Die Zeitzone steht einmal am Fuß („Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 06.10.2026, 17:42“), am Uhrzeitfeld nur ihr Kürzel („MESZ“, „MEZ“).
+Kundenwörter: `UEMS_ZUORDNUNG`, `UEMS_IM_STROMNETZ`, `UEMS_NAECHSTE_ABLESUNG`, `UEMS_ABLESUNG_EINTRAGEN` (PORTAL/glossar.ts).
+
+**Ablese-Runde je Gebäude (Konzept Messen m1 §6.5, Variante 3A, Messen-Bau m2).**
+„Halle 1 ablesen“ trägt alle Zähler eines Orts ein, die von Hand abgelesen werden - dieselben, die die Wiedervorlage als „8 Zähler in Halle 1 ablesen“ bündelt.
+Ein Zeitpunkt („Abgelesen am“) gilt für alle; je Zähler steht der letzte Stand („zuletzt 647.760 kWh“) neben einem Feld.
+„Weiter“ speichert die Reihe und springt zum nächsten Zähler; die Antwort bestätigt grün („gespeichert · 216.300 kWh seit 01.10.“), „3 von 8 eingetragen“ zeigt den Fortschritt.
+Eine Ablesung der Runde ist dieselbe wie an der Messstelle (gleiche Route, gleiche Rechte, gleiche Prüfung); der Monat ist die Vorgabe mit dem größten Anteil, und ein Zeitraum über drei oder mehr Monate wird an der Messstelle eingetragen.
+Der Satz einer Prüfung steht am Zähler, die Runde läuft weiter; „Fertig“ führt zurück in die Liste.
+Einstieg: „Ablesen ›“ im Kopf der Ortskarte in der Liste und der Schritt „Ablesungen eintragen“ der Wiedervorlage; „Öffnen“ im Jahresplan zeigt die Liste des Orts.
+Kundenwort: `UEMS_ABLESEN` (PORTAL/glossar.ts).
+
 ## Summenwert
 
 Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
@@ -438,6 +471,13 @@ Prozesse bilden die zweite Sicht auf dieselben Messstellen. Ein Prozess kann Mes
 
 **Abgrenzung.** Nicht der Bereich (räumlich), nicht die Kostenstelle (buchhalterisch, mit Prozentaufteilung).
 
+**Reiter „Prozesse“ (Konzept Messen m1 §6.7, Entscheid 4).**
+Unter dem Titel steht: „Arbeitsschritte, die Energie brauchen – und was sie verbraucht haben.“; „Was ist ein Prozess?“ klappt Klartext, Beispiel und Abgrenzung zur Kostenstelle auf.
+Je Prozess steht, wovon er gemessen wird, mit dem Wert der Messstelle im Zeitraum: „gemessen von AZ-3 Zähler Druckluft“; eine Prozess-Summe (eine berechnete Messstelle des Prozesses) hat Vorrang („zusammengerechnet in MS-20 …“).
+Mehrere gemessene Messstellen ohne Summe stehen einzeln („2 Messstellen, einzeln“), nie addiert; zählt eine Messstelle schon bei einem anderen Prozess, steht „auch bei {Prozess} gezählt“.
+Ohne Messstelle: „noch keine Messstelle zugeordnet“ mit dem Weg „Messstelle zuordnen“ (zugeordnet wird an der Messstelle).
+Kundenwörter: `GEMESSEN_VON`, `ZUSAMMENGERECHNET_IN`, `AUCH_BEI`, `NOCH_KEINE_MESSSTELLE_KLEIN` (PORTAL/kostenstellenUebersicht.ts), Erklärung `prozess` (PORTAL/begriffe.ts).
+
 ## Kostenstelle
 
 *Sicht: Organisation*
@@ -453,6 +493,14 @@ Kostenstellen sind flach und kommen aus der Buchhaltung des Kunden. Eine Messste
 **Abgrenzung.** Nicht der Prozess (Tätigkeit), nicht der Bereich (Raum). Prozess und Kostenstelle sind zwei getrennte Achsen (E5).
 
 > **Verfeinert durch AP-10 E11/E12:** Die „festen Prozentanteile“ aus AP-00 werden eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage): an jedem Tag mit Zeilen genau 100 %, sonst „nicht verteilt“. Sie wirkt je Tag auf die Tagesmenge (kein Stichtag), endet mit der Kostenstelle und kennt keine dynamischen Schlüssel. Regeln: `docs/contracts/v2/verteilung.md`.
+
+**Reiter „Kostenstellen“ (Konzept Messen m1 §6.6, Captain-Freigabe 05.10.2026).**
+Unter dem Titel steht die Erklärung: „Wem Ihr Verbrauch in der Kostenrechnung zugerechnet wird.“; „Was ist eine Kostenstelle?“ klappt Klartext, ein Beispiel aus den eigenen Kostenstellen und die Abgrenzung zum Prozess auf.
+Je Kostenstelle steht die Summe der Kostenstellen-Sicht mit ihren Posten; ein Posten nennt seine Herkunft in Alltagswörtern: „ganz“ (die Messstelle gehört ganz zu ihr), „30 % von 88.200 kWh“ (Anteil und die Menge der Messstelle aus der Werte-Route), „berechnet · ganz“.
+Messstellen ohne Verteilungszeile im Zeitraum heißen auf dieser Fläche „Ohne Kostenstelle“ statt „nicht verteilt“ - ein Zustand, kein Fehler („Ihr Verbrauch ist keiner Kostenstelle zugerechnet. Ordnen Sie sie an der Messstelle zu, wenn sie in die Kostenrechnung gehören.“).
+Eine Gesamtsumme über Kostenstellen gibt es nicht, und kein Satz erklärt ihr Fehlen auf der Fläche; der Grund steht im Aufklapper.
+Solange die Sicht Ablesezeiträume nicht verteilt, sagt die Fläche bei Ablesezählern einmal: „Für {Zeitraum} noch keine Werte. Ihre Zähler werden monatlich abgelesen, diese Ansicht verteilt heute je Tag. Die Monatsmengen stehen an jeder Messstelle. Sie müssen nichts tun.“
+Kundenwörter: `OHNE_KOSTENSTELLE`, `GANZ`, `ANTEIL_VON`, `ABLESUNG_OHNE_TAGESWERT` (PORTAL/kostenstellenUebersicht.ts), Erklärung `kostenstelle` (PORTAL/begriffe.ts).
 
 ## Betriebsmodell (übernommen)
 
@@ -505,6 +553,13 @@ AP-00 legt nur fest, dass Bezugsgrößen an Objekte des Fachmodells gebunden sin
 > **Verfeinert durch AP-17 W9:** Heute im Code (Stand 23.09.2026, gebaut mit AP-09): Tabellen `bezugsgroesse` mit genau einem Geltungsbereich, `bezugsgroesse_wert` (Werte als Fassungen, nur anhängend), `bezugsgroesse_kennzeichen_verlauf` und `bezugsgroesse_aenderung` (MIG/V20260913104500__uems_bezugsgroesse.sql:162, :291); Art als eigenes Datum (MIG/V20260918110000__uems_bezugsgroesse_art.sql); Kanalbindung an Zähler-, Zustands- und Temperaturkanäle mit Gradtagen G20/15 (`bezugsgroesse_kanalbindung`, MIG/V20260917100000__uems_bezugsgroesse_kanalbindung.sql:2; services/api/src/main/java/com/voltpilot/api/uems/GradtagRegeln.java:14). Routen `/api/v1/bezugsgroessen` (services/api/src/main/java/com/voltpilot/api/web/BezugsgroesseController.java:64) und `/api/v1/bezugsdaten/importe`; Regeln `uems/BezugsdatenRegeln` ⟷ `bezugsdaten.ts` gegen `docs/contracts/v2/bezugsdaten-vectors.json`; Portal „Unternehmen › Bezugsgrößen“ (PORTAL/nav.ts:250). Die Herkunft `bezogen` einer Gradtagzahl (von VoltPilot aus einem Wetter-Archiv, AP-17 E9 = C) ist seit AP-17 IP-12 gebaut (siehe „Wetterbezug“). Einstieg: `docs/agents/root/uems-bezugsgroessen-abschluss.md`.
 
 > **Verfeinert durch AP-17 W2 (E10 = A):** Erledigt: AP-09 §6.5 wies Betriebskalender, Arbeitszeitmodell und Wetterbereinigung AP-17 zu. Es gibt keinen Kalender und kein Arbeitszeitmodell als Stammdatum — die Betriebszeit ist eine Bezugsgröße mit Periodenwerten und als Einflussgröße eine Variable wie jede; ein Schichtmodell ist höchstens ein Wortlaut-Faktor an der Fassung. Die Wetterbereinigung ist mit Gradtagen eingelöst, die Temperatur dafür bezieht VoltPilot aus dem Wetter-Archiv (E9 = C). AP-09 E2 („die Zahl wäre geplant, nicht gemessen“) bleibt. Einstieg: `docs/agents/root/uems-bezugsbasis.md`.
+
+**Liste und Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9).**
+Unter dem Titel steht: „Womit Sie Ihren Verbrauch vergleichen: Menge, Schichten, Wetter oder Fläche.“; die Liste ordnet je Periode („Werte je Monat“) und zeigt je Bezugsgröße, was sie zählt („Halle 2 · kg je Monat“), den Zustand („eingetragen bis Sep 2026“, „für Sep 2026 fehlt der Wert“, „noch kein Wert“), woher der letzte Wert kommt („von Hand eingetragen“, „importiert“, „aus einem Messkanal“, „aus dem Wetter-Archiv“) und den letzten Wert.
+Die Statuszeile sagt „Werte bis {Monat} eingetragen“ oder, was fehlt, mit dem Schritt „Eintragen“.
+Die Flächen aus den Gebäuden stehen als Kacheln unter „Flächen · aus dem Gebäudeplan, heute“ mit dem Weg „Am Gebäude ändern“; eine Bezugsfläche aus dem Gebäude ist nicht schreibbar und heißt „aus dem Gebäudeplan“, eine eigene Angabe „eigene Angabe“.
+Jede Bezugsgröße hat eine eigene Seite (`#/portfolio/bezugsgroessen/{id}`): „Wert eintragen“ oben, der letzte Wert und derselbe Zeitraum im Vorjahr, zwölf Perioden als Balken, die Werte neueste zuerst; Berichtigen, Fassungen und Archivieren stehen im Menü ⋯.
+Kundenwörter: `KOPF_SATZ`, `WERTE_JE`, `WOHER`, `ZUSTAND`, `STATUS`, `FLAECHEN`, `WERT_EINTRAGEN` (PORTAL/bezugsgroessenUebersicht.ts), Erklärung `bezugsgroesse` (PORTAL/begriffe.ts).
 
 ## Benutzer und Rolle (nur Begriff, Rechte-Matrix AP-03)
 
@@ -963,6 +1018,14 @@ Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: 
 
 **Abgrenzung.** Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente.
 
+**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts).
+
 ## Einstufung
 
 *Sicht: Organisation · Nachtrag AP-16 §3.1, §4.1*
@@ -977,6 +1040,15 @@ Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufu
 
 **Abgrenzung.** Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt.
 
+**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts).
+
 ## Messbedarf
 
 *Sicht: Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)*
@@ -990,6 +1062,17 @@ Messbedarf ist ein Eintrag am Einsatz (was, wo, welche Größe — optional —,
 **Heute im Code.** Tabellen `messbedarf`, `messbedarf_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/MessbedarfService.java` (AP-16 IP-19). Wegweiser: `docs/agents/root/uems-messbedarf.md`.
 
 **Abgrenzung.** Nicht eine Messstelle; nicht eine Maßnahme (AP-18).
+
+**Geplante Messstellen unter Messen (Konzept Auswerten a1, Entscheid 9; Messen-Bau m2).**
+Ein offener Messbedarf ist eine geplante Messstelle: eine Messstelle, die noch fehlt.
+Die Liste „Messstellen“ zeigt sie an ihrem Ort nach dessen Messstellen, mit dem Energieeinsatz, für den sie erfasst wurde („Geplant für EE-8 Gebäudetechnik Halle 1“), und der Frist; ohne Ort steht sie unter „Kein Ort zugeordnet“.
+„Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs; sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst, und an ihrer Stelle steht die Messstelle selbst (bis zum Zähler mit „noch keine Quelle“, nie 0).
+Die Marke „1 geplant“ zeigt nur die geplanten Messstellen; ist eine Frist überschritten, nennt eine Hinweiskarte sie wie eine überfällige Ablesung.
+Der Schritt „Messstelle anlegen“ der Wiedervorlage öffnet die Liste bei genau diesem Bedarf.
+Zitieren freigegebene Berichtsstände einen Bedarf, bleibt er, wie er ist: statt „Einrichten“ nennt ein Satz die Stände („2 freigegebene Berichtsstände zitieren diesen Messbedarf (…) - er bleibt, wie er ist.“).
+Scheitert das Einlösen nach dem Anlegen, bietet die Reihe „MS-23 zuordnen“ mit der schon angelegten Messstelle an, nie ein zweites Anlegen.
+Erfasst, bearbeitet und verworfen wird ein Messbedarf weiter am Energieeinsatz; unter Messen steht dazu „Messbedarf erfassen“ im Menü der Liste.
+Kundenwort: `UEMS_GEPLANTE_MESSSTELLE` (PORTAL/glossar.ts).
 
 ## Messmittel-Angabe
 
@@ -1123,6 +1206,15 @@ Ein Energieziel zitiert eine Energieleistungskennzahl mit ihrer freigegebenen Be
 
 **Abgrenzung.** Nicht ein Steuerungs-Ziel („Ziel: 2,2 kW“ gehört der Steuerung, W6); nicht ein absoluter kWh-Wert; nicht die Toleranz der Bezugsbasis.
 
+**Wörter auf den Flächen (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+Die Gruppe „Verbessern“ fragt „Was tun wir, um Energie zu sparen?“.
+Ihre Reiter heißen wie ihre Seite („Energieziele“, „Maßnahmen“, „Abweichungen“); „Ziele und Maßnahmen“ bleibt der Name des Bereichs in Verzeichnis und Rechten.
+Unter jedem Titel erklärt ein Satz das Wort; „Was ist ein Energieziel?“ klappt Klartext, ein Beispiel aus der eigenen Firma und die Abgrenzung zur Bezugsbasis auf.
+„Auf Kurs“ ist der Zwischenstand eines laufenden Energieziels: bisher mindestens so viel weniger, wie vorgenommen; „knapp dahinter“ heißt weniger, aber noch nicht genug; ohne bewertbaren Monat gibt es noch keine Aussage.
+Das ist keine Prognose: Es zählt, was schon gemessen ist, und ob das Energieziel erreicht ist, entscheidet am Ende eine Person.
+Ein offener Monat nennt den Grund der Route („läuft noch“, „kein gemessener Wert“); „noch nicht endgültig“ steht nur, wenn die Route keinen Grund nennt.
+Kundenwörter: `UEMS_AUF_KURS`, `UEMS_KNAPP_DAHINTER`, `UEMS_NICHT_AUF_KURS` (PORTAL/glossar.ts); die Erklärtexte stehen in `begriffe.ts`.
+
 ## Maßnahme
 
 *Sicht: Organisation · Nachtrag AP-18 §4.1, §4.4 (M1–M7, E1, E2)*
@@ -1135,7 +1227,7 @@ Eine Maßnahme trägt Titel, Verantwortlichen (aktives Konto, Fremdschlüssel pl
 
 **Heute im Code.** Tabellen `massnahme`, `massnahme_aenderung`, `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:170, :428, :466; RLS + FORCE); Routen `/api/v1/massnahmen` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:49, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeService.java, AP-18 IP-10/IP-12); Anzeigewort `UEMS_MASSNAHME` (PORTAL/glossar.ts:582). Wegweiser: `docs/agents/root/uems-massnahme-routen.md`.
 
-**Abgrenzung.** Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ (SP1).
+**Abgrenzung.** Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ auf einer Fläche (SP1), beide nur als Fachwort im Aufklapper „Was ist eine Maßnahme?“ (Konzept Verbessern v1, Entscheid 14).
 
 ## Abweichung
 
@@ -1149,7 +1241,7 @@ Eine Abweichung zitiert Kennzahl, Bezugsbasis-Fassung und Monate; ihr Anlass ist
 
 **Heute im Code.** Tabellen `abweichung`, `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:214, :376; RLS + FORCE); Routen `/api/v1/abweichungen` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45, services/api/src/main/java/com/voltpilot/api/uems/AbweichungService.java, AP-18 IP-16); Anzeigewort `UEMS_ABWEICHUNG` (PORTAL/glossar.ts:586). Wegweiser: `docs/agents/root/uems-abweichung-routen.md`.
 
-**Abgrenzung.** Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7); „wesentlich“ bleibt das Wort der Einstufung (W2).
+**Abgrenzung.** Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7; das Wort steht nur als Fachwort im Aufklapper „Was ist eine Abweichung?“, Entscheid 14); „wesentlich“ bleibt das Wort der Einstufung (W2).
 
 ## Auffälligkeit
 
@@ -1192,6 +1284,16 @@ Die beobachtete Wirkung liest das Portal beim Abruf: Nachher-Monate ab dem Monat
 **Heute im Code.** Leser `GET /api/v1/massnahmen/{id}/wirkung` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:105, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeWirkung.java, AP-18 IP-11), Stand `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:466, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeBewertung.java, IP-12); Operation `wirkung` in `docs/contracts/v2/verbesserung-vectors.json`; Anzeigewörter `UEMS_WIRKUNG`, `UEMS_BEOBACHTET_NICHT_BELEGT`, `UEMS_MASSNAHME_ERGEBNISSE` (PORTAL/glossar.ts:593).
 
 **Abgrenzung.** Nicht „hat gewirkt“ und keine „Einsparung durch“ (SP1); nicht ein Mittel und kein gespeicherter Wert; nicht der Ziel-Stand eines Energieziels.
+
+**Drei Wörter für drei Dinge (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+„Erwartet“ ist bei einer Maßnahme die Schätzung einer Person, „beobachtet“ die Messung gegen die Bezugsbasis, „belegt“ das Urteil einer Person.
+Die Schätzung steht immer neben der Beobachtung, nie an ihrer Stelle, und wird nie mit ihr summiert.
+Auf den Flächen heißt die Ausgangslage „Vorher“ (wie der Monat aussah, als die Maßnahme geplant wurde) und die Messgrundlage „gemessen an“ (Kennzahl und Bezugsbasis); die Fachwörter stehen im Aufklapper.
+„Einsparung“ ist der Unterschied zwischen erwartetem und gemessenem Verbrauch in kWh, nie „Einsparung durch“ eine Maßnahme; ob eine Maßnahme ihn bewirkt hat, sagt eine Person.
+„Zweite Person“ ist das Vier-Augen-Prinzip: Wer beantragt hat oder verantwortlich ist, bestätigt nicht selbst.
+Die Normwörter Aktionsplan, Korrekturmaßnahme, Nichtkonformität und Energieleistungsverbesserung stehen nur in der letzten Zeile von „Was ist …?“ (Feld `fachwort` in `begriffe.ts`, Entscheid 14).
+Auf jeder anderen Fläche bleiben sie verboten, ebenso „hat gewirkt“, „Einsparung durch“, „Ursache“ ohne „Aussage von“ und „Ziel“ allein.
+Kundenwörter: `UEMS_VORHER`, `UEMS_GEMESSEN_AN`, `UEMS_ZWEITE_PERSON`, `UEMS_EINSPARUNG` (PORTAL/glossar.ts); Wächter `frontend/portal/src/copy.test.ts` (Block „Konzept Verbessern v1 · Wörter“).
 
 ## Anstoß am Vorgang
 
@@ -1515,3 +1617,17 @@ Der Ladestand hat seine eigene Uhr (Messzeit des Messwerts oder Empfangszeit der
 **Heute im Code.** Der Satz `schnellSatz` (PORTAL/steuerung/laden.ts), das Wort `MISPEL_LAEDT_IMMER_SOFORT` (PORTAL/glossar.ts); der Halte-Grund `lademodus_sofort` im Optimierer und in der Box.
 
 **Abgrenzung.** Nicht der Eingriff „Jetzt voll laden“ (der endet mit der Ladung), nicht „Ohne Steuerung“ (VoltPilot steuert den Ladepunkt weiter).
+
+## Sonne + Speicher
+
+*Sicht: Betrieb · Nachtrag Ladequelle (06.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“: das Auto bekommt den Sonnenstrom und dazu die Speicherenergie, die das Haus laut vorsichtiger Prognose bis zur nächsten Erzeugung nicht braucht.**
+
+Wie tief der Speicher dafür entladen werden darf (seine Untergrenze), rechnet der Fahrplan je Viertelstunde neu: eher viel Verbrauch, eher wenig Sonne, dazu die einstellbare Reserve der Anlage. Die Box gibt nur frei, solange der gemessene Ladestand darüber liegt. VoltPilot muss den Speicher dafür nicht steuern: Steuert es ihn nicht, beobachtet die Box Ladestand und Speicherleistung, der Wechselrichter deckt die Wallbox selbst, und gemessener Netzbezug nimmt die Freigabe zurück. Einen Speicher, den VoltPilot nicht steuert, plant der Fahrplan als Eigenverbrauch statt als Handel. Fehlt die Prognose, ist der Ladestand unbekannt oder nutzt der Fahrplan den Speicher gerade selbst, lädt das Auto wie bei „Nur Sonne“. Netzstrom gibt es in dieser Quelle nicht. Die Moduswahl „Aus · Smart · Schnell“ bleibt; „Sonne + Speicher“ steht neben „Nur Sonne“, „Sonne + Minimum“ und „Günstig“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ladepunkt K-9 an AN-1, 12:00 an einem sonnigen Tag: der Speicher darf weit herunter, weil der Nachmittag ihn für die Nacht wieder füllt. Um 20:00 bleibt alles, was die Nacht bis zum Morgen braucht, plus 1 kWh Reserve.
+
+**Heute im Code.** Steuerart `ueberschussModus=speicher` mit der Karte `ueberschuss_speicher` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartSatz.java:132), Untergrenze im Optimierer (services/optimization/voltpilot_optimization/storage_release.py:390), Steuerstand der Box im Herzschlag (`docs/contracts/speicher-steuerstand.md`, MIG/V20261007120000__device_battery_control.sql:33), Freigabe auf der Box (`edge-app/core/internal/lastmgmt/release.go`), Reserve je Anlage (MIG/V20261006120000__sonne_speicher.sql:40), Wort als `LADEQUELLE` (PORTAL/glossar.ts:157).
+
+**Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht der Vorrang „Speicher vor Auto“ (der ordnet den Überschuss), nicht die Notstrom- und Schutzreserve des Speichers (die bleibt immer unberührt).

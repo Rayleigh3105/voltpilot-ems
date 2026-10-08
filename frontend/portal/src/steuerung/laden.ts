@@ -19,13 +19,32 @@ import {
   MISPEL_LADESTAND_ZULETZT, MISPEL_LAEDT_IMMER_SOFORT, MISPEL_PLAN_VON, MISPEL_ZURUECKSPEISEN_RUHT,
 } from '../glossar';
 import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
+import { messwertAlter, type SpeicherFreigabe } from '../ladepunkte';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { quellenAnteil, type GeraetBild, type Reihen } from './bild';
 import { liste } from './liste';
 import { N, TAG, fEur, uhr, uhrVon, zahl0, zahl1, type Raster } from './zeit';
 
 export type LadeWahl = 'aus' | 'smart' | 'schnell';
-export type LadeQuelle = 'sonne' | 'min' | 'guenstig';
+export type LadeQuelle = 'sonne' | 'min' | 'speicher' | 'guenstig';
+
+/**
+ * Der Überschuss-Modus je Ladequelle - das geschlossene Vokabular der API
+ * (`SteuerartProjektion.MODI`, Vertragsvektoren
+ * `docs/contracts/v2/sonne-speicher-vectors.json`).
+ */
+export const UEBERSCHUSS_MODUS: Record<Exclude<LadeQuelle, 'guenstig'>, string> = {
+  sonne: 'pausieren',
+  min: 'mindestleistung',
+  speicher: 'speicher',
+};
+
+/**
+ * Die Karte „Sonne + Speicher“ in `optionen.quellen` (06.10.2026): keine eigene
+ * Quelle, sondern `ueberschuss` mit dem Modus `speicher`. Sie trägt nur die
+ * Sperre samt Grund - der Server entscheidet, ob es sie gibt.
+ */
+export const OPTION_SONNE_SPEICHER = 'ueberschuss_speicher';
 
 export function ladeWahl(g: GeraetBild): LadeWahl {
   if (g.eingriff) return g.eingriff.art === 'aus' ? 'aus' : 'schnell';
@@ -58,8 +77,93 @@ export function ladeQuelle(g: GeraetBild): LadeQuelle | null {
   const s = g.steuerart;
   if (!s) return null;
   if (s.quelle === 'guenstig') return 'guenstig';
-  if (s.quelle === 'ueberschuss') return s.ueberschussModus === 'mindestleistung' ? 'min' : 'sonne';
+  if (s.quelle === 'ueberschuss') {
+    if (s.ueberschussModus === 'mindestleistung') return 'min';
+    return s.ueberschussModus === 'speicher' ? 'speicher' : 'sonne';
+  }
   return null;
+}
+
+/**
+ * Der Satz zu jeder Stufe der Speicherfreigabe, falls die Box ihren eigenen
+ * nicht mitschickt - das geschlossene Vokabular `box_modes` (ohne `aus`, das
+ * die Box nie meldet) und `cloud_reasons` aus
+ * `docs/contracts/v2/sonne-speicher-vectors.json`. `laden.test.ts` liest die
+ * Datei und fällt um, sobald ein Wort ohne Satz dazukommt.
+ */
+export const FREIGABE_STUFE_TEXT: Record<string, string> = {
+  frei: 'Der Speicher gibt gerade Energie für das Auto frei – nur was das Haus laut Prognose bis zur nächsten Sonne nicht braucht.',
+  frei_beobachtet: 'Die Box gibt gerade Speicherenergie für das Auto frei, nur was das Haus laut Prognose bis zur nächsten Sonne nicht braucht. VoltPilot steuert den Speicher dabei nicht, sondern beobachtet ihn: Sein Wechselrichter deckt die Wallbox selbst. Kommt dabei Strom aus dem Netz, nimmt die Box die Freigabe zurück.',
+  an_der_grenze: 'Der Speicher steht an seiner Untergrenze – er bleibt für das Haus, das Auto lädt nur mit Sonnenstrom.',
+  kein_plan: 'Ohne aktuellen Fahrplan gibt es keine Untergrenze – das Auto lädt nur mit Sonnenstrom, wie bei „Nur Sonne“.',
+  plan_handelt: 'In dieser Viertelstunde nutzt der Fahrplan den Speicher selbst (Netzbezug oder Verkauf) – der Fahrplan geht vor, das Auto lädt nur mit Sonnenstrom.',
+  ladestand_unbekannt: 'Der Ladestand des Speichers ist gerade nicht gemessen. Unbekannt ist nicht leer und nicht voll – es wird nichts freigegeben, nur Sonnenstrom.',
+  keine_messung: 'Ohne frische Messung am Netzanschluss und am Speicher wird nichts freigegeben – nur Sonnenstrom.',
+  speicherpfad: 'Der Speicher kann die Ladung gerade nicht übernehmen – das Auto lädt nur mit Sonnenstrom.',
+  bms_sperrt: 'Der Schutz des Speichers erlaubt gerade keine Entladung – nur Sonnenstrom.',
+  keine_leistung: 'Der Speicher deckt gerade schon das Haus mit seiner ganzen Leistung – für das Auto bleibt nur Sonnenstrom.',
+  wirkung: 'Während der Freigabe kam Strom aus dem Netz – vorerst lädt das Auto nur mit Sonnenstrom.',
+  kein_ladestand: 'Der Fahrplan hat keinen gemessenen Ladestand des Speichers – ohne ihn keine Freigabe, nur Sonnenstrom.',
+  speicher_gehalten: 'Eine Regel hält den Speicher – er wird nicht für das Auto freigegeben, nur Sonnenstrom.',
+  prognose_veraltet: 'Die Prognose für Verbrauch oder Sonne ist veraltet oder fehlt – ohne sie keine Freigabe, nur Sonnenstrom.',
+  nachtbedarf_ueber_kapazitaet: 'Laut Prognose braucht das Haus bis zur nächsten Sonne mehr, als der Speicher fasst – es wird nichts freigegeben, nur Sonnenstrom.',
+  reserve_ueber_kapazitaet: 'Die eingestellte Reserve lässt im Speicher keinen Platz für eine Freigabe – nur Sonnenstrom.',
+  prognose_zu_kurz: 'Die Prognose reicht noch nicht bis zur nächsten Sonne, die das Haus wieder deckt – ohne sie keine Freigabe, nur Sonnenstrom.',
+};
+
+const pct = (v: number) => `${Math.round(v * 10) / 10}`.replace('.', ',') + ' %';
+const kw1 = (v: number) => `${(Math.round(v * 10) / 10).toFixed(1)}`.replace('.', ',') + ' kW';
+
+/**
+ * Die Erklärzeile unter „Sonne + Speicher“ - nur BELEGTE Zahlen.
+ *
+ * Die BOX hat das letzte Wort (sie hat gegen den gemessenen Ladestand
+ * entschieden); ohne ihre Meldung sagt der Fahrplan, bis wohin entladen werden
+ * darf - ausdrücklich als Plan, nicht als Wirkung; ohne beides steht nur, was
+ * die Quelle tut. Eine Meldung, die älter als das Live-Fenster ist
+ * (`messwertAlter`), gilt nicht als aktuell. `frei_beobachtet` (07.10.2026)
+ * sagt dazu, dass VoltPilot den Speicher nicht steuert, sondern beobachtet -
+ * die Freigabe hängt dann an der Messung und der Wirkungsprüfung.
+ *
+ * @param gemeldet `ChargingBudget.reportedAt` - wann die Box zuletzt gemeldet hat
+ */
+export function speicherZeile(
+  box: SpeicherFreigabe | null | undefined,
+  planGrenzePct: number | null,
+  gemeldet?: string | null,
+  nowMs?: number,
+): string {
+  if (messwertAlter({ meteredAt: gemeldet }, nowMs) === 'veraltet') {
+    return 'Die letzte Meldung der Box ist älter als fünf Minuten – ob der Speicher gerade freigibt, ist nicht bekannt.'
+      + (planGrenzePct != null ? ` Laut Fahrplan dürfte er jetzt bis ${pct(planGrenzePct)} entladen.` : '');
+  }
+  const floor = box?.floorSocPct ?? null;
+  const soc = box?.socPct ?? null;
+  if (box?.mode === 'frei' && box.kw != null && floor != null) {
+    return `Der Speicher gibt gerade bis ${kw1(box.kw)} frei und darf bis ${pct(floor)} entladen`
+      + `${soc != null ? ` (jetzt ${pct(soc)})` : ''} – darüber braucht das Haus laut Prognose bis zur nächsten Sonne nichts.`;
+  }
+  if (box?.mode === 'frei_beobachtet' && box.kw != null && floor != null) {
+    return `Die Box gibt gerade bis ${kw1(box.kw)} aus dem Speicher frei, bis er bei ${pct(floor)} steht`
+      + `${soc != null ? ` (jetzt ${pct(soc)})` : ''}. VoltPilot steuert den Speicher dabei nicht, sondern beobachtet ihn:`
+      + ' Sein Wechselrichter deckt die Wallbox selbst. Kommt dabei Strom aus dem Netz, nimmt die Box die Freigabe zurück.';
+  }
+  if (box?.mode === 'an_der_grenze' && floor != null) {
+    return `Der Speicher steht an seiner Untergrenze von ${pct(floor)} – er bleibt für das Haus, das Auto lädt nur mit Sonnenstrom.`;
+  }
+  if (box?.note) return box.note;
+  if (box?.mode && FREIGABE_STUFE_TEXT[box.mode]) return FREIGABE_STUFE_TEXT[box.mode];
+  if (planGrenzePct != null) {
+    return `Laut Fahrplan darf der Speicher jetzt bis ${pct(planGrenzePct)} entladen; darüber braucht das Haus bis zur nächsten Sonne nichts. Was die Box daraus macht, meldet sie noch nicht.`;
+  }
+  return 'Lädt mit Sonnenstrom und gibt dazu, was der Speicher bis zur nächsten Sonne nicht braucht.';
+}
+
+/** Gibt es im Fenster [von, bis) überhaupt eine Untergrenze? (sonst kein Band) */
+export function hatSpeicherGrenze(grenze: (number | null)[] | undefined, von: number, bis: number): boolean {
+  if (!grenze) return false;
+  for (let t = von; t < bis; t++) if (grenze[t] != null) return true;
+  return false;
 }
 
 export interface Band {

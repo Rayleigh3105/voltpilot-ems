@@ -63,6 +63,7 @@ export function VpDatePicker({
   placeholder = 'Datum wählen',
   className,
   triggerClassName,
+  heute: heuteVorgabe,
 }: {
   label?: ReactNode;
   ariaLabel?: string;
@@ -81,6 +82,11 @@ export function VpDatePicker({
   placeholder?: string;
   className?: string;
   triggerClassName?: string;
+  /**
+   * Der Tag „heute“ (ISO), wo die Seite eine eigene Uhr trägt (der Tag der Route, nie der des Browsers): ohne Wert
+   * öffnet das Panel in seinem Monat und markiert ihn. Ohne Angabe gilt der Browser-Tag.
+   */
+  heute?: string | null;
 }) {
   const reactId = useId();
   const basisId = id ?? `vpd-${reactId}`;
@@ -89,7 +95,8 @@ export function VpDatePicker({
   const gitterRef = useRef<HTMLDivElement>(null);
 
   const gewaehlt = value ? datumVon(value, art) : null;
-  const [anker, setAnker] = useState<Date>(() => gewaehlt ?? new Date());
+  const heuteDatum = (heuteVorgabe ? datumVon(heuteVorgabe, 'tag') : null) ?? new Date();
+  const [anker, setAnker] = useState<Date>(() => gewaehlt ?? heuteDatum);
   // Der Anker (welcher Monat steht im Panel) folgt dem Wert - aber nur, wenn
   // er sich von aussen ändert; beim Blättern gehört er dem Panel.
   useEffect(() => {
@@ -98,16 +105,20 @@ export function VpDatePicker({
   }, [value, art]);
 
   /** Der Tag, auf dem die Tastatur steht (immer ein echter Tag). */
-  const [fokusTag, setFokusTag] = useState<string>(() => isoTag(gewaehlt ?? new Date()));
+  const [fokusTag, setFokusTag] = useState<string>(() => isoTag(gewaehlt ?? heuteDatum));
   useEffect(() => {
-    if (offen) setFokusTag(isoTag(gewaehlt ?? anker));
+    if (!offen) return;
+    // Ohne Wert öffnet das Panel am Tag der Seite, auch wenn dieser erst nach dem ersten Zeichnen kam.
+    const start = gewaehlt ?? (heuteVorgabe ? heuteDatum : anker);
+    setAnker(start);
+    setFokusTag(isoTag(start));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offen]);
 
   const jahr = anker.getFullYear();
   const monat0 = anker.getMonth();
   const gitter = useMemo(() => monatsGitter(jahr, monat0), [jahr, monat0]);
-  const heute = isoTag(new Date());
+  const heute = isoTag(heuteDatum);
 
   const schliessen = (fokusZurueck = true) => {
     setOffen(false);

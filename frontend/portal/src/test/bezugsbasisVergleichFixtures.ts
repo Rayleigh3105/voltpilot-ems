@@ -133,6 +133,33 @@ export function vergleichMitMaerz(): BezugsbasisVergleich {
   };
 }
 
+/**
+ * P4 je Monat (Entscheid 07.10.2026, Auswerten Befund 5), konstruiert: gälte BB-0001 erst ab November 2027, trügen
+ * September und Oktober 2027 Werte, aber keine Fassung. Der Kopf zählt sie nicht: dieselben Summen wie R11, im Rahmen,
+ * „4 von 6“ - und der Satz sagt, ab wann die Basis gilt.
+ */
+export function vergleichAbNovember(): BezugsbasisVergleich {
+  const v = vergleichR2();
+  const ohneFassung = (periode: string, beschriftung: string, gemessen: string) => ({
+    ...monat(periode, beschriftung,
+      { gemessen, vorher: null, delta_prozent: null, richtung: null, variable_delta_prozent: null },
+      { variable: '0', grund: 'basis_fehlt', band_prozent: null, kennzeichen: [] },
+      `${beschriftung}: nicht bewertbar — für diesen Monat gilt noch keine Fassung der Bezugsbasis BB-0001.`),
+  });
+  const vorher = [ohneFassung('2027-09', 'September 2027', '84000'), ohneFassung('2027-10', 'Oktober 2027', '86100')];
+  return {
+    ...v,
+    von: '2027-09',
+    monate: [...vorher.map((m) => ({ ...m, bereinigt: { ...m.bereinigt, fassung: null, bedingung: [] } })), ...v.monate],
+    zeitraum: {
+      ...v.zeitraum,
+      monate: '4 von 6',
+      kennzeichen: [...KENNZEICHEN, '4 von 6 Monaten'],
+      satz: 'September 2027 bis Februar 2028: 4 von 6 Monaten bewertbar, die Bezugsbasis gilt erst ab November 2027. 323 000 kWh gemessen, 317 395 kWh erwartet — 1,8 %: im Rahmen der Bezugsbasis (Summe über vier Monate).',
+    },
+  };
+}
+
 /** S5: mit gesichertem Stand (IP-21b füllt `staende`). */
 export function vergleichMitStand(): BezugsbasisVergleich {
   return { ...vergleichR2(), staende: [{ nummer: 1, am: '2028-01-12' }] };

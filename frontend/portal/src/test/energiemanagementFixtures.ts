@@ -14,6 +14,9 @@
 import {
   ApiError,
   type EnergiemanagementAufgaben,
+  type EnergiemanagementLeitung,
+  type EnergiemanagementAufheben,
+  type EnergiemanagementBekanntmachen,
   type EnergiemanagementDokument,
   type EnergiemanagementDokumentAnlegen,
   type EnergiemanagementDokumentKurz,
@@ -32,6 +35,8 @@ import {
   type EnergiemanagementAufgabeBeenden,
   type EnergiemanagementPersonAendern,
   type EnergiemanagementPersonMitVerlauf,
+  type EnergiemanagementTeilVermerk,
+  type EnergiemanagementTeilVermerkAnlegen,
   type EnergiemanagementVerantwortung,
   type EnergiemanagementVergleich,
   type EnergiemanagementVerzeichnis,
@@ -100,6 +105,14 @@ function person(k: keyof typeof PERSONEN_ID, name: string, funktion: string, kon
   };
 }
 const kurz = (p: EnergiemanagementPerson): EnergiemanagementPersonKurz => ({ id: p.id, name: p.name, funktion: p.funktion, kuerzel: p.kuerzel, mit_konto: !!p.konto });
+/** Die Gruppe des Verzeichnisses je Teil (wie `TeilVermerkVerzeichnis` am Server). */
+const TEIL_GRUPPE: Record<string, string> = {
+  energiepolitik: 'grundlagen', anwendungsbereich: 'grundlagen', rechtliche_anforderungen: 'grundlagen', kontext: 'grundlagen',
+  risiken_chancen: 'risiken_chancen', aufgaben: 'verantwortung', kompetenz: 'kompetenz_kommunikation', kommunikation: 'kompetenz_kommunikation',
+  betrieb: 'betrieb_auslegung_beschaffung', auslegung: 'betrieb_auslegung_beschaffung', beschaffung: 'betrieb_auslegung_beschaffung',
+  energetische_bewertung: 'bewertung_messplanung', bezugsbasen: 'kennzahlen_bezugsbasen', massnahmen: 'ziele_massnahmen_abweichungen',
+  interne_audits: 'audits_feststellungen', feststellungen: 'audits_feststellungen', managementbewertung: 'managementbewertung', berichte: 'berichte',
+};
 
 const tagText = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 const satzText = (k: string, w: Record<string, string>) => satz(k, w).satz ?? '';
@@ -135,6 +148,7 @@ export function energiemanagementBuehne(
   einsaetze: readonly { id: string; kennzeichen: string; name: string }[] = [],
 ) {
   const heute = () => jetzt().slice(0, 10);
+  let vierAugen = false;
   const gesendet: { route: string; koerper: unknown }[] = [];
   const merke = (route: string, koerper: unknown) => {
     gesendet.push({ route, koerper: structuredClone(koerper) });
@@ -150,6 +164,8 @@ export function energiemanagementBuehne(
   for (const p of personen) if (p.konto && p.kuerzel === ich.kennung) p.konto.sub = ich.kennung;
   const zuordnungen: EnergiemanagementZuordnung[] = [];
   const dokumente: EnergiemanagementDokument[] = [];
+  // Konzept Nachweisen n1, Entscheid 5: „Trifft bei uns zurzeit nicht zu“ je Teil (wie `EnergiemanagementTeilVermerkService`).
+  const vermerke: EnergiemanagementTeilVermerk[] = [];
   let zaehler = 0;
   let personNr = 0;
 
@@ -248,7 +264,8 @@ export function energiemanagementBuehne(
       }, [])
       .map((b) => {
         const wege_wort = b.wege.map((w) => ({ aushang: 'Aushang', intranet: 'Intranet', unterweisung: 'Unterweisung', besprechung: 'Besprechung', e_mail: 'E-Mail' } as Record<string, string>)[w] ?? w).join(' und ');
-        return { ...b, wege_wort, satz: satzText('bekanntmachung', { am: tagText(b.am), kreis: b.kreis, weg: wege_wort, person: b.person?.name ?? '' }) };
+        const werte = { am: tagText(b.am), kreis: b.kreis, weg: wege_wort };
+        return { ...b, wege_wort, satz: b.person ? satzText('bekanntmachung_durch', { ...werte, person: b.person.name }) : satzText('bekanntmachung', werte) };
       });
     return {
       id: a.id, kennzeichen: a.kennzeichen, art: a.art, art_wort: a.art_wort, klasse: a.klasse, titel: a.titel, bezug: a.bezug, zustand: a.zustand,
@@ -312,7 +329,9 @@ export function energiemanagementBuehne(
     const p = personen.find((x) => x.id === b.entschieden_von);
     const tag = b.entschieden_am ?? am.slice(0, 10);
     if (['energiepolitik', 'anwendungsbereich', 'bestellung'].includes(d.art) && !leitungAm(tag).some((l) => l.id === p?.id)) {
-      throw new ApiError(422, SAETZE.freigabe_ohne_leitung, { code: 'leitung_fehlt', message: SAETZE.freigabe_ohne_leitung });
+      if (leitungAm(tag).length === 0) throw new ApiError(422, SAETZE.freigabe_ohne_leitung, { code: 'leitung_fehlt', message: SAETZE.freigabe_ohne_leitung });
+      const satz = `Über ${d.art_wort} entscheidet die Leitung des Unternehmens.`;
+      throw new ApiError(422, satz, { code: 'nicht_die_leitung', message: satz, leitung: leitungAm(tag).map((l) => l.id) });
     }
     const kopie = {
       nr: f.nr, form: f.form, wortlaut: f.wortlaut, verweis: f.verweis,
@@ -403,7 +422,9 @@ export function energiemanagementBuehne(
         zeilen.push(verzeichnisZeile({
           gruppe: GRUPPE[d.art], art: d.art, kennzeichen: d.kennzeichen, titel: d.titel, nr: f.nr, entschieden_von: f.entschieden_von?.name ?? null,
           eingetragen_von: f.freigabe?.akteur.name ?? null, tag: f.entschieden_am, pruefsumme: verweis ? (f.verweis?.sha256 ?? null) : f.pruefsumme,
-          ort: verweis ? 'verweis' : d.beleg ? 'wortlaut_original_beim_kunden' : 'in_voltpilot', ablage: verweis ? (f.verweis?.ablage ?? null) : (d.beleg?.ablage ?? null),
+          // Entscheid 10 wie `DokumentVerzeichnis`: das Original der Fassung, sonst das am Dokument (Fassung 1).
+          ort: verweis ? 'verweis' : (f.original ?? d.beleg) ? 'wortlaut_original_beim_kunden' : 'in_voltpilot',
+          ablage: verweis ? (f.verweis?.ablage ?? null) : ((f.original ?? d.beleg)?.ablage ?? null),
         }) as EnergiemanagementVerzeichnisZeile);
       }
       for (const e of d.eintraege.filter((x) => x.art === 'bekannt_gemacht')) {
@@ -417,6 +438,14 @@ export function energiemanagementBuehne(
       zeilen.push(verzeichnisZeile({
         gruppe: 'verantwortung', art: 'aufgabe', kennzeichen: z.wort, titel: `${z.wort}: ${z.person.name}`, nr: null, entschieden_von: z.entschieden_von?.name ?? null,
         eingetragen_von: z.eingetragen.akteur.name, tag: z.gilt_ab, pruefsumme: null, ort: 'in_voltpilot', ablage: null,
+      }) as EnergiemanagementVerzeichnisZeile);
+    }
+    for (const v of vermerke.filter((x) => x.entschieden_am <= heute())) {
+      zeilen.push(verzeichnisZeile({
+        gruppe: TEIL_GRUPPE[v.teil], art: 'teil_vermerk', kennzeichen: v.teil_wort,
+        titel: `${v.teil_wort}: trifft bei uns zurzeit nicht zu${v.aufgehoben ? ` · aufgehoben am ${tagText(v.aufgehoben.am.slice(0, 10))}` : ''}`,
+        nr: null, entschieden_von: v.entschieden_von.name, eingetragen_von: v.eingetragen.akteur.name, tag: v.entschieden_am, pruefsumme: null,
+        ort: 'in_voltpilot', ablage: null,
       }) as EnergiemanagementVerzeichnisZeile);
     }
     zeilen.push(...bestand(lage));
@@ -457,6 +486,11 @@ export function energiemanagementBuehne(
       await bereit;
       const t = tag ?? heute();
       return { tag: t, leitung: leitungAm(t), aufgaben: aufgabenAm(t), zuordnungen: structuredClone(zuordnungen) };
+    },
+    energiemanagementLeitung: async (tag?: string | null): Promise<EnergiemanagementLeitung> => {
+      await bereit;
+      const t = tag ?? heute();
+      return { tag: t, leitung: leitungAm(t) };
     },
     energiemanagementAufgabeZuordnen: async (b: EnergiemanagementAufgabeZuordnen) => {
       merke('POST /api/v1/energiemanagement/aufgaben', b);
@@ -510,6 +544,33 @@ export function energiemanagementBuehne(
       await bereit;
       return verzeichnis(filter);
     },
+    energiemanagementTeilVermerke: async () => {
+      await bereit;
+      return { stichtag: jetzt(), vermerke: structuredClone([...vermerke.filter((v) => !v.aufgehoben), ...vermerke.filter((v) => v.aufgehoben).reverse()]) };
+    },
+    energiemanagementTeilVermerkAnlegen: async (b: EnergiemanagementTeilVermerkAnlegen) => {
+      merke('POST /api/v1/energiemanagement/teil-vermerke', b);
+      if (!VOKABULARE.teil.includes(b.teil)) throw new ApiError(400, 'Anfrage ungültig', { code: 'anfrage_ungueltig', message: 'Die Anfrage ist ungültig.', feld: 'teil' });
+      if (vermerke.some((v) => v.teil === b.teil && !v.aufgehoben)) {
+        throw new ApiError(409, 'Vermerk besteht', { code: 'vermerk_besteht', message: 'Für diesen Teil gilt schon ein Vermerk. Heben Sie ihn zuerst auf.', teil: b.teil });
+      }
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      if (!p) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Diese Person gibt es nicht.' });
+      const v: EnergiemanagementTeilVermerk = {
+        id: `a1b00000-0000-4000-8000-${String(vermerke.length + 1).padStart(12, '0')}`, teil: b.teil, teil_wort: WOERTER.teil[b.teil], satz: b.satz,
+        entschieden_von: kurz(p), entschieden_am: b.entschieden_am ?? heute(), eingetragen: eingetragen(ich.name, jetzt()), aufgehoben: null,
+      };
+      vermerke.push(v);
+      return structuredClone(v);
+    },
+    energiemanagementTeilVermerkAufheben: async (id: string) => {
+      merke(`POST /api/v1/energiemanagement/teil-vermerke/${id}/aufheben`, null);
+      const v = vermerke.find((x) => x.id === id);
+      if (!v) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Diesen Vermerk gibt es nicht.' });
+      if (v.aufgehoben) throw new ApiError(409, 'aufgehoben', { code: 'vermerk_aufgehoben', message: 'Dieser Vermerk ist bereits aufgehoben.', aufgehoben_am: v.aufgehoben.am });
+      v.aufgehoben = { akteur: eingetragen(ich.name, jetzt()).akteur, am: jetzt() };
+      return structuredClone(v);
+    },
     energiemanagementVerzeichnisCsv: async (filter: EnergiemanagementVerzeichnisFilter = {}) => {
       await bereit;
       const v = verzeichnis(filter);
@@ -541,7 +602,12 @@ export function energiemanagementBuehne(
       vergleich.deckungsgleich = !vergleich.standorte_nur_im_anwendungsbereich.length && !vergleich.standorte_nur_im_betrachtungsumfang.length && !nurAb.length && !vergleich.traeger_nur_im_betrachtungsumfang.length;
       const saetze = vergleich.deckungsgleich
         ? [satzText('anwendungsbereich_deckungsgleich', { fassung: '1', ab: tagText(umfang.gueltig_ab) })]
-        : [...vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? ''), ...nurAb].map((was) => satzText('anwendungsbereich_unterschied', { was, fassung: '1' }));
+        : [
+            ...[...vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? ''), ...nurAb].map((was) => satzText('anwendungsbereich_unterschied', { was, fassung: '1' })),
+            ...[...vergleich.standorte_nur_im_betrachtungsumfang.map((s) => s.name ?? ''), ...vergleich.traeger_nur_im_betrachtungsumfang].map((was) =>
+              satzText('anwendungsbereich_nur_im_umfang', { was, fassung: '1' }),
+            ),
+          ];
       return { abruf: heute(), fassung: f!.nr, anwendungsbereich: ab, betrachtungsumfang: umfang, vergleich, saetze };
     },
     energiemanagementNachweiseAmEinsatz: async (id: string): Promise<EnergiemanagementNachweiseAmEinsatz> => {
@@ -570,19 +636,86 @@ export function energiemanagementBuehne(
     energiemanagementFassungEntwerfen: async (id: string, b: EnergiemanagementFassungEntwerfen) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen`, b);
       const d = finde(id);
+      // Wie `EnergiemanagementDokumentService.bereich`: nur der Anwendungsbereich trägt Standorte und Träger - und er
+      // braucht beide schon im Entwurf (Review r1, P2-2).
+      const ab = b.anwendungsbereich;
+      if (d.art === 'anwendungsbereich' && (!ab || !ab.standort_ids.length || !ab.traeger.length)) {
+        const message = 'Bitte nennen Sie die Standorte und Energieträger des Anwendungsbereichs.';
+        throw new ApiError(422, message, { code: 'anwendungsbereich_fehlt', message, feld: 'anwendungsbereich' });
+      }
+      if (d.art !== 'anwendungsbereich' && ab) {
+        throw new ApiError(400, 'Anfrage ungültig', { code: 'anfrage_ungueltig', message: 'Standorte und Energieträger trägt nur der Anwendungsbereich.', feld: 'anwendungsbereich' });
+      }
       entwerfen(d, b);
       return abgerufen(d);
     },
     energiemanagementFassungBeantragen: async (id: string, nr: number, b: EnergiemanagementEntscheid) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/beantragen`, b);
-      throw new ApiError(409, 'Vier-Augen ist bei Ihnen aus.', { code: 'vieraugen_aus', message: 'Vier-Augen ist bei Ihnen aus.' });
+      if (!vierAugen) throw new ApiError(409, 'Vier-Augen ist bei Ihnen aus.', { code: 'vieraugen_aus', message: 'Vier-Augen ist bei Ihnen aus.' });
+      // Nachweisen PR 2 (Entscheid 11): der Antrag trägt „entschieden von“ und das beantragende Konto.
+      const d = finde(id);
+      const f = d.fassungen.find((x) => x.nr === nr)!;
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      Object.assign(f, {
+        status: 'beantragt', vieraugen: true, entschieden_von: p ? kurz(p) : null, entschieden_am: b.entschieden_am ?? heute(),
+        freigabe_begruendung: b.begruendung ?? null, freigabe: { akteur: { ...akteur(ich.name), sub: ich.kennung }, am: jetzt() },
+        ...(b.original ? { original: b.original } : {}),
+      });
+      return abgerufen(d);
     },
     energiemanagementFassungFreigeben: async (id: string, nr: number, b: EnergiemanagementEntscheid) => {
       merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, b);
       const d = finde(id);
+      const f = d.fassungen.find((x) => x.nr === nr)!;
+      if (vierAugen && f.status === 'entwurf') {
+        throw new ApiError(409, 'Mit Vier-Augen-Freigabe beantragen Sie die Fassung.', { code: 'vieraugen_beantragen', message: 'Mit Vier-Augen-Freigabe beantragen Sie die Fassung.' });
+      }
+      if (f.status === 'beantragt') {
+        Object.assign(f, { status: 'freigegeben', zweite_person: eingetragen(ich.name, jetzt()), freigegeben_am: jetzt() });
+        d.gueltige_fassung = nr;
+        d.zustand = 'gueltig';
+        return abgerufen(d);
+      }
       await freigeben(d, nr, b);
+      if (b.original) Object.assign(f, { original: b.original });
       return abgerufen(d);
     },
+    // Nachweisen PR 2 (Entscheide 11, 12): Vier-Augen vorab, Ablehnen, Bekanntmachen, Aufheben - wie der Dienst.
+    unternehmenVierAugen: async () => ({ vieraugen: vierAugen, vorgabe: false }),
+    energiemanagementFassungAblehnen: async (id: string, nr: number, begruendung: string) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/ablehnen`, { begruendung });
+      const d = finde(id);
+      Object.assign(d.fassungen.find((x) => x.nr === nr)!, { status: 'abgelehnt', ablehnung_begruendung: begruendung, zweite_person: eingetragen(ich.name, jetzt()) });
+      return abgerufen(d);
+    },
+    energiemanagementBekanntmachen: async (id: string, b: EnergiemanagementBekanntmachen) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, b);
+      const d = finde(id);
+      // Wie der Dienst: die genannte Person, sonst die Person des eigenen Kontos, sonst 422 `person_fehlt`.
+      const wer = b.person_id ? personen.find((x) => x.id === b.person_id) : personen.find((x) => x.konto?.sub === ich.kennung);
+      if (!wer) {
+        const message = 'Bitte nennen Sie, wer das Dokument bekannt gemacht hat.';
+        throw new ApiError(422, message, { code: 'person_fehlt', message, feld: 'person_id' });
+      }
+      d.eintraege.push({
+        id: d.eintraege.length + 200, art: 'bekannt_gemacht', fassung: d.gueltige_fassung, am: b.am ?? heute(), person: kurz(wer), entschieden_von: null,
+        kreis: b.kreis, weg: b.weg, weg_wortlaut: b.weg_wortlaut ?? null, begruendung: null, beschluss_kennung: null, kommentar: null, satz: null,
+        eingetragen: eingetragen(ich.name, jetzt()),
+      });
+      return abgerufen(d);
+    },
+    energiemanagementDokumentAufheben: async (id: string, b: EnergiemanagementAufheben) => {
+      merke(`POST /api/v1/energiemanagement/dokumente/${id}/aufheben`, b);
+      const d = finde(id);
+      const p = personen.find((x) => x.id === b.entschieden_von);
+      d.eintraege.push({
+        id: d.eintraege.length + 300, art: 'aufgehoben', fassung: null, am: b.am ?? heute(), person: null, entschieden_von: p ? kurz(p) : null,
+        kreis: null, weg: null, weg_wortlaut: null, begruendung: b.begruendung, beschluss_kennung: null, kommentar: null, satz: null, eingetragen: eingetragen(ich.name, jetzt()),
+      });
+      d.zustand = 'aufgehoben';
+      return abgerufen(d);
+    },
+    energiemanagementFeststellungen: async () => ({ tag: heute(), feststellungen: [] }),
     // DK5 wie der Dienst (`EnergiemanagementDokumentService.geprueft`): nur an der gültigen Fassung einer Vorgabe, ab dem
     // Tag ihrer Freigabe, mit einer Person und Begründung; die Überprüfung beginnt an diesem Tag neu.
     energiemanagementDokumentGeprueft: async (id: string, b: EnergiemanagementGeprueft) => {
@@ -604,5 +737,9 @@ export function energiemanagementBuehne(
       return abgerufen(d);
     },
   };
-  return { routen, gesendet, bereit };
+  /** Nachweisen PR 2: die Vier-Augen-Einstellung des Unternehmens für einen Fall umstellen. */
+  const setzeVierAugen = (an: boolean) => {
+    vierAugen = an;
+  };
+  return { routen, gesendet, bereit, setzeVierAugen };
 }

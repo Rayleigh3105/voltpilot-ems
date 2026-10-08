@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementPersonMitVerlauf, type EnergiemanagementZuordnung } from '../api';
-import { heute } from '../bewertung';
+import { merkeAbruf, routenHeute } from '../routenUhr';
 import { EinsichtRecht } from '../components/EinsichtRecht';
 import { PersonAendernDialog } from '../components/EnergiemanagementAufgabeDialoge';
 import { NachweiseDerPerson } from '../components/Nachweise';
@@ -23,7 +23,8 @@ export function EnergiemanagementPersonSeite({ id, onListe }: { id: string; onLi
   const [zuordnungen, setZuordnungen] = useState<EnergiemanagementZuordnung[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [aendern, setAendern] = useState(false);
-  const tag = heute();
+  // Befund 3 (Konzept Nachweisen n1): der Tag der Aufgaben-Route, nicht der des Browsers.
+  const [tag, setTag] = useState<string>(() => routenHeute());
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
@@ -32,14 +33,19 @@ export function EnergiemanagementPersonSeite({ id, onListe }: { id: string; onLi
       (e) => aktiv && setFehler(E.ablehnungSatz(e)),
     );
     // Aufgaben liest nur, wer unternehmensweit liest — sonst bleibt der Abschnitt leer, ohne Satz (IP-6).
-    api.energiemanagementAufgaben(tag).then(
-      (r) => aktiv && setZuordnungen(E.zuordnungenVon(r.zuordnungen, id)),
+    api.energiemanagementAufgaben().then(
+      (r) => {
+        if (!aktiv) return;
+        merkeAbruf(r.tag);
+        setTag(r.tag);
+        setZuordnungen(E.zuordnungenVon(r.zuordnungen, id));
+      },
       () => aktiv && setZuordnungen([]),
     );
     return () => {
       aktiv = false;
     };
-  }, [id, tag]);
+  }, [id]);
 
   const zurueck = (
     <button type="button" className="vp-em-hilfe" onClick={onListe} data-testid="person-zurueck">

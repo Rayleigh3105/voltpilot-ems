@@ -738,17 +738,25 @@ describe('Bewegung P5 · die Richtung eines Seitenwechsels', () => {
 describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte einer Messstelle (UEMS AP-13 IP-3/IP-5)', () => {
   it('liest, was `sprungziel` schreibt; die Route bleibt die Messstellen-Seite', () => {
     const hash = '#/portfolio/messstellen/MS-12?periode=2026-10&version=2';
-    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2, vergleich: null });
+    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2, vergleich: null, stand: null });
     expect(parseRoute(hash)).toEqual(messstelleRoute('MS-12'));
     expect(parseMessstelleWerte('#/portfolio/messstellen/MS-06?periode=2026-10-25')).toEqual({
       periode: '2026-10-25',
       version: null,
       vergleich: null,
+      stand: null,
     });
   });
 
+  it('aus „Stand am …“: der Tag als `stand=` - nur ein ganzer Tag gilt (Review r4 S4)', () => {
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?periode=2029-04-30&stand=2029-04-30').stand).toBe('2029-04-30');
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?stand=2029-04').stand).toBeNull();
+    const s = sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2029-04-30', stand: '2029-04-30' });
+    expect(s?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2029-04-30&stand=2029-04-30');
+  });
+
   it('ohne Parameter nichts; eine Version, die keine ganze Zahl ab 1 ist, gilt nicht', () => {
-    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null, vergleich: null });
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null, vergleich: null, stand: null });
     for (const v of ['0', '-1', '2.5', 'zwei', '']) {
       expect(parseMessstelleWerte(`#/portfolio/messstellen/MS-12?periode=2026-10&version=${v}`).version, v).toBeNull();
     }
@@ -760,6 +768,7 @@ describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte eine
       periode: '2026-11',
       version: null,
       vergleich: 'vorperiode',
+      stand: null,
     });
     expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?v=').vergleich).toBeNull();
     const s = sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-11', vergleich: 'vorjahr' });

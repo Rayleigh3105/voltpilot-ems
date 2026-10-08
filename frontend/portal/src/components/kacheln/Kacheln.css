@@ -205,6 +205,12 @@ button.vp-k-kopf:focus-visible {
   background: var(--vp-c-warn-bg, #fff7ed);
   color: var(--vp-c-warn-fg, #9a3412);
 }
+.vp-k-marke.is-ohne {
+  padding: 1px 7px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  background: transparent;
+  color: var(--vp-c-muted-fg, #475569);
+}
 .vp-k-legende {
   display: flex;
   flex-wrap: wrap;

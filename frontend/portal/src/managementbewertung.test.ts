@@ -59,6 +59,12 @@ describe('Managementbewertung: Kopf, Stand und Eingaben (§5.8, MG2, MG7)', () =
     expect(M.listenZustand({ neueste_nr: null })).toBe('Entwurf');
     expect(M.listenZustand({ neueste_nr: 2 })).toBe('Stand Nr. 2');
     expect(M.jahreZurWahl('2029-02-05').map((j) => j.label)).toEqual(['2028', '2029 (läuft)', '2027', '2026', '2025']);
+    // Review P5-3: nie ein Jahr vor der jüngsten vorwählen - gibt es 2028 schon, ist nichts vorgewählt (nicht 2027).
+    const wahl = M.jahreZurWahl('2029-02-05').filter((j) => Number(j.id) < 2029);
+    expect(M.vorgewaehltesJahr(wahl, [])).toBe('2028');
+    expect(M.vorgewaehltesJahr(wahl, ['2027'])).toBe('2028');
+    expect(M.vorgewaehltesJahr(wahl, ['2028'])).toBeNull();
+    expect(M.vorgewaehltesJahr(wahl, ['2026', '2028'])).toBeNull();
   });
 });
 
@@ -73,7 +79,7 @@ describe('Wiedervorlage: Art-Wörter und Sprünge (WV3)', () => {
     expect(wiedervorlageSprung(z('dokument_ueberpruefung', 'D-0001', 'd1'))).toEqual(dokumentRoute('d1'));
     expect(wiedervorlageSprung(z('dokument_ueberpruefung', 'D-0001'))).toBeNull();
     expect(wiedervorlageSprung(z('massnahme_termin', 'M-2029-0001', 'm1'))).toEqual(massnahmeRoute('m1'));
-    expect(wiedervorlageSprung(z('bezugsbasis_ueberpruefung', 'BB-0002', 'b2', 'k1'))).toEqual(kennzahlRoute('k1'));
+    expect(wiedervorlageSprung(z('bezugsbasis_ueberpruefung', 'BB-0002', 'b2', 'k1'))).toEqual(kennzahlRoute('k1', null, 'bezugsbasis'));
     expect(wiedervorlageSprung(z('bewertung_ueberpruefung', 'BR-2027-0001'))).toEqual(pageRoute('portfolio-bewertung'));
     expect(hashForRoute(wiedervorlageSprung(z('bericht_anstoss', 'BR-2028-0001'))!)).toBe('#/portfolio/berichte/BR-2028-0001');
     expect(wiedervorlageSprung(z('managementbewertung', 'BR-2029-0001'))).toEqual(managementbewertungRoute('BR-2029-0001'));

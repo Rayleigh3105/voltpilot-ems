@@ -260,8 +260,14 @@ func (a *Agent) carsBeforeStorageKw(set lastmgmt.Settings, now time.Time) (kw fl
 		return 0, false, false
 	}
 	complete = true
+	storageFirst := a.releaseStorageFirst()
 	for _, c := range rt.srv.Snapshot().Chargers {
 		if !lastmgmt.BeforeStorage(c.Rank, set.StorageRank, set.StoragePriority) {
+			continue
+		}
+		// „Sonne + Speicher" at its floor: the battery is served FIRST for
+		// this station, so its car must not cap the battery's charge.
+		if c.StorageRelease && storageFirst {
 			continue
 		}
 		any = true
