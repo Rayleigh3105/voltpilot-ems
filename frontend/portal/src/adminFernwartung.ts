@@ -66,6 +66,10 @@ export interface FernwartungFenster {
   geschlossenVon: string | null;
 }
 
+/**
+ * Ein gelöschter Techniker-Zugang hat keinen Status hier: die API lässt ihn aus
+ * jeder Liste weg. Er lebt nur in früheren Fenstern und im Protokoll weiter.
+ */
 export type ZugangStatus = 'aktiv' | 'gesperrt';
 
 export interface FernwartungBox {
@@ -106,6 +110,7 @@ export type ProtokollAktion =
   | 'techniker_angelegt'
   | 'techniker_gesperrt'
   | 'techniker_entsperrt'
+  | 'techniker_geloescht'
   | 'fenster_geoeffnet'
   | 'fenster_geschlossen';
 
@@ -406,6 +411,41 @@ export function schluesselGueltig(s: string): boolean {
   return WG_SCHLUESSEL.test(s.trim());
 }
 
+// ── Techniker-Zugang löschen ────────────────────────────────────────────────
+
+export interface Rueckfrage {
+  titel: string;
+  /** EIN Satz: was passiert und dass es endgültig ist. */
+  satz: string;
+  /** Was dabei gleich bleibt. */
+  folgen: string[];
+}
+
+/**
+ * Löschbar ist nur ein gesperrter Zugang; ein aktiver muss erst gesperrt
+ * werden (das Sperren schließt seine Fenster und nimmt ihn vom Server).
+ */
+export function loeschbar(t: FernwartungTechniker): boolean {
+  return t.status === 'gesperrt';
+}
+
+/**
+ * Die Rückfrage vor dem Löschen. Adresse und Schlüssel stehen im Satz, weil
+ * zwei Zugänge denselben Namen tragen können - genau dann wird gelöscht. Der
+ * Name steht im Satz und nicht im Titel: der Titel eines Dialogs ist einzeilig
+ * und schnitte einen Namen am Telefon ab.
+ */
+export function loeschenRueckfrage(t: FernwartungTechniker): Rueckfrage {
+  return {
+    titel: 'Zugang löschen?',
+    satz: `Der gesperrte Zugang „${t.name}“ (${t.adresse}, ${t.publicKeyKurz}) verschwindet endgültig aus allen Listen und lässt sich nicht wiederherstellen.`,
+    folgen: [
+      'Seine Tunnel-Adresse und sein Schlüssel bleiben vergeben und werden nie wieder zugeteilt.',
+      'Frühere Fenster und Protokolleinträge bleiben lesbar und nennen den Zugang weiter beim Namen.',
+    ],
+  };
+}
+
 // ── Protokoll ───────────────────────────────────────────────────────────────
 
 const AKTION: Record<ProtokollAktion, string> = {
@@ -416,6 +456,7 @@ const AKTION: Record<ProtokollAktion, string> = {
   techniker_angelegt: 'Techniker-Zugang angelegt',
   techniker_gesperrt: 'Techniker-Zugang gesperrt',
   techniker_entsperrt: 'Techniker-Zugang entsperrt',
+  techniker_geloescht: 'Techniker-Zugang gelöscht',
   fenster_geoeffnet: 'Fenster geöffnet',
   fenster_geschlossen: 'Fenster geschlossen',
 };
@@ -453,6 +494,10 @@ export function protokollDetail(e: FernwartungProtokollEintrag, jetzt: Date): st
     case 'box_gesperrt':
     case 'techniker_gesperrt':
       return d.grund ? `Grund: ${d.grund}` : '';
+    case 'techniker_geloescht': {
+      const vergeben = [d.adresse, d.publicKey].filter(Boolean).join(' · ');
+      return vergeben ? `${vergeben} · bleiben vergeben` : '';
+    }
     default:
       return '';
   }
