@@ -167,6 +167,10 @@ services:
       # import, so the default here is inert until an operator enables it -
       # see docs/ota-signing.md "Einmalige Einrichtung".
       VP_RELEASE_PUBLISHER_SECRET: ${VP_RELEASE_PUBLISHER_SECRET:-change-me}
+      # Secret of the maintenance tunnel service account (client
+      # voltpilot-tunnel-dienst, role tunnel-dienst: reads the Fernwartung
+      # Soll-Stand only). Also ships DISABLED - see docs/fernwartung.md.
+      VP_TUNNEL_DIENST_SECRET: ${VP_TUNNEL_DIENST_SECRET:-change-me}
     volumes:
       - ./infra/prod/keycloak:/opt/keycloak/data/import:ro
       # VoltPilot login theme. On a CI roll-out the deploy workflow ships this
