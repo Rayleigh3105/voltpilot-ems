@@ -2,8 +2,10 @@ package quelle
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -104,5 +106,57 @@ func TestFehlerDerApiSindFehler(t *testing.T) {
 	srv.Close()
 	if _, err := a.Hole(context.Background()); err == nil {
 		t.Fatal("unerreichbare API muss ein Fehler sein")
+	}
+}
+
+// Lehnt der Token-Endpunkt die Anmeldung ab, ist das ein eigener Fehler -
+// getrennt von jedem anderen Fehler des Token-Endpunkts, der API und einer
+// unerreichbaren Gegenstelle.
+func TestAbgelehnteAnmeldungIstEinEigenerFehler(t *testing.T) {
+	var tokenStatus atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(int(tokenStatus.Load()))
+	})
+	srv := httptest.NewServer(mux)
+	a, _ := Neu(srv.URL, srv.URL+"/token", "voltpilot-tunnel-dienst", "falsch", 5*time.Second)
+
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		tokenStatus.Store(int32(status))
+		_, err := a.Hole(context.Background())
+		if !errors.Is(err, ErrAnmeldungAbgelehnt) {
+			t.Errorf("HTTP %d am Token-Endpunkt: %v, erwartet ErrAnmeldungAbgelehnt", status, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), "Anmeldung abgelehnt: Client oder Secret prüfen") ||
+			!strings.Contains(err.Error(), strconv.Itoa(status)) {
+			t.Errorf("HTTP %d: Wortlaut %q", status, err)
+		}
+	}
+
+	for _, status := range []int{http.StatusBadRequest, http.StatusInternalServerError, http.StatusServiceUnavailable} {
+		tokenStatus.Store(int32(status))
+		if _, err := a.Hole(context.Background()); err == nil || errors.Is(err, ErrAnmeldungAbgelehnt) {
+			t.Errorf("HTTP %d am Token-Endpunkt ist keine abgelehnte Anmeldung: %v", status, err)
+		}
+	}
+	srv.Close()
+	if _, err := a.Hole(context.Background()); err == nil || errors.Is(err, ErrAnmeldungAbgelehnt) {
+		t.Errorf("unerreichbar ist keine abgelehnte Anmeldung: %v", err)
+	}
+}
+
+// Ein 401 oder 403 der API selbst (Token gültig, Rolle fehlt) ist ebenfalls
+// keine abgelehnte Anmeldung: Client und Secret stimmen dann.
+func TestFehlerDerApiSindKeineAbgelehnteAnmeldung(t *testing.T) {
+	for _, status := range []int32{401, 403} {
+		var sollStatus, tokens atomic.Int32
+		sollStatus.Store(status)
+		srv := attrappe(t, &sollStatus, &tokens)
+		a, _ := Neu(srv.URL, srv.URL+"/token", "voltpilot-tunnel-dienst", "geheim", 5*time.Second)
+		if _, err := a.Hole(context.Background()); err == nil || errors.Is(err, ErrAnmeldungAbgelehnt) {
+			t.Errorf("Soll-Stand HTTP %d: %v", status, err)
+		}
+		srv.Close()
 	}
 }

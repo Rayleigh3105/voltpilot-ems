@@ -5,7 +5,8 @@
 //	vp-tunnel-dienst [lauf]   alle VP_TUNNEL_INTERVALL abgleichen (systemd)
 //	vp-tunnel-dienst einmal   ein Abgleich, Rückgabe 0/1
 //	vp-tunnel-dienst basis    die nft-Basis ausgeben (für /etc/nftables.d)
-//	vp-tunnel-dienst status   Peers mit Handshake, offene Fenster, letzter Lauf
+//	vp-tunnel-dienst status   Version, Firewall-Basis, Peers mit Handshake, offene Fenster, letzter Lauf
+//	vp-tunnel-dienst version  der Stand (Commit), aus dem das Programm gebaut wurde
 //	vp-tunnel-dienst pruefen <datei>   einen Soll-Stand offline prüfen
 package main
 
@@ -15,6 +16,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"sort"
 	"syscall"
 	"time"
@@ -25,6 +27,45 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/soll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/system"
 )
+
+// version ist der Commit, aus dem das Programm gebaut wurde. Der Bau setzt
+// ihn mit -ldflags "-X main.version=<commit>" (README, Schritt 3).
+var version = ""
+
+// stand liefert die Version: den beim Bau gesetzten Wert, sonst den Commit,
+// den Go selbst einträgt, wenn aus einem Git-Checkout gebaut wird.
+func stand(gesetzt string, info *debug.BuildInfo) string {
+	if gesetzt != "" {
+		return gesetzt
+	}
+	if info == nil {
+		return "unbekannt"
+	}
+	commit, geaendert := "", false
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			commit = s.Value
+		case "vcs.modified":
+			geaendert = s.Value == "true"
+		}
+	}
+	if commit == "" {
+		return "unbekannt"
+	}
+	if len(commit) > 12 {
+		commit = commit[:12]
+	}
+	if geaendert {
+		commit += "+geaendert"
+	}
+	return commit
+}
+
+func programmVersion() string {
+	info, _ := debug.ReadBuildInfo()
+	return stand(version, info)
+}
 
 func main() {
 	befehl := "lauf"
@@ -42,15 +83,36 @@ func main() {
 		code = basis()
 	case "status":
 		code = status()
+	case "version":
+		fmt.Println(versionsZeile(programmVersion()))
 	case "pruefen":
 		code = pruefen(os.Args[2:])
 	case "-h", "--help", "hilfe":
-		fmt.Println("vp-tunnel-dienst [lauf|einmal|basis|status|pruefen <datei>] - siehe services/tunnel-dienst/README.md")
+		fmt.Println("vp-tunnel-dienst [lauf|einmal|basis|status|version|pruefen <datei>] - siehe services/tunnel-dienst/README.md")
 	default:
-		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (lauf, einmal, basis, status, pruefen)\n", befehl)
+		fmt.Fprintf(os.Stderr, "unbekannter Befehl %q (lauf, einmal, basis, status, version, pruefen)\n", befehl)
 		code = 2
 	}
 	os.Exit(code)
+}
+
+func versionsZeile(v string) string { return "vp-tunnel-dienst Version " + v }
+
+// basisZeile sagt, ob die geladene nft-Tabelle die Basis dieser Konfiguration ist.
+func basisZeile(stimmt bool, err error) string {
+	switch {
+	case err != nil:
+		return "Firewall-Basis: nicht prüfbar (" + err.Error() + ")"
+	case stimmt:
+		return "Firewall-Basis stimmt: ja"
+	default:
+		return "Firewall-Basis stimmt: nein (Tabelle fehlt oder weicht von `vp-tunnel-dienst basis` ab)"
+	}
+}
+
+func startMeldung(log *slog.Logger, k konfig.Konfig, v string) {
+	log.Info("Tunnel-Dienst läuft", "version", v, "api", k.APIURL, "schnittstelle", k.Schnittstelle, "intervall", k.Intervall,
+		"boxNetz", k.BoxNetz, "technikerNetz", k.TechnikerNetz)
 }
 
 func regeln(k konfig.Konfig) system.Regeln {
@@ -90,8 +152,7 @@ func lauf(log *slog.Logger, einmal bool) int {
 		}
 		return 0
 	}
-	log.Info("Tunnel-Dienst läuft", "api", k.APIURL, "schnittstelle", k.Schnittstelle, "intervall", k.Intervall,
-		"boxNetz", k.BoxNetz, "technikerNetz", k.TechnikerNetz)
+	startMeldung(log, k, programmVersion())
 	takt := time.NewTicker(k.Intervall)
 	defer takt.Stop()
 	for {
@@ -127,6 +188,9 @@ func status() int {
 	}
 	ctx := context.Background()
 	r := system.Exec{}
+	fw := system.Nft{R: r, Regeln: regeln(k)}
+	fmt.Println(versionsZeile(programmVersion()))
+	fmt.Println(basisZeile(fw.BasisStimmt(ctx)))
 	kennung := map[string]string{}
 	adressen := map[string]string{}
 	if s, err := dienst.LiesZwischenstand(k.Zustand); err == nil {
@@ -162,7 +226,7 @@ func status() int {
 		}
 		fmt.Printf("  %-28s %-18v Handshake %s\n", kennung[key], peers[key], zuletzt)
 	}
-	fenster, err := system.Nft{R: r, Regeln: regeln(k)}.Fenster(ctx)
+	fenster, err := fw.Fenster(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

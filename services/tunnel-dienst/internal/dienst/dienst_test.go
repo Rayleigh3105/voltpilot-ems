@@ -1,18 +1,22 @@
 package dienst
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/abgleich"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/quelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/soll"
 )
 
@@ -209,6 +213,53 @@ func TestOhneApiBleibtDerStandUndDasFensterSchliesstVonSelbst(t *testing.T) {
 	st, _ := LiesStatus(d.Zustand)
 	if st.FehlerInFolge != AlarmNachFehlern+1 || st.LetzterFehler == "" {
 		t.Fatalf("%+v", st)
+	}
+}
+
+// Eine abgelehnte Anmeldung ändert am Verhalten nichts (Stand bleibt, nichts
+// Neues geht auf), steht aber sofort als Fehler mit eigenem Wortlaut im Log
+// und in status.json - nicht als "API nicht erreichbar".
+func TestAbgelehnteAnmeldungWirdSofortAlsSolcheGemeldet(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		d, u, wg, fw, q := aufbau(t)
+		var log bytes.Buffer
+		d.Log = slog.New(slog.NewTextHandler(&log, nil))
+		q.daten = sollJSON(t, u.t, u.t.Add(10*time.Minute), true)
+		d.Lauf(context.Background())
+		log.Reset()
+
+		q.err = fmt.Errorf("%w (Token-Endpunkt: HTTP %d)", quelle.ErrAnmeldungAbgelehnt, status)
+		u.t = u.t.Add(time.Minute)
+		e := d.Lauf(context.Background())
+		if !errors.Is(e.Fehler, quelle.ErrAnmeldungAbgelehnt) {
+			t.Fatalf("HTTP %d: %v", status, e.Fehler)
+		}
+		if len(wg.peers) != 3 || !fw.offen("10.10.32.2", "10.10.16.2") || fw.offen("10.10.32.2", "10.10.16.3") {
+			t.Fatalf("HTTP %d: Stand muss bleiben, nichts Neues: %v %v", status, wg.peers, fw.bis)
+		}
+		zeile := log.String()
+		if !strings.Contains(zeile, "level=ERROR") || !strings.Contains(zeile, "Anmeldung abgelehnt: Client oder Secret prüfen") ||
+			strings.Contains(zeile, "API nicht erreichbar") {
+			t.Fatalf("HTTP %d: Log %q", status, zeile)
+		}
+		st, _ := LiesStatus(d.Zustand)
+		if st.FehlerInFolge != 1 || !strings.HasPrefix(st.LetzterFehler, "Anmeldung abgelehnt: Client oder Secret prüfen") {
+			t.Fatalf("HTTP %d: %+v", status, st)
+		}
+	}
+}
+
+// Die unerreichbare API bleibt eine Warnung mit ihrem bisherigen Wortlaut.
+func TestUnerreichbareApiIstKeineAbgelehnteAnmeldung(t *testing.T) {
+	d, _, _, _, q := aufbau(t)
+	var log bytes.Buffer
+	d.Log = slog.New(slog.NewTextHandler(&log, nil))
+	q.err = errors.New("dial tcp 127.0.0.1:8080: connect: connection refused")
+	e := d.Lauf(context.Background())
+	zeile := log.String()
+	if errors.Is(e.Fehler, quelle.ErrAnmeldungAbgelehnt) || !strings.Contains(zeile, "level=WARN") ||
+		!strings.Contains(zeile, "API nicht erreichbar") || strings.Contains(zeile, "Anmeldung abgelehnt") {
+		t.Fatalf("%v / %q", e.Fehler, zeile)
 	}
 }
 
