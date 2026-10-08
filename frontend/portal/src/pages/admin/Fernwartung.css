@@ -1,0 +1,109 @@
+/* Fernwartung (Plattform → Geräte → Fernwartung und die Karte auf der Box-Seite). */
+
+.vp-fw .vp-fw-lagen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-fw-lage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-fw-lage > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-sektion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  margin-top: var(--vp-space-4);
+}
+
+.vp-fw-sektion-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+}
+
+.vp-fw-sektion-kopf h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.vp-fw-fenster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.vp-fw-fenster li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.vp-fw-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.vp-fw-sperre {
+  flex-basis: 100%;
+  text-align: right;
+}
+
+tr.vp-fw-gewaehlt > td {
+  background: var(--vp-bg-light);
+}
+
+/* Befehlszeile und Gerätekonfiguration: kopierbar, umbrechend statt breit. */
+.vp-fw-code {
+  margin: 0;
+  padding: var(--vp-space-2);
+  border-radius: 8px;
+  background: var(--vp-bg-light);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+/* Karte auf der Box-Seite. */
+.vp-fw-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  margin-top: var(--vp-space-3);
+}
+
+.vp-fw-karte h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+@media (max-width: 720px) {
+  .vp-fw-aktionen {
+    justify-content: flex-start;
+  }
+  .vp-fw-sperre {
+    text-align: left;
+  }
+}

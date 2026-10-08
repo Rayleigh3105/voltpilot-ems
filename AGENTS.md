@@ -9,6 +9,7 @@ Mandantenfähiges EMS für PV, Speicher und Verbraucher. Einstieg: [Dokumentatio
 | `services/api` | Spring Boot, Portal-API, RLS, Flyway; [API-Regeln](docs/api.md) |
 | `services/ingest`, `services/timescale-writer` | MQTT → Redpanda → TimescaleDB |
 | `services/forecast`, `services/market-data` | Prognosen und externe Daten |
+| `services/tunnel-dienst` | Fernwartung: Go-Dienst auf der Wartungs-VM setzt den Soll-Stand des Portals auf WireGuard/nftables um; [README](services/tunnel-dienst/README.md), [Fernwartung](docs/fernwartung.md) |
 | `services/optimization` | Planung; [README](services/optimization/README.md) |
 | `edge-app` | Kunden-Box; [lokale Regeln](edge-app/AGENTS.md) |
 | `edge-light` | Box als ein Programm ohne Docker/Node-RED (OpenWrt/MIPS); Go-Code in `edge-app/core`; [README](edge-light/README.md), [Paritätsliste](edge-light/docs/paritaet.md) |
