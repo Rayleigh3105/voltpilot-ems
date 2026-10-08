@@ -12,6 +12,7 @@ import {
 import { VOKABULARE, WOERTER } from '../../energiemanagement';
 import * as E from '../../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON, UEMS_VERZEICHNIS } from '../../glossar';
+import { merkeAugenblick } from '../../routenUhr';
 import { useRollen } from '../../rollen';
 import {
   eintraegeZahl,
@@ -89,7 +90,10 @@ export function VerzeichnisMonate({
     let aktiv = true;
     setFehler(null);
     api.energiemanagementVerzeichnis(filter).then(
-      (v) => aktiv && setDaten(v),
+      (v) => {
+        merkeAugenblick(v.stichtag); // Konzept Nachweisen n1, Befund 3: der Stichtag der Route ist „heute“ der Dialoge
+        if (aktiv) setDaten(v);
+      },
       (e) => aktiv && setFehler(E.ablehnungSatz(e) ?? VERZEICHNIS_LADEFEHLER),
     );
     return () => {

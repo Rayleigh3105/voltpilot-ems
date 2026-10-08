@@ -1,3 +1,4 @@
+import { merkeAugenblick } from '../../routenUhr';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import {
@@ -106,8 +107,10 @@ export function Ueberblick({
         throw e;
       }),
     ]).then(
-      ([verzeichnis, dokumente, wiedervorlage, vermerke]) =>
-        aktiv && setDaten({ verzeichnis, dokumente: dokumente.dokumente, wiedervorlage, vermerke: vermerke.vermerke }),
+      ([verzeichnis, dokumente, wiedervorlage, vermerke]) => {
+        merkeAugenblick(verzeichnis.stichtag); // Befund 3: „heute“ der Dialoge ist der Tag der Route
+        if (aktiv) setDaten({ verzeichnis, dokumente: dokumente.dokumente, wiedervorlage, vermerke: vermerke.vermerke });
+      },
       () => aktiv && setFehler(true),
     );
     return () => {

@@ -45,6 +45,9 @@ class PruefumgebungAhrenbergAufbau {
         r.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://127.0.0.1:9/realms/voltpilot");
         r.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> "http://127.0.0.1:9/certs");
         r.add("voltpilot.uems.kennzahlen.enabled", () -> "false");
+        // Nachweisen PR 8: die Berichts-Naht wie in der API (Surefire schaltet sie ab) - die Korrektur der Welt am
+        // 12.11.2026 stößt den Monatsbericht an, unabhängig davon, ob der Takt der API sie zuerst abholt.
+        r.add("voltpilot.uems.berichte.enabled", () -> "true");
         r.add("voltpilot.pruefumgebung.buehnen-uhr", () -> PruefumgebungAhrenberg.BUEHNE);
     }
 
