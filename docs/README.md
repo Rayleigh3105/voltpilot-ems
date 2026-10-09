@@ -15,6 +15,7 @@ Starten Sie mit der Frage, die Sie beantworten möchten. Jede Erklärung hat ein
 | Schnittstellen | [Vertragsübersicht](contracts/README.md), [v2-Verträge](contracts/v2/README.md), [v1/v2-Umstellung](migration-v1-to-v2.md) |
 | Gerätewissen | [Messpunktkatalog](../catalog/measurement-points/README.md), [Wechselrichter-Konfiguration](../edge-app/INVERTER-CONFIG.md), [Steuerungsprüfstand](../edge-app/nodered/CONTROL-BENCH.md) |
 | Gebäudeautomation | [Modbus-Datenspiegel](../edge-app/MODBUS-SPIEGEL.md), [Loxone-Zuordnung](loxone-voltpilot-map.md) |
+| Außendarstellung | [Videos: Werkzeug, Aussehen, Bewegung, Regeln](videos.md) |
 
 ## Dokumentation pflegen
 

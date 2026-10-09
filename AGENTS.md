@@ -67,6 +67,7 @@ Nur Regeln behalten, die künftige Arbeit beeinflussen. Bestehende Einträge üb
 - Neue Feature-Flags und ihre tatsächliche Produktionskonfiguration gemeinsam prüfen. `deploy-fast.yaml` hat kein Test-Gate.
 - UEMS-Begriffe und Umsetzungsbelege stehen im [Fachmodell](docs/fachmodell/README.md); Verträge, Vektoren und tatsächliche Aufrufer zusammen prüfen. Tagesgenaue Zuordnungen schließen den letzten Tag ein; minutengenaue Intervalle sind halboffen.
 - Größenbudgets erhalten: Root höchstens 60 KB, Portal/Edge je 45 KB. Prüfen mit `bash tools/agents-md-budget.sh`; Budgets nicht erhöhen.
+- Videos für außen entstehen nach [docs/videos.md](docs/videos.md): HyperFrames, Design-Tokens des Portals, Motion Design mit vollem Einsatz; keine Aussage zu Normkonformität, Preisen oder Förderquoten.
 
 ## Themen-Index (der ausgelagerte Bestand)
 
