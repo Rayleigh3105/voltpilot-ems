@@ -18,11 +18,68 @@ import { fokussierbareElemente } from './fokus';
  * Escape gehört der obersten Fläche, nicht jeder, durch die der Tastendruck im React-Baum blubbert (ein Erklär-Blatt
  * im Blatt eines Teils schloss sonst beide samt Eingaben). Der Fokus geht beim Schließen an das Element zurück, das
  * ihn beim Öffnen hatte; lag es in einer Fläche, die inzwischen selbst gegangen ist, erbt die obere deren Auslöser.
+ *
+ * ## ⚠ WARUM DER AUSLÖSER NICHT EINFACH `document.activeElement` IST
+ *
+ * Safari (macOS und iOS) fokussiert einen angetippten Knopf oder Link nicht: beim Öffnen steht der Fokus auf `body`
+ * oder auf der Fläche darunter, und die Rückkehr liefe ins Leere. Deshalb merkt sich das Haus EINMAL hier, welches
+ * klick-fokussierbare Element der Zeiger zuletzt getroffen hat (`fokusAusloeser`) - aber nur, wenn der Browser es nicht
+ * selbst fokussiert hat. Hat er es (Chromium), gilt wie immer `document.activeElement`. Wer aus einem Menü öffnet,
+ * dessen Eintrag mit dem Menü verschwindet, nennt den Auslöser ausdrücklich: `merkeAusloeser(knopf)`.
  */
 
 let sperren = 0;
 let seitenOverflow = '';
 const stapel = [];
+
+// Was ein Klick fokussiert - also auch `tabindex="-1"`, anders als die Tab-Liste in `fokus.js`.
+const KLICK_FOKUS =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]';
+let zeigerZiel = null;
+let genannt = null;
+
+function vomZeiger(event) {
+  genannt = null;
+  const ziel = event.target instanceof Element ? event.target.closest(KLICK_FOKUS) : null;
+  // Beim `click` hat ein Browser, der Angeklicktes fokussiert, das längst getan: dann braucht es kein Gedächtnis.
+  zeigerZiel = ziel && document.activeElement !== ziel ? ziel : null;
+}
+
+// Eine Taste seit dem Zeiger: was danach aufgeht, hat er nicht ausgelöst.
+function vonDerTastatur() {
+  genannt = null;
+  zeigerZiel = null;
+}
+
+if (typeof document !== 'undefined') {
+  // Capture-Phase: vor jedem Handler, der die Fläche öffnet oder das Ereignis anhält.
+  document.addEventListener('pointerdown', vomZeiger, true);
+  document.addEventListener('click', vomZeiger, true);
+  document.addEventListener('keydown', vonDerTastatur, true);
+}
+
+/**
+ * Nennt den Auslöser der nächsten Überlagerung ausdrücklich - für Einstiege, deren angeklicktes Element gleich
+ * verschwindet (ein Menüeintrag: zurück geht es an den Menüknopf). Gilt für genau eine Fläche und nur bis zur nächsten
+ * Eingabe.
+ */
+export function merkeAusloeser(element) {
+  genannt = element ?? null;
+}
+
+/**
+ * Das Element, an das der Fokus nach dem Schließen zurückgeht - beim ÖFFNEN zu lesen, nie beim Schließen zu suchen.
+ * Reihenfolge: der ausdrücklich genannte Auslöser, sonst das vom Zeiger getroffene Element, wenn der Fokus es nicht
+ * selbst trägt (er steht auf `body` oder auf einer Fläche um das Element herum), sonst `document.activeElement`.
+ */
+export function fokusAusloeser() {
+  const aktiv = document.activeElement;
+  const ausdruecklich = genannt;
+  genannt = null;
+  if (ausdruecklich?.isConnected) return ausdruecklich;
+  if (zeigerZiel?.isConnected && (!aktiv || aktiv.contains(zeigerZiel))) return zeigerZiel;
+  return aktiv;
+}
 
 /**
  * Sperrt den Seiten-Scroll, bis die zurückgegebene Freigabe läuft. Gezählt: erst die letzte Freigabe stellt den Wert
@@ -77,7 +134,7 @@ export function useUeberlagerung(sichtbar, panelRef, onClose) {
   React.useEffect(() => {
     if (!sichtbar) return undefined;
     const panel = panelRef.current;
-    const eintrag = { panel, fokusVorher: document.activeElement };
+    const eintrag = { panel, fokusVorher: fokusAusloeser() };
     const freigeben = sperreSeitenScroll();
     stapel.push(eintrag);
     panel?.focus();

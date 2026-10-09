@@ -12,7 +12,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { fokussierbare } from '../components/VpPanel';
-import { sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
+import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 import { Ic, type IcName } from './Ic';
 
 export interface BlattProps {
@@ -46,7 +46,7 @@ export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, childre
   const schliessenRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    ausloeser.current = (document.activeElement as HTMLElement | null) ?? null;
+    ausloeser.current = fokusAusloeser();
     const marke = {};
     offeneBlaetter.push(marke);
     const escape = (e: globalThis.KeyboardEvent) => {

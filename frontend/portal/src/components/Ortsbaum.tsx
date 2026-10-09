@@ -3,6 +3,7 @@ import { Recht } from './Recht';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { merkeAusloeser } from '../../designsystem/components/shell/ueberlagerung';
 import { api, type OrtAktionen, type OrtsbaumAmStichtag, type StandortAmStichtag } from '../api';
 import {
   FLAECHE_FEHLT,
@@ -104,9 +105,6 @@ export function Ortsbaum({
   const [verschieben, setVerschieben] = useState<{ knoten: Knoten; schluessel: number } | null>(null);
   // IP-14 (H2): das Änderungsprotokoll eines Gebäudes oder Bereichs.
   const [protokoll, setProtokoll] = useState<Knoten | null>(null);
-  // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
-  // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
-  const ausloeser = useRef<HTMLElement | null>(null);
   const anfrage = useRef(0);
 
   const laden = useCallback(async () => {
@@ -138,60 +136,45 @@ export function Ortsbaum({
   }, [laden]);
 
   function oeffne(neu: Omit<DialogZustand, 'schluessel'>, von: HTMLElement | null) {
-    if (von) ausloeser.current = von;
+    // Der Auslöser kommt mit (ein Menüeintrag verschwindet, sein Knopf bleibt): der Stapel gibt den Fokus dorthin zurück.
+    if (von) merkeAusloeser(von);
     setDialog((d) => ({ ...neu, schluessel: (d?.schluessel ?? 0) + 1 }));
   }
 
   function schliesse() {
     setDialog(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   function waehle(eintrag: MenueEintrag, knoten: Knoten, von: HTMLElement) {
     // IP-14 (H2): „Änderungsprotokoll“ liest nur — ein Dialog, kein Schreibweg.
     if (eintrag.art === 'aenderungen') {
-      ausloeser.current = von;
+      merkeAusloeser(von);
       setProtokoll(knoten);
       return;
     }
     // IP-12 (V1 → V2): „Verschieben …“ öffnet den eigenen Dialog.
     if (eintrag.art === 'verschieben') {
-      ausloeser.current = von;
+      merkeAusloeser(von);
       setVerschieben((v) => ({ knoten, schluessel: (v?.schluessel ?? 0) + 1 }));
       return;
     }
     const art: ArchivAktion | null =
       eintrag.art === 'archivieren_gesperrt' ? 'gesperrt' : eintrag.knopf ? eintrag.art : null;
     if (!art) return;
-    ausloeser.current = von;
+    merkeAusloeser(von);
     setAktion((a) => ({ art, knoten, schluessel: (a?.schluessel ?? 0) + 1 }));
   }
 
   function schliesseVerschieben() {
     setVerschieben(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   function schliesseProtokoll() {
     setProtokoll(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   function schliesseAktion() {
     setAktion(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   const sicht = antwort ? ortsbaumSicht(antwort) : null;

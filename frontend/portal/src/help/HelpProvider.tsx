@@ -1,5 +1,6 @@
 import { Component, createContext, lazy, Suspense, useContext, useState, type ReactNode } from 'react';
 import { Modal } from '../../designsystem/components/shell/Modal';
+import { merkeAusloeser } from '../../designsystem/components/shell/ueberlagerung';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { PageLoading } from '../components/Lazy';
 import { helpHref, type HelpArticleId } from './model';
@@ -23,8 +24,8 @@ export function HelpProvider({ children }: { children: ReactNode }) {
   const [trail, setTrail] = useState<HelpArticleId[]>([]);
   const [isOpen, setOpen] = useState(false);
   const article = trail[trail.length - 1];
-  // Explicit focus also makes pointer clicks in Safari a reliable return target.
-  return <HelpContext.Provider value={(id, trigger) => { trigger.focus(); setTrail([id]); setOpen(true); }}>
+  // Safari does not focus a clicked link: the overlay stack is told the return target explicitly.
+  return <HelpContext.Provider value={(id, trigger) => { merkeAusloeser(trigger); setTrail([id]); setOpen(true); }}>
     {children}
       <Modal open={isOpen} title="Hilfe zur Ansicht" onClose={() => setOpen(false)} footer={<>
         {trail.length > 1 && <button type="button" className="vp-help-link" onClick={() => setTrail((t) => t.slice(0, -1))}><span aria-hidden="true">‹</span> Vorheriger Artikel</button>}
