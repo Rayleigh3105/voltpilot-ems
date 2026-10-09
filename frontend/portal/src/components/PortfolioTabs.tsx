@@ -60,6 +60,7 @@ export function portfolioTabHash(
 export function PortfolioTabs({
   page,
   showErloese,
+  showStandorte = true,
   showMessstellen = false,
   showBezugsgroessen = false,
   showKennzahlen = false,
@@ -83,6 +84,12 @@ export function PortfolioTabs({
 }: {
   page: PageId;
   showErloese: boolean;
+  /**
+   * AP-02 IP-6: „Unternehmen › Standorte“, solange die Ebenen-Navigation noch nicht steht.
+   * firstmate K2: von der gewohnten Übersicht aus (kein Standort misst) bleibt die Navigation
+   * zeichengleich zu main — hier bewusst `false`; der Weg ist dort der leise Einstieg im ⋯-Menü.
+   */
+  showStandorte?: boolean;
   /** Ein Standort misst — die Ebene hat den Bereich „Messstellen“. */
   showMessstellen?: boolean;
   /** AP-09 IP-9: ein Standort misst; die Unternehmenswelt bleibt auch leer erreichbar. */
@@ -136,6 +143,7 @@ export function PortfolioTabs({
   if (!isPortfolioPage(page) || detail) return null;
   const welten = PORTFOLIO_WELT_PAGES.filter(
     (p) =>
+      (p.id !== 'portfolio-standorte' || showStandorte || page === p.id) &&
       (p.id !== 'portfolio-erloese' || showErloese || page === p.id) &&
       (p.id !== 'portfolio-messstellen' || showMessstellen || page === p.id) &&
       (p.id !== 'portfolio-bezugsgroessen' || showBezugsgroessen) &&

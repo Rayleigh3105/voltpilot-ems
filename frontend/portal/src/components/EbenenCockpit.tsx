@@ -194,10 +194,9 @@ export function EbenenCockpit({
   // AP-01 E5 = A: die Karte „Funktionen“ öffnet den EINEN Messen-Assistenten der App; ohne Wirt bleibt der Hinweis.
   const messen = useMessenEinstieg();
   const messenRunde = messen?.runde ?? 0;
-  // Vor der Bestätigung gibt es noch keine UEMS-Ebene: der Mehr-Anlagen-
-  // Bestand landet im bisherigen Portfolio (dort trägt `StandortVorschlagHinweis`
-  // die Vorschlagskarte); nach der Bestätigung bleibt sie zusätzlich auf der
-  // Unternehmens-Ebene zulässig.
+  // Vor der Bestätigung gibt es noch keine UEMS-Ebene: der Mehr-Anlagen-Bestand landet im
+  // bisherigen Portfolio (dort trägt `PortfolioCockpit` den leisen Einstieg im ⋯-Menü, firstmate
+  // K2); nach der Bestätigung bleibt sie zusätzlich auf der Unternehmens-Ebene zulässig.
   const darfStandorteEinrichten = ebene.art === 'unternehmen' && rollen.darf('standort.verwalten', null);
 
   useEffect(() => {

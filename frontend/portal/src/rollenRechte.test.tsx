@@ -6,6 +6,7 @@ import { Recht } from './components/Recht';
 import { darf, grundUndWeg, ohneStandort, RechteStandort, setSelbstauskunft, sichtbareStandorte, teilansichtKopf } from './rollen';
 import { darf as vertragDarf } from './rechte';
 import { rechteSeed, RECHTE_MATRIX, STANDORT_IDS } from './test/rollenFixtures';
+import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { startEbene } from './betriebsart';
 
 afterEach(cleanup);
@@ -57,7 +58,9 @@ it('T3 · Peter landet mit nur einem sichtbaren Standort auf Werk Lindach, auch 
   setSelbstauskunft(me);
   const orte = { standorte: me.standorte.map(s => ({ id: s.id, name: s.name, anlagen: [] })),
     standorteGesamt: me.teilansicht!.gesamt, unternehmen: me.kundenbereich!.name };
-  const ebene = startEbene({ isAdmin: false, betriebsart: 'betreiber', siteIds: [], orte, eingeschraenkt: true });
+  // firstmate K2: Werk Lindach misst bereits (ahrenbergFunktionen Vorgabe) — die Teilansicht
+  // landet wie vor K2 auf seiner Standort-Übersicht.
+  const ebene = startEbene({ isAdmin: false, betriebsart: 'betreiber', siteIds: [], orte, eingeschraenkt: true, funktionen: ahrenbergFunktionen() });
   expect(ebene.art).toBe('standort');
   expect(orte.standorte.map(s => s.name)).toEqual(['Werk Lindach']);
 });

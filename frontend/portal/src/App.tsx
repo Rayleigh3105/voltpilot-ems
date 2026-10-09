@@ -15,6 +15,7 @@ import {
   setKundenbereich,
   type Betriebsart,
   type Device,
+  type Funktionen,
   type Site,
   type StandorteAmStichtag,
   type Unternehmen,
@@ -46,7 +47,6 @@ import {
   isGeraeteBereich,
   hashForRoute,
   isBootHash,
-  isPortfolioPage,
   pageRoute,
   parseMessstelleWerte,
   PLATFORM_PAGES,
@@ -92,7 +92,6 @@ import {
   ebenenReiter,
   ebenenTitel,
   EBENEN_SEITEN,
-  flottenEintraege,
   istDetailseite,
   misstAnlage,
   resolveAnlage,
@@ -973,9 +972,48 @@ function UnifiedPortal() {
     },
     [orteQuelle, selbst],
   );
+  // firstmate K2 (09.10.2026): die Standort-/Unternehmensebene ist erst die Landung, wenn
+  // mindestens ein lebender Standort misst — `startEbene` braucht die Funktionen also VOR sich
+  // selbst, nicht erst danach (der bisherige `aufEbene`-Abruf unten wäre ein Zirkel). Ein
+  // eigener, unabhängiger Abruf: fail-soft, `null` (lädt/Fehler/keine Standorte) bleibt unbekannt.
+  // `startFunktionenBereit` hält fest, ob dieser Abruf fertig ist (auch im Fehlerfall/ohne
+  // Standorte) — die Kanonisierung unten wartet darauf, statt mit dem unbekannten Zwischenstand
+  // (`ebene` fällt dann auf `EBENE_HEUTE` zurück) einmal falsch umzuleiten und sich danach zu
+  // korrigieren (zwei Adressänderungen/Übergänge für einen Seitenaufruf statt einer, firstmate K2 Nachtrag).
+  const [startFunktionen, setStartFunktionen] = useState<Funktionen | null>(null);
+  const [startFunktionenBereit, setStartFunktionenBereit] = useState(false);
+  useEffect(() => {
+    if ((orte?.standorte.length ?? 0) === 0) {
+      setStartFunktionen(null);
+      setStartFunktionenBereit(true);
+      return;
+    }
+    setStartFunktionenBereit(false);
+    let active = true;
+    api.funktionen().then(
+      (f) => {
+        if (active) {
+          setStartFunktionen(f);
+          setStartFunktionenBereit(true);
+        }
+      },
+      () => {
+        if (active) {
+          setStartFunktionen(null);
+          setStartFunktionenBereit(true);
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [orte]);
   const ebene = useMemo(
-    () => startEbene({ isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte, eingeschraenkt: selbst != null && !selbst.unternehmensweit }),
-    [isAdmin, betriebsart, sites, orte, selbst],
+    () => startEbene({
+      isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte,
+      eingeschraenkt: selbst != null && !selbst.unternehmensweit, funktionen: startFunktionen,
+    }),
+    [isAdmin, betriebsart, sites, orte, selbst, startFunktionen],
   );
 
   // UEMS AP-01 IP-6, Geld-Regel: auf der Unternehmens- und der Standort-Ebene
@@ -1021,8 +1059,12 @@ function UnifiedPortal() {
   // redirects could emit `uebersicht -> anlagen -> portfolio -> uebersicht`
   // for a one-site customer. The pure decision below sees one shell snapshot,
   // chooses the final target directly and performs at most one replacement.
+  // firstmate K2 Nachtrag: `startFunktionenBereit` davor — sonst feuert diese Kanonisierung einmal
+  // auf den unbekannten Zwischenstand (`ebene` fällt auf `EBENE_HEUTE` zurück, solange die
+  // Funktionen noch laden) und dann noch einmal auf die echte `ebene`, zwei Adressänderungen und
+  // zwei Seitenübergänge für einen Seitenaufruf statt einer.
   useEffect(() => {
-    if (error != null || !selbst || ohneStandort(selbst)) return;
+    if (error != null || !selbst || ohneStandort(selbst) || !startFunktionenBereit) return;
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length, ebene };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
@@ -1037,6 +1079,7 @@ function UnifiedPortal() {
     selbst,
     sites,
     ebene,
+    startFunktionenBereit,
     route.page,
     route.siteId,
     route.sub,
@@ -1274,18 +1317,19 @@ function UnifiedPortal() {
     // N3: der Eintrag „Erlöse“ der Flotte nur mit Geld — wie bisher der Reiter.
     geldWelt: hatGeldWelt(geldSites),
   };
-  // N3 (Konzept „Navigation aus einem Guss“): die Flotte ohne Standorte („Meine Anlagen“, „Portfolio“) hat dieselben
-  // Einträge wie jede Ebene — Übersicht · Standorte · Energie · Erlöse in Seitenleiste und Telefon-Leiste.
-  const flotteHier = !anlageNav && !ebenenOrtHier && ebene.art === 'heute' && fleetLevel && isPortfolioPage(page);
+  // firstmate K2 (09.10.2026): solange kein Standort misst (`ebene.art === 'heute'`), bleibt die
+  // Navigation zeichengleich zu main — nur EIN Eintrag „Meine Anlagen"/„Portfolio" in Seitenleiste
+  // und Telefon-Leiste, kein „Standorte" davor (der Weg dahin ist der leise Einstieg im ⋯-Menü).
+  // Das frühere N3 „Navigation aus einem Guss" trug der Flotte ohne Ebene dieselben Einträge wie
+  // jeder echten Ebene auf (Übersicht · Standorte · Energie · Erlöse) — das entfällt hier bewusst;
+  // eine echte Ebene (`ebenenOrtHier`, nur erreichbar sobald ein Standort misst) ist unverändert.
   const ebenenKacheln = ebenenOrtHier
     ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell, EBENEN_SEITEN, page)
-    : flotteHier
-      ? flottenEintraege({ standorte: true, geldWelt: ebenenLesemodell.geldWelt === true, offen: page })
-      : [];
+    : [];
   const standortBereich = standortBereichFuer(route, ebenenLesemodell);
   const aktivHier = ebenenAktiv(page, standortBereich, route.energiemanagementReiter);
   const ebenenNav =
-    (ebenenOrtHier || flotteHier) && ebenenKacheln.length > 0
+    ebenenOrtHier && ebenenKacheln.length > 0
       ? {
           titel: ebenenOrtHier
             ? ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen')
@@ -1604,6 +1648,9 @@ function UnifiedPortal() {
                 : page
             }
             showErloese={hatGeldWelt(geldSites)}
+            // firstmate K2: kein Standort misst (`ebene.art === 'heute'`) → kein Reiter „Standorte",
+            // zeichengleich zu main (der Weg ist dort der leise Einstieg im ⋯-Menü).
+            showStandorte={ebene.art !== 'heute'}
             showMessstellen={messstellenDa === true}
             showBezugsgroessen={bezugsgroessenDa === true}
             showKennzahlen={kennzahlenDa === true}

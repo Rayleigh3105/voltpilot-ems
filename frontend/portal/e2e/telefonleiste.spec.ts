@@ -47,9 +47,10 @@ const FAELLE: Fall[] = [
   },
   { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'lindach-kuenftig', query: 'bild=unternehmen&ansicht=lindach&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
-  // N3: der Betriebskunde ohne „Messen" hat die Einträge der Flotte — Übersicht · Standorte · Energie (Erlöse nur mit
-  // Geld); drei Einträge tragen die Leiste, dieselben wie die Seitenleiste am Rechner.
-  { name: 'betriebskunde-kuenftig', query: 'bild=unternehmen&messen=bestand&seiten=kuenftig', leiste: ['Übersicht', 'Standorte', 'Energie'], aktiv: 'Übersicht' },
+  // firstmate K2 (09.10.2026): kein Standort misst, also ist die Standort-/Unternehmensebene gar
+  // nicht erst die Landung (zeichengleich zu main) — keine Telefon-Leiste mehr (wie
+  // „betriebskunde-standort" oben), die Übersicht · Energie wandern in die Reiter darüber.
+  { name: 'betriebskunde-kuenftig', query: 'bild=unternehmen&messen=bestand&seiten=kuenftig', leiste: null },
 ];
 
 async function oeffne(page: Page, query: string) {

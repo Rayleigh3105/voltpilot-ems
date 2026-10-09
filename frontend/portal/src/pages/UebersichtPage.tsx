@@ -8,8 +8,8 @@ import { type Betriebsart, type Device, type Site } from '../api';
 import { isFleetShell } from '../betriebsart';
 import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
+import { useMessenEinrichtenEintrag } from '../components/MessenEinrichtenEintrag';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
-import { StandortVorschlagHinweis } from '../components/StandortVorschlagHinweis';
 import { AnlageSeite } from './AnlagenPage';
 import { anlageLeertext } from '../anlegeNurMessen';
 import { useAnlegeArt } from '../useAnlegeArt';
@@ -40,6 +40,14 @@ interface UebersichtProps {
  * und der leere Zustand.
  */
 export function UebersichtPage(props: UebersichtProps) {
+  // firstmate K2: der Hook läuft unbedingt (React-Regel) — gebraucht wird sein Ergebnis nur in
+  // der Flotten-Fläche unten; `AnlageSeite`/der Leerzustand haben kein ⋯-Menü dafür.
+  const messenEinrichtenEintrag = useMessenEinrichtenEintrag({
+    sites: props.sites,
+    isAdmin: props.isAdmin ?? false,
+    betriebsart: props.betriebsart ?? null,
+    onBestaetigt: () => props.onReload(),
+  });
   if (props.sites.length === 0) {
     return <UebersichtEmpty {...props} />;
   }
@@ -77,19 +85,7 @@ export function UebersichtPage(props: UebersichtProps) {
       onReload={props.onReload}
       isAdmin={props.isAdmin}
       titel="Meine Anlagen"
-      // UEMS AP-02 IP-10/O18: die Vorschlagskarte der Standorte, nur mit Recht und offenen Vorschlägen.
-      hinweis={({ anwendungen, neuLaden }) => (
-        <StandortVorschlagHinweis
-          sites={props.sites}
-          isAdmin={props.isAdmin ?? false}
-          betriebsart={props.betriebsart ?? null}
-          anwendungen={anwendungen}
-          onBestaetigt={() => {
-            neuLaden();
-            props.onReload();
-          }}
-        />
-      )}
+      messenEinrichtenEintrag={messenEinrichtenEintrag}
     />
   );
 }
