@@ -12,7 +12,7 @@ Gebaut von `tools/bewertung/pruefpaket.py`, nie von Hand. Prüfsummen in `pruefp
 |---|---|
 | Stand des Pakets | 25.09.2026 (Stichtag der Normfassung) |
 | Normfassung | ISO 50001:2018 einschließlich Amd 1:2024 · DIN EN ISO 50001:2018-12 mit DIN EN ISO 50001/A1:2024-12 |
-| Matrix | docs/bewertung/nachweismatrix.json · Fassung 1 · SHA-256 `cfa5d92cc3063ffdee5185f6e9388c7b08ab9a5ca2c4dac6f6c13d6a2e86b8ef` |
+| Matrix | docs/bewertung/nachweismatrix.json · Fassung 1 · SHA-256 `0517e7e1beb295e009d2cf8324dd0d10f0193a88f428d4f30db23ccdcd994fcc` |
 | Bewertung | docs/bewertung/bewertungen/BWB-2026-01.json · BWB-2026-01 · entwurf · Stand `09862815f` · SHA-256 `5450ec7d3f8b90f395eaa5588b5cb8ecc3cec8030902250099163159b724fbe4` |
 | Normtext | nicht enthalten; Sie bringen Ihre lizenzierte Ausgabe mit |
 
