@@ -47,10 +47,38 @@ export function FunktionenKarte({
   const titel = useRef<HTMLHeadingElement | null>(null);
   const erledigt = useRef<number | null>(null);
   useEffect(() => {
-    if (laedt || gezeigtAm == null || erledigt.current === gezeigtAm) return;
-    erledigt.current = gezeigtAm;
-    titel.current?.scrollIntoView?.({ block: 'start' });
-    titel.current?.focus({ preventScroll: true });
+    if (laedt || gezeigtAm == null) return;
+    const el = titel.current;
+    if (!el) return;
+    // Nur EINMAL je `gezeigtAm` scrollen/fokussieren — nicht bei jedem Effekt-Lauf (StrictMode ruft
+    // Setup/Aufräumen beim Einhängen doppelt auf; dieselbe Karte soll dabei nicht zweimal den Fokus reissen).
+    if (erledigt.current !== gezeigtAm) {
+      erledigt.current = gezeigtAm;
+      el.scrollIntoView({ block: 'start' });
+      el.focus({ preventScroll: true });
+    }
+    // Bausteine ÜBER dieser Karte (UebersichtBausteine) wachsen mit eigenen, späteren Abrufen weiter,
+    // nachdem dieser Scroll schon lief - ohne Nachkorrektur rutscht die Karte wieder aus dem Bild. Ein
+    // ResizeObserver holt sie zurück, solange die Seite noch wächst; kurzes Fenster, damit ein Klick
+    // danach nicht mehr zurückgerissen wird. Immer frisch aufgesetzt (nicht hinter der Einmal-Prüfung
+    // oben), sonst entfernt StrictModes doppelter Aufruf ihn wieder, bevor er je wachsen sieht.
+    if (typeof ResizeObserver === 'undefined') return;
+    let aktiv = true;
+    const beobachter = new ResizeObserver(() => {
+      if (!aktiv) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'start' });
+    });
+    beobachter.observe(document.body);
+    const ablauf = setTimeout(() => {
+      aktiv = false;
+      beobachter.disconnect();
+    }, 2000);
+    return () => {
+      aktiv = false;
+      clearTimeout(ablauf);
+      beobachter.disconnect();
+    };
   }, [laedt, gezeigtAm]);
   return (
     <section className="vp-funktionen-karte" aria-labelledby="vp-funktionen-karte-titel" data-testid="funktionen-karte">

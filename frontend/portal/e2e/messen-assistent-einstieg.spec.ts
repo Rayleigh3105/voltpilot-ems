@@ -78,16 +78,16 @@ for (const breite of [375, 1440] as const) {
       await expect(assistent(page).getByText('Womit wird gemessen?')).toBeVisible();
     });
 
-    // Vorbestehender, von K2 unabhängiger Befund (reproduziert unverändert auf origin/uems:
-    // `funktionenZiel` in App.tsx bietet den Avatar-Eintrag „Funktionen" auch an, wenn die Landung
-    // die Unternehmens-Übersicht ist — die Karte wohnt dort aber nicht mehr, „nur auf der
-    // Standort-Übersicht" (EbenenCockpit.tsx, Review PR2 §5.1). Für Jonas (unternehmensweit, zwei
-    // Standorte) zeigt `#/portfolio` also nie die Karte. Nicht Teil dieses Auftrags, nicht behoben.
+    // #1407 P1 (PR #1471, von K2 unabhängig behoben): `funktionenZiel` in App.tsx bietet den
+    // Avatar-Eintrag „Funktionen" nicht mehr an, wenn die Landung die Unternehmens-Übersicht ist -
+    // die Karte wohnt seit Review PR2 §5.1 nur noch auf der Standort-Übersicht (EbenenCockpit.tsx).
+    // Darum PH statt JW: ihr Zugriff ist auf EINEN Standort beschränkt (Teilansicht AP-03). JW sieht
+    // beide Standorte (Landung `unternehmen`) - dort bleibt das Menü seit #1407 P1 ganz weg.
     test('Avatar-Menü „Funktionen“ → Karte', async ({ page }) => {
-      // PH statt JW: ihr Zugriff ist auf EINEN Standort beschränkt (Landung `standort`). JW sieht beide Standorte
-      // (Landung `unternehmen`) - dort bleibt das Menü seit #1407 P1 ganz weg, weil die Unternehmens-Übersicht keine
-      // Funktionen-Karte mehr trägt (Konzept §5.1).
-      await oeffnen(page, 'person=PH&messen=bestand', '#/portfolio/messstellen');
+      // firstmate K2: ohne das Standard-`messen` (misst) bliebe auch PHs einziger sichtbarer Standort
+      // (Lindach) ohne Messfunktion - dann gilt K2s „kein Standort misst" auch für ihre Teilansicht,
+      // und die Landung wäre die gewohnte Übersicht statt der Standort-Übersicht (kein `funktionenZiel`).
+      await oeffnen(page, 'person=PH', '#/portfolio/messstellen');
       await page.getByRole('button', { name: /Konto-Menü/ }).click();
       const eintrag = page.getByRole('menuitem', { name: 'Funktionen' });
       await expect(eintrag).toBeVisible();

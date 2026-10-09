@@ -976,19 +976,32 @@ function UnifiedPortal() {
   // mindestens ein lebender Standort misst — `startEbene` braucht die Funktionen also VOR sich
   // selbst, nicht erst danach (der bisherige `aufEbene`-Abruf unten wäre ein Zirkel). Ein
   // eigener, unabhängiger Abruf: fail-soft, `null` (lädt/Fehler/keine Standorte) bleibt unbekannt.
+  // `startFunktionenBereit` hält fest, ob dieser Abruf fertig ist (auch im Fehlerfall/ohne
+  // Standorte) — die Kanonisierung unten wartet darauf, statt mit dem unbekannten Zwischenstand
+  // (`ebene` fällt dann auf `EBENE_HEUTE` zurück) einmal falsch umzuleiten und sich danach zu
+  // korrigieren (zwei Adressänderungen/Übergänge für einen Seitenaufruf statt einer, firstmate K2 Nachtrag).
   const [startFunktionen, setStartFunktionen] = useState<Funktionen | null>(null);
+  const [startFunktionenBereit, setStartFunktionenBereit] = useState(false);
   useEffect(() => {
     if ((orte?.standorte.length ?? 0) === 0) {
       setStartFunktionen(null);
+      setStartFunktionenBereit(true);
       return;
     }
+    setStartFunktionenBereit(false);
     let active = true;
     api.funktionen().then(
       (f) => {
-        if (active) setStartFunktionen(f);
+        if (active) {
+          setStartFunktionen(f);
+          setStartFunktionenBereit(true);
+        }
       },
       () => {
-        if (active) setStartFunktionen(null);
+        if (active) {
+          setStartFunktionen(null);
+          setStartFunktionenBereit(true);
+        }
       },
     );
     return () => {
@@ -1046,8 +1059,12 @@ function UnifiedPortal() {
   // redirects could emit `uebersicht -> anlagen -> portfolio -> uebersicht`
   // for a one-site customer. The pure decision below sees one shell snapshot,
   // chooses the final target directly and performs at most one replacement.
+  // firstmate K2 Nachtrag: `startFunktionenBereit` davor — sonst feuert diese Kanonisierung einmal
+  // auf den unbekannten Zwischenstand (`ebene` fällt auf `EBENE_HEUTE` zurück, solange die
+  // Funktionen noch laden) und dann noch einmal auf die echte `ebene`, zwei Adressänderungen und
+  // zwei Seitenübergänge für einen Seitenaufruf statt einer.
   useEffect(() => {
-    if (error != null || !selbst || ohneStandort(selbst)) return;
+    if (error != null || !selbst || ohneStandort(selbst) || !startFunktionenBereit) return;
     const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length, ebene };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
@@ -1062,6 +1079,7 @@ function UnifiedPortal() {
     selbst,
     sites,
     ebene,
+    startFunktionenBereit,
     route.page,
     route.siteId,
     route.sub,
