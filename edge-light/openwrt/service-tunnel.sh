@@ -662,6 +662,8 @@ if ubus call network get_proto_handlers 2>/dev/null | grep -q '"wireguard"'; the
     while [ "$ALT_INSTANZ" = ja ] && lauscht "$ADDR" && [ "$i" -lt 5 ]; do i=$((i + 1)); sleep 1; done
     /etc/init.d/vp-wartung enable
     /etc/init.d/vp-wartung stop >/dev/null 2>&1 || true
+    # Die Zeile "Wartungsserver: antwortet" unten soll eine Antwort von jetzt meinen.
+    rm -f /tmp/vp-wartung/zuletzt /tmp/vp-wartung/grund
     /etc/init.d/vp-wartung start || true
     if oben; then
       # Zweimal im Abstand von 1 s: eine Instanz, die am belegten Port scheitert, zaehlt nicht.
@@ -695,6 +697,8 @@ else
     # Die Anmelde-Instanz startet von selbst, sobald die Schnittstelle da ist.
     /etc/init.d/vp-wartung enable
     /etc/init.d/vp-wartung stop >/dev/null 2>&1 || true
+    # Die Zeile "Wartungsserver: antwortet" unten soll eine Antwort von jetzt meinen.
+    rm -f /tmp/vp-wartung/zuletzt /tmp/vp-wartung/grund
     /etc/init.d/vp-wartung start || true
   fi
   (sleep 2; /etc/init.d/network restart) >/dev/null 2>&1 </dev/null &
