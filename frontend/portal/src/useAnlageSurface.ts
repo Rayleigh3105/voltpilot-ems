@@ -6,7 +6,7 @@ import {
   aufmerksamkeit,
   type Aufmerksamkeit,
 } from './steuerungAufmerksamkeit';
-import { mitEnergiebilanz } from './anlageEnergiebilanz';
+import { mitEnergiebilanz } from './energiebilanzReiter';
 import { anlageAufEbene, anlageOhneGeld, ohneGeld } from './anlageGeld';
 import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
 

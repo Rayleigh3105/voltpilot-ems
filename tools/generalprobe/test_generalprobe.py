@@ -182,7 +182,7 @@ class Results(unittest.TestCase):
             [{'kundenbereiche': 1, 'stichtag_bestandslauf': 0, 'stichtag_neu': 0, 'ohne_stichtag': 1, 'konten_uebernommen': None}],
             [{'registry_schluessel_je_box': True, 'offene_perioden_ohne_box': 0}],
             [{'arbeit_viertelstunde_offen': 0, 'arbeit_tag_offen': 0, 'arbeit_periode_offen': 0}],
-            [{'geloescht_markiert': 18, 'fehlgeschlagen': 0, 'sql_erfolgreich': 235, 'versionen_geloescht': 18}],
+            [{'geloescht_markiert': 18, 'fehlgeschlagen': 0, 'sql_erfolgreich': 235, 'versionen_geloescht': 18, 'geloescht_offen': 18}],
         ]
         from unittest.mock import Mock
         db = Mock()
@@ -211,7 +211,7 @@ class Results(unittest.TestCase):
             self.assertIn('telemetry.raw,telemetry-v2.raw,measurements.raw,events.raw', result.stdout)
 
     def test_operator_review_codes_and_all_counts_survive(self):
-        report = {'C': {'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0}}, 'pruefen_Z03': 2, 'pruefen_Z05': 3, 'A': {'startbudget_reicht': 1}, 'W1': {'ungeprobt': 0}}
+        report = {'C': {'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'geloescht_offen': 0}}, 'pruefen_Z03': 2, 'pruefen_Z05': 3, 'A': {'startbudget_reicht': 1}, 'W1': {'ungeprobt': 0}}
         with self.assertRaises(g.Refusal) as raised:
             g.review(report, False)
         self.assertEqual(21, raised.exception.code)
@@ -230,9 +230,9 @@ class Results(unittest.TestCase):
             self.assertEqual(code, raised.exception.code)
 
     def test_history_damage_takes_priority_even_with_successful_delete_markers(self):
-        clean = {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 235, 'versionen_geloescht': 0}
+        clean = {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 235, 'versionen_geloescht': 0, 'geloescht_offen': 0}
         for phase in ('C', 'W1'):
-            for column in ('geloescht_markiert', 'fehlgeschlagen'):
+            for column in ('geloescht_offen', 'fehlgeschlagen'):
                 with self.subTest(phase=phase, column=column):
                     report = {'C': {'Z08': dict(clean)}, 'W1': {'Z08': dict(clean)}, 'pruefen_Z03': 1}
                     report[phase]['Z08'][column] = 18
@@ -240,6 +240,17 @@ class Results(unittest.TestCase):
                         g.review(report, False)
                     self.assertEqual(26, raised.exception.code)
                     self.assertEqual(235, report[phase]['Z08']['sql_erfolgreich'])
+
+    def test_healed_production_markers_are_history_not_damage(self):
+        # Production copy 08.10.2026: 15 DELETE markers of 02.08.2026, each re-applied identically.
+        healed = {'geloescht_markiert': 15, 'fehlgeschlagen': 0, 'sql_erfolgreich': 335, 'versionen_geloescht': 3, 'geloescht_offen': 0}
+        report = {'C': {'Z08': dict(healed)}, 'W1': {'Z08': dict(healed), 'ungeprobt': 0}, 'pruefen_Z03': 0,
+                  'pruefen_Z05': 0, 'A': {'startbudget_reicht': 1}}
+        g.review(report, False)
+        report['W1']['Z08']['geloescht_offen'] = 1
+        with self.assertRaises(g.Refusal) as raised:
+            g.review(report, False)
+        self.assertEqual(26, raised.exception.code)
 
     def test_restore_calls_existing_tool_with_exact_point_and_compares_both(self):
         from unittest.mock import Mock

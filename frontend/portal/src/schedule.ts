@@ -19,7 +19,7 @@ import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
 import { proofAnchor } from './fleet';
 import { eurAmount, fmtNum, NBSP } from './format';
-import { FAHRPLAN_TAETIGKEIT } from './glossar';
+import { FAHRPLAN_TAETIGKEIT } from './glossarEinstieg';
 
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
 export const SLOT_DEADBAND_KW = 0.05;

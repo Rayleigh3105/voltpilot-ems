@@ -26,7 +26,7 @@
 
 import type { FlowNode } from './topology';
 import type { LiveSnapshot } from './live';
-import { LADEN_BEI_BEZUG_FAHRPLAN, LADEN_BEI_BEZUG_WOLKE } from './glossar';
+import { LADEN_BEI_BEZUG_FAHRPLAN, LADEN_BEI_BEZUG_WOLKE } from './glossarEinstieg';
 
 /**
  * Ab diesem Betrag zählen Laden UND Bezug — beide müssen darüber liegen.

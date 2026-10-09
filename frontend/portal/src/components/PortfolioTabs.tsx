@@ -1,9 +1,8 @@
 import type { KostenstelleEnergiePeriode } from '../api';
 import { ebenenAktiv, type EbenenBereichId, type EbenenKachel, type EbenenLeistenKachel } from '../ebenenNav';
-import { REITER as ENERGIEMANAGEMENT_REITER } from '../energiemanagementPortal';
-import { REITER as ZIELE_REITER } from '../energieziele';
-import { UEMS_WIEDERVORLAGE } from '../glossar';
-import { REITER_WORT, reiterAus, reiterHash, type MessstellenReiter } from '../kostenstellenUebersicht';
+import { ENERGIEMANAGEMENT_REITER, VERBESSERUNG_REITER as ZIELE_REITER } from '../bereichSicht';
+import { UEMS_WIEDERVORLAGE } from '../glossarEinstieg';
+import { REITER_WORT, reiterAus, reiterHash, type MessstellenReiter } from '../messstellenReiter';
 import { organisationReiter, useMessstellenFlaeche, useOrganisation } from '../messstellenOrganisation';
 import { useReiterRand } from '../reiterRand';
 import {

@@ -84,7 +84,10 @@ for (const breite of [375, 1440] as const) {
     // Standort-Übersicht" (EbenenCockpit.tsx, Review PR2 §5.1). Für Jonas (unternehmensweit, zwei
     // Standorte) zeigt `#/portfolio` also nie die Karte. Nicht Teil dieses Auftrags, nicht behoben.
     test('Avatar-Menü „Funktionen“ → Karte', async ({ page }) => {
-      await oeffnen(page, 'person=JW&messen=bestand', '#/portfolio/messstellen');
+      // PH statt JW: ihr Zugriff ist auf EINEN Standort beschränkt (Landung `standort`). JW sieht beide Standorte
+      // (Landung `unternehmen`) - dort bleibt das Menü seit #1407 P1 ganz weg, weil die Unternehmens-Übersicht keine
+      // Funktionen-Karte mehr trägt (Konzept §5.1).
+      await oeffnen(page, 'person=PH&messen=bestand', '#/portfolio/messstellen');
       await page.getByRole('button', { name: /Konto-Menü/ }).click();
       const eintrag = page.getByRole('menuitem', { name: 'Funktionen' });
       await expect(eintrag).toBeVisible();

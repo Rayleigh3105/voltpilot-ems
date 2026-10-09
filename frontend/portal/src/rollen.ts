@@ -22,7 +22,7 @@ import { deviceName } from './entityLabel';
 import { defaultRole } from './topology';
 import { createContext, useContext, useSyncExternalStore } from 'react';
 import type { Selbstauskunft } from './api';
-import { teilansicht, TEXTE } from './rechte';
+import { teilansicht, TEXTE } from './rechteTexte';
 
 /** AP-03 IP-12: Kundenrechte kommen ausschließlich aus der Selbstauskunft.
  * Die Route wendet den Java-Zwilling der Matrix an und liefert die wirksamen

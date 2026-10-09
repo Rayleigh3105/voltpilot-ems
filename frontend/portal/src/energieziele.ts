@@ -5,40 +5,24 @@
  * Route; das Portal setzt nur Zahlen ins deutsche Format (`bezugsbasisVergleich.ts`) und wählt Wörter aus `glossar.ts`.
  * „Energieziel“, nie „Ziel“ allein (W6) — „Ziel: 2,2 kW“ gehört der Steuerung.
  */
-import { ApiError, type Energieziel, type EnergiezielEintrag, type EnergiezielErgebnis, type EnergiezielStand, type Selbstauskunft } from './api';
+import { ApiError, type Energieziel, type EnergiezielEintrag, type EnergiezielErgebnis, type EnergiezielStand } from './api';
 import { band, deltaText, deZahl, menge, monatWort, urteilWort } from './bezugsbasisVergleich';
 import {
-  UEMS_ABWEICHUNGEN,
   UEMS_ENERGIEZIEL,
   UEMS_ENERGIEZIEL_ERGEBNISSE,
   UEMS_ENERGIEZIEL_ZUSTAENDE,
   UEMS_ENERGIEZIELE,
-  UEMS_MASSNAHMEN,
   UEMS_VERANTWORTLICH,
   UEMS_ZIELPERIODE,
   UEMS_ZIELWERT,
 } from './glossar';
-import type { VerbesserungReiter } from './nav';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
 
-type Rechte = Pick<Selbstauskunft, 'standorte' | 'unternehmen_rechte'>;
-
-const hat = (s: Rechte | null | undefined, recht: string, standortId?: string | null) =>
-  !!s &&
-  (s.unternehmen_rechte.includes(recht) ||
-    (standortId !== null && s.standorte.some((st) => (standortId === undefined || st.id === standortId) && st.rechte.includes(recht))));
-
-/** `verbesserung.ansehen` am Unternehmen oder an einem Standort — sonst gibt es den Bereich nicht. */
-export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'verbesserung.ansehen');
+/** `verbesserung.ansehen` und die Reiter des Bereichs wohnen in `bereichSicht.ts` (Einstiegs-Bündel). */
+export { darfVerbesserungSehen as darfAnsehen, VERBESSERUNG_REITER as REITER } from './bereichSicht';
 
 // ------------------------------------------------------------------ Wörter
-
-export const REITER: readonly { key: VerbesserungReiter; label: string }[] = [
-  { key: 'energieziele', label: UEMS_ENERGIEZIELE },
-  { key: 'massnahmen', label: UEMS_MASSNAHMEN },
-  { key: 'abweichungen', label: UEMS_ABWEICHUNGEN },
-];
 
 export const KNOPF_SETZEN = `${UEMS_ENERGIEZIEL} setzen`;
 export const KNOPF_BEWERTEN = 'bewerten';

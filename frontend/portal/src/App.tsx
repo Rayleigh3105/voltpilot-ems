@@ -1,4 +1,3 @@
-import { BenutzerPage } from './pages/BenutzerPage';
 import { darf, ohneStandort, RechteStandort, setSelbstauskunft, teilansichtKopf, useRollen } from './rollen';
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
@@ -76,12 +75,11 @@ import {
   type Route,
 } from './nav';
 import { PAGE_CHUNK } from './pageChunks';
-import { darfAnsehen as darfEnergieeinsaetzeSehen } from './bewertung';
-import { darfAnsehen as darfVerbesserungSehen } from './energieziele';
-import { darfAnsehen as darfEnergiemanagementSehen } from './energiemanagementPortal';
+import { darfEnergieeinsaetzeSehen, darfEnergiemanagementSehen, darfVerbesserungSehen } from './bereichSicht';
 import { transitionToRoute } from './pageTransition';
 import { hatGeldWelt } from './geldWelt';
-import { geldAnlagen, type UebersichtEbene } from './uebersicht';
+import { geldAnlagen } from './funktionenRegeln';
+import type { UebersichtEbene } from './uebersicht';
 import { showAddAnlageButton } from './addAnlage';
 import {
   activeAreaKey,
@@ -113,7 +111,7 @@ import {
   requestNavigation,
 } from './navigationBlocker';
 import { useFreshnessPoll } from './useFreshnessPoll';
-import { sprungziel, type Sprung } from './uemsOberflaechen';
+import { sprungziel, type Sprung } from './uemsSprung';
 import { useDeployWatch } from './deployWatch';
 import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
@@ -195,6 +193,11 @@ async function orteLaden(): Promise<OrteQuelle | null> {
 
 const StandortePage = lazy(() =>
   PAGE_CHUNK['portfolio-standorte']().then((m) => ({ default: m.StandortePage })),
+);
+// „Benutzer“ öffnet nur, wer Personen verwaltet - die Seite trägt die ganze
+// Unterstützungs-Karte (42 kB) und kommt deshalb mit ihrem Klick, nicht mit dem Einstieg.
+const BenutzerPage = lazy(() =>
+  PAGE_CHUNK['kunden-benutzer']().then((m) => ({ default: m.BenutzerPage })),
 );
 const MessstellenPage = lazy(() =>
   PAGE_CHUNK['portfolio-messstellen']().then((m) => ({ default: m.MessstellenPage })),
@@ -1481,9 +1484,9 @@ function UnifiedPortal() {
   const leer = ohneStandort(selbst) && !(isAdmin && PLATFORM_PAGES.some((p) => p.id === page));
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
-  // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war.
-  const funktionenZiel: Route | null =
-    ebene.art === 'unternehmen' ? pageRoute('portfolio') : ebene.art === 'standort' ? standortRoute(ebene.standort.id) : null;
+  // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war. Die Unternehmens-Übersicht trägt die
+  // Funktionen-Karte seit PR2 §5.1 nicht mehr (EbenenCockpit.tsx), darum bleibt auch dieses Ziel dort aus (#1407 P1).
+  const funktionenZiel: Route | null = ebene.art === 'standort' ? standortRoute(ebene.standort.id) : null;
   const messenWirt = { oeffnen: setMessenZiel, runde: messenRunde, karteGezeigtAm };
   return (
     <ReportFirstPaint.Provider value={markLandingReady}>

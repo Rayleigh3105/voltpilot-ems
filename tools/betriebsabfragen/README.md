@@ -99,14 +99,17 @@ Verbrauchsanlage und Tarif am Portal → W7.
 | **Z02** `ort_aenderung_art_chk` | Trägt der CHECK die Zwölfer-Liste? | Go/No-Go: fehlt `rolle_gesetzt`, scheitert jede Rollen-Zuordnung still |
 | **Z03** Funktions-Läufer | Was hat er aus dem Bestand abgeleitet? | die Vorschau für den Betreiber (B6), BEVOR das Urteil gilt — der Läufer betrachtet eine Teilnahme nie wieder |
 | **Z04** Anlagen ohne Teilnahme | Gibt es den Halb-Zustand noch? | N2: nur Anlagen ohne Standort dürfen hier stehen; alles andere ist der Halb-Zustand, den AP-14 IP-3 beendet |
-| **Z05** Rechte-Läufer | Hat er jeden Kundenbereich erreicht? | N5: `ohne_stichtag` muss erklärt sein und der Generalprobe entsprechen (D8) |
+| **Z05** Rechte-Läufer | Hat er jeden Kundenbereich erreicht? | N5: `ohne_stichtag` muss auf der Kopie erklärt sein; am Rollout-Tag vor dem Öffnen `= 0` (Drehbuch Schritt 9b). Der Läufer wiederholt offene Kundenbereiche selbst (30 s bis 5 min), kein Neustart |
 | **Z06** Registry-Schlüssel, Befehlsverlauf | Ist der Schlüssel gewechselt, der Verlauf geschlossen? | Go/No-Go (D8): beide Werte entsprechen der Generalprobe |
 | **Z07** Arbeitslisten | Stehen sie nach dem ersten Lauf, oder laufen sie auf? | Nachlauf M-6; wachsen sie nach 24 h: Läufer per gitops-Wert aus (P6) |
-| **Z08** Unversehrtheit der Flyway-Historie | `geloescht_markiert`, `fehlgeschlagen`, `sql_erfolgreich`, `versionen_geloescht` (nur Zählungen) | **`geloescht_markiert > 0`: NICHT das neue Image einfach wieder ausrollen. API/Writer anhalten, Befund sichern, geübter Rückweg auf den Wiederherstellungspunkt vor Portalöffnung.** Fehlgeschlagene Einträge ebenfalls untersuchen; SQL-Zahl mit eingefrorenem Release und Vorher-Blatt abgleichen. |
+| **Z08** Unversehrtheit der Flyway-Historie | `geloescht_markiert`, `fehlgeschlagen`, `sql_erfolgreich`, `versionen_geloescht`, `geloescht_offen` (nur Zählungen) | **`geloescht_offen > 0` oder `geloescht_markiert` über dem Ausgangswert (Produktion: 15 geheilte Marker vom 02.08.2026): NICHT das neue Image einfach wieder ausrollen. API/Writer anhalten, Befund sichern, geübter Rückweg auf den Wiederherstellungspunkt vor Portalöffnung.** Fehlgeschlagene Einträge ebenfalls untersuchen; SQL-Zahl mit eingefrorenem Release und Vorher-Blatt abgleichen. |
 
 Z01 zählt `angewandt` ausschließlich für erfolgreiche Zeilen mit `type = 'SQL'`.
 Ein erfolgreicher `DELETE`-Marker ist keine angewandte Migration. Z08 erkennt ihn auch,
-wenn `fehlgeschlagen = 0` ist. Zusätzlich den kanonischen Fingerabdruck aus
+wenn `fehlgeschlagen = 0` ist.
+Geheilt ist ein Marker nur, wenn die jüngste Zeile seiner Version eine erfolgreiche SQL-Neuanwendung mit gleicher Prüfsumme, Beschreibung und gleichem Skript ist; dieselbe Regel wendet der Start-Wächter der API an.
+Nur geheilte Marker sind Geschichte, offene sind Schaden.
+Zusätzlich den kanonischen Fingerabdruck aus
 `installed_rank, version, type, checksum, success, description, script` nach Migration
 und vor Portalöffnung vergleichen: keine unerwarteten Änderungen oder weiteren Zeilen.
 Keine automatische Entfernung von Markern; nach Portalöffnung gilt der vereinbarte Vorwärtsweg.

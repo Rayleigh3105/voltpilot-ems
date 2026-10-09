@@ -105,6 +105,7 @@ public class BerichtController {
     public BerichtDto.Betroffen betroffen(@RequestParam(required = false) String objekt,
             @RequestParam(name = "gilt_ab", required = false) String giltAb, @RequestParam(required = false) String anlass,
             Authentication auth) {
+        pflicht(anlass, "anlass");
         if (!STRUKTUR_ANLAESSE.contains(anlass)) {
             throw BerichtAbgelehnt.anfrage("anlass");
         }

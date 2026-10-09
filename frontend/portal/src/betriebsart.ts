@@ -1,6 +1,6 @@
 import type { Betriebsart, Funktionen, StandorteAmStichtag, Unternehmen } from './api';
 import { misst } from './ebenenNav';
-import { UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossar';
+import { UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossarEinstieg';
 import { anlageRoute, hashForRoute, isPortfolioPage, pageRoute, standortRoute, type Route } from './nav';
 
 /**

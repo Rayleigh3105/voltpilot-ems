@@ -55,6 +55,14 @@ class Nw3AusgeliefertesBoxImageTest {
 
     private static final String RELEASE_095 = "edge-2026.09.5";
 
+    /**
+     * Der Stand, den die Box im NW-3-Lauf des Tags vom 29.09.2026 meldete
+     * ({@code docs/rollout/nw3-protokoll-edge-2026.09.6.json}).
+     */
+    private static final String GEMELDETER_STAND_096 = "edge-2026.09.6-becfa44e48ed";
+
+    private static final String RELEASE_096 = "edge-2026.09.6";
+
     @Test
     void dieAusgelieferteBoxOhneReleaseImRegisterBrauchtDasUpdateJeDatenquelle() throws Exception {
         // Ein Stand, der zu keinem Release des Registers gehört, beweist keine Fähigkeit
@@ -93,8 +101,8 @@ class Nw3AusgeliefertesBoxImageTest {
 
     @Test
     void auchDasJuengereReleaseTraegtDieFaehigkeitNicht() throws Exception {
-        // edge-2026.09.5 (24.09.2026) ist die neueste ausgelieferte Box: ohne und mit
-        // Release im Register sagt die Fläche denselben Satz wie für 09.4.
+        // edge-2026.09.5 (24.09.2026): ohne und mit Release im Register sagt die Fläche
+        // denselben Satz wie für 09.4.
         FaehigkeitenErgebnis ohne = DatenquelleRegeln.faehigkeiten(
                 new Stand(GEMELDETER_STAND_095, null, null), tabelle(), List.of());
         FaehigkeitenErgebnis mit = DatenquelleRegeln.faehigkeiten(
@@ -103,6 +111,22 @@ class Nw3AusgeliefertesBoxImageTest {
         assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_095
                 + " · Update nötig für: Rückmeldung je Datenquelle");
         assertThat(mit.text()).isEqualTo("Software " + RELEASE_095
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
+    }
+
+    @Test
+    void auchDasReleaseVomRueckmeldewegTraegtDieFaehigkeitNicht() throws Exception {
+        // edge-2026.09.6 (29.09.2026, Korrektur des Rückmeldewegs) ist die neueste ausgelieferte
+        // Box: ohne und mit Release im Register sagt die Fläche denselben Satz wie für 09.4/09.5.
+        FaehigkeitenErgebnis ohne = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_096, null, null), tabelle(), List.of());
+        FaehigkeitenErgebnis mit = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_096, RELEASE_096, null), tabelle(), List.of(RELEASE_096));
+
+        assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_096
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.text()).isEqualTo("Software " + RELEASE_096
                 + " · Update nötig für: Rückmeldung je Datenquelle");
         assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
