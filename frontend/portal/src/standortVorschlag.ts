@@ -36,6 +36,13 @@ const STEUERUNGS_ANWENDUNGEN = new Set([
  * AP-14 IP-14: genau die Aussagen, die für diesen Kunden nach dem Bestätigen
  * wahr sind. Die Komponente rendert nur dieses Urteil; die Bedingungen stehen
  * bewusst an EINER reinen Stelle und sind als Vektoren geprüft.
+ *
+ * firstmate K2: diese Vorschau gruppiert IMMER bisher nicht zugeordnete Anlagen in NEUE
+ * Standorte — die messen nach dem Bestätigen noch nicht („Messen & Auswerten" ist ein
+ * eigener, späterer Schritt). Die Unternehmens-Übersicht wird also nur versprochen, wenn
+ * schon VOR diesem Schritt ein Standort misst — das ist genau `aktuelleEbene === 'standort'`
+ * (`startEbene` erreicht diese Ebene seit K2 nur noch, wenn sie misst). Von „heute" aus (keine
+ * oder keine messenden Standorte) bleibt die Startseite unverändert, auch mit `zielGruppen >= 2`.
  */
 export function wasSichAendert(input: {
   aktuelleEbene: 'heute' | 'standort' | 'unternehmen';
@@ -48,7 +55,7 @@ export function wasSichAendert(input: {
   const saetze: string[] = [];
   const wechseltZurUnternehmensUebersicht = !input.isAdmin
     && input.betriebsart !== 'betreiber'
-    && input.aktuelleEbene !== 'unternehmen'
+    && input.aktuelleEbene === 'standort'
     && input.zielGruppen >= 2;
   if (wechseltZurUnternehmensUebersicht) saetze.push(STARTSEITE_UNTERNEHMEN);
 

@@ -1424,7 +1424,9 @@ function Vorschau() {
   const [, setRevision] = useState(0);
   const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
   const orte = orteAus(szene.liste, szene.unternehmen);
-  const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit });
+  // firstmate K2: dieselbe `GET /funktionen`-Antwort wie das Lesemodell unten (`funktionenDerSzene`) —
+  // `?messen=bestand`/`?messen=entwurf` lässt die Bühne gezielt einen nicht messenden Standort stellen.
+  const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit, funktionen: funktionenDerSzene() });
   // D6 wie `App.tsx`: mit mehreren Standorten heißt die Flotten-Ebene wie das Unternehmen.
   const FLOTTE = flottenName(rahmen.betriebsart, ebene);
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };

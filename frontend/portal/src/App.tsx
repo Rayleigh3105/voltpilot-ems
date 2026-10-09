@@ -16,6 +16,7 @@ import {
   setKundenbereich,
   type Betriebsart,
   type Device,
+  type Funktionen,
   type Site,
   type StandorteAmStichtag,
   type Unternehmen,
@@ -970,9 +971,35 @@ function UnifiedPortal() {
     },
     [orteQuelle, selbst],
   );
+  // firstmate K2 (09.10.2026): die Standort-/Unternehmensebene ist erst die Landung, wenn
+  // mindestens ein lebender Standort misst — `startEbene` braucht die Funktionen also VOR sich
+  // selbst, nicht erst danach (der bisherige `aufEbene`-Abruf unten wäre ein Zirkel). Ein
+  // eigener, unabhängiger Abruf: fail-soft, `null` (lädt/Fehler/keine Standorte) bleibt unbekannt.
+  const [startFunktionen, setStartFunktionen] = useState<Funktionen | null>(null);
+  useEffect(() => {
+    if ((orte?.standorte.length ?? 0) === 0) {
+      setStartFunktionen(null);
+      return;
+    }
+    let active = true;
+    api.funktionen().then(
+      (f) => {
+        if (active) setStartFunktionen(f);
+      },
+      () => {
+        if (active) setStartFunktionen(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [orte]);
   const ebene = useMemo(
-    () => startEbene({ isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte, eingeschraenkt: selbst != null && !selbst.unternehmensweit }),
-    [isAdmin, betriebsart, sites, orte, selbst],
+    () => startEbene({
+      isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte,
+      eingeschraenkt: selbst != null && !selbst.unternehmensweit, funktionen: startFunktionen,
+    }),
+    [isAdmin, betriebsart, sites, orte, selbst, startFunktionen],
   );
 
   // UEMS AP-01 IP-6, Geld-Regel: auf der Unternehmens- und der Standort-Ebene

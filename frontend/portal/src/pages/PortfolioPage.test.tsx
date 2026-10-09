@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PortfolioPage } from './PortfolioPage';
-import { api, type Overview, type OverviewSite, type Site } from '../api';
+import { api, type Overview, type OverviewSite, type Site, type StandorteAmStichtag } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 
@@ -78,6 +78,9 @@ beforeEach(() => {
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
   vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
   vi.spyOn(api, 'standortZuordnungVorschlag').mockResolvedValue({ gruppen: [], anlagenZahl: 0 });
+  vi.spyOn(api, 'standorte').mockResolvedValue(
+    { stichtag: '2026-10-20', standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null } as StandorteAmStichtag,
+  );
 });
 
 function renderPage() {
@@ -109,12 +112,13 @@ describe('Portfolio-Landung: dieselbe Übersicht für jede Betriebsart', () => {
 });
 
 /**
- * UEMS AP-02 IP-10/O18: vor der Bestätigung gibt es keine UEMS-Ebene — die
- * Vorschlagskarte gehört auf die Flotte, unter die Statuszeile der vier Blöcke.
- * Seit main (d1d67b97e) die Flotte umgebaut hat, reicht die Seite sie als Hinweis
- * in das Portfolio-Cockpit.
+ * firstmate K2 (09.10.2026): vor der Bestätigung gibt es keine UEMS-Ebene — die frühere grosse
+ * Vorschlagskarte unter der Statuszeile ist entfallen. Ersatz ist der leise Einstieg „Messen &
+ * Auswerten einrichten" im ⋯-Menü der Flotte (nur mit `standort.verwalten`, von `RowMenu` selbst
+ * gefiltert), der ohne Standorte denselben „Standorte einrichten"-Dialog öffnet wie bisher — die
+ * Daten laden erst beim Klick, nicht mehr im Hintergrund.
  */
-describe('UEMS · Vorschlagskarte der Standorte auf der Flotte', () => {
+describe('UEMS · leiser Einstieg „Messen & Auswerten einrichten" auf der Flotte', () => {
   const VORSCHLAG = {
     anlagenZahl: 2,
     gruppen: [
@@ -125,19 +129,24 @@ describe('UEMS · Vorschlagskarte der Standorte auf der Flotte', () => {
     ],
   };
 
-  it('zeigt sie mit Recht und offenen Vorschlägen unter der Statuszeile', async () => {
+  it('zeigt den Eintrag im Menü mit Recht und öffnet ohne Standorte „Standorte einrichten"', async () => {
     vi.mocked(api.standortZuordnungVorschlag).mockResolvedValue(VORSCHLAG);
     renderPage();
-    expect(await screen.findByText('Noch nicht zugeordnet')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Standorte einrichten' })).toBeTruthy();
     expect(await screen.findByRole('region', { name: 'Ihre Anlagen' })).toBeTruthy();
+    expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    const eintrag = await screen.findByRole('menuitem', { name: 'Messen & Auswerten einrichten' });
+    fireEvent.click(eintrag);
+    expect(await screen.findByRole('dialog', { name: 'Standorte einrichten' })).toBeTruthy();
   });
 
-  it('ein reiner Betriebskunde lädt und sieht sie nicht', async () => {
+  it('ein reiner Betriebskunde sieht den Eintrag nicht und ruft nichts ab', async () => {
     setSelbstauskunft(rechteSeed('CB').me);
     renderPage();
     await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(screen.queryByRole('menuitem', { name: 'Messen & Auswerten einrichten' })).toBeNull();
+    expect(api.standorte).not.toHaveBeenCalled();
     expect(api.standortZuordnungVorschlag).not.toHaveBeenCalled();
-    expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
   });
 });

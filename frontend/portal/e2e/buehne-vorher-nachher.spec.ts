@@ -118,11 +118,15 @@ for (const breite of [375, 1440] as const) {
       await expect(page.getByText('Noch nicht zugeordnet')).toHaveCount(0);
       await page.screenshot({ path: join(BILDER, `u2-vorher-${breite}.png`) });
     } else {
-      await expect(page.getByText('Noch nicht zugeordnet').first()).toBeVisible();
-      await expect(page.getByText('3 Anlagen', { exact: true })).toBeVisible();
+      // firstmate K2 (09.10.2026): „nachher" ist der LAUFENDE uems-Zweig (README „belegter
+      // main-Stand … und der aktuelle UEMS-Zweig") — die frühere grosse Karte „Noch nicht
+      // zugeordnet" ist daraus entfernt, der Einstieg lebt jetzt im ⋯-Menü der gewohnten
+      // Übersicht (`standort-vorschlag.spec.ts` fährt denselben Weg gegen die Demo-Bühne).
+      await expect(page.getByText('Noch nicht zugeordnet')).toHaveCount(0);
       await page.screenshot({ path: join(BILDER, `u2-nachher-karte-${breite}.png`) });
 
-      await page.getByRole('button', { name: 'Standorte einrichten' }).click();
+      await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: 'Messen & Auswerten einrichten' }).click();
       const dialog = page.getByRole('dialog', { name: 'Standorte einrichten' });
       await expect(dialog.getByRole('heading', { name: 'Was sich ändert' })).toBeVisible();
       const strassen = dialog.getByLabel('Straße und Hausnummer *');
@@ -152,8 +156,12 @@ for (const breite of [375, 1440] as const) {
 
       await page.getByRole('button', { name: 'Zuordnung bestätigen' }).click();
       await expect(dialog).toHaveCount(0);
-      await expect(page.getByText('Noch nicht zugeordnet')).toHaveCount(0);
-      await expect(page.getByRole('heading', { name: 'Kunststoffwerk Ahrenberg GmbH' })).toBeVisible();
+      // K2: ein frisch bestätigter Standort misst noch nicht ("Messen & Auswerten" ist ein
+      // eigener, späterer Schritt) — die Landung bleibt deshalb die gewohnte Übersicht statt der
+      // Unternehmens-Übersicht. Mangels Bühnen-Lauf in dieser Umgebung nicht aus einer echten
+      // `GET /api/v1/funktionen`-Aufnahme nachgewiesen; beim nächsten `run.sh` gegenprüfen.
+      await expect(page.getByRole('heading', { name: 'Kunststoffwerk Ahrenberg GmbH' })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Meine Anlagen', level: 1 })).toBeVisible();
       await page.screenshot({ path: join(BILDER, `u2-nachher-bestaetigt-${breite}.png`) });
     }
     expect([...unbekannt]).toEqual([]);

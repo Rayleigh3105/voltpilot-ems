@@ -24,14 +24,22 @@ const { an1, an2, an3 } = FIXTURE_IDS;
 describe('AP-14 IP-14 · „Was sich ändert“ ist ein reines Kundenurteil', () => {
   const faelle = [
     {
-      name: 'Mehr-Anlagen-Steuerkunde wechselt vom Portfolio zur Unternehmens-Übersicht',
+      // firstmate K2: von „heute" aus entstehen durch diese Vorschau immer NEUE, noch nicht
+      // messende Standorte — die Startseite bleibt deshalb unverändert (vorher versprach dieser
+      // Fall fälschlich schon die Unternehmens-Übersicht).
+      name: 'Mehr-Anlagen-Steuerkunde aus „heute" bleibt auf der gewohnten Übersicht (K2: neue Standorte messen noch nicht)',
       input: { aktuelleEbene: 'heute', zielGruppen: 2, isAdmin: false, betriebsart: 'endkunde', anlagen: [{ tarifArt: 'fest' }], anwendungen: ['monitoring', 'lastspitzenkappung'] },
+      erwartet: [GELD_BLEIBT, STEUERUNG_BLEIBT],
+    },
+    {
+      name: 'ein Steuerkunde wechselt zur Unternehmens-Übersicht nur von einem schon messenden Standort aus',
+      input: { aktuelleEbene: 'standort', zielGruppen: 2, isAdmin: false, betriebsart: 'endkunde', anlagen: [{ tarifArt: 'fest' }], anwendungen: ['monitoring', 'lastspitzenkappung'] },
       erwartet: [STARTSEITE_UNTERNEHMEN, GELD_BLEIBT, STEUERUNG_BLEIBT],
     },
     {
-      name: 'reiner Messkunde liest weder Geld noch Steuerung oder Fahrpläne',
+      name: 'reiner Messkunde aus „heute" liest weder Geld noch Steuerung noch ein Startseiten-Versprechen',
       input: { aktuelleEbene: 'heute', zielGruppen: 2, isAdmin: false, betriebsart: null, anlagen: [{ tarifArt: 'ohne' }], anwendungen: ['monitoring'] },
-      erwartet: [STARTSEITE_UNTERNEHMEN],
+      erwartet: [],
     },
     {
       name: 'Zusammenlegen zu einem Standort verspricht keine Unternehmens-Übersicht',
@@ -45,7 +53,7 @@ describe('AP-14 IP-14 · „Was sich ändert“ ist ein reines Kundenurteil', ()
     },
     {
       name: 'Betreiber-Rahmen bleibt im Portfolio und bekommt kein falsches Startseiten-Versprechen',
-      input: { aktuelleEbene: 'heute', zielGruppen: 2, isAdmin: false, betriebsart: 'betreiber', anlagen: [{ tarifArt: 'ohne' }], anwendungen: ['monitoring'] },
+      input: { aktuelleEbene: 'standort', zielGruppen: 2, isAdmin: false, betriebsart: 'betreiber', anlagen: [{ tarifArt: 'ohne' }], anwendungen: ['monitoring'] },
       erwartet: [],
     },
   ] as const;
@@ -69,8 +77,10 @@ describe('AP-14 IP-14 · gestern Portfolio, heute Unternehmens-Übersicht', () =
   );
   const nachherOrte = orteAus(ahrenbergHeute(), ahrenbergUnternehmen());
 
+  // firstmate K2: „heute" misst Werk Ahrenberg und Werk Lindach längst (ahrenbergFunktionen
+  // Vorgabe) — die Übergangsfrage dieser Suite ist die Standort-Zahl, nicht das Messen.
   function shell(orte: NonNullable<ReturnType<typeof orteAus>>): ShellInput {
-    return { ...rahmen, siteCount: ids.length, ebene: startEbene({ ...rahmen, siteIds: ids, orte }) };
+    return { ...rahmen, siteCount: ids.length, ebene: startEbene({ ...rahmen, siteIds: ids, orte, funktionen: ahrenbergFunktionen() }) };
   }
 
   function ziel(hash: string, zustand: ShellInput): string {

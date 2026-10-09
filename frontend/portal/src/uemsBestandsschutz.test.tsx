@@ -73,12 +73,16 @@ describe('AP-13 Bestandsschutz · Navigation und Start-Ebene', () => {
   });
 
   it('startEbene bleibt für Bestand, Einzelanlage, Standort, Unternehmen, Betreiber und Admin unverändert', () => {
+    // firstmate K2: diese Matrix gilt für einen Bestand, der längst misst — Werk Ahrenberg und
+    // Werk Lindach aus `ahrenbergFunktionen()` sind beide `eingerichtet`. Der neue Zweig „kein
+    // Standort misst" hat seine eigenen Fälle in `startansicht.test.ts`.
+    const funktionen = ahrenbergFunktionen();
     const daten = [null, bestandEineAnlage(), bestandZweiAnlagen(), ahrenbergHeute()];
     const bilder = daten.flatMap((liste) => {
       const orte = liste ? orteAus(liste, ahrenbergUnternehmen()) : null;
       return [[], [FIXTURE_IDS.an1], [FIXTURE_IDS.an1, FIXTURE_IDS.an2], [FIXTURE_IDS.an1, FIXTURE_IDS.an2, FIXTURE_IDS.an3]].flatMap((siteIds) =>
         (['endkunde', 'betreiber'] as const).flatMap((betriebsart) => [false, true].map((isAdmin) => ({
-          siteIds, betriebsart, isAdmin, ebene: startEbene({ siteIds, betriebsart, isAdmin, orte }),
+          siteIds, betriebsart, isAdmin, ebene: startEbene({ siteIds, betriebsart, isAdmin, orte, funktionen }),
         }))),
       );
     });
