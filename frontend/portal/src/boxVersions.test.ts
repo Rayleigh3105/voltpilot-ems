@@ -23,6 +23,25 @@ describe('Box versions', () => {
     expect(result.sorted.find((r) => r.deviceId === 'old')?.state).toBe('bestaetigt');
     expect(boxVersionOverview({ ...data, releases: [] }).runningLatest).toBeNull();
   });
+  it('filters by box kind and offers only kinds that occur, unknown included', () => {
+    const mixed = [
+      { ...fleet[0], boxArt: 'docker' },
+      { ...fleet[1], deviceId: 'mango', boxArt: 'light' },
+      fleet[2],
+    ] as FleetRow[];
+    const { boxArten, sorted } = boxVersionOverview({ releases, fleet: mixed } as EdgeUpdates);
+    expect(boxArten.map((b) => b.label)).toEqual([
+      'Alle Box-Arten', 'Docker-Box (1)', 'Edge Light (1)', 'Box-Art unbekannt (1)',
+    ]);
+    const only = (boxArt: string) => filterBoxVersions(sorted, releases,
+      { search: '', filter: 'all', version: 'all', boxArt }).map((r) => r.deviceId);
+    expect(only('light')).toEqual(['mango']);
+    expect(only('unbekannt')).toEqual(['unknown']);
+    expect(only('all')).toHaveLength(3);
+    // Die Box-Art ist auch suchbar.
+    expect(filterBoxVersions(sorted, releases, { search: 'edge light', filter: 'all', version: 'all' })
+      .map((r) => r.deviceId)).toEqual(['mango']);
+  });
   it('combines a normalized search with version and state filters', () => {
     expect(filterBoxVersions(fleet, releases, { search: ' WERKSTATT ', filter: 'all', version: 'edge-9' }).map((r) => r.deviceId)).toEqual(['old']);
     expect(filterBoxVersions(fleet, releases, { search: 'Kunde', filter: 'unknown', version: 'all' }).map((r) => r.deviceId)).toEqual(['unknown']);

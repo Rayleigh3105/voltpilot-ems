@@ -107,7 +107,7 @@ class UemsZugriffMigrationTest {
             "20261006213000", // Konzept Verbessern PR 1: weitet verbesserung_vokabular() um kurs_lage (Vereinigung).
             "20261007004500", // Nachweisen n1, PR 1: ersetzt energiemanagement_vokabular() als Vereinigung (Block teil).
             "20261007014500", // Nachweisen n1, Entscheid 10: Original je Fassung an der Dokument-Fassung von 013500.
-            "20261007120000", // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
+            "20261007120100", // Verbessern v1 PR 2 (neu nummeriert): Art und Einsparung der Maßnahme, weitet das Vokabular.
             "20261007150000"); // Nachweisen n1, PR 6: ersetzt energiemanagement_vokabular() als Vereinigung (Block mappe_anlass).
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */

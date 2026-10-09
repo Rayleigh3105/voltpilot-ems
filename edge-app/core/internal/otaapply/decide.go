@@ -84,9 +84,12 @@ type Decision struct {
 const (
 	// BlockerChain: die Vertrauenskette oder die Form ist kaputt (Vorfall).
 	BlockerChain = "kette"
-	// BlockerPolicy: gueltig signiert, gilt hier aber nicht (Anti-Rollback-Boden).
+	// BlockerPolicy: gueltig signiert, gilt hier aber nicht (Anti-Rollback-Boden,
+	// Rueckschritt ohne Freigabe).
 	BlockerPolicy = "politik"
-	// BlockerBackend: das Release ist nicht fuer dieses Apply-Backend bestimmt.
+	// BlockerBackend: gueltig signiert, aber auf diesem Apply-Backend nicht
+	// anwendbar - ein Release einer anderen Box-Art (etwa Edge Light) oder
+	// eines mit Bestandteilen, die dieses Backend nicht anwendet. Kein Vorfall.
 	BlockerBackend = "backend"
 	// BlockerStateSchema: das Release kennt unseren /data-Stand nicht.
 	BlockerStateSchema = "state_schema"
@@ -189,6 +192,12 @@ func Decide(in DecisionInput) Decision {
 		return Decision{Action: ActionRefuse, State: StateFailed, Blocker: BlockerChain,
 			Reason: in.Verdict.Reason}
 	case otaverify.OutcomeDeferred:
+		if in.Verdict.BackendMismatch {
+			// Eine andere Box-Art aendert sich nicht von Takt zu Takt: es
+			// bleibt dabei, bis ein Release dieser Box-Art zugewiesen ist.
+			return Decision{Action: ActionRefuse, State: StateDeferred, Blocker: BlockerBackend,
+				Reason: in.Verdict.Reason}
+		}
 		return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerPolicy,
 			Reason: in.Verdict.Reason}
 	case otaverify.OutcomeOK:
@@ -209,9 +218,12 @@ func Decide(in DecisionInput) Decision {
 		return Decision{Action: ActionIdle, State: StateSucceeded,
 			Reason: "Release " + m.Release + " laeuft hier bereits."}
 	}
-	if !m.SupportsBackend(BackendCompose) {
+	// Doppelt gesichert: der Verifizierer hat das schon geprueft. Ein Urteil,
+	// das trotzdem ein fremdes Release durchliesse, darf hier keinen
+	// Bestandteil erreichen, den compose nicht anwendet.
+	if reason := m.NotApplicableReason(BackendCompose); reason != "" {
 		return Decision{Action: ActionRefuse, State: StateDeferred, Blocker: BlockerBackend,
-			Reason: "Dieses Release ist nicht fuer das Compose-Backend bestimmt."}
+			Reason: reason}
 	}
 
 	// --- 3. Vertraegt unser lokaler Zustand diesen Stand? ------------------

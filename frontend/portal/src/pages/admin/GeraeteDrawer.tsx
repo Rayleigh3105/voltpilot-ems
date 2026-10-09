@@ -12,9 +12,11 @@ import {
   eventLabel,
   formatTrustStamp,
   stateLabel,
+  zuweisbareReleases,
   type EdgeUpdatesRelease,
   type JournalEntry,
 } from '../../adminEdgeUpdates';
+import { BoxArtChip } from './BoxArtChip';
 
 /**
  * Was der Drawer über EIN Gerät braucht - bewusst ein eigener, schmaler Typ
@@ -49,6 +51,8 @@ export interface DrawerDevice {
   provisioned?: boolean;
   note?: string | null;
   trust?: Parameters<typeof crossoverState>[0];
+  /** Box-Art aus der API (`ota.BoxArt`); `null`/fehlend = unbekannt. */
+  boxArt?: string | null;
 }
 
 /**
@@ -94,12 +98,17 @@ export function GeraeteDrawer({
    */
   onOpenGeraetseite?: () => void;
 }) {
-  const signed = releases.filter((r) => r.signed);
-  const [seq, setSeq] = useState<number | null>(device.sollSeq ?? signed[0]?.releaseSeq ?? null);
+  // Nur, was signiert ist UND zur Box-Art passt; der Rest wird benannt.
+  const zuweisbar = zuweisbareReleases(releases, device.boxArt);
+  const passend = zuweisbar.passend;
+  const [seq, setSeq] = useState<number | null>(
+    passend.find((r) => r.releaseSeq === device.sollSeq)?.releaseSeq
+      ?? passend[0]?.releaseSeq ?? null,
+  );
   const history = device.deviceId
     ? journal.filter((e) => e.deviceId === device.deviceId).slice(0, 10)
     : [];
-  const cross = crossoverState(device.trust);
+  const cross = crossoverState(device.trust, device.boxArt);
   const lever = blockerLever(device.blocker);
   const connected = device.deviceId != null;
 
@@ -127,6 +136,9 @@ export function GeraeteDrawer({
         <>
           <h4>Software-Version</h4>
           <dl className="vp-kv-list">
+            {/* Die Bauart entscheidet, welche Releases überhaupt passen. */}
+            <dt>Box-Art</dt>
+            <dd><BoxArtChip boxArt={device.boxArt} /></dd>
             {/* Tag + Build getrennt: `edge-2026.08.0-3bf8c038e1d2` neben
                 `edge-2026.08.0` sind zwei verschieden AUSSEHENDE Zeichenketten
                 für dieselbe Frage. */}
@@ -185,11 +197,27 @@ export function GeraeteDrawer({
       )}
 
       {connected && onAssign && (
-        signed.length === 0 ? (
+        zuweisbar.signiert === 0 ? (
           <p className="vp-muted">
             Kein signiertes Release im Register – ohne signiertes Manifest hat ein Gerät nichts,
             was es gegen seinen Vertrauensanker prüfen könnte.
           </p>
+        ) : passend.length === 0 ? (
+          <>
+            {/* E10: ausgegraut mit Grund, nicht still weggelassen. Eine alte
+                Zuweisung bleibt zurücknehmbar. */}
+            <h4>Aktualisieren</h4>
+            <p className="vp-muted vp-text-sm" data-testid="drawer-keine-passenden">
+              {zuweisbar.hinweis}
+            </p>
+            {device.soll && onRevert && (
+              <div className="vp-row-gap">
+                <Button variant="outline" disabled={busy} onClick={() => void onRevert()}>
+                  Zuweisung zurücknehmen
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <h4>Aktualisieren</h4>
@@ -199,13 +227,18 @@ export function GeraeteDrawer({
             </p>
             <VpPicker
               label="Release"
-              options={signed.map((r) => ({
+              options={passend.map((r) => ({
                 value: String(r.releaseSeq),
                 label: r.version,
               }))}
               value={seq == null ? '' : String(seq)}
               onChange={(v) => setSeq(Number(v))}
             />
+            {zuweisbar.hinweis && (
+              <p className="vp-muted vp-text-sm" data-testid="drawer-gesperrte-releases">
+                {zuweisbar.hinweis}
+              </p>
+            )}
             <div className="vp-row-gap">
               {/* Seit dem Ein-Schritt-Umbau ist der Knopf die GANZE Handlung:
                   die Zuweisung geht retained hinaus, das Gerät wendet sie

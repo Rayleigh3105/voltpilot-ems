@@ -16,6 +16,7 @@ flowchart LR
 | HTTP-API | [openapi.yaml](openapi.yaml) |
 | v1-Telemetrie / Ereignis | [MQTT](mqtt-telemetry.schema.json), [telemetry.raw](telemetry-raw.event.schema.json) |
 | v1-Fahrplan | [mqtt-schedule](mqtt-schedule.schema.json) |
+| Status-Herzschlag: Steuerstand des Speichers | [Vertrag](speicher-steuerstand.md), [Vektoren](speicher-steuerstand-vectors.json) |
 | Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |
 | v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |
 | Energetische Bewertung (UEMS AP-16) | [Regeln](v2/bewertung.md), [Regel-Vektoren](v2/bewertung-vectors.json), [Messabdeckung Ahrenberg](v2/messabdeckung.json), [Schema](v2/bewertung.schema.json) |
@@ -23,9 +24,10 @@ flowchart LR
 | Ziele, Maßnahmen, Abweichungen (UEMS AP-18) | [Regeln](v2/verbesserung.md), [Regel-Vektoren](v2/verbesserung-vectors.json), [Schema](v2/verbesserung.schema.json) |
 | Energiemanagement: Überprüfung, Wiedervorlage, Verzeichnis-Zeile (UEMS AP-19) | [Regeln](v2/energiemanagement.md), [Regel-Vektoren](v2/energiemanagement-vectors.json), [Schema](v2/energiemanagement.schema.json); Managementbewertung als [Vorlage Nr. 7](v2/bericht-vorlagen.json) im [Berichtsvertrag](v2/bericht.md), Rolle „Einsicht“ in der [Rechte-Matrix](v2/rechte-matrix.json), Herkunft der Maßnahme in [verbesserung.md](v2/verbesserung.md) |
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
-| OTA | [Manifest](ota-release-manifest.schema.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
+| OTA | [Manifest](ota-release-manifest.schema.json) mit [Vektoren je Box-Art](ota-release-manifest-vectors.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |
 | Diagnose / Eingriff | [Probe](mqtt-probe.schema.json), [Registerauftrag](mqtt-register-write.schema.json), [Datenbereinigung](mqtt-data-purge.schema.json) |
+| Fernwartung | [Soll-Stand des Tunnel-Dienstes](fernwartung-soll-v1.example.json), Routen im OpenAPI-Tag `fernwartung` |
 | Beispiele | [v1-Fixtures](examples/README.md), [v2-Fixtures](v2/examples/README.md) |
 
 Die Dateien in diesem Verzeichnis sind die vollständige Schemaablage; die Tabelle gruppiert die wichtigsten Grenzen.

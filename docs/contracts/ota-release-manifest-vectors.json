@@ -1,0 +1,465 @@
+{
+  "$comment": "Die GETEILTEN Vektoren des Release-Manifests (docs/contracts/ota-release-manifest.schema.json): was ein Geraet mit einem GUELTIG SIGNIERTEN Manifest tut, je Box-Art (Plan Edge Light Stufe 2, B1). ZWEI Leser lesen diese Datei PER PFAD und muessen je Fall dasselbe Urteil liefern - Go edge-app/core/internal/otaverify (Verify nach gueltiger Signatur; dazu otaapply.Decide fuer die Sperre) und Java services/api .../ota/ReleaseManifest (der Leser, mit dem Register und Zuweisung die Box-Art eines Release bestimmen). Wer die Regel auf einer Seite aendert, aendert BEIDE Seiten UND diese Datei zusammen - das Muster von lan-host-vectors.json / stur-speicher-vectors.json.",
+  "$regel": "Streng senden, tolerant annehmen. Nach gueltiger Signatur: (1) steht das Backend der Box nicht in compat.backends, oder (2) traegt das Release einen Bestandteil, den dieses Backend nicht anwendet (ein unbekannter Typ oder der Typ einer anderen Box-Art), dann ist das Urteil deferred mit Grund und die Sperre backend - nie rejected, nie failed. compose wendet oci-image an, light wendet binary an. Ein unbekannter Typ oder ein unbekanntes Backend ist KEIN Formfehler; die Felder eines BEKANNTEN Typs werden dagegen voll geprueft (rejected). Eine ungueltige Signatur bleibt rejected und damit ein Vorfall.",
+  "$felder": "backend = Apply-Backend (Box-Art) des pruefenden Geraets. signatur = gueltig (Vorgabe) | manipuliert (die Manifest-Bytes werden nach dem Signieren veraendert). erwartet = ok | deferred | rejected (otaverify.Outcome). sperre = der Blocker, den der Sidecar dazu meldet (nur bei deferred). erzeugbar = ob vp-ota manifest dieses Manifest erzeugen darf (otaverify.ParseManifestStrict: bekannte Typen und Backends, ein Manifest je Box-Art, edge-light-JJJJ.MM.N nur mit light und binary). Die Faelle mit signatur=manipuliert prueft nur Go: die API verifiziert bewusst keine Signatur (AdminEdgeReleaseController.readSigned).",
+  "faelle": [
+    {
+      "name": "docker-release-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Der Normalfall: compose-Release, zwei oci-images.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "light-release-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": true,
+      "warum": "Gueltig signiert, aber fuer die andere Box-Art. Die Docker-Box stellt zurueck (Sperre backend) - kein Vorfall, kein failed.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "light-release-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": true,
+      "warum": "Ein Edge-Light-Release: nur Backend light, nur binary, je Architektur ein Eintrag.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "docker-release-auf-light-box",
+      "backend": "light",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": true,
+      "warum": "Die Gegenrichtung: Edge Light stellt ein compose-Release zurueck.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "light-release-mit-ungueltiger-signatur-auf-docker-box",
+      "backend": "compose",
+      "signatur": "manipuliert",
+      "erwartet": "rejected",
+      "erzeugbar": true,
+      "warum": "Die Toleranz gilt erst NACH gueltiger Signatur. Eine kaputte Kette bleibt ein Vorfall (failed), gleich fuer welche Box-Art das Release gedacht war.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "unbekannter-artefakt-typ-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": false,
+      "warum": "Ein Typ, den dieser Stand nicht kennt (ein neuerer Stand hat ihn erfunden): nichts davon wird angewandt, auch die bekannten Images nicht.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+          {"type": "os-image", "name": "rootfs", "slot": "b"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "unbekanntes-backend-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": false,
+      "warum": "Ein Backend, das dieser Stand nicht kennt, ist kein Formfehler - das Release gilt nur nicht fuer compose.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["balena"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "compose-und-unbekanntes-backend-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Ein zusaetzliches unbekanntes Backend stoert nicht, solange compose dabei ist und alle Bestandteile oci-images sind.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose", "balena"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "gemischtes-release-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "deferred",
+      "sperre": "backend",
+      "erzeugbar": false,
+      "warum": "Ein compose-Release mit einem binary: die Docker-Box wendet keinen Teil an. Erzeugen darf das kein Werkzeug (ein Manifest je Box-Art).",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "light-name-ohne-light-backend-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Die Box-Art steht in compat.backends, nicht im Namen. Ein so benanntes compose-Release erzeugt kein Werkzeug; signiert waere es trotzdem unseres.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.2",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "light-backend-mit-docker-name-auf-light-box",
+      "backend": "light",
+      "erwartet": "ok",
+      "erzeugbar": false,
+      "warum": "Dasselbe von der anderen Seite: Edge Light liest die Box-Art aus compat.backends. Erzeugbar ist nur edge-light-JJJJ.MM.N.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.5",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "binary-ohne-gz-pruefsumme",
+      "backend": "light",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Die Felder eines BEKANNTEN Typs werden voll geprueft: ein Programm ohne Pruefsumme der Lieferung ist ungepinnt.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "binary-ohne-pruefsumme-auf-docker-box",
+      "backend": "compose",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Auch die Docker-Box prueft die Form eines bekannten Typs - ein kaputtes binary ist ein kaputtes Manifest, keine fremde Box-Art.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "abc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "binary-mit-groesse-null",
+      "backend": "light",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Groesse 0 beschreibt kein Programm.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 0, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "binary-ohne-plattform",
+      "backend": "light",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "arch ist GOOS/GOARCH wie linux/mipsle, nicht nur die Architektur.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/arm64", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "binary-doppelt-fuer-eine-architektur",
+      "backend": "light",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Ein Programm einmal JE ARCHITEKTUR - zweimal linux/mipsle waere mehrdeutig.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-light-2026.10.1",
+        "release_seq": 140,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size": 14614743, "gz_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "gz_size": 4679121},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/mipsle", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "size": 13893816, "gz_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "gz_size": 4475301},
+          {"type": "binary", "name": "vp-edge-light", "arch": "linux/amd64", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "size": 14753976, "gz_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "gz_size": 4720556}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 1,
+        "compat": {"backends": ["light"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "oci-image-mit-tag-statt-digest",
+      "backend": "compose",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Ein Tag waere kein Pin.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "unbekannter-typ-ohne-gueltigen-namen",
+      "backend": "compose",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Tolerant heisst nicht beliebig: ein Typ-Name muss die Form eines Namens haben.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+          {"type": "OS Image", "name": "rootfs"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "leeres-backend",
+      "backend": "compose",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Ein leerer Backend-Eintrag ist kein unbekanntes Backend, sondern kaputt.",
+      "manifest": {
+        "schema_version": "1.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": [""]},
+        "signing_key_id": "rel-2026-a"
+      }
+    },
+    {
+      "name": "fremde-schema-major",
+      "backend": "compose",
+      "erwartet": "rejected",
+      "erzeugbar": false,
+      "warum": "Eine fremde MAJOR wird abgelehnt statt geraten.",
+      "manifest": {
+        "schema_version": "2.0",
+        "release": "edge-2026.10.4",
+        "release_seq": 139,
+        "target_commit": "5b28311b4c0d",
+        "artifacts": [
+          {"type": "oci-image", "name": "core", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+          {"type": "oci-image", "name": "nodered", "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+        ],
+        "min_from_seq": 0,
+        "allow_downgrade": false,
+        "state_schema": 3,
+        "compat": {"backends": ["compose"]},
+        "signing_key_id": "rel-2026-a"
+      }
+    }
+  ]
+}

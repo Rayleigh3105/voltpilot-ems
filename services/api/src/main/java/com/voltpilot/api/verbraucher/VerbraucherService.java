@@ -146,6 +146,11 @@ public class VerbraucherService {
         // sieben Tage Preise, und auf einer Anlage ohne Verbraucher gaebe es
         // keinen Leser dafuer.
         SiteDto anlage = hatVerbraucher ? sites.findById(siteId) : null;
+        // „Sonne + Speicher": EIN Blick auf den Speicher der Anlage, nur wenn
+        // es ueberhaupt einen Ladepunkt gibt, der ihn anbieten kann.
+        SteuerartService.Speicher speicher = zeilen.stream()
+                .anyMatch(r -> ChargerComponentComposer.TYPE_EV_CHARGER.equals(r.entityType()))
+                ? steuerarten.speicher(siteId) : SteuerartService.Speicher.KEINER;
         boolean hatPv = hatVerbraucher && steuerarten.hatPv(zeilen);
         BigDecimal preisVorgabe = hatVerbraucher ? steuerarten.preisVorgabe(siteId) : null;
         Map<UUID, List<ConsumerRequirementLedger.Row>> aufgaben = ledger.listForSiteByEntity(siteId);
@@ -174,7 +179,7 @@ public class VerbraucherService {
                 lane = SteuerartProjektion.saeulenSteuerart(cp == null ? null : cp.source(),
                         cp != null && cp.minKw() != null ? BigDecimal.valueOf(cp.minKw())
                                 : minPowerKw,
-                        standard);
+                        standard, cp != null && Boolean.TRUE.equals(cp.storageRelease()));
             }
             Steuerart steuerart = SteuerartProjektion.projiziere(dokument(policy), ocpp, lane);
             if (ladepunkt) {
@@ -191,7 +196,7 @@ public class VerbraucherService {
                     ansprueche.getOrDefault(row.id().toString(), List.of()).size(),
                     fortschritt(aufgaben.get(row.id()), now),
                     p == null ? null : p.enabled(),
-                    optionen(row, p, anlage, hatPv, preisVorgabe, steuerart)));
+                    optionen(row, p, anlage, hatPv, preisVorgabe, steuerart, speicher)));
             kandidaten.add(kandidat(row.id(), ladepunkt, chargePointId, p));
         }
 
@@ -217,9 +222,9 @@ public class VerbraucherService {
      * zwei Wege, EIN Schreibpfad ({@code SteuerartService.setze}).
      */
     private Optionen optionen(EntityRow row, ConsumerRow profil, SiteDto anlage, boolean hatPv,
-            BigDecimal preisVorgabe, Steuerart aktuell) {
+            BigDecimal preisVorgabe, Steuerart aktuell, SteuerartService.Speicher speicher) {
         SteuerartSatz.Kontext k =
-                steuerarten.kontext(row, profil, anlage, hatPv, preisVorgabe);
+                steuerarten.kontext(row, profil, anlage, hatPv, preisVorgabe, speicher);
         SteuerartSatz.Vorgaben v = SteuerartSatz.vorgaben(k);
         return new Optionen(true, null,
                 wahlen(SteuerartSatz.quellen(k)),

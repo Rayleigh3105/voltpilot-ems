@@ -647,3 +647,35 @@ func TestTheVehicleProfileFixturesParseExactlyAsSpecified(t *testing.T) {
 		t.Fatalf("die ungueltige Fixture muss gueltiges JSON sein: %v", err)
 	}
 }
+
+// „Sonne + Speicher" (2026-10-06): the fixture BY PATH. The flag is a
+// statement only next to `nur_sonne`; an absent flag next to a source is false.
+func TestTheSonneSpeicherFixtureIsReadVerbatim(t *testing.T) {
+	raw := mustRead(t, filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples",
+		"mqtt-charging-config.valid.sonne-speicher.json"))
+	cfg, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	got := map[string]bool{}
+	for _, cp := range cfg.ChargePoints {
+		got[cp.ID] = cp.StorageRelease
+	}
+	if !got["wallbox-carport"] || got["wallbox-garage"] {
+		t.Fatalf("release flags: %+v", got)
+	}
+}
+
+func TestAReleaseFlagNextToAnotherLaneSaysNothing(t *testing.T) {
+	cfg, err := Parse([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+		"device_id":"d","charge_points":[{"id":"a","source":"sonne_zuerst","storage_release":true},
+		{"id":"b","storage_release":true}],"published_at":"2026-10-06T09:15:00Z"}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	for _, cp := range cfg.ChargePoints {
+		if cp.StorageRelease {
+			t.Fatalf("%s: a release next to %q must be dropped", cp.ID, cp.Source)
+		}
+	}
+}

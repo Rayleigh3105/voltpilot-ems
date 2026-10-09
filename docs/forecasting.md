@@ -60,6 +60,17 @@ Der Optimierer kann den nahen PV-Horizont anhand des jüngsten gemessenen Fehler
 
 Daher misst `forecast_accuracy` die gespeicherte Modellprognose; die tatsächlich zur Planung verwendete Korrektur gehört in die Plandiagnose. Schalter und Grenzen: `OPTIMIZER_PV_ANCHOR_*` in [config.py](../services/optimization/voltpilot_optimization/config.py), Berechnung in [nowcast.py](../services/optimization/voltpilot_optimization/nowcast.py).
 
+## Unsicherheit für „Sonne + Speicher“
+
+Die Prognosen liefern keine Quantile. Die [Speicheruntergrenze](verbrauchssteuerung.md#sonne--speicher) liest deshalb gemessene Fehlerverteilungen der gespeicherten Prognosen, je Anlage und aktivem Modell, letzte 28 abgeschlossene Nächte beziehungsweise Tage:
+
+| Reihe | Fehler je Nacht/Tag | Verwendet | Quelle |
+|---|---|---|---|
+| Last | `Σ gemessen / Σ prognostiziert − 1` der Nacht, Abendlauf 17:45 des Vortags | Q0,9 als Aufschlag | `night_reserve.night_error_quantiles` |
+| PV | dasselbe über 06–21 Uhr Berlin, mindestens 51 der 60 Viertelstunden gepaart, Tage unter 1 kWh Prognose ausgelassen | Q0,1 als Abschlag | `storage_release.pv_day_error_quantiles` |
+
+Beide Zahlen wirken nur in die vorsichtige Richtung. Unter sieben auswertbaren Nächten/Tagen gelten dokumentierte Vorgaben (+25 % / −30 %). Gemessen wird die gespeicherte Modellprognose, nicht die Planzeitkorrektur des Nowcasts. Reicht der Fahrplan nicht bis zur nächsten Erzeugung, liest die Untergrenze die frischen gespeicherten Läufe darüber hinaus; sind sie älter als `OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES` (120), gibt es keine Freigabe.
+
 ## Betrieb
 
 [Forecast-Service](../services/forecast/README.md) nennt Start- und Testbefehle. Tabellen und Rechte werden über die API-Migrationen gepflegt. Modellwahl und Kundenauswertung sind mandantengebunden; Backend-Collector haben eigene Schreibzugänge.

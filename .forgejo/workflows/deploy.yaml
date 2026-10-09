@@ -227,9 +227,10 @@ jobs:
         if: matrix.name == 'ota-release'
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml
+          pip install pyyaml jsonschema
           bash tools/ota/test-release-publish.sh
           bash tools/ota/test-release-workflow.sh
+          python3 tools/ota/test-manifest-schema.py
 
       # Die drei AGENTS.md sind Wegweiser, das Detail wohnt in `docs/agents/`.
       # Waechst eine ueber ihr Budget, faellt dieser Schritt - das Budget wird

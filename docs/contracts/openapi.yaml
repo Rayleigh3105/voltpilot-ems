@@ -349,6 +349,14 @@ tags:
       sagt, wo das Original liegt. IP-6: Personen im Energiemanagement (auch ohne Konto) und Aufgaben mit
       „entschieden von“; die Leitung ist, wer am Tag die Aufgabe „Leitung des Unternehmens“ trägt. IP-10: „Wer ist
       wofür verantwortlich“ liest die Verantwortlichen der Objekte und die Freigaben der Bezugsbasen daneben.
+  - name: fernwartung
+    description: >
+      Fernwartung über das Portal (Entscheid E5): Tunnel-Schlüssel je Box,
+      Techniker-Zugänge, Fernwartungsfenster und Protokoll unter
+      /api/v1/admin/fernwartung (nur `platform-admin`), dazu die nur lesende
+      Route des Tunnel-Dienstes (/api/v1/fernwartung/soll, nur die Rolle
+      `tunnel-dienst`). Der Kunde sieht nichts davon (O3). Siehe
+      docs/fernwartung.md.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -2747,6 +2755,36 @@ paths:
               schema: { $ref: "#/components/schemas/ChargingConfig" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen (deutscher Grund im Körper). }
+  /api/v1/sites/{siteId}/charging-config/storage-release:
+    put:
+      tags: [sites]
+      summary: Die Reserve von „Sonne + Speicher“ setzen (06.10.2026).
+      description: >
+        Die Energie in kWh, die der Speicher über seinem Reservestapel
+        (technisch, Notstrom, Lastspitze) zusätzlich für die Nacht behält, wenn
+        ein Ladepunkt auf „Sonne + Speicher“ lädt. `reserveKwh: null` nimmt die
+        eigene Angabe zurück - dann gilt die Vorgabe (1,0 kWh). Die Zahl reist
+        nicht zur Box: der Optimierer rechnet mit ihr die Untergrenze, die der
+        Fahrplan je Viertelstunde mitbringt. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reserveKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Reserve außerhalb von 0..100 kWh (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage unbekannt. }
   /api/v1/sites/{siteId}/charging-config/charge-points/{chargePointId}/source:
     put:
       tags: [sites]
@@ -3700,7 +3738,12 @@ paths:
                   enum: ["", sofort, ueberschuss]
                   description: >
                     Abwesend = nichts ändern, "" = Profil zurücknehmen.
-                ueberschussModus: { type: string, enum: [pausieren, mindestleistung] }
+                ueberschussModus:
+                  type: string
+                  enum: [pausieren, mindestleistung]
+                  description: >
+                    „speicher“ (Sonne + Speicher) gibt es je Ladepunkt, nicht je
+                    Karte - es wird mit einem benannten Grund abgelehnt (400).
                 mindestleistungKw: { type: number, minimum: 0, maximum: 1000 }
       responses:
         "200":
@@ -6142,6 +6185,12 @@ paths:
         several updates may run side by side); one that just finished must not
         vanish from the page in the very moment it completed. Platform-admin
         only; there is deliberately NO customer-facing surface for updates.
+        BOX KIND: every release and every fleet row carries `boxArt` (`docker` |
+        `light`, derived once in `ota.BoxArt`). A device reporting backend
+        `light` - or, during the transition, a stamp starting `edge-light-` - is
+        Edge Light; a fleet row with nothing to go by is `null` (unknown, never
+        silently Docker). A release is Docker unless its signed manifest lists
+        `light` in `compat.backends` or its name starts `edge-light-`.
       responses:
         "200":
           description: Releases, the recent updates, the fleet matrix, the journal and the KPI.
@@ -6164,8 +6213,9 @@ paths:
         installed base). A row that is not yet a device carries NO state -
         deriving one would be a claim about a device that does not exist.
         The state fields are the SAME derivation as the fleet row
-        (RolloutStates), so the two surfaces can never disagree.
-        Platform-admin only.
+        (RolloutStates), so the two surfaces can never disagree; `boxArt` is the
+        same derivation as on the fleet row (`null` for a printed ID that is not
+        a device yet). Platform-admin only.
       responses:
         "200":
           description: One row per device - registry half, fleet half, or both.
@@ -6192,6 +6242,12 @@ paths:
         Several updates may run SIDE BY SIDE - the former "at most one live
         rollout" bar was a gate that blocked a legitimate second order. What
         stays unique is what matters: exactly one assignment per DEVICE.
+
+
+        The release must fit the BOX KIND of every chosen device (`ota.BoxArt`):
+        no Docker release to an Edge Light box, no Edge Light release to a
+        Docker box or to a box of unknown kind. If one device does not fit,
+        NOTHING is assigned and the 409 names the devices with the German reason.
 
 
         Assigning publishes the signed manifest RETAINED on
@@ -6236,7 +6292,7 @@ paths:
                         grund: { type: string, enum: [kundenbereich_beendet] }
         "400": { description: No devices, or an unknown device. }
         "404": { description: The release is not registered. }
-        "409": { description: The release is not signed - or every chosen device belongs to an ended customer area (kundenbereich_beendet). }
+        "409": { description: "The release is not signed, or it does not fit the box kind of a chosen device (nothing assigned), or every chosen device belongs to an ended customer area (kundenbereich_beendet)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -6245,8 +6301,9 @@ paths:
       tags: [admin]
       summary: Assign ONE device a release.
       description: >
-        The single-device path (the device page). Only a signed release is
-        assignable (409 otherwise); the device does the rest by itself.
+        The single-device path (the device page). Only a signed release that
+        fits the device's box kind (`ota.BoxArt`) is assignable (409 with a
+        German reason otherwise); the device does the rest by itself.
       parameters:
         - name: deviceId
           in: path
@@ -6264,7 +6321,7 @@ paths:
       responses:
         "204": { description: Assigned; the signed manifest went out retained. }
         "404": { description: Device or release not found. }
-        "409": { description: The release is not signed. }
+        "409": { description: "The release is not signed, or it does not fit the device's box kind." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -6392,6 +6449,308 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminFleet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung:
+    get:
+      tags: [fernwartung]
+      summary: Übersicht - Server-Seite, Zähler und wann der Tunnel-Dienst zuletzt abgeholt hat.
+      description: >
+        `abrufe` sagt, DASS ein Tunnel-Dienst den Soll-Stand abgeholt hat, nicht
+        ob er wirkt (der Dienst meldet nichts zurück). `server.eingerichtet` ist
+        false, solange der Server-Schlüssel nicht konfiguriert ist.
+      responses:
+        "200":
+          description: Übersicht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungUebersicht" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung/boxen:
+    get:
+      tags: [fernwartung]
+      summary: Alle Boxen mit hinterlegtem Tunnel-Schlüssel, mit laufenden und geplanten Fenstern.
+      responses:
+        "200":
+          description: Boxen nach Tunnel-Adresse.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung/boxen/{ref}:
+    get:
+      tags: [fernwartung]
+      summary: Eine Box; 404, solange kein Tunnel-Schlüssel hinterlegt ist.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string, example: edge-zay5sdd } }
+      responses:
+        "200":
+          description: Die Box.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+        "422": { description: Box-Referenz mit falschem Prüfzeichen. }
+  /api/v1/admin/fernwartung/boxen/{ref}/schluessel:
+    put:
+      tags: [fernwartung]
+      summary: Öffentlichen Tunnel-Schlüssel einer Box hinterlegen (Übergang bis zur Werkstatt-Registrierung D2).
+      description: >
+        Neu: Adresse aus dem Box-Netz zuteilen (201). Derselbe Schlüssel noch
+        einmal: unverändert (200). Ein anderer Schlüssel nur mit
+        `schluesselTausch: true` (200, sonst 409) - die Adresse bleibt der Box.
+        Ein Schlüssel gehört höchstens einem Zugang (409). Die Referenz wird
+        wie bei der Kopplung kanonisiert; `edge-` mit falschem Prüfzeichen oder
+        eine der Plattform unbekannte Referenz ohne Prüfzeichen ist 422. Die
+        Antwort trägt die Server-Seite für service-tunnel.sh.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: Öffentlicher WireGuard-Schlüssel (Base64, 44 Zeichen). }
+                schluesselTausch: { type: boolean }
+                notiz: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Unverändert oder getauscht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSchluesselAntwort" }
+        "201":
+          description: Angelegt, Adresse zugeteilt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSchluesselAntwort" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Anderer Schlüssel ohne Tausch-Markierung, Schlüssel schon vergeben oder Netz voll. }
+        "422": { description: Referenz mit falschem Prüfzeichen oder unbekannt. }
+  /api/v1/admin/fernwartung/boxen/{ref}/sperren:
+    post:
+      tags: [fernwartung]
+      summary: Box sperren - der Tunnel-Dienst entfernt ihren Peer, offene und geplante Fenster werden geschlossen.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { grund: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: Gesperrt (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+  /api/v1/admin/fernwartung/boxen/{ref}/entsperren:
+    post:
+      tags: [fernwartung]
+      summary: Box wieder zulassen (idempotent).
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Aktiv.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+  /api/v1/admin/fernwartung/techniker:
+    get:
+      tags: [fernwartung]
+      summary: Alle Techniker-Zugänge.
+      responses:
+        "200":
+          description: Zugänge nach Tunnel-Adresse.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang anlegen; der Schlüssel entsteht auf dem Gerät des Technikers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, publicKey]
+              properties:
+                name: { type: string, maxLength: 80 }
+                publicKey: { type: string }
+                notiz: { type: string, maxLength: 500 }
+      responses:
+        "201":
+          description: Angelegt, Adresse aus dem Techniker-Netz zugeteilt; mit Server-Seite für die Gerätekonfiguration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  techniker: { $ref: "#/components/schemas/FernwartungTechniker" }
+                  server: { $ref: "#/components/schemas/FernwartungServer" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Schlüssel schon vergeben oder Netz voll. }
+  /api/v1/admin/fernwartung/techniker/{id}/sperren:
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang sperren - Peer raus, seine offenen und geplanten Fenster werden geschlossen.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { grund: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: Gesperrt (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter Zugang. }
+  /api/v1/admin/fernwartung/techniker/{id}/entsperren:
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang wieder zulassen (idempotent).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Aktiv.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter Zugang. }
+  /api/v1/admin/fernwartung/fenster:
+    get:
+      tags: [fernwartung]
+      summary: Fernwartungsfenster, neueste zuerst.
+      parameters:
+        - { name: box, in: query, required: false, schema: { type: string } }
+        - { name: techniker, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: Fenster.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungFenster" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [fernwartung]
+      summary: Fenster öffnen - Box, Techniker, Grund und Dauer sind Pflicht.
+      description: >
+        Dauer 1 Minute bis `max-fenster-dauer` (Vorgabe 24 h). `beginn` leer =
+        jetzt, sonst höchstens 30 Tage im Voraus. Ein überlappendes Fenster für
+        dasselbe Paar ist 409 (erst schließen). Gesperrte Box oder gesperrter
+        Zugang ist 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edgeRef, technikerId, grund, dauerMinuten]
+              properties:
+                edgeRef: { type: string }
+                technikerId: { type: string, format: uuid }
+                grund: { type: string, minLength: 3, maxLength: 500 }
+                dauerMinuten: { type: integer, minimum: 1 }
+                beginn: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Geöffnet oder geplant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungFenster" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Box ohne Tunnel-Schlüssel oder unbekannter Zugang. }
+        "409": { description: Gesperrt oder überlappend. }
+  /api/v1/admin/fernwartung/fenster/{id}/schliessen:
+    post:
+      tags: [fernwartung]
+      summary: Ein offenes Fenster vorzeitig schließen bzw. ein geplantes absagen.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Geschlossen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungFenster" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekanntes Fenster. }
+        "409": { description: Nicht mehr offen. }
+  /api/v1/admin/fernwartung/protokoll:
+    get:
+      tags: [fernwartung]
+      summary: Das Protokoll aller Fernwartungs-Änderungen, neueste zuerst (append-only).
+      parameters:
+        - { name: box, in: query, required: false, schema: { type: string } }
+        - { name: techniker, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        "200":
+          description: Einträge.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungProtokollEintrag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/fernwartung/soll:
+    get:
+      tags: [fernwartung]
+      summary: Soll-Stand für den Tunnel-Dienst (nur Rolle `tunnel-dienst`, nur lesen).
+      description: >
+        Alle aktiven Peers (Boxen und Techniker-Zugänge) und die JETZT offenen
+        Fenster, deren Box und Techniker aktiv sind; geplante Fenster stehen
+        nicht darin. Fenster verweisen über `boxId`/`technikerId` auf Peers.
+        Vertragsvektor: docs/contracts/fernwartung-soll-v1.example.json.
+        Antwort mit `Cache-Control: no-store`. Kein Admin- und kein
+        Kunden-Token (403).
+      responses:
+        "200":
+          description: Soll-Stand Version 1.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSoll" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/sites/{siteId}/v2-entities:
@@ -25849,6 +26208,137 @@ components:
           description: >
             Optional cross-check; must equal the key named by the manifest and
             by the signature file.
+    FernwartungServer:
+      type: object
+      properties:
+        endpunkt: { type: string, example: wartung.voltpilot.de }
+        port: { type: integer, example: 51820 }
+        publicKey: { type: string, nullable: true, description: null solange der Server nicht eingerichtet ist. }
+        eingerichtet: { type: boolean }
+        boxNetz: { type: string, example: 10.10.16.0/20 }
+        technikerNetz: { type: string, example: 10.10.32.0/24 }
+        boxServerAdresse: { type: string, example: 10.10.16.1 }
+        technikerServerAdresse: { type: string, example: 10.10.32.1 }
+    FernwartungUebersicht:
+      type: object
+      properties:
+        server: { $ref: "#/components/schemas/FernwartungServer" }
+        maxFensterMinuten: { type: integer }
+        abrufe:
+          type: array
+          items:
+            type: object
+            properties:
+              dienst: { type: string, example: voltpilot-tunnel-dienst }
+              zuletztAm: { type: string, format: date-time }
+              peers: { type: integer }
+              fenster: { type: integer }
+        boxenAktiv: { type: integer }
+        boxenGesperrt: { type: integer }
+        technikerAktiv: { type: integer }
+        technikerGesperrt: { type: integer }
+        fensterOffen: { type: integer }
+        fensterGeplant: { type: integer }
+        stand: { type: string, format: date-time }
+    FernwartungFenster:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string }
+        technikerId: { type: string, format: uuid }
+        technikerName: { type: string }
+        grund: { type: string }
+        beginn: { type: string, format: date-time }
+        ende: { type: string, format: date-time }
+        wirksamesEnde: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, geplant, geschlossen, abgesagt, abgelaufen] }
+        geoeffnetAm: { type: string, format: date-time }
+        geoeffnetVon: { type: string }
+        geschlossenAm: { type: string, format: date-time, nullable: true }
+        geschlossenVon: { type: string, nullable: true }
+    FernwartungBox:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string, example: edge-zay5sdd }
+        publicKey: { type: string }
+        publicKeyKurz: { type: string }
+        adresse: { type: string, example: 10.10.16.2 }
+        status: { type: string, enum: [aktiv, gesperrt] }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        geaendertAm: { type: string, format: date-time }
+        siteId: { type: string, format: uuid, nullable: true, description: Gekoppelte Anlage, sonst null. }
+        siteName: { type: string, nullable: true }
+        tenantId: { type: string, format: uuid, nullable: true }
+        tenantName: { type: string, nullable: true }
+        laufendeFenster:
+          type: array
+          items: { $ref: "#/components/schemas/FernwartungFenster" }
+    FernwartungSchluesselAntwort:
+      type: object
+      properties:
+        ergebnis: { type: string, enum: [angelegt, unveraendert, getauscht] }
+        box: { $ref: "#/components/schemas/FernwartungBox" }
+        server: { $ref: "#/components/schemas/FernwartungServer" }
+    FernwartungTechniker:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        publicKey: { type: string }
+        publicKeyKurz: { type: string }
+        adresse: { type: string, example: 10.10.32.2 }
+        status: { type: string, enum: [aktiv, gesperrt] }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        geaendertAm: { type: string, format: date-time }
+    FernwartungProtokollEintrag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        zeit: { type: string, format: date-time }
+        akteur: { type: string, description: Anmeldename, sonst JWT-Subject. }
+        aktion:
+          type: string
+          enum: [box_schluessel_hinterlegt, box_schluessel_getauscht, box_gesperrt, box_entsperrt,
+                 techniker_angelegt, techniker_gesperrt, techniker_entsperrt, fenster_geoeffnet,
+                 fenster_geschlossen]
+        edgeRef: { type: string, nullable: true }
+        technikerId: { type: string, format: uuid, nullable: true }
+        technikerName: { type: string, nullable: true }
+        fensterId: { type: string, format: uuid, nullable: true }
+        details: { type: object, additionalProperties: true }
+    FernwartungSoll:
+      type: object
+      required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]
+      properties:
+        version: { type: integer, enum: [1] }
+        erzeugtAm: { type: string, format: date-time }
+        boxNetz: { type: string }
+        technikerNetz: { type: string }
+        peers:
+          type: array
+          items:
+            type: object
+            required: [art, id, kennung, publicKey, adresse]
+            properties:
+              art: { type: string, enum: [box, techniker] }
+              id: { type: string, format: uuid }
+              kennung: { type: string, description: Box-Referenz bzw. Name des Zugangs. }
+              publicKey: { type: string }
+              adresse: { type: string, description: IPv4 ohne Präfix; der Peer bekommt genau diese /32. }
+        fenster:
+          type: array
+          items:
+            type: object
+            required: [id, boxId, technikerId, beginn, ende]
+            properties:
+              id: { type: string, format: uuid }
+              boxId: { type: string, format: uuid }
+              technikerId: { type: string, format: uuid }
+              beginn: { type: string, format: date-time }
+              ende: { type: string, format: date-time }
     ProvisionedDevice:
       type: object
       properties:
@@ -25865,7 +26355,7 @@ components:
       type: object
       description: A device that enrolled (uploaded a CSR) but has no claimed device row.
       properties:
-        externalRef: { type: string, example: edge-k7m2xqp }
+        externalRef: { type: string, example: edge-k7m2xq3 }
         deviceInfo: { type: string, nullable: true, description: Free-form device info from the CSR upload. }
         csrUpdatedAt: { type: string, format: date-time, description: When the pending CSR was last (re)uploaded. }
         everIssued:
@@ -26129,6 +26619,7 @@ components:
               unplannedLoadDischarge: { type: boolean, nullable: true, description: "Additive idle-slot authority: true permits fresh measured load coverage to START from a 0-kW plan slot when full marginal economics favor discharge. It never redefines coverLoadFromBattery and never applies to a planned charge or sale. Null = pre-feature/not evaluated; false = evaluated and intentionally held." }
               whyNextBest: { type: string, nullable: true, description: "Erklaerbarkeit Stufe 1 (schedule.why_next_best, migration V20260824000000): the best action this RESTING slot REJECTED - decken | verkaufen | solar_speichern | netzladen. Only physically ADMISSIBLE alternatives are named (charging needs SoC headroom and, in EEG mode, real PV surplus; netzladen needs the grid-charge permission), so a margin never describes an impossible action. Null on ACTIVE slots (the chosen action's marginal benefit is 0 at the optimum), when nothing else was possible, and on runs whose explain layer was off." }
               whyNextBestMarginCt: { type: number, nullable: true, description: "Erklaerbarkeit Stufe 1 (schedule.why_next_best_margin_ct): how much WORSE that rejected alternative would have been, in ct/kWh - always <= 0. |margin| <= 0.05 is a TIE and the surface must say so ('beides waere gerade fast gleich gut') instead of dressing an abwaegung up as certainty; on 17.08.2026 it was algebraically exactly 0,000 ct/kWh. Null exactly where whyNextBest is null - name and margin are ONE statement." }
+              evReleaseFloorSocPct: { type: number, nullable: true, description: "„Sonne + Speicher“ (schedule.ev_release_floor_soc_pct, 06.10.2026): die Speicheruntergrenze dieses Slots in % - bis dahin darf ein Ladepunkt auf dieser Quelle den Speicher leeren (dieselbe Zahl, die der MQTT-Fahrplan als ev_release_floor_soc_pct trägt). null = in diesem Slot keine Freigabe (der Plan handelt, oder die Anlage fährt die Quelle nicht)." }
               chargeFromSurplusOnly: { type: boolean, nullable: true, description: "Duty-Vorschau, charge-side mirror (schedule.charge_from_surplus_only, migration V20260802010000): true = in THIS slot the device clamps the commanded CHARGE to the measured solar surplus max(pv - load, 0) because buying the shortfall would be uneconomic - the plan's batteryKw is a forecast here too. Same tri-state discipline as coverLoadFromBattery." }
     ControlStatus:
       type: object
@@ -26346,6 +26837,8 @@ components:
             ganzen Überschuss greifen darf - nie 0.
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
+        storageReleaseReserveKwh: { type: number, nullable: true, description: "„Sonne + Speicher“: die Reserve dieser Anlage in kWh über dem Reservestapel des Speichers. null = keine eigene Angabe, es gilt storageReleaseReserveStandardKwh. Reist NICHT zur Box - der Optimierer rechnet damit die Untergrenze." }
+        storageReleaseReserveStandardKwh: { type: number, description: "Die Vorgabe des Optimierers (1,0 kWh; docs/contracts/v2/sonne-speicher-vectors.json)." }
     LadeparkRahmen:
       type: object
       description: >
@@ -26388,6 +26881,7 @@ components:
             Box wechselt zwischen ihnen weiter im Takt ab (Rotation).
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
+        storageRelease: { type: boolean, nullable: true, description: "„Sonne + Speicher“ (06.10.2026): auf der Bahn nur_sonne darf diese Säule zusätzlich Speicherenergie oberhalb der Untergrenze des Fahrplans bekommen (charge_points[].storage_release). Gesetzt über die Steuerart (ueberschussModus speicher), nie über diese Liste." }
     Steuerart:
       type: object
       description: >
@@ -26413,7 +26907,13 @@ components:
         ueberschussModus:
           type: string
           nullable: true
-          enum: [pausieren, mindestleistung, null]
+          enum: [pausieren, mindestleistung, speicher, null]
+          description: >
+            NUR am Ladepunkt: was bei zu wenig Überschuss geschieht.
+            `pausieren` = „Nur Sonne“, `mindestleistung` = „Sonne + Minimum“,
+            `speicher` = „Sonne + Speicher“ (06.10.2026): die Säule fährt die
+            Bahn `nur_sonne` mit `storage_release` und bekommt zusätzlich
+            Speicherenergie oberhalb der Untergrenze des Fahrplans.
         mindestleistungKw: { type: number, nullable: true }
         fenster: { $ref: "#/components/schemas/SteuerartFenster" }
         ziel:
@@ -26481,6 +26981,18 @@ components:
         zielEnergieKwh: { type: number, nullable: true }
         zielLaufzeitMinuten: { type: integer, nullable: true }
         zielAmStueck: { type: boolean, nullable: true }
+        ueberschussModus:
+          type: string
+          nullable: true
+          enum: [pausieren, mindestleistung, speicher, null]
+          description: >
+            NUR am Ladepunkt und nur zu `quelle: ueberschuss`. Ein anderes Wort
+            ist eine benannte Ablehnung (400). `speicher` („Sonne + Speicher“)
+            ist nur an einer OCPP-Säule einer Anlage mit PV und Speicher samt
+            gepflegter Kapazität wählbar - sonst trägt die Karte
+            `ueberschuss_speicher` in `optionen.quellen` den Grund, und der
+            Schreibpfad lehnt mit genau ihm ab.
+        mindestleistungKw: { type: number, nullable: true, description: "Zu `ueberschussModus: mindestleistung` - ab welcher Leistung die Säule lädt." }
     SteuerartErgebnis:
       type: object
       properties:
@@ -26733,6 +27245,24 @@ components:
             antwortet, ist die schlechtere Auskunft als gar keine.
         ocppUrlPath: { type: string, nullable: true, description: "Der Pfad des OCPP-Servers (z. B. `/ocpp`); null wie oben." }
         reportedAt: { type: string, format: date-time }
+        storageRelease:
+          type: object
+          nullable: true
+          description: >
+            „Sonne + Speicher“ (06.10.2026): was die BOX gerade aus der
+            Untergrenze des Fahrplans macht. null = eine ältere Box, oder keine
+            Säule fährt die Quelle. Jede Zahl nullable - kein Messwert ist nie
+            eine 0.
+          properties:
+            active: { type: boolean, description: "Die Box gibt gerade Speicherenergie an Autos auf dieser Quelle." }
+            kw: { type: number, nullable: true, description: "Die freigegebene Speicherleistung über dem Sonnenüberschuss (nur aktiv)." }
+            floorSocPct: { type: number, nullable: true, description: "Die Untergrenze der laufenden Viertelstunde." }
+            socPct: { type: number, nullable: true, description: "Der gemessene Ladestand, gegen den die Box entschied." }
+            mode:
+              type: string
+              enum: [frei, frei_beobachtet, an_der_grenze, kein_plan, plan_handelt, ladestand_unbekannt, keine_messung, speicherpfad, bms_sperrt, keine_leistung, wirkung, kein_ladestand, speicher_gehalten, prognose_veraltet, nachtbedarf_ueber_kapazitaet, reserve_ueber_kapazitaet, prognose_zu_kurz]
+              description: "Die Stufe der Box (Vokabular: docs/contracts/v2/sonne-speicher-vectors.json). `frei` gibt ein von VoltPilot gesteuerter Speicher frei, `frei_beobachtet` einer, den die Box nur beobachtet (Freigabe aus Messung und Wirkungsprüfung)."
+            note: { type: string, nullable: true, description: "Der deutsche Satz der Box, unverändert." }
     ChargePoint:
       type: object
       description: >

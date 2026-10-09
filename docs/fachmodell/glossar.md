@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 57 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 58 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -90,6 +90,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Sitzung · Beschluss · Folge](#sitzung--beschluss--folge) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)
 - [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 - [Szene](#szene) — Sicht Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)
+- [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
 
 ## Kundenbereich
 
@@ -1511,3 +1512,17 @@ Eine Szene schaltet nichts Eigenes: sie nutzt den Pausenweg der Verbraucher (Reg
 **Heute im Code.** Tabelle `site_scene` mit RLS (MIG/V20260929120000__steuerung_szene_und_nur_messen.sql:49), Dienst `SzenenService` (services/api/src/main/java/com/voltpilot/api/szenen/SzenenService.java:65), Wörter als `STEUERUNG_SZENE` (PORTAL/glossar.ts:156), Vorschläge je Szene in PORTAL/steuerung/szenen.ts:40.
 
 **Abgrenzung.** Nicht die Regel (die reagiert auf eine Bedingung), nicht der Eingriff (der gilt für ein Gerät und endet nach Minuten), nicht die Pause der Automatik (die hält die ganze Anlage an).
+
+## Sonne + Speicher
+
+*Sicht: Betrieb · Nachtrag Ladequelle (06.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“: das Auto bekommt den Sonnenstrom und dazu die Speicherenergie, die das Haus laut vorsichtiger Prognose bis zur nächsten Erzeugung nicht braucht.**
+
+Wie tief der Speicher dafür entladen werden darf (seine Untergrenze), rechnet der Fahrplan je Viertelstunde neu: eher viel Verbrauch, eher wenig Sonne, dazu die einstellbare Reserve der Anlage. Die Box gibt nur frei, solange der gemessene Ladestand darüber liegt. VoltPilot muss den Speicher dafür nicht steuern: Steuert es ihn nicht, beobachtet die Box Ladestand und Speicherleistung, der Wechselrichter deckt die Wallbox selbst, und gemessener Netzbezug nimmt die Freigabe zurück. Einen Speicher, den VoltPilot nicht steuert, plant der Fahrplan als Eigenverbrauch statt als Handel. Fehlt die Prognose, ist der Ladestand unbekannt oder nutzt der Fahrplan den Speicher gerade selbst, lädt das Auto wie bei „Nur Sonne“. Netzstrom gibt es in dieser Quelle nicht. Die Moduswahl „Aus · Smart · Schnell“ bleibt; „Sonne + Speicher“ steht neben „Nur Sonne“, „Sonne + Minimum“ und „Günstig“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ladepunkt K-9 an AN-1, 12:00 an einem sonnigen Tag: der Speicher darf weit herunter, weil der Nachmittag ihn für die Nacht wieder füllt. Um 20:00 bleibt alles, was die Nacht bis zum Morgen braucht, plus 1 kWh Reserve.
+
+**Heute im Code.** Steuerart `ueberschussModus=speicher` mit der Karte `ueberschuss_speicher` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartSatz.java:132), Untergrenze im Optimierer (services/optimization/voltpilot_optimization/storage_release.py:390), Steuerstand der Box im Herzschlag (`docs/contracts/speicher-steuerstand.md`, MIG/V20261007120000__device_battery_control.sql:33), Freigabe auf der Box (`edge-app/core/internal/lastmgmt/release.go`), Reserve je Anlage (MIG/V20261006120000__sonne_speicher.sql:40), Wort als `LADEQUELLE` (PORTAL/glossar.ts:157).
+
+**Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht der Vorrang „Speicher vor Auto“ (der ordnet den Überschuss), nicht die Notstrom- und Schutzreserve des Speichers (die bleibt immer unberührt).

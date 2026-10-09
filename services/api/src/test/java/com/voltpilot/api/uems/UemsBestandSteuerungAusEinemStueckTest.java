@@ -76,9 +76,9 @@ import org.testcontainers.utility.DockerImageName;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class UemsBestandSteuerungAusEinemStueckTest {
-    // Aufgenommen auf 4aa1e7fb, bei den Nachzügen auf 8b8b6a03b und 308a5cc91 bytegleich nachgemessen
-    // (resources/uems/nw2/README.md).
-    static final String MAIN = "308a5cc91fbacc564ab27b338a7afaab47e214ff";
+    // Aufgenommen auf 4aa1e7fb, bei den Nachzügen auf 8b8b6a03b, 308a5cc91 und 3a8519f1d bytegleich
+    // nachgemessen (resources/uems/nw2/README.md).
+    static final String MAIN = "3a8519f1d34a276c3504edf93440ac581062dd4d";
     static final boolean CAPTURE = System.getProperty("nw2.capture") != null;
     static final UUID TENANT = id(1), SITE = id(2), BOX = id(3), BATTERY = id(4), CONSUMER = id(5);
     static final UUID U2_TENANT = id(21), U2_HALLE_1 = id(22), U2_HALLE_2 = id(23), U2_LINDACH = id(24);

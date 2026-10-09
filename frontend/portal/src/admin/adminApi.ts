@@ -10,6 +10,15 @@ import type { DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
 import type { PlattformModellWahlZustand } from '../prognose';
+import type {
+  FernwartungBox,
+  FernwartungFenster,
+  FernwartungProtokollEintrag,
+  FernwartungSchluesselAntwort,
+  FernwartungTechniker,
+  FernwartungTechnikerAntwort,
+  FernwartungUebersicht,
+} from '../adminFernwartung';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -131,6 +140,8 @@ export interface AdminDeviceRow {
   note: string | null;
   provisionedAt: string | null;
   trust?: DeviceTrust | null;
+  /** Box-Art aus der API (`ota.BoxArt`); `null` = unbekannt oder noch kein Gerät. */
+  boxArt?: string | null;
 }
 
 export interface ProvisionDeviceInput {
@@ -502,4 +513,83 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ kind, model }),
     }),
+
+  // ── Fernwartung (Entscheid E5): der Soll-Zustand des Wartungstunnels ──────
+  // Nur platform-admin; der Kunde sieht davon nichts (O3). Umgesetzt wird
+  // nichts von hier aus - das tut der Tunnel-Dienst auf der Wartungs-VM.
+
+  fernwartung: () => request<FernwartungUebersicht>('/api/v1/admin/fernwartung'),
+
+  fernwartungBoxen: () => request<FernwartungBox[]>('/api/v1/admin/fernwartung/boxen'),
+
+  /** 404 = für diese Box ist noch kein Tunnel-Schlüssel hinterlegt. */
+  fernwartungBox: (ref: string) =>
+    request<FernwartungBox>(`/api/v1/admin/fernwartung/boxen/${encodeURIComponent(ref)}`),
+
+  /** Übergang bis zur Werkstatt-Registrierung: öffentlichen Schlüssel hinterlegen. */
+  fernwartungSchluessel: (
+    ref: string,
+    input: { publicKey: string; schluesselTausch?: boolean; notiz?: string | null },
+  ) =>
+    request<FernwartungSchluesselAntwort>(
+      `/api/v1/admin/fernwartung/boxen/${encodeURIComponent(ref)}/schluessel`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    ),
+
+  fernwartungBoxSperren: (ref: string, grund?: string | null) =>
+    request<FernwartungBox>(`/api/v1/admin/fernwartung/boxen/${encodeURIComponent(ref)}/sperren`, {
+      method: 'POST',
+      body: JSON.stringify({ grund: grund ?? null }),
+    }),
+
+  fernwartungBoxEntsperren: (ref: string) =>
+    request<FernwartungBox>(`/api/v1/admin/fernwartung/boxen/${encodeURIComponent(ref)}/entsperren`, {
+      method: 'POST',
+    }),
+
+  fernwartungTechniker: () => request<FernwartungTechniker[]>('/api/v1/admin/fernwartung/techniker'),
+
+  fernwartungTechnikerAnlegen: (input: { name: string; publicKey: string; notiz?: string | null }) =>
+    request<FernwartungTechnikerAntwort>('/api/v1/admin/fernwartung/techniker', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  fernwartungTechnikerSperren: (id: string, grund?: string | null) =>
+    request<FernwartungTechniker>(`/api/v1/admin/fernwartung/techniker/${id}/sperren`, {
+      method: 'POST',
+      body: JSON.stringify({ grund: grund ?? null }),
+    }),
+
+  fernwartungTechnikerEntsperren: (id: string) =>
+    request<FernwartungTechniker>(`/api/v1/admin/fernwartung/techniker/${id}/entsperren`, {
+      method: 'POST',
+    }),
+
+  fernwartungFensterOeffnen: (input: {
+    edgeRef: string;
+    technikerId: string;
+    grund: string;
+    dauerMinuten: number;
+    beginn?: string | null;
+  }) =>
+    request<FernwartungFenster>('/api/v1/admin/fernwartung/fenster', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  fernwartungFensterSchliessen: (id: string) =>
+    request<FernwartungFenster>(`/api/v1/admin/fernwartung/fenster/${id}/schliessen`, {
+      method: 'POST',
+    }),
+
+  fernwartungProtokoll: (filter: { box?: string | null; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (filter.box) q.set('box', filter.box);
+    if (filter.limit) q.set('limit', String(filter.limit));
+    const qs = q.toString();
+    return request<FernwartungProtokollEintrag[]>(
+      `/api/v1/admin/fernwartung/protokoll${qs ? `?${qs}` : ''}`,
+    );
+  },
 };

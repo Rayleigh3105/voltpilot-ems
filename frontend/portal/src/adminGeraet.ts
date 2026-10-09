@@ -31,13 +31,16 @@ import type { AdminDeviceRow, ControlCandidate } from './admin/adminApi';
 import type { AdminFleetSite } from './admin/fleetApi';
 import {
   blockerLever,
+  boxArtLabel,
   crossoverState,
   formatTrustStamp,
   stateLabel,
+  zuweisbareReleases,
   type CrossoverState,
   type EdgeUpdatesRelease,
   type JournalEntry,
   type UpdateTone,
+  type ZuweisbareReleases,
 } from './adminEdgeUpdates';
 import {
   controlMatrixRow,
@@ -108,8 +111,13 @@ export interface GeraetSoftware {
   grund: string | null;
   /** Darf hier überhaupt etwas zugewiesen werden? (nur ein verbundenes Gerät) */
   verbunden: boolean;
-  /** Signierte Releases - nur die sind verteilbar. */
-  signierteReleases: EdgeUpdatesRelease[];
+  /**
+   * Was sich diesem Gerät zuweisen lässt: signiert UND zur Box-Art passend,
+   * samt dem Satz zu den unpassenden (nie still weggelassen).
+   */
+  releases: ZuweisbareReleases;
+  /** Die Box-Art aus der API, übersetzt für den Chip (`art: null` = unbekannt). */
+  boxArt: ReturnType<typeof boxArtLabel>;
 }
 
 export interface GeraetVertrauen {
@@ -322,7 +330,8 @@ function software(
     hebel,
     grund: device.reason ?? null,
     verbunden,
-    signierteReleases: releases.filter((r) => r.signed),
+    releases: zuweisbareReleases(releases, device.boxArt),
+    boxArt: boxArtLabel(device.boxArt),
   };
 }
 
@@ -336,7 +345,7 @@ function toneOf(tone: UpdateTone): Tone {
 // ---------------------------------------------------------------------------
 
 function vertrauen(device: AdminDeviceRow): GeraetVertrauen {
-  const cross = crossoverState(device.trust);
+  const cross = crossoverState(device.trust, device.boxArt);
   const set = device.trust?.trustSetKeyIds ?? [];
   const stand = device.trust?.trustSetGeneratedAt;
   return {

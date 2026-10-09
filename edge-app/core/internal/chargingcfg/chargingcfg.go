@@ -215,6 +215,15 @@ type ChargePoint struct {
 	// It is applied to a station the box ALREADY knows, for the same reason
 	// `source`/`connection` are: there is no :8484 surface for it.
 	Rank int
+	// StorageRelease is „Sonne + Speicher" (2026-10-06): on top of the lane
+	// word `nur_sonne` the station may receive battery energy above the
+	// cloud's floor (internal/lastmgmt/release.go). It belongs to the SAME
+	// choice as Source and travels with it: an entry that carries a source
+	// carries the flag too, and an absent flag next to a source is FALSE -
+	// that is how switching back to „Nur Sonne" reaches the box. An older box
+	// ignores the field and runs the plain `nur_sonne` lane - the safe
+	// fallback the source promises.
+	StorageRelease bool
 }
 
 // VehicleProfile is one card's own source lane. It carries a QUELLE and never
@@ -295,6 +304,8 @@ type wireCP struct {
 	Source     string  `json:"source"`
 	MinKw      float64 `json:"min_kw"`
 	Rank       int     `json:"rank"`
+	// StorageRelease: see ChargePoint.StorageRelease.
+	StorageRelease bool `json:"storage_release"`
 }
 
 // Parse reads one retained payload. An EMPTY payload returns ErrEmpty (the
@@ -411,10 +422,14 @@ func Parse(payload []byte) (Config, error) {
 		if rank < 0 || rank > MaxRank {
 			rank = 0
 		}
+		// „Sonne + Speicher" is a statement about the battery ON TOP OF the
+		// sun-only lane: next to any other lane word (or without one) it is no
+		// statement and is dropped, never a release.
+		release := cp.StorageRelease && src == "nur_sonne"
 		cfg.ChargePoints = append(cfg.ChargePoints, ChargePoint{
 			ID: id, Label: strings.TrimSpace(cp.Label), Priority: cp.Priority,
 			RatedKw: cp.RatedKw, Connectors: cp.Connectors, Connection: conn,
-			Source: src, MinKw: minKw, Rank: rank,
+			Source: src, MinKw: minKw, Rank: rank, StorageRelease: release,
 		})
 	}
 	if len(w.Removed) > MaxChargePoints {

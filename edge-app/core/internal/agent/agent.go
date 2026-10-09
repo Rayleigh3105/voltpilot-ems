@@ -109,6 +109,10 @@ type Agent struct {
 	lastReadingAt time.Time
 	lastRawSoc    *float64
 
+	// releaseReady is the battery executor's per-tick word on whether it
+	// covers a vehicle's draw („Sonne + Speicher", ocpp_release.go).
+	releaseReady releaseReadiness
+
 	// net answers "under which address is my box reachable" - the ONE fact the
 	// box could never say about itself (D5). It records the Host header of
 	// every request that reaches the local web app (see internal/netinfo) and
@@ -1322,13 +1326,16 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		DevInsecure: a.Cfg.DevInsecure,
 		// The build stamp rides EVERY heartbeat as the top-level `version`
 		// (OTA Stufe 0) - see cloud.Options.Version.
-		Version:    Version,
-		NetworkFn:  a.networkSummary,
-		OnSchedule: a.onSchedule,
-		OnCommand:  a.onCloudCommand,
-		OnEntities: a.onEntityRegistryPush,
-		OnPlanV2:   a.onPlanV2,
-		OnFlows:    a.onFlows,
+		Version:   Version,
+		NetworkFn: a.networkSummary,
+		// Gesteuert oder nur beobachtet - in JEDEM Herzschlag, auch ohne
+		// Rücklesung (docs/contracts/speicher-steuerstand.md).
+		BatteryControlFn: a.batteryControlSummary,
+		OnSchedule:       a.onSchedule,
+		OnCommand:        a.onCloudCommand,
+		OnEntities:       a.onEntityRegistryPush,
+		OnPlanV2:         a.onPlanV2,
+		OnFlows:          a.onFlows,
 		// AP-15 IP-17: the share document of a Gemeinsame Steuerung -
 		// judged, stored, receipted and mirrored (verbund_anteile.go).
 		OnVerbundAnteile: a.onVerbundAnteile,
@@ -2831,6 +2838,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Native = nil
 			s.NativeWithheld = nil
 			s.CarsFirstCapKw = nil
+			s.ReleaseCoverKw = nil
 			s.ExportGuard = exportGuard
 			// Without a reading the tracker has no evaluation point at all, so a
 			// previous claim is cleared rather than left standing - the same rule
@@ -2970,6 +2978,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	limitToLoad := marketCorrectionsAllowed && p.ActiveLimitDischargeToLoad(now)
 	economicUnplannedRequested := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
 	portableReady := false
+	// commanded: VoltPilot drives this battery at all (the control_enabled
+	// edge/setpoint carries). Only „Sonne + Speicher" reads it on its own.
+	commanded := false
 	// This additive economic permission belongs exclusively to an idle MARKET
 	// slot. The shared marketCorrectionsAllowed boundary above protects both it
 	// and the established cover_load_from_battery follower from every non-plan
@@ -2986,9 +2997,44 @@ func (a *Agent) applySetpoint(now time.Time) {
 			familyForIdle = a.inv.Family
 		}
 		a.invMu.Unlock()
-		portableReady = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
+		commanded = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle)
+		portableReady = commanded && readbackHealthy
 	}
 	economicUnplanned := economicUnplannedRequested && portableReady
+
+	// „SONNE + SPEICHER" (ocpp_release.go): tell the charge-point executor
+	// whether THIS path covers a vehicle's draw right now. Every hold reason
+	// the battery honours is a reason not to release - a battery that a rule
+	// holds or that runs its stale-plan fallback would leave the car on grid
+	// power, and so would a COMMANDED battery without a held readback: it
+	// follows the box's setpoint, not the house, and may sit in a forced
+	// charge. A battery the box does NOT command (no model/device approval)
+	// is OBSERVED instead (Kapitän 07.10.2026): its inverter covers the
+	// wallbox by itself, and the release rests on the measurement and the
+	// effect check.
+	switch {
+	case paused:
+		a.noteReleaseReadiness(now, false, "Die Steuerung des Speichers ist pausiert")
+	case nonPlanHolder || a.batteryOwnerClaimed():
+		a.noteReleaseReadiness(now, false, "Eine Regel oder ein Handeingriff hält den Speicher")
+	case mode != state.ModeSchedule || !p.Fresh(now):
+		a.noteReleaseReadiness(now, false, "Ohne aktuellen Fahrplan fährt der Speicher seinen Rückfall")
+	case !measurementFresh:
+		a.noteReleaseReadiness(now, false, "Die Messung des Wechselrichters ist nicht frisch")
+	case !portableReady && !a.Cfg.ControlEnabled:
+		// The global stop: the box writes nothing at all, the wallboxes hold
+		// their safety profile (ocppControlAllowed) - no release to speak of.
+		a.noteReleaseReadiness(now, false, "Die Steuerung ist an dieser Box abgeschaltet (Not-Aus)")
+	case !portableReady && commanded:
+		a.noteReleaseReadiness(now, false, "VoltPilot steuert den Speicher, aber ohne bestätigte Rückmeldung "+
+			"des Wechselrichters ist offen, was er gerade ausführt")
+	case !portableReady:
+		// No model/device approval: control_enabled=false on edge/setpoint,
+		// Layer 1 writes nothing, the inverter regulates itself.
+		a.noteReleaseObserved(now)
+	default:
+		a.noteReleaseReadiness(now, true, "")
+	}
 
 	unplanned := economicUnplanned
 	floor := peakReserve
@@ -3152,6 +3198,40 @@ func (a *Agent) applySetpoint(now time.Time) {
 		v := cap
 		carsFirstCap = &v
 		kw = cap
+	}
+
+	// „SONNE + SPEICHER" - the RELEASE COVER (ocpp_release.go): while cars on
+	// that source draw released battery power, a planned CHARGE in a slot the
+	// cloud authorized (it carries ev_release_floor_soc_pct, i.e. a
+	// self-consumption slot - never a trade) yields to the MEASURED
+	// self-consumption value pv - load, where load includes the cars. Without
+	// it the PV-bus semantics would keep charging the battery from the sun
+	// while the car's draw came from the grid - exactly what the source
+	// promises never happens.
+	//
+	// ⚠ LOWER-ONLY and bounded by the cloud's floor: the target is re-run
+	// through the SAME guards.Clamp with the SoC floor raised to the release
+	// floor, so rated band, BMS, §14a and the solar-only clamp hold; it lands
+	// at predicted grid 0, so it can never create an export, and the peak
+	// guard and the export watchdog below still act on the result. In every
+	// other slot the battery already covers the cars (deficit cover, load
+	// following, self-consumption), so this is a no-op there.
+	var releaseCoverKw *float64
+	if floorPct, inUse := a.ocppReleaseInUse(now); inUse && marketCorrectionsAllowed &&
+		mode == state.ModeSchedule && p.Fresh(now) && measurementFresh && portableReady &&
+		!math.IsNaN(rc.PvKw) && !math.IsNaN(rc.LoadKw) {
+		if _, slotOk := p.ActiveReleaseFloor(now); slotOk {
+			l := limits
+			if floorPct > l.SocMinPct {
+				l.SocMinPct = floorPct
+			}
+			target := guards.Clamp(rc.PvKw-rc.LoadKw, l, r)
+			if kw > target {
+				v := target
+				releaseCoverKw = &v
+				kw = target
+			}
+		}
 	}
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
@@ -3496,6 +3576,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Follow = followInfo
 		s.Absorb = absorbInfo
 		s.CarsFirstCapKw = carsFirstCap
+		s.ReleaseCoverKw = releaseCoverKw
 		s.ExportGuard = exportGuard
 		s.CurtailTrack = curtailTrack
 		s.Leader = leaderInfo

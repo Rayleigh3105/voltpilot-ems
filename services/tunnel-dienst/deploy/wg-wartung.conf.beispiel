@@ -1,0 +1,15 @@
+# /etc/wireguard/wg-wartung.conf  (root:root 0600) - für wg-quick@wg-wartung
+#
+# Nur die Schnittstelle: KEIN [Peer]-Abschnitt. Die Peers (Boxen und
+# Techniker-Zugänge) setzt ausschließlich vp-tunnel-dienst aus dem Portal.
+# SaveConfig bleibt aus, sonst schriebe wg-quick die Peers beim Stoppen hier
+# hinein und setzte beim nächsten Start einen veralteten Stand.
+#
+# Server-Schlüssel einmalig erzeugen (bleibt auf der VM):
+#   umask 077; wg genkey > /etc/wireguard/wg-wartung.key
+#   wg pubkey < /etc/wireguard/wg-wartung.key   # -> VP_FERNWARTUNG_SERVER_PUBLIC_KEY der API
+[Interface]
+Address = 10.10.16.1/20, 10.10.32.1/24
+ListenPort = 51820
+PostUp = wg set %i private-key /etc/wireguard/wg-wartung.key
+SaveConfig = false
