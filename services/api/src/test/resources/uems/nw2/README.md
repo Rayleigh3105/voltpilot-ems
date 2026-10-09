@@ -6,7 +6,7 @@ Referenzdateien dürfen nicht aus dem UEMS-Lauf neu geschrieben werden.
 
 ## Herkunft der Referenz
 
-- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, `308a5cc91`, `3a8519f1d` und `db32a784c`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
+- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, `308a5cc91`, `3a8519f1d`, `db32a784c` und `690806300`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
 - Schema: genau dessen 168 Produktionsmigrationen, ohne Dev-Seeds.
 - Saat: `main-seed.sql`, direkt auf diesem Schema, keine UEMS-Route. Der alte
   V2-Startmarker ist vorhanden, wie bei einer auf main schon gestarteten Anlage.
@@ -81,6 +81,16 @@ Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `db32a784ce55ae06104
 Testklasse mit den zwei entfernten UEMS-Sendern, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus
 übersprungen, **bytegleich** zu `main-reference.json` (12 035 Bytes, alle 13 Einträge). Die neue Route und
 Migration sind von diesem Nachweis ungenutzt; `MAIN` nennt seither db32a784c.
+
+## Nachgemessen beim Nachzug main 690806300 (09.10.2026, Fernwartung: SSH-Schlüssel des Technikers)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `690806300a125e6329b4e91b450d23ef2e6981be`
+(4 Commits: `PUT` und `DELETE /api/v1/admin/fernwartung/techniker/{id}/ssh-schluessel`,
+`V20261009074500__fernwartung_ssh_schluessel.sql`, #1477; `main-migrations.txt` jetzt 175) in einem
+`git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwei entfernten UEMS-Sendern,
+`-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu `main-reference.json`
+(12 035 Bytes, alle 13 Einträge). Die zwei neuen Routen und die Migration sind von diesem Nachweis ungenutzt;
+`MAIN` nennt seither 690806300.
 
 ## Bewusste Differenzen main → uems
 
