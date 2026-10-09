@@ -203,6 +203,18 @@ VPTD_BASIS=debian test/integration.sh    # Debian 12, nftables 1.0.6
 
 Ohne DNS im Container zusätzlich `VPTD_DOCKER_DNS=1.1.1.1` setzen. `go vet` und `go test` ohne lokales Go: im Container mit eingehängter Repo-Wurzel, wie in Schritt 3 der Installation.
 
+### Verträgt der Dienst auf der VM einen erweiterten Soll-Stand?
+
+Der Soll-Stand wächst additiv, die Version bleibt 1. Im Betrieb überliest der Dienst unbekannte Felder; ob das für den Stand gilt, der gerade auf der VM läuft, belegt vor dem Ausliefern des Portals:
+
+```bash
+test/vertraeglichkeit.sh <commit>    # der Stand aus `vp-tunnel-dienst version`
+```
+
+Die Probe packt den Dienst von diesem Commit aus, gibt ihm den Vertragsvektor des Arbeitsverzeichnisses als Antwort der API und vergleicht Peers, Fenster und Plan mit demselben Vektor ohne die Felder, die der alte Stand nicht kennt; dazu den Zwischenstand auf der Platte und den Wiederanlauf ohne API. Sie braucht nur Docker (`golang:1.24`), kein WireGuard und keine Rechte. Belegt am 09.10.2026 für den Stand `db32a784ce55` und das Feld `sshPublicKey` am Techniker-Peer.
+
+Dieses Feld liest der Dienst bisher nur mit (`soll.Peer.SSHPublicKey`); `Pruefe` reicht es nicht weiter. Die Ausgabe an die Boxen ist ein eigener Schritt ([Fenster-Schlüssel](../../docs/fernwartung.md#anmeldung-an-der-box-fenster-schlüssel)).
+
 ### Stimmt die geladene Firewall-Basis?
 
 `vp-tunnel-dienst status` sagt es in der zweiten Zeile: `Firewall-Basis stimmt: ja` oder `nein`. Das ist dieselbe Prüfung, mit der der Dienst bei jedem Lauf entscheidet, ob er die Tabelle neu lädt (Prüfwert im Kommentar der Menge und die vier Ketten). Sie hängt nicht davon ab, wie `nft` die Regeln ausgibt.

@@ -12,6 +12,7 @@ import com.voltpilot.api.fernwartung.FernwartungService;
 import com.voltpilot.api.fernwartung.FernwartungService.Ergebnis;
 import com.voltpilot.api.fernwartung.FernwartungService.Hinterlegt;
 import com.voltpilot.api.fernwartung.FernwartungService.Uebersicht;
+import com.voltpilot.api.fernwartung.SshSchluessel;
 import com.voltpilot.api.fernwartung.WireguardSchluessel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -118,11 +119,21 @@ public class AdminFernwartungController {
         }
     }
 
+    /**
+     * {@code sshPublicKey}, {@code sshFingerabdruck} und {@code sshBits} sind
+     * alle drei gesetzt oder alle drei null: der öffentliche SSH-Schlüssel des
+     * Technikers in Normalform, sein Fingerabdruck wie bei
+     * {@code ssh-keygen -lf} und die Schlüssellänge.
+     */
     public record TechnikerDto(UUID id, String name, String publicKey, String publicKeyKurz, String adresse,
-            String status, String notiz, Instant angelegtAm, Instant geaendertAm) {
+            String status, String notiz, Instant angelegtAm, Instant geaendertAm, String sshPublicKey,
+            String sshFingerabdruck, Integer sshBits) {
         static TechnikerDto of(Zugang z) {
+            SshSchluessel.Geprueft ssh = z.ssh().orElse(null);
             return new TechnikerDto(z.id(), z.name(), z.publicKey(), WireguardSchluessel.kurz(z.publicKey()),
-                    z.adresse(), z.status(), z.notiz(), z.angelegtAm(), z.geaendertAm());
+                    z.adresse(), z.status(), z.notiz(), z.angelegtAm(), z.geaendertAm(),
+                    ssh == null ? null : ssh.zeile(), ssh == null ? null : ssh.fingerabdruck(),
+                    ssh == null ? null : ssh.bits());
         }
     }
 
@@ -147,8 +158,13 @@ public class AdminFernwartungController {
             @Size(max = 500) String notiz) {
     }
 
+    /** {@code sshPublicKey} ist freiwillig: der öffentliche SSH-Schlüssel für die Anmeldung an der Box. */
     public record TechnikerRequest(@NotBlank @Size(max = 80) String name, @NotBlank String publicKey,
-            @Size(max = 500) String notiz) {
+            @Size(max = 500) String notiz, String sshPublicKey) {
+    }
+
+    /** Die eine Zeile aus der {@code .pub}-Datei; die Regeln prüft {@link SshSchluessel}. */
+    public record SshSchluesselRequest(String sshPublicKey) {
     }
 
     public record SperrenRequest(@Size(max = 500) String grund) {
@@ -240,7 +256,8 @@ public class AdminFernwartungController {
     @PostMapping("/techniker")
     public ResponseEntity<TechnikerAntwortDto> technikerAnlegen(@Valid @RequestBody TechnikerRequest req,
             @AuthenticationPrincipal Jwt caller) {
-        Zugang z = service.technikerAnlegen(req.name(), req.publicKey(), req.notiz(), Akteur.aus(caller));
+        Zugang z = service.technikerAnlegen(req.name(), req.publicKey(), req.sshPublicKey(), req.notiz(),
+                Akteur.aus(caller));
         return ResponseEntity.status(HttpStatus.CREATED).body(new TechnikerAntwortDto(TechnikerDto.of(z), server()));
     }
 
@@ -253,6 +270,26 @@ public class AdminFernwartungController {
     @PostMapping("/techniker/{id}/entsperren")
     public TechnikerDto technikerEntsperren(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
         return TechnikerDto.of(service.technikerEntsperren(id, Akteur.aus(caller)));
+    }
+
+    /**
+     * Den öffentlichen SSH-Schlüssel eines Techniker-Zugangs setzen oder
+     * ersetzen. 400 = kein annehmbarer Schlüssel (nur {@code ssh-rsa}, 2048 bis
+     * 4096 Bit); die Meldung nennt bei falschem Typ den Befehl, der einen
+     * passenden erzeugt. Kommentar und Schreibweise werden verworfen, die
+     * Antwort trägt die Normalform und den Fingerabdruck.
+     */
+    @PutMapping("/techniker/{id}/ssh-schluessel")
+    public TechnikerDto technikerSshSchluesselSetzen(@PathVariable UUID id,
+            @RequestBody SshSchluesselRequest req, @AuthenticationPrincipal Jwt caller) {
+        return TechnikerDto.of(service.technikerSshSchluesselSetzen(id, req.sshPublicKey(), Akteur.aus(caller)));
+    }
+
+    /** Den SSH-Schlüssel entfernen (idempotent): Fenster öffnen danach nur noch den Netzweg. */
+    @DeleteMapping("/techniker/{id}/ssh-schluessel")
+    public TechnikerDto technikerSshSchluesselEntfernen(@PathVariable UUID id,
+            @AuthenticationPrincipal Jwt caller) {
+        return TechnikerDto.of(service.technikerSshSchluesselEntfernen(id, Akteur.aus(caller)));
     }
 
     /**
