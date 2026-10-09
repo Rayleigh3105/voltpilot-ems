@@ -42,9 +42,11 @@ NACHWEIS_KLASSEN = {
 PROBE_GUT = {
     'exit_code': 0,
     'A': {'migrationen': 65, 'summe_ms': 184_000, 'startbudget_reicht': 1},
-    'C': {'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 0, 'versionen_geloescht': 0}},
+    'C': {'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 0, 'versionen_geloescht': 0,
+                  'geloescht_offen': 0}},
     'W1': {'ungeprobt': 0, 'bereit': 1,
-           'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 0, 'versionen_geloescht': 0}},
+           'Z08': {'geloescht_markiert': 0, 'fehlgeschlagen': 0, 'sql_erfolgreich': 0, 'versionen_geloescht': 0,
+                   'geloescht_offen': 0}},
 }
 RUECKWEG_GUT = {'exit_code': 0, 'wiederherstellung_ms': 412_000, 'flyway_stimmt': 1, 'Q01_stimmt': 1}
 
@@ -284,11 +286,30 @@ class TorPrueferTest(unittest.TestCase):
     def test_z08_auffaellig_ist_offen(self):
         kaputt = json.loads(json.dumps(PROBE_GUT))
         kaputt['W1']['Z08']['geloescht_markiert'] = 18
+        kaputt['W1']['Z08']['geloescht_offen'] = 18
         self.b.probe_json(kaputt)
         code, text = self.b.fahre('G1')
         self.assertEqual(1, code)
         self.assertIn('W1.Z08 ist auffaellig', text)
-        self.assertIn('geloescht_markiert=18', text)
+        self.assertIn('geloescht_offen=18', text)
+
+    def test_z08_geheilte_produktionsmarker_sind_nicht_auffaellig(self):
+        geheilt = json.loads(json.dumps(PROBE_GUT))
+        for teil in ('C', 'W1'):
+            geheilt[teil]['Z08'].update(geloescht_markiert=15, versionen_geloescht=3, geloescht_offen=0)
+        self.b.probe_json(geheilt)
+        code, text = self.b.fahre('G1')
+        self.assertNotIn('Z08 ist auffaellig', text)
+
+    def test_z08_alter_bericht_ohne_offen_zaehlt_jeden_marker(self):
+        alt = json.loads(json.dumps(PROBE_GUT))
+        for teil in ('C', 'W1'):
+            del alt[teil]['Z08']['geloescht_offen']
+        alt['C']['Z08']['geloescht_markiert'] = 15
+        self.b.probe_json(alt)
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('C.Z08 ist auffaellig (geloescht_offen=15', text)
 
     def test_nicht_vorlegbarer_exit_code_ist_offen(self):
         self.b.probe_json(dict(PROBE_GUT, exit_code=26))

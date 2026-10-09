@@ -65,10 +65,12 @@ SELECT count(*) FILTER (WHERE hat_standort AND NOT hat_teilnahme) AS mit_standor
           FROM site s) x;
 
 -- Z05 · FRAGE: Hat der Rechte-Läufer jeden Kundenbereich erreicht?
---       ENTSCHEIDUNG: Regel N5 (nicht zugeordnet) — ohne Stichtag gilt AP-03 E12 weiter (niemand ist ausgesperrt), aber die
---       Benutzerverwaltung des Kunden ist leer. Ursachen: Keycloak nicht erreichbar beim Start,
---       oder über 1 000 Konten. „ohne_stichtag“ muss auf der Kopie erklärt sein und am Rollout-Tag der
---       Generalprobe entsprechen (Regel D8) — ein Tor G2 gibt es mit E1 = B nicht mehr.
+--       ENTSCHEIDUNG: Regel N5 (nicht zugeordnet) - ohne Stichtag gilt AP-03 E12 weiter (niemand ist ausgesperrt:
+--       jede Route und /me behandeln das Bestandskonto als Kundenadministrator), aber ein jetzt angelegtes
+--       Konto wäre unternehmensweit, und die Benutzerverwaltung des Kunden ist leer. Ursachen: Keycloak
+--       nicht erreichbar (der Läufer wiederholt selbst: 30 s, verdoppelt bis 5 min, kein Neustart nötig)
+--       oder über 1 000 Konten. „ohne_stichtag“ muss auf der Kopie erklärt sein; am Rollout-Tag vor
+--       dem Öffnen (Drehbuch Schritt 9b) muss es 0 sein - ein Tor G2 gibt es mit E1 = B nicht mehr.
 SELECT (SELECT count(*) FROM tenant)                                                   AS kundenbereiche,
        (SELECT count(*) FROM zugriff_bestand WHERE herkunft = 'bestandslauf')          AS stichtag_bestandslauf,
        (SELECT count(*) FROM zugriff_bestand WHERE herkunft = 'neuer_kundenbereich')   AS stichtag_neu,
@@ -97,15 +99,29 @@ SELECT (SELECT count(*) FROM messreihe_viertelstunde_arbeit) AS arbeit_viertelst
        (SELECT count(*) FROM messreihe_periode_arbeit)       AS arbeit_periode_offen;
 
 -- Z08 · FRAGE: Hat ein alter API-Start die Migrationshistorie als gelöscht markiert?
---       AUFFÄLLIG, WENN: geloescht_markiert > 0 oder fehlgeschlagen > 0; sql_erfolgreich muss
---       zum eingefrorenen Release und Vorher-Blatt passen. versionen_geloescht ist NUR eine Zahl.
---       ENTSCHEIDUNG bei DELETE: NICHT einfach das neue Image wieder ausrollen. API/Writer anhalten,
+--       AUFFÄLLIG, WENN: geloescht_offen > 0 oder fehlgeschlagen > 0 oder geloescht_markiert weicht
+--       vom Ausgangswert ab (Produktion: 15 geheilte Marker vom 02.08.2026, Kopie vom 08.10.2026);
+--       sql_erfolgreich muss zum eingefrorenen Release und Vorher-Blatt passen.
+--       versionen_geloescht ist NUR eine Zahl. Geheilt (= nicht offen) ist ein Marker genau dann,
+--       wenn die jüngste Zeile seiner Version eine erfolgreiche SQL-Neuanwendung mit gleicher
+--       Prüfsumme, Beschreibung und Skript ist - dieselbe Regel wie der Start-Wächter der API.
+--       ENTSCHEIDUNG bei offenem DELETE: NICHT einfach das neue Image wieder ausrollen. API/Writer anhalten,
 --       Befund sichern, geübten Rückweg auf den Wiederherstellungspunkt ausführen (vor Portalöffnung).
 --       Vollständigen Historienfingerabdruck bis zur Öffnung erneut vergleichen; keine Marker löschen.
+WITH h AS (
+    SELECT d.type, d.success, d.version,
+           d.type = 'DELETE' AND coalesce(l.type = 'SQL' AND l.success AND l.checksum = d.checksum
+               AND l.description = d.description AND l.script = d.script, false) AS geheilt
+      FROM flyway_schema_history d
+      LEFT JOIN LATERAL (SELECT r.type, r.success, r.checksum, r.description, r.script
+                           FROM flyway_schema_history r
+                          WHERE r.version = d.version
+                          ORDER BY r.installed_rank DESC LIMIT 1) l ON d.type = 'DELETE')
 SELECT count(*) FILTER (WHERE type = 'DELETE') AS geloescht_markiert,
        count(*) FILTER (WHERE NOT success) AS fehlgeschlagen,
        count(*) FILTER (WHERE type = 'SQL' AND success) AS sql_erfolgreich,
-       count(DISTINCT version) FILTER (WHERE type = 'DELETE') AS versionen_geloescht
-  FROM flyway_schema_history;
+       count(DISTINCT version) FILTER (WHERE type = 'DELETE') AS versionen_geloescht,
+       count(*) FILTER (WHERE type = 'DELETE' AND NOT geheilt) AS geloescht_offen
+  FROM h;
 
 COMMIT;

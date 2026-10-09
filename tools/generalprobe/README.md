@@ -140,8 +140,10 @@ Seriennummern, Zeitstempel, SQL-Zeilen, Versionsbezeichnungen oder Passwörter.
   Nach erreichter Readiness wird weitere fünf Sekunden beobachtet;
   `flyway_historie_veraendert` prüft danach, ob die alte API die neue
   Flyway-Historie verändert hat (etwa durch ihre Selbstheilung). `W1.Z08` wiederholt
-  die vier Historienzähler nach dem alten Start; erfolgreiche DELETE-Marker sind ein
-  Schaden, auch bei `fehlgeschlagen=0`. `ungeprobt=1` ist ausdrücklich kein W1-Nachweis.
+  die fünf Historienzähler nach dem alten Start; offene DELETE-Marker (`geloescht_offen`)
+  sind ein Schaden, auch bei `fehlgeschlagen=0`.
+  Geheilte Marker (jüngste Zeile der Version ist eine identische, erfolgreiche Neuanwendung, wie die 15 der Produktion vom 02.08.2026) zählen nur in `geloescht_markiert` und lösen 26 nicht aus.
+  `ungeprobt=1` ist ausdrücklich kein W1-Nachweis.
 - `pruefen_Z03` und `pruefen_Z05` sind **Prüfaufträge an den Betreiber**.
   Jede eingerichtete Anlage wird konservativ zur Prüfung vorgelegt; das
   Werkzeug behauptet nicht, aus der Zählung zu wissen, welche Anlage steuert.

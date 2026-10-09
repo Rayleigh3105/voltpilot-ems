@@ -728,26 +728,17 @@ psql "$VP_DB_URL" -v ON_ERROR_STOP=1 -o /BETREIBER/nachher-$(date -u +%Y%m%dT%H%
 `rolle_gesetzt`**; Z06 entspricht der Generalprobe. Jede Abweichung → R.
 
 **Z08 „Historie unverändert" — der neue Prüfpunkt.** Z01 zählt jede Zeile mit `success`
-und würde die 18 DELETE-Marker eines alten Fehlstarts als gesund melden. Deshalb
-zusätzlich:
+und würde die 18 DELETE-Marker eines alten Fehlstarts als gesund melden.
+Deshalb zusätzlich Z08 aus dem Nachher-Blatt ([`tools/betriebsabfragen/bestand-nach-rollout.sql`](../../tools/betriebsabfragen/bestand-nach-rollout.sql)); der Aufruf oben fährt es mit.
+Es zählt `geloescht_markiert`, `fehlgeschlagen`, `sql_erfolgreich`, `versionen_geloescht` und **`geloescht_offen`**.
 
-```sql
-BEGIN READ ONLY;
-SELECT count(*) FILTER (WHERE type = 'DELETE')                    AS geloescht_markiert,
-       count(*) FILTER (WHERE NOT success)                        AS fehlgeschlagen,
-       count(*) FILTER (WHERE type = 'SQL' AND success)           AS sql_erfolgreich,
-       count(DISTINCT version) FILTER (WHERE type = 'DELETE')     AS versionen_geloescht
-  FROM flyway_schema_history;
-ROLLBACK;
-```
+**Die Produktion hat einen Ausgangswert ungleich 0.**
+Ihre Historie trägt seit dem 02.08.2026 **15 DELETE-Marker** auf drei Versionen (20260802000000 7×, 20260802010000 7×, 20260802020000 1×), jeder danach mit derselben Prüfsumme, Beschreibung und demselben Skript erfolgreich neu angewandt (gemessen an der Produktionskopie vom 08.10.2026, Produktionssicherheits-Prüfung 09.10.2026, Befund B1).
+Solche **geheilten** Marker zählen in `geloescht_markiert`, aber nicht in `geloescht_offen`; der Start-Wächter der api akzeptiert genau sie und verweigert jeden offenen Marker.
+Offen ist ein Marker, wenn die jüngste Zeile seiner Version kein erfolgreiches, identisches `SQL` ist; so sieht der Abdruck eines alten api-Starts nach der Migration aus.
 
-**Erwartet:** `geloescht_markiert = 0`, `fehlgeschlagen = 0`, `sql_erfolgreich` = die Zahl
-des eingefrorenen Satzes (am geprobten Stand: 235). **Jeder Wert > 0 in
-`geloescht_markiert` ist §8, nicht R-mit-Nachdenken.**
-
-Dieselbe Abfrage steht seit #976 als **Z08** im Nachher-Blatt
-([`tools/betriebsabfragen/bestand-nach-rollout.sql`](../../tools/betriebsabfragen/bestand-nach-rollout.sql),
-ab Z. 99); der Aufruf oben fährt sie also mit.
+**Erwartet:** `geloescht_offen = 0`, `fehlgeschlagen = 0`, `geloescht_markiert` = **Ausgangswert aus dem Vorher-Stand** (Produktion: 15; Z08 dafür vor Schritt 6 auf der Produktion fahren und den Wert notieren), `sql_erfolgreich` = Vorher-Stand + die Zahl des eingefrorenen Satzes.
+**Jeder Wert > 0 in `geloescht_offen` und jede Zunahme von `geloescht_markiert` gegenüber dem Ausgangswert ist §8, nicht R-mit-Nachdenken.**
 
 **Nur DELETE zu zählen reicht für allgemeine Reparaturen nicht.** Zusätzlich müssen die
 bereits vorhandenen `(installed_rank, version, type, checksum, success, description,
@@ -804,7 +795,7 @@ Fläche 9.3/9.4 bedient werden. Beides sind Betriebsentscheidungen, keine Repo-A
 -- dieselbe Abfrage wie in Schritt 7
 ```
 
-**Beleg:** `geloescht_markiert = 0` **und** die Zeilenzahl ist seit Schritt 7 unverändert.
+**Beleg:** `geloescht_offen = 0`, `geloescht_markiert` = Ausgangswert (Produktion: 15) **und** die Zeilenzahl ist seit Schritt 7 unverändert.
 Zwischen Schritt 7 und hier darf **keine weitere Migration und keine Reparatur**
 stattgefunden haben.
 
@@ -812,6 +803,14 @@ stattgefunden haben.
 allein beweisen keine intakte Historie. Ein alter Neustart kann vor oder nach dem Blatt
 liegen." Zwischen Blatt und Portalöffnung liegen C3, der Wiederanlauf von Welle 1 und die
 Rauchprobe — genug Zeit für einen unbeabsichtigten Neustart. Ist hier etwas anders: **§8.**
+
+**Z05 „Rechte übernommen": hier hart, vor dem Öffnen (Befund B2 der Produktionssicherheits-Prüfung 09.10.2026).**
+Erwartet: `ohne_stichtag = 0` und im api-Log die Zeile `UEMS-Bestandsübernahme der Zugriffe: … 0 Fehler` ohne eine spätere Warnung `… Kundenbereich(e) offen`.
+Ist `ohne_stichtag > 0`, hat der Rechte-Startlauf Keycloak noch nicht erreicht.
+Ausgesperrt ist dann niemand: jede Route und `/me` behandeln ein Bestandskonto bis zum Stichtag als Kundenadministrator (E12).
+Aber ohne Stichtag wäre auch ein jetzt neu angelegtes Konto unternehmensweit, und die Benutzerverwaltung ist leer.
+Der Läufer wiederholt die offenen Kundenbereiche selbst (nach 30 s, dann doppelt so lang bis 5 min), also **kein api-Neustart**: Keycloak-Erreichbarkeit aus dem api-Pod prüfen, Z05 wiederholen, erst bei `ohne_stichtag = 0` öffnen.
+Vor dem Fenster prüfen, dass jedes Produktionskonto das Attribut `tenant_id` trägt: ein Konto ohne Attribut sieht der Lauf nicht, nach dem Stichtag sieht es nichts.
 
 ### Schritt 10 — Go: Portal öffnen
 
@@ -879,10 +878,10 @@ läuft (in `live-realm-import.md` steht `<namespace>`).
 | 4 | Alte api steht, gesperrt | Pods leer · RS 0 · DB-Sitzungen 0 · Soll-Image neu | → R |
 | 5 | **Wiederherstellungspunkt** | Zeit, LSN, Gruppenoffset; Archiv frisch | ohne Punkt kein Schritt 6 |
 | 6 | C2: api auf 1, Flyway läuft | 1 Pod ready auf `UEMS_SHA`; `fehlgeschlagen = 0` | → R |
-| 7 | Nachher-Blatt Z01–Z07 **+ Z08** | Zählungen = Generalprobe; `geloescht_markiert = 0` | → R · bei Markern: §8 |
+| 7 | Nachher-Blatt Z01–Z07 **+ Z08** | Zählungen = Generalprobe; `geloescht_offen = 0`, `geloescht_markiert` = Ausgangswert (15) | → R · bei Markern: §8 |
 | 8 | C3: Writer, ingest, Portal-Image | Rückstand baut ab; api unverändert | → R |
 | 9 | Rauchprobe (4 Proben) | alle vier grün | → R |
-| 9b | **Z08 erneut** | 0 Marker, Zeilenzahl unverändert | → R · bei Markern: §8 |
+| 9b | **Z08 erneut + Z05** | 0 offene Marker, Ausgangswert, Zeilenzahl unverändert; Z05 `ohne_stichtag = 0` | → R · bei Markern: §8 · Z05: warten |
 | 10 | **Go:** Portal öffnen, Klammer auf (F2), `GITOPS_PUSH_TOKEN` zurück | — | ab hier nur vorwärts |
 | danach | **Box-Release** an die Boxen, direkt nach Schritt 10 (§2.8, B10), Tag ≠ `edge-2026.09.5` | Boxen quittieren den heutigen Katalogstand | Release anhalten |
 | danach | **Live-Realm härten** und SMTP/Reset (§5, nach Schritt 10) | `pruefen` Exit 0, Bestätigungszeile | Rückweg aus `live-realm-import.md` |
@@ -985,9 +984,9 @@ Dann Sync-Klammer auf (F2).
 
 ## 8. Kasten: „Es ist doch passiert" — eine alte api lief nach der Migration
 
-**Auslöser:** `geloescht_markiert > 0` in Z08 · oder ein api-Pod mit `${ALT_SHA}` in der
-Pod-Liste nach Schritt 6 · oder ein Neustart-Ereignis am api-Deployment zwischen Schritt 6
-und Schritt 10, das niemand ausgelöst hat.
+**Auslöser:** `geloescht_offen > 0` oder `geloescht_markiert` über dem Ausgangswert in Z08 ·
+oder ein api-Pod mit `${ALT_SHA}` in der Pod-Liste nach Schritt 6 · oder ein Neustart-Ereignis
+am api-Deployment zwischen Schritt 6 und Schritt 10, das niemand ausgelöst hat.
 
 **Was jetzt NICHT getan wird:**
 

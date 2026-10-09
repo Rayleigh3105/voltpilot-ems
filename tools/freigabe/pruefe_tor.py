@@ -327,9 +327,13 @@ def nw1_generalprobe(ctx: Kontext):
             if wo == 'W1':
                 continue
             return OFFEN, 'probe.json nennt keine Z08-Zaehler; Bericht unvollstaendig (Betreiber)'
-        if z08.get('geloescht_markiert') or z08.get('fehlgeschlagen'):
-            return OFFEN, (f'{wo}.Z08 ist auffaellig (geloescht_markiert={z08.get("geloescht_markiert")}, '
-                           f'fehlgeschlagen={z08.get("fehlgeschlagen")}); erfolgreiche DELETE-Marker sind ein '
+        # Geheilte Marker (identisch neu angewandt, Produktion 02.08.2026) sind Geschichte, kein Schaden.
+        # Ein aelterer Bericht ohne geloescht_offen bleibt streng: dann zaehlt jeder Marker.
+        offen = z08.get('geloescht_offen', z08.get('geloescht_markiert'))
+        if offen or z08.get('fehlgeschlagen'):
+            return OFFEN, (f'{wo}.Z08 ist auffaellig (geloescht_offen={offen}, '
+                           f'geloescht_markiert={z08.get("geloescht_markiert")}, '
+                           f'fehlgeschlagen={z08.get("fehlgeschlagen")}); offene DELETE-Marker sind ein '
                            f'Schaden, kein bestandener Lauf (Betreiber)')
     teil_a = bericht.get('A', {})
     summe = teil_a.get('summe_ms')
